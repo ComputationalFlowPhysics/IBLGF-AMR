@@ -4,8 +4,8 @@
 
 #include <array>
 #include <iomanip>
-#include "vector.hpp"
-#include "bitmasks.hpp"
+#include "vector.h"
+#include "bitmasks.h"
 
 namespace octree
 {

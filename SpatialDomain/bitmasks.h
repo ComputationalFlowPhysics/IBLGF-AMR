@@ -8,11 +8,9 @@ namespace octree
 {
 
 
-template<int Dim>
-struct Bitmasks { };
+template<int Dim> struct Bitmasks { };
 
-template<> 
-struct Bitmasks<3>{
+template<> struct Bitmasks<3>{
 
 using id_t = std::uint_fast64_t;
 
@@ -55,10 +53,11 @@ static constexpr id_t min_17        = 0b0000000000000000000000000000000000000000
 static constexpr id_t min_18        = 0b0000000000000000000000000000000000000000000000000000000001001000;
 static constexpr id_t min_19        = 0b0000000000000000000000000000000000000000000000000000000001001100;
 
-static constexpr std::array<id_t,20> min_arr = {{ min_0,  min_1,  min_2,  min_3,  min_4,
-	                                              min_5,  min_6,  min_7,  min_8,  min_9,
-	                                              min_10, min_11, min_12, min_13, min_14,
-	                                              min_15, min_16, min_17, min_18, min_19  }};
+static constexpr std::array<id_t,20> min_arr = {{
+    min_0,  min_1,  min_2,  min_3,  min_4,
+    min_5,  min_6,  min_7,  min_8,  min_9,
+    min_10, min_11, min_12, min_13, min_14,
+    min_15, min_16, min_17, min_18, min_19}};
 
 static constexpr id_t max_0         = 0b0000000000000000000000000000000000000000000000000000000000000011;
 static constexpr id_t max_1         = 0b1110000000000000000000000000000000000000000000000000000000000111;
@@ -81,10 +80,11 @@ static constexpr id_t max_17        = 0b1111111111111111111111111111111111111111
 static constexpr id_t max_18        = 0b1111111111111111111111111111111111111111111111111111110001001011;
 static constexpr id_t max_19        = 0b1111111111111111111111111111111111111111111111111111111111001111;
 
-static constexpr std::array<id_t,20> max_arr = {{ max_0,  max_1,  max_2,  max_3,  max_4,
-	                                              max_5,  max_6,  max_7,  max_8,  max_9,
-	                                              max_10, max_11, max_12, max_13, max_14,
-	                                              max_15, max_16, max_17, max_18, max_19  }};
+static constexpr std::array<id_t,20> max_arr = {{
+    max_0,  max_1,  max_2,  max_3,  max_4,
+    max_5,  max_6,  max_7,  max_8,  max_9,
+    max_10, max_11, max_12, max_13, max_14,
+    max_15, max_16, max_17, max_18, max_19}};
 
 static constexpr id_t coord_mask_0  = 0b0000000000000000000000000000000000000000000000000000000000000000;
 static constexpr id_t coord_mask_1  = 0b1110000000000000000000000000000000000000000000000000000000000000;
@@ -107,10 +107,11 @@ static constexpr id_t coord_mask_17 = 0b1111111111111111111111111111111111111111
 static constexpr id_t coord_mask_18 = 0b1111111111111111111111111111111111111111111111111111110000000000;
 static constexpr id_t coord_mask_19 = 0b1111111111111111111111111111111111111111111111111111111110000000;
 
-static constexpr std::array<id_t,20> coord_mask_arr = {{ coord_mask_0,  coord_mask_1,  coord_mask_2,  coord_mask_3,  coord_mask_4,
-	                                              coord_mask_5,  coord_mask_6,  coord_mask_7,  coord_mask_8,  coord_mask_9,
-	                                              coord_mask_10, coord_mask_11, coord_mask_12, coord_mask_13, coord_mask_14,
-	                                              coord_mask_15, coord_mask_16, coord_mask_17, coord_mask_18, coord_mask_19  }};
+static constexpr std::array<id_t,20> coord_mask_arr = {{
+    coord_mask_0,  coord_mask_1,  coord_mask_2,  coord_mask_3,  coord_mask_4,
+    coord_mask_5,  coord_mask_6,  coord_mask_7,  coord_mask_8,  coord_mask_9,
+    coord_mask_10, coord_mask_11, coord_mask_12, coord_mask_13, coord_mask_14,
+    coord_mask_15, coord_mask_16, coord_mask_17, coord_mask_18, coord_mask_19}};
 
 static constexpr int size_0  =      1;
 static constexpr int size_1  =      2;
@@ -133,17 +134,17 @@ static constexpr int size_17 = 131072;
 static constexpr int size_18 = 262144;
 static constexpr int size_19 = 524288;
 
-static constexpr std::array<int,20> size_arr = {{ size_0,  size_1,  size_2,  size_3,  size_4,
-	                                             size_5,  size_6,  size_7,  size_8,  size_9,
-                                                 size_10, size_11, size_12, size_13, size_14,
-                                                 size_15, size_16, size_17, size_18, size_19  }};
-
+static constexpr std::array<int,20> size_arr = {{
+    size_0,  size_1,  size_2,  size_3,  size_4,
+    size_5,  size_6,  size_7,  size_8,  size_9,
+    size_10, size_11, size_12, size_13, size_14,
+    size_15, size_16, size_17, size_18, size_19}};
 }; 
 
-constexpr decltype(Bitmasks<3>::min_arr) Bitmasks<3>::min_arr;
-constexpr decltype(Bitmasks<3>::max_arr) Bitmasks<3>::max_arr;
+constexpr decltype(Bitmasks<3>::min_arr)        Bitmasks<3>::min_arr;
+constexpr decltype(Bitmasks<3>::max_arr)        Bitmasks<3>::max_arr;
 constexpr decltype(Bitmasks<3>::coord_mask_arr) Bitmasks<3>::coord_mask_arr;
-constexpr decltype(Bitmasks<3>::size_arr) Bitmasks<3>::size_arr;
+constexpr decltype(Bitmasks<3>::size_arr)       Bitmasks<3>::size_arr;
 
 } // namespace octree
 

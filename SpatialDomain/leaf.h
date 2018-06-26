@@ -9,9 +9,9 @@
 #include<string>
 #include<map>
 
-#include "key.hpp"
-#include "utils.hpp"
-#include "types.hpp"
+#include "key.h"
+#include "utils.h"
+#include "types.h"
 
 namespace octree
 {

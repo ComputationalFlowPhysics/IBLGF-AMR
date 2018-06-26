@@ -4,10 +4,10 @@
 #include <climits>
 #include <iomanip>
 #include <set>
-#include "key.hpp"
-#include "linear_tree.hpp"
+#include "SpatialDomain/key.h"
+#include "SpatialDomain/linearTree.cpp"
 
-#include "vector.hpp"
+#include "SpatialDomain/vector.h"
 #include <math.h>
 
 

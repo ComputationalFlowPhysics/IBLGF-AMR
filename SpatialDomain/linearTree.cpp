@@ -8,9 +8,9 @@
 #include <set>
 #include <string>
 #include <map>
-#include "leaf.hpp"
-#include "key.hpp"
-#include "utils.hpp"
+#include "leaf.h"
+#include "key.h"
+#include "utils.h"
 
 namespace octree
 {

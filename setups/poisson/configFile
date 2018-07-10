@@ -1,0 +1,31 @@
+simulation_parameters  
+{
+	domain{ 
+        max_extent=5000;
+        block_extent=10;
+        
+		block{
+            base=(0,0,0);
+            extent=(50,50,50);
+		}
+
+
+        
+		//block{
+        //    base=(10,0,0);
+        //    extent=(10,10,10);
+		//}
+
+
+
+		//block{
+        //    base=(30,10,0);
+        //    extent=(10,10,10);
+		//}
+        
+		//block{ 
+        //    base=(-10,-10,-10);
+        //    extent=(10,10,10);
+		//}
+    }
+}

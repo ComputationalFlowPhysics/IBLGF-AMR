@@ -1,0 +1,7 @@
+CXX = mpic++
+
+BOOST_PATH=${boost_path}
+
+USER_INCLUDE_DIRS = -I${BOOST_PATH}/include
+USER_LDFLAGS  = -L${BOOST_PATH}/lib
+USER_LIBS  = 

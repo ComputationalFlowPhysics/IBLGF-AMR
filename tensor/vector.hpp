@@ -1,5 +1,5 @@
-#ifndef INCLUDED_SIMPLE_VECTOR_HPP
-#define INCLUDED_SIMPLE_VECTOR_HPP
+#ifndef MATH_INCLUDED_SIMPLE_VECTOR_HPP
+#define MATH_INCLUDED_SIMPLE_VECTOR_HPP
 
 #include <type_traits>
 #include <array>
@@ -13,17 +13,17 @@ class vector
 {
 public: // member types
 
-	using data_type              = std::array<T,N>;
-	using value_type             = typename data_type::value_type;
-	using size_type              = typename data_type::size_type;
-	using difference_type        = typename data_type::difference_type;
-	using reference              = typename data_type::reference;
-	using const_reference        = typename data_type::const_reference;
-	using pointer                = typename data_type::pointer;
-	using const_pointer          = typename data_type::const_pointer;
-	using iterator               = typename data_type::iterator;
-	using const_iterator         = typename data_type::const_iterator;
-	using reverse_iterator       = typename data_type::reverse_iterator;
+	using data_type = std::array<T,N>;
+	using value_type = typename data_type::value_type;
+	using size_type = typename data_type::size_type;
+	using difference_type = typename data_type::difference_type;
+	using reference = typename data_type::reference;
+	using const_reference = typename data_type::const_reference;
+	using pointer = typename data_type::pointer;
+	using const_pointer = typename data_type::const_pointer;
+	using iterator = typename data_type::iterator;
+	using const_iterator = typename data_type::const_iterator;
+	using reverse_iterator = typename data_type::reverse_iterator;
 	using const_reverse_iterator = typename data_type::const_reverse_iterator;
 
 public: // ctors
@@ -292,4 +292,4 @@ math::vector<U,N> min(const math::vector<U,N>& lhs, const math::vector<U,N>& rhs
 
 } // namespace std
 
-#endif // INCLUDED_SIMPLE_VECTOR_HPP
+#endif // MATH_INCLUDED_SIMPLE_VECTOR_HPP

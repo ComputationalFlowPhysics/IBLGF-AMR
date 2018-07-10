@@ -1,81 +1,30 @@
-#include <iostream>
-#include <fstream>
-#include <vector>
-#include <climits>
-#include <iomanip>
-#include <set>
-#include "SpatialDomain/key.h"
-#include "SpatialDomain/linearTree.cpp"
+#include <boost/mpi.hpp>
+#include <boost/mpi/environment.hpp>
+#include <boost/mpi/communicator.hpp>
 
-#include "SpatialDomain/vector.h"
-#include <math.h>
+#include "setups/poisson/poisson.hpp"
+#include "dictionary/dictionary.hpp"
 
-
-const int Dim = 3;
-using namespace octree;
 
 int main(int argc, char *argv[])
 {
 
-    LinearTree<Dim, double>::coordinate_t c((1));
-    Key<Dim> key(c,3);
-    key.print_binary();
+	boost::mpi::environment env(argc, argv);
+	boost::mpi::communicator world;
 
-    LinearTree<Dim, double>::coordinate_t point((1));
-    point[0] = 3;
-    point[1] = 4;
-    point[2] = 5;
-
-    auto extent = point;
-    LinearTree<Dim,double> lt(extent);
-
-
-    //Initialze:
-    for(auto it = lt.begin_nodes(); it != lt.end_nodes(); ++it)
-        it->data(0.0);
+	std::string input="./";
+    input += std::string("configFile");
     
-    std::ofstream ofs0("points.txt");
-    
-    for(auto it = lt.begin_nodes(); it != lt.end_nodes(); ++it)
-        ofs0 << it->real_coordinate() << std::endl;
-
-
-    //Refine 3 times:
-    for (int i = 0; i < 4; ++i)
-    {
-        int count = 0;
-        for (auto it = lt.begin_nodes(); it != lt.end_nodes(); ++it)
-        {
-            if (count == 1)
-            {
-                lt.refine(it, [&i](const LinearTree<Dim,double>::leaf_t& _t){
-                        _t.data(static_cast<double>(i));});
-            }
-            ++count;
-        }
+    if (argc>1 &&  argv[1][0]!='-' ) {
+        input=argv[1];
     }
+    Dictionary dictionary(input);
+    PoissonSolver setup(&dictionary);
 
-    //Coarsend the mesh again
-    std::ofstream ofs1("points_refined.txt");
-    for (auto it = lt.begin_nodes(); it != lt.end_nodes(); ++it)
-        ofs1<<it->real_coordinate()<<std::endl;
+    setup.run();
 
-    for (int i = 0; i < 4; ++i)
-    {
-        int count = 0;
-        for (auto it = lt.begin_nodes(); it != lt.end_nodes(); ++it)
-        {
-            if (count == 1)
-            {
-                lt.coarsen(it);
-            }
-            ++count;
-        }
-    }
 
-    std::ofstream ofs2("points_coarsened.txt");
-    for (auto it = lt.begin_nodes(); it != lt.end_nodes(); ++it)
-        ofs2 << it->real_coordinate() << std::endl;
+
 
     return 0;
 }

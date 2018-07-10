@@ -13,10 +13,10 @@ template <typename T>
 class LGF
 {
 public:
-    void retrieve()
+    void retrieve(index_type i, index_type j, index_type k)
     {
         T* pT = static_cast<T*>(this);
-        pT->lgfRetrival();
+        pT->lgfRetrival(index_type i, index_type j, index_type k);
     }
     
     void lgfRetrival() { std::cout << "LGF::lgfRetrival" << std::endl; }
@@ -25,31 +25,32 @@ public:
 class Bessel : public LGF<Bessel>
 {
 private:
-    static auto getBesselIntegrand(float_type v, float_type x1, float_type x2, float_type x3)
+    static auto getBesselIntegrand(index_type i, index_type j, index_type k,
+        float_type t)
     {
-        return exp(-6 * x1) * boost::math::cyl_bessel_j(v, x1) *
-                              boost::math::cyl_bessel_j(v, x2) *
-                              boost::math::cyl_bessel_j(v, x3);
+        return exp(-6 * t) * boost::math::cyl_bessel_j(i, 2*t) *
+                             boost::math::cyl_bessel_j(j, 2*t) *
+                             boost::math::cyl_bessel_j(k, 2*t);
     }
     
+    
 public:
-    void lgfRetrival()
+    void lgfRetrival(index_type i, index_type j, index_type k)
     {
         std::cout << "Calculating LGF via Bessel integral\n";
         float_type error;
-        float_type v = 1.;
-        float_type x1 = 1.;
-        float_type x2 = 2.;
-        float_type x3 = 3.;
+        index_type i = 1;
+        index_type j = 1;
+        index_type k = 1;
+        float_type t = 1.;
         
-        // Cylindrical Bessel function of the first kind
-        std::cout << "J_0(" << v << "," << x1 << ") = " 
-                  << getBesselIntegrand(v,x1,x2,x3) << std::endl;
         
-        float_type Q = boost::math::quadrature::gauss_kronrod<float_type, 15>::integrate(
-            getBesselIntegrand(v,x1,x2,x3), 0,
-            numeric_limits<float_type>::infinity(),
-            0, 0, &error);
+        auto BesselIntegrand = [&i,&j,&k](double t) { return getBesselIntegrand(i,j,k,t); };
+
+        float_type Q =
+            boost::math::quadrature::gauss_kronrod<float_type, 15>::integrate(
+                BesselIntegrand, 0, numeric_limits<float_type>::infinity(),
+                0, 0, &error);
         
         // Regular modified cylindrical Bessel function
         std::cout << "I_0(" << v << "," << x1 << ") = "

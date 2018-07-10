@@ -2,11 +2,11 @@ simulation_parameters
 {
 	domain{ 
         max_extent=5000;
-        block_extent=10;
+        block_extent=20;
         
 		block{
             base=(0,0,0);
-            extent=(50,50,50);
+            extent=(20,20,20);
 		}
 
 

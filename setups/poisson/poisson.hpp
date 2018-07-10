@@ -21,6 +21,7 @@
 #include "domain/octree/tree.hpp"
 #include "simulation.hpp"
 #include "io/parallel_ostream.hpp"
+#include "lgf/lgf.hpp"
 
 
 const int Dim=3;
@@ -37,8 +38,9 @@ struct PoissonSolver
     //              name               type
     make_field_type(phi,             float_type)
     make_field_type(f,               float_type)
+    make_field_type(lgf_field,       float_type)
 
-    using datablock_t = DataBlock<Dim, node, phi, f>;
+    using datablock_t = DataBlock<Dim, node, phi, f, lgf_field>;
 
     using block_descriptor_t = typename datablock_t::block_descriptor_type;
 
@@ -61,20 +63,20 @@ struct PoissonSolver
     {
         //Refine:
         int count=0, ocount=0;
-        for(auto it = simulation_.domain_.begin_octants(); 
-                 it!= simulation_.domain_.end_octants();++it)
-        {
-            if(count==7)
-            {
-               simulation_.domain_.refine(it); 
-            }
+        //for(auto it = simulation_.domain_.begin_octants(); 
+        //         it!= simulation_.domain_.end_octants();++it)
+        //{
+        //    if(count==7)
+        //    {
+        //       simulation_.domain_.refine(it); 
+        //    }
 
-            if(!it->is_hanging())
-            {
-                ++count;
-                std::cout<<*it<<std::endl;
-            }
-        }
+        //    if(!it->is_hanging())
+        //    {
+        //        ++count;
+        //        std::cout<<*it<<std::endl;
+        //    }
+        //}
         count=0;
         ocount=0;
         for(auto it = simulation_.domain_.begin_octants(); 
@@ -86,6 +88,11 @@ struct PoissonSolver
             {
                 count++;
                 n.get<phi>()=count;
+                Bessel lgf_lookup;
+                std::cout<<n.level_coordinate()<<std::endl;
+n.get<lgf_field>() =lgf_lookup.retrieve(n.level_coordinate().x(),
+                                                 n.level_coordinate().y(), 
+                                                 n.level_coordinate().z()  );
             }
         }
         pcout<<"Total number of nodes: "<<count<<std::endl;
@@ -99,6 +106,7 @@ struct PoissonSolver
     }
 
 private:
+
     Simulation<domain_t> simulation_;
     parallel_ostream::ParallelOstream pcout;
 };

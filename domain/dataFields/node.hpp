@@ -47,7 +47,6 @@ public: //Access
     template<std::size_t Idx>
     const auto& get()const noexcept{return c_->template get<Idx>()[index_];}
 
-
     template<class T>
     auto& get()noexcept{return c_->template get<T>()[index_];}
 

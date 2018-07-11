@@ -7,7 +7,7 @@ simulation_parameters
         
 		block{
             base=(0,0,0);
-            extent=(50,50,50);
+            extent=(10,10,10);
 		}
 		//block{
         //    base=(10,0,0);

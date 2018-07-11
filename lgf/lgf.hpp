@@ -46,15 +46,6 @@ public:
                 BesselIntegrand, 
                 0, std::numeric_limits<float_type>::infinity(),
                 0, 0, &error);
-            std::cout
-            <<i <<" "
-            <<j <<" "
-            <<k <<" "
-            <<Q <<" "
-            <<error <<" "
-            <<std::endl;
-
-
             return Q;
         
     }
@@ -63,9 +54,8 @@ public:
 class Lookup : public LGF<Lookup>
 {
 public:
-    auto lgfRetrival(index_type flattenedIndex)
-    {
-        long double tmpQ[] = {
+    static constexpr std::array<double,250> Q
+    {{
             -2.527310098586630030260020266135701299e-01,
             -8.606434319199633635933535994690346334e-02,
             -4.288931454236574706383034894759489844e-02,
@@ -315,14 +305,22 @@ public:
             -5.304292179662137386807064500375534443e-03,
             -5.032455286444342478938840259734010214e-03,
             -4.781204009290234927242734000520418131e-03,
-            -4.549243372532382359720064008130553391e-03};
-        
-        std::vector<long double> Q(tmpQ,
-                                   tmpQ + sizeof(tmpQ) / sizeof(long double));
-        return Q[index];
+            -4.549243372532382359720064008130553391e-03
+    }};
+
+    auto lgfRetrival(index_type i, index_type j, index_type k) const noexcept
+    {
+//#ifdef DEBUG
+        if(i >= 6 || j >=6 || k>=6)
+        {
+            //throw std::runtime_error("LGF: out of bounds for lookup");
+            return 0.;
+        }
+//#endif        
+        return Q[i+j*6+k*36];
     }
-    
 };
 
+constexpr decltype(Lookup::Q) Lookup::Q;
 
 #endif

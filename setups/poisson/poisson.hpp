@@ -77,6 +77,12 @@ struct PoissonSolver
                         n.level_coordinate().x(),
                         n.level_coordinate().y(), 
                         n.level_coordinate().z()  );
+                
+                Lookup lgf_lookup2;
+                n.get<phi>() = lgf_lookup2.retrieve(
+                        n.level_coordinate().x(),
+                        n.level_coordinate().y(), 
+                        n.level_coordinate().z()  );
             }
         }
         pcout<<"Total number of nodes: "<<count<<std::endl;

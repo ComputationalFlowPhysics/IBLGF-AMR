@@ -63,22 +63,6 @@ struct PoissonSolver
     {
         //Refine:
         int count=0, ocount=0;
-        //for(auto it = simulation_.domain_.begin_octants(); 
-        //         it!= simulation_.domain_.end_octants();++it)
-        //{
-        //    if(count==7)
-        //    {
-        //       simulation_.domain_.refine(it); 
-        //    }
-
-        //    if(!it->is_hanging())
-        //    {
-        //        ++count;
-        //        std::cout<<*it<<std::endl;
-        //    }
-        //}
-        count=0;
-        ocount=0;
         for(auto it = simulation_.domain_.begin_octants(); 
                  it!= simulation_.domain_.end_octants();++it)
         {
@@ -89,10 +73,10 @@ struct PoissonSolver
                 count++;
                 n.get<phi>()=count;
                 Bessel lgf_lookup;
-                std::cout<<n.level_coordinate()<<std::endl;
-n.get<lgf_field>() =lgf_lookup.retrieve(n.level_coordinate().x(),
-                                                 n.level_coordinate().y(), 
-                                                 n.level_coordinate().z()  );
+                n.get<lgf_field>() = lgf_lookup.retrieve(
+                        n.level_coordinate().x(),
+                        n.level_coordinate().y(), 
+                        n.level_coordinate().z()  );
             }
         }
         pcout<<"Total number of nodes: "<<count<<std::endl;
@@ -101,8 +85,6 @@ n.get<lgf_field>() =lgf_lookup.retrieve(n.level_coordinate().x(),
     void run()
     {
         simulation_.write("bla.vtk");
-     
-        
     }
 
 private:

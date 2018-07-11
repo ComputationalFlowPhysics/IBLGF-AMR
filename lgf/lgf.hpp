@@ -28,9 +28,9 @@ private:
     static auto getBesselIntegrand(index_type i, index_type j, index_type k,
         float_type t)
     {
-        return exp(-6 * t) * boost::math::cyl_bessel_j(i, 2*t) *
-                             boost::math::cyl_bessel_j(j, 2*t) *
-                             boost::math::cyl_bessel_j(k, 2*t);
+        return exp(-6 * t) * boost::math::cyl_bessel_i(i, 2*t) *
+                             boost::math::cyl_bessel_i(j, 2*t) *
+                             boost::math::cyl_bessel_i(k, 2*t);
     }
     
     
@@ -42,9 +42,17 @@ public:
             return getBesselIntegrand(i,j,k,t); };
 
         float_type Q =
-            boost::math::quadrature::gauss_kronrod<float_type, 15>::integrate(
-                BesselIntegrand, 0, std::numeric_limits<float_type>::infinity(),
+            - boost::math::quadrature::gauss_kronrod<float_type, 15>::integrate(
+                BesselIntegrand, 
+                0, std::numeric_limits<float_type>::infinity(),
                 0, 0, &error);
+            std::cout
+            <<i <<" "
+            <<j <<" "
+            <<k <<" "
+            <<Q <<" "
+            <<error <<" "
+            <<std::endl;
 
             return Q;
         

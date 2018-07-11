@@ -38,9 +38,10 @@ struct PoissonSolver
     //              name               type
     make_field_type(phi,             float_type)
     make_field_type(f,               float_type)
-    make_field_type(lgf_field,       float_type)
+    make_field_type(lgf_field_int,   float_type)
+    make_field_type(lgf_field_lookup,float_type)
 
-    using datablock_t = DataBlock<Dim, node, phi, f, lgf_field>;
+    using datablock_t = DataBlock<Dim, node, phi, f, lgf_field_int,lgf_field_lookup >;
 
     using block_descriptor_t = typename datablock_t::block_descriptor_type;
 
@@ -72,17 +73,10 @@ struct PoissonSolver
             {
                 count++;
                 n.get<phi>()=count;
-                Bessel lgf_lookup;
-                n.get<lgf_field>() = lgf_lookup.retrieve(
-                        n.level_coordinate().x(),
-                        n.level_coordinate().y(), 
-                        n.level_coordinate().z()  );
-                
-                Lookup lgf_lookup2;
-                n.get<phi>() = lgf_lookup2.retrieve(
-                        n.level_coordinate().x(),
-                        n.level_coordinate().y(), 
-                        n.level_coordinate().z()  );
+                lgf::LGF<lgf::Integrator> lgfsI;
+                n.get<lgf_field_int>() = lgfsI.get(n.level_coordinate());
+                lgf::LGF<lgf::Lookup> lgfsL;
+                n.get<lgf_field_lookup>() = lgfsL.get(n.level_coordinate());
             }
         }
         pcout<<"Total number of nodes: "<<count<<std::endl;

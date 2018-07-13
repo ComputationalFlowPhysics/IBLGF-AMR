@@ -136,7 +136,7 @@ public:  //Static members
     static constexpr auto dimension(){return Dim;}
 
     static std::vector<BlockDescriptor> 
-    generate_blocks_from_cuts( std::array<std::vector<T>,dimension()>& cut_locations, 
+    generate_blocks_from_cuts( std::array<std::vector<T>,dimension()>& cut_locations,
                                int _level=0 ) 
     {
         std::vector<BlockDescriptor> res;
@@ -283,7 +283,7 @@ public: //members
 
 		overlap.base()=std::max(base_,overlap.base());
 		overlap.extent() = std::min(base_+extent_,
-                                    overlap.base()+overlap.extent())-overlap.base();
+                overlap.base()+overlap.extent())-overlap.base();
 
         for(std::size_t d = 0; d< overlap.extent() .size();++d)
             if (overlap.extent()[d]<1)return false;

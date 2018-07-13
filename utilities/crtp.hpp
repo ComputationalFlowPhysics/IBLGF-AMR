@@ -1,6 +1,7 @@
 #ifndef INCLUDED_CRTP_HPP
 #define INCLUDED_CRTP_HPP
 
+
 namespace crtp
 {
 

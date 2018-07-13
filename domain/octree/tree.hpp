@@ -37,7 +37,8 @@ public: //memeber types
     using octant_iterator = MapValueIterator<octant_map_type>;
     using raw_octant_iterator = typename octant_map_type::iterator;
 
-    using coordinate_transform_t=std::function<real_coordinate_type(real_coordinate_type)>;
+    using coordinate_transform_t=
+        std::function<real_coordinate_type(real_coordinate_type)>;
 
 public:
     friend octant_base_type;
@@ -117,8 +118,14 @@ public:
         }
     }
 
-    const auto& get_octant_to_real_coordinate() const noexcept{return octant_to_real_coordinate_;}
-    auto& get_octant_to_real_coordinate() noexcept{return octant_to_real_coordinate_;}
+    const auto& get_octant_to_real_coordinate() const noexcept
+    {
+        return octant_to_real_coordinate_;
+    }
+    auto& get_octant_to_real_coordinate() noexcept
+    {
+        return octant_to_real_coordinate_;
+    }
     template<class T>
     auto octant_to_real_coordinate(T _x)
     {

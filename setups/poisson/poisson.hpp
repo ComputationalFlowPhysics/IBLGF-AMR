@@ -41,7 +41,8 @@ struct PoissonSolver
     make_field_type(lgf_field_int,   float_type)
     make_field_type(lgf_field_lookup,float_type)
 
-    using datablock_t = DataBlock<Dim, node, phi, f, lgf_field_int,lgf_field_lookup >;
+    using datablock_t = DataBlock<Dim, node, phi, f, 
+          lgf_field_int,lgf_field_lookup >;
 
     using block_descriptor_t = typename datablock_t::block_descriptor_type;
 
@@ -64,6 +65,19 @@ struct PoissonSolver
     {
         //Refine:
         int count=0, ocount=0;
+        for(auto it = simulation_.domain_.begin_octants(); 
+                 it!= simulation_.domain_.end_octants();++it)
+        {
+            if(it->is_hanging())continue;
+            if(ocount==0 || ocount ==3)
+            {
+                simulation_.domain_.refine(it);
+            }
+            ++ocount;
+        }
+        simulation_.domain_.tree()->determine_hangingOctants();
+
+
         for(auto it = simulation_.domain_.begin_octants(); 
                  it!= simulation_.domain_.end_octants();++it)
         {

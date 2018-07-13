@@ -67,6 +67,7 @@ public:
         
         //connectivity
         //FIXME: octant borders are duplicated for now, needs fixing
+        //       In general this is shit
         for(auto it=_lt.begin_octants();it!=_lt.end_octants();++it)
         {
             if(!it->is_hanging())
@@ -83,7 +84,7 @@ public:
                                 for(int k=0;k<2;++k)
                                 {
                                     auto nn = n.neighbor( coordinate_type({i,j,k}) );
-                                    if(nn.second  )
+                                    if(nn.second)
                                     {
                                         ofs<< nn.first.index()+it->index()<<" ";
                                     }

@@ -99,17 +99,18 @@ public:
         extent_t extent(max-min+1);
         auto base_=extent_t(min);
         for(auto& b: bases) b-=base_;
-        auto base_level=key_t::minimum_level(_maxExtent);
+        auto base_level=key_t::minimum_level(_maxExtent/_blockExtent);
         t_ = std::make_shared<tree_t>(bases, base_level);
         t_->determine_hangingOctants();
 
 
         //Assign octant to real coordinate transform:
-        t_->get_octant_to_real_coordinate()=[ blockExtent=_blockExtent, base=base_]
-        (real_coordinate_type _oct_coord)
-        {
-            return (_oct_coord + base)*blockExtent;
-        };
+        t_->get_octant_to_real_coordinate()=
+            [ blockExtent=_blockExtent, base=base_]
+            (real_coordinate_type _oct_coord)
+            {
+                return (_oct_coord + base)*blockExtent;
+            };
 
         //instantiate blocks
         for(auto it=t_->begin_octants();it!=t_->end_octants();++it)

@@ -13,6 +13,7 @@
 #include <random>
 #include <functional>
 
+#include <fftw3.h>
 
 #include "global.hpp"
 #include "domain/domain.hpp"

@@ -40,7 +40,7 @@ INCLUDE_DIRS = $(USER_INCLUDE_DIRS) \
 			   -I./domain \
 			   -I./domain/octree \
 			   -I./domain/dataFields \
-			   -I./tensor
+			   -I./tensor 
 
 LIB_DIRS = $(USER_LIB_DIRS) 
 LDFLAGS = $(USER_LDFLAGS) \

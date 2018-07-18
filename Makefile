@@ -9,16 +9,16 @@
 
 
 # Project name
-NAME=iblgf.x
+NAME = iblgf.x
 SOURCES = main.cpp 
-PREPROC=junk
+PREPROC = junk
 
 # Dependency directory
 DEPDIR = .deps
 df = $(DEPDIR)/$(*F)
 
 # Compiler flags settings
-CXX ?= mpic++
+CXX = mpic++
 
 CFLAGS = -fconstexpr-depth=2048 \
 		 -mavx \
@@ -43,7 +43,7 @@ INCLUDE_DIRS = $(USER_INCLUDE_DIRS) \
 			   -I./tensor 
 
 LIB_DIRS = $(USER_LIB_DIRS) 
-LDFLAGS = $(USER_LDFLAGS) \
+LDFLAGS  = $(USER_LDFLAGS) \
 		  -lboost_mpi \
 		  -lboost_serialization \
 		  -lboost_system \

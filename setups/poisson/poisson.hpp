@@ -36,26 +36,24 @@ struct PoissonSolver
 {
     using vel_type = vector_type<float_type, Dim>;
 
-    //              name               type
-    make_field_type(phi,             float_type)
+    //              name             type
+    make_field_type(phi_num,         float_type)
     make_field_type(f,               float_type)
     make_field_type(lgf_field_int,   float_type)
     make_field_type(lgf_field_lookup,float_type)
+    make_field_type(phi_exact,       float_type)
 
-    using datablock_t = DataBlock<Dim, node, phi, f, 
-          lgf_field_int,lgf_field_lookup >;
+    using datablock_t = DataBlock<Dim, node, phi_num, f,
+          lgf_field_int,lgf_field_lookup,phi_exact >;
 
     using block_descriptor_t = typename datablock_t::block_descriptor_type;
-
-    using tree_t = Tree<Dim,datablock_t>;
-    using octant_t = typename tree_t::octant_type;
-
-    using coordinate_t=  typename datablock_t ::coordinate_type;
-
-    using domain_t = domain::Domain<Dim,datablock_t>;
+    using tree_t       = Tree<Dim,datablock_t>;
+    using octant_t     = typename tree_t::octant_type;
+    using coordinate_t = typename datablock_t ::coordinate_type;
+    using domain_t     = domain::Domain<Dim,datablock_t>;
     
-    PoissonSolver(Dictionary* _d)
-    :simulation_(_d->get_dictionary("simulation_parameters"))
+    PoissonSolver(Dictionary* _d) : simulation_(
+        _d->get_dictionary("simulation_parameters"))
     {
         pcout<<"\n Setup:  LGF PoissonSolver \n"<<std::endl;
         pcout<<"Simulation: \n"<<simulation_<<std::endl;
@@ -69,8 +67,8 @@ struct PoissonSolver
         for(auto it = simulation_.domain_.begin_octants(); 
                  it!= simulation_.domain_.end_octants();++it)
         {
-            if(it->is_hanging())continue;
-            if(ocount==0 || ocount ==3)
+            if (it->is_hanging())continue;
+            if (ocount==0 || ocount ==3)
             {
                 simulation_.domain_.refine(it);
             }
@@ -87,20 +85,49 @@ struct PoissonSolver
             for(auto& n : it->data()->nodes())
             {
                 count++;
-                n.get<phi>()=count;
+                n.get<phi_num>() = count;
                 lgf::LGF<lgf::Integrator> lgfsI;
                 n.get<lgf_field_int>() = lgfsI.get(n.level_coordinate());
                 lgf::LGF<lgf::Lookup> lgfsL;
                 n.get<lgf_field_lookup>() = lgfsL.get(n.level_coordinate());
             }
         }
-        pcout<<"Total number of nodes: "<<count<<std::endl;
-        pcout<<" number of non-hanging octants: "<<ocount<<std::endl;
+        pcout << "Total number of nodes         : " << count  << std::endl;
+        pcout << " number of non-hanging octants: " << ocount << std::endl;
     }
+    
+    
+    
     void run()
     {
         simulation_.write("bla.vtk");
     }
+    
+    void padd()
+    {
+        for(auto it = simulation_.domain_.begin_octants();
+            it!= simulation_.domain_.end_octants();++it)
+        {
+            if(it->is_hanging())continue;
+            
+            auto padded_vec = it->it->data().
+            std::vector<float_type> padded;
+            padded.resize(2*it->data().size());
+            padded.insert(padded.begin(),it->data().begin(),it->data().end());
+        }
+    }
+        
+    
+    
+    }
+    void solve()
+    {
+        fftw(lgf_field_int)
+        fftw(f)
+        tmp = lgf_field_int * f
+        phi_num = ifft(tmp)
+    }
+    
 
 private:
 

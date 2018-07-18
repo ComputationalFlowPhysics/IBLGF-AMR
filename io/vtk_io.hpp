@@ -21,10 +21,10 @@ class Vtk_io
 public:
 
     static constexpr int Dim = Domain::dimension;
-    using coordinate_type =typename Domain::coordinate_type;
-    using datablock_t = typename Domain::datablock_t;
+    using coordinate_type        = typename Domain::coordinate_type;
+    using datablock_t            = typename Domain::datablock_t;
     using field_type_iterator_t  = typename Domain::field_type_iterator_t;
-    using field_tuple = typename datablock_t::fields_tuple_t;
+    using field_tuple            = typename datablock_t::fields_tuple_t;
 
 public:
 
@@ -68,23 +68,23 @@ public:
         //connectivity
         //FIXME: octant borders are duplicated for now, needs fixing
         //       In general this is shit
-        for(auto it=_lt.begin_octants();it!=_lt.end_octants();++it)
+        for (auto it = _lt.begin_octants(); it != _lt.end_octants(); ++it)
         {
-            if(!it->is_hanging())
+            if (!it->is_hanging())
             {
-                for(auto& n : it->data()->nodes())
+                for (auto& n : it->data()->nodes())
                 {
-                    if(!n.on_max_blockBorder() )
+                    if (!n.on_max_blockBorder() )
                     {
-                        ofs<<"8 ";
-                        for(int i=0;i<2;++i)
+                        ofs << "8 ";
+                        for (int i=0;i<2;++i)
                         {
-                            for(int j=0;j<2;++j)
+                            for (int j=0;j<2;++j)
                             {
-                                for(int k=0;k<2;++k)
+                                for (int k=0;k<2;++k)
                                 {
-                                    auto nn = n.neighbor( coordinate_type({i,j,k}) );
-                                    if(nn.second)
+                                    auto nn = n.neighbor(coordinate_type({i,j,k}));
+                                    if (nn.second)
                                     {
                                         ofs<< nn.first.index()+it->index()<<" ";
                                     }
@@ -96,8 +96,8 @@ public:
                 }
             }
         }
-        ofs<<"\nCELL_TYPES "<<nCells<<std::endl;
-        for(int i = 0; i< nCells;++i ) ofs<<"11"<<std::endl;
+        ofs << "\nCELL_TYPES " << nCells << std::endl;
+        for (int i = 0; i < nCells; ++i) ofs << "11" << std::endl;
 
         //ofs<<"CELL_DATA "<<nCells<<std::endl;
         //type_iterator_t::for_types([&_lt, &ofs, &nCells]<typename T>()
@@ -120,35 +120,27 @@ public:
         //    }
         //});
 
-        ofs<<"POINT_DATA "<<nPoints<<std::endl;
+        ofs << "POINT_DATA " << nPoints << std::endl;
         field_type_iterator_t::for_types([&_lt, &ofs, &nCells]<typename T>()
         {
-            std::string name="vertex_data_"+std::string(T::name());
-            ofs<<"SCALARS "<<name<<" float "<<std::endl;
-            ofs<<"LOOKUP_TABLE default"<<std::endl;
-            for(auto it=_lt.begin_octants();it!=_lt.end_octants();++it)
+            std::string name = "vertex_data_"+std::string(T::name());
+            ofs << "SCALARS " << name << " float " << std::endl;
+            ofs << "LOOKUP_TABLE default"          << std::endl;
+            for (auto it = _lt.begin_octants(); it != _lt.end_octants(); ++it)
             {
-                if(!it->is_hanging())
+                if (!it->is_hanging())
                 {
-                    for(auto& n : it->data()->nodes())
+                    for (auto& n : it->data()->nodes())
                     {
-                        ofs<<n.template get<T>()<<std::endl;
+                        ofs << n.template get<T>() << std::endl;
                     }
                 }
             }
         });
     }
 
-
-
-
-
-
-      
-    
 };
 
 }
-
 
 #endif 

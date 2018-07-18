@@ -15,15 +15,13 @@ int main(int argc, char *argv[])
 	std::string input="./";
     input += std::string("configFile");
     
-    if (argc>1 &&  argv[1][0]!='-' ) {
+    if (argc>1 && argv[1][0]!='-' ) {
         input=argv[1];
     }
     Dictionary dictionary(input);
     PoissonSolver setup(&dictionary);
 
     setup.run();
-
-
 
 
     return 0;

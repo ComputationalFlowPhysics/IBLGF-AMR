@@ -2,12 +2,15 @@
 #define INCLUDED_KEY_HPP
 
 
-#include<array>
+#include <array>
 #include <iomanip>
 #include <cmath>
-#include "vector.hpp"
-#include "bitmasks.hpp"
-#include "global.hpp"
+
+// IBLGF-specific
+#include <global.hpp>
+#include <tensor/vector.hpp>
+#include <domain/octree/bitmasks.hpp>
+
 
 namespace octree
 {

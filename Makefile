@@ -9,7 +9,7 @@
 
 
 # Project name
-NAME = iblgf.x
+NAME    = iblgf.x
 SOURCES = main.cpp 
 PREPROC = junk
 
@@ -21,26 +21,20 @@ df = $(DEPDIR)/$(*F)
 CXX = mpic++
 
 CFLAGS = -fconstexpr-depth=2048 \
-		 -mavx \
-		 -std=c++17 \
+		 -mavx          \
+		 -std=c++17     \
 		 -Wall 
 CFLAGS_DEBUG = -O0 -ggdb 
 
-CFLAGS_RELEASE = -O3 -DNDEBUG \
-				 -DBOOST_DISABLE_ASSERTS \
-				 -march=native  \
-				 -Wno-unused-local-typedefs  \
-				 -Wno-deprecated-declarations
+CFLAGS_RELEASE = -O3 -DNDEBUG               \
+		-DBOOST_DISABLE_ASSERTS     \
+		-march=native               \
+		-Wno-unused-local-typedefs  \
+		-Wno-deprecated-declarations
 
 CFLAGS_UNSAFE = -ffast-math -ftree-vectorize -funroll-loops
 
-INCLUDE_DIRS = $(USER_INCLUDE_DIRS) \
-			   -I./ \
-			   -I./dictionary \
-			   -I./domain \
-			   -I./domain/octree \
-			   -I./domain/dataFields \
-			   -I./tensor 
+INCLUDE_DIRS = $(USER_INCLUDE_DIRS) -I./
 
 LIB_DIRS = $(USER_LIB_DIRS) 
 LDFLAGS  = $(USER_LDFLAGS) \

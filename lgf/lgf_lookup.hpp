@@ -12,7 +12,6 @@
 namespace lgf
 {
 
-
 class Lookup
 {
 public:

@@ -1,15 +1,17 @@
 #ifndef INCLUDED_LGF_DOMAIN_BLOCKDESCRIPTOR_HPP
 #define INCLUDED_LGF_DOMAIN_BLOCKDESCRIPTOR_HPP
 
-#include<algorithm>
-#include<ostream>
-#include<iostream>
-#include<cmath>
-#include<array>
-#include<vector>
-#include<fstream>
-#include<iomanip>
-#include "types.hpp"
+#include <algorithm>
+#include <ostream>
+#include <iostream>
+#include <cmath>
+#include <array>
+#include <vector>
+#include <fstream>
+#include <iomanip>
+
+// IBLGF-specific
+#include <types.hpp>
 
 namespace domain
 {

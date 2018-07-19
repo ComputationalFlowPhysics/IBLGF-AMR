@@ -8,9 +8,9 @@
 #include <boost/math/quadrature/gauss_kronrod.hpp>
 #include <boost/math/special_functions/bessel.hpp>
 
-
-#include "lgf_lookup.hpp"
-#include "lgf_integrator.hpp"
+// IBLGF-specific
+#include <lgf/lgf_lookup.hpp>
+#include <lgf/lgf_integrator.hpp>
 
 namespace lgf
 {

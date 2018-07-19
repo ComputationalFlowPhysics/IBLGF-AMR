@@ -1,7 +1,7 @@
 #ifndef MATH_INCLUDED_TENSOR_SYMMETRIC_TENSOR_2_HPP
 #define MATH_INCLUDED_TENSOR_SYMMETRIC_TENSOR_2_HPP
 
-#include "tensor_base.hpp"
+#include <tensor/tensor_base.hpp>
 
 namespace math {
 
@@ -9,25 +9,26 @@ namespace math {
 // data stored in lower triangular matrix
 // column major format (fortran)
 template<typename T, std::size_t N>
-class symmetric_tensor<T,2,N> : public detail::symmetric_tensor_access<symmetric_tensor<T,2,N>,T,2,N>
+class symmetric_tensor<T,2,N> : public detail::
+    symmetric_tensor_access<symmetric_tensor<T,2,N>,T,2,N>
 {
 public: // static member functions
 
-	static constexpr std::size_t size() { return detail::s2(N,N); } //{ return ((N+1)*N)/2; }	
+	static constexpr std::size_t size() {return detail::s2(N,N);}
 
 public: // member types
 
-	using data_type = std::array<T,size()>;
-	using value_type = typename data_type::value_type;
-	using size_type = typename data_type::size_type;
-	using difference_type = typename data_type::difference_type;
-	using reference = typename data_type::reference;
-	using const_reference = typename data_type::const_reference;
-	using pointer = typename data_type::pointer;
-	using const_pointer = typename data_type::const_pointer;
-	using iterator = typename data_type::iterator;
-	using const_iterator = typename data_type::const_iterator;
-	using reverse_iterator = typename data_type::reverse_iterator;
+	using data_type              = std::array<T,size()>;
+	using value_type             = typename data_type::value_type;
+	using size_type              = typename data_type::size_type;
+	using difference_type        = typename data_type::difference_type;
+	using reference              = typename data_type::reference;
+	using const_reference        = typename data_type::const_reference;
+	using pointer                = typename data_type::pointer;
+	using const_pointer          = typename data_type::const_pointer;
+	using iterator               = typename data_type::iterator;
+	using const_iterator         = typename data_type::const_iterator;
+	using reverse_iterator       = typename data_type::reverse_iterator;
 	using const_reverse_iterator = typename data_type::const_reverse_iterator;
 
 public: // ctors

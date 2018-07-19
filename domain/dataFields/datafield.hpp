@@ -1,10 +1,13 @@
 #ifndef INCLUDED_LGF_DOMAIN_DATAFIELD_HPP
 #define INCLUDED_LGF_DOMAIN_DATAFIELD_HPP
 
-#include<vector>
-#include<iostream>
-#include "datafield_utils.hpp"
-#include "types.hpp"
+#include <vector>
+#include <iostream>
+
+// IBLGF-specific
+#include <types.hpp>
+#include <domain/dataFields/datafield_utils.hpp>
+
 
 
 namespace domain

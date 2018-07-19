@@ -2,12 +2,13 @@
 #define INCLUDED_VK_IO_HPP
 
 
-#include<ostream>
-#include<fstream>
-#include<iostream>
+#include <ostream>
+#include <fstream>
+#include <iostream>
 #include <sstream>
 
-#include "global.hpp"
+// IBLGF-specific
+#include <global.hpp>
 
 namespace io
 {

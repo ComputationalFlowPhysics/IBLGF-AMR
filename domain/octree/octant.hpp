@@ -2,16 +2,18 @@
 #define OCTREE_INCLUDED_CELL_HPP
 
 
-#include<vector>
-#include<memory>
-#include<cmath>
-#include<set>
-#include<string>
-#include<map>
+#include <vector>
+#include <memory>
+#include <cmath>
+#include <set>
+#include <string>
+#include <map>
 
-#include "octant_base.hpp"
-#include "tree_utils.hpp"
-#include "global.hpp"
+// IBLGF-specific
+#include <global.hpp>
+#include <domain/octree/octant_base.hpp>
+#include <domain/octree/tree_utils.hpp>
+
 
 namespace octree
 {
@@ -24,7 +26,7 @@ class Octant : public Octant_base<Dim,DataType>
 {
 public:
 
-    using super_type = Octant_base<Dim,DataType>;
+    using super_type    = Octant_base<Dim, DataType>;
     using octant_base_t = super_type;
     using typename super_type::key_type ;
     using typename super_type::coordinate_type;

@@ -1,15 +1,16 @@
 #ifndef OCTREE_INCLUDED_NODE_HPP
 #define OCTREE_INCLUDED_NODE_HPP
 
-#include<vector>
-#include<memory>
-#include<cmath>
-#include<set>
-#include<string>
-#include<map>
+#include <vector>
+#include <memory>
+#include <cmath>
+#include <set>
+#include <string>
+#include <map>
 
-#include "global.hpp"
-#include "key.hpp"
+// IBLGF-specific
+#include <global.hpp>
+#include <domain/octree/key.hpp>
 
 namespace octree
 {

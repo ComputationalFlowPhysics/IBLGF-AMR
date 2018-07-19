@@ -1,8 +1,8 @@
 #ifndef MATH_INCLUDED_SIMPLE_VECTOR_HPP
 #define MATH_INCLUDED_SIMPLE_VECTOR_HPP
 
-#include <type_traits>
 #include <array>
+#include <type_traits>
 #include <iostream>
 
 namespace math

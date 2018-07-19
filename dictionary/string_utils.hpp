@@ -12,9 +12,10 @@ namespace string_utilities
 namespace detail
 {
 
-bool content_between_impl(const std::string& _str, 
-                          size_t& _opening_delimiter_pos,size_t& _closing_delimiter_pos, 
-                           std::string _opening_delimiter, std::string _closing_delimiter)
+bool content_between_impl(
+    const std::string& _str,
+    size_t& _opening_delimiter_pos,size_t& _closing_delimiter_pos,
+    std::string _opening_delimiter, std::string _closing_delimiter)
 {
     bool found_oBracket, found_cBracket;
     int delimeter_balance=0;

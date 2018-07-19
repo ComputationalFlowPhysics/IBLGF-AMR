@@ -2,8 +2,8 @@
 #include <boost/mpi/environment.hpp>
 #include <boost/mpi/communicator.hpp>
 
-#include "setups/poisson/poisson.hpp"
-#include "dictionary/dictionary.hpp"
+#include <testSetups/poissonProblem/poissonProblem.hpp>
+#include <dictionary/dictionary.hpp>
 
 
 int main(int argc, char *argv[])
@@ -19,7 +19,7 @@ int main(int argc, char *argv[])
         input=argv[1];
     }
     Dictionary dictionary(input);
-    PoissonSolver setup(&dictionary);
+    PoissonProblem setup(&dictionary);
 
     setup.run();
 

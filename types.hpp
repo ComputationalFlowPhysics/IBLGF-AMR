@@ -2,7 +2,7 @@
 #define INCLUDED_TYPES_HPP
 
 #include <cstddef>
-#include "tensor/vector.hpp"
+#include <tensor/vector.hpp>
 
 
 namespace types

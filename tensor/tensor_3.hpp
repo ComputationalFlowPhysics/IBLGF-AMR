@@ -1,7 +1,7 @@
 #ifndef MATH_INCLUDED_TENSOR_TENSOR_3_HPP
 #define MATH_INCLUDED_TENSOR_TENSOR_3_HPP
 
-#include "symmetric_tensor_3.hpp"
+#include <tensor/symmetric_tensor_3.hpp>
 
 namespace math {
 

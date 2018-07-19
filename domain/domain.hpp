@@ -4,9 +4,10 @@
 #include <vector>
 #include <stdexcept>
 
-#include "global.hpp"
-#include "tree.hpp"
-#include "dictionary.hpp"
+// IBLGF-specific
+#include <global.hpp>
+#include <domain/octree/tree.hpp>
+#include <dictionary/dictionary.hpp>
 	
 
 namespace domain

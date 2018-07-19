@@ -4,10 +4,14 @@
 #include <iostream>
 #include <vector>
 #include <tuple>
-#include "datafield_utils.hpp"
-#include "node.hpp"
-#include "types.hpp"
-#include "blockDescriptor.hpp"
+
+// IBLGF-specific
+#include <types.hpp>
+#include <domain/dataFields/blockDescriptor.hpp>
+#include <domain/dataFields/datafield_utils.hpp>
+#include <domain/dataFields/node.hpp>
+
+
 
 namespace domain
 {

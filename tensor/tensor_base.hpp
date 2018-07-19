@@ -1,7 +1,7 @@
 #ifndef MATH_INCLUDED_TENSOR_TENSOR_BASE_HPP
 #define MATH_INCLUDED_TENSOR_TENSOR_BASE_HPP
 
-#include "vector.hpp"
+#include <tensor/vector.hpp>
 
 namespace math {
 

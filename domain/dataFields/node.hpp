@@ -1,8 +1,8 @@
 #ifndef INCLUDED_LGF_DOMAIN_NODE_HPP
 #define INCLUDED_LGF_DOMAIN_NODE_HPP
 
-#include<vector>
-#include<cmath>
+#include <vector>
+#include <cmath>
 
 namespace domain
 {

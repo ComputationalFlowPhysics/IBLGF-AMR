@@ -17,7 +17,7 @@
 #include <stdexcept>
 #include <memory>
 
-#include "string_utils.hpp"
+#include <dictionary/string_utils.hpp>
 
 
 namespace dictionary{

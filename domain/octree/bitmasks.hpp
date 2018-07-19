@@ -153,7 +153,7 @@ static constexpr std::array<scalar_coordinate_type,20> max_coord_arr = {{ max_co
 constexpr decltype(Bitmasks<3>::min_arr) Bitmasks<3>::min_arr;
 constexpr decltype(Bitmasks<3>::max_arr) Bitmasks<3>::max_arr;
 constexpr decltype(Bitmasks<3>::coord_mask_arr) Bitmasks<3>::coord_mask_arr;
-constexpr decltype(Bitmasks<3>::max_coord_arr) Bitmasks<3>::max_coord_arr;
+constexpr decltype(Bitmasks<3>::max_coord_arr)  Bitmasks<3>::max_coord_arr;
 
 } // namespace octree
 

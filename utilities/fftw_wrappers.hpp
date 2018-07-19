@@ -13,6 +13,8 @@
 //
 //
 
+#include <cassert>
+#include <cstring>
 #include <vector>
 #include <complex.h>
 #include <fftw3.h>
@@ -28,46 +30,64 @@
 //    complex numbers.
 // 
 // These 3 steps can be repeated many times.
-class FFTW_R2C_1D_Executor {
+template <typename T1, typename T2>
+class fftw_wrapper
+{
+    
 public:
-    FFTW_R2C_1D_Executor(int n_real_samples);
-    ~FFTW_R2C_1D_Executor();
-    void set_input_zeropadded(const double* buffer, int size);
-    void set_input_zeropadded(const std::vector<double>& vec);
-    void execute();
-    std::vector<double complex> get_output();
-
     const int input_size;
-    double* const input_buffer;
-
+    T1* const input_buffer;
+    
     const int output_size;
-    double complex* const output_buffer;
+    T2* const output_buffer;
+    
+public:
+    fftw_wrapper(const fftw_wrapper& other)              = delete;
+    fftw_wrapper(fftw_wrapper&& other)                   = default;
+    fftw_wrapper& operator=(const fftw_wrapper& other) & = delete;
+    fftw_wrapper& operator=(fftw_wrapper&& other)      & = default;
+    ~fftw_wrapper() = default;
+    
+    // Constructors
+    fftw_wrapper(int n_real_samples):
+        input_size   (n_real_samples),
+        input_buffer (fftw_alloc_real(n_real_samples)),
+        output_size  (n_real_samples/2 + 1),
+        output_buffer(fftw_alloc_complex(n_real_samples/2 + 1))
+    {
+        plan = fftw_plan_dft_1d(n_real_samples,
+                                input_buffer,
+                                output_buffer,
+                                FFTW_ESTIMATE);
+    }
+    
+public:
+
+    void set_input_zeropadded(const T1* buffer, int size)
+    {
+        assert(size <= input_size);
+        memcpy(input_buffer, buffer  , sizeof(T1)*size);
+        memset(&input_buffer[size], 0, sizeof(T1)*(input_size - size));
+    }
+    
+    void set_input_zeropadded(const std::vector<T1>& vec)
+    {
+        set_input_zeropadded(&vec[0], vec.size());
+    }
+    
+    void execute()
+    {
+        fftw_execute(plan);
+    }
+    
+    std::vector<T2> get_output()
+    {
+        return vector<T2>(output_buffer, output_buffer + output_size);
+    }
 
 private:
     fftw_plan plan;
 };
-
-// Usage of this class is similar to that of FFTW_R2C_1D_Executor,
-// only the input is n_real_samples/2+1 complex samples.
-class FFTW_C2R_1D_Executor {
-public:
-    FFTW_C2R_1D_Executor(int n_real_samples);
-    ~FFTW_C2R_1D_Executor();
-    void set_input(const double complex* buffer, int size);
-    void set_input(const std::vector<double complex>& vec);
-    void execute();
-    std::vector<double> get_output();
-
-    const int input_size;
-    double complex* const input_buffer;
-
-    const int output_size;
-    double* const output_buffer;
-
-private:
-    fftw_plan plan;
-};
-
 
 #endif
 

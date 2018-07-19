@@ -24,10 +24,8 @@ public:
     ~Simulation() = default;
 
     Simulation(std::shared_ptr<Dictionary> _dictionary)
-    :dictionary_(_dictionary),
-    domain_(_dictionary->get_dictionary("domain"))
+    :dictionary_(_dictionary),domain_(_dictionary->get_dictionary("domain"))
     {
-
     }
 
     friend std::ostream& operator<<(std::ostream& os, Simulation& s)

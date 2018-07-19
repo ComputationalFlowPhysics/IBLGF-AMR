@@ -16,17 +16,17 @@ public: // static member functions
 
 public: // member types
 
-	using data_type = std::array<T,size()>;
-	using value_type = typename data_type::value_type;
-	using size_type = typename data_type::size_type;
-	using difference_type = typename data_type::difference_type;
-	using reference = typename data_type::reference;
-	using const_reference = typename data_type::const_reference;
-	using pointer = typename data_type::pointer;
-	using const_pointer = typename data_type::const_pointer;
-	using iterator = typename data_type::iterator;
-	using const_iterator = typename data_type::const_iterator;
-	using reverse_iterator = typename data_type::reverse_iterator;
+	using data_type              = std::array<T,size()>;
+	using value_type             = typename data_type::value_type;
+	using size_type              = typename data_type::size_type;
+	using difference_type        = typename data_type::difference_type;
+	using reference              = typename data_type::reference;
+	using const_reference        = typename data_type::const_reference;
+	using pointer                = typename data_type::pointer;
+	using const_pointer          = typename data_type::const_pointer;
+	using iterator               = typename data_type::iterator;
+	using const_iterator         = typename data_type::const_iterator;
+	using reverse_iterator       = typename data_type::reverse_iterator;
 	using const_reverse_iterator = typename data_type::const_reverse_iterator;
 
 public: // ctors
@@ -34,7 +34,7 @@ public: // ctors
 	tensor() = default;
 	tensor(const T& element) noexcept { data.fill(element); }
 	tensor(const tensor&) = default;
-	tensor(tensor&&) = default;
+	tensor(tensor&&)      = default;
 	template<typename T2>
 	tensor(const tensor<T2,Nx,Ny>& other) { for (unsigned int i=0; i<size(); ++i) data[i] = static_cast<T>(other.data[i]); }
 	tensor(const std::array<T,size()>& _data) noexcept : data(_data) {}

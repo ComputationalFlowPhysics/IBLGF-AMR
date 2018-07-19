@@ -105,15 +105,6 @@ struct PoissonProblem
         pcout << " number of non-hanging octants: " << ocount << std::endl;
     }
     
-    
-    
-    void run()
-    {
-        simulation_.write("bla.vtk");
-    }
-    
-    
-    
 private:
 
     Simulation<domain_t> simulation_;

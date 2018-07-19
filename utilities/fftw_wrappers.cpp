@@ -1,5 +1,4 @@
-#include <cassert>
-#include <cstring>
+
 #include <fftw_wrappers.hpp>
 
 using namespace std;
@@ -44,6 +43,8 @@ vector<double complex> FFTW_R2C_1D_Executor::get_output()
 {
     return vector<double complex>(output_buffer, output_buffer + output_size);
 }
+
+// ---------------------------------------
 
 FFTW_C2R_1D_Executor::FFTW_C2R_1D_Executor(int n_real_samples) : 
     input_size   (n_real_samples/2 + 1),

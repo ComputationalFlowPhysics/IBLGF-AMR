@@ -18,11 +18,15 @@ int main(int argc, char *argv[])
     if (argc>1 && argv[1][0]!='-' ) {
         input=argv[1];
     }
+    
+    // Read in dictionary
     Dictionary dictionary(input);
-    PoissonProblem setup(&dictionary);
-
-    setup.run();
-
+    
+    // Problem setup
+    PoissonProblem poisson(&dictionary);
+    
+    //
+    poisson.solve();
 
     return 0;
 }

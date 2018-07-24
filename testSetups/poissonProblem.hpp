@@ -104,6 +104,11 @@ struct PoissonProblem
         pcout << " Total number of nodes        : " << count  << std::endl;
         pcout << " number of non-hanging octants: " << ocount << std::endl;
     }
+
+    void solve()
+    {
+
+    }
     
 private:
 

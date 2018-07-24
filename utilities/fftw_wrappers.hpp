@@ -19,6 +19,10 @@
 #include <complex.h>
 #include <fftw3.h>
 
+namespace fft
+{
+
+
 // Usage: (after initializing the class)
 // 1. Fill input_buffer with input containing n_real_samples double
 //    numbers (note, set_input_zeropadded will copy your buffer with
@@ -89,5 +93,38 @@ private:
     fftw_plan plan;
 };
 
+} //namespace
 #endif
+
+//std::vector<std::complex<float>, boost::alignment::aligned_allocator_adaptor<std::allocator<std::complex<float>>,32>> 
+//dft(float* data, unsigned int nx, unsigned int ny, unsigned int nz, int num_threads)
+//{
+//	// initialize multi-threading
+//	int status = fftw_init_threads();
+//	FFTW_CHECK_ERROR(status, "fftw: could not initialize threads")
+//
+//	// set number of threads to use with following plans
+//	fftwf_plan_with_nthreads(num_threads);
+//	
+//	// provide space for result
+//	std::vector<std::complex<float>, boost::alignment::aligned_allocator_adaptor<std::allocator<std::complex<float>>,32>> res(nz*ny*((nx/2)+1));
+//	
+//	// make plan
+//	fftwf_plan plan = fftwf_plan_dft_r2c_3d(static_cast<int>(nz), static_cast<int>(ny), static_cast<int>(nx),
+//	                                        data, reinterpret_cast<fftwf_complex*>(&res[0]),
+//	                                        FFTW_ESTIMATE | FFTW_PRESERVE_INPUT);
+//
+//	// execute plan
+//	fftwf_execute(plan);
+//
+//	// destroy plan
+//	fftwf_destroy_plan(plan);
+//
+//	// clean up
+//	fftwf_cleanup_threads();
+//
+//	// return result
+//	return std::move(res);
+//}
+
 

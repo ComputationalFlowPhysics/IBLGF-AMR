@@ -2,7 +2,7 @@
 #include <boost/mpi/environment.hpp>
 #include <boost/mpi/communicator.hpp>
 
-#include <testSetups/poissonProblem/poissonProblem.hpp>
+#include <testSetups/poissonProblem.hpp>
 #include <dictionary/dictionary.hpp>
 
 
@@ -25,7 +25,6 @@ int main(int argc, char *argv[])
     // Problem setup
     PoissonProblem poisson(&dictionary);
     
-    //
     poisson.solve();
 
     return 0;

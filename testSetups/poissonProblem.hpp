@@ -37,6 +37,7 @@ using namespace dictionary;
 struct PoissonProblem
 {
     using vel_type = vector_type<float_type, Dim>;
+    using size_v_type = vector_type<int, Dim>;
 
     //              name                type
     make_field_type(phi_num           , float_type)
@@ -108,6 +109,8 @@ struct PoissonProblem
 
     void solve()
     {
+        size_v_type v(10);
+        fft_my::Convolution conv(v,v);
         simulation_.write("bla.vtk");
 
     }

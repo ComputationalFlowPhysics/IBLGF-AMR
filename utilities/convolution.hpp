@@ -10,7 +10,7 @@
 #include <global.hpp>
 #include <boost/align/aligned_allocator_adaptor.hpp>
 
-namespace fft
+namespace fft_my
 {
 
 class dfft_r2c
@@ -36,12 +36,11 @@ public: //Ctors:
 
     dfft_r2c( dims_t _dims )
     :input_(_dims[2]*_dims[1]*_dims[0],0.0),
-     output_(_dims[2]*_dims[1]*((_dims[0]/2)+1))
-
+     output_(_dims[2]*_dims[1]*((_dims[0]/2)+1)),
+     plan(fftw_plan_dft_r2c_3d(_dims[0], _dims[1], _dims[2],
+                 &input_[0], reinterpret_cast<fftw_complex*>(&output_[0]),
+                 FFTW_ESTIMATE| FFTW_PRESERVE_INPUT ))
     {
-        plan=fftw_plan_dft_r2c_3d(_dims[0], _dims[1], _dims[2],
-                &input_[0], reinterpret_cast<fftw_complex*>(&output_[0]),
-                FFTW_ESTIMATE| FFTW_PRESERVE_INPUT );
     }
 
 public: //Interface
@@ -91,12 +90,11 @@ public: //Ctors:
 
     dfft_c2r( dims_t _dims )
     :input_(_dims[2]*_dims[1]*((_dims[0]/2)+1)),
-     output_(_dims[2]*_dims[1]*_dims[0],0.0)
-
+     output_(_dims[2]*_dims[1]*_dims[0],0.0),
+     plan(fftw_plan_dft_c2r_3d(_dims[0], _dims[1], _dims[2],
+                 reinterpret_cast<fftw_complex*>(&input_[0]), &output_[0],
+                 FFTW_ESTIMATE | FFTW_PRESERVE_INPUT))
     {
-        plan=fftw_plan_dft_c2r_3d(_dims[0], _dims[1], _dims[2],
-                reinterpret_cast<fftw_complex*>(&input_[0]), &output_[0],
-                FFTW_ESTIMATE | FFTW_PRESERVE_INPUT);
 
     }
 

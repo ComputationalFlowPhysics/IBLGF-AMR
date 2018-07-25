@@ -41,7 +41,8 @@ LDFLAGS  = $(USER_LDFLAGS) \
 		  -lboost_mpi \
 		  -lboost_serialization \
 		  -lboost_system \
-		  -lboost_filesystem
+		  -lboost_filesystem \
+		  -lfftw3
 
 OBJFILES = $(SOURCES:.cpp=.o)
 

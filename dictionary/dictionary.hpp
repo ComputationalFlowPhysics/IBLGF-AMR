@@ -42,7 +42,6 @@ public: //Ctors:
 
     Dictionary(Dictionary&& rhs)=default;
 	Dictionary& operator=(Dictionary&&) & = default;
-    
 
     Dictionary(const std::string _file)
     :root(true)

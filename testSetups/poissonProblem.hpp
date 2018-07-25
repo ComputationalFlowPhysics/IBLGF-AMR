@@ -25,6 +25,7 @@
 #include <io/parallel_ostream.hpp>
 #include <lgf/lgf.hpp>
 
+#include<utilities/convolution.hpp>
 
 const int Dim = 3;
 
@@ -107,6 +108,7 @@ struct PoissonProblem
 
     void solve()
     {
+        simulation_.write("bla.vtk");
 
     }
     

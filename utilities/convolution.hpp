@@ -8,6 +8,7 @@
 #include <complex.h>
 #include <fftw3.h>
 #include <global.hpp>
+#include <boost/align/aligned_allocator_adaptor.hpp>
 
 namespace fft
 {
@@ -15,13 +16,12 @@ namespace fft
 class dfft_r2c
 {
 public:
-    using complex_vector_t = std::vector<std::complex<float_type>,
-          boost::alignment::aligned_allocator_adaptor<
-              std::allocator<std::complex<float_type>>,32>> ;
+    using float_type=double;
+    using complex_vector_t = std::vector<std::complex<float_type>, 
+    boost::alignment::aligned_allocator_adaptor< std::allocator<std::complex<float_type>>,32>> ;
 
-    using real_vector_t = std::vector<float_type,
-          boost::alignment::aligned_allocator_adaptor<
-              std::allocator<float_type>,32>>;
+    using real_vector_t = std::vector<float_type, 
+    boost::alignment::aligned_allocator_adaptor< std::allocator<float_type>,32>>;
 
     using dims_t = types::vector_type<int,3>;
 
@@ -32,15 +32,15 @@ public: //Ctors:
     dfft_r2c(dfft_r2c&& other)                   = default;
     dfft_r2c& operator=(const dfft_r2c& other) & = delete;
     dfft_r2c& operator=(dfft_r2c&& other)      & = default;
-    ~dfft_r2c() { fftwf_destroy_plan(plan); }
+    ~dfft_r2c() { fftw_destroy_plan(plan); }
 
     dfft_r2c( dims_t _dims )
     :input_(_dims[2]*_dims[1]*_dims[0],0.0),
      output_(_dims[2]*_dims[1]*((_dims[0]/2)+1))
 
     {
-        plan=fftwf_plan_dft_r2c_3d(_dims[0], _dims[1], _dims[2],
-                &input_[0], reinterpret_cast<fftwf_complex*>(&output_[0]),
+        plan=fftw_plan_dft_r2c_3d(_dims[0], _dims[1], _dims[2],
+                &input_[0], reinterpret_cast<fftw_complex*>(&output_[0]),
                 FFTW_ESTIMATE| FFTW_PRESERVE_INPUT );
     }
 
@@ -48,7 +48,7 @@ public: //Interface
     
     void execute()
     {
-        fftwf_execute(plan);
+        fftw_execute(plan);
     }    
 
     auto& input(){return input_;}
@@ -62,9 +62,9 @@ public: //Interface
 
 private:
 
-    complex_vector_t output_;
     real_vector_t input_;
-    fftwf_plan plan;
+    complex_vector_t output_;
+    fftw_plan plan;
 }; 
 
 class dfft_c2r
@@ -87,15 +87,15 @@ public: //Ctors:
     dfft_c2r(dfft_c2r&& other)                   = default;
     dfft_c2r& operator=(const dfft_c2r& other) & = delete;
     dfft_c2r& operator=(dfft_c2r&& other)      & = default;
-    ~dfft_c2r() { fftwf_destroy_plan(plan); }
+    ~dfft_c2r() { fftw_destroy_plan(plan); }
 
     dfft_c2r( dims_t _dims )
     :input_(_dims[2]*_dims[1]*((_dims[0]/2)+1)),
      output_(_dims[2]*_dims[1]*_dims[0],0.0)
 
     {
-        plan=fftwf_plan_dft_c2r_3d(_dims[0], _dims[1], _dims[2],
-                reinterpret_cast<fftwf_complex*>(&input_[0]), &output_[0],
+        plan=fftw_plan_dft_c2r_3d(_dims[0], _dims[1], _dims[2],
+                reinterpret_cast<fftw_complex*>(&input_[0]), &output_[0],
                 FFTW_ESTIMATE | FFTW_PRESERVE_INPUT);
 
     }
@@ -104,7 +104,7 @@ public: //Interface
     
     void execute()
     {
-        fftwf_execute(plan);
+        fftw_execute(plan);
     }    
 
     auto& input(){return input_;}
@@ -120,7 +120,7 @@ private:
 
     complex_vector_t input_;
     real_vector_t output_;
-    fftwf_plan plan;
+    fftw_plan plan;
 }; 
 
 
@@ -158,8 +158,6 @@ public: //Ctors
      fft_forward1(padded_dims),
      fft_backward(padded_dims)
     {
-        padded_dims = _dims0 + _dims1 - 1;
-        fftw_forward(padded_dims);
     }
 
     void execute(real_vector_t& _a, real_vector_t& _b)
@@ -184,11 +182,11 @@ public: //Ctors
 
     auto& output()
     {
-        fft_backward.output();
+        return fft_backward.output();
     }
 
 private:
-    padded_dims;
+    dims_t padded_dims;
     dfft_r2c fft_forward0;
     dfft_r2c fft_forward1;
     dfft_c2r fft_backward;

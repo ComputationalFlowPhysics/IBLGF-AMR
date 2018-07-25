@@ -33,6 +33,7 @@ using namespace domain;
 using namespace octree;
 using namespace types;
 using namespace dictionary;
+using namespace fft;
 
 struct PoissonProblem
 {
@@ -94,13 +95,10 @@ struct PoissonProblem
             for (auto& n : it->data()->nodes())
             {
                 count++;
-                n.get<phi_num>() = count;
+                n.get<source>() = count;
                 
                 lgf::LGF<lgf::Integrator> lgfsI;
                 n.get<lgf_field_integral>() = lgfsI.get(n.level_coordinate());
-                
-                lgf::LGF<lgf::Lookup> lgfsL;
-                n.get<lgf_field_lookup>() = lgfsL.get(n.level_coordinate());
             }
         }
         pcout << " Total number of nodes        : " << count  << std::endl;
@@ -109,8 +107,26 @@ struct PoissonProblem
 
     void solve()
     {
-        size_v_type v(10);
-        fft_my::Convolution conv(v,v);
+        for(auto it  = simulation_.domain_.begin_octants();
+            it != simulation_.domain_.end_octants();++it)
+        {
+            if(it->is_hanging()) continue;
+            for (auto& n : it->data()->nodes())
+            {
+                lgf::LGF<lgf::Integrator> lgfsI;
+                n.get<lgf_field_integral>() = lgfsI.get(n.level_coordinate());
+            }
+            
+            pcout << "extent = " << it->data()->descriptor().extent() << std::endl;
+            Convolution conv(it->data()->descriptor().extent(),
+                             it->data()->descriptor().extent());
+            
+            auto block_shift = it->data()->descriptor().base();
+            pcout << "base = " << block_shift << std::endl;
+            //lgf::LGF<lgf::Integrator> lgfsI;
+            //n.get<phi>() = conv.execute(lgfsI.get(n.level_coordinate()), source)
+        }
+        
         simulation_.write("bla.vtk");
 
     }

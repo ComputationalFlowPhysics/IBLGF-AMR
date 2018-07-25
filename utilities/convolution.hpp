@@ -10,7 +10,7 @@
 #include <global.hpp>
 #include <boost/align/aligned_allocator_adaptor.hpp>
 
-namespace fft_my
+namespace fft
 {
 
 class dfft_r2c
@@ -28,9 +28,9 @@ public:
 
 public: //Ctors:
 
-    dfft_r2c(const dfft_r2c& other)              = delete;
+    dfft_r2c(const dfft_r2c& other)              = default;
     dfft_r2c(dfft_r2c&& other)                   = default;
-    dfft_r2c& operator=(const dfft_r2c& other) & = delete;
+    dfft_r2c& operator=(const dfft_r2c& other) & = default;
     dfft_r2c& operator=(dfft_r2c&& other)      & = default;
     ~dfft_r2c() { fftw_destroy_plan(plan); }
 
@@ -82,9 +82,9 @@ public:
 
 public: //Ctors:
 
-    dfft_c2r(const dfft_c2r& other)              = delete;
+    dfft_c2r(const dfft_c2r& other)              = default;
     dfft_c2r(dfft_c2r&& other)                   = default;
-    dfft_c2r& operator=(const dfft_c2r& other) & = delete;
+    dfft_c2r& operator=(const dfft_c2r& other) & = default;
     dfft_c2r& operator=(dfft_c2r&& other)      & = default;
     ~dfft_c2r() { fftw_destroy_plan(plan); }
 
@@ -137,15 +137,15 @@ public:
 
     using dims_t = types::vector_type<int,3>;
 
-    friend dfft_c2r;
-    friend dfft_r2c;
+    //friend dfft_c2r;
+    //friend dfft_r2c;
 
 
 public: //Ctors
 
-    Convolution(const Convolution& other)              = delete;
+    Convolution(const Convolution& other)              = default;
     Convolution(Convolution&& other)                   = default;
-    Convolution& operator=(const Convolution& other) & = delete;
+    Convolution& operator=(const Convolution& other) & = default;
     Convolution& operator=(Convolution&& other) &      = default;
     ~Convolution()                                     = default;
 

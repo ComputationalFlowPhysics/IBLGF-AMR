@@ -123,6 +123,7 @@ struct PoissonProblem
             
             auto block_shift = it->data()->descriptor().base();
             pcout << "base = " << block_shift << std::endl;
+            
             //lgf::LGF<lgf::Integrator> lgfsI;
             //n.get<phi>() = conv.execute(lgfsI.get(n.level_coordinate()), source)
         }

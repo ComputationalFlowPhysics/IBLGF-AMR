@@ -42,6 +42,8 @@ private:
                              boost::math::cyl_bessel_i(_coord.y(), 2*t) *
                              boost::math::cyl_bessel_i(_coord.z(), 2*t);
     }
+    
+    
 };
 
 

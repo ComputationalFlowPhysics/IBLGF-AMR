@@ -19,11 +19,17 @@ template<class Policy>
 class LGF : public Policy
 {
 public:
+    
+    make_field_type(lgf, float_type)
+    using datablock_t = DataBlock<Dim, node, lgf>;
+    
     template<class Coordinate>
     static auto get(const Coordinate& _coord) noexcept
     {
         return Policy::get(_coord);
     }
+    
+    datablock_t lgf_container;
 };
 
 }

@@ -9,7 +9,6 @@
 #include <domain/dataFields/datafield_utils.hpp>
 
 
-
 namespace domain
 {
 

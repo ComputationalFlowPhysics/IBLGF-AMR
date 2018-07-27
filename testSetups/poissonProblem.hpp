@@ -112,7 +112,6 @@ struct PoissonProblem
         size_v_type v(10);
         fft_my::Convolution conv(v,v);
         simulation_.write("bla.vtk");
-
     }
     
 private:

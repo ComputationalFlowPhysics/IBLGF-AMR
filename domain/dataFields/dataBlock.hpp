@@ -106,12 +106,18 @@ public: //member functions
     template<class T>
     const auto& get()const{return std::get<T>(fields);}
 
+
+
+
+
     
     auto nodes_begin()const noexcept{return nodes_.begin();}
     auto nodes_end()const noexcept{return nodes_.end();}
 
     const auto& nodes()const{return nodes_;}
     auto& nodes(){return nodes_;}
+
+
 
     friend std::ostream& operator<<(std::ostream& os, const  DataBlock& c)
     {
@@ -128,10 +134,20 @@ public: //member functions
     }
 
     const block_descriptor_type& descriptor()const noexcept{return block_;}
-    
-    size_type get_index(coordinate_type _coord) const noexcept
+
+    /*
+	template<int nDim = 2>
+    inline size_type get_index(coordinate_type _coord,
+            typename std::enable_if< Dim==nDim  >::type* = 0) const noexcept
     {
-        return block_.get_flat_index(_coord);
+        return _coord[0]+_coord[1]*block_.extent()[0];
+    }
+	template<int nDim = 3>
+    */
+    inline size_type get_index(coordinate_type _coord) const noexcept
+    {
+        return _coord[0]+_coord[1]*block_.extent()[0] +
+               _coord[2]*block_.extent()[0]*block_.extent()[1];
     }
 
 private: //private member helpers

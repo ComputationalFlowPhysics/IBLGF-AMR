@@ -275,6 +275,11 @@ public: //members
         return idx;
     }
 
+
+
+
+    
+
     template<class BlockType, class OverlapType>
 	bool overlap(const BlockType& other, 
                  OverlapType& overlap) const noexcept

@@ -73,7 +73,7 @@ struct PoissonProblem
     PoissonProblem(Dictionary* _d) 
     : simulation_( _d->get_dictionary("simulation_parameters")),
       lgf_(lgf_block()),
-      conv(simulation_.domain_.block_extent(),simulation_.domain_.block_extent())
+      conv(simulation_.domain_.block_extent()+1,simulation_.domain_.block_extent()+1)
     {
         pcout << "\n Setup:  LGF PoissonProblem \n" << std::endl;
         pcout << "Simulation: \n" << simulation_   << std::endl;
@@ -157,7 +157,6 @@ struct PoissonProblem
         
         //Allocate lgf
         std::vector<float_type> lgf;
-        const auto bextent=simulation_.domain_.block_extent();
         for(auto it_i  = simulation_.domain_.begin_octants();
                 it_i != simulation_.domain_.end_octants();++it_i)
         {
@@ -170,15 +169,20 @@ struct PoissonProblem
                 if(it_j->is_hanging()) continue;
 
                 const auto jbase= it_j->data()->descriptor().base();
+                const auto jextent= it_j->data()->descriptor().extent();
                 const auto shift = jbase-ibase;
 
-                const auto base_lgf=shift-bextent;
-                const auto extent_lgf =2*bextent-1;
+                const auto base_lgf=shift-(jextent-1);
+                const auto extent_lgf =2*(jextent)-1;
                 
-                //extract lgfs:
                 lgf_.get_subblock(block_descriptor_t (base_lgf,extent_lgf), lgf);
+                std::cout<<" size lgf "<<lgf.size()<<std::endl;
+
                 conv.execute(lgf,it_i->data()->get<source>().data());
-                
+                block_descriptor_t extractor(jbase,jextent);
+                auto res=conv.res(extractor);
+                for(std::size_t i =0; i<res.size();++i) 
+                    it_i->data()->get<phi_num>().data()[i]=res[i];
             }
         }
         simulation_.write("bla.vtk");

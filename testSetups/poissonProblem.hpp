@@ -149,7 +149,6 @@ struct PoissonProblem
                 const auto extent_lgf =2*bextent-1;
                 //extract lgfs:
                 lgf_.get_subblock(block_descriptor_t (base_lgf,extent_lgf), lgf);
-
                 conv.execute(lgf,it_i->data()->get<source>().data() );
                 
             }

@@ -42,7 +42,7 @@ public: //Ctors:
      output_(_dims[2]*_dims[1]*((_dims[0]/2)+1)),
      plan(fftw_plan_dft_r2c_3d(_dims[2], _dims[1], _dims[0],
                  &input_[0], reinterpret_cast<fftw_complex*>(&output_[0]),
-                 FFTW_ESTIMATE| FFTW_PRESERVE_INPUT ))
+                 FFTW_ESTIMATE ))
     {
     }
 
@@ -115,11 +115,10 @@ public: //Ctors:
 
     dfft_c2r( dims_t _dims )
     :input_(_dims[2]*_dims[1]*((_dims[0]/2)+1),std::complex<float_type>(0.0)),
-     //output_(_dims[2]*_dims[1]*_dims[0],0.0),
-     output_(2*_dims[2]*_dims[1]*((_dims[0]/2)+1)),
+     output_(_dims[2]*_dims[1]*_dims[0],0.0),
      plan(fftw_plan_dft_c2r_3d(_dims[2], _dims[1], _dims[0],
                  reinterpret_cast<fftw_complex*>(&input_[0]), &output_[0],
-                 FFTW_ESTIMATE | FFTW_PRESERVE_INPUT))
+                 FFTW_ESTIMATE ))
     {
 
     }
@@ -128,20 +127,13 @@ public: //Interface
     
     void execute()
     {
-        std::cout
-        <<input_[0]<<" "
-        <<input_.size()<<" "
-        <<output_.size()<<" "
-        <<std::endl;
-        //TODO: Backwardplan not working yet
-        //fftw_execute(plan);
+        fftw_execute(plan);
     }    
 
     auto& input(){return input_;}
     auto& output(){return output_;}
 
 private:
-
     complex_vector_t input_;
     real_vector_t output_;
     fftw_plan plan;
@@ -195,12 +187,12 @@ public: //Ctors
         auto& f0=fft_forward0.output();
         auto& f1=fft_forward1.output();
         complex_vector_t prod(f0.size());
+        const float_type scale = 1.0/(padded_dims[0]*padded_dims[1]*padded_dims[2]);
         for(std::size_t i=0; i< prod.size();++i)
         {
-            fft_backward.input()[i]=f0[i]*f1[i];;
+            fft_backward.input()[i]=f0[i]*f1[i]*scale;
         }
         fft_backward.execute();
-        std::cout<<"Done backward"<<std::endl;
     }
 
     auto& output()

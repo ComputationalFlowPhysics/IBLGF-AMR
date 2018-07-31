@@ -92,6 +92,14 @@ struct PoissonProblem
         int count = 0, ocount = 0;
         simulation_.domain_.tree()->determine_hangingOctants();
 
+        
+        const float_type L=4;
+        const float_type a=1.0/(L);
+        const float_type a2=a*a;
+        const auto b=a; const auto b2=a2;
+        const auto c=a; const auto c2=a2;
+        const auto center = (simulation_.domain_.bounding_box().max()-
+                            simulation_.domain_.bounding_box().min())/2.0;
 
         for(auto it  = simulation_.domain_.begin_octants(); 
                  it != simulation_.domain_.end_octants();++it)
@@ -118,6 +126,25 @@ struct PoissonProblem
                     for(auto i=base[0]; i<=max[0];++i  )
                     {
                         it->data()->get<source>(i,j,k)=1.0;
+
+                        //manufactured solution:
+                        const float_type x=static_cast<float_type>(i-center[0]);
+                        const float_type y=static_cast<float_type>(j-center[1]);
+                        const float_type z=static_cast<float_type>(k-center[2]);
+                        const auto x2=x*x;
+                        const auto y2=y*y;
+                        const auto z2=z*z;
+
+                        it->data()->get<source>(i,j,k)=
+                            4*a2*x2*std::exp(-a*x2-b*y2-c*z2)-
+                            2*b*std::exp(-a*x2-b*y2-c*z2)-
+                            2*c*std::exp(-a*x2-b*y2-c*z2)-
+                            2*a*std::exp(-a*x2-b*y2-c*z2)+
+                            4*b2*y2*std::exp(-a*x2-b*y2-c*z2)+
+                            4*c2*z2*std::exp(-a*x2-b*y2-c*z2);
+
+                        it->data()->get<phi_exact>(i,j,k)=
+                            std::exp((-a*x2- b*y2 - c*z2));
                     }
                 }
             }
@@ -147,6 +174,7 @@ struct PoissonProblem
 
                 const auto base_lgf=shift-bextent;
                 const auto extent_lgf =2*bextent-1;
+                
                 //extract lgfs:
                 lgf_.get_subblock(block_descriptor_t (base_lgf,extent_lgf), lgf);
                 conv.execute(lgf,it_i->data()->get<source>().data());

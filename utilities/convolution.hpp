@@ -194,15 +194,24 @@ public: //Ctors
         }
         fft_backward.execute();
 
-        //for(auto& e :fft_backward.output() )
-        //    std::cout<<e<<std::endl;
+        /*
+        for(int i = 0;i<padded_dims[0];++i)
+        {
+            for(int j = 0;j<padded_dims[0];++j)
+            {
+                std::
 
+            }
+        }
+        */
     }
 
     auto& output()
     {
         return fft_backward.output();
     }
+
+
 
 private:
     dims_t padded_dims;

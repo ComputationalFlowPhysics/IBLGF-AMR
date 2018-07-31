@@ -74,7 +74,7 @@ public:
                     std::runtime_error(
                     "Domain: Extent of blocks are not evenly divisible");
                 }
-                if(b.base()[d]%e[d])
+                if(std::abs(b.base()[d])%e[d] /*&& e[d]%std::abs(b.base()[d])*/)
                 {
                     throw 
                     std::runtime_error(
@@ -101,6 +101,8 @@ public:
 
         extent_t extent(max-min+1);
         auto base_=extent_t(min);
+        bounding_box_=block_descriptor_t(base_*e, extent*e+1);
+        std::cout<<bounding_box_<<std::endl;
         for(auto& b: bases) b-=base_;
         auto base_level=key_t::minimum_level(_maxExtent/_blockExtent);
         t_ = std::make_shared<tree_t>(bases, base_level);
@@ -141,6 +143,8 @@ public:
     auto end_octant_nodes(Iterator it) noexcept{return it->data().nodes_end();}
 
     std::shared_ptr<tree_t> tree()const {return t_;}
+
+    block_descriptor_t bounding_box()const noexcept{return bounding_box_;}
 
     template<class Iterator>
     void refine(Iterator& octant_it)
@@ -198,6 +202,8 @@ private:
 private:
     std::shared_ptr<tree_t> t_; 
     extent_t block_extent_;
+    block_descriptor_t bounding_box_;
+
 
 
 };

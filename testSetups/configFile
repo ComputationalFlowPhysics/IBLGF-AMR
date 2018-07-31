@@ -3,12 +3,12 @@ simulation_parameters
 	domain{ 
         //Max Extent to be checked
         max_extent=50000;
-        block_extent=4;
+        block_extent=8;
         
 		block
         {
             base=(0,0,0);
-            extent=(4,4,4);
+            extent=(8,8,8);
 		}
 		//block{
         //    base=(10,0,0);

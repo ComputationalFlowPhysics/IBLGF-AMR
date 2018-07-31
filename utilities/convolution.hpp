@@ -80,7 +80,7 @@ public: //Interface
                 }
             }
         }
-        std::fill_n(input_.begin()+ _v.size(), input_.size() - _v.size(),0);
+
     }
 
 private:
@@ -193,6 +193,10 @@ public: //Ctors
             fft_backward.input()[i]=f0[i]*f1[i]*scale;
         }
         fft_backward.execute();
+
+        //for(auto& e :fft_backward.output() )
+        //    std::cout<<e<<std::endl;
+
     }
 
     auto& output()

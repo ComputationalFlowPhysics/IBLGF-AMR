@@ -89,7 +89,7 @@ struct PoissonProblem
 
     void initialize()
     {
-        int count = 0, ocount = 0,count2=0;
+        int count = 0, ocount = 0;
         simulation_.domain_.tree()->determine_hangingOctants();
 
 
@@ -117,7 +117,7 @@ struct PoissonProblem
 
                     for(auto i=base[0]; i<=max[0];++i  )
                     {
-                        it->data()->get<source>(i,j,k)=count2;
+                        it->data()->get<source>(i,j,k)=1.0;
                     }
                 }
             }
@@ -149,7 +149,7 @@ struct PoissonProblem
                 const auto extent_lgf =2*bextent-1;
                 //extract lgfs:
                 lgf_.get_subblock(block_descriptor_t (base_lgf,extent_lgf), lgf);
-                conv.execute(lgf,it_i->data()->get<source>().data() );
+                conv.execute(lgf,it_i->data()->get<source>().data());
                 
             }
         }

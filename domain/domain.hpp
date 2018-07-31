@@ -71,12 +71,14 @@ public:
                 if(b.extent()[d]%e[d])
                 {
                     throw 
-                    std::runtime_error("Domain: Extent of blocks are not evenly divisible");
+                    std::runtime_error(
+                    "Domain: Extent of blocks are not evenly divisible");
                 }
                 if(b.base()[d]%e[d])
                 {
                     throw 
-                    std::runtime_error("Domain: Base of blocks are not evenly divisible");
+                    std::runtime_error(
+                    "Domain: Base of blocks are not evenly divisible");
                 }
             }
             auto blocks_tmp =b.divide_into(e);
@@ -151,6 +153,9 @@ public:
         });
     }
 
+    const auto& block_extent()const noexcept { return block_extent_; }
+    auto& block_extent()noexcept { return block_extent_; }
+
     
     
 
@@ -171,9 +176,6 @@ public:
         return os;
     }
 
-
-
-
 private:
     template<class DictionaryPtr>
     std::vector<block_descriptor_t> 
@@ -193,7 +195,7 @@ private:
     }
 
 
-public:
+private:
     std::shared_ptr<tree_t> t_; 
     extent_t block_extent_;
 

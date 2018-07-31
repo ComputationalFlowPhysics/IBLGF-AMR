@@ -95,6 +95,35 @@ public: //member functions
     template<template<std::size_t> class Field>
     const auto& get()const{return std::get<Field<dimension>>(fields);}
 
+
+    template<template<std::size_t> class Field>
+    auto& get(int _i, int _j, int _k)
+    {
+        return std::get<Field<dimension>>(fields)
+            [block_.globalCoordinate_to_index(_i,_j,_k)];
+    }
+
+    template<template<std::size_t> class Field>
+    const auto& get(int _i, int _j, int _k)const
+    {
+        return std::get<Field<dimension>>(fields)
+            [block_.globalCoordinate_to_index(_i,_j,_k)];
+    }
+
+    template<template<std::size_t> class Field>
+    auto& get_from_localIdx(int _i, int _j, int _k)
+    {
+        return std::get<Field<dimension>>(fields)
+            [block_.localCoordinate_to_index(_i,_j,_k)];
+    }
+
+    template<template<std::size_t> class Field>
+    const auto& get_from_localIdx(int _i, int _j, int _k)const
+    {
+        return std::get<Field<dimension>>(fields)
+            [block_.localCoordinate_to_index(_i,_j,_k)];
+    }
+
     template<std::size_t  Idx>
     auto& get(){return std::get<Idx>(fields);}
 
@@ -106,16 +135,14 @@ public: //member functions
     template<class T>
     const auto& get()const{return std::get<T>(fields);}
 
-
-
-
-
-    
     auto nodes_begin()const noexcept{return nodes_.begin();}
     auto nodes_end()const noexcept{return nodes_.end();}
 
     const auto& nodes()const{return nodes_;}
     auto& nodes(){return nodes_;}
+
+
+
 
 
 
@@ -135,19 +162,10 @@ public: //member functions
 
     const block_descriptor_type& descriptor()const noexcept{return block_;}
 
-    /*
-	template<int nDim = 2>
-    inline size_type get_index(coordinate_type _coord,
-            typename std::enable_if< Dim==nDim  >::type* = 0) const noexcept
+
+    size_type get_index(coordinate_type _coord) const noexcept
     {
-        return _coord[0]+_coord[1]*block_.extent()[0];
-    }
-	template<int nDim = 3>
-    */
-    inline size_type get_index(coordinate_type _coord) const noexcept
-    {
-        return _coord[0]+_coord[1]*block_.extent()[0] +
-               _coord[2]*block_.extent()[0]*block_.extent()[1];
+        return block_.get_flat_index(_coord);
     }
 
 private: //private member helpers

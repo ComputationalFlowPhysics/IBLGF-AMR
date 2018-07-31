@@ -56,6 +56,8 @@ public: //member functions
     auto begin()const noexcept {return data_.begin();}
     auto end()const noexcept{return data_.end();}
 
+    auto& data(){return data_;}
+
     auto size()const noexcept{return data_.size();}
 
 protected: //protected memeber:
@@ -67,11 +69,11 @@ protected: //protected memeber:
 #define STRINGIFY(X) #X
 
 #define make_field_type(key, DataType)                                      \
-template<std::size_t Dim>                                                   \
-class key : public DataField<DataType,Dim>                                  \
+template<std::size_t _Dim>                                                  \
+class key : public DataField<DataType,_Dim>                                 \
 {                                                                           \
     public:                                                                 \
-    using data_field_t=DataField<DataType,Dim>;                             \
+    using data_field_t=DataField<DataType,_Dim>;                            \
     static constexpr const char* name_= STRINGIFY(key);                     \
     key (): data_field_t()                                                  \
     {                                                                       \

@@ -132,6 +132,8 @@ public: //membery types:
     using max_t     = base_t;
     using data_type = T;
 
+    using size_type = types::size_type;
+
 
 public:  //Static members
 
@@ -186,7 +188,16 @@ public:  //Access
     const int& level()const noexcept {return level_;}
     int& level()noexcept {return level_;}
 
+    
+    auto size() const noexcept
+    {
+        size_type size=1;
+        for(std::size_t d=0;d<extent().size();++d) size*=extent()[d];
+        return size;
+    }
 
+
+  
 public: //members
     void level_scale(int _level) noexcept
     {
@@ -257,7 +268,6 @@ public: //members
 	}
 
 
-    //TODO: Use tag dispatch for each dim
     template<class PointType>
     size_type get_flat_index(PointType p) const noexcept
     {
@@ -275,8 +285,28 @@ public: //members
         return idx;
     }
 
+    //TODO: tag dispatch for each dim
+    size_type globalCoordinate_to_index( int i,int j,int k ) const noexcept
+    {
+        i-=base()[0]; j-=base()[1]; k-=base()[2];
+        return i+ j*extent()[0] + k*extent()[0]*extent()[1];
+    }
+    template<class PointType>
+    size_type globalCoordinate_to_index(const PointType& _p) const noexcept
+    {
+        _p[0]-=base()[0]; _p[1]-=base()[1]; _p[2]-=base()[2];
+        return _p[0]+ _p[1]*extent()[0] + _p[2]*extent()[0]*extent()[1];
+    }
 
-
+    template<class PointType>
+    size_type localCoordinate_to_index(const PointType& _p) const noexcept
+    {
+        return _p[0]+ _p[1]*extent()[0] + _p[2]*extent()[0]*extent()[1];
+    }
+    size_type localCoordinate_to_index( int i,int j,int k ) const noexcept
+    {
+        return i+ j*extent()[0] + k*extent()[0]*extent()[1];
+    }
 
     
 

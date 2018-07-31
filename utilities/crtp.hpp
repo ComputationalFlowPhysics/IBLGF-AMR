@@ -22,7 +22,7 @@ private:
 template<class T>
 struct Base : Crtp<T,Base>
 {
-    void foo(){ this->derived()->foo(); }
+    void foo(){ this->derived().foo(); }
     int a =10;
 };
 struct Mixin : public Base<Mixin>

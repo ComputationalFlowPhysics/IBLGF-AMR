@@ -37,7 +37,7 @@ using namespace fft;
 
 struct PoissonProblem
 {
-    using vel_type = vector_type<float_type, Dim>;
+    using vel_type    = vector_type<float_type, Dim>;
     using size_v_type = vector_type<int, Dim>;
 
     //              name                type
@@ -46,8 +46,7 @@ struct PoissonProblem
     make_field_type(lgf_field_integral, float_type)
     make_field_type(lgf_field_lookup  , float_type)
     make_field_type(phi_exact         , float_type)
-
-    make_field_type(lgf         , float_type)
+    make_field_type(lgf               , float_type)
 
     using datablock_t = DataBlock<
         Dim, node,
@@ -58,7 +57,7 @@ struct PoissonProblem
         phi_exact
     >;
 
-    using datablock_t_2= DataBlock<Dim, node, lgf>;
+    using datablock_t_2 = DataBlock<Dim, node, lgf>;
 
     using block_descriptor_t = typename datablock_t::block_descriptor_type;
     using tree_t             = Tree<Dim,datablock_t>;
@@ -71,19 +70,19 @@ struct PoissonProblem
 
     
     PoissonProblem(Dictionary* _d) 
-    : simulation_( _d->get_dictionary("simulation_parameters")),
-      lgf_(lgf_block()),
-      conv(simulation_.domain_.block_extent()+1,simulation_.domain_.block_extent()+1)
+    : simulation_(_d->get_dictionary("simulation_parameters")),
+        lgf_(lgf_block()), conv(simulation_.domain_.block_extent()+1,
+                                simulation_.domain_.block_extent()+1)
     {
         pcout << "\n Setup:  LGF PoissonProblem \n" << std::endl;
-        pcout << "Simulation: \n" << simulation_   << std::endl;
+        pcout << "Simulation: \n" << simulation_    << std::endl;
         this->initialize();
     }                               
 
     block_descriptor_t lgf_block()
     {
         base_t bb(-20);
-        extent_t ex=-2*bb+1;
+        extent_t ex = -2 * bb + 1;
         return block_descriptor_t(bb, ex);
     }
 
@@ -99,7 +98,7 @@ struct PoissonProblem
         const auto b=a; const auto b2=a2;
         const auto c=a; const auto c2=a2;
         const auto center = (simulation_.domain_.bounding_box().max()-
-                            simulation_.domain_.bounding_box().min())/2.0;
+                             simulation_.domain_.bounding_box().min())/2.0;
 
         for(auto it  = simulation_.domain_.begin_octants(); 
                  it != simulation_.domain_.end_octants();++it)
@@ -123,9 +122,9 @@ struct PoissonProblem
                 for(auto j =base[1];j<=max[1];++j)
                 {
 
-                    for(auto i=base[0]; i<=max[0];++i  )
+                    for (auto i = base[0]; i <= max[0]; ++i)
                     {
-                        it->data()->get<source>(i,j,k)=1.0;
+                        it->data()->get<source>(i,j,k) = 1.0;
 
                         //manufactured solution:
                         const float_type x=static_cast<float_type>(i-center[0]);
@@ -136,15 +135,15 @@ struct PoissonProblem
                         const auto z2=z*z;
 
                         it->data()->get<source>(i,j,k)=
-                            4*a2*x2*std::exp(-a*x2-b*y2-c*z2)-
-                            2*b*std::exp(-a*x2-b*y2-c*z2)-
-                            2*c*std::exp(-a*x2-b*y2-c*z2)-
-                            2*a*std::exp(-a*x2-b*y2-c*z2)+
-                            4*b2*y2*std::exp(-a*x2-b*y2-c*z2)+
-                            4*c2*z2*std::exp(-a*x2-b*y2-c*z2);
+                            4 * a2 * x2 * std::exp(-a*x2 - b*y2 - c*z2) -
+                            2 * b  *      std::exp(-a*x2 - b*y2 - c*z2) -
+                            2 * c  *      std::exp(-a*x2 - b*y2 - c*z2) -
+                            2 * a  *      std::exp(-a*x2 - b*y2 - c*z2) +
+                            4 * b2 * y2 * std::exp(-a*x2 - b*y2 - c*z2) +
+                            4 * c2 * z2 * std::exp(-a*x2 - b*y2 - c*z2);
 
-                        it->data()->get<phi_exact>(i,j,k)=
-                            std::exp((-a*x2- b*y2 - c*z2));
+                        it->data()->get<phi_exact>(i,j,k) =
+                            std::exp((-a*x2 - b*y2 - c*z2));
                     }
                 }
             }
@@ -157,25 +156,25 @@ struct PoissonProblem
         
         //Allocate lgf
         std::vector<float_type> lgf;
-        for(auto it_i  = simulation_.domain_.begin_octants();
-                it_i != simulation_.domain_.end_octants();++it_i)
+        for (auto it_i  = simulation_.domain_.begin_octants();
+                  it_i != simulation_.domain_.end_octants(); ++it_i)
         {
-            if(it_i->is_hanging()) continue;
+            if (it_i->is_hanging()) continue;
             const auto ibase= it_i->data()->descriptor().base();
 
-            for(auto it_j  = simulation_.domain_.begin_octants();
-                    it_j != simulation_.domain_.end_octants();++it_j)
+            for (auto it_j  = simulation_.domain_.begin_octants();
+                      it_j != simulation_.domain_.end_octants(); ++it_j)
             {
-                if(it_j->is_hanging()) continue;
+                if (it_j->is_hanging()) continue;
 
-                const auto jbase= it_j->data()->descriptor().base();
-                const auto jextent= it_j->data()->descriptor().extent();
-                const auto shift = jbase-ibase;
+                const auto jbase   = it_j->data()->descriptor().base();
+                const auto jextent = it_j->data()->descriptor().extent();
+                const auto shift   = jbase-ibase;
 
-                const auto base_lgf=shift-(jextent-1);
-                const auto extent_lgf =2*(jextent)-1;
+                const auto base_lgf   = shift-(jextent-1);
+                const auto extent_lgf = 2*(jextent)-1;
                 
-                lgf_.get_subblock(block_descriptor_t (base_lgf,extent_lgf), lgf);
+                lgf_.get_subblock(block_descriptor_t(base_lgf, extent_lgf), lgf);
                 std::cout<<" size lgf "<<lgf.size()<<std::endl;
 
                 conv.execute(lgf,it_i->data()->get<source>().data());

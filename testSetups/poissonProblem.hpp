@@ -87,7 +87,7 @@ struct PoissonProblem
 
     block_descriptor_t lgf_block()
     {
-        base_t bb(-32);
+        base_t bb(-64);
         extent_t ex = -2 * bb + 1;
         return block_descriptor_t(bb, ex);
     }
@@ -108,6 +108,8 @@ struct PoissonProblem
         //L = L * center[0];
         
         const float_type a  = 1.0 / L;
+        
+        
         const float_type a2 = a*a;
         const auto b = a; const auto b2 = a2;
         const auto c = a; const auto c2 = a2;
@@ -189,7 +191,6 @@ struct PoissonProblem
                 const auto extent_lgf = 2 * (jextent) - 1;
                 
                 lgf_.get_subblock(block_descriptor_t(base_lgf, extent_lgf), lgf);
-                std::cout<<" size lgf "<<lgf.size()<<std::endl;
 
                 conv.execute(lgf, it_i->data()->get<source>().data());
                 block_descriptor_t extractor(jbase, jextent);
@@ -202,6 +203,7 @@ struct PoissonProblem
                 }
             }
         }
+        
         simulation_.write("solution.vtk");
         compute_errors();
     }
@@ -209,7 +211,7 @@ struct PoissonProblem
     void compute_errors()
     {
         auto L2   = 0.;
-        auto LInf = 0.;
+        auto LInf = -1.0;
 
         for (auto it_i  = simulation_.domain_.begin_octants();
              it_i != simulation_.domain_.end_octants(); ++it_i)
@@ -228,9 +230,7 @@ struct PoissonProblem
                     
                 L2 += it_i->data()->get<error2>().data()[i];
                     
-                if (i > 0 &&
-                    it_i->data()->get<error>().data()[i] >
-                    it_i->data()->get<error>().data()[i-1])
+                if ( it_i->data()->get<error>().data()[i] > LInf)
                 {
                     LInf = it_i->data()->get<error>().data()[i];
                 }

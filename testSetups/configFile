@@ -1,14 +1,14 @@
 simulation_parameters  
 {
+    refLength    = 16;
     domain{ 
         max_extent   = 50000;
-        block_extent = 16;
-        refLength    = 4;
+        block_extent = 64;
        
 	block
         {
             base   = (0,0,0);
-            extent = (16,16,16);
+            extent = (64,64,64);
         }
     }
 }

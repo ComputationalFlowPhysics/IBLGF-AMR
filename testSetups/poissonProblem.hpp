@@ -82,15 +82,23 @@ struct PoissonProblem
     {
         pcout << "\n Setup:  LGF PoissonProblem \n" << std::endl;
         pcout << "Simulation: \n" << simulation_    << std::endl;
+
+        const float_type L = simulation_.dictionary_->
+            template get_or<float_type>("refLength", 1);
+
+        auto tmp=L/(simulation_.domain_.bounding_box().extent()-1);
+        dx=tmp[0];
+        std::cout<<"dx: "<<dx<<std::endl;
         this->initialize();
     }                               
 
     block_descriptor_t lgf_block()
     {
-        base_t bb(-64);
+        base_t bb(-16);
         extent_t ex = -2 * bb + 1;
         return block_descriptor_t(bb, ex);
     }
+    
 
     
     
@@ -99,16 +107,13 @@ struct PoissonProblem
         int count = 0, ocount = 0;
         simulation_.domain_.tree()->determine_hangingOctants();
         
-        float_type L = simulation_.dictionary_->
-            template get_or<float_type>("refLength", 1);
 
         const auto center = (simulation_.domain_.bounding_box().max() -
                              simulation_.domain_.bounding_box().min()) / 2.0;
         
         //L = L * center[0];
         
-        const float_type a  = 1.0 / L;
-        
+        const float_type a  = 150.0;
         
         const float_type a2 = a*a;
         const auto b = a; const auto b2 = a2;
@@ -143,9 +148,9 @@ struct PoissonProblem
                         it->data()->get<phi_num>(i,j,k) = 0.0;
                         
                         // manufactured solution:
-                        const float_type x = static_cast<float_type>(i-center[0]);
-                        const float_type y = static_cast<float_type>(j-center[1]);
-                        const float_type z = static_cast<float_type>(k-center[2]);
+                        const float_type x = static_cast<float_type>(i-center[0])*dx;
+                        const float_type y = static_cast<float_type>(j-center[1])*dx;
+                        const float_type z = static_cast<float_type>(k-center[2])*dx;
                         const auto x2 = x*x;
                         const auto y2 = y*y;
                         const auto z2 = z*z;
@@ -198,14 +203,13 @@ struct PoissonProblem
                 
                 for (std::size_t i = 0; i < result.size(); ++i)
                 {
-                    it_i->data()->get<phi_num>().data()[i] += result[i];
-                    
+                    it_i->data()->get<phi_num>().data()[i]  =  dx*dx*result[i];
                 }
             }
         }
         
-        simulation_.write("solution.vtk");
         compute_errors();
+        simulation_.write("solution.vtk");
     }
 
     void compute_errors()
@@ -246,6 +250,7 @@ private:
     parallel_ostream::ParallelOstream pcout;
     lgf::LGF<lgf::Integrator>         lgf_;
     Convolution                       conv;
+    float_type                        dx;
 };
 
 

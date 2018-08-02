@@ -87,7 +87,7 @@ struct PoissonProblem
 
     block_descriptor_t lgf_block()
     {
-        base_t bb(-20);
+        base_t bb(-32);
         extent_t ex = -2 * bb + 1;
         return block_descriptor_t(bb, ex);
     }
@@ -105,7 +105,7 @@ struct PoissonProblem
         const auto center = (simulation_.domain_.bounding_box().max() -
                              simulation_.domain_.bounding_box().min()) / 2.0;
         
-        L = L * center[0];
+        //L = L * center[0];
         
         const float_type a  = 1.0 / L;
         const float_type a2 = a*a;
@@ -194,35 +194,16 @@ struct PoissonProblem
                 conv.execute(lgf, it_i->data()->get<source>().data());
                 block_descriptor_t extractor(jbase, jextent);
                 auto result = conv.res(extractor);
-                auto L2   = 0.;
-                auto LInf = 0.;
                 
                 for (std::size_t i = 0; i < result.size(); ++i)
                 {
                     it_i->data()->get<phi_num>().data()[i] += result[i];
                     
-                    it_i->data()->get<error>().data()[i] = std::abs(
-                        it_i->data()->get<phi_num>().data()[i] -
-                        it_i->data()->get<phi_exact>().data()[i]);
-                    
-                    it_i->data()->get<error2>().data()[i] =
-                        it_i->data()->get<error>().data()[i] *
-                        it_i->data()->get<error>().data()[i];
-                    
-                    L2 += it_i->data()->get<error2>().data()[i];
-                    
-                    if (i > 0 &&
-                        it_i->data()->get<error>().data()[i] >
-                        it_i->data()->get<error>().data()[i-1])
-                    {
-                        LInf = it_i->data()->get<error>().data()[i];
-                    }
                 }
-                pcout << "L2   = " << L2   << std::endl;
-                pcout << "LInf = " << LInf << std::endl;
             }
         }
         simulation_.write("solution.vtk");
+        compute_errors();
     }
 
     void compute_errors()
@@ -254,7 +235,7 @@ struct PoissonProblem
                     LInf = it_i->data()->get<error>().data()[i];
                 }
             }
-            pcout << "L2   = " << L2   << std::endl;
+            pcout << "L2   = " << L2/it_i->data()->nodes().size()   << std::endl;
             pcout << "LInf = " << LInf << std::endl;
         }
     }

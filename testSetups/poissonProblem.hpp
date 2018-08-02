@@ -38,7 +38,7 @@ using namespace fft;
 struct PoissonProblem
 {
     using vel_type    = vector_type<float_type, Dim>;
-    using size_v_type = vector_type<int, Dim>;
+    using size_v_type = vector_type<int       , Dim>;
 
     //              name                type
     make_field_type(phi_num           , float_type)
@@ -47,6 +47,10 @@ struct PoissonProblem
     make_field_type(lgf_field_lookup  , float_type)
     make_field_type(phi_exact         , float_type)
     make_field_type(lgf               , float_type)
+    make_field_type(error             , float_type)
+    make_field_type(error2            , float_type)
+
+
 
     using datablock_t = DataBlock<
         Dim, node,
@@ -54,7 +58,9 @@ struct PoissonProblem
         source,
         lgf_field_integral,
         lgf_field_lookup,
-        phi_exact
+        phi_exact,
+        error,
+        error2
     >;
 
     using datablock_t_2 = DataBlock<Dim, node, lgf>;
@@ -86,25 +92,33 @@ struct PoissonProblem
         return block_descriptor_t(bb, ex);
     }
 
+    
+    
     void initialize()
     {
         int count = 0, ocount = 0;
         simulation_.domain_.tree()->determine_hangingOctants();
-
         
-        const float_type L=4;
-        const float_type a=1.0/(L);
-        const float_type a2=a*a;
-        const auto b=a; const auto b2=a2;
-        const auto c=a; const auto c2=a2;
-        const auto center = (simulation_.domain_.bounding_box().max()-
-                             simulation_.domain_.bounding_box().min())/2.0;
+        float_type L = simulation_.dictionary_->
+            template get_or<float_type>("refLength", 1);
 
-        for(auto it  = simulation_.domain_.begin_octants(); 
-                 it != simulation_.domain_.end_octants();++it)
+        const auto center = (simulation_.domain_.bounding_box().max() -
+                             simulation_.domain_.bounding_box().min()) / 2.0;
+        
+        L = L * center[0];
+        
+        const float_type a  = 1.0 / L;
+        const float_type a2 = a*a;
+        const auto b = a; const auto b2 = a2;
+        const auto c = a; const auto c2 = a2;
+
+
+        for (auto it  = simulation_.domain_.begin_octants();
+                  it != simulation_.domain_.end_octants(); ++it)
         {
-            if(it->is_hanging()) continue;
+            if (it->is_hanging()) continue;
             ++ocount;
+            
             //iterate over nodes:
             for (auto& n : it->data()->nodes())
             {
@@ -115,24 +129,24 @@ struct PoissonProblem
             }
 
             //ijk- way of initializing 
-            auto base=it->data()->descriptor().base();
-            auto max=it->data()->descriptor().max();
-            for(auto  k =base[2];k<=max[2];++k)
+            auto base = it->data()->descriptor().base();
+            auto max  = it->data()->descriptor().max();
+            for (auto k = base[2]; k <= max[2]; ++k)
             {
-                for(auto j =base[1];j<=max[1];++j)
+                for (auto j = base[1]; j <= max[1]; ++j)
                 {
-
                     for (auto i = base[0]; i <= max[0]; ++i)
                     {
-                        it->data()->get<source>(i,j,k) = 1.0;
-
-                        //manufactured solution:
-                        const float_type x=static_cast<float_type>(i-center[0]);
-                        const float_type y=static_cast<float_type>(j-center[1]);
-                        const float_type z=static_cast<float_type>(k-center[2]);
-                        const auto x2=x*x;
-                        const auto y2=y*y;
-                        const auto z2=z*z;
+                        it->data()->get<source>(i,j,k)  = 1.0;
+                        it->data()->get<phi_num>(i,j,k) = 0.0;
+                        
+                        // manufactured solution:
+                        const float_type x = static_cast<float_type>(i-center[0]);
+                        const float_type y = static_cast<float_type>(j-center[1]);
+                        const float_type z = static_cast<float_type>(k-center[2]);
+                        const auto x2 = x*x;
+                        const auto y2 = y*y;
+                        const auto z2 = z*z;
 
                         it->data()->get<source>(i,j,k)=
                             4 * a2 * x2 * std::exp(-a*x2 - b*y2 - c*z2) -
@@ -151,11 +165,11 @@ struct PoissonProblem
     }
 
 
+    
     void solve()
     {
-        
-        //Allocate lgf
-        std::vector<float_type> lgf;
+        // allocate lgf
+        std::vector<float_type> lgf, result;
         for (auto it_i  = simulation_.domain_.begin_octants();
                   it_i != simulation_.domain_.end_octants(); ++it_i)
         {
@@ -169,30 +183,88 @@ struct PoissonProblem
 
                 const auto jbase   = it_j->data()->descriptor().base();
                 const auto jextent = it_j->data()->descriptor().extent();
-                const auto shift   = jbase-ibase;
+                const auto shift   = jbase - ibase;
 
-                const auto base_lgf   = shift-(jextent-1);
-                const auto extent_lgf = 2*(jextent)-1;
+                const auto base_lgf   = shift - (jextent - 1);
+                const auto extent_lgf = 2 * (jextent) - 1;
                 
                 lgf_.get_subblock(block_descriptor_t(base_lgf, extent_lgf), lgf);
                 std::cout<<" size lgf "<<lgf.size()<<std::endl;
 
-                conv.execute(lgf,it_i->data()->get<source>().data());
-                block_descriptor_t extractor(jbase,jextent);
-                auto res=conv.res(extractor);
-                for(std::size_t i =0; i<res.size();++i) 
-                    it_i->data()->get<phi_num>().data()[i]=res[i];
+                conv.execute(lgf, it_i->data()->get<source>().data());
+                block_descriptor_t extractor(jbase, jextent);
+                auto result = conv.res(extractor);
+                auto L2   = 0.;
+                auto LInf = 0.;
+                
+                for (std::size_t i = 0; i < result.size(); ++i)
+                {
+                    it_i->data()->get<phi_num>().data()[i] += result[i];
+                    
+                    it_i->data()->get<error>().data()[i] = std::abs(
+                        it_i->data()->get<phi_num>().data()[i] -
+                        it_i->data()->get<phi_exact>().data()[i]);
+                    
+                    it_i->data()->get<error2>().data()[i] =
+                        it_i->data()->get<error>().data()[i] *
+                        it_i->data()->get<error>().data()[i];
+                    
+                    L2 += it_i->data()->get<error2>().data()[i];
+                    
+                    if (i > 0 &&
+                        it_i->data()->get<error>().data()[i] >
+                        it_i->data()->get<error>().data()[i-1])
+                    {
+                        LInf = it_i->data()->get<error>().data()[i];
+                    }
+                }
+                pcout << "L2   = " << L2   << std::endl;
+                pcout << "LInf = " << LInf << std::endl;
             }
         }
-        simulation_.write("bla.vtk");
+        simulation_.write("solution.vtk");
     }
 
+    void compute_errors()
+    {
+        auto L2   = 0.;
+        auto LInf = 0.;
+
+        for (auto it_i  = simulation_.domain_.begin_octants();
+             it_i != simulation_.domain_.end_octants(); ++it_i)
+        {
+            if (it_i->is_hanging()) continue;
+
+            for (std::size_t i = 0; i < it_i->data()->nodes().size(); ++i)
+            {
+                it_i->data()->get<error>().data()[i] = std::abs(
+                    it_i->data()->get<phi_num>().data()[i] -
+                    it_i->data()->get<phi_exact>().data()[i]);
+                    
+                it_i->data()->get<error2>().data()[i] =
+                    it_i->data()->get<error>().data()[i] *
+                    it_i->data()->get<error>().data()[i];
+                    
+                L2 += it_i->data()->get<error2>().data()[i];
+                    
+                if (i > 0 &&
+                    it_i->data()->get<error>().data()[i] >
+                    it_i->data()->get<error>().data()[i-1])
+                {
+                    LInf = it_i->data()->get<error>().data()[i];
+                }
+            }
+            pcout << "L2   = " << L2   << std::endl;
+            pcout << "LInf = " << LInf << std::endl;
+        }
+    }
+    
 private:
 
-    Simulation<domain_t> simulation_;
+    Simulation<domain_t>              simulation_;
     parallel_ostream::ParallelOstream pcout;
-    lgf::LGF<lgf::Integrator> lgf_;
-    Convolution conv;
+    lgf::LGF<lgf::Integrator>         lgf_;
+    Convolution                       conv;
 };
 
 

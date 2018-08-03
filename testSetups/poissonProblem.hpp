@@ -195,7 +195,7 @@ struct PoissonProblem
 
                 const auto jbase   = it_j->data()->descriptor().base();
                 const auto jextent = it_j->data()->descriptor().extent();
-                const auto shift   = jbase - ibase;
+                const auto shift   = ibase - jbase;
 
                 const auto base_lgf   = shift - (jextent - 1);
                 const auto extent_lgf = 2 * (jextent) - 1;
@@ -213,7 +213,7 @@ struct PoissonProblem
             }
         }
         
-        compute_errors();
+        //compute_errors();
         simulation_.write("solution.vtk");
     }
 

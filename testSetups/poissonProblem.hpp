@@ -77,8 +77,8 @@ struct PoissonProblem
     
     PoissonProblem(Dictionary* _d) 
     : simulation_(_d->get_dictionary("simulation_parameters")),
-        lgf_(lgf_block()), conv(simulation_.domain_.block_extent()+1,
-                                simulation_.domain_.block_extent()+1)
+        lgf_(lgf_block()), conv(simulation_.domain_.block_extent(),
+                                simulation_.domain_.block_extent())
     {
         pcout << "\n Setup:  LGF PoissonProblem \n" << std::endl;
         pcout << "Simulation: \n" << simulation_    << std::endl;
@@ -94,7 +94,7 @@ struct PoissonProblem
 
     block_descriptor_t lgf_block()
     {
-        base_t bb(-16);
+        base_t bb(-25);
         extent_t ex = -2 * bb + 1;
         return block_descriptor_t(bb, ex);
     }

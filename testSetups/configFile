@@ -19,12 +19,13 @@ simulation_parameters
     refLength    = 1;
     domain{ 
         max_extent   = 50000;
-        block_extent = 8;
+        //Number of points
+        block_extent = 21;
        
 	block
         {
             base   = (0,0,0);
-            extent = (16,16,16);
+            extent = (21,21,21);
         }
     }
 }

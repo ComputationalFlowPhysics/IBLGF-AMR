@@ -101,8 +101,7 @@ public:
 
         extent_t extent(max-min+1);
         auto base_=extent_t(min);
-        bounding_box_=block_descriptor_t(base_*e, extent*e+1);
-        std::cout<<bounding_box_<<std::endl;
+        bounding_box_=block_descriptor_t(base_*e, extent*e);
         for(auto& b: bases) b-=base_;
         auto base_level=key_t::minimum_level(_maxExtent/_blockExtent);
         t_ = std::make_shared<tree_t>(bases, base_level);
@@ -123,9 +122,8 @@ public:
             const int level=0;
             auto bbase=t_->octant_to_real_coordinate(it->coordinate());
             if(it->is_hanging())continue;
-            it->data()=std::make_shared<datablock_t>(bbase, _blockExtent+1,level);
+            it->data()=std::make_shared<datablock_t>(bbase, _blockExtent,level);
         }
-
     }
 
 
@@ -153,15 +151,12 @@ public:
         {
             auto bbase=t_->octant_to_real_coordinate(child_it.coordinate());
             auto level = child_it.level()-this->tree()->base_level();
-            child_it.data()=std::make_shared<datablock_t>(bbase, block_extent_+1,level);
+            child_it.data()=std::make_shared<datablock_t>(bbase, block_extent_,level);
         });
     }
 
     const auto& block_extent()const noexcept { return block_extent_; }
     auto& block_extent()noexcept { return block_extent_; }
-
-    
-    
 
 
 public:
@@ -170,6 +165,8 @@ public:
     {
         os<<"Number of octants: "<<d.num_octants()<<std::endl;
         os<<"Block extent : "<<d.block_extent_<<std::endl;
+
+        os<<"Domain Bounding Box: "<<d.bounding_box_<<std::endl;
         os<<"Fields:"<<std::endl;
         auto it=d.begin_octants();
         it->data()->for_fields([&](auto& field)

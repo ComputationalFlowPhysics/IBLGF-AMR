@@ -113,7 +113,7 @@ struct PoissonProblem
         
         //L = L * center[0];
         
-        const float_type a  = 150.0;
+        const float_type a  = 30;
         
         const float_type a2 = a*a;
         const auto b = a; const auto b2 = a2;
@@ -148,9 +148,12 @@ struct PoissonProblem
                         it->data()->get<phi_num>(i,j,k) = 0.0;
                         
                         // manufactured solution:
-                        const float_type x = static_cast<float_type>(i-center[0])*dx;
-                        const float_type y = static_cast<float_type>(j-center[1])*dx;
-                        const float_type z = static_cast<float_type>(k-center[2])*dx;
+                        float_type x = static_cast<float_type>(i-center[0])*dx;
+                        float_type y = static_cast<float_type>(j-center[1])*dx;
+                        float_type z = static_cast<float_type>(k-center[2])*dx;
+                        x*=1;
+                        y*=1;
+                        z*=1;
                         const auto x2 = x*x;
                         const auto y2 = y*y;
                         const auto z2 = z*z;
@@ -162,6 +165,7 @@ struct PoissonProblem
                             2 * a  *      std::exp(-a*x2 - b*y2 - c*z2) +
                             4 * b2 * y2 * std::exp(-a*x2 - b*y2 - c*z2) +
                             4 * c2 * z2 * std::exp(-a*x2 - b*y2 - c*z2);
+
 
                         it->data()->get<phi_exact>(i,j,k) =
                             std::exp((-a*x2 - b*y2 - c*z2));
@@ -177,6 +181,7 @@ struct PoissonProblem
     {
         // allocate lgf
         std::vector<float_type> lgf, result;
+        std::vector<float_type> tmp;
         for (auto it_i  = simulation_.domain_.begin_octants();
                   it_i != simulation_.domain_.end_octants(); ++it_i)
         {
@@ -197,13 +202,13 @@ struct PoissonProblem
                 
                 lgf_.get_subblock(block_descriptor_t(base_lgf, extent_lgf), lgf);
 
-                conv.execute(lgf, it_i->data()->get<source>().data());
+                conv.execute(lgf, it_j->data()->get<source>().data());
                 block_descriptor_t extractor(jbase, jextent);
                 auto result = conv.res(extractor);
                 
                 for (std::size_t i = 0; i < result.size(); ++i)
                 {
-                    it_i->data()->get<phi_num>().data()[i]  =  dx*dx*result[i];
+                    it_i->data()->get<phi_num>().data()[i]  +=  dx*dx*result[i];
                 }
             }
         }

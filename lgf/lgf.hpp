@@ -62,7 +62,6 @@ public: //Ctor:
         const auto base=_b.base();
         const auto max=_b.max();
         _lgf.resize(_b.size());
-        std::cout<<"lgf: "<<_b<<std::endl;
 
         for(auto k =base[2];k<=max[2];++k)
         {

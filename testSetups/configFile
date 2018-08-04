@@ -1,3 +1,4 @@
+/*
 simulation_parameters  
 {
     refLength    = 3;
@@ -12,7 +13,6 @@ simulation_parameters
         }
     }
 }
-/*
 simulation_parameters  
 {
     refLength    = 3;
@@ -30,7 +30,6 @@ simulation_parameters
 
 }
 */
-/*
 simulation_parameters  
 {
     refLength    = 3;
@@ -45,4 +44,3 @@ simulation_parameters
         }
     }
 }
-*/

@@ -1,46 +1,47 @@
-/*
 simulation_parameters  
 {
-    refLength    = 1;
+    refLength    = 3;
     domain{ 
         max_extent   = 50000;
-        block_extent = 32;
+        block_extent = 33;
        
-	block
+        block
         {
             base   = (0,0,0);
-            extent = (32,32,32);
+            extent = (33,33,33);
         }
     }
 }
-*/
+/*
 simulation_parameters  
 {
-    refLength    = 1;
+    refLength    = 3;
     domain{ 
         max_extent   = 50000;
         //Number of points
-        block_extent = 5;
+        block_extent = 17;
        
-	block
+        block
         {
             base   = (0,0,0);
-            extent = (25,25,25);
+            extent = (17,17,17);
         }
     }
+
 }
+*/
 /*
 simulation_parameters  
 {
-    refLength    = 1;
+    refLength    = 3;
     domain{ 
         max_extent   = 50000;
-        block_extent = 8;
+        block_extent = 9;
        
-	block
+        block
         {
             base   = (0,0,0);
-            extent = (8,8,8);
+            extent = (9,9,9);
         }
     }
 }

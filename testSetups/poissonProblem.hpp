@@ -11,6 +11,7 @@
 #include <iostream>
 #include <numeric>
 #include <random>
+#include <cmath>
 #include <functional>
 
 #include <fftw3.h>
@@ -94,7 +95,7 @@ struct PoissonProblem
 
     block_descriptor_t lgf_block()
     {
-        base_t bb(-25);
+        base_t bb(-simulation_.domain_.bounding_box().extent());
         extent_t ex = -2 * bb + 1;
         return block_descriptor_t(bb, ex);
     }
@@ -109,17 +110,16 @@ struct PoissonProblem
         
 
         const auto center = (simulation_.domain_.bounding_box().max() -
-                             simulation_.domain_.bounding_box().min()) / 2.0;
+                             simulation_.domain_.bounding_box().min()) / 2.0
+                             +simulation_.domain_.bounding_box().min();
+                             std::cout<<"center: "<<center<<std::endl;
+
         
         //L = L * center[0];
         
-        const float_type a  = 30;
-        
+        const float_type a  = 10.;
         const float_type a2 = a*a;
-        const auto b = a; const auto b2 = a2;
-        const auto c = a; const auto c2 = a2;
-
-
+   
         for (auto it  = simulation_.domain_.begin_octants();
                   it != simulation_.domain_.end_octants(); ++it)
         {
@@ -151,24 +151,18 @@ struct PoissonProblem
                         float_type x = static_cast<float_type>(i-center[0])*dx;
                         float_type y = static_cast<float_type>(j-center[1])*dx;
                         float_type z = static_cast<float_type>(k-center[2])*dx;
-                        x*=1;
-                        y*=1;
-                        z*=1;
                         const auto x2 = x*x;
                         const auto y2 = y*y;
                         const auto z2 = z*z;
 
-                        it->data()->get<source>(i,j,k)=
-                            4 * a2 * x2 * std::exp(-a*x2 - b*y2 - c*z2) -
-                            2 * b  *      std::exp(-a*x2 - b*y2 - c*z2) -
-                            2 * c  *      std::exp(-a*x2 - b*y2 - c*z2) -
-                            2 * a  *      std::exp(-a*x2 - b*y2 - c*z2) +
-                            4 * b2 * y2 * std::exp(-a*x2 - b*y2 - c*z2) +
-                            4 * c2 * z2 * std::exp(-a*x2 - b*y2 - c*z2);
-
+                        it->data()->get<source>(i,j,k)= 
+                            a*std::exp(-a*(x2)-a*(y2)-a*(z2))*(-6.0)+ 
+                            (a2)*(x2)*std::exp(-a*(x2)-a*(y2)-a*(z2))*4.0 + 
+                            (a2)*(y2)*std::exp(-a*(x2)-a*(y2)-a*(z2))*4.0+
+                            (a2)*(z2)*std::exp(-a*(x2)-a*(y2)-a*(z2))*4.0;
 
                         it->data()->get<phi_exact>(i,j,k) =
-                            std::exp((-a*x2 - b*y2 - c*z2));
+                            std::exp((-a*x2 - a*y2 - a*z2));
                     }
                 }
             }
@@ -213,7 +207,7 @@ struct PoissonProblem
             }
         }
         
-        //compute_errors();
+        compute_errors();
         simulation_.write("solution.vtk");
     }
 

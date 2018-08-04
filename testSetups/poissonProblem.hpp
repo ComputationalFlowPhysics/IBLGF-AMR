@@ -85,7 +85,7 @@ struct PoissonProblem
         pcout << "Simulation: \n" << simulation_    << std::endl;
 
         const float_type L = simulation_.dictionary_->
-            template get_or<float_type>("refLength", 1);
+            template get_or<float_type>("L", 1);
 
         auto tmp=L/(simulation_.domain_.bounding_box().extent()-1);
         dx=tmp[0];
@@ -112,11 +112,7 @@ struct PoissonProblem
         const auto center = (simulation_.domain_.bounding_box().max() -
                              simulation_.domain_.bounding_box().min()) / 2.0
                              +simulation_.domain_.bounding_box().min();
-                             std::cout<<"center: "<<center<<std::endl;
 
-        
-        //L = L * center[0];
-        
         const float_type a  = 10.;
         const float_type a2 = a*a;
    

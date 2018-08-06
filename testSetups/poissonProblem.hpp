@@ -95,9 +95,10 @@ struct PoissonProblem
         simulation_.domain_.tree()->determine_hangingOctants();
         
 
-        const auto center = (simulation_.domain_.bounding_box().max() -
+        auto center = (simulation_.domain_.bounding_box().max() -
                              simulation_.domain_.bounding_box().min()) / 2.0
                              +simulation_.domain_.bounding_box().min();
+
 
         const float_type a  = 10.;
         const float_type a2 = a*a;
@@ -170,13 +171,13 @@ struct PoissonProblem
 
                 conv.execute(lgf, it_j->data()->get<source>().data());
                 block_descriptor_t extractor(jbase, jextent);
-                conv.set_solution(extractor,
+                conv.add_solution(extractor,
                                   it_i->data()->get<phi_num>().data(), 
                                   dx*dx);
             }
         }
         
-        //compute_errors();
+        compute_errors();
         pcout<<"Writing solution "<<std::endl;
         simulation_.write("solution.vtk");
     }

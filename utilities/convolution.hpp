@@ -202,7 +202,7 @@ public: //Ctors
     }
 
     template<class Block,class Field>
-    void set_solution(const Block& _b, 
+    void add_solution(const Block& _b, 
                       Field& F,
                       const float_type _scale)
     {
@@ -213,7 +213,7 @@ public: //Ctors
             {
                 for(int i = dims0_[0]-1;i<dims0_[0]+_b.extent()[0]-1;++i)
                 {
-                    F[count++]=_scale*fft_backward.output()
+                    F[count++]+=_scale*fft_backward.output()
                     [ i+j*padded_dims[0]+k*padded_dims[0]*padded_dims[1]];
                 }
             }

@@ -1,18 +1,17 @@
-
-simulation_parameters  
-{
-    L    = 3;
-    domain{ 
-        max_extent   = 50000;
-        block_extent = 129;
-       
-        block
-        {
-            base   = (0,0,0);
-            extent = (129,129,129);
-        }
-    }
-}
+//simulation_parameters  
+//{
+//    L    = 3;
+//    domain{ 
+//        max_extent   = 50000;
+//        block_extent = 129;
+//       
+//        block
+//        {
+//            base   = (0,0,0);
+//            extent = (129,129,129);
+//        }
+//    }
+//}
 //simulation_parameters  
 //{
 //    L    = 3;
@@ -41,22 +40,39 @@ simulation_parameters
 //        }
 //    }
 //}
-//simulation_parameters  
-//{
-//    L    = 3;
-//    domain{ 
-//        max_extent   = 50000;
-//        //Number of points
-//        block_extent = 17;
-//       
-//        block
-//        {
-//            base   = (0,0,0);
-//            extent = (17,17,17);
-//        }
-//    }
-//
-//}
+simulation_parameters  
+{
+    L    = 3;
+    domain{ 
+        max_extent   = 50000;
+        block_extent = 8;
+       
+        block
+        {
+            base   = (0,0,0);
+            extent = (32,32,32);
+        }
+        
+        //block
+        //{
+        //    base   = (32,0,0);
+        //    extent = (32,32,32);
+        //}
+   
+        //block
+        //{
+        //    base   = (0,0,32);
+        //    extent = (32,32,32);
+        //}
+        //block
+        //{
+        //    base   = (64,0,64);
+        //    extent = (16,16,16);
+        //}
+
+    }
+
+}
 //simulation_parameters  
 //{
 //    L    = 3;

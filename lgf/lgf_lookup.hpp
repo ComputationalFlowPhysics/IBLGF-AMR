@@ -23,7 +23,7 @@ public:
         int y = abs(_c.y());
         int z = abs(_c.z());
 
-        if (x<= N_max && y<=N_max && z<=N_max) 
+        if (x<= N_max && y<=N_max && z<=N_max) // using table
         {
             if (x < y)
                 std::swap(x, y);
@@ -32,11 +32,10 @@ public:
             if (y < z)
                 std::swap(y, z);
 
-            return -Q[(x * (2 + 3*x + x * x))/6 + y*(y+1)/2 + z];
+            return - _table[(x * (2 + 3*x + x * x))/6 + y*(y+1)/2 + z]; // indexing
 
         } else
         {
-            
             return asym(x,y,z);
         }
 
@@ -48,28 +47,26 @@ public:
         double n_abs = sqrt(n1_2 + n2_2 + n3_2);
         double tmp;
         
-        tmp = -1.0/4.0/M_PI/n_abs; // first term
+        tmp = -1.0/4.0/M_PI/n_abs; // the first asymp term
         tmp = tmp - (n1_2 * n1_2 + n2_2 * n2_2 + n3_2 * n3_2 
                     - 3.0 * n1_2 * n2_2 
                     - 3.0 * n2_2 * n3_2 
-                    - 3.0 * n3_2 * n1_2)/16.0/M_PI/pow(n_abs,7.0);
-                                    // second term
+                    - 3.0 * n3_2 * n1_2)/16.0/M_PI/pow(n_abs,7.0); // the second asymp term
 
         // n3 is the smallest by definition
-        if (n1<600 || n2<600 || n3<600) // add third term
+        if (n1<600 || n2<600 || n3<600) // add the third term
         {
             double tmp2;
             const double coef = 8.0/(768.0 * M_PI);
 
-            tmp2 = -3.0 * (   23 * (pow(n1_2,4.0) + pow(n2_2,4.0) + pow(n3_2,4.0)) 
-                    - 244 * (pow(n2_2,3.0) * n3_2 + pow(n3_2,3.0) * n2_2 + 
-                             pow(n1_2,3.0) * n2_2 + pow(n2_2,3.0) * n1_2 + 
-                             pow(n1_2,3.0) * n3_2 + pow(n3_2,3.0) * n1_2  
-                             )
-                    + 621 * ((n1_2 * n1_2) * (n2_2 * n2_2) 
-                        + (n2_2 * n2_2) * (n3_2 * n3_2) 
-                        + (n3_2 * n3_2) * (n1_2 * n1_2) )
-                    - 228 * ( (n1_2 * n1_2) * n2_2 * n3_2 
+            tmp2 =-3.0 * ( 23 * (pow(n1_2,4.0) + pow(n2_2,4.0) + pow(n3_2,4.0) ) 
+                        - 244 * (pow(n2_2,3.0) * n3_2 + pow(n3_2,3.0) * n2_2 + 
+                                 pow(n1_2,3.0) * n2_2 + pow(n2_2,3.0) * n1_2 + 
+                                 pow(n1_2,3.0) * n3_2 + pow(n3_2,3.0) * n1_2 )
+                        + 621 * ((n1_2 * n1_2) * (n2_2 * n2_2) 
+                            + (n2_2 * n2_2) * (n3_2 * n3_2) 
+                            + (n3_2 * n3_2) * (n1_2 * n1_2) )
+                        - 228 * ( (n1_2 * n1_2) * n2_2 * n3_2 
                              + n1_2 * (n2_2 * n2_2) * n3_2
                              + n1_2 * n2_2 * (n3_2 * n3_2)));
 
@@ -82,16 +79,17 @@ public:
 
 private:
 
-    static constexpr std::array<double, 23426> Q
+    static constexpr int N_max=50;
+
+    static constexpr std::array<double, 23426> _table
     {{
     #include "lgf/lgf_table_50.hpp"
     }};
 
-    static constexpr int N_max=50;
 
 };
 
-constexpr decltype(Lookup::Q) Lookup::Q;
+constexpr decltype(Lookup:: _table) Lookup:: _table;
 
 } //namepsace
 #endif

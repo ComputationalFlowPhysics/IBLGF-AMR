@@ -14,27 +14,28 @@
 namespace lgf
 {
 
-class Integrator
+class Integrator // ke : the integral is not accurate as a reference. 
 {
     
 public:
+    /*
     template<class Coordinate>
     static auto get(const Coordinate& _coord) noexcept
     {
-        //long double error;
-        //auto BesselIntegrand = [&_coord](float_type t) 
-        //{ 
-        //    return getBesselIntegrand(_coord, t); 
-        //};
+        long double error;
+        auto BesselIntegrand = [&_coord](float_type t) 
+        { 
+            return getBesselIntegrand(_coord, t); 
+        };
 
-        //std::cout << _coord.x() << ", "<< _coord.y()<< ", " << _coord.z() << std::endl;
+        std::cout << _coord.x() << ", "<< _coord.y()<< ", " << _coord.z() << std::endl;
 
-        //long double tmp = 
-        //     boost::math::quadrature::
-        //        gauss_kronrod<long double, 15>::integrate(
-        //        BesselIntegrand, 
-        //        0, std::numeric_limits<float>::infinity(),
-        //        0, 1.0e-14, &error);
+        long double tmp = 
+             boost::math::quadrature::
+                gauss_kronrod<long double, 15>::integrate(
+                BesselIntegrand, 
+                0, std::numeric_limits<float>::infinity(),
+                0, 1.0e-14, &error);
 
         //std::cout << "value = " << tmp << " error = " << error << std::endl;
 
@@ -42,7 +43,9 @@ public:
         return 0;
 
     }
+    */
 private:
+    /*
     template<class Coordinate>
     static auto getBesselIntegrand(const Coordinate& _coord, long double t)
     {
@@ -56,6 +59,7 @@ private:
                             boost::math::cyl_bessel_i(z , 2*t);
     }
     
+    */
     
 };
 

@@ -201,22 +201,23 @@ public: //Ctors
         return fft_backward.output();
     }
 
-    template<class Block>
-    std::vector<float_type> res(const Block& _b)
+    template<class Block,class Field>
+    void set_solution(const Block& _b, 
+                      Field& F,
+                      const float_type _scale)
     {
-        std::vector<float_type> res_;
+        int count=0;
         for(int k = dims0_[2]-1;k< dims0_[2]+_b.extent()[2]-1;++k)
         {
             for(int j = dims0_[1]-1;j<dims0_[1]+_b.extent()[1]-1;++j)
             {
                 for(int i = dims0_[0]-1;i<dims0_[0]+_b.extent()[0]-1;++i)
                 {
-                    res_.push_back(fft_backward.output()
-                    [ i+j*padded_dims[0]+k*padded_dims[0]*padded_dims[1]]);
+                    F[count++]=_scale*fft_backward.output()
+                    [ i+j*padded_dims[0]+k*padded_dims[0]*padded_dims[1]];
                 }
             }
         }
-        return res_;
     }
 
 private:

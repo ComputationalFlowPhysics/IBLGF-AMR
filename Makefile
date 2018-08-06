@@ -10,7 +10,7 @@
 
 # Project name
 NAME    = iblgf.x
-SOURCES = main.cpp 
+SOURCES = main.cpp lgf/lgf_lookup.cpp 
 PREPROC = junk
 
 # Dependency directory
@@ -33,6 +33,7 @@ CFLAGS_RELEASE = -O3 -DNDEBUG               \
 		-Wno-deprecated-declarations
 
 CFLAGS_UNSAFE = -ffast-math -ftree-vectorize -funroll-loops
+
 
 INCLUDE_DIRS = $(USER_INCLUDE_DIRS) -I./
 

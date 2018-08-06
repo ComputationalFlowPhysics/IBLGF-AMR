@@ -49,14 +49,12 @@ struct PoissonProblem
     make_field_type(lgf               , float_type)
     make_field_type(error             , float_type)
     make_field_type(error2            , float_type)
-    //make_field_type(lgf_field_integral, float_type) 
 
 
     using datablock_t = DataBlock<
         Dim, node,
         phi_num,
         source,
-        //lgf_field_integral,
         lgf_field_lookup,
         phi_exact,
         error,
@@ -93,7 +91,7 @@ struct PoissonProblem
     
     void initialize()
     {
-        int count = 0, ocount = 0;
+        int ocount = 0;
         simulation_.domain_.tree()->determine_hangingOctants();
         
 
@@ -110,17 +108,6 @@ struct PoissonProblem
             if (it->is_hanging()) continue;
             ++ocount;
             
-            // Ke : 
-            //
-            //iterate over nodes:
-            //for (auto& n : it->data()->nodes())
-            //{
-            //    count++;
-            //    n.get<source>() = count;
-            //    lgf::LGF<lgf::Integrator> lgfsI;
-            //    n.get<lgf_field_integral>() = lgfsI.get(n.level_coordinate());
-            //}
-
             //ijk- way of initializing 
             auto base = it->data()->descriptor().base();
             auto max  = it->data()->descriptor().max();
@@ -160,8 +147,7 @@ struct PoissonProblem
     void solve()
     {
         // allocate lgf
-        std::vector<float_type> lgf, result;
-        std::vector<float_type> tmp;
+        std::vector<float_type> lgf;
         for (auto it_i  = simulation_.domain_.begin_octants();
                   it_i != simulation_.domain_.end_octants(); ++it_i)
         {
@@ -184,16 +170,14 @@ struct PoissonProblem
 
                 conv.execute(lgf, it_j->data()->get<source>().data());
                 block_descriptor_t extractor(jbase, jextent);
-                auto result = conv.res(extractor);
-                
-                for (std::size_t i = 0; i < result.size(); ++i)
-                {
-                    it_i->data()->get<phi_num>().data()[i]  +=  dx*dx*result[i];
-                }
+                conv.set_solution(extractor,
+                                  it_i->data()->get<phi_num>().data(), 
+                                  dx*dx);
             }
         }
         
-        compute_errors();
+        //compute_errors();
+        pcout<<"Writing solution "<<std::endl;
         simulation_.write("solution.vtk");
     }
 

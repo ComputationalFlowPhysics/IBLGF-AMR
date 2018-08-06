@@ -1,46 +1,73 @@
-/*
-simulation_parameters  
-{
-    L    = 3;
-    domain{ 
-        max_extent   = 50000;
-        block_extent = 33;
-       
-        block
-        {
-            base   = (0,0,0);
-            extent = (33,33,33);
-        }
-    }
-}
-simulation_parameters  
-{
-    L    = 3;
-    domain{ 
-        max_extent   = 50000;
-        //Number of points
-        block_extent = 17;
-       
-        block
-        {
-            base   = (0,0,0);
-            extent = (17,17,17);
-        }
-    }
 
-}
-*/
 simulation_parameters  
 {
     L    = 3;
     domain{ 
         max_extent   = 50000;
-        block_extent = 9;
+        block_extent = 129;
        
         block
         {
             base   = (0,0,0);
-            extent = (9,9,9);
+            extent = (129,129,129);
         }
     }
 }
+//simulation_parameters  
+//{
+//    L    = 3;
+//    domain{ 
+//        max_extent   = 50000;
+//        block_extent = 65;
+//       
+//        block
+//        {
+//            base   = (0,0,0);
+//            extent = (65,65,65);
+//        }
+//    }
+//}
+//simulation_parameters  
+//{
+//    L    = 3;
+//    domain{ 
+//        max_extent   = 50000;
+//        block_extent = 33;
+//       
+//        block
+//        {
+//            base   = (0,0,0);
+//            extent = (33,33,33);
+//        }
+//    }
+//}
+//simulation_parameters  
+//{
+//    L    = 3;
+//    domain{ 
+//        max_extent   = 50000;
+//        //Number of points
+//        block_extent = 17;
+//       
+//        block
+//        {
+//            base   = (0,0,0);
+//            extent = (17,17,17);
+//        }
+//    }
+//
+//}
+//simulation_parameters  
+//{
+//    L    = 3;
+//    domain{ 
+//        max_extent   = 50000;
+//        block_extent = 9;
+//       
+//        block
+//        {
+//            base   = (0,0,0);
+//            extent = (9,9,9);
+//        }
+//    }
+//}

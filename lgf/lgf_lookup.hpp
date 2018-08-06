@@ -7,6 +7,7 @@
 #include <vector>
 #include <array>
 #include <cmath>
+#include <global.hpp>
 
 
 namespace lgf
@@ -19,9 +20,9 @@ public:
     template<class Coordinate>
     static auto get(const Coordinate& _c) noexcept
     {
-        int x = abs(_c.x());
-        int y = abs(_c.y());
-        int z = abs(_c.z());
+        int x = std::abs(static_cast<int>(_c.x()));
+        int y = std::abs(static_cast<int>(_c.y()));
+        int z = std::abs(static_cast<int>(_c.z()));
 
         if (x<= N_max && y<=N_max && z<=N_max) // using table
         {
@@ -32,7 +33,7 @@ public:
             if (y < z)
                 std::swap(y, z);
 
-            return - _table[(x * (2 + 3*x + x * x))/6 + y*(y+1)/2 + z]; // indexing
+            return - table_[(x * (2 + 3*x + x * x))/6 + y*(y+1)/2 + z]; // indexing
 
         } else
         {
@@ -41,36 +42,62 @@ public:
 
    }
 
+    //TODO: Vectorize this function. Takes a lot of time!
     static auto asym(int n1, int n2, int n3)
     {
-        double n1_2 = n1 * n1, n2_2 = n2 * n2, n3_2 = n3 * n3;
-        double n_abs = sqrt(n1_2 + n2_2 + n3_2);
-        double tmp;
+        const float_type n1_2 = n1 * n1, n2_2 = n2 * n2, n3_2 = n3 * n3;
+        const float_type n_abs = sqrt(n1_2 + n2_2 + n3_2);
+
+        const float_type n1_6=n1_2*n1_2*n1_2;
+        const float_type n2_6=n2_2*n2_2*n2_2;
+        const float_type n3_6=n3_2*n3_2*n3_2;
+
+        const float_type n1_8=n1_6*n1_2;
+        const float_type n2_8=n2_6*n2_2;
+        const float_type n3_8=n3_6*n3_2;
+
+        const float_type n_abs_6 = n_abs*n_abs*n_abs*n_abs*n_abs*n_abs;
+        const float_type n_abs_7 = n_abs_6*n_abs;
+        const float_type n_abs_13 = n_abs_6*n_abs_6*n_abs;
         
-        tmp = -1.0/4.0/M_PI/n_abs; // the first asymp term
+        float_type tmp = -1.0/4.0/M_PI/n_abs; // the first asymp term
         tmp = tmp - (n1_2 * n1_2 + n2_2 * n2_2 + n3_2 * n3_2 
                     - 3.0 * n1_2 * n2_2 
                     - 3.0 * n2_2 * n3_2 
-                    - 3.0 * n3_2 * n1_2)/16.0/M_PI/pow(n_abs,7.0); // the second asymp term
+                    - 3.0 * n3_2 * n1_2)/16.0/M_PI/n_abs_7; // the second asymp term
 
         // n3 is the smallest by definition
         if (n1<600 || n2<600 || n3<600) // add the third term
         {
-            double tmp2;
-            const double coef = 8.0/(768.0 * M_PI);
+            float_type tmp2;
+            const float_type coef = 8.0/(768.0 * M_PI);
 
-            tmp2 =-3.0 * ( 23 * (pow(n1_2,4.0) + pow(n2_2,4.0) + pow(n3_2,4.0) ) 
-                        - 244 * (pow(n2_2,3.0) * n3_2 + pow(n3_2,3.0) * n2_2 + 
-                                 pow(n1_2,3.0) * n2_2 + pow(n2_2,3.0) * n1_2 + 
-                                 pow(n1_2,3.0) * n3_2 + pow(n3_2,3.0) * n1_2 )
-                        + 621 * ((n1_2 * n1_2) * (n2_2 * n2_2) 
-                            + (n2_2 * n2_2) * (n3_2 * n3_2) 
-                            + (n3_2 * n3_2) * (n1_2 * n1_2) )
-                        - 228 * ( (n1_2 * n1_2) * n2_2 * n3_2 
-                             + n1_2 * (n2_2 * n2_2) * n3_2
-                             + n1_2 * n2_2 * (n3_2 * n3_2)));
+            tmp2 =-3.0 * ( 23 * (n1_8 + n2_8 + n3_8 ) 
+                    - 244 * (n2_6 * n3_2 + n3_6 * n2_2 + 
+                        n1_6 * n2_2 + n2_6 * n1_2 + 
+                        n1_6 * n3_2 + n3_6 * n1_2 )
+                    + 621 * ((n1_2 * n1_2) * (n2_2 * n2_2) 
+                        + (n2_2 * n2_2) * (n3_2 * n3_2) 
+                        + (n3_2 * n3_2) * (n1_2 * n1_2) )
+                    - 228 * ( (n1_2 * n1_2) * n2_2 * n3_2 
+                        + n1_2 * (n2_2 * n2_2) * n3_2
+                        + n1_2 * n2_2 * (n3_2 * n3_2)));
 
-            tmp2 = tmp2 / pow(n_abs, 13.0) /4.0 * coef;
+            //std::pow is insanely slow, took 75% of runtime for 129^3
+            //tmp2 =-3.0 * ( 23 * (std::pow(n1_2,4.0) + std::pow(n2_2,4.0) + std::pow(n3_2,4.0) ) 
+            //        - 244 * (std::pow(n2_2,3.0) * n3_2 + std::pow(n3_2,3.0) * n2_2 + 
+            //            std::pow(n1_2,3.0) * n2_2 + std::pow(n2_2,3.0) * n1_2 + 
+            //            std::pow(n1_2,3.0) * n3_2 + std::pow(n3_2,3.0) * n1_2 )
+            //        + 621 * ((n1_2 * n1_2) * (n2_2 * n2_2) 
+            //            + (n2_2 * n2_2) * (n3_2 * n3_2) 
+            //            + (n3_2 * n3_2) * (n1_2 * n1_2) )
+            //        - 228 * ( (n1_2 * n1_2) * n2_2 * n3_2 
+            //            + n1_2 * (n2_2 * n2_2) * n3_2
+            //            + n1_2 * n2_2 * (n3_2 * n3_2)));
+
+
+
+            tmp2 = tmp2 / n_abs_13 /4.0 * coef;
             tmp += tmp2;
         }
 
@@ -78,18 +105,9 @@ public:
     }
 
 private:
-
-    static constexpr int N_max=50;
-
-    static constexpr std::array<double, 23426> _table
-    {{
-    #include "lgf/lgf_table_50.hpp"
-    }};
-
-
+    static const int N_max;
+    static const std::vector<float_type> table_;
 };
-
-constexpr decltype(Lookup:: _table) Lookup:: _table;
 
 } //namepsace
 #endif

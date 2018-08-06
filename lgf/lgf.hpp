@@ -10,7 +10,7 @@
 
 // IBLGF-specific
 #include <lgf/lgf_lookup.hpp>
-#include <lgf/lgf_integrator.hpp>
+//#include <lgf/lgf_integrator.hpp>
 
 #include <domain/dataFields/dataBlock.hpp>
 #include <domain/dataFields/datafield.hpp>
@@ -38,25 +38,6 @@ public: //Ctor:
     LGF()=default;
     static_assert(Dim==3, "LGF only implemented for D=3");
 
-    template<class BlockDescriptorType>
-    LGF(const BlockDescriptorType& _lookup_block)
-    :lgf_container(_lookup_block)
-    {
-        const auto base=_lookup_block.base();
-        const auto max=_lookup_block.max();
-        for(auto k =base[2];k<=max[2];++k)
-        {
-            for(auto j =base[1];j<=max[1];++j)
-            {
-                for(auto i=base[0]; i<=max[0];++i  )
-                {
-                    lgf_container.template get<lookup_field_>(i,j,k)=
-                        Integrator::get(coordinate_t( {i,j,k}));
-                }
-            }
-        }
-    }
-
     void get_subblock( const block_descriptor_t& _b, std::vector<float_type>& _lgf ) noexcept
     {
         const auto base=_b.base();
@@ -71,19 +52,15 @@ public: //Ctor:
                 {
                        //get view:
                        _lgf[_b.globalCoordinate_to_index(i,j,k)]=
-                       lgf_container.template get<lookup_field_>(i,j,k);
+                       Lookup::get(coordinate_t({i,j,k}));
                 }
             }
         }
     } 
 
 
-    
-
-
 public:
 
-    
     template<class Coordinate>
     static auto get(const Coordinate& _coord) noexcept
     {
@@ -91,7 +68,7 @@ public:
     }
 
 private:
-    datablock_t lgf_container;
+    
 };
 
 }

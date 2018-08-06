@@ -44,20 +44,19 @@ struct PoissonProblem
     //              name                type
     make_field_type(phi_num           , float_type)
     make_field_type(source            , float_type)
-    make_field_type(lgf_field_integral, float_type)
     make_field_type(lgf_field_lookup  , float_type)
     make_field_type(phi_exact         , float_type)
     make_field_type(lgf               , float_type)
     make_field_type(error             , float_type)
     make_field_type(error2            , float_type)
-
+    //make_field_type(lgf_field_integral, float_type) 
 
 
     using datablock_t = DataBlock<
         Dim, node,
         phi_num,
         source,
-        lgf_field_integral,
+        //lgf_field_integral,
         lgf_field_lookup,
         phi_exact,
         error,
@@ -78,7 +77,7 @@ struct PoissonProblem
     
     PoissonProblem(Dictionary* _d) 
     : simulation_(_d->get_dictionary("simulation_parameters")),
-        lgf_(lgf_block()), conv(simulation_.domain_.block_extent(),
+        lgf_(), conv(simulation_.domain_.block_extent(),
                                 simulation_.domain_.block_extent())
     {
         pcout << "\n Setup:  LGF PoissonProblem \n" << std::endl;
@@ -91,16 +90,6 @@ struct PoissonProblem
         dx=tmp[0];
         this->initialize();
     }                               
-
-    block_descriptor_t lgf_block()
-    {
-        base_t bb(-simulation_.domain_.bounding_box().extent());
-        extent_t ex = -2 * bb + 1;
-        return block_descriptor_t(bb, ex);
-    }
-    
-
-    
     
     void initialize()
     {
@@ -121,14 +110,16 @@ struct PoissonProblem
             if (it->is_hanging()) continue;
             ++ocount;
             
+            // Ke : 
+            //
             //iterate over nodes:
-            for (auto& n : it->data()->nodes())
-            {
-                count++;
-                n.get<source>() = count;
-                lgf::LGF<lgf::Integrator> lgfsI;
-                n.get<lgf_field_integral>() = lgfsI.get(n.level_coordinate());
-            }
+            //for (auto& n : it->data()->nodes())
+            //{
+            //    count++;
+            //    n.get<source>() = count;
+            //    lgf::LGF<lgf::Integrator> lgfsI;
+            //    n.get<lgf_field_integral>() = lgfsI.get(n.level_coordinate());
+            //}
 
             //ijk- way of initializing 
             auto base = it->data()->descriptor().base();
@@ -242,7 +233,7 @@ private:
 
     Simulation<domain_t>              simulation_;
     parallel_ostream::ParallelOstream pcout;
-    lgf::LGF<lgf::Integrator>         lgf_;
+    lgf::LGF<lgf::Lookup>             lgf_;
     Convolution                       conv;
     float_type                        dx;
 };

@@ -89,7 +89,6 @@ struct PoissonProblem
 
         auto tmp=L/(simulation_.domain_.bounding_box().extent()-1);
         dx=tmp[0];
-        std::cout<<"dx: "<<dx<<std::endl;
         this->initialize();
     }                               
 

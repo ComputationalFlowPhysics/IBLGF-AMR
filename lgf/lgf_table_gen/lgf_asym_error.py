@@ -32,10 +32,10 @@ def asym_3(n1,n2,n3):
     
 
 
-
-for n1 in range(1,10):
-    for n2 in range(1,10):
-        for n3 in range(1,10):
+NN = 1
+for n1 in range(1,NN):
+    for n2 in range(1,NN):
+        for n3 in range(1,NN):
             print(n1, n2, n3)
             
             ft = lambda t : f(n1, n2, n3, t)

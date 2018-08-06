@@ -66,7 +66,6 @@ public:
                     - 3.0 * n2_2 * n3_2 
                     - 3.0 * n3_2 * n1_2)/16.0/M_PI/n_abs_7; // the second asymp term
 
-        // n3 is the smallest by definition
         if (n1<600 || n2<600 || n3<600) // add the third term
         {
             float_type tmp2;

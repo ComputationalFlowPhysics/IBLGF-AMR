@@ -10,7 +10,7 @@ from lgf_integrator import *
 
 
 N_max    = 110
-n_sample = 100
+n_sample = 500
 
 n_abs   = [.0] * n_sample
 n_error_2 = [.0] * n_sample
@@ -36,8 +36,10 @@ for i in range(0, n_sample):
 
 
 import matplotlib.pyplot as plt
-plt.plot(n_abs, n_error_2, 'bo', n_abs, n_error_3, 'ro')
+plt.plot(n_abs, n_error_3, 'ro')
 plt.yscale('log')
 plt.ylim(1e-18,1e-10)
+plt.grid(True)
+plt.title('error of 3-term-asymptotic vs |n|')
 plt.show()
 

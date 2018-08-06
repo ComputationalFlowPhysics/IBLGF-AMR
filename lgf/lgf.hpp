@@ -52,6 +52,7 @@ public: //Ctor:
                 {
                     lgf_container.template get<lookup_field_>(i,j,k)=
                         Lookup::get(coordinate_t( {i,j,k}));
+
                 }
             }
         }

@@ -51,7 +51,7 @@ public: //Ctor:
                 for(auto i=base[0]; i<=max[0];++i  )
                 {
                     lgf_container.template get<lookup_field_>(i,j,k)=
-                        Integrator::get(coordinate_t( {i,j,k}));
+                        Lookup::get(coordinate_t( {i,j,k}));
                 }
             }
         }

@@ -23,7 +23,7 @@
 #include <domain/dataFields/dataBlock.hpp>
 #include <domain/dataFields/datafield.hpp>
 #include <domain/octree/tree.hpp>
-#include <io/parallel_ostream.hpp>
+#include <post-processing/parallel_ostream.hpp>
 #include <lgf/lgf.hpp>
 
 #include<utilities/convolution.hpp>
@@ -42,13 +42,13 @@ struct PoissonProblem
     using size_v_type = vector_type<int       , Dim>;
 
     //              name                type
-    make_field_type(phi_num           , float_type)
-    make_field_type(source            , float_type)
-    make_field_type(lgf_field_lookup  , float_type)
-    make_field_type(phi_exact         , float_type)
-    make_field_type(lgf               , float_type)
-    make_field_type(error             , float_type)
-    make_field_type(error2            , float_type)
+    make_field_type(phi_num         , float_type)
+    make_field_type(source          , float_type)
+    make_field_type(lgf_field_lookup, float_type)
+    make_field_type(phi_exact       , float_type)
+    make_field_type(lgf             , float_type)
+    make_field_type(error           , float_type)
+    make_field_type(error2          , float_type)
 
 
     using datablock_t = DataBlock<
@@ -84,21 +84,23 @@ struct PoissonProblem
         const float_type L = simulation_.dictionary_->
             template get_or<float_type>("L", 1);
 
-        auto tmp=L/(simulation_.domain_.bounding_box().extent()-1);
-        dx=tmp[0];
+        auto tmp = L / (simulation_.domain_.bounding_box().extent()-1);
+        dx = tmp[0];
         this->initialize();
     }                               
     
+    
+    
+    /*
+     * It initializes the Poisson problem using a manufactured solutions.
+     */
     void initialize()
     {
-        int ocount = 0;
         simulation_.domain_.tree()->determine_hangingOctants();
         
-
         auto center = (simulation_.domain_.bounding_box().max() -
-                             simulation_.domain_.bounding_box().min()) / 2.0
-                             +simulation_.domain_.bounding_box().min();
-
+                       simulation_.domain_.bounding_box().min()) / 2.0 +
+                       simulation_.domain_.bounding_box().min();
 
         const float_type a  = 10.;
         const float_type a2 = a*a;
@@ -107,9 +109,8 @@ struct PoissonProblem
                   it != simulation_.domain_.end_octants(); ++it)
         {
             if (it->is_hanging()) continue;
-            ++ocount;
             
-            //ijk- way of initializing 
+            // ijk-way of initializing
             auto base = it->data()->descriptor().base();
             auto max  = it->data()->descriptor().max();
             for (auto k = base[2]; k <= max[2]; ++k)
@@ -129,7 +130,7 @@ struct PoissonProblem
                         const auto y2 = y*y;
                         const auto z2 = z*z;
 
-                        it->data()->get<source>(i,j,k)= 
+                        it->data()->get<source>(i,j,k) =
                             a*std::exp(-a*(x2)-a*(y2)-a*(z2))*(-6.0)+ 
                             (a2)*(x2)*std::exp(-a*(x2)-a*(y2)-a*(z2))*4.0 + 
                             (a2)*(y2)*std::exp(-a*(x2)-a*(y2)-a*(z2))*4.0+
@@ -145,6 +146,19 @@ struct PoissonProblem
 
 
     
+    /*
+     * It solves the Poisson problem with homogeneous boundary conditions
+     *
+     * \nabla^2 \phi = s, on \Omega, with
+     * \phi|_{\partial\Omega} = 0,
+     *
+     * via the LGF approach, that is: \phi = IFFT(FFT(G * s)), where
+     * - \phi: is the numerical solution of ,
+     * - G: is the lattice Green's function,
+     * - s: is the source term,
+     * - FFT: is the fast-Fourier transform,
+     * - IFFT: is the inverse of the FFT
+     */
     void solve()
     {
         // allocate lgf
@@ -167,21 +181,66 @@ struct PoissonProblem
                 const auto base_lgf   = shift - (jextent - 1);
                 const auto extent_lgf = 2 * (jextent) - 1;
                 
-                lgf_.get_subblock(block_descriptor_t(base_lgf, extent_lgf), lgf);
+                lgf_.get_subblock(block_descriptor_t(base_lgf,
+                                                     extent_lgf), lgf);
 
                 conv.execute(lgf, it_j->data()->get<source>().data());
                 block_descriptor_t extractor(jbase, jextent);
                 conv.add_solution(extractor,
-                                  it_i->data()->get<phi_num>().data(), 
-                                  dx*dx);
+                                  it_i->data()->get<phi_num>().data(), dx*dx);
             }
         }
         
         compute_errors();
-        pcout<<"Writing solution "<<std::endl;
+        pcout << "Writing solution " << std::endl;
         simulation_.write("solution.vtk");
     }
 
+  
+    
+    /*
+     * Interpolate a given field from corser to finer level.
+     * Note: maximum jump allowed is one level.
+     */
+    void interpolate()
+    {
+        for (auto it_i  = simulation_.domain_.begin_octants();
+                  it_i != simulation_.domain_.end_octants(); ++it_i)
+        {
+            if (it_i->is_hanging()) continue;
+            
+            for (std::size_t i = 0; i < it_i->data()->nodes().size(); ++i)
+            {
+                
+            }
+        }
+    }
+    
+    
+    
+    /*
+     * Coarsify given field from finer to coarser level.
+     * Note: maximum jump allowed is one level.
+     */
+    void coarsify()
+    {
+        for (auto it_i  = simulation_.domain_.begin_octants();
+                  it_i != simulation_.domain_.end_octants(); ++it_i)
+        {
+            if (it_i->is_hanging()) continue;
+            
+            for (std::size_t i = 0; i < it_i->data()->nodes().size(); ++i)
+            {
+
+            }
+        }
+    }
+    
+    
+    
+    /*
+     * Calculate the L2 and LInf errors.
+     */
     void compute_errors()
     {
         auto L2   = 0.;
@@ -209,7 +268,7 @@ struct PoissonProblem
                     LInf = it_i->data()->get<error>().data()[i];
                 }
             }
-            pcout << "L2   = " << L2/it_i->data()->nodes().size()   << std::endl;
+            pcout << "L2   = " << L2/it_i->data()->nodes().size() << std::endl;
             pcout << "LInf = " << LInf << std::endl;
         }
     }

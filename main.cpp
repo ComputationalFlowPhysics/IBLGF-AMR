@@ -15,16 +15,18 @@ int main(int argc, char *argv[])
 	std::string input="./";
     input += std::string("configFile");
     
-    if (argc>1 && argv[1][0]!='-' ) {
-        input=argv[1];
+    if (argc>1 && argv[1][0] != '-')
+    {
+        input = argv[1];
     }
     
     // Read in dictionary
     Dictionary dictionary(input);
     
-    // Problem setup
+    // Problem setup by calling constructor
     PoissonProblem poisson(&dictionary);
     
+    // Problem solution
     poisson.solve();
 
     return 0;

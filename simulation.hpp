@@ -2,7 +2,7 @@
 #define IBLGF_INCLUDED_SIMULATION_HPP
 
 #include <dictionary/dictionary.hpp>
-#include <io/vtk_io.hpp>
+#include <post-processing/vtk_io.hpp>
 
 using namespace dictionary;
 

@@ -49,6 +49,8 @@ struct PoissonProblem
     make_field_type(lgf             , float_type)
     make_field_type(error           , float_type)
     make_field_type(error2          , float_type)
+    make_field_type(lapace_field    , float_type)
+    make_field_type(lapace_error    , float_type)
 
 
     using datablock_t = DataBlock<
@@ -58,7 +60,9 @@ struct PoissonProblem
         lgf_field_lookup,
         phi_exact,
         error,
-        error2
+        error2,
+        lapace_field,
+        lapace_error
     >;
 
     using datablock_t_2 = DataBlock<Dim, node, lgf>;
@@ -144,6 +148,40 @@ struct PoissonProblem
         }
     }
 
+    void simple_lapace_fd()
+    {
+        //Only in interior for simplicity:
+        for (auto it  = simulation_.domain_.begin_octants();
+                it != simulation_.domain_.end_octants(); ++it)
+        {
+            if (it->is_hanging()) continue;
+
+            auto base = it->data()->descriptor().base();
+            auto max  = it->data()->descriptor().max();
+            for (auto k = base[2]+1; k < max[2]; ++k)
+            {
+                for (auto j = base[1]+1; j < max[1]; ++j)
+                {
+                    for (auto i = base[0]+1; i < max[0]; ++i)
+                    {
+                        it->data()->get<lapace_field>(i,j,k) =
+                            -6.0*it->data()->get<phi_num>(i,j,k)+ 
+                                 it->data()->get<phi_num>(i+1,j,k)+ 
+                                 it->data()->get<phi_num>(i-1,j,k)+
+                                 it->data()->get<phi_num>(i,j+1,k)+
+                                 it->data()->get<phi_num>(i,j-1,k)+
+                                 it->data()->get<phi_num>(i,j,k+1)+
+                                 it->data()->get<phi_num>(i,j,k-1);
+                        it->data()->get<lapace_field>(i,j,k)/=dx*dx;
+                        it->data()->get<lapace_error>(i,j,k)=
+                            std::fabs(it->data()->get<lapace_field>(i,j,k)-
+                                      it->data()->get<source>(i,j,k));
+                    }
+                }
+            }
+        }
+    }
+
 
     
     /*
@@ -191,6 +229,7 @@ struct PoissonProblem
             }
         }
         
+        //simple_lapace_fd();
         compute_errors();
         pcout << "Writing solution " << std::endl;
         simulation_.write("solution.vtk");

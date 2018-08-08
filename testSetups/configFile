@@ -1,56 +1,14 @@
-//simulation_parameters  
-//{
-//    L    = 3;
-//    domain{ 
-//        max_extent   = 50000;
-//        block_extent = 129;
-//       
-//        block
-//        {
-//            base   = (0,0,0);
-//            extent = (129,129,129);
-//        }
-//    }
-//}
-//simulation_parameters  
-//{
-//    L    = 3;
-//    domain{ 
-//        max_extent   = 50000;
-//        block_extent = 65;
-//       
-//        block
-//        {
-//            base   = (0,0,0);
-//            extent = (65,65,65);
-//        }
-//    }
-//}
-//simulation_parameters  
-//{
-//    L    = 3;
-//    domain{ 
-//        max_extent   = 50000;
-//        block_extent = 33;
-//       
-//        block
-//        {
-//            base   = (0,0,0);
-//            extent = (33,33,33);
-//        }
-//    }
-//}
 simulation_parameters  
 {
-    L    = 3;
+    L    = 5;
     domain{ 
         max_extent   = 50000;
-        block_extent = 8;
+        block_extent = 33;
        
         block
         {
             base   = (0,0,0);
-            extent = (32,32,32);
+            extent = (33,33,33);
         }
         
         //block
@@ -73,17 +31,3 @@ simulation_parameters
     }
 
 }
-//simulation_parameters  
-//{
-//    L    = 3;
-//    domain{ 
-//        max_extent   = 50000;
-//        block_extent = 9;
-//       
-//        block
-//        {
-//            base   = (0,0,0);
-//            extent = (9,9,9);
-//        }
-//    }
-//}

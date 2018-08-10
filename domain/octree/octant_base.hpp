@@ -129,7 +129,6 @@ public:
         return os;
     }
 
-
     bool is_hanging()const noexcept{return id_==node_flag::hanging;}
     bool is_boundary()  const noexcept{return id_==node_flag::boundary_node;}
     void flag(node_flag _id)noexcept{ id_=_id;  }

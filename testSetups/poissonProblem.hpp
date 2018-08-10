@@ -94,12 +94,20 @@ struct PoissonProblem
     }                               
     
     
-    
     /*
      * It initializes the Poisson problem using a manufactured solutions.
      */
     void initialize()
     {
+
+        int count=0;
+        for (auto it  = simulation_.domain_.begin_octants();
+                  it != simulation_.domain_.end_octants(); ++it)
+        {
+            if (it->is_hanging()) continue;
+
+            if(count++==4)simulation_.domain_.refine(it);
+        }
         simulation_.domain_.tree()->determine_hangingOctants();
         
         auto center = (simulation_.domain_.bounding_box().max() -
@@ -292,7 +300,7 @@ struct PoissonProblem
 
             for (std::size_t i = 0; i < it_i->data()->nodes().size(); ++i)
             {
-                it_i->data()->get<error>().data()[i] = std::abs(
+               it_i->data()->get<error>().data()[i] = std::abs(
                     it_i->data()->get<phi_num>().data()[i] -
                     it_i->data()->get<phi_exact>().data()[i]);
                     

@@ -81,7 +81,7 @@ public: //Ctors
                 auto nnn=neighbor(_p);
                 if(nnn!=this->tree()->end_octants())
                     res.emplace_back(nnn);
-            });
+        });
             return res;
     }
  
@@ -105,7 +105,6 @@ protected:
         rcIterator<Dim>::apply(this->coordinate(), coordinate_type(2), 
                 [&]( const coordinate_type& _p ) 
         {
-            
             octant_base_t n_tmp(_p, this->level(),this->tree());
             bool found =false;
             auto it=this->tree()->find_octant_any_level(n_tmp);
@@ -121,10 +120,22 @@ protected:
         });
     }
 
+	void refine(unsigned int i)
+	{
+        children_[i]= std::make_shared<Octant> ( this->child(i));
+		children_[i]->parent_ = this;
+	}
+
 protected:
 
     int idx_=0;
     std::shared_ptr<data_type> data_=nullptr;
+
+    Octant* parent_;
+
+    //TODO:  This shoudl be a unique pointer,once the map is removed
+    std::array<std::shared_ptr<Octant>,pow(2,Dim)> children_=
+    {{nullptr,nullptr,nullptr,nullptr, nullptr,nullptr,nullptr,nullptr}};
 };
 
 

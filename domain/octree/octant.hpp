@@ -97,6 +97,10 @@ public: //Ctors
     auto& data()noexcept {return data_;}
 
 
+    Octant* parent() const noexcept{return parent_;}
+    Octant* child(int i) const noexcept{return children_[i].get();}
+
+
 protected:
     void determine_hangingOctants() noexcept
     {
@@ -122,7 +126,7 @@ protected:
 
 	void refine(unsigned int i)
 	{
-        children_[i]= std::make_shared<Octant> ( this->child(i));
+        children_[i]= std::make_shared<Octant> ( this->child_base(i));
 		children_[i]->parent_ = this;
 	}
 

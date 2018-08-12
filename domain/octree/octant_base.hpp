@@ -66,6 +66,8 @@ public:
     key_type key() const noexcept{return key_;}
     tree_type* tree()const noexcept{return t_;}
     auto level() const noexcept{return key_.level();}
+    auto tree_level() const noexcept{return key_.level();}
+    auto real_level() const noexcept{return key_.level()-t_->base_level();}
 
     coordinate_type coordinate() const noexcept
     {
@@ -88,13 +90,14 @@ public:
         coordinate_type tmp=this->coordinate();
         return tmp*=(std::pow(2, t_->depth()-this->level()));
     }
+    
 
-    Octant_base child( int _i ) const noexcept
+    Octant_base child_base( int _i ) const noexcept
     {
         return Octant_base(this->key_.child(_i), t_);
     }
 
-    Octant_base parent() const noexcept
+    Octant_base parent_base() const noexcept
     {
         return Octant_base(this->key_.parent(),t_);
     }

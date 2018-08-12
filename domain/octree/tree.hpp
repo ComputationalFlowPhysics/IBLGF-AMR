@@ -13,8 +13,8 @@
 
 // IBLGF-specific
 #include <global.hpp>
-#include <domain/octree/tree_utils.hpp>
 #include <domain/octree/octant.hpp>
+#include <domain/octree/tree_utils.hpp>
 
 namespace octree
 {
@@ -39,6 +39,9 @@ public: //memeber types
     using octant_iterator     = MapValueIterator<octant_map_type>;
     using raw_octant_iterator = typename octant_map_type::iterator;
 
+    using dfs_iterator = typename detail::iterator_depth_first<octant_type>;
+    using bfs_iterator = typename detail::iterator_breadth_first<octant_type>;
+
     using coordinate_transform_t =
         std::function<real_coordinate_type(real_coordinate_type)>;
 
@@ -59,7 +62,7 @@ public:
     {
         auto extent = _nCells;
         base_level_ = key_type::minimum_level(extent);
-        depth_      = base_level_;
+        depth_      = base_level_+1;
         const coordinate_type base(0);
         rcIterator<Dim>::apply(base, extent, [&](const coordinate_type& _p) {
                 this->insert_octant(_p, this->base_level_);
@@ -71,7 +74,7 @@ public:
     Tree (const std::vector<coordinate_type>& _points, int _base_level)
     {
         this->base_level_ = _base_level;
-        depth_ = base_level_;
+        depth_ = base_level_+1;
 
         //insert the leaves into map
         for (auto& p : _points)
@@ -79,15 +82,30 @@ public:
             this->insert_octant(p, this->base_level_);
         }
 
-        //Construct level map
+        //Construct interior octants, leaf map && level map
         root_=std::make_shared<octant_type>(
                 coordinate_type(0), 0,this);
         for(auto& p : _points)
         {
-            std::cout<<p<<" level:"<<this->base_level_<<std::endl;
-            this->insert_td(p,this->base_level_);
+            auto leaf=this->insert_td(p,this->base_level_);
+            leafs_.emplace(leaf->key(), leaf);
         }
-        traverse_bfs_td([&](octant_type* n){std::cout<<*n<<std::endl;});
+
+        construct_level_maps();
+        for(int l=0;l<depth();++l)
+        {
+            for(auto it=level_maps_[l].begin();it!=level_maps_[l].end();++it)
+            {
+                std::cout<<it->first<<std::endl;
+            }
+        }
+
+        std::cout<<"leaf iterator"<<std::endl;
+        for(auto& l : leafs_)
+        {
+            std::cout<<*(l.second)<<std::endl;
+        }
+        
     }
 
 
@@ -111,6 +129,7 @@ public:
     template<class Function>
     void refine(octant_iterator& _l, const Function& _f, bool _recursive = false)
     {
+        //FIXME: WRONG for now
         if(_l->is_hanging())return;
         for(int i=0;i<_l->num_children();++i)
         {
@@ -152,24 +171,16 @@ public: //traversals
 	template<class Function>
 	void traverse_dfs(Function f)
 	{
-		depth_first_search(root_, f);
+		depth_first_search(root(), f);
 	}
 	
 	template<class Function>
-	void traverse_bfs_td(Function f, 
+	void traverse_bfs(Function f, 
                       int min_level=0, 
                       int max_level=key_type::max_level())
 	{
 		for (int i=min_level; i<max_level; ++i)
 			breadth_first_search(root(), f, i);
-	}
-	template<class Function>
-	void traverse_bfs_bu(Function f, 
-                      int min_level=0, 
-                      int max_level=key_type::max_level())
-	{
-		for (int i=min_level; i<max_level; ++i)
-			breadth_first_search_bu(root(), f, i);
 	}
 
 private: 
@@ -210,8 +221,6 @@ private:
         return octant_iterator(it);
     }
 
-
-
 private:  //Top down insert strategy
 
     octant_type* insert_td(const coordinate_type& x, 
@@ -242,7 +251,6 @@ private:  //Top down insert strategy
                 if (ck <= k)
                 {
                     n->refine(i);
-                    //insert children into level_vector
                     return insert_impl_top_down(k, n->children_[i].get());
                 }
             }
@@ -268,29 +276,24 @@ private:  //Top down insert strategy
     }
 
 
-    //TODO:Bootom up traversal
-    template<class Function>
-    void breadth_first_search_bu(octant_type* n, Function& f, int level)
-    {
-        if (n->level() == level)
-        {
-            f(n);
-            return;
-        }
-        for (std::size_t i=0; i<n->num_children(); ++i)
-        {
-            if(n->children_[i]) 
-                breadth_first_search(n->children_[i].get(), f, level);
-        }
-    }
-
     template<class Function>
     void depth_first_search(octant_type* n, Function& f)
     {
         f(n);
         for (std::size_t i=0; i<n->num_children(); ++i)
         {
-            if (n->children_[i]) depth_first_search(n->children_[i],f);
+            if (n->child(i)) depth_first_search(n->child(i),f);
+        }
+    }
+
+    void construct_level_maps()
+    {
+        level_maps_.clear();
+        level_maps_.resize(this->depth()+1);
+        dfs_iterator it_begin(root()); dfs_iterator it_end;
+        for(auto it =it_begin;it!=it_end;++it)
+        {
+           level_maps_[it->level()].emplace(it->key(),it.ptr());
         }
     }
 
@@ -319,7 +322,10 @@ private:
     int base_level_=0;
     int depth_=0;
     std::shared_ptr<octant_type> root_=nullptr;
-    std::vector<std::vector<octant_type*>> level_maps_;
+
+    //Convenience containers ... might be too expensive for book keeping
+    std::vector<octant_ptr_map_type> level_maps_;
+    octant_ptr_map_type leafs_;
 
 };
 

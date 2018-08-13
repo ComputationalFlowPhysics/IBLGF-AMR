@@ -79,7 +79,6 @@ public:
         this->base_level_ = _base_level;
         depth_ = base_level_+1;
 
-
         //Construct interior octants, leaf map && level map
         root_=std::make_shared<octant_type>(
                 coordinate_type(0), 0,this);
@@ -110,7 +109,8 @@ public:
     octant_type* root()const noexcept{return root_.get();}
 
     template<class Function>
-    void refine(octant_iterator& _l, const Function& _f, bool _recursive = false)
+    void refine(octant_iterator& _l, const Function& _f, 
+                 bool _recursive = false)
     {
         if(_l->is_hanging())return;
         for(int i=0;i<_l->num_children();++i)

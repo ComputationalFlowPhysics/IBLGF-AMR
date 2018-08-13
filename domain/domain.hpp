@@ -129,11 +129,10 @@ public:
     }
 
 
-public:
+public: // Iterators:
     auto begin_leafs() noexcept{ return t_->begin_leafs(); }
     auto end_leafs() noexcept{ return t_->end_leafs(); }
     auto num_leafs() const noexcept{ return t_->num_leafs(); }
-
     auto begin_df(){ return dfs_iterator(t_->root()); }
     auto end_df(){ return dfs_iterator(); }
     auto begin_bf(){ return bfs_iterator(t_->root()); }
@@ -146,6 +145,7 @@ public:
     template<class Iterator>
     auto end_octant_nodes(Iterator it) noexcept{return it->data().nodes_end();}
 
+public:
     std::shared_ptr<tree_t> tree()const {return t_;}
 
     block_descriptor_t bounding_box()const noexcept{return bounding_box_;}

@@ -51,6 +51,7 @@ struct PoissonProblem
     make_field_type(error2          , float_type)
     make_field_type(lapace_field    , float_type)
     make_field_type(lapace_error    , float_type)
+    make_field_type(dummy_field     , float_type)
 
 
     using datablock_t = DataBlock<
@@ -62,7 +63,8 @@ struct PoissonProblem
         error,
         error2,
         lapace_field,
-        lapace_error
+        lapace_error,
+        dummy_field     
     >;
 
     using datablock_t_2 = DataBlock<Dim, node, lgf>;
@@ -100,11 +102,11 @@ struct PoissonProblem
     void initialize()
     {
 
-        //int count=0;
+        int count=0;
         for (auto it  = simulation_.domain_.begin_leafs();
                   it != simulation_.domain_.end_leafs(); ++it)
         {
-            //if(count++==4)simulation_.domain_.refine(it);
+            if(count++==4)simulation_.domain_.refine(it);
         }
         auto center = (simulation_.domain_.bounding_box().max() -
                        simulation_.domain_.bounding_box().min()) / 2.0 +
@@ -117,6 +119,9 @@ struct PoissonProblem
                   it != simulation_.domain_.end_leafs(); ++it)
         {
             
+            auto dx_level =  dx/std::pow(2,it->real_level());
+            auto scaling =  std::pow(2,it->real_level());
+
             // ijk-way of initializing
             auto base = it->data()->descriptor().base();
             auto max  = it->data()->descriptor().max();
@@ -131,9 +136,9 @@ struct PoissonProblem
 
                         
                         // manufactured solution:
-                        float_type x = static_cast<float_type>(i-center[0])*dx;
-                        float_type y = static_cast<float_type>(j-center[1])*dx;
-                        float_type z = static_cast<float_type>(k-center[2])*dx;
+                        float_type x = static_cast<float_type>(i-center[0]*scaling)*dx_level;
+                        float_type y = static_cast<float_type>(j-center[1]*scaling)*dx_level;
+                        float_type z = static_cast<float_type>(k-center[2]*scaling)*dx_level;
                         const auto x2 = x*x;
                         const auto y2 = y*y;
                         const auto z2 = z*z;
@@ -145,10 +150,34 @@ struct PoissonProblem
                             (a2)*(y2)*std::exp(-a*(x2)-a*(y2)-a*(z2))*4.0+
                             (a2)*(z2)*std::exp(-a*(x2)-a*(y2)-a*(z2))*4.0;
 
-                            if(it->real_level()==1)std::cout<<it->data()->get<source>(i,j,k)<<std::endl;
-
                         it->data()->get<phi_exact>(i,j,k) =
                             std::exp((-a*x2 - a*y2 - a*z2));
+                    }
+                }
+            }
+        }
+    }
+
+    void level_test()
+    {
+        std::cout<<simulation_.domain_.tree()->depth()<<std::endl;
+        for(int l=simulation_.domain_.tree()->base_level(); 
+                l< simulation_.domain_.tree()->depth();++l)
+        {
+            
+            for(auto it=simulation_.domain_.begin(l); 
+                    it!=simulation_.domain_.end(l);++it)
+            {
+                auto base = it->data()->descriptor().base();
+                auto max  = it->data()->descriptor().max();
+                for (auto k = base[2]; k <= max[2]; ++k)
+                {
+                    for (auto j = base[1]; j <= max[1]; ++j)
+                    {
+                        for (auto i = base[0]; i <= max[0]; ++i)
+                        {
+                            it->data()->get<dummy_field>(i,j,k)=it->real_level();
+                        }
                     }
                 }
             }
@@ -190,18 +219,18 @@ struct PoissonProblem
 
 
     
-    /*
-     * It solves the Poisson problem with homogeneous boundary conditions
+    /**
+     *  It solves the Poisson problem with homogeneous boundary conditions
      *
-     * \nabla^2 \phi = s, on \Omega, with
-     * \phi|_{\partial\Omega} = 0,
+     *  \nabla^2 \phi = s, on \Omega, with
+     *  \phi|_{\partial\Omega} = 0,
      *
-     * via the LGF approach, that is: \phi = IFFT(FFT(G * s)), where
-     * - \phi: is the numerical solution of ,
-     * - G: is the lattice Green's function,
-     * - s: is the source term,
-     * - FFT: is the fast-Fourier transform,
-     * - IFFT: is the inverse of the FFT
+     *  via the LGF approach, that is: \phi = IFFT(FFT(G * s)), where
+     *  - \phi: is the numerical solution of ,
+     *  - G: is the lattice Green's function,
+     *  - s: is the source term,
+     *  - FFT: is the fast-Fourier transform,
+     *  - IFFT: is the inverse of the FFT
      */
     void solve()
     {
@@ -235,6 +264,7 @@ struct PoissonProblem
         
         //simple_lapace_fd();
         compute_errors();
+        level_test();
         pcout << "Writing solution " << std::endl;
         simulation_.write("solution.vtk");
     }

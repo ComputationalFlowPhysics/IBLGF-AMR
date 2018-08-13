@@ -139,11 +139,15 @@ public: // Iterators:
     auto end_bf(){ return bfs_iterator(); }
     auto begin(){return begin_df();}
     auto end(){return end_df();}
+    auto begin(int _level){return t_->begin(_level);}
+    auto end(int _level){return t_->end(_level);}
 
     template<class Iterator>
     auto begin_octant_nodes(Iterator it) noexcept{return it->data().nodes_begin();}
     template<class Iterator>
     auto end_octant_nodes(Iterator it) noexcept{return it->data().nodes_end();}
+
+
 
 public:
     std::shared_ptr<tree_t> tree()const {return t_;}

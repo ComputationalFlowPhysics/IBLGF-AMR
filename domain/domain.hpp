@@ -31,6 +31,11 @@ public:
     using key_t = typename tree_t::key_type;
     using octant_t = typename tree_t::octant_type;
 
+
+    //iterator types
+    using dfs_iterator = typename tree_t::dfs_iterator;
+    using bfs_iterator = typename tree_t::bfs_iterator;
+
     using coordinate_type = typename tree_t::coordinate_type;
     using real_coordinate_type = typename tree_t::real_coordinate_type;
 
@@ -124,13 +129,17 @@ public:
     }
 
 
-
-
-
 public:
     auto begin_leafs() noexcept{ return t_->begin_leafs(); }
     auto end_leafs() noexcept{ return t_->end_leafs(); }
     auto num_leafs() const noexcept{ return t_->num_leafs(); }
+
+    auto begin_df(){ return dfs_iterator(t_->root()); }
+    auto end_df(){ return dfs_iterator(); }
+    auto begin_bf(){ return bfs_iterator(t_->root()); }
+    auto end_bf(){ return bfs_iterator(); }
+    auto begin(){return begin_df();}
+    auto end(){return end_df();}
 
     template<class Iterator>
     auto begin_octant_nodes(Iterator it) noexcept{return it->data().nodes_begin();}
@@ -175,6 +184,7 @@ public:
     }
 
 private:
+
     template<class DictionaryPtr>
     std::vector<block_descriptor_t> 
     parse_blocks(DictionaryPtr _dict, 

@@ -20,6 +20,10 @@ namespace octree
 {
 
 
+/** @brief Octree 
+ *
+ *  Parallel octree implementation using a full pointer-based implementation.
+ */
 template<int Dim, class DataType>
 class Tree
 {
@@ -58,8 +62,18 @@ public:
     ~Tree() = default;
 
  
-    //Construct given some boxes of unit 1 per box and 
-    //a maximal allowable domain extent for the base level
+    /** 
+     *  @brief Top-down construction of octree.
+     *
+     *  Given a vector of points and the correpsonding base level an
+     *  octree is top down constructed, the leafs extracted and the level maps
+     *  filled.  The base level implicitly sets the maximum allowable extent of
+     *  the sim.
+     *
+     *  \param[in] _points  vector of lower-left corners of octants
+     *  \param[in] _base_level Level of _points. Note that this fixed a maximum
+     *                         extent, which can be respresented.
+     */
     Tree (const std::vector<coordinate_type>& _points, int _base_level)
     {
         this->base_level_ = _base_level;
@@ -79,7 +93,7 @@ public:
 
 
 public:
-   
+
     octant_iterator begin_leafs() const noexcept {return leafs_.begin();}
     octant_iterator end_leafs  () const noexcept {return leafs_.end();}
 
@@ -129,12 +143,27 @@ public:
 
 public: //traversals
 
+    /**
+     * @brief Recursive depth-first traversal
+     *
+     * Note: Better to use the corresponding iterators.
+     * @param [in] f Function to be applied to dfs-node
+     */
 	template<class Function>
 	void traverse_dfs(Function f)
 	{
 		depth_first_search(root(), f);
 	}
 	
+
+    /**
+     * @brief Recursive breadth-first traversal
+     *
+     * Note: Better to use the corresponding iterators.
+     * @param [in] f Function to be applied to dfs-node
+     * @param [in] min_level Startlevel
+     * @param [in] max_level Endlevel
+     */
 	template<class Function>
 	void traverse_bfs(Function f, 
                       int min_level=0, 
@@ -268,15 +297,14 @@ private:  //Top down insert strategy
 
 
 private:
-    //octant_map_type leafs_; 
+    /** \brief Coordinate transform from octant coordinate to real coordinates*/
     coordinate_transform_t octant_to_real_coordinate_=&Tree::unit_transform;
-    int base_level_=0;
-    int depth_=0;
-    std::shared_ptr<octant_type> root_=nullptr;
 
-    //Convenience containers ... might be too expensive for book keeping
-    std::vector<octant_ptr_map_type> level_maps_;
-    octant_ptr_map_type leafs_;
+    int base_level_=0;                              ///< Base level 
+    int depth_=0;                                   ///< Tree depth
+    std::shared_ptr<octant_type> root_=nullptr;     ///< Tree root
+    std::vector<octant_ptr_map_type> level_maps_;   ///< Octants per level
+    octant_ptr_map_type leafs_;                     ///< Map of tree leafs 
 
 };
 

@@ -1,0 +1,32 @@
+simulation_parameters  
+{
+    L    = 3;
+    domain{ 
+        max_extent   = 50000;
+        block_extent = 8;
+       
+        block
+        {
+            base   = (0,0,0);
+            extent = (32,32,32);
+        }
+        //block
+        //{
+        //    base   = (32,0,0);
+        //    extent = (32,32,32);
+        //}
+   
+        //block
+        //{
+        //    base   = (0,0,32);
+        //    extent = (32,32,32);
+        //}
+        //block
+        //{
+        //    base   = (64,0,64);
+        //    extent = (16,16,16);
+        //}
+
+    }
+
+}

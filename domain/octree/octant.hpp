@@ -67,19 +67,19 @@ public: //Ctors
     auto neighbor(const coordinate_type& _offset )
     {
         octant_base_t nn(octant_base_t::neighbor( _offset ));
-        return this->tree()->find_octant_any_level(nn);
+        return this->tree()->find_leaf_any_level(nn);
     }
 
     auto get_vertices() noexcept
     {
-        std::vector<decltype(this->tree()->begin_octants())> res;
+        std::vector<decltype(this->tree()->begin_leafs())> res;
         if(this->is_hanging()|| this->is_boundary()) return res;
 
         rcIterator<Dim>::apply(coordinate_type(0), coordinate_type(2), 
                 [&]( const coordinate_type& _p ) 
         {
                 auto nnn=neighbor(_p);
-                if(nnn!=this->tree()->end_octants())
+                if(nnn!=this->tree()->end_leafs())
                     res.emplace_back(nnn);
         });
             return res;
@@ -88,7 +88,7 @@ public: //Ctors
     template<class Iterator>
     auto compute_index(const Iterator&  _it)
     {
-        return std::distance(this->tree()->begin_octants(), _it);
+        return std::distance(this->tree()->begin_leafs(), _it);
     }
     void index(int _idx)noexcept {idx_=_idx;}
     int index()const noexcept {return idx_;}
@@ -102,32 +102,12 @@ public: //Ctors
 
 
 protected:
-    void determine_hangingOctants() noexcept
-    {
-        if(this->is_hanging()) return;
-        int vertex_idx=0;
-        rcIterator<Dim>::apply(this->coordinate(), coordinate_type(2), 
-                [&]( const coordinate_type& _p ) 
-        {
-            octant_base_t n_tmp(_p, this->level(),this->tree());
-            bool found =false;
-            auto it=this->tree()->find_octant_any_level(n_tmp);
-            if(it!=this->tree()->end_octants()) { found=true; }
-            if(!found)
-            {
-                octant_base_t n_tmp(_p, this->level(),this->tree());
-                n_tmp.flag(node_flag::hanging);
-                Octant c(n_tmp);
-                this->tree()->insert_octant(c);
-            }
-            ++vertex_idx;
-        });
-    }
 
-	void refine(unsigned int i)
+	Octant* refine(unsigned int i)
 	{
         children_[i]= std::make_shared<Octant> ( this->child_base(i));
 		children_[i]->parent_ = this;
+        return children_[i].get();
 	}
 
 protected:
@@ -137,7 +117,7 @@ protected:
 
     Octant* parent_;
 
-    //TODO:  This shoudl be a unique pointer,once the map is removed
+    //TODO:  Should be a unique pointer
     std::array<std::shared_ptr<Octant>,pow(2,Dim)> children_=
     {{nullptr,nullptr,nullptr,nullptr, nullptr,nullptr,nullptr,nullptr}};
 };

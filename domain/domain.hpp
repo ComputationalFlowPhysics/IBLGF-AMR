@@ -105,8 +105,6 @@ public:
         for(auto& b: bases) b-=base_;
         auto base_level=key_t::minimum_level(_maxExtent/_blockExtent);
         t_ = std::make_shared<tree_t>(bases, base_level);
-        t_->determine_hangingOctants();
-
 
         //Assign octant to real coordinate transform:
         t_->get_octant_to_real_coordinate()=
@@ -117,11 +115,10 @@ public:
             };
 
         //instantiate blocks
-        for(auto it=t_->begin_octants();it!=t_->end_octants();++it)
+        for(auto it=t_->begin_leafs();it!=t_->end_leafs();++it)
         {
             const int level=0;
             auto bbase=t_->octant_to_real_coordinate(it->coordinate());
-            if(it->is_hanging())continue;
             it->data()=std::make_shared<datablock_t>(bbase, _blockExtent,level);
         }
     }
@@ -131,9 +128,9 @@ public:
 
 
 public:
-    auto begin_octants() noexcept{ return t_->begin_octants(); }
-    auto end_octants() noexcept{ return t_->end_octants(); }
-    auto num_octants() const noexcept{ return t_->num_octants(); }
+    auto begin_leafs() noexcept{ return t_->begin_leafs(); }
+    auto end_leafs() noexcept{ return t_->end_leafs(); }
+    auto num_leafs() const noexcept{ return t_->num_leafs(); }
 
     template<class Iterator>
     auto begin_octant_nodes(Iterator it) noexcept{return it->data().nodes_begin();}
@@ -149,9 +146,9 @@ public:
     {
         tree()->refine(octant_it,[this](auto& child_it)
         {
-            auto bbase=t_->octant_to_real_coordinate(child_it.coordinate());
-            auto level = child_it.level()-this->tree()->base_level();
-            child_it.data()=std::make_shared<datablock_t>(bbase, block_extent_,level);
+            auto bbase=t_->octant_to_real_coordinate(child_it->coordinate());
+            auto level = child_it->level()-this->tree()->base_level();
+            child_it->data()=std::make_shared<datablock_t>(bbase, block_extent_,level);
         });
     }
 
@@ -163,12 +160,12 @@ public:
     
     friend std::ostream& operator<<(std::ostream& os, Domain& d) 
     {
-        os<<"Number of octants: "<<d.num_octants()<<std::endl;
+        os<<"Number of octants: "<<d.num_leafs()<<std::endl;
         os<<"Block extent : "<<d.block_extent_<<std::endl;
 
         os<<"Domain Bounding Box: "<<d.bounding_box_<<std::endl;
         os<<"Fields:"<<std::endl;
-        auto it=d.begin_octants();
+        auto it=d.begin_leafs();
         it->data()->for_fields([&](auto& field)
                 {
                     os<<"\t "<<field.name()<<std::endl;

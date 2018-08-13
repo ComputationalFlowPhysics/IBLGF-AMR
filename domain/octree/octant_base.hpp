@@ -67,7 +67,7 @@ public:
     tree_type* tree()const noexcept{return t_;}
     auto level() const noexcept{return key_.level();}
     auto tree_level() const noexcept{return key_.level();}
-    auto real_level() const noexcept{return key_.level()-t_->base_level();}
+    auto real_level() const noexcept{return tree_level()-t_->base_level();}
 
     coordinate_type coordinate() const noexcept
     {

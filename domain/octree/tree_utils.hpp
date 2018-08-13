@@ -104,6 +104,30 @@ public:
     const mapped_type& operator*() { return iterator_t::operator*().second; }
 };
 
+
+template<class MapType>
+class MapValuePtrIterator : public MapType::iterator 
+{
+public:
+    using mapped_type =typename MapType::mapped_type;
+    using key_type =typename MapType::key_type;
+    using iterator_t =typename MapType::iterator;
+
+public:
+    MapValuePtrIterator()
+    : iterator_t(){}
+
+    MapValuePtrIterator( const iterator_t& _it )
+    : iterator_t(_it){}
+
+    mapped_type operator->() noexcept
+    { 
+        return iterator_t::operator->()->second ; 
+    }
+    mapped_type operator*() { return iterator_t::operator*().second; }
+};
+
+
 namespace tuple_utils
 {
 

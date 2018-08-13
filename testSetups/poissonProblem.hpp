@@ -101,15 +101,11 @@ struct PoissonProblem
     {
 
         int count=0;
-        for (auto it  = simulation_.domain_.begin_octants();
-                  it != simulation_.domain_.end_octants(); ++it)
+        for (auto it  = simulation_.domain_.begin_leafs();
+                  it != simulation_.domain_.end_leafs(); ++it)
         {
-            if (it->is_hanging()) continue;
-
-            if(count++==4)simulation_.domain_.refine(it);
+            //if(count++==4)simulation_.domain_.refine(it);
         }
-        simulation_.domain_.tree()->determine_hangingOctants();
-        
         auto center = (simulation_.domain_.bounding_box().max() -
                        simulation_.domain_.bounding_box().min()) / 2.0 +
                        simulation_.domain_.bounding_box().min();
@@ -117,10 +113,9 @@ struct PoissonProblem
         const float_type a  = 10.;
         const float_type a2 = a*a;
    
-        for (auto it  = simulation_.domain_.begin_octants();
-                  it != simulation_.domain_.end_octants(); ++it)
+        for (auto it  = simulation_.domain_.begin_leafs();
+                  it != simulation_.domain_.end_leafs(); ++it)
         {
-            if (it->is_hanging()) continue;
             
             // ijk-way of initializing
             auto base = it->data()->descriptor().base();
@@ -133,6 +128,7 @@ struct PoissonProblem
                     {
                         it->data()->get<source>(i,j,k)  = 1.0;
                         it->data()->get<phi_num>(i,j,k) = 0.0;
+
                         
                         // manufactured solution:
                         float_type x = static_cast<float_type>(i-center[0])*dx;
@@ -142,11 +138,14 @@ struct PoissonProblem
                         const auto y2 = y*y;
                         const auto z2 = z*z;
 
+
                         it->data()->get<source>(i,j,k) =
                             a*std::exp(-a*(x2)-a*(y2)-a*(z2))*(-6.0)+ 
                             (a2)*(x2)*std::exp(-a*(x2)-a*(y2)-a*(z2))*4.0 + 
                             (a2)*(y2)*std::exp(-a*(x2)-a*(y2)-a*(z2))*4.0+
                             (a2)*(z2)*std::exp(-a*(x2)-a*(y2)-a*(z2))*4.0;
+
+                            if(it->real_level()==1)std::cout<<it->data()->get<source>(i,j,k)<<std::endl;
 
                         it->data()->get<phi_exact>(i,j,k) =
                             std::exp((-a*x2 - a*y2 - a*z2));
@@ -159,10 +158,9 @@ struct PoissonProblem
     void simple_lapace_fd()
     {
         //Only in interior for simplicity:
-        for (auto it  = simulation_.domain_.begin_octants();
-                it != simulation_.domain_.end_octants(); ++it)
+        for (auto it  = simulation_.domain_.begin_leafs();
+                it != simulation_.domain_.end_leafs(); ++it)
         {
-            if (it->is_hanging()) continue;
 
             auto base = it->data()->descriptor().base();
             auto max  = it->data()->descriptor().max();
@@ -209,16 +207,14 @@ struct PoissonProblem
     {
         // allocate lgf
         std::vector<float_type> lgf;
-        for (auto it_i  = simulation_.domain_.begin_octants();
-                  it_i != simulation_.domain_.end_octants(); ++it_i)
+        for (auto it_i  = simulation_.domain_.begin_leafs();
+                  it_i != simulation_.domain_.end_leafs(); ++it_i)
         {
-            if (it_i->is_hanging()) continue;
             const auto ibase= it_i->data()->descriptor().base();
 
-            for (auto it_j  = simulation_.domain_.begin_octants();
-                      it_j != simulation_.domain_.end_octants(); ++it_j)
+            for (auto it_j  = simulation_.domain_.begin_leafs();
+                      it_j != simulation_.domain_.end_leafs(); ++it_j)
             {
-                if (it_j->is_hanging()) continue;
 
                 const auto jbase   = it_j->data()->descriptor().base();
                 const auto jextent = it_j->data()->descriptor().extent();
@@ -251,8 +247,8 @@ struct PoissonProblem
      */
     void interpolate()
     {
-        for (auto it_i  = simulation_.domain_.begin_octants();
-                  it_i != simulation_.domain_.end_octants(); ++it_i)
+        for (auto it_i  = simulation_.domain_.begin_leafs();
+                  it_i != simulation_.domain_.end_leafs(); ++it_i)
         {
             if (it_i->is_hanging()) continue;
             
@@ -271,8 +267,8 @@ struct PoissonProblem
      */
     void coarsify()
     {
-        for (auto it_i  = simulation_.domain_.begin_octants();
-                  it_i != simulation_.domain_.end_octants(); ++it_i)
+        for (auto it_i  = simulation_.domain_.begin_leafs();
+                  it_i != simulation_.domain_.end_leafs(); ++it_i)
         {
             if (it_i->is_hanging()) continue;
             
@@ -293,8 +289,8 @@ struct PoissonProblem
         auto L2   = 0.;
         auto LInf = -1.0;
 
-        for (auto it_i  = simulation_.domain_.begin_octants();
-             it_i != simulation_.domain_.end_octants(); ++it_i)
+        for (auto it_i  = simulation_.domain_.begin_leafs();
+             it_i != simulation_.domain_.end_leafs(); ++it_i)
         {
             if (it_i->is_hanging()) continue;
 

@@ -37,7 +37,7 @@ public:
         ofs<<"ASCII"<<std::endl;
         ofs<<"DATASET UNSTRUCTURED_GRID"<<std::endl;
         int nPoints=0;
-        for(auto it=_lt.begin_octants();it!=_lt.end_octants();++it)
+        for(auto it=_lt.begin_leafs();it!=_lt.end_leafs();++it)
         {
             if(!it->is_hanging()) 
             {
@@ -48,7 +48,7 @@ public:
         ofs<<"POINTS "<<nPoints<<" float"<<std::endl;
         int nCells=0;
         int _count=0;
-        for(auto it=_lt.begin_octants();it!=_lt.end_octants();++it)
+        for(auto it=_lt.begin_leafs();it!=_lt.end_leafs();++it)
         {
             if(!it->is_hanging()) 
             {
@@ -69,7 +69,7 @@ public:
         //connectivity
         //FIXME: octant borders are duplicated for now, needs fixing
         //       In general this is shit
-        for (auto it = _lt.begin_octants(); it != _lt.end_octants(); ++it)
+        for (auto it = _lt.begin_leafs(); it != _lt.end_leafs(); ++it)
         {
             if (!it->is_hanging())
             {
@@ -106,7 +106,7 @@ public:
         //    std::string name="cell_data_"+std::string(T::name());
         //    ofs<<"SCALARS "<<name<<" float "<<std::endl;
         //    ofs<<"LOOKUP_TABLE default"<<std::endl;
-        //    for(auto it=_lt.begin_octants();it!=_lt.end_octants();++it)
+        //    for(auto it=_lt.begin_leafs();it!=_lt.end_leafs();++it)
         //    {
         //        if(!it->is_hanging())
         //        {
@@ -127,7 +127,7 @@ public:
             std::string name = "vertex_data_"+std::string(T::name());
             ofs << "SCALARS " << name << " float " << std::endl;
             ofs << "LOOKUP_TABLE default"          << std::endl;
-            for (auto it = _lt.begin_octants(); it != _lt.end_octants(); ++it)
+            for (auto it = _lt.begin_leafs(); it != _lt.end_leafs(); ++it)
             {
                 if (!it->is_hanging())
                 {

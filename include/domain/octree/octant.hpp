@@ -45,81 +45,80 @@ public:
 
 public: //Ctors
 
-	Octant() = delete;
-	Octant(const Octant& other) = default;
-	Octant(Octant&& other) = default;
-	Octant& operator=(const Octant& other) & = default;
-	Octant& operator=(Octant&& other) & = default;
-	~Octant() = default;
+	Octant           ()                       = delete;
+	Octant           (const Octant&  other)   = default;
+	Octant           (      Octant&& other)   = default;
+	Octant& operator=(const Octant&  other) & = default;
+	Octant& operator=(      Octant&& other) & = default;
+	~Octant          ()                       = default;
 
-    Octant(const octant_base_t& _n)
-    :super_type(_n) {}
+    Octant(const octant_base_t& _n) : super_type(_n) {}
 
     Octant(const octant_base_t& _n, data_type& _data)
-        :super_type(_n), data_(_data) { }
+        : super_type(_n), data_(_data) { }
 
     Octant(const coordinate_type& _x, int _level, tree_type* _tr)
-        :super_type(key_type(_x,_level),_tr) { }
+        : super_type(key_type(_x,_level),_tr) { }
 
 
-    //Returns end() if there is no neighbor 
-    //TODO: make this an optional or std::pair
-    auto neighbor(const coordinate_type& _offset )
+    // Returns end() if there is no neighbor
+    // TODO: make this an optional or std::pair
+    auto neighbor(const coordinate_type& _offset)
     {
-        octant_base_t nn(octant_base_t::neighbor( _offset ));
+        octant_base_t nn(octant_base_t::neighbor(_offset));
         return this->tree()->find_leaf_any_level(nn);
     }
 
     auto get_vertices() noexcept
     {
         std::vector<decltype(this->tree()->begin_leafs())> res;
-        if(this->is_hanging()|| this->is_boundary()) return res;
+        if (this->is_hanging() || this->is_boundary()) return res;
 
-        rcIterator<Dim>::apply(coordinate_type(0), coordinate_type(2), 
-                [&]( const coordinate_type& _p ) 
+        rcIterator<Dim>::apply(coordinate_type(0),
+                               coordinate_type(2),
+                               [&](const coordinate_type& _p)
         {
-                auto nnn=neighbor(_p);
-                if(nnn!=this->tree()->end_leafs())
+                auto nnn = neighbor(_p);
+                if (nnn != this->tree()->end_leafs())
                     res.emplace_back(nnn);
         });
             return res;
     }
  
     template<class Iterator>
-    auto compute_index(const Iterator&  _it)
+    auto compute_index(const Iterator& _it)
     {
         return std::distance(this->tree()->begin_leafs(), _it);
     }
-    void index(int _idx)noexcept {idx_=_idx;}
-    int index()const noexcept {return idx_;}
+    void index(int _idx)       noexcept {idx_ = _idx;}
+    int  index()         const noexcept {return idx_;}
 
-    auto data()const noexcept {return data_;}
-    auto& data()noexcept {return data_;}
+    auto  data() const noexcept {return data_;}
+    auto& data()       noexcept {return data_;}
 
-
-    Octant* parent() const noexcept{return parent_;}
-    Octant* child(int i) const noexcept{return children_[i].get();}
+    Octant* parent()      const noexcept{return parent_;}
+    Octant* child (int i) const noexcept{return children_[i].get();}
 
 
 protected:
 
 	Octant* refine(unsigned int i)
 	{
-        children_[i]= std::make_shared<Octant> ( this->child_base(i));
+        children_[i] = std::make_shared<Octant> (this->child_base(i));
 		children_[i]->parent_ = this;
         return children_[i].get();
 	}
 
 protected:
 
-    int idx_=0;
-    std::shared_ptr<data_type> data_=nullptr;
+    int idx_ = 0;
+    std::shared_ptr<data_type> data_ = nullptr;
 
     Octant* parent_;
 
     //TODO:  Should be a unique pointer
-    std::array<std::shared_ptr<Octant>,pow(2,Dim)> children_=
-    {{nullptr,nullptr,nullptr,nullptr, nullptr,nullptr,nullptr,nullptr}};
+    std::array<std::shared_ptr<Octant>,pow(2,Dim)> children_ =
+        {{nullptr,nullptr,nullptr,nullptr, nullptr,nullptr,nullptr,nullptr}};
 };
 
 

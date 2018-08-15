@@ -23,20 +23,20 @@ public:
 
     using datablock_t = DataBlock;
     using block_descriptor_t = typename datablock_t::block_descriptor_type;
-    using extent_t = typename block_descriptor_t::extent_t;
-    using base_t = typename block_descriptor_t::base_t;
-    using scalar_coord_type = typename block_descriptor_t::data_type;
+    using extent_t           = typename block_descriptor_t::extent_t;
+    using base_t             = typename block_descriptor_t::base_t;
+    using scalar_coord_type  = typename block_descriptor_t::data_type;
 
-    using tree_t = octree::Tree<Dim,datablock_t>;
-    using key_t = typename tree_t::key_type;
+    using tree_t   = octree::Tree<Dim,datablock_t>;
+    using key_t    = typename tree_t::key_type;
     using octant_t = typename tree_t::octant_type;
 
 
-    //iterator types
+    // iterator types
     using dfs_iterator = typename tree_t::dfs_iterator;
     using bfs_iterator = typename tree_t::bfs_iterator;
 
-    using coordinate_type = typename tree_t::coordinate_type;
+    using coordinate_type      = typename tree_t::coordinate_type;
     using real_coordinate_type = typename tree_t::real_coordinate_type;
 
     using field_type_iterator_t = typename datablock_t::field_type_iterator_t;
@@ -45,10 +45,10 @@ public:
 
 public:
 
-    Domain(const Domain& other) = delete;
-    Domain(Domain&& other) = default;
-    Domain& operator=(const Domain& other) & = delete;
-    Domain& operator=(Domain&& other) & = default;
+    Domain(const Domain&  other) = delete;
+    Domain(      Domain&& other) = default;
+    Domain& operator=(const Domain&  other) & = delete;
+    Domain& operator=(      Domain&& other) & = default;
     ~Domain() = default;
 
 
@@ -69,17 +69,17 @@ public:
     {
         extent_t e(_blockExtent);
         std::vector<base_t> bases;
-        for( auto& b :  _baseBlocks)
+        for (auto& b : _baseBlocks)
         {
-            for(int d =0;d<Dim;++d)
+            for (int d = 0; d < Dim; ++d)
             {
-                if(b.extent()[d]%e[d])
+                if (b.extent()[d]%e[d])
                 {
                     throw 
                     std::runtime_error(
                     "Domain: Extent of blocks are not evenly divisible");
                 }
-                if(std::abs(b.base()[d])%e[d] /*&& e[d]%std::abs(b.base()[d])*/)
+                if (std::abs(b.base()[d])%e[d]/*&& e[d]%std::abs(b.base()[d])*/)
                 {
                     throw 
                     std::runtime_error(
@@ -130,17 +130,17 @@ public:
 
 
 public: // Iterators:
-    auto begin_leafs() noexcept{ return t_->begin_leafs(); }
-    auto end_leafs() noexcept{ return t_->end_leafs(); }
+    auto begin_leafs()     noexcept{ return t_->begin_leafs(); }
+    auto end_leafs()       noexcept{ return t_->end_leafs(); }
     auto num_leafs() const noexcept{ return t_->num_leafs(); }
-    auto begin_df(){ return dfs_iterator(t_->root()); }
-    auto end_df(){ return dfs_iterator(); }
-    auto begin_bf(){ return bfs_iterator(t_->root()); }
-    auto end_bf(){ return bfs_iterator(); }
-    auto begin(){return begin_df();}
-    auto end(){return end_df();}
-    auto begin(int _level){return t_->begin(_level);}
-    auto end(int _level){return t_->end(_level);}
+    auto begin_df()                { return dfs_iterator(t_->root()); }
+    auto end_df()                  { return dfs_iterator(); }
+    auto begin_bf()                { return bfs_iterator(t_->root()); }
+    auto end_bf()                  { return bfs_iterator(); }
+    auto begin()                   { return begin_df(); }
+    auto end()                     { return end_df(); }
+    auto begin(int _level)         { return t_->begin(_level); }
+    auto end(int _level)           { return t_->end(_level); }
 
     template<class Iterator>
     auto begin_octant_nodes(Iterator it) noexcept{return it->data().nodes_begin();}

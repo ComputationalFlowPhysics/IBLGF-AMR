@@ -32,22 +32,22 @@ class Octant_base
 
 public:
 
-    using key_type = Key<Dim>;
-    using coordinate_type=typename key_type::coordinate_type;
+    using key_type             = Key<Dim>;
+    using coordinate_type      = typename key_type::coordinate_type;
     using real_coordinate_type = types::coordinate_type<float_type,Dim>;
-    using key_index_type = typename key_type::value_type;
+    using key_index_type       = typename key_type::value_type;
 
     using tree_type = Tree<Dim, DataType>;
-    static constexpr int num_children(){return pow(2,Dim);};
+    static constexpr int num_children(){ return pow(2,Dim); };
 
 public:
 
-	Octant_base() = delete;
-	Octant_base(const Octant_base& other) = default;
-	Octant_base(Octant_base&& other) = default;
+	Octant_base()                                      = delete;
+	Octant_base(const Octant_base& other)              = default;
+	Octant_base(Octant_base&& other)                   = default;
 	Octant_base& operator=(const Octant_base& other) & = default;
-	Octant_base& operator=(Octant_base&& other) & = default;
-	~Octant_base() = default;
+	Octant_base& operator=(Octant_base&& other)      & = default;
+	~Octant_base()                                     = default;
 
 
 

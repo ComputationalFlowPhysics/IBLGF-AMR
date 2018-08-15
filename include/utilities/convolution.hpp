@@ -184,16 +184,15 @@ public: //Ctors
         fft_forward1.copy_input(_b,dims1_);
         fft_forward1.execute();
 
-        auto& f0=fft_forward0.output();
-        auto& f1=fft_forward1.output();
+        auto& f0 = fft_forward0.output();
+        auto& f1 = fft_forward1.output();
         complex_vector_t prod(f0.size());
-        const float_type scale = 1.0/(padded_dims[0]*padded_dims[1]*padded_dims[2]);
-        for(std::size_t i=0; i< prod.size();++i)
+        const float_type scale = 1.0 / (padded_dims[0] * padded_dims[1] * padded_dims[2]);
+        for(std::size_t i = 0; i < prod.size(); ++i)
         {
-            fft_backward.input()[i]=f0[i]*f1[i]*scale;
+            fft_backward.input()[i] = f0[i]*f1[i]*scale;
         }
         fft_backward.execute();
-
     }
 
     auto& output()
@@ -202,19 +201,34 @@ public: //Ctors
     }
 
     template<class Block,class Field>
-    void add_solution(const Block& _b, 
-                      Field& F,
-                      const float_type _scale)
+    void add_solution(const Block& _b, Field& F, const float_type _scale)
     {
-        int count=0;
-        for(int k = dims0_[2]-1;k< dims0_[2]+_b.extent()[2]-1;++k)
+        int count = 0;
+        for (int k = dims0_[2]-1; k < dims0_[2]+_b.extent()[2]-1; ++k)
         {
-            for(int j = dims0_[1]-1;j<dims0_[1]+_b.extent()[1]-1;++j)
+            for (int j = dims0_[1]-1; j < dims0_[1]+_b.extent()[1]-1; ++j)
             {
-                for(int i = dims0_[0]-1;i<dims0_[0]+_b.extent()[0]-1;++i)
+                for (int i = dims0_[0]-1; i < dims0_[0]+_b.extent()[0]-1; ++i)
                 {
-                    F[count++]+=_scale*fft_backward.output()
-                    [ i+j*padded_dims[0]+k*padded_dims[0]*padded_dims[1]];
+                    F[count++] += _scale*fft_backward.output()
+                    [i+j*padded_dims[0]+k*padded_dims[0]*padded_dims[1]];
+                }
+            }
+        }
+    }
+    
+    template<class Block,class Field>
+    void add_solution_finer(const Block& _b, Field& F, const float_type _scale)
+    {
+        int count = 0;
+        for (int k = dims0_[2]-1; k < dims0_[2]+_b.extent()[2]-1; k+=2)
+        {
+            for (int j = dims0_[1]-1; j < dims0_[1]+_b.extent()[1]-1; j+=2)
+            {
+                for (int i = dims0_[0]-1; i < dims0_[0]+_b.extent()[0]-1; i+=2)
+                {
+                    F[count+=2] += _scale*fft_backward.output()
+                    [i+j*padded_dims[0]+k*padded_dims[0]*padded_dims[1]];
                 }
             }
         }

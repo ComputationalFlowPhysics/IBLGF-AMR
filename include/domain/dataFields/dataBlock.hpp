@@ -53,8 +53,8 @@ public: //member types
 
 public: //Ctors:
 
-    DataBlock()=default;
-    ~DataBlock() =default;
+    DataBlock()  = default;
+    ~DataBlock() = default;
     DataBlock(const DataBlock& rhs)=delete;
 	DataBlock& operator=(const DataBlock&) & = default;
 

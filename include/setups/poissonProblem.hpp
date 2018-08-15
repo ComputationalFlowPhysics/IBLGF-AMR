@@ -106,7 +106,7 @@ struct PoissonProblem
         for (auto it  = simulation_.domain_.begin_leafs();
                   it != simulation_.domain_.end_leafs(); ++it)
         {
-            if(count++==4)simulation_.domain_.refine(it);
+            if (count++ == 0)simulation_.domain_.refine(it);
         }
         auto center = (simulation_.domain_.bounding_box().max() -
                        simulation_.domain_.bounding_box().min()) / 2.0 +
@@ -236,29 +236,99 @@ struct PoissonProblem
     {
         // allocate lgf
         std::vector<float_type> lgf;
+        
         for (auto it_i  = simulation_.domain_.begin_leafs();
                   it_i != simulation_.domain_.end_leafs(); ++it_i)
         {
-            const auto ibase= it_i->data()->descriptor().base();
+            auto i = std::distance(simulation_.domain_.begin_leafs(), it_i);
+            pcout << "i     = " << i << std::endl;
+            pcout << "level = " << it_i->data()->descriptor().level() << std::endl;
+            pcout << "size  = " << it_i->data()->descriptor().size()  << std::endl;
+            pcout << "index = " << it_i->index() << std::endl;
 
+
+
+            
             for (auto it_j  = simulation_.domain_.begin_leafs();
                       it_j != simulation_.domain_.end_leafs(); ++it_j)
             {
-
-                const auto jbase   = it_j->data()->descriptor().base();
-                const auto jextent = it_j->data()->descriptor().extent();
-                const auto shift   = ibase - jbase;
-
-                const auto base_lgf   = shift - (jextent - 1);
-                const auto extent_lgf = 2 * (jextent) - 1;
+                // Self-level convolutions (for blocks at the same level)
+                if (it_i->data()->descriptor().level() ==
+                    it_j->data()->descriptor().level())
+                {
+                    const auto ibase   = it_i->data()->descriptor().base();
+                    const auto jbase   = it_j->data()->descriptor().base();
+                    const auto jextent = it_j->data()->descriptor().extent();
+                    const auto shift   = ibase - jbase;
+                    
+                    const auto base_lgf   = shift - (jextent - 1);
+                    const auto extent_lgf = 2 * (jextent) - 1;
                 
-                lgf_.get_subblock(block_descriptor_t(base_lgf,
-                                                     extent_lgf), lgf);
+                    pcout << "SELF" << std::endl;
+                    pcout << "base_lgf   = " << base_lgf   << std::endl;
+                    pcout << "extent_lgf = " << extent_lgf << std::endl;
+                    
+                    lgf_.get_subblock(block_descriptor_t(base_lgf,
+                                                         extent_lgf), lgf);
 
-                conv.execute(lgf, it_j->data()->get<source>().data());
-                block_descriptor_t extractor(jbase, jextent);
-                conv.add_solution(extractor,
-                                  it_i->data()->get<phi_num>().data(), dx*dx);
+                    conv.execute(lgf, it_j->data()->get<source>().data());
+                    block_descriptor_t extractor(jbase, jextent);
+                    conv.add_solution(
+                        extractor,
+                        it_i->data()->get<phi_num>().data(),
+                        dx*dx);
+                }
+                // Cross-level convolutions (for target finer than source)
+                else if (it_i->data()->descriptor().level() >
+                         it_j->data()->descriptor().level())
+                {
+                    //octant_t* parent_block = it_i->parent();
+
+                    const auto ibase   = it_i->parent()->data()->descriptor().base();
+                    const auto jbase   = it_j->data()->descriptor().base();
+                    const auto jextent = it_j->data()->descriptor().extent();
+                    const auto shift   = ibase - jbase;
+
+                    const auto base_lgf   = shift - (jextent - 1);
+                    const auto extent_lgf = (jextent) - 1;
+                    
+                    lgf_.get_subblock(block_descriptor_t(base_lgf,
+                                                         extent_lgf), lgf);
+                    
+                    conv.execute(lgf, it_j->data()->get<source>().data());
+                    block_descriptor_t extractor(jbase, jextent);
+                    conv.add_solution(
+                        extractor,
+                        it_i->parent()->data()->get<phi_num>().data(),
+                        dx*dx);
+                    
+                    this->interpolate(
+                        it_i->parent()->data()->descriptor(),
+                        it_i->parent()->data()->get<phi_num>().data(),
+                        it_i->data()->get<phi_num>().data());
+                    
+                    // Advance to next block skipping children
+                    std::advance (it_i, 8);
+                    
+                    pcout << "TARGET FINER" << std::endl;
+                    pcout << "base_lgf   = " << base_lgf   << std::endl;
+                    pcout << "extent_lgf = " << extent_lgf << std::endl;
+                }
+                // Cross-level convolutions (for target coarse than source)
+                else
+                {
+                    const auto ibase = it_i->data()->descriptor().base();
+                    const auto jbase   = it_j->data()->descriptor().base();
+                    const auto jextent = it_j->data()->descriptor().extent();
+                    const auto shift   = ibase - jbase;
+                    
+                    const auto base_lgf   = shift - (jextent - 1);
+                    const auto extent_lgf = 2 * (jextent) - 1;
+                    
+                    pcout << "TARGET COARSER" << std::endl;
+                    pcout << "base_lgf   = " << base_lgf   << std::endl;
+                    pcout << "extent_lgf = " << extent_lgf << std::endl;
+                }
             }
         }
         
@@ -275,16 +345,32 @@ struct PoissonProblem
      * Interpolate a given field from corser to finer level.
      * Note: maximum jump allowed is one level.
      */
-    void interpolate()
+    template<class Block, class Field>
+    void interpolate(const Block& _b, Field& F1, Field& F2)
     {
-        for (auto it_i  = simulation_.domain_.begin_leafs();
-                  it_i != simulation_.domain_.end_leafs(); ++it_i)
+        int count1  = 0;
+        pcout << "extent 2 = " << _b.extent()[2]-1 << std::endl;
+        pcout << "extent 1 = " << _b.extent()[1]-1 << std::endl;
+        pcout << "extent 0 = " << _b.extent()[0]-1 << std::endl;
+        for (auto c = 0; c < 8; ++c)
         {
-            if (it_i->is_hanging()) continue;
-            
-            for (std::size_t i = 0; i < it_i->data()->nodes().size(); ++i)
+            int count20 = 0;
+            int count21 = 1;
+            for (int k = 0; k < _b.extent()[2]-1; ++k)
             {
-                
+                for (int j = 0; j < _b.extent()[1]-1; ++j)
+                {
+                    for (int i = 0; i < _b.extent()[0]-1; ++i)
+                    {
+                        // Copy value
+                        F2[count20] += F1[count1];
+                        F2[count21] += (F1[count1+1] + F1[count1-1]) / 2.0;
+                    
+                        count1++;
+                        count20 += 2;
+                        count21 += 2;
+                    }
+                }
             }
         }
     }

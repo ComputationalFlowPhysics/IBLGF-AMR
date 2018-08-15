@@ -67,24 +67,23 @@ public:
      *
      *  Given a vector of points and the correpsonding base level an
      *  octree is top down constructed, the leafs extracted and the level maps
-     *  filled.  The base level implicitly sets the maximum allowable extent of
+     *  filled. The base level implicitly sets the maximum allowable extent of
      *  the sim.
      *
-     *  \param[in] _points  vector of lower-left corners of octants
+     *  \param[in] _points     Vector of lower-left corners of octants
      *  \param[in] _base_level Level of _points. Note that this fixed a maximum
      *                         extent, which can be respresented.
      */
     Tree (const std::vector<coordinate_type>& _points, int _base_level)
     {
         this->base_level_ = _base_level;
-        depth_ = base_level_+1;
+        depth_ = base_level_ + 1;
 
         //Construct interior octants, leaf map && level map
-        root_=std::make_shared<octant_type>(
-                coordinate_type(0), 0,this);
-        for(auto& p : _points)
+        root_ = std::make_shared<octant_type>(coordinate_type(0), 0, this);
+        for (auto& p : _points)
         {
-            auto leaf=this->insert_td(p,this->base_level_);
+            auto leaf = this->insert_td(p, this->base_level_);
             leafs_.emplace(leaf->key(), leaf);
         }
         construct_level_maps();
@@ -99,10 +98,10 @@ public:
     octant_iterator begin_leafs() noexcept {return leafs_.begin();}
     octant_iterator end_leafs  () noexcept {return leafs_.end();}
 
-    octant_iterator begin(int _level)noexcept{return level_maps_[_level].begin();}
-    octant_iterator end(int _level)noexcept{return level_maps_[_level].end();}
-    octant_iterator begin(int _level)const noexcept{return level_maps_[_level].begin();}
-    octant_iterator end(int _level)const noexcept{return level_maps_[_level].end();}
+    octant_iterator begin(int _level)       noexcept{return level_maps_[_level].begin();}
+    octant_iterator end  (int _level)       noexcept{return level_maps_[_level].end();}
+    octant_iterator begin(int _level) const noexcept{return level_maps_[_level].begin();}
+    octant_iterator end  (int _level) const noexcept{return level_maps_[_level].end();}
 
     auto num_leafs() const noexcept {return leafs_.size();}
 
@@ -196,20 +195,20 @@ private:
 
     auto find_leaf_any_level(octant_base_type _node)  noexcept
     {
-        octant_base_type n=_node;
-        const auto it=leafs_.find(n.key());
-        if(it!=leafs_.end())
+        octant_base_type n = _node;
+        const auto it = leafs_.find(n.key());
+        if (it != leafs_.end())
         {
              return octant_iterator(it);
         }
         else
         {
-            for(auto i=this->depth();i>=base_level();--i)
+            for(auto i = this->depth(); i >= base_level(); --i)
             {
-                const auto parent =n.equal_coordinate_parent();
-                const auto it=leafs_.find(parent.key());
-                if( it!=leafs_.end() )return octant_iterator(it);
-                n=parent;
+                const auto parent = n.equal_coordinate_parent();
+                const auto it = leafs_.find(parent.key());
+                if (it != leafs_.end()) return octant_iterator(it);
+                n = parent;
             }
             return octant_iterator(it);
         }
@@ -218,8 +217,7 @@ private:
 
 private:  //Top down insert strategy
 
-    octant_type* insert_td(const coordinate_type& x, 
-                    int level) 
+    octant_type* insert_td(const coordinate_type& x, int level) 
     { 
         return insert_td(key_type(x,level)); 
     }

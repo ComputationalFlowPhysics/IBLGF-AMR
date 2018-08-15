@@ -106,8 +106,10 @@ struct PoissonProblem
         for (auto it  = simulation_.domain_.begin_leafs();
                   it != simulation_.domain_.end_leafs(); ++it)
         {
-            if (count++ == 0)simulation_.domain_.refine(it);
+            if (count++ ==0)simulation_.domain_.refine(it);
+
         }
+
         auto center = (simulation_.domain_.bounding_box().max() -
                        simulation_.domain_.bounding_box().min()) / 2.0 +
                        simulation_.domain_.bounding_box().min();
@@ -121,6 +123,7 @@ struct PoissonProblem
             
             auto dx_level =  dx/std::pow(2,it->real_level());
             auto scaling =  std::pow(2,it->real_level());
+
 
             // ijk-way of initializing
             auto base = it->data()->descriptor().base();
@@ -160,7 +163,6 @@ struct PoissonProblem
 
     void level_test()
     {
-        std::cout<<simulation_.domain_.tree()->depth()<<std::endl;
         for(int l=simulation_.domain_.tree()->base_level(); 
                 l< simulation_.domain_.tree()->depth();++l)
         {
@@ -338,6 +340,7 @@ struct PoissonProblem
         pcout << "Writing solution " << std::endl;
         simulation_.write("solution.vtk");
     }
+
 
   
     

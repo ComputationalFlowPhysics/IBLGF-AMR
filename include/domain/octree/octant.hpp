@@ -32,6 +32,7 @@ public:
     using typename super_type::coordinate_type;
     using typename super_type::real_coordinate_type;
     using typename super_type::tree_type;
+    using octant_iterator = typename tree_type::octant_iterator;
 
     using data_type = DataType;
 
@@ -61,14 +62,7 @@ public: //Ctors
         : super_type(key_type(_x,_level),_tr) { }
 
 
-    // Returns end() if there is no neighbor
-    // TODO: make this an optional or std::pair
-    auto neighbor(const coordinate_type& _offset)
-    {
-        octant_base_t nn(octant_base_t::neighbor(_offset));
-        return this->tree()->find_leaf_any_level(nn);
-    }
-
+   
     auto get_vertices() noexcept
     {
         std::vector<decltype(this->tree()->begin_leafs())> res;
@@ -100,7 +94,7 @@ public: //Ctors
     Octant* child (int i) const noexcept{return children_[i].get();}
 
 
-protected:
+private:
 
 	Octant* refine(unsigned int i)
 	{
@@ -109,14 +103,13 @@ protected:
         return children_[i].get();
 	}
 
-protected:
+private:
 
     int idx_ = 0;
     std::shared_ptr<data_type> data_ = nullptr;
 
     Octant* parent_;
 
-    //TODO:  Should be a unique pointer
     std::array<std::shared_ptr<Octant>,pow(2,Dim)> children_ =
         {{nullptr,nullptr,nullptr,nullptr, nullptr,nullptr,nullptr,nullptr}};
 };

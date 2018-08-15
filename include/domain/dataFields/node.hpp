@@ -68,7 +68,7 @@ public: //Access
     }
     real_coordinate_type real_coordinate()const noexcept
     {
-        return level_coordinate()/std::pow(2,c_->descriptor().level());
+        return (level_coordinate())/std::pow(2,c_->descriptor().level());
     }
 
     std::pair<node,bool> 

@@ -46,7 +46,7 @@ public: //memeber types
     using bfs_iterator = typename detail::iterator_breadth_first<octant_type>;
 
     using coordinate_transform_t =
-        std::function<real_coordinate_type(real_coordinate_type)>;
+        std::function<real_coordinate_type(real_coordinate_type, int _level)>;
 
 public:
     friend octant_base_type;
@@ -87,6 +87,9 @@ public:
             leafs_.emplace(leaf->key(), leaf);
         }
         construct_level_maps();
+
+        for(auto it=bfs_iterator(root());it!=bfs_iterator();++it )
+            std::cout<<it->key()<<"\n"<<it->key().child_number()<<std::endl;
     }
 
 
@@ -116,7 +119,6 @@ public:
     void refine(octant_iterator& _l, const Function& _f, 
                  bool _recursive = false)
     {
-        if(_l->is_hanging())return;
         for(int i=0;i<_l->num_children();++i)
         {
             auto child=_l->refine(i);
@@ -124,10 +126,9 @@ public:
             auto c=leafs_.emplace(child->key(),child);
             c.first->second->flag(node_flag::octant);
             level_maps_[child->level()].emplace(child->key(),child);
-
         }
         _l=leafs_.erase(_l);
-        ++depth_;
+        if(_l->level()+1 > depth_) depth_=_l->level()+1;
         if(!_recursive) std::advance(_l,_l->num_children()-1);
     }
 
@@ -140,9 +141,9 @@ public:
         return octant_to_real_coordinate_;
     }
     template<class T>
-    auto octant_to_real_coordinate(T _x)
+    auto octant_to_real_coordinate(T _x, int _level=0)
     {
-        return octant_to_real_coordinate_(_x);
+        return octant_to_real_coordinate_(_x, _level);
     }
 
 public: //traversals
@@ -156,7 +157,7 @@ public: //traversals
 	template<class Function>
 	void traverse_dfs(Function f)
 	{
-		depth_first_search(root(), f);
+		depth_first_traverse(root(), f);
 	}
 	
 
@@ -174,10 +175,10 @@ public: //traversals
                       int max_level=key_type::max_level())
 	{
 		for (int i=min_level; i<max_level; ++i)
-			breadth_first_search(root(), f, i);
+			breadth_first_traverse(root(), f, i);
 	}
 
-private: 
+private: //find
 
     template<class Node>
     bool has_leaf(Node& _node ) const
@@ -192,28 +193,39 @@ private:
     {
         return octant_iterator(leafs_.find(_node.key()));
     }
-
-    auto find_leaf_any_level(octant_base_type _node)  noexcept
+    octant_type* find_leaf(key_type _k)
     {
-        octant_base_type n = _node;
-        const auto it = leafs_.find(n.key());
-        if (it != leafs_.end())
-        {
-             return octant_iterator(it);
-        }
-        else
-        {
-            for(auto i = this->depth(); i >= base_level(); --i)
-            {
-                const auto parent = n.equal_coordinate_parent();
-                const auto it = leafs_.find(parent.key());
-                if (it != leafs_.end()) return octant_iterator(it);
-                n = parent;
-            }
-            return octant_iterator(it);
-        }
-        return octant_iterator(it);
+        auto it=leafs_.find(_k);
+        if(it!=leafs_.end())
+            return it->second;
+        else return nullptr;
     }
+
+    //auto find_leaf_any_level(octant_base_type _node)  noexcept
+    //{
+    //    octant_base_type n = _node;
+    //    const auto it = leafs_.find(n.key());
+    //    if (it != leafs_.end())
+    //    {
+    //         return octant_iterator(it);
+    //    }
+    //    else
+    //    {
+    //        //This is wrong i think
+    //        for(auto i = this->depth(); i >= base_level(); --i)
+    //        {
+    //            const auto parent = n.equal_coordinate_parent();
+    //            const auto it = leafs_.find(parent.key());
+    //            if (it != leafs_.end()) return octant_iterator(it);
+    //            n = parent;
+    //        }
+    //        return octant_iterator(it);
+    //    }
+    //    return octant_iterator(it);
+    //}
+
+
+
 
 private:  //Top down insert strategy
 
@@ -253,8 +265,10 @@ private:  //Top down insert strategy
                 );
     }
 
+private: //traversal 
+
     template<class Function>
-    void breadth_first_search(octant_type* n, Function& f, int level)
+    void breadth_first_traverse(octant_type* n, Function& f, int level)
     {
         if (n->level() == level)
         {
@@ -264,40 +278,37 @@ private:  //Top down insert strategy
         for (std::size_t i=0; i<n->num_children(); ++i)
         {
             if(n->children_[i]) 
-                breadth_first_search(n->children_[i].get(), f, level);
+                breadth_first_traverse(n->children_[i].get(), f, level);
         }
     }
 
-
     template<class Function>
-    void depth_first_search(octant_type* n, Function& f)
+    void depth_first_traverse(octant_type* n, Function& f)
     {
         f(n);
         for (std::size_t i=0; i<n->num_children(); ++i)
         {
-            if (n->child(i)) depth_first_search(n->child(i),f);
+            if (n->child(i)) depth_first_traverse(n->child(i),f);
         }
     }
+
+private: // misc
 
     void construct_level_maps()
     {
         level_maps_.clear();
-        level_maps_.resize(this->depth()+1);
+        level_maps_.resize(key_type::max_level());
         dfs_iterator it_begin(root()); dfs_iterator it_end;
         for(auto it =it_begin;it!=it_end;++it)
         {
            level_maps_[it->level()].emplace(it->key(),it.ptr());
         }
     }
-
-
-    
-    static real_coordinate_type unit_transform(coordinate_type _x)
+ 
+    static real_coordinate_type unit_transform(coordinate_type _x, int _level)
     {
         return _x;
     }
-
-
 
 private:
     /** \brief Coordinate transform from octant coordinate to real coordinates*/

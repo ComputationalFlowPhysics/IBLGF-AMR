@@ -114,9 +114,9 @@ public:
         //Assign octant to real coordinate transform:
         t_->get_octant_to_real_coordinate()=
             [ blockExtent=_blockExtent, base=base_]
-            (real_coordinate_type _oct_coord)
+            (real_coordinate_type _oct_coord, int _level)
             {
-                return (_oct_coord + base)*blockExtent;
+                return (_oct_coord + base*std::pow(2,_level))*blockExtent;
             };
 
         //instantiate blocks
@@ -159,8 +159,8 @@ public:
     {
         tree()->refine(octant_it,[this](auto& child_it)
         {
-            auto bbase=t_->octant_to_real_coordinate(child_it->coordinate());
             auto level = child_it->level()-this->tree()->base_level();
+            auto bbase=t_->octant_to_real_coordinate(child_it->coordinate(), level);
             child_it->data()=std::make_shared<datablock_t>(bbase, block_extent_,level);
         });
     }
@@ -211,8 +211,6 @@ private:
     std::shared_ptr<tree_t> t_; 
     extent_t block_extent_;
     block_descriptor_t bounding_box_;
-
-
 
 };
 

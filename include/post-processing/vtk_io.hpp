@@ -50,19 +50,16 @@ public:
         int _count=0;
         for(auto it=_lt.begin_leafs();it!=_lt.end_leafs();++it)
         {
-            if(!it->is_hanging()) 
+            auto block =it->data()->descriptor();
+            block.extent()-=1;
+            int e = block.nPoints();
+            nCells+=e;
+            for(auto& n : it->data()->nodes())
             {
-                auto block =it->data()->descriptor();
-                block.extent()-=1;
-                int e = block.nPoints();
-                nCells+=e;
-                for(auto& n : it->data()->nodes())
-                {
-                    ofs<<n.real_coordinate()<<std::endl;
-                }
+                ofs<<n.real_coordinate()<<std::endl;
+            }
             it->index(_count*it->data()->descriptor().nPoints());
             ++_count;
-            }
         }
         ofs<<"\nCELLS "<<nCells<<" "<<nCells*9<<std::endl;
         

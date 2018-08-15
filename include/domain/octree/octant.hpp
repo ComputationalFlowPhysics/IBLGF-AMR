@@ -62,7 +62,54 @@ public: //Ctors
         : super_type(key_type(_x,_level),_tr) { }
 
 
-   
+    // Returns end() if there is no neighbor
+    // TODO: make this an optional or std::pair
+    //auto neighbor(const coordinate_type& _offset)
+    //{
+    //    octant_base_t nn(octant_base_t::neighbor(_offset));
+    //    return this->tree()->find_leaf_any_level(nn);
+    //}
+
+    
+     /** @brief Find cell that shares a vertex with octant 
+      *         on same, plus or minus one level 
+      * */
+    Octant* vertex_neighbor(const coordinate_type& _offset)
+    {
+        Octant_base nn(this->key_.neighbor(_offset),this->tree());
+        auto nn_ptr = find_leaf(nn.key());
+        if (nn_ptr) { return nn_ptr; }
+        
+        //lower level 
+        const auto parent = this->parent();
+        if(parent) 
+        {
+            auto p_ptr = this->tree()->find_leaf(parent->key());
+            if(p_ptr) return p_ptr;
+        }
+        const auto child = this->child(0);
+        if(child) 
+        {
+            auto c_ptr= this->tree()->find_leaf(child->key());
+            if(c_ptr) return c_ptr;
+        }
+    }
+
+    // /** @brief Find cells that share a face with octant
+    //  * */
+    //std::pair<bool,octant_iterator> 
+    //vertex_neighbor(const coordinate_type& _offset)
+    //{
+    //    Octant_base nn(this->key_.neighbor(_offset),tree());
+    //    const auto it = leafs_.find(n.key());
+    //    if (it != leafs_.end()) { return octant_iterator(it); }
+
+    //    const auto parent 
+
+    //    //
+
+    //}
+
     auto get_vertices() noexcept
     {
         std::vector<decltype(this->tree()->begin_leafs())> res;

@@ -136,7 +136,6 @@ struct PoissonProblem
                     {
                         it->data()->get<source>(i,j,k)  = 1.0;
                         it->data()->get<phi_num>(i,j,k) = 0.0;
-
                         
                         // manufactured solution:
                         float_type x = static_cast<float_type>(i-center[0]*scaling)*dx_level;
@@ -167,8 +166,8 @@ struct PoissonProblem
                 l< simulation_.domain_.tree()->depth();++l)
         {
             
-            for(auto it=simulation_.domain_.begin(l); 
-                    it!=simulation_.domain_.end(l);++it)
+            for(auto it  = simulation_.domain_.begin(l);
+                     it != simulation_.domain_.end(l); ++it)
             {
                 auto base = it->data()->descriptor().base();
                 auto max  = it->data()->descriptor().max();
@@ -178,7 +177,7 @@ struct PoissonProblem
                     {
                         for (auto i = base[0]; i <= max[0]; ++i)
                         {
-                            it->data()->get<dummy_field>(i,j,k)=it->real_level();
+                            it->data()->get<dummy_field>(i,j,k) = it->real_level();
                         }
                     }
                 }
@@ -286,8 +285,11 @@ struct PoissonProblem
                 {
                     //octant_t* parent_block = it_i->parent();
 
-                    const auto ibase   = it_i->parent()->data()->descriptor().base();
-                    const auto jbase   = it_j->data()->descriptor().base();
+                    const auto ibase = it_i->data()->descriptor().base();
+                    const auto jbase = it_j->data()->descriptor().base();
+                    
+                    pcout << "ibase = " << ibase << std::endl;
+                    
                     const auto jextent = it_j->data()->descriptor().extent();
                     const auto shift   = ibase - jbase;
 
@@ -304,10 +306,7 @@ struct PoissonProblem
                         it_i->parent()->data()->get<phi_num>().data(),
                         dx*dx);
                     
-                    this->interpolate(
-                        it_i->parent()->data()->descriptor(),
-                        it_i->parent()->data()->get<phi_num>().data(),
-                        it_i->data()->get<phi_num>().data());
+                    this->interpolate(it_i->parent(), it_i);
                     
                     // Advance to next block skipping children
                     std::advance (it_i, 8);
@@ -348,34 +347,45 @@ struct PoissonProblem
      * Interpolate a given field from corser to finer level.
      * Note: maximum jump allowed is one level.
      */
-    template<class Block, class Field>
-    void interpolate(const Block& _b, Field& F1, Field& F2)
+    template<class Block1, class Block2>
+    void interpolate(const Block1& _b_parent, Block2& _b_child)
     {
-        int count1  = 0;
-        pcout << "extent 2 = " << _b.extent()[2]-1 << std::endl;
-        pcout << "extent 1 = " << _b.extent()[1]-1 << std::endl;
-        pcout << "extent 0 = " << _b.extent()[0]-1 << std::endl;
+        auto dx_level =  dx / std::pow(2, _b_parent->real_level());
+        
+        /*
+        // Loop on children
         for (auto c = 0; c < 8; ++c)
         {
-            int count20 = 0;
-            int count21 = 1;
-            for (int k = 0; k < _b.extent()[2]-1; ++k)
+            auto ic = 0;
+            auto jc = 0;
+            auto kc = 0;
+            
+            // Loops on coordinates
+            for (auto kp = 0; kp < _b_parent.extent()[2]-1; ++kp)
             {
-                for (int j = 0; j < _b.extent()[1]-1; ++j)
+                for (auto jp = 0; jp < _b_parent.extent()[1]-1; ++jp)
                 {
-                    for (int i = 0; i < _b.extent()[0]-1; ++i)
+                    for (auto ip = 0; ip < _b_parent.extent()[0]-1; ++ip)
                     {
-                        // Copy value
-                        F2[count20] += F1[count1];
-                        F2[count21] += (F1[count1+1] + F1[count1-1]) / 2.0;
-                    
-                        count1++;
-                        count20 += 2;
-                        count21 += 2;
+                        _b_child->data()->get<phi_num>(ic,jc,kc) =
+                            _b_parent->data()->get<phi_num>(ip,jp,kp);
+                        
+                        _b_child->data()->get<phi_num>(ic+1,jc+1,kc+1) =
+                            (_b_parent->data()->get<phi_num>(ip+1,jp+1,kp+1) +
+                            _b_parent->data()->get<phi_num>(ip-1,jp-1,kp-1)) / 2;
+                        
+                        pcout << "b_parent_0 = " << _b_parent->data()->get<phi_num>(ip,jp,kp) << std::endl;
+                        pcout << "b_child_0  = " << _b_child->data()->get<phi_num>(ic,jc,kc) << std::endl;
+                        pcout << "b_child_1  = " << _b_child->data()->get<phi_num>(ic+1,jc+1,kc+1) << std::endl;
+                        ic+=2;
+                        jc+=2;
+                        kc+=2;
                     }
                 }
             }
         }
+         */
+
     }
     
     

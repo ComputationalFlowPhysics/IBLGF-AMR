@@ -38,21 +38,22 @@ public: //Ctor:
     LGF()=default;
     static_assert(Dim==3, "LGF only implemented for D=3");
 
-    void get_subblock( const block_descriptor_t& _b, std::vector<float_type>& _lgf ) noexcept
+    void get_subblock(const block_descriptor_t& _b,
+                      std::vector<float_type>&  _lgf) noexcept
     {
-        const auto base=_b.base();
-        const auto max=_b.max();
+        const auto base = _b.base();
+        const auto max  = _b.max();
         _lgf.resize(_b.size());
-
-        for(auto k =base[2];k<=max[2];++k)
+        
+        for (auto k = base[2]; k <= max[2]; ++k)
         {
-            for(auto j =base[1];j<=max[1];++j)
+            for (auto j = base[1]; j <= max[1]; ++j)
             {
-                for(auto i=base[0]; i<=max[0];++i  )
+                for (auto i = base[0]; i <= max[0]; ++i)
                 {
-                       //get view:
-                       _lgf[_b.globalCoordinate_to_index(i,j,k)]=
-                       Lookup::get(coordinate_t({i,j,k}));
+                    //get view
+                    _lgf[_b.globalCoordinate_to_index(i,j,k)] =
+                        Lookup::get(coordinate_t({i,j,k}));
                 }
             }
         }

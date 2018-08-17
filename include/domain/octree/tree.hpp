@@ -127,7 +127,7 @@ public:
             c.first->second->flag(node_flag::octant);
             level_maps_[child->level()].emplace(child->key(),child);
         }
-        _l=leafs_.erase(_l);
+        _l = leafs_.erase(_l);
         if(_l->level()+1 > depth_) depth_=_l->level()+1;
         if(!_recursive) std::advance(_l,_l->num_children()-1);
     }

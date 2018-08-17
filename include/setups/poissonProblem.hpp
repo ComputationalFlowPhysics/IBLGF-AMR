@@ -223,7 +223,7 @@ struct PoissonProblem
 
     
     /**
-     *  It solves the Poisson problem with homogeneous boundary conditions
+     *  \brief It solves the Poisson problem with homogeneous boundary conditions
      *
      *  \nabla^2 \phi = s, on \Omega, with
      *  \phi|_{\partial\Omega} = 0,
@@ -363,8 +363,8 @@ struct PoissonProblem
                             it_t->parent()->data()->get<phi_num_tmp>().data(),
                             dx_level*dx_level);
                         
-                        this->interpolate(it_t->parent());
                     }
+                    this->interpolate(it_t->parent());
                     std::advance(it_t,8);
                 }
             }

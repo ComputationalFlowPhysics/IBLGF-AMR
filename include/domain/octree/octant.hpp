@@ -73,43 +73,46 @@ public: //Ctors
     
      /** @brief Find cell that shares a vertex with octant 
       *         on same, plus or minus one level 
-      * */
+      **/
     Octant* vertex_neighbor(const coordinate_type& _offset)
     {
-        Octant_base nn(this->key_.neighbor(_offset),this->tree());
-        auto nn_ptr = find_leaf(nn.key());
-        if (nn_ptr) { return nn_ptr; }
+        // current level 
+        auto nn=this->key_.neighbor(_offset);
+        if(nn==this->key()) return nullptr;
+        auto nn_ptr = this->tree()->find_leaf(nn);
+        if (nn_ptr!=nullptr) { return nn_ptr; }
         
-        //lower level 
+        // parent level 
         const auto parent = this->parent();
-        if(parent) 
+        if(parent!=nullptr) 
         {
-            auto p_ptr = this->tree()->find_leaf(parent->key());
+            auto p_nn=parent->key().neighbor(_offset);
+            if(p_nn==this->key()) return nullptr;
+            auto p_ptr = this->tree()->find_leaf(p_nn);
             if(p_ptr) return p_ptr;
         }
-        const auto child = this->child(0);
-        if(child) 
-        {
-            auto c_ptr= this->tree()->find_leaf(child->key());
-            if(c_ptr) return c_ptr;
-        }
+
+        // child level 
+        const auto child = this->child_base(0);
+        auto c_nn=child.key().neighbor(_offset);
+        if(c_nn==this->key()) return nullptr;
+        auto c_ptr= this->tree()->find_leaf(c_nn);
+        if(c_ptr) return c_ptr;
+
+        return nullptr;
     }
-
-    // /** @brief Find cells that share a face with octant
-    //  * */
-    //std::pair<bool,octant_iterator> 
-    //vertex_neighbor(const coordinate_type& _offset)
+   
+    /** @brief Find cell that shares a face with octant 
+      *         on same, plus or minus one level 
+      *         Note: Here there is no check if direction is an actual face dir
+      **/
+    //std::vector<Octant*> face_neighbor(const coordinate_type& _offset)
     //{
-    //    Octant_base nn(this->key_.neighbor(_offset),tree());
-    //    const auto it = leafs_.find(n.key());
-    //    if (it != leafs_.end()) { return octant_iterator(it); }
-
-    //    const auto parent 
-
-    //    //
-
+    //    auto neighbor 
+    //    return nullptr;
     //}
 
+  
     auto get_vertices() noexcept
     {
         std::vector<decltype(this->tree()->begin_leafs())> res;
@@ -119,9 +122,9 @@ public: //Ctors
                                coordinate_type(2),
                                [&](const coordinate_type& _p)
         {
-                auto nnn = neighbor(_p);
-                if (nnn != this->tree()->end_leafs())
-                    res.emplace_back(nnn);
+            auto nnn = neighbor(_p);
+            if (nnn != this->tree()->end_leafs())
+            res.emplace_back(nnn);
         });
             return res;
     }

@@ -111,18 +111,6 @@ public:
     Octant_base neighbor(const coordinate_type& _offset)
     {
         Octant_base nn(this->key_.neighbor(_offset),tree());
-        if(!is_hanging() && !is_boundary())
-        {
-            return nn;
-        }
-        else if(!is_boundary() )
-        {
-            return nn.parent();
-        }
-        else
-        {
-            throw std::runtime_error("You are at the boundary");
-        }
     }
 
 

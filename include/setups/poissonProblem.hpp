@@ -106,7 +106,7 @@ struct PoissonProblem
         for (auto it  = simulation_.domain_.begin_leafs();
                   it != simulation_.domain_.end_leafs(); ++it)
         {
-            if (count++ 0)simulation_.domain_.refine(it);
+            if (count++ ==0)simulation_.domain_.refine(it);
 
         }
 
@@ -181,6 +181,36 @@ struct PoissonProblem
                             it->data()->get<dummy_field>(i,j,k)=it->real_level();
                         }
                     }
+                }
+            }
+        }
+    }
+
+    void neighbor_test()
+    {
+
+        int count=0;
+        for (auto it  = simulation_.domain_.begin_leafs();
+                it != simulation_.domain_.end_leafs(); ++it)
+        {
+            //if(it->real_level()==1)
+            if(true)
+            {
+                coordinate_t direction(0);
+                direction[0]=+1;
+                auto nn=it->vertex_neighbor(direction);
+                if(nn!=nullptr)
+                {
+
+                    std::ofstream ofs("point_"+std::to_string(count)+".txt");
+                    std::ofstream ofs1("nn_"+std::to_string(count)+".txt");
+                    ofs<<it->real_coordinate()<<std::endl;
+                    ofs1<<nn->real_coordinate()<<std::endl;
+                    ++count;
+                }
+                else
+                {
+                    std::cout<<"could not find neighbors"<<std::endl;
                 }
             }
         }
@@ -345,6 +375,7 @@ struct PoissonProblem
     void solve()
     {
         level_test();
+        neighbor_test();
         pcout << "Writing solution " << std::endl;
         simulation_.write("solution.vtk");
 

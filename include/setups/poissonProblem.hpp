@@ -138,6 +138,7 @@ struct PoissonProblem
                     {
                         it->data()->get<source>(i,j,k)  = 1.0;
                         it->data()->get<phi_num>(i,j,k) = 0.0;
+                        it->data()->get<phi_num_tmp>(i,j,k) = 0.0;
                         
                         // manufactured solution:
                         float_type x = static_cast<float_type>(i-center[0]*scaling)*dx_level;
@@ -244,22 +245,22 @@ struct PoissonProblem
         // This should take care of the cross-level interactions, that
         // are computed as part of the self-interactions, because parents
         // are included.
-        for (int lt  = simulation_.domain_.tree()->depth()-1;
-                 lt >= simulation_.domain_.tree()->base_level(); --lt)
+        for (int lt = simulation_.domain_.tree()->base_level();
+                 lt < simulation_.domain_.tree()->depth(); ++lt)
         {
-            for (int ls = lt-1; ls >= simulation_.domain_.tree()->base_level();
-                 --ls)
+            for (int ls = lt+1;
+                     ls < simulation_.domain_.tree()->depth(); ++ls)
             {
-                pcout << "--------- CROSS-INTERACTION (SOURCE COARSER) --------" << std::endl;
+                pcout << "--------- CROSS-INTERACTION (SOURCE FINER) --------" << std::endl;
                 pcout << "BASE-LEVEL = " << simulation_.domain_.tree()->base_level() << std::endl;
                 pcout << "======== TARGET BLOCK LEVEL = " << lt
                 << ",        SOURCE BLOCK LEVEL = " << ls
                 << std::endl;
                 
-                for (auto it_t  = simulation_.domain_.begin(lt);
-                          it_t != simulation_.domain_.end(lt); ++it_t)
+                for (auto it_s  = simulation_.domain_.begin(ls);
+                          it_s != simulation_.domain_.end(ls); ++it_s)
                 {
-                    this->coarsify(it_t);
+                    this->coarsify(it_s);
                 }
             }
         }
@@ -317,13 +318,13 @@ struct PoissonProblem
         }
         
         // Cross-level interactions (source is coarser, target is finer)
-        for (int lt = simulation_.domain_.tree()->base_level();
-                 lt < simulation_.domain_.tree()->depth(); ++lt)
+        for (int lt  = simulation_.domain_.tree()->depth()-1;
+                 lt >= simulation_.domain_.tree()->base_level(); --lt)
         {
-            for (int ls = lt+1;
-                     ls < simulation_.domain_.tree()->depth(); ++ls)
+            for (int ls = lt-1; ls >= simulation_.domain_.tree()->base_level();
+                 --ls)
             {
-                pcout << "--------- CROSS-INTERACTION (SOURCE FINER) --------" << std::endl;
+                pcout << "--------- CROSS-INTERACTION (SOURCE COARSER) --------" << std::endl;
                 pcout << "======== TARGET BLOCK LEVEL = " << lt
                 << ",        SOURCE BLOCK LEVEL = " << ls
                 << std::endl;
@@ -358,9 +359,10 @@ struct PoissonProblem
                         
                         conv.execute(lgf, it_s->data()->get<source>().data());
                         block_descriptor_t extractor(s_base, s_extent);
+                        std::cout<<it_t->parent()->data()->descriptor()<<std::endl;
                         conv.add_solution(
                             extractor,
-                            it_t->parent()->data()->get<phi_num_tmp>().data(),
+                            it_t->parent()->data()->get<phi_num>().data(),
                             dx_level*dx_level);
                         
                     }
@@ -374,7 +376,7 @@ struct PoissonProblem
         compute_errors();
         level_test();
         pcout << "Writing solution " << std::endl;
-        //simulation_.write("solution.vtk");
+        simulation_.write("solution.vtk");
     }
 
 
@@ -386,6 +388,51 @@ struct PoissonProblem
      */
     template<class Block_it>
     void interpolate(const Block_it* _b_parent)
+    {
+        
+        for (int i = 0; i < _b_parent->num_children(); ++i)
+        {
+            auto _b_child = _b_parent->child(i);
+            
+            auto ip = _b_parent->data()->descriptor().base()[0];
+            auto jp = _b_parent->data()->descriptor().base()[1];
+            auto kp = _b_parent->data()->descriptor().base()[2];
+            
+            // Loops on coordinates
+            for (auto kc  = _b_child->data()->descriptor().base()[2];
+                 kc < _b_child->data()->descriptor().max()[2]; ++kc)
+            {
+                for (auto jc  = _b_child->data()->descriptor().base()[1];
+                     jc < _b_child->data()->descriptor().max()[1]; ++jc)
+                {
+                    for (auto ic  = _b_child->data()->descriptor().base()[0];
+                         ic < _b_child->data()->descriptor().max()[0]; ++ic)
+                    {
+                        
+                        //
+                        int ll_ip = ic/2;
+                        int ll_jp = jc/2;
+                        int ll_kp = kc/2;
+
+                        
+                        _b_child->data()->template get<phi_num>(ic,jc,kc) +=
+                            _b_parent->data()->template get<phi_num_tmp>(ip,jp,kp);
+                        
+                        _b_child->data()->template get<phi_num>(ic+1,jc+1,kc+1) +=
+                            (_b_parent->data()->template get<phi_num_tmp>(ip+1,jp+1,kp+1) +
+                             _b_parent->data()->template get<phi_num_tmp>(ip,jp,kp)) / 2;
+                        
+                        ic+=2;
+                        jc+=2;
+                        kc+=2;
+                    }
+                }
+            }
+            
+        }
+    }
+    template<class Block_it>
+    void interpolate2(const Block_it* _b_parent)
     {
         
         for (int i = 0; i < _b_parent->num_children(); ++i)
@@ -452,9 +499,6 @@ struct PoissonProblem
                 {
                     _b_parent->data()->template get<source>(ip,jp,kp) =
                         _b_child->data()->template get<source>(ic,jc,kc);
-                    
-                    pcout << "b_parent = " << _b_parent->data()->template get<source>(ip,jp,kp) << std::endl;
-                    pcout << "b_child  = " << _b_child->data()->template get<source>(ic,jc,kc) << "    " <<_b_child->data()->template get<source>(ic+1,jc+1,kc+1) << std::endl;
                     ip+=1;
                     jp+=1;
                     kp+=1;

@@ -210,8 +210,9 @@ public: //Ctors
             {
                 for (int i = dims0_[0]-1; i < dims0_[0]+_b.extent()[0]-1; ++i)
                 {
+                    int idx= i+j*padded_dims[0]+k*padded_dims[0]*padded_dims[1];
                     F[count++] += _scale*fft_backward.output()
-                    [i+j*padded_dims[0]+k*padded_dims[0]*padded_dims[1]];
+                    [ i+j*padded_dims[0]+k*padded_dims[0]*padded_dims[1]];
                 }
             }
         }

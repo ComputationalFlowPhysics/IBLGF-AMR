@@ -239,142 +239,36 @@ struct PoissonProblem
     {
         // allocate lgf
         std::vector<float_type> lgf;
-        
-        // Cross-level interactions (source is finer, target is coarser)
-        // This should take care of the cross-level interactions, that
-        // are computed as part of the self-interactions, because parents
-        // are included.
-        for (int lt  = simulation_.domain_.tree()->depth()-1;
-                 lt >= simulation_.domain_.tree()->base_level(); --lt)
+        for (auto it_i  = simulation_.domain_.begin_leafs();
+             it_i != simulation_.domain_.end_leafs(); ++it_i)
         {
-            for (int ls = lt-1; ls >= simulation_.domain_.tree()->base_level();
-                 --ls)
+            const auto ibase= it_i->data()->descriptor().base();
+            
+            for (auto it_j  = simulation_.domain_.begin_leafs();
+                 it_j != simulation_.domain_.end_leafs(); ++it_j)
             {
-                pcout << "--------- CROSS-INTERACTION (SOURCE COARSER) --------" << std::endl;
-                pcout << "BASE-LEVEL = " << simulation_.domain_.tree()->base_level() << std::endl;
-                pcout << "======== TARGET BLOCK LEVEL = " << lt
-                << ",        SOURCE BLOCK LEVEL = " << ls
-                << std::endl;
                 
-                for (auto it_t  = simulation_.domain_.begin(lt);
-                          it_t != simulation_.domain_.end(lt); ++it_t)
-                {
-                    this->coarsify(it_t);
-                }
-            }
-        }
-        
-        // Self-level interactions
-        for (int l  = simulation_.domain_.tree()->base_level();
-                 l <= simulation_.domain_.tree()->depth(); ++l)
-        {
-            auto target = 0;
-            for (auto it_t  = simulation_.domain_.begin(l);
-                      it_t != simulation_.domain_.end(l); ++it_t)
-            {
-                auto real_level = it_t->real_level();
-                auto dx_level =  dx/std::pow(2,real_level);
-
-                pcout << "--------- SELF-INTERACTION --------" << std::endl;
-                pcout << "======== TARGET BLOCK = "        << target
-                      << ",        TARGET REAL LEVEL = " << real_level
-                      << std::endl;
+                const auto jbase   = it_j->data()->descriptor().base();
+                const auto jextent = it_j->data()->descriptor().extent();
+                const auto shift   = ibase - jbase;
                 
-                for (auto it_s  = simulation_.domain_.begin(l);
-                          it_s != simulation_.domain_.end(l); ++it_s)
-                {
-                    // Get the coordinate of target block
-                    const auto t_base = simulation_.domain_.tree()->
-                        octant_to_real_coordinate(it_t->coordinate());
-                    
-                    // Get coordinate of source block
-                    const auto s_base = simulation_.domain_.tree()->
-                        octant_to_real_coordinate(it_s->coordinate());
-                    
-                    // Get extent of source region
-                    const auto s_extent = it_s->data()->descriptor().extent();
-                    const auto shift    = t_base - s_base;
-                    
-                    // Calculate the dimensions of the LGF to be allocated
-                    const auto base_lgf   = shift - (s_extent - 1);
-                    const auto extent_lgf = 2 * (s_extent) - 1;
-                    
-                    // Calculate the LGF
-                    lgf_.get_subblock(block_descriptor_t(base_lgf,
-                                                         extent_lgf), lgf);
-                    
-                    // Perform convolution
-                    conv.execute(lgf, it_s->data()->get<source>().data());
-                    
-                    // Extract the solution
-                    block_descriptor_t extractor(s_base, s_extent);
-                    conv.add_solution(extractor,
-                                      it_t->data()->get<phi_num>().data(),
-                                      dx_level*dx_level);
-                }
-                target++;
-            }
-        }
-        
-        // Cross-level interactions (source is coarser, target is finer)
-        for (int lt = simulation_.domain_.tree()->base_level();
-                 lt < simulation_.domain_.tree()->depth(); ++lt)
-        {
-            for (int ls = lt+1;
-                     ls < simulation_.domain_.tree()->depth(); ++ls)
-            {
-                pcout << "--------- CROSS-INTERACTION (SOURCE FINER) --------" << std::endl;
-                pcout << "======== TARGET BLOCK LEVEL = " << lt
-                << ",        SOURCE BLOCK LEVEL = " << ls
-                << std::endl;
+                const auto base_lgf   = shift - (jextent - 1);
+                const auto extent_lgf = 2 * (jextent) - 1;
                 
-                for (auto it_t  = simulation_.domain_.begin(lt);
-                          it_t != simulation_.domain_.end(lt); ++it_t)
-                {
-                    auto real_level = it_t->real_level();
-                    auto dx_level   = dx/std::pow(2,real_level-1);
-                    
-                    for (auto it_s  = simulation_.domain_.begin(ls);
-                         it_s != simulation_.domain_.end(ls); ++it_s)
-                    {
-                        // Get the coordinate of target block
-                        const auto t_base_parent = simulation_.domain_.tree()->
-                        octant_to_real_coordinate(it_t->parent()->coordinate());
-                        
-                        // Get coordinate of source block
-                        const auto s_base = simulation_.domain_.tree()->
-                        octant_to_real_coordinate(it_s->coordinate());
-                        
-                        // Get extent of source region
-                        const auto s_extent = it_s->data()->descriptor().extent();
-                        const auto shift    = t_base_parent - s_base;
-                        
-                        // Calculate the dimensions of the LGF to be allocated
-                        const auto base_lgf   = shift - (s_extent - 1);
-                        const auto extent_lgf = 2 * (s_extent) - 1;
-                        
-                        lgf_.get_subblock(block_descriptor_t(base_lgf,
-                                                             extent_lgf), lgf);
-                        
-                        conv.execute(lgf, it_s->data()->get<source>().data());
-                        block_descriptor_t extractor(s_base, s_extent);
-                        conv.add_solution(
-                            extractor,
-                            it_t->parent()->data()->get<phi_num_tmp>().data(),
-                            dx_level*dx_level);
-                        
-                        this->interpolate(it_t->parent());
-                    }
-                    std::advance(it_t,8);
-                }
+                lgf_.get_subblock(block_descriptor_t(base_lgf,
+                                                     extent_lgf), lgf);
+                
+                conv.execute(lgf, it_j->data()->get<source>().data());
+                block_descriptor_t extractor(jbase, jextent);
+                conv.add_solution(extractor,
+                                  it_i->data()->get<phi_num>().data(), dx*dx);
             }
         }
         
         //simple_lapace_fd();
         compute_errors();
-        level_test();
         pcout << "Writing solution " << std::endl;
-        //simulation_.write("solution.vtk");
+        simulation_.write("solution.vtk");
     }
 
 

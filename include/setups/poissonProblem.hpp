@@ -265,7 +265,7 @@ struct PoissonProblem
      *  - FFT: is the fast-Fourier transform,
      *  - IFFT: is the inverse of the FFT
      */
-    void solve2()
+    void solve()
     {
         // allocate lgf
         std::vector<float_type> lgf;
@@ -302,14 +302,6 @@ struct PoissonProblem
     }
 
 
-    void solve()
-    {
-        level_test();
-        neighbor_test();
-        pcout << "Writing solution " << std::endl;
-        simulation_.write("solution.vtk");
-
-    }
 
   
     

@@ -9,12 +9,10 @@
 
 
 # Project name
-NAME=iblgf.x
-#SOURCE_DIR=./src
 BIN_DIR=./bin
-SOURCES = ./test/main.cpp ./src/lgf/lgf_lookup.cpp
-
-PREPROC=junk
+NAME    = iblgf.x
+SOURCES = main.cpp src/lgf/lgf_lookup.cpp 
+PREPROC = junk
 
 # Dependency directory
 DEPDIR = .deps
@@ -24,32 +22,33 @@ df = $(DEPDIR)/$(*F)
 CXX = mpic++
 
 CFLAGS = -fconstexpr-depth=2048 \
-		 -mavx                  \
-		 -std=c++17             \
+		 -mavx          \
+		 -std=c++17     \
 		 -Wall 
-
 CFLAGS_DEBUG = -O0 -ggdb 
- 
-CFLAGS_RELEASE = -O3 -DNDEBUG       \
+
+CFLAGS_RELEASE = -O3 -DNDEBUG               \
 		-DBOOST_DISABLE_ASSERTS     \
 		-march=native               \
 		-Wno-unused-local-typedefs  \
 		-Wno-deprecated-declarations
 
 CFLAGS_UNSAFE = -ffast-math -ftree-vectorize -funroll-loops
-INCLUDE_DIRS = $(USER_INCLUDE_DIRS)  -I./include/
 
-LDFLAGS = $(USER_LDFLAGS) $(USER_LIBS) \
+
+INCLUDE_DIRS = $(USER_INCLUDE_DIRS) -I./include
+
+LIB_DIRS = $(USER_LIB_DIRS) 
+LDFLAGS  = $(USER_LDFLAGS) \
 		  -lboost_mpi \
 		  -lboost_serialization \
 		  -lboost_system \
 		  -lboost_filesystem \
 		  -lfftw3
 
-
 OBJFILES = $(SOURCES:.cpp=.o)
 
-all: CFLAGS += $(CFLAGS_RELEASE)
+#all: CFLAGS += $(CFLAGS_RELEASE)
 all: build
 
 debug: CFLAGS += $(CFLAGS_DEBUG)
@@ -71,13 +70,12 @@ preprocess: $(SOURCES)
 	@echo -e "\033[1mPreprocessing $(SOURCES) to $(PREPROC)...\033[0m"
 	@$(CXX) $(CFLAGS) $(INCLUDE_DIRS) -E $(SOURCES) > $(PREPROC)
 
-
 build: $(OBJFILES) 
 	@echo -e "\033[1mLinking $(OBJFILES) to $(BIN_DIR)/$(NAME)...\033[0m"
 	@$(CXX) $(CFLAGS) $(INCLUDE_DIRS) $(OBJFILES) -o $(BIN_DIR)/$(NAME) $(LDFLAGS)
 
 %.o: %.cpp
-	@mkdir -p $(DEPDIR)
+	@mkdir -p .deps
 	@mkdir -p $(BIN_DIR)
 	@echo -e "\033[1mCompiling $<...\033[0m"
 	$(CXX) -c $(CFLAGS) $(INCLUDE_DIRS) -MD $< -o $@
@@ -95,4 +93,3 @@ clean:
 	@rm -f $(PREPROC)
 
 .PHONY: all debug release unsafe profile build clean
-

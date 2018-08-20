@@ -9,8 +9,9 @@
 
 
 # Project name
+BIN_DIR=./bin
 NAME    = iblgf.x
-SOURCES = main.cpp lgf/lgf_lookup.cpp 
+SOURCES = main.cpp src/lgf/lgf_lookup.cpp 
 PREPROC = junk
 
 # Dependency directory
@@ -35,7 +36,7 @@ CFLAGS_RELEASE = -O3 -DNDEBUG               \
 CFLAGS_UNSAFE = -ffast-math -ftree-vectorize -funroll-loops
 
 
-INCLUDE_DIRS = $(USER_INCLUDE_DIRS) -I./
+INCLUDE_DIRS = $(USER_INCLUDE_DIRS) -I./include
 
 LIB_DIRS = $(USER_LIB_DIRS) 
 LDFLAGS  = $(USER_LDFLAGS) \
@@ -70,11 +71,12 @@ preprocess: $(SOURCES)
 	@$(CXX) $(CFLAGS) $(INCLUDE_DIRS) -E $(SOURCES) > $(PREPROC)
 
 build: $(OBJFILES) 
-	@echo -e "\033[1mLinking $(OBJFILES) to $(NAME)...\033[0m"
-	@$(CXX) $(CFLAGS) $(INCLUDE_DIRS) $(OBJFILES) -o $(NAME) $(LDFLAGS)
+	@echo -e "\033[1mLinking $(OBJFILES) to $(BIN_DIR)/$(NAME)...\033[0m"
+	@$(CXX) $(CFLAGS) $(INCLUDE_DIRS) $(OBJFILES) -o $(BIN_DIR)/$(NAME) $(LDFLAGS)
 
 %.o: %.cpp
 	@mkdir -p .deps
+	@mkdir -p $(BIN_DIR)
 	@echo -e "\033[1mCompiling $<...\033[0m"
 	$(CXX) -c $(CFLAGS) $(INCLUDE_DIRS) -MD $< -o $@
 	@cp $*.d $(df).P; \
@@ -87,8 +89,7 @@ build: $(OBJFILES)
 clean:
 	@echo -e "\033[1mCleaning up...\033[0m"
 	@rm -f $(OBJFILES)
-	@rm -f $(NAME)
+	@rm -f $(BIN_DIR)/$(NAME)
 	@rm -f $(PREPROC)
 
 .PHONY: all debug release unsafe profile build clean
-

@@ -165,9 +165,6 @@ public: //Ctor:
     BlockDescriptor(base_t _base, extent_t _extent, int _level=0)
         :base_(_base), extent_(_extent), level_(_level){}
 
-
-
-
 public:  //Access
 
     base_t& base()noexcept{return base_;}
@@ -286,12 +283,12 @@ public: //members
         return idx;
     }
 
-    //TODO: tag dispatch for each dim
     size_type globalCoordinate_to_index( int i,int j,int k ) const noexcept
     {
         i-=base()[0]; j-=base()[1]; k-=base()[2];
         return i+ j*extent()[0] + k*extent()[0]*extent()[1];
     }
+    //TODO: tag dispatch for each dim
     template<class PointType>
     size_type globalCoordinate_to_index(const PointType& _p) const noexcept
     {

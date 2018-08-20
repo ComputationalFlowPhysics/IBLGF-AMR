@@ -101,10 +101,22 @@ public:
     octant_iterator begin_leafs() noexcept {return leafs_.begin();}
     octant_iterator end_leafs  () noexcept {return leafs_.end();}
 
-    octant_iterator begin(int _level)       noexcept{return level_maps_[_level].begin();}
-    octant_iterator end  (int _level)       noexcept{return level_maps_[_level].end();}
-    octant_iterator begin(int _level) const noexcept{return level_maps_[_level].begin();}
-    octant_iterator end  (int _level) const noexcept{return level_maps_[_level].end();}
+    octant_iterator begin(int _level)noexcept
+    {
+        return level_maps_[_level].begin();
+    }
+    octant_iterator end(int _level)noexcept
+    {
+        return level_maps_[_level].end();
+    }
+    octant_iterator begin(int _level) const noexcept
+    {
+        return level_maps_[_level].begin();
+    }
+    octant_iterator end  (int _level) const noexcept
+    {
+        return level_maps_[_level].end();
+    }
 
     auto num_leafs() const noexcept {return leafs_.size();}
 

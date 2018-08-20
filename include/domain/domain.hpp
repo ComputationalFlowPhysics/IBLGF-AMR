@@ -31,7 +31,6 @@ public:
     using key_t    = typename tree_t::key_type;
     using octant_t = typename tree_t::octant_type;
 
-
     // iterator types
     using dfs_iterator = typename tree_t::dfs_iterator;
     using bfs_iterator = typename tree_t::bfs_iterator;

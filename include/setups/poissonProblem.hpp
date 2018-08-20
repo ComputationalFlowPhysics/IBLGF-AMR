@@ -131,8 +131,8 @@ struct PoissonProblem
 
 
             // ijk-way of initializing
-            auto base = it->data()->descriptor().base();
-            auto max  = it->data()->descriptor().max();
+            auto base = it->data()->base();
+            auto max  = it->data()->max();
             for (auto k = base[2]; k <= max[2]; ++k)
             {
                 for (auto j = base[1]; j <= max[1]; ++j)
@@ -170,12 +170,11 @@ struct PoissonProblem
         for(int l  = simulation_.domain_.tree()->base_level();
                 l < simulation_.domain_.tree()->depth();++l)
         {
-            
             for(auto it  = simulation_.domain_.begin(l);
                      it != simulation_.domain_.end(l); ++it)
             {
-                auto base = it->data()->descriptor().base();
-                auto max  = it->data()->descriptor().max();
+                auto base = it->data()->base();
+                auto max  = it->data()->max();
                 for (auto k = base[2]; k <= max[2]; ++k)
                 {
                     for (auto j = base[1]; j <= max[1]; ++j)
@@ -198,8 +197,8 @@ struct PoissonProblem
         {
 
             //make a box-overlap check to determine buffers
-            auto base = it->data()->descriptor().base();
-            auto max  = it->data()->descriptor().max();
+            auto base = it->data()->base();
+            auto max  = it->data()->max();
             for (auto k = base[2]-1; k <= max[2]+1; ++k)
             {
                 for (auto j = base[1]-1; j <= max[1]+1; ++j)
@@ -277,8 +276,8 @@ struct PoissonProblem
                   it != simulation_.domain_.end_leafs(); ++it)
         {
 
-            auto base = it->data()->descriptor().base();
-            auto max  = it->data()->descriptor().max();
+            auto base = it->data()->base();
+            auto max  = it->data()->max();
             for (auto k = base[2]+1; k < max[2]; ++k)
             {
                 for (auto j = base[1]+1; j < max[1]; ++j)
@@ -325,14 +324,14 @@ struct PoissonProblem
         for (auto it_i  = simulation_.domain_.begin_leafs();
              it_i != simulation_.domain_.end_leafs(); ++it_i)
         {
-            const auto ibase= it_i->data()->descriptor().base();
+            const auto ibase= it_i->data()->base();
             
             for (auto it_j  = simulation_.domain_.begin_leafs();
                  it_j != simulation_.domain_.end_leafs(); ++it_j)
             {
                 
-                const auto jbase   = it_j->data()->descriptor().base();
-                const auto jextent = it_j->data()->descriptor().extent();
+                const auto jbase   = it_j->data()->base();
+                const auto jextent = it_j->data()->extent();
                 const auto shift   = ibase - jbase;
                 
                 const auto base_lgf   = shift - (jextent - 1);
@@ -341,10 +340,10 @@ struct PoissonProblem
                 lgf_.get_subblock(block_descriptor_t(base_lgf,
                                                      extent_lgf), lgf);
                 
-                conv.execute(lgf, it_j->data()->get<source>().data());
+                conv.execute(lgf, it_j->data()->get_data<source>());
                 block_descriptor_t extractor(jbase, jextent);
                 conv.add_solution(extractor,
-                                  it_i->data()->get<phi_num>().data(), dx*dx);
+                                  it_i->data()->get_data<phi_num>(), dx*dx);
             }
         }
         
@@ -379,19 +378,19 @@ struct PoissonProblem
         {
             auto _b_child = _b_parent->child(i);
             
-            auto ic = _b_child->data()->descriptor().base()[0];
-            auto jc = _b_child->data()->descriptor().base()[1];
-            auto kc = _b_child->data()->descriptor().base()[2];
+            auto ic = _b_child->data()->base()[0];
+            auto jc = _b_child->data()->base()[1];
+            auto kc = _b_child->data()->base()[2];
             
             // Loops on coordinates
-            for (auto kp  = _b_parent->data()->descriptor().base()[2];
-                 kp < _b_parent->data()->descriptor().max()[2]; ++kp)
+            for (auto kp  = _b_parent->data()->base()[2];
+                 kp < _b_parent->data()->max()[2]; ++kp)
             {
-                for (auto jp  = _b_parent->data()->descriptor().base()[1];
-                     jp < _b_parent->data()->descriptor().max()[1]; ++jp)
+                for (auto jp  = _b_parent->data()->base()[1];
+                     jp < _b_parent->data()->max()[1]; ++jp)
                 {
-                    for (auto ip  = _b_parent->data()->descriptor().base()[0];
-                         ip < _b_parent->data()->descriptor().max()[0]; ++ip)
+                    for (auto ip  = _b_parent->data()->base()[0];
+                         ip < _b_parent->data()->max()[0]; ++ip)
                     {
                         
                         _b_child->data()->template get<phi_num>(ic,jc,kc) +=
@@ -423,25 +422,23 @@ struct PoissonProblem
         auto _b_child  = _b;
         auto _b_parent = _b_child->parent();
 
-        auto ip = _b_parent->data()->descriptor().base()[0];
-        auto jp = _b_parent->data()->descriptor().base()[1];
-        auto kp = _b_parent->data()->descriptor().base()[2];
+        auto ip = _b_parent->data()->base()[0];
+        auto jp = _b_parent->data()->base()[1];
+        auto kp = _b_parent->data()->base()[2];
         
         // Loops on coordinates
-        for (auto kc  = _b_child->data()->descriptor().base()[2];
-                  kc <= _b_child->data()->descriptor().max()[2]; kc+=2)
+        for (auto kc  = _b_child->data()->base()[2];
+                  kc <= _b_child->data()->max()[2]; kc+=2)
         {
-            for (auto jc  = _b_child->data()->descriptor().base()[1];
-                      jc <= _b_child->data()->descriptor().max()[1]; jc+=2)
+            for (auto jc  = _b_child->data()->base()[1];
+                      jc <= _b_child->data()->max()[1]; jc+=2)
             {
-                for (auto ic  = _b_child->data()->descriptor().base()[0];
-                          ic <= _b_child->data()->descriptor().max()[0]; ic+=2)
+                for (auto ic  = _b_child->data()->base()[0];
+                          ic <= _b_child->data()->max()[0]; ic+=2)
                 {
                     _b_parent->data()->template get<source>(ip,jp,kp) =
                         _b_child->data()->template get<source>(ic,jc,kc);
                     
-                    pcout << "b_parent = " << _b_parent->data()->template get<source>(ip,jp,kp) << std::endl;
-                    pcout << "b_child  = " << _b_child->data()->template get<source>(ic,jc,kc) << "    " <<_b_child->data()->template get<source>(ic+1,jc+1,kc+1) << std::endl;
                     ip+=1;
                     jp+=1;
                     kp+=1;
@@ -468,19 +465,19 @@ struct PoissonProblem
 
             for (std::size_t i = 0; i < it_t->data()->nodes().size(); ++i)
             {
-               it_t->data()->get<error>().data()[i] = std::abs(
-                    it_t->data()->get<phi_num>().data()[i] -
-                    it_t->data()->get<phi_exact>().data()[i]);
+               it_t->data()->get<error>()[i] = std::abs(
+                    it_t->data()->get<phi_num>()[i] -
+                    it_t->data()->get<phi_exact>()[i]);
                     
-                it_t->data()->get<error2>().data()[i] =
-                    it_t->data()->get<error>().data()[i] *
-                    it_t->data()->get<error>().data()[i];
+                it_t->data()->get<error2>()[i] =
+                    it_t->data()->get<error>()[i] *
+                    it_t->data()->get<error>()[i];
                     
-                L2 += it_t->data()->get<error2>().data()[i];
+                L2 += it_t->data()->get<error2>()[i];
                     
-                if ( it_t->data()->get<error>().data()[i] > LInf)
+                if ( it_t->data()->get<error>()[i] > LInf)
                 {
-                    LInf = it_t->data()->get<error>().data()[i];
+                    LInf = it_t->data()->get<error>()[i];
                 }
             }
             pcout << "L2   = " << L2/it_t->data()->nodes().size() << std::endl;

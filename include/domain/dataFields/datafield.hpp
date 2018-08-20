@@ -14,7 +14,7 @@ namespace domain
 {
 
 template<class DataType, std::size_t Dim>
-class DataField 
+class DataField : public BlockDescriptor<int, Dim>
 {
 
 public: //member types
@@ -25,6 +25,7 @@ public: //member types
     template<typename T>
     using vector_type = types::vector_type<T, Dim>;
     using buffer_d_t = vector_type<int>;
+    using super_type = BlockDescriptor<int, Dim>;
     static constexpr int dimension(){return Dim;}
 
     using block_type = BlockDescriptor<int,Dim>;
@@ -62,11 +63,10 @@ public: //member functions
      */
     void initialize(block_type _b)    
     {
-        block_=_b;
-        block_.base(_b.base()-lowBuffer_);
-        block_.extent(_b.extent()+lowBuffer_+highBuffer_);
+        this->base(_b.base()-lowBuffer_);
+        this->extent(_b.extent()+lowBuffer_+highBuffer_);
         size_type size=1;
-        for(std::size_t d=0;d<block_.extent().size();++d) size*= block_.extent()[d];
+        for(std::size_t d=0;d<this->extent().size();++d) size*= this->extent()[d];
         data_.resize(size);
     }
 
@@ -83,20 +83,20 @@ public: //member functions
     //Get ijk-data
     inline const DataType& get(int _i, int _j, int _k) const noexcept
     {
-        return data_[block_.globalCoordinate_to_index(_i,_j,_k)];
+        return data_[this->globalCoordinate_to_index(_i,_j,_k)];
     }
     inline DataType& get(int _i, int _j, int _k) noexcept
     {
-        return data_[block_.globalCoordinate_to_index(_i,_j,_k)];
+        return data_[this->globalCoordinate_to_index(_i,_j,_k)];
     }
     inline const DataType& 
     get_from_localIdx(int _i, int _j, int _k) const noexcept
     {
-        return data_[block_.localCoordinate_to_index(_i,_j,_j)];
+        return data_[this->localCoordinate_to_index(_i,_j,_j)];
     }
     inline DataType& get_from_localIdx(int _i, int _j, int _k) noexcept
     {
-        return data_[block_.localCoordinate_to_index(_i,_j,_j)];
+        return data_[this->localCoordinate_to_index(_i,_j,_j)];
     }
 
 protected: //protected memeber:
@@ -104,7 +104,6 @@ protected: //protected memeber:
     std::vector<DataType> data_; 
     buffer_d_t lowBuffer_ =buffer_d_t(0);
     buffer_d_t highBuffer_=buffer_d_t(0);
-    block_type block_;
 };
 
 

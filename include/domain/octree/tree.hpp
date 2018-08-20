@@ -88,8 +88,8 @@ public:
         }
         construct_level_maps();
 
-        for(auto it=bfs_iterator(root());it!=bfs_iterator();++it )
-            std::cout<<it->key()<<"\n"<<it->key().child_number()<<std::endl;
+        //for(auto it=bfs_iterator(root());it!=bfs_iterator();++it )
+        //    std::cout<<it->key()<<"\n"<<it->key().child_number()<<std::endl;
     }
 
 

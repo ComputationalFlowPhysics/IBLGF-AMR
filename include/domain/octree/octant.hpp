@@ -106,6 +106,11 @@ public: //Ctors
     }
 
 
+    /** @brief Getting neighboorhood region of octant 
+     *
+     *  @param[in] _lowBuffer How many octants in negative direction
+     *  @param[in] _highBufer How many octants in positive direction
+     */
     std::vector<Octant*> get_neighborhood(const coordinate_type& _lowBuffer,
             const coordinate_type& _highBuffer ) const noexcept
     {

@@ -266,7 +266,7 @@ struct PoissonProblem
      *  - FFT: is the fast-Fourier transform,
      *  - IFFT: is the inverse of the FFT
      */
-    void solve()
+    void solve_amr()
     {
         // allocate lgf
         std::vector<float_type> lgf;

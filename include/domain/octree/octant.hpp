@@ -13,6 +13,7 @@
 #include <global.hpp>
 #include <domain/octree/octant_base.hpp>
 #include <domain/octree/tree_utils.hpp>
+#include <domain/dataFields/blockDescriptor.hpp>
 
 
 namespace octree
@@ -33,6 +34,8 @@ public:
     using typename super_type::real_coordinate_type;
     using typename super_type::tree_type;
     using octant_iterator = typename tree_type::octant_iterator;
+
+    using block_descriptor_type = typename domain::BlockDescriptor<int,Dim>;
 
     using data_type = DataType;
 
@@ -100,6 +103,29 @@ public: //Ctors
         if(c_ptr) return c_ptr;
 
         return nullptr;
+    }
+
+
+    std::vector<Octant*> get_neighborhood(const coordinate_type& _lowBuffer,
+            const coordinate_type& _highBuffer ) const noexcept
+    {
+
+       std::vector<Octant*> res;
+       block_descriptor_type  b;
+       b.base(this->coordinate() - _lowBuffer);
+       b.max( this->coordinate() + _highBuffer);
+       int level=this->level();
+       b.level() = level;
+
+       for(auto it  = this->tree()->begin(level);
+                it != this->tree()->end(level); ++it)
+       {
+           if(b.is_inside(it->coordinate()))
+           {
+               res.push_back(*it);
+           }
+       }
+       return res;
     }
    
     /** @brief Find cell that shares a face with octant 

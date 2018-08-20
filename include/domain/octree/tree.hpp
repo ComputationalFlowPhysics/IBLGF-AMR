@@ -88,8 +88,8 @@ public:
         }
         construct_level_maps();
 
-        for(auto it=bfs_iterator(root());it!=bfs_iterator();++it )
-            std::cout<<it->key()<<"\n"<<it->key().child_number()<<std::endl;
+        //for(auto it=bfs_iterator(root());it!=bfs_iterator();++it )
+        //    std::cout<<it->key()<<"\n"<<it->key().child_number()<<std::endl;
     }
 
 
@@ -200,6 +200,8 @@ private: //find
             return it->second;
         else return nullptr;
     }
+
+
 
     //auto find_leaf_any_level(octant_base_type _node)  noexcept
     //{
@@ -313,6 +315,7 @@ private: // misc
 private:
     /** \brief Coordinate transform from octant coordinate to real coordinates*/
     coordinate_transform_t octant_to_real_coordinate_=&Tree::unit_transform;
+
 
     int base_level_=0;                              ///< Base level 
     int depth_=0;                                   ///< Tree depth

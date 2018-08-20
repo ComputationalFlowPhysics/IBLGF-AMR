@@ -13,6 +13,7 @@
 #include <global.hpp>
 #include <domain/octree/octant_base.hpp>
 #include <domain/octree/tree_utils.hpp>
+#include <domain/dataFields/blockDescriptor.hpp>
 
 
 namespace octree
@@ -33,6 +34,8 @@ public:
     using typename super_type::real_coordinate_type;
     using typename super_type::tree_type;
     using octant_iterator = typename tree_type::octant_iterator;
+
+    using block_descriptor_type = typename domain::BlockDescriptor<int,Dim>;
 
     using data_type = DataType;
 
@@ -62,7 +65,80 @@ public: //Ctors
         : super_type(key_type(_x,_level),_tr) { }
 
 
+    // Returns end() if there is no neighbor
+    // TODO: make this an optional or std::pair
+    //auto neighbor(const coordinate_type& _offset)
+    //{
+    //    octant_base_t nn(octant_base_t::neighbor(_offset));
+    //    return this->tree()->find_leaf_any_level(nn);
+    //}
+
+    
+     /** @brief Find cell that shares a vertex with octant 
+      *         on same, plus or minus one level 
+      **/
+    Octant* vertex_neighbor(const coordinate_type& _offset)
+    {
+        // current level 
+        auto nn=this->key_.neighbor(_offset);
+        if(nn==this->key()) return nullptr;
+        auto nn_ptr = this->tree()->find_leaf(nn);
+        if (nn_ptr!=nullptr) { return nn_ptr; }
+        
+        // parent level 
+        const auto parent = this->parent();
+        if(parent!=nullptr) 
+        {
+            auto p_nn=parent->key().neighbor(_offset);
+            if(p_nn==this->key()) return nullptr;
+            auto p_ptr = this->tree()->find_leaf(p_nn);
+            if(p_ptr) return p_ptr;
+        }
+
+        // child level 
+        const auto child = this->child_base(0);
+        auto c_nn=child.key().neighbor(_offset);
+        if(c_nn==this->key()) return nullptr;
+        auto c_ptr= this->tree()->find_leaf(c_nn);
+        if(c_ptr) return c_ptr;
+
+        return nullptr;
+    }
+
+
+    std::vector<Octant*> get_neighborhood(const coordinate_type& _lowBuffer,
+            const coordinate_type& _highBuffer ) const noexcept
+    {
+
+       std::vector<Octant*> res;
+       block_descriptor_type  b;
+       b.base() = this->coordinate() - _lowBuffer;
+       b.max() = this->coordinate() + _highBuffer;
+       int level=this->level();
+       b.level() = level;
+
+       for(auto it  = this->tree()->begin(level);
+                it != this->tree()->end(level); ++it)
+       {
+           if(b.is_inside(it->coordinate()))
+           {
+               res.push_back(*it);
+           }
+       }
+       return res;
+    }
    
+    /** @brief Find cell that shares a face with octant 
+      *         on same, plus or minus one level 
+      *         Note: Here there is no check if direction is an actual face dir
+      **/
+    //std::vector<Octant*> face_neighbor(const coordinate_type& _offset)
+    //{
+    //    auto neighbor 
+    //    return nullptr;
+    //}
+
+  
     auto get_vertices() noexcept
     {
         std::vector<decltype(this->tree()->begin_leafs())> res;
@@ -72,9 +148,9 @@ public: //Ctors
                                coordinate_type(2),
                                [&](const coordinate_type& _p)
         {
-                auto nnn = neighbor(_p);
-                if (nnn != this->tree()->end_leafs())
-                    res.emplace_back(nnn);
+            auto nnn = neighbor(_p);
+            if (nnn != this->tree()->end_leafs())
+            res.emplace_back(nnn);
         });
             return res;
     }

@@ -302,9 +302,14 @@ public: // queries
     {
         const auto c =coordinate();
         const auto l = level();
-        if(representable(c+_offset,l))
-            return Key( coordinate()+_offset, level() );
-        else return end(l);
+        const auto cc=_offset+c;
+        if(representable(cc,l))
+        {
+            return Key( cc, level() );
+        } else{
+            std::cout<<"non-representable"<<std::endl;
+            return end(l);
+        } 
     }
 
 

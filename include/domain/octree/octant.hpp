@@ -65,15 +65,6 @@ public: //Ctors
         : super_type(key_type(_x,_level),_tr) { }
 
 
-    // Returns end() if there is no neighbor
-    // TODO: make this an optional or std::pair
-    //auto neighbor(const coordinate_type& _offset)
-    //{
-    //    octant_base_t nn(octant_base_t::neighbor(_offset));
-    //    return this->tree()->find_leaf_any_level(nn);
-    //}
-
-    
      /** @brief Find cell that shares a vertex with octant 
       *         on same, plus or minus one level 
       **/
@@ -106,14 +97,19 @@ public: //Ctors
     }
 
 
+    /** @brief Getting neighboorhood region of octant 
+     *
+     *  @param[in] _lowBuffer How many octants in negative direction
+     *  @param[in] _highBufer How many octants in positive direction
+     */
     std::vector<Octant*> get_neighborhood(const coordinate_type& _lowBuffer,
             const coordinate_type& _highBuffer ) const noexcept
     {
 
        std::vector<Octant*> res;
        block_descriptor_type  b;
-       b.base() = this->coordinate() - _lowBuffer;
-       b.max() = this->coordinate() + _highBuffer;
+       b.base(this->coordinate() - _lowBuffer);
+       b.max( this->coordinate() + _highBuffer);
        int level=this->level();
        b.level() = level;
 
@@ -152,7 +148,7 @@ public: //Ctors
             if (nnn != this->tree()->end_leafs())
             res.emplace_back(nnn);
         });
-            return res;
+        return res;
     }
  
     template<class Iterator>

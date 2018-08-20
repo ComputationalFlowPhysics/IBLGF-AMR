@@ -172,11 +172,11 @@ public:  //Access
 
     base_t& base()noexcept{return base_;}
     const base_t& base()const noexcept{return base_;}
-    void base(const base_t& _base)const noexcept{base_=_base;}
+    void base(const base_t& _base)noexcept{base_=_base;}
 
     extent_t& extent()noexcept{return extent_;}
     const extent_t& extent()const noexcept{return extent_;}
-    void extent(const extent_t& _extent)const noexcept{extent_=_extent;}
+    void extent(const extent_t& _extent)noexcept{extent_=_extent;}
 
     min_t& min()noexcept{return base_;}
     const min_t& min()const noexcept{return base_;}
@@ -187,6 +187,7 @@ public:  //Access
 
     const int& level()const noexcept {return level_;}
     int& level()noexcept {return level_;}
+    void level( int _level )noexcept {level_=_level;}
 
     
     auto size() const noexcept
@@ -359,10 +360,6 @@ public: //members
         for(auto e: extent_) ext*=e;
         return ext;
     }
-
-    
-
-
 
     template<class Block>
     std::vector<BlockDescriptor> cutout(const std::vector<Block>& _blocks) const

@@ -54,6 +54,8 @@ struct PoissonProblem
     make_field_type(lapace_error    , float_type)
     make_field_type(dummy_field     , float_type)
 
+    //Field with buffer:
+    make_field_type(bla_field  , float_type, 1, 2)
 
     using datablock_t = DataBlock<
         Dim, node,
@@ -66,7 +68,8 @@ struct PoissonProblem
         error2,
         lapace_field,
         lapace_error,
-        dummy_field     
+        dummy_field, 
+        bla_field     
     >;
 
     using datablock_t_2 = DataBlock<Dim, node, lgf>;
@@ -188,6 +191,31 @@ struct PoissonProblem
         }
     }
 
+    void buffer_test()
+    {
+        //
+        for (auto it  = simulation_.domain_.begin_leafs();
+                it != simulation_.domain_.end_leafs(); ++it)
+        {
+
+            //make a box-overlap check to determine buffers
+            auto base = it->data()->descriptor().base();
+            auto max  = it->data()->descriptor().max();
+            for (auto k = base[2]-1; k <= max[2]+1; ++k)
+            {
+                for (auto j = base[1]-1; j <= max[1]+1; ++j)
+                {
+                    for (auto i = base[0]-1; i <= max[0]+1; ++i)
+                    {
+                        it->data()->get<bla_field>(i,j,k) = it->real_level();
+                    }
+                }
+            }
+
+        }
+    }
+
+
     void neighbor_test()
     {
 
@@ -195,25 +223,50 @@ struct PoissonProblem
         for (auto it  = simulation_.domain_.begin_leafs();
                 it != simulation_.domain_.end_leafs(); ++it)
         {
-            //if(it->real_level()==1)
-            if(true)
+            coordinate_t direction(0);
+            direction[0]=+1;
+            auto nn=it->vertex_neighbor(direction);
+            if(nn!=nullptr)
             {
-                coordinate_t direction(0);
-                direction[0]=+1;
-                auto nn=it->vertex_neighbor(direction);
-                if(nn!=nullptr)
-                {
 
-                    std::ofstream ofs("point_"+std::to_string(count)+".txt");
-                    std::ofstream ofs1("nn_"+std::to_string(count)+".txt");
-                    ofs<<it->real_coordinate()<<std::endl;
-                    ofs1<<nn->real_coordinate()<<std::endl;
-                    ++count;
-                }
-                else
+                std::ofstream ofs("point_"+std::to_string(count)+".txt");
+                std::ofstream ofs1("nn_"+std::to_string(count)+".txt");
+                ofs<<it->real_coordinate()<<std::endl;
+                ofs1<<nn->real_coordinate()<<std::endl;
+                ++count;
+            }
+            else
+            {
+                std::cout<<"could not find neighbors"<<std::endl;
+            }
+        }
+    }
+
+    void neighborhood_test()
+    {
+
+        int count=0;
+        for (auto it  = simulation_.domain_.begin_leafs();
+                it != simulation_.domain_.end_leafs(); ++it)
+        {
+            coordinate_t lowBuffer(1);
+            coordinate_t highBuffer(2);
+            auto neighborhood = it->get_neighborhood(lowBuffer, highBuffer); 
+
+            if(neighborhood.size()!=0)
+            {
+                std::ofstream ofs("point_nh__"+std::to_string(count)+".txt");
+                ofs<<it->real_coordinate()<<std::endl;
+                std::ofstream ofs1("nh_"+std::to_string(count)+".txt");
+                for(auto& e:neighborhood) 
                 {
-                    std::cout<<"could not find neighbors"<<std::endl;
+                    ofs1<<e->real_coordinate()<<std::endl;
                 }
+                count++;
+            }
+            else
+            {
+                std::cout<<"empty neighborhood"<<std::endl;
             }
         }
     }
@@ -266,7 +319,7 @@ struct PoissonProblem
      *  - FFT: is the fast-Fourier transform,
      *  - IFFT: is the inverse of the FFT
      */
-    void solve_amr()
+    void solve()
     {
         // allocate lgf
         std::vector<float_type> lgf;
@@ -406,6 +459,15 @@ struct PoissonProblem
         compute_errors();
         pcout << "Writing solution " << std::endl;
         simulation_.write("solution.vtk");
+    }
+
+    void test()
+    {
+        neighborhood_test();
+        buffer_test();
+        pcout << "Writing solution " << std::endl;
+        simulation_.write("solution.vtk");
+            
     }
 
 

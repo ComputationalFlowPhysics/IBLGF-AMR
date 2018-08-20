@@ -361,10 +361,6 @@ public: //members
         return ext;
     }
 
-    
-
-
-
     template<class Block>
     std::vector<BlockDescriptor> cutout(const std::vector<Block>& _blocks) const
     {

@@ -54,6 +54,8 @@ struct PoissonProblem
     make_field_type(lapace_error    , float_type)
     make_field_type(dummy_field     , float_type)
 
+    //Field with buffer:
+    make_field_type(bla_field  , float_type, 1, 2)
 
     using datablock_t = DataBlock<
         Dim, node,
@@ -66,7 +68,8 @@ struct PoissonProblem
         error2,
         lapace_field,
         lapace_error,
-        dummy_field     
+        dummy_field, 
+        bla_field     
     >;
 
     using datablock_t_2 = DataBlock<Dim, node, lgf>;
@@ -186,6 +189,31 @@ struct PoissonProblem
             }
         }
     }
+
+    void buffer_test()
+    {
+        //
+        for (auto it  = simulation_.domain_.begin_leafs();
+                it != simulation_.domain_.end_leafs(); ++it)
+        {
+
+            //make a box-overlap check to determine buffers
+            auto base = it->data()->descriptor().base();
+            auto max  = it->data()->descriptor().max();
+            for (auto k = base[2]-1; k <= max[2]+1; ++k)
+            {
+                for (auto j = base[1]-1; j <= max[1]+1; ++j)
+                {
+                    for (auto i = base[0]-1; i <= max[0]+1; ++i)
+                    {
+                        it->data()->get<bla_field>(i,j,k) = it->real_level();
+                    }
+                }
+            }
+
+        }
+    }
+
 
     void neighbor_test()
     {
@@ -326,9 +354,10 @@ struct PoissonProblem
         simulation_.write("solution.vtk");
     }
 
-    void solve2()
+    void test()
     {
         neighborhood_test();
+        buffer_test();
         pcout << "Writing solution " << std::endl;
         simulation_.write("solution.vtk");
             

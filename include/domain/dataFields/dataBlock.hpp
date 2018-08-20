@@ -76,11 +76,9 @@ public: //Ctors:
 
     void initialize(const block_descriptor_type& _b)
     {
-        size_type size=1;
-        for(int d=0;d<dimension;++d) size*= _b.extent()[d];
-        tuple_utils::for_each(fields, [this,&size](auto& field)
+        tuple_utils::for_each(fields, [this,&_b](auto& field)
         {
-            field.resize(size);
+            field.initialize(_b);
         });
         this->generate_nodes();
     }
@@ -99,29 +97,26 @@ public: //member functions
     template<template<std::size_t> class Field>
     auto& get(int _i, int _j, int _k)
     {
-        return std::get<Field<dimension>>(fields)
-            [block_.globalCoordinate_to_index(_i,_j,_k)];
+        return std::get<Field<dimension>>(fields).get(_i,_j,_k);
     }
 
     template<template<std::size_t> class Field>
     const auto& get(int _i, int _j, int _k)const
     {
-        return std::get<Field<dimension>>(fields)
-            [block_.globalCoordinate_to_index(_i,_j,_k)];
+        return std::get<Field<dimension>>(fields).get(_i,_j,_k);
     }
 
     template<template<std::size_t> class Field>
     auto& get_from_localIdx(int _i, int _j, int _k)
     {
-        return std::get<Field<dimension>>(fields)
-            [block_.localCoordinate_to_index(_i,_j,_k)];
+        return std::get<Field<dimension>>(fields).get_from_localIdx(_i,_j,_k);
+
     }
 
     template<template<std::size_t> class Field>
     const auto& get_from_localIdx(int _i, int _j, int _k)const
     {
-        return std::get<Field<dimension>>(fields)
-            [block_.localCoordinate_to_index(_i,_j,_k)];
+        return std::get<Field<dimension>>(fields).get_from_localIdx(_i,_j,_k);
     }
 
     template<std::size_t  Idx>
@@ -140,11 +135,6 @@ public: //member functions
 
     const auto& nodes()const{return nodes_;}
     auto& nodes(){return nodes_;}
-
-
-
-
-
 
     friend std::ostream& operator<<(std::ostream& os, const  DataBlock& c)
     {
@@ -173,8 +163,8 @@ private: //private member helpers
     void generate_nodes()
     {
         nodes_.clear();
-        const auto& f = std::get<0>(fields);
-        for(std::size_t i=0; i<f.size();++i)
+        auto size=block_.nPoints();
+        for(std::size_t i=0; i<size;++i)
         {
             nodes_.emplace_back(this,i );
         }

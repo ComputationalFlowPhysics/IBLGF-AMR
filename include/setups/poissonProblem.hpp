@@ -69,8 +69,7 @@ struct PoissonProblem
         lapace_field,
         lapace_error,
         dummy_field, 
-        bla_field     
-    >;
+        bla_field     >;
 
     using datablock_t_2 = DataBlock<Dim, node, lgf>;
 

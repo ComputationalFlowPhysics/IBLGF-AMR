@@ -111,7 +111,7 @@ struct PoissonProblem
         for (auto it  = simulation_.domain_.begin_leafs();
                   it != simulation_.domain_.end_leafs(); ++it)
         {
-            if (count++ ==0)simulation_.domain_.refine(it);
+            //if (count++ ==0)simulation_.domain_.refine(it);
 
         }
 

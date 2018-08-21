@@ -390,7 +390,7 @@ struct PoissonProblem
                     // Extract the solution
                     block_descriptor_t extractor(s_base, s_extent);
                     conv.add_solution(extractor,
-                                      it_t->data()->get<phi_num>().data(),
+                                      it_t->data()->get_data<phi_num>(),
                                       dx_level*dx_level);
                 }
                 target++;
@@ -437,12 +437,12 @@ struct PoissonProblem
                         lgf_.get_subblock(block_descriptor_t(base_lgf,
                                                              extent_lgf), lgf);
                         
-                        conv.execute(lgf, it_s->data()->get<source>().data());
+                        conv.execute(lgf, it_s->data()->get_data<source>());
                         block_descriptor_t extractor(s_base, s_extent);
                         std::cout<<it_t->parent()->data()->descriptor()<<std::endl;
                         conv.add_solution(
                             extractor,
-                            it_t->parent()->data()->get<phi_num>().data(),
+                            it_t->parent()->data()->get_data<phi_num>(),
                             dx_level*dx_level);
                         
                     }
@@ -488,7 +488,7 @@ struct PoissonProblem
 
             // Loops on coordinates
             for (auto kc  = _b_child->data()->base()[2];
-                      kc < _b_child->data()->max()[2]; ++kc)
+                       kc < _b_child->data()->max()[2]; ++kc)
             {
                 for (auto jc  = _b_child->data()->base()[1];
                         jc < _b_child->data()->max()[1]; ++jc)

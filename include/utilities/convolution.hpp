@@ -210,7 +210,6 @@ public: //Ctors
             {
                 for (int i = dims0_[0]-1; i < dims0_[0]+_b.extent()[0]-1; ++i)
                 {
-                    int idx= i+j*padded_dims[0]+k*padded_dims[0]*padded_dims[1];
                     F[count++] += _scale*fft_backward.output()
                     [ i+j*padded_dims[0]+k*padded_dims[0]*padded_dims[1]];
                 }
@@ -218,22 +217,6 @@ public: //Ctors
         }
     }
     
-    template<class Block,class Field>
-    void add_solution_finer(const Block& _b, Field& F, const float_type _scale)
-    {
-        int count = 0;
-        for (int k = dims0_[2]-1; k < dims0_[2]+_b.extent()[2]-1; k+=2)
-        {
-            for (int j = dims0_[1]-1; j < dims0_[1]+_b.extent()[1]-1; j+=2)
-            {
-                for (int i = dims0_[0]-1; i < dims0_[0]+_b.extent()[0]-1; i+=2)
-                {
-                    F[count+=2] += _scale*fft_backward.output()
-                    [i+j*padded_dims[0]+k*padded_dims[0]*padded_dims[1]];
-                }
-            }
-        }
-    }
 
 private:
     dims_t padded_dims;

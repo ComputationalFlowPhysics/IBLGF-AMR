@@ -316,7 +316,7 @@ struct PoissonProblem
      *  - FFT: is the fast-Fourier transform,
      *  - IFFT: is the inverse of the FFT
      */
-    void solve2()
+    void solve()
     {
         // allocate lgf
         std::vector<float_type> lgf;
@@ -340,7 +340,7 @@ struct PoissonProblem
                 for (auto it_s  = simulation_.domain_.begin(ls);
                           it_s != simulation_.domain_.end(ls); ++it_s)
                 {
-                    this->coarsify(it_s);
+                   this->coarsify(it_s);
                 }
             }
         }
@@ -446,7 +446,7 @@ struct PoissonProblem
                             dx_level*dx_level);
                         
                     }
-                    //this->interpolate(it_t->parent());
+                    this->interpolate(it_t->parent());
                     std::advance(it_t,8);
                 }
             }
@@ -458,7 +458,7 @@ struct PoissonProblem
         simulation_.write("solution.vtk");
     }
 
-    void solve()
+    void solve2()
     {
         neighborhood_test();
         buffer_test();
@@ -478,84 +478,38 @@ struct PoissonProblem
     template<class Block_it>
     void interpolate(const Block_it* _b_parent)
     {
-        
         for (int i = 0; i < _b_parent->num_children(); ++i)
         {
             auto _b_child = _b_parent->child(i);
-            
+
             auto ip = _b_parent->data()->base()[0];
             auto jp = _b_parent->data()->base()[1];
             auto kp = _b_parent->data()->base()[2];
-            
+
             // Loops on coordinates
             for (auto kc  = _b_child->data()->base()[2];
-                 kc < _b_child->data()->max()[2]; ++kc)
+                      kc < _b_child->data()->max()[2]; ++kc)
             {
                 for (auto jc  = _b_child->data()->base()[1];
-                     jc < _b_child->data()->max()[1]; ++jc)
+                        jc < _b_child->data()->max()[1]; ++jc)
                 {
                     for (auto ic  = _b_child->data()->base()[0];
-                         ic < _b_child->data()->max()[0]; ++ic)
+                            ic < _b_child->data()->max()[0]; ++ic)
                     {
-                        
-                        //
-                        int ll_ip = ic/2;
-                        int ll_jp = jc/2;
-                        int ll_kp = kc/2;
 
                         _b_child->data()->template get<phi_num>(ic,jc,kc) +=
                             _b_parent->data()->template get<phi_num_tmp>(ip,jp,kp);
-                        
+
                         _b_child->data()->template get<phi_num>(ic+1,jc+1,kc+1) +=
                             (_b_parent->data()->template get<phi_num_tmp>(ip+1,jp+1,kp+1) +
                              _b_parent->data()->template get<phi_num_tmp>(ip,jp,kp)) / 2;
-                        
+
                         ic+=2;
                         jc+=2;
                         kc+=2;
                     }
                 }
             }
-            
-        }
-    }
-    template<class Block_it>
-    void interpolate2(const Block_it* _b_parent)
-    {
-        
-        for (int i = 0; i < _b_parent->num_children(); ++i)
-        {
-            auto _b_child = _b_parent->child(i);
-            
-            auto ic = _b_child->data()->base()[0];
-            auto jc = _b_child->data()->base()[1];
-            auto kc = _b_child->data()->base()[2];
-            
-            // Loops on coordinates
-            for (auto kp  = _b_parent->data()->base()[2];
-                 kp < _b_parent->data()->max()[2]; ++kp)
-            {
-                for (auto jp  = _b_parent->data()->base()[1];
-                     jp < _b_parent->data()->max()[1]; ++jp)
-                {
-                    for (auto ip  = _b_parent->data()->base()[0];
-                         ip < _b_parent->data()->max()[0]; ++ip)
-                    {
-                        
-                        _b_child->data()->template get<phi_num>(ic,jc,kc) +=
-                            _b_parent->data()->template get<phi_num_tmp>(ip,jp,kp);
-                        
-                        _b_child->data()->template get<phi_num>(ic+1,jc+1,kc+1) +=
-                            (_b_parent->data()->template get<phi_num_tmp>(ip+1,jp+1,kp+1) +
-                             _b_parent->data()->template get<phi_num_tmp>(ip,jp,kp)) / 2;
-                        
-                        ic+=2;
-                        jc+=2;
-                        kc+=2;
-                    }
-                }
-            }
-            
         }
     }
     
@@ -587,11 +541,11 @@ struct PoissonProblem
                 {
                     _b_parent->data()->template get<source>(ip,jp,kp) =
                         _b_child->data()->template get<source>(ic,jc,kc);
-                    ip+=1;
-                    jp+=1;
-                    kp+=1;
+                    ++ip;
                 }
+                ++jp;
             }
+            ++kp;
         }
         
     }

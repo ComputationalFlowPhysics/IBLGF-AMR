@@ -53,22 +53,19 @@ public: //Access
     template<class T>
     const auto& get()const noexcept{return c_->template get<T>()[index_];}
 
-
-
-
     coordinate_type level_coordinate()const noexcept
     {
         coordinate_type res;
-        const auto e=c_->descriptor().extent();
+        const auto e=c_->extent();
         res[2]= index_/(e[0]*e[1]);
         res[1]=(index_- res[2]*e[0]*e[1])/e[0];
         res[0]=(index_- res[2]*e[0]*e[1] -res[1]*e[0]);
-        res+=c_->descriptor().base();
+        res+=c_->base();
         return res;
     }
-    real_coordinate_type real_coordinate()const noexcept
+    real_coordinate_type global_coordinate()const noexcept
     {
-        return (level_coordinate())/std::pow(2,c_->descriptor().level());
+        return (level_coordinate())/std::pow(2,c_->level());
     }
 
     std::pair<node,bool> 
@@ -88,11 +85,11 @@ public: //Access
 
     bool on_blockBorder()
     {
-        return c_->descriptor().on_boundary(level_coordinate());
+        return c_->on_boundary(level_coordinate());
     }
     bool on_max_blockBorder()
     {
-        return c_->descriptor().on_max_boundary(level_coordinate());
+        return c_->on_max_boundary(level_coordinate());
     }
 
 

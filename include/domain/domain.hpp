@@ -31,7 +31,6 @@ public:
     using key_t    = typename tree_t::key_type;
     using octant_t = typename tree_t::octant_type;
 
-
     // iterator types
     using dfs_iterator = typename tree_t::dfs_iterator;
     using bfs_iterator = typename tree_t::bfs_iterator;
@@ -112,7 +111,7 @@ public:
         t_ = std::make_shared<tree_t>(bases, base_level);
 
         //Assign octant to real coordinate transform:
-        t_->get_octant_to_real_coordinate()=
+        t_->get_octant_to_level_coordinate()=
             [ blockExtent=_blockExtent, base=base_]
             (real_coordinate_type _oct_coord, int _level)
             {
@@ -123,7 +122,7 @@ public:
         for(auto it=t_->begin_leafs();it!=t_->end_leafs();++it)
         {
             const int level=0;
-            auto bbase=t_->octant_to_real_coordinate(it->coordinate());
+            auto bbase=t_->octant_to_level_coordinate(it->tree_coordinate());
             it->data()=std::make_shared<datablock_t>(bbase, _blockExtent,level);
         }
     }
@@ -160,7 +159,7 @@ public:
         tree()->refine(octant_it,[this](auto& child_it)
         {
             auto level = child_it->level()-this->tree()->base_level();
-            auto bbase=t_->octant_to_real_coordinate(child_it->coordinate(), level);
+            auto bbase=t_->octant_to_level_coordinate(child_it->tree_coordinate(), level);
             child_it->data()=std::make_shared<datablock_t>(bbase, block_extent_,level);
         });
     }

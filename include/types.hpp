@@ -22,9 +22,6 @@ namespace types
     class void_mixin{};
 
 
-
-
-
 }//namespace types
 
 

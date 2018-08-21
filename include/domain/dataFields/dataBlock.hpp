@@ -19,7 +19,7 @@ namespace domain
 template<int Dim,
          template<class >class NodeType, 
          template<std::size_t> class ...DataFieldType>
-class DataBlock
+class DataBlock : public  BlockDescriptor<int, Dim>
 {
 
 public: //member types
@@ -41,6 +41,7 @@ public: //member types
     using size_type = types::size_type;
 
     using block_descriptor_type = BlockDescriptor<int,dimension>;
+    using super_type = block_descriptor_type;
     using extent_t = typename block_descriptor_type::extent_t;
     using base_t = typename block_descriptor_type::base_t;
 
@@ -62,13 +63,13 @@ public: //Ctors:
 	DataBlock& operator=(DataBlock&&) & = default;
 
     DataBlock(base_t _base, extent_t _extent, int _level=0)
-    :block_(_base, _extent, _level)
+    :super_type(_base, _extent, _level)
     {
-        this->initialize(block_);
+        this->initialize(this->descriptor());
     }
 
     DataBlock(const block_descriptor_type& _b)
-    :block_(_b)
+    :super_type(_b)
     {
         this->initialize( _b );
     }
@@ -89,10 +90,19 @@ public: //member functions
 
     template<template<std::size_t> class Field>
     auto& get(){return std::get<Field<dimension>>(fields);}
-
     template<template<std::size_t> class Field>
     const auto& get()const{return std::get<Field<dimension>>(fields);}
 
+    template<class T> auto& get(){return std::get<T>(fields);}
+    template<class T> const auto& get()const{return std::get<T>(fields);}
+
+    template<template<std::size_t> class Field>
+    auto& get_data(){return std::get<Field<dimension>>(fields).data();}
+    template<template<std::size_t> class Field>
+    const auto& get_data()const{return std::get<Field<dimension>>(fields).data();}
+
+    template<class T> auto& get_data(){return std::get<T>(fields).data();}
+    template<class T> const auto& get_data()const{return std::get<T>(fields).data();}
 
     template<template<std::size_t> class Field>
     auto& get(int _i, int _j, int _k)
@@ -110,7 +120,6 @@ public: //member functions
     auto& get_from_localIdx(int _i, int _j, int _k)
     {
         return std::get<Field<dimension>>(fields).get_from_localIdx(_i,_j,_k);
-
     }
 
     template<template<std::size_t> class Field>
@@ -119,16 +128,6 @@ public: //member functions
         return std::get<Field<dimension>>(fields).get_from_localIdx(_i,_j,_k);
     }
 
-    template<std::size_t  Idx>
-    auto& get(){return std::get<Idx>(fields);}
-
-    template<std::size_t  Idx>
-    const auto& get()const{return std::get<Idx>(fields);}
-
-    template<class T>
-    auto& get(){return std::get<T>(fields);}
-    template<class T>
-    const auto& get()const{return std::get<T>(fields);}
 
     auto nodes_begin()const noexcept{return nodes_.begin();}
     auto nodes_end()const noexcept{return nodes_.end();}
@@ -150,12 +149,11 @@ public: //member functions
         tuple_utils::for_each(fields, F);
     }
 
-    const block_descriptor_type& descriptor()const noexcept{return block_;}
-
+    block_descriptor_type descriptor()const noexcept { return *this; }
 
     size_type get_index(coordinate_type _coord) const noexcept
     {
-        return block_.get_flat_index(_coord);
+        return this->get_flat_index(_coord);
     }
 
 private: //private member helpers
@@ -163,18 +161,15 @@ private: //private member helpers
     void generate_nodes()
     {
         nodes_.clear();
-        auto size=block_.nPoints();
+        auto size=this->nPoints();
         for(std::size_t i=0; i<size;++i)
         {
             nodes_.emplace_back(this,i );
         }
     }
 
-  
-
 private: //Data members
 
-    block_descriptor_type block_;
     fields_tuple_t fields;
     std::vector<node_t>  nodes_;
 };

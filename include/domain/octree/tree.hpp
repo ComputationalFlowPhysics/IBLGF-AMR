@@ -88,8 +88,6 @@ public:
         }
         construct_level_maps();
 
-        //for(auto it=bfs_iterator(root());it!=bfs_iterator();++it )
-        //    std::cout<<it->key()<<"\n"<<it->key().child_number()<<std::endl;
     }
 
 
@@ -101,10 +99,22 @@ public:
     octant_iterator begin_leafs() noexcept {return leafs_.begin();}
     octant_iterator end_leafs  () noexcept {return leafs_.end();}
 
-    octant_iterator begin(int _level)       noexcept{return level_maps_[_level].begin();}
-    octant_iterator end  (int _level)       noexcept{return level_maps_[_level].end();}
-    octant_iterator begin(int _level) const noexcept{return level_maps_[_level].begin();}
-    octant_iterator end  (int _level) const noexcept{return level_maps_[_level].end();}
+    octant_iterator begin(int _level)noexcept
+    {
+        return level_maps_[_level].begin();
+    }
+    octant_iterator end(int _level)noexcept
+    {
+        return level_maps_[_level].end();
+    }
+    octant_iterator begin(int _level) const noexcept
+    {
+        return level_maps_[_level].begin();
+    }
+    octant_iterator end  (int _level) const noexcept
+    {
+        return level_maps_[_level].end();
+    }
 
     auto num_leafs() const noexcept {return leafs_.size();}
 
@@ -132,16 +142,16 @@ public:
         if(!_recursive) std::advance(_l,_l->num_children()-1);
     }
 
-    const auto& get_octant_to_real_coordinate() const noexcept
+    const auto& get_octant_to_level_coordinate() const noexcept
     {
         return octant_to_real_coordinate_;
     }
-    auto& get_octant_to_real_coordinate() noexcept
+    auto& get_octant_to_level_coordinate() noexcept
     {
         return octant_to_real_coordinate_;
     }
     template<class T>
-    auto octant_to_real_coordinate(T _x, int _level=0)
+    auto octant_to_level_coordinate(T _x, int _level=0)
     {
         return octant_to_real_coordinate_(_x, _level);
     }
@@ -200,32 +210,6 @@ private: //find
             return it->second;
         else return nullptr;
     }
-
-
-
-    //auto find_leaf_any_level(octant_base_type _node)  noexcept
-    //{
-    //    octant_base_type n = _node;
-    //    const auto it = leafs_.find(n.key());
-    //    if (it != leafs_.end())
-    //    {
-    //         return octant_iterator(it);
-    //    }
-    //    else
-    //    {
-    //        //This is wrong i think
-    //        for(auto i = this->depth(); i >= base_level(); --i)
-    //        {
-    //            const auto parent = n.equal_coordinate_parent();
-    //            const auto it = leafs_.find(parent.key());
-    //            if (it != leafs_.end()) return octant_iterator(it);
-    //            n = parent;
-    //        }
-    //        return octant_iterator(it);
-    //    }
-    //    return octant_iterator(it);
-    //}
-
 
 
 
@@ -307,7 +291,7 @@ private: // misc
         }
     }
  
-    static real_coordinate_type unit_transform(coordinate_type _x, int _level)
+    static coordinate_type unit_transform(coordinate_type _x, int _level)
     {
         return _x;
     }

@@ -111,7 +111,7 @@ struct PoissonProblem
         for (auto it  = simulation_.domain_.begin_leafs();
                   it != simulation_.domain_.end_leafs(); ++it)
         {
-            //if (count++ ==0)simulation_.domain_.refine(it);
+            if (count++ ==0)simulation_.domain_.refine(it);
 
         }
 
@@ -126,13 +126,13 @@ struct PoissonProblem
                   it != simulation_.domain_.end_leafs(); ++it)
         {
             
-            auto dx_level =  dx/std::pow(2,it->real_level());
-            auto scaling =  std::pow(2,it->real_level());
+            auto dx_level =  dx/std::pow(2,it->refinement_level());
+            auto scaling =  std::pow(2,it->refinement_level());
 
 
             // ijk-way of initializing
-            auto base = it->data()->descriptor().base();
-            auto max  = it->data()->descriptor().max();
+            auto base = it->data()->base();
+            auto max  = it->data()->max();
             for (auto k = base[2]; k <= max[2]; ++k)
             {
                 for (auto j = base[1]; j <= max[1]; ++j)
@@ -171,19 +171,18 @@ struct PoissonProblem
         for(int l  = simulation_.domain_.tree()->base_level();
                 l < simulation_.domain_.tree()->depth();++l)
         {
-            
             for(auto it  = simulation_.domain_.begin(l);
                      it != simulation_.domain_.end(l); ++it)
             {
-                auto base = it->data()->descriptor().base();
-                auto max  = it->data()->descriptor().max();
+                auto base = it->data()->base();
+                auto max  = it->data()->max();
                 for (auto k = base[2]; k <= max[2]; ++k)
                 {
                     for (auto j = base[1]; j <= max[1]; ++j)
                     {
                         for (auto i = base[0]; i <= max[0]; ++i)
                         {
-                            it->data()->get<dummy_field>(i,j,k) = it->real_level();
+                            it->data()->get<dummy_field>(i,j,k) = it->refinement_level();
                         }
                     }
                 }
@@ -199,19 +198,18 @@ struct PoissonProblem
         {
 
             //make a box-overlap check to determine buffers
-            auto base = it->data()->descriptor().base();
-            auto max  = it->data()->descriptor().max();
+            auto base = it->data()->base();
+            auto max  = it->data()->max();
             for (auto k = base[2]-1; k <= max[2]+1; ++k)
             {
                 for (auto j = base[1]-1; j <= max[1]+1; ++j)
                 {
                     for (auto i = base[0]-1; i <= max[0]+1; ++i)
                     {
-                        it->data()->get<bla_field>(i,j,k) = it->real_level();
+                        it->data()->get<bla_field>(i,j,k) = it->refinement_level();
                     }
                 }
             }
-
         }
     }
 
@@ -231,8 +229,8 @@ struct PoissonProblem
 
                 std::ofstream ofs("point_"+std::to_string(count)+".txt");
                 std::ofstream ofs1("nn_"+std::to_string(count)+".txt");
-                ofs<<it->real_coordinate()<<std::endl;
-                ofs1<<nn->real_coordinate()<<std::endl;
+                ofs<<it->global_coordinate()<<std::endl;
+                ofs1<<nn->global_coordinate()<<std::endl;
                 ++count;
             }
             else
@@ -256,11 +254,11 @@ struct PoissonProblem
             if(neighborhood.size()!=0)
             {
                 std::ofstream ofs("point_nh__"+std::to_string(count)+".txt");
-                ofs<<it->real_coordinate()<<std::endl;
+                ofs<<it->global_coordinate()<<std::endl;
                 std::ofstream ofs1("nh_"+std::to_string(count)+".txt");
                 for(auto& e:neighborhood) 
                 {
-                    ofs1<<e->real_coordinate()<<std::endl;
+                    ofs1<<e->global_coordinate()<<std::endl;
                 }
                 count++;
             }
@@ -278,8 +276,8 @@ struct PoissonProblem
                   it != simulation_.domain_.end_leafs(); ++it)
         {
 
-            auto base = it->data()->descriptor().base();
-            auto max  = it->data()->descriptor().max();
+            auto base = it->data()->base();
+            auto max  = it->data()->max();
             for (auto k = base[2]+1; k < max[2]; ++k)
             {
                 for (auto j = base[1]+1; j < max[1]; ++j)
@@ -319,7 +317,7 @@ struct PoissonProblem
      *  - FFT: is the fast-Fourier transform,
      *  - IFFT: is the inverse of the FFT
      */
-    void solve()
+    void solve2()
     {
         // allocate lgf
         std::vector<float_type> lgf;
@@ -356,12 +354,12 @@ struct PoissonProblem
             for (auto it_t  = simulation_.domain_.begin(l);
                       it_t != simulation_.domain_.end(l); ++it_t)
             {
-                auto real_level = it_t->real_level();
-                auto dx_level =  dx/std::pow(2,real_level);
+                auto refinement_level = it_t->refinement_level();
+                auto dx_level =  dx/std::pow(2,refinement_level);
 
                 pcout << "--------- SELF-INTERACTION --------" << std::endl;
                 pcout << "======== TARGET BLOCK = "        << target
-                      << ",        TARGET REAL LEVEL = " << real_level
+                      << ",        TARGET REAL LEVEL = " << refinement_level
                       << std::endl;
                 
                 for (auto it_s  = simulation_.domain_.begin(l);
@@ -369,14 +367,14 @@ struct PoissonProblem
                 {
                     // Get the coordinate of target block
                     const auto t_base = simulation_.domain_.tree()->
-                        octant_to_real_coordinate(it_t->coordinate());
+                        octant_to_level_coordinate(it_t->tree_coordinate());
                     
-                    // Get coordinate of source block
+                    // Get tree_coordinate of source block
                     const auto s_base = simulation_.domain_.tree()->
-                        octant_to_real_coordinate(it_s->coordinate());
+                        octant_to_level_coordinate(it_s->tree_coordinate());
                     
                     // Get extent of source region
-                    const auto s_extent = it_s->data()->descriptor().extent();
+                    const auto s_extent = it_s->data()->extent();
                     const auto shift    = t_base - s_base;
                     
                     // Calculate the dimensions of the LGF to be allocated
@@ -415,22 +413,22 @@ struct PoissonProblem
                 for (auto it_t  = simulation_.domain_.begin(lt);
                           it_t != simulation_.domain_.end(lt); ++it_t)
                 {
-                    auto real_level = it_t->real_level();
-                    auto dx_level   = dx/std::pow(2,real_level-1);
+                    auto refinement_level = it_t->refinement_level();
+                    auto dx_level   = dx/std::pow(2,refinement_level-1);
                     
                     for (auto it_s  = simulation_.domain_.begin(ls);
                          it_s != simulation_.domain_.end(ls); ++it_s)
                     {
-                        // Get the coordinate of target block
+                        // Get the tree_coordinate of target block
                         const auto t_base_parent = simulation_.domain_.tree()->
-                        octant_to_real_coordinate(it_t->parent()->coordinate());
+                        octant_to_level_coordinate(it_t->parent()->tree_coordinate());
                         
-                        // Get coordinate of source block
+                        // Get tree_coordinate of source block
                         const auto s_base = simulation_.domain_.tree()->
-                        octant_to_real_coordinate(it_s->coordinate());
+                        octant_to_level_coordinate(it_s->tree_coordinate());
                         
                         // Get extent of source region
-                        const auto s_extent = it_s->data()->descriptor().extent();
+                        const auto s_extent = it_s->data()->extent();
                         const auto shift    = t_base_parent - s_base;
                         
                         // Calculate the dimensions of the LGF to be allocated
@@ -449,7 +447,7 @@ struct PoissonProblem
                             dx_level*dx_level);
                         
                     }
-                    this->interpolate(it_t->parent());
+                    //this->interpolate(it_t->parent());
                     std::advance(it_t,8);
                 }
             }
@@ -461,7 +459,7 @@ struct PoissonProblem
         simulation_.write("solution.vtk");
     }
 
-    void test()
+    void solve()
     {
         neighborhood_test();
         buffer_test();
@@ -486,19 +484,19 @@ struct PoissonProblem
         {
             auto _b_child = _b_parent->child(i);
             
-            auto ip = _b_parent->data()->descriptor().base()[0];
-            auto jp = _b_parent->data()->descriptor().base()[1];
-            auto kp = _b_parent->data()->descriptor().base()[2];
+            auto ip = _b_parent->data()->base()[0];
+            auto jp = _b_parent->data()->base()[1];
+            auto kp = _b_parent->data()->base()[2];
             
             // Loops on coordinates
-            for (auto kc  = _b_child->data()->descriptor().base()[2];
-                 kc < _b_child->data()->descriptor().max()[2]; ++kc)
+            for (auto kc  = _b_child->data()->base()[2];
+                 kc < _b_child->data()->max()[2]; ++kc)
             {
-                for (auto jc  = _b_child->data()->descriptor().base()[1];
-                     jc < _b_child->data()->descriptor().max()[1]; ++jc)
+                for (auto jc  = _b_child->data()->base()[1];
+                     jc < _b_child->data()->max()[1]; ++jc)
                 {
-                    for (auto ic  = _b_child->data()->descriptor().base()[0];
-                         ic < _b_child->data()->descriptor().max()[0]; ++ic)
+                    for (auto ic  = _b_child->data()->base()[0];
+                         ic < _b_child->data()->max()[0]; ++ic)
                     {
                         
                         //
@@ -506,7 +504,6 @@ struct PoissonProblem
                         int ll_jp = jc/2;
                         int ll_kp = kc/2;
 
-                        
                         _b_child->data()->template get<phi_num>(ic,jc,kc) +=
                             _b_parent->data()->template get<phi_num_tmp>(ip,jp,kp);
                         
@@ -531,19 +528,19 @@ struct PoissonProblem
         {
             auto _b_child = _b_parent->child(i);
             
-            auto ic = _b_child->data()->descriptor().base()[0];
-            auto jc = _b_child->data()->descriptor().base()[1];
-            auto kc = _b_child->data()->descriptor().base()[2];
+            auto ic = _b_child->data()->base()[0];
+            auto jc = _b_child->data()->base()[1];
+            auto kc = _b_child->data()->base()[2];
             
             // Loops on coordinates
-            for (auto kp  = _b_parent->data()->descriptor().base()[2];
-                 kp < _b_parent->data()->descriptor().max()[2]; ++kp)
+            for (auto kp  = _b_parent->data()->base()[2];
+                 kp < _b_parent->data()->max()[2]; ++kp)
             {
-                for (auto jp  = _b_parent->data()->descriptor().base()[1];
-                     jp < _b_parent->data()->descriptor().max()[1]; ++jp)
+                for (auto jp  = _b_parent->data()->base()[1];
+                     jp < _b_parent->data()->max()[1]; ++jp)
                 {
-                    for (auto ip  = _b_parent->data()->descriptor().base()[0];
-                         ip < _b_parent->data()->descriptor().max()[0]; ++ip)
+                    for (auto ip  = _b_parent->data()->base()[0];
+                         ip < _b_parent->data()->max()[0]; ++ip)
                     {
                         
                         _b_child->data()->template get<phi_num>(ic,jc,kc) +=
@@ -575,19 +572,19 @@ struct PoissonProblem
         auto _b_child  = _b;
         auto _b_parent = _b_child->parent();
 
-        auto ip = _b_parent->data()->descriptor().base()[0];
-        auto jp = _b_parent->data()->descriptor().base()[1];
-        auto kp = _b_parent->data()->descriptor().base()[2];
+        auto ip = _b_parent->data()->base()[0];
+        auto jp = _b_parent->data()->base()[1];
+        auto kp = _b_parent->data()->base()[2];
         
         // Loops on coordinates
-        for (auto kc  = _b_child->data()->descriptor().base()[2];
-                  kc <= _b_child->data()->descriptor().max()[2]; kc+=2)
+        for (auto kc  = _b_child->data()->base()[2];
+                  kc <= _b_child->data()->max()[2]; kc+=2)
         {
-            for (auto jc  = _b_child->data()->descriptor().base()[1];
-                      jc <= _b_child->data()->descriptor().max()[1]; jc+=2)
+            for (auto jc  = _b_child->data()->base()[1];
+                      jc <= _b_child->data()->max()[1]; jc+=2)
             {
-                for (auto ic  = _b_child->data()->descriptor().base()[0];
-                          ic <= _b_child->data()->descriptor().max()[0]; ic+=2)
+                for (auto ic  = _b_child->data()->base()[0];
+                          ic <= _b_child->data()->max()[0]; ic+=2)
                 {
                     _b_parent->data()->template get<source>(ip,jp,kp) =
                         _b_child->data()->template get<source>(ic,jc,kc);
@@ -613,23 +610,22 @@ struct PoissonProblem
         for (auto it_t  = simulation_.domain_.begin_leafs();
              it_t != simulation_.domain_.end_leafs(); ++it_t)
         {
-            if (it_t->is_hanging()) continue;
 
             for (std::size_t i = 0; i < it_t->data()->nodes().size(); ++i)
             {
-               it_t->data()->get<error>().data()[i] = std::abs(
-                    it_t->data()->get<phi_num>().data()[i] -
-                    it_t->data()->get<phi_exact>().data()[i]);
+               it_t->data()->get<error>()[i] = std::abs(
+                    it_t->data()->get<phi_num>()[i] -
+                    it_t->data()->get<phi_exact>()[i]);
                     
-                it_t->data()->get<error2>().data()[i] =
-                    it_t->data()->get<error>().data()[i] *
-                    it_t->data()->get<error>().data()[i];
+                it_t->data()->get<error2>()[i] =
+                    it_t->data()->get<error>()[i] *
+                    it_t->data()->get<error>()[i];
                     
-                L2 += it_t->data()->get<error2>().data()[i];
+                L2 += it_t->data()->get<error2>()[i];
                     
-                if ( it_t->data()->get<error>().data()[i] > LInf)
+                if ( it_t->data()->get<error>()[i] > LInf)
                 {
-                    LInf = it_t->data()->get<error>().data()[i];
+                    LInf = it_t->data()->get<error>()[i];
                 }
             }
             pcout << "L2   = " << L2/it_t->data()->nodes().size() << std::endl;

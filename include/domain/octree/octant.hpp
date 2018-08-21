@@ -14,6 +14,7 @@
 #include <domain/octree/octant_base.hpp>
 #include <domain/octree/tree_utils.hpp>
 #include <domain/dataFields/blockDescriptor.hpp>
+#include <domain/dataFields/datafield.hpp>
 #include <utilities/crtp.hpp>
 
 
@@ -40,6 +41,7 @@ public:
     using octant_iterator = typename tree_type::octant_iterator;
 
     using block_descriptor_type = typename domain::BlockDescriptor<int,Dim>;
+    using octant_datafield_type = typename  domain::DataField<Octant*, Dim>;
 
     using data_type = DataType;
 
@@ -105,6 +107,7 @@ public: //Ctors
      *
      *  @param[in] _lowBuffer How many octants in negative direction
      *  @param[in] _highBufer How many octants in positive direction
+     *  @return Vector of neighborhood octants
      */
     std::vector<Octant*> get_neighborhood(const coordinate_type& _lowBuffer,
             const coordinate_type& _highBuffer ) const noexcept
@@ -120,7 +123,7 @@ public: //Ctors
        for(auto it  = this->tree()->begin(level);
                 it != this->tree()->end(level); ++it)
        {
-           if(b.is_inside(it->tree_coordinate()))
+           if(b.is_inside(it->tree_coordinate()) && it->key()!=this->key())
            {
                res.push_back(*it);
            }
@@ -128,6 +131,34 @@ public: //Ctors
        return res;
     }
     
+    /** @brief Getting neighboorhood region of octant 
+     *
+     *  @param[in] _lowBuffer How many octants in negative direction
+     *  @param[in] _highBufer How many octants in positive direction
+     *  @return Datafield of octants for convient access
+     */
+    //octant_datafield_type get_neighborhood(const coordinate_type& _lowBuffer,
+    //        const coordinate_type& _highBuffer ) const noexcept
+    //{
+
+    //   std::vector<Octant*> res;
+    //   block_descriptor_type  b;
+    //   b.base(this->tree_coordinate() - _lowBuffer);
+    //   b.max( this->tree_coordinate() + _highBuffer);
+    //   int level=this->level();
+    //   b.level() = level;
+
+    //   for(auto it  = this->tree()->begin(level);
+    //            it != this->tree()->end(level); ++it)
+    //   {
+    //       if(b.is_inside(it->tree_coordinate()))
+    //       {
+    //           res.push_back(*it);
+    //       }
+    //   }
+    //   return res;
+    //}
+
     auto get_vertices() noexcept
     {
         std::vector<decltype(this->tree()->begin_leafs())> res;

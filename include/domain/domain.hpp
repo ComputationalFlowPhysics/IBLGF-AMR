@@ -170,7 +170,29 @@ public:
 public:
     void exchange_buffers()
     {
-        //
+        coordinate_type lbuff(1),hbuff(1);
+        for(auto it= begin_leafs(); it!=end_leafs();++it )
+        {
+            //determine neighborhood
+            auto neighbors = it->get_neighborhood(lbuff, hbuff);
+
+            //box-overlap per field 
+            it->data()->for_fields( [this,&it,&neighbors](auto& field)
+            {
+                for(auto& nn: neighbors)
+                {
+                    //Check for overlap with current
+                    block_descriptor_t  overlap;
+                    if(it->data()->overlap(nn->data()->descriptor(), overlap, it->refinement_level()))
+                    {
+                        std::cout<<"found overlap for field:"<<field.name()<<std::endl;
+                        std::cout<<overlap<<std::endl;
+                    }
+                }
+                
+
+            });
+        }
     }
 
 

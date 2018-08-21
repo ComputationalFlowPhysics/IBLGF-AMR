@@ -109,7 +109,7 @@ protected: //protected memeber:
 
 #define STRINGIFY(X) #X
 
-#define make_field_type_nb(key, DataType)                                      \
+#define make_field_type_nb(key, DataType)                                   \
 template<std::size_t _Dim>                                                  \
 class key : public DataField<DataType,_Dim>                                 \
 {                                                                           \

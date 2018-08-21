@@ -268,6 +268,11 @@ struct PoissonProblem
         }
     }
 
+    void buffer_exchange_test()
+    {
+        simulation_.domain_.exchange_buffers();
+    }
+
     void simple_lapace_fd()
     {
         //Only in interior for simplicity:
@@ -316,7 +321,7 @@ struct PoissonProblem
      *  - FFT: is the fast-Fourier transform,
      *  - IFFT: is the inverse of the FFT
      */
-    void solve()
+    void solve2()
     {
         // allocate lgf
         std::vector<float_type> lgf;
@@ -458,14 +463,16 @@ struct PoissonProblem
         simulation_.write("solution.vtk");
     }
 
-    void solve2()
+    void solve()
     {
         neighborhood_test();
         buffer_test();
+        buffer_exchange_test();
         pcout << "Writing solution " << std::endl;
         simulation_.write("solution.vtk");
             
     }
+
 
 
 

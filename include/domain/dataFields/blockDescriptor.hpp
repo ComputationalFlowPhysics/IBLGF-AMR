@@ -308,6 +308,7 @@ public: //members
 
     
 
+
     template<class BlockType, class OverlapType>
 	bool overlap(const BlockType& other, 
                  OverlapType& overlap) const noexcept
@@ -326,18 +327,20 @@ public: //members
         return true;
 	}
 
+
     template<class BlockType, class OverlapType>
     bool overlap(const BlockType& other, 
                  OverlapType& overlap, int _level)const noexcept
     {
-        const auto this_scaled=*this;
-        const auto other_scaled=*other;
+        auto this_scaled=*this;
+        auto other_scaled=*other;
         this_scaled.level_scale(_level);
         other_scaled.level_scale(_level);
         if(this_scaled.overlap(other_scaled, overlap))
             return true;
         return false;
     }
+
 
     bool is_empty() const noexcept 
     {

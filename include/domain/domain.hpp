@@ -167,6 +167,12 @@ public:
     const auto& block_extent()const noexcept { return block_extent_; }
     auto& block_extent()noexcept { return block_extent_; }
 
+public:
+    void exchange_buffers()
+    {
+        //
+    }
+
 
 public:
     

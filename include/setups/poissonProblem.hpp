@@ -505,10 +505,10 @@ struct PoissonProblem
                              _b_parent->data()->template get<phi_num_tmp>(ip,jp,kp)) / 2;
 
                         ic+=2;
-                        jc+=2;
-                        kc+=2;
                     }
+                    jc+=2;
                 }
+                kc+=2;
             }
         }
     }

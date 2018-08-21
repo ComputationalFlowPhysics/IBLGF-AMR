@@ -14,6 +14,7 @@
 #include <domain/octree/octant_base.hpp>
 #include <domain/octree/tree_utils.hpp>
 #include <domain/dataFields/blockDescriptor.hpp>
+#include <utilities/crtp.hpp>
 
 
 namespace octree
@@ -22,8 +23,11 @@ namespace octree
 template<int Dim, class DataType>
 class Tree;
 
-template<int Dim, class DataType>
-class Octant : public Octant_base<Dim,DataType>
+template<class T=void>
+class DefaultMixIn{};
+
+template<int Dim, class DataType, template<class> class MixIn=DefaultMixIn>
+class Octant : public Octant_base<Dim,DataType>, MixIn<Octant<Dim, DataType, MixIn>>
 {
 public:
 
@@ -108,33 +112,22 @@ public: //Ctors
 
        std::vector<Octant*> res;
        block_descriptor_type  b;
-       b.base(this->coordinate() - _lowBuffer);
-       b.max( this->coordinate() + _highBuffer);
+       b.base(this->tree_coordinate() - _lowBuffer);
+       b.max( this->tree_coordinate() + _highBuffer);
        int level=this->level();
        b.level() = level;
 
        for(auto it  = this->tree()->begin(level);
                 it != this->tree()->end(level); ++it)
        {
-           if(b.is_inside(it->coordinate()))
+           if(b.is_inside(it->tree_coordinate()))
            {
                res.push_back(*it);
            }
        }
        return res;
     }
-   
-    /** @brief Find cell that shares a face with octant 
-      *         on same, plus or minus one level 
-      *         Note: Here there is no check if direction is an actual face dir
-      **/
-    //std::vector<Octant*> face_neighbor(const coordinate_type& _offset)
-    //{
-    //    auto neighbor 
-    //    return nullptr;
-    //}
-
-  
+    
     auto get_vertices() noexcept
     {
         std::vector<decltype(this->tree()->begin_leafs())> res;

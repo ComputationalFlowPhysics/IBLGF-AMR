@@ -53,9 +53,6 @@ public: //Access
     template<class T>
     const auto& get()const noexcept{return c_->template get<T>()[index_];}
 
-
-
-
     coordinate_type level_coordinate()const noexcept
     {
         coordinate_type res;
@@ -66,7 +63,7 @@ public: //Access
         res+=c_->descriptor().base();
         return res;
     }
-    real_coordinate_type real_coordinate()const noexcept
+    real_coordinate_type global_coordinate()const noexcept
     {
         return (level_coordinate())/std::pow(2,c_->descriptor().level());
     }

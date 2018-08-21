@@ -111,7 +111,7 @@ struct PoissonProblem
         for (auto it  = simulation_.domain_.begin_leafs();
                   it != simulation_.domain_.end_leafs(); ++it)
         {
-            //if (count++ ==0)simulation_.domain_.refine(it);
+            if (count++ ==0)simulation_.domain_.refine(it);
 
         }
 
@@ -126,8 +126,8 @@ struct PoissonProblem
                   it != simulation_.domain_.end_leafs(); ++it)
         {
             
-            auto dx_level =  dx/std::pow(2,it->real_level());
-            auto scaling =  std::pow(2,it->real_level());
+            auto dx_level =  dx/std::pow(2,it->refinement_level());
+            auto scaling =  std::pow(2,it->refinement_level());
 
 
             // ijk-way of initializing
@@ -181,7 +181,7 @@ struct PoissonProblem
                     {
                         for (auto i = base[0]; i <= max[0]; ++i)
                         {
-                            it->data()->get<dummy_field>(i,j,k) = it->real_level();
+                            it->data()->get<dummy_field>(i,j,k) = it->refinement_level();
                         }
                     }
                 }
@@ -205,11 +205,10 @@ struct PoissonProblem
                 {
                     for (auto i = base[0]-1; i <= max[0]+1; ++i)
                     {
-                        it->data()->get<bla_field>(i,j,k) = it->real_level();
+                        it->data()->get<bla_field>(i,j,k) = it->refinement_level();
                     }
                 }
             }
-
         }
     }
 
@@ -229,8 +228,8 @@ struct PoissonProblem
 
                 std::ofstream ofs("point_"+std::to_string(count)+".txt");
                 std::ofstream ofs1("nn_"+std::to_string(count)+".txt");
-                ofs<<it->real_coordinate()<<std::endl;
-                ofs1<<nn->real_coordinate()<<std::endl;
+                ofs<<it->global_coordinate()<<std::endl;
+                ofs1<<nn->global_coordinate()<<std::endl;
                 ++count;
             }
             else
@@ -254,11 +253,11 @@ struct PoissonProblem
             if(neighborhood.size()!=0)
             {
                 std::ofstream ofs("point_nh__"+std::to_string(count)+".txt");
-                ofs<<it->real_coordinate()<<std::endl;
+                ofs<<it->global_coordinate()<<std::endl;
                 std::ofstream ofs1("nh_"+std::to_string(count)+".txt");
                 for(auto& e:neighborhood) 
                 {
-                    ofs1<<e->real_coordinate()<<std::endl;
+                    ofs1<<e->global_coordinate()<<std::endl;
                 }
                 count++;
             }
@@ -461,7 +460,6 @@ struct PoissonProblem
         for (auto it_t  = simulation_.domain_.begin_leafs();
              it_t != simulation_.domain_.end_leafs(); ++it_t)
         {
-            if (it_t->is_hanging()) continue;
 
             for (std::size_t i = 0; i < it_t->data()->nodes().size(); ++i)
             {

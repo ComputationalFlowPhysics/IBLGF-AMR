@@ -317,13 +317,14 @@ public: //members
         if(other.level()!= level_)
             overlap.level_scale(level_);
 
-		overlap.base()=std::max(base_,overlap.base());
-		overlap.extent() = std::min(base_+extent_,
-                overlap.base()+overlap.extent())-overlap.base();
+        for(std::size_t d = 0; d< overlap.extent().size();++d)
+        {
+            overlap.base()[d]=std::max(base_[d],other.base()[d]);
+            overlap.extent()[d] = std::min(base_[d]+extent_[d],
+                    other.base()[d]+other.extent()[d])-overlap.base()[d];
 
-        for(std::size_t d = 0; d< overlap.extent() .size();++d)
             if (overlap.extent()[d]<1)return false;
-
+        }
         return true;
 	}
 
@@ -333,7 +334,7 @@ public: //members
                  OverlapType& overlap, int _level)const noexcept
     {
         auto this_scaled=*this;
-        auto other_scaled=*other;
+        auto other_scaled=other;
         this_scaled.level_scale(_level);
         other_scaled.level_scale(_level);
         if(this_scaled.overlap(other_scaled, overlap))
@@ -467,8 +468,7 @@ public: //members
         os<<"Base: "<< b.base_
           <<" extent: "<<b.extent_
           <<" max: "<<b.max()
-          <<" level: "<<b.level()
-          <<std::endl;
+          <<" level: "<<b.level();
         return os;
     
     }

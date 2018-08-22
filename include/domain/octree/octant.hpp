@@ -71,7 +71,7 @@ public: //Ctors
         : super_type(key_type(_x,_level),_tr) { }
 
 
-     /** @brief Find cell that shares a vertex with octant 
+     /** @brief Find leaf that shares a vertex with octant 
       *         on same, plus or minus one level 
       **/
     Octant* vertex_neighbor(const coordinate_type& _offset)
@@ -103,14 +103,14 @@ public: //Ctors
     }
 
 
-    /** @brief Getting neighboorhood region of octant 
+    /** @brief Getting neighboorhood region of octant on level
      *
      *  @param[in] _lowBuffer How many octants in negative direction
      *  @param[in] _highBufer How many octants in positive direction
      *  @return Vector of neighborhood octants
      */
-    std::vector<Octant*> get_neighborhood(const coordinate_type& _lowBuffer,
-            const coordinate_type& _highBuffer ) const noexcept
+    std::vector<Octant*> get_level_neighborhood(const coordinate_type& _lowBuffer,
+            const coordinate_type& _highBuffer) const noexcept
     {
 
        std::vector<Octant*> res;
@@ -131,33 +131,13 @@ public: //Ctors
        return res;
     }
     
-    /** @brief Getting neighboorhood region of octant 
-     *
-     *  @param[in] _lowBuffer How many octants in negative direction
-     *  @param[in] _highBufer How many octants in positive direction
-     *  @return Datafield of octants for convient access
-     */
-    //octant_datafield_type get_neighborhood(const coordinate_type& _lowBuffer,
-    //        const coordinate_type& _highBuffer ) const noexcept
-    //{
 
-    //   std::vector<Octant*> res;
-    //   block_descriptor_type  b;
-    //   b.base(this->tree_coordinate() - _lowBuffer);
-    //   b.max( this->tree_coordinate() + _highBuffer);
-    //   int level=this->level();
-    //   b.level() = level;
 
-    //   for(auto it  = this->tree()->begin(level);
-    //            it != this->tree()->end(level); ++it)
-    //   {
-    //       if(b.is_inside(it->tree_coordinate()))
-    //       {
-    //           res.push_back(*it);
-    //       }
-    //   }
-    //   return res;
-    //}
+
+
+
+
+
 
     auto get_vertices() noexcept
     {

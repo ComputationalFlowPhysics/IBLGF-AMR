@@ -174,19 +174,30 @@ public:
         for(auto it= begin_leafs(); it!=end_leafs();++it )
         {
             //determine neighborhood
-            auto neighbors = it->get_neighborhood(lbuff, hbuff);
+            //auto neighbors = it->get_neighborhood(lbuff, hbuff);
 
             //box-overlap per field 
-            it->data()->for_fields( [this,&it,&neighbors](auto& field)
+            int level = it->refinement_level();
+            it->data()->for_fields( [this,it,level](auto& field)
             {
-                for(auto& nn: neighbors)
+                //FIXME:
+                //Quick fix for now ... should be only the neighbors
+                //for(auto& nn: neighbors) 
+                for(auto jt= begin_leafs(); jt!=end_leafs();++jt )
                 {
+                    if(it->key()==jt->key())continue;
+
                     //Check for overlap with current
-                    block_descriptor_t  overlap;
-                    if(it->data()->overlap(nn->data()->descriptor(), overlap, it->refinement_level()))
+                    block_descriptor_t overlap;
+                    block_descriptor_t currentField=field;;
+                    if(field.overlap(jt->data()->descriptor(), overlap, level))
                     {
-                        std::cout<<"found overlap for field:"<<field.name()<<std::endl;
-                        std::cout<<overlap<<std::endl;
+                        //std::cout<<"found overlap for fields:"<<field.name()<<""<<std::endl;
+                        //std::cout<<"iF: "<<currentField<<std::endl;
+                        //std::cout<<"nF: "<<jt->data()->descriptor()<<std::endl;
+                        //std::cout<<"ov: "<<overlap<<std::endl;
+                        //std::cout<<std::endl;
+
                     }
                 }
                 

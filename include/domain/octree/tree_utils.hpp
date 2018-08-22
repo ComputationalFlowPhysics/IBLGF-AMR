@@ -120,7 +120,7 @@ public:
     MapValuePtrIterator( const iterator_t& _it )
     : iterator_t(_it){}
 
-    mapped_type operator->() noexcept
+    mapped_type operator->() const noexcept
     { 
         return iterator_t::operator->()->second ; 
     }

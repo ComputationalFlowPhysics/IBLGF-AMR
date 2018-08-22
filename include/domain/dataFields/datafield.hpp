@@ -65,6 +65,7 @@ public: //member functions
     {
         this->base(_b.base()-lowBuffer_);
         this->extent(_b.extent()+lowBuffer_+highBuffer_);
+        this->level()= _b.level();
         size_type size=1;
         for(std::size_t d=0;d<this->extent().size();++d) size*= this->extent()[d];
         data_.resize(size);
@@ -99,9 +100,10 @@ public: //member functions
         return data_[this->localCoordinate_to_index(_i,_j,_j)];
     }
 
+
 protected: //protected memeber:
 
-    std::vector<DataType> data_; 
+    std::vector<DataType> data_;
     buffer_d_t lowBuffer_ =buffer_d_t(0);
     buffer_d_t highBuffer_=buffer_d_t(0);
 };

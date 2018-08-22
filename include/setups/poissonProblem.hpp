@@ -55,7 +55,7 @@ struct PoissonProblem
     make_field_type(dummy_field     , float_type)
 
     //Field with buffer:
-    make_field_type(bla_field  , float_type, 1, 2)
+    make_field_type(bla_field  , float_type, 1, 1)
 
     using datablock_t = DataBlock<
         Dim, node,
@@ -248,7 +248,7 @@ struct PoissonProblem
         {
             coordinate_t lowBuffer(1);
             coordinate_t highBuffer(2);
-            auto neighborhood = it->get_neighborhood(lowBuffer, highBuffer); 
+            auto neighborhood = it->get_level_neighborhood(lowBuffer, highBuffer); 
 
             if(neighborhood.size()!=0)
             {

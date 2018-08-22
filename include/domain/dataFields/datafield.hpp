@@ -101,6 +101,7 @@ public: //member functions
     }
 
 
+
 protected: //protected memeber:
 
     std::vector<DataType> data_;

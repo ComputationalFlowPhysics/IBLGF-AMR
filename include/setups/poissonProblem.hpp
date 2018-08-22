@@ -163,6 +163,7 @@ struct PoissonProblem
                 }
             }
         }
+        simulation_.domain_.exchange_buffers();
     }
 
     void level_test()
@@ -321,7 +322,7 @@ struct PoissonProblem
      *  - FFT: is the fast-Fourier transform,
      *  - IFFT: is the inverse of the FFT
      */
-    void solve2()
+    void solve()
     {
         // allocate lgf
         std::vector<float_type> lgf;
@@ -463,7 +464,7 @@ struct PoissonProblem
         simulation_.write("solution.vtk");
     }
 
-    void solve()
+    void solve2()
     {
         neighborhood_test();
         buffer_test();
@@ -489,19 +490,18 @@ struct PoissonProblem
         {
             auto _b_child = _b_parent->child(i);
 
-            auto ip = _b_parent->data()->base()[0];
-            auto jp = _b_parent->data()->base()[1];
-            auto kp = _b_parent->data()->base()[2];
-
             // Loops on coordinates
+            auto kp = _b_parent->data()->base()[2];
             for (auto kc  = _b_child->data()->base()[2];
-                       kc < _b_child->data()->max()[2]; ++kc)
+                      kc < _b_child->data()->max()[2]; kc+=2)
             {
+                auto jp = _b_parent->data()->base()[1];
                 for (auto jc  = _b_child->data()->base()[1];
-                        jc < _b_child->data()->max()[1]; ++jc)
+                          jc < _b_child->data()->max()[1]; jc+=2)
                 {
-                    for (auto ic  = _b_child->data()->base()[0];
-                            ic < _b_child->data()->max()[0]; ++ic)
+                    auto ip = _b_parent->data()->base()[0];
+                    for (auto ic = _b_child->data()->base()[0];
+                              ic < _b_child->data()->max()[0]; ic+=2)
                     {
 
                         _b_child->data()->template get<phi_num>(ic,jc,kc) +=
@@ -511,11 +511,11 @@ struct PoissonProblem
                             (_b_parent->data()->template get<phi_num_tmp>(ip+1,jp+1,kp+1) +
                              _b_parent->data()->template get<phi_num_tmp>(ip,jp,kp)) / 2;
 
-                        ic+=2;
+                        ip++;
                     }
-                    jc+=2;
+                    jp++;
                 }
-                kc+=2;
+                kp++;
             }
         }
     }
@@ -532,17 +532,19 @@ struct PoissonProblem
         auto _b_child  = _b;
         auto _b_parent = _b_child->parent();
 
-        auto ip = _b_parent->data()->base()[0];
-        auto jp = _b_parent->data()->base()[1];
-        auto kp = _b_parent->data()->base()[2];
         
         // Loops on coordinates
+        auto kp = _b_parent->data()->base()[2];
         for (auto kc  = _b_child->data()->base()[2];
                   kc <= _b_child->data()->max()[2]; kc+=2)
         {
+
+            auto jp = _b_parent->data()->base()[1];
             for (auto jc  = _b_child->data()->base()[1];
                       jc <= _b_child->data()->max()[1]; jc+=2)
             {
+
+                auto ip = _b_parent->data()->base()[0];
                 for (auto ic  = _b_child->data()->base()[0];
                           ic <= _b_child->data()->max()[0]; ic+=2)
                 {
@@ -554,7 +556,6 @@ struct PoissonProblem
             }
             ++kp;
         }
-        
     }
     
     

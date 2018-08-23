@@ -41,21 +41,19 @@ struct PoissonProblem
     using vel_type    = vector_type<float_type, Dim>;
     using size_v_type = vector_type<int       , Dim>;
 
-    //              name                type
-    make_field_type(phi_num         , float_type,1,1)
-    make_field_type(phi_num_tmp     , float_type,1,1)
-    make_field_type(source          , float_type,1,1)
-    make_field_type(lgf_field_lookup, float_type,1,1)
-    make_field_type(phi_exact       , float_type,1,1)
-    make_field_type(lgf             , float_type,1,1)
-    make_field_type(error           , float_type,1,1)
-    make_field_type(error2          , float_type,1,1)
-    make_field_type(lapace_field    , float_type,1,1)
-    make_field_type(lapace_error    , float_type,1,1)
-    make_field_type(dummy_field     , float_type,1,1)
-
-    //Field with buffer:
-    make_field_type(bla_field  , float_type, 1, 1)
+    //              name                type     lBuffer.  hBuffer
+    make_field_type(phi_num         , float_type, 1,       1)
+    make_field_type(phi_num_tmp     , float_type, 1,       1)
+    make_field_type(source          , float_type, 1,       1)
+    make_field_type(lgf_field_lookup, float_type, 1,       1)
+    make_field_type(phi_exact       , float_type, 1,       1)
+    make_field_type(lgf             , float_type, 1,       1)
+    make_field_type(error           , float_type, 1,       1)
+    make_field_type(error2          , float_type, 1,       1)
+    make_field_type(lapace_field    , float_type, 1,       1)
+    make_field_type(lapace_error    , float_type, 1,       1)
+    make_field_type(dummy_field     , float_type, 1,       1)
+    make_field_type(bla_field,        float_type, 1,       1)
 
     using datablock_t = DataBlock<
         Dim, node,
@@ -162,7 +160,7 @@ struct PoissonProblem
                 }
             }
         }
-        //simulation_.domain_.exchange_buffers();
+        simulation_.domain_.exchange_buffers();
     }
 
     void level_test()
@@ -270,7 +268,7 @@ struct PoissonProblem
 
     void buffer_exchange_test()
     {
-        //simulation_.domain_.exchange_buffers();
+        simulation_.domain_.exchange_buffers();
     }
 
     void simple_lapace_fd()
@@ -321,7 +319,7 @@ struct PoissonProblem
      *  - FFT: is the fast-Fourier transform,
      *  - IFFT: is the inverse of the FFT
      */
-    void solve()
+    void solve_amr()
     {
         // allocate lgf
         std::vector<float_type> lgf;
@@ -441,7 +439,6 @@ struct PoissonProblem
                         // Calculate the dimensions of the LGF to be allocated
                         const auto base_lgf   = shift - (s_extent - 1);
                         const auto extent_lgf = 2 * (s_extent) - 1;
-
                         
                         lgf_.get_subblock(block_descriptor_t(base_lgf,
                                                              extent_lgf), lgf);
@@ -453,6 +450,7 @@ struct PoissonProblem
                             it_t->parent()->data()->get<phi_num_tmp>(),
                             dx_level*dx_level);
                     }
+                    simulation_.domain_.exchange_buffers();
                     this->interpolate(it_t->parent());
                     break;
                 }
@@ -465,7 +463,7 @@ struct PoissonProblem
         simulation_.write("solution.vtk");
     }
 
-    void solve2()
+    void solve()
     {
         //neighborhood_test();
         //buffer_test();

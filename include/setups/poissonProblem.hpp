@@ -304,6 +304,41 @@ struct PoissonProblem
         }
     }
 
+    void solve_singleLevel()
+    {
+        // allocate lgf
+        std::vector<float_type> lgf;
+        for (auto it_i  = simulation_.domain_.begin_leafs();
+             it_i != simulation_.domain_.end_leafs(); ++it_i)
+        {
+            const auto ibase= it_i->data()->base();
+
+            for (auto it_j  = simulation_.domain_.begin_leafs();
+                 it_j != simulation_.domain_.end_leafs(); ++it_j)
+            {
+
+                const auto jbase   = it_j->data()->base();
+                const auto jextent = it_j->data()->extent();
+                const auto shift   = ibase - jbase;
+
+                const auto base_lgf   = shift - (jextent - 1);
+                const auto extent_lgf = 2 * (jextent) - 1;
+
+                lgf_.get_subblock(block_descriptor_t(base_lgf,
+                                                     extent_lgf), lgf);
+
+                conv.execute(lgf, it_j->data()->get_data<source>());
+                block_descriptor_t extractor(jbase, jextent);
+                conv.add_solution(extractor,
+                                  it_i->data()->get<phi_num>(), dx*dx);
+            }
+        }
+
+        //simple_lapace_fd();
+        compute_errors();
+        pcout << "Writing solution " << std::endl;
+        simulation_.write("solution.vtk");
+    }
 
     
     /**
@@ -319,7 +354,7 @@ struct PoissonProblem
      *  - FFT: is the fast-Fourier transform,
      *  - IFFT: is the inverse of the FFT
      */
-    void solve_amr()
+    void solve()
     {
         // allocate lgf
         std::vector<float_type> lgf;
@@ -463,7 +498,7 @@ struct PoissonProblem
         simulation_.write("solution.vtk");
     }
 
-    void solve()
+    void solve_test()
     {
         //neighborhood_test();
         //buffer_test();

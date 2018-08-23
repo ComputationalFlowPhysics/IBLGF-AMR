@@ -55,14 +55,12 @@ public:
             {
                 ofs<<n.global_coordinate()<<std::endl;
             }
-            it->index(_count*it->data()->descriptor().nPoints());
+            it->index(_count*it->data()->nPoints());
             ++_count;
         }
         ofs<<"\nCELLS "<<nCells<<" "<<nCells*9<<std::endl;
         
         //connectivity
-        //FIXME: octant borders are duplicated for now, needs fixing
-        //       In general this is shit
         for (auto it = _lt.begin_leafs(); it != _lt.end_leafs(); ++it)
         {
             for (auto& n : it->data()->nodes())

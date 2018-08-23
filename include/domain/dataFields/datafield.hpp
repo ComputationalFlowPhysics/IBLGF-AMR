@@ -63,10 +63,14 @@ public: //member functions
      */
     void initialize(block_type _b)    
     {
-        this->base(_b.base()-lowBuffer_);
-        this->extent(_b.extent()+lowBuffer_+highBuffer_);
-        size_type size=1;
-        for(std::size_t d=0;d<this->extent().size();++d) size*= this->extent()[d];
+        real_block_.base(_b.base()-lowBuffer_);
+        real_block_.extent(_b.extent()+lowBuffer_+highBuffer_);
+        real_block_.level()=_b.level();
+
+        this->base(_b.base());
+        this->extent(_b.extent());
+        this->level()= _b.level();
+        auto size=real_block_.size();
         data_.resize(size);
     }
 
@@ -83,33 +87,74 @@ public: //member functions
     //Get ijk-data
     inline const DataType& get(int _i, int _j, int _k) const noexcept
     {
-        return data_[this->globalCoordinate_to_index(_i,_j,_k)];
+        return data_[real_block_.globalCoordinate_to_index(_i,
+                                                           _j,
+                                                           _k)];
     }
     inline DataType& get(int _i, int _j, int _k) noexcept
     {
-        return data_[this->globalCoordinate_to_index(_i,_j,_k)];
+        return data_[real_block_.globalCoordinate_to_index(_i,
+                                                           _j,
+                                                           _k)];
     }
+
     inline const DataType& 
-    get_from_localIdx(int _i, int _j, int _k) const noexcept
+    get_real_local(int _i, int _j, int _k) const noexcept
     {
-        return data_[this->localCoordinate_to_index(_i,_j,_j)];
+        return data_[real_block_.localCoordinate_to_index(_i,_j,_k)];
     }
-    inline DataType& get_from_localIdx(int _i, int _j, int _k) noexcept
+    inline DataType& get_real_local(int _i, int _j, int _k) noexcept
     {
-        return data_[this->localCoordinate_to_index(_i,_j,_j)];
+        return data_[real_block_.localCoordinate_to_index(_i,_j,_k)];
     }
+
+    inline const DataType& 
+    get_local(int _i, int _j, int _k) const noexcept
+    {
+        return data_[
+            real_block_.localCoordinate_to_index(_i+lowBuffer_[0],
+                                                 _j+lowBuffer_[1],
+                                                 _k+lowBuffer_[2])
+        ];
+    }
+    inline DataType& get_local(int _i, int _j, int _k) noexcept
+    {
+        return data_[
+            real_block_.localCoordinate_to_index(_i+lowBuffer_[0],
+                                                 _j+lowBuffer_[1],
+                                                 _k+lowBuffer_[2])
+        ];
+    }
+
+    template<class BlockType, class OverlapType>
+    bool buffer_overlap(const BlockType& other, 
+                 OverlapType& overlap, int level ) const noexcept
+    {
+        return real_block_.overlap(other, overlap, level);
+    }
+    
+  
+    buffer_d_t lbuffer()const noexcept{return lowBuffer_;}
+    buffer_d_t hbuffer()const noexcept{return highBuffer_;}
+
+    const block_type& real_block()const noexcept{return real_block_;}
+    block_type& real_block()noexcept{return real_block_;}
+
+
+
 
 protected: //protected memeber:
 
-    std::vector<DataType> data_; 
-    buffer_d_t lowBuffer_ =buffer_d_t(0);
-    buffer_d_t highBuffer_=buffer_d_t(0);
+    std::vector<DataType> data_;          ///< actual data
+    block_type real_block_;               ///< Block descriptorinlcuding buffer
+    buffer_d_t lowBuffer_ =buffer_d_t(0); ///< Buffer in negative direction
+    buffer_d_t highBuffer_=buffer_d_t(0); ///< Buffer in positive direction
 };
 
 
 #define STRINGIFY(X) #X
 
-#define make_field_type_nb(key, DataType)                                      \
+#define make_field_type_nb(key, DataType)                                   \
 template<std::size_t _Dim>                                                  \
 class key : public DataField<DataType,_Dim>                                 \
 {                                                                           \

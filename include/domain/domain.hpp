@@ -167,6 +167,70 @@ public:
     const auto& block_extent()const noexcept { return block_extent_; }
     auto& block_extent()noexcept { return block_extent_; }
 
+public:
+    void exchange_buffers()
+    {
+        coordinate_type lbuff(1),hbuff(1);
+        for(auto it= begin_leafs(); it!=end_leafs();++it )
+        {
+            //determine neighborhood
+            //auto neighbors = it->get_neighborhood(lbuff, hbuff);
+
+            //box-overlap per field 
+            it->data()->for_fields( [this,it](auto& field)
+            {
+                //FIXME:
+                //Quick fix for now ... should be only the neighbors
+                //for(auto& nn: neighbors) 
+                for(auto jt= begin_leafs(); jt!=end_leafs();++jt )
+                {
+                    if(it->key()==jt->key())continue;
+
+                    //Check for overlap with current
+                    block_descriptor_t overlap;
+                    auto currentField=field.real_block();
+                    if(field.buffer_overlap(jt->data()->descriptor(), overlap, 
+                                            jt->refinement_level()))
+                    {
+                        using field_type = std::remove_reference_t<decltype(field)>;
+                        auto& src = jt->data()->template get<field_type>();
+                        const auto overlap_src = overlap; 
+
+                        auto overlap_tgt = overlap_src; 
+                        overlap_tgt.level_scale(it->refinement_level());
+                        
+
+                        //it is target and jt is source
+                        int tgt_stride=1, src_stride=1;
+                        if(it->refinement_level() > jt->refinement_level())
+                        {
+                            tgt_stride=2;
+                            src_stride=1;
+                        }
+                        else if(it->refinement_level() < jt->refinement_level())
+                        {
+                            tgt_stride=1;
+                            src_stride=2;
+                        }
+                        coordinate_type stride_tgt(tgt_stride);
+                        coordinate_type stride_src(src_stride);
+
+                        //std::cout<<std::endl;
+                        //std::cout<<it->global_coordinate()<<" "
+                        //         <<jt->global_coordinate()<<std::endl;
+                        //std::cout<<"iF: "<<currentField<<std::endl;
+                        //std::cout<<"jF: "<<jt->data()->descriptor()<<std::endl;
+                        //std::cout<<"iv: "<<overlap<<std::endl;
+                        //std::cout<<"jv: "<<overlap_src<<std::endl;
+
+                        assign(src, overlap_src,stride_src, 
+                               field, overlap_tgt, stride_tgt);
+                    }
+                }
+            });
+        }
+    }
+
 
 public:
     

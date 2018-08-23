@@ -49,7 +49,7 @@ public:
     static constexpr int num_faces(){return 2*Dim;}
     static constexpr int num_edges(){return 2*num_faces();}
 
-public: 
+public:
     friend tree_type;
 
 
@@ -76,15 +76,15 @@ public: //Ctors
       **/
     Octant* vertex_neighbor(const coordinate_type& _offset)
     {
-        // current level 
+        // current level
         auto nn=this->key_.neighbor(_offset);
         if(nn==this->key()) return nullptr;
         auto nn_ptr = this->tree()->find_leaf(nn);
         if (nn_ptr!=nullptr) { return nn_ptr; }
-        
-        // parent level 
+
+        // parent level
         const auto parent = this->parent();
-        if(parent!=nullptr) 
+        if(parent!=nullptr)
         {
             auto p_nn=parent->key().neighbor(_offset);
             if(p_nn==this->key()) return nullptr;
@@ -92,7 +92,7 @@ public: //Ctors
             if(p_ptr) return p_ptr;
         }
 
-        // child level 
+        // child level
         const auto child = this->child_base(0);
         auto c_nn=child.key().neighbor(_offset);
         if(c_nn==this->key()) return nullptr;
@@ -130,14 +130,6 @@ public: //Ctors
        }
        return res;
     }
-    
-
-
-
-
-
-
-
 
     auto get_vertices() noexcept
     {
@@ -154,7 +146,7 @@ public: //Ctors
         });
         return res;
     }
- 
+
     template<class Iterator>
     auto compute_index(const Iterator& _it)
     {
@@ -193,5 +185,5 @@ private:
 
 
 } //namespace octree
-#endif 
+#endif
 

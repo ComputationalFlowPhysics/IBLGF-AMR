@@ -80,8 +80,27 @@ public: //Interface
                 }
             }
         }
+    }        
 
-    }
+    template<class Vector>
+    void copy_field(const Vector& _v, dims_t _dims_v) noexcept
+    {
+        //Naive impl:
+        //std::fill(input_.begin(), input_.end(),0);
+        for(int k=0;k<_dims_v[2];++k)
+        {
+            for(int j=0;j<_dims_v[1];++j)
+            {
+                for(int i=0;i<_dims_v[0];++i)
+                {
+                    input_[ i+dims_input_[0]*j+ dims_input_[0]*dims_input_[1]*k ]=
+                        //_v[i+_dims_v[0]*j+_dims_v[0]*_dims_v[1]*k];
+                        _v.get_local(i,j,k);
+                }
+            }
+        }
+    }        
+        
 
 private:
 
@@ -195,6 +214,27 @@ public: //Ctors
         fft_backward.execute();
     }
 
+    template<class Vector, class Field>
+    void execute_field(Vector& _a, Field& _b)
+    {
+        fft_forward0.copy_input(_a, dims0_);
+        fft_forward0.execute();
+
+        fft_forward1.copy_field(_b,dims1_);
+        fft_forward1.execute();
+
+        auto& f0 = fft_forward0.output();
+        auto& f1 = fft_forward1.output();
+        complex_vector_t prod(f0.size());
+        const float_type scale = 1.0 / (padded_dims[0] * padded_dims[1] * padded_dims[2]);
+        for(std::size_t i = 0; i < prod.size(); ++i)
+        {
+            fft_backward.input()[i] = f0[i]*f1[i]*scale;
+        }
+        fft_backward.execute();
+    }
+
+
     auto& output()
     {
         return fft_backward.output();
@@ -210,7 +250,8 @@ public: //Ctors
             {
                 for (int i = dims0_[0]-1; i < dims0_[0]+_b.extent()[0]-1; ++i)
                 {
-                    F[count++] += _scale*fft_backward.output()
+                    //F[count++] += _scale*fft_backward.output()
+                    F.get_local(i-dims0_[0]+1,j-dims0_[1]+1,k-dims0_[2]+1 ) += _scale*fft_backward.output()
                     [ i+j*padded_dims[0]+k*padded_dims[0]*padded_dims[1]];
                 }
             }

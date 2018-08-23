@@ -188,8 +188,8 @@ public:
 
                     //Check for overlap with current
                     block_descriptor_t overlap;
-                    block_descriptor_t currentField=field;;
-                    if(field.overlap(jt->data()->descriptor(), overlap, jt->refinement_level()))
+                    auto currentField=field.real_block();
+                    if(field.buffer_overlap(jt->data()->descriptor(), overlap, jt->refinement_level()))
                     {
                         using field_type = std::remove_reference_t<decltype(field)>;
                         auto& src = jt->data()->template get<field_type>();

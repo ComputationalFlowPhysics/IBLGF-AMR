@@ -12,7 +12,7 @@ class node
 public:
 
     node(Container* _c , std::size_t _index)
-        :c_(_c), index_(_index)
+        :c_(_c), index_(_index), level_coordinate_(compute_level_coordinate())
     { }
 
     ~node() =default;
@@ -30,30 +30,55 @@ public: //Access
 
     template<template<std::size_t>class Field>
     auto& get_field() noexcept{return c_->template get<Field>();}
+    template<template<std::size_t>class Field>
+    const auto& get_field()const noexcept{ return c_->template get<Field>(); }
 
     template<template<std::size_t>class Field>
-    const auto& get_field()const noexcept{return c_->template get<Field>();}
+    auto& get()noexcept{
+
+        return c_->template get<Field>();
+        }
 
     template<template<std::size_t>class Field>
-    auto& get()noexcept{return c_->template get<Field>()[index_];}
-
-    template<template<std::size_t>class Field>
-    const auto& get()const noexcept{return c_->template get<Field>()[index_];}
+    const auto& get()const noexcept
+    {
+        return c_->template get<Field>();
+    }
 
 
     template<std::size_t Idx>
-    auto& get()noexcept{return c_->template get<Idx>()[index_];}
+    auto& get()noexcept
+    {
+        return c_->template get<Idx>().get(level_coordinate_[0],
+                                           level_coordinate_[1],
+                                           level_coordinate_[2]);
+    }
 
     template<std::size_t Idx>
-    const auto& get()const noexcept{return c_->template get<Idx>()[index_];}
+    const auto& get()const noexcept
+    {
+        return c_->template get<Idx>().get(level_coordinate_[0],
+                                           level_coordinate_[1],
+                                           level_coordinate_[2]);
+    }
 
     template<class T>
-    auto& get()noexcept{return c_->template get<T>()[index_];}
+    auto& get()noexcept
+    {
+        return c_->template get<T>().get(level_coordinate_[0],
+                                         level_coordinate_[1],
+                                         level_coordinate_[2]);
+        }
 
     template<class T>
-    const auto& get()const noexcept{return c_->template get<T>()[index_];}
+    const auto& get()const noexcept
+    {
+        return c_->template get<T>().get(level_coordinate_[0],
+                                         level_coordinate_[1],
+                                         level_coordinate_[2]);
+    }
 
-    coordinate_type level_coordinate()const noexcept
+    coordinate_type compute_level_coordinate()const noexcept
     {
         coordinate_type res;
         const auto e=c_->extent();
@@ -63,15 +88,17 @@ public: //Access
         res+=c_->base();
         return res;
     }
+    coordinate_type level_coordinate()const noexcept{return level_coordinate_;}
+
     real_coordinate_type global_coordinate()const noexcept
     {
-        return (level_coordinate())/std::pow(2,c_->level());
+        return (level_coordinate_)/std::pow(2,c_->level());
     }
 
     std::pair<node,bool> 
     neighbor(const coordinate_type& _offset) const noexcept
     {
-        auto c = level_coordinate() +_offset ;
+        auto c = level_coordinate_ +_offset ;
         if(c_->descriptor().is_inside(c))
         {
             return std::make_pair(node(c_,c_->get_index(c)),true);
@@ -98,7 +125,7 @@ public: //members
 
     Container* c_;
     std::size_t index_;
-
+    coordinate_type level_coordinate_;
 };
 
 }

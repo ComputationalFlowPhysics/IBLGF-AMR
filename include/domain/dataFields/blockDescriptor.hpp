@@ -267,7 +267,7 @@ public: //members
 
 
     template<class PointType>
-    size_type get_flat_index(PointType p) const noexcept
+    inline size_type get_flat_index(PointType p) const noexcept
     {
         p-=base();
         size_type idx=p[0];
@@ -283,7 +283,7 @@ public: //members
         return idx;
     }
 
-    size_type globalCoordinate_to_index( int i,int j,int k ) const noexcept
+    inline size_type globalCoordinate_to_index( int i,int j,int k ) const noexcept
     {
         i-=base()[0]; j-=base()[1]; k-=base()[2];
         return i+ j*extent()[0] + k*extent()[0]*extent()[1];
@@ -301,7 +301,7 @@ public: //members
     {
         return _p[0]+ _p[1]*extent()[0] + _p[2]*extent()[0]*extent()[1];
     }
-    size_type localCoordinate_to_index( int i,int j,int k ) const noexcept
+    inline size_type localCoordinate_to_index( int i,int j,int k ) const noexcept
     {
         return i+ j*extent()[0] + k*extent()[0]*extent()[1];
     }
@@ -646,10 +646,6 @@ private:
 
     }
 
-
-
-    //template<int D=0, class Enable=void>
- 
 
 protected:
 

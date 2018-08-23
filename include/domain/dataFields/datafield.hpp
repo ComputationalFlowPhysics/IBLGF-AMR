@@ -87,11 +87,15 @@ public: //member functions
     //Get ijk-data
     inline const DataType& get(int _i, int _j, int _k) const noexcept
     {
-        return data_[real_block_.globalCoordinate_to_index(_i,_j,_k)];
+        return data_[real_block_.globalCoordinate_to_index(_i,
+                                                           _j,
+                                                           _k)];
     }
     inline DataType& get(int _i, int _j, int _k) noexcept
     {
-        return data_[real_block_.globalCoordinate_to_index(_i,_j,_k)];
+        return data_[real_block_.globalCoordinate_to_index(_i,
+                                                           _j,
+                                                           _k)];
     }
 
     inline const DataType& 

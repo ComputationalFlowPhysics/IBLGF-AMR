@@ -42,17 +42,17 @@ struct PoissonProblem
     using size_v_type = vector_type<int       , Dim>;
 
     //              name                type
-    make_field_type(phi_num         , float_type,0,1)
-    make_field_type(phi_num_tmp     , float_type,0,1)
-    make_field_type(source          , float_type,0,1)
-    make_field_type(lgf_field_lookup, float_type,0,1)
-    make_field_type(phi_exact       , float_type,0,1)
-    make_field_type(lgf             , float_type,0,1)
-    make_field_type(error           , float_type,0,1)
-    make_field_type(error2          , float_type,0,1)
-    make_field_type(lapace_field    , float_type,0,1)
-    make_field_type(lapace_error    , float_type,0,1)
-    make_field_type(dummy_field     , float_type,0,1)
+    make_field_type(phi_num         , float_type,1,1)
+    make_field_type(phi_num_tmp     , float_type,1,1)
+    make_field_type(source          , float_type,1,1)
+    make_field_type(lgf_field_lookup, float_type,1,1)
+    make_field_type(phi_exact       , float_type,1,1)
+    make_field_type(lgf             , float_type,1,1)
+    make_field_type(error           , float_type,1,1)
+    make_field_type(error2          , float_type,1,1)
+    make_field_type(lapace_field    , float_type,1,1)
+    make_field_type(lapace_error    , float_type,1,1)
+    make_field_type(dummy_field     , float_type,1,1)
 
     //Field with buffer:
     make_field_type(bla_field  , float_type, 1, 1)
@@ -109,7 +109,7 @@ struct PoissonProblem
         for (auto it  = simulation_.domain_.begin_leafs();
                   it != simulation_.domain_.end_leafs(); ++it)
         {
-            //if (count++ ==0)simulation_.domain_.refine(it);
+            if (count++ ==0)simulation_.domain_.refine(it);
 
         }
 
@@ -270,7 +270,7 @@ struct PoissonProblem
 
     void buffer_exchange_test()
     {
-        simulation_.domain_.exchange_buffers();
+        //simulation_.domain_.exchange_buffers();
     }
 
     void simple_lapace_fd()
@@ -467,9 +467,9 @@ struct PoissonProblem
 
     void solve2()
     {
-        neighborhood_test();
-        buffer_test();
-        buffer_exchange_test();
+        //neighborhood_test();
+        //buffer_test();
+        //buffer_exchange_test();
         pcout << "Writing solution " << std::endl;
         simulation_.write("solution.vtk");
             

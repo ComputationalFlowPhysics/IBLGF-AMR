@@ -91,11 +91,11 @@ public: //member functions
         return data_[this->globalCoordinate_to_index(_i,_j,_k)];
     }
     inline const DataType& 
-    get_from_localIdx(int _i, int _j, int _k) const noexcept
+    get_local(int _i, int _j, int _k) const noexcept
     {
         return data_[this->localCoordinate_to_index(_i,_j,_j)];
     }
-    inline DataType& get_from_localIdx(int _i, int _j, int _k) noexcept
+    inline DataType& get_local(int _i, int _j, int _k) noexcept
     {
         return data_[this->localCoordinate_to_index(_i,_j,_j)];
     }

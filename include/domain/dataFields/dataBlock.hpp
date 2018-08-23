@@ -117,15 +117,15 @@ public: //member functions
     }
 
     template<template<std::size_t> class Field>
-    auto& get_from_localIdx(int _i, int _j, int _k)
+    auto& get_local(int _i, int _j, int _k)
     {
-        return std::get<Field<dimension>>(fields).get_from_localIdx(_i,_j,_k);
+        return std::get<Field<dimension>>(fields).get_local(_i,_j,_k);
     }
 
     template<template<std::size_t> class Field>
-    const auto& get_from_localIdx(int _i, int _j, int _k)const
+    const auto& get_local(int _i, int _j, int _k)const
     {
-        return std::get<Field<dimension>>(fields).get_from_localIdx(_i,_j,_k);
+        return std::get<Field<dimension>>(fields).get_local(_i,_j,_k);
     }
 
 

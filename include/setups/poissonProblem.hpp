@@ -43,7 +43,7 @@ struct PoissonProblem
 
     //              name                type
     make_field_type(phi_num         , float_type)
-    make_field_type(phi_num_tmp         , float_type)
+    make_field_type(phi_num_tmp     , float_type)
     make_field_type(source          , float_type)
     make_field_type(lgf_field_lookup, float_type)
     make_field_type(phi_exact       , float_type)
@@ -218,7 +218,7 @@ struct PoissonProblem
     {
 
         int count=0;
-        for (auto it  = simulation_.domain_.begin_leafs();
+        for (auto it  = simulation_.domain_.begin_leafs();    
                 it != simulation_.domain_.end_leafs(); ++it)
         {
             coordinate_t direction(0);
@@ -411,6 +411,7 @@ struct PoissonProblem
                  --ls)
             {
                 pcout << "--------- CROSS-INTERACTION (SOURCE COARSER) --------" << std::endl;
+
                 pcout << "======== TARGET BLOCK LEVEL = " << lt
                 << ",        SOURCE BLOCK LEVEL = " << ls
                 << std::endl;
@@ -418,12 +419,13 @@ struct PoissonProblem
                 for (auto it_t  = simulation_.domain_.begin(lt);
                           it_t != simulation_.domain_.end(lt); ++it_t)
                 {
-                    auto refinement_level = it_t->refinement_level();
-                    auto dx_level   = dx/std::pow(2,refinement_level-1);
-                    
                     for (auto it_s  = simulation_.domain_.begin(ls);
                          it_s != simulation_.domain_.end(ls); ++it_s)
                     {
+
+                        auto refinement_level = it_t->refinement_level();
+                        auto dx_level   = dx/std::pow(2,refinement_level-1);
+
                         // Get the tree_coordinate of target block
                         const auto t_base_parent = simulation_.domain_.tree()->
                         octant_to_level_coordinate(it_t->parent()->tree_coordinate());
@@ -439,21 +441,20 @@ struct PoissonProblem
                         // Calculate the dimensions of the LGF to be allocated
                         const auto base_lgf   = shift - (s_extent - 1);
                         const auto extent_lgf = 2 * (s_extent) - 1;
+
                         
                         lgf_.get_subblock(block_descriptor_t(base_lgf,
                                                              extent_lgf), lgf);
                         
                         conv.execute(lgf, it_s->data()->get_data<source>());
                         block_descriptor_t extractor(s_base, s_extent);
-                        std::cout<<it_t->parent()->data()->descriptor()<<std::endl;
                         conv.add_solution(
                             extractor,
-                            it_t->parent()->data()->get_data<phi_num>(),
+                            it_t->parent()->data()->get_data<phi_num_tmp>(),
                             dx_level*dx_level);
-                        
                     }
                     this->interpolate(it_t->parent());
-                    std::advance(it_t,8);
+                    break;
                 }
             }
         }
@@ -475,8 +476,6 @@ struct PoissonProblem
     }
 
 
-
-
   
     
     /*
@@ -486,31 +485,33 @@ struct PoissonProblem
     template<class Block_it>
     void interpolate(const Block_it* _b_parent)
     {
+
         for (int i = 0; i < _b_parent->num_children(); ++i)
         {
-            auto _b_child = _b_parent->child(i);
-
+            auto child = _b_parent->child(i);
+            auto child_view= child->data()->descriptor();
+            auto parent_view= child_view;
+            parent_view.level_scale(_b_parent->refinement_level());
+            
             // Loops on coordinates
-            auto kp = _b_parent->data()->base()[2];
-            for (auto kc  = _b_child->data()->base()[2];
-                      kc < _b_child->data()->max()[2]; kc+=2)
+            auto kp = parent_view.base()[2];
+            for (auto kc  = child_view.base()[2];
+                      kc < child_view.max()[2]; kc+=2)
             {
-                auto jp = _b_parent->data()->base()[1];
-                for (auto jc  = _b_child->data()->base()[1];
-                          jc < _b_child->data()->max()[1]; jc+=2)
+                auto jp = parent_view.base()[1];
+                for (auto jc  = child_view.base()[1];
+                          jc  < child_view.max()[1]; jc+=2)
                 {
-                    auto ip = _b_parent->data()->base()[0];
-                    for (auto ic = _b_child->data()->base()[0];
-                              ic < _b_child->data()->max()[0]; ic+=2)
+                    auto ip = parent_view.base()[0];
+                    for (auto ic = child_view.base()[0];
+                              ic < child_view.max()[0]; ic+=2)
                     {
-
-                        _b_child->data()->template get<phi_num>(ic,jc,kc) +=
+                        child->data()->template get<phi_num>(ic,jc,kc) +=
                             _b_parent->data()->template get<phi_num_tmp>(ip,jp,kp);
 
-                        _b_child->data()->template get<phi_num>(ic+1,jc+1,kc+1) +=
+                        child->data()->template get<phi_num>(ic+1,jc+1,kc+1) +=
                             (_b_parent->data()->template get<phi_num_tmp>(ip+1,jp+1,kp+1) +
                              _b_parent->data()->template get<phi_num_tmp>(ip,jp,kp)) / 2;
-
                         ip++;
                     }
                     jp++;
@@ -527,34 +528,34 @@ struct PoissonProblem
      * Note: maximum jump allowed is one level.
      */
     template<class Block_it>
-    void coarsify(const Block_it& _b)
+    void coarsify(const Block_it& _child)
     {
-        auto _b_child  = _b;
-        auto _b_parent = _b_child->parent();
+        auto child  = _child;
+        auto parent = child->parent();
 
-        
-        // Loops on coordinates
-        auto kp = _b_parent->data()->base()[2];
-        for (auto kc  = _b_child->data()->base()[2];
-                  kc <= _b_child->data()->max()[2]; kc+=2)
+        auto child_view= child->data()->descriptor();
+        auto parent_view= child_view;
+        parent_view.level_scale(parent->refinement_level());
+
+        auto kp = parent_view.base()[2];
+        for (auto kc  = child_view.base()[2];
+                  kc < child_view.max()[2]; kc+=2)
         {
-
-            auto jp = _b_parent->data()->base()[1];
-            for (auto jc  = _b_child->data()->base()[1];
-                      jc <= _b_child->data()->max()[1]; jc+=2)
+            auto jp = parent_view.base()[1];
+            for (auto jc  = child_view.base()[1];
+                      jc  < child_view.max()[1]; jc+=2)
             {
-
-                auto ip = _b_parent->data()->base()[0];
-                for (auto ic  = _b_child->data()->base()[0];
-                          ic <= _b_child->data()->max()[0]; ic+=2)
+                auto ip = parent_view.base()[0];
+                for (auto ic = child_view.base()[0];
+                          ic < child_view.max()[0]; ic+=2)
                 {
-                    _b_parent->data()->template get<source>(ip,jp,kp) =
-                        _b_child->data()->template get<source>(ic,jc,kc);
-                    ++ip;
+                    parent->data()->template get<source>(ip,jp,kp) =
+                        child->data()->template get<source>(ic,jc,kc);
+                    ip++;
                 }
-                ++jp;
+                jp++;
             }
-            ++kp;
+            kp++;
         }
     }
     

@@ -214,12 +214,12 @@ public:
                         coordinate_type stride_tgt(tgt_stride);
                         coordinate_type stride_src(src_stride);
 
-                        //std::cout<<std::endl;
-                        //std::cout<<it->global_coordinate()<<" "<<jt->global_coordinate()<<std::endl;
-                        //std::cout<<"iF: "<<currentField<<std::endl;
-                        //std::cout<<"jF: "<<jt->data()->descriptor()<<std::endl;
-                        //std::cout<<"iv: "<<overlap<<std::endl;
-                        //std::cout<<"jv: "<<overlap_src<<std::endl;
+                        std::cout<<std::endl;
+                        std::cout<<it->global_coordinate()<<" "<<jt->global_coordinate()<<std::endl;
+                        std::cout<<"iF: "<<currentField<<std::endl;
+                        std::cout<<"jF: "<<jt->data()->descriptor()<<std::endl;
+                        std::cout<<"iv: "<<overlap<<std::endl;
+                        std::cout<<"jv: "<<overlap_src<<std::endl;
 
                         assign(src, overlap_src,stride_src, 
                                field, overlap_tgt, stride_tgt);

@@ -1,10 +1,10 @@
-simulation_parameters  
+simulation_parameters
 {
     L    = 3;
-    domain{ 
+    domain{
         max_extent   = 50000;
         block_extent = 4;
-       
+
         block
         {
             base   = (0,0,0);

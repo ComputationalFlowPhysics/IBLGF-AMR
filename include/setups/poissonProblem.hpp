@@ -25,6 +25,7 @@
 #include <domain/octree/tree.hpp>
 #include <post-processing/parallel_ostream.hpp>
 #include <lgf/lgf.hpp>
+#include <fmm/fmm.hpp>
 
 #include<utilities/convolution.hpp>
 
@@ -68,8 +69,8 @@ struct PoissonProblem
         error2,
         lapace_field,
         lapace_error,
-        dummy_field, 
-        bla_field     
+        dummy_field,
+        bla_field
     >;
 
     using datablock_t_2 = DataBlock<Dim, node, lgf>;
@@ -83,11 +84,12 @@ struct PoissonProblem
     using base_t             = typename b_descriptor::base_t;;
     using extent_t           = typename b_descriptor::extent_t;;
 
-    
-    PoissonProblem(Dictionary* _d) 
+
+    PoissonProblem(Dictionary* _d)
     : simulation_(_d->get_dictionary("simulation_parameters")),
-        lgf_(), conv(simulation_.domain_.block_extent(),
-                                simulation_.domain_.block_extent())
+        lgf_(),
+        fmm_(simulation_.domain_.block_extent()[0]+1),
+        conv(simulation_.domain_.block_extent(), simulation_.domain_.block_extent())
     {
         pcout << "\n Setup:  LGF PoissonProblem \n" << std::endl;
         pcout << "Simulation: \n" << simulation_    << std::endl;
@@ -98,9 +100,9 @@ struct PoissonProblem
         auto tmp = L / (simulation_.domain_.bounding_box().extent()-1);
         dx = tmp[0];
         this->initialize();
-    }                               
-    
-    
+    }
+
+
     /*
      * It initializes the Poisson problem using a manufactured solutions.
      */
@@ -121,11 +123,11 @@ struct PoissonProblem
 
         const float_type a  = 10.;
         const float_type a2 = a*a;
-   
+
         for (auto it  = simulation_.domain_.begin_leafs();
                   it != simulation_.domain_.end_leafs(); ++it)
         {
-            
+
             auto dx_level =  dx/std::pow(2,it->refinement_level());
             auto scaling =  std::pow(2,it->refinement_level());
 
@@ -141,7 +143,7 @@ struct PoissonProblem
                     {
                         it->data()->get<source>(i,j,k)  = 1.0;
                         it->data()->get<phi_num>(i,j,k) = 0.0;
-                        
+
                         // manufactured solution:
                         float_type x = static_cast<float_type>(i-center[0]*scaling)*dx_level;
                         float_type y = static_cast<float_type>(j-center[1]*scaling)*dx_level;
@@ -152,8 +154,8 @@ struct PoissonProblem
 
 
                         it->data()->get<source>(i,j,k) =
-                            a*std::exp(-a*(x2)-a*(y2)-a*(z2))*(-6.0)+ 
-                            (a2)*(x2)*std::exp(-a*(x2)-a*(y2)-a*(z2))*4.0 + 
+                            a*std::exp(-a*(x2)-a*(y2)-a*(z2))*(-6.0)+
+                            (a2)*(x2)*std::exp(-a*(x2)-a*(y2)-a*(z2))*4.0 +
                             (a2)*(y2)*std::exp(-a*(x2)-a*(y2)-a*(z2))*4.0+
                             (a2)*(z2)*std::exp(-a*(x2)-a*(y2)-a*(z2))*4.0;
 
@@ -248,14 +250,14 @@ struct PoissonProblem
         {
             coordinate_t lowBuffer(1);
             coordinate_t highBuffer(2);
-            auto neighborhood = it->get_neighborhood(lowBuffer, highBuffer); 
+            auto neighborhood = it->get_neighborhood(lowBuffer, highBuffer);
 
             if(neighborhood.size()!=0)
             {
                 std::ofstream ofs("point_nh__"+std::to_string(count)+".txt");
                 ofs<<it->global_coordinate()<<std::endl;
                 std::ofstream ofs1("nh_"+std::to_string(count)+".txt");
-                for(auto& e:neighborhood) 
+                for(auto& e:neighborhood)
                 {
                     ofs1<<e->global_coordinate()<<std::endl;
                 }
@@ -284,8 +286,8 @@ struct PoissonProblem
                     for (auto i = base[0]+1; i < max[0]; ++i)
                     {
                         it->data()->get<lapace_field>(i,j,k) =
-                            -6.0*it->data()->get<phi_num>(i,j,k)+ 
-                                 it->data()->get<phi_num>(i+1,j,k)+ 
+                            -6.0*it->data()->get<phi_num>(i,j,k)+
+                                 it->data()->get<phi_num>(i+1,j,k)+
                                  it->data()->get<phi_num>(i-1,j,k)+
                                  it->data()->get<phi_num>(i,j+1,k)+
                                  it->data()->get<phi_num>(i,j-1,k)+
@@ -302,7 +304,7 @@ struct PoissonProblem
     }
 
 
-    
+
     /**
      *  It solves the Poisson problem with homogeneous boundary conditions
      *
@@ -324,28 +326,28 @@ struct PoissonProblem
              it_i != simulation_.domain_.end_leafs(); ++it_i)
         {
             const auto ibase= it_i->data()->base();
-            
+
             for (auto it_j  = simulation_.domain_.begin_leafs();
                  it_j != simulation_.domain_.end_leafs(); ++it_j)
             {
-                
+
                 const auto jbase   = it_j->data()->base();
                 const auto jextent = it_j->data()->extent();
                 const auto shift   = ibase - jbase;
-                
+
                 const auto base_lgf   = shift - (jextent - 1);
                 const auto extent_lgf = 2 * (jextent) - 1;
-                
+
                 lgf_.get_subblock(block_descriptor_t(base_lgf,
                                                      extent_lgf), lgf);
-                
+
                 conv.execute(lgf, it_j->data()->get_data<source>());
                 block_descriptor_t extractor(jbase, jextent);
                 conv.add_solution(extractor,
                                   it_i->data()->get_data<phi_num>(), dx*dx);
             }
         }
-        
+
         //simple_lapace_fd();
         compute_errors();
         pcout << "Writing solution " << std::endl;
@@ -358,13 +360,13 @@ struct PoissonProblem
         buffer_test();
         pcout << "Writing solution " << std::endl;
         simulation_.write("solution.vtk");
-            
+
     }
 
 
 
-  
-    
+
+
     /*
      * Interpolate a given field from corser to finer level.
      * Note: maximum jump allowed is one level.
@@ -372,15 +374,15 @@ struct PoissonProblem
     template<class Block_it>
     void interpolate(const Block_it* _b_parent)
     {
-        
+
         for (int i = 0; i < _b_parent->num_children(); ++i)
         {
             auto _b_child = _b_parent->child(i);
-            
+
             auto ic = _b_child->data()->base()[0];
             auto jc = _b_child->data()->base()[1];
             auto kc = _b_child->data()->base()[2];
-            
+
             // Loops on coordinates
             for (auto kp  = _b_parent->data()->base()[2];
                  kp < _b_parent->data()->max()[2]; ++kp)
@@ -391,26 +393,26 @@ struct PoissonProblem
                     for (auto ip  = _b_parent->data()->base()[0];
                          ip < _b_parent->data()->max()[0]; ++ip)
                     {
-                        
+
                         _b_child->data()->template get<phi_num>(ic,jc,kc) +=
                             _b_parent->data()->template get<phi_num_tmp>(ip,jp,kp);
-                        
+
                         _b_child->data()->template get<phi_num>(ic+1,jc+1,kc+1) +=
                             (_b_parent->data()->template get<phi_num_tmp>(ip+1,jp+1,kp+1) +
                              _b_parent->data()->template get<phi_num_tmp>(ip,jp,kp)) / 2;
-                        
+
                         ic+=2;
                         jc+=2;
                         kc+=2;
                     }
                 }
             }
-            
+
         }
     }
-    
-    
-    
+
+
+
     /*
      * Coarsify given field from finer to coarser level.
      * Note: maximum jump allowed is one level.
@@ -424,7 +426,7 @@ struct PoissonProblem
         auto ip = _b_parent->data()->base()[0];
         auto jp = _b_parent->data()->base()[1];
         auto kp = _b_parent->data()->base()[2];
-        
+
         // Loops on coordinates
         for (auto kc  = _b_child->data()->base()[2];
                   kc <= _b_child->data()->max()[2]; kc+=2)
@@ -437,18 +439,18 @@ struct PoissonProblem
                 {
                     _b_parent->data()->template get<source>(ip,jp,kp) =
                         _b_child->data()->template get<source>(ic,jc,kc);
-                    
+
                     ip+=1;
                     jp+=1;
                     kp+=1;
                 }
             }
         }
-        
+
     }
-    
-    
-    
+
+
+
     /*
      * Calculate the L2 and LInf errors.
      */
@@ -466,13 +468,13 @@ struct PoissonProblem
                it_t->data()->get<error>()[i] = std::abs(
                     it_t->data()->get<phi_num>()[i] -
                     it_t->data()->get<phi_exact>()[i]);
-                    
+
                 it_t->data()->get<error2>()[i] =
                     it_t->data()->get<error>()[i] *
                     it_t->data()->get<error>()[i];
-                    
+
                 L2 += it_t->data()->get<error2>()[i];
-                    
+
                 if ( it_t->data()->get<error>()[i] > LInf)
                 {
                     LInf = it_t->data()->get<error>()[i];
@@ -482,12 +484,13 @@ struct PoissonProblem
             pcout << "LInf = " << LInf << std::endl;
         }
     }
-    
+
 private:
 
     Simulation<domain_t>              simulation_;
     parallel_ostream::ParallelOstream pcout;
     lgf::LGF<lgf::Lookup>             lgf_;
+    fmm::Fmm                          fmm_;
     Convolution                       conv;
     float_type                        dx;
 };

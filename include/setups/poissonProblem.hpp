@@ -168,7 +168,7 @@ struct PoissonProblem
                 }
             }
         }
-        simulation_.domain_.exchange_buffers();
+        simulation_.domain_.exchange_level_buffers(simulation_.domain_.tree()->base_level());
     }
 
     void level_test()
@@ -277,7 +277,7 @@ struct PoissonProblem
 
     void buffer_exchange_test()
     {
-        simulation_.domain_.exchange_buffers();
+        //simulation_.domain_.exchange_buffers();
     }
 
     void simple_lapace_fd()
@@ -444,7 +444,7 @@ struct PoissonProblem
                 target++;
             }
         }
-        
+
         // Cross-level interactions (source is coarser, target is finer)
         for (int lt  = simulation_.domain_.tree()->depth()-1;
                  lt >= simulation_.domain_.tree()->base_level(); --lt)
@@ -491,10 +491,9 @@ struct PoissonProblem
                         block_descriptor_t extractor(s_base, s_extent);
                         conv.add_solution(
                             extractor,
-                            it_t->parent()->data()->get<phi_num_tmp>(),
+                            it_t->parent()->data()->get<phi_num>(),
                             dx_level*dx_level);
                     }
-                    simulation_.domain_.exchange_buffers();
                     this->interpolate(it_t->parent());
                     break;
                 }
@@ -517,11 +516,6 @@ struct PoissonProblem
 
     }
 
-
-
-
-
-
     /*
      * Interpolate a given field from corser to finer level.
      * Note: maximum jump allowed is one level.
@@ -529,13 +523,35 @@ struct PoissonProblem
     template<class Block_it>
     void interpolate(const Block_it* _b_parent)
     {
+        simulation_.domain_.exchange_level_buffers(_b_parent->tree_level()); 
+
+        coordinate_t lbuff(1),hbuff(1);
+        auto neighbors= _b_parent->get_level_neighborhood(lbuff, hbuff);
+        for(auto& jt: neighbors) 
+        {
+            auto overlap_src= jt->data()->descriptor();
+            auto overlap= overlap_src;
+            _b_parent->data()->template get<phi_num>().buffer_overlap(overlap_src, overlap, 0 );
+            for (auto kc  = overlap.base()[2];
+                    kc <= overlap.max()[2]; ++kc)
+            {
+                for (auto jc  = overlap.base()[1];
+                        jc  <= overlap.max()[1]; ++jc)
+                {
+                    for (auto ic = overlap.base()[0];
+                            ic <= overlap.max()[0]; ++ic)
+                    {
+                        _b_parent->data()->template get<phi_num>(ic,jc,kc)*=2;
+                    }
+                }
+            }
+        }
+
 
         for (int i = 0; i < _b_parent->num_children(); ++i)
         {
             auto child = _b_parent->child(i);
             auto child_view= child->data()->descriptor();
-            auto parent_view= child_view;
-            parent_view.level_scale(_b_parent->refinement_level());
             
             // Loops on coordinates
             for (auto kc  = child_view.base()[2];
@@ -548,13 +564,14 @@ struct PoissonProblem
                               ic <= child_view.max()[0]; ++ic)
                     {
                         int min_x= ic/2; int min_y= jc/2; int min_z= kc/2;
-                        float_type x= ic/2.0; float_type y= jc/2.0; float_type z= kc/2.0;
+                        float_type x= ic/2.0; 
+                        float_type y= jc/2.0; 
+                        float_type z= kc/2.0;
 
                         auto interp= 
                         interpolation::interpolate(min_x, min_y, min_z, x, y, z, 
-                        _b_parent->data()->template get<phi_num_tmp>());
-
-                        child->data()->template get<phi_num>(ic,jc,kc) =interp;
+                        _b_parent->data()->template get<phi_num>())/2.0;
+                        child->data()->template get<phi_num>(ic,jc,kc) =+interp;
                     }
                 }
             }

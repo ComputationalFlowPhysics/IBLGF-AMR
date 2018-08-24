@@ -63,9 +63,9 @@ public: //member functions
      */
     void initialize(block_type _b)    
     {
-        real_block_.base(_b.base()-lowBuffer_);
-        real_block_.extent(_b.extent()+lowBuffer_+highBuffer_);
-        real_block_.level()=_b.level();
+        this->real_block_.base(_b.base()-lowBuffer_);
+        this->real_block_.extent(_b.extent()+lowBuffer_+highBuffer_);
+        this->real_block_.level()=_b.level();
 
         this->base(_b.base());
         this->extent(_b.extent());
@@ -117,6 +117,7 @@ public: //member functions
                                                  _k+lowBuffer_[2])
         ];
     }
+
     inline DataType& get_local(int _i, int _j, int _k) noexcept
     {
         return data_[

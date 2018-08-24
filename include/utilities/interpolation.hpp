@@ -32,17 +32,10 @@ inline float_type interpolate(int min_x, int min_y, int min_z,
                               float_type x, float_type  y, float_type z,const Field& _field )
 {
    
-    /*
-    constexpr long unsigned int N = 6;
-    std::array<int, N> x_pos{{(min_x-2+nx), (min_x-1+nx), (min_x+nx), (min_x+1+nx), (min_x+2+nx), (min_x+3+nx)}};
-    std::array<int, N> y_pos{{(min_y-2+ny), (min_y-1+ny), (min_y+ny), (min_y+1+ny), (min_y+2+ny), (min_y+3+ny)}};
-    */
-    
-    /*
-    constexpr long unsigned int N = 4;
-    std::array<int, N> x_pos{{(min_x-1+nx), (min_x+nx), (min_x+1+nx), (min_x+2+nx)}};
-    std::array<int, N> y_pos{{(min_y-1+ny), (min_y+ny), (min_y+1+ny), (min_y+2+ny)}};
-    */
+    //constexpr long unsigned int N = 4;
+    //std::array<int, N> x_pos{{(min_x-1), (min_x), (min_x+1), (min_x+2)}};
+    //std::array<int, N> y_pos{{(min_y-1), (min_y), (min_y+1), (min_y+2)}};
+    //std::array<int, N> z_pos{{(min_z-1), (min_z), (min_z+1), (min_z+2)}};
     
     constexpr long unsigned int N = 2;
     std::array<int, N> x_pos{{(min_x), (min_x+1)}};
@@ -52,24 +45,24 @@ inline float_type interpolate(int min_x, int min_y, int min_z,
     const float_type x_ref = x - x_pos[0];
     const float_type y_ref = y - y_pos[0];
     const float_type z_ref = z - z_pos[0];
+
+
+    std::array<float_type,N> x_values;
+    for (unsigned int i=0; i<N; ++i)
     {
-        std::array<float_type,N> x_values;
-        for (unsigned int i=0; i<N; ++i)
+        std::array<float_type,N> y_values;
+        for (unsigned int j=0; j<N; ++j)
         {
-            std::array<float_type,N> y_values;
-            for (unsigned int j=0; j<N; ++j)
+            std::array<float_type,N> z_values;
+            for (unsigned int k=0; k<N; ++k)
             {
-                std::array<float_type,N> z_values;
-                for (unsigned int k=0; k<N; ++k)
-                {
-                    z_values[k] = _field.get( x_pos[i], y_pos[j], z_pos[k]);
-                }
-                y_values[j] = lagrange_interpolate_1D(z_ref, z_values);
+                z_values[k] = _field.get( x_pos[i], y_pos[j], z_pos[k]);
             }
-            x_values[i] = lagrange_interpolate_1D(y_ref, y_values);
+            y_values[j] = lagrange_interpolate_1D(z_ref, z_values);
         }
-        return lagrange_interpolate_1D(x_ref, x_values);
+        x_values[i] = lagrange_interpolate_1D(y_ref, y_values);
     }
+    return lagrange_interpolate_1D(x_ref, x_values);
 }
 } //namespace
 #endif

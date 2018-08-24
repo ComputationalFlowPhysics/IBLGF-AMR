@@ -58,10 +58,6 @@ void assign(const Field0& src, const BlockDescriptor& view_src,
                      i <= view_target.max()[0]; i+=strd_t[0])
             {
                 target.get(i,j,k)=src.get(idxs[0], idxs[1], idxs[2]);
-                //std::cout
-                //<<i<<" "<<j<<" "<<k<<" "
-                //<<idxs[0]<<" "<<idxs[1]<<" "<<idxs[2]<<" "
-                //<<std::endl;
                 idxs[0]+=strd_s[0];
             }
             idxs[1]+=strd_s[1];

@@ -19,9 +19,9 @@ namespace fmm
             antrp_coeff_sub.push_back(antrp_coeff_.block(0,0,Nb_,Nb_));
             antrp_coeff_sub.push_back(antrp_coeff_.block(0,Nb_,Nb_,Nb_));
 
-            std::cout<<antrp_coeff_sub[0]<<std::endl;
-            std::cout<<std::endl;
-            std::cout<<antrp_coeff_sub[1]<<std::endl;
+            //std::cout<<antrp_coeff_sub[0]<<std::endl;
+            //std::cout<<std::endl;
+            //std::cout<<antrp_coeff_sub[1]<<std::endl;
         }
 
         void intrp()

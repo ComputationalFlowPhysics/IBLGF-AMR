@@ -3,12 +3,12 @@ simulation_parameters
     L    = 3;
     domain{
         max_extent   = 50000;
-        block_extent = 16;
+        block_extent = 32;
        
         block
         {
             base   = (0,0,0);
-            extent = (32,16,16);
+            extent = (64,32,32);
         }
     }
 

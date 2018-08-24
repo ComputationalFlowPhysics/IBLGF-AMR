@@ -168,27 +168,135 @@ public:
     auto& block_extent()noexcept { return block_extent_; }
 
 public:
-    void exchange_buffers()
+
+
+    //template<class Field>
+    void exchange_level_buffers(int level)
     {
         coordinate_type lbuff(1),hbuff(1);
-        for(auto it= begin_leafs(); it!=end_leafs();++it )
+        auto _begin=begin(level);
+        auto _end=end(level);
+        for(auto it=_begin ; it!=_end;++it )
         {
             //determine neighborhood
-            //auto neighbors = it->get_neighborhood(lbuff, hbuff);
+            //FIXME:  To be general this should include interlevel neighbors
+            auto neighbors = it->get_level_neighborhood(lbuff, hbuff);
 
             //box-overlap per field 
-            it->data()->for_fields( [this,it](auto& field)
+            it->data()->for_fields( [this,it, _begin, _end, &neighbors](auto& field)
             {
-                //FIXME:
-                //Quick fix for now ... should be only the neighbors
-                //for(auto& nn: neighbors) 
-                for(auto jt= begin_leafs(); jt!=end_leafs();++jt )
+                for(auto& jt: neighbors) 
                 {
                     if(it->key()==jt->key())continue;
 
                     //Check for overlap with current
                     block_descriptor_t overlap;
-                    auto currentField=field.real_block();
+                    if(field.buffer_overlap(jt->data()->descriptor(), overlap, 
+                                            jt->refinement_level()))
+                    {
+                        using field_type = std::remove_reference_t<decltype(field)>;
+                        auto& src = jt->data()->template get<field_type>();
+                        const auto overlap_src = overlap; 
+                        
+                        //it is target and jt is source
+                        coordinate_type stride_tgt(1);
+                        coordinate_type stride_src(1);
+
+                        assign(src, overlap,stride_src, 
+                               field, overlap, stride_tgt);
+                    }
+                }
+            });
+        }
+    }
+
+    //template<class Field>
+    //void exchange_level_buffers(int level)
+    //{
+    //    coordinate_type lbuff(1),hbuff(1);
+    //    auto _begin=begin(level);
+    //    auto _end=end(level);
+    //    for(auto it=_begin ; it!=_end;++it )
+    //    {
+    //        //determine neighborhood
+    //        //FIXME:  To be general this should include interlevel neighbors
+    //        auto neighbors = it->get_level_neighborhood(lbuff, hbuff);
+
+    //        //box-overlap per field 
+    //        it->data()->for_fields( [this,it, _begin, _end, &neighbors](auto& field)
+    //        {
+    //            for(auto& jt: neighbors) 
+    //            {
+    //                if(it->key()==jt->key())continue;
+
+    //                //Check for overlap with current
+    //                block_descriptor_t overlap;
+    //                if(field.buffer_overlap(jt->data()->descriptor(), overlap, 
+    //                                        jt->refinement_level()))
+    //                {
+    //                    using field_type = std::remove_reference_t<decltype(field)>;
+    //                    auto& src = jt->data()->template get<field_type>();
+    //                    const auto overlap_src = overlap; 
+    //                    
+    //                    //it is target and jt is source
+    //                    coordinate_type stride_tgt(1);
+    //                    coordinate_type stride_src(1);
+
+    //                    std::cout<<std::endl;
+    //                    std::cout<<"Field : "<<it->data()->descriptor()<<std::endl;
+    //                    std::cout<<"ovelap: "<<overlap_src<<std::endl;
+
+    //                    assign(src, overlap_src,stride_src, 
+    //                           field, overlap_src, stride_tgt);
+
+    //                    for (auto kc  = overlap_src.base()[2];
+    //                            kc <= overlap_src.max()[2]; ++kc)
+    //                    {
+    //                        for (auto jc  = overlap_src.base()[1];
+    //                                jc  <= overlap_src.max()[1]; ++jc)
+    //                        {
+    //                            for (auto ic = overlap_src.base()[0];
+    //                                    ic <= overlap_src.max()[0]; ++ic)
+    //                            {
+    //                                std::cout<<"Field name :" <<field.name()<<std::endl;
+    //                                std::cout<<"source : "<<src.get(ic,jc,kc)<<std::endl;
+    //                                std::cout<<"target : "<<field.get(ic,jc,kc)<<std::endl;
+    //                            }
+    //                        }
+    //                    }
+
+
+
+
+
+    //                }
+    //            }
+    //        });
+    //    }
+    //}
+
+
+    void exchange_buffers(int level)
+    {
+        coordinate_type lbuff(1),hbuff(1);
+        auto _begin=begin(level);
+        auto _end=end(level);
+        for(auto it=_begin ; it!=_end;++it )
+        {
+            //determine neighborhood
+            //FIXME:  To be general this should include interlevel neighbors
+            auto neighbors = it->get_level_neighborhood(lbuff, hbuff);
+
+            //box-overlap per field 
+            it->data()->for_fields( [this,it, _begin, _end, &neighbors](auto& field)
+            {
+                for(auto& jt: neighbors) 
+                //for(auto jt= _begin; jt!=_end;++jt )
+                {
+                    if(it->key()==jt->key())continue;
+
+                    //Check for overlap with current
+                    block_descriptor_t overlap;
                     if(field.buffer_overlap(jt->data()->descriptor(), overlap, 
                                             jt->refinement_level()))
                     {
@@ -199,7 +307,6 @@ public:
                         auto overlap_tgt = overlap_src; 
                         overlap_tgt.level_scale(it->refinement_level());
                         
-
                         //it is target and jt is source
                         int tgt_stride=1, src_stride=1;
                         if(it->refinement_level() > jt->refinement_level())
@@ -214,14 +321,6 @@ public:
                         }
                         coordinate_type stride_tgt(tgt_stride);
                         coordinate_type stride_src(src_stride);
-
-                        //std::cout<<std::endl;
-                        //std::cout<<it->global_coordinate()<<" "
-                        //         <<jt->global_coordinate()<<std::endl;
-                        //std::cout<<"iF: "<<currentField<<std::endl;
-                        //std::cout<<"jF: "<<jt->data()->descriptor()<<std::endl;
-                        //std::cout<<"iv: "<<overlap<<std::endl;
-                        //std::cout<<"jv: "<<overlap_src<<std::endl;
 
                         assign(src, overlap_src,stride_src, 
                                field, overlap_tgt, stride_tgt);

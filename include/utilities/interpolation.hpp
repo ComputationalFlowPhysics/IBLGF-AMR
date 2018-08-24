@@ -71,7 +71,6 @@ inline float_type interpolate(int min_x, int min_y, int min_z,
         return lagrange_interpolate_1D(x_ref, x_values);
     }
 }
-
 } //namespace
 #endif
 

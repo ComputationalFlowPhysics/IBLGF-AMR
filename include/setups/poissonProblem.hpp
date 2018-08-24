@@ -28,6 +28,7 @@
 #include <fmm/fmm.hpp>
 
 #include<utilities/convolution.hpp>
+#include<utilities/interpolation.hpp>
 
 const int Dim = 3;
 
@@ -109,7 +110,7 @@ struct PoissonProblem
         for (auto it  = simulation_.domain_.begin_leafs();
                   it != simulation_.domain_.end_leafs(); ++it)
         {
-            //if (count++ ==0)simulation_.domain_.refine(it);
+            if (count++ ==0)simulation_.domain_.refine(it);
 
         }
 
@@ -140,17 +141,22 @@ struct PoissonProblem
                         it->data()->get<source>(i,j,k)  = 1.0;
                         it->data()->get<phi_num>(i,j,k) = 0.0;
                         it->data()->get<phi_num_tmp>(i,j,k) = 0.0;
-                        
+
+                        //if(it->refinement_level()==1) continue;
+
                         // manufactured solution:
-                        float_type x = static_cast<float_type>(i-center[0]*scaling)*dx_level;
-                        float_type y = static_cast<float_type>(j-center[1]*scaling)*dx_level;
-                        float_type z = static_cast<float_type>(k-center[2]*scaling)*dx_level;
+                        float_type x = static_cast<float_type>
+                                        (i-center[0]*scaling)*dx_level;
+                        float_type y = static_cast<float_type>
+                                        (j-center[1]*scaling)*dx_level;
+                        float_type z = static_cast<float_type>
+                                        (k-center[2]*scaling)*dx_level;
                         const auto x2 = x*x;
                         const auto y2 = y*y;
                         const auto z2 = z*z;
 
 
-                        it->data()->get<source>(i,j,k) =
+                        it->data()->get<source>(i,j,k) = 
                             a*std::exp(-a*(x2)-a*(y2)-a*(z2))*(-6.0)+
                             (a2)*(x2)*std::exp(-a*(x2)-a*(y2)-a*(z2))*4.0 +
                             (a2)*(y2)*std::exp(-a*(x2)-a*(y2)-a*(z2))*4.0+
@@ -512,6 +518,10 @@ struct PoissonProblem
     }
 
 
+
+
+
+
     /*
      * Interpolate a given field from corser to finer level.
      * Note: maximum jump allowed is one level.
@@ -528,29 +538,25 @@ struct PoissonProblem
             parent_view.level_scale(_b_parent->refinement_level());
             
             // Loops on coordinates
-            auto kp = parent_view.base()[2];
             for (auto kc  = child_view.base()[2];
-                      kc < child_view.max()[2]; kc+=2)
+                      kc <= child_view.max()[2]; ++kc)
             {
-                auto jp = parent_view.base()[1];
                 for (auto jc  = child_view.base()[1];
-                          jc  < child_view.max()[1]; jc+=2)
+                          jc  <= child_view.max()[1]; ++jc)
                 {
-                    auto ip = parent_view.base()[0];
                     for (auto ic = child_view.base()[0];
-                              ic < child_view.max()[0]; ic+=2)
+                              ic <= child_view.max()[0]; ++ic)
                     {
-                        child->data()->template get<phi_num>(ic,jc,kc) +=
-                            _b_parent->data()->template get<phi_num_tmp>(ip,jp,kp);
+                        int min_x= ic/2; int min_y= jc/2; int min_z= kc/2;
+                        float_type x= ic/2.0; float_type y= jc/2.0; float_type z= kc/2.0;
 
-                        child->data()->template get<phi_num>(ic+1,jc+1,kc+1) +=
-                            (_b_parent->data()->template get<phi_num_tmp>(ip+1,jp+1,kp+1) +
-                             _b_parent->data()->template get<phi_num_tmp>(ip,jp,kp)) / 2;
-                        ip++;
+                        auto interp= 
+                        interpolation::interpolate(min_x, min_y, min_z, x, y, z, 
+                        _b_parent->data()->template get<phi_num_tmp>());
+
+                        child->data()->template get<phi_num>(ic,jc,kc) =interp;
                     }
-                    jp++;
                 }
-                kp++;
             }
         }
     }

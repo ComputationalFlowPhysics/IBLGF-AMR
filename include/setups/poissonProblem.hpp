@@ -113,16 +113,31 @@ struct PoissonProblem
         for (auto it  = simulation_.domain_.begin_leafs();
                   it != simulation_.domain_.end_leafs(); ++it)
         {
-            if (count++ ==0)simulation_.domain_.refine(it);
+            //if (count++ ==0)simulation_.domain_.refine(it);
             auto b=it->data()->descriptor();
             coordinate_t l(5), u(5);
             b.grow(l, u);
             if(b.is_inside( center ) && it->refinement_level()==0 )
             {
-                if(b.base()[0]<center[0]-5)
+                //if(b.base()[0]<center[0]-5)
                     simulation_.domain_.refine(it);
             }
         }
+
+        count=0;
+        for (auto it  = simulation_.domain_.begin_leafs();
+                  it != simulation_.domain_.end_leafs(); ++it)
+        {
+            auto b=it->data()->descriptor();
+            coordinate_t l(5), u(5);
+            b.grow(l, u);
+            if(b.is_inside( 2.0*center ) && it->refinement_level()==1 )
+            {
+                    simulation_.domain_.refine(it);
+            }
+        }
+
+
 
         const float_type a  = 10.;
         const float_type a2 = a*a;
@@ -374,20 +389,14 @@ struct PoissonProblem
         // allocate lgf
         std::vector<float_type> lgf;
         
-        // Cross-level interactions (source is finer, target is coarser)
-        // This should take care of the cross-level interactions, that
-        // are computed as part of the self-interactions, because parents
-        // are included.
-        for (int lt = simulation_.domain_.tree()->base_level();
-                 lt < simulation_.domain_.tree()->depth(); ++lt)
+        for (int ls = simulation_.domain_.tree()->depth()-1;
+                 ls > simulation_.domain_.tree()->base_level(); --ls)
         {
-            for (int ls = lt+1;
-                     ls < simulation_.domain_.tree()->depth(); ++ls)
-            {
+
                 pcout << "--------- CROSS-INTERACTION (SOURCE FINER) --------" << std::endl;
+                pcout << "---------          COARSIFICATION          --------" << std::endl;
                 pcout << "BASE-LEVEL = " << simulation_.domain_.tree()->base_level() << std::endl;
-                pcout << "======== TARGET BLOCK LEVEL = " << lt
-                << ",        SOURCE BLOCK LEVEL = " << ls
+                pcout << ",        SOURCE BLOCK LEVEL = " << ls
                 << std::endl;
                 
                 for (auto it_s  = simulation_.domain_.begin(ls);
@@ -395,8 +404,8 @@ struct PoissonProblem
                 {
                    this->coarsify(it_s);
                 }
-            }
         }
+
         
         // Self-level interactions
         for (int l  = simulation_.domain_.tree()->base_level();
@@ -452,6 +461,7 @@ struct PoissonProblem
         }
 
         // Cross-level interactions (source is coarser, target is finer)
+        //
         for (int lt  = simulation_.domain_.tree()->depth()-1;
                  lt >= simulation_.domain_.tree()->base_level(); --lt)
         {
@@ -467,44 +477,10 @@ struct PoissonProblem
                 for (auto it_t  = simulation_.domain_.begin(lt);
                           it_t != simulation_.domain_.end(lt); ++it_t)
                 {
-                    //for (auto it_s  = simulation_.domain_.begin(ls);
-                    //     it_s != simulation_.domain_.end(ls); ++it_s)
-                    //{
-                    //    auto refinement_level = it_t->refinement_level();
-                    //    auto parent_level = refinement_level-1;
-                    //    auto dx_level   = dx/std::pow(2,parent_level);
-                    //    // Get the tree_coordinate of target block
-                    //    const auto t_base_parent = simulation_.domain_.tree()->
-                    //    octant_to_level_coordinate(it_t->parent()->tree_coordinate());
-                    //    
-                    //    // Get tree_coordinate of source block
-                    //    const auto s_base = simulation_.domain_.tree()->
-                    //    octant_to_level_coordinate(it_s->tree_coordinate());
-                    //    
-                    //    // Get extent of source region
-                    //    const auto s_extent = it_s->data()->extent();
-                    //    const auto shift    = t_base_parent - s_base;
-                    //    
-                    //    // Calculate the dimensions of the LGF to be allocated
-                    //    const auto base_lgf   = shift - (s_extent - 1);
-                    //    const auto extent_lgf = 2 * (s_extent) - 1;
-                    //    
-                    //    lgf_.get_subblock(block_descriptor_t(base_lgf,
-                    //                                         extent_lgf), lgf);
-                    //    
-                    //    conv.execute_field(lgf, it_s->data()->get<source>());
-                    //    block_descriptor_t extractor(s_base, s_extent);
-                    //    //conv.add_solution(
-                    //    //    extractor,
-                    //    //    it_t->parent()->data()->get<phi_num>(),
-                    //    //    dx_level*dx_level);
-                    //}
                     this->interpolate(it_t->parent());
-                    break;
                 }
             }
         }
-
         //simple_lapace_fd();
         compute_errors();
         pcout << "Writing solution " << std::endl;
@@ -529,30 +505,7 @@ struct PoissonProblem
     void interpolate(const Block_it* _b_parent)
     {
         simulation_.domain_.exchange_level_buffers(_b_parent->tree_level()); 
-
-        //coordinate_t lbuff(1),hbuff(1);
-        //auto neighbors= _b_parent->get_level_neighborhood(lbuff, hbuff);
-        //for(auto& jt: neighbors) 
-        //{
-        //    auto overlap_src= jt->data()->descriptor();
-        //    auto overlap= overlap_src;
-        //    _b_parent->data()->template get<phi_num>().buffer_overlap(overlap_src, overlap, 0 );
-        //    for (auto kc  = overlap.base()[2];
-        //            kc <= overlap.max()[2]; ++kc)
-        //    {
-        //        for (auto jc  = overlap.base()[1];
-        //                jc  <= overlap.max()[1]; ++jc)
-        //        {
-        //            for (auto ic = overlap.base()[0];
-        //                    ic <= overlap.max()[0]; ++ic)
-        //            {
-        //                _b_parent->data()->template get<phi_num>(ic,jc,kc)*=1;
-        //            }
-        //        }
-        //    }
-        //}
-
-
+        
         //interpolation 
         for (int i = 0; i < _b_parent->num_children(); ++i)
         {

@@ -28,10 +28,14 @@
 
 # Directories:
 .deps/
-Makefile.user
 
 # Executables
 *.exe
 *.out
 *.app
 *.x
+
+
+#Misc:
+*.swp
+Makefile.user

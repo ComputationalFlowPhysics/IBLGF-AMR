@@ -352,7 +352,7 @@ public: //members
     void grow( base_t _lBuffer, base_t _rBuffer )
     {
         base_-=_lBuffer;
-        extent_+=_lBuffer=_rBuffer;
+        extent_+=_lBuffer+_rBuffer;
     }
 
     std::size_t nPoints() const noexcept

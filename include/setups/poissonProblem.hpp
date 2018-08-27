@@ -105,18 +105,24 @@ struct PoissonProblem
      */
     void initialize()
     {
+        auto center = (simulation_.domain_.bounding_box().max() -
+                       simulation_.domain_.bounding_box().min()) / 2.0 +
+                       simulation_.domain_.bounding_box().min();
 
         int count=0;
         for (auto it  = simulation_.domain_.begin_leafs();
                   it != simulation_.domain_.end_leafs(); ++it)
         {
-            if (count++ ==0)simulation_.domain_.refine(it);
-
+            //if (count++ ==0)simulation_.domain_.refine(it);
+            auto b=it->data()->descriptor();
+            coordinate_t l(5), u(5);
+            b.grow(l, u);
+            if(b.is_inside( center ) && it->refinement_level()==0 )
+            {
+                if(b.base()[0]<center[0]-5)
+                    simulation_.domain_.refine(it);
+            }
         }
-
-        auto center = (simulation_.domain_.bounding_box().max() -
-                       simulation_.domain_.bounding_box().min()) / 2.0 +
-                       simulation_.domain_.bounding_box().min();
 
         const float_type a  = 10.;
         const float_type a2 = a*a;
@@ -461,39 +467,6 @@ struct PoissonProblem
                 for (auto it_t  = simulation_.domain_.begin(lt);
                           it_t != simulation_.domain_.end(lt); ++it_t)
                 {
-                    for (auto it_s  = simulation_.domain_.begin(ls);
-                         it_s != simulation_.domain_.end(ls); ++it_s)
-                    {
-
-                        auto refinement_level = it_t->refinement_level();
-                        auto dx_level   = dx/std::pow(2,refinement_level-1);
-
-                        // Get the tree_coordinate of target block
-                        const auto t_base_parent = simulation_.domain_.tree()->
-                        octant_to_level_coordinate(it_t->parent()->tree_coordinate());
-                        
-                        // Get tree_coordinate of source block
-                        const auto s_base = simulation_.domain_.tree()->
-                        octant_to_level_coordinate(it_s->tree_coordinate());
-                        
-                        // Get extent of source region
-                        const auto s_extent = it_s->data()->extent();
-                        const auto shift    = t_base_parent - s_base;
-                        
-                        // Calculate the dimensions of the LGF to be allocated
-                        const auto base_lgf   = shift - (s_extent - 1);
-                        const auto extent_lgf = 2 * (s_extent) - 1;
-                        
-                        lgf_.get_subblock(block_descriptor_t(base_lgf,
-                                                             extent_lgf), lgf);
-                        
-                        conv.execute_field(lgf, it_s->data()->get<source>());
-                        block_descriptor_t extractor(s_base, s_extent);
-                        conv.add_solution(
-                            extractor,
-                            it_t->parent()->data()->get<phi_num>(),
-                            dx_level*dx_level);
-                    }
                     this->interpolate(it_t->parent());
                     break;
                 }
@@ -524,36 +497,15 @@ struct PoissonProblem
     void interpolate(const Block_it* _b_parent)
     {
         simulation_.domain_.exchange_level_buffers(_b_parent->tree_level()); 
-
-        coordinate_t lbuff(1),hbuff(1);
-        auto neighbors= _b_parent->get_level_neighborhood(lbuff, hbuff);
-        for(auto& jt: neighbors) 
-        {
-            auto overlap_src= jt->data()->descriptor();
-            auto overlap= overlap_src;
-            _b_parent->data()->template get<phi_num>().buffer_overlap(overlap_src, overlap, 0 );
-            for (auto kc  = overlap.base()[2];
-                    kc <= overlap.max()[2]; ++kc)
-            {
-                for (auto jc  = overlap.base()[1];
-                        jc  <= overlap.max()[1]; ++jc)
-                {
-                    for (auto ic = overlap.base()[0];
-                            ic <= overlap.max()[0]; ++ic)
-                    {
-                        _b_parent->data()->template get<phi_num>(ic,jc,kc)*=2;
-                    }
-                }
-            }
-        }
+        simulation_.domain_.exchange_level_buffers(_b_parent->tree_level()+1); 
 
 
+        //interpolation 
         for (int i = 0; i < _b_parent->num_children(); ++i)
         {
             auto child = _b_parent->child(i);
             auto child_view= child->data()->descriptor();
             
-            // Loops on coordinates
             for (auto kc  = child_view.base()[2];
                       kc <= child_view.max()[2]; ++kc)
             {
@@ -570,7 +522,7 @@ struct PoissonProblem
 
                         auto interp= 
                         interpolation::interpolate(min_x, min_y, min_z, x, y, z, 
-                        _b_parent->data()->template get<phi_num>())/2.0;
+                        _b_parent->data()->template get<phi_num>());
                         child->data()->template get<phi_num>(ic,jc,kc) =+interp;
                     }
                 }

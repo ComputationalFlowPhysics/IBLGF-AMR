@@ -163,8 +163,6 @@ struct PoissonProblem
                         it->data()->get<phi_num>(i,j,k) = 0.0;
                         it->data()->get<phi_num_tmp>(i,j,k) = 0.0;
 
-                        //if(it->refinement_level()==1) continue;
-
                         // manufactured solution:
                         float_type x = static_cast<float_type>
                                         (i-center[0]*scaling)*dx_level;
@@ -392,18 +390,11 @@ struct PoissonProblem
         for (int ls = simulation_.domain_.tree()->depth()-1;
                  ls > simulation_.domain_.tree()->base_level(); --ls)
         {
-
-                pcout << "--------- CROSS-INTERACTION (SOURCE FINER) --------" << std::endl;
-                pcout << "---------          COARSIFICATION          --------" << std::endl;
-                pcout << "BASE-LEVEL = " << simulation_.domain_.tree()->base_level() << std::endl;
-                pcout << ",        SOURCE BLOCK LEVEL = " << ls
-                << std::endl;
-                
-                for (auto it_s  = simulation_.domain_.begin(ls);
-                          it_s != simulation_.domain_.end(ls); ++it_s)
-                {
-                   this->coarsify(it_s);
-                }
+            for (auto it_s  = simulation_.domain_.begin(ls);
+                    it_s != simulation_.domain_.end(ls); ++it_s)
+            {
+                this->coarsify(it_s);
+            }
         }
 
         
@@ -418,11 +409,6 @@ struct PoissonProblem
                 auto refinement_level = it_t->refinement_level();
                 auto dx_level =  dx/std::pow(2,refinement_level);
 
-                pcout << "--------- SELF-INTERACTION --------" << std::endl;
-                pcout << "======== TARGET BLOCK = "        << target
-                      << ",        TARGET REAL LEVEL = " << refinement_level
-                      << std::endl;
-                
                 for (auto it_s  = simulation_.domain_.begin(l);
                           it_s != simulation_.domain_.end(l); ++it_s)
                 {
@@ -465,22 +451,15 @@ struct PoissonProblem
         for (int lt  = simulation_.domain_.tree()->depth()-1;
                  lt >= simulation_.domain_.tree()->base_level(); --lt)
         {
-            for (int ls = lt-1; ls >= simulation_.domain_.tree()->base_level();
-                 --ls)
+            for (auto it_t  = simulation_.domain_.begin(lt);
+                    it_t != simulation_.domain_.end(lt); ++it_t)
             {
-                pcout << "--------- CROSS-INTERACTION (SOURCE COARSER) --------" << std::endl;
-
-                pcout << "======== TARGET BLOCK LEVEL = " << lt
-                << ",        SOURCE BLOCK LEVEL = " << ls
-                << std::endl;
-                
-                for (auto it_t  = simulation_.domain_.begin(lt);
-                          it_t != simulation_.domain_.end(lt); ++it_t)
-                {
+                if(it_t->parent()->data())
                     this->interpolate(it_t->parent());
-                }
             }
         }
+                   
+           
         //simple_lapace_fd();
         compute_errors();
         pcout << "Writing solution " << std::endl;

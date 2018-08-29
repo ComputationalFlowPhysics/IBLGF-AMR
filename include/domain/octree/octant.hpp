@@ -131,6 +131,17 @@ public: //Ctors
        return res;
     }
 
+
+    //TODO: store this bool while constructing
+    bool is_leaf()
+    {
+        for(int i = 0; i< this->num_children();++i)
+        {
+            if(children_[i]!=nullptr ) return false;
+        }
+        return true;
+    }
+
     auto get_vertices() noexcept
     {
         std::vector<decltype(this->tree()->begin_leafs())> res;
@@ -146,6 +157,7 @@ public: //Ctors
         });
         return res;
     }
+
 
     template<class Iterator>
     auto compute_index(const Iterator& _it)

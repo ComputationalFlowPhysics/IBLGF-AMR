@@ -210,88 +210,24 @@ public:
         }
     }
 
-    //template<class Field>
-    //void exchange_level_buffers(int level)
-    //{
-    //    coordinate_type lbuff(1),hbuff(1);
-    //    auto _begin=begin(level);
-    //    auto _end=end(level);
-    //    for(auto it=_begin ; it!=_end;++it )
-    //    {
-    //        //determine neighborhood
-    //        //FIXME:  To be general this should include interlevel neighbors
-    //        auto neighbors = it->get_level_neighborhood(lbuff, hbuff);
 
-    //        //box-overlap per field 
-    //        it->data()->for_fields( [this,it, _begin, _end, &neighbors](auto& field)
-    //        {
-    //            for(auto& jt: neighbors) 
-    //            {
-    //                if(it->key()==jt->key())continue;
-
-    //                //Check for overlap with current
-    //                block_descriptor_t overlap;
-    //                if(field.buffer_overlap(jt->data()->descriptor(), overlap, 
-    //                                        jt->refinement_level()))
-    //                {
-    //                    using field_type = std::remove_reference_t<decltype(field)>;
-    //                    auto& src = jt->data()->template get<field_type>();
-    //                    const auto overlap_src = overlap; 
-    //                    
-    //                    //it is target and jt is source
-    //                    coordinate_type stride_tgt(1);
-    //                    coordinate_type stride_src(1);
-
-    //                    std::cout<<std::endl;
-    //                    std::cout<<"Field : "<<it->data()->descriptor()<<std::endl;
-    //                    std::cout<<"ovelap: "<<overlap_src<<std::endl;
-
-    //                    assign(src, overlap_src,stride_src, 
-    //                           field, overlap_src, stride_tgt);
-
-    //                    for (auto kc  = overlap_src.base()[2];
-    //                            kc <= overlap_src.max()[2]; ++kc)
-    //                    {
-    //                        for (auto jc  = overlap_src.base()[1];
-    //                                jc  <= overlap_src.max()[1]; ++jc)
-    //                        {
-    //                            for (auto ic = overlap_src.base()[0];
-    //                                    ic <= overlap_src.max()[0]; ++ic)
-    //                            {
-    //                                std::cout<<"Field name :" <<field.name()<<std::endl;
-    //                                std::cout<<"source : "<<src.get(ic,jc,kc)<<std::endl;
-    //                                std::cout<<"target : "<<field.get(ic,jc,kc)<<std::endl;
-    //                            }
-    //                        }
-    //                    }
-
-
-
-
-
-    //                }
-    //            }
-    //        });
-    //    }
-    //}
-
-
-    void exchange_buffers(int level)
+    void exchange_buffers()
     {
         coordinate_type lbuff(1),hbuff(1);
-        auto _begin=begin(level);
-        auto _end=end(level);
+        auto _begin=begin_leafs();
+        auto _end=end_leafs();
         for(auto it=_begin ; it!=_end;++it )
         {
             //determine neighborhood
-            //FIXME:  To be general this should include interlevel neighbors
+            //FIXME:  Only neighbors
+            //FIXME:  periodicity needs to be accounted for
             auto neighbors = it->get_level_neighborhood(lbuff, hbuff);
 
             //box-overlap per field 
             it->data()->for_fields( [this,it, _begin, _end, &neighbors](auto& field)
             {
-                for(auto& jt: neighbors) 
-                //for(auto jt= _begin; jt!=_end;++jt )
+                //for(auto& jt: neighbors) 
+                for(auto jt= _begin; jt!=_end;++jt )
                 {
                     if(it->key()==jt->key())continue;
 
@@ -328,6 +264,46 @@ public:
                 }
             });
         }
+    }
+
+    template<template<std::size_t> class Field>
+    std::vector<std::pair<octant_t*,block_descriptor_t>>
+    determine_fineToCoarse_interfaces()
+    {
+        std::vector<std::pair<octant_t*,block_descriptor_t>> res;
+        coordinate_type lbuff(1),hbuff(1);
+        auto _begin=begin_leafs();
+        auto _end=end_leafs();
+        for(auto it=_begin ; it!=_end;++it )
+        {
+            ////determine neighborhood
+            ////TODO: This should only include the neighbors
+            for(auto jt= _begin; jt!=_end;++jt )
+            {
+                if(it->key()==jt->key())continue;
+                if(it->refinement_level() <= jt->refinement_level()) continue;
+
+                auto& jfield=jt->data()->template get<Field>();
+
+                //Check for overlap with current
+                block_descriptor_t overlap;
+                if(jfield.buffer_overlap(it->data()->descriptor(), overlap, 
+                   it->refinement_level()))
+                {
+                    const auto it_max=it->data()->descriptor().max();
+                    for(int d=0; d<Dim;++d)
+                    {
+                        //if(view.base()[d] + view.extent()[d]-1 == overlap.base()[d])
+                        if(it_max[d] == overlap.base()[d])
+                        {
+                            overlap.extent()[d]=1;
+                        }
+                    }
+                    res.push_back(std::make_pair(*it, overlap));
+                }
+            }
+        }
+        return res;
     }
 
 

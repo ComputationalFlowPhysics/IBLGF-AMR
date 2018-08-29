@@ -18,7 +18,8 @@
 #include <memory>
 
 #include <dictionary/string_utils.hpp>
-
+#include <boost/algorithm/string/classification.hpp>
+#include <boost/algorithm/string/split.hpp>
 
 namespace dictionary{
 
@@ -123,6 +124,25 @@ private: //Helper functions
         }
     }
 
+
+	//bool is_valid_cmd_argument(const std::string& arg, std::string& id, std::string& value) const
+	//{
+	//	// cmd argument must start wit --
+	//	if (arg[0]!='-' || arg[1]!='-') return false;
+	//	
+	//	// there should be one equals sign separating id and value
+	//	std::vector<std::string> split_vec;
+	//	string_utilities::split_string(split_vec, arg, "=");
+	//	if (split_vec.size() != 2) return false;
+	//	if (split_vec[0].size() < 3) return false;
+	//	if (split_vec[1].size() == 0) return false;
+	//	
+	//	id = std::string(split_vec[0].begin()+2,split_vec[0].end());
+	//	value = split_vec[1];
+	//	return true;
+	//}
+
+
 public: //Some access functions
     
     auto get_subdictionary(const std::string& _name)
@@ -177,8 +197,6 @@ public: //Some access functions
             return false;
         }
     }
-    
-
 
 public: //Access functions
 

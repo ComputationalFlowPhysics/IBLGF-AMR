@@ -276,8 +276,8 @@ public:
         auto _end=end_leafs();
         for(auto it=_begin ; it!=_end;++it )
         {
-            ////determine neighborhood
-            ////TODO: This should only include the neighbors
+            //determine neighborhood
+            //TODO: This should only include the neighbors
             for(auto jt= _begin; jt!=_end;++jt )
             {
                 if(it->key()==jt->key())continue;

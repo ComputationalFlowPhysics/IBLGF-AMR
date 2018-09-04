@@ -44,7 +44,7 @@ struct PoissonProblem
     using size_v_type = vector_type<int       , Dim>;
 
     //              name                type     lBuffer.  hBuffer
-    make_field_type(phi_num         , float_type, 1,       1)
+    make_field_type(phi_num         , float_type, 0,       1)
     make_field_type(source          , float_type, 0,       0)
     make_field_type(lgf_field_lookup, float_type, 0,       0)
     make_field_type(phi_exact       , float_type, 0,       0)
@@ -134,17 +134,17 @@ struct PoissonProblem
             }
         }
 
-        for (auto it  = simulation_.domain_.begin_leafs();
-                  it != simulation_.domain_.end_leafs(); ++it)
-        {
-            auto b=it->data()->descriptor();
-            coordinate_t l(2), u(2);
-            b.grow(l, u);
-            if(b.is_inside( 4.0*center ) && it->refinement_level()==2 )
-            {
-                    simulation_.domain_.refine(it);
-            }
-        }
+        //for (auto it  = simulation_.domain_.begin_leafs();
+        //          it != simulation_.domain_.end_leafs(); ++it)
+        //{
+        //    auto b=it->data()->descriptor();
+        //    coordinate_t l(2), u(2);
+        //    b.grow(l, u);
+        //    if(b.is_inside( 4.0*center ) && it->refinement_level()==2 )
+        //    {
+        //            simulation_.domain_.refine(it);
+        //    }
+        //}
 
 
 
@@ -424,18 +424,18 @@ struct PoissonProblem
                     if(it_t->is_leaf()) continue;
                     this->interpolate(*it_t);
             }
+             
+            //Interpolate interface
+            simulation_.domain_.exchange_buffers(); 
+            auto fc_interfaces=simulation_.domain_.determine_fineToCoarse_interfaces<phi_num>();
+            for(auto& i :  fc_interfaces)
+            { 
+                this->interpolate_level_interface(i.first, i.second);
+            }
         }
 
 
-        //Interpolate interface
-        simulation_.domain_.exchange_buffers(); 
-
-        auto fc_interfaces=simulation_.domain_.determine_fineToCoarse_interfaces<phi_num>();
-        for(auto& i :  fc_interfaces)
-        { 
-            this->interpolate_level_interface(i.first, i.second);
-        }
-           
+                
         //simple_lapace_fd();
         compute_errors();
         pcout << "Writing solution " << std::endl;
@@ -510,37 +510,7 @@ struct PoissonProblem
             }
         }
     } 
-    template<class Block_it>
-    void interpolate_level_interface(const Block_it* _b)
-    {
-        auto view= _b->data()->descriptor();
-        
-        for(auto kc  = view.base()[2];
-                kc <= view.max()[2]; ++kc)
-        {
-            for (auto jc  = view.base()[1];
-                    jc  <= view.max()[1]; ++jc)
-            {
-                for (auto ic = view.max()[0];
-                        ic <= view.max()[0]; ++ic)
-                {
-                    //Snap into parent grid:
-                    const int min_x = 2*((ic)/2); 
-                    const int min_y = 2*((jc)/2); 
-                    const int min_z = 2*((kc)/2);
-                    const float_type x= ic;
-                    const float_type y= jc;
-                    const float_type z= kc;
-                    auto interp= 
-                        interpolation::interpolate(min_x, min_y, min_z, x, y, z, 
-                                _b->data()->template get<phi_num>(),2);
-                    _b->data()->template get<phi_num>(ic,jc,kc)=interp;
-                }
-            }
-        }
-    } 
-
-
+  
     /*
      * Coarsify given field from finer to coarser level.
      * Note: maximum jump allowed is one level.

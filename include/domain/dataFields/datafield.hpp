@@ -72,6 +72,9 @@ public: //member functions
         this->level()= _b.level();
         auto size=real_block_.size();
         data_.resize(size);
+
+        //FIXME: 
+        std::fill(data_.begin(), data_.end(), 0.0);
     }
 
     DataType& operator[](size_type i ) noexcept {return data_[i];}

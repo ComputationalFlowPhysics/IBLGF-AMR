@@ -74,7 +74,7 @@ public: //member functions
         data_.resize(size);
 
         //FIXME: 
-        std::fill(data_.begin(), data_.end(), 0.0);
+        //std::fill(data_.begin(), data_.end(), 0.0);
     }
 
     DataType& operator[](size_type i ) noexcept {return data_[i];}

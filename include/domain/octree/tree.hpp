@@ -280,6 +280,7 @@ private: //traversal
     }
 
 private: // misc
+public: // misc
 
     void construct_level_maps()
     {

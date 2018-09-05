@@ -82,6 +82,7 @@ public: //Interface
         }
     }        
 
+    //FIXME: Starting from zero is not general
     template<class Vector>
     void copy_field(const Vector& _v, dims_t _dims_v) noexcept
     {

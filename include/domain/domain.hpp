@@ -125,7 +125,39 @@ public:
             auto bbase=t_->octant_to_level_coordinate(it->tree_coordinate());
             it->data()=std::make_shared<datablock_t>(bbase, _blockExtent,level);
         }
+
+        //for(auto it=begin_df();it!=end_df();++it)
+        //{
+        //    const int level=0;
+        //    auto bbase=t_->octant_to_level_coordinate(it->tree_coordinate());
+        //    it->data()=std::make_shared<datablock_t>(bbase, _blockExtent,level, false);
+        //}
+
+        //for(auto it=begin_leafs();it!=end_leafs();++it)
+        //{
+
+        //    const int level=0;
+        //    auto bbase=t_->octant_to_level_coordinate(it->tree_coordinate());
+        //    block_descriptor_t b(bbase, block_extent_, level);
+        //    it->data()->initialize(b);
+        //}
     }
+                        
+                           
+     
+    template<template<std::size_t> class Field>
+    void init_field(octant_t* _root)
+    {
+        for(auto it=dfs_iterator(_root); it!=end_df();++it)
+        {
+            const int level=0;
+            auto bbase=t_->octant_to_level_coordinate(it->tree_coordinate());
+            block_descriptor_t b(bbase, block_extent_, level);
+            it->data()->template initialize<Field>(b);
+        }
+    }
+
+
 
 
 public: // Iterators:
@@ -204,6 +236,7 @@ public:
 
                         assign(src, overlap,stride_src, 
                                field, overlap, stride_tgt);
+
                     }
                 }
             });

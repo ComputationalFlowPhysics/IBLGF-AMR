@@ -45,7 +45,8 @@ struct PoissonProblem
 
     //              name                type     lBuffer.  hBuffer
     make_field_type(phi_num         , float_type, 0,       1)
-    make_field_type(source          , float_type, 0,       0)
+    make_field_type(phi_interp      , float_type, 0,       1)
+    make_field_type(source          , float_type, 0,       1)
     make_field_type(lgf_field_lookup, float_type, 0,       0)
     make_field_type(phi_exact       , float_type, 0,       0)
     make_field_type(lgf             , float_type, 0,       0)
@@ -55,10 +56,12 @@ struct PoissonProblem
     make_field_type(lapace_error    , float_type, 0,       0)
     make_field_type(dummy_field     , float_type, 0,       0)
     make_field_type(bla_field,        float_type, 0,       0)
+    make_field_type(fmm_field,        float_type, 0,       0)
 
     using datablock_t = DataBlock<
         Dim, node,
         phi_num,
+        phi_interp,
         source,
         lgf_field_lookup,
         phi_exact,
@@ -67,6 +70,7 @@ struct PoissonProblem
         lapace_field,
         lapace_error,
         dummy_field, 
+        fmm_field, 
         bla_field     >;
 
     using datablock_t_2 = DataBlock<Dim, node, lgf>;
@@ -83,7 +87,9 @@ struct PoissonProblem
 
     PoissonProblem(Dictionary* _d)
     :simulation_(_d->get_dictionary("simulation_parameters")),
-     conv(simulation_.domain_.block_extent(),simulation_.domain_.block_extent()),
+     //FIXME: exntent+1
+     conv(simulation_.domain_.block_extent()+1,simulation_.domain_.block_extent()+1),
+     //conv(simulation_.domain_.block_extent(),simulation_.domain_.block_extent()),
      fmm_(simulation_.domain_.block_extent()[0]+1)
     {
         pcout << "\n Setup:  LGF PoissonProblem \n" << std::endl;
@@ -106,6 +112,10 @@ struct PoissonProblem
         auto center = (simulation_.domain_.bounding_box().max() -
                        simulation_.domain_.bounding_box().min()) / 2.0 +
                        simulation_.domain_.bounding_box().min();
+
+                       center[0]+=3;
+                       std::cout<<"center: " <<center   <<std::endl;
+
 
         int count=0;
         for (auto it  = simulation_.domain_.begin_leafs();
@@ -134,27 +144,25 @@ struct PoissonProblem
             }
         }
 
-        //for (auto it  = simulation_.domain_.begin_leafs();
-        //          it != simulation_.domain_.end_leafs(); ++it)
-        //{
-        //    auto b=it->data()->descriptor();
-        //    coordinate_t l(2), u(2);
-        //    b.grow(l, u);
-        //    if(b.is_inside( 4.0*center ) && it->refinement_level()==2 )
-        //    {
-        //            simulation_.domain_.refine(it);
-        //    }
-        //}
-
-
-
-
+        for (auto it  = simulation_.domain_.begin_leafs();
+                  it != simulation_.domain_.end_leafs(); ++it)
+        {
+            auto b=it->data()->descriptor();
+            coordinate_t l(2), u(2);
+            b.grow(l, u);
+            if(b.is_inside( 4.0*center ) && it->refinement_level()==2 )
+            {
+                    simulation_.domain_.refine(it);
+            }
+        }
+   
         const float_type a  = 10.;
         const float_type a2 = a*a;
 
         for (auto it  = simulation_.domain_.begin_leafs();
-                  it != simulation_.domain_.end_leafs(); ++it)
+        it != simulation_.domain_.end_leafs(); ++it)
         {
+
 
             auto dx_level =  dx/std::pow(2,it->refinement_level());
             auto scaling =  std::pow(2,it->refinement_level());
@@ -196,7 +204,7 @@ struct PoissonProblem
                 }
             }
         }
-        simulation_.domain_.exchange_level_buffers(simulation_.domain_.tree()->base_level());
+        //simulation_.domain_.exchange_level_buffers(simulation_.domain_.tree()->base_level());
     }
 
     void neighbor_test()
@@ -324,11 +332,11 @@ struct PoissonProblem
         simulation_.write("solution.vtk");
     }
 
+   
     void solve()
     {
         // allocate lgf
         std::vector<float_type> lgf;
-        
         //Coarsification:
         pcout<<"coarsification "<<std::endl;
         for (int ls = simulation_.domain_.tree()->depth()-1;
@@ -345,7 +353,7 @@ struct PoissonProblem
         // Self-level interactions
         pcout<<"Level interactions "<<std::endl;
         for (int l  = simulation_.domain_.tree()->base_level();
-                 l <= simulation_.domain_.tree()->depth(); ++l)
+                 l < simulation_.domain_.tree()->depth(); ++l)
         {
             auto target = 0;
             for (auto it_t  = simulation_.domain_.begin(l);
@@ -354,24 +362,24 @@ struct PoissonProblem
 
                 auto refinement_level = it_t->refinement_level();
                 auto dx_level =  dx/std::pow(2,refinement_level);
-                //std::cout<<"target :"<<it_t->data()->descriptor()<<std::endl;
+                std::cout<<"target :"<<it_t->data()->descriptor()<<std::endl;
 
                 for (auto it_s  = simulation_.domain_.begin(l);
                           it_s != simulation_.domain_.end(l); ++it_s)
                 {
-                    if(!(it_s->is_leaf()) && !(it_t->is_leaf()) ) continue;
+                    if( !(it_s->is_leaf()) && !(it_t->is_leaf()) )
+                    {
+                         continue;
+                    }
 
+                    const auto t_base = it_t->data()->base();
+                    const auto s_base = it_s->data()->base();
                     //std::cout<<"source :"<<it_s->data()->descriptor()<<std::endl;
-                    // Get the coordinate of target block
-                    const auto t_base = simulation_.domain_.tree()->
-                        octant_to_level_coordinate(it_t->tree_coordinate());
-                    
-                    // Get tree_coordinate of source block
-                    const auto s_base = simulation_.domain_.tree()->
-                        octant_to_level_coordinate(it_s->tree_coordinate());
                     
                     // Get extent of source region
-                    const auto s_extent = it_s->data()->extent();
+                    // FIXME: extent+1
+                    //const auto s_extent = it_s->data()->extent();
+                    const auto s_extent = it_s->data()->extent()+1;
                     const auto shift    = t_base - s_base;
                     
                     // Calculate the dimensions of the LGF to be allocated
@@ -400,10 +408,8 @@ struct PoissonProblem
         pcout<<"Interpolation "<<std::endl;
         // Interpolation
         for (int lt = simulation_.domain_.tree()->base_level(); 
-                 lt < simulation_.domain_.tree()->depth(); ++lt)
+                 lt < simulation_.domain_.tree()->depth()-1; ++lt)
         {
-            simulation_.domain_.exchange_level_buffers(lt); 
-            
             for (auto it_t  = simulation_.domain_.begin(lt);
                       it_t != simulation_.domain_.end(lt); ++it_t)
             {
@@ -412,12 +418,12 @@ struct PoissonProblem
             }
              
             //Interpolate interface
-            simulation_.domain_.exchange_buffers(); 
-            auto fc_interfaces=simulation_.domain_.determine_fineToCoarse_interfaces<phi_num>();
-            for(auto& i :  fc_interfaces)
-            { 
-                this->interpolate_level_interface(i.first, i.second);
-            }
+            //simulation_.domain_.exchange_buffers(); 
+            //auto fc_interfaces=simulation_.domain_.determine_fineToCoarse_interfaces<phi_num>();
+            //for(auto& i :  fc_interfaces)
+            //{ 
+            //    this->interpolate_level_interface(i.first, i.second);
+            //}
         }
 
 
@@ -442,109 +448,109 @@ struct PoissonProblem
      *  - FFT: is the fast-Fourier transform,
      *  - IFFT: is the inverse of the FFT
      */
-    void solve_amr_old()
-    {
-        // allocate lgf
-        std::vector<float_type> lgf;
-        
-        //Coarsification:
-        pcout<<"coarsification "<<std::endl;
-        for (int ls = simulation_.domain_.tree()->depth()-1;
-                 ls > simulation_.domain_.tree()->base_level(); --ls)
-        {
-            for (auto it_s  = simulation_.domain_.begin(ls);
-                      it_s != simulation_.domain_.end(ls); ++it_s)
-            {
-                this->coarsify(it_s);
-            }
-        }
+    //void solve_amr_old()
+    //{
+    //    // allocate lgf
+    //    std::vector<float_type> lgf;
+    //    
+    //    //Coarsification:
+    //    pcout<<"coarsification "<<std::endl;
+    //    for (int ls = simulation_.domain_.tree()->depth()-1;
+    //             ls > simulation_.domain_.tree()->base_level(); --ls)
+    //    {
+    //        for (auto it_s  = simulation_.domain_.begin(ls);
+    //                  it_s != simulation_.domain_.end(ls); ++it_s)
+    //        {
+    //            this->coarsify(it_s);
+    //        }
+    //    }
 
-        
-        // Self-level interactions
-        pcout<<"Level interactions "<<std::endl;
-        for (int l  = simulation_.domain_.tree()->base_level();
-                 l <= simulation_.domain_.tree()->depth(); ++l)
-        {
-            auto target = 0;
-            for (auto it_t  = simulation_.domain_.begin(l);
-                      it_t != simulation_.domain_.end(l); ++it_t)
-            {
+    //    
+    //    // Self-level interactions
+    //    pcout<<"Level interactions "<<std::endl;
+    //    for (int l  = simulation_.domain_.tree()->base_level();
+    //             l <= simulation_.domain_.tree()->depth(); ++l)
+    //    {
+    //        auto target = 0;
+    //        for (auto it_t  = simulation_.domain_.begin(l);
+    //                  it_t != simulation_.domain_.end(l); ++it_t)
+    //        {
 
-                auto refinement_level = it_t->refinement_level();
-                auto dx_level =  dx/std::pow(2,refinement_level);
-                //std::cout<<"target :"<<it_t->data()->descriptor()<<std::endl;
+    //            auto refinement_level = it_t->refinement_level();
+    //            auto dx_level =  dx/std::pow(2,refinement_level);
+    //            //std::cout<<"target :"<<it_t->data()->descriptor()<<std::endl;
 
-                for (auto it_s  = simulation_.domain_.begin(l);
-                          it_s != simulation_.domain_.end(l); ++it_s)
-                {
-                    if(!(it_s->is_leaf()) && !(it_t->is_leaf()) ) continue;
+    //            for (auto it_s  = simulation_.domain_.begin(l);
+    //                      it_s != simulation_.domain_.end(l); ++it_s)
+    //            {
+    //                if(!(it_s->is_leaf()) && !(it_t->is_leaf()) ) continue;
 
-                    //std::cout<<"source :"<<it_s->data()->descriptor()<<std::endl;
-                    // Get the coordinate of target block
-                    const auto t_base = simulation_.domain_.tree()->
-                        octant_to_level_coordinate(it_t->tree_coordinate());
-                    
-                    // Get tree_coordinate of source block
-                    const auto s_base = simulation_.domain_.tree()->
-                        octant_to_level_coordinate(it_s->tree_coordinate());
-                    
-                    // Get extent of source region
-                    const auto s_extent = it_s->data()->extent();
-                    const auto shift    = t_base - s_base;
-                    
-                    // Calculate the dimensions of the LGF to be allocated
-                    const auto base_lgf   = shift - (s_extent - 1);
-                    const auto extent_lgf = 2 * (s_extent) - 1;
-                    
-                    // Calculate the LGF
-                    lgf_.get_subblock(block_descriptor_t(base_lgf,
-                                                         extent_lgf), lgf);
-                    
-                    // Perform convolution
-                    conv.execute_field(lgf, it_s->data()->get<source>());
-                    
-                    // Extract the solution
-                    block_descriptor_t extractor(s_base, s_extent);
-                    conv.add_solution(extractor,
-                                      it_t->data()->get<phi_num>(),
-                                      dx_level*dx_level);
-                }
-                    //std::cout<<std::endl;
-                target++;
-            }
-        }
-
-
-        pcout<<"Interpolation "<<std::endl;
-        // Interpolation
-        for (int lt = simulation_.domain_.tree()->base_level(); 
-                 lt < simulation_.domain_.tree()->depth(); ++lt)
-        {
-            simulation_.domain_.exchange_level_buffers(lt); 
-            
-            for (auto it_t  = simulation_.domain_.begin(lt);
-                      it_t != simulation_.domain_.end(lt); ++it_t)
-            {
-                    if(it_t->is_leaf()) continue;
-                    this->interpolate(*it_t);
-            }
-             
-            //Interpolate interface
-            simulation_.domain_.exchange_buffers(); 
-            auto fc_interfaces=simulation_.domain_.determine_fineToCoarse_interfaces<phi_num>();
-            for(auto& i :  fc_interfaces)
-            { 
-                this->interpolate_level_interface(i.first, i.second);
-            }
-        }
+    //                //std::cout<<"source :"<<it_s->data()->descriptor()<<std::endl;
+    //                // Get the coordinate of target block
+    //                const auto t_base = simulation_.domain_.tree()->
+    //                    octant_to_level_coordinate(it_t->tree_coordinate());
+    //                
+    //                // Get tree_coordinate of source block
+    //                const auto s_base = simulation_.domain_.tree()->
+    //                    octant_to_level_coordinate(it_s->tree_coordinate());
+    //                
+    //                // Get extent of source region
+    //                const auto s_extent = it_s->data()->extent();
+    //                const auto shift    = t_base - s_base;
+    //                
+    //                // Calculate the dimensions of the LGF to be allocated
+    //                const auto base_lgf   = shift - (s_extent - 1);
+    //                const auto extent_lgf = 2 * (s_extent) - 1;
+    //                
+    //                // Calculate the LGF
+    //                lgf_.get_subblock(block_descriptor_t(base_lgf,
+    //                                                     extent_lgf), lgf);
+    //                
+    //                // Perform convolution
+    //                conv.execute_field(lgf, it_s->data()->get<source>());
+    //                
+    //                // Extract the solution
+    //                block_descriptor_t extractor(s_base, s_extent);
+    //                conv.add_solution(extractor,
+    //                                  it_t->data()->get<phi_num>(),
+    //                                  dx_level*dx_level);
+    //            }
+    //                //std::cout<<std::endl;
+    //            target++;
+    //        }
+    //    }
 
 
-                
-        //simple_lapace_fd();
-        compute_errors();
-        pcout << "Writing solution " << std::endl;
-        simulation_.write("solution.vtk");
-    }
+    //    pcout<<"Interpolation "<<std::endl;
+    //    // Interpolation
+    //    for (int lt = simulation_.domain_.tree()->base_level(); 
+    //             lt < simulation_.domain_.tree()->depth(); ++lt)
+    //    {
+    //        simulation_.domain_.exchange_level_buffers(lt); 
+    //        
+    //        for (auto it_t  = simulation_.domain_.begin(lt);
+    //                  it_t != simulation_.domain_.end(lt); ++it_t)
+    //        {
+    //                if(it_t->is_leaf()) continue;
+    //                this->interpolate(*it_t);
+    //        }
+    //         
+    //        //Interpolate interface
+    //        simulation_.domain_.exchange_buffers(); 
+    //        auto fc_interfaces=simulation_.domain_.determine_fineToCoarse_interfaces<phi_num>();
+    //        for(auto& i :  fc_interfaces)
+    //        { 
+    //            this->interpolate_level_interface(i.first, i.second);
+    //        }
+    //    }
+
+
+    //            
+    //    //simple_lapace_fd();
+    //    compute_errors();
+    //    pcout << "Writing solution " << std::endl;
+    //    simulation_.write("solution.vtk");
+    //}
 
 
     /*
@@ -555,12 +561,14 @@ struct PoissonProblem
     void interpolate(const Block_it* _b_parent)
     {
         
+        std::cout<<"interpolate: "<<_b_parent->data()->descriptor()<<std::endl;
         //interpolation 
         for (int i = 0; i < _b_parent->num_children(); ++i)
         {
             auto child = _b_parent->child(i);
             if(child==nullptr) continue;
-            auto child_view= child->data()->descriptor();
+            block_descriptor_t child_view =  
+                child->data()->template get<phi_num>().real_block();
             
             for (auto kc  = child_view.base()[2];
                       kc <= child_view.max()[2]; ++kc)
@@ -572,11 +580,18 @@ struct PoissonProblem
                               ic <= child_view.max()[0]; ++ic)
                     {
                         int min_x= ic/2; int min_y= jc/2; int min_z= kc/2;
-                        float_type x= ic/2.0; 
-                        float_type y= jc/2.0; 
-                        float_type z= kc/2.0;
+                        if(ic==child_view.max()[0]) min_x-=1; 
+                        if(jc==child_view.max()[1]) min_y-=1;
+                        if(kc==child_view.max()[2]) min_z-=1;
+                        const float_type x= ic/2.0; 
+                        const float_type y= jc/2.0; 
+                        const float_type z= kc/2.0;
+                        std::cout<<x<<" "
+                                <<y<<" "
+                                <<z<<" "
+                                <<std::endl;
 
-                        auto interp= 
+                        float_type interp= 
                         interpolation::interpolate(min_x, min_y, min_z, x, y, z, 
                         _b_parent->data()->template get<phi_num>());
                         child->data()->template get<phi_num>(ic,jc,kc) +=interp;
@@ -631,15 +646,15 @@ struct PoissonProblem
 
         auto kp = parent_view.base()[2];
         for (auto kc  = child_view.base()[2];
-                  kc < child_view.max()[2]; kc+=2)
+                  kc <= child_view.max()[2]; kc+=2)
         {
             auto jp = parent_view.base()[1];
             for (auto jc  = child_view.base()[1];
-                      jc  < child_view.max()[1]; jc+=2)
+                      jc  <= child_view.max()[1]; jc+=2)
             {
                 auto ip = parent_view.base()[0];
                 for (auto ic = child_view.base()[0];
-                          ic < child_view.max()[0]; ic+=2)
+                          ic <= child_view.max()[0]; ic+=2)
                 {
                     parent->data()->template get<source>(ip,jp,kp) =
                         child->data()->template get<source>(ic,jc,kc);
@@ -674,7 +689,7 @@ struct PoissonProblem
                 {
                     for (auto i = base[0]; i <= max[0]; ++i)
                     {
-                        it_t->data()->get<error>(i,j,k) = std::abs(
+                        it_t->data()->get<error>(i,j,k) = std::fabs(
                                 it_t->data()->get<phi_num>(i,j,k) -
                                 it_t->data()->get<phi_exact>(i,j,k));
 

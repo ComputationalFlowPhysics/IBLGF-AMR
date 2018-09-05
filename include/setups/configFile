@@ -2,7 +2,7 @@ simulation_parameters
 {
     L    = 3;
     domain{
-        max_extent   = 50000;
+        max_extent   = 500;
         //block_extent =32;
         block_extent =8;
        

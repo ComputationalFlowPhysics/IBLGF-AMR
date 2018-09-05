@@ -62,10 +62,11 @@ public: //Ctors:
     DataBlock(DataBlock&& rhs)=default;
 	DataBlock& operator=(DataBlock&&) & = default;
 
-    DataBlock(base_t _base, extent_t _extent, int _level=0)
+    DataBlock(base_t _base, extent_t _extent, int _level=0, bool init=true)
     :super_type(_base, _extent, _level)
     {
-        this->initialize(this->descriptor());
+        if(init)
+            this->initialize(this->descriptor());
     }
 
     DataBlock(const block_descriptor_type& _b)
@@ -74,6 +75,11 @@ public: //Ctors:
         this->initialize( _b );
     }
 
+    template<template<std::size_t> class Field>
+    void initialize(const block_descriptor_type& _b)
+    {
+       this->get<Field>().initialize(_b );
+    }
 
     void initialize(const block_descriptor_type& _b)
     {

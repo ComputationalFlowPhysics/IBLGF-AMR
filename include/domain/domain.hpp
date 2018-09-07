@@ -301,38 +301,68 @@ public:
 
     template<template<std::size_t> class Field>
     std::vector<std::pair<octant_t*,block_descriptor_t>>
-    determine_fineToCoarse_interfaces()
+    determine_fineToCoarse_interfaces(int _level)
     {
         std::vector<std::pair<octant_t*,block_descriptor_t>> res;
         coordinate_type lbuff(1),hbuff(1);
+        //auto _begin=begin(tree()->base_level()+1);
+        //auto _end=end(tree()->base_level()+1);
         auto _begin=begin_leafs();
         auto _end=end_leafs();
+        //auto _begin=begin();
+        //auto _end=end();
         for(auto it=_begin ; it!=_end;++it )
         {
             //determine neighborhood
             //TODO: This should only include the neighbors
-            for(auto jt= _begin; jt!=_end;++jt )
+            
+            auto j_begin=begin_leafs();
+            auto j_end=end_leafs();
+            //auto j_begin=begin();
+            //auto j_end=end();
+            //auto j_begin=begin(tree()->base_level());
+            //auto j_end=end(tree()->base_level());
+            for(auto jt= j_begin; jt!=j_end;++jt )
             {
                 if(it->key()==jt->key())continue;
-                if(it->refinement_level() <= jt->refinement_level()) continue;
+                if(it->refinement_level() != jt->refinement_level()+1) continue;
 
-                auto& jfield=jt->data()->template get<Field>();
-
+                if(!it->data()) continue;
+                if(!jt->data()) continue;
                 //Check for overlap with current
                 block_descriptor_t overlap;
-                if(jfield.buffer_overlap(it->data()->descriptor(), overlap, 
-                   it->refinement_level()))
+                auto fBlock= it->data()->descriptor();
+                auto cBlock= jt->data()->descriptor();
+
+                auto crBlock= cBlock;
+                cBlock.level_scale(it->refinement_level());
+                cBlock.grow(1,0);
+               
+                if(fBlock.overlap(cBlock, overlap, fBlock.level()))
                 {
-                    const auto it_max=it->data()->descriptor().max();
-                    for(int d=0; d<Dim;++d)
+                    bool viable =false;
+                    for(int d=0;d<3;++d)
                     {
-                        //if(view.base()[d] + view.extent()[d]-1 == overlap.base()[d])
-                        if(it_max[d] == overlap.base()[d])
+                        if(overlap.extent()[d]==1)
                         {
-                            overlap.extent()[d]=1;
+                             if(it->refinement_level()==2)
+                             {
+                                 //overlap.base()[d]-=1;
+                                 //overlap.extent()[d]+=1;
+                             }
                         }
+                             viable=true;
+
                     }
-                    res.push_back(std::make_pair(*it, overlap));
+                    if(viable)
+                    {
+                        //std::cout<<crBlock <<std::endl;
+                        //std::cout<<fBlock <<std::endl;
+                        //std::cout<<overlap<<std::endl;
+                        //std::cout<<std::endl;
+                        res.push_back(std::make_pair(*it, overlap));
+                        //res.push_back(std::make_pair(it.ptr(), overlap));
+                    }
                 }
             }
         }

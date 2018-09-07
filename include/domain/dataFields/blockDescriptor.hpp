@@ -135,6 +135,7 @@ public: //membery types:
     using size_type = types::size_type;
 
 
+
 public:  //Static members
 
     static constexpr auto dimension(){return Dim;}
@@ -349,7 +350,8 @@ public: //members
     }
 
 
-    void grow( base_t _lBuffer, base_t _rBuffer )
+    template<typename Btype>
+    void grow( Btype _lBuffer, Btype _rBuffer )
     {
         base_-=_lBuffer;
         extent_+=_lBuffer+_rBuffer;
@@ -654,6 +656,8 @@ protected:
     int level_=0;
 
 };
+
+
 
 }
 

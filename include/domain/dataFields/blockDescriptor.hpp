@@ -223,7 +223,8 @@ public: //members
         level_=_level;
     }
 
-    void shift(base_t _shift)noexcept
+    template<class Shift>
+    void shift(Shift _shift)noexcept
     {
         base_+=_shift;
     }

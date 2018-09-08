@@ -173,17 +173,16 @@ struct PoissonProblem
         //it != simulation_.domain_.end_leafs(); ++it)
         //
 
-        //center[0]+=5;
+        center[0]+=5;
         for (int lt = simulation_.domain_.tree()->base_level(); 
                  lt < simulation_.domain_.tree()->depth(); ++lt)
         {
             for (auto it  = simulation_.domain_.begin(lt);
-                    it != simulation_.domain_.end(lt); ++it)
+                      it != simulation_.domain_.end(lt); ++it)
             {
 
                 auto dx_level =  dx/std::pow(2,it->refinement_level());
                 auto scaling =  std::pow(2,it->refinement_level());
-
 
                 // ijk-way of initializing
                 auto base = it->data()->base();
@@ -224,8 +223,8 @@ struct PoissonProblem
         }
         int l0=simulation_.domain_.tree()->base_level();
         auto fc_interfaces=
-            simulation_.domain_.determine_fineToCoarse_interfaces<source>(l0);
-        //std::cout<<"n Interfaces: "<<fc_interfaces.size()<<std::endl;
+            simulation_.domain_.determine_fineToCoarse_interfaces<source>(0);
+        std::cout<<"n Interfaces: "<<fc_interfaces.size()<<std::endl;
         for(auto& fci : fc_interfaces)
         {
             auto base=fci.second.base();
@@ -238,11 +237,33 @@ struct PoissonProblem
                     for (auto i = base[0]; i <= max[0]; ++i)
                     {
                         //auto factor=std::pow(2.0, fci.first->refinement_level());
-                        fci.first->data()->get<source>(i,j,k)/=2.0; 
+                        //fci.first->data()->get<source>(i,j,k)/=2.0;
+                        fci.first->data()->get<bla_field>(i,j,k)+=1.0;
                     }
                 }
             }
         }
+        fc_interfaces=
+            simulation_.domain_.determine_fineToCoarse_interfaces<source>(0);
+        std::cout<<"n Interfaces: "<<fc_interfaces.size()<<std::endl;
+        for(auto& fci : fc_interfaces)
+        {
+            auto base=fci.second.base();
+            auto max=fci.second.max();
+
+            for (auto k = base[2]; k <= max[2]; ++k)
+            {
+                for (auto j = base[1]; j <= max[1]; ++j)
+                {
+                    for (auto i = base[0]; i <= max[0]; ++i)
+                    {
+
+                        fci.first->data()->get<source>(i,j,k)/=(fci.first->data()->get<bla_field>(i,j,k)+1);
+                    }
+                }
+            }
+        }
+
     }
 
     void neighbor_test()

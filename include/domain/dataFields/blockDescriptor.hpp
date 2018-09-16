@@ -228,6 +228,28 @@ public: //members
     {
         base_+=_shift;
     }
+
+    BlockDescriptor bcPlane(int idx, int dir)
+    {
+        auto p=*this;
+        for(std::size_t d=0;d<Dim;++d)
+        {
+            if(dir==1)p.base()[idx]=max()[idx];
+            p.extent()[idx]=1;
+        }
+        return p;
+    }
+
+    void enlarge_to_fit(const BlockDescriptor& _b)
+    {
+        auto max=this->max();
+        for(std::size_t d=0;d<Dim;++d)
+        {
+            base_[d]=std::min(base_[d], _b.base()[d]);
+            max[d]= std::max(max[d], _b.max()[d]);
+        }
+        this->max(max);
+    }
         
     template<class PointType>
 	bool is_inside(const PointType& p) const

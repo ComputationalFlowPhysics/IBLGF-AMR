@@ -4,15 +4,15 @@ simulation_parameters
     domain{
         max_extent   = 500;
         //block_extent =32;
-        //block_extent =16;
-        block_extent =8;
+        block_extent =16;
+        //block_extent =8;
        
         block
         {
             base   = (0,0,0);
             //extent = (64,64 ,64);
-            extent = (32,32 ,32);
-            //extent = (32,16 ,16);
+            //extent = (32,32 ,32);
+            extent = (32,16 ,16);
             //extent = (64,32 ,32);
 
         }

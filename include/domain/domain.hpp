@@ -332,21 +332,23 @@ public:
                 if(fBlock.overlap(cBlock, overlap, fBlock.level()))
                 {
                     bool viable =false;
+                    int oc=0;
                     for(int d=0;d<3;++d)
                     {
                         if(overlap.extent()[d]==1)
                         {
+                            //++oc;
                         }
-
                     }
 
                              viable=true;
-                    if(viable)
+                    //if(oc==1) //this avoids corners
                     {
                         //std::cout<<crBlock <<std::endl;
-                        //std::cout<<fBlock <<std::endl;
-                        //std::cout<<overlap<<std::endl;
-                        //std::cout<<std::endl;
+                        std::cout<<fBlock <<std::endl;
+                        auto tt=fBlock;
+                        std::cout<<overlap<<std::endl;
+                        std::cout<<std::endl;
                         res.push_back(std::make_pair(*it, overlap));
                         //res.push_back(std::make_pair(it.ptr(), overlap));
                     }
@@ -356,6 +358,29 @@ public:
         return res;
     }
 
+    block_descriptor_t get_level_bb(int _l)
+    {
+        auto _begin=begin_leafs();
+        auto _end=end_leafs();
+        block_descriptor_t bb(
+                base_t(std::numeric_limits<scalar_coord_type>::max()), 
+                extent_t(0), _l 
+        );
+
+        for(auto it=_begin ; it!=_end;++it )
+        {
+            if(it->level()==_l)
+            {
+               for(int d=0;d<Dim;++d)
+               {
+                   bb.base()[d]=std::min(bb.base()[d], it->data()->descriptor().base()[d]);
+               }
+               bb.enlarge_to_fit(it->data()->descriptor()) ;
+
+            }
+        }
+        return bb;
+    }
 
 public:
     

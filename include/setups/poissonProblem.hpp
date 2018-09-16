@@ -47,6 +47,7 @@ struct PoissonProblem
     make_field_type(phi_num         , float_type, 0,       1)
     make_field_type(phi_interp      , float_type, 0,       1)
     make_field_type(source          , float_type, 0,       1)
+    make_field_type(source_orig          , float_type, 0,       1)
     make_field_type(lgf_field_lookup, float_type, 0,       1)
     make_field_type(phi_exact       , float_type, 0,       1)
     make_field_type(lgf             , float_type, 0,       1)
@@ -63,6 +64,7 @@ struct PoissonProblem
         phi_num,
         phi_interp,
         source,
+        source_orig,
         lgf_field_lookup,
         phi_exact,
         error,
@@ -131,14 +133,14 @@ struct PoissonProblem
                 it != simulation_.domain_.end_leafs(); ++it)
         {
 
-            //if (count++ ==0)simulation_.domain_.refine(it);
+            if (count++ ==0)simulation_.domain_.refine(it);
             auto b=it->data()->descriptor();
             coordinate_t l(2), u(2);
             b.grow(l, u);
             if(b.is_inside( center ) && it->refinement_level()==0 )
             {
                 //if(b.base()[0]<center[0]-5)
-                simulation_.domain_.refine(it);
+                //simulation_.domain_.refine(it);
             }
         }
 
@@ -173,7 +175,7 @@ struct PoissonProblem
         //it != simulation_.domain_.end_leafs(); ++it)
         //
 
-        center[0]+=5;
+        //center[0]+=7.0;
         for (int lt = simulation_.domain_.tree()->base_level(); 
                  lt < simulation_.domain_.tree()->depth(); ++lt)
         {
@@ -214,13 +216,135 @@ struct PoissonProblem
                                 (a2)*(y2)*std::exp(-a*(x2)-a*(y2)-a*(z2))*4.0+
                                 (a2)*(z2)*std::exp(-a*(x2)-a*(y2)-a*(z2))*4.0;
 
+                            it->data()->get<source_orig>(i,j,k) = it->data()->get<source>(i,j,k);
+
                             it->data()->get<phi_exact>(i,j,k) =
                                 std::exp((-a*x2 - a*y2 - a*z2));
                         }
                     }
                 }
+                //if(it->refinement_level()==1 &&it->data()->base()[0]!=0)
+                //{
+                //    auto base = it->data()->base();
+                //    auto max  = it->data()->max();
+                //    for (auto k = base[2]; k <= max[2]; ++k)
+                //    {
+                //        for (auto j = base[1]; j <= max[1]; ++j)
+                //        {
+                //            for (auto i = max[0]; i <= max[0]; ++i)
+                //            {
+                //                it->data()->get<source>(i,j,k)=0.0;
+
+                //            }
+                //        }
+                //    }
+                //}
             }
         }
+        this->scale_bcPlane();
+    }
+
+    //Sipe check before 
+    void scale_bcPlane()
+    {
+        auto lb=simulation_.domain_.tree()->base_level()+1;
+        std::cout<<")Base level : "<<lb-1<<std::endl;
+        auto ld=simulation_.domain_.tree()->depth();
+
+        for(int ll=lb; ll<ld;++ll)
+        {
+            auto bb= simulation_.domain_.get_level_bb(ll  ) ;
+
+            std::cout<<"bounding box for level: "<<ll<<" "<<bb<<std::endl;
+            //int dir=1;
+            for(int dir=0; dir<=1; ++dir)
+            {
+                for(int d=0; d<Dim; ++d)
+                {
+                    auto bc=bb.bcPlane(d,dir);
+                    std::cout<<"bcPlane: "<<bb.bcPlane(d, dir)<<std::endl;
+                    for (auto it  = simulation_.domain_.begin(ll);
+                            it != simulation_.domain_.end(ll); ++it)
+                    {
+                        auto overlap=bc;
+                        bc.level()=it->refinement_level();
+                        if(bc.overlap(it->data()->descriptor(),overlap, it->refinement_level()))
+                        {
+                            auto base=overlap.base();
+                            auto max=overlap.max();
+                            std::cout<<"Overlap: "<<overlap<<std::endl;
+                            for (auto k = base[2]; k <= max[2]; ++k)
+                            {
+                                for (auto j = base[1]; j <= max[1]; ++j)
+                                {
+                                    for (auto i = base[0]; i <= max[0]; ++i)
+                                    {
+                                        //Lower left corner 
+                                        if(dir==0 && ll==lb+0)
+                                            it->data()->get<source>(i,j,k)=it->data()->get<source_orig>(i,j,k)*1;
+                                            //it->data()->get<source>(i,j,k)*=1.0;
+                                        if(dir==0 && ll==lb+1)
+                                            it->data()->get<source>(i,j,k)=it->data()->get<source_orig>(i,j,k)*2;
+                                            //it->data()->get<source>(i,j,k)*=2.0;
+
+                                        //Upper left corner 
+                                        if(dir==1&& ll==lb+0)
+                                            it->data()->get<source>(i,j,k)=it->data()->get<source_orig>(i,j,k)/2;
+                                            //it->data()->get<source>(i,j,k)/=2.0;
+                                        if(dir==1&& ll==lb+1)
+                                            it->data()->get<source>(i,j,k)=it->data()->get<source_orig>(i,j,k)/2;
+                                            //it->data()->get<source>(i,j,k)/=2.0;
+
+                                        it->data()->get<bla_field>(i,j,k)+=1.0;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        std::ofstream ofs("pts_all.txt");
+        for(int ll=lb; ll<ld;++ll)
+        {
+            auto bb= simulation_.domain_.get_level_bb(ll  ) ;
+
+            for(int dir=0; dir<=1; ++dir)
+            {
+                for(int d=0; d<Dim; ++d)
+                {
+                    auto bc=bb.bcPlane(d,dir);
+                    for (auto it  = simulation_.domain_.begin(ll);
+                            it != simulation_.domain_.end(ll); ++it)
+                    {
+                        auto overlap=bc;
+                        bc.level()=it->refinement_level();
+                        if(bc.overlap(it->data()->descriptor(),overlap, it->refinement_level()))
+                        {
+                            auto base=overlap.base();
+                            auto max=overlap.max();
+                            for (auto k = base[2]; k <= max[2]; ++k)
+                            {
+                                for (auto j = base[1]; j <= max[1]; ++j)
+                                {
+                                    for (auto i = base[0]; i <= max[0]; ++i)
+                                    {
+                                        float_type factor=std::pow(2.0, it->refinement_level());
+                                        ofs<<i/factor<<" "<<j/factor<<" "<<k/factor<<" "
+                                            <<(it->data()->get<bla_field>(i,j,k))<<std::endl;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    void scale_source()
+    {
+
         int l0=simulation_.domain_.tree()->base_level();
         auto fc_interfaces=
             simulation_.domain_.determine_fineToCoarse_interfaces<source>(0);
@@ -236,20 +360,25 @@ struct PoissonProblem
                 {
                     for (auto i = base[0]; i <= max[0]; ++i)
                     {
-                        //auto factor=std::pow(2.0, fci.first->refinement_level());
+                        float_type factor=std::pow(2.0, fci.first->refinement_level());
                         //fci.first->data()->get<source>(i,j,k)/=2.0;
                         fci.first->data()->get<bla_field>(i,j,k)+=1.0;
                     }
                 }
             }
         }
+        std::ofstream ofs("pts_all.txt");
         fc_interfaces=
             simulation_.domain_.determine_fineToCoarse_interfaces<source>(0);
         std::cout<<"n Interfaces: "<<fc_interfaces.size()<<std::endl;
+        int c=0;
         for(auto& fci : fc_interfaces)
         {
             auto base=fci.second.base();
             auto max=fci.second.max();
+            std::ofstream ofs_i("pts_all_"+std::to_string(c)+".txt");
+            ++c;
+
 
             for (auto k = base[2]; k <= max[2]; ++k)
             {
@@ -257,14 +386,22 @@ struct PoissonProblem
                 {
                     for (auto i = base[0]; i <= max[0]; ++i)
                     {
-
-                        fci.first->data()->get<source>(i,j,k)/=(fci.first->data()->get<bla_field>(i,j,k)+1);
+                        float_type factor=std::pow(2.0, fci.first->refinement_level());
+                        //fci.first->data()->get<source>(i,j,k)/=2.0;
+                        fci.first->data()->get<source>(i,j,k)=
+                            fci.first->data()->get<source_orig>(i,j,k)/((fci.first->data()->get<bla_field>(i,j,k)+1));
+                        auto s_correct= fci.first->data()->get<source>(i,j,k)/2.0;
+                        auto s_ic= fci.first->data()->get<source_orig>(i,j,k)/((fci.first->data()->get<bla_field>(i,j,k))+1);
+                        //std::cout<<"cc "<<s_correct<<" "<<s_ic<<std::endl;
+                        ofs<<i/factor<<" "<<j/factor<<" "<<k/factor<<" "
+                            <<(fci.first->data()->get<bla_field>(i,j,k)+1)<<std::endl;
+                        ofs_i<<i/factor<<" "<<j/factor<<" "<<k/factor<<" "
+                            <<(fci.first->data()->get<bla_field>(i,j,k)+1)<<std::endl;
                     }
                 }
             }
         }
-
-    }
+        }
 
     void neighbor_test()
     {
@@ -572,7 +709,7 @@ struct PoissonProblem
                 }
             }
         }
-            std::cout<<std::endl;
+            //std::cout<<std::endl;
     }
 
     template<class Block_it>

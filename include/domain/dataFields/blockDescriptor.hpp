@@ -107,9 +107,6 @@ struct get_corners_helper<Dim,D, typename std::enable_if<D==Dim-1>::type>
 };
 
 
-
-
-
 } //namespace detail
 
 

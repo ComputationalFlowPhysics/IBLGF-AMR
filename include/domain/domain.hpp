@@ -105,7 +105,7 @@ public:
 
         extent_t extent(max-min+1);
         auto base_=extent_t(min);
-        bounding_box_=block_descriptor_t(base_*e, extent*e);
+        bounding_box_=block_descriptor_t(base_*e, extent*e+1);
         for(auto& b: bases) b-=base_;
         auto base_level=key_t::minimum_level(_maxExtent/_blockExtent);
         t_ = std::make_shared<tree_t>(bases, base_level);
@@ -376,7 +376,6 @@ public:
                    bb.base()[d]=std::min(bb.base()[d], it->data()->descriptor().base()[d]);
                }
                bb.enlarge_to_fit(it->data()->descriptor()) ;
-
             }
         }
         return bb;

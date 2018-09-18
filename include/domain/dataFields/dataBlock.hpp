@@ -10,6 +10,7 @@
 #include <domain/dataFields/blockDescriptor.hpp>
 #include <domain/dataFields/datafield_utils.hpp>
 #include <domain/dataFields/node.hpp>
+#include <domain/dataFields/datafield.hpp>
 
 
 
@@ -32,6 +33,7 @@ public: //member types
 
     using fields_tuple_t = std::tuple<DataFieldType<dimension>...>;
     using field_type_iterator_t = tuple_utils::TypeIterator<DataFieldType<dimension>...>;
+    using node_field =  DataField<node_t,Dim>;
 
 
     using node_itertor = typename std::vector<node_t>::iterator;
@@ -141,6 +143,11 @@ public: //member functions
     const auto& nodes()const{return nodes_;}
     auto& nodes(){return nodes_;}
 
+    auto& get_node(int _i, int _j, int _k )noexcept
+    {
+        return node_field_.get(_i,_j,_k);
+    }
+
     friend std::ostream& operator<<(std::ostream& os, const  DataBlock& c)
     {
         tuple_utils::for_each(c.fields, [&os](auto& field){
@@ -156,6 +163,7 @@ public: //member functions
     }
 
     block_descriptor_type descriptor()const noexcept { return *this; }
+    block_descriptor_type bounding_box()const noexcept { return bounding_box_; }
 
     size_type get_index(coordinate_type _coord) const noexcept
     {
@@ -164,20 +172,50 @@ public: //member functions
 
 private: //private member helpers
 
+    /** @brief Generate nodes from the field tuple, both domain and nodes incl
+     * buffer
+     **/
     void generate_nodes()
     {
+
+
+        bounding_box_=*this;
+        for_fields( [&](auto& field){
+           bounding_box_.enlarge_to_fit(field.real_block());});
+
         nodes_.clear();
         auto size=this->nPoints();
         for(std::size_t i=0; i<size;++i)
         {
             nodes_.emplace_back(this,i );
         }
+
+        //nodes_all_.clear();
+
+        //make sure that there is a least a righ buffer of one:
+        node_field_.initialize(bounding_box_);
+        for( std::size_t i=0;i<node_field_.size();++i)
+        {
+            node_field_[i] = node_t(this,i);
+        }
     }
 
 private: //Data members
 
+    /** @brief Fields stored in datablock */
     fields_tuple_t fields;
+
+    /** @brief nodes in domain */
     std::vector<node_t>  nodes_;
+
+    /** @brief field of nodes */
+    node_field node_field_;
+
+    /** @brief bounding box of all fields in the block*/
+    super_type bounding_box_;                 
+
+
+
 };
 
 

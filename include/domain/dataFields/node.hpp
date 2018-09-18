@@ -16,7 +16,8 @@ public:
     { }
 
     ~node() =default;
-    node(const node& rhs)=delete;
+    node() =default;
+    node(const node& rhs)=default;
 	node& operator=(const node&) & = default;
     node(node&& rhs)=default;
 	node& operator=(node&&) & = default;
@@ -78,16 +79,6 @@ public: //Access
                                          level_coordinate_[2]);
     }
 
-    coordinate_type compute_level_coordinate()const noexcept
-    {
-        coordinate_type res;
-        const auto e=c_->extent();
-        res[2]= index_/(e[0]*e[1]);
-        res[1]=(index_- res[2]*e[0]*e[1])/e[0];
-        res[0]=(index_- res[2]*e[0]*e[1] -res[1]*e[0]);
-        res+=c_->base();
-        return res;
-    }
     coordinate_type level_coordinate()const noexcept{return level_coordinate_;}
 
     real_coordinate_type global_coordinate()const noexcept
@@ -99,9 +90,9 @@ public: //Access
     neighbor(const coordinate_type& _offset) const noexcept
     {
         auto c = level_coordinate_ +_offset ;
-        if(c_->descriptor().is_inside(c))
+        if(c_->bounding_box().is_inside(c))
         {
-            return std::make_pair(node(c_,c_->get_index(c)),true);
+            return std::make_pair(node(c_,c_->bounding_box().get_flat_index(c)),true);
         }
         else
             return std::make_pair(node(c_,0),false);
@@ -112,19 +103,30 @@ public: //Access
 
     bool on_blockBorder()
     {
-        return c_->on_boundary(level_coordinate());
+        return c_->on_boundary(level_coordinate_);
     }
     bool on_max_blockBorder()
     {
-        return c_->on_max_boundary(level_coordinate());
+        return c_->on_max_boundary(level_coordinate_);
     }
 
 
+private:
+    coordinate_type compute_level_coordinate()const noexcept
+    {
+        coordinate_type res;
+        const auto e=c_->bounding_box().extent();
+        res[2]= index_/(e[0]*e[1]);
+        res[1]=(index_- res[2]*e[0]*e[1])/e[0];
+        res[0]=(index_- res[2]*e[0]*e[1] -res[1]*e[0]);
+        res+=c_->bounding_box().base();
+        return res;
+    }
 
 public: //members
 
     Container* c_;
-    std::size_t index_;
+    std::size_t index_; //index based on real_block_;
     coordinate_type level_coordinate_;
 };
 

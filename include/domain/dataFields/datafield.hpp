@@ -8,6 +8,7 @@
 #include <types.hpp>
 #include <domain/dataFields/datafield_utils.hpp>
 #include <domain/dataFields/blockDescriptor.hpp>
+#include <domain/dataFields/view.hpp>
 
 
 namespace domain
@@ -29,6 +30,8 @@ public: //member types
     static constexpr int dimension(){return Dim;}
 
     using block_type = BlockDescriptor<int,Dim>;
+    using mutliarray_ref_t =Multiarray_ref<data_type,Dim>;
+    using view_type =typename mutliarray_ref_t::view_type;
 
 public: //Ctors:
 
@@ -51,7 +54,7 @@ public: //Ctors:
     : lowBuffer_(_lBuffer), highBuffer_(_hBuffer)
     {}
     DataField(const int _lBuffer, const int _hBuffer)
-    : lowBuffer_(_lBuffer), highBuffer_(_hBuffer)
+    : lowBuffer_(_lBuffer), highBuffer_(_hBuffer) 
     {}
 
 
@@ -74,8 +77,28 @@ public: //member functions
         data_.resize(size);
 
         //FIXME: 
-        std::fill(data_.begin(), data_.end(), 0.0);
+        //std::fill(data_.begin(), data_.end(), 0.0);
+        ma_ref_=std::make_shared<mutliarray_ref_t>(&data_[0], this->real_block_);
+        view_type wview=ma_ref_->get_view(this->real_block_);
+        domain_view_=std::make_shared<view_type>(ma_ref_->get_view(this->real_block_));
+        //for(auto it=domain_view_->begin();it!=domain_view_->end();++it)
+        //{
+        //    for(auto it2=it->begin(); it2!=it->end(); ++it2)
+        //    {
+        //        for(auto it3=it2->begin(); it3!=it2->end(); ++it3)
+        //        {
+        //            double v=*it3;
+        //            std::cout<<*it3<<std::endl;
+        //        }
+        //    }
+        //}
     }
+
+    //auto view(const block_type& _b ) const 
+    //{
+    //    return ma_ref_.get_view(_b);
+
+    //}
 
     DataType& operator[](size_type i ) noexcept {return data_[i];}
     const DataType& operator[](size_type i )const noexcept {return data_[i];}
@@ -144,15 +167,19 @@ public: //member functions
     const block_type& real_block()const noexcept{return real_block_;}
     block_type& real_block()noexcept{return real_block_;}
 
+    auto& domain_view(){return domain_view_;}
 
+    
 
 
 protected: //protected memeber:
 
     std::vector<DataType> data_;          ///< actual data
-    block_type real_block_;               ///< Block descriptorinlcuding buffer
     buffer_d_t lowBuffer_ =buffer_d_t(0); ///< Buffer in negative direction
     buffer_d_t highBuffer_=buffer_d_t(0); ///< Buffer in positive direction
+    block_type real_block_;               ///< Block descriptorinlcuding buffer
+    std::shared_ptr<mutliarray_ref_t> ma_ref_;///< Boost multiarray_ref wrapper 
+    std::shared_ptr<view_type> domain_view_;  ///< Boost multiarray_ref wrapper 
 };
 
 

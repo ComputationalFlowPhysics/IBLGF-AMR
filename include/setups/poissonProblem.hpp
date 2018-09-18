@@ -13,7 +13,7 @@
 #include <random>
 #include <cmath>
 #include <functional>
-
+#include <cstring>
 #include <fftw3.h>
 
 // IBLGF-specific
@@ -44,19 +44,19 @@ struct PoissonProblem
     using size_v_type = vector_type<int       , Dim>;
 
     //              name                type     lBuffer.  hBuffer
-    make_field_type(phi_num         , float_type, 0,       1)
+    make_field_type(phi_num         , float_type, 0,       0)
     make_field_type(phi_interp      , float_type, 0,       1)
-    make_field_type(source          , float_type, 0,       1)
-    make_field_type(source_orig          , float_type, 0,       1)
-    make_field_type(lgf_field_lookup, float_type, 0,       1)
-    make_field_type(phi_exact       , float_type, 0,       1)
-    make_field_type(lgf             , float_type, 0,       1)
-    make_field_type(error           , float_type, 0,       1)
-    make_field_type(error2          , float_type, 0,       1)
-    make_field_type(lapace_field    , float_type, 0,       1)
-    make_field_type(lapace_error    , float_type, 0,       1)
-    make_field_type(dummy_field     , float_type, 0,       1)
-    make_field_type(bla_field,        float_type, 0,       1)
+    make_field_type(source          , float_type, 0,       0)
+    make_field_type(source_orig     , float_type, 0,       0)
+    make_field_type(lgf_field_lookup, float_type, 0,       0)
+    make_field_type(phi_exact       , float_type, 0,       0)
+    make_field_type(lgf             , float_type, 0,       0)
+    make_field_type(error           , float_type, 0,       0)
+    make_field_type(error2          , float_type, 0,       0)
+    make_field_type(lapace_field    , float_type, 0,       0)
+    make_field_type(lapace_error    , float_type, 0,       0)
+    make_field_type(dummy_field     , float_type, 0,       0)
+    make_field_type(bla_field,        float_type, 0,       0)
     make_field_type(fmm_field,        float_type, 0,       1)
 
     using datablock_t = DataBlock<
@@ -90,8 +90,8 @@ struct PoissonProblem
     PoissonProblem(Dictionary* _d)
     :simulation_(_d->get_dictionary("simulation_parameters")),
      //FIXME: exntent+1
-     conv(simulation_.domain_.block_extent()+1,simulation_.domain_.block_extent()+1),
-     ////conv(simulation_.domain_.block_extent(),simulation_.domain_.block_extent()),
+     ////conv(simulation_.domain_.block_extent()+1,simulation_.domain_.block_extent()+1),
+     conv(simulation_.domain_.block_extent(),simulation_.domain_.block_extent()),
      fmm_(simulation_.domain_.block_extent()[0]+1)
     {
         pcout << "\n Setup:  LGF PoissonProblem \n" << std::endl;
@@ -115,293 +115,82 @@ struct PoissonProblem
                        simulation_.domain_.bounding_box().min()) / 2.0 +
                        simulation_.domain_.bounding_box().min();
 
-        //center[0]-=5;
+        //center+=0.125;
 
         std::cout<<"center: " <<center   <<std::endl;
+        int nRef=3;
+        for(int l=0;l<nRef;++l)
+        {
+            int count=0;
+            for (auto it  = simulation_.domain_.begin_leafs();
+                    it != simulation_.domain_.end_leafs(); ++it)
+            {
+                //if (count++ ==0)simulation_.domain_.refine(it);
+                auto b=it->data()->descriptor();
+                coordinate_t lower(2), upper(2);
+                b.grow(lower, upper);
+                if(b.is_inside( std::pow(2.0,l)*center ) && it->refinement_level()==l)
+                {
+                    simulation_.domain_.refine(it);
+                }
+            }
+        }
 
-        //for(int i = 0;i<1;++i)
-        //{
-        //    for (auto it  = simulation_.domain_.begin_leafs();
-        //              it != simulation_.domain_.end_leafs(); ++it)
-        //    {
-        //        simulation_.domain_.refine(it);
-        //    }
-        //}
+        const float_type a  = 10.;
+        const float_type a2 = a*a;
 
-        int count=0;
+        //center[0]+=5.0;
         for (auto it  = simulation_.domain_.begin_leafs();
                 it != simulation_.domain_.end_leafs(); ++it)
         {
 
-            if (count++ ==0)simulation_.domain_.refine(it);
-            auto b=it->data()->descriptor();
-            coordinate_t l(2), u(2);
-            b.grow(l, u);
-            if(b.is_inside( center ) && it->refinement_level()==0 )
+
+
+            auto dx_level =  dx/std::pow(2,it->refinement_level());
+            auto scaling =  std::pow(2,it->refinement_level());
+
+            // ijk-way of initializing
+            auto base = it->data()->base();
+            auto max  = it->data()->max();
+            for (auto k = base[2]; k <= max[2]; ++k)
             {
-                //if(b.base()[0]<center[0]-5)
-                //simulation_.domain_.refine(it);
-            }
-        }
-
-          for (auto it  = simulation_.domain_.begin_leafs();
-                it != simulation_.domain_.end_leafs(); ++it)
-        {
-            auto b=it->data()->descriptor();
-            coordinate_t l(2), u(2);
-            b.grow(l, u);
-            if(b.is_inside( 2.0*center ) && it->refinement_level()==1 )
-            {
-                //simulation_.domain_.refine(it);
-            }
-        }
-
-        //for (auto it  = simulation_.domain_.begin_leafs();
-        //          it != simulation_.domain_.end_leafs(); ++it)
-        //{
-        //    auto b=it->data()->descriptor();
-        //    coordinate_t l(2), u(2);
-        //    b.grow(l, u);
-        //    if(b.is_inside( 4.0*center ) && it->refinement_level()==2 )
-        //    {
-        //            simulation_.domain_.refine(it);
-        //    }
-        //}
-   
-        const float_type a  = 10.;
-        const float_type a2 = a*a;
-
-        //for (auto it  = simulation_.domain_.begin_leafs();
-        //it != simulation_.domain_.end_leafs(); ++it)
-        //
-
-        //center[0]+=7.0;
-        for (int lt = simulation_.domain_.tree()->base_level(); 
-                 lt < simulation_.domain_.tree()->depth(); ++lt)
-        {
-            for (auto it  = simulation_.domain_.begin(lt);
-                      it != simulation_.domain_.end(lt); ++it)
-            {
-
-                auto dx_level =  dx/std::pow(2,it->refinement_level());
-                auto scaling =  std::pow(2,it->refinement_level());
-
-                // ijk-way of initializing
-                auto base = it->data()->base();
-                auto max  = it->data()->max();
-                for (auto k = base[2]; k <= max[2]; ++k)
+                for (auto j = base[1]; j <= max[1]; ++j)
                 {
-                    for (auto j = base[1]; j <= max[1]; ++j)
+                    for (auto i = base[0]; i <= max[0]; ++i)
                     {
-                        for (auto i = base[0]; i <= max[0]; ++i)
-                        {
-                            it->data()->get<source>(i,j,k)  = 0.0;
-                            it->data()->get<phi_num>(i,j,k) = 0.0;
+                        it->data()->get<source>(i,j,k)  = 0.0;
+                        it->data()->get<phi_num>(i,j,k) = 0.0;
 
-                            // manufactured solution:
-                            float_type x = static_cast<float_type>
-                                (i-center[0]*scaling)*dx_level;
-                            float_type y = static_cast<float_type>
-                                (j-center[1]*scaling)*dx_level;
-                            float_type z = static_cast<float_type>
-                                (k-center[2]*scaling)*dx_level;
-                            const auto x2 = x*x;
-                            const auto y2 = y*y;
-                            const auto z2 = z*z;
+                        // manufactured solution:
+                        float_type x = static_cast<float_type>
+                            (i-center[0]*scaling+0.5)*dx_level;
+                        float_type y = static_cast<float_type>
+                            (j-center[1]*scaling+0.5)*dx_level;
+                        float_type z = static_cast<float_type>
+                            (k-center[2]*scaling+0.5)*dx_level;
+                        const auto x2 = x*x;
+                        const auto y2 = y*y;
+                        const auto z2 = z*z;
 
 
-                            it->data()->get<source>(i,j,k) = 
-                                a*std::exp(-a*(x2)-a*(y2)-a*(z2))*(-6.0)+
-                                (a2)*(x2)*std::exp(-a*(x2)-a*(y2)-a*(z2))*4.0 +
-                                (a2)*(y2)*std::exp(-a*(x2)-a*(y2)-a*(z2))*4.0+
-                                (a2)*(z2)*std::exp(-a*(x2)-a*(y2)-a*(z2))*4.0;
+                        it->data()->get<source>(i,j,k) = 
+                            a*std::exp(-a*(x2)-a*(y2)-a*(z2))*(-6.0)+
+                            (a2)*(x2)*std::exp(-a*(x2)-a*(y2)-a*(z2))*4.0 +
+                            (a2)*(y2)*std::exp(-a*(x2)-a*(y2)-a*(z2))*4.0+
+                            (a2)*(z2)*std::exp(-a*(x2)-a*(y2)-a*(z2))*4.0;
 
-                            it->data()->get<source_orig>(i,j,k) = it->data()->get<source>(i,j,k);
+                        it->data()->get<source_orig>(i,j,k) = it->data()->get<source>(i,j,k);
 
-                            it->data()->get<phi_exact>(i,j,k) =
-                                std::exp((-a*x2 - a*y2 - a*z2));
-                        }
-                    }
-                }
-                //if(it->refinement_level()==1 &&it->data()->base()[0]!=0)
-                //{
-                //    auto base = it->data()->base();
-                //    auto max  = it->data()->max();
-                //    for (auto k = base[2]; k <= max[2]; ++k)
-                //    {
-                //        for (auto j = base[1]; j <= max[1]; ++j)
-                //        {
-                //            for (auto i = max[0]; i <= max[0]; ++i)
-                //            {
-                //                it->data()->get<source>(i,j,k)=0.0;
-
-                //            }
-                //        }
-                //    }
-                //}
-            }
-        }
-        this->scale_bcPlane();
-    }
-
-    //Sipe check before 
-    void scale_bcPlane()
-    {
-        auto lb=simulation_.domain_.tree()->base_level()+1;
-        std::cout<<")Base level : "<<lb-1<<std::endl;
-        auto ld=simulation_.domain_.tree()->depth();
-
-        for(int ll=lb; ll<ld;++ll)
-        {
-            auto bb= simulation_.domain_.get_level_bb(ll  ) ;
-
-            std::cout<<"bounding box for level: "<<ll<<" "<<bb<<std::endl;
-            //int dir=1;
-            for(int dir=0; dir<=1; ++dir)
-            {
-                for(int d=0; d<Dim; ++d)
-                {
-                    auto bc=bb.bcPlane(d,dir);
-                    std::cout<<"bcPlane: "<<bb.bcPlane(d, dir)<<std::endl;
-                    for (auto it  = simulation_.domain_.begin(ll);
-                            it != simulation_.domain_.end(ll); ++it)
-                    {
-                        auto overlap=bc;
-                        bc.level()=it->refinement_level();
-                        if(bc.overlap(it->data()->descriptor(),overlap, it->refinement_level()))
-                        {
-                            auto base=overlap.base();
-                            auto max=overlap.max();
-                            std::cout<<"Overlap: "<<overlap<<std::endl;
-                            for (auto k = base[2]; k <= max[2]; ++k)
-                            {
-                                for (auto j = base[1]; j <= max[1]; ++j)
-                                {
-                                    for (auto i = base[0]; i <= max[0]; ++i)
-                                    {
-                                        //Lower left corner 
-                                        if(dir==0 && ll==lb+0)
-                                            it->data()->get<source>(i,j,k)=it->data()->get<source_orig>(i,j,k)*1;
-                                            //it->data()->get<source>(i,j,k)*=1.0;
-                                        if(dir==0 && ll==lb+1)
-                                            it->data()->get<source>(i,j,k)=it->data()->get<source_orig>(i,j,k)*2;
-                                            //it->data()->get<source>(i,j,k)*=2.0;
-
-                                        //Upper left corner 
-                                        if(dir==1&& ll==lb+0)
-                                            it->data()->get<source>(i,j,k)=it->data()->get<source_orig>(i,j,k)/2;
-                                            //it->data()->get<source>(i,j,k)/=2.0;
-                                        if(dir==1&& ll==lb+1)
-                                            it->data()->get<source>(i,j,k)=it->data()->get<source_orig>(i,j,k)/2;
-                                            //it->data()->get<source>(i,j,k)/=2.0;
-
-                                        it->data()->get<bla_field>(i,j,k)+=1.0;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        std::ofstream ofs("pts_all.txt");
-        for(int ll=lb; ll<ld;++ll)
-        {
-            auto bb= simulation_.domain_.get_level_bb(ll  ) ;
-
-            for(int dir=0; dir<=1; ++dir)
-            {
-                for(int d=0; d<Dim; ++d)
-                {
-                    auto bc=bb.bcPlane(d,dir);
-                    for (auto it  = simulation_.domain_.begin(ll);
-                            it != simulation_.domain_.end(ll); ++it)
-                    {
-                        auto overlap=bc;
-                        bc.level()=it->refinement_level();
-                        if(bc.overlap(it->data()->descriptor(),overlap, it->refinement_level()))
-                        {
-                            auto base=overlap.base();
-                            auto max=overlap.max();
-                            for (auto k = base[2]; k <= max[2]; ++k)
-                            {
-                                for (auto j = base[1]; j <= max[1]; ++j)
-                                {
-                                    for (auto i = base[0]; i <= max[0]; ++i)
-                                    {
-                                        float_type factor=std::pow(2.0, it->refinement_level());
-                                        ofs<<i/factor<<" "<<j/factor<<" "<<k/factor<<" "
-                                            <<(it->data()->get<bla_field>(i,j,k))<<std::endl;
-                                    }
-                                }
-                            }
-                        }
+                        it->data()->get<phi_exact>(i,j,k) =
+                            std::exp((-a*x2 - a*y2 - a*z2));
                     }
                 }
             }
         }
     }
 
-    void scale_source()
-    {
+    //Sipe check before 
 
-        int l0=simulation_.domain_.tree()->base_level();
-        auto fc_interfaces=
-            simulation_.domain_.determine_fineToCoarse_interfaces<source>(0);
-        std::cout<<"n Interfaces: "<<fc_interfaces.size()<<std::endl;
-        for(auto& fci : fc_interfaces)
-        {
-            auto base=fci.second.base();
-            auto max=fci.second.max();
-
-            for (auto k = base[2]; k <= max[2]; ++k)
-            {
-                for (auto j = base[1]; j <= max[1]; ++j)
-                {
-                    for (auto i = base[0]; i <= max[0]; ++i)
-                    {
-                        float_type factor=std::pow(2.0, fci.first->refinement_level());
-                        //fci.first->data()->get<source>(i,j,k)/=2.0;
-                        fci.first->data()->get<bla_field>(i,j,k)+=1.0;
-                    }
-                }
-            }
-        }
-        std::ofstream ofs("pts_all.txt");
-        fc_interfaces=
-            simulation_.domain_.determine_fineToCoarse_interfaces<source>(0);
-        std::cout<<"n Interfaces: "<<fc_interfaces.size()<<std::endl;
-        int c=0;
-        for(auto& fci : fc_interfaces)
-        {
-            auto base=fci.second.base();
-            auto max=fci.second.max();
-            std::ofstream ofs_i("pts_all_"+std::to_string(c)+".txt");
-            ++c;
-
-
-            for (auto k = base[2]; k <= max[2]; ++k)
-            {
-                for (auto j = base[1]; j <= max[1]; ++j)
-                {
-                    for (auto i = base[0]; i <= max[0]; ++i)
-                    {
-                        float_type factor=std::pow(2.0, fci.first->refinement_level());
-                        //fci.first->data()->get<source>(i,j,k)/=2.0;
-                        fci.first->data()->get<source>(i,j,k)=
-                            fci.first->data()->get<source_orig>(i,j,k)/((fci.first->data()->get<bla_field>(i,j,k)+1));
-                        auto s_correct= fci.first->data()->get<source>(i,j,k)/2.0;
-                        auto s_ic= fci.first->data()->get<source_orig>(i,j,k)/((fci.first->data()->get<bla_field>(i,j,k))+1);
-                        //std::cout<<"cc "<<s_correct<<" "<<s_ic<<std::endl;
-                        ofs<<i/factor<<" "<<j/factor<<" "<<k/factor<<" "
-                            <<(fci.first->data()->get<bla_field>(i,j,k)+1)<<std::endl;
-                        ofs_i<<i/factor<<" "<<j/factor<<" "<<k/factor<<" "
-                            <<(fci.first->data()->get<bla_field>(i,j,k)+1)<<std::endl;
-                    }
-                }
-            }
-        }
-        }
 
     void neighbor_test()
     {
@@ -536,13 +325,14 @@ struct PoissonProblem
 
         //Coarsification:
         pcout<<"coarsification "<<std::endl;
-        for (int ls = simulation_.domain_.tree()->depth()-1;
-                 ls > simulation_.domain_.tree()->base_level(); --ls)
+        for (int ls = simulation_.domain_.tree()->depth()-2;
+                 ls >= simulation_.domain_.tree()->base_level(); --ls)
         {
             for (auto it_s  = simulation_.domain_.begin(ls);
                       it_s != simulation_.domain_.end(ls); ++it_s)
             {
                 //this->coarsify(it_s);
+                this->coarsify_avg(it_s);
             }
         }
 
@@ -567,8 +357,6 @@ struct PoissonProblem
                     {
                          continue;
                     }
-                    //if( it_s->refinement_level() ==0 )continue;
-
                     //std::cout<<"source :"<<it_s->data()->descriptor()<<std::endl;
 
                     const auto t_base = it_t->data()->base();
@@ -576,8 +364,8 @@ struct PoissonProblem
                     
                     // Get extent of source region
                     // FIXME: extent+1
-                    //const auto s_extent = it_s->data()->extent();
-                    const auto s_extent = it_s->data()->extent()+1;
+                    const auto s_extent = it_s->data()->extent();
+                    //const auto s_extent = it_s->data()->extent()+1;
                     const auto shift    = t_base - s_base;
                     
                     // Calculate the dimensions of the LGF to be allocated
@@ -613,19 +401,9 @@ struct PoissonProblem
                       it_t != simulation_.domain_.end(lt); ++it_t)
             {
                 if(it_t->is_leaf()) continue;
-                this->template interpolate<phi_num>(*it_t);
+                this->template interpolate_avg<phi_num>(*it_t);
             }
-             
-            //Interpolate interface
-            //simulation_.domain_.exchange_buffers(); 
-            //auto fc_interfaces=simulation_.domain_.determine_fineToCoarse_interfaces<phi_num>();
-            //for(auto& i :  fc_interfaces)
-            //{ 
-            //    this->interpolate_level_interface(i.first, i.second);
-            //}
         }
-
-
                 
         //simple_lapace_fd();
         compute_errors();
@@ -633,6 +411,84 @@ struct PoissonProblem
         simulation_.write("solution.vtk");
     }
 
+    template<template<std::size_t>class Field >
+    void interpolate_avg(const octant_t* _b_parent)
+    {
+        
+        //std::cout<<"parent: "<<_b_parent->data()->descriptor()<<std::endl;
+        //interpolation 
+        for (int i = 0; i < _b_parent->num_children(); ++i)
+        {
+            auto child = _b_parent->child(i);
+            if(child==nullptr) continue;
+            block_descriptor_t child_view =  
+                child->data()->template get<phi_num>();
+            block_descriptor_t parent_view = child->data()->template get<phi_num>();
+
+            for (auto kc  = child_view.base()[2];
+                      kc <= child_view.max()[2]; ++kc)
+            {
+                for (auto jc  = child_view.base()[1];
+                          jc  <= child_view.max()[1]; ++jc)
+                {
+                    for (auto ic = child_view.base()[0];
+                              ic <= child_view.max()[0]; ++ic)
+                    {
+                        int min_x= ic/2; int min_y= jc/2; int min_z= kc/2;
+
+                        float_type interp= 
+                            _b_parent->data()->template get<Field>(min_x, min_y,min_z);
+
+                        child->data()->template get<Field>(ic,jc,kc) += interp;
+                        child->data()->template get<phi_interp>(ic,jc,kc) = interp;
+                    }
+                }
+            }
+        }
+    }
+
+    template<class Block_it>
+    void coarsify_avg(const Block_it& _parent)
+    {
+        //Note: only works for an even number of nodes 
+        //      Base of all children is even, so now buffer is needed
+        auto parent = _parent;
+        if(parent->is_leaf())return;
+
+        for (int i = 0; i < parent->num_children(); ++i)
+        {
+            auto child = parent->child(i);
+            auto child_view= child->data()->descriptor();
+            if(child==nullptr) continue;
+
+            for (auto kc  = child_view.base()[2];
+                    kc <= child_view.max()[2]; kc+=2)
+            {
+                for (auto jc  = child_view.base()[1];
+                        jc  <= child_view.max()[1]; jc+=2)
+                {
+                    for (auto ic = child_view.base()[0];
+                            ic <= child_view.max()[0]; ic+=2)
+                    {
+                        float_type avg=1./8*(
+                                child->data()->template get<source>(ic,  jc,  kc)+
+                                child->data()->template get<source>(ic+1,jc,  kc)+
+                                child->data()->template get<source>(ic,  jc+1,kc)+
+                                child->data()->template get<source>(ic+1,jc+1,kc)+
+                                child->data()->template get<source>(ic,  jc,  kc+1)+
+                                child->data()->template get<source>(ic+1,jc,  kc+1)+
+                                child->data()->template get<source>(ic,  jc+1,kc+1)+
+                                child->data()->template get<source>(ic+1,jc+1,kc+1)
+                                );
+                        int ip=ic/2;
+                        int jp=jc/2;
+                        int kp=kc/2;
+                        parent->data()->template get<source>(ip,jp,kp) =avg;
+                    }
+                }
+            }
+        }
+    }
 
     /*
      * Interpolate a given field from corser to finer level.
@@ -682,28 +538,6 @@ struct PoissonProblem
 
                         child->data()->template get<Field>(ic,jc,kc) += interp;
                         child->data()->template get<phi_interp>(ic,jc,kc) = interp;
-
-                        //if(ic%2==0  && jc%2==0 && kc%2==0)
-                        //{
-                        //    float_type interp= 
-                        //        interpolation::interpolate(min_x, min_y, min_z, x, y, z, 
-                        //                _b_parent->data()->template get<Field>());
-                        //     child->data()->template get<Field>(ic,jc,kc) +=
-                        //         _b_parent->data()->template get<Field>(min_x,min_y,min_z);
-                        //    //std::cout<<"p: "<< _b_parent->data()->template get<Field>(min_x,min_y,min_z)
-                        //    //    <<" c: "<<interp<<std::endl;
-                        //    
-                        //     //child->data()->template get<Field>(ic,jc,kc) +=interp;
-                        //}
-                        //else
-                        //{
-                        //    float_type interp= 
-                        //        interpolation::interpolate(min_x, min_y, min_z, x, y, z, 
-                        //                _b_parent->data()->template get<Field>());
-                        //    child->data()->template get<Field>(ic,jc,kc) += interp;
-                        //    //child->data()->template get<Field>(ic,jc,kc) =child->data()->template get<phi_exact>(ic,jc,kc);
-                        //}
-
 
                     }
                 }

@@ -49,12 +49,17 @@ float_type interpolate(float_type x, const std::array<float_type, N>& y)
 template<class Field>
 inline float_type interpolate(int min_x, int min_y, int min_z, 
                                float_type x, float_type  y, float_type z,
-                               const Field& _field, int _stride=1)
+                               const Field& _field, int _count=0, int _stride=1)
 {
     //constexpr long unsigned int N = 3;
     //std::array<int, N> x_pos{{(min_x), (min_x+_stride), (min_x+2*_stride)}};
     //std::array<int, N> y_pos{{(min_y), (min_y+_stride), (min_y+2*_stride)}};
     //std::array<int, N> z_pos{{(min_z), (min_z+_stride), (min_z+2*_stride)}};
+
+    //constexpr long unsigned int N = 4;
+    //std::array<int, N> x_pos{{(min_x-1),(min_x), (min_x+_stride), (min_x+1*_stride)}};
+    //std::array<int, N> y_pos{{(min_y-1),(min_y), (min_y+_stride), (min_y+1*_stride)}};
+    //std::array<int, N> z_pos{{(min_z-1),(min_z), (min_z+_stride), (min_z+1*_stride)}};
 
     constexpr long unsigned int N = 2;
     std::array<int, N> x_pos{{(min_x), (min_x+_stride)}};
@@ -65,6 +70,9 @@ inline float_type interpolate(int min_x, int min_y, int min_z,
     //const float_type y_ref = y- y_pos[0];
     //const float_type z_ref = z- z_pos[0];
     
+    //std::ofstream ofs("cube_"+std::to_string(_count)+".txt");
+    //std::ofstream ofs_pt("pt_"+std::to_string(_count)+".txt");
+    //ofs_pt<<x<<" "<<y<<" "<<z<<std::endl;
     std::array<float_type,N> x_values;
     for (unsigned int i=0; i<N; ++i)
     {
@@ -75,10 +83,10 @@ inline float_type interpolate(int min_x, int min_y, int min_z,
             for (unsigned int k=0; k<N; ++k)
             {
                 z_values[k] = _field.get( x_pos[i], y_pos[j], z_pos[k]);
-                //std::cout<<x_pos[i]<<" v "
-                //         <<y_pos[j]<<" "
-                //         <<z_pos[k]<<" "
-                //         <<std::endl;
+                //ofs<<x_pos[i]<<" "
+                //   <<y_pos[j]<<" "
+                //   <<z_pos[k]<<" "
+                //   <<std::endl;
 
             }
             //y_values[j] = interpolate(z_ref,z_values);

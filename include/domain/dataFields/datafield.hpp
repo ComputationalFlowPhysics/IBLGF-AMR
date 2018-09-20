@@ -73,14 +73,13 @@ public: //member functions
         this->base(_b.base());
         this->extent(_b.extent());
         this->level()= _b.level();
-        auto size=real_block_.size();
-        data_.resize(size);
+        data_.resize(real_block_.nPoints());
 
         //FIXME: 
         //std::fill(data_.begin(), data_.end(), 0.0);
-        ma_ref_=std::make_shared<mutliarray_ref_t>(&data_[0], this->real_block_);
-        view_type wview=ma_ref_->get_view(this->real_block_);
-        domain_view_=std::make_shared<view_type>(ma_ref_->get_view(this->real_block_));
+        //ma_ref_=std::make_shared<mutliarray_ref_t>(&data_[0], this->real_block_);
+        //view_type wview=ma_ref_->get_view(this->real_block_);
+        //domain_view_=std::make_shared<view_type>(ma_ref_->get_view(this->real_block_));
         //for(auto it=domain_view_->begin();it!=domain_view_->end();++it)
         //{
         //    for(auto it2=it->begin(); it2!=it->end(); ++it2)
@@ -167,7 +166,7 @@ public: //member functions
     const block_type& real_block()const noexcept{return real_block_;}
     block_type& real_block()noexcept{return real_block_;}
 
-    auto& domain_view(){return domain_view_;}
+    //auto& domain_view(){return domain_view_;}
 
     
 
@@ -178,8 +177,8 @@ protected: //protected memeber:
     buffer_d_t lowBuffer_ =buffer_d_t(0); ///< Buffer in negative direction
     buffer_d_t highBuffer_=buffer_d_t(0); ///< Buffer in positive direction
     block_type real_block_;               ///< Block descriptorinlcuding buffer
-    std::shared_ptr<mutliarray_ref_t> ma_ref_;///< Boost multiarray_ref wrapper 
-    std::shared_ptr<view_type> domain_view_;  ///< Boost multiarray_ref wrapper 
+    //std::shared_ptr<mutliarray_ref_t> ma_ref_;///< Boost multiarray_ref wrapper 
+    //std::shared_ptr<view_type> domain_view_;  ///< Boost multiarray_ref wrapper 
 };
 
 

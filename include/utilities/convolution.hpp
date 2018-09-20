@@ -95,8 +95,8 @@ public: //Interface
                 for(int i=0;i<_dims_v[0];++i)
                 {
                     input_[ i+dims_input_[0]*j+ dims_input_[0]*dims_input_[1]*k ]=
+                     _v.get_real_local(i,j,k);
                         //_v[i+_dims_v[0]*j+_dims_v[0]*_dims_v[1]*k];
-                        _v.get_local(i,j,k);
                 }
             }
         }
@@ -254,7 +254,7 @@ public: //Ctors
             {
                 for (int i = dims0_[0]-1; i < dims0_[0]+_b.extent()[0]-1; ++i)
                 {
-                    F.get_local(i-dims0_[0]+1,j-dims0_[1]+1,k-dims0_[2]+1 ) += 
+                    F.get_real_local(i-dims0_[0]+1,j-dims0_[1]+1,k-dims0_[2]+1 ) += 
                     _scale*fft_backward.output() [ 
                         i+j*padded_dims[0]+k*padded_dims[0]*padded_dims[1]
                     ];

@@ -2,7 +2,7 @@
 #include <boost/mpi/environment.hpp>
 #include <boost/mpi/communicator.hpp>
 
-#include <setups/poissonProblem.hpp>
+#include <setups/poissonProblem/poissonProblem.hpp>
 #include <dictionary/dictionary.hpp>
 
 

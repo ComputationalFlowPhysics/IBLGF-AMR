@@ -78,13 +78,8 @@ public:
             >
     void solve()
     {
-        //TODO:
-        //make check dimension check on the convolution in debug mode
-
         // allocate lgf
-        // TODO: store this
         std::vector<float_type> lgf;
-
         const float_type dx_base=domain_->dx_base();
 
         //Coarsification:
@@ -205,8 +200,6 @@ public:
                         int kp=kc/2;
 
                         parent->data()->template get<Field>(ip,jp,kp) =avg;
-
-                        //std::cout<<avg<<std::endl;
                     }
                 }
             }
@@ -266,7 +259,7 @@ public:
 private:
     Simulation*                 sim_;       ///< simualtion 
     domain_type*                domain_;    ///< domain
-    convolution_t               conv_;       ///< fft convolution
+    convolution_t               conv_;      ///< fft convolution
     fmm::Fmm                    fmm_;       ///< fast-multipole 
     lgf::LGF<lgf::Lookup>       lgf_;       ///< Lookup for the LGFs
 

@@ -8,7 +8,7 @@
 #include <types.hpp>
 #include <domain/dataFields/datafield_utils.hpp>
 #include <domain/dataFields/blockDescriptor.hpp>
-#include <domain/dataFields/view.hpp>
+#include <domain/dataFields/array_ref.hpp>
 
 
 namespace domain

@@ -25,7 +25,7 @@ CFLAGS = -fconstexpr-depth=2048 \
 		 -mavx          \
 		 -std=c++17     \
 		 -Wall 
-CFLAGS_DEBUG = -O0 -ggdb 
+CFLAGS_DEBUG = -O0 -ggdb -DDEBUG
 
 CFLAGS_RELEASE = -O3 -DNDEBUG               \
 		-DBOOST_DISABLE_ASSERTS     \

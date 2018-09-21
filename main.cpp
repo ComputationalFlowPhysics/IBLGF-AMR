@@ -23,11 +23,10 @@ int main(int argc, char *argv[])
     // Read in dictionary
     Dictionary dictionary(input);
     
-    // Problem setup by calling constructor
-    PoissonProblem poisson(&dictionary);
-    
-    // Problem solution
-    poisson.solve();
+    // run setup
+    PoissonProblem setup(&dictionary);
+
+    setup.run();
 
     return 0;
 }

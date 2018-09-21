@@ -99,8 +99,8 @@ public: //member functions
 
     //}
 
-    DataType& operator[](size_type i ) noexcept {return data_[i];}
-    const DataType& operator[](size_type i )const noexcept {return data_[i];}
+    auto& operator[](size_type i ) noexcept {return data_[i];}
+    const auto& operator[](size_type i )const noexcept {return data_[i];}
 
     auto begin()const noexcept {return data_.begin();}
     auto end()const noexcept{return data_.end();}
@@ -118,6 +118,8 @@ public: //member functions
     }
     inline DataType& get(int _i, int _j, int _k) noexcept
     {
+
+        //std::cout<<"indx: "<<real_block_.globalCoordinate_to_index(_i, _j, _k)<<std::endl;
         return data_[real_block_.globalCoordinate_to_index(_i,
                                                            _j,
                                                            _k)];
@@ -169,7 +171,6 @@ public: //member functions
     //auto& domain_view(){return domain_view_;}
 
     
-
 
 protected: //protected memeber:
 

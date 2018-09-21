@@ -60,12 +60,6 @@ public: //member types
          domain_->block_extent()+lBuffer+rBuffer),
     fmm_(domain_->block_extent()[0]+1)
     { 
-        //Get this from domain
-        const float_type L = sim_->dictionary_->
-            template get_or<float_type>("L", 1);
-        auto tmp = L / (domain_->bounding_box().extent()-1);
-        dx = tmp[0];
-        
     }
 
 
@@ -91,6 +85,8 @@ public:
         // TODO: store this
         std::vector<float_type> lgf;
 
+        const float_type dx_base=domain_->dx_base();
+
         //Coarsification:
         pcout<<"coarsification "<<std::endl;
         for (int ls = domain_->tree()->depth()-2;
@@ -113,7 +109,7 @@ public:
             {
 
                 auto refinement_level = it_t->refinement_level();
-                auto dx_level =  dx/std::pow(2,refinement_level);
+                auto dx_level =  dx_base/std::pow(2,refinement_level);
                 for (auto it_s  = domain_->begin(l);
                           it_s != domain_->end(l); ++it_s)
                 {
@@ -276,8 +272,6 @@ private:
 
     parallel_ostream::ParallelOstream pcout; 
     
-    //TODO: needs to come from domain
-    float_type                        dx;
 };
 
 }

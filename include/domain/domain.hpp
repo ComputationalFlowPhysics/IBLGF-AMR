@@ -59,7 +59,30 @@ public:
             extent_t(_dictionary->template get_or<int>("block_extent", 10))
             )
     {
+        if(_dictionary->has_key("Lx"))
+        {
+            const float_type L= _dictionary->template get<float_type>("Lx");
+            dx_base_=L/ (bounding_box_.extent()[0]-1);
+        }
+        else if(_dictionary->has_key("Ly"))
+        {
+            const float_type L= _dictionary->template get<float_type>("Ly");
+            dx_base_=L/ (bounding_box_.extent()[1]-1);
+        }
+        else if(_dictionary->has_key("Lz"))
+        {
+            const float_type L= _dictionary->template get<float_type>("Lz");
+            dx_base_=L/ (bounding_box_.extent()[2]-1);
+        }
+        else
+        {
+            throw std::runtime_error(
+            "Domain: Please specify length scale Lx or Ly or Lz in dictionary"
+            );
+
+        }
     }
+
 
     Domain(const std::vector<block_descriptor_t>& _baseBlocks, 
            extent_t _maxExtent= extent_t(4096),
@@ -106,6 +129,9 @@ public:
         extent_t extent(max-min+1);
         auto base_=extent_t(min);
         bounding_box_=block_descriptor_t(base_*e, extent*e+1);
+
+
+
         for(auto& b: bases) b-=base_;
         auto base_level=key_t::minimum_level(_maxExtent/_blockExtent);
         t_ = std::make_shared<tree_t>(bases, base_level);
@@ -381,12 +407,17 @@ public:
         return bb;
     }
 
+
+    /**@brief Resolution on the base level */
+    float_type dx_base()const noexcept{return dx_base_;}
+
 public:
     
     friend std::ostream& operator<<(std::ostream& os, Domain& d) 
     {
         os<<"Number of octants: "<<d.num_leafs()<<std::endl;
         os<<"Block extent : "<<d.block_extent_<<std::endl;
+        os<<"Base resolution "<<d.dx_base()<<std::endl;
 
         os<<"Domain Bounding Box: "<<d.bounding_box_<<std::endl;
         os<<"Fields:"<<std::endl;
@@ -423,6 +454,7 @@ private:
     std::shared_ptr<tree_t> t_; 
     extent_t block_extent_;
     block_descriptor_t bounding_box_;
+    float_type dx_base_;
 
 };
 

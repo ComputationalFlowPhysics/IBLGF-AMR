@@ -13,6 +13,10 @@
 namespace fft
 {
 
+
+//TODO: Base these things also all on fields to exploit base/extent and 
+//      stride
+
 class dfft_r2c
 {
 public:

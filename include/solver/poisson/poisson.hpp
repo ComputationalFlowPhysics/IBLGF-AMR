@@ -46,6 +46,8 @@ public: //member types
     using octant_t = typename tree_t::octant_type;
     using block_type = typename datablock_type::block_descriptor_type;
     using convolution_t = fft::Convolution;
+    using real_coordinate_type = typename domain_type::real_coordinate_type;
+    using coordinate_type = typename domain_type::coordinate_type;
 
 
 
@@ -102,7 +104,6 @@ public:
             for (auto it_t  = domain_->begin(l);
                       it_t != domain_->end(l); ++it_t)
             {
-
                 auto refinement_level = it_t->refinement_level();
                 auto dx_level =  dx_base/std::pow(2,refinement_level);
                 for (auto it_s  = domain_->begin(l);
@@ -110,9 +111,7 @@ public:
                 {
 
                     if( !(it_s->is_leaf()) && !(it_t->is_leaf()) )
-                    {
-                         continue;
-                    }
+                    { continue; }
 
                     const auto t_base = it_t->data()->template get<Target>().
                                             real_block().base();
@@ -153,7 +152,7 @@ public:
                       it_t != domain_->end(lt); ++it_t)
             {
                 if(it_t->is_leaf()) continue;
-                this->interpolate_cc<Target>(*it_t);
+                this->interpolate<Target>(*it_t);
             }
         }
     }
@@ -166,9 +165,8 @@ public:
     template<template<std::size_t>class Field >
     void coarsify(octant_t* _parent)
     {
-        //Note: only works for an even number of nodes 
-        //      Base of all children is even, so now buffer is needed
         auto parent = _parent;
+        const coordinate_type stride(2);
         if(parent->is_leaf())return;
 
         for (int i = 0; i < parent->num_children(); ++i)
@@ -177,84 +175,58 @@ public:
             auto child_view= child->data()->descriptor();
             if(child==nullptr) continue;
 
-            for (auto kc  = child_view.base()[2];
-                    kc <= child_view.max()[2]; kc+=2)
-            {
-                for (auto jc  = child_view.base()[1];
-                        jc  <= child_view.max()[1]; jc+=2)
-                {
-                    for (auto ic = child_view.base()[0];
-                            ic <= child_view.max()[0]; ic+=2)
-                    {
-                        const float_type avg=1./8*(
-                            child->data()->template get<Field>(ic,  jc,  kc)+
-                            child->data()->template get<Field>(ic+1,jc,  kc)+
-                            child->data()->template get<Field>(ic,  jc+1,kc)+
-                            child->data()->template get<Field>(ic+1,jc+1,kc)+
-                            child->data()->template get<Field>(ic,  jc,  kc+1)+
-                            child->data()->template get<Field>(ic+1,jc,  kc+1)+
-                            child->data()->template get<Field>(ic,  jc+1,kc+1)+
-                            child->data()->template get<Field>(ic+1,jc+1,kc+1));
-                        int ip=ic/2;
-                        int jp=jc/2;
-                        int kp=kc/2;
+            auto cview =child->data()->node_field().view(child_view,stride);
 
-                        parent->data()->template get<Field>(ip,jp,kp) =avg;
-                    }
-                }
-            }
+            cview.iterate([&]( auto& n )
+            {
+                const float_type avg=1./8*(
+                                n.template at_offset<Field>(0,0,0)+
+                                n.template at_offset<Field>(1,0,0)+
+                                n.template at_offset<Field>(0,1,0)+
+                                n.template at_offset<Field>(1,1,0)+
+                                n.template at_offset<Field>(0,0,1)+
+                                n.template at_offset<Field>(1,0,1)+
+                                n.template at_offset<Field>(0,1,1)+
+                                n.template at_offset<Field>(1,1,1));
+
+                const auto pcoord=n.level_coordinate()/2;
+                parent->data()-> template get<Field>(pcoord) =avg;
+            });
         }
     }
+
 
     /** @brief Interplate the target field. 
      *  @detail Given a parent field, interpolate it onto the child meshes.
      *  Interpolation is 2nd order accurate.
      */
     template<template<std::size_t>class Field >
-    void interpolate_cc(const octant_t* _b_parent)
+    void interpolate(const octant_t* _b_parent)
     {
-        
-        //interpolation 
         for (int i = 0; i < _b_parent->num_children(); ++i)
         {
             auto child = _b_parent->child(i);
             if(child==nullptr) continue;
             block_type child_view =  
                 child->data()->template get<Field>().real_block();
+            auto cview =child->data()->node_field().view(child_view);
 
-            auto parent_view = 
-                _b_parent->data()->template get<Field>().real_block();
-
-            
-            int count=0;
-            for (auto kc  = child_view.base()[2];
-                      kc <= child_view.max()[2]; ++kc)
+            cview.iterate([&]( auto& n )
             {
-                for (auto jc  = child_view.base()[1];
-                          jc  <= child_view.max()[1]; ++jc)
-                {
-                    for (auto ic = child_view.base()[0];
-                              ic <= child_view.max()[0]; ++ic)
-                    {
-                        int min_x= (ic+1)/2-1;
-                        int min_y= (jc+1)/2-1;
-                        int min_z= (kc+1)/2-1;
-                        const float_type x= (ic-0.5)/2.0; 
-                        const float_type y= (jc-0.5)/2.0; 
-                        const float_type z= (kc-0.5)/2.0;
+                const auto& coord=n.level_coordinate();
+                auto min =(coord+1)/2-1;
+                real_coordinate_type x=(coord-0.5)/2.0;
 
-                        const float_type interp= 
-                            interpolation::interpolate(
-                                    min_x, min_y, min_z, 
-                                    x, y, z, 
-                                    _b_parent->data()->template get<Field>(),
-                                     count++);
-                        child->data()->template get<Field>(ic,jc,kc) += interp;
-                    }
-                }
-            }
+                const float_type interp= 
+                    interpolation::interpolate(
+                            min.x(), min.y(), min.z(), 
+                            x[0], x[1], x[2], 
+                            _b_parent->data()->template get<Field>()) ;
+                    n.template get<Field>()+=interp;
+            });
         }
     }
+
 
 private:
     Simulation*                 sim_;       ///< simualtion 

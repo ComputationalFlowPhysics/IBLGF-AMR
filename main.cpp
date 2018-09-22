@@ -24,8 +24,8 @@ int main(int argc, char *argv[])
     // Read in dictionary
     Dictionary dictionary(input);
     
+    //Instantiate setup
     PoissonProblem setup(&dictionary);
-    //ViewTest setup(&dictionary);
 
     // run setup
     setup.run();

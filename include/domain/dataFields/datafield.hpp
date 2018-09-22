@@ -31,8 +31,8 @@ public: //member types
     static constexpr int dimension(){return Dim;}
 
     using block_type = BlockDescriptor<int,Dim>;
-    using mutliarray_ref_t =Multiarray_ref<data_type,Dim>;
-    using view_type =typename mutliarray_ref_t::view_type;
+    using coordinate_t = typename block_type::base_t;
+    using view_type =View<DataField, Dim>;
 
 public: //Ctors:
 
@@ -75,30 +75,7 @@ public: //member functions
         this->extent(_b.extent());
         this->level()= _b.level();
         data_.resize(real_block_.nPoints());
-
-        //FIXME: 
-        //std::fill(data_.begin(), data_.end(), 0.0);
-        //ma_ref_=std::make_shared<mutliarray_ref_t>(&data_[0], this->real_block_);
-        //view_type wview=ma_ref_->get_view(this->real_block_);
-        //domain_view_=std::make_shared<view_type>(ma_ref_->get_view(this->real_block_));
-        //for(auto it=domain_view_->begin();it!=domain_view_->end();++it)
-        //{
-        //    for(auto it2=it->begin(); it2!=it->end(); ++it2)
-        //    {
-        //        for(auto it3=it2->begin(); it3!=it2->end(); ++it3)
-        //        {
-        //            double v=*it3;
-        //            std::cout<<*it3<<std::endl;
-        //        }
-        //    }
-        //}
     }
-
-    //auto view(const block_type& _b ) const 
-    //{
-    //    return ma_ref_.get_view(_b);
-
-    //}
 
     auto& operator[](size_type i ) noexcept {return data_[i];}
     const auto& operator[](size_type i )const noexcept {return data_[i];}
@@ -111,6 +88,30 @@ public: //member functions
     auto size()const noexcept{return data_.size();}
 
     //Get ijk-data
+    inline DataType* get_ptr(const coordinate_t& _c) noexcept
+    {
+        return &data_[real_block_.globalCoordinate_to_index(_c[0],
+                                                           _c[1],
+                                                           _c[2])];
+    }
+    inline const DataType* get_ptr(const coordinate_t& _c) const noexcept
+    {
+        return &data_[real_block_.globalCoordinate_to_index(_c[0],
+                                                           _c[1],
+                                                           _c[2])];
+    }
+    inline DataType& get(const coordinate_t& _c) noexcept
+    {
+        return data_[real_block_.globalCoordinate_to_index(_c[0],
+                                                           _c[1],
+                                                           _c[2])];
+    }
+    inline const DataType& get(const coordinate_t& _c) const noexcept
+    {
+        return data_[real_block_.globalCoordinate_to_index(_c[0],
+                                                           _c[1],
+                                                           _c[2])];
+    }
     inline const DataType& get(int _i, int _j, int _k) const noexcept
     {
         return data_[real_block_.globalCoordinate_to_index(_i,
@@ -119,8 +120,6 @@ public: //member functions
     }
     inline DataType& get(int _i, int _j, int _k) noexcept
     {
-
-        //std::cout<<"indx: "<<real_block_.globalCoordinate_to_index(_i, _j, _k)<<std::endl;
         return data_[real_block_.globalCoordinate_to_index(_i,
                                                            _j,
                                                            _k)];
@@ -163,21 +162,29 @@ public: //member functions
     }
     
   
-    buffer_d_t lbuffer()const noexcept{return lowBuffer_;}
-    buffer_d_t hbuffer()const noexcept{return highBuffer_;}
+    buffer_d_t& lbuffer()noexcept{return lowBuffer_;}
+    const buffer_d_t& lbuffer()const noexcept{return lowBuffer_;}
+    buffer_d_t& hbuffer()noexcept{return highBuffer_;}
+    const buffer_d_t& hbuffer()const noexcept{return highBuffer_;}
 
     const block_type& real_block()const noexcept{return real_block_;}
     block_type& real_block()noexcept{return real_block_;}
 
-    //auto& domain_view(){return domain_view_;}
-    
-
-    auto domain_view()
+    /** @brief Get a (sub-)view of the datafield
+     */
+    auto view(const block_type& _b,
+              coordinate_t _stride=coordinate_t(1)) noexcept
     {
-        return View<DataField, Dim>(this,*this);
-
+        return view_type(this,_b, _stride);
     }
-
+    auto domain_view() noexcept
+    {
+        return view(*this);
+    }
+    auto real_domain_view()noexcept
+    {
+        return view(real_block_);
+    }
     
 
 protected: //protected memeber:
@@ -186,8 +193,7 @@ protected: //protected memeber:
     buffer_d_t lowBuffer_ =buffer_d_t(0); ///< Buffer in negative direction
     buffer_d_t highBuffer_=buffer_d_t(0); ///< Buffer in positive direction
     block_type real_block_;               ///< Block descriptorinlcuding buffer
-    //std::shared_ptr<mutliarray_ref_t> ma_ref_;///< Boost multiarray_ref wrapper 
-    //std::shared_ptr<view_type> domain_view_;  ///< Boost multiarray_ref wrapper 
+
 };
 
 

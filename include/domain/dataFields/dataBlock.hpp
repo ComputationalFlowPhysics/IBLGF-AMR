@@ -33,7 +33,8 @@ public: //member types
 
     using fields_tuple_t = std::tuple<DataFieldType<dimension>...>;
     using field_type_iterator_t = tuple_utils::TypeIterator<DataFieldType<dimension>...>;
-    using node_field =  DataField<node_t,Dim>;
+    using node_field_type =  DataField<node_t,Dim>;
+    using buffer_type = typename node_field_type::buffer_d_t;
 
 
     using node_itertor = typename std::vector<node_t>::iterator;
@@ -117,11 +118,21 @@ public: //member functions
     {
         return std::get<Field<dimension>>(fields).get(_i,_j,_k);
     }
-
     template<template<std::size_t> class Field>
     const auto& get(int _i, int _j, int _k)const
     {
         return std::get<Field<dimension>>(fields).get(_i,_j,_k);
+    }
+
+    template<template<std::size_t> class Field>
+    auto& get(const coordinate_type& _c)
+    {
+        return std::get<Field<dimension>>(fields).get(_c);
+    }
+    template<template<std::size_t> class Field>
+    const auto& get(const coordinate_type& _c) const 
+    {
+        return std::get<Field<dimension>>(fields).get(_c);
     }
 
     template<template<std::size_t> class Field>
@@ -136,14 +147,7 @@ public: //member functions
         return std::get<Field<dimension>>(fields).get_local(_i,_j,_k);
     }
 
-
-    auto nodes_begin()const noexcept{return nodes_.begin();}
-    auto nodes_end()const noexcept{return nodes_.end();}
-
-    const auto& nodes()const{return nodes_;}
-    auto& nodes(){return nodes_;}
-
-    auto& get_node(int _i, int _j, int _k )noexcept
+    auto& node(int _i, int _j, int _k )noexcept
     {
         return node_field_.get(_i,_j,_k);
     }
@@ -170,8 +174,13 @@ public: //member functions
         return this->get_flat_index(_coord);
     }
 
-    //FIXME:
-    auto& get_node_field(){return node_field_;}
+    auto& node_field()noexcept{return node_field_;}
+    const auto& node_field()const noexcept{return node_field_;}
+
+    auto nodes_domain_begin()const noexcept{return nodes_domain_.begin();}
+    auto nodes_domain_end()const noexcept{return nodes_domain_.end();}
+    const auto& nodes_domain()const{return nodes_domain_;}
+    auto& nodes_domain(){return nodes_domain_;}
 
 private: //private member helpers
 
@@ -183,24 +192,34 @@ private: //private member helpers
 
 
         bounding_box_=*this;
+        buffer_type lbuff(0), rbuff(0);
         for_fields( [&](auto& field){
-           bounding_box_.enlarge_to_fit(field.real_block());});
+            for(int d=0; d<Dim;++d)
+            {
+                if(field.lbuffer()[d]>lbuff[d])
+                    lbuff[d]=field.lbuffer()[d];
+                if(field.hbuffer()[d]>rbuff[d])
+                    rbuff[d]=field.hbuffer()[d];
+            }
+           bounding_box_.enlarge_to_fit(field.real_block());
+        });
 
-        nodes_.clear();
-        auto size=this->nPoints();
-        for(std::size_t i=0; i<size;++i)
-        {
-            nodes_.emplace_back(this,i );
-        }
-
-        //nodes_all_.clear();
-
-        //make sure that there is a least a righ buffer of one:
-        //FIXME: This should actually be 
-        node_field_.initialize(bounding_box_);
+        node_field_.lbuffer()=lbuff;
+        node_field_.hbuffer()=rbuff;
+        node_field_.initialize(*this);
         for( std::size_t i=0;i<node_field_.size();++i)
         {
             node_field_[i] = node_t(this,i);
+        }
+        
+        //Store most common views in vector of nodes:
+        nodes_domain_.clear();
+        nodes_domain_.resize(this->nPoints());
+        auto dview=node_field_.domain_view();
+        int count=0;
+        for(auto it=dview.begin();it!=dview.end();++it)
+        {
+            nodes_domain_[count++]=*it;
         }
     }
 
@@ -211,10 +230,10 @@ private: //Data members
     fields_tuple_t fields;
 
     /** @brief nodes in domain */
-    std::vector<node_t>  nodes_;
+    std::vector<node_t>  nodes_domain_;
 
     /** @brief field of nodes */
-    node_field node_field_;
+    node_field_type node_field_;
 
     /** @brief bounding box of all fields in the block*/
     super_type bounding_box_;                 

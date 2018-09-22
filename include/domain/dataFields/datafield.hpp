@@ -9,6 +9,7 @@
 #include <domain/dataFields/datafield_utils.hpp>
 #include <domain/dataFields/blockDescriptor.hpp>
 #include <domain/dataFields/array_ref.hpp>
+#include <domain/dataFields/view.hpp>
 
 
 namespace domain
@@ -169,6 +170,13 @@ public: //member functions
     block_type& real_block()noexcept{return real_block_;}
 
     //auto& domain_view(){return domain_view_;}
+    
+
+    auto domain_view()
+    {
+        return View<DataField, Dim>(this,*this);
+
+    }
 
     
 

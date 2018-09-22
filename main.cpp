@@ -3,6 +3,7 @@
 #include <boost/mpi/communicator.hpp>
 
 #include <setups/poissonProblem/poissonProblem.hpp>
+//#include <setups/tests/view_test/view_test.hpp>
 #include <dictionary/dictionary.hpp>
 
 
@@ -23,9 +24,10 @@ int main(int argc, char *argv[])
     // Read in dictionary
     Dictionary dictionary(input);
     
-    // run setup
     PoissonProblem setup(&dictionary);
+    //ViewTest setup(&dictionary);
 
+    // run setup
     setup.run();
 
     return 0;

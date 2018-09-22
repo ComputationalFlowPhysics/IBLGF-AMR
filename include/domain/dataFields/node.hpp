@@ -37,13 +37,17 @@ public: //Access
     template<template<std::size_t>class Field>
     auto& get()noexcept{
 
-        return c_->template get<Field>();
-        }
+        return c_->template get<Field>().get(level_coordinate_[0],
+                                         level_coordinate_[1],
+                                         level_coordinate_[2]);    
+    }
 
     template<template<std::size_t>class Field>
     const auto& get()const noexcept
     {
-        return c_->template get<Field>();
+        return c_->template get<Field>().get(level_coordinate_[0],
+                                         level_coordinate_[1],
+                                         level_coordinate_[2]);    
     }
 
 

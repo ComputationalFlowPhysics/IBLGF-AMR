@@ -170,6 +170,9 @@ public: //member functions
         return this->get_flat_index(_coord);
     }
 
+    //FIXME:
+    auto& get_node_field(){return node_field_;}
+
 private: //private member helpers
 
     /** @brief Generate nodes from the field tuple, both domain and nodes incl
@@ -193,12 +196,14 @@ private: //private member helpers
         //nodes_all_.clear();
 
         //make sure that there is a least a righ buffer of one:
+        //FIXME: This should actually be 
         node_field_.initialize(bounding_box_);
         for( std::size_t i=0;i<node_field_.size();++i)
         {
             node_field_[i] = node_t(this,i);
         }
     }
+
 
 private: //Data members
 

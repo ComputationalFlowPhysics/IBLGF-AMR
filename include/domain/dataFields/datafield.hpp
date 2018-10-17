@@ -6,6 +6,7 @@
 
 // IBLGF-specific
 #include <types.hpp>
+#include <linalg/linalg.hpp>
 #include <domain/dataFields/datafield_utils.hpp>
 #include <domain/dataFields/blockDescriptor.hpp>
 #include <domain/dataFields/array_ref.hpp>
@@ -55,7 +56,7 @@ public: //Ctors:
     : lowBuffer_(_lBuffer), highBuffer_(_hBuffer)
     {}
     DataField(const int _lBuffer, const int _hBuffer)
-    : lowBuffer_(_lBuffer), highBuffer_(_hBuffer) 
+    : lowBuffer_(_lBuffer), highBuffer_(_hBuffer)
     {}
 
 
@@ -65,7 +66,7 @@ public: //member functions
      *
      *  @param[in] _b Blockdescriptor
      */
-    void initialize(block_type _b)    
+    void initialize(block_type _b)
     {
         this->real_block_.base(_b.base()-lowBuffer_);
         this->real_block_.extent(_b.extent()+lowBuffer_+highBuffer_);
@@ -75,6 +76,14 @@ public: //member functions
         this->extent(_b.extent());
         this->level()= _b.level();
         data_.resize(real_block_.nPoints());
+
+        auto ext = real_block_.extent();
+        //std::cout << decltype(data_[0])<<std::endl;
+        DataType tmp;
+        types::float_type a=tmp;
+        //linalg::Cube_t a(&tmp,1,1,1);
+
+        //cube_ = (std::unique_ptr<linalg::Cube_t>) (new linalg::Cube_t(&data_[0], ext[0], ext[1], ext[2]));
     }
 
     auto& operator[](size_type i ) noexcept {return data_[i];}
@@ -125,7 +134,7 @@ public: //member functions
                                                            _k)];
     }
 
-    inline const DataType& 
+    inline const DataType&
     get_real_local(int _i, int _j, int _k) const noexcept
     {
         return data_[real_block_.localCoordinate_to_index(_i,_j,_k)];
@@ -135,7 +144,7 @@ public: //member functions
         return data_[real_block_.localCoordinate_to_index(_i,_j,_k)];
     }
 
-    inline const DataType& 
+    inline const DataType&
     get_local(int _i, int _j, int _k) const noexcept
     {
         return data_[
@@ -155,13 +164,13 @@ public: //member functions
     }
 
     template<class BlockType, class OverlapType>
-    bool buffer_overlap(const BlockType& other, 
+    bool buffer_overlap(const BlockType& other,
                  OverlapType& overlap, int level ) const noexcept
     {
         return real_block_.overlap(other, overlap, level);
     }
-    
-  
+
+
     buffer_d_t& lbuffer()noexcept{return lowBuffer_;}
     const buffer_d_t& lbuffer()const noexcept{return lowBuffer_;}
     buffer_d_t& hbuffer()noexcept{return highBuffer_;}
@@ -185,11 +194,12 @@ public: //member functions
     {
         return view(real_block_);
     }
-    
+
 
 protected: //protected memeber:
 
     std::vector<DataType> data_;          ///< actual data
+    std::unique_ptr<linalg::Cube_t> cube_;///< Linear algebra wrapper for the actual data >
     buffer_d_t lowBuffer_ =buffer_d_t(0); ///< Buffer in negative direction
     buffer_d_t highBuffer_=buffer_d_t(0); ///< Buffer in positive direction
     block_type real_block_;               ///< Block descriptorinlcuding buffer
@@ -245,4 +255,4 @@ GET_FIELD_MACRO(__VA_ARGS__,                                                \
 
 } //namespace domain
 
-#endif 
+#endif

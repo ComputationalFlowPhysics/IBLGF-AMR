@@ -8,7 +8,7 @@
 #include <global.hpp>
 #include <domain/octree/tree.hpp>
 #include <dictionary/dictionary.hpp>
-	
+
 
 namespace domain
 {
@@ -19,7 +19,7 @@ template<int Dim, class DataBlock>
 class Domain
 {
 
-public: 
+public:
 
     using datablock_t = DataBlock;
     using block_descriptor_t = typename datablock_t::block_descriptor_type;
@@ -54,7 +54,7 @@ public:
 
     template<class DictionaryPtr>
     Domain(DictionaryPtr _dictionary)
-    :Domain(parse_blocks(_dictionary, "block"), 
+    :Domain(parse_blocks(_dictionary, "block"),
             extent_t(_dictionary->template get_or<int>("max_extent", 4096)),
             extent_t(_dictionary->template get_or<int>("block_extent", 10))
             )
@@ -84,7 +84,7 @@ public:
     }
 
 
-    Domain(const std::vector<block_descriptor_t>& _baseBlocks, 
+    Domain(const std::vector<block_descriptor_t>& _baseBlocks,
            extent_t _maxExtent= extent_t(4096),
            extent_t _blockExtent=extent_t(10))
     : block_extent_ (_blockExtent)
@@ -97,13 +97,13 @@ public:
             {
                 if (b.extent()[d]%e[d])
                 {
-                    throw 
+                    throw
                     std::runtime_error(
                     "Domain: Extent of blocks are not evenly divisible");
                 }
                 if (std::abs(b.base()[d])%e[d]/*&& e[d]%std::abs(b.base()[d])*/)
                 {
-                    throw 
+                    throw
                     std::runtime_error(
                     "Domain: Base of blocks are not evenly divisible");
                 }
@@ -145,19 +145,21 @@ public:
             };
 
         //instantiate blocks
-        for(auto it=t_->begin_leafs();it!=t_->end_leafs();++it)
-        {
-            const int level=0;
-            auto bbase=t_->octant_to_level_coordinate(it->tree_coordinate());
-            it->data()=std::make_shared<datablock_t>(bbase, _blockExtent,level);
-        }
 
-        //for(auto it=begin_df();it!=end_df();++it)
+        //for(auto it=t_->begin_leafs();it!=t_->end_leafs();++it)
         //{
         //    const int level=0;
         //    auto bbase=t_->octant_to_level_coordinate(it->tree_coordinate());
-        //    it->data()=std::make_shared<datablock_t>(bbase, _blockExtent,level, false);
+        //    it->data()=std::make_shared<datablock_t>(bbase, _blockExtent,level);
         //}
+
+        for(auto it=begin_df();it!=end_df();++it)
+        {
+            const int level=0;
+            auto bbase=t_->octant_to_level_coordinate(it->tree_coordinate());
+            //it->data()=std::make_shared<datablock_t>(bbase, _blockExtent,level, false);
+            it->data()=std::make_shared<datablock_t>(bbase, _blockExtent,level, true);
+        }
 
         //for(auto it=begin_leafs();it!=end_leafs();++it)
         //{
@@ -168,9 +170,9 @@ public:
         //    it->data()->initialize(b);
         //}
     }
-                        
-                           
-     
+
+
+
     template<template<std::size_t> class Field>
     void init_field(octant_t* _root)
     {
@@ -220,6 +222,8 @@ public:
             auto bbase=t_->octant_to_level_coordinate(child_it->tree_coordinate(), level);
             child_it->data()=std::make_shared<datablock_t>(bbase, block_extent_,level);
         });
+
+        tree()->construct_neighbor_lists();
     }
 
     const auto& block_extent()const noexcept { return block_extent_; }
@@ -240,27 +244,27 @@ public:
             //FIXME:  To be general this should include interlevel neighbors
             auto neighbors = it->get_level_neighborhood(lbuff, hbuff);
 
-            //box-overlap per field 
+            //box-overlap per field
             it->data()->for_fields( [this,it, _begin, _end, &neighbors](auto& field)
             {
-                for(auto& jt: neighbors) 
+                for(auto& jt: neighbors)
                 {
                     if(it->key()==jt->key())continue;
 
                     //Check for overlap with current
                     block_descriptor_t overlap;
-                    if(field.buffer_overlap(jt->data()->descriptor(), overlap, 
+                    if(field.buffer_overlap(jt->data()->descriptor(), overlap,
                                             jt->refinement_level()))
                     {
                         using field_type = std::remove_reference_t<decltype(field)>;
                         auto& src = jt->data()->template get<field_type>();
-                        const auto overlap_src = overlap; 
-                        
+                        const auto overlap_src = overlap;
+
                         //it is target and jt is source
                         coordinate_type stride_tgt(1);
                         coordinate_type stride_src(1);
 
-                        assign(src, overlap,stride_src, 
+                        assign(src, overlap,stride_src,
                                field, overlap, stride_tgt);
 
                     }
@@ -282,26 +286,26 @@ public:
             //FIXME:  periodicity needs to be accounted for
             auto neighbors = it->get_level_neighborhood(lbuff, hbuff);
 
-            //box-overlap per field 
+            //box-overlap per field
             it->data()->for_fields( [this,it, _begin, _end, &neighbors](auto& field)
             {
-                //for(auto& jt: neighbors) 
+                //for(auto& jt: neighbors)
                 for(auto jt= _begin; jt!=_end;++jt )
                 {
                     if(it->key()==jt->key())continue;
 
                     //Check for overlap with current
                     block_descriptor_t overlap;
-                    if(field.buffer_overlap(jt->data()->descriptor(), overlap, 
+                    if(field.buffer_overlap(jt->data()->descriptor(), overlap,
                                             jt->refinement_level()))
                     {
                         using field_type = std::remove_reference_t<decltype(field)>;
                         auto& src = jt->data()->template get<field_type>();
-                        const auto overlap_src = overlap; 
+                        const auto overlap_src = overlap;
 
-                        auto overlap_tgt = overlap_src; 
+                        auto overlap_tgt = overlap_src;
                         overlap_tgt.level_scale(it->refinement_level());
-                        
+
                         //it is target and jt is source
                         int tgt_stride=1, src_stride=1;
                         if(it->refinement_level() > jt->refinement_level())
@@ -317,7 +321,7 @@ public:
                         coordinate_type stride_tgt(tgt_stride);
                         coordinate_type stride_src(src_stride);
 
-                        assign(src, overlap_src,stride_src, 
+                        assign(src, overlap_src,stride_src,
                                field, overlap_tgt, stride_tgt);
                     }
                 }
@@ -336,7 +340,7 @@ public:
         {
             //determine neighborhood
             //TODO: This should only include the neighbors
-            
+
             auto j_begin=begin_leafs();
             auto j_end=end_leafs();
                  for(auto jt= j_begin; jt!=j_end;++jt )
@@ -354,7 +358,7 @@ public:
                 cBlock.grow(1,1);
                 //cBlock.shift(-1);
                 //if(_level==1)cBlock.grow(0,2);
-               
+
                 if(fBlock.overlap(cBlock, overlap, fBlock.level()))
                 {
                     bool viable =false;
@@ -389,8 +393,8 @@ public:
         auto _begin=begin_leafs();
         auto _end=end_leafs();
         block_descriptor_t bb(
-                base_t(std::numeric_limits<scalar_coord_type>::max()), 
-                extent_t(0), _l 
+                base_t(std::numeric_limits<scalar_coord_type>::max()),
+                extent_t(0), _l
         );
 
         for(auto it=_begin ; it!=_end;++it )
@@ -412,8 +416,8 @@ public:
     float_type dx_base()const noexcept{return dx_base_;}
 
 public:
-    
-    friend std::ostream& operator<<(std::ostream& os, Domain& d) 
+
+    friend std::ostream& operator<<(std::ostream& os, Domain& d)
     {
         os<<"Number of octants: "<<d.num_leafs()<<std::endl;
         os<<"Block extent : "<<d.block_extent_<<std::endl;
@@ -433,8 +437,8 @@ public:
 private:
 
     template<class DictionaryPtr>
-    std::vector<block_descriptor_t> 
-    parse_blocks(DictionaryPtr _dict, 
+    std::vector<block_descriptor_t>
+    parse_blocks(DictionaryPtr _dict,
                  std::string _dict_name="block")
     {
         std::vector<block_descriptor_t> res;
@@ -451,7 +455,7 @@ private:
 
 
 private:
-    std::shared_ptr<tree_t> t_; 
+    std::shared_ptr<tree_t> t_;
     extent_t block_extent_;
     block_descriptor_t bounding_box_;
     float_type dx_base_;
@@ -460,4 +464,4 @@ private:
 
 }
 
-#endif 
+#endif

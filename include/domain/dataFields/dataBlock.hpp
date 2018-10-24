@@ -18,7 +18,7 @@ namespace domain
 {
 
 template<int Dim,
-         template<class >class NodeType, 
+         template<class >class NodeType,
          template<std::size_t> class ...DataFieldType>
 class DataBlock : public  BlockDescriptor<int, Dim>
 {
@@ -28,7 +28,7 @@ public: //member types
     static constexpr int dim(){return Dim;}
     static constexpr int dimension=Dim;
 
-    
+
     using node_t = NodeType<DataBlock>;
 
     using fields_tuple_t = std::tuple<DataFieldType<dimension>...>;
@@ -114,6 +114,14 @@ public: //member functions
     template<class T> const auto& get_data()const{return std::get<T>(fields).data();}
 
     template<template<std::size_t> class Field>
+    auto& get_linalg_data(){return std::get<Field<dimension>>(fields).linalg_data();}
+    template<template<std::size_t> class Field>
+    const auto& get_linalg_data()const{return std::get<Field<dimension>>(fields).linalg_data();}
+
+    template<class T> auto& get_linalg_data(){return std::get<T>(fields).linalg_data();}
+    template<class T> const auto& get_linalg_data()const{return std::get<T>(fields).linalg_data();}
+
+    template<template<std::size_t> class Field>
     auto& get(int _i, int _j, int _k)
     {
         return std::get<Field<dimension>>(fields).get(_i,_j,_k);
@@ -130,7 +138,7 @@ public: //member functions
         return std::get<Field<dimension>>(fields).get(_c);
     }
     template<template<std::size_t> class Field>
-    const auto& get(const coordinate_type& _c) const 
+    const auto& get(const coordinate_type& _c) const
     {
         return std::get<Field<dimension>>(fields).get(_c);
     }
@@ -211,7 +219,7 @@ private: //private member helpers
         {
             node_field_[i] = node_t(this,i);
         }
-        
+
         //Store most common views in vector of nodes:
         nodes_domain_.clear();
         nodes_domain_.resize(this->nPoints());
@@ -236,7 +244,7 @@ private: //Data members
     node_field_type node_field_;
 
     /** @brief bounding box of all fields in the block*/
-    super_type bounding_box_;                 
+    super_type bounding_box_;
 
 
 

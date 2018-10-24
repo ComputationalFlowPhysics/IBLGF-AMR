@@ -25,14 +25,19 @@ public:
         : data_(Policy::cube_wrap(ptr_aux_mem, n_rows, n_cols, n_slices))
     {}
 
-    auto cube_noalias_view(auto cube, auto x1, auto x2, auto x3)
+    auto cube_noalias_view()
+    {
+        return Policy::cube_noalias_view(data_);
+    }
+
+    auto cube_noalias_view(auto& cube, auto x1, auto x2, auto x3)
     {
         return Policy::cube_noalias_view(cube, x1, x2, x3);
     }
 
     // member
     types::float_type tmp;
-    decltype(Policy::cube_wrap(&tmp, 1, 1, 1)) data_;
+    decltype(Policy::cube_wrap(&tmp, 2, 2, 2)) data_;
 
 };
 

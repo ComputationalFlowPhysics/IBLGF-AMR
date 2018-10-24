@@ -46,11 +46,11 @@ public: //Ctors:
     DataField(DataField&& rhs)=default;
 	DataField& operator=(DataField&&) & = default;
 
-    DataField(size_type _size, DataType _initValue=0)
-    {
-        data_.resize(_size);
-        std::fill(data_.begin(), data_.end(),_initValue);
-    }
+    //DataField(size_type _size, DataType _initValue=0)
+    //{
+    //    data_.resize(_size);
+    //    std::fill(data_.begin(), data_.end(),_initValue);
+    //}
 
     DataField(const buffer_d_t& _lBuffer, const buffer_d_t& _hBuffer)
     : lowBuffer_(_lBuffer), highBuffer_(_hBuffer)
@@ -78,12 +78,7 @@ public: //member functions
         data_.resize(real_block_.nPoints());
 
         auto ext = real_block_.extent();
-        //std::cout << decltype(data_[0])<<std::endl;
-        DataType tmp;
-        types::float_type a=tmp;
-        //linalg::Cube_t a(&tmp,1,1,1);
-
-        //cube_ = (std::unique_ptr<linalg::Cube_t>) (new linalg::Cube_t(&data_[0], ext[0], ext[1], ext[2]));
+        cube_ = std::unique_ptr<linalg::Cube_t> (new linalg::Cube_t( (types::float_type*) &data_[0], ext[0], ext[1], ext[2]));
     }
 
     auto& operator[](size_type i ) noexcept {return data_[i];}
@@ -93,6 +88,7 @@ public: //member functions
     auto end()const noexcept{return data_.end();}
 
     auto& data(){return data_;}
+    auto& linalg_data(){return cube_->data_;}
 
     auto size()const noexcept{return data_.size();}
 

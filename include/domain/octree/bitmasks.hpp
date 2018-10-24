@@ -11,7 +11,7 @@ namespace octree
 template<int Dim>
 struct Bitmasks { };
 
-template<> 
+template<>
 struct Bitmasks<3>{
 
 
@@ -22,18 +22,19 @@ using scalar_coordinate_type = int;
 using level_type = int;
 static constexpr level_type max_level = 19;
 
-//Note 0b indicates that the binary literal is used    
+//Note 0b indicates that the binary literal is used
 //The key bits are encoded as follows
 //0--19*3-1=0--56 bit: coordinates
 //57--61 bit: level
 //61--63 bit: flags
-//                                    --1--2--3--4--5--6--7--8--9-10-11-12-13-14-15-16-17-18-19--lev-- 
+//                                    --1--2--3--4--5--6--7--8--9-10-11-12-13-14-15-16-17-18-19--lev--
 //                                    --|--|--|--|--|--|--|--|--|--|--|--|--|--|--|--|--|--|--|----|-|
 static constexpr index_t level_mask    = 0b0000000000000000000000000000000000000000000000000000000001111100;
 static constexpr index_t coord_mask    = 0b1111111111111111111111111111111111111111111111111111111110000000;
 static constexpr index_t flag_mask     = 0b0000000000000000000000000000000000000000000000000000000000000011;
 static constexpr index_t lo_mask       = 0b0000000000000000000000000000000000000000000000000000000000000001;
 static constexpr index_t hi_mask       = 0b1000000000000000000000000000000000000000000000000000000000000000;
+static constexpr index_t hi_3_mask     = 0b1110000000000000000000000000000000000000000000000000000000000000;
 static constexpr index_t x_mask        = 0b0010010010010010010010010010010010010010010010010010010010000000;
 static constexpr index_t y_mask        = 0b0100100100100100100100100100100100100100100100100100100100000000;
 static constexpr index_t z_mask        = 0b1001001001001001001001001001001001001001001001001001001000000000;
@@ -111,12 +112,12 @@ static constexpr index_t coord_mask_17 = 0b1111111111111111111111111111111111111
 static constexpr index_t coord_mask_18 = 0b1111111111111111111111111111111111111111111111111111110000000000;
 static constexpr index_t coord_mask_19 = 0b1111111111111111111111111111111111111111111111111111111110000000;
 
-static constexpr std::array<index_t,20> coord_mask_arr = {{ coord_mask_0,  coord_mask_1,  coord_mask_2,  
-                                                            coord_mask_3,  coord_mask_4,  coord_mask_5,  
-                                                            coord_mask_6,  coord_mask_7,  coord_mask_8,  
-                                                            coord_mask_9,  coord_mask_10, coord_mask_11, 
+static constexpr std::array<index_t,20> coord_mask_arr = {{ coord_mask_0,  coord_mask_1,  coord_mask_2,
+                                                            coord_mask_3,  coord_mask_4,  coord_mask_5,
+                                                            coord_mask_6,  coord_mask_7,  coord_mask_8,
+                                                            coord_mask_9,  coord_mask_10, coord_mask_11,
                                                             coord_mask_12, coord_mask_13, coord_mask_14,
-                                                            coord_mask_15, coord_mask_16, coord_mask_17, 
+                                                            coord_mask_15, coord_mask_16, coord_mask_17,
                                                             coord_mask_18, coord_mask_19  }};
 
 static constexpr scalar_coordinate_type max_coord_0  =      1;
@@ -140,15 +141,15 @@ static constexpr scalar_coordinate_type max_coord_17 = 131072;
 static constexpr scalar_coordinate_type max_coord_18 = 262144;
 static constexpr scalar_coordinate_type max_coord_19 = 524288;
 
-static constexpr std::array<scalar_coordinate_type,20> max_coord_arr = {{ max_coord_0,  max_coord_1,  max_coord_2,  
-                                                                   max_coord_3,  max_coord_4,  max_coord_5,  
-                                                                   max_coord_6,  max_coord_7,  max_coord_8,  
-                                                                   max_coord_9,  max_coord_10, max_coord_11, 
+static constexpr std::array<scalar_coordinate_type,20> max_coord_arr = {{ max_coord_0,  max_coord_1,  max_coord_2,
+                                                                   max_coord_3,  max_coord_4,  max_coord_5,
+                                                                   max_coord_6,  max_coord_7,  max_coord_8,
+                                                                   max_coord_9,  max_coord_10, max_coord_11,
                                                                    max_coord_12, max_coord_13, max_coord_14,
-                                                                   max_coord_15, max_coord_16, max_coord_17, 
+                                                                   max_coord_15, max_coord_16, max_coord_17,
                                                                    max_coord_18, max_coord_19  }};
 
-}; 
+};
 
 constexpr decltype(Bitmasks<3>::min_arr) Bitmasks<3>::min_arr;
 constexpr decltype(Bitmasks<3>::max_arr) Bitmasks<3>::max_arr;

@@ -71,12 +71,14 @@ public: //Ctors
         : super_type(key_type(_x,_level),_tr) { }
 
 
-     /** @brief Find leaf that shares a vertex with octant 
-      *         on same, plus or minus one level 
+     /** @brief Find leaf that shares a vertex with octant
+      *         on same, plus or minus one level
       **/
     Octant* vertex_neighbor(const coordinate_type& _offset)
     {
         // current level
+        // FIXME this could be implemented in a faster way
+        //
         auto nn=this->key_.neighbor(_offset);
         if(nn==this->key()) return nullptr;
         auto nn_ptr = this->tree()->find_leaf(nn);
@@ -173,6 +175,12 @@ public: //Ctors
     Octant* parent()      const noexcept{return parent_;}
     Octant* child (int i) const noexcept{return children_[i].get();}
 
+    Octant* neighbor (int i) const noexcept{return neighbor_[i];}
+    void neighbor(int i, Octant* new_neighbor)
+    {
+       neighbor_[i] = new_neighbor;
+    }
+
 
 private:
 
@@ -192,6 +200,10 @@ private:
 
     std::array<std::shared_ptr<Octant>,pow(2,Dim)> children_ =
         {{nullptr,nullptr,nullptr,nullptr, nullptr,nullptr,nullptr,nullptr}};
+
+    //FIXME don't know how to use shared ptr
+    //std::array<std::shared_ptr<Octant>,pow(3,Dim) > neighbor_ = {nullptr};
+    std::array<Octant*,pow(3,Dim) > neighbor_ = {nullptr};
 };
 
 

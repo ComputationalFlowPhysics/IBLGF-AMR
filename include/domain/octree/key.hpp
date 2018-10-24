@@ -35,29 +35,29 @@ public: // member types
     using level_type = bitmask_t::level_type;
     using real_scalar_coordinate_type = float_type;
     using real_coordinate_type = vector_type<float_type,Dim>;
-    
+
 public: // static
 
     static constexpr level_type max_level() noexcept
-    { 
-        return bitmask_t::max_level; 
-    } 
+    {
+        return bitmask_t::max_level;
+    }
 
     static Key begin(level_type _level) noexcept
     {
         return {bitmask_t::min_arr[_level]};
     }
-    
+
     static Key end(level_type _level) noexcept
     {
         return {(bitmask_t::min_arr[_level] | bitmask_t::coord_mask)+1u};
     }
-    
+
     static Key rbegin(level_type _level) noexcept
     {
         return {bitmask_t::max_arr[_level]};
     }
-    
+
     static Key rend(level_type _level) noexcept
     {
         return {bitmask_t::min_arr[_level]-1u};
@@ -67,7 +67,7 @@ public: // static
     {
         return {bitmask_t::min_arr[_level]};
     }
-    
+
     static Key max(level_type _level) noexcept
     {
         return {bitmask_t::max_arr[_level]};
@@ -96,7 +96,7 @@ public: // static
     return {{ std::min(std::max(x.x(),0),bitmask_t::max_coord_arr[level]-1),
               std::min(std::max(x.y(),0),bitmask_t::max_coord_arr[level]-1),
               std::min(std::max(x.z(),0),bitmask_t::max_coord_arr[level]-1)}};
-   } 
+   }
 
    static level_type minimum_level(coordinate_type  x) noexcept
    {
@@ -123,10 +123,10 @@ public: // ctors
 
     Key() noexcept
     : _index(bitmask_t::min_0) {}
-    
+
     Key(value_type idx) noexcept
     : _index(idx) {}
-    
+
     Key(coordinate_type x, level_type _level) noexcept
     {
         _index = bitmask_t::lo_mask;
@@ -147,8 +147,8 @@ public: // ctors
     Key(coordinate_type _x)
     : Key(_x, minimum_level(_x)) { }
 
-  
-    
+
+
     Key(const Key&) = default;
     Key(Key&&) = default;
     Key& operator=(const Key&) & = default;
@@ -161,30 +161,30 @@ public: // advance
         level_type _level = level();
         if (_index >= max(_level)._index) {_index = end(_level)._index; return *this;};
         if (_index <= rend(_level)._index) {_index = min(_level)._index; return *this;};
-        _index = (((((bitmask_t::coord_mask_arr[_level] & _index) 
-                        >> ((bitmask_t::max_level-_level)*3+7)) + 1u) 
+        _index = (((((bitmask_t::coord_mask_arr[_level] & _index)
+                        >> ((bitmask_t::max_level-_level)*3+7)) + 1u)
                  << ((bitmask_t::max_level-_level)*3+7)) | bitmask_t::min_arr[_level]);
         return *this;
     }
-    
+
     Key operator++(int) noexcept
     {
         Key tmp(*this);
         this->operator++();
         return tmp;
     }
-    
+
     Key& operator--() noexcept
     {
         level_type _level = level();
         if (_index >= end(_level)._index) {_index = max(_level)._index; return *this;};
         if (_index <= min(_level)._index) {_index = rend(_level)._index; return *this;};
-        _index = (((((bitmask_t::coord_mask_arr[_level] & _index) 
-                        >> ((bitmask_t::max_level-_level)*3+7)) - 1u) 
+        _index = (((((bitmask_t::coord_mask_arr[_level] & _index)
+                        >> ((bitmask_t::max_level-_level)*3+7)) - 1u)
                  << ((bitmask_t::max_level-_level)*3+7)) | bitmask_t::min_arr[_level]);
         return *this;
     }
-    
+
     Key operator--(int) noexcept
     {
         Key tmp(*this);
@@ -195,14 +195,14 @@ public: // advance
     Key& operator +=(int n) noexcept
     {
         level_type _level = level();
-        if (n < 0 && _index > (bitmask_t::max_arr[_level])) 
+        if (n < 0 && _index > (bitmask_t::max_arr[_level]))
         {
             _index = bitmask_t::max_arr[_level];
             ++n;
         }
         else if (_index > (bitmask_t::max_arr[_level]))
             return *this;
-        
+
         if (n > 0 && _index < (bitmask_t::min_arr[_level]))
         {
             _index = bitmask_t::min_arr[_level];
@@ -210,29 +210,29 @@ public: // advance
         }
         else if (_index < (bitmask_t::min_arr[_level]))
             return *this;
-        
+
         if (n==0) return *this;
-        
-        difference_type c  = ((bitmask_t::coord_mask_arr[_level] & _index) 
+
+        difference_type c  = ((bitmask_t::coord_mask_arr[_level] & _index)
                                >> ((bitmask_t::max_level-_level)*3+7));
-        
+
         if (n < 0)
         {
             if (-n > c) {_index = rend(_level)._index; return *this;};
         }
         else
         {
-            const difference_type m  = ((bitmask_t::coord_mask_arr[_level]) >> 
+            const difference_type m  = ((bitmask_t::coord_mask_arr[_level]) >>
                                        ((bitmask_t::max_level-_level)*3+7));
             if (n > m-c) {_index = end(_level)._index; return *this;};
         }
-        
+
         c+=n;
-        _index = ((static_cast<value_type>(c) << 
+        _index = ((static_cast<value_type>(c) <<
                  ((bitmask_t::max_level-_level)*3+7)) | bitmask_t::min_arr[_level]);
         return *this;
     }
-    
+
     Key& operator -=(int n) noexcept
     {
         return this->operator+=(-n);
@@ -248,13 +248,13 @@ public: // advance
     {
         return this->operator+(-n);
     }
-    
+
     difference_type operator-(const Key& x) const noexcept
     {
         const auto level_l = level();
         const auto level_r = x.level();
         const auto _level = std::max(level_l,level_r);
-        difference_type res(0); 
+        difference_type res(0);
         if (_index >= end(level_l)._index) res += 1;
         else if (_index <= rend(level_l)._index) res -= 1;
         if (x._index >= end(level_r)._index) res -= 1;
@@ -266,6 +266,11 @@ public: // advance
     }
 
 public: // queries
+
+    int sib_number(level_type l) const noexcept
+    {
+        return ((bitmask_t::hi_3_mask >> l*3) & _index) >> (61-l*3);
+    }
 
     level_type level() const noexcept
     {
@@ -297,7 +302,15 @@ public: // queries
         return real_coordinate_type(coordinate())/bitmask_t::max_coord_arr[level()];
     }
 
-    //return end if neighbor is out of scope 
+    //return end if neighbor is out of scope
+    //Key neighbor(const int _offset ) const noexcept
+    //{
+    //    // 3^3 = 27 of the children in the order of (z,y,x) = (-1 ~ 1, -1 ~1,
+    //    // -1~1)
+
+    //    return neighbor({{idx_x, idx_y, idx_z}});
+    //}
+
     Key neighbor(const coordinate_type& _offset) const noexcept
     {
         const auto c =coordinate();
@@ -309,7 +322,7 @@ public: // queries
         } else{
             std::cout<<"non-representable"<<std::endl;
             return end(l);
-        } 
+        }
     }
 
 
@@ -317,37 +330,44 @@ public: // queries
     {
         const auto _level(level());
         if (_level == 0) return *this;
-        return {((bitmask_t::coord_mask_arr[_level-1] & _index) | 
+        return {((bitmask_t::coord_mask_arr[_level-1] & _index) |
                 (static_cast<value_type>(_level - 1) << 2))+1u};
+    }
+
+    Key level_up_to(level_type Lv ) const noexcept
+    {
+        if (Lv == 0) return *this;
+        return {((bitmask_t::coord_mask_arr[Lv] & _index) |
+                (static_cast<value_type>(Lv) << 2))+1u};
     }
 
     Key child(int i) const noexcept
     {
         const auto _level(level());
         if (_level == bitmask_t::max_level) return *this;
-        return {((bitmask_t::coord_mask_arr[_level] & _index) | 
-                (static_cast<value_type>(i) << ((bitmask_t::max_level-(_level+1))*3+7)) | 
+        return {((bitmask_t::coord_mask_arr[_level] & _index) |
+                (static_cast<value_type>(i) << ((bitmask_t::max_level-(_level+1))*3+7)) |
                 (static_cast<value_type>(_level+1) << 2))+1u};
     }
-    
+
     int child_number() const noexcept
     {
         const auto _level(level());
         if (_level == 0) return -1;
-        return (((bitmask_t::coord_mask_arr[_level] & _index) - 
-                 (bitmask_t::coord_mask_arr[_level-1] & _index)) 
+        return (((bitmask_t::coord_mask_arr[_level] & _index) -
+                 (bitmask_t::coord_mask_arr[_level-1] & _index))
                 >> (7 + 3*(bitmask_t::max_level-_level)));
     }
 
     Key equal_coordinate_parent() const noexcept
     {
         Key p(*this);
-        if (is_end()) 
+        if (is_end())
             return p;
         else if (is_rend())
             p = rend(0);
         else
-            while (p.child_number()==0) 
+            while (p.child_number()==0)
                 p = p.parent();
         return p;
     }
@@ -355,7 +375,7 @@ public: // queries
     Key equal_coordinate_child() const noexcept
     {
         Key c(*this);
-        if (is_rend()) 
+        if (is_rend())
             return c;
         else if (is_end())
             c = end(bitmask_t::max_level);
@@ -388,14 +408,14 @@ public: // print
 
     friend std::ostream& operator<<(std::ostream& os, const Key& t)
     {
-        os 
+        os
         << "{ "
         << "\033[1m";
         for (int i=0; i<bitmask_t::max_level; ++i)
         {
             if (i%2 == 1)
                 os << "\033[38;2;159;63;63m";
-            else 
+            else
                 os << "\033[38;2;63;127;159m";
             os
             << (((t._index & (bitmask_t::hi_mask >> (i*3)))>0u)?'1':'0')
@@ -406,23 +426,23 @@ public: // print
         for (int i=bitmask_t::max_level*3; i<(bitmask_t::max_level*3+5); ++i)
         {
             os << (((t._index & (bitmask_t::hi_mask >> i))>0u)?'1':'0');
-        } 
-        os 
+        }
+        os
         << "\033[38;2;127;127;127m"
         << (((t._index & (bitmask_t::lo_mask << 1))>0u)?'1':'0')
         << (((t._index & (bitmask_t::lo_mask))>0u)?'1':'0')
         << "\033[0m"
         << " = " << std::setw(22) << std::right << t._index
-        << ", level = " << std::setw(2) << std::right << t.level() 
-        //<< ", coord = " << t.coordinate() 
+        << ", level = " << std::setw(2) << std::right << t.level()
+        //<< ", coord = " << t.coordinate()
         << ", coord " <<  (t.is_end()?">":(t.is_rend()?"<":"="))
-        << " ("  << std::setw(6) << std::right << t.coordinate().x() 
-        << ", "  << std::setw(6) << std::right << t.coordinate().y() 
-        << ", "  << std::setw(6) << std::right << t.coordinate().z() 
+        << " ("  << std::setw(6) << std::right << t.coordinate().x()
+        << ", "  << std::setw(6) << std::right << t.coordinate().y()
+        << ", "  << std::setw(6) << std::right << t.coordinate().z()
         << ") = " << std::fixed
-        << " ("  << std::setw(11) << std::left << std::setprecision(9) << t.coordinate_1().x() 
-        << ", "  << std::setw(11) << std::left << std::setprecision(9) << t.coordinate_1().y() 
-        << ", "  << std::setw(11) << std::left << std::setprecision(9) << t.coordinate_1().z() 
+        << " ("  << std::setw(11) << std::left << std::setprecision(9) << t.coordinate_1().x()
+        << ", "  << std::setw(11) << std::left << std::setprecision(9) << t.coordinate_1().y()
+        << ", "  << std::setw(11) << std::left << std::setprecision(9) << t.coordinate_1().z()
         << ") }" << std::left << std::defaultfloat;
         return os;
     }
@@ -435,7 +455,7 @@ public: // print
         {
             if (i%2 == 1)
                 std::cout << "\033[38;2;159;63;63m";
-            else 
+            else
                 std::cout << "\033[38;2;63;127;159m";
             std::cout
                 << (((_idx & (bitmask_t::hi_mask >> (i*3)))>0u)?'1':'0')
@@ -446,8 +466,8 @@ public: // print
         for (int i=bitmask_t::max_level*3; i<(bitmask_t::max_level*3+5); ++i)
         {
             std::cout << (((_idx & (bitmask_t::hi_mask >> i))>0u)?'1':'0');
-        } 
-        std::cout 
+        }
+        std::cout
         << "\033[38;2;127;127;127m"
         << (((_idx & (bitmask_t::lo_mask << 1))>0u)?'1':'0')
         << (((_idx & (bitmask_t::lo_mask))>0u)?'1':'0')
@@ -462,42 +482,42 @@ public: // members
 };
 
 // binary operators
-template<int Dim> 
+template<int Dim>
 Key<Dim> operator+(int n, Key<Dim> k) noexcept
 { return k+=n; }
 
-template<int Dim> 
+template<int Dim>
 Key<Dim> operator-(int n, Key<Dim> k) noexcept
 { return k-=n; }
 
 // relational operators
 
-template<int Dim> 
-constexpr bool operator==(const Key<Dim>& l, const Key<Dim>& r) noexcept 
+template<int Dim>
+constexpr bool operator==(const Key<Dim>& l, const Key<Dim>& r) noexcept
 { return l._index == r._index; }
 
-template<int Dim> 
-constexpr bool operator!=(const Key<Dim>& l, const Key<Dim>& r) noexcept 
+template<int Dim>
+constexpr bool operator!=(const Key<Dim>& l, const Key<Dim>& r) noexcept
 { return l._index != r._index; }
 
-template<int Dim> 
-constexpr bool operator<(const Key<Dim>& l, const Key<Dim>& r) noexcept 
+template<int Dim>
+constexpr bool operator<(const Key<Dim>& l, const Key<Dim>& r) noexcept
 { return l._index < r._index; }
 
-template<int Dim> 
-constexpr bool operator<=(const Key<Dim>& l, const Key<Dim>& r) noexcept 
+template<int Dim>
+constexpr bool operator<=(const Key<Dim>& l, const Key<Dim>& r) noexcept
 { return l._index <= r._index; }
 
-template<int Dim> 
-constexpr bool operator>(const Key<Dim>& l, const Key<Dim>& r) noexcept 
+template<int Dim>
+constexpr bool operator>(const Key<Dim>& l, const Key<Dim>& r) noexcept
 { return l._index > r._index; }
 
-template<int Dim> 
-constexpr bool operator>=(const Key<Dim>& l, const Key<Dim>& r) noexcept 
+template<int Dim>
+constexpr bool operator>=(const Key<Dim>& l, const Key<Dim>& r) noexcept
 { return l._index >= r._index; }
 
 // range
-template<int Dim> 
+template<int Dim>
 std::pair<Key<Dim>,Key<Dim>> normalized_range(const Key<Dim>& l, const Key<Dim>& r) noexcept
 {
     return std::make_pair(l.equal_coordinate_range().first, r.equal_coordinate_range().second);
@@ -506,4 +526,4 @@ std::pair<Key<Dim>,Key<Dim>> normalized_range(const Key<Dim>& l, const Key<Dim>&
 
 }//namespace octree
 
-#endif 
+#endif

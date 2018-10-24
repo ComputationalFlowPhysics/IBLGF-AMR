@@ -51,31 +51,35 @@ namespace fmm
 
     public: // functionalities
 
-        template<class Block, template<size_t> class field>
-        void nli_antrp_node(Block* parent)
+        template<template<size_t> class field>
+        void nli_antrp_node(auto parent)
             {
                 auto& parent_linalg_data = parent->data()->template get_linalg_data<field>();
 
+                //std::cout<<parent->key() << std::endl;
+                //std::cout <<parent_linalg_data << std::endl;
                 for (int i = 0; i < parent->num_children(); ++i)
                 {
                     auto child = parent->child(i);
                     if (child == nullptr) continue;
 
+                    //std::cout<<"child # " << i << std::endl;
                     auto& child_linalg_data  = child ->data()->template get_linalg_data<field>();
-                    nli_antrp_node_exec(child_linalg_data, parent_linalg_data, i);
+                    nli_antrp_node(child_linalg_data, parent_linalg_data, i);
                 }
+                //std::cout << parent_linalg_data << std::endl;
 
             }
 
 
-        void nli_antrp_node_exec(auto& child, auto& parent, int child_idx)
+        void nli_antrp_node(auto& child, auto& parent, int child_idx)
         {
             int n = child.shape()[0];
             int idx_x = (child_idx & ( 1 << 0 )) >> 0;
             int idx_y = (child_idx & ( 1 << 1 )) >> 1;
             int idx_z = (child_idx & ( 1 << 2 )) >> 2;
 
-            //todo make it not temporary
+            //todo make it not temporary ???
             xt::xtensor<float_type, 2> nli_aux_2d_antrp(std::array<size_t, 2>{{ n,n }});
             xt::xtensor<float_type, 3> nli_aux_3d_antrp(std::array<size_t, 3>{{ n,n,n }});
 
@@ -110,11 +114,10 @@ namespace fmm
             }
         }
 
-        template<class Block_it, template<size_t> class field>
-        void intrp(const Block_it* _b_parent)
+        template<template<size_t> class field>
+        void intrp(auto parent)
         {
         }
-
 
 
 

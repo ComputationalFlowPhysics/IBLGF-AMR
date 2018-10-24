@@ -20,7 +20,7 @@ namespace octree
 {
 
 
-/** @brief Octree 
+/** @brief Octree
  *
  *  Parallel octree implementation using a full pointer-based implementation.
  */
@@ -61,8 +61,8 @@ public:
     Tree& operator=(Tree&& other)      & = default;
     ~Tree() = default;
 
- 
-    /** 
+
+    /**
      *  @brief Top-down construction of octree.
      *
      *  Given a vector of points and the correpsonding base level an
@@ -87,8 +87,7 @@ public:
             leafs_.emplace(leaf->key(), leaf);
         }
         construct_level_maps();
-
-
+        construct_neighbor_lists();
     }
 
 
@@ -117,6 +116,41 @@ public:
         return level_maps_[_level].end();
     }
 
+    const octant_iterator find(int _level, key_type key) const noexcept
+    {
+        return level_maps_[_level].find(key);
+    }
+
+    octant_iterator find(int _level, key_type key) noexcept
+    {
+        return level_maps_[_level].find(key);
+    }
+
+    octant_type* find_octant(key_type _k)
+    {
+
+        auto it = root();
+        auto l = it->level();
+
+
+        while (it->key() != _k)
+        {
+            auto child_ = it->child(_k.sib_number(l));
+
+            if  (child_ == nullptr)
+                return nullptr;
+
+            it = child_;
+
+            l++;
+        }
+
+        return it;
+    }
+
+
+
+
     auto num_leafs() const noexcept {return leafs_.size();}
 
     const int& base_level() const noexcept{return base_level_;}
@@ -127,7 +161,7 @@ public:
     octant_type* root()const noexcept{return root_.get();}
 
     template<class Function>
-    void refine(octant_iterator& _l, const Function& _f, 
+    void refine(octant_iterator& _l, const Function& _f,
                  bool _recursive = false)
     {
         for(int i=0;i<_l->num_children();++i)
@@ -138,6 +172,7 @@ public:
             c.first->second->flag(node_flag::octant);
             level_maps_[child->level()].emplace(child->key(),child);
         }
+
         _l = leafs_.erase(_l);
         if(_l->level()+1 > depth_) depth_=_l->level()+1;
         if(!_recursive) std::advance(_l,_l->num_children()-1);
@@ -170,7 +205,7 @@ public: //traversals
 	{
 		depth_first_traverse(root(), f);
 	}
-	
+
 
     /**
      * @brief Recursive breadth-first traversal
@@ -181,8 +216,8 @@ public: //traversals
      * @param [in] max_level Endlevel
      */
 	template<class Function>
-	void traverse_bfs(Function f, 
-                      int min_level=0, 
+	void traverse_bfs(Function f,
+                      int min_level=0,
                       int max_level=key_type::max_level())
 	{
 		for (int i=min_level; i<max_level; ++i)
@@ -204,6 +239,7 @@ private: //find
     {
         return octant_iterator(leafs_.find(_node.key()));
     }
+
     octant_type* find_leaf(key_type _k)
     {
         auto it=leafs_.find(_k);
@@ -216,12 +252,12 @@ private: //find
 
 private:  //Top down insert strategy
 
-    octant_type* insert_td(const coordinate_type& x, int level) 
-    { 
-        return insert_td(key_type(x,level)); 
+    octant_type* insert_td(const coordinate_type& x, int level)
+    {
+        return insert_td(key_type(x,level));
     }
 	octant_type* insert_td(const key_type& k)
-    { 
+    {
         return insert_impl_top_down(k,root_.get());
     }
 
@@ -232,12 +268,12 @@ private:  //Top down insert strategy
         {
             if (n->children_[i])
             {
-                if ( n->children_[i]->key() <= k) 
+                if ( n->children_[i]->key() <= k)
                 {
                     return insert_impl_top_down(k, n->children_[i].get());
                 }
             }
-            else 
+            else
             {
                 const auto ck = n->key().child(i);
                 if (ck <= k)
@@ -252,7 +288,7 @@ private:  //Top down insert strategy
                 );
     }
 
-private: //traversal 
+private: //traversal
 
     template<class Function>
     void breadth_first_traverse(octant_type* n, Function& f, int level)
@@ -264,7 +300,7 @@ private: //traversal
         }
         for (std::size_t i=0; i<n->num_children(); ++i)
         {
-            if(n->children_[i]) 
+            if(n->children_[i])
                 breadth_first_traverse(n->children_[i].get(), f, level);
         }
     }
@@ -292,7 +328,39 @@ public: // misc
            level_maps_[it->level()].emplace(it->key(),it.ptr());
         }
     }
- 
+
+    void construct_neighbor_lists()
+    {
+        dfs_iterator it_begin(root()); dfs_iterator it_end;
+
+        for(auto it =it_begin;it!=it_end;++it)
+        {
+            construct_octant_neighbor(it);
+        }
+    }
+
+    void construct_octant_neighbor(auto it)
+    {
+        for (int id = 0; id<27; id++)
+        {
+            int tmp = id;
+            auto idx = tmp % 3 -1;
+            tmp /=3;
+            auto idy = tmp % 3 -1;
+            tmp /=3;
+            auto idz = tmp % 3 -1;
+
+            auto k = it->key().neighbor({{idx,idy,idz}});
+            auto neighbor_i = find_octant(k);
+            if (neighbor_i == nullptr)
+                continue;
+
+            it->neighbor(id, neighbor_i);
+            }
+    }
+
+
+
     static coordinate_type unit_transform(coordinate_type _x, int _level)
     {
         return _x;
@@ -303,14 +371,14 @@ private:
     coordinate_transform_t octant_to_real_coordinate_=&Tree::unit_transform;
 
 
-    int base_level_=0;                              ///< Base level 
+    int base_level_=0;                              ///< Base level
     int depth_=0;                                   ///< Tree depth
     std::shared_ptr<octant_type> root_=nullptr;     ///< Tree root
     std::vector<octant_ptr_map_type> level_maps_;   ///< Octants per level
-    octant_ptr_map_type leafs_;                     ///< Map of tree leafs 
+    octant_ptr_map_type leafs_;                     ///< Map of tree leafs
 
 };
 
 
 } //namespace octree
-#endif 
+#endif

@@ -21,14 +21,18 @@ public:
     using mat_t    = tensor_t;
 
     static auto cube_wrap(types::float_type* ptr_aux_mem,
-            auto n_rows, auto n_cols, auto n_slices)
+            size_t n_rows, size_t n_cols, size_t n_slices)
     {
         int size = n_rows * n_cols * n_slices;
         return xt::adapt(ptr_aux_mem, size, xt::no_ownership(),
                 std::vector<std::size_t>{{n_rows, n_cols, n_slices}});
     }
 
-    static auto cube_noalias_view(auto cube, auto x1, auto x2, auto x3)
+    static auto cube_noalias_view(auto& cube)
+    {
+        return xt::noalias(cube);
+    }
+    static auto cube_noalias_view(auto& cube, auto x1, auto x2, auto x3)
     {
         return xt::noalias( xt::view(cube, x1, x2, x3) );
     }

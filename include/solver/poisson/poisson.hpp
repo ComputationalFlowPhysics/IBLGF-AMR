@@ -39,15 +39,15 @@ class PoissonSolver
 {
 
 public: //member types
-    using simulation_type = Simulation;
-    using domain_type = typename Simulation::domain_type;
-    using datablock_type = typename domain_type::datablock_t;
-    using tree_t = typename domain_type::tree_t;
-    using octant_t = typename tree_t::octant_type;
-    using block_type = typename datablock_type::block_descriptor_type;
-    using convolution_t = fft::Convolution;
+    using simulation_type      = Simulation;
+    using domain_type          = typename Simulation::domain_type;
+    using datablock_type       = typename domain_type::datablock_t;
+    using tree_t               = typename domain_type::tree_t;
+    using octant_t             = typename tree_t::octant_type;
+    using block_type           = typename datablock_type::block_descriptor_type;
+    using convolution_t        = typename fft::Convolution;
     using real_coordinate_type = typename domain_type::real_coordinate_type;
-    using coordinate_type = typename domain_type::coordinate_type;
+    using coordinate_type      = typename domain_type::coordinate_type;
 
 
 
@@ -56,27 +56,29 @@ public: //member types
 
     PoissonSolver( Simulation* _simulation)
     :
-    sim_(_simulation), 
+    sim_(_simulation),
     domain_(&_simulation->domain_),
     conv_(domain_->block_extent()+lBuffer+rBuffer,
          domain_->block_extent()+lBuffer+rBuffer),
-    fmm_(domain_->block_extent()[0]+1)
-    { 
+    fmm_(domain_->block_extent()[0]+lBuffer+rBuffer)
+    {
     }
 
 
 public:
 
-    /** @brief Solve the poisson equation using lattice Green's functions and 
+    /** @brief Solve the poisson equation using lattice Green's functions and
      *         a block-refined mesh.
-     *  @detail Lattice Green's functions are used for solving the poisson 
-     *  equation. FFT is used for the level convolution's. 
+     *  @detail Lattice Green's functions are used for solving the poisson
+     *  equation. FFT is used for the level convolution's.
      *  Interpolation/coarsification is used to project the solutions to fine
      *  and coarse meshes, respectively.
      */
     template<
-        template<std::size_t>class Source, 
-        template<std::size_t>class Target
+        template<std::size_t>class Source,
+        template<std::size_t>class Target,
+        template<std::size_t>class fmm_s,
+        template<std::size_t>class fmm_t
             >
     void solve()
     {
@@ -96,11 +98,17 @@ public:
             }
         }
 
+        //FMM test
+        //    fmm_.fmm_for_level<Source, Target, fmm_s, fmm_t>(domain_, domain_->tree()->base_level()+2, true);
+
         //Level-Interactions
         pcout<<"Level interactions "<<std::endl;
         for (int l  = domain_->tree()->base_level();
                  l < domain_->tree()->depth(); ++l)
         {
+            //test for FMM
+            fmm_.fmm_for_level<Source, Target, fmm_s, fmm_t>(domain_, l);
+
             for (auto it_t  = domain_->begin(l);
                       it_t != domain_->end(l); ++it_t)
             {
@@ -117,22 +125,22 @@ public:
                                             real_block().base();
                     const auto s_base = it_s->data()->template get<Source>().
                                             real_block().base();
-                    
+
                     // Get extent of Source region
                     const auto s_extent = it_s->data()->template get<Source>().
                                             real_block().extent();
                     const auto shift    = t_base - s_base;
-                    
+
                     // Calculate the dimensions of the LGF to be allocated
                     const auto base_lgf   = shift - (s_extent - 1);
                     const auto extent_lgf = 2 * (s_extent) - 1;
-                    
+
                     // Calculate the LGF
                     lgf_.get_subblock(block_type (base_lgf, extent_lgf), lgf);
 
                     // Perform convolution
                     conv_.execute_field(lgf, it_s->data()->template get<Source>());
-                    
+
                     // Extract the solution
                     block_type  extractor(s_base, s_extent);
                     conv_.add_solution(extractor,
@@ -145,7 +153,7 @@ public:
 
         // Interpolation
         std::cout<<"Interpolation"<<std::endl;
-        for (int lt = domain_->tree()->base_level(); 
+        for (int lt = domain_->tree()->base_level();
                  lt < domain_->tree()->depth(); ++lt)
         {
             for (auto it_t  = domain_->begin(lt);
@@ -157,7 +165,7 @@ public:
         }
     }
 
-    /** @brief Coarsify the source field. 
+    /** @brief Coarsify the source field.
      *  @detail Given a parent, coarsify the field from its children and
      *  assign it to the parent. Coarsification is an average, ie 2nd order
      *  accurate.
@@ -196,7 +204,7 @@ public:
     }
 
 
-    /** @brief Interplate the target field. 
+    /** @brief Interplate the target field.
      *  @detail Given a parent field, interpolate it onto the child meshes.
      *  Interpolation is 2nd order accurate.
      */
@@ -207,7 +215,7 @@ public:
         {
             auto child = _b_parent->child(i);
             if(child==nullptr) continue;
-            block_type child_view =  
+            block_type child_view =
                 child->data()->template get<Field>().real_block();
             auto cview =child->data()->node_field().view(child_view);
 
@@ -217,10 +225,10 @@ public:
                 auto min =(coord+1)/2-1;
                 real_coordinate_type x=(coord-0.5)/2.0;
 
-                const float_type interp= 
+                const float_type interp=
                     interpolation::interpolate(
-                            min.x(), min.y(), min.z(), 
-                            x[0], x[1], x[2], 
+                            min.x(), min.y(), min.z(),
+                            x[0], x[1], x[2],
                             _b_parent->data()->template get<Field>()) ;
                     n.template get<Field>()+=interp;
             });
@@ -229,14 +237,15 @@ public:
 
 
 private:
-    Simulation*                 sim_;       ///< simualtion 
+    Simulation*                 sim_;       ///< simualtion
     domain_type*                domain_;    ///< domain
     convolution_t               conv_;      ///< fft convolution
-    fmm::Fmm                    fmm_;       ///< fast-multipole 
+    //fmm::Fmm                  fmm_;       ///< fast-multipole
+    fmm::Fmm                    fmm_;       ///< fast-multipole
     lgf::LGF<lgf::Lookup>       lgf_;       ///< Lookup for the LGFs
 
-    parallel_ostream::ParallelOstream pcout; 
-    
+    parallel_ostream::ParallelOstream pcout;
+
 };
 
 }

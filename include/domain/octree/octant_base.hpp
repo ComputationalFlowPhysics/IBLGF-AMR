@@ -52,7 +52,7 @@ public:
 
 
     Octant_base(const coordinate_type& _x, int _level, tree_type* _t)
-    :key_(key_type(_x,_level)), 
+    :key_(key_type(_x,_level)),
      t_(_t){}
 
 
@@ -106,7 +106,7 @@ public:
         return Octant_base(this->key_.parent(),t_);
     }
 
-    /** @brief Get parent of type Octant_base with same coordinate than 
+    /** @brief Get parent of type Octant_base with same coordinate than
      *         current octant.
      * */
     Octant_base equal_coordinate_parent() const noexcept
@@ -115,9 +115,9 @@ public:
     }
 
 
-    /** @brief Get neighbor of type Octant_base 
-     *  
-     *  @param[in] _offset Offset from current octant in terms of 
+    /** @brief Get neighbor of type Octant_base
+     *
+     *  @param[in] _offset Offset from current octant in terms of
      *                     tree coordinates, i.e. octants.
      * */
     Octant_base neighbor(const coordinate_type& _offset)
@@ -144,5 +144,5 @@ protected:
 
 
 } //namespace octree
-#endif 
+#endif
 

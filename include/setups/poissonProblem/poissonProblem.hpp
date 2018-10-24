@@ -32,7 +32,7 @@ using namespace types;
 using namespace dictionary;
 using namespace fft;
 
-struct PoissonProblem 
+struct PoissonProblem
 {
 
     static constexpr int Dim = 3;
@@ -43,20 +43,26 @@ struct PoissonProblem
     make_field_type(phi_exact       , float_type, 1,       1)
     make_field_type(error           , float_type, 1,       1)
 
+    // temporarily here for FMM
+    make_field_type(fmm_s           , float_type, 1,       1)
+    make_field_type(fmm_t           , float_type, 1,       1)
+
     using datablock_t = DataBlock<
         Dim, node,
         phi_num,
         source,
         phi_exact,
-        error
+        error,
+        fmm_s,
+        fmm_t
         >;
 
 
     using coordinate_t       = typename datablock_t::coordinate_type;
     using domain_t           = domain::Domain<Dim,datablock_t>;
     using simulation_type    = Simulation<domain_t>;
-    using node_type          = typename datablock_t::node_t; 
-    using node_field_type    = typename datablock_t::node_field_type; 
+    using node_type          = typename datablock_t::node_t;
+    using node_field_type    = typename datablock_t::node_field_type;
 
 
     PoissonProblem(Dictionary* _d)
@@ -89,7 +95,7 @@ struct PoissonProblem
                 auto b=it->data()->descriptor();
                 coordinate_t lower(2), upper(2);
                 b.grow(lower, upper);
-                if(b.is_inside( std::pow(2.0,l)*center ) 
+                if(b.is_inside( std::pow(2.0,l)*center )
                    && it->refinement_level()==l
                   )
                 {
@@ -98,7 +104,7 @@ struct PoissonProblem
             }
         }
 
-        for (int lt = domain_.tree()->base_level(); 
+        for (int lt = domain_.tree()->base_level();
                  lt < domain_.tree()->depth(); ++lt)
         {
             for (auto it  = domain_.begin(lt);
@@ -131,7 +137,7 @@ struct PoissonProblem
            auto& nodes_domain=it->data()->nodes_domain();
            for(auto it2=nodes_domain.begin();it2!=nodes_domain.end();++it2 )
            {
-               it2->get<source>()  = 0.0;
+               it2->get<source>() = 0.0;
                it2->get<phi_num>()= 0.0;
                const auto& coord=it2->level_coordinate();
 
@@ -162,9 +168,9 @@ struct PoissonProblem
     /** @brief Run poisson test case, compute errors and write out.  */
     void run()
     {
-      
+
         solver::PoissonSolver<simulation_type> psolver(&simulation_);
-        psolver.solve<source, phi_num>();
+        psolver.solve<source, phi_num, fmm_s, fmm_t>();
         compute_errors();
         simulation_.write("solution.vtk");
         pcout << "Writing solution " << std::endl;

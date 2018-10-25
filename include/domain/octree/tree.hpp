@@ -88,6 +88,7 @@ public:
         }
         construct_level_maps();
         construct_neighbor_lists();
+        construct_influence_lists();
     }
 
 
@@ -341,6 +342,9 @@ public: // misc
 
     void construct_octant_neighbor(auto it)
     {
+        it->neighbor_clear();
+
+
         for (int id = 0; id<27; id++)
         {
             int tmp = id;
@@ -351,13 +355,71 @@ public: // misc
             auto idz = tmp % 3 -1;
 
             auto k = it->key().neighbor({{idx,idy,idz}});
+
+
             auto neighbor_i = find_octant(k);
             if (neighbor_i == nullptr)
                 continue;
 
+            //std::cout<< "construct neighbor test-----------------" << std::endl;
+            //std::cout<< k << std::endl;
+            //std::cout<< neighbor_i-> key() << std::endl;
             it->neighbor(id, neighbor_i);
+
             }
     }
+
+    void construct_influence_lists()
+    {
+        dfs_iterator it_begin(root()); dfs_iterator it_end;
+        //root doesn't have parent~
+        ++it_begin;
+
+        for(auto it =it_begin;it!=it_end;++it)
+        {
+            construct_octant_influence(it);
+        }
+    }
+
+    void construct_octant_influence(auto it)
+    {
+        // FIXME need to do a larger influence list test to reach 189
+        std::cout<< "-----------------------------------"<<std::endl;
+        std::cout<< it->key()<<std::endl;
+
+        it->influence_clear();
+        int infl_id = 0;
+        auto coord = it->key().coordinate();
+
+        auto p = it->parent();
+        for (int p_n_id=0; p_n_id<27; ++p_n_id)
+        {
+            auto p_n = p->neighbor(p_n_id);
+            if (p_n)
+            {
+                for(int p_n_child_id=0; p_n_child_id<8;++p_n_child_id)
+                {
+
+                    auto p_n_child = p_n->child(p_n_child_id);
+                    if (p_n_child)
+                    {
+                        auto p_n_c_coord = p_n_child->key().coordinate();
+                        if ((std::abs(p_n_c_coord.x() - coord.x())>1) ||
+                            (std::abs(p_n_c_coord.y() - coord.y())>1) ||
+                            (std::abs(p_n_c_coord.z() - coord.z())>1))
+                        {
+                            it->influence(infl_id, p_n_child);
+                            infl_id++;
+                        }
+                    }
+                }
+            }
+        }
+
+        std::cout<<infl_id<<std::endl;
+        std::cout<< "-----------------------------------"<<std::endl;
+    }
+
 
 
 

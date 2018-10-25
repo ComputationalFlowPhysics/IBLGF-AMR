@@ -223,7 +223,9 @@ public:
             child_it->data()=std::make_shared<datablock_t>(bbase, block_extent_,level);
         });
 
+        //FIXME is there any other place need to update those 2
         tree()->construct_neighbor_lists();
+        tree()->construct_influence_lists();
     }
 
     const auto& block_extent()const noexcept { return block_extent_; }

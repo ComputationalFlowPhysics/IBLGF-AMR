@@ -29,7 +29,13 @@ namespace fmm
             antrp_(Nb_ * Nb_ * 2, 0.0),
             antrp_mat_(&(antrp_[0]), Nb_, Nb_ * 2),
             antrp_sub_{std::vector<float_type>(Nb_ * Nb_, 0.0),std::vector<float_type>(Nb_ * Nb_, 0.0)},
-            antrp_mat_sub_{linalg::Mat_t(&antrp_sub_[0][0], Nb_, Nb_ ), linalg::Mat_t(&antrp_sub_[1][0], Nb_, Nb_ )}
+            antrp_mat_sub_{linalg::Mat_t(&antrp_sub_[0][0], Nb_, Nb_ ), linalg::Mat_t(&antrp_sub_[1][0], Nb_, Nb_ )},
+            nli_aux_1d_intrp(std::array<size_t, 1>{{ Nb_ }}),
+            nli_aux_2d_intrp(std::array<size_t, 2>{{ Nb_, Nb_ }}),
+            nli_aux_3d_intrp(std::array<size_t, 3>{{ Nb_, Nb_, Nb_ }}),
+
+            nli_aux_2d_antrp(std::array<size_t, 2>{{ Nb_, Nb_ }}),
+            nli_aux_3d_antrp(std::array<size_t, 3>{{ Nb_, Nb_, Nb_ }})
         {
             std::cout <<"antrp_mem, "<< &antrp_[0]<< std::endl;
             std::cout << &(antrp_mat_.data_(0,0)) << std::endl;
@@ -52,12 +58,69 @@ namespace fmm
     public: // functionalities
 
         template<template<size_t> class field>
+        void nli_intrp_node(auto parent)
+            {
+                auto& parent_linalg_data = parent->data()->template get_linalg_data<field>();
+
+                for (int i = 0; i < parent->num_children(); ++i)
+                {
+                    auto child = parent->child(i);
+                    if (child == nullptr) continue;
+
+                    auto& child_linalg_data  = child ->data()->template get_linalg_data<field>();
+                    nli_intrp_node(child_linalg_data, parent_linalg_data, i);
+
+                    //std::cout<< "-------------------"<< std::endl;
+                    //std::cout<< parent_linalg_data << std::endl;
+                    //std::cout<< child_linalg_data << std::endl;
+                }
+
+            }
+
+
+        void nli_intrp_node(auto& child, auto& parent, int child_idx)
+        {
+            int n = child.shape()[0];
+            int idx_x = (child_idx & ( 1 << 0 )) >> 0;
+            int idx_y = (child_idx & ( 1 << 1 )) >> 1;
+            int idx_z = (child_idx & ( 1 << 2 )) >> 2;
+
+            //FIXME make it not temporary
+            for (int q = 0; q<n; ++q)
+            {
+                for (int l=0; l<n; ++l)
+                {
+                    xt::noalias(nli_aux_1d_intrp) = view(parent, xt::all(), l, q) * 1.0;
+
+                    xt::noalias( view( nli_aux_2d_intrp, xt::all(), l )) =
+                        xt::linalg::dot( nli_aux_1d_intrp, antrp_mat_sub_[idx_x].data_ );
+                }
+
+                for (int l=0; l<n; ++l)
+                {
+                    // For Y
+                    xt::noalias( view(nli_aux_3d_intrp, l, xt::all(), q) ) =
+                        xt::linalg::dot(view(nli_aux_2d_intrp, l, xt::all()), antrp_mat_sub_[idx_y].data_);
+                }
+            }
+
+            for (int p = 0; p <n; ++p)
+            {
+                for (int q = 0; q < n; ++q)
+                {
+                    // For Z
+                    xt::noalias( view(child, q, p, xt::all()) ) +=
+                        xt::linalg::dot( view(nli_aux_3d_intrp, q, p, xt::all()), antrp_mat_sub_[idx_z].data_ );
+                }
+            }
+        }
+
+
+        template<template<size_t> class field>
         void nli_antrp_node(auto parent)
             {
                 auto& parent_linalg_data = parent->data()->template get_linalg_data<field>();
 
-                //std::cout<<parent->key() << std::endl;
-                //std::cout <<parent_linalg_data << std::endl;
                 for (int i = 0; i < parent->num_children(); ++i)
                 {
                     auto child = parent->child(i);
@@ -78,10 +141,6 @@ namespace fmm
             int idx_x = (child_idx & ( 1 << 0 )) >> 0;
             int idx_y = (child_idx & ( 1 << 1 )) >> 1;
             int idx_z = (child_idx & ( 1 << 2 )) >> 2;
-
-            //todo make it not temporary ???
-            xt::xtensor<float_type, 2> nli_aux_2d_antrp(std::array<size_t, 2>{{ n,n }});
-            xt::xtensor<float_type, 3> nli_aux_3d_antrp(std::array<size_t, 3>{{ n,n,n }});
 
             for (int q = 0; q<n; ++q)
             {
@@ -112,11 +171,6 @@ namespace fmm
                                             view(nli_aux_3d_antrp, q, p, xt::all()) );
                 }
             }
-        }
-
-        template<template<size_t> class field>
-        void intrp(auto parent)
-        {
         }
 
 
@@ -188,6 +242,14 @@ namespace fmm
 
         std::array<std::vector<float_type>,2> antrp_sub_;
         std::array<linalg::Mat_t, 2> antrp_mat_sub_;
+    private:
+        xt::xtensor<float_type, 1> nli_aux_1d_intrp;//(std::array<size_t, 1>{{ n }});
+        xt::xtensor<float_type, 2> nli_aux_2d_intrp;//(std::array<size_t, 2>{{ n,n }});
+        xt::xtensor<float_type, 3> nli_aux_3d_intrp;//(std::array<size_t, 3>{{ n,n,n }});
+
+        xt::xtensor<float_type, 2> nli_aux_2d_antrp;//(std::array<size_t, 2>{{ n,n }});
+        xt::xtensor<float_type, 3> nli_aux_3d_antrp;//(std::array<size_t, 3>{{ n,n,n }});
+
     };
 
 }

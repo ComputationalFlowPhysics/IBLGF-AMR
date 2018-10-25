@@ -112,8 +112,11 @@ public: // static
     static bool representable(const coordinate_type& _x, level_type _level)
     {
         scalar_coordinate_type m=std::max(std::max(_x.x(),_x.y()),_x.z());
-        if(m<=bitmask_t::max_coord_arr[_level]-1)
+        scalar_coordinate_type mini=std::min(std::min(_x.x(),_x.y()),_x.z());
+
+        if(m<=bitmask_t::max_coord_arr[_level]-1 && mini>=0)
             return true;
+
         return false;
     }
 

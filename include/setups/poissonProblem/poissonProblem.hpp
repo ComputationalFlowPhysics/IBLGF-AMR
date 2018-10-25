@@ -46,6 +46,7 @@ struct PoissonProblem
     // temporarily here for FMM
     make_field_type(fmm_s           , float_type, 1,       1)
     make_field_type(fmm_t           , float_type, 1,       1)
+    make_field_type(phi_num_fmm     , float_type, 1,       1)
 
     using datablock_t = DataBlock<
         Dim, node,
@@ -54,7 +55,8 @@ struct PoissonProblem
         phi_exact,
         error,
         fmm_s,
-        fmm_t
+        fmm_t,
+        phi_num_fmm
         >;
 
 
@@ -170,7 +172,7 @@ struct PoissonProblem
     {
 
         solver::PoissonSolver<simulation_type> psolver(&simulation_);
-        psolver.solve<source, phi_num, fmm_s, fmm_t>();
+        psolver.solve<source, phi_num, fmm_s, fmm_t, phi_num_fmm>();
         compute_errors();
         simulation_.write("solution.vtk");
         pcout << "Writing solution " << std::endl;
@@ -190,7 +192,7 @@ struct PoissonProblem
             for(auto it2=nodes_domain.begin();it2!=nodes_domain.end();++it2 )
             {
                 const float_type error_tmp = std::fabs(
-                        it2->get<phi_num>() - it2->get<phi_exact>());
+                        it2->get<phi_num_fmm>() - it2->get<phi_exact>());
 
                 it2->get<error>() = error_tmp;
                 L2 += error_tmp*error_tmp;

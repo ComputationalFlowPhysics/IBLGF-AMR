@@ -59,7 +59,7 @@ public: //member types
     sim_(_simulation),
     domain_(&_simulation->domain_),
     conv_(domain_->block_extent()+lBuffer+rBuffer,
-         domain_->block_extent()+lBuffer+rBuffer),
+          domain_->block_extent()+lBuffer+rBuffer),
     fmm_(domain_->block_extent()[0]+lBuffer+rBuffer)
     {
     }
@@ -78,7 +78,8 @@ public:
         template<std::size_t>class Source,
         template<std::size_t>class Target,
         template<std::size_t>class fmm_s,
-        template<std::size_t>class fmm_t
+        template<std::size_t>class fmm_t,
+        template<std::size_t>class Target_fmm
             >
     void solve()
     {
@@ -99,7 +100,6 @@ public:
         }
 
         //FMM test
-        //    fmm_.fmm_for_level<Source, Target, fmm_s, fmm_t>(domain_, domain_->tree()->base_level()+2, true);
 
         //Level-Interactions
         pcout<<"Level interactions "<<std::endl;
@@ -107,7 +107,8 @@ public:
                  l < domain_->tree()->depth(); ++l)
         {
             //test for FMM
-            fmm_.fmm_for_level<Source, Target, fmm_s, fmm_t>(domain_, l);
+            fmm_.fmm_for_level<Source, Target_fmm, fmm_s, fmm_t>(domain_, l, false);
+            fmm_.fmm_for_level<Source, Target_fmm, fmm_s, fmm_t>(domain_, l, true);
 
             for (auto it_t  = domain_->begin(l);
                       it_t != domain_->end(l); ++it_t)
@@ -146,6 +147,9 @@ public:
                     conv_.add_solution(extractor,
                                       it_t->data()->template get<Target>(),
                                       dx_level*dx_level);
+
+                    //auto b = it_s->data()->template get_linalg_data<Source>();
+                    //auto bt = it_t->data()->template get_linalg_data<Target>();
                 }
             }
         }

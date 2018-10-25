@@ -8,37 +8,64 @@
 
 // IBLGF-specific
 #include <types.hpp>
-#include <fmm/fmm_nli.hpp>
-#include <domain/octree/tree.hpp>
+#include <algorithm>
+#include <list>
+#include <vector>
+#include <iostream>
+#include <cmath>
+#include <functional>
+#include <cstring>
+#include <fftw3.h>
+
 
 
 //test
 #include <global.hpp>
 #include <simulation.hpp>
 #include <linalg/linalg.hpp>
+#include <fmm/fmm_nli.hpp>
 #include <domain/domain.hpp>
+#include <domain/octree/tree.hpp>
 #include <domain/dataFields/dataBlock.hpp>
 #include <domain/dataFields/datafield.hpp>
 #include <domain/octree/tree.hpp>
 #include <IO/parallel_ostream.hpp>
 #include "../utilities/convolution.hpp"
 
-
 namespace fmm
 {
-
     class Fmm
     {
 
-    static constexpr int fmm_lBuffer=0; ///< Lower left buffer for interpolation
-    static constexpr int fmm_rBuffer=1; ///< Lower left buffer for interpolation
+    public: //Ctor:
+    using dims_t = types::vector_type<int,3>;
+    using convolution_t        = typename fft::Convolution;
+
+        //FIXME why not working
+        //
+        //using datablock_t = DataBlock<Dim, node, lookup_field_>;
+
+        static constexpr int fmm_lBuffer=1; ///< Lower left buffer for interpolation
+        static constexpr int fmm_rBuffer=1; ///< Lower left buffer for interpolation
 
     public:
         Fmm(int Nb)
-        :lagrange_intrp(Nb)
+        :lagrange_intrp(Nb),
+        conv_( dims_t{{Nb,Nb,Nb}}, dims_t{{Nb,Nb, Nb}} )
         {
-
         }
+
+        //template<
+        //    template<size_t> class Source,
+        //    template<size_t> class Target,
+        //    template<size_t> class fmm_s,
+        //    template<size_t> class fmm_t
+        //    >
+        //void fmm_for_level(auto& domain_, int level)
+        //{
+        //    fmm_for_level_exec<Source, Target, fmm_s, fmm_t>(domain_, level, false);
+        //    //fmm_for_level_exec<Source, Target, fmm_s, fmm_t>(domain_, level, true);
+        //}
 
         template<
             template<size_t> class Source,
@@ -46,11 +73,15 @@ namespace fmm
             template<size_t> class fmm_s,
             template<size_t> class fmm_t
             >
-        void fmm_for_level(auto& domain_, int level, bool for_non_leaf = false)
+        void fmm_for_level(auto& domain_, int level, bool for_non_leaf=false)
         {
 
             std::cout << "------------------------------------"  << std::endl;
             std::cout << "Fmm - Level - " << level << std::endl;
+
+            const float_type dx_base=domain_->dx_base();
+            auto refinement_level = domain_-> begin(level)->refinement_level();
+            auto dx_level =  dx_base/std::pow(2, refinement_level);
 
             // Find the subtree
             auto o_start = domain_-> begin(level);
@@ -59,7 +90,12 @@ namespace fmm
 
             if (for_non_leaf)
             {
-                while (o_start->is_leaf()==true) o_start++;
+                while ((o_start != domain_->end(level)) && (o_start->is_leaf()==true) ) o_start++;
+                if (o_start == domain_->end(level))
+                {
+                    std::cout<< "All leaves" << std::endl;
+                    return;
+                }
                 while (o_end->is_leaf()==true) o_end--;
             }
 
@@ -70,117 +106,169 @@ namespace fmm
 
             // Copy to temporary variables // only the base level
             std::cout << "Fmm - copy source " << std::endl;
-            fmm_init_copy<Source, fmm_s>(domain_, level, o_start, o_end);
+            fmm_init_copy<Source, fmm_s>(domain_, level, o_start, o_end, for_non_leaf);
 
             // Antrp for all // from base level up
             std::cout << "Fmm - antrp " << std::endl;
             fmm_antrp<fmm_s>(domain_, level, o_start, o_end);
 
             // Nearest neighbors and self
-            std::cout << "Fmm - b0 " << std::endl;
-            fmm_b0<fmm_s, fmm_t>(domain_, level, o_start, o_end);
+            std::cout << "Fmm - B0 " << std::endl;
+            fmm_B0<fmm_s, fmm_t>(domain_, level, o_start, o_end, dx_level);
 
-            // FMM 196
-            std::cout << "Fmm - b1 and up" << std::endl;
+
+            // FMM 189
+            std::cout << "Fmm - B1 and up" << std::endl;
+            fmm_Bx<fmm_s, fmm_t>(domain_, level, o_start, o_end, dx_level);
 
             // Intrp
+            std::cout << "Fmm - intrp " << std::endl;
+            fmm_intrp<fmm_t>(domain_, level, o_start, o_end);
 
-        }
-
-        auto common_ancestor(auto octant_1, auto octant_2)
-        {
-
-            if (octant_1->level() != octant_2->level())
-                throw std::runtime_error("Level has to be the same");
-
-            // ??? here just because octant_1 is the iterator type.
-            auto o_1 = octant_1->self();
-            auto o_2 = octant_2->self();
-
-            while (o_1->key() != o_2->key())
-            {
-                o_1 = o_1->parent();
-                o_2 = o_2->parent();
-
-                std::cout<<*o_1<<std::endl;
-                std::cout<<*o_2<<std::endl;
-            }
-
-            return o_1;
-        }
-
-        void key_range(auto& domain_, int level, bool for_non_leaf = false)
-        {
-            for (auto it  = domain_->begin(level);
-                      it != domain_->end(level); ++it)
-            {
-                if (for_non_leaf)
-                    if (it->is_leaf())
-                    {
-                    }
-
-            }
+            if (!for_non_leaf)
+                fmm_add_equal<Target, fmm_t>(domain_, level, o_start, o_end, for_non_leaf);
+            else
+                fmm_minus_equal<Target, fmm_t>(domain_, level, o_start, o_end, for_non_leaf);
         }
 
         template<
             template<size_t> class s,
             template<size_t> class t
         >
-        void fmm_b0(auto& domain_, int level, auto o_start, auto o_end)
+        void fmm_Bx(auto& domain_, int level, auto o_start, auto o_end, auto dx_level)
         {
+
+            auto o_1 = (*o_start);
+            auto o_2 = (*o_end);
+            auto o_1_old = o_1;
+            auto o_2_old = o_2;
+            int l = level;
+
             if (o_start->level() != o_end->level())
                 throw std::runtime_error("Level has to be the same");
+
+            while (o_1_old->key() != o_2_old->key() )
+            {
+                std::cout << "Bx - level = " << l << std::endl;
+
+                auto level_o_1 = domain_->tree()->find(l, o_1->key());
+                auto level_o_2 = domain_->tree()->find(l, o_2->key());
+                auto level_o_2_dup = level_o_2;
+                level_o_2++;
+
+                for (auto it_t = level_o_1;
+                        it_t!=(level_o_2); ++it_t)
+                {
+                    //std::cout<< " Bx test -------------" << std::endl;
+                    //std::cout<< "Self" << std::endl;
+                    //std::cout<<it_t->key()<< std::endl;
+                    //std::cout<< "infl" << std::endl;
+
+                    for (int i=0; i<189; ++i)
+                    {
+                        auto n_s = it_t->influence(i);
+                        if (n_s)
+                            if (n_s->inside(level_o_1,  level_o_2_dup))
+                            {
+                                fmm_fft<s,t>(n_s, it_t, level-l, dx_level);
+                            }
+                    }
+
+                }
+
+                o_1_old = o_1;
+                o_2_old = o_2;
+
+                o_1 = o_1->parent();
+                o_2 = o_2->parent();
+                l--;
+            }
+
+
+
+        }
+
+        template<
+            template<size_t> class s,
+            template<size_t> class t
+        >
+        void fmm_B0(auto& domain_, int level, auto o_start, auto o_end, auto dx_level)
+        {
+            int level_diff = 0;
+            if (o_start->level() != o_end->level())
+                throw std::runtime_error("Level has to be the same");
+
+            auto o_end_2 = o_end;
             o_end++;
 
             for (auto it_t = o_start; it_t!=(o_end); ++it_t)
             {
-                //find neighbors
 
+                //std::cout<< "=====================" << std::endl;
+                //std::cout<< "target" << std::endl;
+                //std::cout<<it_t->key() << std::endl;
 
-                std::cout<<"find neibor test"<< std::endl;
-                std::cout<<"self"<< std::endl;
-                std::cout<<it_t->key() << std::endl;
-                std::cout<<"neighbors"<< std::endl;
-
-
+                //std::cout<< "source" << std::endl;
 
                 for (int i=0; i<27; ++i)
                 {
-                    auto n = it_t->neighbor(i);
-                    if (n)
-                    {
-                    }
-                    else
-                    {
-                        int id = i;
-                        int tmp = id;
-                        auto idx = tmp % 3 -1;
-                        tmp /=3;
-                        auto idy = tmp % 3 -1;
-                        tmp /=3;
-                        auto idz = tmp % 3 -1;
-
-                    std::cout<<it_t->key().neighbor({{idx,idy,idz}})<< std::endl;
-                    }
+                    auto n_s = it_t->neighbor(i);
+                    if (n_s)
+                        if (n_s->inside(o_start, o_end_2))
+                        {
+                            fmm_fft<s,t>(n_s, it_t, level_diff, dx_level);
+                        }
                 }
+            }
+        }
 
+        template<
+            template<size_t> class f1,
+            template<size_t> class f2
+        >
+        void fmm_add_equal(auto& domain_, int level, auto o_start, auto o_end, bool for_non_leaf)
+        {
 
-                //if (k2 == nullptr)
-                //std::cout<<"No luck"<< std::endl;
-                //else
-                //std::cout<<k2<< std::endl;
+            if (o_start->level() != o_end->level())
+                throw std::runtime_error("Level has to be the same");
 
+            o_end++;
 
-                //
-                //for (auto it_s = it_t->neighbors.begin();
-                //        auto it_s != it_t->neighbors.end(); it_s++)
-                //{
-
-                //}
+            for (auto it = o_start; it!=(o_end); ++it)
+            {
+                if(it->data())
+                {
+                    if ( !( (for_non_leaf) && (it->is_leaf()) ))
+                    it->data()->template get_linalg_data<f1>() +=
+                         it->data()->template get_linalg_data<f2>();
+                }
             }
 
         }
 
+        template<
+            template<size_t> class f1,
+            template<size_t> class f2
+        >
+        void fmm_minus_equal(auto& domain_, int level, auto o_start, auto o_end, bool for_non_leaf)
+        {
+
+            if (o_start->level() != o_end->level())
+                throw std::runtime_error("Level has to be the same");
+
+            o_end++;
+
+            for (auto it = o_start; it!=(o_end); ++it)
+            {
+                if(it->data())
+                {
+                    if ( !( (for_non_leaf) && (it->is_leaf()) ))
+                    it->data()->template get_linalg_data<f1>() -=
+                         it->data()->template get_linalg_data<f2>()*1.0;
+                }
+            }
+
+        }
 
         template<template<size_t> class f>
         void fmm_init_zero(auto& domain_, int level, auto o_start, auto o_end)
@@ -223,7 +311,7 @@ namespace fmm
             template<size_t> class from,
             template<size_t> class to
             >
-        void fmm_init_copy(auto& domain_, int level, auto o_start, auto o_end)
+        void fmm_init_copy(auto& domain_, int level, auto o_start, auto o_end, bool for_non_leaf)
         {
             if (o_start->level() != o_end->level())
                 throw std::runtime_error("Level has to be the same");
@@ -231,26 +319,42 @@ namespace fmm
             o_end++;
             for (auto it = o_start; it!=(o_end); ++it)
             {
-                 if(it->data())
-                 {
-
+                if(it->data())
+                {
+                    if ( !( (for_non_leaf) && (it->is_leaf()) ))
                     it->data()->template get_linalg_data<to>()=
                          it->data()->template get_linalg_data<from>()*1.0;
-
-                     //for(auto& e: it->data()->template get_data<to>())
-                     //    std::cout<< e << ", ";
-
-                    //auto& d  = it->data()->template get_data<to>();
-                    //auto& d2 = it->data()->template get_linalg_data<to>();
-
-                    //std::cout<< "===="<< std::endl;
-                    //std::cout<< &d[0] << std::endl;
-                    //std::cout<< &(d2(0,0,0)) << std::endl;
-                    //std::cout<<std::endl;
-
-                    }
                 }
+            }
 
+        }
+
+        template< template<size_t> class fmm_t >
+        void fmm_intrp(auto& domain_, int level, auto o_start, auto o_end)
+        {
+            // start with one level up and call the parents of each
+            level--;
+
+            auto o_1 = o_start->parent();
+            auto o_2 = o_end->parent();
+
+            if (o_1->key() != o_2->key() )
+                fmm_intrp<fmm_t>(domain_, level, o_1, o_2);
+
+            auto level_o_1 = domain_->tree()->find(level, o_1->key());
+            auto level_o_2 = domain_->tree()->find(level, o_2->key());
+            level_o_2++;
+
+            std::cout<< "Fmm - intrp - level: " << level << std::endl;
+
+            for (auto it = level_o_1;
+                    it!=(level_o_2); ++it)
+            {
+                if(it->data())
+                {
+                    lagrange_intrp.nli_intrp_node<fmm_t>(it);
+                }
+            }
         }
 
         template< template<size_t> class fmm_s >
@@ -288,11 +392,59 @@ namespace fmm
                 o_1 = o_1->parent();
                 o_2 = o_2->parent();
             }
+        }
+
+        template<
+            template<size_t> class S,
+            template<size_t> class T
+        >
+        void fmm_fft(auto o_s, auto o_t, int level_diff, float_type dx_level)
+        {
+            //FIXME just for the type
+            auto block_ = o_s->data()->template get<S>().real_block();
+
+            const auto t_base = o_t->data()->template get<T>().
+                                            real_block().base();
+            const auto s_base = o_s->data()->template get<S>().
+                                    real_block().base();
+
+
+            // Get extent of Source region
+            const auto s_extent = o_s->data()->template get<S>().
+                                    real_block().extent();
+            const auto shift    = t_base - s_base;
+
+            // Calculate the dimensions of the LGF to be allocated
+            const auto base_lgf   = shift - (s_extent - 1);
+            const auto extent_lgf = 2 * (s_extent) - 1;
+
+            // Calculate the LGF
+            lgf_.get_subblock( decltype(block_)(base_lgf, extent_lgf), lgf, level_diff);
+
+
+            // Perform convolution
+
+            conv_.execute_field(lgf, o_s->data()->template get<S>());
+
+            // Extract the solution
+
+            decltype(block_) extractor(s_base, s_extent);
+
+            conv_.add_solution(extractor, o_t->data()->template get<T>(),
+                              dx_level*dx_level);
+
+            //auto b = o_s->data()->template get_linalg_data<S>();
+            //auto bt = o_t->data()->template get_linalg_data<T>();
 
         }
 
+
     public:
         Nli lagrange_intrp;
+    private:
+        std::vector<float_type> lgf;
+        convolution_t           conv_;      ///< fft convolution
+        lgf::LGF<lgf::Lookup>   lgf_;       ///< Lookup for the LGFs
     };
 
 }

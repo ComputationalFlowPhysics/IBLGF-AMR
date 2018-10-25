@@ -160,6 +160,12 @@ public: //Ctors
         return res;
     }
 
+    bool inside(auto o1, auto o2)
+    {
+        auto k_ = this->key();
+        return ( (k_ >= o1->key()) && (k_<=o2->key()));
+    }
+
 
     template<class Iterator>
     auto compute_index(const Iterator& _it)
@@ -175,12 +181,19 @@ public: //Ctors
     Octant* parent()      const noexcept{return parent_;}
     Octant* child (int i) const noexcept{return children_[i].get();}
 
+    void neighbor_clear () noexcept{neighbor_.fill(nullptr);}
     Octant* neighbor (int i) const noexcept{return neighbor_[i];}
     void neighbor(int i, Octant* new_neighbor)
     {
        neighbor_[i] = new_neighbor;
     }
 
+    void influence_clear () noexcept{influence_.fill(nullptr);}
+    Octant* influence (int i) const noexcept{return influence_[i];}
+    void influence(int i, Octant* new_influence)
+    {
+       influence_[i] = new_influence;
+    }
 
 private:
 
@@ -204,6 +217,8 @@ private:
     //FIXME don't know how to use shared ptr
     //std::array<std::shared_ptr<Octant>,pow(3,Dim) > neighbor_ = {nullptr};
     std::array<Octant*,pow(3,Dim) > neighbor_ = {nullptr};
+
+    std::array<Octant*, 189 > influence_= {nullptr};
 };
 
 

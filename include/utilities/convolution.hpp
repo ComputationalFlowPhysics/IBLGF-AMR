@@ -14,19 +14,19 @@ namespace fft
 {
 
 
-//TODO: Base these things also all on fields to exploit base/extent and 
+//TODO: Base these things also all on fields to exploit base/extent and
 //      stride
 
 class dfft_r2c
 {
 public:
     using float_type=double;
-    using complex_vector_t = std::vector<std::complex<float_type>, 
-          boost::alignment::aligned_allocator_adaptor< 
+    using complex_vector_t = std::vector<std::complex<float_type>,
+          boost::alignment::aligned_allocator_adaptor<
               std::allocator<std::complex<float_type>>,32>> ;
 
-    using real_vector_t = std::vector<float_type, 
-          boost::alignment::aligned_allocator_adaptor< 
+    using real_vector_t = std::vector<float_type,
+          boost::alignment::aligned_allocator_adaptor<
               std::allocator<float_type>,32>>;
 
     using dims_t = types::vector_type<int,3>;
@@ -51,11 +51,11 @@ public: //Ctors:
     }
 
 public: //Interface
-    
+
     void execute()
     {
         fftw_execute(plan);
-    }    
+    }
 
     auto& input(){return input_;}
     auto& output(){return output_;}
@@ -67,7 +67,7 @@ public: //Interface
         if(_v.size()==input_.size())
         {
             std::copy(_v.begin(),_v.end(),input_.begin() );
-        } 
+        }
         else
         {
             //Naive impl:
@@ -84,7 +84,7 @@ public: //Interface
                 }
             }
         }
-    }        
+    }
 
     //FIXME: Starting from zero is not general
     template<class Vector>
@@ -104,8 +104,8 @@ public: //Interface
                 }
             }
         }
-    }        
-        
+    }
+
 
 private:
 
@@ -113,7 +113,7 @@ private:
     real_vector_t input_;
     complex_vector_t output_;
     fftw_plan plan;
-}; 
+};
 
 class dfft_c2r
 {
@@ -148,11 +148,11 @@ public: //Ctors:
     }
 
 public: //Interface
-    
+
     void execute()
     {
         fftw_execute(plan);
-    }    
+    }
 
     auto& input(){return input_;}
     auto& output(){return output_;}
@@ -161,7 +161,7 @@ private:
     complex_vector_t input_;
     real_vector_t output_;
     fftw_plan plan;
-}; 
+};
 
 
 class Convolution
@@ -211,8 +211,8 @@ public: //Ctors
         auto& f0 = fft_forward0.output();
         auto& f1 = fft_forward1.output();
         complex_vector_t prod(f0.size());
-        const float_type scale = 1.0 / (padded_dims[0] * 
-                                        padded_dims[1] * 
+        const float_type scale = 1.0 / (padded_dims[0] *
+                                        padded_dims[1] *
                                         padded_dims[2]);
         for(std::size_t i = 0; i < prod.size(); ++i)
         {
@@ -227,14 +227,14 @@ public: //Ctors
         fft_forward0.copy_input(_a, dims0_);
         fft_forward0.execute();
 
-        fft_forward1.copy_field(_b,dims1_);
+        fft_forward1.copy_field(_b, dims1_);
         fft_forward1.execute();
 
         auto& f0 = fft_forward0.output();
         auto& f1 = fft_forward1.output();
         complex_vector_t prod(f0.size());
-        const float_type scale = 1.0 / (padded_dims[0] * 
-                                        padded_dims[1] * 
+        const float_type scale = 1.0 / (padded_dims[0] *
+                                        padded_dims[1] *
                                         padded_dims[2]);
         for(std::size_t i = 0; i < prod.size(); ++i)
         {
@@ -258,15 +258,15 @@ public: //Ctors
             {
                 for (int i = dims0_[0]-1; i < dims0_[0]+_b.extent()[0]-1; ++i)
                 {
-                    F.get_real_local(i-dims0_[0]+1,j-dims0_[1]+1,k-dims0_[2]+1 ) += 
-                    _scale*fft_backward.output() [ 
+                    F.get_real_local(i-dims0_[0]+1,j-dims0_[1]+1,k-dims0_[2]+1 ) +=
+                    _scale*fft_backward.output() [
                         i+j*padded_dims[0]+k*padded_dims[0]*padded_dims[1]
                     ];
                 }
             }
         }
     }
-    
+
 
 private:
     dims_t padded_dims;

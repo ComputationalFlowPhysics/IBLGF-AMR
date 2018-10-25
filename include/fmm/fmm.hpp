@@ -125,6 +125,8 @@ namespace fmm
             std::cout << "Fmm - intrp " << std::endl;
             fmm_intrp<fmm_t>(domain_, level, o_start, o_end);
 
+            // Copy back
+            std::cout << "Fmm - output " << std::endl;
             if (!for_non_leaf)
                 fmm_add_equal<Target, fmm_t>(domain_, level, o_start, o_end, for_non_leaf);
             else

@@ -165,6 +165,9 @@ public:
             {
                 if(it_t->is_leaf()) continue;
                 this->interpolate<Target>(*it_t);
+
+                if(it_t->is_leaf()) continue;
+                this->interpolate<Target_fmm>(*it_t);
             }
         }
     }

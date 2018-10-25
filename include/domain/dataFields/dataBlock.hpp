@@ -114,6 +114,14 @@ public: //member functions
     template<class T> const auto& get_data()const{return std::get<T>(fields).data();}
 
     template<template<std::size_t> class Field>
+    auto& get_linalg(){return std::get<Field<dimension>>(fields).linalg();}
+    template<template<std::size_t> class Field>
+    const auto& get_linalg()const{return std::get<Field<dimension>>(fields).linalg();}
+
+    template<class T> auto& get_linalg(){return std::get<T>(fields).linalg();}
+    template<class T> const auto& get_linalg()const{return std::get<T>(fields).linalg();}
+
+    template<template<std::size_t> class Field>
     auto& get_linalg_data(){return std::get<Field<dimension>>(fields).linalg_data();}
     template<template<std::size_t> class Field>
     const auto& get_linalg_data()const{return std::get<Field<dimension>>(fields).linalg_data();}

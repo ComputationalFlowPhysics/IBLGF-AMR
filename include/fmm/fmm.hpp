@@ -116,7 +116,6 @@ namespace fmm
             std::cout << "Fmm - B0 " << std::endl;
             fmm_B0<fmm_s, fmm_t>(domain_, level, o_start, o_end, dx_level);
 
-
             // FMM 189
             std::cout << "Fmm - B1 and up" << std::endl;
             fmm_Bx<fmm_s, fmm_t>(domain_, level, o_start, o_end, dx_level);
@@ -241,7 +240,7 @@ namespace fmm
                 if(it->data())
                 {
                     if ( !( (for_non_leaf) && (it->is_leaf()) ))
-                    it->data()->template get_linalg_data<f1>() +=
+                    it->data()->template get_linalg<f1>().get()->cube_noalias_view() +=
                          it->data()->template get_linalg_data<f2>();
                 }
             }
@@ -265,8 +264,8 @@ namespace fmm
                 if(it->data())
                 {
                     if ( !( (for_non_leaf) && (it->is_leaf()) ))
-                    it->data()->template get_linalg_data<f1>() -=
-                         it->data()->template get_linalg_data<f2>()*1.0;
+                    it->data()->template get_linalg<f1>().get()->cube_noalias_view() -=
+                         it->data()->template get_linalg_data<f2>();
                 }
             }
 

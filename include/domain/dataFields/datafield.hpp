@@ -89,6 +89,7 @@ public: //member functions
 
     auto& data(){return data_;}
     auto& linalg_data(){return cube_->data_;}
+    auto& linalg(){return cube_;}
 
     auto size()const noexcept{return data_.size();}
 

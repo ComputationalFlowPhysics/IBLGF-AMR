@@ -130,6 +130,7 @@ namespace fmm
                 fmm_add_equal<Target, fmm_t>(domain_, level, o_start, o_end, for_non_leaf);
             else
                 fmm_minus_equal<Target, fmm_t>(domain_, level, o_start, o_end, for_non_leaf);
+            std::cout << "Fmm - level - done" << std::endl;
         }
 
         template<
@@ -165,7 +166,8 @@ namespace fmm
                     //std::cout<<it_t->key()<< std::endl;
                     //std::cout<< "infl" << std::endl;
 
-                    for (int i=0; i<189; ++i)
+                    for (int i=0; i< it_t->influence_number();
+                             ++i)
                     {
                         auto n_s = it_t->influence(i);
                         if (n_s)
@@ -174,6 +176,7 @@ namespace fmm
                                 fmm_fft<s,t>(n_s, it_t, level-l, dx_level);
                             }
                     }
+                        //std::cout<<it_t->influence_number() << std::endl;
 
                 }
 
@@ -241,7 +244,7 @@ namespace fmm
                 {
                     if ( !( (for_non_leaf) && (it->is_leaf()) ))
                     it->data()->template get_linalg<f1>().get()->cube_noalias_view() +=
-                         it->data()->template get_linalg_data<f2>();
+                         it->data()->template get_linalg_data<f2>() * 1.0;
                 }
             }
 
@@ -265,7 +268,7 @@ namespace fmm
                 {
                     if ( !( (for_non_leaf) && (it->is_leaf()) ))
                     it->data()->template get_linalg<f1>().get()->cube_noalias_view() -=
-                         it->data()->template get_linalg_data<f2>();
+                         it->data()->template get_linalg_data<f2>() * 1.0;
                 }
             }
 
@@ -420,6 +423,12 @@ namespace fmm
             const auto extent_lgf = 2 * (s_extent) - 1;
 
             // Calculate the LGF
+            //if (level_diff>0)
+            //{
+            //std::cout<< shift << std::endl;
+            //std::cout<< o_s->key() << std::endl;
+            //std::cout<< o_t->key() << std::endl;
+            //}
             lgf_.get_subblock( decltype(block_)(base_lgf, extent_lgf), lgf, level_diff);
 
 

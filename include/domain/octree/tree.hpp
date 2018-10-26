@@ -168,6 +168,7 @@ public:
         for(int i=0;i<_l->num_children();++i)
         {
             auto child=_l->refine(i);
+            child->flag_leaf(true);
             _f(child);
             auto c=leafs_.emplace(child->key(),child);
             c.first->second->flag(node_flag::octant);
@@ -175,6 +176,7 @@ public:
         }
 
         _l = leafs_.erase(_l);
+        _l ->flag_leaf(false);
         if(_l->level()+1 > depth_) depth_=_l->level()+1;
         if(!_recursive) std::advance(_l,_l->num_children()-1);
     }
@@ -340,10 +342,19 @@ public: // misc
         }
     }
 
+    void construct_flag_leaf()
+    {
+        dfs_iterator it_begin(root()); dfs_iterator it_end;
+
+        for(auto it =it_begin;it!=it_end;++it)
+        {
+            it->flag_leaf(it->is_leaf_search());
+        }
+    }
+
     void construct_octant_neighbor(auto it)
     {
         it->neighbor_clear();
-
 
         for (int id = 0; id<27; id++)
         {
@@ -364,6 +375,7 @@ public: // misc
             //std::cout<< "construct neighbor test-----------------" << std::endl;
             //std::cout<< k << std::endl;
             //std::cout<< neighbor_i-> key() << std::endl;
+
             it->neighbor(id, neighbor_i);
 
             }
@@ -384,8 +396,6 @@ public: // misc
     void construct_octant_influence(auto it)
     {
         // FIXME need to do a larger influence list test to reach 189
-        std::cout<< "-----------------------------------"<<std::endl;
-        std::cout<< it->key()<<std::endl;
 
         it->influence_clear();
         int infl_id = 0;
@@ -416,8 +426,15 @@ public: // misc
             }
         }
 
-        std::cout<<infl_id<<std::endl;
-        std::cout<< "-----------------------------------"<<std::endl;
+        it->influence_number(infl_id);
+
+        //if (coord.x() == 0)
+        //{
+        //std::cout<< "-----------------------------------"<<std::endl;
+        //std::cout<< it->key()<<std::endl;
+        //std::cout<<infl_id<<std::endl;
+        //std::cout<< "-----------------------------------"<<std::endl;
+        //}
     }
 
 

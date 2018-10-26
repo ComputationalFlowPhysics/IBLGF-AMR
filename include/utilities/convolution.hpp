@@ -46,7 +46,7 @@ public: //Ctors:
      output_(_dims[2]*_dims[1]*((_dims[0]/2)+1)),
      plan(fftw_plan_dft_r2c_3d(_dims[2], _dims[1], _dims[0],
                  &input_[0], reinterpret_cast<fftw_complex*>(&output_[0]),
-                 FFTW_ESTIMATE ))
+                 FFTW_PATIENT ))
     {
     }
 
@@ -142,7 +142,7 @@ public: //Ctors:
      output_(_dims[2]*_dims[1]*_dims[0],0.0),
      plan(fftw_plan_dft_c2r_3d(_dims[2], _dims[1], _dims[0],
                  reinterpret_cast<fftw_complex*>(&input_[0]), &output_[0],
-                 FFTW_ESTIMATE ))
+                 FFTW_PATIENT ))
     {
 
     }

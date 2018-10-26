@@ -35,7 +35,8 @@ namespace fmm
             nli_aux_3d_intrp(std::array<size_t, 3>{{ Nb_, Nb_, Nb_ }}),
 
             nli_aux_2d_antrp(std::array<size_t, 2>{{ Nb_, Nb_ }}),
-            nli_aux_3d_antrp(std::array<size_t, 3>{{ Nb_, Nb_, Nb_ }})
+            nli_aux_3d_antrp(std::array<size_t, 3>{{ Nb_, Nb_, Nb_ }}),
+            nli_aux_1d_antrp_tmp(std::array<size_t, 1>{{ Nb_}})
         {
             std::cout <<"antrp_mem, "<< &antrp_[0]<< std::endl;
             std::cout << &(antrp_mat_.data_(0,0)) << std::endl;
@@ -52,6 +53,9 @@ namespace fmm
             for (auto i: t1)
                   std::cout << i << ' ';
             std::cout<<std::endl;
+
+            std::cout << antrp_mat_sub_[0].data_ << std::endl;
+            std::cout << antrp_mat_sub_[1].data_ << std::endl;
         }
 
 
@@ -85,7 +89,6 @@ namespace fmm
             int idx_y = (child_idx & ( 1 << 1 )) >> 1;
             int idx_z = (child_idx & ( 1 << 2 )) >> 2;
 
-            //FIXME make it not temporary
             for (int q = 0; q<n; ++q)
             {
                 for (int l=0; l<n; ++l)
@@ -161,14 +164,21 @@ namespace fmm
                 }
             }
 
-            for (int p = 0; p <n; ++p)
+            for (int p = 0; p < n; ++p)
             {
                 for (int q = 0; q < n; ++q)
                 {
                     // For X
-                    xt::noalias( view(parent, xt::all(), q, p) ) +=
+                    //xt::noalias( view(parent, xt::all(), q, p) ) +=
+
+                    nli_aux_1d_antrp_tmp=
                         xt::linalg::dot( antrp_mat_sub_[idx_x].data_,
                                             view(nli_aux_3d_antrp, q, p, xt::all()) );
+
+                    //nli_aux_1d_antrp_tmp(0) = 0;
+                    //nli_aux_1d_antrp_tmp(n) = 0;
+
+                    xt::noalias( view(parent, xt::all(), q, p) ) += nli_aux_1d_antrp_tmp;
                 }
             }
         }
@@ -179,13 +189,13 @@ namespace fmm
         void antrp_mat_calc(auto& antrp_mat_, int Nb_)
         {
 
-            for (int c = 0; c < Nb_*2-1; ++c){
+            for (int c = 1; c < Nb_*2-1; ++c){
 
                 int c_p = c - Nb_;
 
                 if (c % 2 == 0){
                     int p = c / 2;
-                    antrp_mat_(p, c) = 1;
+                    antrp_mat_(p, c-1) = 1;
                 }
                 else{
                     double temp_sum = 0.0;
@@ -213,18 +223,18 @@ namespace fmm
                         }
 
                         temp_mult          /= (double)(c_p - p_p + 1);
-                        antrp_mat_(p, c)  = temp_mult;
+                        antrp_mat_(p, c-1)  = temp_mult;
                         temp_sum           += temp_mult;
                     }
 
-                    view(antrp_mat_, xt::all(),  c) /= temp_sum;
+                    view(antrp_mat_, xt::all(),  c-1) /= temp_sum;
                 }
 
             }
 
             for (int c = Nb_*2 - 1; c>Nb_-1; --c){
                 view(antrp_mat_, xt::all(),  c) =
-                view(antrp_mat_, xt::all(),  c-1);
+                view(antrp_mat_, xt::all(),  c-2);
             }
 
         }
@@ -249,6 +259,7 @@ namespace fmm
 
         xt::xtensor<float_type, 2> nli_aux_2d_antrp;//(std::array<size_t, 2>{{ n,n }});
         xt::xtensor<float_type, 3> nli_aux_3d_antrp;//(std::array<size_t, 3>{{ n,n,n }});
+        xt::xtensor<float_type, 1> nli_aux_1d_antrp_tmp;//(std::array<size_t, 3>{{ n,n,n }});
 
     };
 

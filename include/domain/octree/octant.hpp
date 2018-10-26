@@ -135,12 +135,17 @@ public: //Ctors
 
 
     //TODO: store this bool while constructing
-    bool is_leaf()
+    const bool is_leaf(){return flag_leaf_;}
+
+    void flag_leaf(const bool flag){flag_leaf_ = flag;}
+
+    bool is_leaf_search()
     {
         for(int i = 0; i< this->num_children();++i)
         {
             if(children_[i]!=nullptr ) return false;
         }
+
         return true;
     }
 
@@ -188,6 +193,9 @@ public: //Ctors
        neighbor_[i] = new_neighbor;
     }
 
+    const int influence_number () const noexcept{return influence_num;}
+    void influence_number (int i) noexcept{influence_num = i;}
+
     void influence_clear () noexcept{influence_.fill(nullptr);}
     Octant* influence (int i) const noexcept{return influence_[i];}
     void influence(int i, Octant* new_influence)
@@ -218,7 +226,10 @@ private:
     //std::array<std::shared_ptr<Octant>,pow(3,Dim) > neighbor_ = {nullptr};
     std::array<Octant*,pow(3,Dim) > neighbor_ = {nullptr};
 
+    int influence_num = 0;
     std::array<Octant*, 189 > influence_= {nullptr};
+
+    bool flag_leaf_=true;
 };
 
 

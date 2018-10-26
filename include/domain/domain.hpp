@@ -224,6 +224,7 @@ public:
         });
 
         //FIXME is there any other place need to update those 2
+        tree()->construct_flag_leaf();
         tree()->construct_neighbor_lists();
         tree()->construct_influence_lists();
     }

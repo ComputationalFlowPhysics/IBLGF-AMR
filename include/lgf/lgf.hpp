@@ -53,7 +53,7 @@ template<class Policy, int Dim=3>
                     {
                         //get view
                         _lgf[_b.globalCoordinate_to_index(i,j,k)] =
-                            Lookup::get(coordinate_t({i*step,j*step,k*step}));
+                            Lookup::get(coordinate_t({i*step, j*step, k*step}));
                     }
                 }
             }

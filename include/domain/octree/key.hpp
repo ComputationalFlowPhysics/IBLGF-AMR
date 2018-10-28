@@ -323,7 +323,7 @@ public: // queries
         {
             return Key( cc, level() );
         } else{
-            std::cout<<"non-representable"<<std::endl;
+            //std::cout<<"non-representable"<<std::endl;
             return end(l);
         }
     }

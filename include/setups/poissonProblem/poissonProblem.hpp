@@ -46,6 +46,7 @@ struct PoissonProblem
     // temporarily here for FMM
     make_field_type(fmm_s           , float_type, 1,       1)
     make_field_type(fmm_t           , float_type, 1,       1)
+    make_field_type(fmm_tmp         , float_type, 1,       1)
     make_field_type(phi_num_fmm     , float_type, 1,       1)
 
     using datablock_t = DataBlock<
@@ -56,6 +57,7 @@ struct PoissonProblem
         error,
         fmm_s,
         fmm_t,
+        fmm_tmp,
         phi_num_fmm
         >;
 
@@ -84,7 +86,7 @@ struct PoissonProblem
     {
         this->pcout<<"Initializing"<<std::endl;
         auto center = (domain_.bounding_box().max() -
-                       domain_.bounding_box().min()) / 2.0 +
+                       domain_.bounding_box().min()-1) / 2.0 +
                        domain_.bounding_box().min();
 
         const int nRef = simulation_.dictionary_->
@@ -172,7 +174,7 @@ struct PoissonProblem
     {
 
         solver::PoissonSolver<simulation_type> psolver(&simulation_);
-        psolver.solve<source, phi_num, fmm_s, fmm_t, phi_num_fmm>();
+        psolver.solve<source, phi_num, fmm_s, fmm_t, phi_num_fmm, fmm_tmp>();
         compute_errors();
         simulation_.write("solution.vtk");
         pcout << "Writing solution " << std::endl;

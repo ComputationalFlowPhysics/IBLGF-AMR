@@ -66,18 +66,44 @@ namespace fmm
             {
                 auto& parent_linalg_data = parent->data()->template get_linalg_data<field>();
 
+
+                //if (parent->level() == 4)
+                //{
+                //std::cout<< "--------------"<< std::endl;
+                //std::cout<< parent->key() << std::endl;
+                //}
                 for (int i = 0; i < parent->num_children(); ++i)
                 {
                     auto child = parent->child(i);
                     if (child == nullptr) continue;
 
+
                     auto& child_linalg_data  = child ->data()->template get_linalg_data<field>();
+                    auto& child_data  = child ->data()->template get_data<field>();
+                    //std::cout<<"------------------"<< std::endl;
+
+                    //if (parent->level() == 5)
+                    //{
+                    //std::cout<< i << std::endl;
+                    //std::cout<< child->key() << std::endl;
+                    //std::cout<< parent_linalg_data << std::endl;
+                    //}
+
+
+
+
                     nli_intrp_node(child_linalg_data, parent_linalg_data, i);
 
                     //std::cout<< "-------------------"<< std::endl;
                     //std::cout<< parent_linalg_data << std::endl;
                     //std::cout<< child_linalg_data << std::endl;
                 }
+
+                if (parent->level()== 4)
+                    {
+                    //std::cout<< "----------------------" << std::endl;
+                    //std::cout << parent_linalg_data << std::endl;
+                    }
 
             }
 
@@ -93,17 +119,26 @@ namespace fmm
             {
                 for (int l=0; l<n; ++l)
                 {
-                    xt::noalias(nli_aux_1d_intrp) = view(parent, xt::all(), l, q) * 1.0;
-
-                    xt::noalias( view( nli_aux_2d_intrp, xt::all(), l )) =
+                    xt::noalias(nli_aux_1d_intrp) = view(parent, q, l, xt::all()) * 1.0;
+                    xt::noalias( view( nli_aux_2d_intrp, l, xt::all() )) =
                         xt::linalg::dot( nli_aux_1d_intrp, antrp_mat_sub_[idx_x].data_ );
+
+                    //xt::noalias(nli_aux_1d_intrp) = view(parent, xt::all(), l, q) * 1.0;
+                    //xt::noalias( view( nli_aux_2d_intrp, xt::all(), l )) =
+                    //    xt::linalg::dot( nli_aux_1d_intrp, antrp_mat_sub_[idx_x].data_ );
                 }
 
                 for (int l=0; l<n; ++l)
                 {
                     // For Y
-                    xt::noalias( view(nli_aux_3d_intrp, l, xt::all(), q) ) =
-                        xt::linalg::dot(view(nli_aux_2d_intrp, l, xt::all()), antrp_mat_sub_[idx_y].data_);
+
+                    xt::noalias(nli_aux_1d_intrp) = view(nli_aux_2d_intrp, xt::all(), l) * 1.0;
+
+                    xt::noalias( view(nli_aux_3d_intrp, q, xt::all(), l) ) =
+                        xt::linalg::dot(nli_aux_1d_intrp, antrp_mat_sub_[idx_y].data_);
+
+                    //xt::noalias( view(nli_aux_3d_intrp, l, xt::all(), q) ) =
+                    //    xt::linalg::dot(view(nli_aux_2d_intrp, l, xt::all()), antrp_mat_sub_[idx_y].data_);
                 }
             }
 
@@ -112,8 +147,12 @@ namespace fmm
                 for (int q = 0; q < n; ++q)
                 {
                     // For Z
-                    xt::noalias( view(child, q, p, xt::all()) ) +=
-                        xt::linalg::dot( view(nli_aux_3d_intrp, q, p, xt::all()), antrp_mat_sub_[idx_z].data_ );
+                    xt::noalias(nli_aux_1d_intrp) =  view(nli_aux_3d_intrp, xt::all(), p, q) * 1.0;
+
+                    xt::noalias( view(child, xt::all(), p, q) ) +=
+                        xt::linalg::dot(nli_aux_1d_intrp, antrp_mat_sub_[idx_z].data_ ) * 1.0;
+                    //xt::noalias( view(child, q, p, xt::all()) ) +=
+                    //    xt::linalg::dot( view(nli_aux_3d_intrp, q, p, xt::all()), antrp_mat_sub_[idx_z].data_ ) * 1.0;
                 }
             }
         }
@@ -126,14 +165,15 @@ namespace fmm
 
                 for (int i = 0; i < parent->num_children(); ++i)
                 {
+
                     auto child = parent->child(i);
                     if (child == nullptr) continue;
 
-                    //std::cout<<"child # " << i << std::endl;
                     auto& child_linalg_data  = child ->data()->template get_linalg_data<field>();
+                    //std::cout<<"child # " << i << std::endl;
                     nli_antrp_node(child_linalg_data, parent_linalg_data, i);
                 }
-                //std::cout << parent_linalg_data << std::endl;
+
 
             }
 
@@ -150,17 +190,27 @@ namespace fmm
                 for (int l=0; l<n; ++l)
                 {
                     // For Z
+                    nli_aux_1d_antrp_tmp= view(child, xt::all(), l, q) * 1.0;
                     xt::noalias( view(nli_aux_2d_antrp, xt::all(), l) ) =
                         xt::linalg::dot( antrp_mat_sub_[idx_z].data_,
-                                            view(child, q, l, xt::all()) );
+                                            nli_aux_1d_antrp_tmp );
+                    //xt::noalias( view(nli_aux_2d_antrp, xt::all(), l) ) =
+                    //    xt::linalg::dot( antrp_mat_sub_[idx_z].data_,
+                    //                        view(child, q, l, xt::all()) );
                 }
 
                 for (int l=0; l<n; ++l)
                 {
                     // For Y
+                    // nli_aux_3d_antrp(:,l,q) = nli_aux_2d_antrp(l,:) X cmat
+
                     xt::noalias( view(nli_aux_3d_antrp, q, l, xt::all()) ) =
                         xt::linalg::dot( antrp_mat_sub_[idx_y].data_,
                                             view(nli_aux_2d_antrp, l, xt::all()) );
+
+                    //xt::noalias( view(nli_aux_3d_antrp, q, l, xt::all()) ) =
+                    //    xt::linalg::dot( antrp_mat_sub_[idx_y].data_,
+                    //                        view(nli_aux_2d_antrp, l, xt::all()) );
                 }
             }
 
@@ -169,16 +219,15 @@ namespace fmm
                 for (int q = 0; q < n; ++q)
                 {
                     // For X
-                    //xt::noalias( view(parent, xt::all(), q, p) ) +=
+                    nli_aux_1d_antrp_tmp = view(nli_aux_3d_antrp, xt::all(), p, q) * 1.0;
 
-                    nli_aux_1d_antrp_tmp=
+                    xt::noalias( view(parent, p, q, xt::all()) ) +=
                         xt::linalg::dot( antrp_mat_sub_[idx_x].data_,
-                                            view(nli_aux_3d_antrp, q, p, xt::all()) );
+                                             nli_aux_1d_antrp_tmp);
 
-                    //nli_aux_1d_antrp_tmp(0) = 0;
-                    //nli_aux_1d_antrp_tmp(n) = 0;
-
-                    xt::noalias( view(parent, xt::all(), q, p) ) += nli_aux_1d_antrp_tmp;
+                    //xt::noalias( view(parent, xt::all(), q, p) ) +=
+                    //    xt::linalg::dot( antrp_mat_sub_[idx_x].data_,
+                    //                        view(nli_aux_3d_antrp, q, p, xt::all()) );
                 }
             }
         }
@@ -226,7 +275,6 @@ namespace fmm
                         antrp_mat_(p, c-1)  = temp_mult;
                         temp_sum           += temp_mult;
                     }
-
                     view(antrp_mat_, xt::all(),  c-1) /= temp_sum;
                 }
 
@@ -242,7 +290,7 @@ namespace fmm
 
     //private:
     public:
-        const int pts_cap = 10;
+        const int pts_cap = 11;
 
         // antrp mat
 

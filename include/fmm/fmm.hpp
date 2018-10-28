@@ -71,7 +71,8 @@ namespace fmm
             template<size_t> class Source,
             template<size_t> class Target,
             template<size_t> class fmm_s,
-            template<size_t> class fmm_t
+            template<size_t> class fmm_t,
+            template<size_t> class fmm_tmp
             >
         void fmm_for_level(auto& domain_, int level, bool for_non_leaf=false)
         {
@@ -107,10 +108,12 @@ namespace fmm
             // Copy to temporary variables // only the base level
             std::cout << "Fmm - copy source " << std::endl;
             fmm_init_copy<Source, fmm_s>(domain_, level, o_start, o_end, for_non_leaf);
+            //fmm_init_copy<Source, fmm_tmp>(domain_, level, o_start, o_end, for_non_leaf);
 
             // Antrp for all // from base level up
             std::cout << "Fmm - antrp " << std::endl;
             fmm_antrp<fmm_s>(domain_, level, o_start, o_end);
+            //fmm_antrp<fmm_tmp>(domain_, level, o_start, o_end);
 
             // Nearest neighbors and self
             std::cout << "Fmm - B0 " << std::endl;
@@ -161,10 +164,13 @@ namespace fmm
                 for (auto it_t = level_o_1;
                         it_t!=(level_o_2); ++it_t)
                 {
+                    //if (l == 4)
+                    //{
                     //std::cout<< " Bx test -------------" << std::endl;
                     //std::cout<< "Self" << std::endl;
                     //std::cout<<it_t->key()<< std::endl;
                     //std::cout<< "infl" << std::endl;
+                    //}
 
                     for (int i=0; i< it_t->influence_number();
                              ++i)
@@ -175,8 +181,16 @@ namespace fmm
                             {
                                 fmm_fft<s,t>(n_s, it_t, level-l, dx_level);
                             }
+
                     }
                         //std::cout<<it_t->influence_number() << std::endl;
+
+                    if (it_t->level() == 5)
+                        {
+                            //std::cout<<"------------------------bx  " << std::endl;
+                            //std::cout<< it_t->key() << std::endl;
+                            //std::cout<< it_t->data() -> template get_linalg_data<t>()<< std::endl;
+                        }
 
                 }
 
@@ -328,6 +342,11 @@ namespace fmm
                     if ( !( (for_non_leaf) && (it->is_leaf()) ))
                     it->data()->template get_linalg_data<to>()=
                          it->data()->template get_linalg_data<from>()*1.0;
+
+                    //std::cout<<"------------------"<< std::endl;
+                    //std::cout<< &(it->data()->template get_linalg_data<to>()[0]) << std::endl;
+                    //std::cout<< &(it->data()->template get_data<to>()) << std::endl;
+                    //std::cout<< &child_data << std::endl;
                 }
             }
 
@@ -356,6 +375,12 @@ namespace fmm
             {
                 if(it->data())
                 {
+                    if (it->level() == 5)
+                    {
+                        //std::cout<<"------------------------?  " << std::endl;
+                        //std::cout<< it->key() << std::endl;
+                        //std::cout<< it->data() -> template get_linalg_data<fmm_t>()<< std::endl;
+                    }
                     lagrange_intrp.nli_intrp_node<fmm_t>(it);
                 }
             }
@@ -385,6 +410,12 @@ namespace fmm
                 for (auto it = level_o_1;
                         it!=(level_o_2); ++it)
                 {
+                    if (it->level()==4)
+                    {
+                        //std::cout<< it->key() << std::endl;
+                        //std::cout<< it->child(1)->data()->template get_linalg_data<fmm_s>();
+                    }
+
                     if(it->data())
                         lagrange_intrp.nli_antrp_node<fmm_s>(it);
                 }

@@ -19,6 +19,8 @@ namespace fft
 
 class dfft_r2c
 {
+    const int nthreads = 8;
+
 public:
     using float_type=double;
     using complex_vector_t = std::vector<std::complex<float_type>,
@@ -43,11 +45,13 @@ public: //Ctors:
     dfft_r2c( dims_t _dims )
     :dims_input_(_dims),
      input_(_dims[2]*_dims[1]*_dims[0],0.0),
-     output_(_dims[2]*_dims[1]*((_dims[0]/2)+1)),
-     plan(fftw_plan_dft_r2c_3d(_dims[2], _dims[1], _dims[0],
-                 &input_[0], reinterpret_cast<fftw_complex*>(&output_[0]),
-                 FFTW_PATIENT ))
+     output_(_dims[2]*_dims[1]*((_dims[0]/2)+1))
     {
+        int status = fftw_init_threads();
+        fftw_plan_with_nthreads(nthreads);
+        plan = (fftw_plan_dft_r2c_3d(_dims[2], _dims[1], _dims[0],
+                 &input_[0], reinterpret_cast<fftw_complex*>(&output_[0]),
+                 FFTW_PATIENT ));
     }
 
 public: //Interface
@@ -118,6 +122,7 @@ private:
 class dfft_c2r
 {
 public:
+    const int nthreads = 8;
     using complex_vector_t = std::vector<std::complex<float_type>,
           boost::alignment::aligned_allocator_adaptor<
               std::allocator<std::complex<float_type>>,32>> ;
@@ -139,12 +144,13 @@ public: //Ctors:
 
     dfft_c2r( dims_t _dims )
     :input_(_dims[2]*_dims[1]*((_dims[0]/2)+1),std::complex<float_type>(0.0)),
-     output_(_dims[2]*_dims[1]*_dims[0],0.0),
-     plan(fftw_plan_dft_c2r_3d(_dims[2], _dims[1], _dims[0],
-                 reinterpret_cast<fftw_complex*>(&input_[0]), &output_[0],
-                 FFTW_PATIENT ))
+     output_(_dims[2]*_dims[1]*_dims[0],0.0)
     {
-
+        int status = fftw_init_threads();
+        fftw_plan_with_nthreads(nthreads);
+        plan = fftw_plan_dft_c2r_3d(_dims[2], _dims[1], _dims[0],
+                 reinterpret_cast<fftw_complex*>(&input_[0]), &output_[0],
+                 FFTW_PATIENT );
     }
 
 public: //Interface

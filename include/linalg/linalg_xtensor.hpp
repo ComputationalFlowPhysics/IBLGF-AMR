@@ -3,6 +3,7 @@
 
 #include "xtensor/xnoalias.hpp"
 #include <xtensor/xarray.hpp>
+#include <xtensor/xrandom.hpp>
 #include <xtensor/xadapt.hpp>
 #include <xtensor/xio.hpp>
 #include <xtensor/xview.hpp>

@@ -79,7 +79,8 @@ public:
         template<std::size_t>class Target,
         template<std::size_t>class fmm_s,
         template<std::size_t>class fmm_t,
-        template<std::size_t>class Target_fmm
+        template<std::size_t>class Target_fmm,
+        template<std::size_t>class fmm_tmp
             >
     void solve()
     {
@@ -107,51 +108,51 @@ public:
                  l < domain_->tree()->depth(); ++l)
         {
             //test for FMM
-            fmm_.fmm_for_level<Source, Target_fmm, fmm_s, fmm_t>(domain_, l, false);
+            fmm_.fmm_for_level<Source, Target_fmm, fmm_s, fmm_t,fmm_tmp>(domain_, l, false);
             //fmm_.fmm_for_level<Source, Target_fmm, fmm_s, fmm_t>(domain_, l, true);
 
-            for (auto it_t  = domain_->begin(l);
-                      it_t != domain_->end(l); ++it_t)
-            {
-                auto refinement_level = it_t->refinement_level();
-                auto dx_level =  dx_base/std::pow(2,refinement_level);
-                for (auto it_s  = domain_->begin(l);
-                          it_s != domain_->end(l); ++it_s)
-                {
+            //for (auto it_t  = domain_->begin(l);
+            //          it_t != domain_->end(l); ++it_t)
+            //{
+            //    auto refinement_level = it_t->refinement_level();
+            //    auto dx_level =  dx_base/std::pow(2,refinement_level);
+            //    for (auto it_s  = domain_->begin(l);
+            //              it_s != domain_->end(l); ++it_s)
+            //    {
 
-                    if( !(it_s->is_leaf()) && !(it_t->is_leaf()) )
-                    { continue; }
+            //        if( !(it_s->is_leaf()) && !(it_t->is_leaf()) )
+            //        { continue; }
 
-                    const auto t_base = it_t->data()->template get<Target>().
-                                            real_block().base();
-                    const auto s_base = it_s->data()->template get<Source>().
-                                            real_block().base();
+            //        const auto t_base = it_t->data()->template get<Target>().
+            //                                real_block().base();
+            //        const auto s_base = it_s->data()->template get<Source>().
+            //                                real_block().base();
 
-                    // Get extent of Source region
-                    const auto s_extent = it_s->data()->template get<Source>().
-                                            real_block().extent();
-                    const auto shift    = t_base - s_base;
+            //        // Get extent of Source region
+            //        const auto s_extent = it_s->data()->template get<Source>().
+            //                                real_block().extent();
+            //        const auto shift    = t_base - s_base;
 
-                    // Calculate the dimensions of the LGF to be allocated
-                    const auto base_lgf   = shift - (s_extent - 1);
-                    const auto extent_lgf = 2 * (s_extent) - 1;
+            //        // Calculate the dimensions of the LGF to be allocated
+            //        const auto base_lgf   = shift - (s_extent - 1);
+            //        const auto extent_lgf = 2 * (s_extent) - 1;
 
-                    // Calculate the LGF
-                    lgf_.get_subblock(block_type (base_lgf, extent_lgf), lgf);
+            //        // Calculate the LGF
+            //        lgf_.get_subblock(block_type (base_lgf, extent_lgf), lgf);
 
-                    // Perform convolution
-                    conv_.execute_field(lgf, it_s->data()->template get<Source>());
+            //        // Perform convolution
+            //        conv_.execute_field(lgf, it_s->data()->template get<Source>());
 
-                    // Extract the solution
-                    block_type  extractor(s_base, s_extent);
-                    conv_.add_solution(extractor,
-                                      it_t->data()->template get<Target>(),
-                                      dx_level*dx_level);
+            //        // Extract the solution
+            //        block_type  extractor(s_base, s_extent);
+            //        conv_.add_solution(extractor,
+            //                          it_t->data()->template get<Target>(),
+            //                          dx_level*dx_level);
 
-                    //auto b = it_s->data()->template get_linalg_data<Source>();
-                    //auto bt = it_t->data()->template get_linalg_data<Target>();
-                }
-            }
+            //        //auto b = it_s->data()->template get_linalg_data<Source>();
+            //        //auto bt = it_t->data()->template get_linalg_data<Target>();
+            //    }
+            //}
         }
 
 

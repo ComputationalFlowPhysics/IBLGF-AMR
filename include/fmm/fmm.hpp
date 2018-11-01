@@ -375,12 +375,6 @@ namespace fmm
             {
                 if(it->data())
                 {
-                    if (it->level() == 5)
-                    {
-                        //std::cout<<"------------------------?  " << std::endl;
-                        //std::cout<< it->key() << std::endl;
-                        //std::cout<< it->data() -> template get_linalg_data<fmm_t>()<< std::endl;
-                    }
                     lagrange_intrp.nli_intrp_node<fmm_t>(it);
                 }
             }
@@ -460,6 +454,8 @@ namespace fmm
             //std::cout<< o_s->key() << std::endl;
             //std::cout<< o_t->key() << std::endl;
             //}
+
+
             lgf_.get_subblock( decltype(block_)(base_lgf, extent_lgf), lgf, level_diff);
 
 

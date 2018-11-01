@@ -81,6 +81,8 @@ namespace fmm
                     auto& child_linalg_data  = child ->data()->template get_linalg_data<field>();
                     auto& child_data  = child ->data()->template get_data<field>();
                     //std::cout<<"------------------"<< std::endl;
+                    //std::cout<< child_linalg_data(0,0,0)<< ", " << child_linalg_data(1,0,0) << ", " << child_linalg_data(0,1,0) << ", " << child_linalg_data(0,0,1) << std::endl;
+                    //std::cout<< child_data[0] << child_data[1] << std::endl;
 
                     //if (parent->level() == 5)
                     //{
@@ -147,10 +149,10 @@ namespace fmm
                 for (int q = 0; q < n; ++q)
                 {
                     // For Z
-                    xt::noalias(nli_aux_1d_intrp) =  view(nli_aux_3d_intrp, xt::all(), p, q) * 1.0;
+                    xt::noalias(nli_aux_1d_intrp) =  view(nli_aux_3d_intrp, xt::all(), p, q) ;
 
                     xt::noalias( view(child, xt::all(), p, q) ) +=
-                        xt::linalg::dot(nli_aux_1d_intrp, antrp_mat_sub_[idx_z].data_ ) * 1.0;
+                        xt::linalg::dot(nli_aux_1d_intrp, antrp_mat_sub_[idx_z].data_ ) ;
                     //xt::noalias( view(child, q, p, xt::all()) ) +=
                     //    xt::linalg::dot( view(nli_aux_3d_intrp, q, p, xt::all()), antrp_mat_sub_[idx_z].data_ ) * 1.0;
                 }
@@ -190,7 +192,8 @@ namespace fmm
                 for (int l=0; l<n; ++l)
                 {
                     // For Z
-                    nli_aux_1d_antrp_tmp= view(child, xt::all(), l, q) * 1.0;
+                    xt::noalias(nli_aux_1d_antrp_tmp)= view(child, xt::all(), l, q);
+
                     xt::noalias( view(nli_aux_2d_antrp, xt::all(), l) ) =
                         xt::linalg::dot( antrp_mat_sub_[idx_z].data_,
                                             nli_aux_1d_antrp_tmp );
@@ -290,7 +293,7 @@ namespace fmm
 
     //private:
     public:
-        const int pts_cap = 11;
+        const int pts_cap = 9;
 
         // antrp mat
 
@@ -300,6 +303,7 @@ namespace fmm
 
         std::array<std::vector<float_type>,2> antrp_sub_;
         std::array<linalg::Mat_t, 2> antrp_mat_sub_;
+
     private:
         xt::xtensor<float_type, 1> nli_aux_1d_intrp;//(std::array<size_t, 1>{{ n }});
         xt::xtensor<float_type, 2> nli_aux_2d_intrp;//(std::array<size_t, 2>{{ n,n }});

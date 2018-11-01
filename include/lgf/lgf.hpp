@@ -69,6 +69,7 @@ template<class Policy, int Dim=3>
         }
 
     private:
+        std::vector< std::vector<float_type> > level_lgf_maps_;   ///< Octants per level
 
     };
 

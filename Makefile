@@ -11,7 +11,7 @@
 # Project name
 BIN_DIR=./bin
 NAME    = iblgf.x
-SOURCES = main.cpp src/lgf/lgf_lookup.cpp 
+SOURCES = main.cpp src/lgf/lgf_lookup.cpp
 PREPROC = junk
 
 # Dependency directory
@@ -21,10 +21,11 @@ df = $(DEPDIR)/$(*F)
 # Compiler flags settings
 CXX = mpic++
 
-CFLAGS = -fconstexpr-depth=2048 \
+CFLAGS = -fconstexpr-depth=2000\
 		 -mavx          \
 		 -std=c++17     \
-		 -Wall 
+		 -Wall          \
+		 -fmax-errors=2
 CFLAGS_DEBUG = -O0 -ggdb -DDEBUG
 
 CFLAGS_RELEASE = -O3 -DNDEBUG               \
@@ -38,13 +39,15 @@ CFLAGS_UNSAFE = -ffast-math -ftree-vectorize -funroll-loops
 
 INCLUDE_DIRS = $(USER_INCLUDE_DIRS) -I./include
 
-LIB_DIRS = $(USER_LIB_DIRS) 
+LIB_DIRS = $(USER_LIB_DIRS)
 LDFLAGS  = $(USER_LDFLAGS) \
 		  -lboost_mpi \
+		  -lcblas \
 		  -lboost_serialization \
 		  -lboost_system \
 		  -lboost_filesystem \
-		  -lfftw3
+		  -lfftw3 \
+		  -lfftw3_omp
 
 OBJFILES = $(SOURCES:.cpp=.o)
 
@@ -66,11 +69,11 @@ profile: CFLAGS += -g -pg
 profile: LDFLAGS += -pg
 profile: build
 
-preprocess: $(SOURCES) 
+preprocess: $(SOURCES)
 	@echo -e "\033[1mPreprocessing $(SOURCES) to $(PREPROC)...\033[0m"
 	@$(CXX) $(CFLAGS) $(INCLUDE_DIRS) -E $(SOURCES) > $(PREPROC)
 
-build: $(OBJFILES) 
+build: $(OBJFILES)
 	@echo -e "\033[1mLinking $(OBJFILES) to $(BIN_DIR)/$(NAME)...\033[0m"
 	@$(CXX) $(CFLAGS) $(INCLUDE_DIRS) $(OBJFILES) -o $(BIN_DIR)/$(NAME) $(LDFLAGS)
 

@@ -443,6 +443,7 @@ namespace fmm
                                     real_block().extent();
             const auto shift    = t_base - s_base;
 
+
             // Calculate the dimensions of the LGF to be allocated
             const auto base_lgf   = shift - (s_extent - 1);
             const auto extent_lgf = 2 * (s_extent) - 1;

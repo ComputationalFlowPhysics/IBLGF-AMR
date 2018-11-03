@@ -132,15 +132,34 @@ struct p_fmm_rndm
             }
         }
 
-        xt::xtensor<float_type, 3> rndm_soln = xt::random::rand<float_type>({b_max_0, b_max_1, b_max_2})*2-1;
+        center+=0.5/std::pow(2,nRef);
+        const float_type a  = 10.;
+        const float_type a2 = a*a;
+        const float_type dx_base = domain_.dx_base();
+
+        xt::xtensor<float_type, 3> soln(std::array<size_t, 3>{{b_max_0, b_max_1, b_max_2 }});
         xt::xtensor<float_type, 3> f_source(std::array<size_t, 3>{{b_max_0, b_max_1, b_max_2 }});
 
-        xt::view(rndm_soln,0,xt::all(),xt::all()) *= 0;
-        xt::view(rndm_soln, b_max_0-1, xt::all(),xt::all()) *= 0;
-        xt::view(rndm_soln, xt::all(), 0, xt::all()) *= 0;
-        xt::view(rndm_soln, xt::all(), b_max_1-1, xt::all()) *= 0;
-        xt::view(rndm_soln, xt::all(), xt::all(), 0) *= 0;
-        xt::view(rndm_soln, xt::all(), xt::all(), b_max_2-1) *= 0;
+        double wave_number = 4.0;
+
+        for (int i=0; i<b_max_0; ++i)
+            for (int j=0; j<b_max_1; ++j)
+                for (int k=0; k<b_max_2; ++k)
+                {
+                    float_type xx = (2* 3.1415926 * wave_number * i) / b_max_0 ;
+                    float_type yy = (2* 3.1415926 * wave_number * j) / b_max_1 ;
+                    float_type zz = (2* 3.1415926 * wave_number * k) / b_max_2 ;
+
+                    soln(i,j,k) = sin(xx) * sin(yy) * sin(zz);
+                }
+
+
+        xt::view(soln,0,xt::all(),xt::all()) *= 0;
+        xt::view(soln, b_max_0-1, xt::all(),xt::all()) *= 0;
+        xt::view(soln, xt::all(), 0, xt::all()) *= 0;
+        xt::view(soln, xt::all(), b_max_1-1, xt::all()) *= 0;
+        xt::view(soln, xt::all(), xt::all(), 0) *= 0;
+        xt::view(soln, xt::all(), xt::all(), b_max_2-1) *= 0;
 
         std::cout<<f_source << std::endl;
 
@@ -152,36 +171,31 @@ struct p_fmm_rndm
 
                     auto ii = i-1; auto jj = j; auto kk = k;
                     if ((ii>=0 && ii <b_max_0) && (jj>=0 && jj <b_max_1) && (kk>=0 && kk <b_max_2 ))
-                        f_source(i,j,k) += rndm_soln(ii,jj,kk);
+                        f_source(i,j,k) += soln(ii,jj,kk);
 
                     ii = i+1; jj = j; kk = k;
                     if ((ii>=0 && ii <b_max_0) && (jj>=0 && jj <b_max_1) && (kk>=0 && kk <b_max_2 ))
-                        f_source(i,j,k) += rndm_soln(ii,jj,kk);
+                        f_source(i,j,k) += soln(ii,jj,kk);
 
                     ii = i; jj = j-1; kk = k;
                     if ((ii>=0 && ii <b_max_0) && (jj>=0 && jj <b_max_1) && (kk>=0 && kk <b_max_2 ))
-                        f_source(i,j,k) += rndm_soln(ii,jj,kk);
+                        f_source(i,j,k) += soln(ii,jj,kk);
 
                     ii = i; jj = j+1; kk = k;
                     if ((ii>=0 && ii <b_max_0) && (jj>=0 && jj <b_max_1) && (kk>=0 && kk <b_max_2 ))
-                        f_source(i,j,k) += rndm_soln(ii,jj,kk);
+                        f_source(i,j,k) += soln(ii,jj,kk);
 
                     ii = i; jj = j; kk = k-1;
                     if ((ii>=0 && ii <b_max_0) && (jj>=0 && jj <b_max_1) && (kk>=0 && kk <b_max_2 ))
-                        f_source(i,j,k) += rndm_soln(ii,jj,kk);
+                        f_source(i,j,k) += soln(ii,jj,kk);
 
                     ii = i; jj = j; kk = k+1;
                     if ((ii>=0 && ii <b_max_0) && (jj>=0 && jj <b_max_1) && (kk>=0 && kk <b_max_2 ))
-                        f_source(i,j,k) += rndm_soln(ii,jj,kk);
+                        f_source(i,j,k) += soln(ii,jj,kk);
 
-                    f_source(i,j,k) -= 6.0*rndm_soln(i,j,k);
+                    f_source(i,j,k) -= 6.0*soln(i,j,k);
                 }
 
-
-        center+=0.5/std::pow(2,nRef);
-        const float_type a  = 10.;
-        const float_type a2 = a*a;
-        const float_type dx_base = domain_.dx_base();
 
         for (auto it  = domain_.begin_leafs();
                 it != domain_.end_leafs(); ++it)
@@ -201,7 +215,7 @@ struct p_fmm_rndm
                const auto& coord=it2->level_coordinate();
 
                it2->get<source>() = f_source(coord[0], coord[1], coord[2])/ (dx_level * dx_level);
-               it2->get<phi_exact>() = rndm_soln(coord[0], coord[1], coord[2]);
+               it2->get<phi_exact>() = soln(coord[0], coord[1], coord[2]);
 
             }
         }

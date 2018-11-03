@@ -194,7 +194,7 @@ struct PoissonProblem
             for(auto it2=nodes_domain.begin();it2!=nodes_domain.end();++it2 )
             {
                 const float_type error_tmp = (
-                        it2->get<phi_num_fmm>() - it2->get<phi_num>());
+                        it2->get<phi_num_fmm>() - it2->get<phi_exact>());
 
                 it2->get<error>() = error_tmp;
                 L2 += error_tmp*error_tmp;

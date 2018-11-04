@@ -33,6 +33,9 @@
 
 namespace fmm
 {
+
+using namespace domain;
+
     class Fmm
     {
 
@@ -40,12 +43,13 @@ namespace fmm
     using dims_t = types::vector_type<int,3>;
     using convolution_t        = typename fft::Convolution;
 
-        //FIXME why not working
-        //
-        //using datablock_t = DataBlock<Dim, node, lookup_field_>;
+    //FIXME why not working
+    //
+    using datablock_t    = DataBlock<3, node>;
+    using block_dsrp_t     = typename datablock_t::block_descriptor_type;
 
-        static constexpr int fmm_lBuffer=1; ///< Lower left buffer for interpolation
-        static constexpr int fmm_rBuffer=1; ///< Lower left buffer for interpolation
+    static constexpr int fmm_lBuffer=1; ///< Lower left buffer for interpolation
+    static constexpr int fmm_rBuffer=1; ///< Lower left buffer for interpolation
 
     public:
         Fmm(int Nb)
@@ -76,6 +80,7 @@ namespace fmm
         void fmm_for_level(auto& domain_, int level, bool for_non_leaf=false)
         {
 
+            clock_t fmm_start = clock();
             std::cout << "------------------------------------"  << std::endl;
             std::cout << "Fmm - Level - " << level << std::endl;
 
@@ -110,21 +115,37 @@ namespace fmm
             //fmm_init_copy<Source, fmm_tmp>(domain_, level, o_start, o_end, for_non_leaf);
 
             // Antrp for all // from base level up
+            clock_t fmm_antrp_start = clock();
             std::cout << "Fmm - antrp " << std::endl;
             fmm_antrp<fmm_s>(domain_, level, o_start, o_end);
+            clock_t fmm_antrp_end = clock();
+            double  fmm_antrp_time = (double) (fmm_antrp_end-fmm_antrp_start) / CLOCKS_PER_SEC;
+            std::cout << "Fmm - antrp - done / time = "<< fmm_antrp_time << " (s * threads)" << std::endl;
             //fmm_antrp<fmm_tmp>(domain_, level, o_start, o_end);
 
             // Nearest neighbors and self
+            clock_t fmm_B0_start = clock();
             std::cout << "Fmm - B0 " << std::endl;
             fmm_B0<fmm_s, fmm_t>(domain_, level, o_start, o_end, dx_level);
+            clock_t fmm_B0_end = clock();
+            double  fmm_B0_time = (double) (fmm_B0_end-fmm_B0_start) / CLOCKS_PER_SEC;
+            std::cout << "Fmm - B0 -    done / time = "<< fmm_B0_time << " (s * threads)" << std::endl;
 
             // FMM 189
             std::cout << "Fmm - B1 and up" << std::endl;
+            clock_t fmm_Bx_start = clock();
             fmm_Bx<fmm_s, fmm_t>(domain_, level, o_start, o_end, dx_level);
+            clock_t fmm_Bx_end = clock();
+            double  fmm_Bx_time = (double) (fmm_Bx_end-fmm_Bx_start) / CLOCKS_PER_SEC;
+            std::cout << "Fmm - Bx    - done / time = "<< fmm_Bx_time << " (s * threads)" << std::endl;
 
             // Intrp
             std::cout << "Fmm - intrp " << std::endl;
+            clock_t fmm_intrp_start = clock();
             fmm_intrp<fmm_t>(domain_, level, o_start, o_end);
+            clock_t fmm_intrp_end = clock();
+            double  fmm_intrp_time = (double) (fmm_intrp_end-fmm_intrp_start) / CLOCKS_PER_SEC;
+            std::cout << "Fmm - intrp - done / time = "<< fmm_intrp_time << " (s * threads)" << std::endl;
 
             // Copy back
             std::cout << "Fmm - output " << std::endl;
@@ -132,7 +153,11 @@ namespace fmm
                 fmm_add_equal<Target, fmm_t>(domain_, level, o_start, o_end, for_non_leaf);
             else
                 fmm_minus_equal<Target, fmm_t>(domain_, level, o_start, o_end, for_non_leaf);
-            std::cout << "Fmm - level - done" << std::endl;
+
+            clock_t fmm_end = clock();
+            double fmm_time = (double) (fmm_end-fmm_start) / CLOCKS_PER_SEC;
+            std::cout << "Fmm - level - done / time = "<< fmm_time << " (s * threads)" << std::endl;
+
         }
 
         template<
@@ -446,8 +471,8 @@ namespace fmm
             const auto base_lgf   = shift - (s_extent - 1);
             const auto extent_lgf = 2 * (s_extent) - 1;
 
-            decltype(block_) lgf_block(base_lgf, extent_lgf);
-            decltype(block_) extractor(s_base, s_extent);
+            block_dsrp_t lgf_block(base_lgf, extent_lgf);
+            block_dsrp_t extractor(s_base, s_extent);
 
             conv_.apply_lgf(lgf_block, level_diff,
                     o_s->data()->template get<S>(),

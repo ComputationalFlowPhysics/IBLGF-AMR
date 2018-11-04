@@ -72,22 +72,10 @@ namespace fmm
                     auto child = parent->child(i);
                     if (child == nullptr) continue;
 
-
                     auto& child_linalg_data  = child ->data()->template get_linalg_data<field>();
-                    auto& child_data  = child ->data()->template get_data<field>();
-
                     nli_intrp_node(child_linalg_data, parent_linalg_data, i);
 
-                    //std::cout<< "-------------------"<< std::endl;
-                    //std::cout<< parent_linalg_data << std::endl;
-                    //std::cout<< child_linalg_data << std::endl;
                 }
-
-                if (parent->level()== 4)
-                    {
-                    //std::cout<< "----------------------" << std::endl;
-                    //std::cout << parent_linalg_data << std::endl;
-                    }
 
             }
 

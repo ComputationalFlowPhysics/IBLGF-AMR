@@ -51,7 +51,7 @@ public: //Ctors:
         fftw_plan_with_nthreads(nthreads);
         plan = (fftw_plan_dft_r2c_3d(_dims[2], _dims[1], _dims[0],
                  &input_[0], reinterpret_cast<fftw_complex*>(&output_[0]),
-                 FFTW_PATIENT ));
+                 FFTW_MEASURE ));
     }
 
 public: //Interface
@@ -150,7 +150,7 @@ public: //Ctors:
         fftw_plan_with_nthreads(nthreads);
         plan = fftw_plan_dft_c2r_3d(_dims[2], _dims[1], _dims[0],
                  reinterpret_cast<fftw_complex*>(&input_[0]), &output_[0],
-                 FFTW_PATIENT );
+                 FFTW_MEASURE );
     }
 
 public: //Interface

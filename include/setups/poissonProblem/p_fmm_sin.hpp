@@ -140,26 +140,26 @@ struct p_fmm_rndm
         xt::xtensor<float_type, 3> soln(std::array<size_t, 3>{{b_max_0, b_max_1, b_max_2 }});
         xt::xtensor<float_type, 3> f_source(std::array<size_t, 3>{{b_max_0, b_max_1, b_max_2 }});
 
-        double wave_number = 4.0;
+        double wave_number = 1.0;
 
         for (int i=0; i<b_max_0; ++i)
             for (int j=0; j<b_max_1; ++j)
                 for (int k=0; k<b_max_2; ++k)
                 {
-                    float_type xx = (2* 3.1415926 * wave_number * i) / b_max_0 ;
-                    float_type yy = (2* 3.1415926 * wave_number * j) / b_max_1 ;
-                    float_type zz = (2* 3.1415926 * wave_number * k) / b_max_2 ;
+                    float_type xx = (2* M_PI * wave_number * i) / (b_max_0-1) ;
+                    float_type yy = (2* M_PI * wave_number * j) / (b_max_1-1) ;
+                    float_type zz = (2* M_PI * wave_number * k) / (b_max_2-1) ;
 
                     soln(i,j,k) = sin(xx) * sin(yy) * sin(zz);
                 }
 
 
-        xt::view(soln,0,xt::all(),xt::all()) *= 0;
-        xt::view(soln, b_max_0-1, xt::all(),xt::all()) *= 0;
-        xt::view(soln, xt::all(), 0, xt::all()) *= 0;
-        xt::view(soln, xt::all(), b_max_1-1, xt::all()) *= 0;
-        xt::view(soln, xt::all(), xt::all(), 0) *= 0;
-        xt::view(soln, xt::all(), xt::all(), b_max_2-1) *= 0;
+        //xt::view(soln,0,xt::all(),xt::all()) *= 0;
+        //xt::view(soln, b_max_0-1, xt::all(),xt::all()) *= 0;
+        //xt::view(soln, xt::all(), 0, xt::all()) *= 0;
+        //xt::view(soln, xt::all(), b_max_1-1, xt::all()) *= 0;
+        //xt::view(soln, xt::all(), xt::all(), 0) *= 0;
+        //xt::view(soln, xt::all(), xt::all(), b_max_2-1) *= 0;
 
         std::cout<<f_source << std::endl;
 
@@ -219,6 +219,7 @@ struct p_fmm_rndm
 
             }
         }
+
 
         for (auto it  = domain_.begin_leafs();
                 it != domain_.end_leafs(); ++it)

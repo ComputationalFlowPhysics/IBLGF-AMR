@@ -1,11 +1,12 @@
-#N = [5, 7, 9, 11, 15, 21, 26]
-N = [7, 9, 11, 15, 21, 26]
+N = [11, 15, 21, 26]
+#N = [11, 15]
 #N = [11]
 
 f_bash = open("run.q", "w")
 
 for n in N:
-    for block in [2, 4, 8, 16]:
+    for block in [2, 4, 8, 16, 32]:
+    #for block in [20, 32]:
         s = "cf_{}_{}".format(n, block)
         f = open(s, "w")
         f.write("""simulation_parameters
@@ -16,7 +17,7 @@ for n in N:
 
             Lx=5;
 
-            max_extent   = 128;
+            max_extent   = 1280;
 
             block_extent = {ni};
 

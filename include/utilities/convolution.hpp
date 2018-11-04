@@ -10,9 +10,13 @@
 #include <global.hpp>
 #include <boost/align/aligned_allocator_adaptor.hpp>
 
+#include <lgf/lgf.hpp>
+#include <domain/dataFields/dataBlock.hpp>
+#include <domain/dataFields/datafield.hpp>
 namespace fft
 {
 
+using namespace domain;
 
 //TODO: Base these things also all on fields to exploit base/extent and
 //      stride
@@ -63,6 +67,7 @@ public: //Interface
 
     auto& input(){return input_;}
     auto& output(){return output_;}
+    auto output_copy(){return output_;}
 
 
     template<class Vector>
@@ -175,6 +180,12 @@ class Convolution
 
 public:
 
+    using dims_t = types::vector_type<int,3>;
+
+    using datablock_t = DataBlock<3, node>;
+    using block_descriptor_t = typename datablock_t::block_descriptor_type;
+    using coordinate_t = typename block_descriptor_t::base_t;
+
     using complex_vector_t = std::vector<std::complex<float_type>,
           boost::alignment::aligned_allocator_adaptor<
               std::allocator<std::complex<float_type>>,32>> ;
@@ -183,8 +194,8 @@ public:
           boost::alignment::aligned_allocator_adaptor<
               std::allocator<float_type>,32>>;
 
-    using dims_t = types::vector_type<int,3>;
-
+    using lgf_key_t = std::tuple<int, int, int>;
+    using lgf_matrix_ptr_map_type = std::map<lgf_key_t, std::unique_ptr<complex_vector_t> >;
 
 public: //Ctors
 
@@ -203,6 +214,24 @@ public: //Ctors
      fft_forward1(padded_dims),
      fft_backward(padded_dims)
     {
+    construct_lgf_matrix_level_maps();
+    }
+
+    void construct_lgf_matrix_level_maps()
+    {
+        int max_lgf_map_level = 20;
+        lgf_level_maps_.clear();
+        lgf_level_maps_.resize(max_lgf_map_level);
+    }
+
+    void apply_lgf(auto lgf_block, int level_diff,
+                    auto& source,
+                    auto extractor,
+                    auto& target,
+                    auto scale)
+    {
+            execute_field(lgf_block, level_diff, source);
+            add_solution(extractor, target, scale);
     }
 
     template<class Vector>
@@ -227,17 +256,40 @@ public: //Ctors
         fft_backward.execute();
     }
 
-    template<class Vector, class Field>
-    void execute_field(Vector& _a, Field& _b)
+    template<class Field>
+    void execute_field(auto lgf_block_dsrp, int level_diff, Field& _b)
     {
-        fft_forward0.copy_input(_a, dims0_);
-        fft_forward0.execute();
+        // use lgf_block.shift and level_diff to check if it has been saved or
+        // not
+
+        const auto base = lgf_block_dsrp.base();
+
+        complex_vector_t* f_ptr;
+
+        lgf_key_t k_(base[0],base[1],base[2]);
+        auto it = lgf_level_maps_[level_diff].find( k_ );
+
+        if ( it == lgf_level_maps_[level_diff].end() )
+        {
+            lgf_.get_subblock( lgf_block_dsrp, lgf, level_diff);
+            fft_forward0.copy_input(lgf, dims0_);
+            fft_forward0.execute();
+
+            f_ptr = &fft_forward0.output();
+            lgf_level_maps_[level_diff].emplace(k_,
+                    std::unique_ptr<complex_vector_t> ( new complex_vector_t(*f_ptr) ) );
+        } else
+        {
+
+            f_ptr = (it->second).get();
+        }
+
+        auto& f0 = *f_ptr;
 
         fft_forward1.copy_field(_b, dims1_);
         fft_forward1.execute();
-
-        auto& f0 = fft_forward0.output();
         auto& f1 = fft_forward1.output();
+
         complex_vector_t prod(f0.size());
         const float_type scale = 1.0 / (padded_dims[0] *
                                         padded_dims[1] *
@@ -247,6 +299,7 @@ public: //Ctors
             fft_backward.input()[i] = f0[i]*f1[i]*scale;
         }
         fft_backward.execute();
+
     }
 
 
@@ -282,6 +335,11 @@ private:
     dfft_r2c fft_forward1;
     dfft_c2r fft_backward;
 
+
+    std::vector<float_type> lgf;
+    lgf::LGF<lgf::Lookup>   lgf_;       ///< Lookup for the LGFs
+
+    std::vector<lgf_matrix_ptr_map_type> lgf_level_maps_;   ///< Octants per level
 };
 
 

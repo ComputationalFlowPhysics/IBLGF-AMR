@@ -18,7 +18,6 @@
 #include <fftw3.h>
 
 
-
 //test
 #include <global.hpp>
 #include <simulation.hpp>
@@ -443,33 +442,27 @@ namespace fmm
                                     real_block().extent();
             const auto shift    = t_base - s_base;
 
-
             // Calculate the dimensions of the LGF to be allocated
             const auto base_lgf   = shift - (s_extent - 1);
             const auto extent_lgf = 2 * (s_extent) - 1;
 
-            // Calculate the LGF
-            //if (level_diff>0)
-            //{
-            //std::cout<< shift << std::endl;
-            //std::cout<< o_s->key() << std::endl;
-            //std::cout<< o_t->key() << std::endl;
-            //}
-
-
-            lgf_.get_subblock( decltype(block_)(base_lgf, extent_lgf), lgf, level_diff);
-
-
-            // Perform convolution
-
-            conv_.execute_field(lgf, o_s->data()->template get<S>());
-
-            // Extract the solution
-
+            decltype(block_) lgf_block(base_lgf, extent_lgf);
             decltype(block_) extractor(s_base, s_extent);
 
-            conv_.add_solution(extractor, o_t->data()->template get<T>(),
-                              dx_level*dx_level);
+            conv_.apply_lgf(lgf_block, level_diff,
+                    o_s->data()->template get<S>(),
+                    extractor,
+                    o_t->data()->template get<T>(),
+                    dx_level*dx_level);
+
+            //lgf_.get_subblock( decltype(block_)(base_lgf, extent_lgf), lgf, level_diff);
+
+            //// Perform convolution
+            //conv_.execute_field(lgf, o_s->data()->template get<S>());
+
+            //// Extract the solution
+            //conv_.add_solution(extractor, o_t->data()->template get<T>(),
+            //                  dx_level*dx_level);
 
             //auto b = o_s->data()->template get_linalg_data<S>();
             //auto bt = o_t->data()->template get_linalg_data<T>();

@@ -4,8 +4,8 @@ N = [11, 15, 21, 26]
 
 f_bash = open("run.q", "w")
 
-for n in N:
-    for block in [2, 4, 8, 16, 32]:
+for block in [2, 4, 8, 16, 32]:
+    for n in N:
     #for block in [20, 32]:
         s = "cf_{}_{}".format(n, block)
         f = open(s, "w")

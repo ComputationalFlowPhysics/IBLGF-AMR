@@ -11,11 +11,11 @@ for block in [2, 4, 8, 16, 32]:
         f = open(s, "w")
         f.write("""simulation_parameters
     {{
-        nLevels=0;
+        nLevels=1;
         L=5;
         domain{{
 
-            Lx=5;
+            Lx=4;
 
             max_extent   = 1280;
 
@@ -30,6 +30,6 @@ for block in [2, 4, 8, 16, 32]:
     }}
     """.format(ni=n, b = block*n ) )
 
-        f_bash.write("../bin/iblgf.x {ss} >> ./sin_results/{ss}.out \n".format(ss=s))
+        f_bash.write("../bin/iblgf.x {ss} >> ./amr_test_nmax_6/{ss}.out \n".format(ss=s))
 
         f.close()

@@ -43,8 +43,6 @@ using namespace domain;
     using dims_t = types::vector_type<int,3>;
     using convolution_t        = typename fft::Convolution;
 
-    //FIXME why not working
-    //
     using datablock_t    = DataBlock<3, node>;
     using block_dsrp_t     = typename datablock_t::block_descriptor_type;
 

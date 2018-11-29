@@ -1,5 +1,5 @@
-#ifndef IBLGF_INCLUDED_FMM_HPP
-#define IBLGF_INCLUDED_FMM_HPP
+#ifndef IBLGF_INCLUDED_C_CENTER_NLI
+#define IBLGF_INCLUDED_C_CENTER_NLI
 
 #include <iostream>     // std::cout
 #include <algorithm>    // std::max/ min
@@ -16,15 +16,15 @@
 #include <domain/dataFields/datafield.hpp>
 #include <domain/octree/tree.hpp>
 
-namespace fmm
+namespace interpolation
 {
-    class Nli
+    class cell_center_nli
     {
 
     public: // constructor
 
-        Nli() = delete;
-        Nli(int Nb_)
+        cell_center_nli() = delete;
+        cell_center_nli(int Nb_)
             : Nb_(Nb_),
             antrp_(Nb_ * Nb_ * 2, 0.0),
             antrp_mat_(&(antrp_[0]), Nb_, Nb_ * 2),
@@ -38,24 +38,12 @@ namespace fmm
             nli_aux_3d_antrp(std::array<size_t, 3>{{ Nb_, Nb_, Nb_ }}),
             nli_aux_1d_antrp_tmp(std::array<size_t, 1>{{ Nb_}})
         {
-            //std::cout <<"antrp_mem, "<< &antrp_[0]<< std::endl;
-            //std::cout << &(antrp_mat_.data_(0,0)) << std::endl;
-
-            //std::cout <<"antrp_sub_mem, "<< &antrp_sub_[0][0]<< std::endl;
-            //std::cout << &(antrp_mat_sub_[0].data_(0,0))<< std::endl;
-
             antrp_mat_calc(antrp_mat_.data_, Nb_);
             antrp_mat_sub_[0].data_ = xt::view(antrp_mat_.data_, xt::range(0, Nb_), xt::range( 0  , Nb_  ));
             antrp_mat_sub_[1].data_ = xt::view(antrp_mat_.data_, xt::range(0, Nb_), xt::range( Nb_, 2*Nb_));
 
-            //std::cout << antrp_mat_.data_ << std::endl;
-            //auto t1 = antrp_;
-            //for (auto i: t1)
-            //      std::cout << i << ' ';
-            //std::cout<<std::endl;
-
-            //std::cout << antrp_mat_sub_[0].data_ << std::endl;
-            //std::cout << antrp_mat_sub_[1].data_ << std::endl;
+            std::cout << antrp_mat_sub_[0].data_ << std::endl;
+            std::cout << antrp_mat_sub_[1].data_ << std::endl;
         }
 
 
@@ -95,22 +83,16 @@ namespace fmm
                     xt::noalias( view( nli_aux_2d_intrp, l, xt::all() )) =
                         xt::linalg::dot( nli_aux_1d_intrp, antrp_mat_sub_[idx_x].data_ );
 
-                    //xt::noalias(nli_aux_1d_intrp) = view(parent, xt::all(), l, q) * 1.0;
-                    //xt::noalias( view( nli_aux_2d_intrp, xt::all(), l )) =
-                    //    xt::linalg::dot( nli_aux_1d_intrp, antrp_mat_sub_[idx_x].data_ );
                 }
 
                 for (int l=0; l<n; ++l)
                 {
                     // For Y
-
                     xt::noalias(nli_aux_1d_intrp) = view(nli_aux_2d_intrp, xt::all(), l) * 1.0;
 
                     xt::noalias( view(nli_aux_3d_intrp, q, xt::all(), l) ) =
                         xt::linalg::dot(nli_aux_1d_intrp, antrp_mat_sub_[idx_y].data_);
 
-                    //xt::noalias( view(nli_aux_3d_intrp, l, xt::all(), q) ) =
-                    //    xt::linalg::dot(view(nli_aux_2d_intrp, l, xt::all()), antrp_mat_sub_[idx_y].data_);
                 }
             }
 
@@ -123,8 +105,6 @@ namespace fmm
 
                     xt::noalias( view(child, xt::all(), p, q) ) +=
                         xt::linalg::dot(nli_aux_1d_intrp, antrp_mat_sub_[idx_z].data_ ) ;
-                    //xt::noalias( view(child, q, p, xt::all()) ) +=
-                    //    xt::linalg::dot( view(nli_aux_3d_intrp, q, p, xt::all()), antrp_mat_sub_[idx_z].data_ ) * 1.0;
                 }
             }
         }
@@ -142,7 +122,6 @@ namespace fmm
                     if (child == nullptr) continue;
 
                     auto& child_linalg_data  = child ->data()->template get_linalg_data<field>();
-                    //std::cout<<"child # " << i << std::endl;
                     nli_antrp_node(child_linalg_data, parent_linalg_data, i);
                 }
 
@@ -213,13 +192,13 @@ namespace fmm
 
             for (int c = 1; c < Nb_*2-1; ++c){
 
-                int c_p = c - Nb_;
+                double c_p = c - Nb_ + 0.5;
 
-                if (c % 2 == 0){
-                    int p = c / 2;
-                    antrp_mat_(p, c-1) = 1.0;
-                }
-                else{
+                //if (c % 2 == 0){
+                //    int p = c / 2;
+                //    antrp_mat_(p, c-1) = 1.0;
+                //}
+                //else
                     long double temp_sum = 0.0;
                     int bd_l = -1;
                     int bd_r = -1;
@@ -228,32 +207,17 @@ namespace fmm
                         auto bd_l_tmp = ((c + 1) / 2  - pts_cap / 2 );
                         bd_l = std::max(0   , ((c + 1) / 2  - pts_cap / 2 ));
                         bd_r = std::min(Nb_, bd_l + pts_cap);
-
-                        //if (bd_l_tmp>=0)
-                        //    bd_r = std::min(Nb_, ((c + 1) / 2  - pts_cap / 2 ) + pts_cap);
-                        //else
-                        //    //bd_r = c+1;//(c+1)/2*2-1;
-                        //    bd_r = std::min(Nb_, bd_l + pts_cap);//(c+1)/2*2-1;
-                        //std::min(Nb_, ((c + 1) / 2  - pts_cap / 2 ) + pts_cap);
-                        //bd_r = std::min(Nb_, ((c + 1) / 2  - pts_cap / 2 ) + pts_cap);
                     }
                     else{
                         auto bd_r_tmp = ((c + 1) / 2  + pts_cap / 2 );
                         bd_r = std::min(Nb_ , ((c + 1) / 2 + pts_cap / 2));
-                        //if (bd_r_tmp<=Nb_)
-                        //    bd_l = bd_r - pts_cap;
-                        //else
-                        //    //bd_l = c-Nb_+1;
-                        //    bd_l =  std::max(0   , bd_r - pts_cap);
-
                         bd_l = std::max(0   , bd_r - pts_cap);
-                        //bd_l = std::max(0   , ((c + 1) / 2 + pts_cap / 2) - pts_cap);
                     }
 
                     for (int p = bd_l; p<bd_r; ++p)
                     {
                         long double temp_mult = 1.0;
-                        int p_p = p*2 - Nb_ + 1;
+                        int p_p = p*2 - Nb_  + 1;
 
                         // the barycentric coefficients
                         for (int l = bd_l; l< bd_r; ++l){
@@ -262,12 +226,12 @@ namespace fmm
                             }
                         }
 
-                        temp_mult          /= (long double)(c_p - p_p + 1);
+                        temp_mult          /= (long double)(c_p - p_p);
                         antrp_mat_(p, c-1)  = (double)temp_mult;
                         temp_sum           += temp_mult;
+
                     }
                     view(antrp_mat_, xt::all(),  c-1) /= (double)temp_sum;
-                }
 
             }
 
@@ -281,7 +245,7 @@ namespace fmm
 
     //private:
     public:
-        const int pts_cap = 6;
+        const int pts_cap = 4;
 
         // antrp mat
 

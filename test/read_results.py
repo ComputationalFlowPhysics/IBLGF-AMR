@@ -1,14 +1,20 @@
+import sys
 import os
 import re
 
 err = []
-dir_name = './sin_results/'
+
+if len(sys.argv)>1:
+    dir_name = sys.argv[1]
+else:
+    dir_name = 'sin_results'
+
 for filename in os.listdir(dir_name):
     name = [int(s) for s in re.findall(r'\d+',filename)]
     b_extent = name[0]
     domain = name[0] *  name[1]
 
-    f = open(dir_name + filename, 'r')
+    f = open(dir_name + '/' +  filename, 'r')
     text = f.read()
     e_inf_s = re.findall(r'LInf = -?\ *[0-9]+\.?[0-9]*(?:[Ee]\ *-?\ *[0-9]+)?', text)
 

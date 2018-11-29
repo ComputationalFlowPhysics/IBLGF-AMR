@@ -199,8 +199,8 @@ struct PoissonProblem
                 it2->get<error>() = error_tmp;
                 L2 += error_tmp*error_tmp;
 
-                if ( error_tmp > LInf)
-                    LInf = error_tmp;
+                if ( abs(error_tmp) > LInf)
+                    LInf = abs(error_tmp);
 
                 ++count;
             }

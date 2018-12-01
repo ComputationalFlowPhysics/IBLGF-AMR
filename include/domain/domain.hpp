@@ -237,8 +237,6 @@ public:
         tree()->construct_influence_lists();
     }
 
-    const auto& block_extent()const noexcept { return block_extent_; }
-    auto& block_extent()noexcept { return block_extent_; }
 
 public:
 
@@ -422,10 +420,19 @@ public:
         return bb;
     }
 
+public: //Access
 
     /**@brief Resolution on the base level */
     float_type dx_base()const noexcept{return dx_base_;}
 
+    /**@brief Extent of each block */
+    const extent_t& block_extent()const noexcept { return block_extent_; }
+    /**@brief Extent of each block */
+    extent_t& block_extent()noexcept { return block_extent_; }
+
+    /**@brief Extent of each block */
+    bool is_server()noexcept { return decomposition_.is_server(); }
+    bool is_client()noexcept { return decomposition_.is_client(); }
 public:
 
     friend std::ostream& operator<<(std::ostream& os, Domain& d)

@@ -50,7 +50,7 @@ public:
 
     auto compute_distribution()
     {
-        std::cout<<"Computing distribution"<<std::endl;
+        std::cout<<"Computing domain decomposition "<<std::endl;
         float_type total_load=0.0;
         for( auto it = domain_->begin_df(); it!= domain_->end_df();++it )
         {

@@ -52,7 +52,6 @@ public:
     friend octant_base_type;
     friend octant_type;
 
-
 public:
     Tree() = default;
     Tree(const Tree& other)              = delete;
@@ -105,23 +104,26 @@ public:
 public:
 
 
-    void init(const std::vector<key_type>& _keys)
+    template<class Function=std::function<void(octant_type* c)>>
+    void init(const std::vector<key_type>& _keys,
+              const Function& f=[](octant_type* o){ return; })
     {
-        init(_keys, this->base_level_);
+        this->init(_keys, this->base_level_,f);
     }
-    void init(const std::vector<key_type>& _keys, int _base_level)
+
+    template<class Function=std::function<void(octant_type* c)>>
+    void init(const std::vector<key_type>& _keys, int _base_level, 
+              const Function& f=[](octant_type* o){ return; })
     {
-        std::cout<<"TODO: Allocate memory"<<std::endl;
-        std::cout<<"TODO: make sure I only real leafs are inserted"<<std::endl;
         this->base_level_ = _base_level;
         depth_ = base_level_ + 1;
         root_ = std::make_shared<octant_type>(coordinate_type(0), 0, this);
         for (auto& k : _keys)
         {
-            auto leaf = this->insert_td(k);
-            //FIXME:  construct leaf map later
-            leafs_.emplace(leaf->key(), leaf);
+            auto octant = this->insert_td(k);
+            f(octant);
         }
+        construct_leaf_maps();
         construct_level_maps();
         construct_neighbor_lists();
         construct_influence_lists();
@@ -374,10 +376,23 @@ public: // misc
     void construct_flag_leaf()
     {
         dfs_iterator it_begin(root()); dfs_iterator it_end;
-
         for(auto it =it_begin;it!=it_end;++it)
         {
             it->flag_leaf(it->is_leaf_search());
+        }
+    }
+
+    void construct_leaf_maps()
+    {
+        leafs_.clear();
+        dfs_iterator it_begin(root()); dfs_iterator it_end;
+        for(auto it =it_begin;it!=it_end;++it)
+        {
+            it->flag_leaf(it->is_leaf_search());
+            if(it->is_leaf())
+            {
+                leafs_.emplace(it->key(), it.ptr());
+            }
         }
     }
 

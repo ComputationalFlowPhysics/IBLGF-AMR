@@ -79,6 +79,7 @@ public:
     auto refinement_level() const noexcept{return tree_level()-t_->base_level();}
 
 
+
     /** @brief Get octant coordinate (integer) based on tree structure */
     coordinate_type tree_coordinate() const noexcept
     {

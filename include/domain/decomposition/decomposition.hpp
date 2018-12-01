@@ -9,7 +9,6 @@
 #include <dictionary/dictionary.hpp>
 
 #include <boost/mpi/communicator.hpp>
-#include <domain/decomposition/process_type.hpp>
 #include <domain/decomposition/client.hpp>
 #include <domain/decomposition/server.hpp>
 

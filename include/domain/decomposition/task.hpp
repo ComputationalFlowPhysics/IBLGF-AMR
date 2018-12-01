@@ -7,7 +7,6 @@
 #include <boost/mpi/communicator.hpp>
 
 #include <global.hpp>
-#include <domain/decomposition/process_type.hpp>
 
 namespace domain
 {

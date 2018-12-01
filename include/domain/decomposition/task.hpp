@@ -1,0 +1,70 @@
+#ifndef DOMAIN_INCLUDED_TASK_HPP
+#define DOMAIN_INCLUDED_TASK_HPP
+
+#include <vector>
+#include <stdexcept>
+
+#include <boost/mpi/communicator.hpp>
+
+#include <global.hpp>
+#include <domain/decomposition/process_type.hpp>
+
+namespace domain
+{
+
+/** @brief ProcessType Server 
+ *  Master/Server process.
+ *  Stores the full tree structure without the data.
+ *  Responsible for load balancing and listens to 
+ *  the client/worker processes.
+ */
+template<class Key>
+class Task
+{
+
+public:
+    using key_t  = Key;
+public:
+
+    Task(const Task&  other) = default;
+    Task(      Task&& other) = default;
+    Task& operator=(const Task&  other) & = default;
+    Task& operator=(      Task&& other) & = default;
+    ~Task() = default;
+
+    Task() = default;
+
+    Task(key_t _k, int _rank, float_type _load)
+    : key_(_k), rank_(_rank),load_(_load)
+    {
+    }
+
+    const Key& key()const noexcept {return key_;}
+    Key& key()noexcept {return key_;}
+    const int& rank()const noexcept {return rank_;}
+    int& rank()noexcept {return rank_;}
+    const float_type& load()const noexcept {return load_;}
+    float_type& load()noexcept {return load_;}
+
+
+private:
+    Key key_;
+    int rank_;
+    float_type load_;
+
+private:
+
+    friend class boost::serialization::access;
+                  
+    template<class Archive>
+    void serialize(Archive & ar, const unsigned int version)
+    {
+        ar & key_;
+        ar & rank_;
+        ar & load_;
+    }
+};
+
+}
+
+#endif

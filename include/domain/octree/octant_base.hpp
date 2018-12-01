@@ -145,4 +145,3 @@ protected:
 
 } //namespace octree
 #endif
-

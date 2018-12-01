@@ -1,0 +1,128 @@
+#ifndef DOMAIN_INCLUDED_SERVER_HPP
+#define DOMAIN_INCLUDED_SERVER_HPP
+
+#include <vector>
+#include <stdexcept>
+
+#include <boost/mpi/communicator.hpp>
+#include <boost/mpi.hpp>
+
+#include <global.hpp>
+#include <domain/decomposition/task.hpp>
+#include <boost/serialization/vector.hpp>
+
+namespace domain
+{
+
+/** @brief ProcessType Server 
+ *  Master/Server process.
+ *  Stores the full tree structure without the data.
+ *  Responsible for load balancing and listens to 
+ *  the client/worker processes.
+ */
+template<class Domain>
+class Server 
+{
+
+public:
+    using domain_t = Domain;
+    using communicator_type  = typename  domain_t::communicator_type;
+    using octant_t  = typename  domain_t::octant_t;
+    using key_t  = typename  domain_t::key_t;
+    using task_t = Task<key_t>;
+public:
+
+    Server(const Server&  other) = default;
+    Server(      Server&& other) = default;
+    Server& operator=(const Server&  other) & = default;
+    Server& operator=(      Server&& other) & = default;
+    ~Server() = default;
+
+    Server(Domain* _d, communicator_type _comm)
+    :domain_(_d), comm_(_comm)
+    {
+        boost::mpi::communicator world;
+        std::cout<<"I am the server on rank: "<<world.rank()<<std::endl;
+    }
+
+          
+public:
+
+    auto compute_distribution()
+    {
+        std::cout<<"Computing distribution"<<std::endl;
+        float_type total_load=0.0;
+        for( auto it = domain_->begin_df(); it!= domain_->end_df();++it )
+        {
+            total_load+=it->load();
+        }
+        
+        auto nProcs=comm_.size()-1;
+        const float_type ideal_load=total_load/nProcs;
+
+        float_type total_load_perProc=0;
+        int procCount=0;
+        std::vector<std::vector<task_t>> tasks_perProc(nProcs);
+        for( auto it = domain_->begin_df(); it!= domain_->end_df();++it )
+        {
+            it->rank()=procCount+1;
+            auto load= it->load();
+            task_t task(it->key(), it->rank(), load);
+            
+            if(total_load_perProc+load<ideal_load || (procCount == nProcs-1))
+            {
+                tasks_perProc[procCount].push_back(task);
+                total_load_perProc+=load;
+            }
+            else 
+            {
+                procCount++;
+                task.rank()=procCount+1;
+                tasks_perProc[procCount].push_back(task);
+                total_load_perProc=load;
+            }
+        }
+
+        std::vector<int> total_loads_perProc(nProcs,0);
+        std::ofstream ofs("load_balance.txt");
+        for(int i =0; i<nProcs;++i)
+        {
+            for(auto t:  tasks_perProc[i] )
+            {
+                total_loads_perProc[i]+=t.load();
+            }
+            ofs<< tasks_perProc[i][0].rank()<<" "<<total_loads_perProc[i]<<std::endl;
+        }
+
+        //TODO: Iterate to balance/diffuse load 
+        
+        return tasks_perProc;
+    }
+
+    void send_keys()
+    {
+        auto tasks=compute_distribution();
+        for(auto& t:tasks)
+        {
+            std::vector<key_t> keys;
+            for(auto tt: t ) keys.push_back(tt.key());
+            comm_.send(t[0].rank(),0, keys );
+        }
+    }
+
+
+
+private:
+    Domain* domain_;
+    communicator_type comm_;
+
+};
+
+}
+
+
+
+
+
+
+#endif

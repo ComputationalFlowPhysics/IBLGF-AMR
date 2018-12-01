@@ -145,7 +145,6 @@ public: //Ctors
         {
             if(children_[i]!=nullptr ) return false;
         }
-
         return true;
     }
 
@@ -203,6 +202,10 @@ public: //Ctors
        influence_[i] = new_influence;
     }
 
+    float_type load()const noexcept{return 1.0;}
+    const int& rank()const noexcept{return rank_;}
+    int& rank()noexcept{return rank_;}
+
 private:
 
 	Octant* refine(unsigned int i)
@@ -227,9 +230,10 @@ private:
     std::array<Octant*,pow(3,Dim) > neighbor_ = {nullptr};
 
     int influence_num = 0;
+    //FIXME:Pls use an array and allocate as neede... to large for stack storage
     std::array<Octant*, 189 > influence_= {nullptr};
-
     bool flag_leaf_=true;
+    int rank_;
 };
 
 

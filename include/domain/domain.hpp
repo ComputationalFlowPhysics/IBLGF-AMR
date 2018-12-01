@@ -8,7 +8,7 @@
 #include <global.hpp>
 #include <domain/octree/tree.hpp>
 #include <dictionary/dictionary.hpp>
-
+#include <domain/decomposition/decomposition.hpp>
 
 namespace domain
 {
@@ -40,7 +40,11 @@ public:
 
     using field_type_iterator_t = typename datablock_t::field_type_iterator_t;
 
+    using communicator_type  = typename  boost::mpi::communicator;
+    using decompositon_type = Decomposition<Domain>;
+
     static constexpr int dimension(){return Dim;}
+
 
 public:
 
@@ -130,48 +134,53 @@ public:
         auto base_=extent_t(min);
         bounding_box_=block_descriptor_t(base_*e, extent*e+1);
 
-
-
         for(auto& b: bases) b-=base_;
         auto base_level=key_t::minimum_level(_maxExtent/_blockExtent);
-        t_ = std::make_shared<tree_t>(bases, base_level);
 
-        //Assign octant to real coordinate transform:
-        t_->get_octant_to_level_coordinate()=
-            [ blockExtent=_blockExtent, base=base_]
-            (real_coordinate_type _oct_coord, int _level)
-            {
-                return (_oct_coord + base*std::pow(2,_level))*blockExtent;
-            };
-
-        //instantiate blocks
-
-        //for(auto it=t_->begin_leafs();it!=t_->end_leafs();++it)
-        //{
-        //    const int level=0;
-        //    auto bbase=t_->octant_to_level_coordinate(it->tree_coordinate());
-        //    it->data()=std::make_shared<datablock_t>(bbase, _blockExtent,level);
-        //}
-
-        for(auto it=begin_df();it!=end_df();++it)
+        //Initialize tree only on the master process
+        decomposition_ = Decomposition(this);
+        if(decomposition_.is_server())
         {
-            const int level=0;
-            auto bbase=t_->octant_to_level_coordinate(it->tree_coordinate());
-            //it->data()=std::make_shared<datablock_t>(bbase, _blockExtent,level, false);
-            it->data()=std::make_shared<datablock_t>(bbase, _blockExtent,level, true);
+            t_ = std::make_shared<tree_t>(bases, base_level);
+
+            //Assign octant to real coordinate transform:
+            t_->get_octant_to_level_coordinate()=
+                [ blockExtent=_blockExtent, base=base_]
+                (real_coordinate_type _oct_coord, int _level)
+                {
+                    return (_oct_coord + base*std::pow(2,_level))*blockExtent;
+                };
+
+            //instantiate blocks
+            for(auto it=begin_df();it!=end_df();++it)
+            {
+                const int level=0;
+                auto bbase=t_->octant_to_level_coordinate(it->tree_coordinate());
+                it->data()=std::make_shared<datablock_t>(bbase, 
+                        _blockExtent,level, false);
+            }
         }
-
-        //for(auto it=begin_leafs();it!=end_leafs();++it)
-        //{
-
-        //    const int level=0;
-        //    auto bbase=t_->octant_to_level_coordinate(it->tree_coordinate());
-        //    block_descriptor_t b(bbase, block_extent_, level);
-        //    it->data()->initialize(b);
-        //}
+        else if(decomposition_.is_client())
+        {
+            t_=std::make_shared<tree_t>(base_level);
+            
+            //Instantiate blocks only after master has distributed tasks 
+            
+            //Assign octant to real coordinate transform:
+            t_->get_octant_to_level_coordinate()=
+                [ blockExtent=_blockExtent, base=base_]
+                (real_coordinate_type _oct_coord, int _level)
+                {
+                    return (_oct_coord + base*std::pow(2,_level))*blockExtent;
+                };
+        }
     }
 
 
+    void distribute()
+    {
+        decomposition_.distribute();
+    }
 
     template<template<std::size_t> class Field>
     void init_field(octant_t* _root)
@@ -223,7 +232,6 @@ public:
             child_it->data()=std::make_shared<datablock_t>(bbase, block_extent_,level);
         });
 
-        //FIXME is there any other place need to update those 2
         tree()->construct_flag_leaf();
         tree()->construct_neighbor_lists();
         tree()->construct_influence_lists();
@@ -462,6 +470,7 @@ private:
     extent_t block_extent_;
     block_descriptor_t bounding_box_;
     float_type dx_base_;
+    decompositon_type decomposition_;
 
 };
 

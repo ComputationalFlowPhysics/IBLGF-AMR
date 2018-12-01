@@ -205,8 +205,6 @@ private: //private member helpers
      **/
     void generate_nodes()
     {
-
-
         bounding_box_=*this;
         buffer_type lbuff(0), rbuff(0);
         for_fields( [&](auto& field){

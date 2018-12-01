@@ -76,21 +76,56 @@ public:
      */
     Tree (const std::vector<coordinate_type>& _points, int _base_level)
     {
+        std::vector<key_type> keys;
+        for(auto& p : _points )
+        {
+            keys.push_back(key_type(p,_base_level));
+        }
+        this->init(keys, _base_level);
+    }
+
+    /**
+     *  @brief Top-Down construction of octree.
+     *
+     *  Basd on a vector of keys
+     */
+    Tree(  const std::vector<key_type>& _keys, int _base_level)
+    {
+        this->init(_keys, _base_level);
+    }
+
+    Tree(int _base_level)
+    {
         this->base_level_ = _base_level;
         depth_ = base_level_ + 1;
+        root_ = std::make_shared<octant_type>(
+                coordinate_type(0), 0, this);
+    }
 
-        //Construct interior octants, leaf map && level map
+public:
+
+
+    void init(const std::vector<key_type>& _keys)
+    {
+        init(_keys, this->base_level_);
+    }
+    void init(const std::vector<key_type>& _keys, int _base_level)
+    {
+        std::cout<<"TODO: Allocate memory"<<std::endl;
+        std::cout<<"TODO: make sure I only real leafs are inserted"<<std::endl;
+        this->base_level_ = _base_level;
+        depth_ = base_level_ + 1;
         root_ = std::make_shared<octant_type>(coordinate_type(0), 0, this);
-        for (auto& p : _points)
+        for (auto& k : _keys)
         {
-            auto leaf = this->insert_td(p, this->base_level_);
+            auto leaf = this->insert_td(k);
+            //FIXME:  construct leaf map later
             leafs_.emplace(leaf->key(), leaf);
         }
         construct_level_maps();
         construct_neighbor_lists();
         construct_influence_lists();
     }
-
 
 public:
 
@@ -129,23 +164,17 @@ public:
 
     octant_type* find_octant(key_type _k)
     {
-
         auto it = root();
         auto l = it->level();
-
-
         while (it->key() != _k)
         {
             auto child_ = it->child(_k.sib_number(l));
-
             if  (child_ == nullptr)
                 return nullptr;
 
             it = child_;
-
             l++;
         }
-
         return it;
     }
 
@@ -436,6 +465,7 @@ public: // misc
         //std::cout<< "-----------------------------------"<<std::endl;
         //}
     }
+
 
 
 

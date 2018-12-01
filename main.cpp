@@ -3,8 +3,9 @@
 #include <boost/mpi/communicator.hpp>
 
 //#include <setups/poissonProblem/poissonProblem.hpp>
+#include <setups/tests/decomposition/decomposition_test.hpp>
 //#include <setups/poissonProblem/p_fmm_rndm.hpp>
-#include <setups/poissonProblem/p_fmm_sin.hpp>
+//#include <setups/poissonProblem/p_fmm_sin.hpp>
 //#include <setups/tests/view_test/view_test.hpp>
 #include <dictionary/dictionary.hpp>
 
@@ -27,8 +28,9 @@ int main(int argc, char *argv[])
     Dictionary dictionary(input);
 
     //Instantiate setup
-    p_fmm_rndm setup(&dictionary);
+    //p_fmm_rndm setup(&dictionary);
     //PoissonProblem setup(&dictionary);
+    DecomposistionTest setup(&dictionary);
 
     // run setup
     setup.run();

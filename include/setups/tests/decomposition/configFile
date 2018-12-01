@@ -1,6 +1,6 @@
 simulation_parameters
 {
-    nLevels=2;
+    nLevels=0;
     L=1;
 
     domain{
@@ -17,10 +17,10 @@ simulation_parameters
         block
         {
             base   = (0,0,0);
-            //extent = (8,8,8);
+            extent = (8,8,8);
             //extent = (16,16,16);
             //extent = (32,32,32);
-            extent = (64,64,64);
+            //extent = (64,64,64);
             //extent = (128,128,128);
         }
     }

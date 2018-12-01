@@ -25,6 +25,7 @@ CFLAGS = -fconstexpr-depth=2000\
 		 -mavx          \
 		 -std=c++17     \
 		 -Wall          \
+		 -isystem          \
 		 -fmax-errors=2
 CFLAGS_DEBUG = -O0 -ggdb -DDEBUG
 

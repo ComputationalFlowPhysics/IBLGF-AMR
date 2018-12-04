@@ -106,11 +106,11 @@ struct PoissonProblem
                     it != domain_.end_leafs(); ++it)
             {
                 auto b=it->data()->descriptor();
-                coordinate_t lower(2), upper(2);
+                coordinate_t lower(center / 2 ), upper(center / 2);
                 //std::cout<< b << std::endl;
                 b.grow(lower, upper);
                 //std::cout<< center << std::endl;
-                if(b.is_inside( std::pow(2.0,l)*center )
+                if(b.is_inside( center * pow(2.0,l))
                    && it->refinement_level()==l
                   )
                 {

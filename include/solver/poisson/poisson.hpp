@@ -193,79 +193,79 @@ public:
                 // laplace of it_t data with zero bcs
                 if ((it->is_leaf()))
                 {
-                    //for ( int i =1; i<s_extent[0]-1; ++i){
-                    //    for ( int j = 1; j<s_extent[1]-1; ++j){
-                    //        for ( int k = 1; k<s_extent[2]-1; ++k){
-                    //            // FIXME actually k j i order due to the
-                    //            // differences in definition of mem layout
-                    //            diff_target_data(k,j,i)  = - 6.0 * target_data_tmp(k,j,i);
-                    //            diff_target_data(k,j,i) += target_data_tmp(k,j,i-1);
-                    //            diff_target_data(k,j,i) += target_data_tmp(k,j,i+1);
-                    //            diff_target_data(k,j,i) += target_data_tmp(k,j-1,i);
-                    //            diff_target_data(k,j,i) += target_data_tmp(k,j+1,i);
-                    //            diff_target_data(k,j,i) += target_data_tmp(k+1,j,i);
-                    //            diff_target_data(k,j,i) += target_data_tmp(k-1,j,i);
-                    //        }
-                    //    }
-                    //}
-
                     for ( int i =1; i<s_extent[0]-1; ++i){
                         for ( int j = 1; j<s_extent[1]-1; ++j){
                             for ( int k = 1; k<s_extent[2]-1; ++k){
                                 // FIXME actually k j i order due to the
                                 // differences in definition of mem layout
                                 diff_target_data(k,j,i)  = - 6.0 * target_data_tmp(k,j,i);
-                            }
-                        }
-                    }
-
-                    for ( int i = 1; i<s_extent[0]; ++i){
-                        for ( int j = 0; j<s_extent[1]; ++j){
-                            for ( int k = 0; k<s_extent[2]; ++k){
                                 diff_target_data(k,j,i) += target_data_tmp(k,j,i-1);
-                            }
-                        }
-                    }
-
-                    for ( int i = 0; i<s_extent[0]-1; ++i){
-                        for ( int j = 0; j<s_extent[1]; ++j){
-                            for ( int k = 0; k<s_extent[2]; ++k){
                                 diff_target_data(k,j,i) += target_data_tmp(k,j,i+1);
-                            }
-                        }
-                    }
-
-                    for ( int i = 0; i<s_extent[0]; ++i){
-                        for ( int j = 1; j<s_extent[1]; ++j){
-                            for ( int k = 0; k<s_extent[2]; ++k){
                                 diff_target_data(k,j,i) += target_data_tmp(k,j-1,i);
-                            }
-                        }
-                    }
-
-                    for ( int i = 0; i<s_extent[0]; ++i){
-                        for ( int j = 0; j<s_extent[1]-1; ++j){
-                            for ( int k = 0; k<s_extent[2]; ++k){
                                 diff_target_data(k,j,i) += target_data_tmp(k,j+1,i);
-                            }
-                        }
-                    }
-
-                    for ( int i = 0; i<s_extent[0]; ++i){
-                        for ( int j = 0; j<s_extent[1]; ++j){
-                            for ( int k = 1; k<s_extent[2]; ++k){
+                                diff_target_data(k,j,i) += target_data_tmp(k+1,j,i);
                                 diff_target_data(k,j,i) += target_data_tmp(k-1,j,i);
                             }
                         }
                     }
 
-                    for ( int i =0; i<s_extent[0]; ++i){
-                        for ( int j = 0; j<s_extent[1]; ++j){
-                            for ( int k = 0; k<s_extent[2]-1; ++k){
-                                diff_target_data(k,j,i) += target_data_tmp(k+1,j,i);
-                            }
-                        }
-                    }
+                    //for ( int i =1; i<s_extent[0]-1; ++i){
+                    //    for ( int j = 1; j<s_extent[1]-1; ++j){
+                    //        for ( int k = 1; k<s_extent[2]-1; ++k){
+                    //            // FIXME actually k j i order due to the
+                    //            // differences in definition of mem layout
+                    //            diff_target_data(k,j,i)  = - 6.0 * target_data_tmp(k,j,i);
+                    //        }
+                    //    }
+                    //}
+
+                    //for ( int i = 1; i<s_extent[0]; ++i){
+                    //    for ( int j = 0; j<s_extent[1]; ++j){
+                    //        for ( int k = 0; k<s_extent[2]; ++k){
+                    //            diff_target_data(k,j,i) += target_data_tmp(k,j,i-1);
+                    //        }
+                    //    }
+                    //}
+
+                    //for ( int i = 0; i<s_extent[0]-1; ++i){
+                    //    for ( int j = 0; j<s_extent[1]; ++j){
+                    //        for ( int k = 0; k<s_extent[2]; ++k){
+                    //            diff_target_data(k,j,i) += target_data_tmp(k,j,i+1);
+                    //        }
+                    //    }
+                    //}
+
+                    //for ( int i = 0; i<s_extent[0]; ++i){
+                    //    for ( int j = 1; j<s_extent[1]; ++j){
+                    //        for ( int k = 0; k<s_extent[2]; ++k){
+                    //            diff_target_data(k,j,i) += target_data_tmp(k,j-1,i);
+                    //        }
+                    //    }
+                    //}
+
+                    //for ( int i = 0; i<s_extent[0]; ++i){
+                    //    for ( int j = 0; j<s_extent[1]-1; ++j){
+                    //        for ( int k = 0; k<s_extent[2]; ++k){
+                    //            diff_target_data(k,j,i) += target_data_tmp(k,j+1,i);
+                    //        }
+                    //    }
+                    //}
+
+                    //for ( int i = 0; i<s_extent[0]; ++i){
+                    //    for ( int j = 0; j<s_extent[1]; ++j){
+                    //        for ( int k = 1; k<s_extent[2]; ++k){
+                    //            diff_target_data(k,j,i) += target_data_tmp(k-1,j,i);
+                    //        }
+                    //    }
+                    //}
+
+                    //for ( int i =0; i<s_extent[0]; ++i){
+                    //    for ( int j = 0; j<s_extent[1]; ++j){
+                    //        for ( int k = 0; k<s_extent[2]-1; ++k){
+                    //            diff_target_data(k,j,i) += target_data_tmp(k+1,j,i);
+                    //        }
+                    //    }
+                    //}
 
                 }
 

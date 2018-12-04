@@ -245,7 +245,7 @@ namespace interpolation
 
     //private:
     public:
-        const int pts_cap = 4;
+        const int pts_cap = 8;
 
         // antrp mat
 

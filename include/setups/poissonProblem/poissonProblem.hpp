@@ -47,7 +47,8 @@ struct PoissonProblem
     // FIXME: temporarily here for FMM
     make_field_type(fmm_s            , float_type, 1,       1)
     make_field_type(fmm_t            , float_type, 1,       1)
-    make_field_type(fmm_tmp          , float_type, 1,       1)
+    make_field_type(coarse_target_sum          , float_type, 1,       1)
+    make_field_type(source_tmp       , float_type, 1,       1)
     make_field_type(phi_num_fmm      , float_type, 1,       1)
 
 
@@ -63,7 +64,8 @@ struct PoissonProblem
         error,
         fmm_s,
         fmm_t,
-        fmm_tmp,
+        coarse_target_sum,
+        source_tmp,
         phi_num_fmm,
         amr_lap_source,
         amr_lap_tmp,
@@ -185,7 +187,10 @@ struct PoissonProblem
     {
 
         solver::PoissonSolver<simulation_type> psolver(&simulation_);
-        psolver.solve<source, phi_num, fmm_s, fmm_t, phi_num_fmm, fmm_tmp, amr_lap_source, amr_lap_tmp>();
+        psolver.solve<source, phi_num,
+            fmm_s, fmm_t, phi_num_fmm,
+            coarse_target_sum, source_tmp,
+            amr_lap_source, amr_lap_tmp>();
         compute_errors();
         simulation_.write("solution.vtk");
         pcout << "Writing solution " << std::endl;

@@ -72,8 +72,7 @@ using namespace domain;
             template<size_t> class Source,
             template<size_t> class Target,
             template<size_t> class fmm_s,
-            template<size_t> class fmm_t,
-            template<size_t> class fmm_tmp
+            template<size_t> class fmm_t
             >
         void fmm_for_level(auto& domain_, int level, bool for_non_leaf=false)
         {
@@ -176,7 +175,7 @@ using namespace domain;
 
             while (o_1_old->key() != o_2_old->key() )
             {
-                std::cout << "Bx - level = " << l << std::endl;
+                std::cout << "Bx  - level = " << l << std::endl;
 
                 auto level_o_1 = domain_->tree()->find(l, o_1->key());
                 auto level_o_2 = domain_->tree()->find(l, o_2->key());

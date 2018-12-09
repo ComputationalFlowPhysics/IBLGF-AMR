@@ -49,10 +49,58 @@ namespace interpolation
 
     public: // functionalities
 
-        template<template<size_t> class field>
+        template<template<size_t> class from,
+        template<size_t> class to
+        >
+        void add_source_correction(auto parent, double dx)
+            {
+                //auto& parent_linalg_data = parent->data()->template get_linalg_data<from>();
+
+                for (int i = 0; i < parent->num_children(); ++i)
+                {
+                    auto child = parent->child(i);
+                    if (child == nullptr) continue;
+
+                    //xt::xtensor<float_type,3> child_target_tmp(std::array<size_t, 3>{{Nb_,Nb_,Nb_}});
+                    xt::xtensor<float_type,3> child_target_L_tmp(std::array<size_t, 3>{{Nb_,Nb_,Nb_}});
+                    //child_target_tmp *= 0.0;
+                    child_target_L_tmp *= 0.0;
+                    //nli_intrp_node(child_target_tmp, parent_linalg_data, i);
+                    auto& child_target_tmp  = child ->data()->template get_linalg_data<from>();
+
+                    for ( int i =1; i<Nb_-1; ++i){
+                        for ( int j = 1; j<Nb_-1; ++j){
+                            for ( int k = 1; k<Nb_-1; ++k){
+                                // differences in definition of mem layout
+                                child_target_L_tmp(k,j,i)  = - 6.0 * child_target_tmp(k,j,i);
+                                child_target_L_tmp(k,j,i) += child_target_tmp(k,j,i-1);
+                                child_target_L_tmp(k,j,i) += child_target_tmp(k,j,i+1);
+                                child_target_L_tmp(k,j,i) += child_target_tmp(k,j-1,i);
+                                child_target_L_tmp(k,j,i) += child_target_tmp(k,j+1,i);
+                                child_target_L_tmp(k,j,i) += child_target_tmp(k+1,j,i);
+                                child_target_L_tmp(k,j,i) += child_target_tmp(k-1,j,i);
+                            }
+                        }
+                    }
+
+                    auto& child_linalg_data  = child ->data()->template get_linalg_data<to>();
+
+                    //std::cout<< "-----------------------------" << std::endl;
+                    //std::cout<< dx*dx << std::endl;
+                    //std::cout<< child_target_tmp << std::endl;
+                    //std::cout<< xt::amax(child_target_L_tmp*(1.0/(dx*dx))) << std::endl;
+                    //std::cout<< child_linalg_data << std::endl;
+
+                    child_linalg_data -= (child_target_L_tmp * (1.0/(dx *dx)));
+                }
+            }
+
+
+        template<template<size_t> class from,
+        template<size_t> class to>
         void nli_intrp_node(auto parent)
             {
-                auto& parent_linalg_data = parent->data()->template get_linalg_data<field>();
+                auto& parent_linalg_data = parent->data()->template get_linalg_data<from>();
 
 
                 for (int i = 0; i < parent->num_children(); ++i)
@@ -60,7 +108,7 @@ namespace interpolation
                     auto child = parent->child(i);
                     if (child == nullptr) continue;
 
-                    auto& child_linalg_data  = child ->data()->template get_linalg_data<field>();
+                    auto& child_linalg_data  = child ->data()->template get_linalg_data<to>();
                     nli_intrp_node(child_linalg_data, parent_linalg_data, i);
 
                 }
@@ -245,7 +293,7 @@ namespace interpolation
 
     //private:
     public:
-        const int pts_cap = 8;
+        const int pts_cap = 4;
 
         // antrp mat
 

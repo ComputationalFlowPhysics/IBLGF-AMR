@@ -1,21 +1,21 @@
-#N = [11, 15, 21, 26]
+N = [11, 15, 21, 26]
 #N = [11, 15]
-N = [6]
+#N = [6]
 
 f_bash = open("run.q", "w")
 
-for block in [2, 4, 8, 16]:
+for block in [4, 8, 16]:
     for n in N:
     #for block in [20, 32]:
         s = "cf_{}_{}".format(n, block)
         f = open(s, "w")
         f.write("""simulation_parameters
     {{
-        nLevels=3;
-        L=5;
+        nLevels=0;
+        L=4;
         domain{{
 
-            Lx=4;
+            Lx=3;
 
             max_extent   = 1280;
 
@@ -30,6 +30,6 @@ for block in [2, 4, 8, 16]:
     }}
     """.format(ni=n, b = block*n ) )
 
-        f_bash.write("../bin/iblgf.x {ss} >> ./amr_test_nmax_6_refine_3/{ss}.out \n".format(ss=s))
+        f_bash.write("../bin/iblgf.x {ss} >> ./fourier_cont_Nb_0.8/{ss}.out \n".format(ss=s))
 
         f.close()

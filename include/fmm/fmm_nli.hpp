@@ -66,7 +66,6 @@ namespace fmm
             {
                 auto& parent_linalg_data = parent->data()->template get_linalg_data<field>();
 
-
                 for (int i = 0; i < parent->num_children(); ++i)
                 {
                     auto child = parent->child(i);
@@ -146,6 +145,15 @@ namespace fmm
                     nli_antrp_node(child_linalg_data, parent_linalg_data, i);
                 }
 
+            int Nb = Nb_;
+
+            //xt::view(parent_linalg_data,0,xt::all(),xt::all()) *= 0;
+            //xt::view(parent_linalg_data, Nb-1, xt::all(),xt::all()) *= 0;
+            //xt::view(parent_linalg_data, xt::all(), 0, xt::all()) *= 0;
+            //xt::view(parent_linalg_data, xt::all(), Nb-1, xt::all()) *= 0;
+            //xt::view(parent_linalg_data, xt::all(), xt::all(), 0) *= 0;
+            //xt::view(parent_linalg_data, xt::all(), xt::all(), Nb-1) *= 0;
+
 
             }
 
@@ -208,6 +216,77 @@ namespace fmm
 
 
     private:
+        void antrp_mat_calc_fourier(auto& antrp_mat_, int Nb_)
+        {
+            std::complex<double> II(0,1);
+
+            double M(floor(Nb_));
+            //M=16.0;
+            xt::xtensor<std::complex<double>, 2>
+                mat_cal_basis(std::array<size_t, 2>{{ Nb_, int(M)}});
+            xt::xtensor<std::complex<double>, 2>
+                mat_cal_intrp(std::array<size_t, 2>{{ 2*Nb_-1, int(M) }});
+
+            std::vector<std::complex<double>> K((int)M);
+
+            // wave numbers
+
+
+            if ((int(M)% 2) == 1){
+                for (int i = 0; i<(M+1)/2; i++) K[i] = double(i);
+                for (int i = (M+1)/2; i<M; i++) K[i] = double( i - M );
+            } else
+            {
+                for (int i = 0; i<M/2+1; i++) K[i] = double(i);
+                for (int i = M/2+1; i<M; i++) K[i] = double( i - M );
+            }
+
+            // basis
+            for (int j = 0; j < Nb_; ++j){
+                for (int k = 0; k< M; ++k){
+                    std::complex<double>  xj = (double)(j)/ (double)Nb_* M/2.0;
+                    mat_cal_basis(j,k) = exp( (2.0*M_PI*II/M * xj * K[k])) / M;
+                }
+            }
+
+            // intrp
+            for (int j = 1; j < 2*Nb_-1; ++j){
+                for (int k = 0; k< M; ++k){
+                    std::complex<double>  xj = (double)(j)/ (double)Nb_* M/4.0;
+                    mat_cal_intrp(j,k) = exp( (2.0*M_PI*II/M * xj * K[k])) / M;
+                }
+            }
+
+            //for (int j = 1; j < 2*Nb_-1; ++j){
+            //    for (int k = 0; k< Nb_; ++k){
+            //        std::complex<double>  xj = (double)(j+0.5)/ (double)Nb_* M/2.0;
+            //        if (k!=Nb_/2)
+            //        mat_cal_intrp(j,k) = exp( (2.0*M_PI*II/M/2.0 * xj * K[k])) / M;
+            //    }
+            //}
+
+            // copy
+            auto wt = xt::transpose(xt::conj(mat_cal_basis));
+
+            auto wtw_inv = xt::linalg::pinv( xt::linalg::dot(wt, mat_cal_basis));
+            auto tmp = xt::linalg::dot(mat_cal_intrp,
+                        xt::linalg::dot(wtw_inv, wt));
+
+            for (int j = 1; j < 2*Nb_-1; ++j){
+                for (int k = 0; k< Nb_; ++k){
+                    antrp_mat_(k,j-1) = tmp(j,k).real();
+                }
+            }
+
+            for (int c = Nb_*2 - 1; c>Nb_-1; --c){
+                view(antrp_mat_, xt::all(),  c) =
+                view(antrp_mat_, xt::all(),  c-2);
+            }
+
+        }
+
+
+
         void antrp_mat_calc(auto& antrp_mat_, int Nb_)
         {
 
@@ -281,7 +360,7 @@ namespace fmm
 
     //private:
     public:
-        const int pts_cap = 6;
+        const int pts_cap = 8;
 
         // antrp mat
 

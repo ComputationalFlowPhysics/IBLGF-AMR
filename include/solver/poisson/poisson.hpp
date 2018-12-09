@@ -30,6 +30,7 @@
 #include "../../utilities/convolution.hpp"
 #include<utilities/interpolation.hpp>
 #include<utilities/cell_center_nli_intrp.hpp>
+//#include<utilities/fourier_cont_intrp.hpp>
 #include<solver/poisson/poisson.hpp>
 
 namespace solver
@@ -82,13 +83,29 @@ public:
         template<std::size_t>class Target,
         template<std::size_t>class fmm_s,
         template<std::size_t>class fmm_t,
-        template<std::size_t>class fmm_tmp
+        template<std::size_t>class coarse_target_sum,
+        template<std::size_t>class source_tmp
             >
     void apply_amr_lgf()
     {
         // allocate lgf
         std::vector<float_type> lgf;
         const float_type dx_base=domain_->dx_base();
+
+        // Copy source
+        for (int l  = domain_->tree()->base_level();
+                 l < domain_->tree()->depth(); ++l)
+        {
+            for (auto it  = domain_->begin(l);
+                      it != domain_->end(l); ++it)
+            {
+                // copy source
+                auto& cp1 = it ->data()->template get_linalg_data<Source>();
+                auto& cp2 = it ->data()->template get_linalg_data<source_tmp>();
+
+                cp2 = cp1 * 1.0;
+            }
+        }
 
         //Coarsification:
         pcout<<"coarsification "<<std::endl;
@@ -98,7 +115,7 @@ public:
             for (auto it_s  = domain_->begin(ls);
                       it_s != domain_->end(ls); ++it_s)
             {
-                this->coarsify<Source>(*it_s);
+                this->coarsify<source_tmp>(*it_s);
             }
         }
 
@@ -108,8 +125,25 @@ public:
                  l < domain_->tree()->depth(); ++l)
         {
             //test for FMM
-            fmm_.fmm_for_level<Source, Target, fmm_s, fmm_t, fmm_tmp>(domain_, l, false);
-            fmm_.fmm_for_level<Source, Target, fmm_s, fmm_t, fmm_tmp>(domain_, l, true);
+            fmm_.fmm_for_level<source_tmp, Target, fmm_s, fmm_t>(domain_, l, false);
+            fmm_.fmm_for_level<source_tmp, Target, fmm_s, fmm_t>(domain_, l, true);
+
+            for (auto it  = domain_->begin(l);
+                      it != domain_->end(l); ++it)
+            {
+                if(it->is_leaf()) continue;
+
+                auto& cp1 = it ->data()->template get_linalg_data<Target>();
+                auto& cp2 = it ->data()->template get_linalg_data<coarse_target_sum>();
+                //std::cout<< cp2 << std::endl;
+                cp2 += cp1 * 1.0;
+
+                c_cntr_nli_.nli_intrp_node<coarse_target_sum, coarse_target_sum>(it);
+                int refinement_level = it->refinement_level();
+                double dx = dx_base/std::pow(2,refinement_level);
+                c_cntr_nli_.add_source_correction<coarse_target_sum, source_tmp>(it, dx/2.0);
+            }
+
         }
 
         // Interpolation
@@ -122,8 +156,7 @@ public:
             {
                 if(it_t->is_leaf()) continue;
                 //this->interpolate<Target>(*it_t);
-                c_cntr_nli_.nli_intrp_node<Target>(it_t);
-
+                c_cntr_nli_.nli_intrp_node<Target, Target>(it_t);
             }
         }
 
@@ -209,191 +242,8 @@ public:
                         }
                     }
 
-                    //for ( int i =1; i<s_extent[0]-1; ++i){
-                    //    for ( int j = 1; j<s_extent[1]-1; ++j){
-                    //        for ( int k = 1; k<s_extent[2]-1; ++k){
-                    //            // FIXME actually k j i order due to the
-                    //            // differences in definition of mem layout
-                    //            diff_target_data(k,j,i)  = - 6.0 * target_data_tmp(k,j,i);
-                    //        }
-                    //    }
-                    //}
-
-                    //for ( int i = 1; i<s_extent[0]; ++i){
-                    //    for ( int j = 0; j<s_extent[1]; ++j){
-                    //        for ( int k = 0; k<s_extent[2]; ++k){
-                    //            diff_target_data(k,j,i) += target_data_tmp(k,j,i-1);
-                    //        }
-                    //    }
-                    //}
-
-                    //for ( int i = 0; i<s_extent[0]-1; ++i){
-                    //    for ( int j = 0; j<s_extent[1]; ++j){
-                    //        for ( int k = 0; k<s_extent[2]; ++k){
-                    //            diff_target_data(k,j,i) += target_data_tmp(k,j,i+1);
-                    //        }
-                    //    }
-                    //}
-
-                    //for ( int i = 0; i<s_extent[0]; ++i){
-                    //    for ( int j = 1; j<s_extent[1]; ++j){
-                    //        for ( int k = 0; k<s_extent[2]; ++k){
-                    //            diff_target_data(k,j,i) += target_data_tmp(k,j-1,i);
-                    //        }
-                    //    }
-                    //}
-
-                    //for ( int i = 0; i<s_extent[0]; ++i){
-                    //    for ( int j = 0; j<s_extent[1]-1; ++j){
-                    //        for ( int k = 0; k<s_extent[2]; ++k){
-                    //            diff_target_data(k,j,i) += target_data_tmp(k,j+1,i);
-                    //        }
-                    //    }
-                    //}
-
-                    //for ( int i = 0; i<s_extent[0]; ++i){
-                    //    for ( int j = 0; j<s_extent[1]; ++j){
-                    //        for ( int k = 1; k<s_extent[2]; ++k){
-                    //            diff_target_data(k,j,i) += target_data_tmp(k-1,j,i);
-                    //        }
-                    //    }
-                    //}
-
-                    //for ( int i =0; i<s_extent[0]; ++i){
-                    //    for ( int j = 0; j<s_extent[1]; ++j){
-                    //        for ( int k = 0; k<s_extent[2]-1; ++k){
-                    //            diff_target_data(k,j,i) += target_data_tmp(k+1,j,i);
-                    //        }
-                    //    }
-                    //}
-
                 }
 
-
-                // laplace of contribution of neighbors
-                //int ni;
-
-                //ni = 4;
-                //auto n_s = it->neighbor(ni);
-                //if (n_s)
-                //if (!( !(it->is_leaf()) && !(n_s->is_leaf()) ))
-                //{
-                //    auto& target_nghb_data = n_s->data()->template get_linalg_data<target_tmp>();
-                //    for ( int i =0; i<s_extent[0]; ++i){
-                //        for ( int j = 0; j<s_extent[1]; ++j){
-                //            diff_target_data(0,j,i) += target_nghb_data(s_extent[2]-3, j, i);
-                //            diff_target_data(0,j,i) -= target_nghb_data(s_extent[2]-2, j, i) * 6.0;
-                //            diff_target_data(0,j,i) += target_nghb_data(s_extent[2]-1, j, i);
-
-                //            diff_target_data(1,j,i) += target_nghb_data(s_extent[2]-2, j, i);
-                //            diff_target_data(1,j,i) -= target_nghb_data(s_extent[2]-1, j, i) * 6.0;
-
-                //            diff_target_data(2,j,i) += target_nghb_data(s_extent[2]-1, j, i);
-                //        }
-                //    }
-                //}
-
-                //ni = 10;
-                //n_s = it->neighbor(ni);
-                //if (n_s)
-                //if (!( !(it->is_leaf()) && !(n_s->is_leaf()) ))
-                //{
-                //    auto& target_nghb_data = n_s->data()->template get_linalg_data<target_tmp>();
-                //    for ( int i =0; i<s_extent[0]; ++i){
-                //        for ( int k = 0; k<s_extent[2]; ++k){
-                //            diff_target_data(k,0,i) += target_nghb_data(k, s_extent[1]-3, i);
-                //            diff_target_data(k,0,i) -= target_nghb_data(k, s_extent[1]-2, i) * 6.0;
-                //            diff_target_data(k,0,i) += target_nghb_data(k, s_extent[1]-1, i);
-
-                //            diff_target_data(k,1,i) += target_nghb_data(k, s_extent[1]-2, i);
-                //            diff_target_data(k,1,i) -= target_nghb_data(k, s_extent[1]-1, i) * 6.0;
-
-                //            diff_target_data(k,2,i) += target_nghb_data(k, s_extent[1]-1, i);
-                //        }
-                //    }
-                //}
-
-                //ni = 12;
-                //n_s = it->neighbor(ni);
-                //if (n_s)
-                //if (!( !(it->is_leaf()) && !(n_s->is_leaf()) ))
-                //{
-                //    auto& target_nghb_data = n_s->data()->template get_linalg_data<target_tmp>();
-                //    for ( int j = 0; j<s_extent[1]; ++j){
-                //        for ( int k = 0; k<s_extent[2]; ++k){
-                //            diff_target_data(k,j,0) += target_nghb_data(k, j, s_extent[0]-3);
-                //            diff_target_data(k,j,0) -= target_nghb_data(k, j, s_extent[0]-2)*6.0;
-                //            diff_target_data(k,j,0) += target_nghb_data(k, j, s_extent[0]-1);
-
-                //            diff_target_data(k,j,1) += target_nghb_data(k, j, s_extent[0]-2);
-                //            diff_target_data(k,j,1) -= target_nghb_data(k, j, s_extent[0]-1)*6.0;
-
-                //            diff_target_data(k,j,2) += target_nghb_data(k, j, s_extent[0]-1);
-                //        }
-                //    }
-                //}
-
-                //ni = 14;
-                //n_s = it->neighbor(ni);
-                //if (n_s)
-                //if (!( !(it->is_leaf()) && !(n_s->is_leaf()) ))
-                //{
-                //    auto& target_nghb_data = n_s->data()->template get_linalg_data<target_tmp>();
-                //    for ( int j = 0; j<s_extent[1]; ++j){
-                //        for ( int k = 0; k<s_extent[2]; ++k){
-                //            diff_target_data(k,j,s_extent[2]-1) += target_nghb_data(k, j, 2);
-                //            diff_target_data(k,j,s_extent[2]-1) -= target_nghb_data(k, j, 1) * 6.0;
-                //            diff_target_data(k,j,s_extent[2]-1) += target_nghb_data(k, j, 0);
-
-                //            diff_target_data(k,j,s_extent[2]-2) += target_nghb_data(k, j, 1);
-                //            diff_target_data(k,j,s_extent[2]-2) -= target_nghb_data(k, j, 0) * 6.0;
-
-                //            diff_target_data(k,j,s_extent[2]-3) += target_nghb_data(k, j, 0);
-                //        }
-                //    }
-                //}
-
-
-                //ni = 16;
-                //n_s = it->neighbor(ni);
-                //if (n_s)
-                //if (!( !(it->is_leaf()) && !(n_s->is_leaf()) ))
-                //{
-                //    auto& target_nghb_data = n_s->data()->template get_linalg_data<target_tmp>();
-                //    for ( int i =0; i<s_extent[0]; ++i){
-                //        for ( int k = 0; k<s_extent[2]; ++k){
-                //            diff_target_data(k, s_extent[1]-1, i) += target_nghb_data(k, 2, i);
-                //            diff_target_data(k, s_extent[1]-1, i) -= target_nghb_data(k, 1, i) * 6.0;
-                //            diff_target_data(k, s_extent[1]-1, i) += target_nghb_data(k, 0, i);
-
-                //            diff_target_data(k, s_extent[1]-2, i) += target_nghb_data(k, 1, i);
-                //            diff_target_data(k, s_extent[1]-2, i) -= target_nghb_data(k, 0, i) * 6.0;
-
-                //            diff_target_data(k, s_extent[1]-3, i) += target_nghb_data(k, 0, i);
-                //        }
-                //    }
-                //}
-
-                //ni = 22;
-                //n_s = it->neighbor(ni);
-                //if (n_s)
-                //if (!( !(it->is_leaf()) && !(n_s->is_leaf()) ))
-                //{
-                //    auto& target_nghb_data = n_s->data()->template get_linalg_data<target_tmp>();
-
-                //    for ( int i =0; i<s_extent[0]; ++i){
-                //        for ( int j = 0; j<s_extent[1]; ++j){
-                //            diff_target_data(s_extent[2]-1, j, i) += target_nghb_data(2, j, i);
-                //            diff_target_data(s_extent[2]-1, j, i) -= target_nghb_data(1, j, i) * 6.0;
-                //            diff_target_data(s_extent[2]-1, j, i) += target_nghb_data(0, j, i);
-
-                //            diff_target_data(s_extent[2]-2, j, i) += target_nghb_data(1, j, i);
-                //            diff_target_data(s_extent[2]-2, j, i) -= target_nghb_data(0, j, i) * 6.0;
-
-                //            diff_target_data(s_extent[2]-3, j, i) += target_nghb_data(0, j, i);
-                //        }
-                //    }
-                //}
 
                 diff_target_data *= (1/dx_level) * (1/dx_level);
                 //std::cout<< target_data_tmp << std::endl;
@@ -424,14 +274,14 @@ public:
         template<std::size_t>class fmm_s,
         template<std::size_t>class fmm_t,
         template<std::size_t>class Target_fmm,
-        template<std::size_t>class fmm_tmp,
+        template<std::size_t>class coarse_target_sum,
+        template<std::size_t>class source_tmp,
         template<std::size_t>class amr_lap_target,
         template<std::size_t>class amr_lap_tmp
     >
     void solve()
     {
-        apply_amr_lgf<Source, Target_fmm, fmm_s, fmm_t, fmm_tmp>();
-
+        apply_amr_lgf<Source, Target_fmm, fmm_s, fmm_t, coarse_target_sum, source_tmp>();
         apply_amr_laplace<Target_fmm, amr_lap_tmp, amr_lap_target>();
     }
 
@@ -511,6 +361,7 @@ private:
     domain_type*                        domain_;    ///< domain
     convolution_t                       conv_;      ///< fft convolution
     fmm::Fmm                            fmm_;       ///< fast-multipole
+    //interpolation::fourier_cont_intrp   c_cntr_nli_;
     interpolation::cell_center_nli      c_cntr_nli_;
     lgf::LGF<lgf::Lookup>               lgf_;       ///< Lookup for the LGFs
 

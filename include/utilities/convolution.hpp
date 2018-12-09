@@ -331,6 +331,7 @@ private:
     dims_t padded_dims;
     dims_t dims0_;
     dims_t dims1_;
+
     dfft_r2c fft_forward0;
     dfft_r2c fft_forward1;
     dfft_c2r fft_backward;

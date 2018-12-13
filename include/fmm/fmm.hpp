@@ -41,7 +41,6 @@ using namespace domain;
 
     public: //Ctor:
     using dims_t = types::vector_type<int,3>;
-    using convolution_t        = typename fft::Convolution;
 
     using datablock_t    = DataBlock<3, node>;
     using block_dsrp_t     = typename datablock_t::block_descriptor_type;
@@ -477,27 +476,14 @@ using namespace domain;
                     o_t->data()->template get<T>(),
                     dx_level*dx_level);
 
-            //lgf_.get_subblock( decltype(block_)(base_lgf, extent_lgf), lgf, level_diff);
-
-            //// Perform convolution
-            //conv_.execute_field(lgf, o_s->data()->template get<S>());
-
-            //// Extract the solution
-            //conv_.add_solution(extractor, o_t->data()->template get<T>(),
-            //                  dx_level*dx_level);
-
-            //auto b = o_s->data()->template get_linalg_data<S>();
-            //auto bt = o_t->data()->template get_linalg_data<T>();
-
         }
 
 
     public:
         Nli lagrange_intrp;
     private:
-        std::vector<float_type> lgf;
-        convolution_t           conv_;      ///< fft convolution
-        lgf::LGF<lgf::Lookup>   lgf_;       ///< Lookup for the LGFs
+        std::vector<float_type>     lgf;
+        fft::Convolution            conv_;      ///< fft convolution
     };
 
 }

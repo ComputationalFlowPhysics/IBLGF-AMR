@@ -28,7 +28,7 @@
 
 //#include<utilities/convolution.hpp>
 #include "../../utilities/convolution.hpp"
-#include<utilities/interpolation.hpp>
+//#include<utilities/interpolation.hpp>
 #include<utilities/cell_center_nli_intrp.hpp>
 //#include<utilities/fourier_cont_intrp.hpp>
 #include<solver/poisson/poisson.hpp>
@@ -50,8 +50,6 @@ public: //member types
     using convolution_t        = typename fft::Convolution;
     using real_coordinate_type = typename domain_type::real_coordinate_type;
     using coordinate_type      = typename domain_type::coordinate_type;
-
-
 
     static constexpr int lBuffer=1; ///< Lower left buffer for interpolation
     static constexpr int rBuffer=1; ///< Lower left buffer for interpolation
@@ -189,25 +187,6 @@ public:
         for (int l  = domain_->tree()->base_level();
                  l < domain_->tree()->depth(); ++l)
         {
-            for (auto it  = domain_->begin(l);
-                      it != domain_->end(l); ++it)
-            {
-                const auto s_extent = it->data()->template get<target>().
-                                                real_block().extent();
-                // copy to tmp
-                auto& target_data = it->data()->template get_linalg_data<target>();
-                auto& target_data_tmp  = it->data()->template get_linalg_data<target_tmp>();
-
-                //for ( int i =1; i<s_extent[0]-1; ++i){
-                //    for ( int j = 1; j<s_extent[1]-1; ++j){
-                //        for ( int k = 1; k<s_extent[2]-1; ++k){
-                //                target_data_tmp(k,j,i)  = target_data(k,j,i);
-                //        }
-                //    }
-                //}
-
-                target_data_tmp  = target_data * 1.0;
-            }
 
             for (auto it  = domain_->begin(l);
                       it != domain_->end(l); ++it)
@@ -215,10 +194,10 @@ public:
                 auto refinement_level = it->refinement_level();
                 auto dx_level =  dx_base/std::pow(2,refinement_level);
 
-
-                auto& target_data = it->data()->template get_linalg_data<target>();//.get()->cube_noalias_view();
-                auto& target_data_tmp  = it->data()->template get_linalg_data<target_tmp>();//.get()->cube_noalias_view();
-                auto& diff_target_data = it->data()->template get_linalg_data<diff_target>();//.get()->cube_noalias_view();
+                auto& target_data = it->data()->
+                    template get_linalg_data<target>();
+                auto& diff_target_data = it->data()->
+                    template get_linalg_data<diff_target>();
 
                 const auto s_extent = it->data()->template get<target>().
                                                 real_block().extent();
@@ -231,24 +210,20 @@ public:
                             for ( int k = 1; k<s_extent[2]-1; ++k){
                                 // FIXME actually k j i order due to the
                                 // differences in definition of mem layout
-                                diff_target_data(k,j,i)  = - 6.0 * target_data_tmp(k,j,i);
-                                diff_target_data(k,j,i) += target_data_tmp(k,j,i-1);
-                                diff_target_data(k,j,i) += target_data_tmp(k,j,i+1);
-                                diff_target_data(k,j,i) += target_data_tmp(k,j-1,i);
-                                diff_target_data(k,j,i) += target_data_tmp(k,j+1,i);
-                                diff_target_data(k,j,i) += target_data_tmp(k+1,j,i);
-                                diff_target_data(k,j,i) += target_data_tmp(k-1,j,i);
+                                diff_target_data(k,j,i)  = - 6.0 * target_data(k,j,i);
+                                diff_target_data(k,j,i) += target_data(k,j,i-1);
+                                diff_target_data(k,j,i) += target_data(k,j,i+1);
+                                diff_target_data(k,j,i) += target_data(k,j-1,i);
+                                diff_target_data(k,j,i) += target_data(k,j+1,i);
+                                diff_target_data(k,j,i) += target_data(k+1,j,i);
+                                diff_target_data(k,j,i) += target_data(k-1,j,i);
                             }
                         }
                     }
 
                 }
 
-
                 diff_target_data *= (1/dx_level) * (1/dx_level);
-                //std::cout<< target_data_tmp << std::endl;
-                //std::cout<< diff_target_data << std::endl;
-
 
             }
         }

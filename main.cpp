@@ -28,6 +28,7 @@ int main(int argc, char *argv[])
 
     //Instantiate setup
     //p_fmm_rndm setup(&dictionary);
+    //p_fmm_sin setup(&dictionary);
     PoissonProblem setup(&dictionary);
 
     // run setup

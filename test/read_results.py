@@ -5,6 +5,7 @@ import re
 err = []
 err_2 = []
 err_lap_2 = []
+err_lap_infty = []
 tot_time =[]
 
 if len(sys.argv)>1:
@@ -23,6 +24,7 @@ for filename in os.listdir(dir_name):
     e_2_s   = re.findall(r'L2   = -?\ *[0-9]+\.?[0-9]*(?:[Ee]\ *-?\ *[0-9]+)?', text)
     e_inf_s = re.findall(r'LInf = -?\ *[0-9]+\.?[0-9]*(?:[Ee]\ *-?\ *[0-9]+)?', text)
     e_lap_2_s = re.findall(r'L2_source   =-?\ *[0-9]+\.?[0-9]*(?:[Ee]\ *-?\ *[0-9]+)?', text)
+    e_lap_infty_s = re.findall(r'LInf_source =-?\ *[0-9]+\.?[0-9]*(?:[Ee]\ *-?\ *[0-9]+)?', text)
 
 
     if len(e_inf_s) >0:
@@ -49,6 +51,14 @@ for filename in os.listdir(dir_name):
         e_lap_2 = float(e_lap_2_s)
         err_lap_2.append( (b_extent, domain, n_refine, e_lap_2))
 
+    if len(e_lap_infty_s) >0:
+        print('L2_source  -----------')
+        e_lap_infty_s = e_lap_infty_s[0]
+        print(e_lap_infty_s)
+        e_lap_infty_s = e_lap_infty_s[14:]
+        e_lap_infty = float(e_lap_infty_s)
+        err_lap_infty.append( (b_extent, domain, n_refine, e_lap_infty))
+
     time_s = re.findall(r'time = -?\ *[0-9]+\.?[0-9]*(?:[Ee]\ *-?\ *[0-9]+)?', text)
     sum_t = 0.0
     for t_s in time_s:
@@ -64,6 +74,7 @@ err.sort(key       = lambda tup: (tup[0], tup[1], tup[2]))
 err_2.sort(key     = lambda tup: (tup[0], tup[1], tup[2]))
 tot_time.sort(key  = lambda tup: (tup[0], tup[1], tup[2]))
 err_lap_2.sort(key = lambda tup: (tup[0], tup[1], tup[2]))
+err_lap_infty.sort(key = lambda tup: (tup[0], tup[1], tup[2]))
 
 for e in err:
     print(e)
@@ -82,5 +93,9 @@ for t in tot_time:
 
 print("lap_source")
 for e in err_lap_2:
+    print(e[3])
+
+print("lap_source_infty")
+for e in err_lap_infty:
     print(e[3])
 

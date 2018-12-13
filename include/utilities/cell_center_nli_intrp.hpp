@@ -24,7 +24,7 @@ namespace interpolation
     public: // constructor
 
         cell_center_nli() = delete;
-        cell_center_nli(int Nb_)
+        cell_center_nli(size_t Nb_)
             : Nb_(Nb_),
             antrp_(Nb_ * Nb_ * 2, 0.0),
             antrp_mat_(&(antrp_[0]), Nb_, Nb_ * 2),
@@ -54,18 +54,15 @@ namespace interpolation
         >
         void add_source_correction(auto parent, double dx)
             {
-                //auto& parent_linalg_data = parent->data()->template get_linalg_data<from>();
+                xt::xtensor<float_type,3>
+                    child_target_L_tmp(std::array<size_t, 3>{{(size_t)Nb_,(size_t)Nb_,(size_t)Nb_}});
 
                 for (int i = 0; i < parent->num_children(); ++i)
                 {
                     auto child = parent->child(i);
                     if (child == nullptr) continue;
 
-                    //xt::xtensor<float_type,3> child_target_tmp(std::array<size_t, 3>{{Nb_,Nb_,Nb_}});
-                    xt::xtensor<float_type,3> child_target_L_tmp(std::array<size_t, 3>{{Nb_,Nb_,Nb_}});
-                    //child_target_tmp *= 0.0;
                     child_target_L_tmp *= 0.0;
-                    //nli_intrp_node(child_target_tmp, parent_linalg_data, i);
                     auto& child_target_tmp  = child ->data()->template get_linalg_data<from>();
 
                     for ( int i =1; i<Nb_-1; ++i){
@@ -252,12 +249,10 @@ namespace interpolation
                     int bd_r = -1;
 
                     if (c_p < -1){
-                        auto bd_l_tmp = ((c + 1) / 2  - pts_cap / 2 );
                         bd_l = std::max(0   , ((c + 1) / 2  - pts_cap / 2 ));
                         bd_r = std::min(Nb_, bd_l + pts_cap);
                     }
                     else{
-                        auto bd_r_tmp = ((c + 1) / 2  + pts_cap / 2 );
                         bd_r = std::min(Nb_ , ((c + 1) / 2 + pts_cap / 2));
                         bd_l = std::max(0   , bd_r - pts_cap);
                     }
@@ -293,7 +288,7 @@ namespace interpolation
 
     //private:
     public:
-        const int pts_cap = 4;
+        const int pts_cap = 3;
 
         // antrp mat
 

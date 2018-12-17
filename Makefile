@@ -11,7 +11,8 @@
 # Project name
 BIN_DIR=./bin
 NAME    = iblgf.x
-SOURCES = main.cpp src/lgf/lgf_lookup.cpp
+#SOURCES = main.cpp src/lgf/lgf_lookup.cpp
+SOURCES = main_serverclient.cpp src/lgf/lgf_lookup.cpp
 PREPROC = junk
 
 # Dependency directory

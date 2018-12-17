@@ -111,6 +111,7 @@ struct DecomposistionTest
 
             auto dx_level =  dx_base/std::pow(2,it->refinement_level());
             auto scaling =  std::pow(2,it->refinement_level());
+            std::cout<<it->key()<<std::endl;
 
            auto view(it->data()->node_field().domain_view());
            auto& nodes_domain=it->data()->nodes_domain();

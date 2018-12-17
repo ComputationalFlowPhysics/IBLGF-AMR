@@ -10,6 +10,7 @@
 #include <global.hpp>
 #include <domain/decomposition/task.hpp>
 #include <boost/serialization/vector.hpp>
+#include <boost/mpi/status.hpp>
 
 namespace domain
 {
@@ -109,6 +110,21 @@ public:
             comm_.send(t[0].rank(),0, keys );
         }
     }
+
+    //void run_rank_query()
+    //{
+    //    std::vector<mpi::request> reqs(comm_.size());
+    //    bool all_done=false;
+    //    while(!all_done)
+    //    {
+    //        for(std::size_t i =1; i< comm_.size();++i) //ranks
+    //        {
+    //            comm_.receive(i, )
+    //        }
+    //    }
+    //}
+
+
 
 
 

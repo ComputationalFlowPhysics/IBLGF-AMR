@@ -57,7 +57,7 @@ public: //Access
     } 
     
     template<class T>
-    const auto& at_offset(const coordinate_type _offset)const noexcept
+    const auto& at_offset(const coordinate_type& _offset)const noexcept
     {
         return c_->template get<T>().get(level_coordinate_+_offset);
     }

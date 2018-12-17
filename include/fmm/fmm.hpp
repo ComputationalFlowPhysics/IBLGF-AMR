@@ -36,6 +36,7 @@ namespace fmm
 
 using namespace domain;
 
+    template<class Domain>
     class Fmm
     {
 

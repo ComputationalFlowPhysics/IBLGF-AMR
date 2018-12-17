@@ -45,8 +45,8 @@ public:
     Decomposition()=default;
 
 
-    Decomposition( domain_type* _d ,communicator_type _comm= communicator_type())
-    :domain_(_d)
+    Decomposition( domain_type* _d )
+    :domain_(_d), comm_(communicator_type())
     {
         if(comm_.size() <2)
         {

@@ -108,8 +108,8 @@ public:
                  l < domain_->tree()->depth(); ++l)
         {
             //test for FMM
-            fmm_.fmm_for_level<Source, Target_fmm, fmm_s, fmm_t,fmm_tmp>(domain_, l, false);
-            //fmm_.fmm_for_level<Source, Target_fmm, fmm_s, fmm_t>(domain_, l, true);
+            fmm_.template fmm_for_level<Source, Target_fmm, fmm_s, fmm_t,fmm_tmp>(domain_, l, false);
+            fmm_.template fmm_for_level<Source, Target_fmm, fmm_s, fmm_t>(domain_, l, true);
 
             //for (auto it_t  = domain_->begin(l);
             //          it_t != domain_->end(l); ++it_t)
@@ -248,8 +248,8 @@ private:
     Simulation*                 sim_;       ///< simualtion
     domain_type*                domain_;    ///< domain
     convolution_t               conv_;      ///< fft convolution
-    //fmm::Fmm                  fmm_;       ///< fast-multipole
-    fmm::Fmm                    fmm_;       ///< fast-multipole
+    //fmm::Fmm<>                 fmm_;       ///< fast-multipole
+    fmm::Fmm<domain_type>                    fmm_;       ///< fast-multipole
     lgf::LGF<lgf::Lookup>       lgf_;       ///< Lookup for the LGFs
 
     parallel_ostream::ParallelOstream pcout;

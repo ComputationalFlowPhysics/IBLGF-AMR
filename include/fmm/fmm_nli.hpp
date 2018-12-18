@@ -225,7 +225,7 @@ namespace fmm
                     int bd_r = -1;
 
                     if (c_p < -1){
-                        auto bd_l_tmp = ((c + 1) / 2  - pts_cap / 2 );
+                        //auto bd_l_tmp = ((c + 1) / 2  - pts_cap / 2 );
                         bd_l = std::max(0   , ((c + 1) / 2  - pts_cap / 2 ));
                         bd_r = std::min(Nb_, bd_l + pts_cap);
 
@@ -238,7 +238,7 @@ namespace fmm
                         //bd_r = std::min(Nb_, ((c + 1) / 2  - pts_cap / 2 ) + pts_cap);
                     }
                     else{
-                        auto bd_r_tmp = ((c + 1) / 2  + pts_cap / 2 );
+                        //auto bd_r_tmp = ((c + 1) / 2  + pts_cap / 2 );
                         bd_r = std::min(Nb_ , ((c + 1) / 2 + pts_cap / 2));
                         //if (bd_r_tmp<=Nb_)
                         //    bd_l = bd_r - pts_cap;

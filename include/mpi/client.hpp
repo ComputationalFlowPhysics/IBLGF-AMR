@@ -42,7 +42,6 @@ public:
         if(comm_.rank()==1)
         {
             auto task= send_comm.post(&task_dat2, 0);
-           
         }
 
         int count=0;

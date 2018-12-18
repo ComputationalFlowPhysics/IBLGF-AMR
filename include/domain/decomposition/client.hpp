@@ -6,7 +6,6 @@
 
 #include <global.hpp>
 #include <boost/mpi/communicator.hpp>
-#include <domain/decomposition/task.hpp>
 
 namespace domain
 {
@@ -25,7 +24,6 @@ public:
     using octant_t  = typename  domain_t::octant_t;
     using datablock_t  = typename  domain_t::datablock_t;
     using key_t  = typename  domain_t::key_t;
-    using task_t = Task<key_t>;
 
 public:
     Client(const Client&  other) = default;
@@ -55,7 +53,6 @@ public:
                     domain_->block_extent(),_o->refinement_level(), true);
         });
     }
-
 
 private:
     Domain* domain_;

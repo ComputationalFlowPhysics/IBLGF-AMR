@@ -40,7 +40,7 @@ public:
 
     using field_type_iterator_t = typename datablock_t::field_type_iterator_t;
 
-    using communicator_type  = typename  boost::mpi::communicator;
+    using communicator_type = boost::mpi::communicator;
     using decompositon_type = Decomposition<Domain>;
 
     static constexpr int dimension(){return Dim;}
@@ -228,8 +228,10 @@ public:
         tree()->refine(octant_it,[this](auto& child_it)
         {
             auto level = child_it->level()-this->tree()->base_level();
-            auto bbase=t_->octant_to_level_coordinate(child_it->tree_coordinate(), level);
-            child_it->data()=std::make_shared<datablock_t>(bbase, block_extent_,level);
+            auto bbase=t_->octant_to_level_coordinate(
+                            child_it->tree_coordinate(), level);
+            child_it->data()=
+                std::make_shared<datablock_t>(bbase, block_extent_,level);
         });
 
         tree()->construct_flag_leaf();
@@ -275,7 +277,6 @@ public:
 
                         assign(src, overlap,stride_src,
                                field, overlap, stride_tgt);
-
                     }
                 }
             });

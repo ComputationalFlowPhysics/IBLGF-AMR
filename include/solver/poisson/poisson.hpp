@@ -45,7 +45,7 @@ public: //member types
     using tree_t               = typename domain_type::tree_t;
     using octant_t             = typename tree_t::octant_type;
     using block_type           = typename datablock_type::block_descriptor_type;
-    using convolution_t        = typename fft::Convolution;
+    using convolution_t        = fft::Convolution;
     using real_coordinate_type = typename domain_type::real_coordinate_type;
     using coordinate_type      = typename domain_type::coordinate_type;
 
@@ -86,7 +86,7 @@ public:
     {
         // allocate lgf
         std::vector<float_type> lgf;
-        const float_type dx_base=domain_->dx_base();
+        //const float_type dx_base=domain_->dx_base();
 
         //Coarsification:
         pcout<<"coarsification "<<std::endl;

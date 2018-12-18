@@ -51,7 +51,8 @@ public: //Ctors:
      input_(_dims[2]*_dims[1]*_dims[0],0.0),
      output_(_dims[2]*_dims[1]*((_dims[0]/2)+1))
     {
-        int status = fftw_init_threads();
+        //int status = fftw_init_threads();
+        fftw_init_threads();
         fftw_plan_with_nthreads(nthreads);
         plan = (fftw_plan_dft_r2c_3d(_dims[2], _dims[1], _dims[0],
                  &input_[0], reinterpret_cast<fftw_complex*>(&output_[0]),
@@ -151,7 +152,8 @@ public: //Ctors:
     :input_(_dims[2]*_dims[1]*((_dims[0]/2)+1),std::complex<float_type>(0.0)),
      output_(_dims[2]*_dims[1]*_dims[0],0.0)
     {
-        int status = fftw_init_threads();
+        //int status = fftw_init_threads();
+        fftw_init_threads();
         fftw_plan_with_nthreads(nthreads);
         plan = fftw_plan_dft_c2r_3d(_dims[2], _dims[1], _dims[0],
                  reinterpret_cast<fftw_complex*>(&input_[0]), &output_[0],

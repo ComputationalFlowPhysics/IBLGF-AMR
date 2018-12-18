@@ -5,6 +5,6 @@ include_directories(${IBLGF_SOURCE_DIR}/src ${IBLGF_SOURCE_DIR}/include)
 add_executable(poisson.x main.cpp ${SOURCES})
 target_link_libraries(poisson.x 
                       ${MPI_LIBRARIES}
-                      ${Boost_LIBRARIES} boost_mpi 
+                      ${Boost_LIBRARIES}
                       ${FFTW_LIBRARIES}  fftw3_omp blas
                       xtensor)

@@ -42,7 +42,7 @@ using namespace domain;
 
     public: //Ctor:
     using dims_t = types::vector_type<int,3>;
-    using convolution_t        = typename fft::Convolution;
+    using convolution_t        = fft::Convolution;
 
     //FIXME why not working
     //

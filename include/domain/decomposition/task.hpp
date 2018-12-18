@@ -1,5 +1,5 @@
-#ifndef DOMAIN_INCLUDED_TASK_HPP
-#define DOMAIN_INCLUDED_TASK_HPP
+#ifndef DOMAIN_INCLUDED_COMPUTE_TASK_HPP
+#define DOMAIN_INCLUDED_COMPUTE_TASK_HPP
 
 #include <vector>
 #include <stdexcept>
@@ -18,22 +18,22 @@ namespace domain
  *  the client/worker processes.
  */
 template<class Key>
-class Task
+class ComputeTask
 {
 
 public:
     using key_t  = Key;
 public:
 
-    Task(const Task&  other) = default;
-    Task(      Task&& other) = default;
-    Task& operator=(const Task&  other) & = default;
-    Task& operator=(      Task&& other) & = default;
-    ~Task() = default;
+    ComputeTask(const ComputeTask&  other) = default;
+    ComputeTask(      ComputeTask&& other) = default;
+    ComputeTask& operator=(const ComputeTask&  other) & = default;
+    ComputeTask& operator=(      ComputeTask&& other) & = default;
+    ~ComputeTask() = default;
 
-    Task() = default;
+    ComputeTask() = default;
 
-    Task(key_t _k, int _rank, float_type _load)
+    ComputeTask(key_t _k, int _rank, float_type _load)
     : key_(_k), rank_(_rank),load_(_load)
     {
     }

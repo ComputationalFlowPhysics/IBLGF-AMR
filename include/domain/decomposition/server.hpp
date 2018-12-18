@@ -30,7 +30,7 @@ public:
     using communicator_type  = typename  domain_t::communicator_type;
     using octant_t  = typename  domain_t::octant_t;
     using key_t  = typename  domain_t::key_t;
-    using task_t = Task<key_t>;
+    using task_t = ComputeTask<key_t>;
 public:
 
     Server(const Server&  other) = default;
@@ -70,7 +70,8 @@ public:
             auto load= it->load();
             task_t task(it->key(), it->rank(), load);
             
-            if(total_load_perProc+load<ideal_load || (procCount == nProcs-1))
+            if(total_load_perProc+load<ideal_load || 
+               (procCount == nProcs-1))
             {
                 tasks_perProc[procCount].push_back(task);
                 total_load_perProc+=load;
@@ -92,7 +93,8 @@ public:
             {
                 total_loads_perProc[i]+=t.load();
             }
-            ofs<< tasks_perProc[i][0].rank()<<" "<<total_loads_perProc[i]<<std::endl;
+            ofs<< tasks_perProc[i][0].rank()<<" "
+                <<total_loads_perProc[i]<<std::endl;
         }
 
         //TODO: Iterate to balance/diffuse load 

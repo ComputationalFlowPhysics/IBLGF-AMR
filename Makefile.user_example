@@ -1,5 +1,0 @@
-CXX = mpic++
-
-BOOST_PATH = /usr/local/Cellar/boost/1.67.0_1
-USER_INCLUDE_DIRS = -I${BOOST_PATH}/include
-USER_LDFLAGS = -L${BOOST_PATH}/lib

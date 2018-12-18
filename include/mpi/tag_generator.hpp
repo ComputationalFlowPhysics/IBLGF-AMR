@@ -2,25 +2,19 @@
 #define INCLUDED_TAG_GENERATOR_HPP
 
 #include<vector>
-#include "global.hpp"
+
+#include <mpi/tags.hpp>
 
 
-//Requires for enum to start at 0,...,N
 /** @brief TagGenerator
- *  Generate mpi tags using a 2d periodic grid 
- *  based upon baseTags of type enum.
- *  Allows to keep track of multiple messages per tag.
+ *  Generate mpi tags using a 3d periodic grid based upon baseTags of type
+ *  enum, the message number for that tag as well as the rank.  Allows to keep
+ *  track of multiple messages per tag.
  *
  *  Requirement: Enum starts at zero and has nTags as
  *               last element
  */
-
-//TODO: make it a singleton
-//      Include rank as third dimension
-//
-
-
-namespace bla
+namespace sr_mpi
 {
 
 template<class Enum, class Tag=int>

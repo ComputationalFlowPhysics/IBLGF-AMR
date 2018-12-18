@@ -8,11 +8,11 @@
 #include<memory>
 #include<list>
 
-#include "global.hpp"
-#include "tag_generator.hpp"
-#include "task_manager.hpp"
+#include <mpi/tags.hpp>
+#include <mpi/tag_generator.hpp>
+#include <mpi/task_manager.hpp>
 
-namespace bla
+namespace sr_mpi
 {
 class Server
 {

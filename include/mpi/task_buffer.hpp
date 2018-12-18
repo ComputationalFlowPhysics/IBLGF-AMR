@@ -1,9 +1,9 @@
 #ifndef INCLUDED_TAKS_BUFFER__HPP
 #define INCLUDED_TAKS_BUFFER__HPP
 
-#include "global.hpp"
+#include <mpi/tags.hpp>
 
-namespace bla
+namespace sr_mpi
 {
 
 template<class Buffer>

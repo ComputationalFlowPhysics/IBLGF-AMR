@@ -7,11 +7,14 @@
 #include <stdlib.h>
 #include <chrono>
 #include <thread>
-#include "client.hpp"
-#include "server.hpp"
-#include "tag_generator.hpp"
+
+#include <global.hpp>
+#include <mpi/client.hpp>
+#include <mpi/server.hpp>
+#include <mpi/tag_generator.hpp>
 
 
+using namespace sr_mpi;
 int main(int argc, char *argv[])
 {
 	boost::mpi::environment env(argc, argv);
@@ -19,15 +22,14 @@ int main(int argc, char *argv[])
 
     if(world.rank()==0)
     {
-        bla::Server server;
+        Server server;
         server.run();
-        
     }
     else
     {
        const int nQueries=1;
 
-       bla::Client client;
+       Client client;
        client.test_query() ;
        for(int i =1;i<=nQueries;++i)
        {

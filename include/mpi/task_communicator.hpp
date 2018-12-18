@@ -7,7 +7,7 @@
 #include<queue>
 
 
-namespace bla
+namespace sr_mpi
 {
 
 

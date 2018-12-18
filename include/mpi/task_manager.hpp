@@ -5,12 +5,13 @@
 #include<array>
 #include<list>
 #include<queue>
-#include "global.hpp"
-#include "task.hpp"
-#include "tag_generator.hpp"
-#include "task_communicator.hpp"
 
-namespace bla
+#include <mpi/tags.hpp>
+#include <mpi/task.hpp>
+#include <mpi/tag_generator.hpp>
+#include <mpi/task_communicator.hpp>
+
+namespace sr_mpi
 {
 
 template<class... TasksType>

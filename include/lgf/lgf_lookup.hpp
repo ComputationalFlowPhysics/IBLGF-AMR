@@ -94,5 +94,7 @@ private:
     static const std::vector<float_type> table_;
 };
 
+//decltype(Lookup::N_max) Lookup::N_max(100);
+
 } //namepsace
 #endif

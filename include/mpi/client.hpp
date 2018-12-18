@@ -1,10 +1,9 @@
 #ifndef INCLUDED_CLIENT_HPP
 #define INCLUDED_CLIENT_HPP
 
-#include "global.hpp"
-#include "task_manager.hpp"
-
-namespace bla
+#include <mpi/tags.hpp>
+#include <mpi/task_manager.hpp>
+namespace sr_mpi
 {
 class Client
 {

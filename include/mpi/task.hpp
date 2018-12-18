@@ -1,10 +1,10 @@
 #ifndef INCLUDED_TAKS_BASE__HPP
 #define INCLUDED_TAKS_BASE__HPP
 
-#include "global.hpp"
-#include "task_buffer.hpp"
+#include <mpi/tags.hpp>
+#include <mpi/task_buffer.hpp>
 
-namespace bla
+namespace sr_mpi
 {
 
 template<class BufferType, class ID=int>

@@ -109,7 +109,7 @@ public:
         {
             //test for FMM
             fmm_.template fmm_for_level<Source, Target_fmm, fmm_s, fmm_t,fmm_tmp>(domain_, l, false);
-            fmm_.template fmm_for_level<Source, Target_fmm, fmm_s, fmm_t>(domain_, l, true);
+            fmm_.template fmm_for_level<Source, Target_fmm, fmm_s, fmm_t,fmm_tmp>(domain_, l, true);
 
             //for (auto it_t  = domain_->begin(l);
             //          it_t != domain_->end(l); ++it_t)

@@ -1,26 +1,5 @@
-#ifndef INCLUDED_GLOABAL_HPP
-#define INCLUDED_GLOABAL_HPP
-
-
-namespace bla
-{
-
-namespace tags
-{
-enum type: int
-{ 
-    key_answer,
-    key_query,
-    request,
-    task_type,
-    idle,
-    connection,
-    confirmation,
-    disconnect,
-    nTags
-};
-
-} //Tags namespace
+#ifndef INCLUDED_LGF_TUPLE_UTILITIES_HPP
+#define INCLUDED_LGF_TUPLE_UTILITIES_HPP
 
 
 namespace tuple_utils
@@ -52,8 +31,7 @@ struct TypeIterator
     }
 };
 
-} //namespace tuple_utils
-
 }
+
 
 #endif 

@@ -138,7 +138,7 @@ public:
         auto base_level=key_t::minimum_level(_maxExtent/_blockExtent);
 
         //Initialize tree only on the master process
-        decomposition_ = Decomposition(this);
+        decomposition_ = decompositon_type(this);
         if(decomposition_.is_server())
         {
             t_ = std::make_shared<tree_t>(bases, base_level);

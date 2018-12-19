@@ -18,8 +18,6 @@ struct RecvMode{};
  * @brief: Task communicator.  Manages posted messages, buffers them and calls 
  *         non-blocking send/recvs and queries their status.
  *         Can be used in both Send and Recv mode.
- *
- *         TODO:  Post_answer function ...just as insert
  */
 template<class TaskType, class Mode>
 class TaskCommunicator
@@ -95,10 +93,6 @@ public:
     {
         auto tag= tag_gen().get<task_t::tag()>( comm_.rank() );
         auto task_ptr=insert(tag, _dat, _dest);
-
-        //std::cout<<"Post Send:    Rank:"<<comm_.rank()<<" "
-        //         <<"to " <<task_ptr->rank_other()<<" "
-        //         <<"ID: "<<task_ptr->id()<<std::endl;
         tag= tag_gen().generate<task_t::tag()>( comm_.rank() );
         return task_ptr;
     }
@@ -135,9 +129,7 @@ public:
             {
                 finished_.push_back(t);
                 t->deattach_buffer();
-
                 insert_unconfirmed_tasks(t);
-
                 it=tasks_.erase(it);
                 --nActive_tasks_;
             }
@@ -199,13 +191,7 @@ public:
             task->attach_buffer( ptr );
             task->irecv(comm_);
 
-            //std::cout
-            //         <<"Post Receive: Rank:"<<comm_.rank()<<" "
-            //         <<"from " <<task->rank_other()<<" "
-            //         <<"ID: "<<task->id()<<std::endl;
-
             tasks_.push_back(task);
-
             res.push_back(task);
             buffer_queue_.pop();
         }
@@ -229,9 +215,7 @@ public:
                 finished_.push_back(t);
                 t->assign_buffer2data();
                 t->deattach_buffer();
-
                 insert_unconfirmed_tasks(t);
-
                 it=tasks_.erase(it);
                 --nActive_tasks_;
             }
@@ -258,7 +242,6 @@ public:
         }
         return res_all;
     }
-
 
 private:
 

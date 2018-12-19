@@ -24,6 +24,7 @@ public: //Ctor:
 
     Task_base()=default;
 
+
 public: //access:
 
     const id_type& id()const noexcept{return id_;}
@@ -126,9 +127,9 @@ protected:
     //Confirmation mechanism
     boost::mpi::request confirmation_request_;
     bool request_confirmation_=true;
+
     bool confirmed_=false;
 };
-
 
 
 
@@ -171,10 +172,12 @@ class Task<tags::key_query,std::vector<int>,ID>
 {
 
 public:
-    using super_type = Task_base< TaskBuffer<tags::key_query,std::vector<int>,ID>>;
+    using super_type = Task_base< 
+        TaskBuffer<tags::key_query,std::vector<int>,ID>>;
     using super_type::Task_base;
     using id_type =ID;
     using buffer_type =  TaskBuffer<tags::key_query,std::vector<int>,ID>;
+    using task_buffer_t =  typename super_type::task_buffer_t;
     using buffer_container_type = typename buffer_type::container_t;
 
     using data_type = typename super_type::data_type;
@@ -185,11 +188,40 @@ public:
 
 public: //memebers:
 
-    void complete( data_type* query_data, 
-                   answer_data_type* answer_buffer ) const noexcept
+    void attach_data( data_type* _s ) noexcept { this->data_=_s; }
+
+    //inplace
+    void attach_buffer( task_buffer_t* _b ) noexcept { }
+    void assign_data2buffer() noexcept {}
+    void assign_buffer2data() noexcept { }
+    void deattach_buffer() noexcept { }
+
+    void isend( boost::mpi::communicator _comm)
     {
-        answer_data_type ans(3, -this->rank_other_);
+
+        //std::cout<<"Rank: "<<_comm.rank()<<" with count: "<<++count<<std::endl;
+        this->request_= _comm.isend(  this->rank_other_, this->id_, *this->data_);
+        if(this->request_confirmation_)
+        {
+            this->confirmation_request_=_comm.irecv(this->rank_other_, tags::confirmation);
+        }
+    } 
+    void irecv( boost::mpi::communicator _comm)
+    {
+        this->request_ = _comm.irecv(this->rank_other_, this->id_, *this->data_);
+        if(this->request_confirmation_)
+        {
+            this->confirmation_request_=_comm.isend(this->rank_other_, tags::confirmation);
+        }
+    }
+
+    void complete( data_type* query_data, 
+                   answer_data_type* answer_buffer ) noexcept
+    {
+        
+        answer_data_type ans(count*10, this->rank_other_-count);
         *answer_buffer=ans;
+        ++count;
 
     }
     void generate()
@@ -197,7 +229,13 @@ public: //memebers:
         boost::mpi::communicator world;
     }
 
+    static int count;
 };
+
+
+template<class ID>
+int Task<tags::key_query,std::vector<int>,ID>::count=0;
+
 
 //These should be specialized for different tasks
 

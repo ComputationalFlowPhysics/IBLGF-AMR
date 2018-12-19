@@ -13,6 +13,11 @@
 namespace sr_mpi
 {
 
+//TODO: Make in place:
+//          Buffer should be optional 
+//          else do inpace 
+//          For receive it should be posibble to complete task
+//          directly from buffer
 template<class Traits>
 class ServerBase
 {
@@ -63,18 +68,39 @@ public: //members
         }
     }
 
+    //TODO: implement inplace tasks:
     template<class TaskType >
     void run_query()
     {
-        std::vector<typename TaskType::data_type> 
+        //std::vector<typename TaskType::data_type> 
+        //    client_recvdata_vector(comm_.size());
+        //std::vector<typename TaskType::data_type> 
+        //    client_senddata_vector(comm_.size());
+
+        //const auto receiveDataMap = [&](auto& _client){ 
+        //    return &client_recvdata_vector[_client.rank]; };
+        //const auto sendDataMap = [&](auto& _task){ 
+        //    return &client_senddata_vector[_task->rank_other()]; };
+        
+        std::vector<std::vector<std::shared_ptr<typename TaskType::data_type>>>
             client_recvdata_vector(comm_.size());
-        std::vector<typename TaskType::data_type> 
+        std::vector<std::vector<std::shared_ptr<typename TaskType::data_type>>>
             client_senddata_vector(comm_.size());
 
         const auto receiveDataMap = [&](auto& _client){ 
-            return &client_recvdata_vector[_client.rank]; };
+            auto buffer=std::make_shared<typename TaskType::data_type>();
+            client_recvdata_vector[_client.rank].push_back(buffer);
+            return buffer.get();
+            //return &client_recvdata_vector[_client.rank]; 
+            };
         const auto sendDataMap = [&](auto& _task){ 
-            return &client_senddata_vector[_task->rank_other()]; };
+
+            auto buffer=std::make_shared<typename TaskType::data_type>();
+            client_senddata_vector[_task->rank_other()].push_back(buffer);
+            return buffer.get();
+            //return &client_senddata_vector[_task->rank_other()]; };
+            };
+
 
         std::cout<<"\n\nStarting up server ...\n"<<std::endl;
         initialize();
@@ -103,6 +129,7 @@ protected:
         recv_comm.receive();
         auto finished_tasks=recv_comm.check();
 
+        std::cout<<"number of finished receives "<<finished_tasks.size()<<std::endl;
         for(auto& t  : finished_tasks)
         {
             std::cout<<"Received query: ";
@@ -111,15 +138,19 @@ protected:
         }
 
         //Check for new messages
-        for(auto& client: clients_)
+        for(int i=0;i<2;++i)
         {
-            auto tag= tag_gen().get<TaskType::tag()>( client.rank );
-            if(comm_.iprobe(client.rank, tag))
+            for(auto& client: clients_)
             {
-                auto t= recv_comm.post(
-                            _getData(client),
-                            client.rank);
+                auto tag= tag_gen().get<TaskType::tag()>( client.rank );
+                if(comm_.iprobe(client.rank, tag))
+                {
+                    auto t= recv_comm.post(
+                                _getData(client),
+                                client.rank);
+                }
             }
+
         }
         return finished_tasks;
     }
@@ -131,10 +162,11 @@ protected:
         //Complete tasks
         for(auto& t: _tasks) 
         {
-            t->complete(&t->data(),_getData(t));
+            auto send_data_ptr=_getData(t);
+            t->complete(&t->data(),send_data_ptr);
             auto& send_comm=
                 task_manager_.template send_communicator<TaskType>();
-            auto task=send_comm.post_answer(t, _getData(t));
+            auto task=send_comm.post_answer(t, send_data_ptr);
         }
 
         //Send answers

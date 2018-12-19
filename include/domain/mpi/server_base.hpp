@@ -87,13 +87,13 @@ public: //members
         std::vector<std::vector<std::shared_ptr<typename TaskType::data_type>>>
             client_senddata_vector(comm_.size());
 
-        const auto receiveDataMap = [&](auto& _client){ 
+        const auto recvData_ptr = [&](auto& _client){ 
             auto buffer=std::make_shared<typename TaskType::data_type>();
             client_recvdata_vector[_client.rank].push_back(buffer);
             return buffer.get();
             //return &client_recvdata_vector[_client.rank]; 
             };
-        const auto sendDataMap = [&](auto& _task){ 
+        const auto sendData_ptr = [&](auto& _task){ 
 
             auto buffer=std::make_shared<typename TaskType::data_type>();
             client_senddata_vector[_task->rank_other()].push_back(buffer);
@@ -107,8 +107,8 @@ public: //members
 
         while (true)
         {
-            auto tasks=check_clients<TaskType>(receiveDataMap);
-            answer<TaskType>(tasks, sendDataMap);
+            auto tasks=check_clients<TaskType>(recvData_ptr);
+            answer<TaskType>(tasks, sendData_ptr);
             update_client_status();
 
             if(task_manager_.all_done() && !connected())

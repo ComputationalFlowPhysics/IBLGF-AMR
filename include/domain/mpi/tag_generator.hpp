@@ -3,8 +3,7 @@
 
 #include<vector>
 
-#include <mpi/tags.hpp>
-
+#include "tags.hpp"
 
 /** @brief TagGenerator
  *  Generate mpi tags using a 3d periodic grid based upon baseTags of type

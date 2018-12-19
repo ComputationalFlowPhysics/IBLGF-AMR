@@ -1,18 +1,26 @@
-#ifndef INCLUDED_CLIENT_HPP
-#define INCLUDED_CLIENT_HPP
+#ifndef INCLUDED_CLIENT_XX_HPP
+#define INCLUDED_CLIENT_XX_HPP
 
-#include <mpi/tags.hpp>
-#include <mpi/task_manager.hpp>
-namespace sr_mpi
+#include <domain/mpi/task_manager.hpp>
+#include <domain/mpi/client_base.hpp>
+
+using namespace sr_mpi;
+
+struct ClientTraits 
 {
-class Client
+    using key_query_t = Task<tags::key_query,std::vector<int>>;
+    using task_manager_t = TaskManager<key_query_t>;
+};
+
+class Client : public ClientBase<ClientTraits>
 {
 
 public: // aliases
 
-    using key_query_t = Task<tags::key_query,std::vector<int>>;
-    using key_answer_t = Task<tags::key_answer,std::vector<int> >;
-    using task_manager_t = TaskManager<key_query_t>;
+    using trait_t =  ClientTraits;
+    using super_type  = ClientBase<trait_t>;
+    using key_query_t = typename trait_t::key_query_t;
+    using task_manager_t = typename trait_t::task_manager_t;
 
 public: // ctors
 
@@ -34,8 +42,10 @@ public:
         recv_dat.resize(3);
 
 
-        auto& send_comm=task_manager_.send_communicator<key_query_t>();
-        auto& recv_comm=task_manager_.recv_communicator<key_query_t>();
+        auto& send_comm=
+            task_manager_.template send_communicator<key_query_t>();
+        auto& recv_comm=
+            task_manager_.template recv_communicator<key_query_t>();
 
         //Send random queries:
         auto task= send_comm.post(&task_dat, 0);
@@ -80,10 +90,8 @@ public:
 
 private:
     boost::mpi::communicator comm_;
-    std::vector<boost::mpi::request> recv_confirm_reqs;
     task_manager_t task_manager_;
     std::vector<std::vector<int>> recv_dat;
 
 };
-}
 #endif 

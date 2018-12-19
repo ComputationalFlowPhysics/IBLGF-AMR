@@ -9,12 +9,10 @@
 #include <thread>
 
 #include <global.hpp>
-#include <mpi/client.hpp>
-#include <mpi/server.hpp>
-#include <mpi/tag_generator.hpp>
+#include "client.hpp"
+#include "server.hpp"
 
 
-using namespace sr_mpi;
 int main(int argc, char *argv[])
 {
 	boost::mpi::environment env(argc, argv);

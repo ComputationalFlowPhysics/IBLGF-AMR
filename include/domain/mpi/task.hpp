@@ -1,8 +1,8 @@
 #ifndef INCLUDED_TAKS_BASE__HPP
 #define INCLUDED_TAKS_BASE__HPP
 
-#include <mpi/tags.hpp>
-#include <mpi/task_buffer.hpp>
+#include "tags.hpp"
+#include "task_buffer.hpp"
 
 namespace sr_mpi
 {
@@ -190,6 +190,7 @@ public: //memebers:
     {
         answer_data_type ans(3, -this->rank_other_);
         *answer_buffer=ans;
+
     }
     void generate()
     {

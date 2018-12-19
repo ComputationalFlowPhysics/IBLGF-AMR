@@ -1,8 +1,6 @@
 #ifndef INCLUDED_TAKS_BUFFER__HPP
 #define INCLUDED_TAKS_BUFFER__HPP
 
-#include <mpi/tags.hpp>
-
 namespace sr_mpi
 {
 

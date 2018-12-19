@@ -3,14 +3,14 @@
 
 #include <vector>
 #include <stdexcept>
-
-#include <boost/mpi/communicator.hpp>
 #include <boost/mpi.hpp>
-
-#include <global.hpp>
-#include <domain/decomposition/task.hpp>
+#include <boost/mpi/communicator.hpp>
 #include <boost/serialization/vector.hpp>
 #include <boost/mpi/status.hpp>
+
+#include <global.hpp>
+#include <domain/decomposition/compute_task.hpp>
+#include <domain/mpi/task_manager.hpp>
 
 namespace domain
 {
@@ -30,7 +30,10 @@ public:
     using communicator_type  = typename  domain_t::communicator_type;
     using octant_t  = typename  domain_t::octant_t;
     using key_t  = typename  domain_t::key_t;
-    using task_t = ComputeTask<key_t>;
+    using ctask_t = ComputeTask<key_t>;
+
+    using key_query_t = Task<tags::key_query,std::vector<int>>;
+    using task_manager_t = TaskManager<key_query_t>;
 public:
 
     Server(const Server&  other) = default;
@@ -63,12 +66,12 @@ public:
 
         float_type total_load_perProc=0;
         int procCount=0;
-        std::vector<std::vector<task_t>> tasks_perProc(nProcs);
+        std::vector<std::vector<ctask_t>> tasks_perProc(nProcs);
         for( auto it = domain_->begin_df(); it!= domain_->end_df();++it )
         {
             it->rank()=procCount+1;
             auto load= it->load();
-            task_t task(it->key(), it->rank(), load);
+            ctask_t task(it->key(), it->rank(), load);
             
             if(total_load_perProc+load<ideal_load || 
                (procCount == nProcs-1))

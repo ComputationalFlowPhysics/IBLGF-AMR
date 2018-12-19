@@ -1,49 +1,39 @@
 #ifndef INCLUDED_SERVER_HPP
 #define INCLUDED_SERVER_HPP
 
-#include <boost/serialization/vector.hpp>
 #include<set>
 #include<optional>
 #include<vector>
 #include<memory>
 #include<list>
+#include <boost/serialization/vector.hpp>
 
-#include <mpi/tags.hpp>
-#include <mpi/tag_generator.hpp>
-#include <mpi/task_manager.hpp>
+#include "task_manager.hpp"
 
 namespace sr_mpi
 {
-class Server
+
+template<class Traits>
+class ServerBase
 {
     
-
 public:
-
-    using key_query_t = Task<tags::key_query,std::vector<int> >;
-    using task_manager_t = TaskManager<key_query_t>;
-
-    template<class TaskType>
-    using answer_task_type  = typename TaskType::answer_task_type;
-
-    template<class TaskType>
-    using answer_data_type  = typename TaskType::answer_data_type;
+    using task_manager_t = typename Traits::task_manager_t;
 
 public: // ctors
 
-	Server(const Server&) = default;
-	Server(Server&&) = default;
-	Server& operator=(const Server&) & = default;
-	Server& operator=(Server&&) & = default;
-    ~Server()=default;
-    Server()=default;
+	ServerBase(const ServerBase&) = default;
+	ServerBase(ServerBase&&) = default;
+	ServerBase& operator=(const ServerBase&) & = default;
+	ServerBase& operator=(ServerBase&&) & = default;
+    ~ServerBase()=default;
+    ServerBase()=default;
 
-private: //helper struct
+protected: //helper struct
 
     class ClientInfo
     {
     public: //Ctor:
-
 
         ClientInfo(const ClientInfo&) = delete;
         ClientInfo(ClientInfo&&) = default;
@@ -66,40 +56,49 @@ public: //members
     void initialize()
     {
         nConnections_=comm_.size()-1;
-        
+        clients_.clear();
         for(int i =1;i<=nConnections_;++i)
         {
             clients_.emplace_back(i);
         }
-        client_recvdata_vector.clear();
-        client_recvdata_vector.resize(comm_.size());
-        client_senddata_vector.resize(comm_.size());
-
     }
 
-    void run()
+    template<class TaskType >
+    void run_query()
     {
+        std::vector<typename TaskType::data_type> 
+            client_recvdata_vector(comm_.size());
+        std::vector<typename TaskType::data_type> 
+            client_senddata_vector(comm_.size());
+
+        const auto receiveDataMap = [&](auto& _client){ 
+            return &client_recvdata_vector[_client.rank]; };
+        const auto sendDataMap = [&](auto& _task){ 
+            return &client_senddata_vector[_task->rank_other()]; };
+
         std::cout<<"\n\nStarting up server ...\n"<<std::endl;
         initialize();
+
         while (true)
         {
-            auto tasks=check_clients<key_query_t>();
-            post_answers<key_query_t>(tasks);
-            send_answers<key_query_t>();
+            auto tasks=check_clients<TaskType>(receiveDataMap);
+            answer<TaskType>(tasks, sendDataMap);
             update_client_status();
 
             if(task_manager_.all_done() && !connected())
                 break;
-
         }
-        
         std::cout<<"\n\nShutting down server ...\n"<<std::endl;
     }
 
-    template<class TaskType>
-    std::vector<std::shared_ptr<TaskType>> check_clients()
+protected:
+
+
+    template<class TaskType, class Function>
+    std::vector<std::shared_ptr<TaskType>> check_clients(Function& _getData)
     {
-        auto& recv_comm=task_manager_.recv_communicator<TaskType>();
+        auto& recv_comm=
+            task_manager_.template recv_communicator<TaskType>();
 
         recv_comm.receive();
         auto finished_tasks=recv_comm.check();
@@ -118,12 +117,33 @@ public: //members
             if(comm_.iprobe(client.rank, tag))
             {
                 auto t= recv_comm.post(
-                            &client_recvdata_vector[client.rank], 
+                            _getData(client),
                             client.rank);
             }
         }
         return finished_tasks;
     }
+
+    template<class TaskType, class Function>
+    void answer( std::vector<std::shared_ptr<TaskType>>&  _tasks,  
+                 Function& _getData)
+    {
+        //Complete tasks
+        for(auto& t: _tasks) 
+        {
+            t->complete(&t->data(),_getData(t));
+            auto& send_comm=
+                task_manager_.template send_communicator<TaskType>();
+            auto task=send_comm.post_answer(t, _getData(t));
+        }
+
+        //Send answers
+        auto& send_comm=
+            task_manager_.template send_communicator<TaskType>();
+        send_comm.send();
+        send_comm.check();
+    }
+
 
 
     void update_client_status()
@@ -151,37 +171,12 @@ public: //members
 
     bool connected(){return nConnections_>0;}
 
-private:
-
-    template<class TaskType>
-    void post_answers( std::vector<std::shared_ptr<TaskType>>&  _tasks)
-    {
-        for(auto& t: _tasks) 
-        {
-            t->complete(&t->data(),     
-                        &client_senddata_vector[t->rank_other()]);
-            auto& send_comm=task_manager_.send_communicator<TaskType>();
-            auto task=send_comm.post_answer(t,
-                            &client_senddata_vector[t->rank_other()]);
-        }
-    }
-
-    template<class TaskType>
-    void send_answers()
-    {
-        auto& send_comm=task_manager_.send_communicator<TaskType>();
-        send_comm.send();
-        send_comm.check();
-    }
-    
-private:
+protected:
 
     boost::mpi::communicator comm_;
     int nConnections_=0;
     std::vector<ClientInfo> clients_;
     task_manager_t task_manager_;
-    std::vector<std::vector<int>> client_recvdata_vector;
-    std::vector<std::vector<int>> client_senddata_vector;
 
 };
 

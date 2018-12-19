@@ -6,10 +6,9 @@
 #include<list>
 #include<queue>
 
-#include <mpi/tags.hpp>
-#include <mpi/task.hpp>
-#include <mpi/tag_generator.hpp>
-#include <mpi/task_communicator.hpp>
+#include "task.hpp"
+#include "tag_generator.hpp"
+#include "task_communicator.hpp"
 
 namespace sr_mpi
 {
@@ -30,7 +29,7 @@ public:
     using recv_comm_tuple_t = std::tuple<recv_comm_t<TasksType>...>;
 
 public: //Ctor
-    TaskManager()
+    TaskManager(  )
     {
     }
 

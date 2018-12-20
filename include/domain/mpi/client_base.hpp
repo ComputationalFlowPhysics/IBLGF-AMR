@@ -41,10 +41,10 @@ public:
             task_manager_.template recv_communicator<key_query_t>();
 
         //Send random queries:
-        auto task= send_comm.post(&task_dat, 0);
+        auto task= send_comm.post_new(&task_dat, 0);
         if(comm_.rank()==1)
         {
-            auto task= send_comm.post(&task_dat2, 0);
+            auto task= send_comm.post_new(&task_dat2, 0);
         }
 
         int count=0;

@@ -70,7 +70,18 @@ public:
     {
         return insert(_task_ptr->id(), _data, _task_ptr->rank_other());
     }
-
+    /** * @brief Wait for all tasks to be finished */
+    task_vector_t wait_all()
+    {
+        vector_task_ptr_t res_all;
+        while(!this->done())
+        {
+            this->receive();
+            auto ft=this->finalize();
+            res_all.insert(res_all.end(), ft.begin(), ft.end());
+        }
+        return res_all;
+    }
 
     /** * @brief Check if all tasks are done and nothing is in the queue */
     bool done() const noexcept
@@ -80,108 +91,17 @@ public:
                unconfirmed_tasks_.size()==0;
     }
 
-    /********************************************************************/
-    //Send mode:
-    
-    /** * @brief Post a send task: Insert into queue */
-    template
-    < 
-        class M=Mode,
-        std::enable_if_t< std::is_same<M,SendMode>::value, int > =0
-    >
-    task_ptr_t post(  task_data_t* _dat, int _dest, bool request_confirm =true)
+    /** * @brief Check if all tasks are done and nothing is in the queue */
+    task_ptr_t post_task(task_data_t* _dat, int _rank_other)
     {
-        auto tag= tag_gen().get<task_t::tag()>( comm_.rank() );
-        auto task_ptr=insert(tag, _dat, _dest);
-        tag= tag_gen().generate<task_t::tag()>( comm_.rank() );
+        auto tag= tag_gen().get<task_t::tag()>(tag_rank(_rank_other));
+        auto task_ptr=insert(tag, _dat, _rank_other);
+        tag= tag_gen().generate<task_t::tag()>(tag_rank(_rank_other));
         return task_ptr;
     }
 
-    /** * @brief Try sending when buffer is free */
-    template
-    < 
-        class M=Mode,
-        std::enable_if_t< std::is_same<M,SendMode>::value, int > =0
-    >
-    void send()
-    {
-        auto assigned_tasks= data_to_buffer() ;
-        for(auto& t :  assigned_tasks)
-        {
-            tasks_.push_back(t);
-            t->isend(comm_);
-        }
-    }
-
-    /** * @brief Get finished tasks */
-    template
-    < 
-        class M=Mode,
-        std::enable_if_t< std::is_same<M,SendMode>::value, int > =0 
-    >
-    task_vector_t check()
-    {
-        task_vector_t finished_;
-        for(auto it=tasks_.begin();it!=tasks_.end();)
-        {
-            auto& t=*it;
-            if( auto status_opt = t->test() )
-            {
-                finished_.push_back(t);
-                t->deattach_buffer();
-                insert_unconfirmed_tasks(t);
-                it=tasks_.erase(it);
-                --nActive_tasks_;
-            }
-            else { ++it; }
-        }
-
-        check_unconfirmed_tasks();
-        return finished_;
-    }
-
-    /** * @brief Wait for all posted tasks to finish */
-    template
-    < 
-        class M=Mode,
-        std::enable_if_t< std::is_same<M,SendMode>::value, int > =0 
-    >
-    void wait_all()
-    {
-        while(true)
-        {
-            this->send();
-            this->check();
-            if(this->done())
-                break;
-        }
-    }
-
-    /********************************************************************/
-    //Receive mode:
-    
-    /** * @brief Post a receive task */
-    template 
-    < 
-        class M=Mode,
-        std::enable_if_t< std::is_same<M,RecvMode>::value, int > =0 
-    >
-    task_ptr_t post(  task_data_t* _dat, int _src  )
-    {
-        auto tag= tag_gen().get<task_t::tag()>(_src );
-        auto task_ptr=insert(tag, _dat, _src);
-        tag= tag_gen().generate<task_t::tag()>(_src);
-        return task_ptr;
-
-    }
-    
-    /** * @brief Buffer and receive */
-    template 
-    < 
-        class M=Mode,
-        std::enable_if_t< std::is_same<M,RecvMode>::value, int > =0 
-    >
-    task_vector_t receive()
+    /** * @brief Start communication (send or receive for this task)*/
+    task_vector_t start_communication()
     {
         task_vector_t res;
         while(buffer_.is_free() && !buffer_queue_.empty())
@@ -189,7 +109,8 @@ public:
             auto task =buffer_queue_.front();
             auto ptr = buffer_.get_free_buffer();
             task->attach_buffer( ptr );
-            task->irecv(comm_);
+            to_buffer(task);
+            sendRecv(task);
 
             tasks_.push_back(task);
             res.push_back(task);
@@ -198,13 +119,11 @@ public:
         return res;
     }
 
-    /** * @brief Get finished receives */
-    template 
-    < 
-        class M=Mode,
-        std::enable_if_t< std::is_same<M,RecvMode>::value, int > =0 
-    >
-    task_vector_t check()
+    /** * @brief Finish communication (send or receive for this task)
+     *           Task will also be completed at the same time
+     * */
+    template<class... Args>
+    task_vector_t finish_communication(Args&&... args)
     {
         task_vector_t finished_;
         for(auto it=tasks_.begin();it!=tasks_.end();)
@@ -213,7 +132,10 @@ public:
             if( auto status_opt = t->test() )
             {
                 finished_.push_back(t);
-                t->assign_buffer2data();
+                from_buffer(t);
+                //TODO: Complete the task
+                //t.complete(std::forward<Args>(args)...);
+
                 t->deattach_buffer();
                 insert_unconfirmed_tasks(t);
                 it=tasks_.erase(it);
@@ -225,41 +147,53 @@ public:
         return finished_;
     }
 
-    /** * @brief Wait for all posted tasks to finish */
-    template
-    < 
-        class M=Mode,
-        std::enable_if_t< std::is_same<M,RecvMode>::value, int > =0 
-    >
-    task_vector_t wait_all()
+    /********************************************************************/
+    /********************************************************************/
+    //Tag rank
+    template < class M=Mode,
+        std::enable_if_t< std::is_same<M,SendMode>::value, int > =0 >
+    int tag_rank(int rank_other) const noexcept { return comm_.rank(); }
+
+    template < class M=Mode,
+        std::enable_if_t< std::is_same<M,RecvMode>::value, int > =0 >
+    int tag_rank(int rank_other) const noexcept {return rank_other;  }
+    
+    //Communicate
+    template < class M=Mode,
+        std::enable_if_t< std::is_same<M,SendMode>::value, int > =0 >
+    void sendRecv(task_ptr_t _t) const noexcept {_t->isend(comm_);}
+    template < class M=Mode,
+        std::enable_if_t< std::is_same<M,RecvMode>::value, int > =0 >
+    void sendRecv(task_ptr_t _t) const noexcept {_t->irecv(comm_);}
+
+
+    //To Buffer:
+    template < class M=Mode,
+        std::enable_if_t< std::is_same<M,SendMode>::value, int > =0 >
+    void to_buffer(task_ptr_t _t) const noexcept 
     {
-        vector_task_ptr_t res_all;
-        while(!this->done())
-        {
-            this->receive();
-            auto ft=this->check();
-            res_all.insert(res_all.end(), ft.begin(), ft.end());
-        }
-        return res_all;
+        _t->assign_data2buffer();
     }
+    template < class M=Mode,
+        std::enable_if_t< std::is_same<M,RecvMode>::value, int > =0 >
+    void to_buffer(task_ptr_t _t) const noexcept 
+    { }
+
+
+    //From Buffer:
+    template < class M=Mode,
+        std::enable_if_t< std::is_same<M,SendMode>::value, int > =0 >
+    void from_buffer(task_ptr_t _t) const noexcept 
+    { }
+    template < class M=Mode,
+        std::enable_if_t< std::is_same<M,RecvMode>::value, int > =0 >
+    void from_buffer(task_ptr_t _t) const noexcept 
+    {
+        _t->assign_buffer2data();
+    }
+
 
 private:
-
-    /** * @brief Assign data to buffer if possible */
-    task_vector_t data_to_buffer()
-    {
-        task_vector_t res;
-        while(buffer_.is_free() && !buffer_queue_.empty())
-        {
-            auto task =buffer_queue_.front();
-            auto ptr = buffer_.get_free_buffer();
-            task->attach_buffer( ptr );
-            task->assign_data2buffer();
-            res.push_back(task);
-            buffer_queue_.pop();
-        }
-        return res;
-    }
 
     void insert_unconfirmed_tasks(task_ptr_t& t) noexcept
     {

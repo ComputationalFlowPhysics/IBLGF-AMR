@@ -91,14 +91,12 @@ public: //members
             auto buffer=std::make_shared<typename TaskType::data_type>();
             client_recvdata_vector[_client.rank].push_back(buffer);
             return buffer.get();
-            //return &client_recvdata_vector[_client.rank]; 
             };
         const auto sendData_ptr = [&](auto& _task){ 
 
             auto buffer=std::make_shared<typename TaskType::data_type>();
             client_senddata_vector[_task->rank_other()].push_back(buffer);
             return buffer.get();
-            //return &client_senddata_vector[_task->rank_other()]; };
             };
 
 
@@ -126,9 +124,10 @@ protected:
         auto& recv_comm=
             task_manager_.template recv_communicator<TaskType>();
 
-        recv_comm.receive();
-        auto finished_tasks=recv_comm.check();
+        recv_comm.start_communication();
+        auto finished_tasks=recv_comm.finish_communication();
 
+        if(finished_tasks.size())
         std::cout<<"number of finished receives "<<finished_tasks.size()<<std::endl;
         for(auto& t  : finished_tasks)
         {
@@ -138,14 +137,14 @@ protected:
         }
 
         //Check for new messages
-        for(int i=0;i<2;++i)
+        for(int i=0;i<10;++i)
         {
             for(auto& client: clients_)
             {
                 auto tag= tag_gen().get<TaskType::tag()>( client.rank );
                 if(comm_.iprobe(client.rank, tag))
                 {
-                    auto t= recv_comm.post(
+                    auto t= recv_comm.post_task(
                                 _getData(client),
                                 client.rank);
                 }
@@ -172,8 +171,8 @@ protected:
         //Send answers
         auto& send_comm=
             task_manager_.template send_communicator<TaskType>();
-        send_comm.send();
-        send_comm.check();
+        send_comm.start_communication();
+        send_comm.finish_communication();
     }
 
 

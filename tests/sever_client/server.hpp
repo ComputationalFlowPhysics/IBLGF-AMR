@@ -14,7 +14,8 @@
 using namespace sr_mpi;
 struct ServerTraits
 {
-    using key_query_t = Task<tags::key_query,std::vector<int>>;
+    //using key_query_t = Task<tags::key_query,std::vector<int>>;
+    using  key_query_t =Task<tags::key_query, std::vector<int>, Inplace>;
     using task_manager_t = TaskManager<key_query_t>;
 };
 class Server : public ServerBase<ServerTraits>

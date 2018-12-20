@@ -48,17 +48,17 @@ public:
             task_manager_.template recv_communicator<key_query_t>();
 
         //Send random queries:
-        auto task= send_comm.post(&task_dat, 0);
+        auto task= send_comm.post_task(&task_dat, 0);
         if(comm_.rank()==1)
         {
-            auto task= send_comm.post(&task_dat2, 0);
+            auto task= send_comm.post_task(&task_dat2, 0);
         }
 
         int count=0;
         while(true)
         {
-            send_comm.send();
-            auto finished_tasks=send_comm.check();
+            send_comm.start_communication();
+            auto finished_tasks=send_comm.finish_communication();
             for(auto& e : finished_tasks )
             {
                 recv_dat.push_back(std::vector<int>(3,0));
@@ -71,8 +71,8 @@ public:
         //Busy wait:
         while(!recv_comm.done())
         {
-            recv_comm.receive();
-            auto ft=recv_comm.check();
+            recv_comm.start_communication();
+            auto ft=recv_comm.finish_communication();
             for(auto& e : ft)
             {
             std::cout<<"Received answer: ";

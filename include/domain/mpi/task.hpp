@@ -4,17 +4,69 @@
 #include "tags.hpp"
 #include "task_buffer.hpp"
 
+#include <utilities/crtp.hpp>
+
 namespace sr_mpi
 {
 
-template<class BufferType, class ID=int>
-class Task_base
+template<class TaskType>
+struct CopyAssign : crtp::Crtp<TaskType, CopyAssign>
+{
+    template<class Buffer>
+    void attach_buffer( Buffer* _b ) noexcept
+    {
+        task_.comm_buffer_=_b;
+        task_.comm_buffer_->attach();
+    }
+    void assign_data2buffer() noexcept
+    {
+        task_.comm_buffer_->data()=task_.data();
+    }
+    void assign_buffer2data() noexcept
+    {
+        task_.data()=task_.comm_buffer_->data();
+    }
+    void deattach_buffer() noexcept
+    {
+        task_.comm_buffer_->detach();
+        task_.comm_buffer_=nullptr;
+    }
+private:
+    TaskType& task_=this->derived();
+};
+
+template<class TaskType>
+struct Inplace : crtp::Crtp<TaskType, Inplace>
+{
+    template<class Buffer>
+    void attach_buffer( Buffer* _b ) noexcept { }
+    void assign_data2buffer() noexcept { }
+    void assign_buffer2data() noexcept { }
+    void deattach_buffer() noexcept { }
+private:
+};
+
+template
+<
+    class BufferType,
+    template<class> class BufferPolicy,  //Assign Mixin
+    class ID=int
+>
+class Task_base 
+: public 
+    BufferPolicy<Task_base<BufferType,BufferPolicy,ID>>
 {
 
 public:
     using id_type =ID;
     using task_buffer_t = BufferType;
     using data_type = typename BufferType::data_type;
+
+    using buffer_policy_t =
+        BufferPolicy<Task_base<BufferType,BufferPolicy,ID>>;
+
+public: //Friends:
+    friend buffer_policy_t;
 
 public: //Ctor:
 
@@ -48,23 +100,7 @@ public: //access:
 
 public: //memebers:
 
-    void isend( boost::mpi::communicator _comm)
-    {
-        request_= _comm.isend(  rank_other_, id_, comm_buffer_->data());
-        if(request_confirmation_)
-        {
-            confirmation_request_=_comm.irecv(rank_other_, tags::confirmation);
-        }
-    } 
 
-    void irecv( boost::mpi::communicator _comm)
-    {
-        request_ = _comm.irecv(rank_other_, id_, comm_buffer_->data());
-        if(request_confirmation_)
-        {
-            confirmation_request_=_comm.isend(rank_other_, tags::confirmation);
-        }
-    }
     auto test() noexcept
     {
         return request_.test();
@@ -89,33 +125,27 @@ public: //memebers:
 
     void attach_data( data_type* _s ) noexcept { data_=_s; }
 
-    void attach_buffer( task_buffer_t* _b ) noexcept
+    void isend( boost::mpi::communicator _comm)
     {
-        comm_buffer_=_b;
-        comm_buffer_->attach();
-    }
-    void assign_data2buffer() noexcept
+        this->request_= _comm.isend(  this->rank_other_, this->id_, *this->data_);
+        if(this->request_confirmation_)
+        {
+            this->confirmation_request_=_comm.irecv(this->rank_other_, tags::confirmation);
+        }
+    } 
+    void irecv( boost::mpi::communicator _comm)
     {
-        comm_buffer_->data()=data();
-
-    }
-    void assign_buffer2data() noexcept
-    {
-        data()=comm_buffer_->data();
-    }
-    void deattach_buffer() noexcept
-    {
-        comm_buffer_->detach();
-        comm_buffer_=nullptr;
+        this->request_ = _comm.irecv(this->rank_other_, this->id_, *this->data_);
+        if(this->request_confirmation_)
+        {
+            this->confirmation_request_=_comm.isend(this->rank_other_, tags::confirmation);
+        }
     }
     void wait_confirmation()
     {
         if(confirmed_) return;
         confirmation_request_.wait();
     }
-
-
-    
 
 protected:
     int rank_other_=-1;
@@ -133,19 +163,24 @@ protected:
 
 
 
-template<int Tag, class T, class ID=int>
-class Task : public Task_base< TaskBuffer<Tag,T,ID>, ID >
+template
+<
+    int Tag, class T, 
+    template<class> class BufferPolicy=Inplace,  //Assign Mixin
+    class ID=int
+>
+class Task : public Task_base<TaskBuffer<Tag,T,ID>,BufferPolicy,ID>
 {
 
 public:
 
-    using super_type = Task_base<TaskBuffer<Tag,T,ID>,ID>;
+    using super_type = Task_base<TaskBuffer<Tag,T,ID>,BufferPolicy,ID>;
     using super_type::Task_base;
     using id_type =ID;
     using buffer_type = TaskBuffer<Tag,T,ID>;
     using buffer_container_type = typename buffer_type::container_t;
 
-    using data_type = typename super_type::data_type;
+    using data_type = T;
 
     using answer_data_type=data_type;
     using answer_task_type=Task<Tag, answer_data_type>;
@@ -155,9 +190,11 @@ public:
 
 public: //memebers:
 
-    void complete()
+    void complete( data_type* query_data, 
+                   answer_data_type* answer_buffer )
     {
-        std::cout<<"using default complete"<<std::endl;
+        answer_data_type ans(10, this->rank_other_);
+        *answer_buffer=ans;
     }
 
     void generate()
@@ -166,78 +203,54 @@ public: //memebers:
     }
 };
 
-template<class ID>
-class Task<tags::key_query,std::vector<int>,ID> 
-: public Task_base< TaskBuffer<tags::key_query,std::vector<int>,ID>>
+template
+<
+    class T, 
+    template<class> class BufferPolicy,  //Assign Mixin
+    class ID
+>
+class Task<tags::key_query,T,BufferPolicy, ID> 
+: 
+public Task_base<TaskBuffer<tags::key_query,T,ID>,BufferPolicy,ID>
 {
 
-public:
-    using super_type = Task_base< 
-        TaskBuffer<tags::key_query,std::vector<int>,ID>>;
+public: //memebers:
+    static constexpr int tag(){return tags::key_query;}
+
+    using super_type = Task_base<TaskBuffer<tags::key_query,T,ID>,BufferPolicy,ID>;
     using super_type::Task_base;
     using id_type =ID;
-    using buffer_type =  TaskBuffer<tags::key_query,std::vector<int>,ID>;
-    using task_buffer_t =  typename super_type::task_buffer_t;
+    
+    using buffer_type = TaskBuffer<tag(),T,ID>;
     using buffer_container_type = typename buffer_type::container_t;
 
-    using data_type = typename super_type::data_type;
-    using answer_data_type=std::vector<int>;
-    using answer_task_type=Task<tags::key_query, answer_data_type>;
+    using data_type = T;
 
-    static constexpr int tag(){return tags::key_query;}
+    using answer_data_type=data_type;
+    using answer_task_type=Task<tag(), answer_data_type>;
 
 public: //memebers:
 
-    void attach_data( data_type* _s ) noexcept { this->data_=_s; }
-
-    //inplace
-    void attach_buffer( task_buffer_t* _b ) noexcept { }
-    void assign_data2buffer() noexcept {}
-    void assign_buffer2data() noexcept { }
-    void deattach_buffer() noexcept { }
-
-    void isend( boost::mpi::communicator _comm)
+    template<class U >
+    void complete( U* query_data, 
+                   U* answer_buffer )
     {
 
-        //std::cout<<"Rank: "<<_comm.rank()<<" with count: "<<++count<<std::endl;
-        this->request_= _comm.isend(  this->rank_other_, this->id_, *this->data_);
-        if(this->request_confirmation_)
-        {
-            this->confirmation_request_=_comm.irecv(this->rank_other_, tags::confirmation);
-        }
-    } 
-    void irecv( boost::mpi::communicator _comm)
-    {
-        this->request_ = _comm.irecv(this->rank_other_, this->id_, *this->data_);
-        if(this->request_confirmation_)
-        {
-            this->confirmation_request_=_comm.isend(this->rank_other_, tags::confirmation);
-        }
-    }
-
-    void complete( data_type* query_data, 
-                   answer_data_type* answer_buffer ) noexcept
-    {
-        
-        answer_data_type ans(count*10, this->rank_other_-count);
+        U ans(10, -10*this->rank_other_-count);
         *answer_buffer=ans;
         ++count;
-
     }
-    void generate()
-    {
-        boost::mpi::communicator world;
-    }
-
     static int count;
+
 };
-
-
-template<class ID>
-int Task<tags::key_query,std::vector<int>,ID>::count=0;
-
-
-//These should be specialized for different tasks
+using tt = Task<tags::key_query, std::vector<int>, Inplace>;
+template
+<
+    class T, 
+    template<class> class BufferPolicy,  //Assign Mixin
+    class ID
+>
+int Task<tags::key_query,T,BufferPolicy, ID>::count=0;
 
 }
 #endif 

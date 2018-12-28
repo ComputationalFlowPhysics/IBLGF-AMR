@@ -21,20 +21,18 @@ int main(int argc, char *argv[])
     if(world.rank()==0)
     {
         Server server;
-        server.run();
+        server.test();
     }
     else
     {
        const int nQueries=1;
-
        Client client;
-       client.test_query() ;
+       client.test() ;
        for(int i =1;i<=nQueries;++i)
        {
-           //int query_rank = rand() % world.size() ;
            if(world.rank()==1  )
            {
-               client.test_query() ;
+               client.test() ;
            }
        }
        client.disconnect();

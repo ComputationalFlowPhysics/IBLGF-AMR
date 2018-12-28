@@ -13,11 +13,6 @@
 namespace sr_mpi
 {
 
-//TODO: Make in place:
-//          Buffer should be optional 
-//          else do inpace 
-//          For receive it should be posibble to complete task
-//          directly from buffer
 template<class Traits>
 class ServerBase
 {
@@ -33,6 +28,8 @@ public: // ctors
 	ServerBase& operator=(ServerBase&&) & = default;
     ~ServerBase()=default;
     ServerBase()=default;
+
+
 
 protected: //helper struct
 
@@ -68,67 +65,35 @@ public: //members
         }
     }
 
-    //TODO: implement inplace tasks:
-    template<class TaskType >
-    void run_query()
+    template<class QueryType>
+    void run_query(QueryType& _q)
     {
-        //std::vector<typename TaskType::data_type> 
-        //    client_recvdata_vector(comm_.size());
-        //std::vector<typename TaskType::data_type> 
-        //    client_senddata_vector(comm_.size());
-
-        //const auto receiveDataMap = [&](auto& _client){ 
-        //    return &client_recvdata_vector[_client.rank]; };
-        //const auto sendDataMap = [&](auto& _task){ 
-        //    return &client_senddata_vector[_task->rank_other()]; };
-        
-        std::vector<std::vector<std::shared_ptr<typename TaskType::data_type>>>
-            client_recvdata_vector(comm_.size());
-        std::vector<std::vector<std::shared_ptr<typename TaskType::data_type>>>
-            client_senddata_vector(comm_.size());
-
-        const auto recvData_ptr = [&](auto& _client){ 
-            auto buffer=std::make_shared<typename TaskType::data_type>();
-            client_recvdata_vector[_client.rank].push_back(buffer);
-            return buffer.get();
-            };
-        const auto sendData_ptr = [&](auto& _task){ 
-
-            auto buffer=std::make_shared<typename TaskType::data_type>();
-            client_senddata_vector[_task->rank_other()].push_back(buffer);
-            return buffer.get();
-            };
-
-
-        std::cout<<"\n\nStarting up server ...\n"<<std::endl;
         initialize();
-
         while (true)
         {
-            auto tasks=check_clients<TaskType>(recvData_ptr);
-            answer<TaskType>(tasks, sendData_ptr);
+            auto tasks=get_tasks < QueryType > ( _q);
+            do_tasks<QueryType>(tasks, _q);
             update_client_status();
 
             if(task_manager_.all_done() && !connected())
                 break;
         }
-        std::cout<<"\n\nShutting down server ...\n"<<std::endl;
     }
 
 protected:
 
 
-    template<class TaskType, class Function>
-    std::vector<std::shared_ptr<TaskType>> check_clients(Function& _getData)
+    template<class QueryType>
+    std::vector<std::shared_ptr<typename QueryType::recv_task_t>> 
+    get_tasks(QueryType& _q, int  nChecks=1)
     {
+        using recv_task_t = typename QueryType::recv_task_t;
         auto& recv_comm=
-            task_manager_.template recv_communicator<TaskType>();
+            task_manager_.template recv_communicator<recv_task_t>();
 
         recv_comm.start_communication();
         auto finished_tasks=recv_comm.finish_communication();
 
-        if(finished_tasks.size())
-        std::cout<<"number of finished receives "<<finished_tasks.size()<<std::endl;
         for(auto& t  : finished_tasks)
         {
             std::cout<<"Received query: ";
@@ -136,46 +101,48 @@ protected:
             std::cout<<std::endl;
         }
 
-        //Check for new messages
-        for(int i=0;i<10;++i)
+        for(int i=0;i<nChecks;++i)
         {
             for(auto& client: clients_)
             {
-                auto tag= tag_gen().get<TaskType::tag()>( client.rank );
+                auto tag= tag_gen().get<recv_task_t::tag()>( client.rank );
                 if(comm_.iprobe(client.rank, tag))
                 {
                     auto t= recv_comm.post_task(
-                                _getData(client),
+                                _q.recvDataPtr(client.rank),
                                 client.rank);
                 }
             }
-
         }
         return finished_tasks;
     }
 
-    template<class TaskType, class Function>
-    void answer( std::vector<std::shared_ptr<TaskType>>&  _tasks,  
-                 Function& _getData)
+    template<class QueryType, class T >
+    void do_tasks( T&  _tasks, QueryType& _q)
     {
+        using  send_t =typename QueryType::send_task_t;
+        
         //Complete tasks
         for(auto& t: _tasks) 
         {
-            auto send_data_ptr=_getData(t);
-            t->complete(&t->data(),send_data_ptr);
-            auto& send_comm=
-                task_manager_.template send_communicator<TaskType>();
-            auto task=send_comm.post_answer(t, send_data_ptr);
+            _q.complete(t);
+            if(_q.sendDataPtr(t->rank_other()))
+            {
+                auto& send_comm=
+                    task_manager_.template send_communicator<send_t>();
+                auto task=send_comm.post_answer(t, 
+                        _q.sendDataPtr(t->rank_other()));
+
+            }
         }
 
         //Send answers
         auto& send_comm=
-            task_manager_.template send_communicator<TaskType>();
+            task_manager_.template send_communicator<send_t>();
         send_comm.start_communication();
         send_comm.finish_communication();
     }
-
-
+   
 
     void update_client_status()
     {

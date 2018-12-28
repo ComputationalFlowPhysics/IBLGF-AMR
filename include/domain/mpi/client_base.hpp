@@ -27,53 +27,44 @@ public: // ctors
 
 public:
 
-    void test_query()
+    
+    template<class QueryType>
+    auto wait(QueryType& _q)
     {
-        std::vector<int> task_dat(3,comm_.rank());
-        std::vector<int> task_dat2(3,comm_.rank());
-
-        recv_dat.resize(3);
-
+        using send_task_t = typename QueryType::send_task_t;
+        using recv_task_t = typename QueryType::recv_task_t;
 
         auto& send_comm=
-            task_manager_.template send_communicator<key_query_t>();
+            task_manager_.template send_communicator<send_task_t>();
         auto& recv_comm=
-            task_manager_.template recv_communicator<key_query_t>();
-
-        //Send random queries:
-        auto task= send_comm.post_new(&task_dat, 0);
-        if(comm_.rank()==1)
-        {
-            auto task= send_comm.post_new(&task_dat2, 0);
-        }
-
-        int count=0;
+            task_manager_.template recv_communicator<recv_task_t>();
+        
         while(true)
         {
-            send_comm.send();
-            auto finished_tasks=send_comm.check();
+            send_comm.start_communication();
+            auto finished_tasks=send_comm.finish_communication();
             for(auto& e : finished_tasks )
             {
-                recv_dat.push_back(std::vector<int>(3,0));
-                auto answer=recv_comm.post_answer(e,&recv_dat[count++]);
+                auto answer=recv_comm.post_answer(e,
+                        _q.recvDataPtr(0));
             }
             if(send_comm.done())
                 break;
         }
-        
-        //Busy wait:
         while(!recv_comm.done())
         {
-            recv_comm.receive();
-            auto ft=recv_comm.check();
+            recv_comm.start_communication();
+            auto ft=recv_comm.finish_communication();
             for(auto& e : ft)
             {
-            std::cout<<"Received answer: ";
+                std::cout<<"Received answer: ";
                 for(auto& d: e->data()) std::cout<<d<<" ";
                 std::cout<<std::endl;
             }
         }
     }
+
+
 
     void disconnect()
     {
@@ -81,10 +72,9 @@ public:
         comm_.send(0,tag, false);
     }
 
-private:
+protected:
     boost::mpi::communicator comm_;
     task_manager_t task_manager_;
-    std::vector<std::vector<int>> recv_dat;
 
 };
 }

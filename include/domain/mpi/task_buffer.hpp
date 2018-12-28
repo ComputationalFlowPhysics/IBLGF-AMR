@@ -25,13 +25,13 @@ public: //Ctors:
 
 public: //memebers:
     
-    void detach()
+    void detach() noexcept
     {
         is_free_=true;
         container_->nActive_buffers_-=1;
     }
 
-    void attach()
+    void attach() noexcept
     {
         is_free_=false;
         container_->nActive_buffers_+=1;

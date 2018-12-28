@@ -61,52 +61,6 @@ public:
         });
     }
 
-    //Silly test for aks and answer
-    //void test_query()
-    //{
-    //    std::vector<int> task_dat(3,comm_.rank());
-    //    std::vector<int> task_dat2(3,comm_.rank());
-
-    //    recv_dat.resize(3);
-
-
-    //    auto& send_comm=task_manager_.send_communicator<key_query_t>();
-    //    auto& recv_comm=task_manager_.recv_communicator<key_query_t>();
-
-    //    //Send random queries:
-    //    auto task= send_comm.post(&task_dat, 0);
-    //    if(comm_.rank()==1)
-    //    {
-    //        auto task= send_comm.post(&task_dat2, 0);
-    //    }
-
-    //    int count=0;
-    //    while(true)
-    //    {
-    //        send_comm.send();
-    //        auto finished_tasks=send_comm.finish_communication();
-    //        for(auto& e : finished_tasks )
-    //        {
-    //            recv_dat.push_back(std::vector<int>(3,0));
-    //            auto answer=recv_comm.post_answer(e,&recv_dat[count++]);
-    //        }
-    //        if(send_comm.done())
-    //            break;
-    //    }
-    //    
-    //    //Busy wait:
-    //    while(!recv_comm.done())
-    //    {
-    //        recv_comm.receive();
-    //        auto ft=recv_comm.finish_communication();
-    //        for(auto& e : ft)
-    //        {
-    //        std::cout<<"Received answer: ";
-    //            for(auto& d: e->data()) std::cout<<d<<" ";
-    //            std::cout<<std::endl;
-    //        }
-    //    }
-    //}
     void disconnect()
     {
         const auto tag=tag_gen().get<tags::connection>(comm_.rank());

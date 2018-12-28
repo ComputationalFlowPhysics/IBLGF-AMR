@@ -18,6 +18,18 @@ private:
     friend CrtpType<DerivedType>;
 };
 
+template <typename DerivedType, class CrtpType>
+struct Crtps
+{
+    DerivedType& derived() { return static_cast<DerivedType&>(*this); }
+    DerivedType const& derived() const 
+    { 
+        return static_cast<DerivedType const&>(*this); 
+    }
+private:
+    Crtps(){}
+    friend CrtpType;
+};
 /*Example Crtp
 template<class T>
 struct Base : Crtp<T,Base>

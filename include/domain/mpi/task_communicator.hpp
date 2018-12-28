@@ -10,17 +10,14 @@
 namespace sr_mpi
 {
 
-
-struct SendMode{};
-struct RecvMode{};
-
 /**
  * @brief: Task communicator.  Manages posted messages, buffers them and calls 
  *         non-blocking send/recvs and queries their status.
  *         Can be used in both Send and Recv mode.
  */
-template<class TaskType, class Mode>
+template<class TaskType, class Derived>
 class TaskCommunicator
+: public crtp::Crtps<Derived, TaskCommunicator<TaskType,Derived>>
 {
 public:
 
@@ -35,6 +32,7 @@ public:
 
     using request_list_t = std::list<boost::mpi::request>;
     using query_arr_t =std::list<boost::mpi::request>;
+
 
 public: //Ctor
 
@@ -66,7 +64,8 @@ public:
     }
 
     /** * @brief Post an answer of this task */
-    task_ptr_t post_answer(task_ptr_t _task_ptr, task_data_t* _data) noexcept
+    template<class TaskPtr, class DataPtr>
+    task_ptr_t post_answer(TaskPtr _task_ptr, DataPtr* _data) noexcept
     {
         return insert(_task_ptr->id(), _data, _task_ptr->rank_other());
     }
@@ -122,8 +121,7 @@ public:
     /** * @brief Finish communication (send or receive for this task)
      *           Task will also be completed at the same time
      * */
-    template<class... Args>
-    task_vector_t finish_communication(Args&&... args)
+    task_vector_t finish_communication()
     {
         task_vector_t finished_;
         for(auto it=tasks_.begin();it!=tasks_.end();)
@@ -133,9 +131,7 @@ public:
             {
                 finished_.push_back(t);
                 from_buffer(t);
-                //TODO: Complete the task
-                //t.complete(std::forward<Args>(args)...);
-
+                
                 t->deattach_buffer();
                 insert_unconfirmed_tasks(t);
                 it=tasks_.erase(it);
@@ -147,53 +143,25 @@ public:
         return finished_;
     }
 
-    /********************************************************************/
-    /********************************************************************/
-    //Tag rank
-    template < class M=Mode,
-        std::enable_if_t< std::is_same<M,SendMode>::value, int > =0 >
-    int tag_rank(int rank_other) const noexcept { return comm_.rank(); }
 
-    template < class M=Mode,
-        std::enable_if_t< std::is_same<M,RecvMode>::value, int > =0 >
-    int tag_rank(int rank_other) const noexcept {return rank_other;  }
-    
-    //Communicate
-    template < class M=Mode,
-        std::enable_if_t< std::is_same<M,SendMode>::value, int > =0 >
-    void sendRecv(task_ptr_t _t) const noexcept {_t->isend(comm_);}
-    template < class M=Mode,
-        std::enable_if_t< std::is_same<M,RecvMode>::value, int > =0 >
-    void sendRecv(task_ptr_t _t) const noexcept {_t->irecv(comm_);}
-
-
-    //To Buffer:
-    template < class M=Mode,
-        std::enable_if_t< std::is_same<M,SendMode>::value, int > =0 >
+protected:
+    int tag_rank(int _rank_other) const noexcept 
+    {
+        return this->derived().tag_rank_impl(_rank_other);
+    }
+    void sendRecv(task_ptr_t _t) const noexcept 
+    {
+        this->derived().sendRecv_impl(_t);
+    }
     void to_buffer(task_ptr_t _t) const noexcept 
     {
-        _t->assign_data2buffer();
+        this->derived().to_buffer_impl(_t); 
     }
-    template < class M=Mode,
-        std::enable_if_t< std::is_same<M,RecvMode>::value, int > =0 >
-    void to_buffer(task_ptr_t _t) const noexcept 
-    { }
-
-
-    //From Buffer:
-    template < class M=Mode,
-        std::enable_if_t< std::is_same<M,SendMode>::value, int > =0 >
-    void from_buffer(task_ptr_t _t) const noexcept 
-    { }
-    template < class M=Mode,
-        std::enable_if_t< std::is_same<M,RecvMode>::value, int > =0 >
     void from_buffer(task_ptr_t _t) const noexcept 
     {
-        _t->assign_buffer2data();
+         this->derived().from_buffer_impl(_t); 
     }
 
-
-private:
 
     void insert_unconfirmed_tasks(task_ptr_t& t) noexcept
     {
@@ -219,7 +187,7 @@ private:
     }
 
 
-private:
+protected:
 
     boost::mpi::communicator comm_; ///< Mpi communicator.
     int nActive_tasks_=0;           ///< Number of active tasks.
@@ -231,11 +199,54 @@ private:
 
 };
 
-template<class TaskType>
-using SendTaskCommunicator = TaskCommunicator<TaskType,SendMode>;
+template<class TaskType> 
+struct SendTaskCommunicator  
+:public TaskCommunicator<TaskType, SendTaskCommunicator<TaskType>>
+{
+
+public: 
+    using super_type = TaskCommunicator<TaskType, SendTaskCommunicator<TaskType>>;
+    using task_ptr_t = typename super_type::task_ptr_t;
+
+public: //Ctors
+    using super_type::TaskCommunicator;
+
+public: //Memebers:
+
+    int tag_rank_impl(int rank_other) const noexcept { return this->comm_.rank(); }
+    void sendRecv_impl(task_ptr_t _t) const noexcept {_t->isend(this->comm_);}
+    void to_buffer_impl(task_ptr_t _t) const noexcept 
+    {
+        _t->assign_data2buffer();
+    }
+    void from_buffer_impl(task_ptr_t _t) const noexcept { } 
+private:
     
-template<class TaskType>
-using RecvTaskCommunicator = TaskCommunicator<TaskType,RecvMode>;
-}
+};
+
+template<class TaskType> 
+class  RecvTaskCommunicator  
+:public TaskCommunicator<TaskType, RecvTaskCommunicator<TaskType>>
+{
+public: 
+    using super_type = TaskCommunicator<TaskType, RecvTaskCommunicator<TaskType>>;
+    using task_ptr_t = typename super_type::task_ptr_t;
+
+public: //Ctors
+    using super_type::TaskCommunicator;
+
+public: //members
+    int tag_rank_impl(int _rank_other) const noexcept {return _rank_other;  }
+    void sendRecv_impl(task_ptr_t _t) const noexcept {_t->irecv(this->comm_);}
+    void to_buffer_impl(task_ptr_t _t) const noexcept { } 
+    void from_buffer_impl(task_ptr_t _t) const noexcept 
+    {
+        _t->assign_buffer2data();
+    }
+};
+
+
+
+}  //namespace sr_mpi
 
 #endif 

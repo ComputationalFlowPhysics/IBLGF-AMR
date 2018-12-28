@@ -31,6 +31,8 @@ struct CopyAssign : crtp::Crtp<TaskType, CopyAssign>
         task_.comm_buffer_->detach();
         task_.comm_buffer_=nullptr;
     }
+    auto& buffer() noexcept {return  task_.comm_buffer_->data();  }
+
 private:
     TaskType& task_=this->derived();
 };
@@ -43,7 +45,11 @@ struct Inplace : crtp::Crtp<TaskType, Inplace>
     void assign_data2buffer() noexcept { }
     void assign_buffer2data() noexcept { }
     void deattach_buffer() noexcept { }
+    auto& buffer() noexcept {return  *task_.data_;  }
+
+
 private:
+    TaskType& task_=this->derived();
 };
 
 template
@@ -127,7 +133,7 @@ public: //memebers:
 
     void isend( boost::mpi::communicator _comm)
     {
-        this->request_= _comm.isend(  this->rank_other_, this->id_, *this->data_);
+        this->request_= _comm.isend(  this->rank_other_, this->id_, (this->buffer()));
         if(this->request_confirmation_)
         {
             this->confirmation_request_=_comm.irecv(this->rank_other_, tags::confirmation);
@@ -135,7 +141,7 @@ public: //memebers:
     } 
     void irecv( boost::mpi::communicator _comm)
     {
-        this->request_ = _comm.irecv(this->rank_other_, this->id_, *this->data_);
+        this->request_ = _comm.irecv(this->rank_other_, this->id_, (this->buffer())) ;
         if(this->request_confirmation_)
         {
             this->confirmation_request_=_comm.isend(this->rank_other_, tags::confirmation);
@@ -162,11 +168,10 @@ protected:
 };
 
 
-
 template
 <
     int Tag, class T, 
-    template<class> class BufferPolicy=Inplace,  //Assign Mixin
+    template<class> class BufferPolicy=CopyAssign,  //Assign Mixin
     class ID=int
 >
 class Task : public Task_base<TaskBuffer<Tag,T,ID>,BufferPolicy,ID>
@@ -187,70 +192,8 @@ public:
 
     static constexpr int tag(){return Tag;}
 
-
-public: //memebers:
-
-    void complete( data_type* query_data, 
-                   answer_data_type* answer_buffer )
-    {
-        answer_data_type ans(10, this->rank_other_);
-        *answer_buffer=ans;
-    }
-
-    void generate()
-    {
-        std::cout<<"using default generate"<<std::endl;
-    }
 };
 
-template
-<
-    class T, 
-    template<class> class BufferPolicy,  //Assign Mixin
-    class ID
->
-class Task<tags::key_query,T,BufferPolicy, ID> 
-: 
-public Task_base<TaskBuffer<tags::key_query,T,ID>,BufferPolicy,ID>
-{
-
-public: //memebers:
-    static constexpr int tag(){return tags::key_query;}
-
-    using super_type = Task_base<TaskBuffer<tags::key_query,T,ID>,BufferPolicy,ID>;
-    using super_type::Task_base;
-    using id_type =ID;
-    
-    using buffer_type = TaskBuffer<tag(),T,ID>;
-    using buffer_container_type = typename buffer_type::container_t;
-
-    using data_type = T;
-
-    using answer_data_type=data_type;
-    using answer_task_type=Task<tag(), answer_data_type>;
-
-public: //memebers:
-
-    template<class U >
-    void complete( U* query_data, 
-                   U* answer_buffer )
-    {
-
-        U ans(10, -10*this->rank_other_-count);
-        *answer_buffer=ans;
-        ++count;
-    }
-    static int count;
-
-};
-using tt = Task<tags::key_query, std::vector<int>, Inplace>;
-template
-<
-    class T, 
-    template<class> class BufferPolicy,  //Assign Mixin
-    class ID
->
-int Task<tags::key_query,T,BufferPolicy, ID>::count=0;
 
 }
 #endif 

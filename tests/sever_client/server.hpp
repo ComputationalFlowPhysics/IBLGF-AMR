@@ -10,11 +10,11 @@
 
 #include <domain/mpi/task_manager.hpp>
 #include <domain/mpi/server_base.hpp>
+#include <domain/mpi/query_registry.hpp>
 
 using namespace sr_mpi;
 struct ServerTraits
 {
-    //using key_query_t = Task<tags::key_query,std::vector<int>>;
     using  key_query_t =Task<tags::key_query, std::vector<int>, Inplace>;
     using task_manager_t = TaskManager<key_query_t>;
 };
@@ -28,9 +28,6 @@ public:
     using key_query_t = typename trait_t::key_query_t;
     using task_manager_t = typename trait_t::task_manager_t;
 
-    template<class TaskType>
-    using answer_data_type  = typename TaskType::answer_data_type;
-
 public: // ctors
 
 	Server(const Server&) = default;
@@ -42,14 +39,21 @@ public: // ctors
 
 public: //members
 
-    void run()
+    void test()
     {
-        this->run_query<key_query_t>();
+        InlineQueryRegistry<key_query_t, key_query_t> mq(comm_.size());
+
+        mq.register_completeFunc([](auto _task, auto answerData)
+        {
+                    std::vector<int> ans(10, -1.0*_task->rank_other());
+                    *answerData=ans;
+        });
+
+        run_query(mq);
     }
 
 private:
     boost::mpi::communicator comm_;
-
 };
 
 

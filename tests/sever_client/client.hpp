@@ -3,6 +3,7 @@
 
 #include <domain/mpi/task_manager.hpp>
 #include <domain/mpi/client_base.hpp>
+#include <domain/mpi/query_registry.hpp>
 
 using namespace sr_mpi;
 
@@ -29,57 +30,22 @@ public: // ctors
 	Client& operator=(const Client&) & = default;
 	Client& operator=(Client&&) & = default;
     ~Client()=default;
-
     Client()=default;
 
 public:
 
-    void test_query()
+    void test()
     {
-        std::vector<int> task_dat(3,comm_.rank());
-        std::vector<int> task_dat2(3,comm_.rank());
-
-        recv_dat.resize(3);
-
-
         auto& send_comm=
-            task_manager_.template send_communicator<key_query_t>();
-        auto& recv_comm=
-            task_manager_.template recv_communicator<key_query_t>();
+            this->task_manager_.template send_communicator<key_query_t>();
 
-        //Send random queries:
+        std::vector<int> task_dat(3,comm_.rank());
+        std::vector<int> recvData;
         auto task= send_comm.post_task(&task_dat, 0);
-        if(comm_.rank()==1)
-        {
-            auto task= send_comm.post_task(&task_dat2, 0);
-        }
+        QueryRegistry<key_query_t, key_query_t> mq;
+        mq.register_recvMap([&recvData](int i){return &recvData;} );
+        wait(mq);
 
-        int count=0;
-        while(true)
-        {
-            send_comm.start_communication();
-            auto finished_tasks=send_comm.finish_communication();
-            for(auto& e : finished_tasks )
-            {
-                recv_dat.push_back(std::vector<int>(3,0));
-                auto answer=recv_comm.post_answer(e,&recv_dat[count++]);
-            }
-            if(send_comm.done())
-                break;
-        }
-        
-        //Busy wait:
-        while(!recv_comm.done())
-        {
-            recv_comm.start_communication();
-            auto ft=recv_comm.finish_communication();
-            for(auto& e : ft)
-            {
-            std::cout<<"Received answer: ";
-                for(auto& d: e->data()) std::cout<<d<<" ";
-                std::cout<<std::endl;
-            }
-        }
     }
 
     void disconnect()
@@ -90,8 +56,6 @@ public:
 
 private:
     boost::mpi::communicator comm_;
-    task_manager_t task_manager_;
-    std::vector<std::vector<int>> recv_dat;
 
 };
 #endif 

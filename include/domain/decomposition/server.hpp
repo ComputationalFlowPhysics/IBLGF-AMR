@@ -10,10 +10,23 @@
 
 #include <global.hpp>
 #include <domain/decomposition/compute_task.hpp>
+
 #include <domain/mpi/task_manager.hpp>
+#include <domain/mpi/server_base.hpp>
+#include <domain/mpi/query_registry.hpp>
 
 namespace domain
 {
+
+template<class Domain>
+struct ServerTraits
+{
+    using domain_t = Domain;
+    using key_t  = typename  domain_t::key_t;
+    using key_query_t = Task<tags::key_query,std::vector<key_t>>;
+    using rank_query_t = Task<tags::key_query,std::vector<int>>;
+    using task_manager_t = TaskManager<key_query_t, rank_query_t>;
+};
 
 /** @brief ProcessType Server 
  *  Master/Server process.
@@ -22,7 +35,7 @@ namespace domain
  *  the client/worker processes.
  */
 template<class Domain>
-class Server 
+class Server : public ServerBase<ServerTraits<Domain>>
 {
 
 public:
@@ -32,8 +45,12 @@ public:
     using key_t  = typename  domain_t::key_t;
     using ctask_t = ComputeTask<key_t>;
 
-    using key_query_t = Task<tags::key_query,std::vector<int>>;
-    using task_manager_t = TaskManager<key_query_t>;
+    using trait_t =  ServerTraits<Domain>;
+    using super_type = ServerBase<trait_t>;
+     
+    using rank_query_t = typename trait_t::rank_query_t;
+    using key_query_t = typename trait_t::key_query_t;
+    using task_manager_t =typename trait_t::task_manager_t;
 public:
 
     Server(const Server&  other) = default;
@@ -116,20 +133,23 @@ public:
         }
     }
 
-    //void run_rank_query()
-    //{
-    //    std::vector<mpi::request> reqs(comm_.size());
-    //    bool all_done=false;
-    //    while(!all_done)
-    //    {
-    //        for(std::size_t i =1; i< comm_.size();++i) //ranks
-    //        {
-    //            comm_.receive(i, )
-    //        }
-    //    }
-    //}
+    void test()
+    {
+        InlineQueryRegistry<rank_query_t, key_query_t> mq(comm_.size());
+        mq.register_completeFunc([this](auto _task, auto _answerData)
+        {
+            this->get_octant_rank(_task, _answerData);
+        });
 
+        this->run_query(mq);
+    }
 
+    template<class TaskPtr, class OutPtr>
+    void get_octant_rank(TaskPtr _task, OutPtr _out)
+    {
+        std::vector<int> ranks(10, _task->rank_other());
+        *_out=ranks;
+    }
 
 
 

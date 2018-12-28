@@ -24,8 +24,6 @@ int main(int argc, char *argv[])
     Dictionary dictionary(input);
 
     //Instantiate setup
-    //p_fmm_rndm setup(&dictionary);
-    //PoissonProblem setup(&dictionary);
     DecomposistionTest setup(&dictionary);
 
     // run setup

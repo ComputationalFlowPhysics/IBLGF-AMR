@@ -181,6 +181,10 @@ public:
     {
         decomposition_.distribute();
     }
+    void test()
+    {
+        decomposition_.queryOctantInfo();
+    }
 
     template<template<std::size_t> class Field>
     void init_field(octant_t* _root)

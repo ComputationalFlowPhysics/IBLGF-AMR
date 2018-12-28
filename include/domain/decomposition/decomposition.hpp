@@ -64,14 +64,26 @@ public: //memeber functions
     void distribute()
     {
         if(server())
-        {
             server()->send_keys();
+        else if(client())
+            client()->receive_keys();
+    }
+
+    void queryOctantInfo()
+    {
+        if(server())
+        {
+            server()->test();
         }
         else if(client())
         {
-            client()->receive_keys();
+            client()->test();
+            client()->disconnect();
         }
+
+        std::cout<<"QueryOctantInfo Done"<<std::endl;
     }
+    
 
 public: //access memebers:
 

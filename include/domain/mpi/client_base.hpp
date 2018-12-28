@@ -11,8 +11,6 @@ class ClientBase
 {
 
 public: // aliases
-    using key_query_t = Task<tags::key_query,std::vector<int>>;
-    using key_answer_t = Task<tags::key_answer,std::vector<int> >;
     using task_manager_t = typename Traits::task_manager_t;
 
 public: // ctors
@@ -57,8 +55,8 @@ public:
             auto ft=recv_comm.finish_communication();
             for(auto& e : ft)
             {
-                std::cout<<"Received answer: ";
-                for(auto& d: e->data()) std::cout<<d<<" ";
+                std::cout<<"Received answer: \n";
+                for(auto& d: e->data()) std::cout<<d<<"\n";
                 std::cout<<std::endl;
             }
         }
@@ -77,5 +75,7 @@ protected:
     task_manager_t task_manager_;
 
 };
-}
+
+
+} //namespace  sr_mpi
 #endif 

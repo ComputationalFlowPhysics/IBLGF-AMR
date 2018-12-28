@@ -96,8 +96,8 @@ protected:
 
         for(auto& t  : finished_tasks)
         {
-            std::cout<<"Received query: ";
-            for(auto& e : t->data()) { std::cout<<e<<" "; }
+            std::cout<<"Received query: \n";
+            for(auto& e : t->data()) { std::cout<<e<<"\n"; }
             std::cout<<std::endl;
         }
 

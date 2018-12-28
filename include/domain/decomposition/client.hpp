@@ -6,19 +6,32 @@
 
 #include <global.hpp>
 #include <boost/mpi/communicator.hpp>
+#include <domain/mpi/client_base.hpp>
+#include <domain/mpi/query_registry.hpp>
 #include <domain/mpi/task_manager.hpp>
 
 namespace domain
 {
 
-//FIXME: Do better
+//FIXME: Do better with the namespace 
 using namespace sr_mpi;
+
+
+template<class Domain>
+struct ClientTraits 
+{
+    using domain_t = Domain;
+    using key_t  = typename  domain_t::key_t;
+    using key_query_t = Task<tags::key_query,std::vector<key_t>>;
+    using rank_query_t = Task<tags::key_query,std::vector<int>>;
+    using task_manager_t = TaskManager<key_query_t, rank_query_t>;
+};
 
 /** @brief ProcessType Client 
  *  Worker process, who stores only a sub-domain 
  */
 template<class Domain>
-class Client
+class Client : public ClientBase<ClientTraits<Domain>>
 {
 
 public:
@@ -28,8 +41,11 @@ public:
     using datablock_t  = typename  domain_t::datablock_t;
     using key_t  = typename  domain_t::key_t;
 
-    using key_query_t = Task<tags::key_query,std::vector<int>>;
-    using task_manager_t = TaskManager<key_query_t>;
+    using trait_t =  ClientTraits<Domain>;
+    using key_query_t = typename trait_t::key_query_t;
+    using rank_query_t = typename trait_t::rank_query_t;
+    using task_manager_t =typename trait_t::task_manager_t;
+ 
 
 
 public:
@@ -60,18 +76,23 @@ public:
                     domain_->block_extent(),_o->refinement_level(), true);
         });
     }
-
-    void disconnect()
+    void test()
     {
-        const auto tag=tag_gen().get<tags::connection>(comm_.rank());
-        comm_.send(0,tag, false);
+        auto& send_comm=
+            this->task_manager_.template send_communicator<key_query_t>();
+
+        std::vector<key_t> task_dat(3);
+        std::vector<int> recvData;
+        auto task= send_comm.post_task(&task_dat, 0);
+        QueryRegistry<key_query_t, rank_query_t> mq;
+        mq.register_recvMap([&recvData](int i){return &recvData;} );
+        this->wait(mq);
     }
+
 
 private:
     Domain* domain_;
     communicator_type comm_;
-    task_manager_t task_manager_;
-    std::vector<std::vector<int>> recv_dat; //Dummy
 };
 
 }

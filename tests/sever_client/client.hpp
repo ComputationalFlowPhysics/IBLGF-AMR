@@ -45,14 +45,8 @@ public:
         QueryRegistry<key_query_t, key_query_t> mq;
         mq.register_recvMap([&recvData](int i){return &recvData;} );
         wait(mq);
-
     }
 
-    void disconnect()
-    {
-        const auto tag=tag_gen().get<tags::connection>(comm_.rank());
-        comm_.send(0,tag, false);
-    }
 
 private:
     boost::mpi::communicator comm_;

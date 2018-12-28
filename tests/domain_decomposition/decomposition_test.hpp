@@ -151,8 +151,7 @@ struct DecomposistionTest
     /** @brief Run poisson test case, compute errors and write out.  */
     void run()
     {
-
-
+        domain_.test();
     }
 
 

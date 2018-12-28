@@ -151,7 +151,11 @@ public:
         int count=0;
         for(auto& key :  _task->data())
         {
-            (*_out)[count++] = domain_->tree()->find_octant(key)->rank();
+            auto oct =domain_->tree()->find_octant(key);
+            if(oct)
+                (*_out)[count++]=oct->rank();
+            else
+                (*_out)[count++]=-1;
         }
     }
 

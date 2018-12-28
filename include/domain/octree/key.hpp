@@ -122,7 +122,7 @@ public: // static
 
 
 
-public: // ctors
+public: // Ctors
 
     Key() noexcept
     : _index(bitmask_t::min_0) {}

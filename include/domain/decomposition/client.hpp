@@ -40,6 +40,7 @@ public:
     using octant_t  = typename  domain_t::octant_t;
     using datablock_t  = typename  domain_t::datablock_t;
     using key_t  = typename  domain_t::key_t;
+    using key_coord_t = typename key_t::coordinate_type;
 
     using trait_t =  ClientTraits<Domain>;
     using key_query_t = typename trait_t::key_query_t;
@@ -76,17 +77,33 @@ public:
                     domain_->block_extent(),_o->refinement_level(), true);
         });
     }
-    void test()
+
+    //Some dummy test to send to quey some ranks for sme octants
+    void rank_query()
     {
         auto& send_comm=
             this->task_manager_.template send_communicator<key_query_t>();
 
-        std::vector<key_t> task_dat(3);
-        std::vector<int> recvData;
+
+        key_coord_t c(comm_.rank()*4);
+        std::vector<key_t> task_dat;
+        for(int i =0;i<3;++i)
+        {
+            task_dat.emplace_back(c, domain_->tree()->base_level());
+        }
+        
         auto task= send_comm.post_task(&task_dat, 0);
         QueryRegistry<key_query_t, rank_query_t> mq;
+
+        std::vector<int> recvData;
         mq.register_recvMap([&recvData](int i){return &recvData;} );
         this->wait(mq);
+
+        std::cout<<"Query results: key-rank"<<std::endl;
+        for(std::size_t i =0; i< task_dat.size();++i)
+        {
+            std::cout<<"key: "<<task_dat[i]<<" rank "<<recvData[i]<<std::endl; 
+        }
     }
 
 

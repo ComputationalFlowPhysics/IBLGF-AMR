@@ -69,19 +69,17 @@ public: //memeber functions
             client()->receive_keys();
     }
 
-    void queryOctantInfo()
+    void rank_query()
     {
         if(server())
         {
-            server()->test();
+            server()->rank_query();
         }
         else if(client())
         {
-            client()->test();
+            client()->rank_query();
             client()->disconnect();
         }
-
-        std::cout<<"QueryOctantInfo Done"<<std::endl;
     }
     
 

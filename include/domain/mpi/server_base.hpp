@@ -94,12 +94,12 @@ protected:
         recv_comm.start_communication();
         auto finished_tasks=recv_comm.finish_communication();
 
-        for(auto& t  : finished_tasks)
-        {
-            std::cout<<"Received query: \n";
-            for(auto& e : t->data()) { std::cout<<e<<"\n"; }
-            std::cout<<std::endl;
-        }
+        //for(auto& t  : finished_tasks)
+        //{
+        //    std::cout<<"Received query: \n";
+        //    for(auto& e : t->data()) { std::cout<<e<<"\n"; }
+        //    std::cout<<std::endl;
+        //}
 
         for(int i=0;i<nChecks;++i)
         {

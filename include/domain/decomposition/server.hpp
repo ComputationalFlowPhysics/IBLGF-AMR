@@ -133,7 +133,7 @@ public:
         }
     }
 
-    void test()
+    void rank_query()
     {
         InlineQueryRegistry<rank_query_t, key_query_t> mq(comm_.size());
         mq.register_completeFunc([this](auto _task, auto _answerData)
@@ -147,11 +147,13 @@ public:
     template<class TaskPtr, class OutPtr>
     void get_octant_rank(TaskPtr _task, OutPtr _out)
     {
-        std::vector<int> ranks(10, _task->rank_other());
-        *_out=ranks;
+        _out->resize(_task->data().size());
+        int count=0;
+        for(auto& key :  _task->data())
+        {
+            (*_out)[count++] = domain_->tree()->find_octant(key)->rank();
+        }
     }
-
-
 
 private:
     Domain* domain_;

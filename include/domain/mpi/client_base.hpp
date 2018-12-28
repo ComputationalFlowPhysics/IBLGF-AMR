@@ -53,12 +53,12 @@ public:
         {
             recv_comm.start_communication();
             auto ft=recv_comm.finish_communication();
-            for(auto& e : ft)
-            {
-                std::cout<<"Received answer: \n";
-                for(auto& d: e->data()) std::cout<<d<<"\n";
-                std::cout<<std::endl;
-            }
+            //for(auto& e : ft)
+            //{
+            //    std::cout<<"Received answer: \n";
+            //    for(auto& d: e->data()) std::cout<<d<<"\n";
+            //    std::cout<<std::endl;
+            //}
         }
     }
 

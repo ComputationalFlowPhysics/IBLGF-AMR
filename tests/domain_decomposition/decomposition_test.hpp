@@ -46,14 +46,14 @@ struct DecomposistionTest
     make_field_type(phi_exact,  float_type, 1,       1)
     make_field_type(error,      float_type, 1,       1)
 
-    using datablock_t = DataBlock<
-                                    Dim, node,
+    using datablock_t = DataBlock<  Dim, node,
                                     phi_num,
                                     source,
                                     phi_exact,
                                     error
                                  >;
-    using domain_t           = domain::Domain<Dim,datablock_t>;
+
+    using domain_t = domain::Domain<Dim,datablock_t>;
 
     DecomposistionTest(Dictionary* _d)
     :simulation_(_d->get_dictionary("simulation_parameters")),

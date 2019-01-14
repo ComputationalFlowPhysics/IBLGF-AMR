@@ -40,37 +40,20 @@ struct DecomposistionTest
 
     static constexpr int Dim = 3;
 
-    //              name            type     lBuffer.  hBuffer
-    make_field_type(phi_num         , float_type, 1,       1)
-    make_field_type(source          , float_type, 1,       1)
-    make_field_type(phi_exact       , float_type, 1,       1)
-    make_field_type(error           , float_type, 1,       1)
-
-    // temporarily here for FMM
-    make_field_type(fmm_s           , float_type, 1,       1)
-    make_field_type(fmm_t           , float_type, 1,       1)
-    make_field_type(fmm_tmp         , float_type, 1,       1)
-    make_field_type(phi_num_fmm     , float_type, 1,       1)
+    //              name            type  lBuffer   hBuffer
+    make_field_type(phi_num,    float_type, 1,       1)
+    make_field_type(source,     float_type, 1,       1)
+    make_field_type(phi_exact,  float_type, 1,       1)
+    make_field_type(error,      float_type, 1,       1)
 
     using datablock_t = DataBlock<
-        Dim, node,
-        phi_num,
-        source,
-        phi_exact,
-        error,
-        fmm_s,
-        fmm_t,
-        fmm_tmp,
-        phi_num_fmm
-        >;
-
-
-    using coordinate_t       = typename datablock_t::coordinate_type;
+                                    Dim, node,
+                                    phi_num,
+                                    source,
+                                    phi_exact,
+                                    error
+                                 >;
     using domain_t           = domain::Domain<Dim,datablock_t>;
-    using simulation_type    = Simulation<domain_t>;
-    using node_type          = typename datablock_t::node_t;
-    using node_field_type    = typename datablock_t::node_field_type;
-
 
     DecomposistionTest(Dictionary* _d)
     :simulation_(_d->get_dictionary("simulation_parameters")),
@@ -81,6 +64,11 @@ struct DecomposistionTest
         domain_.distribute();
 
         this->initialize();
+    }
+
+    void run()
+    {
+        domain_.test();
     }
 
 
@@ -148,12 +136,7 @@ struct DecomposistionTest
     }
 
 
-    /** @brief Run poisson test case, compute errors and write out.  */
-    void run()
-    {
-        domain_.test();
-    }
-
+ 
 
 private:
 

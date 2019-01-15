@@ -165,7 +165,8 @@ public: //Ctors
         return res;
     }
 
-    bool inside(auto o1, auto o2)
+    template<typename octant_t>
+    bool inside(octant_t o1, octant_t o2)
     {
         auto k_ = this->key();
         return ( (k_ >= o1->key()) && (k_<=o2->key()));

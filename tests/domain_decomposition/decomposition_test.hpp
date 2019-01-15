@@ -69,6 +69,7 @@ struct DecomposistionTest
     void run()
     {
         domain_.test();
+
     }
 
 
@@ -94,7 +95,7 @@ struct DecomposistionTest
 
 
         for (auto it  = domain_.begin_leafs();
-                it != domain_.end_leafs(); ++it)
+                  it != domain_.end_leafs(); ++it)
         {
 
             auto dx_level =  dx_base/std::pow(2,it->refinement_level());

@@ -80,15 +80,9 @@ public: //Memebers:
 
 
 private:
-
-private:
-
     boost::mpi::communicator comm_;
-
     send_comm_tuple_t send_comms_;
     recv_comm_tuple_t recv_comms_;
-
-    int nActive_tasks_=0;
  };
 
 }

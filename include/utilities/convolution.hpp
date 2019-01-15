@@ -234,10 +234,11 @@ public: //Ctors
                     source_t& source,
                     extractor_t extractor,
                     target_t& target,
-                    float_t scale )
+                    float_type scale )
     {
             execute_field(lgf_block, level_diff, source);
             add_solution(extractor, target, scale);
+            //FIXME :: why?????
     }
 
     template<class Vector>
@@ -316,7 +317,7 @@ public: //Ctors
     }
 
     template<class Block,class Field>
-    void add_solution(const Block& _b, Field& F, const float_type _scale)
+    void add_solution(const Block& _b, Field& F, float_type _scale)
     {
         for (int k = dims0_[2]-1; k < dims0_[2]+_b.extent()[2]-1; ++k)
         {

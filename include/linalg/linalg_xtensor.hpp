@@ -25,7 +25,8 @@ public:
             size_t n_rows, size_t n_cols, size_t n_slices)
     {
         int size = n_rows * n_cols * n_slices;
-        return xt::adapt(ptr_aux_mem, size, xt::no_ownership(),
+        return xt::adapt<xt::layout_type::column_major>(ptr_aux_mem, size,
+                xt::no_ownership(),
                 std::vector<std::size_t>{{n_rows, n_cols, n_slices}});
     }
 
@@ -42,8 +43,9 @@ public:
             size_t n_rows, size_t n_cols)
     {
         int size = n_rows * n_cols;
-        return (xt::adapt(ptr_aux_mem, size, xt::no_ownership(),
-                std::vector<std::size_t>{{n_rows, n_cols}}));
+        return xt::adapt<xt::layout_type::column_major>(ptr_aux_mem, size,
+                xt::no_ownership(),
+                std::vector<std::size_t>{{n_rows, n_cols}});
     }
 
     static auto mat_col(tensor_t& data_, int n)

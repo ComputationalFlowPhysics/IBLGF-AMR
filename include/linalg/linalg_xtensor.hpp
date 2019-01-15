@@ -7,7 +7,7 @@
 #include <xtensor/xadapt.hpp>
 #include <xtensor/xio.hpp>
 #include <xtensor/xview.hpp>
-#include "xtensor-blas/xlinalg.hpp"
+#include <xtensor-blas/xlinalg.hpp>
 
 namespace linalg
 {

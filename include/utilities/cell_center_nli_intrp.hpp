@@ -213,7 +213,8 @@ namespace interpolation
 
 
     private:
-        void antrp_mat_calc(auto& antrp_mat_, int Nb_)
+        template<typename linalg_data_t>
+        void antrp_mat_calc(linalg_data_t& antrp_mat_, int Nb_)
         {
 
             for (int c = 1; c < Nb_*2-1; ++c){

@@ -24,7 +24,7 @@ namespace fmm
     public: // constructor
 
         Nli() = delete;
-        Nli(int Nb_)
+        Nli(size_t Nb_)
             : Nb_(Nb_),
             antrp_(Nb_ * Nb_ * 2, 0.0),
             antrp_mat_(&(antrp_[0]), Nb_, Nb_ * 2),
@@ -38,49 +38,44 @@ namespace fmm
             nli_aux_3d_antrp(std::array<size_t, 3>{{ Nb_, Nb_, Nb_ }}),
             nli_aux_1d_antrp_tmp(std::array<size_t, 1>{{ Nb_}})
         {
-            std::cout <<"antrp_mem, "<< &antrp_[0]<< std::endl;
-            std::cout << &(antrp_mat_.data_(0,0)) << std::endl;
-
-            std::cout <<"antrp_sub_mem, "<< &antrp_sub_[0][0]<< std::endl;
-            std::cout << &(antrp_mat_sub_[0].data_(0,0))<< std::endl;
-
             antrp_mat_calc(antrp_mat_.data_, Nb_);
-            antrp_mat_sub_[0].data_ = xt::view(antrp_mat_.data_, xt::range(0, Nb_), xt::range( 0  , Nb_  ));
-            antrp_mat_sub_[1].data_ = xt::view(antrp_mat_.data_, xt::range(0, Nb_), xt::range( Nb_, 2*Nb_));
 
-            std::cout << antrp_mat_.data_ << std::endl;
-            auto t1 = antrp_;
-            for (auto i: t1)
-                  std::cout << i << ' ';
-            std::cout<<std::endl;
+            antrp_mat_sub_[0].data_ =
+                xt::view(antrp_mat_.data_,
+                        xt::range(0, Nb_), xt::range( 0  , Nb_  ));
 
-            std::cout << antrp_mat_sub_[0].data_ << std::endl;
-            std::cout << antrp_mat_sub_[1].data_ << std::endl;
+            antrp_mat_sub_[1].data_ =
+                xt::view(antrp_mat_.data_,
+                        xt::range(0, Nb_), xt::range( Nb_, 2*Nb_));
         }
 
 
     public: // functionalities
 
-        template<template<size_t> class field>
-        void nli_intrp_node(auto parent)
+        template<template<size_t> class field,
+            typename octant_t>
+        void nli_intrp_node(octant_t parent)
             {
-                auto& parent_linalg_data = parent->data()->template get_linalg_data<field>();
-
+                auto& parent_linalg_data =
+                    parent->data()->template get_linalg_data<field>();
 
                 for (int i = 0; i < parent->num_children(); ++i)
                 {
                     auto child = parent->child(i);
                     if (child == nullptr) continue;
 
-                    auto& child_linalg_data  = child ->data()->template get_linalg_data<field>();
-                    nli_intrp_node(child_linalg_data, parent_linalg_data, i);
+                    auto& child_linalg_data =
+                        child ->data()->template get_linalg_data<field>();
 
+                    nli_intrp_node(child_linalg_data, parent_linalg_data, i);
                 }
 
             }
 
 
-        void nli_intrp_node(auto& child, auto& parent, int child_idx)
+        template<typename linalg_data_t>
+        void nli_intrp_node(linalg_data_t& child, linalg_data_t& parent,
+                int child_idx)
         {
             int n = child.shape()[0];
             int idx_x = (child_idx & ( 1 << 0 )) >> 0;
@@ -91,26 +86,30 @@ namespace fmm
             {
                 for (int l=0; l<n; ++l)
                 {
-                    xt::noalias(nli_aux_1d_intrp) = view(parent, q, l, xt::all()) * 1.0;
-                    xt::noalias( view( nli_aux_2d_intrp, l, xt::all() )) =
-                        xt::linalg::dot( nli_aux_1d_intrp, antrp_mat_sub_[idx_x].data_ );
-
-                    //xt::noalias(nli_aux_1d_intrp) = view(parent, xt::all(), l, q) * 1.0;
-                    //xt::noalias( view( nli_aux_2d_intrp, xt::all(), l )) =
+                    // Row major
+                    //xt::noalias(nli_aux_1d_intrp) = view(parent, q, l, xt::all()) * 1.0;
+                    //xt::noalias( view( nli_aux_2d_intrp, l, xt::all() )) =
                     //    xt::linalg::dot( nli_aux_1d_intrp, antrp_mat_sub_[idx_x].data_ );
+
+
+                    // Column major
+                    //xt::noalias(nli_aux_1d_intrp) = view(parent, xt::all(), l, q) * 1.0;
+                    xt::noalias( view( nli_aux_2d_intrp, xt::all(), l )) =
+                        xt::linalg::dot( view(parent, xt::all(), l, q), antrp_mat_sub_[idx_x].data_ );
                 }
 
                 for (int l=0; l<n; ++l)
                 {
                     // For Y
 
-                    xt::noalias(nli_aux_1d_intrp) = view(nli_aux_2d_intrp, xt::all(), l) * 1.0;
+                    // Row major
+                    //xt::noalias(nli_aux_1d_intrp) = view(nli_aux_2d_intrp, xt::all(), l) * 1.0;
+                    //xt::noalias( view(nli_aux_3d_intrp, q, xt::all(), l) ) =
+                    //    xt::linalg::dot(nli_aux_1d_intrp, antrp_mat_sub_[idx_y].data_);
 
-                    xt::noalias( view(nli_aux_3d_intrp, q, xt::all(), l) ) =
-                        xt::linalg::dot(nli_aux_1d_intrp, antrp_mat_sub_[idx_y].data_);
-
-                    //xt::noalias( view(nli_aux_3d_intrp, l, xt::all(), q) ) =
-                    //    xt::linalg::dot(view(nli_aux_2d_intrp, l, xt::all()), antrp_mat_sub_[idx_y].data_);
+                    // Column major
+                    xt::noalias( view(nli_aux_3d_intrp, l, xt::all(), q) ) =
+                        xt::linalg::dot( view(nli_aux_2d_intrp, l, xt::all()), antrp_mat_sub_[idx_y].data_);
                 }
             }
 
@@ -119,19 +118,22 @@ namespace fmm
                 for (int q = 0; q < n; ++q)
                 {
                     // For Z
-                    xt::noalias(nli_aux_1d_intrp) =  view(nli_aux_3d_intrp, xt::all(), p, q) ;
+                    // Row major
+                    //xt::noalias(nli_aux_1d_intrp) =  view(nli_aux_3d_intrp, xt::all(), p, q) ;
 
-                    xt::noalias( view(child, xt::all(), p, q) ) +=
-                        xt::linalg::dot(nli_aux_1d_intrp, antrp_mat_sub_[idx_z].data_ ) ;
-                    //xt::noalias( view(child, q, p, xt::all()) ) +=
-                    //    xt::linalg::dot( view(nli_aux_3d_intrp, q, p, xt::all()), antrp_mat_sub_[idx_z].data_ ) * 1.0;
+                    //xt::noalias( view(child, xt::all(), p, q) ) +=
+                    //    xt::linalg::dot(nli_aux_1d_intrp, antrp_mat_sub_[idx_z].data_ ) ;
+
+                    // Column major
+                    xt::noalias( view(child, q, p, xt::all()) ) +=
+                        xt::linalg::dot( view(nli_aux_3d_intrp, q, p, xt::all()), antrp_mat_sub_[idx_z].data_ );
                 }
             }
         }
 
 
-        template<template<size_t> class field>
-        void nli_antrp_node(auto parent)
+        template<template<size_t> class field, typename octant_t>
+        void nli_antrp_node(octant_t parent)
             {
                 auto& parent_linalg_data = parent->data()->template get_linalg_data<field>();
 
@@ -146,11 +148,12 @@ namespace fmm
                     nli_antrp_node(child_linalg_data, parent_linalg_data, i);
                 }
 
-
             }
 
 
-        void nli_antrp_node(auto& child, auto& parent, int child_idx)
+        template<typename linalg_data_t>
+        void nli_antrp_node(linalg_data_t& child, linalg_data_t& parent,
+                int child_idx)
         {
             int n = child.shape()[0];
             int idx_x = (child_idx & ( 1 << 0 )) >> 0;
@@ -162,14 +165,18 @@ namespace fmm
                 for (int l=0; l<n; ++l)
                 {
                     // For Z
-                    xt::noalias(nli_aux_1d_antrp_tmp)= view(child, xt::all(), l, q);
+                    //xt::noalias(nli_aux_1d_antrp_tmp)= view(child, xt::all(), l, q);
+
+                    //xt::noalias( view(nli_aux_2d_antrp, xt::all(), l) ) =
+                    //    xt::linalg::dot( antrp_mat_sub_[idx_z].data_,
+                    //                        nli_aux_1d_antrp_tmp );
+
+                    // Column major
+                    xt::noalias(nli_aux_1d_antrp_tmp)= view(child, q, l, xt::all()) ;
 
                     xt::noalias( view(nli_aux_2d_antrp, xt::all(), l) ) =
                         xt::linalg::dot( antrp_mat_sub_[idx_z].data_,
                                             nli_aux_1d_antrp_tmp );
-                    //xt::noalias( view(nli_aux_2d_antrp, xt::all(), l) ) =
-                    //    xt::linalg::dot( antrp_mat_sub_[idx_z].data_,
-                    //                        view(child, q, l, xt::all()) );
                 }
 
                 for (int l=0; l<n; ++l)
@@ -177,13 +184,14 @@ namespace fmm
                     // For Y
                     // nli_aux_3d_antrp(:,l,q) = nli_aux_2d_antrp(l,:) X cmat
 
-                    xt::noalias( view(nli_aux_3d_antrp, q, l, xt::all()) ) =
-                        xt::linalg::dot( antrp_mat_sub_[idx_y].data_,
-                                            view(nli_aux_2d_antrp, l, xt::all()) );
-
                     //xt::noalias( view(nli_aux_3d_antrp, q, l, xt::all()) ) =
                     //    xt::linalg::dot( antrp_mat_sub_[idx_y].data_,
                     //                        view(nli_aux_2d_antrp, l, xt::all()) );
+
+                    // Column major
+                    xt::noalias( view(nli_aux_3d_antrp, xt::all(), l, q) ) =
+                        xt::linalg::dot( antrp_mat_sub_[idx_y].data_,
+                                            view(nli_aux_2d_antrp, l, xt::all()) );
                 }
             }
 
@@ -192,15 +200,16 @@ namespace fmm
                 for (int q = 0; q < n; ++q)
                 {
                     // For X
-                    nli_aux_1d_antrp_tmp = view(nli_aux_3d_antrp, xt::all(), p, q) * 1.0;
+                    //nli_aux_1d_antrp_tmp = view(nli_aux_3d_antrp, q,p,xt::all());
 
-                    xt::noalias( view(parent, p, q, xt::all()) ) +=
-                        xt::linalg::dot( antrp_mat_sub_[idx_x].data_,
-                                             nli_aux_1d_antrp_tmp);
-
-                    //xt::noalias( view(parent, xt::all(), q, p) ) +=
+                    //xt::noalias( view(parent, p, q, xt::all()) ) +=
                     //    xt::linalg::dot( antrp_mat_sub_[idx_x].data_,
-                    //                        view(nli_aux_3d_antrp, q, p, xt::all()) );
+                    //                         nli_aux_1d_antrp_tmp);
+
+                    // Column major
+                    xt::noalias( view(parent, xt::all(), q, p) ) +=
+                        xt::linalg::dot( antrp_mat_sub_[idx_x].data_,
+                                           view(nli_aux_3d_antrp, q,p,xt::all()));
                 }
             }
         }
@@ -208,7 +217,80 @@ namespace fmm
 
 
     private:
-        void antrp_mat_calc(auto& antrp_mat_, int Nb_)
+        template<typename linalg_data_t>
+        void antrp_mat_calc_fourier(linalg_data_t& antrp_mat_, int Nb_)
+        {
+            std::complex<double> II(0,1);
+
+            double M(floor(Nb_));
+            //M=16.0;
+            xt::xtensor<std::complex<double>, 2>
+                mat_cal_basis(std::array<size_t, 2>{{ Nb_, int(M)}});
+            xt::xtensor<std::complex<double>, 2>
+                mat_cal_intrp(std::array<size_t, 2>{{ 2*Nb_-1, int(M) }});
+
+            std::vector<std::complex<double>> K((int)M);
+
+            // wave numbers
+
+
+            if ((int(M)% 2) == 1){
+                for (int i = 0; i<(M+1)/2; i++) K[i] = double(i);
+                for (int i = (M+1)/2; i<M; i++) K[i] = double( i - M );
+            } else
+            {
+                for (int i = 0; i<M/2+1; i++) K[i] = double(i);
+                for (int i = M/2+1; i<M; i++) K[i] = double( i - M );
+            }
+
+            // basis
+            for (int j = 0; j < Nb_; ++j){
+                for (int k = 0; k< M; ++k){
+                    std::complex<double>  xj = (double)(j)/ (double)Nb_* M/2.0;
+                    mat_cal_basis(j,k) = exp( (2.0*M_PI*II/M * xj * K[k])) / M;
+                }
+            }
+
+            // intrp
+            for (int j = 1; j < 2*Nb_-1; ++j){
+                for (int k = 0; k< M; ++k){
+                    std::complex<double>  xj = (double)(j)/ (double)Nb_* M/4.0;
+                    mat_cal_intrp(j,k) = exp( (2.0*M_PI*II/M * xj * K[k])) / M;
+                }
+            }
+
+            //for (int j = 1; j < 2*Nb_-1; ++j){
+            //    for (int k = 0; k< Nb_; ++k){
+            //        std::complex<double>  xj = (double)(j+0.5)/ (double)Nb_* M/2.0;
+            //        if (k!=Nb_/2)
+            //        mat_cal_intrp(j,k) = exp( (2.0*M_PI*II/M/2.0 * xj * K[k])) / M;
+            //    }
+            //}
+
+            // copy
+            auto wt = xt::transpose(xt::conj(mat_cal_basis));
+
+            auto wtw_inv = xt::linalg::pinv( xt::linalg::dot(wt, mat_cal_basis));
+            auto tmp = xt::linalg::dot(mat_cal_intrp,
+                        xt::linalg::dot(wtw_inv, wt));
+
+            for (int j = 1; j < 2*Nb_-1; ++j){
+                for (int k = 0; k< Nb_; ++k){
+                    antrp_mat_(k,j-1) = tmp(j,k).real();
+                }
+            }
+
+            for (int c = Nb_*2 - 1; c>Nb_-1; --c){
+                view(antrp_mat_, xt::all(),  c) =
+                view(antrp_mat_, xt::all(),  c-2);
+            }
+
+        }
+
+
+
+        template<typename linalg_data_t>
+        void antrp_mat_calc(linalg_data_t& antrp_mat_, int Nb_)
         {
 
             for (int c = 1; c < Nb_*2-1; ++c){
@@ -225,29 +307,12 @@ namespace fmm
                     int bd_r = -1;
 
                     if (c_p < -1){
-                        auto bd_l_tmp = ((c + 1) / 2  - pts_cap / 2 );
                         bd_l = std::max(0   , ((c + 1) / 2  - pts_cap / 2 ));
                         bd_r = std::min(Nb_, bd_l + pts_cap);
-
-                        //if (bd_l_tmp>=0)
-                        //    bd_r = std::min(Nb_, ((c + 1) / 2  - pts_cap / 2 ) + pts_cap);
-                        //else
-                        //    //bd_r = c+1;//(c+1)/2*2-1;
-                        //    bd_r = std::min(Nb_, bd_l + pts_cap);//(c+1)/2*2-1;
-                        //std::min(Nb_, ((c + 1) / 2  - pts_cap / 2 ) + pts_cap);
-                        //bd_r = std::min(Nb_, ((c + 1) / 2  - pts_cap / 2 ) + pts_cap);
                     }
                     else{
-                        auto bd_r_tmp = ((c + 1) / 2  + pts_cap / 2 );
                         bd_r = std::min(Nb_ , ((c + 1) / 2 + pts_cap / 2));
-                        //if (bd_r_tmp<=Nb_)
-                        //    bd_l = bd_r - pts_cap;
-                        //else
-                        //    //bd_l = c-Nb_+1;
-                        //    bd_l =  std::max(0   , bd_r - pts_cap);
-
                         bd_l = std::max(0   , bd_r - pts_cap);
-                        //bd_l = std::max(0   , ((c + 1) / 2 + pts_cap / 2) - pts_cap);
                     }
 
                     for (int p = bd_l; p<bd_r; ++p)
@@ -281,7 +346,7 @@ namespace fmm
 
     //private:
     public:
-        const int pts_cap = 8;
+        const int pts_cap = 7;
 
         // antrp mat
 

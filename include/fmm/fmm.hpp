@@ -41,10 +41,7 @@ using namespace domain;
 
     public: //Ctor:
     using dims_t = types::vector_type<int,3>;
-    using convolution_t        = typename fft::Convolution;
 
-    //FIXME why not working
-    //
     using datablock_t    = DataBlock<3, node>;
     using block_dsrp_t     = typename datablock_t::block_descriptor_type;
 
@@ -75,9 +72,9 @@ using namespace domain;
             template<size_t> class Target,
             template<size_t> class fmm_s,
             template<size_t> class fmm_t,
-            template<size_t> class fmm_tmp
+            class domain_t
             >
-        void fmm_for_level(auto& domain_, int level, bool for_non_leaf=false)
+        void fmm_for_level(domain_t& domain_, int level, bool for_non_leaf=false)
         {
 
             clock_t fmm_start = clock();
@@ -162,9 +159,11 @@ using namespace domain;
 
         template<
             template<size_t> class s,
-            template<size_t> class t
+            template<size_t> class t,
+            class domain_t,
+            class octant_itr_t
         >
-        void fmm_Bx(auto& domain_, int level, auto o_start, auto o_end, auto dx_level)
+        void fmm_Bx(domain_t& domain_, int level, octant_itr_t o_start, octant_itr_t o_end, float_type dx_level)
         {
 
             auto o_1 = (*o_start);
@@ -178,7 +177,7 @@ using namespace domain;
 
             while (o_1_old->key() != o_2_old->key() )
             {
-                std::cout << "Bx - level = " << l << std::endl;
+                std::cout << "Bx  - level = " << l << std::endl;
 
                 auto level_o_1 = domain_->tree()->find(l, o_1->key());
                 auto level_o_2 = domain_->tree()->find(l, o_2->key());
@@ -232,9 +231,11 @@ using namespace domain;
 
         template<
             template<size_t> class s,
-            template<size_t> class t
+            template<size_t> class t,
+            class domain_t,
+            class octant_itr_t
         >
-        void fmm_B0(auto& domain_, int level, auto o_start, auto o_end, auto dx_level)
+        void fmm_B0(domain_t& domain_, int level, octant_itr_t o_start, octant_itr_t o_end, float_type dx_level)
         {
             int level_diff = 0;
             if (o_start->level() != o_end->level())
@@ -266,9 +267,11 @@ using namespace domain;
 
         template<
             template<size_t> class f1,
-            template<size_t> class f2
+            template<size_t> class f2,
+            class domain_t,
+            class octant_itr_t
         >
-        void fmm_add_equal(auto& domain_, int level, auto o_start, auto o_end, bool for_non_leaf)
+        void fmm_add_equal(domain_t& domain_, int level, octant_itr_t o_start, octant_itr_t o_end, bool for_non_leaf)
         {
 
             if (o_start->level() != o_end->level())
@@ -290,9 +293,11 @@ using namespace domain;
 
         template<
             template<size_t> class f1,
-            template<size_t> class f2
+            template<size_t> class f2,
+            class domain_t,
+            class octant_itr_t
         >
-        void fmm_minus_equal(auto& domain_, int level, auto o_start, auto o_end, bool for_non_leaf)
+        void fmm_minus_equal(domain_t& domain_, int level, octant_itr_t o_start, octant_itr_t o_end, bool for_non_leaf)
         {
 
             if (o_start->level() != o_end->level())
@@ -312,8 +317,12 @@ using namespace domain;
 
         }
 
-        template<template<size_t> class f>
-        void fmm_init_zero(auto& domain_, int level, auto o_start, auto o_end)
+        template<template<size_t> class f,
+            class domain_t,
+            class octant_itr_t
+        >
+        void fmm_init_zero(domain_t& domain_, int level,
+                octant_itr_t o_start, octant_itr_t o_end)
         {
             auto o_1 = (*o_start);
             auto o_2 = (*o_end);
@@ -351,9 +360,12 @@ using namespace domain;
 
         template<
             template<size_t> class from,
-            template<size_t> class to
-            >
-        void fmm_init_copy(auto& domain_, int level, auto o_start, auto o_end, bool for_non_leaf)
+            template<size_t> class to,
+            class domain_t,
+            class octant_itr_t
+        >
+        void fmm_init_copy(domain_t& domain_, int level,
+                octant_itr_t o_start, octant_itr_t o_end, bool for_non_leaf)
         {
             if (o_start->level() != o_end->level())
                 throw std::runtime_error("Level has to be the same");
@@ -376,8 +388,12 @@ using namespace domain;
 
         }
 
-        template< template<size_t> class fmm_t >
-        void fmm_intrp(auto& domain_, int level, auto o_start, auto o_end)
+        template< template<size_t> class fmm_t,
+            class domain_t,
+            class octant_itr_t
+            >
+        void fmm_intrp(domain_t& domain_, int level,
+                octant_itr_t o_start, octant_itr_t o_end)
         {
             // start with one level up and call the parents of each
             level--;
@@ -404,8 +420,12 @@ using namespace domain;
             }
         }
 
-        template< template<size_t> class fmm_s >
-        void fmm_antrp(auto& domain_, int level, auto o_start, auto o_end)
+        template< template<size_t> class fmm_s,
+            class domain_t,
+            class octant_itr_t
+        >
+        void fmm_antrp(domain_t& domain_, int level,
+                octant_itr_t o_start, octant_itr_t o_end)
         {
 
             // start with one level up and call the parents of each
@@ -449,9 +469,11 @@ using namespace domain;
 
         template<
             template<size_t> class S,
-            template<size_t> class T
+            template<size_t> class T,
+            class octant_t,
+            class octant_itr_t
         >
-        void fmm_fft(auto o_s, auto o_t, int level_diff, float_type dx_level)
+        void fmm_fft(octant_t o_s, octant_itr_t o_t, int level_diff, float_type dx_level)
         {
             //FIXME just for the type
             auto block_ = o_s->data()->template get<S>().real_block();
@@ -480,27 +502,14 @@ using namespace domain;
                     o_t->data()->template get<T>(),
                     dx_level*dx_level);
 
-            //lgf_.get_subblock( decltype(block_)(base_lgf, extent_lgf), lgf, level_diff);
-
-            //// Perform convolution
-            //conv_.execute_field(lgf, o_s->data()->template get<S>());
-
-            //// Extract the solution
-            //conv_.add_solution(extractor, o_t->data()->template get<T>(),
-            //                  dx_level*dx_level);
-
-            //auto b = o_s->data()->template get_linalg_data<S>();
-            //auto bt = o_t->data()->template get_linalg_data<T>();
-
         }
 
 
     public:
         Nli lagrange_intrp;
     private:
-        std::vector<float_type> lgf;
-        convolution_t           conv_;      ///< fft convolution
-        lgf::LGF<lgf::Lookup>   lgf_;       ///< Lookup for the LGFs
+        std::vector<float_type>     lgf;
+        fft::Convolution            conv_;      ///< fft convolution
     };
 
 }

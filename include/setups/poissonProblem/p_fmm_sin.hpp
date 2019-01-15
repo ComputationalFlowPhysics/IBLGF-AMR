@@ -33,22 +33,28 @@ using namespace types;
 using namespace dictionary;
 using namespace fft;
 
-struct p_fmm_rndm
+struct p_fmm_sin
 {
 
     static constexpr int Dim = 3;
 
     //              name            type     lBuffer.  hBuffer
-    make_field_type(phi_num         , float_type, 1,       1)
-    make_field_type(source          , float_type, 1,       1)
-    make_field_type(phi_exact       , float_type, 1,       1)
-    make_field_type(error           , float_type, 1,       1)
+    make_field_type(phi_num          , float_type, 1,       1)
+    make_field_type(source           , float_type, 1,       1)
+    make_field_type(phi_exact        , float_type, 1,       1)
+    make_field_type(error            , float_type, 1,       1)
+    make_field_type(error_lap_source , float_type, 1,       1)
 
-    // temporarily here for FMM
-    make_field_type(fmm_s           , float_type, 1,       1)
-    make_field_type(fmm_t           , float_type, 1,       1)
-    make_field_type(fmm_tmp         , float_type, 1,       1)
-    make_field_type(phi_num_fmm     , float_type, 1,       1)
+    // FIXME: temporarily here for FMM
+    make_field_type(fmm_s            , float_type, 1,       1)
+    make_field_type(fmm_t            , float_type, 1,       1)
+    make_field_type(fmm_tmp          , float_type, 1,       1)
+    make_field_type(phi_num_fmm      , float_type, 1,       1)
+
+
+    // temporarily here for amr_laplace test
+    make_field_type(amr_lap_source     , float_type, 1,       1)
+    make_field_type(amr_lap_tmp        , float_type, 1,       1)
 
     using datablock_t = DataBlock<
         Dim, node,
@@ -59,9 +65,11 @@ struct p_fmm_rndm
         fmm_s,
         fmm_t,
         fmm_tmp,
-        phi_num_fmm
+        phi_num_fmm,
+        amr_lap_source,
+        amr_lap_tmp,
+        error_lap_source
         >;
-
 
     using coordinate_t       = typename datablock_t::coordinate_type;
     using domain_t           = domain::Domain<Dim,datablock_t>;
@@ -70,7 +78,7 @@ struct p_fmm_rndm
     using node_field_type    = typename datablock_t::node_field_type;
 
 
-    p_fmm_rndm(Dictionary* _d)
+    p_fmm_sin(Dictionary* _d)
     :simulation_(_d->get_dictionary("simulation_parameters")),
      domain_(simulation_.domain_)
     {
@@ -140,26 +148,27 @@ struct p_fmm_rndm
         xt::xtensor<float_type, 3> soln(std::array<size_t, 3>{{b_max_0, b_max_1, b_max_2 }});
         xt::xtensor<float_type, 3> f_source(std::array<size_t, 3>{{b_max_0, b_max_1, b_max_2 }});
 
-        double wave_number = 1.0;
+        double wave_number = 2.0;
+        double alpha = 0.010;
 
         for (int i=0; i<b_max_0; ++i)
             for (int j=0; j<b_max_1; ++j)
                 for (int k=0; k<b_max_2; ++k)
                 {
-                    float_type xx = (2* M_PI * wave_number * i) / (b_max_0-1) ;
-                    float_type yy = (2* M_PI * wave_number * j) / (b_max_1-1) ;
-                    float_type zz = (2* M_PI * wave_number * k) / (b_max_2-1) ;
+                    float_type xx = (2* M_PI * wave_number * i) / (b_max_0-1) - M_PI* wave_number;
+                    float_type yy = (2* M_PI * wave_number * j) / (b_max_1-1) - M_PI* wave_number;
+                    float_type zz = (2* M_PI * wave_number * k) / (b_max_2-1) - M_PI* wave_number;
 
-                    soln(i,j,k) = sin(xx) * sin(yy) * sin(zz);
+                    soln(i,j,k) =sin(xx) * sin(yy) * sin(zz) * exp(-alpha * (xx*xx + yy*yy + zz*zz));
                 }
 
 
-        //xt::view(soln,0,xt::all(),xt::all()) *= 0;
-        //xt::view(soln, b_max_0-1, xt::all(),xt::all()) *= 0;
-        //xt::view(soln, xt::all(), 0, xt::all()) *= 0;
-        //xt::view(soln, xt::all(), b_max_1-1, xt::all()) *= 0;
-        //xt::view(soln, xt::all(), xt::all(), 0) *= 0;
-        //xt::view(soln, xt::all(), xt::all(), b_max_2-1) *= 0;
+        xt::view(soln,0,xt::all(),xt::all()) *= 0;
+        xt::view(soln, b_max_0-1, xt::all(),xt::all()) *= 0;
+        xt::view(soln, xt::all(), 0, xt::all()) *= 0;
+        xt::view(soln, xt::all(), b_max_1-1, xt::all()) *= 0;
+        xt::view(soln, xt::all(), xt::all(), 0) *= 0;
+        xt::view(soln, xt::all(), xt::all(), b_max_2-1) *= 0;
 
         std::cout<<f_source << std::endl;
 
@@ -234,7 +243,7 @@ struct p_fmm_rndm
     {
 
         solver::PoissonSolver<simulation_type> psolver(&simulation_);
-        psolver.solve<source, phi_num, fmm_s, fmm_t, phi_num_fmm, fmm_tmp>();
+        psolver.solve<source, phi_num, fmm_s, fmm_t, phi_num_fmm, fmm_tmp, amr_lap_source, amr_lap_tmp>();
         compute_errors();
         simulation_.write("solution.vtk");
         pcout << "Writing solution " << std::endl;

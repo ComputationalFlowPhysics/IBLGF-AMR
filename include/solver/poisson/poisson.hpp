@@ -28,7 +28,9 @@
 
 //#include<utilities/convolution.hpp>
 #include "../../utilities/convolution.hpp"
-#include<utilities/interpolation.hpp>
+//#include<utilities/interpolation.hpp>
+#include<utilities/cell_center_nli_intrp.hpp>
+//#include<utilities/fourier_cont_intrp.hpp>
 #include<solver/poisson/poisson.hpp>
 
 namespace solver
@@ -49,8 +51,6 @@ public: //member types
     using real_coordinate_type = typename domain_type::real_coordinate_type;
     using coordinate_type      = typename domain_type::coordinate_type;
 
-
-
     static constexpr int lBuffer=1; ///< Lower left buffer for interpolation
     static constexpr int rBuffer=1; ///< Lower left buffer for interpolation
 
@@ -60,7 +60,8 @@ public: //member types
     domain_(&_simulation->domain_),
     conv_(domain_->block_extent()+lBuffer+rBuffer,
           domain_->block_extent()+lBuffer+rBuffer),
-    fmm_(domain_->block_extent()[0]+lBuffer+rBuffer)
+    fmm_(domain_->block_extent()[0]+lBuffer+rBuffer),
+    c_cntr_nli_(domain_->block_extent()[0]+lBuffer+rBuffer)
     {
     }
 
@@ -74,19 +75,35 @@ public:
      *  Interpolation/coarsification is used to project the solutions to fine
      *  and coarse meshes, respectively.
      */
+
     template<
         template<std::size_t>class Source,
         template<std::size_t>class Target,
         template<std::size_t>class fmm_s,
         template<std::size_t>class fmm_t,
-        template<std::size_t>class Target_fmm,
-        template<std::size_t>class fmm_tmp
+        template<std::size_t>class coarse_target_sum,
+        template<std::size_t>class source_tmp
             >
-    void solve()
+    void apply_amr_lgf()
     {
         // allocate lgf
         std::vector<float_type> lgf;
         const float_type dx_base=domain_->dx_base();
+
+        // Copy source
+        for (int l  = domain_->tree()->base_level();
+                 l < domain_->tree()->depth(); ++l)
+        {
+            for (auto it  = domain_->begin(l);
+                      it != domain_->end(l); ++it)
+            {
+                // copy source
+                auto& cp1 = it ->data()->template get_linalg_data<Source>();
+                auto& cp2 = it ->data()->template get_linalg_data<source_tmp>();
+
+                cp2 = cp1 * 1.0;
+            }
+        }
 
         //Coarsification:
         pcout<<"coarsification "<<std::endl;
@@ -96,11 +113,9 @@ public:
             for (auto it_s  = domain_->begin(ls);
                       it_s != domain_->end(ls); ++it_s)
             {
-                this->coarsify<Source>(*it_s);
+                this->coarsify<source_tmp>(*it_s);
             }
         }
-
-        //FMM test
 
         //Level-Interactions
         pcout<<"Level interactions "<<std::endl;
@@ -108,6 +123,7 @@ public:
                  l < domain_->tree()->depth(); ++l)
         {
             //test for FMM
+<<<<<<< HEAD
             fmm_.fmm_for_level<Source, Target_fmm, fmm_s, fmm_t,fmm_tmp>(domain_, l, false);
             fmm_.fmm_for_level<Source, Target_fmm, fmm_s, fmm_t,fmm_tmp>(domain_, l, true);
 
@@ -154,7 +170,28 @@ public:
             //    }
             //}
         }
+=======
+            fmm_.fmm_for_level<source_tmp, Target, fmm_s, fmm_t>(domain_, l, false);
+            fmm_.fmm_for_level<source_tmp, Target, fmm_s, fmm_t>(domain_, l, true);
+>>>>>>> auto-fix
 
+            for (auto it  = domain_->begin(l);
+                      it != domain_->end(l); ++it)
+            {
+                if(it->is_leaf()) continue;
+
+                auto& cp1 = it ->data()->template get_linalg_data<Target>();
+                auto& cp2 = it ->data()->template get_linalg_data<coarse_target_sum>();
+                //std::cout<< cp2 << std::endl;
+                cp2 += cp1 * 1.0;
+
+                c_cntr_nli_.nli_intrp_node<coarse_target_sum, coarse_target_sum>(it);
+                int refinement_level = it->refinement_level();
+                double dx = dx_base/std::pow(2,refinement_level);
+                c_cntr_nli_.add_source_correction<coarse_target_sum, source_tmp>(it, dx/2.0);
+            }
+
+        }
 
         // Interpolation
         std::cout<<"Interpolation"<<std::endl;
@@ -165,12 +202,109 @@ public:
                       it_t != domain_->end(lt); ++it_t)
             {
                 if(it_t->is_leaf()) continue;
-                this->interpolate<Target>(*it_t);
-
-                if(it_t->is_leaf()) continue;
-                this->interpolate<Target_fmm>(*it_t);
+                //this->interpolate<Target>(*it_t);
+                c_cntr_nli_.nli_intrp_node<Target, Target>(it_t);
             }
         }
+
+    }
+
+    template<
+        template<std::size_t>class target,
+        template<std::size_t>class target_tmp,
+        template<std::size_t>class diff_target
+    >
+    void apply_amr_laplace()
+    {
+
+        const float_type dx_base=domain_->dx_base();
+
+        //Coarsification:
+        pcout<<"Laplace - coarsification "<<std::endl;
+        for (int ls = domain_->tree()->depth()-2;
+                 ls >= domain_->tree()->base_level(); --ls)
+        {
+            for (auto it_s  = domain_->begin(ls);
+                      it_s != domain_->end(ls); ++it_s)
+            {
+                this->coarsify<target>(*it_s);
+            }
+        }
+
+        //Level-Interactions
+        pcout<<"Laplace - level interactions "<<std::endl;
+        for (int l  = domain_->tree()->base_level();
+                 l < domain_->tree()->depth(); ++l)
+        {
+
+            for (auto it  = domain_->begin(l);
+                      it != domain_->end(l); ++it)
+            {
+                auto refinement_level = it->refinement_level();
+                auto dx_level =  dx_base/std::pow(2,refinement_level);
+
+                auto& target_data = it->data()->
+                    template get_linalg_data<target>();
+                auto& diff_target_data = it->data()->
+                    template get_linalg_data<diff_target>();
+
+                const auto s_extent = it->data()->template get<target>().
+                                                real_block().extent();
+
+                // laplace of it_t data with zero bcs
+                if ((it->is_leaf()))
+                {
+                    for ( int i =1; i<s_extent[0]-1; ++i){
+                        for ( int j = 1; j<s_extent[1]-1; ++j){
+                            for ( int k = 1; k<s_extent[2]-1; ++k){
+                                diff_target_data(i,j,k)  = - 6.0 * target_data(i,j,k);
+                                diff_target_data(i,j,k) += target_data(i,j,k-1);
+                                diff_target_data(i,j,k) += target_data(i,j,k+1);
+                                diff_target_data(i,j,k) += target_data(i,j-1,k);
+                                diff_target_data(i,j,k) += target_data(i,j+1,k);
+                                diff_target_data(i,j,k) += target_data(i+1,j,k);
+                                diff_target_data(i,j,k) += target_data(i-1,j,k);
+                            }
+                        }
+                    }
+
+                }
+
+                diff_target_data *= (1/dx_level) * (1/dx_level);
+
+            }
+        }
+
+        // Interpolation
+        //std::cout<<"Laplace - interpolation"<<std::endl;
+        //for (int lt = domain_->tree()->base_level();
+        //         lt < domain_->tree()->depth(); ++lt)
+        //{
+        //    for (auto it_t  = domain_->begin(lt);
+        //              it_t != domain_->end(lt); ++it_t)
+        //    {
+        //        if(it_t->is_leaf()) continue;
+        //        this->interpolate<diff_target>(*it_t);
+        //    }
+        //}
+
+    }
+
+    template<
+        template<std::size_t>class Source,
+        template<std::size_t>class Target,
+        template<std::size_t>class fmm_s,
+        template<std::size_t>class fmm_t,
+        template<std::size_t>class Target_fmm,
+        template<std::size_t>class coarse_target_sum,
+        template<std::size_t>class source_tmp,
+        template<std::size_t>class amr_lap_target,
+        template<std::size_t>class amr_lap_tmp
+    >
+    void solve()
+    {
+        apply_amr_lgf<Source, Target_fmm, fmm_s, fmm_t, coarse_target_sum, source_tmp>();
+        apply_amr_laplace<Target_fmm, amr_lap_tmp, amr_lap_target>();
     }
 
     /** @brief Coarsify the source field.
@@ -222,7 +356,7 @@ public:
         for (int i = 0; i < _b_parent->num_children(); ++i)
         {
             auto child = _b_parent->child(i);
-            if(child==nullptr) continue;
+            if (child==nullptr) continue;
             block_type child_view =
                 child->data()->template get<Field>().real_block();
             auto cview =child->data()->node_field().view(child_view);
@@ -245,12 +379,13 @@ public:
 
 
 private:
-    Simulation*                 sim_;       ///< simualtion
-    domain_type*                domain_;    ///< domain
-    convolution_t               conv_;      ///< fft convolution
-    //fmm::Fmm                  fmm_;       ///< fast-multipole
-    fmm::Fmm                    fmm_;       ///< fast-multipole
-    lgf::LGF<lgf::Lookup>       lgf_;       ///< Lookup for the LGFs
+    Simulation*                         sim_;       ///< simualtion
+    domain_type*                        domain_;    ///< domain
+    convolution_t                       conv_;      ///< fft convolution
+    fmm::Fmm                            fmm_;       ///< fast-multipole
+    //interpolation::fourier_cont_intrp   c_cntr_nli_;
+    interpolation::cell_center_nli      c_cntr_nli_;
+    lgf::LGF<lgf::Lookup>               lgf_;       ///< Lookup for the LGFs
 
     parallel_ostream::ParallelOstream pcout;
 

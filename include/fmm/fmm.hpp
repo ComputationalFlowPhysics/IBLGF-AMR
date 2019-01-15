@@ -187,14 +187,6 @@ using namespace domain;
                 for (auto it_t = level_o_1;
                         it_t!=(level_o_2); ++it_t)
                 {
-                    //if (l == 4)
-                    //{
-                    //std::cout<< " Bx test -------------" << std::endl;
-                    //std::cout<< "Self" << std::endl;
-                    //std::cout<<it_t->key()<< std::endl;
-                    //std::cout<< "infl" << std::endl;
-                    //}
-
                     for (int i=0; i< it_t->influence_number();
                              ++i)
                     {
@@ -206,14 +198,6 @@ using namespace domain;
                             }
 
                     }
-                        //std::cout<<it_t->influence_number() << std::endl;
-
-                    if (it_t->level() == 5)
-                        {
-                            //std::cout<<"------------------------bx  " << std::endl;
-                            //std::cout<< it_t->key() << std::endl;
-                            //std::cout<< it_t->data() -> template get_linalg_data<t>()<< std::endl;
-                        }
 
                 }
 
@@ -247,12 +231,6 @@ using namespace domain;
             for (auto it_t = o_start; it_t!=(o_end); ++it_t)
             {
 
-                //std::cout<< "=====================" << std::endl;
-                //std::cout<< "target" << std::endl;
-                //std::cout<<it_t->key() << std::endl;
-
-                //std::cout<< "source" << std::endl;
-
                 for (int i=0; i<27; ++i)
                 {
                     auto n_s = it_t->neighbor(i);
@@ -284,8 +262,9 @@ using namespace domain;
                 if(it->data())
                 {
                     if ( !( (for_non_leaf) && (it->is_leaf()) ))
-                    it->data()->template get_linalg<f1>().get()->cube_noalias_view() +=
-                         it->data()->template get_linalg_data<f2>() * 1.0;
+                    it->data()->template get_linalg<f1>().get()->
+                        cube_noalias_view() +=
+                                    it->data()->template get_linalg_data<f2>();
                 }
             }
 
@@ -310,8 +289,9 @@ using namespace domain;
                 if(it->data())
                 {
                     if ( !( (for_non_leaf) && (it->is_leaf()) ))
-                    it->data()->template get_linalg<f1>().get()->cube_noalias_view() -=
-                         it->data()->template get_linalg_data<f2>() * 1.0;
+                    it->data()->template get_linalg<f1>().get()->
+                        cube_noalias_view() -=
+                                it->data()->template get_linalg_data<f2>();
                 }
             }
 
@@ -376,13 +356,10 @@ using namespace domain;
                 if(it->data())
                 {
                     if ( !( (for_non_leaf) && (it->is_leaf()) ))
-                    it->data()->template get_linalg_data<to>()=
-                         it->data()->template get_linalg_data<from>()*1.0;
 
-                    //std::cout<<"------------------"<< std::endl;
-                    //std::cout<< &(it->data()->template get_linalg_data<to>()[0]) << std::endl;
-                    //std::cout<< &(it->data()->template get_data<to>()) << std::endl;
-                    //std::cout<< &child_data << std::endl;
+                    it->data()->template get_linalg<to>().get()->
+                        cube_noalias_view() =
+                         it->data()->template get_linalg_data<from>() * 1.0;
                 }
             }
 
@@ -395,9 +372,7 @@ using namespace domain;
         void fmm_intrp(domain_t& domain_, int level,
                 octant_itr_t o_start, octant_itr_t o_end)
         {
-            // start with one level up and call the parents of each
             level--;
-
             auto o_1 = o_start->parent();
             auto o_2 = o_end->parent();
 
@@ -448,12 +423,6 @@ using namespace domain;
                 for (auto it = level_o_1;
                         it!=(level_o_2); ++it)
                 {
-                    if (it->level()==4)
-                    {
-                        //std::cout<< it->key() << std::endl;
-                        //std::cout<< it->child(1)->data()->template get_linalg_data<fmm_s>();
-                    }
-
                     if(it->data())
                         lagrange_intrp.nli_antrp_node<fmm_s>(it);
                 }

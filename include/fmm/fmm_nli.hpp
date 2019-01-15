@@ -52,8 +52,9 @@ namespace fmm
 
     public: // functionalities
 
-        template<template<size_t> class field>
-        void nli_intrp_node(auto parent)
+        template<template<size_t> class field,
+            typename octant_t>
+        void nli_intrp_node(octant_t parent)
             {
                 auto& parent_linalg_data =
                     parent->data()->template get_linalg_data<field>();
@@ -72,7 +73,9 @@ namespace fmm
             }
 
 
-        void nli_intrp_node(auto& child, auto& parent, int child_idx)
+        template<typename linalg_data_t>
+        void nli_intrp_node(linalg_data_t& child, linalg_data_t& parent,
+                int child_idx)
         {
             int n = child.shape()[0];
             int idx_x = (child_idx & ( 1 << 0 )) >> 0;
@@ -129,8 +132,8 @@ namespace fmm
         }
 
 
-        template<template<size_t> class field>
-        void nli_antrp_node(auto parent)
+        template<template<size_t> class field, typename octant_t>
+        void nli_antrp_node(octant_t parent)
             {
                 auto& parent_linalg_data = parent->data()->template get_linalg_data<field>();
 
@@ -148,7 +151,9 @@ namespace fmm
             }
 
 
-        void nli_antrp_node(auto& child, auto& parent, int child_idx)
+        template<typename linalg_data_t>
+        void nli_antrp_node(linalg_data_t& child, linalg_data_t& parent,
+                int child_idx)
         {
             int n = child.shape()[0];
             int idx_x = (child_idx & ( 1 << 0 )) >> 0;
@@ -212,7 +217,8 @@ namespace fmm
 
 
     private:
-        void antrp_mat_calc_fourier(auto& antrp_mat_, int Nb_)
+        template<typename linalg_data_t>
+        void antrp_mat_calc_fourier(linalg_data_t& antrp_mat_, int Nb_)
         {
             std::complex<double> II(0,1);
 
@@ -283,7 +289,8 @@ namespace fmm
 
 
 
-        void antrp_mat_calc(auto& antrp_mat_, int Nb_)
+        template<typename linalg_data_t>
+        void antrp_mat_calc(linalg_data_t& antrp_mat_, int Nb_)
         {
 
             for (int c = 1; c < Nb_*2-1; ++c){

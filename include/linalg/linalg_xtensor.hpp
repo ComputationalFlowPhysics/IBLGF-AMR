@@ -30,11 +30,18 @@ public:
                 std::vector<std::size_t>{{n_rows, n_cols, n_slices}});
     }
 
-    static auto cube_noalias_view(auto& cube)
+    template<typename cube_t>
+    static auto cube_noalias_view(cube_t& cube)
     {
         return xt::noalias(cube);
     }
-    static auto cube_noalias_view(auto& cube, auto x1, auto x2, auto x3)
+
+    template<typename cube_t,
+        typename stride_t_1,
+        typename stride_t_2,
+        typename stride_t_3>
+    static auto cube_noalias_view(cube_t& cube,
+            stride_t_1 x1, stride_t_2 x2, stride_t_3 x3)
     {
         return xt::noalias( xt::view(cube, x1, x2, x3) );
     }
@@ -53,11 +60,13 @@ public:
         return xt::view(data_, xt::all(), n);
     }
 
-    static auto mat_noalias_view(auto cube, auto x1, auto x2)
+    template<typename cube_t,
+        typename stride_t_1,
+        typename stride_t_2>
+    static auto mat_noalias_view(cube_t cube, stride_t_1 x1, stride_t_2 x2)
     {
         return xt::noalias( xt::view(cube, x1, x2) );
     }
-
 
 };
 

@@ -87,29 +87,30 @@ namespace fmm
                 for (int l=0; l<n; ++l)
                 {
                     // Row major
-                    //xt::noalias(nli_aux_1d_intrp) = view(parent, q, l, xt::all()) * 1.0;
+                    //xt::noalias(nli_aux_1d_intrp) =
+                    //      view(parent, q, l, xt::all()) * 1.0;
                     //xt::noalias( view( nli_aux_2d_intrp, l, xt::all() )) =
                     //    xt::linalg::dot( nli_aux_1d_intrp, antrp_mat_sub_[idx_x].data_ );
 
-
                     // Column major
-                    //xt::noalias(nli_aux_1d_intrp) = view(parent, xt::all(), l, q) * 1.0;
                     xt::noalias( view( nli_aux_2d_intrp, xt::all(), l )) =
-                        xt::linalg::dot( view(parent, xt::all(), l, q), antrp_mat_sub_[idx_x].data_ );
+                        xt::linalg::dot( view(parent, xt::all(), l, q),
+                                         antrp_mat_sub_[idx_x].data_ );
                 }
 
                 for (int l=0; l<n; ++l)
                 {
                     // For Y
-
                     // Row major
-                    //xt::noalias(nli_aux_1d_intrp) = view(nli_aux_2d_intrp, xt::all(), l) * 1.0;
+                    //xt::noalias(nli_aux_1d_intrp) =
+                    //      view(nli_aux_2d_intrp, xt::all(), l) * 1.0;
                     //xt::noalias( view(nli_aux_3d_intrp, q, xt::all(), l) ) =
                     //    xt::linalg::dot(nli_aux_1d_intrp, antrp_mat_sub_[idx_y].data_);
 
                     // Column major
                     xt::noalias( view(nli_aux_3d_intrp, l, xt::all(), q) ) =
-                        xt::linalg::dot( view(nli_aux_2d_intrp, l, xt::all()), antrp_mat_sub_[idx_y].data_);
+                        xt::linalg::dot( view(nli_aux_2d_intrp, l, xt::all()),
+                                         antrp_mat_sub_[idx_y].data_);
                 }
             }
 
@@ -119,14 +120,16 @@ namespace fmm
                 {
                     // For Z
                     // Row major
-                    //xt::noalias(nli_aux_1d_intrp) =  view(nli_aux_3d_intrp, xt::all(), p, q) ;
+                    //xt::noalias(nli_aux_1d_intrp) =
+                    //      view(nli_aux_3d_intrp, xt::all(), p, q) ;
 
                     //xt::noalias( view(child, xt::all(), p, q) ) +=
                     //    xt::linalg::dot(nli_aux_1d_intrp, antrp_mat_sub_[idx_z].data_ ) ;
 
                     // Column major
                     xt::noalias( view(child, q, p, xt::all()) ) +=
-                        xt::linalg::dot( view(nli_aux_3d_intrp, q, p, xt::all()), antrp_mat_sub_[idx_z].data_ );
+                        xt::linalg::dot( view(nli_aux_3d_intrp, q, p, xt::all()),
+                                         antrp_mat_sub_[idx_z].data_ );
                 }
             }
         }
@@ -143,8 +146,9 @@ namespace fmm
                     auto child = parent->child(i);
                     if (child == nullptr) continue;
 
-                    auto& child_linalg_data  = child ->data()->template get_linalg_data<field>();
-                    //std::cout<<"child # " << i << std::endl;
+                    auto& child_linalg_data  =
+                        child ->data()->template get_linalg_data<field>();
+
                     nli_antrp_node(child_linalg_data, parent_linalg_data, i);
                 }
 
@@ -165,7 +169,8 @@ namespace fmm
                 for (int l=0; l<n; ++l)
                 {
                     // For Z
-                    //xt::noalias(nli_aux_1d_antrp_tmp)= view(child, xt::all(), l, q);
+                    //xt::noalias(nli_aux_1d_antrp_tmp)=
+                    //      view(child, xt::all(), l, q);
 
                     //xt::noalias( view(nli_aux_2d_antrp, xt::all(), l) ) =
                     //    xt::linalg::dot( antrp_mat_sub_[idx_z].data_,
@@ -173,10 +178,9 @@ namespace fmm
 
                     // Column major
                     xt::noalias(nli_aux_1d_antrp_tmp)= view(child, q, l, xt::all()) ;
-
                     xt::noalias( view(nli_aux_2d_antrp, xt::all(), l) ) =
                         xt::linalg::dot( antrp_mat_sub_[idx_z].data_,
-                                            nli_aux_1d_antrp_tmp );
+                                         nli_aux_1d_antrp_tmp );
                 }
 
                 for (int l=0; l<n; ++l)
@@ -191,7 +195,7 @@ namespace fmm
                     // Column major
                     xt::noalias( view(nli_aux_3d_antrp, xt::all(), l, q) ) =
                         xt::linalg::dot( antrp_mat_sub_[idx_y].data_,
-                                            view(nli_aux_2d_antrp, l, xt::all()) );
+                                         view(nli_aux_2d_antrp, l, xt::all()) );
                 }
             }
 
@@ -209,7 +213,7 @@ namespace fmm
                     // Column major
                     xt::noalias( view(parent, xt::all(), q, p) ) +=
                         xt::linalg::dot( antrp_mat_sub_[idx_x].data_,
-                                           view(nli_aux_3d_antrp, q,p,xt::all()));
+                                         view(nli_aux_3d_antrp, q,p,xt::all()));
                 }
             }
         }
@@ -358,14 +362,13 @@ namespace fmm
         std::array<linalg::Mat_t, 2> antrp_mat_sub_;
 
     private:
-        xt::xtensor<float_type, 1> nli_aux_1d_intrp;//(std::array<size_t, 1>{{ n }});
-        xt::xtensor<float_type, 2> nli_aux_2d_intrp;//(std::array<size_t, 2>{{ n,n }});
-        xt::xtensor<float_type, 3> nli_aux_3d_intrp;//(std::array<size_t, 3>{{ n,n,n }});
+        xt::xtensor<float_type, 1> nli_aux_1d_intrp;
+        xt::xtensor<float_type, 2> nli_aux_2d_intrp;
+        xt::xtensor<float_type, 3> nli_aux_3d_intrp;
 
-        xt::xtensor<float_type, 2> nli_aux_2d_antrp;//(std::array<size_t, 2>{{ n,n }});
-        xt::xtensor<float_type, 3> nli_aux_3d_antrp;//(std::array<size_t, 3>{{ n,n,n }});
-        xt::xtensor<float_type, 1> nli_aux_1d_antrp_tmp;//(std::array<size_t, 3>{{ n,n,n }});
-
+        xt::xtensor<float_type, 2> nli_aux_2d_antrp;
+        xt::xtensor<float_type, 3> nli_aux_3d_antrp;
+        xt::xtensor<float_type, 1> nli_aux_1d_antrp_tmp;
     };
 
 }

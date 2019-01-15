@@ -282,13 +282,13 @@ namespace interpolation
         std::array<linalg::Mat_t, 2> antrp_mat_sub_;
 
     private:
-        xt::xtensor<float_type, 1> nli_aux_1d_intrp;//(std::array<size_t, 1>{{ n }});
-        xt::xtensor<float_type, 2> nli_aux_2d_intrp;//(std::array<size_t, 2>{{ n,n }});
-        xt::xtensor<float_type, 3> nli_aux_3d_intrp;//(std::array<size_t, 3>{{ n,n,n }});
+        xt::xtensor<float_type, 1> nli_aux_1d_intrp;
+        xt::xtensor<float_type, 2> nli_aux_2d_intrp;
+        xt::xtensor<float_type, 3> nli_aux_3d_intrp;
 
-        xt::xtensor<float_type, 2> nli_aux_2d_antrp;//(std::array<size_t, 2>{{ n,n }});
-        xt::xtensor<float_type, 3> nli_aux_3d_antrp;//(std::array<size_t, 3>{{ n,n,n }});
-        xt::xtensor<float_type, 1> nli_aux_1d_antrp_tmp;//(std::array<size_t, 3>{{ n,n,n }});
+        xt::xtensor<float_type, 2> nli_aux_2d_antrp;
+        xt::xtensor<float_type, 3> nli_aux_3d_antrp;
+        xt::xtensor<float_type, 1> nli_aux_1d_antrp_tmp;
 
     };
 

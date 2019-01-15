@@ -108,13 +108,7 @@ struct PoissonProblem
                 auto b=it->data()->descriptor();
 
                 coordinate_t lower((center )/2-2 ), upper((center )/2+2 - b.extent());
-                //std::cout<< "-----------" << std::endl;
-                //std::cout<< b.extent() << std::endl;
                 b.grow(lower, upper);
-                //std::cout<< b.base() << std::endl;
-                //std::cout<< b.extent() + b.base() << std::endl;
-                //std::cout<< center * pow(2.0,l) << std::endl;
-                //std::cout<< center << std::endl;
                 if(b.is_inside( center * pow(2.0,l))
                    && it->refinement_level()==l
                   )

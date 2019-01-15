@@ -153,7 +153,6 @@ public:
                       it_t != domain_->end(lt); ++it_t)
             {
                 if(it_t->is_leaf()) continue;
-                //this->interpolate<Target>(*it_t);
                 c_cntr_nli_.nli_intrp_node<Target, Target>(it_t);
             }
         }
@@ -208,7 +207,7 @@ public:
                     for ( int i =1; i<s_extent[0]-1; ++i){
                         for ( int j = 1; j<s_extent[1]-1; ++j){
                             for ( int k = 1; k<s_extent[2]-1; ++k){
-                                diff_target_data(i,j,k)  = - 6.0 * target_data(i,j,k);
+                                diff_target_data(i,j,k)  = target_data(i,j,k) * -6.0;
                                 diff_target_data(i,j,k) += target_data(i,j,k-1);
                                 diff_target_data(i,j,k) += target_data(i,j,k+1);
                                 diff_target_data(i,j,k) += target_data(i,j-1,k);
@@ -225,19 +224,6 @@ public:
 
             }
         }
-
-        // Interpolation
-        //std::cout<<"Laplace - interpolation"<<std::endl;
-        //for (int lt = domain_->tree()->base_level();
-        //         lt < domain_->tree()->depth(); ++lt)
-        //{
-        //    for (auto it_t  = domain_->begin(lt);
-        //              it_t != domain_->end(lt); ++it_t)
-        //    {
-        //        if(it_t->is_leaf()) continue;
-        //        this->interpolate<diff_target>(*it_t);
-        //    }
-        //}
 
     }
 

@@ -159,6 +159,12 @@ public:
         }
     }
 
+    template<class >
+    void communicate_induced_fields()
+    {
+
+    }
+
 private:
     Domain* domain_;
     communicator_type comm_;

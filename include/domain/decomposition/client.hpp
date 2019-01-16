@@ -106,6 +106,15 @@ public:
         }
     }
 
+    template<class Field>
+    void communicate_induced_fields()
+    {
+
+
+    }
+
+
+
 
 private:
     Domain* domain_;

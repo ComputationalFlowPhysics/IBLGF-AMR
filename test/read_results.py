@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 import sys
 import os
 import re
@@ -79,23 +80,31 @@ err_lap_infty.sort(key = lambda tup: (tup[0], tup[1], tup[2]))
 for e in err:
     print(e)
 
+f=open("Linf.txt","w")
 print("Linf")
 for e in err:
     print(e[3])
+    f.write('{} \n'.format(e[3]))
 
+f=open("L2.txt","w")
 print("L2")
 for e in err_2:
     print(e[3])
+    f.write('{} \n'.format(e[3]))
 
 print("time")
 for t in tot_time:
     print(t[3])
 
+f=open("Lap_source.txt","w")
 print("lap_source")
 for e in err_lap_2:
     print(e[3])
+    f.write('{} \n'.format(e[3]))
 
+f=open("Lap_source_infty.txt","w")
 print("lap_source_infty")
 for e in err_lap_infty:
     print(e[3])
+    f.write('{} \n'.format(e[3]))
 

@@ -238,7 +238,6 @@ public: //Ctors
     {
             execute_field(lgf_block, level_diff, source);
             add_solution(extractor, target, scale);
-            //FIXME :: why?????
     }
 
     template<class Vector>

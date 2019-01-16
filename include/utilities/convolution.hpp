@@ -229,10 +229,10 @@ public: //Ctors
         typename source_t,
         typename target_t,
         typename extractor_t>
-    void apply_lgf( lgf_block_t lgf_block,
+    void apply_lgf( const lgf_block_t& lgf_block,
                     int level_diff,
-                    source_t& source,
-                    extractor_t extractor,
+                    const source_t& source,
+                    const extractor_t extractor,
                     target_t& target,
                     float_type scale )
     {
@@ -265,7 +265,7 @@ public: //Ctors
 
     template<class Field,
             typename block_dsrp_t>
-    void execute_field(block_dsrp_t lgf_block_dsrp, int level_diff, Field& _b)
+    void execute_field(const block_dsrp_t lgf_block_dsrp, int level_diff, const Field& _b)
     {
         // use lgf_block.shift and level_diff to check if it has been saved or
         // not
@@ -317,7 +317,7 @@ public: //Ctors
     }
 
     template<class Block,class Field>
-    void add_solution(const Block& _b, Field& F, float_type _scale)
+    void add_solution(const Block& _b, Field& F, const float_type _scale)
     {
         for (int k = dims0_[2]-1; k < dims0_[2]+_b.extent()[2]-1; ++k)
         {

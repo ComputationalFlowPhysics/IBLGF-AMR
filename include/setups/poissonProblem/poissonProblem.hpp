@@ -31,6 +31,7 @@ using namespace octree;
 using namespace types;
 using namespace dictionary;
 using namespace fft;
+using namespace fmm;
 
 struct PoissonProblem
 {
@@ -44,15 +45,15 @@ struct PoissonProblem
     make_field_type(error            , float_type, 1,       1)
     make_field_type(error_lap_source , float_type, 1,       1)
 
-    make_field_type(fmm_s            , float_type, 1,       1)
-    make_field_type(fmm_t            , float_type, 1,       1)
-    make_field_type(coarse_target_sum          , float_type, 1,       1)
-    make_field_type(source_tmp       , float_type, 1,       1)
-    make_field_type(phi_num_fmm      , float_type, 1,       1)
+    //make_field_type(fmm_s            , float_type, 1,       1)
+    //make_field_type(fmm_t            , float_type, 1,       1)
+    //make_field_type(coarse_target_sum          , float_type, 1,       1)
+    //make_field_type(source_tmp       , float_type, 1,       1)
+    //make_field_type(phi_num_fmm      , float_type, 1,       1)
 
-    // temporarily here for amr_laplace test
-    make_field_type(amr_lap_source     , float_type, 1,       1)
-    make_field_type(amr_lap_tmp        , float_type, 1,       1)
+    //// temporarily here for amr_laplace test
+    //make_field_type(amr_lap_source     , float_type, 1,       1)
+    //make_field_type(amr_lap_tmp        , float_type, 1,       1)
 
     using datablock_t = DataBlock<
         Dim, node,

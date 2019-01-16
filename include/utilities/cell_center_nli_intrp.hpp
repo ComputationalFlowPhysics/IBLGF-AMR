@@ -42,8 +42,6 @@ namespace interpolation
             antrp_mat_sub_[0].data_ = xt::view(antrp_mat_.data_, xt::range(0, Nb_), xt::range( 0  , Nb_  ));
             antrp_mat_sub_[1].data_ = xt::view(antrp_mat_.data_, xt::range(0, Nb_), xt::range( Nb_, 2*Nb_));
 
-            std::cout << antrp_mat_sub_[0].data_ << std::endl;
-            std::cout << antrp_mat_sub_[1].data_ << std::endl;
         }
 
 

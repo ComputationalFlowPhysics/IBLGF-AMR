@@ -21,7 +21,7 @@ public: // ctors
 	ClientBase& operator=(ClientBase&&) & = default;
     ~ClientBase()=default;
 
-    ClientBase()=default;
+    ClientBase(int _server_rank=0):server_rank_(_server_rank){}
 
 public:
 
@@ -53,12 +53,12 @@ public:
         {
             recv_comm.start_communication();
             auto ft=recv_comm.finish_communication();
-            //for(auto& e : ft)
-            //{
-            //    std::cout<<"Received answer: \n";
-            //    for(auto& d: e->data()) std::cout<<d<<"\n";
-            //    std::cout<<std::endl;
-            //}
+            for(auto& e : ft)
+            {
+                std::cout<<"Received answer on rank"<<comm_.rank()<<": \n";
+                for(auto& d: e->data()) std::cout<<d<<"  ";
+                std::cout<<std::endl;
+            }
         }
     }
 
@@ -67,12 +67,16 @@ public:
     void disconnect()
     {
         const auto tag=tag_gen().get<tags::connection>(comm_.rank());
-        comm_.send(0,tag, false);
+        comm_.send(server_rank_,tag, false);
     }
+
+    const int& server() const noexcept{return server_rank_;}
+    int& server() noexcept{return server_rank_;}
 
 protected:
     boost::mpi::communicator comm_;
     task_manager_t task_manager_;
+    int server_rank_;
 
 };
 

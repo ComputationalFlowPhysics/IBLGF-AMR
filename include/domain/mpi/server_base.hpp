@@ -4,6 +4,7 @@
 #include<set>
 #include<optional>
 #include<vector>
+#include<unordered_set>
 #include<memory>
 #include<list>
 #include <boost/serialization/vector.hpp>
@@ -44,25 +45,39 @@ protected: //helper struct
         ClientInfo(int _rank):rank(_rank){}
 
     public: //Operators:
-        bool operator< (const ClientInfo &other) const
+        bool operator== (const ClientInfo &other) const
         {
-            return rank < other.rank;
+            return rank == other.rank;
         }
+
+        struct chash
+        {
+            std::size_t operator()(const ClientInfo& c1) const
+            {
+                return std::hash<std::size_t>()(c1.rank);
+            }
+
+        };
 
     public: //members:
         int rank=-1;
     };
 
 public: //members
+    using client_set_t= std::unordered_set<ClientInfo, 
+                                           typename ClientInfo::chash>; 
 
-    void initialize()
+
+public: //members
+
+    virtual void initialize()
     {
         nConnections_=comm_.size()-1;
         clients_.clear();
         for(int i =0;i<=nConnections_;++i)
         {
             if(i==comm_.rank())continue;
-            clients_.emplace_back(i);
+            clients_.emplace(i);
         }
     }
 
@@ -154,12 +169,15 @@ protected:
     }
 
     template<class TaskType>
-    auto& client(const TaskType& _t)noexcept
-    {return clients_[_t->rank_other()-1];}
+    auto& client(const TaskType& _t)
+    {
+        return 
+            clients_.find(_t->rank_other());
+    }
 
     template<class TaskType>
-    const auto& client(const TaskType& _t)const noexcept
-    {return clients_[_t->rank_other()-1];}
+    const auto& client(const TaskType& _t)const 
+    {  clients_.find(_t->rank_other()); }
 
     bool connected(){return nConnections_>0;}
 
@@ -167,7 +185,7 @@ protected:
 
     boost::mpi::communicator comm_;
     int nConnections_=0;
-    std::vector<ClientInfo> clients_;
+    client_set_t clients_;
     task_manager_t task_manager_;
 
 };

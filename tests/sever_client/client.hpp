@@ -30,7 +30,8 @@ public: // ctors
 	Client& operator=(const Client&) & = default;
 	Client& operator=(Client&&) & = default;
     ~Client()=default;
-    Client()=default;
+
+    using super_type::ClientBase;
 
 public:
 
@@ -41,7 +42,7 @@ public:
 
         std::vector<int> task_dat(3,comm_.rank());
         std::vector<int> recvData;
-        auto task= send_comm.post_task(&task_dat, 0);
+        auto task= send_comm.post_task(&task_dat, this->server_rank_);
         QueryRegistry<key_query_t, key_query_t> mq;
         mq.register_recvMap([&recvData](int i){return &recvData;} );
         wait(mq);

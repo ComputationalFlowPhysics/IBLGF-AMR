@@ -106,12 +106,30 @@ public:
         }
     }
 
-    template<class Field>
-    void communicate_induced_fields()
-    {
+    //template<class Field>
+    //void communicate_induced_fields()
+    //{
+    //    //send message:
+    //    
+    //    auto& send_comm=
+    //        this->task_manager_.template send_communicator<key_query_t>();
+
+    //    int rank=comm_.rank();
+    //    int rank_other=rank==1?2:1;
+
+    //    std::vector<int> sendDat(3,rank);
+    //    std::vector<int> recvData;
+
+    //    auto task= send_comm.post_task(&task_dat, rank_other);
+    //    QueryRegistry<key_query_t, rank_query_t> mq;
+    //    mq.register_recvMap([&recvData](int i){return &recvData;} );
 
 
-    }
+    //    //recv message:
+    //    
+
+
+    //}
 
 
 

@@ -59,8 +59,9 @@ public: //members
     {
         nConnections_=comm_.size()-1;
         clients_.clear();
-        for(int i =1;i<=nConnections_;++i)
+        for(int i =0;i<=nConnections_;++i)
         {
+            if(i==comm_.rank())continue;
             clients_.emplace_back(i);
         }
     }

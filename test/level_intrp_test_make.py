@@ -10,7 +10,7 @@ f_bash.write("#!/bin/bash \n")
 f_bash.write("mkdir -p ./refine_corretion_grid_convergence \n")
 
 #for N_blocks in [4, 8, 16, 32]:
-for N_blocks in [4]:
+for N_blocks in [8]:
     for n_refine in refine_level:
         for n in N:
         #for N_blocks in [20, 32]:

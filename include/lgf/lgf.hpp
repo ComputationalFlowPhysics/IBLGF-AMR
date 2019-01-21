@@ -19,16 +19,15 @@ namespace lgf
 
 using namespace domain;
 
-template<class Policy, int Dim=3>
+template<class Policy, std::size_t Dim=3>
 
     class LGF : public Policy
     {
 
-        make_field_type(lookup_field_, float_type)
+        make_field_type(Dim,lookup_field_, float_type)
 
     public: //Ctor:
 
-        static constexpr int dimension(){return Dim;}
         using datablock_t = DataBlock<Dim, node, lookup_field_>;
         using block_descriptor_t = typename datablock_t::block_descriptor_type;
         using coordinate_t = typename block_descriptor_t::base_t;

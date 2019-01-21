@@ -36,20 +36,11 @@ namespace fmm
 
 using namespace domain;
 
-    make_field_type(fmm_s            , float_type, 1,       1)
-    make_field_type(fmm_t            , float_type, 1,       1)
-    make_field_type(coarse_target_sum          , float_type, 1,       1)
-    make_field_type(source_tmp       , float_type, 1,       1)
-    make_field_type(phi_num_fmm      , float_type, 1,       1)
-
-    // temporarily here for amr_laplace test
-    make_field_type(amr_lap_source     , float_type, 1,       1)
-    make_field_type(amr_lap_tmp        , float_type, 1,       1)
-
-    class Fmm
-    {
+class Fmm
+{
 
     public: //Ctor:
+    static constexpr std::size_t Dim=3;
     using dims_t = types::vector_type<int,3>;
 
     using datablock_t    = DataBlock<3, node>;
@@ -58,6 +49,20 @@ using namespace domain;
     static constexpr int fmm_lBuffer=1; ///< Lower left buffer for interpolation
     static constexpr int fmm_rBuffer=1; ///< Lower left buffer for interpolation
 
+
+    REGISTER_FIELDS
+    (Dim,
+    (
+      (fmm_s            , float_type, 1,       1), 
+      (fmm_t            , float_type, 1,       1),
+      (coarse_target_sum, float_type, 1,       1),
+      (source_tmp       , float_type, 1,       1),
+      (phi_num_fmm      , float_type, 1,       1),
+      (amr_lap_source   , float_type, 1,       1),
+      (amr_lap_tmp      , float_type, 1,       1)
+    ))
+  
+   
     public:
         Fmm(int Nb)
         :lagrange_intrp(Nb),
@@ -65,23 +70,11 @@ using namespace domain;
         {
         }
 
-        //template<
-        //    template<size_t> class Source,
-        //    template<size_t> class Target,
-        //    template<size_t> class fmm_s,
-        //    template<size_t> class fmm_t
-        //    >
-        //void fmm_for_level(auto& domain_, int level)
-        //{
-        //    fmm_for_level_exec<Source, Target, fmm_s, fmm_t>(domain_, level, false);
-        //    //fmm_for_level_exec<Source, Target, fmm_s, fmm_t>(domain_, level, true);
-        //}
-
         template<
-            template<size_t> class Source,
-            template<size_t> class Target,
-            template<size_t> class fmm_s,
-            template<size_t> class fmm_t,
+            class Source,
+            class Target,
+            class fmm_s,
+            class fmm_t,
             class domain_t
             >
         void fmm_for_level(domain_t& domain_, int level, bool for_non_leaf=false)
@@ -168,8 +161,8 @@ using namespace domain;
         }
 
         template<
-            template<size_t> class s,
-            template<size_t> class t,
+            class s,
+            class t,
             class domain_t,
             class octant_itr_t
         >
@@ -224,8 +217,8 @@ using namespace domain;
         }
 
         template<
-            template<size_t> class s,
-            template<size_t> class t,
+            class s,
+            class t,
             class domain_t,
             class octant_itr_t
         >
@@ -254,8 +247,8 @@ using namespace domain;
         }
 
         template<
-            template<size_t> class f1,
-            template<size_t> class f2,
+            class f1,
+            class f2,
             class domain_t,
             class octant_itr_t
         >
@@ -281,8 +274,8 @@ using namespace domain;
         }
 
         template<
-            template<size_t> class f1,
-            template<size_t> class f2,
+            class f1,
+            class f2,
             class domain_t,
             class octant_itr_t
         >
@@ -307,7 +300,7 @@ using namespace domain;
 
         }
 
-        template<template<size_t> class f,
+        template<class f,
             class domain_t,
             class octant_itr_t
         >
@@ -349,8 +342,8 @@ using namespace domain;
         }
 
         template<
-            template<size_t> class from,
-            template<size_t> class to,
+            class from,
+            class to,
             class domain_t,
             class octant_itr_t
         >
@@ -375,7 +368,7 @@ using namespace domain;
 
         }
 
-        template< template<size_t> class fmm_t,
+        template< class fmm_t,
             class domain_t,
             class octant_itr_t
             >
@@ -405,7 +398,7 @@ using namespace domain;
             }
         }
 
-        template< template<size_t> class fmm_s,
+        template< class fmm_s,
             class domain_t,
             class octant_itr_t
         >
@@ -447,8 +440,8 @@ using namespace domain;
         }
 
         template<
-            template<size_t> class S,
-            template<size_t> class T,
+            class S,
+            class T,
             class octant_t,
             class octant_itr_t
         >

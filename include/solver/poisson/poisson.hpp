@@ -77,12 +77,12 @@ public:
      */
 
     template<
-        template<std::size_t>class Source,
-        template<std::size_t>class Target,
-        template<std::size_t>class fmm_s,
-        template<std::size_t>class fmm_t,
-        template<std::size_t>class coarse_target_sum,
-        template<std::size_t>class source_tmp
+        class Source,
+        class Target,
+        class fmm_s,
+        class fmm_t,
+        class coarse_target_sum,
+        class source_tmp
             >
     void apply_amr_lgf()
     {
@@ -160,8 +160,8 @@ public:
 
     }
     template<
-        template<std::size_t>class Source,
-        template<std::size_t>class Target
+        class Source,
+        class Target
         >
     void level_convolution_fft( int level)
     {
@@ -207,9 +207,9 @@ public:
     }
 
     template<
-        template<std::size_t>class target,
-        template<std::size_t>class target_tmp,
-        template<std::size_t>class diff_target
+        class target,
+        class target_tmp,
+        class diff_target
     >
     void apply_amr_laplace()
     {
@@ -275,15 +275,15 @@ public:
     }
 
     template<
-        template<std::size_t>class Source,
-        template<std::size_t>class Target,
-        template<std::size_t>class fmm_s,
-        template<std::size_t>class fmm_t,
-        template<std::size_t>class Target_fmm,
-        template<std::size_t>class coarse_target_sum,
-        template<std::size_t>class source_tmp,
-        template<std::size_t>class amr_lap_target,
-        template<std::size_t>class amr_lap_tmp
+        class Source,
+        class Target,
+        class fmm_s,
+        class fmm_t,
+        class Target_fmm,
+        class coarse_target_sum,
+        class source_tmp,
+        class amr_lap_target,
+        class amr_lap_tmp
     >
     void solve()
     {
@@ -296,7 +296,7 @@ public:
      *  assign it to the parent. Coarsification is an average, ie 2nd order
      *  accurate.
      */
-    template<template<std::size_t>class Field >
+    template<class Field >
     void coarsify(octant_t* _parent)
     {
         auto parent = _parent;
@@ -334,7 +334,7 @@ public:
      *  @detail Given a parent field, interpolate it onto the child meshes.
      *  Interpolation is 2nd order accurate.
      */
-    template<template<std::size_t>class Field >
+    template<class Field >
     void interpolate(const octant_t* _b_parent)
     {
         for (int i = 0; i < _b_parent->num_children(); ++i)

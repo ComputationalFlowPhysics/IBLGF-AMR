@@ -52,7 +52,7 @@ namespace fmm
 
     public: // functionalities
 
-        template<template<size_t> class field,
+        template<class field,
             typename octant_t>
         void nli_intrp_node(octant_t parent)
             {
@@ -135,7 +135,7 @@ namespace fmm
         }
 
 
-        template<template<size_t> class field, typename octant_t>
+        template< class field, typename octant_t>
         void nli_antrp_node(octant_t parent)
             {
                 auto& parent_linalg_data = parent->data()->template get_linalg_data<field>();

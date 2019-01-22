@@ -14,19 +14,11 @@
 #include <domain/mpi/task_manager.hpp>
 #include <domain/mpi/server_base.hpp>
 #include <domain/mpi/query_registry.hpp>
+#include "serverclient_traits.hpp"
 
 namespace domain
 {
 
-template<class Domain>
-struct ServerTraits
-{
-    using domain_t = Domain;
-    using key_t  = typename  domain_t::key_t;
-    using key_query_t = Task<tags::key_query,std::vector<key_t>>;
-    using rank_query_t = Task<tags::key_query,std::vector<int>>;
-    using task_manager_t = TaskManager<key_query_t, rank_query_t>;
-};
 
 /** @brief ProcessType Server 
  *  Master/Server process.
@@ -35,7 +27,7 @@ struct ServerTraits
  *  the client/worker processes.
  */
 template<class Domain>
-class Server : public ServerBase<ServerTraits<Domain>>
+class Server : public ServerBase<ServerClientTraits<Domain>>
 {
 
 public:
@@ -45,13 +37,16 @@ public:
     using key_t  = typename  domain_t::key_t;
     using ctask_t = ComputeTask<key_t>;
 
-    using trait_t =  ServerTraits<Domain>;
+    using trait_t =  ServerClientTraits<Domain>;
     using super_type = ServerBase<trait_t>;
      
     using rank_query_t = typename trait_t::rank_query_t;
     using key_query_t = typename trait_t::key_query_t;
     using task_manager_t =typename trait_t::task_manager_t;
-public:
+
+public: //Ctors
+
+    using super_type::ServerBase;
 
     Server(const Server&  other) = default;
     Server(      Server&& other) = default;

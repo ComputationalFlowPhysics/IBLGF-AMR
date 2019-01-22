@@ -9,6 +9,8 @@
 #include <domain/mpi/client_base.hpp>
 #include <domain/mpi/query_registry.hpp>
 #include <domain/mpi/task_manager.hpp>
+#include <domain/mpi/server_base.hpp>
+#include "serverclient_traits.hpp"
 
 namespace domain
 {
@@ -17,21 +19,11 @@ namespace domain
 using namespace sr_mpi;
 
 
-template<class Domain>
-struct ClientTraits 
-{
-    using domain_t = Domain;
-    using key_t  = typename  domain_t::key_t;
-    using key_query_t = Task<tags::key_query,std::vector<key_t>>;
-    using rank_query_t = Task<tags::key_query,std::vector<int>>;
-    using task_manager_t = TaskManager<key_query_t, rank_query_t>;
-};
-
 /** @brief ProcessType Client 
  *  Worker process, who stores only a sub-domain 
  */
 template<class Domain>
-class Client : public ClientBase<ClientTraits<Domain>>
+class Client : public ClientBase<ServerClientTraits<Domain>>
 {
 
 public:
@@ -42,11 +34,18 @@ public:
     using key_t  = typename  domain_t::key_t;
     using key_coord_t = typename key_t::coordinate_type;
 
-    using trait_t =  ClientTraits<Domain>;
+    using trait_t =  ServerClientTraits<Domain>;
+    using super_type = ClientBase<trait_t>;
+
     using key_query_t = typename trait_t::key_query_t;
     using rank_query_t = typename trait_t::rank_query_t;
     using task_manager_t =typename trait_t::task_manager_t;
- 
+
+    using intra_client_server_t = ServerBase<trait_t>;
+
+ protected:
+    using super_type::comm_;
+    using super_type::task_manager_;
 
 
 public:
@@ -57,7 +56,7 @@ public:
     ~Client() = default;
 
     Client(Domain* _d, communicator_type _comm =communicator_type())
-    :domain_(_d), comm_(_comm)
+    :domain_(_d), intra_server(this->task_manager_)
     {
         boost::mpi::communicator world;
         std::cout<<"I am a client on rank: "<<world.rank()<<std::endl;
@@ -82,7 +81,7 @@ public:
     void rank_query()
     {
         auto& send_comm=
-            this->task_manager_.template send_communicator<key_query_t>();
+            task_manager_->template send_communicator<key_query_t>();
 
 
         key_coord_t c(comm_.rank()*4);
@@ -106,37 +105,58 @@ public:
         }
     }
 
-    //template<class Field>
-    //void communicate_induced_fields()
-    //{
-    //    //send message:
-    //    
-    //    auto& send_comm=
-    //        this->task_manager_.template send_communicator<key_query_t>();
+    template<class Field>
+    void communicate_induced_fields()
+    {
+        //send message:
+        
+        auto& send_comm=
+            task_manager_->template send_communicator<key_query_t>();
 
-    //    int rank=comm_.rank();
-    //    int rank_other=rank==1?2:1;
+        int rank=comm_.rank();
+        int rank_other=rank==1?2:1;
 
-    //    std::vector<int> sendDat(3,rank);
-    //    std::vector<int> recvData;
+        std::vector<int> sendDat(3,rank);
+        std::vector<int> recvData;
 
-    //    auto task= send_comm.post_task(&task_dat, rank_other);
-    //    QueryRegistry<key_query_t, rank_query_t> mq;
-    //    mq.register_recvMap([&recvData](int i){return &recvData;} );
+        auto task= send_comm.post_task(&sendDat, rank_other);
+
+        QueryRegistry<key_query_t, rank_query_t> mq;
+        mq.register_recvMap([&recvData](int i){return &recvData;} );
+
+        for (auto it  = domain_.begin_leafs();
+                  it != domain_.end_leafs(); ++it)
+        {
+
+           auto view(it->data()->node_field().domain_view());
+           auto& nodes_domain=it->data()->nodes_domain();
+           for(auto it2=nodes_domain.begin();it2!=nodes_domain.end();++it2 )
+           {
+
+           }
+        }
+
+        //Setup server to:
+        //inta_server.d
+        //InlineQueryRegistry<rank_query_t, key_query_t> mq(comm_.size());
+        //mq.register_completeFunc([this](auto _task, auto _answerData)
+        //{
+        //    this->get_octant_rank(_task, _answerData);
+        //});
+
+        //this->run_query(mq);
+
+        
 
 
-    //    //recv message:
-    //    
-
-
-    //}
+    }
 
 
 
 
 private:
     Domain* domain_;
-    communicator_type comm_;
+    intra_client_server_t intra_server;
 };
 
 }

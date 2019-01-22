@@ -82,7 +82,7 @@ public:  //Registry
 private:
     sendMap_functor_t sendMap_;
     recvMap_functor_t recvMap_;
-    complete_functor_t complete_;
+    complete_functor_t  complete_;
 
 };
 

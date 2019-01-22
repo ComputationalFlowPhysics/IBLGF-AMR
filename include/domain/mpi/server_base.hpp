@@ -10,18 +10,26 @@
 #include <boost/serialization/vector.hpp>
 
 #include "task_manager.hpp"
+#include "serverclient_base.hpp"
 
 namespace sr_mpi
 {
 
 template<class Traits>
-class ServerBase
+class ServerBase : public ServerClientBase<Traits>
 {
     
 public:
     using task_manager_t = typename Traits::task_manager_t;
+    using super_type  =ServerClientBase<Traits>;
+protected:
+
+    using super_type::comm_;
+    using super_type::task_manager_;
 
 public: // ctors
+
+    using super_type::ServerClientBase;
 
 	ServerBase(const ServerBase&) = default;
 	ServerBase(ServerBase&&) = default;
@@ -72,9 +80,9 @@ public: //members
 
     virtual void initialize()
     {
-        nConnections_=comm_.size()-1;
+        nConnections_=this->comm_.size()-1;
         clients_.clear();
-        for(int i =0;i<=nConnections_;++i)
+        for(int i =0;i<comm_.size();++i)
         {
             if(i==comm_.rank())continue;
             clients_.emplace(i);
@@ -91,7 +99,7 @@ public: //members
             do_tasks<QueryType>(tasks, _q);
             update_client_status();
 
-            if(task_manager_.all_done() && !connected())
+            if(task_manager_->all_done() && !connected())
                 break;
         }
     }
@@ -105,7 +113,7 @@ protected:
     {
         using recv_task_t = typename QueryType::recv_task_t;
         auto& recv_comm=
-            task_manager_.template recv_communicator<recv_task_t>();
+            task_manager_->template recv_communicator<recv_task_t>();
 
         recv_comm.start_communication();
         auto finished_tasks=recv_comm.finish_communication();
@@ -138,7 +146,7 @@ protected:
             if(_q.sendDataPtr(t->rank_other()))
             {
                 auto& send_comm=
-                    task_manager_.template send_communicator<send_t>();
+                    task_manager_->template send_communicator<send_t>();
                 auto task=send_comm.post_answer(t, 
                         _q.sendDataPtr(t->rank_other()));
 
@@ -147,7 +155,7 @@ protected:
 
         //Send answers
         auto& send_comm=
-            task_manager_.template send_communicator<send_t>();
+            task_manager_->template send_communicator<send_t>();
         send_comm.start_communication();
         send_comm.finish_communication();
     }
@@ -155,15 +163,18 @@ protected:
 
     void update_client_status()
     {
-        for(auto& client : clients_)
+        for(int i =0;i<comm_.size();++i)
         {
-            const auto tag=tag_gen().get<tags::connection>(client.rank);
-            if(auto ostatus= comm_.iprobe(client.rank,tag ) )
+            const auto tag=tag_gen().get<tags::connection>(i);
+            if(auto ostatus= comm_.iprobe(i,tag ) )
             {
-                const auto status=*ostatus;
-                bool conn;
-                comm_.recv(status.source(),tag,conn);
-                --nConnections_;
+                bool connect=false;
+                comm_.recv(i,tag,connect);
+                if(!connect)
+                {
+                    std::cout<<"DisConnected from "<<i<<std::endl;
+                    --nConnections_;
+                }
             }
         }
     }
@@ -182,11 +193,8 @@ protected:
     bool connected(){return nConnections_>0;}
 
 protected:
-
-    boost::mpi::communicator comm_;
     int nConnections_=0;
     client_set_t clients_;
-    task_manager_t task_manager_;
 
 };
 

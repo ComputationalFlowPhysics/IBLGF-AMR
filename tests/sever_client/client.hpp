@@ -1,5 +1,5 @@
-#ifndef INCLUDED_CLIENT_XX_HPP
-#define INCLUDED_CLIENT_XX_HPP
+#ifndef INCLUDED_CLIENT_TEST_HPP
+#define INCLUDED_CLIENT_TEST_HPP
 
 #include <domain/mpi/task_manager.hpp>
 #include <domain/mpi/client_base.hpp>
@@ -23,6 +23,9 @@ public: // aliases
     using key_query_t = typename trait_t::key_query_t;
     using task_manager_t = typename trait_t::task_manager_t;
 
+ protected:
+    using ClientBase<ClientTraits>::comm_;
+    using ClientBase<ClientTraits>::task_manager_;
 public: // ctors
 
 	Client(const Client&) = default;
@@ -38,7 +41,7 @@ public:
     void test()
     {
         auto& send_comm=
-            this->task_manager_.template send_communicator<key_query_t>();
+            task_manager_->template send_communicator<key_query_t>();
 
         std::vector<int> task_dat(3,comm_.rank());
         std::vector<int> recvData;
@@ -49,8 +52,6 @@ public:
     }
 
 
-private:
-    boost::mpi::communicator comm_;
 
 };
 #endif 

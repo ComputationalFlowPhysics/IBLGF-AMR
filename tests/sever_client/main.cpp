@@ -18,7 +18,7 @@ int main(int argc, char *argv[])
 	boost::mpi::environment env(argc, argv);
 	boost::mpi::communicator world;
 
-    int severRank=2;
+    int severRank=0;
     if(world.rank()==severRank)
     {
         Server server;
@@ -28,6 +28,7 @@ int main(int argc, char *argv[])
     {
        const int nQueries=1;
        Client client(severRank);
+       client.connect();
        client.test() ;
        for(int i =1;i<=nQueries;++i)
        {

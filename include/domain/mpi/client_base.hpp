@@ -2,16 +2,22 @@
 #define INCLUDED_CLIENT_HPP
 
 #include "task_manager.hpp"
+#include "serverclient_base.hpp"
+#include "server_base.hpp"
 
 namespace sr_mpi
 {
 
 template<class Traits>
-class ClientBase
+class ClientBase : public ServerClientBase<Traits>
 {
 
 public: // aliases
     using task_manager_t = typename Traits::task_manager_t;
+protected:
+    using ServerClientBase<Traits>::comm_;
+    using ServerClientBase<Traits>::task_manager_;
+
 
 public: // ctors
 
@@ -33,9 +39,9 @@ public:
         using recv_task_t = typename QueryType::recv_task_t;
 
         auto& send_comm=
-            task_manager_.template send_communicator<send_task_t>();
+            task_manager_->template send_communicator<send_task_t>();
         auto& recv_comm=
-            task_manager_.template recv_communicator<recv_task_t>();
+            task_manager_->template recv_communicator<recv_task_t>();
         
         while(true)
         {
@@ -63,19 +69,21 @@ public:
     }
 
 
-
     void disconnect()
     {
         const auto tag=tag_gen().get<tags::connection>(comm_.rank());
         comm_.send(server_rank_,tag, false);
+    }
+    void connect()
+    {
+        const auto tag=tag_gen().get<tags::connection>(comm_.rank());
+        comm_.send(server_rank_,tag, true);
     }
 
     const int& server() const noexcept{return server_rank_;}
     int& server() noexcept{return server_rank_;}
 
 protected:
-    boost::mpi::communicator comm_;
-    task_manager_t task_manager_;
     int server_rank_;
 
 };

@@ -78,22 +78,40 @@ struct DecomposistionTest:public SetupBase<DecomposistionTest,parameters>
         if(domain_.is_server()) return ;
         std::cout<<"Initializing on rank:"<<world.rank()<<std::endl;
         auto center = (domain_.bounding_box().max() -
-                       domain_.bounding_box().min()-1) / 2.0 +
+                       domain_.bounding_box().min()) / 2.0 +
                        domain_.bounding_box().min();
 
         const int nRef = simulation_.dictionary_->
             template get_or<int>("nLevels",0);
 
-        center+=0.5/std::pow(2,nRef);
+
+        for(int l=0;l<nRef;++l)
+        {
+            for (auto it  = domain_.begin_leafs();
+                    it != domain_.end_leafs(); ++it)
+            {
+                auto b=it->data()->descriptor();
+
+                const auto lower((center )/2-2 ), upper((center )/2+2 - b.extent());
+                b.grow(lower, upper);
+                if(b.is_inside( center * pow(2.0,l))
+                   && it->refinement_level()==l
+                  )
+                {
+                    domain_.refine(it);
+                }
+            }
+        }
+
+        //Adapt center to always have peak value in a cell-center
+        center+=0.5/std::pow(2,nRef); 
         const float_type a  = 10.;
         const float_type a2 = a*a;
         const float_type dx_base = domain_.dx_base();
 
-
         for (auto it  = domain_.begin_leafs();
                   it != domain_.end_leafs(); ++it)
         {
-
             auto dx_level =  dx_base/std::pow(2,it->refinement_level());
             auto scaling =  std::pow(2,it->refinement_level());
 

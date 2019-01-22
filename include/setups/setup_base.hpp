@@ -15,7 +15,6 @@
 #include<utilities/interpolation.hpp>
 #include<solver/poisson/poisson.hpp>
 
-
 using namespace domain;
 using namespace octree;
 using namespace types;
@@ -28,18 +27,22 @@ class SetupBase : public SetupTraits
 
 public:
     using SetupTraits::Dim;
-
-
-    using field_tuple=typename domain::tuple_utils::concat
-                      <
-                          typename fmm::Fmm::fields_tuple_t
-                      >::type;
+public:
+    REGISTER_FIELDS
+    (Dim,
+    (
+      (coarse_target_sum, float_type, 1, 1),
+      (source_tmp       , float_type, 1, 1),
+      (fmm_s,             float_type, 1, 1), 
+      (fmm_t,             float_type, 1, 1)
+    ))
+    using field_tuple=fields_tuple_t;
+public:
 
     
     template<class... DataFieldType>
     using db_template = domain::DataBlock<Dim, node, 
                                 DataFieldType...>;
-
     template<class userFields>
     using datablock_template_t =
         typename domain::tuple_utils::make_from_tuple
@@ -49,15 +52,23 @@ public:
               <field_tuple,userFields>::type
         >::type;
     
-    using user_fields = typename SetupTraits::fields_tuple_t;
+public: //Trait types to be used by others
+    using user_fields   = typename SetupTraits::fields_tuple_t;
+    using datablock_t   = datablock_template_t<user_fields>;
+    using coordinate_t  = typename datablock_t::coordinate_type;
+    using domain_t      = domain::Domain<Dim,datablock_t>;
+    using simulation_t  = Simulation<domain_t>;
 
-    using datablock_t = datablock_template_t<user_fields>;
+    using Fmm_t = Fmm<SetupBase>;
 
-    using coordinate_t       = typename datablock_t::coordinate_type;
-    using domain_t           = domain::Domain<Dim,datablock_t>;
-    using simulation_t    = Simulation<domain_t>;
+    using poisson_solver_t = solver::PoissonSolver
+                             <
+                                 SetupBase,
+                                 coarse_target_sum,
+                                 source_tmp  
+                             >;
 
-
+public: //Ctor
     SetupBase(Dictionary* _d)
     :simulation_(_d->get_dictionary("simulation_parameters")),
      domain_(simulation_.domain_)

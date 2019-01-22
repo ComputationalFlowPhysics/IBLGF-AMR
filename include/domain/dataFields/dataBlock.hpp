@@ -17,7 +17,7 @@
 namespace domain
 {
 
-template<std::size_t Dim,
+template<int Dim,
          template<class >class NodeType,
          class... DataFieldType>
 class DataBlock : public  BlockDescriptor<int, Dim>
@@ -32,7 +32,6 @@ public: //member types
     using field_type_iterator_t = tuple_utils::TypeIterator<DataFieldType...>;
     using node_field_type =  DataField<node_t,Dim>;
     using buffer_type = typename node_field_type::buffer_d_t;
-
 
     using node_itertor = typename std::vector<node_t>::iterator;
     using node_const_iterator = typename std::vector<node_t>::const_iterator;

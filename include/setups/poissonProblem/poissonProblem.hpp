@@ -26,12 +26,6 @@
 #include<setups/setup_base.hpp>
 
 
-using namespace domain;
-using namespace octree;
-using namespace types;
-using namespace dictionary;
-using namespace fft;
-using namespace fmm;
 
 
 struct parameters
@@ -46,18 +40,15 @@ struct parameters
          (source           , float_type, 1,       1),
          (phi_exact        , float_type, 1,       1),
          (error            , float_type, 1,       1),
+         (amr_lap_source   , float_type, 1,       1),
          (error_lap_source , float_type, 1,       1)
     ))
 };
-
 
 struct PoissonProblem: public SetupBase<PoissonProblem,parameters>
 {
 
     using super_type =SetupBase<PoissonProblem,parameters>;
-    using super_type::simulation_t;
-    using super_type::domain_t;
-    using super_type::coordinate_t;
 
     PoissonProblem(Dictionary* _d)
     :super_type(_d)
@@ -85,7 +76,7 @@ struct PoissonProblem: public SetupBase<PoissonProblem,parameters>
             {
                 auto b=it->data()->descriptor();
 
-                coordinate_t lower((center )/2-2 ), upper((center )/2+2 - b.extent());
+                const auto lower((center )/2-2 ), upper((center )/2+2 - b.extent());
                 b.grow(lower, upper);
                 if(b.is_inside( center * pow(2.0,l))
                    && it->refinement_level()==l
@@ -161,13 +152,10 @@ struct PoissonProblem: public SetupBase<PoissonProblem,parameters>
     void run()
     {
 
-        solver::PoissonSolver<simulation_t> psolver(&this->simulation_);
-        psolver.solve<source, phi_num,
-            Fmm::fmm_s, Fmm::fmm_t, Fmm::phi_num_fmm,
-            Fmm::coarse_target_sum, Fmm::source_tmp,
-            Fmm::amr_lap_source, Fmm::amr_lap_tmp>();
+        poisson_solver_t psolver(&this->simulation_);
+        psolver.solve<source, phi_num>();
+        psolver.laplace_diff<phi_num,amr_lap_source>();
 
-        //psolver.solve<source, phi_num>();
         //compute_errors();
         this->simulation_.write("solution.vtk");
         this->pcout << "Writing solution " << std::endl;
@@ -176,64 +164,64 @@ struct PoissonProblem: public SetupBase<PoissonProblem,parameters>
 
 
     /** @brief Compute L2 and LInf errors */
-    //void compute_errors()
-    //{
+    void compute_errors()
+    {
 
-    //    const float_type dx_base=domain_.dx_base();
+        const float_type dx_base=domain_.dx_base();
 
-    //    auto L2   = 0.; auto LInf = -1.0; int count=0;
-    //    for (auto it_t  = domain_.begin_leafs();
-    //         it_t != domain_.end_leafs(); ++it_t)
-    //    {
+        auto L2   = 0.; auto LInf = -1.0; int count=0;
+        for (auto it_t  = domain_.begin_leafs();
+             it_t != domain_.end_leafs(); ++it_t)
+        {
 
-    //        int refinement_level = it_t->refinement_level();
-    //        double dx = dx_base/std::pow(2,refinement_level);
+            int refinement_level = it_t->refinement_level();
+            double dx = dx_base/std::pow(2,refinement_level);
 
-    //        auto& nodes_domain=it_t->data()->nodes_domain();
-    //        for(auto it2=nodes_domain.begin();it2!=nodes_domain.end();++it2 )
-    //        {
-    //            const float_type error_tmp = (
-    //                    it2->get<phi_num_fmm>() - it2->get<phi_exact>());
+            auto& nodes_domain=it_t->data()->nodes_domain();
+            for(auto it2=nodes_domain.begin();it2!=nodes_domain.end();++it2 )
+            {
+                const float_type error_tmp = (
+                        it2->get<phi_num>() - it2->get<phi_exact>());
 
 
-    //            it2->get<error>() = error_tmp;
-    //            L2 += error_tmp*error_tmp * (dx*dx*dx);
+                it2->get<error>() = error_tmp;
+                L2 += error_tmp*error_tmp * (dx*dx*dx);
 
-    //            if ( abs(error_tmp) > LInf)
-    //                LInf = abs(error_tmp);
+                if ( abs(error_tmp) > LInf)
+                    LInf = abs(error_tmp);
 
-    //            ++count;
-    //        }
-    //    }
-    //    pcout << "L2   = " << std::sqrt(L2)<< std::endl;
-    //    pcout << "LInf = " << LInf << std::endl;
+                ++count;
+            }
+        }
+        pcout << "L2   = " << std::sqrt(L2)<< std::endl;
+        pcout << "LInf = " << LInf << std::endl;
 
-    //    auto L2_source   = 0.; auto LInf_source = -1.0; count=0;
-    //    for (auto it_t  = domain_.begin_leafs();
-    //         it_t != domain_.end_leafs(); ++it_t)
-    //    {
+        auto L2_source   = 0.; auto LInf_source = -1.0; count=0;
+        for (auto it_t  = domain_.begin_leafs();
+             it_t != domain_.end_leafs(); ++it_t)
+        {
 
-    //        int refinement_level = it_t->refinement_level();
-    //        double dx = dx_base/std::pow(2,refinement_level);
+            int refinement_level = it_t->refinement_level();
+            double dx = dx_base/std::pow(2,refinement_level);
 
-    //        auto& nodes_domain=it_t->data()->nodes_domain();
-    //        for(auto it2=nodes_domain.begin();it2!=nodes_domain.end();++it2 )
-    //        {
-    //            const float_type error_tmp = (
-    //                    it2->get<amr_lap_source>() - it2->get<source>());
+            auto& nodes_domain=it_t->data()->nodes_domain();
+            for(auto it2=nodes_domain.begin();it2!=nodes_domain.end();++it2 )
+            {
+                const float_type error_tmp = (
+                        it2->get<amr_lap_source>() - it2->get<source>());
 
-    //            it2->get<error_lap_source>() = error_tmp;
-    //            L2_source += error_tmp*error_tmp * (dx*dx*dx);
+                it2->get<error_lap_source>() = error_tmp;
+                L2_source += error_tmp*error_tmp * (dx*dx*dx);
 
-    //            if ( abs(error_tmp) > LInf_source)
-    //                LInf_source = abs(error_tmp);
+                if ( abs(error_tmp) > LInf_source)
+                    LInf_source = abs(error_tmp);
 
-    //            ++count;
-    //        }
-    //    }
-    //    pcout << "L2_source   = " << std::sqrt(L2_source)<< std::endl;
-    //    pcout << "LInf_source = " << LInf_source << std::endl;
-    //}
+                ++count;
+            }
+        }
+        pcout << "L2_source   = " << std::sqrt(L2_source)<< std::endl;
+        pcout << "LInf_source = " << LInf_source << std::endl;
+    }
 
 };
 

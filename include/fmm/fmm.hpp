@@ -36,33 +36,22 @@ namespace fmm
 
 using namespace domain;
 
+
+template<class Setup>
 class Fmm
 {
+public: //Ctor:
+    static constexpr std::size_t Dim=Setup::Dim;
 
-    public: //Ctor:
-    static constexpr std::size_t Dim=3;
-    using dims_t = types::vector_type<int,3>;
+    using dims_t = types::vector_type<int,Dim>;
+    using datablock_t  = typename Setup::datablock_t;
+    using block_dsrp_t = typename datablock_t::block_descriptor_type;
+    using domain_t = typename  Setup::domain_t;
 
-    using datablock_t    = DataBlock<3, node>;
-    using block_dsrp_t     = typename datablock_t::block_descriptor_type;
+    //Fields:
+    using fmm_s = typename Setup::fmm_s;
+    using fmm_t = typename Setup::fmm_t;
 
-    static constexpr int fmm_lBuffer=1; ///< Lower left buffer for interpolation
-    static constexpr int fmm_rBuffer=1; ///< Lower left buffer for interpolation
-
-
-    REGISTER_FIELDS
-    (Dim,
-    (
-      (fmm_s            , float_type, 1,       1), 
-      (fmm_t            , float_type, 1,       1),
-      (coarse_target_sum, float_type, 1,       1),
-      (source_tmp       , float_type, 1,       1),
-      (phi_num_fmm      , float_type, 1,       1),
-      (amr_lap_source   , float_type, 1,       1),
-      (amr_lap_tmp      , float_type, 1,       1)
-    ))
-  
-   
     public:
         Fmm(int Nb)
         :lagrange_intrp(Nb),
@@ -72,12 +61,11 @@ class Fmm
 
         template<
             class Source,
-            class Target,
-            class fmm_s,
-            class fmm_t,
-            class domain_t
+            class Target
             >
-        void fmm_for_level(domain_t& domain_, int level, bool for_non_leaf=false)
+        void fmm_for_level(domain_t* domain_, 
+                           int level, 
+                           bool for_non_leaf=false)
         {
 
             clock_t fmm_start = clock();
@@ -163,10 +151,13 @@ class Fmm
         template<
             class s,
             class t,
-            class domain_t,
             class octant_itr_t
         >
-        void fmm_Bx(domain_t& domain_, int level, octant_itr_t o_start, octant_itr_t o_end, float_type dx_level)
+        void fmm_Bx(domain_t* domain_, 
+                    int level, 
+                    octant_itr_t o_start, 
+                    octant_itr_t o_end, 
+                    float_type dx_level)
         {
 
             auto o_1 = (*o_start);
@@ -219,10 +210,13 @@ class Fmm
         template<
             class s,
             class t,
-            class domain_t,
             class octant_itr_t
         >
-        void fmm_B0(domain_t& domain_, int level, octant_itr_t o_start, octant_itr_t o_end, float_type dx_level)
+        void fmm_B0(domain_t* domain_, 
+                    int level, 
+                    octant_itr_t o_start, 
+                    octant_itr_t o_end, 
+                    float_type dx_level)
         {
             int level_diff = 0;
             if (o_start->level() != o_end->level())
@@ -249,10 +243,13 @@ class Fmm
         template<
             class f1,
             class f2,
-            class domain_t,
             class octant_itr_t
         >
-        void fmm_add_equal(domain_t& domain_, int level, octant_itr_t o_start, octant_itr_t o_end, bool for_non_leaf)
+        void fmm_add_equal(domain_t* domain_, 
+                           int level, 
+                           octant_itr_t o_start, 
+                           octant_itr_t o_end, 
+                           bool for_non_leaf)
         {
 
             if (o_start->level() != o_end->level())
@@ -276,10 +273,13 @@ class Fmm
         template<
             class f1,
             class f2,
-            class domain_t,
             class octant_itr_t
         >
-        void fmm_minus_equal(domain_t& domain_, int level, octant_itr_t o_start, octant_itr_t o_end, bool for_non_leaf)
+        void fmm_minus_equal(domain_t* domain_, 
+                             int level, 
+                             octant_itr_t o_start, 
+                             octant_itr_t o_end, 
+                             bool for_non_leaf)
         {
 
             if (o_start->level() != o_end->level())
@@ -301,11 +301,12 @@ class Fmm
         }
 
         template<class f,
-            class domain_t,
             class octant_itr_t
         >
-        void fmm_init_zero(domain_t& domain_, int level,
-                octant_itr_t o_start, octant_itr_t o_end)
+        void fmm_init_zero(domain_t* domain_, 
+                           int level,
+                           octant_itr_t o_start, 
+                           octant_itr_t o_end)
         {
             auto o_1 = (*o_start);
             auto o_2 = (*o_end);
@@ -344,11 +345,13 @@ class Fmm
         template<
             class from,
             class to,
-            class domain_t,
             class octant_itr_t
         >
-        void fmm_init_copy(domain_t& domain_, int level,
-                octant_itr_t o_start, octant_itr_t o_end, bool for_non_leaf)
+        void fmm_init_copy(domain_t* domain_, 
+                           int level,
+                           octant_itr_t o_start, 
+                           octant_itr_t o_end, 
+                           bool for_non_leaf)
         {
             if (o_start->level() != o_end->level())
                 throw std::runtime_error("Level has to be the same");
@@ -369,11 +372,12 @@ class Fmm
         }
 
         template< class fmm_t,
-            class domain_t,
             class octant_itr_t
             >
-        void fmm_intrp(domain_t& domain_, int level,
-                octant_itr_t o_start, octant_itr_t o_end)
+        void fmm_intrp(domain_t* domain_, 
+                       int level,
+                       octant_itr_t o_start, 
+                       octant_itr_t o_end)
         {
             level--;
             auto o_1 = o_start->parent();
@@ -399,11 +403,12 @@ class Fmm
         }
 
         template< class fmm_s,
-            class domain_t,
             class octant_itr_t
         >
-        void fmm_antrp(domain_t& domain_, int level,
-                octant_itr_t o_start, octant_itr_t o_end)
+        void fmm_antrp(domain_t* domain_, 
+                       int level,
+                       octant_itr_t o_start, 
+                       octant_itr_t o_end)
         {
 
             // start with one level up and call the parents of each
@@ -445,10 +450,11 @@ class Fmm
             class octant_t,
             class octant_itr_t
         >
-        void fmm_fft(octant_t o_s, octant_itr_t o_t, int level_diff, float_type dx_level)
+        void fmm_fft(octant_t o_s, 
+                     octant_itr_t o_t, 
+                     int level_diff, 
+                     float_type dx_level)
         {
-            //FIXME just for the type
-            auto block_ = o_s->data()->template get<S>().real_block();
 
             const auto t_base = o_t->data()->template get<T>().
                                             real_block().base();

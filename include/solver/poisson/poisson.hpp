@@ -2,33 +2,18 @@
 #define IBLGF_INCLUDED_SOLVER_POISSON_HPP
 
 #include <iostream>
-#include <vector>
-#include <tuple>
-
 #include <algorithm>
-#include <list>
 #include <vector>
-#include <iostream>
-#include <random>
 #include <cmath>
-#include <functional>
-#include <cstring>
-#include <fftw3.h>
 
 // IBLGF-specific
 #include <global.hpp>
 #include <simulation.hpp>
 #include <domain/domain.hpp>
-#include <domain/dataFields/dataBlock.hpp>
-#include <domain/dataFields/datafield.hpp>
-#include <domain/octree/tree.hpp>
 #include <IO/parallel_ostream.hpp>
-#include <lgf/lgf.hpp>
-#include <fmm/fmm.hpp>
 
 #include "../../utilities/convolution.hpp"
 #include<utilities/cell_center_nli_intrp.hpp>
-#include<solver/poisson/poisson.hpp>
 
 namespace solver
 {
@@ -36,8 +21,11 @@ namespace solver
 
 using namespace domain;
 
-
-template<class Setup, class TempField1, class TempField2>
+/** @brief Poisson solver using lattice Green's functions. Convolutions 
+ *         are computed using FMM and near field interaction are computed
+ *         using blockwise fft-convolutions. 
+ */
+template<class Setup>
 class PoissonSolver 
 {
 
@@ -52,21 +40,15 @@ public: //member types
     using real_coordinate_type = typename domain_type::real_coordinate_type;
     using coordinate_type      = typename domain_type::coordinate_type;
 
-    //using coarse_target_sum= TempField1;
-    using source_tmp       = TempField2;
+    //Fields
     using coarse_target_sum = typename Setup::coarse_target_sum;
+    using source_tmp = typename Setup::source_tmp;
 
+    //FMM
     using Fmm_t =  typename Setup::Fmm_t;
 
     static constexpr int lBuffer=1; ///< Lower left buffer for interpolation
     static constexpr int rBuffer=1; ///< Lower left buffer for interpolation
-
-    REGISTER_FIELDS
-    (3,
-    (
-      (bla, float_type, 1, 1),
-      (bli       , float_type, 1, 1)
-    ))
 
     PoissonSolver(simulation_type* _simulation)
     :
@@ -80,18 +62,16 @@ public: //member types
 
 public:
 
-    /** @brief Solve the poisson equation using lattice Green's functions and
-     *         a block-refined mesh.
+    /** @brief Solve the poisson equation using lattice Green's functions on
+     *         a block-refined mesh for a given Source and Target field.
+     *
      *  @detail Lattice Green's functions are used for solving the poisson
-     *  equation. FFT is used for the level convolution's.
-     *  Interpolation/coarsification is used to project the solutions to fine
-     *  and coarse meshes, respectively.
+     *  equation. FMM is used for the level convolution's and the near field
+     *  convolutions are computed using FFT.
+     *  Second order interpolation and coarsification operators are used 
+     *  to project the solutions to fine and coarse meshes, respectively. 
      */
-
-    template<
-        class Source,
-        class Target
-        >
+    template< class Source, class Target >
     void apply_amr_lgf()
     {
         // allocate lgf
@@ -141,14 +121,19 @@ public:
                 if(it->is_leaf()) continue;
 
                 auto& cp1 = it ->data()->template get_linalg_data<Target>();
-                auto& cp2 = it ->data()->template get_linalg_data<coarse_target_sum>();
-                //std::cout<< cp2 << std::endl;
+                auto& cp2 = it ->data()->
+                    template get_linalg_data<coarse_target_sum>();
+
                 cp2 += cp1 * 1.0;
 
-                c_cntr_nli_.nli_intrp_node<coarse_target_sum, coarse_target_sum>(it);
+                c_cntr_nli_.nli_intrp_node<
+                            coarse_target_sum, coarse_target_sum
+                            >(it);
                 int refinement_level = it->refinement_level();
                 double dx = dx_base/std::pow(2,refinement_level);
-                c_cntr_nli_.add_source_correction<coarse_target_sum, source_tmp>(it, dx/2.0);
+                c_cntr_nli_.add_source_correction<
+                                        coarse_target_sum, source_tmp
+                                        >(it, dx/2.0);
             }
 
         }
@@ -167,6 +152,9 @@ public:
         }
 
     }
+
+
+    /** @brief Compute level interactions with FFT instead of FMM.  */
     template<
         class Source,
         class Target
@@ -214,10 +202,10 @@ public:
         }
     }
 
-    template<
-        class target,
-        class diff_target
-    >
+    /** @brief Compute the laplace operator of the target field and store
+     *         it in diff_target.
+     */
+    template< class target, class diff_target >
     void apply_amr_laplace()
     {
 
@@ -261,7 +249,8 @@ public:
                     for ( int i =1; i<s_extent[0]-1; ++i){
                         for ( int j = 1; j<s_extent[1]-1; ++j){
                             for ( int k = 1; k<s_extent[2]-1; ++k){
-                                diff_target_data(i,j,k)  = target_data(i,j,k) * -6.0;
+                                diff_target_data(i,j,k)  = 
+                                    target_data(i,j,k) * -6.0;
                                 diff_target_data(i,j,k) += target_data(i,j,k-1);
                                 diff_target_data(i,j,k) += target_data(i,j,k+1);
                                 diff_target_data(i,j,k) += target_data(i,j-1,k);
@@ -280,10 +269,7 @@ public:
         }
     }
 
-    template<
-        class Source,
-        class Target
-    >
+    template< class Source, class Target >
     void solve()
     {
         apply_amr_lgf<Source, Target>();
@@ -366,14 +352,12 @@ public:
         }
     }
 
-
 private:
     domain_type*                        domain_;    ///< domain
     fft::Convolution                    conv_;      ///< fft convolution
-    Fmm_t                            fmm_;       ///< fast-multipole
-    interpolation::cell_center_nli      c_cntr_nli_;
-
-    parallel_ostream::ParallelOstream pcout;
+    Fmm_t                               fmm_;       ///< fast-multipole
+    interpolation::cell_center_nli      c_cntr_nli_;///< Lagrange Interpolation
+    parallel_ostream::ParallelOstream   pcout;      ///< parallel cout
 
 };
 

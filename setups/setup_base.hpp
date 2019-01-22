@@ -2,17 +2,10 @@
 #define IBLGF_INCLUDED_SETUP_BASE_HPP
 
 #include <global.hpp>
-#include <simulation.hpp>
-#include <domain/domain.hpp>
-#include <domain/dataFields/dataBlock.hpp>
-#include <domain/dataFields/datafield.hpp>
-#include <domain/octree/tree.hpp>
-#include <IO/parallel_ostream.hpp>
-#include <lgf/lgf.hpp>
-#include <fmm/fmm.hpp>
 
-#include<utilities/convolution.hpp>
-#include<utilities/interpolation.hpp>
+#include <domain/domain.hpp>
+#include <simulation.hpp>
+#include <fmm/fmm.hpp>
 #include<solver/poisson/poisson.hpp>
 
 using namespace domain;
@@ -21,13 +14,17 @@ using namespace types;
 using namespace fmm;
 using namespace dictionary;
 
+/**  @brief Base class for a setup. Provides all the neccessary default fields
+ *          and aliases for datablock, domain and simulation.
+ */
 template<class Setup, class SetupTraits>
 class SetupBase : public SetupTraits
 {
 
-public:
+public: 
     using SetupTraits::Dim;
-public:
+
+public: //default fields
     REGISTER_FIELDS
     (Dim,
     (
@@ -37,9 +34,8 @@ public:
       (fmm_t,             float_type, 1, 1)
     ))
     using field_tuple=fields_tuple_t;
-public:
 
-    
+public: //datablock
     template<class... DataFieldType>
     using db_template = domain::DataBlock<Dim, node, 
                                 DataFieldType...>;
@@ -52,6 +48,7 @@ public:
               <field_tuple,userFields>::type
         >::type;
     
+
 public: //Trait types to be used by others
     using user_fields   = typename SetupTraits::fields_tuple_t;
     using datablock_t   = datablock_template_t<user_fields>;
@@ -60,30 +57,23 @@ public: //Trait types to be used by others
     using simulation_t  = Simulation<domain_t>;
 
     using Fmm_t = Fmm<SetupBase>;
+    using poisson_solver_t = solver::PoissonSolver<SetupBase>;
 
-    using poisson_solver_t = solver::PoissonSolver
-                             <
-                                 SetupBase,
-                                 coarse_target_sum,
-                                 source_tmp  
-                             >;
-
-public: //Ctor
+public: //Ctors
     SetupBase(Dictionary* _d)
     :simulation_(_d->get_dictionary("simulation_parameters")),
      domain_(simulation_.domain_)
     {
         pcout << "\n Setup:  LGF ViewTest \n" << std::endl;
         pcout << "Simulation: \n" << simulation_    << std::endl;
-        //this->initialize();
     }
 
 
 protected:
 
-    simulation_t                        simulation_;
-    domain_t&                           domain_;
-    parallel_ostream::ParallelOstream   pcout;
+    simulation_t                        simulation_; ///< simulation
+    domain_t&                           domain_;     ///< Domain reference 
+    parallel_ostream::ParallelOstream   pcout;       ///< parallel cout
 };
 
 

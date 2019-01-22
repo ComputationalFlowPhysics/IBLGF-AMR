@@ -28,7 +28,10 @@
 
 
 
-struct parameters
+/**  @brief Parameters, for the PoissonProblem setup
+ *          and aliases for datablock, domain and simulation.
+ */
+struct ParametersPoissonProblem
 {
     static constexpr std::size_t Dim= 3;
     REGISTER_FIELDS
@@ -45,11 +48,17 @@ struct parameters
     ))
 };
 
-struct PoissonProblem: public SetupBase<PoissonProblem,parameters>
+
+/**  @brief Test-setup to solve the poisson problem in 3d using manufactured
+ *          solutions.
+ */
+struct PoissonProblem: public SetupBase<PoissonProblem,ParametersPoissonProblem>
 {
 
-    using super_type =SetupBase<PoissonProblem,parameters>;
+public: //member types
+    using super_type =SetupBase<PoissonProblem,ParametersPoissonProblem>;
 
+public: //Ctor
     PoissonProblem(Dictionary* _d)
     :super_type(_d)
     {

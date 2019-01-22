@@ -101,7 +101,7 @@ struct select_tuple_element_impl;
 template<class Tuple, size_t... Is>
 struct select_tuple_element_impl<Tuple, std::index_sequence<Is...>>
 {
-    using tuple_t = std::tuple<typename std::tuple_element<Is, Tuple>::type...>;
+    using type = std::tuple<typename std::tuple_element<Is, Tuple>::type...>;
 };
 
 /**
@@ -110,7 +110,8 @@ struct select_tuple_element_impl<Tuple, std::index_sequence<Is...>>
 template<class Tuple,std::size_t N=std::tuple_size<Tuple>::value>
 struct select_tuple_elements
 {
-    using type=select_tuple_element_impl<Tuple, std::make_index_sequence<N>>;
+    using type=typename select_tuple_element_impl<Tuple, 
+          std::make_index_sequence<N>>::type;
 
 };
 

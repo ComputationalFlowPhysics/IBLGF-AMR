@@ -26,50 +26,46 @@
 #include<utilities/interpolation.hpp>
 #include<solver/poisson/poisson.hpp>
 
+#include"../../setups/setup_base.hpp"
 
 const int Dim = 3;
 
-using namespace domain;
-using namespace octree;
-using namespace types;
-using namespace dictionary;
-using namespace fft;
+struct parameters
+{
+    static constexpr std::size_t Dim= 3;
+    REGISTER_FIELDS
+    (
+    Dim,
+     (
+        //name               type     lBuffer.  hBuffer
+         (phi_num          , float_type, 1,       1), 
+         (source           , float_type, 1,       1),
+         (phi_exact        , float_type, 1,       1),
+         (error            , float_type, 1,       1),
+         (amr_lap_source   , float_type, 1,       1),
+         (error_lap_source , float_type, 1,       1)
+    ))
+};
 
-struct DecomposistionTest
+struct DecomposistionTest:public SetupBase<DecomposistionTest,parameters>
 {
 
-    static constexpr int Dim = 3;
-
-    //              name            type  lBuffer   hBuffer
-    make_field_type(phi_num,    float_type, 1,       1)
-    make_field_type(source,     float_type, 1,       1)
-    make_field_type(phi_exact,  float_type, 1,       1)
-    make_field_type(error,      float_type, 1,       1)
-
-    using datablock_t = DataBlock<  Dim, node,
-                                    phi_num,
-                                    source,
-                                    phi_exact,
-                                    error
-                                 >;
-
-    using domain_t = domain::Domain<Dim,datablock_t>;
+    using super_type =SetupBase<DecomposistionTest,parameters>;
 
     DecomposistionTest(Dictionary* _d)
-    :simulation_(_d->get_dictionary("simulation_parameters")),
-     domain_(simulation_.domain_)
+    :super_type(_d)
     {
+
         pcout << "\n Setup:  Test - Domain decomposition \n" << std::endl;
         pcout << "Simulation: \n" << simulation_    << std::endl;
         domain_.distribute();
-
         this->initialize();
     }
+
 
     void run()
     {
         domain_.test();
-
     }
 
 
@@ -136,16 +132,6 @@ struct DecomposistionTest
             simulation_.write("solution.vtk");
     }
 
-
- 
-
-private:
-
-    Simulation<domain_t>              simulation_;
-    domain_t&                         domain_;
-
-    parallel_ostream::ParallelOstream pcout;
-    lgf::LGF<lgf::Lookup>             lgf_;
 };
 
 

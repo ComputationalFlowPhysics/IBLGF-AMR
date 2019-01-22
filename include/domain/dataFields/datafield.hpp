@@ -12,6 +12,13 @@
 #include <domain/dataFields/array_ref.hpp>
 #include <domain/dataFields/view.hpp>
 
+#include <boost/preprocessor/tuple/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/repetition/enum.hpp>
+#include <boost/preprocessor/tuple/enum.hpp>
+#include <boost/preprocessor/repetition/repeat.hpp>
+#include <boost/preprocessor/tuple/pop_front.hpp>
+#include <tuple>
 
 namespace domain
 {
@@ -29,7 +36,6 @@ public: //member types
     using vector_type = types::vector_type<T, Dim>;
     using buffer_d_t = vector_type<int>;
     using super_type = BlockDescriptor<int, Dim>;
-    static constexpr int dimension(){return Dim;}
 
     using block_type = BlockDescriptor<int,Dim>;
     using coordinate_t = typename block_type::base_t;
@@ -46,11 +52,6 @@ public: //Ctors:
     DataField(DataField&& rhs)=default;
 	DataField& operator=(DataField&&) & = default;
 
-    //DataField(size_type _size, DataType _initValue=0)
-    //{
-    //    data_.resize(_size);
-    //    std::fill(data_.begin(), data_.end(),_initValue);
-    //}
 
     DataField(const buffer_d_t& _lBuffer, const buffer_d_t& _hBuffer)
     : lowBuffer_(_lBuffer), highBuffer_(_hBuffer)
@@ -206,12 +207,11 @@ protected: //protected memeber:
 
 #define STRINGIFY(X) #X
 
-#define make_field_type_nb(key, DataType)                                   \
-template<std::size_t _Dim>                                                  \
-class key : public DataField<DataType,_Dim>                                 \
+#define make_field_type_nb(Dim,key, DataType)                               \
+class key : public DataField<DataType,Dim>                                  \
 {                                                                           \
     public:                                                                 \
-    using data_field_t=DataField<DataType,_Dim>;                            \
+    using data_field_t=DataField<DataType,Dim>;                             \
     static constexpr const char* name_= STRINGIFY(key);                     \
     key (): data_field_t()                                                  \
     {                                                                       \
@@ -223,12 +223,11 @@ class key : public DataField<DataType,_Dim>                                 \
 
 
 
-#define make_field_type_b(key, DataType, lBuffer, hBuffer)                  \
-template<std::size_t _Dim>                                                  \
-class key : public DataField<DataType,_Dim>                                 \
+#define make_field_type_b(Dim,key, DataType, lBuffer, hBuffer)              \
+class key : public DataField<DataType,Dim>                                  \
 {                                                                           \
     public:                                                                 \
-    using data_field_t=DataField<DataType,_Dim>;                            \
+    using data_field_t=DataField<DataType,Dim>;                             \
     static constexpr const char* name_= STRINGIFY(key);                     \
     key (): data_field_t(lBuffer, hBuffer)                                  \
     {                                                                       \
@@ -239,15 +238,48 @@ class key : public DataField<DataType,_Dim>                                 \
 
 
 //Dummy marco for three params
-#define FOO3(DataType, lBuffer, hBuffer) bla
+#define FOO3(Dim,DataType, lBuffer, hBuffer) bla
 
-#define GET_FIELD_MACRO(_1,_2,_3,_4,NAME,...) NAME
+#define GET_FIELD_MACRO(_1,_2,_3,_4,_5,NAME,...) NAME
 #define make_field_type(...)                                                \
 GET_FIELD_MACRO(__VA_ARGS__,                                                \
                 make_field_type_b,                                          \
                 FOO3,                                                       \
                 make_field_type_nb)                                         \
                 (__VA_ARGS__)                                               \
+
+
+
+#define COMMA ,
+
+#define FIELD_N(Dim, FIELD_TUPLE)\
+make_field_type(Dim,BOOST_PP_TUPLE_ENUM(BOOST_PP_TUPLE_SIZE(FIELD_TUPLE), FIELD_TUPLE))
+
+#define FIELD_DECL(z, n, FIELD_TUPLES)\
+FIELD_N(BOOST_PP_TUPLE_ELEM(0, FIELD_TUPLES),BOOST_PP_TUPLE_ELEM(n, BOOST_PP_TUPLE_ELEM(1,FIELD_TUPLES)))
+
+#define FIELD_NAME_N(z, n, FIELD_TUPLES) \
+COMMA \
+BOOST_PP_TUPLE_ELEM(0,BOOST_PP_TUPLE_ELEM(n, FIELD_TUPLES))
+
+#define MAKE_TUPLE_ALIAS(FIELD_TUPLES)\
+    using fields_tuple_t=std::tuple< \
+    BOOST_PP_TUPLE_ELEM(0,BOOST_PP_TUPLE_ELEM(0,FIELD_TUPLES)) \
+    BOOST_PP_REPEAT(BOOST_PP_TUPLE_SIZE(BOOST_PP_TUPLE_POP_FRONT(FIELD_TUPLES)),\
+                    FIELD_NAME_N, BOOST_PP_TUPLE_POP_FRONT(FIELD_TUPLES)) \
+    >;\
+
+
+#define MAKE_PARAM_CLASS(NAME, FIELD_TUPLES)\
+struct NAME{\
+    MAKE_TUPLE_ALIAS(FIELD_TUPLES) \
+};
+
+
+#define REGISTER_FIELDS(Dim,FIELD_TUPLES)\
+BOOST_PP_REPEAT(BOOST_PP_TUPLE_SIZE(FIELD_TUPLES), FIELD_DECL, (Dim, FIELD_TUPLES))\
+MAKE_TUPLE_ALIAS(FIELD_TUPLES)
+
 
 
 } //namespace domain

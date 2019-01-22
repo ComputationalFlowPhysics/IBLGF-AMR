@@ -26,44 +26,57 @@
 #include <lgf/lgf.hpp>
 #include <fmm/fmm.hpp>
 
-//#include<utilities/convolution.hpp>
 #include "../../utilities/convolution.hpp"
-#include<utilities/interpolation.hpp>
+#include<utilities/cell_center_nli_intrp.hpp>
 #include<solver/poisson/poisson.hpp>
 
 namespace solver
 {
 
-template<class Simulation>
-class PoissonSolver
+
+using namespace domain;
+
+
+template<class Setup, class TempField1, class TempField2>
+class PoissonSolver 
 {
 
 public: //member types
-    using simulation_type      = Simulation;
-    using domain_type          = typename Simulation::domain_type;
+
+    using simulation_type      = typename Setup::simulation_t;
+    using domain_type          = typename simulation_type::domain_type;
     using datablock_type       = typename domain_type::datablock_t;
     using tree_t               = typename domain_type::tree_t;
     using octant_t             = typename tree_t::octant_type;
     using block_type           = typename datablock_type::block_descriptor_type;
-    using convolution_t        = fft::Convolution;
     using real_coordinate_type = typename domain_type::real_coordinate_type;
     using coordinate_type      = typename domain_type::coordinate_type;
 
+    //using coarse_target_sum= TempField1;
+    using source_tmp       = TempField2;
+    using coarse_target_sum = typename Setup::coarse_target_sum;
 
+    using Fmm_t =  typename Setup::Fmm_t;
 
     static constexpr int lBuffer=1; ///< Lower left buffer for interpolation
     static constexpr int rBuffer=1; ///< Lower left buffer for interpolation
 
-    PoissonSolver( Simulation* _simulation)
+    REGISTER_FIELDS
+    (3,
+    (
+      (bla, float_type, 1, 1),
+      (bli       , float_type, 1, 1)
+    ))
+
+    PoissonSolver(simulation_type* _simulation)
     :
-    sim_(_simulation),
     domain_(&_simulation->domain_),
     conv_(domain_->block_extent()+lBuffer+rBuffer,
           domain_->block_extent()+lBuffer+rBuffer),
-    fmm_(domain_->block_extent()[0]+lBuffer+rBuffer)
+    fmm_(domain_->block_extent()[0]+lBuffer+rBuffer),
+    c_cntr_nli_(domain_->block_extent()[0]+lBuffer+rBuffer)
     {
     }
-
 
 public:
 
@@ -74,19 +87,31 @@ public:
      *  Interpolation/coarsification is used to project the solutions to fine
      *  and coarse meshes, respectively.
      */
+
     template<
-        template<std::size_t>class Source,
-        template<std::size_t>class Target,
-        template<std::size_t>class fmm_s,
-        template<std::size_t>class fmm_t,
-        template<std::size_t>class Target_fmm,
-        template<std::size_t>class fmm_tmp
-            >
-    void solve()
+        class Source,
+        class Target
+        >
+    void apply_amr_lgf()
     {
         // allocate lgf
         std::vector<float_type> lgf;
-        //const float_type dx_base=domain_->dx_base();
+        const float_type dx_base=domain_->dx_base();
+
+        // Copy source
+        for (int l  = domain_->tree()->base_level();
+                 l < domain_->tree()->depth(); ++l)
+        {
+            for (auto it  = domain_->begin(l);
+                      it != domain_->end(l); ++it)
+            {
+                // copy source
+                auto& cp1 = it ->data()->template get_linalg_data<Source>();
+                auto& cp2 = it ->data()->template get_linalg_data<source_tmp>();
+
+                cp2 = cp1 * 1.0;
+            }
+        }
 
         //Coarsification:
         pcout<<"coarsification "<<std::endl;
@@ -96,11 +121,9 @@ public:
             for (auto it_s  = domain_->begin(ls);
                       it_s != domain_->end(ls); ++it_s)
             {
-                this->coarsify<Source>(*it_s);
+                this->coarsify<source_tmp>(*it_s);
             }
         }
-
-        //FMM test
 
         //Level-Interactions
         pcout<<"Level interactions "<<std::endl;
@@ -108,53 +131,27 @@ public:
                  l < domain_->tree()->depth(); ++l)
         {
             //test for FMM
-            fmm_.template fmm_for_level<Source, Target_fmm, fmm_s, fmm_t,fmm_tmp>(domain_, l, false);
-            fmm_.template fmm_for_level<Source, Target_fmm, fmm_s, fmm_t,fmm_tmp>(domain_, l, true);
+            fmm_.template fmm_for_level<source_tmp, Target>(domain_, l, false);
+            fmm_.template fmm_for_level<source_tmp, Target>(domain_, l, true);
+            //this->level_convolution_fft<source_tmp, Target>(l);
 
-            //for (auto it_t  = domain_->begin(l);
-            //          it_t != domain_->end(l); ++it_t)
-            //{
-            //    auto refinement_level = it_t->refinement_level();
-            //    auto dx_level =  dx_base/std::pow(2,refinement_level);
-            //    for (auto it_s  = domain_->begin(l);
-            //              it_s != domain_->end(l); ++it_s)
-            //    {
+            for (auto it  = domain_->begin(l);
+                      it != domain_->end(l); ++it)
+            {
+                if(it->is_leaf()) continue;
 
-            //        if( !(it_s->is_leaf()) && !(it_t->is_leaf()) )
-            //        { continue; }
+                auto& cp1 = it ->data()->template get_linalg_data<Target>();
+                auto& cp2 = it ->data()->template get_linalg_data<coarse_target_sum>();
+                //std::cout<< cp2 << std::endl;
+                cp2 += cp1 * 1.0;
 
-            //        const auto t_base = it_t->data()->template get<Target>().
-            //                                real_block().base();
-            //        const auto s_base = it_s->data()->template get<Source>().
-            //                                real_block().base();
+                c_cntr_nli_.nli_intrp_node<coarse_target_sum, coarse_target_sum>(it);
+                int refinement_level = it->refinement_level();
+                double dx = dx_base/std::pow(2,refinement_level);
+                c_cntr_nli_.add_source_correction<coarse_target_sum, source_tmp>(it, dx/2.0);
+            }
 
-            //        // Get extent of Source region
-            //        const auto s_extent = it_s->data()->template get<Source>().
-            //                                real_block().extent();
-            //        const auto shift    = t_base - s_base;
-
-            //        // Calculate the dimensions of the LGF to be allocated
-            //        const auto base_lgf   = shift - (s_extent - 1);
-            //        const auto extent_lgf = 2 * (s_extent) - 1;
-
-            //        // Calculate the LGF
-            //        lgf_.get_subblock(block_type (base_lgf, extent_lgf), lgf);
-
-            //        // Perform convolution
-            //        conv_.execute_field(lgf, it_s->data()->template get<Source>());
-
-            //        // Extract the solution
-            //        block_type  extractor(s_base, s_extent);
-            //        conv_.add_solution(extractor,
-            //                          it_t->data()->template get<Target>(),
-            //                          dx_level*dx_level);
-
-            //        //auto b = it_s->data()->template get_linalg_data<Source>();
-            //        //auto bt = it_t->data()->template get_linalg_data<Target>();
-            //    }
-            //}
         }
-
 
         // Interpolation
         std::cout<<"Interpolation"<<std::endl;
@@ -165,20 +162,146 @@ public:
                       it_t != domain_->end(lt); ++it_t)
             {
                 if(it_t->is_leaf()) continue;
-                this->interpolate<Target>(*it_t);
+                c_cntr_nli_.nli_intrp_node<Target, Target>(it_t);
+            }
+        }
 
-                if(it_t->is_leaf()) continue;
-                this->interpolate<Target_fmm>(*it_t);
+    }
+    template<
+        class Source,
+        class Target
+        >
+    void level_convolution_fft( int level)
+    {
+
+        const float_type dx_base=domain_->dx_base();
+        for (auto it_t  = domain_->begin(level);
+                  it_t != domain_->end(level); ++it_t)
+        {
+            auto refinement_level = it_t->refinement_level();
+            auto dx_level =  dx_base/std::pow(2,refinement_level);
+            for (auto it_s  = domain_->begin(level);
+                      it_s != domain_->end(level); ++it_s)
+            {
+
+                if( !(it_s->is_leaf()) && !(it_t->is_leaf()) )
+                { continue; }
+
+                const auto t_base = it_t->data()->template get<Target>().
+                                        real_block().base();
+                const auto s_base = it_s->data()->template get<Source>().
+                                        real_block().base();
+
+                // Get extent of Source region
+                const auto s_extent = it_s->data()->template get<Source>().
+                                        real_block().extent();
+                const auto shift    = t_base - s_base;
+
+                // Calculate the dimensions of the LGF to be allocated
+                const auto base_lgf   = shift - (s_extent - 1);
+                const auto extent_lgf = 2 * (s_extent) - 1;
+
+                // Perform convolution
+                conv_.execute_field(block_type (base_lgf, extent_lgf),0, 
+                        it_s->data()->template get<Source>());
+
+                // Extract the solution
+                block_type  extractor(s_base, s_extent);
+                conv_.add_solution(extractor,
+                                  it_t->data()->template get<Target>(),
+                                  dx_level*dx_level);
             }
         }
     }
+
+    template<
+        class target,
+        class diff_target
+    >
+    void apply_amr_laplace()
+    {
+
+        const float_type dx_base=domain_->dx_base();
+
+        //Coarsification:
+        pcout<<"Laplace - coarsification "<<std::endl;
+        for (int ls = domain_->tree()->depth()-2;
+                 ls >= domain_->tree()->base_level(); --ls)
+        {
+            for (auto it_s  = domain_->begin(ls);
+                      it_s != domain_->end(ls); ++it_s)
+            {
+                this->coarsify<target>(*it_s);
+            }
+        }
+
+        //Level-Interactions
+        pcout<<"Laplace - level interactions "<<std::endl;
+        for (int l  = domain_->tree()->base_level();
+                 l < domain_->tree()->depth(); ++l)
+        {
+
+            for (auto it  = domain_->begin(l);
+                      it != domain_->end(l); ++it)
+            {
+                auto refinement_level = it->refinement_level();
+                auto dx_level =  dx_base/std::pow(2,refinement_level);
+
+                auto& target_data = it->data()->
+                    template get_linalg_data<target>();
+                auto& diff_target_data = it->data()->
+                    template get_linalg_data<diff_target>();
+
+                const auto s_extent = it->data()->template get<target>().
+                                                real_block().extent();
+
+                // laplace of it_t data with zero bcs
+                if ((it->is_leaf()))
+                {
+                    for ( int i =1; i<s_extent[0]-1; ++i){
+                        for ( int j = 1; j<s_extent[1]-1; ++j){
+                            for ( int k = 1; k<s_extent[2]-1; ++k){
+                                diff_target_data(i,j,k)  = target_data(i,j,k) * -6.0;
+                                diff_target_data(i,j,k) += target_data(i,j,k-1);
+                                diff_target_data(i,j,k) += target_data(i,j,k+1);
+                                diff_target_data(i,j,k) += target_data(i,j-1,k);
+                                diff_target_data(i,j,k) += target_data(i,j+1,k);
+                                diff_target_data(i,j,k) += target_data(i+1,j,k);
+                                diff_target_data(i,j,k) += target_data(i-1,j,k);
+                            }
+                        }
+                    }
+
+                }
+
+                diff_target_data *= (1/dx_level) * (1/dx_level);
+
+            }
+        }
+    }
+
+    template<
+        class Source,
+        class Target
+    >
+    void solve()
+    {
+        apply_amr_lgf<Source, Target>();
+    }
+
+    template<class Target, class Laplace>
+    void laplace_diff()
+    {
+        apply_amr_laplace<Target, Laplace>();
+    }
+
 
     /** @brief Coarsify the source field.
      *  @detail Given a parent, coarsify the field from its children and
      *  assign it to the parent. Coarsification is an average, ie 2nd order
      *  accurate.
      */
-    template<template<std::size_t>class Field >
+    template<class Field >
     void coarsify(octant_t* _parent)
     {
         auto parent = _parent;
@@ -216,13 +339,13 @@ public:
      *  @detail Given a parent field, interpolate it onto the child meshes.
      *  Interpolation is 2nd order accurate.
      */
-    template<template<std::size_t>class Field >
+    template<class Field >
     void interpolate(const octant_t* _b_parent)
     {
         for (int i = 0; i < _b_parent->num_children(); ++i)
         {
             auto child = _b_parent->child(i);
-            if(child==nullptr) continue;
+            if (child==nullptr) continue;
             block_type child_view =
                 child->data()->template get<Field>().real_block();
             auto cview =child->data()->node_field().view(child_view);
@@ -245,12 +368,10 @@ public:
 
 
 private:
-    Simulation*                 sim_;       ///< simualtion
-    domain_type*                domain_;    ///< domain
-    convolution_t               conv_;      ///< fft convolution
-    //fmm::Fmm<>                 fmm_;       ///< fast-multipole
-    fmm::Fmm<domain_type>                    fmm_;       ///< fast-multipole
-    lgf::LGF<lgf::Lookup>       lgf_;       ///< Lookup for the LGFs
+    domain_type*                        domain_;    ///< domain
+    fft::Convolution                    conv_;      ///< fft convolution
+    Fmm_t                            fmm_;       ///< fast-multipole
+    interpolation::cell_center_nli      c_cntr_nli_;
 
     parallel_ostream::ParallelOstream pcout;
 

@@ -36,21 +36,21 @@ namespace fmm
 
 using namespace domain;
 
-    template<class Domain>
-    class Fmm
-    {
 
-    public: //Ctor:
-    using dims_t = types::vector_type<int,3>;
-    using convolution_t        = fft::Convolution;
+template<class Setup>
+class Fmm
+{
+public: //Ctor:
+    static constexpr std::size_t Dim=Setup::Dim;
 
-    //FIXME why not working
-    //
-    using datablock_t    = DataBlock<3, node>;
-    using block_dsrp_t     = typename datablock_t::block_descriptor_type;
+    using dims_t = types::vector_type<int,Dim>;
+    using datablock_t  = typename Setup::datablock_t;
+    using block_dsrp_t = typename datablock_t::block_descriptor_type;
+    using domain_t = typename  Setup::domain_t;
 
-    static constexpr int fmm_lBuffer=1; ///< Lower left buffer for interpolation
-    static constexpr int fmm_rBuffer=1; ///< Lower left buffer for interpolation
+    //Fields:
+    using fmm_s = typename Setup::fmm_s;
+    using fmm_t = typename Setup::fmm_t;
 
     public:
         Fmm(int Nb)
@@ -59,26 +59,13 @@ using namespace domain;
         {
         }
 
-        //template<
-        //    template<size_t> class Source,
-        //    template<size_t> class Target,
-        //    template<size_t> class fmm_s,
-        //    template<size_t> class fmm_t
-        //    >
-        //void fmm_for_level(auto& domain_, int level)
-        //{
-        //    fmm_for_level_exec<Source, Target, fmm_s, fmm_t>(domain_, level, false);
-        //    //fmm_for_level_exec<Source, Target, fmm_s, fmm_t>(domain_, level, true);
-        //}
-
         template<
-            template<size_t> class Source,
-            template<size_t> class Target,
-            template<size_t> class fmm_s,
-            template<size_t> class fmm_t,
-            template<size_t> class fmm_tmp
+            class Source,
+            class Target
             >
-        void fmm_for_level(auto& domain_, int level, bool for_non_leaf=false)
+        void fmm_for_level(domain_t* domain_, 
+                           int level, 
+                           bool for_non_leaf=false)
         {
 
             clock_t fmm_start = clock();
@@ -162,10 +149,15 @@ using namespace domain;
         }
 
         template<
-            template<size_t> class s,
-            template<size_t> class t
+            class s,
+            class t,
+            class octant_itr_t
         >
-        void fmm_Bx(auto& domain_, int level, auto o_start, auto o_end, auto dx_level)
+        void fmm_Bx(domain_t* domain_, 
+                    int level, 
+                    octant_itr_t o_start, 
+                    octant_itr_t o_end, 
+                    float_type dx_level)
         {
 
             auto o_1 = (*o_start);
@@ -179,7 +171,7 @@ using namespace domain;
 
             while (o_1_old->key() != o_2_old->key() )
             {
-                std::cout << "Bx - level = " << l << std::endl;
+                std::cout << "Bx  - level = " << l << std::endl;
 
                 auto level_o_1 = domain_->tree()->find(l, o_1->key());
                 auto level_o_2 = domain_->tree()->find(l, o_2->key());
@@ -189,14 +181,6 @@ using namespace domain;
                 for (auto it_t = level_o_1;
                         it_t!=(level_o_2); ++it_t)
                 {
-                    //if (l == 4)
-                    //{
-                    //std::cout<< " Bx test -------------" << std::endl;
-                    //std::cout<< "Self" << std::endl;
-                    //std::cout<<it_t->key()<< std::endl;
-                    //std::cout<< "infl" << std::endl;
-                    //}
-
                     for (int i=0; i< it_t->influence_number();
                              ++i)
                     {
@@ -208,14 +192,6 @@ using namespace domain;
                             }
 
                     }
-                        //std::cout<<it_t->influence_number() << std::endl;
-
-                    if (it_t->level() == 5)
-                        {
-                            //std::cout<<"------------------------bx  " << std::endl;
-                            //std::cout<< it_t->key() << std::endl;
-                            //std::cout<< it_t->data() -> template get_linalg_data<t>()<< std::endl;
-                        }
 
                 }
 
@@ -232,10 +208,15 @@ using namespace domain;
         }
 
         template<
-            template<size_t> class s,
-            template<size_t> class t
+            class s,
+            class t,
+            class octant_itr_t
         >
-        void fmm_B0(auto& domain_, int level, auto o_start, auto o_end, auto dx_level)
+        void fmm_B0(domain_t* domain_, 
+                    int level, 
+                    octant_itr_t o_start, 
+                    octant_itr_t o_end, 
+                    float_type dx_level)
         {
             int level_diff = 0;
             if (o_start->level() != o_end->level())
@@ -246,12 +227,6 @@ using namespace domain;
 
             for (auto it_t = o_start; it_t!=(o_end); ++it_t)
             {
-
-                //std::cout<< "=====================" << std::endl;
-                //std::cout<< "target" << std::endl;
-                //std::cout<<it_t->key() << std::endl;
-
-                //std::cout<< "source" << std::endl;
 
                 for (int i=0; i<27; ++i)
                 {
@@ -266,10 +241,15 @@ using namespace domain;
         }
 
         template<
-            template<size_t> class f1,
-            template<size_t> class f2
+            class f1,
+            class f2,
+            class octant_itr_t
         >
-        void fmm_add_equal(auto& domain_, int level, auto o_start, auto o_end, bool for_non_leaf)
+        void fmm_add_equal(domain_t* domain_, 
+                           int level, 
+                           octant_itr_t o_start, 
+                           octant_itr_t o_end, 
+                           bool for_non_leaf)
         {
 
             if (o_start->level() != o_end->level())
@@ -282,18 +262,24 @@ using namespace domain;
                 if(it->data())
                 {
                     if ( !( (for_non_leaf) && (it->is_leaf()) ))
-                    it->data()->template get_linalg<f1>().get()->cube_noalias_view() +=
-                         it->data()->template get_linalg_data<f2>() * 1.0;
+                    it->data()->template get_linalg<f1>().get()->
+                        cube_noalias_view() +=
+                                    it->data()->template get_linalg_data<f2>();
                 }
             }
 
         }
 
         template<
-            template<size_t> class f1,
-            template<size_t> class f2
+            class f1,
+            class f2,
+            class octant_itr_t
         >
-        void fmm_minus_equal(auto& domain_, int level, auto o_start, auto o_end, bool for_non_leaf)
+        void fmm_minus_equal(domain_t* domain_, 
+                             int level, 
+                             octant_itr_t o_start, 
+                             octant_itr_t o_end, 
+                             bool for_non_leaf)
         {
 
             if (o_start->level() != o_end->level())
@@ -306,15 +292,21 @@ using namespace domain;
                 if(it->data())
                 {
                     if ( !( (for_non_leaf) && (it->is_leaf()) ))
-                    it->data()->template get_linalg<f1>().get()->cube_noalias_view() -=
-                         it->data()->template get_linalg_data<f2>() * 1.0;
+                    it->data()->template get_linalg<f1>().get()->
+                        cube_noalias_view() -=
+                                it->data()->template get_linalg_data<f2>();
                 }
             }
 
         }
 
-        template<template<size_t> class f>
-        void fmm_init_zero(auto& domain_, int level, auto o_start, auto o_end)
+        template<class f,
+            class octant_itr_t
+        >
+        void fmm_init_zero(domain_t* domain_, 
+                           int level,
+                           octant_itr_t o_start, 
+                           octant_itr_t o_end)
         {
             auto o_1 = (*o_start);
             auto o_2 = (*o_end);
@@ -351,10 +343,15 @@ using namespace domain;
         }
 
         template<
-            template<size_t> class from,
-            template<size_t> class to
-            >
-        void fmm_init_copy(auto& domain_, int level, auto o_start, auto o_end, bool for_non_leaf)
+            class from,
+            class to,
+            class octant_itr_t
+        >
+        void fmm_init_copy(domain_t* domain_, 
+                           int level,
+                           octant_itr_t o_start, 
+                           octant_itr_t o_end, 
+                           bool for_non_leaf)
         {
             if (o_start->level() != o_end->level())
                 throw std::runtime_error("Level has to be the same");
@@ -365,24 +362,24 @@ using namespace domain;
                 if(it->data())
                 {
                     if ( !( (for_non_leaf) && (it->is_leaf()) ))
-                    it->data()->template get_linalg_data<to>()=
-                         it->data()->template get_linalg_data<from>()*1.0;
 
-                    //std::cout<<"------------------"<< std::endl;
-                    //std::cout<< &(it->data()->template get_linalg_data<to>()[0]) << std::endl;
-                    //std::cout<< &(it->data()->template get_data<to>()) << std::endl;
-                    //std::cout<< &child_data << std::endl;
+                    it->data()->template get_linalg<to>().get()->
+                        cube_noalias_view() =
+                         it->data()->template get_linalg_data<from>() * 1.0;
                 }
             }
 
         }
 
-        template< template<size_t> class fmm_t >
-        void fmm_intrp(auto& domain_, int level, auto o_start, auto o_end)
+        template< class fmm_t,
+            class octant_itr_t
+            >
+        void fmm_intrp(domain_t* domain_, 
+                       int level,
+                       octant_itr_t o_start, 
+                       octant_itr_t o_end)
         {
-            // start with one level up and call the parents of each
             level--;
-
             auto o_1 = o_start->parent();
             auto o_2 = o_end->parent();
 
@@ -405,8 +402,13 @@ using namespace domain;
             }
         }
 
-        template< template<size_t> class fmm_s >
-        void fmm_antrp(auto& domain_, int level, auto o_start, auto o_end)
+        template< class fmm_s,
+            class octant_itr_t
+        >
+        void fmm_antrp(domain_t* domain_, 
+                       int level,
+                       octant_itr_t o_start, 
+                       octant_itr_t o_end)
         {
 
             // start with one level up and call the parents of each
@@ -429,12 +431,6 @@ using namespace domain;
                 for (auto it = level_o_1;
                         it!=(level_o_2); ++it)
                 {
-                    if (it->level()==4)
-                    {
-                        //std::cout<< it->key() << std::endl;
-                        //std::cout<< it->child(1)->data()->template get_linalg_data<fmm_s>();
-                    }
-
                     if(it->data())
                         lagrange_intrp.nli_antrp_node<fmm_s>(it);
                 }
@@ -449,13 +445,16 @@ using namespace domain;
         }
 
         template<
-            template<size_t> class S,
-            template<size_t> class T
+            class S,
+            class T,
+            class octant_t,
+            class octant_itr_t
         >
-        void fmm_fft(auto o_s, auto o_t, int level_diff, float_type dx_level)
+        void fmm_fft(octant_t o_s, 
+                     octant_itr_t o_t, 
+                     int level_diff, 
+                     float_type dx_level)
         {
-            //FIXME just for the type
-            auto block_ = o_s->data()->template get<S>().real_block();
 
             const auto t_base = o_t->data()->template get<T>().
                                             real_block().base();
@@ -481,27 +480,14 @@ using namespace domain;
                     o_t->data()->template get<T>(),
                     dx_level*dx_level);
 
-            //lgf_.get_subblock( decltype(block_)(base_lgf, extent_lgf), lgf, level_diff);
-
-            //// Perform convolution
-            //conv_.execute_field(lgf, o_s->data()->template get<S>());
-
-            //// Extract the solution
-            //conv_.add_solution(extractor, o_t->data()->template get<T>(),
-            //                  dx_level*dx_level);
-
-            //auto b = o_s->data()->template get_linalg_data<S>();
-            //auto bt = o_t->data()->template get_linalg_data<T>();
-
         }
 
 
     public:
         Nli lagrange_intrp;
     private:
-        std::vector<float_type> lgf;
-        convolution_t           conv_;      ///< fft convolution
-        lgf::LGF<lgf::Lookup>   lgf_;       ///< Lookup for the LGFs
+        std::vector<float_type>     lgf;
+        fft::Convolution            conv_;      ///< fft convolution
     };
 
 }

@@ -23,58 +23,36 @@
 #include<utilities/interpolation.hpp>
 #include<solver/poisson/poisson.hpp>
 
+#include"../setup_base.hpp"
 
-const int Dim = 3;
 
-using namespace domain;
-using namespace octree;
-using namespace types;
-using namespace dictionary;
-using namespace fft;
 
-struct PoissonProblem
+
+struct parameters
+{
+    static constexpr std::size_t Dim= 3;
+    REGISTER_FIELDS
+    (
+    Dim,
+     (
+        //name               type     lBuffer.  hBuffer
+         (phi_num          , float_type, 1,       1), 
+         (source           , float_type, 1,       1),
+         (phi_exact        , float_type, 1,       1),
+         (error            , float_type, 1,       1),
+         (amr_lap_source   , float_type, 1,       1),
+         (error_lap_source , float_type, 1,       1)
+    ))
+};
+
+struct PoissonProblem: public SetupBase<PoissonProblem,parameters>
 {
 
-    static constexpr int Dim = 3;
-
-    //              name            type     lBuffer.  hBuffer
-    make_field_type(phi_num         , float_type, 1,       1)
-    make_field_type(source          , float_type, 1,       1)
-    make_field_type(phi_exact       , float_type, 1,       1)
-    make_field_type(error           , float_type, 1,       1)
-
-    // temporarily here for FMM
-    make_field_type(fmm_s           , float_type, 1,       1)
-    make_field_type(fmm_t           , float_type, 1,       1)
-    make_field_type(fmm_tmp         , float_type, 1,       1)
-    make_field_type(phi_num_fmm     , float_type, 1,       1)
-
-    using datablock_t = DataBlock<
-        Dim, node,
-        phi_num,
-        source,
-        phi_exact,
-        error,
-        fmm_s,
-        fmm_t,
-        fmm_tmp,
-        phi_num_fmm
-        >;
-
-
-    using coordinate_t       = typename datablock_t::coordinate_type;
-    using domain_t           = domain::Domain<Dim,datablock_t>;
-    using simulation_type    = Simulation<domain_t>;
-    using node_type          = typename datablock_t::node_t;
-    using node_field_type    = typename datablock_t::node_field_type;
-
+    using super_type =SetupBase<PoissonProblem,parameters>;
 
     PoissonProblem(Dictionary* _d)
-    :simulation_(_d->get_dictionary("simulation_parameters")),
-     domain_(simulation_.domain_)
+    :super_type(_d)
     {
-        pcout << "\n Setup:  LGF ViewTest \n" << std::endl;
-        pcout << "Simulation: \n" << simulation_    << std::endl;
         this->initialize();
     }
 
@@ -86,10 +64,10 @@ struct PoissonProblem
     {
         this->pcout<<"Initializing"<<std::endl;
         auto center = (domain_.bounding_box().max() -
-                       domain_.bounding_box().min()-1) / 2.0 +
+                       domain_.bounding_box().min()) / 2.0 +
                        domain_.bounding_box().min();
 
-        const int nRef = simulation_.dictionary_->
+        const int nRef = this->simulation_.dictionary_->
             template get_or<int>("nLevels",0);
         for(int l=0;l<nRef;++l)
         {
@@ -97,9 +75,10 @@ struct PoissonProblem
                     it != domain_.end_leafs(); ++it)
             {
                 auto b=it->data()->descriptor();
-                coordinate_t lower(2), upper(2);
+
+                const auto lower((center )/2-2 ), upper((center )/2+2 - b.extent());
                 b.grow(lower, upper);
-                if(b.is_inside( std::pow(2.0,l)*center )
+                if(b.is_inside( center * pow(2.0,l))
                    && it->refinement_level()==l
                   )
                 {
@@ -173,11 +152,13 @@ struct PoissonProblem
     void run()
     {
 
-        solver::PoissonSolver<simulation_type> psolver(&simulation_);
-        psolver.solve<source, phi_num, fmm_s, fmm_t, phi_num_fmm, fmm_tmp>();
-        compute_errors();
-        simulation_.write("solution.vtk");
-        pcout << "Writing solution " << std::endl;
+        poisson_solver_t psolver(&this->simulation_);
+        psolver.solve<source, phi_num>();
+        psolver.laplace_diff<phi_num,amr_lap_source>();
+
+        //compute_errors();
+        this->simulation_.write("solution.vtk");
+        this->pcout << "Writing solution " << std::endl;
 
     }
 
@@ -185,37 +166,63 @@ struct PoissonProblem
     /** @brief Compute L2 and LInf errors */
     void compute_errors()
     {
+
+        const float_type dx_base=domain_.dx_base();
+
         auto L2   = 0.; auto LInf = -1.0; int count=0;
         for (auto it_t  = domain_.begin_leafs();
              it_t != domain_.end_leafs(); ++it_t)
         {
 
+            int refinement_level = it_t->refinement_level();
+            double dx = dx_base/std::pow(2,refinement_level);
+
             auto& nodes_domain=it_t->data()->nodes_domain();
             for(auto it2=nodes_domain.begin();it2!=nodes_domain.end();++it2 )
             {
                 const float_type error_tmp = (
-                        it2->get<phi_num_fmm>() - it2->get<phi_exact>());
+                        it2->get<phi_num>() - it2->get<phi_exact>());
+
 
                 it2->get<error>() = error_tmp;
-                L2 += error_tmp*error_tmp;
+                L2 += error_tmp*error_tmp * (dx*dx*dx);
 
-                if ( error_tmp > LInf)
-                    LInf = error_tmp;
+                if ( abs(error_tmp) > LInf)
+                    LInf = abs(error_tmp);
 
                 ++count;
             }
         }
-        pcout << "L2   = " << std::sqrt(L2/count)<< std::endl;
+        pcout << "L2   = " << std::sqrt(L2)<< std::endl;
         pcout << "LInf = " << LInf << std::endl;
+
+        auto L2_source   = 0.; auto LInf_source = -1.0; count=0;
+        for (auto it_t  = domain_.begin_leafs();
+             it_t != domain_.end_leafs(); ++it_t)
+        {
+
+            int refinement_level = it_t->refinement_level();
+            double dx = dx_base/std::pow(2,refinement_level);
+
+            auto& nodes_domain=it_t->data()->nodes_domain();
+            for(auto it2=nodes_domain.begin();it2!=nodes_domain.end();++it2 )
+            {
+                const float_type error_tmp = (
+                        it2->get<amr_lap_source>() - it2->get<source>());
+
+                it2->get<error_lap_source>() = error_tmp;
+                L2_source += error_tmp*error_tmp * (dx*dx*dx);
+
+                if ( abs(error_tmp) > LInf_source)
+                    LInf_source = abs(error_tmp);
+
+                ++count;
+            }
+        }
+        pcout << "L2_source   = " << std::sqrt(L2_source)<< std::endl;
+        pcout << "LInf_source = " << LInf_source << std::endl;
     }
 
-private:
-
-    Simulation<domain_t>              simulation_;
-    domain_t&                         domain_;
-
-    parallel_ostream::ParallelOstream pcout;
-    lgf::LGF<lgf::Lookup>             lgf_;
 };
 
 

@@ -1,0 +1,17 @@
+#CXX = mpic++
+#
+#BOOST_PATH = /usr/local/Cellar/boost/1.67.0_1
+#USER_INCLUDE_DIRS = -I${BOOST_PATH}/include
+#USER_LDFLAGS = -L${BOOST_PATH}/lib
+
+
+
+CXX = mpic++
+
+BOOST_PATH=${boost_path}
+
+#USER_INCLUDE_DIRS = -I${BOOST_PATH}/include -I/opt/anaconda3/include
+#USER_LDFLAGS  = -L${BOOST_PATH}/lib -L/opt/anaconda3/lib
+USER_INCLUDE_DIRS = -I${BOOST_PATH}/include -I${HOME}/anaconda3/include
+USER_LDFLAGS  = -L${BOOST_PATH}/lib -L${HOME}/anaconda3/lib
+USER_LIBS  =$(USER_LDFLAGS)

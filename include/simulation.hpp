@@ -9,12 +9,12 @@ using namespace dictionary;
 template<class Domain>
 class Simulation
 {
-    
-public: 
+
+public:
     using domain_type = Domain;
 
 
-public: 
+public:
 
 
     Simulation(const Simulation& other) = delete;

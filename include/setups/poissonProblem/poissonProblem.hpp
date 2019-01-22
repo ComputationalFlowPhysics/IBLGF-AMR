@@ -23,68 +23,36 @@
 #include<utilities/interpolation.hpp>
 #include<solver/poisson/poisson.hpp>
 
+#include<setups/setup_base.hpp>
 
-const int Dim = 3;
 
-using namespace domain;
-using namespace octree;
-using namespace types;
-using namespace dictionary;
-using namespace fft;
-using namespace fmm;
 
-struct PoissonProblem
+
+struct parameters
+{
+    static constexpr std::size_t Dim= 3;
+    REGISTER_FIELDS
+    (
+    Dim,
+     (
+        //name               type     lBuffer.  hBuffer
+         (phi_num          , float_type, 1,       1), 
+         (source           , float_type, 1,       1),
+         (phi_exact        , float_type, 1,       1),
+         (error            , float_type, 1,       1),
+         (amr_lap_source   , float_type, 1,       1),
+         (error_lap_source , float_type, 1,       1)
+    ))
+};
+
+struct PoissonProblem: public SetupBase<PoissonProblem,parameters>
 {
 
-    static constexpr int Dim = 3;
-
-    //              name            type     lBuffer.  hBuffer
-    make_field_type(phi_num          , float_type, 1,       1)
-    make_field_type(source           , float_type, 1,       1)
-    make_field_type(phi_exact        , float_type, 1,       1)
-    make_field_type(error            , float_type, 1,       1)
-    make_field_type(error_lap_source , float_type, 1,       1)
-
-    //make_field_type(fmm_s            , float_type, 1,       1)
-    //make_field_type(fmm_t            , float_type, 1,       1)
-    //make_field_type(coarse_target_sum          , float_type, 1,       1)
-    //make_field_type(source_tmp       , float_type, 1,       1)
-    //make_field_type(phi_num_fmm      , float_type, 1,       1)
-
-    //// temporarily here for amr_laplace test
-    //make_field_type(amr_lap_source     , float_type, 1,       1)
-    //make_field_type(amr_lap_tmp        , float_type, 1,       1)
-
-    using datablock_t = DataBlock<
-        Dim, node,
-        phi_num,
-        source,
-        phi_exact,
-        error,
-        fmm_s,
-        fmm_t,
-        coarse_target_sum,
-        source_tmp,
-        phi_num_fmm,
-        amr_lap_source,
-        amr_lap_tmp,
-        error_lap_source
-        >;
-
-
-    using coordinate_t       = typename datablock_t::coordinate_type;
-    using domain_t           = domain::Domain<Dim,datablock_t>;
-    using simulation_type    = Simulation<domain_t>;
-    using node_type          = typename datablock_t::node_t;
-    using node_field_type    = typename datablock_t::node_field_type;
-
+    using super_type =SetupBase<PoissonProblem,parameters>;
 
     PoissonProblem(Dictionary* _d)
-    :simulation_(_d->get_dictionary("simulation_parameters")),
-     domain_(simulation_.domain_)
+    :super_type(_d)
     {
-        pcout << "\n Setup:  LGF ViewTest \n" << std::endl;
-        pcout << "Simulation: \n" << simulation_    << std::endl;
         this->initialize();
     }
 
@@ -99,7 +67,7 @@ struct PoissonProblem
                        domain_.bounding_box().min()) / 2.0 +
                        domain_.bounding_box().min();
 
-        const int nRef = simulation_.dictionary_->
+        const int nRef = this->simulation_.dictionary_->
             template get_or<int>("nLevels",0);
         for(int l=0;l<nRef;++l)
         {
@@ -108,7 +76,7 @@ struct PoissonProblem
             {
                 auto b=it->data()->descriptor();
 
-                coordinate_t lower((center )/2-2 ), upper((center )/2+2 - b.extent());
+                const auto lower((center )/2-2 ), upper((center )/2+2 - b.extent());
                 b.grow(lower, upper);
                 if(b.is_inside( center * pow(2.0,l))
                    && it->refinement_level()==l
@@ -184,14 +152,13 @@ struct PoissonProblem
     void run()
     {
 
-        solver::PoissonSolver<simulation_type> psolver(&simulation_);
-        psolver.solve<source, phi_num,
-            fmm_s, fmm_t, phi_num_fmm,
-            coarse_target_sum, source_tmp,
-            amr_lap_source, amr_lap_tmp>();
-        compute_errors();
-        simulation_.write("solution.vtk");
-        pcout << "Writing solution " << std::endl;
+        poisson_solver_t psolver(&this->simulation_);
+        psolver.solve<source, phi_num>();
+        psolver.laplace_diff<phi_num,amr_lap_source>();
+
+        //compute_errors();
+        this->simulation_.write("solution.vtk");
+        this->pcout << "Writing solution " << std::endl;
 
     }
 
@@ -214,7 +181,7 @@ struct PoissonProblem
             for(auto it2=nodes_domain.begin();it2!=nodes_domain.end();++it2 )
             {
                 const float_type error_tmp = (
-                        it2->get<phi_num_fmm>() - it2->get<phi_exact>());
+                        it2->get<phi_num>() - it2->get<phi_exact>());
 
 
                 it2->get<error>() = error_tmp;
@@ -256,13 +223,6 @@ struct PoissonProblem
         pcout << "LInf_source = " << LInf_source << std::endl;
     }
 
-private:
-
-    Simulation<domain_t>              simulation_;
-    domain_t&                         domain_;
-
-    parallel_ostream::ParallelOstream pcout;
-    lgf::LGF<lgf::Lookup>             lgf_;
 };
 
 

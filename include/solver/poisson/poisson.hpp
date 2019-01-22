@@ -26,37 +26,50 @@
 #include <lgf/lgf.hpp>
 #include <fmm/fmm.hpp>
 
-//#include<utilities/convolution.hpp>
 #include "../../utilities/convolution.hpp"
-//#include<utilities/interpolation.hpp>
 #include<utilities/cell_center_nli_intrp.hpp>
-//#include<utilities/fourier_cont_intrp.hpp>
 #include<solver/poisson/poisson.hpp>
 
 namespace solver
 {
 
-template<class Simulation>
-class PoissonSolver
+
+using namespace domain;
+
+
+template<class Setup, class TempField1, class TempField2>
+class PoissonSolver 
 {
 
 public: //member types
-    using simulation_type      = Simulation;
-    using domain_type          = typename Simulation::domain_type;
+
+    using simulation_type      = typename Setup::simulation_t;
+    using domain_type          = typename simulation_type::domain_type;
     using datablock_type       = typename domain_type::datablock_t;
     using tree_t               = typename domain_type::tree_t;
     using octant_t             = typename tree_t::octant_type;
     using block_type           = typename datablock_type::block_descriptor_type;
-    using convolution_t        = typename fft::Convolution;
     using real_coordinate_type = typename domain_type::real_coordinate_type;
     using coordinate_type      = typename domain_type::coordinate_type;
+
+    //using coarse_target_sum= TempField1;
+    using source_tmp       = TempField2;
+    using coarse_target_sum = typename Setup::coarse_target_sum;
+
+    using Fmm_t =  typename Setup::Fmm_t;
 
     static constexpr int lBuffer=1; ///< Lower left buffer for interpolation
     static constexpr int rBuffer=1; ///< Lower left buffer for interpolation
 
-    PoissonSolver( Simulation* _simulation)
+    REGISTER_FIELDS
+    (3,
+    (
+      (bla, float_type, 1, 1),
+      (bli       , float_type, 1, 1)
+    ))
+
+    PoissonSolver(simulation_type* _simulation)
     :
-    sim_(_simulation),
     domain_(&_simulation->domain_),
     conv_(domain_->block_extent()+lBuffer+rBuffer,
           domain_->block_extent()+lBuffer+rBuffer),
@@ -64,7 +77,6 @@ public: //member types
     c_cntr_nli_(domain_->block_extent()[0]+lBuffer+rBuffer)
     {
     }
-
 
 public:
 
@@ -77,13 +89,9 @@ public:
      */
 
     template<
-        template<std::size_t>class Source,
-        template<std::size_t>class Target,
-        template<std::size_t>class fmm_s,
-        template<std::size_t>class fmm_t,
-        template<std::size_t>class coarse_target_sum,
-        template<std::size_t>class source_tmp
-            >
+        class Source,
+        class Target
+        >
     void apply_amr_lgf()
     {
         // allocate lgf
@@ -123,8 +131,8 @@ public:
                  l < domain_->tree()->depth(); ++l)
         {
             //test for FMM
-            fmm_.fmm_for_level<source_tmp, Target, fmm_s, fmm_t>(domain_, l, false);
-            fmm_.fmm_for_level<source_tmp, Target, fmm_s, fmm_t>(domain_, l, true);
+            fmm_.template fmm_for_level<source_tmp, Target>(domain_, l, false);
+            fmm_.template fmm_for_level<source_tmp, Target>(domain_, l, true);
             //this->level_convolution_fft<source_tmp, Target>(l);
 
             for (auto it  = domain_->begin(l);
@@ -160,8 +168,8 @@ public:
 
     }
     template<
-        template<std::size_t>class Source,
-        template<std::size_t>class Target
+        class Source,
+        class Target
         >
     void level_convolution_fft( int level)
     {
@@ -207,9 +215,8 @@ public:
     }
 
     template<
-        template<std::size_t>class target,
-        template<std::size_t>class target_tmp,
-        template<std::size_t>class diff_target
+        class target,
+        class diff_target
     >
     void apply_amr_laplace()
     {
@@ -271,32 +278,30 @@ public:
 
             }
         }
-
     }
 
     template<
-        template<std::size_t>class Source,
-        template<std::size_t>class Target,
-        template<std::size_t>class fmm_s,
-        template<std::size_t>class fmm_t,
-        template<std::size_t>class Target_fmm,
-        template<std::size_t>class coarse_target_sum,
-        template<std::size_t>class source_tmp,
-        template<std::size_t>class amr_lap_target,
-        template<std::size_t>class amr_lap_tmp
+        class Source,
+        class Target
     >
     void solve()
     {
-        apply_amr_lgf<Source, Target_fmm, fmm_s, fmm_t, coarse_target_sum, source_tmp>();
-        apply_amr_laplace<Target_fmm, amr_lap_tmp, amr_lap_target>();
+        apply_amr_lgf<Source, Target>();
     }
+
+    template<class Target, class Laplace>
+    void laplace_diff()
+    {
+        apply_amr_laplace<Target, Laplace>();
+    }
+
 
     /** @brief Coarsify the source field.
      *  @detail Given a parent, coarsify the field from its children and
      *  assign it to the parent. Coarsification is an average, ie 2nd order
      *  accurate.
      */
-    template<template<std::size_t>class Field >
+    template<class Field >
     void coarsify(octant_t* _parent)
     {
         auto parent = _parent;
@@ -334,7 +339,7 @@ public:
      *  @detail Given a parent field, interpolate it onto the child meshes.
      *  Interpolation is 2nd order accurate.
      */
-    template<template<std::size_t>class Field >
+    template<class Field >
     void interpolate(const octant_t* _b_parent)
     {
         for (int i = 0; i < _b_parent->num_children(); ++i)
@@ -363,13 +368,10 @@ public:
 
 
 private:
-    Simulation*                         sim_;       ///< simualtion
     domain_type*                        domain_;    ///< domain
-    convolution_t                       conv_;      ///< fft convolution
-    fmm::Fmm                            fmm_;       ///< fast-multipole
-    //interpolation::fourier_cont_intrp   c_cntr_nli_;
+    fft::Convolution                    conv_;      ///< fft convolution
+    Fmm_t                            fmm_;       ///< fast-multipole
     interpolation::cell_center_nli      c_cntr_nli_;
-    lgf::LGF<lgf::Lookup>               lgf_;       ///< Lookup for the LGFs
 
     parallel_ostream::ParallelOstream pcout;
 

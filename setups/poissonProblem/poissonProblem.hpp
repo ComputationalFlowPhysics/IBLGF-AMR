@@ -157,6 +157,7 @@ public: //Ctor
     }
 
 
+
     /** @brief Run poisson test case, compute errors and write out.  */
     void run()
     {

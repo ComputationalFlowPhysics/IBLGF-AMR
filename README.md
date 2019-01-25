@@ -18,6 +18,8 @@ The following external libraries need to be installed on your system
 * HDF5
 * Blas
 * xTensor 
+* xTensor-Blas
+* xtl 
  
 
 

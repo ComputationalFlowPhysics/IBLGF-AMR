@@ -4,6 +4,7 @@
 #include <global.hpp>
 
 #include <domain/domain.hpp>
+#include <utilities/crtp.hpp>
 #include <simulation.hpp>
 #include <fmm/fmm.hpp>
 #include<solver/poisson/poisson.hpp>
@@ -18,7 +19,8 @@ using namespace dictionary;
  *          and aliases for datablock, domain and simulation.
  */
 template<class Setup, class SetupTraits>
-class SetupBase : public SetupTraits
+class SetupBase : private crtp::Crtps<Setup,SetupBase<Setup,SetupTraits>>,
+                  public SetupTraits
 {
 
 public: 
@@ -55,6 +57,7 @@ public: //Trait types to be used by others
     using coordinate_t  = typename datablock_t::coordinate_type;
     using domain_t      = domain::Domain<Dim,datablock_t>;
     using simulation_t  = Simulation<domain_t>;
+    using fcoord_t      = coordinate_type<float_type, Dim>;
 
     using Fmm_t = Fmm<SetupBase>;
     using poisson_solver_t = solver::PoissonSolver<SetupBase>;

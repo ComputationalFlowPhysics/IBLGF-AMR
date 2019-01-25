@@ -21,7 +21,7 @@ public:
     Cube(const Cube& rhs)=delete;
 	Cube& operator=(const Cube&) & = delete ;
 
-    Cube(types::float_type* ptr_aux_mem, auto  n_rows, auto n_cols, auto n_slices)
+    Cube(types::float_type* ptr_aux_mem, size_t  n_rows, size_t n_cols, size_t n_slices)
         : data_(Policy::cube_wrap(ptr_aux_mem, n_rows, n_cols, n_slices))
     {}
 
@@ -30,7 +30,12 @@ public:
         return Policy::cube_noalias_view(data_);
     }
 
-    auto cube_noalias_view(auto& cube, auto x1, auto x2, auto x3)
+    template<typename cube_t,
+        typename stride_t_1,
+        typename stride_t_2,
+        typename stride_t_3>
+    auto cube_noalias_view(cube_t& cube,
+            stride_t_1 x1, stride_t_2 x2, stride_t_3 x3)
     {
         return Policy::cube_noalias_view(cube, x1, x2, x3);
     }
@@ -52,23 +57,6 @@ public:
         :data_(Policy::mat_wrap(ptr_aux_mem, n_rows, n_cols))
     {}
 
-    //auto submatrix( std::tuple<int,int> nx, std::tuple<int,int> ny)
-    //{
-    //    return Policy::submatrix(data_, nx, ny);
-    //}
-
-    //auto col(int n )
-    //{
-    //    return Policy::col(data_, n);
-    //}
-
-    //auto Mat::operator()(int i, int j)
-    //{
-    //    return data_(i,j)
-    //}
-
-    // member
-    //typename Policy::mat_t data_;
     decltype(Policy::mat_wrap(0, 1, 1)) data_;
 
 };

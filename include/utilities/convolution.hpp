@@ -52,7 +52,6 @@ public: //Ctors:
      output_(_dims[2]*_dims[1]*((_dims[0]/2)+1))
     {
         //int status = fftw_init_threads();
-        fftw_init_threads();
         fftw_plan_with_nthreads(nthreads);
         plan = (fftw_plan_dft_r2c_3d(_dims[2], _dims[1], _dims[0],
                  &input_[0], reinterpret_cast<fftw_complex*>(&output_[0]),
@@ -153,7 +152,6 @@ public: //Ctors:
      output_(_dims[2]*_dims[1]*_dims[0],0.0)
     {
         //int status = fftw_init_threads();
-        fftw_init_threads();
         fftw_plan_with_nthreads(nthreads);
         plan = fftw_plan_dft_c2r_3d(_dims[2], _dims[1], _dims[0],
                  reinterpret_cast<fftw_complex*>(&input_[0]), &output_[0],
@@ -226,11 +224,17 @@ public: //Ctors
         lgf_level_maps_.resize(max_lgf_map_level);
     }
 
-    void apply_lgf(auto lgf_block, int level_diff,
-                    auto& source,
-                    auto extractor,
-                    auto& target,
-                    auto scale)
+    template<
+        typename lgf_block_t,
+        typename source_t,
+        typename target_t,
+        typename extractor_t>
+    void apply_lgf( const lgf_block_t& lgf_block,
+                    int level_diff,
+                    const source_t& source,
+                    const extractor_t extractor,
+                    target_t& target,
+                    float_type scale )
     {
             execute_field(lgf_block, level_diff, source);
             add_solution(extractor, target, scale);
@@ -258,8 +262,9 @@ public: //Ctors
         fft_backward.execute();
     }
 
-    template<class Field>
-    void execute_field(auto lgf_block_dsrp, int level_diff, Field& _b)
+    template<class Field,
+            typename block_dsrp_t>
+    void execute_field(const block_dsrp_t lgf_block_dsrp, int level_diff, const Field& _b)
     {
         // use lgf_block.shift and level_diff to check if it has been saved or
         // not
@@ -333,6 +338,7 @@ private:
     dims_t padded_dims;
     dims_t dims0_;
     dims_t dims1_;
+
     dfft_r2c fft_forward0;
     dfft_r2c fft_forward1;
     dfft_c2r fft_backward;

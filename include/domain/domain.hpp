@@ -15,6 +15,11 @@ namespace domain
 
 using namespace dictionary;
 
+/** @brief Spatial Domain
+ *  @detail Given a datablock (and its corresponding dataFields) 
+ *  in Dim-dimensional space, the domain is constructed using an 
+ *  octree of blocks. Base blocks are read in from *  the config file.
+ */
 template<int Dim, class DataBlock>
 class Domain
 {
@@ -46,14 +51,13 @@ public:
     static constexpr int dimension(){return Dim;}
 
 
-public:
+public: //C/Dtors
 
     Domain(const Domain&  other) = delete;
     Domain(      Domain&& other) = default;
     Domain& operator=(const Domain&  other) & = delete;
     Domain& operator=(      Domain&& other) & = default;
     ~Domain() = default;
-
 
 
     template<class DictionaryPtr>

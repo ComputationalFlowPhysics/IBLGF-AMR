@@ -396,7 +396,8 @@ public: // misc
         }
     }
 
-    void construct_octant_neighbor(auto it)
+    template<typename octant_t>
+    void construct_octant_neighbor(octant_t it)
     {
         it->neighbor_clear();
 
@@ -416,10 +417,6 @@ public: // misc
             if (neighbor_i == nullptr)
                 continue;
 
-            //std::cout<< "construct neighbor test-----------------" << std::endl;
-            //std::cout<< k << std::endl;
-            //std::cout<< neighbor_i-> key() << std::endl;
-
             it->neighbor(id, neighbor_i);
 
             }
@@ -437,10 +434,9 @@ public: // misc
         }
     }
 
-    void construct_octant_influence(auto it)
+    template<typename octant_t>
+    void construct_octant_influence(octant_t it)
     {
-        // FIXME need to do a larger influence list test to reach 189
-
         it->influence_clear();
         int infl_id = 0;
         auto coord = it->key().coordinate();

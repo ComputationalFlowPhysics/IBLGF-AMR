@@ -19,23 +19,19 @@ namespace domain
 
 template<int Dim,
          template<class >class NodeType,
-         template<std::size_t> class ...DataFieldType>
+         class... DataFieldType>
 class DataBlock : public  BlockDescriptor<int, Dim>
 {
 
+    static constexpr auto dimension=Dim;
+
 public: //member types
-
-    static constexpr int dim(){return Dim;}
-    static constexpr int dimension=Dim;
-
-
     using node_t = NodeType<DataBlock>;
 
-    using fields_tuple_t = std::tuple<DataFieldType<dimension>...>;
-    using field_type_iterator_t = tuple_utils::TypeIterator<DataFieldType<dimension>...>;
+    using fields_tuple_t = std::tuple<DataFieldType...>;
+    using field_type_iterator_t = tuple_utils::TypeIterator<DataFieldType...>;
     using node_field_type =  DataField<node_t,Dim>;
     using buffer_type = typename node_field_type::buffer_d_t;
-
 
     using node_itertor = typename std::vector<node_t>::iterator;
     using node_const_iterator = typename std::vector<node_t>::const_iterator;
@@ -97,70 +93,50 @@ public: //Ctors:
 
 public: //member functions
 
-    template<template<std::size_t> class Field>
-    auto& get(){return std::get<Field<dimension>>(fields);}
-    template<template<std::size_t> class Field>
-    const auto& get()const{return std::get<Field<dimension>>(fields);}
-
     template<class T> auto& get(){return std::get<T>(fields);}
     template<class T> const auto& get()const{return std::get<T>(fields);}
-
-    template<template<std::size_t> class Field>
-    auto& get_data(){return std::get<Field<dimension>>(fields).data();}
-    template<template<std::size_t> class Field>
-    const auto& get_data()const{return std::get<Field<dimension>>(fields).data();}
 
     template<class T> auto& get_data(){return std::get<T>(fields).data();}
     template<class T> const auto& get_data()const{return std::get<T>(fields).data();}
 
-    template<template<std::size_t> class Field>
-    auto& get_linalg(){return std::get<Field<dimension>>(fields).linalg();}
-    template<template<std::size_t> class Field>
-    const auto& get_linalg()const{return std::get<Field<dimension>>(fields).linalg();}
-
     template<class T> auto& get_linalg(){return std::get<T>(fields).linalg();}
     template<class T> const auto& get_linalg()const{return std::get<T>(fields).linalg();}
-
-    template<template<std::size_t> class Field>
-    auto& get_linalg_data(){return std::get<Field<dimension>>(fields).linalg_data();}
-    template<template<std::size_t> class Field>
-    const auto& get_linalg_data()const{return std::get<Field<dimension>>(fields).linalg_data();}
 
     template<class T> auto& get_linalg_data(){return std::get<T>(fields).linalg_data();}
     template<class T> const auto& get_linalg_data()const{return std::get<T>(fields).linalg_data();}
 
-    template<template<std::size_t> class Field>
+    template<class Field>
     auto& get(int _i, int _j, int _k)
     {
-        return std::get<Field<dimension>>(fields).get(_i,_j,_k);
+        return std::get<Field>(fields).get(_i,_j,_k);
     }
-    template<template<std::size_t> class Field>
+    template< class Field>
     const auto& get(int _i, int _j, int _k)const
     {
-        return std::get<Field<dimension>>(fields).get(_i,_j,_k);
+        return std::get<Field>(fields).get(_i,_j,_k);
     }
 
-    template<template<std::size_t> class Field>
+    template<class Field>
     auto& get(const coordinate_type& _c)
     {
-        return std::get<Field<dimension>>(fields).get(_c);
+        return std::get<Field>(fields).get(_c);
     }
-    template<template<std::size_t> class Field>
+    template<class Field>
     const auto& get(const coordinate_type& _c) const
     {
-        return std::get<Field<dimension>>(fields).get(_c);
+        return std::get<Field>(fields).get(_c);
     }
 
-    template<template<std::size_t> class Field>
+    template<class Field>
     auto& get_local(int _i, int _j, int _k)
     {
-        return std::get<Field<dimension>>(fields).get_local(_i,_j,_k);
+        return std::get<Field>(fields).get_local(_i,_j,_k);
     }
 
-    template<template<std::size_t> class Field>
+    template<class Field>
     const auto& get_local(int _i, int _j, int _k)const
     {
-        return std::get<Field<dimension>>(fields).get_local(_i,_j,_k);
+        return std::get<Field>(fields).get_local(_i,_j,_k);
     }
 
     auto& node(int _i, int _j, int _k )noexcept
@@ -251,8 +227,6 @@ private: //Data members
 
     /** @brief bounding box of all fields in the block*/
     super_type bounding_box_;
-
-
 
 };
 

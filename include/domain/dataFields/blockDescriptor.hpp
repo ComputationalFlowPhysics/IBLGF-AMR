@@ -133,10 +133,11 @@ public: //membery types:
 
 
 
-public:  //Static members
+private:  //Static members
 
     static constexpr auto dimension(){return Dim;}
 
+public:  
     static std::vector<BlockDescriptor> 
     generate_blocks_from_cuts( std::array<std::vector<T>,dimension()>& cut_locations,
                                int _level=0 ) 

@@ -26,50 +26,46 @@
 #include<utilities/interpolation.hpp>
 #include<solver/poisson/poisson.hpp>
 
+#include"../../setups/setup_base.hpp"
 
 const int Dim = 3;
 
-using namespace domain;
-using namespace octree;
-using namespace types;
-using namespace dictionary;
-using namespace fft;
+struct parameters
+{
+    static constexpr std::size_t Dim= 3;
+    REGISTER_FIELDS
+    (
+    Dim,
+     (
+        //name               type     lBuffer.  hBuffer
+         (phi_num          , float_type, 1,       1), 
+         (source           , float_type, 1,       1),
+         (phi_exact        , float_type, 1,       1),
+         (error            , float_type, 1,       1),
+         (amr_lap_source   , float_type, 1,       1),
+         (error_lap_source , float_type, 1,       1)
+    ))
+};
 
-struct DecomposistionTest
+struct DecomposistionTest:public SetupBase<DecomposistionTest,parameters>
 {
 
-    static constexpr int Dim = 3;
-
-    //              name            type  lBuffer   hBuffer
-    make_field_type(phi_num,    float_type, 1,       1)
-    make_field_type(source,     float_type, 1,       1)
-    make_field_type(phi_exact,  float_type, 1,       1)
-    make_field_type(error,      float_type, 1,       1)
-
-    using datablock_t = DataBlock<  Dim, node,
-                                    phi_num,
-                                    source,
-                                    phi_exact,
-                                    error
-                                 >;
-
-    using domain_t = domain::Domain<Dim,datablock_t>;
+    using super_type =SetupBase<DecomposistionTest,parameters>;
 
     DecomposistionTest(Dictionary* _d)
-    :simulation_(_d->get_dictionary("simulation_parameters")),
-     domain_(simulation_.domain_)
+    :super_type(_d)
     {
+
         pcout << "\n Setup:  Test - Domain decomposition \n" << std::endl;
         pcout << "Simulation: \n" << simulation_    << std::endl;
         domain_.distribute();
-
         this->initialize();
     }
+
 
     void run()
     {
         domain_.test();
-
     }
 
 
@@ -82,22 +78,40 @@ struct DecomposistionTest
         if(domain_.is_server()) return ;
         std::cout<<"Initializing on rank:"<<world.rank()<<std::endl;
         auto center = (domain_.bounding_box().max() -
-                       domain_.bounding_box().min()-1) / 2.0 +
+                       domain_.bounding_box().min()) / 2.0 +
                        domain_.bounding_box().min();
 
         const int nRef = simulation_.dictionary_->
             template get_or<int>("nLevels",0);
 
-        center+=0.5/std::pow(2,nRef);
+
+        for(int l=0;l<nRef;++l)
+        {
+            for (auto it  = domain_.begin_leafs();
+                    it != domain_.end_leafs(); ++it)
+            {
+                auto b=it->data()->descriptor();
+
+                const auto lower((center )/2-2 ), upper((center )/2+2 - b.extent());
+                b.grow(lower, upper);
+                if(b.is_inside( center * pow(2.0,l))
+                   && it->refinement_level()==l
+                  )
+                {
+                    domain_.refine(it);
+                }
+            }
+        }
+
+        //Adapt center to always have peak value in a cell-center
+        center+=0.5/std::pow(2,nRef); 
         const float_type a  = 10.;
         const float_type a2 = a*a;
         const float_type dx_base = domain_.dx_base();
 
-
         for (auto it  = domain_.begin_leafs();
                   it != domain_.end_leafs(); ++it)
         {
-
             auto dx_level =  dx_base/std::pow(2,it->refinement_level());
             auto scaling =  std::pow(2,it->refinement_level());
 
@@ -136,16 +150,6 @@ struct DecomposistionTest
             simulation_.write("solution.vtk");
     }
 
-
- 
-
-private:
-
-    Simulation<domain_t>              simulation_;
-    domain_t&                         domain_;
-
-    parallel_ostream::ParallelOstream pcout;
-    lgf::LGF<lgf::Lookup>             lgf_;
 };
 
 

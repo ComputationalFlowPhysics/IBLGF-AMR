@@ -305,15 +305,6 @@ public: // queries
         return real_coordinate_type(coordinate())/bitmask_t::max_coord_arr[level()];
     }
 
-    //return end if neighbor is out of scope
-    //Key neighbor(const int _offset ) const noexcept
-    //{
-    //    // 3^3 = 27 of the children in the order of (z,y,x) = (-1 ~ 1, -1 ~1,
-    //    // -1~1)
-
-    //    return neighbor({{idx_x, idx_y, idx_z}});
-    //}
-
     Key neighbor(const coordinate_type& _offset) const noexcept
     {
         const auto c =coordinate();
@@ -395,13 +386,15 @@ public: // queries
             (++equal_coordinate_child()).equal_coordinate_parent());
     }
 
-private:
-
     bool is_end() const noexcept
     {
         return _index >= end(level())._index;
     }
 
+
+private:
+
+  
     bool is_rend() const noexcept
     {
         return _index <= rend(level())._index;
@@ -478,6 +471,7 @@ public: // print
 
         std::cout<<std::endl;
     }
+
 
 private:
 

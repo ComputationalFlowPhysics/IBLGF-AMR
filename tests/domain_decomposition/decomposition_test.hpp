@@ -92,7 +92,8 @@ struct DecomposistionTest:public SetupBase<DecomposistionTest,parameters>
             {
                 auto b=it->data()->descriptor();
 
-                const auto lower((center )/2-2 ), upper((center )/2+2 - b.extent());
+                const auto lower((center )/2-2 ), 
+                                 upper((center )/2+2 - b.extent());
                 b.grow(lower, upper);
                 if(b.is_inside( center * pow(2.0,l))
                    && it->refinement_level()==l

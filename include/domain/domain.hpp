@@ -187,7 +187,7 @@ public: //C/Dtors
     }
     void test()
     {
-        decomposition_.rank_query();
+        //decomposition_.rank_query();
     }
 
     template<template<std::size_t> class Field>

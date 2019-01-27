@@ -59,12 +59,12 @@ public:
         {
             recv_comm.start_communication();
             auto ft=recv_comm.finish_communication();
-            for(auto& e : ft)
-            {
-                std::cout<<"Received answer on rank"<<comm_.rank()<<": \n";
-                for(auto& d: e->data()) std::cout<<d<<"  ";
-                std::cout<<std::endl;
-            }
+            //for(auto& e : ft)
+            //{
+            //    std::cout<<"Received answer on rank"<<comm_.rank()<<": \n";
+            //    for(auto& d: e->data()) std::cout<<d<<"  ";
+            //    std::cout<<std::endl;
+            //}
         }
     }
 

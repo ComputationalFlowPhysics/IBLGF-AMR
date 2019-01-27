@@ -77,32 +77,18 @@ public:
         });
     }
 
-    //Some dummy test to send to quey some ranks for sme octants
-    void rank_query()
+    auto rank_query(std::vector<key_t>& task_dat)
     {
         auto& send_comm=
             task_manager_->template send_communicator<key_query_t>();
 
-
-        key_coord_t c(comm_.rank()*4);
-        std::vector<key_t> task_dat;
-        for(int i =0;i<3;++i)
-        {
-            task_dat.emplace_back(c, domain_->tree()->base_level());
-        }
-        
         auto task= send_comm.post_task(&task_dat, 0);
         QueryRegistry<key_query_t, rank_query_t> mq;
 
         std::vector<int> recvData;
         mq.register_recvMap([&recvData](int i){return &recvData;} );
         this->wait(mq);
-
-        std::cout<<"Query results: key-rank"<<std::endl;
-        for(std::size_t i =0; i< task_dat.size();++i)
-        {
-            std::cout<<"key: "<<task_dat[i]<<" rank "<<recvData[i]<<std::endl; 
-        }
+        return recvData;
     }
 
     template<class Field>
@@ -135,23 +121,13 @@ public:
 
            }
         }
-
-        //Setup server to:
-        //inta_server.d
-        //InlineQueryRegistry<rank_query_t, key_query_t> mq(comm_.size());
-        //mq.register_completeFunc([this](auto _task, auto _answerData)
-        //{
-        //    this->get_octant_rank(_task, _answerData);
-        //});
-
-        //this->run_query(mq);
-
-        
-
-
     }
 
-
+    void query_octants()
+    {
+        domain_->tree()->query_neighbor_octants(this);
+        domain_->tree()->query_influence_octants(this);
+    }
 
 
 private:

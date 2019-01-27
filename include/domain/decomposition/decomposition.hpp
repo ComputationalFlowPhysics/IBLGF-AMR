@@ -63,24 +63,26 @@ public: //memeber functions
 
     void distribute()
     {
+        //Send the construction keys back and forth
         if(server())
             server()->send_keys();
         else if(client())
             client()->receive_keys();
-    }
 
-    void rank_query()
-    {
+        //Construct neighborhood:
         if(server())
         {
             server()->rank_query();
         }
         else if(client())
         {
-            client()->rank_query();
+            client()->query_octants();
             client()->disconnect();
         }
+
+        
     }
+
     
 
 public: //access memebers:

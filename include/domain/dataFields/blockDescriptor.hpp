@@ -312,14 +312,14 @@ public: //members
     }
     //TODO: tag dispatch for each dim
     template<class PointType>
-    inline size_type globalCoordinate_to_index(const PointType& _p) const noexcept
+    inline size_type globalCoordinate_to_index(PointType _p) const noexcept
     {
         _p[0]-=base()[0]; _p[1]-=base()[1]; _p[2]-=base()[2];
         return _p[0]+ _p[1]*extent()[0] + _p[2]*extent()[0]*extent()[1];
     }
 
     template<class PointType>
-    inline size_type localCoordinate_to_index(const PointType& _p) const noexcept
+    inline size_type localCoordinate_to_index(PointType _p) const noexcept
     {
         return _p[0]+ _p[1]*extent()[0] + _p[2]*extent()[0]*extent()[1];
     }

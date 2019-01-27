@@ -146,6 +146,7 @@ public:
         int count=0;
         for(auto& key :  _task->data())
         {
+            //std::cout<<key<<std::endl;
             auto oct =domain_->tree()->find_octant(key);
             if(oct)
                 (*_out)[count++]=oct->rank();

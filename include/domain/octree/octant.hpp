@@ -45,9 +45,11 @@ public:
 
     using data_type = DataType;
 
+
     static constexpr int num_vertices(){return pow(2,Dim);}
     static constexpr int num_faces(){return 2*Dim;}
     static constexpr int num_edges(){return 2*num_faces();}
+    static constexpr int nNeighbors(){return pow(3,Dim);;}
 
 public:
     friend tree_type;
@@ -67,8 +69,11 @@ public: //Ctors
     Octant(const octant_base_t& _n, data_type& _data)
         : super_type(_n), data_(_data) { }
 
+    Octant(key_type _k, tree_type* _tr)
+        : super_type(_k), t_(_tr) { }
+
     Octant(const coordinate_type& _x, int _level, tree_type* _tr)
-        : super_type(key_type(_x,_level),_tr) { }
+        : super_type(key_type(_x,_level)),t_(_tr) { }
 
 
      /** @brief Find leaf that shares a vertex with octant
@@ -78,7 +83,6 @@ public: //Ctors
     {
         // current level
         // FIXME this could be implemented in a faster way
-        //
         auto nn=this->key_.neighbor(_offset);
         if(nn==this->key()) return nullptr;
         auto nn_ptr = this->tree()->find_leaf(nn);
@@ -95,7 +99,7 @@ public: //Ctors
         }
 
         // child level
-        const auto child = this->child_base(0);
+        const auto child = this->construct_child(0);
         auto c_nn=child.key().neighbor(_offset);
         if(c_nn==this->key()) return nullptr;
         auto c_ptr= this->tree()->find_leaf(c_nn);
@@ -104,34 +108,22 @@ public: //Ctors
         return nullptr;
     }
 
-
-    /** @brief Getting neighboorhood region of octant on level
-     *
-     *  @param[in] _lowBuffer How many octants in negative direction
-     *  @param[in] _highBufer How many octants in positive direction
-     *  @return Vector of neighborhood octants
-     */
-    std::vector<Octant*> get_level_neighborhood(const coordinate_type& _lowBuffer,
-            const coordinate_type& _highBuffer) const noexcept
+    std::array<key_type, nNeighbors()> 
+    get_neighbor_keys (coordinate_type _offset=coordinate_type(1)) 
+    const noexcept
     {
-
-       std::vector<Octant*> res;
-       block_descriptor_type  b;
-       b.base(this->tree_coordinate() - _lowBuffer);
-       b.max( this->tree_coordinate() + _highBuffer);
-       int level=this->level();
-       b.level() = level;
-
-       for(auto it  = this->tree()->begin(level);
-                it != this->tree()->end(level); ++it)
-       {
-           if(b.is_inside(it->tree_coordinate()) && it->key()!=this->key())
-           {
-               res.push_back(*it);
-           }
-       }
-       return res;
+        const auto key= this->key();
+        std::array<key_type,nNeighbors()> res;
+        int count=0;
+        rcIterator<Dim>::apply(-1*_offset,
+                                2*_offset+1,
+                               [&](const coordinate_type& _p)
+        {
+             res[count++] = key.neighbor(_p);;
+        });
+        return res;
     }
+    
 
 
     //TODO: store this bool while constructing
@@ -188,13 +180,14 @@ public: //Ctors
 
     void neighbor_clear () noexcept{neighbor_.fill(nullptr);}
     Octant* neighbor (int i) const noexcept{return neighbor_[i];}
+    Octant** neighbor_pptr (int i) noexcept{return &neighbor_[i];}
     void neighbor(int i, Octant* new_neighbor)
     {
        neighbor_[i] = new_neighbor;
     }
 
     const int influence_number () const noexcept{return influence_num;}
-    void influence_number (int i) noexcept{influence_num = i;}
+    void influence_number (int i) noexcept{/*influence_num = i;*/}
 
     void influence_clear () noexcept{influence_.fill(nullptr);}
     Octant* influence (int i) const noexcept{return influence_[i];}
@@ -204,14 +197,68 @@ public: //Ctors
     }
 
     float_type load()const noexcept{return 1.0;}
-    const int& rank()const noexcept{return rank_;}
-    int& rank()noexcept{return rank_;}
 
+    bool locally_owned() const noexcept { return comm_.rank()==this->rank(); }
+    bool ghost() const noexcept { return !locally_owned()&&this->rank()>=0; }
+
+public: //Access
+
+    /** @brief Get tree pointer*/
+    tree_type* tree()const noexcept{return t_;}
+
+    /** @brief Refinement level: level relative to base level */
+    auto refinement_level() const noexcept{
+        return this->tree_level()-t_->base_level();}
+
+    /** @brief Get octant coordinate based on physical/global domain */
+    real_coordinate_type global_coordinate() const noexcept
+    {
+        real_coordinate_type tmp=this->tree_coordinate();
+        tmp/=(std::pow(2,this->level()-t_->base_level()));
+        return this->tree()->octant_to_level_coordinate(tmp);
+    }
+
+public: //Construct
+
+    /** @brief Get child of type Octant_base */
+    Octant construct_child( int _i ) const noexcept
+    {
+        return Octant(this->key_.child(_i), t_);
+    }
+
+    /** @brief Get parent of type Octant_base */
+    Octant construct_parent() const noexcept
+    {
+        return Octant(this->key_.parent(),t_);
+    }
+
+    /** @brief Get parent of type Octant_base with same coordinate than
+     *         current octant.
+     * */
+    Octant construct_equal_coordinate_parent() const noexcept
+    {
+        return Octant(this->key_.equal_coordinate_parent(),t_);
+    }
+
+    /** @brief Get neighbor of type Octant_base
+     *  @param[in] _offset Offset from current octant in terms of
+     *                     tree coordinates, i.e. octants.
+     * */
+    Octant construct_neighbor(const coordinate_type& _offset)
+    {
+        Octant nn(this->key_.neighbor(_offset),tree());
+    }
+    auto num_neighbors(){return neighbor_.size();}
+
+
+public: //Neighbors
+
+    
 private:
 
 	Octant* refine(unsigned int i)
 	{
-        children_[i] = std::make_shared<Octant> (this->child_base(i));
+        children_[i] = std::make_shared<Octant> (this->construct_child(i));
 		children_[i]->parent_ = this;
         return children_[i].get();
 	}
@@ -219,22 +266,20 @@ private:
 private:
 
     int idx_ = 0;
+    boost::mpi::communicator comm_;
     std::shared_ptr<data_type> data_ = nullptr;
 
     Octant* parent_;
 
     std::array<std::shared_ptr<Octant>,pow(2,Dim)> children_ =
         {{nullptr,nullptr,nullptr,nullptr, nullptr,nullptr,nullptr,nullptr}};
-
-    //FIXME don't know how to use shared ptr
-    //std::array<std::shared_ptr<Octant>,pow(3,Dim) > neighbor_ = {nullptr};
     std::array<Octant*,pow(3,Dim) > neighbor_ = {nullptr};
 
     int influence_num = 0;
-    //FIXME:Pls use an array and allocate as neede... to large for stack storage
     std::array<Octant*, 189 > influence_= {nullptr};
     bool flag_leaf_=true;
-    int rank_;
+
+    tree_type* t_=nullptr;
 };
 
 

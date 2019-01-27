@@ -17,6 +17,16 @@ constexpr T pow(const T& base, const int exp)
 template<int Dim, int D=Dim-1>
 struct rcIterator
 {
+
+    template<class BlockType, class Function>
+    static void apply(const BlockType& _b,
+                      const Function& f)
+    {
+        const auto base=_b.base();
+        const auto extent=_b.extent();
+        auto p=base;
+        rcIterator<Dim, D>::apply_impl(p,f,base, extent );
+    }
     template<class ArrayType, class Function>
     static void apply(const ArrayType& _base,
                       const ArrayType& _extent,

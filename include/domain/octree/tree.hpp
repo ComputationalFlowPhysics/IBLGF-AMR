@@ -45,6 +45,8 @@ public: //memeber types
     using dfs_iterator = typename detail::iterator_depth_first<octant_type>;
     using bfs_iterator = typename detail::iterator_breadth_first<octant_type>;
 
+    using block_descriptor_type = typename octant_type::block_descriptor_type;
+
     using coordinate_transform_t =
         std::function<real_coordinate_type(real_coordinate_type, int _level)>;
 
@@ -181,8 +183,6 @@ public:
     }
 
 
-
-
     auto num_leafs() const noexcept {return leafs_.size();}
 
     const int& base_level() const noexcept{return base_level_;}
@@ -201,8 +201,7 @@ public:
             auto child=_l->refine(i);
             child->flag_leaf(true);
             _f(child);
-            auto c=leafs_.emplace(child->key(),child);
-            c.first->second->flag(node_flag::octant);
+            leafs_.emplace(child->key(),child);
             level_maps_[child->level()].emplace(child->key(),child);
         }
 
@@ -349,10 +348,9 @@ private: //traversal
         }
     }
 
-private: // misc
 public: // misc
 
-    void construct_level_maps()
+    void construct_level_maps() noexcept
     {
         level_maps_.clear();
         level_maps_.resize(key_type::max_level());
@@ -363,15 +361,248 @@ public: // misc
         }
     }
 
-    void construct_neighbor_lists()
-    {
-        dfs_iterator it_begin(root()); dfs_iterator it_end;
 
-        for(auto it =it_begin;it!=it_end;++it)
+public: // neighborlist 
+    auto  construct_neighbor_lists(bool _global=true)noexcept 
+    {
+        dfs_iterator begin(root()); dfs_iterator end;
+        std::set<key_type> res;
+        for(auto it =begin;it!=end;++it)
         {
-            construct_octant_neighbor(it);
+            neighbor_lookup(it.ptr(),res,_global);
+        }
+        return res;
+    }
+
+    template<class Client>
+    void query_neighbor_octants( Client* _c )
+    {
+        auto key_set=construct_neighbor_lists();
+        std::vector<key_type> keys;
+        keys.insert(keys.begin(),key_set.begin(), key_set.end());
+        
+        auto ranks= _c->rank_query( keys );
+        for(std::size_t i = 0; i < ranks.size();++i )
+        {
+            if(ranks[i]>=0)
+            {
+                auto nn = this->insert_td(keys[i]);
+                std::set<key_type> dummy;
+                neighbor_lookup(nn,dummy, false, true );
+                nn->rank()=ranks[i];
+            }
+        }
+
+        //boost::mpi::communicator w;
+        //dfs_iterator begin(root()); dfs_iterator end;
+        //for(auto it =begin;it!=end;++it)
+        //{
+        //    for(int i =0;i<27;++i)
+        //    {
+        //        auto nn=it->neighbor(i);
+        //        if(nn && nn->rank()!=w.rank() && nn->rank()>=0)
+        //        {
+        //            std::cout<<"nn->rank() "<<nn->rank() <<std::endl;
+        //        }
+        //    }
+        //}
+    }
+
+private: // neighborlist 
+    /** @brief Construction neighbor list based on  local tree */
+    void neighbor_lookup( octant_type* it, 
+                          std::set<key_type>& res,
+                          bool _global, 
+                          bool _update_neighbors=false )
+    {
+        it->neighbor_clear();
+        auto nkeys=it->get_neighbor_keys();
+        for(std::size_t i = 0; i< nkeys.size();++i)
+        {
+            if(nkeys[i].is_end()) continue;
+            const auto neighbor_i = this->find_octant(nkeys[i]);
+            it->neighbor(i, neighbor_i);
+
+            if(_global && !neighbor_i)
+            {
+                res.emplace( nkeys[i] );
+            }
+            if(neighbor_i && _update_neighbors)
+            {
+                it->neighbor(i, neighbor_i);
+                const auto offset=
+                    it->tree_coordinate()-neighbor_i->tree_coordinate();
+                const auto idx=
+                    nearast_neighbor_hood.globalCoordinate_to_index(offset);
+                neighbor_i->neighbor(idx,it);
+            }
         }
     }
+
+  
+public: // influence list
+
+
+
+    /** @brief Construct the influence list of this octrant
+     *
+     *  @detail: Influence list are the children of the parent of the octant it
+     *           without the nearest neighbor.
+     */
+    auto construct_influence_lists(bool _global= true)
+    {
+        dfs_iterator it_begin(root()); dfs_iterator it_end;
+        ++it_begin;
+
+        std::set<influence_helper> res;
+        for(auto it =it_begin;it!=it_end;++it)
+        {
+            influence_lookup(it.ptr(),res);
+        }
+        return res;
+    }
+                         
+    template<class Client>
+    void query_influence_octants( Client* _c )
+    {
+        const auto infl_helper=construct_influence_lists();
+        std::vector<key_type> keys;
+        for(auto& inf : infl_helper)
+        {
+            keys.emplace_back(inf.key());
+        }
+
+        auto ranks= _c->rank_query( keys );
+        int count=0;
+        for(auto& inf : infl_helper)
+        {
+            if(ranks[count]>=0)
+            {
+                auto nn = this->insert_td(inf.key());
+                std::set<influence_helper> dummy;
+                influence_lookup(nn,dummy, false );
+                inf.set(nn);
+            }
+            ++count;
+        }
+
+        //boost::mpi::communicator w;
+        //dfs_iterator begin(root()); dfs_iterator end;
+        //for(auto it =begin;it!=end;++it)
+        //{
+        //    for(int i =0;i<189;++i)
+        //    {
+        //        auto nn=it->neighbor(i);
+        //        if(nn && nn->rank()!=w.rank() && nn->rank()>=0)
+        //        {
+        //            std::cout<<"inf->rank() "<<nn->rank() <<std::endl;
+        //        }
+        //    }
+        //}
+    }
+
+private:// influence list
+
+    //FIXME: This is bullshit, lets thinks about a set or indexing the 
+    //       whole 6^3 field
+    struct influence_helper
+    {
+        influence_helper( key_type _k ): key_(_k){ }
+        bool operator< (const influence_helper &other) const
+        {
+            return key_ < other.key_;
+        }
+        
+
+        ///< append to lists
+        void update(octant_type* _oc, int _inf_number) const 
+        {
+            influence_.emplace_back(_oc);
+            influence_number_.emplace_back(_inf_number);
+        }
+
+        //Set the octant belonging to key within the infl of ocant in 
+        //influence_
+        void set(octant_type* oc) const 
+        {
+            for(std::size_t i =0; i<influence_.size();++i)
+            {
+                influence_[i]->influence(influence_number_[i], oc);
+            }
+        }
+
+        const auto& key() const {return key_;}
+        auto& key() {return key_;}
+
+    private:
+        key_type key_; //of octant in questions
+
+        //ocntants influence by key-cotant and influence index
+        mutable  std::vector<octant_type*> influence_;  
+        mutable std::vector<int> influence_number_;
+    };
+
+    /** @brief Construct the influence list of this octrant.
+     *
+     *  @detail: Influence list are the children of the parent of the octant it
+     *           without the nearest neighbor. 
+     *           This list is stored direcly in the octrant
+     *  @return: List of keys that have not been in the local tree.
+     *           These keys need to checked for existence in the global tree.
+     */
+    auto influence_lookup(octant_type* it,    
+                          std::set<influence_helper>& influence_set,
+                          bool _global=true)
+    {
+        it->influence_clear();
+        if(!it->parent()) return;
+        //std::set<infl_helper> blafskjdfdsl sadkjad a
+        //std::set<infl  
+
+        int infl_id = 0;
+        it->influence_number(infl_id);
+        const auto coord = it->key().coordinate();
+
+        const auto p = it->parent();
+        for (int p_n_id=0; 
+                 p_n_id<static_cast<int>(p->num_neighbors()); 
+                 ++p_n_id)
+        {
+            const auto  p_n = p->neighbor(p_n_id);
+            if (p_n)
+            {
+                for(int p_n_child_id=0; 
+                        p_n_child_id<static_cast<int>(p_n->num_children());
+                        ++p_n_child_id)
+                {
+                    const auto child_key = p_n->key().child(p_n_child_id);
+                    const auto p_n_c_coord = child_key.coordinate();
+                    if ((std::abs(p_n_c_coord.x() - coord.x())>1) ||
+                            (std::abs(p_n_c_coord.y() - coord.y())>1) ||
+                            (std::abs(p_n_c_coord.z() - coord.z())>1))
+                    {
+                        const auto p_n_child = p_n->child(p_n_child_id);
+                        if (p_n_child)
+                        {
+                            it->influence(infl_id, p_n_child);
+                        }
+                        else if( _global  )
+                        {
+                            auto inf= influence_set.emplace(child_key);
+                            inf.first->update( it, infl_id);
+                        }
+
+                        infl_id++;
+                    }
+                }
+            }
+        }
+        it->influence_number(infl_id);
+    }
+
+
+
+public: // leafs maps 
 
     void construct_flag_leaf()
     {
@@ -396,90 +627,6 @@ public: // misc
         }
     }
 
-    template<typename octant_t>
-    void construct_octant_neighbor(octant_t it)
-    {
-        it->neighbor_clear();
-
-        for (int id = 0; id<27; id++)
-        {
-            int tmp = id;
-            auto idx = tmp % 3 -1;
-            tmp /=3;
-            auto idy = tmp % 3 -1;
-            tmp /=3;
-            auto idz = tmp % 3 -1;
-
-            auto k = it->key().neighbor({{idx,idy,idz}});
-
-
-            auto neighbor_i = find_octant(k);
-            if (neighbor_i == nullptr)
-                continue;
-
-            it->neighbor(id, neighbor_i);
-
-            }
-    }
-
-    void construct_influence_lists()
-    {
-        dfs_iterator it_begin(root()); dfs_iterator it_end;
-        //root doesn't have parent~
-        ++it_begin;
-
-        for(auto it =it_begin;it!=it_end;++it)
-        {
-            construct_octant_influence(it);
-        }
-    }
-
-    template<typename octant_t>
-    void construct_octant_influence(octant_t it)
-    {
-        it->influence_clear();
-        int infl_id = 0;
-        auto coord = it->key().coordinate();
-
-        auto p = it->parent();
-        for (int p_n_id=0; p_n_id<27; ++p_n_id)
-        {
-            auto p_n = p->neighbor(p_n_id);
-            if (p_n)
-            {
-                for(int p_n_child_id=0; p_n_child_id<8;++p_n_child_id)
-                {
-
-                    auto p_n_child = p_n->child(p_n_child_id);
-                    if (p_n_child)
-                    {
-                        auto p_n_c_coord = p_n_child->key().coordinate();
-                        if ((std::abs(p_n_c_coord.x() - coord.x())>1) ||
-                            (std::abs(p_n_c_coord.y() - coord.y())>1) ||
-                            (std::abs(p_n_c_coord.z() - coord.z())>1))
-                        {
-                            it->influence(infl_id, p_n_child);
-                            infl_id++;
-                        }
-                    }
-                }
-            }
-        }
-
-        it->influence_number(infl_id);
-
-        //if (coord.x() == 0)
-        //{
-        //std::cout<< "-----------------------------------"<<std::endl;
-        //std::cout<< it->key()<<std::endl;
-        //std::cout<<infl_id<<std::endl;
-        //std::cout<< "-----------------------------------"<<std::endl;
-        //}
-    }
-
-
-
-
 
     static coordinate_type unit_transform(coordinate_type _x, int _level)
     {
@@ -497,6 +644,9 @@ private:
     std::vector<octant_ptr_map_type> level_maps_;   ///< Octants per level
     octant_ptr_map_type leafs_;                     ///< Map of tree leafs
 
+
+    const block_descriptor_type nearast_neighbor_hood=
+        block_descriptor_type(coordinate_type(-1), coordinate_type(3));
 };
 
 

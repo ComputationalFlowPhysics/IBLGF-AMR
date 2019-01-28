@@ -9,7 +9,7 @@
 namespace sr_mpi
 {
 
-template<class SendTask, class RecvTask>
+template<class SendTask, class RecvTask=SendTask>
 class QueryRegistry
 {
 

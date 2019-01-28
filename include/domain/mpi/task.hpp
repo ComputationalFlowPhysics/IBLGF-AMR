@@ -127,7 +127,8 @@ public: //memebers:
         } 
         return confirmed_;
     }
-    bool requires_confirmation() const noexcept { return request_confirmation_; }
+    const bool& requires_confirmation() const noexcept { return request_confirmation_; }
+    bool& requires_confirmation() noexcept { return request_confirmation_; }
 
     void attach_data( data_type* _s ) noexcept { data_=_s; }
 

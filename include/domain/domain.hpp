@@ -185,10 +185,8 @@ public: //C/Dtors
     {
         decomposition_.distribute();
     }
-    void test()
-    {
-        //decomposition_.rank_query();
-    }
+    
+
 
     template<template<std::size_t> class Field>
     void init_field(octant_t* _root)
@@ -442,6 +440,11 @@ public: //Access
     /**@brief Extent of each block */
     bool is_server()noexcept { return decomposition_.is_server(); }
     bool is_client()noexcept { return decomposition_.is_client(); }
+
+    const decompositon_type& decomposition()const noexcept {
+        return decomposition_;}
+    decompositon_type& decomposition() noexcept{return decomposition_;}
+
 public:
 
     friend std::ostream& operator<<(std::ostream& os, Domain& d)

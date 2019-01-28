@@ -65,7 +65,8 @@ struct DecomposistionTest:public SetupBase<DecomposistionTest,parameters>
 
     void run()
     {
-        domain_.test();
+        //domain_.test();
+       domain_.decomposition().communicate_influence<source, phi_exact>();
     }
 
 
@@ -85,24 +86,24 @@ struct DecomposistionTest:public SetupBase<DecomposistionTest,parameters>
             template get_or<int>("nLevels",0);
 
 
-        for(int l=0;l<nRef;++l)
-        {
-            for (auto it  = domain_.begin_leafs();
-                    it != domain_.end_leafs(); ++it)
-            {
-                auto b=it->data()->descriptor();
+        //for(int l=0;l<nRef;++l)
+        //{
+        //    for (auto it  = domain_.begin_leafs();
+        //            it != domain_.end_leafs(); ++it)
+        //    {
+        //        auto b=it->data()->descriptor();
 
-                const auto lower((center )/2-2 ), 
-                                 upper((center )/2+2 - b.extent());
-                b.grow(lower, upper);
-                if(b.is_inside( center * pow(2.0,l))
-                   && it->refinement_level()==l
-                  )
-                {
-                    domain_.refine(it);
-                }
-            }
-        }
+        //        const auto lower((center )/2-2 ), 
+        //                         upper((center )/2+2 - b.extent());
+        //        b.grow(lower, upper);
+        //        if(b.is_inside( center * pow(2.0,l))
+        //           && it->refinement_level()==l
+        //          )
+        //        {
+        //            domain_.refine(it);
+        //        }
+        //    }
+        //}
 
         //Adapt center to always have peak value in a cell-center
         center+=0.5/std::pow(2,nRef); 
@@ -115,6 +116,10 @@ struct DecomposistionTest:public SetupBase<DecomposistionTest,parameters>
         {
             auto dx_level =  dx_base/std::pow(2,it->refinement_level());
             auto scaling =  std::pow(2,it->refinement_level());
+
+
+            //std::cout<<"it all: "<<it->global_coordinate()<<" "
+            //         <<it->key()._index<<" r "<<it->rank()<<std::endl;
 
            auto view(it->data()->node_field().domain_view());
            auto& nodes_domain=it->data()->nodes_domain();

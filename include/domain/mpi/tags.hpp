@@ -13,6 +13,7 @@ enum type: int
     key_query,
     request,
     task_type,
+    field_query,
     idle,
     connection,
     confirmation,

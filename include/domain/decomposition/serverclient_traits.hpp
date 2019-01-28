@@ -27,7 +27,8 @@ struct ServerClientTraits
     using key_t  = typename  domain_t::key_t;
     using key_query_t = Task<tags::key_query,std::vector<key_t>>;
     using rank_query_t = Task<tags::key_query,std::vector<int>>;
-    using task_manager_t = TaskManager<key_query_t, rank_query_t>;
+    using field_task_t = Task<tags::field_query,std::vector<double>>;
+    using task_manager_t = TaskManager<key_query_t, rank_query_t, field_task_t>;
 };
 
 

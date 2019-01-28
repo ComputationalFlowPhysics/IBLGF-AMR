@@ -125,10 +125,10 @@ public:
             auto octant = this->insert_td(k);
             f(octant);
         }
-        construct_leaf_maps();
-        construct_level_maps();
-        construct_neighbor_lists();
-        construct_influence_lists();
+        //construct_leaf_maps();
+        //construct_level_maps();
+        //construct_neighbor_lists();
+        //construct_influence_lists();
     }
 
 public:
@@ -374,8 +374,8 @@ public: // neighborlist
         return res;
     }
 
-    template<class Client>
-    void query_neighbor_octants( Client* _c )
+    template<class Client, class InitFunction>
+    void query_neighbor_octants( Client* _c, InitFunction& _f )
     {
         auto key_set=construct_neighbor_lists();
         std::vector<key_type> keys;
@@ -389,7 +389,10 @@ public: // neighborlist
                 auto nn = this->insert_td(keys[i]);
                 std::set<key_type> dummy;
                 neighbor_lookup(nn,dummy, false, true );
+                _f(nn);
                 nn->rank()=ranks[i];
+                //boost::mpi::communicator w;
+                //std::cout<<nn->rank()<<" vs "<<w.rank()<<std::endl;
             }
         }
 
@@ -462,8 +465,8 @@ public: // influence list
         return res;
     }
                          
-    template<class Client>
-    void query_influence_octants( Client* _c )
+    template<class Client, class InitFunction>
+    void query_influence_octants( Client* _c, InitFunction& _f )
     {
         const auto infl_helper=construct_influence_lists();
         std::vector<key_type> keys;
@@ -479,12 +482,15 @@ public: // influence list
             if(ranks[count]>=0)
             {
                 auto nn = this->insert_td(inf.key());
+                nn->rank()=ranks[count];
                 std::set<influence_helper> dummy;
                 influence_lookup(nn,dummy, false );
                 inf.set(nn);
+                _f(nn);
             }
             ++count;
         }
+
 
         //boost::mpi::communicator w;
         //dfs_iterator begin(root()); dfs_iterator end;

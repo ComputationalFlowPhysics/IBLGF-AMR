@@ -78,10 +78,13 @@ public:
 
         float_type total_load_perProc=0;
         int procCount=0;
+
+        //std::ofstream ofsd("ttdist.txt");
         std::vector<std::vector<ctask_t>> tasks_perProc(nProcs);
         for( auto it = domain_->begin_df(); it!= domain_->end_df();++it )
         {
             it->rank()=procCount+1;
+
             auto load= it->load();
             ctask_t task(it->key(), it->rank(), load);
             
@@ -95,9 +98,13 @@ public:
             {
                 procCount++;
                 task.rank()=procCount+1;
+                it->rank()=procCount+1;
                 tasks_perProc[procCount].push_back(task);
                 total_load_perProc=load;
             }
+
+            //if(it->level()==domain_->tree()->base_level())
+            //ofsd<<it->key()._index<<" "<<it->global_coordinate()<<" "<<it->rank()<<std::endl;
         }
 
         std::vector<int> total_loads_perProc(nProcs,0);
@@ -155,11 +162,6 @@ public:
         }
     }
 
-    template<class >
-    void communicate_induced_fields()
-    {
-
-    }
 
 private:
     Domain* domain_;

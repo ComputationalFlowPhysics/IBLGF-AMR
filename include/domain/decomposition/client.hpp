@@ -6,11 +6,14 @@
 
 #include <global.hpp>
 #include <boost/mpi/communicator.hpp>
+#include <boost/serialization/vector.hpp>
 #include <domain/mpi/client_base.hpp>
 #include <domain/mpi/query_registry.hpp>
 #include <domain/mpi/task_manager.hpp>
 #include <domain/mpi/server_base.hpp>
 #include "serverclient_traits.hpp"
+
+
 
 namespace domain
 {
@@ -39,6 +42,7 @@ public:
 
     using key_query_t = typename trait_t::key_query_t;
     using rank_query_t = typename trait_t::rank_query_t;
+    using field_task_t = typename trait_t::field_task_t;
     using task_manager_t =typename trait_t::task_manager_t;
 
     using intra_client_server_t = ServerBase<trait_t>;
@@ -74,6 +78,7 @@ public:
                     _o->tree_coordinate());
             _o->data()=std::make_shared<datablock_t>(bbase, 
                     domain_->block_extent(),_o->refinement_level(), true);
+            _o->rank()=comm_.rank();
         });
     }
 
@@ -91,43 +96,116 @@ public:
         return recvData;
     }
 
-    template<class Field>
-    void communicate_induced_fields()
+
+    template<class SendField,class RecvField>
+    void communicate_induced_fields( int _level )
     {
-        //send message:
-        
+        std::cout<<"Comunicating induced fields"<<std::endl;;
+
         auto& send_comm=
-            task_manager_->template send_communicator<key_query_t>();
+            task_manager_->template send_communicator<field_task_t>();
+        auto& recv_comm=
+            task_manager_->template recv_communicator<field_task_t>();
 
-        int rank=comm_.rank();
-        int rank_other=rank==1?2:1;
-
-        std::vector<int> sendDat(3,rank);
-        std::vector<int> recvData;
-
-        auto task= send_comm.post_task(&sendDat, rank_other);
-
-        QueryRegistry<key_query_t, rank_query_t> mq;
-        mq.register_recvMap([&recvData](int i){return &recvData;} );
-
-        for (auto it  = domain_.begin_leafs();
-                  it != domain_.end_leafs(); ++it)
+        boost::mpi::communicator  w; 
+        const int myRank=w.rank();
+         
+        for (auto it  = domain_->begin(_level);
+                  it != domain_->end(_level); ++it)
         {
+            const auto cc=it->tree_coordinate();
+            const auto idx=cc.x()+100*cc.y()+100*100*cc.z() + 100*100*100*it->level();
+            if(it->rank()!=myRank )
+            {
+                bool is_influenced=false;
+                for(std::size_t i = 0; i< it->influence_number(); ++i)
+                {
+                    auto inf=it->influence(i);
+                    if(inf && inf->rank()==myRank)
+                    { is_influenced=true ; break;} 
+                }
 
-           auto view(it->data()->node_field().domain_view());
-           auto& nodes_domain=it->data()->nodes_domain();
-           for(auto it2=nodes_domain.begin();it2!=nodes_domain.end();++it2 )
-           {
+               if(is_influenced )
+               {
 
-           }
+                   auto send_ptr=it->data()->
+                       template get<SendField>().date_ptr();
+                   auto task= send_comm.post_task(send_ptr, it->rank(), true, idx);
+                   task->requires_confirmation()=false;
+
+                   //std::cout<<"Sending field from "<<myRank<<" to "<<it->rank()
+                   //    <<" index " <<it->key()._index
+                   //    <<" c "<<it->global_coordinate()
+                   //    <<" tag: "<<task->id()
+                   //    <<std::endl;
+               }
+            }
+            else
+            {
+                std::set<int> unique_inflRanks;
+                for(std::size_t i = 0; i< it->influence_number(); ++i)
+                {
+                    auto inf=it->influence(i);
+                    if(inf && inf->rank()!=myRank )
+                    {
+                        unique_inflRanks.insert(inf->rank());
+                    }
+                }
+                for(auto& r: unique_inflRanks)
+                {
+                    const auto recv_ptr=it->data()->
+                                template get<RecvField>().date_ptr();
+                    auto task = recv_comm.post_task( recv_ptr, r, true,  idx);
+                    task->requires_confirmation()=false;
+
+                    //std::cout<<"Recv field from "<<r<<" to "<<myRank
+                    //    <<" index " <<it->key()._index
+                    //    <<" iindex " <<static_cast<int>(it->key()._index)
+                    //    <<" c "<<it->global_coordinate()
+                    //    <<" tag: "<<task->id()
+                    //    <<std::endl;
+                }
+            }
+
+            //Try starting the communication 
+            send_comm.start_communication();
+            recv_comm.start_communication();
+        }
+                    
+
+        //Start communications
+        while(true)
+        {
+            //buffer and send it 
+            send_comm.start_communication();
+            recv_comm.start_communication();
+
+            //Check if something has finished
+            send_comm.finish_communication();
+            recv_comm.finish_communication();
+            if(send_comm.done() && recv_comm.done() )
+                break;
         }
     }
 
+
     void query_octants()
     {
-        domain_->tree()->query_neighbor_octants(this);
-        domain_->tree()->query_influence_octants(this);
+        auto f =[&](octant_t* _o){
+            auto bbase=domain_->tree()->octant_to_level_coordinate(
+                    _o->tree_coordinate());
+            _o->data()=std::make_shared<datablock_t>(bbase, 
+                    domain_->block_extent(),_o->refinement_level(), true);
+        };
+        
+        domain_->tree()->query_neighbor_octants(this,f);
+        domain_->tree()->query_influence_octants(this,f);
+
+        domain_->tree()-> construct_leaf_maps();
+        domain_->tree()-> construct_level_maps();
     }
+    
+    auto domain()const{return domain_;}
 
 
 private:

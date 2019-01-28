@@ -69,7 +69,7 @@ public: //memeber functions
         else if(client())
             client()->receive_keys();
 
-        //Construct neighborhood:
+        //Construct neighborhood and influence list:
         if(server())
         {
             server()->rank_query();
@@ -79,10 +79,18 @@ public: //memeber functions
             client()->query_octants();
             client()->disconnect();
         }
-
-        
     }
 
+    template<class SendField, class RecvField=SendField>
+    void communicate_influence()
+    {
+        if(client())
+        {
+            const int level = domain_->tree()->base_level();
+            client()->template 
+                communicate_induced_fields<SendField, RecvField>(level);
+        }
+    }
     
 
 public: //access memebers:

@@ -69,18 +69,6 @@ public:
     {
         return insert(_task_ptr->id(), _data, _task_ptr->rank_other());
     }
-    /** * @brief Wait for all tasks to be finished */
-    task_vector_t wait_all()
-    {
-        vector_task_ptr_t res_all;
-        while(!this->done())
-        {
-            this->receive();
-            auto ft=this->finalize();
-            res_all.insert(res_all.end(), ft.begin(), ft.end());
-        }
-        return res_all;
-    }
 
     /** * @brief Check if all tasks are done and nothing is in the queue */
     bool done() const noexcept
@@ -91,8 +79,13 @@ public:
     }
 
     /** * @brief Check if all tasks are done and nothing is in the queue */
-    task_ptr_t post_task(task_data_t* _dat, int _rank_other)
+    task_ptr_t post_task(task_data_t* _dat, int _rank_other, bool use_tag=false, int _tag=100)
     {
+        if(use_tag)
+        {
+            auto task_ptr=insert(_tag, _dat, _rank_other);
+            return task_ptr;
+        }
         auto tag= tag_gen().get<task_t::tag()>(tag_rank(_rank_other));
         auto task_ptr=insert(tag, _dat, _rank_other);
         tag= tag_gen().generate<task_t::tag()>(tag_rank(_rank_other));
@@ -103,9 +96,24 @@ public:
     task_vector_t start_communication()
     {
         task_vector_t res;
+        std::size_t mCount=0;
         while(buffer_.is_free() && !buffer_queue_.empty())
         {
             auto task =buffer_queue_.front();
+
+            //If message does not exisit (for recv), check other posted messages
+            if(!message_exists(task))
+            {
+                buffer_queue_.push(task);
+                buffer_queue_.pop();
+                ++mCount;
+                if(mCount==buffer_queue_.size()) 
+                {
+                    break;
+                }
+                else {continue;}
+            }
+
             auto ptr = buffer_.get_free_buffer();
             task->attach_buffer( ptr );
             to_buffer(task);
@@ -161,6 +169,12 @@ protected:
     {
          this->derived().from_buffer_impl(_t); 
     }
+
+    bool message_exists(task_ptr_t _t) const noexcept
+    {
+        return this->derived().message_exists_impl(_t);
+    }
+
 
 
     void insert_unconfirmed_tasks(task_ptr_t& t) noexcept
@@ -220,6 +234,7 @@ public: //Memebers:
         _t->assign_data2buffer();
     }
     void from_buffer_impl(task_ptr_t _t) const noexcept { } 
+    bool message_exists_impl( task_ptr_t _t  ) const noexcept{ return true; }
 private:
     
 };
@@ -242,6 +257,12 @@ public: //members
     void from_buffer_impl(task_ptr_t _t) const noexcept 
     {
         _t->assign_buffer2data();
+    }
+    bool message_exists_impl( task_ptr_t _t  ) const noexcept{ 
+        if(this->comm_.iprobe(_t->rank_other(), _t->id()))
+            return true;
+        else return false;
+
     }
 };
 

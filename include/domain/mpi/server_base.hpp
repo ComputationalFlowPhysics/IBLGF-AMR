@@ -92,17 +92,25 @@ public: //members
     template<class QueryType>
     void run_query(QueryType& _q)
     {
-        initialize();
-        while (true)
-        {
-            auto tasks=get_tasks < QueryType > ( _q);
-            do_tasks<QueryType>(tasks, _q);
-            update_client_status();
-
-            if(task_manager_->all_done() && !connected())
-                break;
-        }
+        if (listen(_q, true) ) return;
+        while(!listen(_q)){}
     }
+
+    template<class QueryType>
+    bool listen(QueryType& _q, bool _initialize=false)
+    {
+        if(_initialize)
+            initialize();
+
+        auto tasks=get_tasks < QueryType > ( _q);
+        do_tasks<QueryType>(tasks, _q);
+        update_client_status();
+
+        if(task_manager_->all_done() && !connected()) 
+            return true;
+        return false;
+    }
+
 
 protected:
 

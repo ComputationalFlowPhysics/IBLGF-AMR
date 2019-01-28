@@ -186,8 +186,9 @@ public: //Ctors
        neighbor_[i] = new_neighbor;
     }
 
-    const int influence_number () const noexcept{return influence_num;}
+    const auto influence_number () const noexcept{return influence_.size();}
     void influence_number (int i) noexcept{/*influence_num = i;*/}
+
 
     void influence_clear () noexcept{influence_.fill(nullptr);}
     Octant* influence (int i) const noexcept{return influence_[i];}

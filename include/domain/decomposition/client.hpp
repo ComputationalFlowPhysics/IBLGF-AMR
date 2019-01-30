@@ -118,6 +118,7 @@ public:
             if(it->rank()!=myRank )
             {
                 bool is_influenced=false;
+                //This should probably be stored
                 for(std::size_t i = 0; i< it->influence_number(); ++i)
                 {
                     auto inf=it->influence(i);
@@ -127,7 +128,6 @@ public:
 
                if(is_influenced )
                {
-
                    auto send_ptr=it->data()->
                        template get<SendField>().date_ptr();
                    auto task= send_comm.post_task(send_ptr, it->rank(), true, idx);
@@ -188,21 +188,22 @@ public:
         }
     }
 
-
+    /** @brief Query ranks of the neighbors, influence octants, children and
+     *         parents which do not belong to this processor.
+     *
+     */
     void query_octants()
     {
+        //Octant initialization function
         auto f =[&](octant_t* _o){
             auto bbase=domain_->tree()->octant_to_level_coordinate(
                     _o->tree_coordinate());
             _o->data()=std::make_shared<datablock_t>(bbase, 
                     domain_->block_extent(),_o->refinement_level(), true);
         };
-        
-        domain_->tree()->query_neighbor_octants(this,f);
-        domain_->tree()->query_influence_octants(this,f);
-
-        domain_->tree()-> construct_leaf_maps();
-        domain_->tree()-> construct_level_maps();
+        //TODO: Check for children and parent octants needed for the upward
+        //      and downward pass
+        domain_->tree()->construct_maps(this,f);
     }
     
     auto domain()const{return domain_;}

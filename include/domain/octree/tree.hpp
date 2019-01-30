@@ -607,6 +607,93 @@ private:// influence list
     }
 
 
+public: //children and parent queries
+
+    /** @brief Query the ranks for all children */
+    template<class Client, class InitFunction>
+    void query_children( Client* _c, InitFunction& _f )
+    {
+        dfs_iterator it_begin(root()); dfs_iterator it_end;
+        ++it_begin;
+
+        std::vector<key_type> keys;
+        for(auto it =it_begin;it!=it_end;++it)
+        {
+            const auto it_key = it->key();
+            if(it->locally_owned())
+            {
+                //Check children
+                for(int i=0;i<it->num_children();++i)
+                {
+                    if(!it->child(i))
+                    {
+                        keys.emplace_back(it_key.child(i));
+                    }
+                }
+            }
+        }
+
+        auto ranks= _c->rank_query( keys );
+        for(std::size_t i = 0; i < ranks.size();++i )
+        {
+            if(ranks[i]>=0)
+            {
+                auto nn = this->insert_td(keys[i]);
+                _f(nn);
+                nn->rank()=ranks[i];
+            }
+        }
+    }
+
+    /** @brief Query ranks for all interior octants */
+    template<class Client>
+    void query_interior( Client* _c )
+    {
+        dfs_iterator it_begin(root()); dfs_iterator it_end;
+        ++it_begin;
+
+        std::vector<key_type> keys;
+        for(auto it =it_begin;it!=it_end;++it)
+        {
+            if( it->rank()<0 )
+            {
+                keys.emplace_back(it->key());
+            }
+        }
+
+        auto ranks= _c->rank_query( keys );
+        for(std::size_t i = 0; i < ranks.size();++i )
+        {
+            if(ranks[i]>=0)
+            {
+                auto nn = this->find_octant(keys[i]);
+                nn->rank()=ranks[i];
+            }
+        }
+    }
+
+
+public: //Query ranks of all octants, which are assigned in local tree
+
+    /** @brief Query from server and construct all 
+     *         maps for neighbors, influence 
+     *         list, children and interior nodes
+     **/
+    template<class Client, class InitFunction>
+    void construct_maps( Client* _c, InitFunction& _f )
+    {
+        //Queries
+        this->query_neighbor_octants(_c,_f);
+        this->query_influence_octants(_c,_f);
+        this->query_children(_c,_f);
+        this->query_interior(_c);
+
+        //Maps constructions
+        this-> construct_leaf_maps();
+        this-> construct_level_maps();
+    }
+    
+        
 
 public: // leafs maps 
 

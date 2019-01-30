@@ -419,7 +419,8 @@ public:
             {
                for(int d=0;d<Dim;++d)
                {
-                   bb.base()[d]=std::min(bb.base()[d], it->data()->descriptor().base()[d]);
+                   bb.base()[d]=
+                       std::min(bb.base()[d], it->data()->descriptor().base()[d]);
                }
                bb.enlarge_to_fit(it->data()->descriptor()) ;
             }
@@ -455,12 +456,12 @@ public:
 
         os<<"Domain Bounding Box: "<<d.bounding_box_<<std::endl;
         os<<"Fields:"<<std::endl;
-        auto it=d.begin_leafs();
-        it->data()->for_fields([&](auto& field)
-                {
-                    os<<"\t "<<field.name()<<std::endl;
-                }
-        );
+        //auto it=d.begin_leafs();
+        //it->data()->for_fields([&](auto& field)
+        //        {
+        //            os<<"\t "<<field.name()<<std::endl;
+        //        }
+        //);
         return os;
     }
 

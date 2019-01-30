@@ -181,7 +181,7 @@ public:
             for (auto it_t = level_o_1;
                     it_t!=(level_o_2); ++it_t)
             {
-                for (int i=0; i< it_t->influence_number(); ++i)
+                for (std::size_t i=0; i< it_t->influence_number(); ++i)
                 {
                     auto n_s = it_t->influence(i);
                     if (n_s)

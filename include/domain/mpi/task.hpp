@@ -38,6 +38,38 @@ private:
 };
 
 template<class TaskType>
+struct AddAssignRecv : CopyAssign<TaskType>
+{
+    template<class Buffer>
+    void attach_buffer( Buffer* _b ) noexcept
+    {
+        task_.comm_buffer_=_b;
+        task_.comm_buffer_->attach();
+    }
+    void assign_data2buffer() noexcept
+    {
+        task_.comm_buffer_->data()=task_.data();        
+    }
+    void assign_buffer2data() noexcept
+    {
+        task_.data()=task_.comm_buffer_->data();
+        for(std::size_t i=0; i<task_.data().size();++i)
+        {
+            task_.data()[i]+=task_.comm_buffer_->data()[i];
+        }
+    }
+    void deattach_buffer() noexcept
+    {
+        task_.comm_buffer_->detach();
+        task_.comm_buffer_=nullptr;
+    }
+    auto& buffer() noexcept {return  task_.comm_buffer_->data();  }
+
+private:
+    TaskType& task_=this->derived();
+};
+
+template<class TaskType>
 struct Inplace : crtp::Crtp<TaskType, Inplace>
 {
     template<class Buffer>

@@ -42,7 +42,7 @@ public:
 
     using key_query_t = typename trait_t::key_query_t;
     using rank_query_t = typename trait_t::rank_query_t;
-    using field_task_t = typename trait_t::field_task_t;
+    using induced_fields_task_t = typename trait_t::induced_fields_task_t;
     using task_manager_t =typename trait_t::task_manager_t;
 
     using intra_client_server_t = ServerBase<trait_t>;
@@ -100,12 +100,13 @@ public:
     template<class SendField,class RecvField>
     void communicate_induced_fields( int _level )
     {
-        std::cout<<"Comunicating induced fields"<<std::endl;;
+        std::cout<<"Comunicating induced fields of "
+                 <<SendField::name()<<" to "<<RecvField::name()<<std::endl;
 
         auto& send_comm=
-            task_manager_->template send_communicator<field_task_t>();
+            task_manager_->template send_communicator<induced_fields_task_t>();
         auto& recv_comm=
-            task_manager_->template recv_communicator<field_task_t>();
+            task_manager_->template recv_communicator<induced_fields_task_t>();
 
         boost::mpi::communicator  w; 
         const int myRank=w.rank();
@@ -182,11 +183,12 @@ public:
 
             //Check if something has finished
             send_comm.finish_communication();
-            recv_comm.finish_communication();
+            const auto recv_tasks=recv_comm.finish_communication();
             if(send_comm.done() && recv_comm.done() )
                 break;
         }
     }
+
 
     /** @brief Query ranks of the neighbors, influence octants, children and
      *         parents which do not belong to this processor.
@@ -201,8 +203,6 @@ public:
             _o->data()=std::make_shared<datablock_t>(bbase, 
                     domain_->block_extent(),_o->refinement_level(), true);
         };
-        //TODO: Check for children and parent octants needed for the upward
-        //      and downward pass
         domain_->tree()->construct_maps(this,f);
     }
     

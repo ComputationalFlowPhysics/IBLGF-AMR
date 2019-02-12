@@ -66,7 +66,15 @@ struct DecomposistionTest:public SetupBase<DecomposistionTest,parameters>
     void run()
     {
         //domain_.test();
-       domain_.decomposition().communicate_influence<source, phi_exact>();
+       //domain_.decomposition().communicate_influence<source, phi_exact>();
+        if(domain_.is_client())
+        {
+            std::cout<<"starting solver"<<std::endl;
+            poisson_solver_t psolver(&this->simulation_);
+            std::cout<<"done solver"<<std::endl;
+            psolver.solve<source, phi_num>();
+        }
+        //psolver.laplace_diff<phi_num,amr_lap_source>();
     }
 
 
@@ -85,25 +93,6 @@ struct DecomposistionTest:public SetupBase<DecomposistionTest,parameters>
         const int nRef = simulation_.dictionary_->
             template get_or<int>("nLevels",0);
 
-
-        //for(int l=0;l<nRef;++l)
-        //{
-        //    for (auto it  = domain_.begin_leafs();
-        //            it != domain_.end_leafs(); ++it)
-        //    {
-        //        auto b=it->data()->descriptor();
-
-        //        const auto lower((center )/2-2 ), 
-        //                         upper((center )/2+2 - b.extent());
-        //        b.grow(lower, upper);
-        //        if(b.is_inside( center * pow(2.0,l))
-        //           && it->refinement_level()==l
-        //          )
-        //        {
-        //            domain_.refine(it);
-        //        }
-        //    }
-        //}
 
         //Adapt center to always have peak value in a cell-center
         center+=0.5/std::pow(2,nRef); 

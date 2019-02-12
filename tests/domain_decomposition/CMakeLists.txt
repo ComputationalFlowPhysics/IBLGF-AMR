@@ -2,9 +2,9 @@
 include_directories(${IBLGF_SOURCE_DIR}/src ) 
  
 # add the executable
-add_executable(decompTest.x domainTest.cpp)
+add_executable(decompTest.x domainTest.cpp ${SOURCES})
 target_link_libraries(decompTest.x 
                       ${MPI_LIBRARIES}
                       ${Boost_LIBRARIES}
-                      ${FFTW_LIBRARIES}  
+                      ${FFTW_LIBRARIES}  fftw3_omp blas
                       xtensor)

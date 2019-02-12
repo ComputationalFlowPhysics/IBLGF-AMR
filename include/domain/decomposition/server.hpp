@@ -121,6 +121,7 @@ public:
 
         //TODO: Iterate to balance/diffuse load 
         
+        std::cout<<"Done with initial load balancing"<<std::endl; 
         return tasks_perProc;
     }
 

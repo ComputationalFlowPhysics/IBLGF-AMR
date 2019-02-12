@@ -74,6 +74,10 @@ public:
     template< class Source, class Target >
     void apply_amr_lgf()
     {
+        
+        auto client = domain_->decomposition().client();
+        if(!client)return;
+
         // allocate lgf
         std::vector<float_type> lgf;
         const float_type dx_base=domain_->dx_base();
@@ -93,8 +97,9 @@ public:
             }
         }
 
+
         //Coarsification:
-        pcout<<"coarsification "<<std::endl;
+        std::cout<<"coarsification "<<std::endl;
         for (int ls = domain_->tree()->depth()-2;
                  ls >= domain_->tree()->base_level(); --ls)
         {
@@ -111,8 +116,10 @@ public:
                  l < domain_->tree()->depth(); ++l)
         {
             //test for FMM
-            fmm_.template fmm_for_level<source_tmp, Target>(domain_, l, false);
-            fmm_.template fmm_for_level<source_tmp, Target>(domain_, l, true);
+            //fmm_.template fmm_for_level<source_tmp, Target>(domain_, l, false);
+            //fmm_.template fmm_for_level<source_tmp, Target>(domain_, l, true);
+            fmm_.template fmm_for_level_test<source_tmp, Target>(domain_, l, false);
+            fmm_.template fmm_for_level_test<source_tmp, Target>(domain_, l, true);
             //this->level_convolution_fft<source_tmp, Target>(l);
 
             for (auto it  = domain_->begin(l);

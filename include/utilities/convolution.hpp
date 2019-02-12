@@ -23,7 +23,7 @@ using namespace domain;
 
 class dfft_r2c
 {
-    const int nthreads = 8;
+    const int nthreads = 1;
 
 public:
     using float_type=double;
@@ -127,7 +127,7 @@ private:
 class dfft_c2r
 {
 public:
-    const int nthreads = 8;
+    const int nthreads = 1;
     using complex_vector_t = std::vector<std::complex<float_type>,
           boost::alignment::aligned_allocator_adaptor<
               std::allocator<std::complex<float_type>>,32>> ;
@@ -214,7 +214,7 @@ public: //Ctors
      fft_forward1(padded_dims),
      fft_backward(padded_dims)
     {
-    construct_lgf_matrix_level_maps();
+        construct_lgf_matrix_level_maps();
     }
 
     void construct_lgf_matrix_level_maps()

@@ -57,6 +57,7 @@ public:
     :lagrange_intrp(Nb),
     conv_( dims_t{{Nb,Nb,Nb}}, dims_t{{Nb,Nb, Nb}} )
     {
+        std::cout<<"BLA2"<<std::endl;
     }
 
     template<
@@ -147,6 +148,58 @@ public:
         std::cout << "Fmm - level - done / time = "<< fmm_time << " (s * threads)" << std::endl;
 
     }
+  template<
+        class Source,
+        class Target
+        >
+    void fmm_for_level_test(domain_t* domain_, 
+                            int level, 
+                            bool for_non_leaf=false)
+    {
+        std::cout << "------------------------------------"  << std::endl;
+        std::cout << "Fmm - Level - " << level << std::endl;
+
+        const float_type dx_base=domain_->dx_base();
+        auto refinement_level = domain_-> begin(level)->refinement_level();
+        auto dx_level =  dx_base/std::pow(2, refinement_level);
+
+        // Find the subtree
+        auto o_start = domain_-> begin(level);
+        auto o_end   = domain_-> end(level);
+        o_end--;
+
+        if (for_non_leaf)
+        {
+            while ((o_start != domain_->end(level)) && 
+                   (o_start->is_leaf()==true) ) o_start++;
+
+            if (o_start == domain_->end(level)) { return; }
+            while (o_end->is_leaf()==true) o_end--;
+        }
+
+        // Initialize for each fmm // zero ing all tree
+        fmm_init_zero<fmm_s>(domain_, level, o_start, o_end);
+        fmm_init_zero<fmm_t>(domain_, level, o_start, o_end);
+
+        // Copy to temporary variables // only the base level
+        fmm_init_copy<Source, fmm_s>(domain_, level, o_start, o_end, for_non_leaf);
+
+        // Nearest neighbors and self
+        fmm_B0<fmm_s, fmm_t>(domain_, level, o_start, o_end, dx_level);
+
+        // FMM 189
+        fmm_Bx<fmm_s, fmm_t>(domain_, level, o_start, o_end, dx_level);
+        domain_->decomposition().template communicate_influence<fmm_s, fmm_t>();
+
+        // Copy back
+        if (!for_non_leaf)
+            fmm_add_equal<Target, fmm_t>(domain_, level, o_start, o_end, for_non_leaf);
+        else
+            fmm_minus_equal<Target, fmm_t>(domain_, level, o_start, o_end, for_non_leaf);
+
+    }
+
+
 
     template<
         class s,
@@ -323,6 +376,7 @@ public:
                     it!=(level_o_2); ++it)
             {
                 {
+                    if(!it->data())continue;
                     for(auto& e: it->data()->template get_data<f>())
                         e=0.0;
                 }
@@ -457,6 +511,7 @@ public:
         const auto s_base = o_s->data()->template get<S>().
                                 real_block().base();
 
+        if(!o_s->locally_owned())return;
 
         // Get extent of Source region
         const auto s_extent = o_s->data()->template get<S>().

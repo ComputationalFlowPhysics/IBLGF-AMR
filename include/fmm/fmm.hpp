@@ -96,7 +96,6 @@ public:
         // Initialize for each fmm // zero ing all tree
         std::cout << "Fmm - initialize " << std::endl;
         fmm_init_zero<fmm_s>(domain_, level, o_start, o_end);
-        fmm_init_zero<fmm_t>(domain_, level, o_start, o_end);
 
         // Copy to temporary variables // only the base level
         std::cout << "Fmm - copy source " << std::endl;

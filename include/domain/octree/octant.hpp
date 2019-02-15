@@ -199,8 +199,38 @@ public: //Ctors
 
     float_type load()const noexcept{return 1.0;}
 
+
+public: //mpi info 
+
     bool locally_owned() const noexcept { return comm_.rank()==this->rank(); }
     bool ghost() const noexcept { return !locally_owned()&&this->rank()>=0; }
+
+    bool has_locally_owned_children() const noexcept
+    {
+        for(int c=0;c<this->num_children();++c)
+        {
+            const auto child = this->child(c);
+            if(child->locally_owned() && child->data())
+            {
+                return true;
+                break;
+            }
+        }
+        return false;
+    }
+    auto unique_child_ranks() const noexcept
+    {
+        std::set<int> unique_ranks;
+        for(int c=0;c<this->num_children();++c)
+        {
+            auto child = this->child(c);
+            if(!child->locally_owned())
+            {
+                unique_ranks.insert(child->rank());
+            }
+        }
+        return unique_child_ranks;
+    }
 
 public: //Access
 

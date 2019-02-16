@@ -210,6 +210,7 @@ public: //mpi info
         for(int c=0;c<this->num_children();++c)
         {
             const auto child = this->child(c);
+            if(!child) continue;
             if(child->locally_owned() && child->data())
             {
                 return true;
@@ -218,18 +219,19 @@ public: //mpi info
         }
         return false;
     }
-    auto unique_child_ranks() const noexcept
+    std::set<int> unique_child_ranks() const noexcept
     {
         std::set<int> unique_ranks;
         for(int c=0;c<this->num_children();++c)
         {
             auto child = this->child(c);
+            if(!child) continue;
             if(!child->locally_owned())
             {
                 unique_ranks.insert(child->rank());
             }
         }
-        return unique_child_ranks;
+        return unique_ranks;
     }
 
 public: //Access

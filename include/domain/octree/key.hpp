@@ -472,6 +472,8 @@ public: // print
         std::cout<<std::endl;
     }
 
+    value_type id()const noexcept{return _index;}
+
 
 private:
 

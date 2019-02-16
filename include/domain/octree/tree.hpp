@@ -645,6 +645,41 @@ public: //children and parent queries
         }
     }
 
+  /** @brief Query the ranks for all children */
+    template<class Client, class InitFunction>
+    void query_parents( Client* _c, InitFunction& _f )
+    {
+        dfs_iterator it_begin(root()); dfs_iterator it_end;
+        ++it_begin;
+
+        std::set<key_type> keys_set;
+        std::vector<key_type> keys;
+        for(auto it =it_begin;it!=it_end;++it)
+        {
+            const auto it_key = it->key();
+            if(it->locally_owned())
+            {
+                //Check children
+                if(!it->parent()->locally_owned() || !it->parent())
+                {
+                    keys_set.insert(it_key.parent());
+                }
+            }
+        }
+        std::copy(keys_set.begin(), keys_set.end(), std::back_inserter(keys));
+        auto ranks= _c->rank_query( keys );
+        for(std::size_t i = 0; i < ranks.size();++i )
+        {
+            if(ranks[i]>=0)
+            {
+                auto nn = this->insert_td(keys[i]);
+                _f(nn);
+                nn->rank()=ranks[i];
+            }
+        }
+    }
+
+
     /** @brief Query ranks for all interior octants */
     template<class Client>
     void query_interior( Client* _c )
@@ -686,6 +721,7 @@ public: //Query ranks of all octants, which are assigned in local tree
         this->query_neighbor_octants(_c,_f);
         this->query_influence_octants(_c,_f);
         this->query_children(_c,_f);
+        this->query_parents(_c,_f);
         this->query_interior(_c);
 
         //Maps constructions

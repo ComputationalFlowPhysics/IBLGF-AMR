@@ -147,16 +147,16 @@ public:
 
         // Interpolation
         std::cout<<"Interpolation"<<std::endl;
-        for (int lt = domain_->tree()->base_level();
-                 lt < domain_->tree()->depth(); ++lt)
-        {
-            for (auto it_t  = domain_->begin(lt);
-                      it_t != domain_->end(lt); ++it_t)
-            {
-                if(it_t->is_leaf()) continue;
-                c_cntr_nli_.nli_intrp_node<Target, Target>(it_t);
-            }
-        }
+        //for (int lt = domain_->tree()->base_level();
+        //         lt < domain_->tree()->depth(); ++lt)
+        //{
+        //    for (auto it_t  = domain_->begin(lt);
+        //              it_t != domain_->end(lt); ++it_t)
+        //    {
+        //        if(it_t->is_leaf()) continue;
+        //        c_cntr_nli_.nli_intrp_node<Target, Target>(it_t);
+        //    }
+        //}
 
     }
 

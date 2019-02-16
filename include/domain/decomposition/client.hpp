@@ -136,7 +136,7 @@ public:
                    auto task= send_comm.post_task(send_ptr, it->rank(), true, idx);
                    task->requires_confirmation()=false;
 
-                   //std::cout<<"Sending field from "<<myRank<<" to "<<it->rank()
+                   //std::cout<<"Sending infl field from "<<myRank<<" to "<<it->rank()
                    //    <<" index " <<it->key()._index
                    //    <<" c "<<it->global_coordinate()
                    //    <<" tag: "<<task->id()
@@ -192,10 +192,11 @@ public:
     }
 
 
+    /** @brief communicate fields for up/downward pass of fmm */
     template<class SendField,class RecvField=SendField>
     void communicate_updownward_pass(bool _upward)
     {
-        std::cout<<"Comunicating fields for downward pass of "
+        std::cout<<"Comunicating fields for up/downward pass of "
                  <<SendField::name()<<" to "<<RecvField::name()<<std::endl;
 
         auto& send_comm=
@@ -206,60 +207,88 @@ public:
             template recv_communicator<induced_fields_task_t>();
 
         boost::mpi::communicator  w; 
-        const int myRank=w.rank();
+        int myRank=w.rank();
 
-        for (int ls = domain_->tree()->base_level();
-                 ls >= domain_->tree()->depth(); ++ls)
-        {
-            for (auto it  = domain_->begin(ls);
-                      it != domain_->end(ls); ++it)
+            for (auto it  = domain_->begin();
+                      it != domain_->end(); ++it)
             {
                 const auto idx=get_octant_idx(it);
+                //std::cout<<it->global_coordinate()<<std::endl;
 
-                //Check if there are ghost children
-                const auto unique_ranks=it->unique_child_ranks();
-                for(auto r : unique_ranks)
+                if(it->locally_owned() /*&& it->data() */)
                 {
-                    auto data_ptr=it->data()->
-                        template get<SendField>().date_ptr();
-                    if(_upward) 
+                    //Check if there are ghost children
+                    const auto unique_ranks=it->unique_child_ranks();
+                    for(auto r : unique_ranks)
                     {
-                        auto task=recv_comm.post_task( data_ptr,r, true,idx);
-                        task->requires_confirmation()=false;
-                    } 
-                    else
-                    {
-                        auto task= send_comm.post_task(data_ptr,r,true,idx);
-                        task->requires_confirmation()=false;
+                        if(_upward) 
+                        {
+                            auto data_ptr=it->data()->
+                                template get<RecvField>().date_ptr();
+                            auto task=recv_comm.post_task( data_ptr,r, true,idx);
+                            task->requires_confirmation()=false;
+                            std::cout<<"Recv field from "<<r<<" to "<<myRank
+                                <<" index " <<it->key()._index
+                                <<" iindex " <<static_cast<int>(it->key()._index)
+                                <<" c "<<it->global_coordinate()
+                                <<" level "<<it->level()
+                                <<" tag: "<<task->id()
+                                <<std::endl;
+                        }
+                        else
+                        {
+
+                            auto data_ptr=it->data()->
+                                template get<SendField>().date_ptr();
+                            auto task= send_comm.post_task(data_ptr,r,true,idx);
+                            task->requires_confirmation()=false;
+                            std::cout<<"Sending field from "<<myRank<<" to "<<it->rank()
+                                <<" index " <<it->key()._index
+                                <<" c "<<it->global_coordinate()
+                                <<" level "<<it->level()
+                                <<" tag: "<<task->id()
+                                <<std::endl;
+                        }
                     }
                 }
 
                 //Check if ghost has locally_owned children 
-                if(!it->locally_owned() && it->data() && !it->is_leaf())
+                if(!it->locally_owned() /*&& it->data() */)
                 {
                     if(it->has_locally_owned_children())
                     {
-                        const auto recv_ptr=it->data()->
-                            template get<RecvField>().date_ptr();
                         if(_upward)
                         {
+                            const auto data_ptr=it->data()->
+                                template get<SendField>().date_ptr();
                             auto task = 
-                                send_comm.post_task(recv_ptr, it->rank(),
+                                send_comm.post_task(data_ptr, it->rank(),
                                                     true,idx);
                             task->requires_confirmation()=false;
+                            std::cout<<"Sending field from "<<myRank<<" to "<<it->rank()
+                                <<" index " <<it->key()._index
+                                <<" c "<<it->global_coordinate()
+                                <<" tag: "<<task->id()
+                                <<std::endl;
                         }
                         else
                         {
+                            const auto data_ptr=it->data()->
+                                template get<RecvField>().date_ptr();
                             auto task = 
-                                recv_comm.post_task(recv_ptr, it->rank(), 
+                                recv_comm.post_task(data_ptr, it->rank(), 
                                                     true,idx);
                             task->requires_confirmation()=false;
+                            std::cout<<"Recv field from "<<it->rank()<<" to "<<myRank
+                                <<" index " <<it->key()._index
+                                <<" iindex " <<static_cast<int>(it->key()._index)
+                                <<" c "<<it->global_coordinate()
+                                <<" tag: "<<task->id()
+                                <<std::endl;
                         }
-
                     }
                 }
             }
-        }
        
         //Start communications
         while(true)

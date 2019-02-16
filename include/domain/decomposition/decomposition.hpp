@@ -82,13 +82,22 @@ public: //memeber functions
     }
 
     template<class SendField, class RecvField=SendField>
-    void communicate_influence()
+    void communicate_influence(int _level)
     {
         if(client())
         {
-            const int level = domain_->tree()->base_level();
             client()->template 
-                communicate_induced_fields<SendField, RecvField>(level);
+                communicate_induced_fields<SendField, RecvField>(_level);
+        }
+    }
+
+    template<class SendField, class RecvField=SendField>
+    void communicate_updownward_pass(bool _upward)
+    {
+        if(client())
+        {
+            client()->template 
+                communicate_updownward_pass<SendField, RecvField>(_upward);
         }
     }
     

@@ -57,7 +57,6 @@ public:
     :lagrange_intrp(Nb),
     conv_( dims_t{{Nb,Nb,Nb}}, dims_t{{Nb,Nb, Nb}} )
     {
-        std::cout<<"BLA2"<<std::endl;
     }
 
     template<
@@ -180,15 +179,25 @@ public:
         fmm_init_zero<fmm_s>(domain_, level, o_start, o_end);
         fmm_init_zero<fmm_t>(domain_, level, o_start, o_end);
 
+
         // Copy to temporary variables // only the base level
         fmm_init_copy<Source, fmm_s>(domain_, level, o_start, o_end, for_non_leaf);
+
+        //anterpolation communication
+        //domain_->decomposition().
+        //    template communicate_updownward_pass<fmm_s, fmm_t>(true);
 
         // Nearest neighbors and self
         fmm_B0<fmm_s, fmm_t>(domain_, level, o_start, o_end, dx_level);
 
         // FMM 189
-        fmm_Bx<fmm_s, fmm_t>(domain_, level, o_start, o_end, dx_level);
-        domain_->decomposition().template communicate_influence<fmm_s, fmm_t>();
+        //fmm_Bx<fmm_s, fmm_t>(domain_, level, o_start, o_end, dx_level);
+        domain_->decomposition().template communicate_influence<fmm_s, fmm_t>(level);
+
+
+        //interpolation communication
+        domain_->decomposition().
+            template communicate_updownward_pass<fmm_s, fmm_t>(false);
 
         // Copy back
         if (!for_non_leaf)
@@ -233,6 +242,8 @@ public:
             for (auto it_t = level_o_1;
                     it_t!=(level_o_2); ++it_t)
             {
+
+                if(!it_t) continue;
                 for (std::size_t i=0; i< it_t->influence_number(); ++i)
                 {
                     auto n_s = it_t->influence(i);
@@ -276,6 +287,7 @@ public:
         for (auto it_t = o_start; it_t!=(o_end); ++it_t)
         {
 
+            if(!it_t->data()) continue;
             for (int i=0; i<27; ++i)
             {
                 auto n_s = it_t->neighbor(i);

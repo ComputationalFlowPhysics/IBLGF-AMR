@@ -158,12 +158,18 @@ public:
         std::cout << "Fmm - Level - " << level << std::endl;
 
         const float_type dx_base=domain_->dx_base();
-        auto refinement_level = domain_-> begin(level)->refinement_level();
+        //auto refinement_level = domain_-> begin(level)->refinement_level();
+        auto refinement_level = level-domain_->tree()->base_level();
         auto dx_level =  dx_base/std::pow(2, refinement_level);
 
         // Find the subtree
+        // FIXME: find subtree if no ocant is local on this level 
         auto o_start = domain_-> begin(level);
         auto o_end   = domain_-> end(level);
+        if(o_start == o_end)
+        {
+            throw std::runtime_error("fmm.hpp : Cant find subtree for fmm");
+        }
         o_end--;
 
         if (for_non_leaf)
@@ -184,14 +190,14 @@ public:
         fmm_init_copy<Source, fmm_s>(domain_, level, o_start, o_end, for_non_leaf);
 
         //anterpolation communication
-        //domain_->decomposition().
-        //    template communicate_updownward_pass<fmm_s, fmm_t>(true);
+        domain_->decomposition().
+            template communicate_updownward_pass<fmm_s, fmm_t>(true);
 
         // Nearest neighbors and self
         fmm_B0<fmm_s, fmm_t>(domain_, level, o_start, o_end, dx_level);
 
-        // FMM 189
-        //fmm_Bx<fmm_s, fmm_t>(domain_, level, o_start, o_end, dx_level);
+        //// FMM 189
+        fmm_Bx<fmm_s, fmm_t>(domain_, level, o_start, o_end, dx_level);
         domain_->decomposition().template communicate_influence<fmm_s, fmm_t>(level);
 
 
@@ -243,7 +249,6 @@ public:
                     it_t!=(level_o_2); ++it_t)
             {
 
-                if(!it_t) continue;
                 for (std::size_t i=0; i< it_t->influence_number(); ++i)
                 {
                     auto n_s = it_t->influence(i);

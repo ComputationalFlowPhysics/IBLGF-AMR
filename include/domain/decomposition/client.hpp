@@ -207,88 +207,86 @@ public:
             template recv_communicator<induced_fields_task_t>();
 
         boost::mpi::communicator  w; 
-        int myRank=w.rank();
+        //int myRank=w.rank();
 
-            for (auto it  = domain_->begin();
-                      it != domain_->end(); ++it)
+        for (auto it  = domain_->begin();
+                it != domain_->end(); ++it)
+        {
+            const auto idx=get_octant_idx(it);
+            if(it->locally_owned() )
             {
-                const auto idx=get_octant_idx(it);
-                //std::cout<<it->global_coordinate()<<std::endl;
-
-                if(it->locally_owned() /*&& it->data() */)
+                //Check if there are ghost children
+                const auto unique_ranks=it->unique_child_ranks();
+                for(auto r : unique_ranks)
                 {
-                    //Check if there are ghost children
-                    const auto unique_ranks=it->unique_child_ranks();
-                    for(auto r : unique_ranks)
+                    if(_upward) 
                     {
-                        if(_upward) 
-                        {
-                            auto data_ptr=it->data()->
-                                template get<RecvField>().date_ptr();
-                            auto task=recv_comm.post_task( data_ptr,r, true,idx);
-                            task->requires_confirmation()=false;
-                            std::cout<<"Recv field from "<<r<<" to "<<myRank
-                                <<" index " <<it->key()._index
-                                <<" iindex " <<static_cast<int>(it->key()._index)
-                                <<" c "<<it->global_coordinate()
-                                <<" level "<<it->level()
-                                <<" tag: "<<task->id()
-                                <<std::endl;
-                        }
-                        else
-                        {
-
-                            auto data_ptr=it->data()->
-                                template get<SendField>().date_ptr();
-                            auto task= send_comm.post_task(data_ptr,r,true,idx);
-                            task->requires_confirmation()=false;
-                            std::cout<<"Sending field from "<<myRank<<" to "<<it->rank()
-                                <<" index " <<it->key()._index
-                                <<" c "<<it->global_coordinate()
-                                <<" level "<<it->level()
-                                <<" tag: "<<task->id()
-                                <<std::endl;
-                        }
+                        auto data_ptr=it->data()->
+                            template get<RecvField>().date_ptr();
+                        auto task=recv_comm.post_task( data_ptr,r, true,idx);
+                        task->requires_confirmation()=false;
+                        //std::cout<<"Recv field from "<<r<<" to "<<myRank
+                        //    <<" index " <<it->key()._index
+                        //    <<" iindex " <<static_cast<int>(it->key()._index)
+                        //    <<" c "<<it->global_coordinate()
+                        //    <<" level "<<it->level()
+                        //    <<" tag: "<<task->id()
+                        //    <<std::endl;
                     }
-                }
-
-                //Check if ghost has locally_owned children 
-                if(!it->locally_owned() /*&& it->data() */)
-                {
-                    if(it->has_locally_owned_children())
+                    else
                     {
-                        if(_upward)
-                        {
-                            const auto data_ptr=it->data()->
-                                template get<SendField>().date_ptr();
-                            auto task = 
-                                send_comm.post_task(data_ptr, it->rank(),
-                                                    true,idx);
-                            task->requires_confirmation()=false;
-                            std::cout<<"Sending field from "<<myRank<<" to "<<it->rank()
-                                <<" index " <<it->key()._index
-                                <<" c "<<it->global_coordinate()
-                                <<" tag: "<<task->id()
-                                <<std::endl;
-                        }
-                        else
-                        {
-                            const auto data_ptr=it->data()->
-                                template get<RecvField>().date_ptr();
-                            auto task = 
-                                recv_comm.post_task(data_ptr, it->rank(), 
-                                                    true,idx);
-                            task->requires_confirmation()=false;
-                            std::cout<<"Recv field from "<<it->rank()<<" to "<<myRank
-                                <<" index " <<it->key()._index
-                                <<" iindex " <<static_cast<int>(it->key()._index)
-                                <<" c "<<it->global_coordinate()
-                                <<" tag: "<<task->id()
-                                <<std::endl;
-                        }
+
+                        auto data_ptr=it->data()->
+                            template get<SendField>().date_ptr();
+                        auto task= send_comm.post_task(data_ptr,r,true,idx);
+                        task->requires_confirmation()=false;
+                        //std::cout<<"Sending field from "<<myRank<<" to "<<it->rank()
+                        //    <<" index " <<it->key()._index
+                        //    <<" c "<<it->global_coordinate()
+                        //    <<" level "<<it->level()
+                        //    <<" tag: "<<task->id()
+                        //    <<std::endl;
                     }
                 }
             }
+
+            //Check if ghost has locally_owned children 
+            if(!it->locally_owned() /*&& it->data() */)
+            {
+                if(it->has_locally_owned_children())
+                {
+                    if(_upward)
+                    {
+                        const auto data_ptr=it->data()->
+                            template get<SendField>().date_ptr();
+                        auto task = 
+                            send_comm.post_task(data_ptr, it->rank(),
+                                    true,idx);
+                        task->requires_confirmation()=false;
+                        //std::cout<<"Sending field from "<<myRank<<" to "<<it->rank()
+                        //    <<" index " <<it->key()._index
+                        //    <<" c "<<it->global_coordinate()
+                        //    <<" tag: "<<task->id()
+                        //    <<std::endl;
+                    }
+                    else
+                    {
+                        const auto data_ptr=it->data()->
+                            template get<RecvField>().date_ptr();
+                        auto task = 
+                            recv_comm.post_task(data_ptr, it->rank(), 
+                                    true,idx);
+                        task->requires_confirmation()=false;
+                        //std::cout<<"Recv field from "<<it->rank()<<" to "<<myRank
+                        //    <<" index " <<it->key()._index
+                        //    <<" iindex " <<static_cast<int>(it->key()._index)
+                        //    <<" c "<<it->global_coordinate()
+                        //    <<" tag: "<<task->id()
+                        //    <<std::endl;
+                    }
+                }
+            }
+        }
        
         //Start communications
         while(true)
@@ -304,8 +302,7 @@ public:
                 break;
         }
     }
-  /*************************************************************************/
-    //TODO put in octant
+    //TODO: Make it better and put in octant
     template<class T>
     auto get_octant_idx(T it) const noexcept
     {
@@ -313,9 +310,6 @@ public:
         return cc.x()+100*cc.y()+100*100*cc.z() +
             100*100*100*it->level();
     }
-
-    /*************************************************************************/
-
 
     /** @brief Query ranks of the neighbors, influence octants, children and
      *         parents which do not belong to this processor.

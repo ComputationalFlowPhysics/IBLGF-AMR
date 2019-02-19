@@ -99,7 +99,7 @@ public:
 
 
         //Coarsification:
-        std::cout<<"coarsification "<<std::endl;
+        pcout<<"coarsification "<<std::endl;
         for (int ls = domain_->tree()->depth()-2;
                  ls >= domain_->tree()->base_level(); --ls)
         {
@@ -146,17 +146,17 @@ public:
         }
 
         // Interpolation
-        std::cout<<"Interpolation"<<std::endl;
-        //for (int lt = domain_->tree()->base_level();
-        //         lt < domain_->tree()->depth(); ++lt)
-        //{
-        //    for (auto it_t  = domain_->begin(lt);
-        //              it_t != domain_->end(lt); ++it_t)
-        //    {
-        //        if(it_t->is_leaf()) continue;
-        //        c_cntr_nli_.nli_intrp_node<Target, Target>(it_t);
-        //    }
-        //}
+        pcout<<"Interpolation"<<std::endl;
+        for (int lt = domain_->tree()->base_level();
+                 lt < domain_->tree()->depth(); ++lt)
+        {
+            for (auto it_t  = domain_->begin(lt);
+                      it_t != domain_->end(lt); ++it_t)
+            {
+                if(it_t->is_leaf()) continue;
+                c_cntr_nli_.nli_intrp_node<Target, Target>(it_t);
+            }
+        }
 
     }
 
@@ -360,11 +360,11 @@ public:
     }
 
 private:
-    domain_type*                        domain_;    ///< domain
-    fft::Convolution                    conv_;      ///< fft convolution
-    Fmm_t                               fmm_;       ///< fast-multipole
-    interpolation::cell_center_nli      c_cntr_nli_;///< Lagrange Interpolation
-    parallel_ostream::ParallelOstream   pcout;      ///< parallel cout
+    domain_type*                      domain_;    ///< domain
+    fft::Convolution                  conv_;      ///< fft convolution
+    Fmm_t                             fmm_;       ///< fast-multipole
+    interpolation::cell_center_nli    c_cntr_nli_;///< Lagrange Interpolation
+    parallel_ostream::ParallelOstream pcout=parallel_ostream::ParallelOstream(1);      
 
 };
 

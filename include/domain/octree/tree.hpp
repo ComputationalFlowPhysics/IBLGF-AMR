@@ -45,6 +45,9 @@ public: //memeber types
     using dfs_iterator = typename detail::iterator_depth_first<octant_type>;
     using bfs_iterator = typename detail::iterator_breadth_first<octant_type>;
 
+    template<class Iterator=bfs_iterator>
+    using conditional_iterator = typename detail::ConditionalIterator<Iterator>;
+
     using block_descriptor_type = typename octant_type::block_descriptor_type;
 
     using coordinate_transform_t =
@@ -125,10 +128,6 @@ public:
             auto octant = this->insert_td(k);
             f(octant);
         }
-        //construct_leaf_maps();
-        //construct_level_maps();
-        //construct_neighbor_lists();
-        //construct_influence_lists();
     }
 
 public:
@@ -391,24 +390,8 @@ public: // neighborlist
                 neighbor_lookup(nn,dummy, false, true );
                 _f(nn);
                 nn->rank()=ranks[i];
-                //boost::mpi::communicator w;
-                //std::cout<<nn->rank()<<" vs "<<w.rank()<<std::endl;
             }
         }
-
-        //boost::mpi::communicator w;
-        //dfs_iterator begin(root()); dfs_iterator end;
-        //for(auto it =begin;it!=end;++it)
-        //{
-        //    for(int i =0;i<27;++i)
-        //    {
-        //        auto nn=it->neighbor(i);
-        //        if(nn && nn->rank()!=w.rank() && nn->rank()>=0)
-        //        {
-        //            std::cout<<"nn->rank() "<<nn->rank() <<std::endl;
-        //        }
-        //    }
-        //}
     }
 
 private: // neighborlist 
@@ -681,8 +664,8 @@ public: //children and parent queries
 
 
     /** @brief Query ranks for all interior octants */
-    template<class Client>
-    void query_interior( Client* _c )
+    template<class Client, class InitFunction>
+    void query_interior( Client* _c, InitFunction _f)
     {
         dfs_iterator it_begin(root()); dfs_iterator it_end;
         ++it_begin;
@@ -702,6 +685,7 @@ public: //children and parent queries
             if(ranks[i]>=0)
             {
                 auto nn = this->find_octant(keys[i]);
+                _f(nn);
                 nn->rank()=ranks[i];
             }
         }
@@ -722,7 +706,7 @@ public: //Query ranks of all octants, which are assigned in local tree
         this->query_influence_octants(_c,_f);
         this->query_children(_c,_f);
         this->query_parents(_c,_f);
-        this->query_interior(_c);
+        this->query_interior(_c, _f);
 
         //Maps constructions
         this-> construct_leaf_maps();

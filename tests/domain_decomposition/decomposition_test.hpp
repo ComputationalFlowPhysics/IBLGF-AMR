@@ -73,6 +73,7 @@ struct DecomposistionTest:public SetupBase<DecomposistionTest,parameters>
             poisson_solver_t psolver(&this->simulation_);
             std::cout<<"done solver"<<std::endl;
             psolver.solve<source, phi_num>();
+            this->compute_errors();
         }
         //psolver.laplace_diff<phi_num,amr_lap_source>();
     }
@@ -143,6 +144,45 @@ struct DecomposistionTest:public SetupBase<DecomposistionTest,parameters>
         std::cout<<"Initialization on rank "<<world.rank()<<" done."<<std::endl;
         if(world.size()==2)
             simulation_.write("solution.vtk");
+    }
+
+    /** @brief Compute L2 and LInf errors */
+    void compute_errors()
+    {
+
+        const float_type dx_base=domain_.dx_base();
+        if(domain_.is_server()) return ;
+
+        auto L2   = 0.; auto LInf = -1.0; int count=0;
+        for (auto it_t  = domain_.begin_leafs();
+             it_t != domain_.end_leafs(); ++it_t)
+        {
+            if(!it_t->locally_owned())continue;
+
+
+            int refinement_level = it_t->refinement_level();
+            double dx = dx_base/std::pow(2,refinement_level);
+
+            auto& nodes_domain=it_t->data()->nodes_domain();
+            for(auto it2=nodes_domain.begin();it2!=nodes_domain.end();++it2 )
+            {
+
+                const float_type error_tmp = (
+                        it2->get<phi_num>() - it2->get<phi_exact>());
+
+                it2->get<error>() = error_tmp;
+                L2 += error_tmp*error_tmp * (dx*dx*dx);
+
+                if ( abs(error_tmp) > LInf)
+                    LInf = abs(error_tmp);
+
+                ++count;
+            }
+        }
+        std::cout << "L2   = " << std::sqrt(L2)<< std::endl;
+        std::cout << "LInf = " << LInf << std::endl;
+
+
     }
 
 };

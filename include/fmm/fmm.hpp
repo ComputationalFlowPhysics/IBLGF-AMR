@@ -146,10 +146,8 @@ public:
         std::cout << "Fmm - level - done / time = "<< fmm_time << " (s * threads)" << std::endl;
 
     }
-  template<
-        class Source,
-        class Target
-        >
+
+    template< class Source, class Target >
     void fmm_for_level_test(domain_t* domain_, 
                             int level, 
                             bool for_non_leaf=false)
@@ -158,17 +156,20 @@ public:
         std::cout << "Fmm - Level - " << level << std::endl;
 
         const float_type dx_base=domain_->dx_base();
-        //auto refinement_level = domain_-> begin(level)->refinement_level();
         auto refinement_level = level-domain_->tree()->base_level();
         auto dx_level =  dx_base/std::pow(2, refinement_level);
 
         // Find the subtree
-        // FIXME: find subtree if no ocant is local on this level 
         auto o_start = domain_-> begin(level);
         auto o_end   = domain_-> end(level);
-        if(o_start == o_end)
+
+        bool ref_level=true;
+        while(o_start==o_end)
         {
-            throw std::runtime_error("fmm.hpp : Cant find subtree for fmm");
+            --level;
+            o_start=domain_->begin(level);
+            o_end=domain_->end(level);
+            ref_level=false;
         }
         o_end--;
 
@@ -183,27 +184,25 @@ public:
 
         // Initialize for each fmm // zero ing all tree
         fmm_init_zero<fmm_s>(domain_, level, o_start, o_end);
-        fmm_init_zero<fmm_t>(domain_, level, o_start, o_end);
-
 
         // Copy to temporary variables // only the base level
         fmm_init_copy<Source, fmm_s>(domain_, level, o_start, o_end, for_non_leaf);
-
-        //anterpolation communication
-        domain_->decomposition().
-            template communicate_updownward_pass<fmm_s, fmm_t>(true);
+        
+        //Anterpolation
+        fmm_antrp<fmm_s>(domain_, level, o_start, o_end);
 
         // Nearest neighbors and self
-        fmm_B0<fmm_s, fmm_t>(domain_, level, o_start, o_end, dx_level);
+        if(ref_level)
+        {
+            fmm_B0<fmm_s, fmm_t>(domain_, level, o_start, o_end, dx_level);
+        }
 
-        //// FMM 189
+        // FMM influence list 
         fmm_Bx<fmm_s, fmm_t>(domain_, level, o_start, o_end, dx_level);
-        domain_->decomposition().template communicate_influence<fmm_s, fmm_t>(level);
 
+        //Interpolation
+        fmm_intrp<fmm_t>(domain_, level, o_start, o_end);
 
-        //interpolation communication
-        domain_->decomposition().
-            template communicate_updownward_pass<fmm_s, fmm_t>(false);
 
         // Copy back
         if (!for_non_leaf)
@@ -246,13 +245,13 @@ public:
             level_o_2++;
 
             for (auto it_t = level_o_1;
-                    it_t!=(level_o_2); ++it_t)
+                      it_t!=(level_o_2); ++it_t)
             {
-
+                if(!(it_t->data()))continue;
                 for (std::size_t i=0; i< it_t->influence_number(); ++i)
                 {
                     auto n_s = it_t->influence(i);
-                    if (n_s)
+                    if (n_s && n_s->locally_owned())
                     {
                         if (n_s->inside(level_o_1,  level_o_2_dup))
                         {
@@ -269,6 +268,10 @@ public:
             o_2 = o_2->parent();
             l--;
         }
+
+        domain_->decomposition().
+            template communicate_influence<fmm_t, fmm_t>(domain_->begin(), 
+                                                         domain_->end(),false);
     }
 
     template<
@@ -296,13 +299,18 @@ public:
             for (int i=0; i<27; ++i)
             {
                 auto n_s = it_t->neighbor(i);
-                if (n_s)
+                if (n_s && n_s->locally_owned())
+                {
                     if (n_s->inside(o_start, o_end_2))
                     {
                         fmm_fft<s,t>(n_s, it_t, level_diff, dx_level);
                     }
+                }
             }
         }
+
+        domain_->decomposition().
+            template communicate_influence<fmm_t, fmm_t>(o_start,o_end,true);
     }
 
     template<
@@ -324,7 +332,7 @@ public:
 
         for (auto it = o_start; it!=(o_end); ++it)
         {
-            if(it->data())
+            if(it->data() && it->locally_owned())
             {
                 if ( !( (for_non_leaf) && (it->is_leaf()) ))
                 it->data()->template get_linalg<f1>().get()->
@@ -332,7 +340,6 @@ public:
                                 it->data()->template get_linalg_data<f2>();
             }
         }
-
     }
 
     template<
@@ -354,7 +361,7 @@ public:
 
         for (auto it = o_start; it!=(o_end); ++it)
         {
-            if(it->data())
+            if(it->data() && it->locally_owned())
             {
                 if ( !( (for_non_leaf) && (it->is_leaf()) ))
                 it->data()->template get_linalg<f1>().get()->
@@ -362,7 +369,6 @@ public:
                             it->data()->template get_linalg_data<f2>();
             }
         }
-
     }
 
     template<class f,
@@ -405,7 +411,6 @@ public:
             o_2 = o_2->parent();
             level--;
         }
-
     }
 
     template<
@@ -425,7 +430,7 @@ public:
         o_end++;
         for (auto it = o_start; it!=(o_end); ++it)
         {
-            if(it->data())
+            if(it->data() && it->locally_owned())
             {
                 if ( !( (for_non_leaf) && (it->is_leaf()) ))
 
@@ -437,9 +442,7 @@ public:
 
     }
 
-    template< class fmm_t,
-        class octant_itr_t
-        >
+    template< class fmm_t, class octant_itr_t >
     void fmm_intrp(domain_t* domain_, 
                    int level,
                    octant_itr_t o_start, 
@@ -450,27 +453,32 @@ public:
         auto o_2 = o_end->parent();
 
         if (o_1->key() != o_2->key() )
+        {
             fmm_intrp<fmm_t>(domain_, level, o_1, o_2);
+        }
 
         auto level_o_1 = domain_->tree()->find(level, o_1->key());
         auto level_o_2 = domain_->tree()->find(level, o_2->key());
         level_o_2++;
+
+        domain_->decomposition().
+            template communicate_updownward_pass<fmm_t, fmm_t>(level_o_1,level_o_2,false);
 
         std::cout<< "Fmm - intrp - level: " << level << std::endl;
 
         for (auto it = level_o_1;
                 it!=(level_o_2); ++it)
         {
-            if(it->data())
+            //interpolate onto childrent. 
+            if(it->data() )
             {
                 lagrange_intrp.nli_intrp_node<fmm_t>(it);
             }
         }
+        
     }
 
-    template< class fmm_s,
-        class octant_itr_t
-    >
+    template< class fmm_s, class octant_itr_t >
     void fmm_antrp(domain_t* domain_, 
                    int level,
                    octant_itr_t o_start, 
@@ -497,9 +505,13 @@ public:
             for (auto it = level_o_1;
                     it!=(level_o_2); ++it)
             {
-                if(it->data())
+                if(it->data() )
                     lagrange_intrp.nli_antrp_node<fmm_s>(it);
             }
+
+            domain_->decomposition().
+                template communicate_updownward_pass<fmm_s, fmm_s>(level_o_1,
+                level_o_2, true);
 
             // go 1 level up
             level--;

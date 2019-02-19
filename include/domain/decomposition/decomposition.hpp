@@ -81,23 +81,23 @@ public: //memeber functions
         }
     }
 
-    template<class SendField, class RecvField=SendField>
-    void communicate_influence(int _level)
+    template<class SendField,  class RecvField,class OctantIt>
+    void communicate_influence(OctantIt _begin, OctantIt _end, bool _neighbors=false )
     {
         if(client())
         {
             client()->template 
-                communicate_induced_fields<SendField, RecvField>(_level);
+                communicate_induced_fields<SendField, RecvField,OctantIt>(_begin, _end,_neighbors);
         }
     }
 
-    template<class SendField, class RecvField=SendField>
-    void communicate_updownward_pass(bool _upward)
+    template<class SendField,  class RecvField,class OctantIt>
+    void communicate_updownward_pass(OctantIt _begin, OctantIt _end,bool _upward)
     {
         if(client())
         {
             client()->template 
-                communicate_updownward_pass<SendField, RecvField>(_upward);
+                communicate_updownward_pass<SendField, RecvField>(_begin,_end, _upward);
         }
     }
     

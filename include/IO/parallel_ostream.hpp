@@ -11,12 +11,18 @@ namespace parallel_ostream
 class ParallelOstream
 {
 public:
-    ParallelOstream (std::ostream& _ostream=std::cout,
-                     const bool _active = [](){boost::mpi::communicator world; return world.rank()==0; }() )
+   ParallelOstream (const bool _active,std::ostream& _ostream=std::cout) 
     :ostream_(_ostream),
     active_(_active)
-    {
-    }
+    { }
+
+
+    ParallelOstream (int _rank=0,std::ostream& _ostream=std::cout)
+    :ostream_(_ostream),
+    active_(is_active_rank(_rank))
+    { }
+
+    bool is_active_rank(int _r){boost::mpi::communicator world; return world.rank()==_r;}
     
     bool active() const noexcept{return active_; }
     void active(const bool _a) noexcept{active_=_a;}

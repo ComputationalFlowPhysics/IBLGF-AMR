@@ -32,6 +32,7 @@ public:
     using base_t             = typename block_descriptor_t::base_t;
     using scalar_coord_type  = typename block_descriptor_t::data_type;
 
+    // tree related types
     using tree_t   = octree::Tree<Dim,datablock_t>;
     using key_t    = typename tree_t::key_type;
     using octant_t = typename tree_t::octant_type;
@@ -39,6 +40,9 @@ public:
     // iterator types
     using dfs_iterator = typename tree_t::dfs_iterator;
     using bfs_iterator = typename tree_t::bfs_iterator;
+
+    template<class Iterator=bfs_iterator>
+    using conditional_iterator = typename tree_t::template conditional_iterator<Iterator>;
 
     using coordinate_type      = typename tree_t::coordinate_type;
     using real_coordinate_type = typename tree_t::real_coordinate_type;
@@ -216,6 +220,31 @@ public: // Iterators:
     auto begin(int _level)         { return t_->begin(_level); }
     auto end(int _level)           { return t_->end(_level); }
 
+    /** @brief ConditionalIterator based on generic conditon lambda. 
+     *  Iterate through tree and skip octant if condition is not fullfilled.
+     */
+    template<class Func, class Iterator=bfs_iterator>
+    auto begin_cond(const Func& _f){ return conditional_iterator<Iterator>(t_->root(), _f);}
+
+    template<class Iterator=bfs_iterator>
+    auto end_cond(){ return conditional_iterator<Iterator>();}
+
+    template<class Iterator=bfs_iterator>
+    auto begin_local(){
+        return begin_cond<Iterator>( [](const auto& it){return it->locally_owned();});
+    }
+    template<class Iterator=bfs_iterator>
+    auto end_local(){ return end_cond<Iterator>(); }
+
+    template<class Iterator=bfs_iterator>
+    auto begin_ghost(){
+        return begin_cond<Iterator>( [](const auto& it){return !it->locally_owned();});
+    }
+    template<class Iterator=bfs_iterator>
+    auto end_ghost(){ return end_cond<Iterator>(); }
+
+
+
     template<class Iterator>
     auto begin_octant_nodes(Iterator it) noexcept{return it->data().nodes_begin();}
     template<class Iterator>
@@ -372,8 +401,6 @@ public:
                 auto crBlock= cBlock;
                 cBlock.level_scale(it->refinement_level());
                 cBlock.grow(1,1);
-                //cBlock.shift(-1);
-                //if(_level==1)cBlock.grow(0,2);
 
                 if(fBlock.overlap(cBlock, overlap, fBlock.level()))
                 {

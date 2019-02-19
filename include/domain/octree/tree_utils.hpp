@@ -308,6 +308,7 @@ public:
     using key_type = Key<Dim>;
     using iterator_base_type = iterator_base<Node>;
     using node_type = typename iterator_base_type::node_type;
+
     iterator_breadth_first(const iterator_breadth_first&) = default;
     iterator_breadth_first(iterator_breadth_first&&)  = default;
 
@@ -323,7 +324,7 @@ public:
         this->queue_ = std::move(other->queue_);
     } 
     
-public:
+public: //ctors
 
     iterator_breadth_first(node_type* _ptr) noexcept
     :   iterator_base_type(_ptr) 
@@ -373,6 +374,45 @@ public:
 private:
 
     std::queue<node_type*> queue_;
+};
+
+
+/** @brief Iterator node with fullfilled condition (lambda function)*/
+template<class Iterator>
+struct ConditionalIterator : public Iterator
+{
+public:
+    using node_type=typename Iterator::node_type;
+    using super_type=Iterator;
+public: //Ctors
+    using Iterator::Iterator; //inherite base class ctors
+    //using Iterator::operator=;
+
+    using condition_t =std::function<bool(ConditionalIterator&)>;
+    
+public: //Ctors
+    ConditionalIterator(node_type* _ptr, condition_t _c ) noexcept
+    :super_type(_ptr), cond_(_c)
+    {
+        if(!cond_(*this))
+             this->operator++();
+    }
+
+public: //Operators
+    ConditionalIterator& operator++() noexcept
+    {
+        if(this->_end) return *this;
+        super_type::operator++();
+        if(this->_end)return *this;
+        if(!cond_(*this))
+        {
+             this->operator++();
+        }
+        return *this;
+    }
+
+private:
+    condition_t cond_;
 };
 
 

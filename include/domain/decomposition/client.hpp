@@ -42,7 +42,10 @@ public:
 
     using key_query_t = typename trait_t::key_query_t;
     using rank_query_t = typename trait_t::rank_query_t;
-    using induced_fields_task_t = typename trait_t::induced_fields_task_t;
+
+    template<template<class>class BufferPolicy=AddAssignRecv>
+    using induced_fields_task_t = typename trait_t::template 
+                                        induced_fields_task_t<BufferPolicy>;
     using task_manager_t =typename trait_t::task_manager_t;
 
     using intra_client_server_t = ServerBase<trait_t>;
@@ -106,9 +109,11 @@ public:
                  <<SendField::name()<<" to "<<RecvField::name()<<std::endl;
 
         auto& send_comm=
-            task_manager_->template send_communicator<induced_fields_task_t>();
+            task_manager_-> template 
+            send_communicator<induced_fields_task_t<AddAssignRecv>>();
         auto& recv_comm=
-            task_manager_->template recv_communicator<induced_fields_task_t>();
+            task_manager_->template 
+            recv_communicator<induced_fields_task_t<AddAssignRecv>>();
 
         boost::mpi::communicator  w; 
         const int myRank=w.rank();
@@ -185,18 +190,18 @@ public:
 
 
     /** @brief communicate fields for up/downward pass of fmm */
-    template<class SendField,class RecvField, class OctantIt>
+    template<class SendField,class RecvField, template<class>class BufferPolicy,class OctantIt>
     void communicate_updownward_pass(OctantIt _begin, OctantIt _end, bool _upward)
     {
         std::cout<<"Comunicating fields for up/downward pass of "
                  <<SendField::name()<<" to "<<RecvField::name()<<std::endl;
 
         auto& send_comm=
-            task_manager_->
-            template send_communicator<induced_fields_task_t>();
+            task_manager_-> template 
+                send_communicator<induced_fields_task_t<BufferPolicy>>();
         auto& recv_comm=
-            task_manager_->
-            template recv_communicator<induced_fields_task_t>();
+            task_manager_-> template 
+                recv_communicator<induced_fields_task_t<BufferPolicy>>();
 
         boost::mpi::communicator  w; 
         int myRank=w.rank();
@@ -293,6 +298,25 @@ public:
                 break;
         }
     }
+
+    /** @brief communicate fields for up/downward pass of fmm */
+    template<class SendField,class RecvField, class OctantIt>
+    void communicate_updownward_add(OctantIt _begin, 
+                                    OctantIt _end, bool _upward)
+    {
+        communicate_updownward_pass<SendField,RecvField,AddAssignRecv,OctantIt>
+        (_begin,_end,_upward);
+    }
+
+    template<class SendField,class RecvField, class OctantIt>
+    void communicate_updownward_assign(OctantIt _begin, 
+                                       OctantIt _end, bool _upward)
+    {
+        communicate_updownward_pass<SendField,RecvField,CopyAssign,OctantIt>
+        (_begin,_end,_upward);
+
+    }
+
     /** @brief communicate fields for up/downward pass of fmm */
     template<class SendField,class RecvField=SendField>
     void communicate_updownward_pass_old(bool _upward)

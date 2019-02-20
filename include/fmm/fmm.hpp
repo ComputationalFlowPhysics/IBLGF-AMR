@@ -461,8 +461,8 @@ public:
         auto level_o_2 = domain_->tree()->find(level, o_2->key());
         level_o_2++;
 
-        domain_->decomposition().
-            template communicate_updownward_pass<fmm_t, fmm_t>(level_o_1,level_o_2,false);
+        domain_->decomposition().client()->
+            template communicate_updownward_assign<fmm_t, fmm_t>(level_o_1,level_o_2,false);
 
         std::cout<< "Fmm - intrp - level: " << level << std::endl;
 
@@ -509,8 +509,8 @@ public:
                     lagrange_intrp.nli_antrp_node<fmm_s>(it);
             }
 
-            domain_->decomposition().
-                template communicate_updownward_pass<fmm_s, fmm_s>(level_o_1,
+            domain_->decomposition().client()->
+                template communicate_updownward_add<fmm_s, fmm_s>(level_o_1,
                 level_o_2, true);
 
             // go 1 level up

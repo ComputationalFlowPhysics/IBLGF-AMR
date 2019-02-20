@@ -27,12 +27,16 @@ struct ServerClientTraits
     using key_t  = typename  domain_t::key_t;
     using key_query_t = Task<tags::key_query,std::vector<key_t>>;
     using rank_query_t = Task<tags::key_query,std::vector<int>>;
-    using induced_fields_task_t = Task<tags::field_query,
-                                       std::vector<double>,
-                                       AddAssignRecv>;
+
+    template< template<class> class BufferPolicy>
+    using induced_fields_task_t =  Task<tags::field_query,
+                                       std::vector<double>, BufferPolicy>;
+
     using task_manager_t = TaskManager<key_query_t, 
                                        rank_query_t, 
-                                       induced_fields_task_t>;
+                                       induced_fields_task_t<CopyAssign>,
+                                       induced_fields_task_t<AddAssignRecv>
+                                       >;
 };
 
 

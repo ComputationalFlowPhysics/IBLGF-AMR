@@ -267,6 +267,11 @@ public:
             o_1 = o_1->parent();
             o_2 = o_2->parent();
             l--;
+            auto o_1_t=domain_->begin(l);
+            auto o_2_t=domain_->end(l);
+            o_2_t--;
+            o_1=*o_1_t;
+            o_2=*o_2_t;
         }
 
         domain_->decomposition().
@@ -410,6 +415,12 @@ public:
             o_1 = o_1->parent();
             o_2 = o_2->parent();
             level--;
+
+            auto o_1_t=domain_->begin(level);
+            auto o_2_t=domain_->end(level);
+            o_2_t--;
+            o_1=*o_1_t;
+            o_2=*o_2_t;
         }
     }
 
@@ -460,14 +471,15 @@ public:
         auto level_o_1 = domain_->tree()->find(level, o_1->key());
         auto level_o_2 = domain_->tree()->find(level, o_2->key());
         level_o_2++;
+        level_o_1=domain_->begin(level);
+        level_o_2=domain_->end(level);
 
         domain_->decomposition().client()->
             template communicate_updownward_assign<fmm_t, fmm_t>(level_o_1,level_o_2,false);
 
         std::cout<< "Fmm - intrp - level: " << level << std::endl;
 
-        for (auto it = level_o_1;
-                it!=(level_o_2); ++it)
+        for (auto it = level_o_1; it!=(level_o_2); ++it)
         {
             //interpolate onto childrent. 
             if(it->data() )
@@ -475,7 +487,6 @@ public:
                 lagrange_intrp.nli_intrp_node<fmm_t>(it);
             }
         }
-        
     }
 
     template< class fmm_s, class octant_itr_t >
@@ -519,6 +530,13 @@ public:
             o_2_old = o_2;
             o_1 = o_1->parent();
             o_2 = o_2->parent();
+
+
+            auto o_1_t=domain_->begin(level);
+            auto o_2_t=domain_->end(level);
+            o_2_t--;
+            o_1=*o_1_t;
+            o_2=*o_2_t;
         }
     }
 

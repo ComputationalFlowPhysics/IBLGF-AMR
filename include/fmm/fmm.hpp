@@ -224,15 +224,6 @@ public:
                 float_type dx_level)
     {
 
-      //for(auto it = domain_->begin(); it!=domain_->end();++it)
-      //{
-      //  if( it->data() && !it->locally_owned()) 
-      //  {
-      //    for(auto& e: it->data()->template get_data<t>())
-      //      e=0.0;
-      //  }
-      //}
-
         auto o_1 = (*o_start);
         auto o_2 = (*o_end);
         auto o_1_old = o_1;
@@ -241,6 +232,9 @@ public:
 
         if (o_start->level() != o_end->level())
             throw std::runtime_error("Level has to be the same");
+
+
+        auto refinement_level = level-domain_->tree()->base_level();
 
 
         while (o_1_old->key() != o_2_old->key() )
@@ -267,10 +261,19 @@ public:
                     }
                 }
             }
+            if(refinement_level>=0 && l==level)
+            {
+                domain_->decomposition().
+                    template communicate_influence<fmm_t, fmm_t>(level_o_1, 
+                            level_o_2,true);
 
-        domain_->decomposition().
-            template communicate_influence<fmm_t, fmm_t>(level_o_1, 
-                                                         level_o_2,false);
+            }else
+            {
+                domain_->decomposition().
+                    template communicate_influence<fmm_t, fmm_t>(level_o_1, 
+                            level_o_2,false);
+
+            }
 
             o_1_old = o_1;
             o_2_old = o_2;
@@ -304,10 +307,6 @@ public:
 
         auto o_end_2 = o_end;
         o_end++;
-
-        
-        boost::mpi::communicator w;
-        //std::ofstream ofs("rank_"+std::to_string(w.rank())+".txt");
         for (auto it_t = o_start; it_t!=(o_end); ++it_t)
         {
             if(!it_t->data()) continue;
@@ -317,7 +316,6 @@ public:
 
                 if (n_s && n_s->locally_owned())
                 {
-
                     if (n_s->inside(o_start, o_end_2))
                     {
                         fmm_fft<s,t>(n_s, it_t, level_diff, dx_level);
@@ -484,11 +482,11 @@ public:
         level_o_1=domain_->begin(level);
         level_o_2=domain_->end(level);
 
-        domain_->decomposition().client()->
-            template communicate_updownward_assign<fmm_t, fmm_t>(level_o_1,level_o_2,false);
+        domain_->decomposition().client()-> template 
+            communicate_updownward_assign<fmm_t, fmm_t>(level_o_1,
+                                                        level_o_2,false);
 
         //std::cout<< "Fmm - intrp - level: " << level << std::endl;
-
         for (auto it = level_o_1; it!=(level_o_2); ++it)
         {
             //interpolate onto childrent. 

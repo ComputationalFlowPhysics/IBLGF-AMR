@@ -18,6 +18,7 @@
 #include <domain/dataFields/dataBlock.hpp>
 #include <domain/dataFields/datafield.hpp>
 #include <domain/octree/tree.hpp>
+#include <chrono>
 #include <IO/parallel_ostream.hpp>
 #include <lgf/lgf.hpp>
 #include <fmm/fmm.hpp>
@@ -27,6 +28,9 @@
 #include<solver/poisson/poisson.hpp>
 
 #include"../../setups/setup_base.hpp"
+
+//#define FMM_TIMING(  )
+
 
 const int Dim = 3;
 
@@ -52,6 +56,13 @@ struct DecomposistionTest:public SetupBase<DecomposistionTest,parameters>
 
     using super_type =SetupBase<DecomposistionTest,parameters>;
 
+
+    //Timings
+    using clock_type = std::chrono::high_resolution_clock;
+    using milliseconds = std::chrono::milliseconds;
+    using duration_type = typename clock_type::duration;
+    using time_point_type = typename clock_type::time_point;
+
     DecomposistionTest(Dictionary* _d)
     :super_type(_d)
     {
@@ -70,7 +81,15 @@ struct DecomposistionTest:public SetupBase<DecomposistionTest,parameters>
         if(domain_.is_client())
         {
             poisson_solver_t psolver(&this->simulation_);
+
+            auto t0=clock_type::now();
             psolver.solve<source, phi_num>();
+            auto t1=clock_type::now();
+            auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(t1-t0);
+            std::cout<<"elapsed for LGF: "<<elapsed.count()<<std::endl;
+
+
+
             this->compute_errors();
         }
         //psolver.laplace_diff<phi_num,amr_lap_source>();
@@ -149,7 +168,7 @@ struct DecomposistionTest:public SetupBase<DecomposistionTest,parameters>
     {
 
         boost::mpi::communicator  w; 
-        //std::ofstream ofs("rank_"+std::to_string(w.rank())+".txt");
+        std::ofstream ofs("rank_"+std::to_string(w.rank())+".txt");
 
         const float_type dx_base=domain_.dx_base();
         if(domain_.is_server()) return ;
@@ -159,7 +178,7 @@ struct DecomposistionTest:public SetupBase<DecomposistionTest,parameters>
              it_t != domain_.end_leafs(); ++it_t)
         {
             if(!it_t->locally_owned())continue;
-            //ofs<<"#"<<it_t->global_coordinate()<<"\n";
+            ofs<<"#"<<it_t->global_coordinate()<<"\n";
 
             int refinement_level = it_t->refinement_level();
             double dx = dx_base/std::pow(2,refinement_level);
@@ -168,7 +187,7 @@ struct DecomposistionTest:public SetupBase<DecomposistionTest,parameters>
             for(auto it2=nodes_domain.begin();it2!=nodes_domain.end();++it2 )
             {
                 
-                //ofs<<it2->get<phi_num>()<<" ";
+                ofs<<it2->get<phi_num>()<<" ";
                 const float_type error_tmp = (
                         it2->get<phi_num>() - it2->get<phi_exact>());
 
@@ -180,7 +199,7 @@ struct DecomposistionTest:public SetupBase<DecomposistionTest,parameters>
 
                 ++count;
             }
-            //ofs<<std::endl;
+            ofs<<std::endl;
         }
         std::cout << "L2   = " << std::sqrt(L2)<< std::endl;
         std::cout << "LInf = " << LInf << std::endl;

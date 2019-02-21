@@ -127,17 +127,25 @@ public:
             {
                 //Check if this ghost octant influenced by octants of this rank
                 bool is_influenced=false;
-                int N=it->influence_number();
-                if(_neighbors)N=it->nNeighbors();
 
-                for(int i = 0; i< N; ++i)
+                //Check influence list
+                for(std::size_t i = 0; i< it->influence_number(); ++i)
                 {
-                  octant_t* inf;
-                  if(_neighbors) inf=it->neighbor(i);
-                  else inf=it->influence(i);
+                  const auto inf=it->influence(i);
                   if(inf && inf->rank()==myRank)
                   { is_influenced=true ; break;} 
                 }
+
+                if(_neighbors)
+                {
+                    for(int i = 0; i< it->nNeighbors(); ++i)
+                    {
+                        const auto inf=it->neighbor(i);
+                        if(inf && inf->rank()==myRank)
+                        { is_influenced=true ; break;} 
+                    }
+                }
+
                 if(is_influenced )
                 {
                   auto send_ptr=it->data()->
@@ -171,16 +179,23 @@ public:
             else
             {
                 std::set<int> unique_inflRanks;
-                int N=it->influence_number();
-                if(_neighbors)N=it->nNeighbors();
-                for(int i = 0; i< N; ++i)
+                for(std::size_t i = 0; i< it->influence_number(); ++i)
                 {
-                    octant_t* inf;
-                    if(_neighbors) inf=it->neighbor(i);
-                    else inf=it->influence(i);
+                    const auto inf=it->influence(i);
                     if(inf && inf->rank()!=myRank )
                     {
                         unique_inflRanks.insert(inf->rank());
+                    }
+                }
+                if(_neighbors)
+                {
+                    for(int i = 0; i< it->nNeighbors(); ++i)
+                    {
+                        const auto inf=it->neighbor(i);
+                        if(inf && inf->rank()!=myRank )
+                        {
+                            unique_inflRanks.insert(inf->rank());
+                        }
                     }
                 }
                 for(auto& r: unique_inflRanks)

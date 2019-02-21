@@ -180,7 +180,7 @@ protected:
                 comm_.recv(i,tag,connect);
                 if(!connect)
                 {
-                    std::cout<<"DisConnected from "<<i<<std::endl;
+                    //std::cout<<"DisConnected from "<<i<<std::endl;
                     --nConnections_;
                 }
             }

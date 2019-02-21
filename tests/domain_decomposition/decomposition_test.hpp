@@ -69,9 +69,7 @@ struct DecomposistionTest:public SetupBase<DecomposistionTest,parameters>
        //domain_.decomposition().communicate_influence<source, phi_exact>();
         if(domain_.is_client())
         {
-            std::cout<<"starting solver"<<std::endl;
             poisson_solver_t psolver(&this->simulation_);
-            std::cout<<"done solver"<<std::endl;
             psolver.solve<source, phi_num>();
             this->compute_errors();
         }
@@ -86,7 +84,7 @@ struct DecomposistionTest:public SetupBase<DecomposistionTest,parameters>
     {
         boost::mpi::communicator world;
         if(domain_.is_server()) return ;
-        std::cout<<"Initializing on rank:"<<world.rank()<<std::endl;
+        //std::cout<<"Initializing on rank:"<<world.rank()<<std::endl;
         auto center = (domain_.bounding_box().max() -
                        domain_.bounding_box().min()) / 2.0 +
                        domain_.bounding_box().min();
@@ -141,7 +139,7 @@ struct DecomposistionTest:public SetupBase<DecomposistionTest,parameters>
            }
         }
 
-        std::cout<<"Initialization on rank "<<world.rank()<<" done."<<std::endl;
+        //std::cout<<"Initialization on rank "<<world.rank()<<" done."<<std::endl;
         if(world.size()==2)
             simulation_.write("solution.vtk");
     }
@@ -149,6 +147,9 @@ struct DecomposistionTest:public SetupBase<DecomposistionTest,parameters>
     /** @brief Compute L2 and LInf errors */
     void compute_errors()
     {
+
+        boost::mpi::communicator  w; 
+        //std::ofstream ofs("rank_"+std::to_string(w.rank())+".txt");
 
         const float_type dx_base=domain_.dx_base();
         if(domain_.is_server()) return ;
@@ -158,7 +159,7 @@ struct DecomposistionTest:public SetupBase<DecomposistionTest,parameters>
              it_t != domain_.end_leafs(); ++it_t)
         {
             if(!it_t->locally_owned())continue;
-
+            //ofs<<"#"<<it_t->global_coordinate()<<"\n";
 
             int refinement_level = it_t->refinement_level();
             double dx = dx_base/std::pow(2,refinement_level);
@@ -166,7 +167,8 @@ struct DecomposistionTest:public SetupBase<DecomposistionTest,parameters>
             auto& nodes_domain=it_t->data()->nodes_domain();
             for(auto it2=nodes_domain.begin();it2!=nodes_domain.end();++it2 )
             {
-
+                
+                //ofs<<it2->get<phi_num>()<<" ";
                 const float_type error_tmp = (
                         it2->get<phi_num>() - it2->get<phi_exact>());
 
@@ -178,6 +180,7 @@ struct DecomposistionTest:public SetupBase<DecomposistionTest,parameters>
 
                 ++count;
             }
+            //ofs<<std::endl;
         }
         std::cout << "L2   = " << std::sqrt(L2)<< std::endl;
         std::cout << "LInf = " << LInf << std::endl;

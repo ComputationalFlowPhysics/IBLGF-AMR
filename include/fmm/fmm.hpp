@@ -152,8 +152,8 @@ public:
                             int level, 
                             bool for_non_leaf=false)
     {
-        std::cout << "------------------------------------"  << std::endl;
-        std::cout << "Fmm - Level - " << level << std::endl;
+        //std::cout << "------------------------------------"  << std::endl;
+        //std::cout << "Fmm - Level - " << level << std::endl;
 
         const float_type dx_base=domain_->dx_base();
         auto refinement_level = level-domain_->tree()->base_level();
@@ -198,18 +198,16 @@ public:
         }
 
         // FMM influence list 
-        //fmm_Bx<fmm_s, fmm_t>(domain_, level, o_start, o_end, dx_level);
+        fmm_Bx<fmm_s, fmm_t>(domain_, level, o_start, o_end, dx_level);
 
         ////Interpolation
         fmm_intrp<fmm_t>(domain_, level, o_start, o_end);
 
-
-        // Copy back
+        //// Copy back
         if (!for_non_leaf)
             fmm_add_equal<Target, fmm_t>(domain_, level, o_start, o_end, for_non_leaf);
         else
             fmm_minus_equal<Target, fmm_t>(domain_, level, o_start, o_end, for_non_leaf);
-
     }
 
 
@@ -226,6 +224,16 @@ public:
                 float_type dx_level)
     {
 
+      for(auto it = domain_->begin(); it!=domain_->end();++it)
+      {
+        if( it->data() && !it->locally_owned()) 
+        {
+
+          for(auto& e: it->data()->template get_data<t>())
+            e=0.0;
+        }
+      }
+
         auto o_1 = (*o_start);
         auto o_2 = (*o_end);
         auto o_1_old = o_1;
@@ -235,17 +243,17 @@ public:
         if (o_start->level() != o_end->level())
             throw std::runtime_error("Level has to be the same");
 
+
         while (o_1_old->key() != o_2_old->key() )
         {
-            std::cout << "Bx  - level = " << l << std::endl;
+            //std::cout << "Bx  - level = " << l << std::endl;
 
             auto level_o_1 = domain_->tree()->find(l, o_1->key());
             auto level_o_2 = domain_->tree()->find(l, o_2->key());
             auto level_o_2_dup = level_o_2;
             level_o_2++;
 
-            for (auto it_t = level_o_1;
-                      it_t!=(level_o_2); ++it_t)
+            for (auto it_t = level_o_1; it_t!=(level_o_2); ++it_t)
             {
                 if(!(it_t->data()))continue;
                 for (std::size_t i=0; i< it_t->influence_number(); ++i)
@@ -261,6 +269,10 @@ public:
                 }
             }
 
+        domain_->decomposition().
+            template communicate_influence<fmm_t, fmm_t>(level_o_1, 
+                                                         level_o_2,false);
+
             o_1_old = o_1;
             o_2_old = o_2;
 
@@ -274,9 +286,6 @@ public:
             o_2=*o_2_t;
         }
 
-        domain_->decomposition().
-            template communicate_influence<fmm_t, fmm_t>(domain_->begin(), 
-                                                         domain_->end(),false);
     }
 
     template<
@@ -302,7 +311,6 @@ public:
         //std::ofstream ofs("rank_"+std::to_string(w.rank())+".txt");
         for (auto it_t = o_start; it_t!=(o_end); ++it_t)
         {
-
             if(!it_t->data()) continue;
 
             //if (it_t->locally_owned()) {
@@ -439,6 +447,7 @@ public:
         }
     }
 
+
     template<
         class from,
         class to,
@@ -492,7 +501,7 @@ public:
         domain_->decomposition().client()->
             template communicate_updownward_assign<fmm_t, fmm_t>(level_o_1,level_o_2,false);
 
-        std::cout<< "Fmm - intrp - level: " << level << std::endl;
+        //std::cout<< "Fmm - intrp - level: " << level << std::endl;
 
         for (auto it = level_o_1; it!=(level_o_2); ++it)
         {
@@ -523,7 +532,7 @@ public:
 
         while (o_1_old->key() != o_2_old->key() )
         {
-            std::cout<< "Fmm - antrp - level: " << level << std::endl;
+            //std::cout<< "Fmm - antrp - level: " << level << std::endl;
             auto level_o_1 = domain_->tree()->find(level, o_1->key());
             auto level_o_2 = domain_->tree()->find(level, o_2->key());
             level_o_2++;

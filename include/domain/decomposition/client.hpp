@@ -65,8 +65,8 @@ public:
     Client(Domain* _d, communicator_type _comm =communicator_type())
     :domain_(_d), intra_server(this->task_manager_)
     {
-        boost::mpi::communicator world;
-        std::cout<<"I am a client on rank: "<<world.rank()<<std::endl;
+        //boost::mpi::communicator world;
+        //std::cout<<"I am a client on rank: "<<world.rank()<<std::endl;
     }
 
 public:
@@ -106,8 +106,8 @@ public:
     void communicate_induced_fields( OctantIt _begin, OctantIt _end, 
                                      bool _neighbors=false )
     {
-        std::cout<<"Comunicating induced fields of "
-                 <<SendField::name()<<" to "<<RecvField::name()<<std::endl;
+        //std::cout<<"Comunicating induced fields of "
+        //         <<SendField::name()<<" to "<<RecvField::name()<<std::endl;
 
         auto& send_comm=
             task_manager_-> template 
@@ -118,8 +118,7 @@ public:
 
         boost::mpi::communicator  w; 
         const int myRank=w.rank();
-
-        std::ofstream ofs("rank_"+std::to_string(w.rank())+".txt");
+        //std::ofstream ofs("rank_"+std::to_string(w.rank())+".txt");
          
         for (auto it  = _begin; it != _end; ++it)
         {
@@ -233,17 +232,16 @@ public:
             //Check if something has finished
             send_comm.finish_communication();
             auto tts= recv_comm.finish_communication();
-            for( auto tt: tts )
-            {
-
-            ofs<<"Finishing up and adding "<<std::endl;
-              ofs<<" tag: "<<tt->id()<<std::endl;
-              for(auto& e:  tt->data())
-              {
-                ofs<<e<<" ";
-              }
-              ofs<<std::endl;
-            }
+            //for( auto tt: tts )
+            //{
+            //ofs<<"Finishing up and adding "<<std::endl;
+            //  ofs<<" tag: "<<tt->id()<<std::endl;
+            //  for(auto& e:  tt->data())
+            //  {
+            //    ofs<<e<<" ";
+            //  }
+            //  ofs<<std::endl;
+            //}
 
             if(send_comm.done() && recv_comm.done() )
                 break;
@@ -255,8 +253,8 @@ public:
     template<class SendField,class RecvField, template<class>class BufferPolicy,class OctantIt>
     void communicate_updownward_pass(OctantIt _begin, OctantIt _end, bool _upward)
     {
-        std::cout<<"Comunicating fields for up/downward pass of "
-                 <<SendField::name()<<" to "<<RecvField::name()<<std::endl;
+        //std::cout<<"Comunicating fields for up/downward pass of "
+        //         <<SendField::name()<<" to "<<RecvField::name()<<std::endl;
 
         auto& send_comm=
             task_manager_-> template 
@@ -266,7 +264,7 @@ public:
                 recv_communicator<induced_fields_task_t<BufferPolicy>>();
 
         boost::mpi::communicator  w; 
-        int myRank=w.rank();
+        //int myRank=w.rank();
 
         for (auto it  = _begin; it != _end; ++it)
         {
@@ -283,13 +281,13 @@ public:
                             template get<RecvField>().date_ptr();
                         auto task=recv_comm.post_task( data_ptr,r, true,idx);
                         task->requires_confirmation()=false;
-                        std::cout<<"Recv field from "<<r<<" to "<<myRank
-                            <<" index " <<it->key()._index
-                            <<" iindex " <<static_cast<int>(it->key()._index)
-                            <<" c "<<it->global_coordinate()
-                            <<" level "<<it->level()
-                            <<" tag: "<<task->id()
-                            <<std::endl;
+                        //std::cout<<"Recv field from "<<r<<" to "<<myRank
+                        //    <<" index " <<it->key()._index
+                        //    <<" iindex " <<static_cast<int>(it->key()._index)
+                        //    <<" c "<<it->global_coordinate()
+                        //    <<" level "<<it->level()
+                        //    <<" tag: "<<task->id()
+                        //    <<std::endl;
                     }
                     else
                     {
@@ -321,11 +319,11 @@ public:
                             send_comm.post_task(data_ptr, it->rank(),
                                     true,idx);
                         task->requires_confirmation()=false;
-                        std::cout<<"Sending field from "<<myRank<<" to "<<it->rank()
-                            <<" index " <<it->key()._index
-                            <<" c "<<it->global_coordinate()
-                            <<" tag: "<<task->id()
-                            <<std::endl;
+                        //std::cout<<"Sending field from "<<myRank<<" to "<<it->rank()
+                        //    <<" index " <<it->key()._index
+                        //    <<" c "<<it->global_coordinate()
+                        //    <<" tag: "<<task->id()
+                        //    <<std::endl;
                     }
                     else
                     {

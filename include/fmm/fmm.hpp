@@ -198,9 +198,9 @@ public:
         }
 
         // FMM influence list 
-        fmm_Bx<fmm_s, fmm_t>(domain_, level, o_start, o_end, dx_level);
+        //fmm_Bx<fmm_s, fmm_t>(domain_, level, o_start, o_end, dx_level);
 
-        //Interpolation
+        ////Interpolation
         fmm_intrp<fmm_t>(domain_, level, o_start, o_end);
 
 
@@ -297,15 +297,30 @@ public:
         auto o_end_2 = o_end;
         o_end++;
 
+        
+        boost::mpi::communicator w;
+        //std::ofstream ofs("rank_"+std::to_string(w.rank())+".txt");
         for (auto it_t = o_start; it_t!=(o_end); ++it_t)
         {
 
             if(!it_t->data()) continue;
+
+            //if (it_t->locally_owned()) {
+            //    ofs<< "-------------------------" << std::endl;
+            //    ofs<<"#"<< it_t->key().coordinate()<<" rank"<<it_t->rank()<<std::endl;
+            //    ofs<< "-------------------------" << std::endl;
+            //}
+
             for (int i=0; i<27; ++i)
             {
                 auto n_s = it_t->neighbor(i);
+
+                //if ( it_t->locally_owned() &&n_s  ) {
+                //    ofs<< n_s->key().coordinate()<<" rank "<<n_s->rank()<<std::endl;
+                //}
                 if (n_s && n_s->locally_owned())
                 {
+
                     if (n_s->inside(o_start, o_end_2))
                     {
                         fmm_fft<s,t>(n_s, it_t, level_diff, dx_level);

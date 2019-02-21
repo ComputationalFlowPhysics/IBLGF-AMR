@@ -52,7 +52,6 @@ struct AddAssignRecv : CopyAssign<TaskType>
     }
     void assign_buffer2data() noexcept
     {
-        task_.data()=task_.comm_buffer_->data();
         for(std::size_t i=0; i<task_.data().size();++i)
         {
             task_.data()[i]+=task_.comm_buffer_->data()[i];

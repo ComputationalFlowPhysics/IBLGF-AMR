@@ -103,7 +103,8 @@ public:
 
     /** @brief Communicate induced fields per level */
     template<class SendField,class RecvField,class OctantIt>
-    void communicate_induced_fields( OctantIt _begin, OctantIt _end, bool _neighbors=false )
+    void communicate_induced_fields( OctantIt _begin, OctantIt _end, 
+                                     bool _neighbors=false )
     {
         std::cout<<"Comunicating induced fields of "
                  <<SendField::name()<<" to "<<RecvField::name()<<std::endl;
@@ -117,9 +118,10 @@ public:
 
         boost::mpi::communicator  w; 
         const int myRank=w.rank();
+
+        std::ofstream ofs("rank_"+std::to_string(w.rank())+".txt");
          
         for (auto it  = _begin; it != _end; ++it)
-        //for (auto it  = domain_->begin(); it != domain_->end(); ++it)
         {
             const auto idx=get_octant_idx(it);
             if(!it->locally_owned())
@@ -128,21 +130,44 @@ public:
                 bool is_influenced=false;
                 int N=it->influence_number();
                 if(_neighbors)N=it->nNeighbors();
+
                 for(int i = 0; i< N; ++i)
                 {
-                    octant_t* inf;
-                    if(_neighbors) inf=it->neighbor(i);
-                    else inf=it->influence(i);
-                    if(inf && inf->rank()==myRank)
-                    { is_influenced=true ; break;} 
+                  octant_t* inf;
+                  if(_neighbors) inf=it->neighbor(i);
+                  else inf=it->influence(i);
+                  if(inf && inf->rank()==myRank)
+                  { is_influenced=true ; break;} 
                 }
-               if(is_influenced )
-               {
-                   auto send_ptr=it->data()->
-                       template get<SendField>().date_ptr();
-                   auto task= send_comm.post_task(send_ptr, it->rank(), true, idx);
-                   task->requires_confirmation()=false;
-               }
+                if(is_influenced )
+                {
+                  auto send_ptr=it->data()->
+                    template get<SendField>().date_ptr();
+                  auto task= send_comm.post_task(send_ptr, it->rank(), true, idx);
+                  task->requires_confirmation()=false;
+
+                  //std::cout<<"Sending field from "<<myRank<<" to "<<it->rank()
+                  //    <<" index " <<it->key()._index
+                  //    <<" c "<<it->global_coordinate()
+                  //    <<" level "<<it->level()
+                  //    <<" tag: "<<task->id()
+                  //    <<std::endl;
+
+                  //ofs<<"Start Sending field from "<<myRank<<" to "<<it->rank()
+                  //    <<" index " <<it->key()._index
+                  //    <<" c "<<it->global_coordinate()
+                  //    <<" level "<<it->level()
+                  //    <<" tag: "<<task->id()
+                  //    <<std::endl;
+                  //    for(auto& e:  task->data())
+                  //    {
+                  //      e=myRank;
+                  //      ofs<<e<<" ";
+                  //    }
+                  //    ofs<<std::endl;
+
+
+                }
             }
             else
             {
@@ -165,6 +190,31 @@ public:
                                 template get<RecvField>().date_ptr();
                     auto task = recv_comm.post_task( recv_ptr, r, true,  idx);
                     task->requires_confirmation()=false;
+
+                    //std::cout<<"Recv field from "<<r<<" to "<<myRank
+                    //  <<" index " <<it->key()._index
+                    //  <<" iindex " <<static_cast<int>(it->key()._index)
+                    //  <<" c "<<it->global_coordinate()
+                    //  <<" level "<<it->level()
+                    //  <<" tag: "<<task->id()
+                    //  <<std::endl;
+
+                    //ofs<<"Start Recving  field from "<<r<<" to "<<myRank
+                    //  <<" index " <<it->key()._index
+                    //  <<" iindex " <<static_cast<int>(it->key()._index)
+                    //  <<" c "<<it->global_coordinate()
+                    //  <<" level "<<it->level()
+                    //  <<" tag: "<<task->id()
+                    //  <<std::endl;
+                    //  for(auto& e:  task->data())
+                    //  {
+                    //    e=myRank;
+                    //    ofs<<e<<" ";
+                    //  }
+                    //  ofs<<std::endl;
+
+
+
                 }
             }
 
@@ -182,7 +232,19 @@ public:
 
             //Check if something has finished
             send_comm.finish_communication();
-            recv_comm.finish_communication();
+            auto tts= recv_comm.finish_communication();
+            for( auto tt: tts )
+            {
+
+            ofs<<"Finishing up and adding "<<std::endl;
+              ofs<<" tag: "<<tt->id()<<std::endl;
+              for(auto& e:  tt->data())
+              {
+                ofs<<e<<" ";
+              }
+              ofs<<std::endl;
+            }
+
             if(send_comm.done() && recv_comm.done() )
                 break;
         }
@@ -318,115 +380,6 @@ public:
     }
 
     /** @brief communicate fields for up/downward pass of fmm */
-    template<class SendField,class RecvField=SendField>
-    void communicate_updownward_pass_old(bool _upward)
-    {
-        std::cout<<"Comunicating fields for up/downward pass of "
-                 <<SendField::name()<<" to "<<RecvField::name()<<std::endl;
-
-        auto& send_comm=
-            task_manager_->
-            template send_communicator<induced_fields_task_t>();
-        auto& recv_comm=
-            task_manager_->
-            template recv_communicator<induced_fields_task_t>();
-
-        boost::mpi::communicator  w; 
-        //int myRank=w.rank();
-
-        for (auto it  = domain_->begin();
-                it != domain_->end(); ++it)
-        {
-            const auto idx=get_octant_idx(it);
-            if(it->locally_owned() )
-            {
-                //Check if there are ghost children
-                const auto unique_ranks=it->unique_child_ranks();
-                for(auto r : unique_ranks)
-                {
-                    if(_upward) 
-                    {
-                        auto data_ptr=it->data()->
-                            template get<RecvField>().date_ptr();
-                        auto task=recv_comm.post_task( data_ptr,r, true,idx);
-                        task->requires_confirmation()=false;
-                        //std::cout<<"Recv field from "<<r<<" to "<<myRank
-                        //    <<" index " <<it->key()._index
-                        //    <<" iindex " <<static_cast<int>(it->key()._index)
-                        //    <<" c "<<it->global_coordinate()
-                        //    <<" level "<<it->level()
-                        //    <<" tag: "<<task->id()
-                        //    <<std::endl;
-                    }
-                    else
-                    {
-
-                        auto data_ptr=it->data()->
-                            template get<SendField>().date_ptr();
-                        auto task= send_comm.post_task(data_ptr,r,true,idx);
-                        task->requires_confirmation()=false;
-                        //std::cout<<"Sending field from "<<myRank<<" to "<<it->rank()
-                        //    <<" index " <<it->key()._index
-                        //    <<" c "<<it->global_coordinate()
-                        //    <<" level "<<it->level()
-                        //    <<" tag: "<<task->id()
-                        //    <<std::endl;
-                    }
-                }
-            }
-
-            //Check if ghost has locally_owned children 
-            if(!it->locally_owned())
-            {
-                if(it->has_locally_owned_children())
-                {
-                    if(_upward)
-                    {
-                        const auto data_ptr=it->data()->
-                            template get<SendField>().date_ptr();
-                        auto task = 
-                            send_comm.post_task(data_ptr, it->rank(),
-                                    true,idx);
-                        task->requires_confirmation()=false;
-                        //std::cout<<"Sending field from "<<myRank<<" to "<<it->rank()
-                        //    <<" index " <<it->key()._index
-                        //    <<" c "<<it->global_coordinate()
-                        //    <<" tag: "<<task->id()
-                        //    <<std::endl;
-                    }
-                    else
-                    {
-                        const auto data_ptr=it->data()->
-                            template get<RecvField>().date_ptr();
-                        auto task = 
-                            recv_comm.post_task(data_ptr, it->rank(), 
-                                    true,idx);
-                        task->requires_confirmation()=false;
-                        //std::cout<<"Recv field from "<<it->rank()<<" to "<<myRank
-                        //    <<" index " <<it->key()._index
-                        //    <<" iindex " <<static_cast<int>(it->key()._index)
-                        //    <<" c "<<it->global_coordinate()
-                        //    <<" tag: "<<task->id()
-                        //    <<std::endl;
-                    }
-                }
-            }
-        }
-       
-        //Start communications
-        while(true)
-        {
-            //buffer and send it 
-            send_comm.start_communication();
-            recv_comm.start_communication();
-
-            //Check if something has finished
-            send_comm.finish_communication();
-            const auto recv_tasks=recv_comm.finish_communication();
-            if(send_comm.done() && recv_comm.done() )
-                break;
-        }
-    }
     //TODO: Make it better and put in octant
     template<class T>
     auto get_octant_idx(T it) const noexcept

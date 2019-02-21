@@ -224,15 +224,14 @@ public:
                 float_type dx_level)
     {
 
-      for(auto it = domain_->begin(); it!=domain_->end();++it)
-      {
-        if( it->data() && !it->locally_owned()) 
-        {
-
-          for(auto& e: it->data()->template get_data<t>())
-            e=0.0;
-        }
-      }
+      //for(auto it = domain_->begin(); it!=domain_->end();++it)
+      //{
+      //  if( it->data() && !it->locally_owned()) 
+      //  {
+      //    for(auto& e: it->data()->template get_data<t>())
+      //      e=0.0;
+      //  }
+      //}
 
         auto o_1 = (*o_start);
         auto o_2 = (*o_end);
@@ -312,20 +311,10 @@ public:
         for (auto it_t = o_start; it_t!=(o_end); ++it_t)
         {
             if(!it_t->data()) continue;
-
-            //if (it_t->locally_owned()) {
-            //    ofs<< "-------------------------" << std::endl;
-            //    ofs<<"#"<< it_t->key().coordinate()<<" rank"<<it_t->rank()<<std::endl;
-            //    ofs<< "-------------------------" << std::endl;
-            //}
-
             for (int i=0; i<27; ++i)
             {
                 auto n_s = it_t->neighbor(i);
 
-                //if ( it_t->locally_owned() &&n_s  ) {
-                //    ofs<< n_s->key().coordinate()<<" rank "<<n_s->rank()<<std::endl;
-                //}
                 if (n_s && n_s->locally_owned())
                 {
 
@@ -336,9 +325,6 @@ public:
                 }
             }
         }
-
-        domain_->decomposition().
-            template communicate_influence<fmm_t, fmm_t>(o_start,o_end,true);
     }
 
     template<

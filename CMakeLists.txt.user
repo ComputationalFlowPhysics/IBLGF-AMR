@@ -1,8 +1,0 @@
-set(CMAKE_CXX_COMPILER "/act/mvapich2-2.1/gcc/bin/mpic++")
-set(CMAKE_C_COMPILER "/act/mvapich2-2.1/gcc/bin/mpicc")
-set(BOOST_ROOT "/opt/src/boost_1_68_0")
-set(Boost_INCLUDE_DIR "/opt/src/boost_1_68_0")
-set(Boost_LIBRARY_DIR "/opt/src/boost_1_68_0/stage/lib")
-set(BLAS_INCLUDE_DIRS "/usr/include/openblas")
-set(BLAS_LIBRARY_DIR "/usr/lib64")
-set(HDF5_ROOT "/home/mlee/programs/hdf5-1.10.4-parallel")

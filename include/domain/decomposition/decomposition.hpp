@@ -33,7 +33,7 @@ public:
 public:
 
     //server rank within communicator comm_
-    static constexpr int server_rank = 0;
+    static constexpr int server_rank = 0; 
 
 public:
 
@@ -52,7 +52,7 @@ public:
         {
             throw std::runtime_error("Minimum world size is 2.");
         }
-        if(comm_.rank()==server_rank)
+        if(comm_.rank()==server_rank) 
             server_=std::make_shared<server_type>(domain_, comm_);
         else
             client_=std::make_shared<client_type>(domain_, comm_);
@@ -63,8 +63,6 @@ public: //memeber functions
 
     void distribute()
     {
-        domain_->tree()->construct_leaf_maps();
-        domain_->tree()->construct_level_maps();
         //Send the construction keys back and forth
         if(server())
             server()->send_keys();
@@ -88,7 +86,7 @@ public: //memeber functions
     {
         if(client())
         {
-            client()->template
+            client()->template 
                 communicate_induced_fields<SendField, RecvField,OctantIt>(_begin, _end,_neighbors);
         }
     }
@@ -98,11 +96,11 @@ public: //memeber functions
     {
         if(client())
         {
-            client()->template
+            client()->template 
                 communicate_updownward_pass<SendField, RecvField>(_begin,_end, _upward);
         }
     }
-
+    
 
 public: //access memebers:
 

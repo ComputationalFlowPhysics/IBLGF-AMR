@@ -42,7 +42,7 @@ struct parameters
     Dim,
      (
         //name               type     lBuffer.  hBuffer
-         (phi_num          , float_type, 1,       1),
+         (phi_num          , float_type, 1,       1), 
          (source           , float_type, 1,       1),
          (phi_exact        , float_type, 1,       1),
          (error            , float_type, 1,       1),
@@ -93,13 +93,6 @@ struct DecomposistionTest:public SetupBase<DecomposistionTest,parameters>
             this->compute_errors();
         }
         //psolver.laplace_diff<phi_num,amr_lap_source>();
-
-        boost::mpi::communicator world;
-
-        world.barrier();
-        std::cout<<"Write HDF5 with rank: "<<world.rank()<<std::endl;
-        world.barrier();
-        simulation_.write2("mesh.hdf5");
     }
 
 
@@ -120,7 +113,7 @@ struct DecomposistionTest:public SetupBase<DecomposistionTest,parameters>
 
 
         //Adapt center to always have peak value in a cell-center
-        center+=0.5/std::pow(2,nRef);
+        center+=0.5/std::pow(2,nRef); 
         const float_type a  = 10.;
         const float_type a2 = a*a;
         const float_type dx_base = domain_.dx_base();
@@ -174,7 +167,7 @@ struct DecomposistionTest:public SetupBase<DecomposistionTest,parameters>
     void compute_errors()
     {
 
-        boost::mpi::communicator  w;
+        boost::mpi::communicator  w; 
         std::ofstream ofs("rank_"+std::to_string(w.rank())+".txt");
 
         const float_type dx_base=domain_.dx_base();
@@ -193,7 +186,7 @@ struct DecomposistionTest:public SetupBase<DecomposistionTest,parameters>
             auto& nodes_domain=it_t->data()->nodes_domain();
             for(auto it2=nodes_domain.begin();it2!=nodes_domain.end();++it2 )
             {
-
+                
                 ofs<<it2->get<phi_num>()<<" ";
                 const float_type error_tmp = (
                         it2->get<phi_num>() - it2->get<phi_exact>());

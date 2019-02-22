@@ -114,13 +114,10 @@ public:
               const Function& f=[](octant_type* o){ return; })
     {
         this->init(_keys, this->base_level_,f);
-        // Maps construction
-        this->construct_leaf_maps();
-        this->construct_level_maps();
     }
 
     template<class Function=std::function<void(octant_type* c)>>
-    void init(const std::vector<key_type>& _keys, int _base_level,
+    void init(const std::vector<key_type>& _keys, int _base_level, 
               const Function& f=[](octant_type* o){ return; })
     {
         this->base_level_ = _base_level;
@@ -364,8 +361,8 @@ public: // misc
     }
 
 
-public: // neighborlist
-    auto  construct_neighbor_lists(bool _global=true)noexcept
+public: // neighborlist 
+    auto  construct_neighbor_lists(bool _global=true)noexcept 
     {
         dfs_iterator begin(root()); dfs_iterator end;
         std::set<key_type> res;
@@ -382,7 +379,7 @@ public: // neighborlist
         auto key_set=construct_neighbor_lists();
         std::vector<key_type> keys;
         keys.insert(keys.begin(),key_set.begin(), key_set.end());
-
+        
         auto ranks= _c->rank_query( keys );
         for(std::size_t i = 0; i < ranks.size();++i )
         {
@@ -397,11 +394,11 @@ public: // neighborlist
         }
     }
 
-private: // neighborlist
+private: // neighborlist 
     /** @brief Construction neighbor list based on  local tree */
-    void neighbor_lookup( octant_type* it,
+    void neighbor_lookup( octant_type* it, 
                           std::set<key_type>& res,
-                          bool _global,
+                          bool _global, 
                           bool _update_neighbors=false )
     {
         it->neighbor_clear();
@@ -428,7 +425,7 @@ private: // neighborlist
         }
     }
 
-
+  
 public: // influence list
 
 
@@ -450,7 +447,7 @@ public: // influence list
         }
         return res;
     }
-
+                         
     template<class Client, class InitFunction>
     void query_influence_octants( Client* _c, InitFunction& _f )
     {
@@ -495,7 +492,7 @@ public: // influence list
 
 private:// influence list
 
-    //FIXME: This is bullshit, lets thinks about a set or indexing the
+    //FIXME: This is bullshit, lets thinks about a set or indexing the 
     //       whole 6^3 field
     struct influence_helper
     {
@@ -504,18 +501,18 @@ private:// influence list
         {
             return key_ < other.key_;
         }
-
+        
 
         ///< append to lists
-        void update(octant_type* _oc, int _inf_number) const
+        void update(octant_type* _oc, int _inf_number) const 
         {
             influence_.emplace_back(_oc);
             influence_number_.emplace_back(_inf_number);
         }
 
-        //Set the octant belonging to key within the infl of ocant in
+        //Set the octant belonging to key within the infl of ocant in 
         //influence_
-        void set(octant_type* oc) const
+        void set(octant_type* oc) const 
         {
             for(std::size_t i =0; i<influence_.size();++i)
             {
@@ -530,40 +527,40 @@ private:// influence list
         key_type key_; //of octant in questions
 
         //ocntants influence by key-cotant and influence index
-        mutable  std::vector<octant_type*> influence_;
+        mutable  std::vector<octant_type*> influence_;  
         mutable std::vector<int> influence_number_;
     };
 
     /** @brief Construct the influence list of this octrant.
      *
      *  @detail: Influence list are the children of the parent of the octant it
-     *           without the nearest neighbor.
+     *           without the nearest neighbor. 
      *           This list is stored direcly in the octrant
      *  @return: List of keys that have not been in the local tree.
      *           These keys need to checked for existence in the global tree.
      */
-    auto influence_lookup(octant_type* it,
+    auto influence_lookup(octant_type* it,    
                           std::set<influence_helper>& influence_set,
                           bool _global=true)
     {
         it->influence_clear();
         if(!it->parent()) return;
         //std::set<infl_helper> blafskjdfdsl sadkjad a
-        //std::set<infl
+        //std::set<infl  
 
         int infl_id = 0;
         it->influence_number(infl_id);
         const auto coord = it->key().coordinate();
 
         const auto p = it->parent();
-        for (int p_n_id=0;
-                 p_n_id<static_cast<int>(p->num_neighbors());
+        for (int p_n_id=0; 
+                 p_n_id<static_cast<int>(p->num_neighbors()); 
                  ++p_n_id)
         {
             const auto  p_n = p->neighbor(p_n_id);
             if (p_n)
             {
-                for(int p_n_child_id=0;
+                for(int p_n_child_id=0; 
                         p_n_child_id<static_cast<int>(p_n->num_children());
                         ++p_n_child_id)
                 {
@@ -697,8 +694,8 @@ public: //children and parent queries
 
 public: //Query ranks of all octants, which are assigned in local tree
 
-    /** @brief Query from server and construct all
-     *         maps for neighbors, influence
+    /** @brief Query from server and construct all 
+     *         maps for neighbors, influence 
      *         list, children and interior nodes
      **/
     template<class Client, class InitFunction>
@@ -715,10 +712,10 @@ public: //Query ranks of all octants, which are assigned in local tree
         this-> construct_leaf_maps();
         this-> construct_level_maps();
     }
+    
+        
 
-
-
-public: // leafs maps
+public: // leafs maps 
 
     void construct_flag_leaf()
     {

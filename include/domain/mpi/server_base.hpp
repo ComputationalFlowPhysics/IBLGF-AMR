@@ -2,7 +2,6 @@
 #define INCLUDED_SERVER_HPP
 
 #include<set>
-#include<optional>
 #include<vector>
 #include<unordered_set>
 #include<memory>

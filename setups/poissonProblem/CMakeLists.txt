@@ -6,5 +6,6 @@ add_executable(poisson.x main.cpp ${SOURCES})
 target_link_libraries(poisson.x 
                       ${MPI_LIBRARIES}
                       ${Boost_LIBRARIES}
+                      ${BLAS_LIBRARIES}
                       ${FFTW_LIBRARIES}  fftw3_omp blas
                       xtensor)

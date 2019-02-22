@@ -2,7 +2,6 @@
 #define INCLUDED_SERVERCLIENTBASE_HPP
 
 #include<set>
-#include<optional>
 #include<vector>
 #include<unordered_set>
 #include<memory>

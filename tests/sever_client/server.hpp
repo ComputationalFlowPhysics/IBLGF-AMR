@@ -2,7 +2,6 @@
 #define INCLUDED_SERVER_XX_HPP
 
 #include<set>
-#include<optional>
 #include<vector>
 #include<memory>
 #include<list>

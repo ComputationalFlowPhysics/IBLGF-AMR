@@ -5,7 +5,7 @@
 #include <cassert>
 #include <cstring>
 #include <vector>
-#include <complex.h>
+#include <complex>
 #include <fftw3.h>
 #include <global.hpp>
 #include <boost/align/aligned_allocator_adaptor.hpp>

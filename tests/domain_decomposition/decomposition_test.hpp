@@ -194,8 +194,8 @@ struct DecomposistionTest:public SetupBase<DecomposistionTest,parameters>
                 it2->get<error>() = error_tmp;
                 L2 += error_tmp*error_tmp * (dx*dx*dx);
 
-                if ( abs(error_tmp) > LInf)
-                    LInf = abs(error_tmp);
+                if ( std::fabs(error_tmp) > LInf)
+                    LInf = std::fabs(error_tmp);
 
                 ++count;
             }

@@ -10,7 +10,6 @@ project (IBLGF)
 SET(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 # ------------------------------------------------------------------------------
  
-#Bring the headers, such as Student.h into the project
 include_directories(include)
  
 set(SOURCES "${CMAKE_CURRENT_LIST_DIR}/src/lgf/lgf_lookup.cpp")
@@ -25,7 +24,7 @@ include_directories("${PROJECT_BINARY_DIR}")
 
 #include(${CMAKE_CURRENT_SOURCE_DIR}/../CMakeLists.txt.user)
 set (CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -O3  -ggdb -Wno-narrowing -fmax-errors=2")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17 -Wall -O3  -ggdb -Wno-narrowing -fmax-errors=2")
 #set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -O3 -ggdb -pg -fconcepts -Wno-narrowing -fmax-errors=2")
 #set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -O3")
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/bin)
@@ -48,6 +47,7 @@ include_directories(SYSTEM ${BLAS_INCLUDE_DIRS})
 link_directories(${BLAS_LIBRARIES} )
 
 
+
 #FFTW
 set(FFTW_DIR "cmake/")
 find_package(FFTW REQUIRED)
@@ -55,8 +55,10 @@ include_directories(SYSTEM ${FFTW_INCLUDES})
 link_directories(${FFTW_LIBRARIES} )
 
 #XTensor 
-find_package(xtl REQUIRED)
 find_package(xtensor REQUIRED)
+find_package(xtl REQUIRED)
+find_package(xtensor-blas REQUIRED)
+include_directories(SYSTEM ${xtensor_blas_INCLUDE_DIRS})
 
 # add the executable
 #add_executable(iblgf "src/main.cpp")

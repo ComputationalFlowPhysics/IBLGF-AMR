@@ -6,5 +6,6 @@ add_executable(decompTest.x domainTest.cpp ${SOURCES})
 target_link_libraries(decompTest.x 
                       ${MPI_LIBRARIES}
                       ${Boost_LIBRARIES}
-                      ${FFTW_LIBRARIES}  fftw3_omp blas
+                      ${BLAS_LIBRARIES}
+                      ${FFTW_LIBRARIES}  fftw3_omp blas 
                       xtensor)

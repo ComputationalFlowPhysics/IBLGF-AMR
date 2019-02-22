@@ -9,9 +9,9 @@ project (IBLGF)
 # ------------------------------------------------------------------------------
 SET(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 # ------------------------------------------------------------------------------
- 
+
 include_directories(include)
- 
+
 set(SOURCES "${CMAKE_CURRENT_LIST_DIR}/src/lgf/lgf_lookup.cpp")
 
 #Output compile commands
@@ -44,7 +44,8 @@ link_directories(${Boost_LIBRARY_DIR})
 #CBLAS
 find_package(BLAS REQUIRED)
 include_directories(SYSTEM ${BLAS_INCLUDE_DIRS})
-link_directories(${BLAS_LIBRARIES} )
+#link_directories(${BLAS_LIBRARIES} )
+link_directories(${BLAS_LIBRARY_DIR} )
 
 
 
@@ -54,17 +55,26 @@ find_package(FFTW REQUIRED)
 include_directories(SYSTEM ${FFTW_INCLUDES})
 link_directories(${FFTW_LIBRARIES} )
 
-#XTensor 
+#XTensor
 find_package(xtensor REQUIRED)
 find_package(xtl REQUIRED)
 find_package(xtensor-blas REQUIRED)
 include_directories(SYSTEM ${xtensor_blas_INCLUDE_DIRS})
 
+#HDF5
+find_package(HDF5)
+include_directories(SYSTEM ${HDF5_INCLUDE_DIRS})
+link_directories(${HDF5_LIBRARIES} )
+#message( ${HDF5_INCLUDE_DIRS} )
+#message( ${HDF5_LIBRARY_DIRS} )
+
+#message( ${HDF5_LIBRARIES} )
+
 # add the executable
 #add_executable(iblgf "src/main.cpp")
 #target_link_libraries(iblgf
 #                      ${MPI_LIBRARIES}
-#                      ${Boost_LIBRARIES} boost_mpi 
+#                      ${Boost_LIBRARIES} boost_mpi
 #                      ${FFTW_LIBRARIES} fftw3_omp blas
 #                      xtensor)
 
@@ -75,9 +85,9 @@ enable_testing ()
 
 #Sample test
 set (test_parameters -np "2"  )
-add_test (NAME DomainTest 
-          COMMAND "/usr/bin/mpirun.openmpi" ${test_parameters} 
-          bin/decompTest.x 
+add_test (NAME DomainTest
+          COMMAND "/usr/bin/mpirun.openmpi" ${test_parameters}
+          bin/decompTest.x
           "${CMAKE_CURRENT_LIST_DIR}/tests/domain_decomposition/configFile")
 
 

@@ -28,6 +28,7 @@
 
 # Directories:
 .deps/
+builds/
 
 # Executables
 *.exe
@@ -39,3 +40,4 @@
 #Misc:
 *.swp
 Makefile.user
+CMakeLists.txt.user

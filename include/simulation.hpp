@@ -3,6 +3,7 @@
 
 #include <dictionary/dictionary.hpp>
 #include <IO/vtk_io.hpp>
+#include <IO/chombo/h5_io.hpp>
 
 using namespace dictionary;
 
@@ -43,12 +44,17 @@ public:
         writer.write_vtk(_filename, domain_);
     }
 
+    void write2(std::string _filename)
+    {
+        writer_h5.write_h5(_filename, domain_);
+    }
 
 public:
   std::shared_ptr<Dictionary> dictionary_;
   Domain domain_;
   boost::mpi::communicator world_;
   io::Vtk_io<Domain> writer;
+  io::H5_io<3, Domain> writer_h5;
 
 };
 

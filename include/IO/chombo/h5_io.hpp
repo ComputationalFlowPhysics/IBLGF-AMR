@@ -114,11 +114,14 @@ public:
         for(auto it=_lt.begin_leafs();it!=_lt.end_leafs();++it)
         {
             int rank = it->rank();
+
+            if (rank==world.rank() || world.rank()==0) {
             blockDescriptor_t block =it->data()->descriptor();
             blockData_t* node_data=&(it->data()->node_field());
 
        //     world.barrier();
-            std::cout<<"Rank = "<<world.rank()<<". Count = "<<_count
+            std::cout<<"Proc rank = "<<world.rank()<<". Block rank = "<<rank
+                    <<". Count = "<<_count
                     <<". Add Block to level = "<<block.level()
                     <<". octant level = "<<it->refinement_level()<<std::endl;
            // data_info.push_back(std::make_pair(block,node_data));
@@ -128,6 +131,7 @@ public:
             block_distribution.push_back(blockInfo);
 
             it->index(_count*block.nPoints());
+            }
             ++_count;
         }
 

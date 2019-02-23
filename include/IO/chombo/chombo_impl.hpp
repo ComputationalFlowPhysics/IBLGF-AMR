@@ -100,8 +100,6 @@ private:
             if (b.level() >= 0) {
             if(it!=level_map_.end())                // if found somewhere (does not return end())
             {
-                std::cout<<"Adding to existing level : level "<<b.level()<<std::endl;
-
                 it->second.ranks.push_back(rank);
                 it->second.blocks.push_back(b);     // add block to corresponding level
                 it->second.fields.push_back(field_data);
@@ -137,7 +135,6 @@ private:
             }
 
         }
-        std::cout<<"Level map after initialization has size: "<<level_map_.size()<<std::endl;
     }
 
 
@@ -245,26 +242,11 @@ public:
                 "component_"+std::to_string(i),components[i]);
         }
 
-        int count_lvls = 0;
-        for(auto& lp : level_map_)
-        {
-         //   auto l = lp.second;     // LevelInfo
-           // int lvl = l.level;
-            ++count_lvls;
-        }
-
-        std::cout<<"Number of levels from looping is: "<<count_lvls<<std::endl;
-
-
         // Get number of levels from server and communicate to all ranks
         int num_levels = 0;
         if (world.rank()==0) {
             num_levels = level_map_.size();
         }
-
-
-        std::cout<<"Level map on rank "<<world.rank()<<" has size "<<level_map_.size()<<std::endl;
-
         std::cout<<"I am rank "<<world.rank()<<" and numer of levels is "<<num_levels<<std::endl;
 
         world.barrier();
@@ -416,9 +398,6 @@ public:
             // ***TODO: Make collective
             auto dset_id=_file->template create_dataset<value_type>(group_id_lvl,
                 "data:datatype=0", space);      //collective
-
-            auto status_exists = H5Lexists(group_id_lvl, "data:datatype=0" , H5P_DEFAULT);
-            std::cout<<"Status exists for dataset: "<<status_exists<<std::endl;
             _file->close_space(space);
 
         }
@@ -491,9 +470,15 @@ public:
                     int data_block_size=nElements_patch*num_components;
 
                     offset_vector[rank][lvl].push_back(offset);
-                    offset+=data_block_size;
 
                  //   std::cout<<"==| Level is "<<lvl<<". Rank is "<<rank<<". Block is "<<b<<". Offset is "<<offset<<std::endl;
+                    std::cout<<"Lvl "<<lvl<<". b = "<<b;
+                    std::cout<<". Offset = "<<offset;
+                    std::cout<<". Base = "<<l.blocks[b].base()
+                              <<". Max = "<<l.blocks[b].max()<<std::endl;
+
+
+                    offset+=data_block_size;
                 }
 
             }
@@ -580,10 +565,6 @@ public:
 
             // Write attributes for this lvl (e.g. dx, dt)
             // ***TODO: Make collective
-            auto group_name = "level_"+std::to_string(lvl);
-            std::cout<<"Check if group exists: "<<group_name<<std::endl;
-            auto status_exists = H5Lexists(root, group_name.c_str() , H5P_DEFAULT);
-            std::cout<<"Status exists for group: "<<status_exists<<std::endl;
             auto group_id=_file->create_group(root,"level_"+std::to_string(lvl));
             std::cout<<"Group name is: level_"<<std::to_string(lvl)<<std::endl;
 
@@ -621,15 +602,6 @@ public:
 //            // ***TODO: Make collective
 //            auto dset_id=_file->template create_dataset<value_type>(group_id,
 //                "data:datatype=0", space);      //collective
-     //           ****
-           //     auto group_name = "level_"+std::to_string(lvl);
-                std::cout<<"Check if group exists: "<<group_name<<std::endl;
-
-                status_exists = H5Lexists(root, group_name.c_str() , H5P_DEFAULT);
-                std::cout<<"Status exists for group: "<<status_exists<<std::endl;
-                status_exists = H5Lexists(group_id, "data:datatype=0" , H5P_DEFAULT);
-
-                std::cout<<"Status exists for dataset: "<<status_exists<<std::endl;
             auto dset_id = _file->open_dataset(group_id, "data:datatype=0");
 
             std::vector<value_type> single_block_data;
@@ -641,19 +613,18 @@ public:
                 int rank = l.ranks[b];      // only contained on server
                 single_block_data.clear();
 
+                auto block = l.blocks[b];
+                FieldData* field = l.fields[b];
+
+                auto base=block.base();
+                auto max=block.max();
+
                 // ------------------------------------------------------------
                 // COMPONENT ITERATOR
                 field_type_iterator_t::for_types([&l, &lvl, &offset, &b,
+                        &max, &base, &field,
                         &single_block_data, &num_components, &world]<typename T>()
                 {
-                    //hsize_type patch_offset=0;
-
-                    auto block = l.blocks[b];
-                    FieldData* field = l.fields[b];
-
-                    auto base=block.base();
-                    auto max=block.max();
-
                     double field_value = 0.0;
                     if (world.rank()!=0)
                     {
@@ -687,24 +658,23 @@ public:
                 // Write single block data
                 hsize_type block_data_size = single_block_data.size();
                 hsize_type start = -1;
-                std::cout<<"World rank: "<<world.rank()<<". Block rank: "<<rank<<std::endl;
+              //  std::cout<<"World rank: "<<world.rank()<<". Block rank: "<<rank<<std::endl;
 
                 if (world.rank()!=0) {
-                    std::cout<<"Lvl "<<lvl<<". b = "<<b<<std::endl;
-                    std::cout<<"Size of offsets = "<<offsets_for_rank.size()<<std::endl;
-                    std::cout<<"Size of offsets[lvl] = "<<offsets_for_rank[lvl].size()<<std::endl;
+   //                 std::cout<<"Size of offsets = "<<offsets_for_rank.size()<<std::endl;
+              //      std::cout<<"Size of offsets[lvl] = "<<offsets_for_rank[lvl].size()<<std::endl;
 
                     start = offsets_for_rank[lvl][b];
-                }
 
+                    std::cout<<"Lvl "<<lvl<<". b = "<<b
+                            <<". Offset = "<<start
+                            <<". Base = "<<base<<". Max = "<<max<<std::endl;
 
-                if (world.rank()!=0) {
-                std::cout<<"Rank is "<<world.rank()<<". b is "<<b<<std::endl;
-                std::cout<<"Correct offset is "<<offset<<
-                            ". offset from vector is "<<offsets_for_rank[lvl][b]<<std::endl;
-                }
+                    //std::cout<<"Rank is "<<world.rank()<<". b is "<<b<<std::endl;
+                    //std::cout<<"Correct offset is "<<offset<<
+                    //        ". offset from vector is "<<offsets_for_rank[lvl][b]<<std::endl;
 
-                if (world.rank() != 0) {
+                    // Write single block data
                     _file->template write<value_type>(dset_id, block_data_size, start,
                                                         &single_block_data[0]);
 
@@ -798,7 +768,7 @@ public:
             //_file->close_space(space);
             _file->close_group(group_id_dattr);
             //_file->close_space(space_attr);
-          //  _file->close_dset(dset_id);
+            _file->close_dset(dset_id);
             _file->close_group(group_id);
 
         }   // level iterator

@@ -284,7 +284,7 @@ public:
         for (auto it  = _begin; it != _end; ++it)
         {
             const auto idx=get_octant_idx(it);
-            if(it->locally_owned() )
+            if(it->locally_owned() && it->data() )
             {
                 //Check if there are ghost children
                 const auto unique_ranks=it->unique_child_ranks();
@@ -322,7 +322,7 @@ public:
             }
 
             //Check if ghost has locally_owned children 
-            if(!it->locally_owned())
+            if(!it->locally_owned()&& it->data())
             {
                 if(it->has_locally_owned_children())
                 {

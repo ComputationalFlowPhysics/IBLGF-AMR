@@ -68,10 +68,13 @@ public:
     {
         std::cout<<"Computing domain decomposition "<<std::endl;
         float_type total_load=0.0;
+        int c=0;
         for( auto it = domain_->begin_df(); it!= domain_->end_df();++it )
         {
             total_load+=it->load();
+            ++c;
         }
+        std::cout<<"Total number of octants "<<c<<std::endl;
         
         auto nProcs=comm_.size()-1;
         const float_type ideal_load=total_load/nProcs;

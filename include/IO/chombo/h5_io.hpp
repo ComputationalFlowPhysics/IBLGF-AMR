@@ -108,7 +108,7 @@ public:
             nPoints+= b.nPoints();
         }
 
-        std::cout<<"Rank= "<<world.rank()<<".  ------------POINTS "<<nPoints<<" float"<<std::endl;
+        //std::cout<<"Rank= "<<world.rank()<<".  ------------POINTS "<<nPoints<<" float"<<std::endl;
         int _count=0;
         // Collect block descriptor and data from each block
         for(auto it=_lt.begin_leafs();it!=_lt.end_leafs();++it)
@@ -118,9 +118,9 @@ public:
             blockData_t* node_data=&(it->data()->node_field());
 
        //     world.barrier();
-            std::cout<<"Rank = "<<world.rank()<<". Count = "<<_count
-                    <<". Add Block to level = "<<block.level()
-                    <<". octant level = "<<it->refinement_level()<<std::endl;
+            //std::cout<<"Rank = "<<world.rank()<<". Count = "<<_count
+            //        <<". Add Block to level = "<<block.level()
+            //        <<". octant level = "<<it->refinement_level()<<std::endl;
            // data_info.push_back(std::make_pair(block,node_data));
 
 
@@ -132,39 +132,39 @@ public:
         }
 
 
-        world.barrier();
-        if (_lt.is_server()) {
-            std::cout<<"\n=========World Barrier=========\n"<<std::endl;
-        }
+        //world.barrier();
+        //if (_lt.is_server()) {
+        //    std::cout<<"\n=========World Barrier=========\n"<<std::endl;
+        //}
 
-        std::cout<<"Create hdf5_file object with rank "<<world.rank()<<" of "<<world.size()<<std::endl;
+        //std::cout<<"Create hdf5_file object with rank "<<world.rank()<<" of "<<world.size()<<std::endl;
 
-        world.barrier();
-        if (_lt.is_server()) {
-            std::cout<<"\n=========World Barrier=========\n"<<std::endl;
-        }
+        //world.barrier();
+        //if (_lt.is_server()) {
+        //    std::cout<<"\n=========World Barrier=========\n"<<std::endl;
+        //}
 
         hdf5_file<Dim> chombo_file(_filename);
      //   chombo_t ch_writer(data_info);  // Initialize writer with vector of
                                         // info: pair of descriptor and data
         chombo_t ch_writer(block_distribution);  // Initialize writer with vector of
                                          // info: tuple of rank, descriptor and data
-        world.barrier();
-        if (_lt.is_server()) {
-            std::cout<<"\n=========World Barrier=========\n"<<std::endl;
-        }
+        //world.barrier();
+        //if (_lt.is_server()) {
+        //    std::cout<<"\n=========World Barrier=========\n"<<std::endl;
+        //}
 
         ch_writer.write_global_metaData(&chombo_file);
 
-        world.barrier();
-        if (_lt.is_server()) {
-            std::cout<<"\n=========World Barrier=========\n"<<std::endl;
-        }
-        std::cout<<"------>write_level_info: rank "<<world.rank()<<" of "<<world.size()<<std::endl;
+        //world.barrier();
+        //if (_lt.is_server()) {
+        //    std::cout<<"\n=========World Barrier=========\n"<<std::endl;
+        //}
+        //std::cout<<"------>write_level_info: rank "<<world.rank()<<" of "<<world.size()<<std::endl;
 
         ch_writer.write_level_info(&chombo_file);
 
-        std::cout<<"<-----write_h5: End with rank "<<world.rank()<<" of "<<world.size()<<std::endl;
+        //std::cout<<"<-----write_h5: End with rank "<<world.rank()<<" of "<<world.size()<<std::endl;
     }
 
 };

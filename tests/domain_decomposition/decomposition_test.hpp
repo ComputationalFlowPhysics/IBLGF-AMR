@@ -96,9 +96,9 @@ struct DecomposistionTest:public SetupBase<DecomposistionTest,parameters>
 
         boost::mpi::communicator world;
 
-        world.barrier();
-        std::cout<<"Write HDF5 with rank: "<<world.rank()<<std::endl;
-        world.barrier();
+        //world.barrier();
+        //std::cout<<"Write HDF5 with rank: "<<world.rank()<<std::endl;
+        //world.barrier();
         simulation_.write2("mesh.hdf5");
     }
 

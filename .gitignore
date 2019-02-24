@@ -29,6 +29,7 @@
 # Directories:
 .deps/
 builds/
+doc/
 
 # Executables
 *.exe

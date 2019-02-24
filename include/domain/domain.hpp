@@ -480,6 +480,7 @@ public:
         os<<"Number of octants: "<<d.num_leafs()<<std::endl;
         os<<"Block extent : "<<d.block_extent_<<std::endl;
         os<<"Base resolution "<<d.dx_base()<<std::endl;
+        os<<"Base level "<<d.tree()->base_level()<<std::endl;
 
         os<<"Domain Bounding Box: "<<d.bounding_box_<<std::endl;
         os<<"Fields:"<<std::endl;

@@ -256,7 +256,7 @@ public:
                     {
                         if (n_s->inside(level_o_1,  level_o_2_dup))
                         {
-                            fmm_fft<s,t>(n_s, it_t, level-l, dx_level);
+                            fmm_tt<s,t>(n_s, it_t, level-l, dx_level);
                         }
                     }
                 }
@@ -318,7 +318,7 @@ public:
                 {
                     if (n_s->inside(o_start, o_end_2))
                     {
-                        fmm_fft<s,t>(n_s, it_t, level_diff, dx_level);
+                        fmm_tt<s,t>(n_s, it_t, level_diff, dx_level);
                     }
                 }
             }
@@ -471,7 +471,10 @@ public:
         auto o_1 = o_start->parent();
         auto o_2 = o_end->parent();
 
-        if (o_1->key() != o_2->key() )
+        //FIXME:  This is a hack till good subtree identification is found
+        //        Note, else there is a deadlock
+        //if (o_1->key() != o_2->key() )
+        if (level!=0 )
         {
             fmm_intrp<fmm_t>(domain_, level, o_1, o_2);
         }
@@ -482,6 +485,7 @@ public:
         level_o_1=domain_->begin(level);
         level_o_2=domain_->end(level);
 
+        
         domain_->decomposition().client()-> template 
             communicate_updownward_assign<fmm_t, fmm_t>(level_o_1,
                                                         level_o_2,false);
@@ -554,7 +558,7 @@ public:
         class octant_t,
         class octant_itr_t
     >
-    void fmm_fft(octant_t o_s, 
+    void fmm_tt(octant_t o_s, 
                  octant_itr_t o_t, 
                  int level_diff, 
                  float_type dx_level)

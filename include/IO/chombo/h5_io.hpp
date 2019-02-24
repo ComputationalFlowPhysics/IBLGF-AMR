@@ -114,6 +114,8 @@ public:
         for(auto it=_lt.begin_leafs();it!=_lt.end_leafs();++it)
         {
             int rank = it->rank();
+
+            if (rank==world.rank() || world.rank()==0) {
             blockDescriptor_t block =it->data()->descriptor();
             blockData_t* node_data=&(it->data()->node_field());
 
@@ -128,6 +130,7 @@ public:
             block_distribution.push_back(blockInfo);
 
             it->index(_count*block.nPoints());
+            }
             ++_count;
         }
 

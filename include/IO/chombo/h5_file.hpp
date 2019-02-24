@@ -113,7 +113,6 @@ class hdf5_file
        //     auto dtplist_id = H5Pcreate(H5P_DATASET_XFER);
        //     H5Pset_dxpl_mpio(dtplist_id, H5FD_MPIO_INDEPENDENT);
             //hid_t dataset_id = H5Dopen2(_loc_id, _name.c_str(), dtplist_id);
-            std::cout<<"dset_name = "<<_name.c_str()<<std::endl;
             hid_t dataset_id = H5Dopen2(_loc_id, _name.c_str(), H5P_DEFAULT);
             HDF5_CHECK_ERROR(dataset_id, "hdf5: could not open dataset: "
                                 + _name)

@@ -99,11 +99,127 @@ public:
         return recvData;
     }
 
+    template<class SendField,class RecvField,class OctantIt>
+    void communicate_induced_fields( OctantIt _begin, OctantIt _end, 
+                                     bool _neighbors=false )
+    {
+        auto& send_comm=
+            task_manager_-> template 
+            send_communicator<induced_fields_task_t<AddAssignRecv>>();
+        auto& recv_comm=
+            task_manager_->template 
+            recv_communicator<induced_fields_task_t<AddAssignRecv>>();
+        for (auto it  = _begin; it != _end; ++it)
+        {
+            communicate_induced_fields(it, _neighbors);
+        }
+    }
 
+    void finish_induced_field_communication()
+    {
+        auto& send_comm=
+            task_manager_-> template 
+            send_communicator<induced_fields_task_t<AddAssignRecv>>();
+        auto& recv_comm=
+            task_manager_->template 
+            recv_communicator<induced_fields_task_t<AddAssignRecv>>();
+        while(true)
+        {
+            send_comm.start_communication();
+            recv_comm.start_communication();
+            send_comm.finish_communication();
+            recv_comm.finish_communication();
+            if(send_comm.done() && recv_comm.done() )
+                break;
+        }
+    }
 
     /** @brief Communicate induced fields per level */
     template<class SendField,class RecvField,class OctantIt>
-    void communicate_induced_fields( OctantIt _begin, OctantIt _end, 
+    void communicate_induced_fields( OctantIt it, bool _neighbors=false )
+    {
+        auto& send_comm=
+            task_manager_-> template 
+            send_communicator<induced_fields_task_t<AddAssignRecv>>();
+        auto& recv_comm=
+            task_manager_->template 
+            recv_communicator<induced_fields_task_t<AddAssignRecv>>();
+
+        boost::mpi::communicator  w; 
+        const int myRank=w.rank();
+        const auto idx=get_octant_idx(it);
+        if(!it->locally_owned())
+        {
+            //Check if this ghost octant influenced by octants of this rank
+            bool is_influenced=false;
+
+            //Check influence list
+            for(std::size_t i = 0; i< it->influence_number(); ++i)
+            {
+                const auto inf=it->influence(i);
+                if(inf && inf->rank()==myRank)
+                { is_influenced=true ; break;} 
+            }
+
+            if(_neighbors)
+            {
+                for(int i = 0; i< it->nNeighbors(); ++i)
+                {
+                    const auto inf=it->neighbor(i);
+                    if(inf && inf->rank()==myRank)
+                    { is_influenced=true ; break;} 
+                }
+            }
+
+            if(is_influenced )
+            {
+                auto send_ptr=it->data()->
+                    template get<SendField>().date_ptr();
+                auto task= send_comm.post_task(send_ptr, it->rank(), true, idx);
+                task->requires_confirmation()=false;
+            }
+        }
+        else
+        {
+            std::set<int> unique_inflRanks;
+            for(std::size_t i = 0; i< it->influence_number(); ++i)
+            {
+                const auto inf=it->influence(i);
+                if(inf && inf->rank()!=myRank )
+                {
+                    unique_inflRanks.insert(inf->rank());
+                }
+            }
+            if(_neighbors)
+            {
+                for(int i = 0; i< it->nNeighbors(); ++i)
+                {
+                    const auto inf=it->neighbor(i);
+                    if(inf && inf->rank()!=myRank )
+                    {
+                        unique_inflRanks.insert(inf->rank());
+                    }
+                }
+            }
+            for(auto& r: unique_inflRanks)
+            {
+                const auto recv_ptr=it->data()->
+                    template get<RecvField>().date_ptr();
+                auto task = recv_comm.post_task( recv_ptr, r, true,  idx);
+                task->requires_confirmation()=false;
+            }
+        }
+
+        //Try starting/finishing the communication 
+        send_comm.start_communication();
+        recv_comm.start_communication();
+        send_comm.finish_communication();
+        recv_comm.finish_communication();
+    }
+
+    /** @brief Communicate induced fields per level */
+    template<class SendField,class RecvField,class OctantIt>
+    void communicate_induced_fields_old( OctantIt _begin, OctantIt _end, 
                                      bool _neighbors=false )
     {
         //std::cout<<"Comunicating induced fields of "
@@ -235,6 +351,9 @@ public:
             //Try starting the communication 
             send_comm.start_communication();
             recv_comm.start_communication();
+
+            send_comm.finish_communication();
+            recv_comm.finish_communication();
         }
 
         //Start communications

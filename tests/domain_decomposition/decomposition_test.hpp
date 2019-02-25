@@ -99,7 +99,7 @@ struct DecomposistionTest:public SetupBase<DecomposistionTest,parameters>
         //world.barrier();
         //std::cout<<"Write HDF5 with rank: "<<world.rank()<<std::endl;
         //world.barrier();
-        simulation_.write2("mesh.hdf5");
+        //simulation_.write2("mesh.hdf5");
     }
 
 
@@ -175,7 +175,7 @@ struct DecomposistionTest:public SetupBase<DecomposistionTest,parameters>
     {
 
         boost::mpi::communicator  w;
-        std::ofstream ofs("rank_"+std::to_string(w.rank())+".txt");
+        //std::ofstream ofs("rank_"+std::to_string(w.rank())+".txt");
 
         const float_type dx_base=domain_.dx_base();
         if(domain_.is_server()) return ;
@@ -185,7 +185,7 @@ struct DecomposistionTest:public SetupBase<DecomposistionTest,parameters>
              it_t != domain_.end_leafs(); ++it_t)
         {
             if(!it_t->locally_owned())continue;
-            ofs<<"#"<<it_t->global_coordinate()<<"\n";
+            //ofs<<"#"<<it_t->global_coordinate()<<"\n";
 
             int refinement_level = it_t->refinement_level();
             double dx = dx_base/std::pow(2,refinement_level);
@@ -194,7 +194,7 @@ struct DecomposistionTest:public SetupBase<DecomposistionTest,parameters>
             for(auto it2=nodes_domain.begin();it2!=nodes_domain.end();++it2 )
             {
 
-                ofs<<it2->get<phi_num>()<<" ";
+                //ofs<<it2->get<phi_num>()<<" ";
                 const float_type error_tmp = (
                         it2->get<phi_num>() - it2->get<phi_exact>());
 
@@ -206,12 +206,10 @@ struct DecomposistionTest:public SetupBase<DecomposistionTest,parameters>
 
                 ++count;
             }
-            ofs<<std::endl;
+            //ofs<<std::endl;
         }
         std::cout << "L2   = " << std::sqrt(L2)<< std::endl;
         std::cout << "LInf = " << LInf << std::endl;
-
-
     }
 
 };

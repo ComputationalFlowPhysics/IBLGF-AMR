@@ -96,7 +96,7 @@ public:
     task_vector_t start_communication()
     {
         task_vector_t res;
-        //std::size_t mCount=0;
+        std::size_t mCount=0;
         while(buffer_.is_free() && !buffer_queue_.empty())
         {
             auto task =buffer_queue_.front();

@@ -260,20 +260,31 @@ public:
                         }
                     }
                 }
-            }
-            if(refinement_level>=0 && l==level)
-            {
-                domain_->decomposition().
-                    template communicate_influence<fmm_t, fmm_t>(level_o_1, 
-                            level_o_2,true);
 
-            }else
-            {
-                domain_->decomposition().
-                    template communicate_influence<fmm_t, fmm_t>(level_o_1, 
-                            level_o_2,false);
-
+                if(refinement_level>=0 && l==level)
+                {
+                    domain_->decomposition().client()-> template 
+                        communicate_induced_fields<fmm_t, fmm_t>(it_t, true);
+                }else
+                {
+                    domain_->decomposition().client()-> template 
+                        communicate_induced_fields<fmm_t, fmm_t>(it_t, false);
+                }
             }
+            domain_->decomposition().client()->finish_induced_field_communication();
+            //if(refinement_level>=0 && l==level)
+            //{
+            //    domain_->decomposition().client()->
+            //        template communicate_induced_fields_old<fmm_t, fmm_t>(level_o_1, 
+            //                level_o_2,true);
+
+            //}else
+            //{
+
+            //    domain_->decomposition().client()->
+            //        template communicate_induced_fields_old<fmm_t, fmm_t>(level_o_1, 
+            //                level_o_2,false);
+            //}
 
             o_1_old = o_1;
             o_2_old = o_2;

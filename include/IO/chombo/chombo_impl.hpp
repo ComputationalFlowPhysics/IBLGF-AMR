@@ -97,6 +97,7 @@ private:
             const auto b = std::get<1>(p);              // second is descriptor
             const auto field_data = std::get<2>(p);     // third is data
             auto it=level_map_.find(b.level());     // returns iterator to element with key b.level()
+            // FIXME: Some blocks have -1 level
             if (b.level() >= 0) {
             if(it!=level_map_.end())                // if found somewhere (does not return end())
             {

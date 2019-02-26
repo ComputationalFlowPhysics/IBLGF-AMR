@@ -31,8 +31,7 @@ struct CopyAssign : crtp::Crtp<TaskType, CopyAssign>
         task_.comm_buffer_->detach();
         task_.comm_buffer_=nullptr;
     }
-    auto& send_buffer() noexcept {return  task_.comm_buffer_->data();  }
-    auto& recv_buffer() noexcept {return  task_.comm_buffer_->data();  }
+    auto& buffer() noexcept {return  task_.comm_buffer_->data();  }
 
 private:
     TaskType& task_=this->derived();
@@ -49,27 +48,54 @@ struct AddAssignRecv : CopyAssign<TaskType>
     }
     void assign_data2buffer() noexcept
     {
-        //inplace send ... not
-        //task_.comm_buffer_->data()=task_.data();        
+        task_.comm_buffer_->data()=task_.data();
     }
     void assign_buffer2data() noexcept
     {
-        std::transform (task_.data().begin(), task_.data().end(), 
-                        task_.comm_buffer_->data().begin(), 
-                        task_.data().begin(), 
-                        std::plus<typename TaskType::data_type::value_type>());
+        for(std::size_t i=0; i<task_.data().size();++i)
+        {
+            task_.data()[i]+=task_.comm_buffer_->data()[i];
+        }
     }
     void deattach_buffer() noexcept
     {
         task_.comm_buffer_->detach();
         task_.comm_buffer_=nullptr;
     }
-    auto& send_buffer() noexcept {return  *task_.data_;  }
-    auto& recv_buffer() noexcept {return  task_.comm_buffer_->data();  }
+    auto& buffer() noexcept {return  task_.comm_buffer_->data();  }
 
 private:
     TaskType& task_=this->derived();
 };
+
+template<class TaskType>
+struct OrAssignRecv : CopyAssign<TaskType>
+{
+    template<class Buffer>
+    void attach_buffer( Buffer* _b ) noexcept
+    {
+        task_.comm_buffer_=_b;
+        task_.comm_buffer_->attach();
+    }
+    void assign_data2buffer() noexcept
+    {
+        task_.comm_buffer_->data()=task_.data();
+    }
+    void assign_buffer2data() noexcept
+    {
+        task_.data() = task_.data() || task_.comm_buffer_->data();
+    }
+    void deattach_buffer() noexcept
+    {
+        task_.comm_buffer_->detach();
+        task_.comm_buffer_=nullptr;
+    }
+    auto& buffer() noexcept {return  task_.comm_buffer_->data();  }
+
+private:
+    TaskType& task_=this->derived();
+};
+
 
 template<class TaskType>
 struct Inplace : crtp::Crtp<TaskType, Inplace>
@@ -79,9 +105,8 @@ struct Inplace : crtp::Crtp<TaskType, Inplace>
     void assign_data2buffer() noexcept { }
     void assign_buffer2data() noexcept { }
     void deattach_buffer() noexcept { }
+    auto& buffer() noexcept {return  *task_.data_;  }
 
-    auto& send_buffer() noexcept {return  *task_.data_;  }
-    auto& recv_buffer() noexcept {return  *task_.data_;  }
 
 private:
     TaskType& task_=this->derived();
@@ -93,8 +118,8 @@ template
     template<class> class BufferPolicy,  //Assign Mixin
     class ID=int
 >
-class Task_base 
-: public 
+class Task_base
+: public
     BufferPolicy<Task_base<BufferType,BufferPolicy,ID>>
 {
 
@@ -159,7 +184,7 @@ public: //memebers:
             {
                 confirmed_=true;
             }
-        } 
+        }
         return confirmed_;
     }
     const bool& requires_confirmation() const noexcept { return request_confirmation_; }
@@ -169,15 +194,15 @@ public: //memebers:
 
     void isend( boost::mpi::communicator _comm)
     {
-        this->request_= _comm.isend(  this->rank_other_, this->id_, (this->send_buffer()));
+        this->request_= _comm.isend(  this->rank_other_, this->id_, (this->buffer()));
         if(this->request_confirmation_)
         {
             this->confirmation_request_=_comm.irecv(this->rank_other_, tags::confirmation);
         }
-    } 
+    }
     void irecv( boost::mpi::communicator _comm)
     {
-        this->request_ = _comm.irecv(this->rank_other_, this->id_, (this->recv_buffer())) ;
+        this->request_ = _comm.irecv(this->rank_other_, this->id_, (this->buffer())) ;
         if(this->request_confirmation_)
         {
             this->confirmation_request_=_comm.isend(this->rank_other_, tags::confirmation);
@@ -206,7 +231,7 @@ protected:
 
 template
 <
-    int Tag, class T, 
+    int Tag, class T,
     template<class> class BufferPolicy=CopyAssign,  //Assign Mixin
     class ID=int
 >
@@ -232,4 +257,4 @@ public:
 
 
 }
-#endif 
+#endif

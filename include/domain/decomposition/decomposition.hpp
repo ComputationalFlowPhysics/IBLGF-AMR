@@ -83,16 +83,33 @@ public: //memeber functions
         }
     }
 
+    void communicate_mask_single_level(int level, int mask_id)
+    {
+        if(client())
+        {
+            client()->template communicate_mask_single_level_upward_OR(level, mask_id);
+        }
+    }
 
-    template<class SendField,  class RecvField,class OctantIt>
-    void communicate_updownward_pass(OctantIt _begin, OctantIt _end,bool _upward)
+    template<class SendField,  class RecvField >
+    void communicate_influence(int level, bool _neighbors=false )
     {
         if(client())
         {
             client()->template
-                communicate_updownward_pass<SendField, RecvField>(_begin,_end, _upward);
+                communicate_induced_fields<SendField, RecvField>(level,_neighbors);
         }
     }
+
+    //template<class SendField,  class RecvField,class OctantIt>
+    //void communicate_updownward_pass(OctantIt _begin, OctantIt _end,bool _upward)
+    //{
+    //    if(client())
+    //    {
+    //        client()->template
+    //            communicate_updownward_pass<SendField, RecvField>(_begin,_end, _upward);
+    //    }
+    //}
 
 
 public: //access memebers:

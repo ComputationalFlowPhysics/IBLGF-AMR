@@ -21,12 +21,12 @@ namespace solver
 
 using namespace domain;
 
-/** @brief Poisson solver using lattice Green's functions. Convolutions 
+/** @brief Poisson solver using lattice Green's functions. Convolutions
  *         are computed using FMM and near field interaction are computed
- *         using blockwise fft-convolutions. 
+ *         using blockwise fft-convolutions.
  */
 template<class Setup>
-class PoissonSolver 
+class PoissonSolver
 {
 
 public: //member types
@@ -68,13 +68,13 @@ public:
      *  @detail Lattice Green's functions are used for solving the poisson
      *  equation. FMM is used for the level convolution's and the near field
      *  convolutions are computed using FFT.
-     *  Second order interpolation and coarsification operators are used 
-     *  to project the solutions to fine and coarse meshes, respectively. 
+     *  Second order interpolation and coarsification operators are used
+     *  to project the solutions to fine and coarse meshes, respectively.
      */
     template< class Source, class Target >
     void apply_amr_lgf()
     {
-        
+
         auto client = domain_->decomposition().client();
         if(!client)return;
 
@@ -119,7 +119,7 @@ public:
             //fmm_.template fmm_for_level<source_tmp, Target>(domain_, l, false);
             //fmm_.template fmm_for_level<source_tmp, Target>(domain_, l, true);
             fmm_.template fmm_for_level_test<source_tmp, Target>(domain_, l, false);
-            fmm_.template fmm_for_level_test<source_tmp, Target>(domain_, l, true);
+            //fmm_.template fmm_for_level_test<source_tmp, Target>(domain_, l, true);
             //this->level_convolution_fft<source_tmp, Target>(l);
 
             for (auto it  = domain_->begin(l);
@@ -197,7 +197,7 @@ public:
                 const auto extent_lgf = 2 * (s_extent) - 1;
 
                 // Perform convolution
-                conv_.execute_field(block_type (base_lgf, extent_lgf),0, 
+                conv_.execute_field(block_type (base_lgf, extent_lgf),0,
                         it_s->data()->template get<Source>());
 
                 // Extract the solution
@@ -256,7 +256,7 @@ public:
                     for ( int i =1; i<s_extent[0]-1; ++i){
                         for ( int j = 1; j<s_extent[1]-1; ++j){
                             for ( int k = 1; k<s_extent[2]-1; ++k){
-                                diff_target_data(i,j,k)  = 
+                                diff_target_data(i,j,k)  =
                                     target_data(i,j,k) * -6.0;
                                 diff_target_data(i,j,k) += target_data(i,j,k-1);
                                 diff_target_data(i,j,k) += target_data(i,j,k+1);
@@ -364,7 +364,7 @@ private:
     fft::Convolution                  conv_;      ///< fft convolution
     Fmm_t                             fmm_;       ///< fast-multipole
     interpolation::cell_center_nli    c_cntr_nli_;///< Lagrange Interpolation
-    parallel_ostream::ParallelOstream pcout=parallel_ostream::ParallelOstream(1);      
+    parallel_ostream::ParallelOstream pcout=parallel_ostream::ParallelOstream(1);
 
 };
 

@@ -12,19 +12,21 @@
 #include <domain/mpi/query_registry.hpp>
 
 using namespace sr_mpi;
+
 struct ServerTraits
 {
-    using  key_query_t =Task<tags::key_query, std::vector<int>, Inplace>;
+    using key_query_t = Task<tags::key_query, std::vector<int>, Inplace>;
     using task_manager_t = TaskManager<key_query_t>;
 };
+
 class Server : public ServerBase<ServerTraits>
 {
-    
+
 public:
 
-    using trait_t =  ServerTraits;
-    using super_type =ServerBase<ServerTraits>;
-    using key_query_t = typename trait_t::key_query_t;
+    using trait_t        = ServerTraits;
+    using super_type     = ServerBase<ServerTraits>;
+    using key_query_t    = typename trait_t::key_query_t;
     using task_manager_t = typename trait_t::task_manager_t;
 
 public: // ctors
@@ -56,4 +58,4 @@ private:
 };
 
 
-#endif 
+#endif

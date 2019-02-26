@@ -79,7 +79,6 @@ public:
         auto nProcs=comm_.size()-1;
         const float_type ideal_load=total_load/nProcs;
 
-        //Ke TODO hack
         float_type total_load_perProc=0;
         int procCount=0;
 

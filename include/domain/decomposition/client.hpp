@@ -370,7 +370,6 @@ public:
     template<class SendField,class RecvField>
     void communicate_induced_fields( int level, bool _neighbors=false )
     {
-        //MASK_LIST::Mask_FMM_Source : MASK_LIST::Mask_FMM_Target;
 
         boost::mpi::communicator w;
 
@@ -388,7 +387,6 @@ public:
 
             if (!it->mask(MASK_LIST::Mask_FMM_Target)) continue;
 
-            //Ke TODO: why not use the key?
             const auto idx=get_octant_idx(it);
 
             if( !it->locally_owned() )

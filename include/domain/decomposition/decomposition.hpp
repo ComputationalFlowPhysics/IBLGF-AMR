@@ -65,6 +65,7 @@ public: //memeber functions
     {
         domain_->tree()->construct_leaf_maps();
         domain_->tree()->construct_level_maps();
+
         //Send the construction keys back and forth
         if(server())
             server()->send_keys();

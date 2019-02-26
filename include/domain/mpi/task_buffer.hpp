@@ -21,7 +21,7 @@ public: //Ctors:
     TaskBuffer()=default;
     TaskBuffer( container_t* _c )
     :container_(_c)
-    { }
+    {}
 
 public: //memebers:
     

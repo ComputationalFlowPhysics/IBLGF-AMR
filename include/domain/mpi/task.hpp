@@ -31,7 +31,8 @@ struct CopyAssign : crtp::Crtp<TaskType, CopyAssign>
         task_.comm_buffer_->detach();
         task_.comm_buffer_=nullptr;
     }
-    auto& buffer() noexcept {return  task_.comm_buffer_->data();  }
+    auto& send_buffer() noexcept {return  task_.comm_buffer_->data();  }
+    auto& recv_buffer() noexcept {return  task_.comm_buffer_->data();  }
 
 private:
     TaskType& task_=this->derived();
@@ -48,21 +49,23 @@ struct AddAssignRecv : CopyAssign<TaskType>
     }
     void assign_data2buffer() noexcept
     {
-        task_.comm_buffer_->data()=task_.data();        
+        //inplace send ... not
+        //task_.comm_buffer_->data()=task_.data();        
     }
     void assign_buffer2data() noexcept
     {
-        for(std::size_t i=0; i<task_.data().size();++i)
-        {
-            task_.data()[i]+=task_.comm_buffer_->data()[i];
-        }
+        std::transform (task_.data().begin(), task_.data().end(), 
+                        task_.comm_buffer_->data().begin(), 
+                        task_.data().begin(), 
+                        std::plus<typename TaskType::data_type::value_type>());
     }
     void deattach_buffer() noexcept
     {
         task_.comm_buffer_->detach();
         task_.comm_buffer_=nullptr;
     }
-    auto& buffer() noexcept {return  task_.comm_buffer_->data();  }
+    auto& send_buffer() noexcept {return  *task_.data_;  }
+    auto& recv_buffer() noexcept {return  task_.comm_buffer_->data();  }
 
 private:
     TaskType& task_=this->derived();
@@ -76,8 +79,9 @@ struct Inplace : crtp::Crtp<TaskType, Inplace>
     void assign_data2buffer() noexcept { }
     void assign_buffer2data() noexcept { }
     void deattach_buffer() noexcept { }
-    auto& buffer() noexcept {return  *task_.data_;  }
 
+    auto& send_buffer() noexcept {return  *task_.data_;  }
+    auto& recv_buffer() noexcept {return  *task_.data_;  }
 
 private:
     TaskType& task_=this->derived();
@@ -165,7 +169,7 @@ public: //memebers:
 
     void isend( boost::mpi::communicator _comm)
     {
-        this->request_= _comm.isend(  this->rank_other_, this->id_, (this->buffer()));
+        this->request_= _comm.isend(  this->rank_other_, this->id_, (this->send_buffer()));
         if(this->request_confirmation_)
         {
             this->confirmation_request_=_comm.irecv(this->rank_other_, tags::confirmation);
@@ -173,7 +177,7 @@ public: //memebers:
     } 
     void irecv( boost::mpi::communicator _comm)
     {
-        this->request_ = _comm.irecv(this->rank_other_, this->id_, (this->buffer())) ;
+        this->request_ = _comm.irecv(this->rank_other_, this->id_, (this->recv_buffer())) ;
         if(this->request_confirmation_)
         {
             this->confirmation_request_=_comm.isend(this->rank_other_, tags::confirmation);

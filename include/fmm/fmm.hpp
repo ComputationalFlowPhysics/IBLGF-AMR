@@ -271,20 +271,8 @@ public:
                         communicate_induced_fields<fmm_t, fmm_t>(it_t, false);
                 }
             }
-            domain_->decomposition().client()->finish_induced_field_communication();
-            //if(refinement_level>=0 && l==level)
-            //{
-            //    domain_->decomposition().client()->
-            //        template communicate_induced_fields_old<fmm_t, fmm_t>(level_o_1, 
-            //                level_o_2,true);
 
-            //}else
-            //{
-
-            //    domain_->decomposition().client()->
-            //        template communicate_induced_fields_old<fmm_t, fmm_t>(level_o_1, 
-            //                level_o_2,false);
-            //}
+            
 
             o_1_old = o_1;
             o_2_old = o_2;
@@ -299,6 +287,14 @@ public:
             o_2=*o_2_t;
         }
 
+            TIME_CODE(time_communication_Bx, SINGLE_ARG(
+                      domain_->decomposition().client()->
+                      finish_induced_field_communication();
+            ))
+        boost::mpi::communicator w;
+        std::cout<<"Rank "<<w.rank()<<" "
+                 <<"FMM time_communication_Bx: " <<time_communication_Bx.count()<<" "
+                 <<std::endl;
     }
 
     template<
@@ -608,6 +604,23 @@ public:
     private:
         std::vector<float_type>     lgf;
         fft::Convolution            conv_;      ///< fft convolution
+
+
+    private: //timings
+
+        mDuration_type time_communication_Bx;
+        mDuration_type time_communication_B0;
+        mDuration_type time_communication_interp;
+        mDuration_type time_communication_anterp;
+
+        mDuration_type time_fftw;
+        mDuration_type time_interp;
+        mDuration_type time_anterp;
+
+        mDuration_type time_Bx_all;
+        mDuration_type time_interp_all;
+        mDuration_type time_anterp_all;
+
     };
 
 }

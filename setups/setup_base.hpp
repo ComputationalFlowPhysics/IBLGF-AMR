@@ -67,8 +67,6 @@ public: //Ctors
     :simulation_(_d->get_dictionary("simulation_parameters")),
      domain_(simulation_.domain_)
     {
-        pcout << "\n Setup:  LGF ViewTest \n" << std::endl;
-        pcout << "Simulation: \n" << simulation_    << std::endl;
     }
 
 
@@ -76,7 +74,8 @@ protected:
 
     simulation_t                        simulation_; ///< simulation
     domain_t&                           domain_;     ///< Domain reference 
-    parallel_ostream::ParallelOstream   pcout;       ///< parallel cout
+    parallel_ostream::ParallelOstream   pcout;       ///< parallel cout on master
+    parallel_ostream::ParallelOstream   pcout_c=parallel_ostream::ParallelOstream(1);     
 };
 
 

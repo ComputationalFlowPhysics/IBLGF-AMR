@@ -115,6 +115,19 @@ public:
         }
     }
 
+    void check_induced_field_communication()
+    {
+        auto& send_comm=
+            task_manager_-> template 
+            send_communicator<induced_fields_task_t<AddAssignRecv>>();
+        auto& recv_comm=
+            task_manager_->template 
+            recv_communicator<induced_fields_task_t<AddAssignRecv>>();
+            send_comm.start_communication();
+            recv_comm.start_communication();
+            send_comm.finish_communication();
+            recv_comm.finish_communication();
+    }
     void finish_induced_field_communication()
     {
         auto& send_comm=
@@ -133,6 +146,7 @@ public:
                 break;
         }
     }
+
 
     /** @brief Communicate induced fields per level */
     template<class SendField,class RecvField,class OctantIt>

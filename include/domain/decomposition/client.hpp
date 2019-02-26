@@ -310,7 +310,6 @@ public:
                 it != domain_->end(level);
                 ++it)
         {
-            const auto idx=get_octant_idx(it);
 
             if(it->locally_owned())
             {
@@ -322,6 +321,8 @@ public:
                     if(!child) continue;
                     if(!child->locally_owned())
                     {
+                        auto idx=get_octant_idx(child);
+
                         auto r = child->rank();
                         auto mask_ptr=child->mask_ptr(mask_id);
 
@@ -338,6 +339,7 @@ public:
                     if(!child) continue;
                     if(child->locally_owned())
                     {
+                        auto idx=get_octant_idx(child);
                         auto r = it->rank();
                         auto mask_ptr=child->mask_ptr(mask_id);
 

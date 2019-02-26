@@ -193,30 +193,30 @@ public:
         fmm_upward_pass_masks(domain_, level);
         fmm_sync_masks(domain_, level);
 
-        //for (int l = level; l>=0; l--)
-        //{
-        //    for (auto it = domain_->begin(l); it!=domain_->end(l); ++it)
-        //    {
-        //        if ( !it->mask(0)  && ! it->locally_owned())
-        //        {
-        //            std::cout<< it->rank() << std::endl;
-        //            std::cout<< it->key() << std::endl;
+        for (int l = level; l>=0; l--)
+        {
+            for (auto it = domain_->begin(l); it!=domain_->end(l); ++it)
+            {
+                if ( !it->mask(0)  &&  it->locally_owned())
+                {
+                    std::cout<< it->rank() << std::endl;
+                    std::cout<< it->key() << std::endl;
 
-        //            for(int c=0;c<it->num_children();++c)
-        //            {
-        //                auto child = it->child(c);
-        //                //if (child && !child->locally_owned())
-        //                //{
-        //                //    std::cout<<child->rank() << std::endl;
-        //                //    std::cout<<child->locally_owned()<<child->rank() << std::endl;
-        //                //}
+                    for(int c=0;c<it->num_children();++c)
+                    {
+                        auto child = it->child(c);
+                        //if (child && !child->locally_owned())
+                        //{
+                        //    std::cout<<child->rank() << std::endl;
+                        //    std::cout<<child->locally_owned()<<child->rank() << std::endl;
+                        //}
 
-        //            }
+                    }
 
-        //        }
-        //    }
+                }
+            }
 
-        //}
+        }
 
 
         ////Initialize for each fmm // zero ing all tree

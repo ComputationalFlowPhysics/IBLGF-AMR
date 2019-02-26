@@ -124,7 +124,7 @@ public:
             //fmm_.template fmm_for_level<source_tmp, Target>(domain_, l, false);
             //fmm_.template fmm_for_level<source_tmp, Target>(domain_, l, true);
             fmm_.template fmm_for_level_test<source_tmp, Target>(domain_, l, false);
-            fmm_.template fmm_for_level_test<source_tmp, Target>(domain_, l, true);
+            //fmm_.template fmm_for_level_test<source_tmp, Target>(domain_, l, true);
             //this->level_convolution_fft<source_tmp, Target>(l);
 
             for (auto it  = domain_->begin(l);

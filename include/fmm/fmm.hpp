@@ -192,6 +192,7 @@ public:
         fmm_init_base_level_masks(domain_, level, non_leaf_as_source);
         fmm_upward_pass_masks(domain_, level);
         fmm_sync_masks(domain_, level);
+        //fmm_upward_pass_masks(domain_, level);
 
         for (int l = level; l>=0; l--)
         {

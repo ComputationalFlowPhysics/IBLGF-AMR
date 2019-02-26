@@ -118,6 +118,40 @@ struct DecomposistionTest:public SetupBase<DecomposistionTest,parameters>
         const int nRef = simulation_.dictionary_->
             template get_or<int>("nLevels",0);
 
+        //for(int l=0;l<nRef;++l)
+        //{
+        //    for (auto it  = domain_.begin_leafs();
+        //            it != domain_.end_leafs(); ++it)
+        //    {
+        //        auto b=it->data()->descriptor();
+
+        //        const auto lower((center )/2-2 ), upper((center )/2+2 - b.extent());
+        //        b.grow(lower, upper);
+        //        if(b.is_inside( center * pow(2.0,l))
+        //           && it->refinement_level()==l
+        //          )
+        //        {
+        //            domain_.refine(it);
+        //        }
+        //    }
+        //}
+
+        //for (int lt = domain_.tree()->base_level();
+        //         lt < domain_.tree()->depth(); ++lt)
+        //{
+        //    for (auto it  = domain_.begin(lt);
+        //              it != domain_.end(lt); ++it)
+        //    {
+        //        if(it->data())
+        //        {
+        //            for(auto& e: it->data()->get_data<source>())
+        //                e=0.0;
+        //            for(auto& e: it->data()->get_data<phi_num>())
+        //                e=0.0;
+        //        }
+        //    }
+        //}
+
 
         //Adapt center to always have peak value in a cell-center
         center+=0.5/std::pow(2,nRef);

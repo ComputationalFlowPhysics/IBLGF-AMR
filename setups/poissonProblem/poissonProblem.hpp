@@ -39,7 +39,7 @@ struct ParametersPoissonProblem
     Dim,
      (
         //name               type     lBuffer.  hBuffer
-         (phi_num          , float_type, 1,       1), 
+         (phi_num          , float_type, 1,       1),
          (source           , float_type, 1,       1),
          (phi_exact        , float_type, 1,       1),
          (error            , float_type, 1,       1),
@@ -78,6 +78,7 @@ public: //Ctor
 
         const int nRef = this->simulation_.dictionary_->
             template get_or<int>("nLevels",0);
+
         for(int l=0;l<nRef;++l)
         {
             for (auto it  = domain_.begin_leafs();

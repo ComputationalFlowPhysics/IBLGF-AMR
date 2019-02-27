@@ -419,7 +419,6 @@ public:
                     communicate_induced_fields<fmm_t, fmm_t>(it, _neighbor);
 
             }
-
         }
 
         TIME_CODE(time_communication_Bx, SINGLE_ARG(

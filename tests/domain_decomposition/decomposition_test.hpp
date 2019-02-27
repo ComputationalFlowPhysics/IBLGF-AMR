@@ -103,7 +103,7 @@ struct DecomposistionTest:public SetupBase<DecomposistionTest,parameters>
         //world.barrier();
         //std::cout<<"Write HDF5 with rank: "<<world.rank()<<std::endl;
         //world.barrier();
-        //simulation_.write2("mesh.hdf5");
+        simulation_.write2("mesh.hdf5");
     }
 
 
@@ -212,7 +212,7 @@ struct DecomposistionTest:public SetupBase<DecomposistionTest,parameters>
         float_type L2_global(0.0);
         float_type LInf_global(0.0);
         boost::mpi::all_reduce(client_comm_,L2, L2_global, std::plus<float_type>());
-        boost::mpi::all_reduce(client_comm_,LInf, LInf_global,[&](const auto& v0,  
+        boost::mpi::all_reduce(client_comm_,LInf, LInf_global,[&](const auto& v0,
         const auto& v1){return v0>v1? v0  :v1;} );
         pcout_c << "L2  = " << std::sqrt(L2_global)<< std::endl;
         pcout_c << "LInf_global = " << LInf_global << std::endl;

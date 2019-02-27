@@ -144,24 +144,26 @@ class hdf5_file
 
             plist_id = H5Pcreate(H5P_FILE_ACCESS);
 
+            // Set property list for parallel open if necessary
             if(world.size()==1)
             {
                 std::cout<<"Create file for serial write"<<std::endl;
             }
             else
             {
-                printf(" \n I am processor number %d of %d. \n", world.rank(), world.size());
-                std::cout<<"Set property list for parallel write"<<std::endl;
-                world.barrier();
-                std::cout<<"World barrier"<<std::endl;
+                //printf(" \n I am processor number %d of %d. \n", world.rank(), world.size());
+                //std::cout<<"Set property list for parallel write"<<std::endl;
+                //world.barrier();
+                //std::cout<<"World barrier"<<std::endl;
                 H5Pset_fapl_mpio(plist_id, world, MPI_INFO_NULL);
-                std::cout<<"Create file for parallel write"<<std::endl;
+                //std::cout<<"Create file for parallel write"<<std::endl;
             }
 
             file_id = H5Fcreate(_filename.c_str(), H5F_ACC_TRUNC, H5P_DEFAULT, plist_id);
             HDF5_CHECK_ERROR(file_id,"HDF5-Error: Could not create file: "+ _filename ) ;
             H5Pclose(plist_id);
-            std::cout<<"File Created."<<std::endl;
+            std::cout<<"--> Rank "<<world.rank()<<" of "<<world.size()
+                        <<" : HDF5 Output File created"<<std::endl;
         }
 
         // create group using location and relative group name
@@ -806,7 +808,7 @@ class hdf5_file
             //create memory for the dataType:
             const hsize_type  rank=1;
             const hsize_type  dim=_dim;
-            std::cout<<"dim = "<<dim<<std::endl;
+            //std::cout<<"dim = "<<dim<<std::endl;
             auto  space = H5Screate_simple(rank,&dim, NULL);
 
             int ND = 3;

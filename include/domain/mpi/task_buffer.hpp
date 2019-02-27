@@ -8,7 +8,7 @@ template<class Buffer>
 class TaskBufferContainer;
 
 template<int Tag, class T, class ID=int>
-class TaskBuffer 
+class TaskBuffer
 {
 
 public: //Ctors:
@@ -24,7 +24,7 @@ public: //Ctors:
     {}
 
 public: //memebers:
-    
+
     void detach() noexcept
     {
         is_free_=true;
@@ -75,7 +75,7 @@ public:
             b.container_=this;
         }
     }
-    
+
     Buffer* get_free_buffer() noexcept
     {
         if(!is_free())return nullptr;
@@ -105,4 +105,4 @@ private:
 }
 
 
-#endif 
+#endif

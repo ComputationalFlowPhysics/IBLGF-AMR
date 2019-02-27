@@ -108,8 +108,8 @@ public: //Ctors
         return nullptr;
     }
 
-    std::array<key_type, nNeighbors()> 
-    get_neighbor_keys (coordinate_type _offset=coordinate_type(1)) 
+    std::array<key_type, nNeighbors()>
+    get_neighbor_keys (coordinate_type _offset=coordinate_type(1))
     const noexcept
     {
         const auto key= this->key();
@@ -123,11 +123,11 @@ public: //Ctors
         });
         return res;
     }
-    
+
 
 
     //TODO: store this bool while constructing
-    const bool is_leaf(){return flag_leaf_;}
+    bool is_leaf(){return flag_leaf_;}
 
     void flag_leaf(const bool flag){flag_leaf_ = flag;}
 
@@ -197,13 +197,37 @@ public: //Ctors
        influence_[i] = new_influence;
     }
 
+    bool mask(int i) noexcept{return masks_[i];}
+
+    bool* mask_ptr(int i) noexcept{return &(masks_[i]);}
+
+    void mask(int i, bool value)
+    {
+       masks_[i] = value;
+    }
+
     float_type load()const noexcept{return 1.0;}
 
 
-public: //mpi info 
+public: //mpi info
 
     bool locally_owned() const noexcept { return comm_.rank()==this->rank(); }
     bool ghost() const noexcept { return !locally_owned()&&this->rank()>=0; }
+
+    bool has_locally_owned_children(int mask_id) const noexcept
+    {
+        for(int c=0;c<this->num_children();++c)
+        {
+            const auto child = this->child(c);
+            if(!child) continue;
+            if(child->locally_owned() && child->data() && (masks_[mask_id]))
+            {
+                return true;
+                break;
+            }
+        }
+        return false;
+    }
 
     bool has_locally_owned_children() const noexcept
     {
@@ -219,6 +243,22 @@ public: //mpi info
         }
         return false;
     }
+
+    std::set<int> unique_child_ranks(int mask_id) const noexcept
+    {
+        std::set<int> unique_ranks;
+        for(int c=0;c<this->num_children();++c)
+        {
+            auto child = this->child(c);
+            if(!child) continue;
+            if(!child->locally_owned() && (masks_[mask_id]))
+            {
+                unique_ranks.insert(child->rank());
+            }
+        }
+        return unique_ranks;
+    }
+
     std::set<int> unique_child_ranks() const noexcept
     {
         std::set<int> unique_ranks;
@@ -286,7 +326,11 @@ public: //Construct
 
 public: //Neighbors
 
-    
+    enum MASK_LIST {
+        Mask_FMM_Source,
+        Mask_FMM_Target,
+        Mask_Last = Mask_FMM_Target };
+
 private:
 
 	Octant* refine(unsigned int i)
@@ -306,11 +350,16 @@ private:
 
     std::array<std::shared_ptr<Octant>,pow(2,Dim)> children_ =
         {{nullptr,nullptr,nullptr,nullptr, nullptr,nullptr,nullptr,nullptr}};
+
     std::array<Octant*,pow(3,Dim) > neighbor_ = {nullptr};
 
     int influence_num = 0;
     std::array<Octant*, 189 > influence_= {nullptr};
+
     bool flag_leaf_=true;
+
+    std::array<bool, Mask_Last + 1> masks_ = {false};
+    //bool masks_[Mask_Last + 1] = {false};
 
     tree_type* t_=nullptr;
 };

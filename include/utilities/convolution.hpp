@@ -1,7 +1,7 @@
 #ifndef INCLUDED_CONVOLUTION_IBLGF_HPP
 #define INCLUDED_CONVOLUTION_IBLGF_HPP
 
-
+#include <complex>
 #include <cassert>
 #include <cstring>
 #include <vector>
@@ -238,6 +238,7 @@ public: //Ctors
     {
             execute_field(lgf_block, level_diff, source);
             add_solution(extractor, target, scale);
+            fft_count ++;
     }
 
     template<class Vector>
@@ -333,6 +334,8 @@ public: //Ctors
         }
     }
 
+public:
+    int fft_count=0;
 
 private:
     dims_t padded_dims;

@@ -20,10 +20,10 @@ namespace domain
 {
 
 
-/** @brief ProcessType Server 
+/** @brief ProcessType Server
  *  Master/Server process.
  *  Stores the full tree structure without the data.
- *  Responsible for load balancing and listens to 
+ *  Responsible for load balancing and listens to
  *  the client/worker processes.
  */
 template<class Domain>
@@ -39,10 +39,10 @@ public:
 
     using trait_t =  ServerClientTraits<Domain>;
     using super_type = ServerBase<trait_t>;
-     
-    using rank_query_t = typename trait_t::rank_query_t;
-    using key_query_t = typename trait_t::key_query_t;
-    using task_manager_t =typename trait_t::task_manager_t;
+
+    using rank_query_t   = typename trait_t::rank_query_t;
+    using key_query_t    = typename trait_t::key_query_t;
+    using task_manager_t = typename trait_t::task_manager_t;
 
 public: //Ctors
 
@@ -61,7 +61,7 @@ public: //Ctors
         std::cout<<"I am the server on rank: "<<world.rank()<<std::endl;
     }
 
-          
+
 public:
 
     auto compute_distribution()
@@ -75,7 +75,7 @@ public:
             ++c;
         }
         std::cout<<"Total number of octants "<<c<<std::endl;
-        
+
         auto nProcs=comm_.size()-1;
         const float_type ideal_load=total_load/nProcs;
 
@@ -90,14 +90,14 @@ public:
 
             auto load= it->load();
             ctask_t task(it->key(), it->rank(), load);
-            
-            if(total_load_perProc+load<ideal_load || 
+
+            if(total_load_perProc+load<ideal_load ||
                (procCount == nProcs-1))
             {
                 tasks_perProc[procCount].push_back(task);
                 total_load_perProc+=load;
             }
-            else 
+            else
             {
                 procCount++;
                 task.rank()=procCount+1;
@@ -122,9 +122,9 @@ public:
                 <<total_loads_perProc[i]<<std::endl;
         }
 
-        //TODO: Iterate to balance/diffuse load 
-        
-        std::cout<<"Done with initial load balancing"<<std::endl; 
+        //TODO: Iterate to balance/diffuse load
+
+        std::cout<<"Done with initial load balancing"<<std::endl;
         return tasks_perProc;
     }
 

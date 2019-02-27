@@ -19,21 +19,28 @@ namespace domain
 {
 
 using namespace sr_mpi;
+
 template<class Domain>
 struct ServerClientTraits
 {
 
     using domain_t = Domain;
     using key_t  = typename  domain_t::key_t;
-    using key_query_t = Task<tags::key_query,std::vector<key_t>>;
+
+    using key_query_t  = Task<tags::key_query,std::vector<key_t>>;
     using rank_query_t = Task<tags::key_query,std::vector<int>>;
 
-    template< template<class> class BufferPolicy>
-    using induced_fields_task_t =  Task<tags::field_query,
+    template< template<class> class BufferPolicy >
+    using mask_query_t = Task<tags::field_query,
+                                       bool, BufferPolicy>;
+
+    template< template<class> class BufferPolicy >
+    using induced_fields_task_t = Task<tags::field_query,
                                        std::vector<double>, BufferPolicy>;
 
-    using task_manager_t = TaskManager<key_query_t, 
-                                       rank_query_t, 
+    using task_manager_t = TaskManager<key_query_t,
+                                       rank_query_t,
+                                       mask_query_t<OrAssignRecv>,
                                        induced_fields_task_t<CopyAssign>,
                                        induced_fields_task_t<AddAssignRecv>
                                        >;
@@ -41,7 +48,6 @@ struct ServerClientTraits
 
 
 }
-
 
 
 

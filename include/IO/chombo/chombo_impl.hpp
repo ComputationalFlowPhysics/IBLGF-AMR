@@ -122,7 +122,6 @@ private:
             }
             else        // if not found, simply create that level and insert the block
             {
-                //std::cout<<"Adding new level : level "<<b.level()<<std::endl;
                 LevelInfo l;
                 l.level=b.level();
                 l.ranks.push_back(rank);
@@ -157,14 +156,6 @@ private:
             auto it=level_map_.find(b.level());     // returns iterator to element with key b.level()
             if(it!=level_map_.end())                // if found somewhere (does not return end())
             {
-//                printf("Current min = %d, %d, %d \n",
-//                    it->second.probeDomain.min()[0],it->second.probeDomain.min()[1],
-//                    it->second.probeDomain.min()[2]);
-//                printf("Current max = %d, %d, %d \n",
-//                    it->second.probeDomain.max()[0],it->second.probeDomain.max()[1],
-//                    it->second.probeDomain.max()[2]);
-
-//                std::cout<<"Add to existing level : level "<<b.level()<<std::endl;
                 it->second.blocks.push_back(b);     // add block to corresponding level
                 it->second.fields.push_back(field_data);
 
@@ -191,7 +182,6 @@ private:
             }
             else        // if not found, simply create that level and insert the block
             {
-                //std::cout<<"Adding new level : level "<<b.level()<<std::endl;
                 LevelInfo l;
                 l.level=b.level();
                 l.blocks.push_back(b);
@@ -395,7 +385,6 @@ public:
             boost::mpi::broadcast(world, dset_size, 0); // send from server to all others
             //std::cout<<"After broadcast: I am rank "<<world.rank()<<" and dest_size is "<<dset_size<<std::endl;
 
-
             // Create full empty dataset with all processes
             auto space =_file->create_simple_space(1, &dset_size, NULL);
             auto dset_id=_file->template create_dataset<value_type>(group_id_lvl,
@@ -435,7 +424,6 @@ public:
         });
         const int num_components = components.size();
 
-        //std::cout<<"Create offset vector"<<std::endl;
         std::vector < std::vector < std::vector<offset_type> > > offset_vector;
         for(int i = 0; i < world.size(); i++)
         {
@@ -473,14 +461,6 @@ public:
                     int data_block_size=nElements_patch*num_components;
 
                     offset_vector[rank][lvl].push_back(offset);
-
-                 //   std::cout<<"==| Level is "<<lvl<<". Rank is "<<rank<<". Block is "<<b<<". Offset is "<<offset<<std::endl;
-                //    std::cout<<"Lvl "<<lvl<<". b = "<<b;
-                //    std::cout<<". Offset = "<<offset;
-                //    std::cout<<". Base = "<<l.blocks[b].base()
-                //              <<". Max = "<<l.blocks[b].max()<<std::endl;
-
-
                     offset+=data_block_size;
                 }
 
@@ -567,7 +547,6 @@ public:
 
             /*****************************************************************/
             // Write level data
-     //       if (world.rank()==0) {
 
                 std::vector<int> patch_offsets_vec;
                 patch_offsets_vec.push_back(0);
@@ -637,13 +616,7 @@ public:
                                     {
                                         field_value=static_cast<value_type>(n.template get<T>());
                                     }
-                                    // std::cout<<field_value<<" ";
-//                                    std::cout<<field_value<<" "; //<<std::endl;
-                                    // field_value=10+c;
-
-                                    // Add data for this cell and component
                                     single_block_data.push_back(field_value);
-                              //      dset_size += 1;     // increase by one per node
                                 }
                             }
                         }
@@ -653,28 +626,13 @@ public:
                 // Write single block data
                 hsize_type block_data_size = single_block_data.size();
                 hsize_type start = -1;
-              //  std::cout<<"World rank: "<<world.rank()<<". Block rank: "<<rank<<std::endl;
 
                 if (world.rank()!=0) {
-   //                 std::cout<<"Size of offsets = "<<offsets_for_rank.size()<<std::endl;
-              //      std::cout<<"Size of offsets[lvl] = "<<offsets_for_rank[lvl].size()<<std::endl;
-
                     start = offsets_for_rank[lvl][b];
 
-//                    std::cout<<"Lvl "<<lvl<<". b = "<<b
-//                            <<". Offset = "<<start
-//                            <<". Base = "<<base<<". Max = "<<max<<std::endl;
-
-                    //std::cout<<"Rank is "<<world.rank()<<". b is "<<b<<std::endl;
-                    //std::cout<<"Correct offset is "<<offset<<
-                    //        ". offset from vector is "<<offsets_for_rank[lvl][b]<<std::endl;
-
-                    // Write single block data
                     _file->template write<value_type>(dset_id, block_data_size, start,
                                                         &single_block_data[0]);
 
-             //       _file->template write<value_type>(dset_id, block_data_size, offset,
-               //                                         &single_block_data[0]);
                 }
 
 

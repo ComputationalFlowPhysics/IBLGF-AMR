@@ -600,7 +600,7 @@ public: //children and parent queries
     void query_children( Client* _c, InitFunction& _f )
     {
         dfs_iterator it_begin(root()); dfs_iterator it_end;
-        ++it_begin;
+        //++it_begin;
 
         std::vector<key_type> keys;
         for(auto it =it_begin;it!=it_end;++it)
@@ -611,7 +611,12 @@ public: //children and parent queries
                 //Check children
                 for(int i=0;i<it->num_children();++i)
                 {
+
                     if(!it->child(i))
+                    {
+                        keys.emplace_back(it_key.child(i));
+                    }
+                    else if(!it->child(i)->locally_owned())
                     {
                         keys.emplace_back(it_key.child(i));
                     }

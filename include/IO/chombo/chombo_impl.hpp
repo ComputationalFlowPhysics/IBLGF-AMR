@@ -210,15 +210,10 @@ public:
                      int _ref_ratio=2)
     {
         boost::mpi::communicator world;
-
-        std::cout<<"----> Rank "<<world.rank()<<" of "<<world.size()
-                <<" : Write global meta data"<<std::endl;
-
         auto root = _file->get_root();
 
         // iterate through field to get field names
         std::vector<std::string> components;
-        if (world.rank()==0) std::cout<<"------> Components are : "<<std::endl;
         field_type_iterator_t::for_types([&components, &world]<typename T>()
         {
             std::string name = std::string(T::name());
@@ -238,12 +233,10 @@ public:
         if (world.rank()==0) {
             num_levels = level_map_.size();
         }
-        //std::cout<<"I am rank "<<world.rank()<<" and numer of levels is "<<num_levels<<std::endl;
 
         world.barrier();
         boost::mpi::broadcast(world, num_levels, 0); // send from server to all others
 
-        //std::cout<<"After broadcast: I am rank "<<world.rank()<<" and number of levels is "<<num_levels<<std::endl;
 
         _file->template create_attribute<int>(root, "num_levels",num_levels);
 
@@ -266,8 +259,6 @@ public:
         // Write level structure and collective calls (everything except data
 
         // Use # of levels to write each level_* group
-        std::cout<<"------> Rank "<<world.rank()<<" of "<<world.size()
-                <<" : Create level structure in HDF5 file"<<std::endl;
         for (int lvl = 0; lvl < num_levels; ++lvl) {
             auto group_id_lvl = _file->create_group(root,"level_"+std::to_string(lvl));
 
@@ -361,12 +352,7 @@ public:
                     }
                     dset_size+=nElements_patch*num_components;
                 }
-                std::cout<<"          Lvl "<<lvl
-                            <<". Final dataset size = "<<dset_size<<std::endl;
-
-                // Get size of "offsets" (number of blocks +1)
                 offsets_size = l.blocks.size()+1;
-                //std::cout<<"Offsets_size = "<<offsets_size<<std::endl;
             }
 
             // Scatter size of boxes
@@ -380,10 +366,9 @@ public:
             _file->close_dset(dset_Attr);
 
             // send size to all clients
-            //std::cout<<"I am rank "<<world.rank()<<" and dset_size is "<<dset_size<<std::endl;
             world.barrier();
             boost::mpi::broadcast(world, dset_size, 0); // send from server to all others
-            //std::cout<<"After broadcast: I am rank "<<world.rank()<<" and dest_size is "<<dset_size<<std::endl;
+
 
             // Create full empty dataset with all processes
             auto space =_file->create_simple_space(1, &dset_size, NULL);
@@ -408,9 +393,6 @@ public:
                      int _ref_ratio=2)
     {
         boost::mpi::communicator world;
-
-        std::cout<<"----> Rank "<<world.rank()<<" of "<<world.size()
-                <<" : Write level data/info"<<std::endl;
 
         //using hsize_type =H5size_type;
         auto root = _file->get_root();
@@ -468,66 +450,29 @@ public:
 
         }
 
-//        // Print out offsets
-//        std::cout<<"Print offsets: "<<std::endl;
-//        for (int i=0; i<world.size(); i++) {
-//            world.barrier();
-//            if (world.rank()==0) {
-//                std::cout<<"========== Rank is "<<i<<" =========="<<std::endl;
-//                for (int j=0; j<offset_vector[i].size(); j++) {
-//                    std::cout<<"========== Level is "<<j<<" =========="<<std::endl;
-//
-//                    std::cout<<"Offset is ";
-//                    for (int k=0; k<offset_vector[i][j].size(); k++) {
-//                        std::cout<<offset_vector[i][j][k]<<", ";
-//                    }
-//                    std::cout<<std::endl;
-//                }
-//            }
-//        }
 
+        std::vector<std::vector<std::vector<offset_type>>> hello;
+        for(int i = 0; i < world.size(); i++)
+        {
+            std::vector<std::vector< offset_type >> w;
+            hello.push_back( w );
+            for(int j = 0; j < 8; j++)
+            {
+                std::vector<offset_type> y;
+                hello[i].push_back(y);
 
-        // MPI Scatter the vectors of offsets
-//        std::cout<<" _____ START MPI SCCATTER ______ "<<std::endl;
-//        std::vector<std::vector<std::vector<offset_type>>> hello;
-//        for(int i = 0; i < world.size(); i++)
-//        {
-//            std::vector<std::vector< offset_type >> w;
-//            hello.push_back( w );
-//            for(int j = 0; j < 8; j++)
-//            {
-//                std::vector<offset_type> y;
-//                hello[i].push_back(y);
-//
-//                for(int k = 0; k < 3; k++)
-//                {
-//                    int v = 100*i + 10*j + k;
-//                    hello[i][j].push_back( v );
-//                }
-//            }
-//        }
-//
-//        std::vector<std::vector<offset_type>> hello_test;
+                for(int k = 0; k < 3; k++)
+                {
+                    int v = 100*i + 10*j + k;
+                    hello[i][j].push_back( v );
+                }
+            }
+        }
+
         std::vector<std::vector<offset_type>> offsets_for_rank;
-
         boost::mpi::scatter(world, offset_vector, offsets_for_rank, 0);
-//        boost::mpi::scatter(world, hello, hello_test, 0);
 
-//        for (int i=0; i<world.size(); i++) {
-//            world.barrier();
-//            if (world.rank()==i) {
-//                std::cout<<">>>RANK IS "<<world.rank()<<std::endl;
-//                for (int j = 0; j < offsets_for_rank.size(); j++)
-//                {
-//                    for (int k = 0; k < offsets_for_rank[j].size(); k++)
-//                    {
-//                        std::cout<<"Rank is "<<world.rank()<<". offsets_for_rank = "<<offsets_for_rank[j][k]<<std::endl;
-//                    }
-//                }
-//            }
-//        }
-//
-//        world.barrier();
+        world.barrier();
 
 
         // Parallel Write -----------------------------------------------------
@@ -542,7 +487,6 @@ public:
 
             // Write attributes for this lvl (e.g. dx, dt)
             auto group_id=_file->create_group(root,"level_"+std::to_string(lvl));
-//            std::cout<<"Group name is: level_"<<std::to_string(lvl)<<std::endl;
 
 
             /*****************************************************************/
@@ -568,14 +512,6 @@ public:
 
                     dset_size+=nElements_patch*num_components;
                 }
-//                std::cout<<"------> Final dataset size = "
-//                         <<dset_size<<std::endl;
-       //     }
-
-            // Open empty dataset
-//            auto space =_file->create_simple_space(1, &dset_size, NULL);
-//            auto dset_id=_file->template create_dataset<value_type>(group_id,
-//                "data:datatype=0", space);      //collective
             auto dset_id = _file->open_dataset(group_id, "data:datatype=0");
 
             std::vector<value_type> single_block_data;
@@ -728,8 +664,6 @@ public:
 
         _file->close_group(root);
 
-        std::cout<<"<-- Rank "<<world.rank()<<" of "<<world.size()
-                <<" : Done writing level data/info"<<std::endl;
     }
 
 

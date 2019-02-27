@@ -118,6 +118,7 @@ public:
             send_comm.finish_communication();
             recv_comm.finish_communication();
     }
+
     void finish_induced_field_communication()
     {
         auto& send_comm=
@@ -399,8 +400,70 @@ public:
 
     }
 
-    template<class SendField,class RecvField, class Oct_t>
-    void communicate_induced_fields( Oct_t it, bool _neighbors=false )
+    template<class SendField,class RecvField, class Octant_t>
+    int communicate_induced_fields_recv_m_send_count( Octant_t it, bool _neighbors=false )
+    {
+        int count = 0;
+        boost::mpi::communicator  w;
+        const int myRank=w.rank();
+
+        if( !it->locally_owned() )
+        {
+
+            //Check if this ghost octant influenced by octants of this rank
+            bool is_influenced=false;
+
+            //Check influence list
+            for(std::size_t i = 0; i< it->influence_number(); ++i)
+            {
+                const auto inf=it->influence(i);
+                if(inf && inf->rank()==myRank && inf->mask(MASK_LIST::Mask_FMM_Source))
+                {return -1;}
+
+            }
+
+            if(_neighbors)
+            {
+                for(int i = 0; i< it->nNeighbors(); ++i)
+                {
+                    const auto inf=it->neighbor(i);
+                    if(inf && inf->rank()==myRank && inf->mask(MASK_LIST::Mask_FMM_Source))
+                    {return -1;}
+                }
+            }
+
+        } else
+        {
+
+            std::set<int> unique_inflRanks;
+
+            for(std::size_t i = 0; i< it->influence_number(); ++i)
+            {
+                const auto inf=it->influence(i);
+                if(inf && inf->rank()!=myRank && inf->mask(MASK_LIST::Mask_FMM_Source))
+                {
+                    count++;
+                }
+            }
+
+            if(_neighbors)
+            {
+                for(int i = 0; i< it->nNeighbors(); ++i)
+                {
+                    const auto inf=it->neighbor(i);
+                    if(inf && inf->rank()!=myRank && inf->mask(MASK_LIST::Mask_FMM_Source))
+                    {
+                        count++;
+                    }
+                }
+            }
+
+        }
+    return count;
+    }
+
+    template<class SendField,class RecvField, class Octant_t>
+    void communicate_induced_fields( Octant_t it, bool _neighbors=false )
     {
 
         if (!it->mask(MASK_LIST::Mask_FMM_Target)) return;

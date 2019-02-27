@@ -49,7 +49,8 @@ public: //Ctor:
     using datablock_t  = typename Setup::datablock_t;
     using block_dsrp_t = typename datablock_t::block_descriptor_type;
     using domain_t = typename Setup::domain_t;
-    using MASK_LIST = typename domain_t::octant_t::MASK_LIST;
+    using octant_t = typename domain_t::octant_t;
+    using MASK_LIST = typename octant_t::MASK_LIST;
 
     //Fields:
     using fmm_s = typename Setup::fmm_s;
@@ -238,6 +239,7 @@ public:
 
         //// FMM influence list
         //std::cout<<"FMM Bx start" << std::endl;
+        fmm_Bx_itr_build(domain_, level);
         fmm_Bx<fmm_s, fmm_t>(domain_, level, dx_level);
 
         //// Interpolation
@@ -254,6 +256,27 @@ public:
         boost::mpi::communicator world;
         std::cout<<"Rank "<<world.rank() << " FFTW_count = ";
         std::cout<<conv_.fft_count << std::endl;
+    }
+
+    void fmm_Bx_itr_build(domain_t* domain_, int base_level)
+    {
+        for (int level=base_level; level>=0; --level)
+        {
+            bool _neighbor = (level==base_level)? true:false;
+            for (auto it = domain_->begin(level);
+                    it != domain_->end(level);
+                    ++it)
+            {
+                if (!(it->data()) || !it->mask(MASK_LIST::Mask_FMM_Target) )
+                    continue;
+
+                int recv_m_send_count =
+                    domain_->decomposition().client()->template
+                        communicate_induced_fields_recv_m_send_count<fmm_t, fmm_t>(it, _neighbor);
+
+                Bx_itr.emplace(recv_m_send_count, *it);
+            }
+        }
     }
 
     void fmm_init_base_level_masks(domain_t* domain_, int base_level, bool non_leaf_as_source)
@@ -393,34 +416,58 @@ public:
                 int base_level,
                 float_type dx_level)
     {
-
-        for (int level=base_level; level>=0; --level)
+        for (auto B_it=Bx_itr.begin(); B_it!=Bx_itr.end(); ++B_it)
         {
+            //std::cout<< B_it->first << std::endl;
+            auto it =B_it->second;
+            int level = it->level();
+
             bool _neighbor = (level==base_level)? true:false;
+            if (!(it->data()) || !it->mask(MASK_LIST::Mask_FMM_Target) )
+                continue;
 
-            for (auto it = domain_->begin(level);
-                        it != domain_->end(level); ++it)
+            for (std::size_t i=0; i< it->influence_number(); ++i)
             {
-
-                if (!(it->data()) || !it->mask(MASK_LIST::Mask_FMM_Target) )
-                    continue;
-
-                for (std::size_t i=0; i< it->influence_number(); ++i)
+                auto n_s = it->influence(i);
+                if (n_s && n_s->locally_owned()
+                        && n_s->mask(MASK_LIST::Mask_FMM_Source))
                 {
-                    auto n_s = it->influence(i);
-                    if (n_s && n_s->locally_owned()
-                            && n_s->mask(MASK_LIST::Mask_FMM_Source))
-                    {
-                        fmm_tt<s,t>(n_s, it, base_level-level, dx_level);
-                    }
+                    fmm_tt<s,t>(n_s, it, base_level-level, dx_level);
                 }
-
-                domain_->decomposition().client()->template
-                    communicate_induced_fields<fmm_t, fmm_t>(it, _neighbor);
-
             }
 
+            domain_->decomposition().client()->template
+            communicate_induced_fields<fmm_t, fmm_t>(it, _neighbor);
+
         }
+
+        //for (int level=base_level; level>=0; --level)
+        //{
+        //    bool _neighbor = (level==base_level)? true:false;
+
+        //    for (auto it = domain_->begin(level);
+        //                it != domain_->end(level); ++it)
+        //    {
+
+        //        if (!(it->data()) || !it->mask(MASK_LIST::Mask_FMM_Target) )
+        //            continue;
+
+        //        for (std::size_t i=0; i< it->influence_number(); ++i)
+        //        {
+        //            auto n_s = it->influence(i);
+        //            if (n_s && n_s->locally_owned()
+        //                    && n_s->mask(MASK_LIST::Mask_FMM_Source))
+        //            {
+        //                fmm_tt<s,t>(n_s, it, base_level-level, dx_level);
+        //            }
+        //        }
+
+        //        domain_->decomposition().client()->template
+        //            communicate_induced_fields<fmm_t, fmm_t>(it, _neighbor);
+
+        //    }
+
+        //}
 
         TIME_CODE(time_communication_Bx, SINGLE_ARG(
                     domain_->decomposition().client()->
@@ -623,6 +670,7 @@ public:
     private:
         std::vector<float_type>     lgf;
         fft::Convolution            conv_;      ///< fft convolution
+        std::multimap<int,octant_t*>     Bx_itr;
 
     private: //timings
 

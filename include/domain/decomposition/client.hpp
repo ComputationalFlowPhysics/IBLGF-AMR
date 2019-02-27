@@ -105,6 +105,39 @@ public:
         return recvData;
     }
 
+    void check_induced_field_communication()
+    {
+        auto& send_comm=
+            task_manager_-> template
+            send_communicator<induced_fields_task_t<AddAssignRecv>>();
+        auto& recv_comm=
+            task_manager_->template
+            recv_communicator<induced_fields_task_t<AddAssignRecv>>();
+            send_comm.start_communication();
+            recv_comm.start_communication();
+            send_comm.finish_communication();
+            recv_comm.finish_communication();
+    }
+    void finish_induced_field_communication()
+    {
+        auto& send_comm=
+            task_manager_-> template
+            send_communicator<induced_fields_task_t<AddAssignRecv>>();
+        auto& recv_comm=
+            task_manager_->template
+            recv_communicator<induced_fields_task_t<AddAssignRecv>>();
+        while(true)
+        {
+            send_comm.start_communication();
+            recv_comm.start_communication();
+            send_comm.finish_communication();
+            recv_comm.finish_communication();
+            if(send_comm.done() && recv_comm.done() )
+                break;
+        }
+    }
+
+
     void communicate_mask_single_level_inf_sync(int level, int mask_id, bool _neighbors)
     {
         boost::mpi::communicator  w;

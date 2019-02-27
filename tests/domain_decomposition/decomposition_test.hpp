@@ -78,20 +78,24 @@ struct DecomposistionTest:public SetupBase<DecomposistionTest,parameters>
     {
         //domain_.test();
        //domain_.decomposition().communicate_influence<source, phi_exact>();
+
+
         if(domain_.is_client())
         {
             poisson_solver_t psolver(&this->simulation_);
 
-            auto t0=clock_type::now();
-            psolver.solve<source, phi_num>();
-            auto t1=clock_type::now();
-            auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(t1-t0);
-            std::cout<<"elapsed for LGF: "<<elapsed.count()<<std::endl;
-
-
-
-            this->compute_errors();
+            //auto t0=clock_type::now();
+            //psolver.solve<source, phi_num>();
+            //auto t1=clock_type::now();
+            //auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(t1-t0);
+            //std::cout<<"elapsed for LGF: "<<elapsed.count()<<std::endl;
+            mDuration_type solve_duration(0);
+            TIME_CODE( solve_duration, SINGLE_ARG(
+                    psolver.solve<source, phi_num>();
+            ))
+            std::cout<<"Total Psolve time: " <<solve_duration.count()<<std::endl;
         }
+            this->compute_errors();
         //psolver.laplace_diff<phi_num,amr_lap_source>();
 
         boost::mpi::communicator world;
@@ -99,7 +103,7 @@ struct DecomposistionTest:public SetupBase<DecomposistionTest,parameters>
         //world.barrier();
         //std::cout<<"Write HDF5 with rank: "<<world.rank()<<std::endl;
         //world.barrier();
-        simulation_.write2("mesh.hdf5");
+        //simulation_.write2("mesh.hdf5");
     }
 
 
@@ -117,40 +121,6 @@ struct DecomposistionTest:public SetupBase<DecomposistionTest,parameters>
 
         const int nRef = simulation_.dictionary_->
             template get_or<int>("nLevels",0);
-
-        //for(int l=0;l<nRef;++l)
-        //{
-        //    for (auto it  = domain_.begin_leafs();
-        //            it != domain_.end_leafs(); ++it)
-        //    {
-        //        auto b=it->data()->descriptor();
-
-        //        const auto lower((center )/2-2 ), upper((center )/2+2 - b.extent());
-        //        b.grow(lower, upper);
-        //        if(b.is_inside( center * pow(2.0,l))
-        //           && it->refinement_level()==l
-        //          )
-        //        {
-        //            domain_.refine(it);
-        //        }
-        //    }
-        //}
-
-        //for (int lt = domain_.tree()->base_level();
-        //         lt < domain_.tree()->depth(); ++lt)
-        //{
-        //    for (auto it  = domain_.begin(lt);
-        //              it != domain_.end(lt); ++it)
-        //    {
-        //        if(it->data())
-        //        {
-        //            for(auto& e: it->data()->get_data<source>())
-        //                e=0.0;
-        //            for(auto& e: it->data()->get_data<phi_num>())
-        //                e=0.0;
-        //        }
-        //    }
-        //}
 
 
         //Adapt center to always have peak value in a cell-center
@@ -208,18 +178,16 @@ struct DecomposistionTest:public SetupBase<DecomposistionTest,parameters>
     void compute_errors()
     {
 
-        boost::mpi::communicator  w;
-        std::ofstream ofs("rank_"+std::to_string(w.rank())+".txt");
+        if(domain_.is_client())client_comm_=client_comm_.split(1);
+        else client_comm_=client_comm_.split(0);
 
         const float_type dx_base=domain_.dx_base();
-        if(domain_.is_server()) return ;
-
         auto L2   = 0.; auto LInf = -1.0; int count=0;
+        if(domain_.is_server())  return;
         for (auto it_t  = domain_.begin_leafs();
-             it_t != domain_.end_leafs(); ++it_t)
+                it_t != domain_.end_leafs(); ++it_t)
         {
             if(!it_t->locally_owned())continue;
-            ofs<<"#"<<it_t->global_coordinate()<<"\n";
 
             int refinement_level = it_t->refinement_level();
             double dx = dx_base/std::pow(2,refinement_level);
@@ -228,7 +196,6 @@ struct DecomposistionTest:public SetupBase<DecomposistionTest,parameters>
             for(auto it2=nodes_domain.begin();it2!=nodes_domain.end();++it2 )
             {
 
-                ofs<<it2->get<phi_num>()<<" ";
                 const float_type error_tmp = (
                         it2->get<phi_num>() - it2->get<phi_exact>());
 
@@ -240,14 +207,23 @@ struct DecomposistionTest:public SetupBase<DecomposistionTest,parameters>
 
                 ++count;
             }
-            ofs<<std::endl;
         }
-        std::cout << "L2   = " << std::sqrt(L2)<< std::endl;
-        std::cout << "LInf = " << LInf << std::endl;
+
+        float_type L2_global(0.0);
+        float_type LInf_global(0.0);
+        boost::mpi::all_reduce(client_comm_,L2, L2_global, std::plus<float_type>());
+        boost::mpi::all_reduce(client_comm_,LInf, LInf_global,[&](const auto& v0,
+        const auto& v1){return v0>v1? v0  :v1;} );
+        pcout_c << "L2  = " << std::sqrt(L2_global)<< std::endl;
+        pcout_c << "LInf_global = " << LInf_global << std::endl;
+
+
 
 
     }
+    private:
 
+        boost::mpi::communicator client_comm_;
 };
 
 

@@ -252,7 +252,7 @@ public:
             fmm_minus_equal<Target, fmm_t>(domain_, level);
 
         boost::mpi::communicator world;
-        std::cout<<"I am a client on rank: "<<world.rank() << ", with fft count = ";
+        std::cout<<"Rank "<<world.rank() << " FFTW_count = ";
         std::cout<<conv_.fft_count << std::endl;
     }
 
@@ -331,11 +331,11 @@ public:
     void fmm_sync_masks(domain_t* domain_, int base_level)
     {
         fmm_sync_parent_masks(domain_, base_level);
-        std::cout<<"FMM SYNC parent MASKS done" << std::endl;
+        //std::cout<<"FMM SYNC parent MASKS done" << std::endl;
         fmm_sync_inf_masks(domain_, base_level);
-        std::cout<<"FMM SYNC inf MASKS done" << std::endl;
+        //std::cout<<"FMM SYNC inf MASKS done" << std::endl;
         fmm_sync_child_mask(domain_, base_level);
-        std::cout<<"FMM SYNC child MASKS done" << std::endl;
+        //std::cout<<"FMM SYNC child MASKS done" << std::endl;
     }
 
     void fmm_sync_parent_masks(domain_t* domain_, int base_level)
@@ -396,10 +396,12 @@ public:
 
         for (int level=base_level; level>=0; --level)
         {
+            bool _neighbor = (level==base_level)? true:false;
+
             for (auto it = domain_->begin(level);
-                    it != domain_->end(level);
-                    ++it)
+                        it != domain_->end(level); ++it)
             {
+
                 if (!(it->data()) || !it->mask(MASK_LIST::Mask_FMM_Target) )
                     continue;
 
@@ -413,13 +415,22 @@ public:
                     }
                 }
 
+                domain_->decomposition().client()->template
+                    communicate_induced_fields<fmm_t, fmm_t>(it, _neighbor);
+
             }
 
-            bool _neighbor = (level==base_level)? true:false;
-            domain_->decomposition().
-                    template communicate_influence<fmm_t, fmm_t>(level, _neighbor);
-
         }
+
+        TIME_CODE(time_communication_Bx, SINGLE_ARG(
+                    domain_->decomposition().client()->
+                    finish_induced_field_communication();
+                    ))
+
+        boost::mpi::communicator w;
+        std::cout<<"Rank "<<w.rank()<<" "
+        <<"FMM time_communication_Bx: " <<time_communication_Bx.count()<<" "
+        <<std::endl;
 
     }
 
@@ -612,6 +623,22 @@ public:
     private:
         std::vector<float_type>     lgf;
         fft::Convolution            conv_;      ///< fft convolution
+
+    private: //timings
+
+        mDuration_type time_communication_Bx;
+        mDuration_type time_communication_B0;
+        mDuration_type time_communication_interp;
+        mDuration_type time_communication_anterp;
+
+        mDuration_type time_fftw;
+        mDuration_type time_interp;
+        mDuration_type time_anterp;
+
+        mDuration_type time_Bx_all;
+        mDuration_type time_interp_all;
+        mDuration_type time_anterp_all;
+
     };
 
 }

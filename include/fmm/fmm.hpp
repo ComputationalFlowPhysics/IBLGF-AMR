@@ -30,12 +30,14 @@
 #include <domain/octree/tree.hpp>
 #include <IO/parallel_ostream.hpp>
 #include "../utilities/convolution.hpp"
+#include <boost/mpi.hpp>
+#include <boost/mpi/environment.hpp>
+#include <boost/mpi/communicator.hpp>
 
 namespace fmm
 {
 
 using namespace domain;
-
 
 template<class Setup>
 class Fmm
@@ -46,7 +48,8 @@ public: //Ctor:
     using dims_t = types::vector_type<int,Dim>;
     using datablock_t  = typename Setup::datablock_t;
     using block_dsrp_t = typename datablock_t::block_descriptor_type;
-    using domain_t = typename  Setup::domain_t;
+    using domain_t = typename Setup::domain_t;
+    using MASK_LIST = typename domain_t::octant_t::MASK_LIST;
 
     //Fields:
     using fmm_s = typename Setup::fmm_s;
@@ -63,9 +66,9 @@ public:
         class Source,
         class Target
         >
-    void fmm_for_level(domain_t* domain_, 
-                       int level, 
-                       bool for_non_leaf=false)
+    void fmm_for_level(domain_t* domain_,
+                       int level,
+                       bool non_leaf_as_source=false)
     {
 
         clock_t fmm_start = clock();
@@ -81,7 +84,7 @@ public:
         auto o_end   = domain_-> end(level);
         o_end--;
 
-        if (for_non_leaf)
+        if (non_leaf_as_source)
         {
             while ((o_start != domain_->end(level)) && (o_start->is_leaf()==true) ) o_start++;
             if (o_start == domain_->end(level))
@@ -98,8 +101,8 @@ public:
 
         // Copy to temporary variables // only the base level
         std::cout << "Fmm - copy source " << std::endl;
-        fmm_init_copy<Source, fmm_s>(domain_, level, o_start, o_end, for_non_leaf);
-        //fmm_init_copy<Source, fmm_tmp>(domain_, level, o_start, o_end, for_non_leaf);
+        fmm_init_copy<Source, fmm_s>(domain_, level, o_start, o_end, non_leaf_as_source);
+        //fmm_init_copy<Source, fmm_tmp>(domain_, level, o_start, o_end, non_leaf_as_source);
 
         // Antrp for all // from base level up
         clock_t fmm_antrp_start = clock();
@@ -136,10 +139,10 @@ public:
 
         // Copy back
         std::cout << "Fmm - output " << std::endl;
-        if (!for_non_leaf)
-            fmm_add_equal<Target, fmm_t>(domain_, level, o_start, o_end, for_non_leaf);
+        if (!non_leaf_as_source)
+            fmm_add_equal<Target, fmm_t>(domain_, level, o_start, o_end, non_leaf_as_source);
         else
-            fmm_minus_equal<Target, fmm_t>(domain_, level, o_start, o_end, for_non_leaf);
+            fmm_minus_equal<Target, fmm_t>(domain_, level, o_start, o_end, non_leaf_as_source);
 
         clock_t fmm_end = clock();
         double fmm_time = (double) (fmm_end-fmm_start) / CLOCKS_PER_SEC;
@@ -148,318 +151,385 @@ public:
     }
 
     template< class Source, class Target >
-    void fmm_for_level_test(domain_t* domain_, 
-                            int level, 
-                            bool for_non_leaf=false)
+    void fmm_for_level_test(domain_t* domain_,
+                            int level,
+                            bool non_leaf_as_source=false)
     {
-        //std::cout << "------------------------------------"  << std::endl;
-        //std::cout << "Fmm - Level - " << level << std::endl;
 
         const float_type dx_base=domain_->dx_base();
         auto refinement_level = level-domain_->tree()->base_level();
         auto dx_level =  dx_base/std::pow(2, refinement_level);
 
-        // Find the subtree
-        auto o_start = domain_-> begin(level);
-        auto o_end   = domain_-> end(level);
+        // New logic using masks
+        // 1. Give masks to the base level
 
-        bool ref_level=true;
-        while(o_start==o_end)
+        //// The straight forward way:
+            // 1.1 if non_leaf_as_source is true then
+            // non-leaf's mask_fmm_source is 1 and non-leaf's mask_fmm_target is 0,
+            // while leaf's mask_fmm_source is 1 and leaf's mask_fmm_target is 1
+
+            // 1.2 if non_leaf_as_source is false then
+            // non-leaf's mask_fmm_source is 0 and non-leaf's mask_fmm_target is 1,
+            // while leaf's mask_fmm_source is 1 and leaf's mask_fmm_target is 1
+
+        //// !However! we do it a bit differently !
+            // 1.1 if non_leaf_as_source is true then
+            // non-leaf's mask_fmm_source is 1 and non-leaf's mask_fmm_target is 1,
+            // while leaf's mask_fmm_source is 0 and leaf's mask_fmm_target is 0
+            // BUT WITH MINUS SIGN!!!!!
+
+            // 1.2 if non_leaf_as_source is false then
+            // non-leaf's mask_fmm_source is 1 and non-leaf's mask_fmm_target is 1,
+            // while leaf's mask_fmm_source is 1 and leaf's mask_fmm_target is 1
+            // BUT WITH PLUS SIGN!!!!!
+
+        // This way one has one time more calculaion for non-leaf's source but
+        // one time fewer for leaf's leaf_source
+        // and non-leaves can be much fewer
+
+        //// Initialize Masks
+
+        fmm_init_base_level_masks(domain_, level, non_leaf_as_source);
+        fmm_upward_pass_masks(domain_, level);
+        fmm_sync_masks(domain_, level);
+        //fmm_upward_pass_masks(domain_, level);
+
+        for (int l = level; l>=0; l--)
         {
-            --level;
-            o_start=domain_->begin(level);
-            o_end=domain_->end(level);
-            ref_level=false;
-        }
-        o_end--;
+            for (auto it = domain_->begin(l); it!=domain_->end(l); ++it)
+            {
+                if ( !it->mask(0)  &&  it->locally_owned())
+                {
+                    std::cout<< it->rank() << std::endl;
+                    std::cout<< it->key() << std::endl;
 
-        if (for_non_leaf)
-        {
-            while ((o_start != domain_->end(level)) && 
-                   (o_start->is_leaf()==true) ) o_start++;
+                    for(int c=0;c<it->num_children();++c)
+                    {
+                        auto child = it->child(c);
+                        //if (child && !child->locally_owned())
+                        //{
+                        //    std::cout<<child->rank() << std::endl;
+                        //    std::cout<<child->locally_owned()<<child->rank() << std::endl;
+                        //}
 
-            if (o_start == domain_->end(level)) { return; }
-            while (o_end->is_leaf()==true) o_end--;
-        }
+                    }
 
-        // Initialize for each fmm // zero ing all tree
-        fmm_init_zero<fmm_s>(domain_, level, o_start, o_end);
+                }
+            }
 
-        // Copy to temporary variables // only the base level
-        fmm_init_copy<Source, fmm_s>(domain_, level, o_start, o_end, for_non_leaf);
-        
-        //Anterpolation
-        fmm_antrp<fmm_s>(domain_, level, o_start, o_end);
-
-        // Nearest neighbors and self
-        if(ref_level)
-        {
-            fmm_B0<fmm_s, fmm_t>(domain_, level, o_start, o_end, dx_level);
         }
 
-        // FMM influence list 
-        fmm_Bx<fmm_s, fmm_t>(domain_, level, o_start, o_end, dx_level);
 
-        ////Interpolation
-        fmm_intrp<fmm_t>(domain_, level, o_start, o_end);
+        ////Initialize for each fmm // zero ing all tree
+        //std::cout<<"FMM init Zero" << std::endl;
+        fmm_init_zero<fmm_s>(domain_, level);
+
+        //// Copy to temporary variables // only the base level
+        //std::cout<<"FMM Init Copy start" << std::endl;
+        fmm_init_copy<Source, fmm_s>(domain_, level);
+
+        //// Anterpolation
+        //std::cout<<"FMM Antrp start" << std::endl;
+        fmm_antrp<fmm_s>(domain_, level);
+
+        //// FMM Neighbors
+        //std::cout<<"FMM B0 start" << std::endl;
+        fmm_B0<fmm_s, fmm_t>(domain_, level, dx_level);
+
+        //// FMM influence list
+        //std::cout<<"FMM Bx start" << std::endl;
+        fmm_Bx<fmm_s, fmm_t>(domain_, level, dx_level);
+
+        //// Interpolation
+        //std::cout<<"FMM INTRP start" << std::endl;
+        fmm_intrp<fmm_t>(domain_, level);
+        //std::cout<<"FMM INTRP done" << std::endl;
 
         //// Copy back
-        if (!for_non_leaf)
-            fmm_add_equal<Target, fmm_t>(domain_, level, o_start, o_end, for_non_leaf);
+        if (!non_leaf_as_source)
+            fmm_add_equal<Target, fmm_t>(domain_, level);
         else
-            fmm_minus_equal<Target, fmm_t>(domain_, level, o_start, o_end, for_non_leaf);
+            fmm_minus_equal<Target, fmm_t>(domain_, level);
+
+        boost::mpi::communicator world;
+        std::cout<<"Rank "<<world.rank() << " FFTW_count = ";
+        std::cout<<conv_.fft_count << std::endl;
     }
 
-
-
-    template<
-        class s,
-        class t,
-        class octant_itr_t
-    >
-    void fmm_Bx(domain_t* domain_, 
-                int level, 
-                octant_itr_t o_start, 
-                octant_itr_t o_end, 
-                float_type dx_level)
+    void fmm_init_base_level_masks(domain_t* domain_, int base_level, bool non_leaf_as_source)
     {
 
-        auto o_1 = (*o_start);
-        auto o_2 = (*o_end);
-        auto o_1_old = o_1;
-        auto o_2_old = o_2;
-        int l = level;
-
-        if (o_start->level() != o_end->level())
-            throw std::runtime_error("Level has to be the same");
-
-
-        auto refinement_level = level-domain_->tree()->base_level();
-
-
-        while (o_1_old->key() != o_2_old->key() )
+        if (non_leaf_as_source)
         {
-            //std::cout << "Bx  - level = " << l << std::endl;
-
-            auto level_o_1 = domain_->tree()->find(l, o_1->key());
-            auto level_o_2 = domain_->tree()->find(l, o_2->key());
-            auto level_o_2_dup = level_o_2;
-            level_o_2++;
-
-            for (auto it_t = level_o_1; it_t!=(level_o_2); ++it_t)
+            for (auto it = domain_->begin(base_level);
+                    it != domain_->end(base_level); ++it)
             {
-                if(!(it_t->data()))continue;
-                for (std::size_t i=0; i< it_t->influence_number(); ++i)
+                if ( it->is_leaf() )
                 {
-                    auto n_s = it_t->influence(i);
-                    if (n_s && n_s->locally_owned())
+                    it->mask(MASK_LIST::Mask_FMM_Source, false);
+                    it->mask(MASK_LIST::Mask_FMM_Target, false);
+                } else
+                {
+                    it->mask(MASK_LIST::Mask_FMM_Source, true);
+                    it->mask(MASK_LIST::Mask_FMM_Target, true);
+                }
+            }
+        } else
+        {
+            for (auto it = domain_->begin(base_level);
+                    it != domain_->end(base_level); ++it)
+            {
+                it->mask(MASK_LIST::Mask_FMM_Source, true);
+                it->mask(MASK_LIST::Mask_FMM_Target, true);
+            }
+        }
+    }
+
+    void fmm_upward_pass_masks(domain_t* domain_, int base_level)
+    {
+        // for all levels
+        for (int level=base_level-1; level>=0; --level)
+        {
+            // parent's mask is true if any of its child's mask is true
+            for (auto it = domain_->begin(level);
+                    it != domain_->end(level);
+                    ++it)
+            {
+                // including ghost parents
+                it->mask(MASK_LIST::Mask_FMM_Source, false);
+                for ( int c = 0; c < it->num_children(); ++c )
+                {
+                    if ( it->child(c) && it->child(c)->mask(MASK_LIST::Mask_FMM_Source) )
                     {
-                        if (n_s->inside(level_o_1,  level_o_2_dup))
-                        {
-                            fmm_tt<s,t>(n_s, it_t, level-l, dx_level);
-                        }
+                        it->mask(MASK_LIST::Mask_FMM_Source, true);
+                        break;
                     }
                 }
 
-                if(refinement_level>=0 && l==level)
+                it->mask(MASK_LIST::Mask_FMM_Target, false);
+                for ( int c = 0; c < it->num_children(); ++c)
                 {
-                    domain_->decomposition().client()-> template 
-                        communicate_induced_fields<fmm_t, fmm_t>(it_t, true);
-                }else
-                {
-                    domain_->decomposition().client()-> template 
-                        communicate_induced_fields<fmm_t, fmm_t>(it_t, false);
+                    if ( it->child(c) && it->child(c)->mask(MASK_LIST::Mask_FMM_Target) )
+                    {
+                        it->mask(MASK_LIST::Mask_FMM_Target, true);
+                        break;
+                    }
                 }
+
             }
 
-            
+            domain_->decomposition().client()-> template
+                    communicate_mask_single_level_updownward_OR(level,
+                            MASK_LIST::Mask_FMM_Source, true);
 
-            o_1_old = o_1;
-            o_2_old = o_2;
+            domain_->decomposition().client()-> template
+                    communicate_mask_single_level_updownward_OR(level,
+                            MASK_LIST::Mask_FMM_Target, true);
+        }
+    }
 
-            o_1 = o_1->parent();
-            o_2 = o_2->parent();
-            l--;
-            auto o_1_t=domain_->begin(l);
-            auto o_2_t=domain_->end(l);
-            o_2_t--;
-            o_1=*o_1_t;
-            o_2=*o_2_t;
+    void fmm_sync_masks(domain_t* domain_, int base_level)
+    {
+        fmm_sync_parent_masks(domain_, base_level);
+        //std::cout<<"FMM SYNC parent MASKS done" << std::endl;
+        fmm_sync_inf_masks(domain_, base_level);
+        //std::cout<<"FMM SYNC inf MASKS done" << std::endl;
+        fmm_sync_child_mask(domain_, base_level);
+        //std::cout<<"FMM SYNC child MASKS done" << std::endl;
+    }
+
+    void fmm_sync_parent_masks(domain_t* domain_, int base_level)
+    {
+        for (int level=base_level; level>=0; --level)
+        {
+            domain_->decomposition().client()-> template
+                    communicate_mask_single_level_updownward_OR(level,
+                            MASK_LIST::Mask_FMM_Source,false);
+
+            domain_->decomposition().client()-> template
+                    communicate_mask_single_level_updownward_OR(level,
+                            MASK_LIST::Mask_FMM_Target,false);
+        }
+    }
+
+    void fmm_sync_inf_masks(domain_t* domain_, int base_level)
+    {
+
+        for (int level=base_level; level>=0; --level)
+        {
+            bool neighbor_ = (level==base_level)? true:false;
+
+            domain_->decomposition().client()-> template
+                    communicate_mask_single_level_inf_sync(level,
+                            MASK_LIST::Mask_FMM_Source, neighbor_);
+
+            domain_->decomposition().client()-> template
+                    communicate_mask_single_level_inf_sync(level,
+                            MASK_LIST::Mask_FMM_Target, neighbor_);
+        }
+    }
+
+    void fmm_sync_child_mask(domain_t* domain_, int base_level)
+    {
+
+        for (int level=base_level-1; level>=0; --level)
+        {
+
+            domain_->decomposition().client()-> template
+                    communicate_mask_single_level_child_sync(level,
+                            MASK_LIST::Mask_FMM_Source);
+
+            domain_->decomposition().client()-> template
+                    communicate_mask_single_level_child_sync(level,
+                            MASK_LIST::Mask_FMM_Target);
+        }
+    }
+
+    template<
+        class s,
+        class t
+    >
+    void fmm_Bx(domain_t* domain_,
+                int base_level,
+                float_type dx_level)
+    {
+
+        for (int level=base_level; level>=0; --level)
+        {
+            bool _neighbor = (level==base_level)? true:false;
+
+            for (auto it = domain_->begin(level);
+                        it != domain_->end(level); ++it)
+            {
+
+                if (!(it->data()) || !it->mask(MASK_LIST::Mask_FMM_Target) )
+                    continue;
+
+                for (std::size_t i=0; i< it->influence_number(); ++i)
+                {
+                    auto n_s = it->influence(i);
+                    if (n_s && n_s->locally_owned()
+                            && n_s->mask(MASK_LIST::Mask_FMM_Source))
+                    {
+                        fmm_tt<s,t>(n_s, it, base_level-level, dx_level);
+                    }
+                }
+
+                domain_->decomposition().client()->template
+                    communicate_induced_fields<fmm_t, fmm_t>(it, _neighbor);
+
+            }
         }
 
-            TIME_CODE(time_communication_Bx, SINGLE_ARG(
-                      domain_->decomposition().client()->
-                      finish_induced_field_communication();
-            ))
+        TIME_CODE(time_communication_Bx, SINGLE_ARG(
+                    domain_->decomposition().client()->
+                    finish_induced_field_communication();
+                    ))
+
         boost::mpi::communicator w;
         std::cout<<"Rank "<<w.rank()<<" "
-                 <<"FMM time_communication_Bx: " <<time_communication_Bx.count()<<" "
-                 <<std::endl;
+        <<"FMM time_communication_Bx: " <<time_communication_Bx.count()<<" "
+        <<std::endl;
+
     }
 
     template<
         class s,
-        class t,
-        class octant_itr_t
+        class t
     >
-    void fmm_B0(domain_t* domain_, 
-                int level, 
-                octant_itr_t o_start, 
-                octant_itr_t o_end, 
+    void fmm_B0(domain_t* domain_,
+                int base_level,
                 float_type dx_level)
     {
-        int level_diff = 0;
-        if (o_start->level() != o_end->level())
-            throw std::runtime_error("Level has to be the same");
 
-        auto o_end_2 = o_end;
-        o_end++;
-        for (auto it_t = o_start; it_t!=(o_end); ++it_t)
+        int level_diff = 0;
+
+        for (auto it = domain_->begin(base_level);
+                it != domain_->end(base_level); ++it)
         {
-            if(!it_t->data()) continue;
+            if ( !it->mask(MASK_LIST::Mask_FMM_Target) ) continue;
+
             for (int i=0; i<27; ++i)
             {
-                auto n_s = it_t->neighbor(i);
+                auto n_s = it->neighbor(i);
 
-                if (n_s && n_s->locally_owned())
+                if (n_s && n_s->locally_owned()
+                        && n_s->mask(MASK_LIST::Mask_FMM_Source))
                 {
-                    if (n_s->inside(o_start, o_end_2))
-                    {
-                        fmm_tt<s,t>(n_s, it_t, level_diff, dx_level);
-                    }
+                    fmm_tt<s,t>(n_s, it, level_diff, dx_level);
                 }
             }
-        }
+         }
+
     }
 
-    template<
-        class f1,
-        class f2,
-        class octant_itr_t
-    >
-    void fmm_add_equal(domain_t* domain_, 
-                       int level, 
-                       octant_itr_t o_start, 
-                       octant_itr_t o_end, 
-                       bool for_non_leaf)
+    template< class f1, class f2 >
+    void fmm_add_equal(domain_t* domain_, int base_level)
     {
 
-        if (o_start->level() != o_end->level())
-            throw std::runtime_error("Level has to be the same");
-
-        o_end++;
-
-        for (auto it = o_start; it!=(o_end); ++it)
+        for (auto it = domain_->begin(base_level);
+                it != domain_->end(base_level);
+                ++it)
         {
-            if(it->data() && it->locally_owned())
+            if(it->data() && it->locally_owned() && it->mask(MASK_LIST::Mask_FMM_Target))
             {
-                if ( !( (for_non_leaf) && (it->is_leaf()) ))
                 it->data()->template get_linalg<f1>().get()->
                     cube_noalias_view() +=
                                 it->data()->template get_linalg_data<f2>();
             }
         }
+
     }
 
-    template<
-        class f1,
-        class f2,
-        class octant_itr_t
-    >
-    void fmm_minus_equal(domain_t* domain_, 
-                         int level, 
-                         octant_itr_t o_start, 
-                         octant_itr_t o_end, 
-                         bool for_non_leaf)
+    template< class f1, class f2 >
+    void fmm_minus_equal(domain_t* domain_, int base_level)
     {
-
-        if (o_start->level() != o_end->level())
-            throw std::runtime_error("Level has to be the same");
-
-        o_end++;
-
-        for (auto it = o_start; it!=(o_end); ++it)
+        for (auto it = domain_->begin(base_level);
+                it != domain_->end(base_level);
+                ++it)
         {
-            if(it->data() && it->locally_owned())
+            if(it->data() && it->locally_owned() && it->mask(MASK_LIST::Mask_FMM_Target))
             {
-                if ( !( (for_non_leaf) && (it->is_leaf()) ))
+
                 it->data()->template get_linalg<f1>().get()->
                     cube_noalias_view() -=
                             it->data()->template get_linalg_data<f2>();
             }
         }
+
     }
 
-    template<class f,
-        class octant_itr_t
-    >
-    void fmm_init_zero(domain_t* domain_, 
-                       int level,
-                       octant_itr_t o_start, 
-                       octant_itr_t o_end)
+    template< class fmm_s >
+    void fmm_init_zero(domain_t* domain_, int base_level)
     {
-        auto o_1 = (*o_start);
-        auto o_2 = (*o_end);
-
-        auto o_1_old = o_1;
-        auto o_2_old = o_2;
-
-        if (o_1->level() != o_2->level())
-            throw std::runtime_error("Level has to be the same");
-
-        while (o_1_old->key() != o_2_old->key() )
+        for (int level=base_level; level>0; --level)
         {
-            auto level_o_1 = domain_->tree()->find(level, o_1->key());
-            auto level_o_2 = domain_->tree()->find(level, o_2->key());
-            level_o_2++;
-
-            for (auto it = level_o_1;
-                    it!=(level_o_2); ++it)
+            for (auto it = domain_->begin(level);
+                    it != domain_->end(level);
+                    ++it)
             {
-                {
-                    if(!it->data())continue;
-                    for(auto& e: it->data()->template get_data<f>())
-                        e=0.0;
-                }
+                    if(it->data() && it->mask(MASK_LIST::Mask_FMM_Source))
+                    {
+                        for(auto& e: it->data()->template get_data<fmm_s>())
+                            e=0.0;
+                    }
             }
-
-            o_1_old = o_1;
-            o_2_old = o_2;
-
-            o_1 = o_1->parent();
-            o_2 = o_2->parent();
-            level--;
-
-            auto o_1_t=domain_->begin(level);
-            auto o_2_t=domain_->end(level);
-            o_2_t--;
-            o_1=*o_1_t;
-            o_2=*o_2_t;
         }
     }
 
 
     template<
         class from,
-        class to,
-        class octant_itr_t
+        class to
     >
-    void fmm_init_copy(domain_t* domain_, 
-                       int level,
-                       octant_itr_t o_start, 
-                       octant_itr_t o_end, 
-                       bool for_non_leaf)
+    void fmm_init_copy(domain_t* domain_, int base_level)
     {
-        if (o_start->level() != o_end->level())
-            throw std::runtime_error("Level has to be the same");
-
-        o_end++;
-        for (auto it = o_start; it!=(o_end); ++it)
+        for (auto it = domain_->begin(base_level);
+                it != domain_->end(base_level);
+                ++it)
         {
-            if(it->data() && it->locally_owned())
+            if(it->data() && it->locally_owned() && it->mask(MASK_LIST::Mask_FMM_Source))
             {
-                if ( !( (for_non_leaf) && (it->is_leaf()) ))
-
                 it->data()->template get_linalg<to>().get()->
                     cube_noalias_view() =
                      it->data()->template get_linalg_data<from>() * 1.0;
@@ -468,94 +538,41 @@ public:
 
     }
 
-    template< class fmm_t, class octant_itr_t >
-    void fmm_intrp(domain_t* domain_, 
-                   int level,
-                   octant_itr_t o_start, 
-                   octant_itr_t o_end)
+    template< class fmm_t >
+    void fmm_intrp(domain_t* domain_, int base_level)
     {
-        level--;
-        auto o_1 = o_start->parent();
-        auto o_2 = o_end->parent();
 
-        //FIXME:  This is a hack till good subtree identification is found
-        //        Note, else there is a deadlock
-        //if (o_1->key() != o_2->key() )
-        if (level!=0 )
+        for (int level=1; level<base_level; ++level)
         {
-            fmm_intrp<fmm_t>(domain_, level, o_1, o_2);
-        }
+            domain_->decomposition().client()-> template
+                    communicate_updownward_assign<fmm_t, fmm_t>(level,false);
 
-        auto level_o_1 = domain_->tree()->find(level, o_1->key());
-        auto level_o_2 = domain_->tree()->find(level, o_2->key());
-        level_o_2++;
-        level_o_1=domain_->begin(level);
-        level_o_2=domain_->end(level);
-
-        
-        domain_->decomposition().client()-> template 
-            communicate_updownward_assign<fmm_t, fmm_t>(level_o_1,
-                                                        level_o_2,false);
-
-        //std::cout<< "Fmm - intrp - level: " << level << std::endl;
-        for (auto it = level_o_1; it!=(level_o_2); ++it)
-        {
-            //interpolate onto childrent. 
-            if(it->data() )
+            for (auto it = domain_->begin(level);
+                    it != domain_->end(level);
+                    ++it)
             {
-                lagrange_intrp.nli_intrp_node<fmm_t>(it);
+                if(it->data() && it->mask(MASK_LIST::Mask_FMM_Target) )
+                    lagrange_intrp.nli_intrp_node<fmm_t>(it);
             }
         }
+
     }
 
-    template< class fmm_s, class octant_itr_t >
-    void fmm_antrp(domain_t* domain_, 
-                   int level,
-                   octant_itr_t o_start, 
-                   octant_itr_t o_end)
+    template< class fmm_s>
+    void fmm_antrp(domain_t* domain_, int base_level)
     {
-
-        // start with one level up and call the parents of each
-        level--;
-        auto o_1 = o_start->parent();
-        auto o_2 = o_end->parent();
-        auto o_1_old = o_1;
-        auto o_2_old = o_2;
-
-        if (o_1->level() != o_2->level())
-            throw std::runtime_error("Level has to be the same");
-
-        while (o_1_old->key() != o_2_old->key() )
+        for (int level=base_level-1; level>0; --level)
         {
-            //std::cout<< "Fmm - antrp - level: " << level << std::endl;
-            auto level_o_1 = domain_->tree()->find(level, o_1->key());
-            auto level_o_2 = domain_->tree()->find(level, o_2->key());
-            level_o_2++;
-
-            for (auto it = level_o_1;
-                    it!=(level_o_2); ++it)
+            for (auto it = domain_->begin(level);
+                    it != domain_->end(level);
+                    ++it)
             {
-                if(it->data() )
+                if(it->data() && it->mask(MASK_LIST::Mask_FMM_Source) )
                     lagrange_intrp.nli_antrp_node<fmm_s>(it);
             }
 
             domain_->decomposition().client()->
-                template communicate_updownward_add<fmm_s, fmm_s>(level_o_1,
-                level_o_2, true);
-
-            // go 1 level up
-            level--;
-            o_1_old = o_1;
-            o_2_old = o_2;
-            o_1 = o_1->parent();
-            o_2 = o_2->parent();
-
-
-            auto o_1_t=domain_->begin(level);
-            auto o_2_t=domain_->end(level);
-            o_2_t--;
-            o_1=*o_1_t;
-            o_2=*o_2_t;
+                template communicate_updownward_add<fmm_s, fmm_s>(level, true);
         }
     }
 
@@ -565,9 +582,9 @@ public:
         class octant_t,
         class octant_itr_t
     >
-    void fmm_tt(octant_t o_s, 
-                 octant_itr_t o_t, 
-                 int level_diff, 
+    void fmm_tt(octant_t o_s,
+                 octant_itr_t o_t,
+                 int level_diff,
                  float_type dx_level)
     {
 
@@ -601,10 +618,10 @@ public:
 
     public:
         Nli lagrange_intrp;
+
     private:
         std::vector<float_type>     lgf;
         fft::Convolution            conv_;      ///< fft convolution
-
 
     private: //timings
 

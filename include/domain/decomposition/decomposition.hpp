@@ -65,6 +65,7 @@ public: //memeber functions
     {
         domain_->tree()->construct_leaf_maps();
         domain_->tree()->construct_level_maps();
+
         //Send the construction keys back and forth
         if(server())
             server()->send_keys();
@@ -80,17 +81,6 @@ public: //memeber functions
         {
             client()->query_octants();
             client()->disconnect();
-        }
-    }
-
-
-    template<class SendField,  class RecvField,class OctantIt>
-    void communicate_updownward_pass(OctantIt _begin, OctantIt _end,bool _upward)
-    {
-        if(client())
-        {
-            client()->template
-                communicate_updownward_pass<SendField, RecvField>(_begin,_end, _upward);
         }
     }
 

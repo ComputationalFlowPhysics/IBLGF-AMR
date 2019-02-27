@@ -129,12 +129,6 @@ class hdf5_file
 
         void update_plist()
         {
-            //std::cout<<"Start: Update plist"<<std::endl;
-            //plist_id = H5Pcreate(H5P_FILE_ACCESS);
-            //boost::mpi::communicator world;
-            //H5Pset_fapl_mpio(plist_id, world, MPI_INFO_NULL);
-            //H5Pset_fapl_mpio(plist_id, MPI_COMM_WORLD, MPI_INFO_NULL);
-            //std::cout<<"Finish: plist updated"<<std::endl;
         }
 
 
@@ -151,19 +145,12 @@ class hdf5_file
             }
             else
             {
-                //printf(" \n I am processor number %d of %d. \n", world.rank(), world.size());
-                //std::cout<<"Set property list for parallel write"<<std::endl;
-                //world.barrier();
-                //std::cout<<"World barrier"<<std::endl;
                 H5Pset_fapl_mpio(plist_id, world, MPI_INFO_NULL);
-                //std::cout<<"Create file for parallel write"<<std::endl;
             }
 
             file_id = H5Fcreate(_filename.c_str(), H5F_ACC_TRUNC, H5P_DEFAULT, plist_id);
             HDF5_CHECK_ERROR(file_id,"HDF5-Error: Could not create file: "+ _filename ) ;
             H5Pclose(plist_id);
-            std::cout<<"--> Rank "<<world.rank()<<" of "<<world.size()
-                        <<" : HDF5 Output File created"<<std::endl;
         }
 
         // create group using location and relative group name
@@ -332,7 +319,6 @@ class hdf5_file
 
             hsize_t     dimsm[1];       // memory space dimensions
             dimsm[0] = data.size();
-            std::cout<<data.size()<<std::endl;
             auto memspace = H5Screate_simple(rank_out, dimsm, NULL);
             HDF5_CHECK_ERROR(memspace , "hdf5: Could not select create memory space")
 
@@ -808,7 +794,6 @@ class hdf5_file
             //create memory for the dataType:
             const hsize_type  rank=1;
             const hsize_type  dim=_dim;
-            //std::cout<<"dim = "<<dim<<std::endl;
             auto  space = H5Screate_simple(rank,&dim, NULL);
 
             int ND = 3;
@@ -1045,7 +1030,6 @@ class hdf5_file
                 const std::size_t maxChar=1024;
 		        const auto len2 = H5Gget_objname_by_idx(_g_id, static_cast<hsize_type>(i), memb_name_c_str, maxChar);
                 std::string memb_name(memb_name_c_str);
-                std::cout<<memb_name<<std::endl;
                 auto otype =  H5Gget_objtype_by_idx(_g_id,static_cast<std::size_t>(i));
 
 		        switch(otype){

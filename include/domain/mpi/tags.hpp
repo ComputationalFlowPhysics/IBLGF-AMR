@@ -8,7 +8,7 @@ namespace sr_mpi
 namespace tags
 {
 enum type: int
-{ 
+{
     key_answer,
     key_query,
     request,
@@ -25,4 +25,4 @@ enum type: int
 
 } //namespace sr_mpi
 
-#endif 
+#endif

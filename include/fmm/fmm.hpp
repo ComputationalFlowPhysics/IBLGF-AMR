@@ -230,20 +230,20 @@ public:
         fmm_init_copy<Source, fmm_s>(domain_, level);
 
         //// Anterpolation
-        //std::cout<<"FMM Antrp start" << std::endl;
+        std::cout<<"FMM Antrp start" << std::endl;
         fmm_antrp<fmm_s>(domain_, level);
 
         //// FMM Neighbors
-        //std::cout<<"FMM B0 start" << std::endl;
+        std::cout<<"FMM B0 start" << std::endl;
         fmm_B0<fmm_s, fmm_t>(domain_, level, dx_level);
 
         //// FMM influence list
-        //std::cout<<"FMM Bx start" << std::endl;
+        std::cout<<"FMM Bx start" << std::endl;
         fmm_Bx_itr_build(domain_, level);
         fmm_Bx<fmm_s, fmm_t>(domain_, level, dx_level);
 
         //// Interpolation
-        //std::cout<<"FMM INTRP start" << std::endl;
+        std::cout<<"FMM INTRP start" << std::endl;
         fmm_intrp<fmm_t>(domain_, level);
         //std::cout<<"FMM INTRP done" << std::endl;
 

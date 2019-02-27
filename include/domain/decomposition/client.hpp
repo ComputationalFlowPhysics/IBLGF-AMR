@@ -274,7 +274,6 @@ public:
                     if(_upward)
                     {
                         auto mask_ptr=it->mask_ptr(mask_id);
-
                         auto task=recv_comm.post_task( mask_ptr, r, true, idx );
                         task->requires_confirmation()=false;
 
@@ -285,7 +284,6 @@ public:
                         auto task=send_comm.post_task( mask_ptr, r, true, idx );
                         task->requires_confirmation()=false;
                     }
-
                 }
             } else
             {
@@ -418,7 +416,7 @@ public:
             {
                 const auto inf=it->influence(i);
                 if(inf && inf->rank()==myRank && inf->mask(MASK_LIST::Mask_FMM_Source))
-                {return -1;}
+                {return -10000;}
 
             }
 
@@ -428,7 +426,7 @@ public:
                 {
                     const auto inf=it->neighbor(i);
                     if(inf && inf->rank()==myRank && inf->mask(MASK_LIST::Mask_FMM_Source))
-                    {return -1;}
+                    {return -10000;}
                 }
             }
 
@@ -442,7 +440,7 @@ public:
                 const auto inf=it->influence(i);
                 if(inf && inf->rank()!=myRank && inf->mask(MASK_LIST::Mask_FMM_Source))
                 {
-                    count++;
+                    count--;
                 }
             }
 
@@ -453,13 +451,13 @@ public:
                     const auto inf=it->neighbor(i);
                     if(inf && inf->rank()!=myRank && inf->mask(MASK_LIST::Mask_FMM_Source))
                     {
-                        count++;
+                        count--;
                     }
                 }
             }
 
         }
-    return count;
+        return count;
     }
 
     template<class SendField,class RecvField, class Octant_t>

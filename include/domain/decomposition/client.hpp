@@ -416,7 +416,7 @@ public:
             {
                 const auto inf=it->influence(i);
                 if(inf && inf->rank()==myRank && inf->mask(MASK_LIST::Mask_FMM_Source))
-                {return -10000;}
+                {return -1000000;}
 
             }
 
@@ -426,10 +426,9 @@ public:
                 {
                     const auto inf=it->neighbor(i);
                     if(inf && inf->rank()==myRank && inf->mask(MASK_LIST::Mask_FMM_Source))
-                    {return -10000;}
+                    {return -1000000;}
                 }
             }
-
         } else
         {
 
@@ -510,7 +509,6 @@ public:
                 template get<SendField>().date_ptr();
                 auto task= send_comm.post_task(send_ptr, it->rank(), true, idx);
                 task->requires_confirmation()=false;
-
             }
 
         } else

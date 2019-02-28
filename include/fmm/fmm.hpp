@@ -416,10 +416,34 @@ public:
                 int base_level,
                 float_type dx_level)
     {
-        for (auto B_it=Bx_itr.begin(); B_it!=Bx_itr.end(); ++B_it)
+
+        std::vector<std::pair<octant_t*, int>> octants;
+        for (int level=base_level; level>=0; --level)
         {
-            //std::cout<< B_it->first << std::endl;
-            auto it =B_it->second;
+            bool _neighbor = false;
+            for (auto it = domain_->begin(level); it != domain_->end(level); ++it)
+            {
+                if (!(it->data()) || !it->mask(MASK_LIST::Mask_FMM_Target) )
+                    continue;
+
+                int recv_m_send_count =
+                    domain_->decomposition().client()->template
+                    communicate_induced_fields_recv_m_send_count<fmm_t, fmm_t>(it, _neighbor);
+
+                octants.emplace_back(std::make_pair(*it,recv_m_send_count));
+            }
+        }
+        std::sort(octants.begin(), octants.end(),[&](const auto e0, const auto e1)
+        {return e0.second< e1.second;  });
+
+        //for (auto B_it=Bx_itr.begin(); B_it!=Bx_itr.end(); ++B_it)
+        //boost::mpi::communicator w22;
+        //std::ofstream ofs("bb_"+std::to_string(w22.rank())+".txt");
+        for (auto B_it=octants.begin(); B_it!=octants.end(); ++B_it)
+        {
+            //ofs<< B_it->second << std::endl;
+            
+            auto it =B_it->first;
             int level = it->level();
 
             bool _neighbor = (level==base_level)? true:false;

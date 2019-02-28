@@ -547,7 +547,7 @@ private:// influence list
                           bool _global=true)
     {
         it->influence_clear();
-        if(!it->parent()) return;
+        if(!it ||  !it->parent()) return;
         //std::set<infl_helper> blafskjdfdsl sadkjad a
         //std::set<infl
 

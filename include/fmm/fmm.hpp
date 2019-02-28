@@ -217,7 +217,6 @@ public:
 
                 }
             }
-
         }
 
 
@@ -239,7 +238,7 @@ public:
 
         //// FMM influence list
         std::cout<<"FMM Bx start" << std::endl;
-        fmm_Bx_itr_build(domain_, level);
+        //fmm_Bx_itr_build(domain_, level);
         fmm_Bx<fmm_s, fmm_t>(domain_, level, dx_level);
 
         //// Interpolation
@@ -417,12 +416,13 @@ public:
                 float_type dx_level)
     {
 
+
         std::vector<std::pair<octant_t*, int>> octants;
         for (int level=base_level; level>=0; --level)
         {
-            bool _neighbor = false;
             for (auto it = domain_->begin(level); it != domain_->end(level); ++it)
             {
+                bool _neighbor = (level==base_level)? true:false;
                 if (!(it->data()) || !it->mask(MASK_LIST::Mask_FMM_Target) )
                     continue;
 
@@ -434,15 +434,11 @@ public:
             }
         }
         std::sort(octants.begin(), octants.end(),[&](const auto e0, const auto e1)
-        {return e0.second< e1.second;  });
+                {return e0.second< e1.second;  });
 
-        //for (auto B_it=Bx_itr.begin(); B_it!=Bx_itr.end(); ++B_it)
-        //boost::mpi::communicator w22;
-        //std::ofstream ofs("bb_"+std::to_string(w22.rank())+".txt");
         for (auto B_it=octants.begin(); B_it!=octants.end(); ++B_it)
         {
             //ofs<< B_it->second << std::endl;
-            
             auto it =B_it->first;
             int level = it->level();
 
@@ -456,12 +452,13 @@ public:
                 if (n_s && n_s->locally_owned()
                         && n_s->mask(MASK_LIST::Mask_FMM_Source))
                 {
+
                     fmm_tt<s,t>(n_s, it, base_level-level, dx_level);
                 }
             }
 
             domain_->decomposition().client()->template
-            communicate_induced_fields<fmm_t, fmm_t>(it, _neighbor);
+                communicate_induced_fields<fmm_t, fmm_t>(it, _neighbor);
 
         }
 

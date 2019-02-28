@@ -36,7 +36,7 @@ public:
 
 public: //Ctor
 
-    TaskCommunicator( int _nBuffers=100 )  
+    TaskCommunicator( int _nBuffers=10 )  
     {
         buffer_.init(_nBuffers);
     }
@@ -96,33 +96,33 @@ public:
     task_vector_t start_communication()
     {
         task_vector_t res;
-        //std::size_t mCount=0;
+        std::size_t mCount=0;
+        std::size_t size = buffer_queue_.size();
         while(buffer_.is_free() && !buffer_queue_.empty())
         {
             auto task =buffer_queue_.front();
 
             //If message does not exisit (for recv), check other posted messages
-            //if(!message_exists(task))
-            //{
-            //    buffer_queue_.push(task);
-            //    buffer_queue_.pop();
-            //    ++mCount;
-            //    if(mCount==buffer_queue_.size()) 
-            //    {
-            //        break;
-            //    }
-            //    else {continue;}
-            //}
+            if( !message_exists(task))
+            {
+                buffer_queue_.push(task);
+                buffer_queue_.pop();
+            }
+            else
+            {
+                auto ptr = buffer_.get_free_buffer();
+                task->attach_buffer( ptr );
+                to_buffer(task);
+                sendRecv(task);
 
-            auto ptr = buffer_.get_free_buffer();
-            task->attach_buffer( ptr );
-            to_buffer(task);
-            sendRecv(task);
-
-            tasks_.push_back(task);
-            res.push_back(task);
-            buffer_queue_.pop();
-        }
+                tasks_.push_back(task);
+                res.push_back(task);
+                buffer_queue_.pop();
+            }
+            if(mCount==size) break;
+            ++mCount;
+        } 
+        
         return res;
     }
 

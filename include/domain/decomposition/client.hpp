@@ -127,6 +127,7 @@ public:
         auto& recv_comm=
             task_manager_->template
             recv_communicator<induced_fields_task_t<AddAssignRecv>>();
+
         while(true)
         {
             send_comm.start_communication();
@@ -460,7 +461,7 @@ public:
     }
 
     template<class SendField,class RecvField, class Octant_t>
-    void communicate_induced_fields( Octant_t it, bool _neighbors=false )
+    void communicate_induced_fields( Octant_t it, bool _neighbors=false, bool _start_communication=true )
     {
 
         if (!it->mask(MASK_LIST::Mask_FMM_Target)) return;
@@ -549,10 +550,13 @@ public:
 
         //Start communications
 
-        send_comm.start_communication();
-        recv_comm.start_communication();
-        send_comm.finish_communication();
-        recv_comm.finish_communication();
+        if(_start_communication)
+        {
+            send_comm.start_communication();
+            recv_comm.start_communication();
+            send_comm.finish_communication();
+            recv_comm.finish_communication();
+        }
 
     }
 
@@ -781,8 +785,8 @@ public:
     auto get_octant_idx(T it) const noexcept
     {
         const auto cc=it->tree_coordinate();
-        return cc.x()+100*cc.y()+100*100*cc.z() +
-            100*100*100*(it->level()) + 1;
+        return static_cast<int>(it->level()+cc.x()*25+cc.y()*20*500+ 20*500*500*cc.z());
+;
     }
 
     /** @brief Query ranks of the neighbors, influence octants, children and

@@ -35,7 +35,7 @@ public:
     using communicator_type  = typename  domain_t::communicator_type;
     using octant_t  = typename  domain_t::octant_t;
     using key_t  = typename  domain_t::key_t;
-    using ctask_t = ComputeTask<key_t>;
+    using ctask_t = ComputeTask<octant_t>;
 
     using trait_t =  ServerClientTraits<Domain>;
     using super_type = ServerBase<trait_t>;
@@ -82,14 +82,13 @@ public:
         float_type total_load_perProc=0;
         int procCount=0;
 
-        //std::ofstream ofsd("ttdist.txt");
-        std::vector<std::vector<ctask_t>> tasks_perProc(nProcs);
+        std::vector<std::list<ctask_t>> tasks_perProc(nProcs);
         for( auto it = domain_->begin_df(); it!= domain_->end_df();++it )
         {
             it->rank()=procCount+1;
 
             auto load= it->load();
-            ctask_t task(it->key(), it->rank(), load);
+            ctask_t task(it.ptr(), it->rank(), load);
 
             if(total_load_perProc+load<ideal_load ||
                (procCount == nProcs-1))
@@ -105,24 +104,99 @@ public:
                 tasks_perProc[procCount].push_back(task);
                 total_load_perProc=load;
             }
-
-            //if(it->level()==domain_->tree()->base_level())
-            //ofsd<<it->key()._index<<" "<<it->global_coordinate()<<" "<<it->rank()<<std::endl;
         }
 
+        float_type max_load=-1;
+        float_type min_load=total_load+10;
         std::vector<int> total_loads_perProc(nProcs,0);
-        std::ofstream ofs("load_balance.txt");
         for(int i =0; i<nProcs;++i)
         {
             for(auto t:  tasks_perProc[i] )
             {
                 total_loads_perProc[i]+=t.load();
             }
-            ofs<< tasks_perProc[i][0].rank()<<" "
-                <<total_loads_perProc[i]<<std::endl;
+            if(total_loads_perProc[i] < min_load) min_load=total_loads_perProc[i];
+            if(total_loads_perProc[i] > max_load) max_load=total_loads_perProc[i];
         }
 
-        //TODO: Iterate to balance/diffuse load
+        //Iterate the redistribute load ..
+        float_type imbalance=max_load-min_load;
+        while(true)
+        {
+            float_type max_load=-1;
+            float_type min_load=total_load+10;
+
+            for(int i =0; i<nProcs-1;++i)
+            {
+                const float_type dx_load=
+                    total_loads_perProc[i+1]-total_loads_perProc[i];
+
+                //Shuffle around
+                if(dx_load>0 && !tasks_perProc[i+1].empty() )
+                {
+                    const auto task_to_move =tasks_perProc[i+1].front();
+                    const auto load_to_move = task_to_move.load();
+
+                    const auto new_total_np1= total_loads_perProc[i+1]-load_to_move;
+                    const auto new_total = total_loads_perProc[i]+load_to_move;
+
+                    tasks_perProc[i].push_back(task_to_move);
+                    tasks_perProc[i+1].pop_front();
+
+                    total_loads_perProc[i+1]=new_total_np1;
+                    total_loads_perProc[i]=new_total;
+                }
+                else if(dx_load<0 && !tasks_perProc[i].empty())
+                {
+
+                    const auto task_to_move =tasks_perProc[i].back();
+                    const auto load_to_move = task_to_move.load();
+
+                    const auto new_total_np1= total_loads_perProc[i+1]+load_to_move;
+                    const auto new_total = total_loads_perProc[i]-load_to_move;
+
+                    tasks_perProc[i+1].push_front(task_to_move);
+                    tasks_perProc[i].pop_back();
+
+                    total_loads_perProc[i+1]=new_total_np1;
+                    total_loads_perProc[i]=new_total;
+
+                }
+
+                if(total_loads_perProc[i] < min_load) 
+                    min_load=total_loads_perProc[i];
+                if(total_loads_perProc[i] > max_load)
+                    max_load=total_loads_perProc[i];
+            }
+
+            //Update last:
+            if(total_loads_perProc[nProcs-1] < min_load) 
+                min_load=total_loads_perProc[nProcs-1];
+            if(total_loads_perProc[nProcs-1] > max_load) 
+                max_load=total_loads_perProc[nProcs-1];
+
+            const auto imbalance_new = max_load-min_load;
+            if((  imbalance_new >= imbalance  ) ) break;
+            imbalance=imbalance_new;
+        }
+
+
+        //Iterate to balance/diffuse load
+        std::vector<int> total_loads_perProc2(nProcs,0);
+        std::ofstream ofs("load_balance.txt");
+        for(int i =0; i<nProcs;++i)
+        {
+            for(auto t:  tasks_perProc[i] )
+            {
+                total_loads_perProc2[i]+=t.load();
+                t.octant()->rank()=i+1;
+                t.rank()=i+1;
+            }
+            ofs<<i<<" "
+                <<total_loads_perProc2[i]<<std::endl;
+        }
+
+
 
         std::cout<<"Done with initial load balancing"<<std::endl;
         return tasks_perProc;
@@ -135,7 +209,7 @@ public:
         {
             std::vector<key_t> keys;
             for(auto tt: t ) keys.push_back(tt.key());
-            comm_.send(t[0].rank(),0, keys );
+            comm_.send(t.front().rank(),0, keys );
         }
     }
 

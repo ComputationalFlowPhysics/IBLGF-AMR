@@ -67,6 +67,9 @@ struct DecomposistionTest:public SetupBase<DecomposistionTest,parameters>
     :super_type(_d)
     {
 
+        if(domain_.is_client())client_comm_=client_comm_.split(1);
+        else client_comm_=client_comm_.split(0);
+
         pcout << "\n Setup:  Test - Domain decomposition \n" << std::endl;
         pcout << "Simulation: \n" << simulation_    << std::endl;
         domain_.distribute();
@@ -79,30 +82,19 @@ struct DecomposistionTest:public SetupBase<DecomposistionTest,parameters>
         //domain_.test();
        //domain_.decomposition().communicate_influence<source, phi_exact>();
 
+        boost::mpi::communicator world;
 
         if(domain_.is_client())
         {
             poisson_solver_t psolver(&this->simulation_);
 
-            //auto t0=clock_type::now();
-            //psolver.solve<source, phi_num>();
-            //auto t1=clock_type::now();
-            //auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(t1-t0);
-            //std::cout<<"elapsed for LGF: "<<elapsed.count()<<std::endl;
             mDuration_type solve_duration(0);
             TIME_CODE( solve_duration, SINGLE_ARG(
                     psolver.solve<source, phi_num>();
             ))
-            std::cout<<"Total Psolve time: " <<solve_duration.count()<<std::endl;
+            pcout_c<<"Total Psolve time: " <<solve_duration.count()<<std::endl;
         }
-            this->compute_errors();
-        //psolver.laplace_diff<phi_num,amr_lap_source>();
-
-        boost::mpi::communicator world;
-
-        //world.barrier();
-        //std::cout<<"Write HDF5 with rank: "<<world.rank()<<std::endl;
-        //world.barrier();
+        this->compute_errors();
         simulation_.write2("mesh.hdf5");
     }
 
@@ -178,8 +170,6 @@ struct DecomposistionTest:public SetupBase<DecomposistionTest,parameters>
     void compute_errors()
     {
 
-        if(domain_.is_client())client_comm_=client_comm_.split(1);
-        else client_comm_=client_comm_.split(0);
 
         const float_type dx_base=domain_.dx_base();
         auto L2   = 0.; auto LInf = -1.0; int count=0;

@@ -36,9 +36,9 @@ include_directories(SYSTEM ${MPI_INCLUDE_PATH})
 link_directories(${MPI_LIBRARIES} )
 
 #BOOST
-if(NOT DEFINED Boost_INCLUDE_DIR)
+#if(NOT DEFINED Boost_INCLUDE_DIR)
 find_package(Boost COMPONENTS serialization mpi system filesystem REQUIRED)
-endif(NOT DEFINED Boost_INCLUDE_DIR)
+#endif(NOT DEFINED Boost_INCLUDE_DIR)
 include_directories(${Boost_INCLUDE_DIR})
 link_directories(${Boost_LIBRARY_DIR})
 

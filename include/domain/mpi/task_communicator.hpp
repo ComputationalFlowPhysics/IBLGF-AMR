@@ -122,7 +122,6 @@ public:
             if(mCount==size) break;
             ++mCount;
         } 
-        
         return res;
     }
 

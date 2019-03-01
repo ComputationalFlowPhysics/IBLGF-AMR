@@ -114,9 +114,13 @@ public:
               const Function& f=[](octant_type* o){ return; })
     {
         this->init(_keys, this->base_level_,f);
+
         // Maps construction
         this->construct_leaf_maps();
         this->construct_level_maps();
+        this->construct_neighbor_lists();
+        this->construct_influence_lists();
+
     }
 
     template<class Function=std::function<void(octant_type* c)>>
@@ -476,21 +480,6 @@ public: // influence list
             }
             ++count;
         }
-
-
-        //boost::mpi::communicator w;
-        //dfs_iterator begin(root()); dfs_iterator end;
-        //for(auto it =begin;it!=end;++it)
-        //{
-        //    for(int i =0;i<189;++i)
-        //    {
-        //        auto nn=it->neighbor(i);
-        //        if(nn && nn->rank()!=w.rank() && nn->rank()>=0)
-        //        {
-        //            std::cout<<"inf->rank() "<<nn->rank() <<std::endl;
-        //        }
-        //    }
-        //}
     }
 
 private:// influence list
@@ -504,7 +493,6 @@ private:// influence list
         {
             return key_ < other.key_;
         }
-
 
         ///< append to lists
         void update(octant_type* _oc, int _inf_number) const
@@ -548,8 +536,6 @@ private:// influence list
     {
         it->influence_clear();
         if(!it ||  !it->parent()) return;
-        //std::set<infl_helper> blafskjdfdsl sadkjad a
-        //std::set<infl
 
         int infl_id = 0;
         it->influence_number(infl_id);

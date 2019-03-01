@@ -79,11 +79,6 @@ struct DecomposistionTest:public SetupBase<DecomposistionTest,parameters>
 
     void run()
     {
-        //domain_.test();
-       //domain_.decomposition().communicate_influence<source, phi_exact>();
-
-        boost::mpi::communicator world;
-
         if(domain_.is_client())
         {
             poisson_solver_t psolver(&this->simulation_);
@@ -126,10 +121,6 @@ struct DecomposistionTest:public SetupBase<DecomposistionTest,parameters>
         {
             auto dx_level =  dx_base/std::pow(2,it->refinement_level());
             auto scaling =  std::pow(2,it->refinement_level());
-
-
-            //std::cout<<"it all: "<<it->global_coordinate()<<" "
-            //         <<it->key()._index<<" r "<<it->rank()<<std::endl;
 
            auto view(it->data()->node_field().domain_view());
            auto& nodes_domain=it->data()->nodes_domain();

@@ -67,6 +67,11 @@ public:
     auto compute_distribution()
     {
         std::cout<<"Computing domain decomposition "<<std::endl;
+
+
+        domain_->tree()->construct_neighbor_lists();
+        domain_->tree()->construct_influence_lists();
+
         float_type total_load=0.0;
         int c=0;
         for( auto it = domain_->begin_df(); it!= domain_->end_df();++it )
@@ -134,12 +139,14 @@ public:
                 //Shuffle around
                 if(dx_load>0 && !tasks_perProc[i+1].empty() )
                 {
-                    const auto task_to_move =tasks_perProc[i+1].front();
+                    auto task_to_move =tasks_perProc[i+1].front();
                     const auto load_to_move = task_to_move.load();
 
                     const auto new_total_np1= total_loads_perProc[i+1]-load_to_move;
                     const auto new_total = total_loads_perProc[i]+load_to_move;
 
+                    task_to_move.rank()=tasks_perProc[i].back().rank();
+                    task_to_move.octant()->rank()=task_to_move.rank();
                     tasks_perProc[i].push_back(task_to_move);
                     tasks_perProc[i+1].pop_front();
 
@@ -148,13 +155,14 @@ public:
                 }
                 else if(dx_load<0 && !tasks_perProc[i].empty())
                 {
-
-                    const auto task_to_move =tasks_perProc[i].back();
+                    auto task_to_move =tasks_perProc[i].back();
                     const auto load_to_move = task_to_move.load();
 
                     const auto new_total_np1= total_loads_perProc[i+1]+load_to_move;
                     const auto new_total = total_loads_perProc[i]-load_to_move;
 
+                    task_to_move.rank()=tasks_perProc[i+1].front().rank();
+                    task_to_move.octant()->rank()=task_to_move.rank();
                     tasks_perProc[i+1].push_front(task_to_move);
                     tasks_perProc[i].pop_back();
 
@@ -186,21 +194,21 @@ public:
         std::ofstream ofs("load_balance.txt");
         for(int i =0; i<nProcs;++i)
         {
+            int rank=0;
             for(auto t:  tasks_perProc[i] )
             {
                 total_loads_perProc2[i]+=t.load();
-                t.octant()->rank()=i+1;
-                t.rank()=i+1;
+                rank=t.rank();
             }
-            ofs<<i<<" "
+            ofs<<rank<<" "
                 <<total_loads_perProc2[i]<<std::endl;
         }
-
-
 
         std::cout<<"Done with initial load balancing"<<std::endl;
         return tasks_perProc;
     }
+
+
 
     void send_keys()
     {

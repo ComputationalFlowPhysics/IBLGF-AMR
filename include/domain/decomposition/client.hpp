@@ -256,9 +256,6 @@ public:
             task_manager_-> template
                 recv_communicator<mask_query_t<OrAssignRecv>>();
 
-        boost::mpi::communicator  w;
-        const int myRank=w.rank();
-
         for (auto it = domain_->begin(level);
                 it != domain_->end(level);
                 ++it)
@@ -336,9 +333,6 @@ public:
             task_manager_-> template
                 recv_communicator<mask_query_t<OrAssignRecv>>();
 
-        boost::mpi::communicator  w;
-        const int myRank=w.rank();
-
         for (auto it = domain_->begin(level);
                 it != domain_->end(level);
                 ++it)
@@ -410,15 +404,14 @@ public:
         {
 
             //Check if this ghost octant influenced by octants of this rank
-            bool is_influenced=false;
 
             //Check influence list
             for(std::size_t i = 0; i< it->influence_number(); ++i)
             {
                 const auto inf=it->influence(i);
-                if(inf && inf->rank()==myRank && inf->mask(MASK_LIST::Mask_FMM_Source))
+                if(inf && inf->rank()==myRank && 
+                   inf->mask(MASK_LIST::Mask_FMM_Source))
                 {return -1000000;}
-
             }
 
             if(_neighbors)
@@ -426,7 +419,8 @@ public:
                 for(int i = 0; i< it->nNeighbors(); ++i)
                 {
                     const auto inf=it->neighbor(i);
-                    if(inf && inf->rank()==myRank && inf->mask(MASK_LIST::Mask_FMM_Source))
+                    if(inf && inf->rank()==myRank && 
+                       inf->mask(MASK_LIST::Mask_FMM_Source))
                     {return -1000000;}
                 }
             }
@@ -438,7 +432,8 @@ public:
             for(std::size_t i = 0; i< it->influence_number(); ++i)
             {
                 const auto inf=it->influence(i);
-                if(inf && inf->rank()!=myRank && inf->mask(MASK_LIST::Mask_FMM_Source))
+                if(inf && inf->rank()!=myRank && 
+                   inf->mask(MASK_LIST::Mask_FMM_Source))
                 {
                     count--;
                 }
@@ -449,19 +444,21 @@ public:
                 for(int i = 0; i< it->nNeighbors(); ++i)
                 {
                     const auto inf=it->neighbor(i);
-                    if(inf && inf->rank()!=myRank && inf->mask(MASK_LIST::Mask_FMM_Source))
+                    if(inf && inf->rank()!=myRank && 
+                       inf->mask(MASK_LIST::Mask_FMM_Source))
                     {
                         count--;
                     }
                 }
             }
-
         }
         return count;
     }
 
     template<class SendField,class RecvField, class Octant_t>
-    void communicate_induced_fields( Octant_t it, bool _neighbors=false, bool _start_communication=true )
+    void communicate_induced_fields(Octant_t it, 
+                                    bool _neighbors=false, 
+                                    bool _start_communication=true )
     {
 
         if (!it->mask(MASK_LIST::Mask_FMM_Target)) return;

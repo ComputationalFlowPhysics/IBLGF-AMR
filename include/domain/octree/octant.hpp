@@ -206,7 +206,24 @@ public: //Ctors
        masks_[i] = value;
     }
 
-    float_type load()const noexcept{return 1.0;}
+    float_type load()const noexcept
+    {
+        float_type load=1.0;
+        for(std::size_t c=0;c<this->num_children();++c)
+        {
+            const auto child = this->child(c);
+            if(child) load+=1.0;
+        }
+
+        for(std::size_t c=0;c<this->influence_number();++c)
+        {
+            const auto inf = this->influence(c);
+            if(inf) load+=1.0;
+        }
+        //std::cout<<load<<std::endl;
+        return load;
+    }
+
 
 
 public: //mpi info

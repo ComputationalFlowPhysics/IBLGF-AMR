@@ -372,7 +372,7 @@ public:
 
             // Create full empty dataset with all processes
             auto space =_file->create_simple_space(1, &dset_size, NULL);
-            auto dset_id=_file->template create_dataset<value_type>(group_id_lvl,
+            /*auto dset_id=*/_file->template create_dataset<value_type>(group_id_lvl,
                 "data:datatype=0", space);      //collective
             _file->close_space(space);
 
@@ -520,7 +520,7 @@ public:
             // BLOCK ITERATOR
             for(std::size_t b=0; b<l.blocks.size(); ++b)
             {
-                int rank = l.ranks[b];      // only contained on server
+                //int rank = l.ranks[b];      // only contained on server
                 single_block_data.clear();
 
                 auto block = l.blocks[b];
@@ -623,11 +623,11 @@ public:
 //
 //            // boxes.  write as dataset.
 //            // 1 Create boxes
-            hsize_type boxes_size = 0;
+//            hsize_type boxes_size = 0;
 //
-            if (world.rank()==0) {
-                boxes_size = mins.size();
-            }
+//            if (world.rank()==0) {
+//                boxes_size = mins.size();
+//            }
 //            boost::mpi::broadcast(world, boxes_size, 0); // send from server to all others
 //
 //            _file->template create_boxCompound<Dim>(group_id, "boxes", boxes_size, false);

@@ -424,6 +424,8 @@ public:
         std::sort(octants.begin(), octants.end(),[&](const auto e0, const auto e1)
                 {return e0.second< e1.second;  });
 
+        const bool start_communication = false;
+
         for (auto B_it=octants.begin(); B_it!=octants.end(); ++B_it)
         {
             //ofs<< B_it->second << std::endl;
@@ -445,43 +447,18 @@ public:
                 }
             }
 
+            //setup the tasks
             domain_->decomposition().client()->template
-                communicate_induced_fields<fmm_t, fmm_t>(it, _neighbor);
-
+                communicate_induced_fields<fmm_t, fmm_t>(it, _neighbor, start_communication);
         }
 
-        //for (int level=base_level; level>=0; --level)
-        //{
-        //    bool _neighbor = (level==base_level)? true:false;
+        domain_->decomposition().client()->template combine_induced_field_messages<fmm_t, fmm_t>();
 
-        //    for (auto it = domain_->begin(level);
-        //                it != domain_->end(level); ++it)
-        //    {
 
-        //        if (!(it->data()) || !it->mask(MASK_LIST::Mask_FMM_Target) )
-        //            continue;
-
-        //        for (std::size_t i=0; i< it->influence_number(); ++i)
-        //        {
-        //            auto n_s = it->influence(i);
-        //            if (n_s && n_s->locally_owned()
-        //                    && n_s->mask(MASK_LIST::Mask_FMM_Source))
-        //            {
-        //                fmm_tt<s,t>(n_s, it, base_level-level, dx_level);
-        //            }
-        //        }
-
-        //        domain_->decomposition().client()->template
-        //            communicate_induced_fields<fmm_t, fmm_t>(it, _neighbor);
-
-        //    }
-
-        //}
-
-        TIME_CODE(time_communication_Bx, SINGLE_ARG(
-                    domain_->decomposition().client()->
-                    finish_induced_field_communication();
-                    ))
+        //TIME_CODE(time_communication_Bx, SINGLE_ARG(
+        //            domain_->decomposition().client()->
+        //            finish_induced_field_communication();
+        //            ))
 
         boost::mpi::communicator w;
         std::cout<<"Rank "<<w.rank()<<" "

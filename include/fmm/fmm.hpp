@@ -421,10 +421,12 @@ public:
                 octants.emplace_back(std::make_pair(*it,recv_m_send_count));
             }
         }
+        //Sends=10000, recv1-10000, no_communication=0
         std::sort(octants.begin(), octants.end(),[&](const auto e0, const auto e1)
-                {return e0.second< e1.second;  });
+                {return e0.second> e1.second;  });
 
         const bool start_communication = false;
+        bool combined_messages=false;
 
         for (auto B_it=octants.begin(); B_it!=octants.end(); ++B_it)
         {
@@ -450,15 +452,32 @@ public:
             //setup the tasks
             domain_->decomposition().client()->template
                 communicate_induced_fields<fmm_t, fmm_t>(it, _neighbor, start_communication);
+            
+            if(!combined_messages && B_it->second==0)
+            {
+                if(!combined_messages)
+                {
+                    domain_->decomposition().client()->template 
+                        combine_induced_field_messages<fmm_t, fmm_t>();
+                    combined_messages=true;
+                }
+                domain_->decomposition().client()->template 
+                    check_combined_induced_field_communication<fmm_t,fmm_t>(false);
+            }
         }
 
-        domain_->decomposition().client()->template combine_induced_field_messages<fmm_t, fmm_t>();
+        //Finish the communication
+        TIME_CODE(time_communication_Bx, SINGLE_ARG(
+        domain_->decomposition().client()->template 
+            check_combined_induced_field_communication<fmm_t,fmm_t>(true);
+        ))
 
 
         //TIME_CODE(time_communication_Bx, SINGLE_ARG(
         //            domain_->decomposition().client()->
         //            finish_induced_field_communication();
         //            ))
+
 
         boost::mpi::communicator w;
         std::cout<<"Rank "<<w.rank()<<" "

@@ -401,6 +401,7 @@ public:
         boost::mpi::communicator  w;
         const int myRank=w.rank();
 
+        //sends
         if( !it->locally_owned() )
         {
 
@@ -412,7 +413,7 @@ public:
                 const auto inf=it->influence(i);
                 if(inf && inf->rank()==myRank && 
                    inf->mask(MASK_LIST::Mask_FMM_Source))
-                {return -1000000;}
+                {return +1000000;}
             }
 
             if(_neighbors)
@@ -422,10 +423,11 @@ public:
                     const auto inf=it->neighbor(i);
                     if(inf && inf->rank()==myRank && 
                        inf->mask(MASK_LIST::Mask_FMM_Source))
-                    {return -1000000;}
+                    {return +1000000;}
                 }
             }
-        } else
+        } 
+        else //Receivs
         {
 
             std::set<int> unique_inflRanks;
@@ -436,7 +438,7 @@ public:
                 if(inf && inf->rank()!=myRank && 
                    inf->mask(MASK_LIST::Mask_FMM_Source))
                 {
-                    count--;
+                    ++count;
                 }
             }
 
@@ -448,7 +450,7 @@ public:
                     if(inf && inf->rank()!=myRank && 
                        inf->mask(MASK_LIST::Mask_FMM_Source))
                     {
-                        count--;
+                        ++count;
                     }
                 }
             }
@@ -575,8 +577,7 @@ public:
             task_manager_-> template recv_communicator<acc_induced_fields_task_t>();
 
 
-        std::vector<std::vector<std::shared_ptr<induced_fields_task_t<AddAssignRecv>>>> 
-            send_tasks(comm_.size());
+        send_tasks.resize(comm_.size());
         int count=0;
         for(auto& bt : send_comm.get_buffer_queue()) 
         {
@@ -589,8 +590,7 @@ public:
         if(recv_fields_.size()!= static_cast<std::size_t>(comm_.size()))
             recv_fields_.resize(comm_.size());
 
-        std::vector<std::vector<std::shared_ptr<induced_fields_task_t<AddAssignRecv>>>> 
-            recv_tasks(comm_.size());
+        recv_tasks.resize(comm_.size());
         count=0;
         for(auto& bt : recv_comm.get_buffer_queue()) 
         {
@@ -660,8 +660,51 @@ public:
             }
         }
 
+        //while(true)
+        //{
+        //    acc_send_comm.start_communication();
+        //    acc_recv_comm.start_communication();
+        //    acc_send_comm.finish_communication();
+        //    auto finished_tasks=acc_recv_comm.finish_communication();
+
+        //    for(auto& t : finished_tasks)
+        //    {
+        //        //Add contributions to individual octants
+        //        for(std::size_t i = 0; i<recv_tasks[t->rank_other()].size(); ++i)
+        //        {
+        //             auto& octant_field=recv_tasks[t->rank_other()][i]->
+        //                octant()->data()->template get<RecvField>().data();
+
+        //             //add the contribution 
+        //            for(std::size_t j=0; j<octant_field.size();++j)
+        //            {
+        //                //Add to the octant field
+        //                octant_field[j]+=recv_fields_[t->rank_other()][i*octant_field.size()+j];
+        //            }
+        //        }
+        //    }
+        //    if(acc_send_comm.done() && acc_send_comm.done() )
+        //        break;
+        //}
+
+        acc_send_comm.start_communication();
+        acc_recv_comm.start_communication();
+    }
+
+
+    template<class SendField, class RecvField>
+    void check_combined_induced_field_communication(bool _finish=false)
+    {
+        auto& acc_send_comm=
+            task_manager_-> template send_communicator<acc_induced_fields_task_t>();
+        auto& acc_recv_comm=
+            task_manager_-> template recv_communicator<acc_induced_fields_task_t>();
+
         while(true)
         {
+
+            if( (acc_send_comm.done() && acc_send_comm.done())  )
+                break;
             acc_send_comm.start_communication();
             acc_recv_comm.start_communication();
             acc_send_comm.finish_communication();
@@ -669,13 +712,11 @@ public:
 
             for(auto& t : finished_tasks)
             {
-                //Add contributions to individual octants
                 for(std::size_t i = 0; i<recv_tasks[t->rank_other()].size(); ++i)
                 {
-                     auto& octant_field=recv_tasks[t->rank_other()][i]->
+                    auto& octant_field=recv_tasks[t->rank_other()][i]->
                         octant()->data()->template get<RecvField>().data();
 
-                     //add the contribution 
                     for(std::size_t j=0; j<octant_field.size();++j)
                     {
                         //Add to the octant field
@@ -683,30 +724,7 @@ public:
                     }
                 }
             }
-
-            if(acc_send_comm.done() && acc_send_comm.done() )
-                break;
-        }
-
-    }
-
-
-    void finish_combined_induced_field_communication()
-    {
-        auto& send_comm=
-            task_manager_-> template
-            send_communicator<induced_fields_task_t<AddAssignRecv>>();
-        auto& recv_comm=
-            task_manager_->template
-            recv_communicator<induced_fields_task_t<AddAssignRecv>>();
-
-        while(true)
-        {
-            send_comm.start_communication();
-            recv_comm.start_communication();
-            send_comm.finish_communication();
-            recv_comm.finish_communication();
-            if(send_comm.done() && recv_comm.done() )
+            if( !_finish || (acc_send_comm.done() && acc_send_comm.done())  )
                 break;
         }
     }
@@ -851,6 +869,8 @@ private:
     intra_client_server_t intra_server;
     std::vector<std::vector<float_type>> send_fields_;
     std::vector<std::vector<float_type>> recv_fields_;
+    std::vector<std::vector<std::shared_ptr<induced_fields_task_t<AddAssignRecv>>>> send_tasks;
+    std::vector<std::vector<std::shared_ptr<induced_fields_task_t<AddAssignRecv>>>> recv_tasks;
 };
 
 }

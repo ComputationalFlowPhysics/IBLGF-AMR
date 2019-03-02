@@ -72,6 +72,7 @@ struct DecomposistionTest:public SetupBase<DecomposistionTest,parameters>
 
         pcout << "\n Setup:  Test - Domain decomposition \n" << std::endl;
         pcout << "Simulation: \n" << simulation_    << std::endl;
+//        this->refine();
         domain_.distribute();
         this->initialize();
     }
@@ -93,6 +94,36 @@ struct DecomposistionTest:public SetupBase<DecomposistionTest,parameters>
         simulation_.write2("mesh.hdf5");
     }
 
+//    void refine()
+//    {
+//        boost::mpi::communicator world;
+//        std::cout<<"Refining on rank:"<<world.rank()<<std::endl;
+//
+//        auto center = (domain_.bounding_box().max() -
+//                       domain_.bounding_box().min()) / 2.0 +
+//                       domain_.bounding_box().min();
+//
+//        const int nRef = simulation_.dictionary_->
+//            template get_or<int>("nLevels",0);
+//
+//        for(int l=0;l<nRef;++l)
+//        {
+//            for (auto it  = domain_.begin_leafs();
+//                    it != domain_.end_leafs(); ++it)
+//            {
+//                auto b=it->data()->descriptor();
+//
+//                const auto lower((center )/2-2 ), upper((center )/2+2 - b.extent());
+//                b.grow(lower, upper);
+//                if(b.is_inside( center * pow(2.0,l))
+//                        && it->refinement_level()==l )
+//                {
+//                    domain_.refine(it);
+//                }
+//            }
+//        }
+//
+//    }
 
     /** @brief Initialization of poisson problem.
      *  @detail Testing poisson with manufactured solutions: exp
@@ -101,7 +132,7 @@ struct DecomposistionTest:public SetupBase<DecomposistionTest,parameters>
     {
         boost::mpi::communicator world;
         if(domain_.is_server()) return ;
-        //std::cout<<"Initializing on rank:"<<world.rank()<<std::endl;
+        std::cout<<"Initializing on rank:"<<world.rank()<<std::endl;
         auto center = (domain_.bounding_box().max() -
                        domain_.bounding_box().min()) / 2.0 +
                        domain_.bounding_box().min();
@@ -110,12 +141,13 @@ struct DecomposistionTest:public SetupBase<DecomposistionTest,parameters>
             template get_or<int>("nLevels",0);
 
 
-        //Adapt center to always have peak value in a cell-center
+        // Adapt center to always have peak value in a cell-center
         center+=0.5/std::pow(2,nRef);
         const float_type a  = 10.;
         const float_type a2 = a*a;
         const float_type dx_base = domain_.dx_base();
 
+        // Loop through leaves and assign values
         for (auto it  = domain_.begin_leafs();
                   it != domain_.end_leafs(); ++it)
         {

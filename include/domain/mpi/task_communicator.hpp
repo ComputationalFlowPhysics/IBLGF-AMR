@@ -154,6 +154,12 @@ public:
     const auto& get_buffer_queue() const noexcept {return buffer_queue_;}
     auto& get_buffer_queue() noexcept {return buffer_queue_;}
 
+    void clear()
+    {
+        tasks_.clear();
+        unconfirmed_tasks_.clear();
+        buffer_queue_.clear();
+    }
 
 protected:
     int tag_rank(int _rank_other) const noexcept 
@@ -202,6 +208,7 @@ protected:
             else { ++it; }
         }
     }
+
 
 
 protected:

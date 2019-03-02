@@ -240,7 +240,7 @@ public:
 
             //Check if something has finished
             send_comm.finish_communication();
-            const auto recv_tasks=recv_comm.finish_communication();
+            recv_comm.finish_communication();
             if(send_comm.done() && recv_comm.done() )
                 break;
         }
@@ -317,7 +317,7 @@ public:
 
             //Check if something has finished
             send_comm.finish_communication();
-            const auto recv_tasks=recv_comm.finish_communication();
+            recv_comm.finish_communication();
             if(send_comm.done() && recv_comm.done() )
                 break;
         }
@@ -387,7 +387,7 @@ public:
 
             //Check if something has finished
             send_comm.finish_communication();
-            const auto recv_tasks=recv_comm.finish_communication();
+            recv_comm.finish_communication();
             if(send_comm.done() && recv_comm.done() )
                 break;
         }
@@ -577,11 +577,11 @@ public:
             task_manager_-> template recv_communicator<acc_induced_fields_task_t>();
 
 
-        send_tasks.resize(comm_.size());
+        send_tasks_.resize(comm_.size());
         int count=0;
         for(auto& bt : send_comm.get_buffer_queue()) 
         {
-            send_tasks[bt->rank_other()].push_back(bt);
+            send_tasks_[bt->rank_other()].push_back(bt);
             ++count;
         }
 
@@ -590,21 +590,23 @@ public:
         if(recv_fields_.size()!= static_cast<std::size_t>(comm_.size()))
             recv_fields_.resize(comm_.size());
 
-        recv_tasks.resize(comm_.size());
+        recv_tasks_.resize(comm_.size());
         count=0;
         for(auto& bt : recv_comm.get_buffer_queue()) 
         {
-            recv_tasks[bt->rank_other()].push_back(bt);
+            recv_tasks_[bt->rank_other()].push_back(bt);
             ++count;
         }
+        send_comm.clear();
+        recv_comm.clear();
 
         //sort the tasks according to idx within each rank_other
         //then post a combined message
 
         //SendField
-        for(std::size_t rank_other=0; rank_other<send_tasks.size();++rank_other)
+        for(std::size_t rank_other=0; rank_other<send_tasks_.size();++rank_other)
         {
-            auto& tasks=send_tasks[rank_other];
+            auto& tasks=send_tasks_[rank_other];
             std::sort(tasks.begin(),tasks.end(),
                     [&](const auto& c0, const auto& c1)
                     {
@@ -638,9 +640,9 @@ public:
         }
 
         //RecvField
-        for(std::size_t rank_other=0; rank_other<recv_tasks.size();++rank_other)
+        for(std::size_t rank_other=0; rank_other<recv_tasks_.size();++rank_other)
         {
-            auto& tasks=recv_tasks[rank_other];
+            auto& tasks=recv_tasks_[rank_other];
             std::sort(tasks.begin(),tasks.end(),
                     [&](const auto& c0, const auto& c1)
                     {
@@ -670,9 +672,9 @@ public:
         //    for(auto& t : finished_tasks)
         //    {
         //        //Add contributions to individual octants
-        //        for(std::size_t i = 0; i<recv_tasks[t->rank_other()].size(); ++i)
+        //        for(std::size_t i = 0; i<recv_tasks_[t->rank_other()].size(); ++i)
         //        {
-        //             auto& octant_field=recv_tasks[t->rank_other()][i]->
+        //             auto& octant_field=recv_tasks_[t->rank_other()][i]->
         //                octant()->data()->template get<RecvField>().data();
 
         //             //add the contribution 
@@ -702,9 +704,6 @@ public:
 
         while(true)
         {
-
-            if( (acc_send_comm.done() && acc_send_comm.done())  )
-                break;
             acc_send_comm.start_communication();
             acc_recv_comm.start_communication();
             acc_send_comm.finish_communication();
@@ -712,9 +711,9 @@ public:
 
             for(auto& t : finished_tasks)
             {
-                for(std::size_t i = 0; i<recv_tasks[t->rank_other()].size(); ++i)
+                for(std::size_t i = 0; i<recv_tasks_[t->rank_other()].size(); ++i)
                 {
-                    auto& octant_field=recv_tasks[t->rank_other()][i]->
+                    auto& octant_field=recv_tasks_[t->rank_other()][i]->
                         octant()->data()->template get<RecvField>().data();
 
                     for(std::size_t j=0; j<octant_field.size();++j)
@@ -813,7 +812,7 @@ public:
 
             //Check if something has finished
             send_comm.finish_communication();
-            const auto recv_tasks=recv_comm.finish_communication();
+            recv_comm.finish_communication();
 
             if(send_comm.done() && recv_comm.done() )
                 break;
@@ -869,8 +868,8 @@ private:
     intra_client_server_t intra_server;
     std::vector<std::vector<float_type>> send_fields_;
     std::vector<std::vector<float_type>> recv_fields_;
-    std::vector<std::vector<std::shared_ptr<induced_fields_task_t<AddAssignRecv>>>> send_tasks;
-    std::vector<std::vector<std::shared_ptr<induced_fields_task_t<AddAssignRecv>>>> recv_tasks;
+    std::vector<std::vector<std::shared_ptr<induced_fields_task_t<AddAssignRecv>>>> send_tasks_;
+    std::vector<std::vector<std::shared_ptr<induced_fields_task_t<AddAssignRecv>>>> recv_tasks_;
 };
 
 }

@@ -115,7 +115,9 @@ public:
     {
         this->init(_keys, this->base_level_,f);
         // Maps construction
-        this->construct_leaf_maps();
+
+        // Ke TODO: check if this is ok
+        // this->construct_leaf_maps();
         this->construct_level_maps();
     }
 
@@ -130,6 +132,7 @@ public:
         {
             auto octant = this->insert_td(k);
             f(octant);
+            if (octant->level()+1 > depth_) depth_=octant->level()+1;
         }
     }
 
@@ -209,6 +212,7 @@ public:
 
         _l = leafs_.erase(_l);
         _l ->flag_leaf(false);
+
         if(_l->level()+1 > depth_) depth_=_l->level()+1;
         if(!_recursive) std::advance(_l,_l->num_children()-1);
     }
@@ -699,6 +703,26 @@ public: //children and parent queries
         }
     }
 
+    /** @brief Query ranks for all interior octants */
+    template<class Client>
+    void query_leaves( Client* _c)
+    {
+        dfs_iterator it_begin(root()); dfs_iterator it_end;
+        ++it_begin;
+
+        std::vector<key_type> keys;
+        for(auto it =it_begin;it!=it_end;++it)
+            keys.emplace_back(it->key());
+
+        auto leaves= _c->leaf_query( keys );
+
+        int i = 0;
+        for(auto it =it_begin;it!=it_end;++it)
+        {
+            //it->flag_leaf((leaves[i++]));
+        }
+    }
+
 
 public: //Query ranks of all octants, which are assigned in local tree
 
@@ -717,7 +741,6 @@ public: //Query ranks of all octants, which are assigned in local tree
         this->query_interior(_c, _f);
 
         //Maps constructions
-        this-> construct_leaf_maps();
         this-> construct_level_maps();
     }
 
@@ -734,13 +757,15 @@ public: // leafs maps
         }
     }
 
-    void construct_leaf_maps()
+    void construct_leaf_maps(bool _from_existing_flag=false)
     {
         leafs_.clear();
         dfs_iterator it_begin(root()); dfs_iterator it_end;
         for(auto it =it_begin;it!=it_end;++it)
         {
-            it->flag_leaf(it->is_leaf_search());
+            if (!_from_existing_flag)
+                it->flag_leaf(it->is_leaf_search());
+
             if(it->is_leaf())
             {
                 leafs_.emplace(it->key(), it.ptr());

@@ -18,7 +18,6 @@
 #include <fftw3.h>
 
 
-//test
 #include <global.hpp>
 #include <simulation.hpp>
 #include <linalg/linalg.hpp>
@@ -195,34 +194,35 @@ public:
         fmm_sync_masks(domain_, level);
         //fmm_upward_pass_masks(domain_, level);
 
-        for (int l = level; l>=0; l--)
-        {
-            for (auto it = domain_->begin(l); it!=domain_->end(l); ++it)
-            {
-                if ( !it->mask(0)  &&  it->locally_owned())
-                {
-                    std::cout<< it->rank() << std::endl;
-                    std::cout<< it->key() << std::endl;
+        //for (int l = level; l>=0; l--)
+        //{
+        //    for (auto it = domain_->begin(l); it!=domain_->end(l); ++it)
+        //    {
+        //        if ( !it->mask(0)  &&  it->locally_owned())
+        //        {
+        //            std::cout<< it->rank() << std::endl;
+        //            std::cout<< it->key() << std::endl;
 
-                    for(int c=0;c<it->num_children();++c)
-                    {
-                        auto child = it->child(c);
-                        //if (child && !child->locally_owned())
-                        //{
-                        //    std::cout<<child->rank() << std::endl;
-                        //    std::cout<<child->locally_owned()<<child->rank() << std::endl;
-                        //}
+        //            for(int c=0;c<it->num_children();++c)
+        //            {
+        //                auto child = it->child(c);
+        //                //if (child && !child->locally_owned())
+        //                //{
+        //                //    std::cout<<child->rank() << std::endl;
+        //                //    std::cout<<child->locally_owned()<<child->rank() << std::endl;
+        //                //}
 
-                    }
+        //            }
 
-                }
-            }
-        }
+        //        }
+        //    }
+        //}
 
 
         ////Initialize for each fmm // zero ing all tree
         //std::cout<<"FMM init Zero" << std::endl;
         fmm_init_zero<fmm_s>(domain_, level);
+        fmm_init_zero<fmm_t>(domain_, level);
 
         //// Copy to temporary variables // only the base level
         //std::cout<<"FMM Init Copy start" << std::endl;
@@ -292,6 +292,7 @@ public:
                     it->mask(MASK_LIST::Mask_FMM_Target, false);
                 } else
                 {
+                    std::cout<< it->key()<<std::endl;
                     it->mask(MASK_LIST::Mask_FMM_Source, true);
                     it->mask(MASK_LIST::Mask_FMM_Target, true);
                 }

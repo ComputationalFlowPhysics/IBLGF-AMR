@@ -43,6 +43,7 @@ public:
 
     using key_query_t  = typename trait_t::key_query_t;
     using rank_query_t = typename trait_t::rank_query_t;
+    using leaf_query_t = typename trait_t::leaf_query_t;
 
     template<template<class>class BufferPolicy=OrAssignRecv>
     using mask_query_t = typename trait_t::template
@@ -89,6 +90,20 @@ public:
                     domain_->block_extent(),_o->refinement_level(), true);
             _o->rank()=comm_.rank();
         });
+    }
+
+    auto leaf_query(std::vector<key_t>& task_dat)
+    {
+        auto& send_comm=
+            task_manager_->template send_communicator<key_query_t>();
+
+        auto task= send_comm.post_task(&task_dat, 0);
+        QueryRegistry<key_query_t, leaf_query_t> mq;
+
+        std::vector<int> recvData;
+        mq.register_recvMap([&recvData](int i){return &recvData;} );
+        this->wait(mq);
+        return recvData;
     }
 
     auto rank_query(std::vector<key_t>& task_dat)
@@ -793,6 +808,11 @@ public:
      *         parents which do not belong to this processor.
      *
      */
+    void query_leaves()
+    {
+        domain_->tree()-> query_leaves(this);
+        domain_->tree()-> construct_leaf_maps(true);
+    }
     void query_octants()
     {
         //Octant initialization function

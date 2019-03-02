@@ -63,12 +63,39 @@ public: //memeber functions
 
     void distribute()
     {
-        domain_->tree()->construct_leaf_maps();
-        domain_->tree()->construct_level_maps();
 
         //Send the construction keys back and forth
         if(server())
+        {
+            domain_->tree()->construct_leaf_maps();
+            domain_->tree()->construct_level_maps();
+
+            auto center = (domain_->bounding_box().max() -
+                           domain_->bounding_box().min()) / 2.0 +
+                           domain_->bounding_box().min();
+
+            int nRef = 1;
+
+            for(int l=0;l<nRef;++l)
+            {
+                for (auto it  = domain_->begin_leafs();
+                        it != domain_->end_leafs(); ++it)
+                {
+                    auto b=it->data()->descriptor();
+
+                    const auto lower((center )/2-2 ), upper((center )/2+2 - b.extent());
+                    b.grow(lower, upper);
+                    if(b.is_inside( center * pow(2.0,l))
+                       && it->refinement_level()==l
+                      )
+                    {
+                        domain_->refine(it);
+                    }
+                }
+            }
+
             server()->send_keys();
+        }
         else if(client())
             client()->receive_keys();
 
@@ -76,14 +103,16 @@ public: //memeber functions
         if(server())
         {
             server()->rank_query();
+            server()->leaf_query();
         }
         else if(client())
         {
             client()->query_octants();
             client()->disconnect();
+            client()->query_leaves();
+            client()->disconnect();
         }
     }
-
 
 public: //access memebers:
 

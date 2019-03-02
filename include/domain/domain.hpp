@@ -16,8 +16,8 @@ namespace domain
 using namespace dictionary;
 
 /** @brief Spatial Domain
- *  @detail Given a datablock (and its corresponding dataFields) 
- *  in Dim-dimensional space, the domain is constructed using an 
+ *  @detail Given a datablock (and its corresponding dataFields)
+ *  in Dim-dimensional space, the domain is constructed using an
  *  octree of blocks. Base blocks are read in from *  the config file.
  */
 template<int Dim, class DataBlock>
@@ -164,16 +164,16 @@ public: //C/Dtors
             {
                 const int level=0;
                 auto bbase=t_->octant_to_level_coordinate(it->tree_coordinate());
-                it->data()=std::make_shared<datablock_t>(bbase, 
+                it->data()=std::make_shared<datablock_t>(bbase,
                         _blockExtent,level, false);
             }
         }
         else if(decomposition_.is_client())
         {
             t_=std::make_shared<tree_t>(base_level);
-            
-            //Instantiate blocks only after master has distributed tasks 
-            
+
+            //Instantiate blocks only after master has distributed tasks
+
             //Assign octant to real coordinate transform:
             t_->get_octant_to_level_coordinate()=
                 [ blockExtent=_blockExtent, base=base_]
@@ -189,7 +189,7 @@ public: //C/Dtors
     {
         decomposition_.distribute();
     }
-    
+
 
 
     template<template<std::size_t> class Field>
@@ -220,7 +220,7 @@ public: // Iterators:
     auto begin(int _level)         { return t_->begin(_level); }
     auto end(int _level)           { return t_->end(_level); }
 
-    /** @brief ConditionalIterator based on generic conditon lambda. 
+    /** @brief ConditionalIterator based on generic conditon lambda.
      *  Iterate through tree and skip octant if condition is not fullfilled.
      */
     template<class Func, class Iterator=bfs_iterator>
@@ -269,7 +269,8 @@ public:
                 std::make_shared<datablock_t>(bbase, block_extent_,level);
         });
 
-        tree()->construct_flag_leaf();
+        // Ke TODO Need to check
+        //tree()->construct_flag_leaf();
         tree()->construct_neighbor_lists();
         tree()->construct_influence_lists();
     }

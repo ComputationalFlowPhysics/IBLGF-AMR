@@ -70,7 +70,7 @@ public:  //Registry
     {
         return *recvMap_(_rank);
     }
-    
+
     auto complete(std::shared_ptr<recv_task_t> _t) const  noexcept
     {
         if(complete_)
@@ -78,7 +78,7 @@ public:  //Registry
     }
 
 
-     
+
 private:
     sendMap_functor_t sendMap_;
     recvMap_functor_t recvMap_;
@@ -111,8 +111,8 @@ public: //Ctor
     :send_data_(_send_size), recv_data_(_recv_size)
     { }
 
-public: 
-    
+public:
+
     send_data_t* sendDataPtr(int _rank=0) const noexcept override
     {
         return &send_data_[_rank];
@@ -122,7 +122,7 @@ public:
     {
         return &recv_data_[_rank];
     }
-    
+
     send_data_t& sendData(int _rank=0) const noexcept override
     {
         return send_data_[_rank];
@@ -132,7 +132,7 @@ public:
     {
         return recv_data_[_rank];
     }
-private: 
+private:
 
     mutable std::vector<send_data_t> send_data_;
     mutable std::vector<recv_data_t> recv_data_;
@@ -140,4 +140,4 @@ private:
 };
 
 }
-#endif 
+#endif

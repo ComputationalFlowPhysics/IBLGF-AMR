@@ -29,6 +29,7 @@ struct ServerClientTraits
 
     using key_query_t  = Task<tags::key_query,std::vector<key_t>>;
     using rank_query_t = Task<tags::key_query,std::vector<int>>;
+    using leaf_query_t = Task<tags::key_query,std::vector<int>>;
 
     template< template<class> class BufferPolicy >
     using mask_query_t = Task<tags::field_query,
@@ -40,6 +41,7 @@ struct ServerClientTraits
 
     using task_manager_t = TaskManager<key_query_t,
                                        rank_query_t,
+                                       leaf_query_t,
                                        mask_query_t<OrAssignRecv>,
                                        induced_fields_task_t<CopyAssign>,
                                        induced_fields_task_t<AddAssignRecv>

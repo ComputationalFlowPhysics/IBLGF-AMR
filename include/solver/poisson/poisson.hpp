@@ -83,19 +83,13 @@ public:
         const float_type dx_base=domain_->dx_base();
 
         // Copy source
-        for (int l  = domain_->tree()->base_level();
-                 l < domain_->tree()->depth(); ++l)
+        for (auto it  = domain_->begin_leafs();
+                it != domain_->end_leafs(); ++it)
         {
-            for (auto it  = domain_->begin(l);
-                      it != domain_->end(l); ++it)
-            {
-                // copy source
                 auto& cp1 = it ->data()->template get_linalg_data<Source>();
                 auto& cp2 = it ->data()->template get_linalg_data<source_tmp>();
 
                 cp2 = cp1 * 1.0;
-            }
-
         }
 
 
@@ -124,29 +118,29 @@ public:
             //fmm_.template fmm_for_level<source_tmp, Target>(domain_, l, false);
             //fmm_.template fmm_for_level<source_tmp, Target>(domain_, l, true);
             fmm_.template fmm_for_level_test<source_tmp, Target>(domain_, l, false);
-            //fmm_.template fmm_for_level_test<source_tmp, Target>(domain_, l, true);
+            fmm_.template fmm_for_level_test<source_tmp, Target>(domain_, l, true);
             //this->level_convolution_fft<source_tmp, Target>(l);
 
-            for (auto it  = domain_->begin(l);
-                      it != domain_->end(l); ++it)
-            {
-                if(it->is_leaf()) continue;
+            //for (auto it  = domain_->begin(l);
+            //          it != domain_->end(l); ++it)
+            //{
+            //    if(it->is_leaf()) continue;
 
-                auto& cp1 = it ->data()->template get_linalg_data<Target>();
-                auto& cp2 = it ->data()->
-                    template get_linalg_data<coarse_target_sum>();
+            //    auto& cp1 = it ->data()->template get_linalg_data<Target>();
+            //    auto& cp2 = it ->data()->
+            //        template get_linalg_data<coarse_target_sum>();
 
-                cp2 += cp1 * 1.0;
+            //    cp2 += cp1 * 1.0;
 
-                c_cntr_nli_.nli_intrp_node<
-                            coarse_target_sum, coarse_target_sum
-                            >(it);
-                int refinement_level = it->refinement_level();
-                double dx = dx_base/std::pow(2,refinement_level);
-                c_cntr_nli_.add_source_correction<
-                                        coarse_target_sum, source_tmp
-                                        >(it, dx/2.0);
-            }
+            //    c_cntr_nli_.nli_intrp_node<
+            //                coarse_target_sum, coarse_target_sum
+            //                >(it);
+            //    int refinement_level = it->refinement_level();
+            //    double dx = dx_base/std::pow(2,refinement_level);
+            //    c_cntr_nli_.add_source_correction<
+            //                            coarse_target_sum, source_tmp
+            //                            >(it, dx/2.0);
+            //}
 
         }
 
@@ -309,8 +303,8 @@ public:
         for (int i = 0; i < parent->num_children(); ++i)
         {
             auto child = parent->child(i);
-            auto child_view= child->data()->descriptor();
             if(child==nullptr) continue;
+            auto child_view= child->data()->descriptor();
 
             auto cview =child->data()->node_field().view(child_view,stride);
 

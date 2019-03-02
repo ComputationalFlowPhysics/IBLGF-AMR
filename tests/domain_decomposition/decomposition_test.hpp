@@ -68,7 +68,7 @@ struct DecomposistionTest:public SetupBase<DecomposistionTest,parameters>
     {
 
         pcout << "\n Setup:  Test - Domain decomposition \n" << std::endl;
-        pcout << "Simulation: \n" << simulation_    << std::endl;
+        pcout << "Simulation: \n" << simulation_ << std::endl;
         domain_.distribute();
         this->initialize();
     }
@@ -76,19 +76,11 @@ struct DecomposistionTest:public SetupBase<DecomposistionTest,parameters>
 
     void run()
     {
-        //domain_.test();
-       //domain_.decomposition().communicate_influence<source, phi_exact>();
-
 
         if(domain_.is_client())
         {
             poisson_solver_t psolver(&this->simulation_);
 
-            //auto t0=clock_type::now();
-            //psolver.solve<source, phi_num>();
-            //auto t1=clock_type::now();
-            //auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(t1-t0);
-            //std::cout<<"elapsed for LGF: "<<elapsed.count()<<std::endl;
             mDuration_type solve_duration(0);
             TIME_CODE( solve_duration, SINGLE_ARG(
                     psolver.solve<source, phi_num>();
@@ -100,9 +92,6 @@ struct DecomposistionTest:public SetupBase<DecomposistionTest,parameters>
 
         boost::mpi::communicator world;
 
-        //world.barrier();
-        //std::cout<<"Write HDF5 with rank: "<<world.rank()<<std::endl;
-        //world.barrier();
         simulation_.write2("mesh.hdf5");
     }
 

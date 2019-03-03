@@ -137,7 +137,7 @@ public:
                     total_loads_perProc[i+1]-total_loads_perProc[i];
 
                 //Shuffle around
-                if(dx_load>0 && !tasks_perProc[i+1].empty() )
+                if(dx_load>0 && tasks_perProc[i+1].size() > 1)
                 {
                     auto task_to_move =tasks_perProc[i+1].front();
                     const auto load_to_move = task_to_move.load();
@@ -153,7 +153,7 @@ public:
                     total_loads_perProc[i+1]=new_total_np1;
                     total_loads_perProc[i]=new_total;
                 }
-                else if(dx_load<0 && !tasks_perProc[i].empty())
+                else if(dx_load<0 && tasks_perProc[i].size()>1)
                 {
                     auto task_to_move =tasks_perProc[i].back();
                     const auto load_to_move = task_to_move.load();

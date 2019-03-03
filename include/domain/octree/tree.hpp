@@ -604,7 +604,6 @@ public: //children and parent queries
     void query_children( Client* _c, InitFunction& _f )
     {
         dfs_iterator it_begin(root()); dfs_iterator it_end;
-        //++it_begin;
 
         std::vector<key_type> keys;
         for(auto it =it_begin;it!=it_end;++it)
@@ -655,7 +654,7 @@ public: //children and parent queries
             if(it->locally_owned())
             {
                 //Check children
-                if(!it->parent()->locally_owned() || !it->parent())
+                if( !(it->parent()) || (!it->parent()->locally_owned()) )
                 {
                     keys_set.insert(it_key.parent());
                 }
@@ -680,7 +679,6 @@ public: //children and parent queries
     void query_interior( Client* _c, InitFunction _f)
     {
         dfs_iterator it_begin(root()); dfs_iterator it_end;
-        ++it_begin;
 
         std::vector<key_type> keys;
         for(auto it =it_begin;it!=it_end;++it)
@@ -714,11 +712,6 @@ public: //children and parent queries
         std::vector<key_type> keys;
         for(auto it =it_begin;it!=it_end;++it)
         {
-            if (w.rank() == 1)
-            {
-                std::cout<< it->key()<< std::endl;
-                std::cout<< it->rank()<< std::endl;
-            }
             keys.emplace_back(it->key());
         }
 
@@ -769,7 +762,6 @@ public: // leafs maps
     {
         leafs_.clear();
         dfs_iterator it_begin(root()); dfs_iterator it_end;
-        ++it_begin;
 
         for(auto it =it_begin;it!=it_end;++it)
         {

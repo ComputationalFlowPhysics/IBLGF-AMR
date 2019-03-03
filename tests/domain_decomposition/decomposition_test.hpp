@@ -69,7 +69,7 @@ struct DecomposistionTest:public SetupBase<DecomposistionTest,parameters>
 
         pcout << "\n Setup:  Test - Domain decomposition \n" << std::endl;
         pcout << "Simulation: \n" << simulation_ << std::endl;
-        domain_.refine(_d->template get_or<int>("nLevels",0));
+        domain_.init_refine(_d->get_dictionary("simulation_parameters") ->template get_or<int>("nLevels",0));
         domain_.distribute();
         this->initialize();
     }

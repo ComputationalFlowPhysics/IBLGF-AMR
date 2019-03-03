@@ -63,15 +63,10 @@ public: //memeber functions
 
     void distribute()
     {
-
         //Send the construction keys back and forth
         if(server())
-        {
-            domain_->tree()->construct_leaf_maps();
-            domain_->tree()->construct_level_maps();
-
             server()->send_keys();
-        }
+
         else if(client())
             client()->receive_keys();
 
@@ -79,9 +74,9 @@ public: //memeber functions
         if(server())
         {
             server()->rank_query();
-            std::cout<<" Server done rank queries" << std::endl;
+            std::cout<<"Server done rank queries" << std::endl;
             server()->leaf_query();
-            std::cout<<" Server done leaf queries" << std::endl;
+            std::cout<<"Server done leaf queries" << std::endl;
         }
         else if(client())
         {

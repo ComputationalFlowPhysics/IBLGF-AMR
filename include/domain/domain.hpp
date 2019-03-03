@@ -184,26 +184,33 @@ public: //C/Dtors
         }
     }
 
-    void refine(int nRef)
+    void init_refine(int nRef)
     {
-        auto center = (this->bounding_box().max() -
-                this->bounding_box().min()) / 2.0 +
-        this->bounding_box().min();
-
-        for(int l=0;l<nRef;++l)
+        if(is_server())
         {
-            for (auto it  = this->begin_leafs();
-                    it != this->end_leafs(); ++it)
-            {
-                auto b=it->data()->descriptor();
+            std::cout<< "nRef = " << nRef << std::endl;
+            this->tree()->construct_leaf_maps();
+            this->tree()->construct_level_maps();
 
-                const auto lower((center )/2-2 ), upper((center )/2+2 - b.extent());
-                b.grow(lower, upper);
-                if(b.is_inside( center * pow(2.0,l))
-                        && it->refinement_level()==l
-                  )
+            auto center = (this->bounding_box().max() -
+                    this->bounding_box().min()) / 2.0 +
+            this->bounding_box().min();
+
+            for(int l=0;l<nRef;++l)
+            {
+                for (auto it  = this->begin_leafs();
+                        it != this->end_leafs(); ++it)
                 {
-                    this->refine(it);
+                    auto b=it->data()->descriptor();
+
+                    const auto lower((center )/2-2 ), upper((center )/2+2 - b.extent());
+                    b.grow(lower, upper);
+                    if(b.is_inside( center * pow(2.0,l))
+                            && it->refinement_level()==l
+                      )
+                    {
+                        this->refine(it);
+                    }
                 }
             }
         }

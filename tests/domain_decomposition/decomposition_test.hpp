@@ -73,8 +73,8 @@ struct DecomposistionTest:public SetupBase<DecomposistionTest,parameters>
         pcout << "\n Setup:  Test - Domain decomposition \n" << std::endl;
         pcout << "Simulation: \n" << simulation_    << std::endl;
 
-        domain_.distribute();
-        this->refine();
+        //domain_.distribute();
+        //this->refine();
         domain_.distribute();
         this->initialize();
     }

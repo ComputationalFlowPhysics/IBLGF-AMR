@@ -43,7 +43,9 @@ public:
 
     using key_query_t  = typename trait_t::key_query_t;
     using rank_query_t = typename trait_t::rank_query_t;
-    using leaf_query_t = typename trait_t::leaf_query_t;
+
+    using leaf_query_send_t   = typename trait_t::leaf_query_send_t;
+    using leaf_query_recv_t   = typename trait_t::leaf_query_recv_t;
 
     template<template<class>class BufferPolicy=OrAssignRecv>
     using mask_query_t = typename trait_t::template
@@ -95,12 +97,12 @@ public:
     auto leaf_query(std::vector<key_t>& task_dat)
     {
         auto& send_comm=
-            task_manager_->template send_communicator<key_query_t>();
+            task_manager_->template send_communicator<leaf_query_send_t>();
 
         auto task= send_comm.post_task(&task_dat, 0);
-        QueryRegistry<key_query_t, leaf_query_t> mq;
+        QueryRegistry<leaf_query_send_t, leaf_query_recv_t> mq;
 
-        std::vector<int> recvData;
+        std::vector<bool> recvData;
         mq.register_recvMap([&recvData](int i){return &recvData;} );
         this->wait(mq);
         return recvData;

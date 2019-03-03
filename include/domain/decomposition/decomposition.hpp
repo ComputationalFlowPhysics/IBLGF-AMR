@@ -74,7 +74,7 @@ public: //memeber functions
                            domain_->bounding_box().min()) / 2.0 +
                            domain_->bounding_box().min();
 
-            int nRef = 1;
+            int nRef = 0;
 
             for(int l=0;l<nRef;++l)
             {
@@ -93,6 +93,7 @@ public: //memeber functions
                     }
                 }
             }
+            //domain_->tree()->construct_leaf_maps();
 
             server()->send_keys();
         }
@@ -103,12 +104,15 @@ public: //memeber functions
         if(server())
         {
             server()->rank_query();
+            std::cout<<" Server done rank queries" << std::endl;
             server()->leaf_query();
         }
         else if(client())
         {
             client()->query_octants();
             client()->disconnect();
+            sleep(3);
+
             client()->query_leaves();
             client()->disconnect();
         }

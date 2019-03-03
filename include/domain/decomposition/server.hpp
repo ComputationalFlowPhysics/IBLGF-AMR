@@ -40,9 +40,12 @@ public:
     using trait_t =  ServerClientTraits<Domain>;
     using super_type = ServerBase<trait_t>;
 
-    using leaf_query_t   = typename trait_t::leaf_query_t;
     using rank_query_t   = typename trait_t::rank_query_t;
     using key_query_t    = typename trait_t::key_query_t;
+
+    using leaf_query_send_t   = typename trait_t::leaf_query_send_t;
+    using leaf_query_recv_t   = typename trait_t::leaf_query_recv_t;
+
     using task_manager_t = typename trait_t::task_manager_t;
 
 public: //Ctors
@@ -142,7 +145,7 @@ public:
 
     void leaf_query()
     {
-        InlineQueryRegistry<leaf_query_t, key_query_t> mq(comm_.size());
+        InlineQueryRegistry<leaf_query_recv_t, leaf_query_send_t> mq(comm_.size());
         mq.register_completeFunc([this](auto _task, auto _answerData)
         {
             this->get_octant_leaf(_task, _answerData);
@@ -171,12 +174,13 @@ public:
         {
             auto oct =domain_->tree()->find_octant(key);
             if(oct)
-            {// (*_out)[count++]=int(oct->is_leaf());
+            { (*_out)[count++]=(oct->is_leaf());
             }
             else
             {
-                std::cout<< key << std::endl;
-                throw std::runtime_error("Leaf query octant doesn't exist");
+                (*_out)[count++]=false;
+                //std::cout<< key << std::endl;
+                //throw std::runtime_error("Leaf query octant doesn't exist");
             }
         }
     }

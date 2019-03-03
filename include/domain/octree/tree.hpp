@@ -707,19 +707,25 @@ public: //children and parent queries
     template<class Client>
     void query_leaves( Client* _c)
     {
+        boost::mpi::communicator  w;
+
         dfs_iterator it_begin(root()); dfs_iterator it_end;
         ++it_begin;
 
         std::vector<key_type> keys;
         for(auto it =it_begin;it!=it_end;++it)
+        {
+            if (w.rank() == 2)
+                std::cout<< it->key()<< std::endl;
             keys.emplace_back(it->key());
+        }
 
         auto leaves= _c->leaf_query( keys );
 
         int i = 0;
         for(auto it =it_begin;it!=it_end;++it)
         {
-            //it->flag_leaf((leaves[i++]));
+            it->flag_leaf((leaves[i++]));
         }
     }
 

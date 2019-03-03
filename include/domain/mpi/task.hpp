@@ -239,7 +239,8 @@ protected:
 template
 <
     int Tag, class T,
-    template<class> class BufferPolicy=CopyAssign,  //Assign Mixin
+    template<class> class BufferPolicy=CopyAssign,  //Assign Mixin,
+    class MetaDataType=void,
     class ID=int
 >
 class Task : public Task_base<TaskBuffer<Tag,T,ID>,BufferPolicy,ID>
@@ -255,11 +256,18 @@ public:
 
     using data_type = T;
 
-    using answer_data_type=data_type;
-    using answer_task_type=Task<Tag, answer_data_type>;
-
     static constexpr int tag(){return Tag;}
+    
+    const MetaDataType*& meta()const {return meta_;}
+    MetaDataType*& meta(){return meta_;}
 
+    const MetaDataType*& octant()const {return meta_;}
+    MetaDataType*& octant(){return meta_;}
+
+private:
+    MetaDataType* meta_=nullptr;
+
+    
 };
 
 

@@ -5,6 +5,7 @@
 #include<array>
 #include<list>
 #include<queue>
+#include<deque>
 
 
 namespace sr_mpi
@@ -27,7 +28,7 @@ public:
     using id_type = typename task_t::id_type;
     using task_vector_t =std::vector<task_ptr_t>;
     using task_data_t = typename TaskType::data_type;
-    using buffer_queue_t = std::queue<task_ptr_t>;
+    using buffer_queue_t = std::deque<task_ptr_t>;
     using buffer_container_t =typename task_t::buffer_container_type;
 
     using request_list_t = std::list<boost::mpi::request>;
@@ -58,7 +59,7 @@ public:
         auto task_ptr = std::make_shared<task_t>(_taskId);
         task_ptr->attach_data(_data);
         task_ptr->rank_other()=_rank_other;
-        buffer_queue_.push( task_ptr );
+        buffer_queue_.push_back( task_ptr );
 
         return task_ptr;
     }
@@ -105,8 +106,8 @@ public:
             //If message does not exisit (for recv), check other posted messages
             if( !message_exists(task))
             {
-                buffer_queue_.push(task);
-                buffer_queue_.pop();
+                buffer_queue_.push_back(task);
+                buffer_queue_.pop_front();
             }
             else
             {
@@ -117,7 +118,7 @@ public:
 
                 tasks_.push_back(task);
                 res.push_back(task);
-                buffer_queue_.pop();
+                buffer_queue_.pop_front();
             }
             if(mCount==size) break;
             ++mCount;
@@ -149,7 +150,16 @@ public:
         check_unconfirmed_tasks();
         return finished_;
     }
+    
+    const auto& get_buffer_queue() const noexcept {return buffer_queue_;}
+    auto& get_buffer_queue() noexcept {return buffer_queue_;}
 
+    void clear()
+    {
+        tasks_.clear();
+        unconfirmed_tasks_.clear();
+        buffer_queue_.clear();
+    }
 
 protected:
     int tag_rank(int _rank_other) const noexcept 
@@ -198,6 +208,7 @@ protected:
             else { ++it; }
         }
     }
+
 
 
 protected:

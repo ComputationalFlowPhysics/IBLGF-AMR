@@ -156,6 +156,7 @@ public:
                             bool non_leaf_as_source=false)
     {
 
+        pcout<<"FMM For Level "<< level << " Start ---------------------------"<<std::endl;
         const float_type dx_base=domain_->dx_base();
         auto refinement_level = level-domain_->tree()->base_level();
         auto dx_level =  dx_base/std::pow(2, refinement_level);
@@ -258,6 +259,7 @@ public:
         boost::mpi::communicator world;
         std::cout<<"Rank "<<world.rank() << " FFTW_count = ";
         std::cout<<conv_.fft_count << std::endl;
+        pcout<<"FMM For Level "<< level << " End ---------------------------"<<std::endl;
     }
 
     void fmm_Bx_itr_build(domain_t* domain_, int base_level)
@@ -579,7 +581,7 @@ public:
     template< class fmm_s >
     void fmm_init_zero(domain_t* domain_, int base_level)
     {
-        for (int level=base_level; level>0; --level)
+        for (int level=base_level; level>=0; --level)
         {
             for (auto it = domain_->begin(level);
                     it != domain_->end(level);
@@ -638,7 +640,7 @@ public:
     template< class fmm_s>
     void fmm_antrp(domain_t* domain_, int base_level)
     {
-        for (int level=base_level-1; level>0; --level)
+        for (int level=base_level-1; level>=0; --level)
         {
             for (auto it = domain_->begin(level);
                     it != domain_->end(level);
@@ -700,6 +702,7 @@ public:
         std::vector<float_type>     lgf;
         fft::Convolution            conv_;      ///< fft convolution
         std::multimap<int,octant_t*>     Bx_itr;
+        parallel_ostream::ParallelOstream pcout=parallel_ostream::ParallelOstream(1);
 
     private: //timings
 

@@ -210,7 +210,7 @@ public:
             level_maps_[child->level()].emplace(child->key(),child);
         }
 
-        _l = leafs_.erase(_l);
+        leafs_.erase(_l->key());
         _l ->flag_leaf(false);
 
         if(_l->level()+1 > depth_) depth_=_l->level()+1;
@@ -445,7 +445,6 @@ public: // influence list
     auto construct_influence_lists(bool _global= true)
     {
         dfs_iterator it_begin(root()); dfs_iterator it_end;
-        ++it_begin;
 
         std::set<influence_helper> res;
         for(auto it =it_begin;it!=it_end;++it)
@@ -644,7 +643,6 @@ public: //children and parent queries
     void query_parents( Client* _c, InitFunction& _f )
     {
         dfs_iterator it_begin(root()); dfs_iterator it_end;
-        ++it_begin;
 
         std::set<key_type> keys_set;
         std::vector<key_type> keys;
@@ -749,13 +747,18 @@ public: //Query ranks of all octants, which are assigned in local tree
 
 public: // leafs maps
 
-    void construct_flag_leaf()
+    //void construct_flag_leaf()
+    //{
+    //    dfs_iterator it_begin(root()); dfs_iterator it_end;
+    //    for(auto it =it_begin;it!=it_end;++it)
+    //    {
+    //        it->flag_leaf(it->is_leaf_search());
+    //    }
+    //}
+
+    auto leaf_map()
     {
-        dfs_iterator it_begin(root()); dfs_iterator it_end;
-        for(auto it =it_begin;it!=it_end;++it)
-        {
-            it->flag_leaf(it->is_leaf_search());
-        }
+        return leafs_;
     }
 
     void construct_leaf_maps(bool _from_existing_flag=false)
@@ -784,7 +787,6 @@ public: // leafs maps
 private:
     /** \brief Coordinate transform from octant coordinate to real coordinates*/
     coordinate_transform_t octant_to_real_coordinate_=&Tree::unit_transform;
-
 
     int base_level_=0;                              ///< Base level
     int depth_=0;                                   ///< Tree depth

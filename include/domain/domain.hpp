@@ -184,11 +184,11 @@ public: //C/Dtors
         }
     }
 
-    void init_refine(int nRef)
+    void init_refine(int nRef=0)
     {
+        std::cout<<"Initial mesh and refienment"<< std::endl;
         if(is_server())
         {
-            std::cout<< "nRef = " << nRef << std::endl;
             this->tree()->construct_leaf_maps();
             this->tree()->construct_level_maps();
 
@@ -198,21 +198,25 @@ public: //C/Dtors
 
             for(int l=0;l<nRef;++l)
             {
-                for (auto it  = this->begin_leafs();
-                        it != this->end_leafs(); ++it)
+                int level = this->tree()->base_level()+l;
+
+                for (auto it  = this->begin(level);
+                        it != this->end(level); ++it)
                 {
                     auto b=it->data()->descriptor();
 
                     const auto lower((center )/2-2 ), upper((center )/2+2 - b.extent());
                     b.grow(lower, upper);
-                    if(b.is_inside( center * pow(2.0,l))
-                            && it->refinement_level()==l
-                      )
+                    if(b.is_inside( center * pow(2.0,l)))
                     {
                         this->refine(it);
                     }
                 }
             }
+            //TODO
+            std::cout<<"Initial mesh and refienment done"<< std::endl;
+            //this->tree()->construct_leaf_maps();
+            //this->tree()->construct_level_maps();
         }
      }
 
@@ -303,8 +307,8 @@ public:
 
         // Ke TODO Need to check
         //tree()->construct_flag_leaf();
-        tree()->construct_neighbor_lists();
-        tree()->construct_influence_lists();
+        //tree()->construct_neighbor_lists();
+        //tree()->construct_influence_lists();
     }
 
 

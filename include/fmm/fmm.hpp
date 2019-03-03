@@ -189,8 +189,11 @@ public:
 
         //// Initialize Masks
 
+        std::cout<<"FMM init base level masks" << std::endl;
         fmm_init_base_level_masks(domain_, level, non_leaf_as_source);
+        std::cout<<"FMM upward masks" << std::endl;
         fmm_upward_pass_masks(domain_, level);
+        std::cout<<"FMM sync masks" << std::endl;
         fmm_sync_masks(domain_, level);
         //fmm_upward_pass_masks(domain_, level);
 
@@ -286,7 +289,7 @@ public:
             for (auto it = domain_->begin(base_level);
                     it != domain_->end(base_level); ++it)
             {
-                if ( it->is_leaf() )
+                if ( it->is_leaf() || !it->locally_owned() )
                 {
                     it->mask(MASK_LIST::Mask_FMM_Source, false);
                     it->mask(MASK_LIST::Mask_FMM_Target, false);
@@ -301,9 +304,14 @@ public:
         {
             for (auto it = domain_->begin(base_level);
                     it != domain_->end(base_level); ++it)
+            if (it->locally_owned())
             {
                 it->mask(MASK_LIST::Mask_FMM_Source, true);
                 it->mask(MASK_LIST::Mask_FMM_Target, true);
+            } else
+            {
+                it->mask(MASK_LIST::Mask_FMM_Source, false);
+                it->mask(MASK_LIST::Mask_FMM_Target, false);
             }
         }
     }

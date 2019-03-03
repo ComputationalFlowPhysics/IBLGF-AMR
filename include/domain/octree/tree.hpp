@@ -710,13 +710,15 @@ public: //children and parent queries
         boost::mpi::communicator  w;
 
         dfs_iterator it_begin(root()); dfs_iterator it_end;
-        ++it_begin;
 
         std::vector<key_type> keys;
         for(auto it =it_begin;it!=it_end;++it)
         {
-            if (w.rank() == 2)
+            if (w.rank() == 1)
+            {
                 std::cout<< it->key()<< std::endl;
+                std::cout<< it->rank()<< std::endl;
+            }
             keys.emplace_back(it->key());
         }
 
@@ -767,6 +769,8 @@ public: // leafs maps
     {
         leafs_.clear();
         dfs_iterator it_begin(root()); dfs_iterator it_end;
+        ++it_begin;
+
         for(auto it =it_begin;it!=it_end;++it)
         {
             if (!_from_existing_flag)

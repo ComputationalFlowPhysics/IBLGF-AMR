@@ -70,31 +70,6 @@ public: //memeber functions
             domain_->tree()->construct_leaf_maps();
             domain_->tree()->construct_level_maps();
 
-            auto center = (domain_->bounding_box().max() -
-                           domain_->bounding_box().min()) / 2.0 +
-                           domain_->bounding_box().min();
-
-            int nRef = 0;
-
-            for(int l=0;l<nRef;++l)
-            {
-                for (auto it  = domain_->begin_leafs();
-                        it != domain_->end_leafs(); ++it)
-                {
-                    auto b=it->data()->descriptor();
-
-                    const auto lower((center )/2-2 ), upper((center )/2+2 - b.extent());
-                    b.grow(lower, upper);
-                    if(b.is_inside( center * pow(2.0,l))
-                       && it->refinement_level()==l
-                      )
-                    {
-                        domain_->refine(it);
-                    }
-                }
-            }
-            //domain_->tree()->construct_leaf_maps();
-
             server()->send_keys();
         }
         else if(client())
@@ -106,12 +81,12 @@ public: //memeber functions
             server()->rank_query();
             std::cout<<" Server done rank queries" << std::endl;
             server()->leaf_query();
+            std::cout<<" Server done leaf queries" << std::endl;
         }
         else if(client())
         {
             client()->query_octants();
             client()->disconnect();
-            sleep(3);
 
             client()->query_leaves();
             client()->disconnect();

@@ -209,18 +209,16 @@ public: //Ctors
     float_type load()const noexcept
     {
         float_type load=1.0;
-        for(std::size_t c=0;c<this->num_children();++c)
+        for(int c=0;c<static_cast<int>(influence_.size()) ;++c)
         {
-            const auto child = this->child(c);
-            if(child) load+=1.0;
+            Octant* inf = this->influence(c);
+            if(inf) load=load+1.0;
         }
-
-        for(std::size_t c=0;c<this->influence_number();++c)
+        for(int c=0;c<static_cast<int>(neighbor_.size());++c)
         {
-            const auto inf = this->influence(c);
-            if(inf) load+=1.0;
+            Octant* inf = this->neighbor(c);
+            if(inf) load=load+1.0;
         }
-        //std::cout<<load<<std::endl;
         return load;
     }
 

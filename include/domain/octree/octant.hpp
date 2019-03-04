@@ -212,12 +212,12 @@ public: //Ctors
         for(int c=0;c<static_cast<int>(influence_.size()) ;++c)
         {
             Octant* inf = this->influence(c);
-            if(inf) load=load+1.0;
+            if(inf!=nullptr) load=load+1.0;
         }
         for(int c=0;c<static_cast<int>(neighbor_.size());++c)
         {
             Octant* inf = this->neighbor(c);
-            if(inf) load=load+1.0;
+            if(inf!=nullptr) load=load+1.0;
         }
         return load;
     }

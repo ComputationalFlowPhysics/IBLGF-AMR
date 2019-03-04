@@ -445,7 +445,7 @@ public: // influence list
     auto construct_influence_lists(bool _global= true)
     {
         dfs_iterator it_begin(root()); dfs_iterator it_end;
-        ++it_begin;
+        //++it_begin;
 
         std::set<influence_helper> res;
         for(auto it =it_begin;it!=it_end;++it)
@@ -537,16 +537,18 @@ private:// influence list
         it->influence_clear();
         if(!it ||  !it->parent()) return;
 
+
         int infl_id = 0;
         it->influence_number(infl_id);
         const auto coord = it->key().coordinate();
 
-        const auto p = it->parent();
+        octant_type* p = it->parent();
+
         for (int p_n_id=0;
                  p_n_id<static_cast<int>(p->num_neighbors());
                  ++p_n_id)
         {
-            const auto  p_n = p->neighbor(p_n_id);
+            octant_type*  p_n = p->neighbor(p_n_id);
             if (p_n)
             {
                 for(int p_n_child_id=0;

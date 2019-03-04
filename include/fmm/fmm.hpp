@@ -195,25 +195,10 @@ public:
         fmm_sync_masks(domain_, level);
         //fmm_upward_pass_masks(domain_, level);
 
-        for (int l = level; l>=0; l--)
-        {
-            for (auto it = domain_->begin(l); it!=domain_->end(l); ++it)
-            {
-                if ( !it->mask(0)  &&  it->locally_owned())
-                {
-                    std::cout<< it->rank() << std::endl;
-                    std::cout<< it->key() << std::endl;
-                }
-            }
-        }
-
-
         ////Initialize for each fmm // zero ing all tree
-        //std::cout<<"FMM init Zero" << std::endl;
         fmm_init_zero<fmm_s>(domain_, level);
 
         //// Copy to temporary variables // only the base level
-        //std::cout<<"FMM Init Copy start" << std::endl;
         fmm_init_copy<Source, fmm_s>(domain_, level);
 
         //// Anterpolation
@@ -274,7 +259,7 @@ public:
             for (auto it = domain_->begin(base_level);
                     it != domain_->end(base_level); ++it)
             {
-                if ( it->is_leaf() )
+                if ( it->is_leaf() || !it->locally_owned())
                 {
                     it->mask(MASK_LIST::Mask_FMM_Source, false);
                     it->mask(MASK_LIST::Mask_FMM_Target, false);
@@ -289,8 +274,18 @@ public:
             for (auto it = domain_->begin(base_level);
                     it != domain_->end(base_level); ++it)
             {
-                it->mask(MASK_LIST::Mask_FMM_Source, true);
-                it->mask(MASK_LIST::Mask_FMM_Target, true);
+
+                if ( it->locally_owned())
+                {
+                    it->mask(MASK_LIST::Mask_FMM_Source, true);
+                    it->mask(MASK_LIST::Mask_FMM_Target, true);
+                } else
+                {
+                    it->mask(MASK_LIST::Mask_FMM_Source, false);
+                    it->mask(MASK_LIST::Mask_FMM_Target, false);
+                }
+                //it->mask(MASK_LIST::Mask_FMM_Source, true);
+                //it->mask(MASK_LIST::Mask_FMM_Target, true);
             }
         }
     }

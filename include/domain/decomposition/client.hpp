@@ -282,7 +282,6 @@ public:
                     } else
                     {
                         auto mask_ptr=it->mask_ptr(mask_id);
-
                         auto task=send_comm.post_task( mask_ptr, r, true, idx );
                         task->requires_confirmation()=false;
                     }
@@ -577,8 +576,6 @@ public:
     template<class SendField, class RecvField>
     void combine_induced_field_messages()
     {
-
-        std::cout<<"Combining messages "<<std::endl;
         auto& acc_send_comm=
             task_manager_-> template send_communicator<acc_induced_fields_task_t>();
         auto& acc_recv_comm=
@@ -797,6 +794,50 @@ public:
     {
         communicate_updownward_pass<SendField,RecvField,CopyAssign>
         (level,_upward);
+    }
+
+
+
+    /** @brief communicate fields for up/downward pass of fmm */
+    template<class SendField,class RecvField, template<class>class BufferPolicy>
+    int updownward_pass_mcount(int level, bool _upward)
+    {
+        int mask_id=(_upward) ?
+                MASK_LIST::Mask_FMM_Source : MASK_LIST::Mask_FMM_Target;
+
+        boost::mpi::communicator w;
+
+        auto& send_comm=
+            task_manager_-> template
+                send_communicator<induced_fields_task_t<BufferPolicy>>();
+        auto& recv_comm=
+            task_manager_-> template
+                recv_communicator<induced_fields_task_t<BufferPolicy>>();
+
+        int count=0;
+        for (auto it  = domain_->begin(level); it != domain_->end(level); ++it)
+        {
+            if (!it->mask(mask_id)) continue;
+            const auto idx=get_octant_idx(it);
+            if(it->locally_owned() && it->data() )
+            {
+                const auto unique_ranks=it->unique_child_ranks(mask_id);
+                for(auto r : unique_ranks)
+                {
+                    if(_upward) { /*recv*/ ++count; } 
+                    else { /*send*/ ++count; }
+                }
+            }
+            if(!it->locally_owned() && it->data())
+            {
+                if(it->has_locally_owned_children(mask_id))
+                {
+                    if(_upward) { /*send*/ return 10000; } 
+                    else { /*recv*/ return 10000; }
+                }
+            }
+        }
+        return count;
     }
 
     /** @brief communicate fields for up/downward pass of fmm */

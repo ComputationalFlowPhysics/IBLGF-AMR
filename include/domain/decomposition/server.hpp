@@ -66,7 +66,7 @@ public:
 
     auto compute_distribution()const noexcept
     {
-        return compute_distribution_2();
+        return compute_distribution_1();
     }
     auto compute_distribution_1() const noexcept
     {
@@ -89,7 +89,8 @@ public:
         std::vector<std::list<ctask_t>> tasks_perProc(nProcs);
         // Load distribution assuming equal loads
         float_type chunks=static_cast<float_type>(nOctants)/nProcs;
-        auto it = domain_->begin_df();
+        //auto it = domain_->begin_df();
+        auto it = domain_->begin_bf();
         for ( int i=0; i<nProcs;++i )
         {
             size_t start= (i*chunks);
@@ -152,7 +153,7 @@ public:
         int procCount=0;
         int overhead_count=0;
         std::vector<std::list<ctask_t>> tasks_perProc(nProcs);
-        for( auto it = domain_->begin_df(); it!= domain_->end_df();++it )
+        for( auto it = domain_->begin_bf(); it!= domain_->end_bf();++it )
         {
             it->rank()=procCount+1;
 

@@ -193,8 +193,7 @@ public: //C/Dtors
             this->tree()->construct_level_maps();
 
             auto center = (this->bounding_box().max() -
-                    this->bounding_box().min()) / 2.0 +
-            this->bounding_box().min();
+                    this->bounding_box().min()) / 2.0 + this->bounding_box().min();
 
             for(int l=0;l<nRef;++l)
             {

@@ -705,12 +705,15 @@ public:
             if( !_finish || (acc_recv_comm.done() && acc_send_comm.done())  )
                 break;
         }
-        send_fields_.clear();
-        recv_fields_.clear();
-        send_tasks_.clear();
-        recv_tasks_.clear();
-        send_tasks_.resize(comm_.size());
-        recv_tasks_.resize(comm_.size());
+        if(_finish)
+        {
+            send_fields_.clear();
+            recv_fields_.clear();
+            send_tasks_.clear();
+            recv_tasks_.clear();
+            send_tasks_.resize(comm_.size());
+            recv_tasks_.resize(comm_.size());
+        }
     }
 
 

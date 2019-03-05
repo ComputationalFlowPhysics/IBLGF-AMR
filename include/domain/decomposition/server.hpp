@@ -170,7 +170,7 @@ public:
                 tasks_perProc[procCount].push_back(task);
                 total_load_perProc+=load;
 
-                if(procCount == nProcs-1 && total_load_perProc >ideal_load ) 
+                if(procCount == nProcs-1 && total_load_perProc >ideal_load )
                 {
                     ++overhead_count;
                 }
@@ -187,9 +187,10 @@ public:
 
         //std::cout<<" Initial overhead_count "<<overhead_count<<std::endl;
         //propagate overhead backward
+        overhead_count = 0;
         for(int k =0;k<overhead_count;++k)
         {
-            //Get maximum imbalance 
+            //Get maximum imbalance
             int stop_idx=-1;
             float_type max_imbalance=-1;;
             std::vector<int> total_loads_perProc(nProcs,0);
@@ -215,7 +216,7 @@ public:
 
                 const auto new_total= total_loads_perProc[i]-load_to_move;
                 const auto new_total_m1 = total_loads_perProc[i-1]+load_to_move;
-                
+
                 task_to_move.octant()->rank()=tasks_perProc[i-1].back().rank();
                 task_to_move.rank()=tasks_perProc[i-1].back().rank();
 

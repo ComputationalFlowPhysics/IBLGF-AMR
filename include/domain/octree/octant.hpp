@@ -346,7 +346,7 @@ private:
     boost::mpi::communicator comm_;
     std::shared_ptr<data_type> data_ = nullptr;
 
-    Octant* parent_;
+    Octant* parent_=nullptr;
 
     std::array<std::shared_ptr<Octant>,pow(2,Dim)> children_ =
         {{nullptr,nullptr,nullptr,nullptr, nullptr,nullptr,nullptr,nullptr}};

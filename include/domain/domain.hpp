@@ -186,9 +186,9 @@ public: //C/Dtors
 
     void init_refine(int nRef=0)
     {
-        std::cout<<"Initial mesh and refienment"<< std::endl;
         if(is_server())
         {
+            std::cout<<"Initial mesh and refienment with nRef = "<< nRef << std::endl;
             this->tree()->construct_leaf_maps();
             this->tree()->construct_level_maps();
 
@@ -207,6 +207,7 @@ public: //C/Dtors
 
                     const auto lower((center )/2-2 ), upper((center )/2+2 - b.extent());
                     b.grow(lower, upper);
+
                     if(b.is_inside( center * pow(2.0,l)))
                     {
                         this->refine(it);

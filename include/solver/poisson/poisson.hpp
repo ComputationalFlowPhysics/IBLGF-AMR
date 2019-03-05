@@ -85,34 +85,38 @@ public:
         // Copy source
         for (auto it  = domain_->begin_leafs();
                 it != domain_->end_leafs(); ++it)
-        {
+            if (it->locally_owned())
+            {
                 auto& cp1 = it ->data()->template get_linalg_data<Source>();
                 auto& cp2 = it ->data()->template get_linalg_data<source_tmp>();
 
                 cp2 = cp1 * 1.0;
-        }
 
+            }
 
         //Coarsification:
         pcout<<"coarsification "<<std::endl;
-        for (int ls = domain_->tree()->depth()-2;
+        //for (int ls = domain_->tree()->depth()-2; // Same TODO
+        for (int ls = 9; // Same TODO
                  ls >= domain_->tree()->base_level(); --ls)
         {
             for (auto it_s  = domain_->begin(ls);
                       it_s != domain_->end(ls); ++it_s)
-            {
-                this->coarsify<source_tmp>(*it_s);
-            }
+                if (it_s->data())
+                {
+                    this->coarsify<source_tmp>(*it_s);
+                }
 
             domain_->decomposition().client()->
-                template communicate_updownward_add<source_tmp, source_tmp>(ls, true);
+                template communicate_updownward_add<source_tmp, source_tmp>(ls,true,false);
 
         }
 
         //Level-Interactions
         pcout<<"Level interactions "<<std::endl;
-        for (int l  = domain_->tree()->base_level();
-                 l < domain_->tree()->depth(); ++l)
+        for (int l  = domain_->tree()->base_level()+0;
+        //         l < domain_->tree()->depth(); ++l) //TODO !!!!! change to global maximum
+                 l < 10; ++l)
         {
             //test for FMM
             //fmm_.template fmm_for_level<source_tmp, Target>(domain_, l, false);
@@ -121,40 +125,45 @@ public:
             fmm_.template fmm_for_level_test<source_tmp, Target>(domain_, l, true);
             //this->level_convolution_fft<source_tmp, Target>(l);
 
-            //for (auto it  = domain_->begin(l);
-            //          it != domain_->end(l); ++it)
-            //{
-            //    if(it->is_leaf()) continue;
+            for (auto it  = domain_->begin(l);
+                      it != domain_->end(l); ++it)
+            {
+                if(it->is_leaf()) continue;
 
-            //    auto& cp1 = it ->data()->template get_linalg_data<Target>();
-            //    auto& cp2 = it ->data()->
-            //        template get_linalg_data<coarse_target_sum>();
+                auto& cp1 = it ->data()->template get_linalg_data<Target>();
+                auto& cp2 = it ->data()->
+                    template get_linalg_data<coarse_target_sum>();
 
-            //    cp2 += cp1 * 1.0;
+                cp2 += cp1 * 1.0;
 
-            //    c_cntr_nli_.nli_intrp_node<
-            //                coarse_target_sum, coarse_target_sum
-            //                >(it);
-            //    int refinement_level = it->refinement_level();
-            //    double dx = dx_base/std::pow(2,refinement_level);
-            //    c_cntr_nli_.add_source_correction<
-            //                            coarse_target_sum, source_tmp
-            //                            >(it, dx/2.0);
-            //}
+                c_cntr_nli_.nli_intrp_node<
+                            coarse_target_sum, coarse_target_sum
+                            >(it);
+                int refinement_level = it->refinement_level();
+                double dx = dx_base/std::pow(2,refinement_level);
+                c_cntr_nli_.add_source_correction<
+                                        coarse_target_sum, source_tmp
+                                        >(it, dx/2.0);
+            }
 
         }
 
         // Interpolation
         pcout<<"Interpolation"<<std::endl;
         for (int lt = domain_->tree()->base_level();
-                 lt < domain_->tree()->depth(); ++lt)
+        //       lt < domain_->tree()->depth(); ++lt) //TODO same
+                 lt < 10; ++lt) //TODO same
         {
+            domain_->decomposition().client()->
+                template communicate_updownward_assign<Target, Target>(lt,false,false);
+
             for (auto it_t  = domain_->begin(lt);
                       it_t != domain_->end(lt); ++it_t)
             {
-                if(it_t->is_leaf()) continue;
+                if(it_t->is_leaf() ) continue;
                 c_cntr_nli_.nli_intrp_node<Target, Target>(it_t);
             }
+
         }
 
     }

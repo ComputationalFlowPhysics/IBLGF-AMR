@@ -34,7 +34,7 @@ struct ServerClientTraits
     using leaf_query_recv_t = Task<tags::leaf,std::vector<bool>>;
 
     template< template<class> class BufferPolicy >
-    using mask_query_t = Task<tags::field_query,
+    using mask_query_t          = Task<tags::mask_query,
                                        bool, BufferPolicy>;
 
     template< template<class> class BufferPolicy >

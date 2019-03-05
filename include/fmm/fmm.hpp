@@ -202,7 +202,7 @@ public:
         //{
         //    for (auto it = domain_->begin(l); it!=domain_->end(l); ++it)
         //    {
-        //        if ( !it->mask(0)  &&  it->locally_owned())
+        //        if ( !it->mask(0)  &&  !it->locally_owned())
         //        {
         //            std::cout<< it->rank() << std::endl;
         //            std::cout<< it->key() << std::endl;
@@ -372,7 +372,7 @@ public:
 
     void fmm_sync_parent_masks(domain_t* domain_, int base_level)
     {
-        for (int level=base_level; level>=0; --level)
+        for (int level=base_level-1; level>=0; --level)
         {
             domain_->decomposition().client()-> template
                     communicate_mask_single_level_updownward_OR(level,
@@ -390,6 +390,7 @@ public:
         for (int level=base_level; level>=0; --level)
         {
             bool neighbor_ = (level==base_level)? true:false;
+            neighbor_ = true;
 
             domain_->decomposition().client()-> template
                     communicate_mask_single_level_inf_sync(level,

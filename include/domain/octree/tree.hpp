@@ -445,6 +445,7 @@ public: // influence list
     auto construct_influence_lists(bool _global= true)
     {
         dfs_iterator it_begin(root()); dfs_iterator it_end;
+        ++it_begin; //Ke TODO why?
 
         std::set<influence_helper> res;
         for(auto it =it_begin;it!=it_end;++it)
@@ -550,9 +551,7 @@ private:// influence list
                           bool _global=true)
     {
         it->influence_clear();
-        if(!it ||  !it->parent()) return;
-        //std::set<infl_helper> blafskjdfdsl sadkjad a
-        //std::set<infl
+        if(!it || !it->parent()) return;
 
         int infl_id = 0;
         it->influence_number(infl_id);
@@ -643,6 +642,7 @@ public: //children and parent queries
     void query_parents( Client* _c, InitFunction& _f )
     {
         dfs_iterator it_begin(root()); dfs_iterator it_end;
+        ++it_begin;
 
         std::set<key_type> keys_set;
         std::vector<key_type> keys;

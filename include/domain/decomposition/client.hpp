@@ -297,6 +297,7 @@ public:
 
                     } else
                     {
+                        std::cout<< "SYNC MASK PARENT -> "<<w.rank()<<" " << it->key()<< std::endl;
                         auto mask_ptr=it->mask_ptr(mask_id);
 
                         auto task=send_comm.post_task( mask_ptr, r, true, idx );
@@ -693,7 +694,7 @@ public:
 
     /** @brief communicate fields for up/downward pass of fmm */
     template<class SendField,class RecvField, template<class>class BufferPolicy>
-    void communicate_updownward_pass(int level, bool _upward)
+    void communicate_updownward_pass(int level, bool _upward, bool _use_masks=true)
     {
         int mask_id=(_upward) ?
                 MASK_LIST::Mask_FMM_Source : MASK_LIST::Mask_FMM_Target;
@@ -710,14 +711,17 @@ public:
         for (auto it  = domain_->begin(level); it != domain_->end(level); ++it)
         {
 
-            if (!it->mask(mask_id)) continue;
+            if (!it->mask(mask_id) && _use_masks) continue;
 
             const auto idx=get_octant_idx(it);
 
             if(it->locally_owned() && it->data() )
             {
 
-                const auto unique_ranks=it->unique_child_ranks(mask_id);
+                const auto unique_ranks=(_use_masks)?
+                        it->unique_child_ranks(mask_id) :
+                        it->unique_child_ranks();
+
                 for(auto r : unique_ranks)
                 {
                     if(_upward)
@@ -741,7 +745,9 @@ public:
             //Check if ghost has locally_owned children
             if(!it->locally_owned() && it->data())
             {
-                if(it->has_locally_owned_children(mask_id))
+                if( (_use_masks && it->has_locally_owned_children(mask_id)) ||
+                    (!_use_masks && it->has_locally_owned_children())
+                    )
                 {
                     if(_upward)
                     {
@@ -783,17 +789,17 @@ public:
 
     /** @brief communicate fields for up/downward pass of fmm */
     template<class SendField,class RecvField >
-    void communicate_updownward_add(int level, bool _upward)
+    void communicate_updownward_add(int level, bool _upward, bool _use_masks=true)
     {
         communicate_updownward_pass<SendField,RecvField,AddAssignRecv>
-        (level, _upward);
+        (level, _upward, _use_masks);
     }
 
     template<class SendField,class RecvField >
-    void communicate_updownward_assign(int level, bool _upward)
+    void communicate_updownward_assign(int level, bool _upward, bool _use_masks=true)
     {
         communicate_updownward_pass<SendField,RecvField,CopyAssign>
-        (level,_upward);
+        (level,_upward, _use_masks);
     }
 
     /** @brief communicate fields for up/downward pass of fmm */

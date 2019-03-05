@@ -11,6 +11,7 @@ enum type: int
 {
     key_answer,
     key_query,
+    mask_query,
     leaf,
     request,
     task_type,

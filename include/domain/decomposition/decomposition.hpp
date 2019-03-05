@@ -65,10 +65,15 @@ public: //memeber functions
     {
         //Send the construction keys back and forth
         if(server())
+        {
             server()->send_keys();
-
+            std::cout<< "Server done sending keys" << std::endl;
+        }
         else if(client())
+        {
             client()->receive_keys();
+            std::cout<< "Client done receiving keys" << std::endl;
+        }
 
         //Construct neighborhood and influence list:
         if(server())
@@ -82,6 +87,7 @@ public: //memeber functions
         {
             client()->query_octants();
             client()->disconnect();
+            std::cout<< "Client done query octants" << std::endl;
 
             client()->query_leaves();
             client()->disconnect();

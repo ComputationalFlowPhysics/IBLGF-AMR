@@ -390,6 +390,24 @@ public:
         }
     }
 
+
+    auto initialize_upward_iterator(int level, domain_t* domain_,bool _upward)
+    {
+        std::vector<std::pair<octant_t*, int>> octants;
+        for (auto it = domain_->begin(level); it != domain_->end(level); ++it)
+        {
+            int recv_m_send_count=domain_-> decomposition().client()->
+                updownward_pass_mcount(*it,_upward);
+                
+            octants.emplace_back(std::make_pair(*it,recv_m_send_count));
+        }
+        //Sends=10000, recv1-10000, no_communication=0
+        //descending order
+        std::sort(octants.begin(), octants.end(),[&](const auto& e0, const auto& e1)
+                {return e0.second> e1.second;  });
+        return octants;
+    }
+
     template<
         class s,
         class t
@@ -398,8 +416,6 @@ public:
                 int base_level,
                 float_type dx_level)
     {
-
-
         std::vector<std::pair<octant_t*, int>> octants;
         for (int level=base_level; level>=0; --level)
         {
@@ -417,7 +433,7 @@ public:
             }
         }
         //Sends=10000, recv1-10000, no_communication=0
-        std::sort(octants.begin(), octants.end(),[&](const auto e0, const auto e1)
+        std::sort(octants.begin(), octants.end(),[&](const auto& e0, const auto& e1)
                 {return e0.second> e1.second;  });
 
         const bool start_communication = false;
@@ -508,7 +524,6 @@ public:
                 }
             }
          }
-
     }
 
     template< class f1, class f2 >
@@ -592,18 +607,51 @@ public:
 
         for (int level=1; level<base_level; ++level)
         {
-            domain_->decomposition().client()-> template
-                    communicate_updownward_assign<fmm_t, fmm_t>(level,false);
+            //sort octants such that internal cells are first
+            auto octants=initialize_upward_iterator(level,domain_,false);
+            bool finished=false;
 
-            for (auto it = domain_->begin(level);
-                    it != domain_->end(level);
-                    ++it)
+            //Start communications
+            for (auto B_it=octants.begin(); B_it!=octants.end(); ++B_it)
             {
-                if(it->data() && it->mask(MASK_LIST::Mask_FMM_Target) )
-                    lagrange_intrp.nli_intrp_node<fmm_t>(it);
+                auto it =B_it->first;
+                    domain_->decomposition().client()->
+                        template communicate_updownward_assign<fmm_t, fmm_t>(it, false);
+                if(B_it->second ==0) continue;
             }
+
+            //Do inner communications first
+            for (auto B_it=octants.begin(); B_it!=octants.end(); ++B_it)
+            {
+                auto it =B_it->first;
+                if(it->data() && it->mask(MASK_LIST::Mask_FMM_Target) )
+                {
+                    if(B_it->second<0 && !finished)
+                    {
+                        domain_->decomposition().client()-> template 
+                            finish_updownward_pass_communication_assign<fmm_t, fmm_t>();
+                        finished=true;
+                    }
+
+                    if(it->data() && it->mask(MASK_LIST::Mask_FMM_Target) )
+                        lagrange_intrp.nli_intrp_node<fmm_t>(it);
+                }
+            }//octants in level
         }
 
+        //for (int level=1; level<base_level; ++level)
+        //{
+        //    domain_->decomposition().client()-> template
+        //            communicate_updownward_assign<fmm_t, fmm_t>(level,false);
+
+        //    for (auto it = domain_->begin(level);
+        //            it != domain_->end(level);
+        //            ++it)
+        //    {
+        //        if(it->data() && it->mask(MASK_LIST::Mask_FMM_Target) )
+        //            lagrange_intrp.nli_intrp_node<fmm_t>(it);
+        //    }
+        //}
     }
 
     template< class fmm_s>
@@ -611,17 +659,38 @@ public:
     {
         for (int level=base_level-1; level>0; --level)
         {
-            for (auto it = domain_->begin(level);
-                    it != domain_->end(level);
-                    ++it)
+            auto octants=initialize_upward_iterator(level,domain_,true);
+            for (auto B_it=octants.begin(); B_it!=octants.end(); ++B_it)
             {
+                auto it =B_it->first;
                 if(it->data() && it->mask(MASK_LIST::Mask_FMM_Source) )
                     lagrange_intrp.nli_antrp_node<fmm_s>(it);
+
+                domain_->decomposition().client()->
+                    template communicate_updownward_add<fmm_s, fmm_s>(it, true);
             }
 
-            domain_->decomposition().client()->
-                template communicate_updownward_add<fmm_s, fmm_s>(level, true);
+                domain_->decomposition().client()->
+                    template finish_updownward_pass_communication_add<fmm_s, fmm_s>();
+            //domain_->decomposition().client()->
+            //    template communicate_updownward_add<fmm_s, fmm_s>(level, true);
         }
+
+        //for (int level=base_level-1; level>0; --level)
+        //{
+        //    for (auto it = domain_->begin(level);
+        //            it != domain_->end(level);
+        //            ++it)
+        //    {
+        //        if(it->data() && it->mask(MASK_LIST::Mask_FMM_Source) )
+        //            lagrange_intrp.nli_antrp_node<fmm_s>(it);
+
+        //        domain_->decomposition().client()->
+        //            template communicate_updownward_add<fmm_s, fmm_s>(it, true);
+        //    }
+        //    //domain_->decomposition().client()->
+        //    //    template communicate_updownward_add<fmm_s, fmm_s>(level, true);
+        //}
     }
 
     template<

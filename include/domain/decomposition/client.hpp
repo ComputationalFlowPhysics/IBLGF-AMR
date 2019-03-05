@@ -692,8 +692,142 @@ public:
 
 
     /** @brief communicate fields for up/downward pass of fmm */
+    template<class SendField,class RecvField, 
+             template<class>class BufferPolicy, 
+             class OctantPtr>
+    void communicate_updownward_pass(OctantPtr it, bool _upward)
+    {
+        int mask_id=(_upward) ?
+            MASK_LIST::Mask_FMM_Source : MASK_LIST::Mask_FMM_Target;
+
+        boost::mpi::communicator w;
+
+        auto& send_comm=
+            task_manager_-> template
+            send_communicator<induced_fields_task_t<BufferPolicy>>();
+        auto& recv_comm=
+            task_manager_-> template
+            recv_communicator<induced_fields_task_t<BufferPolicy>>();
+
+
+        if (!it->mask(mask_id)) return;
+
+        const auto idx=get_octant_idx(it);
+
+        if(it->locally_owned() && it->data() )
+        {
+
+            const auto unique_ranks=it->unique_child_ranks(mask_id);
+            for(auto r : unique_ranks)
+            {
+                if(_upward)
+                {
+                    auto data_ptr=it->data()->
+                        template get<RecvField>().data_ptr();
+                    auto task=recv_comm.post_task( data_ptr, r, true, idx);
+                    task->requires_confirmation()=false;
+
+                } else
+                {
+                    auto data_ptr=it->data()->
+                        template get<SendField>().data_ptr();
+                    auto task= send_comm.post_task(data_ptr,r,true,idx);
+                    task->requires_confirmation()=false;
+
+                }
+            }
+        }
+
+        //Check if ghost has locally_owned children
+        if(!it->locally_owned() && it->data())
+        {
+            if(it->has_locally_owned_children(mask_id))
+            {
+                if(_upward)
+                {
+                    const auto data_ptr=it->data()->
+                        template get<SendField>().data_ptr();
+                    auto task =
+                        send_comm.post_task(data_ptr, it->rank(),
+                                true,idx);
+                    task->requires_confirmation()=false;
+
+                } else
+                {
+                    const auto data_ptr=it->data()->
+                        template get<RecvField>().data_ptr();
+                    auto task =
+                        recv_comm.post_task(data_ptr, it->rank(),
+                                true,idx);
+                    task->requires_confirmation()=false;
+                }
+            }
+        }
+
+        //Start communications
+        //buffer and send it
+        send_comm.start_communication();
+        recv_comm.start_communication();
+
+        //send_comm.finish_communication();
+        //recv_comm.finish_communication();
+    }
+
+    template<class SendField,class RecvField,template<class>class BufferPolicy>
+    void finish_updownward_pass_communication()
+    {
+        auto& send_comm=
+            task_manager_-> template
+                send_communicator<induced_fields_task_t<BufferPolicy>>();
+        auto& recv_comm=
+            task_manager_-> template
+                recv_communicator<induced_fields_task_t<BufferPolicy>>();
+
+        while(true)
+        {
+            //buffer and send it
+            send_comm.start_communication();
+            recv_comm.start_communication();
+
+            //Check if something has finished
+            send_comm.finish_communication();
+            recv_comm.finish_communication();
+
+            if(send_comm.done() && recv_comm.done() )
+                break;
+        }
+    }
+
+    /** @brief Finish communication for fields for up/downward pass of fmm */
+    template<class SendField,class RecvField>
+    void finish_updownward_pass_communication_add()
+    {
+        finish_updownward_pass_communication<SendField,RecvField,AddAssignRecv> ();
+    }
+
+    /** @brief Finish communication for fields for up/downward pass of fmm */
+    template<class SendField,class RecvField>
+    void finish_updownward_pass_communication_assign()
+    {
+        finish_updownward_pass_communication<SendField,RecvField,CopyAssign> ();
+    }
+
+    /** @brief communicate fields for up/downward pass of fmm */
+    template<class SendField,class RecvField, class OctantPtr>
+    void communicate_updownward_add(OctantPtr it, bool _upward)
+    {
+        communicate_updownward_pass<SendField,RecvField,AddAssignRecv> (it, _upward);
+    }
+
+    template<class SendField,class RecvField, class OctantPtr >
+    void communicate_updownward_assign(OctantPtr it, bool _upward)
+    {
+        communicate_updownward_pass<SendField,RecvField,CopyAssign>
+        (it,_upward);
+    }
+
     template<class SendField,class RecvField, template<class>class BufferPolicy>
-    void communicate_updownward_pass(int level, bool _upward)
+    void communicate_updownward_pass_old(int level, bool _upward)
     {
         int mask_id=(_upward) ?
                 MASK_LIST::Mask_FMM_Source : MASK_LIST::Mask_FMM_Target;
@@ -785,56 +919,50 @@ public:
     template<class SendField,class RecvField >
     void communicate_updownward_add(int level, bool _upward)
     {
-        communicate_updownward_pass<SendField,RecvField,AddAssignRecv>
+        communicate_updownward_pass_old<SendField,RecvField,AddAssignRecv>
         (level, _upward);
     }
 
     template<class SendField,class RecvField >
     void communicate_updownward_assign(int level, bool _upward)
     {
-        communicate_updownward_pass<SendField,RecvField,CopyAssign>
+        communicate_updownward_pass_old<SendField,RecvField,CopyAssign>
         (level,_upward);
     }
 
 
 
     /** @brief communicate fields for up/downward pass of fmm */
-    template<class SendField,class RecvField, template<class>class BufferPolicy>
-    int updownward_pass_mcount(int level, bool _upward)
+    template<class OctantPtr> 
+    int updownward_pass_mcount(OctantPtr it, bool _upward)
     {
         int mask_id=(_upward) ?
                 MASK_LIST::Mask_FMM_Source : MASK_LIST::Mask_FMM_Target;
 
-        boost::mpi::communicator w;
-
-        auto& send_comm=
-            task_manager_-> template
-                send_communicator<induced_fields_task_t<BufferPolicy>>();
-        auto& recv_comm=
-            task_manager_-> template
-                recv_communicator<induced_fields_task_t<BufferPolicy>>();
-
         int count=0;
-        for (auto it  = domain_->begin(level); it != domain_->end(level); ++it)
+        if (!it->mask(mask_id)) return count;
+        if(it->locally_owned() && it->data() )
         {
-            if (!it->mask(mask_id)) continue;
-            const auto idx=get_octant_idx(it);
-            if(it->locally_owned() && it->data() )
+            const auto unique_ranks=it->unique_child_ranks(mask_id);
+            if(_upward)
             {
-                const auto unique_ranks=it->unique_child_ranks(mask_id);
-                for(auto r : unique_ranks)
-                {
-                    if(_upward) { /*recv*/ ++count; } 
-                    else { /*send*/ ++count; }
-                }
+                count+=static_cast<int>(unique_ranks.size());
+            }else
+            {
+                count-=static_cast<int>(unique_ranks.size());
             }
-            if(!it->locally_owned() && it->data())
+            //for(auto r : unique_ranks)
+            //{
+            //    if(_upward) { /*recv*/ ++count; } 
+            //    else { /*send*/ ++count; }
+            //}
+        }
+        if(!it->locally_owned() && it->data())
+        {
+            if(it->has_locally_owned_children(mask_id))
             {
-                if(it->has_locally_owned_children(mask_id))
-                {
-                    if(_upward) { /*send*/ return 10000; } 
-                    else { /*recv*/ return 10000; }
-                }
+                if(_upward) { /*send*/ return 10000; } 
+                else { /*recv*/ return -10000; }
             }
         }
         return count;

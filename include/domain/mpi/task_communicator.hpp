@@ -37,7 +37,7 @@ public:
 
 public: //Ctor
 
-    TaskCommunicator( int _nBuffers=10 )  
+    TaskCommunicator( int _nBuffers=10)
     {
         buffer_.init(_nBuffers);
     }

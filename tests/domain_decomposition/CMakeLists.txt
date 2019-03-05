@@ -7,6 +7,6 @@ target_link_libraries(decompTest.x
                       ${MPI_LIBRARIES}
                       ${Boost_LIBRARIES}
                       ${FFTW_LIBRARIES} fftw3
-                      ${HDF5_LIBRARIES} 
-                      ${BLAS_LIBRARIES} boost_mpi boost_serialization boost_filesystem
+                      ${HDF5_LIBRARIES} hdf5
+                      ${BLAS_LIBRARIES} #boost_mpi boost_serialization boost_filesystem
                       xtensor)

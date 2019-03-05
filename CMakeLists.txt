@@ -36,9 +36,9 @@ include_directories(SYSTEM ${MPI_INCLUDE_PATH})
 link_directories(${MPI_LIBRARIES} )
 
 #BOOST
-if(NOT DEFINED Boost_INCLUDE_DIR)
+#if(NOT DEFINED Boost_INCLUDE_DIR)
 find_package(Boost COMPONENTS serialization mpi system filesystem REQUIRED)
-endif(NOT DEFINED Boost_INCLUDE_DIR)
+#endif(NOT DEFINED Boost_INCLUDE_DIR)
 include_directories(${Boost_INCLUDE_DIR})
 link_directories(${Boost_LIBRARY_DIR})
 
@@ -69,9 +69,9 @@ find_package(xtensor-blas REQUIRED)
 include_directories(SYSTEM ${xtensor_blas_INCLUDE_DIRS})
 
 #HDF5
-#if(NOT DEFINED HDF5_INCLUDE_DIRS)
-#endif(NOT DEFINED HDF5_INCLUDE_DIRS)
+if(NOT DEFINED HDF5_INCLUDE_DIRS)
 find_package(HDF5)
+endif(NOT DEFINED HDF5_INCLUDE_DIRS)
 include_directories(${HDF5_INCLUDE_DIRS})
 link_directories(${HDF5_LIBRARY_DIRS} )
 #message( ${HDF5_INCLUDE_DIRS} )

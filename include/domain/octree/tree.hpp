@@ -114,11 +114,15 @@ public:
               const Function& f=[](octant_type* o){ return; })
     {
         this->init(_keys, this->base_level_,f);
+
         // Maps construction
 
         // Ke TODO: check if this is ok
         // this->construct_leaf_maps();
         this->construct_level_maps();
+        this->construct_neighbor_lists();
+        this->construct_influence_lists();
+
     }
 
     template<class Function=std::function<void(octant_type* c)>>
@@ -445,7 +449,7 @@ public: // influence list
     auto construct_influence_lists(bool _global= true)
     {
         dfs_iterator it_begin(root()); dfs_iterator it_end;
-        ++it_begin; //Ke TODO why?
+        //++it_begin;
 
         std::set<influence_helper> res;
         for(auto it =it_begin;it!=it_end;++it)
@@ -480,21 +484,6 @@ public: // influence list
             }
             ++count;
         }
-
-
-        //boost::mpi::communicator w;
-        //dfs_iterator begin(root()); dfs_iterator end;
-        //for(auto it =begin;it!=end;++it)
-        //{
-        //    for(int i =0;i<189;++i)
-        //    {
-        //        auto nn=it->neighbor(i);
-        //        if(nn && nn->rank()!=w.rank() && nn->rank()>=0)
-        //        {
-        //            std::cout<<"inf->rank() "<<nn->rank() <<std::endl;
-        //        }
-        //    }
-        //}
     }
 
 private:// influence list
@@ -508,7 +497,6 @@ private:// influence list
         {
             return key_ < other.key_;
         }
-
 
         ///< append to lists
         void update(octant_type* _oc, int _inf_number) const
@@ -557,12 +545,13 @@ private:// influence list
         it->influence_number(infl_id);
         const auto coord = it->key().coordinate();
 
-        const auto p = it->parent();
+        octant_type* p = it->parent();
+
         for (int p_n_id=0;
                  p_n_id<static_cast<int>(p->num_neighbors());
                  ++p_n_id)
         {
-            const auto  p_n = p->neighbor(p_n_id);
+            octant_type*  p_n = p->neighbor(p_n_id);
             if (p_n)
             {
                 for(int p_n_child_id=0;

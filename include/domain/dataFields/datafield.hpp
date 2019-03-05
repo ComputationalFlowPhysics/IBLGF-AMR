@@ -89,7 +89,7 @@ public: //member functions
     auto end()const noexcept{return data_.end();}
 
     auto& data(){return data_;}
-    auto date_ptr(){return &data_;}
+    auto data_ptr(){return &data_;}
 
 
     auto& linalg_data(){return cube_->data_;}

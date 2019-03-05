@@ -64,16 +64,16 @@ public: //Ctors
 	Octant& operator=(      Octant&& other) & = default;
 	~Octant          ()                       = default;
 
-    Octant(const octant_base_t& _n) : super_type(_n) {}
+    Octant(const octant_base_t& _n) : super_type(_n) {null_init();}
 
     Octant(const octant_base_t& _n, data_type& _data)
-        : super_type(_n), data_(_data) { }
+        : super_type(_n), data_(_data) { null_init();}
 
     Octant(key_type _k, tree_type* _tr)
-        : super_type(_k), t_(_tr) { }
+        : super_type(_k), t_(_tr) { null_init();}
 
     Octant(const coordinate_type& _x, int _level, tree_type* _tr)
-        : super_type(key_type(_x,_level)),t_(_tr) { }
+        : super_type(key_type(_x,_level)),t_(_tr) { null_init();}
 
 
      /** @brief Find leaf that shares a vertex with octant
@@ -106,6 +106,12 @@ public: //Ctors
         if(c_ptr) return c_ptr;
 
         return nullptr;
+    }
+    void null_init()
+    {
+        std::fill(neighbor_.begin(),neighbor_.end(),nullptr);
+        std::fill(masks_.begin(),masks_.end(),false);
+        std::fill(influence_.begin(),influence_.end(),nullptr);
     }
 
     std::array<key_type, nNeighbors()>
@@ -206,7 +212,22 @@ public: //Ctors
        masks_[i] = value;
     }
 
-    float_type load()const noexcept{return 1.0;}
+    float_type load()const noexcept
+    {
+        float_type load=1.0;
+        for(int c=0;c<static_cast<int>(influence_.size()) ;++c)
+        {
+            Octant* inf = this->influence(c);
+            if(inf!=nullptr) load=load+1.0;
+        }
+        for(int c=0;c<static_cast<int>(neighbor_.size());++c)
+        {
+            Octant* inf = this->neighbor(c);
+            if(inf!=nullptr) load=load+1.0;
+        }
+        return load;
+    }
+
 
 
 public: //mpi info
@@ -345,22 +366,14 @@ private:
     int idx_ = 0;
     boost::mpi::communicator comm_;
     std::shared_ptr<data_type> data_ = nullptr;
-
     Octant* parent_=nullptr;
-
     std::array<std::shared_ptr<Octant>,pow(2,Dim)> children_ =
         {{nullptr,nullptr,nullptr,nullptr, nullptr,nullptr,nullptr,nullptr}};
-
     std::array<Octant*,pow(3,Dim) > neighbor_ = {nullptr};
-
     int influence_num = 0;
     std::array<Octant*, 189 > influence_= {nullptr};
-
     bool flag_leaf_=true;
-
     std::array<bool, Mask_Last + 1> masks_ = {false};
-    //bool masks_[Mask_Last + 1] = {false};
-
     tree_type* t_=nullptr;
 };
 
@@ -368,4 +381,3 @@ private:
 
 } //namespace octree
 #endif
-

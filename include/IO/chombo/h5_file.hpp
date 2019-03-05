@@ -157,7 +157,7 @@ class hdf5_file
         hid_type create_group(hid_type loc_id,std::string _group_identifier)
         {
             //Check if group already existent:
-            auto status = H5Eset_auto1(NULL, NULL);
+            /*auto status = */H5Eset_auto1(NULL, NULL);
             //update_plist();
             auto non_existent=H5Lexists(loc_id,_group_identifier.c_str(),H5P_DEFAULT);
             if (!non_existent){
@@ -468,11 +468,13 @@ class hdf5_file
         void close_everything(hid_type file_id)
         {
             update_plist();
-            H5Eset_auto (NULL,NULL, NULL);
+            //H5Eset_auto(NULL,NULL, NULL);
+            //H5Eset_auto(nullptr,nullptr, nullptr);
             auto numOpenObjs = H5Fget_obj_count(file_id, H5F_OBJ_ALL);
             std::vector<hid_type> obj_id_list(numOpenObjs);
             auto numReturnedOpenObjs = H5Fget_obj_ids(file_id, H5F_OBJ_ALL, numOpenObjs, &obj_id_list[0]);
-            for (hsize_type i = 0; i < numReturnedOpenObjs; ++i) { H5Oclose(obj_id_list[i]); }
+            for (hsize_type i = 0; i < static_cast<hsize_type>(numReturnedOpenObjs); ++i)
+             { H5Oclose(obj_id_list[i]); }
             close_file(file_id);
         }
 
@@ -695,7 +697,11 @@ class hdf5_file
 
         // for 3D
         // write_boxCompound( group_id, name, box_compound, integral_const = 3, hsize_type _dim=1, bool=true)
-        void write_boxCompound( hid_type& _group_id, std::string _cName,box_compound* _c,std::integral_constant<std::size_t, 3>*,hsize_type _dim=1,bool asAttr=true)
+        void write_boxCompound( hid_type& _group_id,    
+                                std::string _cName,
+                                box_compound* _c,
+                                std::integral_constant<std::size_t, 3>*,
+                                hsize_type _dim=1,bool asAttr=true)
         {
             //create memory for the dataType:
             const hsize_type  rank=1;
@@ -713,12 +719,12 @@ class hdf5_file
             if(asAttr)
             {
                 auto dataset = H5Acreate(_group_id, _cName.c_str(), s1_tid, space, H5P_DEFAULT, H5P_DEFAULT);
-                auto status = H5Awrite(dataset, s1_tid, _c);
+                /*auto status = */H5Awrite(dataset, s1_tid, _c);
                 close_attribute(dataset);
             }else
             {
                 auto dataset = H5Dcreate(_group_id, _cName.c_str(), s1_tid, space, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-                auto status = H5Dwrite(dataset, s1_tid, H5S_ALL, H5S_ALL, H5P_DEFAULT, _c);
+                /*auto status = */H5Dwrite(dataset, s1_tid, H5S_ALL, H5S_ALL, H5P_DEFAULT, _c);
                 close_dset(dataset);
             }
             close_space(space);
@@ -736,25 +742,13 @@ class hdf5_file
             _min[0] = 0;
             _min[1] = 0;
             _min[2] = 0;
-//            for(unsigned int i=0;i<_min.size();++i)
-//            {
-                box_compound _c(_min, _min);
-//            }
+
+            box_compound _c(_min, _min);
             using tag=std::integral_constant<std::size_t,ND>*;
-            // hsize_type size=static_cast<hsize_type>(_min.size());
             create_boxCompound(_group_id,_cName, &_c, tag(0),_boxes_size,asAttr);
         }
 
-        // create_boxCompound( group_id, name, index_list_t min, index_list_t max, bool=true)
-        // index_list_t is math::vector<int, dimension>
-        // write one box (probDomain)
-//        template<std::size_t ND =dimension>
-//        void create_boxCompound(hid_type& _group_id,std::string _cName, hsize_type _boxes_size=1, bool asAttr=true)
-//        {
-//       //     box_compound _c(_min, _max);
-//            using tag=std::integral_constant<std::size_t,ND>*;
-//            create_boxCompound(_group_id,_cName, &_c, tag(0),1, asAttr);
-//        }
+
 
         // for 2D
         void create_boxCompound(hid_type& _group_id,std::string _cName, box_compound* _c, std::integral_constant<std::size_t, 2>* ,hsize_type _dim=1,bool asAttr=true)
@@ -894,13 +888,13 @@ class hdf5_file
             {
             //   auto dataset = H5Acreate(_group_id, _cName.c_str(), s1_tid, space, H5P_DEFAULT, H5P_DEFAULT);
                 auto dataset = H5Aopen(_group_id, _cName.c_str(), H5P_DEFAULT);
-                auto status = H5Awrite(dataset, s1_tid, _c);
+                H5Awrite(dataset, s1_tid, _c);
                 close_attribute(dataset);
             }else
             {
             //    auto dataset = H5Dcreate(_group_id, _cName.c_str(), s1_tid, space, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
                 auto dataset = H5Dopen(_group_id, _cName.c_str(), H5P_DEFAULT);
-                auto status = H5Dwrite(dataset, s1_tid, H5S_ALL, H5S_ALL, H5P_DEFAULT, _c);
+                H5Dwrite(dataset, s1_tid, H5S_ALL, H5S_ALL, H5P_DEFAULT, _c);
                 close_dset(dataset);
             }
             close_type(s1_tid);

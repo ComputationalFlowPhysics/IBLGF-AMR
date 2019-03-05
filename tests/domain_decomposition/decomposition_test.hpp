@@ -67,6 +67,9 @@ struct DecomposistionTest:public SetupBase<DecomposistionTest,parameters>
     :super_type(_d)
     {
 
+        if(domain_.is_client())client_comm_=client_comm_.split(1);
+        else client_comm_=client_comm_.split(0);
+
         pcout << "\n Setup:  Test - Domain decomposition \n" << std::endl;
         pcout << "Simulation: \n" << simulation_ << std::endl;
         domain_.init_refine(_d->get_dictionary("simulation_parameters") ->template get_or<int>("nLevels",0));
@@ -77,7 +80,6 @@ struct DecomposistionTest:public SetupBase<DecomposistionTest,parameters>
 
     void run()
     {
-
         if(domain_.is_client())
         {
             poisson_solver_t psolver(&this->simulation_);
@@ -86,13 +88,9 @@ struct DecomposistionTest:public SetupBase<DecomposistionTest,parameters>
             TIME_CODE( solve_duration, SINGLE_ARG(
                     psolver.solve<source, phi_num>();
             ))
-            std::cout<<"Total Psolve time: " <<solve_duration.count()<<std::endl;
+            pcout_c<<"Total Psolve time: " <<solve_duration.count()<<std::endl;
         }
-            this->compute_errors();
-        //psolver.laplace_diff<phi_num,amr_lap_source>();
-
-        boost::mpi::communicator world;
-
+        this->compute_errors();
         simulation_.write2("mesh.hdf5");
     }
 
@@ -104,7 +102,7 @@ struct DecomposistionTest:public SetupBase<DecomposistionTest,parameters>
     {
         boost::mpi::communicator world;
         if(domain_.is_server()) return ;
-        //std::cout<<"Initializing on rank:"<<world.rank()<<std::endl;
+        std::cout<<"Initializing on rank:"<<world.rank()<<std::endl;
         auto center = (domain_.bounding_box().max() -
                        domain_.bounding_box().min()) / 2.0 +
                        domain_.bounding_box().min();
@@ -113,21 +111,18 @@ struct DecomposistionTest:public SetupBase<DecomposistionTest,parameters>
             template get_or<int>("nLevels",0);
 
 
-        //Adapt center to always have peak value in a cell-center
+        // Adapt center to always have peak value in a cell-center
         center+=0.5/std::pow(2,nRef);
         const float_type a  = 10.;
         const float_type a2 = a*a;
         const float_type dx_base = domain_.dx_base();
 
+        // Loop through leaves and assign values
         for (auto it  = domain_.begin_leafs();
                   it != domain_.end_leafs(); ++it)
         {
             auto dx_level =  dx_base/std::pow(2,it->refinement_level());
             auto scaling =  std::pow(2,it->refinement_level());
-
-
-            //std::cout<<"it all: "<<it->global_coordinate()<<" "
-            //         <<it->key()._index<<" r "<<it->rank()<<std::endl;
 
            auto view(it->data()->node_field().domain_view());
            auto& nodes_domain=it->data()->nodes_domain();
@@ -168,8 +163,6 @@ struct DecomposistionTest:public SetupBase<DecomposistionTest,parameters>
     void compute_errors()
     {
 
-        if(domain_.is_client())client_comm_=client_comm_.split(1);
-        else client_comm_=client_comm_.split(0);
 
         const float_type dx_base=domain_.dx_base();
         auto L2   = 0.; auto LInf = -1.0; int count=0;
@@ -206,8 +199,6 @@ struct DecomposistionTest:public SetupBase<DecomposistionTest,parameters>
         const auto& v1){return v0>v1? v0  :v1;} );
         pcout_c << "L2  = " << std::sqrt(L2_global)<< std::endl;
         pcout_c << "LInf_global = " << LInf_global << std::endl;
-
-
 
 
     }

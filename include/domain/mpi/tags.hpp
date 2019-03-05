@@ -16,6 +16,7 @@ enum type: int
     request,
     task_type,
     field_query,
+    accumulated_field_query,
     idle,
     connection,
     confirmation,

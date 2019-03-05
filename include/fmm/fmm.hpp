@@ -198,38 +198,11 @@ public:
         fmm_sync_masks(domain_, level);
         //fmm_upward_pass_masks(domain_, level);
 
-        //for (int l = level; l>=0; l--)
-        //{
-        //    for (auto it = domain_->begin(l); it!=domain_->end(l); ++it)
-        //    {
-        //        if ( !it->mask(0)  &&  !it->locally_owned())
-        //        {
-        //            std::cout<< it->rank() << std::endl;
-        //            std::cout<< it->key() << std::endl;
-
-        //            for(int c=0;c<it->num_children();++c)
-        //            {
-        //                auto child = it->child(c);
-        //                //if (child && !child->locally_owned())
-        //                //{
-        //                //    std::cout<<child->rank() << std::endl;
-        //                //    std::cout<<child->locally_owned()<<child->rank() << std::endl;
-        //                //}
-
-        //            }
-
-        //        }
-        //    }
-        //}
-
-
         ////Initialize for each fmm // zero ing all tree
-        //std::cout<<"FMM init Zero" << std::endl;
         fmm_init_zero<fmm_s>(domain_, level);
         fmm_init_zero<fmm_t>(domain_, level);
 
         //// Copy to temporary variables // only the base level
-        //std::cout<<"FMM Init Copy start" << std::endl;
         fmm_init_copy<Source, fmm_s>(domain_, level);
 
         //// Anterpolation
@@ -444,8 +417,12 @@ public:
                 octants.emplace_back(std::make_pair(*it,recv_m_send_count));
             }
         }
+        //Sends=10000, recv1-10000, no_communication=0
         std::sort(octants.begin(), octants.end(),[&](const auto e0, const auto e1)
-                {return e0.second< e1.second;  });
+                {return e0.second> e1.second;  });
+
+        const bool start_communication = false;
+        bool combined_messages=false;
 
         for (auto B_it=octants.begin(); B_it!=octants.end(); ++B_it)
         {
@@ -468,43 +445,35 @@ public:
                 }
             }
 
+            //setup the tasks
             domain_->decomposition().client()->template
-                communicate_induced_fields<fmm_t, fmm_t>(it, _neighbor);
+                communicate_induced_fields<fmm_t, fmm_t>(it, _neighbor, start_communication);
 
+            if(!combined_messages && B_it->second==0)
+            {
+                if(!combined_messages)
+                {
+                    domain_->decomposition().client()->template
+                        combine_induced_field_messages<fmm_t, fmm_t>();
+                    combined_messages=true;
+                }
+                domain_->decomposition().client()->template
+                    check_combined_induced_field_communication<fmm_t,fmm_t>(false);
+            }
         }
 
-        //for (int level=base_level; level>=0; --level)
-        //{
-        //    bool _neighbor = (level==base_level)? true:false;
-
-        //    for (auto it = domain_->begin(level);
-        //                it != domain_->end(level); ++it)
-        //    {
-
-        //        if (!(it->data()) || !it->mask(MASK_LIST::Mask_FMM_Target) )
-        //            continue;
-
-        //        for (std::size_t i=0; i< it->influence_number(); ++i)
-        //        {
-        //            auto n_s = it->influence(i);
-        //            if (n_s && n_s->locally_owned()
-        //                    && n_s->mask(MASK_LIST::Mask_FMM_Source))
-        //            {
-        //                fmm_tt<s,t>(n_s, it, base_level-level, dx_level);
-        //            }
-        //        }
-
-        //        domain_->decomposition().client()->template
-        //            communicate_induced_fields<fmm_t, fmm_t>(it, _neighbor);
-
-        //    }
-
-        //}
-
+        //Finish the communication
         TIME_CODE(time_communication_Bx, SINGLE_ARG(
-                    domain_->decomposition().client()->
-                    finish_induced_field_communication();
-                    ))
+        domain_->decomposition().client()->template
+            check_combined_induced_field_communication<fmm_t,fmm_t>(true);
+        ))
+
+
+        //TIME_CODE(time_communication_Bx, SINGLE_ARG(
+        //            domain_->decomposition().client()->
+        //            finish_induced_field_communication();
+        //            ))
+
 
         boost::mpi::communicator w;
         std::cout<<"Rank "<<w.rank()<<" "

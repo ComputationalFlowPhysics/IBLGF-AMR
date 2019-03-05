@@ -62,7 +62,7 @@ public:
 public:
 
     /** @brief Get octant key*/
-    key_type key() const noexcept{return key_;}
+    const key_type& key() const noexcept{return key_;}
 
 
     /** @brief Octant level relative to root of tree*/

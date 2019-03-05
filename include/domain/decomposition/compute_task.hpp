@@ -17,12 +17,12 @@ namespace domain
  *  Responsible for load balancing and listens to 
  *  the client/worker processes.
  */
-template<class Key>
+template<class OctantType>
 class ComputeTask
 {
 
 public:
-    using key_t  = Key;
+    using octant_t  = OctantType;
 public:
 
     ComputeTask(const ComputeTask&  other) = default;
@@ -33,13 +33,14 @@ public:
 
     ComputeTask() = default;
 
-    ComputeTask(key_t _k, int _rank, float_type _load)
-    : key_(_k), rank_(_rank),load_(_load)
+    ComputeTask(octant_t* _o, int _rank, float_type _load)
+    : octant_(_o), rank_(_rank),load_(_load)
     {
     }
 
-    const Key& key()const noexcept {return key_;}
-    Key& key()noexcept {return key_;}
+    octant_t* octant()noexcept {return octant_;}
+    const auto& key()const noexcept {return octant_->key();}
+    auto& key()noexcept {return octant_->key();}
     const int& rank()const noexcept {return rank_;}
     int& rank()noexcept {return rank_;}
     const float_type& load()const noexcept {return load_;}
@@ -47,21 +48,10 @@ public:
 
 
 private:
-    Key key_;
-    int rank_;
-    float_type load_;
+    octant_t* octant_=nullptr;
+    int rank_=-1;
+    float_type load_=0;
 
-private:
-
-    friend class boost::serialization::access;
-                  
-    template<class Archive>
-    void serialize(Archive & ar, const unsigned int version)
-    {
-        ar & key_;
-        ar & rank_;
-        ar & load_;
-    }
 };
 
 }

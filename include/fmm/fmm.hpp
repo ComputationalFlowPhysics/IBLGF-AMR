@@ -612,12 +612,12 @@ public:
             bool finished=false;
 
             //Start communications
-            for (auto B_it=octants.begin(); B_it!=octants.end(); ++B_it)
+            for (auto B_it=octants.rbegin(); B_it!=octants.rend(); ++B_it)
             {
                 auto it =B_it->first;
                     domain_->decomposition().client()->
                         template communicate_updownward_assign<fmm_t, fmm_t>(it, false);
-                if(B_it->second ==0) continue;
+                if(B_it->second ==0 ) break;
             }
 
             //Do inner communications first

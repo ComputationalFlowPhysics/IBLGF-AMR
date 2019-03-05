@@ -54,8 +54,8 @@ public:
     template<template<class>class BufferPolicy=AddAssignRecv>
     using induced_fields_task_t = typename trait_t::template
                                         induced_fields_task_t<BufferPolicy>;
-    
-    using acc_induced_fields_task_t = typename trait_t::acc_induced_fields_task_t;                                        
+
+    using acc_induced_fields_task_t = typename trait_t::acc_induced_fields_task_t;
 
     using task_manager_t =typename trait_t::task_manager_t;
 
@@ -298,7 +298,6 @@ public:
 
                     } else
                     {
-                        std::cout<< "SYNC MASK PARENT -> "<<w.rank()<<" " << it->key()<< std::endl;
                         auto mask_ptr=it->mask_ptr(mask_id);
                         auto task=send_comm.post_task( mask_ptr, r, true, idx );
                         task->requires_confirmation()=false;
@@ -430,7 +429,7 @@ public:
             for(std::size_t i = 0; i< it->influence_number(); ++i)
             {
                 const auto inf=it->influence(i);
-                if(inf && inf->rank()==myRank && 
+                if(inf && inf->rank()==myRank &&
                    inf->mask(MASK_LIST::Mask_FMM_Source))
                 {return +1000000;}
             }
@@ -440,19 +439,19 @@ public:
                 for(int i = 0; i< it->nNeighbors(); ++i)
                 {
                     const auto inf=it->neighbor(i);
-                    if(inf && inf->rank()==myRank && 
+                    if(inf && inf->rank()==myRank &&
                        inf->mask(MASK_LIST::Mask_FMM_Source))
                     {return +1000000;}
                 }
             }
-        } 
+        }
         else //Receivs
         {
             std::set<int> unique_inflRanks;
             for(std::size_t i = 0; i< it->influence_number(); ++i)
             {
                 const auto inf=it->influence(i);
-                if(inf && inf->rank()!=myRank && 
+                if(inf && inf->rank()!=myRank &&
                    inf->mask(MASK_LIST::Mask_FMM_Source))
                 {
                     ++count;
@@ -464,7 +463,7 @@ public:
                 for(int i = 0; i< it->nNeighbors(); ++i)
                 {
                     const auto inf=it->neighbor(i);
-                    if(inf && inf->rank()!=myRank && 
+                    if(inf && inf->rank()!=myRank &&
                        inf->mask(MASK_LIST::Mask_FMM_Source))
                     {
                         ++count;
@@ -476,8 +475,8 @@ public:
     }
 
     template<class SendField,class RecvField, class Octant_t>
-    void communicate_induced_fields(Octant_t it, 
-                                    bool _neighbors=false, 
+    void communicate_induced_fields(Octant_t it,
+                                    bool _neighbors=false,
                                     bool _start_communication=true )
     {
 
@@ -569,7 +568,7 @@ public:
                 //auto task = recv_comm.post_task( recv_ptr, r, true, idx);
                 //task->requires_confirmation()=false;
                 //task->octant()=it;
-                
+
                 auto task = std::make_shared<induced_fields_task_t<AddAssignRecv>>(idx);
                 task->attach_data(recv_ptr);
                 task->rank_other()=r;
@@ -639,7 +638,7 @@ public:
             }
             if(idx>=0)
             {
-                auto accumulated_task= 
+                auto accumulated_task=
                     acc_send_comm.post_task(&send_fields_[rank_other], rank_other, true, idx);
             }
         }
@@ -665,7 +664,7 @@ public:
 
             if(idx>=0)
             {
-                auto accumulated_task = 
+                auto accumulated_task =
                     acc_recv_comm.post_task(&recv_fields_[rank_other], rank_other, true, idx);
             }
         }
@@ -847,7 +846,7 @@ public:
                 const auto unique_ranks=it->unique_child_ranks(mask_id);
                 for(auto r : unique_ranks)
                 {
-                    if(_upward) { /*recv*/ ++count; } 
+                    if(_upward) { /*recv*/ ++count; }
                     else { /*send*/ ++count; }
                 }
             }
@@ -855,7 +854,7 @@ public:
             {
                 if(it->has_locally_owned_children(mask_id))
                 {
-                    if(_upward) { /*send*/ return 10000; } 
+                    if(_upward) { /*send*/ return 10000; }
                     else { /*recv*/ return 10000; }
                 }
             }

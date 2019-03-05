@@ -120,8 +120,8 @@ public:
         // Ke TODO: check if this is ok
         // this->construct_leaf_maps();
         this->construct_level_maps();
-        this->construct_neighbor_lists();
-        this->construct_influence_lists();
+        //this->construct_neighbor_lists();
+        //this->construct_influence_lists();
 
     }
 

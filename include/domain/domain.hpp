@@ -216,8 +216,6 @@ public: //C/Dtors
             }
             //TODO
             std::cout<<"Initial mesh and refienment done"<< std::endl;
-            //this->tree()->construct_leaf_maps();
-            //this->tree()->construct_level_maps();
         }
      }
 

@@ -626,6 +626,7 @@ public:
             for (auto it = domain_->begin(level);
                     it != domain_->end(level);
                     ++it)
+                if (!it->locally_owned())
             {
                     auto& cp2 = it ->data()->template get_linalg_data<fmm_s>();
                     cp2*=0.0;

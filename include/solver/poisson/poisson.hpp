@@ -347,7 +347,7 @@ public:
                                 n.template at_offset<Field>(0,1,1)+
                                 n.template at_offset<Field>(1,1,1));
 
-                const auto pcoord=n.level_coordinate()/2;
+                const auto pcoord=(n.level_coordinate()+1)/2;
                 parent->data()-> template get<Field>(pcoord) =avg;
             });
         }

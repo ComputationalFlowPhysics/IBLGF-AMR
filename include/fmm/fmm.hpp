@@ -399,7 +399,7 @@ public:
         {
             int recv_m_send_count=domain_-> decomposition().client()->
                 updownward_pass_mcount(*it,_upward);
-                
+
             octants.emplace_back(std::make_pair(*it,recv_m_send_count));
         }
         //Sends=10000, recv1-10000, no_communication=0
@@ -629,7 +629,7 @@ public:
         //        {
         //            if(B_it->second<0 && !finished)
         //            {
-        //                domain_->decomposition().client()-> template 
+        //                domain_->decomposition().client()-> template
         //                    finish_updownward_pass_communication_assign<fmm_t, fmm_t>();
         //                finished=true;
         //            }

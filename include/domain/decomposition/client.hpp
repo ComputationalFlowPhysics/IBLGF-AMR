@@ -74,7 +74,7 @@ public:
     ~Client() = default;
 
     Client(Domain* _d, communicator_type _comm =communicator_type())
-    :domain_(_d), intra_server(this->task_manager_)
+    :domain_(_d)
     {
         //boost::mpi::communicator world;
         //std::cout<<"I am a client on rank: "<<world.rank()<<std::endl;
@@ -1010,7 +1010,7 @@ public:
     auto get_octant_idx(T it) const noexcept
     {
         const auto cc=it->tree_coordinate();
-        return static_cast<int>(it->level()+cc.x()*25+cc.y()*20*500+ 20*500*500*cc.z());
+        return static_cast<int>(it->level()+cc.x()*25+cc.y()*25*500+ 25*500*500*cc.z());
 ;
     }
 
@@ -1042,7 +1042,6 @@ public:
 
 private:
     Domain* domain_;
-    intra_client_server_t intra_server;
 
     //TODO: make this a InlineQuery
     std::vector<std::vector<float_type>> send_fields_;

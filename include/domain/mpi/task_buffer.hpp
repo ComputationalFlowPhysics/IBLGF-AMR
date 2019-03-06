@@ -65,6 +65,7 @@ public:
     TaskBufferContainer(int _nBuffers)
     :buffers_(_nBuffers)
     {
+        init(_nBuffers);
     }
 
     void init(int _nBuffers)

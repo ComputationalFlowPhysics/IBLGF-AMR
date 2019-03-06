@@ -196,14 +196,12 @@ public: //C/Dtors
 
             for(int l=0;l<nRef;++l)
             {
-                int level = this->tree()->base_level()+l;
-                for (auto it  = this->begin_leafs();
-                        it != this->end_leafs(); ++it)
+                for (auto it = this->begin_leafs(); it != this->end_leafs(); ++it)
                 {
                     auto b=it->data()->descriptor();
-                    auto b_old=b;
 
-                    const base_t lower(+2), upper(+2);
+                    //const base_t lower(+2), upper(+2);
+                    const auto lower((center )/2-2 ), upper((center )/2+2 - b.extent());
                     b.grow(lower, upper);
 
                     real_coordinate_type level_center= center*std::pow(2.0,l);

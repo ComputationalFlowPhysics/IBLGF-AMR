@@ -606,69 +606,92 @@ public:
     void fmm_intrp(domain_t* domain_, int base_level)
     {
 
-        for (int level=1; level<base_level; ++level)
-        {
-            //sort octants such that internal cells are first
-            auto octants=initialize_upward_iterator(level,domain_,false);
-            bool finished=false;
-
-            //Start communications
-            for (auto B_it=octants.rbegin(); B_it!=octants.rend(); ++B_it)
-            {
-                auto it =B_it->first;
-                    domain_->decomposition().client()->
-                        template communicate_updownward_assign<fmm_t, fmm_t>(it, false);
-                if(B_it->second ==0 ) break;
-            }
-
-            //Do inner communications first
-            for (auto B_it=octants.begin(); B_it!=octants.end(); ++B_it)
-            {
-                auto it =B_it->first;
-                if(it->data() && it->mask(MASK_LIST::Mask_FMM_Target) )
-                {
-                    if(B_it->second<0 && !finished)
-                    {
-                        domain_->decomposition().client()-> template 
-                            finish_updownward_pass_communication_assign<fmm_t, fmm_t>();
-                        finished=true;
-                    }
-
-                    if(it->data() && it->mask(MASK_LIST::Mask_FMM_Target) )
-                        lagrange_intrp.nli_intrp_node<fmm_t>(it);
-                }
-            }//octants in level
-        }
-
         //for (int level=1; level<base_level; ++level)
         //{
-        //    domain_->decomposition().client()-> template
-        //            communicate_updownward_assign<fmm_t, fmm_t>(level,false);
+        //    //sort octants such that internal cells are first
+        //    auto octants=initialize_upward_iterator(level,domain_,false);
+        //    bool finished=false;
 
-        //    for (auto it = domain_->begin(level);
-        //            it != domain_->end(level);
-        //            ++it)
+        //    //Start communications
+        //    for (auto B_it=octants.rbegin(); B_it!=octants.rend(); ++B_it)
         //    {
-        //        if(it->data() && it->mask(MASK_LIST::Mask_FMM_Target) )
-        //            lagrange_intrp.nli_intrp_node<fmm_t>(it);
+        //        auto it =B_it->first;
+        //            domain_->decomposition().client()->
+        //                template communicate_updownward_assign<fmm_t, fmm_t>(it, false);
+        //        if(B_it->second ==0 ) break;
         //    }
+
+        //    //Do inner communications first
+        //    for (auto B_it=octants.begin(); B_it!=octants.end(); ++B_it)
+        //    {
+        //        auto it =B_it->first;
+        //        if(it->data() && it->mask(MASK_LIST::Mask_FMM_Target) )
+        //        {
+        //            if(B_it->second<0 && !finished)
+        //            {
+        //                domain_->decomposition().client()-> template 
+        //                    finish_updownward_pass_communication_assign<fmm_t, fmm_t>();
+        //                finished=true;
+        //            }
+
+        //            if(it->data() && it->mask(MASK_LIST::Mask_FMM_Target) )
+        //                lagrange_intrp.nli_intrp_node<fmm_t>(it);
+        //        }
+        //    }//octants in level
         //}
+
+        for (int level=1; level<base_level; ++level)
+        {
+            domain_->decomposition().client()-> template
+                    communicate_updownward_assign<fmm_t, fmm_t>(level,false);
+
+            for (auto it = domain_->begin(level);
+                    it != domain_->end(level);
+                    ++it)
+            {
+                if(it->data() && it->mask(MASK_LIST::Mask_FMM_Target) )
+                    lagrange_intrp.nli_intrp_node<fmm_t>(it);
+            }
+        }
     }
 
     template< class fmm_s>
     void fmm_antrp(domain_t* domain_, int base_level)
     {
+        //for (int level=base_level-1; level>=0; --level)
+        //{
+        //    auto octants=initialize_upward_iterator(level,domain_,true);
+        //    for (auto B_it=octants.begin(); B_it!=octants.end(); ++B_it)
+        //    {
+        //        auto it =B_it->first;
+        //        if(it->data() && it->mask(MASK_LIST::Mask_FMM_Source) )
+        //            lagrange_intrp.nli_antrp_node<fmm_s>(it);
+
+        //        domain_->decomposition().client()->
+        //            template communicate_updownward_add<fmm_s, fmm_s>(it, true);
+        //    }
+
+        //    //domain_->decomposition().client()->
+        //    //    template communicate_updownward_add<fmm_s, fmm_s>(level, true);
+
+        //    for (auto it = domain_->begin(level);
+        //            it != domain_->end(level);
+        //            ++it)
+        //        if (!it->locally_owned())
+        //    {
+        //            auto& cp2 = it ->data()->template get_linalg_data<fmm_s>();
+        //            cp2*=0.0;
+        //    }
+        //}
+
         for (int level=base_level-1; level>=0; --level)
         {
-            auto octants=initialize_upward_iterator(level,domain_,true);
-            for (auto B_it=octants.begin(); B_it!=octants.end(); ++B_it)
+            for (auto it = domain_->begin(level);
+                    it != domain_->end(level);
+                    ++it)
             {
-                auto it =B_it->first;
                 if(it->data() && it->mask(MASK_LIST::Mask_FMM_Source) )
                     lagrange_intrp.nli_antrp_node<fmm_s>(it);
-
-                domain_->decomposition().client()->
-                    template communicate_updownward_add<fmm_s, fmm_s>(it, true);
             }
 
             domain_->decomposition().client()->
@@ -678,27 +701,11 @@ public:
                     it != domain_->end(level);
                     ++it)
                 if (!it->locally_owned())
-            {
+                {
                     auto& cp2 = it ->data()->template get_linalg_data<fmm_s>();
                     cp2*=0.0;
-            }
+                }
         }
-
-        //for (int level=base_level-1; level>0; --level)
-        //{
-        //    for (auto it = domain_->begin(level);
-        //            it != domain_->end(level);
-        //            ++it)
-        //    {
-        //        if(it->data() && it->mask(MASK_LIST::Mask_FMM_Source) )
-        //            lagrange_intrp.nli_antrp_node<fmm_s>(it);
-
-        //        domain_->decomposition().client()->
-        //            template communicate_updownward_add<fmm_s, fmm_s>(it, true);
-        //    }
-        //    //domain_->decomposition().client()->
-        //    //    template communicate_updownward_add<fmm_s, fmm_s>(level, true);
-        //}
     }
 
     template<

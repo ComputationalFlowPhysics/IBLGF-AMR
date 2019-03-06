@@ -82,6 +82,15 @@ public:
         std::vector<float_type> lgf;
         const float_type dx_base=domain_->dx_base();
 
+        // Clean
+        for (auto it = domain_->begin();
+                it != domain_->end();
+                ++it)
+        {
+                auto& cp2 = it ->data()->template get_linalg_data<source_tmp>();
+                cp2 *=0.0;
+        }
+
         // Copy source
         for (auto it  = domain_->begin_leafs();
                 it != domain_->end_leafs(); ++it)
@@ -110,17 +119,26 @@ public:
             domain_->decomposition().client()->
                 template communicate_updownward_add<source_tmp, source_tmp>(ls,true,false);
 
+            for (auto it_s  = domain_->begin(ls);
+                    it_s != domain_->end(ls); ++it_s)
+                if (it_s->data() && !it_s->locally_owned())
+                {
+                    auto& cp2 = it_s ->data()->template get_linalg_data<source_tmp>();
+                    cp2*=0.0;
+                }
         }
 
         //Level-Interactions
         pcout<<"Level interactions "<<std::endl;
         for (int l  = domain_->tree()->base_level()+0;
         //         l < domain_->tree()->depth(); ++l) //TODO !!!!! change to global maximum
-                 l < 10; ++l)
+            l < 10; ++l)
         {
+
             //test for FMM
             //fmm_.template fmm_for_level<source_tmp, Target>(domain_, l, false);
             //fmm_.template fmm_for_level<source_tmp, Target>(domain_, l, true);
+
             fmm_.template fmm_for_level_test<source_tmp, Target>(domain_, l, false);
             fmm_.template fmm_for_level_test<source_tmp, Target>(domain_, l, true);
             //this->level_convolution_fft<source_tmp, Target>(l);

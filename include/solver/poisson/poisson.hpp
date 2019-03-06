@@ -297,7 +297,6 @@ public:
                 }
 
                 diff_target_data *= (1/dx_level) * (1/dx_level);
-
             }
         }
     }

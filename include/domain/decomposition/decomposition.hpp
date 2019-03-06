@@ -67,27 +67,22 @@ public: //memeber functions
         if(server())
         {
             server()->send_keys();
-            std::cout<< "Server done sending keys" << std::endl;
         }
         else if(client())
         {
             client()->receive_keys();
-            std::cout<< "Client done receiving keys" << std::endl;
         }
 
         //Construct neighborhood and influence list:
         if(server())
         {
             server()->rank_query();
-            std::cout<<"Server done rank queries" << std::endl;
             server()->leaf_query();
-            std::cout<<"Server done leaf queries" << std::endl;
         }
         else if(client())
         {
             client()->query_octants();
             client()->disconnect();
-            std::cout<< "Client done query octants" << std::endl;
 
             client()->query_leaves();
             client()->disconnect();
@@ -117,7 +112,6 @@ private:
     boost::mpi::communicator comm_;
     std::shared_ptr<client_type> client_=nullptr;
     std::shared_ptr<server_type> server_=nullptr;
-
 };
 
 }

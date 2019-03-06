@@ -206,20 +206,20 @@ public:
         fmm_init_copy<Source, fmm_s>(domain_, level);
 
         //// Anterpolation
-        std::cout<<"FMM Antrp start" << std::endl;
+        pcout<<"FMM Antrp start" << std::endl;
         fmm_antrp<fmm_s>(domain_, level);
 
         //// FMM Neighbors
-        std::cout<<"FMM B0 start" << std::endl;
+        pcout<<"FMM B0 start" << std::endl;
         fmm_B0<fmm_s, fmm_t>(domain_, level, dx_level);
 
         //// FMM influence list
-        std::cout<<"FMM Bx start" << std::endl;
+        pcout<<"FMM Bx start" << std::endl;
         //fmm_Bx_itr_build(domain_, level);
         fmm_Bx<fmm_s, fmm_t>(domain_, level, dx_level);
 
         //// Interpolation
-        std::cout<<"FMM INTRP start" << std::endl;
+        pcout<<"FMM INTRP start" << std::endl;
         fmm_intrp<fmm_t>(domain_, level);
         //std::cout<<"FMM INTRP done" << std::endl;
 
@@ -230,8 +230,8 @@ public:
             fmm_minus_equal<Target, fmm_t>(domain_, level);
 
         boost::mpi::communicator world;
-        std::cout<<"Rank "<<world.rank() << " FFTW_count = ";
-        std::cout<<conv_.fft_count << std::endl;
+        //std::cout<<"Rank "<<world.rank() << " FFTW_count = ";
+        //std::cout<<conv_.fft_count << std::endl;
         pcout<<"FMM For Level "<< level << " End ---------------------------"<<std::endl;
     }
 
@@ -442,7 +442,6 @@ public:
 
         for (auto B_it=octants.begin(); B_it!=octants.end(); ++B_it)
         {
-            //ofs<< B_it->second << std::endl;
             auto it =B_it->first;
             int level = it->level();
 
@@ -484,17 +483,10 @@ public:
             check_combined_induced_field_communication<fmm_t,fmm_t>(true);
         ))
 
-
-        //TIME_CODE(time_communication_Bx, SINGLE_ARG(
-        //            domain_->decomposition().client()->
-        //            finish_induced_field_communication();
-        //            ))
-
-
-        boost::mpi::communicator w;
-        std::cout<<"Rank "<<w.rank()<<" "
-        <<"FMM time_communication_Bx: " <<time_communication_Bx.count()<<" "
-        <<std::endl;
+        //boost::mpi::communicator w;
+        //std::cout<<"Rank "<<w.rank()<<" "
+        //<<"FMM time_communication_Bx: " <<time_communication_Bx.count()<<" "
+        //<<std::endl;
 
     }
 

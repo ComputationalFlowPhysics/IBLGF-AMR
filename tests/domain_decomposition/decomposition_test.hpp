@@ -102,7 +102,6 @@ struct DecomposistionTest:public SetupBase<DecomposistionTest,parameters>
     {
         boost::mpi::communicator world;
         if(domain_.is_server()) return ;
-        std::cout<<"Initializing on rank:"<<world.rank()<<std::endl;
         auto center = (domain_.bounding_box().max() -
                        domain_.bounding_box().min()) / 2.0 +
                        domain_.bounding_box().min();

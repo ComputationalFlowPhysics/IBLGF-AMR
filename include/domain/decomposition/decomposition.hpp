@@ -63,27 +63,36 @@ public: //memeber functions
 
     void distribute()
     {
-        domain_->tree()->construct_leaf_maps();
-        domain_->tree()->construct_level_maps();
-
         //Send the construction keys back and forth
         if(server())
+        {
             server()->send_keys();
+            std::cout<< "Server done sending keys" << std::endl;
+        }
         else if(client())
+        {
             client()->receive_keys();
+            std::cout<< "Client done receiving keys" << std::endl;
+        }
 
         //Construct neighborhood and influence list:
         if(server())
         {
             server()->rank_query();
+            std::cout<<"Server done rank queries" << std::endl;
+            server()->leaf_query();
+            std::cout<<"Server done leaf queries" << std::endl;
         }
         else if(client())
         {
             client()->query_octants();
             client()->disconnect();
+            std::cout<< "Client done query octants" << std::endl;
+
+            client()->query_leaves();
+            client()->disconnect();
         }
     }
-
 
 public: //access memebers:
 

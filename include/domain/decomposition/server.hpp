@@ -42,6 +42,10 @@ public:
 
     using rank_query_t   = typename trait_t::rank_query_t;
     using key_query_t    = typename trait_t::key_query_t;
+
+    using leaf_query_send_t   = typename trait_t::leaf_query_send_t;
+    using leaf_query_recv_t   = typename trait_t::leaf_query_recv_t;
+
     using task_manager_t = typename trait_t::task_manager_t;
 
 public: //Ctors
@@ -88,7 +92,7 @@ public:
         auto it = domain_->begin_bf();
         float_type current_load= 0.;
         for(int crank=0;crank<nProcs;++crank)
-        {
+       {
             float_type target_load= (static_cast<float_type>(crank+1)/nProcs)*total_load;
             target_load=std::min(target_load,total_load);
             float_type octant_load=0.;
@@ -143,6 +147,17 @@ public:
         }
     }
 
+    void leaf_query()
+    {
+        InlineQueryRegistry<leaf_query_recv_t, leaf_query_send_t> mq(comm_.size());
+        mq.register_completeFunc([this](auto _task, auto _answerData)
+        {
+            this->get_octant_leaf(_task, _answerData);
+        });
+
+        this->run_query(mq);
+    }
+
     void rank_query()
     {
         InlineQueryRegistry<rank_query_t, key_query_t> mq(comm_.size());
@@ -152,6 +167,26 @@ public:
         });
 
         this->run_query(mq);
+    }
+
+    template<class TaskPtr, class OutPtr>
+    void get_octant_leaf(TaskPtr _task, OutPtr _out)
+    {
+        _out->resize(_task->data().size());
+        int count=0;
+        for(auto& key : _task->data())
+        {
+            auto oct =domain_->tree()->find_octant(key);
+            if(oct)
+            { (*_out)[count++]=(oct->is_leaf());
+            }
+            else
+            {
+                (*_out)[count++]=false;
+                //std::cout<< key << std::endl;
+                //throw std::runtime_error("Leaf query octant doesn't exist");
+            }
+        }
     }
 
     template<class TaskPtr, class OutPtr>

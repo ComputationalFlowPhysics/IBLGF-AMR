@@ -27,13 +27,16 @@ struct ServerClientTraits
     using domain_t = Domain;
     using key_t  = typename  domain_t::key_t;
 
-    using key_query_t  = Task<tags::key_query,std::vector<key_t>>;
-    using rank_query_t = Task<tags::key_query,std::vector<int>>;
+    using key_query_t       = Task<tags::key_query,std::vector<key_t>>;
+    using rank_query_t      = Task<tags::key_query,std::vector<int>>;
+
+    using leaf_query_send_t = Task<tags::leaf,std::vector<key_t>>;
+    using leaf_query_recv_t = Task<tags::leaf,std::vector<bool>>;
 
     using octant_t  = typename  domain_t::octant_t;
 
     template< template<class> class BufferPolicy >
-    using mask_query_t = Task<tags::field_query,
+    using mask_query_t          = Task<tags::mask_query,
                                        bool, BufferPolicy>;
 
     template< template<class> class BufferPolicy >
@@ -45,6 +48,8 @@ struct ServerClientTraits
 
     using task_manager_t = TaskManager<key_query_t,
                                        rank_query_t,
+                                       leaf_query_send_t,
+                                       leaf_query_recv_t,
                                        mask_query_t<OrAssignRecv>,
                                        induced_fields_task_t<CopyAssign>,
                                        induced_fields_task_t<AddAssignRecv>,

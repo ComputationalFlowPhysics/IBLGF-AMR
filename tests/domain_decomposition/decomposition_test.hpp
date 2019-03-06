@@ -71,10 +71,8 @@ struct DecomposistionTest:public SetupBase<DecomposistionTest,parameters>
         else client_comm_=client_comm_.split(0);
 
         pcout << "\n Setup:  Test - Domain decomposition \n" << std::endl;
-        pcout << "Simulation: \n" << simulation_    << std::endl;
-
-        //domain_.distribute();
-        //this->refine();
+        pcout << "Simulation: \n" << simulation_ << std::endl;
+        domain_.init_refine(_d->get_dictionary("simulation_parameters") ->template get_or<int>("nLevels",0));
         domain_.distribute();
         this->initialize();
     }
@@ -96,36 +94,6 @@ struct DecomposistionTest:public SetupBase<DecomposistionTest,parameters>
         simulation_.write2("mesh.hdf5");
     }
 
-    void refine()
-    {
-        boost::mpi::communicator world;
-        std::cout<<"Refining on rank:"<<world.rank()<<std::endl;
-
-        auto center = (domain_.bounding_box().max() -
-                       domain_.bounding_box().min()) / 2.0 +
-                       domain_.bounding_box().min();
-
-        const int nRef = simulation_.dictionary_->
-            template get_or<int>("nLevels",0);
-
-        for(int l=0;l<nRef;++l)
-        {
-            for (auto it  = domain_.begin_leafs();
-                    it != domain_.end_leafs(); ++it)
-            {
-                auto b=it->data()->descriptor();
-
-                const auto lower((center )/2-2 ), upper((center )/2+2 - b.extent());
-                b.grow(lower, upper);
-                if(b.is_inside( center * pow(2.0,l))
-                        && it->refinement_level()==l )
-                {
-                    domain_.refine(it);
-                }
-            }
-        }
-
-    }
 
     /** @brief Initialization of poisson problem.
      *  @detail Testing poisson with manufactured solutions: exp
@@ -231,8 +199,6 @@ struct DecomposistionTest:public SetupBase<DecomposistionTest,parameters>
         const auto& v1){return v0>v1? v0  :v1;} );
         pcout_c << "L2  = " << std::sqrt(L2_global)<< std::endl;
         pcout_c << "LInf_global = " << LInf_global << std::endl;
-
-
 
 
     }

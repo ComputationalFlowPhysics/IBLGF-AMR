@@ -16,8 +16,8 @@ namespace domain
 using namespace dictionary;
 
 /** @brief Spatial Domain
- *  @detail Given a datablock (and its corresponding dataFields) 
- *  in Dim-dimensional space, the domain is constructed using an 
+ *  @detail Given a datablock (and its corresponding dataFields)
+ *  in Dim-dimensional space, the domain is constructed using an
  *  octree of blocks. Base blocks are read in from *  the config file.
  */
 template<int Dim, class DataBlock>
@@ -164,16 +164,16 @@ public: //C/Dtors
             {
                 const int level=0;
                 auto bbase=t_->octant_to_level_coordinate(it->tree_coordinate());
-                it->data()=std::make_shared<datablock_t>(bbase, 
+                it->data()=std::make_shared<datablock_t>(bbase,
                         _blockExtent,level, false);
             }
         }
         else if(decomposition_.is_client())
         {
             t_=std::make_shared<tree_t>(base_level);
-            
-            //Instantiate blocks only after master has distributed tasks 
-            
+
+            //Instantiate blocks only after master has distributed tasks
+
             //Assign octant to real coordinate transform:
             t_->get_octant_to_level_coordinate()=
                 [ blockExtent=_blockExtent, base=base_]
@@ -184,12 +184,44 @@ public: //C/Dtors
         }
     }
 
+    void init_refine(int nRef=0)
+    {
+        if(is_server())
+        {
+            this->tree()->construct_leaf_maps();
+            this->tree()->construct_level_maps();
+
+            real_coordinate_type center = (this->bounding_box().max() -
+                    this->bounding_box().min()-1) / 2.0 + this->bounding_box().min();
+
+            for(int l=0;l<nRef;++l)
+            {
+                int level = this->tree()->base_level()+l;
+                for (auto it  = this->begin_leafs();
+                        it != this->end_leafs(); ++it)
+                {
+                    auto b=it->data()->descriptor();
+                    auto b_old=b;
+
+                    const base_t lower(+2), upper(+2);
+                    b.grow(lower, upper);
+
+                    real_coordinate_type level_center= center*std::pow(2.0,l);
+                    if(b.is_inside(level_center) && l==it->refinement_level() )
+                    {
+                        this->refine(it);
+                    }
+                }
+            }
+        }
+     }
+
 
     void distribute()
     {
         decomposition_.distribute();
     }
-    
+
 
 
     template<template<std::size_t> class Field>
@@ -220,7 +252,7 @@ public: // Iterators:
     auto begin(int _level)         { return t_->begin(_level); }
     auto end(int _level)           { return t_->end(_level); }
 
-    /** @brief ConditionalIterator based on generic conditon lambda. 
+    /** @brief ConditionalIterator based on generic conditon lambda.
      *  Iterate through tree and skip octant if condition is not fullfilled.
      */
     template<class Func, class Iterator=bfs_iterator>
@@ -269,9 +301,10 @@ public:
                 std::make_shared<datablock_t>(bbase, block_extent_,level);
         });
 
-        tree()->construct_flag_leaf();
-        tree()->construct_neighbor_lists();
-        tree()->construct_influence_lists();
+        // Ke TODO Need to check
+        //tree()->construct_flag_leaf();
+        //tree()->construct_neighbor_lists();
+        //tree()->construct_influence_lists();
     }
 
 

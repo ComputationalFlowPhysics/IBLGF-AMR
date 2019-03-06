@@ -12,7 +12,7 @@ namespace sr_mpi
 {
 
 /**
- * @brief: Task communicator.  Manages posted messages, buffers them and calls 
+ * @brief: Task communicator.  Manages posted messages, buffers them and calls
  *         non-blocking send/recvs and queries their status.
  *         Can be used in both Send and Recv mode.
  */
@@ -37,12 +37,12 @@ public:
 
 public: //Ctor
 
-    TaskCommunicator( int _nBuffers=10)
+    TaskCommunicator( int _nBuffers=10 )
     {
         buffer_.init(_nBuffers);
     }
 
-    //No copy or Assign 
+    //No copy or Assign
 	TaskCommunicator(const TaskCommunicator&) = delete;
 	TaskCommunicator& operator=(const TaskCommunicator&) & = delete;
     ~TaskCommunicator()=default;
@@ -51,7 +51,7 @@ public:
 
     /** * @brief Insert task into buffer queue */
     task_ptr_t insert(const id_type& _taskId ,
-                      task_data_t* _data, 
+                      task_data_t* _data,
                       int _rank_other
                       ) noexcept
     {
@@ -74,8 +74,8 @@ public:
     /** * @brief Check if all tasks are done and nothing is in the queue */
     bool done() const noexcept
     {
-        return tasks_.size()==0  && 
-               buffer_queue_.size()==0 && 
+        return tasks_.size()==0  &&
+               buffer_queue_.size()==0 &&
                unconfirmed_tasks_.size()==0;
     }
 
@@ -122,7 +122,7 @@ public:
             }
             if(mCount==size) break;
             ++mCount;
-        } 
+        }
         return res;
     }
 
@@ -139,7 +139,7 @@ public:
             {
                 finished_.push_back(t);
                 from_buffer(t);
-                
+
                 t->deattach_buffer();
                 insert_unconfirmed_tasks(t);
                 it=tasks_.erase(it);
@@ -150,7 +150,7 @@ public:
         check_unconfirmed_tasks();
         return finished_;
     }
-    
+
     const auto& get_buffer_queue() const noexcept {return buffer_queue_;}
     auto& get_buffer_queue() noexcept {return buffer_queue_;}
 
@@ -162,21 +162,21 @@ public:
     }
 
 protected:
-    int tag_rank(int _rank_other) const noexcept 
+    int tag_rank(int _rank_other) const noexcept
     {
         return this->derived().tag_rank_impl(_rank_other);
     }
-    void sendRecv(task_ptr_t _t) const noexcept 
+    void sendRecv(task_ptr_t _t) const noexcept
     {
         this->derived().sendRecv_impl(_t);
     }
-    void to_buffer(task_ptr_t _t) const noexcept 
+    void to_buffer(task_ptr_t _t) const noexcept
     {
-        this->derived().to_buffer_impl(_t); 
+        this->derived().to_buffer_impl(_t);
     }
-    void from_buffer(task_ptr_t _t) const noexcept 
+    void from_buffer(task_ptr_t _t) const noexcept
     {
-         this->derived().from_buffer_impl(_t); 
+         this->derived().from_buffer_impl(_t);
     }
 
     bool message_exists(task_ptr_t _t) const noexcept
@@ -223,12 +223,12 @@ protected:
 
 };
 
-template<class TaskType> 
-struct SendTaskCommunicator  
+template<class TaskType>
+struct SendTaskCommunicator
 :public TaskCommunicator<TaskType, SendTaskCommunicator<TaskType>>
 {
 
-public: 
+public:
     using super_type = TaskCommunicator<TaskType, SendTaskCommunicator<TaskType>>;
     using task_ptr_t = typename super_type::task_ptr_t;
 
@@ -239,21 +239,21 @@ public: //Memebers:
 
     int tag_rank_impl(int rank_other) const noexcept { return this->comm_.rank(); }
     void sendRecv_impl(task_ptr_t _t) const noexcept {_t->isend(this->comm_);}
-    void to_buffer_impl(task_ptr_t _t) const noexcept 
+    void to_buffer_impl(task_ptr_t _t) const noexcept
     {
         _t->assign_data2buffer();
     }
-    void from_buffer_impl(task_ptr_t _t) const noexcept { } 
+    void from_buffer_impl(task_ptr_t _t) const noexcept { }
     bool message_exists_impl( task_ptr_t _t  ) const noexcept{ return true; }
 private:
-    
+
 };
 
-template<class TaskType> 
-class  RecvTaskCommunicator  
+template<class TaskType>
+class  RecvTaskCommunicator
 :public TaskCommunicator<TaskType, RecvTaskCommunicator<TaskType>>
 {
-public: 
+public:
     using super_type = TaskCommunicator<TaskType, RecvTaskCommunicator<TaskType>>;
     using task_ptr_t = typename super_type::task_ptr_t;
 
@@ -263,12 +263,12 @@ public: //Ctors
 public: //members
     int tag_rank_impl(int _rank_other) const noexcept {return _rank_other;  }
     void sendRecv_impl(task_ptr_t _t) const noexcept {_t->irecv(this->comm_);}
-    void to_buffer_impl(task_ptr_t _t) const noexcept { } 
-    void from_buffer_impl(task_ptr_t _t) const noexcept 
+    void to_buffer_impl(task_ptr_t _t) const noexcept { }
+    void from_buffer_impl(task_ptr_t _t) const noexcept
     {
         _t->assign_buffer2data();
     }
-    bool message_exists_impl( task_ptr_t _t  ) const noexcept{ 
+    bool message_exists_impl( task_ptr_t _t  ) const noexcept{
         if(this->comm_.iprobe(_t->rank_other(), _t->id()))
             return true;
         else return false;
@@ -280,4 +280,4 @@ public: //members
 
 }  //namespace sr_mpi
 
-#endif 
+#endif

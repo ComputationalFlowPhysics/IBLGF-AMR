@@ -381,4 +381,3 @@ private:
 
 } //namespace octree
 #endif
-

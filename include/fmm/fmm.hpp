@@ -18,7 +18,6 @@
 #include <fftw3.h>
 
 
-//test
 #include <global.hpp>
 #include <simulation.hpp>
 #include <linalg/linalg.hpp>
@@ -157,6 +156,7 @@ public:
                             bool non_leaf_as_source=false)
     {
 
+        pcout<<"FMM For Level "<< level << " Start ---------------------------"<<std::endl;
         const float_type dx_base=domain_->dx_base();
         auto refinement_level = level-domain_->tree()->base_level();
         auto dx_level =  dx_base/std::pow(2, refinement_level);
@@ -190,13 +190,17 @@ public:
 
         //// Initialize Masks
 
+        //std::cout<<"FMM init base level masks" << std::endl;
         fmm_init_base_level_masks(domain_, level, non_leaf_as_source);
+        //std::cout<<"FMM upward masks" << std::endl;
         fmm_upward_pass_masks(domain_, level);
+        //std::cout<<"FMM sync masks" << std::endl;
         fmm_sync_masks(domain_, level);
         //fmm_upward_pass_masks(domain_, level);
 
         ////Initialize for each fmm // zero ing all tree
         fmm_init_zero<fmm_s>(domain_, level);
+        fmm_init_zero<fmm_t>(domain_, level);
 
         //// Copy to temporary variables // only the base level
         fmm_init_copy<Source, fmm_s>(domain_, level);
@@ -228,6 +232,7 @@ public:
         boost::mpi::communicator world;
         std::cout<<"Rank "<<world.rank() << " FFTW_count = ";
         std::cout<<conv_.fft_count << std::endl;
+        pcout<<"FMM For Level "<< level << " End ---------------------------"<<std::endl;
     }
 
     void fmm_Bx_itr_build(domain_t* domain_, int base_level)
@@ -259,7 +264,7 @@ public:
             for (auto it = domain_->begin(base_level);
                     it != domain_->end(base_level); ++it)
             {
-                if ( it->is_leaf() || !it->locally_owned())
+                if ( it->is_leaf() || !it->locally_owned() )
                 {
                     it->mask(MASK_LIST::Mask_FMM_Source, false);
                     it->mask(MASK_LIST::Mask_FMM_Target, false);
@@ -273,19 +278,14 @@ public:
         {
             for (auto it = domain_->begin(base_level);
                     it != domain_->end(base_level); ++it)
+            if (it->locally_owned())
             {
-
-                if ( it->locally_owned())
-                {
-                    it->mask(MASK_LIST::Mask_FMM_Source, true);
-                    it->mask(MASK_LIST::Mask_FMM_Target, true);
-                } else
-                {
-                    it->mask(MASK_LIST::Mask_FMM_Source, false);
-                    it->mask(MASK_LIST::Mask_FMM_Target, false);
-                }
-                //it->mask(MASK_LIST::Mask_FMM_Source, true);
-                //it->mask(MASK_LIST::Mask_FMM_Target, true);
+                it->mask(MASK_LIST::Mask_FMM_Source, true);
+                it->mask(MASK_LIST::Mask_FMM_Target, true);
+            } else
+            {
+                it->mask(MASK_LIST::Mask_FMM_Source, false);
+                it->mask(MASK_LIST::Mask_FMM_Target, false);
             }
         }
     }
@@ -345,7 +345,7 @@ public:
 
     void fmm_sync_parent_masks(domain_t* domain_, int base_level)
     {
-        for (int level=base_level; level>=0; --level)
+        for (int level=base_level-1; level>=0; --level)
         {
             domain_->decomposition().client()-> template
                     communicate_mask_single_level_updownward_OR(level,
@@ -363,6 +363,7 @@ public:
         for (int level=base_level; level>=0; --level)
         {
             bool neighbor_ = (level==base_level)? true:false;
+            neighbor_ = true;
 
             domain_->decomposition().client()-> template
                     communicate_mask_single_level_inf_sync(level,
@@ -463,23 +464,23 @@ public:
             //setup the tasks
             domain_->decomposition().client()->template
                 communicate_induced_fields<fmm_t, fmm_t>(it, _neighbor, start_communication);
-            
+
             if(!combined_messages && B_it->second==0)
             {
                 if(!combined_messages)
                 {
-                    domain_->decomposition().client()->template 
+                    domain_->decomposition().client()->template
                         combine_induced_field_messages<fmm_t, fmm_t>();
                     combined_messages=true;
                 }
-                domain_->decomposition().client()->template 
+                domain_->decomposition().client()->template
                     check_combined_induced_field_communication<fmm_t,fmm_t>(false);
             }
         }
 
         //Finish the communication
         TIME_CODE(time_communication_Bx, SINGLE_ARG(
-        domain_->decomposition().client()->template 
+        domain_->decomposition().client()->template
             check_combined_induced_field_communication<fmm_t,fmm_t>(true);
         ))
 
@@ -565,7 +566,7 @@ public:
     template< class fmm_s >
     void fmm_init_zero(domain_t* domain_, int base_level)
     {
-        for (int level=base_level; level>0; --level)
+        for (int level=base_level; level>=0; --level)
         {
             for (auto it = domain_->begin(level);
                     it != domain_->end(level);
@@ -657,7 +658,7 @@ public:
     template< class fmm_s>
     void fmm_antrp(domain_t* domain_, int base_level)
     {
-        for (int level=base_level-1; level>0; --level)
+        for (int level=base_level-1; level>=0; --level)
         {
             auto octants=initialize_upward_iterator(level,domain_,true);
             for (auto B_it=octants.begin(); B_it!=octants.end(); ++B_it)
@@ -670,10 +671,17 @@ public:
                     template communicate_updownward_add<fmm_s, fmm_s>(it, true);
             }
 
-                domain_->decomposition().client()->
-                    template finish_updownward_pass_communication_add<fmm_s, fmm_s>();
-            //domain_->decomposition().client()->
-            //    template communicate_updownward_add<fmm_s, fmm_s>(level, true);
+            domain_->decomposition().client()->
+                template communicate_updownward_add<fmm_s, fmm_s>(level, true);
+
+            for (auto it = domain_->begin(level);
+                    it != domain_->end(level);
+                    ++it)
+                if (!it->locally_owned())
+            {
+                    auto& cp2 = it ->data()->template get_linalg_data<fmm_s>();
+                    cp2*=0.0;
+            }
         }
 
         //for (int level=base_level-1; level>0; --level)
@@ -740,6 +748,7 @@ public:
         std::vector<float_type>     lgf;
         fft::Convolution            conv_;      ///< fft convolution
         std::multimap<int,octant_t*>     Bx_itr;
+        parallel_ostream::ParallelOstream pcout=parallel_ostream::ParallelOstream(1);
 
     private: //timings
 

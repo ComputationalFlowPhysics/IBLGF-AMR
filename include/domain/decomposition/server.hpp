@@ -96,7 +96,8 @@ public:
             float_type target_load= (static_cast<float_type>(crank+1)/nProcs)*total_load;
             target_load=std::min(target_load,total_load);
             float_type octant_load=0.;
-            while(current_load<=target_load)
+            int count=0;
+            while(current_load<=target_load || count ==0)
             {
                 it->rank()=crank+1;
                 auto load= it->load();
@@ -106,6 +107,7 @@ public:
                 current_load+=load;
                 octant_load+=load;
                 ++it;
+                ++count;
                 if(it==domain_->end_bf()) break;
             }
             if(it==domain_->end_bf()) break;

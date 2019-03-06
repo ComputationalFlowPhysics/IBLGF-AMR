@@ -622,6 +622,14 @@ public:
 
             domain_->decomposition().client()->
                 template communicate_updownward_add<fmm_s, fmm_s>(level, true);
+
+            for (auto it = domain_->begin(level);
+                    it != domain_->end(level);
+                    ++it)
+            {
+                    auto& cp2 = it ->data()->template get_linalg_data<fmm_s>();
+                    cp2*=0.0;
+            }
         }
     }
 

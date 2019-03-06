@@ -188,33 +188,31 @@ public: //C/Dtors
     {
         if(is_server())
         {
-            std::cout<<"Initial mesh and refienment with nRef = "<< nRef << std::endl;
             this->tree()->construct_leaf_maps();
             this->tree()->construct_level_maps();
 
-            auto center = (this->bounding_box().max() -
-                    this->bounding_box().min()) / 2.0 + this->bounding_box().min();
+            real_coordinate_type center = (this->bounding_box().max() -
+                    this->bounding_box().min()-1) / 2.0 + this->bounding_box().min();
 
             for(int l=0;l<nRef;++l)
             {
                 int level = this->tree()->base_level()+l;
-
-                for (auto it  = this->begin(level);
-                        it != this->end(level); ++it)
+                for (auto it  = this->begin_leafs();
+                        it != this->end_leafs(); ++it)
                 {
                     auto b=it->data()->descriptor();
+                    auto b_old=b;
 
-                    const auto lower((center )/2-2 ), upper((center )/2+2 - b.extent());
+                    const base_t lower(+2), upper(+2);
                     b.grow(lower, upper);
 
-                    if(b.is_inside( center * pow(2.0,l)))
+                    real_coordinate_type level_center= center*std::pow(2.0,l);
+                    if(b.is_inside(level_center) && l==it->refinement_level() )
                     {
                         this->refine(it);
                     }
                 }
             }
-            //TODO
-            std::cout<<"Initial mesh and refienment done"<< std::endl;
         }
      }
 

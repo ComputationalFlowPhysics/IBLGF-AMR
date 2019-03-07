@@ -91,7 +91,7 @@ struct DecomposistionTest:public SetupBase<DecomposistionTest,parameters>
             pcout_c<<"Total Psolve time: " <<solve_duration.count()<<std::endl;
         }
         this->compute_errors();
-        simulation_.write2("mesh.hdf5");
+        //simulation_.write2("mesh.hdf5");
     }
 
 

@@ -71,7 +71,7 @@ public:
 
     auto compute_distribution() const noexcept
     {
-        std::cout<<"Computing domain decomposition "<<std::endl;
+        std::cout<<"Computing domain decomposition for "<comm_.size()<<" processors" <<std::endl;
 
         domain_->tree()->construct_neighbor_lists();
         domain_->tree()->construct_influence_lists();

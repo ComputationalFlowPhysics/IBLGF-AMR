@@ -67,20 +67,20 @@ struct DecomposistionTest:public SetupBase<DecomposistionTest,parameters>
     :super_type(_d)
     {
 
-        if(domain_.is_client())client_comm_=client_comm_.split(1);
+        if(domain_->is_client())client_comm_=client_comm_.split(1);
         else client_comm_=client_comm_.split(0);
 
         pcout << "\n Setup:  Test - Domain decomposition \n" << std::endl;
         pcout << "Simulation: \n" << simulation_ << std::endl;
-        domain_.init_refine(_d->get_dictionary("simulation_parameters") ->template get_or<int>("nLevels",0));
-        domain_.distribute();
+        domain_->init_refine(_d->get_dictionary("simulation_parameters") ->template get_or<int>("nLevels",0));
+        domain_->distribute();
         this->initialize();
     }
 
 
     void run()
     {
-        if(domain_.is_client())
+        if(domain_->is_client())
         {
             poisson_solver_t psolver(&this->simulation_);
 
@@ -101,10 +101,10 @@ struct DecomposistionTest:public SetupBase<DecomposistionTest,parameters>
     void initialize()
     {
         boost::mpi::communicator world;
-        if(domain_.is_server()) return ;
-        auto center = (domain_.bounding_box().max() -
-                       domain_.bounding_box().min()) / 2.0 +
-                       domain_.bounding_box().min();
+        if(domain_->is_server()) return ;
+        auto center = (domain_->bounding_box().max() -
+                       domain_->bounding_box().min()) / 2.0 +
+                       domain_->bounding_box().min();
 
         const int nRef = simulation_.dictionary_->
             template get_or<int>("nLevels",0);
@@ -113,11 +113,11 @@ struct DecomposistionTest:public SetupBase<DecomposistionTest,parameters>
         center+=0.5/std::pow(2,nRef);
         const float_type a  = 10.;
         const float_type a2 = a*a;
-        const float_type dx_base = domain_.dx_base();
+        const float_type dx_base = domain_->dx_base();
 
         // Loop through leaves and assign values
-        for (auto it  = domain_.begin_leafs();
-                  it != domain_.end_leafs(); ++it)
+        for (auto it  = domain_->begin_leafs();
+                  it != domain_->end_leafs(); ++it)
         {
             auto dx_level =  dx_base/std::pow(2,it->refinement_level());
             auto scaling =  std::pow(2,it->refinement_level());
@@ -162,11 +162,11 @@ struct DecomposistionTest:public SetupBase<DecomposistionTest,parameters>
     {
 
 
-        const float_type dx_base=domain_.dx_base();
+        const float_type dx_base=domain_->dx_base();
         auto L2   = 0.; auto LInf = -1.0; int count=0;
-        if(domain_.is_server())  return;
-        for (auto it_t  = domain_.begin_leafs();
-                it_t != domain_.end_leafs(); ++it_t)
+        if(domain_->is_server())  return;
+        for (auto it_t  = domain_->begin_leafs();
+                it_t != domain_->end_leafs(); ++it_t)
         {
             if(!it_t->locally_owned())continue;
 
@@ -208,15 +208,15 @@ struct DecomposistionTest:public SetupBase<DecomposistionTest,parameters>
     {
         // Loop through leaves and assign values
 
-        auto center = (domain_.bounding_box().max() -
-                       domain_.bounding_box().min()) / 2.0 +
-                       domain_.bounding_box().min();
+        auto center = (domain_->bounding_box().max() -
+                       domain_->bounding_box().min()) / 2.0 +
+                       domain_->bounding_box().min();
 
         std::cout<<"Center  :" <<center<<std::endl;
         auto scaling =  std::pow(2,it->refinement_level());
         center*=scaling;
 
-        const float_type dx_base = domain_.dx_base();
+        const float_type dx_base = domain_->dx_base();
 
         auto b=it->data()->descriptor();
         const decltype(center) lower(+2), upper(+2);

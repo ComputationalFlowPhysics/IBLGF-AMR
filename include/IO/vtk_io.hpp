@@ -29,7 +29,7 @@ public:
 
 public:
 
-    void write_vtk(std::string _filename, Domain& _lt )
+    void write_vtk(std::string _filename, Domain* _lt )
     {
         std::ofstream ofs(_filename );
         ofs<<"# vtk DataFile Version 3.0"<<std::endl;
@@ -37,7 +37,7 @@ public:
         ofs<<"ASCII"<<std::endl;
         ofs<<"DATASET UNSTRUCTURED_GRID"<<std::endl;
         int nPoints=0;
-        for(auto it=_lt.begin_leafs();it!=_lt.end_leafs();++it)
+        for(auto it=_lt->begin_leafs();it!=_lt->end_leafs();++it)
         {
             auto b= it->data()->descriptor();
             b.grow(0,1); //grow by one to fill the gap
@@ -47,7 +47,7 @@ public:
         ofs<<"POINTS "<<nPoints<<" float"<<std::endl;
         int nCells=0;
         int _count=0;
-        for(auto it=_lt.begin_leafs();it!=_lt.end_leafs();++it)
+        for(auto it=_lt->begin_leafs();it!=_lt->end_leafs();++it)
         {
             auto block =it->data()->descriptor();
             int e = block.nPoints();
@@ -74,7 +74,7 @@ public:
         ofs<<"\nCELLS "<<nCells<<" "<<nCells*9<<std::endl;
         
         //connectivity
-        for (auto it = _lt.begin_leafs(); it != _lt.end_leafs(); ++it)
+        for (auto it = _lt->begin_leafs(); it != _lt->end_leafs(); ++it)
         {
 
             auto block =it->data()->descriptor();
@@ -119,7 +119,7 @@ public:
         //    std::string name = "vertex_data_"+std::string(T::name());
         //    ofs << "SCALARS " << name << " float " << std::endl;
         //    ofs << "LOOKUP_TABLE default"          << std::endl;
-        //    for (auto it = _lt.begin_leafs(); it != _lt.end_leafs(); ++it)
+        //    for (auto it = _lt->begin_leafs(); it != _lt->end_leafs(); ++it)
         //    {
         //            for (auto& n : it->data()->nodes())
         //            {
@@ -133,7 +133,7 @@ public:
             std::string name = "cell_data_"+std::string(T::name());
             ofs << "SCALARS " << name << " float " << std::endl;
             ofs << "LOOKUP_TABLE default"          << std::endl;
-            for (auto it = _lt.begin_leafs(); it != _lt.end_leafs(); ++it)
+            for (auto it = _lt->begin_leafs(); it != _lt->end_leafs(); ++it)
             {
                 auto block =it->data()->descriptor();
                 auto base=block.base();
@@ -158,7 +158,7 @@ public:
             }
         });
     }
-    void write_vtk_good(std::string _filename, Domain& _lt )
+    void write_vtk_good(std::string _filename, Domain* _lt )
     {
         std::ofstream ofs(_filename );
         ofs<<"# vtk DataFile Version 3.0"<<std::endl;
@@ -166,7 +166,7 @@ public:
         ofs<<"ASCII"<<std::endl;
         ofs<<"DATASET UNSTRUCTURED_GRID"<<std::endl;
         int nPoints=0;
-        for(auto it=_lt.begin_leafs();it!=_lt.end_leafs();++it)
+        for(auto it=_lt->begin_leafs();it!=_lt->end_leafs();++it)
         {
             nPoints+= it->data()->nodes().size();
         }
@@ -174,7 +174,7 @@ public:
         ofs<<"POINTS "<<nPoints<<" float"<<std::endl;
         int nCells=0;
         int _count=0;
-        for(auto it=_lt.begin_leafs();it!=_lt.end_leafs();++it)
+        for(auto it=_lt->begin_leafs();it!=_lt->end_leafs();++it)
         {
             auto block =it->data()->descriptor();
             block.extent()-=1;
@@ -190,7 +190,7 @@ public:
         ofs<<"\nCELLS "<<nCells<<" "<<nCells*9<<std::endl;
         
         //connectivity
-        for (auto it = _lt.begin_leafs(); it != _lt.end_leafs(); ++it)
+        for (auto it = _lt->begin_leafs(); it != _lt->end_leafs(); ++it)
         {
             for (auto& n : it->data()->nodes())
             {
@@ -225,7 +225,7 @@ public:
             std::string name = "vertex_data_"+std::string(T::name());
             ofs << "SCALARS " << name << " float " << std::endl;
             ofs << "LOOKUP_TABLE default"          << std::endl;
-            for (auto it = _lt.begin_leafs(); it != _lt.end_leafs(); ++it)
+            for (auto it = _lt->begin_leafs(); it != _lt->end_leafs(); ++it)
             {
                     for (auto& n : it->data()->nodes())
                     {

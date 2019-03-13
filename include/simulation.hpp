@@ -25,14 +25,14 @@ public:
     ~Simulation() = default;
 
     Simulation(std::shared_ptr<Dictionary> _dictionary)
-    :dictionary_(_dictionary),domain_(_dictionary->get_dictionary("domain"))
+    :dictionary_(_dictionary),domain_(std::make_shared<domain_type>())
     {
     }
 
     friend std::ostream& operator<<(std::ostream& os, Simulation& s)
     {
         os
-        <<"Domain: \n"<<s.domain_<<" "
+        <<"Domain: \n"<<*(s.domain())<<" "
         <<std::endl;
 
         return os;
@@ -41,21 +41,30 @@ public:
 
     void write(std::string _filename)
     {
-        writer.write_vtk(_filename, domain_);
+        writer.write_vtk(_filename, domain_.get());
     }
 
     void write2(std::string _filename)
     {
-        writer_h5.write_h5(_filename, domain_);
+        writer_h5.write_h5(_filename, domain_.get());
     }
 
+    auto& domain()noexcept{return domain_;}
+    const auto& domain()const noexcept{return domain_;}
+    auto& dictionary()noexcept{return dictionary_;}
+    const auto& dictionary()const noexcept{return dictionary_;}
+
 public:
-  std::shared_ptr<Dictionary> dictionary_;
-  Domain domain_;
+  std::shared_ptr<Dictionary> dictionary_=nullptr;
+  std::shared_ptr<Domain> domain_=nullptr;
   boost::mpi::communicator world_;
   io::Vtk_io<Domain> writer;
   io::H5_io<3, Domain> writer_h5;
 
 };
+
+
+
+
 
 #endif

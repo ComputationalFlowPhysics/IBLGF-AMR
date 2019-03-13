@@ -90,7 +90,7 @@ public:
 
 public:
 
-    void write_h5(std::string _filename, Domain& _lt )
+    void write_h5(std::string _filename, Domain* _lt )
     {
         boost::mpi::communicator world;
 
@@ -101,7 +101,7 @@ public:
 
 
         int nPoints=0;
-        for(auto it=_lt.begin_leafs();it!=_lt.end_leafs();++it)
+        for(auto it=_lt->begin_leafs();it!=_lt->end_leafs();++it)
         {
             auto b= it->data()->descriptor();
             b.grow(0,1); //grow by one to fill the gap
@@ -111,7 +111,7 @@ public:
         //std::cout<<"Rank= "<<world.rank()<<".  ------------POINTS "<<nPoints<<" float"<<std::endl;
         int _count=0;
         // Collect block descriptor and data from each block
-        for(auto it=_lt.begin_leafs();it!=_lt.end_leafs();++it)
+        for(auto it=_lt->begin_leafs();it!=_lt->end_leafs();++it)
         {
             int rank = it->rank();
 
@@ -136,14 +136,14 @@ public:
 
 
         //world.barrier();
-        //if (_lt.is_server()) {
+        //if (_lt->is_server()) {
         //    std::cout<<"\n=========World Barrier=========\n"<<std::endl;
         //}
 
         //std::cout<<"Create hdf5_file object with rank "<<world.rank()<<" of "<<world.size()<<std::endl;
 
         //world.barrier();
-        //if (_lt.is_server()) {
+        //if (_lt->is_server()) {
         //    std::cout<<"\n=========World Barrier=========\n"<<std::endl;
         //}
 
@@ -153,14 +153,14 @@ public:
         chombo_t ch_writer(block_distribution);  // Initialize writer with vector of
                                          // info: tuple of rank, descriptor and data
         //world.barrier();
-        //if (_lt.is_server()) {
+        //if (_lt->is_server()) {
         //    std::cout<<"\n=========World Barrier=========\n"<<std::endl;
         //}
 
         ch_writer.write_global_metaData(&chombo_file);
 
         //world.barrier();
-        //if (_lt.is_server()) {
+        //if (_lt->is_server()) {
         //    std::cout<<"\n=========World Barrier=========\n"<<std::endl;
         //}
         //std::cout<<"------>write_level_info: rank "<<world.rank()<<" of "<<world.size()<<std::endl;

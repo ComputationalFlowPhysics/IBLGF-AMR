@@ -72,17 +72,17 @@ public: //Ctor
     void initialize()
     {
         this->pcout<<"Initializing"<<std::endl;
-        auto center = (domain_.bounding_box().max() -
-                       domain_.bounding_box().min()) / 2.0 +
-                       domain_.bounding_box().min();
+        auto center = (domain_->bounding_box().max() -
+                       domain_->bounding_box().min()) / 2.0 +
+                       domain_->bounding_box().min();
 
         const int nRef = this->simulation_.dictionary_->
             template get_or<int>("nLevels",0);
 
         for(int l=0;l<nRef;++l)
         {
-            for (auto it  = domain_.begin_leafs();
-                    it != domain_.end_leafs(); ++it)
+            for (auto it  = domain_->begin_leafs();
+                    it != domain_->end_leafs(); ++it)
             {
                 auto b=it->data()->descriptor();
 
@@ -92,16 +92,16 @@ public: //Ctor
                    && it->refinement_level()==l
                   )
                 {
-                    domain_.refine(it);
+                    domain_->refine(it);
                 }
             }
         }
 
-        for (int lt = domain_.tree()->base_level();
-                 lt < domain_.tree()->depth(); ++lt)
+        for (int lt = domain_->tree()->base_level();
+                 lt < domain_->tree()->depth(); ++lt)
         {
-            for (auto it  = domain_.begin(lt);
-                      it != domain_.end(lt); ++it)
+            for (auto it  = domain_->begin(lt);
+                      it != domain_->end(lt); ++it)
             {
                 if(it->data())
                 {
@@ -117,10 +117,10 @@ public: //Ctor
         center+=0.5/std::pow(2,nRef);
         const float_type a  = 10.;
         const float_type a2 = a*a;
-        const float_type dx_base = domain_.dx_base();
+        const float_type dx_base = domain_->dx_base();
 
-        for (auto it  = domain_.begin_leafs();
-                it != domain_.end_leafs(); ++it)
+        for (auto it  = domain_->begin_leafs();
+                it != domain_->end_leafs(); ++it)
         {
 
             auto dx_level =  dx_base/std::pow(2,it->refinement_level());
@@ -178,11 +178,11 @@ public: //Ctor
     void compute_errors()
     {
 
-        const float_type dx_base=domain_.dx_base();
+        const float_type dx_base=domain_->dx_base();
 
         auto L2   = 0.; auto LInf = -1.0; int count=0;
-        for (auto it_t  = domain_.begin_leafs();
-             it_t != domain_.end_leafs(); ++it_t)
+        for (auto it_t  = domain_->begin_leafs();
+             it_t != domain_->end_leafs(); ++it_t)
         {
 
             int refinement_level = it_t->refinement_level();
@@ -208,8 +208,8 @@ public: //Ctor
         pcout << "LInf = " << LInf << std::endl;
 
         auto L2_source   = 0.; auto LInf_source = -1.0; count=0;
-        for (auto it_t  = domain_.begin_leafs();
-             it_t != domain_.end_leafs(); ++it_t)
+        for (auto it_t  = domain_->begin_leafs();
+             it_t != domain_->end_leafs(); ++it_t)
         {
 
             int refinement_level = it_t->refinement_level();

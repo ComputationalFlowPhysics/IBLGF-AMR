@@ -51,6 +51,7 @@ struct parameters
     ))
 };
 
+
 struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
 {
 
@@ -64,10 +65,12 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
     using time_point_type = typename clock_type::time_point;
 
     VortexRingTest(Dictionary* _d)
-    :super_type(_d)
+    :super_type(_d, 
+            [this](auto _d, auto _domain){
+                return this->initialize_domain(_d, _domain); })
     {
 
-        if(domain_.is_client())client_comm_=client_comm_.split(1);
+        if(domain_->is_client())client_comm_=client_comm_.split(1);
         else client_comm_=client_comm_.split(0);
 
         R_ = simulation_.dictionary_->
@@ -84,9 +87,11 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
 
         pcout << "\n Setup:  Test - Domain decomposition \n" << std::endl;
         pcout << "Simulation: \n" << simulation_ << std::endl;
-        domain_.register_refinement_codtion()=[this](auto octant){return this->refinement(octant);};
-        domain_.init_refine(_d->get_dictionary("simulation_parameters") ->template get_or<int>("nLevels",0));
-        domain_.distribute();
+        domain_->register_refinement_codtion()=
+            [this](auto octant){return this->refinement(octant);};
+        domain_->init_refine(_d->get_dictionary("simulation_parameters") 
+                ->template get_or<int>("nLevels",0));
+        domain_->distribute();
         this->initialize();
     }
 
@@ -94,7 +99,7 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
     void run()
     {
         boost::mpi::communicator world;
-        if(domain_.is_client())
+        if(domain_->is_client())
         //if(false)
         {
             poisson_solver_t psolver(&this->simulation_);
@@ -117,10 +122,14 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
     void initialize()
     {
         boost::mpi::communicator world;
-        if(domain_.is_server()) return ;
-        auto center = (domain_.bounding_box().max() -
-                       domain_.bounding_box().min()) / 2.0 +
-                       domain_.bounding_box().min();
+        if(domain_->is_server()) return ;
+        auto center = (domain_->bounding_box().max() -
+                       domain_->bounding_box().min()) / 2.0 +
+                       domain_->bounding_box().min();
+       std::cout<<"Center "<<center<<std::endl;
+       center.x()=0;
+       center.y()=0;
+       center.z()=0;
 
         const float_type alpha = simulation_.dictionary_->
             template get_or<float_type>("alpha",1);
@@ -139,11 +148,11 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
 
         // Adapt center to always have peak value in a cell-center
         //center+=0.5/std::pow(2,nRef);
-        const float_type dx_base = domain_.dx_base();
+        const float_type dx_base = domain_->dx_base();
 
         // Loop through leaves and assign values
-        for (auto it  = domain_.begin_leafs();
-                  it != domain_.end_leafs(); ++it)
+        for (auto it  = domain_->begin_leafs();
+                  it != domain_->end_leafs(); ++it)
         {
             auto dx_level =  dx_base/std::pow(2,it->refinement_level());
             auto scaling =  std::pow(2,it->refinement_level());
@@ -243,11 +252,11 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
     /** @brief Compute L2 and LInf errors */
     void compute_errors()
     {
-        const float_type dx_base=domain_.dx_base();
+        const float_type dx_base=domain_->dx_base();
         auto L2   = 0.; auto LInf = -1.0; int count=0;
-        if(domain_.is_server())  return;
-        for (auto it_t  = domain_.begin_leafs();
-                it_t != domain_.end_leafs(); ++it_t)
+        if(domain_->is_server())  return;
+        for (auto it_t  = domain_->begin_leafs();
+                it_t != domain_->end_leafs(); ++it_t)
         {
             if(!it_t->locally_owned())continue;
 
@@ -285,23 +294,36 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
     template<class OctantType>
     bool refinement(OctantType* it) const noexcept
     {
-
         auto b=it->data()->descriptor();
+        b.level()=it->refinement_level();
+        const float_type dx_base = domain_->dx_base();
+        return refinement(b,R_, rmin_ref_,rmax_ref_,rz_ref_,dx_base);
+    }
 
-        auto center = (domain_.bounding_box().max() -
-                       domain_.bounding_box().min()) / 2.0 +
-                       domain_.bounding_box().min();
+    bool refinement(block_descriptor_t b, 
+                    float_type _R, 
+                    float_type _rmin_ref, 
+                    float_type  _rmax_ref, 
+                    float_type _rz_ref,
+                    float_type dx_base ) const noexcept
+    {
 
-        auto scaling =  std::pow(2,it->refinement_level());
+        auto center = (domain_->bounding_box().max() -
+                       domain_->bounding_box().min()) / 2.0 +
+                       domain_->bounding_box().min();
+
+        auto scaling =  std::pow(2,b.level());
         center*=scaling;
 
-        const float_type dx_base = domain_.dx_base();
+       center.x()=0;
+       center.y()=0;
+       center.z()=0;
+
         b.grow(2,2);
         auto corners= b.get_corners();
 
 
-        //float_type rz =rz_ref_*R_*scaling/dx_base;
-        float_type rscale=R_*scaling/dx_base;
+        float_type rscale=_R*scaling/dx_base;
 
         auto lower_t = (b.base()-center); 
         auto upper_t= (b.max()+1 -center);
@@ -323,22 +345,56 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
             if( r_c<=rscale ) inside=true;
             if( r_c>=rscale ) outside=true;
         }
-        float_type rz =rz_ref_*rscale;
+        float_type rz =_rz_ref*rscale;
         bool z_cond = (zcmin<=rz) || (lower_t.z() <=0 && upper_t.z()>=0);
         if( z_cond  && outside &&inside)
         {
             return true;
         }
 
-        float_type rmin =rmin_ref_*rscale;
-        float_type rmax =rmax_ref_*rscale;
+        float_type rmin =_rmin_ref*rscale;
+        float_type rmax =_rmax_ref*rscale;
         float_type rcmid=0.5*(rcmax+rcmin);
         if( z_cond && (rcmid>=rmin && rcmid<=rmax) )  
         {
             return true;
         }
         return false;
+
+    }        
+
+
+
+    std::vector<extent_t> initialize_domain( Dictionary* _d, domain_t* _domain )
+    {
+        auto res=_domain-> construct_basemesh_blocks(_d, _domain->block_extent());
+        domain_->read_parameters(_d);
+
+        float_type rmin = _d-> template get<float_type>("Rmin");
+        float_type rmax = _d-> template get<float_type>("Rmax");
+        float_type rz   = _d-> template get<float_type>("Rz");
+        float_type R0   = _d-> template get<float_type>("R");
+
+        const float_type dx_base = _domain->dx_base();
+
+        auto it=res.begin();
+        while(it!=res.end())
+        {
+            block_descriptor_t b(*it*_domain->block_extent(), _domain->block_extent());
+            if(refinement(b,R0,rmin,rmax,rz,dx_base))
+            {
+                ++it;
+            }
+            else
+            {
+                it=res.erase(it);
+            }
+
+        }
+
+        return res;
     }
+
 
     private:
     boost::mpi::communicator client_comm_;

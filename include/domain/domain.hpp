@@ -55,7 +55,7 @@ public:
     using refinement_condition_fct_t = std::function<bool(octant_t*)>;
 
     template<class DictionaryPtr>
-    using block_initialze_fct = std::function<std::vector<block_descriptor_t>(DictionaryPtr)>;
+    using block_initialze_fct = std::function<std::vector<extent_t>(DictionaryPtr,Domain*)>;
 
     static constexpr int dimension(){return Dim;}
 
@@ -66,71 +66,80 @@ public: //C/Dtors
     Domain(      Domain&& other) = default;
     Domain& operator=(const Domain&  other) & = delete;
     Domain& operator=(      Domain&& other) & = default;
+    Domain()=default;
     ~Domain() = default;
 
     template<class DictionaryPtr>
     Domain(DictionaryPtr _dictionary, 
            block_initialze_fct<DictionaryPtr> _init_fct=
                     block_initialze_fct<DictionaryPtr>())
-    :Domain( parse_blocks(_dictionary,_init_fct),
-            extent_t(_dictionary->template get_or<int>("max_extent", 4096)),
-            extent_t(_dictionary->template get_or<int>("block_extent", 10))
-            )
     {
-        read_parameters(_dictionary);
+        this->initialize(_dictionary, _init_fct);
     }
 
 
-
-
-
-
-    Domain(const std::vector<block_descriptor_t>& _baseBlocks,
-           extent_t _maxExtent= extent_t(4096),
-           extent_t _blockExtent=extent_t(10))
-    : block_extent_ (_blockExtent)
+    /** @brief Initialize domain, by reading in dictionary. 
+     *         Custom function may also be provided to generate all
+     *         bases for the domain. Block extent_ is read in by the 
+     *         dictionary. */
+    template<class DictionaryPtr>
+    void initialize( DictionaryPtr _dictionary, 
+                     block_initialze_fct<DictionaryPtr> _init_fct=
+                        block_initialze_fct<DictionaryPtr>() )
     {
-        extent_t e(_blockExtent);
-        std::vector<base_t> bases;
-        for (auto& b : _baseBlocks)
+        
+
+        //Construct base mesh, vector of bases with a given block_extent_
+        block_extent_=_dictionary->template get_or<int>("block_extent", 10);
+        std::vector<extent_t> bases;
+        if(_init_fct)
         {
-            for (int d = 0; d < Dim; ++d)
-            {
-                if (b.extent()[d]%e[d])
-                {
-                    throw
-                    std::runtime_error(
-                    "Domain: Extent of blocks are not evenly divisible");
-                }
-                if (std::abs(b.base()[d])%e[d]/*&& e[d]%std::abs(b.base()[d])*/)
-                {
-                    throw
-                    std::runtime_error(
-                    "Domain: Base of blocks are not evenly divisible");
-                }
-            }
-            auto blocks_tmp =b.divide_into(e);
-            for(auto &bb: blocks_tmp)
-            {
-                auto base_normalized=bb.base()/e;
-                bases.push_back(base_normalized);
-            }
+            bases= _init_fct(_dictionary, this);
         }
-        extent_t max(std::numeric_limits<scalar_coord_type>::lowest());
-        extent_t min(std::numeric_limits<scalar_coord_type>::max());
-        for(auto& b : bases)
+        else
         {
-           for(std::size_t d=0;d<b.size();++d)
-           {
-               if(b[d]<min[d]) min[d]=b[d];
-               if(b[d]>max[d]) max[d]=b[d];
-           }
+            bases=construct_basemesh_blocks(_dictionary, block_extent_);
         }
 
-        extent_t extent(max-min+1);
-        auto base_=extent_t(min);
-        bounding_box_=block_descriptor_t(base_*e, extent*e+1);
+        //Read scaling parameters from dictionary, bsaed on bounding box etc
+        read_parameters(_dictionary);
 
+        //Construct tree of base mesh
+        extent_t max_extent=_dictionary->template get_or<int>("max_extent", 4096);
+        construct_tree( bases,max_extent, block_extent_);
+    }
+
+    template<class DictionaryPtr>
+    void read_parameters(DictionaryPtr _dictionary)
+    {
+        if(_dictionary->has_key("Lx"))
+        {
+            const float_type L= _dictionary->template get<float_type>("Lx");
+            dx_base_=L/ (bounding_box_.extent()[0]-1);
+        }
+        else if(_dictionary->has_key("Ly"))
+        {
+            const float_type L= _dictionary->template get<float_type>("Ly");
+            dx_base_=L/ (bounding_box_.extent()[1]-1);
+        }
+        else if(_dictionary->has_key("Lz"))
+        {
+            const float_type L= _dictionary->template get<float_type>("Lz");
+            dx_base_=L/ (bounding_box_.extent()[2]-1);
+        }
+        else
+        {
+            throw std::runtime_error(
+            "Domain: Please specify length scale Lx or Ly or Lz in dictionary"
+            );
+        }
+    }
+    
+    /** @brief Initialize octree based on bases of the blocks.  **/
+    void construct_tree( std::vector<extent_t>& bases,
+                         extent_t _maxExtent, extent_t _blockExtent) 
+    {
+        auto base_=bounding_box_.base()/_blockExtent;
         for(auto& b: bases) b-=base_;
         auto base_level=key_t::minimum_level(_maxExtent/_blockExtent);
 
@@ -172,6 +181,60 @@ public: //C/Dtors
                 };
         }
     }
+
+
+    /** @brief Create base mesh out of blocks. Read in base blocks from configFile 
+     *         ad split up into blocks with given extent. 
+     **/
+    template<class DictionaryPtr>
+    auto construct_basemesh_blocks( DictionaryPtr _dictionary,
+                                    extent_t _blockExtent)
+    {
+        auto _baseBlocks = parse_blocks(_dictionary);
+        extent_t e(_blockExtent);
+        std::vector<base_t> bases;
+        for (auto& b : _baseBlocks)
+        {
+            for (int d = 0; d < Dim; ++d)
+            {
+                if (b.extent()[d]%e[d])
+                {
+                    throw
+                    std::runtime_error(
+                    "Domain: Extent of blocks are not evenly divisible");
+                }
+                if (std::abs(b.base()[d])%e[d]/*&& e[d]%std::abs(b.base()[d])*/)
+                {
+                    throw
+                    std::runtime_error(
+                    "Domain: Base of blocks are not evenly divisible");
+                }
+            }
+            auto blocks_tmp =b.divide_into(e);
+            for(auto &bb: blocks_tmp)
+            {
+                auto base_normalized=bb.base()/e;
+                bases.push_back(base_normalized);
+            }
+        }
+        extent_t max(std::numeric_limits<scalar_coord_type>::lowest());
+        extent_t min(std::numeric_limits<scalar_coord_type>::max());
+        for(auto& b : bases)
+        {
+           for(std::size_t d=0;d<b.size();++d)
+           {
+               if(b[d]<min[d]) min[d]=b[d];
+               if(b[d]>max[d]) max[d]=b[d];
+           }
+        }
+
+        extent_t extent(max-min+1);
+        auto base_=extent_t(min);
+        bounding_box_=block_descriptor_t(base_*e, extent*e+1);
+        return bases;
+
+    }
+
 
     void init_refine(int nRef=0)
     {
@@ -511,13 +574,13 @@ private:
         if(_fct)
             return _fct(_dict);
         else
-            return parse_blocks_dict(_dict);
+            return parse_blocks(_dict);
     }
 
 
     template<class DictionaryPtr>
     std::vector<block_descriptor_t>
-    parse_blocks_dict(DictionaryPtr _dict)
+    parse_blocks(DictionaryPtr _dict)
     {
         std::vector<block_descriptor_t> res;
         auto dicts=_dict->get_all_dictionaries("block");
@@ -531,31 +594,6 @@ private:
         return res;
     }
 
-    template<class DictionaryPtr>
-    void read_parameters(DictionaryPtr _dictionary)
-    {
-        if(_dictionary->has_key("Lx"))
-        {
-            const float_type L= _dictionary->template get<float_type>("Lx");
-            dx_base_=L/ (bounding_box_.extent()[0]-1);
-        }
-        else if(_dictionary->has_key("Ly"))
-        {
-            const float_type L= _dictionary->template get<float_type>("Ly");
-            dx_base_=L/ (bounding_box_.extent()[1]-1);
-        }
-        else if(_dictionary->has_key("Lz"))
-        {
-            const float_type L= _dictionary->template get<float_type>("Lz");
-            dx_base_=L/ (bounding_box_.extent()[2]-1);
-        }
-        else
-        {
-            throw std::runtime_error(
-            "Domain: Please specify length scale Lx or Ly or Lz in dictionary"
-            );
-        }
-    }
 
     /** @brief Default refinement condition */
     static bool refinement_cond_default( octant_t* ) { return false; }

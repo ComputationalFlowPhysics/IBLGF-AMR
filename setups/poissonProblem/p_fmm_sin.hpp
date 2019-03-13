@@ -94,23 +94,23 @@ struct p_fmm_sin
     void initialize()
     {
         this->pcout<<"Initializing"<<std::endl;
-        auto bounding_box = domain_.bounding_box();
+        auto bounding_box = domain_->bounding_box();
         auto b_max_0 = bounding_box.max()[0];
         auto b_max_1 = bounding_box.max()[1];
         auto b_max_2 = bounding_box.max()[2];
 
         std::cout<< bounding_box.min() << bounding_box.max() << std::endl;
 
-        auto center = (domain_.bounding_box().max() -
-                       domain_.bounding_box().min()-1) / 2.0 +
-                       domain_.bounding_box().min();
+        auto center = (domain_->bounding_box().max() -
+                       domain_->bounding_box().min()-1) / 2.0 +
+                       domain_->bounding_box().min();
 
         const int nRef = simulation_.dictionary_->
             template get_or<int>("nLevels",0);
         for(int l=0;l<nRef;++l)
         {
-            for (auto it  = domain_.begin_leafs();
-                    it != domain_.end_leafs(); ++it)
+            for (auto it  = domain_->begin_leafs();
+                    it != domain_->end_leafs(); ++it)
             {
                 auto b=it->data()->descriptor();
                 coordinate_t lower(2), upper(2);
@@ -119,16 +119,16 @@ struct p_fmm_sin
                    && it->refinement_level()==l
                   )
                 {
-                    domain_.refine(it);
+                    domain_->refine(it);
                 }
             }
         }
 
-        for (int lt = domain_.tree()->base_level();
-                 lt < domain_.tree()->depth(); ++lt)
+        for (int lt = domain_->tree()->base_level();
+                 lt < domain_->tree()->depth(); ++lt)
         {
-            for (auto it  = domain_.begin(lt);
-                      it != domain_.end(lt); ++it)
+            for (auto it  = domain_->begin(lt);
+                      it != domain_->end(lt); ++it)
             {
                 if(it->data())
                 {
@@ -143,7 +143,7 @@ struct p_fmm_sin
         center+=0.5/std::pow(2,nRef);
         const float_type a  = 10.;
         const float_type a2 = a*a;
-        const float_type dx_base = domain_.dx_base();
+        const float_type dx_base = domain_->dx_base();
 
         xt::xtensor<float_type, 3> soln(std::array<size_t, 3>{{b_max_0, b_max_1, b_max_2 }});
         xt::xtensor<float_type, 3> f_source(std::array<size_t, 3>{{b_max_0, b_max_1, b_max_2 }});
@@ -206,8 +206,8 @@ struct p_fmm_sin
                 }
 
 
-        for (auto it  = domain_.begin_leafs();
-                it != domain_.end_leafs(); ++it)
+        for (auto it  = domain_->begin_leafs();
+                it != domain_->end_leafs(); ++it)
         {
 
             auto dx_level =  dx_base/std::pow(2,it->refinement_level());
@@ -230,8 +230,8 @@ struct p_fmm_sin
         }
 
 
-        for (auto it  = domain_.begin_leafs();
-                it != domain_.end_leafs(); ++it)
+        for (auto it  = domain_->begin_leafs();
+                it != domain_->end_leafs(); ++it)
         {
             auto a = it->data()->get_linalg_data<phi_exact>();
         }
@@ -255,8 +255,8 @@ struct p_fmm_sin
     void compute_errors()
     {
         auto L2   = 0.; auto LInf = -1.0; int count=0;
-        for (auto it_t  = domain_.begin_leafs();
-             it_t != domain_.end_leafs(); ++it_t)
+        for (auto it_t  = domain_->begin_leafs();
+             it_t != domain_->end_leafs(); ++it_t)
         {
 
             auto& nodes_domain=it_t->data()->nodes_domain();

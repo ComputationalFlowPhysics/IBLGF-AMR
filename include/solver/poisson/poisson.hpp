@@ -52,7 +52,7 @@ public: //member types
 
     PoissonSolver(simulation_type* _simulation)
     :
-    domain_(&_simulation->domain_),
+    domain_(_simulation->domain_.get()),
     conv_(domain_->block_extent()+lBuffer+rBuffer,
           domain_->block_extent()+lBuffer+rBuffer),
     fmm_(domain_->block_extent()[0]+lBuffer+rBuffer),

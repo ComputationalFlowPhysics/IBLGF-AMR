@@ -1,0 +1,38 @@
+simulation_parameters
+{
+    nLevels=3;
+
+    //Sharp interface sphere
+    /* 
+    alpha=15;
+    R=0.25;
+    a=1;
+    */
+
+    //Vortex Ring
+    //c1=134217728; //2^27
+    //c1=1342177; //2^27
+    //c1=5368709120;
+
+
+    c1=1073741824000000000.;
+    R=0.125;
+    c2=50;
+    Rmin_ref=0.9;
+    Rmax_ref=1.2;
+    Rz_ref=0.4;
+
+    domain
+    {
+        Lx=1.0; 
+        max_extent   = 500;
+        block_extent =5;
+       
+        block
+        {
+            base   = (-40,-40,-40);
+            //base   = (0,0,0);
+            extent = (80,80,80);
+        }
+    }
+}

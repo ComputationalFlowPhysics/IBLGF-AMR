@@ -186,72 +186,32 @@ public: //C/Dtors
         }
     }
 
-    void init_refine_new(int nRef=0)
-    {
-        if(is_server())
-        {
-            this->tree()->construct_leaf_maps();
-            this->tree()->construct_level_maps();
-
-            real_coordinate_type center = (this->bounding_box().max() -
-                    this->bounding_box().min()-1) / 2.0 + this->bounding_box().min();
-
-            for(int l=0;l<nRef;++l)
-            {
-                for (auto it = this->begin_leafs(); it != this->end_leafs(); ++it)
-                {
-                    auto b=it->data()->descriptor();
-
-                    if(!ref_cond_) return;
-                    if(ref_cond_(*it))
-                    {
-                        this->refine(it);
-                    }
-
-                    ////const base_t lower(+2), upper(+2);
-                    //const auto lower((center )/2-2 ), upper((center )/2+2 - b.extent());
-                    //b.grow(lower, upper);
-
-                    //real_coordinate_type level_center= center*std::pow(2.0,l);
-                    //if(b.is_inside(level_center) && l==it->refinement_level() )
-                    //{
-                    //    this->refine(it);
-                    //}
-                }
-            }
-        }
-     }
-
-
     void init_refine(int nRef=0)
     {
         if(is_server())
         {
             this->tree()->construct_leaf_maps();
             this->tree()->construct_level_maps();
-
-            real_coordinate_type center = (this->bounding_box().max() -
-                    this->bounding_box().min()-1) / 2.0 + this->bounding_box().min();
+            this->tree()->construct_neighbor_lists(); 
 
             for(int l=0;l<nRef;++l)
             {
                 for (auto it = this->begin_leafs(); it != this->end_leafs(); ++it)
                 {
-                    auto b=it->data()->descriptor();
-
-                    //const base_t lower(+2), upper(+2);
-                    const auto lower((center )/2-2 ), upper((center )/2+2 - b.extent());
-                    b.grow(lower, upper);
-
-                    real_coordinate_type level_center= center*std::pow(2.0,l);
-                    if(b.is_inside(level_center) && l==it->refinement_level() )
-                    {
-                        this->refine(it);
+                    if(!ref_cond_) return;
+                    if(ref_cond_(*it) && it->refinement_level()==l) 
+                    { 
+                        this->refine(it); 
                     }
                 }
+
+                this->tree()->construct_leaf_maps();
+                this->tree()->construct_level_maps();
+                this->tree()->construct_neighbor_lists(); 
             }
         }
      }
+
     void distribute()
     {
         decomposition_.distribute();
@@ -259,17 +219,17 @@ public: //C/Dtors
 
 
 
-    //template<template<std::size_t> class Field>
-    //void init_field(octant_t* _root)
-    //{
-    //    for(auto it=dfs_iterator(_root); it!=end_df();++it)
-    //    {
-    //        const int level=0;
-    //        auto bbase=t_->octant_to_level_coordinate(it->tree_coordinate());
-    //        block_descriptor_t b(bbase, block_extent_, level);
-    //        it->data()->template initialize<Field>(b);
-    //    }
-    //}
+    template<template<std::size_t> class Field>
+    void init_field(octant_t* _root)
+    {
+        for(auto it=dfs_iterator(_root); it!=end_df();++it)
+        {
+            const int level=0;
+            auto bbase=t_->octant_to_level_coordinate(it->tree_coordinate());
+            block_descriptor_t b(bbase, block_extent_, level);
+            it->data()->template initialize<Field>(b);
+        }
+    }
 
 
 
@@ -327,33 +287,22 @@ public:
     template<class Iterator>
     void refine(Iterator& octant_it)
     {
-        tree()->refine(octant_it,[this,octant_it](auto& child_it)
+        tree()->refine(*octant_it,[this](auto& child_it)
         {
-            //auto level = octant_it->refinement_level();
             auto level = child_it->level()-this->tree()->base_level();
-            //level=level>=0?level:0;
             auto bbase=t_->octant_to_level_coordinate(
                             child_it->tree_coordinate(), level);
-            child_it->data()=
-                std::make_shared<datablock_t>(bbase, block_extent_,level);
-            return true;
-        });
-    }
 
-    //Refine based on child coordinate
-    //template<class Iterator, class Function>
-    //void refine(Iterator& octant_it, int _i)
-    //{
-    //    tree()->refine(octant_it,[this](auto& child_it)
-    //    {
-    //        auto level = child_it->level()-this->tree()->base_level();
-    //        auto bbase=t_->octant_to_level_coordinate(
-    //                        child_it->tree_coordinate(), level);
-    //        child_it->data()=
-    //            std::make_shared<datablock_t>(bbase, block_extent_,level);
-    //        return true;
-    //    });
-    //}
+            bool init_field=this->is_client();
+            child_it->data()=
+                std::make_shared<datablock_t>(bbase, block_extent_,level,init_field);
+        });
+
+        // Ke TODO Need to check
+        //tree()->construct_flag_leaf();
+        //tree()->construct_neighbor_lists();
+        //tree()->construct_influence_lists();
+    }
 
 
 public:
@@ -605,7 +554,6 @@ private:
 
     /** @brief Default refinement condition */
     static bool refinement_cond_default( octant_t* ) { return false; }
-
 
 private:
     std::shared_ptr<tree_t> t_;

@@ -33,7 +33,7 @@ public:
 
     using real_vector_t = std::vector<float_type,
           boost::alignment::aligned_allocator_adaptor<
-              std::allocator<float_type>,32>>;
+                std::allocator<float_type>,32>>;
 
     using dims_t = types::vector_type<int,3>;
 
@@ -46,24 +46,84 @@ public: //Ctors:
     dfft_r2c& operator=(dfft_r2c&& other)      & = default;
     ~dfft_r2c() { fftw_destroy_plan(plan); }
 
-    dfft_r2c( dims_t _dims )
-    :dims_input_(_dims),
-     input_(_dims[2]*_dims[1]*_dims[0],0.0),
-     output_(_dims[2]*_dims[1]*((_dims[0]/2)+1))
+    dfft_r2c( dims_t _dims_padded, dims_t _dims_non_zero )
+    :dims_input_(_dims_padded),
+     input_  (_dims_padded[2]*_dims_padded[1]*_dims_padded[0],0.0),
+     output_1(_dims_padded[2]*_dims_padded[1]*((_dims_padded[0]/2)+1)),
+     output_2(_dims_padded[2]*_dims_padded[1]*((_dims_padded[0]/2)+1)),
+     output_ (_dims_padded[2]*_dims_padded[1]*((_dims_padded[0]/2)+1))
     {
-        //int status = fftw_init_threads();
+       //int status = fftw_init_threads();
         //fftw_plan_with_nthreads(nthreads);
-        plan = (fftw_plan_dft_r2c_3d(_dims[2], _dims[1], _dims[0],
+        plan = (fftw_plan_dft_r2c_3d(_dims_padded[2], _dims_padded[1], _dims_padded[0],
                  &input_[0], reinterpret_cast<fftw_complex*>(&output_[0]),
                  FFTW_PATIENT ));
+
+        r2c_1d_plans.resize(_dims_non_zero[0]);
+
+        int dim_half = (_dims_padded[2]/2)+1;
+
+        for (int i_plan = 0; i_plan<_dims_non_zero[0]; ++i_plan)
+        {
+            r2c_1d_plans[i_plan] =
+                fftw_plan_many_dft_r2c(1, &_dims_padded[2], _dims_non_zero[1],
+                            &input_[i_plan*_dims_padded[2]*_dims_padded[1] ], NULL,
+                            1, _dims_padded[2],
+                            reinterpret_cast<fftw_complex*>
+                                (&output_1[i_plan*dim_half*_dims_padded[1]]), NULL,
+                                 1, dim_half, FFTW_PATIENT
+                            );
+
+        }
+
+        c2c_1d_plans_dir_2.resize(_dims_non_zero[0]);
+        for (int i_plan = 0; i_plan<_dims_non_zero[0]; ++i_plan)
+        {
+            c2c_1d_plans_dir_2[i_plan] =
+                fftw_plan_many_dft(1, &_dims_padded[1], dim_half,
+                                reinterpret_cast<fftw_complex*>
+                                    (&output_1[i_plan*dim_half*_dims_padded[1] ]), NULL,
+                                dim_half, 1,
+                                reinterpret_cast<fftw_complex*>
+                                    (&output_2[i_plan*dim_half*_dims_padded[1] ]), NULL,
+                                dim_half, 1,
+                                FFTW_FORWARD, FFTW_PATIENT
+                        );
+        }
+
+        c2c_1d_plans_dir_3 = fftw_plan_many_dft(1, &_dims_padded[0], dim_half * _dims_padded[1],
+                reinterpret_cast<fftw_complex*>
+                    (&output_2[0]), NULL,
+                dim_half*_dims_padded[1], 1,
+                reinterpret_cast<fftw_complex*>
+                    (&output_[0]), NULL,
+                dim_half*_dims_padded[1], 1,
+                FFTW_FORWARD, FFTW_PATIENT
+                );
+
+
     }
 
 public: //Interface
 
-    void execute()
+    void execute_whole()
     {
         fftw_execute(plan);
     }
+
+    void execute()
+    {
+        //Fisrt direction
+        for (std::size_t i =0; i<r2c_1d_plans.size(); ++i)
+            fftw_execute(r2c_1d_plans[i]);
+
+        ////Second direction
+        for (std::size_t i =0; i<c2c_1d_plans_dir_2.size(); ++i)
+            fftw_execute(c2c_1d_plans_dir_2[i]);
+
+        fftw_execute(c2c_1d_plans_dir_3);
+    }
+
 
     auto& input(){return input_;}
     auto& output(){return output_;}
@@ -71,7 +131,7 @@ public: //Interface
 
 
     template<class Vector>
-    void copy_input(const Vector& _v, dims_t _dims_v) noexcept
+    void copy_input(const Vector& _v, dims_t _dims_v) 
     {
         if(_v.size()==input_.size())
         {
@@ -79,19 +139,20 @@ public: //Interface
         }
         else
         {
-            //Naive impl:
-            std::fill(input_.begin(), input_.end(),0);
-            for(int k=0;k<_dims_v[2];++k)
-            {
-                for(int j=0;j<_dims_v[1];++j)
-                {
-                    for(int i=0;i<_dims_v[0];++i)
-                    {
-                        input_[ i+dims_input_[0]*j+ dims_input_[0]*dims_input_[1]*k ]=
-                        _v[i+_dims_v[0]*j+_dims_v[0]*_dims_v[1]*k];
-                    }
-                }
-            }
+            throw std::runtime_error("ERROR! LGF SIZE NOT MATCHING");
+            ////Naive impl:
+            //std::fill(input_.begin(), input_.end(),0);
+            //for(int k=0;k<_dims_v[2];++k)
+            //{
+            //    for(int j=0;j<_dims_v[1];++j)
+            //    {
+            //        for(int i=0;i<_dims_v[0];++i)
+            //        {
+            //            input_[ i+dims_input_[0]*j+ dims_input_[0]*dims_input_[1]*k ]=
+            //            _v[i+_dims_v[0]*j+_dims_v[0]*_dims_v[1]*k];
+            //        }
+            //    }
+            //}
         }
     }
 
@@ -101,16 +162,19 @@ public: //Interface
     {
         //Naive impl:
         //std::fill(input_.begin(), input_.end(),0);
+
         for(int k=0;k<_dims_v[2];++k)
         {
             for(int j=0;j<_dims_v[1];++j)
             {
-                for(int i=0;i<_dims_v[0];++i)
-                {
-                    input_[ i+dims_input_[0]*j+ dims_input_[0]*dims_input_[1]*k ]=
-                     _v.get_real_local(i,j,k);
-                        //_v[i+_dims_v[0]*j+_dims_v[0]*_dims_v[1]*k];
-                }
+                std::copy(&_v.get_real_local(0,j,k),
+                            &_v.get_real_local(0,j,k) + _dims_v[0],
+                            &input_[dims_input_[0]*j+ dims_input_[0]*dims_input_[1]*k] );
+                //for(int i=0;i<_dims_v[0];++i)
+                //{
+                //    input_[ i+dims_input_[0]*j+ dims_input_[0]*dims_input_[1]*k ]=
+                //     _v.get_real_local(i,j,k);
+                //}
             }
         }
     }
@@ -120,8 +184,16 @@ private:
 
     dims_t dims_input_;
     real_vector_t input_;
-    complex_vector_t output_;
+    complex_vector_t output_1, output_2, output_;
+
     fftw_plan plan;
+
+    std::vector<fftw_plan> r2c_1d_plans;
+    std::vector<fftw_plan> c2c_1d_plans_dir_2;
+    fftw_plan c2c_1d_plans_dir_3;
+
+    fftw_plan r2c_plan_1d;
+
 };
 
 class dfft_c2r
@@ -147,31 +219,105 @@ public: //Ctors:
     dfft_c2r& operator=(dfft_c2r&& other)      & = default;
     ~dfft_c2r() { fftw_destroy_plan(plan); }
 
-    dfft_c2r( dims_t _dims )
+    dfft_c2r( dims_t _dims, dims_t _dims_small )
     :input_(_dims[2]*_dims[1]*((_dims[0]/2)+1),std::complex<float_type>(0.0)),
-     output_(_dims[2]*_dims[1]*_dims[0],0.0)
+    tmp_1_ (_dims[2]*_dims[1]*((_dims[0]/2)+1),std::complex<float_type>(0.0)),
+    tmp_2_ (_dims[2]*_dims[1]*((_dims[0]/2)+1),std::complex<float_type>(0.0)),
+    output_(_dims[2]*_dims[1]*_dims[0],0.0)
     {
         //int status = fftw_init_threads();
         //fftw_plan_with_nthreads(nthreads);
         plan = fftw_plan_dft_c2r_3d(_dims[2], _dims[1], _dims[0],
                  reinterpret_cast<fftw_complex*>(&input_[0]), &output_[0],
                  FFTW_PATIENT);
+
+        int dim_half = (_dims[2]/2)+1;
+        c2c_dir_1 = fftw_plan_many_dft(1, &_dims[0], _dims[1] * dim_half,
+                        reinterpret_cast<fftw_complex*>
+                            (&input_[0]), NULL,
+                             _dims[1] * dim_half, 1,
+                        reinterpret_cast<fftw_complex*>
+                            (&tmp_1_[0]), NULL,
+                             _dims[1] * dim_half, 1,
+                        FFTW_BACKWARD, FFTW_PATIENT
+                );
+
+        ////Dir 1
+        c2c_dir_2.resize(_dims_small[0]);
+        for (int i_plan = 0; i_plan<_dims_small[0]; ++i_plan)
+        {
+            c2c_dir_2[i_plan] =
+                fftw_plan_many_dft(1, &_dims[1], dim_half,
+                                reinterpret_cast<fftw_complex*>
+                                    (&tmp_1_[ (i_plan + _dims_small[0]-1)*dim_half*_dims[1] ]), NULL,
+                                dim_half, 1,
+                                reinterpret_cast<fftw_complex*>
+                                    (&tmp_2_[ (i_plan + _dims_small[0]-1)*dim_half*_dims[1] ]), NULL,
+                                dim_half, 1,
+                        FFTW_BACKWARD, FFTW_PATIENT
+                );
+
+        }
+
+        //// Dir 2
+        c2r_dir_3.resize(_dims_small[0]);
+        for (int i_plan = 0; i_plan<_dims_small[0]; ++i_plan)
+        {
+            c2r_dir_3[i_plan] =
+                fftw_plan_many_dft_c2r(1, &_dims[2], _dims_small[1],
+                                reinterpret_cast<fftw_complex*>
+                                    (&tmp_2_[ (i_plan + _dims_small[0]-1)*dim_half*_dims[1] + dim_half*(_dims_small[1]-1) ]), NULL,
+                                1, dim_half,
+                                &output_[ (i_plan + _dims_small[0]-1)*_dims[2]*_dims[1] + _dims[2]*(_dims_small[1]-1)  ] , NULL,
+                                1, _dims[2],
+                                FFTW_PATIENT
+                                );
+        }
+
     }
 
 public: //Interface
 
     void execute()
     {
-        fftw_execute(plan);
+        //std::cout<< "-----------------------"<<std::endl;
+        //std::fill(output_.begin(), output_.end(),0.0);
+
+        fftw_execute(c2c_dir_1);
+
+        for (std::size_t i=0; i<c2c_dir_2.size(); ++i)
+            fftw_execute(c2c_dir_2[i]);
+
+        for (std::size_t i=0; i<c2r_dir_3.size(); ++i)
+            fftw_execute(c2r_dir_3[i]);
+
+        //for (int i =0; i<output_.size();++i)
+        //    std::cout<<output_[i];
+
+        //std::cout<<std::endl;
+
+        //fftw_execute(plan);
+        //for (int i =0; i<output_.size();++i)
+        //    std::cout<<output_[i];
+
+        //std::cout<<std::endl;
+
+
     }
 
     auto& input(){return input_;}
     auto& output(){return output_;}
 
 private:
-    complex_vector_t input_;
+
+    complex_vector_t input_, tmp_1_, tmp_2_;
     real_vector_t output_;
-    fftw_plan plan;
+
+    fftw_plan plan, c2c_dir_1;
+    std::vector<fftw_plan> c2c_dir_2, c2r_dir_3;
+
+    int dim_half;
+
 };
 
 
@@ -210,9 +356,9 @@ public: //Ctors
     :padded_dims(_dims0 + _dims1 - 1),
      dims0_(_dims0),
      dims1_(_dims1),
-     fft_forward0(padded_dims),
-     fft_forward1(padded_dims),
-     fft_backward(padded_dims)
+     fft_forward0(padded_dims, _dims0),
+     fft_forward1(padded_dims, _dims1),
+     fft_backward(padded_dims, _dims1)
     {
         construct_lgf_matrix_level_maps();
     }
@@ -236,8 +382,8 @@ public: //Ctors
                     target_t& target,
                     float_type scale )
     {
-            execute_field(lgf_block, level_diff, source);
-            add_solution(extractor, target, scale);
+            execute_field(lgf_block, level_diff, source, scale);
+            add_solution(extractor, target);
             fft_count ++;
     }
 
@@ -265,7 +411,7 @@ public: //Ctors
 
     template<class Field,
             typename block_dsrp_t>
-    void execute_field(const block_dsrp_t lgf_block_dsrp, int level_diff, const Field& _b)
+    void execute_field(const block_dsrp_t lgf_block_dsrp, int level_diff, const Field& _b, const float_type extra_scale)
     {
         // use lgf_block.shift and level_diff to check if it has been saved or
         // not
@@ -281,7 +427,7 @@ public: //Ctors
         {
             lgf_.get_subblock( lgf_block_dsrp, lgf, level_diff);
             fft_forward0.copy_input(lgf, dims0_);
-            fft_forward0.execute();
+            fft_forward0.execute_whole();
 
             f_ptr = &fft_forward0.output();
             lgf_level_maps_[level_diff].emplace(k_,
@@ -301,7 +447,7 @@ public: //Ctors
         complex_vector_t prod(f0.size());
         const float_type scale = 1.0 / (padded_dims[0] *
                                         padded_dims[1] *
-                                        padded_dims[2]);
+                                        padded_dims[2]) * extra_scale;
         for(std::size_t i = 0; i < prod.size(); ++i)
         {
             fft_backward.input()[i] = f0[i]*f1[i]*scale;
@@ -317,7 +463,7 @@ public: //Ctors
     }
 
     template<class Block,class Field>
-    void add_solution(const Block& _b, Field& F, const float_type _scale)
+    void add_solution(const Block& _b, Field& F)
     {
         for (int k = dims0_[2]-1; k < dims0_[2]+_b.extent()[2]-1; ++k)
         {
@@ -325,8 +471,9 @@ public: //Ctors
             {
                 for (int i = dims0_[0]-1; i < dims0_[0]+_b.extent()[0]-1; ++i)
                 {
+
                     F.get_real_local(i-dims0_[0]+1,j-dims0_[1]+1,k-dims0_[2]+1 ) +=
-                    _scale*fft_backward.output() [
+                    fft_backward.output() [
                         i+j*padded_dims[0]+k*padded_dims[0]*padded_dims[1]
                     ];
                 }

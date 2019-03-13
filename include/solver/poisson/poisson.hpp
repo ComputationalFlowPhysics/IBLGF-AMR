@@ -87,8 +87,9 @@ public:
                 it != domain_->end();
                 ++it)
         {
-                auto& cp2 = it ->data()->template get_linalg_data<source_tmp>();
-                cp2 *=0.0;
+            auto& cp2 = it ->data()->template get_linalg_data<source_tmp>();
+            cp2 *=0.0;
+
         }
 
         // Copy source
@@ -106,7 +107,7 @@ public:
         //Coarsification:
         pcout<<"coarsification "<<std::endl;
         //for (int ls = domain_->tree()->depth()-2; // Same TODO
-        for (int ls = 9; // Same TODO
+        for (int ls = 10; // Same TODO
                  ls >= domain_->tree()->base_level(); --ls)
         {
             for (auto it_s  = domain_->begin(ls);
@@ -132,7 +133,7 @@ public:
         pcout<<"Level interactions "<<std::endl;
         for (int l  = domain_->tree()->base_level()+0;
         //         l < domain_->tree()->depth(); ++l) //TODO !!!!! change to global maximum
-            l < 10; ++l)
+            l < 12; ++l)
         {
 
             //test for FMM
@@ -170,7 +171,7 @@ public:
         pcout<<"Interpolation"<<std::endl;
         for (int lt = domain_->tree()->base_level();
         //       lt < domain_->tree()->depth(); ++lt) //TODO same
-                 lt < 10; ++lt) //TODO same
+                 lt < 12; ++lt) //TODO same
         {
             domain_->decomposition().client()->
                 template communicate_updownward_assign<Target, Target>(lt,false,false);
@@ -323,8 +324,13 @@ public:
     void coarsify(octant_t* _parent)
     {
         auto parent = _parent;
-        const coordinate_type stride(2);
         if(parent->is_leaf())return;
+
+        //auto pview =parent->data()->node_field().view(parent->data()->descriptor());
+        //pview.iterate([&]( auto& n )
+        //        {
+        //        n.template get<Field>()=0.0;
+        //        });
 
         for (int i = 0; i < parent->num_children(); ++i)
         {
@@ -332,22 +338,15 @@ public:
             if(child==nullptr) continue;
             auto child_view= child->data()->descriptor();
 
-            auto cview =child->data()->node_field().view(child_view,stride);
+            auto cview =child->data()->node_field().view(child_view);
 
             cview.iterate([&]( auto& n )
             {
-                const float_type avg=1./8*(
-                                n.template at_offset<Field>(0,0,0)+
-                                n.template at_offset<Field>(1,0,0)+
-                                n.template at_offset<Field>(0,1,0)+
-                                n.template at_offset<Field>(1,1,0)+
-                                n.template at_offset<Field>(0,0,1)+
-                                n.template at_offset<Field>(1,0,1)+
-                                n.template at_offset<Field>(0,1,1)+
-                                n.template at_offset<Field>(1,1,1));
-
-                const auto pcoord=(n.level_coordinate()+1)/2;
-                parent->data()-> template get<Field>(pcoord) =avg;
+                const float_type avg=1./8* n.template get<Field>();
+                auto pcoord=n.level_coordinate();
+                for(std::size_t d=0;d<pcoord.size();++d) 
+                    pcoord[d]= std::floor(pcoord[d]/2.0);
+                parent->data()-> template get<Field>(pcoord) +=avg;
             });
         }
     }

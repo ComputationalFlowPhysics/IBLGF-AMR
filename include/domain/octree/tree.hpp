@@ -202,23 +202,39 @@ public:
     octant_type* root()const noexcept{return root_.get();}
 
     template<class Function>
-    void refine(octant_iterator& _l, const Function& _f,
+    void refine(octant_type* _l, const Function& _f,
                  bool _recursive = false)
     {
+
+        //Check 2:1 balance constraint
+        bool neighbors_exist=true;;
+        for(int i=0;i<_l->nNeighbors();++i)
+        {
+            if(!_l->neighbor(i))
+                neighbors_exist=false;
+        }
+     
+        if(!neighbors_exist && _l->refinement_level()>=1)
+        {
+            std::set<key_type> neighbor_keys;
+            neighbor_lookup(_l, neighbor_keys,true );
+            for(auto&k: neighbor_keys)
+            {
+                auto nn_ptr=this->insert_td(k);
+                auto p=nn_ptr->parent();
+                this->refine(p,_f);
+             }
+        }
+
         for(int i=0;i<_l->num_children();++i)
         {
             auto child=_l->refine(i);
             child->flag_leaf(true);
             _f(child);
-            leafs_.emplace(child->key(),child);
-            level_maps_[child->level()].emplace(child->key(),child);
         }
 
-        leafs_.erase(_l->key());
         _l ->flag_leaf(false);
-
         if(_l->level()+1 > depth_) depth_=_l->level()+1;
-        if(!_recursive) std::advance(_l,_l->num_children()-1);
     }
 
     const auto& get_octant_to_level_coordinate() const noexcept

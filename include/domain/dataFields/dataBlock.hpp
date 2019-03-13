@@ -68,10 +68,11 @@ public: //Ctors:
             this->initialize(this->descriptor());
     }
 
-    DataBlock(const block_descriptor_type& _b)
+    DataBlock(const block_descriptor_type& _b, bool init=true)
     :super_type(_b)
     {
-        this->initialize( _b );
+        if(init)
+            this->initialize( _b );
     }
 
     template<template<std::size_t> class Field>

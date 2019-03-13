@@ -564,7 +564,7 @@ public:
                     it != domain_->end(level);
                     ++it)
             {
-                    if(it->data() && it->mask(MASK_LIST::Mask_FMM_Source))
+                    if(it->data() /*&& it->mask(MASK_LIST::Mask_FMM_Source)*/)
                     {
                         for(auto& e: it->data()->template get_data<fmm_s>())
                             e=0.0;

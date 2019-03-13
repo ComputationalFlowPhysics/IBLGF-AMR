@@ -109,7 +109,6 @@ struct DecomposistionTest:public SetupBase<DecomposistionTest,parameters>
         const int nRef = simulation_.dictionary_->
             template get_or<int>("nLevels",0);
 
-
         // Adapt center to always have peak value in a cell-center
         center+=0.5/std::pow(2,nRef);
         const float_type a  = 10.;
@@ -201,6 +200,70 @@ struct DecomposistionTest:public SetupBase<DecomposistionTest,parameters>
 
 
     }
+
+
+
+    template<class OctantType>
+    bool refinement(OctantType* it) const noexcept
+    {
+        // Loop through leaves and assign values
+
+        auto center = (domain_.bounding_box().max() -
+                       domain_.bounding_box().min()) / 2.0 +
+                       domain_.bounding_box().min();
+
+        std::cout<<"Center  :" <<center<<std::endl;
+        auto scaling =  std::pow(2,it->refinement_level());
+        center*=scaling;
+
+        const float_type dx_base = domain_.dx_base();
+
+        auto b=it->data()->descriptor();
+        const decltype(center) lower(+2), upper(+2);
+        //const auto lower((center )/2-2 ), upper((center )/2+2 - b.extent());
+        b.grow(lower, upper);
+
+        auto level_center= center*std::pow(2.0,it->refinement_level());
+        if(b.is_inside(level_center))
+        {
+            return true;
+        }
+
+        return false;
+    }
+    
+    //void init_refine(int nRef=0)
+    //{
+    //    if(is_server())
+    //    {
+    //        this->tree()->construct_leaf_maps();
+    //        this->tree()->construct_level_maps();
+
+    //        real_coordinate_type center = (this->bounding_box().max() -
+    //                this->bounding_box().min()-1) / 2.0 + this->bounding_box().min();
+    //                std::cout<<"center "<<center<<std::endl;
+
+    //        for(int l=0;l<nRef;++l)
+    //        {
+    //            for (auto it = this->begin_leafs(); it != this->end_leafs(); ++it)
+    //            {
+    //                auto b=it->data()->descriptor();
+
+    //                const base_t lower(+2), upper(+2);
+    //                //const auto lower((center )/2-2 ), upper((center )/2+2 - b.extent());
+    //                b.grow(lower, upper);
+
+    //                real_coordinate_type level_center= center*std::pow(2.0,l);
+    //                if(b.is_inside(level_center) && l==it->refinement_level() )
+    //                {
+    //                    this->refine(it);
+    //                }
+    //            }
+    //        }
+    //    }
+    // }
+
+
     private:
 
         boost::mpi::communicator client_comm_;

@@ -498,11 +498,19 @@ public: //members
 
 
     template<int D, class ArrayType >
-    auto get_corners(ArrayType& _base, ArrayType& _extent) const 
+    auto get_corners_tmp(ArrayType& _base, ArrayType& _extent) const 
     {
         std::vector<ArrayType> points;
         ArrayType p=_base;
         detail::get_corners_helper<D>::apply(p,_base, _extent, points);
+        return points;
+    }
+
+    auto get_corners() const 
+    {
+        std::vector<base_t> points;
+        base_t p=base_;
+        detail::get_corners_helper<Dim>::apply(p,base_, extent_, points);
         return points;
     }
 

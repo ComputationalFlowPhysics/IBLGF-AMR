@@ -90,10 +90,9 @@ public:
 
         //Init trees and allocate all memory
         domain_->tree()->init(keys, [&](octant_t* _o){
-            auto level=_o->refinement_level();
+            auto level = _o->refinement_level();
             level=level>=0?level:0;
             auto bbase=domain_->tree()->octant_to_level_coordinate(
-                    //_o->tree_coordinate());
                     _o->tree_coordinate(),level);
             _o->data()=std::make_shared<datablock_t>(bbase,
                     domain_->block_extent(),level, true);
@@ -1030,14 +1029,12 @@ public:
     {
         //Octant initialization function
         auto f =[&](octant_t* _o){
-            int level= _o->refinement_level();
+            auto level = _o->refinement_level();
             level=level>=0?level:0;
             auto bbase=domain_->tree()->octant_to_level_coordinate(
-                    //_o->tree_coordinate());
                     _o->tree_coordinate(),level);
             _o->data()=std::make_shared<datablock_t>(bbase,
                     domain_->block_extent(),level, true);
-                    
         };
         domain_->tree()->construct_maps(this,f);
     }

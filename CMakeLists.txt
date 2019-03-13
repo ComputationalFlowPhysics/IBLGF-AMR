@@ -88,6 +88,7 @@ link_directories(${HDF5_LIBRARY_DIRS} )
 #                      xtensor)
 
 add_subdirectory (tests/sever_client)
+add_subdirectory (tests/vortexring)
 add_subdirectory (tests/domain_decomposition)
 add_subdirectory (setups/poissonProblem)
 enable_testing ()

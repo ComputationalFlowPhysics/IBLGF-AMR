@@ -54,6 +54,9 @@ public:
 
     using refinement_condition_fct_t = std::function<bool(octant_t*)>;
 
+    template<class DictionaryPtr>
+    using block_initialze_fct = std::function<std::vector<block_descriptor_t>(DictionaryPtr)>;
+
     static constexpr int dimension(){return Dim;}
 
 
@@ -65,36 +68,21 @@ public: //C/Dtors
     Domain& operator=(      Domain&& other) & = default;
     ~Domain() = default;
 
-
     template<class DictionaryPtr>
-    Domain(DictionaryPtr _dictionary)
-    :Domain(parse_blocks(_dictionary, "block"),
+    Domain(DictionaryPtr _dictionary, 
+           block_initialze_fct<DictionaryPtr> _init_fct=
+                    block_initialze_fct<DictionaryPtr>())
+    :Domain( parse_blocks(_dictionary,_init_fct),
             extent_t(_dictionary->template get_or<int>("max_extent", 4096)),
             extent_t(_dictionary->template get_or<int>("block_extent", 10))
             )
     {
-        if(_dictionary->has_key("Lx"))
-        {
-            const float_type L= _dictionary->template get<float_type>("Lx");
-            dx_base_=L/ (bounding_box_.extent()[0]-1);
-        }
-        else if(_dictionary->has_key("Ly"))
-        {
-            const float_type L= _dictionary->template get<float_type>("Ly");
-            dx_base_=L/ (bounding_box_.extent()[1]-1);
-        }
-        else if(_dictionary->has_key("Lz"))
-        {
-            const float_type L= _dictionary->template get<float_type>("Lz");
-            dx_base_=L/ (bounding_box_.extent()[2]-1);
-        }
-        else
-        {
-            throw std::runtime_error(
-            "Domain: Please specify length scale Lx or Ly or Lz in dictionary"
-            );
-        }
+        read_parameters(_dictionary);
     }
+
+
+
+
 
 
     Domain(const std::vector<block_descriptor_t>& _baseBlocks,
@@ -217,22 +205,6 @@ public: //C/Dtors
     }
 
 
-
-    template<template<std::size_t> class Field>
-    void init_field(octant_t* _root)
-    {
-        for(auto it=dfs_iterator(_root); it!=end_df();++it)
-        {
-            const int level=0;
-            auto bbase=t_->octant_to_level_coordinate(it->tree_coordinate());
-            block_descriptor_t b(bbase, block_extent_, level);
-            it->data()->template initialize<Field>(b);
-        }
-    }
-
-
-
-
 public: // Iterators:
     auto begin_leafs()     noexcept{ return t_->begin_leafs(); }
     auto end_leafs()       noexcept{ return t_->end_leafs(); }
@@ -296,11 +268,6 @@ public:
             child_it->data()=
                 std::make_shared<datablock_t>(bbase, block_extent_,level,init_field);
         });
-
-        // Ke TODO Need to check
-        //tree()->construct_flag_leaf();
-        //tree()->construct_neighbor_lists();
-        //tree()->construct_influence_lists();
     }
 
 
@@ -516,31 +483,44 @@ public:
 
     friend std::ostream& operator<<(std::ostream& os, Domain& d)
     {
+        boost::mpi::communicator w;
+        os<<"Total number of processes: "<<w.size()<<std::endl;
         os<<"Number of octants: "<<d.num_leafs()<<std::endl;
         os<<"Block extent : "<<d.block_extent_<<std::endl;
         os<<"Base resolution "<<d.dx_base()<<std::endl;
         os<<"Base level "<<d.tree()->base_level()<<std::endl;
+        os<<"Tree depth "<<d.tree()->depth()<<std::endl;
 
         os<<"Domain Bounding Box: "<<d.bounding_box_<<std::endl;
         os<<"Fields:"<<std::endl;
-        //auto it=d.begin_leafs();
-        //it->data()->for_fields([&](auto& field)
-        //        {
-        //            os<<"\t "<<field.name()<<std::endl;
-        //        }
-        //);
+        auto it=d.begin_leafs();
+        it->data()->for_fields([&](auto& field)
+                {
+                    os<<"\t "<<field.name()<<std::endl;
+                }
+        );
         return os;
     }
 
 private:
 
+    template<class DictionaryPtr, class Fct >
+    std::vector<block_descriptor_t>
+    parse_blocks(DictionaryPtr _dict, Fct _fct)
+    {
+        if(_fct)
+            return _fct(_dict);
+        else
+            return parse_blocks_dict(_dict);
+    }
+
+
     template<class DictionaryPtr>
     std::vector<block_descriptor_t>
-    parse_blocks(DictionaryPtr _dict,
-                 std::string _dict_name="block")
+    parse_blocks_dict(DictionaryPtr _dict)
     {
         std::vector<block_descriptor_t> res;
-        auto dicts=_dict->get_all_dictionaries(_dict_name);
+        auto dicts=_dict->get_all_dictionaries("block");
         for(auto& sd: dicts)
         {
             auto base=sd->template get<int,Dim>("base");
@@ -549,6 +529,32 @@ private:
             res.emplace_back(base, extent,level);
         }
         return res;
+    }
+
+    template<class DictionaryPtr>
+    void read_parameters(DictionaryPtr _dictionary)
+    {
+        if(_dictionary->has_key("Lx"))
+        {
+            const float_type L= _dictionary->template get<float_type>("Lx");
+            dx_base_=L/ (bounding_box_.extent()[0]-1);
+        }
+        else if(_dictionary->has_key("Ly"))
+        {
+            const float_type L= _dictionary->template get<float_type>("Ly");
+            dx_base_=L/ (bounding_box_.extent()[1]-1);
+        }
+        else if(_dictionary->has_key("Lz"))
+        {
+            const float_type L= _dictionary->template get<float_type>("Lz");
+            dx_base_=L/ (bounding_box_.extent()[2]-1);
+        }
+        else
+        {
+            throw std::runtime_error(
+            "Domain: Please specify length scale Lx or Ly or Lz in dictionary"
+            );
+        }
     }
 
     /** @brief Default refinement condition */

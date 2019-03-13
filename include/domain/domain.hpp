@@ -93,7 +93,6 @@ public: //C/Dtors
             throw std::runtime_error(
             "Domain: Please specify length scale Lx or Ly or Lz in dictionary"
             );
-
         }
     }
 
@@ -204,11 +203,11 @@ public: //C/Dtors
                         this->refine(it); 
                     }
                 }
-
                 this->tree()->construct_leaf_maps();
                 this->tree()->construct_level_maps();
                 this->tree()->construct_neighbor_lists(); 
             }
+
         }
      }
 

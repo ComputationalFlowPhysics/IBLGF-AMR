@@ -98,6 +98,11 @@ public:
                     domain_->block_extent(),level, true);
             _o->rank()=comm_.rank();
         });
+
+        //Receive global depth of the tree
+        int depth=domain_->tree()->depth();
+        comm_.recv(0,0,depth);
+        domain_->tree()->depth()=depth;
     }
 
     auto leaf_query(std::vector<key_t>& task_dat)

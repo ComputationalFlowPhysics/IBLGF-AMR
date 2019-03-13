@@ -75,6 +75,8 @@ public:
 
         domain_->tree()->construct_neighbor_lists();
         domain_->tree()->construct_influence_lists();
+        domain_->tree()->construct_leaf_maps();
+
 
         float_type total_load=0.0;
         int nOctants=0;
@@ -146,6 +148,11 @@ public:
             std::vector<key_t> keys;
             for(auto& tt: t ) keys.push_back(tt.key());
             comm_.send(t.front().rank(),0, keys );
+        }
+        //Send global tree depth
+        for(int i=1;i<comm_.size();++i)
+        {
+            comm_.send(i,0, domain_->tree()->depth()) ;
         }
     }
 

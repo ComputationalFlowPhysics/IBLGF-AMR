@@ -234,7 +234,7 @@ public:
         }
 
         _l ->flag_leaf(false);
-        if(_l->level()+1 > depth_) depth_=_l->level()+1;
+        if(_l->level()+2 > depth_) depth_=_l->level()+2;
     }
 
     const auto& get_octant_to_level_coordinate() const noexcept
@@ -751,15 +751,6 @@ public: //Query ranks of all octants, which are assigned in local tree
 
 
 public: // leafs maps
-
-    //void construct_flag_leaf()
-    //{
-    //    dfs_iterator it_begin(root()); dfs_iterator it_end;
-    //    for(auto it =it_begin;it!=it_end;++it)
-    //    {
-    //        it->flag_leaf(it->is_leaf_search());
-    //    }
-    //}
 
     auto leaf_map()
     {

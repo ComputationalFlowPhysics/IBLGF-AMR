@@ -106,8 +106,7 @@ public:
 
         //Coarsification:
         pcout<<"coarsification "<<std::endl;
-        //for (int ls = domain_->tree()->depth()-2; // Same TODO
-        for (int ls = 10; // Same TODO
+        for (int ls = domain_->tree()->depth()-2;
                  ls >= domain_->tree()->base_level(); --ls)
         {
             for (auto it_s  = domain_->begin(ls);
@@ -132,8 +131,7 @@ public:
         //Level-Interactions
         pcout<<"Level interactions "<<std::endl;
         for (int l  = domain_->tree()->base_level()+0;
-        //         l < domain_->tree()->depth(); ++l) //TODO !!!!! change to global maximum
-            l < 12; ++l)
+                l < domain_->tree()->depth(); ++l) 
         {
 
             //test for FMM
@@ -170,8 +168,7 @@ public:
         // Interpolation
         pcout<<"Interpolation"<<std::endl;
         for (int lt = domain_->tree()->base_level();
-        //       lt < domain_->tree()->depth(); ++lt) //TODO same
-                 lt < 12; ++lt) //TODO same
+               lt < domain_->tree()->depth(); ++lt)
         {
             domain_->decomposition().client()->
                 template communicate_updownward_assign<Target, Target>(lt,false,false);

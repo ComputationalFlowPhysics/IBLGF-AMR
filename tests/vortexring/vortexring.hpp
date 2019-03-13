@@ -46,7 +46,8 @@ struct parameters
          (phi_exact        , float_type, 1,       1),
          (error            , float_type, 1,       1),
          (amr_lap_source   , float_type, 1,       1),
-         (error_lap_source , float_type, 1,       1)
+         (error_lap_source , float_type, 1,       1),
+         (decomposition    , float_type, 1,       1)
     ))
 };
 
@@ -180,6 +181,7 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
                float_type exact = std::exp(-a*std::pow(r/R,alpha)) ;
                it2->get<source>()=source_tmp;
                it2->get<phi_exact>() = exact;
+               it2->get<decomposition>()=world.rank();
                /***********************************************************/
                // Vortex Ring
 
@@ -298,28 +300,32 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
         auto corners= b.get_corners();
 
 
-        float_type rz =rz_ref_*R_*scaling/dx_base;
+        //float_type rz =rz_ref_*R_*scaling/dx_base;
         float_type rscale=R_*scaling/dx_base;
 
-        auto lower_t = dx_base*(b.base()-center); 
-        auto upper_t= dx_base*(b.max()+1 -center);
-        fcoord_t mid = 0.5*(upper_t + lower_t);
+        auto lower_t = (b.base()-center); 
+        auto upper_t= (b.max()+1 -center);
 
         bool outside=false;
         bool inside=false;
         float_type rcmin=std::numeric_limits<float_type>::max();
         float_type rcmax=std::numeric_limits<float_type>::lowest();
+        float_type zcmin=std::numeric_limits<float_type>::max();
         for(auto& c : corners)
         {
             float_type r_c =  std::sqrt( c.x()*c.x() + c.y()*c.y()  );
             if(r_c < rcmin) rcmin=r_c;
             if(r_c > rcmax) rcmax=r_c;
 
+            float_type cz=std::fabs(static_cast<float_type>(c.z()));
+            if(cz<zcmin) zcmin=cz;
+
             if( r_c<=rscale ) inside=true;
             if( r_c>=rscale ) outside=true;
         }
-        float_type zmax= std::abs(mid[2]/dx_base);
-        if(zmax<=rz && outside &&inside)
+        float_type rz =rz_ref_*rscale;
+        bool z_cond = (zcmin<=rz) || (lower_t.z() <=0 && upper_t.z()>=0);
+        if( z_cond  && outside &&inside)
         {
             return true;
         }
@@ -327,7 +333,7 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
         float_type rmin =rmin_ref_*rscale;
         float_type rmax =rmax_ref_*rscale;
         float_type rcmid=0.5*(rcmax+rcmin);
-        if( zmax<=rz && (rcmid>=rmin && rcmid<=rmax) )  
+        if( z_cond && (rcmid>=rmin && rcmid<=rmax) )  
         {
             return true;
         }

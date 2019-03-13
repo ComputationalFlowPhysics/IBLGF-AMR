@@ -18,15 +18,19 @@ simulation_parameters
     c1=1073741824000000000.;
     R=0.125;
     c2=50;
-    Rmin_ref=0.9;
-    Rmax_ref=1.2;
-    Rz_ref=0.4;
+    //Rmin_ref=0.85;
+    //Rmax_ref=1.2;
+    //Rz_ref=0.05;
+
+    Rmin_ref=0.95;
+    Rmax_ref=1.05;
+    Rz_ref=0.05;
 
     domain
     {
         Lx=1.0; 
         max_extent   = 500;
-        block_extent =5;
+        block_extent =4;
        
         block
         {

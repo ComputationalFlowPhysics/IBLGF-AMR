@@ -133,11 +133,11 @@ public: //Ctors
 
 
     //TODO: store this bool while constructing
-    bool is_leaf(){return flag_leaf_;}
+    bool is_leaf()const noexcept{return flag_leaf_;}
 
-    void flag_leaf(const bool flag){flag_leaf_ = flag;}
+    void flag_leaf(const bool flag)noexcept {flag_leaf_ = flag;}
 
-    bool is_leaf_search()
+    bool is_leaf_search() const noexcept
     {
         for(int i = 0; i< this->num_children();++i)
         {
@@ -225,6 +225,7 @@ public: //Ctors
             Octant* inf = this->neighbor(c);
             if(inf!=nullptr) load=load+1.0;
         }
+        if(!is_leaf()) load*=2.0;
         return load;
     }
 

@@ -193,14 +193,16 @@ public:
         //std::cout<<"FMM init base level masks" << std::endl;
         fmm_init_base_level_masks(domain_, level, non_leaf_as_source);
         //std::cout<<"FMM upward masks" << std::endl;
-        fmm_upward_pass_masks(domain_, level);
+        fmm_upward_pass_masks(domain_, level, MASK_LIST::Mask_FMM_Source);
+        fmm_upward_pass_masks(domain_, level, MASK_LIST::Mask_FMM_Target);
+
         //std::cout<<"FMM sync masks" << std::endl;
-        fmm_sync_masks(domain_, level);
-        //fmm_upward_pass_masks(domain_, level);
+        fmm_sync_masks(domain_, level, MASK_LIST::Mask_FMM_Source);
+        fmm_sync_masks(domain_, level, MASK_LIST::Mask_FMM_Target);
 
         ////Initialize for each fmm // zero ing all tree
-        fmm_init_zero<fmm_s>(domain_, level);
-        fmm_init_zero<fmm_t>(domain_, level);
+        fmm_init_zero<fmm_s>(domain_, level, MASK_LIST::Mask_FMM_Source);
+        fmm_init_zero<fmm_t>(domain_, level, MASK_LIST::Mask_FMM_Target);
 
         //// Copy to temporary variables // only the base level
         fmm_init_copy<Source, fmm_s>(domain_, level);
@@ -290,7 +292,7 @@ public:
         }
     }
 
-    void fmm_upward_pass_masks(domain_t* domain_, int base_level)
+    void fmm_upward_pass_masks(domain_t* domain_, int base_level, int mask_id)
     {
         // for all levels
         for (int level=base_level-1; level>=0; --level)
@@ -301,81 +303,59 @@ public:
                     ++it)
             {
                 // including ghost parents
-                it->mask(MASK_LIST::Mask_FMM_Source, false);
+                it->mask(mask_id, false);
                 for ( int c = 0; c < it->num_children(); ++c )
                 {
-                    if ( it->child(c) && it->child(c)->mask(MASK_LIST::Mask_FMM_Source) )
+                    if ( it->child(c) && it->child(c)->mask(mask_id) )
                     {
-                        it->mask(MASK_LIST::Mask_FMM_Source, true);
+                        it->mask(mask_id, true);
                         break;
                     }
                 }
-
-                it->mask(MASK_LIST::Mask_FMM_Target, false);
-                for ( int c = 0; c < it->num_children(); ++c)
-                {
-                    if ( it->child(c) && it->child(c)->mask(MASK_LIST::Mask_FMM_Target) )
-                    {
-                        it->mask(MASK_LIST::Mask_FMM_Target, true);
-                        break;
-                    }
-                }
-
             }
 
             domain_->decomposition().client()-> template
                     communicate_mask_single_level_updownward_OR(level,
-                            MASK_LIST::Mask_FMM_Source, true);
-
-            domain_->decomposition().client()-> template
-                    communicate_mask_single_level_updownward_OR(level,
-                            MASK_LIST::Mask_FMM_Target, true);
+                            mask_id, true);
         }
     }
 
-    void fmm_sync_masks(domain_t* domain_, int base_level)
+    void fmm_sync_masks(domain_t* domain_, int base_level, int mask_id)
     {
-        fmm_sync_parent_masks(domain_, base_level);
+        fmm_sync_parent_masks(domain_, base_level, mask_id);
+
         //std::cout<<"FMM SYNC parent MASKS done" << std::endl;
-        fmm_sync_inf_masks(domain_, base_level);
+        fmm_sync_inf_masks(domain_, base_level, mask_id);
+
         //std::cout<<"FMM SYNC inf MASKS done" << std::endl;
-        fmm_sync_child_mask(domain_, base_level);
+        //fmm_sync_child_mask(domain_, base_level, mask_id);
         //std::cout<<"FMM SYNC child MASKS done" << std::endl;
     }
 
-    void fmm_sync_parent_masks(domain_t* domain_, int base_level)
+    void fmm_sync_parent_masks(domain_t* domain_, int base_level, int mask_id)
     {
         for (int level=base_level-1; level>=0; --level)
         {
             domain_->decomposition().client()-> template
                     communicate_mask_single_level_updownward_OR(level,
-                            MASK_LIST::Mask_FMM_Source,false);
-
-            domain_->decomposition().client()-> template
-                    communicate_mask_single_level_updownward_OR(level,
-                            MASK_LIST::Mask_FMM_Target,false);
+                            mask_id,false);
         }
     }
 
-    void fmm_sync_inf_masks(domain_t* domain_, int base_level)
+    void fmm_sync_inf_masks(domain_t* domain_, int base_level, int mask_id)
     {
 
         for (int level=base_level; level>=0; --level)
         {
             bool neighbor_ = (level==base_level)? true:false;
-            neighbor_ = true;
 
             domain_->decomposition().client()-> template
                     communicate_mask_single_level_inf_sync(level,
-                            MASK_LIST::Mask_FMM_Source, neighbor_);
-
-            domain_->decomposition().client()-> template
-                    communicate_mask_single_level_inf_sync(level,
-                            MASK_LIST::Mask_FMM_Target, neighbor_);
+                            mask_id, neighbor_);
         }
     }
 
-    void fmm_sync_child_mask(domain_t* domain_, int base_level)
+    void fmm_sync_child_mask(domain_t* domain_, int base_level, int mask_id)
     {
 
         for (int level=base_level-1; level>=0; --level)
@@ -383,11 +363,8 @@ public:
 
             domain_->decomposition().client()-> template
                     communicate_mask_single_level_child_sync(level,
-                            MASK_LIST::Mask_FMM_Source);
+                            mask_id);
 
-            domain_->decomposition().client()-> template
-                    communicate_mask_single_level_child_sync(level,
-                            MASK_LIST::Mask_FMM_Target);
         }
     }
 
@@ -555,8 +532,8 @@ public:
 
     }
 
-    template< class fmm_s >
-    void fmm_init_zero(domain_t* domain_, int base_level)
+    template< class field >
+    void fmm_init_zero(domain_t* domain_, int base_level, int mask_id)
     {
         for (int level=base_level; level>=0; --level)
         {
@@ -564,9 +541,9 @@ public:
                     it != domain_->end(level);
                     ++it)
             {
-                    if(it->data() /*&& it->mask(MASK_LIST::Mask_FMM_Source)*/)
+                    if(it->data() && it->mask(mask_id))
                     {
-                        for(auto& e: it->data()->template get_data<fmm_s>())
+                        for(auto& e: it->data()->template get_data<field>())
                             e=0.0;
                     }
             }
@@ -632,6 +609,7 @@ public:
         //    }//octants in level
         //}
 
+        const int mask_id = MASK_LIST::Mask_FMM_Target;
         for (int level=1; level<base_level; ++level)
         {
             domain_->decomposition().client()-> template
@@ -641,8 +619,8 @@ public:
                     it != domain_->end(level);
                     ++it)
             {
-                if(it->data() && it->mask(MASK_LIST::Mask_FMM_Target) )
-                    lagrange_intrp.nli_intrp_node<fmm_t>(it);
+                if(it->data() && it->mask(mask_id) )
+                    lagrange_intrp.nli_intrp_node<fmm_t>(it, mask_id);
             }
         }
     }
@@ -676,14 +654,15 @@ public:
         //    }
         //}
 
+        const int mask_id = MASK_LIST::Mask_FMM_Source;
         for (int level=base_level-1; level>=0; --level)
         {
             for (auto it = domain_->begin(level);
                     it != domain_->end(level);
                     ++it)
             {
-                if(it->data() && it->mask(MASK_LIST::Mask_FMM_Source) )
-                    lagrange_intrp.nli_antrp_node<fmm_s>(it);
+                if(it->data() && it->mask(mask_id) )
+                    lagrange_intrp.nli_antrp_node<fmm_s>(it, mask_id);
             }
 
             domain_->decomposition().client()->

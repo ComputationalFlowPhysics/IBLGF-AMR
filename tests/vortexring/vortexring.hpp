@@ -85,7 +85,16 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
         rz_ref_ = simulation_.dictionary_->
             template get_or<float_type>("Rz_ref",R_);
 
-        pcout << "\n Setup:  Test - Domain decomposition \n" << std::endl;
+        c1 = simulation_.dictionary_->
+            template get_or<float_type>("c1",1);
+        c2 = simulation_.dictionary_->
+            template get_or<float_type>("c2",1);
+
+        nLevels_=simulation_.dictionary_->
+            template get_or<int>("nLevels",0);
+
+        pcout << "\n Setup:  Test - Vortex ring \n" << std::endl;
+        pcout << "Number of refinement levels: "<<nLevels_<<std::endl;
         pcout << "Simulation: \n" << simulation_ << std::endl;
         domain_->register_refinement_codtion()=
             [this](auto octant){return this->refinement(octant);};
@@ -126,20 +135,12 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
         auto center = (domain_->bounding_box().max() -
                        domain_->bounding_box().min()) / 2.0 +
                        domain_->bounding_box().min();
-       std::cout<<"Center "<<center<<std::endl;
-       center.x()=0;
-       center.y()=0;
-       center.z()=0;
 
         const float_type alpha = simulation_.dictionary_->
             template get_or<float_type>("alpha",1);
         const float_type a = simulation_.dictionary_->
             template get_or<float_type>("a",1);
 
-        const float_type c1 = simulation_.dictionary_->
-            template get_or<float_type>("c1",1);
-        const float_type c2 = simulation_.dictionary_->
-            template get_or<float_type>("c2",1);
 
 
         R_ = simulation_.dictionary_->
@@ -254,7 +255,11 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
     {
         const float_type dx_base=domain_->dx_base();
         auto L2   = 0.; auto LInf = -1.0; int count=0;
+        std::vector<float_type> L2_perLevel(nLevels_+1,0.0);
+        std::vector<float_type> LInf_perLevel(nLevels_+1,0.0);
+
         if(domain_->is_server())  return;
+
         for (auto it_t  = domain_->begin_leafs();
                 it_t != domain_->end_leafs(); ++it_t)
         {
@@ -272,8 +277,13 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
                 it2->get<error>() = error_tmp;
                 L2 += error_tmp*error_tmp * (dx*dx*dx);
 
+                L2_perLevel[refinement_level]+=(error_tmp*error_tmp * (dx*dx*dx));
+
                 if ( std::fabs(error_tmp) > LInf)
                     LInf = std::fabs(error_tmp);
+
+                if ( std::fabs(error_tmp) > LInf_perLevel[refinement_level] )
+                    LInf_perLevel[refinement_level]=std::fabs(error_tmp);
 
                 ++count;
             }
@@ -281,16 +291,33 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
 
         float_type L2_global(0.0);
         float_type LInf_global(0.0);
+
         boost::mpi::all_reduce(client_comm_,L2, L2_global, std::plus<float_type>());
         boost::mpi::all_reduce(client_comm_,LInf, LInf_global,[&](const auto& v0,
-        const auto& v1){return v0>v1? v0  :v1;} );
-        pcout_c << "L2  = " << std::sqrt(L2_global)<< std::endl;
-        pcout_c << "LInf_global = " << LInf_global << std::endl;
+                               const auto& v1){return v0>v1? v0  :v1;} );
 
+        //Level wise errros
+        std::vector<float_type> L2_perLevel_global(nLevels_+1,0.0);
+        std::vector<float_type> LInf_perLevel_global(nLevels_+1,0.0);
+        for(std::size_t i=0;i<L2_perLevel.size();++i)
+        {
+
+            boost::mpi::all_reduce(client_comm_,L2_perLevel[i], 
+                                   L2_perLevel_global[i], std::plus<float_type>());
+            boost::mpi::all_reduce(client_comm_,LInf_perLevel[i], 
+                                   LInf_perLevel[i],[&](const auto& v0,
+                                       const auto& v1){return v0>v1? v0  :v1;});
+            std::cout<<"L2_"<<i<<" "<<L2_perLevel_global[2]<<std::endl;
+            std::cout<<"LInf_"<<i<<" "<<LInf_perLevel_global[2]<<std::endl;
+        }
+
+        pcout_c << "L2 = " << std::sqrt(L2_global)<< std::endl;
+        pcout_c << "LInf_global = " << LInf_global << std::endl;
 
     }
 
 
+    /** @brief  Refienment conditon for octants.  */
     template<class OctantType>
     bool refinement(OctantType* it) const noexcept
     {
@@ -300,6 +327,7 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
         return refinement(b,R_, rmin_ref_,rmax_ref_,rz_ref_,dx_base);
     }
 
+    /** @brief  Refienment conditon for blocks.  */
     bool refinement(block_descriptor_t b, 
                     float_type _R, 
                     float_type _rmin_ref, 
@@ -314,10 +342,6 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
 
         auto scaling =  std::pow(2,b.level());
         center*=scaling;
-
-       center.x()=0;
-       center.y()=0;
-       center.z()=0;
 
         b.grow(2,2);
         auto corners= b.get_corners();
@@ -364,7 +388,9 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
     }        
 
 
-
+    /** @brief  Initialization of the domain blocks. This is registered in the
+     *          domain through the base setup class, passing it to the domain ctor.
+     */
     std::vector<extent_t> initialize_domain( Dictionary* _d, domain_t* _domain )
     {
         auto res=_domain-> construct_basemesh_blocks(_d, _domain->block_extent());
@@ -382,16 +408,10 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
         {
             block_descriptor_t b(*it*_domain->block_extent(), _domain->block_extent());
             if(refinement(b,R0,rmin,rmax,rz,dx_base))
-            {
                 ++it;
-            }
             else
-            {
                 it=res.erase(it);
-            }
-
         }
-
         return res;
     }
 
@@ -403,6 +423,9 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
     float_type rmin_ref_;
     float_type rmax_ref_;
     float_type rz_ref_;
+    float_type c1=0;
+    float_type c2=0;
+    int nLevels_=0;
 
 
 

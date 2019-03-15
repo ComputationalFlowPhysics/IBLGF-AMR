@@ -1017,8 +1017,11 @@ public:
     auto get_octant_idx(T it) const noexcept
     {
         const auto cc=it->tree_coordinate();
-        return static_cast<int>(it->level()+cc.x()*25+cc.y()*25*500+ 25*500*500*cc.z());
-;
+        return static_cast<int>(
+                (it->level()+cc.x()*25+cc.y()*25*300+ 25*300*300*cc.z()) % 
+                boost::mpi::environment::max_tag() 
+                );
+
     }
 
     /** @brief Query ranks of the neighbors, influence octants, children and

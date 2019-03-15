@@ -1,9 +1,6 @@
 #!/usr/bin/env python
 N = [8]
 refine_level = [1,2,3,4,5,6,7,8,9]
-#refine_level = [2]
-#N = [11, 15]
-#N = [6]
 
 f_bash = open("run.q", "w")
 f_bash.write("#!/bin/bash \n")

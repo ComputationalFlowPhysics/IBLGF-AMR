@@ -230,8 +230,8 @@ public:
             fmm_minus_equal<Target, fmm_t>(domain_, level);
 
         boost::mpi::communicator world;
-        std::cout<<"Rank "<<world.rank() << " FFTW_count = ";
-        std::cout<<conv_.fft_count << std::endl;
+        //std::cout<<"Rank "<<world.rank() << " FFTW_count = ";
+        //std::cout<<conv_.fft_count << std::endl;
         pcout<<"FMM For Level "<< level << " End -------------------------"<<std::endl;
     }
 

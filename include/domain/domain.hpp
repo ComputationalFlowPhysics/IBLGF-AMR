@@ -555,13 +555,13 @@ public:
         os<<"Tree depth "<<d.tree()->depth()<<std::endl;
 
         os<<"Domain Bounding Box: "<<d.bounding_box_<<std::endl;
-        os<<"Fields:"<<std::endl;
-        auto it=d.begin_leafs();
-        it->data()->for_fields([&](auto& field)
-                {
-                    os<<"\t "<<field.name()<<std::endl;
-                }
-        );
+        //os<<"Fields:"<<std::endl;
+        //auto it=d.begin_leafs();
+        //it->data()->for_fields([&](auto& field)
+        //        {
+        //            os<<"\t "<<field.name()<<std::endl;
+        //        }
+        //);
         return os;
     }
 

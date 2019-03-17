@@ -4,6 +4,7 @@
 #include <dictionary/dictionary.hpp>
 #include <IO/vtk_io.hpp>
 #include <IO/chombo/h5_io.hpp>
+#include <IO/output_directory.hpp>
 
 using namespace dictionary;
 

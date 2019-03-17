@@ -54,7 +54,7 @@ namespace fmm
 
         template<class field,
             typename octant_t>
-        void nli_intrp_node(octant_t parent)
+        void nli_intrp_node(octant_t parent, int mask_id)
             {
                 auto& parent_linalg_data =
                     parent->data()->template get_linalg_data<field>();
@@ -62,8 +62,8 @@ namespace fmm
                 for (int i = 0; i < parent->num_children(); ++i)
                 {
                     auto child = parent->child(i);
-                    if (child == nullptr  /*|| !child->locally_owned()*/) continue;
-                     
+                    if (child == nullptr || !child->mask(mask_id) /*|| !child->locally_owned()*/) continue;
+
 
                     auto& child_linalg_data =
                         child ->data()->template get_linalg_data<field>();
@@ -137,7 +137,7 @@ namespace fmm
 
 
         template< class field, typename octant_t>
-        void nli_antrp_node(octant_t parent)
+        void nli_antrp_node(octant_t parent, int mask_id)
             {
                 auto& parent_linalg_data = parent->data()->template get_linalg_data<field>();
 
@@ -145,7 +145,9 @@ namespace fmm
                 {
 
                     auto child = parent->child(i);
-                    if (child == nullptr || !child->locally_owned()) continue;
+                    if (child == nullptr ||
+                        !child->locally_owned() ||
+                        !child->mask(mask_id)) continue;
 
                     auto& child_linalg_data  =
                         child ->data()->template get_linalg_data<field>();

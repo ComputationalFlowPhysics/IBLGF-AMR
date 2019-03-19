@@ -1,0 +1,66 @@
+#!/bin/bash
+
+if [ -z "$1" ]
+then
+      echo "Please provide files  "
+      exit
+fi
+
+level=0
+for f in "$@";
+do 
+    echo $f
+    LInfss=($(grep "LInf_" $f | cut -d' ' -f2))
+    LInfGlobals=($(grep "Global LInf" $f | cut -d' ' -f4))
+    L2Globals=($(grep "Glabal L2" $f | cut -d' ' -f4))
+    L2s=($(grep "L2_" $f | cut -d' ' -f2))
+    Ress=($(grep "Case" $f | cut -d' ' -f2))
+    nLevelss=($(grep "Case" $f | cut -d' ' -f3))
+    count=0;
+
+    ffinest=error_finest_${res}.txt
+    fglobal=error_global_${res}.txt
+
+    if [ -f $ffinest ]
+    then
+        rm  $ffinest
+    fi
+
+    if [ -f $fglobal ]
+    then
+        rm  $fglobal
+    fi
+
+
+    touch $ffinest
+    touch $fglobal
+    for ((i = 0; i < ${#Ress[@]}; ++i));
+    do
+        res=${Ress[$i]}
+        nLevels=${nLevelss[$i]}
+        echo Case $res $nLevels
+        echo $nLevels  ${L2Globals[$i]} ${LInfGlobals[$i]} >> $fglobal
+
+        flevelwise=error_${res}_${nLevels}.txt
+        touch $flevelwise
+        if [ -f $flevelwise ]
+        then
+            rm  $flevelwise
+        fi
+
+        for ((j = 0; j < ${nLevels}+1; ++j));
+        do
+            idx=$(( count+ j))
+            echo    LInf ${L2s[$idx]} ${LInfss[$idx]}
+            echo $j  ${L2s[$idx]} ${LInfss[$idx]} >> $flevelwise
+        done
+        count=$((count +nLevels+1))
+        prev=$((count +nLevels))
+        echo $nLevels  ${L2s[$idx]} ${LInfss[$idx]} >> $ffinest
+
+    done
+    Times=($(grep "time" $f | cut -d' ' -f4))
+  done
+
+  cp $ffinest error.txt
+

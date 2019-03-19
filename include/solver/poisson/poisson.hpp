@@ -252,6 +252,9 @@ public:
             {
                 this->coarsify<target>(*it_s);
             }
+
+            domain_->decomposition().client()->
+                template communicate_updownward_add<target, target>(ls,true,false);
         }
 
         //Level-Interactions
@@ -293,7 +296,6 @@ public:
                     }
 
                 }
-
                 diff_target_data *= (1/dx_level) * (1/dx_level);
             }
         }

@@ -96,6 +96,9 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
         eps_grad_=simulation_.dictionary_->
             template get_or<float_type>("refinment_criterion",1e-4);
 
+        offset_=simulation_.dictionary_->
+            template get<float_type,3>("offset");
+
         nLevels_=simulation_.dictionary_->
             template get_or<int>("nLevels",0);
 
@@ -124,8 +127,11 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
             ))
             pcout_c<<"Total Psolve time: " 
                   <<solve_duration.count()<<" on "<<world.size()<<std::endl;
+            psolver.apply_amr_laplace<phi_num,amr_lap_source>() ;
         }
-        this->compute_errors();
+        this->compute_errors<phi_num,phi_exact,error>();
+        this->compute_errors<amr_lap_source,source,error_lap_source>("Lap");
+
         simulation_.write2("mesh.hdf5");
     }
 
@@ -169,18 +175,19 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
            {
                it2->get<source>() = 0.0;
                it2->get<phi_num>()= 0.0;
-               //const auto& coord=it2->global_coordinate();
 
                const auto& coord=it2->level_coordinate();
-
 
                // manufactured solution:
                float_type x = static_cast<float_type>
                    (coord[0]-center[0]*scaling+0.5)*dx_level;
+                   x+=offset_[0];
                float_type y = static_cast<float_type>
                    (coord[1]-center[1]*scaling+0.5)*dx_level;
+                   x+=offset_[1];
                float_type z = static_cast<float_type>
                    (coord[2]-center[2]*scaling+0.5)*dx_level;
+                   x+=offset_[2];
 
                const float_type r=std::sqrt(x*x+y*y+z*z) ;
 
@@ -310,7 +317,8 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
 
 
     /** @brief Compute L2 and LInf errors */
-    void compute_errors()
+    template<class Numeric, class Exact, class Error>
+    void compute_errors(std::string _output_prefix="")
     {
         const float_type dx_base=domain_->dx_base();
         auto L2   = 0.; auto LInf = -1.0; int count=0;
@@ -331,10 +339,10 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
             auto& nodes_domain=it_t->data()->nodes_domain();
             for(auto it2=nodes_domain.begin();it2!=nodes_domain.end();++it2 )
             {
-                const float_type error_tmp = (
-                        it2->get<phi_num>() - it2->get<phi_exact>());
+                float_type error_tmp = ( it2->get<Numeric>() - 
+                                         it2->get<Exact>());
+                it2->get<Error>() = error_tmp;
 
-                it2->get<error>() = error_tmp;
                 L2 += error_tmp*error_tmp * (dx*dx*dx);
 
                 L2_perLevel[refinement_level]+=error_tmp*error_tmp;
@@ -357,8 +365,8 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
         boost::mpi::all_reduce(client_comm_,LInf, LInf_global,[&](const auto& v0,
                                const auto& v1){return v0>v1? v0  :v1;} );
 
-        pcout_c << "Glabal L2 = " << std::sqrt(L2_global)<< std::endl;
-        pcout_c << "Global LInf = " << LInf_global << std::endl;
+        pcout_c << "Glabal "<<_output_prefix<<"L2 = " << std::sqrt(L2_global)<< std::endl;
+        pcout_c << "Global "<<_output_prefix<<"LInf = " << LInf_global << std::endl;
 
         //Level wise errros
         std::vector<float_type> L2_perLevel_global(nLevels_+1,0.0);
@@ -373,8 +381,8 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
             boost::mpi::all_reduce(client_comm_,LInf_perLevel[i], 
                                    LInf_perLevel_global[i],[&](const auto& v0,
                                        const auto& v1){return v0>v1? v0  :v1;});
-            pcout_c<<"L2_"<<i<<" "<<std::sqrt(L2_perLevel_global[i])/counts_global[i]<<std::endl;
-            pcout_c<<"LInf_"<<i<<" "<<LInf_perLevel_global[i]<<std::endl;
+            pcout_c<<_output_prefix<<"L2_"<<i<<" "<<std::sqrt(L2_perLevel_global[i])/counts_global[i]<<std::endl;
+            pcout_c<<_output_prefix<<"LInf_"<<i<<" "<<LInf_perLevel_global[i]<<std::endl;
             pcout_c<<"count_"<<i<<" "<<counts[i]<<std::endl;
         }
 
@@ -559,6 +567,7 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
     float_type c2=0;
     float_type eps_grad_=1.0e6;;
     int nLevels_=0;
+    fcoord_t offset_;
 };
 
 

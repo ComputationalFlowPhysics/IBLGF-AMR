@@ -1,0 +1,65 @@
+#!/bin/bash
+
+nNodes=( 1 )
+procsperNode=12
+executable="./vortexring.x"
+files="configFile submit.sbatch $executable "
+
+if [ -z "$1" ]
+then
+      echo "Please provide an destination directory "
+      exit
+fi
+
+prevDir=$PWD
+destination=$1
+
+echo Running on $nodes nodes with the jobs:
+
+mkdir -p $destination
+cp $files $destination
+
+sed -i "s/--job-name=.*/--job-name=ss_$nNodes/g" $destination/submit.sbatch
+sed -i "s/--nodes=.*/--nodes=$nNodes/g" $destination/submit.sbatch
+
+nLevels=( 0 1 2 3 )
+Ress=(80)
+
+local_run=$destination/run.sh
+echo '#!/bin/bash' > $local_run
+
+logFile=log.txt
+echo Logfile > logFile
+
+for res in "${Ress[@]}";
+do
+    for level in "${nLevels[@]}";
+    do
+        cores=$(( $procsperNode*$nNodes ))
+        config=configFile_${res}_${level}
+        cp configFile $destination/$config
+        base=$(( $res/-2  ))
+        
+        sed -i "s/nLevels=.*/nLevels=$level;/g" $destination/$config
+        sed -i "s/\<base\>\s*=.*/base=($base,$base,$base); /g" $destination/$config
+        sed -i "s/\<extent\>\s*=.*/extent=($res,$res,$res); /g" $destination/$config
+
+        echo Case $res $level 
+
+
+        echo "echo Case: $res $level" >> $destination/submit.sbatch
+        echo "echo" >> $destination/submit.sbatch
+        echo mpirun -n $cores $executable $config  >> $destination/submit.sbatch
+        echo cp mesh.hdf5 mesh_${res}_${level}.hdf5  >> $destination/submit.sbatch
+
+        echo "echo Case: $res $level" >> $local_run
+        echo "echo" >> $local_run
+        echo "mpirun.openmpi -n $cores $executable $config" >> $local_run
+        echo cp mesh.hdf5 mesh_${res}_${level}.hdf5  >> $local_run
+
+
+        echo "echo" >> $destination/submit.sbatch
+        echo "echo" >> $destination/submit.sbatch
+    done
+done
+

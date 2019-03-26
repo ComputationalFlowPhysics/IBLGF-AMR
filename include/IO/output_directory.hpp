@@ -12,17 +12,17 @@
 namespace io
 {
 
-struct outputParams_singleton;            
+struct outputParams_singleton;
 outputParams_singleton& output();
-	
+
 struct outputParams_singleton // singleton
 {
 private:
-	
+
 	/** @brief Default constructor */
 	outputParams_singleton(){};
 	/** @brief Function for instantiating the singleton is a friend */
-	friend outputParams_singleton& output(); 
+	friend outputParams_singleton& output();
 
     boost::filesystem::path directory_output = boost::filesystem::current_path();
     std::string rel_directory_str = "./";
@@ -36,7 +36,7 @@ private:
     std::string sim_name_="outFile";
 
 public:
-	
+
     using dictionary_t= dictionary::Dictionary;
 
     //No copy constructor or assign-operator
@@ -45,14 +45,14 @@ public:
 
     //void set_outputParams(std::string _outputDir ){ outputParams_=_outputDir; }
     void set_directory(std::shared_ptr<dictionary_t>& _dict_output )
-    { 
+    {
 
         sim_name_= _dict_output->
             template get_or<std::string>("name","my_simulation");
 
         std::string dir="./";
         boost::mpi::communicator world;
-		if(_dict_output-> has_key("directory")){ 
+		if(_dict_output-> has_key("directory")){
 
             dir= _dict_output-> template get<std::string>("name");
             boost::filesystem::path outdir(dir);
@@ -65,11 +65,11 @@ public:
     }
 
     void set_restart_directory(std::shared_ptr<dictionary_t>& _dict_output )
-    { 
+    {
         std::string dir="./";
         boost::mpi::communicator world;
 		if(_dict_output-> has_key("load_directory"))
-        { 
+        {
 
             dir= _dict_output-> template get<std::string>("load_directory");
             boost::filesystem::path outdir(dir);
@@ -83,7 +83,7 @@ public:
 
         dir="./";
 		if(_dict_output-> has_key("save_directory"))
-        { 
+        {
 
             dir= _dict_output-> template get<std::string>("save_directory");
             boost::filesystem::path outdir(dir);
@@ -113,12 +113,12 @@ public:
     std::string restart_load_directory_str(){return rel_directory_restartLoad_str; }
     boost::filesystem::path restart_save_directory(){return directory_restartSave; }
     std::string restart_save_directory_str(){return rel_directory_restartSave_str; }
-	
-    
+
+
 };
 
 
-   
+
 
 /** @brief Get a reference single instance  */
 inline outputParams_singleton& output()
@@ -136,7 +136,7 @@ struct setOutput
     using dictionary_t= dictionary::Dictionary;
     setOutput( dictionary_t* dict_)
     {
-        this->set(dict_); 
+        this->set(dict_);
     }
 
 
@@ -145,10 +145,10 @@ private:
     void set( dictionary_t* dict_)
     {
         std::shared_ptr<dictionary_t> subdict_ptr;
-        if( dict_->get_dictionary("output",subdict_ptr) ){  
+        if( dict_->get_dictionary("output",subdict_ptr) ){
             output().set_directory(subdict_ptr );
         }
-        if( dict_->get_dictionary("restart",subdict_ptr) ){  
+        if( dict_->get_dictionary("restart",subdict_ptr) ){
             output().set_restart_directory(subdict_ptr );
         }
 

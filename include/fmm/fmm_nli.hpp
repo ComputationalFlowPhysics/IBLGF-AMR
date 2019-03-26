@@ -353,7 +353,7 @@ namespace fmm
 
     //private:
     public:
-        const int pts_cap = 7;
+        const int pts_cap = 10;
 
         // antrp mat
 

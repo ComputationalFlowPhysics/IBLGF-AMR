@@ -47,7 +47,7 @@ struct parameters
          (error            , float_type, 1,       1),
          (amr_lap_source   , float_type, 1,       1),
          (error_lap_source , float_type, 1,       1),
-         (decomposition    , float_type, 1,       1), 
+         (decomposition    , float_type, 1,       1),
          (dxf               , float_type, 1,       1),
          (dyf               , float_type, 1,       1),
          (dzf               , float_type, 1,       1)
@@ -68,7 +68,7 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
     using time_point_type = typename clock_type::time_point;
 
     VortexRingTest(Dictionary* _d)
-    :super_type(_d, 
+    :super_type(_d,
             [this](auto _d, auto _domain){
                 return this->initialize_domain(_d, _domain); })
     {
@@ -93,6 +93,9 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
         c2 = simulation_.dictionary_->
             template get_or<float_type>("c2",1);
 
+        vorticity_max_=simulation_.dictionary_->
+            template get_or<float_type>("source_max",1.0);
+
         eps_grad_=simulation_.dictionary_->
             template get_or<float_type>("refinment_criterion",1e-4);
 
@@ -105,9 +108,9 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
         pcout << "\n Setup:  Test - Vortex ring \n" << std::endl;
         pcout << "Number of refinement levels: "<<nLevels_<<std::endl;
         pcout << "Simulation: \n" << simulation_ << std::endl;
-        domain_->register_refinement_codtion()=
-            [this](auto octant){return this->refinement(octant);};
-        domain_->init_refine(_d->get_dictionary("simulation_parameters") 
+        domain_->register_refinement_condition()=
+            [this](auto octant, int diff_level){return this->refinement(octant, diff_level);};
+        domain_->init_refine(_d->get_dictionary("simulation_parameters")
                 ->template get_or<int>("nLevels",0));
         domain_->distribute();
         this->initialize();
@@ -125,7 +128,7 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
             TIME_CODE( solve_duration, SINGLE_ARG(
                     psolver.solve<source, phi_num>();
             ))
-            pcout_c<<"Total Psolve time: " 
+            pcout_c<<"Total Psolve time: "
                   <<solve_duration.count()<<" on "<<world.size()<<std::endl;
             psolver.apply_amr_laplace<phi_num,amr_lap_source>() ;
         }
@@ -301,7 +304,7 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
                (r-sqrt(x*x+y*y+z*z))*1.0/pow(1.0/(r*r)*
                (pow(r-sqrt(x*x+y*y+z*z),2.0)+z*z)-1.0,2.0)*
                1.0/sqrt(x*x+y*y+z*z)*2.0;
-        
+
        dpsi[1] = 1.0/(r*r)*c1*c2*y*exp(c2/(1.0/(r*r)*
                 (pow(r-sqrt(x*x+y*y+z*z),2.0)+z*z)-1.0))*
                 (r-sqrt(x*x+y*y+z*z))*1.0/pow(1.0/(r*r)*
@@ -339,7 +342,7 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
             auto& nodes_domain=it_t->data()->nodes_domain();
             for(auto it2=nodes_domain.begin();it2!=nodes_domain.end();++it2 )
             {
-                float_type error_tmp = ( it2->get<Numeric>() - 
+                float_type error_tmp = ( it2->get<Numeric>() -
                                          it2->get<Exact>());
                 it2->get<Error>() = error_tmp;
 
@@ -374,11 +377,11 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
         std::vector<int> counts_global(nLevels_+1,0);
         for(std::size_t i=0;i<LInf_perLevel_global.size();++i)
         {
-            boost::mpi::all_reduce(client_comm_,counts[i], 
+            boost::mpi::all_reduce(client_comm_,counts[i],
                                    counts_global[i], std::plus<float_type>());
-            boost::mpi::all_reduce(client_comm_,L2_perLevel[i], 
+            boost::mpi::all_reduce(client_comm_,L2_perLevel[i],
                                    L2_perLevel_global[i], std::plus<float_type>());
-            boost::mpi::all_reduce(client_comm_,LInf_perLevel[i], 
+            boost::mpi::all_reduce(client_comm_,LInf_perLevel[i],
                                    LInf_perLevel_global[i],[&](const auto& v0,
                                        const auto& v1){return v0>v1? v0  :v1;});
             pcout_c<<_output_prefix<<"L2_"<<i<<" "<<std::sqrt(L2_perLevel_global[i])/counts_global[i]<<std::endl;
@@ -392,24 +395,27 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
 
     /** @brief  Refienment conditon for octants.  */
     template<class OctantType>
-    bool refinement(OctantType* it) const noexcept
+    bool refinement(OctantType* it, int diff_level) const noexcept
     {
         auto b=it->data()->descriptor();
         b.level()=it->refinement_level();
         const float_type dx_base = domain_->dx_base();
-        return refinement(b, c1, c2 ,R_, rmin_ref_,rmax_ref_,rz_ref_,dx_base,eps_grad_);
+
+        return refinement(b, c1, c2 ,R_, rmin_ref_,rmax_ref_,rz_ref_,dx_base,eps_grad_, vorticity_max_, diff_level);
     }
 
     /** @brief  Refienment conditon for blocks.  */
-    bool refinement(block_descriptor_t b, 
-                    float_type _c1, 
-                    float_type _c2, 
-                    float_type _R, 
-                    float_type _rmin_ref, 
-                    float_type  _rmax_ref, 
+    bool refinement(block_descriptor_t b,
+                    float_type _c1,
+                    float_type _c2,
+                    float_type _R,
+                    float_type _rmin_ref,
+                    float_type  _rmax_ref,
                     float_type _rz_ref,
-                    float_type dx_base, 
+                    float_type dx_base,
                     float_type eps_grad,
+                    float_type vorticity_max,
+                    int diff_level,
                     bool use_all=false) const noexcept
     {
 
@@ -428,7 +434,7 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
 
         float_type rscale=_R*scaling/dx_base;
 
-        auto lower_t = (b.base()-center); 
+        auto lower_t = (b.base()-center);
         auto upper_t= (b.max()+1 -center);
 
         bool outside=false;
@@ -458,11 +464,11 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
         float_type rmin =_rmin_ref*rscale;
         float_type rmax =_rmax_ref*rscale;
         float_type rcmid=0.5*(rcmax+rcmin);
-        if( z_cond && (rcmid>=rmin && rcmid<=rmax) )  
+        if( z_cond && (rcmid>=rmin && rcmid<=rmax) )
         {
             if (use_all) return true;
         }
-        
+
         for(int i=b.base()[0];i<=b.max()[0];++i)
         {
             for(int j=b.base()[1];j<=b.max()[1];++j)
@@ -478,7 +484,7 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
                         (k-center[2]*scaling+0.5)*dx_level;
                     const float_type r=std::sqrt(x*x+y*y+z*z) ;
 
-                    
+
                     const float_type R=_R;
                     const float_type c1=_c1;
                     const float_type c2=_c2;
@@ -486,33 +492,39 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
 
                     if(std::fabs(t)<1.0)
                     {
+                        float_type vort=vorticity(x,y,z,R,c1,c2);
 
-                        float_type dx_vort=(
-                            vorticity(x+dx_level,y,z,R,c1,c2)-
-                            vorticity(x-dx_level,y,z,R,c1,c2))/2.0;
-                        float_type dy_vort=(
-                            vorticity(x,y+dx_level,z,R,c1,c2)-
-                            vorticity(x,y-dx_level,z,R,c1,c2))/2.0;
-                        float_type dz_vort=(
-                            vorticity(x,y,z+dx_level,R,c1,c2)-
-                            vorticity(x,y,z-dx_level,R,c1,c2))/2.0;
-                        float_type mag_grad_vort = 
-                            std::sqrt(dx_vort*dx_vort+dy_vort*dy_vort+dz_vort*dz_vort);
-                            
-
-                        //float_type mag_grad =std::sqrt(dx*dx+dy*dy+dz*dz);
-                        //std::cout<<"magvort "<<mag_grad_vort<<std::endl;
-                        //if(mag_grad*dx_level > 1.0e-7)
-                        if(mag_grad_vort> eps_grad)
+                        if(std::fabs(vort) > vorticity_max_*pow(0.25,diff_level))
                         {
                             return true;
                         }
+
+                        //float_type dx_vort=(
+                        //    vorticity(x+dx_level,y,z,R,c1,c2)-
+                        //    vorticity(x-dx_level,y,z,R,c1,c2))/2.0;
+                        //float_type dy_vort=(
+                        //    vorticity(x,y+dx_level,z,R,c1,c2)-
+                        //    vorticity(x,y-dx_level,z,R,c1,c2))/2.0;
+                        //float_type dz_vort=(
+                        //    vorticity(x,y,z+dx_level,R,c1,c2)-
+                        //    vorticity(x,y,z-dx_level,R,c1,c2))/2.0;
+                        //float_type mag_grad_vort =
+                        //    std::sqrt(dx_vort*dx_vort+dy_vort*dy_vort+dz_vort*dz_vort);
+
+
+                        ////float_type mag_grad =std::sqrt(dx*dx+dy*dy+dz*dz);
+                        ////std::cout<<"magvort "<<mag_grad_vort<<std::endl;
+                        ////if(mag_grad*dx_level > 1.0e-7)
+                        //if(mag_grad_vort> eps_grad)
+                        //{
+                        //    return true;
+                        //}
                     }
                 }
             }
         }
         return false;
-    }        
+    }
 
 
     /** @brief  Initialization of the domain blocks. This is registered in the
@@ -536,13 +548,18 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
         float_type eps_grad=simulation_.dictionary_->
             template get_or<float_type>("refinment_criterion",1e-4);
 
+        float_type vorticity_max=simulation_.dictionary_->
+            template get_or<float_type>("source_max",1.0);
+
         const float_type dx_base = _domain->dx_base();
 
         auto it=res.begin();
         while(it!=res.end())
         {
             block_descriptor_t b(*it*_domain->block_extent(), _domain->block_extent());
-            if(refinement(b,c1,c2,R0,rmin,rmax,rz,dx_base,eps_grad, true))
+            if(refinement(b,c1,c2,R0,rmin,rmax,rz,dx_base,eps_grad,
+                        vorticity_max,0,
+                        true))
             {
                 ++it;
             }
@@ -550,7 +567,7 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
             {
                 it=res.erase(it);
             }
-           
+
         }
         return res;
     }
@@ -559,6 +576,7 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
     private:
     boost::mpi::communicator client_comm_;
     float_type R_;
+    float_type vorticity_max_;
 
     float_type rmin_ref_;
     float_type rmax_ref_;

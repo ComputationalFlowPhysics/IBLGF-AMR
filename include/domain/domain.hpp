@@ -52,7 +52,7 @@ public:
     using communicator_type = boost::mpi::communicator;
     using decompositon_type = Decomposition<Domain>;
 
-    using refinement_condition_fct_t = std::function<bool(octant_t*)>;
+    using refinement_condition_fct_t = std::function<bool(octant_t*, int diff_level)>;
 
     template<class DictionaryPtr>
     using block_initialze_fct = std::function<std::vector<extent_t>(DictionaryPtr,Domain*)>;
@@ -70,7 +70,7 @@ public: //C/Dtors
     ~Domain() = default;
 
     template<class DictionaryPtr>
-    Domain(DictionaryPtr _dictionary, 
+    Domain(DictionaryPtr _dictionary,
            block_initialze_fct<DictionaryPtr> _init_fct=
                     block_initialze_fct<DictionaryPtr>())
     {
@@ -78,16 +78,16 @@ public: //C/Dtors
     }
 
 
-    /** @brief Initialize domain, by reading in dictionary. 
+    /** @brief Initialize domain, by reading in dictionary.
      *         Custom function may also be provided to generate all
-     *         bases for the domain. Block extent_ is read in by the 
+     *         bases for the domain. Block extent_ is read in by the
      *         dictionary. */
     template<class DictionaryPtr>
-    void initialize( DictionaryPtr _dictionary, 
+    void initialize( DictionaryPtr _dictionary,
                      block_initialze_fct<DictionaryPtr> _init_fct=
                         block_initialze_fct<DictionaryPtr>() )
     {
-        
+
 
         //Construct base mesh, vector of bases with a given block_extent_
         block_extent_=_dictionary->template get_or<int>("block_extent", 10);
@@ -134,10 +134,10 @@ public: //C/Dtors
             );
         }
     }
-    
+
     /** @brief Initialize octree based on bases of the blocks.  **/
     void construct_tree( std::vector<extent_t>& bases,
-                         extent_t _maxExtent, extent_t _blockExtent) 
+                         extent_t _maxExtent, extent_t _blockExtent)
     {
         auto base_=bounding_box_.base()/_blockExtent;
         for(auto& b: bases) b-=base_;
@@ -183,8 +183,8 @@ public: //C/Dtors
     }
 
 
-    /** @brief Create base mesh out of blocks. Read in base blocks from configFile 
-     *         ad split up into blocks with given extent. 
+    /** @brief Create base mesh out of blocks. Read in base blocks from configFile
+     *         ad split up into blocks with given extent.
      **/
     template<class DictionaryPtr>
     auto construct_basemesh_blocks( DictionaryPtr _dictionary,
@@ -242,21 +242,21 @@ public: //C/Dtors
         {
             this->tree()->construct_leaf_maps();
             this->tree()->construct_level_maps();
-            this->tree()->construct_neighbor_lists(); 
+            this->tree()->construct_neighbor_lists();
 
             for(int l=0;l<nRef;++l)
             {
                 for (auto it = this->begin_leafs(); it != this->end_leafs(); ++it)
                 {
                     if(!ref_cond_) return;
-                    if(ref_cond_(*it) && it->refinement_level()==l) 
-                    { 
-                        this->refine(it); 
+                    if(ref_cond_(*it, nRef-l) && it->refinement_level()==l)
+                    {
+                        this->refine(it);
                     }
                 }
                 this->tree()->construct_leaf_maps();
                 this->tree()->construct_level_maps();
-                this->tree()->construct_neighbor_lists(); 
+                this->tree()->construct_neighbor_lists();
             }
 
         }
@@ -533,11 +533,11 @@ public: //Access
     decompositon_type& decomposition() noexcept{return decomposition_;}
 
 
-    const refinement_condition_fct_t& register_refinement_codtion() const noexcept 
+    const refinement_condition_fct_t& register_refinement_condition() const noexcept
     {
         return ref_cond_;
     }
-    refinement_condition_fct_t& register_refinement_codtion() noexcept 
+    refinement_condition_fct_t& register_refinement_condition() noexcept
     {
         return ref_cond_;
     }
@@ -596,7 +596,7 @@ private:
 
 
     /** @brief Default refinement condition */
-    static bool refinement_cond_default( octant_t* ) { return false; }
+    static bool refinement_cond_default( octant_t*, int ) { return false; }
 
 private:
     std::shared_ptr<tree_t> t_;
@@ -604,7 +604,7 @@ private:
     block_descriptor_t bounding_box_;
     float_type dx_base_;
     decompositon_type decomposition_;
-    refinement_condition_fct_t ref_cond_ = &Domain::refinement_cond_default; 
+    refinement_condition_fct_t ref_cond_ = &Domain::refinement_cond_default;
 
 };
 

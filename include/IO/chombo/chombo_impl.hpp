@@ -205,6 +205,7 @@ private:
 public:
 
     void write_global_metaData( HDF5File* _file ,
+                     value_type _dx=1,
                      value_type _time=0.0,
                      int _dt=1,
                      int _ref_ratio=2)
@@ -267,7 +268,7 @@ public:
             _file->template create_attribute<int>(group_id_lvl,"dt",_dt);
 
             // dx
-            value_type dx=1./(std::pow(2,lvl));   // dx = 1/(2^i)
+            value_type dx=_dx/(std::pow(2,lvl));   // dx = 1/(2^i)
             _file->template create_attribute<value_type>(group_id_lvl,"dx",dx);
 
             // ref_ratio
@@ -290,6 +291,7 @@ public:
             if (world.rank()==0) {
                 auto it_lvl = level_map_.find(lvl);
                 auto l = it_lvl->second;
+                min_cellCentered=l.probeDomain.min();
                 max_cellCentered=l.probeDomain.max();
                 //Cell-centered data: ??? Seems fine without
                 //max_cellCentered-=1;

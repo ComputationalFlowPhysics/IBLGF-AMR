@@ -157,7 +157,7 @@ public:
         //    std::cout<<"\n=========World Barrier=========\n"<<std::endl;
         //}
 
-        ch_writer.write_global_metaData(&chombo_file);
+        ch_writer.write_global_metaData(&chombo_file,_lt->dx_base());
 
         //world.barrier();
         //if (_lt->is_server()) {

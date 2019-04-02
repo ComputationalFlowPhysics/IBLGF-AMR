@@ -35,9 +35,7 @@ public:
         os
         <<"Domain: \n"<<*(s.domain())<<" "
         <<std::endl;
-
         return os;
-
     }
 
     void write(std::string _filename)

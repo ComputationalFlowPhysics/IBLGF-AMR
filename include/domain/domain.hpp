@@ -243,7 +243,6 @@ public: //C/Dtors
             this->tree()->construct_leaf_maps();
             this->tree()->construct_level_maps();
             this->tree()->construct_neighbor_lists();
-            //this->tree()->construct_influence_lists();
 
             auto base_level=this->tree()->base_level();
             for(int l=0;l<nRef;++l)
@@ -257,10 +256,6 @@ public: //C/Dtors
                         this->refine(it.ptr());
                     }
                 }
-                //this->tree()->construct_leaf_maps();
-                //this->tree()->construct_level_maps();
-                //this->tree()->construct_neighbor_lists();
-                //this->tree()->construct_influence_lists();
             }
             this->tree()->construct_leaf_maps();
             this->tree()->construct_level_maps();

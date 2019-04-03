@@ -1045,10 +1045,6 @@ public:
                     domain_->block_extent(),level, true);
         };
         domain_->tree()->construct_maps(this,f);
-        //for(auto it=domain_->begin_df(); it!=domain_->end();++it)
-        //{
-        //    f(it.ptr());
-        //}
     }
 
     auto domain()const{return domain_;}

@@ -135,8 +135,6 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
             pcout_c<<"Total Psolve time: "
                   <<solve_duration.count()<<" on "<<world.size()<<std::endl;
             psolver.apply_amr_laplace<phi_num,amr_lap_source>() ;
-        if(world.size()==2)
-            simulation_.write("solution.vtk");
         }
         this->compute_errors<phi_num,phi_exact,error>();
         this->compute_errors<amr_lap_source,source,error_lap_source>("Lap");
@@ -269,7 +267,7 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
         float_type t22 = t4*1.2E1;
         float_type t23 = t19+t22;
         float_type t24 = t4*t4;
-        return (c1*c2*t4*std::exp(c2/(1.0/(R*R)*(t3+t2*t2)-1.0))*(t17*-2.0+t4*t13*
+        float_type res= (c1*c2*t4*std::exp(c2/(1.0/(R*R)*(t3+t2*t2)-1.0))*(t17*-2.0+t4*t13*
         8.0-t9*t14*8.0+t14*t15*2.0+t14*t16*2.0-t3*t14*(t20+c2*t4*4.0)+R*t3*t9*
         1.3E1+R*t5*t9*2.3E1+R*t6*t9*2.3E1+R*t3*t15*1.0E1-R*t7*t11+R*t3*t16*
         1.0E1-t4*t5*t14*2.0-t4*t6*t14*2.0+t5*t6*t14*4.0+t3*t9*t18*2.0-t4*
@@ -285,6 +283,8 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
         t6*t9*t14*1.6E1+t5*t6*t9*t14*1.2E1-R*t3*t5*t6*t9*1.6E1-R*t3*t4*t7*t11*
         6.4E1-R*t3*t5*t7*t11*2.4E1-R*t3*t6*t7*t11*2.4E1-R*t4*t5*t7*
         t11*3.2E1-R*t4*t6*t7*t11*3.2E1);
+        if(std::isnan(res)) return 0.0;
+        return res;
 
     }
     float_type psi(float_type x, float_type y, float_type z,
@@ -504,7 +504,7 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
                         float_type vort=vorticity(x,y,z,R,c1,c2);
                         if(std::fabs(vort) > vorticity_max_*pow(0.25,diff_level))
                         {
-                            //return true;
+                            return true;
                         }
 
                         //float_type dx_vort=(
@@ -557,7 +557,7 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
             template get_or<float_type>("refinment_criterion",1e-4);
 
         float_type vorticity_max=simulation_.dictionary_->
-            template get_or<float_type>("source_max",1.0);
+            template get<float_type>("source_max");
 
         const float_type dx_base = _domain->dx_base();
 
@@ -573,8 +573,8 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
             }
             else
             {
-                //it=res.erase(it);
-                ++it;
+                it=res.erase(it);
+                //++it;
             }
         }
         return res;

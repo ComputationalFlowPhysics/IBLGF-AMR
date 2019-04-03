@@ -237,8 +237,7 @@ public:
                 neighbors_exists=false;
         }
      
-        //if(!neighbors_exists  )
-        if(true)
+        if(!neighbors_exists)
         {
             if(_l->refinement_level()>=1)
             {
@@ -246,71 +245,23 @@ public:
                 neighbor_lookup(_l, neighbor_keys,true );
                 for(auto&k: neighbor_keys)
                 {
-                    //std::cout<<_l->tree_coordinate()<<" "<<k.coordinate()<<std::endl;
-                    //if(this->find_octant(k)!=nullptr ) continue;
-                    //else std::cout<<"found neighbor" <<std::endl;
-                    //auto nn_ptr=this->insert_td(k);
-                    //_f(nn_ptr);
                     auto parent_key=k.parent();
                     auto pa=this->insert_td(parent_key);
                     _f(pa);
                     this->refine(pa,_f);
-                    //for(int i=0;i<_l->num_children();++i)
-                    //{
-                    //    //auto cc=pa->refine(i);
-                    //    auto cc=this->insert_td(parent_key.child(i));
-                    //    _f(cc);
-                    //}
-                    //auto p=nn_ptr->parent();
-                    //if(pa->refinement_level()>0)
-                    //this->refine(pa,_f);
                 }
-
-                //for(auto& k: neighbor_keys)
-                //{
-                //    if(this->find_octant(k)!=nullptr ) continue;
-                //    //auto nn_ptr=this->insert_td(k);
-                //    //auto level = _l->refinement_level();
-                //    auto kk_tmp=k;
-                //    auto parent_key=kk_tmp.parent();
-                //    auto p=this->insert_td(parent_key);
-                //    _f(p);
-                //    for(int i=0;i<_l->num_children();++i)
-                //    {
-                //        auto cc =parent_key.child(i);
-                //        auto nnn=this->insert_td(cc);
-                //        _f(nnn);
-                //    }
-
-                //    //this->refine(p,_f);
-                //}
             }
-            //else{
-            //    throw 
-            //    std::runtime_error("Cannot satisfy 2:1 refinement requirement for the base level ");
-            //}
+            else{
+                throw 
+                std::runtime_error("Cannot satisfy 2:1 refinement requirement for base level ");
+            }
         }
 
         for(int i=0;i<_l->num_children();++i)
         {
-            //if(_l->child(i)) 
-            //{
-            //    if(! _l->child(i)->data())
-            //    {
-            //        auto c=_l->child(i); 
-            //        _f(c);
-            //    }
-            //    continue;
-            //}
-
-            //auto cc =_l->key().child(i);
-            //auto nnn=this->insert_td(cc);
-            //_f(nnn);
-            
             auto child=_l->refine(i);
-            _f(child);
+            if(!child->data())_f(child);
             child->flag_leaf(true);
-            //if(!child->data())_f(child);
         }
 
         _l ->flag_leaf(false);
@@ -787,6 +738,29 @@ public: //children and parent queries
     }
 
     /** @brief Query ranks for all interior octants */
+    //template<class Client>
+    //void query_leaves( Client* _c)
+    //{
+    //    boost::mpi::communicator  w;
+
+    //    dfs_iterator it_begin(root()); dfs_iterator it_end;
+
+    //    std::vector<key_type> keys;
+    //    for(auto it =it_begin;it!=it_end;++it)
+    //    {
+    //        keys.emplace_back(it->key());
+    //    }
+
+    //    auto leaves= _c->leaf_query( keys );
+
+    //    int i = 0;
+    //    for(auto it =it_begin;it!=it_end;++it)
+    //    {
+    //        it->flag_leaf((leaves[i++]));
+    //    }
+    //}
+
+
     template<class Client>
     void query_leaves( Client* _c)
     {
@@ -797,19 +771,25 @@ public: //children and parent queries
         std::vector<key_type> keys;
         for(auto it =it_begin;it!=it_end;++it)
         {
+            if (it->has_locally_owned_children())
+            {
+                it->flag_leaf(false);
+                continue;
+            }
             keys.emplace_back(it->key());
         }
 
-        auto leaves= _c->leaf_query( keys );
+        auto leafs= _c->leaf_query( keys );
 
-        int i = 0;
-        for(auto it =it_begin;it!=it_end;++it)
+        for(std::size_t i = 0; i < leafs.size();++i )
         {
-            it->flag_leaf((leaves[i++]));
+            auto nn = this->find_octant(keys[i]);
+            if (!nn)
+                throw std::runtime_error(
+                        "didn't find key for leaf query");
+            nn->flag_leaf((leafs[i]));
         }
     }
-
-
 public: //Query ranks of all octants, which are assigned in local tree
 
     /** @brief Query from server and construct all

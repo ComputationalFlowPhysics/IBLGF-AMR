@@ -75,17 +75,12 @@ public: //Ctors:
             this->initialize( _b );
     }
 
-    template<template<std::size_t> class Field>
-    void initialize(const block_descriptor_type& _b)
-    {
-       this->get<Field>().initialize(_b );
-    }
 
     void initialize(const block_descriptor_type& _b)
     {
         tuple_utils::for_each(fields, [this,&_b](auto& field)
         {
-            field.initialize(_b);
+            field.initialize(_b, true,0.0);
         });
         this->generate_nodes();
     }

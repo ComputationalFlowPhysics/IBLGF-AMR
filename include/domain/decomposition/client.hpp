@@ -725,8 +725,8 @@ public:
 
 
     /** @brief communicate fields for up/downward pass of fmm */
-    template<class SendField,class RecvField, 
-             template<class>class BufferPolicy, 
+    template<class SendField,class RecvField,
+             template<class>class BufferPolicy,
              class OctantPtr>
     void communicate_updownward_pass(OctantPtr it, bool _upward)
     {
@@ -971,7 +971,7 @@ public:
 
 
     /** @brief communicate fields for up/downward pass of fmm */
-    template<class OctantPtr> 
+    template<class OctantPtr>
     int updownward_pass_mcount(OctantPtr it, bool _upward)
     {
         int mask_id=(_upward) ?
@@ -993,7 +993,7 @@ public:
             }
             //for(auto r : unique_ranks)
             //{
-            //    if(_upward) { /*recv*/ ++count; } 
+            //    if(_upward) { /*recv*/ ++count; }
             //    else { /*send*/ ++count; }
             //}
         }
@@ -1018,8 +1018,8 @@ public:
     {
         const auto cc=it->tree_coordinate();
         return static_cast<int>(
-                (it->level()+cc.x()*25+cc.y()*25*300+ 25*300*300*cc.z()) % 
-                boost::mpi::environment::max_tag() 
+                (it->level()+cc.x()*25+cc.y()*25*300+ 25*300*300*cc.z()) %
+                boost::mpi::environment::max_tag()
                 );
 
     }
@@ -1028,9 +1028,9 @@ public:
      *         parents which do not belong to this processor.
      *
      */
-    void query_leaves()
+    void query_leafs()
     {
-        domain_->tree()-> query_leaves(this);
+        domain_->tree()-> query_leafs(this);
         domain_->tree()-> construct_leaf_maps(true);
     }
     void query_octants()

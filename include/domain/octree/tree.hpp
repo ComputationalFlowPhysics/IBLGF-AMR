@@ -236,7 +236,7 @@ public:
             else if(!_l->neighbor(i)->data())
                 neighbors_exists=false;
         }
-     
+
         if(!neighbors_exists)
         {
             if(_l->refinement_level()>=1)
@@ -252,13 +252,14 @@ public:
                 }
             }
             else{
-                throw 
+                throw
                 std::runtime_error("Cannot satisfy 2:1 refinement requirement for base level ");
             }
         }
 
         for(int i=0;i<_l->num_children();++i)
         {
+            if (_l->child(i)) continue;
             auto child=_l->refine(i);
             if(!child->data())_f(child);
             child->flag_leaf(true);
@@ -408,7 +409,7 @@ private: //traversal
 
 public: // misc
 
-    void construct_level_maps() 
+    void construct_level_maps()
     {
         level_maps_.clear();
         level_maps_.resize(key_type::max_level());
@@ -462,6 +463,7 @@ private: // neighborlist
     {
         it->neighbor_clear();
         auto nkeys=it->get_neighbor_keys();
+
         for(std::size_t i = 0; i< nkeys.size();++i)
         {
             if(nkeys[i].is_end()) continue;
@@ -762,7 +764,7 @@ public: //children and parent queries
 
 
     template<class Client>
-    void query_leaves( Client* _c)
+    void query_leafs( Client* _c)
     {
         boost::mpi::communicator  w;
 
@@ -779,7 +781,7 @@ public: //children and parent queries
             keys.emplace_back(it->key());
         }
 
-        auto leafs= _c->leaf_query( keys );
+        auto leafs=_c->leaf_query( keys );
 
         for(std::size_t i = 0; i < leafs.size();++i )
         {
@@ -789,6 +791,7 @@ public: //children and parent queries
                         "didn't find key for leaf query");
             nn->flag_leaf((leafs[i]));
         }
+
     }
 public: //Query ranks of all octants, which are assigned in local tree
 

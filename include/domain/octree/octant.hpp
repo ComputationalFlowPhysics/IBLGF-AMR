@@ -353,7 +353,7 @@ public: //Neighbors
         Mask_FMM_Target,
         Mask_Last = Mask_FMM_Target };
 
-private:
+public:
 
 	Octant* refine(unsigned int i)
 	{

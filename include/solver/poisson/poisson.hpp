@@ -143,37 +143,37 @@ public:
             //this->level_convolution_fft<source_tmp, Target>(l);
 
 
-            //for (auto it  = domain_->begin(l);
-            //          it != domain_->end(l); ++it)
-            //{
-            //    if(it->is_leaf()) continue;
+            for (auto it  = domain_->begin(l);
+                      it != domain_->end(l); ++it)
+            {
+                if(it->is_leaf()) continue;
 
-            //    auto& cp1 = it ->data()->template get_linalg_data<Target>();
-            //    auto& cp2 = it ->data()->
-            //        template get_linalg_data<coarse_target_sum>();
+                auto& cp1 = it ->data()->template get_linalg_data<Target>();
+                auto& cp2 = it ->data()->
+                    template get_linalg_data<coarse_target_sum>();
 
-            //    cp2 = cp1 * 1.0;
+                cp2 = cp1 * 1.0;
 
-            //}
+            }
 
-            //domain_->decomposition().client()->
-            //    template communicate_updownward_assign
-            //        <coarse_target_sum, coarse_target_sum>(l,false,false);
+            domain_->decomposition().client()->
+                template communicate_updownward_assign
+                    <coarse_target_sum, coarse_target_sum>(l,false,false);
 
-            //for (auto it  = domain_->begin(l);
-            //          it != domain_->end(l); ++it)
-            //{
-            //    if(it->is_leaf()) continue;
-            //    c_cntr_nli_.nli_intrp_node<
-            //                coarse_target_sum, coarse_target_sum
-            //                >(it);
+            for (auto it  = domain_->begin(l);
+                      it != domain_->end(l); ++it)
+            {
+                if(it->is_leaf()) continue;
+                c_cntr_nli_.nli_intrp_node<
+                            coarse_target_sum, coarse_target_sum
+                            >(it);
 
-            //    int refinement_level = it->refinement_level();
-            //    double dx = dx_base/std::pow(2,refinement_level);
-            //    c_cntr_nli_.add_source_correction<
-            //                            coarse_target_sum, source_tmp
-            //                            >(it, dx/2.0);
-            //}
+                int refinement_level = it->refinement_level();
+                double dx = dx_base/std::pow(2,refinement_level);
+                c_cntr_nli_.add_source_correction<
+                                        coarse_target_sum, source_tmp
+                                        >(it, dx/2.0);
+            }
 
         }
 

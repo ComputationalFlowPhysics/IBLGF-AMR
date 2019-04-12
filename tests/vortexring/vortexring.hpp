@@ -137,7 +137,7 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
             psolver.apply_amr_laplace<phi_num,amr_lap_source>() ;
         }
         this->compute_errors<phi_num,phi_exact,error>();
-        //this->compute_errors<amr_lap_source,source,error_lap_source>("Lap");
+        this->compute_errors<amr_lap_source,source,error_lap_source>("Lap");
 
         simulation_.write2("mesh.hdf5");
     }
@@ -240,34 +240,34 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
                    float_type R, float_type c1, float_type c2) const noexcept
     {
 
-        const float_type r=std::sqrt(x*x+y*y+z*z) ;
-        const float_type t=std::sqrt( (r-R)*(r-R) +z*z )/R;
+        const long double r=std::sqrt(x*x+y*y+z*z) ;
+        const long double t=std::sqrt( (r-R)*(r-R) +z*z )/R;
         if(std::fabs(t)>=1.0) return 0.0;
 
-        float_type t3 = z*z;
-        float_type t5 = x*x;
-        float_type t6 = y*y;
-        float_type t7 = t3+t5+t6;
-        float_type t18 = std::sqrt(t7);
-        float_type t2 = R-t18;
-        float_type t4 = R*R;
-        float_type t8 = std::pow(t7,9.0/2.0);
-        float_type t9 = t3*t3;
-        float_type t10 = t9*t9;
-        float_type t11 = t7*t7;
-        float_type t12 = t11*t11;
-        float_type t13 = std::pow(t7,5.0/2.0);
-        float_type t14 = std::pow(t7,3.0/2.0);
-        float_type t15 = t5*t5;
-        float_type t16 = t6*t6;
-        float_type t17 = std::pow(t7,7.0/2.0);
-        float_type t19 = c2*t4;
-        float_type t20 = t4*4.0;
-        float_type t21 = t19+t20;
-        float_type t22 = t4*1.2E1;
-        float_type t23 = t19+t22;
-        float_type t24 = t4*t4;
-        float_type res= (c1*c2*t4*std::exp(c2/(1.0/(R*R)*(t3+t2*t2)-1.0))*(t17*-2.0+t4*t13*
+        long double t3 = z*z;
+        long double t5 = x*x;
+        long double t6 = y*y;
+        long double t7 = t3+t5+t6;
+        long double t18 = std::sqrt(t7);
+        long double t2 = R-t18;
+        long double t4 = R*R;
+        long double t8 = std::pow(t7,9.0/2.0);
+        long double t9 = t3*t3;
+        long double t10 = t9*t9;
+        long double t11 = t7*t7;
+        long double t12 = t11*t11;
+        long double t13 = std::pow(t7,5.0/2.0);
+        long double t14 = std::pow(t7,3.0/2.0);
+        long double t15 = t5*t5;
+        long double t16 = t6*t6;
+        long double t17 = std::pow(t7,7.0/2.0);
+        long double t19 = c2*t4;
+        long double t20 = t4*4.0;
+        long double t21 = t19+t20;
+        long double t22 = t4*1.2E1;
+        long double t23 = t19+t22;
+        long double t24 = t4*t4;
+        long double res= (c1*c2*t4*std::exp(c2/(1.0/(R*R)*(t3+t2*t2)-1.0))*(t17*-2.0+t4*t13*
         8.0-t9*t14*8.0+t14*t15*2.0+t14*t16*2.0-t3*t14*(t20+c2*t4*4.0)+R*t3*t9*
         1.3E1+R*t5*t9*2.3E1+R*t6*t9*2.3E1+R*t3*t15*1.0E1-R*t7*t11+R*t3*t16*
         1.0E1-t4*t5*t14*2.0-t4*t6*t14*2.0+t5*t6*t14*4.0+t3*t9*t18*2.0-t4*
@@ -330,9 +330,14 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
     void compute_errors(std::string _output_prefix="")
     {
         const float_type dx_base=domain_->dx_base();
-        auto L2   = 0.; auto LInf = -1.0; int count=0;
+        float_type L2   = 0.; float_type LInf = -1.0; int count=0;
+        float_type L2_exact = 0; float_type LInf_exact = -1.0;
+
         std::vector<float_type> L2_perLevel(nLevels_+1,0.0);
+        std::vector<float_type> L2_exact_perLevel(nLevels_+1,0.0);
         std::vector<float_type> LInf_perLevel(nLevels_+1,0.0);
+        std::vector<float_type> LInf_exact_perLevel(nLevels_+1,0.0);
+
         std::vector<int> counts(nLevels_+1,0);
 
         if(domain_->is_server())  return;
@@ -343,25 +348,36 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
             if(!it_t->locally_owned())continue;
 
             int refinement_level = it_t->refinement_level();
-            double dx = dx_base/std::pow(2,refinement_level);
+            double dx = dx_base/std::pow(2.0,refinement_level);
 
             auto& nodes_domain=it_t->data()->nodes_domain();
             for(auto it2=nodes_domain.begin();it2!=nodes_domain.end();++it2 )
             {
-                float_type error_tmp = ( it2->get<Numeric>() -
-                                         it2->get<Exact>());
+                float_type tmp_exact = it2->get<Exact>();
+                float_type tmp_num   = it2->get<Numeric>();
+
+                float_type error_tmp = tmp_num - tmp_exact;
+
                 it2->get<Error>() = error_tmp;
 
                 L2 += error_tmp*error_tmp * (dx*dx*dx);
+                L2_exact += tmp_exact*tmp_exact*(dx*dx*dx);
 
-                L2_perLevel[refinement_level]+=error_tmp*error_tmp;
+                L2_perLevel[refinement_level]+=error_tmp*error_tmp* (dx*dx*dx);
+                L2_exact_perLevel[refinement_level]+=tmp_exact*tmp_exact*(dx*dx*dx);
                 ++counts[refinement_level];
+
+                if ( std::fabs(tmp_exact) > LInf_exact)
+                    LInf_exact = std::fabs(tmp_exact);
 
                 if ( std::fabs(error_tmp) > LInf)
                     LInf = std::fabs(error_tmp);
 
                 if ( std::fabs(error_tmp) > LInf_perLevel[refinement_level] )
                     LInf_perLevel[refinement_level]=std::fabs(error_tmp);
+
+                if ( std::fabs(tmp_exact) > LInf_exact_perLevel[refinement_level] )
+                    LInf_exact_perLevel[refinement_level]=std::fabs(tmp_exact);
 
                 ++count;
             }
@@ -370,9 +386,19 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
         float_type L2_global(0.0);
         float_type LInf_global(0.0);
 
+        float_type L2_exact_global(0.0);
+        float_type LInf_exact_global(0.0);
+
         boost::mpi::all_reduce(client_comm_,L2, L2_global, std::plus<float_type>());
+        boost::mpi::all_reduce(client_comm_,L2_exact, L2_exact_global, std::plus<float_type>());
+
         boost::mpi::all_reduce(client_comm_,LInf, LInf_global,[&](const auto& v0,
                                const auto& v1){return v0>v1? v0  :v1;} );
+        boost::mpi::all_reduce(client_comm_,LInf_exact, LInf_exact_global,[&](const auto& v0,
+                               const auto& v1){return v0>v1? v0  :v1;} );
+
+        pcout_c << "Glabal "<<_output_prefix<<"L2_exact = " << std::sqrt(L2_exact_global)<< std::endl;
+        pcout_c << "Global "<<_output_prefix<<"LInf_exact = " << LInf_exact_global << std::endl;
 
         pcout_c << "Glabal "<<_output_prefix<<"L2 = " << std::sqrt(L2_global)<< std::endl;
         pcout_c << "Global "<<_output_prefix<<"LInf = " << LInf_global << std::endl;
@@ -380,6 +406,10 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
         //Level wise errros
         std::vector<float_type> L2_perLevel_global(nLevels_+1,0.0);
         std::vector<float_type> LInf_perLevel_global(nLevels_+1,0.0);
+
+        std::vector<float_type> L2_exact_perLevel_global(nLevels_+1,0.0);
+        std::vector<float_type> LInf_exact_perLevel_global(nLevels_+1,0.0);
+
         std::vector<int> counts_global(nLevels_+1,0);
         for(std::size_t i=0;i<LInf_perLevel_global.size();++i)
         {
@@ -390,7 +420,14 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
             boost::mpi::all_reduce(client_comm_,LInf_perLevel[i],
                                    LInf_perLevel_global[i],[&](const auto& v0,
                                        const auto& v1){return v0>v1? v0  :v1;});
-            pcout_c<<_output_prefix<<"L2_"<<i<<" "<<std::sqrt(L2_perLevel_global[i])/counts_global[i]<<std::endl;
+
+            boost::mpi::all_reduce(client_comm_,L2_exact_perLevel[i],
+                                   L2_exact_perLevel_global[i], std::plus<float_type>());
+            boost::mpi::all_reduce(client_comm_,LInf_exact_perLevel[i],
+                                   LInf_exact_perLevel_global[i],[&](const auto& v0,
+                                       const auto& v1){return v0>v1? v0  :v1;});
+
+            pcout_c<<_output_prefix<<"L2_"<<i<<" "<<std::sqrt(L2_perLevel_global[i])<<std::endl;
             pcout_c<<_output_prefix<<"LInf_"<<i<<" "<<LInf_perLevel_global[i]<<std::endl;
             pcout_c<<"count_"<<i<<" "<<counts_global[i]<<std::endl;
         }
@@ -499,35 +536,32 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
                     const float_type c2=_c2;
                     const float_type t=std::sqrt( (r-R)*(r-R) +z*z )/R;
 
-                    if(std::fabs(t)<1.0)
+                    float_type vort=vorticity(x,y,z,R,c1,c2);
+                    if(std::fabs(vort) > vorticity_max_*pow(0.25 * 0.25, diff_level))
                     {
-                        float_type vort=vorticity(x,y,z,R,c1,c2);
-                        if(std::fabs(vort) > vorticity_max_*pow(0.25,diff_level))
-                        {
-                            return true;
-                        }
-
-                        //float_type dx_vort=(
-                        //    vorticity(x+dx_level,y,z,R,c1,c2)-
-                        //    vorticity(x-dx_level,y,z,R,c1,c2))/2.0;
-                        //float_type dy_vort=(
-                        //    vorticity(x,y+dx_level,z,R,c1,c2)-
-                        //    vorticity(x,y-dx_level,z,R,c1,c2))/2.0;
-                        //float_type dz_vort=(
-                        //    vorticity(x,y,z+dx_level,R,c1,c2)-
-                        //    vorticity(x,y,z-dx_level,R,c1,c2))/2.0;
-                        //float_type mag_grad_vort =
-                        //    std::sqrt(dx_vort*dx_vort+dy_vort*dy_vort+dz_vort*dz_vort);
-
-
-                        ////float_type mag_grad =std::sqrt(dx*dx+dy*dy+dz*dz);
-                        ////std::cout<<"magvort "<<mag_grad_vort<<std::endl;
-                        ////if(mag_grad*dx_level > 1.0e-7)
-                        //if(mag_grad_vort> eps_grad)
-                        //{
-                        //    return true;
-                        //}
+                        return true;
                     }
+
+                    //float_type dx_vort=(
+                    //    vorticity(x+dx_level,y,z,R,c1,c2)-
+                    //    vorticity(x-dx_level,y,z,R,c1,c2))/2.0;
+                    //float_type dy_vort=(
+                    //    vorticity(x,y+dx_level,z,R,c1,c2)-
+                    //    vorticity(x,y-dx_level,z,R,c1,c2))/2.0;
+                    //float_type dz_vort=(
+                    //    vorticity(x,y,z+dx_level,R,c1,c2)-
+                    //    vorticity(x,y,z-dx_level,R,c1,c2))/2.0;
+                    //float_type mag_grad_vort =
+                    //    std::sqrt(dx_vort*dx_vort+dy_vort*dy_vort+dz_vort*dz_vort);
+
+
+                    ////float_type mag_grad =std::sqrt(dx*dx+dy*dy+dz*dz);
+                    ////std::cout<<"magvort "<<mag_grad_vort<<std::endl;
+                    ////if(mag_grad*dx_level > 1.0e-7)
+                    //if(mag_grad_vort> eps_grad)
+                    //{
+                    //    return true;
+                    //}
                 }
             }
         }

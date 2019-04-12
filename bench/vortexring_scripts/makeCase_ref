@@ -1,6 +1,6 @@
 #!/bin/bash
 
-nNodes=( 1 )
+nNodes=( 2 )
 procsperNode=24
 executable="./vortexring.x"
 files="configFile submit.sbatch $executable "
@@ -23,8 +23,8 @@ sed -i "s/--job-name=.*/--job-name=ss_$nNodes/g" $destination/submit.sbatch
 sed -i "s/--nodes=.*/--nodes=$nNodes/g" $destination/submit.sbatch
 
 nLevels=(0 1 2 3 4 5 6 7 8 )
-Ress=(198)
-block_extent=(11)
+Ress=(128)
+block_extent=(8)
 
 local_run=$destination/run.sh
 echo '#!/bin/bash' > $local_run

@@ -70,9 +70,9 @@ def newfig(width):
 	fig = plt.figure(figsize=figsize(width))
 	ax = fig.add_subplot(111)
 	return fig, ax
-	
 
- 
+
+
 def savefig(filename):
 	plt.savefig('{}.eps'.format(filename),bbox_inches='tight')
 
@@ -88,7 +88,7 @@ def get_data_kommaDel(file_name, nHeaderLines=0):
 
 
 def main():
- 
+
     dash_style_1= []
     dash_style_2= [6, 4] #Dashed
     dash_style_3= [8, 2, 1, 2] #line-dot
@@ -105,7 +105,7 @@ def main():
     lines=[]
     labels=[]
 
-    filename = "error.txt"
+    filename = "error_global_.txt"
     data_all=get_data(filename)
     levels=data_all[:,0]
     L2=data_all[:,1]

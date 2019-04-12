@@ -119,13 +119,6 @@ public:
             domain_->decomposition().client()->
                 template communicate_updownward_add<source_tmp, source_tmp>(ls,true,false);
 
-            for (auto it_s  = domain_->begin(ls);
-                    it_s != domain_->end(ls); ++it_s)
-                if (it_s->data() && !it_s->locally_owned())
-                {
-                    auto& cp2 = it_s ->data()->template get_linalg_data<source_tmp>();
-                    cp2*=0.0;
-                }
         }
 
         //Level-Interactions
@@ -133,6 +126,13 @@ public:
         for (int l  = domain_->tree()->base_level()+0;
                 l < domain_->tree()->depth(); ++l)
         {
+            for (auto it_s  = domain_->begin(l);
+                    it_s != domain_->end(l); ++it_s)
+                if (it_s->data() && !it_s->locally_owned())
+                {
+                    auto& cp2 = it_s ->data()->template get_linalg_data<source_tmp>();
+                    cp2*=0.0;
+                }
 
             //test for FMM
             //fmm_.template fmm_for_level<source_tmp, Target>(domain_, l, false);
@@ -142,26 +142,38 @@ public:
             fmm_.template fmm_for_level_test<source_tmp, Target>(domain_, l, true);
             //this->level_convolution_fft<source_tmp, Target>(l);
 
-            for (auto it  = domain_->begin(l);
-                      it != domain_->end(l); ++it)
-            {
-                if(it->is_leaf()) continue;
 
-                auto& cp1 = it ->data()->template get_linalg_data<Target>();
-                auto& cp2 = it ->data()->
-                    template get_linalg_data<coarse_target_sum>();
+            //for (auto it  = domain_->begin(l);
+            //          it != domain_->end(l); ++it)
+            //{
+            //    if(it->is_leaf()) continue;
 
-                cp2 += cp1 * 1.0;
+            //    auto& cp1 = it ->data()->template get_linalg_data<Target>();
+            //    auto& cp2 = it ->data()->
+            //        template get_linalg_data<coarse_target_sum>();
 
-                c_cntr_nli_.nli_intrp_node<
-                            coarse_target_sum, coarse_target_sum
-                            >(it);
-                int refinement_level = it->refinement_level();
-                double dx = dx_base/std::pow(2,refinement_level);
-                c_cntr_nli_.add_source_correction<
-                                        coarse_target_sum, source_tmp
-                                        >(it, dx/2.0);
-            }
+            //    cp2 = cp1 * 1.0;
+
+            //}
+
+            //domain_->decomposition().client()->
+            //    template communicate_updownward_assign
+            //        <coarse_target_sum, coarse_target_sum>(l,false,false);
+
+            //for (auto it  = domain_->begin(l);
+            //          it != domain_->end(l); ++it)
+            //{
+            //    if(it->is_leaf()) continue;
+            //    c_cntr_nli_.nli_intrp_node<
+            //                coarse_target_sum, coarse_target_sum
+            //                >(it);
+
+            //    int refinement_level = it->refinement_level();
+            //    double dx = dx_base/std::pow(2,refinement_level);
+            //    c_cntr_nli_.add_source_correction<
+            //                            coarse_target_sum, source_tmp
+            //                            >(it, dx/2.0);
+            //}
 
         }
 

@@ -87,6 +87,7 @@ public:
                 it != domain_->end();
                 ++it)
         {
+            if (!(it.ptr() && it->data())) continue;
             auto& cp2 = it ->data()->template get_linalg_data<source_tmp>();
             cp2 *=0.0;
 
@@ -143,56 +144,64 @@ public:
             //this->level_convolution_fft<source_tmp, Target>(l);
 
 
-            for (auto it  = domain_->begin(l);
-                      it != domain_->end(l); ++it)
-            {
-                if(it->is_leaf()) continue;
+            //for (auto it  = domain_->begin(l);
+            //          it != domain_->end(l); ++it)
+            //{
+            //    if(it->is_leaf()) continue;
 
-                auto& cp1 = it ->data()->template get_linalg_data<Target>();
-                auto& cp2 = it ->data()->
-                    template get_linalg_data<coarse_target_sum>();
+            //    auto& cp1 = it ->data()->template get_linalg_data<Target>();
+            //    auto& cp2 = it ->data()->
+            //        template get_linalg_data<coarse_target_sum>();
 
-                cp2 = cp1 * 1.0;
+            //    cp2 = cp1 * 1.0;
 
-            }
+            //}
+
+            //domain_->decomposition().client()->
+            //    template communicate_updownward_assign
+            //        <coarse_target_sum, coarse_target_sum>(l,false,false);
 
             domain_->decomposition().client()->
                 template communicate_updownward_assign
-                    <coarse_target_sum, coarse_target_sum>(l,false,false);
+                    <Target, Target>(l,false,false);
 
             for (auto it  = domain_->begin(l);
                       it != domain_->end(l); ++it)
             {
                 if(it->is_leaf()) continue;
+                //c_cntr_nli_.nli_intrp_node<
+                //            coarse_target_sum, coarse_target_sum
+                //            >(it);
+
                 c_cntr_nli_.nli_intrp_node<
-                            coarse_target_sum, coarse_target_sum
+                            Target, Target
                             >(it);
 
                 int refinement_level = it->refinement_level();
                 double dx = dx_base/std::pow(2,refinement_level);
                 c_cntr_nli_.add_source_correction<
-                                        coarse_target_sum, source_tmp
+                                        Target, source_tmp
                                         >(it, dx/2.0);
             }
 
         }
 
         // Interpolation
-        pcout<<"Interpolation"<<std::endl;
-        for (int lt = domain_->tree()->base_level();
-               lt < domain_->tree()->depth(); ++lt)
-        {
-            domain_->decomposition().client()->
-                template communicate_updownward_assign<Target, Target>(lt,false,false);
+        //pcout<<"Interpolation"<<std::endl;
+        //for (int lt = domain_->tree()->base_level();
+        //       lt < domain_->tree()->depth(); ++lt)
+        //{
+        //    domain_->decomposition().client()->
+        //        template communicate_updownward_assign<Target, Target>(lt,false,false);
 
-            for (auto it_t  = domain_->begin(lt);
-                      it_t != domain_->end(lt); ++it_t)
-            {
-                if(it_t->is_leaf() ) continue;
-                c_cntr_nli_.nli_intrp_node<Target, Target>(it_t);
-            }
+        //    for (auto it_t  = domain_->begin(lt);
+        //              it_t != domain_->end(lt); ++it_t)
+        //    {
+        //        if(it_t->is_leaf() ) continue;
+        //        c_cntr_nli_.nli_intrp_node<Target, Target>(it_t);
+        //    }
 
-        }
+        //}
 
     }
 

@@ -36,7 +36,9 @@ namespace interpolation
 
             nli_aux_2d_antrp(std::array<size_t, 2>{{ Nb_, Nb_ }}),
             nli_aux_3d_antrp(std::array<size_t, 3>{{ Nb_, Nb_, Nb_ }}),
-            nli_aux_1d_antrp_tmp(std::array<size_t, 1>{{ Nb_}})
+            nli_aux_1d_antrp_tmp(std::array<size_t, 1>{{ Nb_}}),
+
+            child_target_L_tmp(std::array<size_t, 3>{{(size_t)Nb_,(size_t)Nb_,(size_t)Nb_}})
         {
             antrp_mat_calc(antrp_mat_.data_, Nb_);
             antrp_mat_sub_[0].data_ = xt::view(antrp_mat_.data_, xt::range(0, Nb_), xt::range( 0  , Nb_  ));
@@ -52,34 +54,58 @@ namespace interpolation
         >
         void add_source_correction(octant_t parent, double dx)
             {
-                xt::xtensor<float_type,3>
-                    child_target_L_tmp(std::array<size_t, 3>{{(size_t)Nb_,(size_t)Nb_,(size_t)Nb_}});
 
                 for (int i = 0; i < parent->num_children(); ++i)
                 {
                     auto child = parent->child(i);
-                    if (child == nullptr) continue;
+                    if (!child ) continue;
+                    if (!child->locally_owned()) continue;
+                    if (!child->data()) continue;
 
-                    child_target_L_tmp *= 0.0;
+                    //child_target_L_tmp *= 0.0;
                     auto& child_target_tmp  = child ->data()->template get_linalg_data<from>();
+
+                    auto& child_linalg_data  = child ->data()->template get_linalg_data<to>();
+                    //child_linalg_data -= (child_target_L_tmp * (1.0/(dx *dx)));
 
                     for ( int i =1; i<Nb_-1; ++i){
                         for ( int j = 1; j<Nb_-1; ++j){
                             for ( int k = 1; k<Nb_-1; ++k){
                                 // differences in definition of mem layout
-                                child_target_L_tmp(i,j,k)  = - 6.0 * child_target_tmp(i,j,k);
-                                child_target_L_tmp(i,j,k) += child_target_tmp(i,j,k-1);
-                                child_target_L_tmp(i,j,k) += child_target_tmp(i,j,k+1);
-                                child_target_L_tmp(i,j,k) += child_target_tmp(i,j-1,k);
-                                child_target_L_tmp(i,j,k) += child_target_tmp(i,j+1,k);
-                                child_target_L_tmp(i,j,k) += child_target_tmp(i+1,j,k);
-                                child_target_L_tmp(i,j,k) += child_target_tmp(i-1,j,k);
+                                //child_target_L_tmp(i,j,k)  = - 6.0 * child_target_tmp(i,j,k);
+                                //child_target_L_tmp(i,j,k) += child_target_tmp(i,j,k-1);
+                                //child_target_L_tmp(i,j,k) += child_target_tmp(i,j,k+1);
+                                //child_target_L_tmp(i,j,k) += child_target_tmp(i,j-1,k);
+                                //child_target_L_tmp(i,j,k) += child_target_tmp(i,j+1,k);
+                                //child_target_L_tmp(i,j,k) += child_target_tmp(i+1,j,k);
+                                //child_target_L_tmp(i,j,k) += child_target_tmp(i-1,j,k);
+
+                                child_linalg_data(i,j,k) += 6.0 * child_target_tmp(i,j,k) * (1.0/(dx *dx));
+                                child_linalg_data(i,j,k) -= child_target_tmp(i,j,k-1) * (1.0/(dx *dx));
+                                child_linalg_data(i,j,k) -= child_target_tmp(i,j,k+1) * (1.0/(dx *dx));
+                                child_linalg_data(i,j,k) -= child_target_tmp(i,j-1,k) * (1.0/(dx *dx));
+                                child_linalg_data(i,j,k) -= child_target_tmp(i,j+1,k) * (1.0/(dx *dx));
+                                child_linalg_data(i,j,k) -= child_target_tmp(i+1,j,k) * (1.0/(dx *dx));
+                                child_linalg_data(i,j,k) -= child_target_tmp(i-1,j,k) * (1.0/(dx *dx));
+
+
+                                //if(std::isnan(child_target_L_tmp(i,j,k)))
+                                //{
+                                //    std::cout<<"LHS"<<std::endl;
+                                //    std::cout<<"this is nan at level = " << child->level()<<std::endl;
+                                //    std::cout<<"parent locally owned" << parent->locally_owned()<<std::endl;
+                                //}
+                                //if(std::isnan(child_target_tmp(i,j,k)))
+                                //{
+                                //    std::cout<<"RHS"<<std::endl;
+                                //    std::cout<<"this is nan at level = " << child->level()<<std::endl;
+                                //    std::cout<<"parent locally owned" << parent->locally_owned()<<std::endl;
+                                //}
+
                             }
                         }
                     }
 
-                    auto& child_linalg_data  = child ->data()->template get_linalg_data<to>();
-                    child_linalg_data -= (child_target_L_tmp * (1.0/(dx *dx)));
                 }
             }
 
@@ -286,6 +312,8 @@ namespace interpolation
         xt::xtensor<float_type, 3> nli_aux_3d_antrp;
         xt::xtensor<float_type, 1> nli_aux_1d_antrp_tmp;
 
+        xt::xtensor<float_type,3>
+            child_target_L_tmp;
     };
 
 }

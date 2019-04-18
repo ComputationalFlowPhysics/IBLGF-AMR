@@ -170,9 +170,21 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
         const float_type dx_base = domain_->dx_base();
 
         // Loop through leaves and assign values
+
+        for (auto it  = domain_->begin();
+                  it != domain_->end(); ++it)
+        {
+            if (it.ptr() && it->data())
+            {
+                auto& data = it->data()->template get_linalg_data<source>();
+                data *= 0.0;
+            }
+        }
+
         for (auto it  = domain_->begin_leafs();
                   it != domain_->end_leafs(); ++it)
         {
+            if (!(*it && it->data())) continue;
             auto dx_level =  dx_base/std::pow(2,it->refinement_level());
             auto scaling =  std::pow(2,it->refinement_level());
 
@@ -210,13 +222,13 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
                                       std::pow(r/R,alphas-2.0)*(alphas-1.0);
 
                float_type exact = std::exp(-a*std::pow(r/R,alpha)) ;
-               it2->get<source>()=source_tmp;
-               it2->get<phi_exact>() = exact;
-               it2->get<decomposition>()=world.rank();
+               it2->template get<source>()=source_tmp;
+               it2->template get<phi_exact>() = exact;
+               it2->template get<decomposition>()=world.rank();
                /***********************************************************/
                // Vortex Ring
-               it2->get<source>()=vorticity(x,y,z,R,c1,c2);
-               it2->get<phi_exact>() = psi(x,y,z,R,c1,c2);
+               it2->template get<source>()=vorticity(x,y,z,R,c1,c2);
+               it2->template get<phi_exact>() = psi(x,y,z,R,c1,c2);
 
                float_type dx_vort=
                    vorticity(x+dx_level,y,z,R,c1,c2)-
@@ -228,9 +240,9 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
                    vorticity(x,y,z+dx_level,R,c1,c2)-
                    vorticity(x,y,z,R,c1,c2);
 
-               it2->get<dxf>() = dx_vort/dx_level;
-               it2->get<dyf>() = dy_vort/dx_level;
-               it2->get<dzf>() = dz_vort/dx_level;
+               it2->template get<dxf>() = dx_vort/dx_level;
+               it2->template get<dyf>() = dy_vort/dx_level;
+               it2->template get<dzf>() = dz_vort/dx_level;
                /***********************************************************/
            }
         }
@@ -353,12 +365,15 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
             auto& nodes_domain=it_t->data()->nodes_domain();
             for(auto it2=nodes_domain.begin();it2!=nodes_domain.end();++it2 )
             {
-                float_type tmp_exact = it2->get<Exact>();
-                float_type tmp_num   = it2->get<Numeric>();
+                float_type tmp_exact = it2->template get<Exact>();
+                float_type tmp_num   = it2->template get<Numeric>();
+
+                //if(std::isnan(tmp_num))
+                //    std::cout<<"this is nan at level = " << it_t->level()<<std::endl;
 
                 float_type error_tmp = tmp_num - tmp_exact;
 
-                it2->get<Error>() = error_tmp;
+                it2->template get<Error>() = error_tmp;
 
                 L2 += error_tmp*error_tmp * (dx*dx*dx);
                 L2_exact += tmp_exact*tmp_exact*(dx*dx*dx);

@@ -63,7 +63,7 @@ namespace fmm
                 {
                     auto child = parent->child(i);
                     if (child == nullptr || !child->mask(mask_id) /*|| !child->locally_owned()*/) continue;
-                    //if (child == nullptr  /*|| !child->locally_owned()*/) continue;
+                    if (!child ->data()) continue;
 
 
                     auto& child_linalg_data =

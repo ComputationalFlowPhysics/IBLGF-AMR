@@ -621,7 +621,6 @@ public:
                     ++it)
             {
                 if(it->data() && it->mask(mask_id) )
-                //if(it->data())
                     lagrange_intrp.nli_intrp_node<fmm_t>(it, mask_id);
             }
         }
@@ -673,7 +672,7 @@ public:
             for (auto it = domain_->begin(level);
                     it != domain_->end(level);
                     ++it)
-                if (!it->locally_owned())
+                if (!it->locally_owned() && it->data())
                 {
                     auto& cp2 = it ->data()->template get_linalg_data<fmm_s>();
                     cp2*=0.0;

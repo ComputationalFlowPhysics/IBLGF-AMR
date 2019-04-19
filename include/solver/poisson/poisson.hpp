@@ -168,7 +168,7 @@ public:
             for (auto it  = domain_->begin(l);
                       it != domain_->end(l); ++it)
             {
-                if(it->is_leaf()) continue;
+                if(it->is_leaf() || !it->data()) continue;
                 //c_cntr_nli_.nli_intrp_node<
                 //            coarse_target_sum, coarse_target_sum
                 //            >(it);
@@ -264,62 +264,62 @@ public:
         const float_type dx_base=domain_->dx_base();
 
         //Coarsification:
-        pcout<<"Laplace - coarsification "<<std::endl;
-        for (int ls = domain_->tree()->depth()-2;
-                 ls >= domain_->tree()->base_level(); --ls)
-        {
-            for (auto it_s  = domain_->begin(ls);
-                      it_s != domain_->end(ls); ++it_s)
-            {
-                this->coarsify<target>(*it_s);
-            }
+        //pcout<<"Laplace - coarsification "<<std::endl;
+        //for (int ls = domain_->tree()->depth()-2;
+        //         ls >= domain_->tree()->base_level(); --ls)
+        //{
+        //    for (auto it_s  = domain_->begin(ls);
+        //              it_s != domain_->end(ls); ++it_s)
+        //    {
+        //        this->coarsify<target>(*it_s);
+        //    }
 
-            domain_->decomposition().client()->
-                template communicate_updownward_add<target, target>(ls,true,false);
-        }
+        //    domain_->decomposition().client()->
+        //        template communicate_updownward_add<target, target>(ls,true,false);
+        //}
 
         //Level-Interactions
-        pcout<<"Laplace - level interactions "<<std::endl;
-        for (int l  = domain_->tree()->base_level();
-                 l < domain_->tree()->depth(); ++l)
-        {
+        //pcout<<"Laplace - level interactions "<<std::endl;
+        //for (int l  = domain_->tree()->base_level();
+        //         l < domain_->tree()->depth(); ++l)
+        //{
 
-            for (auto it  = domain_->begin(l);
-                      it != domain_->end(l); ++it)
-            {
-                auto refinement_level = it->refinement_level();
-                auto dx_level =  dx_base/std::pow(2,refinement_level);
+        //    for (auto it  = domain_->begin(l);
+        //              it != domain_->end(l); ++it)
+        //    {
+        //        auto refinement_level = it->refinement_level();
+        //        auto dx_level =  dx_base/std::pow(2,refinement_level);
 
-                auto& target_data = it->data()->
-                    template get_linalg_data<target>();
-                auto& diff_target_data = it->data()->
-                    template get_linalg_data<diff_target>();
+        //        auto& target_data = it->data()->
+        //            template get_linalg_data<target>();
+        //        auto& diff_target_data = it->data()->
+        //            template get_linalg_data<diff_target>();
 
-                const auto s_extent = it->data()->template get<target>().
-                                                real_block().extent();
+        //        const auto s_extent = it->data()->template get<target>().
+        //                                        real_block().extent();
 
-                // laplace of it_t data with zero bcs
-                if ((it->is_leaf()))
-                {
-                    for ( int i =1; i<s_extent[0]-1; ++i){
-                        for ( int j = 1; j<s_extent[1]-1; ++j){
-                            for ( int k = 1; k<s_extent[2]-1; ++k){
-                                diff_target_data(i,j,k)  =
-                                    target_data(i,j,k) * -6.0;
-                                diff_target_data(i,j,k) += target_data(i,j,k-1);
-                                diff_target_data(i,j,k) += target_data(i,j,k+1);
-                                diff_target_data(i,j,k) += target_data(i,j-1,k);
-                                diff_target_data(i,j,k) += target_data(i,j+1,k);
-                                diff_target_data(i,j,k) += target_data(i+1,j,k);
-                                diff_target_data(i,j,k) += target_data(i-1,j,k);
-                            }
-                        }
-                    }
+        //        // laplace of it_t data with zero bcs
+        //        if ((it->is_leaf()))
+        //        {
+        //            for ( int i =1; i<s_extent[0]-1; ++i){
+        //                for ( int j = 1; j<s_extent[1]-1; ++j){
+        //                    for ( int k = 1; k<s_extent[2]-1; ++k){
+        //                        diff_target_data(i,j,k)  =
+        //                            target_data(i,j,k) * -6.0;
+        //                        diff_target_data(i,j,k) += target_data(i,j,k-1);
+        //                        diff_target_data(i,j,k) += target_data(i,j,k+1);
+        //                        diff_target_data(i,j,k) += target_data(i,j-1,k);
+        //                        diff_target_data(i,j,k) += target_data(i,j+1,k);
+        //                        diff_target_data(i,j,k) += target_data(i+1,j,k);
+        //                        diff_target_data(i,j,k) += target_data(i-1,j,k);
+        //                    }
+        //                }
+        //            }
 
-                }
-                diff_target_data *= (1/dx_level) * (1/dx_level);
-            }
-        }
+        //        }
+        //        diff_target_data *= (1/dx_level) * (1/dx_level);
+        //    }
+        //}
     }
 
     template< class Source, class Target >
@@ -355,7 +355,7 @@ public:
         for (int i = 0; i < parent->num_children(); ++i)
         {
             auto child = parent->child(i);
-            if(child==nullptr) continue;
+            if(child==nullptr || !child->data()) continue;
             auto child_view= child->data()->descriptor();
 
             auto cview =child->data()->node_field().view(child_view);

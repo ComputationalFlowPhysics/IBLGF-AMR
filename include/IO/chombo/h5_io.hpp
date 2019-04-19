@@ -103,6 +103,7 @@ public:
         int nPoints=0;
         for(auto it=_lt->begin_leafs();it!=_lt->end_leafs();++it)
         {
+            if (!it->data()) continue;
             auto b= it->data()->descriptor();
             b.grow(0,1); //grow by one to fill the gap
             nPoints+= b.nPoints();
@@ -113,6 +114,7 @@ public:
         // Collect block descriptor and data from each block
         for(auto it=_lt->begin_leafs();it!=_lt->end_leafs();++it)
         {
+            if (!it->data()) continue;
             int rank = it->rank();
 
             if (rank==world.rank() || world.rank()==0) {

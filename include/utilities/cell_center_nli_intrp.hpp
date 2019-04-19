@@ -121,7 +121,7 @@ namespace interpolation
                 for (int i = 0; i < parent->num_children(); ++i)
                 {
                     auto child = parent->child(i);
-                    if (child == nullptr) continue;
+                    if (child == nullptr || !child ->data()) continue;
 
                     auto& child_linalg_data  = child ->data()->template get_linalg_data<to>();
                     nli_intrp_node(child_linalg_data, parent_linalg_data, i);

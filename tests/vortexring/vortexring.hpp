@@ -123,7 +123,7 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
     void run()
     {
         boost::mpi::communicator world;
-        simulation_.write2("mesh.hdf5");
+        //simulation_.write2("mesh.hdf5");
         if(domain_->is_client())
         {
             poisson_solver_t psolver(&this->simulation_);
@@ -357,7 +357,7 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
         for (auto it_t  = domain_->begin_leafs();
                 it_t != domain_->end_leafs(); ++it_t)
         {
-            if(!it_t->locally_owned())continue;
+            if(!it_t->locally_owned() || !it_t->data())continue;
 
             int refinement_level = it_t->refinement_level();
             double dx = dx_base/std::pow(2.0,refinement_level);

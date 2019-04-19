@@ -670,7 +670,7 @@ public: //children and parent queries
             if(ranks[i]>=0)
             {
                 auto nn = this->insert_td(keys[i]);
-                _f(nn);
+                //_f(nn);
                 nn->rank()=ranks[i];
             }
         }

@@ -448,7 +448,7 @@ public: // neighborlist
                 auto nn = this->insert_td(keys[i]);
                 std::set<key_type> dummy;
                 neighbor_lookup(nn,dummy, false, true );
-                _f(nn);
+                //_f(nn);
                 nn->rank()=ranks[i];
             }
         }
@@ -499,8 +499,6 @@ public: // influence list
     auto construct_influence_lists(bool _global= true)
     {
         dfs_iterator it_begin(root()); dfs_iterator it_end;
-        //++it_begin;
-
         std::set<influence_helper> res;
         for(auto it =it_begin;it!=it_end;++it)
         {
@@ -530,7 +528,7 @@ public: // influence list
                 std::set<influence_helper> dummy;
                 influence_lookup(nn,dummy, false );
                 inf.set(nn);
-                _f(nn);
+                //_f(nn);
             }
             ++count;
         }
@@ -704,7 +702,7 @@ public: //children and parent queries
             if(ranks[i]>=0)
             {
                 auto nn = this->insert_td(keys[i]);
-                _f(nn);
+                //_f(nn);
                 nn->rank()=ranks[i];
             }
         }
@@ -732,7 +730,7 @@ public: //children and parent queries
             if(ranks[i]>=0)
             {
                 auto nn = this->find_octant(keys[i]);
-                _f(nn);
+                //_f(nn);
                 nn->rank()=ranks[i];
             }
         }
@@ -808,6 +806,34 @@ public: //Query ranks of all octants, which are assigned in local tree
         this->query_children(_c,_f);
         this->query_parents(_c,_f);
         this->query_interior(_c, _f);
+
+        //Allocate Ghost octants
+        dfs_iterator it_begin(root()); dfs_iterator it_end;
+        for(auto it =it_begin;it!=it_end;++it)
+        {
+            //allocate neighbors
+            if(!it->locally_owned())continue;
+
+            if(it->refinement_level()>=0)
+            {
+                for(std::size_t i=0;i<it->num_neighbors();++i)
+                {
+                    auto neighbor=it->neighbor(i);
+                    if(neighbor  && !neighbor->locally_owned()) _f(neighbor);
+                }
+            }
+
+            //allocate influence list
+            for(std::size_t i=0;i<it->influence_number();++i)
+            {
+                auto inf=it->influence(i);
+                if(inf  && !inf->locally_owned()) _f(inf);
+            }
+
+            //allocate parent
+            auto p=it->parent();
+            if(p && !p->locally_owned()) _f(p);
+        }
 
         //Maps constructions
         this-> construct_level_maps();

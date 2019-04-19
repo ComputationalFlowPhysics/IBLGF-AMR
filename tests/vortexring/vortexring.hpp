@@ -171,6 +171,8 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
 
         // Loop through leaves and assign values
 
+        int nLocally_owned=0;
+        int nGhost=0;
         for (auto it  = domain_->begin();
                   it != domain_->end(); ++it)
         {
@@ -179,7 +181,19 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
                 auto& data = it->data()->template get_linalg_data<source>();
                 data *= 0.0;
             }
+            if(it.ptr())
+            {
+                if(it->locally_owned() && it->data())
+                {
+                    ++nLocally_owned;
+                } 
+                else if (it->data())
+                {
+                    ++nGhost;
+                }
+            }
         }
+        std::cout<<"rank "<<world.rank()<<" owned "<<nLocally_owned<<" ghots"<<nGhost<<std::endl;
 
         for (auto it  = domain_->begin_leafs();
                   it != domain_->end_leafs(); ++it)

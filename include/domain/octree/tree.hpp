@@ -437,6 +437,7 @@ public: // neighborlist
     void query_neighbor_octants( Client* _c, InitFunction& _f )
     {
         auto key_set=construct_neighbor_lists();
+
         std::vector<key_type> keys;
         keys.insert(keys.begin(),key_set.begin(), key_set.end());
 
@@ -511,6 +512,7 @@ public: // influence list
     void query_influence_octants( Client* _c, InitFunction& _f )
     {
         const auto infl_helper=construct_influence_lists();
+
         std::vector<key_type> keys;
         for(auto& inf : infl_helper)
         {
@@ -819,7 +821,9 @@ public: //Query ranks of all octants, which are assigned in local tree
                 for(std::size_t i=0;i<it->num_neighbors();++i)
                 {
                     auto neighbor=it->neighbor(i);
-                    if(neighbor  && !neighbor->locally_owned()) _f(neighbor);
+                    if(neighbor  && 
+                       !neighbor->locally_owned() 
+                        &&!neighbor->data()) _f(neighbor);
                 }
             }
 
@@ -827,7 +831,7 @@ public: //Query ranks of all octants, which are assigned in local tree
             for(std::size_t i=0;i<it->influence_number();++i)
             {
                 auto inf=it->influence(i);
-                if(inf  && !inf->locally_owned()) _f(inf);
+                if(inf  && !inf->locally_owned() && !inf->data()) _f(inf);
             }
 
             //allocate parent

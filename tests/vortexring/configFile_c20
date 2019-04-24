@@ -1,6 +1,6 @@
 simulation_parameters
 {
-    nLevels=5;
+    nLevels=3;
 
     //Vortex Ring
     //c1=107374182400000000000000.;
@@ -14,6 +14,8 @@ simulation_parameters
     Rmax_ref=1.5;
     Rz_ref=0.1;
     refinment_criterion=50;
+    source_max=1400;
+    offset=(0,0,0);
 
 
     domain
@@ -23,8 +25,8 @@ simulation_parameters
         block_extent =4;
 
         Rmin=0.0;
-        Rmax=3.0;
-        Rz=2.0;
+        Rmax=6.0;
+        Rz=5.0;
         R=0.125;
 
         c1=134217728.0;

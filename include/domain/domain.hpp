@@ -236,7 +236,7 @@ public: //C/Dtors
     }
 
 
-    void init_refine(int nRef=0)
+    void init_refine(int nRef, int level_up_max)
     {
         if(is_server())
         {
@@ -247,7 +247,6 @@ public: //C/Dtors
             auto base_level=this->tree()->base_level();
             for(int l=0;l<nRef;++l)
             {
-                //for (auto it = this->begin_leafs(); it != this->end_leafs(); ++it)
                 for (auto it = begin_df(); it != end_df(); ++it)
                 {
                     if(!ref_cond_) return;
@@ -257,10 +256,30 @@ public: //C/Dtors
                     }
                 }
             }
+
             this->tree()->construct_leaf_maps();
             this->tree()->construct_level_maps();
             this->tree()->construct_neighbor_lists();
             //this->tree()->construct_influence_lists();
+
+            for (int global_=0; global_<level_up_max; ++global_)
+            {
+                std::cout<<global_<<std::endl;
+                for (int l = this->tree()->depth()-1; l>=this->tree()->base_level(); --l)
+                {
+                    for (auto it = begin(l); it != end(l); ++it)
+                    {
+                        if (it->is_leaf() )
+                        {
+                            this->refine(*it, false);
+                        }
+                    }
+                }
+            this->tree()->construct_leaf_maps();
+            this->tree()->construct_level_maps();
+            this->tree()->construct_neighbor_lists();
+            }
+
         }
 
      }
@@ -322,7 +341,7 @@ public:
     block_descriptor_t bounding_box()const noexcept{return bounding_box_;}
 
     template<class Iterator>
-    void refine(Iterator* octant_it)
+    void refine(Iterator* octant_it, bool ratio_2to1=true)
     {
         tree()->refine(octant_it,[this](auto child_it)
         {
@@ -333,7 +352,8 @@ public:
             bool init_field=this->is_client();
             child_it->data()=
                 std::make_shared<datablock_t>(bbase, block_extent_,level,init_field);
-        });
+        }, ratio_2to1
+        );
     }
 
 

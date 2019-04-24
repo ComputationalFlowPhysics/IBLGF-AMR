@@ -105,12 +105,15 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
         nLevels_=simulation_.dictionary_->
             template get_or<int>("nLevels",0);
 
+        global_refinement_=simulation_.dictionary_->
+            template get_or<int>("global_refinement",0);
+
         pcout << "\n Setup:  Test - Vortex ring \n" << std::endl;
         pcout << "Number of refinement levels: "<<nLevels_<<std::endl;
         domain_->register_refinement_condition()=
             [this](auto octant, int diff_level){return this->refinement(octant, diff_level);};
         domain_->init_refine(_d->get_dictionary("simulation_parameters")
-                ->template get_or<int>("nLevels",0));
+                ->template get_or<int>("nLevels",0), global_refinement_);
         domain_->distribute();
         this->initialize();
 
@@ -345,12 +348,12 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
         float_type L2   = 0.; float_type LInf = -1.0; int count=0;
         float_type L2_exact = 0; float_type LInf_exact = -1.0;
 
-        std::vector<float_type> L2_perLevel(nLevels_+1,0.0);
-        std::vector<float_type> L2_exact_perLevel(nLevels_+1,0.0);
-        std::vector<float_type> LInf_perLevel(nLevels_+1,0.0);
-        std::vector<float_type> LInf_exact_perLevel(nLevels_+1,0.0);
+        std::vector<float_type> L2_perLevel(nLevels_+1+global_refinement_,0.0);
+        std::vector<float_type> L2_exact_perLevel(nLevels_+1+global_refinement_,0.0);
+        std::vector<float_type> LInf_perLevel(nLevels_+1+global_refinement_,0.0);
+        std::vector<float_type> LInf_exact_perLevel(nLevels_+1+global_refinement_,0.0);
 
-        std::vector<int> counts(nLevels_+1,0);
+        std::vector<int> counts(nLevels_+1+global_refinement_,0);
 
         if(domain_->is_server())  return;
 
@@ -419,13 +422,13 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
         pcout_c << "Global "<<_output_prefix<<"LInf = " << LInf_global << std::endl;
 
         //Level wise errros
-        std::vector<float_type> L2_perLevel_global(nLevels_+1,0.0);
-        std::vector<float_type> LInf_perLevel_global(nLevels_+1,0.0);
+        std::vector<float_type> L2_perLevel_global(nLevels_+1+global_refinement_,0.0);
+        std::vector<float_type> LInf_perLevel_global(nLevels_+1+global_refinement_,0.0);
 
-        std::vector<float_type> L2_exact_perLevel_global(nLevels_+1,0.0);
-        std::vector<float_type> LInf_exact_perLevel_global(nLevels_+1,0.0);
+        std::vector<float_type> L2_exact_perLevel_global(nLevels_+1+global_refinement_,0.0);
+        std::vector<float_type> LInf_exact_perLevel_global(nLevels_+1+global_refinement_,0.0);
 
-        std::vector<int> counts_global(nLevels_+1,0);
+        std::vector<int> counts_global(nLevels_+1+global_refinement_,0);
         for(std::size_t i=0;i<LInf_perLevel_global.size();++i)
         {
             boost::mpi::all_reduce(client_comm_,counts[i],
@@ -453,13 +456,14 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
 
     /** @brief  Refienment conditon for octants.  */
     template<class OctantType>
-    bool refinement(OctantType* it, int diff_level) const noexcept
+    bool refinement(OctantType* it, int diff_level,
+            bool use_all=false) const noexcept
     {
         auto b=it->data()->descriptor();
         b.level()=it->refinement_level();
         const float_type dx_base = domain_->dx_base();
 
-        return refinement(b, c1, c2 ,R_, rmin_ref_,rmax_ref_,rz_ref_,dx_base,eps_grad_, vorticity_max_, diff_level,true);
+        return refinement(b, c1, c2 ,R_, rmin_ref_,rmax_ref_,rz_ref_,dx_base,eps_grad_, vorticity_max_, diff_level,use_all);
     }
 
     /** @brief  Refienment conditon for blocks.  */
@@ -476,7 +480,6 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
                     int diff_level,
                     bool use_all=false) const noexcept
     {
-
         auto center = (domain_->bounding_box().max() -
                        domain_->bounding_box().min()) / 2.0 +
                        domain_->bounding_box().min();
@@ -552,7 +555,7 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
                     const float_type t=std::sqrt( (r-R)*(r-R) +z*z )/R;
 
                     float_type vort=vorticity(x,y,z,R,c1,c2);
-                    if(std::fabs(vort) > vorticity_max_*pow(0.25 * 0.25, diff_level))
+                    if(std::fabs(vort) > vorticity_max_*pow(0.25*0.25 , diff_level))
                     {
                         return true;
                     }
@@ -615,7 +618,7 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
         {
             block_descriptor_t b(*it*_domain->block_extent(), _domain->block_extent());
             if(refinement(b,c1,c2,R0,rmin,rmax,rz,dx_base,eps_grad,
-                        vorticity_max,0,
+                        vorticity_max,10,
                         true))
             {
                 ++it;
@@ -642,6 +645,7 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
     float_type c2=0;
     float_type eps_grad_=1.0e6;;
     int nLevels_=0;
+    int global_refinement_;
     fcoord_t offset_;
 };
 

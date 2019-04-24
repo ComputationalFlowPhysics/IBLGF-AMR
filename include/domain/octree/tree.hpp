@@ -224,36 +224,40 @@ public:
 
     template<class Function>
     void refine(octant_type* _l, const Function& _f,
+                 bool ratio_2to1 = true,
                  bool _recursive = false)
     {
 
         //Check 2:1 balance constraint
-        bool neighbors_exists=true;;
-        for(int i=0;i<_l->nNeighbors();++i)
+        bool neighbors_exists=true;
+        if (ratio_2to1)
         {
-            if(!_l->neighbor(i))
-                neighbors_exists=false;
-            else if(!_l->neighbor(i)->data())
-                neighbors_exists=false;
-        }
-
-        if(!neighbors_exists)
-        {
-            if(_l->refinement_level()>=1)
+            for(int i=0;i<_l->nNeighbors();++i)
             {
-                std::set<key_type> neighbor_keys;
-                neighbor_lookup(_l, neighbor_keys,true );
-                for(auto&k: neighbor_keys)
-                {
-                    auto parent_key=k.parent();
-                    auto pa=this->insert_td(parent_key);
-                    _f(pa);
-                    this->refine(pa,_f);
-                }
+                if(!_l->neighbor(i))
+                    neighbors_exists=false;
+                else if(!_l->neighbor(i)->data())
+                    neighbors_exists=false;
             }
-            else{
-                throw
-                std::runtime_error("Cannot satisfy 2:1 refinement requirement for base level ");
+
+            if(!neighbors_exists)
+            {
+                if(_l->refinement_level()>=1)
+                {
+                    std::set<key_type> neighbor_keys;
+                    neighbor_lookup(_l, neighbor_keys,true );
+                    for(auto&k: neighbor_keys)
+                    {
+                        auto parent_key=k.parent();
+                        auto pa=this->insert_td(parent_key);
+                        _f(pa);
+                        this->refine(pa,_f);
+                    }
+                }
+                else{
+                    //throw
+                    //std::runtime_error("Cannot satisfy 2:1 refinement requirement for base level ");
+                }
             }
         }
 

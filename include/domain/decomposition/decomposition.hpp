@@ -84,7 +84,7 @@ public: //memeber functions
             client()->query_octants();
             client()->disconnect();
 
-            client()->query_leaves();
+            client()->query_leafs();
             client()->disconnect();
         }
     }

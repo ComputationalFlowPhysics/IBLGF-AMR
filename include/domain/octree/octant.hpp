@@ -125,7 +125,7 @@ public: //Ctors
                                 2*_offset+1,
                                [&](const coordinate_type& _p)
         {
-             res[count++] = key.neighbor(_p);;
+             res[count++] = key.neighbor(_p);
         });
         return res;
     }
@@ -182,7 +182,7 @@ public: //Ctors
     auto& data()       noexcept {return data_;}
 
     Octant* parent()      const noexcept{return parent_;}
-    Octant* child (int i) const noexcept{return children_[i].get();}
+    Octant* child(int i) const noexcept{return children_[i].get();}
 
     void neighbor_clear () noexcept{neighbor_.fill(nullptr);}
     Octant* neighbor (int i) const noexcept{return neighbor_[i];}
@@ -353,10 +353,11 @@ public: //Neighbors
         Mask_FMM_Target,
         Mask_Last = Mask_FMM_Target };
 
-private:
+public:
 
 	Octant* refine(unsigned int i)
 	{
+        if(children_[i]) return children_[i].get();
         children_[i] = std::make_shared<Octant> (this->construct_child(i));
 		children_[i]->parent_ = this;
         return children_[i].get();
@@ -373,7 +374,7 @@ private:
     std::array<Octant*,pow(3,Dim) > neighbor_ = {nullptr};
     int influence_num = 0;
     std::array<Octant*, 189 > influence_= {nullptr};
-    bool flag_leaf_=true;
+    bool flag_leaf_=false;
     std::array<bool, Mask_Last + 1> masks_ = {false};
     tree_type* t_=nullptr;
 };

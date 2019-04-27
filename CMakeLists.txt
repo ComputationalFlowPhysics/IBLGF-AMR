@@ -24,7 +24,7 @@ include_directories("${PROJECT_BINARY_DIR}")
 
 #include(${CMAKE_CURRENT_SOURCE_DIR}/../CMakeLists.txt.user)
 set (CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17 -Wall -O3  -ggdb -Wno-narrowing -fmax-errors=2")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17 -Wall -O3  -ggdb -fmax-errors=2")
 #set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -O3 -ggdb -pg -fconcepts -Wno-narrowing -fmax-errors=2")
 #set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -O3")
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/bin)
@@ -37,7 +37,7 @@ link_directories(${MPI_LIBRARIES} )
 
 #BOOST
 #if(NOT DEFINED Boost_INCLUDE_DIR)
-find_package(Boost COMPONENTS serialization mpi system filesystem REQUIRED)
+find_package(Boost COMPONENTS system filesystem serialization mpi REQUIRED)
 #endif(NOT DEFINED Boost_INCLUDE_DIR)
 include_directories(${Boost_INCLUDE_DIR})
 link_directories(${Boost_LIBRARY_DIR})
@@ -54,10 +54,10 @@ link_directories(${BLAS_LIBRARY_DIR} )
 
 #FFTW
 
-if(NOT DEFINED FFTW_INCLUDES)
-set(FFTW_DIR "cmake/")
-find_package(FFTW REQUIRED)
-endif(NOT DEFINED FFTW_INCLUDES)
+#if(NOT DEFINED FFTW_INCLUDES)
+#set(FFTW_DIR "cmake/")
+#find_package(FFTW REQUIRED)
+#endif(NOT DEFINED FFTW_INCLUDES)
 include_directories(SYSTEM ${FFTW_INCLUDES})
 link_directories(${FFTW_LIBRARIES} )
 
@@ -69,9 +69,9 @@ find_package(xtensor-blas REQUIRED)
 include_directories(SYSTEM ${xtensor_blas_INCLUDE_DIRS})
 
 #HDF5
-if(NOT DEFINED HDF5_INCLUDE_DIRS)
-find_package(HDF5)
-endif(NOT DEFINED HDF5_INCLUDE_DIRS)
+#if(NOT DEFINED HDF5_INCLUDE_DIRS)
+#find_package(HDF5)
+#endif(NOT DEFINED HDF5_INCLUDE_DIRS)
 include_directories(${HDF5_INCLUDE_DIRS})
 link_directories(${HDF5_LIBRARY_DIRS} )
 #message( ${HDF5_INCLUDE_DIRS} )

@@ -3,6 +3,7 @@
 
 #include <vector>
 #include <iostream>
+#include <algorithm>
 
 // IBLGF-specific
 #include <types.hpp>
@@ -67,7 +68,7 @@ public: //member functions
      *
      *  @param[in] _b Blockdescriptor
      */
-    void initialize(block_type _b)
+    void initialize(block_type _b, bool _default=false, DataType _dval=DataType())
     {
         this->real_block_.base(_b.base()-lowBuffer_);
         this->real_block_.extent(_b.extent()+lowBuffer_+highBuffer_);
@@ -77,6 +78,7 @@ public: //member functions
         this->extent(_b.extent());
         this->level()= _b.level();
         data_.resize(real_block_.nPoints());
+        if(_default){std::fill(data_.begin(),data_.end(),_dval);}
 
         auto ext = real_block_.extent();
         cube_ = std::unique_ptr<linalg::Cube_t> (new linalg::Cube_t( (types::float_type*) &data_[0], ext[0], ext[1], ext[2]));

@@ -244,22 +244,25 @@ public: //C/Dtors
             this->tree()->construct_level_maps();
             this->tree()->construct_neighbor_lists();
 
+            auto base_level=this->tree()->base_level();
             for(int l=0;l<nRef;++l)
             {
-                for (auto it = this->begin_leafs(); it != this->end_leafs(); ++it)
+                //for (auto it = this->begin_leafs(); it != this->end_leafs(); ++it)
+                for (auto it = begin_df(); it != end_df(); ++it)
                 {
                     if(!ref_cond_) return;
-                    if(ref_cond_(*it, nRef-l) && it->refinement_level()==l)
+                    if(ref_cond_(it.ptr(), nRef-l) && it->refinement_level()==l)
                     {
-                        this->refine(it);
+                        this->refine(it.ptr());
                     }
                 }
-                this->tree()->construct_leaf_maps();
-                this->tree()->construct_level_maps();
-                this->tree()->construct_neighbor_lists();
             }
-
+            this->tree()->construct_leaf_maps();
+            this->tree()->construct_level_maps();
+            this->tree()->construct_neighbor_lists();
+            //this->tree()->construct_influence_lists();
         }
+
      }
 
     void distribute()
@@ -319,9 +322,9 @@ public:
     block_descriptor_t bounding_box()const noexcept{return bounding_box_;}
 
     template<class Iterator>
-    void refine(Iterator& octant_it)
+    void refine(Iterator* octant_it)
     {
-        tree()->refine(*octant_it,[this](auto& child_it)
+        tree()->refine(octant_it,[this](auto child_it)
         {
             auto level = child_it->level()-this->tree()->base_level();
             auto bbase=t_->octant_to_level_coordinate(
@@ -548,7 +551,7 @@ public:
     {
         boost::mpi::communicator w;
         os<<"Total number of processes: "<<w.size()<<std::endl;
-        os<<"Number of octants: "<<d.num_leafs()<<std::endl;
+        os<<"Total number of leaf octants: "<<d.num_leafs()<<std::endl;
         os<<"Block extent : "<<d.block_extent_<<std::endl;
         os<<"Base resolution "<<d.dx_base()<<std::endl;
         os<<"Base level "<<d.tree()->base_level()<<std::endl;

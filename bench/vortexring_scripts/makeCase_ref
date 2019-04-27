@@ -1,7 +1,7 @@
 #!/bin/bash
 
 nNodes=( 1 )
-procsperNode=12
+procsperNode=24
 executable="./vortexring.x"
 files="configFile submit.sbatch $executable "
 
@@ -22,8 +22,9 @@ cp $files $destination
 sed -i "s/--job-name=.*/--job-name=ss_$nNodes/g" $destination/submit.sbatch
 sed -i "s/--nodes=.*/--nodes=$nNodes/g" $destination/submit.sbatch
 
-nLevels=( 0 1 2 3 )
-Ress=(80)
+nLevels=(0 1 2 3 4 5 6 7 8 )
+Ress=(198)
+block_extent=(11)
 
 local_run=$destination/run.sh
 echo '#!/bin/bash' > $local_run
@@ -39,12 +40,13 @@ do
         config=configFile_${res}_${level}
         cp configFile $destination/$config
         base=$(( $res/-2  ))
-        
+
         sed -i "s/nLevels=.*/nLevels=$level;/g" $destination/$config
+        sed -i "s/block_extent=.*/block_extent=$block_extent;/g" $destination/$config
         sed -i "s/\<base\>\s*=.*/base=($base,$base,$base); /g" $destination/$config
         sed -i "s/\<extent\>\s*=.*/extent=($res,$res,$res); /g" $destination/$config
 
-        echo Case $res $level 
+        echo Case $res $level
 
 
         echo "echo Case: $res $level" >> $destination/submit.sbatch

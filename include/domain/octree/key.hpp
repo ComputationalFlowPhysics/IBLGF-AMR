@@ -111,6 +111,8 @@ public: // static
 
     static bool representable(const coordinate_type& _x, level_type _level)
     {
+        if(_x.x() <0|| _x.y()<0 || _x.z() <0)
+          return false;
         scalar_coordinate_type m=std::max(std::max(_x.x(),_x.y()),_x.z());
         scalar_coordinate_type mini=std::min(std::min(_x.x(),_x.y()),_x.z());
 

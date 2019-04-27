@@ -118,9 +118,9 @@ public:
         // Maps construction
 
         // Ke TODO: check if this is ok
-        // this->construct_leaf_maps();
+         this->construct_leaf_maps();
         this->construct_level_maps();
-        //this->construct_neighbor_lists();
+        this->construct_neighbor_lists();
         //this->construct_influence_lists();
 
     }
@@ -175,8 +175,9 @@ public:
         return level_maps_[_level].find(key);
     }
 
-    octant_type* find_octant(key_type _k)
+    octant_type* find_octant(key_type _k)const
     {
+        return find_impl_top_down(_k,root());
         auto it = root();
         auto l = it->level();
         while (it->key() != _k)
@@ -189,6 +190,26 @@ public:
             l++;
         }
         return it;
+        //dfs_iterator it_begin(root()); dfs_iterator it_end;
+        //for(auto it =it_begin;it!=it_end;++it)
+        //{
+        //    if(it->key()==_k)
+        //        return it.ptr();
+        //}
+        //return find_top_down(_k,root());
+        //return nullptr;
+    }
+
+    octant_type* find_impl_top_down(const key_type& k, octant_type* n) const noexcept
+    {
+        if (n->key() == k) return n;
+        if (n->key().level() == k.level()) return nullptr;
+        for (int i=n->num_children()-1; i>=0; --i)
+        {
+            if (n->child(i) && n->child(i)->key() <= k)
+                return find_impl_top_down(k, n->child(i));
+        }
+        return nullptr;
     }
 
 
@@ -207,30 +228,41 @@ public:
     {
 
         //Check 2:1 balance constraint
-        bool neighbors_exist=true;;
+        bool neighbors_exists=true;;
         for(int i=0;i<_l->nNeighbors();++i)
         {
             if(!_l->neighbor(i))
-                neighbors_exist=false;
+                neighbors_exists=false;
+            else if(!_l->neighbor(i)->data())
+                neighbors_exists=false;
         }
-     
-        if(!neighbors_exist && _l->refinement_level()>=1)
+
+        if(!neighbors_exists)
         {
-            std::set<key_type> neighbor_keys;
-            neighbor_lookup(_l, neighbor_keys,true );
-            for(auto&k: neighbor_keys)
+            if(_l->refinement_level()>=1)
             {
-                auto nn_ptr=this->insert_td(k);
-                auto p=nn_ptr->parent();
-                this->refine(p,_f);
-             }
+                std::set<key_type> neighbor_keys;
+                neighbor_lookup(_l, neighbor_keys,true );
+                for(auto&k: neighbor_keys)
+                {
+                    auto parent_key=k.parent();
+                    auto pa=this->insert_td(parent_key);
+                    _f(pa);
+                    this->refine(pa,_f);
+                }
+            }
+            else{
+                throw
+                std::runtime_error("Cannot satisfy 2:1 refinement requirement for base level ");
+            }
         }
 
         for(int i=0;i<_l->num_children();++i)
         {
+            if (_l->child(i)) continue;
             auto child=_l->refine(i);
+            if(!child->data())_f(child);
             child->flag_leaf(true);
-            _f(child);
         }
 
         _l ->flag_leaf(false);
@@ -347,6 +379,7 @@ private:  //Top down insert strategy
                 );
     }
 
+
 private: //traversal
 
     template<class Function>
@@ -376,7 +409,7 @@ private: //traversal
 
 public: // misc
 
-    void construct_level_maps() noexcept
+    void construct_level_maps()
     {
         level_maps_.clear();
         level_maps_.resize(key_type::max_level());
@@ -430,13 +463,14 @@ private: // neighborlist
     {
         it->neighbor_clear();
         auto nkeys=it->get_neighbor_keys();
+
         for(std::size_t i = 0; i< nkeys.size();++i)
         {
             if(nkeys[i].is_end()) continue;
             const auto neighbor_i = this->find_octant(nkeys[i]);
             it->neighbor(i, neighbor_i);
 
-            if(_global && !neighbor_i)
+            if(_global && neighbor_i==nullptr)
             {
                 res.emplace( nkeys[i] );
             }
@@ -702,11 +736,35 @@ public: //children and parent queries
                 nn->rank()=ranks[i];
             }
         }
+
     }
 
     /** @brief Query ranks for all interior octants */
+    //template<class Client>
+    //void query_leaves( Client* _c)
+    //{
+    //    boost::mpi::communicator  w;
+
+    //    dfs_iterator it_begin(root()); dfs_iterator it_end;
+
+    //    std::vector<key_type> keys;
+    //    for(auto it =it_begin;it!=it_end;++it)
+    //    {
+    //        keys.emplace_back(it->key());
+    //    }
+
+    //    auto leaves= _c->leaf_query( keys );
+
+    //    int i = 0;
+    //    for(auto it =it_begin;it!=it_end;++it)
+    //    {
+    //        it->flag_leaf((leaves[i++]));
+    //    }
+    //}
+
+
     template<class Client>
-    void query_leaves( Client* _c)
+    void query_leafs( Client* _c)
     {
         boost::mpi::communicator  w;
 
@@ -715,19 +773,26 @@ public: //children and parent queries
         std::vector<key_type> keys;
         for(auto it =it_begin;it!=it_end;++it)
         {
+            if (it->has_locally_owned_children())
+            {
+                it->flag_leaf(false);
+                continue;
+            }
             keys.emplace_back(it->key());
         }
 
-        auto leaves= _c->leaf_query( keys );
+        auto leafs=_c->leaf_query( keys );
 
-        int i = 0;
-        for(auto it =it_begin;it!=it_end;++it)
+        for(std::size_t i = 0; i < leafs.size();++i )
         {
-            it->flag_leaf((leaves[i++]));
+            auto nn = this->find_octant(keys[i]);
+            if (!nn)
+                throw std::runtime_error(
+                        "didn't find key for leaf query");
+            nn->flag_leaf((leafs[i]));
         }
+
     }
-
-
 public: //Query ranks of all octants, which are assigned in local tree
 
     /** @brief Query from server and construct all

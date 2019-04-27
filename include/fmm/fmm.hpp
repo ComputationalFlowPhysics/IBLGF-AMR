@@ -247,6 +247,7 @@ public:
                     ++it)
             {
                 if (!(it->data()) || !it->mask(MASK_LIST::Mask_FMM_Target) )
+                //if (!it->mask(MASK_LIST::Mask_FMM_Target) )
                     continue;
 
                 int recv_m_send_count =
@@ -620,6 +621,7 @@ public:
                     ++it)
             {
                 if(it->data() && it->mask(mask_id) )
+                //if(it->data())
                     lagrange_intrp.nli_intrp_node<fmm_t>(it, mask_id);
             }
         }

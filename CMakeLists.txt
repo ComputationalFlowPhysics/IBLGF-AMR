@@ -69,9 +69,9 @@ find_package(xtensor-blas REQUIRED)
 include_directories(SYSTEM ${xtensor_blas_INCLUDE_DIRS})
 
 #HDF5
-#if(NOT DEFINED HDF5_INCLUDE_DIRS)
-#find_package(HDF5)
-#endif(NOT DEFINED HDF5_INCLUDE_DIRS)
+if(NOT DEFINED HDF5_INCLUDE_DIRS)
+find_package(HDF5)
+endif(NOT DEFINED HDF5_INCLUDE_DIRS)
 include_directories(${HDF5_INCLUDE_DIRS})
 link_directories(${HDF5_LIBRARY_DIRS} )
 #message( ${HDF5_INCLUDE_DIRS} )

@@ -244,7 +244,7 @@ public: //C/Dtors
             this->tree()->construct_level_maps();
             this->tree()->construct_neighbor_lists();
 
-            auto base_level=this->tree()->base_level();
+            //auto base_level=this->tree()->base_level();
             for(int l=0;l<nRef;++l)
             {
                 //for (auto it = this->begin_leafs(); it != this->end_leafs(); ++it)

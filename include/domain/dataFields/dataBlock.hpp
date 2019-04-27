@@ -159,7 +159,8 @@ public: //member functions
         tuple_utils::for_each(fields, F);
     }
 
-    block_descriptor_type descriptor()const noexcept { return *this; }
+    block_descriptor_type& descriptor() noexcept { return *this; }
+    const block_descriptor_type& descriptor()const noexcept { return *this; }
     block_descriptor_type bounding_box()const noexcept { return bounding_box_; }
 
     size_type get_index(coordinate_type _coord) const noexcept

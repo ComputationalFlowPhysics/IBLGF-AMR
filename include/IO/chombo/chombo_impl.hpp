@@ -18,7 +18,6 @@
 #include <global.hpp>
 #include <boost/unordered_map.hpp>
 #include <boost/serialization/vector.hpp>
-//#include <setups/tests/decomposition/decomposition_test.hpp>
 
 namespace chombo_writer
 {
@@ -34,17 +33,15 @@ public: //memeber type:
     using hsize_type = typename HDF5File::hsize_type;
     using field_type_iterator_t  = typename Domain::field_type_iterator_t;
 
+
+    using octant_type = typename Domain::octant_t;
     using write_info_t = typename std::pair<BlockDescriptor,FieldData*>;
     using block_info_t = typename std::tuple<int,BlockDescriptor,FieldData*>;
     using index_list_t = typename HDF5File::index_list_t;
-//    using h5_io_t = io::H5_io<Dim, Domain>;
-//    using block_info_t = h5_io_t::BlockInfo;
 
     using key_type = typename Domain::key_t;
     using offset_type = int;
-//    using offset_vector = std::vector<offset_type>;
     using offset_vector = std::vector<offset_type>;
-//    using offset_map_per_rank = std::map<int,offset_map>;
 
     using map_type = typename boost::unordered_map<key_type,offset_type>;
 
@@ -62,9 +59,11 @@ public: //Ctors:
     {
         BlockDescriptor probeDomain;
         int level;
-        std::vector<int> ranks;
-        std::vector<BlockDescriptor> blocks;
+//        std::vector<int> ranks;
+//        std::vector<BlockDescriptor> blocks;
         std::vector<FieldData*> fields;
+        std::vector<octant_type*> octants;
+        std::vector< std::vector<octant_type*> > octant_groups;
 
         bool operator<(const LevelInfo& _other) const
         {
@@ -75,132 +74,178 @@ public: //Ctors:
 
 
     //Chombo(const std::vector<BlockDescriptor>& _blocks)
-    Chombo(const std::vector<write_info_t>& _data_blocks)
-    {
-        init(_data_blocks);
-    }
+//    Chombo(const std::vector<write_info_t>& _data_blocks)
+//    {
+//        init(_data_blocks);
+//    }
 
-    Chombo(const std::vector<block_info_t>& _data_blocks)
+    Chombo(const std::vector<octant_type*>& _octant_blocks)
     {
-        init(_data_blocks);
+        init(_octant_blocks);
     }
 
 private:
 
-    void init(const std::vector<block_info_t>& _data_blocks)
+    void init(const std::vector<octant_type*>& _octant_blocks)
     {
+        boost::mpi::communicator world;
+
         //Blocks per level:
-        for(auto& p: _data_blocks)
+        for(auto& p: _octant_blocks)
         {
 
-            const int rank = std::get<0>(p);            // first is rank
-            const auto b = std::get<1>(p);              // second is descriptor
-            const auto field_data = std::get<2>(p);     // third is data
+//            const int rank = std::get<0>(p);            // first is rank
+//            const auto b = std::get<1>(p);              // second is descriptor
+//            const auto field_data = std::get<2>(p);     // third is data
+//            auto it=level_map_.find(b.level());     // returns iterator to element with key b.level()
+//
+            //const int rank = p->rank();            // first is rank
+            const auto b = p->data()->descriptor();              // second is descriptor
+            //const auto field_data = &(p->data()->node_field());     // third is data
             auto it=level_map_.find(b.level());     // returns iterator to element with key b.level()
+
             // FIXME: Some blocks have -1 level
-            if (b.level() >= 0) {
-            if(it!=level_map_.end())                // if found somewhere (does not return end())
+            if (b.level() >= 0)
             {
-                it->second.ranks.push_back(rank);
-                it->second.blocks.push_back(b);     // add block to corresponding level
-                it->second.fields.push_back(field_data);
-
-                //Adapt probeDomain if there is a block beyond it
-                for(std::size_t d=0; d<Dim;++d)
+                if(it!=level_map_.end())                // if found somewhere (does not return end())
                 {
-                    if(it->second.probeDomain.min()[d] > b.min()[d])
-                    {
-                        it->second.probeDomain.min()[d]=b.min()[d];
-                    }
+                    //it->second.ranks.push_back(rank);
+                    //it->second.blocks.push_back(b);     // add block to corresponding level
+                    //it->second.fields.push_back(field_data);
 
-                    if(it->second.probeDomain.max()[d] < b.max()[d])
+                    it->second.octants.push_back(p);
+
+                    //Adapt probeDomain if there is a block beyond it
+                    for(std::size_t d=0; d<Dim;++d)
                     {
-                        it->second.probeDomain.extent()[d]=
+                        if(it->second.probeDomain.min()[d] > b.min()[d])
+                        {
+                            it->second.probeDomain.min()[d]=b.min()[d];
+                        }
+
+                        if(it->second.probeDomain.max()[d] < b.max()[d])
+                        {
+                            it->second.probeDomain.extent()[d]=
                             b.max()[d]-it->second.probeDomain.base()[d]+1;
+                        }
                     }
                 }
+                else        // if not found, simply create that level and insert the block
+                {
+                    LevelInfo l;
+                    l.level=b.level();
+                    //l.ranks.push_back(rank);
+                    //l.blocks.push_back(b);
+                    //l.fields.push_back(field_data);
+                    l.octants.push_back(p);
+                    l.probeDomain=b;
+                    level_map_.insert(std::make_pair(b.level(),l ));
+
+                }
             }
-            else        // if not found, simply create that level and insert the block
-            {
-                LevelInfo l;
-                l.level=b.level();
-                l.ranks.push_back(rank);
-                l.blocks.push_back(b);
-                l.fields.push_back(field_data);
-                l.probeDomain=b;
-                level_map_.insert(std::make_pair(b.level(),l ));
-
-            }
-
-            }
-
-        }
-    }
+        } // octant blocks
+//
 
 
-    //void init(const std::vector<BlockDescriptor>& _blocks)
-    void init(const std::vector<write_info_t>& _data_blocks)
-    {
-
-        //Blocks per level:
-        for(auto& p: _data_blocks)
+        // Once level_map_ is initialized, loop through and group blocks
+        for (auto it=level_map_.begin(); it!=level_map_.end(); it++)
         {
+            std::cout<<"Rank is "<<world.rank()<<" | Level is "<<it->first<<std::endl;
 
-            const auto b = p.first;   // first is block
-            //const auto b = &(p.first);
-            const auto field_data = p.second;       // second is data
-//            printf("Adding block \n");
+            auto& l=it->second;
 
+            unsigned int track = 0;         // beginning of new group
+            int group_no = -1;              // keep track of group number
+            std::vector<octant_type*> v;
 
-
-            auto it=level_map_.find(b.level());     // returns iterator to element with key b.level()
-            if(it!=level_map_.end())                // if found somewhere (does not return end())
+            // Loop through blocks in level map.
+            for (unsigned int i=0; i!=l.octants.size(); ++i)
             {
-                it->second.blocks.push_back(b);     // add block to corresponding level
-                it->second.fields.push_back(field_data);
+                auto& block = l.octants[i];
 
-                //Adapt probeDomain if there is a block beyond it
-                for(std::size_t d=0; d<Dim;++d)
+                if (i==track)  // Beginning of new group
                 {
-                    if(it->second.probeDomain.min()[d] > b.min()[d])
-                    {
-                        it->second.probeDomain.min()[d]=b.min()[d];
-                    }
+                    l.octant_groups.push_back(v);
+                    ++group_no;
+                    l.octant_groups[group_no].push_back(block);
+                    int group_rank = block->rank();
 
-                    if(it->second.probeDomain.max()[d] < b.max()[d])
+                    // Check how big group is need to add subsequent blocks to the group (how
+                    // Currently just grouping if all children exist (group cubes).
+                    unsigned int recurse = 0;
+                    unsigned int recurse_lim = block->level(); // don't go beyond tree structure
+                    auto* p = block;
+                    while (i==track && recurse<recurse_lim) // only enters for first block in group
                     {
-                        it->second.probeDomain.extent()[d]=
-                            b.max()[d]-it->second.probeDomain.base()[d]+1;
-                    }
+                        unsigned int shift = pow(pow(2,Dim), recurse+1)-1;
+                        unsigned int shift_final = pow(pow(2,Dim), recurse);
+
+                        if ( (p->key().child_number() == 0) &&
+                                (i+shift <= l.octants.size()-1) )  // contained?
+                        {
+                            auto& block_end = l.octants[i+shift];
+
+                            if (block->key()+shift==block_end->key() &&
+                                    group_rank==block_end->rank())
+                            {
+                                ++recurse;
+                                // Get parent to check bigger group.
+                                p=p->parent();
+                            }
+                            else
+                            {   track+=shift_final; }
+                        }
+                        else
+                        {   track+=shift_final; }
+
+                        if (track!=i)
+                        {
+                            std::cout<<std::endl;
+                            std::cout<<"GROUP "<<group_no<<", rank = "<<group_rank<<", blocks = "<<i<<"-"<<track-1<<std::endl;
+                            std::cout<<"   block "<<i<<std::endl;
+                        }
+                    }   // recursion
                 }
-//                printf("New min = %d, %d, %d \n",
-//                    it->second.probeDomain.min()[0],it->second.probeDomain.min()[1],
-//                    it->second.probeDomain.min()[2]);
-//                printf("New max = %d, %d, %d \n",
-//                    it->second.probeDomain.max()[0],it->second.probeDomain.max()[1],
-//                    it->second.probeDomain.max()[2]);
+                else if (i<track)   // add to existing group
+                {
+                    l.octant_groups[group_no].push_back(block);
+                    std::cout<<"   block "<<i<<std::endl;
+                }
             }
-            else        // if not found, simply create that level and insert the block
+
+
+
+
+
+            // Print out structure of grouped blocks:
+            std::cout<<"-------------------------------"<<std::endl;
+            std::cout<<"PRINT STRUCTURE OF BLOCK GROUPS"<<std::endl;
+            for (auto it=level_map_.begin(); it!=level_map_.end(); it++)
             {
-                LevelInfo l;
-                l.level=b.level();
-                l.blocks.push_back(b);
-                l.fields.push_back(field_data);
-                l.probeDomain=b;
-                level_map_.insert(std::make_pair(b.level(),l ));
+                std::cout<<"Rank is "<<world.rank()<<" | Level is "<<it->first<<std::endl;
+                auto& l=it->second;
 
-//                printf("Level base = %d, %d, %d \n",
-//                        l.probeDomain.base()[0],l.probeDomain.base()[1],
-//                        l.probeDomain.base()[2]);
-//                printf("Level extent = %d, %d, %d \n",
-//                        l.probeDomain.extent()[0],l.probeDomain.extent()[1],
-//                        l.probeDomain.extent()[2]);
+                std::cout<<"There are "<<l.octant_groups.size()<<" groups."<<std::endl;
+                int count = 0;
+                //Loop over groups
+                for (unsigned int j = 0; j < l.octant_groups.size(); ++j)
+                {
+                    //Loop over blocks in groups
+                //    std::cout<<"    Group "<<j<<" of "<<l.octant_groups.size()<<" has size: "<<l.octant_groups[j].size()<<std::endl;
+
+              //      std::cout<<"        Blocks :";
+                    for (unsigned int k = 0; k < l.octant_groups[j].size(); ++k)
+                    {
+            //            std::cout<<" "<<count;
+                        ++count;
+                    }
+                    std::cout<<std::endl;
+                }
             }
-
-//            printf("Done Adding block \n");
-
         }
-    }
+    } // init
+
+
 
 public:
 
@@ -222,7 +267,7 @@ public:
             components.push_back(name);
         });
 
-        // Write components, number of components and number of levels
+        // rite components, number of components and number of levels
         for(std::size_t i=0; i<components.size(); ++i)
         {
             _file->template create_attribute<std::string>(root,
@@ -236,14 +281,13 @@ public:
         }
 
         world.barrier();
-        boost::mpi::broadcast(world, num_levels, 0); // send from server to all others
-
-
+        boost::mpi::broadcast(world, num_levels, 0); // send from server
         _file->template create_attribute<int>(root, "num_levels",num_levels);
 
         // num_components
         const int num_components = components.size();
-        _file->template create_attribute<int>(root, "num_components",static_cast<int>(num_components));
+        _file->template create_attribute<int>(root, "num_components",
+                static_cast<int>(num_components));
 
         // Ordering of the dataspaces
         _file->template create_attribute<std::string>(root,
@@ -255,6 +299,7 @@ public:
         _file->template create_attribute<int>(global_id,
                 "SpaceDim", static_cast<int>(Dim));
         _file->close_group(global_id);
+
 
         // *******************************************************************
         // Write level structure and collective calls (everything except data
@@ -305,72 +350,101 @@ public:
             boost::mpi::broadcast(world, max_cellCentered[2], 0);
 
             // 3: All write prob_domain
-            //_file->template write_boxCompound<Dim>(group_id, "prob_domain",
-            //  l.probeDomain.min(), max_cellCentered);      // write prob_domain as attribute
             _file->template write_boxCompound<Dim>(group_id_lvl, "prob_domain",
               min_cellCentered, max_cellCentered);      // write prob_domain as attribute
 
             // Create "boxes" dataset: ****************************************
+            // TODO Boxes size for groups
             hsize_type boxes_size = 0;
 
+            // Get size of boxes on server
             if (world.rank()==0) {
                 auto it_lvl = level_map_.find(lvl);
                 auto l = it_lvl->second;
-                auto p= l.blocks.begin()->min();        // vector of ints size 3
-                auto p2= l.blocks.begin()->max();
-                std::vector<decltype(p)> mins;
-                std::vector<decltype(p2)> maxs;
 
-                for(std::size_t j=0;j<l.blocks.size();++j)
-                {
-                    mins.push_back(l.blocks[j].min());
-                    maxs.push_back(l.blocks[j].max());
-                }
-
-                boxes_size = mins.size();
+                boxes_size = l.octant_groups.size();    // group
+                //boxes_size = l.octants.size();          // normal
             }
             boost::mpi::broadcast(world, boxes_size, 0); // send from server to all others
 
             _file->template create_boxCompound<Dim>(group_id_lvl, "boxes", boxes_size, false);
-            //_file->template create_boxCompound<Dim>(group_id, "boxes", mins, maxs, false);
 
 
-            // Create dataset for data ****************************************
+            // Create dataset for data and "offsets" **************************
             // Server gets size:
             hsize_type offsets_size = 0;
             hsize_type dset_size = 0;   // Count size of dataset for this level
+
+            // Get dataset size with octant_groups
             if (world.rank()==0) {
                 // Write DATA for different components-----------------------------
                 auto it_lvl = level_map_.find(lvl);
                 auto l = it_lvl->second;
 
                 // Determine size of dataset for this level to create dataset
-                for(std::size_t b=0; b<l.blocks.size(); ++b)
+                for(std::size_t g=0; g<l.octant_groups.size(); ++g)
                 {
-                    hsize_type nElements_patch=1;
-                    for(std::size_t d=0; d<Dim; ++d)        // for node-centered
+
+                    for (std::size_t b=0; b<l.octant_groups[g].size(); ++b)
                     {
-                       nElements_patch *= l.blocks[b].extent()[d];
+                        hsize_type nElements_patch=1;
+                        const auto& p = l.octant_groups[g][b];
+                        const auto& block_desc = p->data()->descriptor();
+                        for(std::size_t d=0; d<Dim; ++d)        // for node-centered
+                        {
+                            nElements_patch *= block_desc.extent()[d];
+                        }
+                        dset_size+=nElements_patch*num_components;
                     }
-                    dset_size+=nElements_patch*num_components;
                 }
-                offsets_size = l.blocks.size()+1;
+                offsets_size = l.octant_groups.size()+1;
+
+                std::cout<<"1: dset_size = "<<dset_size
+                     <<". offsets_size = "<<offsets_size<<std::endl;
             }
 
-            // Scatter size of boxes
+//            // Normal version:
+//            offsets_size = 0;
+//            dset_size = 0;   // Count size of dataset for this level
+//
+//            if (world.rank()==0) {
+//                // Write DATA for different components-----------------------------
+//                auto it_lvl = level_map_.find(lvl);
+//                auto l = it_lvl->second;
+//
+//                // Determine size of dataset for this level to create dataset
+//                for(std::size_t b=0; b<l.octants.size(); ++b)
+//                {
+//                    hsize_type nElements_patch=1;
+//                    const auto& p = l.octants[b];
+//                    const auto& block_desc = p->data()->descriptor();
+//                    for(std::size_t d=0; d<Dim; ++d)        // for node-centered
+//                    {
+//                        nElements_patch *= block_desc.extent()[d];
+//                    }
+//                    dset_size+=nElements_patch*num_components;
+//                }
+//                offsets_size = l.octants.size()+1;
+//
+//                std::cout<<"2: dset_size = "<<dset_size
+//                     <<". offsets_size = "<<offsets_size<<std::endl;
+//            }
+
+            // Scatter size of "offsets"
             boost::mpi::broadcast(world, offsets_size, 0); // send from server to all others
 
-            // Create offsets dataset
+            // Create "offsets" dataset
+            // TODO Use number of groups instead of offsets size
             auto space_attr =_file->create_simple_space(1, &offsets_size, NULL);
             auto dset_Attr=_file->template create_dataset<int>(group_id_dattr,
                         "offsets",space_attr);
-                // _file->template write<int>(dset_Attr,size, &patch_offsets_vec[0]);
             _file->close_dset(dset_Attr);
+            _file->close_group(group_id_dattr);
+
 
             // send size to all clients
             world.barrier();
             boost::mpi::broadcast(world, dset_size, 0); // send from server to all others
-
 
             // Create full empty dataset with all processes
             auto space =_file->create_simple_space(1, &dset_size, NULL);
@@ -379,16 +453,11 @@ public:
             _file->close_space(space);
 
         }
-
-
-
-
         _file->close_group(root);
-    }
+    } // write_global_metaData_________________________________________________
 
 
 
-    //TODO: write actual data in parallel
     void write_level_info(HDF5File* _file,
                      value_type _time=0.0,
                      int _dt=1,
@@ -420,6 +489,7 @@ public:
             }
         }
 
+        // TODO: Calculate offsets differently for groups of blocks
         if (world.rank()==0) {
             // Loop initially to get offsets from rank==0
             for(auto& lp : level_map_)
@@ -429,47 +499,57 @@ public:
              //   offset_vector block_offsets;
                 offset_type offset = 0;             // offset in dataset
 
-                // Loop through blocks and
-                // Determine size of dataset for this level to create dataset
-                for(std::size_t b=0; b<l.blocks.size(); ++b)
+                // Calculate offsets by group
+                for(std::size_t g=0; g<l.octant_groups.size(); ++g)
                 {
-                    int rank = l.ranks[b];
+                    // int rank = l.ranks[b];
 
-                    // Loop through components in block
-                    hsize_type nElements_patch=1;
-                    for(std::size_t d=0; d<Dim; ++d)        // for node-centered
+                    for (std::size_t b=0; b<l.octant_groups[g].size(); ++b)
                     {
-                       nElements_patch *= l.blocks[b].extent()[d];
+                        const auto& octant = l.octant_groups[g][b];
+                        int rank = octant->rank();
+                        // Loop through components in block
+                        hsize_type nElements_patch=1;
+                        const auto& block_desc = octant->data()->descriptor();
+                        for(std::size_t d=0; d<Dim; ++d)        // for node-centered
+                        {
+                            nElements_patch *= block_desc.extent()[d];
+                        }
+
+                        int data_block_size=nElements_patch*num_components;
+
+                        if (b==0) {
+                            offset_vector[rank][lvl].push_back(offset);
+                        }
+                        offset+=data_block_size;
                     }
-
-                    int data_block_size=nElements_patch*num_components;
-
-                    offset_vector[rank][lvl].push_back(offset);
-                    offset+=data_block_size;
                 }
 
+//                // NORMAL -----------------------------------------------------
+//                // Loop through blocks and
+//                // Determine size of dataset for this level to create dataset
+//                for(std::size_t b=0; b<l.octants.size(); ++b)
+//                {
+//                    // int rank = l.ranks[b];
+//                    const auto& p = l.octants[b];
+//                    int rank = p->rank();
+//
+//                    // Loop through components in block
+//                    hsize_type nElements_patch=1;
+//                    const auto& block_desc = p->data()->descriptor();
+//                    for(std::size_t d=0; d<Dim; ++d)        // for node-centered
+//                    {
+//                        nElements_patch *= block_desc.extent()[d];
+//                    }
+//
+//                    int data_block_size=nElements_patch*num_components;
+//
+//                    offset_vector[rank][lvl].push_back(offset);
+//                    offset+=data_block_size;
+//                }
             }
-
         }
 
-
-        std::vector<std::vector<std::vector<offset_type>>> hello;
-        for(int i = 0; i < world.size(); i++)
-        {
-            std::vector<std::vector< offset_type >> w;
-            hello.push_back( w );
-            for(int j = 0; j < 8; j++)
-            {
-                std::vector<offset_type> y;
-                hello[i].push_back(y);
-
-                for(int k = 0; k < 3; k++)
-                {
-                    int v = 100*i + 10*j + k;
-                    hello[i][j].push_back( v );
-                }
-            }
-        }
 
         std::vector<std::vector<offset_type>> offsets_for_rank;
         boost::mpi::scatter(world, offset_vector, offsets_for_rank, 0);
@@ -479,8 +559,6 @@ public:
 
         // Parallel Write -----------------------------------------------------
         // Loop over levels and write patches
-        // level_map_ is map made of level (int) and LevelInfo (per Level)
-        // (probeDomain, level, vector of blocks)
         for(auto& lp : level_map_)
         {
             // lp iterates over each pair of <int, LevelInfo> in the full map
@@ -494,158 +572,57 @@ public:
             /*****************************************************************/
             // Write level data
 
-                std::vector<int> patch_offsets_vec;
-                patch_offsets_vec.push_back(0);
+            // Write "offsets" ------------------------------------------------
 
-                // Write DATA for different components-----------------------------
-                hsize_type dset_size = 0;   // Count size of dataset for this level
+            // Group version:
+            std::vector<int> patch_offsets_vec;
+            patch_offsets_vec.push_back(0);
 
-                // Determine size of dataset for this level to create dataset
-                for(std::size_t b=0; b<l.blocks.size(); ++b)
+            // Gather patch_offsets for each group
+            for(std::size_t g=0; g<l.octant_groups.size(); ++g)
+            {
+                hsize_type patch_offset = 0;
+                for(std::size_t b=0; b<l.octant_groups[g].size(); ++b)
                 {
-                    hsize_type patch_offset = 0;
                     hsize_type nElements_patch=1;
+                    const auto& p = l.octants[b];
+                    const auto& block_desc = p->data()->descriptor();
+
                     for(std::size_t d=0; d<Dim; ++d)        // for node-centered
                     {
-                       nElements_patch *= l.blocks[b].extent()[d];
+                        nElements_patch *= block_desc.extent()[d];
                     }
-                    patch_offset = nElements_patch*num_components;
-                    patch_offsets_vec.push_back(patch_offset);
-
-                    dset_size+=nElements_patch*num_components;
+                    patch_offset += nElements_patch*num_components;
                 }
-            auto dset_id = _file->open_dataset(group_id, "data:datatype=0");
-
-            std::vector<value_type> single_block_data;
-            offset_type offset = 0;     // offset in dataset
-            // ----------------------------------------------------------------
-            // BLOCK ITERATOR
-            for(std::size_t b=0; b<l.blocks.size(); ++b)
-            {
-                //int rank = l.ranks[b];      // only contained on server
-                single_block_data.clear();
-
-                auto block = l.blocks[b];
-                FieldData* field = l.fields[b];
-
-                auto base=block.base();
-                auto max=block.max();
-
-                // ------------------------------------------------------------
-                // COMPONENT ITERATOR
-                field_type_iterator_t::for_types([&l, &lvl, &offset, &b,
-                        &max, &base, &field,
-                        &single_block_data, &num_components, &world]<typename T>()
-                {
-                    double field_value = 0.0;
-                    if (world.rank()!=0)
-                    {
-                        // Loop through cells in block
-                        for(auto k = base[2]; k<=max[2]; ++k)
-                        {
-                            for(auto j = base[1]; j<=max[1]; ++j)
-                            {
-                                for(auto i = base[0]; i<=max[0]; ++i)
-                                {
-                                    auto n = field->get(i,j,k);
-
-                                    field_value = 0.0;
-                                    if (std::abs(n.template get<T>())>=1e-32)
-                                    {
-                                        field_value=static_cast<value_type>(n.template get<T>());
-                                    }
-                                    single_block_data.push_back(field_value);
-                                }
-                            }
-                        }
-                    }
-                });     // COMPONENT ITERATOR____________________________
-
-                // Write single block data
-                hsize_type block_data_size = single_block_data.size();
-                hsize_type start = -1;
-
-                if (world.rank()!=0) {
-                    start = offsets_for_rank[lvl][b];
-
-                    _file->template write<value_type>(dset_id, block_data_size, start,
-                                                        &single_block_data[0]);
-
-                }
-
-
-
-                hsize_type nElements_patch=1;
-                for(std::size_t d=0; d<Dim; ++d)        // for node-centered
-                {
-                   nElements_patch *= l.blocks[b].extent()[d];
-                }
-                offset+=nElements_patch*num_components;        // update after each block/patch
-
-            }       // BLOCK ITERATOR__________________________________________
-
-
-
-
-            // Write Attributes -----------------------------------------------
-//            // dt
-//            _file->template create_attribute<int>(group_id,"dt",_dt);
-//
-//            // dx
-//            value_type dx=1./(std::pow(2,lvl));   // dx = 1/(2^i)
-//            _file->template create_attribute<value_type>(group_id,"dx",dx);
-//
-//            // ref_ratio
-//            _file->template create_attribute<int>(group_id,
-//                                                    "ref_ratio",_ref_ratio);
-//
-//            // time
-//            _file->template create_attribute<int>(group_id,"time",_time);
-
-//            _file->template create_attribute<std::string>(group_id_dattr,
-//                    "objectType","CArrayBox");
-
-            // prob_domain
-//            auto max_cellCentered=l.probeDomain.max();
-//            //Cell-centered data:
-//            max_cellCentered-=1;
-//            _file->template write_boxCompound<Dim>(group_id, "prob_domain",
-//              l.probeDomain.min(), max_cellCentered);      // write prob_domain as attribute
-
-            auto p= l.blocks.begin()->min();        // vector of ints size 3
-            auto p2= l.blocks.begin()->max();
-            std::vector<decltype(p)> mins;
-            std::vector<decltype(p2)> maxs;
-
-            for(std::size_t j=0;j<l.blocks.size();++j)
-            {
-                mins.push_back(l.blocks[j].min());
-                maxs.push_back(l.blocks[j].max());
+                patch_offsets_vec.push_back(patch_offset);
+                std::cout<<"Group "<<g<<". size = "<<l.octant_groups[g].size()
+                         <<". patch_offset = "<<patch_offset<<std::endl;
             }
+
+
+//            // Normal version*************************
+//            patch_offsets_vec.clear();
+//            patch_offsets_vec.push_back(0);
 //
-//            // boxes.  write as dataset.
-//            // 1 Create boxes
-//            hsize_type boxes_size = 0;
+//            // Gather patch_offsets for each group
+//            for(std::size_t b=0; b<l.octants.size(); ++b)
+//            {
+//                hsize_type patch_offset = 0;
+//                hsize_type nElements_patch=1;
+//                const auto& p = l.octants[b];
+//                const auto& block_desc = p->data()->descriptor();
 //
-//            if (world.rank()==0) {
-//                boxes_size = mins.size();
+//                for(std::size_t d=0; d<Dim; ++d)        // for node-centered
+//                {
+//                    nElements_patch *= block_desc.extent()[d];
+//                }
+//                patch_offset = nElements_patch*num_components;
+//                patch_offsets_vec.push_back(patch_offset);
 //            }
-//            boost::mpi::broadcast(world, boxes_size, 0); // send from server to all others
 //
-//            _file->template create_boxCompound<Dim>(group_id, "boxes", boxes_size, false);
-//            //_file->template create_boxCompound<Dim>(group_id, "boxes", mins, maxs, false);
-
-
-            // 2 Write boxes with just rank 0
-            if (world.rank()==0) {
-                _file->template open_write_boxCompound<Dim>(group_id, "boxes", mins, maxs, false);
-            }
-//            _file->template write_boxCompound<Dim>(group_id, "boxes", mins, maxs, false);
-
             // data attributes (open because already created)
             auto group_id_dattr=_file->create_group(group_id,
                     "data_attributes");
-
             // offsets (Written only by server)
             auto dset_Attr = _file->open_dataset(group_id_dattr, "offsets");
             if (world.rank()==0) {
@@ -654,10 +631,307 @@ public:
                                                         &patch_offsets_vec[0]);
             }
             _file->close_dset(dset_Attr);
+            _file->close_group(group_id_dattr);
+
+
+            // ----------------------------------------------------------------
+            // Write DATA for different components-----------------------------
+            auto dset_id = _file->open_dataset(group_id, "data:datatype=0");
+
+            std::vector<value_type> single_block_data;
+           // offset_type offset = 0;     // offset in dataset
+
+            // GROUP ITERATOR
+            for(std::size_t g=0; g<l.octant_groups.size(); ++g)
+            {
+                single_block_data.clear();
+                const auto& octant0 = l.octant_groups[g][0];
+                const auto& block_desc0 = octant0->data()->descriptor();
+
+                auto base0=block_desc0.base();
+                //auto max0=block_desc0.max();
+                auto block_extent=block_desc0.extent();
+                // for cubic blocks and cubic extents
+                int group_extent = std::cbrt(l.octant_groups[g].size());
+
+                std::cout<<"--- Group"<<g<<std::endl;
+             //   std::cout<<"Group Base = "<<base0<<". Max = "<<max0
+             //               <<". Group extent = "<<group_extent<<std::endl;
+
+
+                // Order octants:
+                std::vector<octant_type*> ordered_group(l.octant_groups[g].size());
+                // BLOCK ITERATOR
+                for(std::size_t b=0; b<l.octant_groups[g].size(); ++b)
+                {
+                    const auto& p = l.octant_groups[g][b];
+                    const auto& block_desc = p->data()->descriptor();
+
+                    // Get group coordinate based on shift
+                    auto base_shift0 = block_desc.base()-base0;
+
+                    // TODO Order and Determine block indices
+                    // Order: Get flattened index and insert
+                    // coord = k*maxI*maxJ + j*maxI + I
+                    int group_coord = base_shift0[2]/block_extent[2]*group_extent*group_extent + base_shift0[1]/block_extent[1]*group_extent + base_shift0[0]/block_extent[0];
+
+          //          std::cout<<"       Base_coord = "<<base_shift0/2
+            //            <<"-->    Group coord   = "<<group_coord<<std::endl;
+
+                    // Insert into vector:
+                    ordered_group[group_coord] = p;
+                }
+
+
+                // Check order:
+               // std::cout<<"   Ordered:"<<std::endl;
+                for (std::size_t b=0; b<ordered_group.size(); ++b)
+                {
+                    //const auto& p = ordered_group[b];
+                    //const auto& block_desc = p->data()->descriptor();
+                    //auto base_shift0 = block_desc.base()-base0;
+
+                    //int group_coord = base_shift0[2]/block_extent[2]*group_extent*group_extent + base_shift0[1]/block_extent[1]*group_extent + base_shift0[0]/block_extent[0];
+        //            std::cout<<"       Base_coord = "<<base_shift0/2
+        //                <<"-->    Group coord   = "<<group_coord<<std::endl;
+                }
+
+
+
+                // Iterate and print
+                // Assumes all blocks have same extents
+
+                // ------------------------------------------------------------
+                // COMPONENT ITERATOR
+                field_type_iterator_t::for_types([&single_block_data, &world,
+                            &block_extent, &group_extent, &ordered_group]<typename T>()
+                {
+//                    std::cout<<"New field: "<<std::endl;
+                    double field_value = 0.0;
+                    if (world.rank()!=0)
+                    {
+
+                        // TODO Double loop: cells in block and blocks in group
+                        for(auto z=0; z<group_extent; ++z)
+                        {
+                            // base and max should be based on 0 (block_extent)
+                            for(auto k=0; k<block_extent[2]; ++k)
+                            {
+                                for(auto y=0; y<group_extent; ++y)
+                                {
+                                    for(auto j=0; j<block_extent[1]; ++j)
+                                    {
+                                        for(auto x=0; x<group_extent; ++x)
+                                        {
+
+                                            int group_coord = z*group_extent*group_extent + y*group_extent + x;
+                                            const auto& octant = ordered_group[group_coord];
+                                            const auto& block_desc = octant->data()->descriptor();
+                                            const auto& field = &(octant->data()->node_field());     // third is data
+                                            auto base=block_desc.base();
+
+                                            for(auto i=0; i<block_extent[0]; ++i)
+                                            {
+                                                auto n = field->get(i+base[0],j+base[1],k+base[2]);
+
+                                                field_value = 0.0;
+                                                if (std::abs(n.template get<T>())>=1e-32)
+                                                {
+                                                    field_value=static_cast<value_type>(n.template get<T>());
+                                                }
+                                          //      std::cout<<" "<<field_value;
+                                                single_block_data.push_back(field_value);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    std::cout<<std::endl;
+                });     // COMPONENT ITERATOR____________________________
+
+
+               // std::cout<<" DATA WRITTEN for Group: "<<g<<"-------------"<<std::endl;
+               // for (std::size_t f=0; f<single_block_data.size(); ++f)
+               // {
+               //     std::cout<<" "<<single_block_data[f];
+               // }
+               // std::cout<<std::endl;
+
+                // Write single block data
+                hsize_type block_data_size = single_block_data.size();
+                hsize_type start = -1;
+
+                if (world.rank()!=0) {
+                    start = offsets_for_rank[lvl][g];
+               //     std::cout<<"block_data_size = "<<block_data_size<<std::endl;
+               //     std::cout<<"start = "<<start<<std::endl;
+
+                    _file->template write<value_type>(dset_id, block_data_size, start,
+                            &single_block_data[0]);
+
+                }
+
+                hsize_type nElements_patch=1;
+                for(std::size_t d=0; d<Dim; ++d)        // for node-centered
+                {
+                    nElements_patch *= block_desc0.extent()[d];
+                }
+            //    offset+=nElements_patch*num_components*l.octant_groups[g].size();        // update after each block/patch
+              //  std::cout<<"offset = "<<offset<<std::endl;
+
+            } // GROUP ITERATOR
+
+
+
+
+
+
+//            // NORMAL -----------------------------------------------------
+//            // Write DATA for different components-----------------------------
+//            //auto dset_id = _file->open_dataset(group_id, "data:datatype=0");
+//
+//            // std::vector<value_type> single_block_data;
+//            offset = 0;     // offset in dataset
+//            // ----------------------------------------------------------------
+//            // BLOCK ITERATOR
+//            for(std::size_t b=0; b<l.octants.size(); ++b)
+//            {
+//                //int rank = l.ranks[b];      // only contained on server
+//                single_block_data.clear();
+//
+//                const auto& p = l.octants[b];
+//                const auto& block_desc = p->data()->descriptor();
+//                const auto& field = &(p->data()->node_field());     // third is data
+//
+//                auto base=block_desc.base();
+//                auto max=block_desc.max();
+//
+//                // ------------------------------------------------------------
+//                // COMPONENT ITERATOR
+//                field_type_iterator_t::for_types([&l, &lvl, &offset, &b,
+//                        &max, &base, &field,
+//                        &single_block_data, &num_components, &world]<typename T>()
+//                {
+//                    double field_value = 0.0;
+//                    if (world.rank()!=0)
+//                    {
+//                        // Loop through cells in block
+//                        for(auto k = base[2]; k<=max[2]; ++k)
+//                        {
+//                            for(auto j = base[1]; j<=max[1]; ++j)
+//                            {
+//                                for(auto i = base[0]; i<=max[0]; ++i)
+//                                {
+//                                    auto n = field->get(i,j,k);
+//
+//                                    field_value = 0.0;
+//                                    if (std::abs(n.template get<T>())>=1e-32)
+//                                    {
+//                                        field_value=static_cast<value_type>(n.template get<T>());
+//                                    }
+//                                    single_block_data.push_back(field_value);
+//                                }
+//                            }
+//                        }
+//                    }
+//                });     // COMPONENT ITERATOR____________________________
+//
+//                // Write single block data
+//                hsize_type block_data_size = single_block_data.size();
+//                hsize_type start = -1;
+//
+//                if (world.rank()!=0) {
+//                    start = offsets_for_rank[lvl][b];
+//
+//                    _file->template write<value_type>(dset_id, block_data_size, start,
+//                                                        &single_block_data[0]);
+//
+//                }
+//
+//                hsize_type nElements_patch=1;
+//                for(std::size_t d=0; d<Dim; ++d)        // for node-centered
+//                {
+//                   nElements_patch *= block_desc.extent()[d];
+//                }
+//                offset+=nElements_patch*num_components;        // update after each block/patch
+//                std::cout<<" normal offset = "<<offset<<std::endl;
+//
+//            }       // BLOCK ITERATOR__________________________________________
+
+
+
+            // Write "boxes" --------------------------------------------------
+            if (world.rank() == 0)
+            {
+                // Determine and write "boxes"
+                auto p = l.octant_groups[0][0];
+                auto& block_desc = p->data()->descriptor();
+
+                auto pmin= block_desc.min();        // vector of ints size 3
+                auto pmax= block_desc.max();
+                std::vector<decltype(pmin)> mins(l.octant_groups.size());
+                std::vector<decltype(pmax)> maxs(l.octant_groups.size());
+                decltype(pmin) mins_temp;
+                decltype(pmax) maxs_temp;
+
+                // TODO: calculate boxes for each group
+                for(std::size_t g=0; g<l.octant_groups.size(); ++g)
+                {
+                //    std::cout<<"New group ------"<<std::endl;
+                    for(std::size_t b=0; b<l.octant_groups[g].size(); ++b)
+                    {
+                        const auto p = l.octant_groups[g][b];
+                        const auto& block_desc = p->data()->descriptor();
+                        if (b==0)
+                        {
+                            mins_temp = block_desc.min();
+                            maxs_temp = block_desc.max();
+                        }
+                        else
+                        {
+                            for (std::size_t d=0; d<Dim; ++d)
+                            {
+                                if (mins_temp[d] > block_desc.min()[d]) {
+                                    mins_temp[d] = block_desc.min()[d];
+                                }
+                                if (maxs_temp[d] < block_desc.max()[d]) {
+                                    maxs_temp[d] = block_desc.max()[d];
+                                }
+                            }
+                        }
+                //        std::cout<<"Min = "<<mins_temp
+                //            <<", block_desc.min() = "<<block_desc.min()<<std::endl;
+                //        std::cout<<"Max = "<<maxs_temp
+                //            <<", block_desc.max() = "<<block_desc.max()<<std::endl;
+                    }
+                    mins[g] = mins_temp;
+                    maxs[g] = maxs_temp;
+                }
+
+                //            // normal
+                //            mins.clear();
+                //            maxs.clear();
+                //            for(std::size_t b=0; b<l.octants.size(); ++b)
+                //            {
+//                const auto& p = l.octants[b];
+//                const auto& block_desc = p->data()->descriptor();
+//                mins.push_back(block_desc.min());
+//                maxs.push_back(block_desc.max());
+//            }
+//
+
+            // 2 Write boxes with just rank 0
+            //if (world.rank()==0) {
+                _file->template open_write_boxCompound<Dim>(group_id, "boxes", mins, maxs, false);
+            }
+
+
 
             // Close spaces:
             //_file->close_space(space);
-            _file->close_group(group_id_dattr);
+            //_file->close_group(group_id_dattr);
             //_file->close_space(space_attr);
             _file->close_dset(dset_id);
             _file->close_group(group_id);
@@ -684,16 +958,16 @@ public:
         this->write_level_info(&f);
     }
 
-    void write_mesh(std::string _filename,
-                    std::vector<BlockDescriptor> _blocks)
-    {
-        level_map_.clear();
-        this->init(_blocks);
-        HDF5File f(_filename);
-        this->write_global_metaData(&f);
-        this->write_level_info(&f);
-    }
-
+//    void write_mesh(std::string _filename,
+//                    std::vector<BlockDescriptor> _blocks)
+//    {
+//        level_map_.clear();
+//        this->init(_blocks);
+//        HDF5File f(_filename);
+//        this->write_global_metaData(&f);
+//        this->write_level_info(&f);
+//    }
+//
 
     std::map<int,LevelInfo> level_map_;
 

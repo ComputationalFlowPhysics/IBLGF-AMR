@@ -189,7 +189,7 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
                 if(it->locally_owned() && it->data())
                 {
                     ++nLocally_owned;
-                } 
+                }
                 else if (it->data())
                 {
                     ++nGhost;
@@ -569,7 +569,7 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
                     const float_type t=std::sqrt( (r-R)*(r-R) +z*z )/R;
 
                     float_type vort=vorticity(x,y,z,R,c1,c2);
-                    if(std::fabs(vort) > vorticity_max_*pow(0.25*0.25 , diff_level))
+                    if(std::fabs(vort) > vorticity_max_*pow(0.25*0.25*0.5 , diff_level))
                     {
                         return true;
                     }

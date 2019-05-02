@@ -118,7 +118,7 @@ public:
         // Maps construction
 
         // Ke TODO: check if this is ok
-         this->construct_leaf_maps();
+        this->construct_leaf_maps();
         this->construct_level_maps();
         this->construct_neighbor_lists();
         //this->construct_influence_lists();
@@ -825,8 +825,8 @@ public: //Query ranks of all octants, which are assigned in local tree
                 for(std::size_t i=0;i<it->num_neighbors();++i)
                 {
                     auto neighbor=it->neighbor(i);
-                    if(neighbor  && 
-                       !neighbor->locally_owned() 
+                    if(neighbor  &&
+                       !neighbor->locally_owned()
                         &&!neighbor->data()) _f(neighbor);
                 }
             }

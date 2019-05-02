@@ -191,12 +191,12 @@ public:
         //// Initialize Masks
 
         //std::cout<<"FMM init base level masks" << std::endl;
-        fmm_init_base_level_masks(domain_, level, non_leaf_as_source);
-        //std::cout<<"FMM upward masks" << std::endl;
+        //fmm_init_base_level_masks(domain_, level, non_leaf_as_source);
+        ////std::cout<<"FMM upward masks" << std::endl;
         fmm_upward_pass_masks(domain_, level, MASK_LIST::Mask_FMM_Source);
         fmm_upward_pass_masks(domain_, level, MASK_LIST::Mask_FMM_Target);
 
-        //std::cout<<"FMM sync masks" << std::endl;
+        ////std::cout<<"FMM sync masks" << std::endl;
         fmm_sync_masks(domain_, level, MASK_LIST::Mask_FMM_Source);
         fmm_sync_masks(domain_, level, MASK_LIST::Mask_FMM_Target);
 
@@ -246,13 +246,12 @@ public:
                     it != domain_->end(level);
                     ++it)
             {
-                if (!(it->data()) || !it->mask(MASK_LIST::Mask_FMM_Target) )
-                //if (!it->mask(MASK_LIST::Mask_FMM_Target) )
+                if (!(it->data()) || !it->fmm_mask(base_level,MASK_LIST::Mask_FMM_Target) )
                     continue;
 
                 int recv_m_send_count =
                     domain_->decomposition().client()->template
-                        communicate_induced_fields_recv_m_send_count<fmm_t, fmm_t>(it, _neighbor);
+                        communicate_induced_fields_recv_m_send_count<fmm_t, fmm_t>(it, _neighbor, base_level);
 
                 Bx_itr.emplace(recv_m_send_count, *it);
             }
@@ -269,12 +268,12 @@ public:
             {
                 if ( it->is_leaf() || !it->locally_owned() )
                 {
-                    it->mask(MASK_LIST::Mask_FMM_Source, false);
-                    it->mask(MASK_LIST::Mask_FMM_Target, false);
+                    it->fmm_mask(base_level,MASK_LIST::Mask_FMM_Source, false);
+                    it->fmm_mask(base_level,MASK_LIST::Mask_FMM_Target, false);
                 } else
                 {
-                    it->mask(MASK_LIST::Mask_FMM_Source, true);
-                    it->mask(MASK_LIST::Mask_FMM_Target, true);
+                    it->fmm_mask(base_level,MASK_LIST::Mask_FMM_Source, true);
+                    it->fmm_mask(base_level,MASK_LIST::Mask_FMM_Target, true);
                 }
             }
         } else
@@ -283,12 +282,12 @@ public:
                     it != domain_->end(base_level); ++it)
             if (it->locally_owned())
             {
-                it->mask(MASK_LIST::Mask_FMM_Source, true);
-                it->mask(MASK_LIST::Mask_FMM_Target, true);
+                it->fmm_mask(base_level,MASK_LIST::Mask_FMM_Source, true);
+                it->fmm_mask(base_level,MASK_LIST::Mask_FMM_Target, true);
             } else
             {
-                it->mask(MASK_LIST::Mask_FMM_Source, false);
-                it->mask(MASK_LIST::Mask_FMM_Target, false);
+                it->fmm_mask(base_level,MASK_LIST::Mask_FMM_Source, false);
+                it->fmm_mask(base_level,MASK_LIST::Mask_FMM_Target, false);
             }
         }
     }
@@ -304,12 +303,12 @@ public:
                     ++it)
             {
                 // including ghost parents
-                it->mask(mask_id, false);
+                it->fmm_mask(base_level,mask_id, false);
                 for ( int c = 0; c < it->num_children(); ++c )
                 {
-                    if ( it->child(c) && it->child(c)->mask(mask_id) )
+                    if ( it->child(c) && it->child(c)->fmm_mask(base_level,mask_id) )
                     {
-                        it->mask(mask_id, true);
+                        it->fmm_mask(base_level,mask_id, true);
                         break;
                     }
                 }
@@ -317,7 +316,7 @@ public:
 
             domain_->decomposition().client()-> template
                     communicate_mask_single_level_updownward_OR(level,
-                            mask_id, true);
+                            mask_id, true, base_level);
         }
     }
 
@@ -339,7 +338,7 @@ public:
         {
             domain_->decomposition().client()-> template
                     communicate_mask_single_level_updownward_OR(level,
-                            mask_id,false);
+                            mask_id,false, base_level);
         }
     }
 
@@ -352,7 +351,7 @@ public:
 
             domain_->decomposition().client()-> template
                     communicate_mask_single_level_inf_sync(level,
-                            mask_id, neighbor_);
+                            mask_id, neighbor_, base_level);
         }
     }
 
@@ -364,19 +363,19 @@ public:
 
             domain_->decomposition().client()-> template
                     communicate_mask_single_level_child_sync(level,
-                            mask_id);
+                            mask_id, base_level);
 
         }
     }
 
 
-    auto initialize_upward_iterator(int level, domain_t* domain_,bool _upward)
+    auto initialize_upward_iterator(int level, domain_t* domain_,bool _upward, int _refinement_level)
     {
         std::vector<std::pair<octant_t*, int>> octants;
         for (auto it = domain_->begin(level); it != domain_->end(level); ++it)
         {
             int recv_m_send_count=domain_-> decomposition().client()->
-                updownward_pass_mcount(*it,_upward);
+                updownward_pass_mcount(*it,_upward, _refinement_level);
 
             octants.emplace_back(std::make_pair(*it,recv_m_send_count));
         }
@@ -401,12 +400,12 @@ public:
             for (auto it = domain_->begin(level); it != domain_->end(level); ++it)
             {
                 bool _neighbor = (level==base_level)? true:false;
-                if (!(it->data()) || !it->mask(MASK_LIST::Mask_FMM_Target) )
+                if (!(it->data()) || !it->fmm_mask(base_level,MASK_LIST::Mask_FMM_Target) )
                     continue;
 
                 int recv_m_send_count =
                     domain_->decomposition().client()->template
-                    communicate_induced_fields_recv_m_send_count<fmm_t, fmm_t>(it, _neighbor);
+                    communicate_induced_fields_recv_m_send_count<fmm_t, fmm_t>(it, _neighbor, base_level);
 
                 octants.emplace_back(std::make_pair(*it,recv_m_send_count));
             }
@@ -424,14 +423,14 @@ public:
             int level = it->level();
 
             bool _neighbor = (level==base_level)? true:false;
-            if (!(it->data()) || !it->mask(MASK_LIST::Mask_FMM_Target) )
+            if (!(it->data()) || !it->fmm_mask(base_level,MASK_LIST::Mask_FMM_Target) )
                 continue;
 
             for (std::size_t i=0; i< it->influence_number(); ++i)
             {
                 auto n_s = it->influence(i);
                 if (n_s && n_s->locally_owned()
-                        && n_s->mask(MASK_LIST::Mask_FMM_Source))
+                        && n_s->fmm_mask(base_level,MASK_LIST::Mask_FMM_Source))
                 {
 
                     fmm_tt<s,t>(n_s, it, base_level-level, dx_level);
@@ -482,14 +481,14 @@ public:
         for (auto it = domain_->begin(base_level);
                 it != domain_->end(base_level); ++it)
         {
-            if ( !it->mask(MASK_LIST::Mask_FMM_Target) ) continue;
+            if ( !it->fmm_mask(base_level,MASK_LIST::Mask_FMM_Target) ) continue;
 
             for (int i=0; i<27; ++i)
             {
                 auto n_s = it->neighbor(i);
 
                 if (n_s && n_s->locally_owned()
-                        && n_s->mask(MASK_LIST::Mask_FMM_Source))
+                        && n_s->fmm_mask(base_level,MASK_LIST::Mask_FMM_Source))
                 {
                     fmm_tt<s,t>(n_s, it, level_diff, dx_level);
                 }
@@ -505,7 +504,7 @@ public:
                 it != domain_->end(base_level);
                 ++it)
         {
-            if(it->data() && it->locally_owned() && it->mask(MASK_LIST::Mask_FMM_Target))
+            if(it->data() && it->locally_owned() && it->fmm_mask(base_level,MASK_LIST::Mask_FMM_Target))
             {
                 it->data()->template get_linalg<f1>().get()->
                     cube_noalias_view() +=
@@ -522,7 +521,7 @@ public:
                 it != domain_->end(base_level);
                 ++it)
         {
-            if(it->data() && it->locally_owned() && it->mask(MASK_LIST::Mask_FMM_Target))
+            if(it->data() && it->locally_owned() && it->fmm_mask(base_level,MASK_LIST::Mask_FMM_Target))
             {
 
                 it->data()->template get_linalg<f1>().get()->
@@ -542,7 +541,7 @@ public:
                     it != domain_->end(level);
                     ++it)
             {
-                    if(it->data() && it->mask(mask_id))
+                    if(it->data() && it->fmm_mask(base_level,mask_id))
                     {
                         for(auto& e: it->data()->template get_data<field>())
                             e=0.0;
@@ -562,7 +561,7 @@ public:
                 it != domain_->end(base_level);
                 ++it)
         {
-            if(it->data() && it->locally_owned() && it->mask(MASK_LIST::Mask_FMM_Source))
+            if(it->data() && it->locally_owned() && it->fmm_mask(base_level,MASK_LIST::Mask_FMM_Source))
             {
                 it->data()->template get_linalg<to>().get()->
                     cube_noalias_view() =
@@ -595,7 +594,7 @@ public:
         //    for (auto B_it=octants.begin(); B_it!=octants.end(); ++B_it)
         //    {
         //        auto it =B_it->first;
-        //        if(it->data() && it->mask(MASK_LIST::Mask_FMM_Target) )
+        //        if(it->data() && it->fmm_mask(base_level,MASK_LIST::Mask_FMM_Target) )
         //        {
         //            if(B_it->second<0 && !finished)
         //            {
@@ -604,7 +603,7 @@ public:
         //                finished=true;
         //            }
 
-        //            if(it->data() && it->mask(MASK_LIST::Mask_FMM_Target) )
+        //            if(it->data() && it->fmm_mask(base_level,MASK_LIST::Mask_FMM_Target) )
         //                lagrange_intrp.nli_intrp_node<fmm_t>(it);
         //        }
         //    }//octants in level
@@ -614,13 +613,13 @@ public:
         for (int level=1; level<base_level; ++level)
         {
             domain_->decomposition().client()-> template
-                    communicate_updownward_assign<fmm_t, fmm_t>(level,false);
+                    communicate_updownward_assign<fmm_t, fmm_t>(level,false,base_level);
 
             for (auto it = domain_->begin(level);
                     it != domain_->end(level);
                     ++it)
             {
-                if(it->data() && it->mask(mask_id) )
+                if(it->data() && it->fmm_mask(base_level,mask_id) )
                     lagrange_intrp.nli_intrp_node<fmm_t>(it, mask_id);
             }
         }
@@ -635,7 +634,7 @@ public:
         //    for (auto B_it=octants.begin(); B_it!=octants.end(); ++B_it)
         //    {
         //        auto it =B_it->first;
-        //        if(it->data() && it->mask(MASK_LIST::Mask_FMM_Source) )
+        //        if(it->data() && it->fmm_mask(base_level,MASK_LIST::Mask_FMM_Source) )
         //            lagrange_intrp.nli_antrp_node<fmm_s>(it);
 
         //        domain_->decomposition().client()->
@@ -662,12 +661,12 @@ public:
                     it != domain_->end(level);
                     ++it)
             {
-                if(it->data() && it->mask(mask_id) )
+                if(it->data() && it->fmm_mask(base_level,mask_id) )
                     lagrange_intrp.nli_antrp_node<fmm_s>(it, mask_id);
             }
 
             domain_->decomposition().client()->
-                template communicate_updownward_add<fmm_s, fmm_s>(level, true);
+                template communicate_updownward_add<fmm_s, fmm_s>(level, true, base_level);
 
             for (auto it = domain_->begin(level);
                     it != domain_->end(level);

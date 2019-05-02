@@ -280,6 +280,7 @@ public: //C/Dtors
             this->tree()->construct_neighbor_lists();
             }
 
+        this->tree()->construct_influence_lists();
         }
 
      }

@@ -110,8 +110,13 @@ public: //Ctors
     void null_init()
     {
         std::fill(neighbor_.begin(),neighbor_.end(),nullptr);
-        std::fill(masks_.begin(),masks_.end(),false);
         std::fill(influence_.begin(),influence_.end(),nullptr);
+
+        std::fill(masks_.begin(),masks_.end(),false);
+        for (int i=0; i<fmm_max_mask_levels; ++i)
+        {
+            std::fill(fmm_masks_[i].begin(),fmm_masks_[i].end(),false);
+        }
     }
 
     std::array<key_type, nNeighbors()>
@@ -204,13 +209,21 @@ public: //Ctors
     }
 
     bool mask(int i) noexcept{return masks_[i];}
-
     bool* mask_ptr(int i) noexcept{return &(masks_[i]);}
-
     void mask(int i, bool value)
     {
        masks_[i] = value;
     }
+
+    bool fmm_mask(int fmm_base_level, int i) noexcept
+        {return fmm_masks_[fmm_base_level][i];}
+    bool* fmm_mask_ptr(int fmm_base_level, int i) noexcept
+        {return &(fmm_masks_[fmm_base_level][i]);}
+    void fmm_mask(int fmm_base_level, int i, bool value)
+    {
+       fmm_masks_[fmm_base_level][i] = value;
+    }
+
 
     float_type load()const noexcept
     {
@@ -236,13 +249,13 @@ public: //mpi info
     bool locally_owned() const noexcept { return comm_.rank()==this->rank(); }
     bool ghost() const noexcept { return !locally_owned()&&this->rank()>=0; }
 
-    bool has_locally_owned_children(int mask_id) const noexcept
+    bool has_locally_owned_children(int fmm_level, int mask_id) const noexcept
     {
         for(int c=0;c<this->num_children();++c)
         {
             const auto child = this->child(c);
             if(!child) continue;
-            if(child->locally_owned() && child->data() && (masks_[mask_id]))
+            if(child->locally_owned() && child->data() && (fmm_masks_[fmm_level][mask_id]))
             {
                 return true;
                 break;
@@ -376,6 +389,9 @@ private:
     std::array<Octant*, 189 > influence_= {nullptr};
     bool flag_leaf_=false;
     std::array<bool, Mask_Last + 1> masks_ = {false};
+
+    static const int fmm_max_mask_levels=15;
+    std::array< std::array<bool, Mask_Last + 1>, fmm_max_mask_levels> fmm_masks_;
     tree_type* t_=nullptr;
 };
 

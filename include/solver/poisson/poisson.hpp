@@ -118,7 +118,8 @@ public:
                 }
 
             domain_->decomposition().client()->
-                template communicate_updownward_add<source_tmp, source_tmp>(ls,true,false);
+                template communicate_updownward_add<source_tmp, source_tmp>
+                (ls,true,false,-1);
 
         }
 
@@ -163,7 +164,7 @@ public:
 
             domain_->decomposition().client()->
                 template communicate_updownward_assign
-                    <Target, Target>(l,false,false);
+                    <Target, Target>(l,false,false,-1);
 
             for (auto it  = domain_->begin(l);
                       it != domain_->end(l); ++it)
@@ -276,7 +277,7 @@ public:
             }
 
             domain_->decomposition().client()->
-                template communicate_updownward_add<target, target>(ls,true,false);
+                template communicate_updownward_add<target, target>(ls,true,false,-1);
         }
 
         //Level-Interactions

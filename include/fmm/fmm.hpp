@@ -191,7 +191,7 @@ public:
         //// Initialize Masks
 
         //std::cout<<"FMM init base level masks" << std::endl;
-        //fmm_init_base_level_masks(domain_, level, non_leaf_as_source);
+        fmm_init_base_level_masks(domain_, level, non_leaf_as_source);
         ////std::cout<<"FMM upward masks" << std::endl;
         fmm_upward_pass_masks(domain_, level, MASK_LIST::Mask_FMM_Source);
         fmm_upward_pass_masks(domain_, level, MASK_LIST::Mask_FMM_Target);
@@ -369,13 +369,13 @@ public:
     }
 
 
-    auto initialize_upward_iterator(int level, domain_t* domain_,bool _upward, int _refinement_level)
+    auto initialize_upward_iterator(int level, domain_t* domain_,bool _upward, int base_level)
     {
         std::vector<std::pair<octant_t*, int>> octants;
         for (auto it = domain_->begin(level); it != domain_->end(level); ++it)
         {
             int recv_m_send_count=domain_-> decomposition().client()->
-                updownward_pass_mcount(*it,_upward, _refinement_level);
+                updownward_pass_mcount(*it,_upward, base_level);
 
             octants.emplace_back(std::make_pair(*it,recv_m_send_count));
         }
@@ -439,7 +439,7 @@ public:
 
             //setup the tasks
             domain_->decomposition().client()->template
-                communicate_induced_fields<fmm_t, fmm_t>(it, _neighbor, start_communication);
+                communicate_induced_fields<fmm_t, fmm_t>(it, _neighbor, start_communication, base_level);
 
             if(!combined_messages && B_it->second==0)
             {
@@ -613,14 +613,14 @@ public:
         for (int level=1; level<base_level; ++level)
         {
             domain_->decomposition().client()-> template
-                    communicate_updownward_assign<fmm_t, fmm_t>(level,false,base_level);
+                    communicate_updownward_assign<fmm_t, fmm_t>(level,false,true,base_level);
 
             for (auto it = domain_->begin(level);
                     it != domain_->end(level);
                     ++it)
             {
                 if(it->data() && it->fmm_mask(base_level,mask_id) )
-                    lagrange_intrp.nli_intrp_node<fmm_t>(it, mask_id);
+                    lagrange_intrp.nli_intrp_node<fmm_t>(it, mask_id, base_level);
             }
         }
     }
@@ -662,11 +662,11 @@ public:
                     ++it)
             {
                 if(it->data() && it->fmm_mask(base_level,mask_id) )
-                    lagrange_intrp.nli_antrp_node<fmm_s>(it, mask_id);
+                    lagrange_intrp.nli_antrp_node<fmm_s>(it, mask_id, base_level);
             }
 
             domain_->decomposition().client()->
-                template communicate_updownward_add<fmm_s, fmm_s>(level, true, base_level);
+                template communicate_updownward_add<fmm_s, fmm_s>(level, true, true, base_level);
 
             for (auto it = domain_->begin(level);
                     it != domain_->end(level);

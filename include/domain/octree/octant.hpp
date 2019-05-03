@@ -112,7 +112,7 @@ public: //Ctors
         std::fill(neighbor_.begin(),neighbor_.end(),nullptr);
         std::fill(influence_.begin(),influence_.end(),nullptr);
 
-        std::fill(masks_.begin(),masks_.end(),false);
+        //std::fill(masks_.begin(),masks_.end(),false);
         for (int i=0; i<fmm_max_mask_levels; ++i)
         {
             std::fill(fmm_masks_[i].begin(),fmm_masks_[i].end(),false);
@@ -208,17 +208,20 @@ public: //Ctors
        influence_[i] = new_influence;
     }
 
-    bool mask(int i) noexcept{return masks_[i];}
-    bool* mask_ptr(int i) noexcept{return &(masks_[i]);}
-    void mask(int i, bool value)
-    {
-       masks_[i] = value;
-    }
+    //bool mask(int i) noexcept{return masks_[i];}
+    //bool* mask_ptr(int i) noexcept{return &(masks_[i]);}
+    //void mask(int i, bool value)
+    //{
+    //   masks_[i] = value;
+    //}
 
     bool fmm_mask(int fmm_base_level, int i) noexcept
-        {return fmm_masks_[fmm_base_level][i];}
+        {
+            return fmm_masks_[fmm_base_level][i];}
     bool* fmm_mask_ptr(int fmm_base_level, int i) noexcept
-        {return &(fmm_masks_[fmm_base_level][i]);}
+        {
+            if (fmm_base_level<0) std::cout<<"base level < 0" << std::endl;
+            return &(fmm_masks_[fmm_base_level][i]);}
     void fmm_mask(int fmm_base_level, int i, bool value)
     {
        fmm_masks_[fmm_base_level][i] = value;
@@ -279,14 +282,14 @@ public: //mpi info
         return false;
     }
 
-    std::set<int> unique_child_ranks(int mask_id) const noexcept
+    std::set<int> unique_child_ranks(int base_level, int mask_id) const noexcept
     {
         std::set<int> unique_ranks;
         for(int c=0;c<this->num_children();++c)
         {
             auto child = this->child(c);
             if(!child) continue;
-            if(!child->locally_owned() && (masks_[mask_id]))
+            if(!child->locally_owned() && (fmm_masks_[base_level][mask_id]))
             {
                 unique_ranks.insert(child->rank());
             }
@@ -388,7 +391,7 @@ private:
     int influence_num = 0;
     std::array<Octant*, 189 > influence_= {nullptr};
     bool flag_leaf_=false;
-    std::array<bool, Mask_Last + 1> masks_ = {false};
+    //std::array<bool, Mask_Last + 1> masks_ = {false};
 
     static const int fmm_max_mask_levels=15;
     std::array< std::array<bool, Mask_Last + 1>, fmm_max_mask_levels> fmm_masks_;

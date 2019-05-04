@@ -126,6 +126,14 @@ public:
         return res;
     }
 
+    /** @brief combine messages into a single buffer and send it */
+    void combined_messages()
+    {
+
+    }
+
+
+
     /** * @brief Finish communication (send or receive for this task)
      *           Task will also be completed at the same time
      * */

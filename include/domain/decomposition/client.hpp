@@ -140,7 +140,7 @@ public:
             send_communicator<induced_fields_task_t<AddAssignRecv>>();
         auto& recv_comm=
             task_manager_->template
-            recv_communicator<induced_fields_task_t<AddAssignRecv>>();
+            recv_communicator<induced_fields_task_t<>>();
             send_comm.start_communication();
             recv_comm.start_communication();
             send_comm.finish_communication();
@@ -481,8 +481,10 @@ public:
         return count;
     }
 
-    template<class SendField,class RecvField, class Octant_t>
-    void communicate_induced_fields(Octant_t it,
+
+    template<class SendField,class RecvField, class FMMType>
+    void communicate_induced_fields(octant_t* it, FMMType* _fmm,
+                                    int _level_diff, float_type _dx_level,
                                     bool _neighbors=false,
                                     bool _start_communication=true )
     {
@@ -490,7 +492,6 @@ public:
         if (!it->mask(MASK_LIST::Mask_FMM_Target)) return;
 
         boost::mpi::communicator w;
-
         auto& send_comm=
             task_manager_-> template
             send_communicator<induced_fields_task_t<AddAssignRecv>>();
@@ -513,7 +514,6 @@ public:
                 const auto inf=it->influence(i);
                 if(inf && inf->rank()==myRank && inf->mask(MASK_LIST::Mask_FMM_Source))
                 { is_influenced=true ; break;}
-
             }
 
             if(_neighbors)
@@ -530,23 +530,40 @@ public:
             {
                 auto send_ptr=it->data()->
                 template get<SendField>().data_ptr();
-                //auto task= send_comm.post_task(send_ptr, it->rank(), true, idx);
                 //task->requires_confirmation()=false;
                 //task->octant()=it;
 
-                auto task = std::make_shared<induced_fields_task_t<AddAssignRecv>>(idx);
+                //auto task = std::make_shared<induced_fields_task_t<InfluenceFieldBuffer>>(idx);
+                auto task= send_comm.post_task(send_ptr, it->rank(), true, idx);
                 task->attach_data(send_ptr);
                 task->rank_other()=it->rank();
                 task->requires_confirmation()=false;
                 task->octant()=it;
-                send_tasks_[it->rank()].push_back(task);
+                _fmm->compute_influence_field(it, _level_diff, _dx_level,_neighbors);
+
+
+                auto callback = [it, _fmm, _neighbors,_level_diff,_dx_level](auto& buffer_vector) 
+                {
+                    //1. Swap buffer with sendfield
+                    buffer_vector.resize(8*8*8);
+                    std::fill(buffer_vector.begin(), buffer_vector.end(),0);
+                    buffer_vector.swap(it->data()->
+                            template get<SendField>().data());
+
+                    //2. Compute influence field
+                    _fmm->compute_influence_field(it, _neighbors, _level_diff, _dx_level);
+
+                    //3. Swap sendfield with buffer
+                    buffer_vector.swap(it->data()->
+                            template get<SendField>().data());
+                };
+                task->register_sendCallback(callback);
+                //send_tasks_[it->rank()].push_back(task);
             }
-
-        } else
+        } 
+        else
         {
-
             std::set<int> unique_inflRanks;
-
             for(std::size_t i = 0; i< it->influence_number(); ++i)
             {
                 const auto inf=it->influence(i);
@@ -572,21 +589,18 @@ public:
             {
                 const auto recv_ptr=it->data()->
                     template get<RecvField>().data_ptr();
-                //auto task = recv_comm.post_task( recv_ptr, r, true, idx);
-                //task->requires_confirmation()=false;
-                //task->octant()=it;
+                auto task = recv_comm.post_task( recv_ptr, r, true, idx);
 
-                auto task = std::make_shared<induced_fields_task_t<AddAssignRecv>>(idx);
+                //auto task = std::make_shared<induced_fields_task_t<InfluenceFieldBuffer>>(idx);
                 task->attach_data(recv_ptr);
                 task->rank_other()=r;
                 task->requires_confirmation()=false;
                 task->octant()=it;
-                recv_tasks_[r].push_back(task);
+                //recv_tasks_[r].push_back(task);
             }
         }
 
         //Start communications
-
         if(_start_communication)
         {
             send_comm.start_communication();
@@ -596,10 +610,10 @@ public:
         }
     }
 
-
     template<class SendField, class RecvField>
     void combine_induced_field_messages()
     {
+        std::cout<<"I need to edit this to account for new memory friendly version"<<std::endl;
         auto& acc_send_comm=
             task_manager_-> template send_communicator<acc_induced_fields_task_t>();
         auto& acc_recv_comm=
@@ -1048,8 +1062,6 @@ public:
     }
 
     auto domain()const{return domain_;}
-
-
 
 
 private:

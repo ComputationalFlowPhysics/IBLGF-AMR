@@ -51,6 +51,7 @@ struct ServerClientTraits
                                        leaf_query_send_t,
                                        leaf_query_recv_t,
                                        mask_query_t<OrAssignRecv>,
+                                       induced_fields_task_t<InfluenceFieldBuffer>,
                                        induced_fields_task_t<CopyAssign>,
                                        induced_fields_task_t<AddAssignRecv>,
                                        acc_induced_fields_task_t

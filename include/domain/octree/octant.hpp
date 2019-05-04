@@ -346,6 +346,7 @@ public: //Construct
     auto num_neighbors(){return neighbor_.size();}
 
 
+
 public: //Neighbors
 
     enum MASK_LIST {

@@ -803,9 +803,28 @@ public: //Query ranks of all octants, which are assigned in local tree
      *         maps for neighbors, influence
      *         list, children and interior nodes
      **/
-    template<class Client, class InitFunction>
-    void construct_maps( Client* _c, InitFunction& _f )
+    template<class Client>
+    void construct_maps( Client* _c )
     {
+
+        auto _f =[_c, this](octant_type* _o){
+            auto level = _o->refinement_level();
+            level=level>=0?level:0;
+            auto bbase=this->octant_to_level_coordinate(
+                    _o->tree_coordinate(),level);
+            _o->data()=std::make_shared<DataType>(bbase,
+                    _c->domain()->block_extent(),level, true);
+        };
+
+        auto _f2 =[_c, this](octant_type* _o){
+            auto level = _o->refinement_level();
+            level=level>=0?level:0;
+            auto bbase=this->octant_to_level_coordinate(
+                    _o->tree_coordinate(),level);
+            _o->data()=std::make_shared<DataType>(bbase,
+                    _c->domain()->block_extent(),level, false);
+        };
+
         //Queries
         this->query_neighbor_octants(_c,_f);
         this->query_influence_octants(_c,_f);
@@ -827,7 +846,7 @@ public: //Query ranks of all octants, which are assigned in local tree
                     auto neighbor=it->neighbor(i);
                     if(neighbor  && 
                        !neighbor->locally_owned() 
-                        &&!neighbor->data()) _f(neighbor);
+                        &&!neighbor->data()) _f2(neighbor);
                 }
             }
 
@@ -835,7 +854,7 @@ public: //Query ranks of all octants, which are assigned in local tree
             for(std::size_t i=0;i<it->influence_number();++i)
             {
                 auto inf=it->influence(i);
-                if(inf  && !inf->locally_owned() && !inf->data()) _f(inf);
+                if(inf  && !inf->locally_owned() && !inf->data()) _f2(inf);
             }
 
             //allocate parent

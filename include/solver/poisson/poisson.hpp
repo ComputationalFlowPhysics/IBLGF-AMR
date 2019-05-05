@@ -87,6 +87,7 @@ public:
                 it != domain_->end();
                 ++it)
         {
+            if(!it->locally_owned()) continue;
             if (!(it.ptr() && it->data())) continue;
             auto& cp2 = it ->data()->template get_linalg_data<source_tmp>();
             cp2 *=0.0;
@@ -131,14 +132,13 @@ public:
                     it_s != domain_->end(l); ++it_s)
                 if (it_s->data() && !it_s->locally_owned())
                 {
+
+                    if(!it_s ->data()->is_allocated())continue;
                     auto& cp2 = it_s ->data()->template get_linalg_data<source_tmp>();
                     cp2*=0.0;
                 }
 
             //test for FMM
-            //fmm_.template fmm_for_level<source_tmp, Target>(domain_, l, false);
-            //fmm_.template fmm_for_level<source_tmp, Target>(domain_, l, true);
-
             fmm_.template fmm_for_level_test<source_tmp, Target>(domain_, l, false);
             fmm_.template fmm_for_level_test<source_tmp, Target>(domain_, l, true);
             //this->level_convolution_fft<source_tmp, Target>(l);
@@ -168,14 +168,9 @@ public:
             for (auto it  = domain_->begin(l);
                       it != domain_->end(l); ++it)
             {
-                if(it->is_leaf() || !it->data()) continue;
-                //c_cntr_nli_.nli_intrp_node<
-                //            coarse_target_sum, coarse_target_sum
-                //            >(it);
+                if(it->is_leaf() || !it->data() || !it->data()->is_allocated()) continue;
 
-                c_cntr_nli_.nli_intrp_node<
-                            Target, Target
-                            >(it);
+                c_cntr_nli_.nli_intrp_node< Target, Target >(it);
 
                 int refinement_level = it->refinement_level();
                 double dx = dx_base/std::pow(2,refinement_level);
@@ -346,16 +341,10 @@ public:
         auto parent = _parent;
         if(parent->is_leaf())return;
 
-        //auto pview =parent->data()->node_field().view(parent->data()->descriptor());
-        //pview.iterate([&]( auto& n )
-        //        {
-        //        n.template get<Field>()=0.0;
-        //        });
-
         for (int i = 0; i < parent->num_children(); ++i)
         {
             auto child = parent->child(i);
-            if(child==nullptr || !child->data()) continue;
+            if(child==nullptr || !child->data() || !child->locally_owned()) continue;
             auto child_view= child->data()->descriptor();
 
             auto cview =child->data()->node_field().view(child_view);

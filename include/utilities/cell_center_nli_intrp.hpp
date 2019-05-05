@@ -61,6 +61,7 @@ namespace interpolation
                     if (!child ) continue;
                     if (!child->locally_owned()) continue;
                     if (!child->data()) continue;
+                    if(!child->data()->is_allocated()) continue;
 
                     //child_target_L_tmp *= 0.0;
                     auto& child_target_tmp  = child ->data()->template get_linalg_data<from>();
@@ -122,6 +123,7 @@ namespace interpolation
                 {
                     auto child = parent->child(i);
                     if (child == nullptr || !child ->data()) continue;
+                    if(!child->data()->is_allocated()) continue;
 
                     auto& child_linalg_data  = child ->data()->template get_linalg_data<to>();
                     nli_intrp_node(child_linalg_data, parent_linalg_data, i);

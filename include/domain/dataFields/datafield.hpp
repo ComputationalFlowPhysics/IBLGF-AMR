@@ -68,7 +68,7 @@ public: //member functions
      *
      *  @param[in] _b Blockdescriptor
      */
-    void initialize(block_type _b, bool _default=false, DataType _dval=DataType())
+    void initialize(block_type _b, bool _allocate=true, bool _default=false, DataType _dval=DataType())
     {
         this->real_block_.base(_b.base()-lowBuffer_);
         this->real_block_.extent(_b.extent()+lowBuffer_+highBuffer_);
@@ -77,7 +77,7 @@ public: //member functions
         this->base(_b.base());
         this->extent(_b.extent());
         this->level()= _b.level();
-        data_.resize(real_block_.nPoints());
+        if(_allocate) data_.resize(real_block_.nPoints());
         if(_default){std::fill(data_.begin(),data_.end(),_dval);}
 
         auto ext = real_block_.extent();

@@ -395,9 +395,9 @@ public:
 
             if(it->locally_owned())
             {
-            compute_influence_field(&(*it),base_level-level, dx_level, _neighbor);
+                compute_influence_field(&(*it),
+                    base_level-level, dx_level, _neighbor);
             }
-            //compute_influence_field(&(*it),base_level-level, dx_level, _neighbor);
 
             //setup the tasks
             domain_->decomposition().client()->template
@@ -500,11 +500,11 @@ public:
                     it != domain_->end(level);
                     ++it)
             {
-                    if(it->data() && it->mask(mask_id))
-                    {
-                        for(auto& e: it->data()->template get_data<field>())
-                            e=0.0;
-                    }
+                if(it->data() && it->mask(mask_id))
+                {
+                    for(auto& e: it->data()->template get_data<field>())
+                        e=0.0;
+                }
             }
         }
     }

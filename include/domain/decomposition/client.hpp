@@ -137,7 +137,7 @@ public:
     {
         auto& send_comm=
             task_manager_-> template
-            send_communicator<induced_fields_task_t<AddAssignRecv>>();
+            send_communicator<induced_fields_task_t<InfluenceFieldBuffer>>();
         auto& recv_comm=
             task_manager_->template
             recv_communicator<induced_fields_task_t<>>();
@@ -151,10 +151,10 @@ public:
     {
         auto& send_comm=
             task_manager_-> template
-            send_communicator<induced_fields_task_t<AddAssignRecv>>();
+            send_communicator<induced_fields_task_t<InfluenceFieldBuffer>>();
         auto& recv_comm=
             task_manager_->template
-            recv_communicator<induced_fields_task_t<AddAssignRecv>>();
+            recv_communicator<induced_fields_task_t<InfluenceFieldBuffer>>();
 
         while(true)
         {
@@ -494,10 +494,10 @@ public:
         boost::mpi::communicator w;
         auto& send_comm=
             task_manager_-> template
-            send_communicator<induced_fields_task_t<AddAssignRecv>>();
+            send_communicator<induced_fields_task_t<InfluenceFieldBuffer>>();
         auto& recv_comm=
             task_manager_->template
-            recv_communicator<induced_fields_task_t<AddAssignRecv>>();
+            recv_communicator<induced_fields_task_t<InfluenceFieldBuffer>>();
 
         const int myRank=w.rank();
         const auto idx=get_octant_idx(it);
@@ -539,10 +539,10 @@ public:
                 task->rank_other()=it->rank();
                 task->requires_confirmation()=false;
                 task->octant()=it;
-                _fmm->compute_influence_field(it, _level_diff, _dx_level,_neighbors);
+                auto size=it->data()-> template get<SendField>().data().size();
 
-
-                auto callback = [it, _fmm, _neighbors,_level_diff,_dx_level](auto& buffer_vector) 
+                //_fmm->compute_influence_field(it, _level_diff, _dx_level,_neighbors);
+                auto send_callback = [it, _fmm, _neighbors,_level_diff,_dx_level](auto& buffer_vector) 
                 {
                     //1. Swap buffer with sendfield
                     buffer_vector.resize(8*8*8);
@@ -551,13 +551,14 @@ public:
                             template get<SendField>().data());
 
                     //2. Compute influence field
-                    _fmm->compute_influence_field(it, _neighbors, _level_diff, _dx_level);
+                    _fmm->compute_influence_field(it,_level_diff, _dx_level, _neighbors);
 
                     //3. Swap sendfield with buffer
                     buffer_vector.swap(it->data()->
                             template get<SendField>().data());
+                    //buffer_vector=it->data()-> template get<SendField>().data();
                 };
-                task->register_sendCallback(callback);
+                task->register_sendCallback(send_callback);
                 //send_tasks_[it->rank()].push_back(task);
             }
         } 
@@ -1049,16 +1050,7 @@ public:
     }
     void query_octants()
     {
-        //Octant initialization function
-        auto f =[&](octant_t* _o){
-            auto level = _o->refinement_level();
-            level=level>=0?level:0;
-            auto bbase=domain_->tree()->octant_to_level_coordinate(
-                    _o->tree_coordinate(),level);
-            _o->data()=std::make_shared<datablock_t>(bbase,
-                    domain_->block_extent(),level, true);
-        };
-        domain_->tree()->construct_maps(this,f);
+        domain_->tree()->construct_maps(this);
     }
 
     auto domain()const{return domain_;}

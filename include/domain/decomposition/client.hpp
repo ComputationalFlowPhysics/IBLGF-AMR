@@ -44,6 +44,9 @@ public:
     using key_query_t  = typename trait_t::key_query_t;
     using rank_query_t = typename trait_t::rank_query_t;
 
+    using mask_init_query_send_t   = typename trait_t::mask_init_query_send_t;
+    using mask_init_query_recv_t   = typename trait_t::mask_init_query_recv_t;
+
     using leaf_query_send_t   = typename trait_t::leaf_query_send_t;
     using leaf_query_recv_t   = typename trait_t::leaf_query_recv_t;
 
@@ -60,6 +63,8 @@ public:
     using task_manager_t =typename trait_t::task_manager_t;
 
     using intra_client_server_t = ServerBase<trait_t>;
+
+    using fmm_mask_type = typename octant_t::fmm_mask_type;
 
  protected:
     using super_type::comm_;
@@ -103,6 +108,20 @@ public:
         int depth=domain_->tree()->depth();
         comm_.recv(0,0,depth);
         domain_->tree()->depth()=depth;
+    }
+
+    auto mask_query(std::vector<key_t>& task_dat)
+    {
+        auto& send_comm=
+            task_manager_->template send_communicator<mask_init_query_send_t>();
+
+        auto task= send_comm.post_task(&task_dat, 0);
+        QueryRegistry<mask_init_query_send_t, mask_init_query_recv_t> mq;
+
+        std::vector<fmm_mask_type> recvData;
+        mq.register_recvMap([&recvData](int i){return &recvData;} );
+        this->wait(mq);
+        return recvData;
     }
 
     auto leaf_query(std::vector<key_t>& task_dat)
@@ -1020,15 +1039,17 @@ public:
 
     }
 
-    /** @brief Query ranks of the neighbors, influence octants, children and
-     *         parents which do not belong to this processor.
-     *
-     */
     void query_leafs()
     {
-        domain_->tree()-> query_leafs(this);
-        domain_->tree()-> construct_leaf_maps(true);
+        domain_->tree()->query_leafs(this);
+        domain_->tree()->construct_leaf_maps(true);
     }
+
+    void query_masks()
+    {
+        domain_->tree()->query_masks(this);
+    }
+
     void query_octants()
     {
         //Octant initialization function
@@ -1042,6 +1063,7 @@ public:
         };
         domain_->tree()->construct_maps(this,f);
     }
+
 
     auto domain()const{return domain_;}
 

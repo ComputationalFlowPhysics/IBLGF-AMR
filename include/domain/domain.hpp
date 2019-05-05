@@ -275,16 +275,16 @@ public: //C/Dtors
                         }
                     }
                 }
-            this->tree()->construct_leaf_maps();
-            this->tree()->construct_level_maps();
-            this->tree()->construct_neighbor_lists();
+                this->tree()->construct_leaf_maps();
+                this->tree()->construct_level_maps();
+                this->tree()->construct_neighbor_lists();
             }
 
-        this->tree()->construct_influence_lists();
+            this->tree()->construct_influence_lists();
+
         }
 
-     }
-
+    }
     void distribute()
     {
         decomposition_.distribute();

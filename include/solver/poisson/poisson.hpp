@@ -18,7 +18,6 @@
 namespace solver
 {
 
-
 using namespace domain;
 
 /** @brief Poisson solver using lattice Green's functions. Convolutions

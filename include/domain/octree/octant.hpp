@@ -45,11 +45,21 @@ public:
 
     using data_type = DataType;
 
-
     static constexpr int num_vertices(){return pow(2,Dim);}
     static constexpr int num_faces(){return 2*Dim;}
     static constexpr int num_edges(){return 2*num_faces();}
     static constexpr int nNeighbors(){return pow(3,Dim);;}
+
+public:
+    enum MASK_LIST {
+        Mask_FMM_Source,
+        Mask_FMM_Target,
+        Mask_Last = Mask_FMM_Target };
+
+    static const int fmm_max_idx_=30;
+
+    using fmm_mask_type =
+        std::array< std::array<bool, Mask_Last + 1>, fmm_max_idx_>;
 
 public:
     friend tree_type;
@@ -112,8 +122,7 @@ public: //Ctors
         std::fill(neighbor_.begin(),neighbor_.end(),nullptr);
         std::fill(influence_.begin(),influence_.end(),nullptr);
 
-        //std::fill(masks_.begin(),masks_.end(),false);
-        for (int i=0; i<fmm_max_mask_levels; ++i)
+        for (int i=0; i<fmm_max_idx_; ++i)
         {
             std::fill(fmm_masks_[i].begin(),fmm_masks_[i].end(),false);
         }
@@ -135,12 +144,10 @@ public: //Ctors
         return res;
     }
 
-
-
-    //TODO: store this bool while constructing
     bool is_leaf()const noexcept{return flag_leaf_;}
 
     void flag_leaf(const bool flag)noexcept {flag_leaf_ = flag;}
+    void flag_mask(const fmm_mask_type fmm_flag)noexcept {fmm_masks_ = fmm_flag;}
 
     bool is_leaf_search() const noexcept
     {
@@ -190,6 +197,8 @@ public: //Ctors
     Octant* child(int i) const noexcept{return children_[i].get();}
 
     void neighbor_clear () noexcept{neighbor_.fill(nullptr);}
+    const auto neighbor_number () const noexcept{return neighbor_.size();}
+
     Octant* neighbor (int i) const noexcept{return neighbor_[i];}
     Octant** neighbor_pptr (int i) noexcept{return &neighbor_[i];}
     void neighbor(int i, Octant* new_neighbor)
@@ -199,7 +208,6 @@ public: //Ctors
 
     const auto influence_number () const noexcept{return influence_.size();}
     void influence_number (int i) noexcept{/*influence_num = i;*/}
-
 
     void influence_clear () noexcept{influence_.fill(nullptr);}
     Octant* influence (int i) const noexcept{return influence_[i];}
@@ -215,9 +223,12 @@ public: //Ctors
     //   masks_[i] = value;
     //}
 
+    fmm_mask_type fmm_mask() noexcept
+    {return fmm_masks_;}
+
     bool fmm_mask(int fmm_base_level, int i) noexcept
-        {
-            return fmm_masks_[fmm_base_level][i];}
+        {return fmm_masks_[fmm_base_level][i];}
+
     bool* fmm_mask_ptr(int fmm_base_level, int i) noexcept
         {
             if (fmm_base_level<0) std::cout<<"base level < 0" << std::endl;
@@ -228,21 +239,26 @@ public: //Ctors
     }
 
 
-    float_type load()const noexcept
+    void add_load(int l)
     {
-        float_type load=1.0;
-        for(int c=0;c<static_cast<int>(influence_.size()) ;++c)
-        {
-            Octant* inf = this->influence(c);
-            if(inf!=nullptr) load=load+1.0;
-        }
-        for(int c=0;c<static_cast<int>(neighbor_.size());++c)
-        {
-            Octant* inf = this->neighbor(c);
-            if(inf!=nullptr) load=load+1.0;
-        }
-        if(!is_leaf()) load*=2.0;
-        return load;
+        load_+=l;
+    }
+    int load()const noexcept
+    {
+        return load_;
+        //float_type load=1.0;
+        //for(int c=0;c<static_cast<int>(influence_.size()) ;++c)
+        //{
+        //    Octant* inf = this->influence(c);
+        //    if(inf!=nullptr) load=load+1.0;
+        //}
+        //for(int c=0;c<static_cast<int>(neighbor_.size());++c)
+        //{
+        //    Octant* inf = this->neighbor(c);
+        //    if(inf!=nullptr) load=load+1.0;
+        //}
+        //if(!is_leaf()) load*=2.0;
+        //return load;
     }
 
 
@@ -362,13 +378,6 @@ public: //Construct
     auto num_neighbors(){return neighbor_.size();}
 
 
-public: //Neighbors
-
-    enum MASK_LIST {
-        Mask_FMM_Source,
-        Mask_FMM_Target,
-        Mask_Last = Mask_FMM_Target };
-
 public:
 
 	Octant* refine(unsigned int i)
@@ -382,6 +391,7 @@ public:
 private:
 
     int idx_ = 0;
+    int load_ = 0;
     boost::mpi::communicator comm_;
     std::shared_ptr<data_type> data_ = nullptr;
     Octant* parent_=nullptr;
@@ -393,8 +403,7 @@ private:
     bool flag_leaf_=false;
     //std::array<bool, Mask_Last + 1> masks_ = {false};
 
-    static const int fmm_max_mask_levels=15;
-    std::array< std::array<bool, Mask_Last + 1>, fmm_max_mask_levels> fmm_masks_;
+    fmm_mask_type fmm_masks_;
     tree_type* t_=nullptr;
 };
 

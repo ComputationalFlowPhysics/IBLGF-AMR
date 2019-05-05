@@ -743,29 +743,29 @@ public: //children and parent queries
 
     }
 
-    /** @brief Query ranks for all interior octants */
-    //template<class Client>
-    //void query_leaves( Client* _c)
-    //{
-    //    boost::mpi::communicator  w;
+    template<class Client>
+    void query_masks( Client* _c)
+    {
+        dfs_iterator it_begin(root()); dfs_iterator it_end;
 
-    //    dfs_iterator it_begin(root()); dfs_iterator it_end;
+        std::vector<key_type> keys;
+        for(auto it =it_begin;it!=it_end;++it)
+        {
+            keys.emplace_back(it->key());
+        }
 
-    //    std::vector<key_type> keys;
-    //    for(auto it =it_begin;it!=it_end;++it)
-    //    {
-    //        keys.emplace_back(it->key());
-    //    }
+        auto masks=_c->mask_query( keys );
 
-    //    auto leaves= _c->leaf_query( keys );
+        for(std::size_t i = 0; i < masks.size();++i )
+        {
+            auto nn = this->find_octant(keys[i]);
+            if (!nn)
+                throw std::runtime_error(
+                        "didn't find key for mask query");
+            nn->flag_mask((masks[i]));
+        }
 
-    //    int i = 0;
-    //    for(auto it =it_begin;it!=it_end;++it)
-    //    {
-    //        it->flag_leaf((leaves[i++]));
-    //    }
-    //}
-
+    }
 
     template<class Client>
     void query_leafs( Client* _c)
@@ -797,6 +797,7 @@ public: //children and parent queries
         }
 
     }
+
 public: //Query ranks of all octants, which are assigned in local tree
 
     /** @brief Query from server and construct all

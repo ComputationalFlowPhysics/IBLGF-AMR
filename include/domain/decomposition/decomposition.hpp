@@ -29,6 +29,8 @@ public:
     using client_type = Client<domain_type>;
     using server_type = Server<domain_type>;
     using communicator_type  = typename  domain_type::communicator_type;
+    using octant_t = typename domain_type::octant_t;
+    using MASK_LIST = typename octant_t::MASK_LIST;
 
 public:
 
@@ -63,6 +65,11 @@ public: //memeber functions
 
     void distribute()
     {
+        if(server())
+        {
+            poisson_dry();
+        }
+
         //Send the construction keys back and forth
         if(server())
         {
@@ -78,6 +85,7 @@ public: //memeber functions
         {
             server()->rank_query();
             server()->leaf_query();
+            server()->mask_query();
         }
         else if(client())
         {
@@ -86,8 +94,104 @@ public: //memeber functions
 
             client()->query_leafs();
             client()->disconnect();
+
+            client()->query_masks();
+            client()->disconnect();
         }
     }
+
+private:
+
+    void poisson_dry()
+    {
+        for (int l  = domain_->tree()->base_level()+0;
+                l < domain_->tree()->depth(); ++l)
+        {
+            fmm_dry(l, false);
+            fmm_dry(l, true);
+        }
+    }
+
+    void fmm_dry(int base_level, bool non_leaf_as_source)
+    {
+        fmm_dry_init_base_level_masks(base_level, non_leaf_as_source);
+        fmm_upward_pass_masks(base_level,
+                MASK_LIST::Mask_FMM_Source,
+                non_leaf_as_source);
+
+        fmm_upward_pass_masks(base_level,
+                MASK_LIST::Mask_FMM_Target,
+                non_leaf_as_source);
+    }
+
+    void fmm_upward_pass_masks(int base_level,
+            int mask_id,
+            bool non_leaf_as_source)
+    {
+
+        int refinement_level = base_level-domain_->tree()->base_level();
+        int fmm_mask_idx_ = refinement_level*2+non_leaf_as_source;
+
+        // for all levels
+        for (int level=base_level-1; level>=0; --level)
+        {
+            // parent's mask is true if any of its child's mask is true
+            for (auto it = domain_->begin(level);
+                    it != domain_->end(level);
+                    ++it)
+            {
+                // including ghost parents
+                it->fmm_mask(fmm_mask_idx_,mask_id,false);
+                for ( int c = 0; c < it->num_children(); ++c )
+                {
+                    if ( it->child(c) && it->child(c)->fmm_mask(fmm_mask_idx_,mask_id) )
+                    {
+                        it->fmm_mask(fmm_mask_idx_,mask_id, true);
+                        it->add_load(it->influence_number());
+                        break;
+                    }
+                }
+            }
+
+        }
+    }
+
+    void fmm_dry_init_base_level_masks(int base_level, bool non_leaf_as_source)
+    {
+        int refinement_level = base_level-domain_->tree()->base_level();
+        int fmm_mask_idx_ = refinement_level*2+non_leaf_as_source;
+
+        if (non_leaf_as_source)
+        {
+            for (auto it = domain_->begin(base_level);
+                    it != domain_->end(base_level); ++it)
+            {
+                if ( it->is_leaf() )
+                {
+                    it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Source, false);
+                    it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Target, false);
+                } else
+                {
+                    it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Source, true);
+                    it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Target, true);
+
+                    it->add_load(it->influence_number());
+                    it->add_load(it->neighbor_number());
+                }
+            }
+        } else
+        {
+            for (auto it = domain_->begin(base_level);
+                    it != domain_->end(base_level); ++it)
+            {
+                it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Source, true);
+                it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Target, true);
+                it->add_load(it->influence_number());
+                it->add_load(it->neighbor_number());
+            }
+        }
+    }
+
 
 public: //access memebers:
 

@@ -43,6 +43,9 @@ public:
     using rank_query_t   = typename trait_t::rank_query_t;
     using key_query_t    = typename trait_t::key_query_t;
 
+    using mask_init_query_send_t   = typename trait_t::mask_init_query_send_t;
+    using mask_init_query_recv_t   = typename trait_t::mask_init_query_recv_t;
+
     using leaf_query_send_t   = typename trait_t::leaf_query_send_t;
     using leaf_query_recv_t   = typename trait_t::leaf_query_recv_t;
 
@@ -73,15 +76,16 @@ public:
     {
         std::cout<<"Computing domain decomposition for "<<comm_.size()<<" processors" <<std::endl;
 
-        domain_->tree()->construct_neighbor_lists();
-        domain_->tree()->construct_influence_lists();
-        domain_->tree()->construct_leaf_maps();
+        //domain_->tree()->construct_neighbor_lists();
+        //domain_->tree()->construct_influence_lists();
+        //domain_->tree()->construct_leaf_maps();
 
 
         float_type total_load=0.0;
         int nOctants=0;
         for( auto it = domain_->begin_df(); it!= domain_->end_df();++it )
         {
+            std::cout<< it->load() << std::endl;
             total_load+=it->load();
             ++nOctants;
         }
@@ -156,6 +160,17 @@ public:
         }
     }
 
+    void mask_query()
+    {
+        InlineQueryRegistry<mask_init_query_recv_t, mask_init_query_send_t> mq(comm_.size());
+        mq.register_completeFunc([this](auto _task, auto _answerData)
+        {
+            this->get_octant_mask(_task, _answerData);
+        });
+
+        this->run_query(mq);
+    }
+
     void leaf_query()
     {
         InlineQueryRegistry<leaf_query_recv_t, leaf_query_send_t> mq(comm_.size());
@@ -179,6 +194,25 @@ public:
     }
 
     template<class TaskPtr, class OutPtr>
+    void get_octant_mask(TaskPtr _task, OutPtr _out)
+    {
+        _out->resize(_task->data().size());
+        int count=0;
+        for(auto& key : _task->data())
+        {
+            auto oct =domain_->tree()->find_octant(key);
+            if(oct)
+            { (*_out)[count++]=(oct->fmm_mask());
+            }
+            else
+            {
+                throw std::runtime_error(
+                        "can't find octant for mask query");
+            }
+        }
+    }
+
+    template<class TaskPtr, class OutPtr>
     void get_octant_leaf(TaskPtr _task, OutPtr _out)
     {
         _out->resize(_task->data().size());
@@ -192,8 +226,6 @@ public:
             else
             {
                 (*_out)[count++]=false;
-                //std::cout<< key << std::endl;
-                //throw std::runtime_error("Leaf query octant doesn't exist");
             }
         }
     }

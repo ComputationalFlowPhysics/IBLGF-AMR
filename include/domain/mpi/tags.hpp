@@ -13,6 +13,7 @@ enum type: int
     key_query,
     mask_query,
     leaf,
+    mask_init,
     request,
     task_type,
     field_query,

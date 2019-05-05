@@ -161,6 +161,9 @@ public:
         auto refinement_level = level-domain_->tree()->base_level();
         auto dx_level =  dx_base/std::pow(2, refinement_level);
 
+        base_level_ = level;
+        fmm_mask_idx_ = refinement_level*2+non_leaf_as_source;
+
         // New logic using masks
         // 1. Give masks to the base level
 
@@ -190,46 +193,46 @@ public:
 
         //// Initialize Masks
 
-        //std::cout<<"FMM init base level masks" << std::endl;
-        fmm_init_base_level_masks(domain_, level, non_leaf_as_source);
-        ////std::cout<<"FMM upward masks" << std::endl;
-        fmm_upward_pass_masks(domain_, level, MASK_LIST::Mask_FMM_Source);
-        fmm_upward_pass_masks(domain_, level, MASK_LIST::Mask_FMM_Target);
+        ////std::cout<<"FMM init base level masks" << std::endl;
+        //fmm_init_base_level_masks(domain_, non_leaf_as_source);
+        //////std::cout<<"FMM upward masks" << std::endl;
+        //fmm_upward_pass_masks(domain_, MASK_LIST::Mask_FMM_Source);
+        //fmm_upward_pass_masks(domain_, MASK_LIST::Mask_FMM_Target);
 
-        ////std::cout<<"FMM sync masks" << std::endl;
-        fmm_sync_masks(domain_, level, MASK_LIST::Mask_FMM_Source);
-        fmm_sync_masks(domain_, level, MASK_LIST::Mask_FMM_Target);
+        //////std::cout<<"FMM sync masks" << std::endl;
+        //fmm_sync_masks(domain_, MASK_LIST::Mask_FMM_Source);
+        //fmm_sync_masks(domain_, MASK_LIST::Mask_FMM_Target);
 
         ////Initialize for each fmm // zero ing all tree
-        fmm_init_zero<fmm_s>(domain_, level, MASK_LIST::Mask_FMM_Source);
-        fmm_init_zero<fmm_t>(domain_, level, MASK_LIST::Mask_FMM_Target);
+        fmm_init_zero<fmm_s>(domain_, MASK_LIST::Mask_FMM_Source);
+        fmm_init_zero<fmm_t>(domain_, MASK_LIST::Mask_FMM_Target);
 
         //// Copy to temporary variables // only the base level
-        fmm_init_copy<Source, fmm_s>(domain_, level);
+        fmm_init_copy<Source, fmm_s>(domain_);
 
         //// Anterpolation
         pcout<<"FMM Antrp start" << std::endl;
-        fmm_antrp<fmm_s>(domain_, level);
+        fmm_antrp<fmm_s>(domain_);
 
         //// FMM Neighbors
         pcout<<"FMM B0 start" << std::endl;
-        fmm_B0<fmm_s, fmm_t>(domain_, level, dx_level);
+        fmm_B0<fmm_s, fmm_t>(domain_, dx_level);
 
         //// FMM influence list
         pcout<<"FMM Bx start" << std::endl;
-        //fmm_Bx_itr_build(domain_, level);
-        fmm_Bx<fmm_s, fmm_t>(domain_, level, dx_level);
+        //fmm_Bx_itr_build(domain_);
+        fmm_Bx<fmm_s, fmm_t>(domain_, dx_level);
 
         //// Interpolation
         pcout<<"FMM INTRP start" << std::endl;
-        fmm_intrp<fmm_t>(domain_, level);
+        fmm_intrp<fmm_t>(domain_);
         //std::cout<<"FMM INTRP done" << std::endl;
 
         //// Copy back
         if (!non_leaf_as_source)
-            fmm_add_equal<Target, fmm_t>(domain_, level);
+            fmm_add_equal<Target, fmm_t>(domain_);
         else
-            fmm_minus_equal<Target, fmm_t>(domain_, level);
+            fmm_minus_equal<Target, fmm_t>(domain_);
 
         boost::mpi::communicator world;
         //std::cout<<"Rank "<<world.rank() << " FFTW_count = ";
@@ -237,65 +240,65 @@ public:
         pcout<<"FMM For Level "<< level << " End -------------------------"<<std::endl;
     }
 
-    void fmm_Bx_itr_build(domain_t* domain_, int base_level)
+    void fmm_Bx_itr_build(domain_t* domain_)
     {
-        for (int level=base_level; level>=0; --level)
+        for (int level=base_level_; level>=0; --level)
         {
-            bool _neighbor = (level==base_level)? true:false;
+            bool _neighbor = (level==base_level_)? true:false;
             for (auto it = domain_->begin(level);
                     it != domain_->end(level);
                     ++it)
             {
-                if (!(it->data()) || !it->fmm_mask(base_level,MASK_LIST::Mask_FMM_Target) )
+                if (!(it->data()) || !it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Target) )
                     continue;
 
                 int recv_m_send_count =
                     domain_->decomposition().client()->template
-                        communicate_induced_fields_recv_m_send_count<fmm_t, fmm_t>(it, _neighbor, base_level);
+                        communicate_induced_fields_recv_m_send_count<fmm_t, fmm_t>(it, _neighbor, fmm_mask_idx_);
 
                 Bx_itr.emplace(recv_m_send_count, *it);
             }
         }
     }
 
-    void fmm_init_base_level_masks(domain_t* domain_, int base_level, bool non_leaf_as_source)
+    void fmm_init_base_level_masks(domain_t* domain_, bool non_leaf_as_source)
     {
 
         if (non_leaf_as_source)
         {
-            for (auto it = domain_->begin(base_level);
-                    it != domain_->end(base_level); ++it)
+            for (auto it = domain_->begin(base_level_);
+                    it != domain_->end(base_level_); ++it)
             {
                 if ( it->is_leaf() || !it->locally_owned() )
                 {
-                    it->fmm_mask(base_level,MASK_LIST::Mask_FMM_Source, false);
-                    it->fmm_mask(base_level,MASK_LIST::Mask_FMM_Target, false);
+                    it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Source, false);
+                    it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Target, false);
                 } else
                 {
-                    it->fmm_mask(base_level,MASK_LIST::Mask_FMM_Source, true);
-                    it->fmm_mask(base_level,MASK_LIST::Mask_FMM_Target, true);
+                    it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Source, true);
+                    it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Target, true);
                 }
             }
         } else
         {
-            for (auto it = domain_->begin(base_level);
-                    it != domain_->end(base_level); ++it)
+            for (auto it = domain_->begin(base_level_);
+                    it != domain_->end(base_level_); ++it)
             if (it->locally_owned())
             {
-                it->fmm_mask(base_level,MASK_LIST::Mask_FMM_Source, true);
-                it->fmm_mask(base_level,MASK_LIST::Mask_FMM_Target, true);
+                it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Source, true);
+                it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Target, true);
             } else
             {
-                it->fmm_mask(base_level,MASK_LIST::Mask_FMM_Source, false);
-                it->fmm_mask(base_level,MASK_LIST::Mask_FMM_Target, false);
+                it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Source, false);
+                it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Target, false);
             }
         }
     }
 
-    void fmm_upward_pass_masks(domain_t* domain_, int base_level, int mask_id)
+    void fmm_upward_pass_masks(domain_t* domain_, int mask_id)
     {
         // for all levels
-        for (int level=base_level-1; level>=0; --level)
+        for (int level=base_level_-1; level>=0; --level)
         {
             // parent's mask is true if any of its child's mask is true
             for (auto it = domain_->begin(level);
@@ -303,12 +306,12 @@ public:
                     ++it)
             {
                 // including ghost parents
-                it->fmm_mask(base_level,mask_id, false);
+                it->fmm_mask(fmm_mask_idx_,mask_id, false);
                 for ( int c = 0; c < it->num_children(); ++c )
                 {
-                    if ( it->child(c) && it->child(c)->fmm_mask(base_level,mask_id) )
+                    if ( it->child(c) && it->child(c)->fmm_mask(fmm_mask_idx_,mask_id) )
                     {
-                        it->fmm_mask(base_level,mask_id, true);
+                        it->fmm_mask(fmm_mask_idx_,mask_id, true);
                         break;
                     }
                 }
@@ -316,66 +319,66 @@ public:
 
             domain_->decomposition().client()-> template
                     communicate_mask_single_level_updownward_OR(level,
-                            mask_id, true, base_level);
+                            mask_id, true, fmm_mask_idx_);
         }
     }
 
-    void fmm_sync_masks(domain_t* domain_, int base_level, int mask_id)
+    void fmm_sync_masks(domain_t* domain_, int mask_id)
     {
-        fmm_sync_parent_masks(domain_, base_level, mask_id);
+        fmm_sync_parent_masks(domain_, mask_id);
 
         //std::cout<<"FMM SYNC parent MASKS done" << std::endl;
-        fmm_sync_inf_masks(domain_, base_level, mask_id);
+        fmm_sync_inf_masks(domain_, mask_id);
 
         //std::cout<<"FMM SYNC inf MASKS done" << std::endl;
-        //fmm_sync_child_mask(domain_, base_level, mask_id);
+        //fmm_sync_child_mask(domain_, mask_id);
         //std::cout<<"FMM SYNC child MASKS done" << std::endl;
     }
 
-    void fmm_sync_parent_masks(domain_t* domain_, int base_level, int mask_id)
+    void fmm_sync_parent_masks(domain_t* domain_, int mask_id)
     {
-        for (int level=base_level-1; level>=0; --level)
+        for (int level=base_level_-1; level>=0; --level)
         {
             domain_->decomposition().client()-> template
                     communicate_mask_single_level_updownward_OR(level,
-                            mask_id,false, base_level);
+                            mask_id,false, fmm_mask_idx_);
         }
     }
 
-    void fmm_sync_inf_masks(domain_t* domain_, int base_level, int mask_id)
+    void fmm_sync_inf_masks(domain_t* domain_, int mask_id)
     {
 
-        for (int level=base_level; level>=0; --level)
+        for (int level=base_level_; level>=0; --level)
         {
-            bool neighbor_ = (level==base_level)? true:false;
+            bool neighbor_ = (level==base_level_)? true:false;
 
             domain_->decomposition().client()-> template
                     communicate_mask_single_level_inf_sync(level,
-                            mask_id, neighbor_, base_level);
+                            mask_id, neighbor_, fmm_mask_idx_);
         }
     }
 
-    void fmm_sync_child_mask(domain_t* domain_, int base_level, int mask_id)
+    void fmm_sync_child_mask(domain_t* domain_, int mask_id)
     {
 
-        for (int level=base_level-1; level>=0; --level)
+        for (int level=base_level_-1; level>=0; --level)
         {
 
             domain_->decomposition().client()-> template
                     communicate_mask_single_level_child_sync(level,
-                            mask_id, base_level);
+                            mask_id, fmm_mask_idx_);
 
         }
     }
 
 
-    auto initialize_upward_iterator(int level, domain_t* domain_,bool _upward, int base_level)
+    auto initialize_upward_iterator(int level, domain_t* domain_,bool _upward)
     {
         std::vector<std::pair<octant_t*, int>> octants;
         for (auto it = domain_->begin(level); it != domain_->end(level); ++it)
         {
             int recv_m_send_count=domain_-> decomposition().client()->
-                updownward_pass_mcount(*it,_upward, base_level);
+                updownward_pass_mcount(*it,_upward, fmm_mask_idx_);
 
             octants.emplace_back(std::make_pair(*it,recv_m_send_count));
         }
@@ -391,21 +394,20 @@ public:
         class t
     >
     void fmm_Bx(domain_t* domain_,
-                int base_level,
                 float_type dx_level)
     {
         std::vector<std::pair<octant_t*, int>> octants;
-        for (int level=base_level; level>=0; --level)
+        for (int level=base_level_; level>=0; --level)
         {
             for (auto it = domain_->begin(level); it != domain_->end(level); ++it)
             {
-                bool _neighbor = (level==base_level)? true:false;
-                if (!(it->data()) || !it->fmm_mask(base_level,MASK_LIST::Mask_FMM_Target) )
+                bool _neighbor = (level==base_level_)? true:false;
+                if (!(it->data()) || !it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Target) )
                     continue;
 
                 int recv_m_send_count =
                     domain_->decomposition().client()->template
-                    communicate_induced_fields_recv_m_send_count<fmm_t, fmm_t>(it, _neighbor, base_level);
+                    communicate_induced_fields_recv_m_send_count<fmm_t, fmm_t>(it, _neighbor, fmm_mask_idx_);
 
                 octants.emplace_back(std::make_pair(*it,recv_m_send_count));
             }
@@ -422,24 +424,24 @@ public:
             auto it =B_it->first;
             int level = it->level();
 
-            bool _neighbor = (level==base_level)? true:false;
-            if (!(it->data()) || !it->fmm_mask(base_level,MASK_LIST::Mask_FMM_Target) )
+            bool _neighbor = (level==base_level_)? true:false;
+            if (!(it->data()) || !it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Target) )
                 continue;
 
             for (std::size_t i=0; i< it->influence_number(); ++i)
             {
                 auto n_s = it->influence(i);
                 if (n_s && n_s->locally_owned()
-                        && n_s->fmm_mask(base_level,MASK_LIST::Mask_FMM_Source))
+                        && n_s->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Source))
                 {
 
-                    fmm_tt<s,t>(n_s, it, base_level-level, dx_level);
+                    fmm_tt<s,t>(n_s, it, base_level_-level, dx_level);
                 }
             }
 
             //setup the tasks
             domain_->decomposition().client()->template
-                communicate_induced_fields<fmm_t, fmm_t>(it, _neighbor, start_communication, base_level);
+                communicate_induced_fields<fmm_t, fmm_t>(it, _neighbor, start_communication, fmm_mask_idx_);
 
             if(!combined_messages && B_it->second==0)
             {
@@ -472,23 +474,22 @@ public:
         class t
     >
     void fmm_B0(domain_t* domain_,
-                int base_level,
                 float_type dx_level)
     {
 
         int level_diff = 0;
 
-        for (auto it = domain_->begin(base_level);
-                it != domain_->end(base_level); ++it)
+        for (auto it = domain_->begin(base_level_);
+                it != domain_->end(base_level_); ++it)
         {
-            if ( !it->fmm_mask(base_level,MASK_LIST::Mask_FMM_Target) ) continue;
+            if ( !it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Target) ) continue;
 
             for (int i=0; i<27; ++i)
             {
                 auto n_s = it->neighbor(i);
 
                 if (n_s && n_s->locally_owned()
-                        && n_s->fmm_mask(base_level,MASK_LIST::Mask_FMM_Source))
+                        && n_s->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Source))
                 {
                     fmm_tt<s,t>(n_s, it, level_diff, dx_level);
                 }
@@ -497,14 +498,14 @@ public:
     }
 
     template< class f1, class f2 >
-    void fmm_add_equal(domain_t* domain_, int base_level)
+    void fmm_add_equal(domain_t* domain_)
     {
 
-        for (auto it = domain_->begin(base_level);
-                it != domain_->end(base_level);
+        for (auto it = domain_->begin(base_level_);
+                it != domain_->end(base_level_);
                 ++it)
         {
-            if(it->data() && it->locally_owned() && it->fmm_mask(base_level,MASK_LIST::Mask_FMM_Target))
+            if(it->data() && it->locally_owned() && it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Target))
             {
                 it->data()->template get_linalg<f1>().get()->
                     cube_noalias_view() +=
@@ -515,13 +516,13 @@ public:
     }
 
     template< class f1, class f2 >
-    void fmm_minus_equal(domain_t* domain_, int base_level)
+    void fmm_minus_equal(domain_t* domain_)
     {
-        for (auto it = domain_->begin(base_level);
-                it != domain_->end(base_level);
+        for (auto it = domain_->begin(base_level_);
+                it != domain_->end(base_level_);
                 ++it)
         {
-            if(it->data() && it->locally_owned() && it->fmm_mask(base_level,MASK_LIST::Mask_FMM_Target))
+            if(it->data() && it->locally_owned() && it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Target))
             {
 
                 it->data()->template get_linalg<f1>().get()->
@@ -533,15 +534,15 @@ public:
     }
 
     template< class field >
-    void fmm_init_zero(domain_t* domain_, int base_level, int mask_id)
+    void fmm_init_zero(domain_t* domain_, int mask_id)
     {
-        for (int level=base_level; level>=0; --level)
+        for (int level=base_level_; level>=0; --level)
         {
             for (auto it = domain_->begin(level);
                     it != domain_->end(level);
                     ++it)
             {
-                    if(it->data() && it->fmm_mask(base_level,mask_id))
+                    if(it->data() && it->fmm_mask(fmm_mask_idx_,mask_id))
                     {
                         for(auto& e: it->data()->template get_data<field>())
                             e=0.0;
@@ -555,13 +556,13 @@ public:
         class from,
         class to
     >
-    void fmm_init_copy(domain_t* domain_, int base_level)
+    void fmm_init_copy(domain_t* domain_)
     {
-        for (auto it = domain_->begin(base_level);
-                it != domain_->end(base_level);
+        for (auto it = domain_->begin(base_level_);
+                it != domain_->end(base_level_);
                 ++it)
         {
-            if(it->data() && it->locally_owned() && it->fmm_mask(base_level,MASK_LIST::Mask_FMM_Source))
+            if(it->data() && it->locally_owned() && it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Source))
             {
                 it->data()->template get_linalg<to>().get()->
                     cube_noalias_view() =
@@ -572,10 +573,10 @@ public:
     }
 
     template< class fmm_t >
-    void fmm_intrp(domain_t* domain_, int base_level)
+    void fmm_intrp(domain_t* domain_)
     {
 
-        //for (int level=1; level<base_level; ++level)
+        //for (int level=1; level<base_level_; ++level)
         //{
         //    //sort octants such that internal cells are first
         //    auto octants=initialize_upward_iterator(level,domain_,false);
@@ -594,7 +595,7 @@ public:
         //    for (auto B_it=octants.begin(); B_it!=octants.end(); ++B_it)
         //    {
         //        auto it =B_it->first;
-        //        if(it->data() && it->fmm_mask(base_level,MASK_LIST::Mask_FMM_Target) )
+        //        if(it->data() && it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Target) )
         //        {
         //            if(B_it->second<0 && !finished)
         //            {
@@ -603,38 +604,38 @@ public:
         //                finished=true;
         //            }
 
-        //            if(it->data() && it->fmm_mask(base_level,MASK_LIST::Mask_FMM_Target) )
+        //            if(it->data() && it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Target) )
         //                lagrange_intrp.nli_intrp_node<fmm_t>(it);
         //        }
         //    }//octants in level
         //}
 
         const int mask_id = MASK_LIST::Mask_FMM_Target;
-        for (int level=1; level<base_level; ++level)
+        for (int level=1; level<base_level_; ++level)
         {
             domain_->decomposition().client()-> template
-                    communicate_updownward_assign<fmm_t, fmm_t>(level,false,true,base_level);
+                    communicate_updownward_assign<fmm_t, fmm_t>(level,false,true,fmm_mask_idx_);
 
             for (auto it = domain_->begin(level);
                     it != domain_->end(level);
                     ++it)
             {
-                if(it->data() && it->fmm_mask(base_level,mask_id) )
-                    lagrange_intrp.nli_intrp_node<fmm_t>(it, mask_id, base_level);
+                if(it->data() && it->fmm_mask(fmm_mask_idx_,mask_id) )
+                    lagrange_intrp.nli_intrp_node<fmm_t>(it, mask_id, fmm_mask_idx_);
             }
         }
     }
 
     template< class fmm_s>
-    void fmm_antrp(domain_t* domain_, int base_level)
+    void fmm_antrp(domain_t* domain_)
     {
-        //for (int level=base_level-1; level>=0; --level)
+        //for (int level=base_level_-1; level>=0; --level)
         //{
         //    auto octants=initialize_upward_iterator(level,domain_,true);
         //    for (auto B_it=octants.begin(); B_it!=octants.end(); ++B_it)
         //    {
         //        auto it =B_it->first;
-        //        if(it->data() && it->fmm_mask(base_level,MASK_LIST::Mask_FMM_Source) )
+        //        if(it->data() && it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Source) )
         //            lagrange_intrp.nli_antrp_node<fmm_s>(it);
 
         //        domain_->decomposition().client()->
@@ -655,18 +656,18 @@ public:
         //}
 
         const int mask_id = MASK_LIST::Mask_FMM_Source;
-        for (int level=base_level-1; level>=0; --level)
+        for (int level=base_level_-1; level>=0; --level)
         {
             for (auto it = domain_->begin(level);
                     it != domain_->end(level);
                     ++it)
             {
-                if(it->data() && it->fmm_mask(base_level,mask_id) )
-                    lagrange_intrp.nli_antrp_node<fmm_s>(it, mask_id, base_level);
+                if(it->data() && it->fmm_mask(fmm_mask_idx_,mask_id) )
+                    lagrange_intrp.nli_antrp_node<fmm_s>(it, mask_id, fmm_mask_idx_);
             }
 
             domain_->decomposition().client()->
-                template communicate_updownward_add<fmm_s, fmm_s>(level, true, true, base_level);
+                template communicate_updownward_add<fmm_s, fmm_s>(level, true, true, fmm_mask_idx_);
 
             for (auto it = domain_->begin(level);
                     it != domain_->end(level);
@@ -723,6 +724,8 @@ public:
         Nli lagrange_intrp;
 
     private:
+        int fmm_mask_idx_;
+        int base_level_;
         std::vector<float_type>     lgf;
         fft::Convolution            conv_;      ///< fft convolution
         std::multimap<int,octant_t*>     Bx_itr;

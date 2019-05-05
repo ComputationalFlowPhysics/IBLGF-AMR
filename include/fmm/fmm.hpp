@@ -566,7 +566,7 @@ public:
                     ++it)
             {
 
-                if (!it->locally_owned() && it->data())
+                if (!it->locally_owned() && it->data() && it->data()->is_allocated())
                 {
                     auto& cp2 = it ->data()->template get_linalg_data<fmm_s>();
                     cp2*=0.0;

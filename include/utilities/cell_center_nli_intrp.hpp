@@ -48,9 +48,10 @@ namespace interpolation
 
     public: // functionalities
 
-        template< class from,
-         class to,
-        typename octant_t
+        template<
+            class from,
+            class to,
+            typename octant_t
         >
         void add_source_correction(octant_t parent, double dx)
             {
@@ -67,20 +68,9 @@ namespace interpolation
                     auto& child_target_tmp  = child ->data()->template get_linalg_data<from>();
 
                     auto& child_linalg_data  = child ->data()->template get_linalg_data<to>();
-                    //child_linalg_data -= (child_target_L_tmp * (1.0/(dx *dx)));
-
                     for ( int i =1; i<Nb_-1; ++i){
                         for ( int j = 1; j<Nb_-1; ++j){
                             for ( int k = 1; k<Nb_-1; ++k){
-                                // differences in definition of mem layout
-                                //child_target_L_tmp(i,j,k)  = - 6.0 * child_target_tmp(i,j,k);
-                                //child_target_L_tmp(i,j,k) += child_target_tmp(i,j,k-1);
-                                //child_target_L_tmp(i,j,k) += child_target_tmp(i,j,k+1);
-                                //child_target_L_tmp(i,j,k) += child_target_tmp(i,j-1,k);
-                                //child_target_L_tmp(i,j,k) += child_target_tmp(i,j+1,k);
-                                //child_target_L_tmp(i,j,k) += child_target_tmp(i+1,j,k);
-                                //child_target_L_tmp(i,j,k) += child_target_tmp(i-1,j,k);
-
                                 child_linalg_data(i,j,k) += 6.0 * child_target_tmp(i,j,k) * (1.0/(dx *dx));
                                 child_linalg_data(i,j,k) -= child_target_tmp(i,j,k-1) * (1.0/(dx *dx));
                                 child_linalg_data(i,j,k) -= child_target_tmp(i,j,k+1) * (1.0/(dx *dx));
@@ -88,21 +78,6 @@ namespace interpolation
                                 child_linalg_data(i,j,k) -= child_target_tmp(i,j+1,k) * (1.0/(dx *dx));
                                 child_linalg_data(i,j,k) -= child_target_tmp(i+1,j,k) * (1.0/(dx *dx));
                                 child_linalg_data(i,j,k) -= child_target_tmp(i-1,j,k) * (1.0/(dx *dx));
-
-
-                                //if(std::isnan(child_target_L_tmp(i,j,k)))
-                                //{
-                                //    std::cout<<"LHS"<<std::endl;
-                                //    std::cout<<"this is nan at level = " << child->level()<<std::endl;
-                                //    std::cout<<"parent locally owned" << parent->locally_owned()<<std::endl;
-                                //}
-                                //if(std::isnan(child_target_tmp(i,j,k)))
-                                //{
-                                //    std::cout<<"RHS"<<std::endl;
-                                //    std::cout<<"this is nan at level = " << child->level()<<std::endl;
-                                //    std::cout<<"parent locally owned" << parent->locally_owned()<<std::endl;
-                                //}
-
                             }
                         }
                     }
@@ -294,7 +269,7 @@ namespace interpolation
 
     //private:
     public:
-        const int pts_cap = 3;
+        const int pts_cap = 6;
 
         // antrp mat
 

@@ -283,7 +283,7 @@ public:
             for (auto it  = domain_->begin(l);
                       it != domain_->end(l); ++it)
             {
-                if (!it->data()) continue;
+                if (!it->data() || !it->locally_owned() || !it ->data()->is_allocated()) continue;
                 auto refinement_level = it->refinement_level();
                 auto dx_level =  dx_base/std::pow(2,refinement_level);
 

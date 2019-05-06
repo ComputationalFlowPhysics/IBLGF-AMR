@@ -530,21 +530,18 @@ public:
             {
                 auto send_ptr=it->data()->
                 template get<SendField>().data_ptr();
-                //task->requires_confirmation()=false;
-                //task->octant()=it;
 
-                //auto task = std::make_shared<induced_fields_task_t<InfluenceFieldBuffer>>(idx);
                 auto task= send_comm.post_task(send_ptr, it->rank(), true, idx);
                 task->attach_data(send_ptr);
                 task->rank_other()=it->rank();
                 task->requires_confirmation()=false;
                 task->octant()=it;
+                auto size = it->data()->template get<SendField>().real_block().nPoints();
 
-                //_fmm->compute_influence_field(it, _level_diff, _dx_level,_neighbors);
-                auto send_callback = [it, _fmm, _neighbors,_level_diff,_dx_level](auto& buffer_vector) 
+                auto send_callback = [it, _fmm, _neighbors,_level_diff,_dx_level,size](auto& buffer_vector) 
                 {
                     //1. Swap buffer with sendfield
-                    buffer_vector.resize(8*8*8);
+                    buffer_vector.resize(size);
                     std::fill(buffer_vector.begin(), buffer_vector.end(),0);
                     buffer_vector.swap(it->data()->
                             template get<SendField>().data());
@@ -555,10 +552,8 @@ public:
                     //3. Swap sendfield with buffer
                     buffer_vector.swap(it->data()->
                             template get<SendField>().data());
-                    //buffer_vector=it->data()-> template get<SendField>().data();
                 };
                 task->register_sendCallback(send_callback);
-                //send_tasks_[it->rank()].push_back(task);
             }
         } 
         else

@@ -256,7 +256,7 @@ public:
     void apply_amr_laplace()
     {
 
-        const float_type dx_base=domain_->dx_base();
+        //const float_type dx_base=domain_->dx_base();
 
         //Coarsification:
         //pcout<<"Laplace - coarsification "<<std::endl;

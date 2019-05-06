@@ -539,7 +539,6 @@ public:
                 task->rank_other()=it->rank();
                 task->requires_confirmation()=false;
                 task->octant()=it;
-                auto size=it->data()-> template get<SendField>().data().size();
 
                 //_fmm->compute_influence_field(it, _level_diff, _dx_level,_neighbors);
                 auto send_callback = [it, _fmm, _neighbors,_level_diff,_dx_level](auto& buffer_vector) 

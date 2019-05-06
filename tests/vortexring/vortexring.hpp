@@ -496,8 +496,6 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
 
         auto scaling =  std::pow(2,b.level());
         center*=scaling;
-       //std::cout<<"Center "<<center<<" level "<<b.level()<<std::endl;
-
         auto dx_level =  dx_base/std::pow(2,b.level());
 
         b.grow(2,2);
@@ -556,40 +554,15 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
                     const float_type z = static_cast<float_type>
                         (k-center[2]+0.5)*dx_level;
 
-                    const float_type r=std::sqrt(x*x+y*y+z*z) ;
-
-
                     const float_type R=_R;
                     const float_type c1=_c1;
                     const float_type c2=_c2;
-                    const float_type t=std::sqrt( (r-R)*(r-R) +z*z )/R;
 
                     float_type vort=vorticity(x,y,z,R,c1,c2);
                     if(std::fabs(vort) > vorticity_max_*pow(0.25*0.25 , diff_level))
                     {
                         return true;
                     }
-
-                    //float_type dx_vort=(
-                    //    vorticity(x+dx_level,y,z,R,c1,c2)-
-                    //    vorticity(x-dx_level,y,z,R,c1,c2))/2.0;
-                    //float_type dy_vort=(
-                    //    vorticity(x,y+dx_level,z,R,c1,c2)-
-                    //    vorticity(x,y-dx_level,z,R,c1,c2))/2.0;
-                    //float_type dz_vort=(
-                    //    vorticity(x,y,z+dx_level,R,c1,c2)-
-                    //    vorticity(x,y,z-dx_level,R,c1,c2))/2.0;
-                    //float_type mag_grad_vort =
-                    //    std::sqrt(dx_vort*dx_vort+dy_vort*dy_vort+dz_vort*dz_vort);
-
-
-                    ////float_type mag_grad =std::sqrt(dx*dx+dy*dy+dz*dz);
-                    ////std::cout<<"magvort "<<mag_grad_vort<<std::endl;
-                    ////if(mag_grad*dx_level > 1.0e-7)
-                    //if(mag_grad_vort> eps_grad)
-                    //{
-                    //    return true;
-                    //}
                 }
             }
         }

@@ -382,7 +382,7 @@ public:
                 {return e0.second> e1.second;  });
 
         const bool start_communication = true;
-        bool combined_messages=false;
+        //bool combined_messages=false;
 
         for (auto B_it=octants.begin(); B_it!=octants.end(); ++B_it)
         {

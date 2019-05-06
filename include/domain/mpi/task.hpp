@@ -88,11 +88,14 @@ struct AddAssignRecv : CopyAssign<TaskType>
         task_.comm_buffer_=_b;
         task_.comm_buffer_->attach();
     }
+    //send
     void assign_data2buffer() noexcept
     {
         //inplace send ... 
         //task_.comm_buffer_->data()=task_.data();
     }
+
+
     void assign_buffer2data() noexcept
     {
         std::transform (task_.data().begin(), task_.data().end(),
@@ -294,6 +297,9 @@ public:
     using buffer_type = TaskBuffer<Tag,T,ID>;
     using buffer_container_type = typename buffer_type::container_t;
     using data_type = T;
+
+    using inplace_task_type =  Task<Tag,T,Inplace,MetaDataType,ID>;
+
 
     static constexpr int tag(){return Tag;}
     

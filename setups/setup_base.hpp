@@ -23,7 +23,7 @@ class SetupBase : private crtp::Crtps<Setup,SetupBase<Setup,SetupTraits>>,
                   public SetupTraits
 {
 
-public: 
+public:
     using SetupTraits::Dim;
 
 public: //default fields
@@ -32,24 +32,24 @@ public: //default fields
     (
       (coarse_target_sum, float_type, 1, 1),
       (source_tmp       , float_type, 1, 1),
-      (fmm_s,             float_type, 1, 1), 
+      (fmm_s,             float_type, 1, 1),
       (fmm_t,             float_type, 1, 1)
     ))
     using field_tuple=fields_tuple_t;
 
 public: //datablock
     template<class... DataFieldType>
-    using db_template = domain::DataBlock<Dim, node, 
+    using db_template = domain::DataBlock<Dim, node,
                                 DataFieldType...>;
     template<class userFields>
     using datablock_template_t =
         typename domain::tuple_utils::make_from_tuple
         <
           db_template,
-          typename domain::tuple_utils::concat 
+          typename domain::tuple_utils::concat
               <field_tuple,userFields>::type
         >::type;
-    
+
 
 public: //Trait types to be used by others
     using user_fields        = typename SetupTraits::fields_tuple_t;
@@ -64,6 +64,7 @@ public: //Trait types to be used by others
 
 
     using Fmm_t = Fmm<SetupBase>;
+    using fmm_mask_builder_t = FmmMaskBuilder<domain_t>;
     using poisson_solver_t = solver::PoissonSolver<SetupBase>;
 
 public: //Ctors
@@ -87,9 +88,9 @@ public: //Ctors
 
 protected:
     simulation_t                        simulation_;     ///< simulation
-    std::shared_ptr<domain_t>           domain_=nullptr; ///< Domain reference for convience 
+    std::shared_ptr<domain_t>           domain_=nullptr; ///< Domain reference for convience
     parallel_ostream::ParallelOstream   pcout;           ///< parallel cout on master
-    parallel_ostream::ParallelOstream   pcout_c=parallel_ostream::ParallelOstream(1);     
+    parallel_ostream::ParallelOstream   pcout_c=parallel_ostream::ParallelOstream(1);
 };
 
 #endif // IBLGF_INCLUDED_SETUP_BASE_HPP

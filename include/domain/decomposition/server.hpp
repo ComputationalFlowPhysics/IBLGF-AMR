@@ -76,16 +76,10 @@ public:
     {
         std::cout<<"Computing domain decomposition for "<<comm_.size()<<" processors" <<std::endl;
 
-        //domain_->tree()->construct_neighbor_lists();
-        //domain_->tree()->construct_influence_lists();
-        //domain_->tree()->construct_leaf_maps();
-
-
         float_type total_load=0.0;
         int nOctants=0;
         for( auto it = domain_->begin_df(); it!= domain_->end_df();++it )
         {
-            std::cout<< it->load() << std::endl;
             total_load+=it->load();
             ++nOctants;
         }
@@ -98,7 +92,7 @@ public:
         auto it = domain_->begin_bf();
         float_type current_load= 0.;
         for(int crank=0;crank<nProcs;++crank)
-       {
+        {
             float_type target_load= (static_cast<float_type>(crank+1)/nProcs)*total_load;
             target_load=std::min(target_load,total_load);
             float_type octant_load=0.;

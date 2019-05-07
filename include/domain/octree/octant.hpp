@@ -54,12 +54,12 @@ public:
     enum MASK_LIST {
         Mask_FMM_Source,
         Mask_FMM_Target,
-        Mask_Last = Mask_FMM_Target };
+        Mask_Last};
 
     static const int fmm_max_idx_=30;
 
     using fmm_mask_type =
-        std::array< std::array<bool, Mask_Last + 1>, fmm_max_idx_>;
+        std::array< std::array<bool, Mask_Last>, fmm_max_idx_>;
 
 public:
     friend tree_type;

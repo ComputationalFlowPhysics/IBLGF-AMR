@@ -20,6 +20,7 @@ using namespace dictionary;
  *  in Dim-dimensional space, the domain is constructed using an
  *  octree of blocks. Base blocks are read in from *  the config file.
  */
+
 template<int Dim, class DataBlock>
 class Domain
 {
@@ -285,9 +286,11 @@ public: //C/Dtors
         }
 
     }
+
+    template<class LoadCalculator, class FmmMaskBuilder>
     void distribute()
     {
-        decomposition_.distribute();
+        decomposition_.template distribute<LoadCalculator, FmmMaskBuilder>();
     }
 
 

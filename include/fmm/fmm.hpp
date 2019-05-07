@@ -36,6 +36,123 @@
 namespace fmm
 {
 
+template<class Domain>
+struct FmmMaskBuilder
+{
+
+    using octant_t = typename Domain::octant_t;
+    using MASK_LIST = typename octant_t::MASK_LIST;
+
+public:
+
+    static void build(Domain* domain_)
+    {
+        for (int l  = domain_->tree()->base_level()+0;
+                l < domain_->tree()->depth(); ++l)
+        {
+            fmm_dry(domain_, l, false);
+            fmm_dry(domain_, l, true);
+        }
+    }
+    static void fmm_dry(Domain* domain_, int base_level, bool non_leaf_as_source)
+    {
+
+
+        fmm_dry_init_base_level_masks(domain_, base_level, non_leaf_as_source);
+        fmm_upward_pass_masks(
+                domain_,
+                base_level,
+                MASK_LIST::Mask_FMM_Source,
+                non_leaf_as_source);
+
+        fmm_upward_pass_masks(
+                domain_,
+                base_level,
+                MASK_LIST::Mask_FMM_Target,
+                non_leaf_as_source);
+    }
+
+    static void fmm_upward_pass_masks(
+            Domain* domain_,
+            int base_level,
+            int mask_id,
+            bool non_leaf_as_source)
+    {
+
+        using octant_t = typename Domain::octant_t;
+        using MASK_LIST = typename octant_t::MASK_LIST;
+
+        int refinement_level = base_level-domain_->tree()->base_level();
+        int fmm_mask_idx_ = refinement_level*2+non_leaf_as_source;
+
+        // for all levels
+        for (int level=base_level-1; level>=0; --level)
+        {
+            // parent's mask is true if any of its child's mask is true
+            for (auto it = domain_->begin(level);
+                    it != domain_->end(level);
+                    ++it)
+            {
+                // including ghost parents
+                it->fmm_mask(fmm_mask_idx_,mask_id,false);
+                for ( int c = 0; c < it->num_children(); ++c )
+                {
+                    if ( it->child(c) && it->child(c)->fmm_mask(fmm_mask_idx_,mask_id) )
+                    {
+                        it->fmm_mask(fmm_mask_idx_,mask_id, true);
+                        it->add_load(it->influence_number());
+                        break;
+                    }
+                }
+            }
+
+        }
+    }
+
+    static void fmm_dry_init_base_level_masks(
+            Domain* domain_,
+            int base_level,
+            bool non_leaf_as_source)
+    {
+        int refinement_level = base_level-domain_->tree()->base_level();
+        int fmm_mask_idx_ = refinement_level*2+non_leaf_as_source;
+
+        if (non_leaf_as_source)
+        {
+            for (auto it = domain_->begin(base_level);
+                    it != domain_->end(base_level); ++it)
+            {
+                if ( it->is_leaf() )
+                {
+                    it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Source, false);
+                    it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Target, false);
+                } else
+                {
+                    it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Source, true);
+                    it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Target, true);
+
+                    it->add_load(it->influence_number());
+                    it->add_load(it->neighbor_number());
+                }
+            }
+        } else
+        {
+            for (auto it = domain_->begin(base_level);
+                    it != domain_->end(base_level); ++it)
+            {
+                it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Source, true);
+                it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Target, true);
+                it->add_load(it->influence_number());
+                it->add_load(it->neighbor_number());
+            }
+        }
+    }
+
+};
+
+
+
+
 using namespace domain;
 
 template<class Setup>
@@ -54,6 +171,7 @@ public: //Ctor:
     //Fields:
     using fmm_s = typename Setup::fmm_s;
     using fmm_t = typename Setup::fmm_t;
+
 
 public:
     Fmm(int Nb)

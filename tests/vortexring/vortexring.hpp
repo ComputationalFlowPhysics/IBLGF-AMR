@@ -114,7 +114,7 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
             [this](auto octant, int diff_level){return this->refinement(octant, diff_level);};
         domain_->init_refine(_d->get_dictionary("simulation_parameters")
                 ->template get_or<int>("nLevels",0), global_refinement_);
-        domain_->distribute();
+        domain_->distribute<fmm_mask_builder_t, fmm_mask_builder_t>();
         this->initialize();
 
         boost::mpi::communicator world;

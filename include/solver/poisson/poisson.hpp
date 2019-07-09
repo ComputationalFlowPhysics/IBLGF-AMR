@@ -82,15 +82,15 @@ public:
         const float_type dx_base=domain_->dx_base();
 
         // Clean
-        for (auto it = domain_->begin();
-                it != domain_->end();
-                ++it)
-        {
-            if (!(it.ptr() && it->data())) continue;
-            auto& cp2 = it ->data()->template get_linalg_data<source_tmp>();
-            cp2 *=0.0;
+        //for (auto it = domain_->begin();
+        //        it != domain_->end();
+        //        ++it)
+        //{
+        //    if (!(it.ptr() && it->data())) continue;
+        //    auto& cp2 = it ->data()->template get_linalg_data<source_tmp>();
+        //    cp2 *=0.0;
 
-        }
+        //}
 
         // Copy source
         for (auto it  = domain_->begin_leafs();

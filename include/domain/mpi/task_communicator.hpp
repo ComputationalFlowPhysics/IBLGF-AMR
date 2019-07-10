@@ -137,11 +137,12 @@ public:
         acc_tasks.resize(world.size());
         acc_fields.resize(world.size());
 
-        //1. Accumulate tasks per CPU rank
+        //1. Accumulate tasks per CPU rank and clear the task_ vector
         for(auto& t : tasks_)
         {
             acc_tasks[t->rank_other()].push_back(t);
         }
+        tasks_.clear();
         std::sort(acc_tasks.begin(),acc_tasks.end(),
                 [&](const auto& c0, const auto& c1)
                 {
@@ -168,10 +169,7 @@ public:
                     &acc_fields[rank_other], rank_other, true, tag);
             }
         }
-
-        //3. delete task that have been packed
-
-
+        
         //4. start communication
         acc_comm_.start_communication();
     }

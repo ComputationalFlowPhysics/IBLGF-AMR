@@ -192,8 +192,6 @@ public:
             else
             {
                 (*_out)[count++]=false;
-                //std::cout<< key << std::endl;
-                //throw std::runtime_error("Leaf query octant doesn't exist");
             }
         }
     }
@@ -222,10 +220,6 @@ private:
 };
 
 }
-
-
-
-
 
 
 #endif

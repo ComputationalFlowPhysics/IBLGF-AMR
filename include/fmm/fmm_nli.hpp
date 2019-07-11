@@ -65,7 +65,6 @@ namespace fmm
                     if (child == nullptr || !child->fmm_mask(base_level, mask_id) /*|| !child->locally_owned()*/) continue;
                     if (!child ->data()) continue;
 
-
                     auto& child_linalg_data =
                         child ->data()->template get_linalg_data<field>();
 

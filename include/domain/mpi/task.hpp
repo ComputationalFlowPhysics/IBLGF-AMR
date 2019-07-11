@@ -10,6 +10,47 @@ namespace sr_mpi
 {
 
 template<class TaskType>
+struct InfluenceFieldBuffer : crtp::Crtp<TaskType, InfluenceFieldBuffer>
+{
+    template<class Buffer>
+    void attach_buffer( Buffer* _b ) noexcept
+    {
+        task_.comm_buffer_=_b;
+        task_.comm_buffer_->attach();
+    }
+
+    //send: Compute influence field and ship
+    void assign_data2buffer() noexcept
+    {
+        sendCallback_(send_buffer());
+    }
+
+    //recv:  Add influence field contributuin
+    void assign_buffer2data() noexcept
+    {
+        std::transform (task_.data().begin(), task_.data().end(),
+                        task_.comm_buffer_->data().begin(),
+                        task_.data().begin(),
+                        std::plus<typename TaskType::data_type::value_type>());
+    }
+    void deattach_buffer() noexcept
+    {
+        task_.comm_buffer_->detach();
+        task_.comm_buffer_=nullptr;
+    }
+    auto& send_buffer() noexcept {return  task_.comm_buffer_->data();  }
+    auto& recv_buffer() noexcept {return  task_.comm_buffer_->data();  }
+
+    template<class Function>
+    void register_sendCallback(Function& _f) noexcept { sendCallback_=_f; }
+
+
+private:
+    TaskType& task_=this->derived();
+    std::function<void(std::vector<double>&)> sendCallback_;
+};
+
+template<class TaskType>
 struct CopyAssign : crtp::Crtp<TaskType, CopyAssign>
 {
     template<class Buffer>
@@ -47,11 +88,14 @@ struct AddAssignRecv : CopyAssign<TaskType>
         task_.comm_buffer_=_b;
         task_.comm_buffer_->attach();
     }
+    //send
     void assign_data2buffer() noexcept
     {
-        //inplace send ... not
+        //inplace send ... 
         //task_.comm_buffer_->data()=task_.data();
     }
+
+
     void assign_buffer2data() noexcept
     {
         std::transform (task_.data().begin(), task_.data().end(),
@@ -71,7 +115,6 @@ private:
     TaskType& task_=this->derived();
 };
 
-//Ke TODO difference?
 
 template<class TaskType>
 struct OrAssignRecv : CopyAssign<TaskType>
@@ -253,8 +296,10 @@ public:
     using id_type =ID;
     using buffer_type = TaskBuffer<Tag,T,ID>;
     using buffer_container_type = typename buffer_type::container_t;
-
     using data_type = T;
+
+    using inplace_task_type =  Task<Tag,T,Inplace,MetaDataType,ID>;
+
 
     static constexpr int tag(){return Tag;}
     

@@ -33,7 +33,8 @@ public:
 
     using request_list_t = std::list<boost::mpi::request>;
     using query_arr_t =std::list<boost::mpi::request>;
-
+    using accumulated_task_communicator_type = 
+        TaskCommunicator< typename TaskType::inplace_task_type,Derived>;
 
 public: //Ctor
 
@@ -125,6 +126,80 @@ public:
         }
         return res;
     }
+
+    /** @brief Combine messages into a single Taks per rank and post 
+     *         send/recv task. For a send task, this wil copy
+     *         the buffer of the individual task into a single task per cpu.
+     *         */
+    void pack_messages()
+    {
+        boost::mpi::communicator world;
+        acc_tasks.resize(world.size());
+        acc_fields.resize(world.size());
+
+        //1. Accumulate tasks per CPU rank and clear the task_ vector
+        for(auto& t : tasks_)
+        {
+            acc_tasks[t->rank_other()].push_back(t);
+        }
+        tasks_.clear();
+        std::sort(acc_tasks.begin(),acc_tasks.end(),
+                [&](const auto& c0, const auto& c1)
+                {
+                return c0->octant()->key().id()< c1->octant()->key().id();
+                });
+        //2. Assign task buffer data to one vector
+        for(std::size_t rank_other=0; rank_other<acc_tasks.size();++rank_other)
+        {
+            //Accumulate data of all task for given dest rank into 
+            //one vector
+            for(std::size_t i=0;i<acc_tasks[rank_other].size();++i)
+            {
+                acc_fields[rank_other].insert(
+                    acc_fields[rank_other].end(),
+                    acc_tasks[rank_other][i]->send_buffer().begin(),
+                    acc_tasks[rank_other][i]->send_buffer().end());
+            }
+
+            //Make single task for the accumulated vector
+            if( acc_tasks[rank_other].size()>0 )
+            {
+                auto tag=acc_tasks[rank_other][0]->tag();
+                auto accumulated_task=acc_comm_.post_task(
+                    &acc_fields[rank_other], rank_other, true, tag);
+            }
+        }
+        
+        //4. start communication
+        acc_comm_.start_communication();
+    }
+
+    /** @brief * Unpack recv messages adn put them into buffers of the 
+     * finished tasks 
+     * */
+    void unpack_messages()
+    {
+
+        //Accumulated task is finish and needs to be unpacked in 
+        auto ftasks=acc_comm_.finish_communication();
+
+        //These are the task that belong to a specific cpu and are finished
+        for(auto& t : ftasks)
+        {
+            int count=0;
+            //Assign recv fields to buffer
+            for(auto& acct : acc_tasks[t->rank_other()]) //All tasks per cpu
+            {
+                //
+                for(std::size_t i=0;i<acct->buffer().size();++i)
+                {
+                    acct->buffer()[i]=t->buffer()[count++];
+                }
+            }
+        }
+    }
+
+
 
     /** * @brief Finish communication (send or receive for this task)
      *           Task will also be completed at the same time
@@ -220,6 +295,12 @@ protected:
     buffer_container_t buffer_;       ///< Data buffer to be send for each task.
     buffer_queue_t buffer_queue_;     ///< Queue of tasks to fill the send buffer
     task_vector_t unconfirmed_tasks_; ///< Unconfirmed tasks
+
+    ///< Communicator for accumulated tasks per CPU
+    bool pack_messages_=false;
+    accumulated_task_communicator_type* acc_comm_=nullptr; 
+    std::vector<task_vector_t> acc_tasks; ///< Vector of tasks per CPU;
+    std::vector<std::vector<task_data_t>> acc_fields;
 
 };
 

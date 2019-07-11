@@ -61,26 +61,24 @@ public: //Ctors:
     DataBlock(DataBlock&& rhs)=default;
 	DataBlock& operator=(DataBlock&&) & = default;
 
-    DataBlock(base_t _base, extent_t _extent, int _level=0, bool init=true)
+    DataBlock(base_t _base, extent_t _extent, int _level=0, bool _allocate=true)
     :super_type(_base, _extent, _level)
     {
-        if(init)
-            this->initialize(this->descriptor());
+        this->initialize(this->descriptor(),_allocate);
     }
 
-    DataBlock(const block_descriptor_type& _b, bool init=true)
+    DataBlock(const block_descriptor_type& _b, bool _allocate=true)
     :super_type(_b)
     {
-        if(init)
-            this->initialize( _b );
+        this->initialize( _b, _allocate);
     }
 
 
-    void initialize(const block_descriptor_type& _b)
+    void initialize(const block_descriptor_type& _b, bool _allocate)
     {
-        tuple_utils::for_each(fields, [this,&_b](auto& field)
+        tuple_utils::for_each(fields, [this,&_b, _allocate](auto& field)
         {
-            field.initialize(_b, true,0.0);
+            field.initialize(_b, _allocate, true,0.0);
         });
         this->generate_nodes();
     }
@@ -169,6 +167,10 @@ public: //member functions
     auto nodes_domain_end()const noexcept{return nodes_domain_.end();}
     const auto& nodes_domain()const{return nodes_domain_;}
     auto& nodes_domain(){return nodes_domain_;}
+
+    bool is_allocated(){
+        return std::get<0>(fields).data().size()>0;
+    }
 
 private: //private member helpers
 

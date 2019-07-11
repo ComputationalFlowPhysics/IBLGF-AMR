@@ -156,10 +156,10 @@ public:
     {
         auto& send_comm=
             task_manager_-> template
-            send_communicator<induced_fields_task_t<AddAssignRecv>>();
+            send_communicator<induced_fields_task_t<InfluenceFieldBuffer>>();
         auto& recv_comm=
             task_manager_->template
-            recv_communicator<induced_fields_task_t<AddAssignRecv>>();
+            recv_communicator<induced_fields_task_t<>>();
             send_comm.start_communication();
             recv_comm.start_communication();
             send_comm.finish_communication();
@@ -170,10 +170,10 @@ public:
     {
         auto& send_comm=
             task_manager_-> template
-            send_communicator<induced_fields_task_t<AddAssignRecv>>();
+            send_communicator<induced_fields_task_t<InfluenceFieldBuffer>>();
         auto& recv_comm=
             task_manager_->template
-            recv_communicator<induced_fields_task_t<AddAssignRecv>>();
+            recv_communicator<induced_fields_task_t<InfluenceFieldBuffer>>();
 
         while(true)
         {
@@ -187,7 +187,7 @@ public:
     }
 
 
-    void communicate_mask_single_level_inf_sync(int level, int mask_id, bool _neighbors, int base_level)
+    void communicate_mask_single_level_inf_sync(int level, int mask_id, bool _neighbors, int fmm_mask_idx)
     {
         boost::mpi::communicator  w;
 
@@ -236,7 +236,7 @@ public:
 
                 for(auto& r: unique_inflRanks)
                 {
-                    auto mask_ptr=it->fmm_mask_ptr(base_level,mask_id);
+                    auto mask_ptr=it->fmm_mask_ptr(fmm_mask_idx,mask_id);
 
                     auto task = send_comm.post_task( mask_ptr, r, true,  idx);
                     task->requires_confirmation()=false;
@@ -268,7 +268,7 @@ public:
 
                 if( is_influenced )
                 {
-                    auto mask_ptr=it->fmm_mask_ptr(base_level,mask_id);
+                    auto mask_ptr=it->fmm_mask_ptr(fmm_mask_idx,mask_id);
                     auto task= recv_comm.post_task(mask_ptr, it->rank(), true, idx);
 
                     task->requires_confirmation()=false;
@@ -292,7 +292,7 @@ public:
 
     }
 
-    void communicate_mask_single_level_updownward_OR(int level, int mask_id, bool _upward, int base_level)
+    void communicate_mask_single_level_updownward_OR(int level, int mask_id, bool _upward, int fmm_mask_idx)
     {
         auto& send_comm=
             task_manager_-> template
@@ -317,13 +317,13 @@ public:
                 {
                     if(_upward)
                     {
-                        auto mask_ptr=it->fmm_mask_ptr(base_level,mask_id);
+                        auto mask_ptr=it->fmm_mask_ptr(fmm_mask_idx,mask_id);
                         auto task=recv_comm.post_task( mask_ptr, r, true, idx );
                         task->requires_confirmation()=false;
 
                     } else
                     {
-                        auto mask_ptr=it->fmm_mask_ptr(base_level,mask_id);
+                        auto mask_ptr=it->fmm_mask_ptr(fmm_mask_idx,mask_id);
                         auto task=send_comm.post_task( mask_ptr, r, true, idx );
                         task->requires_confirmation()=false;
                     }
@@ -336,13 +336,13 @@ public:
                 {
                     if(_upward)
                     {
-                        auto mask_ptr=it->fmm_mask_ptr(base_level,mask_id);
+                        auto mask_ptr=it->fmm_mask_ptr(fmm_mask_idx,mask_id);
 
                         auto task=send_comm.post_task(mask_ptr, it->rank(), true,idx);
                         task->requires_confirmation()=false;
                     } else
                     {
-                        auto mask_ptr=it->fmm_mask_ptr(base_level,mask_id);
+                        auto mask_ptr=it->fmm_mask_ptr(fmm_mask_idx,mask_id);
 
                         auto task=recv_comm.post_task(mask_ptr, it->rank(), true,idx);
                         task->requires_confirmation()=false;
@@ -367,7 +367,7 @@ public:
 
     }
 
-    void communicate_mask_single_level_child_sync(int level, int mask_id, int base_level)
+    void communicate_mask_single_level_child_sync(int level, int mask_id, int fmm_mask_idx)
     {
         auto& send_comm=
             task_manager_-> template
@@ -395,7 +395,7 @@ public:
                         auto idx=get_octant_idx(child);
 
                         auto r = child->rank();
-                        auto mask_ptr=child->fmm_mask_ptr(base_level,mask_id);
+                        auto mask_ptr=child->fmm_mask_ptr(fmm_mask_idx,mask_id);
 
                         auto task=recv_comm.post_task( mask_ptr, r, true, idx );
                         task->requires_confirmation()=false;
@@ -412,7 +412,7 @@ public:
                     {
                         auto idx=get_octant_idx(child);
                         auto r = it->rank();
-                        auto mask_ptr=child->fmm_mask_ptr(base_level,mask_id);
+                        auto mask_ptr=child->fmm_mask_ptr(fmm_mask_idx,mask_id);
 
                         auto task=send_comm.post_task( mask_ptr, r, true, idx );
                         task->requires_confirmation()=false;
@@ -438,7 +438,7 @@ public:
     }
 
     template<class SendField,class RecvField, class Octant_t>
-    int communicate_induced_fields_recv_m_send_count( Octant_t it, bool _neighbors, int base_level )
+    int communicate_induced_fields_recv_m_send_count( Octant_t it, bool _neighbors, int fmm_mask_idx )
     {
         int count = 0;
         boost::mpi::communicator  w;
@@ -455,7 +455,7 @@ public:
             {
                 const auto inf=it->influence(i);
                 if(inf && inf->rank()==myRank &&
-                   inf->fmm_mask(base_level,MASK_LIST::Mask_FMM_Source))
+                   inf->fmm_mask(fmm_mask_idx,MASK_LIST::Mask_FMM_Source))
                 {return +1000000;}
             }
 
@@ -465,7 +465,7 @@ public:
                 {
                     const auto inf=it->neighbor(i);
                     if(inf && inf->rank()==myRank &&
-                       inf->fmm_mask(base_level,MASK_LIST::Mask_FMM_Source))
+                       inf->fmm_mask(fmm_mask_idx,MASK_LIST::Mask_FMM_Source))
                     {return +1000000;}
                 }
             }
@@ -477,7 +477,7 @@ public:
             {
                 const auto inf=it->influence(i);
                 if(inf && inf->rank()!=myRank &&
-                   inf->fmm_mask(base_level,MASK_LIST::Mask_FMM_Source))
+                   inf->fmm_mask(fmm_mask_idx,MASK_LIST::Mask_FMM_Source))
                 {
                     ++count;
                 }
@@ -489,7 +489,7 @@ public:
                 {
                     const auto inf=it->neighbor(i);
                     if(inf && inf->rank()!=myRank &&
-                       inf->fmm_mask(base_level,MASK_LIST::Mask_FMM_Source))
+                       inf->fmm_mask(fmm_mask_idx,MASK_LIST::Mask_FMM_Source))
                     {
                         ++count;
                     }
@@ -499,22 +499,23 @@ public:
         return count;
     }
 
-    template<class SendField,class RecvField, class Octant_t>
-    void communicate_induced_fields(Octant_t it,
+
+    template<class SendField,class RecvField, class FMMType>
+    void communicate_induced_fields(octant_t* it, FMMType* _fmm,
+                                    int _level_diff, float_type _dx_level,
                                     bool _neighbors,
                                     bool _start_communication,
-                                    int base_level)
+                                    int fmm_mask_idx)
     {
-        if (!it->fmm_mask(base_level,MASK_LIST::Mask_FMM_Target)) return;
+        if (!it->fmm_mask(fmm_mask_idx,MASK_LIST::Mask_FMM_Target)) return;
 
         boost::mpi::communicator w;
-
         auto& send_comm=
             task_manager_-> template
-            send_communicator<induced_fields_task_t<AddAssignRecv>>();
+            send_communicator<induced_fields_task_t<InfluenceFieldBuffer>>();
         auto& recv_comm=
             task_manager_->template
-            recv_communicator<induced_fields_task_t<AddAssignRecv>>();
+            recv_communicator<induced_fields_task_t<InfluenceFieldBuffer>>();
 
         const int myRank=w.rank();
         const auto idx=get_octant_idx(it);
@@ -529,9 +530,8 @@ public:
             for(std::size_t i = 0; i< it->influence_number(); ++i)
             {
                 const auto inf=it->influence(i);
-                if(inf && inf->rank()==myRank && inf->fmm_mask(base_level,MASK_LIST::Mask_FMM_Source))
+                if(inf && inf->rank()==myRank && inf->fmm_mask(fmm_mask_idx,MASK_LIST::Mask_FMM_Source))
                 { is_influenced=true ; break;}
-
             }
 
             if(_neighbors)
@@ -539,7 +539,7 @@ public:
                 for(int i = 0; i< it->nNeighbors(); ++i)
                 {
                     const auto inf=it->neighbor(i);
-                    if(inf && inf->rank()==myRank && inf->fmm_mask(base_level,MASK_LIST::Mask_FMM_Source))
+                    if(inf && inf->rank()==myRank && inf->fmm_mask(fmm_mask_idx,MASK_LIST::Mask_FMM_Source))
                     { is_influenced=true ; break;}
                 }
             }
@@ -548,27 +548,39 @@ public:
             {
                 auto send_ptr=it->data()->
                 template get<SendField>().data_ptr();
-                //auto task= send_comm.post_task(send_ptr, it->rank(), true, idx);
-                //task->requires_confirmation()=false;
-                //task->octant()=it;
 
-                auto task = std::make_shared<induced_fields_task_t<AddAssignRecv>>(idx);
+                auto task= send_comm.post_task(send_ptr, it->rank(), true, idx);
                 task->attach_data(send_ptr);
                 task->rank_other()=it->rank();
                 task->requires_confirmation()=false;
                 task->octant()=it;
-                send_tasks_[it->rank()].push_back(task);
+                auto size = it->data()->template get<SendField>().real_block().nPoints();
+
+                auto send_callback = [it, _fmm, _neighbors,_level_diff,_dx_level,size](auto& buffer_vector)
+                {
+                    //1. Swap buffer with sendfield
+                    buffer_vector.resize(size);
+                    std::fill(buffer_vector.begin(), buffer_vector.end(),0);
+                    buffer_vector.swap(it->data()->
+                            template get<SendField>().data());
+
+                    //2. Compute influence field
+                    _fmm->compute_influence_field(it,_level_diff, _dx_level, _neighbors);
+
+                    //3. Swap sendfield with buffer
+                    buffer_vector.swap(it->data()->
+                            template get<SendField>().data());
+                };
+                task->register_sendCallback(send_callback);
             }
-
-        } else
+        }
+        else
         {
-
             std::set<int> unique_inflRanks;
-
             for(std::size_t i = 0; i< it->influence_number(); ++i)
             {
                 const auto inf=it->influence(i);
-                if(inf && inf->rank()!=myRank && inf->fmm_mask(base_level,MASK_LIST::Mask_FMM_Source))
+                if(inf && inf->rank()!=myRank && inf->fmm_mask(fmm_mask_idx,MASK_LIST::Mask_FMM_Source))
                 {
                     unique_inflRanks.insert(inf->rank());
                 }
@@ -579,7 +591,7 @@ public:
                 for(int i = 0; i< it->nNeighbors(); ++i)
                 {
                     const auto inf=it->neighbor(i);
-                    if(inf && inf->rank()!=myRank && inf->fmm_mask(base_level,MASK_LIST::Mask_FMM_Source))
+                    if(inf && inf->rank()!=myRank && inf->fmm_mask(fmm_mask_idx,MASK_LIST::Mask_FMM_Source))
                     {
                         unique_inflRanks.insert(inf->rank());
                     }
@@ -590,21 +602,18 @@ public:
             {
                 const auto recv_ptr=it->data()->
                     template get<RecvField>().data_ptr();
-                //auto task = recv_comm.post_task( recv_ptr, r, true, idx);
-                //task->requires_confirmation()=false;
-                //task->octant()=it;
+                auto task = recv_comm.post_task( recv_ptr, r, true, idx);
 
-                auto task = std::make_shared<induced_fields_task_t<AddAssignRecv>>(idx);
+                //auto task = std::make_shared<induced_fields_task_t<InfluenceFieldBuffer>>(idx);
                 task->attach_data(recv_ptr);
                 task->rank_other()=r;
                 task->requires_confirmation()=false;
                 task->octant()=it;
-                recv_tasks_[r].push_back(task);
+                //recv_tasks_[r].push_back(task);
             }
         }
 
         //Start communications
-
         if(_start_communication)
         {
             send_comm.start_communication();
@@ -614,10 +623,10 @@ public:
         }
     }
 
-
     template<class SendField, class RecvField>
     void combine_induced_field_messages()
     {
+        std::cout<<"I need to edit this to account for new memory friendly version"<<std::endl;
         auto& acc_send_comm=
             task_manager_-> template send_communicator<acc_induced_fields_task_t>();
         auto& acc_recv_comm=
@@ -746,7 +755,7 @@ public:
     template<class SendField,class RecvField,
              template<class>class BufferPolicy,
              class OctantPtr>
-    void communicate_updownward_pass(OctantPtr it, bool _upward, int base_level)
+    void communicate_updownward_pass(OctantPtr it, bool _upward, int fmm_mask_idx)
     {
         int mask_id=(_upward) ?
             MASK_LIST::Mask_FMM_Source : MASK_LIST::Mask_FMM_Target;
@@ -761,14 +770,14 @@ public:
             recv_communicator<induced_fields_task_t<BufferPolicy>>();
 
 
-        if (!it->fmm_mask(base_level,mask_id)) return;
+        if (!it->fmm_mask(fmm_mask_idx,mask_id)) return;
 
         const auto idx=get_octant_idx(it);
 
         if(it->locally_owned() && it->data() )
         {
 
-            const auto unique_ranks=it->unique_child_ranks(base_level, mask_id);
+            const auto unique_ranks=it->unique_child_ranks(fmm_mask_idx, mask_id);
             for(auto r : unique_ranks)
             {
                 if(_upward)
@@ -792,7 +801,7 @@ public:
         //Check if ghost has locally_owned children
         if(!it->locally_owned() && it->data())
         {
-            if(it->has_locally_owned_children(base_level, mask_id))
+            if(it->has_locally_owned_children(fmm_mask_idx, mask_id))
             {
                 if(_upward)
                 {
@@ -865,20 +874,20 @@ public:
 
     /** @brief communicate fields for up/downward pass of fmm */
     template<class SendField,class RecvField, class OctantPtr>
-    void communicate_updownward_add(OctantPtr it, bool _upward, int base_level)
+    void communicate_updownward_add(OctantPtr it, bool _upward, int fmm_mask_idx)
     {
-        communicate_updownward_pass<SendField,RecvField,AddAssignRecv> (it, _upward, base_level);
+        communicate_updownward_pass<SendField,RecvField,AddAssignRecv> (it, _upward, fmm_mask_idx);
     }
 
     template<class SendField,class RecvField, class OctantPtr >
-    void communicate_updownward_assign(OctantPtr it, bool _upward, int base_level)
+    void communicate_updownward_assign(OctantPtr it, bool _upward, int fmm_mask_idx)
     {
         communicate_updownward_pass<SendField,RecvField,CopyAssign>
-        (it,_upward, base_level);
+        (it,_upward, fmm_mask_idx);
     }
 
     template<class SendField,class RecvField, template<class>class BufferPolicy>
-    void communicate_updownward_pass(int level, bool _upward, bool _use_masks, int base_level)
+    void communicate_updownward_pass(int level, bool _upward, bool _use_masks, int fmm_mask_idx)
     {
         int mask_id=(_upward) ?
                 MASK_LIST::Mask_FMM_Source : MASK_LIST::Mask_FMM_Target;
@@ -895,7 +904,7 @@ public:
         for (auto it  = domain_->begin(level); it != domain_->end(level); ++it)
         {
 
-            if (_use_masks && !it->fmm_mask(base_level,mask_id) ) continue;
+            if (_use_masks && !it->fmm_mask(fmm_mask_idx,mask_id) ) continue;
 
             const auto idx=get_octant_idx(it);
 
@@ -903,7 +912,7 @@ public:
             {
 
                 const auto unique_ranks=(_use_masks)?
-                        it->unique_child_ranks(base_level, mask_id) :
+                        it->unique_child_ranks(fmm_mask_idx, mask_id) :
                         it->unique_child_ranks();
 
                 for(auto r : unique_ranks)
@@ -929,7 +938,7 @@ public:
             //Check if ghost has locally_owned children
             if(!it->locally_owned() && it->data())
             {
-                if( (_use_masks && it->has_locally_owned_children(base_level, mask_id)) ||
+                if( (_use_masks && it->has_locally_owned_children(fmm_mask_idx, mask_id)) ||
                     (!_use_masks && it->has_locally_owned_children())
                     )
                 {
@@ -973,36 +982,36 @@ public:
 
     /** @brief communicate fields for up/downward pass of fmm */
     template<class SendField,class RecvField >
-    void communicate_updownward_add(int level, bool _upward, bool _use_masks, int base_level)
+    void communicate_updownward_add(int level, bool _upward, bool _use_masks, int fmm_mask_idx)
     {
         communicate_updownward_pass<SendField,RecvField,AddAssignRecv>
-        (level, _upward, _use_masks, base_level);
+        (level, _upward, _use_masks, fmm_mask_idx);
     }
 
     template<class SendField,class RecvField >
-    void communicate_updownward_assign(int level, bool _upward, bool _use_masks, int base_level)
+    void communicate_updownward_assign(int level, bool _upward, bool _use_masks, int fmm_mask_idx)
     {
         communicate_updownward_pass<SendField,RecvField,CopyAssign>
-        (level,_upward, _use_masks, base_level);
+        (level,_upward, _use_masks, fmm_mask_idx);
     }
 
 
 
     /** @brief communicate fields for up/downward pass of fmm */
     template<class OctantPtr>
-    int updownward_pass_mcount(OctantPtr it, bool _upward, int base_level)
+    int updownward_pass_mcount(OctantPtr it, bool _upward, int fmm_mask_idx)
     {
         int mask_id=(_upward) ?
                 MASK_LIST::Mask_FMM_Source : MASK_LIST::Mask_FMM_Target;
 
         int count=0;
-        if (!it->fmm_mask(base_level,mask_id)) return count;
+        if (!it->fmm_mask(fmm_mask_idx,mask_id)) return count;
         if(it->locally_owned() && it->data() )
         {
-            const auto unique_ranks=it->unique_child_ranks(base_level, mask_id);
+            const auto unique_ranks=it->unique_child_ranks(fmm_mask_idx, mask_id);
             if(_upward)
             {
-                const auto unique_ranks=it->unique_child_ranks(base_level, mask_id);
+                const auto unique_ranks=it->unique_child_ranks(fmm_mask_idx, mask_id);
                 for(auto r : unique_ranks)
                 {
                     if(_upward) { /*recv*/ ++count; }
@@ -1017,7 +1026,7 @@ public:
         }
         if(!it->locally_owned() && it->data())
         {
-            if(it->has_locally_owned_children(base_level, mask_id))
+            if(it->has_locally_owned_children(fmm_mask_idx, mask_id))
             {
                 if(_upward) { /*send*/ return 10000; }
                 else { /*recv*/ return 10000; }
@@ -1052,22 +1061,11 @@ public:
 
     void query_octants()
     {
-        //Octant initialization function
-        auto f =[&](octant_t* _o){
-            auto level = _o->refinement_level();
-            level=level>=0?level:0;
-            auto bbase=domain_->tree()->octant_to_level_coordinate(
-                    _o->tree_coordinate(),level);
-            _o->data()=std::make_shared<datablock_t>(bbase,
-                    domain_->block_extent(),level, true);
-        };
-        domain_->tree()->construct_maps(this,f);
+        domain_->tree()->construct_maps(this);
     }
 
 
     auto domain()const{return domain_;}
-
-
 
 
 private:

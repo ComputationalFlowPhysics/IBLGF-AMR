@@ -10,7 +10,6 @@
 #include <fstream>
 #include <iomanip>
 
-// IBLGF-specific
 #include <types.hpp>
 
 namespace domain
@@ -685,7 +684,6 @@ protected:
     int level_=0;
 
 };
-
 
 
 }

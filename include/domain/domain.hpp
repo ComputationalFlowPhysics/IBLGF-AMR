@@ -245,7 +245,7 @@ public: //C/Dtors
             this->tree()->construct_level_maps();
             this->tree()->construct_neighbor_lists();
 
-            auto base_level=this->tree()->base_level();
+            const auto base_level=this->tree()->base_level();
             for(int l=0;l<nRef;++l)
             {
                 for (auto it = begin_df(); it != end_df(); ++it)
@@ -266,7 +266,7 @@ public: //C/Dtors
             for (int global_=0; global_<level_up_max; ++global_)
             {
                 std::cout<<global_<<std::endl;
-                for (int l = this->tree()->depth()-1; l>=this->tree()->base_level(); --l)
+                for (int l = this->tree()->depth()-1; l>=base_level; --l)
                 {
                     for (auto it = begin(l); it != end(l); ++it)
                     {

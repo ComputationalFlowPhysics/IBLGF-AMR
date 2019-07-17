@@ -11,8 +11,17 @@ class node
 {
 public:
 
+    using coordinate_type = typename Container::coordinate_type;
+    using real_coordinate_type = typename Container::real_coordinate_type;
+
+public:
+
     node(Container* _c , std::size_t _index)
         :c_(_c), index_(_index), level_coordinate_(compute_level_coordinate())
+    { }
+
+    node(Container* _c , std::size_t _index, const coordinate_type& _level_coordinate)
+        :c_(_c), index_(_index), level_coordinate_(_level_coordinate)
     { }
 
     ~node() =default;
@@ -21,11 +30,6 @@ public:
 	node& operator=(const node&) & = default;
     node(node&& rhs)=default;
 	node& operator=(node&&) & = default;
-
-    using coordinate_type = typename Container::coordinate_type;
-    using real_coordinate_type = typename Container::real_coordinate_type;
-
-    
 
 public: //Access
 
@@ -87,14 +91,16 @@ public: //Access
         auto c = level_coordinate_ +_offset ;
         if(c_->bounding_box().is_inside(c))
         {
-            return std::make_pair(node(c_,c_->bounding_box().get_flat_index(c)),true);
+            return std::make_pair(node(c_,c_->bounding_box().index(c)),true);
         }
         else
             return std::make_pair(node(c_,0),false);
     }
     inline node neighbor(const coordinate_type& _offset) const noexcept
     {
-        return node(c_,c_->bounding_box().get_flat_index(level_coordinate_ +_offset));
+        return c_->node_field_[index_+c_->bounding_box().index_zeroBase(_offset)];
+        //return node(c_,index_+c_->bounding_box().index(_offset), level_coordinate_+_offset);
+        //return node(c_,c_->bounding_box().index(level_coordinate_ +_offset));
     }
 
 

@@ -199,6 +199,14 @@ public: //Ctors
     void neighbor_clear () noexcept{neighbor_.fill(nullptr);}
     const auto neighbor_number () const noexcept{return neighbor_.size();}
 
+    int idx()const noexcept { 
+        const auto cc=this->tree_coordinate();
+        return static_cast<int>(
+                (this->level()+cc.x()*25+cc.y()*25*300+ 25*300*300*cc.z()) %
+                boost::mpi::environment::max_tag()
+                );
+    }
+
     Octant* neighbor (int i) const noexcept{return neighbor_[i];}
     Octant** neighbor_pptr (int i) noexcept{return &neighbor_[i];}
     void neighbor(int i, Octant* new_neighbor)

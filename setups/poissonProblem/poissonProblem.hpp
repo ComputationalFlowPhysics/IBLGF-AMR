@@ -92,7 +92,7 @@ public: //Ctor
                    && it->refinement_level()==l
                   )
                 {
-                    domain_->refine(it);
+                    //domain_->refine(it);
                 }
             }
         }

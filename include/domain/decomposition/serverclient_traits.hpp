@@ -48,6 +48,8 @@ struct ServerClientTraits
     using acc_induced_fields_task_t = Task<tags::accumulated_field_query,
                                        std::vector<double>,Inplace,octant_t>;
 
+    using halo_task_t = Task<tags::halo,std::vector<double>,Inplace,octant_t>;
+
     using task_manager_t = TaskManager<key_query_t,
                                        rank_query_t,
                                        leaf_query_send_t,
@@ -58,7 +60,8 @@ struct ServerClientTraits
                                        induced_fields_task_t<InfluenceFieldBuffer>,
                                        induced_fields_task_t<CopyAssign>,
                                        induced_fields_task_t<AddAssignRecv>,
-                                       acc_induced_fields_task_t
+                                       acc_induced_fields_task_t,
+                                       halo_task_t
                                        >;
 };
 

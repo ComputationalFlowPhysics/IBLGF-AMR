@@ -8,6 +8,8 @@
 #include <simulation.hpp>
 #include <fmm/fmm.hpp>
 #include<solver/poisson/poisson.hpp>
+#include <domain/dataFields/dataBlock.hpp>
+#include <domain/dataFields/datafield.hpp>
 
 using namespace domain;
 using namespace octree;
@@ -30,12 +32,19 @@ public: //default fields
     REGISTER_FIELDS
     (Dim,
     (
-      (coarse_target_sum, float_type, 1, 1),
-      (source_tmp       , float_type, 1, 1),
-      (fmm_s,             float_type, 1, 1),
-      (fmm_t,             float_type, 1, 1)
+      (coarse_target_sum,  float_type,  1,  1,  cell),
+      (source_tmp,         float_type,  1,  1,  cell),
+      (fmm_s,              float_type,  1,  1,  cell),
+      (fmm_t,              float_type,  1,  1,  cell),
+      //flow variables
+      (u,  float_type,  1,  1,  face),
+      (v,  float_type,  1,  1,  face),
+      (w,  float_type,  1,  1,  face),
+      (p,  float_type,  1,  1,  cell)
     ))
+
     using field_tuple=fields_tuple_t;
+    using velocity_tuple = std::tuple<u&,v&,w&>;
 
 public: //datablock
     template<class... DataFieldType>

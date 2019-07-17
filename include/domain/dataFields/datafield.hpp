@@ -24,6 +24,14 @@
 namespace domain
 {
 
+enum class MeshObject : int
+{
+    cell,
+    face,
+    edge,
+    vertex
+};
+
 template<class DataType, std::size_t Dim>
 class DataField : public BlockDescriptor<int, Dim>
 {
@@ -41,6 +49,7 @@ public: //member types
     using block_type = BlockDescriptor<int,Dim>;
     using coordinate_t = typename block_type::base_t;
     using view_type =View<DataField, Dim>;
+
 
 public: //Ctors:
 
@@ -81,7 +90,8 @@ public: //member functions
         if(_default){std::fill(data_.begin(),data_.end(),_dval);}
 
         auto ext = real_block_.extent();
-        cube_ = std::unique_ptr<linalg::Cube_t> (new linalg::Cube_t( (types::float_type*) &data_[0], ext[0], ext[1], ext[2]));
+        cube_ = std::make_unique<linalg::Cube_t>(
+             (types::float_type*) &data_[0], ext[0], ext[1], ext[2]);
     }
 
     auto& operator[](size_type i ) noexcept {return data_[i];}
@@ -99,78 +109,98 @@ public: //member functions
 
     auto size()const noexcept{return data_.size();}
 
-    //Get ijk-data
     inline DataType* get_ptr(const coordinate_t& _c) noexcept
     {
-        return &data_[real_block_.globalCoordinate_to_index(_c[0],
-                                                           _c[1],
-                                                           _c[2])];
+        return &data_[real_block_.index(_c)];
     }
     inline const DataType* get_ptr(const coordinate_t& _c) const noexcept
     {
-        return &data_[real_block_.globalCoordinate_to_index(_c[0],
-                                                           _c[1],
-                                                           _c[2])];
+        return &data_[real_block_.index(_c)];
     }
     inline DataType& get(const coordinate_t& _c) noexcept
     {
-        return data_[real_block_.globalCoordinate_to_index(_c[0],
-                                                           _c[1],
-                                                           _c[2])];
+        return data_[real_block_.index(_c)];
     }
     inline const DataType& get(const coordinate_t& _c) const noexcept
     {
-        return data_[real_block_.globalCoordinate_to_index(_c[0],
-                                                           _c[1],
-                                                           _c[2])];
-    }
-    inline const DataType& get(int _i, int _j, int _k) const noexcept
-    {
-        return data_[real_block_.globalCoordinate_to_index(_i,
-                                                           _j,
-                                                           _k)];
-    }
-    inline DataType& get(int _i, int _j, int _k) noexcept
-    {
-        return data_[real_block_.globalCoordinate_to_index(_i,
-                                                           _j,
-                                                           _k)];
+        return data_[real_block_.index(_c)];
     }
 
     inline const DataType&
+    get_local(const coordinate_t& _c) const noexcept
+    {
+        return data_[ real_block_.index_zeroBase(_c+lowBuffer_)];
+    }
+    inline DataType&
+    get_local(const coordinate_t& _c) noexcept
+    {
+        return data_[ real_block_.index_zeroBase(_c+lowBuffer_)];
+    }
+    inline const DataType& get_real_local(const coordinate_t& _c) const noexcept
+    {
+        return data_[ real_block_.index_zeroBase(_c)];
+    }
+    inline DataType& get_real_local(const coordinate_t& _c) noexcept
+    {
+        return data_[ real_block_.index_zeroBase(_c)];
+    }
+
+
+    //IJK access
+    inline const DataType& get(int _i, int _j, int _k) const noexcept
+    {
+        return data_[real_block_.index(_i, _j, _k)];
+    }
+    inline DataType& get(int _i, int _j, int _k) noexcept
+    {
+        return data_[real_block_.index(_i, _j, _k)];
+    }
+    inline const DataType&
     get_real_local(int _i, int _j, int _k) const noexcept
     {
-        return data_[real_block_.localCoordinate_to_index(_i,_j,_k)];
+        return data_[real_block_.index_zeroBase(_i,_j,_k)];
     }
     inline DataType& get_real_local(int _i, int _j, int _k) noexcept
     {
-        return data_[real_block_.localCoordinate_to_index(_i,_j,_k)];
+        return data_[real_block_.index_zeroBase(_i,_j,_k)];
     }
 
     inline const DataType&
     get_local(int _i, int _j, int _k) const noexcept
     {
-        return data_[
-            real_block_.localCoordinate_to_index(_i+lowBuffer_[0],
-                                                 _j+lowBuffer_[1],
-                                                 _k+lowBuffer_[2])
-        ];
+        return data_[real_block_.index_zeroBase(_i+lowBuffer_[0],
+                                                _j+lowBuffer_[1],
+                                                _k+lowBuffer_[2])];
     }
-
     inline DataType& get_local(int _i, int _j, int _k) noexcept
     {
-        return data_[
-            real_block_.localCoordinate_to_index(_i+lowBuffer_[0],
-                                                 _j+lowBuffer_[1],
-                                                 _k+lowBuffer_[2])
-        ];
+        return data_[real_block_.index_zeroBase(_i+lowBuffer_[0],
+                                                _j+lowBuffer_[1],
+                                                _k+lowBuffer_[2])];
     }
-
     template<class BlockType, class OverlapType>
     bool buffer_overlap(const BlockType& other,
                  OverlapType& overlap, int level ) const noexcept
     {
         return real_block_.overlap(other, overlap, level);
+    }
+
+    template<class BlockType>
+    auto send_view(const BlockType& other) noexcept
+    {
+        auto overlap=real_block_;
+        auto has_overlap=this->overlap(other.real_block_, overlap);
+        return has_overlap ?  
+            std::optional<view_type>(view(overlap)): std::nullopt;
+    }
+    template<class BlockType>
+    auto recv_view(const BlockType& other) noexcept
+    {
+        auto overlap=real_block_;
+        auto has_overlap=other.overlap(this->real_block_, overlap);
+        return has_overlap ?  
+            std::optional<view_type>(view(overlap)):
+            std::nullopt;
     }
 
 
@@ -212,79 +242,80 @@ protected: //protected memeber:
 
 #define STRINGIFY(X) #X
 
-#define make_field_type_nb(Dim,key, DataType)                               \
-class key : public DataField<DataType,Dim>                                  \
-{                                                                           \
-    public:                                                                 \
-    using data_field_t=DataField<DataType,Dim>;                             \
-    static constexpr const char* name_= STRINGIFY(key);                     \
-    key (): data_field_t()                                                  \
-    {                                                                       \
-    }                                                                       \
-  static auto  name()noexcept{return key::name_;}                           \
-                                                                            \
-};                                                                          \
+#define make_field_type_nb(Dim,key, DataType)                                 \
+class key : public DataField<DataType,Dim>                                    \
+{                                                                             \
+    public:                                                                   \
+    using data_field_t=DataField<DataType,Dim>;                               \
+    static constexpr const char* name_= STRINGIFY(key);                       \
+    key (): data_field_t()                                                    \
+    {                                                                         \
+    }                                                                         \
+  static auto  name()noexcept{return key::name_;}                             \
+                                                                              \
+};                                                                            \
 
 
 
+#define make_field_type_b2(Dim,key, DataType, lBuffer, hBuffer)               \
+    make_field_type_b(Dim, key, DataType, lBuffer,hBuffer,cell)
 
-#define make_field_type_b(Dim,key, DataType, lBuffer, hBuffer)              \
-class key : public DataField<DataType,Dim>                                  \
-{                                                                           \
-    public:                                                                 \
-    using data_field_t=DataField<DataType,Dim>;                             \
-    static constexpr const char* name_= STRINGIFY(key);                     \
-    key (): data_field_t(lBuffer, hBuffer)                                  \
-    {                                                                       \
-    }                                                                       \
-  static auto  name()noexcept{return key::name_;}                           \
-                                                                            \
-};                                                                          \
+#define make_field_type_b(Dim,key,DataType, lBuffer, hBuffer,MeshObjectType)  \
+class key : public DataField<DataType,Dim>                                    \
+{                                                                             \
+    public:                                                                   \
+    using data_field_t=DataField<DataType,Dim>;                               \
+    static constexpr const char* name_= STRINGIFY(key);                       \
+    static constexpr MeshObject mesh_type = MeshObject::MeshObjectType;       \
+    key (): data_field_t(lBuffer, hBuffer)                                    \
+    {                                                                         \
+    }                                                                         \
+  static auto  name()noexcept{return key::name_;}                             \
+                                                                              \
+};                                                                            \
 
 
 //Dummy marco for three params
-#define FOO3(Dim,DataType, lBuffer, hBuffer) bla
+#define FOO3(Dim,DataType, lBuffer, hBufferm) bla
 
-#define GET_FIELD_MACRO(_1,_2,_3,_4,_5,NAME,...) NAME
-#define make_field_type(...)                                                \
-GET_FIELD_MACRO(__VA_ARGS__,                                                \
-                make_field_type_b,                                          \
-                FOO3,                                                       \
-                make_field_type_nb)                                         \
-                (__VA_ARGS__)                                               \
-
-
+#define GET_FIELD_MACRO(_1,_2,_3,_4,_5,_6,NAME,...) NAME
+#define make_field_type(...)        \
+GET_FIELD_MACRO(__VA_ARGS__,        \
+                make_field_type_b,  \
+                make_field_type_b2, \
+                FOO3,               \
+                make_field_type_nb) \
+                (__VA_ARGS__)       \
 
 #define COMMA ,
 
-#define FIELD_N(Dim, FIELD_TUPLE)\
+#define FIELD_N(Dim, FIELD_TUPLE) \
 make_field_type(Dim,BOOST_PP_TUPLE_ENUM(BOOST_PP_TUPLE_SIZE(FIELD_TUPLE), FIELD_TUPLE))
 
-#define FIELD_DECL(z, n, FIELD_TUPLES)\
+#define FIELD_DECL(z, n, FIELD_TUPLES) \
 FIELD_N(BOOST_PP_TUPLE_ELEM(0, FIELD_TUPLES),BOOST_PP_TUPLE_ELEM(n, BOOST_PP_TUPLE_ELEM(1,FIELD_TUPLES)))
 
 #define FIELD_NAME_N(z, n, FIELD_TUPLES) \
-COMMA \
+COMMA                                    \
 BOOST_PP_TUPLE_ELEM(0,BOOST_PP_TUPLE_ELEM(n, FIELD_TUPLES))
 
-#define MAKE_TUPLE_ALIAS(FIELD_TUPLES)\
-    using fields_tuple_t=std::tuple< \
-    BOOST_PP_TUPLE_ELEM(0,BOOST_PP_TUPLE_ELEM(0,FIELD_TUPLES)) \
-    BOOST_PP_REPEAT(BOOST_PP_TUPLE_SIZE(BOOST_PP_TUPLE_POP_FRONT(FIELD_TUPLES)),\
-                    FIELD_NAME_N, BOOST_PP_TUPLE_POP_FRONT(FIELD_TUPLES)) \
-    >;\
+#define MAKE_TUPLE_ALIAS(FIELD_TUPLES)                                           \
+    using fields_tuple_t=std::tuple<                                             \
+    BOOST_PP_TUPLE_ELEM(0,BOOST_PP_TUPLE_ELEM(0,FIELD_TUPLES))                   \
+    BOOST_PP_REPEAT(BOOST_PP_TUPLE_SIZE(BOOST_PP_TUPLE_POP_FRONT(FIELD_TUPLES)), \
+                    FIELD_NAME_N, BOOST_PP_TUPLE_POP_FRONT(FIELD_TUPLES))        \
+    >;                                                                           \
 
 
-#define MAKE_PARAM_CLASS(NAME, FIELD_TUPLES)\
-struct NAME{\
-    MAKE_TUPLE_ALIAS(FIELD_TUPLES) \
+#define MAKE_PARAM_CLASS(NAME, FIELD_TUPLES) \
+struct NAME{                                 \
+    MAKE_TUPLE_ALIAS(FIELD_TUPLES)           \
 };
 
 
-#define REGISTER_FIELDS(Dim,FIELD_TUPLES)\
-BOOST_PP_REPEAT(BOOST_PP_TUPLE_SIZE(FIELD_TUPLES), FIELD_DECL, (Dim, FIELD_TUPLES))\
+#define REGISTER_FIELDS(Dim,FIELD_TUPLES)                                           \
+BOOST_PP_REPEAT(BOOST_PP_TUPLE_SIZE(FIELD_TUPLES), FIELD_DECL, (Dim, FIELD_TUPLES)) \
 MAKE_TUPLE_ALIAS(FIELD_TUPLES)
-
 
 
 } //namespace domain

@@ -485,7 +485,7 @@ private: // neighborlist
                 const auto offset=
                     it->tree_coordinate()-neighbor_i->tree_coordinate();
                 const auto idx=
-                    nearast_neighbor_hood.globalCoordinate_to_index(offset);
+                    nearast_neighbor_hood.index(offset);
                 neighbor_i->neighbor(idx,it);
             }
         }

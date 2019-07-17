@@ -226,7 +226,7 @@ public: //members
         base_+=_shift;
     }
 
-    BlockDescriptor bcPlane(int idx, int dir)
+    BlockDescriptor bcPlane(int idx, int dir) noexcept
     {
         auto p=*this;
         for(std::size_t d=0;d<Dim;++d)
@@ -237,7 +237,7 @@ public: //members
         return p;
     }
 
-    void enlarge_to_fit(const BlockDescriptor& _b)
+    void enlarge_to_fit(const BlockDescriptor& _b) noexcept
     {
         auto max=this->max();
         for(std::size_t d=0;d<Dim;++d)
@@ -249,7 +249,7 @@ public: //members
     }
         
     template<class PointType>
-	bool is_inside(const PointType& p) const
+	bool is_inside(const PointType& p) const noexcept
 	{
         for(std::size_t d=0;d<p.size();++d)
         {
@@ -259,13 +259,13 @@ public: //members
         return true;
 	}
     template<class PointType>
-	bool on_boundary(const PointType& p) const
+	bool on_boundary(const PointType& p) const noexcept
 	{
         return (on_max_boundary(p) || on_min_boundary());
 	}
 
     template<class PointType>
-	bool on_min_boundary(const PointType& p) const
+	bool on_min_boundary(const PointType& p) const noexcept
 	{
         for(std::size_t d=0;d<p.size();++d)
         {
@@ -276,7 +276,7 @@ public: //members
 	}
 
     template<class PointType>
-	bool on_max_boundary(const PointType& p) const
+	bool on_max_boundary(const PointType& p) const noexcept
 	{
         for(std::size_t d=0;d<p.size();++d)
         {
@@ -287,47 +287,51 @@ public: //members
 	}
 
 
-    template<class PointType>
-    inline size_type get_flat_index(PointType p) const noexcept
+    //Flat indices
+    template<class PointType, int D=Dim,
+             typename std::enable_if< D==3, void>::type* = nullptr >
+    inline size_type index(const PointType& p) const noexcept
     {
-        p-=base();
-        size_type idx=p[0];
-        for(unsigned int d =1; d<p.size();++d)
-        {
-            size_type factor =1 ;
-            for(int d2=d-1; d2>=0;--d2)
-            {
-                factor*= extent()[d-1];
-            }
-            idx += p[d]*factor;
-        }
-        return idx;
+        return p[0]-base_[0]+
+               extent_[0]*(p[1]-base_[1]) + 
+               extent_[0]*extent_[1]*(p[2]-base_[2]);
     }
-
-    inline size_type globalCoordinate_to_index( int i,int j,int k ) const noexcept
+    template<class PointType, int D=Dim,
+             typename std::enable_if< D==3, void>::type* = nullptr >
+    inline size_type index_zeroBase(const PointType& p) const noexcept
     {
-        i-=base()[0]; j-=base()[1]; k-=base()[2];
-        return i+ j*extent()[0] + k*extent()[0]*extent()[1];
+        return p[0]+extent_[0]*p[1] + extent_[0]*extent_[1]*p[2];
     }
-    //TODO: tag dispatch for each dim
-    template<class PointType>
-    inline size_type globalCoordinate_to_index(PointType _p) const noexcept
+    template<class PointType, int D=Dim,
+             typename std::enable_if< D==2, void>::type* = nullptr >
+    inline size_type index(const PointType& p) const noexcept
     {
-        _p[0]-=base()[0]; _p[1]-=base()[1]; _p[2]-=base()[2];
-        return _p[0]+ _p[1]*extent()[0] + _p[2]*extent()[0]*extent()[1];
+        return p[0]-base_[0]+extent_[0]*(p[1]-base_[1]) ;
     }
-
-    template<class PointType>
-    inline size_type localCoordinate_to_index(PointType _p) const noexcept
+    template<class PointType, int D=Dim,
+             typename std::enable_if< D==2, void>::type* = nullptr >
+    inline size_type index_zeroBase(const PointType& p) const noexcept
     {
-        return _p[0]+ _p[1]*extent()[0] + _p[2]*extent()[0]*extent()[1];
+        return p[0]+extent_[0]*p[1];
     }
-    inline size_type localCoordinate_to_index( int i,int j,int k ) const noexcept
+    inline size_type index(int i, int j, int k) const noexcept
     {
-        return i+ j*extent()[0] + k*extent()[0]*extent()[1];
+        return i-base_[0]+
+               extent_[0]*(j-base_[1]) + 
+               extent_[0]*extent_[1]*(k-base_[2]);
     }
-
-    
+    inline size_type index_zeroBase(int i, int j, int k) const noexcept
+    {
+        return i+extent_[0]*(j) + extent_[0]*extent_[1]*(k);
+    }
+    inline size_type index(int i, int j) const noexcept
+    {
+        return i-base_[0]+extent_[0]*(j-base_[1]);
+    }
+    inline size_type index_zeroBase(int i, int j) const noexcept
+    {
+        return i+extent_[0]*j;
+    }
 
 
     template<class BlockType, class OverlapType>
@@ -371,7 +375,7 @@ public: //members
 
 
     template<typename Btype>
-    void grow( Btype _lBuffer, Btype _rBuffer )
+    void grow( Btype _lBuffer, Btype _rBuffer ) noexcept
     {
         base_-=_lBuffer;
         extent_+=_lBuffer+_rBuffer;
@@ -385,7 +389,7 @@ public: //members
     }
 
     template<class Block>
-    std::vector<BlockDescriptor> cutout(const std::vector<Block>& _blocks) const
+    std::vector<BlockDescriptor> cutout(const std::vector<Block>& _blocks) const noexcept
     {
         std::vector<Block> res;
         
@@ -474,13 +478,13 @@ public: //members
     std::vector<BlockDescriptor> 
     get_periodic_boxes(const PeriodicityBlock& _periodicityBlock,
             vector_t<bool> _periodicty=vector_t<bool>(true)
-            ) const
+            ) const noexcept
     {
         return get_periodic_boxes(*this,_periodicityBlock,_periodicty);
     }
 
     std::vector<BlockDescriptor> 
-    get_periodic_boxes( vector_t<bool> _periodicty=vector_t<bool>(true) ) const
+    get_periodic_boxes( vector_t<bool> _periodicty=vector_t<bool>(true) ) const noexcept
     {
         return get_periodic_boxes(*this,*this,_periodicty);
     }
@@ -497,7 +501,7 @@ public: //members
 
 
     template<int D, class ArrayType >
-    auto get_corners_tmp(ArrayType& _base, ArrayType& _extent) const 
+    auto get_corners_tmp(ArrayType& _base, ArrayType& _extent) const  noexcept
     {
         std::vector<ArrayType> points;
         ArrayType p=_base;
@@ -505,7 +509,7 @@ public: //members
         return points;
     }
 
-    auto get_corners() const 
+    auto get_corners() const  noexcept
     {
         std::vector<base_t> points;
         base_t p=base_;
@@ -515,7 +519,7 @@ public: //members
 
 
 
-    auto divide_into(const extent_t& _e) const 
+    auto divide_into(const extent_t& _e) const
     {
 
         std::array<std::vector<T>,dimension()> cuts;

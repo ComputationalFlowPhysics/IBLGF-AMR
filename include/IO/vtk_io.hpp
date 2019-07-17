@@ -98,7 +98,7 @@ public:
                             {
                                 for (int i2=0;i2<2;++i2)
                                 {
-                                    auto nn_idx=index_block.get_flat_index(
+                                    auto nn_idx=index_block.index(
                                             coordinate_type({i+i2,j+j2,k+k2}));
 
                                         ofs<< nn_idx+it->index()<<" ";

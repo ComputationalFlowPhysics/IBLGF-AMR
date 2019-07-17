@@ -11,6 +11,7 @@
 #include <domain/mpi/query_registry.hpp>
 #include <domain/mpi/task_manager.hpp>
 #include <domain/mpi/server_base.hpp>
+#include <domain/mpi/haloCommunicator.hpp>
 #include "serverclient_traits.hpp"
 
 
@@ -59,6 +60,8 @@ public:
                                         induced_fields_task_t<BufferPolicy>;
 
     using acc_induced_fields_task_t = typename trait_t::acc_induced_fields_task_t;
+
+    using halo_task_t = typename trait_t::halo_task_t;
 
     using task_manager_t =typename trait_t::task_manager_t;
 
@@ -1045,7 +1048,43 @@ public:
                 (it->level()+cc.x()*25+cc.y()*25*300+ 25*300*300*cc.z()) %
                 boost::mpi::environment::max_tag()
                 );
+    }
 
+    /** @brief Testing function for buffer/halo exchange for a field. 
+     *         The  haloCommunicator will later be stored as a tuple for 
+     *         all fields. 
+     */
+    template<class Field>
+    void buffer_exchange()
+    {
+
+        auto& send_comm=
+            task_manager_-> template send_communicator<halo_task_t>();
+        auto& recv_comm=
+            task_manager_-> template recv_communicator<halo_task_t>();
+
+        //Halo communicator
+        HaloCommunicator<halo_task_t,Field,Domain> hcomm;
+
+        //Get the overlaps 
+        hcomm.compute_tasks(domain_);
+        hcomm.template pack_messages();
+        for(auto st:hcomm.send_tasks()) { if(st) { send_comm.post_task(st); } }
+        for(auto& st:hcomm.recv_tasks()) { if(st) { recv_comm.post_task(st); } }
+
+        //Blocking send/recv till all is done. To be changed
+        while(true)
+        {
+            send_comm.start_communication();
+            recv_comm.start_communication();
+            send_comm.finish_communication();
+            recv_comm.finish_communication();
+            if(send_comm.done() && recv_comm.done() )
+                break;
+        }
+
+        //Assign received message to field view 
+        hcomm.template unpack_messages();
     }
 
     void query_leafs()

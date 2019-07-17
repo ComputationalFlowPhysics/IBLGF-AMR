@@ -25,8 +25,10 @@ class DataBlock : public  BlockDescriptor<int, Dim>
 
     static constexpr auto dimension=Dim;
 
+
 public: //member types
     using node_t = NodeType<DataBlock>;
+    friend node_t;
 
     using fields_tuple_t = std::tuple<DataFieldType...>;
     using field_type_iterator_t = tuple_utils::TypeIterator<DataFieldType...>;
@@ -99,16 +101,6 @@ public: //member functions
     template<class T> auto& get_linalg_data(){return std::get<T>(fields).linalg_data();}
     template<class T> const auto& get_linalg_data()const{return std::get<T>(fields).linalg_data();}
 
-    template<class Field>
-    auto& get(int _i, int _j, int _k)
-    {
-        return std::get<Field>(fields).get(_i,_j,_k);
-    }
-    template< class Field>
-    const auto& get(int _i, int _j, int _k)const
-    {
-        return std::get<Field>(fields).get(_i,_j,_k);
-    }
 
     template<class Field>
     auto& get(const coordinate_type& _c)
@@ -120,19 +112,38 @@ public: //member functions
     {
         return std::get<Field>(fields).get(_c);
     }
+    template<class Field>
+    auto& get_local(const coordinate_type& _c)
+    {
+        return std::get<Field>(fields).get_local(_c);
+    }
+    template<class Field>
+    const auto& get_local(const coordinate_type& _c) const
+    {
+        return std::get<Field>(fields).get_local(_c);
+    }
 
+    //IJK access
+    template<class Field>
+    auto& get(int _i, int _j, int _k)
+    {
+        return std::get<Field>(fields).get(_i,_j,_k);
+    }
+    template< class Field>
+    const auto& get(int _i, int _j, int _k)const
+    {
+        return std::get<Field>(fields).get(_i,_j,_k);
+    }
     template<class Field>
     auto& get_local(int _i, int _j, int _k)
     {
         return std::get<Field>(fields).get_local(_i,_j,_k);
     }
-
     template<class Field>
     const auto& get_local(int _i, int _j, int _k)const
     {
         return std::get<Field>(fields).get_local(_i,_j,_k);
     }
-
     auto& node(int _i, int _j, int _k )noexcept
     {
         return node_field_.get(_i,_j,_k);
@@ -157,7 +168,7 @@ public: //member functions
 
     size_type get_index(coordinate_type _coord) const noexcept
     {
-        return this->get_flat_index(_coord);
+        return this->index(_coord);
     }
 
     auto& node_field()noexcept{return node_field_;}
@@ -167,6 +178,7 @@ public: //member functions
     auto nodes_domain_end()const noexcept{return nodes_domain_.end();}
     const auto& nodes_domain()const{return nodes_domain_;}
     auto& nodes_domain(){return nodes_domain_;}
+
 
     bool is_allocated(){
         return std::get<0>(fields).data().size()>0;
@@ -217,10 +229,10 @@ private: //Data members
     /** @brief Fields stored in datablock */
     fields_tuple_t fields;
 
-    /** @brief nodes in domain */
+    /** @brief nodes in physical domain */
     std::vector<node_t>  nodes_domain_;
 
-    /** @brief field of nodes */
+    /** @brief field of nodes, including buffers. */
     node_field_type node_field_;
 
     /** @brief bounding box of all fields in the block*/

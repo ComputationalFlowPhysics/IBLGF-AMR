@@ -60,6 +60,7 @@ public:
         _end = true;
         return *this;
     }
+    const auto& coordinate()const noexcept {return coordinate_;}
 
 
 private:
@@ -87,7 +88,7 @@ public: //member types
    
 public: //Ctors:
 
-    View()=delete;
+    View()=default;
     ~View() =default;
     View(const View& rhs)=default;
 	View& operator=(const View&) & = default ;
@@ -118,10 +119,37 @@ public: //member functions
     auto& stride()noexcept {return stride_;}
     const auto& stride()const noexcept {return stride_;}
 
-    Field* field()noexcept { return field_; }
+    const Field*& field()const noexcept { return field_; }
+    Field*& field()noexcept { return field_; }
 
 
-    //TODO: void assign(view rhs)
+    template<class Container>
+    View&  operator=(Container& _c) noexcept
+    {
+        auto it_c=_c.begin();
+        this->iterate([&it_c](auto& n )
+        {
+            n=*it_c; ++it_c;
+        });
+        return *this;
+    }
+    template<class Container>
+    void assign_toBuffer(Container& _c) noexcept
+    {
+        auto it_c=_c.begin();
+        this->iterate([&it_c](auto& n )
+        {
+            *it_c=n; ++it_c;
+        });
+    }
+    template<class Container>
+    void assign_toView(Container& _c) noexcept
+    {
+        *this=_c;
+    }
+
+
+
 
 public: //protected memeber:
     Field* field_=nullptr;

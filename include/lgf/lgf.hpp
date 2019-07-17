@@ -51,7 +51,7 @@ template<class Policy, std::size_t Dim=3>
                     for (auto i = base[0]; i <= max[0]; ++i)
                     {
                         //get view
-                        _lgf[_b.globalCoordinate_to_index(i,j,k)] =
+                        _lgf[_b.index(i,j,k)] =
                             Lookup::get(coordinate_t({i*step, j*step, k*step}));
                     }
                 }

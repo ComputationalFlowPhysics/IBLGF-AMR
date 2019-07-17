@@ -18,6 +18,7 @@ enum type: int
     task_type,
     field_query,
     accumulated_field_query,
+    halo,
     idle,
     connection,
     confirmation,

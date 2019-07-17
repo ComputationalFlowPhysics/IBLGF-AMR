@@ -78,9 +78,6 @@ public:
             bool non_leaf_as_source)
     {
 
-        using octant_t = typename Domain::octant_t;
-        using MASK_LIST = typename octant_t::MASK_LIST;
-
         int refinement_level = base_level-domain_->tree()->base_level();
         int fmm_mask_idx_ = refinement_level*2+non_leaf_as_source;
 

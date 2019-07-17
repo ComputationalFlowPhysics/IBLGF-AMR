@@ -56,13 +56,21 @@ public:
                       int _rank_other
                       ) noexcept
     {
-        ++nActive_tasks_;
+        //++nActive_tasks_;
         auto task_ptr = std::make_shared<task_t>(_taskId);
         task_ptr->attach_data(_data);
         task_ptr->rank_other()=_rank_other;
-        buffer_queue_.push_back( task_ptr );
+        insert(task_ptr);
+        //buffer_queue_.push_back( task_ptr );
 
         return task_ptr;
+    }
+
+    task_ptr_t insert(std::shared_ptr<task_t>& _t) noexcept
+    {
+        ++nActive_tasks_;
+        buffer_queue_.push_back( _t );
+        return _t;
     }
 
     /** * @brief Post an answer of this task */
@@ -81,7 +89,14 @@ public:
     }
 
     /** * @brief Check if all tasks are done and nothing is in the queue */
-    task_ptr_t post_task(task_data_t* _dat, int _rank_other, bool use_tag=false, int _tag=100)
+    task_ptr_t post_task(std::shared_ptr<task_t>& _t) noexcept
+    {
+        return insert(_t);
+    }
+
+    /** * @brief Check if all tasks are done and nothing is in the queue */
+    task_ptr_t post_task(task_data_t* _dat, int _rank_other, 
+                         bool use_tag=false, int _tag=100) noexcept
     {
         if(use_tag)
         {

@@ -28,6 +28,7 @@
 #include<solver/poisson/poisson.hpp>
 
 #include"../../setups/setup_base.hpp"
+#include<operators/operators.hpp>
 
 
 
@@ -40,25 +41,26 @@ struct parameters
     (
     Dim,
      (
-        //name               type     lBuffer.  hBuffer
-         (phi_num          , float_type, 1,       1),
-         (source           , float_type, 1,       1),
-         (phi_exact        , float_type, 1,       1),
-         (error            , float_type, 1,       1),
-         (amr_lap_source   , float_type, 1,       1),
-         (error_lap_source , float_type, 1,       1),
-         (decomposition    , float_type, 1,       1),
-         (dxf              , float_type, 1,       1),
-         (dyf              , float_type, 1,       1),
-         (dzf              , float_type, 1,       1)
+        //name               type     lBuffer.  hBuffer, storage type
+         (phi_num          , float_type, 1,       1,     cell),
+         (source           , float_type, 1,       1,     cell),
+         (phi_exact        , float_type, 1,       1,     cell),
+         (error            , float_type, 1,       1,     cell),
+         (amr_lap_source   , float_type, 1,       1,     cell),
+         (amr_div_source   , float_type, 1,       1,     cell),
+         (error_lap_source , float_type, 1,       1,     cell),
+         (decomposition    , float_type, 1,       1,     cell),
+         (dxf              , float_type, 1,       1,     cell),
+         (dyf              , float_type, 1,       1,     cell),
+         (dzf              , float_type, 1,       1,     cell)
     ))
 };
 
 
-struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
+struct OperatorTest:public SetupBase<OperatorTest,parameters>
 {
 
-    using super_type =SetupBase<VortexRingTest,parameters>;
+    using super_type =SetupBase<OperatorTest,parameters>;
 
 
     //Timings
@@ -67,7 +69,7 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
     using duration_type = typename clock_type::duration;
     using time_point_type = typename clock_type::time_point;
 
-    VortexRingTest(Dictionary* _d)
+    OperatorTest(Dictionary* _d)
     :super_type(_d,
             [this](auto _d, auto _domain){
                 return this->initialize_domain(_d, _domain); })
@@ -126,9 +128,11 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
     void run()
     {
         boost::mpi::communicator world;
-        //simulation_.write2("mesh.hdf5");
         if(domain_->is_client())
         {
+            
+            const float_type dx_base = domain_->dx_base();
+             
             poisson_solver_t psolver(&this->simulation_);
 
             mDuration_type solve_duration(0);
@@ -138,15 +142,28 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
             pcout_c<<"Total Psolve time: "
                   <<solve_duration.count()<<" on "<<world.size()<<std::endl;
 
+            //Bufffer exchange of some fields 
+            auto client=domain_->decomposition().client();
+            client->buffer_exchange<phi_num>();
+
             mDuration_type lap_duration(0);
             TIME_CODE( lap_duration, SINGLE_ARG(
-                psolver.apply_amr_laplace<phi_num,amr_lap_source>() ;
+            for (auto it  = domain_->begin_leafs();
+                      it != domain_->end_leafs(); ++it)
+            {
+                if(!it->locally_owned() || !it->data())continue;
+
+                auto dx_level =  dx_base/std::pow(2,it->refinement_level());
+                domain::Operator::laplace<phi_num, amr_lap_source>( *(it->data()),dx_level);
+                domain::Operator::divergence<std::tuple<u, v,w>, amr_div_source>( *(it->data()),dx_level);
+            }
             ))
             pcout_c<<"Total Laplace time: "
                   <<lap_duration.count()<<" on "<<world.size()<<std::endl;
         }
         this->compute_errors<phi_num,phi_exact,error>();
         this->compute_errors<amr_lap_source,source,error_lap_source>("Lap");
+
 
         simulation_.write2("mesh.hdf5");
     }

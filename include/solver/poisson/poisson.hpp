@@ -286,32 +286,24 @@ public:
                 auto refinement_level = it->refinement_level();
                 auto dx_level =  dx_base/std::pow(2,refinement_level);
 
-                auto& target_data = it->data()->
-                    template get_linalg_data<target>();
                 auto& diff_target_data = it->data()->
                     template get_linalg_data<diff_target>();
-
-                const auto s_extent = it->data()->template get<target>().
-                                                real_block().extent();
 
                 // laplace of it_t data with zero bcs
                 if ((it->is_leaf()))
                 {
-                    for ( int i =1; i<s_extent[0]-1; ++i){
-                        for ( int j = 1; j<s_extent[1]-1; ++j){
-                            for ( int k = 1; k<s_extent[2]-1; ++k){
-                                diff_target_data(i,j,k)  =
-                                    target_data(i,j,k) * -6.0;
-                                diff_target_data(i,j,k) += target_data(i,j,k-1);
-                                diff_target_data(i,j,k) += target_data(i,j,k+1);
-                                diff_target_data(i,j,k) += target_data(i,j-1,k);
-                                diff_target_data(i,j,k) += target_data(i,j+1,k);
-                                diff_target_data(i,j,k) += target_data(i+1,j,k);
-                                diff_target_data(i,j,k) += target_data(i-1,j,k);
-                            }
-                        }
+                    auto& nodes_domain=it->data()->nodes_domain();
+                    for(auto it2=nodes_domain.begin();it2!=nodes_domain.end();++it2 )
+                    {
+                        it2->template get<diff_target>()= 
+                                  -6.0* it2->template get<target>()+
+                                  it2->template at_offset<target>(0,0,-1)+
+                                  it2->template at_offset<target>(0,0,+1)+
+                                  it2->template at_offset<target>(0,-1,0)+
+                                  it2->template at_offset<target>(0,+1,0)+
+                                  it2->template at_offset<target>(-1,0,0)+
+                                  it2->template at_offset<target>(+1,0,0);
                     }
-
                 }
                 diff_target_data *= (1/dx_level) * (1/dx_level);
             }

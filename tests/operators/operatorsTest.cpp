@@ -2,7 +2,7 @@
 #include <boost/mpi/environment.hpp>
 #include <boost/mpi/communicator.hpp>
 
-#include "decomposition_test.hpp"
+#include "operatorsTest.hpp"
 #include <dictionary/dictionary.hpp>
 
 
@@ -24,7 +24,7 @@ int main(int argc, char *argv[])
     Dictionary dictionary(input);
 
     //Instantiate setup
-    DecomposistionTest setup(&dictionary);
+    OperatorTest setup(&dictionary);
 
     // run setup
     setup.run();

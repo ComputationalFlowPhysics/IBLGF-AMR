@@ -36,38 +36,44 @@ public:
     using communicator_type  = typename  domain_t::communicator_type;
     using octant_t  = typename  domain_t::octant_t;
     using datablock_t  = typename  domain_t::datablock_t;
+    using fields_tuple_t = typename datablock_t::fields_tuple_t;
     using key_t  = typename  domain_t::key_t;
     using key_coord_t = typename key_t::coordinate_type;
+    using fmm_mask_type = typename octant_t::fmm_mask_type;
 
     using trait_t =  ServerClientTraits<Domain>;
     using super_type = ClientBase<trait_t>;
 
+    //QueryTypes
     using key_query_t  = typename trait_t::key_query_t;
     using rank_query_t = typename trait_t::rank_query_t;
-
     using mask_init_query_send_t   = typename trait_t::mask_init_query_send_t;
     using mask_init_query_recv_t   = typename trait_t::mask_init_query_recv_t;
-
     using leaf_query_send_t   = typename trait_t::leaf_query_send_t;
     using leaf_query_recv_t   = typename trait_t::leaf_query_recv_t;
-
     template<template<class>class BufferPolicy=OrAssignRecv>
     using mask_query_t = typename trait_t::template
                                         mask_query_t<BufferPolicy>;
 
+    //TaskTypes
     template<template<class>class BufferPolicy=AddAssignRecv>
     using induced_fields_task_t = typename trait_t::template
                                         induced_fields_task_t<BufferPolicy>;
-
     using acc_induced_fields_task_t = typename trait_t::acc_induced_fields_task_t;
-
     using halo_task_t = typename trait_t::halo_task_t;
 
+    template<class Field>
+    using halo_communicator_t=HaloCommunicator<halo_task_t, Field, domain_t>;
+    template<class... Fields>
+    using halo_communicator_template_t = 
+        std::tuple<halo_communicator_t<Fields>...>;
+    using halo_communicators_tuple_t = 
+        typename tuple_utils::make_from_tuple<
+            halo_communicator_template_t, fields_tuple_t>::type;
+
+
     using task_manager_t =typename trait_t::task_manager_t;
-
     using intra_client_server_t = ServerBase<trait_t>;
-
-    using fmm_mask_type = typename octant_t::fmm_mask_type;
 
  protected:
     using super_type::comm_;
@@ -1063,11 +1069,12 @@ public:
         auto& recv_comm=
             task_manager_-> template recv_communicator<halo_task_t>();
 
-        //Halo communicator
-        HaloCommunicator<halo_task_t,Field,Domain> hcomm;
+        //Initialize Halo communicator
+        //TODO: put this outside somewhere 
+        initialize_halo_communicators();
+        auto& hcomm=std::get<halo_communicator_t<Field>>(halo_communicators_);
 
         //Get the overlaps 
-        hcomm.compute_tasks(domain_);
         hcomm.template pack_messages();
         for(auto st:hcomm.send_tasks()) { if(st) { send_comm.post_task(st); } }
         for(auto& st:hcomm.recv_tasks()) { if(st) { recv_comm.post_task(st); } }
@@ -1085,6 +1092,13 @@ public:
 
         //Assign received message to field view 
         hcomm.template unpack_messages();
+    }
+
+    void initialize_halo_communicators()noexcept
+    {
+        tuple_utils::for_each(halo_communicators_, [&](auto& hcomm){
+            hcomm.compute_tasks(domain_);
+        });
     }
 
     void query_leafs()
@@ -1115,6 +1129,7 @@ private:
     std::vector<std::vector<float_type>> recv_fields_;
     std::vector<std::vector<std::shared_ptr<induced_fields_task_t<AddAssignRecv>>>> send_tasks_;
     std::vector<std::vector<std::shared_ptr<induced_fields_task_t<AddAssignRecv>>>> recv_tasks_;
+    halo_communicators_tuple_t halo_communicators_;
 };
 
 }

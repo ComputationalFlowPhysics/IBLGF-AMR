@@ -32,6 +32,25 @@ struct TypeIterator
 };
 
 
+template<template<typename...>class T,class Tuple, class V>
+struct make_from_tuple_impl;
+
+template<template<typename...>class T, class Tuple, size_t... Is>
+struct make_from_tuple_impl<T,Tuple, std::index_sequence<Is...>>
+{
+    using type = T<typename std::tuple_element<Is, Tuple>::type...>;
+};
+template<template<typename...>class T, class Tuple>
+struct make_from_tuple
+{
+    static constexpr std::size_t N=std::tuple_size<std::decay_t<Tuple>>::value;
+    using type=typename make_from_tuple_impl
+               <
+                   T, Tuple, 
+                   std::make_index_sequence<N>
+               >::type;
+};
+
 
 }
 

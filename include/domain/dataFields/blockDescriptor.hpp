@@ -583,7 +583,7 @@ private:
 
 
     void append_plate_stl(std::ofstream& ofs, 
-            std::size_t _normal_idx, bool positive) const
+            std::size_t _normal_idx, bool positive) const noexcept
     {
         const auto dim=base_.size();
         auto p0=base_;
@@ -632,7 +632,7 @@ private:
             const PeriodicityBlock& _periodicityBlock,
             const vector_t<bool>& _periodicty,
             std::size_t _dimension=0
-            ) const
+            ) const noexcept
     {
         
         auto nDims=Dim;

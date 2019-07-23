@@ -344,28 +344,29 @@ public: //Ctors
 
 
     template<
-        typename Source,
-        typename Target,
-        typename BlockType>
+        typename Source, typename Target,
+        typename BlockType, class Kernel>
     void apply_lgf( const BlockType& _lgf_block,
+                    Kernel* _kernel,
                     int _level_diff,
                     const Source& _source,
                     const BlockType& _extractor,
                     Target& _target,
                     float_type _scale )
     {
-            execute_field(_lgf_block, _level_diff, _source, _scale);
+            execute_field(_lgf_block, _kernel, _level_diff, _source, _scale);
             add_solution(_extractor, _target);
             fft_count_ ++;
     }
 
-    template<class Field, typename BlockType>
-    void execute_field(const BlockType& _lgf_block, 
+    template<class Field, class BlockType, class Kernel>
+    void execute_field(const BlockType& _lgf_block,
+                       Kernel* _kernel,
                        int _level_diff, const Field& _b, 
                        const float_type _extra_scale)
     {
 
-        auto& f0 = lgf_.lgf_dft(_lgf_block, this, _level_diff);
+        auto& f0 = _kernel->dft(_lgf_block, this, _level_diff);
 
         fft_forward1_.copy_field(_b, dims1_);
         fft_forward1_.execute();
@@ -425,7 +426,7 @@ private:
     dfft_r2c fft_forward1_;
     dfft_c2r fft_backward_;
 
-    lgf::LGF<lgf::Lookup>   lgf_;       ///< Lookup for the LGFs
+    //lgf::LGF<lgf::Lookup>   lgf_;       ///< Lookup for the LGFs
 };
 
 

@@ -8,8 +8,6 @@
 #include <boost/math/special_functions/bessel.hpp>
 #include <boost/align/aligned_allocator_adaptor.hpp>
 
-// IBLGF-specific
-#include <lgf/lgf_lookup.hpp>
 
 #include <complex>
 #include <domain/dataFields/dataBlock.hpp>
@@ -53,7 +51,7 @@ public: //Ctor:
 
 
     template<class Convolutor>
-    auto& lgf_dft(const block_descriptor_t& _lgf_block, 
+    auto& dft(const block_descriptor_t& _lgf_block, 
                   Convolutor* _conv,  int level_diff)
     {
         const auto base = _lgf_block.base();
@@ -101,7 +99,7 @@ private:
                 {
                     //get view
                     _lgf[_b.index(i,j,k)] =
-                        Lookup::get(coordinate_t({i*step, j*step, k*step}));
+                        Policy::get(coordinate_t({i*step, j*step, k*step}));
                 }
             }
         }

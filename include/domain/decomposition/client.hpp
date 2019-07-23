@@ -509,8 +509,8 @@ public:
     }
 
 
-    template<class SendField,class RecvField, class FMMType>
-    void communicate_induced_fields(octant_t* it, FMMType* _fmm,
+    template<class SendField,class RecvField, class FMMType, class Kernel>
+    void communicate_induced_fields(octant_t* it, FMMType* _fmm, Kernel* _kernel,
                                     int _level_diff, float_type _dx_level,
                                     bool _neighbors,
                                     bool _start_communication,
@@ -539,7 +539,8 @@ public:
             for(std::size_t i = 0; i< it->influence_number(); ++i)
             {
                 const auto inf=it->influence(i);
-                if(inf && inf->rank()==myRank && inf->fmm_mask(fmm_mask_idx,MASK_LIST::Mask_FMM_Source))
+                if(inf && inf->rank()==myRank && 
+                    inf->fmm_mask(fmm_mask_idx,MASK_LIST::Mask_FMM_Source))
                 { is_influenced=true ; break;}
             }
 
@@ -548,7 +549,8 @@ public:
                 for(int i = 0; i< it->nNeighbors(); ++i)
                 {
                     const auto inf=it->neighbor(i);
-                    if(inf && inf->rank()==myRank && inf->fmm_mask(fmm_mask_idx,MASK_LIST::Mask_FMM_Source))
+                    if(inf && inf->rank()==myRank && 
+                       inf->fmm_mask(fmm_mask_idx,MASK_LIST::Mask_FMM_Source))
                     { is_influenced=true ; break;}
                 }
             }
@@ -565,7 +567,8 @@ public:
                 task->octant()=it;
                 auto size = it->data()->template get<SendField>().real_block().nPoints();
 
-                auto send_callback = [it, _fmm, _neighbors,_level_diff,_dx_level,size](auto& buffer_vector)
+                auto send_callback = [it, _fmm, _kernel,  _neighbors,
+                                     _level_diff,_dx_level,size](auto& buffer_vector)
                 {
                     //1. Swap buffer with sendfield
                     buffer_vector.resize(size);
@@ -574,7 +577,8 @@ public:
                             template get<SendField>().data());
 
                     //2. Compute influence field
-                    _fmm->compute_influence_field(it,_level_diff, _dx_level, _neighbors);
+                    _fmm->compute_influence_field(it,_kernel, 
+                                    _level_diff, _dx_level, _neighbors);
 
                     //3. Swap sendfield with buffer
                     buffer_vector.swap(it->data()->
@@ -589,7 +593,8 @@ public:
             for(std::size_t i = 0; i< it->influence_number(); ++i)
             {
                 const auto inf=it->influence(i);
-                if(inf && inf->rank()!=myRank && inf->fmm_mask(fmm_mask_idx,MASK_LIST::Mask_FMM_Source))
+                if(inf && inf->rank()!=myRank && 
+                   inf->fmm_mask(fmm_mask_idx,MASK_LIST::Mask_FMM_Source))
                 {
                     unique_inflRanks.insert(inf->rank());
                 }
@@ -600,7 +605,8 @@ public:
                 for(int i = 0; i< it->nNeighbors(); ++i)
                 {
                     const auto inf=it->neighbor(i);
-                    if(inf && inf->rank()!=myRank && inf->fmm_mask(fmm_mask_idx,MASK_LIST::Mask_FMM_Source))
+                    if(inf && inf->rank()!=myRank && 
+                       inf->fmm_mask(fmm_mask_idx,MASK_LIST::Mask_FMM_Source))
                     {
                         unique_inflRanks.insert(inf->rank());
                     }

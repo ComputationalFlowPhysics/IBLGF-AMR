@@ -15,6 +15,9 @@
 #include "../../utilities/convolution.hpp"
 #include<utilities/cell_center_nli_intrp.hpp>
 
+#include <lgf/lgf_lookup.hpp>
+#include <lgf/lgf.hpp>
+
 namespace solver
 {
 
@@ -45,6 +48,7 @@ public: //member types
 
     //FMM
     using Fmm_t =  typename Setup::Fmm_t;
+    using lgf_lap_t =  typename lgf::LGF<lgf::Lookup>;
 
     static constexpr int lBuffer=1; ///< Lower left buffer for interpolation
     static constexpr int rBuffer=1; ///< Lower left buffer for interpolation
@@ -58,6 +62,11 @@ public: //member types
     }
 
 public:
+    template< class Source, class Target >
+    void apply_lgf()
+    {
+        this->apply_lgf<Source, Target>(&lgf_lap_);
+    }
 
     /** @brief Solve the poisson equation using lattice Green's functions on
      *         a block-refined mesh for a given Source and Target field.
@@ -68,8 +77,8 @@ public:
      *  Second order interpolation and coarsification operators are used
      *  to project the solutions to fine and coarse meshes, respectively.
      */
-    template< class Source, class Target >
-    void apply_amr_lgf()
+    template< class Source, class Target, class Kernel >
+    void apply_lgf(Kernel*  _kernel)
     {
 
         auto client = domain_->decomposition().client();
@@ -122,27 +131,8 @@ public:
                 }
 
             //test for FMM
-            fmm_.template apply<source_tmp, Target>(domain_, l, false);
-            fmm_.template apply<source_tmp, Target>(domain_, l, true);
-            //this->level_convolution_fft<source_tmp, Target>(l);
-
-
-            //for (auto it  = domain_->begin(l);
-            //          it != domain_->end(l); ++it)
-            //{
-            //    if(it->is_leaf()) continue;
-
-            //    auto& cp1 = it ->data()->template get_linalg_data<Target>();
-            //    auto& cp2 = it ->data()->
-            //        template get_linalg_data<coarse_target_sum>();
-
-            //    cp2 = cp1 * 1.0;
-
-            //}
-
-            //domain_->decomposition().client()->
-            //    template communicate_updownward_assign
-            //        <coarse_target_sum, coarse_target_sum>(l,false,false);
+            fmm_.template apply<source_tmp, Target>(domain_, _kernel, l, false);
+            fmm_.template apply<source_tmp, Target>(domain_, _kernel, l, true);
 
             domain_->decomposition().client()->
                 template communicate_updownward_assign
@@ -163,23 +153,6 @@ public:
             }
 
         }
-
-        // Interpolation
-        //pcout<<"Interpolation"<<std::endl;
-        //for (int lt = domain_->tree()->base_level();
-        //       lt < domain_->tree()->depth(); ++lt)
-        //{
-        //    domain_->decomposition().client()->
-        //        template communicate_updownward_assign<Target, Target>(lt,false,false);
-
-        //    for (auto it_t  = domain_->begin(lt);
-        //              it_t != domain_->end(lt); ++it_t)
-        //    {
-        //        if(it_t->is_leaf() ) continue;
-        //        c_cntr_nli_.nli_intrp_node<Target, Target>(it_t);
-        //    }
-
-        //}
 
     }
 
@@ -237,7 +210,7 @@ public:
      *         it in diff_target.
      */
     template< class target, class diff_target >
-    void apply_amr_laplace()
+    void apply_laplace()
     {
 
         const float_type dx_base=domain_->dx_base();
@@ -298,13 +271,13 @@ public:
     template< class Source, class Target >
     void solve()
     {
-        apply_amr_lgf<Source, Target>();
+        apply_lgf<Source, Target>();
     }
 
     template<class Target, class Laplace>
     void laplace_diff()
     {
-        apply_amr_laplace<Target, Laplace>();
+        apply_laplace<Target, Laplace>();
     }
 
 
@@ -373,6 +346,7 @@ public:
 private:
     domain_type*                      domain_;    ///< domain
     Fmm_t                             fmm_;       ///< fast-multipole
+    lgf_lap_t                         lgf_lap_;
     interpolation::cell_center_nli    c_cntr_nli_;///< Lagrange Interpolation
     parallel_ostream::ParallelOstream pcout=parallel_ostream::ParallelOstream(1);
 

@@ -177,10 +177,11 @@ public:
     {
     }
 
-    template< class Source, class Target >
+    template< class Source, class Target, class Kernel >
     void apply(domain_t* domain_,
-                            int level,
-                            bool non_leaf_as_source=false)
+               Kernel* _kernel, 
+               int level,
+               bool non_leaf_as_source=false)
     {
 
         pcout<<"FMM For Level "<< level << " Start ---------------------------"<<std::endl;
@@ -240,7 +241,7 @@ public:
         //// FMM influence list
         pcout<<"FMM Bx start" << std::endl;
         //fmm_Bx_itr_build(domain_, level);
-        fmm_Bx(domain_, dx_level);
+        fmm_Bx(domain_, _kernel, dx_level);
 
         //// Interpolation
         pcout<<"FMM INTRP start" << std::endl;
@@ -276,7 +277,9 @@ public:
         return octants;
     }
 
+    template<class Kernel>
     void fmm_Bx(domain_t* domain_,
+                Kernel* _kernel,
                 float_type dx_level)
     {
         std::vector<std::pair<octant_t*, int>> octants;
@@ -313,14 +316,14 @@ public:
 
             if(it->locally_owned())
             {
-                compute_influence_field(&(*it),
-                    base_level_-level, dx_level, _neighbor);
+                compute_influence_field(&(*it), _kernel,
+                                       base_level_-level, dx_level, _neighbor);
             }
 
             //setup the tasks
             domain_->decomposition().client()->template
                 communicate_induced_fields<fmm_t, fmm_t>(&(*it),
-                    this,base_level_-level,dx_level,
+                    this, _kernel,base_level_-level,dx_level,
                     _neighbor,
                     start_communication, fmm_mask_idx_);
 
@@ -349,8 +352,11 @@ public:
         ))
     }
 
-    void compute_influence_field(octant_t* it,int level_diff,
-                                 float_type dx_level, bool neighbor)  noexcept
+
+    template<class Kernel>
+    void compute_influence_field(octant_t* it, Kernel* _kernel, 
+                                 int level_diff, float_type dx_level, 
+                                 bool neighbor)  noexcept
     {
 
         if (!(it->data()) || 
@@ -363,7 +369,7 @@ public:
                 if (n_s && n_s->locally_owned()
                         && n_s->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Source))
                 {
-                    fmm_tt(n_s, it, 0, dx_level);
+                    fmm_tt(n_s, it, _kernel, 0, dx_level);
                 }
             }
         }
@@ -373,11 +379,10 @@ public:
             if (n_s && n_s->locally_owned()
                     && n_s->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Source))
             {
-                fmm_tt(n_s, it, level_diff, dx_level);
+                fmm_tt(n_s, it, _kernel,level_diff, dx_level);
             }
         }
     }
-
 
     template< class f1, class f2 >
     void fmm_add_equal(domain_t* domain_)
@@ -501,7 +506,8 @@ public:
         }
     }
 
-    void fmm_tt(octant_t* o_s, octant_t* o_t,
+    template<class Kernel>
+    void fmm_tt(octant_t* o_s, octant_t* o_t, Kernel* _kernel,
                 int level_diff, float_type dx_level)
     {
 
@@ -524,7 +530,7 @@ public:
         block_dsrp_t lgf_block(base_lgf, extent_lgf);
         block_dsrp_t extractor(s_base, s_extent);
 
-        conv_.apply_lgf(lgf_block, level_diff,
+        conv_.apply_lgf(lgf_block, _kernel, level_diff,
                 o_s->data()->template get<fmm_s>(),
                 extractor,
                 o_t->data()->template get<fmm_t>(),

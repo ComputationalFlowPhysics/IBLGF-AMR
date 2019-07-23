@@ -52,8 +52,6 @@ public: //member types
     PoissonSolver(simulation_type* _simulation)
     :
     domain_(_simulation->domain_.get()),
-    conv_(domain_->block_extent()+lBuffer+rBuffer,
-          domain_->block_extent()+lBuffer+rBuffer),
     fmm_(domain_->block_extent()[0]+lBuffer+rBuffer),
     c_cntr_nli_(domain_->block_extent()[0]+lBuffer+rBuffer)
     {
@@ -77,8 +75,6 @@ public:
         auto client = domain_->decomposition().client();
         if(!client)return;
 
-        // allocate lgf
-        std::vector<float_type> lgf;
         const float_type dx_base=domain_->dx_base();
 
         // Copy source
@@ -126,8 +122,8 @@ public:
                 }
 
             //test for FMM
-            fmm_.template fmm_for_level_test<source_tmp, Target>(domain_, l, false);
-            fmm_.template fmm_for_level_test<source_tmp, Target>(domain_, l, true);
+            fmm_.template apply<source_tmp, Target>(domain_, l, false);
+            fmm_.template apply<source_tmp, Target>(domain_, l, true);
             //this->level_convolution_fft<source_tmp, Target>(l);
 
 
@@ -190,10 +186,11 @@ public:
 
     /** @brief Compute level interactions with FFT instead of FMM.  */
     template<
+        class Conv,
         class Source,
         class Target
         >
-    void level_convolution_fft( int level)
+    void level_convolution_fft(const Conv& _conv, int level)
     {
 
         const float_type dx_base=domain_->dx_base();
@@ -224,12 +221,12 @@ public:
                 const auto extent_lgf = 2 * (s_extent) - 1;
 
                 // Perform convolution
-                conv_.execute_field(block_type (base_lgf, extent_lgf),0,
+                _conv.execute_field(block_type (base_lgf, extent_lgf),0,
                         it_s->data()->template get<Source>());
 
                 // Extract the solution
                 block_type  extractor(s_base, s_extent);
-                conv_.add_solution(extractor,
+                _conv.add_solution(extractor,
                                   it_t->data()->template get<Target>(),
                                   dx_level*dx_level);
             }
@@ -375,7 +372,6 @@ public:
 
 private:
     domain_type*                      domain_;    ///< domain
-    fft::Convolution                  conv_;      ///< fft convolution
     Fmm_t                             fmm_;       ///< fast-multipole
     interpolation::cell_center_nli    c_cntr_nli_;///< Lagrange Interpolation
     parallel_ostream::ParallelOstream pcout=parallel_ostream::ParallelOstream(1);

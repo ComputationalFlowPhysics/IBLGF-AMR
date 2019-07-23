@@ -143,7 +143,6 @@ public:
             }
         }
     }
-
 };
 
 
@@ -168,6 +167,8 @@ public: //Ctor:
     using fmm_s = typename Setup::fmm_s;
     using fmm_t = typename Setup::fmm_t;
 
+    using convolution_t = fft::Convolution;
+
 
 public:
     Fmm(int Nb)
@@ -176,96 +177,8 @@ public:
     {
     }
 
-    template<
-        class Source,
-        class Target
-        >
-    void fmm_for_level(domain_t* domain_,
-                       int level,
-                       bool non_leaf_as_source=false)
-    {
-
-        clock_t fmm_start = clock();
-        std::cout << "------------------------------------"  << std::endl;
-        std::cout << "Fmm - Level - " << level << std::endl;
-
-        const float_type dx_base=domain_->dx_base();
-        auto refinement_level = domain_-> begin(level)->refinement_level();
-        auto dx_level =  dx_base/std::pow(2, refinement_level);
-
-        // Find the subtree
-        auto o_start = domain_-> begin(level);
-        auto o_end   = domain_-> end(level);
-        o_end--;
-
-        if (non_leaf_as_source)
-        {
-            while ((o_start != domain_->end(level)) && (o_start->is_leaf()==true) ) o_start++;
-            if (o_start == domain_->end(level))
-            {
-                std::cout<< "All leaves" << std::endl;
-                return;
-            }
-            while (o_end->is_leaf()==true) o_end--;
-        }
-
-        // Initialize for each fmm // zero ing all tree
-        std::cout << "Fmm - initialize " << std::endl;
-        fmm_init_zero<fmm_s>(domain_, level, o_start, o_end);
-
-        // Copy to temporary variables // only the base level
-        std::cout << "Fmm - copy source " << std::endl;
-        fmm_init_copy<Source, fmm_s>(domain_, level, o_start, o_end, non_leaf_as_source);
-        //fmm_init_copy<Source, fmm_tmp>(domain_, level, o_start, o_end, non_leaf_as_source);
-
-        // Antrp for all // from base level up
-        clock_t fmm_antrp_start = clock();
-        std::cout << "Fmm - antrp " << std::endl;
-        fmm_antrp(domain_, level, o_start, o_end);
-        clock_t fmm_antrp_end = clock();
-        double  fmm_antrp_time = (double) (fmm_antrp_end-fmm_antrp_start) / CLOCKS_PER_SEC;
-        std::cout << "Fmm - antrp - done / time = "<< fmm_antrp_time << " (s * threads)" << std::endl;
-        //fmm_antrp<fmm_tmp>(domain_, level, o_start, o_end);
-
-        // Nearest neighbors and self
-        //clock_t fmm_B0_start = clock();
-        //std::cout << "Fmm - B0 " << std::endl;
-        //fmm_B0(domain_, level, o_start, o_end, dx_level);
-        //clock_t fmm_B0_end = clock();
-        //double  fmm_B0_time = (double) (fmm_B0_end-fmm_B0_start) / CLOCKS_PER_SEC;
-        //std::cout << "Fmm - B0 -    done / time = "<< fmm_B0_time << " (s * threads)" << std::endl;
-
-        // FMM 189
-        std::cout << "Fmm - B1 and up" << std::endl;
-        clock_t fmm_Bx_start = clock();
-        fmm_Bx(domain_, level, o_start, o_end, dx_level);
-        clock_t fmm_Bx_end = clock();
-        double  fmm_Bx_time = (double) (fmm_Bx_end-fmm_Bx_start) / CLOCKS_PER_SEC;
-        std::cout << "Fmm - Bx    - done / time = "<< fmm_Bx_time << " (s * threads)" << std::endl;
-
-        // Intrp
-        std::cout << "Fmm - intrp " << std::endl;
-        clock_t fmm_intrp_start = clock();
-        fmm_intrp(domain_, level, o_start, o_end);
-        clock_t fmm_intrp_end = clock();
-        double  fmm_intrp_time = (double) (fmm_intrp_end-fmm_intrp_start) / CLOCKS_PER_SEC;
-        std::cout << "Fmm - intrp - done / time = "<< fmm_intrp_time << " (s * threads)" << std::endl;
-
-        // Copy back
-        std::cout << "Fmm - output " << std::endl;
-        if (!non_leaf_as_source)
-            fmm_add_equal<Target, fmm_t>(domain_, level, o_start, o_end, non_leaf_as_source);
-        else
-            fmm_minus_equal<Target, fmm_t>(domain_, level, o_start, o_end, non_leaf_as_source);
-
-        clock_t fmm_end = clock();
-        double fmm_time = (double) (fmm_end-fmm_start) / CLOCKS_PER_SEC;
-        std::cout << "Fmm - level - done / time = "<< fmm_time << " (s * threads)" << std::endl;
-
-    }
-
     template< class Source, class Target >
-    void fmm_for_level_test(domain_t* domain_,
+    void apply(domain_t* domain_,
                             int level,
                             bool non_leaf_as_source=false)
     {
@@ -346,67 +259,6 @@ public:
         pcout<<"FMM For Level "<< level << " End -------------------------"<<std::endl;
     }
 
-    //void fmm_init_base_level_masks(domain_t* domain_, int base_level, bool non_leaf_as_source)
-    //{
-
-    //    if (non_leaf_as_source)
-    //    {
-    //        for (auto it = domain_->begin(base_level_);
-    //                it != domain_->end(base_level_); ++it)
-    //        {
-    //            if ( it->is_leaf() || !it->locally_owned() )
-    //            {
-    //                it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Source, false);
-    //                it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Target, false);
-    //            } else
-    //            {
-    //                it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Source, true);
-    //                it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Target, true);
-    //            }
-    //        }
-    //    } else
-    //    {
-    //        for (auto it = domain_->begin(base_level_);
-    //                it != domain_->end(base_level_); ++it)
-    //        if (it->locally_owned())
-    //        {
-    //            it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Source, true);
-    //            it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Target, true);
-    //        } else
-    //        {
-    //            it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Source, false);
-    //            it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Target, false);
-    //        }
-    //    }
-    //}
-
-    //void fmm_upward_pass_masks(domain_t* domain_, int mask_id)
-    //{
-    //    // for all levels
-    //    for (int level=base_level_-1; level>=0; --level)
-    //    {
-    //        // parent's mask is true if any of its child's mask is true
-    //        for (auto it = domain_->begin(level);
-    //                it != domain_->end(level);
-    //                ++it)
-    //        {
-    //            // including ghost parents
-    //            it->fmm_mask(fmm_mask_idx_,mask_id, false);
-    //            for ( int c = 0; c < it->num_children(); ++c )
-    //            {
-    //                if ( it->child(c) && it->child(c)->fmm_mask(fmm_mask_idx_,mask_id) )
-    //                {
-    //                    it->fmm_mask(fmm_mask_idx_,mask_id, true);
-    //                    break;
-    //                }
-    //            }
-    //        }
-    //        domain_->decomposition().client()-> template
-    //                communicate_mask_single_level_updownward_OR(level,
-    //                        mask_id, true, fmm_mask_idx_);
-    //    }
-    //}
-
     auto initialize_upward_iterator(int level, domain_t* domain_,bool _upward)
     {
         std::vector<std::pair<octant_t*, int>> octants;
@@ -485,6 +337,7 @@ public:
             //}
         }
 
+        mDuration_type time_communication_Bx;
         //Finish the communication
         //TIME_CODE(time_communication_Bx, SINGLE_ARG(
         //domain_->decomposition().client()->template
@@ -496,10 +349,12 @@ public:
         ))
     }
 
-    void compute_influence_field(octant_t* it,int level_diff,float_type dx_level, bool neighbor)  noexcept
+    void compute_influence_field(octant_t* it,int level_diff,
+                                 float_type dx_level, bool neighbor)  noexcept
     {
 
-        if (!(it->data()) || !it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Target)) return;
+        if (!(it->data()) || 
+            !it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Target)) return;
         if(neighbor)
         {
             for (int i=0; i<it->nNeighbors(); ++i)
@@ -532,7 +387,8 @@ public:
                 it != domain_->end(base_level_);
                 ++it)
         {
-            if(it->data() && it->locally_owned() && it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Target))
+            if(it->data() && it->locally_owned() && 
+               it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Target))
             {
                 it->data()->template get_linalg<f1>().get()->
                     cube_noalias_view() +=
@@ -548,7 +404,8 @@ public:
                 it != domain_->end(base_level_);
                 ++it)
         {
-            if(it->data() && it->locally_owned() && it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Target))
+            if(it->data() && it->locally_owned() && 
+               it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Target))
             {
 
                 it->data()->template get_linalg<f1>().get()->
@@ -585,7 +442,8 @@ public:
                 it != domain_->end(base_level_);
                 ++it)
         {
-            if(it->data() && it->locally_owned() && it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Source))
+            if(it->data() && it->locally_owned() && 
+               it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Source))
             {
                 it->data()->template get_linalg<to>().get()->
                     cube_noalias_view() =
@@ -650,7 +508,7 @@ public:
         const auto t_base = o_t->data()->template get<fmm_t>().
                                         real_block().base();
         const auto s_base = o_s->data()->template get<fmm_s>().
-                                real_block().base();
+                                        real_block().base();
 
         if(!o_s->locally_owned())return;
 
@@ -680,26 +538,13 @@ public:
     private:
         int fmm_mask_idx_;
         int base_level_;
-        std::vector<float_type>     lgf;
-        fft::Convolution            conv_;      ///< fft convolution
-        parallel_ostream::ParallelOstream pcout=parallel_ostream::ParallelOstream(1);
+        convolution_t            conv_;      ///< fft convolution
+        parallel_ostream::ParallelOstream pcout=
+            parallel_ostream::ParallelOstream(1);
 
     private: //timings
 
-        mDuration_type time_communication_Bx;
-        mDuration_type time_communication_B0;
-        mDuration_type time_communication_interp;
-        mDuration_type time_communication_anterp;
-
-        mDuration_type time_fftw;
-        mDuration_type time_interp;
-        mDuration_type time_anterp;
-
-        mDuration_type time_Bx_all;
-        mDuration_type time_interp_all;
-        mDuration_type time_anterp_all;
-
-    };
+};
 
 }
 

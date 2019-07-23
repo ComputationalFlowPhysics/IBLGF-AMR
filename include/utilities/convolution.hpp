@@ -280,9 +280,6 @@ public: //Interface
 
     void execute()
     {
-        //std::cout<< "-----------------------"<<std::endl;
-        //std::fill(output_.begin(), output_.end(),0.0);
-
         fftw_execute(c2c_dir_1);
 
         for (std::size_t i=0; i<c2c_dir_2.size(); ++i)
@@ -290,19 +287,6 @@ public: //Interface
 
         for (std::size_t i=0; i<c2r_dir_3.size(); ++i)
             fftw_execute(c2r_dir_3[i]);
-
-        //for (int i =0; i<output_.size();++i)
-        //    std::cout<<output_[i];
-
-        //std::cout<<std::endl;
-
-        //fftw_execute(plan);
-        //for (int i =0; i<output_.size();++i)
-        //    std::cout<<output_[i];
-
-        //std::cout<<std::endl;
-
-
     }
 
     auto& input(){return input_;}
@@ -321,16 +305,13 @@ private:
 };
 
 
+///template<class Kernel>
 class Convolution
 {
 
 public:
 
     using dims_t = types::vector_type<int,3>;
-
-    using datablock_t = DataBlock<3, node>;
-    using block_descriptor_t = typename datablock_t::block_descriptor_type;
-    using coordinate_t = typename block_descriptor_t::base_t;
 
     using complex_vector_t = std::vector<std::complex<float_type>,
           boost::alignment::aligned_allocator_adaptor<
@@ -353,117 +334,69 @@ public: //Ctors
 
 
     Convolution(dims_t _dims0, dims_t _dims1)
-    :padded_dims(_dims0 + _dims1 - 1),
+    :padded_dims_(_dims0 + _dims1 - 1),
      dims0_(_dims0),
      dims1_(_dims1),
-     fft_forward0(padded_dims, _dims0),
-     fft_forward1(padded_dims, _dims1),
-     fft_backward(padded_dims, _dims1)
-    {
-        construct_lgf_matrix_level_maps();
-    }
+     fft_forward0_(padded_dims_, _dims0),
+     fft_forward1_(padded_dims_, _dims1),
+     fft_backward_(padded_dims_, _dims1)
+    { }
 
-    void construct_lgf_matrix_level_maps()
-    {
-        int max_lgf_map_level = 20;
-        lgf_level_maps_.clear();
-        lgf_level_maps_.resize(max_lgf_map_level);
-    }
 
     template<
-        typename lgf_block_t,
-        typename source_t,
-        typename target_t,
-        typename extractor_t>
-    void apply_lgf( const lgf_block_t& lgf_block,
-                    int level_diff,
-                    const source_t& source,
-                    const extractor_t extractor,
-                    target_t& target,
-                    float_type scale )
+        typename Source,
+        typename Target,
+        typename BlockType>
+    void apply_lgf( const BlockType& _lgf_block,
+                    int _level_diff,
+                    const Source& _source,
+                    const BlockType& _extractor,
+                    Target& _target,
+                    float_type _scale )
     {
-            execute_field(lgf_block, level_diff, source, scale);
-            add_solution(extractor, target);
-            fft_count ++;
+            execute_field(_lgf_block, _level_diff, _source, _scale);
+            add_solution(_extractor, _target);
+            fft_count_ ++;
     }
 
-    template<class Vector>
-    void execute(Vector& _a, Vector& _b)
+    template<class Field, typename BlockType>
+    void execute_field(const BlockType& _lgf_block, 
+                       int _level_diff, const Field& _b, 
+                       const float_type _extra_scale)
     {
-        fft_forward0.copy_input(_a, dims0_);
-        fft_forward0.execute();
 
-        fft_forward1.copy_input(_b,dims1_);
-        fft_forward1.execute();
+        auto& f0 = lgf_.lgf_dft(_lgf_block, this, _level_diff);
 
-        auto& f0 = fft_forward0.output();
-        auto& f1 = fft_forward1.output();
+        fft_forward1_.copy_field(_b, dims1_);
+        fft_forward1_.execute();
+        auto& f1 = fft_forward1_.output();
+
         complex_vector_t prod(f0.size());
-        const float_type scale = 1.0 / (padded_dims[0] *
-                                        padded_dims[1] *
-                                        padded_dims[2]);
+        const float_type scale = 1.0 / (padded_dims_[0] *
+                                        padded_dims_[1] *
+                                        padded_dims_[2]) * _extra_scale;
         for(std::size_t i = 0; i < prod.size(); ++i)
         {
-            fft_backward.input()[i] = f0[i]*f1[i]*scale;
+            fft_backward_.input()[i] = f0[i]*f1[i]*scale;
         }
-        fft_backward.execute();
+        fft_backward_.execute();
     }
 
-    template<class Field,
-            typename block_dsrp_t>
-    void execute_field(const block_dsrp_t lgf_block_dsrp, int level_diff, const Field& _b, const float_type extra_scale)
+    auto& dft_r2c(std::vector<float_type>& _vec )
     {
-        // use lgf_block.shift and level_diff to check if it has been saved or
-        // not
-
-        const auto base = lgf_block_dsrp.base();
-
-        complex_vector_t* f_ptr;
-
-        lgf_key_t k_(base[0],base[1],base[2]);
-        auto it = lgf_level_maps_[level_diff].find( k_ );
-
-        if ( it == lgf_level_maps_[level_diff].end() )
-        {
-            lgf_.get_subblock( lgf_block_dsrp, lgf, level_diff);
-            fft_forward0.copy_input(lgf, dims0_);
-            fft_forward0.execute_whole();
-
-            f_ptr = &fft_forward0.output();
-            lgf_level_maps_[level_diff].emplace(k_,
-                    std::unique_ptr<complex_vector_t> ( new complex_vector_t(*f_ptr) ) );
-        } else
-        {
-
-            f_ptr = (it->second).get();
-        }
-
-        auto& f0 = *f_ptr;
-
-        fft_forward1.copy_field(_b, dims1_);
-        fft_forward1.execute();
-        auto& f1 = fft_forward1.output();
-
-        complex_vector_t prod(f0.size());
-        const float_type scale = 1.0 / (padded_dims[0] *
-                                        padded_dims[1] *
-                                        padded_dims[2]) * extra_scale;
-        for(std::size_t i = 0; i < prod.size(); ++i)
-        {
-            fft_backward.input()[i] = f0[i]*f1[i]*scale;
-        }
-        fft_backward.execute();
-
+        fft_forward0_.copy_input(_vec, dims0_);
+        fft_forward0_.execute_whole();
+        return fft_forward0_.output();
     }
 
 
     auto& output()
     {
-        return fft_backward.output();
+        return fft_backward_.output();
     }
 
     template<class Block,class Field>
-    void add_solution(const Block& _b, Field& F)
+    void add_solution(const Block& _b, Field& _F)
     {
         for (int k = dims0_[2]-1; k < dims0_[2]+_b.extent()[2]-1; ++k)
         {
@@ -471,10 +404,9 @@ public: //Ctors
             {
                 for (int i = dims0_[0]-1; i < dims0_[0]+_b.extent()[0]-1; ++i)
                 {
-
-                    F.get_real_local(i-dims0_[0]+1,j-dims0_[1]+1,k-dims0_[2]+1 ) +=
-                    fft_backward.output() [
-                        i+j*padded_dims[0]+k*padded_dims[0]*padded_dims[1]
+                    _F.get_real_local(i-dims0_[0]+1,j-dims0_[1]+1,k-dims0_[2]+1 ) +=
+                    fft_backward_.output() [
+                        i+j*padded_dims_[0]+k*padded_dims_[0]*padded_dims_[1]
                     ];
                 }
             }
@@ -482,22 +414,18 @@ public: //Ctors
     }
 
 public:
-    int fft_count=0;
+    int fft_count_=0;
 
 private:
-    dims_t padded_dims;
+    dims_t padded_dims_;
     dims_t dims0_;
     dims_t dims1_;
 
-    dfft_r2c fft_forward0;
-    dfft_r2c fft_forward1;
-    dfft_c2r fft_backward;
+    dfft_r2c fft_forward0_;
+    dfft_r2c fft_forward1_;
+    dfft_c2r fft_backward_;
 
-
-    std::vector<float_type> lgf;
     lgf::LGF<lgf::Lookup>   lgf_;       ///< Lookup for the LGFs
-
-    std::vector<lgf_matrix_ptr_map_type> lgf_level_maps_;   ///< Octants per level
 };
 
 

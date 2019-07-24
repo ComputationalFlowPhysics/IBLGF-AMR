@@ -13,18 +13,33 @@
 #include <domain/dataFields/dataBlock.hpp>
 #include <domain/dataFields/datafield.hpp>
 #include <global.hpp>
+#include <lgf/lgf_lookup.hpp>
+#include <utilities/crtp.hpp>
 
 namespace lgf
 {
 
 using namespace domain;
 
-template<class Policy, std::size_t Dim=3>
-class LGF : public Policy
+
+template<std::size_t Dim,class Derived>
+class LGF_Base : crtp::Crtps<Derived,LGF_Base<Dim,Derived>>
+{
+    using block_descriptor_t = BlockDescriptor<int,Dim>;
+
+    template<class Convolutor>
+    auto& dft(const block_descriptor_t& _lgf_block, 
+                  Convolutor* _conv,  int level_diff)
+    {
+        return this->derived().dft_impl(_lgf_block, _conv, level_diff);
+    }
+};
+
+template<std::size_t Dim=3>
+class LGF_GL : public LGF_Base<Dim,LGF_GL<Dim>>
 {
 
 public: //Ctor:
-
     using block_descriptor_t = BlockDescriptor<int,Dim>;
     using coordinate_t = typename block_descriptor_t::base_t;
 
@@ -41,13 +56,13 @@ public: //Ctor:
 
 public: //Ctor:
 
-    LGF()
+    LGF_GL()
     {
         const int max_lgf_map_level = 20;
         dft_level_maps_.clear();
         dft_level_maps_.resize(max_lgf_map_level);
     }
-    static_assert(Dim==3, "LGF only implemented for D=3");
+    static_assert(Dim==3, "LGF_GL only implemented for D=3");
 
 
     template<class Convolutor>
@@ -72,16 +87,7 @@ public: //Ctor:
             return *(it->second).get();
         }
     }
-
-
 private:
-
-    template<class Coordinate>
-    static auto get(const Coordinate& _coord) noexcept
-    {
-        return Policy::get(_coord);
-    }
-
     void get_subblock(const block_descriptor_t& _b,
                       std::vector<float_type>&  _lgf, 
                       int level_diff = 0) noexcept
@@ -99,7 +105,7 @@ private:
                 {
                     //get view
                     _lgf[_b.index(i,j,k)] =
-                        Policy::get(coordinate_t({i*step, j*step, k*step}));
+                        GL_Lookup::get(coordinate_t({i*step, j*step, k*step}));
                 }
             }
         }

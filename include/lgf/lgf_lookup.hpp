@@ -1,7 +1,7 @@
 #ifndef INCLUDED_LGF_LOOKUP_HPP
 #define INCLUDED_LGF_LOOKUP_HPP
 
-#include <algorithm>    // std::swap
+#include <algorithm>
 #include <stdio.h>
 #include <iostream>
 #include <vector>
@@ -12,8 +12,38 @@
 
 namespace lgf
 {
+    
+//template<class Derived>
+//class Lookup_symm_base : crtp::Crtp<Derived>
+//{
+//
+//    template<class Coordinate>
+//    static auto get(const Coordinate& _c) noexcept
+//    {
+//        int x = std::abs(static_cast<int>(_c.x()));
+//        int y = std::abs(static_cast<int>(_c.y()));
+//        int z = std::abs(static_cast<int>(_c.z()));
+//
+//        if (x<= N_max && y<=N_max && z<=N_max) // using table
+//        {
+//            if (x < y)
+//                std::swap(x, y);
+//            if (x < z)
+//                std::swap(x, z);
+//            if (y < z)
+//                std::swap(y, z);
+//
+//            return - this->derived().table_[(x * (2 + 3*x + x * x))/6 + y*(y+1)/2 + z]; 
+//        } 
+//        else
+//        {
+//            return this->derived().compute_lgf(x,y,z);
+//        }
+//   }
+//    int N_max;
+//};    
 
-class Lookup
+class GL_Lookup
 {
 public:
 

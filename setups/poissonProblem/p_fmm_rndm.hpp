@@ -260,7 +260,6 @@ private:
     domain_t&                         domain_;
 
     parallel_ostream::ParallelOstream pcout;
-    lgf::LGF<lgf::Lookup>             lgf_;
 };
 
 

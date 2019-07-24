@@ -48,7 +48,8 @@ public: //member types
 
     //FMM
     using Fmm_t =  typename Setup::Fmm_t;
-    using lgf_lap_t =  typename lgf::LGF<lgf::Lookup>;
+    //using lgf_lap_t =  typename lgf::LGF<lgf::GL_Lookup>;
+    using lgf_lap_t =  typename lgf::LGF_GL<3>;
 
     static constexpr int lBuffer=1; ///< Lower left buffer for interpolation
     static constexpr int rBuffer=1; ///< Lower left buffer for interpolation

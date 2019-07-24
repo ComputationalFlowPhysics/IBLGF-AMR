@@ -38,13 +38,13 @@ struct ParametersPoissonProblem
     (
     Dim,
      (
-        //name               type     lBuffer.  hBuffer
-         (phi_num          , float_type, 1,       1),
-         (source           , float_type, 1,       1),
-         (phi_exact        , float_type, 1,       1),
-         (error            , float_type, 1,       1),
-         (amr_lap_source   , float_type, 1,       1),
-         (error_lap_source , float_type, 1,       1)
+         //name              type        Dim    lBuffer. hBuffer  storage
+         (phi_num          , float_type, 1,     1,       1,       cell),
+         (source           , float_type, 1,     1,       1,       cell),
+         (phi_exact        , float_type, 1,     1,       1,       cell),
+         (error            , float_type, 1,     1,       1,       cell),
+         (amr_lap_source   , float_type, 1,     1,       1,       cell),
+         (error_lap_source , float_type, 1,     1,       1,       cell)
     ))
 };
 

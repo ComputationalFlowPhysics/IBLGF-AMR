@@ -41,18 +41,18 @@ struct parameters
     (
     Dim,
      (
-        //name               type     lBuffer.  hBuffer, storage type
-         (phi_num          , float_type, 1,       1,     cell),
-         (source           , float_type, 1,       1,     cell),
-         (phi_exact        , float_type, 1,       1,     cell),
-         (error            , float_type, 1,       1,     cell),
-         (amr_lap_source   , float_type, 1,       1,     cell),
-         (amr_div_source   , float_type, 1,       1,     cell),
-         (error_lap_source , float_type, 1,       1,     cell),
-         (decomposition    , float_type, 1,       1,     cell),
-         (dxf              , float_type, 1,       1,     cell),
-         (dyf              , float_type, 1,       1,     cell),
-         (dzf              , float_type, 1,       1,     cell)
+        //name               type        Dim   lBuffer  hBuffer, storage type
+         (phi_num          , float_type, 1,    1,       1,     cell),
+         (source           , float_type, 1,    1,       1,     cell),
+         (phi_exact        , float_type, 1,    1,       1,     cell),
+         (error            , float_type, 1,    1,       1,     cell),
+         (amr_lap_source   , float_type, 1,    1,       1,     cell),
+         (amr_div_source   , float_type, 1,    1,       1,     cell),
+         (error_lap_source , float_type, 1,    1,       1,     cell),
+         (decomposition    , float_type, 1,    1,       1,     cell),
+         (dxf              , float_type, 1,    1,       1,     cell),
+         (dyf              , float_type, 1,    1,       1,     cell),
+         (dzf              , float_type, 1,    1,       1,     cell)
     ))
 };
 

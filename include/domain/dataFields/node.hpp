@@ -34,6 +34,55 @@ public:
 public: //Access
 
     template<template<std::size_t>class Field>
+    auto& get_field(int _idx) noexcept{return c_->template get<Field>(_idx);}
+    template<template<std::size_t>class Field>
+    const auto& get_field(int _idx)const noexcept{ return c_->template get<Field>(_idx); }
+
+    template<template<std::size_t>class Field>
+    auto& get(int _idx)noexcept
+    {
+        return c_->template get<Field>(_idx).get(level_coordinate_,_idx);
+    }
+    template<template<std::size_t>class Field>
+    const auto& get(int _idx)const noexcept
+    {
+        return c_->template get<Field>(_idx).get(level_coordinate_);
+    }
+
+    template<class T>
+    auto& get(int _idx)noexcept
+    {
+        return c_->template get<T>(_idx).get(level_coordinate_);
+    }
+    template<class T>
+    const auto& get(int _idx)const noexcept
+    {
+        return c_->template get<T>(_idx).get(level_coordinate_);
+    } 
+    
+    template<class T>
+    const auto& at_offset(const coordinate_type& _offset,int _idx)const noexcept
+    {
+        return c_->template get<T>(_idx).get(level_coordinate_+_offset);
+    }
+    template<template<std::size_t>class Field>
+    auto& at_offset(int _i, int _j, int _k, int _idx)noexcept
+    {
+        return c_->template get<Field>(_idx).
+            get(level_coordinate_+coordinate_type({_i,_j,_k}));
+    }
+
+    template<class T>
+    auto& at_offset(int _i, int _j, int _k, int _idx)noexcept
+    {
+        return c_->template get<T>(_idx).
+            get(level_coordinate_+coordinate_type({_i,_j,_k}));
+    }
+
+    
+    //scalar field overloads:
+
+    template<template<std::size_t>class Field>
     auto& get_field() noexcept{return c_->template get<Field>();}
     template<template<std::size_t>class Field>
     const auto& get_field()const noexcept{ return c_->template get<Field>(); }
@@ -71,12 +120,15 @@ public: //Access
         return c_->template get<Field>().
             get(level_coordinate_+coordinate_type({_i,_j,_k}));
     }
+
     template<class T>
     auto& at_offset(int _i, int _j, int _k)noexcept
     {
         return c_->template get<T>().
             get(level_coordinate_+coordinate_type({_i,_j,_k}));
     }
+
+public:
 
     coordinate_type level_coordinate()const noexcept{return level_coordinate_;}
 

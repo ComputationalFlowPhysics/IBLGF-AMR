@@ -218,8 +218,18 @@ public:
         field_type_iterator_t::for_types([&components, &world]<typename T>()
         {
             std::string name = std::string(T::name());
-            if (world.rank()==0) std::cout<<"          "<<name<<std::endl;
-            components.push_back(name);
+            //if (world.rank()==0) std::cout<<"          "<<name<<std::endl;
+
+            if(T::nFields==1)
+            {
+                components.push_back(name);
+            }
+            else
+            {
+                for (std::size_t fidx=0; fidx<T::nFields;++fidx)
+                    components.push_back(name+"_"+std::to_string(fidx));
+            }
+
         });
 
         // Write components, number of components and number of levels
@@ -401,10 +411,21 @@ public:
 
         // get field names and number of components
         std::vector<std::string> components;
-        field_type_iterator_t::for_types([&components]<typename T>()
+        field_type_iterator_t::for_types([&components, &world]<typename T>()
         {
             std::string name = std::string(T::name());
-            components.push_back(name);
+            //if (world.rank()==0) std::cout<<"          "<<name<<std::endl;
+
+            if(T::nFields==1)
+            {
+                components.push_back(name);
+            }
+            else
+            {
+                for (std::size_t fidx=0; fidx<T::nFields;++fidx)
+                    components.push_back(name+"_"+std::to_string(fidx));
+            }
+
         });
         const int num_components = components.size();
 
@@ -537,24 +558,27 @@ public:
                         &max, &base, &field,
                         &single_block_data, &num_components, &world]<typename T>()
                 {
-                    double field_value = 0.0;
-                    if (world.rank()!=0)
+                    for (std::size_t fidx=0; fidx<T::nFields;++fidx)
                     {
-                        // Loop through cells in block
-                        for(auto k = base[2]; k<=max[2]; ++k)
+                        double field_value = 0.0;
+                        if (world.rank()!=0)
                         {
-                            for(auto j = base[1]; j<=max[1]; ++j)
+                            // Loop through cells in block
+                            for(auto k = base[2]; k<=max[2]; ++k)
                             {
-                                for(auto i = base[0]; i<=max[0]; ++i)
+                                for(auto j = base[1]; j<=max[1]; ++j)
                                 {
-                                    auto n = field->get(i,j,k);
-
-                                    field_value = 0.0;
-                                    if (std::abs(n.template get<T>())>=1e-32)
+                                    for(auto i = base[0]; i<=max[0]; ++i)
                                     {
-                                        field_value=static_cast<value_type>(n.template get<T>());
+                                        auto n = field->get(i,j,k);
+
+                                        field_value = 0.0;
+                                        if (std::abs(n.template get<T>(fidx))>=1e-32)
+                                        {
+                                            field_value=static_cast<value_type>(n.template get<T>(fidx));
+                                        }
+                                        single_block_data.push_back(field_value);
                                     }
-                                    single_block_data.push_back(field_value);
                                 }
                             }
                         }

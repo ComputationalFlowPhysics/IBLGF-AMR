@@ -67,7 +67,6 @@ private:
     view_t* view_;
     coordinate_t coordinate_;
     bool _end = false;
-
 };
 
 
@@ -147,9 +146,6 @@ public: //member functions
     {
         *this=_c;
     }
-
-
-
 
 public: //protected memeber:
     Field* field_=nullptr;

@@ -40,17 +40,17 @@ struct parameters
     (
     Dim,
      (
-        //name               type     lBuffer.  hBuffer
-         (phi_num          , float_type, 1,       1),
-         (source           , float_type, 1,       1),
-         (phi_exact        , float_type, 1,       1),
-         (error            , float_type, 1,       1),
-         (amr_lap_source   , float_type, 1,       1),
-         (error_lap_source , float_type, 1,       1),
-         (decomposition    , float_type, 1,       1),
-         (dxf              , float_type, 1,       1),
-         (dyf              , float_type, 1,       1),
-         (dzf              , float_type, 1,       1)
+         //name              type       Dim   lBuffer.  hBuffer
+         (phi_num          ,float_type, 1,    1,       1, cell),
+         (source           ,float_type, 1,    1,       1, cell),
+         (phi_exact        ,float_type, 1,    1,       1, cell),
+         (error            ,float_type, 1,    1,       1, cell),
+         (amr_lap_source   ,float_type, 1,    1,       1, cell),
+         (error_lap_source ,float_type, 1,    1,       1, cell),
+         (decomposition    ,float_type, 1,    1,       1, cell),
+         (dxf              ,float_type, 1,    1,       1, cell),
+         (dyf              ,float_type, 1,    1,       1, cell),
+         (dzf              ,float_type, 1,    1,       1, cell)
     ))
 };
 
@@ -140,7 +140,7 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
 
             mDuration_type lap_duration(0);
             TIME_CODE( lap_duration, SINGLE_ARG(
-                psolver.apply_amr_laplace<phi_num,amr_lap_source>() ;
+                psolver.apply_laplace<phi_num,amr_lap_source>() ;
             ))
             pcout_c<<"Total Laplace time: "
                   <<lap_duration.count()<<" on "<<world.size()<<std::endl;

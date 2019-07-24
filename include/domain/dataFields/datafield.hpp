@@ -77,7 +77,8 @@ public: //member functions
      *
      *  @param[in] _b Blockdescriptor
      */
-    void initialize(block_type _b, bool _allocate=true, bool _default=false, DataType _dval=DataType())
+    void initialize(block_type _b, bool _allocate=true, 
+                    bool _default=false, DataType _dval=DataType())
     {
         this->real_block_.base(_b.base()-lowBuffer_);
         this->real_block_.extent(_b.extent()+lowBuffer_+highBuffer_);
@@ -126,16 +127,16 @@ public: //member functions
         return data_[real_block_.index(_c)];
     }
 
-    inline const DataType&
-    get_local(const coordinate_t& _c) const noexcept
-    {
-        return data_[ real_block_.index_zeroBase(_c+lowBuffer_)];
-    }
-    inline DataType&
-    get_local(const coordinate_t& _c) noexcept
-    {
-        return data_[ real_block_.index_zeroBase(_c+lowBuffer_)];
-    }
+    //inline const DataType&
+    //get_local(const coordinate_t& _c) const noexcept
+    //{
+    //    return data_[ real_block_.index_zeroBase(_c+lowBuffer_)];
+    //}
+    //inline DataType&
+    //get_local(const coordinate_t& _c) noexcept
+    //{
+    //    return data_[ real_block_.index_zeroBase(_c+lowBuffer_)];
+    //}
     inline const DataType& get_real_local(const coordinate_t& _c) const noexcept
     {
         return data_[ real_block_.index_zeroBase(_c)];
@@ -165,19 +166,19 @@ public: //member functions
         return data_[real_block_.index_zeroBase(_i,_j,_k)];
     }
 
-    inline const DataType&
-    get_local(int _i, int _j, int _k) const noexcept
-    {
-        return data_[real_block_.index_zeroBase(_i+lowBuffer_[0],
-                                                _j+lowBuffer_[1],
-                                                _k+lowBuffer_[2])];
-    }
-    inline DataType& get_local(int _i, int _j, int _k) noexcept
-    {
-        return data_[real_block_.index_zeroBase(_i+lowBuffer_[0],
-                                                _j+lowBuffer_[1],
-                                                _k+lowBuffer_[2])];
-    }
+    //inline const DataType&
+    //get_local(int _i, int _j, int _k) const noexcept
+    //{
+    //    return data_[real_block_.index_zeroBase(_i+lowBuffer_[0],
+    //                                            _j+lowBuffer_[1],
+    //                                            _k+lowBuffer_[2])];
+    //}
+    //inline DataType& get_local(int _i, int _j, int _k) noexcept
+    //{
+    //    return data_[real_block_.index_zeroBase(_i+lowBuffer_[0],
+    //                                            _j+lowBuffer_[1],
+    //                                            _k+lowBuffer_[2])];
+    //}
     template<class BlockType, class OverlapType>
     bool buffer_overlap(const BlockType& other,
                  OverlapType& overlap, int level ) const noexcept
@@ -212,8 +213,7 @@ public: //member functions
     const block_type& real_block()const noexcept{return real_block_;}
     block_type& real_block()noexcept{return real_block_;}
 
-    /** @brief Get a (sub-)view of the datafield
-     */
+    /** @brief Get a (sub-)view of the datafield */
     auto view(const block_type& _b,
               coordinate_t _stride=coordinate_t(1)) noexcept
     {
@@ -242,50 +242,37 @@ protected: //protected memeber:
 
 #define STRINGIFY(X) #X
 
-#define make_field_type_nb(Dim,key, DataType)                                 \
-class key : public DataField<DataType,Dim>                                    \
-{                                                                             \
-    public:                                                                   \
-    using data_field_t=DataField<DataType,Dim>;                               \
-    static constexpr const char* name_= STRINGIFY(key);                       \
-    key (): data_field_t()                                                    \
-    {                                                                         \
-    }                                                                         \
-  static auto  name()noexcept{return key::name_;}                             \
-                                                                              \
-};                                                                            \
+#define make_field_type_impl(Dim,key,DataType,                               \
+                             NFields, lBuffer, hBuffer,MeshObjectType)       \
+class key                                                                    \
+{                                                                            \
+    public:                                                                  \
+    using data_field_t=DataField<DataType,Dim>;                              \
+    using view_type = typename data_field_t::view_type;                      \
+    static constexpr const char* name_= STRINGIFY(key);                      \
+    static constexpr MeshObject mesh_type = MeshObject::MeshObjectType;      \
+    static constexpr std::size_t  nFields = NFields;                         \
+    static constexpr bool  output = true;                                    \
+    key ()                                                                   \
+    {                                                                        \
+        for(std::size_t i= 0; i<nFields; ++i)                                \
+        {                                                                    \
+            fields_[i]=data_field_t(lBuffer, hBuffer);                       \
+        }                                                                    \
+    }                                                                        \
+    static auto  name()noexcept{return key::name_;}                          \
+    auto&   operator[](size_type i)noexcept{return fields_[i];}              \
+    const auto&   operator[](size_type i) const noexcept{return fields_[i];} \
+    std::array<data_field_t,nFields> fields_;                                \
+};                                                                           \
 
 
+#define GET_FIELD_MACRO(_1,_2,_3,_4,_5,_6, _7,NAME,...) NAME
+#define make_field_type(...)          \
+GET_FIELD_MACRO(__VA_ARGS__,          \
+                make_field_type_impl) \
+                (__VA_ARGS__)         \
 
-#define make_field_type_b2(Dim,key, DataType, lBuffer, hBuffer)               \
-    make_field_type_b(Dim, key, DataType, lBuffer,hBuffer,cell)
-
-#define make_field_type_b(Dim,key,DataType, lBuffer, hBuffer,MeshObjectType)  \
-class key : public DataField<DataType,Dim>                                    \
-{                                                                             \
-    public:                                                                   \
-    using data_field_t=DataField<DataType,Dim>;                               \
-    static constexpr const char* name_= STRINGIFY(key);                       \
-    static constexpr MeshObject mesh_type = MeshObject::MeshObjectType;       \
-    key (): data_field_t(lBuffer, hBuffer)                                    \
-    {                                                                         \
-    }                                                                         \
-  static auto  name()noexcept{return key::name_;}                             \
-                                                                              \
-};                                                                            \
-
-
-//Dummy marco for three params
-#define FOO3(Dim,DataType, lBuffer, hBufferm) bla
-
-#define GET_FIELD_MACRO(_1,_2,_3,_4,_5,_6,NAME,...) NAME
-#define make_field_type(...)        \
-GET_FIELD_MACRO(__VA_ARGS__,        \
-                make_field_type_b,  \
-                make_field_type_b2, \
-                FOO3,               \
-                make_field_type_nb) \
-                (__VA_ARGS__)       \
 
 #define COMMA ,
 

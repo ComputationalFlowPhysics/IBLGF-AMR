@@ -80,70 +80,133 @@ public: //Ctors:
     {
         tuple_utils::for_each(fields, [this,&_b, _allocate](auto& field)
         {
-            field.initialize(_b, _allocate, true,0.0);
+            for(std::size_t fidx=0; fidx < field.nFields;++fidx)
+            {
+                field[fidx].initialize(_b, _allocate, true,0.0);
+            }
         });
         this->generate_nodes();
     }
 
 
+#define FIELD_ASSERT(T)           \
+    static_assert(T::nFields == 1, \
+        " Vector field (nFields>1) cannot be accessed without index ");
+    
+
+
+
 
 public: //member functions
 
-    template<class T> auto& get(){return std::get<T>(fields);}
-    template<class T> const auto& get()const{return std::get<T>(fields);}
+    template<class t> auto& get(int _idx){return std::get<t>(fields)[_idx];}
+    template<class t> auto& get(){return get<t>(0);}
+    template<class t> const auto& get(int _idx)const{return std::get<t>(fields)[_idx];}
+    template<class t> const auto& get()const {return get<t>(0);}
 
-    template<class T> auto& get_data(){return std::get<T>(fields).data();}
-    template<class T> const auto& get_data()const{return std::get<T>(fields).data();}
+    template<class T> inline auto& get_data(int _idx){return std::get<T>(fields)[_idx].data();}
+    template<class T> inline auto& get_data(){FIELD_ASSERT(T) return this->get_data<T>(0);}
+    template<class T> inline const auto& get_data(int _idx)const{return std::get<T>(fields)[_idx].data();}
+    template<class T> inline const auto& get_data()const{FIELD_ASSERT(T) return this->get_data<T>(0);}
 
-    template<class T> auto& get_linalg(){return std::get<T>(fields).linalg();}
-    template<class T> const auto& get_linalg()const{return std::get<T>(fields).linalg();}
+    template<class T> auto& get_linalg(int _idx){return std::get<T>(fields)[_idx].linalg();}
+    template<class T> auto& get_linalg(){FIELD_ASSERT(T) return get_linalg<T>(0);}
+    template<class T> const auto& get_linalg(int _idx)const{return std::get<T>(fields)[_idx].linalg();}
+    template<class T> const auto& get_linalg()const{FIELD_ASSERT(T) return get_linalg<T>(0);}
 
-    template<class T> auto& get_linalg_data(){return std::get<T>(fields).linalg_data();}
-    template<class T> const auto& get_linalg_data()const{return std::get<T>(fields).linalg_data();}
+    template<class T> auto& get_linalg_data(int _idx){return std::get<T>(fields)[_idx].linalg_data();}
+    template<class T> auto& get_linalg_data(){FIELD_ASSERT(T) return get_linalg_data<T>(0);}
+    template<class T> const auto& get_linalg_data(int _idx)const{return std::get<T>(fields)[_idx].linalg_data();}
+    template<class T> const auto& get_linalg_data()const {FIELD_ASSERT(T) return get_linalg_data<T>(0);}
 
 
     template<class Field>
-    auto& get(const coordinate_type& _c)
+    auto& get(const coordinate_type& _c, int _idx) noexcept
     {
-        return std::get<Field>(fields).get(_c);
+        return std::get<Field>(fields)[_idx].get(_c);
     }
     template<class Field>
-    const auto& get(const coordinate_type& _c) const
+    const auto& get(const coordinate_type& _c, int _idx) const noexcept
     {
-        return std::get<Field>(fields).get(_c);
+        return std::get<Field>(fields)[_idx].get(_c);
+    }
+
+    template<class Field>
+    auto& get(const coordinate_type& _c) noexcept
+    {
+        FIELD_ASSERT(Field); return get<Field>(_c,0);
     }
     template<class Field>
-    auto& get_local(const coordinate_type& _c)
+    const auto& get(const coordinate_type& _c) const noexcept
     {
-        return std::get<Field>(fields).get_local(_c);
+        FIELD_ASSERT(Field); return get<Field>(_c,0);
+    }
+
+    template<class Field>
+    auto& get_local(const coordinate_type& _c, int _idx) noexcept
+    {
+        return std::get<Field>(fields)[_idx].get_local(_c);
     }
     template<class Field>
-    const auto& get_local(const coordinate_type& _c) const
+    const auto& get_local(const coordinate_type& _c, int _idx) const noexcept
     {
-        return std::get<Field>(fields).get_local(_c);
+        return std::get<Field>(fields)[_idx].get_local(_c);
+    }
+    template<class Field>
+    auto& get_local(const coordinate_type& _c) noexcept
+    {
+        FIELD_ASSERT(Field) return get_local(_c,0);
+    }
+    template<class Field>
+    const auto& get_local(const coordinate_type& _c) const noexcept
+    {
+        FIELD_ASSERT(Field) return get_local(_c,0);
     }
 
     //IJK access
     template<class Field>
-    auto& get(int _i, int _j, int _k)
+    auto& get(int _i, int _j, int _k, int _idx) noexcept
     {
-        return std::get<Field>(fields).get(_i,_j,_k);
+        return std::get<Field>(fields)[_idx].get(_i,_j,_k);
     }
     template< class Field>
-    const auto& get(int _i, int _j, int _k)const
+    const auto& get(int _i, int _j, int _k, int _idx)const noexcept
     {
-        return std::get<Field>(fields).get(_i,_j,_k);
+        return std::get<Field>(fields)[_idx].get(_i,_j,_k);
     }
     template<class Field>
-    auto& get_local(int _i, int _j, int _k)
+    auto& get(int _i, int _j, int _k) noexcept
     {
-        return std::get<Field>(fields).get_local(_i,_j,_k);
+        FIELD_ASSERT(Field) return get<Field>(_i,_j,_k);
     }
     template<class Field>
-    const auto& get_local(int _i, int _j, int _k)const
+    const auto& get(int _i, int _j, int _k) const noexcept
     {
-        return std::get<Field>(fields).get_local(_i,_j,_k);
+        FIELD_ASSERT(Field) return get<Field>(_i,_j,_k);
     }
+
+    template<class Field>
+    auto& get_local(int _i, int _j, int _k, int _idx) noexcept
+    {
+        return std::get<Field>(fields)[_idx].get_local(_i,_j,_k);
+    }
+    template<class Field>
+    const auto& get_local(int _i, int _j, int _k, int _idx)const noexcept
+    {
+        return std::get<Field>(fields)[_idx].get_local(_i,_j,_k);
+    }
+    template<class Field>
+    auto& get_local(int _i, int _j, int _k) noexcept
+    {
+        FIELD_ASSERT(Field) return get_local(_i,_j,_k);
+    }
+    template<class Field>
+    const auto& get_local(int _i, int _j, int _k)const noexcept
+    {
+        FIELD_ASSERT(Field) return get_local(_i,_j,_k);
+    }
+
+    //Node access:
     auto& node(int _i, int _j, int _k )noexcept
     {
         return node_field_.get(_i,_j,_k);
@@ -181,7 +244,7 @@ public: //member functions
 
 
     bool is_allocated(){
-        return std::get<0>(fields).data().size()>0;
+        return std::get<0>(fields)[0].data().size()>0;
     }
 
 private: //private member helpers
@@ -196,12 +259,12 @@ private: //private member helpers
         for_fields( [&](auto& field){
             for(int d=0; d<Dim;++d)
             {
-                if(field.lbuffer()[d]>lbuff[d])
-                    lbuff[d]=field.lbuffer()[d];
-                if(field.hbuffer()[d]>rbuff[d])
-                    rbuff[d]=field.hbuffer()[d];
+                if(field[0].lbuffer()[d]>lbuff[d])
+                    lbuff[d]=field[0].lbuffer()[d];
+                if(field[0].hbuffer()[d]>rbuff[d])
+                    rbuff[d]=field[0].hbuffer()[d];
             }
-           bounding_box_.enlarge_to_fit(field.real_block());
+           bounding_box_.enlarge_to_fit(field[0].real_block());
         });
 
         node_field_.lbuffer()=lbuff;

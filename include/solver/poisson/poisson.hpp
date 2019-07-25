@@ -66,6 +66,7 @@ public:
     template< class Source, class Target >
     void apply_lgf()
     {
+        //this->apply_lgf<Source, Target>(&lgf_if_);
         this->apply_lgf<Source, Target>(&lgf_lap_);
     }
 

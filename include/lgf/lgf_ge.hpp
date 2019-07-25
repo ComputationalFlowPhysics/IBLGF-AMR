@@ -85,7 +85,7 @@ private:
         {
             for(int j=0;j<i+1;++j)
             {
-                for(int k=0;k<j+1;++j)
+                for(int k=0;k<j+1;++k)
                 {
                     table_.push_back(compute_lgf(i,j,k,_alpha));
                 }
@@ -103,7 +103,7 @@ private:
     }
 
 
-private:
+public:
     std::vector<level_map_t> dft_level_maps_;   ///<lgf map for octants per level
     static constexpr int N_max=20;
     std::vector<float_type> table_;

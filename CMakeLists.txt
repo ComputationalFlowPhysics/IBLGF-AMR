@@ -12,7 +12,7 @@ SET(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
 include_directories(include)
 
-set(SOURCES "${CMAKE_CURRENT_LIST_DIR}/src/lgf/lgf_lookup.cpp")
+set(SOURCES "${CMAKE_CURRENT_LIST_DIR}/src/lgf/lgf_gl_lookup.cpp")
 
 #Output compile commands
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)

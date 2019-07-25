@@ -15,8 +15,8 @@
 #include "../../utilities/convolution.hpp"
 #include<utilities/cell_center_nli_intrp.hpp>
 
-#include <lgf/lgf_lookup.hpp>
-#include <lgf/lgf.hpp>
+#include <lgf/lgf_gl.hpp>
+#include <lgf/lgf_ge.hpp>
 
 namespace solver
 {
@@ -48,8 +48,8 @@ public: //member types
 
     //FMM
     using Fmm_t =  typename Setup::Fmm_t;
-    //using lgf_lap_t =  typename lgf::LGF<lgf::GL_Lookup>;
     using lgf_lap_t =  typename lgf::LGF_GL<3>;
+    using lgf_if_t =  typename lgf::LGF_GE<3>;
 
     static constexpr int lBuffer=1; ///< Lower left buffer for interpolation
     static constexpr int rBuffer=1; ///< Lower left buffer for interpolation
@@ -348,6 +348,7 @@ private:
     domain_type*                      domain_;    ///< domain
     Fmm_t                             fmm_;       ///< fast-multipole
     lgf_lap_t                         lgf_lap_;
+    lgf_if_t                          lgf_if_;
     interpolation::cell_center_nli    c_cntr_nli_;///< Lagrange Interpolation
     parallel_ostream::ParallelOstream pcout=parallel_ostream::ParallelOstream(1);
 

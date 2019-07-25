@@ -13,7 +13,7 @@
 #include <domain/dataFields/dataBlock.hpp>
 #include <domain/dataFields/datafield.hpp>
 #include <global.hpp>
-#include <lgf/lgf_lookup.hpp>
+#include <lgf/lgf_gl_lookup.hpp>
 #include <utilities/crtp.hpp>
 
 namespace lgf
@@ -23,26 +23,11 @@ using namespace domain;
 
 
 template<std::size_t Dim,class Derived>
-class LGF_Base : crtp::Crtps<Derived,LGF_Base<Dim,Derived>>
+class LGF_Base : public crtp::Crtps<Derived,LGF_Base<Dim,Derived>>
 {
-    using block_descriptor_t = BlockDescriptor<int,Dim>;
-
-    template<class Convolutor>
-    auto& dft(const block_descriptor_t& _lgf_block, 
-                  Convolutor* _conv,  int level_diff)
-    {
-        return this->derived().dft_impl(_lgf_block, _conv, level_diff);
-    }
-};
-
-template<std::size_t Dim=3>
-class LGF_GL : public LGF_Base<Dim,LGF_GL<Dim>>
-{
-
-public: //Ctor:
+public:
     using block_descriptor_t = BlockDescriptor<int,Dim>;
     using coordinate_t = typename block_descriptor_t::base_t;
-
     using complex_vector_t = std::vector<std::complex<float_type>,
           boost::alignment::aligned_allocator_adaptor<
               std::allocator<std::complex<float_type>>,32>> ;
@@ -51,34 +36,21 @@ public: //Ctor:
           boost::alignment::aligned_allocator_adaptor<
               std::allocator<float_type>,32>>;
 
-    using key_t = std::tuple<int, int, int>;
-    using level_map_t = std::map<key_t,std::unique_ptr<complex_vector_t>>;
-
-public: //Ctor:
-
-    LGF_GL()
-    {
-        const int max_lgf_map_level = 20;
-        dft_level_maps_.clear();
-        dft_level_maps_.resize(max_lgf_map_level);
-    }
-    static_assert(Dim==3, "LGF_GL only implemented for D=3");
-
 
     template<class Convolutor>
     auto& dft(const block_descriptor_t& _lgf_block, 
                   Convolutor* _conv,  int level_diff)
     {
-        const auto base = _lgf_block.base();
-        key_t k_(base[0],base[1],base[2]);
-        auto it = dft_level_maps_[level_diff].find( k_ );
+
+        auto k_ =this->derived().get_key( _lgf_block, level_diff);
+        auto it = this->derived().dft_level_maps_[level_diff].find( k_ );
 
         //Check if lgf is already stored
-        if ( it == dft_level_maps_[level_diff].end() )
+        if ( it == this->derived().dft_level_maps_[level_diff].end() )
         {
             this->get_subblock( _lgf_block, lgf_buffer_, level_diff);
             auto& dft=_conv->dft_r2c(lgf_buffer_);
-            dft_level_maps_[level_diff].emplace(k_,
+            this->derived().dft_level_maps_[level_diff].emplace(k_,
                     std::make_unique<complex_vector_t>( dft ));
             return dft;
         } 
@@ -87,11 +59,13 @@ public: //Ctor:
             return *(it->second).get();
         }
     }
-private:
+
+protected:
     void get_subblock(const block_descriptor_t& _b,
-                      std::vector<float_type>&  _lgf, 
-                      int level_diff = 0) noexcept
+                      std::vector<float_type>&  _lgf, int level_diff = 0) noexcept
     {
+        this->derived().build_lt();
+
         const auto base = _b.base();
         const auto max  = _b.max();
         int step = pow(2, level_diff);
@@ -105,16 +79,17 @@ private:
                 {
                     //get view
                     _lgf[_b.index(i,j,k)] =
-                        GL_Lookup::get(coordinate_t({i*step, j*step, k*step}));
+                        this->derived().get(coordinate_t({i*step, j*step, k*step}));
                 }
             }
         }
     }
 
-private:
-    std::vector<level_map_t> dft_level_maps_;   ///<lgf map for octants per level
-    std::vector<float_type> lgf_buffer_;   ///<lgf map for octants per level
+    std::vector<float_type> lgf_buffer_;   ///<lgf buffer
+    const int max_lgf_map_level = 20;
+
 };
+
 
 }
 

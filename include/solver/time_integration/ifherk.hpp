@@ -93,6 +93,7 @@ public:
         for (int i=0; i<nsteps_; ++i)
         {
             time_step();
+            pcout<<"T = " << T_ << " -----------------" << std::endl;
         }
 
     }
@@ -192,7 +193,11 @@ private:
 
          // face_aux = G d_i
          add<face_aux, r_i>();
-         psolver.template apply_lgf_IF<r_i, u_i>(_alpha);
+
+         if (std::fabs(_alpha)>1e-4)
+             psolver.template apply_lgf_IF<r_i, u_i>(_alpha);
+         else
+             copy<r_i,u_i>();
     }
 
     float_type coeff_a(int i, int j)

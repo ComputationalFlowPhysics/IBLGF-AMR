@@ -79,7 +79,6 @@ public:
         }
         else
         {
-            std::cout<< compute_lgf(x,y,z,alpha_) << std::endl;
             return compute_lgf(x,y,z,alpha_);
         }
    }

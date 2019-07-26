@@ -106,7 +106,7 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
     void run()
     {
         boost::mpi::communicator world;
-        simulation_.write2("ifherk_begin.hdf5");
+        //simulation_.write2("ifherk_begin.hdf5");
 
         if(domain_->is_client())
         {
@@ -198,7 +198,7 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
                const float_type r=std::sqrt(x*x+y*y+z*z) ;
 
                /***********************************************************/
-               float_type a = 100.0;
+               float_type a = 10.0;
 
                it2->template get<u>(0)=std::exp(-a*r*r);
                it2->template get<u>(1)=0;

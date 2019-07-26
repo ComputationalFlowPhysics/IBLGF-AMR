@@ -7,7 +7,8 @@
 #include <utilities/crtp.hpp>
 #include <simulation.hpp>
 #include <fmm/fmm.hpp>
-#include<solver/poisson/poisson.hpp>
+#include <solver/poisson/poisson.hpp>
+#include <solver/time_integration/ifherk.hpp>
 #include <domain/dataFields/dataBlock.hpp>
 #include <domain/dataFields/datafield.hpp>
 

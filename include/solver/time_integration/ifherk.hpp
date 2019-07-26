@@ -1,5 +1,5 @@
-#ifndef IBLGF_INCLUDED_IFHERK_HPP
-#define IBLGF_INCLUDED_IFHERK_HPP
+#ifndef IBLGF_INCLUDED_IFHERK_SOLVER_HPP
+#define IBLGF_INCLUDED_IFHERK_SOLVER_HPP
 
 #include <iostream>
 #include <algorithm>
@@ -136,7 +136,6 @@ public:
          copy<face_aux, w_1>(1.0/dt_/coeff_a(1,1));
 
          // TODO
-
          psolver.template apply_lgf_IF<q_i, q_i>(alpha_[0]);
          psolver.template apply_lgf_IF<w_1, w_1>(alpha_[0]);
 
@@ -191,6 +190,8 @@ private:
          // cell_aux = G^T r_i
          // d_i = L^-1 cell_aux
 
+         psolver.template apply_lgf<cell_aux, d_i>();
+
          // face_aux = G d_i
          add<face_aux, r_i>();
 
@@ -207,12 +208,12 @@ private:
     void clean()
     {
         for (auto it  = domain_->begin_leafs();
-                it != domain_->end_leafs(); ++it)
+                  it != domain_->end_leafs(); ++it)
         {
             if(!it->locally_owned() || !it->data()) continue;
-            for (std::size_t entry=0; entry<F::nFields; ++entry)
+            for (std::size_t field_idx=0; field_idx<F::nFields; ++field_idx)
             {
-                for(auto& e: it->data()->template get_data<F>(entry))
+                for(auto& e: it->data()->template get_data<F>(field_idx))
                     e=0.0;
             }
         }
@@ -223,15 +224,15 @@ private:
     {
         static_assert (From::nFields == To::nFields, "number of fields doesn't match when add");
         for (auto it  = domain_->begin_leafs();
-                it != domain_->end_leafs(); ++it)
+                  it != domain_->end_leafs(); ++it)
         {
             if(!it->locally_owned() || !it->data()) continue;
-            for (std::size_t entry=0; entry<From::nFields; ++entry)
+            for (std::size_t field_idx=0; field_idx<From::nFields; ++field_idx)
             {
 
-                it->data()->template get_linalg<To>(entry).get()->
+                it->data()->template get_linalg<To>(field_idx).get()->
                     cube_noalias_view() +=
-                     it->data()->template get_linalg_data<From>(entry) * scale;
+                     it->data()->template get_linalg_data<From>(field_idx) * scale;
 
             }
         }
@@ -243,14 +244,14 @@ private:
         static_assert (From::nFields == To::nFields, "number of fields doesn't match when copy");
 
         for (auto it  = domain_->begin_leafs();
-                it != domain_->end_leafs(); ++it)
+                  it != domain_->end_leafs(); ++it)
         {
             if(!it->locally_owned() || !it->data()) continue;
-            for (std::size_t entry=0; entry<From::nFields; ++entry)
+            for (std::size_t field_idx=0; field_idx<From::nFields; ++field_idx)
             {
-                it->data()->template get_linalg<To>(entry).get()->
+                it->data()->template get_linalg<To>(field_idx).get()->
                     cube_noalias_view() =
-                     it->data()->template get_linalg_data<From>(entry) * scale;
+                     it->data()->template get_linalg_data<From>(field_idx) * scale;
 
             }
 

@@ -536,12 +536,16 @@ public:
             bool is_influenced=false;
 
             //Check influence list
-            for(std::size_t i = 0; i< it->influence_number(); ++i)
+            if (!_kernel->neighbor_only())
             {
-                const auto inf=it->influence(i);
-                if(inf && inf->rank()==myRank && 
-                    inf->fmm_mask(fmm_mask_idx,MASK_LIST::Mask_FMM_Source))
-                { is_influenced=true ; break;}
+
+                for(std::size_t i = 0; i< it->influence_number(); ++i)
+                {
+                    const auto inf=it->influence(i);
+                    if(inf && inf->rank()==myRank && 
+                        inf->fmm_mask(fmm_mask_idx,MASK_LIST::Mask_FMM_Source))
+                    { is_influenced=true ; break;}
+                }
             }
 
             if(_neighbors)
@@ -590,13 +594,16 @@ public:
         else
         {
             std::set<int> unique_inflRanks;
-            for(std::size_t i = 0; i< it->influence_number(); ++i)
+            if (!_kernel->neighbor_only())
             {
-                const auto inf=it->influence(i);
-                if(inf && inf->rank()!=myRank && 
-                   inf->fmm_mask(fmm_mask_idx,MASK_LIST::Mask_FMM_Source))
+                for(std::size_t i = 0; i< it->influence_number(); ++i)
                 {
-                    unique_inflRanks.insert(inf->rank());
+                    const auto inf=it->influence(i);
+                    if(inf && inf->rank()!=myRank && 
+                            inf->fmm_mask(fmm_mask_idx,MASK_LIST::Mask_FMM_Source))
+                    {
+                        unique_inflRanks.insert(inf->rank());
+                    }
                 }
             }
 

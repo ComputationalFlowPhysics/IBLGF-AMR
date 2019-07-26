@@ -25,7 +25,7 @@ include_directories("${PROJECT_BINARY_DIR}")
 #include(${CMAKE_CURRENT_SOURCE_DIR}/../CMakeLists.txt.user)
 set (CMAKE_CXX_STANDARD 17)
 #set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17 -Wall -O3  -ggdb -fmax-errors=2")
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17 -Wall -O3 -ggdb -pg -Wall -fmax-errors=2")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17  -ftree-vectorize -funroll-loops  -ftree-vectorizer-verbose=3 -Wall -O3 -ggdb -pg -Wall -fmax-errors=2")
 #set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -O3")
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/bin)
 #LIBS
@@ -51,9 +51,7 @@ link_directories(${BLAS_LIBRARIES} )
 link_directories(${BLAS_LIBRARY_DIR} )
 
 
-
 #FFTW
-
 #if(NOT DEFINED FFTW_INCLUDES)
 #set(FFTW_DIR "cmake/")
 #find_package(FFTW REQUIRED)
@@ -90,6 +88,7 @@ link_directories(${HDF5_LIBRARY_DIRS} )
 add_subdirectory (tests/sever_client)
 add_subdirectory (tests/vortexring)
 add_subdirectory (tests/operators)
+add_subdirectory (tests/ifherk_heat)
 add_subdirectory (setups/poissonProblem)
 enable_testing ()
 

@@ -179,12 +179,11 @@ public:
 
     template< class Source, class Target, class Kernel >
     void apply(domain_t* domain_,
-               Kernel* _kernel, 
+               Kernel* _kernel,
                int level,
                bool non_leaf_as_source=false)
     {
 
-        pcout<<"FMM For Level "<< level << " Start ---------------------------"<<std::endl;
         const float_type dx_base=domain_->dx_base();
         auto refinement_level = level-domain_->tree()->base_level();
         auto dx_level =  dx_base/std::pow(2, refinement_level);
@@ -192,6 +191,21 @@ public:
         base_level_ = level;
         fmm_mask_idx_ = refinement_level*2+non_leaf_as_source;
 
+        if (_kernel->neighbor_only())
+        {
+            pcout<<"Integrating factor for level: "<< level << std::endl;
+            fmm_init_zero<fmm_s>(domain_, MASK_LIST::Mask_FMM_Source);
+            fmm_init_zero<fmm_t>(domain_, MASK_LIST::Mask_FMM_Target);
+            fmm_init_copy<Source, fmm_s>(domain_);
+            fmm_IF(domain_, _kernel);
+            if (!non_leaf_as_source)
+                fmm_add_equal<Target, fmm_t>(domain_);
+            else
+                fmm_minus_equal<Target, fmm_t>(domain_);
+
+            return;
+        }
+        pcout<<"FMM For Level "<< level << " Start ---------------------------"<<std::endl;
         // New logic using masks
         // 1. Give masks to the base level
 
@@ -234,10 +248,6 @@ public:
         pcout<<"FMM Antrp start" << std::endl;
         fmm_antrp(domain_);
 
-        //// FMM Neighbors
-        //pcout<<"FMM B0 start" << std::endl;
-        //fmm_B0(domain_, level, dx_level);
-
         //// FMM influence list
         pcout<<"FMM Bx start" << std::endl;
         //fmm_Bx_itr_build(domain_, level);
@@ -275,6 +285,61 @@ public:
         std::sort(octants.begin(), octants.end(),[&](const auto& e0, const auto& e1)
                 {return e0.second> e1.second;  });
         return octants;
+    }
+
+    template<class Kernel>
+    void fmm_IF(domain_t* domain_,
+                Kernel* _kernel)
+    {
+        std::vector<std::pair<octant_t*, int>> octants;
+
+        for (auto it = domain_->begin(base_level_); it != domain_->end(base_level_); ++it)
+        {
+            bool _neighbor = true;
+            if (!(it->data()) || !it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Target) )
+                continue;
+
+            int recv_m_send_count =
+            domain_->decomposition().client()->template
+            communicate_induced_fields_recv_m_send_count<fmm_t, fmm_t>(it, _neighbor, fmm_mask_idx_);
+
+            octants.emplace_back(std::make_pair(*it,recv_m_send_count));
+        }
+        //Sends=10000, recv1-10000, no_communication=0
+        std::sort(octants.begin(), octants.end(),[&](const auto& e0, const auto& e1)
+                {return e0.second> e1.second;  });
+
+        const bool start_communication = true;
+
+        for (auto B_it=octants.begin(); B_it!=octants.end(); ++B_it)
+        {
+            auto it =B_it->first;
+            bool _neighbor = true;
+            if (!(it->data()) || !it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Target) )
+                continue;
+
+            if(it->locally_owned())
+            {
+                // no need to use dx and so dx_level=1.0
+                compute_influence_field(&(*it), _kernel,
+                                       0, 1.0, _neighbor);
+            }
+
+            //setup the tasks
+            //no need to use dx and so dx_level=1.0
+            domain_->decomposition().client()->template
+                communicate_induced_fields<fmm_t, fmm_t>(&(*it),
+                    this, _kernel,0,1.0,
+                    _neighbor,
+                    start_communication, fmm_mask_idx_);
+        }
+
+        mDuration_type time_communication_Bx;
+
+        TIME_CODE(time_communication_Bx, SINGLE_ARG(
+        domain_->decomposition().client()->template
+            finish_induced_field_communication();
+        ))
     }
 
     template<class Kernel>
@@ -354,12 +419,12 @@ public:
 
 
     template<class Kernel>
-    void compute_influence_field(octant_t* it, Kernel* _kernel, 
-                                 int level_diff, float_type dx_level, 
+    void compute_influence_field(octant_t* it, Kernel* _kernel,
+                                 int level_diff, float_type dx_level,
                                  bool neighbor)  noexcept
     {
 
-        if (!(it->data()) || 
+        if (!(it->data()) ||
             !it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Target)) return;
         if(neighbor)
         {
@@ -373,6 +438,9 @@ public:
                 }
             }
         }
+
+        if (_kernel->neighbor_only()) return;
+
         for (std::size_t i=0; i< it->influence_number(); ++i)
         {
             auto n_s = it->influence(i);
@@ -392,7 +460,7 @@ public:
                 it != domain_->end(base_level_);
                 ++it)
         {
-            if(it->data() && it->locally_owned() && 
+            if(it->data() && it->locally_owned() &&
                it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Target))
             {
                 it->data()->template get_linalg<f1>().get()->
@@ -409,7 +477,7 @@ public:
                 it != domain_->end(base_level_);
                 ++it)
         {
-            if(it->data() && it->locally_owned() && 
+            if(it->data() && it->locally_owned() &&
                it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Target))
             {
 
@@ -443,16 +511,25 @@ public:
     template< class from, class to >
     void fmm_init_copy(domain_t* domain_)
     {
+        // Neglecting the data in the buffer
+
         for (auto it = domain_->begin(base_level_);
                 it != domain_->end(base_level_);
                 ++it)
         {
-            if(it->data() && it->locally_owned() && 
+            if(it->data() && it->locally_owned() &&
                it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Source))
             {
-                it->data()->template get_linalg<to>().get()->
-                    cube_noalias_view() =
-                     it->data()->template get_linalg_data<from>() * 1.0;
+                auto lin_data_1 = it->data()->template get_linalg_data<from>();
+                auto lin_data_2 = it->data()->template get_linalg_data<to>();
+
+                xt::noalias( view(lin_data_2,
+                                    xt::range(1,-1),  xt::range(1,-1), xt::range(1,-1)) ) =
+                 view(lin_data_1, xt::range(1,-1),  xt::range(1,-1), xt::range(1,-1));
+
+                //it->data()->template get_linalg<to>().get()->
+                //    cube_noalias_view() =
+                //     it->data()->template get_linalg_data<from>() * 1.0;
             }
         }
 

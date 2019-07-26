@@ -36,6 +36,7 @@ public: //Ctor:
     LGF_GE()
     :dft_level_maps_(20)
     {
+        this->neighbor_only_=true;
     }
 
     static_assert(Dim==3, "LGFE only implemented for D=3");
@@ -51,6 +52,12 @@ public:
         const auto base = _b.base();
         return key_t(alpha_,base[0],base[1],base[2]);
     }
+
+    void change_level_impl( int _level_diff) noexcept
+    {
+        alpha_ = alpha_base_level_ * std::pow(4, _level_diff);
+    }
+
 
     template<class Coordinate>
     auto get(const Coordinate& _c) const noexcept
@@ -72,9 +79,13 @@ public:
         }
         else
         {
+            std::cout<< compute_lgf(x,y,z,alpha_) << std::endl;
             return compute_lgf(x,y,z,alpha_);
         }
    }
+
+    auto& alpha_base_level() noexcept {return alpha_base_level_;}
+    const auto& alpha_base_level() const noexcept {return alpha_base_level_;}
 
 private:
 
@@ -93,7 +104,7 @@ private:
         }
     }
 
-    static float_type compute_lgf(int _n1, int _n2, int _n3, 
+    static float_type compute_lgf(int _n1, int _n2, int _n3,
                                     float_type _alpha) noexcept
     {
         return std::exp(-6*_alpha)*
@@ -102,12 +113,12 @@ private:
                 std::cyl_bessel_i(static_cast<float_type>(_n3), 2*_alpha);
     }
 
-
 public:
     std::vector<level_map_t> dft_level_maps_;   ///<lgf map for octants per level
     static constexpr int N_max=20;
     std::vector<float_type> table_;
-    float_type alpha_=0;;
+    float_type alpha_=0;
+    float_type alpha_base_level_=0;
 };
 
 }

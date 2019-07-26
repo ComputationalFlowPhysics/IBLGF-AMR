@@ -38,7 +38,7 @@ public:
 
 
     template<class Convolutor>
-    auto& dft(const block_descriptor_t& _lgf_block, 
+    auto& dft(const block_descriptor_t& _lgf_block,
                   Convolutor* _conv,  int level_diff)
     {
 
@@ -53,12 +53,21 @@ public:
             this->derived().dft_level_maps_[level_diff].emplace(k_,
                     std::make_unique<complex_vector_t>( dft ));
             return dft;
-        } 
+        }
         else
         {
             return *(it->second).get();
         }
     }
+
+
+    void change_level( int _level_diff ) noexcept
+    {
+        this->derived().change_level_impl(_level_diff);
+    }
+
+    bool neighbor_only()
+    {return neighbor_only_;}
 
 protected:
     void get_subblock(const block_descriptor_t& _b,
@@ -87,6 +96,7 @@ protected:
 
     std::vector<float_type> lgf_buffer_;   ///<lgf buffer
     const int max_lgf_map_level = 20;
+    bool neighbor_only_=false;
 
 };
 

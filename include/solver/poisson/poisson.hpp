@@ -13,7 +13,7 @@
 #include <IO/parallel_ostream.hpp>
 
 #include "../../utilities/convolution.hpp"
-#include<utilities/cell_center_nli_intrp.hpp>
+#include <utilities/cell_center_nli_intrp.hpp>
 
 #include <lgf/lgf_gl.hpp>
 #include <lgf/lgf_ge.hpp>
@@ -45,11 +45,12 @@ public: //member types
     //Fields
     using coarse_target_sum = typename Setup::coarse_target_sum;
     using source_tmp = typename Setup::source_tmp;
+    using target_tmp = typename Setup::target_tmp;
 
     //FMM
-    using Fmm_t =  typename Setup::Fmm_t;
-    using lgf_lap_t =  typename lgf::LGF_GL<3>;
-    using lgf_if_t =  typename lgf::LGF_GE<3>;
+    using Fmm_t     = typename Setup::Fmm_t;
+    using lgf_lap_t = typename lgf::LGF_GL<3>;
+    using lgf_if_t  = typename lgf::LGF_GE<3>;
 
     static constexpr int lBuffer=1; ///< Lower left buffer for interpolation
     static constexpr int rBuffer=1; ///< Lower left buffer for interpolation
@@ -69,6 +70,15 @@ public:
         //this->apply_lgf<Source, Target>(&lgf_if_);
         this->apply_lgf<Source, Target>(&lgf_lap_);
     }
+    template< class Source, class Target >
+    void apply_lgf_IF(float_type _alpha_base)
+    {
+        lgf_if_.alpha_base_level()=_alpha_base;
+
+        for (std::size_t entry=0; entry<Source::nFields; ++entry)
+            this->apply_lgf<Source, Target>(&lgf_if_, entry);
+
+    }
 
     /** @brief Solve the poisson equation using lattice Green's functions on
      *         a block-refined mesh for a given Source and Target field.
@@ -80,7 +90,7 @@ public:
      *  to project the solutions to fine and coarse meshes, respectively.
      */
     template< class Source, class Target, class Kernel >
-    void apply_lgf(Kernel*  _kernel)
+    void apply_lgf(Kernel*  _kernel, std::size_t _field_idx=0)
     {
 
         auto client = domain_->decomposition().client();
@@ -88,12 +98,25 @@ public:
 
         const float_type dx_base=domain_->dx_base();
 
+        // Cleaning
+        for (auto it  = domain_->begin_leafs();
+                it != domain_->end_leafs(); ++it)
+            if (it->locally_owned())
+            {
+                auto& cp1 = it ->data()->template get_linalg_data<source_tmp>();
+                auto& cp2 = it ->data()->template get_linalg_data<target_tmp>();
+
+                cp1 = cp1 * 0.0;
+                cp2 = cp2 * 0.0;
+            }
+
+
         // Copy source
         for (auto it  = domain_->begin_leafs();
                 it != domain_->end_leafs(); ++it)
             if (it->locally_owned())
             {
-                auto& cp1 = it ->data()->template get_linalg_data<Source>();
+                auto& cp1 = it ->data()->template get_linalg_data<Source>(_field_idx);
                 auto& cp2 = it ->data()->template get_linalg_data<source_tmp>();
 
                 cp2 = cp1 * 1.0;
@@ -132,30 +155,46 @@ public:
                     cp2*=0.0;
                 }
 
+            //
+            _kernel->change_level(l-domain_->tree()->base_level());
+
             //test for FMM
-            fmm_.template apply<source_tmp, Target>(domain_, _kernel, l, false);
-            fmm_.template apply<source_tmp, Target>(domain_, _kernel, l, true);
+            fmm_.template apply<source_tmp, target_tmp>(domain_, _kernel, l, false);
+            fmm_.template apply<source_tmp, target_tmp>(domain_, _kernel, l, true);
 
             domain_->decomposition().client()->
                 template communicate_updownward_assign
-                    <Target, Target>(l,false,false,-1);
+                    <target_tmp, target_tmp>(l,false,false,-1);
+
+            //TODO Fix the correction for IF
+            if (_kernel->neighbor_only()) continue;
 
             for (auto it  = domain_->begin(l);
                       it != domain_->end(l); ++it)
             {
                 if(it->is_leaf() || !it->data() || !it->data()->is_allocated()) continue;
 
-                c_cntr_nli_.nli_intrp_node< Target, Target >(it);
+                c_cntr_nli_.nli_intrp_node< target_tmp, target_tmp >(it);
 
                 int refinement_level = it->refinement_level();
                 double dx = dx_base/std::pow(2,refinement_level);
                 c_cntr_nli_.add_source_correction<
-                                        Target, source_tmp
+                                        target_tmp, source_tmp
                                         >(it, dx/2.0);
             }
 
         }
 
+        // Copy to Targe
+        for (auto it  = domain_->begin_leafs();
+                it != domain_->end_leafs(); ++it)
+            if (it->locally_owned())
+            {
+                auto& cp1 = it ->data()->template get_linalg_data<Target>(_field_idx);
+                auto& cp2 = it ->data()->template get_linalg_data<target_tmp>();
+
+                cp1 = cp2 * 1.0;
+            }
     }
 
 
@@ -255,7 +294,7 @@ public:
                     auto& nodes_domain=it->data()->nodes_domain();
                     for(auto it2=nodes_domain.begin();it2!=nodes_domain.end();++it2 )
                     {
-                        it2->template get<diff_target>()= 
+                        it2->template get<diff_target>()=
                                   -6.0* it2->template get<target>()+
                                   it2->template at_offset<target>(0,0,-1)+
                                   it2->template at_offset<target>(0,0,+1)+

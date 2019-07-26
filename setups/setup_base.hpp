@@ -25,6 +25,9 @@ class SetupBase : private crtp::Crtps<Setup,SetupBase<Setup,SetupTraits>>,
                   public SetupTraits
 {
 
+const int n_ifherk_stage = 3;
+const int n_ifherk_ij = 6;
+
 public:
     using SetupTraits::Dim;
 
@@ -34,18 +37,23 @@ public: //default fields
     (
       (coarse_target_sum,  float_type,  1,   1,  1,  cell),
       (source_tmp,         float_type,  1,   1,  1,  cell),
+      (target_tmp,         float_type,  1,   1,  1,  cell),
       (fmm_s,              float_type,  1,   1,  1,  cell),
       (fmm_t,              float_type,  1,   1,  1,  cell),
       //flow variables
-      (vel,  float_type,  3,  1,  1,  face),
-      (u,    float_type,  1,  1,  1,  face),
-      (v,    float_type,  1,  1,  1,  face),
-      (w,    float_type,  1,  1,  1,  face),
-      (p,    float_type,  1,  1,  1,  cell)
+      (q_i,                float_type,  3,  1,  1,  face),
+      (u_i,                float_type,  3,  1,  1,  face),
+      (d_i,                float_type,  1,  1,  1,  cell),
+      (g_i,                float_type,  3,  1,  1,  face),
+      (r_i,                float_type,  3,  1,  1,  face),
+      (w_1,                float_type,  3,  1,  1,  face),
+      (w_2,                float_type,  3,  1,  1,  face),
+      (face_aux,           float_type,  3,  1,  1,  face),
+      (face_aux_2,         float_type,  3,  1,  1,  face),
+      (cell_aux,           float_type,  1,  1,  1,  cell)
     ))
 
     using field_tuple=fields_tuple_t;
-    using velocity_tuple = std::tuple<u&,v&,w&>;
 
 public: //datablock
     template<class... DataFieldType>
@@ -76,6 +84,7 @@ public: //Trait types to be used by others
     using Fmm_t = Fmm<SetupBase>;
     using fmm_mask_builder_t = FmmMaskBuilder<domain_t>;
     using poisson_solver_t = solver::PoissonSolver<SetupBase>;
+    using time_integration_t = solver::Ifherk<SetupBase>;
 
 public: //Ctors
     SetupBase(Dictionary* _d)

@@ -50,6 +50,7 @@ public: //Ctor:
         return key_t(base[0],base[1],base[2]);
     }
     void build_lt(){}
+    void change_level_impl( int _level_diff){}
 
     auto get(const coordinate_t& _c) const noexcept
     {

@@ -114,7 +114,7 @@ private:
 
 public:
     std::vector<level_map_t> dft_level_maps_;   ///<lgf map for octants per level
-    static constexpr int N_max=20;
+    static constexpr int N_max=25;
     std::vector<float_type> table_;
     float_type alpha_=0;
     float_type alpha_base_level_=0;

@@ -43,8 +43,20 @@ struct FmmMaskBuilder
     using MASK_LIST = typename octant_t::MASK_LIST;
 
 public:
+    static void fmm_if_load_build(Domain* domain_)
+    {
+        int base_level=domain_->tree()->base_level();
+        // During 1 timestep
+        // IF called 6X3=18 times while fmm called 3 times
+        // effective factor 6
 
-    static void build(Domain* domain_)
+        fmm_dry_init_base_level_masks(domain_, base_level, true,
+                6, true);
+        fmm_dry_init_base_level_masks(domain_, base_level, false,
+                6, true);
+    }
+
+    static void fmm_lgf_mask_build(Domain* domain_)
     {
         for (int l  = domain_->tree()->base_level()+0;
                 l < domain_->tree()->depth(); ++l)
@@ -56,17 +68,11 @@ public:
     static void fmm_dry(Domain* domain_, int base_level, bool non_leaf_as_source)
     {
 
-
         fmm_dry_init_base_level_masks(domain_, base_level, non_leaf_as_source);
         fmm_upward_pass_masks(
                 domain_,
                 base_level,
                 MASK_LIST::Mask_FMM_Source,
-                non_leaf_as_source);
-
-        fmm_upward_pass_masks(
-                domain_,
-                base_level,
                 MASK_LIST::Mask_FMM_Target,
                 non_leaf_as_source);
     }
@@ -74,8 +80,10 @@ public:
     static void fmm_upward_pass_masks(
             Domain* domain_,
             int base_level,
-            int mask_id,
-            bool non_leaf_as_source)
+            int mask_source_id,
+            int mask_target_id,
+            bool non_leaf_as_source,
+            float_type _base_factor=1.0)
     {
 
         int refinement_level = base_level-domain_->tree()->base_level();
@@ -84,22 +92,46 @@ public:
         // for all levels
         for (int level=base_level-1; level>=0; --level)
         {
+            //_base_factor *=0.6;
             // parent's mask is true if any of its child's mask is true
             for (auto it = domain_->begin(level);
                     it != domain_->end(level);
                     ++it)
             {
-                // including ghost parents
-                it->fmm_mask(fmm_mask_idx_,mask_id,false);
+                it->fmm_mask(fmm_mask_idx_,mask_source_id,false);
                 for ( int c = 0; c < it->num_children(); ++c )
                 {
-                    if ( it->child(c) && it->child(c)->fmm_mask(fmm_mask_idx_,mask_id) )
+                    if ( it->child(c) && it->child(c)->fmm_mask(fmm_mask_idx_,mask_source_id) )
                     {
-                        it->fmm_mask(fmm_mask_idx_,mask_id, true);
-                        it->add_load(it->influence_number());
+                        it->fmm_mask(fmm_mask_idx_,mask_source_id, true);
                         break;
                     }
                 }
+            }
+
+            for (auto it = domain_->begin(level);
+                    it != domain_->end(level);
+                    ++it)
+            {
+                // including ghost parents
+                it->fmm_mask(fmm_mask_idx_,mask_target_id,false);
+                for ( int c = 0; c < it->num_children(); ++c )
+                {
+                    if ( it->child(c) && it->child(c)->fmm_mask(fmm_mask_idx_,mask_target_id) )
+                    {
+                        it->fmm_mask(fmm_mask_idx_,mask_target_id, true);
+                        break;
+                    }
+                }
+
+                // calculate load
+                if  (it->fmm_mask(fmm_mask_idx_,mask_target_id))
+                    for(std::size_t i = 0; i< it->influence_number(); ++i)
+                    {
+                        const auto inf=it->influence(i);
+                        if (inf && inf->fmm_mask(fmm_mask_idx_,mask_source_id))
+                            it->add_load(1.0 * _base_factor);
+                    }
             }
 
         }
@@ -108,7 +140,9 @@ public:
     static void fmm_dry_init_base_level_masks(
             Domain* domain_,
             int base_level,
-            bool non_leaf_as_source)
+            bool non_leaf_as_source,
+            int _load_factor=1,
+            bool _neighbor_only=false)
     {
         int refinement_level = base_level-domain_->tree()->base_level();
         int fmm_mask_idx_ = refinement_level*2+non_leaf_as_source;
@@ -127,8 +161,10 @@ public:
                     it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Source, true);
                     it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Target, true);
 
-                    it->add_load(it->influence_number());
-                    it->add_load(it->neighbor_number());
+                    if (!_neighbor_only)
+                        it->add_load(it->influence_number() * _load_factor);
+
+                    it->add_load(it->neighbor_number() * _load_factor);
                 }
             }
         } else
@@ -138,8 +174,11 @@ public:
             {
                 it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Source, true);
                 it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Target, true);
-                it->add_load(it->influence_number());
-                it->add_load(it->neighbor_number());
+
+                if (!_neighbor_only)
+                    it->add_load(it->influence_number() * _load_factor);
+
+                it->add_load(it->neighbor_number() * _load_factor);
             }
         }
     }

@@ -592,13 +592,14 @@ private:// influence list
                           std::set<influence_helper>& influence_set,
                           bool _global=true)
     {
+        if(!it) return;
         it->influence_clear();
-        if(!it || !it->parent()) return;
 
         int infl_id = 0;
         it->influence_number(infl_id);
         const auto coord = it->key().coordinate();
 
+        if(!it->parent()) return;
         octant_type* p = it->parent();
 
         for (int p_n_id=0;

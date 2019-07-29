@@ -83,17 +83,28 @@ public: //member types
 public:
     void time_march()
     {
+        boost::mpi::communicator world;
+        parallel_ostream::ParallelOstream pcout=parallel_ostream::ParallelOstream(world.size()-1);
 
         T_ = 0.0;
         pcout<<"Time marching with dt = " << dt_ << std::endl;
         pcout<<"                   nsteps = " << nsteps_ << std::endl;
 
-        pcout<<alpha_[0]<<std::endl;
-
         for (int i=0; i<nsteps_; ++i)
         {
-            time_step();
-            pcout<<"T = " << T_ << " -----------------" << std::endl;
+            mDuration_type ifherk_lgf(0);
+            TIME_CODE( ifherk_lgf, SINGLE_ARG(
+            psolver.template apply_lgf<cell_aux, d_i>();
+            ));
+            std::cout<<ifherk_lgf.count()<< " on rank = "<< world.rank()<<std::endl;
+
+            //mDuration_type ifherk_if(0);
+            //TIME_CODE( ifherk_if, SINGLE_ARG(
+            //psolver.template apply_lgf_IF<q_i, q_i>(alpha_[0]);
+            //));
+            //pcout<<ifherk_if.count()<<std::endl;
+            //time_step();
+            //pcout<<"T = " << T_ << " -----------------" << std::endl;
         }
 
     }
@@ -102,6 +113,9 @@ public:
     {
         // Initialize IFHERK
         // q_1 = u
+        boost::mpi::communicator world;
+        parallel_ostream::ParallelOstream pcout=parallel_ostream::ParallelOstream(world.size()-1);
+
          copy<u, q_i>();
 
          pcout<<"Stage 1"<< std::endl;
@@ -263,7 +277,6 @@ private:
 private:
     domain_type*                      domain_;    ///< domain
     poisson_solver_t psolver;
-    parallel_ostream::ParallelOstream pcout=parallel_ostream::ParallelOstream(1);
 
     float_type T_;
     float_type dt_, dx_;

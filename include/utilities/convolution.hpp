@@ -132,7 +132,7 @@ public: //Interface
 
 
     template<class Vector>
-    void copy_input(const Vector& _v, dims_t _dims_v) 
+    void copy_input(const Vector& _v, dims_t _dims_v)
     {
         if(_v.size()==input_.size())
         {
@@ -363,7 +363,7 @@ public: //Ctors
     template<class Field, class BlockType, class Kernel>
     void execute_field(const BlockType& _lgf_block,
                        Kernel* _kernel,
-                       int _level_diff, const Field& _b, 
+                       int _level_diff, const Field& _b,
                        const float_type _extra_scale)
     {
 

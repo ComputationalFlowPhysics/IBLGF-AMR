@@ -108,7 +108,7 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
         boost::mpi::communicator world;
         //simulation_.write2("ifherk_begin.hdf5");
 
-        simulation_.write2("ifherk_0.hdf5");
+        //simulation_.write2("ifherk_0.hdf5");
         if(domain_->is_client())
         {
 

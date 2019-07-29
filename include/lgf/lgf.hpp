@@ -35,10 +35,11 @@ public:
     using real_vector_t = std::vector<float_type,
           boost::alignment::aligned_allocator_adaptor<
               std::allocator<float_type>,32>>;
+    using dims_t = types::vector_type<int,3>;
 
 
     template<class Convolutor>
-    auto& dft(const block_descriptor_t& _lgf_block,
+    auto& dft(const block_descriptor_t& _lgf_block, dims_t _extended_dims,
                   Convolutor* _conv,  int level_diff)
     {
 
@@ -48,7 +49,7 @@ public:
         //Check if lgf is already stored
         if ( it == this->derived().dft_level_maps_[level_diff].end() )
         {
-            this->get_subblock( _lgf_block, lgf_buffer_, level_diff);
+            this->get_subblock( _lgf_block, _extended_dims, lgf_buffer_, level_diff);
             auto& dft=_conv->dft_r2c(lgf_buffer_);
             this->derived().dft_level_maps_[level_diff].emplace(k_,
                     std::make_unique<complex_vector_t>( dft ));
@@ -71,7 +72,8 @@ public:
 
 protected:
     void get_subblock(const block_descriptor_t& _b,
-                      std::vector<float_type>&  _lgf, int level_diff = 0) noexcept
+                        dims_t _extended_dims,
+                        std::vector<float_type>&  _lgf, int level_diff = 0) noexcept
     {
         this->derived().build_lt();
 
@@ -79,7 +81,9 @@ protected:
         const auto max  = _b.max();
         int step = pow(2, level_diff);
 
-        _lgf.resize(_b.size());
+        std::vector<float_type> _lgf_small;
+        _lgf_small.resize(_b.size());
+
         for (auto k = base[2]; k <= max[2] ; ++k)
         {
             for (auto j = base[1]; j <= max[1]; ++j)
@@ -87,11 +91,28 @@ protected:
                 for (auto i = base[0]; i <= max[0]; ++i)
                 {
                     //get view
-                    _lgf[_b.index(i,j,k)] =
+                    _lgf_small[_b.index(i,j,k)] =
                         this->derived().get(coordinate_t({i*step, j*step, k*step}));
                 }
             }
         }
+
+        block_descriptor_t _b_pad(base, _extended_dims);
+
+        _lgf.resize(_b_pad.size());
+        std::fill (_lgf.begin(),_lgf.end(),0.0);
+
+        for (auto k = base[2]; k <= max[2]; ++k)
+        {
+            for (auto j = base[1]; j <= max[1]; ++j)
+            {
+                for (auto i = base[0]; i <= max[0]; ++i)
+                {
+                    _lgf[_b_pad.index(i,j,k)] = _lgf_small[_b.index(i,j,k)];
+                }
+            }
+        }
+
     }
 
     std::vector<float_type> lgf_buffer_;   ///<lgf buffer

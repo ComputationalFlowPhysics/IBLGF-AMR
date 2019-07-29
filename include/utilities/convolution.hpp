@@ -14,6 +14,8 @@
 #include <domain/dataFields/dataBlock.hpp>
 #include <domain/dataFields/datafield.hpp>
 
+#include <utilities/misc_math_functions.hpp>
+
 namespace fft
 {
 
@@ -54,8 +56,7 @@ public: //Ctors:
      output_2(_dims_padded[2]*_dims_padded[1]*((_dims_padded[0]/2)+1)),
      output_ (_dims_padded[2]*_dims_padded[1]*((_dims_padded[0]/2)+1))
     {
-       //int status = fftw_init_threads();
-        //fftw_plan_with_nthreads(nthreads);
+
         plan = (fftw_plan_dft_r2c_3d(_dims_padded[2], _dims_padded[1], _dims_padded[0],
                  &input_[0], reinterpret_cast<fftw_complex*>(&output_[0]),
                  FFTW_PATIENT ));
@@ -168,14 +169,15 @@ public: //Interface
         {
             for(int j=0;j<_dims_v[1];++j)
             {
-                std::copy(&_v.get_real_local(0,j,k),
-                            &_v.get_real_local(0,j,k) + _dims_v[0],
-                            &input_[dims_input_[0]*j+ dims_input_[0]*dims_input_[1]*k] );
-                //for(int i=0;i<_dims_v[0];++i)
-                //{
-                //    input_[ i+dims_input_[0]*j+ dims_input_[0]*dims_input_[1]*k ]=
-                //     _v.get_real_local(i,j,k);
-                //}
+                //std::copy(&_v.get_real_local(0,j,k),
+                //            &_v.get_real_local(0,j,k) + _dims_v[0],
+                //            &input_[dims_input_[0]*j+ dims_input_[0]*dims_input_[1]*k] );
+
+                for(int i=0;i<_dims_v[0];++i)
+                {
+                    input_[ i+dims_input_[0]*j+ dims_input_[0]*dims_input_[1]*k ]=
+                     _v.get_real_local(i,j,k);
+                }
             }
         }
     }
@@ -295,6 +297,7 @@ public: //Interface
 
 private:
 
+    dims_t dims_next_pow_2_;
     complex_vector_t input_, tmp_1_, tmp_2_;
     real_vector_t output_;
 
@@ -336,12 +339,13 @@ public: //Ctors
 
     Convolution(dims_t _dims0, dims_t _dims1)
     :padded_dims_(_dims0 + _dims1 - 1),
+     padded_dims_next_pow_2_({{math::next_pow_2(padded_dims_[0]),math::next_pow_2(padded_dims_[1]),math::next_pow_2(padded_dims_[1])}}),
      dims0_(_dims0),
      dims1_(_dims1),
-     fft_forward0_(padded_dims_, _dims0),
-     fft_forward1_(padded_dims_, _dims1),
-     fft_backward_(padded_dims_, _dims1)
-    { }
+     fft_forward0_(padded_dims_next_pow_2_, _dims0),
+     fft_forward1_(padded_dims_next_pow_2_, _dims1),
+     fft_backward_(padded_dims_next_pow_2_, _dims1)
+    {}
 
 
     template<
@@ -366,21 +370,21 @@ public: //Ctors
                        int _level_diff, const Field& _b,
                        const float_type _extra_scale)
     {
-
-        auto& f0 = _kernel->dft(_lgf_block, this, _level_diff);
+        auto& f0 = _kernel->dft(_lgf_block, padded_dims_next_pow_2_, this, _level_diff);
 
         fft_forward1_.copy_field(_b, dims1_);
         fft_forward1_.execute();
         auto& f1 = fft_forward1_.output();
 
         complex_vector_t prod(f0.size());
-        const float_type scale = 1.0 / (padded_dims_[0] *
-                                        padded_dims_[1] *
-                                        padded_dims_[2]) * _extra_scale;
+        const float_type scale = 1.0 / (padded_dims_next_pow_2_[0] *
+                                        padded_dims_next_pow_2_[1] *
+                                        padded_dims_next_pow_2_[2]) * _extra_scale;
         for(std::size_t i = 0; i < prod.size(); ++i)
         {
             fft_backward_.input()[i] = f0[i]*f1[i]*scale;
         }
+
         fft_backward_.execute();
     }
 
@@ -408,7 +412,7 @@ public: //Ctors
                 {
                     _F.get_real_local(i-dims0_[0]+1,j-dims0_[1]+1,k-dims0_[2]+1 ) +=
                     fft_backward_.output() [
-                        i+j*padded_dims_[0]+k*padded_dims_[0]*padded_dims_[1]
+                        i+j*padded_dims_next_pow_2_[0]+k*padded_dims_next_pow_2_[0]*padded_dims_next_pow_2_[1]
                     ];
                 }
             }
@@ -420,6 +424,7 @@ public:
 
 private:
     dims_t padded_dims_;
+    dims_t padded_dims_next_pow_2_;
     dims_t dims0_;
     dims_t dims1_;
 

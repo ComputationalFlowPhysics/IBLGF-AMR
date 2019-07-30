@@ -65,9 +65,9 @@ public:
     template<class Field>
     using halo_communicator_t=HaloCommunicator<halo_task_t, Field, domain_t>;
     template<class... Fields>
-    using halo_communicator_template_t = 
+    using halo_communicator_template_t =
         std::tuple<halo_communicator_t<Fields>...>;
-    using halo_communicators_tuple_t = 
+    using halo_communicators_tuple_t =
         typename tuple_utils::make_from_tuple<
             halo_communicator_template_t, fields_tuple_t>::type;
 
@@ -465,7 +465,10 @@ public:
                 const auto inf=it->influence(i);
                 if(inf && inf->rank()==myRank &&
                    inf->fmm_mask(fmm_mask_idx,MASK_LIST::Mask_FMM_Source))
-                {return +1000000;}
+                {
+                    ++count;
+                    //return +1000000;
+                }
             }
 
             if(_neighbors)
@@ -475,7 +478,10 @@ public:
                     const auto inf=it->neighbor(i);
                     if(inf && inf->rank()==myRank &&
                        inf->fmm_mask(fmm_mask_idx,MASK_LIST::Mask_FMM_Source))
-                    {return +1000000;}
+                    {
+                        ++count;
+                        //return +1000000;
+                    }
                 }
             }
         }
@@ -488,7 +494,9 @@ public:
                 if(inf && inf->rank()!=myRank &&
                    inf->fmm_mask(fmm_mask_idx,MASK_LIST::Mask_FMM_Source))
                 {
-                    ++count;
+                    //return +1000000;
+                    count+=1000;
+                    //++count;
                 }
             }
 
@@ -500,7 +508,9 @@ public:
                     if(inf && inf->rank()!=myRank &&
                        inf->fmm_mask(fmm_mask_idx,MASK_LIST::Mask_FMM_Source))
                     {
-                        ++count;
+                        count+=1000;
+                        //return +1000000;
+                       // ++count;
                     }
                 }
             }
@@ -542,7 +552,7 @@ public:
                 for(std::size_t i = 0; i< it->influence_number(); ++i)
                 {
                     const auto inf=it->influence(i);
-                    if(inf && inf->rank()==myRank && 
+                    if(inf && inf->rank()==myRank &&
                         inf->fmm_mask(fmm_mask_idx,MASK_LIST::Mask_FMM_Source))
                     { is_influenced=true ; break;}
                 }
@@ -553,7 +563,7 @@ public:
                 for(int i = 0; i< it->nNeighbors(); ++i)
                 {
                     const auto inf=it->neighbor(i);
-                    if(inf && inf->rank()==myRank && 
+                    if(inf && inf->rank()==myRank &&
                        inf->fmm_mask(fmm_mask_idx,MASK_LIST::Mask_FMM_Source))
                     { is_influenced=true ; break;}
                 }
@@ -581,7 +591,7 @@ public:
                             template get<SendField>().data());
 
                     //2. Compute influence field
-                    _fmm->compute_influence_field(it,_kernel, 
+                    _fmm->compute_influence_field(it,_kernel,
                                     _level_diff, _dx_level, _neighbors);
 
                     //3. Swap sendfield with buffer
@@ -599,7 +609,7 @@ public:
                 for(std::size_t i = 0; i< it->influence_number(); ++i)
                 {
                     const auto inf=it->influence(i);
-                    if(inf && inf->rank()!=myRank && 
+                    if(inf && inf->rank()!=myRank &&
                             inf->fmm_mask(fmm_mask_idx,MASK_LIST::Mask_FMM_Source))
                     {
                         unique_inflRanks.insert(inf->rank());
@@ -612,7 +622,7 @@ public:
                 for(int i = 0; i< it->nNeighbors(); ++i)
                 {
                     const auto inf=it->neighbor(i);
-                    if(inf && inf->rank()!=myRank && 
+                    if(inf && inf->rank()!=myRank &&
                        inf->fmm_mask(fmm_mask_idx,MASK_LIST::Mask_FMM_Source))
                     {
                         unique_inflRanks.insert(inf->rank());
@@ -1069,9 +1079,9 @@ public:
                 );
     }
 
-    /** @brief Testing function for buffer/halo exchange for a field. 
-     *         The  haloCommunicator will later be stored as a tuple for 
-     *         all fields. 
+    /** @brief Testing function for buffer/halo exchange for a field.
+     *         The  haloCommunicator will later be stored as a tuple for
+     *         all fields.
      */
     template<class Field>
     void buffer_exchange()
@@ -1083,11 +1093,11 @@ public:
             task_manager_-> template recv_communicator<halo_task_t>();
 
         //Initialize Halo communicator
-        //TODO: put this outside somewhere 
+        //TODO: put this outside somewhere
         initialize_halo_communicators();
         auto& hcomm=std::get<halo_communicator_t<Field>>(halo_communicators_);
 
-        //Get the overlaps 
+        //Get the overlaps
         hcomm.template pack_messages();
         for(auto st:hcomm.send_tasks()) { if(st) { send_comm.post_task(st); } }
         for(auto& st:hcomm.recv_tasks()) { if(st) { recv_comm.post_task(st); } }
@@ -1103,7 +1113,7 @@ public:
                 break;
         }
 
-        //Assign received message to field view 
+        //Assign received message to field view
         hcomm.template unpack_messages();
     }
 

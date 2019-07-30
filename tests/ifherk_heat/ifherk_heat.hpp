@@ -117,9 +117,7 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
 
             mDuration_type ifherk_duration(0);
             TIME_CODE( ifherk_duration, SINGLE_ARG(
-
                 ifherk.time_march();
-
             ))
             pcout_c<<"Time to solution [ms] "<<ifherk_duration.count()<<std::endl;
 

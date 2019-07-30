@@ -59,7 +59,7 @@ public: //Ctors:
 
         plan = (fftw_plan_dft_r2c_3d(_dims_padded[2], _dims_padded[1], _dims_padded[0],
                  &input_[0], reinterpret_cast<fftw_complex*>(&output_[0]),
-                 FFTW_PATIENT ));
+                 FFTW_EXHAUSTIVE ));
 
         r2c_1d_plans.resize(_dims_non_zero[0]);
 
@@ -73,7 +73,7 @@ public: //Ctors:
                             1, _dims_padded[2],
                             reinterpret_cast<fftw_complex*>
                                 (&output_1[i_plan*dim_half*_dims_padded[1]]), NULL,
-                                 1, dim_half, FFTW_PATIENT
+                                 1, dim_half, FFTW_EXHAUSTIVE
                             );
 
         }
@@ -89,7 +89,7 @@ public: //Ctors:
                                 reinterpret_cast<fftw_complex*>
                                     (&output_2[i_plan*dim_half*_dims_padded[1] ]), NULL,
                                 dim_half, 1,
-                                FFTW_FORWARD, FFTW_PATIENT
+                                FFTW_FORWARD, FFTW_EXHAUSTIVE
                         );
         }
 
@@ -100,7 +100,7 @@ public: //Ctors:
                 reinterpret_cast<fftw_complex*>
                     (&output_[0]), NULL,
                 dim_half*_dims_padded[1], 1,
-                FFTW_FORWARD, FFTW_PATIENT
+                FFTW_FORWARD, FFTW_EXHAUSTIVE
                 );
 
 
@@ -232,7 +232,7 @@ public: //Ctors:
         //fftw_plan_with_nthreads(nthreads);
         plan = fftw_plan_dft_c2r_3d(_dims[2], _dims[1], _dims[0],
                  reinterpret_cast<fftw_complex*>(&input_[0]), &output_[0],
-                 FFTW_PATIENT);
+                 FFTW_EXHAUSTIVE);
 
         int dim_half = (_dims[2]/2)+1;
         c2c_dir_1 = fftw_plan_many_dft(1, &_dims[0], _dims[1] * dim_half,
@@ -242,7 +242,7 @@ public: //Ctors:
                         reinterpret_cast<fftw_complex*>
                             (&tmp_1_[0]), NULL,
                              _dims[1] * dim_half, 1,
-                        FFTW_BACKWARD, FFTW_PATIENT
+                        FFTW_BACKWARD, FFTW_EXHAUSTIVE
                 );
 
         ////Dir 1
@@ -257,7 +257,7 @@ public: //Ctors:
                                 reinterpret_cast<fftw_complex*>
                                     (&tmp_2_[ (i_plan + _dims_small[0]-1)*dim_half*_dims[1] ]), NULL,
                                 dim_half, 1,
-                        FFTW_BACKWARD, FFTW_PATIENT
+                        FFTW_BACKWARD, FFTW_EXHAUSTIVE
                 );
 
         }
@@ -273,7 +273,7 @@ public: //Ctors:
                                 1, dim_half,
                                 &output_[ (i_plan + _dims_small[0]-1)*_dims[2]*_dims[1] + _dims[2]*(_dims_small[1]-1)  ] , NULL,
                                 1, _dims[2],
-                                FFTW_PATIENT
+                                FFTW_EXHAUSTIVE
                                 );
         }
 
@@ -347,28 +347,62 @@ public: //Ctors
      fft_backward_(padded_dims_next_pow_2_, _dims1)
     {}
 
-
-    template<
-        typename Source, typename Target,
-        typename BlockType, class Kernel>
-    void apply_lgf( const BlockType& _lgf_block,
-                    Kernel* _kernel,
-                    int _level_diff,
-                    const Source& _source,
-                    const BlockType& _extractor,
-                    Target& _target,
-                    float_type _scale )
+    void fft_backward_field_clean()
     {
-            execute_field(_lgf_block, _kernel, _level_diff, _source, _scale);
-            add_solution(_extractor, _target);
-            fft_count_ ++;
+        std::fill (fft_backward_.input().begin(),fft_backward_.input().end(),0);
     }
 
+    template<
+        typename Source,
+        typename BlockType, class Kernel>
+    void apply_forward_add( const BlockType& _lgf_block,
+                    Kernel* _kernel,
+                    int _level_diff,
+                    const Source& _source)
+    {
+            execute_fwrd_field(_lgf_block, _kernel, _level_diff, _source);
+    }
+
+    template<
+        typename Target,
+        typename BlockType>
+    void apply_backward(const BlockType& _extractor,
+                    Target& _target,
+                    float_type _extra_scale)
+    {
+        const float_type scale = 1.0 / (padded_dims_next_pow_2_[0] *
+                                        padded_dims_next_pow_2_[1] *
+                                        padded_dims_next_pow_2_[2]) *
+                                        _extra_scale;
+        for(std::size_t i = 0; i < fft_backward_.input().size(); ++i)
+        {
+            fft_backward_.input()[i] *= scale;
+        }
+
+        fft_backward_.execute();
+        add_solution(_extractor, _target);
+    }
+
+    //template<
+    //    typename Source, typename Target,
+    //    typename BlockType, class Kernel>
+    //void apply_lgf( const BlockType& _lgf_block,
+    //                Kernel* _kernel,
+    //                int _level_diff,
+    //                const Source& _source,
+    //                const BlockType& _extractor,
+    //                Target& _target,
+    //                float_type _scale )
+    //{
+    //        execute_field(_lgf_block, _kernel, _level_diff, _source, _scale);
+    //        add_solution(_extractor, _target);
+    //        fft_count_ ++;
+    //}
+
     template<class Field, class BlockType, class Kernel>
-    void execute_field(const BlockType& _lgf_block,
+    void execute_fwrd_field(const BlockType& _lgf_block,
                        Kernel* _kernel,
-                       int _level_diff, const Field& _b,
-                       const float_type _extra_scale)
+                       int _level_diff, const Field& _b)
     {
         auto& f0 = _kernel->dft(_lgf_block, padded_dims_next_pow_2_, this, _level_diff);
 
@@ -377,16 +411,36 @@ public: //Ctors
         auto& f1 = fft_forward1_.output();
 
         complex_vector_t prod(f0.size());
-        const float_type scale = 1.0 / (padded_dims_next_pow_2_[0] *
-                                        padded_dims_next_pow_2_[1] *
-                                        padded_dims_next_pow_2_[2]) * _extra_scale;
         for(std::size_t i = 0; i < prod.size(); ++i)
         {
-            fft_backward_.input()[i] = f0[i]*f1[i]*scale;
+            fft_backward_.input()[i] += f0[i]*f1[i];
         }
 
-        fft_backward_.execute();
     }
+
+    //template<class Field, class BlockType, class Kernel>
+    //void execute_field(const BlockType& _lgf_block,
+    //                   Kernel* _kernel,
+    //                   int _level_diff, const Field& _b,
+    //                   const float_type _extra_scale)
+    //{
+    //    auto& f0 = _kernel->dft(_lgf_block, padded_dims_next_pow_2_, this, _level_diff);
+
+    //    fft_forward1_.copy_field(_b, dims1_);
+    //    fft_forward1_.execute();
+    //    auto& f1 = fft_forward1_.output();
+
+    //    complex_vector_t prod(f0.size());
+    //    const float_type scale = 1.0 / (padded_dims_next_pow_2_[0] *
+    //                                    padded_dims_next_pow_2_[1] *
+    //                                    padded_dims_next_pow_2_[2]) * _extra_scale;
+    //    for(std::size_t i = 0; i < prod.size(); ++i)
+    //    {
+    //        fft_backward_.input()[i] = f0[i]*f1[i]*scale;
+    //    }
+
+    //    fft_backward_.execute();
+    //}
 
     auto& dft_r2c(std::vector<float_type>& _vec )
     {

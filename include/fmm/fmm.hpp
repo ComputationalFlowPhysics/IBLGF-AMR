@@ -415,7 +415,8 @@ public:
             int level = it->level();
 
             bool _neighbor = (level==base_level_)? true:false;
-            if (!(it->data()) || !it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Target) )
+            if (!(it->data()) ||
+                    !it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Target) )
                 continue;
 
             if(it->locally_owned())
@@ -465,6 +466,9 @@ public:
 
         if (!(it->data()) ||
             !it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Target)) return;
+
+        conv_.fft_backward_field_clean();
+
         if(neighbor)
         {
             for (int i=0; i<it->nNeighbors(); ++i)
@@ -473,22 +477,32 @@ public:
                 if (n_s && n_s->locally_owned()
                         && n_s->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Source))
                 {
-                    fmm_tt(n_s, it, _kernel, 0, dx_level);
+                    fmm_tt(n_s, it, _kernel, 0);
                 }
             }
         }
 
-        if (_kernel->neighbor_only()) return;
-
-        for (std::size_t i=0; i< it->influence_number(); ++i)
+        if (!_kernel->neighbor_only())
         {
-            auto n_s = it->influence(i);
-            if (n_s && n_s->locally_owned()
-                    && n_s->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Source))
+            for (std::size_t i=0; i< it->influence_number(); ++i)
             {
-                fmm_tt(n_s, it, _kernel,level_diff, dx_level);
+                auto n_s = it->influence(i);
+                if (n_s && n_s->locally_owned()
+                        && n_s->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Source))
+                {
+                    fmm_tt(n_s, it, _kernel,level_diff);
+                }
             }
         }
+
+        const auto t_extent = it->data()->template get<fmm_t>().
+                                real_block().extent();
+        block_dsrp_t extractor(dims_t(0), t_extent);
+
+        float_type _scale = (_kernel->neighbor_only()) ? 1.0:dx_level*dx_level;
+        conv_.apply_backward(extractor,
+                it->data()->template get<fmm_t>(),
+                _scale);
     }
 
     template< class f1, class f2 >
@@ -624,15 +638,13 @@ public:
 
     template<class Kernel>
     void fmm_tt(octant_t* o_s, octant_t* o_t, Kernel* _kernel,
-                int level_diff, float_type dx_level)
+                int level_diff)
     {
 
         const auto t_base = o_t->data()->template get<fmm_t>().
                                         real_block().base();
         const auto s_base = o_s->data()->template get<fmm_s>().
                                         real_block().base();
-
-        if(!o_s->locally_owned())return;
 
         // Get extent of Source region
         const auto s_extent = o_s->data()->template get<fmm_s>().
@@ -644,13 +656,9 @@ public:
         const auto extent_lgf = 2 * (s_extent) - 1;
 
         block_dsrp_t lgf_block(base_lgf, extent_lgf);
-        block_dsrp_t extractor(s_base, s_extent);
 
-        conv_.apply_lgf(lgf_block, _kernel, level_diff,
-                o_s->data()->template get<fmm_s>(),
-                extractor,
-                o_t->data()->template get<fmm_t>(),
-                dx_level*dx_level);
+        conv_.apply_forward_add(lgf_block, _kernel, level_diff,
+                o_s->data()->template get<fmm_s>());
 
     }
 

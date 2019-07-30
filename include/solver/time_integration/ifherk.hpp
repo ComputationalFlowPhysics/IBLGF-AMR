@@ -92,19 +92,19 @@ public:
 
         for (int i=0; i<nsteps_; ++i)
         {
-            mDuration_type ifherk_lgf(0);
-            TIME_CODE( ifherk_lgf, SINGLE_ARG(
-            psolver.template apply_lgf<cell_aux, d_i>();
-            ));
-            std::cout<<ifherk_lgf.count()<< " on rank = "<< world.rank()<<std::endl;
-
-            //mDuration_type ifherk_if(0);
-            //TIME_CODE( ifherk_if, SINGLE_ARG(
-            //psolver.template apply_lgf_IF<q_i, q_i>(alpha_[0]);
+            //mDuration_type ifherk_lgf(0);
+            //TIME_CODE( ifherk_lgf, SINGLE_ARG(
+            //psolver.template apply_lgf<cell_aux, d_i>();
             //));
-            //pcout<<ifherk_if.count()<<std::endl;
+            //std::cout<<ifherk_lgf.count()<< " on rank = "<< world.rank()<<std::endl;
+
+            mDuration_type ifherk_if(0);
+            TIME_CODE( ifherk_if, SINGLE_ARG(
+            psolver.template apply_lgf_IF<u, u>(1.0/(Re_*dx_*dx_/dt_));
+            ));
+            pcout<<ifherk_if.count()<<std::endl;
             //time_step();
-            //pcout<<"T = " << T_ << " -----------------" << std::endl;
+            pcout<<"T = " << T_ << " -----------------" << std::endl;
         }
 
     }

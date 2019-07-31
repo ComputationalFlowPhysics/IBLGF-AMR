@@ -449,7 +449,7 @@ public:
     template<class SendField,class RecvField, class Octant_t>
     int communicate_induced_fields_recv_m_send_count( Octant_t it, bool _neighbors, int fmm_mask_idx )
     {
-        int count = 0;
+        int count =0;
         boost::mpi::communicator  w;
         const int myRank=w.rank();
 
@@ -466,7 +466,8 @@ public:
                 if(inf && inf->rank()==myRank &&
                    inf->fmm_mask(fmm_mask_idx,MASK_LIST::Mask_FMM_Source))
                 {
-                    ++count;
+                    return (inf->rank()+1)*1000;
+                    //++count;
                     //return +1000000;
                 }
             }
@@ -479,7 +480,8 @@ public:
                     if(inf && inf->rank()==myRank &&
                        inf->fmm_mask(fmm_mask_idx,MASK_LIST::Mask_FMM_Source))
                     {
-                        ++count;
+                        return (inf->rank()+1)*1000;
+                        //++count;
                         //return +1000000;
                     }
                 }
@@ -487,6 +489,7 @@ public:
         }
         else //Receivs
         {
+            int inf_rank=-1;
             std::set<int> unique_inflRanks;
             for(std::size_t i = 0; i< it->influence_number(); ++i)
             {
@@ -494,8 +497,10 @@ public:
                 if(inf && inf->rank()!=myRank &&
                    inf->fmm_mask(fmm_mask_idx,MASK_LIST::Mask_FMM_Source))
                 {
+                    //inf_rank = inf->rank();
+                    return (inf->rank()+1)*1000+1;
                     //return +1000000;
-                    count+=1000;
+                    //count+=1000;
                     //++count;
                 }
             }
@@ -508,13 +513,23 @@ public:
                     if(inf && inf->rank()!=myRank &&
                        inf->fmm_mask(fmm_mask_idx,MASK_LIST::Mask_FMM_Source))
                     {
-                        count+=1000;
+                        return (inf->rank()+1)*1000+1;
+                        //return inf->rank()+1;
+                        //inf_rank = inf->rank();
+                        //count+=1000;
                         //return +1000000;
-                       // ++count;
+                        // ++count;
                     }
                 }
             }
+
+            //if (count>0)
+            //    count+=(inf_rank+1)*10000000;
         }
+        //if (count>0)
+        //    count += it->level() * 10000000;
+        //std::cout<<count<<std::endl;
+        //std::cout<<it->level()<<std::endl;
         return count;
     }
 

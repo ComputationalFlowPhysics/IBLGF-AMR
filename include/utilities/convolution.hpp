@@ -8,13 +8,15 @@
 #include <complex>
 #include <fftw3.h>
 #include <global.hpp>
-#include <boost/align/aligned_allocator_adaptor.hpp>
+//#include <boost/align/aligned_allocator_adaptor.hpp>
 
 #include <lgf/lgf.hpp>
 #include <domain/dataFields/dataBlock.hpp>
 #include <domain/dataFields/datafield.hpp>
 
 #include <utilities/misc_math_functions.hpp>
+#include <xsimd/xsimd.hpp>
+#include <xsimd/stl/algorithms.hpp>
 
 namespace fft
 {
@@ -31,12 +33,18 @@ class dfft_r2c
 public:
     using float_type=double;
     using complex_vector_t = std::vector<std::complex<float_type>,
-          boost::alignment::aligned_allocator_adaptor<
-              std::allocator<std::complex<float_type>>,32>> ;
+          xsimd::aligned_allocator<std::complex<float_type>, 32>>;
 
     using real_vector_t = std::vector<float_type,
-          boost::alignment::aligned_allocator_adaptor<
-                std::allocator<float_type>,32>>;
+          xsimd::aligned_allocator<float_type, 32>>;
+
+    //using complex_vector_t = std::vector<std::complex<float_type>,
+    //      boost::alignment::aligned_allocator_adaptor<
+    //          std::allocator<std::complex<float_type>>,32>> ;
+
+    //using real_vector_t = std::vector<float_type,
+    //      boost::alignment::aligned_allocator_adaptor<
+    //            std::allocator<float_type>,32>>;
 
     using dims_t = types::vector_type<int,3>;
 
@@ -204,12 +212,18 @@ class dfft_c2r
 public:
     //const int nthreads = 1;
     using complex_vector_t = std::vector<std::complex<float_type>,
-          boost::alignment::aligned_allocator_adaptor<
-              std::allocator<std::complex<float_type>>,32>> ;
+          xsimd::aligned_allocator<std::complex<float_type>, 32>>;
 
     using real_vector_t = std::vector<float_type,
-          boost::alignment::aligned_allocator_adaptor<
-              std::allocator<float_type>,32>>;
+          xsimd::aligned_allocator<float_type, 32>>;
+
+    //using complex_vector_t = std::vector<std::complex<float_type>,
+    //      boost::alignment::aligned_allocator_adaptor<
+    //          std::allocator<std::complex<float_type>>,32>> ;
+
+    //using real_vector_t = std::vector<float_type,
+    //      boost::alignment::aligned_allocator_adaptor<
+    //          std::allocator<float_type>,32>>;
 
     using dims_t = types::vector_type<int,3>;
 
@@ -318,12 +332,18 @@ public:
     using dims_t = types::vector_type<int,3>;
 
     using complex_vector_t = std::vector<std::complex<float_type>,
-          boost::alignment::aligned_allocator_adaptor<
-              std::allocator<std::complex<float_type>>,32>> ;
+          xsimd::aligned_allocator<std::complex<float_type>, 32>>;
 
     using real_vector_t = std::vector<float_type,
-          boost::alignment::aligned_allocator_adaptor<
-              std::allocator<float_type>,32>>;
+          xsimd::aligned_allocator<float_type, 32>>;
+
+    //using complex_vector_t = std::vector<std::complex<float_type>,
+    //      boost::alignment::aligned_allocator_adaptor<
+    //          std::allocator<std::complex<float_type>>,32>> ;
+
+    //using real_vector_t = std::vector<float_type,
+    //      boost::alignment::aligned_allocator_adaptor<
+    //          std::allocator<float_type>,32>>;
 
     using lgf_key_t = std::tuple<int, int, int>;
     using lgf_matrix_ptr_map_type = std::map<lgf_key_t, std::unique_ptr<complex_vector_t> >;
@@ -344,8 +364,11 @@ public: //Ctors
      dims1_(_dims1),
      fft_forward0_(padded_dims_next_pow_2_, _dims0),
      fft_forward1_(padded_dims_next_pow_2_, _dims1),
-     fft_backward_(padded_dims_next_pow_2_, _dims1)
-    {}
+     fft_backward_(padded_dims_next_pow_2_, _dims1),
+     padded_size_(padded_dims_next_pow_2_[0]*padded_dims_next_pow_2_[1]*padded_dims_next_pow_2_[2]),
+     tmp_prod(padded_size_,std::complex<float_type>(0.0))
+    {
+    }
 
     void fft_backward_field_clean()
     {
@@ -411,11 +434,33 @@ public: //Ctors
         auto& f1 = fft_forward1_.output();
 
         complex_vector_t prod(f0.size());
-        for(std::size_t i = 0; i < prod.size(); ++i)
-        {
-            fft_backward_.input()[i] += f0[i]*f1[i];
-        }
 
+        //xsimd::transform(f0.begin(), f0.end(), f1.begin(), tmp_prod.begin(),
+        //        [](const auto& x, const auto& y) { x+y; });
+
+        simd_prod_complex_add(f0, f1,fft_backward_.input());
+    }
+
+    void simd_prod_complex_add(const complex_vector_t& a,
+            const complex_vector_t& b,
+            complex_vector_t& res)
+    {
+        std::size_t size = a.size();
+        constexpr std::size_t simd_size = xsimd::simd_type<std::complex<float_type>>::size;
+        std::size_t vec_size = size - size % simd_size;
+
+        for(std::size_t i = 0; i < vec_size; i += simd_size)
+        {
+            auto ba = xsimd::load_aligned(&a[i]);
+            auto bb = xsimd::load_aligned(&b[i]);
+            auto res_old = xsimd::load_aligned(&res[i]);
+            auto bres = ba*bb+res_old;
+            bres.store_aligned(&res[i]);
+        }
+        for(std::size_t i = vec_size; i < size; ++i)
+        {
+            res[i] += a[i]*b[i];
+        }
     }
 
     //template<class Field, class BlockType, class Kernel>
@@ -482,9 +527,13 @@ private:
     dims_t dims0_;
     dims_t dims1_;
 
+    unsigned int padded_size_;
+
     dfft_r2c fft_forward0_;
     dfft_r2c fft_forward1_;
     dfft_c2r fft_backward_;
+
+    complex_vector_t tmp_prod;
 
     //lgf::LGF<lgf::Lookup>   lgf_;       ///< Lookup for the LGFs
 };

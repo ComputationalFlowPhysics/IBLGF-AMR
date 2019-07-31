@@ -1,12 +1,12 @@
 #ifndef IBLGF_INCLUDED_LINALG_HPP
 #define IBLGF_INCLUDED_LINALG_HPP
 
+#define XTENSOR_USE_XSIMD
 #include <iostream>
 #include <vector>
 #include <tuple>
 
 #include <types.hpp>
-//#include <linalg/linalg_arma.hpp>
 #include <linalg/linalg_xtensor.hpp>
 
 namespace linalg

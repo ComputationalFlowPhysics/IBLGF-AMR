@@ -69,15 +69,18 @@ public: //member types
     {
         dx_      = domain_->dx_base();
         dt_      = _simulation->dictionary()->template get<float_type>("dt");
-        nsteps_  = _simulation->dictionary()->template get<int>("nTimeSteps");
+        tot_steps_  = _simulation->dictionary()->template get<int>("nTimeSteps");
         cfl_max_ = _simulation->dictionary()->template get_or<float_type>("cfl_max",1000);
         Re_      = _simulation->dictionary()->template get<float_type>("Re");
+        output_freq_= _simulation->dictionary()->
+                template get<float_type>("output_frequency");
 
         float_type tmp = Re_*dx_*dx_/dt_;
 
         alpha_[0]=(c_[1]-c_[0])/tmp;
         alpha_[1]=(c_[2]-c_[1])/tmp;
         alpha_[2]=(c_[3]-c_[2])/tmp;
+        fname_prefix_="";
     }
 
 public:
@@ -87,107 +90,120 @@ public:
         parallel_ostream::ParallelOstream pcout=parallel_ostream::ParallelOstream(world.size()-1);
 
         T_ = 0.0;
+        n_step_=0;
+
         pcout<<"Time marching with dt = " << dt_ << std::endl;
-        pcout<<"                   nsteps = " << nsteps_ << std::endl;
+        pcout<<"                   nsteps = " << tot_steps_ << std::endl;
 
-        for (int i=0; i<nsteps_; ++i)
+
+        for (int i=0; i<tot_steps_; ++i)
         {
-            //mDuration_type ifherk_lgf(0);
-            //TIME_CODE( ifherk_lgf, SINGLE_ARG(
-            //psolver.template apply_lgf<cell_aux, d_i>();
-            //));
-            //std::cout<<ifherk_lgf.count()<< " on rank = "<< world.rank()<<std::endl;
-
             mDuration_type ifherk_if(0);
             TIME_CODE( ifherk_if, SINGLE_ARG(
-            psolver.template apply_lgf_IF<u, u>(1.0/(Re_*dx_*dx_/dt_));
+                time_step();
             ));
             pcout<<ifherk_if.count()<<std::endl;
-            //time_step();
             pcout<<"T = " << T_ << " -----------------" << std::endl;
+
+            // Add dt to Time
+            T_ += dt_;
+            n_step_ = round(T_ / dt_);
+
+            if ( n_step_ % output_freq_ == 0)
+                write_timestep();
+
         }
 
     }
+    void write_timestep()
+    {
+        pcout << "- writing at T = " << T_ << std::endl;
+        //simulation_->write2(fname(n_step_));
+        pcout << "- finishing writing " << std::endl;
+    }
+
+    std::string fname(int _n)
+    {
+        return fname_prefix_+"heat_ifherk_"+std::to_string(_n)+".hdf5";
+    }
+
 
     void time_step()
     {
         // Initialize IFHERK
         // q_1 = u
         boost::mpi::communicator world;
-        parallel_ostream::ParallelOstream pcout=parallel_ostream::ParallelOstream(world.size()-1);
 
-         copy<u, q_i>();
+        copy<u, q_i>();
 
-         pcout<<"Stage 1"<< std::endl;
-         // Stage 1
-         // ******************************************************************
-         clean<g_i>();
-         clean<d_i>();
-         clean<cell_aux>();
-         clean<face_aux>();
-         clean<face_aux_2>();
+        pcout<<"Stage 1"<< std::endl;
+        // Stage 1
+        // ******************************************************************
+        clean<g_i>();
+        clean<d_i>();
+        clean<cell_aux>();
+        clean<face_aux>();
+        clean<face_aux_2>();
 
-         // TODO nonlinear g_i
-         // nonlin<u,g_i>();
+        // TODO nonlinear g_i
+        // nonlin<u,g_i>();
 
-         copy<q_i, r_i>();
-         add<g_i, r_i>(coeff_a(1,1)*(-dt_));
+        copy<q_i, r_i>();
+        add<g_i, r_i>(coeff_a(1,1)*(-dt_));
 
-         lin_sys_solve(alpha_[0]);
+        lin_sys_solve(alpha_[0]);
 
-         pcout<<"Stage 2"<< std::endl;
-         // Stage 2
-         // ******************************************************************
-         clean<r_i>();
-         clean<d_i>();
-         clean<cell_aux>();
+        pcout<<"Stage 2"<< std::endl;
+        // Stage 2
+        // ******************************************************************
+        clean<r_i>();
+        clean<d_i>();
+        clean<cell_aux>();
 
-         //cal wii
-         //r_i = q_i + dt(a21 w21)
-         //w11 = (1/a11)* dt (g_i - face_aux)
+        //cal wii
+        //r_i = q_i + dt(a21 w21)
+        //w11 = (1/a11)* dt (g_i - face_aux)
 
-         add<g_i, face_aux>();
-         copy<face_aux, w_1>(1.0/dt_/coeff_a(1,1));
+        add<g_i, face_aux>();
+        copy<face_aux, w_1>(1.0/dt_/coeff_a(1,1));
 
-         // TODO
-         psolver.template apply_lgf_IF<q_i, q_i>(alpha_[0]);
-         psolver.template apply_lgf_IF<w_1, w_1>(alpha_[0]);
+        // TODO
+        psolver.template apply_lgf_IF<q_i, q_i>(alpha_[0]);
+        psolver.template apply_lgf_IF<w_1, w_1>(alpha_[0]);
 
-         add<q_i, r_i>();
-         add<w_1, r_i>(dt_*coeff_a(2,1));
+        add<q_i, r_i>();
+        add<w_1, r_i>(dt_*coeff_a(2,1));
 
-         //nonlin<u_i,g_i>();
-         add<g_i, r_i>( coeff_a(2,2)*(-dt_) );
+        //nonlin<u_i,g_i>();
+        add<g_i, r_i>( coeff_a(2,2)*(-dt_) );
 
-         lin_sys_solve(alpha_[1]);
+        lin_sys_solve(alpha_[1]);
 
-         pcout<<"Stage 3"<< std::endl;
-         // Stage 3
-         // ******************************************************************
-         clean<d_i>();
-         clean<cell_aux>();
-         clean<w_2>();
+        pcout<<"Stage 3"<< std::endl;
+        // Stage 3
+        // ******************************************************************
+        clean<d_i>();
+        clean<cell_aux>();
+        clean<w_2>();
 
-         add<g_i, face_aux>();
-         copy<face_aux, w_2>(1.0/dt_/coeff_a(2,2));
-         copy<q_i, r_i>();
-         add<w_1, r_i>(dt_*coeff_a(3,1));
-         add<w_2, r_i>(dt_*coeff_a(3,2));
+        add<g_i, face_aux>();
+        copy<face_aux, w_2>(1.0/dt_/coeff_a(2,2));
+        copy<q_i, r_i>();
+        add<w_1, r_i>(dt_*coeff_a(3,1));
+        add<w_2, r_i>(dt_*coeff_a(3,2));
 
-         psolver.template apply_lgf_IF<r_i, r_i>(alpha_[1]);
+        psolver.template apply_lgf_IF<r_i, r_i>(alpha_[1]);
 
-         //nonlin<u_i,g_i>();
+        //nonlin<u_i,g_i>();
 
-         add<g_i, r_i>( coeff_a(3,3)*(-dt_) );
+        add<g_i, r_i>( coeff_a(3,3)*(-dt_) );
 
-         lin_sys_solve(alpha_[2]);
+        lin_sys_solve(alpha_[2]);
 
-         // ******************************************************************
-         copy<u_i, u>();
-         copy<d_i, p>(1.0/coeff_a(3,3)/dt_);
-         // ******************************************************************
-         // Add dt to Time
-         T_ += dt_;
+        // ******************************************************************
+        copy<u_i, u>();
+        copy<d_i, p>(1.0/coeff_a(3,3)/dt_);
+        // ******************************************************************
     }
 
 
@@ -204,9 +220,8 @@ private:
          // cell_aux = G^T r_i
          // d_i = L^-1 cell_aux
 
-         psolver.template apply_lgf<cell_aux, d_i>();
-
          // face_aux = G d_i
+         //psolver.template apply_lgf<cell_aux, d_i>();
          add<face_aux, r_i>();
 
          if (std::fabs(_alpha)>1e-4)
@@ -282,10 +297,15 @@ private:
     float_type dt_, dx_;
     float_type Re_;
     float_type cfl_max_;
-    int nsteps_;
+    int output_freq_;
+    int tot_steps_;
+    int n_step_;
+
+    std::string fname_prefix_;
     std::array<float_type, 6> a_{{1.0/3, -1.0, 2.0, 0.0, 0.75, 0.25}};
     std::array<float_type, 4> c_{{0.0, 1.0/3, 1.0, 1.0}};
     std::array<float_type, 3> alpha_{{0.0,0.0,0.0}};
+    parallel_ostream::ParallelOstream pcout=parallel_ostream::ParallelOstream(1);
 
 };
 

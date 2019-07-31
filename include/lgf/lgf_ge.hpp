@@ -9,6 +9,7 @@
 #include <global.hpp>
 #include <lgf/lgf.hpp>
 #include <domain/dataFields/blockDescriptor.hpp>
+#include <boost/math/special_functions/bessel.hpp>
 
 namespace lgf
 {
@@ -51,6 +52,11 @@ public:
     {
         const auto base = _b.base();
         return key_t(alpha_,base[0],base[1],base[2]);
+    }
+
+    void flip_alpha() noexcept
+    {
+        alpha_ = -alpha_;
     }
 
     void change_level_impl( int _level_diff) noexcept
@@ -107,9 +113,9 @@ private:
                                     float_type _alpha) noexcept
     {
         return std::exp(-6*_alpha)*
-                std::cyl_bessel_i(static_cast<float_type>(_n1), 2*_alpha)*
-                std::cyl_bessel_i(static_cast<float_type>(_n2), 2*_alpha)*
-                std::cyl_bessel_i(static_cast<float_type>(_n3), 2*_alpha);
+                boost::math::cyl_bessel_i(static_cast<float_type>(_n1), 2*_alpha)*
+                boost::math::cyl_bessel_i(static_cast<float_type>(_n2), 2*_alpha)*
+                boost::math::cyl_bessel_i(static_cast<float_type>(_n3), 2*_alpha);
     }
 
 public:

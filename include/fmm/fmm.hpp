@@ -220,7 +220,8 @@ public:
     void apply(domain_t* domain_,
                Kernel* _kernel,
                int level,
-               bool non_leaf_as_source=false)
+               bool non_leaf_as_source=false,
+               float_type add_with_scale = 1.0)
     {
 
         const float_type dx_base=domain_->dx_base();
@@ -237,10 +238,8 @@ public:
             fmm_init_zero<fmm_t>(domain_, MASK_LIST::Mask_FMM_Target);
             fmm_init_copy<Source, fmm_s>(domain_);
             fmm_IF(domain_, _kernel);
-            if (!non_leaf_as_source)
-                fmm_add_equal<Target, fmm_t>(domain_);
-            else
-                fmm_minus_equal<Target, fmm_t>(domain_);
+
+            fmm_add_equal<Target, fmm_t>(domain_,add_with_scale);
 
             return;
         }
@@ -298,10 +297,10 @@ public:
         //std::cout<<"FMM INTRP done" << std::endl;
 
         //// Copy back
-        if (!non_leaf_as_source)
-            fmm_add_equal<Target, fmm_t>(domain_);
-        else
-            fmm_minus_equal<Target, fmm_t>(domain_);
+        //if (!non_leaf_as_source)
+        fmm_add_equal<Target, fmm_t>(domain_,add_with_scale);
+        //else
+        //fmm_minus_equal<Target, fmm_t>(domain_);
 
         boost::mpi::communicator world;
         //std::cout<<"Rank "<<world.rank() << " FFTW_count = ";
@@ -402,7 +401,6 @@ public:
                 octants.emplace_back(std::make_pair(*it,recv_m_send_count));
             }
         }
-        //Sends=10000, recv1-10000, no_communication=0
         std::sort(octants.begin(), octants.end(),[&](const auto& e0, const auto& e1)
                 {return e0.second> e1.second;  });
 
@@ -506,7 +504,7 @@ public:
     }
 
     template< class f1, class f2 >
-    void fmm_add_equal(domain_t* domain_)
+    void fmm_add_equal(domain_t* domain_, float_type scale)
     {
 
         for (auto it = domain_->begin(base_level_);
@@ -518,7 +516,7 @@ public:
             {
                 it->data()->template get_linalg<f1>().get()->
                     cube_noalias_view() +=
-                                it->data()->template get_linalg_data<f2>();
+                                it->data()->template get_linalg_data<f2>() * scale;
             }
         }
     }

@@ -6,7 +6,7 @@
 #include <vector>
 #include <cmath>
 #include <boost/math/special_functions/bessel.hpp>
-#include <boost/align/aligned_allocator_adaptor.hpp>
+//#include <boost/align/aligned_allocator_adaptor.hpp>
 
 
 #include <complex>
@@ -28,13 +28,19 @@ class LGF_Base : public crtp::Crtps<Derived,LGF_Base<Dim,Derived>>
 public:
     using block_descriptor_t = BlockDescriptor<int,Dim>;
     using coordinate_t = typename block_descriptor_t::base_t;
+    //using complex_vector_t = std::vector<std::complex<float_type>,
+    //      boost::alignment::aligned_allocator_adaptor<
+    //          std::allocator<std::complex<float_type>>,32>> ;
+
+    //using real_vector_t = std::vector<float_type,
+    //      boost::alignment::aligned_allocator_adaptor<
+    //          std::allocator<float_type>,32>>;
     using complex_vector_t = std::vector<std::complex<float_type>,
-          boost::alignment::aligned_allocator_adaptor<
-              std::allocator<std::complex<float_type>>,32>> ;
+          xsimd::aligned_allocator<std::complex<float_type>, 32>>;
 
     using real_vector_t = std::vector<float_type,
-          boost::alignment::aligned_allocator_adaptor<
-              std::allocator<float_type>,32>>;
+          xsimd::aligned_allocator<float_type, 32>>;
+
     using dims_t = types::vector_type<int,3>;
 
 

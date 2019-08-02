@@ -269,7 +269,7 @@ namespace interpolation
 
     //private:
     public:
-        const int pts_cap = 6;
+        const int pts_cap = 3;
 
         // antrp mat
 

@@ -233,7 +233,7 @@ public:
 
         if (_kernel->neighbor_only())
         {
-            pcout<<"Integrating factor for level: "<< level << std::endl;
+            //pcout<<"Integrating factor for level: "<< level << std::endl;
             fmm_init_zero<fmm_s>(domain_, MASK_LIST::Mask_FMM_Source);
             fmm_init_zero<fmm_t>(domain_, MASK_LIST::Mask_FMM_Target);
             fmm_init_copy<Source, fmm_s>(domain_);
@@ -574,13 +574,13 @@ public:
                 auto lin_data_1 = it->data()->template get_linalg_data<from>();
                 auto lin_data_2 = it->data()->template get_linalg_data<to>();
 
-                xt::noalias( view(lin_data_2,
-                                    xt::range(1,-1),  xt::range(1,-1), xt::range(1,-1)) ) =
-                 view(lin_data_1, xt::range(1,-1),  xt::range(1,-1), xt::range(1,-1));
+                //xt::noalias( view(lin_data_2,
+                //                    xt::range(1,-1),  xt::range(1,-1), xt::range(1,-1)) ) =
+                // view(lin_data_1, xt::range(1,-1),  xt::range(1,-1), xt::range(1,-1));
 
-                //it->data()->template get_linalg<to>().get()->
-                //    cube_noalias_view() =
-                //     it->data()->template get_linalg_data<from>() * 1.0;
+                it->data()->template get_linalg<to>().get()->
+                    cube_noalias_view() =
+                     it->data()->template get_linalg_data<from>() * 1.0;
             }
         }
 

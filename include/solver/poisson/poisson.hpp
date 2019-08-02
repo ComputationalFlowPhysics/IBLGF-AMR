@@ -116,14 +116,19 @@ public:
                 it != domain_->end_leafs(); ++it)
             if (it->locally_owned())
             {
-                it->data()->template get_linalg<source_tmp>().get()->
-                    cube_noalias_view() =
-                            it->data()->template get_linalg_data<Source>(_field_idx);
+                //it->data()->template get_linalg<source_tmp>().get()->
+                //    cube_noalias_view() =
+                //            it->data()->template get_linalg_data<Source>(_field_idx);
+                auto lin_data_1 = it->data()->template get_linalg_data<Source>(_field_idx);
+                auto lin_data_2 = it->data()->template get_linalg_data<source_tmp>();
+                xt::noalias( view(lin_data_2,
+                            xt::range(1,-1),  xt::range(1,-1), xt::range(1,-1)) ) =
+                view(lin_data_1, xt::range(1,-1),  xt::range(1,-1), xt::range(1,-1));
 
             }
 
         //Coarsification:
-        pcout<<"coarsification "<<std::endl;
+        //pcout<<"coarsification "<<std::endl;
         for (int ls = domain_->tree()->depth()-2;
                  ls >= domain_->tree()->base_level(); --ls)
         {
@@ -141,7 +146,7 @@ public:
         }
 
         //Level-Interactions
-        pcout<<"Level interactions "<<std::endl;
+        //pcout<<"Level interactions "<<std::endl;
         for (int l  = domain_->tree()->base_level();
                 l < domain_->tree()->depth(); ++l)
         {
@@ -173,17 +178,35 @@ public:
             {
                 if(it->is_leaf() || !it->data() || !it->data()->is_allocated()) continue;
 
-                c_cntr_nli_.nli_intrp_node< target_tmp, target_tmp >(it);
+                //c_cntr_nli_.nli_intrp_node< target_tmp, target_tmp >(it);
             }
 
             // Correction
+            if (l == domain_->tree()->depth()-1) continue;
             if (_kernel->neighbor_only())
             {
                 // TODO For future correction with padding
-                //
+
                 //_kernel->change_level(l-domain_->tree()->base_level()+1);
                 //_kernel->flip_alpha();
-                //fmm_.template apply<target_tmp, source_tmp>(domain_, _kernel, l+1, false, 1.0);
+                //fmm_.template apply<target_tmp, source_tmp>(domain_, _kernel, l+1, false, -1.0);
+
+                //for (auto it  = domain_->begin(l+1);
+                //        it != domain_->end(l+1); ++it)
+                //    if (it->locally_owned() && it->data())
+                //    {
+                //        auto lin_data_2 = it->data()->template get_linalg_data<source_tmp>();
+
+                //        view(lin_data_2, 0,xt::all(),xt::all()) *= 0.0;
+                //        view(lin_data_2,15,xt::all(),xt::all()) *= 0.0;
+
+                //        view(lin_data_2,xt::all(), 0,xt::all()) *= 0.0;
+                //        view(lin_data_2,xt::all(),15,xt::all()) *= 0.0;
+
+                //        view(lin_data_2,xt::all(),xt::all(), 0) *= 0.0;
+                //        view(lin_data_2,xt::all(),xt::all(),15) *= 0.0;
+                //    }
+
             } else
             {
                 for (auto it  = domain_->begin(l);

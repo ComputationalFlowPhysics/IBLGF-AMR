@@ -48,7 +48,6 @@ private:
 public: //members
 
 
-
     /** @brief Compute and store communication task for halo echange of fields*/
     void compute_tasks(Domain* _domain, bool axis_neighbors_only=true) noexcept
     {
@@ -61,46 +60,50 @@ public: //members
                 auto it2=it->neighbor(i);
                 if(!it2) continue;
 
-                auto& field = it->data()->template get<Field>();
-                auto& field2 = it2->data()->template get<Field>();
-
-                //send view
-                if(auto overlap_opt = field.send_view( field2  ) )
+                for(std::size_t j=0; j<Field::nFields;++j)
                 {
-                    interface sif;
-                    sif.src=*it;
-                    sif.dest=it2;
-                    sif.view=std::move(overlap_opt.value());
+                    auto& field = it->data()->template get<Field>(j);
+                    auto& field2 = it2->data()->template get<Field>(j);
 
-                    if(axis_neighbors_only &&
-                       (static_cast<int>(sif.view.nPoints()) <= 
-                        field.extent()[0])
-                      ) continue;
-
-                    if(it2->locally_owned())
-                        intra_send_interface.emplace_back(std::move(sif));
-                    else                         
-                        inter_send_interface[it2->rank()].
-                            emplace_back(std::move(sif));
-                }
-                //recv view
-                if(auto overlap_opt = field.recv_view( field2  ) )
-                {
-                    interface sif;
-                    sif.src=it2; 
-                    sif.dest=*it;
-                    sif.view=std::move(overlap_opt.value());
-
-                    if(axis_neighbors_only &&
-                       (static_cast<int>(sif.view.nPoints()) <= 
-                        field.extent()[0])
-                      ) continue;
-
-                    if(!it2->locally_owned())
+                    //send view
+                    if(auto overlap_opt = field.send_view( field2  ) )
                     {
-                        inter_recv_interface[it2->rank()].
-                            emplace_back(std::move(sif));
+                        interface sif;
+                        sif.src=*it;
+                        sif.dest=it2;
+                        sif.view=std::move(overlap_opt.value());
+
+                        if(axis_neighbors_only &&
+                                (static_cast<int>(sif.view.nPoints()) <= 
+                                 field.extent()[0])
+                          ) continue;
+
+                        if(it2->locally_owned())
+                            intra_send_interface.emplace_back(std::move(sif));
+                        else                         
+                            inter_send_interface[it2->rank()].
+                                emplace_back(std::move(sif));
                     }
+                    //recv view
+                    if(auto overlap_opt = field.recv_view( field2  ) )
+                    {
+                        interface sif;
+                        sif.src=it2; 
+                        sif.dest=*it;
+                        sif.view=std::move(overlap_opt.value());
+
+                        if(axis_neighbors_only &&
+                                (static_cast<int>(sif.view.nPoints()) <= 
+                                 field.extent()[0])
+                          ) continue;
+
+                        if(!it2->locally_owned())
+                        {
+                            inter_recv_interface[it2->rank()].
+                                emplace_back(std::move(sif));
+                        }
+                    }
+
                 }
             }
         }
@@ -163,9 +166,12 @@ public: //members
         //Copy locally owned fields to buffers:
         for(auto& sf  : intra_send_interface)
         {
-            auto& dfield=sf.dest->data()->template get<Field>();
-            auto dest_view = dfield.view(sf.view);
-            dest_view.assign_toView( sf.view );
+            for(std::size_t i=0;i<Field::nFields;++i)
+            {
+                auto& dfield=sf.dest->data()->template get<Field>(i);
+                auto dest_view = dfield.view(sf.view);
+                dest_view.assign_toView( sf.view );
+            }
         }
 
         //Copy data into buffer:

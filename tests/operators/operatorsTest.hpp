@@ -102,19 +102,19 @@ struct OperatorTest:public SetupBase<OperatorTest,parameters>
         {
             
             const float_type dx_base = domain_->dx_base();
-             
-            poisson_solver_t psolver(&this->simulation_);
+            //std::cout<<"BLA"<<std::endl; 
 
-            mDuration_type solve_duration(0);
-            TIME_CODE( solve_duration, SINGLE_ARG(
-                    psolver.solve<source, phi_num>();
-            ))
-            pcout_c<<"Total Psolve time: "
-                  <<solve_duration.count()<<" on "<<world.size()<<std::endl;
+            //mDuration_type solve_duration(0);
+            //TIME_CODE( solve_duration, SINGLE_ARG(
+            //        psolver.solve<source, phi_num>();
+            //))
+            //pcout_c<<"Total Psolve time: "
+            //      <<solve_duration.count()<<" on "<<world.size()<<std::endl;
 
             //Bufffer exchange of some fields 
             auto client=domain_->decomposition().client();
             client->buffer_exchange<phi_num>();
+            client->buffer_exchange<face_aux>();
 
             mDuration_type lap_duration(0);
             TIME_CODE( lap_duration, SINGLE_ARG(
@@ -124,8 +124,8 @@ struct OperatorTest:public SetupBase<OperatorTest,parameters>
                 if(!it->locally_owned() || !it->data())continue;
 
                 auto dx_level =  dx_base/std::pow(2,it->refinement_level());
-                domain::Operator::laplace<phi_num, amr_lap_source>( *(it->data()),dx_level);
-                //domain::Operator::divergence<std::tuple<u, v,w>, amr_div_source>( *(it->data()),dx_level);
+                //domain::Operator::laplace<phi_num, amr_lap_source>( *(it->data()),dx_level);
+                //domain::Operator::divergence<face_aux, amr_div_source>( *(it->data()),dx_level);
             }
             ))
             pcout_c<<"Total Laplace time: "
@@ -133,7 +133,6 @@ struct OperatorTest:public SetupBase<OperatorTest,parameters>
         }
         this->compute_errors<phi_num,phi_exact,error>();
         this->compute_errors<amr_lap_source,source,error_lap_source>("Lap");
-
 
         simulation_.write2("mesh.hdf5");
     }
@@ -166,9 +165,12 @@ struct OperatorTest:public SetupBase<OperatorTest,parameters>
            auto& nodes_domain=it->data()->nodes_domain();
            for(auto it2=nodes_domain.begin();it2!=nodes_domain.end();++it2 )
            {
-               it2->get<source>() = 0.0;
-               it2->get<phi_num>()= 0.0;
                const auto& coord=it2->level_coordinate();
+               std::cout<<"coord  "<<coord<<std::endl;
+               it2->get<source>() = coord[0];
+               it2->get<face_aux>(0)= coord[0];
+               it2->get<face_aux>(1)= coord[1];
+               it2->get<face_aux>(2)= coord[2];
            }
         }
     }

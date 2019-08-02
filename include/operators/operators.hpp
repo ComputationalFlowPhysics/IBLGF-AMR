@@ -55,20 +55,22 @@ public:
         const auto fac = 1.0/dx_level; 
         for(auto it2=nodes_domain.begin();it2!=nodes_domain.end();++it2 )
         {
-
-            it2->template get<typename std::tuple_element<0,DestTuple>::type>()= 
-                      fac*(it2->template get<Source>()-it2->template at_offset<Source>(-1,0,0));
-            it2->template get<typename std::tuple_element<1,DestTuple>::type>()= 
-                      fac*(it2->template get<Source>()-it2->template at_offset<Source>(0,-1,0));
-            it2->template get<typename std::tuple_element<2,DestTuple>::type>()= 
-                      fac*(it2->template get<Source>()-it2->template at_offset<Source>(0,0,-1));
+            it2->template get<DestTuple>(0)= 
+                      fac*(it2->template get<Source>()-
+                      it2->template at_offset<Source>(-1,0,0));
+            it2->template get<DestTuple>(1)= 
+                      fac*(it2->template get<Source>()-
+                      it2->template at_offset<Source>(0,-1,0));
+            it2->template get<DestTuple>(2)= 
+                      fac*(it2->template get<Source>()-
+                      it2->template at_offset<Source>(0,0,-1));
         }
     }
     
     template<class SourceTuple, class Dest, class Block,
              typename std::enable_if<
-                (Dest::mesh_type   == MeshObject::cell) && 
-                (std::tuple_element<0,SourceTuple>::type::mesh_type == MeshObject::face) , 
+                (Dest::mesh_type   == MeshObject::cell) 
+                && (SourceTuple::mesh_type == MeshObject::face) , 
             void>::type* = nullptr
             >
     static void divergence(Block& block, float_type dx_level) noexcept
@@ -77,14 +79,13 @@ public:
         const auto fac = 1.0/dx_level; 
         for(auto it2=nodes_domain.begin();it2!=nodes_domain.end();++it2)
         {
-
             it2->template get<Dest>()=
-                -it2->template get<typename std::tuple_element<0,SourceTuple>::type>()
-                -it2->template get<typename std::tuple_element<1,SourceTuple>::type>()
-                -it2->template get<typename std::tuple_element<2,SourceTuple>::type>()
-                +it2->template at_offset<typename std::tuple_element<0,SourceTuple>::type>(1,0,0)
-                +it2->template at_offset<typename std::tuple_element<1,SourceTuple>::type>(0,1,0)
-                +it2->template at_offset<typename std::tuple_element<2,SourceTuple>::type>(0,0,1);
+                -it2->template get<SourceTuple>(0)
+                -it2->template get<SourceTuple>(1)
+                -it2->template get<SourceTuple>(2)
+                +it2->template at_offset<SourceTuple>(1,0,0,0)
+                +it2->template at_offset<SourceTuple>(0,1,0,1)
+                +it2->template at_offset<SourceTuple>(0,0,1,2);
             it2->template get<Dest>()*=fac;
         }
     }

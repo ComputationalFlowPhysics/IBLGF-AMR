@@ -132,8 +132,13 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
             poisson_solver_t psolver(&this->simulation_);
 
             mDuration_type solve_duration(0);
+            client_comm_.barrier();
+
+            pcout_c<<"Poisson equation ---------------------------------" << std::endl;
             TIME_CODE( solve_duration, SINGLE_ARG(
                     psolver.solve<source, phi_num>();
+
+            client_comm_.barrier();
             ))
             pcout_c<<"Total Psolve time: "
                   <<solve_duration.count()<<" on "<<world.size()<<std::endl;

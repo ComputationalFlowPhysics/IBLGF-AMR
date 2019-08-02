@@ -99,15 +99,15 @@ public:
         const float_type dx_base=domain_->dx_base();
 
         // Cleaning
-        for (auto it  = domain_->begin_leafs();
-                it != domain_->end_leafs(); ++it)
+        for (auto it  = domain_->begin();
+                it != domain_->end(); ++it)
             if (it->locally_owned())
             {
-                auto& cp1 = it ->data()->template get_linalg_data<source_tmp>();
-                auto& cp2 = it ->data()->template get_linalg_data<target_tmp>();
+                for(auto& e: it->data()->template get_data<source_tmp>())
+                    e=0.0;
 
-                cp1 = cp1 * 0.0;
-                cp2 = cp2 * 0.0;
+                for(auto& e: it->data()->template get_data<target_tmp>())
+                    e=0.0;
             }
 
 
@@ -116,10 +116,10 @@ public:
                 it != domain_->end_leafs(); ++it)
             if (it->locally_owned())
             {
-                auto& cp1 = it ->data()->template get_linalg_data<Source>(_field_idx);
-                auto& cp2 = it ->data()->template get_linalg_data<source_tmp>();
+                it->data()->template get_linalg<source_tmp>().get()->
+                    cube_noalias_view() =
+                            it->data()->template get_linalg_data<Source>(_field_idx);
 
-                cp2 = cp1 * 1.0;
             }
 
         //Coarsification:
@@ -142,7 +142,7 @@ public:
 
         //Level-Interactions
         pcout<<"Level interactions "<<std::endl;
-        for (int l  = domain_->tree()->base_level()+0;
+        for (int l  = domain_->tree()->base_level();
                 l < domain_->tree()->depth(); ++l)
         {
             for (auto it_s  = domain_->begin(l);
@@ -159,41 +159,53 @@ public:
             _kernel->change_level(l-domain_->tree()->base_level());
 
             //test for FMM
-            fmm_.template apply<source_tmp, target_tmp>(domain_, _kernel, l, false);
-            fmm_.template apply<source_tmp, target_tmp>(domain_, _kernel, l, true);
+            fmm_.template apply<source_tmp, target_tmp>(domain_, _kernel, l, false, 1.0);
+            fmm_.template apply<source_tmp, target_tmp>(domain_, _kernel, l, true, -1.0);
 
             domain_->decomposition().client()->
                 template communicate_updownward_assign
                     <target_tmp, target_tmp>(l,false,false,-1);
 
-            //TODO Fix the correction for IF
-            if (_kernel->neighbor_only()) continue;
 
+            // Interpolate
             for (auto it  = domain_->begin(l);
                       it != domain_->end(l); ++it)
             {
                 if(it->is_leaf() || !it->data() || !it->data()->is_allocated()) continue;
 
                 c_cntr_nli_.nli_intrp_node< target_tmp, target_tmp >(it);
+            }
 
-                int refinement_level = it->refinement_level();
-                double dx = dx_base/std::pow(2,refinement_level);
-                c_cntr_nli_.add_source_correction<
-                                        target_tmp, source_tmp
-                                        >(it, dx/2.0);
+            // Correction
+            if (_kernel->neighbor_only())
+            {
+                // TODO For future correction with padding
+                //
+                //_kernel->change_level(l-domain_->tree()->base_level()+1);
+                //_kernel->flip_alpha();
+                //fmm_.template apply<target_tmp, source_tmp>(domain_, _kernel, l+1, false, 1.0);
+            } else
+            {
+                for (auto it  = domain_->begin(l);
+                        it != domain_->end(l); ++it)
+                {
+                    int refinement_level = it->refinement_level();
+                    double dx = dx_base/std::pow(2,refinement_level);
+                    c_cntr_nli_.add_source_correction
+                    <target_tmp, source_tmp>(it, dx/2.0);
+                }
             }
 
         }
 
-        // Copy to Targe
+        // Copy to Target
         for (auto it  = domain_->begin_leafs();
                 it != domain_->end_leafs(); ++it)
             if (it->locally_owned())
             {
-                auto& cp1 = it ->data()->template get_linalg_data<Target>(_field_idx);
-                auto& cp2 = it ->data()->template get_linalg_data<target_tmp>();
-
-                cp1 = cp2 * 1.0;
+                it->data()->template get_linalg<Target>(_field_idx).get()->
+                    cube_noalias_view() =
+                            it->data()->template get_linalg_data<target_tmp>();
             }
     }
 

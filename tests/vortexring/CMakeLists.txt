@@ -8,5 +8,6 @@ target_link_libraries(vortexring.x
                       ${Boost_LIBRARIES}
                       ${FFTW_LIBRARIES} fftw3
                       ${HDF5_LIBRARIES} hdf5
-                      ${BLAS_LIBRARIES} #boost_mpi boost_serialization boost_filesystem
-                      xtensor)
+                      ${BLAS_LIBRARIES}
+                      xtensor
+                      xsimd)

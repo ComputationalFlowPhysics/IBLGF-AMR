@@ -43,8 +43,20 @@ struct FmmMaskBuilder
     using MASK_LIST = typename octant_t::MASK_LIST;
 
 public:
+    static void fmm_if_load_build(Domain* domain_)
+    {
+        int base_level=domain_->tree()->base_level();
+        // During 1 timestep
+        // IF called 6X3=18 times while fmm called 3 times
+        // effective factor 6
 
-    static void build(Domain* domain_)
+        fmm_dry_init_base_level_masks(domain_, base_level, true,
+                6, true);
+        fmm_dry_init_base_level_masks(domain_, base_level, false,
+                6, true);
+    }
+
+    static void fmm_lgf_mask_build(Domain* domain_)
     {
         for (int l  = domain_->tree()->base_level()+0;
                 l < domain_->tree()->depth(); ++l)
@@ -56,17 +68,11 @@ public:
     static void fmm_dry(Domain* domain_, int base_level, bool non_leaf_as_source)
     {
 
-
         fmm_dry_init_base_level_masks(domain_, base_level, non_leaf_as_source);
         fmm_upward_pass_masks(
                 domain_,
                 base_level,
                 MASK_LIST::Mask_FMM_Source,
-                non_leaf_as_source);
-
-        fmm_upward_pass_masks(
-                domain_,
-                base_level,
                 MASK_LIST::Mask_FMM_Target,
                 non_leaf_as_source);
     }
@@ -74,8 +80,10 @@ public:
     static void fmm_upward_pass_masks(
             Domain* domain_,
             int base_level,
-            int mask_id,
-            bool non_leaf_as_source)
+            int mask_source_id,
+            int mask_target_id,
+            bool non_leaf_as_source,
+            float_type _base_factor=1.0)
     {
 
         int refinement_level = base_level-domain_->tree()->base_level();
@@ -84,22 +92,46 @@ public:
         // for all levels
         for (int level=base_level-1; level>=0; --level)
         {
+            //_base_factor *=0.6;
             // parent's mask is true if any of its child's mask is true
             for (auto it = domain_->begin(level);
                     it != domain_->end(level);
                     ++it)
             {
-                // including ghost parents
-                it->fmm_mask(fmm_mask_idx_,mask_id,false);
+                it->fmm_mask(fmm_mask_idx_,mask_source_id,false);
                 for ( int c = 0; c < it->num_children(); ++c )
                 {
-                    if ( it->child(c) && it->child(c)->fmm_mask(fmm_mask_idx_,mask_id) )
+                    if ( it->child(c) && it->child(c)->fmm_mask(fmm_mask_idx_,mask_source_id) )
                     {
-                        it->fmm_mask(fmm_mask_idx_,mask_id, true);
-                        it->add_load(it->influence_number());
+                        it->fmm_mask(fmm_mask_idx_,mask_source_id, true);
                         break;
                     }
                 }
+            }
+
+            for (auto it = domain_->begin(level);
+                    it != domain_->end(level);
+                    ++it)
+            {
+                // including ghost parents
+                it->fmm_mask(fmm_mask_idx_,mask_target_id,false);
+                for ( int c = 0; c < it->num_children(); ++c )
+                {
+                    if ( it->child(c) && it->child(c)->fmm_mask(fmm_mask_idx_,mask_target_id) )
+                    {
+                        it->fmm_mask(fmm_mask_idx_,mask_target_id, true);
+                        break;
+                    }
+                }
+
+                // calculate load
+                if  (it->fmm_mask(fmm_mask_idx_,mask_target_id))
+                    for(std::size_t i = 0; i< it->influence_number(); ++i)
+                    {
+                        const auto inf=it->influence(i);
+                        if (inf && inf->fmm_mask(fmm_mask_idx_,mask_source_id))
+                            it->add_load(1.0 * _base_factor);
+                    }
             }
 
         }
@@ -108,7 +140,9 @@ public:
     static void fmm_dry_init_base_level_masks(
             Domain* domain_,
             int base_level,
-            bool non_leaf_as_source)
+            bool non_leaf_as_source,
+            int _load_factor=1,
+            bool _neighbor_only=false)
     {
         int refinement_level = base_level-domain_->tree()->base_level();
         int fmm_mask_idx_ = refinement_level*2+non_leaf_as_source;
@@ -127,8 +161,10 @@ public:
                     it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Source, true);
                     it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Target, true);
 
-                    it->add_load(it->influence_number());
-                    it->add_load(it->neighbor_number());
+                    if (!_neighbor_only)
+                        it->add_load(it->influence_number() * _load_factor);
+
+                    it->add_load(it->neighbor_number() * _load_factor);
                 }
             }
         } else
@@ -138,8 +174,11 @@ public:
             {
                 it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Source, true);
                 it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Target, true);
-                it->add_load(it->influence_number());
-                it->add_load(it->neighbor_number());
+
+                if (!_neighbor_only)
+                    it->add_load(it->influence_number() * _load_factor);
+
+                it->add_load(it->neighbor_number() * _load_factor);
             }
         }
     }
@@ -181,7 +220,8 @@ public:
     void apply(domain_t* domain_,
                Kernel* _kernel,
                int level,
-               bool non_leaf_as_source=false)
+               bool non_leaf_as_source=false,
+               float_type add_with_scale = 1.0)
     {
 
         const float_type dx_base=domain_->dx_base();
@@ -198,10 +238,8 @@ public:
             fmm_init_zero<fmm_t>(domain_, MASK_LIST::Mask_FMM_Target);
             fmm_init_copy<Source, fmm_s>(domain_);
             fmm_IF(domain_, _kernel);
-            if (!non_leaf_as_source)
-                fmm_add_equal<Target, fmm_t>(domain_);
-            else
-                fmm_minus_equal<Target, fmm_t>(domain_);
+
+            fmm_add_equal<Target, fmm_t>(domain_,add_with_scale);
 
             return;
         }
@@ -259,10 +297,10 @@ public:
         //std::cout<<"FMM INTRP done" << std::endl;
 
         //// Copy back
-        if (!non_leaf_as_source)
-            fmm_add_equal<Target, fmm_t>(domain_);
-        else
-            fmm_minus_equal<Target, fmm_t>(domain_);
+        //if (!non_leaf_as_source)
+        fmm_add_equal<Target, fmm_t>(domain_,add_with_scale);
+        //else
+        //fmm_minus_equal<Target, fmm_t>(domain_);
 
         boost::mpi::communicator world;
         //std::cout<<"Rank "<<world.rank() << " FFTW_count = ";
@@ -363,7 +401,6 @@ public:
                 octants.emplace_back(std::make_pair(*it,recv_m_send_count));
             }
         }
-        //Sends=10000, recv1-10000, no_communication=0
         std::sort(octants.begin(), octants.end(),[&](const auto& e0, const auto& e1)
                 {return e0.second> e1.second;  });
 
@@ -376,7 +413,8 @@ public:
             int level = it->level();
 
             bool _neighbor = (level==base_level_)? true:false;
-            if (!(it->data()) || !it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Target) )
+            if (!(it->data()) ||
+                    !it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Target) )
                 continue;
 
             if(it->locally_owned())
@@ -426,6 +464,9 @@ public:
 
         if (!(it->data()) ||
             !it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Target)) return;
+
+        conv_.fft_backward_field_clean();
+
         if(neighbor)
         {
             for (int i=0; i<it->nNeighbors(); ++i)
@@ -434,26 +475,36 @@ public:
                 if (n_s && n_s->locally_owned()
                         && n_s->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Source))
                 {
-                    fmm_tt(n_s, it, _kernel, 0, dx_level);
+                    fmm_tt(n_s, it, _kernel, 0);
                 }
             }
         }
 
-        if (_kernel->neighbor_only()) return;
-
-        for (std::size_t i=0; i< it->influence_number(); ++i)
+        if (!_kernel->neighbor_only())
         {
-            auto n_s = it->influence(i);
-            if (n_s && n_s->locally_owned()
-                    && n_s->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Source))
+            for (std::size_t i=0; i< it->influence_number(); ++i)
             {
-                fmm_tt(n_s, it, _kernel,level_diff, dx_level);
+                auto n_s = it->influence(i);
+                if (n_s && n_s->locally_owned()
+                        && n_s->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Source))
+                {
+                    fmm_tt(n_s, it, _kernel,level_diff);
+                }
             }
         }
+
+        const auto t_extent = it->data()->template get<fmm_t>().
+                                real_block().extent();
+        block_dsrp_t extractor(dims_t(0), t_extent);
+
+        float_type _scale = (_kernel->neighbor_only()) ? 1.0:dx_level*dx_level;
+        conv_.apply_backward(extractor,
+                it->data()->template get<fmm_t>(),
+                _scale);
     }
 
     template< class f1, class f2 >
-    void fmm_add_equal(domain_t* domain_)
+    void fmm_add_equal(domain_t* domain_, float_type scale)
     {
 
         for (auto it = domain_->begin(base_level_);
@@ -465,7 +516,7 @@ public:
             {
                 it->data()->template get_linalg<f1>().get()->
                     cube_noalias_view() +=
-                                it->data()->template get_linalg_data<f2>();
+                                it->data()->template get_linalg_data<f2>() * scale;
             }
         }
     }
@@ -585,15 +636,13 @@ public:
 
     template<class Kernel>
     void fmm_tt(octant_t* o_s, octant_t* o_t, Kernel* _kernel,
-                int level_diff, float_type dx_level)
+                int level_diff)
     {
 
         const auto t_base = o_t->data()->template get<fmm_t>().
                                         real_block().base();
         const auto s_base = o_s->data()->template get<fmm_s>().
                                         real_block().base();
-
-        if(!o_s->locally_owned())return;
 
         // Get extent of Source region
         const auto s_extent = o_s->data()->template get<fmm_s>().
@@ -605,13 +654,9 @@ public:
         const auto extent_lgf = 2 * (s_extent) - 1;
 
         block_dsrp_t lgf_block(base_lgf, extent_lgf);
-        block_dsrp_t extractor(s_base, s_extent);
 
-        conv_.apply_lgf(lgf_block, _kernel, level_diff,
-                o_s->data()->template get<fmm_s>(),
-                extractor,
-                o_t->data()->template get<fmm_t>(),
-                dx_level*dx_level);
+        conv_.apply_forward_add(lgf_block, _kernel, level_diff,
+                o_s->data()->template get<fmm_s>());
 
     }
 

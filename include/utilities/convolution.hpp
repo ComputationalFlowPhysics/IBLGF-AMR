@@ -8,11 +8,15 @@
 #include <complex>
 #include <fftw3.h>
 #include <global.hpp>
-#include <boost/align/aligned_allocator_adaptor.hpp>
+//#include <boost/align/aligned_allocator_adaptor.hpp>
 
 #include <lgf/lgf.hpp>
 #include <domain/dataFields/dataBlock.hpp>
 #include <domain/dataFields/datafield.hpp>
+
+#include <utilities/misc_math_functions.hpp>
+#include <xsimd/xsimd.hpp>
+#include <xsimd/stl/algorithms.hpp>
 
 namespace fft
 {
@@ -29,12 +33,18 @@ class dfft_r2c
 public:
     using float_type=double;
     using complex_vector_t = std::vector<std::complex<float_type>,
-          boost::alignment::aligned_allocator_adaptor<
-              std::allocator<std::complex<float_type>>,32>> ;
+          xsimd::aligned_allocator<std::complex<float_type>, 32>>;
 
     using real_vector_t = std::vector<float_type,
-          boost::alignment::aligned_allocator_adaptor<
-                std::allocator<float_type>,32>>;
+          xsimd::aligned_allocator<float_type, 32>>;
+
+    //using complex_vector_t = std::vector<std::complex<float_type>,
+    //      boost::alignment::aligned_allocator_adaptor<
+    //          std::allocator<std::complex<float_type>>,32>> ;
+
+    //using real_vector_t = std::vector<float_type,
+    //      boost::alignment::aligned_allocator_adaptor<
+    //            std::allocator<float_type>,32>>;
 
     using dims_t = types::vector_type<int,3>;
 
@@ -54,11 +64,10 @@ public: //Ctors:
      output_2(_dims_padded[2]*_dims_padded[1]*((_dims_padded[0]/2)+1)),
      output_ (_dims_padded[2]*_dims_padded[1]*((_dims_padded[0]/2)+1))
     {
-       //int status = fftw_init_threads();
-        //fftw_plan_with_nthreads(nthreads);
+
         plan = (fftw_plan_dft_r2c_3d(_dims_padded[2], _dims_padded[1], _dims_padded[0],
                  &input_[0], reinterpret_cast<fftw_complex*>(&output_[0]),
-                 FFTW_PATIENT ));
+                 FFTW_EXHAUSTIVE ));
 
         r2c_1d_plans.resize(_dims_non_zero[0]);
 
@@ -72,7 +81,7 @@ public: //Ctors:
                             1, _dims_padded[2],
                             reinterpret_cast<fftw_complex*>
                                 (&output_1[i_plan*dim_half*_dims_padded[1]]), NULL,
-                                 1, dim_half, FFTW_PATIENT
+                                 1, dim_half, FFTW_EXHAUSTIVE
                             );
 
         }
@@ -88,7 +97,7 @@ public: //Ctors:
                                 reinterpret_cast<fftw_complex*>
                                     (&output_2[i_plan*dim_half*_dims_padded[1] ]), NULL,
                                 dim_half, 1,
-                                FFTW_FORWARD, FFTW_PATIENT
+                                FFTW_FORWARD, FFTW_EXHAUSTIVE
                         );
         }
 
@@ -99,7 +108,7 @@ public: //Ctors:
                 reinterpret_cast<fftw_complex*>
                     (&output_[0]), NULL,
                 dim_half*_dims_padded[1], 1,
-                FFTW_FORWARD, FFTW_PATIENT
+                FFTW_FORWARD, FFTW_EXHAUSTIVE
                 );
 
 
@@ -132,7 +141,7 @@ public: //Interface
 
 
     template<class Vector>
-    void copy_input(const Vector& _v, dims_t _dims_v) 
+    void copy_input(const Vector& _v, dims_t _dims_v)
     {
         if(_v.size()==input_.size())
         {
@@ -141,6 +150,19 @@ public: //Interface
         else
         {
             throw std::runtime_error("ERROR! LGF SIZE NOT MATCHING");
+            ////Naive impl:
+            //std::fill(input_.begin(), input_.end(),0);
+            //for(int k=0;k<_dims_v[2];++k)
+            //{
+            //    for(int j=0;j<_dims_v[1];++j)
+            //    {
+            //        for(int i=0;i<_dims_v[0];++i)
+            //        {
+            //            input_[ i+dims_input_[0]*j+ dims_input_[0]*dims_input_[1]*k ]=
+            //            _v[i+_dims_v[0]*j+_dims_v[0]*_dims_v[1]*k];
+            //        }
+            //    }
+            //}
         }
     }
 
@@ -155,14 +177,15 @@ public: //Interface
         {
             for(int j=0;j<_dims_v[1];++j)
             {
-                std::copy(&_v.get_real_local(0,j,k),
-                            &_v.get_real_local(0,j,k) + _dims_v[0],
-                            &input_[dims_input_[0]*j+ dims_input_[0]*dims_input_[1]*k] );
-                //for(int i=0;i<_dims_v[0];++i)
-                //{
-                //    input_[ i+dims_input_[0]*j+ dims_input_[0]*dims_input_[1]*k ]=
-                //     _v.get_real_local(i,j,k);
-                //}
+                //std::copy(&_v.get_real_local(0,j,k),
+                //            &_v.get_real_local(0,j,k) + _dims_v[0],
+                //            &input_[dims_input_[0]*j+ dims_input_[0]*dims_input_[1]*k] );
+
+                for(int i=0;i<_dims_v[0];++i)
+                {
+                    input_[ i+dims_input_[0]*j+ dims_input_[0]*dims_input_[1]*k ]=
+                     _v.get_real_local(i,j,k);
+                }
             }
         }
     }
@@ -189,12 +212,18 @@ class dfft_c2r
 public:
     //const int nthreads = 1;
     using complex_vector_t = std::vector<std::complex<float_type>,
-          boost::alignment::aligned_allocator_adaptor<
-              std::allocator<std::complex<float_type>>,32>> ;
+          xsimd::aligned_allocator<std::complex<float_type>, 32>>;
 
     using real_vector_t = std::vector<float_type,
-          boost::alignment::aligned_allocator_adaptor<
-              std::allocator<float_type>,32>>;
+          xsimd::aligned_allocator<float_type, 32>>;
+
+    //using complex_vector_t = std::vector<std::complex<float_type>,
+    //      boost::alignment::aligned_allocator_adaptor<
+    //          std::allocator<std::complex<float_type>>,32>> ;
+
+    //using real_vector_t = std::vector<float_type,
+    //      boost::alignment::aligned_allocator_adaptor<
+    //          std::allocator<float_type>,32>>;
 
     using dims_t = types::vector_type<int,3>;
 
@@ -217,7 +246,7 @@ public: //Ctors:
         //fftw_plan_with_nthreads(nthreads);
         plan = fftw_plan_dft_c2r_3d(_dims[2], _dims[1], _dims[0],
                  reinterpret_cast<fftw_complex*>(&input_[0]), &output_[0],
-                 FFTW_PATIENT);
+                 FFTW_EXHAUSTIVE);
 
         int dim_half = (_dims[2]/2)+1;
         c2c_dir_1 = fftw_plan_many_dft(1, &_dims[0], _dims[1] * dim_half,
@@ -227,7 +256,7 @@ public: //Ctors:
                         reinterpret_cast<fftw_complex*>
                             (&tmp_1_[0]), NULL,
                              _dims[1] * dim_half, 1,
-                        FFTW_BACKWARD, FFTW_PATIENT
+                        FFTW_BACKWARD, FFTW_EXHAUSTIVE
                 );
 
         ////Dir 1
@@ -242,7 +271,7 @@ public: //Ctors:
                                 reinterpret_cast<fftw_complex*>
                                     (&tmp_2_[ (i_plan + _dims_small[0]-1)*dim_half*_dims[1] ]), NULL,
                                 dim_half, 1,
-                        FFTW_BACKWARD, FFTW_PATIENT
+                        FFTW_BACKWARD, FFTW_EXHAUSTIVE
                 );
 
         }
@@ -258,7 +287,7 @@ public: //Ctors:
                                 1, dim_half,
                                 &output_[ (i_plan + _dims_small[0]-1)*_dims[2]*_dims[1] + _dims[2]*(_dims_small[1]-1)  ] , NULL,
                                 1, _dims[2],
-                                FFTW_PATIENT
+                                FFTW_EXHAUSTIVE
                                 );
         }
 
@@ -282,6 +311,7 @@ public: //Interface
 
 private:
 
+    dims_t dims_next_pow_2_;
     complex_vector_t input_, tmp_1_, tmp_2_;
     real_vector_t output_;
 
@@ -302,12 +332,18 @@ public:
     using dims_t = types::vector_type<int,3>;
 
     using complex_vector_t = std::vector<std::complex<float_type>,
-          boost::alignment::aligned_allocator_adaptor<
-              std::allocator<std::complex<float_type>>,32>> ;
+          xsimd::aligned_allocator<std::complex<float_type>, 32>>;
 
     using real_vector_t = std::vector<float_type,
-          boost::alignment::aligned_allocator_adaptor<
-              std::allocator<float_type>,32>>;
+          xsimd::aligned_allocator<float_type, 32>>;
+
+    //using complex_vector_t = std::vector<std::complex<float_type>,
+    //      boost::alignment::aligned_allocator_adaptor<
+    //          std::allocator<std::complex<float_type>>,32>> ;
+
+    //using real_vector_t = std::vector<float_type,
+    //      boost::alignment::aligned_allocator_adaptor<
+    //          std::allocator<float_type>,32>>;
 
     using lgf_key_t = std::tuple<int, int, int>;
     using lgf_matrix_ptr_map_type = std::map<lgf_key_t, std::unique_ptr<complex_vector_t> >;
@@ -323,53 +359,135 @@ public: //Ctors
 
     Convolution(dims_t _dims0, dims_t _dims1)
     :padded_dims_(_dims0 + _dims1 - 1),
+     padded_dims_next_pow_2_({math::next_pow_2(padded_dims_[0]),
+                              math::next_pow_2(padded_dims_[1]),
+                              math::next_pow_2(padded_dims_[2])}),
      dims0_(_dims0),
      dims1_(_dims1),
-     fft_forward0_(padded_dims_, _dims0),
-     fft_forward1_(padded_dims_, _dims1),
-     fft_backward_(padded_dims_, _dims1)
-    { }
-
-
-    template<
-        typename Source, typename Target,
-        typename BlockType, class Kernel>
-    void apply_lgf( const BlockType& _lgf_block,
-                    Kernel* _kernel,
-                    int _level_diff,
-                    const Source& _source,
-                    const BlockType& _extractor,
-                    Target& _target,
-                    float_type _scale )
+     fft_forward0_(padded_dims_next_pow_2_, _dims0),
+     fft_forward1_(padded_dims_next_pow_2_, _dims1),
+     fft_backward_(padded_dims_next_pow_2_, _dims1),
+     padded_size_(padded_dims_next_pow_2_[0]*padded_dims_next_pow_2_[1]*padded_dims_next_pow_2_[2]),
+     tmp_prod(padded_size_,std::complex<float_type>(0.0))
     {
-            execute_field(_lgf_block, _kernel, _level_diff, _source, _scale);
-            add_solution(_extractor, _target);
-            fft_count_ ++;
     }
 
-    template<class Field, class BlockType, class Kernel>
-    void execute_field(const BlockType& _lgf_block,
-                       Kernel* _kernel,
-                       int _level_diff, const Field& _b, 
-                       const float_type _extra_scale)
+    void fft_backward_field_clean()
     {
+        std::fill (fft_backward_.input().begin(),fft_backward_.input().end(),0);
+    }
 
-        auto& f0 = _kernel->dft(_lgf_block, this, _level_diff);
+    template<
+        typename Source,
+        typename BlockType, class Kernel>
+    void apply_forward_add( const BlockType& _lgf_block,
+                    Kernel* _kernel,
+                    int _level_diff,
+                    const Source& _source)
+    {
+            execute_fwrd_field(_lgf_block, _kernel, _level_diff, _source);
+    }
+
+    template<
+        typename Target,
+        typename BlockType>
+    void apply_backward(const BlockType& _extractor,
+                    Target& _target,
+                    float_type _extra_scale)
+    {
+        const float_type scale = 1.0 / (padded_dims_next_pow_2_[0] *
+                                        padded_dims_next_pow_2_[1] *
+                                        padded_dims_next_pow_2_[2]) *
+                                        _extra_scale;
+        for(std::size_t i = 0; i < fft_backward_.input().size(); ++i)
+        {
+            fft_backward_.input()[i] *= scale;
+        }
+
+        fft_backward_.execute();
+        add_solution(_extractor, _target);
+    }
+
+    //template<
+    //    typename Source, typename Target,
+    //    typename BlockType, class Kernel>
+    //void apply_lgf( const BlockType& _lgf_block,
+    //                Kernel* _kernel,
+    //                int _level_diff,
+    //                const Source& _source,
+    //                const BlockType& _extractor,
+    //                Target& _target,
+    //                float_type _scale )
+    //{
+    //        execute_field(_lgf_block, _kernel, _level_diff, _source, _scale);
+    //        add_solution(_extractor, _target);
+    //        fft_count_ ++;
+    //}
+
+    template<class Field, class BlockType, class Kernel>
+    void execute_fwrd_field(const BlockType& _lgf_block,
+                       Kernel* _kernel,
+                       int _level_diff, const Field& _b)
+    {
+        auto& f0 = _kernel->dft(_lgf_block, padded_dims_next_pow_2_, this, _level_diff);
 
         fft_forward1_.copy_field(_b, dims1_);
         fft_forward1_.execute();
         auto& f1 = fft_forward1_.output();
 
         complex_vector_t prod(f0.size());
-        const float_type scale = 1.0 / (padded_dims_[0] *
-                                        padded_dims_[1] *
-                                        padded_dims_[2]) * _extra_scale;
-        for(std::size_t i = 0; i < prod.size(); ++i)
-        {
-            fft_backward_.input()[i] = f0[i]*f1[i]*scale;
-        }
-        fft_backward_.execute();
+
+        //xsimd::transform(f0.begin(), f0.end(), f1.begin(), tmp_prod.begin(),
+        //        [](const auto& x, const auto& y) { x+y; });
+
+        simd_prod_complex_add(f0, f1,fft_backward_.input());
     }
+
+    void simd_prod_complex_add(const complex_vector_t& a,
+            const complex_vector_t& b,
+            complex_vector_t& res)
+    {
+        std::size_t size = a.size();
+        constexpr std::size_t simd_size = xsimd::simd_type<std::complex<float_type>>::size;
+        std::size_t vec_size = size - size % simd_size;
+
+        for(std::size_t i = 0; i < vec_size; i += simd_size)
+        {
+            auto ba = xsimd::load_aligned(&a[i]);
+            auto bb = xsimd::load_aligned(&b[i]);
+            auto res_old = xsimd::load_aligned(&res[i]);
+            auto bres = ba*bb+res_old;
+            bres.store_aligned(&res[i]);
+        }
+        for(std::size_t i = vec_size; i < size; ++i)
+        {
+            res[i] += a[i]*b[i];
+        }
+    }
+
+    //template<class Field, class BlockType, class Kernel>
+    //void execute_field(const BlockType& _lgf_block,
+    //                   Kernel* _kernel,
+    //                   int _level_diff, const Field& _b,
+    //                   const float_type _extra_scale)
+    //{
+    //    auto& f0 = _kernel->dft(_lgf_block, padded_dims_next_pow_2_, this, _level_diff);
+
+    //    fft_forward1_.copy_field(_b, dims1_);
+    //    fft_forward1_.execute();
+    //    auto& f1 = fft_forward1_.output();
+
+    //    complex_vector_t prod(f0.size());
+    //    const float_type scale = 1.0 / (padded_dims_next_pow_2_[0] *
+    //                                    padded_dims_next_pow_2_[1] *
+    //                                    padded_dims_next_pow_2_[2]) * _extra_scale;
+    //    for(std::size_t i = 0; i < prod.size(); ++i)
+    //    {
+    //        fft_backward_.input()[i] = f0[i]*f1[i]*scale;
+    //    }
+
+    //    fft_backward_.execute();
+    //}
 
     auto& dft_r2c(std::vector<float_type>& _vec )
     {
@@ -395,7 +513,7 @@ public: //Ctors
                 {
                     _F.get_real_local(i-dims0_[0]+1,j-dims0_[1]+1,k-dims0_[2]+1 ) +=
                     fft_backward_.output() [
-                        i+j*padded_dims_[0]+k*padded_dims_[0]*padded_dims_[1]
+                        i+j*padded_dims_next_pow_2_[0]+k*padded_dims_next_pow_2_[0]*padded_dims_next_pow_2_[1]
                     ];
                 }
             }
@@ -407,12 +525,18 @@ public:
 
 private:
     dims_t padded_dims_;
+    dims_t padded_dims_next_pow_2_;
     dims_t dims0_;
     dims_t dims1_;
+
 
     dfft_r2c fft_forward0_;
     dfft_r2c fft_forward1_;
     dfft_c2r fft_backward_;
+
+    unsigned int padded_size_;
+    complex_vector_t tmp_prod;
+
 };
 
 

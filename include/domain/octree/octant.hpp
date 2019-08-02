@@ -199,7 +199,7 @@ public: //Ctors
     void neighbor_clear () noexcept{neighbor_.fill(nullptr);}
     const auto neighbor_number () const noexcept{return neighbor_.size();}
 
-    int idx()const noexcept { 
+    int idx()const noexcept {
         const auto cc=this->tree_coordinate();
         return static_cast<int>(
                 (this->level()+cc.x()*25+cc.y()*25*300+ 25*300*300*cc.z()) %
@@ -247,7 +247,7 @@ public: //Ctors
     }
 
 
-    void add_load(int l)
+    void add_load(float_type l)
     {
         load_+=l;
     }
@@ -399,7 +399,7 @@ public:
 private:
 
     int idx_ = 0;
-    int load_ = 0;
+    float_type load_ = 0;
     boost::mpi::communicator comm_;
     std::shared_ptr<data_type> data_ = nullptr;
     Octant* parent_=nullptr;

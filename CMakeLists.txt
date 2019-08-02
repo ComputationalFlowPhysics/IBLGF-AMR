@@ -24,8 +24,7 @@ include_directories("${PROJECT_BINARY_DIR}")
 
 #include(${CMAKE_CURRENT_SOURCE_DIR}/../CMakeLists.txt.user)
 set (CMAKE_CXX_STANDARD 17)
-#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17 -Wall -O3  -ggdb -fmax-errors=2")
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17  -ftree-vectorize -funroll-loops  -ftree-vectorizer-verbose=3 -Wall -O3 -ggdb -pg -Wall -fmax-errors=2")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}  -ftree-vectorize -funroll-loops  -ftree-vectorizer-verbose=3 -Wall -O3 -ggdb -pg -Wall -fmax-errors=4")
 #set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -O3")
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/bin)
 #LIBS
@@ -61,6 +60,7 @@ link_directories(${FFTW_LIBRARIES} )
 
 
 #XTensor
+find_package(xsimd REQUIRED)
 find_package(xtensor REQUIRED)
 find_package(xtl REQUIRED)
 find_package(xtensor-blas REQUIRED)
@@ -72,10 +72,6 @@ include_directories(SYSTEM ${xtensor_blas_INCLUDE_DIRS})
 #endif(NOT DEFINED HDF5_INCLUDE_DIRS)
 include_directories(${HDF5_INCLUDE_DIRS})
 link_directories(${HDF5_LIBRARY_DIRS} )
-#message( ${HDF5_INCLUDE_DIRS} )
-#message( ${HDF5_LIBRARY_DIRS} )
-
-#message( ${HDF5_LIBRARIES} )
 
 # add the executable
 #add_executable(iblgf "src/main.cpp")

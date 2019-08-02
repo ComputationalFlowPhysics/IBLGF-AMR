@@ -1,6 +1,7 @@
 #ifndef IBLGF_INCLUDED_IFHERK_HEAT_HPP
 #define IBLGF_INCLUDED_IFHERK_HEAT_HPP
 
+
 #include <iostream>
 #include <vector>
 #include <limits>
@@ -51,6 +52,7 @@ struct parameters
          (error_lap_source , float_type, 1,    1,       1,     cell),
          (decomposition    , float_type, 1,    1,       1,     cell),
         //IF-HERK
+         (u_0_exact        , float_type, 1,    1,       1,     cell),
          (u                , float_type, 3,    1,       1,     face),
          (w                , float_type, 3,    1,       1,     face),
          (p                , float_type, 1,    1,       1,     cell)
@@ -78,6 +80,10 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
 
         if(domain_->is_client())client_comm_=client_comm_.split(1);
         else client_comm_=client_comm_.split(0);
+
+        dt_        = simulation_.dictionary()->template get<float_type>("dt");
+        tot_steps_ = simulation_.dictionary()->template get<int>("nTimeSteps");
+        Re_        = simulation_.dictionary()->template get<float_type>("Re");
 
         source_max_=simulation_.dictionary_->
             template get_or<float_type>("source_max",1.0);
@@ -111,18 +117,23 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
         simulation_.write2("ifherk_0.hdf5");
         if(domain_->is_client())
         {
-
             time_integration_t ifherk(&this->simulation_);
-
 
             mDuration_type ifherk_duration(0);
             TIME_CODE( ifherk_duration, SINGLE_ARG(
-
                 ifherk.time_march();
-
             ))
             pcout_c<<"Time to solution [ms] "<<ifherk_duration.count()<<std::endl;
 
+            for (auto it  = domain_->begin_leafs();
+                    it != domain_->end_leafs(); ++it)
+                if (it->locally_owned())
+                {
+                    it->data()->template get_linalg<phi_num>().get()->
+                    cube_noalias_view() =
+                    it->data()->template get_linalg_data<u>(0);
+                }
+            this->compute_errors<phi_num,u_0_exact,error>();
         }
         simulation_.write2("ifherk_1.hdf5");
     }
@@ -154,6 +165,8 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
 
            auto view(it->data()->node_field().domain_view());
            auto& nodes_domain=it->data()->nodes_domain();
+
+           float_type T = dt_*tot_steps_;
            for(auto it2=nodes_domain.begin();it2!=nodes_domain.end();++it2 )
            {
                it2->get<source>() = 0.0;
@@ -174,105 +187,20 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
                const float_type r=std::sqrt(x*x+y*y+z*z) ;
 
                /***********************************************************/
-               float_type a = 10.0;
 
-               it2->template get<u>(0)=std::exp(-a*r*r);
+               float_type r_2 = r*r;
+               it2->template get<u>(0)=std::exp(-a_*r_2);
                it2->template get<u>(1)=0;
                it2->template get<u>(2)=0;
+
+               it2->template get<u_0_exact>() =
+               5*std::exp(-(a_*Re_*r_2)/(Re_ + 4*a_*T))/
+                (2*std::pow((1 + a_*4*T/Re_),1.5)*std::pow(2*3.1415926,0.5));
 
                it2->template get<decomposition>()=world.rank();
            }
         }
     }
-
-    float_type vorticity(float_type x, float_type y, float_type z,
-                   float_type R, float_type c1, float_type c2) const noexcept
-    {
-
-        const long double r=std::sqrt(x*x+y*y+z*z) ;
-        const long double t=std::sqrt( (r-R)*(r-R) +z*z )/R;
-        if(std::fabs(t)>=1.0) return 0.0;
-
-        long double t3 = z*z;
-        long double t5 = x*x;
-        long double t6 = y*y;
-        long double t7 = t3+t5+t6;
-        long double t18 = std::sqrt(t7);
-        long double t2 = R-t18;
-        long double t4 = R*R;
-        long double t8 = std::pow(t7,9.0/2.0);
-        long double t9 = t3*t3;
-        long double t10 = t9*t9;
-        long double t11 = t7*t7;
-        long double t12 = t11*t11;
-        long double t13 = std::pow(t7,5.0/2.0);
-        long double t14 = std::pow(t7,3.0/2.0);
-        long double t15 = t5*t5;
-        long double t16 = t6*t6;
-        long double t17 = std::pow(t7,7.0/2.0);
-        long double t19 = c2*t4;
-        long double t20 = t4*4.0;
-        long double t21 = t19+t20;
-        long double t22 = t4*1.2E1;
-        long double t23 = t19+t22;
-        long double t24 = t4*t4;
-        long double res= (c1*c2*t4*std::exp(c2/(1.0/(R*R)*(t3+t2*t2)-1.0))*(t17*-2.0+t4*t13*
-        8.0-t9*t14*8.0+t14*t15*2.0+t14*t16*2.0-t3*t14*(t20+c2*t4*4.0)+R*t3*t9*
-        1.3E1+R*t5*t9*2.3E1+R*t6*t9*2.3E1+R*t3*t15*1.0E1-R*t7*t11+R*t3*t16*
-        1.0E1-t4*t5*t14*2.0-t4*t6*t14*2.0+t5*t6*t14*4.0+t3*t9*t18*2.0-t4*
-        t9*t18*8.0+t5*t9*t18*2.0+t6*t9*t18*2.0-t15*t18*t21-t16*t18*t21+R*t3*
-        t5*t6*2.0E1-c2*t3*t18*t24-c2*t5*t18*t24-c2*t6*t18*t24-t5*t6*t18*
-        (t4*8.0+c2*t4*2.0)-t3*t5*t18*t23-t3*t6*t18*t23+R*c2*t4*t9*4.0+R*c2*
-        t4*t15*2.0+R*c2*t4*t16*2.0+R*c2*t3*t4*t5*6.0+R*c2*t3*t4*t6*6.0+R*c2*
-        t4*t5*t6*4.0)*-4.0)/(t3*t8*5.0+t5*t8+t6*t8+t10*t14*1.1E1+t17*t24*
-        1.6E1-R*t3*t10*8.0-R*t5*t10*1.6E1-R*t6*t10*1.6E1-R*t7*t12*8.0+t4*t9*
-        t13*9.6E1+t4*t13*t15*2.4E1+t4*t13*t16*2.4E1+t9*t14*t15*6.0+t9*t14*
-        t16*6.0-R*t3*t9*t15*8.0-R*t7*t9*t11*4.8E1-R*t3*t9*t16*8.0+t3*t4*t5*
-        t13*9.6E1+t3*t4*t6*t13*9.6E1+t4*t5*t6*t13*4.8E1+t3*t5*t9*t14*1.6E1+t3*
-        t6*t9*t14*1.6E1+t5*t6*t9*t14*1.2E1-R*t3*t5*t6*t9*1.6E1-R*t3*t4*t7*t11*
-        6.4E1-R*t3*t5*t7*t11*2.4E1-R*t3*t6*t7*t11*2.4E1-R*t4*t5*t7*
-        t11*3.2E1-R*t4*t6*t7*t11*3.2E1);
-        if(std::isnan(res)) return 0.0;
-        return res;
-
-    }
-    float_type psi(float_type x, float_type y, float_type z,
-                         float_type R, float_type c1, float_type c2) const noexcept
-    {
-
-
-        const float_type r=std::sqrt(x*x+y*y+z*z) ;
-        const float_type t=std::sqrt( (r-R)*(r-R) +z*z )/R;
-        if(std::fabs(t)>=1.0) return 0.0;
-        return  c1* std::exp(- c2/ (1-t*t) );
-    }
-    auto  grad_psi(float_type x, float_type y, float_type z,
-                   float_type R, float_type c1, float_type c2) const noexcept
-    {
-        fcoord_t dpsi(0.0);
-        const float_type r=std::sqrt(x*x+y*y+z*z) ;
-        const float_type t=std::sqrt( (r-R)*(r-R) +z*z )/R;
-        if(std::fabs(t)>=1.0) return dpsi;
-
-       dpsi[0]= 1.0/(r*r)*c1*c2*x*exp(c2/(1.0/(r*r)*
-               (pow(r-sqrt(x*x+y*y+z*z),2.0)+z*z)-1.0))*
-               (r-sqrt(x*x+y*y+z*z))*1.0/pow(1.0/(r*r)*
-               (pow(r-sqrt(x*x+y*y+z*z),2.0)+z*z)-1.0,2.0)*
-               1.0/sqrt(x*x+y*y+z*z)*2.0;
-
-       dpsi[1] = 1.0/(r*r)*c1*c2*y*exp(c2/(1.0/(r*r)*
-                (pow(r-sqrt(x*x+y*y+z*z),2.0)+z*z)-1.0))*
-                (r-sqrt(x*x+y*y+z*z))*1.0/pow(1.0/(r*r)*
-                (pow(r-sqrt(x*x+y*y+z*z),2.0)+z*z)-1.0,2.0)*
-                1.0/sqrt(x*x+y*y+z*z)*2.0;
-       dpsi[2] = -1.0/(r*r)*c1*c2*exp(c2/(1.0/(r*r)*
-                (pow(r-sqrt(x*x+y*y+z*z),2.0)+z*z)-1.0))*
-                1.0/pow(1.0/(r*r)*(pow(r-sqrt(x*x+y*y+z*z),2.0)+z
-                *z)-1.0,2.0)*(z*2.0-z*(r-sqrt(x*x+y*y+z*z))*
-                1.0/sqrt(x*x+y*y+z*z)*2.0);
-       return dpsi;
-    }
-
 
     /** @brief Compute L2 and LInf errors */
     template<class Numeric, class Exact, class Error>
@@ -397,23 +325,6 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
         b.level()=it->refinement_level();
         const float_type dx_base = domain_->dx_base();
 
-        return refinement(b, c1, c2 ,R_, rmin_ref_,rmax_ref_,rz_ref_,dx_base,eps_grad_, source_max_, diff_level,use_all);
-    }
-
-    /** @brief  Refienment conditon for blocks.  */
-    bool refinement(block_descriptor_t b,
-                    float_type _c1,
-                    float_type _c2,
-                    float_type _R,
-                    float_type _rmin_ref,
-                    float_type  _rmax_ref,
-                    float_type _rz_ref,
-                    float_type dx_base,
-                    float_type eps_grad,
-                    float_type vorticity_max,
-                    int diff_level,
-                    bool use_all=false) const noexcept
-    {
         auto center = (domain_->bounding_box().max() -
                        domain_->bounding_box().min()) / 2.0 +
                        domain_->bounding_box().min();
@@ -426,43 +337,9 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
         auto corners= b.get_corners();
 
 
-        float_type rscale=_R*scaling/dx_base;
 
         auto lower_t = (b.base()-center);
         auto upper_t= (b.max()+1 -center);
-
-        bool outside=false;
-        bool inside=false;
-        float_type rcmin=std::numeric_limits<float_type>::max();
-        float_type rcmax=std::numeric_limits<float_type>::lowest();
-        float_type zcmin=std::numeric_limits<float_type>::max();
-        for(auto c : corners)
-        {
-            c-=center;
-            float_type r_c =  std::sqrt( c.x()*c.x() + c.y()*c.y()  );
-            if(r_c < rcmin) rcmin=r_c;
-            if(r_c > rcmax) rcmax=r_c;
-
-            float_type cz=std::fabs(static_cast<float_type>(c.z()));
-            if(cz<zcmin) zcmin=cz;
-
-            if( r_c<=rscale ) inside=true;
-            if( r_c>=rscale ) outside=true;
-        }
-        float_type rz =_rz_ref*rscale;
-        bool z_cond = (zcmin<=rz) || (lower_t.z() <=0 && upper_t.z()>=0);
-        if( z_cond  && outside &&inside)
-        {
-            if (use_all) return true;
-        }
-
-        float_type rmin =_rmin_ref*rscale;
-        float_type rmax =_rmax_ref*rscale;
-        float_type rcmid=0.5*(rcmax+rcmin);
-        if( z_cond && (rcmid>=rmin && rcmid<=rmax) )
-        {
-            if (use_all) return true;
-        }
 
         for(int i=b.base()[0];i<=b.max()[0];++i)
         {
@@ -478,20 +355,23 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
                     const float_type z = static_cast<float_type>
                         (k-center[2]+0.5)*dx_level;
 
-                    const float_type R=_R;
-                    const float_type c1=_c1;
-                    const float_type c2=_c2;
+                    const float_type r=std::sqrt(x*x+y*y+z*z) ;
 
-                    float_type vort=vorticity(x,y,z,R,c1,c2);
-                    if(std::fabs(vort) > source_max_*pow(0.25*0.25*0.5 , diff_level))
+                    float_type r_2 = r*r;
+                    float_type u=std::exp(-a_*r_2);
+
+                    if(u > 1.0*pow(0.25*0.25, diff_level))
                     {
                         return true;
                     }
                 }
             }
         }
+
         return false;
+
     }
+
 
 
     /** @brief  Initialization of the domain blocks. This is registered in the
@@ -520,6 +400,12 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
     int nLevelRefinement_=0;
     int global_refinement_=0;
     fcoord_t offset_;
+
+    float_type a_ = 10.0;
+
+    float_type dt_;
+    float_type Re_;
+    int tot_steps_;
 };
 
 

@@ -141,19 +141,6 @@ public: //Interface
         else
         {
             throw std::runtime_error("ERROR! LGF SIZE NOT MATCHING");
-            ////Naive impl:
-            //std::fill(input_.begin(), input_.end(),0);
-            //for(int k=0;k<_dims_v[2];++k)
-            //{
-            //    for(int j=0;j<_dims_v[1];++j)
-            //    {
-            //        for(int i=0;i<_dims_v[0];++i)
-            //        {
-            //            input_[ i+dims_input_[0]*j+ dims_input_[0]*dims_input_[1]*k ]=
-            //            _v[i+_dims_v[0]*j+_dims_v[0]*_dims_v[1]*k];
-            //        }
-            //    }
-            //}
         }
     }
 
@@ -426,8 +413,6 @@ private:
     dfft_r2c fft_forward0_;
     dfft_r2c fft_forward1_;
     dfft_c2r fft_backward_;
-
-    //lgf::LGF<lgf::Lookup>   lgf_;       ///< Lookup for the LGFs
 };
 
 

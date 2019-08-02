@@ -1,5 +1,5 @@
-#ifndef INCLUDED_HALO_COMMUNICATOR_HPP
-#define INCLUDED_HALO_COMMUNICATOR_HPP
+#ifndef INCLUDED_HALOCOMMUNICATOR_HPP
+#define INCLUDED_HALOCOMMUNICATOR_HPP
 
 #include "tags.hpp"
 #include "task_buffer.hpp"
@@ -220,7 +220,7 @@ public: //members
             for(auto& interfc : inter_recv_interface[rank_other])
             {
                 auto& recv_view= interfc.view;
-                recv_view.iterate([&](auto& val){ 
+                recv_view.iterate([&](auto& val){
                     val= recv_fields_[rank_other][count++];
                 });
             }

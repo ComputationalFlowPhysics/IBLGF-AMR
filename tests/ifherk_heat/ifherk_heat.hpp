@@ -81,9 +81,14 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
         if(domain_->is_client())client_comm_=client_comm_.split(1);
         else client_comm_=client_comm_.split(0);
 
-        dt_        = simulation_.dictionary()->template get<float_type>("dt");
+        dx_  = domain_->dx_base();
+        cfl_ = simulation_.dictionary()->template get_or<float_type>("cfl",0.5);
+        dt_  = simulation_.dictionary()->template get_or<float_type>("dt",-1.0);
         tot_steps_ = simulation_.dictionary()->template get<int>("nTimeSteps");
         Re_        = simulation_.dictionary()->template get<float_type>("Re");
+
+        if (dt_<0)
+            dt_=dx_*cfl_;
 
         source_max_=simulation_.dictionary_->
             template get_or<float_type>("source_max",1.0);
@@ -175,14 +180,14 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
                const auto& coord=it2->level_coordinate();
 
                float_type x = static_cast<float_type>
-                   (coord[0]-center[0]*scaling+0.5)*dx_level;
-                   x+=offset_[0];
+                   (coord[0]-center[0]*scaling)*dx_level;
+                   //x+=offset_[0];
                float_type y = static_cast<float_type>
-                   (coord[1]-center[1]*scaling+0.5)*dx_level;
-                   x+=offset_[1];
+                   (coord[1]-center[1]*scaling)*dx_level;
+                   //x+=offset_[1];
                float_type z = static_cast<float_type>
-                   (coord[2]-center[2]*scaling+0.5)*dx_level;
-                   x+=offset_[2];
+                   (coord[2]-center[2]*scaling)*dx_level;
+                   //x+=offset_[2];
 
                const float_type r=std::sqrt(x*x+y*y+z*z) ;
 
@@ -194,8 +199,8 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
                it2->template get<u>(2)=0;
 
                it2->template get<u_0_exact>() =
-               5*std::exp(-(a_*Re_*r_2)/(Re_ + 4*a_*T))/
-                (2*std::pow((1 + a_*4*T/Re_),1.5)*std::pow(2*3.1415926,0.5));
+               std::exp(-(a_*Re_*r_2)/(Re_ + 4*a_*T))/
+                (std::pow((1 + a_*4*T/Re_),1.5));
 
                it2->template get<decomposition>()=world.rank();
            }
@@ -403,7 +408,8 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
 
     float_type a_ = 10.0;
 
-    float_type dt_;
+    float_type dt_,dx_;
+    float_type cfl_;
     float_type Re_;
     int tot_steps_;
 };

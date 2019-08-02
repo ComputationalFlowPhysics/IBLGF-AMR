@@ -37,7 +37,6 @@ public: //member types
     using coordinate_type      = typename domain_type::coordinate_type;
     using poisson_solver_t     = typename Setup::poisson_solver_t;
 
-
     //Fields
     //using coarse_target_sum = typename Setup::coarse_target_sum;
     //using source_tmp = typename Setup::source_tmp;
@@ -52,28 +51,38 @@ public: //member types
     using g_i = typename Setup::g_i;
     using d_i = typename Setup::d_i;
 
-    using cell_aux = typename Setup::cell_aux;
-    using face_aux = typename Setup::face_aux;
+    using cell_aux   = typename Setup::cell_aux;
+    using face_aux   = typename Setup::face_aux;
     using face_aux_2 = typename Setup::face_aux_2;
-    using w_1      = typename Setup::w_1;
-    using w_2      = typename Setup::w_2;
-    using u_i      = typename Setup::u_i;
+    using w_1        = typename Setup::w_1;
+    using w_2        = typename Setup::w_2;
+    using u_i        = typename Setup::u_i;
 
     static constexpr int lBuffer=1; ///< Lower left buffer for interpolation
     static constexpr int rBuffer=1; ///< Lower left buffer for interpolation
 
     Ifherk(simulation_type* _simulation)
     :
+    simulation_(_simulation),
     domain_(_simulation->domain_.get()),
     psolver(_simulation)
     {
-        dx_      = domain_->dx_base();
-        dt_      = _simulation->dictionary()->template get<float_type>("dt");
-        tot_steps_  = _simulation->dictionary()->template get<int>("nTimeSteps");
-        cfl_max_ = _simulation->dictionary()->template get_or<float_type>("cfl_max",1000);
-        Re_      = _simulation->dictionary()->template get<float_type>("Re");
-        output_freq_= _simulation->dictionary()->
-                template get<float_type>("output_frequency");
+        dx_          = domain_->dx_base();
+        cfl_         = _simulation->dictionary()->
+            template get_or<float_type>("cfl",0.5);
+        dt_          = _simulation->dictionary()->
+            template get_or<float_type>("dt",-1.0);
+        tot_steps_   = _simulation->dictionary()->
+            template get<int>("nTimeSteps");
+        cfl_max_     = _simulation->dictionary()->
+            template get_or<float_type>("cfl_max",1000);
+        Re_          = _simulation->dictionary()->
+            template get<float_type>("Re");
+        output_freq_ = _simulation->dictionary()->
+            template get<float_type>("output_frequency");
+
+        if (dt_<0)
+            dt_ = dx_*cfl_;
 
         float_type tmp = Re_*dx_*dx_/dt_;
 
@@ -103,11 +112,6 @@ public:
                 time_step();
             ));
             pcout<<ifherk_if.count()<<std::endl;
-            pcout<<"T = " << T_ << " -----------------" << std::endl;
-
-            // Add dt to Time
-            T_ += dt_;
-            n_step_ = round(T_ / dt_);
 
             if ( n_step_ % output_freq_ == 0)
                 write_timestep();
@@ -204,6 +208,11 @@ public:
         copy<u_i, u>();
         copy<d_i, p>(1.0/coeff_a(3,3)/dt_);
         // ******************************************************************
+        // Add dt to Time
+        T_ += dt_;
+        n_step_ = round(T_ / dt_);
+        pcout<<"T = " << T_ << " -----------------" << std::endl;
+
     }
 
 
@@ -291,12 +300,13 @@ private:
 
 private:
     domain_type*                      domain_;    ///< domain
+    simulation_type*  simulation_;
     poisson_solver_t psolver;
 
     float_type T_;
     float_type dt_, dx_;
     float_type Re_;
-    float_type cfl_max_;
+    float_type cfl_max_, cfl_;
     int output_freq_;
     int tot_steps_;
     int n_step_;

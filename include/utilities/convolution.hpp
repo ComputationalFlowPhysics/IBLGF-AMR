@@ -67,7 +67,7 @@ public: //Ctors:
 
         plan = (fftw_plan_dft_r2c_3d(_dims_padded[2], _dims_padded[1], _dims_padded[0],
                  &input_[0], reinterpret_cast<fftw_complex*>(&output_[0]),
-                 FFTW_EXHAUSTIVE ));
+                 FFTW_PATIENT ));
 
         r2c_1d_plans.resize(_dims_non_zero[0]);
 
@@ -81,7 +81,7 @@ public: //Ctors:
                             1, _dims_padded[2],
                             reinterpret_cast<fftw_complex*>
                                 (&output_1[i_plan*dim_half*_dims_padded[1]]), NULL,
-                                 1, dim_half, FFTW_EXHAUSTIVE
+                                 1, dim_half, FFTW_PATIENT
                             );
 
         }
@@ -97,7 +97,7 @@ public: //Ctors:
                                 reinterpret_cast<fftw_complex*>
                                     (&output_2[i_plan*dim_half*_dims_padded[1] ]), NULL,
                                 dim_half, 1,
-                                FFTW_FORWARD, FFTW_EXHAUSTIVE
+                                FFTW_FORWARD, FFTW_PATIENT
                         );
         }
 
@@ -108,7 +108,7 @@ public: //Ctors:
                 reinterpret_cast<fftw_complex*>
                     (&output_[0]), NULL,
                 dim_half*_dims_padded[1], 1,
-                FFTW_FORWARD, FFTW_EXHAUSTIVE
+                FFTW_FORWARD, FFTW_PATIENT
                 );
 
 
@@ -246,7 +246,7 @@ public: //Ctors:
         //fftw_plan_with_nthreads(nthreads);
         plan = fftw_plan_dft_c2r_3d(_dims[2], _dims[1], _dims[0],
                  reinterpret_cast<fftw_complex*>(&input_[0]), &output_[0],
-                 FFTW_EXHAUSTIVE);
+                 FFTW_PATIENT);
 
         int dim_half = (_dims[2]/2)+1;
         c2c_dir_1 = fftw_plan_many_dft(1, &_dims[0], _dims[1] * dim_half,
@@ -256,7 +256,7 @@ public: //Ctors:
                         reinterpret_cast<fftw_complex*>
                             (&tmp_1_[0]), NULL,
                              _dims[1] * dim_half, 1,
-                        FFTW_BACKWARD, FFTW_EXHAUSTIVE
+                        FFTW_BACKWARD, FFTW_PATIENT
                 );
 
         ////Dir 1
@@ -271,7 +271,7 @@ public: //Ctors:
                                 reinterpret_cast<fftw_complex*>
                                     (&tmp_2_[ (i_plan + _dims_small[0]-1)*dim_half*_dims[1] ]), NULL,
                                 dim_half, 1,
-                        FFTW_BACKWARD, FFTW_EXHAUSTIVE
+                        FFTW_BACKWARD, FFTW_PATIENT
                 );
 
         }
@@ -287,7 +287,7 @@ public: //Ctors:
                                 1, dim_half,
                                 &output_[ (i_plan + _dims_small[0]-1)*_dims[2]*_dims[1] + _dims[2]*(_dims_small[1]-1)  ] , NULL,
                                 1, _dims[2],
-                                FFTW_EXHAUSTIVE
+                                FFTW_PATIENT
                                 );
         }
 
@@ -438,7 +438,11 @@ public: //Ctors
         complex_vector_t prod(f0.size());
 
         //xsimd::transform(f0.begin(), f0.end(), f1.begin(), tmp_prod.begin(),
-        //        [](const auto& x, const auto& y) { x+y; });
+        //        [](const auto& x, const auto& y) {return x*y; });
+
+        //xsimd::transform(tmp_prod.begin(), tmp_prod.end(),
+        //            fft_backward_.input().begin(), fft_backward_.input().begin(),
+        //        [](const auto& x, const auto& y) {return x+y; });
 
         simd_prod_complex_add(f0, f1,fft_backward_.input());
     }

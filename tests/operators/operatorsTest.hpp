@@ -42,13 +42,20 @@ struct parameters
     Dim,
      (
         //name               type        Dim   lBuffer  hBuffer, storage type
-         (phi_num          , float_type, 1,    1,       1,     cell),
-         (source           , float_type, 1,    1,       1,     cell),
-         (phi_exact        , float_type, 1,    1,       1,     cell),
-         (error            , float_type, 1,    1,       1,     cell),
-         (amr_lap_source   , float_type, 1,    1,       1,     cell),
-         (amr_div_source   , float_type, 1,    1,       1,     cell),
-         (error_lap_source , float_type, 1,    1,       1,     cell)
+         (grad_source      , float_type, 1,    1,       1,     cell),
+         (grad_target      , float_type, 3,    1,       1,     face),
+
+         (lap_source       , float_type, 1,    1,       1,     cell),
+         (lap_target       , float_type, 1,    1,       1,     cell),
+          
+         (div_source       , float_type, 3,    1,       1,     face),
+         (div_target       , float_type, 1,    1,       1,     cell),
+
+         (curl_source      , float_type, 3,    1,       1,     face),
+         (curl_target      , float_type, 3,    1,       1,     edge),
+
+         (nonlinear_source , float_type, 3,    1,       1,     face),
+         (nonlinear_target , float_type, 3,    1,       1,     face)
     ))
 };
 
@@ -100,21 +107,14 @@ struct OperatorTest:public SetupBase<OperatorTest,parameters>
         boost::mpi::communicator world;
         if(domain_->is_client())
         {
-            
             const float_type dx_base = domain_->dx_base();
-            //std::cout<<"BLA"<<std::endl; 
-
-            //mDuration_type solve_duration(0);
-            //TIME_CODE( solve_duration, SINGLE_ARG(
-            //        psolver.solve<source, phi_num>();
-            //))
-            //pcout_c<<"Total Psolve time: "
-            //      <<solve_duration.count()<<" on "<<world.size()<<std::endl;
 
             //Bufffer exchange of some fields 
             auto client=domain_->decomposition().client();
-            client->buffer_exchange<phi_num>();
-            client->buffer_exchange<face_aux>();
+            client->buffer_exchange<lap_source>();
+            client->buffer_exchange<div_source>();
+            client->buffer_exchange<curl_source>();
+            client->buffer_exchange<grad_source>();
 
             mDuration_type lap_duration(0);
             TIME_CODE( lap_duration, SINGLE_ARG(
@@ -122,17 +122,28 @@ struct OperatorTest:public SetupBase<OperatorTest,parameters>
                       it != domain_->end_leafs(); ++it)
             {
                 if(!it->locally_owned() || !it->data())continue;
-
-                auto dx_level =  dx_base/std::pow(2,it->refinement_level());
-                //domain::Operator::laplace<phi_num, amr_lap_source>( *(it->data()),dx_level);
-                //domain::Operator::divergence<face_aux, amr_div_source>( *(it->data()),dx_level);
+                auto dx_level =  1;//dx_base/std::pow(2,it->refinement_level());
+                domain::Operator::laplace<lap_source, lap_target>( *(it->data()),dx_level);
+                domain::Operator::divergence<div_source, div_target>( *(it->data()),dx_level);
+                domain::Operator::curl<curl_source,curl_target>( *(it->data()),dx_level);
+                domain::Operator::gradient<grad_source,grad_target>( *(it->data()),dx_level);
+                domain::Operator::nonlinear<nonlinear_source, curl_target,nonlinear_target>( *(it->data()),dx_level);
+            }
+            client->buffer_exchange<curl_target>();
+            client->buffer_exchange<nonlinear_source>();
+            for (auto it  = domain_->begin_leafs();
+                      it != domain_->end_leafs(); ++it)
+            {
+                if(!it->locally_owned() || !it->data())continue;
+                auto dx_level =  1;//dx_base/std::pow(2,it->refinement_level());
+                domain::Operator::nonlinear<nonlinear_source, curl_target,nonlinear_target>( *(it->data()),dx_level);
             }
             ))
-            pcout_c<<"Total Laplace time: "
+
+
+            pcout_c<<"Total time: "
                   <<lap_duration.count()<<" on "<<world.size()<<std::endl;
         }
-        this->compute_errors<phi_num,phi_exact,error>();
-        this->compute_errors<amr_lap_source,source,error_lap_source>("Lap");
 
         simulation_.write2("mesh.hdf5");
     }
@@ -166,11 +177,25 @@ struct OperatorTest:public SetupBase<OperatorTest,parameters>
            for(auto it2=nodes_domain.begin();it2!=nodes_domain.end();++it2 )
            {
                const auto& coord=it2->level_coordinate();
-               std::cout<<"coord  "<<coord<<std::endl;
-               it2->get<source>() = coord[0];
-               it2->get<face_aux>(0)= coord[0];
-               it2->get<face_aux>(1)= coord[1];
-               it2->get<face_aux>(2)= coord[2];
+
+               it2->get<grad_source>(0)= coord[0]*coord[0]+coord[1]+coord[2];
+
+               //TODO: 
+               it2->get<lap_source>(0)= coord[0];
+
+               it2->get<div_source>(0)= coord[0];
+               it2->get<div_source>(1)= coord[1];
+               it2->get<div_source>(2)= coord[2];
+
+               it2->get<curl_source>(0)= coord[0];
+               it2->get<curl_source>(1)= coord[1];
+               it2->get<curl_source>(2)= coord[2];
+
+               it2->get<nonlinear_source>(0)= coord[0];
+               it2->get<nonlinear_source>(1)= coord[1];
+               it2->get<nonlinear_source>(2)= coord[2];
+
+
            }
         }
     }

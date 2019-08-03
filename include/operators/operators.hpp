@@ -44,9 +44,11 @@ public:
     }
 
 
-    template<class Source, class DestTuple, class Block, 
+    template<class Source, class Dest, class Block, 
              typename std::enable_if<
-               Source::mesh_type == MeshObject::cell,
+               (Source::mesh_type == MeshObject::cell)&&
+               (Dest::mesh_type == MeshObject::face)
+               ,
             void>::type* = nullptr
             >
     static void gradient(Block& block, float_type dx_level) noexcept
@@ -55,13 +57,13 @@ public:
         const auto fac = 1.0/dx_level; 
         for(auto it2=nodes_domain.begin();it2!=nodes_domain.end();++it2 )
         {
-            it2->template get<DestTuple>(0)= 
+            it2->template get<Dest>(0)= 
                       fac*(it2->template get<Source>()-
                       it2->template at_offset<Source>(-1,0,0));
-            it2->template get<DestTuple>(1)= 
+            it2->template get<Dest>(1)= 
                       fac*(it2->template get<Source>()-
                       it2->template at_offset<Source>(0,-1,0));
-            it2->template get<DestTuple>(2)= 
+            it2->template get<Dest>(2)= 
                       fac*(it2->template get<Source>()-
                       it2->template at_offset<Source>(0,0,-1));
         }
@@ -92,13 +94,124 @@ public:
 
     template<class Source, class Dest, class Block,
              typename std::enable_if<
-                (Source::type == MeshObject::face) && 
-                (Dest::type   == MeshObject::edge), 
+                (Source::mesh_type == MeshObject::face) && 
+                (Dest::mesh_type   == MeshObject::edge), 
             void>::type* = nullptr
             >
-    static void curl(Block* block, float_type dx_level) noexcept
+    static void curl(Block& block, float_type dx_level) noexcept
     {
-        std::cout<<"Curl "<<std::endl;
+        auto& nodes_domain=block.nodes_domain();
+        const auto fac = 1.0/dx_level; 
+        for(auto it2=nodes_domain.begin();it2!=nodes_domain.end();++it2)
+        {
+            it2->template get<Dest>(0)=
+                +it2->template get<Source>(2) 
+                -it2->template at_offset<Source>(0,-1,0,2)
+                -it2->template get<Source>(1) 
+                +it2->template at_offset<Source>(0,0,-1,1);
+            it2->template get<Dest>(0)*=fac;
+
+            it2->template get<Dest>(1)=
+                +it2->template get<Source>(0)
+                -it2->template at_offset<Source>(0,0,-1,0)
+                -it2->template get<Source>(2)
+                +it2->template at_offset<Source>(-1,0,0,2);
+            it2->template get<Dest>(1)*=fac;
+
+            it2->template get<Dest>(2)=
+                +it2->template get<Source>(1)
+                -it2->template at_offset<Source>(-1,0,0,1)
+                -it2->template get<Source>(2)
+                +it2->template at_offset<Source>(0,-1,0,2);
+            it2->template get<Dest>(2)*=fac;
+        }
+    }
+
+    template<class Face, class Edge, class Dest, class Block,
+             typename std::enable_if<
+                (Face::mesh_type == MeshObject::face) && 
+                (Edge::mesh_type   == MeshObject::edge) &&
+                (Dest::mesh_type   == MeshObject::face), 
+            void>::type* = nullptr
+            >
+    static void nonlinear(Block& block, float_type dx_level) noexcept
+    {
+        auto& nodes_domain=block.nodes_domain();
+        for(auto it2=nodes_domain.begin();it2!=nodes_domain.end();++it2)
+        {
+            //TODO: Can be done much better by getting the appropriate nodes 
+            //      directly
+            it2->template get<Dest>(0)=0.25*
+            (
+                + it2->template at_offset<Edge>( 0, 0, 0,1)*
+                (
+                    +it2->template at_offset<Face>( 0, 0, 0,2)
+                    +it2->template at_offset<Face>(-1, 0, 0,2)
+                )
+                + it2->template at_offset<Edge>( 0, 0, 1,1)*
+                (
+                    +it2->template at_offset<Face>( 0, 0, 1,2)
+                    +it2->template at_offset<Face>(-1, 0, 1,2)
+                )
+                - it2->template at_offset<Edge>( 0, 0, 0,2)*
+                (
+                    +it2->template at_offset<Face>( 0, 0, 0,1)
+                    +it2->template at_offset<Face>(-1, 0, 0,1)
+                )
+                - it2->template at_offset<Edge>( 0, 1, 0,2)*
+                (
+                    +it2->template at_offset<Face>( 0, 1, 0,1)
+                    +it2->template at_offset<Face>(-1, 1, 0,1)
+                )
+            );
+
+            it2->template get<Dest>(1)=0.25*
+            (
+                + it2->template at_offset<Edge>( 0, 0, 0,2)*
+                (
+                    +it2->template at_offset<Face>( 0, 0, 0,0)
+                    +it2->template at_offset<Face>( 0,-1, 0,0)
+                )
+                + it2->template at_offset<Edge>( 1, 0, 0,2)*
+                (
+                    +it2->template at_offset<Face>( 1, 0, 0,0)
+                    +it2->template at_offset<Face>( 1,-1, 0,0)
+                )
+                - it2->template at_offset<Edge>( 0, 0, 0,0)*
+                (
+                    +it2->template at_offset<Face>( 0, 0, 0,2)
+                    +it2->template at_offset<Face>( 0,-1, 0,2)
+                )
+                - it2->template at_offset<Edge>( 0, 0, 1,0)*
+                (
+                    +it2->template at_offset<Face>( 0, 0, 1,2)
+                    +it2->template at_offset<Face>( 0,-1, 1,2)
+                )
+            );
+            it2->template get<Dest>(2)=0.25*
+            (
+                + it2->template at_offset<Edge>( 0, 0, 0,0)*
+                (
+                    +it2->template at_offset<Face>( 0, 0, 0,1)
+                    +it2->template at_offset<Face>( 0, 0,-1,1)
+                )
+                + it2->template at_offset<Edge>( 1, 0, 0,0)*
+                (
+                    +it2->template at_offset<Face>( 0, 1, 0,1)
+                    +it2->template at_offset<Face>( 0, 1,-1,1)
+                )
+                - it2->template at_offset<Edge>( 0, 0, 0,1)*
+                (
+                    +it2->template at_offset<Face>( 0, 0, 0,0)
+                    +it2->template at_offset<Face>( 0,-1, 0,0)
+                )
+                - it2->template at_offset<Edge>( 0, 0, 1,1)*
+                (
+                    +it2->template at_offset<Face>( 1, 0, 0,0)
+                    +it2->template at_offset<Face>( 1,-1, 0,0)
+                )
+            );
+        }
     }
 
 public:

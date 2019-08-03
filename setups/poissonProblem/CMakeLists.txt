@@ -8,4 +8,4 @@ target_link_libraries(poisson.x
                       ${Boost_LIBRARIES}
                       ${BLAS_LIBRARIES}
                       ${FFTW_LIBRARIES}  fftw3 blas
-                      xtensor)
+                      xtensor xsimd)

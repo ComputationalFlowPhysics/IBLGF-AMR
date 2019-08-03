@@ -43,6 +43,7 @@ private:
         octant_t* src;  //sending octant
         octant_t* dest; //recving octant
         view_type view; //field view of overlap 
+        int field_idx; //field view of overlap 
     };
 
 public: //members
@@ -51,17 +52,17 @@ public: //members
     /** @brief Compute and store communication task for halo echange of fields*/
     void compute_tasks(Domain* _domain, bool axis_neighbors_only=true) noexcept
     {
-        for (auto it  = _domain->begin_leafs();
-                  it != _domain->end_leafs(); ++it)
+        for(std::size_t j=0; j<Field::nFields;++j)
         {
-            if(!it->locally_owned()) continue;
-            for(std::size_t i=0;i< it->num_neighbors();++i)
+            for (auto it  = _domain->begin_leafs();
+                    it != _domain->end_leafs(); ++it)
             {
-                auto it2=it->neighbor(i);
-                if(!it2) continue;
-
-                for(std::size_t j=0; j<Field::nFields;++j)
+                if(!it->locally_owned()) continue;
+                for(std::size_t i=0;i< it->num_neighbors();++i)
                 {
+                    auto it2=it->neighbor(i);
+                    if(!it2) continue;
+
                     auto& field = it->data()->template get<Field>(j);
                     auto& field2 = it2->data()->template get<Field>(j);
 
@@ -71,6 +72,7 @@ public: //members
                         interface sif;
                         sif.src=*it;
                         sif.dest=it2;
+                        sif.field_idx=j;
                         sif.view=std::move(overlap_opt.value());
 
                         if(axis_neighbors_only &&
@@ -90,6 +92,7 @@ public: //members
                         interface sif;
                         sif.src=it2; 
                         sif.dest=*it;
+                        sif.field_idx=j;
                         sif.view=std::move(overlap_opt.value());
 
                         if(axis_neighbors_only &&
@@ -110,12 +113,28 @@ public: //members
 
         //sort & combine tasks
         for(int rank_other=0;
-            rank_other < static_cast<int>(inter_send_interface.size());
-            ++rank_other)
+                rank_other < static_cast<int>(inter_send_interface.size());
+                ++rank_other)
         {
             auto compare=[&](const auto& c0, const auto& c1)
             {
-                return (c0.dest->key().id()== c1.dest->key().id()) ? 
+                if(c0.dest->key().id() == c1.dest->key().id())
+                {
+                    if(c0.src->key().id() == c1.src->key().id())
+                    {
+                        return c0.field_idx<c1.field_idx;
+                    }
+                    else
+                    {
+                        return c0.src->key().id()< c1.src->key().id();
+
+                    }
+                }
+                else
+                {
+                    return c0.dest->key().id()< c1.dest->key().id();
+                }
+                return (c0.dest->key().id() == c1.dest->key().id()) ? 
                     (c0.src->key().id()< c1.src->key().id() ) : 
                     (c0.dest->key().id()< c1.dest->key().id() );
             };
@@ -166,12 +185,9 @@ public: //members
         //Copy locally owned fields to buffers:
         for(auto& sf  : intra_send_interface)
         {
-            for(std::size_t i=0;i<Field::nFields;++i)
-            {
-                auto& dfield=sf.dest->data()->template get<Field>(i);
-                auto dest_view = dfield.view(sf.view);
-                dest_view.assign_toView( sf.view );
-            }
+            auto& dfield=sf.dest->data()->template get<Field>(sf.field_idx);
+            auto dest_view = dfield.view(sf.view);
+            dest_view.assign_toView( sf.view );
         }
 
         //Copy data into buffer:

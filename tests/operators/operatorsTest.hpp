@@ -309,7 +309,7 @@ struct OperatorTest:public SetupBase<OperatorTest,parameters>
 
                it2->get<nonlinear_exact>(2)=
                    -tmpf2*(2*a_*xf2*tmpf2 - 2*a_*zf2*tmpf2) - 
-                   tmpf2*(2*a_*yf2*tmpf2 - 2*a_*zf2*tmpf2);
+                    tmpf2*(2*a_*yf2*tmpf2 - 2*a_*zf2*tmpf2);
 
 
            }

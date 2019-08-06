@@ -55,7 +55,7 @@ public: //members
 
 
     /** @brief Compute and store communication task for halo echange of fields*/
-    void compute_tasks(Domain* _domain, bool axis_neighbors_only=true) noexcept
+    void compute_tasks(Domain* _domain, bool axis_neighbors_only=false) noexcept
     {
         for(std::size_t j=0; j<Field::nFields;++j)
         {

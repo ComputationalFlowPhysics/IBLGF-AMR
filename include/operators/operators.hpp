@@ -121,8 +121,8 @@ public:
             it2->template get<Dest>(2)=
                 +it2->template get<Source>(1)
                 -it2->template at_offset<Source>(-1,0,0,1)
-                -it2->template get<Source>(2)
-                +it2->template at_offset<Source>(0,-1,0,2);
+                -it2->template get<Source>(0)
+                +it2->template at_offset<Source>(0,-1,0,0);
             it2->template get<Dest>(2)*=fac;
         }
     }
@@ -195,7 +195,7 @@ public:
                     +it2->template at_offset<Face>( 0, 0, 0,1)
                     +it2->template at_offset<Face>( 0, 0,-1,1)
                 )
-                + it2->template at_offset<Edge>( 1, 0, 0,0)*
+                + it2->template at_offset<Edge>( 0, 1, 0,0)*
                 (
                     +it2->template at_offset<Face>( 0, 1, 0,1)
                     +it2->template at_offset<Face>( 0, 1,-1,1)
@@ -203,12 +203,12 @@ public:
                 - it2->template at_offset<Edge>( 0, 0, 0,1)*
                 (
                     +it2->template at_offset<Face>( 0, 0, 0,0)
-                    +it2->template at_offset<Face>( 0,-1, 0,0)
+                    +it2->template at_offset<Face>( 0, 0,-1,0)
                 )
-                - it2->template at_offset<Edge>( 0, 0, 1,1)*
+                - it2->template at_offset<Edge>( 1, 0, 0,1)*
                 (
                     +it2->template at_offset<Face>( 1, 0, 0,0)
-                    +it2->template at_offset<Face>( 1,-1, 0,0)
+                    +it2->template at_offset<Face>( 1, 0,-1,0)
                 )
             );
         }

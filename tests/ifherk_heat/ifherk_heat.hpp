@@ -190,7 +190,6 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
                    //x+=offset_[2];
 
                const float_type r=std::sqrt(x*x+y*y+z*z) ;
-
                /***********************************************************/
 
                float_type r_2 = r*r;
@@ -343,8 +342,8 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
 
 
 
-        auto lower_t = (b.base()-center);
-        auto upper_t= (b.max()+1 -center);
+        //auto lower_t = (b.base()-center);
+        //auto upper_t= (b.max()+1 -center);
 
         for(int i=b.base()[0];i<=b.max()[0];++i)
         {

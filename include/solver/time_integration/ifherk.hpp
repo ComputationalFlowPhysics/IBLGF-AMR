@@ -299,8 +299,8 @@ private:
 
 
 private:
-    domain_type*                      domain_;    ///< domain
     simulation_type*  simulation_;
+    domain_type* domain_;    ///< domain
     poisson_solver_t psolver;
 
     float_type T_;

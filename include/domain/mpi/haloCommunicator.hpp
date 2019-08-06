@@ -48,6 +48,11 @@ private:
 
 public: //members
 
+    void extrapolate_to_buffer()
+    {
+        //
+    }
+
 
     /** @brief Compute and store communication task for halo echange of fields*/
     void compute_tasks(Domain* _domain, bool axis_neighbors_only=true) noexcept

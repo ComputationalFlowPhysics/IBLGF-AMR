@@ -44,18 +44,28 @@ struct parameters
         //name               type        Dim   lBuffer  hBuffer, storage type
          (grad_source      , float_type, 1,    1,       1,     cell),
          (grad_target      , float_type, 3,    1,       1,     face),
+         (grad_exact       , float_type, 3,    1,       1,     face),
+         (grad_error       , float_type, 3,    1,       1,     face),
 
          (lap_source       , float_type, 1,    1,       1,     cell),
          (lap_target       , float_type, 1,    1,       1,     cell),
+         (lap_exact        , float_type, 1,    1,       1,     cell),
+         (lap_error        , float_type, 1,    1,       1,     cell),
           
          (div_source       , float_type, 3,    1,       1,     face),
          (div_target       , float_type, 1,    1,       1,     cell),
+         (div_exact        , float_type, 1,    1,       1,     cell),
+         (div_error        , float_type, 1,    1,       1,     cell),
 
          (curl_source      , float_type, 3,    1,       1,     face),
          (curl_target      , float_type, 3,    1,       1,     edge),
+         (curl_exact       , float_type, 3,    1,       1,     edge),
+         (curl_error       , float_type, 3,    1,       1,     edge),
 
          (nonlinear_source , float_type, 3,    1,       1,     face),
-         (nonlinear_target , float_type, 3,    1,       1,     face)
+         (nonlinear_target , float_type, 3,    1,       1,     face),
+         (nonlinear_exact  , float_type, 3,    1,       1,     face),
+         (nonlinear_error  , float_type, 3,    1,       1,     face)
     ))
 };
 
@@ -115,6 +125,9 @@ struct OperatorTest:public SetupBase<OperatorTest,parameters>
             client->buffer_exchange<div_source>();
             client->buffer_exchange<curl_source>();
             client->buffer_exchange<grad_source>();
+            client->buffer_exchange<curl_exact>();
+            client->buffer_exchange<nonlinear_source>();
+
 
             mDuration_type lap_duration(0);
             TIME_CODE( lap_duration, SINGLE_ARG(
@@ -122,21 +135,20 @@ struct OperatorTest:public SetupBase<OperatorTest,parameters>
                       it != domain_->end_leafs(); ++it)
             {
                 if(!it->locally_owned() || !it->data())continue;
-                auto dx_level =  1;//dx_base/std::pow(2,it->refinement_level());
+                auto dx_level =  dx_base/std::pow(2,it->refinement_level());
                 domain::Operator::laplace<lap_source, lap_target>( *(it->data()),dx_level);
                 domain::Operator::divergence<div_source, div_target>( *(it->data()),dx_level);
                 domain::Operator::curl<curl_source,curl_target>( *(it->data()),dx_level);
                 domain::Operator::gradient<grad_source,grad_target>( *(it->data()),dx_level);
-                domain::Operator::nonlinear<nonlinear_source, curl_target,nonlinear_target>( *(it->data()),dx_level);
             }
             client->buffer_exchange<curl_target>();
-            client->buffer_exchange<nonlinear_source>();
             for (auto it  = domain_->begin_leafs();
                       it != domain_->end_leafs(); ++it)
             {
                 if(!it->locally_owned() || !it->data())continue;
-                auto dx_level =  1;//dx_base/std::pow(2,it->refinement_level());
-                domain::Operator::nonlinear<nonlinear_source, curl_target,nonlinear_target>( *(it->data()),dx_level);
+                auto dx_level =  dx_base/std::pow(2,it->refinement_level());
+                domain::Operator::nonlinear<nonlinear_source, 
+                    curl_target,nonlinear_target>( *(it->data()),dx_level);
             }
             ))
 
@@ -145,6 +157,11 @@ struct OperatorTest:public SetupBase<OperatorTest,parameters>
                   <<lap_duration.count()<<" on "<<world.size()<<std::endl;
         }
 
+        this->compute_errors<lap_target,lap_exact,lap_error>("Lap_");
+        this->compute_errors<grad_target,grad_exact,grad_error>("Grad_");
+        this->compute_errors<div_target,div_exact,div_error>("Div_");
+        this->compute_errors<curl_target,curl_exact,curl_error>("Curl_");
+        this->compute_errors<nonlinear_target,nonlinear_exact,nonlinear_error>("Nonlin_");
         simulation_.write2("mesh.hdf5");
     }
 
@@ -178,22 +195,121 @@ struct OperatorTest:public SetupBase<OperatorTest,parameters>
            {
                const auto& coord=it2->level_coordinate();
 
-               it2->get<grad_source>(0)= coord[0]*coord[0]+coord[1]+coord[2];
+               //Cell centered coordinates
+               //This can obviously be made much less verbose
+               float_type xc = static_cast<float_type>
+                   (coord[0]-center[0]*scaling+0.5)*dx_level;
+               float_type yc = static_cast<float_type>
+                   (coord[1]-center[1]*scaling+0.5)*dx_level;
+               float_type zc = static_cast<float_type>
+                   (coord[2]-center[2]*scaling+0.5)*dx_level;
 
-               //TODO: 
-               it2->get<lap_source>(0)= coord[0];
+               //Face centered coordinates
+               float_type xf0 = static_cast<float_type>
+                   (coord[0]-center[0]*scaling)*dx_level;
+               float_type yf0 = yc;
+               float_type zf0 = zc;
 
-               it2->get<div_source>(0)= coord[0];
-               it2->get<div_source>(1)= coord[1];
-               it2->get<div_source>(2)= coord[2];
+               float_type xf1 = xc;
+               float_type yf1 = static_cast<float_type>
+                   (coord[1]-center[1]*scaling)*dx_level;
+               float_type zf1 = zc;
 
-               it2->get<curl_source>(0)= coord[0];
-               it2->get<curl_source>(1)= coord[1];
-               it2->get<curl_source>(2)= coord[2];
+               float_type xf2 = xc;
+               float_type yf2 = yc;
+               float_type zf2 = static_cast<float_type>
+                   (coord[2]-center[2]*scaling)*dx_level;
 
-               it2->get<nonlinear_source>(0)= coord[0];
-               it2->get<nonlinear_source>(1)= coord[1];
-               it2->get<nonlinear_source>(2)= coord[2];
+               //Edge centered coordinates
+               float_type xe0 = static_cast<float_type>
+                   (coord[0]-center[0]*scaling+0.5)*dx_level;
+               float_type ye0 = static_cast<float_type>
+                   (coord[1]-center[1]*scaling)*dx_level;
+               float_type ze0 = static_cast<float_type>
+                   (coord[2]-center[2]*scaling)*dx_level;
+               float_type xe1 = static_cast<float_type>
+                   (coord[0]-center[0]*scaling)*dx_level;
+               float_type ye1 = static_cast<float_type>
+                   (coord[1]-center[1]*scaling+0.5)*dx_level;
+               float_type ze1 = static_cast<float_type>
+                   (coord[2]-center[2]*scaling)*dx_level;
+               float_type xe2 = static_cast<float_type>
+                   (coord[0]-center[0]*scaling)*dx_level;
+               float_type ye2 = static_cast<float_type>
+                   (coord[1]-center[1]*scaling)*dx_level;
+               float_type ze2 = static_cast<float_type>
+                   (coord[2]-center[2]*scaling+0.5)*dx_level;
+
+
+               const float_type r=std::sqrt(xc*xc+yc*yc+zc*zc) ;
+               const float_type rf0=std::sqrt(xf0*xf0+yf0*yf0+zf0*zf0) ;
+               const float_type rf1=std::sqrt(xf1*xf1+yf1*yf1+zf1*zf1) ;
+               const float_type rf2=std::sqrt(xf2*xf2+yf2*yf2+zf2*zf2) ;
+               const float_type re0=std::sqrt(xe0*xe0+ye0*ye0+ze0*ze0) ;
+               const float_type re1=std::sqrt(xe1*xe1+ye1*ye1+ze1*ze1) ;
+               const float_type re2=std::sqrt(xe2*xe2+ye2*ye2+ze2*ze2) ;
+               const float_type a2=a_*a_;
+               const float_type xc2=xc*xc;
+               const float_type yc2=yc*yc;
+               const float_type zc2=zc*zc;
+               /***********************************************************/
+
+               float_type r_2 = r*r;
+               const auto fct=std::exp(-a_*r_2);
+               const auto tmpc = std::exp(-a_*r_2) ;
+
+               const auto tmpf0 = std::exp(-a_*rf0*rf0);
+               const auto tmpf1 = std::exp(-a_*rf1*rf1);
+               const auto tmpf2 = std::exp(-a_*rf2*rf2);
+
+               const auto tmpe0 = std::exp(-a_*re0*re0);
+               const auto tmpe1 = std::exp(-a_*re1*re1);
+               const auto tmpe2 = std::exp(-a_*re2*re2);
+
+               //Gradient
+               it2->get<grad_source>()= fct;
+               it2->get<grad_exact>(0)=-2*a_*xf0*tmpf0; 
+               it2->get<grad_exact>(1)=-2*a_*yf1*tmpf1;
+               it2->get<grad_exact>(2)=-2*a_*zf2*tmpf2;
+
+               //Laplace
+               it2->get<lap_source>(0)= tmpc;
+               it2->get<lap_exact>()=-6*a_*tmpc 
+                                   +4*a2*xc2*tmpc 
+                                   +4*a2*yc2*tmpc
+                                   +4*a2*zc2*tmpc;
+
+               //Divergence
+               it2->get<div_source>(0)= tmpf0;
+               it2->get<div_source>(1)= tmpf1;
+               it2->get<div_source>(2)= tmpf2;
+               it2->get<div_exact>(0)= -2*a_*xc*tmpc -2*a_*yc*tmpc-2*a_*zc*tmpc;
+
+               //Curl
+               it2->get<curl_source>(0)= tmpf0;
+               it2->get<curl_source>(1)= tmpf1;
+               it2->get<curl_source>(2)= tmpf2;
+
+               it2->get<curl_exact>(0)= 2*a_*ze0*tmpe0 - 2*a_*ye0*tmpe0;
+               it2->get<curl_exact>(1)= 2*a_*xe1*tmpe1 - 2*a_*ze1*tmpe1;
+               it2->get<curl_exact>(2)= 2*a_*ye2*tmpe2 - 2*a_*xe2*tmpe2;
+
+               //non_linear
+               it2->get<nonlinear_source>(0)= tmpf0;
+               it2->get<nonlinear_source>(1)= tmpf1;
+               it2->get<nonlinear_source>(2)= tmpf2;
+
+               it2->get<nonlinear_exact>(0)=
+                tmpf0*(2*a_*xf0*tmpf0 - 2*a_*yf0*tmpf0) + 
+                tmpf0*(2*a_*xf0*tmpf0 - 2*a_*zf0*tmpf0);
+
+               it2->get<nonlinear_exact>(1)=
+                   tmpf1*(2*a_*yf1*tmpf1 - 2*a_*zf1*tmpf1) - 
+                   tmpf1*(2*a_*xf1*tmpf1 - 2*a_*yf1*tmpf1);
+
+               it2->get<nonlinear_exact>(2)=
+                   -tmpf2*(2*a_*xf2*tmpf2 - 2*a_*zf2*tmpf2) - 
+                   tmpf2*(2*a_*yf2*tmpf2 - 2*a_*zf2*tmpf2);
 
 
            }
@@ -230,33 +346,36 @@ struct OperatorTest:public SetupBase<OperatorTest,parameters>
             auto& nodes_domain=it_t->data()->nodes_domain();
             for(auto it2=nodes_domain.begin();it2!=nodes_domain.end();++it2 )
             {
-                float_type tmp_exact = it2->template get<Exact>();
-                float_type tmp_num   = it2->template get<Numeric>();
+                for(std::size_t i=0;i<Exact::nFields;++i)
+                {
+                    float_type tmp_exact = it2->template get<Exact>(i);
+                    float_type tmp_num   = it2->template get<Numeric>(i);
 
-                float_type error_tmp = tmp_num - tmp_exact;
+                    float_type error_tmp = tmp_num - tmp_exact;
 
-                it2->template get<Error>() = error_tmp;
+                    it2->template get<Error>(i) = error_tmp;
 
-                L2 += error_tmp*error_tmp * (dx*dx*dx);
-                L2_exact += tmp_exact*tmp_exact*(dx*dx*dx);
+                    L2 += error_tmp*error_tmp * (dx*dx*dx);
+                    L2_exact += tmp_exact*tmp_exact*(dx*dx*dx);
 
-                L2_perLevel[refinement_level]+=error_tmp*error_tmp* (dx*dx*dx);
-                L2_exact_perLevel[refinement_level]+=tmp_exact*tmp_exact*(dx*dx*dx);
-                ++counts[refinement_level];
+                    L2_perLevel[refinement_level]+=error_tmp*error_tmp* (dx*dx*dx);
+                    L2_exact_perLevel[refinement_level]+=tmp_exact*tmp_exact*(dx*dx*dx);
+                    ++counts[refinement_level];
 
-                if ( std::fabs(tmp_exact) > LInf_exact)
-                    LInf_exact = std::fabs(tmp_exact);
+                    if ( std::fabs(tmp_exact) > LInf_exact)
+                        LInf_exact = std::fabs(tmp_exact);
 
-                if ( std::fabs(error_tmp) > LInf)
-                    LInf = std::fabs(error_tmp);
+                    if ( std::fabs(error_tmp) > LInf)
+                        LInf = std::fabs(error_tmp);
 
-                if ( std::fabs(error_tmp) > LInf_perLevel[refinement_level] )
-                    LInf_perLevel[refinement_level]=std::fabs(error_tmp);
+                    if ( std::fabs(error_tmp) > LInf_perLevel[refinement_level] )
+                        LInf_perLevel[refinement_level]=std::fabs(error_tmp);
 
-                if ( std::fabs(tmp_exact) > LInf_exact_perLevel[refinement_level] )
-                    LInf_exact_perLevel[refinement_level]=std::fabs(tmp_exact);
+                    if ( std::fabs(tmp_exact) > LInf_exact_perLevel[refinement_level] )
+                        LInf_exact_perLevel[refinement_level]=std::fabs(tmp_exact);
 
-                ++count;
+                    ++count;
+                }
             }
         }
 
@@ -308,8 +427,6 @@ struct OperatorTest:public SetupBase<OperatorTest,parameters>
             pcout_c<<_output_prefix<<"LInf_"<<i<<" "<<LInf_perLevel_global[i]<<std::endl;
             pcout_c<<"count_"<<i<<" "<<counts_global[i]<<std::endl;
         }
-
-
     }
 
 
@@ -337,7 +454,7 @@ struct OperatorTest:public SetupBase<OperatorTest,parameters>
     float_type eps_grad_=1.0e6;;
     int nLevels_=0;
     int global_refinement_;
-    fcoord_t offset_;
+    float_type a_ = 100.0;
 };
 
 

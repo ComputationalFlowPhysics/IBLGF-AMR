@@ -118,9 +118,9 @@ public:
         // Maps construction
 
         // Ke TODO: check if this is ok
-        this->construct_leaf_maps();
-        this->construct_level_maps();
-        this->construct_neighbor_lists();
+        //this->construct_leaf_maps();
+        //this->construct_level_maps();
+        //this->construct_neighbor_lists();
         //this->construct_influence_lists();
 
     }
@@ -134,6 +134,7 @@ public:
         root_ = std::make_shared<octant_type>(coordinate_type(0), 0, this);
         for (auto& k : _keys)
         {
+
             auto octant = this->insert_td(k);
             f(octant);
             if (octant->level()+1 > depth_) depth_=octant->level()+1;
@@ -221,6 +222,33 @@ public:
     int& depth           () noexcept      {return depth_;}
 
     octant_type* root()const noexcept{return root_.get();}
+
+    template<class Function>
+    void insert_correction_neighbor(octant_type* _l, const Function& _f)
+    {
+
+        bool _neighbors_exists=true;
+        for(int i=0;i<_l->nNeighbors();++i)
+        {
+            if(!_l->neighbor(i))
+                _neighbors_exists=false;
+            else if(!_l->neighbor(i)->data())
+                _neighbors_exists=false;
+        }
+
+        if (!_neighbors_exists)
+        {
+            std::set<key_type> _neighbor_keys;
+            neighbor_lookup(_l, _neighbor_keys,true );
+
+            for(auto&k: _neighbor_keys)
+            {
+                auto _neighbor=this->insert_td(k);
+                _f(_neighbor);
+                _neighbor->flag_correction(true);
+            }
+        }
+    }
 
     template<class Function>
     void refine(octant_type* _l, const Function& _f,
@@ -459,7 +487,7 @@ public: // neighborlist
         }
     }
 
-private: // neighborlist
+public: // neighborlist
     /** @brief Construction neighbor list based on  local tree */
     void neighbor_lookup( octant_type* it,
                           std::set<key_type>& res,
@@ -769,6 +797,32 @@ public: //children and parent queries
     }
 
     template<class Client>
+    void query_corrections( Client* _c)
+    {
+        boost::mpi::communicator  w;
+
+        dfs_iterator it_begin(root()); dfs_iterator it_end;
+
+        std::vector<key_type> keys;
+        for(auto it =it_begin;it!=it_end;++it)
+        {
+            keys.emplace_back(it->key());
+        }
+
+        auto corrections=_c->correction_query( keys );
+
+        for(std::size_t i = 0; i < corrections.size();++i )
+        {
+            auto nn = this->find_octant(keys[i]);
+            if (!nn)
+                throw std::runtime_error(
+                        "didn't find key for correction query");
+            nn->flag_correction((corrections[i]));
+        }
+
+    }
+
+    template<class Client>
     void query_leafs( Client* _c)
     {
         boost::mpi::communicator  w;
@@ -778,11 +832,6 @@ public: //children and parent queries
         std::vector<key_type> keys;
         for(auto it =it_begin;it!=it_end;++it)
         {
-            if (it->has_locally_owned_children())
-            {
-                it->flag_leaf(false);
-                continue;
-            }
             keys.emplace_back(it->key());
         }
 

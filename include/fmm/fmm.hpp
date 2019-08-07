@@ -180,7 +180,26 @@ public:
 
                 it->add_load(it->neighbor_number() * _load_factor);
             }
+            //// Add correction buffers to the source
+            //for (auto it = domain_->begin(base_level);
+            //        it != domain_->end(base_level); ++it)
+            //{
+            //    if (it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Source))
+            //    {
+            //        for(int i=0;i<it->nNeighbors();++i)
+            //        {
+            //            auto it2=it->neighbor(i);
+            //            if (!it2) continue;
+            //            it2->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Source, true);
+            //        }
+            //    }
+            //    if (!_neighbor_only)
+            //        it->add_load(it->influence_number() * _load_factor);
+
+            //    it->add_load(it->neighbor_number() * _load_factor);
+            //}
         }
+
     }
 };
 
@@ -574,13 +593,13 @@ public:
                 auto lin_data_1 = it->data()->template get_linalg_data<from>();
                 auto lin_data_2 = it->data()->template get_linalg_data<to>();
 
-                //xt::noalias( view(lin_data_2,
-                //                    xt::range(1,-1),  xt::range(1,-1), xt::range(1,-1)) ) =
-                // view(lin_data_1, xt::range(1,-1),  xt::range(1,-1), xt::range(1,-1));
+                xt::noalias( view(lin_data_2,
+                                    xt::range(1,-1),  xt::range(1,-1), xt::range(1,-1)) ) =
+                 view(lin_data_1, xt::range(1,-1),  xt::range(1,-1), xt::range(1,-1));
 
-                it->data()->template get_linalg<to>().get()->
-                    cube_noalias_view() =
-                     it->data()->template get_linalg_data<from>() * 1.0;
+                //it->data()->template get_linalg<to>().get()->
+                //    cube_noalias_view() =
+                //     it->data()->template get_linalg_data<from>() * 1.0;
             }
         }
 

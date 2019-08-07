@@ -159,6 +159,7 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
         //center+=0.5/std::pow(2,nRef);
         const float_type dx_base = domain_->dx_base();
 
+
         for (auto it  = domain_->begin_leafs();
                   it != domain_->end_leafs(); ++it)
         {
@@ -180,21 +181,18 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
                const auto& coord=it2->level_coordinate();
 
                float_type x = static_cast<float_type>
-                   (coord[0]-center[0]*scaling)*dx_level;
-                   //x+=offset_[0];
+                   (coord[0]-center[0]*scaling+0.5)*dx_level;
                float_type y = static_cast<float_type>
-                   (coord[1]-center[1]*scaling)*dx_level;
-                   //x+=offset_[1];
+                   (coord[1]-center[1]*scaling+0.5)*dx_level;
                float_type z = static_cast<float_type>
-                   (coord[2]-center[2]*scaling)*dx_level;
-                   //x+=offset_[2];
+                   (coord[2]-center[2]*scaling+0.5)*dx_level;
 
                const float_type r=std::sqrt(x*x+y*y+z*z) ;
                /***********************************************************/
 
                float_type r_2 = r*r;
                it2->template get<u>(0)=std::exp(-a_*r_2);
-               it2->template get<u>(1)=0;
+               it2->template get<u>(1)=10.0;
                it2->template get<u>(2)=0;
 
                it2->template get<u_0_exact>() =
@@ -364,7 +362,7 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
                     float_type r_2 = r*r;
                     float_type u=std::exp(-a_*r_2);
 
-                    if(u > 1.0*pow(0.25*0.25, diff_level))
+                    if(u > 1.0*pow(0.25, diff_level))
                     {
                         return true;
                     }

@@ -126,7 +126,7 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
     void run()
     {
         boost::mpi::communicator world;
-        //simulation_.write2("mesh.hdf5");
+        simulation_.write2("mesh.hdf5");
         if(domain_->is_client())
         {
             poisson_solver_t psolver(&this->simulation_);

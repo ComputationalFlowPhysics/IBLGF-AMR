@@ -144,9 +144,12 @@ public: //Ctors
         return res;
     }
 
-    bool is_leaf()const noexcept{return flag_leaf_;}
+    bool is_correction()const noexcept{return flag_correction_;}
+    void flag_correction(const bool flag)noexcept {flag_correction_ = flag;}
 
+    bool is_leaf()const noexcept{return flag_leaf_;}
     void flag_leaf(const bool flag)noexcept {flag_leaf_ = flag;}
+
     void flag_mask(const fmm_mask_type fmm_flag)noexcept {fmm_masks_ = fmm_flag;}
 
     bool is_leaf_search() const noexcept
@@ -409,6 +412,7 @@ private:
     int influence_num = 0;
     std::array<Octant*, 189 > influence_= {nullptr};
     bool flag_leaf_=false;
+    bool flag_correction_=false;
     //std::array<bool, Mask_Last + 1> masks_ = {false};
 
     fmm_mask_type fmm_masks_;

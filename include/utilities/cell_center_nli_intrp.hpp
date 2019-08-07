@@ -62,9 +62,8 @@ namespace interpolation
                     if (!child ) continue;
                     if (!child->locally_owned()) continue;
                     if (!child->data()) continue;
-                    if(!child->data()->is_allocated()) continue;
+                    if (!child->data()->is_allocated()) continue;
 
-                    //child_target_L_tmp *= 0.0;
                     auto& child_target_tmp  = child ->data()->template get_linalg_data<from>();
 
                     auto& child_linalg_data  = child ->data()->template get_linalg_data<to>();
@@ -90,15 +89,20 @@ namespace interpolation
              class to,
             typename octant_t
         >
-        void nli_intrp_node(octant_t parent)
+        void nli_intrp_node(octant_t parent, bool correction_only = false)
             {
                 auto& parent_linalg_data = parent->data()->template get_linalg_data<from>();
 
                 for (int i = 0; i < parent->num_children(); ++i)
                 {
                     auto child = parent->child(i);
-                    if (child == nullptr || !child ->data()) continue;
-                    if(!child->data()->is_allocated()) continue;
+                    if (child == nullptr ||
+                            !child ->data() ||
+                            !child->data()->is_allocated())
+                        continue;
+
+                    if (correction_only && !child->is_correction())
+                        continue;
 
                     auto& child_linalg_data  = child ->data()->template get_linalg_data<to>();
                     nli_intrp_node(child_linalg_data, parent_linalg_data, i);
@@ -157,12 +161,16 @@ namespace interpolation
                 {
 
                     auto child = parent->child(i);
-                    if (child == nullptr) continue;
+                    if (child == nullptr ||
+                            !child ->data() ||
+                            !child->data()->is_allocated())
+                        continue;
 
-                    auto& child_linalg_data  = child ->data()->template get_linalg_data<field>();
+                    auto& child_linalg_data = child ->data()->
+                        template get_linalg_data<field>();
+
                     nli_antrp_node(child_linalg_data, parent_linalg_data, i);
                 }
-
 
             }
 

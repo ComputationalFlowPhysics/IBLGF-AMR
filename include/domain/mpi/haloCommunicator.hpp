@@ -9,7 +9,7 @@
 namespace sr_mpi
 {
 
-/** @brief Communicate field buffers/halos for a given fields and a task type 
+/** @brief Communicate field buffers/halos for a given fields and a task type
  */
 template<class TaskType,class Field,class Domain>
 class HaloCommunicator
@@ -42,8 +42,8 @@ private:
     {
         octant_t* src;  //sending octant
         octant_t* dest; //recving octant
-        view_type view; //field view of overlap 
-        int field_idx; //field view of overlap 
+        view_type view; //field view of overlap
+        int field_idx; //field view of overlap
     };
 
 public: //members
@@ -55,18 +55,21 @@ public: //members
 
 
     /** @brief Compute and store communication task for halo echange of fields*/
-    void compute_tasks(Domain* _domain, bool axis_neighbors_only=false) noexcept
+    void compute_tasks(Domain* _domain, int _level, bool axis_neighbors_only=false) noexcept
     {
         for(std::size_t j=0; j<Field::nFields;++j)
         {
-            for (auto it  = _domain->begin_leafs();
-                    it != _domain->end_leafs(); ++it)
+            for (auto it  = _domain->begin(_level);
+                    it != _domain->end(_level); ++it)
             {
                 if(!it->locally_owned()) continue;
+                if(!it->data() || !it->data()->is_allocated()) continue;
+
                 for(std::size_t i=0;i< it->num_neighbors();++i)
                 {
                     auto it2=it->neighbor(i);
                     if(!it2) continue;
+                    if(!it2->data()) continue;
 
                     auto& field = it->data()->template get<Field>(j);
                     auto& field2 = it2->data()->template get<Field>(j);
@@ -75,19 +78,19 @@ public: //members
                     if(auto overlap_opt = field.send_view( field2  ) )
                     {
                         interface sif;
-                        sif.src=*it;
+                        sif.src=*it;//it.ptr();
                         sif.dest=it2;
                         sif.field_idx=j;
                         sif.view=std::move(overlap_opt.value());
 
                         if(axis_neighbors_only &&
-                                (static_cast<int>(sif.view.nPoints()) <= 
+                                (static_cast<int>(sif.view.nPoints()) <=
                                  field.extent()[0])
                           ) continue;
 
-                        if(it2->locally_owned())
+                        if (it2->locally_owned())
                             intra_send_interface.emplace_back(std::move(sif));
-                        else                         
+                        else
                             inter_send_interface[it2->rank()].
                                 emplace_back(std::move(sif));
                     }
@@ -95,13 +98,13 @@ public: //members
                     if(auto overlap_opt = field.recv_view( field2  ) )
                     {
                         interface sif;
-                        sif.src=it2; 
-                        sif.dest=*it;
+                        sif.src=it2;
+                        sif.dest=*it;//it.ptr();
                         sif.field_idx=j;
                         sif.view=std::move(overlap_opt.value());
 
                         if(axis_neighbors_only &&
-                                (static_cast<int>(sif.view.nPoints()) <= 
+                                (static_cast<int>(sif.view.nPoints()) <=
                                  field.extent()[0])
                           ) continue;
 
@@ -139,8 +142,8 @@ public: //members
                 {
                     return c0.dest->key().id()< c1.dest->key().id();
                 }
-                return (c0.dest->key().id() == c1.dest->key().id()) ? 
-                    (c0.src->key().id()< c1.src->key().id() ) : 
+                return (c0.dest->key().id() == c1.dest->key().id()) ?
+                    (c0.src->key().id()< c1.src->key().id() ) :
                     (c0.dest->key().id()< c1.dest->key().id() );
             };
 
@@ -196,7 +199,7 @@ public: //members
         }
 
         //Copy data into buffer:
-        for(int rank_other=0; 
+        for(int rank_other=0;
             rank_other < static_cast<int>(inter_send_interface.size());
             ++rank_other)
         {
@@ -207,7 +210,7 @@ public: //members
                 send_tasks_[rank_other]=nullptr;
                 continue;
             }
-            if (rtasks.empty()) 
+            if (rtasks.empty())
             {
                 recv_tasks_[rank_other]=nullptr;
                 continue;
@@ -226,7 +229,7 @@ public: //members
             int count=0;
             for(auto& interfc : inter_send_interface[rank_other] )
             {
-                interfc.view.iterate([&](const auto& val){ 
+                interfc.view.iterate([&](const auto& val){
                     send_fields_[rank_other][count++]=val;
                 });
             }
@@ -239,7 +242,7 @@ public: //members
     void unpack_messages()
     {
         //Copy received messages from buffer into views
-        for(int rank_other=0; 
+        for(int rank_other=0;
             rank_other<static_cast<int>(inter_recv_interface.size());
             ++rank_other)
         {
@@ -262,16 +265,16 @@ public: //members
 
 private:
     //send/recv interfaces per processor
-    std::vector<std::vector<interface>> inter_send_interface; 
+    std::vector<std::vector<interface>> inter_send_interface;
     std::vector<std::vector<interface>> inter_recv_interface;
 
-    std::vector<std::shared_ptr<TaskType>> send_tasks_; 
+    std::vector<std::shared_ptr<TaskType>> send_tasks_;
     std::vector<std::shared_ptr<TaskType>> recv_tasks_;
 
-    std::vector<std::vector<float_type>> send_fields_; 
+    std::vector<std::vector<float_type>> send_fields_;
     std::vector<std::vector<float_type>> recv_fields_;
 
-    //intra processor send/recv interfaces 
+    //intra processor send/recv interfaces
     std::vector<interface> intra_send_interface;
     std::vector<interface> intra_recv_interface;
 

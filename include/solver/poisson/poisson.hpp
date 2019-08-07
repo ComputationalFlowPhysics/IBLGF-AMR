@@ -14,6 +14,7 @@
 
 #include "../../utilities/convolution.hpp"
 #include <utilities/cell_center_nli_intrp.hpp>
+#include<operators/operators.hpp>
 
 #include <lgf/lgf_gl.hpp>
 #include <lgf/lgf_ge.hpp>
@@ -44,8 +45,9 @@ public: //member types
 
     //Fields
     using coarse_target_sum = typename Setup::coarse_target_sum;
-    using source_tmp = typename Setup::source_tmp;
-    using target_tmp = typename Setup::target_tmp;
+    using source_tmp        = typename Setup::source_tmp;
+    using target_tmp        = typename Setup::target_tmp;
+    using correction_tmp    = typename Setup::correction_tmp;
 
     //FMM
     using Fmm_t     = typename Setup::Fmm_t;
@@ -75,12 +77,77 @@ public:
     {
         lgf_if_.alpha_base_level()=_alpha_base;
 
-        for (std::size_t entry=0; entry<Source::nFields; ++entry)
-            this->apply_lgf<Source, Target>(&lgf_if_, entry);
+        //for (std::size_t entry=0; entry<Source::nFields; ++entry)
+        for (std::size_t entry=0; entry<1; ++entry)
+            this->apply_if<Source, Target>(&lgf_if_, entry);
 
     }
 
-    /** @brief Solve the poisson equation using lattice Green's functions on
+
+    template< class Source, class Target, class Kernel >
+    void apply_if(Kernel*  _kernel, std::size_t _field_idx=0)
+    {
+
+        auto client = domain_->decomposition().client();
+        if(!client)return;
+
+        // Cleaning
+        clean_field<source_tmp>();
+        clean_field<target_tmp>();
+
+        // Copy source
+        copy_leaf<Source, source_tmp>(_field_idx,0,false);
+
+        //Coarsification:
+        source_coarsify();
+
+        // For IF, interpolate source to correction buffers
+
+        for (int l  = domain_->tree()->base_level();
+                l < domain_->tree()->depth()-1; ++l)
+        {
+
+            client->template buffer_exchange<source_tmp>(l);
+            // Sync
+            domain_->decomposition().client()->
+                template communicate_updownward_assign
+                    <source_tmp, source_tmp>(l,false,false,-1);
+
+            // Interpolate
+            for (auto it  = domain_->begin(l);
+                      it != domain_->end(l); ++it)
+            {
+                if(!it->data() || !it->data()->is_allocated()) continue;
+                //TODO make this for face mesh
+                c_cntr_nli_.nli_intrp_node< source_tmp, source_tmp >(it, true);
+            }
+
+
+        }
+
+        for (int l  = domain_->tree()->base_level();
+                l < domain_->tree()->depth(); ++l)
+        {
+
+            for (auto it_s  = domain_->begin(l);
+                    it_s != domain_->end(l); ++it_s)
+                if (it_s->data() && !it_s->locally_owned())
+                {
+
+                    if(!it_s ->data()->is_allocated())continue;
+                    auto& cp2 = it_s ->data()->template get_linalg_data<source_tmp>();
+                    cp2*=0.0;
+                }
+
+            _kernel->change_level(l-domain_->tree()->base_level());
+
+            fmm_.template apply<source_tmp, target_tmp>(domain_, _kernel, l, false, 1.0);
+        }
+
+        copy_leaf<target_tmp, Target>(0, _field_idx, true);
+    }
+
+     /** @brief Solve the poisson equation using lattice Green's functions on
      *         a block-refined mesh for a given Source and Target field.
      *
      *  @detail Lattice Green's functions are used for solving the poisson
@@ -97,56 +164,17 @@ public:
         if(!client)return;
 
         const float_type dx_base=domain_->dx_base();
-
         // Cleaning
-        for (auto it  = domain_->begin();
-                it != domain_->end(); ++it)
-            if (it->locally_owned())
-            {
-                for(auto& e: it->data()->template get_data<source_tmp>())
-                    e=0.0;
-
-                for(auto& e: it->data()->template get_data<target_tmp>())
-                    e=0.0;
-            }
-
+        clean_field<source_tmp>();
+        clean_field<target_tmp>();
 
         // Copy source
-        for (auto it  = domain_->begin_leafs();
-                it != domain_->end_leafs(); ++it)
-            if (it->locally_owned())
-            {
-                //it->data()->template get_linalg<source_tmp>().get()->
-                //    cube_noalias_view() =
-                //            it->data()->template get_linalg_data<Source>(_field_idx);
-                auto lin_data_1 = it->data()->template get_linalg_data<Source>(_field_idx);
-                auto lin_data_2 = it->data()->template get_linalg_data<source_tmp>();
-                xt::noalias( view(lin_data_2,
-                            xt::range(1,-1),  xt::range(1,-1), xt::range(1,-1)) ) =
-                view(lin_data_1, xt::range(1,-1),  xt::range(1,-1), xt::range(1,-1));
-
-            }
+        copy_leaf<Source, source_tmp>(_field_idx, 0, false);
 
         //Coarsification:
-        //pcout<<"coarsification "<<std::endl;
-        for (int ls = domain_->tree()->depth()-2;
-                 ls >= domain_->tree()->base_level(); --ls)
-        {
-            for (auto it_s  = domain_->begin(ls);
-                      it_s != domain_->end(ls); ++it_s)
-                if (it_s->data())
-                {
-                    this->coarsify<source_tmp>(*it_s);
-                }
-
-            domain_->decomposition().client()->
-                template communicate_updownward_add<source_tmp, source_tmp>
-                (ls,true,false,-1);
-
-        }
+        source_coarsify();
 
         //Level-Interactions
-        //pcout<<"Level interactions "<<std::endl;
         for (int l  = domain_->tree()->base_level();
                 l < domain_->tree()->depth(); ++l)
         {
@@ -167,69 +195,109 @@ public:
             fmm_.template apply<source_tmp, target_tmp>(domain_, _kernel, l, false, 1.0);
             fmm_.template apply<source_tmp, target_tmp>(domain_, _kernel, l, true, -1.0);
 
+            //Interpolate
+            // Sync
             domain_->decomposition().client()->
                 template communicate_updownward_assign
                     <target_tmp, target_tmp>(l,false,false,-1);
 
-
-            // Interpolate
             for (auto it  = domain_->begin(l);
-                      it != domain_->end(l); ++it)
+                    it != domain_->end(l); ++it)
             {
-                if(it->is_leaf() || !it->data() || !it->data()->is_allocated()) continue;
-
-                //c_cntr_nli_.nli_intrp_node< target_tmp, target_tmp >(it);
+                if(!it->data() || !it->data()->is_allocated()) continue;
+                c_cntr_nli_.nli_intrp_node< target_tmp, target_tmp >(it);
             }
 
-            // Correction
-            if (l == domain_->tree()->depth()-1) continue;
-            if (_kernel->neighbor_only())
+            // Correction for LGF
+            for (auto it  = domain_->begin(l);
+                    it != domain_->end(l); ++it)
             {
-                // TODO For future correction with padding
+                int refinement_level = it->refinement_level();
+                double dx_level = dx_base/std::pow(2,refinement_level);
 
-                //_kernel->change_level(l-domain_->tree()->base_level()+1);
-                //_kernel->flip_alpha();
-                //fmm_.template apply<target_tmp, source_tmp>(domain_, _kernel, l+1, false, -1.0);
+                if(!it->data() || !it->data()->is_allocated()) continue;
+                domain::Operator::laplace<target_tmp, correction_tmp>
+                ( *(it->data()),dx_level);
 
-                //for (auto it  = domain_->begin(l+1);
-                //        it != domain_->end(l+1); ++it)
-                //    if (it->locally_owned() && it->data())
-                //    {
-                //        auto lin_data_2 = it->data()->template get_linalg_data<source_tmp>();
+            }
 
-                //        view(lin_data_2, 0,xt::all(),xt::all()) *= 0.0;
-                //        view(lin_data_2,15,xt::all(),xt::all()) *= 0.0;
+            client->template buffer_exchange<correction_tmp>(l);
 
-                //        view(lin_data_2,xt::all(), 0,xt::all()) *= 0.0;
-                //        view(lin_data_2,xt::all(),15,xt::all()) *= 0.0;
-
-                //        view(lin_data_2,xt::all(),xt::all(), 0) *= 0.0;
-                //        view(lin_data_2,xt::all(),xt::all(),15) *= 0.0;
-                //    }
-
-            } else
+            for (auto it  = domain_->begin(l);
+                    it != domain_->end(l); ++it)
             {
-                for (auto it  = domain_->begin(l);
-                        it != domain_->end(l); ++it)
-                {
-                    int refinement_level = it->refinement_level();
-                    double dx = dx_base/std::pow(2,refinement_level);
-                    c_cntr_nli_.add_source_correction
-                    <target_tmp, source_tmp>(it, dx/2.0);
-                }
+                if(!it->data() || !it->data()->is_allocated()) continue;
+                c_cntr_nli_.nli_intrp_node< correction_tmp, source_tmp >(it);
+            }
+
+            for (auto it  = domain_->begin(l);
+                    it != domain_->end(l); ++it)
+            {
+                int refinement_level = it->refinement_level();
+                double dx = dx_base/std::pow(2,refinement_level);
+                c_cntr_nli_.add_source_correction
+                <target_tmp, source_tmp>(it, dx/2.0);
             }
 
         }
 
         // Copy to Target
+        copy_leaf<target_tmp, Target>(0, _field_idx, true);
+    }
+
+    template<class field>
+    void clean_field()
+    {
+        for (auto it  = domain_->begin();
+                it != domain_->end(); ++it)
+        {
+            if(!it->data() || !it->data()->is_allocated()) continue;
+
+            for(auto& e: it->data()->template get_data<field>())
+                e=0.0;
+        }
+    }
+
+    template<class from, class to>
+    void copy_leaf(std::size_t _field_idx_from=0, std::size_t _field_idx_to=0, bool with_buffer=false)
+    {
         for (auto it  = domain_->begin_leafs();
                 it != domain_->end_leafs(); ++it)
             if (it->locally_owned())
             {
-                it->data()->template get_linalg<Target>(_field_idx).get()->
-                    cube_noalias_view() =
-                            it->data()->template get_linalg_data<target_tmp>();
+                auto& lin_data_1 = it->data()->
+                    template get_linalg_data<from>(_field_idx_from);
+                auto& lin_data_2 = it->data()->
+                    template get_linalg_data<to>(_field_idx_to);
+
+                if (with_buffer)
+                    xt::noalias(lin_data_2) = lin_data_1 * 1.0;
+                else
+                    xt::noalias( view(lin_data_2,
+                                xt::range(1,-1),  xt::range(1,-1), xt::range(1,-1)) ) =
+                        view(lin_data_1, xt::range(1,-1), xt::range(1,-1), xt::range(1,-1));
             }
+    }
+
+    void source_coarsify()
+    {
+        for (int ls = domain_->tree()->depth()-2;
+                ls >= domain_->tree()->base_level(); --ls)
+        {
+            for (auto it_s  = domain_->begin(ls);
+                    it_s != domain_->end(ls); ++it_s)
+                if (it_s->data())
+                {
+                    //TODO change coarsify to mesh type dependent
+                    this->coarsify<source_tmp>(*it_s);
+                }
+
+            domain_->decomposition().client()->
+            template communicate_updownward_add<source_tmp, source_tmp>
+            (ls,true,false,-1);
+
+        }
+
     }
 
 
@@ -372,6 +440,9 @@ public:
         {
             auto child = parent->child(i);
             if(child==nullptr || !child->data() || !child->locally_owned()) continue;
+
+            if (child->is_correction()) continue;
+
             auto child_view= child->data()->descriptor();
 
             auto cview =child->data()->node_field().view(child_view);

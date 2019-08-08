@@ -77,8 +77,8 @@ public:
     {
         lgf_if_.alpha_base_level()=_alpha_base;
 
-        //for (std::size_t entry=0; entry<Source::nFields; ++entry)
-        for (std::size_t entry=0; entry<1; ++entry)
+        for (std::size_t entry=0; entry<Source::nFields; ++entry)
+        //for (std::size_t entry=0; entry<1; ++entry)
             this->apply_if<Source, Target>(&lgf_if_, entry);
 
     }
@@ -99,7 +99,7 @@ public:
         copy_leaf<Source, source_tmp>(_field_idx,0,false);
 
         //Coarsification:
-        source_coarsify();
+        source_coarsify(_field_idx, Source::mesh_type);
 
         // For IF, interpolate source to correction buffers
 
@@ -118,8 +118,8 @@ public:
                       it != domain_->end(l); ++it)
             {
                 if(!it->data() || !it->data()->is_allocated()) continue;
-                //TODO make this for face mesh
-                c_cntr_nli_.nli_intrp_node< source_tmp, source_tmp >(it, true);
+                c_cntr_nli_.nli_intrp_node<source_tmp, source_tmp>
+                    (it, Source::mesh_type, _field_idx, true);
             }
 
 
@@ -172,7 +172,7 @@ public:
         copy_leaf<Source, source_tmp>(_field_idx, 0, false);
 
         //Coarsification:
-        source_coarsify();
+        source_coarsify(_field_idx, Source::mesh_type);
 
         //Level-Interactions
         for (int l  = domain_->tree()->base_level();
@@ -205,7 +205,7 @@ public:
                     it != domain_->end(l); ++it)
             {
                 if(!it->data() || !it->data()->is_allocated()) continue;
-                c_cntr_nli_.nli_intrp_node< target_tmp, target_tmp >(it);
+                c_cntr_nli_.nli_intrp_node< target_tmp, target_tmp >(it, Source::mesh_type, _field_idx);
             }
 
             // Correction for LGF
@@ -227,7 +227,7 @@ public:
                     it != domain_->end(l); ++it)
             {
                 if(!it->data() || !it->data()->is_allocated()) continue;
-                c_cntr_nli_.nli_intrp_node< correction_tmp, source_tmp >(it);
+                c_cntr_nli_.nli_intrp_node< correction_tmp, source_tmp >(it, Source::mesh_type, _field_idx);
             }
 
             for (auto it  = domain_->begin(l);
@@ -279,23 +279,29 @@ public:
             }
     }
 
-    void source_coarsify()
+    void source_coarsify(std::size_t _field_idx, MeshObject mesh_type)
     {
+        auto client = domain_->decomposition().client();
+        if(!client)return;
+
         for (int ls = domain_->tree()->depth()-2;
                 ls >= domain_->tree()->base_level(); --ls)
         {
+            //client->template buffer_exchange<source_tmp>(ls+1);
+
             for (auto it_s  = domain_->begin(ls);
                     it_s != domain_->end(ls); ++it_s)
-                if (it_s->data())
                 {
-                    //TODO change coarsify to mesh type dependent
-                    this->coarsify<source_tmp>(*it_s);
+                    if(!it_s->data() || !it_s->data()->is_allocated()) continue;
+
+                    c_cntr_nli_.nli_antrp_node
+                        <source_tmp, source_tmp>(*it_s,mesh_type,_field_idx);
+
                 }
 
             domain_->decomposition().client()->
-            template communicate_updownward_add<source_tmp, source_tmp>
-            (ls,true,false,-1);
-
+                template communicate_updownward_add<source_tmp, source_tmp>
+                    (ls,true,false,-1);
         }
 
     }
@@ -353,64 +359,64 @@ public:
     /** @brief Compute the laplace operator of the target field and store
      *         it in diff_target.
      */
-    template< class target, class diff_target >
-    void apply_laplace()
-    {
+    //template< class target, class diff_target >
+    //void apply_laplace()
+    //{
 
-        const float_type dx_base=domain_->dx_base();
+    //    const float_type dx_base=domain_->dx_base();
 
-        //Coarsification:
-        pcout<<"Laplace - coarsification "<<std::endl;
-        for (int ls = domain_->tree()->depth()-2;
-                 ls >= domain_->tree()->base_level(); --ls)
-        {
-            for (auto it_s  = domain_->begin(ls);
-                      it_s != domain_->end(ls); ++it_s)
-            {
-                if (!it_s->data()) continue;
-                this->coarsify<target>(*it_s);
-            }
+    //    //Coarsification:
+    //    pcout<<"Laplace - coarsification "<<std::endl;
+    //    for (int ls = domain_->tree()->depth()-2;
+    //             ls >= domain_->tree()->base_level(); --ls)
+    //    {
+    //        for (auto it_s  = domain_->begin(ls);
+    //                  it_s != domain_->end(ls); ++it_s)
+    //        {
+    //            if (!it_s->data()) continue;
+    //            this->coarsify<target>(*it_s, target::mesh_type, _field_idx);
+    //        }
 
-            domain_->decomposition().client()->
-                template communicate_updownward_add<target, target>(ls,true,false,-1);
-        }
+    //        domain_->decomposition().client()->
+    //            template communicate_updownward_add<target, target>(ls,true,false,-1);
+    //    }
 
-        //Level-Interactions
-        pcout<<"Laplace - level interactions "<<std::endl;
-        for (int l  = domain_->tree()->base_level();
-                 l < domain_->tree()->depth(); ++l)
-        {
+    //    //Level-Interactions
+    //    pcout<<"Laplace - level interactions "<<std::endl;
+    //    for (int l  = domain_->tree()->base_level();
+    //             l < domain_->tree()->depth(); ++l)
+    //    {
 
-            for (auto it  = domain_->begin(l);
-                      it != domain_->end(l); ++it)
-            {
-                if (!it->data() || !it->locally_owned() || !it ->data()->is_allocated()) continue;
-                auto refinement_level = it->refinement_level();
-                auto dx_level =  dx_base/std::pow(2,refinement_level);
+    //        for (auto it  = domain_->begin(l);
+    //                  it != domain_->end(l); ++it)
+    //        {
+    //            if (!it->data() || !it->locally_owned() || !it ->data()->is_allocated()) continue;
+    //            auto refinement_level = it->refinement_level();
+    //            auto dx_level =  dx_base/std::pow(2,refinement_level);
 
-                auto& diff_target_data = it->data()->
-                    template get_linalg_data<diff_target>();
+    //            auto& diff_target_data = it->data()->
+    //                template get_linalg_data<diff_target>();
 
-                // laplace of it_t data with zero bcs
-                if ((it->is_leaf()))
-                {
-                    auto& nodes_domain=it->data()->nodes_domain();
-                    for(auto it2=nodes_domain.begin();it2!=nodes_domain.end();++it2 )
-                    {
-                        it2->template get<diff_target>()=
-                                  -6.0* it2->template get<target>()+
-                                  it2->template at_offset<target>(0,0,-1)+
-                                  it2->template at_offset<target>(0,0,+1)+
-                                  it2->template at_offset<target>(0,-1,0)+
-                                  it2->template at_offset<target>(0,+1,0)+
-                                  it2->template at_offset<target>(-1,0,0)+
-                                  it2->template at_offset<target>(+1,0,0);
-                    }
-                }
-                diff_target_data *= (1/dx_level) * (1/dx_level);
-            }
-        }
-    }
+    //            // laplace of it_t data with zero bcs
+    //            if ((it->is_leaf()))
+    //            {
+    //                auto& nodes_domain=it->data()->nodes_domain();
+    //                for(auto it2=nodes_domain.begin();it2!=nodes_domain.end();++it2 )
+    //                {
+    //                    it2->template get<diff_target>()=
+    //                              -6.0* it2->template get<target>()+
+    //                              it2->template at_offset<target>(0,0,-1)+
+    //                              it2->template at_offset<target>(0,0,+1)+
+    //                              it2->template at_offset<target>(0,-1,0)+
+    //                              it2->template at_offset<target>(0,+1,0)+
+    //                              it2->template at_offset<target>(-1,0,0)+
+    //                              it2->template at_offset<target>(+1,0,0);
+    //                }
+    //            }
+    //            diff_target_data *= (1/dx_level) * (1/dx_level);
+    //        }
+    //    }
+    //}
 
     template< class Source, class Target >
     void solve()
@@ -421,7 +427,7 @@ public:
     template<class Target, class Laplace>
     void laplace_diff()
     {
-        apply_laplace<Target, Laplace>();
+        //apply_laplace<Target, Laplace>();
     }
 
 
@@ -430,33 +436,54 @@ public:
      *  assign it to the parent. Coarsification is an average, ie 2nd order
      *  accurate.
      */
-    template<class Field >
-    void coarsify(octant_t* _parent)
-    {
-        auto parent = _parent;
-        if(parent->is_leaf())return;
+    //template<class Field >
+    //void coarsify(octant_t* _parent, MeshObject mesh_type, std::size_t _field_idx)
+    //{
+    //    int n = child.shape()[0];
 
-        for (int i = 0; i < parent->num_children(); ++i)
-        {
-            auto child = parent->child(i);
-            if(child==nullptr || !child->data() || !child->locally_owned()) continue;
+    //    int idx_x = (child_idx & ( 1 << 0 )) >> 0;
+    //    int idx_y = (child_idx & ( 1 << 1 )) >> 1;
+    //    int idx_z = (child_idx & ( 1 << 2 )) >> 2;
 
-            if (child->is_correction()) continue;
+    //    // Relative position 0 -> coincide with child
+    //    // Relative position 1 -> half cell off with the child
 
-            auto child_view= child->data()->descriptor();
+    //    std::array<int, 3> relative_positions{{1,1,1}};
+    //    if (mesh_obj == MeshObject::face)
+    //        relative_positions[_field_idx]=0;
+    //    else if (mesh_obj == MeshObject::cell)
+    //    {
+    //    }
+    //    else
+    //        throw std::runtime_error(
+    //                "Wrong type of mesh to be interpolated");
 
-            auto cview =child->data()->node_field().view(child_view);
+    //    idx_x += relative_positions[0]*max_relative_pos;
+    //    idx_y += relative_positions[1]*max_relative_pos;
+    //    idx_z += relative_positions[2]*max_relative_pos;
 
-            cview.iterate([&]( auto& n )
-            {
-                const float_type avg=1./8* n.template get<Field>();
-                auto pcoord=n.level_coordinate();
-                for(std::size_t d=0;d<pcoord.size();++d)
-                    pcoord[d]= std::floor(pcoord[d]/2.0);
-                parent->data()-> template get<Field>(pcoord) +=avg;
-            });
-        }
-    }
+    //    auto parent = _parent;
+    //    if(parent->is_leaf())return;
+
+    //    for (int i = 0; i < parent->num_children(); ++i)
+    //    {
+    //        auto child = parent->child(i);
+    //        if(child==nullptr || !child->data() || !child->locally_owned()) continue;
+    //        if (child->is_correction()) continue;
+
+    //        auto child_view= child->data()->descriptor();
+    //        auto cview =child->data()->node_field().view(child_view);
+
+    //        cview.iterate([&]( auto& n )
+    //        {
+    //            const float_type avg=1./8* n.template get<Field>();
+    //            auto pcoord=n.level_coordinate();
+    //            for(std::size_t d=0;d<pcoord.size();++d)
+    //                pcoord[d]= std::floor(pcoord[d]/2.0);
+    //            parent->data()-> template get<Field>(pcoord) +=avg;
+    //        });
+    //    }
+    //}
 
 
     /** @brief Interplate the target field.

@@ -46,13 +46,13 @@ struct parameters
         //name               type        Dim   lBuffer  hBuffer, storage type
          (phi_num          , float_type, 1,    1,       1,     cell),
          (source           , float_type, 1,    1,       1,     cell),
-         (error            , float_type, 1,    1,       1,     cell),
+         (error            , float_type, 3,    1,       1,     face),
          (amr_lap_source   , float_type, 1,    1,       1,     cell),
          (amr_div_source   , float_type, 1,    1,       1,     cell),
          (error_lap_source , float_type, 1,    1,       1,     cell),
          (decomposition    , float_type, 1,    1,       1,     cell),
         //IF-HERK
-         (u_0_exact        , float_type, 1,    1,       1,     cell),
+         (u_exact        , float_type, 3,    1,       1,     face),
          (u                , float_type, 3,    1,       1,     face),
          (w                , float_type, 3,    1,       1,     face),
          (p                , float_type, 1,    1,       1,     cell)
@@ -138,7 +138,7 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
                     cube_noalias_view() =
                     it->data()->template get_linalg_data<u>(0);
                 }
-            this->compute_errors<phi_num,u_0_exact,error>();
+            this->compute_errors<u,u_exact,error>();
         }
         simulation_.write2("ifherk_1.hdf5");
     }
@@ -180,25 +180,56 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
 
                const auto& coord=it2->level_coordinate();
 
+               /***********************************************************/
                float_type x = static_cast<float_type>
-                   (coord[0]-center[0]*scaling+0.5)*dx_level;
+                   (coord[0]-center[0]*scaling)*dx_level;
                float_type y = static_cast<float_type>
                    (coord[1]-center[1]*scaling+0.5)*dx_level;
                float_type z = static_cast<float_type>
                    (coord[2]-center[2]*scaling+0.5)*dx_level;
 
-               const float_type r=std::sqrt(x*x+y*y+z*z) ;
-               /***********************************************************/
+               float_type r=std::sqrt(x*x+y*y+z*z) ;
 
                float_type r_2 = r*r;
                it2->template get<u>(0)=std::exp(-a_*r_2);
-               it2->template get<u>(1)=10.0;
-               it2->template get<u>(2)=0;
-
-               it2->template get<u_0_exact>() =
+               it2->template get<u_exact>(0) =
                std::exp(-(a_*Re_*r_2)/(Re_ + 4*a_*T))/
                 (std::pow((1 + a_*4*T/Re_),1.5));
 
+               /***********************************************************/
+
+               x = static_cast<float_type>
+                   (coord[0]-center[0]*scaling+0.5)*dx_level;
+               y = static_cast<float_type>
+                   (coord[1]-center[1]*scaling)*dx_level;
+               z = static_cast<float_type>
+                   (coord[2]-center[2]*scaling+0.5)*dx_level;
+
+               r=std::sqrt(x*x+y*y+z*z) ;
+
+               r_2 = r*r;
+               it2->template get<u>(1)=std::exp(-a_*r_2);
+               it2->template get<u_exact>(1) =
+               std::exp(-(a_*Re_*r_2)/(Re_ + 4*a_*T))/
+                (std::pow((1 + a_*4*T/Re_),1.5));
+
+               /***********************************************************/
+               x = static_cast<float_type>
+                   (coord[0]-center[0]*scaling+0.5)*dx_level;
+               y = static_cast<float_type>
+                   (coord[1]-center[1]*scaling+0.5)*dx_level;
+               z = static_cast<float_type>
+                   (coord[2]-center[2]*scaling)*dx_level;
+
+               r=std::sqrt(x*x+y*y+z*z) ;
+
+               r_2 = r*r;
+               it2->template get<u>(2)=std::exp(-a_*r_2);
+               it2->template get<u_exact>(2) =
+               std::exp(-(a_*Re_*r_2)/(Re_ + 4*a_*T))/
+                (std::pow((1 + a_*4*T/Re_),1.5));
+
+               /***********************************************************/
                it2->template get<decomposition>()=world.rank();
            }
         }
@@ -221,47 +252,47 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
 
         if(domain_->is_server())  return;
 
-        for (auto it_t  = domain_->begin_leafs();
-                it_t != domain_->end_leafs(); ++it_t)
+        for (std::size_t entry=0; entry<Numeric::nFields; ++entry)
         {
-            if(!it_t->locally_owned() || !it_t->data())continue;
-
-            int refinement_level = it_t->refinement_level();
-            double dx = dx_base/std::pow(2.0,refinement_level);
-
-            auto& nodes_domain=it_t->data()->nodes_domain();
-            for(auto it2=nodes_domain.begin();it2!=nodes_domain.end();++it2 )
+            for (auto it_t  = domain_->begin_leafs();
+                    it_t != domain_->end_leafs(); ++it_t)
             {
-                float_type tmp_exact = it2->template get<Exact>();
-                float_type tmp_num   = it2->template get<Numeric>();
+                if(!it_t->locally_owned() || !it_t->data())continue;
 
-                //if(std::isnan(tmp_num))
-                //    std::cout<<"this is nan at level = " << it_t->level()<<std::endl;
+                int refinement_level = it_t->refinement_level();
+                double dx = dx_base/std::pow(2.0,refinement_level);
 
-                float_type error_tmp = tmp_num - tmp_exact;
+                auto& nodes_domain=it_t->data()->nodes_domain();
+                for(auto it2=nodes_domain.begin();it2!=nodes_domain.end();++it2 )
+                {
+                    float_type tmp_exact = it2->template get<Exact>(entry);
+                    float_type tmp_num   = it2->template get<Numeric>(entry);
 
-                it2->template get<Error>() = error_tmp;
+                    float_type error_tmp = tmp_num - tmp_exact;
 
-                L2 += error_tmp*error_tmp * (dx*dx*dx);
-                L2_exact += tmp_exact*tmp_exact*(dx*dx*dx);
+                    it2->template get<Error>(entry) = error_tmp;
 
-                L2_perLevel[refinement_level]+=error_tmp*error_tmp* (dx*dx*dx);
-                L2_exact_perLevel[refinement_level]+=tmp_exact*tmp_exact*(dx*dx*dx);
-                ++counts[refinement_level];
+                    L2 += error_tmp*error_tmp * (dx*dx*dx);
+                    L2_exact += tmp_exact*tmp_exact*(dx*dx*dx);
 
-                if ( std::fabs(tmp_exact) > LInf_exact)
-                    LInf_exact = std::fabs(tmp_exact);
+                    L2_perLevel[refinement_level]+=error_tmp*error_tmp* (dx*dx*dx);
+                    L2_exact_perLevel[refinement_level]+=tmp_exact*tmp_exact*(dx*dx*dx);
+                    ++counts[refinement_level];
 
-                if ( std::fabs(error_tmp) > LInf)
-                    LInf = std::fabs(error_tmp);
+                    if ( std::fabs(tmp_exact) > LInf_exact)
+                        LInf_exact = std::fabs(tmp_exact);
 
-                if ( std::fabs(error_tmp) > LInf_perLevel[refinement_level] )
-                    LInf_perLevel[refinement_level]=std::fabs(error_tmp);
+                    if ( std::fabs(error_tmp) > LInf)
+                        LInf = std::fabs(error_tmp);
 
-                if ( std::fabs(tmp_exact) > LInf_exact_perLevel[refinement_level] )
-                    LInf_exact_perLevel[refinement_level]=std::fabs(tmp_exact);
+                    if ( std::fabs(error_tmp) > LInf_perLevel[refinement_level] )
+                        LInf_perLevel[refinement_level]=std::fabs(error_tmp);
 
-                ++count;
+                    if ( std::fabs(tmp_exact) > LInf_exact_perLevel[refinement_level] )
+                        LInf_exact_perLevel[refinement_level]=std::fabs(tmp_exact);
+
+                    ++count;
+                }
             }
         }
 

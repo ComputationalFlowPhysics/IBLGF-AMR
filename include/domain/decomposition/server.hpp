@@ -46,6 +46,9 @@ public:
     using mask_init_query_send_t   = typename trait_t::mask_init_query_send_t;
     using mask_init_query_recv_t   = typename trait_t::mask_init_query_recv_t;
 
+    using correction_query_send_t   = typename trait_t::correction_query_send_t;
+    using correction_query_recv_t   = typename trait_t::correction_query_recv_t;
+
     using leaf_query_send_t   = typename trait_t::leaf_query_send_t;
     using leaf_query_recv_t   = typename trait_t::leaf_query_recv_t;
 
@@ -78,6 +81,7 @@ public:
 
         float_type total_load=0.0;
         int nOctants=0;
+
         for( auto it = domain_->begin_df(); it!= domain_->end_df();++it )
         {
             total_load+=it->load();
@@ -114,7 +118,6 @@ public:
             //if(it==domain_->end_bf()) break;
             if(it==domain_->end_df()) break;
         }
-
         //Iterate to balance/diffuse load
         std::vector<float_type> total_loads_perProc2(nProcs,0);
         float_type max_load=-1;
@@ -167,6 +170,17 @@ public:
         this->run_query(mq);
     }
 
+    void correction_query()
+    {
+        InlineQueryRegistry<correction_query_recv_t, correction_query_send_t> mq(comm_.size());
+        mq.register_completeFunc([this](auto _task, auto _answerData)
+        {
+            this->get_octant_correction(_task, _answerData);
+        });
+
+        this->run_query(mq);
+    }
+
     void leaf_query()
     {
         InlineQueryRegistry<leaf_query_recv_t, leaf_query_send_t> mq(comm_.size());
@@ -204,6 +218,24 @@ public:
             {
                 throw std::runtime_error(
                         "can't find octant for mask query");
+            }
+        }
+    }
+
+    template<class TaskPtr, class OutPtr>
+    void get_octant_correction(TaskPtr _task, OutPtr _out)
+    {
+        _out->resize(_task->data().size());
+        int count=0;
+        for(auto& key : _task->data())
+        {
+            auto oct =domain_->tree()->find_octant(key);
+            if(oct)
+            { (*_out)[count++]=(oct->is_correction());
+            }
+            else
+            {
+                (*_out)[count++]=false;
             }
         }
     }

@@ -96,7 +96,7 @@ public:
 
         // vector of pairs of descriptors and field data
         std::vector<write_info_t> data_info;
-     //   std::vector<BlockInfo> block_distribution;
+        //   std::vector<BlockInfo> block_distribution;
         std::vector<block_info_t> block_distribution;
 
 
@@ -109,7 +109,6 @@ public:
             nPoints+= b.nPoints();
         }
 
-        //std::cout<<"Rank= "<<world.rank()<<".  ------------POINTS "<<nPoints<<" float"<<std::endl;
         int _count=0;
         // Collect block descriptor and data from each block
         for(auto it=_lt->begin_leafs();it!=_lt->end_leafs();++it)
@@ -118,20 +117,20 @@ public:
             int rank = it->rank();
 
             if (rank==world.rank() || world.rank()==0) {
-            blockDescriptor_t block =it->data()->descriptor();
-            blockData_t* node_data=&(it->data()->node_field());
+                blockDescriptor_t block =it->data()->descriptor();
+                blockData_t* node_data=&(it->data()->node_field());
 
-       //     world.barrier();
-            //std::cout<<"Rank = "<<world.rank()<<". Count = "<<_count
-            //        <<". Add Block to level = "<<block.level()
-            //        <<". octant level = "<<it->refinement_level()<<std::endl;
-           // data_info.push_back(std::make_pair(block,node_data));
+                //     world.barrier();
+                //std::cout<<"Rank = "<<world.rank()<<". Count = "<<_count
+                //        <<". Add Block to level = "<<block.level()
+                //        <<". octant level = "<<it->refinement_level()<<std::endl;
+                // data_info.push_back(std::make_pair(block,node_data));
 
 
-            block_info_t blockInfo = std::make_tuple(rank, block, node_data);
-            block_distribution.push_back(blockInfo);
+                block_info_t blockInfo = std::make_tuple(rank, block, node_data);
+                block_distribution.push_back(blockInfo);
 
-            it->index(_count*block.nPoints());
+                it->index(_count*block.nPoints());
             }
             ++_count;
         }
@@ -150,10 +149,10 @@ public:
         //}
 
         hdf5_file<Dim> chombo_file(_filename);
-     //   chombo_t ch_writer(data_info);  // Initialize writer with vector of
-                                        // info: pair of descriptor and data
+        //   chombo_t ch_writer(data_info);  // Initialize writer with vector of
+        // info: pair of descriptor and data
         chombo_t ch_writer(block_distribution);  // Initialize writer with vector of
-                                         // info: tuple of rank, descriptor and data
+        // info: tuple of rank, descriptor and data
         //world.barrier();
         //if (_lt->is_server()) {
         //    std::cout<<"\n=========World Barrier=========\n"<<std::endl;

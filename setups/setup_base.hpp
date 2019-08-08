@@ -38,6 +38,7 @@ public: //default fields
     (
       (coarse_target_sum,  float_type,  1,   1,  1,  cell),
       (source_tmp,         float_type,  1,   1,  1,  cell),
+      (correction_tmp,     float_type,  1,   1,  1,  cell),
       (target_tmp,         float_type,  1,   1,  1,  cell),
       (fmm_s,              float_type,  1,   1,  1,  cell),
       (fmm_t,              float_type,  1,   1,  1,  cell),

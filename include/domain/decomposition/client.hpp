@@ -45,12 +45,15 @@ public:
     using super_type = ClientBase<trait_t>;
 
     //QueryTypes
-    using key_query_t  = typename trait_t::key_query_t;
-    using rank_query_t = typename trait_t::rank_query_t;
-    using mask_init_query_send_t   = typename trait_t::mask_init_query_send_t;
-    using mask_init_query_recv_t   = typename trait_t::mask_init_query_recv_t;
-    using leaf_query_send_t   = typename trait_t::leaf_query_send_t;
-    using leaf_query_recv_t   = typename trait_t::leaf_query_recv_t;
+    using key_query_t             = typename trait_t::key_query_t;
+    using rank_query_t            = typename trait_t::rank_query_t;
+    using mask_init_query_send_t  = typename trait_t::mask_init_query_send_t;
+    using mask_init_query_recv_t  = typename trait_t::mask_init_query_recv_t;
+    using leaf_query_send_t       = typename trait_t::leaf_query_send_t;
+    using leaf_query_recv_t       = typename trait_t::leaf_query_recv_t;
+    using correction_query_send_t = typename trait_t::correction_query_send_t;
+    using correction_query_recv_t = typename trait_t::correction_query_recv_t;
+
     template<template<class>class BufferPolicy=OrAssignRecv>
     using mask_query_t = typename trait_t::template
                                         mask_query_t<BufferPolicy>;
@@ -128,6 +131,20 @@ public:
         QueryRegistry<mask_init_query_send_t, mask_init_query_recv_t> mq;
 
         std::vector<fmm_mask_type> recvData;
+        mq.register_recvMap([&recvData](int i){return &recvData;} );
+        this->wait(mq);
+        return recvData;
+    }
+
+    auto correction_query(std::vector<key_t>& task_dat)
+    {
+        auto& send_comm=
+            task_manager_->template send_communicator<correction_query_send_t>();
+
+        auto task= send_comm.post_task(&task_dat, 0);
+        QueryRegistry<correction_query_send_t, correction_query_recv_t> mq;
+
+        std::vector<bool> recvData;
         mq.register_recvMap([&recvData](int i){return &recvData;} );
         this->wait(mq);
         return recvData;
@@ -1099,7 +1116,7 @@ public:
      *         all fields.
      */
     template<class Field>
-    void buffer_exchange()
+    void buffer_exchange(const int _level=-1)
     {
 
         auto& send_comm=
@@ -1109,7 +1126,7 @@ public:
 
         //Initialize Halo communicator
         //TODO: put this outside somewhere
-        initialize_halo_communicators();
+        initialize_halo_communicators(_level);
         auto& hcomm=std::get<halo_communicator_t<Field>>(halo_communicators_);
 
         //Get the overlaps
@@ -1132,11 +1149,16 @@ public:
         hcomm.template unpack_messages();
     }
 
-    void initialize_halo_communicators()noexcept
+    void initialize_halo_communicators(const int _level)noexcept
     {
         tuple_utils::for_each(halo_communicators_, [&](auto& hcomm){
-            hcomm.compute_tasks(domain_);
+            hcomm.compute_tasks(domain_, _level);
         });
+    }
+
+    void query_corrections()
+    {
+        domain_->tree()->query_corrections(this);
     }
 
     void query_leafs()

@@ -13,6 +13,7 @@
 #include <domain/domain.hpp>
 #include <IO/parallel_ostream.hpp>
 #include <solver/poisson/poisson.hpp>
+#include <operators/operators.hpp>
 
 namespace solver
 {
@@ -52,6 +53,7 @@ public: //member types
     using d_i = typename Setup::d_i;
 
     using cell_aux   = typename Setup::cell_aux;
+    using edge_aux   = typename Setup::edge_aux;
     using face_aux   = typename Setup::face_aux;
     using face_aux_2 = typename Setup::face_aux_2;
     using w_1        = typename Setup::w_1;
@@ -140,26 +142,24 @@ public:
 
         copy<u, q_i>();
 
-        pcout<<"Stage 1"<< std::endl;
         // Stage 1
         // ******************************************************************
+        pcout<<"Stage 1"<< std::endl;
         clean<g_i>();
         clean<d_i>();
         clean<cell_aux>();
         clean<face_aux>();
         clean<face_aux_2>();
 
-        // TODO nonlinear g_i
-        // nonlin<u,g_i>();
-
+        nonlinear<u,g_i>(coeff_a(1,1)*(-dt_));
         copy<q_i, r_i>();
-        add<g_i, r_i>(coeff_a(1,1)*(-dt_));
-
+        add<g_i, r_i>();
         lin_sys_solve(alpha_[0]);
 
-        pcout<<"Stage 2"<< std::endl;
+
         // Stage 2
         // ******************************************************************
+        pcout<<"Stage 2"<< std::endl;
         clean<r_i>();
         clean<d_i>();
         clean<cell_aux>();
@@ -168,39 +168,37 @@ public:
         //r_i = q_i + dt(a21 w21)
         //w11 = (1/a11)* dt (g_i - face_aux)
 
-        add<g_i, face_aux>();
-        copy<face_aux, w_1>(1.0/dt_/coeff_a(1,1));
+        add<g_i, face_aux>(-1.0);
+        copy<face_aux, w_1>(-1.0/dt_/coeff_a(1,1));
 
-        // TODO
         psolver.template apply_lgf_IF<q_i, q_i>(alpha_[0]);
         psolver.template apply_lgf_IF<w_1, w_1>(alpha_[0]);
 
         add<q_i, r_i>();
         add<w_1, r_i>(dt_*coeff_a(2,1));
 
-        //nonlin<u_i,g_i>();
-        add<g_i, r_i>( coeff_a(2,2)*(-dt_) );
+        nonlinear<u_i,g_i>(coeff_a(2,2)*(-dt_));
+        add<g_i, r_i>( );
 
         lin_sys_solve(alpha_[1]);
 
-        pcout<<"Stage 3"<< std::endl;
         // Stage 3
         // ******************************************************************
+        pcout<<"Stage 3"<< std::endl;
         clean<d_i>();
         clean<cell_aux>();
         clean<w_2>();
 
-        add<g_i, face_aux>();
-        copy<face_aux, w_2>(1.0/dt_/coeff_a(2,2));
+        add<g_i, face_aux>(-1.0);
+        copy<face_aux, w_2>(-1.0/dt_/coeff_a(2,2));
         copy<q_i, r_i>();
         add<w_1, r_i>(dt_*coeff_a(3,1));
         add<w_2, r_i>(dt_*coeff_a(3,2));
 
         psolver.template apply_lgf_IF<r_i, r_i>(alpha_[1]);
 
-        //nonlin<u_i,g_i>();
-
-        add<g_i, r_i>( coeff_a(3,3)*(-dt_) );
+        nonlinear<u_i,g_i>( coeff_a(3,3)*(-dt_) );
+        add<g_i, r_i>();
 
         lin_sys_solve(alpha_[2]);
 
@@ -217,33 +215,23 @@ public:
 
 
 private:
-    void lin_sys_solve(float_type _alpha)
+    void lin_sys_solve(float_type _alpha) noexcept
     {
-         // TODO Poisson
-         // Projection  with -1? need to check
-         // cell_aux = G^T r_i
-         // d_i = L^-1 cell_aux
-         // note: defined as the negative of the one defined
-         // in Liska's paper
+         divergence<r_i, cell_aux>();
+         psolver.template apply_lgf<cell_aux, d_i>();
+         gradient<d_i,face_aux>();
 
-         // cell_aux = G^T r_i
-         // d_i = L^-1 cell_aux
-
-         // face_aux = G d_i
-         //psolver.template apply_lgf<cell_aux, d_i>();
-         add<face_aux, r_i>();
-
+         add<face_aux, r_i>(-1.0);
          if (std::fabs(_alpha)>1e-4)
              psolver.template apply_lgf_IF<r_i, u_i>(_alpha);
          else
              copy<r_i,u_i>();
     }
 
-    float_type coeff_a(int i, int j)
-    {return a_[i*(i-1)/2+j-1];}
+    float_type coeff_a(int i, int j)const noexcept {return a_[i*(i-1)/2+j-1];}
 
     template <typename F>
-    void clean()
+    void clean() noexcept
     {
         for (auto it  = domain_->begin_leafs();
                   it != domain_->end_leafs(); ++it)
@@ -257,8 +245,61 @@ private:
         }
     }
 
+    //TODO maybe to be put directly intor operators:
+    template<class Source, class Target>
+    void nonlinear(float_type _scale=1.0) noexcept
+    {
+        auto client=domain_->decomposition().client();
+        const auto dx_base = domain_->dx_base();
+        client->template buffer_exchange<Source>();
+        for (auto it  = domain_->begin_leafs();
+                  it != domain_->end_leafs(); ++it)
+        {
+            if(!it->locally_owned() || !it->data()) continue;
+            const auto dx_level =  dx_base/std::pow(2,it->refinement_level());
+            domain::Operator::curl<Source,edge_aux>( *(it->data()),dx_level);
+        }
+        client->template buffer_exchange<edge_aux>();
+        for (auto it  = domain_->begin_leafs();
+                it != domain_->end_leafs(); ++it)
+        {
+            if(!it->locally_owned() || !it->data())continue;
+            const auto dx_level =  dx_base/std::pow(2,it->refinement_level());
+            domain::Operator::nonlinear<Source, edge_aux,Target>( *(it->data()),_scale*dx_level);
+        }
+    }
+
+    template<class Source, class Target>
+    void divergence() noexcept
+    {
+        auto client=domain_->decomposition().client();
+        client->template buffer_exchange<Source>();
+        const auto dx_base = domain_->dx_base();
+        for (auto it  = domain_->begin_leafs();
+                  it != domain_->end_leafs(); ++it)
+        {
+            if(!it->locally_owned() || !it->data()) continue;
+            const auto dx_level =  dx_base/std::pow(2,it->refinement_level());
+            domain::Operator::divergence<Source,Target>( *(it->data()),dx_level);
+        }
+    }
+    template<class Source, class Target>
+    void gradient(float_type _scale=1.0) noexcept
+    {
+        auto client=domain_->decomposition().client();
+        client->template buffer_exchange<Source>();
+        const auto dx_base = domain_->dx_base();
+        for (auto it  = domain_->begin_leafs();
+                  it != domain_->end_leafs(); ++it)
+        {
+            if(!it->locally_owned() || !it->data()) continue;
+            const auto dx_level =  dx_base/std::pow(2,it->refinement_level());
+            domain::Operator::gradient<Source,Target>( *(it->data()),_scale*dx_level);
+        }
+    }
+
     template <typename From, typename To>
-    void add(float_type scale=1.0)
+    void add(float_type scale=1.0) noexcept
     {
         static_assert (From::nFields == To::nFields, "number of fields doesn't match when add");
         for (auto it  = domain_->begin_leafs();
@@ -277,7 +318,7 @@ private:
     }
 
     template <typename From, typename To>
-    void copy(float_type scale=1.0)
+    void copy(float_type scale=1.0) noexcept
     {
         static_assert (From::nFields == To::nFields, "number of fields doesn't match when copy");
 
@@ -312,9 +353,9 @@ private:
     int n_step_;
 
     std::string fname_prefix_;
-    std::array<float_type, 6> a_{{1.0/3, -1.0, 2.0, 0.0, 0.75, 0.25}};
-    std::array<float_type, 4> c_{{0.0, 1.0/3, 1.0, 1.0}};
-    std::array<float_type, 3> alpha_{{0.0,0.0,0.0}};
+    vector_type<float_type, 6> a_{{1.0/3, -1.0, 2.0, 0.0, 0.75, 0.25}};
+    vector_type<float_type, 4> c_{{0.0, 1.0/3, 1.0, 1.0}};
+    vector_type<float_type, 3> alpha_{{0.0,0.0,0.0}};
     parallel_ostream::ParallelOstream pcout=parallel_ostream::ParallelOstream(1);
 
 };

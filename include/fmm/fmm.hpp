@@ -159,7 +159,8 @@ public:
                 } else
                 {
                     it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Source, true);
-                    it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Target, true);
+                    if (!it->is_correction())
+                        it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Target, true);
 
                     if (!_neighbor_only)
                         it->add_load(it->influence_number() * _load_factor);
@@ -173,31 +174,15 @@ public:
                     it != domain_->end(base_level); ++it)
             {
                 it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Source, true);
-                it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Target, true);
+
+                if (!it->is_correction())
+                    it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Target, true);
 
                 if (!_neighbor_only)
                     it->add_load(it->influence_number() * _load_factor);
 
                 it->add_load(it->neighbor_number() * _load_factor);
             }
-            //// Add correction buffers to the source
-            //for (auto it = domain_->begin(base_level);
-            //        it != domain_->end(base_level); ++it)
-            //{
-            //    if (it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Source))
-            //    {
-            //        for(int i=0;i<it->nNeighbors();++i)
-            //        {
-            //            auto it2=it->neighbor(i);
-            //            if (!it2) continue;
-            //            it2->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Source, true);
-            //        }
-            //    }
-            //    if (!_neighbor_only)
-            //        it->add_load(it->influence_number() * _load_factor);
-
-            //    it->add_load(it->neighbor_number() * _load_factor);
-            //}
         }
 
     }

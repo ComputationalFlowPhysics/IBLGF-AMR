@@ -51,9 +51,10 @@ public: //default fields
       (w_1,                float_type,  3,  1,  1,  face),
       (w_2,                float_type,  3,  1,  1,  face),
       (face_aux,           float_type,  3,  1,  1,  face),
+      (face_test_ri,       float_type,  3,  1,  1,  face),
       (face_aux_2,         float_type,  3,  1,  1,  face),
       (cell_aux,           float_type,  1,  1,  1,  cell),
-      (edge_aux,           float_type,  1,  1,  1,  edge)
+      (edge_aux,           float_type,  3,  1,  1,  edge)
     ))
 
     using field_tuple=fields_tuple_t;

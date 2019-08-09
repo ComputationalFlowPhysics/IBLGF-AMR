@@ -83,10 +83,10 @@ namespace interpolation
             std::fill(antrp_mat_sub_simple_[0].begin(), antrp_mat_sub_simple_[0].end(), 0.0);
             std::fill(antrp_mat_sub_simple_[1].begin(), antrp_mat_sub_simple_[1].end(), 0.0);
 
-            for (size_t i=1;i<Nb_;++i)
+            for (size_t i=1;i<Nb_-1;++i)
                     antrp_mat_sub_simple_[0](i,i*2-1)=2.0;
 
-            for (size_t i=1;i<Nb_;++i)
+            for (size_t i=1;i<Nb_-1;++i)
             {
                     antrp_mat_sub_simple_[1](i,i*2-1)=1.0;
                     antrp_mat_sub_simple_[1](i,i*2)=1.0;
@@ -151,7 +151,7 @@ namespace interpolation
              class to,
             typename octant_t
         >
-        void nli_intrp_node(octant_t parent, MeshObject mesh_obj, std::size_t _field_idx , bool correction_only = false)
+        void nli_intrp_node(octant_t parent, MeshObject mesh_obj, std::size_t _field_idx , bool correction_only = false, bool exclude_correction = false)
             {
                 auto& parent_linalg_data = parent->data()->template get_linalg_data<from>();
 
@@ -166,9 +166,12 @@ namespace interpolation
                     if (correction_only && !child->is_correction())
                         continue;
 
-                    auto& child_linalg_data = child ->data()->template get_linalg_data<to>();
-                    nli_intrp_node(child_linalg_data, parent_linalg_data, i, mesh_obj, _field_idx);
+                    if (exclude_correction && child->is_correction())
+                        continue;
 
+                    auto& child_linalg_data = child ->data()->template get_linalg_data<to>();
+                    nli_intrp_node(child_linalg_data, parent_linalg_data,
+                            i, mesh_obj, _field_idx);
                 }
 
             }
@@ -439,7 +442,7 @@ namespace interpolation
 
     //private:
     public:
-        const int pts_cap = 10;
+        const int pts_cap = 6;
         int Nb_;
 
         std::vector<float_type> antrp_relative_pos_0_;

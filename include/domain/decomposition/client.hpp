@@ -1116,7 +1116,7 @@ public:
      *         all fields.
      */
     template<class Field>
-    void buffer_exchange(const int _level=-1)
+    void buffer_exchange(const int _level)
     {
 
         auto& send_comm=
@@ -1126,8 +1126,11 @@ public:
 
         //Initialize Halo communicator
         //TODO: put this outside somewhere
-        initialize_halo_communicators(_level);
-        auto& hcomm=std::get<halo_communicator_t<Field>>(halo_communicators_);
+        if (!halo_initialized_)
+                initialize_halo_communicators();
+
+        auto& hcomm=std::get<halo_communicator_t<Field>>
+            (halo_communicators_[_level]);
 
         //Get the overlaps
         hcomm.template pack_messages();
@@ -1149,11 +1152,22 @@ public:
         hcomm.template unpack_messages();
     }
 
-    void initialize_halo_communicators(const int _level)noexcept
+    void initialize_halo_communicators()noexcept
     {
-        tuple_utils::for_each(halo_communicators_, [&](auto& hcomm){
-            hcomm.compute_tasks(domain_, _level);
-        });
+
+        std::cout<< "Start initializing halo" << std::endl;
+
+        halo_communicators_.resize(domain_->tree()->depth());
+        for (int l  = domain_->tree()->base_level();
+                l < domain_->tree()->depth(); ++l)
+        {
+            tuple_utils::for_each(halo_communicators_[l], [&](auto& hcomm){
+                    hcomm.compute_tasks(domain_, l);
+                    });
+        }
+
+        halo_initialized_=true;
+        std::cout<< "End initializing halo" << std::endl;
     }
 
     void query_corrections()
@@ -1185,11 +1199,14 @@ private:
     Domain* domain_;
 
     //TODO: make this a InlineQuery
+
     std::vector<std::vector<float_type>> send_fields_;
     std::vector<std::vector<float_type>> recv_fields_;
     std::vector<std::vector<std::shared_ptr<induced_fields_task_t<AddAssignRecv>>>> send_tasks_;
     std::vector<std::vector<std::shared_ptr<induced_fields_task_t<AddAssignRecv>>>> recv_tasks_;
-    halo_communicators_tuple_t halo_communicators_;
+    std::vector<halo_communicators_tuple_t> halo_communicators_;
+
+    bool halo_initialized_=false;
 };
 
 }

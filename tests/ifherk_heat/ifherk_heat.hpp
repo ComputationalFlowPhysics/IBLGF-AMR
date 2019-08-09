@@ -119,7 +119,8 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
         boost::mpi::communicator world;
         //simulation_.write2("ifherk_begin.hdf5");
 
-        simulation_.write2("ifherk_0.hdf5");
+        //simulation_.write2("ifherk_1_0.hdf5", domain_->tree()->base_level());
+        //simulation_.write2("ifherk_1_1.hdf5", domain_->tree()->base_level()+1);
         if(domain_->is_client())
         {
             time_integration_t ifherk(&this->simulation_);
@@ -138,9 +139,10 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
                     cube_noalias_view() =
                     it->data()->template get_linalg_data<u>(0);
                 }
-            this->compute_errors<u,u_exact,error>();
+            //this->compute_errors<u,u_exact,error>();
         }
-        simulation_.write2("ifherk_1.hdf5");
+        simulation_.write2("ifherk_1_0.hdf5", domain_->tree()->base_level());
+        simulation_.write2("ifherk_1_1.hdf5", -1);
     }
 
 
@@ -160,11 +162,10 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
         const float_type dx_base = domain_->dx_base();
 
 
-        for (auto it  = domain_->begin_leafs();
-                  it != domain_->end_leafs(); ++it)
+        for (auto it  = domain_->begin();
+                  it != domain_->end(); ++it)
         {
             if(!it->locally_owned()) continue;
-            if (!(*it && it->data())) continue;
 
             auto dx_level =  dx_base/std::pow(2,it->refinement_level());
             auto scaling =  std::pow(2,it->refinement_level());
@@ -208,7 +209,7 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
                r=std::sqrt(x*x+y*y+z*z) ;
 
                r_2 = r*r;
-               it2->template get<u>(1)=std::exp(-a_*r_2);
+               it2->template get<u>(1)=0;//std::exp(-a_*r_2);
                it2->template get<u_exact>(1) =
                std::exp(-(a_*Re_*r_2)/(Re_ + 4*a_*T))/
                 (std::pow((1 + a_*4*T/Re_),1.5));
@@ -224,7 +225,7 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
                r=std::sqrt(x*x+y*y+z*z) ;
 
                r_2 = r*r;
-               it2->template get<u>(2)=std::exp(-a_*r_2);
+               it2->template get<u>(2)=0;//std::exp(-a_*r_2);
                it2->template get<u_exact>(2) =
                std::exp(-(a_*Re_*r_2)/(Re_ + 4*a_*T))/
                 (std::pow((1 + a_*4*T/Re_),1.5));
@@ -254,8 +255,8 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
 
         for (std::size_t entry=0; entry<Numeric::nFields; ++entry)
         {
-            for (auto it_t  = domain_->begin_leafs();
-                    it_t != domain_->end_leafs(); ++it_t)
+            for (auto it_t  = domain_->begin();
+                    it_t != domain_->end(); ++it_t)
             {
                 if(!it_t->locally_owned() || !it_t->data())continue;
 
@@ -393,7 +394,7 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
                     float_type r_2 = r*r;
                     float_type u=std::exp(-a_*r_2);
 
-                    if(u > 1.0*pow(0.25, diff_level))
+                    if(u > 1.0*pow(0.5, diff_level))
                     {
                         return true;
                     }

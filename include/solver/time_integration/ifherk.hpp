@@ -60,6 +60,8 @@ public: //member types
     using w_2        = typename Setup::w_2;
     using u_i        = typename Setup::u_i;
 
+    using face_test_ri   = typename Setup::face_test_ri;
+
     static constexpr int lBuffer=1; ///< Lower left buffer for interpolation
     static constexpr int rBuffer=1; ///< Lower left buffer for interpolation
 
@@ -218,6 +220,7 @@ private:
     void lin_sys_solve(float_type _alpha) noexcept
     {
          divergence<r_i, cell_aux>();
+         copy<r_i, face_test_ri>();
          psolver.template apply_lgf<cell_aux, d_i>();
          gradient<d_i,face_aux>();
 
@@ -233,14 +236,18 @@ private:
     template <typename F>
     void clean() noexcept
     {
-        for (auto it  = domain_->begin_leafs();
-                  it != domain_->end_leafs(); ++it)
+        for (auto it  = domain_->begin();
+                  it != domain_->end(); ++it)
         {
-            if(!it->locally_owned() || !it->data()) continue;
+            if (!it->data()) continue;
+            if (!it ->data()->is_allocated())continue;
+
             for (std::size_t field_idx=0; field_idx<F::nFields; ++field_idx)
             {
-                for(auto& e: it->data()->template get_data<F>(field_idx))
-                    e=0.0;
+                auto& lin_data = it ->data()->
+                    template get_linalg_data<F>(field_idx);
+
+                std::fill(lin_data.begin(),lin_data.end(),0.0);
             }
         }
     }
@@ -251,21 +258,39 @@ private:
     {
         auto client=domain_->decomposition().client();
         const auto dx_base = domain_->dx_base();
-        client->template buffer_exchange<Source>();
-        for (auto it  = domain_->begin_leafs();
-                  it != domain_->end_leafs(); ++it)
+
+        for (int l  = domain_->tree()->base_level();
+                l < domain_->tree()->depth(); ++l)
         {
-            if(!it->locally_owned() || !it->data()) continue;
-            const auto dx_level =  dx_base/std::pow(2,it->refinement_level());
-            domain::Operator::curl<Source,edge_aux>( *(it->data()),dx_level);
-        }
-        client->template buffer_exchange<edge_aux>();
-        for (auto it  = domain_->begin_leafs();
-                it != domain_->end_leafs(); ++it)
-        {
-            if(!it->locally_owned() || !it->data())continue;
-            const auto dx_level =  dx_base/std::pow(2,it->refinement_level());
-            domain::Operator::nonlinear<Source, edge_aux,Target>( *(it->data()),_scale*dx_level);
+
+            client->template buffer_exchange<Source>(l);
+
+            for (auto it  = domain_->begin(l);
+                    it != domain_->end(l); ++it)
+            {
+                if(!it->locally_owned() || !it->data()) continue;
+                const auto dx_level =  dx_base/std::pow(2,it->refinement_level());
+                domain::Operator::curl<Source,edge_aux>( *(it->data()),dx_level);
+            }
+            client->template buffer_exchange<edge_aux>(l);
+
+            for (auto it  = domain_->begin(l);
+                    it != domain_->end(l); ++it)
+            {
+                if(!it->locally_owned() || !it->data())continue;
+                //const auto dx_level =  dx_base/std::pow(2,it->refinement_level());
+                domain::Operator::nonlinear<Source, edge_aux,Target>
+                    ( *(it->data()));
+
+                for (std::size_t field_idx=0; field_idx<Target::nFields; ++field_idx)
+                {
+                    auto& lin_data = it->data()->
+                    template get_linalg_data<Target>(field_idx);
+
+                    lin_data *= _scale;
+                }
+            }
+
         }
     }
 
@@ -273,28 +298,45 @@ private:
     void divergence() noexcept
     {
         auto client=domain_->decomposition().client();
-        client->template buffer_exchange<Source>();
-        const auto dx_base = domain_->dx_base();
-        for (auto it  = domain_->begin_leafs();
-                  it != domain_->end_leafs(); ++it)
+
+        for (int l  = domain_->tree()->base_level();
+                l < domain_->tree()->depth(); ++l)
         {
-            if(!it->locally_owned() || !it->data()) continue;
-            const auto dx_level =  dx_base/std::pow(2,it->refinement_level());
-            domain::Operator::divergence<Source,Target>( *(it->data()),dx_level);
+            client->template buffer_exchange<Source>(l);
+            const auto dx_base = domain_->dx_base();
+
+            for (auto it  = domain_->begin(l);
+                    it != domain_->end(l); ++it)
+            {
+                if(!it->locally_owned() || !it->data()) continue;
+                const auto dx_level =  dx_base/std::pow(2.0,it->refinement_level());
+                domain::Operator::divergence<Source,Target>( *(it->data()),dx_level);
+            }
         }
     }
     template<class Source, class Target>
     void gradient(float_type _scale=1.0) noexcept
     {
-        auto client=domain_->decomposition().client();
-        client->template buffer_exchange<Source>();
-        const auto dx_base = domain_->dx_base();
-        for (auto it  = domain_->begin_leafs();
-                  it != domain_->end_leafs(); ++it)
+        for (int l  = domain_->tree()->base_level();
+                l < domain_->tree()->depth(); ++l)
         {
-            if(!it->locally_owned() || !it->data()) continue;
-            const auto dx_level =  dx_base/std::pow(2,it->refinement_level());
-            domain::Operator::gradient<Source,Target>( *(it->data()),_scale*dx_level);
+            auto client=domain_->decomposition().client();
+            client->template buffer_exchange<Source>(l);
+            const auto dx_base = domain_->dx_base();
+            for (auto it  = domain_->begin(l);
+                    it != domain_->end(l); ++it)
+            {
+                if(!it->locally_owned() || !it->data()) continue;
+                const auto dx_level =  dx_base/std::pow(2.0,it->refinement_level());
+                domain::Operator::gradient<Source,Target>( *(it->data()),dx_level);
+                for (std::size_t field_idx=0; field_idx<Target::nFields; ++field_idx)
+                {
+                    auto& lin_data = it->data()->
+                    template get_linalg_data<Target>(field_idx);
+
+                    lin_data *= _scale;
+                }
+            }
         }
     }
 
@@ -302,8 +344,8 @@ private:
     void add(float_type scale=1.0) noexcept
     {
         static_assert (From::nFields == To::nFields, "number of fields doesn't match when add");
-        for (auto it  = domain_->begin_leafs();
-                  it != domain_->end_leafs(); ++it)
+        for (auto it  = domain_->begin();
+                  it != domain_->end(); ++it)
         {
             if(!it->locally_owned() || !it->data()) continue;
             for (std::size_t field_idx=0; field_idx<From::nFields; ++field_idx)
@@ -312,7 +354,6 @@ private:
                 it->data()->template get_linalg<To>(field_idx).get()->
                     cube_noalias_view() +=
                      it->data()->template get_linalg_data<From>(field_idx) * scale;
-
             }
         }
     }
@@ -322,8 +363,8 @@ private:
     {
         static_assert (From::nFields == To::nFields, "number of fields doesn't match when copy");
 
-        for (auto it  = domain_->begin_leafs();
-                  it != domain_->end_leafs(); ++it)
+        for (auto it  = domain_->begin();
+                  it != domain_->end(); ++it)
         {
             if(!it->locally_owned() || !it->data()) continue;
             for (std::size_t field_idx=0; field_idx<From::nFields; ++field_idx)
@@ -331,7 +372,6 @@ private:
                 it->data()->template get_linalg<To>(field_idx).get()->
                     cube_noalias_view() =
                      it->data()->template get_linalg_data<From>(field_idx) * scale;
-
             }
 
         }

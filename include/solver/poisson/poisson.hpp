@@ -78,7 +78,6 @@ public:
         lgf_if_.alpha_base_level()=_alpha_base;
 
         for (std::size_t entry=0; entry<Source::nFields; ++entry)
-        //for (std::size_t entry=0; entry<1; ++entry)
             this->apply_if<Source, Target>(&lgf_if_, entry);
 
     }
@@ -122,7 +121,6 @@ public:
                     (it, Source::mesh_type, _field_idx, true);
             }
 
-
         }
 
         for (int l  = domain_->tree()->base_level();
@@ -136,15 +134,29 @@ public:
 
                     if(!it_s ->data()->is_allocated())continue;
                     auto& cp2 = it_s ->data()->template get_linalg_data<source_tmp>();
-                    cp2*=0.0;
+                    std::fill (cp2.begin(),cp2.end(),0.0);
                 }
 
             _kernel->change_level(l-domain_->tree()->base_level());
 
             fmm_.template apply<source_tmp, target_tmp>(domain_, _kernel, l, false, 1.0);
+            // Interpolate
+            // Sync
+            domain_->decomposition().client()->
+                template communicate_updownward_assign
+                    <target_tmp, target_tmp>(l,false,false,-1);
+
+            for (auto it  = domain_->begin(l);
+                      it != domain_->end(l); ++it)
+            {
+                if(!it->data() || !it->data()->is_allocated()) continue;
+                c_cntr_nli_.nli_intrp_node<target_tmp, target_tmp>
+                    (it, Source::mesh_type, _field_idx, true);
+            }
+
+            copy_level<target_tmp, Target>(l, 0, _field_idx, true);
         }
 
-        copy_leaf<target_tmp, Target>(0, _field_idx, true);
     }
 
      /** @brief Solve the poisson equation using lattice Green's functions on
@@ -185,17 +197,16 @@ public:
 
                     if(!it_s ->data()->is_allocated())continue;
                     auto& cp2 = it_s ->data()->template get_linalg_data<source_tmp>();
-                    cp2*=0.0;
+                    std::fill (cp2.begin(),cp2.end(),0.0);
                 }
-
-            //
-            _kernel->change_level(l-domain_->tree()->base_level());
 
             //test for FMM
             fmm_.template apply<source_tmp, target_tmp>(domain_, _kernel, l, false, 1.0);
+            copy_level<target_tmp, Target>(l, 0, _field_idx, true);
+
             fmm_.template apply<source_tmp, target_tmp>(domain_, _kernel, l, true, -1.0);
 
-            //Interpolate
+            // Interpolate
             // Sync
             domain_->decomposition().client()->
                 template communicate_updownward_assign
@@ -205,7 +216,7 @@ public:
                     it != domain_->end(l); ++it)
             {
                 if(!it->data() || !it->data()->is_allocated()) continue;
-                c_cntr_nli_.nli_intrp_node< target_tmp, target_tmp >(it, Source::mesh_type, _field_idx);
+                c_cntr_nli_.nli_intrp_node<target_tmp, target_tmp>(it, Source::mesh_type, _field_idx);
             }
 
             // Correction for LGF
@@ -242,7 +253,7 @@ public:
         }
 
         // Copy to Target
-        copy_leaf<target_tmp, Target>(0, _field_idx, true);
+        // copy_leaf<target_tmp, Target>(0, _field_idx, true);
     }
 
     template<class field>
@@ -253,9 +264,32 @@ public:
         {
             if(!it->data() || !it->data()->is_allocated()) continue;
 
-            for(auto& e: it->data()->template get_data<field>())
-                e=0.0;
+            auto& lin_data = it->data()->
+                    template get_linalg_data<field>();
+
+            std::fill (lin_data.begin(),lin_data.end(),0.0);
         }
+    }
+
+    template<class from, class to>
+    void copy_level(int level, std::size_t _field_idx_from=0, std::size_t _field_idx_to=0, bool with_buffer=false)
+    {
+        for (auto it  = domain_->begin(level);
+                it != domain_->end(level); ++it)
+            if (it->locally_owned())
+            {
+                auto& lin_data_1 = it->data()->
+                    template get_linalg_data<from>(_field_idx_from);
+                auto& lin_data_2 = it->data()->
+                    template get_linalg_data<to>(_field_idx_to);
+
+                if (with_buffer)
+                    xt::noalias(lin_data_2) = lin_data_1 * 1.0;
+                else
+                    xt::noalias( view(lin_data_2,
+                                xt::range(1,-1),  xt::range(1,-1), xt::range(1,-1)) ) =
+                        view(lin_data_1, xt::range(1,-1), xt::range(1,-1), xt::range(1,-1));
+            }
     }
 
     template<class from, class to>

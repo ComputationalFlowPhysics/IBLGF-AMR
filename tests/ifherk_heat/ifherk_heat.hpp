@@ -7,6 +7,7 @@
 #include <limits>
 #include <algorithm>
 #include <vector>
+#include <math.h>
 #include <fftw3.h>
 #include <boost/mpi.hpp>
 #include <boost/mpi/environment.hpp>
@@ -44,17 +45,14 @@ struct parameters
     Dim,
      (
         //name               type        Dim   lBuffer  hBuffer, storage type
-         (phi_num          , float_type, 1,    1,       1,     cell),
          (source           , float_type, 1,    1,       1,     cell),
          (error            , float_type, 3,    1,       1,     face),
-         (amr_lap_source   , float_type, 1,    1,       1,     cell),
-         (amr_div_source   , float_type, 1,    1,       1,     cell),
-         (error_lap_source , float_type, 1,    1,       1,     cell),
          (decomposition    , float_type, 1,    1,       1,     cell),
         //IF-HERK
-         (u_exact        , float_type, 3,    1,       1,     face),
+         (u_exact          , float_type, 3,    1,       1,     face),
          (u                , float_type, 3,    1,       1,     face),
-         (w                , float_type, 3,    1,       1,     face),
+         (w                , float_type, 3,    1,       1,     edge),
+         (stream_f         , float_type, 3,    1,       1,     edge),
          (p                , float_type, 1,    1,       1,     cell)
     ))
 };
@@ -84,8 +82,10 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
         dx_  = domain_->dx_base();
         cfl_ = simulation_.dictionary()->template get_or<float_type>("cfl",0.5);
         dt_  = simulation_.dictionary()->template get_or<float_type>("dt",-1.0);
+
         tot_steps_ = simulation_.dictionary()->template get<int>("nTimeSteps");
         Re_        = simulation_.dictionary()->template get<float_type>("Re");
+        R_         = simulation_.dictionary()->template get<float_type>("R");
 
         if (dt_<0)
             dt_=dx_*cfl_;
@@ -131,18 +131,10 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
             ))
             pcout_c<<"Time to solution [ms] "<<ifherk_duration.count()<<std::endl;
 
-            for (auto it  = domain_->begin_leafs();
-                    it != domain_->end_leafs(); ++it)
-                if (it->locally_owned())
-                {
-                    it->data()->template get_linalg<phi_num>().get()->
-                    cube_noalias_view() =
-                    it->data()->template get_linalg_data<u>(0);
-                }
             //this->compute_errors<u,u_exact,error>();
         }
-        simulation_.write2("ifherk_1_0.hdf5", domain_->tree()->base_level());
-        simulation_.write2("ifherk_1_1.hdf5", -1);
+        //simulation_.write2("ifherk_1_0.hdf5");
+        simulation_.write2("ifherk_1_1.hdf5");
     }
 
 
@@ -151,6 +143,8 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
      */
     void initialize()
     {
+        poisson_solver_t psolver(&this->simulation_);
+
         boost::mpi::communicator world;
         if(domain_->is_server()) return ;
         auto center = (domain_->bounding_box().max() -
@@ -162,6 +156,7 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
         const float_type dx_base = domain_->dx_base();
 
 
+        // Voriticity IC
         for (auto it  = domain_->begin();
                   it != domain_->end(); ++it)
         {
@@ -177,63 +172,87 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
            for(auto it2=nodes_domain.begin();it2!=nodes_domain.end();++it2 )
            {
                it2->get<source>() = 0.0;
-               it2->get<phi_num>()= 0.0;
 
                const auto& coord=it2->level_coordinate();
 
                /***********************************************************/
                float_type x = static_cast<float_type>
-                   (coord[0]-center[0]*scaling)*dx_level;
+                   (coord[0]-center[0]*scaling+0.5)*dx_level;
                float_type y = static_cast<float_type>
-                   (coord[1]-center[1]*scaling+0.5)*dx_level;
-               float_type z = static_cast<float_type>
-                   (coord[2]-center[2]*scaling+0.5)*dx_level;
-
-               float_type r=std::sqrt(x*x+y*y+z*z) ;
-
-               float_type r_2 = r*r;
-               it2->template get<u>(0)=std::exp(-a_*r_2);
-               it2->template get<u_exact>(0) =
-               std::exp(-(a_*Re_*r_2)/(Re_ + 4*a_*T))/
-                (std::pow((1 + a_*4*T/Re_),1.5));
-
-               /***********************************************************/
-
-               x = static_cast<float_type>
-                   (coord[0]-center[0]*scaling+0.5)*dx_level;
-               y = static_cast<float_type>
                    (coord[1]-center[1]*scaling)*dx_level;
-               z = static_cast<float_type>
-                   (coord[2]-center[2]*scaling+0.5)*dx_level;
+               float_type z = static_cast<float_type>
+                   (coord[2]-center[2]*scaling)*dx_level;
 
-               r=std::sqrt(x*x+y*y+z*z) ;
-
-               r_2 = r*r;
-               it2->template get<u>(1)=0;//std::exp(-a_*r_2);
-               it2->template get<u_exact>(1) =
-               std::exp(-(a_*Re_*r_2)/(Re_ + 4*a_*T))/
-                (std::pow((1 + a_*4*T/Re_),1.5));
-
+               it2->template get<w>(0) = vortex_ring_vor_ic(x,y,z,0);
                /***********************************************************/
                x = static_cast<float_type>
-                   (coord[0]-center[0]*scaling+0.5)*dx_level;
+                   (coord[0]-center[0]*scaling)*dx_level;
                y = static_cast<float_type>
                    (coord[1]-center[1]*scaling+0.5)*dx_level;
                z = static_cast<float_type>
                    (coord[2]-center[2]*scaling)*dx_level;
 
-               r=std::sqrt(x*x+y*y+z*z) ;
+               it2->template get<w>(1) = vortex_ring_vor_ic(x,y,z,1);
+               /***********************************************************/
+               x = static_cast<float_type>
+                   (coord[0]-center[0]*scaling)*dx_level;
+               y = static_cast<float_type>
+                   (coord[1]-center[1]*scaling)*dx_level;
+               z = static_cast<float_type>
+                   (coord[2]-center[2]*scaling+0.5)*dx_level;
 
-               r_2 = r*r;
-               it2->template get<u>(2)=0;//std::exp(-a_*r_2);
-               it2->template get<u_exact>(2) =
-               std::exp(-(a_*Re_*r_2)/(Re_ + 4*a_*T))/
-                (std::pow((1 + a_*4*T/Re_),1.5));
+               it2->template get<w>(2) = vortex_ring_vor_ic(x,y,z,2);
 
                /***********************************************************/
                it2->template get<decomposition>()=world.rank();
            }
         }
+
+        psolver.template apply_lgf<w, stream_f>();
+        auto client=domain_->decomposition().client();
+
+        for (int l  = domain_->tree()->base_level();
+                l < domain_->tree()->depth(); ++l)
+        {
+
+            client->template buffer_exchange<stream_f>(l);
+
+            for (auto it  = domain_->begin(l);
+                    it != domain_->end(l); ++it)
+            {
+                if(!it->locally_owned() || !it->data()) continue;
+                const auto dx_level =  dx_base/std::pow(2,it->refinement_level());
+                domain::Operator::curl_transpose<stream_f,u>( *(it->data()),dx_level);
+            }
+
+        }
+    }
+
+
+
+    float_type vortex_ring_vor_ic(float_type x, float_type y, float_type z, int field_idx) const
+    {
+        float_type w=0;
+
+        const float_type alpha = 0.54857674;
+        float_type R2 = R_*R_;
+
+        float_type r2 = x*x+y*y;
+        float_type r = sqrt(r2);
+        float_type s2 = z*z+(r-R_)*(r-R_);
+
+        float_type theta = std::atan2(y,x);
+        float_type w_theta = alpha * Re_/R2 * std::exp(-4.0*s2/(R2-s2));
+
+        if (s2>=R2) return 0.0;
+
+        if (field_idx==0)
+            return -w_theta*std::sin(theta);
+        else if (field_idx==1)
+            return w_theta*std::cos(theta);
+        else
+            return 0.0;
+
     }
 
     /** @brief Compute L2 and LInf errors */
@@ -370,10 +389,7 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
         b.grow(2,2);
         auto corners= b.get_corners();
 
-
-
-        //auto lower_t = (b.base()-center);
-        //auto upper_t= (b.max()+1 -center);
+        float_type w_max = std::abs(vortex_ring_vor_ic(float_type(R_),float_type(0.0),float_type(0.0),1));
 
         for(int i=b.base()[0];i<=b.max()[0];++i)
         {
@@ -381,29 +397,44 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
             {
                 for(int k=b.base()[2];k<=b.max()[2];++k)
                 {
+                    float_type x = static_cast<float_type>
+                    (i-center[0]+0.5)*dx_level;
+                    float_type y = static_cast<float_type>
+                    (j-center[1])*dx_level;
+                    float_type z = static_cast<float_type>
+                    (k-center[2])*dx_level;
 
-                    const float_type x = static_cast<float_type>
-                        (i-center[0]+0.5)*dx_level;
-                    const float_type y = static_cast<float_type>
-                        (j-center[1]+0.5)*dx_level;
-                    const float_type z = static_cast<float_type>
-                        (k-center[2]+0.5)*dx_level;
-
-                    const float_type r=std::sqrt(x*x+y*y+z*z) ;
-
-                    float_type r_2 = r*r;
-                    float_type u=std::exp(-a_*r_2);
-
-                    if(u > 1.0*pow(0.5, diff_level))
-                    {
+                    float_type tmp_w = vortex_ring_vor_ic(x,y,z,0);
+                    if(std::abs(tmp_w) > w_max*pow(0.5, diff_level))
                         return true;
-                    }
+
+                    x = static_cast<float_type>
+                    (i-center[0])*dx_level;
+                    y = static_cast<float_type>
+                    (j-center[1]+0.5)*dx_level;
+                    z = static_cast<float_type>
+                    (k-center[2])*dx_level;
+
+
+                    tmp_w = vortex_ring_vor_ic(x,y,z,1);
+                    if(std::abs(tmp_w) > w_max*pow(0.5, diff_level))
+                        return true;
+
+                    x = static_cast<float_type>
+                    (i-center[0])*dx_level;
+                    y = static_cast<float_type>
+                    (j-center[1])*dx_level;
+                    z = static_cast<float_type>
+                    (k-center[2]+0.5)*dx_level;
+
+                    tmp_w = vortex_ring_vor_ic(x,y,z,2);
+                    if(std::abs(tmp_w)  > w_max*pow(0.5, diff_level))
+                        return true;
                 }
             }
         }
 
         return false;
-
     }
 
 

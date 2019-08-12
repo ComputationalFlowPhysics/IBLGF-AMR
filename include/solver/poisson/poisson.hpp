@@ -70,7 +70,8 @@ public:
     void apply_lgf()
     {
         //this->apply_lgf<Source, Target>(&lgf_if_);
-        this->apply_lgf<Source, Target>(&lgf_lap_);
+        for (std::size_t entry=0; entry<Source::nFields; ++entry)
+            this->apply_lgf<Source, Target>(&lgf_lap_,entry);
     }
     template< class Source, class Target >
     void apply_lgf_IF(float_type _alpha_base)
@@ -194,7 +195,6 @@ public:
                     it_s != domain_->end(l); ++it_s)
                 if (it_s->data() && !it_s->locally_owned())
                 {
-
                     if(!it_s ->data()->is_allocated())continue;
                     auto& cp2 = it_s ->data()->template get_linalg_data<source_tmp>();
                     std::fill (cp2.begin(),cp2.end(),0.0);

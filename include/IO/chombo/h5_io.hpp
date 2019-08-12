@@ -9,7 +9,6 @@
 
 // IBLGF-specific
 #include <global.hpp>
-//#include <setups/tests/decomposition/decomposition_test.hpp>
 #include <domain/dataFields/blockDescriptor.hpp>
 #include <domain/octree/tree.hpp>
 #include <domain/dataFields/datafield.hpp>
@@ -33,8 +32,6 @@ public:
     using datablock_t            = typename Domain::datablock_t;
     using field_type_iterator_t  = typename Domain::field_type_iterator_t;
     using field_tuple            = typename datablock_t::fields_tuple_t;
-    //using tree_t                 = octree::Tree<Dim,datablock_t>;
-    //using octant_type            = typename tree_t::octant_type;
     using octant_type            = typename Domain::octant_t;
 
     template<typename T, std::size_t D>
@@ -45,10 +42,9 @@ public:
     using blockDescriptor_t = typename domain::BlockDescriptor<int, Dim>;
 
 
-    //using node_t = typename NodeType<DataBlock>;
     using blockData_t = typename datablock_t::node_field_type;
-    using write_info_t = typename std::pair<blockDescriptor_t,blockData_t*>;
-    using block_info_t = typename std::tuple<int, blockDescriptor_t, blockData_t*>;
+//    using write_info_t = typename std::pair<blockDescriptor_t,blockData_t*>;
+//    using block_info_t = typename std::tuple<int, blockDescriptor_t, blockData_t*>;
 
     using chombo_t= typename chombo_writer::Chombo<Dim, blockDescriptor_t,
                             blockData_t, Domain, hdf5_file<Dim, base_t> >;
@@ -94,81 +90,37 @@ public:
     {
         boost::mpi::communicator world;
 
-        // vector of pairs of descriptors and field data
-        std::vector<write_info_t> data_info;
-        //   std::vector<BlockInfo> block_distribution;
-        std::vector<block_info_t> block_distribution;
-
-
         int nPoints=0;
         for(auto it=_lt->begin_leafs();it!=_lt->end_leafs();++it)
         {
-            if (!it->data()) continue;
             auto b= it->data()->descriptor();
             b.grow(0,1); //grow by one to fill the gap
             nPoints+= b.nPoints();
         }
 
+        std::vector<octant_type*> octant_blocks;
         int _count=0;
         // Collect block descriptor and data from each block
         for(auto it=_lt->begin_leafs();it!=_lt->end_leafs();++it)
         {
-            if (!it->data()) continue;
             int rank = it->rank();
 
             if (rank==world.rank() || world.rank()==0) {
                 blockDescriptor_t block =it->data()->descriptor();
-                blockData_t* node_data=&(it->data()->node_field());
-
-                //     world.barrier();
-                //std::cout<<"Rank = "<<world.rank()<<". Count = "<<_count
-                //        <<". Add Block to level = "<<block.level()
-                //        <<". octant level = "<<it->refinement_level()<<std::endl;
-                // data_info.push_back(std::make_pair(block,node_data));
-
-
-                block_info_t blockInfo = std::make_tuple(rank, block, node_data);
-                block_distribution.push_back(blockInfo);
+                octant_blocks.push_back(*it);
 
                 it->index(_count*block.nPoints());
             }
             ++_count;
         }
 
-
-        //world.barrier();
-        //if (_lt->is_server()) {
-        //    std::cout<<"\n=========World Barrier=========\n"<<std::endl;
-        //}
-
-        //std::cout<<"Create hdf5_file object with rank "<<world.rank()<<" of "<<world.size()<<std::endl;
-
-        //world.barrier();
-        //if (_lt->is_server()) {
-        //    std::cout<<"\n=========World Barrier=========\n"<<std::endl;
-        //}
-
         hdf5_file<Dim> chombo_file(_filename);
-        //   chombo_t ch_writer(data_info);  // Initialize writer with vector of
-        // info: pair of descriptor and data
-        chombo_t ch_writer(block_distribution);  // Initialize writer with vector of
-        // info: tuple of rank, descriptor and data
-        //world.barrier();
-        //if (_lt->is_server()) {
-        //    std::cout<<"\n=========World Barrier=========\n"<<std::endl;
-        //}
+
+        chombo_t ch_writer(octant_blocks);  // Initialize writer with vector of octants
 
         ch_writer.write_global_metaData(&chombo_file,_lt->dx_base());
 
-        //world.barrier();
-        //if (_lt->is_server()) {
-        //    std::cout<<"\n=========World Barrier=========\n"<<std::endl;
-        //}
-        //std::cout<<"------>write_level_info: rank "<<world.rank()<<" of "<<world.size()<<std::endl;
-
         ch_writer.write_level_info(&chombo_file);
-
-        //std::cout<<"<-----write_h5: End with rank "<<world.rank()<<" of "<<world.size()<<std::endl;
     }
 
 };

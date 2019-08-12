@@ -194,6 +194,13 @@ namespace interpolation
             else if (mesh_obj == MeshObject::cell)
             {
             }
+            else if (mesh_obj == MeshObject::edge)
+            {
+                relative_positions[0]=0;
+                relative_positions[1]=0;
+                relative_positions[2]=0;
+                relative_positions[_field_idx]=1;
+            }
             else
                 throw std::runtime_error(
                         "Wrong type of mesh to be interpolated");
@@ -283,6 +290,13 @@ namespace interpolation
             }
             else if (mesh_obj == MeshObject::cell)
             {
+            }
+            else if (mesh_obj == MeshObject::edge)
+            {
+                relative_positions[0]=0;
+                relative_positions[1]=0;
+                relative_positions[2]=0;
+                relative_positions[_field_idx]=1;
             }
             else
                 throw std::runtime_error(

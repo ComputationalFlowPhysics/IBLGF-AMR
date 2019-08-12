@@ -43,9 +43,9 @@ public:
         writer.write_vtk(_filename, domain_.get());
     }
 
-    void write2(std::string _filename, int level)
+    void write2(std::string _filename)
     {
-        writer_h5.write_h5(_filename, domain_.get(), level);
+        writer_h5.write_h5(_filename, domain_.get());
     }
 
     auto& domain()noexcept{return domain_;}

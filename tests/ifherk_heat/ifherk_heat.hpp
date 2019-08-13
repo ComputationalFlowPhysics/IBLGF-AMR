@@ -209,13 +209,13 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
         }
 
         psolver.template apply_lgf<w, stream_f>();
-        auto client=domain_->decomposition().client();
+        //auto client=domain_->decomposition().client();
 
         for (int l  = domain_->tree()->base_level();
                 l < domain_->tree()->depth(); ++l)
         {
 
-            client->template buffer_exchange<stream_f>(l);
+            //client->template buffer_exchange<stream_f>(l);
 
             for (auto it  = domain_->begin(l);
                     it != domain_->end(l); ++it)

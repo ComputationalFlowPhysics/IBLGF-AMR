@@ -70,7 +70,8 @@ public:
     void apply_lgf()
     {
         //this->apply_lgf<Source, Target>(&lgf_if_);
-        for (std::size_t entry=0; entry<Source::nFields; ++entry)
+        //for (std::size_t entry=0; entry<Source::nFields; ++entry)
+        for (std::size_t entry=0; entry<2; ++entry)
             this->apply_lgf<Source, Target>(&lgf_lap_,entry);
     }
     template< class Source, class Target >
@@ -180,6 +181,7 @@ public:
         // Cleaning
         clean_field<source_tmp>();
         clean_field<target_tmp>();
+        clean_field<correction_tmp>();
 
         // Copy source
         copy_leaf<Source, source_tmp>(_field_idx, 0, false);
@@ -238,7 +240,7 @@ public:
                     it != domain_->end(l); ++it)
             {
                 if(!it->data() || !it->data()->is_allocated()) continue;
-                c_cntr_nli_.nli_intrp_node< correction_tmp, source_tmp >(it, Source::mesh_type, _field_idx);
+                c_cntr_nli_.nli_intrp_node< correction_tmp, correction_tmp >(it, Source::mesh_type, _field_idx);
             }
 
             for (auto it  = domain_->begin(l);
@@ -247,9 +249,20 @@ public:
                 int refinement_level = it->refinement_level();
                 double dx = dx_base/std::pow(2,refinement_level);
                 c_cntr_nli_.add_source_correction
-                <target_tmp, source_tmp>(it, dx/2.0);
+                    <target_tmp, correction_tmp>(it, dx/2.0);
             }
 
+            for (auto it  = domain_->begin(l+1);
+                    it != domain_->end(l+1); ++it)
+                if (it->locally_owned())
+                {
+                    auto& lin_data_1 = it->data()->
+                    template get_linalg_data<correction_tmp>(0);
+                    auto& lin_data_2 = it->data()->
+                    template get_linalg_data<source_tmp>(0);
+
+                    xt::noalias(lin_data_2) += lin_data_1 * 1.0;
+                }
         }
 
         // Copy to Target

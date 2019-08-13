@@ -321,7 +321,7 @@ private:
                 l < domain_->tree()->depth(); ++l)
         {
             auto client=domain_->decomposition().client();
-            client->template buffer_exchange<Source>(l);
+            //client->template buffer_exchange<Source>(l);
             const auto dx_base = domain_->dx_base();
             for (auto it  = domain_->begin(l);
                     it != domain_->end(l); ++it)

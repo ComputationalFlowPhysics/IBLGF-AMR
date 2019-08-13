@@ -158,6 +158,8 @@ namespace interpolation
                 for (int i = 0; i < parent->num_children(); ++i)
                 {
                     auto child = parent->child(i);
+                    if (!child ) continue;
+                    if (!child->locally_owned()) continue;
                     if (child == nullptr ||
                             !child ->data() ||
                             !child->data()->is_allocated())

@@ -109,30 +109,40 @@ public:
         pcout<<"                   nsteps = " << tot_steps_ << std::endl;
 
 
+        write_timestep();
         for (int i=0; i<tot_steps_; ++i)
         {
-            mDuration_type ifherk_if(0);
-            TIME_CODE( ifherk_if, SINGLE_ARG(
-                time_step();
-            ));
-            pcout<<ifherk_if.count()<<std::endl;
+            if(domain_->is_client())
+            {
+                mDuration_type ifherk_if(0);
+                TIME_CODE( ifherk_if, SINGLE_ARG(
+                            time_step();
+                            ));
+                pcout<<ifherk_if.count()<<std::endl;
+            }
 
+            // Add dt to Time
+            T_ += dt_;
+            n_step_ = round(T_ / dt_);
+            pcout<<"T = " << T_ << " -----------------" << std::endl;
+
+            world.barrier();
             if ( n_step_ % output_freq_ == 0)
                 write_timestep();
-
         }
 
     }
     void write_timestep()
     {
         pcout << "- writing at T = " << T_ << std::endl;
-        //simulation_->write2(fname(n_step_));
+        simulation_->write2(fname(n_step_));
+        //simulation_->write2("ifherk_1_1.hdf5");
         pcout << "- finishing writing " << std::endl;
     }
 
     std::string fname(int _n)
     {
-        return fname_prefix_+"heat_ifherk_"+std::to_string(_n)+".hdf5";
+        return fname_prefix_+"ifherk_"+std::to_string(_n)+".hdf5";
     }
 
 
@@ -208,10 +218,6 @@ public:
         copy<u_i, u>();
         copy<d_i, p>(1.0/coeff_a(3,3)/dt_);
         // ******************************************************************
-        // Add dt to Time
-        T_ += dt_;
-        n_step_ = round(T_ / dt_);
-        pcout<<"T = " << T_ << " -----------------" << std::endl;
 
     }
 

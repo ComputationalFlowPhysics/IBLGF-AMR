@@ -70,8 +70,7 @@ public:
     void apply_lgf()
     {
         //this->apply_lgf<Source, Target>(&lgf_if_);
-        //for (std::size_t entry=0; entry<Source::nFields; ++entry)
-        for (std::size_t entry=0; entry<2; ++entry)
+        for (std::size_t entry=0; entry<Source::nFields; ++entry)
             this->apply_lgf<Source, Target>(&lgf_lap_,entry);
     }
     template< class Source, class Target >

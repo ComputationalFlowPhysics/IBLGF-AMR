@@ -117,24 +117,21 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
     void run()
     {
         boost::mpi::communicator world;
-        //simulation_.write2("ifherk_begin.hdf5");
+        //simulation_.write2("ifherk_0.hdf5");
 
         //simulation_.write2("ifherk_1_0.hdf5", domain_->tree()->base_level());
         //simulation_.write2("ifherk_1_1.hdf5", domain_->tree()->base_level()+1);
-        if(domain_->is_client())
-        {
-            time_integration_t ifherk(&this->simulation_);
+        time_integration_t ifherk(&this->simulation_);
 
-            mDuration_type ifherk_duration(0);
-            TIME_CODE( ifherk_duration, SINGLE_ARG(
-                ifherk.time_march();
-            ))
-            pcout_c<<"Time to solution [ms] "<<ifherk_duration.count()<<std::endl;
+        mDuration_type ifherk_duration(0);
+        TIME_CODE( ifherk_duration, SINGLE_ARG(
+                    ifherk.time_march();
+                    ))
+        pcout_c<<"Time to solution [ms] "<<ifherk_duration.count()<<std::endl;
 
-            //this->compute_errors<u,u_exact,error>();
-        }
+        //this->compute_errors<u,u_exact,error>();
         //simulation_.write2("ifherk_1_0.hdf5");
-        simulation_.write2("ifherk_1_1.hdf5");
+        //simulation_.write2("ifherk_1.hdf5");
     }
 
 
@@ -242,7 +239,7 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
         float_type s2 = z*z+(r-R_)*(r-R_);
 
         float_type theta = std::atan2(y,x);
-        float_type w_theta = alpha * Re_/R2 * std::exp(-4.0*s2/(R2-s2));
+        float_type w_theta = alpha * 1.0/R2 * std::exp(-4.0*s2/(R2-s2));
 
         if (s2>=R2) return 0.0;
 

@@ -251,17 +251,17 @@ public:
                     <target_tmp, correction_tmp>(it, dx/2.0);
             }
 
-            for (auto it  = domain_->begin(l+1);
-                    it != domain_->end(l+1); ++it)
+            for (auto it  = domain_->begin(l+1); it != domain_->end(l+1); ++it)
+            {
                 if (it->locally_owned())
                 {
                     auto& lin_data_1 = it->data()->
-                    template get_linalg_data<correction_tmp>(0);
+                        template get_linalg_data<correction_tmp>(0);
                     auto& lin_data_2 = it->data()->
-                    template get_linalg_data<source_tmp>(0);
-
+                        template get_linalg_data<source_tmp>(0);
                     xt::noalias(lin_data_2) += lin_data_1 * 1.0;
                 }
+            }
         }
 
         // Copy to Target

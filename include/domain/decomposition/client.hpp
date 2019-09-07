@@ -1154,9 +1154,6 @@ public:
 
     void initialize_halo_communicators()noexcept
     {
-
-        std::cout<< "Start initializing halo" << std::endl;
-
         halo_communicators_.resize(domain_->tree()->depth());
         for (int l  = domain_->tree()->base_level();
                 l < domain_->tree()->depth(); ++l)
@@ -1167,7 +1164,6 @@ public:
         }
 
         halo_initialized_=true;
-        std::cout<< "End initializing halo" << std::endl;
     }
 
     void query_corrections()

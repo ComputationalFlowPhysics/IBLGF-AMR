@@ -21,7 +21,7 @@ int main(int argc, char *argv[])
     }
 
     // Read in dictionary
-    Dictionary dictionary(input);
+    Dictionary dictionary(input, argc, argv);
 
     //Instantiate setup
     IfherkHeat setup(&dictionary);

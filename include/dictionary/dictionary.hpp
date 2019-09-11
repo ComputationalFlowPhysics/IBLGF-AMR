@@ -44,7 +44,7 @@ public: //Ctors:
     Dictionary(Dictionary&& rhs)=default;
 	Dictionary& operator=(Dictionary&&) & = default;
 
-    Dictionary(const std::string _file)
+    Dictionary(const std::string _file, int argc=0, char **argv=nullptr)
     :root(true)
     {
         content_=read_file(_file);
@@ -54,6 +54,9 @@ public: //Ctors:
         string_utilities::erase_all_contents(content_,"/*","*/");
 
         init();
+
+        //By default cmd arguments belong to first declared dictionary
+        this->parse_cmd_args(argc,argv);
 
     }
 
@@ -104,46 +107,68 @@ private: //Helper functions
 
     void parse_variables()
     {
-        auto variables=string_utilities::get_dictionaries(this->content_,"=", ";");
+        return parse_variables(this->content_);
+    }
+    void parse_variables(const std::string& _content)
+    {
+        auto variables=string_utilities::get_dictionaries(_content,"=", ";");
         for(auto& var: variables)
         {
             auto elements_str=string_utilities::get_dictionaries(var.second,"(", ")");
-            std::vector<std::string> elemets;
+            std::vector<std::string> elements;
             if(elements_str.size()>0) 
             {
                 for(auto& var: elements_str)
                 {
-                    elemets=string_utilities::split_string(var.second);
+                    elements=string_utilities::split_string(var.second);
                 }
-                vector_variables_.insert(std::make_pair(var.first, elemets));
+                auto itp=vector_variables_.insert(std::make_pair(var.first, elements));
+                if(!itp.second) itp.first->second=elements;
             }
             else
             {
-                scalar_variables_.insert(std::make_pair(var.first, var.second));
+                auto itp=scalar_variables_.insert(std::make_pair(var.first, var.second));
+                if(!itp.second) itp.first->second=var.second;
             }
         }
     }
 
 
-	//bool is_valid_cmd_argument(const std::string& arg, std::string& id, std::string& value) const
-	//{
-	//	// cmd argument must start wit --
-	//	if (arg[0]!='-' || arg[1]!='-') return false;
-	//	
-	//	// there should be one equals sign separating id and value
-	//	std::vector<std::string> split_vec;
-	//	string_utilities::split_string(split_vec, arg, "=");
-	//	if (split_vec.size() != 2) return false;
-	//	if (split_vec[0].size() < 3) return false;
-	//	if (split_vec[1].size() == 0) return false;
-	//	
-	//	id = std::string(split_vec[0].begin()+2,split_vec[0].end());
-	//	value = split_vec[1];
-	//	return true;
-	//}
-
-
 public: //Some access functions
+
+    void parse_cmd_args(int argc, char** argv)
+    {
+        for(int i=1;i<argc;++i)
+        {
+            if (!(argv[i][0] == '-' &&  argv[i][1] == '-')) continue;
+
+            std::string arg(argv[i]);
+            arg+=";";
+            arg=arg.substr(2,arg.size()-2);
+            const auto idx=arg.find_last_of("/");
+            const bool subdict=idx!=arg.npos;
+
+            if(subdict)
+            {
+                std::string path=arg.substr(0,idx);
+                arg=arg.substr(idx+1);
+
+                try{
+                    auto sd =this->get_dictionary(path);
+                    sd->parse_variables(arg);
+                }
+                catch(...)
+                {
+                    throw std::runtime_error("Cmd-Args: Dictionary path \""+
+                    path+"\" is not valid for dictionary: "+this->name_);
+                }
+            }
+            else
+            {
+                parse_variables(arg);
+            }
+        }
+    }
     
     auto get_subdictionary(const std::string& _name)
     {
@@ -168,7 +193,7 @@ public: //Some access functions
     
     }
 
-    auto get_dictionary(const std::string& _dictionary_path)
+    std::shared_ptr<Dictionary> get_dictionary(const std::string& _dictionary_path)
     {
         auto split = string_utilities::split_string(_dictionary_path,'/');
         auto sub_dict=get_subdictionary(split[0]);

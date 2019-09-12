@@ -26,7 +26,9 @@ public:
     ~Simulation() = default;
 
     Simulation(std::shared_ptr<Dictionary> _dictionary)
-    :dictionary_(_dictionary),domain_(std::make_shared<domain_type>())
+    :dictionary_(_dictionary),
+     domain_(std::make_shared<domain_type>()),
+     io_init_(_dictionary.get())
     {
     }
 
@@ -40,12 +42,12 @@ public:
 
     void write(std::string _filename)
     {
-        writer.write_vtk(_filename, domain_.get());
+        writer.write_vtk(io::output().dir()+"/"+_filename, domain_.get());
     }
 
     void write2(std::string _filename)
     {
-        writer_h5.write_h5(_filename, domain_.get());
+        writer_h5.write_h5(io::output().dir()+"/"+_filename, domain_.get());
     }
 
     auto& domain()noexcept{return domain_;}
@@ -59,6 +61,7 @@ public:
   boost::mpi::communicator world_;
   io::Vtk_io<Domain> writer;
   io::H5_io<3, Domain> writer_h5;
+  io::IO_init io_init_;
 
 };
 

@@ -176,7 +176,7 @@ public: //Some access functions
                     [&_name](const auto& d){ return d->name_ == _name; });
 		if (it==sub_dictionaries_.cend()) 
         {
-            for(auto & sd: sub_dictionaries_) std::cout<<"name :"<<sd->name_<<std::endl;
+            //for(auto & sd: sub_dictionaries_) std::cout<<"name :"<<sd->name_<<std::endl;
             throw DictionaryExcpetion(name_);
         }
 		return *it;

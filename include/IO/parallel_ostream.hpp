@@ -11,16 +11,32 @@ namespace parallel_ostream
 class ParallelOstream
 {
 public:
-   ParallelOstream (const bool _active,std::ostream& _ostream=std::cout) 
+    explicit ParallelOstream (const bool _active,std::ostream& _ostream=std::cout) 
     :ostream_(_ostream),
     active_(_active)
     { }
 
-
-    ParallelOstream (int _rank=0,std::ostream& _ostream=std::cout)
+    explicit ParallelOstream (int _rank=0,std::ostream& _ostream=std::cout)
     :ostream_(_ostream),
     active_(is_active_rank(_rank))
     { }
+
+    explicit ParallelOstream (const std::string& _filename, int _rank,std::ofstream& _ofstream)
+    :ostream_(_ofstream),
+    active_(is_active_rank(_rank))
+    { 
+        open(_filename,_ofstream);
+    }
+    
+    void open(const std::string& _filename, std::ofstream& _ofs )
+    {
+        if(active_) _ofs.open(_filename);
+    }
+    void close(std::ofstream _ofs )
+    {
+        if(active_) _ofs.close();
+    }
+
 
     bool is_active_rank(int _r){boost::mpi::communicator world; return world.rank()==_r;}
     
@@ -53,9 +69,6 @@ public:
             ostream_ << t;
         return *this;
     }
-
-
-
 
 private:
     std::ostream  &ostream_;

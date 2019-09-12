@@ -3,13 +3,10 @@ simulation_parameters
     nLevels=5;
     global_refinement=0;
 
-    //vortex
-    //{
-    //    c1=1000.0;
-    //    c2=10;
-    //    R=0.125;
-    //    center=(0,0,-0.125);
-    //}
+    output
+    {
+        directory=vortexRings;
+    }
 
     vortex
     {
@@ -24,22 +21,19 @@ simulation_parameters
         c1=1000000.0;
         c2=15;
         R=0.015;
-        //R=0.03;
         center=(0,0,0.125);
     }
 
     domain
     {
         Lx=1.0;
-        max_extent   = 300;
+        max_extent = 300;
         block_extent=8;
 
         block
         {
             base=(-64,-64,-64); 
             extent=(128,128,128); 
-            //base=(-32,-32,-32); 
-            //extent=(64,64,64); 
         }
     }
 }

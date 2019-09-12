@@ -30,7 +30,6 @@
 #include"../../setups/setup_base.hpp"
 
 
-
 const int Dim = 3;
 
 struct parameters
@@ -409,6 +408,12 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
 
         std::vector<int> counts(nLevels_+1+global_refinement_,0);
 
+        std::ofstream ofs,ofs_global;
+        parallel_ostream::ParallelOstream pofs(io::output().dir()+"/"+
+            _output_prefix+"level_error.txt",1,ofs);
+        parallel_ostream::ParallelOstream pofs_global(io::output().dir()+"/"+
+            _output_prefix+"global_error.txt",1,ofs_global);
+
         if(domain_->is_server())  return;
 
         for (auto it_t  = domain_->begin_leafs();
@@ -475,12 +480,18 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
         pcout_c << "Glabal "<<_output_prefix<<"L2 = " << std::sqrt(L2_global)<< std::endl;
         pcout_c << "Global "<<_output_prefix<<"LInf = " << LInf_global << std::endl;
 
+        ofs_global<< std::sqrt(L2_exact_global)<<" "<<LInf_exact_global<<" "
+                  << std::sqrt(L2_global) << " " <<LInf_global<<std::endl;
+
         //Level wise errros
         std::vector<float_type> L2_perLevel_global(nLevels_+1+global_refinement_,0.0);
         std::vector<float_type> LInf_perLevel_global(nLevels_+1+global_refinement_,0.0);
 
         std::vector<float_type> L2_exact_perLevel_global(nLevels_+1+global_refinement_,0.0);
         std::vector<float_type> LInf_exact_perLevel_global(nLevels_+1+global_refinement_,0.0);
+
+
+        //files
 
         std::vector<int> counts_global(nLevels_+1+global_refinement_,0);
         for(std::size_t i=0;i<LInf_perLevel_global.size();++i)
@@ -502,6 +513,9 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
             pcout_c<<_output_prefix<<"L2_"<<i<<" "<<std::sqrt(L2_perLevel_global[i])<<std::endl;
             pcout_c<<_output_prefix<<"LInf_"<<i<<" "<<LInf_perLevel_global[i]<<std::endl;
             pcout_c<<"count_"<<i<<" "<<counts_global[i]<<std::endl;
+
+
+            pofs<<i<<" "<<std::sqrt(L2_perLevel_global[i])<<" "<<LInf_perLevel_global[i]<<std::endl;
         }
     }
 

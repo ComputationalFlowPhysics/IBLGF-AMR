@@ -12,49 +12,35 @@
 namespace io
 {
 
-struct outputParams_singleton;
-outputParams_singleton& output();
+struct IO_parameters;
+IO_parameters& output();
 
-struct outputParams_singleton // singleton
+struct IO_parameters // singleton
 {
 private:
 
 	/** @brief Default constructor */
-	outputParams_singleton(){};
+	IO_parameters(){};
 	/** @brief Function for instantiating the singleton is a friend */
-	friend outputParams_singleton& output();
+	friend IO_parameters& output();
 
-    boost::filesystem::path directory_output = boost::filesystem::current_path();
-    std::string rel_directory_str = "./";
-
-    boost::filesystem::path directory_restartLoad = boost::filesystem::current_path();
-    std::string rel_directory_restartLoad_str = "./";
-
-    boost::filesystem::path directory_restartSave = boost::filesystem::current_path();
-    std::string rel_directory_restartSave_str = "./";
-
-    std::string sim_name_="outFile";
 
 public:
 
     using dictionary_t= dictionary::Dictionary;
 
     //No copy constructor or assign-operator
-	outputParams_singleton(const outputParams_singleton&) = delete;
-	outputParams_singleton& operator=(const outputParams_singleton&) = delete;
+	IO_parameters(const IO_parameters&) = delete;
+	IO_parameters& operator=(const IO_parameters&) = delete;
 
-    //void set_outputParams(std::string _outputDir ){ outputParams_=_outputDir; }
-    void set_directory(std::shared_ptr<dictionary_t>& _dict_output )
+    void set_directory(std::shared_ptr<dictionary_t>& _dict_output ) noexcept
     {
-
-        sim_name_= _dict_output->
-            template get_or<std::string>("name","my_simulation");
 
         std::string dir="./";
         boost::mpi::communicator world;
 		if(_dict_output-> has_key("directory")){
 
-            dir= _dict_output-> template get<std::string>("name");
+            dir= _dict_output-> template get<std::string>("directory");
             boost::filesystem::path outdir(dir);
             directory_output=outdir;
             rel_directory_str=dir;
@@ -64,7 +50,7 @@ public:
         }
     }
 
-    void set_restart_directory(std::shared_ptr<dictionary_t>& _dict_output )
+    void set_restart_directory(std::shared_ptr<dictionary_t>& _dict_output ) noexcept
     {
         std::string dir="./";
         boost::mpi::communicator world;
@@ -99,21 +85,23 @@ public:
             directory_restartSave=directory_output;
             rel_directory_restartSave_str=rel_directory_str;
         }
-
-
-
     }
 
-    boost::filesystem::path directory(){return directory_output; }
-    std::string directory_str(){return rel_directory_str; }
-    std::string name(){return sim_name_; }
+    std::string dir()const noexcept{return rel_directory_str; }
+    std::string restart_load_dir()const noexcept{return rel_directory_restartLoad_str; }
+    std::string restart_save_dir()const noexcept{return rel_directory_restartSave_str; }
 
-    //Restart directories:
-    boost::filesystem::path restart_load_directory(){return directory_restartLoad; }
-    std::string restart_load_directory_str(){return rel_directory_restartLoad_str; }
-    boost::filesystem::path restart_save_directory(){return directory_restartSave; }
-    std::string restart_save_directory_str(){return rel_directory_restartSave_str; }
 
+private:
+
+    boost::filesystem::path directory_output = boost::filesystem::current_path();
+    std::string rel_directory_str = "./";
+
+    boost::filesystem::path directory_restartLoad = boost::filesystem::current_path();
+    std::string rel_directory_restartLoad_str = "./";
+
+    boost::filesystem::path directory_restartSave = boost::filesystem::current_path();
+    std::string rel_directory_restartSave_str = "./";
 
 };
 
@@ -121,28 +109,27 @@ public:
 
 
 /** @brief Get a reference single instance  */
-inline outputParams_singleton& output()
+inline IO_parameters& output()
 {
-	static outputParams_singleton params;
+	static IO_parameters params;
 	return params;
 }
 
 
 
 /** @brief Helper to set output directory in the simulation */
-struct setOutput
+struct IO_init
 {
 
     using dictionary_t= dictionary::Dictionary;
-    setOutput( dictionary_t* dict_)
+    IO_init( dictionary_t* dict_)
     {
         this->set(dict_);
     }
 
-
 private:
 
-    void set( dictionary_t* dict_)
+    void set( dictionary_t* dict_) const noexcept
     {
         std::shared_ptr<dictionary_t> subdict_ptr;
         if( dict_->get_dictionary("output",subdict_ptr) ){
@@ -151,9 +138,7 @@ private:
         if( dict_->get_dictionary("restart",subdict_ptr) ){
             output().set_restart_directory(subdict_ptr );
         }
-
     }
-
 };
 
 

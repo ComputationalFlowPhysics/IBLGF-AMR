@@ -176,7 +176,6 @@ public: //Some access functions
                     [&_name](const auto& d){ return d->name_ == _name; });
 		if (it==sub_dictionaries_.cend()) 
         {
-            for(auto & sd: sub_dictionaries_) std::cout<<"name :"<<sd->name_<<std::endl;
             throw DictionaryExcpetion(name_);
         }
 		return *it;
@@ -204,7 +203,8 @@ public: //Some access functions
         return sub_dict;
     }
 
-    bool get_dictionary(const std::string& _dictionary_path, std::shared_ptr<Dictionary>& _dict)
+    bool get_dictionary(const std::string& _dictionary_path, 
+                        std::shared_ptr<Dictionary>& _dict)
     {
         auto split = string_utilities::split_string(_dictionary_path,'/');
         try{

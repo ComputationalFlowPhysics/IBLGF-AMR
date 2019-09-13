@@ -169,104 +169,104 @@ public:
      *  Second order interpolation and coarsification operators are used
      *  to project the solutions to fine and coarse meshes, respectively.
      */
-    template< class Source, class Target, class Kernel >
-    void apply_lgf(Kernel*  _kernel, std::size_t _field_idx=0)
-    {
+    //template< class Source, class Target, class Kernel >
+    //void apply_lgf(Kernel*  _kernel, std::size_t _field_idx=0)
+    //{
 
-        auto client = domain_->decomposition().client();
-        if(!client)return;
+    //    auto client = domain_->decomposition().client();
+    //    if(!client)return;
 
-        const float_type dx_base=domain_->dx_base();
-        // Cleaning
-        clean_field<source_tmp>();
-        clean_field<target_tmp>();
-        clean_field<correction_tmp>();
+    //    const float_type dx_base=domain_->dx_base();
+    //    // Cleaning
+    //    clean_field<source_tmp>();
+    //    clean_field<target_tmp>();
+    //    clean_field<correction_tmp>();
 
-        // Copy source
-        copy_leaf<Source, source_tmp>(_field_idx, 0, false);
+    //    // Copy source
+    //    copy_leaf<Source, source_tmp>(_field_idx, 0, false);
 
-        //Coarsification:
-        source_coarsify(_field_idx, Source::mesh_type);
+    //    //Coarsification:
+    //    source_coarsify(_field_idx, Source::mesh_type);
 
-        //Level-Interactions
-        for (int l  = domain_->tree()->base_level();
-                l < domain_->tree()->depth(); ++l)
-        {
-            for (auto it_s  = domain_->begin(l);
-                    it_s != domain_->end(l); ++it_s)
-                if (it_s->data() && !it_s->locally_owned())
-                {
-                    if(!it_s ->data()->is_allocated())continue;
-                    auto& cp2 = it_s ->data()->template get_linalg_data<source_tmp>();
-                    std::fill (cp2.begin(),cp2.end(),0.0);
-                }
+    //    //Level-Interactions
+    //    for (int l  = domain_->tree()->base_level();
+    //            l < domain_->tree()->depth(); ++l)
+    //    {
+    //        for (auto it_s  = domain_->begin(l);
+    //                it_s != domain_->end(l); ++it_s)
+    //            if (it_s->data() && !it_s->locally_owned())
+    //            {
+    //                if(!it_s ->data()->is_allocated())continue;
+    //                auto& cp2 = it_s ->data()->template get_linalg_data<source_tmp>();
+    //                std::fill (cp2.begin(),cp2.end(),0.0);
+    //            }
 
-            //test for FMM
-            fmm_.template apply<source_tmp, target_tmp>(domain_, _kernel, l, false, 1.0);
-            copy_level<target_tmp, Target>(l, 0, _field_idx, true);
+    //        //test for FMM
+    //        fmm_.template apply<source_tmp, target_tmp>(domain_, _kernel, l, false, 1.0);
+    //        copy_level<target_tmp, Target>(l, 0, _field_idx, true);
 
-            fmm_.template apply<source_tmp, target_tmp>(domain_, _kernel, l, true, -1.0);
+    //        fmm_.template apply<source_tmp, target_tmp>(domain_, _kernel, l, true, -1.0);
 
-            // Interpolate
-            // Sync
-            domain_->decomposition().client()->
-                template communicate_updownward_assign
-                    <target_tmp, target_tmp>(l,false,false,-1);
+    //        // Interpolate
+    //        // Sync
+    //        domain_->decomposition().client()->
+    //            template communicate_updownward_assign
+    //                <target_tmp, target_tmp>(l,false,false,-1);
 
-            for (auto it  = domain_->begin(l);
-                    it != domain_->end(l); ++it)
-            {
-                if(!it->data() || !it->data()->is_allocated()) continue;
-                c_cntr_nli_.nli_intrp_node<target_tmp, target_tmp>(it, Source::mesh_type, _field_idx);
-            }
+    //        for (auto it  = domain_->begin(l);
+    //                it != domain_->end(l); ++it)
+    //        {
+    //            if(!it->data() || !it->data()->is_allocated()) continue;
+    //            c_cntr_nli_.nli_intrp_node<target_tmp, target_tmp>(it, Source::mesh_type, _field_idx);
+    //        }
 
-            // Correction for LGF
-            for (auto it  = domain_->begin(l);
-                    it != domain_->end(l); ++it)
-            {
-                int refinement_level = it->refinement_level();
-                double dx_level = dx_base/std::pow(2,refinement_level);
+    //        // Correction for LGF
+    //        for (auto it  = domain_->begin(l);
+    //                it != domain_->end(l); ++it)
+    //        {
+    //            int refinement_level = it->refinement_level();
+    //            double dx_level = dx_base/std::pow(2,refinement_level);
 
-                if(!it->data() || !it->data()->is_allocated()) continue;
-                domain::Operator::laplace<target_tmp, correction_tmp>
-                ( *(it->data()),dx_level);
+    //            if(!it->data() || !it->data()->is_allocated()) continue;
+    //            domain::Operator::laplace<target_tmp, correction_tmp>
+    //            ( *(it->data()),dx_level);
 
-            }
+    //        }
 
-            client->template buffer_exchange<correction_tmp>(l);
+    //        client->template buffer_exchange<correction_tmp>(l);
 
-            for (auto it  = domain_->begin(l);
-                    it != domain_->end(l); ++it)
-            {
-                if(!it->data() || !it->data()->is_allocated()) continue;
-                c_cntr_nli_.nli_intrp_node< correction_tmp, correction_tmp >(it, Source::mesh_type, _field_idx);
-            }
+    //        for (auto it  = domain_->begin(l);
+    //                it != domain_->end(l); ++it)
+    //        {
+    //            if(!it->data() || !it->data()->is_allocated()) continue;
+    //            c_cntr_nli_.nli_intrp_node< correction_tmp, correction_tmp >(it, Source::mesh_type, _field_idx);
+    //        }
 
-            for (auto it  = domain_->begin(l);
-                    it != domain_->end(l); ++it)
-            {
-                int refinement_level = it->refinement_level();
-                double dx = dx_base/std::pow(2,refinement_level);
-                c_cntr_nli_.add_source_correction
-                    <target_tmp, correction_tmp>(it, dx/2.0);
-            }
+    //        for (auto it  = domain_->begin(l);
+    //                it != domain_->end(l); ++it)
+    //        {
+    //            int refinement_level = it->refinement_level();
+    //            double dx = dx_base/std::pow(2,refinement_level);
+    //            c_cntr_nli_.add_source_correction
+    //                <target_tmp, correction_tmp>(it, dx/2.0);
+    //        }
 
-            for (auto it  = domain_->begin(l+1); it != domain_->end(l+1); ++it)
-            {
-                if (it->locally_owned())
-                {
-                    auto& lin_data_1 = it->data()->
-                        template get_linalg_data<correction_tmp>(0);
-                    auto& lin_data_2 = it->data()->
-                        template get_linalg_data<source_tmp>(0);
-                    xt::noalias(lin_data_2) += lin_data_1 * 1.0;
-                }
-            }
-        }
+    //        for (auto it  = domain_->begin(l+1); it != domain_->end(l+1); ++it)
+    //        {
+    //            if (it->locally_owned())
+    //            {
+    //                auto& lin_data_1 = it->data()->
+    //                    template get_linalg_data<correction_tmp>(0);
+    //                auto& lin_data_2 = it->data()->
+    //                    template get_linalg_data<source_tmp>(0);
+    //                xt::noalias(lin_data_2) += lin_data_1 * 1.0;
+    //            }
+    //        }
+    //    }
 
-        // Copy to Target
-        // copy_leaf<target_tmp, Target>(0, _field_idx, true);
-    }
+    //    // Copy to Target
+    //    // copy_leaf<target_tmp, Target>(0, _field_idx, true);
+    //}
 
     /** @brief Solve the poisson equation using lattice Green's functions on
      *         a block-refined mesh for a given Source and Target field.
@@ -278,7 +278,7 @@ public:
      *  to project the solutions to fine and coarse meshes, respectively.
      */
     template< class Source, class Target, class Kernel >
-    void apply_lgf_old_bak(Kernel*  _kernel, std::size_t _field_idx=0)
+    void apply_lgf(Kernel*  _kernel, std::size_t _field_idx=0)
     {
 
         auto client = domain_->decomposition().client();

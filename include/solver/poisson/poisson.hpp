@@ -478,71 +478,72 @@ public:
                 template communicate_updownward_add<source_tmp, source_tmp>
                     (ls,true,false,-1);
         }
-
     }
 
 
     /** @brief Compute the laplace operator of the target field and store
      *         it in diff_target.
      */
-    //template< class target, class diff_target >
-    //void apply_laplace()
-    //{
+    template< class Target, class DiffTarget >
+    void apply_laplace()
+    {
 
-    //    const float_type dx_base=domain_->dx_base();
+        const float_type dx_base=domain_->dx_base();
 
-    //    //Coarsification:
-    //    pcout<<"Laplace - coarsification "<<std::endl;
-    //    for (int ls = domain_->tree()->depth()-2;
-    //             ls >= domain_->tree()->base_level(); --ls)
-    //    {
-    //        for (auto it_s  = domain_->begin(ls);
-    //                  it_s != domain_->end(ls); ++it_s)
-    //        {
-    //            if (!it_s->data()) continue;
-    //            this->coarsify<target>(*it_s, target::mesh_type, _field_idx);
-    //        }
+        //Coarsification:
+        pcout<<"Laplace - coarsification "<<std::endl;
+        for (int ls = domain_->tree()->depth()-2;
+                 ls >= domain_->tree()->base_level(); --ls)
+        {
+            for (auto it_s  = domain_->begin(ls);
+                      it_s != domain_->end(ls); ++it_s)
+            {
+                //if (!it_s->data()) continue;
+                if(!it_s->data() || !it_s->data()->is_allocated()) continue;
+                this->coarsify<Target>(*it_s);
+            }
 
-    //        domain_->decomposition().client()->
-    //            template communicate_updownward_add<target, target>(ls,true,false,-1);
-    //    }
+            domain_->decomposition().client()->
+                template communicate_updownward_add<Target, Target>(ls,true,false,-1);
+        }
 
-    //    //Level-Interactions
-    //    pcout<<"Laplace - level interactions "<<std::endl;
-    //    for (int l  = domain_->tree()->base_level();
-    //             l < domain_->tree()->depth(); ++l)
-    //    {
 
-    //        for (auto it  = domain_->begin(l);
-    //                  it != domain_->end(l); ++it)
-    //        {
-    //            if (!it->data() || !it->locally_owned() || !it ->data()->is_allocated()) continue;
-    //            auto refinement_level = it->refinement_level();
-    //            auto dx_level =  dx_base/std::pow(2,refinement_level);
+        //Level-Interactions
+        pcout<<"Laplace - level interactions "<<std::endl;
+        for (int l  = domain_->tree()->base_level();
+                 l < domain_->tree()->depth(); ++l)
+        {
 
-    //            auto& diff_target_data = it->data()->
-    //                template get_linalg_data<diff_target>();
+            for (auto it  = domain_->begin(l);
+                      it != domain_->end(l); ++it)
+            {
+                if (!it->data() || !it->locally_owned() || !it ->data()->is_allocated()) continue;
+                auto refinement_level = it->refinement_level();
+                auto dx_level =  dx_base/std::pow(2,refinement_level);
 
-    //            // laplace of it_t data with zero bcs
-    //            if ((it->is_leaf()))
-    //            {
-    //                auto& nodes_domain=it->data()->nodes_domain();
-    //                for(auto it2=nodes_domain.begin();it2!=nodes_domain.end();++it2 )
-    //                {
-    //                    it2->template get<diff_target>()=
-    //                              -6.0* it2->template get<target>()+
-    //                              it2->template at_offset<target>(0,0,-1)+
-    //                              it2->template at_offset<target>(0,0,+1)+
-    //                              it2->template at_offset<target>(0,-1,0)+
-    //                              it2->template at_offset<target>(0,+1,0)+
-    //                              it2->template at_offset<target>(-1,0,0)+
-    //                              it2->template at_offset<target>(+1,0,0);
-    //                }
-    //            }
-    //            diff_target_data *= (1/dx_level) * (1/dx_level);
-    //        }
-    //    }
-    //}
+                auto& diff_target_data = it->data()->
+                    template get_linalg_data<DiffTarget>();
+
+                // laplace of it_t data with zero bcs
+                if ((it->is_leaf()))
+                {
+                    auto& nodes_domain=it->data()->nodes_domain();
+                    for(auto it2=nodes_domain.begin();it2!=nodes_domain.end();++it2 )
+                    {
+                        it2->template get<DiffTarget>()=
+                                  -6.0* it2->template get<Target>()+
+                                  it2->template at_offset<Target>(0,0,-1)+
+                                  it2->template at_offset<Target>(0,0,+1)+
+                                  it2->template at_offset<Target>(0,-1,0)+
+                                  it2->template at_offset<Target>(0,+1,0)+
+                                  it2->template at_offset<Target>(-1,0,0)+
+                                  it2->template at_offset<Target>(+1,0,0);
+                    }
+                }
+                diff_target_data *= (1/dx_level) * (1/dx_level);
+            }
+        }
+    }
 
     template< class Source, class Target >
     void solve()

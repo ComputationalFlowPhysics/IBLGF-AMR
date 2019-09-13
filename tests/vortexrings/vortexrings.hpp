@@ -221,17 +221,18 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
             ))
             pcout_c<<"Total Psolve time: "
                   <<solve_duration.count()<<" on "<<world.size()<<std::endl;
+            client_comm_.barrier();
 
             //mDuration_type lap_duration(0);
             //TIME_CODE( lap_duration, SINGLE_ARG(
-            //    psolver.apply_laplace<phi_num,amr_lap_source>() ;
+                psolver.apply_laplace<phi_num,amr_lap_source>() ;
             //))
             //pcout_c<<"Total Laplace time: "
             //      <<lap_duration.count()<<" on "<<world.size()<<std::endl;
         }
 
         this->compute_errors<phi_num,phi_exact,error>();
-        //this->compute_errors<amr_lap_source,source,error_lap_source>("Lap");
+        this->compute_errors<amr_lap_source,source,error_lap_source>("laplace_");
 
         simulation_.write2("mesh.hdf5");
     }

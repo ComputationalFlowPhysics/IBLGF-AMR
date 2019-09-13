@@ -452,8 +452,7 @@ public:
         if(mesh_type!=MeshObject::cell)
         {
             throw 
-            std::runtime_error("Coarsification for non-cell centers"+
-                " needs to be implemented. ");
+            std::runtime_error("Coarsification for non-cell centers needs to be implemented. ");
         }
         auto client = domain_->decomposition().client();
         if(!client)return;

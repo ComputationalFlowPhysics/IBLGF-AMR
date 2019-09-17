@@ -205,7 +205,7 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
     void run()
     {
         boost::mpi::communicator world;
-        simulation_.write2("mesh.hdf5");
+        //simulation_.write2("mesh.hdf5");
         if(domain_->is_client())
         {
             poisson_solver_t psolver(&this->simulation_);
@@ -228,12 +228,14 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
             //))
             //pcout_c<<"Total Laplace time: "
             //      <<lap_duration.count()<<" on "<<world.size()<<std::endl;
+            psolver.apply_amr_laplace<phi_num,amr_lap_source>() ;
         }
 
         this->compute_errors<phi_num,phi_exact,error>();
+        this->compute_errors<amr_lap_source,source,error_lap_source>("laplace");
         //this->compute_errors<amr_lap_source,source,error_lap_source>("Lap");
 
-        simulation_.write2("mesh.hdf5");
+        //simulation_.write2("mesh.hdf5");
     }
 
 

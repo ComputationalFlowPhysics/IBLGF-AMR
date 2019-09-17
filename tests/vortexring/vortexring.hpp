@@ -140,7 +140,7 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
             psolver.apply_amr_laplace<phi_num,amr_lap_source>() ;
         }
         this->compute_errors<phi_num,phi_exact,error>();
-        this->compute_errors<amr_lap_source,source,error_lap_source>("Lap");
+        this->compute_errors<amr_lap_source,source,error_lap_source>("laplace");
 
         simulation_.write2("mesh.hdf5");
     }

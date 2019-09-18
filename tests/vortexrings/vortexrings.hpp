@@ -52,7 +52,7 @@ struct parameters
 };
 
 
-struct vortex_ring
+struct vortex_ring_wrong
 {
     float_type vorticity(float_type x, float_type y, float_type z) const noexcept
     {
@@ -129,6 +129,90 @@ public:
     float_type c2;
 };
 
+struct vortex_ring
+{
+    float_type vorticity(float_type x, float_type y, float_type z) const noexcept
+    {
+        x-=center[0];
+        y-=center[1];
+        z-=center[2];
+
+        const float_type r=std::sqrt(x*x+y*y) ;
+        const float_type t=std::sqrt( (r-R)*(r-R) +z*z )/R;
+
+        if(std::fabs(t)>=1.0) return 0.0;
+
+        const float_type t3 = x*x;
+        const float_type t4 = y*y;
+        const float_type t5 = t3+t4;
+        const float_type t19 = std::sqrt(t5);
+        const float_type t2 = R-t19;
+        const float_type t6 = t5*t5;
+        const float_type t7 = z*z;
+        const float_type t8 = R*R;
+        const float_type t9 = std::pow(t5,3.0/2.0);
+        const float_type t10 = t3*t3;
+        const float_type t11 = t4*t4;
+        const float_type t12 = R*c2*t8*4.0;
+        const float_type t13 = R*t7*2.0;
+        const float_type t14 = R*t8*4.0;
+        const float_type t15 = t12+t13+t14;
+        const float_type t16 = t7*2.0;
+        const float_type t24 = t8*8.0;
+        const float_type t17 = -t16+t24;
+        const float_type t18 = t7*t7;
+        const float_type t20 = t8*t8;
+        const float_type t21 = c2*t20*2.0;
+        const float_type t22 = t7*t8*8.0;
+        const float_type t23 = t21+t22;
+        const float_type t25 = c2*t8*2.0;
+        const float_type t26 = t7*4.0;
+        const float_type t27 = t24+t25+t26;
+        const float_type t28 = t6*t6;
+        const float_type t29 = std::pow(t5,7.0/2.0);
+        const float_type t30 = std::pow(t5,9.0/2.0);
+        const float_type t31 = std::pow(t5,5.0/2.0);
+        const float_type t32 = R*t7*2.4E1;
+        const float_type t33 = R*t8*3.2E1;
+        const float_type t34 = t32+t33;
+
+        const float_type res =
+        (c1*c2*t8*std::exp(c2/(1.0/(R*R)*(t7+t2*t2)-1.0))*
+        (t29*4.0-t9*t10*3.0-t9*t11*3.0-t10*t15-t11*t15-t8*t31*1.2E1+
+        t9*(t18-t7*t8*8.0+c2*t7*t8*2.0)-t3*t4*(R*t7*4.0+R*t8*8.0+R*c2*t8*8.0)-
+        R*t5*t6*3.0+R*t3*t18+R*t4*t18-t3*t4*t9*6.0+t3*t9*t17+t4*t9*t17+
+        t3*t19*t23+t4*t19*t23+t10*t19*t27+t11*t19*t27+
+        t3*t4*t19*(t7*8.0+t8*1.6E1+c2*t8*4.0))*2.0)/
+        (t3*t30+t4*t30+t7*t30*4.0+t20*t29*1.6E1+t9*(t18*t18)-t5*t6*
+        (R*t18*2.4E1+R*t7*t8*3.2E1)-R*t5*t28*8.0+t9*t10*t18*6.0+t9*t11*t18*6.0+
+        t8*t10*t31*2.4E1+t8*t11*t31*2.4E1+t8*t18*t31*2.4E1-R*t7*t10*t18*8.0-
+        R*t7*t11*t18*8.0+t3*t4*t9*t18*1.2E1+t3*t7*t9*t18*4.0+t4*t7*t9*t18*4.0+
+        t3*t4*t8*t31*4.8E1-t3*t5*t6*t34+t3*t7*t8*t31*4.8E1-t4*t5*t6*t34+
+        t4*t7*t8*t31*4.8E1-R*t3*t4*t7*t18*1.6E1);
+
+
+        if(std::isnan(res)) return 0.0;
+        return res;
+    }
+
+    float_type psi(float_type x, float_type y, float_type z) const noexcept
+    {
+
+        x-=center[0];
+        y-=center[1];
+        z-=center[2];
+        const float_type r=std::sqrt(x*x+y*y);
+        const float_type t=std::sqrt( (r-R)*(r-R) +z*z )/R;
+        if(std::fabs(t)>=1.0) return 0.0;
+        return  c1* std::exp(- c2/ (1-t*t) );
+    }
+
+public:
+    coordinate_type<float_type,Dim> center;
+    float_type R;
+    float_type c1;
+    float_type c2;
+};
 
 struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
 {
@@ -374,7 +458,8 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
 
                     const auto vort=vorticity(x,y,z);
                     if(std::fabs(vort) > 
-                            vorticity_max_*pow(0.25*0.25*0.5 , diff_level)
+                            //vorticity_max_*pow(0.25*0.25*0.5 , diff_level)
+                            vorticity_max_*pow(0.25*0.5 , diff_level)
                             //vorticity_max_*pow(0.25 , diff_level)
                       )
                     {

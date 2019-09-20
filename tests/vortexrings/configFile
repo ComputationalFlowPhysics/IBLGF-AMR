@@ -39,6 +39,11 @@ simulation_parameters
     //    center=(0,0,0.125);
     //}
 
+    output
+    {
+        directory=bla;
+    }
+
     domain
     {
         Lx=1.0;

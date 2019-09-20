@@ -408,8 +408,8 @@ public:
         std::sort(octants.begin(), octants.end(),[&](const auto& e0, const auto& e1)
                 {return e0.second> e1.second;  });
 
-        const bool start_communication = true;
-        //bool combined_messages=false;
+        const bool start_communication = false;
+        bool combined_messages=false;
 
         for (auto B_it=octants.begin(); B_it!=octants.end(); ++B_it)
         {
@@ -434,29 +434,30 @@ public:
                     _neighbor,
                     start_communication, fmm_mask_idx_);
 
-            //if(!combined_messages && B_it->second==0)
-            //{
-            //    if(!combined_messages)
-            //    {
-            //        domain_->decomposition().client()->template
-            //            combine_induced_field_messages<fmm_t, fmm_t>();
-            //        combined_messages=true;
-            //    }
-            //    domain_->decomposition().client()->template
-            //        check_combined_induced_field_communication<fmm_t,fmm_t>(false);
-            //}
+            if(!combined_messages && B_it->second==0)
+            {
+                    domain_->decomposition().client()->template
+                        combine_induced_field_messages<fmm_t, fmm_t>();
+                    combined_messages=true;
+            }
+            if(combined_messages)
+            {
+                domain_->decomposition().client()->template
+                    check_combined_induced_field_communication<fmm_t,fmm_t>(false);
+            }
+        
         }
 
         mDuration_type time_communication_Bx;
         //Finish the communication
-        //TIME_CODE(time_communication_Bx, SINGLE_ARG(
-        //domain_->decomposition().client()->template
-        //    check_combined_induced_field_communication<fmm_t,fmm_t>(true);
-        //))
         TIME_CODE(time_communication_Bx, SINGLE_ARG(
         domain_->decomposition().client()->template
-            finish_induced_field_communication();
+            check_combined_induced_field_communication<fmm_t,fmm_t>(true);
         ))
+        //TIME_CODE(time_communication_Bx, SINGLE_ARG(
+        //domain_->decomposition().client()->template
+        //    finish_induced_field_communication();
+        //))
     }
 
 

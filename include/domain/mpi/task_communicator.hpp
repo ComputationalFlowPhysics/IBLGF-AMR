@@ -15,6 +15,8 @@ namespace sr_mpi
  * @brief: Task communicator.  Manages posted messages, buffers them and calls
  *         non-blocking send/recvs and queries their status.
  *         Can be used in both Send and Recv mode.
+ * TODO:  Pass traits class as template to get accumulated_task_communicator_type 
+ *        from dervied, so we can store/instantiate it in the base class
  */
 template<class TaskType, class Derived>
 class TaskCommunicator
@@ -33,14 +35,13 @@ public:
 
     using request_list_t = std::list<boost::mpi::request>;
     using query_arr_t =std::list<boost::mpi::request>;
-    using accumulated_task_communicator_type =
-        TaskCommunicator< typename TaskType::inplace_task_type,Derived>;
+    using acc_task_t= typename TaskType::inplace_task_type;
 
 public: //Ctor
 
-    TaskCommunicator( int _nBuffers=3000 )
+    TaskCommunicator()
     {
-        buffer_.init(_nBuffers);
+        buffer_.init(10);
     }
 
     //No copy or Assign
@@ -61,7 +62,6 @@ public:
         task_ptr->attach_data(_data);
         task_ptr->rank_other()=_rank_other;
         insert(task_ptr);
-        //buffer_queue_.push_back( task_ptr );
 
         return task_ptr;
     }
@@ -83,9 +83,10 @@ public:
     /** * @brief Check if all tasks are done and nothing is in the queue */
     bool done() const noexcept
     {
-        return tasks_.size()==0  &&
+
+        return pack_messages_? acc_comm()->done(): (tasks_.size()==0  &&
                buffer_queue_.size()==0 &&
-               unconfirmed_tasks_.size()==0;
+               unconfirmed_tasks_.size()==0);
     }
 
     /** * @brief Check if all tasks are done and nothing is in the queue */
@@ -148,73 +149,56 @@ public:
      *         */
     void pack_messages()
     {
+
         boost::mpi::communicator world;
+
+        //0. Clean and build accumulated task communicator 
+        acc_tasks.clear();
+        acc_fields.clear();
         acc_tasks.resize(world.size());
         acc_fields.resize(world.size());
-
+        
         //1. Accumulate tasks per CPU rank and clear the task_ vector
-        for(auto& t : tasks_)
+        for(auto& t : buffer_queue_)
         {
             acc_tasks[t->rank_other()].push_back(t);
         }
-        tasks_.clear();
-        std::sort(acc_tasks.begin(),acc_tasks.end(),
-                [&](const auto& c0, const auto& c1)
-                {
-                return c0->octant()->key().id()< c1->octant()->key().id();
-                });
-        //2. Assign task buffer data to one vector
+
+        //2. Create one task and data vector per rank
         for(std::size_t rank_other=0; rank_other<acc_tasks.size();++rank_other)
         {
-            //Accumulate data of all task for given dest rank into
-            //one vector
-            for(std::size_t i=0;i<acc_tasks[rank_other].size();++i)
-            {
-                acc_fields[rank_other].insert(
-                    acc_fields[rank_other].end(),
-                    acc_tasks[rank_other][i]->send_buffer().begin(),
-                    acc_tasks[rank_other][i]->send_buffer().end());
-            }
 
+            std::sort(acc_tasks[rank_other].begin(),acc_tasks[rank_other].end(),
+            [&](const auto& c0, const auto& c1)
+            {
+                return c0->octant()->key().id()< c1->octant()->key().id();
+            });
+            
+            //Send: Copy data into single contiguous vector
+            //Recv: Do nothing
+            this->derived().pack_masseges_impl(rank_other);
+            
             //Make single task for the accumulated vector
             if( acc_tasks[rank_other].size()>0 )
             {
                 auto tag=acc_tasks[rank_other][0]->tag();
-                auto accumulated_task=acc_comm_.post_task(
-                    &acc_fields[rank_other], rank_other, true, tag);
+                auto accumulated_task=
+                    acc_comm()->post_task(&acc_fields[rank_other], 
+                                           rank_other, true, tag);
             }
         }
-
         //4. start communication
-        acc_comm_.start_communication();
+        acc_comm()->start_communication();
+        pack_messages_=true;
     }
 
-    /** @brief * Unpack recv messages adn put them into buffers of the
+    /** @brief * Unpack recv messages and put them into buffers of the
      * finished tasks
      * */
-    void unpack_messages()
+    void unpack_messages() noexcept
     {
-
-        //Accumulated task is finish and needs to be unpacked in
-        auto ftasks=acc_comm_.finish_communication();
-
-        //These are the task that belong to a specific cpu and are finished
-        for(auto& t : ftasks)
-        {
-            int count=0;
-            //Assign recv fields to buffer
-            for(auto& acct : acc_tasks[t->rank_other()]) //All tasks per cpu
-            {
-                //
-                for(std::size_t i=0;i<acct->buffer().size();++i)
-                {
-                    acct->buffer()[i]=t->buffer()[count++];
-                }
-            }
-        }
+        this->derived().unpack_masseges_impl();
     }
-
-
 
     /** * @brief Finish communication (send or receive for this task)
      *           Task will also be completed at the same time
@@ -244,11 +228,15 @@ public:
     const auto& get_buffer_queue() const noexcept {return buffer_queue_;}
     auto& get_buffer_queue() noexcept {return buffer_queue_;}
 
-    void clear()
+    void clear() noexcept
     {
+        nActive_tasks_=0;
         tasks_.clear();
         unconfirmed_tasks_.clear();
         buffer_queue_.clear();
+
+        acc_tasks.clear();
+        acc_fields.clear();
     }
 
 protected:
@@ -260,7 +248,7 @@ protected:
     {
         this->derived().sendRecv_impl(_t);
     }
-    void to_buffer(task_ptr_t _t) const noexcept
+    void to_buffer(task_ptr_t _t) noexcept
     {
         this->derived().to_buffer_impl(_t);
     }
@@ -273,8 +261,6 @@ protected:
     {
         return this->derived().message_exists_impl(_t);
     }
-
-
 
     void insert_unconfirmed_tasks(task_ptr_t& t) noexcept
     {
@@ -298,7 +284,8 @@ protected:
             else { ++it; }
         }
     }
-
+    const auto& acc_comm()const noexcept {return this->derived().acc_comm();}
+    auto& acc_comm()noexcept {return this->derived().acc_comm();}
 
 
 protected:
@@ -313,9 +300,8 @@ protected:
 
     ///< Communicator for accumulated tasks per CPU
     bool pack_messages_=false;
-    accumulated_task_communicator_type* acc_comm_=nullptr;
     std::vector<task_vector_t> acc_tasks; ///< Vector of tasks per CPU;
-    std::vector<std::vector<task_data_t>> acc_fields;
+    std::vector<std::vector<float_type>> acc_fields;
 
 };
 
@@ -328,6 +314,9 @@ public:
     using super_type = TaskCommunicator<TaskType, SendTaskCommunicator<TaskType>>;
     using task_ptr_t = typename super_type::task_ptr_t;
 
+    using accumulated_task_communicator_type =
+        SendTaskCommunicator< typename TaskType::inplace_task_type>;
+
 public: //Ctors
     using super_type::TaskCommunicator;
 
@@ -335,13 +324,49 @@ public: //Memebers:
 
     int tag_rank_impl(int rank_other) const noexcept { return this->comm_.rank(); }
     void sendRecv_impl(task_ptr_t _t) const noexcept {_t->isend(this->comm_);}
-    void to_buffer_impl(task_ptr_t _t) const noexcept
+    void to_buffer_impl(task_ptr_t _t) noexcept
     {
         _t->assign_data2buffer();
     }
     void from_buffer_impl(task_ptr_t _t) const noexcept { }
     bool message_exists_impl( task_ptr_t _t  ) const noexcept{ return true; }
-private:
+
+    void pack_masseges_impl( std::size_t rank_other ) noexcept
+    {
+
+        if(!acc_comm_) 
+            acc_comm_=std::make_unique<accumulated_task_communicator_type>();
+
+        //Copy messages from all 
+        for(std::size_t i=0;i<this->acc_tasks[rank_other].size();++i)
+        {
+
+            auto ptr = this->buffer_.get_free_buffer();
+            auto& task=this->acc_tasks[rank_other][i];
+            task->attach_buffer( ptr );
+            this->to_buffer(task);
+
+            this->acc_fields[rank_other].insert(
+                    this->acc_fields[rank_other].end(),
+                    task->send_buffer().begin(), 
+                    task->send_buffer().end());
+            task->deattach_buffer();
+        }
+    }
+
+    void unpack_masseges_impl() noexcept 
+    { 
+        this->acc_comm()->start_communication(); 
+        this->acc_comm()->finish_communication(); 
+    }
+    
+
+    auto& acc_comm()noexcept { return acc_comm_; }
+    const auto& acc_comm()const noexcept { return acc_comm_; }
+
+
+protected:
+        std::unique_ptr<accumulated_task_communicator_type> acc_comm_=nullptr;
 
 };
 
@@ -353,13 +378,16 @@ public:
     using super_type = TaskCommunicator<TaskType, RecvTaskCommunicator<TaskType>>;
     using task_ptr_t = typename super_type::task_ptr_t;
 
+    using accumulated_task_communicator_type =
+        RecvTaskCommunicator< typename TaskType::inplace_task_type>;
+
 public: //Ctors
     using super_type::TaskCommunicator;
 
 public: //members
     int tag_rank_impl(int _rank_other) const noexcept {return _rank_other;  }
     void sendRecv_impl(task_ptr_t _t) const noexcept {_t->irecv(this->comm_);}
-    void to_buffer_impl(task_ptr_t _t) const noexcept { }
+    void to_buffer_impl(task_ptr_t _t) noexcept { }
     void from_buffer_impl(task_ptr_t _t) const noexcept
     {
         _t->assign_buffer2data();
@@ -368,10 +396,43 @@ public: //members
         if(this->comm_.iprobe(_t->rank_other(), _t->id()))
             return true;
         else return false;
-
     }
-};
 
+    void pack_masseges_impl( std::size_t rank_other ) noexcept 
+    { 
+        if(!acc_comm_) 
+            acc_comm_=std::make_unique<accumulated_task_communicator_type>();
+        return; 
+    }
+
+    void unpack_masseges_impl() noexcept
+    {
+        if(!acc_comm_) 
+            acc_comm_=std::make_unique<accumulated_task_communicator_type>();
+
+        this->acc_comm()->start_communication();
+        auto ftasks=this->acc_comm_->finish_communication();
+        for(auto& t : ftasks)
+        {
+            int count=0;
+            //Assign recv fields to buffer
+            for(auto& acct : this->acc_tasks[t->rank_other()]) 
+            {
+                for(std::size_t i=0;i<acct->data().size();++i)
+                {
+                    //Note that buffer is actually acc_fields
+                    acct->data()[i]+=t->data()[count++];
+                }
+            }
+        }
+    }
+
+    auto& acc_comm()noexcept { return acc_comm_; }
+    const auto& acc_comm()const noexcept { return acc_comm_; }
+
+private:
+        std::unique_ptr<accumulated_task_communicator_type> acc_comm_=nullptr;
+};
 
 
 }  //namespace sr_mpi

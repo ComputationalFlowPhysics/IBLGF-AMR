@@ -45,6 +45,7 @@ struct InfluenceFieldBuffer : crtp::Crtp<TaskType, InfluenceFieldBuffer>
     void register_sendCallback(Function& _f) noexcept { sendCallback_=_f; }
 
 
+
 private:
     TaskType& task_=this->derived();
     std::function<void(std::vector<double>&)> sendCallback_;

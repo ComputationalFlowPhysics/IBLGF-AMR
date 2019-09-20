@@ -688,7 +688,21 @@ public:
     }
 
     template<class SendField, class RecvField>
-    void combine_induced_field_messages()
+    void combine_induced_field_messages() noexcept
+    {
+        auto& send_comm=
+            task_manager_-> template
+            send_communicator<induced_fields_task_t<InfluenceFieldBuffer>>();
+        auto& recv_comm=
+            task_manager_->template
+            recv_communicator<induced_fields_task_t<InfluenceFieldBuffer>>();
+        
+        send_comm.pack_messages();
+        recv_comm.pack_messages();
+    }
+
+    template<class SendField, class RecvField>
+    void combine_induced_field_messages_old() noexcept
     {
         std::cout<<"I need to edit this to account for new memory friendly version"<<std::endl;
         auto& acc_send_comm=
@@ -702,17 +716,16 @@ public:
         if(recv_fields_.size()!= static_cast<std::size_t>(comm_.size()))
             recv_fields_.resize(comm_.size());
 
-
         //SendField
         for(std::size_t rank_other=0; rank_other<send_tasks_.size();++rank_other)
         {
             auto& tasks=send_tasks_[rank_other];
             if (tasks.empty()) continue;
             std::sort(tasks.begin(),tasks.end(),
-                    [&](const auto& c0, const auto& c1)
-                    {
-                        return c0->octant()->key().id()< c1->octant()->key().id();
-                    });
+            [&](const auto& c0, const auto& c1)
+            {
+                return c0->octant()->key().id()< c1->octant()->key().id();
+            });
             std::size_t size=0;
             for(auto& task : tasks )
             {
@@ -771,9 +784,35 @@ public:
         acc_recv_comm.start_communication();
     }
 
+    template<class SendField, class RecvField>
+    void check_combined_induced_field_communication(bool _finish=false) noexcept
+    {
+        auto& send_comm=
+            task_manager_-> template
+            send_communicator<induced_fields_task_t<InfluenceFieldBuffer>>();
+        auto& recv_comm=
+            task_manager_->template
+            recv_communicator<induced_fields_task_t<InfluenceFieldBuffer>>();
+
+
+        while(true)
+        {
+            send_comm.unpack_messages();
+            recv_comm.unpack_messages();
+            if( !_finish || (recv_comm.done() && send_comm.done())  )
+                break;
+        }
+        
+        if(_finish)
+        {
+            recv_comm.clear();
+            send_comm.clear();
+        }
+    }
+
 
     template<class SendField, class RecvField>
-    void check_combined_induced_field_communication(bool _finish=false)
+    void check_combined_induced_field_communication_old(bool _finish=false) noexcept
     {
         auto& acc_send_comm=
             task_manager_-> template send_communicator<acc_induced_fields_task_t>();
@@ -819,7 +858,7 @@ public:
     template<class SendField,class RecvField,
              template<class>class BufferPolicy,
              class OctantPtr>
-    void communicate_updownward_pass(OctantPtr it, bool _upward, int fmm_mask_idx)
+    void communicate_updownward_pass(OctantPtr it, bool _upward, int fmm_mask_idx) noexcept
     {
         int mask_id=(_upward) ?
             MASK_LIST::Mask_FMM_Source : MASK_LIST::Mask_FMM_Target;

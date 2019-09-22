@@ -111,11 +111,12 @@ public:
     }
 
     /** * @brief Start communication (send or receive for this task)*/
-    task_vector_t start_communication()
+    task_vector_t start_communication() noexcept
     {
         task_vector_t res;
+        if(buffer_queue_.empty()) return res;
         std::size_t mCount=0;
-        std::size_t size = buffer_queue_.size();
+        auto size = buffer_queue_.size();
         while(buffer_.is_free() && !buffer_queue_.empty())
         {
             auto task =buffer_queue_.front();
@@ -147,7 +148,7 @@ public:
      *         send/recv task. For a send task, this wil copy
      *         the buffer of the individual task into a single task per cpu.
      *         */
-    void pack_messages()
+    void pack_messages() noexcept
     {
 
         boost::mpi::communicator world;
@@ -157,6 +158,8 @@ public:
         acc_fields.clear();
         acc_tasks.resize(world.size());
         acc_fields.resize(world.size());
+
+        this->derived().construct_acc_comm_();
         
         //1. Accumulate tasks per CPU rank and clear the task_ vector
         for(auto& t : buffer_queue_)
@@ -185,11 +188,11 @@ public:
                 auto accumulated_task=
                     acc_comm()->post_task(&acc_fields[rank_other], 
                                            rank_other, true, tag);
+                do_acc=true;
             }
         }
         //4. start communication
         acc_comm()->start_communication();
-        pack_messages_=true;
     }
 
     /** @brief * Unpack recv messages and put them into buffers of the
@@ -197,6 +200,8 @@ public:
      * */
     void unpack_messages() noexcept
     {
+
+        this->derived().construct_acc_comm_();
         this->derived().unpack_masseges_impl();
     }
 
@@ -300,6 +305,7 @@ protected:
 
     ///< Communicator for accumulated tasks per CPU
     bool pack_messages_=false;
+    bool do_acc=false;
     std::vector<task_vector_t> acc_tasks; ///< Vector of tasks per CPU;
     std::vector<std::vector<float_type>> acc_fields;
 
@@ -333,10 +339,6 @@ public: //Memebers:
 
     void pack_masseges_impl( std::size_t rank_other ) noexcept
     {
-
-        if(!acc_comm_) 
-            acc_comm_=std::make_unique<accumulated_task_communicator_type>();
-
         //Copy messages from all 
         for(std::size_t i=0;i<this->acc_tasks[rank_other].size();++i)
         {
@@ -363,6 +365,13 @@ public: //Memebers:
 
     auto& acc_comm()noexcept { return acc_comm_; }
     const auto& acc_comm()const noexcept { return acc_comm_; }
+
+    void construct_acc_comm_()
+    {
+        if(!acc_comm_) 
+            acc_comm_=std::make_unique<accumulated_task_communicator_type>();
+        this->pack_messages_=true;
+    }
 
 
 protected:
@@ -400,16 +409,11 @@ public: //members
 
     void pack_masseges_impl( std::size_t rank_other ) noexcept 
     { 
-        if(!acc_comm_) 
-            acc_comm_=std::make_unique<accumulated_task_communicator_type>();
         return; 
     }
 
     void unpack_masseges_impl() noexcept
     {
-        if(!acc_comm_) 
-            acc_comm_=std::make_unique<accumulated_task_communicator_type>();
-
         this->acc_comm()->start_communication();
         auto ftasks=this->acc_comm_->finish_communication();
         for(auto& t : ftasks)
@@ -429,6 +433,13 @@ public: //members
 
     auto& acc_comm()noexcept { return acc_comm_; }
     const auto& acc_comm()const noexcept { return acc_comm_; }
+
+    void construct_acc_comm_()
+    {
+        if(!acc_comm_) 
+            acc_comm_=std::make_unique<accumulated_task_communicator_type>();
+        this->pack_messages_=true;
+    }
 
 private:
         std::unique_ptr<accumulated_task_communicator_type> acc_comm_=nullptr;

@@ -285,9 +285,14 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
         return vrings;
     }
 
-
     void run()
     {
+
+        std::ofstream ofs;
+        parallel_ostream::ParallelOstream pofs(io::output().dir()+"/"+"timings.txt",1,ofs);
+
+        auto pts_global=get_nPoints();
+
         boost::mpi::communicator world;
         simulation_.write2("mesh.hdf5");
         if(domain_->is_client())
@@ -299,13 +304,14 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
 
             pcout_c<<"Poisson equation ---------------------------------" << std::endl;
             TIME_CODE( solve_duration, SINGLE_ARG(
-                    psolver.solve<source, phi_num>();
-
-            client_comm_.barrier();
+                psolver.solve<source, phi_num>();
+                client_comm_.barrier();
             ))
             pcout_c<<"Total Psolve time: "
                   <<solve_duration.count()<<" on "<<world.size()<<std::endl;
+            pofs << solve_duration.count() << " " << pts_global <<std::endl;
             client_comm_.barrier();
+
 
             //mDuration_type lap_duration(0);
             //TIME_CODE( lap_duration, SINGLE_ARG(
@@ -410,8 +416,21 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
         }
         return psi;
     }
+    
+    int get_nPoints() const noexcept
+    {
+        if(!domain_->is_client()) return 0;
 
-
+        int nPts=0;
+        int nPts_global=0;
+        for (auto it  = domain_->begin_leafs();
+                  it != domain_->end_leafs(); ++it)
+        {
+            if(it->data()) nPts+=it->data()->node_field().size();
+        }
+        boost::mpi::all_reduce(client_comm_,nPts, nPts_global, std::plus<int>());
+        return nPts_global;
+    }
 
 
     /** @brief  Refienment conditon for octants.  */

@@ -231,8 +231,6 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
                 return this->initialize_domain(_d, _domain); })
     {
 
-        if(domain_->is_client())client_comm_=client_comm_.split(1);
-        else client_comm_=client_comm_.split(0);
 
         vrings_=this->read_vrings(simulation_.dictionary_.get());
         float_type max_vort=0.0;
@@ -247,12 +245,6 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
         vorticity_max_=simulation_.dictionary_->
             template get_or<float_type>("source_max",max_vort);
         pcout<<"source_max "<<vorticity_max_<<std::endl;
-
-        nLevels_=simulation_.dictionary_->
-            template get_or<int>("nLevels",0);
-
-        global_refinement_=simulation_.dictionary_->
-            template get_or<int>("global_refinement",0);
 
         pcout << "\n Setup:  Test - Vortex rings \n" << std::endl;
         pcout << "Number of refinement levels: "<<nLevels_<<std::endl;
@@ -288,15 +280,20 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
     void run()
     {
 
-        std::ofstream ofs;
-        parallel_ostream::ParallelOstream pofs(io::output().dir()+"/"+"timings.txt",1,ofs);
+        std::ofstream ofs,ofs_level;
+        parallel_ostream::ParallelOstream 
+            pofs(io::output().dir()+"/"+"global_timings.txt",1,ofs),
+            pofs_level(io::output().dir()+"/"+"level_timings.txt",1,ofs_level);
 
-        auto pts_global=get_nPoints();
 
         boost::mpi::communicator world;
         simulation_.write2("mesh.hdf5");
+
+        auto pts=domain_->get_nPoints();
+         
         if(domain_->is_client())
         {
+
             poisson_solver_t psolver(&this->simulation_);
 
             mDuration_type solve_duration(0);
@@ -307,18 +304,29 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
                 psolver.solve<source, phi_num>();
                 client_comm_.barrier();
             ))
+
             pcout_c<<"Total Psolve time: "
                   <<solve_duration.count()<<" on "<<world.size()<<std::endl;
-            pofs << solve_duration.count() << " " << pts_global <<std::endl;
+
+            float_type time_all_sec=  solve_duration.count()/1.e3;
+            pofs<<"Nprocs "<<" duration [s] "<<" nPoints "
+                <<" rate [pts/s] "<<" efficiency [s/pt]"  <<std::endl;
+            pofs <<client_comm_.size()<<" "<< time_all_sec << " " << pts.back() <<" " 
+                 << pts.back()/time_all_sec <<" "<< time_all_sec/pts.back() 
+            <<std::endl;
+
+            pofs_level << "Level "<<" duration [s] "<<" nPoints" 
+                 << " rate [pts/s] "<<" efficiency [s/pt]" <<std::endl;
+            
+            for(std::size_t i=0;i<pts.size()-1;++i)
+            {
+                auto time=solve_duration.count()/1.e3;
+                pofs_level<<i<<" " <<time <<" "<<pts[i]<<" "
+                    <<pts[i]/time<<" "<<time/pts[i]<<" " 
+                <<std::endl;
+            }
             client_comm_.barrier();
-
-
-            //mDuration_type lap_duration(0);
-            //TIME_CODE( lap_duration, SINGLE_ARG(
-                psolver.apply_laplace<phi_num,amr_lap_source>() ;
-            //))
-            //pcout_c<<"Total Laplace time: "
-            //      <<lap_duration.count()<<" on "<<world.size()<<std::endl;
+            psolver.apply_laplace<phi_num,amr_lap_source>() ;
         }
 
         this->compute_errors<phi_num,phi_exact,error>();
@@ -417,20 +425,6 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
         return psi;
     }
     
-    int get_nPoints() const noexcept
-    {
-        if(!domain_->is_client()) return 0;
-
-        int nPts=0;
-        int nPts_global=0;
-        for (auto it  = domain_->begin_leafs();
-                  it != domain_->end_leafs(); ++it)
-        {
-            if(it->data()) nPts+=it->data()->node_field().size();
-        }
-        boost::mpi::all_reduce(client_comm_,nPts, nPts_global, std::plus<int>());
-        return nPts_global;
-    }
 
 
     /** @brief  Refienment conditon for octants.  */
@@ -499,139 +493,9 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
         return res;
     }
 
-    /** @brief Compute L2 and LInf errors */
-    template<class Numeric, class Exact, class Error>
-    void compute_errors(std::string _output_prefix="")
-    {
-        const float_type dx_base=domain_->dx_base();
-        float_type L2   = 0.; float_type LInf = -1.0; int count=0;
-        float_type L2_exact = 0; float_type LInf_exact = -1.0;
-
-        std::vector<float_type> L2_perLevel(nLevels_+1+global_refinement_,0.0);
-        std::vector<float_type> L2_exact_perLevel(nLevels_+1+global_refinement_,0.0);
-        std::vector<float_type> LInf_perLevel(nLevels_+1+global_refinement_,0.0);
-        std::vector<float_type> LInf_exact_perLevel(nLevels_+1+global_refinement_,0.0);
-
-        std::vector<int> counts(nLevels_+1+global_refinement_,0);
-
-        std::ofstream ofs,ofs_global;
-        parallel_ostream::ParallelOstream pofs(io::output().dir()+"/"+
-            _output_prefix+"level_error.txt",1,ofs);
-        parallel_ostream::ParallelOstream pofs_global(io::output().dir()+"/"+
-            _output_prefix+"global_error.txt",1,ofs_global);
-
-        if(domain_->is_server())  return;
-
-        for (auto it_t  = domain_->begin_leafs();
-                it_t != domain_->end_leafs(); ++it_t)
-        {
-            if(!it_t->locally_owned() || !it_t->data())continue;
-
-            int refinement_level = it_t->refinement_level();
-            double dx = dx_base/std::pow(2.0,refinement_level);
-
-            auto& nodes_domain=it_t->data()->nodes_domain();
-            for(auto it2=nodes_domain.begin();it2!=nodes_domain.end();++it2 )
-            {
-                float_type tmp_exact = it2->template get<Exact>();
-                float_type tmp_num   = it2->template get<Numeric>();
-
-                //if(std::isnan(tmp_num))
-                //    std::cout<<"this is nan at level = " << it_t->level()<<std::endl;
-
-                float_type error_tmp = tmp_num - tmp_exact;
-
-                it2->template get<Error>() = error_tmp;
-
-                L2 += error_tmp*error_tmp * (dx*dx*dx);
-                L2_exact += tmp_exact*tmp_exact*(dx*dx*dx);
-
-                L2_perLevel[refinement_level]+=error_tmp*error_tmp* (dx*dx*dx);
-                L2_exact_perLevel[refinement_level]+=tmp_exact*tmp_exact*(dx*dx*dx);
-                ++counts[refinement_level];
-
-                if ( std::fabs(tmp_exact) > LInf_exact)
-                    LInf_exact = std::fabs(tmp_exact);
-
-                if ( std::fabs(error_tmp) > LInf)
-                    LInf = std::fabs(error_tmp);
-
-                if ( std::fabs(error_tmp) > LInf_perLevel[refinement_level] )
-                    LInf_perLevel[refinement_level]=std::fabs(error_tmp);
-
-                if ( std::fabs(tmp_exact) > LInf_exact_perLevel[refinement_level] )
-                    LInf_exact_perLevel[refinement_level]=std::fabs(tmp_exact);
-
-                ++count;
-            }
-        }
-
-        float_type L2_global(0.0);
-        float_type LInf_global(0.0);
-
-        float_type L2_exact_global(0.0);
-        float_type LInf_exact_global(0.0);
-
-        boost::mpi::all_reduce(client_comm_,L2, L2_global, std::plus<float_type>());
-        boost::mpi::all_reduce(client_comm_,L2_exact, L2_exact_global, std::plus<float_type>());
-
-        boost::mpi::all_reduce(client_comm_,LInf, LInf_global,[&](const auto& v0,
-                               const auto& v1){return v0>v1? v0  :v1;} );
-        boost::mpi::all_reduce(client_comm_,LInf_exact, LInf_exact_global,[&](const auto& v0,
-                               const auto& v1){return v0>v1? v0  :v1;} );
-
-        pcout_c << "Glabal "<<_output_prefix<<"L2_exact = " << std::sqrt(L2_exact_global)<< std::endl;
-        pcout_c << "Global "<<_output_prefix<<"LInf_exact = " << LInf_exact_global << std::endl;
-
-        pcout_c << "Glabal "<<_output_prefix<<"L2 = " << std::sqrt(L2_global)<< std::endl;
-        pcout_c << "Global "<<_output_prefix<<"LInf = " << LInf_global << std::endl;
-
-        ofs_global<< std::sqrt(L2_exact_global)<<" "<<LInf_exact_global<<" "
-                  << std::sqrt(L2_global) << " " <<LInf_global<<std::endl;
-
-        //Level wise errros
-        std::vector<float_type> L2_perLevel_global(nLevels_+1+global_refinement_,0.0);
-        std::vector<float_type> LInf_perLevel_global(nLevels_+1+global_refinement_,0.0);
-
-        std::vector<float_type> L2_exact_perLevel_global(nLevels_+1+global_refinement_,0.0);
-        std::vector<float_type> LInf_exact_perLevel_global(nLevels_+1+global_refinement_,0.0);
-
-
-        //files
-
-        std::vector<int> counts_global(nLevels_+1+global_refinement_,0);
-        for(std::size_t i=0;i<LInf_perLevel_global.size();++i)
-        {
-            boost::mpi::all_reduce(client_comm_,counts[i],
-                                   counts_global[i], std::plus<float_type>());
-            boost::mpi::all_reduce(client_comm_,L2_perLevel[i],
-                                   L2_perLevel_global[i], std::plus<float_type>());
-            boost::mpi::all_reduce(client_comm_,LInf_perLevel[i],
-                                   LInf_perLevel_global[i],[&](const auto& v0,
-                                       const auto& v1){return v0>v1? v0  :v1;});
-
-            boost::mpi::all_reduce(client_comm_,L2_exact_perLevel[i],
-                                   L2_exact_perLevel_global[i], std::plus<float_type>());
-            boost::mpi::all_reduce(client_comm_,LInf_exact_perLevel[i],
-                                   LInf_exact_perLevel_global[i],[&](const auto& v0,
-                                       const auto& v1){return v0>v1? v0  :v1;});
-
-            pcout_c<<_output_prefix<<"L2_"<<i<<" "<<std::sqrt(L2_perLevel_global[i])<<std::endl;
-            pcout_c<<_output_prefix<<"LInf_"<<i<<" "<<LInf_perLevel_global[i]<<std::endl;
-            pcout_c<<"count_"<<i<<" "<<counts_global[i]<<std::endl;
-
-
-            pofs<<i<<" "<<std::sqrt(L2_perLevel_global[i])<<" "<<LInf_perLevel_global[i]<<std::endl;
-        }
-    }
-
 
 private:
-    boost::mpi::communicator client_comm_;
     float_type vorticity_max_;
-
-    int nLevels_=0;
-    int global_refinement_;
     std::vector<vortex_ring> vrings_;
 };
 

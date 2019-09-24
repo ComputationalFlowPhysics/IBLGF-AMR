@@ -105,15 +105,157 @@ public: //Ctors
             simulation_.dictionary()->get_dictionary("domain").get(),
             _fct
         );
+
+        if(domain_->is_client())client_comm_=client_comm_.split(1);
+        else client_comm_=client_comm_.split(0);
+
+        nLevels_=simulation_.dictionary_->
+            template get_or<int>("nLevels",0);
+        global_refinement_=simulation_.dictionary_->
+            template get_or<int>("global_refinement",0);
     }
 
+
+public: //memebers
+
+
+    /** @brief Compute L2 and LInf errors */
+    template<class Numeric, class Exact, class Error>
+    void compute_errors(std::string _output_prefix="")
+    {
+        const float_type dx_base=domain_->dx_base();
+        float_type L2   = 0.; float_type LInf = -1.0; int count=0;
+        float_type L2_exact = 0; float_type LInf_exact = -1.0;
+
+        std::vector<float_type> L2_perLevel(nLevels_+1+global_refinement_,0.0);
+        std::vector<float_type> L2_exact_perLevel(nLevels_+1+global_refinement_,0.0);
+        std::vector<float_type> LInf_perLevel(nLevels_+1+global_refinement_,0.0);
+        std::vector<float_type> LInf_exact_perLevel(nLevels_+1+global_refinement_,0.0);
+
+        std::vector<int> counts(nLevels_+1+global_refinement_,0);
+
+        std::ofstream ofs,ofs_global;
+        parallel_ostream::ParallelOstream pofs(io::output().dir()+"/"+
+            _output_prefix+"level_error.txt",1,ofs);
+        parallel_ostream::ParallelOstream pofs_global(io::output().dir()+"/"+
+            _output_prefix+"global_error.txt",1,ofs_global);
+
+        if(domain_->is_server())  return;
+
+        for (auto it_t  = domain_->begin_leafs();
+                it_t != domain_->end_leafs(); ++it_t)
+        {
+            if(!it_t->locally_owned() || !it_t->data())continue;
+
+            int refinement_level = it_t->refinement_level();
+            double dx = dx_base/std::pow(2.0,refinement_level);
+
+            auto& nodes_domain=it_t->data()->nodes_domain();
+            for(auto it2=nodes_domain.begin();it2!=nodes_domain.end();++it2 )
+            {
+                float_type tmp_exact = it2->template get<Exact>();
+                float_type tmp_num   = it2->template get<Numeric>();
+
+                //if(std::isnan(tmp_num))
+                //    std::cout<<"this is nan at level = " << it_t->level()<<std::endl;
+
+                float_type error_tmp = tmp_num - tmp_exact;
+
+                it2->template get<Error>() = error_tmp;
+
+                L2 += error_tmp*error_tmp * (dx*dx*dx);
+                L2_exact += tmp_exact*tmp_exact*(dx*dx*dx);
+
+                L2_perLevel[refinement_level]+=error_tmp*error_tmp* (dx*dx*dx);
+                L2_exact_perLevel[refinement_level]+=tmp_exact*tmp_exact*(dx*dx*dx);
+                ++counts[refinement_level];
+
+                if ( std::fabs(tmp_exact) > LInf_exact)
+                    LInf_exact = std::fabs(tmp_exact);
+
+                if ( std::fabs(error_tmp) > LInf)
+                    LInf = std::fabs(error_tmp);
+
+                if ( std::fabs(error_tmp) > LInf_perLevel[refinement_level] )
+                    LInf_perLevel[refinement_level]=std::fabs(error_tmp);
+
+                if ( std::fabs(tmp_exact) > LInf_exact_perLevel[refinement_level] )
+                    LInf_exact_perLevel[refinement_level]=std::fabs(tmp_exact);
+
+                ++count;
+            }
+        }
+
+        float_type L2_global(0.0);
+        float_type LInf_global(0.0);
+
+        float_type L2_exact_global(0.0);
+        float_type LInf_exact_global(0.0);
+
+        boost::mpi::all_reduce(client_comm_,L2, L2_global, std::plus<float_type>());
+        boost::mpi::all_reduce(client_comm_,L2_exact, L2_exact_global, std::plus<float_type>());
+
+        boost::mpi::all_reduce(client_comm_,LInf, LInf_global,[&](const auto& v0,
+                               const auto& v1){return v0>v1? v0  :v1;} );
+        boost::mpi::all_reduce(client_comm_,LInf_exact, LInf_exact_global,[&](const auto& v0,
+                               const auto& v1){return v0>v1? v0  :v1;} );
+
+        pcout_c << "Glabal "<<_output_prefix<<"L2_exact = " << std::sqrt(L2_exact_global)<< std::endl;
+        pcout_c << "Global "<<_output_prefix<<"LInf_exact = " << LInf_exact_global << std::endl;
+
+        pcout_c << "Glabal "<<_output_prefix<<"L2 = " << std::sqrt(L2_global)<< std::endl;
+        pcout_c << "Global "<<_output_prefix<<"LInf = " << LInf_global << std::endl;
+
+        ofs_global<< std::sqrt(L2_exact_global)<<" "<<LInf_exact_global<<" "
+                  << std::sqrt(L2_global) << " " <<LInf_global<<std::endl;
+
+        //Level wise errros
+        std::vector<float_type> L2_perLevel_global(nLevels_+1+global_refinement_,0.0);
+        std::vector<float_type> LInf_perLevel_global(nLevels_+1+global_refinement_,0.0);
+
+        std::vector<float_type> L2_exact_perLevel_global(nLevels_+1+global_refinement_,0.0);
+        std::vector<float_type> LInf_exact_perLevel_global(nLevels_+1+global_refinement_,0.0);
+
+
+        //files
+
+        std::vector<int> counts_global(nLevels_+1+global_refinement_,0);
+        for(std::size_t i=0;i<LInf_perLevel_global.size();++i)
+        {
+            boost::mpi::all_reduce(client_comm_,counts[i],
+                                   counts_global[i], std::plus<float_type>());
+            boost::mpi::all_reduce(client_comm_,L2_perLevel[i],
+                                   L2_perLevel_global[i], std::plus<float_type>());
+            boost::mpi::all_reduce(client_comm_,LInf_perLevel[i],
+                                   LInf_perLevel_global[i],[&](const auto& v0,
+                                       const auto& v1){return v0>v1? v0  :v1;});
+
+            boost::mpi::all_reduce(client_comm_,L2_exact_perLevel[i],
+                                   L2_exact_perLevel_global[i], std::plus<float_type>());
+            boost::mpi::all_reduce(client_comm_,LInf_exact_perLevel[i],
+                                   LInf_exact_perLevel_global[i],[&](const auto& v0,
+                                       const auto& v1){return v0>v1? v0  :v1;});
+
+            pcout_c<<_output_prefix<<"L2_"<<i<<" "<<std::sqrt(L2_perLevel_global[i])<<std::endl;
+            pcout_c<<_output_prefix<<"LInf_"<<i<<" "<<LInf_perLevel_global[i]<<std::endl;
+            pcout_c<<"count_"<<i<<" "<<counts_global[i]<<std::endl;
+
+
+            pofs<<i<<" "<<std::sqrt(L2_perLevel_global[i])<<" "<<LInf_perLevel_global[i]<<std::endl;
+        }
+    }
 
 
 protected:
     simulation_t                        simulation_;     ///< simulation
     std::shared_ptr<domain_t>           domain_=nullptr; ///< Domain reference for convience
+    boost::mpi::communicator            client_comm_;    ///< Communicator for clients only
+    boost::mpi::communicator            world_;          ///< World Communicator 
     parallel_ostream::ParallelOstream   pcout;           ///< parallel cout on master
     parallel_ostream::ParallelOstream   pcout_c=parallel_ostream::ParallelOstream(1);
+
+    int nLevels_=0;
+    int global_refinement_;
 };
 
 #endif // IBLGF_INCLUDED_SETUP_BASE_HPP

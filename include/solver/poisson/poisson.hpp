@@ -88,6 +88,7 @@ public:
     void apply_if(Kernel*  _kernel, std::size_t _field_idx=0)
     {
 
+
         auto client = domain_->decomposition().client();
         if(!client)return;
 
@@ -281,6 +282,10 @@ public:
     void apply_lgf(Kernel*  _kernel, std::size_t _field_idx=0)
     {
 
+        boost::mpi::communicator world;
+        //if(domain_->is_client())world=world.split(1);
+        //else world=world.split(0);
+
         auto client = domain_->decomposition().client();
         if(!client)return;
 
@@ -298,7 +303,6 @@ public:
                     e=0.0;
             }
 
-
         // Copy source
         for (auto it  = domain_->begin_leafs();
                 it != domain_->end_leafs(); ++it)
@@ -312,29 +316,57 @@ public:
 
             }
 
+        if(Source::mesh_type!=MeshObject::cell)
+        {
+            throw 
+            std::runtime_error
+            ("Coarsification for non-cell centers needs to be implemented. ");
+        }
+
+        Timings timing;
+
+        //world.barrier();
+        auto t0_all=clock_type::now();
+        auto t0_coarsify=clock_type::now();
+
+        //source_coarsify(_field_idx, Source::mesh_type);
+
         //Coarsification:
-        //for (int ls = domain_->tree()->depth()-2;
-        //         ls >= domain_->tree()->base_level(); --ls)
-        //{
-        //    for (auto it_s  = domain_->begin(ls);
-        //              it_s != domain_->end(ls); ++it_s)
-        //        if (it_s->data())
-        //        {
-        //            this->coarsify<source_tmp>(*it_s);
-        //        }
+        for (int ls = domain_->tree()->depth()-2;
+                ls >= domain_->tree()->base_level(); --ls)
+        {
+            const auto t0_level=clock_type::now();
+            for (auto it_s  = domain_->begin(ls);
+                    it_s != domain_->end(ls); ++it_s)
+                {
+                    if(!it_s->data() || !it_s->data()->is_allocated()) continue;
+                    this->coarsify<source_tmp>(*it_s);
 
-        //    domain_->decomposition().client()->
-        //        template communicate_updownward_add<source_tmp, source_tmp>
-        //        (ls,true,false,-1);
-        //}
+                }
 
-        source_coarsify(_field_idx, Source::mesh_type);
+            domain_->decomposition().client()->
+                template communicate_updownward_add<source_tmp, source_tmp>
+                    (ls,true,false,-1);
+            
+            //world.barrier();
+            const auto t1_level=clock_type::now();
+              
+            timing.level[ls-domain_->tree()->base_level()+1]=t1_level-t0_level;
+        }
+        
+        auto t1_coarsify= clock_type::now();
+        //world.barrier();
+        timing.coarsification = t1_coarsify-t0_coarsify;
+
+        const auto t0_level_interaction = clock_type::now();
 
         //Level-Interactions
-        //pcout<<"Level interactions "<<std::endl;
         for (int l  = domain_->tree()->base_level();
                 l < domain_->tree()->depth(); ++l)
         {
+            
+            const auto t0_level=clock_type::now();
+
             for (auto it_s  = domain_->begin(l);
                     it_s != domain_->end(l); ++it_s)
                 if (it_s->data() && !it_s->locally_owned())
@@ -357,6 +389,7 @@ public:
 
 
             // Interpolate
+            const auto t2=clock_type::now();
             for (auto it  = domain_->begin(l);
                       it != domain_->end(l); ++it)
             {
@@ -365,6 +398,9 @@ public:
                 c_cntr_nli_.nli_intrp_node< target_tmp, target_tmp >
                     (it, Source::mesh_type, _field_idx, false);
             }
+            //world.barrier();
+            const auto t3=clock_type::now();
+            timing.interpolation+=(t3-t2);
 
             // Correction
             if (l == domain_->tree()->depth()-1) continue;
@@ -377,7 +413,16 @@ public:
                     <target_tmp, source_tmp>(it, dx/2.0);
             }
 
+            //world.barrier();
+            const auto t1_level=clock_type::now();
+            timing.level[l-domain_->tree()->base_level()]+=t1_level-t0_level;
         }
+
+        //world.barrier();
+        const auto t1_level_interaction=clock_type::now();
+        timing.level_interaction=t1_level_interaction-t0_level_interaction
+                                  -timing.interpolation;
+
 
         // Copy to Target
         for (auto it  = domain_->begin_leafs();
@@ -388,6 +433,9 @@ public:
                     cube_noalias_view() =
                             it->data()->template get_linalg_data<target_tmp>();
             }
+
+        const auto t1_all=clock_type::now();
+        timing.global=t1_all-t0_all;
     }
 
     template<class field>
@@ -680,6 +728,29 @@ private:
     interpolation::cell_center_nli    c_cntr_nli_;///< Lagrange Interpolation
     parallel_ostream::ParallelOstream pcout=parallel_ostream::ParallelOstream(1);
 
+    //Timings:
+    struct Timings{
+        std::vector<mDuration_type>       level;
+        mDuration_type                    global=mDuration_type(0);
+        mDuration_type                    coarsification=mDuration_type(0);
+        mDuration_type                    level_interaction=mDuration_type(0);
+        mDuration_type                    interpolation=mDuration_type(0);
+
+        friend std::ostream& operator<<(std::ostream& os, const  Timings& _t)
+        {
+
+            os<<"global "<<" coarsification "<<" level_interaction "<<" interpolation"<<std::endl;
+            os<<_t.global.count()<<" "<<_t.coarsification.count()<<" "
+              <<_t.level_interaction.count()<<" " <<_t.interpolation.count()<<" "
+              <<std::endl;
+            for(auto& t :  _t.level)
+            {
+                os<<t.count()<<" ";
+            }
+            os<<std::endl;
+            return os;
+        } 
+    };
 };
 
 }

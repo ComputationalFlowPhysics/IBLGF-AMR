@@ -595,6 +595,38 @@ public: //Access
         return ref_cond_;
     }
 
+    std::vector<int> get_nPoints() noexcept
+    {
+        boost::mpi::communicator world;
+        int nPts=0;
+        int nPts_global=0;
+        int nLevels=this->tree()->depth()-this->tree()->base_level();
+        std::vector<int> nPoints_perLevel(nLevels,0);
+        std::vector<int> nPoints_perLevel_global(nLevels,0);
+
+        if(this->is_client())
+        {
+            for (auto it  = this->begin_leafs();
+                    it != this->end_leafs(); ++it)
+            {
+                if(!it->locally_owned() || !it->data())continue;
+
+                nPts+=it->data()->node_field().size();
+                nPoints_perLevel[it->refinement_level()]+=
+                    it->data()->node_field().size();
+            }
+        }
+        boost::mpi::all_reduce(world,nPts, nPts_global, std::plus<int>());
+
+        for(std::size_t i=0;i<nPoints_perLevel.size();++i)
+        {
+            boost::mpi::all_reduce(world,nPoints_perLevel[i], 
+                                   nPoints_perLevel_global[i], 
+                                   std::plus<int>());
+        }
+        nPoints_perLevel_global.push_back(nPts_global);
+        return nPoints_perLevel_global;
+    }
 public:
 
     friend std::ostream& operator<<(std::ostream& os, Domain& d)

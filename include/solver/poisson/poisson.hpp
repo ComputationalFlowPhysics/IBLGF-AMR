@@ -351,7 +351,7 @@ public:
             //world.barrier();
             const auto t1_level=clock_type::now();
               
-            timing.level[ls-domain_->tree()->base_level()+1]=t1_level-t0_level;
+            //timing.level[ls-domain_->tree()->base_level()+1]=t1_level-t0_level;
         }
         
         auto t1_coarsify= clock_type::now();
@@ -415,7 +415,7 @@ public:
 
             //world.barrier();
             const auto t1_level=clock_type::now();
-            timing.level[l-domain_->tree()->base_level()]+=t1_level-t0_level;
+            //timing.level[l-domain_->tree()->base_level()]+=t1_level-t0_level;
         }
 
         //world.barrier();

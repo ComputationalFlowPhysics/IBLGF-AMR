@@ -483,9 +483,9 @@ public:
                 if(inf && inf->rank()==myRank &&
                    inf->fmm_mask(fmm_mask_idx,MASK_LIST::Mask_FMM_Source))
                 {
-                    //return (inf->rank()+1)*1000;
+                    return (inf->rank()+1)*1000;
                     //++count;
-                    return +1000000;
+                    //return +1000000;
                 }
             }
 
@@ -497,9 +497,9 @@ public:
                     if(inf && inf->rank()==myRank &&
                        inf->fmm_mask(fmm_mask_idx,MASK_LIST::Mask_FMM_Source))
                     {
-                        //return (inf->rank()+1)*1000;
+                        return (inf->rank()+1)*1000;
                         //++count;
-                        return +1000000;
+                        //return +1000000;
                     }
                 }
             }
@@ -515,10 +515,10 @@ public:
                    inf->fmm_mask(fmm_mask_idx,MASK_LIST::Mask_FMM_Source))
                 {
                     //inf_rank = inf->rank();
-                    //return (inf->rank()+1)*1000+1;
+                    return (inf->rank()+1)*1000+1;
                     //return 1000000;
                     //count+=1000;
-                    ++count;
+                    //++count;
                 }
             }
 
@@ -530,12 +530,12 @@ public:
                     if(inf && inf->rank()!=myRank &&
                        inf->fmm_mask(fmm_mask_idx,MASK_LIST::Mask_FMM_Source))
                     {
-                        //return (inf->rank()+1)*1000+1;
+                        return (inf->rank()+1)*1000+1;
                         //return inf->rank()+1;
                         //inf_rank = inf->rank();
                         //count+=1000;
                         //return +1000000;
-                         ++count;
+                        //// ++count;
                     }
                 }
             }

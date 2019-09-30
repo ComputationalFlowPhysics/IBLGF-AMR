@@ -281,7 +281,7 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
     {
 
         std::ofstream ofs,ofs_level;
-        parallel_ostream::ParallelOstream 
+        parallel_ostream::ParallelOstream
             pofs(io::output().dir()+"/"+"global_timings.txt",1,ofs),
             pofs_level(io::output().dir()+"/"+"level_timings.txt",1,ofs_level);
 
@@ -290,7 +290,7 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
         simulation_.write2("mesh.hdf5");
 
         auto pts=domain_->get_nPoints();
-         
+
         if(domain_->is_client())
         {
 
@@ -311,18 +311,18 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
             float_type time_all_sec=  solve_duration.count()/1.e3;
             pofs<<"Nprocs "<<" duration [s] "<<" nPoints "
                 <<" rate [pts/s] "<<" efficiency [s/pt]"  <<std::endl;
-            pofs <<client_comm_.size()<<" "<< time_all_sec << " " << pts.back() <<" " 
-                 << pts.back()/time_all_sec <<" "<< time_all_sec/pts.back() 
+            pofs <<client_comm_.size()<<" "<< time_all_sec << " " << pts.back() <<" "
+                 << pts.back()/time_all_sec <<" "<< time_all_sec/pts.back()
             <<std::endl;
 
-            pofs_level << "Level "<<" duration [s] "<<" nPoints" 
+            pofs_level << "Level "<<" duration [s] "<<" nPoints"
                  << " rate [pts/s] "<<" efficiency [s/pt]" <<std::endl;
-            
+
             for(std::size_t i=0;i<pts.size()-1;++i)
             {
                 auto time=solve_duration.count()/1.e3;
                 pofs_level<<i<<" " <<time <<" "<<pts[i]<<" "
-                    <<pts[i]/time<<" "<<time/pts[i]<<" " 
+                    <<pts[i]/time<<" "<<time/pts[i]<<" "
                 <<std::endl;
             }
             client_comm_.barrier();
@@ -424,7 +424,21 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
         }
         return psi;
     }
-    
+
+    int get_nPoints() const noexcept
+    {
+        if(!domain_->is_client()) return 0;
+
+        int nPts=0;
+        int nPts_global=0;
+        for (auto it  = domain_->begin_leafs();
+                  it != domain_->end_leafs(); ++it)
+        {
+            if(it->data()) nPts+=it->data()->node_field().size();
+        }
+        boost::mpi::all_reduce(client_comm_,nPts, nPts_global, std::plus<int>());
+        return nPts_global;
+    }
 
 
     /** @brief  Refienment conditon for octants.  */
@@ -470,7 +484,7 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
                         (k-center[2]+0.5)*dx_level;
 
                     const auto vort=vorticity(x,y,z);
-                    if(std::fabs(vort) > 
+                    if(std::fabs(vort) >
                             //vorticity_max_*pow(0.25*0.25*0.5 , diff_level)
                             vorticity_max_*pow(0.25*0.5 , diff_level)
                             //vorticity_max_*pow(0.25 , diff_level)

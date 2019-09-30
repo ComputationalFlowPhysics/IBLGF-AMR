@@ -39,6 +39,7 @@ public: //default fields
       (coarse_target_sum,  float_type,  1,   1,  1,  cell),
       (source_tmp,         float_type,  1,   1,  1,  cell),
       (correction_tmp,     float_type,  1,   1,  1,  cell),
+      (corr_lap_tmp,       float_type,  1,   1,  1,  cell),
       (target_tmp,         float_type,  1,   1,  1,  cell),
       (fmm_s,              float_type,  1,   1,  1,  cell),
       (fmm_t,              float_type,  1,   1,  1,  cell)
@@ -250,7 +251,7 @@ protected:
     simulation_t                        simulation_;     ///< simulation
     std::shared_ptr<domain_t>           domain_=nullptr; ///< Domain reference for convience
     boost::mpi::communicator            client_comm_;    ///< Communicator for clients only
-    boost::mpi::communicator            world_;          ///< World Communicator 
+    boost::mpi::communicator            world_;          ///< World Communicator
     parallel_ostream::ParallelOstream   pcout;           ///< parallel cout on master
     parallel_ostream::ParallelOstream   pcout_c=parallel_ostream::ParallelOstream(1);
 

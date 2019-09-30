@@ -14,10 +14,13 @@
 
 #include "../../utilities/convolution.hpp"
 #include <utilities/cell_center_nli_intrp.hpp>
+#include <utilities/extrapolation_cell_center_nli_intrp.hpp>
 #include<operators/operators.hpp>
 
 #include <lgf/lgf_gl.hpp>
 #include <lgf/lgf_ge.hpp>
+
+#include <linalg/linalg.hpp>
 
 namespace solver
 {
@@ -48,6 +51,7 @@ public: //member types
     using source_tmp        = typename Setup::source_tmp;
     using target_tmp        = typename Setup::target_tmp;
     using correction_tmp    = typename Setup::correction_tmp;
+    using corr_lap_tmp    = typename Setup::corr_lap_tmp;
 
     //FMM
     using Fmm_t     = typename Setup::Fmm_t;
@@ -61,7 +65,8 @@ public: //member types
     :
     domain_(_simulation->domain_.get()),
     fmm_(domain_->block_extent()[0]+lBuffer+rBuffer),
-    c_cntr_nli_(domain_->block_extent()[0]+lBuffer+rBuffer)
+    c_cntr_nli_(domain_->block_extent()[0]+lBuffer+rBuffer),
+    extrp_c_cntr_nli_(domain_->block_extent()[0]+lBuffer+rBuffer)
     {
     }
 
@@ -292,33 +297,17 @@ public:
         const float_type dx_base=domain_->dx_base();
 
         // Cleaning
-        for (auto it  = domain_->begin();
-                it != domain_->end(); ++it)
-            if (it->locally_owned())
-            {
-                for(auto& e: it->data()->template get_data<source_tmp>())
-                    e=0.0;
-
-                for(auto& e: it->data()->template get_data<target_tmp>())
-                    e=0.0;
-            }
+        clean_field<source_tmp>();
+        clean_field<target_tmp>();
+        clean_field<correction_tmp>();
+        clean_field<corr_lap_tmp>();
 
         // Copy source
-        for (auto it  = domain_->begin_leafs();
-                it != domain_->end_leafs(); ++it)
-            if (it->locally_owned())
-            {
-                auto lin_data_1 = it->data()->template get_linalg_data<Source>(_field_idx);
-                auto lin_data_2 = it->data()->template get_linalg_data<source_tmp>();
-                xt::noalias( view(lin_data_2,
-                            xt::range(1,-1),  xt::range(1,-1), xt::range(1,-1)) ) =
-                view(lin_data_1, xt::range(1,-1),  xt::range(1,-1), xt::range(1,-1));
-
-            }
+        copy_leaf<Source, source_tmp>(_field_idx, 0, true);
 
         if(Source::mesh_type!=MeshObject::cell)
         {
-            throw 
+            throw
             std::runtime_error
             ("Coarsification for non-cell centers needs to be implemented. ");
         }
@@ -340,31 +329,27 @@ public:
                     it_s != domain_->end(ls); ++it_s)
                 {
                     if(!it_s->data() || !it_s->data()->is_allocated()) continue;
-                    this->coarsify<source_tmp>(*it_s);
-
+                    this->coarsify<source_tmp>(*it_s, false, true);
+                    this->coarsify<Source>(*it_s, false, true);
                 }
 
             domain_->decomposition().client()->
                 template communicate_updownward_add<source_tmp, source_tmp>
                     (ls,true,false,-1);
-            
-            //world.barrier();
+
             const auto t1_level=clock_type::now();
-              
-            //timing.level[ls-domain_->tree()->base_level()+1]=t1_level-t0_level;
         }
-        
+
         auto t1_coarsify= clock_type::now();
-        //world.barrier();
         timing.coarsification = t1_coarsify-t0_coarsify;
 
         const auto t0_level_interaction = clock_type::now();
 
         //Level-Interactions
+
         for (int l  = domain_->tree()->base_level();
                 l < domain_->tree()->depth(); ++l)
         {
-            
             const auto t0_level=clock_type::now();
 
             for (auto it_s  = domain_->begin(l);
@@ -379,43 +364,129 @@ public:
 
             _kernel->change_level(l-domain_->tree()->base_level());
 
-            //test for FMM
+            // test for FMM
+            const auto t2=clock_type::now();
             fmm_.template apply<source_tmp, target_tmp>(domain_, _kernel, l, false, 1.0);
-            fmm_.template apply<source_tmp, target_tmp>(domain_, _kernel, l, true, -1.0);
 
+            //domain_->decomposition().client()->
+            //    template communicate_updownward_assign
+            //        <target_tmp, target_tmp>(l,false,false,-1);
+
+            //// Interpolate
+            //for (auto it  = domain_->begin(l);
+            //          it != domain_->end(l); ++it)
+            //{
+            //    if(!it->data() || !it->data()->is_allocated()) continue;
+            //    c_cntr_nli_.nli_intrp_node< target_tmp, target_tmp >
+            //        (it, Source::mesh_type, _field_idx, true, false);
+            //}
+
+            fmm_.template apply<source_tmp, target_tmp>(domain_, _kernel, l, true, -1.0);
             domain_->decomposition().client()->
                 template communicate_updownward_assign
                     <target_tmp, target_tmp>(l,false,false,-1);
 
-
             // Interpolate
-            const auto t2=clock_type::now();
             for (auto it  = domain_->begin(l);
                       it != domain_->end(l); ++it)
             {
-                if(it->is_leaf() || !it->data() || !it->data()->is_allocated()) continue;
-
-                c_cntr_nli_.nli_intrp_node< target_tmp, target_tmp >
-                    (it, Source::mesh_type, _field_idx, false);
+                if(!it->data() || !it->data()->is_allocated()) continue;
+                extrp_c_cntr_nli_.nli_intrp_node< target_tmp, target_tmp >
+                    (it, Source::mesh_type, _field_idx, false, false);
             }
-            //world.barrier();
+
+            if (l == domain_->tree()->depth()-1) continue;
+            client->template buffer_exchange<target_tmp>(l+1);
+
             const auto t3=clock_type::now();
             timing.interpolation+=(t3-t2);
 
-            // Correction
-            if (l == domain_->tree()->depth()-1) continue;
+            // Use the temporary value as an approximation for the buffer for
+            // the correction term -LP
+
+            // Correction for LGF
+
+            for (auto it  = domain_->begin(l);
+                    it != domain_->end(l); ++it)
+            {
+                int refinement_level = it->refinement_level();
+                double dx_level = dx_base/std::pow(2,refinement_level);
+
+                if (!it->data() || !it->data()->is_allocated()) continue;
+                if (!it->is_leaf()) continue;
+                //domain::Operator::laplace<target_tmp, correction_tmp>
+                //( *(it->data()),dx_level);
+                domain::Operator::laplace<target_tmp, corr_lap_tmp>
+                ( *(it->data()),dx_level);
+
+            }
+
+            client->template buffer_exchange<corr_lap_tmp>(l);
+
+            // start here
+
+            //client->template buffer_exchange<source_tmp>(l);
+            client->template buffer_exchange<Source>(l);
+            for (auto it  = domain_->begin(l);
+                    it != domain_->end(l); ++it)
+            {
+                if(!it->data() || !it->data()->is_allocated()) continue;
+
+                const bool correction_buffer_only = false;
+                extrp_c_cntr_nli_.nli_intrp_node< corr_lap_tmp, correction_tmp >(it, Source::mesh_type, _field_idx, correction_buffer_only,false);
+            }
+
+            // FMM for non-leaf
+
             for (auto it  = domain_->begin(l);
                     it != domain_->end(l); ++it)
             {
                 int refinement_level = it->refinement_level();
                 double dx = dx_base/std::pow(2,refinement_level);
-                c_cntr_nli_.add_source_correction
-                    <target_tmp, source_tmp>(it, dx/2.0);
+                extrp_c_cntr_nli_.add_source_correction
+                    <target_tmp, correction_tmp>(it, dx/2.0);
             }
 
-            //world.barrier();
-            const auto t1_level=clock_type::now();
-            //timing.level[l-domain_->tree()->base_level()]+=t1_level-t0_level;
+            for (auto it  = domain_->begin(l+1);
+                    it != domain_->end(l+1); ++it)
+                if (it->locally_owned())
+                {
+                    auto& lin_data_1 = it->data()->
+                    template get_linalg_data<correction_tmp>(0);
+                    auto& lin_data_2 = it->data()->
+                    template get_linalg_data<source_tmp>(0);
+                    auto& lin_data_3 = it->data()->
+                    template get_linalg_data<target_tmp>(0);
+
+                    if (it->is_correction())
+                    {
+                        //std::cout<<"---------------------------"<<std::endl;
+                        //std::cout<<xt::amax(xt::abs(xt::view(lin_data_3,xt::range(2,-1),xt::range(2,-1),xt::range(2,-1))))<<std::endl;
+                        //std::cout<<xt::amax(xt::abs(xt::view(lin_data_1,xt::range(2,-1),xt::range(2,-1),xt::range(2,-1))))<<std::endl;
+                        //std::cout<<xt::amax(xt::abs(xt::view(lin_data_2,xt::range(2,-1),xt::range(2,-1),xt::range(2,-1))))<<std::endl;
+                    }
+
+                    xt::noalias(lin_data_2) += lin_data_1 * 1.0;
+
+                }
+        }
+
+        //test
+        //Coarsification:
+        for (int ls = domain_->tree()->depth()-2;
+                ls >= domain_->tree()->base_level(); --ls)
+        {
+            const auto t0_level=clock_type::now();
+            for (auto it_s  = domain_->begin(ls);
+                    it_s != domain_->end(ls); ++it_s)
+            {
+                if(!it_s->data() || !it_s->data()->is_allocated()) continue;
+                this->coarsify<correction_tmp>(*it_s);
+            }
+
+            domain_->decomposition().client()->
+            template communicate_updownward_add<correction_tmp, correction_tmp>
+            (ls,true,false,-1);
         }
 
         //world.barrier();
@@ -499,7 +570,7 @@ public:
     {
         if(mesh_type!=MeshObject::cell)
         {
-            throw 
+            throw
             std::runtime_error("Coarsification for non-cell centers needs to be implemented. ");
         }
         auto client = domain_->decomposition().client();
@@ -695,15 +766,19 @@ public:
 
 
     template<class Field >
-    void coarsify(octant_t* _parent)
+    void coarsify(octant_t* _parent, bool correction_only=false, bool exclude_correction = false)
     {
         auto parent = _parent;
-        if(parent->is_leaf())return;
 
         for (int i = 0; i < parent->num_children(); ++i)
         {
             auto child = parent->child(i);
             if(child==nullptr || !child->data() || !child->locally_owned()) continue;
+            if (correction_only && !child->is_correction())
+                continue;
+            if (exclude_correction && child->is_correction())
+                continue;
+
             auto child_view= child->data()->descriptor();
 
             auto cview =child->data()->node_field().view(child_view);
@@ -726,6 +801,7 @@ private:
     lgf_lap_t                         lgf_lap_;
     lgf_if_t                          lgf_if_;
     interpolation::cell_center_nli    c_cntr_nli_;///< Lagrange Interpolation
+    interpolation::extrapolation_cell_center_nli    extrp_c_cntr_nli_;///< Lagrange Interpolation
     parallel_ostream::ParallelOstream pcout=parallel_ostream::ParallelOstream(1);
 
     //Timings:
@@ -749,7 +825,7 @@ private:
             }
             os<<std::endl;
             return os;
-        } 
+        }
     };
 };
 

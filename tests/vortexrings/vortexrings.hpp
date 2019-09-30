@@ -280,7 +280,7 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
     void run()
     {
 
-        std::ofstream ofs,ofs_level;
+        std::ofstream ofs,ofs_level, ofs_timings;
         parallel_ostream::ParallelOstream 
             pofs(io::output().dir()+"/"+"global_timings.txt",1,ofs),
             pofs_level(io::output().dir()+"/"+"level_timings.txt",1,ofs_level);
@@ -289,11 +289,10 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
         boost::mpi::communicator world;
         simulation_.write2("mesh.hdf5");
 
-        auto pts=domain_->get_nPoints();
          
         if(domain_->is_client())
         {
-
+            auto pts=domain_->get_nPoints();
             poisson_solver_t psolver(&this->simulation_);
 
             mDuration_type solve_duration(0);
@@ -305,26 +304,8 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
                 client_comm_.barrier();
             ))
 
-            pcout_c<<"Total Psolve time: "
-                  <<solve_duration.count()<<" on "<<world.size()<<std::endl;
-
-            float_type time_all_sec=  solve_duration.count()/1.e3;
-            pofs<<"Nprocs "<<" duration [s] "<<" nPoints "
-                <<" rate [pts/s] "<<" efficiency [s/pt]"  <<std::endl;
-            pofs <<client_comm_.size()<<" "<< time_all_sec << " " << pts.back() <<" " 
-                 << pts.back()/time_all_sec <<" "<< time_all_sec/pts.back() 
-            <<std::endl;
-
-            pofs_level << "Level "<<" duration [s] "<<" nPoints" 
-                 << " rate [pts/s] "<<" efficiency [s/pt]" <<std::endl;
+            psolver.print_timings(pofs, pofs_level);
             
-            for(std::size_t i=0;i<pts.size()-1;++i)
-            {
-                auto time=solve_duration.count()/1.e3;
-                pofs_level<<i<<" " <<time <<" "<<pts[i]<<" "
-                    <<pts[i]/time<<" "<<time/pts[i]<<" " 
-                <<std::endl;
-            }
             client_comm_.barrier();
             psolver.apply_laplace<phi_num,amr_lap_source>() ;
         }

@@ -765,8 +765,8 @@ public:
            os_level<<std::setw(10)<<c
              <<std::setw(width)<<pts[c]
              <<std::setw(width)<<static_cast<float_type>(t.count())/1.e3
-             <<std::setw(width)<<static_cast<float_type>(t.count())/pts[c]
-             <<std::setw(width)<<pts[c]/static_cast<float_type>(t.count())
+             <<std::setw(width)<<pts[c]/(static_cast<float_type>(t.count())/1.e3)
+             <<std::setw(width)<<(static_cast<float_type>(t.count())/1.e3)/pts[c]
            <<std::endl;
            ++c;
        }

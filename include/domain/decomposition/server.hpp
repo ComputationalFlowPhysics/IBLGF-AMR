@@ -92,7 +92,7 @@ public:
         const float_type ideal_load=total_load/nProcs;
         std::vector<std::list<ctask_t>> tasks_perProc(nProcs);
 
-        //auto it = domain_->begin_df();
+        ////auto it = domain_->begin_df();
         auto it = domain_->begin_bf();
         float_type current_load= 0.;
         for(int crank=0;crank<nProcs;++crank)
@@ -119,7 +119,8 @@ public:
             if(it==domain_->end_bf()) break;
             //if(it==domain_->end_df()) break;
         }
-        //Iterate to balance/diffuse load
+
+
         std::vector<float_type> total_loads_perProc2(nProcs,0);
         float_type max_load=-1;
         float_type min_load=total_load+10;

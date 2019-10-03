@@ -279,25 +279,47 @@ public:
         // done at master node
 
 
-        ////Initialize for each fmm // zero ing all tree
+        ////Initialize for each fmm//zero ing all tree
         fmm_init_zero<fmm_s>(domain_, MASK_LIST::Mask_FMM_Source);
         fmm_init_zero<fmm_t>(domain_, MASK_LIST::Mask_FMM_Target);
 
         //// Copy to temporary variables // only the base level
         fmm_init_copy<Source, fmm_s>(domain_);
 
+        timings_=Timings() ;
+
+        domain_->client_communicator().barrier();
         //// Anterpolation
         pcout<<"FMM Antrp start" << std::endl;
+        auto t0_anterp=clock_type::now();
         fmm_antrp(domain_);
+        domain_->client_communicator().barrier();
+        auto t1_anterp=clock_type::now();
+        timings_.anterp=t1_anterp-t0_anterp;
+
+        domain_->client_communicator().barrier();
 
         //// FMM influence list
         pcout<<"FMM Bx start" << std::endl;
         //fmm_Bx_itr_build(domain_, level);
+        auto t0_bx=clock_type::now();
         fmm_Bx(domain_, _kernel, dx_level);
+        domain_->client_communicator().barrier();
+        auto t1_bx=clock_type::now();
+        timings_.bx=t1_bx-t0_bx;
+
+        domain_->client_communicator().barrier();
 
         //// Interpolation
         pcout<<"FMM INTRP start" << std::endl;
+        auto t0_interp=clock_type::now();
         fmm_intrp(domain_);
+        domain_->client_communicator().barrier();
+        auto t1_interp=clock_type::now();
+
+        timings_.interp=t1_interp-t0_interp;
+        timings_.global=t1_interp-t0_anterp;
+
         //std::cout<<"FMM INTRP done" << std::endl;
 
         //// Copy back
@@ -306,7 +328,6 @@ public:
         //else
         //fmm_minus_equal<Target, fmm_t>(domain_);
 
-        boost::mpi::communicator world;
         //std::cout<<"Rank "<<world.rank() << " FFTW_count = ";
         //std::cout<<conv_.fft_count << std::endl;
         pcout<<"FMM For Level "<< level << " End -------------------------"<<std::endl;
@@ -643,6 +664,7 @@ public:
     void fmm_tt(octant_t* o_s, octant_t* o_t, Kernel* _kernel,
                 int level_diff)
     {
+        const auto t0_fft=clock_type::now();
 
         const auto t_base = o_t->data()->template get<fmm_t>().
                                         real_block().base();
@@ -663,19 +685,64 @@ public:
         conv_.apply_forward_add(lgf_block, _kernel, level_diff,
                 o_s->data()->template get<fmm_s>());
 
+        const auto t1_fft=clock_type::now();
+        timings_.fftw+=t1_fft-t0_fft;
+        timings_.fftw_count_max+=1;
     }
 
+    struct Timings{
 
-    public:
-        Nli lagrange_intrp;
-    private:
-        int fmm_mask_idx_;
-        int base_level_;
-        convolution_t            conv_;      ///< fft convolution
-        parallel_ostream::ParallelOstream pcout=
-            parallel_ostream::ParallelOstream(1);
+        mDuration_type                    global=mDuration_type(0);
+        mDuration_type                    anterp=mDuration_type(0);
+        mDuration_type                    bx=mDuration_type(0);
+        mDuration_type                    interp=mDuration_type(0);
+        mDuration_type                    fftw=mDuration_type(0);
+        std::size_t                       fftw_count_max=0;
+        std::size_t                       fftw_count_min=0;
 
-    private: //timings
+        void accumulate(boost::mpi::communicator _comm) noexcept
+        {
+            Timings tlocal=*this;
+
+            decltype(tlocal.global.count()) cglobal,canterp,cbx,cinterp,cfftw;
+            std::size_t  cfftw_count_max,cfftw_count_min;
+            auto comp=[&](const auto& v0, const auto& v1){return v0>v1? v0  :v1;};
+            auto min_comp=[&](const auto& v0, const auto& v1){return v0>v1? v1  :v0;};
+            boost::mpi::all_reduce(_comm,tlocal.global.count(), cglobal,comp);
+            boost::mpi::all_reduce(_comm,tlocal.anterp.count(), canterp,comp);
+            boost::mpi::all_reduce(_comm,tlocal.bx.count(), cbx,comp);
+            boost::mpi::all_reduce(_comm,tlocal.interp.count(), cinterp,comp);
+            boost::mpi::all_reduce(_comm,tlocal.fftw.count(), cfftw,comp);
+
+            boost::mpi::all_reduce(_comm,tlocal.fftw_count_max, cfftw_count_min,min_comp);
+            boost::mpi::all_reduce(_comm,tlocal.fftw_count_max, cfftw_count_max,comp);
+
+            this->global=mDuration_type(cglobal);
+            this->anterp=mDuration_type(canterp);
+            this->interp=mDuration_type(cinterp);
+            this->bx=mDuration_type(cbx);
+            this->fftw=mDuration_type(cfftw);
+            this->fftw_count_min=cfftw_count_min;
+            this->fftw_count_max=cfftw_count_max;
+        }
+    };
+
+    const auto& timings() const noexcept{return timings_;}
+    auto& timings()noexcept{return timings_;}
+
+
+
+public:
+    Nli lagrange_intrp;
+private:
+    int fmm_mask_idx_;
+    int base_level_;
+    convolution_t            conv_;      ///< fft convolution
+    parallel_ostream::ParallelOstream pcout=
+        parallel_ostream::ParallelOstream(1);
+
+private: //timings
+    Timings timings_;
 
 };
 

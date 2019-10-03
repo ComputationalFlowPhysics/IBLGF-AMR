@@ -322,6 +322,8 @@ public:
         timings_=Timings() ;
         const int nLevels=domain_->nLevels();
         timings_.level.resize(nLevels);
+        timings_.fmm_level.resize(nLevels);
+        timings_.fmm_level_nl.resize(nLevels);
 
         auto t0_all=clock_type::now();
         auto t0_coarsify=clock_type::now();
@@ -347,7 +349,7 @@ public:
             
             const auto t1_level=clock_type::now();
               
-            //timings_.level[ls-domain_->tree()->base_level()+1]=t1_level-t0_level;
+            timings_.level[ls-domain_->tree()->base_level()+1]=t1_level-t0_level;
         }
         
         auto t1_coarsify= clock_type::now();
@@ -376,7 +378,10 @@ public:
 
             //test for FMM
             fmm_.template apply<source_tmp, target_tmp>(domain_, _kernel, l, false, 1.0);
+            timings_.fmm_level[l-domain_->tree()->base_level()]=fmm_.timings();
             fmm_.template apply<source_tmp, target_tmp>(domain_, _kernel, l, true, -1.0);
+            timings_.fmm_level_nl[l-domain_->tree()->base_level()]=fmm_.timings();
+
 
             domain_->decomposition().client()->
                 template communicate_updownward_assign
@@ -728,16 +733,16 @@ public:
        const auto pts=this->domain_->get_nPoints();
 
         os<<std::left
-            <<std::setw(20) <<"npts"
+            <<std::setw(15) <<"npts"
             <<std::setw(width) <<"global[s]"
-            <<std::setw(width) <<"global rate[pts/s]"
-            <<std::setw(width) <<"global eff[s/pt]"
-            <<std::setw(width) <<"coarsification[%]"
-            <<std::setw(width) <<"level_iaction[%]"
-            <<std::setw(width) <<"interpolation[%]"
+            <<std::setw(width) <<"gbl rate[pts/s]"
+            <<std::setw(width) <<"gbl eff[s/pt]"
+            <<std::setw(width) <<"coarsing[%]"
+            <<std::setw(width) <<"level[%]"
+            <<std::setw(width) <<"interp[%]"
         <<std::endl;
-       os<<std::left<<std::scientific<<std::setprecision(10)
-           <<std::setw(20) <<pts.back()
+       os<<std::left<<std::scientific<<std::setprecision(7)
+           <<std::setw(15) <<pts.back()
            <<std::setw(width) <<timings_.global.count()/1.e3
            <<std::setw(width) <<pts.back()/static_cast<float_type>(timings_.global.count()/1.e3)
            <<std::setw(width) <<static_cast<float_type>(timings_.global.count()/1.e3)/pts.back()
@@ -752,21 +757,56 @@ public:
            static_cast<float_type>(timings_.interpolation.count())/timings_.global.count();
 
        int c=0;
-       width=20;
-       os_level<<std::left<<std::scientific<<std::setprecision(10)
+       width=15;
+       os_level<<std::left<<std::scientific<<std::setprecision(5)
             <<std::setw(10) <<"level"
-            <<std::setw(width) <<"npts"
-            <<std::setw(width) <<"global[s]"
-            <<std::setw(width) <<"global rate[pts/s]"
-            <<std::setw(width) <<"global eff[s/pt]"
+            <<std::setw(15) <<"npts"
+            <<std::setw(width) <<"gbl[s]"
+            <<std::setw(width) <<"rate[pts/s]"
+            <<std::setw(width) <<"eff[s/pt]"
+
+            <<std::setw(width) <<"fmm gbl "
+            <<std::setw(width) <<"anterp "
+            <<std::setw(width) <<"Bx "
+            <<std::setw(width) <<"fft "
+            <<std::setw(width) <<"fft ratio "
+            <<std::setw(width) <<"interp "
+
+            <<std::setw(width) <<"fmm_nl gbl "
+            <<std::setw(width) <<"anterp "
+            <<std::setw(width) <<"Bx "
+            <<std::setw(width) <<"fft "
+            <<std::setw(width) <<"fft ratio "
+            <<std::setw(width) <<"interp "
        <<std::endl;
-       for(auto& t :  timings_.level)
+
+       for(std::size_t i=0; i<timings_.level.size();++i)
        {
+
+           auto& t=timings_.level[i];
+           auto& fmm=timings_.fmm_level[i];
+           auto& fmm_nl=timings_.fmm_level_nl[i];
+
            os_level<<std::setw(10)<<c
-             <<std::setw(width)<<pts[c]
+             <<std::setw(15)<<pts[c]
              <<std::setw(width)<<static_cast<float_type>(t.count())/1.e3
              <<std::setw(width)<<pts[c]/(static_cast<float_type>(t.count())/1.e3)
              <<std::setw(width)<<(static_cast<float_type>(t.count())/1.e3)/pts[c]
+
+             <<std::setw(width)<<(static_cast<float_type>(fmm.global.count())/1.e3)
+             <<std::setw(width)<<(static_cast<float_type>(fmm.anterp.count())/1.e3)
+             <<std::setw(width)<<(static_cast<float_type>(fmm.bx.count())/1.e3)
+             <<std::setw(width)<<(static_cast<float_type>(fmm.fftw.count())/1.e3)
+             <<std::setw(width)<<(static_cast<float_type>(fmm.fftw_count_max)/fmm.fftw_count_min)
+             <<std::setw(width)<<(static_cast<float_type>(fmm.interp.count())/1.e3)
+
+             <<std::setw(width)<<(static_cast<float_type>(fmm_nl.global.count())/1.e3)
+             <<std::setw(width)<<(static_cast<float_type>(fmm_nl.anterp.count())/1.e3)
+             <<std::setw(width)<<(static_cast<float_type>(fmm_nl.bx.count())/1.e3)
+             <<std::setw(width)<<(static_cast<float_type>(fmm_nl.fftw.count())/1.e3)
+             <<std::setw(width)<<(static_cast<float_type>(fmm_nl.fftw_count_max)/fmm_nl.fftw_count_min)
+             <<std::setw(width)<<(static_cast<float_type>(fmm_nl.interp.count())/1.e3)
+
            <<std::endl;
            ++c;
        }
@@ -785,7 +825,9 @@ private:
 
     //Timings:
     struct Timings{
-        std::vector<mDuration_type>       level;
+        std::vector<mDuration_type>                level;
+        std::vector<typename Fmm_t::Timings>       fmm_level;
+        std::vector<typename Fmm_t::Timings>       fmm_level_nl;
         mDuration_type                    global=mDuration_type(0);
         mDuration_type                    coarsification=mDuration_type(0);
         mDuration_type                    level_interaction=mDuration_type(0);
@@ -801,7 +843,7 @@ private:
             clevel.resize(level.size());
             decltype(tlocal.global.count()) cglobal,ccoarsification,clevel_interaction, cinterpolation;
 
-
+            
             boost::mpi::all_reduce(_comm,tlocal.global.count(), cglobal,
                     [&](const auto& v0, const auto& v1){return v0>v1? v0  :v1;} );
             boost::mpi::all_reduce(_comm,tlocal.coarsification.count(), ccoarsification,
@@ -814,6 +856,9 @@ private:
             //For levels:
             for(std::size_t i =0;i<level.size();++i)
             {
+                fmm_level[i].accumulate(_comm);
+                fmm_level_nl[i].accumulate(_comm);
+
                 boost::mpi::all_reduce(_comm,tlocal.level[i].count(), clevel[i],
                         [&](const auto& v0, const auto& v1){return v0>v1? v0  :v1;} );
                 this->level[i]=mDuration_type(clevel[i]);

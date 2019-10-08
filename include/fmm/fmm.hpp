@@ -449,6 +449,7 @@ public:
             }
 
             //setup the tasks
+            
             domain_->decomposition().client()->template
                 communicate_induced_fields<fmm_t, fmm_t>(&(*it),
                     this, _kernel,base_level_-level,dx_level,
@@ -469,16 +470,12 @@ public:
         
         }
 
-        mDuration_type time_communication_Bx;
         //Finish the communication
-        TIME_CODE(time_communication_Bx, SINGLE_ARG(
-        domain_->decomposition().client()->template
-            check_combined_induced_field_communication<fmm_t,fmm_t>(true);
-        ))
-        //TIME_CODE(time_communication_Bx, SINGLE_ARG(
-        //domain_->decomposition().client()->template
-        //    finish_induced_field_communication();
-        //))
+        if(combined_messages)
+        {
+            domain_->decomposition().client()->template
+                check_combined_induced_field_communication<fmm_t,fmm_t>(true);
+        }
     }
 
 

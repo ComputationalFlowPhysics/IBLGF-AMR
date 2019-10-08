@@ -42,8 +42,8 @@ public: //memeber types
     using octant_iterator     = MapValuePtrIterator<octant_ptr_map_type>;
     using raw_octant_iterator = typename octant_ptr_map_type::iterator;
 
-    using dfs_iterator = typename detail::iterator_depth_first<octant_type>;
-    using bfs_iterator = typename detail::iterator_breadth_first<octant_type>;
+    using dfs_iterator = typename detail::IteratorDfs<octant_type>;
+    using bfs_iterator = typename detail::IteratorBfs<octant_type>;
 
     template<class Iterator=bfs_iterator>
     using conditional_iterator = typename detail::ConditionalIterator<Iterator>;

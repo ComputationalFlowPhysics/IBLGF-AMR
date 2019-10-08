@@ -58,7 +58,7 @@ public:
 
     static void fmm_lgf_mask_build(Domain* domain_)
     {
-        for (int l  = domain_->tree()->base_level()+0;
+        for (int l  = domain_->tree()->base_level();
                 l < domain_->tree()->depth(); ++l)
         {
             fmm_dry(domain_, l, false);

@@ -287,7 +287,7 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
 
 
         boost::mpi::communicator world;
-        simulation_.write2("mesh.hdf5");
+        //simulation_.write2("mesh.hdf5");
 
          
         if(domain_->is_client())
@@ -313,7 +313,7 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
         this->compute_errors<phi_num,phi_exact,error>();
         this->compute_errors<amr_lap_source,source,error_lap_source>("laplace_");
 
-        simulation_.write2("mesh.hdf5");
+        //simulation_.write2("mesh.hdf5");
     }
 
 
@@ -349,10 +349,10 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
                 }
             }
         }
-        std::cout <<"rank: "<<world.rank()
-                  <<", owned: "<<nLocally_owned
-                  <<", ghosts: "<<nGhost
-                  <<", allocated ghosts: "<<nAllocated<<std::endl;
+        //std::cout <<"rank: "<<world.rank()
+        //          <<", owned: "<<nLocally_owned
+        //          <<", ghosts: "<<nGhost
+        //          <<", allocated ghosts: "<<nAllocated<<std::endl;
 
         for (auto it  = domain_->begin_leafs();
                   it != domain_->end_leafs(); ++it)

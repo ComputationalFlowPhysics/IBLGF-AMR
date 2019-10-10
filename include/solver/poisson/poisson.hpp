@@ -752,9 +752,6 @@ public:
            <<std::setw(width) <<100.0*static_cast<float_type>(timings_.interpolation.count())/timings_.global.count()
        <<std::endl;
 
-           auto all=static_cast<float_type>(timings_.coarsification.count())/timings_.global.count()+
-           static_cast<float_type>(timings_.level_interaction.count())/timings_.global.count()+
-           static_cast<float_type>(timings_.interpolation.count())/timings_.global.count();
 
        int c=0;
        width=15;

@@ -41,7 +41,7 @@ public: //Ctor
 
     TaskCommunicator()
     {
-        buffer_.init(10);
+        buffer_.init(1000);
     }
 
     //No copy or Assign
@@ -166,6 +166,7 @@ public:
         {
             acc_tasks[t->rank_other()].push_back(t);
         }
+        buffer_queue_.clear();
 
         //2. Create one task and data vector per rank
         for(std::size_t rank_other=0; rank_other<acc_tasks.size();++rank_other)
@@ -188,7 +189,7 @@ public:
                 auto accumulated_task=
                     acc_comm()->post_task(&acc_fields[rank_other], 
                                            rank_other, true, tag);
-                do_acc=true;
+                accumulated_task->requires_confirmation()=false;
             }
         }
         //4. start communication
@@ -305,7 +306,6 @@ protected:
 
     ///< Communicator for accumulated tasks per CPU
     bool pack_messages_=false;
-    bool do_acc=false;
     std::vector<task_vector_t> acc_tasks; ///< Vector of tasks per CPU;
     std::vector<std::vector<float_type>> acc_fields;
 

@@ -111,7 +111,7 @@ public:
     }
 
     /** * @brief Start communication (send or receive for this task)*/
-    task_vector_t start_communication() noexcept
+    task_vector_t start_communication(bool checkExistence=true) noexcept
     {
         task_vector_t res;
         if(buffer_queue_.empty()) return res;
@@ -122,12 +122,18 @@ public:
             auto task =buffer_queue_.front();
 
             //If message does not exisit (for recv), check other posted messages
-            if( !message_exists(task))
+            if(checkExistence)
             {
-                buffer_queue_.push_back(task);
-                buffer_queue_.pop_front();
+                if( !message_exists(task))
+                {
+                    buffer_queue_.push_back(task);
+                    buffer_queue_.pop_front();
+                    if(mCount==size) break;
+                    ++mCount;
+                    continue;
+                }
             }
-            else
+            //else
             {
                 auto ptr = buffer_.get_free_buffer();
                 task->attach_buffer( ptr );
@@ -138,8 +144,6 @@ public:
                 res.push_back(task);
                 buffer_queue_.pop_front();
             }
-            if(mCount==size) break;
-            ++mCount;
         }
         return res;
     }
@@ -193,7 +197,7 @@ public:
             }
         }
         //4. start communication
-        acc_comm()->start_communication();
+        acc_comm()->start_communication(false);
     }
 
     /** @brief * Unpack recv messages and put them into buffers of the
@@ -358,7 +362,7 @@ public: //Memebers:
 
     void unpack_masseges_impl() noexcept 
     { 
-        this->acc_comm()->start_communication(); 
+        this->acc_comm()->start_communication(false); 
         this->acc_comm()->finish_communication(); 
     }
     
@@ -414,7 +418,7 @@ public: //members
 
     void unpack_masseges_impl() noexcept
     {
-        this->acc_comm()->start_communication();
+        this->acc_comm()->start_communication(false);
         auto ftasks=this->acc_comm_->finish_communication();
         for(auto& t : ftasks)
         {

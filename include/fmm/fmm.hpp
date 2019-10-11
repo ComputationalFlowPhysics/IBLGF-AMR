@@ -215,7 +215,7 @@ public: //Ctor:
 
 public:
     Fmm(domain_t* _domain,int Nb)
-    :domain_(_domain),
+    :domain(_domain),
     lagrange_intrp(Nb),
     conv_( dims_t{{Nb,Nb,Nb}}, dims_t{{Nb,Nb, Nb}} )
     {
@@ -287,8 +287,8 @@ public:
 
         //// Copy to temporary variables // only the base level
         fmm_init_copy<Source, fmm_s>(domain_);
+        sort_bx_octants(domain);
 
-        sort_bx_octants(domain_);
 #ifdef POISSON_TIMINGS
         timings_=Timings() ;
         //domain_->client_communicator().barrier();
@@ -469,6 +469,7 @@ public:
 
         const bool start_communication = false;
         bool combined_messages=false;
+        int c=0;
 
         for (auto B_it=sorted_octants_.begin(); B_it!=sorted_octants_.end(); ++B_it)
         {
@@ -503,11 +504,13 @@ public:
                         combine_induced_field_messages<fmm_t, fmm_t>();
                     combined_messages=true;
             }
+            if(c%5==0 && combined_messages)
             //if(combined_messages)
-            //{
-            //    domain_->decomposition().client()->template
-            //        check_combined_induced_field_communication<fmm_t,fmm_t>(false);
-            //}
+            {
+                domain_->decomposition().client()->template
+                    check_combined_induced_field_communication<fmm_t,fmm_t>(false);
+            }
+            ++c;
         }
 
         //Finish the communication
@@ -768,7 +771,7 @@ public:
     auto& timings()noexcept{return timings_;}
 
 private:
-    domain_t* domain_;
+    domain_t* domain;
 public:
     Nli lagrange_intrp;
 private:

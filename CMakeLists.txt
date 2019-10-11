@@ -24,7 +24,8 @@ include_directories("${PROJECT_BINARY_DIR}")
 
 #include(${CMAKE_CURRENT_SOURCE_DIR}/../CMakeLists.txt.user)
 set (CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}  -ftree-vectorize -funroll-loops  -ftree-vectorizer-verbose=3  -Wall -O3 -Wall -fmax-errors=4")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -ipo  -O3 -static-intel -Wall -fmax-errors=4")
+#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}  -ftree-vectorize -funroll-loops  -ftree-vectorizer-verbose=3  -Wall -O3 -Wall -fmax-errors=4")
 #set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -O3")
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/bin)
 #LIBS
@@ -48,12 +49,13 @@ find_package(BLAS REQUIRED)
 include_directories(SYSTEM ${BLAS_INCLUDE_DIRS})
 link_directories(${BLAS_LIBRARIES} )
 link_directories(${BLAS_LIBRARY_DIR} )
+message(${BLAS_LIBRARIES})
 
 
 #FFTW
 #if(NOT DEFINED FFTW_INCLUDES)
 #set(FFTW_DIR "cmake/")
-#find_package(FFTW REQUIRED)
+#find_package(FFTW REUIRED)
 #endif(NOT DEFINED FFTW_INCLUDES)
 include_directories(SYSTEM ${FFTW_INCLUDES})
 link_directories(${FFTW_LIBRARIES} )

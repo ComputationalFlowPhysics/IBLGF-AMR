@@ -52,6 +52,7 @@ public: //member types
     using target_tmp        = typename Setup::target_tmp;
     using correction_tmp    = typename Setup::correction_tmp;
     using corr_lap_tmp    = typename Setup::corr_lap_tmp;
+    using source_correction_tmp    = typename Setup::source_correction_tmp;
 
     //FMM
     using Fmm_t     = typename Setup::Fmm_t;
@@ -301,6 +302,7 @@ public:
         clean_field<target_tmp>();
         clean_field<correction_tmp>();
         clean_field<corr_lap_tmp>();
+        clean_field<source_correction_tmp>();
 
         // Copy source
         copy_leaf<Source, source_tmp>(_field_idx, 0, true);
@@ -321,23 +323,41 @@ public:
         //source_coarsify(_field_idx, Source::mesh_type);
 
         //Coarsification:
-        for (int ls = domain_->tree()->depth()-2;
-                ls >= domain_->tree()->base_level(); --ls)
+        for (int l = domain_->tree()->depth()-2;
+                l >= domain_->tree()->base_level(); --l)
         {
-            const auto t0_level=clock_type::now();
-            for (auto it_s  = domain_->begin(ls);
-                    it_s != domain_->end(ls); ++it_s)
+            for (auto it_s  = domain_->begin(l);
+                    it_s != domain_->end(l); ++it_s)
                 {
                     if(!it_s->data() || !it_s->data()->is_allocated()) continue;
-                    this->coarsify<source_tmp>(*it_s, false, true);
-                    this->coarsify<Source>(*it_s, false, true);
+                    this->coarsify<source_tmp, source_tmp>(*it_s, 1.0, false, true);
                 }
 
             domain_->decomposition().client()->
                 template communicate_updownward_add<source_tmp, source_tmp>
-                    (ls,true,false,-1);
+                    (l,true,false,-1);
 
-            const auto t1_level=clock_type::now();
+        }
+
+        for (int l = domain_->tree()->depth()-2;
+                l >= domain_->tree()->base_level(); --l)
+        {
+            client->template buffer_exchange<source_tmp>(l);
+            domain_->decomposition().client()->
+                template communicate_updownward_assign
+                <source_tmp, source_tmp>(l,false,false,-1);
+
+            for (auto it  = domain_->begin(l);
+                    it != domain_->end(l); ++it)
+            {
+                if(!it->data() || !it->data()->is_allocated()) continue;
+
+                const bool correction_buffer_only = true;
+                c_cntr_nli_.nli_intrp_node< source_tmp, source_tmp>(it, Source::mesh_type, _field_idx, correction_buffer_only,false);
+
+                this->coarsify<source_tmp, source_correction_tmp>(*it, 1.0, correction_buffer_only, false);
+            }
+
         }
 
         auto t1_coarsify= clock_type::now();
@@ -362,44 +382,59 @@ public:
                     cp2*=0.0;
                 }
 
-            _kernel->change_level(l-domain_->tree()->base_level());
-
             // test for FMM
             const auto t2=clock_type::now();
             fmm_.template apply<source_tmp, target_tmp>(domain_, _kernel, l, false, 1.0);
+            // Copy to Target
+            for (auto it  = domain_->begin(l);
+                    it != domain_->end(l); ++it)
+                if (it->locally_owned() && it->is_leaf())
+                {
+                    it->data()->template get_linalg<Target>(_field_idx).get()->
+                    cube_noalias_view() =
+                    it->data()->template get_linalg_data<target_tmp>();
+                }
 
-            //domain_->decomposition().client()->
-            //    template communicate_updownward_assign
-            //        <target_tmp, target_tmp>(l,false,false,-1);
 
-            //// Interpolate
-            //for (auto it  = domain_->begin(l);
-            //          it != domain_->end(l); ++it)
-            //{
-            //    if(!it->data() || !it->data()->is_allocated()) continue;
-            //    c_cntr_nli_.nli_intrp_node< target_tmp, target_tmp >
-            //        (it, Source::mesh_type, _field_idx, true, false);
-            //}
+            // minus back the half from correction
+                // delete correction parents
+            for (auto it  = domain_->begin(l);
+                    it != domain_->end(l); ++it)
+            {
+                if(!it->data() || !it->data()->is_allocated()) continue;
+                bool correction_parent=false;
+                for (std::size_t i=0; i<it->num_children(); ++i)
+                    if (it->child(i) && it->child(i)->is_correction())
+                        correction_parent = true;
 
+                if (correction_parent)
+                {
+                    auto& cp2 = it ->data()->template get_linalg_data<source_tmp>();
+                    cp2*=0.0;
+                }
+            }
+                // add back correction source
+            domain_->decomposition().client()->
+                template communicate_updownward_add<source_correction_tmp, source_tmp>
+                    (l,true,false,-1);
+
+            // minus middle
             fmm_.template apply<source_tmp, target_tmp>(domain_, _kernel, l, true, -1.0);
+            // Interpolate
             domain_->decomposition().client()->
                 template communicate_updownward_assign
                     <target_tmp, target_tmp>(l,false,false,-1);
 
-            // Interpolate
             for (auto it  = domain_->begin(l);
                       it != domain_->end(l); ++it)
             {
                 if(!it->data() || !it->data()->is_allocated()) continue;
-                extrp_c_cntr_nli_.nli_intrp_node< target_tmp, target_tmp >
+                c_cntr_nli_.nli_intrp_node< target_tmp, target_tmp >
                     (it, Source::mesh_type, _field_idx, false, false);
             }
 
-            if (l == domain_->tree()->depth()-1) continue;
-            client->template buffer_exchange<target_tmp>(l+1);
-
-            const auto t3=clock_type::now();
-            timing.interpolation+=(t3-t2);
+            //if (l == domain_->tree()->depth()-1) continue;
+            //client->template buffer_exchange<target_tmp>(l+1);
 
             // Use the temporary value as an approximation for the buffer for
             // the correction term -LP
@@ -413,28 +448,30 @@ public:
                 double dx_level = dx_base/std::pow(2,refinement_level);
 
                 if (!it->data() || !it->data()->is_allocated()) continue;
-                if (!it->is_leaf()) continue;
                 //domain::Operator::laplace<target_tmp, correction_tmp>
                 //( *(it->data()),dx_level);
                 domain::Operator::laplace<target_tmp, corr_lap_tmp>
                 ( *(it->data()),dx_level);
-
             }
 
             client->template buffer_exchange<corr_lap_tmp>(l);
+            domain_->decomposition().client()->
+                template communicate_updownward_assign
+                <corr_lap_tmp, corr_lap_tmp>(l,false,false,-1);
 
-            // start here
-
-            //client->template buffer_exchange<source_tmp>(l);
-            client->template buffer_exchange<Source>(l);
             for (auto it  = domain_->begin(l);
                     it != domain_->end(l); ++it)
             {
                 if(!it->data() || !it->data()->is_allocated()) continue;
 
                 const bool correction_buffer_only = false;
-                extrp_c_cntr_nli_.nli_intrp_node< corr_lap_tmp, correction_tmp >(it, Source::mesh_type, _field_idx, correction_buffer_only,false);
+                //c_cntr_nli_.nli_intrp_node< corr_lap_tmp, correction_tmp>(it, Source::mesh_type, _field_idx, correction_buffer_only,false);
             }
+
+
+            // start here
+
+            //client->template buffer_exchange<Source>(l);
 
             // FMM for non-leaf
 
@@ -443,7 +480,7 @@ public:
             {
                 int refinement_level = it->refinement_level();
                 double dx = dx_base/std::pow(2,refinement_level);
-                extrp_c_cntr_nli_.add_source_correction
+                c_cntr_nli_.add_source_correction
                     <target_tmp, correction_tmp>(it, dx/2.0);
             }
 
@@ -458,21 +495,10 @@ public:
                     auto& lin_data_3 = it->data()->
                     template get_linalg_data<target_tmp>(0);
 
-                    if (it->is_correction())
-                    {
-                        //std::cout<<"---------------------------"<<std::endl;
-                        //std::cout<<xt::amax(xt::abs(xt::view(lin_data_3,xt::range(2,-1),xt::range(2,-1),xt::range(2,-1))))<<std::endl;
-                        //std::cout<<xt::amax(xt::abs(xt::view(lin_data_1,xt::range(2,-1),xt::range(2,-1),xt::range(2,-1))))<<std::endl;
-                        //std::cout<<xt::amax(xt::abs(xt::view(lin_data_2,xt::range(2,-1),xt::range(2,-1),xt::range(2,-1))))<<std::endl;
-                    }
-
                     xt::noalias(lin_data_2) += lin_data_1 * 1.0;
-
                 }
         }
 
-        //test
-        //Coarsification:
         for (int ls = domain_->tree()->depth()-2;
                 ls >= domain_->tree()->base_level(); --ls)
         {
@@ -481,7 +507,7 @@ public:
                     it_s != domain_->end(ls); ++it_s)
             {
                 if(!it_s->data() || !it_s->data()->is_allocated()) continue;
-                this->coarsify<correction_tmp>(*it_s);
+                this->coarsify<correction_tmp, correction_tmp>(*it_s);
             }
 
             domain_->decomposition().client()->
@@ -494,16 +520,6 @@ public:
         timing.level_interaction=t1_level_interaction-t0_level_interaction
                                   -timing.interpolation;
 
-
-        // Copy to Target
-        for (auto it  = domain_->begin_leafs();
-                it != domain_->end_leafs(); ++it)
-            if (it->locally_owned())
-            {
-                it->data()->template get_linalg<Target>(_field_idx).get()->
-                    cube_noalias_view() =
-                            it->data()->template get_linalg_data<target_tmp>();
-            }
 
         const auto t1_all=clock_type::now();
         timing.global=t1_all-t0_all;
@@ -589,7 +605,7 @@ public:
                     //c_cntr_nli_.nli_antrp_node
                     //    <source_tmp, source_tmp>(*it_s,mesh_type,_field_idx);
 
-                    this->coarsify<source_tmp>(*it_s);
+                    this->coarsify<source_tmp,source_tmp>(*it_s);
 
                 }
 
@@ -619,7 +635,7 @@ public:
             {
                 //if (!it_s->data()) continue;
                 if(!it_s->data() || !it_s->data()->is_allocated()) continue;
-                this->coarsify<Target>(*it_s);
+                this->coarsify<Target, Target>(*it_s);
             }
 
             domain_->decomposition().client()->
@@ -765,8 +781,8 @@ public:
 
 
 
-    template<class Field >
-    void coarsify(octant_t* _parent, bool correction_only=false, bool exclude_correction = false)
+    template<class Field_c, class Field_p >
+    void coarsify(octant_t* _parent, float_type factor=1.0, bool correction_only=false, bool exclude_correction = false)
     {
         auto parent = _parent;
 
@@ -785,11 +801,11 @@ public:
 
             cview.iterate([&]( auto& n )
             {
-                const float_type avg=1./8* n.template get<Field>();
+                const float_type avg=1./8* n.template get<Field_c>();
                 auto pcoord=n.level_coordinate();
                 for(std::size_t d=0;d<pcoord.size();++d)
                     pcoord[d]= std::floor(pcoord[d]/2.0);
-                parent->data()-> template get<Field>(pcoord) +=avg;
+                parent->data()-> template get<Field_p>(pcoord) +=avg*factor;
             });
         }
     }

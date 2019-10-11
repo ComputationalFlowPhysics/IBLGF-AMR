@@ -458,7 +458,7 @@ namespace interpolation
 
     //private:
     public:
-        const int pts_cap = 6;
+        const int pts_cap = 2;
         int Nb_;
 
         std::vector<float_type> antrp_relative_pos_0_;

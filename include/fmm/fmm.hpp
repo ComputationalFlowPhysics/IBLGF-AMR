@@ -152,14 +152,19 @@ public:
             for (auto it = domain_->begin(base_level);
                     it != domain_->end(base_level); ++it)
             {
-                if ( it->is_leaf() )
+                bool correction_parent=false;
+                for (std::size_t i=0; i<it->num_children(); ++i)
+                    if (it->child(i) && it->child(i)->is_correction())
+                        correction_parent = true;
+
+                if (( it->is_leaf() && !correction_parent) || it->is_correction())
                 {
                     it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Source, false);
                     it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Target, false);
                 } else
                 {
                     it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Source, true);
-                    if (!it->is_correction())
+                    //if (!it->is_correction())
                         it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Target, true);
 
                     if (!_neighbor_only)
@@ -175,7 +180,7 @@ public:
             {
                 it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Source, true);
 
-                if (!it->is_correction())
+                //if (!it->is_correction())
                     it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Target, true);
 
                 if (!_neighbor_only)
@@ -445,7 +450,7 @@ public:
                 domain_->decomposition().client()->template
                     check_combined_induced_field_communication<fmm_t,fmm_t>(false);
             }
-        
+
         }
 
         mDuration_type time_communication_Bx;

@@ -40,6 +40,7 @@ public: //default fields
       (source_tmp,         float_type,  1,   1,  1,  cell),
       (correction_tmp,     float_type,  1,   1,  1,  cell),
       (corr_lap_tmp,       float_type,  1,   1,  1,  cell),
+      (source_correction_tmp,float_type,  1,   1,  1,  cell),
       (target_tmp,         float_type,  1,   1,  1,  cell),
       (fmm_s,              float_type,  1,   1,  1,  cell),
       (fmm_t,              float_type,  1,   1,  1,  cell)

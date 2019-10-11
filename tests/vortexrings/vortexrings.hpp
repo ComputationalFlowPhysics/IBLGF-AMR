@@ -1,6 +1,8 @@
 #ifndef IBLGF_INCLUDED_VORTEXRINGS_HPP
 #define IBLGF_INCLUDED_VORTEXRINGS_HPP
 
+#define POISSON_TIMINGS
+
 #include <iostream>
 #include <vector>
 #include <limits>
@@ -28,6 +30,7 @@
 #include<solver/poisson/poisson.hpp>
 
 #include"../../setups/setup_base.hpp"
+
 
 
 
@@ -304,9 +307,11 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
                 client_comm_.barrier();
             ))
 
+            pcout_c<<"Elapsed time "<< solve_duration.count()/1.0e3 <<" Rate "<< pts.back()/(solve_duration.count()/1.0e3)<< std::endl;
+
+#ifdef POISSON_TIMINGS
             psolver.print_timings(pofs, pofs_level);
-            
-            client_comm_.barrier();
+#endif
             psolver.apply_laplace<phi_num,amr_lap_source>() ;
         }
 

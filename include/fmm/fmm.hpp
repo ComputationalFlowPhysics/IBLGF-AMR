@@ -214,10 +214,12 @@ public: //Ctor:
 
 
 public:
-    Fmm(int Nb)
-    :lagrange_intrp(Nb),
+    Fmm(domain_t* _domain,int Nb)
+    :domain_(_domain),
+    lagrange_intrp(Nb),
     conv_( dims_t{{Nb,Nb,Nb}}, dims_t{{Nb,Nb, Nb}} )
     {
+
     }
 
     template< class Source, class Target, class Kernel >
@@ -286,39 +288,54 @@ public:
         //// Copy to temporary variables // only the base level
         fmm_init_copy<Source, fmm_s>(domain_);
 
+        sort_bx_octants(domain_);
+#ifdef POISSON_TIMINGS
         timings_=Timings() ;
+        //domain_->client_communicator().barrier();
+#endif
 
-        domain_->client_communicator().barrier();
         //// Anterpolation
         pcout<<"FMM Antrp start" << std::endl;
+#ifdef POISSON_TIMINGS
         auto t0_anterp=clock_type::now();
+#endif
         fmm_antrp(domain_);
-        domain_->client_communicator().barrier();
+#ifdef POISSON_TIMINGS
+        //domain_->client_communicator().barrier();
         auto t1_anterp=clock_type::now();
         timings_.anterp=t1_anterp-t0_anterp;
+#endif
 
-        domain_->client_communicator().barrier();
+        //domain_->client_communicator().barrier();
 
         //// FMM influence list
         pcout<<"FMM Bx start" << std::endl;
         //fmm_Bx_itr_build(domain_, level);
+#ifdef POISSON_TIMINGS
         auto t0_bx=clock_type::now();
+#endif
         fmm_Bx(domain_, _kernel, dx_level);
-        domain_->client_communicator().barrier();
+#ifdef POISSON_TIMINGS
+        //domain_->client_communicator().barrier();
         auto t1_bx=clock_type::now();
         timings_.bx=t1_bx-t0_bx;
+#endif
 
-        domain_->client_communicator().barrier();
 
+#ifdef POISSON_TIMINGS
+        //domain_->client_communicator().barrier();
+        auto t0_interp=clock_type::now();
+#endif
         //// Interpolation
         pcout<<"FMM INTRP start" << std::endl;
-        auto t0_interp=clock_type::now();
         fmm_intrp(domain_);
-        domain_->client_communicator().barrier();
-        auto t1_interp=clock_type::now();
 
+#ifdef POISSON_TIMINGS
+        //domain_->client_communicator().barrier();
+        auto t1_interp=clock_type::now();
         timings_.interp=t1_interp-t0_interp;
         timings_.global=t1_interp-t0_anterp;
+#endif
 
         //std::cout<<"FMM INTRP done" << std::endl;
 
@@ -400,17 +417,13 @@ public:
         mDuration_type time_communication_Bx;
 
         TIME_CODE(time_communication_Bx, SINGLE_ARG(
-        domain_->decomposition().client()->template
-            finish_induced_field_communication();
+        domain_->decomposition().client()->finish_induced_field_communication();
         ))
     }
 
-    template<class Kernel>
-    void fmm_Bx(domain_t* domain_,
-                Kernel* _kernel,
-                float_type dx_level)
+    void sort_bx_octants(domain_t* domain_)
     {
-        std::vector<std::pair<octant_t*, int>> octants;
+        sorted_octants_.clear();
         for (int level=base_level_; level>=0; --level)
         {
             for (auto it = domain_->begin(level); it != domain_->end(level); ++it)
@@ -423,24 +436,50 @@ public:
                     domain_->decomposition().client()->template
                     communicate_induced_fields_recv_m_send_count<fmm_t, fmm_t>(it, _neighbor, fmm_mask_idx_);
 
-                octants.emplace_back(std::make_pair(*it,recv_m_send_count));
+                sorted_octants_.emplace_back(std::make_pair(*it,recv_m_send_count));
             }
         }
-        std::sort(octants.begin(), octants.end(),[&](const auto& e0, const auto& e1)
+        std::sort(sorted_octants_.begin(), sorted_octants_.end(),[&](const auto& e0, const auto& e1)
                 {return e0.second> e1.second;  });
+    }
+
+    template<class Kernel>
+    void fmm_Bx(domain_t* domain_,
+                Kernel* _kernel,
+                float_type dx_level)
+    {
+        //std::vector<std::pair<octant_t*, int>> octants;
+        //for (int level=base_level_; level>=0; --level)
+        //{
+        //    for (auto it = domain_->begin(level); it != domain_->end(level); ++it)
+        //    {
+        //        bool _neighbor = (level==base_level_)? true:false;
+        //        if (!(it->data()) || !it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Target) )
+        //            continue;
+
+        //        int recv_m_send_count =
+        //            domain_->decomposition().client()->template
+        //            communicate_induced_fields_recv_m_send_count<fmm_t, fmm_t>(it, _neighbor, fmm_mask_idx_);
+
+        //        octants.emplace_back(std::make_pair(*it,recv_m_send_count));
+        //    }
+        //}
+        //std::sort(octants.begin(), octants.end(),[&](const auto& e0, const auto& e1)
+        //        {return e0.second> e1.second;  });
 
         const bool start_communication = false;
         bool combined_messages=false;
 
-        for (auto B_it=octants.begin(); B_it!=octants.end(); ++B_it)
+        for (auto B_it=sorted_octants_.begin(); B_it!=sorted_octants_.end(); ++B_it)
         {
             auto it =B_it->first;
-            int level = it->level();
+            const int level = it->level();
+            const bool _neighbor = (level==base_level_)? true:false;
 
-            bool _neighbor = (level==base_level_)? true:false;
-            if (!(it->data()) ||
-                    !it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Target) )
-                continue;
+
+            //if (!(it->data()) ||
+            //        !it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Target) )
+            //    continue;
 
             if(it->locally_owned())
             {
@@ -449,25 +488,26 @@ public:
             }
 
             //setup the tasks
-            
-            domain_->decomposition().client()->template
-                communicate_induced_fields<fmm_t, fmm_t>(&(*it),
-                    this, _kernel,base_level_-level,dx_level,
-                    _neighbor,
-                    start_communication, fmm_mask_idx_);
-
-            if(!combined_messages && B_it->second==0)
+            if(B_it->second!=0)
+            {
+                domain_->decomposition().client()->template
+                    communicate_induced_fields<fmm_t, fmm_t>(&(*it),
+                            this, _kernel,base_level_-level,dx_level,
+                            _neighbor,
+                            start_communication, fmm_mask_idx_);
+            }
+            else if (!combined_messages )
+            //if(!combined_messages && B_it->second==0)
             {
                     domain_->decomposition().client()->template
                         combine_induced_field_messages<fmm_t, fmm_t>();
                     combined_messages=true;
             }
-            if(combined_messages)
-            {
-                domain_->decomposition().client()->template
-                    check_combined_induced_field_communication<fmm_t,fmm_t>(false);
-            }
-        
+            //if(combined_messages)
+            //{
+            //    domain_->decomposition().client()->template
+            //        check_combined_induced_field_communication<fmm_t,fmm_t>(false);
+            //}
         }
 
         //Finish the communication
@@ -727,8 +767,8 @@ public:
     const auto& timings() const noexcept{return timings_;}
     auto& timings()noexcept{return timings_;}
 
-
-
+private:
+    domain_t* domain_;
 public:
     Nli lagrange_intrp;
 private:
@@ -737,6 +777,8 @@ private:
     convolution_t            conv_;      ///< fft convolution
     parallel_ostream::ParallelOstream pcout=
         parallel_ostream::ParallelOstream(1);
+
+    std::vector<std::pair<octant_t*, int>> sorted_octants_;
 
 private: //timings
     Timings timings_;

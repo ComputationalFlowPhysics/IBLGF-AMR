@@ -266,6 +266,7 @@ public: //ctors
     IteratorBfs(IteratorBfs&&) = default; 
 	IteratorBfs& operator=(const IteratorBfs&) & = default; 
     ~IteratorBfs()=default; 
+    IteratorBfs()=default; 
 
 
     IteratorBfs& operator=(IteratorBfs&& other) 
@@ -343,6 +344,7 @@ public: //ctors
     IteratorDfs(const IteratorDfs&) = default; 
 	IteratorDfs& operator=(const IteratorDfs&) & = default; 
     ~IteratorDfs()=default; 
+    IteratorDfs()=default; 
 
     IteratorDfs& operator=(IteratorDfs&& other) 
     {

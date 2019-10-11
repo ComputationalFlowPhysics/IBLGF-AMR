@@ -60,7 +60,7 @@ public: //member types
     PoissonSolver(simulation_type* _simulation)
     :
     domain_(_simulation->domain_.get()),
-    fmm_(domain_->block_extent()[0]+lBuffer+rBuffer),
+    fmm_(domain_,domain_->block_extent()[0]+lBuffer+rBuffer),
     c_cntr_nli_(domain_->block_extent()[0]+lBuffer+rBuffer)
     {
     }
@@ -319,6 +319,7 @@ public:
             ("Coarsification for non-cell centers needs to be implemented. ");
         }
 
+#ifdef POISSON_TIMINGS
         timings_=Timings() ;
         const int nLevels=domain_->nLevels();
         timings_.level.resize(nLevels);
@@ -327,6 +328,7 @@ public:
 
         auto t0_all=clock_type::now();
         auto t0_coarsify=clock_type::now();
+#endif
 
         //source_coarsify(_field_idx, Source::mesh_type);
 
@@ -334,7 +336,9 @@ public:
         for (int ls = domain_->tree()->depth()-2;
                 ls >= domain_->tree()->base_level(); --ls)
         {
+#ifdef POISSON_TIMINGS
             const auto t0_level=clock_type::now();
+#endif
             for (auto it_s  = domain_->begin(ls);
                     it_s != domain_->end(ls); ++it_s)
                 {
@@ -347,22 +351,26 @@ public:
                 template communicate_updownward_add<source_tmp, source_tmp>
                     (ls,true,false,-1);
             
+#ifdef POISSON_TIMINGS
             const auto t1_level=clock_type::now();
-              
             timings_.level[ls-domain_->tree()->base_level()+1]=t1_level-t0_level;
+#endif
         }
         
+#ifdef POISSON_TIMINGS
         auto t1_coarsify= clock_type::now();
         timings_.coarsification = t1_coarsify-t0_coarsify;
-
         const auto t0_level_interaction = clock_type::now();
+#endif
 
         //Level-Interactions
         for (int l = domain_->tree()->base_level();
                  l < domain_->tree()->depth(); ++l)
         {
             
+#ifdef POISSON_TIMINGS
             const auto t0_level=clock_type::now();
+#endif
 
             for (auto it_s  = domain_->begin(l);
                     it_s != domain_->end(l); ++it_s)
@@ -378,10 +386,13 @@ public:
 
             //test for FMM
             fmm_.template apply<source_tmp, target_tmp>(domain_, _kernel, l, false, 1.0);
+#ifdef POISSON_TIMINGS
             timings_.fmm_level[l-domain_->tree()->base_level()]=fmm_.timings();
+#endif
             fmm_.template apply<source_tmp, target_tmp>(domain_, _kernel, l, true, -1.0);
+#ifdef POISSON_TIMINGS
             timings_.fmm_level_nl[l-domain_->tree()->base_level()]=fmm_.timings();
-
+#endif
 
             domain_->decomposition().client()->
                 template communicate_updownward_assign
@@ -389,7 +400,9 @@ public:
 
 
             // Interpolate
+#ifdef POISSON_TIMINGS
             const auto t2=clock_type::now();
+#endif
             for (auto it  = domain_->begin(l);
                       it != domain_->end(l); ++it)
             {
@@ -398,8 +411,11 @@ public:
                 c_cntr_nli_.nli_intrp_node< target_tmp, target_tmp >
                     (it, Source::mesh_type, _field_idx, false);
             }
+
+#ifdef POISSON_TIMINGS
             const auto t3=clock_type::now();
             timings_.interpolation+=(t3-t2);
+#endif
 
             // Correction
             //if (l == domain_->tree()->depth()-1) continue;
@@ -415,19 +431,21 @@ public:
                 }
             }
 
+#ifdef POISSON_TIMINGS
             const auto t1_level=clock_type::now();
             mDuration_type tmp=t1_level-t0_level;
             //std::cout<< "Level timing : l="<<l-domain_->tree()->base_level()<<" "<<tmp.count()/1.e3<<std::endl;
             timings_.level[l-domain_->tree()->base_level()]=t1_level-t0_level;
+#endif
         }
 
+#ifdef POISSON_TIMINGS
         const auto t1_level_interaction=clock_type::now();
         timings_.level_interaction=t1_level_interaction-t0_level_interaction
                                   -timings_.interpolation;
-
-
         const auto t1_all=clock_type::now();
         timings_.global=t1_all-t0_all;
+#endif
 
         // Copy to Target
         for (auto it  = domain_->begin_leafs();
@@ -746,7 +764,7 @@ public:
            <<std::setw(width) <<timings_.global.count()/1.e3
            <<std::setw(width) <<pts.back()/static_cast<float_type>(timings_.global.count()/1.e3)
            <<std::setw(width) <<static_cast<float_type>(timings_.global.count()/1.e3)/pts.back()
-           <<std::defaultfloat
+           //<<std::defaultfloat
            <<std::setw(width) <<100.0*static_cast<float_type>(timings_.coarsification.count())/timings_.global.count()
            <<std::setw(width) <<100.0*static_cast<float_type>(timings_.level_interaction.count())/timings_.global.count()
            <<std::setw(width) <<100.0*static_cast<float_type>(timings_.interpolation.count())/timings_.global.count()
@@ -807,8 +825,10 @@ public:
            <<std::endl;
            ++c;
        }
-       os_level<<std::defaultfloat<<std::endl;
-       os<<std::defaultfloat<<std::endl;
+       os_level<<std::endl;
+       os<<std::endl;
+       //os_level<<std::defaultfloat<<std::endl;
+       //os<<std::defaultfloat<<std::endl;
    }
 
 

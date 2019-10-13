@@ -137,6 +137,7 @@ public:
         return iterator_t::operator->()->second ; 
     }
     mapped_type operator*() { return iterator_t::operator*().second; }
+    mapped_type ptr() { return iterator_t::operator*().second; }
 };
 
 

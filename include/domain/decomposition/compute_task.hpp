@@ -38,6 +38,7 @@ public:
     {
     }
 
+
     octant_t* octant()noexcept {return octant_;}
     const auto& key()const noexcept {return octant_->key();}
     auto& key()noexcept {return octant_->key();}

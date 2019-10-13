@@ -75,8 +75,8 @@ public: //Ctors
 
 public:
 
-    template<class Begin, class End, class Container>
-    auto split(Begin _begin, End _end, Container& _tasks_perProc ) const noexcept
+    template<class Begin, class End, class Container, class Function>
+    auto split(Begin _begin, End _end, Container& _tasks_perProc, Function& _f ) const noexcept
     {
         float_type total_load=0.0;
         const auto nProcs=comm_.size()-1;
@@ -105,19 +105,21 @@ public:
                 ++it;
                 ++count;
                 if(it==_end) break;
+                if(_f(it)) break;
             }
             if(it==_end) break;
+            if(_f(it)) break;
         }
         return _tasks_perProc;
     }
 
     auto compute_distribution() const noexcept
     {
+        //TODO levelwise load calc and clear again
         const auto nProcs=comm_.size()-1;
 
         std::cout<<"Computing domain decomposition for "<<comm_.size()<<" processors" <<std::endl;
         std::vector<std::list<ctask_t>> tasks_perProc(nProcs);
-
 
         float_type total_load=0.0;
         for( auto it = domain_->begin_bf(); it!= domain_->end_bf();++it )
@@ -126,8 +128,19 @@ public:
         }
 
         const float_type ideal_load=total_load/nProcs;
+        const int blevel=domain_->tree()->base_level();
 
-        split( domain_->begin_bf(),domain_->end_bf(),tasks_perProc);
+        //auto exitCondition1=[&blevel](auto& it){return false;};
+        //split( domain_->begin_bf(),domain_->end_bf(),tasks_perProc,exitCondition1);
+
+        auto exitCondition0=[&blevel](auto& it){return it->level()>=blevel;};
+        auto exitCondition1=[&blevel](auto& it){return false;};
+        split( domain_->begin_bf(),domain_->end_bf(),tasks_perProc,exitCondition0);
+        for (int l = domain_->tree()->base_level();
+                 l < domain_->tree()->depth(); ++l)
+        {
+            split(domain_->begin(l),domain_->end(l),tasks_perProc,exitCondition1);
+        }
 
 
         //Diagnostics:
@@ -145,6 +158,7 @@ public:
             if(total_loads_perProc2[i]<min_load) min_load=total_loads_perProc2[i];
             ofs<<total_loads_perProc2[i]<<std::endl;
         }
+
         ofs<<"max/min load: "<<max_load<<"/"<<min_load<<" = "<<max_load/min_load<<std::endl;
         ofs<<"max/ideal load: "<<max_load<<"/"<<ideal_load<<" = "<<max_load/ideal_load<<std::endl;
         ofs<<"total_load: "<<total_load<<std::endl;

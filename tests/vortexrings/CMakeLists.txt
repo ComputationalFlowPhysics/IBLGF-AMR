@@ -1,4 +1,3 @@
-#Bring the headers, such as Student.h into the project
 include_directories(${IBLGF_SOURCE_DIR}/src )
 
 # add the executable
@@ -7,7 +6,6 @@ target_link_libraries(vortexrings.x
                       ${MPI_LIBRARIES}
                       ${Boost_LIBRARIES}
                       ${FFTW_LIBRARIES} fftw3
-                      ${HDF5_LIBRARIES} hdf5
+                      ${HDF5_LIBRARIES}
                       ${BLAS_LIBRARIES}
-                      xtensor
-                      xsimd)
+                      )

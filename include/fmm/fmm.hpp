@@ -16,21 +16,15 @@
 #include <functional>
 #include <cstring>
 #include <fftw3.h>
-
-#include <global.hpp>
-#include <simulation.hpp>
-#include <linalg/linalg.hpp>
-#include <fmm/fmm_nli.hpp>
-#include <domain/domain.hpp>
-#include <domain/octree/tree.hpp>
-#include <domain/dataFields/dataBlock.hpp>
-#include <domain/dataFields/datafield.hpp>
-#include <domain/octree/tree.hpp>
-#include <IO/parallel_ostream.hpp>
-#include "../utilities/convolution.hpp"
 #include <boost/mpi.hpp>
 #include <boost/mpi/environment.hpp>
 #include <boost/mpi/communicator.hpp>
+
+#include <global.hpp>
+#include <linalg/linalg.hpp>
+#include <fmm/fmm_nli.hpp>
+#include <IO/parallel_ostream.hpp>
+#include <utilities/convolution.hpp>
 
 namespace fmm
 {

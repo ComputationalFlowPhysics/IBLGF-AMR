@@ -4,34 +4,10 @@
 #define POISSON_TIMINGS
 
 #include <iostream>
-#include <vector>
-#include <limits>
-#include <algorithm>
-#include <vector>
-#include <fftw3.h>
-#include <boost/mpi.hpp>
-#include <boost/mpi/environment.hpp>
-#include <boost/mpi/communicator.hpp>
+#include <chrono>
 
 // IBLGF-specific
-#include <global.hpp>
-#include <simulation.hpp>
-#include <domain/domain.hpp>
-#include <domain/dataFields/dataBlock.hpp>
-#include <domain/dataFields/datafield.hpp>
-#include <domain/octree/tree.hpp>
-#include <chrono>
-#include <IO/parallel_ostream.hpp>
-#include <lgf/lgf.hpp>
-#include <fmm/fmm.hpp>
-
-#include<utilities/convolution.hpp>
-#include<utilities/interpolation.hpp>
-#include<solver/poisson/poisson.hpp>
-
 #include"../../setups/setup_base.hpp"
-
-
 
 
 const int Dim = 3;
@@ -245,7 +221,7 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
             pcout<<"vor max:"<<std::fabs(vr.vorticity(center[0]+vr.R,center[1],center[2]))<<std::endl;
         }
 
-        vorticity_max_=simulation_.dictionary_->
+        vorticity_max_ =simulation_.dictionary_->
             template get_or<float_type>("source_max",max_vort);
         pcout<<"source_max "<<vorticity_max_<<std::endl;
 

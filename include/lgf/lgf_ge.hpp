@@ -4,12 +4,12 @@
 #include <stdio.h>
 #include <iostream>
 #include <vector>
+#include <boost/math/special_functions/bessel.hpp>
 #include <cmath>
 
 #include <global.hpp>
 #include <lgf/lgf.hpp>
 #include <domain/dataFields/blockDescriptor.hpp>
-#include <boost/math/special_functions/bessel.hpp>
 
 namespace lgf
 {

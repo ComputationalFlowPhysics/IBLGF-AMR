@@ -5,14 +5,13 @@
 #include <iostream>
 #include <vector>
 #include <cmath>
+#include <complex>
 #include <boost/math/special_functions/bessel.hpp>
 #include <boost/align/aligned_allocator_adaptor.hpp>
 
-
-#include <complex>
+#include <global.hpp>
 #include <domain/dataFields/dataBlock.hpp>
 #include <domain/dataFields/datafield.hpp>
-#include <global.hpp>
 #include <lgf/lgf_gl_lookup.hpp>
 #include <lgf/lgf.hpp>
 

@@ -1,9 +1,9 @@
 #ifndef INCLUDED_PARALLEL_OSTREAM_HPP
 #define INCLUDED_PARALLEL_OSTREAM_HPP
 
+#include <ostream>
 #include <boost/mpi.hpp>
 #include <boost/mpi/communicator.hpp>
-#include <ostream>
 
 namespace parallel_ostream
 {

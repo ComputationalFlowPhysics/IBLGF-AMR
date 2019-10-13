@@ -12,7 +12,10 @@ SET(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
 include_directories(include)
 
-set(SOURCES "${CMAKE_CURRENT_LIST_DIR}/src/lgf/lgf_gl_lookup.cpp")
+set(SOURCES 
+    "${CMAKE_CURRENT_LIST_DIR}/src/utilities/convolution.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/src/lgf/lgf_gl_lookup.cpp"
+   )
 
 #Output compile commands
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
@@ -24,8 +27,8 @@ include_directories("${PROJECT_BINARY_DIR}")
 
 #include(${CMAKE_CURRENT_SOURCE_DIR}/../CMakeLists.txt.user)
 set (CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -ipo  -O3 -static-intel -Wall -fmax-errors=4")
-#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}  -ftree-vectorize -funroll-loops  -ftree-vectorizer-verbose=3  -Wall -O3 -Wall -fmax-errors=4")
+#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -ipo  -O3 -static-intel -Wall -fmax-errors=4")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}  -ftree-vectorize -funroll-loops  -ftree-vectorizer-verbose=3  -Wall -O3 -Wall ")
 #set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -O3")
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/bin)
 #LIBS
@@ -66,7 +69,10 @@ find_package(xsimd REQUIRED)
 find_package(xtensor REQUIRED)
 find_package(xtl REQUIRED)
 find_package(xtensor-blas REQUIRED)
-include_directories(SYSTEM ${xtensor_blas_INCLUDE_DIRS})
+include_directories(SYSTEM ${xtensor_INCLUDE_DIRS} 
+                           ${xtensor_blas_INCLUDE_DIRS} 
+                           ${xtl_INCLUDE_DIR}
+                           ${xsimd_INCLUDE_DIRS})
 
 #HDF5
 if(NOT DEFINED HDF5_INCLUDE_DIRS)

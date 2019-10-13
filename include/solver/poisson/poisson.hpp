@@ -12,9 +12,9 @@
 #include <domain/domain.hpp>
 #include <IO/parallel_ostream.hpp>
 
-#include "../../utilities/convolution.hpp"
 #include <utilities/cell_center_nli_intrp.hpp>
-#include<operators/operators.hpp>
+#include<utilities/interpolation.hpp>
+#include <operators/operators.hpp>
 
 #include <lgf/lgf_gl.hpp>
 #include <lgf/lgf_ge.hpp>

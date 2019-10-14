@@ -10,6 +10,7 @@
 #include <boost/mpi/status.hpp>
 
 #include <global.hpp>
+#include <fmm/fmm.hpp>
 #include <domain/decomposition/compute_task.hpp>
 
 #include <domain/mpi/task_manager.hpp>
@@ -131,8 +132,15 @@ public:
         const float_type ideal_load=total_load/nProcs;
         const int blevel=domain_->tree()->base_level();
 
-        //const bool include_baselevel=true; //thats good
-        const bool include_baselevel=false; // experimental
+        for( auto it = domain_->begin_bf(); it!= domain_->end_bf();++it )
+        {
+            it->load()=0.0;
+        }
+        fmm::FmmMaskBuilder<domain_t>::fmm_dry( domain_,blevel,false );
+        fmm::FmmMaskBuilder<domain_t>::fmm_dry( domain_,blevel,true );
+
+
+        const bool include_baselevel=false; 
         if(include_baselevel)
         {
             //Include baselevel into levelwise splitting:
@@ -152,12 +160,20 @@ public:
 
 
         //Levelwise balancing
-        auto exitCondition1=[&blevel](auto& it){return false;};
         int lstart=domain_->tree()->base_level();
+
+        auto exitCondition1=[&blevel](auto& it){return false;};
         if(!include_baselevel) lstart+=1;
-        for (int l = lstart;
-                 l < domain_->tree()->depth(); ++l)
+        for (int l = lstart; l < domain_->tree()->depth(); ++l)
         {
+
+            for( auto it = domain_->begin_bf(); it!= domain_->end_bf();++it )
+            {
+                it->load()=0.0;
+            }
+            fmm::FmmMaskBuilder<domain_t>::fmm_dry( domain_,l,false );
+            fmm::FmmMaskBuilder<domain_t>::fmm_dry( domain_,l,true );
+
             split(domain_->begin(l),domain_->end(l),tasks_perProc,exitCondition1);
         }
 

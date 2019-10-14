@@ -82,6 +82,7 @@ public:
         const auto nProcs=comm_.size()-1;
         for( auto it = _begin; it!= _end;++it )
         {
+            if(_f(it)) break;
             total_load+=it->load();
         }
 
@@ -130,13 +131,31 @@ public:
         const float_type ideal_load=total_load/nProcs;
         const int blevel=domain_->tree()->base_level();
 
-        //auto exitCondition1=[&blevel](auto& it){return false;};
-        //split( domain_->begin_bf(),domain_->end_bf(),tasks_perProc,exitCondition1);
+        //const bool include_baselevel=true; //thats good
+        const bool include_baselevel=false; // experimental
+        if(include_baselevel)
+        {
+            //Include baselevel into levelwise splitting:
+            auto exitCondition0=[&blevel](auto& it){return it->level()>=blevel;};
 
-        auto exitCondition0=[&blevel](auto& it){return it->level()>=blevel;};
+            //BF balancing
+            split( domain_->begin_bf(),domain_->end_bf(),tasks_perProc,exitCondition0);
+
+        }
+        else
+        {
+            //Exlude baselevel into levelwise splitting: Baselevel is DFS split
+            auto exitCondition0=[&blevel](auto& it){return it->level()>blevel;};
+            //BF balancing
+            split( domain_->begin_bf(),domain_->end_bf(),tasks_perProc,exitCondition0);
+        }
+
+
+        //Levelwise balancing
         auto exitCondition1=[&blevel](auto& it){return false;};
-        split( domain_->begin_bf(),domain_->end_bf(),tasks_perProc,exitCondition0);
-        for (int l = domain_->tree()->base_level();
+        int lstart=domain_->tree()->base_level();
+        if(!include_baselevel) lstart+=1;
+        for (int l = lstart;
                  l < domain_->tree()->depth(); ++l)
         {
             split(domain_->begin(l),domain_->end(l),tasks_perProc,exitCondition1);

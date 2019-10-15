@@ -3,8 +3,10 @@
 
 #include <iostream>
 #include <queue>
+#include <stack>
 #include <iomanip>
 #include <domain/octree/key.hpp>
+#include <utilities/crtp.hpp>
 
 namespace octree{
 
@@ -135,6 +137,7 @@ public:
         return iterator_t::operator->()->second ; 
     }
     mapped_type operator*() { return iterator_t::operator*().second; }
+    mapped_type ptr() { return iterator_t::operator*().second; }
 };
 
 
@@ -162,210 +165,149 @@ namespace tuple_utils
 namespace detail
 {
 
-template<class Node>
-struct iterator_base
+template<class T, class Derived>
+class IteratorBase : public crtp::Crtps<Derived, IteratorBase<T,Derived>>
 {
+
+public: //member types
+    using difference_type=std::ptrdiff_t;
+    using size_type=std::size_t;
+    using value_type=T; 
+    using pointer=T*;
+    using const_pointer=const T*;
+    using reference=T&;
+    using const_reference=const T&;
+    using iterator_category=std::forward_iterator_tag;
+
+public: //Ctors:
+
+    IteratorBase(const IteratorBase&) = default; 
+    IteratorBase(IteratorBase&&) = default; 
+	IteratorBase& operator=(const IteratorBase&) & = default; 
+	IteratorBase& operator=(IteratorBase&&) & = default; 
+    ~IteratorBase()=default; 
+
+    IteratorBase() =default;
+    IteratorBase(pointer _ptr) : current_(_ptr), end_(false){}
+
+public: //Acess
+    auto& operator*() noexcept { return *(this->current_); }
+    const auto& operator*() const noexcept { return *(this->current_); }
+    auto operator->() noexcept { return current_; }
+    auto operator->() const noexcept { return current_; }
+
+    void swap(IteratorBase& other) noexcept
+    {
+        std::swap(current_,other.current_);
+    }
+
+    //Incremet/Decrement
+    IteratorBase& operator++() noexcept //precrement
+    {
+        return this->derived()->operator ++();
+    }
+
+    IteratorBase operator++(int) noexcept //postcrement
+    {
+        const IteratorBase tmp(*this); 
+        ++(*this);
+        return tmp;
+    }
+
+    IteratorBase& operator+=(size_type n) 
+    {
+        for(size_type i=0;i<n;++i){++(*this);}
+        return *this;
+    }
+
+    friend bool operator==(const IteratorBase& lhs, const IteratorBase& rhs)noexcept
+    {
+        return (lhs.end_ ? (lhs.end_==rhs.end_) : 
+                (rhs.end_ ? (false) : (lhs.current_==rhs.current_)));
+        return lhs.current_==rhs.current_;
+    }
+    friend bool operator!=(const IteratorBase& lhs, const IteratorBase& rhs)noexcept
+    {
+        return ! operator==(lhs,rhs);
+    }
+
+    pointer ptr()const noexcept{ return current_; }
+
+protected:
+    pointer current_=nullptr;    
+    bool end_ = true;
+};
+
+
+template<class Node,int Dim=3>
+struct IteratorBfs : public IteratorBase<Node, IteratorBfs<Node,Dim>>
+{
+
+public:
+
+    using iterator_base_type = IteratorBase<Node,IteratorBfs<Node,Dim>>;
     using node_type = Node;
 
-    iterator_base() = delete;
-    iterator_base(const iterator_base&) noexcept = default;
-    iterator_base(iterator_base&&) noexcept = default;
-    iterator_base(node_type* _ptr) noexcept : ptr_(_ptr) {}
+public: //member types
 
-    friend bool operator==(const iterator_base& l, const iterator_base& r)
-    {
-        return (l._end ? (l._end==r._end) : (r._end ? (false) : (l.ptr_==r.ptr_)));
-    }
-    friend bool operator!=(const iterator_base& l, const iterator_base& r)
-    {
-        return !operator==(l,r);
-    }
-    
-    node_type* ptr_;
-    bool _end = false;
+    using difference_type=typename iterator_base_type::difference_type;
+    using size_type=typename iterator_base_type::size_type;
+    using value_type=typename iterator_base_type::value_type; 
+    using pointer=typename iterator_base_type::pointer;
+    using const_pointer=typename iterator_base_type::const_pointer;
+    using reference=typename iterator_base_type::reference;
+    using const_reference=typename iterator_base_type::const_reference;
+    using iterator_category=typename iterator_base_type::iterator_category;
 
-    void swap(iterator_base& other) noexcept
-    {
-        const auto tmp = ptr_;
-        ptr_ = other.ptr_;
-        other.ptr_ = tmp;
-        std::swap(_end, other._end);
-    }
-
-    node_type* ptr()const noexcept {return ptr_;}
-
-};
-
-template<class Node,int Dim=3>
-struct iterator_depth_first : public iterator_base<Node>
-{
-public:
-    using key_type = Key<Dim>;
-    using iterator_base_type = iterator_base<Node>;
-    using node_type = typename iterator_base_type::node_type;
-    iterator_depth_first(const iterator_depth_first&) noexcept = default;
-    iterator_depth_first(iterator_depth_first&&) noexcept = default;
-
-    iterator_depth_first& operator=(iterator_depth_first other) noexcept
-    {
-        swap(*this,other);
-        return *this;
-    }
-
-    iterator_depth_first& operator=(iterator_depth_first&& other) noexcept
-    {
-        this->ptr_ = other->ptr_;
-        this->_child_number = std::move(other._child_number);
-    } 
-    
-public:
-
-    iterator_depth_first(node_type* _ptr) noexcept
-    :   iterator_base_type(_ptr) 
-    {
-        _child_number.fill(0);
-    }
-
-    iterator_depth_first() noexcept
-    :   iterator_base_type(nullptr)
-    {
-        _child_number.fill(0);
-        this->_end = true;
-    }
-
-
-public:
-
-    node_type& operator*() noexcept { return *(this->ptr_); }
-    const node_type& operator*() const noexcept { return *(this->ptr_); }
-    node_type* operator->() noexcept { return this->ptr_; }
-    const node_type* operator->() const noexcept { return this->ptr_; }
-
-    iterator_depth_first& operator++() noexcept
-    {
-        const auto current_level = this->ptr_->key().level();
-        if (current_level == key_type::max_level())
-        {
-            this->ptr_ = get_parent();
-            return this->operator++();
-        }
-        auto& next_child = _child_number[current_level];
-        while (next_child < 8 && 
-               this->ptr_->child(next_child) == nullptr) 
-        {
-            ++next_child;
-        }
-        if (next_child >= 8|| current_level==level_max)
-        {
-            if (current_level == 0)
-            {
-                this->_end = true;
-                return *this;
-            }
-            else
-            {
-                next_child = 0;
-                this->ptr_ = get_parent();
-                return this->operator++();
-            }
-        }
-        else
-        {
-            _child_number[current_level+1] = 0;
-            this->ptr_ = this->ptr_->child(next_child); 
-            ++next_child;
-            if(current_level<level_min-1)this->operator++();
-            return *this;
-        }
-    }
-
-    friend void swap(iterator_depth_first& l, iterator_depth_first& r) noexcept
-    {
-        static_cast<iterator_base_type>(l).swap(r);
-        l._child_number.swap(r._child_number);
-    }
-
-    const int& max_level()const noexcept{return level_max;}
-    int& max_level(){return level_max;}
-    const int& min_level()const noexcept{return level_min;}
-    int& min_level(){return level_min;}
-
-private:
-
-    node_type* get_parent() const noexcept
-    {
-        return this->ptr_->parent();    
-    }
-    std::array<short,key_type::max_level()> _child_number;
-    int level_max=key_type::max_level();
-    int level_min=0;
-};
-
-template<class Node,int Dim=3>
-struct iterator_breadth_first : public iterator_base<Node>
-{
-public:
-    using key_type = Key<Dim>;
-    using iterator_base_type = iterator_base<Node>;
-    using node_type = typename iterator_base_type::node_type;
-
-    iterator_breadth_first(const iterator_breadth_first&) = default;
-    iterator_breadth_first(iterator_breadth_first&&)  = default;
-
-    iterator_breadth_first& operator=(iterator_breadth_first other) 
-    {
-        swap(*this,other);
-        return *this;
-    }
-
-    iterator_breadth_first& operator=(iterator_breadth_first&& other) 
-    {
-        this->ptr_ = other->ptr_;
-        this->queue_ = std::move(other->queue_);
-    } 
-    
 public: //ctors
 
-    iterator_breadth_first(node_type* _ptr) noexcept
+    using iterator_base_type::IteratorBase;
+
+    IteratorBfs(const IteratorBfs&) = default; 
+    IteratorBfs(IteratorBfs&&) = default; 
+	IteratorBfs& operator=(const IteratorBfs&) & = default; 
+    ~IteratorBfs()=default; 
+    IteratorBfs()=default; 
+
+
+    IteratorBfs& operator=(IteratorBfs&& other) 
+    {
+        this->current_ = other->current_;
+        this->queue_ = std::move(other->queue_);
+    } 
+
+    IteratorBfs(node_type* _ptr) noexcept
     :   iterator_base_type(_ptr) 
     {
         queue_.push(_ptr);
     }
 
-    iterator_breadth_first() noexcept
-    :   iterator_base_type(nullptr)
-    {
-        this->_end = true;
-    }
 
-public:
+public: //operator overloads
 
-    node_type& operator*() noexcept { return *(this->ptr_); }
-    const node_type& operator*() const noexcept { return *(this->ptr_); }
-    node_type* operator->() noexcept { return this->ptr_; }
-    const node_type* operator->() const noexcept { return this->ptr_; }
 
-    iterator_breadth_first& operator++() noexcept
+    IteratorBfs& operator++() noexcept
     {
         if(queue_.empty()) {
-            this->_end=true;
+            this->end_=true;
             return *this;
         }
-        this->ptr_=queue_.front();
+        this->current_=queue_.front();
         queue_.pop();
-        for(int i =0; i<8; ++i)
+        //for(int i =0; i<static_cast<int>(node_type::nChildren); ++i)
+        for(int i =0; i<node_type::num_children(); ++i)
         {
-            if(this->ptr_->child(i))
-                queue_.push(this->ptr_->child(i));
+            if(this->current_->child(i))
+                queue_.push(this->current_->child(i));
         }
-        if (this->ptr_->key().level() == 0){
+        if (this->current_->key().level() == 0){
             this->operator++();
         } 
         return *this;
     }
 
   
-    friend void swap(iterator_breadth_first& l, iterator_breadth_first& r) noexcept
+    friend void swap(IteratorBfs& l, IteratorBfs& r) noexcept
     {
         static_cast<iterator_base_type>(l).swap(r);
         l.queue_.swap(r.queue_);
@@ -375,6 +317,75 @@ private:
 
     std::queue<node_type*> queue_;
 };
+
+template<class Node,int Dim=3>
+struct IteratorDfs : public IteratorBase<Node, IteratorDfs<Node,Dim>>
+{
+
+public:
+
+    using iterator_base_type = IteratorBase<Node,IteratorDfs<Node,Dim>>;
+    using node_type = Node;
+
+public: //member types
+
+    using difference_type=typename iterator_base_type::difference_type;
+    using size_type=typename iterator_base_type::size_type;
+    using value_type=typename iterator_base_type::value_type; 
+    using pointer=typename iterator_base_type::pointer;
+    using const_pointer=typename iterator_base_type::const_pointer;
+    using reference=typename iterator_base_type::reference;
+    using const_reference=typename iterator_base_type::const_reference;
+    using iterator_category=typename iterator_base_type::iterator_category;
+
+public: //ctors
+
+    using iterator_base_type::IteratorBase;
+
+    IteratorDfs(const IteratorDfs&) = default; 
+	IteratorDfs& operator=(const IteratorDfs&) & = default; 
+    ~IteratorDfs()=default; 
+    IteratorDfs()=default; 
+
+    IteratorDfs& operator=(IteratorDfs&& other) 
+    {
+        this->current_ = other->current_;
+        this->stack_ = std::move(other->stack_);
+    } 
+    IteratorDfs(node_type* _ptr) noexcept
+    :iterator_base_type(_ptr) { stack_.push(_ptr); }
+
+public: //operator overloads
+
+    IteratorDfs& operator++() noexcept
+    {
+        if(stack_.empty()) {
+            this->end_=true;
+            return *this;
+        }
+        this->current_=stack_.top();
+        stack_.pop();
+        for(int i =node_type::num_children()-1; i>=0; --i)
+        {
+            if(this->current_->child(i))
+                stack_.push(this->current_->child(i));
+        }
+        if (this->current_->key().level() == 0){
+            this->operator++();
+        } 
+        return *this;
+    }
+  
+    friend void swap(IteratorDfs& l, IteratorDfs& r) noexcept
+    {
+        static_cast<iterator_base_type>(l).swap(r);
+        l.stack_.swap(r.stack_);
+    }
+
+private:
+    std::stack<node_type*> stack_;
+};
+
 
 
 /** @brief Iterator node with fullfilled condition (lambda function)*/

@@ -16,21 +16,15 @@
 #include <functional>
 #include <cstring>
 #include <fftw3.h>
-
-#include <global.hpp>
-#include <simulation.hpp>
-#include <linalg/linalg.hpp>
-#include <fmm/fmm_nli.hpp>
-#include <domain/domain.hpp>
-#include <domain/octree/tree.hpp>
-#include <domain/dataFields/dataBlock.hpp>
-#include <domain/dataFields/datafield.hpp>
-#include <domain/octree/tree.hpp>
-#include <IO/parallel_ostream.hpp>
-#include "../utilities/convolution.hpp"
 #include <boost/mpi.hpp>
 #include <boost/mpi/environment.hpp>
 #include <boost/mpi/communicator.hpp>
+
+#include <global.hpp>
+#include <linalg/linalg.hpp>
+#include <fmm/fmm_nli.hpp>
+#include <IO/parallel_ostream.hpp>
+#include <utilities/convolution.hpp>
 
 namespace fmm
 {
@@ -58,7 +52,7 @@ public:
 
     static void fmm_lgf_mask_build(Domain* domain_)
     {
-        for (int l  = domain_->tree()->base_level()+0;
+        for (int l  = domain_->tree()->base_level();
                 l < domain_->tree()->depth(); ++l)
         {
             fmm_dry(domain_, l, false);
@@ -164,30 +158,34 @@ public:
                 } else
                 {
                     it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Source, true);
-                    //if (!it->is_correction())
-                        it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Target, true);
+                    if (!it->is_correction())
+                        it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Target,
+                                true);
 
                     if (!_neighbor_only)
-                        it->add_load(it->influence_number() * _load_factor);
+                        it->add_load(it->influence_number()*_load_factor);
 
-                    it->add_load(it->neighbor_number() * _load_factor);
+                    it->add_load(it->neighbor_number()*_load_factor);
                 }
             }
-        } else
+        }
+        else
         {
-            for (auto it = domain_->begin(base_level);
-                    it != domain_->end(base_level); ++it)
-            {
-                it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Source, true);
+            for(auto it = domain_->begin(base_level);
+                 it!=domain_->end(base_level);++it)
+                {
+                    it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Source,
+                            true);
 
-                //if (!it->is_correction())
-                    it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Target, true);
+                    if (!it->is_correction())
+                        it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Target,
+                                true);
 
-                if (!_neighbor_only)
-                    it->add_load(it->influence_number() * _load_factor);
+                    if (!_neighbor_only)
+                        it->add_load(it->influence_number()*_load_factor);
 
-                it->add_load(it->neighbor_number() * _load_factor);
-            }
+                    it->add_load(it->neighbor_number()*_load_factor);
+                }
         }
 
     }
@@ -219,10 +217,12 @@ public: //Ctor:
 
 
 public:
-    Fmm(int Nb)
-    :lagrange_intrp(Nb),
+    Fmm(domain_t* _domain,int Nb)
+    :domain(_domain),
+    lagrange_intrp(Nb),
     conv_( dims_t{{Nb,Nb,Nb}}, dims_t{{Nb,Nb, Nb}} )
     {
+
     }
 
     template< class Source, class Target, class Kernel >
@@ -284,25 +284,62 @@ public:
         // done at master node
 
 
-        ////Initialize for each fmm // zero ing all tree
+        ////Initialize for each fmm//zero ing all tree
         fmm_init_zero<fmm_s>(domain_, MASK_LIST::Mask_FMM_Source);
         fmm_init_zero<fmm_t>(domain_, MASK_LIST::Mask_FMM_Target);
 
         //// Copy to temporary variables // only the base level
         fmm_init_copy<Source, fmm_s>(domain_);
+        sort_bx_octants(domain);
+
+#ifdef POISSON_TIMINGS
+        timings_=Timings() ;
+        //domain_->client_communicator().barrier();
+#endif
 
         //// Anterpolation
         pcout<<"FMM Antrp start" << std::endl;
+#ifdef POISSON_TIMINGS
+        auto t0_anterp=clock_type::now();
+#endif
         fmm_antrp(domain_);
+#ifdef POISSON_TIMINGS
+        //domain_->client_communicator().barrier();
+        auto t1_anterp=clock_type::now();
+        timings_.anterp=t1_anterp-t0_anterp;
+#endif
+
+        //domain_->client_communicator().barrier();
 
         //// FMM influence list
         pcout<<"FMM Bx start" << std::endl;
         //fmm_Bx_itr_build(domain_, level);
+#ifdef POISSON_TIMINGS
+        auto t0_bx=clock_type::now();
+#endif
         fmm_Bx(domain_, _kernel, dx_level);
+#ifdef POISSON_TIMINGS
+        //domain_->client_communicator().barrier();
+        auto t1_bx=clock_type::now();
+        timings_.bx=t1_bx-t0_bx;
+#endif
 
+
+#ifdef POISSON_TIMINGS
+        //domain_->client_communicator().barrier();
+        auto t0_interp=clock_type::now();
+#endif
         //// Interpolation
         pcout<<"FMM INTRP start" << std::endl;
         fmm_intrp(domain_);
+
+#ifdef POISSON_TIMINGS
+        //domain_->client_communicator().barrier();
+        auto t1_interp=clock_type::now();
+        timings_.interp=t1_interp-t0_interp;
+        timings_.global=t1_interp-t0_anterp;
+#endif
+
         //std::cout<<"FMM INTRP done" << std::endl;
 
         //// Copy back
@@ -311,7 +348,6 @@ public:
         //else
         //fmm_minus_equal<Target, fmm_t>(domain_);
 
-        boost::mpi::communicator world;
         //std::cout<<"Rank "<<world.rank() << " FFTW_count = ";
         //std::cout<<conv_.fft_count << std::endl;
         pcout<<"FMM For Level "<< level << " End -------------------------"<<std::endl;
@@ -384,17 +420,13 @@ public:
         mDuration_type time_communication_Bx;
 
         TIME_CODE(time_communication_Bx, SINGLE_ARG(
-        domain_->decomposition().client()->template
-            finish_induced_field_communication();
+        domain_->decomposition().client()->finish_induced_field_communication();
         ))
     }
 
-    template<class Kernel>
-    void fmm_Bx(domain_t* domain_,
-                Kernel* _kernel,
-                float_type dx_level)
+    void sort_bx_octants(domain_t* domain_)
     {
-        std::vector<std::pair<octant_t*, int>> octants;
+        sorted_octants_.clear();
         for (int level=base_level_; level>=0; --level)
         {
             for (auto it = domain_->begin(level); it != domain_->end(level); ++it)
@@ -407,24 +439,51 @@ public:
                     domain_->decomposition().client()->template
                     communicate_induced_fields_recv_m_send_count<fmm_t, fmm_t>(it, _neighbor, fmm_mask_idx_);
 
-                octants.emplace_back(std::make_pair(*it,recv_m_send_count));
+                sorted_octants_.emplace_back(std::make_pair(*it,recv_m_send_count));
             }
         }
-        std::sort(octants.begin(), octants.end(),[&](const auto& e0, const auto& e1)
+        std::sort(sorted_octants_.begin(), sorted_octants_.end(),[&](const auto& e0, const auto& e1)
                 {return e0.second> e1.second;  });
+    }
+
+    template<class Kernel>
+    void fmm_Bx(domain_t* domain_,
+                Kernel* _kernel,
+                float_type dx_level)
+    {
+        //std::vector<std::pair<octant_t*, int>> octants;
+        //for (int level=base_level_; level>=0; --level)
+        //{
+        //    for (auto it = domain_->begin(level); it != domain_->end(level); ++it)
+        //    {
+        //        bool _neighbor = (level==base_level_)? true:false;
+        //        if (!(it->data()) || !it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Target) )
+        //            continue;
+
+        //        int recv_m_send_count =
+        //            domain_->decomposition().client()->template
+        //            communicate_induced_fields_recv_m_send_count<fmm_t, fmm_t>(it, _neighbor, fmm_mask_idx_);
+
+        //        octants.emplace_back(std::make_pair(*it,recv_m_send_count));
+        //    }
+        //}
+        //std::sort(octants.begin(), octants.end(),[&](const auto& e0, const auto& e1)
+        //        {return e0.second> e1.second;  });
 
         const bool start_communication = false;
         bool combined_messages=false;
+        int c=0;
 
-        for (auto B_it=octants.begin(); B_it!=octants.end(); ++B_it)
+        for (auto B_it=sorted_octants_.begin(); B_it!=sorted_octants_.end(); ++B_it)
         {
             auto it =B_it->first;
-            int level = it->level();
+            const int level = it->level();
+            const bool _neighbor = (level==base_level_)? true:false;
 
-            bool _neighbor = (level==base_level_)? true:false;
-            if (!(it->data()) ||
-                    !it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Target) )
-                continue;
+
+            //if (!(it->data()) ||
+            //        !it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Target) )
+            //    continue;
 
             if(it->locally_owned())
             {
@@ -433,36 +492,36 @@ public:
             }
 
             //setup the tasks
-            domain_->decomposition().client()->template
-                communicate_induced_fields<fmm_t, fmm_t>(&(*it),
-                    this, _kernel,base_level_-level,dx_level,
-                    _neighbor,
-                    start_communication, fmm_mask_idx_);
-
-            if(!combined_messages && B_it->second==0)
+            if(B_it->second!=0)
+            {
+                domain_->decomposition().client()->template
+                    communicate_induced_fields<fmm_t, fmm_t>(&(*it),
+                            this, _kernel,base_level_-level,dx_level,
+                            _neighbor,
+                            start_communication, fmm_mask_idx_);
+            }
+            else if (!combined_messages )
+            //if(!combined_messages && B_it->second==0)
             {
                     domain_->decomposition().client()->template
                         combine_induced_field_messages<fmm_t, fmm_t>();
                     combined_messages=true;
             }
-            if(combined_messages)
+            if(c%5==0 && combined_messages)
+            //if(combined_messages)
             {
                 domain_->decomposition().client()->template
                     check_combined_induced_field_communication<fmm_t,fmm_t>(false);
             }
-
+            ++c;
         }
 
-        mDuration_type time_communication_Bx;
         //Finish the communication
-        TIME_CODE(time_communication_Bx, SINGLE_ARG(
-        domain_->decomposition().client()->template
-            check_combined_induced_field_communication<fmm_t,fmm_t>(true);
-        ))
-        //TIME_CODE(time_communication_Bx, SINGLE_ARG(
-        //domain_->decomposition().client()->template
-        //    finish_induced_field_communication();
-        //))
+        if(combined_messages)
+        {
+            domain_->decomposition().client()->template
+                check_combined_induced_field_communication<fmm_t,fmm_t>(true);
+        }
     }
 
 
@@ -648,6 +707,7 @@ public:
     void fmm_tt(octant_t* o_s, octant_t* o_t, Kernel* _kernel,
                 int level_diff)
     {
+        const auto t0_fft=clock_type::now();
 
         const auto t_base = o_t->data()->template get<fmm_t>().
                                         real_block().base();
@@ -668,19 +728,66 @@ public:
         conv_.apply_forward_add(lgf_block, _kernel, level_diff,
                 o_s->data()->template get<fmm_s>());
 
+        const auto t1_fft=clock_type::now();
+        timings_.fftw+=t1_fft-t0_fft;
+        timings_.fftw_count_max+=1;
     }
 
+    struct Timings{
 
-    public:
-        Nli lagrange_intrp;
-    private:
-        int fmm_mask_idx_;
-        int base_level_;
-        convolution_t            conv_;      ///< fft convolution
-        parallel_ostream::ParallelOstream pcout=
-            parallel_ostream::ParallelOstream(1);
+        mDuration_type                    global=mDuration_type(0);
+        mDuration_type                    anterp=mDuration_type(0);
+        mDuration_type                    bx=mDuration_type(0);
+        mDuration_type                    interp=mDuration_type(0);
+        mDuration_type                    fftw=mDuration_type(0);
+        std::size_t                       fftw_count_max=0;
+        std::size_t                       fftw_count_min=0;
 
-    private: //timings
+        void accumulate(boost::mpi::communicator _comm) noexcept
+        {
+            Timings tlocal=*this;
+
+            decltype(tlocal.global.count()) cglobal,canterp,cbx,cinterp,cfftw;
+            std::size_t  cfftw_count_max,cfftw_count_min;
+            auto comp=[&](const auto& v0, const auto& v1){return v0>v1? v0  :v1;};
+            auto min_comp=[&](const auto& v0, const auto& v1){return v0>v1? v1  :v0;};
+            boost::mpi::all_reduce(_comm,tlocal.global.count(), cglobal,comp);
+            boost::mpi::all_reduce(_comm,tlocal.anterp.count(), canterp,comp);
+            boost::mpi::all_reduce(_comm,tlocal.bx.count(), cbx,comp);
+            boost::mpi::all_reduce(_comm,tlocal.interp.count(), cinterp,comp);
+            boost::mpi::all_reduce(_comm,tlocal.fftw.count(), cfftw,comp);
+
+            boost::mpi::all_reduce(_comm,tlocal.fftw_count_max, cfftw_count_min,min_comp);
+            boost::mpi::all_reduce(_comm,tlocal.fftw_count_max, cfftw_count_max,comp);
+
+            this->global=mDuration_type(cglobal);
+            this->anterp=mDuration_type(canterp);
+            this->interp=mDuration_type(cinterp);
+            this->bx=mDuration_type(cbx);
+            this->fftw=mDuration_type(cfftw);
+            this->fftw_count_min=cfftw_count_min;
+            this->fftw_count_max=cfftw_count_max;
+        }
+    };
+
+    const auto& timings() const noexcept{return timings_;}
+    auto& timings()noexcept{return timings_;}
+
+private:
+    domain_t* domain;
+public:
+    Nli lagrange_intrp;
+private:
+    int fmm_mask_idx_;
+    int base_level_;
+    convolution_t            conv_;      ///< fft convolution
+    parallel_ostream::ParallelOstream pcout=
+        parallel_ostream::ParallelOstream(1);
+
+    std::vector<std::pair<octant_t*, int>> sorted_octants_;
+
+private: //timings
+    Timings timings_;
 
 };
 

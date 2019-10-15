@@ -12,10 +12,9 @@
 #include <domain/domain.hpp>
 #include <IO/parallel_ostream.hpp>
 
-#include "../../utilities/convolution.hpp"
 #include <utilities/cell_center_nli_intrp.hpp>
 #include <utilities/extrapolation_cell_center_nli_intrp.hpp>
-#include<operators/operators.hpp>
+#include <operators/operators.hpp>
 
 #include <lgf/lgf_gl.hpp>
 #include <lgf/lgf_ge.hpp>
@@ -65,7 +64,7 @@ public: //member types
     PoissonSolver(simulation_type* _simulation)
     :
     domain_(_simulation->domain_.get()),
-    fmm_(domain_->block_extent()[0]+lBuffer+rBuffer),
+    fmm_(domain_,domain_->block_extent()[0]+lBuffer+rBuffer),
     c_cntr_nli_(domain_->block_extent()[0]+lBuffer+rBuffer),
     extrp_c_cntr_nli_(domain_->block_extent()[0]+lBuffer+rBuffer)
     {
@@ -288,10 +287,6 @@ public:
     void apply_lgf(Kernel*  _kernel, std::size_t _field_idx=0)
     {
 
-        boost::mpi::communicator world;
-        //if(domain_->is_client())world=world.split(1);
-        //else world=world.split(0);
-
         auto client = domain_->decomposition().client();
         if(!client)return;
 
@@ -314,11 +309,16 @@ public:
             ("Coarsification for non-cell centers needs to be implemented. ");
         }
 
-        Timings timing;
+#ifdef POISSON_TIMINGS
+        timings_=Timings() ;
+        const int nLevels=domain_->nLevels();
+        timings_.level.resize(nLevels);
+        timings_.fmm_level.resize(nLevels);
+        timings_.fmm_level_nl.resize(nLevels);
 
-        //world.barrier();
         auto t0_all=clock_type::now();
         auto t0_coarsify=clock_type::now();
+#endif
 
         //source_coarsify(_field_idx, Source::mesh_type);
 
@@ -326,6 +326,9 @@ public:
         for (int l = domain_->tree()->depth()-2;
                 l >= domain_->tree()->base_level(); --l)
         {
+#ifdef POISSON_TIMINGS
+            const auto t0_level=clock_type::now();
+#endif
             for (auto it_s  = domain_->begin(l);
                     it_s != domain_->end(l); ++it_s)
                 {
@@ -337,7 +340,17 @@ public:
                 template communicate_updownward_add<source_tmp, source_tmp>
                     (l,true,false,-1);
 
+#ifdef POISSON_TIMINGS
+            const auto t1_level=clock_type::now();
+            timings_.level[l-domain_->tree()->base_level()+1]=t1_level-t0_level;
+#endif
         }
+
+#ifdef POISSON_TIMINGS
+        auto t1_coarsify= clock_type::now();
+        timings_.coarsification = t1_coarsify-t0_coarsify;
+        const auto t0_level_interaction = clock_type::now();
+#endif
 
         for (int l = domain_->tree()->depth()-2;
                 l >= domain_->tree()->base_level(); --l)
@@ -357,20 +370,16 @@ public:
 
                 this->coarsify<source_tmp, source_correction_tmp>(*it, 1.0, correction_buffer_only, false);
             }
-
         }
 
-        auto t1_coarsify= clock_type::now();
-        timing.coarsification = t1_coarsify-t0_coarsify;
-
-        const auto t0_level_interaction = clock_type::now();
-
         //Level-Interactions
-
-        for (int l  = domain_->tree()->base_level();
-                l < domain_->tree()->depth(); ++l)
+        for (int l = domain_->tree()->base_level();
+                 l < domain_->tree()->depth(); ++l)
         {
+
+#ifdef POISSON_TIMINGS
             const auto t0_level=clock_type::now();
+#endif
 
             for (auto it_s  = domain_->begin(l);
                     it_s != domain_->end(l); ++it_s)
@@ -383,8 +392,11 @@ public:
                 }
 
             // test for FMM
-            const auto t2=clock_type::now();
             fmm_.template apply<source_tmp, target_tmp>(domain_, _kernel, l, false, 1.0);
+
+#ifdef POISSON_TIMINGS
+            timings_.fmm_level[l-domain_->tree()->base_level()]=fmm_.timings();
+#endif
             // Copy to Target
             for (auto it  = domain_->begin(l);
                     it != domain_->end(l); ++it)
@@ -405,7 +417,10 @@ public:
                 bool correction_parent=false;
                 for (std::size_t i=0; i<it->num_children(); ++i)
                     if (it->child(i) && it->child(i)->is_correction())
+                    {
                         correction_parent = true;
+                        break;
+                    }
 
                 if (correction_parent)
                 {
@@ -420,18 +435,34 @@ public:
 
             // minus middle
             fmm_.template apply<source_tmp, target_tmp>(domain_, _kernel, l, true, -1.0);
+
+#ifdef POISSON_TIMINGS
+            timings_.fmm_level_nl[l-domain_->tree()->base_level()]=fmm_.timings();
+#endif
+
+#ifdef POISSON_TIMINGS
+            const auto t2=clock_type::now();
+#endif
             // Interpolate
             domain_->decomposition().client()->
                 template communicate_updownward_assign
                     <target_tmp, target_tmp>(l,false,false,-1);
 
+            // Interpolate
             for (auto it  = domain_->begin(l);
                       it != domain_->end(l); ++it)
             {
                 if(!it->data() || !it->data()->is_allocated()) continue;
                 c_cntr_nli_.nli_intrp_node< target_tmp, target_tmp >
                     (it, Source::mesh_type, _field_idx, false, false);
+
             }
+
+#ifdef POISSON_TIMINGS
+            const auto t3=clock_type::now();
+            timings_.interpolation+=(t3-t2);
+#endif
+
 
             //if (l == domain_->tree()->depth()-1) continue;
             //client->template buffer_exchange<target_tmp>(l+1);
@@ -468,9 +499,6 @@ public:
                 //c_cntr_nli_.nli_intrp_node< corr_lap_tmp, correction_tmp>(it, Source::mesh_type, _field_idx, correction_buffer_only,false);
             }
 
-
-            // start here
-
             //client->template buffer_exchange<Source>(l);
 
             // FMM for non-leaf
@@ -497,6 +525,12 @@ public:
 
                     xt::noalias(lin_data_2) += lin_data_1 * 1.0;
                 }
+#ifdef POISSON_TIMINGS
+            const auto t1_level=clock_type::now();
+            mDuration_type tmp=t1_level-t0_level;
+            //std::cout<< "Level timing : l="<<l-domain_->tree()->base_level()<<" "<<tmp.count()/1.e3<<std::endl;
+            timings_.level[l-domain_->tree()->base_level()]=t1_level-t0_level;
+#endif
         }
 
         for (int ls = domain_->tree()->depth()-2;
@@ -513,16 +547,17 @@ public:
             domain_->decomposition().client()->
             template communicate_updownward_add<correction_tmp, correction_tmp>
             (ls,true,false,-1);
+
         }
 
-        //world.barrier();
+#ifdef POISSON_TIMINGS
         const auto t1_level_interaction=clock_type::now();
-        timing.level_interaction=t1_level_interaction-t0_level_interaction
-                                  -timing.interpolation;
-
-
+        timings_.level_interaction=t1_level_interaction-t0_level_interaction
+                                  -timings_.interpolation;
         const auto t1_all=clock_type::now();
-        timing.global=t1_all-t0_all;
+        timings_.global=t1_all-t0_all;
+#endif
+
     }
 
     template<class field>
@@ -810,6 +845,97 @@ public:
         }
     }
 
+   auto& timings() noexcept {return timings_;}
+   const auto& timings() const noexcept {return timings_;}
+
+   template<class Out>
+   void print_timings( Out& os, Out& os_level )
+   {
+       int width=20;
+       timings_.accumulate(this->domain_->client_communicator());
+       const auto pts=this->domain_->get_nPoints();
+
+        os<<std::left
+            <<std::setw(15) <<"npts"
+            <<std::setw(width) <<"global[s]"
+            <<std::setw(width) <<"gbl rate[pts/s]"
+            <<std::setw(width) <<"gbl eff[s/pt]"
+            <<std::setw(width) <<"coarsing[%]"
+            <<std::setw(width) <<"level[%]"
+            <<std::setw(width) <<"interp[%]"
+        <<std::endl;
+       os<<std::left<<std::scientific<<std::setprecision(7)
+           <<std::setw(15) <<pts.back()
+           <<std::setw(width) <<timings_.global.count()/1.e3
+           <<std::setw(width) <<pts.back()/static_cast<float_type>(timings_.global.count()/1.e3)
+           <<std::setw(width) <<static_cast<float_type>(timings_.global.count()/1.e3)/pts.back()
+           //<<std::defaultfloat
+           <<std::setw(width) <<100.0*static_cast<float_type>(timings_.coarsification.count())/timings_.global.count()
+           <<std::setw(width) <<100.0*static_cast<float_type>(timings_.level_interaction.count())/timings_.global.count()
+           <<std::setw(width) <<100.0*static_cast<float_type>(timings_.interpolation.count())/timings_.global.count()
+       <<std::endl;
+
+
+       int c=0;
+       width=15;
+       os_level<<std::left<<std::scientific<<std::setprecision(5)
+            <<std::setw(10) <<"level"
+            <<std::setw(15) <<"npts"
+            <<std::setw(width) <<"gbl[s]"
+            <<std::setw(width) <<"rate[pts/s]"
+            <<std::setw(width) <<"eff[s/pt]"
+
+            <<std::setw(width) <<"fmm gbl "
+            <<std::setw(width) <<"anterp "
+            <<std::setw(width) <<"Bx "
+            <<std::setw(width) <<"fft "
+            <<std::setw(width) <<"fft ratio "
+            <<std::setw(width) <<"interp "
+
+            <<std::setw(width) <<"fmm_nl gbl "
+            <<std::setw(width) <<"anterp "
+            <<std::setw(width) <<"Bx "
+            <<std::setw(width) <<"fft "
+            <<std::setw(width) <<"fft ratio "
+            <<std::setw(width) <<"interp "
+       <<std::endl;
+
+       for(std::size_t i=0; i<timings_.level.size();++i)
+       {
+
+           auto& t=timings_.level[i];
+           auto& fmm=timings_.fmm_level[i];
+           auto& fmm_nl=timings_.fmm_level_nl[i];
+
+           os_level<<std::setw(10)<<c
+             <<std::setw(15)<<pts[c]
+             <<std::setw(width)<<static_cast<float_type>(t.count())/1.e3
+             <<std::setw(width)<<pts[c]/(static_cast<float_type>(t.count())/1.e3)
+             <<std::setw(width)<<(static_cast<float_type>(t.count())/1.e3)/pts[c]
+
+             <<std::setw(width)<<(static_cast<float_type>(fmm.global.count())/1.e3)
+             <<std::setw(width)<<(static_cast<float_type>(fmm.anterp.count())/1.e3)
+             <<std::setw(width)<<(static_cast<float_type>(fmm.bx.count())/1.e3)
+             <<std::setw(width)<<(static_cast<float_type>(fmm.fftw.count())/1.e3)
+             <<std::setw(width)<<(static_cast<float_type>(fmm.fftw_count_max)/fmm.fftw_count_min)
+             <<std::setw(width)<<(static_cast<float_type>(fmm.interp.count())/1.e3)
+
+             <<std::setw(width)<<(static_cast<float_type>(fmm_nl.global.count())/1.e3)
+             <<std::setw(width)<<(static_cast<float_type>(fmm_nl.anterp.count())/1.e3)
+             <<std::setw(width)<<(static_cast<float_type>(fmm_nl.bx.count())/1.e3)
+             <<std::setw(width)<<(static_cast<float_type>(fmm_nl.fftw.count())/1.e3)
+             <<std::setw(width)<<(static_cast<float_type>(fmm_nl.fftw_count_max)/fmm_nl.fftw_count_min)
+             <<std::setw(width)<<(static_cast<float_type>(fmm_nl.interp.count())/1.e3)
+
+           <<std::endl;
+           ++c;
+       }
+       os_level<<std::endl;
+       os<<std::endl;
+       //os_level<<std::defaultfloat<<std::endl;
+       //os<<std::defaultfloat<<std::endl;
+   }
+
 
 private:
     domain_type*                      domain_;    ///< domain
@@ -822,27 +948,85 @@ private:
 
     //Timings:
     struct Timings{
-        std::vector<mDuration_type>       level;
+        std::vector<mDuration_type>                level;
+        std::vector<typename Fmm_t::Timings>       fmm_level;
+        std::vector<typename Fmm_t::Timings>       fmm_level_nl;
         mDuration_type                    global=mDuration_type(0);
         mDuration_type                    coarsification=mDuration_type(0);
         mDuration_type                    level_interaction=mDuration_type(0);
         mDuration_type                    interpolation=mDuration_type(0);
 
+        //TODO
+        //Gather all and take max
+        void accumulate(boost::mpi::communicator _comm) noexcept
+        {
+            Timings tlocal=*this;
+
+            std::vector<decltype(tlocal.global.count())> clevel;
+            clevel.resize(level.size());
+            decltype(tlocal.global.count()) cglobal,ccoarsification,clevel_interaction, cinterpolation;
+
+
+            boost::mpi::all_reduce(_comm,tlocal.global.count(), cglobal,
+                    [&](const auto& v0, const auto& v1){return v0>v1? v0  :v1;} );
+            boost::mpi::all_reduce(_comm,tlocal.coarsification.count(), ccoarsification,
+                    [&](const auto& v0, const auto& v1){return v0>v1? v0  :v1;} );
+            boost::mpi::all_reduce(_comm,tlocal.level_interaction.count(), clevel_interaction,
+                    [&](const auto& v0, const auto& v1){return v0>v1? v0  :v1;} );
+            boost::mpi::all_reduce(_comm,tlocal.interpolation.count(), cinterpolation,
+                    [&](const auto& v0, const auto& v1){return v0>v1? v0  :v1;} );
+
+            //For levels:
+            for(std::size_t i =0;i<level.size();++i)
+            {
+                fmm_level[i].accumulate(_comm);
+                fmm_level_nl[i].accumulate(_comm);
+
+                boost::mpi::all_reduce(_comm,tlocal.level[i].count(), clevel[i],
+                        [&](const auto& v0, const auto& v1){return v0>v1? v0  :v1;} );
+                this->level[i]=mDuration_type(clevel[i]);
+            }
+            this->global=mDuration_type(cglobal);
+            this->coarsification=mDuration_type(ccoarsification);
+            this->interpolation=mDuration_type(cinterpolation);
+            this->level_interaction=mDuration_type(clevel_interaction);
+        }
+
         friend std::ostream& operator<<(std::ostream& os, const  Timings& _t)
         {
 
-            os<<"global "<<" coarsification "<<" level_interaction "<<" interpolation"<<std::endl;
-            os<<_t.global.count()<<" "<<_t.coarsification.count()<<" "
-              <<_t.level_interaction.count()<<" " <<_t.interpolation.count()<<" "
-              <<std::endl;
+            //auto nPts=_t.domain_->get_nPoints();
+            //const int nLevels=_t.domain_->nLevels();
+
+            const int width=20;
+            os<<std::left
+                <<std::setw(width) <<"global [ms]"
+                <<std::setw(width) <<"coarsification"
+                <<std::setw(width) <<"level_interaction "
+                <<std::setw(width) <<"interpolation"
+            <<std::endl;
+
+            os<<std::left<<std::scientific<<std::setprecision(10)
+                <<std::setw(width) <<_t.global.count()
+                <<std::setw(width) <<_t.coarsification.count()
+                <<std::setw(width) <<_t.level_interaction.count()
+                <<std::setw(width) <<_t.interpolation.count()
+            <<std::endl;
+
+            os<<"Time per level:"<<std::endl;
+            int c=0;
             for(auto& t :  _t.level)
             {
-                os<<t.count()<<" ";
+                os<<std::setw(4)<<c++
+                  <<std::setw(width)<<t.count()
+                <<std::endl;
             }
             os<<std::endl;
             return os;
         }
     };
+
+    Timings timings_;
 };
 
 }

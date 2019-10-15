@@ -250,27 +250,9 @@ public: //Ctors
     }
 
 
-    void add_load(float_type l)
-    {
-        load_+=l;
-    }
-    int load()const noexcept
-    {
-        return load_;
-        //float_type load=1.0;
-        //for(int c=0;c<static_cast<int>(influence_.size()) ;++c)
-        //{
-        //    Octant* inf = this->influence(c);
-        //    if(inf!=nullptr) load=load+1.0;
-        //}
-        //for(int c=0;c<static_cast<int>(neighbor_.size());++c)
-        //{
-        //    Octant* inf = this->neighbor(c);
-        //    if(inf!=nullptr) load=load+1.0;
-        //}
-        //if(!is_leaf()) load*=2.0;
-        //return load;
-    }
+    void add_load(float_type l) { load_+=l; }
+    const auto& load()const noexcept { return load_; }
+    auto& load() noexcept { return load_; }
 
 
 

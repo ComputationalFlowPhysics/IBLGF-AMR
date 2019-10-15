@@ -105,21 +105,7 @@ public: //memeber functions
 
             client()->query_masks();
             client()->disconnect();
-
-            int correction_count=0;
-            for (auto it  = domain_->begin_leafs();
-                    it != domain_->end_leafs(); ++it)
-            {
-                for (int i=0;i<8;++i)
-                {
-                    auto c=it->child(i);
-                    if (c && c->is_correction())
-                        correction_count++;
-                }
-            }
-            std::cout<<"Correction count = " << correction_count<< std::endl;
-
-}
+        }
     }
 
 public: //access memebers:

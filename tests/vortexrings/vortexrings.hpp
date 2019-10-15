@@ -1,34 +1,13 @@
 #ifndef IBLGF_INCLUDED_VORTEXRINGS_HPP
 #define IBLGF_INCLUDED_VORTEXRINGS_HPP
 
+#define POISSON_TIMINGS
+
 #include <iostream>
-#include <vector>
-#include <limits>
-#include <algorithm>
-#include <vector>
-#include <fftw3.h>
-#include <boost/mpi.hpp>
-#include <boost/mpi/environment.hpp>
-#include <boost/mpi/communicator.hpp>
+#include <chrono>
 
 // IBLGF-specific
-#include <global.hpp>
-#include <simulation.hpp>
-#include <domain/domain.hpp>
-#include <domain/dataFields/dataBlock.hpp>
-#include <domain/dataFields/datafield.hpp>
-#include <domain/octree/tree.hpp>
-#include <chrono>
-#include <IO/parallel_ostream.hpp>
-#include <lgf/lgf.hpp>
-#include <fmm/fmm.hpp>
-
-#include<utilities/convolution.hpp>
-#include<utilities/interpolation.hpp>
-#include<solver/poisson/poisson.hpp>
-
 #include"../../setups/setup_base.hpp"
-
 
 
 const int Dim = 3;
@@ -242,7 +221,7 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
             pcout<<"vor max:"<<std::fabs(vr.vorticity(center[0]+vr.R,center[1],center[2]))<<std::endl;
         }
 
-        vorticity_max_=simulation_.dictionary_->
+        vorticity_max_ =simulation_.dictionary_->
             template get_or<float_type>("source_max",max_vort);
         pcout<<"source_max "<<vorticity_max_<<std::endl;
 
@@ -280,20 +259,20 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
     void run()
     {
 
-        std::ofstream ofs,ofs_level;
+        std::ofstream ofs,ofs_level, ofs_timings;
         parallel_ostream::ParallelOstream
             pofs(io::output().dir()+"/"+"global_timings.txt",1,ofs),
             pofs_level(io::output().dir()+"/"+"level_timings.txt",1,ofs_level);
 
 
         boost::mpi::communicator world;
-        simulation_.write2("mesh.hdf5");
+        //simulation_.write2("mesh.hdf5");
 
         auto pts=domain_->get_nPoints();
 
         if(domain_->is_client())
         {
-
+            auto pts=domain_->get_nPoints();
             poisson_solver_t psolver(&this->simulation_);
 
             mDuration_type solve_duration(0);
@@ -305,34 +284,18 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
                 client_comm_.barrier();
             ))
 
-            pcout_c<<"Total Psolve time: "
-                  <<solve_duration.count()<<" on "<<world.size()<<std::endl;
+            pcout_c<<"Elapsed time "<< solve_duration.count()/1.0e3 <<" Rate "<< pts.back()/(solve_duration.count()/1.0e3)<< std::endl;
 
-            float_type time_all_sec=  solve_duration.count()/1.e3;
-            pofs<<"Nprocs "<<" duration [s] "<<" nPoints "
-                <<" rate [pts/s] "<<" efficiency [s/pt]"  <<std::endl;
-            pofs <<client_comm_.size()<<" "<< time_all_sec << " " << pts.back() <<" "
-                 << pts.back()/time_all_sec <<" "<< time_all_sec/pts.back()
-            <<std::endl;
-
-            pofs_level << "Level "<<" duration [s] "<<" nPoints"
-                 << " rate [pts/s] "<<" efficiency [s/pt]" <<std::endl;
-
-            for(std::size_t i=0;i<pts.size()-1;++i)
-            {
-                auto time=solve_duration.count()/1.e3;
-                pofs_level<<i<<" " <<time <<" "<<pts[i]<<" "
-                    <<pts[i]/time<<" "<<time/pts[i]<<" "
-                <<std::endl;
-            }
-            client_comm_.barrier();
+#ifdef POISSON_TIMINGS
+            psolver.print_timings(pofs, pofs_level);
+#endif
             psolver.apply_laplace<phi_num,amr_lap_source>() ;
         }
 
         this->compute_errors<phi_num,phi_exact,error>();
         this->compute_errors<amr_lap_source,source,error_lap_source>("laplace_");
 
-        simulation_.write2("mesh.hdf5");
+        //simulation_.write2("mesh.hdf5");
     }
 
 
@@ -368,10 +331,10 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
                 }
             }
         }
-        std::cout <<"rank: "<<world.rank()
-                  <<", owned: "<<nLocally_owned
-                  <<", ghosts: "<<nGhost
-                  <<", allocated ghosts: "<<nAllocated<<std::endl;
+        //std::cout <<"rank: "<<world.rank()
+        //          <<", owned: "<<nLocally_owned
+        //          <<", ghosts: "<<nGhost
+        //          <<", allocated ghosts: "<<nAllocated<<std::endl;
 
         for (auto it  = domain_->begin_leafs();
                   it != domain_->end_leafs(); ++it)

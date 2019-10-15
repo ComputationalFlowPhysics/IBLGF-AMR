@@ -23,7 +23,7 @@ class TagGenerator
 public:
     using enum_utype  =  typename std::underlying_type<Enum>::type;
     using tag_type =Tag;
-    static_assert(std::is_same<tag_type, enum_utype>::value);
+    static_assert(std::is_same<tag_type, enum_utype>::value,"TagGenerator: Tag is not int-type");
 
 public:
    static constexpr int nMessages_=1000;
@@ -38,7 +38,8 @@ public: // ctors
 
 
 private:   
-    TagGenerator(int _rank=boost::mpi::communicator().rank(),int _nProcs=boost::mpi::communicator().size() )
+    TagGenerator(int _rank=boost::mpi::communicator().rank(),
+                 int _nProcs=boost::mpi::communicator().size() )
     :rank_(_rank),
     nTags_(to_integral(Enum::nTags)), 
     nProcs_( _nProcs ), 

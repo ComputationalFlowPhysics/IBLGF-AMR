@@ -2,6 +2,7 @@
 #define DOMAIN_INCLUDED_SERVER_HPP
 
 #include <vector>
+#include <limits>
 #include <stdexcept>
 #include <boost/mpi.hpp>
 #include <boost/mpi/communicator.hpp>
@@ -9,6 +10,7 @@
 #include <boost/mpi/status.hpp>
 
 #include <global.hpp>
+#include <fmm/fmm.hpp>
 #include <domain/decomposition/compute_task.hpp>
 
 #include <domain/mpi/task_manager.hpp>
@@ -74,8 +76,134 @@ public: //Ctors
 
 public:
 
+    template<class Begin, class End, class Container, class Function>
+    auto split(Begin _begin, End _end, Container& _tasks_perProc, Function& _f ) const noexcept
+    {
+        float_type total_load=0.0;
+        const auto nProcs=comm_.size()-1;
+        for( auto it = _begin; it!= _end;++it )
+        {
+            if(_f(it)) break;
+            total_load+=it->load();
+        }
+
+        auto it = _begin;
+        float_type current_load= 0.;
+        for(int crank=0;crank<nProcs;++crank)
+        {
+            float_type target_load= (static_cast<float_type>(crank+1)/nProcs)*total_load;
+            target_load=std::min(target_load,total_load);
+            float_type octant_load=0.;
+            int count=0;
+            while(current_load<=target_load || count ==0)
+            {
+                it->rank()=crank+1;
+                auto load= it->load();
+
+                ctask_t task(it.ptr(), it->rank(), load);
+                _tasks_perProc[crank].push_back(task);
+                current_load+=load;
+                octant_load+=load;
+                ++it;
+                ++count;
+                if(it==_end) break;
+                if(_f(it)) break;
+            }
+            if(it==_end) break;
+            if(_f(it)) break;
+        }
+        return _tasks_perProc;
+    }
 
     auto compute_distribution() const noexcept
+    {
+        //TODO levelwise load calc and clear again
+        const auto nProcs=comm_.size()-1;
+
+        std::cout<<"Computing domain decomposition for "<<comm_.size()<<" processors" <<std::endl;
+        std::vector<std::list<ctask_t>> tasks_perProc(nProcs);
+
+        float_type total_load=0.0;
+        for( auto it = domain_->begin_bf(); it!= domain_->end_bf();++it )
+        {
+            total_load+=it->load();
+        }
+
+        const float_type ideal_load=total_load/nProcs;
+        const int blevel=domain_->tree()->base_level();
+
+        for( auto it = domain_->begin_bf(); it!= domain_->end_bf();++it )
+        {
+            it->load()=0.0;
+        }
+        fmm::FmmMaskBuilder<domain_t>::fmm_dry( domain_,blevel,false );
+        fmm::FmmMaskBuilder<domain_t>::fmm_dry( domain_,blevel,true );
+
+
+        const bool include_baselevel=false; 
+        if(include_baselevel)
+        {
+            //Include baselevel into levelwise splitting:
+            auto exitCondition0=[&blevel](auto& it){return it->level()>=blevel;};
+
+            //BF balancing
+            split( domain_->begin_bf(),domain_->end_bf(),tasks_perProc,exitCondition0);
+
+        }
+        else
+        {
+            //Exlude baselevel into levelwise splitting: Baselevel is DFS split
+            auto exitCondition0=[&blevel](auto& it){return it->level()>blevel;};
+            //BF balancing
+            split( domain_->begin_bf(),domain_->end_bf(),tasks_perProc,exitCondition0);
+        }
+
+
+        //Levelwise balancing
+        int lstart=domain_->tree()->base_level();
+
+        auto exitCondition1=[&blevel](auto& it){return false;};
+        if(!include_baselevel) lstart+=1;
+        for (int l = lstart; l < domain_->tree()->depth(); ++l)
+        {
+
+            for( auto it = domain_->begin_bf(); it!= domain_->end_bf();++it )
+            {
+                it->load()=0.0;
+            }
+            fmm::FmmMaskBuilder<domain_t>::fmm_dry( domain_,l,false );
+            fmm::FmmMaskBuilder<domain_t>::fmm_dry( domain_,l,true );
+
+            split(domain_->begin(l),domain_->end(l),tasks_perProc,exitCondition1);
+        }
+
+
+        //Diagnostics:
+        std::vector<float_type> total_loads_perProc2(nProcs,0);
+        float_type max_load=-1;
+        float_type min_load=std::numeric_limits<float_type>::max();
+        std::ofstream ofs("load_balance.txt");
+        for(int i =0; i<nProcs;++i)
+        {
+            for(auto& t:  tasks_perProc[i] )
+            {
+                total_loads_perProc2[i]+=t.load();
+            }
+            if(total_loads_perProc2[i]>max_load) max_load=total_loads_perProc2[i];
+            if(total_loads_perProc2[i]<min_load) min_load=total_loads_perProc2[i];
+            ofs<<total_loads_perProc2[i]<<std::endl;
+        }
+
+        ofs<<"max/min load: "<<max_load<<"/"<<min_load<<" = "<<max_load/min_load<<std::endl;
+        ofs<<"max/ideal load: "<<max_load<<"/"<<ideal_load<<" = "<<max_load/ideal_load<<std::endl;
+        ofs<<"total_load: "<<total_load<<std::endl;
+        ofs<<"ideal_load: "<<ideal_load<<std::endl;
+
+        std::cout<<"Done with initial load balancing"<<std::endl;
+        return tasks_perProc;
+    }
+
+    auto compute_distribution_old() const noexcept
     {
         std::cout<<"Computing domain decomposition for "<<comm_.size()<<" processors" <<std::endl;
 
@@ -118,7 +246,8 @@ public:
             if(it==domain_->end_bf()) break;
             //if(it==domain_->end_df()) break;
         }
-        //Iterate to balance/diffuse load
+
+
         std::vector<float_type> total_loads_perProc2(nProcs,0);
         float_type max_load=-1;
         float_type min_load=total_load+10;

@@ -441,7 +441,7 @@ public: // print
         << " ("  << std::setw(11) << std::left << std::setprecision(9) << t.coordinate_1().x()
         << ", "  << std::setw(11) << std::left << std::setprecision(9) << t.coordinate_1().y()
         << ", "  << std::setw(11) << std::left << std::setprecision(9) << t.coordinate_1().z()
-        << ") }" << std::left << std::defaultfloat;
+        << ") }" << std::left;// << std::defaultfloat;
         return os;
     }
 

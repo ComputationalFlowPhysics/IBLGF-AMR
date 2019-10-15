@@ -1,20 +1,15 @@
 #ifndef INCLUDED_LGFS_HPP
 #define INCLUDED_LGFS_HPP
 
-#include <stdio.h>
 #include <iostream>
 #include <vector>
 #include <cmath>
-#include <boost/math/special_functions/bessel.hpp>
-//#include <boost/align/aligned_allocator_adaptor.hpp>
-
-
 #include <complex>
-#include <domain/dataFields/dataBlock.hpp>
-#include <domain/dataFields/datafield.hpp>
+#include <boost/math/special_functions/bessel.hpp>
+
 #include <global.hpp>
-#include <lgf/lgf_gl_lookup.hpp>
 #include <utilities/crtp.hpp>
+#include <lgf/lgf_gl_lookup.hpp>
 
 namespace lgf
 {
@@ -28,27 +23,15 @@ class LGF_Base : public crtp::Crtps<Derived,LGF_Base<Dim,Derived>>
 public:
     using block_descriptor_t = BlockDescriptor<int,Dim>;
     using coordinate_t = typename block_descriptor_t::base_t;
-    //using complex_vector_t = std::vector<std::complex<float_type>,
-    //      boost::alignment::aligned_allocator_adaptor<
-    //          std::allocator<std::complex<float_type>>,32>> ;
-
-    //using real_vector_t = std::vector<float_type,
-    //      boost::alignment::aligned_allocator_adaptor<
-    //          std::allocator<float_type>,32>>;
-    using complex_vector_t = std::vector<std::complex<float_type>,
-          xsimd::aligned_allocator<std::complex<float_type>, 32>>;
-
-    using real_vector_t = std::vector<float_type,
-          xsimd::aligned_allocator<float_type, 32>>;
-
     using dims_t = types::vector_type<int,3>;
 
+    using complex_vector_t = std::vector<std::complex<float_type>,
+          xsimd::aligned_allocator<std::complex<float_type>, 32>>;
 
     template<class Convolutor>
     auto& dft(const block_descriptor_t& _lgf_block, dims_t _extended_dims,
                   Convolutor* _conv,  int level_diff)
     {
-
         auto k_ =this->derived().get_key( _lgf_block, level_diff);
         auto it = this->derived().dft_level_maps_[level_diff].find( k_ );
 
@@ -121,10 +104,9 @@ protected:
 
     }
 
-    std::vector<float_type> lgf_buffer_;   ///<lgf buffer
+    std::vector<float_type> lgf_buffer_; ///<lgf buffer
     const int max_lgf_map_level = 20;
     bool neighbor_only_=false;
-
 };
 
 

@@ -2,15 +2,16 @@
 #define IBLGF_INCLUDED_SETUP_BASE_HPP
 
 #include <global.hpp>
-
-#include <domain/domain.hpp>
 #include <utilities/crtp.hpp>
+#include <domain/domain.hpp>
 #include <simulation.hpp>
+#include <lgf/lgf.hpp>
 #include <fmm/fmm.hpp>
-#include <solver/poisson/poisson.hpp>
-#include <solver/time_integration/ifherk.hpp>
 #include <domain/dataFields/dataBlock.hpp>
 #include <domain/dataFields/datafield.hpp>
+#include <solver/poisson/poisson.hpp>
+#include <solver/time_integration/ifherk.hpp>
+#include <IO/parallel_ostream.hpp>
 
 using namespace domain;
 using namespace octree;

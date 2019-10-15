@@ -88,7 +88,9 @@ public: //C/Dtors
                      block_initialze_fct<DictionaryPtr> _init_fct=
                         block_initialze_fct<DictionaryPtr>() )
     {
-
+        boost::mpi::communicator w;
+        if(w.rank()!=0)client_comm_=client_comm_.split(1);
+        else client_comm_=client_comm_.split(0);
 
         //Construct base mesh, vector of bases with a given block_extent_
         block_extent_=_dictionary->template get_or<int>("block_extent", 10);
@@ -577,8 +579,8 @@ public: //Access
     extent_t& block_extent()noexcept { return block_extent_; }
 
     /**@brief Extent of each block */
-    bool is_server()noexcept { return decomposition_.is_server(); }
-    bool is_client()noexcept { return decomposition_.is_client(); }
+    bool is_server()const noexcept { return decomposition_.is_server(); }
+    bool is_client()const noexcept { return decomposition_.is_client(); }
 
     const decompositon_type& decomposition()const noexcept {
         return decomposition_;}
@@ -596,7 +598,7 @@ public: //Access
 
     std::vector<int> get_nPoints() noexcept
     {
-        boost::mpi::communicator world;
+        //auto client_comm_ = this->client_communicator();
         int nPts=0;
         int nPts_global=0;
         int nLevels=this->tree()->depth()-this->tree()->base_level();
@@ -615,16 +617,20 @@ public: //Access
                     it->data()->node_field().size();
             }
         }
-        boost::mpi::all_reduce(world,nPts, nPts_global, std::plus<int>());
+        boost::mpi::all_reduce(client_comm_,nPts, nPts_global, std::plus<int>());
 
         for(std::size_t i=0;i<nPoints_perLevel.size();++i)
         {
-            boost::mpi::all_reduce(world,nPoints_perLevel[i],
+            boost::mpi::all_reduce(client_comm_,nPoints_perLevel[i],
                                    nPoints_perLevel_global[i],
                                    std::plus<int>());
         }
         nPoints_perLevel_global.push_back(nPts_global);
         return nPoints_perLevel_global;
+    }
+    int nLevels()const noexcept
+    {
+        return this->tree()->depth()-this->tree()->base_level();
     }
 public:
 
@@ -648,6 +654,9 @@ public:
         //);
         return os;
     }
+
+    const auto& client_communicator() const noexcept { return client_comm_; }
+    auto& client_communicator() noexcept { return client_comm_; }
 
 private:
 
@@ -689,6 +698,8 @@ private:
     float_type dx_base_;
     decompositon_type decomposition_;
     refinement_condition_fct_t ref_cond_ = &Domain::refinement_cond_default;
+
+    boost::mpi::communicator client_comm_;
 
 };
 

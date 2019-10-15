@@ -132,12 +132,12 @@ public:
         const float_type ideal_load=total_load/nProcs;
         const int blevel=domain_->tree()->base_level();
 
-        for( auto it = domain_->begin_bf(); it!= domain_->end_bf();++it )
-        {
-            it->load()=0.0;
-        }
-        fmm::FmmMaskBuilder<domain_t>::fmm_dry( domain_,blevel,false );
-        fmm::FmmMaskBuilder<domain_t>::fmm_dry( domain_,blevel,true );
+        //for( auto it = domain_->begin_bf(); it!= domain_->end_bf();++it )
+        //{
+        //    it->load()=0.0;
+        //}
+        //fmm::FmmMaskBuilder<domain_t>::fmm_dry( domain_,blevel,false );
+        //fmm::FmmMaskBuilder<domain_t>::fmm_dry( domain_,blevel,true );
 
 
         const bool include_baselevel=false; 
@@ -167,12 +167,12 @@ public:
         for (int l = lstart; l < domain_->tree()->depth(); ++l)
         {
 
-            for( auto it = domain_->begin_bf(); it!= domain_->end_bf();++it )
-            {
-                it->load()=0.0;
-            }
-            fmm::FmmMaskBuilder<domain_t>::fmm_dry( domain_,l,false );
-            fmm::FmmMaskBuilder<domain_t>::fmm_dry( domain_,l,true );
+            //for( auto it = domain_->begin_bf(); it!= domain_->end_bf();++it )
+            //{
+            //    it->load()=0.0;
+            //}
+            //fmm::FmmMaskBuilder<domain_t>::fmm_dry( domain_,l,false );
+            //fmm::FmmMaskBuilder<domain_t>::fmm_dry( domain_,l,true );
 
             split(domain_->begin(l),domain_->end(l),tasks_perProc,exitCondition1);
         }

@@ -143,7 +143,7 @@ math::vector<typename std::common_type<U,V>::type,N> operator+(const math::vecto
 {
 	math::vector<typename std::common_type<U,V>::type,N> res(lhs);
 	for(unsigned int i=0; i<N; ++i) res[i] += rhs[i];
-	return std::move(res); 
+	return res; 
 }
 
 template<typename U, typename V, std::size_t N>
@@ -151,7 +151,7 @@ math::vector<typename std::common_type<U,V>::type,N> operator+(const math::vecto
 {
 	math::vector<typename std::common_type<U,V>::type,N> res(lhs);
 	for(unsigned int i=0; i<N; ++i) res[i] += rhs;
-	return std::move(res); 
+	return res; 
 }
 
 template<typename U, typename V, std::size_t N>
@@ -159,7 +159,7 @@ math::vector<typename std::common_type<U,V>::type,N> operator+(const V& lhs, con
 {
 	math::vector<typename std::common_type<U,V>::type,N> res(rhs);
 	for(unsigned int i=0; i<N; ++i) res[i] += lhs;
-	return std::move(res); 
+	return res; 
 }
 
 template<typename U, typename V, std::size_t N>
@@ -167,7 +167,7 @@ math::vector<typename std::common_type<U,V>::type,N> operator-(const math::vecto
 {
 	math::vector<typename std::common_type<U,V>::type,N> res(lhs);
 	for(unsigned int i=0; i<N; ++i) res[i] -= rhs[i];
-	return std::move(res); 
+	return res; 
 }
 
 template<typename U, typename V, std::size_t N>
@@ -175,7 +175,7 @@ math::vector<typename std::common_type<U,V>::type,N> operator-(const math::vecto
 {
 	math::vector<typename std::common_type<U,V>::type,N> res(lhs);
 	for(unsigned int i=0; i<N; ++i) res[i] -= rhs;
-	return std::move(res); 
+	return res; 
 }
 
 template<typename U, typename V, std::size_t N>
@@ -183,7 +183,7 @@ math::vector<typename std::common_type<U,V>::type,N> operator-(const V& lhs, con
 {
 	math::vector<typename std::common_type<U,V>::type,N> res(rhs);
 	for(unsigned int i=0; i<N; ++i) res[i] -= lhs;
-	return std::move(res); 
+	return res; 
 }
 
 template<typename U, typename V, std::size_t N>
@@ -191,7 +191,7 @@ math::vector<typename std::common_type<U,V>::type,N> operator*(const math::vecto
 {
 	math::vector<typename std::common_type<U,V>::type,N> res(lhs);
 	for(unsigned int i=0; i<N; ++i) res[i] *= rhs[i];
-	return std::move(res); 
+	return res; 
 }
 
 template<typename U, typename V, std::size_t N>
@@ -199,7 +199,7 @@ math::vector<typename std::common_type<U,V>::type,N> operator*(const math::vecto
 {
 	math::vector<typename std::common_type<U,V>::type,N> res(lhs);
 	for(unsigned int i=0; i<N; ++i) res[i] *= rhs;
-	return std::move(res); 
+	return res; 
 }
 
 template<typename U, typename V, std::size_t N>
@@ -207,7 +207,7 @@ math::vector<typename std::common_type<U,V>::type,N> operator*(const V& lhs, con
 {
 	math::vector<typename std::common_type<U,V>::type,N> res(rhs);
 	for(unsigned int i=0; i<N; ++i) res[i] *= lhs;
-	return std::move(res); 
+	return res; 
 }
 
 template<typename U, typename V, std::size_t N>
@@ -215,7 +215,7 @@ math::vector<typename std::common_type<U,V>::type,N> operator/(const math::vecto
 {
 	math::vector<typename std::common_type<U,V>::type,N> res(lhs);
 	for(unsigned int i=0; i<N; ++i) res[i] /= rhs[i];
-	return std::move(res); 
+	return res; 
 }
 
 template<typename U, typename V, std::size_t N>
@@ -223,7 +223,7 @@ math::vector<typename std::common_type<U,V>::type,N> operator/(const math::vecto
 {
 	math::vector<typename std::common_type<U,V>::type,N> res(lhs);
 	for(unsigned int i=0; i<N; ++i) res[i] /= rhs;
-	return std::move(res); 
+	return res; 
 }
 
 template<typename U, typename V, std::size_t N>
@@ -231,7 +231,7 @@ math::vector<typename std::common_type<U,V>::type,N> operator/(const V& lhs, con
 {
 	math::vector<typename std::common_type<U,V>::type,N> res(rhs);
 	for(unsigned int i=0; i<N; ++i) res[i] = lhs/res[i];
-	return std::move(res); 
+	return res; 
 }
 
 
@@ -241,7 +241,7 @@ typename std::common_type<U,V>::type dot(const math::vector<U,N>& lhs, const mat
 	typename std::common_type<U,V>::type res(lhs[0]*rhs[0]); 
 	for (unsigned int i=1; i<N; ++i) 
 	res+=lhs[i]*rhs[i]; 
-	return std::move(res);
+	return res;
 }
 
 template<typename U, std::size_t N>
@@ -279,7 +279,7 @@ math::vector<U,N> max(const math::vector<U,N>& lhs, const math::vector<U,N>& rhs
 {
 	math::vector<U,N> res;
 	for (std::size_t n=0; n<N; ++n) res[n] = std::max(lhs[n],rhs[n]);
-	return std::move(res);
+	return res;
 }
 
 template<typename U, std::size_t N>
@@ -287,7 +287,7 @@ math::vector<U,N> min(const math::vector<U,N>& lhs, const math::vector<U,N>& rhs
 {
 	math::vector<U,N> res;
 	for (std::size_t n=0; n<N; ++n) res[n] = std::min(lhs[n],rhs[n]);
-	return std::move(res);
+	return res;
 }
 
 } // namespace std

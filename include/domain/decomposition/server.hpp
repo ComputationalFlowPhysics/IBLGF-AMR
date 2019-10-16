@@ -76,8 +76,117 @@ public: //Ctors
 
 public:
 
+    //template<class Begin, class End, class Container, class Function,class Function1>
+    //void split(Begin _begin, End _end, Container& _tasks_perProc, 
+    //           std::vector<float_type>& _loads_perProc,
+    //           Function& _exitCheck, Function1& _continueCheck ) const noexcept
+    //{
+    //    float_type total_load=0.0;
+    //    const auto nProcs=comm_.size()-1;
+    //    for( auto it = _begin; it!= _end;++it )
+    //    {
+    //        if(_exitCheck(it)) break;
+    //        if(_continueCheck(it)) continue;
+    //        total_load+=it->load();
+    //    }
+
+    //    auto it = _begin;
+    //    float_type current_load= 0.;
+    //    for(int crank=0;crank<nProcs;++crank)
+    //    {
+    //        float_type target_load= (static_cast<float_type>(crank+1)/nProcs)*total_load;
+    //        target_load=std::min(target_load,total_load);
+    //        int count=0;
+    //        while(current_load<=target_load || count ==0)
+    //        {
+    //            if(_continueCheck(it))
+    //            {
+    //                 ++it; 
+    //                 if(it==_end) break;
+    //                 if(_exitCheck(it)) break;
+    //                 continue;
+    //            }
+
+
+    //            it->rank()=crank+1;
+    //            auto load= it->load();
+
+    //            ctask_t task(it.ptr(), it->rank(), load);
+    //            _loads_perProc[crank]+=load;
+    //            _tasks_perProc[crank].push_back(task);
+    //            current_load+=load;
+    //            ++it;
+    //            ++count;
+    //            if(it==_end) break;
+    //            if(_exitCheck(it)) break;
+    //        }
+    //        if(it==_end) break;
+    //        if(_exitCheck(it)) break;
+    //    }
+    //}
+
+    //auto compute_distribution() const 
+    //{
+    //    std::cout<<"Computing domain decomposition for "<<comm_.size()<<" processors" <<std::endl;
+    //    float_type total_load=0.0;
+    //    const auto nProcs=comm_.size()-1;
+    //    for( auto it = domain_->begin_df(); it!= domain_->end_df();++it )
+    //    {
+    //        total_load+=it->load();
+    //    }
+
+    //    const int blevel=domain_->tree()->base_level();
+    //    std::vector<std::list<ctask_t>> tasks_perProc(nProcs);
+    //    std::vector<float_type> total_loads_perProc(nProcs,0.0);
+
+    //    for (int l = domain_->tree()->depth()-1; l >= 0; --l)
+    //    {
+    //        // Split leafs according to morton order
+    //        auto exitCondition1=[](auto& it){return false;};
+    //        auto continueCondition1=[&blevel](auto& it){return !it->is_leaf();};
+
+    //        split(domain_->begin(l),domain_->end(l),
+    //                tasks_perProc, total_loads_perProc,
+    //                exitCondition1,continueCondition1);
+
+    //        for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+    //        {
+    //            if(it->is_leaf()) continue;
+
+    //            int rank_tobe=-1;
+    //            float_type min_load=std::numeric_limits<float_type>::max();
+    //            for(int i=0;i<it->num_children();++i)
+    //            {
+    //                const auto child = it->child(i);
+    //                if(!child) continue;
+
+    //                if(child->rank()==-1) throw std::runtime_error("Child not set ");
+    //                if(total_loads_perProc[child->rank()] < min_load)
+    //                {
+    //                    rank_tobe=child->rank();
+    //                }
+    //            }
+    //            it->rank()=rank_tobe;
+    //            ctask_t task(it.ptr(), rank_tobe, it->load());
+    //            total_loads_perProc[rank_tobe-1]+=it->load();
+    //            tasks_perProc[rank_tobe-1].push_back(task);
+    //        }
+    //    }
+    //    for( auto it = domain_->begin_df(); it!= domain_->end_df();++it )
+    //    {
+    //        if(it->rank()==-1) 
+    //        {
+    //            throw std::runtime_error("Domain decomposition (Server):"
+    //                    " Some octant's rank was not set");
+    //        }
+    //    }
+    //    std::cout<<"Done with initial load balancing"<<std::endl;
+    //    return tasks_perProc;
+    //}
+
+
     template<class Begin, class End, class Container, class Function>
-    auto split(Begin _begin, End _end, Container& _tasks_perProc, Function& _f ) const noexcept
+    void split(Begin _begin, End _end, Container& _tasks_perProc, Function& _f ) const noexcept
     {
         float_type total_load=0.0;
         const auto nProcs=comm_.size()-1;
@@ -112,12 +221,10 @@ public:
             if(it==_end) break;
             if(_f(it)) break;
         }
-        return _tasks_perProc;
     }
 
     auto compute_distribution() const noexcept
     {
-        //TODO levelwise load calc and clear again
         const auto nProcs=comm_.size()-1;
 
         std::cout<<"Computing domain decomposition for "<<comm_.size()<<" processors" <<std::endl;
@@ -131,14 +238,6 @@ public:
 
         const float_type ideal_load=total_load/nProcs;
         const int blevel=domain_->tree()->base_level();
-
-        //for( auto it = domain_->begin_bf(); it!= domain_->end_bf();++it )
-        //{
-        //    it->load()=0.0;
-        //}
-        //fmm::FmmMaskBuilder<domain_t>::fmm_dry( domain_,blevel,false );
-        //fmm::FmmMaskBuilder<domain_t>::fmm_dry( domain_,blevel,true );
-
 
         const bool include_baselevel=false; 
         if(include_baselevel)
@@ -166,14 +265,6 @@ public:
         if(!include_baselevel) lstart+=1;
         for (int l = lstart; l < domain_->tree()->depth(); ++l)
         {
-
-            //for( auto it = domain_->begin_bf(); it!= domain_->end_bf();++it )
-            //{
-            //    it->load()=0.0;
-            //}
-            //fmm::FmmMaskBuilder<domain_t>::fmm_dry( domain_,l,false );
-            //fmm::FmmMaskBuilder<domain_t>::fmm_dry( domain_,l,true );
-
             split(domain_->begin(l),domain_->end(l),tasks_perProc,exitCondition1);
         }
 

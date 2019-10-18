@@ -461,8 +461,15 @@ public:
         //std::sort(octants.begin(), octants.end(),[&](const auto& e0, const auto& e1)
         //        {return e0.second> e1.second;  });
 
+//#define packMessages
+
+#ifdef packMessages
         const bool start_communication = false;
         bool combined_messages=false;
+#else 
+        const bool start_communication = true;
+#endif
+
         int c=0;
 
         for (auto B_it=sorted_octants_.begin(); B_it!=sorted_octants_.end(); ++B_it)
@@ -491,6 +498,7 @@ public:
                             _neighbor,
                             start_communication, fmm_mask_idx_);
             }
+#ifdef packMessages
             else if (!combined_messages )
             //if(!combined_messages && B_it->second==0)
             {
@@ -499,20 +507,25 @@ public:
                     combined_messages=true;
             }
             if(c%5==0 && combined_messages)
-            //if(combined_messages)
             {
                 domain_->decomposition().client()->template
                     check_combined_induced_field_communication<fmm_t,fmm_t>(false);
             }
             ++c;
+#endif
         }
 
+#ifdef packMessages
         //Finish the communication
         if(combined_messages)
         {
             domain_->decomposition().client()->template
                 check_combined_induced_field_communication<fmm_t,fmm_t>(true);
         }
+#else
+        domain_->decomposition().client()->template
+            finish_induced_field_communication();
+#endif
     }
 
 

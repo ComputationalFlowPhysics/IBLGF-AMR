@@ -151,8 +151,9 @@ public:
     /** @brief Combine messages into a single Taks per rank and post
      *         send/recv task. For a send task, this wil copy
      *         the buffer of the individual task into a single task per cpu.
+     *         If rank is set to -1 do it for all ranks
      *         */
-    void pack_messages() noexcept
+    void pack_messages(int _rank=-1) noexcept
     {
 
         boost::mpi::communicator world;
@@ -162,6 +163,8 @@ public:
         acc_fields.clear();
         acc_tasks.resize(world.size());
         acc_fields.resize(world.size());
+
+        if(buffer_queue_.empty()) return;
 
         this->derived().construct_acc_comm_();
         
@@ -433,6 +436,12 @@ public: //members
                 }
             }
         }
+
+        
+        
+        
+        
+        //pack again
     }
 
     auto& acc_comm()noexcept { return acc_comm_; }

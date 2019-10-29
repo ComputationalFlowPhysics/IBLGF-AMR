@@ -225,6 +225,14 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
             template get_or<float_type>("source_max",max_vort);
         pcout<<"source_max "<<vorticity_max_<<std::endl;
 
+        refinement_factor_ =simulation_.dictionary_->
+            template get<float_type>("refinement_factor");
+        pcout<<"Refienment factor "<<refinement_factor_<<std::endl;
+        use_correction_ =simulation_.dictionary_->
+            template get_or<bool>("correction", true);
+        pcout<<"Using correction "<<std::boolalpha<<use_correction_<<std::endl;
+
+
         pcout << "\n Setup:  Test - Vortex rings \n" << std::endl;
         pcout << "Number of refinement levels: "<<nLevels_<<std::endl;
         domain_->register_refinement_condition()=
@@ -273,6 +281,8 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
         {
             auto pts=domain_->get_nPoints();
             poisson_solver_t psolver(&this->simulation_);
+
+            psolver.use_correction()=use_correction_;
 
             mDuration_type solve_duration(0);
             client_comm_.barrier();
@@ -434,8 +444,9 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
                     const auto vort=vorticity(x,y,z);
                     if(std::fabs(vort) > 
                             //vorticity_max_*pow(0.25*0.25*0.5 , diff_level)
-                            vorticity_max_*pow(0.25*0.5 , diff_level)
+                            //vorticity_max_*pow(0.25*0.5 , diff_level)
                             //vorticity_max_*pow(0.25 , diff_level)
+                            vorticity_max_*pow(refinement_factor_ , diff_level)
                       )
                     {
                         return true;
@@ -459,6 +470,8 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
 private:
     float_type vorticity_max_;
     std::vector<vortex_ring> vrings_;
+    float_type refinement_factor_=1./8;
+    bool use_correction_=true;
 };
 
 

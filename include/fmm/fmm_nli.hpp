@@ -232,9 +232,9 @@ namespace fmm
             double M(floor(Nb_));
             //M=16.0;
             xt::xtensor<std::complex<double>, 2>
-                mat_cal_basis(std::array<size_t, 2>{{ Nb_, int(M)}});
+                mat_cal_basis(std::array<size_t, 2>{{ static_cast<size_t>(Nb_), static_cast<size_t>(M)}});
             xt::xtensor<std::complex<double>, 2>
-                mat_cal_intrp(std::array<size_t, 2>{{ 2*Nb_-1, int(M) }});
+                mat_cal_intrp(std::array<size_t, 2>{{ static_cast<size_t>(2*Nb_-1), static_cast<size_t>(M) }});
 
             std::vector<std::complex<double>> K((int)M);
 

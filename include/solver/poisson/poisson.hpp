@@ -419,16 +419,20 @@ public:
 
             // Correction
             //if (l == domain_->tree()->depth()-1) continue;
-            if (l != domain_->tree()->depth()-1)
+            if(use_correction_)
             {
-                for (auto it  = domain_->begin(l);
-                        it != domain_->end(l); ++it)
+                if (l != domain_->tree()->depth()-1)
                 {
-                    int refinement_level = it->refinement_level();
-                    double dx = dx_base/std::pow(2,refinement_level);
-                    c_cntr_nli_.add_source_correction
-                        <target_tmp, source_tmp>(it, dx/2.0);
+                    for (auto it  = domain_->begin(l);
+                            it != domain_->end(l); ++it)
+                    {
+                        int refinement_level = it->refinement_level();
+                        double dx = dx_base/std::pow(2,refinement_level);
+                        c_cntr_nli_.add_source_correction
+                            <target_tmp, source_tmp>(it, dx/2.0);
+                    }
                 }
+
             }
 
 #ifdef POISSON_TIMINGS
@@ -832,6 +836,10 @@ public:
    }
 
 
+   const bool& use_correction()const noexcept{return use_correction_;}
+   bool& use_correction()noexcept{return use_correction_;}
+
+
 private:
     domain_type*                      domain_;    ///< domain
     Fmm_t                             fmm_;       ///< fast-multipole
@@ -839,6 +847,7 @@ private:
     lgf_if_t                          lgf_if_;
     interpolation::cell_center_nli    c_cntr_nli_;///< Lagrange Interpolation
     parallel_ostream::ParallelOstream pcout=parallel_ostream::ParallelOstream(1);
+    bool use_correction_ =true;
 
     //Timings:
     struct Timings{

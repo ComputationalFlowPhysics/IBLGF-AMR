@@ -295,7 +295,7 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
         this->compute_errors<phi_num,phi_exact,error>();
         this->compute_errors<amr_lap_source,source,error_lap_source>("laplace_");
 
-        //simulation_.write2("mesh.hdf5");
+        simulation_.write2("mesh.hdf5");
     }
 
 

@@ -50,8 +50,38 @@ public:
                 6, true);
     }
 
+    static void fmm_vortex_streamfun_mask(Domain* domain_)
+    {
+        int base_level=domain_->tree()->base_level();
+        int fmm_mask_idx = 0;
+
+        for (auto it = domain_->begin(base_level);
+                it != domain_->end(base_level); ++it)
+        {
+
+           if (!it->is_correction())
+                it->fmm_mask(fmm_mask_idx,MASK_LIST::Mask_FMM_Source, true);
+           else
+                it->fmm_mask(fmm_mask_idx,MASK_LIST::Mask_FMM_Source, false);
+
+           if (it->is_correction())
+                it->fmm_mask(fmm_mask_idx,MASK_LIST::Mask_FMM_Target, true);
+           else
+                it->fmm_mask(fmm_mask_idx,MASK_LIST::Mask_FMM_Target, false);
+        }
+
+        fmm_upward_pass_masks(
+                domain_,
+                base_level,
+                MASK_LIST::Mask_FMM_Source,
+                MASK_LIST::Mask_FMM_Target,
+                fmm_mask_idx
+                );
+    }
+
     static void fmm_lgf_mask_build(Domain* domain_)
     {
+
         for (int l  = domain_->tree()->base_level();
                 l < domain_->tree()->depth(); ++l)
         {
@@ -62,13 +92,20 @@ public:
     static void fmm_dry(Domain* domain_, int base_level, bool non_leaf_as_source)
     {
 
-        fmm_dry_init_base_level_masks(domain_, base_level, non_leaf_as_source);
+        int refinement_level = base_level-domain_->tree()->base_level();
+        int fmm_mask_idx = refinement_level*2+non_leaf_as_source+1;
+
+        fmm_dry_init_base_level_masks(domain_,
+                                    base_level,
+                                    non_leaf_as_source,
+                                    fmm_mask_idx);
         fmm_upward_pass_masks(
                 domain_,
                 base_level,
                 MASK_LIST::Mask_FMM_Source,
                 MASK_LIST::Mask_FMM_Target,
-                non_leaf_as_source);
+                fmm_mask_idx
+                );
     }
 
     static void fmm_upward_pass_masks(
@@ -76,12 +113,9 @@ public:
             int base_level,
             int mask_source_id,
             int mask_target_id,
-            bool non_leaf_as_source,
+            const int _fmm_mask_idx,
             float_type _base_factor=1.0)
     {
-
-        int refinement_level = base_level-domain_->tree()->base_level();
-        int fmm_mask_idx_ = refinement_level*2+non_leaf_as_source;
 
         // for all levels
         for (int level=base_level-1; level>=0; --level)
@@ -92,12 +126,12 @@ public:
                     it != domain_->end(level);
                     ++it)
             {
-                it->fmm_mask(fmm_mask_idx_,mask_source_id,false);
+                it->fmm_mask(_fmm_mask_idx,mask_source_id,false);
                 for ( int c = 0; c < it->num_children(); ++c )
                 {
-                    if ( it->child(c) && it->child(c)->fmm_mask(fmm_mask_idx_,mask_source_id) )
+                    if ( it->child(c) && it->child(c)->fmm_mask(_fmm_mask_idx,mask_source_id) )
                     {
-                        it->fmm_mask(fmm_mask_idx_,mask_source_id, true);
+                        it->fmm_mask(_fmm_mask_idx,mask_source_id, true);
                         break;
                     }
                 }
@@ -108,22 +142,22 @@ public:
                     ++it)
             {
                 // including ghost parents
-                it->fmm_mask(fmm_mask_idx_,mask_target_id,false);
+                it->fmm_mask(_fmm_mask_idx,mask_target_id,false);
                 for ( int c = 0; c < it->num_children(); ++c )
                 {
-                    if ( it->child(c) && it->child(c)->fmm_mask(fmm_mask_idx_,mask_target_id) )
+                    if ( it->child(c) && it->child(c)->fmm_mask(_fmm_mask_idx,mask_target_id) )
                     {
-                        it->fmm_mask(fmm_mask_idx_,mask_target_id, true);
+                        it->fmm_mask(_fmm_mask_idx,mask_target_id, true);
                         break;
                     }
                 }
 
                 // calculate load
-                if  (it->fmm_mask(fmm_mask_idx_,mask_target_id))
+                if  (it->fmm_mask(_fmm_mask_idx,mask_target_id))
                     for(std::size_t i = 0; i< it->influence_number(); ++i)
                     {
                         const auto inf=it->influence(i);
-                        if (inf && inf->fmm_mask(fmm_mask_idx_,mask_source_id))
+                        if (inf && inf->fmm_mask(_fmm_mask_idx,mask_source_id))
                             it->add_load(1.0 * _base_factor);
                     }
             }
@@ -135,12 +169,10 @@ public:
             Domain* domain_,
             int base_level,
             bool non_leaf_as_source,
+            int _fmm_mask_idx,
             int _load_factor=1,
             bool _neighbor_only=false)
     {
-        int refinement_level = base_level-domain_->tree()->base_level();
-        int fmm_mask_idx_ = refinement_level*2+non_leaf_as_source;
-
         if (non_leaf_as_source)
         {
             for (auto it = domain_->begin(base_level);
@@ -153,13 +185,13 @@ public:
 
                 if (( it->is_leaf() && !correction_parent) || it->is_correction())
                 {
-                    it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Source, false);
-                    it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Target, false);
+                    it->fmm_mask(_fmm_mask_idx,MASK_LIST::Mask_FMM_Source, false);
+                    it->fmm_mask(_fmm_mask_idx,MASK_LIST::Mask_FMM_Target, false);
                 } else
                 {
-                    it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Source, true);
-                    if (!it->is_correction())
-                        it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Target,
+                    it->fmm_mask(_fmm_mask_idx,MASK_LIST::Mask_FMM_Source, true);
+                    //if (!it->is_correction())
+                        it->fmm_mask(_fmm_mask_idx,MASK_LIST::Mask_FMM_Target,
                                 true);
 
                     if (!_neighbor_only)
@@ -174,11 +206,11 @@ public:
             for(auto it = domain_->begin(base_level);
                  it!=domain_->end(base_level);++it)
                 {
-                    it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Source,
+                    it->fmm_mask(_fmm_mask_idx,MASK_LIST::Mask_FMM_Source,
                             true);
 
-                    if (!it->is_correction())
-                        it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Target,
+                    //if (!it->is_correction())
+                        it->fmm_mask(_fmm_mask_idx,MASK_LIST::Mask_FMM_Target,
                                 true);
 
                     if (!_neighbor_only)
@@ -229,8 +261,9 @@ public:
     void apply(domain_t* domain_,
                Kernel* _kernel,
                int level,
-               bool non_leaf_as_source=false,
-               float_type add_with_scale = 1.0)
+               bool non_leaf_as_source,
+               float_type add_with_scale = 1.0,
+               bool base_level_only=false)
     {
 
         const float_type dx_base=domain_->dx_base();
@@ -238,7 +271,10 @@ public:
         auto dx_level =  dx_base/std::pow(2, refinement_level);
 
         base_level_ = level;
-        fmm_mask_idx_ = refinement_level*2+non_leaf_as_source;
+        if (base_level_only)
+            fmm_mask_idx_ = 0;
+        else
+            fmm_mask_idx_ = refinement_level*2+non_leaf_as_source+1;
 
         if (_kernel->neighbor_only())
         {
@@ -246,12 +282,20 @@ public:
             fmm_init_zero<fmm_s>(domain_, MASK_LIST::Mask_FMM_Source);
             fmm_init_zero<fmm_t>(domain_, MASK_LIST::Mask_FMM_Target);
             fmm_init_copy<Source, fmm_s>(domain_);
-            fmm_IF(domain_, _kernel);
+
+            //TODO : IT's ready to be merged with lgf
+
+            // Sort_BX
+            // For IF one one doesn't have to scale it with dx, so the scale is
+            // set to be 1.0 here
+            sort_bx_octants(domain, _kernel);
+            fmm_Bx(domain_, _kernel, 1.0);
 
             fmm_add_equal<Target, fmm_t>(domain_,add_with_scale);
 
             return;
         }
+
         pcout<<"FMM For Level "<< level << " Start ---------------------------"<<std::endl;
         // New logic using masks
         // 1. Give masks to the base level
@@ -290,7 +334,7 @@ public:
 
         //// Copy to temporary variables // only the base level
         fmm_init_copy<Source, fmm_s>(domain_);
-        sort_bx_octants(domain);
+        sort_bx_octants(domain, _kernel);
 
 #ifdef POISSON_TIMINGS
         timings_=Timings() ;
@@ -317,7 +361,8 @@ public:
 #ifdef POISSON_TIMINGS
         auto t0_bx=clock_type::now();
 #endif
-        fmm_Bx(domain_, _kernel, dx_level);
+        float_type scale = (_kernel->neighbor_only())? 1.0: dx_level;
+        fmm_Bx(domain_, _kernel, scale);
 #ifdef POISSON_TIMINGS
         //domain_->client_communicator().barrier();
         auto t1_bx=clock_type::now();
@@ -371,63 +416,13 @@ public:
     }
 
     template<class Kernel>
-    void fmm_IF(domain_t* domain_,
-                Kernel* _kernel)
-    {
-        std::vector<std::pair<octant_t*, int>> octants;
-
-        for (auto it = domain_->begin(base_level_); it != domain_->end(base_level_); ++it)
-        {
-            bool _neighbor = true;
-            if (!(it->data()) || !it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Target) )
-                continue;
-
-            int recv_m_send_count =
-            domain_->decomposition().client()->template
-            communicate_induced_fields_recv_m_send_count<fmm_t, fmm_t>(it, _neighbor, fmm_mask_idx_);
-
-            octants.emplace_back(std::make_pair(*it,recv_m_send_count));
-        }
-        //Sends=10000, recv1-10000, no_communication=0
-        std::sort(octants.begin(), octants.end(),[&](const auto& e0, const auto& e1)
-                {return e0.second> e1.second;  });
-
-        const bool start_communication = true;
-
-        for (auto B_it=octants.begin(); B_it!=octants.end(); ++B_it)
-        {
-            auto it =B_it->first;
-            bool _neighbor = true;
-            if (!(it->data()) || !it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Target) )
-                continue;
-
-            if(it->locally_owned())
-            {
-                // no need to use dx and so dx_level=1.0
-                compute_influence_field(&(*it), _kernel,
-                                       0, 1.0, _neighbor);
-            }
-
-            //setup the tasks
-            //no need to use dx and so dx_level=1.0
-            domain_->decomposition().client()->template
-                communicate_induced_fields<fmm_t, fmm_t>(&(*it),
-                    this, _kernel,0,1.0,
-                    _neighbor,
-                    start_communication, fmm_mask_idx_);
-        }
-
-        mDuration_type time_communication_Bx;
-
-        TIME_CODE(time_communication_Bx, SINGLE_ARG(
-        domain_->decomposition().client()->finish_induced_field_communication();
-        ))
-    }
-
-    void sort_bx_octants(domain_t* domain_)
+    void sort_bx_octants(domain_t* domain_, Kernel* _kernel)
     {
         sorted_octants_.clear();
-        for (int level=base_level_; level>=0; --level)
+
+        const int level_max = (_kernel->neighbor_only()) ? base_level_ : 0;
+
+        for (int level=base_level_; level>= level_max; --level)
         {
             for (auto it = domain_->begin(level); it != domain_->end(level); ++it)
             {
@@ -442,33 +437,16 @@ public:
                 sorted_octants_.emplace_back(std::make_pair(*it,recv_m_send_count));
             }
         }
+
         std::sort(sorted_octants_.begin(), sorted_octants_.end(),[&](const auto& e0, const auto& e1)
-                {return e0.second> e1.second;  });
+                {return e0.second> e1.second; });
     }
 
     template<class Kernel>
     void fmm_Bx(domain_t* domain_,
                 Kernel* _kernel,
-                float_type dx_level)
+                float_type scale)
     {
-        //std::vector<std::pair<octant_t*, int>> octants;
-        //for (int level=base_level_; level>=0; --level)
-        //{
-        //    for (auto it = domain_->begin(level); it != domain_->end(level); ++it)
-        //    {
-        //        bool _neighbor = (level==base_level_)? true:false;
-        //        if (!(it->data()) || !it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Target) )
-        //            continue;
-
-        //        int recv_m_send_count =
-        //            domain_->decomposition().client()->template
-        //            communicate_induced_fields_recv_m_send_count<fmm_t, fmm_t>(it, _neighbor, fmm_mask_idx_);
-
-        //        octants.emplace_back(std::make_pair(*it,recv_m_send_count));
-        //    }
-        //}
-        //std::sort(octants.begin(), octants.end(),[&](const auto& e0, const auto& e1)
-        //        {return e0.second> e1.second;  });
 
         const bool start_communication = false;
         bool combined_messages=false;
@@ -480,23 +458,16 @@ public:
             const int level = it->level();
             const bool _neighbor = (level==base_level_)? true:false;
 
-
-            //if (!(it->data()) ||
-            //        !it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Target) )
-            //    continue;
-
             if(it->locally_owned())
-            {
                 compute_influence_field(&(*it), _kernel,
-                                       base_level_-level, dx_level, _neighbor);
-            }
+                                       base_level_-level, scale, _neighbor);
 
             //setup the tasks
             if(B_it->second!=0)
             {
                 domain_->decomposition().client()->template
                     communicate_induced_fields<fmm_t, fmm_t>(&(*it),
-                            this, _kernel,base_level_-level,dx_level,
+                            this, _kernel,base_level_-level,scale,
                             _neighbor,
                             start_communication, fmm_mask_idx_);
             }
@@ -522,6 +493,7 @@ public:
             domain_->decomposition().client()->template
                 check_combined_induced_field_communication<fmm_t,fmm_t>(true);
         }
+
     }
 
 

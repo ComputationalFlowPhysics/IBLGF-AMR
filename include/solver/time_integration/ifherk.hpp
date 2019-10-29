@@ -46,6 +46,8 @@ public: //member types
     using Fmm_t     = typename Setup::Fmm_t;
 
     using u   = typename Setup::u;
+    using u_str_u   = typename Setup::u_str_u;
+    using stream_f   = typename Setup::stream_f;
     using p   = typename Setup::p;
     using q_i = typename Setup::q_i;
     using r_i = typename Setup::r_i;
@@ -152,6 +154,7 @@ public:
         // q_1 = u
         boost::mpi::communicator world;
 
+        pad_velocity<u, u>();
         copy<u, q_i>();
 
         // Stage 1
@@ -162,6 +165,7 @@ public:
         clean<cell_aux>();
         clean<face_aux>();
         clean<face_aux_2>();
+        // Solve stream function to pad base level u->u_pad
 
         nonlinear<u,g_i>(coeff_a(1,1)*(-dt_));
         copy<q_i, r_i>();
@@ -189,35 +193,40 @@ public:
         add<q_i, r_i>();
         add<w_1, r_i>(dt_*coeff_a(2,1));
 
+        //pad_velocity<u_i, u_i>();
+
         nonlinear<u_i,g_i>(coeff_a(2,2)*(-dt_));
-        add<g_i, r_i>( );
+        //add<g_i, r_i>( );
 
-        lin_sys_solve(alpha_[1]);
+        //lin_sys_solve(alpha_[1]);
 
-        // Stage 3
-        // ******************************************************************
-        pcout<<"Stage 3"<< std::endl;
-        clean<d_i>();
-        clean<cell_aux>();
-        clean<w_2>();
+        //// Stage 3
+        //// ******************************************************************
+        //pcout<<"Stage 3"<< std::endl;
+        //clean<d_i>();
+        //clean<cell_aux>();
+        //clean<w_2>();
 
-        add<g_i, face_aux>(-1.0);
-        copy<face_aux, w_2>(-1.0/dt_/coeff_a(2,2));
-        copy<q_i, r_i>();
-        add<w_1, r_i>(dt_*coeff_a(3,1));
-        add<w_2, r_i>(dt_*coeff_a(3,2));
+        //add<g_i, face_aux>(-1.0);
+        //copy<face_aux, w_2>(-1.0/dt_/coeff_a(2,2));
+        //copy<q_i, r_i>();
+        //add<w_1, r_i>(dt_*coeff_a(3,1));
+        //add<w_2, r_i>(dt_*coeff_a(3,2));
 
-        psolver.template apply_lgf_IF<r_i, r_i>(alpha_[1]);
+        //psolver.template apply_lgf_IF<r_i, r_i>(alpha_[1]);
 
-        nonlinear<u_i,g_i>( coeff_a(3,3)*(-dt_) );
-        add<g_i, r_i>();
+        //pad_velocity<u_i, u_i>();
 
-        lin_sys_solve(alpha_[2]);
+        //nonlinear<u_i,g_i>( coeff_a(3,3)*(-dt_) );
+        //add<g_i, r_i>();
 
-        // ******************************************************************
-        copy<u_i, u>();
-        copy<d_i, p>(1.0/coeff_a(3,3)/dt_);
-        // ******************************************************************
+        //lin_sys_solve(alpha_[2]);
+
+        //// ******************************************************************
+        ////pad_velocity<u_i, u_i>();
+        //copy<u_i, u>();
+        //copy<d_i, p>(1.0/coeff_a(3,3)/dt_);
+        //// ******************************************************************
 
     }
 
@@ -226,11 +235,11 @@ private:
     void lin_sys_solve(float_type _alpha) noexcept
     {
          divergence<r_i, cell_aux>();
-         copy<r_i, face_test_ri>();
-         psolver.template apply_lgf<cell_aux, d_i>();
-         gradient<d_i,face_aux>();
+         //copy<r_i, face_test_ri>();
+         //psolver.template apply_lgf<cell_aux, d_i>();
+         //gradient<d_i,face_aux>();
 
-         add<face_aux, r_i>(-1.0);
+         //add<face_aux, r_i>(-1.0);
          if (std::fabs(_alpha)>1e-4)
              psolver.template apply_lgf_IF<r_i, u_i>(_alpha);
          else
@@ -258,10 +267,50 @@ private:
         }
     }
 
+    template<class Velocity_in, class Velocity_out>
+    void pad_velocity()
+    {
+        auto client=domain_->decomposition().client();
+
+        const int l  = domain_->tree()->base_level();
+        const auto dx_base = domain_->dx_base();
+
+        client->template buffer_exchange<Velocity_in>(l);
+        clean<edge_aux>();
+
+        for (auto it  = domain_->begin(l);
+                it != domain_->end(l); ++it)
+        {
+            if(!it->locally_owned() || !it->data()) continue;
+            if(it->is_correction()) continue;
+
+            const auto dx_level =  dx_base/std::pow(2,it->refinement_level());
+            domain::Operator::curl<Velocity_in,edge_aux>( *(it->data()),dx_level);
+        }
+        //client->template buffer_exchange<edge_aux>(l);
+        psolver.template apply_lgf<edge_aux, stream_f>(true);
+
+        for (auto it  = domain_->begin(l);
+                it != domain_->end(l); ++it)
+        {
+            if(!it->locally_owned() || !it->data()) continue;
+            if(!it->is_correction()) continue;
+
+            const auto dx_level =  dx_base/std::pow(2,it->refinement_level());
+            domain::Operator::curl_transpose<stream_f,Velocity_out>( *(it->data()),dx_level, -1.0);
+        }
+        client->template buffer_exchange<Velocity_out>(l);
+
+
+   }
+
     //TODO maybe to be put directly intor operators:
     template<class Source, class Target>
     void nonlinear(float_type _scale=1.0) noexcept
     {
+        clean<edge_aux>();
+        clean<Target>();
+
         auto client=domain_->decomposition().client();
         const auto dx_base = domain_->dx_base();
 
@@ -275,6 +324,8 @@ private:
                     it != domain_->end(l); ++it)
             {
                 if(!it->locally_owned() || !it->data()) continue;
+                if(it->is_correction()) continue;
+
                 const auto dx_level =  dx_base/std::pow(2,it->refinement_level());
                 domain::Operator::curl<Source,edge_aux>( *(it->data()),dx_level);
             }
@@ -285,18 +336,21 @@ private:
             {
                 if(!it->locally_owned() || !it->data())continue;
                 //const auto dx_level =  dx_base/std::pow(2,it->refinement_level());
-                domain::Operator::nonlinear<Source, edge_aux,Target>
+                if(it->is_correction()) continue;
+
+                domain::Operator::nonlinear<Source,edge_aux,Target>
                     ( *(it->data()));
 
                 for (std::size_t field_idx=0; field_idx<Target::nFields; ++field_idx)
                 {
                     auto& lin_data = it->data()->
-                    template get_linalg_data<Target>(field_idx);
+                        template get_linalg_data<Target>(field_idx);
 
                     lin_data *= _scale;
                 }
             }
 
+            client->template buffer_exchange<Target>(l);
         }
     }
 
@@ -343,6 +397,7 @@ private:
                     lin_data *= _scale;
                 }
             }
+            client->template buffer_exchange<Target>(l);
         }
     }
 

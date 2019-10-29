@@ -51,8 +51,8 @@ struct parameters
         //IF-HERK
          (u_exact          , float_type, 3,    1,       1,     face),
          (u                , float_type, 3,    1,       1,     face),
+         (u_str_u          , float_type, 3,    1,       1,     face),
          (w                , float_type, 3,    1,       1,     edge),
-         (stream_f         , float_type, 3,    1,       1,     edge),
          (p                , float_type, 1,    1,       1,     cell)
     ))
 };

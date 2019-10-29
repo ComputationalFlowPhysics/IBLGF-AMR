@@ -44,20 +44,22 @@ public: //default fields
       (source_correction_tmp,float_type,  1,   1,  1,  cell),
       (target_tmp,         float_type,  1,   1,  1,  cell),
       (fmm_s,              float_type,  1,   1,  1,  cell),
-      (fmm_t,              float_type,  1,   1,  1,  cell)
+      (fmm_t,              float_type,  1,   1,  1,  cell),
       //flow variables
-      //(q_i,                float_type,  3,  1,  1,  face),
-      //(u_i,                float_type,  3,  1,  1,  face),
-      //(d_i,                float_type,  1,  1,  1,  cell),
-      //(g_i,                float_type,  3,  1,  1,  face),
-      //(r_i,                float_type,  3,  1,  1,  face),
-      //(w_1,                float_type,  3,  1,  1,  face),
-      //(w_2,                float_type,  3,  1,  1,  face),
-      //(face_aux,           float_type,  3,  1,  1,  face),
-      //(face_test_ri,       float_type,  3,  1,  1,  face),
-      //(face_aux_2,         float_type,  3,  1,  1,  face),
-      //(cell_aux,           float_type,  1,  1,  1,  cell),
-      //(edge_aux,           float_type,  3,  1,  1,  edge)
+      (q_i,                float_type,  3,  1,  1,  face),
+      (u_i,                float_type,  3,  1,  1,  face),
+      (u_str_u,            float_type,  3,  1,  1,  face),
+      (d_i,                float_type,  1,  1,  1,  cell),
+      (g_i,                float_type,  3,  1,  1,  face),
+      (r_i,                float_type,  3,  1,  1,  face),
+      (w_1,                float_type,  3,  1,  1,  face),
+      (w_2,                float_type,  3,  1,  1,  face),
+      (face_aux,           float_type,  3,  1,  1,  face),
+      (face_test_ri,       float_type,  3,  1,  1,  face),
+      (face_aux_2,         float_type,  3,  1,  1,  face),
+      (cell_aux,           float_type,  1,  1,  1,  cell),
+      (stream_f,           float_type,  3,  1,  1,  edge),
+      (edge_aux,           float_type,  3,  1,  1,  edge)
     ))
 
     using field_tuple=fields_tuple_t;

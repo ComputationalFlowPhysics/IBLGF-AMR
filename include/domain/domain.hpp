@@ -304,9 +304,31 @@ public: //C/Dtors
                             } );
                 }
             }
+
             this->tree()->construct_level_maps();
             this->tree()->construct_influence_lists();
             this->tree()->construct_neighbor_lists();
+
+            // flag base level boundary correction
+            for (auto it = this->begin(base_level);
+                    it != this->end(base_level);
+                    ++it)
+            {
+                bool _neighbors_exists=true;
+                for(int i=0;i<it->nNeighbors();++i)
+                {
+                    if(!it->neighbor(i))
+                        _neighbors_exists=false;
+                    else if(!it->neighbor(i)->data())
+                        _neighbors_exists=false;
+                }
+
+                if (!_neighbors_exists)
+                {
+                    it->flag_correction(true);
+                    //it->flag_leaf(false);
+                }
+            }
         }
 
     }

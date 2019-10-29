@@ -133,10 +133,10 @@ public:
                 (Dest::mesh_type   == MeshObject::face),
             void>::type* = nullptr
             >
-    static void curl_transpose(Block& block, float_type dx_level) noexcept
+    static void curl_transpose(Block& block, float_type dx_level, float_type scale=1.0) noexcept
     {
         auto& nodes_domain=block.nodes_domain();
-        const auto fac = 1.0/dx_level;
+        const auto fac = 1.0/dx_level*scale;
         for(auto it2=nodes_domain.begin();it2!=nodes_domain.end();++it2)
         {
             it2->template get<Dest>(0)=
@@ -160,26 +160,6 @@ public:
                 -it2->template get<Source>(1);
             it2->template get<Dest>(2)*=fac;
 
-            //it2->template get<Dest>(0)=
-            //    -it2->template at_offset<Source>(1,-1, 0,1)
-            //    +it2->template at_offset<Source>(1,-1,-1,1)
-            //    -it2->template at_offset<Source>(1,-1,-1,2)
-            //    +it2->template at_offset<Source>(1, 0,-1,2);
-            //it2->template get<Dest>(0)*=fac;
-
-            //it2->template get<Dest>(1)=
-            //    +it2->template at_offset<Source>( 0, 1, 0,0)
-            //    -it2->template at_offset<Source>( 0, 1,-1,0)
-            //    +it2->template at_offset<Source>( 0, 1,-1,2)
-            //    -it2->template at_offset<Source>( 1, 1,-1,2);
-            //it2->template get<Dest>(1)*=fac;
-
-            //it2->template get<Dest>(2)=
-            //    +it2->template at_offset<Source>( 0, 0, 1,0)
-            //    -it2->template at_offset<Source>( 0, 1, 1,0)
-            //    +it2->template at_offset<Source>( 1, 0, 1,1)
-            //    -it2->template at_offset<Source>( 0, 0, 1,1);
-            //it2->template get<Dest>(2)*=fac;
         }
     }
 

@@ -84,12 +84,12 @@ namespace interpolation
             std::fill(antrp_mat_sub_simple_[1].begin(), antrp_mat_sub_simple_[1].end(), 0.0);
 
             for (size_t i=1;i<Nb_-1;++i)
-                    antrp_mat_sub_simple_[0](i,i*2-1)=2.0;
+                    antrp_mat_sub_simple_[0](i,i*2-1)=1.0;
 
             for (size_t i=1;i<Nb_-1;++i)
             {
-                    antrp_mat_sub_simple_[1](i,i*2-1)=1.0;
-                    antrp_mat_sub_simple_[1](i,i*2)=1.0;
+                    antrp_mat_sub_simple_[1](i,i*2-1)=0.5;
+                    antrp_mat_sub_simple_[1](i,i*2)=0.5;
             }
 
             xt::noalias(antrp_mat_sub_simple_sub_[0]) =
@@ -259,8 +259,7 @@ namespace interpolation
                             !child->data()->is_allocated())
                         continue;
 
-                    if (child->is_correction())
-                        continue;
+                    if(!child->locally_owned()) continue;
 
                     auto& child_linalg_data = child ->data()->
                         template get_linalg_data<from>();
@@ -278,9 +277,6 @@ namespace interpolation
             int idx_x = (child_idx & ( 1 << 0 )) >> 0;
             int idx_y = (child_idx & ( 1 << 1 )) >> 1;
             int idx_z = (child_idx & ( 1 << 2 )) >> 2;
-            xt::noalias( view(child,(1-idx_x)*(Nb_-1),xt::all(),xt::all()) ) *=0.0;
-            xt::noalias( view(child,xt::all(),(1-idx_y)*(Nb_-1),xt::all()) ) *=0.0;
-            xt::noalias( view(child,xt::all(),xt::all(),(1-idx_z)*(Nb_-1)) ) *=0.0;
 
             // Relative position 0 -> coincide with child
             // Relative position 1 -> half cell off with the child
@@ -339,7 +335,7 @@ namespace interpolation
                     // Column major
                     xt::noalias( view(parent, xt::all(), q, p) ) +=
                         xt::linalg::dot( antrp_mat_sub_simple_sub_[idx_x],
-                                           view(nli_aux_3d_antrp, q,p,xt::all()))/8.0;
+                                           view(nli_aux_3d_antrp, q,p,xt::all()));
                 }
             }
         }

@@ -104,7 +104,7 @@ namespace interpolation
 
             //std::cout<< antrp_mat_sub_simple_[0]<< std::endl;
             //std::cout<< antrp_mat_sub_simple_[1]<< std::endl;
-            std::cout<< antrp_mat_relative_pos_1_.data_<< std::endl;
+            //std::cout<< antrp_mat_relative_pos_1_.data_<< std::endl;
 
         }
 

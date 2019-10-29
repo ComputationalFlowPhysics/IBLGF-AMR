@@ -69,6 +69,7 @@ public: //memeber functions
         if(server())
         {
             FmmMaskBuilder::fmm_lgf_mask_build(domain_);
+            FmmMaskBuilder::fmm_vortex_streamfun_mask(domain_);
             //FmmMaskBuilder::fmm_if_load_build(domain_);
             // it's together with fmmMaskBuild for now
             //LoadCalculator::calculate();

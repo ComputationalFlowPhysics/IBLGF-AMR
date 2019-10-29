@@ -446,7 +446,7 @@ public:
         auto& recv_comm=
             task_manager_->template
             recv_communicator<induced_fields_task_t<InfluenceFieldBuffer>>();
-        
+
         send_comm.pack_messages();
         recv_comm.pack_messages();
     }
@@ -470,7 +470,7 @@ public:
             if( !_finish || (recv_comm.done() && send_comm.done())  )
                 break;
         }
-        
+
         if(_finish)
         {
             recv_comm.clear();

@@ -71,18 +71,18 @@ public: //member types
     }
 
 public:
+
     template< class Source, class Target >
-    void apply_lgf()
+    void apply_lgf(bool base_level_only=false)
     {
-        //this->apply_lgf<Source, Target>(&lgf_if_);
         for (std::size_t entry=0; entry<Source::nFields; ++entry)
-            this->apply_lgf<Source, Target>(&lgf_lap_,entry);
+            this->apply_lgf<Source, Target>(&lgf_lap_,entry,base_level_only);
     }
+
     template< class Source, class Target >
     void apply_lgf_IF(float_type _alpha_base)
     {
         lgf_if_.alpha_base_level()=_alpha_base;
-
         for (std::size_t entry=0; entry<Source::nFields; ++entry)
             this->apply_if<Source, Target>(&lgf_if_, entry);
 
@@ -93,7 +93,6 @@ public:
     void apply_if(Kernel*  _kernel, std::size_t _field_idx=0)
     {
 
-
         auto client = domain_->decomposition().client();
         if(!client)return;
 
@@ -102,33 +101,45 @@ public:
         clean_field<target_tmp>();
 
         // Copy source
-        copy_leaf<Source, source_tmp>(_field_idx,0,false);
+        copy_leaf<Source, source_tmp>(_field_idx,0,true);
 
         //Coarsification:
-        source_coarsify(_field_idx, Source::mesh_type);
+        //source_coarsify(_field_idx, Source::mesh_type);
 
         // For IF, interpolate source to correction buffers
 
-        for (int l  = domain_->tree()->base_level();
-                l < domain_->tree()->depth()-1; ++l)
-        {
+        //for (int l  = domain_->tree()->base_level();
+        //        l < domain_->tree()->depth()-1; ++l)
+        //{
 
-            client->template buffer_exchange<source_tmp>(l);
-            // Sync
-            domain_->decomposition().client()->
-                template communicate_updownward_assign
-                    <source_tmp, source_tmp>(l,false,false,-1);
+        //    client->template buffer_exchange<source_tmp>(l);
+        //    // Sync
+        //    domain_->decomposition().client()->
+        //        template communicate_updownward_assign
+        //            <source_tmp, source_tmp>(l,false,false,-1);
 
-            // Interpolate
-            for (auto it  = domain_->begin(l);
-                      it != domain_->end(l); ++it)
-            {
-                if(!it->data() || !it->data()->is_allocated()) continue;
-                c_cntr_nli_.nli_intrp_node<source_tmp, source_tmp>
-                    (it, Source::mesh_type, _field_idx, true);
-            }
+        //}
 
-        }
+        // Interpolate to correction buffer
+        //for (int l = domain_->tree()->depth()-2;
+        //        l >= domain_->tree()->base_level(); --l)
+        //{
+        //    client->template buffer_exchange<source_tmp>(l);
+        //    domain_->decomposition().client()->
+        //        template communicate_updownward_assign
+        //        <source_tmp, source_tmp>(l,false,false,-1);
+
+        //    for (auto it  = domain_->begin(l);
+        //            it != domain_->end(l); ++it)
+        //    {
+        //        if(!it->data() || !it->data()->is_allocated()) continue;
+
+        //        const bool correction_buffer_only = true;
+        //        c_cntr_nli_.nli_intrp_node< source_tmp, source_tmp>(it, Source::mesh_type, _field_idx, correction_buffer_only,false);
+
+        //    }
+        //}
+
 
         for (int l  = domain_->tree()->base_level();
                 l < domain_->tree()->depth(); ++l)
@@ -146,133 +157,12 @@ public:
 
             _kernel->change_level(l-domain_->tree()->base_level());
 
-            fmm_.template apply<source_tmp, target_tmp>(domain_, _kernel, l, false, 1.0);
-            // Interpolate
-            // Sync
-            domain_->decomposition().client()->
-                template communicate_updownward_assign
-                    <target_tmp, target_tmp>(l,false,false,-1);
-
-            for (auto it  = domain_->begin(l);
-                      it != domain_->end(l); ++it)
-            {
-                if(!it->data() || !it->data()->is_allocated()) continue;
-                c_cntr_nli_.nli_intrp_node<target_tmp, target_tmp>
-                    (it, Source::mesh_type, _field_idx, true);
-            }
+            fmm_.template apply<source_tmp, target_tmp>(domain_, _kernel, l, false, 1.0, false);
 
             copy_level<target_tmp, Target>(l, 0, _field_idx, true);
         }
 
     }
-
-     /** @brief Solve the poisson equation using lattice Green's functions on
-     *         a block-refined mesh for a given Source and Target field.
-     *
-     *  @detail Lattice Green's functions are used for solving the poisson
-     *  equation. FMM is used for the level convolution's and the near field
-     *  convolutions are computed using FFT.
-     *  Second order interpolation and coarsification operators are used
-     *  to project the solutions to fine and coarse meshes, respectively.
-     */
-    //template< class Source, class Target, class Kernel >
-    //void apply_lgf(Kernel*  _kernel, std::size_t _field_idx=0)
-    //{
-
-    //    auto client = domain_->decomposition().client();
-    //    if(!client)return;
-
-    //    const float_type dx_base=domain_->dx_base();
-    //    // Cleaning
-    //    clean_field<source_tmp>();
-    //    clean_field<target_tmp>();
-    //    clean_field<correction_tmp>();
-
-    //    // Copy source
-    //    copy_leaf<Source, source_tmp>(_field_idx, 0, false);
-
-    //    //Coarsification:
-    //    source_coarsify(_field_idx, Source::mesh_type);
-
-    //    //Level-Interactions
-    //    for (int l  = domain_->tree()->base_level();
-    //            l < domain_->tree()->depth(); ++l)
-    //    {
-    //        for (auto it_s  = domain_->begin(l);
-    //                it_s != domain_->end(l); ++it_s)
-    //            if (it_s->data() && !it_s->locally_owned())
-    //            {
-    //                if(!it_s ->data()->is_allocated())continue;
-    //                auto& cp2 = it_s ->data()->template get_linalg_data<source_tmp>();
-    //                std::fill (cp2.begin(),cp2.end(),0.0);
-    //            }
-
-    //        //test for FMM
-    //        fmm_.template apply<source_tmp, target_tmp>(domain_, _kernel, l, false, 1.0);
-    //        copy_level<target_tmp, Target>(l, 0, _field_idx, true);
-
-    //        fmm_.template apply<source_tmp, target_tmp>(domain_, _kernel, l, true, -1.0);
-
-    //        // Interpolate
-    //        // Sync
-    //        domain_->decomposition().client()->
-    //            template communicate_updownward_assign
-    //                <target_tmp, target_tmp>(l,false,false,-1);
-
-    //        for (auto it  = domain_->begin(l);
-    //                it != domain_->end(l); ++it)
-    //        {
-    //            if(!it->data() || !it->data()->is_allocated()) continue;
-    //            c_cntr_nli_.nli_intrp_node<target_tmp, target_tmp>(it, Source::mesh_type, _field_idx);
-    //        }
-
-    //        // Correction for LGF
-    //        for (auto it  = domain_->begin(l);
-    //                it != domain_->end(l); ++it)
-    //        {
-    //            int refinement_level = it->refinement_level();
-    //            double dx_level = dx_base/std::pow(2,refinement_level);
-
-    //            if(!it->data() || !it->data()->is_allocated()) continue;
-    //            domain::Operator::laplace<target_tmp, correction_tmp>
-    //            ( *(it->data()),dx_level);
-
-    //        }
-
-    //        client->template buffer_exchange<correction_tmp>(l);
-
-    //        for (auto it  = domain_->begin(l);
-    //                it != domain_->end(l); ++it)
-    //        {
-    //            if(!it->data() || !it->data()->is_allocated()) continue;
-    //            c_cntr_nli_.nli_intrp_node< correction_tmp, correction_tmp >(it, Source::mesh_type, _field_idx);
-    //        }
-
-    //        for (auto it  = domain_->begin(l);
-    //                it != domain_->end(l); ++it)
-    //        {
-    //            int refinement_level = it->refinement_level();
-    //            double dx = dx_base/std::pow(2,refinement_level);
-    //            c_cntr_nli_.add_source_correction
-    //                <target_tmp, correction_tmp>(it, dx/2.0);
-    //        }
-
-    //        for (auto it  = domain_->begin(l+1); it != domain_->end(l+1); ++it)
-    //        {
-    //            if (it->locally_owned())
-    //            {
-    //                auto& lin_data_1 = it->data()->
-    //                    template get_linalg_data<correction_tmp>(0);
-    //                auto& lin_data_2 = it->data()->
-    //                    template get_linalg_data<source_tmp>(0);
-    //                xt::noalias(lin_data_2) += lin_data_1 * 1.0;
-    //            }
-    //        }
-    //    }
-
-    //    // Copy to Target
-    //    // copy_leaf<target_tmp, Target>(0, _field_idx, true);
-    //}
 
     /** @brief Solve the poisson equation using lattice Green's functions on
      *         a block-refined mesh for a given Source and Target field.
@@ -284,7 +174,8 @@ public:
      *  to project the solutions to fine and coarse meshes, respectively.
      */
     template< class Source, class Target, class Kernel >
-    void apply_lgf(Kernel*  _kernel, std::size_t _field_idx=0)
+    void apply_lgf(Kernel*  _kernel, const std::size_t _field_idx,
+                const bool base_level_only)
     {
 
         auto client = domain_->decomposition().client();
@@ -302,13 +193,6 @@ public:
         // Copy source
         copy_leaf<Source, source_tmp>(_field_idx, 0, true);
 
-        if(Source::mesh_type!=MeshObject::cell)
-        {
-            throw
-            std::runtime_error
-            ("Coarsification for non-cell centers needs to be implemented. ");
-        }
-
 #ifdef POISSON_TIMINGS
         timings_=Timings() ;
         const int nLevels=domain_->nLevels();
@@ -320,31 +204,32 @@ public:
         auto t0_coarsify=clock_type::now();
 #endif
 
-        //source_coarsify(_field_idx, Source::mesh_type);
+        source_coarsify(_field_idx, Source::mesh_type);
 
         //Coarsification:
-        for (int l = domain_->tree()->depth()-2;
-                l >= domain_->tree()->base_level(); --l)
-        {
-#ifdef POISSON_TIMINGS
-            const auto t0_level=clock_type::now();
+        //for (int l = domain_->tree()->depth()-2;
+        //        l >= domain_->tree()->base_level(); --l)
+        //{
+#ifdef P//OISSON_TIMINGS
+        //    const auto t0_level=clock_type::now();
 #endif
-            for (auto it_s  = domain_->begin(l);
-                    it_s != domain_->end(l); ++it_s)
-                {
-                    if(!it_s->data() || !it_s->data()->is_allocated()) continue;
-                    this->coarsify<source_tmp, source_tmp>(*it_s, 1.0, false, true);
-                }
+        //    for (auto it_s  = domain_->begin(l);
+        //            it_s != domain_->end(l); ++it_s)
+        //        {
+        //            if(!it_s->data() || !it_s->data()->is_allocated()) continue;
+        //            this->coarsify<source_tmp, source_tmp>(*it_s, 1.0, false, true);
+        //        }
 
-            domain_->decomposition().client()->
-                template communicate_updownward_add<source_tmp, source_tmp>
-                    (l,true,false,-1);
+        //    domain_->decomposition().client()->
+        //        template communicate_updownward_add<source_tmp, source_tmp>
+        //            (l,true,false,-1);
 
-#ifdef POISSON_TIMINGS
-            const auto t1_level=clock_type::now();
-            timings_.level[l-domain_->tree()->base_level()+1]=t1_level-t0_level;
+#ifdef P//OISSON_TIMINGS
+        //    const auto t1_level=clock_type::now();
+        //    timings_.level[l-domain_->tree()->base_level()+1]=t1_level-t0_level;
 #endif
-        }
+        //}
+
 
 #ifdef POISSON_TIMINGS
         auto t1_coarsify= clock_type::now();
@@ -373,8 +258,11 @@ public:
         }
 
         //Level-Interactions
+        const int l_max = base_level_only ?
+            domain_->tree()->base_level()+1 : domain_->tree()->depth();
+
         for (int l = domain_->tree()->base_level();
-                 l < domain_->tree()->depth(); ++l)
+                 l < l_max; ++l)
         {
 
 #ifdef POISSON_TIMINGS
@@ -392,7 +280,7 @@ public:
                 }
 
             // test for FMM
-            fmm_.template apply<source_tmp, target_tmp>(domain_, _kernel, l, false, 1.0);
+            fmm_.template apply<source_tmp, target_tmp>(domain_, _kernel, l, false, 1.0, base_level_only);
 
 #ifdef POISSON_TIMINGS
             timings_.fmm_level[l-domain_->tree()->base_level()]=fmm_.timings();
@@ -407,9 +295,10 @@ public:
                     it->data()->template get_linalg_data<target_tmp>();
                 }
 
+            if (base_level_only) continue;
 
             // minus back the half from correction
-                // delete correction parents
+            // delete correction parents
             for (auto it  = domain_->begin(l);
                     it != domain_->end(l); ++it)
             {
@@ -619,11 +508,11 @@ public:
 
     void source_coarsify(std::size_t _field_idx, MeshObject mesh_type)
     {
-        if(mesh_type!=MeshObject::cell)
-        {
-            throw
-            std::runtime_error("Coarsification for non-cell centers needs to be implemented. ");
-        }
+        //if(mesh_type!=MeshObject::cell)
+        //{
+        //    throw
+        //    std::runtime_error("Coarsification for non-cell centers needs to be implemented. ");
+        //}
         auto client = domain_->decomposition().client();
         if(!client)return;
 
@@ -637,10 +526,10 @@ public:
                 {
                     if(!it_s->data() || !it_s->data()->is_allocated()) continue;
 
-                    //c_cntr_nli_.nli_antrp_node
-                    //    <source_tmp, source_tmp>(*it_s,mesh_type,_field_idx);
+                    c_cntr_nli_.nli_antrp_node
+                        <source_tmp, source_tmp>(*it_s,mesh_type,_field_idx);
 
-                    this->coarsify<source_tmp,source_tmp>(*it_s);
+                    //this->coarsify<source_tmp,source_tmp>(*it_s);
 
                 }
 

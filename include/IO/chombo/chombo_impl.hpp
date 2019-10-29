@@ -44,6 +44,10 @@ public: //member type:
     using offset_vector = std::vector<offset_type>;
 
     using map_type = typename boost::unordered_map<key_type,offset_type>;
+    using domain_t = Domain;
+    using datablock_t  = typename  domain_t::datablock_t;
+    using block_descriptor_t = typename datablock_t::block_descriptor_type;
+    using extent_t           = typename block_descriptor_t::extent_t;
 
 public: //Ctors:
     Chombo()=default;
@@ -179,34 +183,6 @@ private:
                 }
             }
 
-//            // Print out structure of grouped blocks:
-//            std::cout<<"-------------------------------"<<std::endl;
-//            std::cout<<"PRINT STRUCTURE OF BLOCK GROUPS"<<std::endl;
-//            for (auto it=level_map_.begin(); it!=level_map_.end(); it++)
-//            {
-//                std::cout<<"Rank is "<<world.rank()<<" | Level is "<<it->first<<std::endl;
-//                auto& l=it->second;
-//
-//                std::cout<<"There are "<<l.octant_groups.size()<<" groups."<<std::endl;
-//                int count = 0;
-//                //Loop over groups
-//                for (unsigned int j = 0; j < l.octant_groups.size(); ++j)
-//                {
-//                    //Loop over blocks in groups
-//                //    std::cout<<"    Group "<<j<<" of "<<l.octant_groups.size()<<" has size: "<<l.octant_groups[j].size()<<std::endl;
-//
-//              //      std::cout<<"        Blocks :";
-//                    for (unsigned int k = 0; k < l.octant_groups[j].size(); ++k)
-//                    {
-//            //            std::cout<<" "<<count;
-//                        ++count;
-//                    }
-//                    std::cout<<std::endl;
-//                }
-//            }
-
-
-
         }
     } // init
 
@@ -225,17 +201,7 @@ public:
 
         // iterate through field to get field names
         std::vector<std::string> components;
-        field_type_iterator_t::for_types([&components, &world]<typename T>()
-        {
-            std::string name = std::string(T::name());
-
-            if(T::nFields==1)
-                components.push_back(name);
-            else
-                for (std::size_t fidx=0; fidx<T::nFields;++fidx)
-                    components.push_back(name+"_"+std::to_string(fidx));
-
-        });
+        field_type_iterator_t::for_types(component_push_back_for_each(components));
 
         // rite components, number of components and number of levels
         for(std::size_t i=0; i<components.size(); ++i)
@@ -396,6 +362,97 @@ public:
     } // write_global_metaData_________________________________________________
 
 
+    struct component_push_back_for_each
+    {
+        component_push_back_for_each(std::vector<std::string>& components)
+        :components_(components)
+        {
+            //components_=&components;
+        }
+
+        template<class T>
+        auto operator()() const
+        {
+            std::string name = std::string(T::name());
+            if(T::nFields==1)
+                components_.push_back(name);
+            else
+                for (std::size_t fidx=0; fidx<T::nFields;++fidx)
+                    components_.push_back(name+"_"+std::to_string(fidx));
+        }
+
+        std::vector<std::string> &components_;
+    };
+
+    //template<
+    //    class S
+    //    //class W,
+    //    //class B,
+    //    //class G,
+    //    //class O
+    //    >
+    struct write_data_for_each
+    {
+        write_data_for_each(
+                std::vector<value_type> &_single_block_data,
+                boost::mpi::communicator _world,
+                extent_t _block_extent,
+                int _group_extent,
+                std::vector<octant_type*> &_ordered_group
+                )
+        :single_block_data(_single_block_data),
+        ordered_group(_ordered_group)
+        {
+            world = _world;
+            block_extent=_block_extent;
+            group_extent=_group_extent;
+        }
+
+        template<class T>
+        auto operator()() const
+        {
+            for (std::size_t fidx=0; fidx<T::nFields;++fidx)
+            {
+                double field_value = 0.0;
+                boost::mpi::communicator world;
+                if (world.rank()!=0)
+                    for(auto z=0; z<group_extent; ++z)
+                        // base and max should be based on 0 (*block_extent)
+                        for(auto k=0; k<block_extent[2]; ++k)
+                            for(auto y=0; y<group_extent; ++y)
+                                for(auto j=0; j<block_extent[1]; ++j)
+                                    for(auto x=0; x<group_extent; ++x)
+                                    {
+                                        int group_coord = x + y*group_extent
+                                        + z*pow(group_extent,2);
+                                        const auto& octant = (ordered_group)[group_coord];
+                                        const auto& block_desc = octant->data()->descriptor();
+                                        const auto& field = &(octant->data()->node_field());
+
+                                        auto base=block_desc.base();
+
+                                        for(auto i=0; i<block_extent[0]; ++i)
+                                        {
+                                            auto n = field->get(i+base[0],j+base[1],k+base[2]);
+
+                                            field_value = 0.0;
+                                            if (std::abs(n.template get<T>(fidx))>=1e-32)
+                                            {
+                                                field_value=static_cast<value_type>(n.template get<T>(fidx));
+                                            }
+                                            single_block_data.push_back(field_value);
+                                        }
+                                    }
+            }
+        }
+
+        std::vector<value_type>   &single_block_data;
+        boost::mpi::communicator  world;
+        extent_t                  block_extent;
+        int                       group_extent;
+        std::vector<octant_type*> &ordered_group;
+
+    };
 
     void write_level_info(HDF5File* _file,
                      value_type _time=0.0,
@@ -404,21 +461,12 @@ public:
     {
         boost::mpi::communicator world;
 
+        std::vector<std::string> components;
         //using hsize_type =H5size_type;
         auto root = _file->get_root();
 
         // get field names and number of components
-        std::vector<std::string> components;
-        field_type_iterator_t::for_types([&components]<typename T>()
-        {
-            std::string name = std::string(T::name());
-            if(T::nFields==1)
-                components.push_back(name);
-            else
-                for (std::size_t fidx=0; fidx<T::nFields;++fidx)
-                    components.push_back(name+"_"+std::to_string(fidx));
-
-        });
+        field_type_iterator_t::for_types(component_push_back_for_each(components));
         const int num_components = components.size();
 
         std::vector < std::vector < std::vector<offset_type> > > offset_vector;
@@ -569,52 +617,13 @@ public:
 
                 // ------------------------------------------------------------
                 // COMPONENT ITERATOR
-                field_type_iterator_t::for_types([&single_block_data, &world,
-                            &block_extent, &group_extent, &ordered_group]<typename T>()
-                {
-                    for (std::size_t fidx=0; fidx<T::nFields;++fidx)
-                    {
-                    double field_value = 0.0;
-                    if (world.rank()!=0)
-                    {
-                        for(auto z=0; z<group_extent; ++z)
-                        {
-                            // base and max should be based on 0 (block_extent)
-                            for(auto k=0; k<block_extent[2]; ++k)
-                            {
-                                for(auto y=0; y<group_extent; ++y)
-                                {
-                                    for(auto j=0; j<block_extent[1]; ++j)
-                                    {
-                                        for(auto x=0; x<group_extent; ++x)
-                                        {
-                                            int group_coord = x + y*group_extent
-                                                + z*pow(group_extent,2);
-                                            const auto& octant = ordered_group[group_coord];
-                                            const auto& block_desc = octant->data()->descriptor();
-                                            const auto& field = &(octant->data()->node_field());
-
-                                            auto base=block_desc.base();
-
-                                            for(auto i=0; i<block_extent[0]; ++i)
-                                            {
-                                                auto n = field->get(i+base[0],j+base[1],k+base[2]);
-
-                                                field_value = 0.0;
-                                                if (std::abs(n.template get<T>(fidx))>=1e-32)
-                                                {
-                                                    field_value=static_cast<value_type>(n.template get<T>(fidx));
-                                                }
-                                                single_block_data.push_back(field_value);
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    }
-                });     // COMPONENT ITERATOR____________________________
+                field_type_iterator_t::for_types(write_data_for_each(
+                        single_block_data,
+                        world,
+                        block_extent,
+                        group_extent,
+                        ordered_group
+                        ));
 
                 // Write single block data
                 hsize_type block_data_size = single_block_data.size();

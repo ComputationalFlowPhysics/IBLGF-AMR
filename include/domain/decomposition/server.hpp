@@ -76,14 +76,17 @@ public: //Ctors
 
 public:
 
-    template<class Begin, class End, class Container, class Function>
-    auto split(Begin _begin, End _end, Container& _tasks_perProc, Function& _f ) const noexcept
+    template<class Begin, class End, class Container, class Function,class Function1>
+    void split(Begin _begin, End _end, Container& _tasks_perProc, 
+               std::vector<float_type>& _loads_perProc,
+               Function& _exitCheck, Function1& _continueCheck ) const noexcept
     {
         float_type total_load=0.0;
         const auto nProcs=comm_.size()-1;
         for( auto it = _begin; it!= _end;++it )
         {
-            if(_f(it)) break;
+            if(_exitCheck(it)) break;
+            if(_continueCheck(it)) continue;
             total_load+=it->load();
         }
 
@@ -93,115 +96,208 @@ public:
         {
             float_type target_load= (static_cast<float_type>(crank+1)/nProcs)*total_load;
             target_load=std::min(target_load,total_load);
-            float_type octant_load=0.;
             int count=0;
             while(current_load<=target_load || count ==0)
             {
+                if(_continueCheck(it))
+                {
+                     ++it; 
+                     if(it==_end) break;
+                     if(_exitCheck(it)) break;
+                     continue;
+                }
+
+
                 it->rank()=crank+1;
                 auto load= it->load();
 
                 ctask_t task(it.ptr(), it->rank(), load);
+                _loads_perProc[crank]+=load;
                 _tasks_perProc[crank].push_back(task);
                 current_load+=load;
-                octant_load+=load;
                 ++it;
                 ++count;
                 if(it==_end) break;
-                if(_f(it)) break;
+                if(_exitCheck(it)) break;
             }
             if(it==_end) break;
-            if(_f(it)) break;
+            if(_exitCheck(it)) break;
         }
-        return _tasks_perProc;
     }
 
-    auto compute_distribution() const noexcept
+    auto compute_distribution() const 
     {
-        //TODO levelwise load calc and clear again
-        const auto nProcs=comm_.size()-1;
-
         std::cout<<"Computing domain decomposition for "<<comm_.size()<<" processors" <<std::endl;
-        std::vector<std::list<ctask_t>> tasks_perProc(nProcs);
-
         float_type total_load=0.0;
-        for( auto it = domain_->begin_bf(); it!= domain_->end_bf();++it )
+        const auto nProcs=comm_.size()-1;
+        for( auto it = domain_->begin_df(); it!= domain_->end_df();++it )
         {
             total_load+=it->load();
         }
 
-        const float_type ideal_load=total_load/nProcs;
         const int blevel=domain_->tree()->base_level();
+        std::vector<std::list<ctask_t>> tasks_perProc(nProcs);
+        std::vector<float_type> total_loads_perProc(nProcs,0.0);
 
-        for( auto it = domain_->begin_bf(); it!= domain_->end_bf();++it )
-        {
-            it->load()=0.0;
-        }
-        fmm::FmmMaskBuilder<domain_t>::fmm_dry( domain_,blevel,false );
-        fmm::FmmMaskBuilder<domain_t>::fmm_dry( domain_,blevel,true );
+        // Split leafs according to morton order
+        auto exitCondition1=[](auto& it){return false;};
+        auto continueCondition1=[&blevel](auto& it){return !it->is_leaf();};
 
+        split(domain_->begin(),domain_->end(),
+                tasks_perProc, total_loads_perProc,
+                exitCondition1,continueCondition1);
 
-        const bool include_baselevel=false; 
-        if(include_baselevel)
-        {
-            //Include baselevel into levelwise splitting:
-            auto exitCondition0=[&blevel](auto& it){return it->level()>=blevel;};
-
-            //BF balancing
-            split( domain_->begin_bf(),domain_->end_bf(),tasks_perProc,exitCondition0);
-
-        }
-        else
-        {
-            //Exlude baselevel into levelwise splitting: Baselevel is DFS split
-            auto exitCondition0=[&blevel](auto& it){return it->level()>blevel;};
-            //BF balancing
-            split( domain_->begin_bf(),domain_->end_bf(),tasks_perProc,exitCondition0);
-        }
-
-
-        //Levelwise balancing
-        int lstart=domain_->tree()->base_level();
-
-        auto exitCondition1=[&blevel](auto& it){return false;};
-        if(!include_baselevel) lstart+=1;
-        for (int l = lstart; l < domain_->tree()->depth(); ++l)
+        for (int l = domain_->tree()->depth()-1; l >= 0; --l)
         {
 
-            for( auto it = domain_->begin_bf(); it!= domain_->end_bf();++it )
+            //split(domain_->begin(l),domain_->end(l),
+            //        tasks_perProc, total_loads_perProc,
+            //        exitCondition1,continueCondition1);
+
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
             {
-                it->load()=0.0;
+                if(it->is_leaf()) continue;
+
+                int rank_tobe=-1;
+                float_type min_load=std::numeric_limits<float_type>::max();
+                for(int i=0;i<it->num_children();++i)
+                {
+                    const auto child = it->child(i);
+                    if(!child) continue;
+
+                    if(child->rank()==-1) throw std::runtime_error("Child not set ");
+                    if(total_loads_perProc[child->rank()] < min_load)
+                    {
+                        rank_tobe=child->rank();
+                    }
+                }
+                it->rank()=rank_tobe;
+                ctask_t task(it.ptr(), rank_tobe, it->load());
+                total_loads_perProc[rank_tobe-1]+=it->load();
+                tasks_perProc[rank_tobe-1].push_back(task);
             }
-            fmm::FmmMaskBuilder<domain_t>::fmm_dry( domain_,l,false );
-            fmm::FmmMaskBuilder<domain_t>::fmm_dry( domain_,l,true );
-
-            split(domain_->begin(l),domain_->end(l),tasks_perProc,exitCondition1);
         }
-
-
-        //Diagnostics:
-        std::vector<float_type> total_loads_perProc2(nProcs,0);
-        float_type max_load=-1;
-        float_type min_load=std::numeric_limits<float_type>::max();
-        std::ofstream ofs("load_balance.txt");
-        for(int i =0; i<nProcs;++i)
+        for( auto it = domain_->begin_df(); it!= domain_->end_df();++it )
         {
-            for(auto& t:  tasks_perProc[i] )
+            if(it->rank()==-1) 
             {
-                total_loads_perProc2[i]+=t.load();
+                throw std::runtime_error("Domain decomposition (Server):"
+                        " Some octant's rank was not set");
             }
-            if(total_loads_perProc2[i]>max_load) max_load=total_loads_perProc2[i];
-            if(total_loads_perProc2[i]<min_load) min_load=total_loads_perProc2[i];
-            ofs<<total_loads_perProc2[i]<<std::endl;
         }
-
-        ofs<<"max/min load: "<<max_load<<"/"<<min_load<<" = "<<max_load/min_load<<std::endl;
-        ofs<<"max/ideal load: "<<max_load<<"/"<<ideal_load<<" = "<<max_load/ideal_load<<std::endl;
-        ofs<<"total_load: "<<total_load<<std::endl;
-        ofs<<"ideal_load: "<<ideal_load<<std::endl;
-
         std::cout<<"Done with initial load balancing"<<std::endl;
         return tasks_perProc;
     }
+
+
+    //template<class Begin, class End, class Container, class Function>
+    //void split(Begin _begin, End _end, Container& _tasks_perProc, Function& _f ) const noexcept
+    //{
+    //    float_type total_load=0.0;
+    //    const auto nProcs=comm_.size()-1;
+    //    for( auto it = _begin; it!= _end;++it )
+    //    {
+    //        if(_f(it)) break;
+    //        total_load+=it->load();
+    //    }
+
+    //    auto it = _begin;
+    //    float_type current_load= 0.;
+    //    for(int crank=0;crank<nProcs;++crank)
+    //    {
+    //        float_type target_load= (static_cast<float_type>(crank+1)/nProcs)*total_load;
+    //        target_load=std::min(target_load,total_load);
+    //        float_type octant_load=0.;
+    //        int count=0;
+    //        while(current_load<=target_load || count ==0)
+    //        {
+    //            it->rank()=crank+1;
+    //            auto load= it->load();
+
+    //            ctask_t task(it.ptr(), it->rank(), load);
+    //            _tasks_perProc[crank].push_back(task);
+    //            current_load+=load;
+    //            octant_load+=load;
+    //            ++it;
+    //            ++count;
+    //            if(it==_end) break;
+    //            if(_f(it)) break;
+    //        }
+    //        if(it==_end) break;
+    //        if(_f(it)) break;
+    //    }
+    //}
+
+    //auto compute_distribution() const noexcept
+    //{
+    //    const auto nProcs=comm_.size()-1;
+
+    //    std::cout<<"Computing domain decomposition for "<<comm_.size()<<" processors" <<std::endl;
+    //    std::vector<std::list<ctask_t>> tasks_perProc(nProcs);
+
+    //    float_type total_load=0.0;
+    //    for( auto it = domain_->begin_bf(); it!= domain_->end_bf();++it )
+    //    {
+    //        total_load+=it->load();
+    //    }
+
+    //    const float_type ideal_load=total_load/nProcs;
+    //    const int blevel=domain_->tree()->base_level();
+
+    //    const bool include_baselevel=false; 
+    //    if(include_baselevel)
+    //    {
+    //        //Include baselevel into levelwise splitting:
+    //        auto exitCondition0=[&blevel](auto& it){return it->level()>=blevel;};
+
+    //        //BF balancing
+    //        split( domain_->begin_bf(),domain_->end_bf(),tasks_perProc,exitCondition0);
+
+    //    }
+    //    else
+    //    {
+    //        //Exlude baselevel into levelwise splitting: Baselevel is DFS split
+    //        auto exitCondition0=[&blevel](auto& it){return it->level()>blevel;};
+    //        //BF balancing
+    //        split( domain_->begin_bf(),domain_->end_bf(),tasks_perProc,exitCondition0);
+    //    }
+
+
+    //    //Levelwise balancing
+    //    int lstart=domain_->tree()->base_level();
+
+    //    auto exitCondition1=[&blevel](auto& it){return false;};
+    //    if(!include_baselevel) lstart+=1;
+    //    for (int l = lstart; l < domain_->tree()->depth(); ++l)
+    //    {
+    //        split(domain_->begin(l),domain_->end(l),tasks_perProc,exitCondition1);
+    //    }
+
+
+    //    //Diagnostics:
+    //    std::vector<float_type> total_loads_perProc2(nProcs,0);
+    //    float_type max_load=-1;
+    //    float_type min_load=std::numeric_limits<float_type>::max();
+    //    std::ofstream ofs("load_balance.txt");
+    //    for(int i =0; i<nProcs;++i)
+    //    {
+    //        for(auto& t:  tasks_perProc[i] )
+    //        {
+    //            total_loads_perProc2[i]+=t.load();
+    //        }
+    //        if(total_loads_perProc2[i]>max_load) max_load=total_loads_perProc2[i];
+    //        if(total_loads_perProc2[i]<min_load) min_load=total_loads_perProc2[i];
+    //        ofs<<total_loads_perProc2[i]<<std::endl;
+    //    }
+
+    //    ofs<<"max/min load: "<<max_load<<"/"<<min_load<<" = "<<max_load/min_load<<std::endl;
+    //    ofs<<"max/ideal load: "<<max_load<<"/"<<ideal_load<<" = "<<max_load/ideal_load<<std::endl;
+    //    ofs<<"total_load: "<<total_load<<std::endl;
+    //    ofs<<"ideal_load: "<<ideal_load<<std::endl;
+
+    //    std::cout<<"Done with initial load balancing"<<std::endl;
+    //    return tasks_perProc;
+    //}
 
     auto compute_distribution_old() const noexcept
     {

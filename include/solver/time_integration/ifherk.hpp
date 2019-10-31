@@ -155,6 +155,7 @@ public:
         boost::mpi::communicator world;
 
         pad_velocity<u, u>();
+        pad_velocity<u, u_str_u>();
         copy<u, q_i>();
 
         // Stage 1
@@ -194,39 +195,39 @@ public:
         add<w_1, r_i>(dt_*coeff_a(2,1));
 
         //pad_velocity<u_i, u_i>();
+        //pad_velocity<u_i, u_str_u>();
 
         nonlinear<u_i,g_i>(coeff_a(2,2)*(-dt_));
-        //add<g_i, r_i>( );
+        add<g_i, r_i>( );
 
-        //lin_sys_solve(alpha_[1]);
+        lin_sys_solve(alpha_[1]);
 
-        //// Stage 3
-        //// ******************************************************************
-        //pcout<<"Stage 3"<< std::endl;
-        //clean<d_i>();
-        //clean<cell_aux>();
-        //clean<w_2>();
+        // Stage 3
+        // ******************************************************************
+        pcout<<"Stage 3"<< std::endl;
+        clean<d_i>();
+        clean<cell_aux>();
+        clean<w_2>();
 
-        //add<g_i, face_aux>(-1.0);
-        //copy<face_aux, w_2>(-1.0/dt_/coeff_a(2,2));
-        //copy<q_i, r_i>();
-        //add<w_1, r_i>(dt_*coeff_a(3,1));
-        //add<w_2, r_i>(dt_*coeff_a(3,2));
+        add<g_i, face_aux>(-1.0);
+        copy<face_aux, w_2>(-1.0/dt_/coeff_a(2,2));
+        copy<q_i, r_i>();
+        add<w_1, r_i>(dt_*coeff_a(3,1));
+        add<w_2, r_i>(dt_*coeff_a(3,2));
 
-        //psolver.template apply_lgf_IF<r_i, r_i>(alpha_[1]);
+        psolver.template apply_lgf_IF<r_i, r_i>(alpha_[1]);
 
-        //pad_velocity<u_i, u_i>();
+        pad_velocity<u_i, u_i>();
 
-        //nonlinear<u_i,g_i>( coeff_a(3,3)*(-dt_) );
-        //add<g_i, r_i>();
+        nonlinear<u_i,g_i>( coeff_a(3,3)*(-dt_) );
+        add<g_i, r_i>();
 
-        //lin_sys_solve(alpha_[2]);
+        lin_sys_solve(alpha_[2]);
 
-        //// ******************************************************************
-        ////pad_velocity<u_i, u_i>();
-        //copy<u_i, u>();
-        //copy<d_i, p>(1.0/coeff_a(3,3)/dt_);
-        //// ******************************************************************
+        // ******************************************************************
+        copy<u_i, u>();
+        copy<d_i, p>(1.0/coeff_a(3,3)/dt_);
+        // ******************************************************************
 
     }
 
@@ -235,11 +236,12 @@ private:
     void lin_sys_solve(float_type _alpha) noexcept
     {
          divergence<r_i, cell_aux>();
-         //copy<r_i, face_test_ri>();
-         //psolver.template apply_lgf<cell_aux, d_i>();
-         //gradient<d_i,face_aux>();
+         clean_leaf_correction_boundary<cell_aux>(domain_->tree()->base_level(), true);
+         copy<r_i, face_test_ri>();
+         psolver.template apply_lgf<cell_aux, d_i>();
+         gradient<d_i,face_aux>();
 
-         //add<face_aux, r_i>(-1.0);
+         add<face_aux, r_i>(-1.0);
          if (std::fabs(_alpha)>1e-4)
              psolver.template apply_lgf_IF<r_i, u_i>(_alpha);
          else
@@ -287,6 +289,7 @@ private:
             const auto dx_level =  dx_base/std::pow(2,it->refinement_level());
             domain::Operator::curl<Velocity_in,edge_aux>( *(it->data()),dx_level);
         }
+        clean_leaf_correction_boundary<edge_aux>(l, true);
         //client->template buffer_exchange<edge_aux>(l);
         psolver.template apply_lgf<edge_aux, stream_f>(true);
 
@@ -302,8 +305,57 @@ private:
         client->template buffer_exchange<Velocity_out>(l);
 
 
-   }
+    }
 
+    template <typename F>
+    void clean_leaf_correction_boundary(int l, bool leaf_only_boundary=false) noexcept
+    {
+        for (auto it  = domain_->begin(l);
+                it != domain_->end(l); ++it)
+        {
+                if(!it->locally_owned()) continue;
+                if(!it->data() || !it->data()->is_allocated()) continue;
+
+                if (leaf_only_boundary && it->is_correction())
+                {
+                    for (std::size_t field_idx=0;
+                            field_idx<F::nFields; ++field_idx)
+                    {
+                        auto& lin_data = it ->data()->
+                        template get_linalg_data<F>(field_idx);
+
+                        std::fill(lin_data.begin(),lin_data.end(),0.0);
+                    }
+                }
+
+                for(std::size_t i=0;i< it->num_neighbors();++i)
+                {
+                    auto it2=it->neighbor(i);
+                    if (!it2 || (leaf_only_boundary && it2->is_correction()))
+                    {
+                        for (std::size_t field_idx=0; field_idx<F::nFields; ++field_idx)
+                        {
+                            auto& lin_data = it->data()->
+                                template get_linalg_data<F>(field_idx);
+
+                            if (i==4)
+                                xt::noalias( view(lin_data,xt::all(),xt::all(),1)) *= 0.0;
+                            else if (i==10)
+                                xt::noalias( view(lin_data,xt::all(),1,xt::all())) *= 0.0;
+                            else if (i==12)
+                                xt::noalias( view(lin_data,0,xt::all(),xt::all())) *= 0.0;
+                            else if (i==14)
+                                xt::noalias( view(lin_data,14,xt::all(),xt::all())) *= 0.0;
+                            else if (i==16)
+                                xt::noalias( view(lin_data,xt::all(),14,xt::all())) *= 0.0;
+                            else if (i==22)
+                                xt::noalias( view(lin_data,xt::all(),xt::all(),14)) *= 0.0;
+                        }
+                    }
+                }
+         }
+
+    }
     //TODO maybe to be put directly intor operators:
     template<class Source, class Target>
     void nonlinear(float_type _scale=1.0) noexcept
@@ -329,7 +381,9 @@ private:
                 const auto dx_level =  dx_base/std::pow(2,it->refinement_level());
                 domain::Operator::curl<Source,edge_aux>( *(it->data()),dx_level);
             }
+
             client->template buffer_exchange<edge_aux>(l);
+            clean_leaf_correction_boundary<edge_aux>(l, true);
 
             for (auto it  = domain_->begin(l);
                     it != domain_->end(l); ++it)

@@ -826,6 +826,10 @@ public:
    }
 
 
+   const bool& use_correction()const noexcept{return use_correction_;}
+   bool& use_correction()noexcept{return use_correction_;}
+
+
 private:
     domain_type*                      domain_;    ///< domain
     Fmm_t                             fmm_;       ///< fast-multipole
@@ -834,6 +838,7 @@ private:
     interpolation::cell_center_nli    c_cntr_nli_;///< Lagrange Interpolation
     interpolation::extrapolation_cell_center_nli    extrp_c_cntr_nli_;///< Lagrange Interpolation
     parallel_ostream::ParallelOstream pcout=parallel_ostream::ParallelOstream(1);
+    bool use_correction_ =true;
 
     //Timings:
     struct Timings{

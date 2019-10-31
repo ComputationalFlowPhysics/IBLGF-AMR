@@ -384,13 +384,6 @@ public:
         std::vector<std::string> &components_;
     };
 
-    //template<
-    //    class S
-    //    //class W,
-    //    //class B,
-    //    //class G,
-    //    //class O
-    //    >
     struct write_data_for_each
     {
         write_data_for_each(

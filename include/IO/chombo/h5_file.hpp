@@ -219,7 +219,6 @@ class hdf5_file
 
         template<typename T>
         void write(hid_type& dset_id, hsize_type dimsf, T* buf)
-      //  void write(hid_type& dset_id, hsize_type dimsf, auto buf)
         {
             auto filespace = H5Dget_space(dset_id);
 
@@ -239,7 +238,6 @@ class hdf5_file
         template<typename T>
         void write(hid_type& dset_id, hsize_type dimsf,
                                         hsize_type offset, T* buf)
-      //  void write(hid_type& dset_id, hsize_type dimsf, auto buf)
         {
             auto hdf_t= hdf_type<T>::type();
 
@@ -697,7 +695,7 @@ class hdf5_file
 
         // for 3D
         // write_boxCompound( group_id, name, box_compound, integral_const = 3, hsize_type _dim=1, bool=true)
-        void write_boxCompound( hid_type& _group_id,    
+        void write_boxCompound( hid_type& _group_id,
                                 std::string _cName,
                                 box_compound* _c,
                                 std::integral_constant<std::size_t, 3>*,

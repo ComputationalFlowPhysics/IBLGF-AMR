@@ -256,6 +256,7 @@ public:
             int box_offset=0;
             for (auto& file_b_dscriptr:file_boxes)
             {
+                auto copy_b_dscriptr = file_b_dscriptr;
 
                 for (auto& b:blocklist)
                 {
@@ -273,16 +274,15 @@ public:
                     auto has_overlap=file_b_dscriptr.overlap(b_dscrptr, overlap_fake_level);
                     has_overlap=b_dscrptr.overlap(file_b_dscriptr, overlap_local);
 
+                    std::array<int,2> single{0,0};
+                    std::array<int,2> avg{(factor-1)/2, factor/2};
+
                     if (has_overlap)
                     {
-                        // Finte Volume requires differnet averaging for
-                        // differnt mesh objects
-
-                        std::array<int,2> single{0,0};
-                        std::array<int,2> avg{(factor-1)/2, factor/2};
-
                         for (std::size_t field_idx=0; field_idx<nFields; ++field_idx)
                         {
+                            // Finte Volume requires differnet averaging for
+                            // differnt mesh objects
                             std::array< std::array<int,2>, 3> FV_avg{avg,avg,avg};
 
                             if (Field::mesh_type == MeshObject::face)
@@ -291,11 +291,12 @@ public:
                             {
                                 FV_avg = {single,single,single};
                                 FV_avg[field_idx] = avg;
-                            } else if (Field::mesh_type == MeshObject::vertex)
+                            }
+                            else if (Field::mesh_type == MeshObject::vertex)
                                 FV_avg = {single,single,single};
                             else if (Field::mesh_type == MeshObject::cell)
-                            {
-                            } else
+                            {}
+                            else
                                 throw std::runtime_error("Mesh object wrong");
 
                             float_type total_avg = (FV_avg[2][1]-FV_avg[2][0]+1) * (FV_avg[1][1]-FV_avg[1][0]+1) * (FV_avg[0][1]-FV_avg[0][0]+1);
@@ -306,21 +307,25 @@ public:
                                 for (int j=0; j<overlap_local.extent()[1];++j)
                                 for (int shift_i=FV_avg[0][0]; shift_i<=FV_avg[0][1]; ++shift_i)
                                 {
+                                    for (int i=0; i<overlap_local.extent()[0];++i)
+                                    {
+                                    if (overlap_fake_level.base()[2]-file_b_dscriptr.base()[2]+k*factor+shift_k>=file_b_dscriptr.extent()[2]) continue;
+                                    if (overlap_fake_level.base()[1]-file_b_dscriptr.base()[1]+j*factor+shift_j>=file_b_dscriptr.extent()[1]) continue;
+                                    if (overlap_fake_level.base()[0]-file_b_dscriptr.base()[0]+shift_i+i*factor>=file_b_dscriptr.extent()[0]) continue;
+
                                     int offset=
                                          box_offset+
                                          (component_idx+field_idx)*file_b_dscriptr.extent()[0]*file_b_dscriptr.extent()[1]*file_b_dscriptr.extent()[2]
                                         +(overlap_fake_level.base()[2]-file_b_dscriptr.base()[2]+k*factor+shift_k)*file_b_dscriptr.extent()[0]*file_b_dscriptr.extent()[1]
                                         +(overlap_fake_level.base()[1]-file_b_dscriptr.base()[1]+j*factor+shift_j)*file_b_dscriptr.extent()[0]
-                                        +(overlap_fake_level.base()[0]-file_b_dscriptr.base()[0])+shift_i;
+                                        +(overlap_fake_level.base()[0]-file_b_dscriptr.base()[0])+shift_i+i*factor;
 
-                                    std::vector<hsize_t> base(1,offset), extent(1,overlap_local.extent()[0]), stride(1,factor);
+                                    std::vector<hsize_t> base(1,offset), extent(1,1), stride(1,factor);
                                     auto data = _file ->template read_hyperslab<float_type>(dataset_id, base, extent, stride);
 
-                                    for (int i=0; i<overlap_local.extent()[0];++i)
-                                    {
                                         b->data()->template get<Field>
                                             (i+overlap_local.base()[0], j+overlap_local.base()[1], k+overlap_local.base()[2], field_idx)
-                                            += data[i]/total_avg;
+                                                += data[0]/total_avg;
                                     }
                                 }
                         }
@@ -328,7 +333,7 @@ public:
 
                 }
 
-                box_offset+=file_b_dscriptr.extent()[0]*file_b_dscriptr.extent()[1]*file_b_dscriptr.extent()[2]*num_components;
+                box_offset+=copy_b_dscriptr.extent()[0]*copy_b_dscriptr.extent()[1]*copy_b_dscriptr.extent()[2]*num_components;
             }
         }
     }

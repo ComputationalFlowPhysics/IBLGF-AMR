@@ -19,7 +19,7 @@ struct parameters
      Dim,
      (
         (field      ,float_type,   1,  1,  1,  cell),
-        (error      ,float_type,   3,  1,  1,  face)
+        (error_face      ,float_type,   3,  1,  1,  face)
     ))
 
 };
@@ -233,7 +233,7 @@ struct HDF5Read:public SetupBase<HDF5Read, parameters>
                float_type z = static_cast<float_type>
                    (coord[2]-center[2]*scaling+0.5)*dx_level;
 
-               it2->template get<face_aux>(0) = y+x+z;
+               it2->template get<face_aux>(0) = y*y+x*x+z*z;
 
                /***********************************************************/
                 x = static_cast<float_type>
@@ -243,7 +243,7 @@ struct HDF5Read:public SetupBase<HDF5Read, parameters>
                 z = static_cast<float_type>
                    (coord[2]-center[2]*scaling+0.5)*dx_level;
 
-               it2->template get<face_aux>(1) = y+x+z;
+               it2->template get<face_aux>(1) = y*x*z;
 
                /***********************************************************/
                 x = static_cast<float_type>
@@ -345,9 +345,9 @@ struct HDF5Read:public SetupBase<HDF5Read, parameters>
         simulation_.template read_h5<h5_read_test>(filename_);
         simulation_.write2("mesh.hdf5");
 
-        this->compute_errors<h5_read_test,face_aux,error>("",0);
-        this->compute_errors<h5_read_test,face_aux,error>("",1);
-        this->compute_errors<h5_read_test,face_aux,error>("",2);
+        this->compute_errors<h5_read_test,face_aux,error_face>("",0);
+        this->compute_errors<h5_read_test,face_aux,error_face>("",1);
+        this->compute_errors<h5_read_test,face_aux,error_face>("",2);
     }
 
 private:

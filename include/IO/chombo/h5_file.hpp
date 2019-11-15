@@ -136,7 +136,6 @@ class hdf5_file
             else
                 file_id = H5Fopen(_filename.c_str(), H5F_ACC_RDONLY, H5P_DEFAULT);
             HDF5_CHECK_ERROR(file_id, "hdf5: could not open file")
-            std::cout<< " open file " + _filename + " with ID: " << file_id<< std::endl;
         }
 
 
@@ -154,6 +153,7 @@ class hdf5_file
         }
 
 
+        //TODO: somehow it doesn't work
         //~hdf5_file()
         //{
         //    close_everything();

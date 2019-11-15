@@ -275,17 +275,6 @@ public:
 
                     if (has_overlap)
                     {
-                        std::cout<<"---------------------"<<std::endl;
-                        std::cout<<"loacl block ->"<<b_dscrptr<<std::endl;
-                        std::cout<<"file block  ->"<< file_b_dscriptr<<std::endl;
-                        std::cout<<level<<std::endl;
-                        std::cout<<fake_level<<std::endl;
-
-                        std::cout<<overlap_local<<std::endl;
-                        std::cout<<overlap_fake_level<<std::endl;
-                        std::cout<<factor<<std::endl;
-
-
                         // Finte Volume requires differnet averaging for
                         // differnt mesh objects
 

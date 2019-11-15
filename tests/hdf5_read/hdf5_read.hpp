@@ -339,8 +339,12 @@ struct HDF5Read:public SetupBase<HDF5Read, parameters>
 
     void run()
     {
-        //simulation_.write2("mesh.hdf5");
+        // run this at fine resolution and copy mesh.hdf5 to ref.hdf5 to the
+        // same output dir. Then run it at equal or lower resolution.
+
         simulation_.template read_h5<h5_read_test>(filename_);
+        simulation_.write2("mesh.hdf5");
+
         this->compute_errors<h5_read_test,face_aux,error>("",0);
         this->compute_errors<h5_read_test,face_aux,error>("",1);
         this->compute_errors<h5_read_test,face_aux,error>("",2);

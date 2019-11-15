@@ -1,0 +1,72 @@
+simulation_parameters
+{
+    nLevels=0;
+    global_refinement=0;
+    refinement_factor=0.25;
+
+    hdf5_file_name=ref.hdf5;
+
+    //Vortex Ring
+    //c1=107374182400000000000000.;
+    //c2=60;
+    c1=1;
+    c2=4;
+
+    R=0.125;
+    //source_max=1400;
+    //source_max=0.03;
+    offset=(0,0,0);
+
+    //vortex
+    //{
+    //    c1=1000.0;
+    //    c2=10;
+    //    R=0.125;
+    //    center=(0,0,-0.125);
+    //}
+
+    vortex
+    {
+        c1=10000.0;
+        c2=10;
+        R=0.125;
+        center=(0,0,0);
+    }
+
+    //vortex
+    //{
+    //    c1=1000000.0;
+    //    c2=13;
+    //    //R=0.03125;
+    //    R=0.03;
+    //    center=(0,0,0.125);
+    //}
+
+    output
+    {
+        directory=bla;
+    }
+
+    domain
+    {
+        Lx=1.0;
+        max_extent   = 300;
+        block_extent=8;
+
+        block
+        {
+            //base=(0,0,0);
+            //extent=(16,16,16);
+            //base=(0,0,0);
+            //extent=(32,32,32);
+            base=(0,0,0);
+            extent=(8,8,8);
+            //base=(-8,-8,-8);
+            //extent=(16,16,16);
+            //base=(-16,-16,-16);
+            //extent=(32,32,32);
+            //base=(-32,-32,-32);
+            //extent=(64,64,64);
+        }
+    }
+}

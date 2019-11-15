@@ -15,6 +15,7 @@
 #include <IO/chombo/h5_file.hpp>
 #include <IO/chombo/h5_io.hpp>
 #include <domain/dataFields/blockDescriptor.hpp>
+#include <domain/dataFields/datafield.hpp>
 #include <global.hpp>
 #include <boost/unordered_map.hpp>
 #include <boost/serialization/vector.hpp>
@@ -29,7 +30,7 @@ class Chombo
 {
 
 public: //member type:
-    using value_type = double;
+    using value_type = float_type;
     using hsize_type = typename HDF5File::hsize_type;
     using field_type_iterator_t  = typename Domain::field_type_iterator_t;
 
@@ -49,6 +50,8 @@ public: //member type:
     using block_descriptor_t = typename datablock_t::block_descriptor_type;
     using extent_t           = typename block_descriptor_t::extent_t;
 
+    using MeshObject = domain::MeshObject;
+
 public: //Ctors:
     Chombo()=default;
     ~Chombo()=default;
@@ -58,6 +61,11 @@ public: //Ctors:
 
     Chombo(Chombo&& rhs)=default;
     Chombo& operator=(Chombo& rhs)=default;
+
+    Chombo(const std::vector<octant_type*>& _octant_blocks)
+    {
+        init(_octant_blocks);
+    }
 
     struct LevelInfo
     {
@@ -72,14 +80,6 @@ public: //Ctors:
         }
     };
 
-
-
-
-    Chombo(const std::vector<octant_type*>& _octant_blocks)
-    {
-        init(_octant_blocks);
-    }
-
 private:
 
     void init(const std::vector<octant_type*>& _octant_blocks)
@@ -89,40 +89,34 @@ private:
         //Blocks per level:
         for(auto& p: _octant_blocks)
         {
-            const auto b = p->data()->descriptor();     // block descriptor
+            auto b = p->data()->descriptor();     // block descriptor
             auto it=level_map_.find(b.level());
 
             // FIXME: Some blocks have -1 level
-            if (b.level() >= 0)
+            if (b.level() < 0) continue;
+
+            if(it!=level_map_.end())                // if found somewhere (does not return end())
             {
-                if(it!=level_map_.end())                // if found somewhere (does not return end())
+                it->second.octants.push_back(p);
+
+                //Adapt probeDomain if there is a block beyond it
+                for(std::size_t d=0; d<Dim;++d)
                 {
-                    it->second.octants.push_back(p);
+                    if(it->second.probeDomain.min()[d] > b.min()[d])
+                        it->second.probeDomain.min()[d]=b.min()[d];
 
-                    //Adapt probeDomain if there is a block beyond it
-                    for(std::size_t d=0; d<Dim;++d)
-                    {
-                        if(it->second.probeDomain.min()[d] > b.min()[d])
-                        {
-                            it->second.probeDomain.min()[d]=b.min()[d];
-                        }
-
-                        if(it->second.probeDomain.max()[d] < b.max()[d])
-                        {
-                            it->second.probeDomain.extent()[d]=
-                            b.max()[d]-it->second.probeDomain.base()[d]+1;
-                        }
-                    }
+                    if(it->second.probeDomain.max()[d] < b.max()[d])
+                        it->second.probeDomain.extent()[d]=
+                        b.max()[d]-it->second.probeDomain.base()[d]+1;
                 }
-                else    // if not found, create level and insert the block
-                {
-                    LevelInfo l;
-                    l.level=b.level();
-                    l.octants.push_back(p);
-                    l.probeDomain=b;
-                    level_map_.insert(std::make_pair(b.level(),l ));
-
-                }
+            }
+            else    // if not found, create level and insert the block
+            {
+                LevelInfo l;
+                l.level=b.level();
+                l.octants.push_back(p);
+                l.probeDomain=b;
+                level_map_.insert(std::make_pair(b.level(),l ));
             }
         } // octant blocks
 
@@ -189,6 +183,166 @@ private:
 
 
 public:
+
+    template<typename Field, typename Block_list_t, typename Domain>
+    void read_u( HDF5File* _file, Block_list_t& blocklist, Domain* domain)
+    {
+
+        // Cleaning ---------------------------------------------------------
+        std::size_t nFields = Field::nFields;
+        for (std::size_t field_idx=0; field_idx<nFields; ++field_idx)
+        {
+            for (auto& b:blocklist)
+            {
+                if (!b->locally_owned())
+                    continue;
+                auto& cp2 = b ->data()->template get_linalg_data<Field>(field_idx);
+                std::fill (cp2.begin(),cp2.end(),0.0);
+            }
+        }
+
+        // Read hdf5 file ---------------------------------------------------
+
+        float_type dx_base=domain->dx_base();
+        int base_level = domain->tree()->base_level();
+
+        boost::mpi::communicator world;
+        if (world.rank()==0) return;
+        auto root = _file->get_root();
+
+        // check the number for the needed attri
+        int num_components =static_cast<int>( _file->template read_attribute<int>(root, "num_components") );
+        int num_levels =static_cast<int>( _file->template read_attribute<int>(root, "num_levels") );
+
+        int component_idx = 0;
+        std::string read_in_name{"face_aux"};
+        for(std::size_t i=0; i<num_components; ++i)
+        {
+            auto attribute = _file->template read_attribute<std::string>(root,
+                    "component_"+std::to_string(i));
+
+            if (nFields>1 && attribute==read_in_name+"_0" ||
+                    nFields==1 && attribute==read_in_name)
+            {component_idx = i; break;}
+        }
+
+        // Find the imainary tree base level for the read file ----
+        auto level_group = _file->get_group("level_0");
+        float_type file_dx_base = static_cast<float_type>
+            ( _file->template read_attribute<float_type>(level_group, "dx") );
+
+        float_type base_level_diff_f = log2(dx_base/file_dx_base);
+        if (fabs(round(base_level_diff_f) - base_level_diff_f)>1e-10)
+            throw std::runtime_error("base dx doesn't match!");
+        int base_level_diff = (int)(round(base_level_diff_f));
+
+        //Start reading
+        for (int l = 0; l<num_levels; ++l)
+        {
+            auto level_group = _file->get_group("level_"+std::to_string(l));
+            // Read box descriptors
+            auto box_dataset_id =
+                H5Dopen2(level_group, "boxes", H5P_DEFAULT);
+
+            // l+base_level+base_level_diff is the imaginary refinement level as if
+            // everything is in the runtime octree
+            int fake_level=l+base_level_diff;
+            auto file_boxes = _file->
+                template read_box_descriptors<BlockDescriptor>(box_dataset_id, fake_level);
+
+            auto dataset_id =
+                H5Dopen2(level_group, "data:datatype=0", H5P_DEFAULT);
+
+            int box_offset=0;
+            for (auto& file_b_dscriptr:file_boxes)
+            {
+
+                for (auto& b:blocklist)
+                {
+                    if (!b->locally_owned()) continue;
+                    if (!b->is_leaf()) continue;
+
+                    auto b_dscrptr = b->data()->descriptor();
+                    int level = b_dscrptr.level();
+                    if (level>fake_level)
+                        continue;
+
+                    int factor = pow(2, abs(fake_level-level));
+                    BlockDescriptor overlap_fake_level;
+                    BlockDescriptor overlap_local;
+                    auto has_overlap=file_b_dscriptr.overlap(b_dscrptr, overlap_fake_level);
+                    has_overlap=b_dscrptr.overlap(file_b_dscriptr, overlap_local);
+
+                    if (has_overlap)
+                    {
+                        std::cout<<"---------------------"<<std::endl;
+                        std::cout<<"loacl block ->"<<b_dscrptr<<std::endl;
+                        std::cout<<"file block  ->"<< file_b_dscriptr<<std::endl;
+                        std::cout<<level<<std::endl;
+                        std::cout<<fake_level<<std::endl;
+
+                        std::cout<<overlap_local<<std::endl;
+                        std::cout<<overlap_fake_level<<std::endl;
+                        std::cout<<factor<<std::endl;
+
+
+                        // Finte Volume requires differnet averaging for
+                        // differnt mesh objects
+
+                        std::array<int,2> single{0,0};
+                        std::array<int,2> avg{(factor-1)/2, factor/2};
+
+                        for (std::size_t field_idx=0; field_idx<nFields; ++field_idx)
+                        {
+                            std::array< std::array<int,2>, 3> FV_avg{avg,avg,avg};
+
+                            if (Field::mesh_type == MeshObject::face)
+                                FV_avg[field_idx] = single;
+                            else if (Field::mesh_type == MeshObject::edge)
+                            {
+                                FV_avg = {single,single,single};
+                                FV_avg[field_idx] = avg;
+                            } else if (Field::mesh_type == MeshObject::vertex)
+                                FV_avg = {single,single,single};
+                            else if (Field::mesh_type == MeshObject::cell)
+                            {
+                            } else
+                                throw std::runtime_error("Mesh object wrong");
+
+                            float_type total_avg = (FV_avg[2][1]-FV_avg[2][0]+1) * (FV_avg[1][1]-FV_avg[1][0]+1) * (FV_avg[0][1]-FV_avg[0][0]+1);
+
+                            for (int shift_k=FV_avg[2][0]; shift_k<=FV_avg[2][1]; ++shift_k)
+                                for (int k=0; k<overlap_local.extent()[2];++k)
+                                for (int shift_j=FV_avg[1][0]; shift_j<=FV_avg[1][1]; ++shift_j)
+                                for (int j=0; j<overlap_local.extent()[1];++j)
+                                for (int shift_i=FV_avg[0][0]; shift_i<=FV_avg[0][1]; ++shift_i)
+                                {
+                                    int offset=
+                                         box_offset+
+                                         (component_idx+field_idx)*file_b_dscriptr.extent()[0]*file_b_dscriptr.extent()[1]*file_b_dscriptr.extent()[2]
+                                        +(overlap_fake_level.base()[2]-file_b_dscriptr.base()[2]+k*factor+shift_k)*file_b_dscriptr.extent()[0]*file_b_dscriptr.extent()[1]
+                                        +(overlap_fake_level.base()[1]-file_b_dscriptr.base()[1]+j*factor+shift_j)*file_b_dscriptr.extent()[0]
+                                        +(overlap_fake_level.base()[0]-file_b_dscriptr.base()[0])+shift_i;
+
+                                    std::vector<hsize_t> base(1,offset), extent(1,overlap_local.extent()[0]), stride(1,factor);
+                                    auto data = _file ->template read_hyperslab<float_type>(dataset_id, base, extent, stride);
+
+                                    for (int i=0; i<overlap_local.extent()[0];++i)
+                                    {
+                                        b->data()->template get<Field>
+                                            (i+overlap_local.base()[0], j+overlap_local.base()[1], k+overlap_local.base()[2], field_idx)
+                                            += data[i]/total_avg;
+                                    }
+                                }
+                        }
+                    }
+
+                }
+
+                box_offset+=file_b_dscriptr.extent()[0]*file_b_dscriptr.extent()[1]*file_b_dscriptr.extent()[2]*num_components;
+            }
+        }
+    }
 
     void write_global_metaData( HDF5File* _file ,
                      value_type _dx=1,

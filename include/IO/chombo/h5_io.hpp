@@ -49,6 +49,7 @@ public:
     using chombo_t= typename chombo_writer::Chombo<Dim, blockDescriptor_t,
                             blockData_t, Domain, hdf5_file<Dim, base_t> >;
 
+
 public:
 
     struct BlockInfo
@@ -86,7 +87,33 @@ public:
 
 public:
 
+    template<typename Field>
+    void read_h5(std::string _filename, Domain* _lt )
+    {
+        std::cout<< _filename << std::endl;
+        boost::mpi::communicator world;
+
+        auto octant_blocks = blocks_list_build(_lt);
+
+        hdf5_file<Dim> chombo_file(_filename, true);
+        chombo_t ch_writer(octant_blocks);  // Initialize writer with vector of octants
+        ch_writer.template read_u<Field>(&chombo_file, octant_blocks, _lt );
+
+    }
+
     void write_h5(std::string _filename, Domain* _lt )
+    {
+        auto octant_blocks = blocks_list_build(_lt);
+
+        hdf5_file<Dim> chombo_file(_filename);
+
+        chombo_t ch_writer(octant_blocks);  // Initialize writer with vector of octants
+
+        ch_writer.write_global_metaData(&chombo_file,_lt->dx_base());
+        ch_writer.write_level_info(&chombo_file);
+    }
+
+    std::vector<octant_type*> blocks_list_build(Domain* _lt)
     {
         boost::mpi::communicator world;
 
@@ -105,7 +132,7 @@ public:
         {
             int rank = it->rank();
 
-            if (rank==world.rank() || world.rank()==0) {
+            if (it->locally_owned() || world.rank()==0) {
                 blockDescriptor_t block =it->data()->descriptor();
                 octant_blocks.push_back(*it);
 
@@ -114,13 +141,7 @@ public:
             ++_count;
         }
 
-        hdf5_file<Dim> chombo_file(_filename);
-
-        chombo_t ch_writer(octant_blocks);  // Initialize writer with vector of octants
-
-        ch_writer.write_global_metaData(&chombo_file,_lt->dx_base());
-
-        ch_writer.write_level_info(&chombo_file);
+        return octant_blocks;
     }
 
 };

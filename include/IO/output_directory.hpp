@@ -42,6 +42,7 @@ public:
 
             dir= _dict_output-> template get<std::string>("directory");
             boost::filesystem::path outdir(dir);
+
             directory_output=outdir;
             rel_directory_str=dir;
             if(world.rank()==0){

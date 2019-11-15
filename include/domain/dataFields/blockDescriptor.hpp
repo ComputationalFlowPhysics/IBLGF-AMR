@@ -32,7 +32,7 @@ struct subdivision_generator
 
     template<class CutIdx>
     static void apply_impl(const std::array<std::vector<CutIdx>,Dim>& cuts,
-                      std::array<std::size_t,Dim>& idx, 
+                      std::array<std::size_t,Dim>& idx,
                       std::vector<BlockDescriptor>& blocks,int level)
     {
         idx[ND-1] = 0;
@@ -51,7 +51,7 @@ struct subdivision_generator<1,Dim, BlockDescriptor>
 {
     template<class CutIdx>
     static void apply_impl(const std::array<std::vector<CutIdx>,Dim>& cuts,
-                      std::array<std::size_t,Dim>& idx, 
+                      std::array<std::size_t,Dim>& idx,
                       std::vector<BlockDescriptor>& blocks, int level)
     {
         for (std::size_t i=0; i<cuts[0].size()-1; ++i)
@@ -75,9 +75,9 @@ template<int Dim, int D=0, class Enable=void>
 struct get_corners_helper
 {
     template<class ArrayType>
-    static void apply(ArrayType& _p, 
-                       const ArrayType& _base, 
-                       const ArrayType& _extent, 
+    static void apply(ArrayType& _p,
+                       const ArrayType& _base,
+                       const ArrayType& _extent,
                        std::vector<ArrayType>& _points )
     {
         for(std::size_t k=0; k<2;++k)
@@ -92,9 +92,9 @@ template<int Dim,int D>
 struct get_corners_helper<Dim,D, typename std::enable_if<D==Dim-1>::type>
 {
     template<class ArrayType>
-    static void apply(ArrayType& _p, 
-                       const ArrayType& _base, 
-                       const ArrayType& _extent, 
+    static void apply(ArrayType& _p,
+                       const ArrayType& _base,
+                       const ArrayType& _extent,
                        std::vector<ArrayType>& _points )
     {
         for(std::size_t k=0; k<2;++k)
@@ -136,10 +136,10 @@ private:  //Static members
 
     static constexpr auto dimension(){return Dim;}
 
-public:  
-    static std::vector<BlockDescriptor> 
+public:
+    static std::vector<BlockDescriptor>
     generate_blocks_from_cuts( std::array<std::vector<T>,dimension()>& cut_locations,
-                               int _level=0 ) 
+                               int _level=0 )
     {
         std::vector<BlockDescriptor> res;
         detail::
@@ -184,7 +184,7 @@ public:  //Access
     int& level()noexcept {return level_;}
     void level( int _level )noexcept {level_=_level;}
 
-    
+
     auto size() const noexcept
     {
         size_type size=1;
@@ -193,7 +193,7 @@ public:  //Access
     }
 
 
-  
+
 public: //members
     void level_scale(int _level) noexcept
     {
@@ -202,7 +202,8 @@ public: //members
         if(_level>level_)
         {
             base_*=factor;
-            extent_=(extent_-1)*factor +1;
+            //extent_=(extent_-1)*factor +1;
+            extent_ *= factor;
         }
         else
         {
@@ -247,7 +248,7 @@ public: //members
         }
         this->max(max);
     }
-        
+
     template<class PointType>
 	bool is_inside(const PointType& p) const noexcept
 	{
@@ -293,7 +294,7 @@ public: //members
     inline size_type index(const PointType& p) const noexcept
     {
         return p[0]-base_[0]+
-               extent_[0]*(p[1]-base_[1]) + 
+               extent_[0]*(p[1]-base_[1]) +
                extent_[0]*extent_[1]*(p[2]-base_[2]);
     }
     template<class PointType, int D=Dim,
@@ -317,7 +318,7 @@ public: //members
     inline size_type index(int i, int j, int k) const noexcept
     {
         return i-base_[0]+
-               extent_[0]*(j-base_[1]) + 
+               extent_[0]*(j-base_[1]) +
                extent_[0]*extent_[1]*(k-base_[2]);
     }
     inline size_type index_zeroBase(int i, int j, int k) const noexcept
@@ -335,12 +336,14 @@ public: //members
 
 
     template<class BlockType, class OverlapType>
-	bool overlap(const BlockType& other, 
+	bool overlap(BlockType other,
                  OverlapType& overlap) const noexcept
 	{
-        overlap=other;
+
         if(other.level()!= level_)
-            overlap.level_scale(level_);
+            other.level_scale(level_);
+
+        overlap=other;
 
         for(std::size_t d = 0; d< overlap.extent().size();++d)
         {
@@ -348,19 +351,19 @@ public: //members
             overlap.extent()[d] = std::min(base_[d]+extent_[d],
                     other.base()[d]+other.extent()[d])-overlap.base()[d];
 
-            if (overlap.extent()[d]<1)return false;
+            if (overlap.extent()[d]<1) return false;
         }
         return true;
 	}
 
 
     template<class BlockType, class OverlapType>
-    bool overlap(const BlockType& other, 
+    bool overlap(const BlockType& other,
                  OverlapType& overlap, int _level)const noexcept
     {
         auto this_scaled=*this;
         auto other_scaled=other;
-        this_scaled.level_scale(_level);
+        this_scaled. level_scale(_level);
         other_scaled.level_scale(_level);
         if(this_scaled.overlap(other_scaled, overlap))
             return true;
@@ -368,7 +371,7 @@ public: //members
     }
 
 
-    bool is_empty() const noexcept 
+    bool is_empty() const noexcept
     {
         return extent_<= extent_t(0);
     }
@@ -392,7 +395,7 @@ public: //members
     std::vector<BlockDescriptor> cutout(const std::vector<Block>& _blocks) const noexcept
     {
         std::vector<Block> res;
-        
+
         //const auto dim=3;
         constexpr auto dim=dimension();
         std::array<std::vector<T>,dim> cut_locations;
@@ -434,15 +437,15 @@ public: //members
         }
 
         //Merging Blocks aling each dimension
-        for(unsigned int d=0;d<dim;++d) 
+        for(unsigned int d=0;d<dim;++d)
         {
             for(auto cut_iter= res.begin();cut_iter!=res.end();++cut_iter)
             {
                 auto start= cut_iter; ++start;
-                for(auto cut_iter_next = start; 
+                for(auto cut_iter_next = start;
                         cut_iter_next!= res.end();++cut_iter_next  )
                 {
-                    //Check if no overlapping 
+                    //Check if no overlapping
                     bool  mergeable=cut_iter->max()[d]+1 == cut_iter_next->base()[d];
 
                     //Check extent match for all but my dimensions
@@ -450,18 +453,18 @@ public: //members
                     {
                         for(unsigned int i=1;i<dim;++i)
                         {
-                            if( ( cut_iter->base()[(d+i)%dim]   != 
-                                  cut_iter_next->base()[(d+i)%dim]  || 
-                                  cut_iter->extent()[(d+i)%dim] != 
+                            if( ( cut_iter->base()[(d+i)%dim]   !=
+                                  cut_iter_next->base()[(d+i)%dim]  ||
+                                  cut_iter->extent()[(d+i)%dim] !=
                                   cut_iter_next->extent()[(d+i)%dim] ) )
                             {
                                 mergeable= false; break;
                             }
                         }
                         if(mergeable)
-                        {   
+                        {
                             cut_iter->extent()[d]+=cut_iter_next->extent()[d];
-                            cut_iter_next = res.erase(cut_iter_next); 
+                            cut_iter_next = res.erase(cut_iter_next);
                             --cut_iter_next;
                         }
                     }
@@ -475,7 +478,7 @@ public: //members
 
 
     template<typename PeriodicityBlock>
-    std::vector<BlockDescriptor> 
+    std::vector<BlockDescriptor>
     get_periodic_boxes(const PeriodicityBlock& _periodicityBlock,
             vector_t<bool> _periodicty=vector_t<bool>(true)
             ) const noexcept
@@ -483,7 +486,7 @@ public: //members
         return get_periodic_boxes(*this,_periodicityBlock,_periodicty);
     }
 
-    std::vector<BlockDescriptor> 
+    std::vector<BlockDescriptor>
     get_periodic_boxes( vector_t<bool> _periodicty=vector_t<bool>(true) ) const noexcept
     {
         return get_periodic_boxes(*this,*this,_periodicty);
@@ -496,7 +499,7 @@ public: //members
           <<" max: "<<b.max()
           <<" level: "<<b.level();
         return os;
-    
+
     }
 
 
@@ -527,9 +530,9 @@ public: //members
         {
             if(extent_[d] < _e[d])
             {
-                throw 
+                throw
                     std::runtime_error("BlockDrscriptor: Cannot divide box, too small");
-            } 
+            }
             int nBoxes =(extent_[d] +_e[d]-1)/_e[d];
             for(int i = 0; i<nBoxes;++i)
             {
@@ -555,7 +558,7 @@ public: //members
                 append_plate_stl(ofs, d, positive);
                 append_plate_stl(ofs, d, !positive);
             }
-        }else if(dim==2){ append_plate_stl(ofs, 2, !positive); } 
+        }else if(dim==2){ append_plate_stl(ofs, 2, !positive); }
         else{ throw std::runtime_error("Cannot write stl for your dimension"); }
     }
 
@@ -568,7 +571,7 @@ public: //members
     }
 
     template<typename Array>
-    static void write_blocks(std::string _filename, Array& _blocks) 
+    static void write_blocks(std::string _filename, Array& _blocks)
     {
         std::ofstream ofs(_filename);
         ofs<<"solid Body_1"<<std::endl;
@@ -577,12 +580,12 @@ public: //members
     }
 
 
-   
+
 
 private:
 
 
-    void append_plate_stl(std::ofstream& ofs, 
+    void append_plate_stl(std::ofstream& ofs,
             std::size_t _normal_idx, bool positive) const noexcept
     {
         const auto dim=base_.size();
@@ -599,7 +602,7 @@ private:
         auto n=p0;
         for(std::size_t d=0; d<dim;++d)
         {
-            if(d==_normal_idx) n[d]=positive? 1:-1; 
+            if(d==_normal_idx) n[d]=positive? 1:-1;
         }
 
         ofs<<std::scientific<<std::setprecision(6);
@@ -607,12 +610,12 @@ private:
         if(positive)vertices={{p0,p1,p2, p1, p3, p2 }};
         else vertices={{p0,p2,p1, p1, p2, p3 }};
 
-        for (unsigned int i=0 ; i<2; ++i) 
+        for (unsigned int i=0 ; i<2; ++i)
         {
             ofs<<"  facet normal "
                <<n.x()<<" " <<n.y()<<" " <<n.z()<<"\n";
             ofs<<"    outer loop\n";
-            for (unsigned int j=3*i; j<3*i+3; ++j) 
+            for (unsigned int j=3*i; j<3*i+3; ++j)
             {
                 ofs<<"      vertex "
                    <<vertices[j].x()<<" "
@@ -626,15 +629,15 @@ private:
 
 
     template<typename PeriodicityBlock>
-    std::vector<BlockDescriptor> 
+    std::vector<BlockDescriptor>
     get_periodic_boxes(
-            BlockDescriptor _block, 
+            BlockDescriptor _block,
             const PeriodicityBlock& _periodicityBlock,
             const vector_t<bool>& _periodicty,
             std::size_t _dimension=0
             ) const noexcept
     {
-        
+
         auto nDims=Dim;
         if(!_periodicty[nDims-1]) nDims-=1;
         while(!_periodicty[_dimension] && _dimension<nDims-1 )
@@ -692,4 +695,4 @@ protected:
 
 }
 
-#endif 
+#endif

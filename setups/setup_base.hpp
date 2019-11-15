@@ -37,29 +37,30 @@ public: //default fields
     REGISTER_FIELDS
     (Dim,
     (
-      (coarse_target_sum,  float_type,  1,   1,  1,  cell),
-      (source_tmp,         float_type,  1,   1,  1,  cell),
-      (correction_tmp,     float_type,  1,   1,  1,  cell),
-      (corr_lap_tmp,       float_type,  1,   1,  1,  cell),
-      (source_correction_tmp,float_type,  1,   1,  1,  cell),
-      (target_tmp,         float_type,  1,   1,  1,  cell),
-      (fmm_s,              float_type,  1,   1,  1,  cell),
-      (fmm_t,              float_type,  1,   1,  1,  cell),
+      (h5_read_test,        float_type,  3,  1,  1,  face),
+      (coarse_target_sum,   float_type,  1,  1,  1,  cell),
+      (source_tmp,          float_type,  1,  1,  1,  cell),
+      (correction_tmp,      float_type,  1,  1,  1,  cell),
+      (corr_lap_tmp,        float_type,  1,  1,  1,  cell),
+      (source_correction_tmp,float_type, 1,  1,  1,  cell),
+      (target_tmp,          float_type,  1,  1,  1,  cell),
+      (fmm_s,               float_type,  1,  1,  1,  cell),
+      (fmm_t,               float_type,  1,  1,  1,  cell),
       //flow variables
-      (q_i,                float_type,  3,  1,  1,  face),
-      (u_i,                float_type,  3,  1,  1,  face),
-      (u_str_u,            float_type,  3,  1,  1,  face),
-      (d_i,                float_type,  1,  1,  1,  cell),
-      (g_i,                float_type,  3,  1,  1,  face),
-      (r_i,                float_type,  3,  1,  1,  face),
-      (w_1,                float_type,  3,  1,  1,  face),
-      (w_2,                float_type,  3,  1,  1,  face),
-      (face_aux,           float_type,  3,  1,  1,  face),
-      (face_test_ri,       float_type,  3,  1,  1,  face),
-      (face_aux_2,         float_type,  3,  1,  1,  face),
-      (cell_aux,           float_type,  1,  1,  1,  cell),
-      (stream_f,           float_type,  3,  1,  1,  edge),
-      (edge_aux,           float_type,  3,  1,  1,  edge)
+      (q_i,                 float_type,  3,  1,  1,  face),
+      (u_i,                 float_type,  3,  1,  1,  face),
+      (u_str_u,             float_type,  3,  1,  1,  face),
+      (d_i,                 float_type,  1,  1,  1,  cell),
+      (g_i,                 float_type,  3,  1,  1,  face),
+      (r_i,                 float_type,  3,  1,  1,  face),
+      (w_1,                 float_type,  3,  1,  1,  face),
+      (w_2,                 float_type,  3,  1,  1,  face),
+      (cell_aux,            float_type,  1,  1,  1,  cell),
+      (face_aux,            float_type,  3,  1,  1,  face),
+      (face_test_ri,        float_type,  3,  1,  1,  face),
+      (face_aux_2,          float_type,  3,  1,  1,  face),
+      (stream_f,            float_type,  3,  1,  1,  edge),
+      (edge_aux,            float_type,  3,  1,  1,  edge)
     ))
 
     using field_tuple=fields_tuple_t;
@@ -126,7 +127,7 @@ public: //memebers
 
     /** @brief Compute L2 and LInf errors */
     template<class Numeric, class Exact, class Error>
-    void compute_errors(std::string _output_prefix="")
+    void compute_errors(std::string _output_prefix="", int field_idx = 0)
     {
         const float_type dx_base=domain_->dx_base();
         float_type L2   = 0.; float_type LInf = -1.0; int count=0;
@@ -158,15 +159,15 @@ public: //memebers
             auto& nodes_domain=it_t->data()->nodes_domain();
             for(auto it2=nodes_domain.begin();it2!=nodes_domain.end();++it2 )
             {
-                float_type tmp_exact = it2->template get<Exact>();
-                float_type tmp_num   = it2->template get<Numeric>();
+                float_type tmp_exact = it2->template get<Exact>(field_idx);
+                float_type tmp_num   = it2->template get<Numeric>(field_idx);
 
                 //if(std::isnan(tmp_num))
                 //    std::cout<<"this is nan at level = " << it_t->level()<<std::endl;
 
                 float_type error_tmp = tmp_num - tmp_exact;
 
-                it2->template get<Error>() = error_tmp;
+                it2->template get<Error>(field_idx) = error_tmp;
 
                 L2 += error_tmp*error_tmp * (dx*dx*dx);
                 L2_exact += tmp_exact*tmp_exact*(dx*dx*dx);

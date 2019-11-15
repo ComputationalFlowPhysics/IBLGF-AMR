@@ -57,7 +57,6 @@ template<std::size_t NumDims, class Index_list_t=math::vector<int,NumDims>>
 class hdf5_file
 {
 
-
     /*
     File            - a contiguous string of bytes in a computer store (memory, disk, etc.), and the bytes represent zero or more objects of the model
     Group           - a collection of objects (including groups)
@@ -79,9 +78,12 @@ class hdf5_file
 
         //Ctor:
         hdf5_file() { }
-        hdf5_file(std::string _filename)
+        hdf5_file(std::string _filename, bool _file_exist=false)
         {
-            create_file(_filename);
+            if (_file_exist)
+                open_file2(_filename);
+            else
+                create_file(_filename);
         }
 
 
@@ -93,17 +95,48 @@ class hdf5_file
         hdf5_file& operator=(hdf5_file&&)& =default;
         hdf5_file& operator=(const hdf5_file&)& =default;
 
+        //box compounds for chombo
+        struct box_compound
+        {
+            box_compound()=default;
+            ~box_compound()=default;
+            box_compound(const index_list_t& _min, const index_list_t& _max)
+            {
+                lo_i=static_cast<int>(_min[0]);
+                lo_j=static_cast<int>(_min[1]);
+                if(dimension==3)lo_k=static_cast<int>(_min[2]);
+                hi_i=static_cast<int>(_max[0]);
+                hi_j=static_cast<int>(_max[1]);
+                if(dimension==3)hi_k=static_cast<int>(_max[2]);
+            }
+
+            int lo_i;
+            int lo_j;
+            int lo_k;
+            int hi_i;
+            int hi_j;
+            int hi_k;
+            std::string lo_i_str="lo_i";
+            std::string lo_j_str="lo_j";
+            std::string lo_k_str="lo_k";
+            std::string hi_i_str="hi_i";
+            std::string hi_j_str="hi_j";
+            std::string hi_k_str="hi_k";
+        };
+
 
         void open_file2(std::string _filename, bool default_open=false)
         {
             boost::mpi::communicator world;
             plist_id = H5Pcreate(H5P_FILE_ACCESS);
             H5Pset_fapl_mpio(plist_id, world, mpiInfo);
-            if(!default_open){
-                file_id = H5Fopen(_filename.c_str(), H5F_ACC_RDWR, plist_id);
-            }else{
-                file_id = H5Fopen(_filename.c_str(), H5F_ACC_RDWR, H5P_DEFAULT);
-            }
+            if(!default_open)
+                //file_id = H5Fopen(_filename.c_str(), H5F_ACC_RDWR, plist_id);
+                file_id = H5Fopen(_filename.c_str(), H5F_ACC_RDONLY, plist_id);
+            else
+                file_id = H5Fopen(_filename.c_str(), H5F_ACC_RDONLY, H5P_DEFAULT);
+            HDF5_CHECK_ERROR(file_id, "hdf5: could not open file")
+            std::cout<< " open file " + _filename + " with ID: " << file_id<< std::endl;
         }
 
 
@@ -121,10 +154,10 @@ class hdf5_file
         }
 
 
-        ~hdf5_file()
-        {
-            close_everything();
-        }
+        //~hdf5_file()
+        //{
+        //    close_everything();
+        //}
 
 
         void update_plist()
@@ -135,7 +168,6 @@ class hdf5_file
         void create_file(std::string _filename)
         {
             boost::mpi::communicator world;
-
             plist_id = H5Pcreate(H5P_FILE_ACCESS);
 
             // Set property list for parallel open if necessary
@@ -308,9 +340,19 @@ class hdf5_file
             HDF5_CHECK_ERROR(dataspace_id, "hdf5: could not open dataspace")
             std::array<hsize_t,Dset_Dim> dims;
             const int dimension_check= H5Sget_simple_extent_dims(dataspace_id,&dims[0] ,NULL);
+            HDF5_CHECK_ERROR(dimension_check, "hdf5: could query dimension")
+
+            //if(std::is_same<storage_order,boost::fortran_storage_order>::value)
+            //{
+            //    std::reverse(dims.begin(), dims.end() );
+            //}
+
 
             hsize_type n_elements=1;
-            for(int d=0;d<Dset_Dim;++d) { n_elements*=dims[d]; }
+            for(int d=0;d<Dset_Dim;++d) {
+                n_elements*=dims[d];
+                std::cout<<dims[d]<<std::endl;
+            }
             data.resize(n_elements);
 
             const  hsize_t rank_out=1;  // dimensionality of output vector
@@ -325,10 +367,34 @@ class hdf5_file
 
         }
 
+        template<class BlockDescriptor>
+        std::vector<BlockDescriptor> read_box_descriptors(hid_t& dataset_id, int fake_level)
+        {
+            hid_t dataspace_id = H5Dget_space(dataset_id);
+
+            std::vector<hsize_t> dims(1);
+            int ndims= H5Sget_simple_extent_dims(dataspace_id,&dims[0] ,NULL);
+
+            box_compound* data = (box_compound *) malloc (dims[0] * sizeof (box_compound));
+
+            hid_t memtype = H5Dget_type(dataset_id);
+            herr_t status = H5Dread(dataset_id, memtype, H5S_ALL, H5S_ALL, H5P_DEFAULT, &data[0]);
+            std::vector<BlockDescriptor> vec_box(dims[0]);
+            //TODO : somehow the direct conversion doesn't work
+            for (int i=0; i<dims[0]; ++i)
+            {
+               vec_box[i] = BlockDescriptor(
+                    std::array<int,NumDims>({data[i].lo_i,data[i].lo_j,data[i].lo_k}),
+                    std::array<int,NumDims>({data[i].hi_i-data[i].lo_i+1,data[i].hi_j-data[i].lo_j+1,data[i].hi_k-data[i].lo_k+1}),
+                    fake_level);
+            }
+            return vec_box;
+        }
 
 
-        template<typename T, class Base, class Extent , std::size_t Dset_Dim=NumDims>
-        std::vector<T> read_hyperslab(hid_type& dataset_id, Base base, Extent extent)
+
+        template<typename T, class Base, class Extent, class Stride, std::size_t Dset_Dim=NumDims>
+        std::vector<T> read_hyperslab(hid_type& dataset_id, Base base, Extent extent, Stride stride)
         {
             hid_t dataspace_id = H5Dget_space(dataset_id);
             HDF5_CHECK_ERROR(dataspace_id, "hdf5: could not open dataspace")
@@ -347,20 +413,23 @@ class hdf5_file
 
             std::vector<hsize_t> offset(dimension,0);
             std::vector<hsize_t> count(dimension,0);
+            std::vector<hsize_t> step(dimension,0);
+
             hsize_type n_elements_domain=1;
             for(int d=0;d<dimension;++d)
             {
                 offset[d] = static_cast<hsize_t>(base[d]);
                 count[d]  = static_cast<hsize_t>(extent[d]);
+                step[d]  = static_cast<hsize_t>(stride[d]);
                 n_elements_domain*=extent[d];
-
             }
             std::vector<float_type> data(n_elements_domain);
 
             std::reverse(offset.begin(), offset.end());
             std::reverse(count.begin(),  count.end());
+            std::reverse(step.begin(),  step.end());
 
-            auto status = H5Sselect_hyperslab (dataspace_id, H5S_SELECT_SET, &offset[0], NULL, &count[0], NULL);
+            auto status = H5Sselect_hyperslab(dataspace_id, H5S_SELECT_SET, &offset[0], &step[0], &count[0], NULL);
             HDF5_CHECK_ERROR(status , "hdf5: Could not select hyperslab")
 
             const  hsize_t rank_out=1;  // dimensionality of output vector
@@ -500,7 +569,9 @@ class hdf5_file
             {
                 T res{};
                 auto attr = H5Aopen (_group_id,  _attr_identifier.c_str(), H5P_DEFAULT);
-                auto ret  = H5Aread(attr, H5T_NATIVE_INT, &res);
+
+                auto hdf_t= hdf_type<T>::type();
+                auto ret  = H5Aread(attr, hdf_t, &res);
                 HDF5_CHECK_ERROR(ret, "hdf5: could not read Attribute")
                 ret =  H5Aclose(attr);
                 HDF5_CHECK_ERROR(ret, "hdf5: could not close Attribute")
@@ -605,33 +676,6 @@ class hdf5_file
 
 
 
-
-        //box compounds for chombo
-        struct box_compound
-        {
-            box_compound(const index_list_t& _min, const index_list_t& _max)
-            {
-                lo_i=static_cast<int>(_min[0]);
-                lo_j=static_cast<int>(_min[1]);
-                if(dimension==3)lo_k=static_cast<int>(_min[2]);
-                hi_i=static_cast<int>(_max[0]);
-                hi_j=static_cast<int>(_max[1]);
-                if(dimension==3)hi_k=static_cast<int>(_max[2]);
-            }
-
-            int lo_i;
-            int lo_j;
-            int lo_k;
-            int hi_i;
-            int hi_j;
-            int hi_k;
-            std::string lo_i_str="lo_i";
-            std::string lo_j_str="lo_j";
-            std::string lo_k_str="lo_k";
-            std::string hi_i_str="hi_i";
-            std::string hi_j_str="hi_j";
-            std::string hi_k_str="hi_k";
-        };
 
         // CREATE + WRITE *******************************************************
         // write_boxCompound( group_id, name, vector of min, vector of max, bool=true)

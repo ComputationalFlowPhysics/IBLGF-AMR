@@ -15,7 +15,6 @@ class Simulation
 public:
     using domain_type = Domain;
 
-
 public:
 
 
@@ -47,7 +46,13 @@ public:
 
     void write2(std::string _filename)
     {
-        writer_h5.write_h5(io::output().dir()+"/"+_filename, domain_.get());
+        io_h5.write_h5(io::output().dir()+"/"+_filename, domain_.get());
+    }
+
+    template<typename Field>
+    void read_h5(std::string _filename)
+    {
+       io_h5.template read_h5<Field>(io::output().dir()+"/"+_filename, domain_.get());
     }
 
     auto& domain()noexcept{return domain_;}
@@ -60,7 +65,7 @@ public:
   std::shared_ptr<Domain> domain_=nullptr;
   boost::mpi::communicator world_;
   io::Vtk_io<Domain> writer;
-  io::H5_io<3, Domain> writer_h5;
+  io::H5_io<3, Domain> io_h5;
   io::IO_init io_init_;
 
 };

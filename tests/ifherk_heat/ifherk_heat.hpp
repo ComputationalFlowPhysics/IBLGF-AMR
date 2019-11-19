@@ -46,11 +46,12 @@ struct parameters
      (
         //name               type        Dim   lBuffer  hBuffer, storage type
          (source           , float_type, 1,    1,       1,     cell),
-         (error            , float_type, 3,    1,       1,     face),
+         (error_u          , float_type, 3,    1,       1,     face),
          (decomposition    , float_type, 1,    1,       1,     cell),
         //IF-HERK
          (u_exact          , float_type, 3,    1,       1,     face),
          (u                , float_type, 3,    1,       1,     face),
+         (u_ref            , float_type, 3,    1,       1,     face),
          (u_str_u          , float_type, 3,    1,       1,     face),
          (w                , float_type, 3,    1,       1,     edge),
          (p                , float_type, 1,    1,       1,     cell)
@@ -80,21 +81,33 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
         else client_comm_=client_comm_.split(0);
 
         dx_  = domain_->dx_base();
-        cfl_ = simulation_.dictionary()->template get_or<float_type>("cfl",0.5);
+        cfl_ = simulation_.dictionary()->template get_or<float_type>("cfl",0.2);
         dt_  = simulation_.dictionary()->template get_or<float_type>("dt",-1.0);
 
-        tot_steps_ = simulation_.dictionary()->template get<int>("nTimeSteps");
+        tot_steps_ = simulation_.dictionary()->template get<int>("nBaseLevelTimeSteps");
         Re_        = simulation_.dictionary()->template get<float_type>("Re");
         R_         = simulation_.dictionary()->template get<float_type>("R");
 
-        if (dt_<0)
-            dt_=dx_*cfl_;
+        ic_filename_ = simulation_.dictionary_->
+            template get_or<std::string>("hdf5_ic_name", "null");
+
+        ref_filename_ = simulation_.dictionary_->
+            template get_or<std::string>("hdf5_ref_name", "null");
 
         source_max_=simulation_.dictionary_->
             template get_or<float_type>("source_max",1.0);
 
+        refinement_factor_ =simulation_.dictionary_->
+            template get<float_type>("refinement_factor");
+
         nLevelRefinement_=simulation_.dictionary_->
             template get_or<int>("nLevels",0);
+
+        if (dt_<0)
+            dt_=dx_*cfl_;
+
+        dt_/=pow(2.0,nLevelRefinement_);
+        tot_steps_ *= pow(2,nLevelRefinement_);
 
         pcout << "\n Setup:  Test - Simple IC \n" << std::endl;
         pcout << "Number of refinement levels: "<<nLevelRefinement_<<std::endl;
@@ -117,11 +130,11 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
     void run()
     {
         boost::mpi::communicator world;
-        //simulation_.write2("ifherk_0.hdf5");
 
-        //simulation_.write2("ifherk_1_0.hdf5", domain_->tree()->base_level());
-        //simulation_.write2("ifherk_1_1.hdf5", domain_->tree()->base_level()+1);
         time_integration_t ifherk(&this->simulation_);
+
+        if (ic_filename_!="null")
+            simulation_.template read_h5<u>(ic_filename_);
 
         mDuration_type ifherk_duration(0);
         TIME_CODE( ifherk_duration, SINGLE_ARG(
@@ -129,9 +142,14 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
                     ))
         pcout_c<<"Time to solution [ms] "<<ifherk_duration.count()<<std::endl;
 
-        //this->compute_errors<u,u_exact,error>();
-        //simulation_.write2("ifherk_1_0.hdf5");
-        //simulation_.write2("ifherk_1.hdf5");
+        if (ref_filename_!="null")
+            simulation_.template read_h5<u_ref>(ref_filename_);
+
+        this->compute_errors<u,u_ref,error_u>(std::string(""),0);
+        this->compute_errors<u,u_ref,error_u>(std::string(""),1);
+        this->compute_errors<u,u_ref,error_u>(std::string(""),2);
+
+        simulation_.write2("final.hdf5");
     }
 
 
@@ -152,6 +170,8 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
         //center+=0.5/std::pow(2,nRef);
         const float_type dx_base = domain_->dx_base();
 
+
+        if (ic_filename_ != "null") return;
 
         // Voriticity IC
         for (auto it  = domain_->begin();
@@ -206,7 +226,7 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
         }
 
         psolver.template apply_lgf<w, stream_f>();
-        //auto client=domain_->decomposition().client();
+        auto client=domain_->decomposition().client();
 
         for (int l  = domain_->tree()->base_level();
                 l < domain_->tree()->depth(); ++l)
@@ -221,6 +241,7 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
                 const auto dx_level =  dx_base/std::pow(2,it->refinement_level());
                 domain::Operator::curl_transpose<stream_f,u>( *(it->data()),dx_level);
             }
+            client->template buffer_exchange<u>(l);
 
         }
     }
@@ -251,120 +272,6 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
             return 0.0;
 
     }
-
-    /** @brief Compute L2 and LInf errors */
-    template<class Numeric, class Exact, class Error>
-    void compute_errors(std::string _output_prefix="")
-    {
-        const float_type dx_base=domain_->dx_base();
-        float_type L2   = 0.; float_type LInf = -1.0; int count=0;
-        float_type L2_exact = 0; float_type LInf_exact = -1.0;
-
-        std::vector<float_type> L2_perLevel(nLevelRefinement_+1+global_refinement_,0.0);
-        std::vector<float_type> L2_exact_perLevel(nLevelRefinement_+1+global_refinement_,0.0);
-        std::vector<float_type> LInf_perLevel(nLevelRefinement_+1+global_refinement_,0.0);
-        std::vector<float_type> LInf_exact_perLevel(nLevelRefinement_+1+global_refinement_,0.0);
-
-        std::vector<int> counts(nLevelRefinement_+1+global_refinement_,0);
-
-        if(domain_->is_server())  return;
-
-        for (std::size_t entry=0; entry<Numeric::nFields; ++entry)
-        {
-            for (auto it_t  = domain_->begin();
-                    it_t != domain_->end(); ++it_t)
-            {
-                if(!it_t->locally_owned() || !it_t->data())continue;
-
-                int refinement_level = it_t->refinement_level();
-                double dx = dx_base/std::pow(2.0,refinement_level);
-
-                auto& nodes_domain=it_t->data()->nodes_domain();
-                for(auto it2=nodes_domain.begin();it2!=nodes_domain.end();++it2 )
-                {
-                    float_type tmp_exact = it2->template get<Exact>(entry);
-                    float_type tmp_num   = it2->template get<Numeric>(entry);
-
-                    float_type error_tmp = tmp_num - tmp_exact;
-
-                    it2->template get<Error>(entry) = error_tmp;
-
-                    L2 += error_tmp*error_tmp * (dx*dx*dx);
-                    L2_exact += tmp_exact*tmp_exact*(dx*dx*dx);
-
-                    L2_perLevel[refinement_level]+=error_tmp*error_tmp* (dx*dx*dx);
-                    L2_exact_perLevel[refinement_level]+=tmp_exact*tmp_exact*(dx*dx*dx);
-                    ++counts[refinement_level];
-
-                    if ( std::fabs(tmp_exact) > LInf_exact)
-                        LInf_exact = std::fabs(tmp_exact);
-
-                    if ( std::fabs(error_tmp) > LInf)
-                        LInf = std::fabs(error_tmp);
-
-                    if ( std::fabs(error_tmp) > LInf_perLevel[refinement_level] )
-                        LInf_perLevel[refinement_level]=std::fabs(error_tmp);
-
-                    if ( std::fabs(tmp_exact) > LInf_exact_perLevel[refinement_level] )
-                        LInf_exact_perLevel[refinement_level]=std::fabs(tmp_exact);
-
-                    ++count;
-                }
-            }
-        }
-
-        float_type L2_global(0.0);
-        float_type LInf_global(0.0);
-
-        float_type L2_exact_global(0.0);
-        float_type LInf_exact_global(0.0);
-
-        boost::mpi::all_reduce(client_comm_,L2, L2_global, std::plus<float_type>());
-        boost::mpi::all_reduce(client_comm_,L2_exact, L2_exact_global, std::plus<float_type>());
-
-        boost::mpi::all_reduce(client_comm_,LInf, LInf_global,[&](const auto& v0,
-                               const auto& v1){return v0>v1? v0  :v1;} );
-        boost::mpi::all_reduce(client_comm_,LInf_exact, LInf_exact_global,[&](const auto& v0,
-                               const auto& v1){return v0>v1? v0  :v1;} );
-
-        pcout_c << "Glabal "<<_output_prefix<<"L2_exact = " << std::sqrt(L2_exact_global)<< std::endl;
-        pcout_c << "Global "<<_output_prefix<<"LInf_exact = " << LInf_exact_global << std::endl;
-
-        pcout_c << "Glabal "<<_output_prefix<<"L2 = " << std::sqrt(L2_global)<< std::endl;
-        pcout_c << "Global "<<_output_prefix<<"LInf = " << LInf_global << std::endl;
-
-        //Level wise errros
-        std::vector<float_type> L2_perLevel_global(nLevelRefinement_+1+global_refinement_,0.0);
-        std::vector<float_type> LInf_perLevel_global(nLevelRefinement_+1+global_refinement_,0.0);
-
-        std::vector<float_type> L2_exact_perLevel_global(nLevelRefinement_+1+global_refinement_,0.0);
-        std::vector<float_type> LInf_exact_perLevel_global(nLevelRefinement_+1+global_refinement_,0.0);
-
-        std::vector<int> counts_global(nLevelRefinement_+1+global_refinement_,0);
-        for(std::size_t i=0;i<LInf_perLevel_global.size();++i)
-        {
-            boost::mpi::all_reduce(client_comm_,counts[i],
-                                   counts_global[i], std::plus<float_type>());
-            boost::mpi::all_reduce(client_comm_,L2_perLevel[i],
-                                   L2_perLevel_global[i], std::plus<float_type>());
-            boost::mpi::all_reduce(client_comm_,LInf_perLevel[i],
-                                   LInf_perLevel_global[i],[&](const auto& v0,
-                                       const auto& v1){return v0>v1? v0  :v1;});
-
-            boost::mpi::all_reduce(client_comm_,L2_exact_perLevel[i],
-                                   L2_exact_perLevel_global[i], std::plus<float_type>());
-            boost::mpi::all_reduce(client_comm_,LInf_exact_perLevel[i],
-                                   LInf_exact_perLevel_global[i],[&](const auto& v0,
-                                       const auto& v1){return v0>v1? v0  :v1;});
-
-            pcout_c<<_output_prefix<<"L2_"<<i<<" "<<std::sqrt(L2_perLevel_global[i])<<std::endl;
-            pcout_c<<_output_prefix<<"LInf_"<<i<<" "<<LInf_perLevel_global[i]<<std::endl;
-            pcout_c<<"count_"<<i<<" "<<counts_global[i]<<std::endl;
-        }
-
-
-    }
-
 
     /** @brief  Refienment conditon for octants.  */
     template<class OctantType>
@@ -402,7 +309,7 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
                     (k-center[2])*dx_level;
 
                     float_type tmp_w = vortex_ring_vor_ic(x,y,z,0);
-                    if(std::abs(tmp_w) > w_max*pow(0.5, diff_level))
+                    if(std::fabs(tmp_w) > w_max*pow(refinement_factor_, diff_level))
                         return true;
 
                     x = static_cast<float_type>
@@ -414,7 +321,7 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
 
 
                     tmp_w = vortex_ring_vor_ic(x,y,z,1);
-                    if(std::abs(tmp_w) > w_max*pow(0.5, diff_level))
+                    if(std::fabs(tmp_w) > w_max*pow(refinement_factor_, diff_level))
                         return true;
 
                     x = static_cast<float_type>
@@ -425,7 +332,7 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
                     (k-center[2]+0.5)*dx_level;
 
                     tmp_w = vortex_ring_vor_ic(x,y,z,2);
-                    if(std::abs(tmp_w)  > w_max*pow(0.5, diff_level))
+                    if(std::fabs(tmp_w) > w_max*pow(refinement_factor_, diff_level))
                         return true;
                 }
             }
@@ -469,6 +376,9 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
     float_type cfl_;
     float_type Re_;
     int tot_steps_;
+    float_type refinement_factor_=1./8;
+
+    std::string ic_filename_, ref_filename_;
 };
 
 

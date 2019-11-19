@@ -37,7 +37,6 @@ public: //default fields
     REGISTER_FIELDS
     (Dim,
     (
-      (h5_read_test,        float_type,  3,  1,  1,  face),
       (coarse_target_sum,   float_type,  1,  1,  1,  cell),
       (source_tmp,          float_type,  1,  1,  1,  cell),
       (correction_tmp,      float_type,  1,  1,  1,  cell),
@@ -47,9 +46,9 @@ public: //default fields
       (fmm_s,               float_type,  1,  1,  1,  cell),
       (fmm_t,               float_type,  1,  1,  1,  cell),
       //flow variables
+      (u_str_u,             float_type,  3,  1,  1,  face),
       (q_i,                 float_type,  3,  1,  1,  face),
       (u_i,                 float_type,  3,  1,  1,  face),
-      (u_str_u,             float_type,  3,  1,  1,  face),
       (d_i,                 float_type,  1,  1,  1,  cell),
       (g_i,                 float_type,  3,  1,  1,  face),
       (r_i,                 float_type,  3,  1,  1,  face),

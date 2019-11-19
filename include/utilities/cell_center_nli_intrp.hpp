@@ -83,6 +83,11 @@ namespace interpolation
             std::fill(antrp_mat_sub_simple_[0].begin(), antrp_mat_sub_simple_[0].end(), 0.0);
             std::fill(antrp_mat_sub_simple_[1].begin(), antrp_mat_sub_simple_[1].end(), 0.0);
 
+            std::fill(antrp_mat_sub_simple_sub_[0].begin(), antrp_mat_sub_simple_sub_[0].end(), 0.0);
+            std::fill(antrp_mat_sub_simple_sub_[1].begin(), antrp_mat_sub_simple_sub_[1].end(), 0.0);
+            std::fill(antrp_mat_sub_simple_sub_[2].begin(), antrp_mat_sub_simple_sub_[2].end(), 0.0);
+            std::fill(antrp_mat_sub_simple_sub_[3].begin(), antrp_mat_sub_simple_sub_[3].end(), 0.0);
+
             for (size_t i=1;i<Nb_-1;++i)
                     antrp_mat_sub_simple_[0](i,i*2-1)=1.0;
 
@@ -92,17 +97,19 @@ namespace interpolation
                     antrp_mat_sub_simple_[1](i,i*2)=0.5;
             }
 
-            xt::noalias(antrp_mat_sub_simple_sub_[0]) =
-                view(antrp_mat_sub_simple_[0],xt::all(),xt::range(0,Nb_));
-            xt::noalias(antrp_mat_sub_simple_sub_[1]) =
-                view(antrp_mat_sub_simple_[0],xt::all(),xt::range(Nb_-2,2*Nb_-2));
+            xt::noalias(view(antrp_mat_sub_simple_sub_[0], xt::all(), xt::range(1,Nb_-1) )) =
+                view(antrp_mat_sub_simple_[0],xt::all(),xt::range(1,Nb_-1));
+            xt::noalias(view(antrp_mat_sub_simple_sub_[1], xt::all(), xt::range(1,Nb_-1))) =
+                view(antrp_mat_sub_simple_[0],xt::all(),xt::range(Nb_-1,2*Nb_-3));
 
-            xt::noalias(antrp_mat_sub_simple_sub_[2]) =
-                view(antrp_mat_sub_simple_[1],xt::all(),xt::range(0,Nb_));
-            xt::noalias(antrp_mat_sub_simple_sub_[3]) =
-                view(antrp_mat_sub_simple_[1],xt::all(),xt::range(Nb_-2,2*Nb_-2));
 
-            //std::cout<< antrp_mat_sub_simple_[0]<< std::endl;
+            xt::noalias(view(antrp_mat_sub_simple_sub_[2], xt::all(), xt::range(1,Nb_-1))) =
+                view(antrp_mat_sub_simple_[1],xt::all(),xt::range(1,Nb_-1));
+            xt::noalias(view(antrp_mat_sub_simple_sub_[3], xt::all(), xt::range(1,Nb_-1))) =
+                view(antrp_mat_sub_simple_[1],xt::all(),xt::range(Nb_-1,2*Nb_-3));
+
+            //std::cout<< antrp_mat_sub_simple_sub_[2]<< std::endl;
+            //std::cout<< antrp_mat_sub_simple_sub_[3]<< std::endl;
             //std::cout<< antrp_mat_sub_simple_[1]<< std::endl;
 
         }
@@ -151,9 +158,9 @@ namespace interpolation
              class to,
             typename octant_t
         >
-        void nli_intrp_node(octant_t parent, MeshObject mesh_obj, std::size_t _field_idx , bool correction_only = false, bool exclude_correction = false)
+        void nli_intrp_node(octant_t parent, MeshObject mesh_obj, std::size_t real_mesh_field_idx, std::size_t tmp_field_idx, bool correction_only = false, bool exclude_correction = false)
             {
-                auto& parent_linalg_data = parent->data()->template get_linalg_data<from>();
+                auto& parent_linalg_data = parent->data()->template get_linalg_data<from>(tmp_field_idx);
 
                 for (int i = 0; i < parent->num_children(); ++i)
                 {
@@ -167,13 +174,12 @@ namespace interpolation
 
                     if (correction_only && !child->is_correction())
                         continue;
-
                     if (exclude_correction && child->is_correction())
                         continue;
 
-                    auto& child_linalg_data = child ->data()->template get_linalg_data<to>();
+                    auto& child_linalg_data = child ->data()->template get_linalg_data<to>(tmp_field_idx);
                     nli_intrp_node(child_linalg_data, parent_linalg_data,
-                            i, mesh_obj, _field_idx);
+                            i, mesh_obj, real_mesh_field_idx);
                 }
 
             }
@@ -236,7 +242,7 @@ namespace interpolation
                 {
                     // For Z
                     // Column major
-                    xt::noalias( view(child, q, p, xt::all()) ) +=
+                    xt::noalias( view(child, q, p, xt::all()) ) =
                         xt::linalg::dot( view(nli_aux_3d_intrp, q, p, xt::all()), antrp_mat_sub_[idx_z].data_ );
                 }
             }
@@ -247,9 +253,9 @@ namespace interpolation
              class to,
             typename octant_t
         >
-        void nli_antrp_node(octant_t parent, MeshObject mesh_obj, std::size_t _field_idx)
+        void nli_antrp_node(octant_t parent, MeshObject mesh_obj, std::size_t real_mesh_field_idx, std::size_t tmp_field_idx, bool correction_only = false, bool exclude_correction = false)
             {
-                auto& parent_linalg_data = parent->data()->template get_linalg_data<to>();
+                auto& parent_linalg_data = parent->data()->template get_linalg_data<to>(tmp_field_idx);
 
                 for (int i = 0; i < parent->num_children(); ++i)
                 {
@@ -261,10 +267,15 @@ namespace interpolation
 
                     if(!child->locally_owned()) continue;
 
-                    auto& child_linalg_data = child ->data()->
-                        template get_linalg_data<from>();
+                    if (correction_only && !child->is_correction())
+                        continue;
+                    if (exclude_correction && child->is_correction())
+                        continue;
 
-                    nli_antrp_node(child_linalg_data, parent_linalg_data, i, mesh_obj, _field_idx);
+                    auto& child_linalg_data = child ->data()->
+                        template get_linalg_data<from>(tmp_field_idx);
+
+                    nli_antrp_node(child_linalg_data, parent_linalg_data, i, mesh_obj, real_mesh_field_idx);
                 }
             }
 
@@ -454,7 +465,7 @@ namespace interpolation
 
     //private:
     public:
-        const int pts_cap = 2;
+        const int pts_cap = 4;
         int Nb_;
 
         std::vector<float_type> antrp_relative_pos_0_;

@@ -75,20 +75,24 @@ public: //member types
     {
         dx_          = domain_->dx_base();
         cfl_         = _simulation->dictionary()->
-            template get_or<float_type>("cfl",0.5);
+            template get_or<float_type>("cfl",0.2);
         dt_          = _simulation->dictionary()->
             template get_or<float_type>("dt",-1.0);
         tot_steps_   = _simulation->dictionary()->
-            template get<int>("nTimeSteps");
+            template get<int>("nBaseLevelTimeSteps");
         cfl_max_     = _simulation->dictionary()->
             template get_or<float_type>("cfl_max",1000);
         Re_          = _simulation->dictionary()->
             template get<float_type>("Re");
         output_freq_ = _simulation->dictionary()->
             template get<float_type>("output_frequency");
-
+        nLevelRefinement_=_simulation->dictionary_->
+            template get_or<int>("nLevels",0);
         if (dt_<0)
             dt_ = dx_*cfl_;
+
+        dt_/=pow(2.0,nLevelRefinement_);
+        tot_steps_ *= pow(2,nLevelRefinement_);
 
         float_type tmp = Re_*dx_*dx_/dt_;
 
@@ -138,7 +142,6 @@ public:
     {
         pcout << "- writing at T = " << T_ << std::endl;
         simulation_->write2(fname(n_step_));
-        //simulation_->write2("ifherk_1_1.hdf5");
         pcout << "- finishing writing " << std::endl;
     }
 
@@ -147,15 +150,56 @@ public:
         return fname_prefix_+"ifherk_"+std::to_string(_n)+".hdf5";
     }
 
+    template<class Field>
+    void up_and_down()
+    {
+        //claen non leafs
+        clean<Field>(true);
+        //Coarsification:
+        for (std::size_t _field_idx=0; _field_idx<Field::nFields; ++_field_idx)
+            psolver.template source_coarsify<Field,Field>(_field_idx, _field_idx, Field::mesh_type);
+        // Interpolate to correction buffer
+        for (std::size_t _field_idx=0; _field_idx<Field::nFields; ++_field_idx)
+            psolver.template intrp_to_correction_buffer<Field, Field>(_field_idx, _field_idx, Field::mesh_type, true, false);
+    }
 
     void time_step()
     {
         // Initialize IFHERK
         // q_1 = u
         boost::mpi::communicator world;
+        auto client=domain_->decomposition().client();
 
+
+        ////claen non leafs
+        clean<u>(true);
+        up_and_down<u>();
+
+        //Coarsification:
+        //for (std::size_t _field_idx=0; _field_idx<u::nFields; ++_field_idx)
+        //    psolver.template source_coarsify<u,u>(_field_idx, _field_idx, u::mesh_type);
+
+        //for (auto it  = domain_->begin(domain_->tree()->base_level()+1);
+        //          it != domain_->end(domain_->tree()->base_level()+1); ++it)
+        //{
+        //    if (!it->data()) continue;
+        //    if (!it ->data()->is_allocated())continue;
+
+        //    for (std::size_t field_idx=0; field_idx<u::nFields; ++field_idx)
+        //    {
+        //        auto& lin_data = it ->data()->
+        //            template get_linalg_data<u>(field_idx);
+
+        //        std::fill(lin_data.begin(),lin_data.end(),0.0);
+        //    }
+        //}
+
+        // Interpolate to correction buffer
+        //for (std::size_t _field_idx=0; _field_idx<u::nFields; ++_field_idx)
+        //    psolver.template intrp_to_correction_buffer<u, u>(_field_idx, _field_idx, u::mesh_type, true, false);
+
+        // Solve stream function to pad base level u->u_pad
         pad_velocity<u, u>();
-        pad_velocity<u, u_str_u>();
         copy<u, q_i>();
 
         // Stage 1
@@ -166,7 +210,6 @@ public:
         clean<cell_aux>();
         clean<face_aux>();
         clean<face_aux_2>();
-        // Solve stream function to pad base level u->u_pad
 
         nonlinear<u,g_i>(coeff_a(1,1)*(-dt_));
         copy<q_i, r_i>();
@@ -194,9 +237,7 @@ public:
         add<q_i, r_i>();
         add<w_1, r_i>(dt_*coeff_a(2,1));
 
-        //pad_velocity<u_i, u_i>();
-        //pad_velocity<u_i, u_str_u>();
-
+        up_and_down<u_i>();
         nonlinear<u_i,g_i>(coeff_a(2,2)*(-dt_));
         add<g_i, r_i>( );
 
@@ -217,8 +258,7 @@ public:
 
         psolver.template apply_lgf_IF<r_i, r_i>(alpha_[1]);
 
-        pad_velocity<u_i, u_i>();
-
+        up_and_down<u_i>();
         nonlinear<u_i,g_i>( coeff_a(3,3)*(-dt_) );
         add<g_i, r_i>();
 
@@ -236,7 +276,6 @@ private:
     void lin_sys_solve(float_type _alpha) noexcept
     {
          divergence<r_i, cell_aux>();
-         clean_leaf_correction_boundary<cell_aux>(domain_->tree()->base_level(), true);
          copy<r_i, face_test_ri>();
          psolver.template apply_lgf<cell_aux, d_i>();
          gradient<d_i,face_aux>();
@@ -251,7 +290,7 @@ private:
     float_type coeff_a(int i, int j)const noexcept {return a_[i*(i-1)/2+j-1];}
 
     template <typename F>
-    void clean() noexcept
+    void clean(bool non_leaf_only=false) noexcept
     {
         for (auto it  = domain_->begin();
                   it != domain_->end(); ++it)
@@ -259,12 +298,24 @@ private:
             if (!it->data()) continue;
             if (!it ->data()->is_allocated())continue;
 
+
             for (std::size_t field_idx=0; field_idx<F::nFields; ++field_idx)
             {
-                auto& lin_data = it ->data()->
-                    template get_linalg_data<F>(field_idx);
+                auto& lin_data = it->data()->
+                template get_linalg_data<F>(field_idx);
 
+                int N=it->data()->descriptor().extent()[0];
+
+                xt::noalias( view(lin_data,xt::all(),xt::all(),0)) *= 0.0;
+                xt::noalias( view(lin_data,xt::all(),0,xt::all())) *= 0.0;
+                xt::noalias( view(lin_data,0,xt::all(),xt::all())) *= 0.0;
+                xt::noalias( view(lin_data,N+1,xt::all(),xt::all())) *= 0.0;
+                xt::noalias( view(lin_data,xt::all(),N+1,xt::all())) *= 0.0;
+                xt::noalias( view(lin_data,xt::all(),xt::all(),N+1)) *= 0.0;
+
+                if (non_leaf_only && it->is_leaf() && it->locally_owned()) continue;
                 std::fill(lin_data.begin(),lin_data.end(),0.0);
+
             }
         }
     }
@@ -273,24 +324,31 @@ private:
     void pad_velocity()
     {
         auto client=domain_->decomposition().client();
-
-        const int l  = domain_->tree()->base_level();
-        const auto dx_base = domain_->dx_base();
-
-        client->template buffer_exchange<Velocity_in>(l);
         clean<edge_aux>();
 
-        for (auto it  = domain_->begin(l);
-                it != domain_->end(l); ++it)
-        {
-            if(!it->locally_owned() || !it->data()) continue;
-            if(it->is_correction()) continue;
+        const auto dx_base = domain_->dx_base();
 
-            const auto dx_level =  dx_base/std::pow(2,it->refinement_level());
-            domain::Operator::curl<Velocity_in,edge_aux>( *(it->data()),dx_level);
+
+        for (int l  = domain_->tree()->base_level();
+                l < domain_->tree()->depth(); ++l)
+        {
+            client->template buffer_exchange<Velocity_in>(l);
+            for (auto it  = domain_->begin(l);
+                    it != domain_->end(l); ++it)
+            {
+                if(!it->locally_owned() || !it->data()) continue;
+                if(it->is_correction()) continue;
+
+                const auto dx_level =  dx_base/std::pow(2,it->refinement_level());
+                if (it->is_leaf())
+                    domain::Operator::curl<Velocity_in,edge_aux>( *(it->data()),dx_level);
+            }
         }
+
+        const int l  = domain_->tree()->base_level();
+
         clean_leaf_correction_boundary<edge_aux>(l, true);
-        //client->template buffer_exchange<edge_aux>(l);
+
         psolver.template apply_lgf<edge_aux, stream_f>(true);
 
         for (auto it  = domain_->begin(l);
@@ -303,7 +361,6 @@ private:
             domain::Operator::curl_transpose<stream_f,Velocity_out>( *(it->data()),dx_level, -1.0);
         }
         client->template buffer_exchange<Velocity_out>(l);
-
 
     }
 
@@ -327,33 +384,43 @@ private:
                         std::fill(lin_data.begin(),lin_data.end(),0.0);
                     }
                 }
+        }
 
-                for(std::size_t i=0;i< it->num_neighbors();++i)
+        if (l==domain_->tree()->base_level())
+        for (auto it  = domain_->begin(l);
+                it != domain_->end(l); ++it)
+        {
+            if(!it->locally_owned()) continue;
+            if(!it->data() || !it->data()->is_allocated()) continue;
+
+            for(std::size_t i=0;i< it->num_neighbors();++i)
+            {
+                auto it2=it->neighbor(i);
+                if (!it2 || (leaf_only_boundary && it2->is_correction()))
                 {
-                    auto it2=it->neighbor(i);
-                    if (!it2 || (leaf_only_boundary && it2->is_correction()))
+                    for (std::size_t field_idx=0; field_idx<F::nFields; ++field_idx)
                     {
-                        for (std::size_t field_idx=0; field_idx<F::nFields; ++field_idx)
-                        {
-                            auto& lin_data = it->data()->
-                                template get_linalg_data<F>(field_idx);
+                        auto& lin_data = it->data()->
+                        template get_linalg_data<F>(field_idx);
 
-                            if (i==4)
-                                xt::noalias( view(lin_data,xt::all(),xt::all(),1)) *= 0.0;
-                            else if (i==10)
-                                xt::noalias( view(lin_data,xt::all(),1,xt::all())) *= 0.0;
-                            else if (i==12)
-                                xt::noalias( view(lin_data,0,xt::all(),xt::all())) *= 0.0;
-                            else if (i==14)
-                                xt::noalias( view(lin_data,14,xt::all(),xt::all())) *= 0.0;
-                            else if (i==16)
-                                xt::noalias( view(lin_data,xt::all(),14,xt::all())) *= 0.0;
-                            else if (i==22)
-                                xt::noalias( view(lin_data,xt::all(),xt::all(),14)) *= 0.0;
-                        }
+                        int N=it->data()->descriptor().extent()[0];
+
+                        if (i==4)
+                            xt::noalias( view(lin_data,xt::all(),xt::all(),1)) *= 0.0;
+                        else if (i==10)
+                            xt::noalias( view(lin_data,xt::all(),1,xt::all())) *= 0.0;
+                        else if (i==12)
+                            xt::noalias( view(lin_data,1,xt::all(),xt::all())) *= 0.0;
+                        else if (i==14)
+                            xt::noalias( view(lin_data,N,xt::all(),xt::all())) *= 0.0;
+                        else if (i==16)
+                            xt::noalias( view(lin_data,xt::all(),N,xt::all())) *= 0.0;
+                        else if (i==22)
+                            xt::noalias( view(lin_data,xt::all(),xt::all(),N)) *= 0.0;
                     }
                 }
-         }
+            }
+        }
 
     }
     //TODO maybe to be put directly intor operators:
@@ -402,9 +469,11 @@ private:
 
                     lin_data *= _scale;
                 }
+
             }
 
             client->template buffer_exchange<Target>(l);
+            clean_leaf_correction_boundary<edge_aux>(l, false);
         }
     }
 
@@ -426,6 +495,9 @@ private:
                 const auto dx_level =  dx_base/std::pow(2.0,it->refinement_level());
                 domain::Operator::divergence<Source,Target>( *(it->data()),dx_level);
             }
+
+            //client->template buffer_exchange<Target>(l);
+            clean_leaf_correction_boundary<Target>(l, true);
         }
     }
     template<class Source, class Target>
@@ -506,6 +578,7 @@ private:
     int output_freq_;
     int tot_steps_;
     int n_step_;
+    int nLevelRefinement_;
 
     std::string fname_prefix_;
     vector_type<float_type, 6> a_{{1.0/3, -1.0, 2.0, 0.0, 0.75, 0.25}};

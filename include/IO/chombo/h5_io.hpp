@@ -132,7 +132,7 @@ public:
         {
             int rank = it->rank();
 
-            if (it->locally_owned() || world.rank()==0) {
+            if (rank==world.rank()  || world.rank()==0) {
                 blockDescriptor_t block =it->data()->descriptor();
                 octant_blocks.push_back(*it);
 

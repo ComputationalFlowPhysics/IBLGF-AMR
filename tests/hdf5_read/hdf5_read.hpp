@@ -18,8 +18,10 @@ struct parameters
     (
      Dim,
      (
-        (field      ,float_type,   1,  1,  1,  cell),
-        (error_face      ,float_type,   3,  1,  1,  face)
+        (field,        float_type,   1,  1,  1,  cell),
+        (h5_read_test, float_type,   3,  1,  1,  face),
+        (u, float_type,   3,  1,  1,  face),
+        (error_face,   float_type,   3,  1,  1,  face)
     ))
 
 };
@@ -132,7 +134,7 @@ struct HDF5Read:public SetupBase<HDF5Read, parameters>
         }
 
         filename_ = simulation_.dictionary_->
-            template get<std::string>("hdf5_file_name");
+            template get_or<std::string>("hdf5_file_name", "null");
 
         vorticity_max_ =simulation_.dictionary_->
             template get_or<float_type>("source_max",max_vort);
@@ -233,7 +235,7 @@ struct HDF5Read:public SetupBase<HDF5Read, parameters>
                float_type z = static_cast<float_type>
                    (coord[2]-center[2]*scaling+0.5)*dx_level;
 
-               it2->template get<face_aux>(0) = y*y+x*x+z*z;
+               it2->template get<u>(0) = x*y*z;
 
                /***********************************************************/
                 x = static_cast<float_type>
@@ -243,7 +245,7 @@ struct HDF5Read:public SetupBase<HDF5Read, parameters>
                 z = static_cast<float_type>
                    (coord[2]-center[2]*scaling+0.5)*dx_level;
 
-               it2->template get<face_aux>(1) = y*x*z;
+               it2->template get<u>(1) = y*y+x*x+z*z;
 
                /***********************************************************/
                 x = static_cast<float_type>
@@ -253,7 +255,7 @@ struct HDF5Read:public SetupBase<HDF5Read, parameters>
                 z = static_cast<float_type>
                    (coord[2]-center[2]*scaling)*dx_level;
 
-               it2->template get<face_aux>(2) = y+x+z;
+               it2->template get<u>(2) = y+x+z;
 
            }
         }
@@ -342,12 +344,14 @@ struct HDF5Read:public SetupBase<HDF5Read, parameters>
         // run this at fine resolution and copy mesh.hdf5 to ref.hdf5 to the
         // same output dir. Then run it at equal or lower resolution.
 
-        simulation_.template read_h5<h5_read_test>(filename_);
+        if (filename_!="null")
+            simulation_.template read_h5<h5_read_test>(filename_);
+
         simulation_.write2("mesh.hdf5");
 
-        this->compute_errors<h5_read_test,face_aux,error_face>("",0);
-        this->compute_errors<h5_read_test,face_aux,error_face>("",1);
-        this->compute_errors<h5_read_test,face_aux,error_face>("",2);
+        this->compute_errors<h5_read_test,u,error_face>(std::string(""),0);
+        this->compute_errors<h5_read_test,u,error_face>(std::string(""),1);
+        this->compute_errors<h5_read_test,u,error_face>(std::string(""),2);
     }
 
 private:

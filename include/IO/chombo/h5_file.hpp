@@ -131,7 +131,6 @@ class hdf5_file
             plist_id = H5Pcreate(H5P_FILE_ACCESS);
             H5Pset_fapl_mpio(plist_id, world, mpiInfo);
             if(!default_open)
-                //file_id = H5Fopen(_filename.c_str(), H5F_ACC_RDWR, plist_id);
                 file_id = H5Fopen(_filename.c_str(), H5F_ACC_RDONLY, plist_id);
             else
                 file_id = H5Fopen(_filename.c_str(), H5F_ACC_RDONLY, H5P_DEFAULT);
@@ -154,10 +153,11 @@ class hdf5_file
 
 
         //TODO: somehow it doesn't work
-        //~hdf5_file()
-        //{
-        //    close_everything();
-        //}
+        //~hdf5_file()=default;
+        ~hdf5_file()
+        {
+            close_everything();
+        }
 
 
         void update_plist()
@@ -172,13 +172,9 @@ class hdf5_file
 
             // Set property list for parallel open if necessary
             if(world.size()==1)
-            {
                 std::cout<<"Create file for serial write"<<std::endl;
-            }
             else
-            {
                 H5Pset_fapl_mpio(plist_id, world, MPI_INFO_NULL);
-            }
 
             file_id = H5Fcreate(_filename.c_str(), H5F_ACC_TRUNC, H5P_DEFAULT, plist_id);
             HDF5_CHECK_ERROR(file_id,"HDF5-Error: Could not create file: "+ _filename ) ;
@@ -537,11 +533,21 @@ class hdf5_file
             update_plist();
             //H5Eset_auto(NULL,NULL, NULL);
             //H5Eset_auto(nullptr,nullptr, nullptr);
+            char name[1024];
+
             auto numOpenObjs = H5Fget_obj_count(file_id, H5F_OBJ_ALL);
             std::vector<hid_type> obj_id_list(numOpenObjs);
             auto numReturnedOpenObjs = H5Fget_obj_ids(file_id, H5F_OBJ_ALL, numOpenObjs, &obj_id_list[0]);
             for (hsize_type i = 0; i < static_cast<hsize_type>(numReturnedOpenObjs); ++i)
-             { H5Oclose(obj_id_list[i]); }
+            {
+                auto anobj = obj_id_list[i];
+                auto ot = H5Iget_type(anobj);
+                auto status = H5Iget_name(anobj, name, 1024);
+                printf(" %d: type %d, name %s\n",i,ot,name);
+                H5Oclose(obj_id_list[i]);
+             }
+
+
             close_file(file_id);
         }
 

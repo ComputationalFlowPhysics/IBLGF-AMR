@@ -208,6 +208,7 @@ public:
 
         boost::mpi::communicator world;
         if (world.rank()==0) return;
+
         auto root = _file->get_root();
 
         // check the number for the needed attri
@@ -215,7 +216,7 @@ public:
         int num_levels =static_cast<int>( _file->template read_attribute<int>(root, "num_levels") );
 
         int component_idx = 0;
-        std::string read_in_name{"face_aux"};
+        std::string read_in_name{"u"};
         for(std::size_t i=0; i<num_components; ++i)
         {
             auto attribute = _file->template read_attribute<std::string>(root,
@@ -250,6 +251,8 @@ public:
             auto file_boxes = _file->
                 template read_box_descriptors<BlockDescriptor>(box_dataset_id, fake_level);
 
+            H5Dclose(box_dataset_id);
+
             auto dataset_id =
                 H5Dopen2(level_group, "data:datatype=0", H5P_DEFAULT);
 
@@ -261,7 +264,7 @@ public:
                 for (auto& b:blocklist)
                 {
                     if (!b->locally_owned()) continue;
-                    if (!b->is_leaf()) continue;
+                    //if (!b->is_leaf()) continue;
 
                     auto b_dscrptr = b->data()->descriptor();
                     int level = b_dscrptr.level();
@@ -276,6 +279,7 @@ public:
 
                     std::array<int,2> single{0,0};
                     std::array<int,2> avg{(factor-1)/2, factor/2};
+                    std::array< std::array<int,2>, 3> FV_avg{avg,avg,avg};
 
                     if (has_overlap)
                     {
@@ -283,8 +287,7 @@ public:
                         {
                             // Finte Volume requires differnet averaging for
                             // differnt mesh objects
-                            std::array< std::array<int,2>, 3> FV_avg{avg,avg,avg};
-
+                            FV_avg = {avg,avg,avg};
                             if (Field::mesh_type == MeshObject::face)
                                 FV_avg[field_idx] = single;
                             else if (Field::mesh_type == MeshObject::edge)
@@ -307,25 +310,25 @@ public:
                                 for (int j=0; j<overlap_local.extent()[1];++j)
                                 for (int shift_i=FV_avg[0][0]; shift_i<=FV_avg[0][1]; ++shift_i)
                                 {
-                                    for (int i=0; i<overlap_local.extent()[0];++i)
-                                    {
                                     if (overlap_fake_level.base()[2]-file_b_dscriptr.base()[2]+k*factor+shift_k>=file_b_dscriptr.extent()[2]) continue;
                                     if (overlap_fake_level.base()[1]-file_b_dscriptr.base()[1]+j*factor+shift_j>=file_b_dscriptr.extent()[1]) continue;
-                                    if (overlap_fake_level.base()[0]-file_b_dscriptr.base()[0]+shift_i+i*factor>=file_b_dscriptr.extent()[0]) continue;
 
                                     int offset=
                                          box_offset+
                                          (component_idx+field_idx)*file_b_dscriptr.extent()[0]*file_b_dscriptr.extent()[1]*file_b_dscriptr.extent()[2]
                                         +(overlap_fake_level.base()[2]-file_b_dscriptr.base()[2]+k*factor+shift_k)*file_b_dscriptr.extent()[0]*file_b_dscriptr.extent()[1]
                                         +(overlap_fake_level.base()[1]-file_b_dscriptr.base()[1]+j*factor+shift_j)*file_b_dscriptr.extent()[0]
-                                        +(overlap_fake_level.base()[0]-file_b_dscriptr.base()[0])+shift_i+i*factor;
+                                        +(overlap_fake_level.base()[0]-file_b_dscriptr.base()[0])+shift_i;
 
-                                    std::vector<hsize_t> base(1,offset), extent(1,1), stride(1,factor);
-                                    auto data = _file ->template read_hyperslab<float_type>(dataset_id, base, extent, stride);
+                                        std::vector<hsize_t> base(1,offset), extent(1,overlap_local.extent()[0]), stride(1,factor);
+                                        auto data = _file ->template read_hyperslab<float_type>(dataset_id, base, extent, stride);
 
+                                    for (int i=0; i<overlap_local.extent()[0];++i)
+                                    {
+                                        if (overlap_fake_level.base()[0]-file_b_dscriptr.base()[0]+shift_i+i*factor>=file_b_dscriptr.extent()[0]) continue;
                                         b->data()->template get<Field>
                                             (i+overlap_local.base()[0], j+overlap_local.base()[1], k+overlap_local.base()[2], field_idx)
-                                                += data[0]/total_avg;
+                                                += data[i]/total_avg;
                                     }
                                 }
                         }
@@ -335,7 +338,9 @@ public:
 
                 box_offset+=copy_b_dscriptr.extent()[0]*copy_b_dscriptr.extent()[1]*copy_b_dscriptr.extent()[2]*num_components;
             }
+            H5Dclose(dataset_id);
         }
+    //world.barrier();
     }
 
     void write_global_metaData( HDF5File* _file ,

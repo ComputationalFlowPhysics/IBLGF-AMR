@@ -104,10 +104,9 @@ public:
         copy_leaf<Source, source_tmp>(_field_idx,0,true);
 
         //Coarsification:
-        //source_coarsify(_field_idx, Source::mesh_type);
+        source_coarsify<source_tmp, source_tmp>(_field_idx, 0, Source::mesh_type);
 
         // For IF, interpolate source to correction buffers
-
         //for (int l  = domain_->tree()->base_level();
         //        l < domain_->tree()->depth()-1; ++l)
         //{
@@ -121,25 +120,8 @@ public:
         //}
 
         // Interpolate to correction buffer
-        //for (int l = domain_->tree()->depth()-2;
-        //        l >= domain_->tree()->base_level(); --l)
-        //{
-        //    client->template buffer_exchange<source_tmp>(l);
-        //    domain_->decomposition().client()->
-        //        template communicate_updownward_assign
-        //        <source_tmp, source_tmp>(l,false,false,-1);
 
-        //    for (auto it  = domain_->begin(l);
-        //            it != domain_->end(l); ++it)
-        //    {
-        //        if(!it->data() || !it->data()->is_allocated()) continue;
-
-        //        const bool correction_buffer_only = true;
-        //        c_cntr_nli_.nli_intrp_node< source_tmp, source_tmp>(it, Source::mesh_type, _field_idx, correction_buffer_only,false);
-
-        //    }
-        //}
-
+        intrp_to_correction_buffer<source_tmp, source_tmp>(_field_idx, 0, Source::mesh_type);
 
         for (int l  = domain_->tree()->base_level();
                 l < domain_->tree()->depth(); ++l)
@@ -204,7 +186,7 @@ public:
         auto t0_coarsify=clock_type::now();
 #endif
 
-        source_coarsify(_field_idx, Source::mesh_type);
+        source_coarsify<source_tmp, source_tmp>(_field_idx, 0, Source::mesh_type);
 
         //Coarsification:
         //for (int l = domain_->tree()->depth()-2;
@@ -237,25 +219,23 @@ public:
         const auto t0_level_interaction = clock_type::now();
 #endif
 
+        intrp_to_correction_buffer<source_tmp, source_tmp>(_field_idx, 0, Source::mesh_type);
+
         for (int l = domain_->tree()->depth()-2;
                 l >= domain_->tree()->base_level(); --l)
         {
-            client->template buffer_exchange<source_tmp>(l);
-            domain_->decomposition().client()->
-                template communicate_updownward_assign
-                <source_tmp, source_tmp>(l,false,false,-1);
-
             for (auto it  = domain_->begin(l);
                     it != domain_->end(l); ++it)
             {
                 if(!it->data() || !it->data()->is_allocated()) continue;
-
                 const bool correction_buffer_only = true;
-                c_cntr_nli_.nli_intrp_node< source_tmp, source_tmp>(it, Source::mesh_type, _field_idx, correction_buffer_only,false);
-
-                this->coarsify<source_tmp, source_correction_tmp>(*it, 1.0, correction_buffer_only, false);
+                //this->coarsify<source_tmp, source_correction_tmp>(*it, 1.0, correction_buffer_only, false);
+                c_cntr_nli_.nli_antrp_node
+                        <source_tmp, source_correction_tmp>(*it, Source::mesh_type, _field_idx, 0, true, false);
             }
         }
+
+        //source_coarsify<source_tmp, source_correction_tmp>(_field_idx, 0, Source::mesh_type, true, false);
 
         //Level-Interactions
         const int l_max = base_level_only ?
@@ -317,7 +297,8 @@ public:
                     cp2*=0.0;
                 }
             }
-                // add back correction source
+
+            // add back correction source
             domain_->decomposition().client()->
                 template communicate_updownward_add<source_correction_tmp, source_tmp>
                     (l,true,false,-1);
@@ -343,7 +324,7 @@ public:
             {
                 if(!it->data() || !it->data()->is_allocated()) continue;
                 c_cntr_nli_.nli_intrp_node< target_tmp, target_tmp >
-                    (it, Source::mesh_type, _field_idx, false, false);
+                    (it, Source::mesh_type, _field_idx, 0, false, false);
 
             }
 
@@ -422,22 +403,22 @@ public:
 #endif
         }
 
-        for (int ls = domain_->tree()->depth()-2;
-                ls >= domain_->tree()->base_level(); --ls)
-        {
-            const auto t0_level=clock_type::now();
-            for (auto it_s  = domain_->begin(ls);
-                    it_s != domain_->end(ls); ++it_s)
-            {
-                if(!it_s->data() || !it_s->data()->is_allocated()) continue;
-                this->coarsify<correction_tmp, correction_tmp>(*it_s);
-            }
+        //for (int ls = domain_->tree()->depth()-2;
+        //        ls >= domain_->tree()->base_level(); --ls)
+        //{
+        //    const auto t0_level=clock_type::now();
+        //    for (auto it_s  = domain_->begin(ls);
+        //            it_s != domain_->end(ls); ++it_s)
+        //    {
+        //        if(!it_s->data() || !it_s->data()->is_allocated()) continue;
+        //        this->coarsify<correction_tmp, correction_tmp>(*it_s);
+        //    }
 
-            domain_->decomposition().client()->
-            template communicate_updownward_add<correction_tmp, correction_tmp>
-            (ls,true,false,-1);
+        //    domain_->decomposition().client()->
+        //    template communicate_updownward_add<correction_tmp, correction_tmp>
+        //    (ls,true,false,-1);
 
-        }
+        //}
 
 #ifdef POISSON_TIMINGS
         const auto t1_level_interaction=clock_type::now();
@@ -505,21 +486,42 @@ public:
                         view(lin_data_1, xt::range(1,-1), xt::range(1,-1), xt::range(1,-1));
             }
     }
-
-    void source_coarsify(std::size_t _field_idx, MeshObject mesh_type)
+    template<class From, class To>
+    void intrp_to_correction_buffer(std::size_t real_mesh_field_idx, std::size_t tmp_type_field_idx, MeshObject mesh_type, bool correction_only = true, bool exclude_correction = false)
     {
-        //if(mesh_type!=MeshObject::cell)
-        //{
-        //    throw
-        //    std::runtime_error("Coarsification for non-cell centers needs to be implemented. ");
-        //}
+        auto client = domain_->decomposition().client();
+        if(!client)return;
+
+        for (int l = domain_->tree()->depth()-2;
+                l >= domain_->tree()->base_level(); --l)
+        {
+            client->template buffer_exchange<From>(l);
+
+            domain_->decomposition().client()->
+                template communicate_updownward_assign
+                <From, From>(l,false,false,-1,tmp_type_field_idx);
+
+            for (auto it  = domain_->begin(l);
+                    it != domain_->end(l); ++it)
+            {
+                if(!it->data() || !it->data()->is_allocated()) continue;
+
+                c_cntr_nli_.nli_intrp_node<From, To>(it, mesh_type, real_mesh_field_idx, tmp_type_field_idx, correction_only, exclude_correction);
+            }
+        }
+
+}
+
+    template<class From, class To>
+    void source_coarsify(std::size_t real_mesh_field_idx, std::size_t tmp_type_field_idx, MeshObject mesh_type, bool correction_only = false, bool exclude_correction = false)
+    {
+
         auto client = domain_->decomposition().client();
         if(!client)return;
 
         for (int ls = domain_->tree()->depth()-2;
                 ls >= domain_->tree()->base_level(); --ls)
         {
-            //client->template buffer_exchange<source_tmp>(ls+1);
 
             for (auto it_s  = domain_->begin(ls);
                     it_s != domain_->end(ls); ++it_s)
@@ -527,16 +529,18 @@ public:
                     if(!it_s->data() || !it_s->data()->is_allocated()) continue;
 
                     c_cntr_nli_.nli_antrp_node
-                        <source_tmp, source_tmp>(*it_s,mesh_type,_field_idx);
-
-                    //this->coarsify<source_tmp,source_tmp>(*it_s);
-
+                        <From, To>(*it_s, mesh_type, real_mesh_field_idx, tmp_type_field_idx);
                 }
 
             domain_->decomposition().client()->
-                template communicate_updownward_add<source_tmp, source_tmp>
-                    (ls,true,false,-1);
+                template communicate_updownward_add<To, To>
+                    (ls,true,false,-1, tmp_type_field_idx);
         }
+
+        for (int l  = domain_->tree()->base_level();
+                l < domain_->tree()->depth(); ++l)
+            client->template buffer_exchange<To>(l);
+
     }
 
 

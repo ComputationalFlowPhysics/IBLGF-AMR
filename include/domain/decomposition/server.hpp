@@ -77,7 +77,7 @@ public: //Ctors
 public:
 
     template<class Begin, class End, class Container, class Function,class Function1>
-    void split(Begin _begin, End _end, Container& _tasks_perProc, 
+    void split(Begin _begin, End _end, Container& _tasks_perProc,
                std::vector<float_type>& _loads_perProc,
                Function& _exitCheck, Function1& _continueCheck ) const noexcept
     {
@@ -101,7 +101,7 @@ public:
             {
                 if(_continueCheck(it))
                 {
-                     ++it; 
+                     ++it;
                      if(it==_end) break;
                      if(_exitCheck(it)) break;
                      continue;
@@ -125,7 +125,7 @@ public:
         }
     }
 
-    auto compute_distribution() const 
+    auto compute_distribution() const
     {
         std::cout<<"Computing domain decomposition for "<<comm_.size()<<" processors" <<std::endl;
         float_type total_load=0.0;
@@ -141,7 +141,7 @@ public:
 
         // Split leafs according to morton order
         auto exitCondition1=[](auto& it){return false;};
-        auto continueCondition1=[&blevel](auto& it){return !it->is_leaf();};
+        auto continueCondition1=[&blevel](auto& it){return !(it->is_leaf() || it->is_correction());};
 
         split(domain_->begin(),domain_->end(),
                 tasks_perProc, total_loads_perProc,
@@ -156,7 +156,7 @@ public:
 
             for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
             {
-                if(it->is_leaf()) continue;
+                if(it->is_leaf() || it->is_correction()) continue;
 
                 int rank_tobe=-1;
                 float_type min_load=std::numeric_limits<float_type>::max();
@@ -179,7 +179,7 @@ public:
         }
         for( auto it = domain_->begin_df(); it!= domain_->end_df();++it )
         {
-            if(it->rank()==-1) 
+            if(it->rank()==-1)
             {
                 throw std::runtime_error("Domain decomposition (Server):"
                         " Some octant's rank was not set");
@@ -244,7 +244,7 @@ public:
     //    const float_type ideal_load=total_load/nProcs;
     //    const int blevel=domain_->tree()->base_level();
 
-    //    const bool include_baselevel=false; 
+    //    const bool include_baselevel=false;
     //    if(include_baselevel)
     //    {
     //        //Include baselevel into levelwise splitting:

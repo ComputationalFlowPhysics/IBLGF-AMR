@@ -480,87 +480,87 @@ public:
 
 
 
-    /** @brief communicate fields for up/downward pass of fmm */
-    template<class SendField,class RecvField,
-             template<class>class BufferPolicy,
-             class OctantPtr>
-    void communicate_updownward_pass(OctantPtr it, bool _upward, int fmm_mask_idx) noexcept
-    {
-        int mask_id=(_upward) ?
-            MASK_LIST::Mask_FMM_Source : MASK_LIST::Mask_FMM_Target;
+    ///** @brief communicate fields for up/downward pass of fmm */
+    //template<class SendField,class RecvField,
+    //         template<class>class BufferPolicy,
+    //         class OctantPtr>
+    //void communicate_updownward_pass(OctantPtr it, bool _upward, int fmm_mask_idx) noexcept
+    //{
+    //    int mask_id=(_upward) ?
+    //        MASK_LIST::Mask_FMM_Source : MASK_LIST::Mask_FMM_Target;
 
-        boost::mpi::communicator w;
+    //    boost::mpi::communicator w;
 
-        auto& send_comm=
-            task_manager_-> template
-            send_communicator<induced_fields_task_t<BufferPolicy>>();
-        auto& recv_comm=
-            task_manager_-> template
-            recv_communicator<induced_fields_task_t<BufferPolicy>>();
+    //    auto& send_comm=
+    //        task_manager_-> template
+    //        send_communicator<induced_fields_task_t<BufferPolicy>>();
+    //    auto& recv_comm=
+    //        task_manager_-> template
+    //        recv_communicator<induced_fields_task_t<BufferPolicy>>();
 
 
-        if (!it->fmm_mask(fmm_mask_idx,mask_id)) return;
+    //    if (!it->fmm_mask(fmm_mask_idx,mask_id)) return;
 
-        const auto idx=get_octant_idx(it);
+    //    const auto idx=get_octant_idx(it);
 
-        if(it->locally_owned() && it->data() )
-        {
+    //    if(it->locally_owned() && it->data() )
+    //    {
 
-            const auto unique_ranks=it->unique_child_ranks(fmm_mask_idx, mask_id);
-            for(auto r : unique_ranks)
-            {
-                if(_upward)
-                {
-                    auto data_ptr=it->data()->
-                        template get<RecvField>().data_ptr();
-                    auto task=recv_comm.post_task( data_ptr, r, true, idx);
-                    task->requires_confirmation()=false;
+    //        const auto unique_ranks=it->unique_child_ranks(fmm_mask_idx, mask_id);
+    //        for(auto r : unique_ranks)
+    //        {
+    //            if(_upward)
+    //            {
+    //                auto data_ptr=it->data()->
+    //                    template get<RecvField>().data_ptr();
+    //                auto task=recv_comm.post_task( data_ptr, r, true, idx);
+    //                task->requires_confirmation()=false;
 
-                } else
-                {
-                    auto data_ptr=it->data()->
-                        template get<SendField>().data_ptr();
-                    auto task= send_comm.post_task(data_ptr,r,true,idx);
-                    task->requires_confirmation()=false;
+    //            } else
+    //            {
+    //                auto data_ptr=it->data()->
+    //                    template get<SendField>().data_ptr();
+    //                auto task= send_comm.post_task(data_ptr,r,true,idx);
+    //                task->requires_confirmation()=false;
 
-                }
-            }
-        }
+    //            }
+    //        }
+    //    }
 
-        //Check if ghost has locally_owned children
-        if(!it->locally_owned() && it->data())
-        {
-            if(it->has_locally_owned_children(fmm_mask_idx, mask_id))
-            {
-                if(_upward)
-                {
-                    const auto data_ptr=it->data()->
-                        template get<SendField>().data_ptr();
-                    auto task =
-                        send_comm.post_task(data_ptr, it->rank(),
-                                true,idx);
-                    task->requires_confirmation()=false;
+    //    //Check if ghost has locally_owned children
+    //    if(!it->locally_owned() && it->data())
+    //    {
+    //        if(it->has_locally_owned_children(fmm_mask_idx, mask_id))
+    //        {
+    //            if(_upward)
+    //            {
+    //                const auto data_ptr=it->data()->
+    //                    template get<SendField>().data_ptr();
+    //                auto task =
+    //                    send_comm.post_task(data_ptr, it->rank(),
+    //                            true,idx);
+    //                task->requires_confirmation()=false;
 
-                } else
-                {
-                    const auto data_ptr=it->data()->
-                        template get<RecvField>().data_ptr();
-                    auto task =
-                        recv_comm.post_task(data_ptr, it->rank(),
-                                true,idx);
-                    task->requires_confirmation()=false;
-                }
-            }
-        }
+    //            } else
+    //            {
+    //                const auto data_ptr=it->data()->
+    //                    template get<RecvField>().data_ptr();
+    //                auto task =
+    //                    recv_comm.post_task(data_ptr, it->rank(),
+    //                            true,idx);
+    //                task->requires_confirmation()=false;
+    //            }
+    //        }
+    //    }
 
-        //Start communications
-        //buffer and send it
-        send_comm.start_communication();
-        recv_comm.start_communication();
+    //    //Start communications
+    //    //buffer and send it
+    //    send_comm.start_communication();
+    //    recv_comm.start_communication();
 
-        //send_comm.finish_communication();
-        //recv_comm.finish_communication();
-    }
+    //    //send_comm.finish_communication();
+    //    //recv_comm.finish_communication();
+    //}
 
     template<class SendField,class RecvField,template<class>class BufferPolicy>
     void finish_updownward_pass_communication()
@@ -602,21 +602,21 @@ public:
     }
 
     /** @brief communicate fields for up/downward pass of fmm */
-    template<class SendField,class RecvField, class OctantPtr>
-    void communicate_updownward_add(OctantPtr it, bool _upward, int fmm_mask_idx)
-    {
-        communicate_updownward_pass<SendField,RecvField,AddAssignRecv> (it, _upward, fmm_mask_idx);
-    }
+    //template<class SendField,class RecvField, class OctantPtr>
+    //void communicate_updownward_add(OctantPtr it, bool _upward, int fmm_mask_idx)
+    //{
+    //    communicate_updownward_pass<SendField,RecvField,AddAssignRecv> (it, _upward, fmm_mask_idx);
+    //}
 
-    template<class SendField,class RecvField, class OctantPtr >
-    void communicate_updownward_assign(OctantPtr it, bool _upward, int fmm_mask_idx)
-    {
-        communicate_updownward_pass<SendField,RecvField,CopyAssign>
-        (it,_upward, fmm_mask_idx);
-    }
+    //template<class SendField,class RecvField, class OctantPtr >
+    //void communicate_updownward_assign(OctantPtr it, bool _upward, int fmm_mask_idx)
+    //{
+    //    communicate_updownward_pass<SendField,RecvField,CopyAssign>
+    //    (it,_upward, fmm_mask_idx);
+    //}
 
     template<class SendField,class RecvField, template<class>class BufferPolicy>
-    void communicate_updownward_pass(int level, bool _upward, bool _use_masks, int fmm_mask_idx)
+    void communicate_updownward_pass(int level, bool _upward, bool _use_masks, int fmm_mask_idx, std::size_t field_idx)
     {
         int mask_id=(_upward) ?
                 MASK_LIST::Mask_FMM_Source : MASK_LIST::Mask_FMM_Target;
@@ -649,14 +649,14 @@ public:
                     if(_upward)
                     {
                         auto data_ptr=it->data()->
-                            template get<RecvField>().data_ptr();
+                            template get<RecvField>(field_idx).data_ptr();
                         auto task=recv_comm.post_task( data_ptr, r, true, idx);
                         task->requires_confirmation()=false;
 
                     } else
                     {
                         auto data_ptr=it->data()->
-                            template get<SendField>().data_ptr();
+                            template get<SendField>(field_idx).data_ptr();
                         auto task= send_comm.post_task(data_ptr,r,true,idx);
                         task->requires_confirmation()=false;
 
@@ -674,7 +674,7 @@ public:
                     if(_upward)
                     {
                         const auto data_ptr=it->data()->
-                            template get<SendField>().data_ptr();
+                            template get<SendField>(field_idx).data_ptr();
                         auto task =
                             send_comm.post_task(data_ptr, it->rank(),
                                     true,idx);
@@ -683,7 +683,7 @@ public:
                     } else
                     {
                         const auto data_ptr=it->data()->
-                            template get<RecvField>().data_ptr();
+                            template get<RecvField>(field_idx).data_ptr();
                         auto task =
                             recv_comm.post_task(data_ptr, it->rank(),
                                     true,idx);
@@ -711,17 +711,17 @@ public:
 
     /** @brief communicate fields for up/downward pass of fmm */
     template<class SendField,class RecvField >
-    void communicate_updownward_add(int level, bool _upward, bool _use_masks, int fmm_mask_idx)
+    void communicate_updownward_add(int level, bool _upward, bool _use_masks, int fmm_mask_idx, std::size_t field_idx=0)
     {
         communicate_updownward_pass<SendField,RecvField,AddAssignRecv>
-        (level, _upward, _use_masks, fmm_mask_idx);
+        (level, _upward, _use_masks, fmm_mask_idx, field_idx);
     }
 
     template<class SendField,class RecvField >
-    void communicate_updownward_assign(int level, bool _upward, bool _use_masks, int fmm_mask_idx)
+    void communicate_updownward_assign(int level, bool _upward, bool _use_masks, int fmm_mask_idx, std::size_t field_idx=0)
     {
         communicate_updownward_pass<SendField,RecvField,CopyAssign>
-        (level,_upward, _use_masks, fmm_mask_idx);
+        (level,_upward, _use_masks, fmm_mask_idx, field_idx);
     }
 
 

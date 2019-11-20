@@ -46,7 +46,6 @@ public: //member types
     using Fmm_t     = typename Setup::Fmm_t;
 
     using u   = typename Setup::u;
-    using u_str_u   = typename Setup::u_str_u;
     using stream_f   = typename Setup::stream_f;
     using p   = typename Setup::p;
     using q_i = typename Setup::q_i;
@@ -57,12 +56,10 @@ public: //member types
     using cell_aux   = typename Setup::cell_aux;
     using edge_aux   = typename Setup::edge_aux;
     using face_aux   = typename Setup::face_aux;
-    using face_aux_2 = typename Setup::face_aux_2;
     using w_1        = typename Setup::w_1;
     using w_2        = typename Setup::w_2;
     using u_i        = typename Setup::u_i;
 
-    using face_test_ri   = typename Setup::face_test_ri;
 
     static constexpr int lBuffer=1; ///< Lower left buffer for interpolation
     static constexpr int rBuffer=1; ///< Lower left buffer for interpolation
@@ -93,6 +90,7 @@ public: //member types
 
         dt_/=pow(2.0,nLevelRefinement_);
         tot_steps_ *= pow(2,nLevelRefinement_);
+        output_freq_ *= pow(2,nLevelRefinement_);
 
         float_type tmp = Re_*dx_*dx_/dt_;
 
@@ -209,7 +207,6 @@ public:
         clean<d_i>();
         clean<cell_aux>();
         clean<face_aux>();
-        clean<face_aux_2>();
 
         nonlinear<u,g_i>(coeff_a(1,1)*(-dt_));
         copy<q_i, r_i>();
@@ -276,7 +273,6 @@ private:
     void lin_sys_solve(float_type _alpha) noexcept
     {
          divergence<r_i, cell_aux>();
-         copy<r_i, face_test_ri>();
          psolver.template apply_lgf<cell_aux, d_i>();
          gradient<d_i,face_aux>();
 
@@ -313,7 +309,7 @@ private:
                 xt::noalias( view(lin_data,xt::all(),N+1,xt::all())) *= 0.0;
                 xt::noalias( view(lin_data,xt::all(),xt::all(),N+1)) *= 0.0;
 
-                if (non_leaf_only && it->is_leaf() && it->locally_owned()) continue;
+                if (non_leaf_only && it->is_leaf() && it->locally_owned() && !it->is_correction()) continue;
                 std::fill(lin_data.begin(),lin_data.end(),0.0);
 
             }

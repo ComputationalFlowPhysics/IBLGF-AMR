@@ -14,6 +14,7 @@
 #include <domain/dataFields/datafield.hpp>
 #include <IO/chombo/chombo.hpp>
 #include <IO/chombo/h5_file.hpp>
+#include <IO/parallel_ostream.hpp>
 
 
 namespace io
@@ -90,7 +91,7 @@ public:
     template<typename Field>
     void read_h5(std::string _filename, Domain* _lt )
     {
-        std::cout<< _filename << std::endl;
+        pcout<< "Start reading file -> " << _filename << std::endl;
         boost::mpi::communicator world;
 
         auto octant_blocks = blocks_list_build(_lt);
@@ -143,6 +144,7 @@ public:
 
         return octant_blocks;
     }
+    parallel_ostream::ParallelOstream pcout=parallel_ostream::ParallelOstream(1);
 
 };
 

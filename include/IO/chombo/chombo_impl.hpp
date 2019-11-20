@@ -251,7 +251,6 @@ public:
             auto file_boxes = _file->
                 template read_box_descriptors<BlockDescriptor>(box_dataset_id, fake_level);
 
-            H5Dclose(box_dataset_id);
 
             auto dataset_id =
                 H5Dopen2(level_group, "data:datatype=0", H5P_DEFAULT);
@@ -276,6 +275,10 @@ public:
                     BlockDescriptor overlap_local;
                     auto has_overlap=file_b_dscriptr.overlap(b_dscrptr, overlap_fake_level);
                     has_overlap=b_dscrptr.overlap(file_b_dscriptr, overlap_local);
+
+                    auto scale_up_overlap_local= overlap_local;
+                    scale_up_overlap_local.level_scale(fake_level);
+                    auto sub_block_shift = overlap_fake_level.base()-scale_up_overlap_local.base();
 
                     std::array<int,2> single{0,0};
                     std::array<int,2> avg{(factor-1)/2, factor/2};
@@ -302,6 +305,9 @@ public:
                             else
                                 throw std::runtime_error("Mesh object wrong");
 
+                            //for (auto tmp: sub_block_shift)
+                            //    std::cout<<tmp;
+
                             float_type total_avg = (FV_avg[2][1]-FV_avg[2][0]+1) * (FV_avg[1][1]-FV_avg[1][0]+1) * (FV_avg[0][1]-FV_avg[0][0]+1);
 
                             for (int shift_k=FV_avg[2][0]; shift_k<=FV_avg[2][1]; ++shift_k)
@@ -310,22 +316,28 @@ public:
                                 for (int j=0; j<overlap_local.extent()[1];++j)
                                 for (int shift_i=FV_avg[0][0]; shift_i<=FV_avg[0][1]; ++shift_i)
                                 {
-                                    if (overlap_fake_level.base()[2]-file_b_dscriptr.base()[2]+k*factor+shift_k>=file_b_dscriptr.extent()[2]) continue;
-                                    if (overlap_fake_level.base()[1]-file_b_dscriptr.base()[1]+j*factor+shift_j>=file_b_dscriptr.extent()[1]) continue;
+                                    int file_idx_2=scale_up_overlap_local.base()[2]-file_b_dscriptr.base()[2]+k*factor+shift_k;
+                                    int file_idx_1=scale_up_overlap_local.base()[1]-file_b_dscriptr.base()[1]+j*factor+shift_j;
+                                    if (file_idx_2>=file_b_dscriptr.extent()[2]) continue;
+                                    if (file_idx_2<0) continue;
+                                    if (file_idx_1>=file_b_dscriptr.extent()[1]) continue;
+                                    if (file_idx_1<0) continue;
 
                                     int offset=
                                          box_offset+
                                          (component_idx+field_idx)*file_b_dscriptr.extent()[0]*file_b_dscriptr.extent()[1]*file_b_dscriptr.extent()[2]
-                                        +(overlap_fake_level.base()[2]-file_b_dscriptr.base()[2]+k*factor+shift_k)*file_b_dscriptr.extent()[0]*file_b_dscriptr.extent()[1]
-                                        +(overlap_fake_level.base()[1]-file_b_dscriptr.base()[1]+j*factor+shift_j)*file_b_dscriptr.extent()[0]
-                                        +(overlap_fake_level.base()[0]-file_b_dscriptr.base()[0])+shift_i;
+                                        +(file_idx_2)*file_b_dscriptr.extent()[0]*file_b_dscriptr.extent()[1]
+                                        +(file_idx_1)*file_b_dscriptr.extent()[0]
+                                        +(scale_up_overlap_local.base()[0]-file_b_dscriptr.base()[0])+shift_i;
 
                                         std::vector<hsize_t> base(1,offset), extent(1,overlap_local.extent()[0]), stride(1,factor);
                                         auto data = _file ->template read_hyperslab<float_type>(dataset_id, base, extent, stride);
 
                                     for (int i=0; i<overlap_local.extent()[0];++i)
                                     {
-                                        if (overlap_fake_level.base()[0]-file_b_dscriptr.base()[0]+shift_i+i*factor>=file_b_dscriptr.extent()[0]) continue;
+                                        int file_idx_0=scale_up_overlap_local.base()[0]-file_b_dscriptr.base()[0]+i*factor+shift_i;
+                                        if (file_idx_0>=file_b_dscriptr.extent()[0]) continue;
+                                        if (file_idx_0<0) continue;
                                         b->data()->template get<Field>
                                             (i+overlap_local.base()[0], j+overlap_local.base()[1], k+overlap_local.base()[2], field_idx)
                                                 += data[i]/total_avg;
@@ -338,7 +350,6 @@ public:
 
                 box_offset+=copy_b_dscriptr.extent()[0]*copy_b_dscriptr.extent()[1]*copy_b_dscriptr.extent()[2]*num_components;
             }
-            H5Dclose(dataset_id);
         }
     //world.barrier();
     }
@@ -527,6 +538,7 @@ public:
         auto operator()() const
         {
             std::string name = std::string(T::name());
+            if(!T::output) return;
             if(T::nFields==1)
                 components_.push_back(name);
             else
@@ -557,6 +569,7 @@ public:
         template<class T>
         auto operator()() const
         {
+            if(!T::output) return;
             for (std::size_t fidx=0; fidx<T::nFields;++fidx)
             {
                 double field_value = 0.0;
@@ -798,7 +811,6 @@ public:
 
                 for(std::size_t g=0; g<l.octant_groups.size(); ++g)
                 {
-                //    std::cout<<"New group ------"<<std::endl;
                     for(std::size_t b=0; b<l.octant_groups[g].size(); ++b)
                     {
                         const auto p = l.octant_groups[g][b];

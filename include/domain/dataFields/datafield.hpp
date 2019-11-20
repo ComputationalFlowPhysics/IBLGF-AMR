@@ -77,7 +77,7 @@ public: //member functions
      *
      *  @param[in] _b Blockdescriptor
      */
-    void initialize(block_type _b, bool _allocate=true, 
+    void initialize(block_type _b, bool _allocate=true,
                     bool _default=false, DataType _dval=DataType())
     {
         this->real_block_.base(_b.base()-lowBuffer_);
@@ -191,7 +191,7 @@ public: //member functions
     {
         auto overlap=real_block_;
         auto has_overlap=this->overlap(other.real_block_, overlap);
-        return has_overlap ?  
+        return has_overlap ?
             std::optional<view_type>(view(overlap)): std::nullopt;
     }
     template<class BlockType>
@@ -199,7 +199,7 @@ public: //member functions
     {
         auto overlap=real_block_;
         auto has_overlap=other.overlap(this->real_block_, overlap);
-        return has_overlap ?  
+        return has_overlap ?
             std::optional<view_type>(view(overlap)):
             std::nullopt;
     }
@@ -243,7 +243,7 @@ protected: //protected memeber:
 #define STRINGIFY(X) #X
 
 #define make_field_type_impl(Dim,key,DataType,                               \
-                             NFields, lBuffer, hBuffer,MeshObjectType)       \
+                             NFields, lBuffer, hBuffer,MeshObjectType,_output) \
 class key                                                                    \
 {                                                                            \
     public:                                                                  \
@@ -252,7 +252,7 @@ class key                                                                    \
     static constexpr const char* name_= STRINGIFY(key);                      \
     static constexpr MeshObject mesh_type = MeshObject::MeshObjectType;      \
     static constexpr std::size_t  nFields = NFields;                         \
-    static constexpr bool  output = true;                                    \
+    static constexpr bool  output = _output;                                    \
     key ()                                                                   \
     {                                                                        \
         for(std::size_t i= 0; i<nFields; ++i)                                \
@@ -267,7 +267,7 @@ class key                                                                    \
 };                                                                           \
 
 
-#define GET_FIELD_MACRO(_1,_2,_3,_4,_5,_6, _7,NAME,...) NAME
+#define GET_FIELD_MACRO(_1,_2,_3,_4,_5,_6, _7,_8,NAME,...) NAME
 #define make_field_type(...)          \
 GET_FIELD_MACRO(__VA_ARGS__,          \
                 make_field_type_impl) \

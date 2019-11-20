@@ -296,7 +296,7 @@ public:
             return;
         }
 
-        pcout<<"FMM For Level "<< level << " Start ---------------------------"<<std::endl;
+        //pcout<<"FMM For Level "<< level << " Start ---------------------------"<<std::endl;
         // New logic using masks
         // 1. Give masks to the base level
 
@@ -342,7 +342,7 @@ public:
 #endif
 
         //// Anterpolation
-        pcout<<"FMM Antrp start" << std::endl;
+        //pcout<<"FMM Antrp start" << std::endl;
 #ifdef POISSON_TIMINGS
         auto t0_anterp=clock_type::now();
 #endif
@@ -356,7 +356,7 @@ public:
         //domain_->client_communicator().barrier();
 
         //// FMM influence list
-        pcout<<"FMM Bx start" << std::endl;
+        //pcout<<"FMM Bx start" << std::endl;
         //fmm_Bx_itr_build(domain_, level);
 #ifdef POISSON_TIMINGS
         auto t0_bx=clock_type::now();
@@ -375,7 +375,7 @@ public:
         auto t0_interp=clock_type::now();
 #endif
         //// Interpolation
-        pcout<<"FMM INTRP start" << std::endl;
+        //pcout<<"FMM INTRP start" << std::endl;
         fmm_intrp(domain_);
 
 #ifdef POISSON_TIMINGS
@@ -395,7 +395,7 @@ public:
 
         //std::cout<<"Rank "<<world.rank() << " FFTW_count = ";
         //std::cout<<conv_.fft_count << std::endl;
-        pcout<<"FMM For Level "<< level << " End -------------------------"<<std::endl;
+        //pcout<<"FMM For Level "<< level << " End -------------------------"<<std::endl;
     }
 
     auto initialize_upward_iterator(int level, domain_t* domain_,bool _upward)

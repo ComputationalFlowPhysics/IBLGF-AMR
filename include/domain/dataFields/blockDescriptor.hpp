@@ -210,12 +210,26 @@ public: //members
             //If no exact conversion possible:
             // => shrink it, e.g. base+=1, max-=1;
             auto max=this->max();
+
+            //for(std::size_t d=0;d<extent_.size();++d)
+            //{
+            //    base_[d]+=std::abs(base_[d]%factor);
+            //}
+
             for(std::size_t d=0;d<extent_.size();++d)
             {
-                base_[d]+=std::abs(base_[d]%factor);
+                if (base_[d]<0)
+                    base_[d] = (base_[d]+1)/factor-1;
+                else
+                    base_[d] = base_[d]/factor;
+
+                if (max[d]<0)
+                    max[d] = (max[d]+1)/factor-1;
+                else
+                    max[d] = max[d]/factor;
             }
-            base_/=factor;
-            max/=factor;
+            //base_/=factor;
+            //max/=factor;
             this->max(max);
         }
         level_=_level;

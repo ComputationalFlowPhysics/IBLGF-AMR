@@ -45,16 +45,12 @@ struct parameters
     Dim,
      (
         //name               type        Dim   lBuffer  hBuffer, storage type
-         (source           , float_type, 1,    1,       1,     cell),
-         (error_u          , float_type, 3,    1,       1,     face),
-         (decomposition    , float_type, 1,    1,       1,     cell),
+         (error_u          , float_type, 3,    1,       1,     face,true ),
+         (decomposition    , float_type, 1,    1,       1,     cell,true ),
         //IF-HERK
-         (u_exact          , float_type, 3,    1,       1,     face),
-         (u                , float_type, 3,    1,       1,     face),
-         (u_ref            , float_type, 3,    1,       1,     face),
-         (u_str_u          , float_type, 3,    1,       1,     face),
-         (w                , float_type, 3,    1,       1,     edge),
-         (p                , float_type, 1,    1,       1,     cell)
+         (u                , float_type, 3,    1,       1,     face,true ),
+         (u_ref            , float_type, 3,    1,       1,     face,true ),
+         (p                , float_type, 1,    1,       1,     cell,true )
     ))
 };
 
@@ -102,6 +98,9 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
 
         nLevelRefinement_=simulation_.dictionary_->
             template get_or<int>("nLevels",0);
+        global_refinement_=simulation_.dictionary_->
+            template get_or<int>("global_refinement",0);
+
 
         if (dt_<0)
             dt_=dx_*cfl_;
@@ -145,9 +144,9 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
         if (ref_filename_!="null")
             simulation_.template read_h5<u_ref>(ref_filename_);
 
-        this->compute_errors<u,u_ref,error_u>(std::string(""),0);
-        this->compute_errors<u,u_ref,error_u>(std::string(""),1);
-        this->compute_errors<u,u_ref,error_u>(std::string(""),2);
+        this->compute_errors<u,u_ref,error_u>(std::string("u1_"),0);
+        this->compute_errors<u,u_ref,error_u>(std::string("u2_"),1);
+        this->compute_errors<u,u_ref,error_u>(std::string("u3_"),2);
 
         simulation_.write2("final.hdf5");
     }
@@ -188,7 +187,7 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
            float_type T = dt_*tot_steps_;
            for(auto it2=nodes_domain.begin();it2!=nodes_domain.end();++it2 )
            {
-               it2->get<source>() = 0.0;
+               //it2->get<source>() = 0.0;
 
                const auto& coord=it2->level_coordinate();
 
@@ -200,7 +199,7 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
                float_type z = static_cast<float_type>
                    (coord[2]-center[2]*scaling)*dx_level;
 
-               it2->template get<w>(0) = vortex_ring_vor_ic(x,y,z,0);
+               it2->template get<edge_aux>(0) = vortex_ring_vor_ic(x,y,z,0);
                /***********************************************************/
                x = static_cast<float_type>
                    (coord[0]-center[0]*scaling)*dx_level;
@@ -209,7 +208,7 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
                z = static_cast<float_type>
                    (coord[2]-center[2]*scaling)*dx_level;
 
-               it2->template get<w>(1) = vortex_ring_vor_ic(x,y,z,1);
+               it2->template get<edge_aux>(1) = vortex_ring_vor_ic(x,y,z,1);
                /***********************************************************/
                x = static_cast<float_type>
                    (coord[0]-center[0]*scaling)*dx_level;
@@ -218,14 +217,14 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
                z = static_cast<float_type>
                    (coord[2]-center[2]*scaling+0.5)*dx_level;
 
-               it2->template get<w>(2) = vortex_ring_vor_ic(x,y,z,2);
+               it2->template get<edge_aux>(2) = vortex_ring_vor_ic(x,y,z,2);
 
                /***********************************************************/
                it2->template get<decomposition>()=world.rank();
            }
         }
 
-        psolver.template apply_lgf<w, stream_f>();
+        psolver.template apply_lgf<edge_aux, stream_f>();
         auto client=domain_->decomposition().client();
 
         for (int l  = domain_->tree()->base_level();

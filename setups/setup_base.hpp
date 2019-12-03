@@ -37,29 +37,26 @@ public: //default fields
     REGISTER_FIELDS
     (Dim,
     (
-      (coarse_target_sum,   float_type,  1,  1,  1,  cell),
-      (source_tmp,          float_type,  1,  1,  1,  cell),
-      (correction_tmp,      float_type,  1,  1,  1,  cell),
-      (corr_lap_tmp,        float_type,  1,  1,  1,  cell),
-      (source_correction_tmp,float_type, 1,  1,  1,  cell),
-      (target_tmp,          float_type,  1,  1,  1,  cell),
-      (fmm_s,               float_type,  1,  1,  1,  cell),
-      (fmm_t,               float_type,  1,  1,  1,  cell),
+      (coarse_target_sum,   float_type,  1,  1,  1,  cell,false),
+      (source_tmp,          float_type,  1,  1,  1,  cell,false),
+      (correction_tmp,      float_type,  1,  1,  1,  cell,false),
+      (corr_lap_tmp,        float_type,  1,  1,  1,  cell,false),
+      (source_correction_tmp,float_type, 1,  1,  1,  cell,false),
+      (target_tmp,          float_type,  1,  1,  1,  cell,false),
+      (fmm_s,               float_type,  1,  1,  1,  cell,false),
+      (fmm_t,               float_type,  1,  1,  1,  cell,false),
       //flow variables
-      (u_str_u,             float_type,  3,  1,  1,  face),
-      (q_i,                 float_type,  3,  1,  1,  face),
-      (u_i,                 float_type,  3,  1,  1,  face),
-      (d_i,                 float_type,  1,  1,  1,  cell),
-      (g_i,                 float_type,  3,  1,  1,  face),
-      (r_i,                 float_type,  3,  1,  1,  face),
-      (w_1,                 float_type,  3,  1,  1,  face),
-      (w_2,                 float_type,  3,  1,  1,  face),
-      (cell_aux,            float_type,  1,  1,  1,  cell),
-      (face_aux,            float_type,  3,  1,  1,  face),
-      (face_test_ri,        float_type,  3,  1,  1,  face),
-      (face_aux_2,          float_type,  3,  1,  1,  face),
-      (stream_f,            float_type,  3,  1,  1,  edge),
-      (edge_aux,            float_type,  3,  1,  1,  edge)
+      (q_i,                 float_type,  3,  1,  1,  face,false),
+      (u_i,                 float_type,  3,  1,  1,  face,false),
+      (d_i,                 float_type,  1,  1,  1,  cell,false),
+      (g_i,                 float_type,  3,  1,  1,  face,false),
+      (r_i,                 float_type,  3,  1,  1,  face,false),
+      (w_1,                 float_type,  3,  1,  1,  face,false),
+      (w_2,                 float_type,  3,  1,  1,  face,false),
+      (cell_aux,            float_type,  1,  1,  1,  cell,false),
+      (face_aux,            float_type,  3,  1,  1,  face,false),
+      (stream_f,            float_type,  3,  1,  1,  edge,false),
+      (edge_aux,            float_type,  3,  1,  1,  edge,true)
     ))
 
     using field_tuple=fields_tuple_t;
@@ -151,6 +148,7 @@ public: //memebers
                 it_t != domain_->end_leafs(); ++it_t)
         {
             if(!it_t->locally_owned() || !it_t->data())continue;
+            if(it_t->is_correction()) continue;
 
             int refinement_level = it_t->refinement_level();
             double dx = dx_base/std::pow(2.0,refinement_level);

@@ -184,7 +184,7 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
            auto view(it->data()->node_field().domain_view());
            auto& nodes_domain=it->data()->nodes_domain();
 
-           float_type T = dt_*tot_steps_;
+           //float_type T = dt_*tot_steps_;
            for(auto it2=nodes_domain.begin();it2!=nodes_domain.end();++it2 )
            {
                //it2->get<source>() = 0.0;

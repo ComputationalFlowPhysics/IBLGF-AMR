@@ -228,7 +228,7 @@ public:
                     it != domain_->end(l); ++it)
             {
                 if(!it->data() || !it->data()->is_allocated()) continue;
-                const bool correction_buffer_only = true;
+                //const bool correction_buffer_only = true;
                 //this->coarsify<source_tmp, source_correction_tmp>(*it, 1.0, correction_buffer_only, false);
                 c_cntr_nli_.nli_antrp_node
                         <source_tmp, source_correction_tmp>(*it, Source::mesh_type, _field_idx, 0, true, false);
@@ -390,8 +390,8 @@ public:
                     template get_linalg_data<correction_tmp>(0);
                     auto& lin_data_2 = it->data()->
                     template get_linalg_data<source_tmp>(0);
-                    auto& lin_data_3 = it->data()->
-                    template get_linalg_data<target_tmp>(0);
+                    //auto& lin_data_3 = it->data()->
+                    //template get_linalg_data<target_tmp>(0);
 
                     xt::noalias(lin_data_2) += lin_data_1 * 1.0;
                 }
@@ -680,32 +680,32 @@ public:
      *  @detail Given a parent field, interpolate it onto the child meshes.
      *  Interpolation is 2nd order accurate.
      */
-    template<class Field >
-    void interpolate(const octant_t* _b_parent)
-    {
-        for (int i = 0; i < _b_parent->num_children(); ++i)
-        {
-            auto child = _b_parent->child(i);
-            if (child==nullptr) continue;
-            block_type child_view =
-                child->data()->template get<Field>().real_block();
-            auto cview =child->data()->node_field().view(child_view);
+    //template<class Field >
+    //void interpolate(const octant_t* _b_parent)
+    //{
+    //    for (int i = 0; i < _b_parent->num_children(); ++i)
+    //    {
+    //        auto child = _b_parent->child(i);
+    //        if (child==nullptr) continue;
+    //        block_type child_view =
+    //            child->data()->template get<Field>().real_block();
+    //        auto cview =child->data()->node_field().view(child_view);
 
-            cview.iterate([&]( auto& n )
-            {
-                const auto& coord=n.level_coordinate();
-                auto min =(coord+1)/2-1;
-                real_coordinate_type x=(coord-0.5)/2.0;
+    //        cview.iterate([&]( auto& n )
+    //        {
+    //            const auto& coord=n.level_coordinate();
+    //            auto min =(coord+1)/2-1;
+    //            real_coordinate_type x=(coord-0.5)/2.0;
 
-                const float_type interp=
-                    interpolation::interpolate(
-                            min.x(), min.y(), min.z(),
-                            x[0], x[1], x[2],
-                            _b_parent->data()->template get<Field>()) ;
-                    n.template get<Field>()+=interp;
-            });
-        }
-    }
+    //            const float_type interp=
+    //                interpolation::interpolate(
+    //                        min.x(), min.y(), min.z(),
+    //                        x[0], x[1], x[2],
+    //                        _b_parent->data()->template get<Field>()) ;
+    //                n.template get<Field>()+=interp;
+    //        });
+    //    }
+    //}
 
 
 

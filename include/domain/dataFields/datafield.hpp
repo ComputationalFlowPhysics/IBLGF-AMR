@@ -266,11 +266,18 @@ class key                                                                    \
     std::array<data_field_t,nFields> fields_;                                \
 };                                                                           \
 
+//For 7 parameters with defaulted output
+#define make_field_type_impl_default(Dim,key,DataType,                               \
+                             NFields, lBuffer, hBuffer,MeshObjectType) \
+make_field_type_impl(Dim,key,DataType,                               \
+                             NFields, lBuffer, hBuffer,MeshObjectType,true)
+
 
 #define GET_FIELD_MACRO(_1,_2,_3,_4,_5,_6, _7,_8,NAME,...) NAME
 #define make_field_type(...)          \
 GET_FIELD_MACRO(__VA_ARGS__,          \
-                make_field_type_impl) \
+                make_field_type_impl, \
+                make_field_type_impl_default)\
                 (__VA_ARGS__)         \
 
 

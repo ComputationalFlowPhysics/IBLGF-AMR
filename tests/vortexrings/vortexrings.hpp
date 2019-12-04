@@ -19,14 +19,14 @@ struct parameters
     (
     Dim,
      (
-         //name              type       Dim   lBuffer.  hBuffer
-         (phi_num          ,float_type, 1,    1,       1, cell,true),
-         (source           ,float_type, 1,    1,       1, cell,true),
-         (phi_exact        ,float_type, 1,    1,       1, cell,true),
-         (error            ,float_type, 1,    1,       1, cell,true),
-         (amr_lap_source   ,float_type, 1,    1,       1, cell,true),
-         (error_lap_source ,float_type, 1,    1,       1, cell,true),
-         (decomposition    ,float_type, 1,    1,       1, cell,true)
+         //name              type       Dim   l/h-buf,mesh_obj, output(optional)
+         (phi_num          ,float_type, 1,    1, 1,   cell),
+         (source           ,float_type, 1,    1, 1,   cell),
+         (phi_exact        ,float_type, 1,    1, 1,   cell),
+         (error            ,float_type, 1,    1, 1,   cell),
+         (amr_lap_source   ,float_type, 1,    1, 1,   cell),
+         (error_lap_source ,float_type, 1,    1, 1,   cell),
+         (decomposition    ,float_type, 1,    1, 1,   cell)
     ))
 };
 

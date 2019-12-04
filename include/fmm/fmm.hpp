@@ -457,7 +457,6 @@ public:
         const bool start_communication = true;
 #endif
 
-        int c=0;
 
         for (auto B_it=sorted_octants_.begin(); B_it!=sorted_octants_.end(); ++B_it)
         {

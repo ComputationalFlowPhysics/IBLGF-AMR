@@ -204,7 +204,7 @@ public:
         // Read hdf5 file ---------------------------------------------------
 
         float_type dx_base=domain->dx_base();
-        int base_level = domain->tree()->base_level();
+        //int base_level = domain->tree()->base_level();
 
         boost::mpi::communicator world;
         if (world.rank()==0) return;
@@ -222,8 +222,8 @@ public:
             auto attribute = _file->template read_attribute<std::string>(root,
                     "component_"+std::to_string(i));
 
-            if (nFields>1 && attribute==read_in_name+"_0" ||
-                    nFields==1 && attribute==read_in_name)
+            if ((nFields>1 && attribute==read_in_name+"_0") ||
+                    (nFields==1 && attribute==read_in_name))
             {component_idx = i; break;}
         }
 
@@ -278,7 +278,7 @@ public:
 
                     auto scale_up_overlap_local= overlap_local;
                     scale_up_overlap_local.level_scale(fake_level);
-                    auto sub_block_shift = overlap_fake_level.base()-scale_up_overlap_local.base();
+                    //auto sub_block_shift = overlap_fake_level.base()-scale_up_overlap_local.base();
 
                     std::array<int,2> single{0,0};
                     std::array<int,2> avg{(factor-1)/2, factor/2};

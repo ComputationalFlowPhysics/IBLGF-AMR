@@ -369,15 +369,15 @@ class hdf5_file
             hid_t dataspace_id = H5Dget_space(dataset_id);
 
             std::vector<hsize_t> dims(1);
-            int ndims= H5Sget_simple_extent_dims(dataspace_id,&dims[0] ,NULL);
+            H5Sget_simple_extent_dims(dataspace_id,&dims[0] ,NULL);
 
             box_compound* data = (box_compound *) malloc (dims[0] * sizeof (box_compound));
 
             hid_t memtype = H5Dget_type(dataset_id);
-            herr_t status = H5Dread(dataset_id, memtype, H5S_ALL, H5S_ALL, H5P_DEFAULT, &data[0]);
+            H5Dread(dataset_id, memtype, H5S_ALL, H5S_ALL, H5P_DEFAULT, &data[0]);
             std::vector<BlockDescriptor> vec_box(dims[0]);
             //TODO : somehow the direct conversion doesn't work
-            for (int i=0; i<dims[0]; ++i)
+            for (int i=0; i<static_cast<int>(dims[0]); ++i)
             {
                vec_box[i] = BlockDescriptor(
                     std::array<int,NumDims>({data[i].lo_i,data[i].lo_j,data[i].lo_k}),
@@ -533,16 +533,11 @@ class hdf5_file
             update_plist();
             //H5Eset_auto(NULL,NULL, NULL);
             //H5Eset_auto(nullptr,nullptr, nullptr);
-            char name[1024];
-
             auto numOpenObjs = H5Fget_obj_count(file_id, H5F_OBJ_ALL);
             std::vector<hid_type> obj_id_list(numOpenObjs);
             auto numReturnedOpenObjs = H5Fget_obj_ids(file_id, H5F_OBJ_ALL, numOpenObjs, &obj_id_list[0]);
             for (hsize_type i = 0; i < static_cast<hsize_type>(numReturnedOpenObjs); ++i)
             {
-                auto anobj = obj_id_list[i];
-                auto ot = H5Iget_type(anobj);
-                auto status = H5Iget_name(anobj, name, 1024);
                 H5Oclose(obj_id_list[i]);
              }
 

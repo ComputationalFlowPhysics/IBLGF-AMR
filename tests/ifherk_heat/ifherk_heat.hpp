@@ -249,8 +249,6 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
 
     float_type vortex_ring_vor_ic(float_type x, float_type y, float_type z, int field_idx) const
     {
-        float_type w=0;
-
         const float_type alpha = 0.54857674;
         float_type R2 = R_*R_;
 

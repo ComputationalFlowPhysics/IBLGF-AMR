@@ -398,22 +398,6 @@ public:
         //pcout<<"FMM For Level "<< level << " End -------------------------"<<std::endl;
     }
 
-    auto initialize_upward_iterator(int level, domain_t* domain_,bool _upward)
-    {
-        std::vector<std::pair<octant_t*, int>> octants;
-        for (auto it = domain_->begin(level); it != domain_->end(level); ++it)
-        {
-            int recv_m_send_count=domain_-> decomposition().client()->
-                updownward_pass_mcount(*it,_upward, fmm_mask_idx_);
-
-            octants.emplace_back(std::make_pair(*it,recv_m_send_count));
-        }
-        //Sends=10000, recv1-10000, no_communication=0
-        //descending order
-        std::sort(octants.begin(), octants.end(),[&](const auto& e0, const auto& e1)
-                {return e0.second> e1.second;  });
-        return octants;
-    }
 
     template<class Kernel>
     void sort_bx_octants(domain_t* domain_, Kernel* _kernel)

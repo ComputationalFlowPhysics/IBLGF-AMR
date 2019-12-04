@@ -2,60 +2,72 @@ simulation_parameters
 {
     nLevels=3;
     global_refinement=0;
+    refinement_factor=0.125;
+    correction=false;
 
-    //Vortex Ring
-    //c1=107374182400000000000000.;
-    //c2=60;
-    c1=1;
-    c2=4;
 
-    R=0.125;
-    //source_max=1400;
-    //source_max=0.03;
-    offset=(0,0,0);
-
-    //vortex
-    //{
-    //    c1=1000.0;
-    //    c2=10;
-    //    R=0.125;
-    //    center=(0,0,-0.125);
-    //}
+    output
+    {
+        directory=vortexRings;
+    }
 
     vortex
     {
-        c1=10000.0;
-        c2=10;
+        c1=1000000.0;
+        c2=15;
         R=0.125;
         center=(0,0,0);
     }
 
+    vortex
+    {
+        c1=1000000.0;
+        c2=15;
+        R=0.015;
+        center=(0,0,0.125);
+    }
+
+    //Some more rings
     //vortex
     //{
     //    c1=1000000.0;
-    //    c2=13;
-    //    //R=0.03125;
-    //    R=0.03;
-    //    center=(0,0,0.125);
+    //    c2=15;
+    //    R=0.015;
+    //    center=(-0.125,0,0.125);
+    //}
+    //vortex
+    //{
+    //    c1=1000000.0;
+    //    c2=15;
+    //    R=0.015;
+    //    center=(0.125,0,0.125);
+    //}
+    //vortex
+    //{
+    //    c1=1000000.0;
+    //    c2=15;
+    //    R=0.015;
+    //    center=(0,-0.125,0.125);
+    //}
+    //vortex
+    //{
+    //    c1=1000000.0;
+    //    c2=15;
+    //    R=0.015;
+    //    center=(0,0.125,0.125);
     //}
 
-    output
-    {
-        directory=bla;
-    }
 
     domain
     {
         Lx=1.0;
-        max_extent   = 300;
+        max_extent = 300;
         block_extent=8;
 
         block
         {
-            //base=(-64,-64,-64); 
-            //extent=(128,128,128); 
-            base=(-32,-32,-32); 
-            extent=(64,64,64); 
+            base=(-64,-64,-64); 
+            extent=(128,128,128); 
         }
     }
 }

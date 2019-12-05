@@ -471,8 +471,8 @@ public: // neighborlist
         return res;
     }
 
-    template<class Client, class InitFunction>
-    void query_neighbor_octants( Client* _c, InitFunction& _f )
+    template<class Client>
+    void query_neighbor_octants( Client* _c)
     {
         auto key_set=construct_neighbor_lists();
 
@@ -487,7 +487,6 @@ public: // neighborlist
                 auto nn = this->insert_td(keys[i]);
                 std::set<key_type> dummy;
                 neighbor_lookup(nn,dummy, false, true );
-                //_f(nn);
                 nn->rank()=ranks[i];
             }
         }
@@ -546,8 +545,8 @@ public: // influence list
         return res;
     }
 
-    template<class Client, class InitFunction>
-    void query_influence_octants( Client* _c, InitFunction& _f )
+    template<class Client>
+    void query_influence_octants( Client* _c)
     {
         const auto infl_helper=construct_influence_lists();
 
@@ -676,8 +675,8 @@ private:// influence list
 public: //children and parent queries
 
     /** @brief Query the ranks for all children */
-    template<class Client, class InitFunction>
-    void query_children( Client* _c, InitFunction& _f )
+    template<class Client>
+    void query_children( Client* _c)
     {
         dfs_iterator it_begin(root()); dfs_iterator it_end;
 
@@ -716,8 +715,8 @@ public: //children and parent queries
     }
 
   /** @brief Query the ranks for all children */
-    template<class Client, class InitFunction>
-    void query_parents( Client* _c, InitFunction& _f )
+    template<class Client>
+    void query_parents( Client* _c)
     {
         dfs_iterator it_begin(root()); dfs_iterator it_end;
         ++it_begin;
@@ -743,39 +742,30 @@ public: //children and parent queries
             if(ranks[i]>=0)
             {
                 auto nn = this->insert_td(keys[i]);
-                //_f(nn);
                 nn->rank()=ranks[i];
             }
         }
     }
 
-
-    /** @brief Query ranks for all interior octants */
-    template<class Client, class InitFunction>
-    void query_interior( Client* _c, InitFunction _f)
+    template<class Client>
+    void query_ranks( Client* _c)
     {
         dfs_iterator it_begin(root()); dfs_iterator it_end;
 
         std::vector<key_type> keys;
         for(auto it =it_begin;it!=it_end;++it)
         {
-            if( it->rank()<0 )
-            {
-                keys.emplace_back(it->key());
-            }
+            keys.emplace_back(it->key());
         }
-
         auto ranks= _c->rank_query( keys );
         for(std::size_t i = 0; i < ranks.size();++i )
         {
             if(ranks[i]>=0)
             {
                 auto nn = this->find_octant(keys[i]);
-                //_f(nn);
                 nn->rank()=ranks[i];
             }
         }
-
     }
 
     template<class Client>
@@ -856,6 +846,16 @@ public: //children and parent queries
 
 public: //Query ranks of all octants, which are assigned in local tree
 
+    template<class Client>
+    void construct_ghosts( Client* _c )
+    {
+        this->query_neighbor_octants(_c);
+        this->query_influence_octants(_c);
+        this->query_children(_c);
+        this->query_parents(_c);
+    }
+    
+
     /** @brief Query from server and construct all
      *         maps for neighbors, influence
      *         list, children and interior nodes
@@ -863,7 +863,18 @@ public: //Query ranks of all octants, which are assigned in local tree
     template<class Client>
     void construct_maps( Client* _c )
     {
+        //Queries
+        this->construct_ghosts(_c);
+        this->query_ranks(_c);
+        this->allocate_ghosts(_c);
 
+        //Maps constructions
+        this-> construct_level_maps();
+    }
+
+    template<class Client>
+    void allocate_ghosts( Client* _c )
+    {
         auto _f =[_c, this](octant_type* _o){
             auto level = _o->refinement_level();
             level=level>=0?level:0;
@@ -881,14 +892,7 @@ public: //Query ranks of all octants, which are assigned in local tree
             _o->data()=std::make_shared<DataType>(bbase,
                     _c->domain()->block_extent(),level, false);
         };
-
-        //Queries
-        this->query_neighbor_octants(_c,_f);
-        this->query_influence_octants(_c,_f);
-        this->query_children(_c,_f);
-        this->query_parents(_c,_f);
-        this->query_interior(_c, _f);
-
+        
         //Allocate Ghost octants
         dfs_iterator it_begin(root()); dfs_iterator it_end;
         for(auto it =it_begin;it!=it_end;++it)
@@ -919,8 +923,6 @@ public: //Query ranks of all octants, which are assigned in local tree
             if(p && !p->locally_owned()) _f(p);
         }
 
-        //Maps constructions
-        this-> construct_level_maps();
     }
 
 

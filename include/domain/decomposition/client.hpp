@@ -131,28 +131,12 @@ public:
 
     auto update_decomposition()
     {
-        //std::vector<key_t> recv_octs,send_octs;
-        //std::vector<int> dest_ranks,src_ranks;
-
         ClientUpdate update;
         comm_.recv(0,comm_.rank()+0*comm_.size(),update.send_octs);
         comm_.recv(0,comm_.rank()+1*comm_.size(),update.dest_ranks);
         comm_.recv(0,comm_.rank()+2*comm_.size(),update.recv_octs);
         comm_.recv(0,comm_.rank()+3*comm_.size(),update.src_ranks);
 
-        for(std::size_t i=0;i<update.send_octs.size();++i)
-        {
-            std::cout<<"Sending octant " <<update.send_octs[i].id()<<" "<<
-                      "my "<<comm_.rank()<<" other "<<update.dest_ranks[i]<<std::endl;
-        }
-        for(std::size_t i=0;i<update.recv_octs.size();++i)
-        {
-            std::cout<<"Recv octant " <<update.recv_octs[i].id()<<" "<<
-                      "my "<<comm_.rank()<<" other "<<update.src_ranks[i]<<std::endl;
-        }
-
-        //TODO: allreduce the depth
-        
         //instantiate new octants
         domain_->tree()->insert_keys(update.recv_octs, [&](octant_t* _o){
             auto level = _o->refinement_level();
@@ -173,7 +157,6 @@ public:
         {
             auto it =domain_->tree()->find_octant(key);
             it->rank()=update.dest_ranks[count];
-            std::cout<<"send oct "<<key.id()<<" my: "<<comm_.rank()<<" other "<<it->rank()<<std::endl;
             ++count;
         }
         for(auto& key : update.recv_octs)
@@ -250,6 +233,11 @@ public:
             send_comm.clear();
         }
 
+
+    }
+
+    void finish_decomposition_update(ClientUpdate& _update)
+    {
         std::cout<<"Deleting stuff"<<std::endl;
         //remove octants
         for(auto& key : _update.send_octs)
@@ -272,31 +260,6 @@ public:
             }
         }
         halo_initialized_=false;
-
-        for(auto& key : _update.send_octs)
-        {
-            auto it =domain_->tree()->find_octant(key);
-            if(it)
-            {
-                if(it->locally_owned())
-                    std::cout<<"Wrong"<<std::endl;
-            }
-        }
-        for(auto& key : _update.recv_octs)
-        {
-            auto it =domain_->tree()->find_octant(key);
-            if(it)
-            {
-                if(!it->locally_owned())
-                    std::cout<<"recv wrogn"<<std::endl;
-            }
-            else
-            {
-                std::cout<<"Not allocated"<<std::endl;
-            }
-        }
-
-        std::cout<<"Done deleting"<<std::endl;
     }
 
 
@@ -828,7 +791,6 @@ public:
     {
         domain_->tree()->construct_maps(this);
     }
-
 
     auto domain()const{return domain_;}
 

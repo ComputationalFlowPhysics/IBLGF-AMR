@@ -226,15 +226,17 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
         this->compute_errors<phi_num,phi_exact,error>();
         this->compute_errors<amr_lap_source,source,error_lap_source>("laplace_");
 
-        simulation_.write2("mesh.hdf5");
+        //simulation_.write2("mesh.hdf5");
     }
 
 
     void run()
     {
-        //this->solve();
-        domain_->decomposition().balance<source,phi_exact,fmm_mask_builder_t, fmm_mask_builder_t>();
         this->solve();
+        simulation_.write2("mesh.hdf5");
+        domain_->decomposition().balance<source,phi_exact>();
+        this->solve();
+        simulation_.write2("mesh_new.hdf5");
     }
 
 

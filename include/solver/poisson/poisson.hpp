@@ -188,14 +188,11 @@ public:
 
         source_coarsify<source_tmp, source_tmp>(_field_idx, 0, Source::mesh_type);
 
-
 #ifdef POISSON_TIMINGS
         auto t1_coarsify= clock_type::now();
         timings_.coarsification = t1_coarsify-t0_coarsify;
         const auto t0_level_interaction = clock_type::now();
 #endif
-
-        intrp_to_correction_buffer<source_tmp, correction_tmp>(_field_idx, 0, Source::mesh_type);
 
         //Level-Interactions
         const int l_max = base_level_only ?
@@ -237,7 +234,6 @@ public:
 
             if (base_level_only) continue;
 
-            // minus middle
             fmm_.template apply<source_tmp, target_tmp>(domain_, _kernel, l, true, -1.0);
 
 #ifdef POISSON_TIMINGS
@@ -252,7 +248,6 @@ public:
                 template communicate_updownward_assign
                     <target_tmp, target_tmp>(l,false,false,-1);
 
-            // Interpolate
             for (auto it  = domain_->begin(l);
                       it != domain_->end(l); ++it)
             {
@@ -269,6 +264,36 @@ public:
 
 
             if (l == domain_->tree()->depth()-1) continue;
+
+            // Correction for LGF
+            // Calculate PL numerically from target_tmp instead of assume PL
+            // L^-1 S gives back S exactly.  This improves the accuracy
+
+            for (auto it  = domain_->begin(l);
+                    it != domain_->end(l); ++it)
+            {
+                int refinement_level = it->refinement_level();
+                double dx_level = dx_base/std::pow(2,refinement_level);
+
+                if (!it->data() || !it->data()->is_allocated()) continue;
+                domain::Operator::laplace<target_tmp, corr_lap_tmp>
+                ( *(it->data()),dx_level);
+            }
+
+            client->template buffer_exchange<corr_lap_tmp>(l);
+            domain_->decomposition().client()->
+                template communicate_updownward_assign
+                <corr_lap_tmp, corr_lap_tmp>(l,false,false,-1);
+
+            for (auto it  = domain_->begin(l);
+                    it != domain_->end(l); ++it)
+            {
+                if(!it->data() || !it->data()->is_allocated()) continue;
+
+                const bool correction_buffer_only = false;
+                c_cntr_nli_.nli_intrp_node< corr_lap_tmp, correction_tmp>(it, Source::mesh_type, _field_idx, correction_buffer_only,false);
+            }
+
 
             for (auto it  = domain_->begin(l);
                     it != domain_->end(l); ++it)

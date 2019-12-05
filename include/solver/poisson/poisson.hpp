@@ -220,22 +220,7 @@ public:
 #endif
 
         intrp_to_correction_buffer<source_tmp, source_tmp>(_field_idx, 0, Source::mesh_type);
-
-        for (int l = domain_->tree()->depth()-2;
-                l >= domain_->tree()->base_level(); --l)
-        {
-            for (auto it  = domain_->begin(l);
-                    it != domain_->end(l); ++it)
-            {
-                if(!it->data() || !it->data()->is_allocated()) continue;
-                //const bool correction_buffer_only = true;
-                //this->coarsify<source_tmp, source_correction_tmp>(*it, 1.0, correction_buffer_only, false);
-                c_cntr_nli_.nli_antrp_node
-                        <source_tmp, source_correction_tmp>(*it, Source::mesh_type, _field_idx, 0, true, false);
-            }
-        }
-
-        //source_coarsify<source_tmp, source_correction_tmp>(_field_idx, 0, Source::mesh_type, true, false);
+        source_coarsify<source_tmp, source_correction_tmp>(_field_idx, 0, Source::mesh_type, true, false);
 
         //Level-Interactions
         const int l_max = base_level_only ?
@@ -293,15 +278,12 @@ public:
 
                 if (correction_parent)
                 {
-                    auto& cp2 = it ->data()->template get_linalg_data<source_tmp>();
-                    cp2*=0.0;
+                    auto& cp1 = it ->data()->template get_linalg_data<source_tmp>();
+                    auto& cp2 = it ->data()->template get_linalg_data<source_correction_tmp>();
+                    xt::noalias(cp1) = cp2*1.0;
                 }
-            }
 
-            // add back correction source
-            domain_->decomposition().client()->
-                template communicate_updownward_add<source_correction_tmp, source_tmp>
-                    (l,true,false,-1);
+            }
 
             // minus middle
             fmm_.template apply<source_tmp, target_tmp>(domain_, _kernel, l, true, -1.0);
@@ -529,7 +511,7 @@ public:
                     if(!it_s->data() || !it_s->data()->is_allocated()) continue;
 
                     c_cntr_nli_.nli_antrp_node
-                        <From, To>(*it_s, mesh_type, real_mesh_field_idx, tmp_type_field_idx);
+                        <From, To>(*it_s, mesh_type, real_mesh_field_idx, tmp_type_field_idx, correction_only, exclude_correction);
                 }
 
             domain_->decomposition().client()->

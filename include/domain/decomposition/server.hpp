@@ -143,16 +143,16 @@ public:
         auto exitCondition1=[](auto& it){return false;};
         auto continueCondition1=[&blevel](auto& it){return !(it->is_leaf() || it->is_correction());};
 
-        split(domain_->begin(),domain_->end(),
-                tasks_perProc, total_loads_perProc,
-                exitCondition1,continueCondition1);
+        //split(domain_->begin(),domain_->end(),
+        //        tasks_perProc, total_loads_perProc,
+        //        exitCondition1,continueCondition1);
 
         for (int l = domain_->tree()->depth()-1; l >= 0; --l)
         {
 
-            //split(domain_->begin(l),domain_->end(l),
-            //        tasks_perProc, total_loads_perProc,
-            //        exitCondition1,continueCondition1);
+            split(domain_->begin(l),domain_->end(l),
+                    tasks_perProc, total_loads_perProc,
+                    exitCondition1,continueCondition1);
 
             for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
             {

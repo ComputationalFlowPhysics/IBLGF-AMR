@@ -7,6 +7,8 @@
 #include <global.hpp>
 #include <boost/mpi/communicator.hpp>
 #include <boost/serialization/vector.hpp>
+#include <boost/serialization/utility.hpp>
+
 #include <domain/mpi/client_base.hpp>
 #include <domain/mpi/query_registry.hpp>
 #include <domain/mpi/task_manager.hpp>
@@ -19,7 +21,6 @@
 namespace domain
 {
 
-//FIXME: Do better with the namespace
 using namespace sr_mpi;
 
 
@@ -64,6 +65,7 @@ public:
                                         induced_fields_task_t<BufferPolicy>;
     using acc_induced_fields_task_t = typename trait_t::acc_induced_fields_task_t;
     using halo_task_t = typename trait_t::halo_task_t;
+    using balance_task = typename trait_t::balance_task;
 
     template<class Field>
     using halo_communicator_t=HaloCommunicator<halo_task_t, Field, domain_t>;
@@ -115,6 +117,132 @@ public:
         int depth=domain_->tree()->depth();
         comm_.recv(0,0,depth);
         domain_->tree()->depth()=depth;
+    }
+
+    template<class Field>
+    void update_decomposition()
+    {
+        std::vector<key_t> recv_octs,send_octs;
+        std::vector<int> dest_ranks,src_ranks;
+
+        comm_.recv(0,comm_.rank()+0*comm_.size(),send_octs);
+        comm_.recv(0,comm_.rank()+1*comm_.size(),dest_ranks);
+        comm_.recv(0,comm_.rank()+2*comm_.size(),recv_octs);
+        comm_.recv(0,comm_.rank()+3*comm_.size(),src_ranks);
+
+        for(std::size_t i=0;i<send_octs.size();++i)
+        {
+            std::cout<<"Sending octant " <<send_octs[i].id()<<" "<<
+                      "my "<<comm_.rank()<<" other "<<dest_ranks[i]<<std::endl;
+        }
+        for(std::size_t i=0;i<recv_octs.size();++i)
+        {
+            std::cout<<"Recv octant " <<recv_octs[i].id()<<" "<<
+                      "my "<<comm_.rank()<<" other "<<src_ranks[i]<<std::endl;
+        }
+
+        //TODO: allreduce the depth
+        
+        //instantiate new octants
+        domain_->tree()->insert_keys(recv_octs, [&](octant_t* _o){
+            auto level = _o->refinement_level();
+            level=level>=0?level:0;
+            auto bbase=domain_->tree()->octant_to_level_coordinate(
+                    _o->tree_coordinate(),level);
+            if(!_o->data()->is_allocated())
+            {
+                _o->data()=std::make_shared<datablock_t>(bbase,
+                        domain_->block_extent(),level, true);
+            }
+            _o->rank()=comm_.rank();
+        });
+
+
+        auto& send_comm=
+            task_manager_-> template send_communicator<balance_task>();
+        
+        auto& recv_comm=
+            task_manager_-> template recv_communicator<balance_task>();
+
+        //send the actuall octants 
+        for (std::size_t field_idx=0; field_idx<Field::nFields; ++field_idx)
+        {
+
+            int count=0;
+            for(auto& key : send_octs)
+            {
+                //find the octant 
+                auto it =domain_->tree()->find_octant(key);
+                it->rank()=dest_ranks[count];
+                const auto idx=get_octant_idx(it);
+
+                auto send_ptr=it->data()->
+                template get<Field>(field_idx).data_ptr();
+
+                auto task= send_comm.post_task(send_ptr, dest_ranks[count], true, idx);
+                task->attach_data(send_ptr);
+                task->rank_other()=dest_ranks[count];
+                task->requires_confirmation()=false;
+                task->octant()=it;
+                ++count;
+
+            }
+            send_comm.pack_messages();
+
+            count=0;
+            for(auto& key : recv_octs)
+            {
+                auto it =domain_->tree()->find_octant(key);
+                it->rank()=comm_.rank();
+                const auto idx=get_octant_idx(it);
+
+                const auto recv_ptr=it->data()->
+                    template get<Field>(field_idx).data_ptr();
+                auto task = recv_comm.post_task( recv_ptr, src_ranks[count], true, idx);
+
+                task->attach_data(recv_ptr);
+                task->rank_other()=src_ranks[count];
+                task->requires_confirmation()=false;
+                task->octant()=it;
+
+                ++count;
+            }
+            recv_comm.pack_messages();
+
+            while(true)
+            {
+                send_comm.unpack_messages();
+                recv_comm.unpack_messages();
+                if( (recv_comm.done() && send_comm.done())  )
+                    break;
+            }
+
+            recv_comm.clear();
+            send_comm.clear();
+        }
+
+        std::cout<<"Deleting stuff"<<std::endl;
+        //remove octants
+        for(auto& key : send_octs)
+        {
+            //find the octant 
+            auto it =domain_->tree()->find_octant(key);
+            if(it->is_leaf_search())
+            {
+                //delete
+                int cnumber=it->key().child_number();
+                it->deallocate_data();
+                auto p=it->parent();
+                //p->delete_child(cnumber);
+
+            }
+            else
+            {
+                //deallocate data
+                it->deallocate_data();
+            }
+        }
+        halo_initialized_=false;
     }
 
     auto mask_query(std::vector<key_t>& task_dat)
@@ -480,14 +608,13 @@ public:
                             template get<RecvField>(field_idx).data_ptr();
                         auto task=recv_comm.post_task( data_ptr, r, true, idx);
                         task->requires_confirmation()=false;
-
-                    } else
+                    } 
+                    else
                     {
                         auto data_ptr=it->data()->
                             template get<SendField>(field_idx).data_ptr();
                         auto task= send_comm.post_task(data_ptr,r,true,idx);
                         task->requires_confirmation()=false;
-
                     }
                 }
             }
@@ -508,7 +635,8 @@ public:
                                     true,idx);
                         task->requires_confirmation()=false;
 
-                    } else
+                    } 
+                    else
                     {
                         const auto data_ptr=it->data()->
                             template get<RecvField>(field_idx).data_ptr();
@@ -611,6 +739,8 @@ public:
 
     void initialize_halo_communicators()noexcept
     {
+        halo_communicators_.clear();
+
         halo_communicators_.resize(domain_->tree()->depth());
         for (int l  = domain_->tree()->base_level();
                 l < domain_->tree()->depth(); ++l)

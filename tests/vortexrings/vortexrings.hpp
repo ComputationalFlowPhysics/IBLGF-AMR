@@ -31,83 +31,6 @@ struct parameters
 };
 
 
-struct vortex_ring_wrong
-{
-    float_type vorticity(float_type x, float_type y, float_type z) const noexcept
-    {
-        x-=center[0];
-        y-=center[1];
-        z-=center[2];
-
-        const float_type r=std::sqrt(x*x+y*y+z*z) ;
-        const float_type t=std::sqrt( (r-R)*(r-R) +z*z )/R;
-
-        if(std::fabs(t)>=1.0) return 0.0;
-
-        const float_type t3 = z*z;
-        const float_type t5 = x*x;
-        const float_type t6 = y*y;
-        const float_type t7 = t3+t5+t6;
-        const float_type t18 = std::sqrt(t7);
-        const float_type t2 = R-t18;
-        const float_type t4 = R*R;
-        const float_type t8 = std::pow(t7,9.0/2.0);
-        const float_type t9 = t3*t3;
-        const float_type t10 = t9*t9;
-        const float_type t11 = t7*t7;
-        const float_type t12 = t11*t11;
-        const float_type t13 = std::pow(t7,5.0/2.0);
-        const float_type t14 = std::pow(t7,3.0/2.0);
-        const float_type t15 = t5*t5;
-        const float_type t16 = t6*t6;
-        const float_type t17 = std::pow(t7,7.0/2.0);
-        const float_type t19 = c2*t4;
-        const float_type t20 = t4*4.0;
-        const float_type t21 = t19+t20;
-        const float_type t22 = t4*1.2E1;
-        const float_type t23 = t19+t22;
-        const float_type t24 = t4*t4;
-
-        float_type res= (c1*c2*t4*std::exp(c2/(1.0/(R*R)*(t3+t2*t2)-1.0))*(t17*-2.0+t4*t13*
-        8.0-t9*t14*8.0+t14*t15*2.0+t14*t16*2.0-t3*t14*(t20+c2*t4*4.0)+R*t3*t9*
-        1.3E1+R*t5*t9*2.3E1+R*t6*t9*2.3E1+R*t3*t15*1.0E1-R*t7*t11+R*t3*t16*
-        1.0E1-t4*t5*t14*2.0-t4*t6*t14*2.0+t5*t6*t14*4.0+t3*t9*t18*2.0-t4*
-        t9*t18*8.0+t5*t9*t18*2.0+t6*t9*t18*2.0-t15*t18*t21-t16*t18*t21+R*t3*
-        t5*t6*2.0E1-c2*t3*t18*t24-c2*t5*t18*t24-c2*t6*t18*t24-t5*t6*t18*
-        (t4*8.0+c2*t4*2.0)-t3*t5*t18*t23-t3*t6*t18*t23+R*c2*t4*t9*4.0+R*c2*
-        t4*t15*2.0+R*c2*t4*t16*2.0+R*c2*t3*t4*t5*6.0+R*c2*t3*t4*t6*6.0+R*c2*
-        t4*t5*t6*4.0)*-4.0)/(t3*t8*5.0+t5*t8+t6*t8+t10*t14*1.1E1+t17*t24*
-        1.6E1-R*t3*t10*8.0-R*t5*t10*1.6E1-R*t6*t10*1.6E1-R*t7*t12*8.0+t4*t9*
-        t13*9.6E1+t4*t13*t15*2.4E1+t4*t13*t16*2.4E1+t9*t14*t15*6.0+t9*t14*
-        t16*6.0-R*t3*t9*t15*8.0-R*t7*t9*t11*4.8E1-R*t3*t9*t16*8.0+t3*t4*t5*
-        t13*9.6E1+t3*t4*t6*t13*9.6E1+t4*t5*t6*t13*4.8E1+t3*t5*t9*t14*1.6E1+t3*
-        t6*t9*t14*1.6E1+t5*t6*t9*t14*1.2E1-R*t3*t5*t6*t9*1.6E1-R*t3*t4*t7*t11*
-        6.4E1-R*t3*t5*t7*t11*2.4E1-R*t3*t6*t7*t11*2.4E1-R*t4*t5*t7*
-        t11*3.2E1-R*t4*t6*t7*t11*3.2E1);
-
-        if(std::isnan(res)) return 0.0;
-        return res;
-    }
-
-    float_type psi(float_type x, float_type y, float_type z) const noexcept
-    {
-
-        x-=center[0];
-        y-=center[1];
-        z-=center[2];
-        const float_type r=std::sqrt(x*x+y*y+z*z);
-        const float_type t=std::sqrt( (r-R)*(r-R) +z*z )/R;
-        if(std::fabs(t)>=1.0) return 0.0;
-        return  c1* std::exp(- c2/ (1-t*t) );
-    }
-
-public:
-    coordinate_type<float_type,Dim> center;
-    float_type R;
-    float_type c1;
-    float_type c2;
-};
-
 struct vortex_ring
 {
     float_type vorticity(float_type x, float_type y, float_type z) const noexcept
@@ -264,7 +187,7 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
         return vrings;
     }
 
-    void run()
+    void solve()
     {
 
         std::ofstream ofs,ofs_level, ofs_timings;
@@ -272,9 +195,7 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
             pofs(io::output().dir()+"/"+"global_timings.txt",1,ofs),
             pofs_level(io::output().dir()+"/"+"level_timings.txt",1,ofs_level);
 
-
         boost::mpi::communicator world;
-        //simulation_.write2("mesh.hdf5");
 
         auto pts=domain_->get_nPoints();
 
@@ -309,6 +230,16 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
     }
 
 
+    void run()
+    {
+        this->solve();
+        domain_->decomposition().balance<source>();
+        simulation_.write2("mesh_new.hdf5");
+        //this->solve();
+    }
+
+
+
     /** @brief Initialization of poisson problem.
      *  @detail Testing poisson with manufactured solutions: exp
      */
@@ -341,10 +272,6 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
                 }
             }
         }
-        //std::cout <<"rank: "<<world.rank()
-        //          <<", owned: "<<nLocally_owned
-        //          <<", ghosts: "<<nGhost
-        //          <<", allocated ghosts: "<<nAllocated<<std::endl;
 
         for (auto it  = domain_->begin_leafs();
                   it != domain_->end_leafs(); ++it)
@@ -458,10 +385,7 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
 
                     const auto vort=vorticity(x,y,z);
                     if(std::fabs(vort) >
-                            //vorticity_max_*pow(0.25*0.25*0.5 , diff_level)
-                            //vorticity_max_*pow(0.25*0.5 , diff_level)
-                            //vorticity_max_*pow(0.25 , diff_level)
-                            vorticity_max_*pow(refinement_factor_ , diff_level)
+                      vorticity_max_*pow(refinement_factor_ , diff_level)
                       )
                     {
                         return true;

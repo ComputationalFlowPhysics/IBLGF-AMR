@@ -262,6 +262,23 @@ public: //members
 
     auto& recv_tasks()noexcept {return recv_tasks_;}
     const auto& recv_tasks() const noexcept {return recv_tasks_;}
+    void clear()
+    {
+        inter_send_interface.clear();
+        inter_recv_interface.clear();
+        send_fields_.clear();
+        recv_fields_.clear();
+        send_tasks_.clear();
+        recv_tasks_.clear();
+
+        boost::mpi::communicator world;
+        inter_send_interface.resize(world.size());
+        inter_recv_interface.resize(world.size());
+        send_fields_.resize(world.size());
+        recv_fields_.resize(world.size());
+        send_tasks_.resize(world.size());
+        recv_tasks_.resize(world.size());
+    }
 
 private:
     //send/recv interfaces per processor

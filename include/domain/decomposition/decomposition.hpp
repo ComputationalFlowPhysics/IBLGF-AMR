@@ -109,6 +109,37 @@ public: //memeber functions
         }
     }
 
+    template<class Field>
+    void balance()
+    {
+        std::cout<<"Balancing "<<std::endl;
+        if(server())
+        {
+            server()->update_decomposition();
+
+            server()->rank_query();
+            server()->leaf_query();
+            server()->correction_query();
+            server()->mask_query();
+
+        }
+        else if(client())
+        {
+            client()->template update_decomposition<Field>();
+            client()->query_octants();
+            client()->disconnect();
+
+            client()->query_leafs();
+            client()->disconnect();
+
+            client()->query_corrections();
+            client()->disconnect();
+
+            client()->query_masks();
+            client()->disconnect();
+        }
+    }
+
 public: //access memebers:
 
     auto client(){ return client_; }

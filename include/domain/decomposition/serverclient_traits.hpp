@@ -54,6 +54,8 @@ struct ServerClientTraits
 
     using halo_task_t = Task<tags::halo,std::vector<double>,Inplace,octant_t>;
 
+    using balance_task = Task<tags::balance,std::vector<double>,Inplace,octant_t>;
+
     using task_manager_t = TaskManager<key_query_t,
                                        rank_query_t,
                                        correction_query_send_t,
@@ -67,7 +69,8 @@ struct ServerClientTraits
                                        induced_fields_task_t<CopyAssign>,
                                        induced_fields_task_t<AddAssignRecv>,
                                        acc_induced_fields_task_t,
-                                       halo_task_t
+                                       halo_task_t,
+                                       balance_task
                                        >;
 };
 

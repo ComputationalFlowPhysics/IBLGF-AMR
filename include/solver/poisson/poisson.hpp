@@ -85,7 +85,6 @@ public:
         lgf_if_.alpha_base_level()=_alpha_base;
         for (std::size_t entry=0; entry<Source::nFields; ++entry)
             this->apply_if<Source, Target>(&lgf_if_, entry);
-
     }
 
 

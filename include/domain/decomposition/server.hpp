@@ -7,6 +7,7 @@
 #include <boost/mpi.hpp>
 #include <boost/mpi/communicator.hpp>
 #include <boost/serialization/vector.hpp>
+#include <boost/serialization/utility.hpp>
 #include <boost/mpi/status.hpp>
 
 #include <global.hpp>
@@ -56,6 +57,44 @@ public:
 
     using task_manager_t = typename trait_t::task_manager_t;
 
+public: //helper struct
+
+
+    struct DecompositionUpdate
+    {
+        DecompositionUpdate(int _worldsize)
+        : send_octs(_worldsize), dest_ranks(_worldsize),
+          recv_octs(_worldsize), src_ranks(_worldsize)
+        {
+        }
+
+        void insert(int _current_rank, int _new_rank, key_t _key)
+        {
+            //send_octs[_current_rank].emplace_back(std::make_pair(_key, _new_rank));
+            //recv_octs[_new_rank].emplace_back(std::make_pair(_key,_current_rank));
+
+            send_octs [_current_rank].emplace_back(_key);
+            dest_ranks[_current_rank].emplace_back(_new_rank);
+
+            recv_octs[_new_rank].emplace_back(_key);
+            src_ranks[_new_rank].emplace_back(_current_rank);
+
+        }
+
+        ////octant key and dest rank,outer vector in current  rank
+        //std::vector<std::vector<std::pair<key_t, int>>> send_octs; 
+        ////octant key and src rank, outer vector in current  rank
+        //std::vector<std::vector<std::pair<key_t, int>>> recv_octs; 
+
+        //octant key and dest rank,outer vector in current  rank
+        std::vector<std::vector<key_t>> send_octs; 
+        std::vector<std::vector<int>>   dest_ranks; 
+        //octant key and src rank, outer vector in current  rank
+        std::vector<std::vector<key_t>> recv_octs; 
+        std::vector<std::vector<int>>   src_ranks; 
+                                                    
+    };
+
 public: //Ctors
 
     using super_type::ServerBase;
@@ -79,8 +118,9 @@ public:
     template<class Begin, class End, class Container, class Function,class Function1>
     void split(Begin _begin, End _end, Container& _tasks_perProc,
                std::vector<float_type>& _loads_perProc,
-               Function& _exitCheck, Function1& _continueCheck ) const noexcept
+               Function& _exitCheck, Function1& _continueCheck) const noexcept
     {
+
         float_type total_load=0.0;
         const auto nProcs=comm_.size()-1;
         for( auto it = _begin; it!= _end;++it )
@@ -125,14 +165,18 @@ public:
         }
     }
 
-    auto compute_distribution() const
+    auto compute_distribution(bool _rand=false) const
     {
         std::cout<<"Computing domain decomposition for "<<comm_.size()<<" processors" <<std::endl;
-        float_type total_load=0.0;
         const auto nProcs=comm_.size()-1;
+
+        std::mt19937_64 rng;
+        std::uniform_real_distribution<float_type> dist(0.5, 1);
+        float_type weight=1.0;
         for( auto it = domain_->begin_df(); it!= domain_->end_df();++it )
         {
-            total_load+=it->load();
+            if(_rand)weight =dist(rng);
+            it->load()=it->load()*weight;
         }
 
         const int blevel=domain_->tree()->base_level();
@@ -143,16 +187,12 @@ public:
         auto exitCondition1=[](auto& it){return false;};
         auto continueCondition1=[&blevel](auto& it){return !(it->is_leaf() || it->is_correction());};
 
-        split(domain_->begin(),domain_->end(),
-                tasks_perProc, total_loads_perProc,
-                exitCondition1,continueCondition1);
-
         for (int l = domain_->tree()->depth()-1; l >= 0; --l)
         {
 
-            //split(domain_->begin(l),domain_->end(l),
-            //        tasks_perProc, total_loads_perProc,
-            //        exitCondition1,continueCondition1);
+            split(domain_->begin(l),domain_->end(l),
+                    tasks_perProc, total_loads_perProc,
+                    exitCondition1,continueCondition1);
 
             for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
             {
@@ -177,6 +217,7 @@ public:
                 tasks_perProc[rank_tobe-1].push_back(task);
             }
         }
+
         for( auto it = domain_->begin_df(); it!= domain_->end_df();++it )
         {
             if(it->rank()==-1)
@@ -190,183 +231,48 @@ public:
     }
 
 
-    //template<class Begin, class End, class Container, class Function>
-    //void split(Begin _begin, End _end, Container& _tasks_perProc, Function& _f ) const noexcept
-    //{
-    //    float_type total_load=0.0;
-    //    const auto nProcs=comm_.size()-1;
-    //    for( auto it = _begin; it!= _end;++it )
-    //    {
-    //        if(_f(it)) break;
-    //        total_load+=it->load();
-    //    }
-
-    //    auto it = _begin;
-    //    float_type current_load= 0.;
-    //    for(int crank=0;crank<nProcs;++crank)
-    //    {
-    //        float_type target_load= (static_cast<float_type>(crank+1)/nProcs)*total_load;
-    //        target_load=std::min(target_load,total_load);
-    //        float_type octant_load=0.;
-    //        int count=0;
-    //        while(current_load<=target_load || count ==0)
-    //        {
-    //            it->rank()=crank+1;
-    //            auto load= it->load();
-
-    //            ctask_t task(it.ptr(), it->rank(), load);
-    //            _tasks_perProc[crank].push_back(task);
-    //            current_load+=load;
-    //            octant_load+=load;
-    //            ++it;
-    //            ++count;
-    //            if(it==_end) break;
-    //            if(_f(it)) break;
-    //        }
-    //        if(it==_end) break;
-    //        if(_f(it)) break;
-    //    }
-    //}
-
-    //auto compute_distribution() const noexcept
-    //{
-    //    const auto nProcs=comm_.size()-1;
-
-    //    std::cout<<"Computing domain decomposition for "<<comm_.size()<<" processors" <<std::endl;
-    //    std::vector<std::list<ctask_t>> tasks_perProc(nProcs);
-
-    //    float_type total_load=0.0;
-    //    for( auto it = domain_->begin_bf(); it!= domain_->end_bf();++it )
-    //    {
-    //        total_load+=it->load();
-    //    }
-
-    //    const float_type ideal_load=total_load/nProcs;
-    //    const int blevel=domain_->tree()->base_level();
-
-    //    const bool include_baselevel=false;
-    //    if(include_baselevel)
-    //    {
-    //        //Include baselevel into levelwise splitting:
-    //        auto exitCondition0=[&blevel](auto& it){return it->level()>=blevel;};
-
-    //        //BF balancing
-    //        split( domain_->begin_bf(),domain_->end_bf(),tasks_perProc,exitCondition0);
-
-    //    }
-    //    else
-    //    {
-    //        //Exlude baselevel into levelwise splitting: Baselevel is DFS split
-    //        auto exitCondition0=[&blevel](auto& it){return it->level()>blevel;};
-    //        //BF balancing
-    //        split( domain_->begin_bf(),domain_->end_bf(),tasks_perProc,exitCondition0);
-    //    }
-
-
-    //    //Levelwise balancing
-    //    int lstart=domain_->tree()->base_level();
-
-    //    auto exitCondition1=[&blevel](auto& it){return false;};
-    //    if(!include_baselevel) lstart+=1;
-    //    for (int l = lstart; l < domain_->tree()->depth(); ++l)
-    //    {
-    //        split(domain_->begin(l),domain_->end(l),tasks_perProc,exitCondition1);
-    //    }
-
-
-    //    //Diagnostics:
-    //    std::vector<float_type> total_loads_perProc2(nProcs,0);
-    //    float_type max_load=-1;
-    //    float_type min_load=std::numeric_limits<float_type>::max();
-    //    std::ofstream ofs("load_balance.txt");
-    //    for(int i =0; i<nProcs;++i)
-    //    {
-    //        for(auto& t:  tasks_perProc[i] )
-    //        {
-    //            total_loads_perProc2[i]+=t.load();
-    //        }
-    //        if(total_loads_perProc2[i]>max_load) max_load=total_loads_perProc2[i];
-    //        if(total_loads_perProc2[i]<min_load) min_load=total_loads_perProc2[i];
-    //        ofs<<total_loads_perProc2[i]<<std::endl;
-    //    }
-
-    //    ofs<<"max/min load: "<<max_load<<"/"<<min_load<<" = "<<max_load/min_load<<std::endl;
-    //    ofs<<"max/ideal load: "<<max_load<<"/"<<ideal_load<<" = "<<max_load/ideal_load<<std::endl;
-    //    ofs<<"total_load: "<<total_load<<std::endl;
-    //    ofs<<"ideal_load: "<<ideal_load<<std::endl;
-
-    //    std::cout<<"Done with initial load balancing"<<std::endl;
-    //    return tasks_perProc;
-    //}
-
-    auto compute_distribution_old() const noexcept
+    /** @brief Recompute the balancing and return updates
+     *  @return current_rank, target_rank, octant key
+     */
+    auto check_decomposition_updates()
     {
-        std::cout<<"Computing domain decomposition for "<<comm_.size()<<" processors" <<std::endl;
-
-        float_type total_load=0.0;
-        int nOctants=0;
-
-        for( auto it = domain_->begin_df(); it!= domain_->end_df();++it )
+        std::vector<int> ranks_old;
+        for (auto it = domain_->begin(); it != domain_->end(); ++it)
         {
-            total_load+=it->load();
-            ++nOctants;
+            ranks_old.push_back(it->rank());
         }
-        std::cout<<"Total number of octants "<<nOctants<<std::endl;
-        auto nProcs=comm_.size()-1;
-        const float_type ideal_load=total_load/nProcs;
-        std::vector<std::list<ctask_t>> tasks_perProc(nProcs);
+        compute_distribution(true);
 
-        //auto it = domain_->begin_df();
-        auto it = domain_->begin_bf();
-        float_type current_load= 0.;
-        for(int crank=0;crank<nProcs;++crank)
+        int c=0;
+        DecompositionUpdate updates(comm_.size());
+        for (auto it = domain_->begin(); it != domain_->end(); ++it)
         {
-            float_type target_load= (static_cast<float_type>(crank+1)/nProcs)*total_load;
-            target_load=std::min(target_load,total_load);
-            float_type octant_load=0.;
-            int count=0;
-            while(current_load<=target_load || count ==0)
+            if(ranks_old[c] != it->rank())
             {
-                it->rank()=crank+1;
-                auto load= it->load();
-
-                ctask_t task(it.ptr(), it->rank(), load);
-                tasks_perProc[crank].push_back(task);
-                current_load+=load;
-                octant_load+=load;
-                ++it;
-                ++count;
-                if(it==domain_->end_bf()) break;
-                //if(it==domain_->end_df()) break;
+                updates.insert(ranks_old[c], it->rank(),it->key());
+                std::cout<<"Found old, new "
+                         <<it->key().id() <<" "
+                         <<ranks_old[c]<<" "<<it->rank()<<std::endl;
             }
-            if(it==domain_->end_bf()) break;
-            //if(it==domain_->end_df()) break;
+            ++c;
         }
-
-
-        std::vector<float_type> total_loads_perProc2(nProcs,0);
-        float_type max_load=-1;
-        float_type min_load=total_load+10;
-        std::ofstream ofs("load_balance.txt");
-        for(int i =0; i<nProcs;++i)
-        {
-            for(auto& t:  tasks_perProc[i] )
-            {
-                total_loads_perProc2[i]+=t.load();
-            }
-            if(total_loads_perProc2[i]>max_load) max_load=total_loads_perProc2[i];
-            if(total_loads_perProc2[i]<min_load) min_load=total_loads_perProc2[i];
-            ofs<<total_loads_perProc2[i]<<std::endl;
-        }
-        ofs<<"max/min load: "<<max_load<<"/"<<min_load<<" = "<<max_load/min_load<<std::endl;
-        ofs<<"max/ideal load: "<<max_load<<"/"<<ideal_load<<" = "<<max_load/ideal_load<<std::endl;
-        ofs<<"total_load: "<<total_load<<std::endl;
-        ofs<<"ideal_load: "<<ideal_load<<std::endl;
-
-        std::cout<<"Done with initial load balancing"<<std::endl;
-        return tasks_perProc;
+        return updates;
     }
 
+    void update_decomposition()
+    {
+        auto updates=this->check_decomposition_updates();
+        for(int i=1;i<comm_.size();++i)
+        {
+            comm_.send(i,i+0*comm_.size(), updates.send_octs[i] );
+            comm_.send(i,i+1*comm_.size(), updates.dest_ranks[i] );
+                            
+            comm_.send(i,i+2*comm_.size(), updates.recv_octs[i] );
+            comm_.send(i,i+3*comm_.size(), updates.src_ranks[i] );
+        }
+    }
+
+    
 
     void send_keys()
     {
@@ -490,7 +396,6 @@ public:
         int count=0;
         for(auto& key :  _task->data())
         {
-            //std::cout<<key<<std::endl;
             auto oct =domain_->tree()->find_octant(key);
             if(oct)
                 (*_out)[count++]=oct->rank();

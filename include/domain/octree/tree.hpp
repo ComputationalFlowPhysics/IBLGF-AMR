@@ -114,15 +114,6 @@ public:
               const Function& f=[](octant_type* o){ return; })
     {
         this->init(_keys, this->base_level_,f);
-
-        // Maps construction
-
-        // Ke TODO: check if this is ok
-        //this->construct_leaf_maps();
-        //this->construct_level_maps();
-        //this->construct_neighbor_lists();
-        //this->construct_influence_lists();
-
     }
 
     template<class Function=std::function<void(octant_type* c)>>
@@ -132,14 +123,29 @@ public:
         this->base_level_ = _base_level;
         depth_ = base_level_ + 1;
         root_ = std::make_shared<octant_type>(coordinate_type(0), 0, this);
+        insert_keys(_keys, f);
+        //for (auto& k : _keys)
+        //{
+
+        //    auto octant = this->insert_td(k);
+        //    f(octant);
+        //    if (octant->level()+1 > depth_) depth_=octant->level()+1;
+        //}
+    }
+
+    template<class Function=std::function<void(octant_type* c)>>
+    void insert_keys(const std::vector<key_type>& _keys,
+              const Function& f=[](octant_type* o){ return; })
+    {
         for (auto& k : _keys)
         {
-
             auto octant = this->insert_td(k);
             f(octant);
             if (octant->level()+1 > depth_) depth_=octant->level()+1;
         }
     }
+    
+    
 
 public:
 

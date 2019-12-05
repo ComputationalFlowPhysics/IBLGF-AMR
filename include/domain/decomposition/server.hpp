@@ -243,9 +243,6 @@ public:
             if(ranks_old[c] != it->rank())
             {
                 updates.insert(ranks_old[c], it->rank(),it->key());
-                std::cout<<"Found old, new "
-                         <<it->key().id() <<" "
-                         <<ranks_old[c]<<" "<<it->rank()<<std::endl;
             }
             ++c;
         }

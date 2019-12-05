@@ -118,7 +118,6 @@ public: //memeber functions
     template<class... Field>
     void balance()
     {
-        std::cout<<"Balancing "<<std::endl;
         if(server())
         {
             server()->update_decomposition();

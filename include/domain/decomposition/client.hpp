@@ -238,7 +238,6 @@ public:
 
     void finish_decomposition_update(ClientUpdate& _update)
     {
-        std::cout<<"Deleting stuff"<<std::endl;
         //remove octants
         for(auto& key : _update.send_octs)
         {

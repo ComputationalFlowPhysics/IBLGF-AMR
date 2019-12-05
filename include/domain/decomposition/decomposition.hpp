@@ -109,13 +109,18 @@ public: //memeber functions
         }
     }
 
-    template<class Field>
+    template<class Field,class Field2,class LoadCalculator, class FmmMaskBuilder>
     void balance()
     {
         std::cout<<"Balancing "<<std::endl;
         if(server())
         {
             server()->update_decomposition();
+
+            domain_->tree()->construct_leaf_maps();
+            domain_->tree()->construct_level_maps();
+            domain_->tree()->construct_neighbor_lists();
+            //this->tree()->construct_influence_lists();
 
             server()->rank_query();
             server()->leaf_query();
@@ -125,7 +130,9 @@ public: //memeber functions
         }
         else if(client())
         {
-            client()->template update_decomposition<Field>();
+            auto update=client()->template update_decomposition();
+            client()->template update_field<Field>(update);
+            //client()->template update_field<Field2>(update);
             client()->query_octants();
             client()->disconnect();
 

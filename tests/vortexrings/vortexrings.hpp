@@ -232,10 +232,9 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
 
     void run()
     {
-        this->solve();
-        domain_->decomposition().balance<source>();
-        simulation_.write2("mesh_new.hdf5");
         //this->solve();
+        domain_->decomposition().balance<source,phi_exact,fmm_mask_builder_t, fmm_mask_builder_t>();
+        this->solve();
     }
 
 

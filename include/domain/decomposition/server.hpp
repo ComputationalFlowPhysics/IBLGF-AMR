@@ -46,11 +46,11 @@ public:
     using rank_query_t   = typename trait_t::rank_query_t;
     using key_query_t    = typename trait_t::key_query_t;
 
-    using mask_init_query_send_t   = typename trait_t::mask_init_query_send_t;
-    using mask_init_query_recv_t   = typename trait_t::mask_init_query_recv_t;
+    using mask_init_query_send_t  = typename trait_t::mask_init_query_send_t;
+    using mask_init_query_recv_t  = typename trait_t::mask_init_query_recv_t;
 
-    using correction_query_send_t   = typename trait_t::correction_query_send_t;
-    using correction_query_recv_t   = typename trait_t::correction_query_recv_t;
+    using correction_query_send_t = typename trait_t::correction_query_send_t;
+    using correction_query_recv_t = typename trait_t::correction_query_recv_t;
 
     using leaf_query_send_t   = typename trait_t::leaf_query_send_t;
     using leaf_query_recv_t   = typename trait_t::leaf_query_recv_t;
@@ -60,40 +60,33 @@ public:
 public: //helper struct
 
 
-    struct DecompositionUpdate
+struct DecompositionUpdate
+{
+    DecompositionUpdate(int _worldsize)
+    : send_octs(_worldsize), dest_ranks(_worldsize),
+      recv_octs(_worldsize), src_ranks(_worldsize)
     {
-        DecompositionUpdate(int _worldsize)
-        : send_octs(_worldsize), dest_ranks(_worldsize),
-          recv_octs(_worldsize), src_ranks(_worldsize)
-        {
-        }
+    }
 
-        void insert(int _current_rank, int _new_rank, key_t _key)
-        {
-            //send_octs[_current_rank].emplace_back(std::make_pair(_key, _new_rank));
-            //recv_octs[_new_rank].emplace_back(std::make_pair(_key,_current_rank));
+    void insert(int _current_rank, int _new_rank, key_t _key)
+    {
 
-            send_octs [_current_rank].emplace_back(_key);
-            dest_ranks[_current_rank].emplace_back(_new_rank);
+        send_octs [_current_rank].emplace_back(_key);
+        dest_ranks[_current_rank].emplace_back(_new_rank);
 
-            recv_octs[_new_rank].emplace_back(_key);
-            src_ranks[_new_rank].emplace_back(_current_rank);
+        recv_octs[_new_rank].emplace_back(_key);
+        src_ranks[_new_rank].emplace_back(_current_rank);
 
-        }
+    }
 
-        ////octant key and dest rank,outer vector in current  rank
-        //std::vector<std::vector<std::pair<key_t, int>>> send_octs; 
-        ////octant key and src rank, outer vector in current  rank
-        //std::vector<std::vector<std::pair<key_t, int>>> recv_octs; 
-
-        //octant key and dest rank,outer vector in current  rank
-        std::vector<std::vector<key_t>> send_octs; 
-        std::vector<std::vector<int>>   dest_ranks; 
-        //octant key and src rank, outer vector in current  rank
-        std::vector<std::vector<key_t>> recv_octs; 
-        std::vector<std::vector<int>>   src_ranks; 
-                                                    
-    };
+    //octant key and dest rank,outer vector in current  rank
+    std::vector<std::vector<key_t>> send_octs; 
+    std::vector<std::vector<int>>   dest_ranks; 
+    //octant key and src rank, outer vector in current  rank
+    std::vector<std::vector<key_t>> recv_octs; 
+    std::vector<std::vector<int>>   src_ranks; 
+                                                
+};
 
 public: //Ctors
 

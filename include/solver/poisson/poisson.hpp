@@ -216,7 +216,7 @@ public:
                 }
 
             // test for FMM
-            //fmm_.template apply<source_tmp, target_tmp>(domain_, _kernel, l, false, 1.0, base_level_only);
+            fmm_.template apply<source_tmp, target_tmp>(domain_, _kernel, l, false, 1.0, base_level_only);
 
 #ifdef POISSON_TIMINGS
             timings_.fmm_level[l-domain_->tree()->base_level()]=fmm_.timings();
@@ -233,7 +233,7 @@ public:
 
             if (base_level_only) continue;
 
-            //fmm_.template apply<source_tmp, target_tmp>(domain_, _kernel, l, true, -1.0);
+            fmm_.template apply<source_tmp, target_tmp>(domain_, _kernel, l, true, -1.0);
 
 #ifdef POISSON_TIMINGS
             timings_.fmm_level_nl[l-domain_->tree()->base_level()]=fmm_.timings();

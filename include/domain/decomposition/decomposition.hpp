@@ -127,10 +127,19 @@ public: //memeber functions
             server()->correction_query();
             server()->mask_query();
 
+            //std::ofstream ofs("master.txt");
+            //for(auto it  = domain_->begin(); it != domain_->end(); ++it)
+            //{
+            //    {
+            //        ofs<<it->key().id()<<" "<<it->rank()<<std::endl;
+            //    }
+
+            //}
+
         }
         else if(client())
         {
-            auto update=client()->template update_decomposition();
+            auto update=client()->update_decomposition();
             client()->template update_field<Field>(update);
             //client()->template update_field<Field2>(update);
             client()->query_octants();
@@ -144,6 +153,16 @@ public: //memeber functions
 
             client()->query_masks();
             client()->disconnect();
+
+            //std::ofstream ofs("master_"+std::to_string(comm_.rank())+".txt");
+            //for(auto it  = domain_->begin(); it != domain_->end(); ++it)
+            //{
+            //    {
+            //        ofs<<it->key().id()<<" "<<it->rank()<<std::endl;
+            //    }
+
+            //}
+
         }
     }
 

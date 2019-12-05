@@ -272,6 +272,30 @@ public:
             }
         }
         halo_initialized_=false;
+
+        for(auto& key : _update.send_octs)
+        {
+            auto it =domain_->tree()->find_octant(key);
+            if(it)
+            {
+                if(it->locally_owned())
+                    std::cout<<"Wrong"<<std::endl;
+            }
+        }
+        for(auto& key : _update.recv_octs)
+        {
+            auto it =domain_->tree()->find_octant(key);
+            if(it)
+            {
+                if(!it->locally_owned())
+                    std::cout<<"recv wrogn"<<std::endl;
+            }
+            else
+            {
+                std::cout<<"Not allocated"<<std::endl;
+            }
+        }
+
         std::cout<<"Done deleting"<<std::endl;
     }
 

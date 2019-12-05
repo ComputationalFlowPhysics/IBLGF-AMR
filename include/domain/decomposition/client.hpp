@@ -84,6 +84,16 @@ public:
     using super_type::comm_;
     using super_type::task_manager_;
 
+public: //helper struct
+
+struct ClientUpdate
+{
+    std::vector<key_t> send_octs; 
+    std::vector<int>   dest_ranks; 
+    std::vector<key_t> recv_octs; 
+    std::vector<int>   src_ranks; 
+                                                
+};
 
 public:
     Client(const Client&  other) = default;
@@ -119,37 +129,21 @@ public:
         domain_->tree()->depth()=depth;
     }
 
-    template<class Field>
-    void update_decomposition()
+    auto update_decomposition()
     {
-        std::vector<key_t> recv_octs,send_octs;
-        std::vector<int> dest_ranks,src_ranks;
+        ClientUpdate update;
+        comm_.recv(0,comm_.rank()+0*comm_.size(),update.send_octs);
+        comm_.recv(0,comm_.rank()+1*comm_.size(),update.dest_ranks);
+        comm_.recv(0,comm_.rank()+2*comm_.size(),update.recv_octs);
+        comm_.recv(0,comm_.rank()+3*comm_.size(),update.src_ranks);
 
-        comm_.recv(0,comm_.rank()+0*comm_.size(),send_octs);
-        comm_.recv(0,comm_.rank()+1*comm_.size(),dest_ranks);
-        comm_.recv(0,comm_.rank()+2*comm_.size(),recv_octs);
-        comm_.recv(0,comm_.rank()+3*comm_.size(),src_ranks);
-
-        for(std::size_t i=0;i<send_octs.size();++i)
-        {
-            std::cout<<"Sending octant " <<send_octs[i].id()<<" "<<
-                      "my "<<comm_.rank()<<" other "<<dest_ranks[i]<<std::endl;
-        }
-        for(std::size_t i=0;i<recv_octs.size();++i)
-        {
-            std::cout<<"Recv octant " <<recv_octs[i].id()<<" "<<
-                      "my "<<comm_.rank()<<" other "<<src_ranks[i]<<std::endl;
-        }
-
-        //TODO: allreduce the depth
-        
         //instantiate new octants
-        domain_->tree()->insert_keys(recv_octs, [&](octant_t* _o){
+        domain_->tree()->insert_keys(update.recv_octs, [&](octant_t* _o){
             auto level = _o->refinement_level();
             level=level>=0?level:0;
             auto bbase=domain_->tree()->octant_to_level_coordinate(
                     _o->tree_coordinate(),level);
-            if(!_o->data()->is_allocated())
+            //if(!_o->data())
             {
                 _o->data()=std::make_shared<datablock_t>(bbase,
                         domain_->block_extent(),level, true);
@@ -158,9 +152,28 @@ public:
         });
 
 
+        int count=0;
+        for(auto& key : update.send_octs)
+        {
+            auto it =domain_->tree()->find_octant(key);
+            it->rank()=update.dest_ranks[count];
+            ++count;
+        }
+        for(auto& key : update.recv_octs)
+        {
+            auto it =domain_->tree()->find_octant(key);
+            it->rank()=comm_.rank();
+        }
+            
+        return update;
+    }
+
+    template<class Field>
+    void update_field(ClientUpdate& _update)
+    {
         auto& send_comm=
             task_manager_-> template send_communicator<balance_task>();
-        
+
         auto& recv_comm=
             task_manager_-> template recv_communicator<balance_task>();
 
@@ -169,19 +182,19 @@ public:
         {
 
             int count=0;
-            for(auto& key : send_octs)
+            for(auto& key : _update.send_octs)
             {
                 //find the octant 
                 auto it =domain_->tree()->find_octant(key);
-                it->rank()=dest_ranks[count];
+                it->rank()=_update.dest_ranks[count];
                 const auto idx=get_octant_idx(it);
 
                 auto send_ptr=it->data()->
-                template get<Field>(field_idx).data_ptr();
+                    template get<Field>(field_idx).data_ptr();
 
-                auto task= send_comm.post_task(send_ptr, dest_ranks[count], true, idx);
+                auto task= send_comm.post_task(send_ptr, _update.dest_ranks[count], true, idx);
                 task->attach_data(send_ptr);
-                task->rank_other()=dest_ranks[count];
+                task->rank_other()=_update.dest_ranks[count];
                 task->requires_confirmation()=false;
                 task->octant()=it;
                 ++count;
@@ -190,7 +203,7 @@ public:
             send_comm.pack_messages();
 
             count=0;
-            for(auto& key : recv_octs)
+            for(auto& key : _update.recv_octs)
             {
                 auto it =domain_->tree()->find_octant(key);
                 it->rank()=comm_.rank();
@@ -198,10 +211,10 @@ public:
 
                 const auto recv_ptr=it->data()->
                     template get<Field>(field_idx).data_ptr();
-                auto task = recv_comm.post_task( recv_ptr, src_ranks[count], true, idx);
+                auto task = recv_comm.post_task( recv_ptr, _update.src_ranks[count], true, idx);
 
                 task->attach_data(recv_ptr);
-                task->rank_other()=src_ranks[count];
+                task->rank_other()=_update.src_ranks[count];
                 task->requires_confirmation()=false;
                 task->octant()=it;
 
@@ -216,25 +229,28 @@ public:
                 if( (recv_comm.done() && send_comm.done())  )
                     break;
             }
-
             recv_comm.clear();
             send_comm.clear();
         }
 
-        std::cout<<"Deleting stuff"<<std::endl;
+
+    }
+
+    void finish_decomposition_update(ClientUpdate& _update)
+    {
         //remove octants
-        for(auto& key : send_octs)
+        for(auto& key : _update.send_octs)
         {
             //find the octant 
             auto it =domain_->tree()->find_octant(key);
+            if(!it)continue;
             if(it->is_leaf_search())
             {
                 //delete
                 int cnumber=it->key().child_number();
                 it->deallocate_data();
                 auto p=it->parent();
-                //p->delete_child(cnumber);
-
+                if(p) p->delete_child(cnumber);
             }
             else
             {
@@ -244,6 +260,8 @@ public:
         }
         halo_initialized_=false;
     }
+
+
 
     auto mask_query(std::vector<key_t>& task_dat)
     {
@@ -703,7 +721,6 @@ public:
     template<class Field>
     void buffer_exchange(const int _level)
     {
-
         auto& send_comm=
             task_manager_-> template send_communicator<halo_task_t>();
         auto& recv_comm=
@@ -773,7 +790,6 @@ public:
     {
         domain_->tree()->construct_maps(this);
     }
-
 
     auto domain()const{return domain_;}
 

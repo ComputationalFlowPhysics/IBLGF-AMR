@@ -63,29 +63,8 @@ public:
 
 public: //memeber functions
 
-    template<class LoadCalculator, class FmmMaskBuilder>
-    void distribute()
+    void sync_decomposition()
     {
-        if(server())
-        {
-            FmmMaskBuilder::fmm_lgf_mask_build(domain_);
-            FmmMaskBuilder::fmm_vortex_streamfun_mask(domain_);
-            //FmmMaskBuilder::fmm_if_load_build(domain_);
-            // it's together with fmmMaskBuild for now
-            //LoadCalculator::calculate();
-        }
-
-        //Send the construction keys back and forth
-        if(server())
-        {
-            server()->send_keys();
-        }
-        else if(client())
-        {
-            client()->receive_keys();
-        }
-
-        //Construct neighborhood and influence list:
         if(server())
         {
             server()->rank_query();
@@ -109,35 +88,47 @@ public: //memeber functions
         }
     }
 
-    template<class Field>
-    void balance()
+
+    template<class LoadCalculator, class FmmMaskBuilder>
+    void distribute()
     {
-        std::cout<<"Balancing "<<std::endl;
         if(server())
         {
-            server()->update_decomposition();
+            FmmMaskBuilder::fmm_lgf_mask_build(domain_);
+            FmmMaskBuilder::fmm_vortex_streamfun_mask(domain_);
+            //FmmMaskBuilder::fmm_if_load_build(domain_);
+            // it's together with fmmMaskBuild for now
+            //LoadCalculator::calculate();
+        }
 
-            server()->rank_query();
-            server()->leaf_query();
-            server()->correction_query();
-            server()->mask_query();
-
+        //Send the construction keys back and forth
+        if(server())
+        {
+            server()->send_keys();
         }
         else if(client())
         {
-            client()->template update_decomposition<Field>();
-            client()->query_octants();
-            client()->disconnect();
-
-            client()->query_leafs();
-            client()->disconnect();
-
-            client()->query_corrections();
-            client()->disconnect();
-
-            client()->query_masks();
-            client()->disconnect();
+            client()->receive_keys();
         }
+
+        //Construct neighborhood and influence list:
+        sync_decomposition();
+    }
+
+    template<class... Field>
+    void balance()
+    {
+        if(server())
+        {
+            server()->update_decomposition();
+        }
+        else if(client())
+        {
+            auto update=client()->update_decomposition();
+            (client()->template update_field<Field>(update), ...);
+            client()->finish_decomposition_update(update);
+        }
+        sync_decomposition();
     }
 
 public: //access memebers:

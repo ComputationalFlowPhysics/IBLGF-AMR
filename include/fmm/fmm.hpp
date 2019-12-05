@@ -266,8 +266,6 @@ public:
                float_type add_with_scale = 1.0,
                bool base_level_only=false)
     {
-        std::cout<<"Starting fmm"<<std::endl;
-
         const float_type dx_base=domain_->dx_base();
         auto refinement_level = level-domain_->tree()->base_level();
         auto dx_level =  dx_base/std::pow(2, refinement_level);

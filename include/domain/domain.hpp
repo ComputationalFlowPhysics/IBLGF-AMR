@@ -284,26 +284,26 @@ public: //C/Dtors
             }
 
             // Add correction buffers
-            //for(int l=base_level+1;l<=nRef+base_level;++l)
-            //{
-            //    for (auto it = this->begin(l);
-            //            it != this->end(l);
-            //            ++it)
-            //    {
-            //        it->tree()->
-            //            insert_correction_neighbor(*it,
-            //                [this](auto child_it)
-            //                {
-            //                auto level = child_it->level()-this->tree()->base_level();
-            //                auto bbase=t_->octant_to_level_coordinate(
-            //                    child_it->tree_coordinate(), level);
+            for(int l=base_level+1;l<=nRef+base_level;++l)
+            {
+                for (auto it = this->begin(l);
+                        it != this->end(l);
+                        ++it)
+                {
+                    it->tree()->
+                        insert_correction_neighbor(*it,
+                            [this](auto child_it)
+                            {
+                            auto level = child_it->level()-this->tree()->base_level();
+                            auto bbase=t_->octant_to_level_coordinate(
+                                child_it->tree_coordinate(), level);
 
-            //                bool init_field=this->is_client();
-            //                child_it->data()=
-            //                std::make_shared<datablock_t>(bbase, block_extent_,level,init_field);
-            //                } );
-            //    }
-            //}
+                            bool init_field=this->is_client();
+                            child_it->data()=
+                            std::make_shared<datablock_t>(bbase, block_extent_,level,init_field);
+                            } );
+                }
+            }
 
             this->tree()->construct_level_maps();
             this->tree()->construct_influence_lists();

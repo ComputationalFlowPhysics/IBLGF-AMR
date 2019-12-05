@@ -798,7 +798,7 @@ public:
             (halo_communicators_[_level]);
 
         //Get the overlaps
-        hcomm.template pack_messages();
+        hcomm. pack_messages();
         for(auto st:hcomm.send_tasks()) { if(st) { send_comm.post_task(st); } }
         for(auto& st:hcomm.recv_tasks()) { if(st) { recv_comm.post_task(st); } }
 
@@ -814,7 +814,7 @@ public:
         }
 
         //Assign received message to field view
-        hcomm.template unpack_messages();
+        hcomm.unpack_messages();
     }
 
     void initialize_halo_communicators()noexcept

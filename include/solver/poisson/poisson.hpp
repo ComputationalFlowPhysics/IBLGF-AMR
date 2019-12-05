@@ -188,30 +188,6 @@ public:
 
         source_coarsify<source_tmp, source_tmp>(_field_idx, 0, Source::mesh_type);
 
-        //Coarsification:
-        //for (int l = domain_->tree()->depth()-2;
-        //        l >= domain_->tree()->base_level(); --l)
-        //{
-#ifdef P//OISSON_TIMINGS
-        //    const auto t0_level=clock_type::now();
-#endif
-        //    for (auto it_s  = domain_->begin(l);
-        //            it_s != domain_->end(l); ++it_s)
-        //        {
-        //            if(!it_s->data() || !it_s->data()->is_allocated()) continue;
-        //            this->coarsify<source_tmp, source_tmp>(*it_s, 1.0, false, true);
-        //        }
-
-        //    domain_->decomposition().client()->
-        //        template communicate_updownward_add<source_tmp, source_tmp>
-        //            (l,true,false,-1);
-
-#ifdef P//OISSON_TIMINGS
-        //    const auto t1_level=clock_type::now();
-        //    timings_.level[l-domain_->tree()->base_level()+1]=t1_level-t0_level;
-#endif
-        //}
-
 
 #ifdef POISSON_TIMINGS
         auto t1_coarsify= clock_type::now();
@@ -219,8 +195,7 @@ public:
         const auto t0_level_interaction = clock_type::now();
 #endif
 
-        intrp_to_correction_buffer<source_tmp, source_tmp>(_field_idx, 0, Source::mesh_type);
-        source_coarsify<source_tmp, source_correction_tmp>(_field_idx, 0, Source::mesh_type, true, false);
+        intrp_to_correction_buffer<source_tmp, correction_tmp>(_field_idx, 0, Source::mesh_type);
 
         //Level-Interactions
         const int l_max = base_level_only ?
@@ -262,29 +237,6 @@ public:
 
             if (base_level_only) continue;
 
-            // minus back the half from correction
-            // delete correction parents
-            for (auto it  = domain_->begin(l);
-                    it != domain_->end(l); ++it)
-            {
-                if(!it->data() || !it->data()->is_allocated()) continue;
-                bool correction_parent=false;
-                for (std::size_t i=0; i<it->num_children(); ++i)
-                    if (it->child(i) && it->child(i)->is_correction())
-                    {
-                        correction_parent = true;
-                        break;
-                    }
-
-                if (correction_parent)
-                {
-                    auto& cp1 = it ->data()->template get_linalg_data<source_tmp>();
-                    auto& cp2 = it ->data()->template get_linalg_data<source_correction_tmp>();
-                    xt::noalias(cp1) = cp2*1.0;
-                }
-
-            }
-
             // minus middle
             fmm_.template apply<source_tmp, target_tmp>(domain_, _kernel, l, true, -1.0);
 
@@ -316,44 +268,7 @@ public:
 #endif
 
 
-            //if (l == domain_->tree()->depth()-1) continue;
-            //client->template buffer_exchange<target_tmp>(l+1);
-
-            // Use the temporary value as an approximation for the buffer for
-            // the correction term -LP
-
-            // Correction for LGF
-
-            for (auto it  = domain_->begin(l);
-                    it != domain_->end(l); ++it)
-            {
-                int refinement_level = it->refinement_level();
-                double dx_level = dx_base/std::pow(2,refinement_level);
-
-                if (!it->data() || !it->data()->is_allocated()) continue;
-                //domain::Operator::laplace<target_tmp, correction_tmp>
-                //( *(it->data()),dx_level);
-                domain::Operator::laplace<target_tmp, corr_lap_tmp>
-                ( *(it->data()),dx_level);
-            }
-
-            client->template buffer_exchange<corr_lap_tmp>(l);
-            domain_->decomposition().client()->
-                template communicate_updownward_assign
-                <corr_lap_tmp, corr_lap_tmp>(l,false,false,-1);
-
-            for (auto it  = domain_->begin(l);
-                    it != domain_->end(l); ++it)
-            {
-                if(!it->data() || !it->data()->is_allocated()) continue;
-
-                //const bool correction_buffer_only = false;
-                //c_cntr_nli_.nli_intrp_node< corr_lap_tmp, correction_tmp>(it, Source::mesh_type, _field_idx, correction_buffer_only,false);
-            }
-
-            //client->template buffer_exchange<Source>(l);
-
-            // FMM for non-leaf
+            if (l == domain_->tree()->depth()-1) continue;
 
             for (auto it  = domain_->begin(l);
                     it != domain_->end(l); ++it)
@@ -372,35 +287,15 @@ public:
                     template get_linalg_data<correction_tmp>(0);
                     auto& lin_data_2 = it->data()->
                     template get_linalg_data<source_tmp>(0);
-                    //auto& lin_data_3 = it->data()->
-                    //template get_linalg_data<target_tmp>(0);
 
                     xt::noalias(lin_data_2) += lin_data_1 * 1.0;
                 }
 #ifdef POISSON_TIMINGS
             const auto t1_level=clock_type::now();
             mDuration_type tmp=t1_level-t0_level;
-            //std::cout<< "Level timing : l="<<l-domain_->tree()->base_level()<<" "<<tmp.count()/1.e3<<std::endl;
             timings_.level[l-domain_->tree()->base_level()]=t1_level-t0_level;
 #endif
         }
-
-        //for (int ls = domain_->tree()->depth()-2;
-        //        ls >= domain_->tree()->base_level(); --ls)
-        //{
-        //    const auto t0_level=clock_type::now();
-        //    for (auto it_s  = domain_->begin(ls);
-        //            it_s != domain_->end(ls); ++it_s)
-        //    {
-        //        if(!it_s->data() || !it_s->data()->is_allocated()) continue;
-        //        this->coarsify<correction_tmp, correction_tmp>(*it_s);
-        //    }
-
-        //    domain_->decomposition().client()->
-        //    template communicate_updownward_add<correction_tmp, correction_tmp>
-        //    (ls,true,false,-1);
-
-        //}
 
 #ifdef POISSON_TIMINGS
         const auto t1_level_interaction=clock_type::now();

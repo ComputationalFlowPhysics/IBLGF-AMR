@@ -183,7 +183,8 @@ public:
                     if (it->child(i) && it->child(i)->is_correction())
                         correction_parent = true;
 
-                if (( it->is_leaf() && !correction_parent) || it->is_correction())
+                //if (( it->is_leaf() && !correction_parent) || it->is_correction())
+                if ( it->is_leaf()  || it->is_correction())
                 {
                     it->fmm_mask(_fmm_mask_idx,MASK_LIST::Mask_FMM_Source, false);
                     it->fmm_mask(_fmm_mask_idx,MASK_LIST::Mask_FMM_Target, false);
@@ -502,7 +503,7 @@ public:
                 check_combined_induced_field_communication<fmm_t,fmm_t>(true);
         }
 #else
-        domain_->decomposition().client()->template
+        domain_->decomposition().client()->
             finish_induced_field_communication();
 #endif
     }

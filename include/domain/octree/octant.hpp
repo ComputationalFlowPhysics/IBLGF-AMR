@@ -196,8 +196,14 @@ public: //Ctors
     auto  data() const noexcept {return data_;}
     auto& data()       noexcept {return data_;}
 
+    auto deallocate_data(){data_.reset();}
+
     Octant* parent()      const noexcept{return parent_;}
     Octant* child(int i) const noexcept{return children_[i].get();}
+    void delete_child(int i)noexcept
+    {
+        children_[i].reset();
+    }
 
     void neighbor_clear () noexcept{neighbor_.fill(nullptr);}
     const auto neighbor_number () const noexcept{return neighbor_.size();}

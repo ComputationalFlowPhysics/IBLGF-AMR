@@ -20,6 +20,7 @@ enum type: int
     field_query,
     accumulated_field_query,
     halo,
+    balance,
     idle,
     connection,
     confirmation,

@@ -238,6 +238,70 @@ public: //C/Dtors
 
     }
 
+    void mark_correction()
+    {
+        if(is_client()) return;
+
+        const auto base_level=this->tree()->base_level();
+
+        this->tree()->construct_leaf_maps(true);
+        this->tree()->construct_level_maps();
+        this->tree()->construct_neighbor_lists();
+
+        // Add correction buffers
+        for(int l=base_level+1;l<= this->tree()->depth();++l)
+        {
+            for (auto it = this->begin(l);
+                    it != this->end(l);
+                    ++it)
+            {
+                it->tree()->
+                insert_correction_neighbor(*it,
+                        [this](auto neighbor_it)
+                        {
+                        auto level = neighbor_it->level()-this->tree()->base_level();
+                        auto bbase=t_->octant_to_level_coordinate(
+                                neighbor_it->tree_coordinate(), level);
+
+                        bool init_field=false;
+                        neighbor_it->aim_deletion(false);
+                        neighbor_it->flag_correction(true);
+                        neighbor_it->flag_leaf(false);
+
+                        neighbor_it->data()=
+                            std::make_shared<datablock_t>(bbase, block_extent_,level,init_field);
+                        neighbor_it->rank()=neighbor_it->parent()->rank();
+                        } );
+            }
+        }
+
+        this->tree()->construct_level_maps();
+        this->tree()->construct_neighbor_lists();
+        this->tree()->construct_influence_lists();
+
+        // flag base level boundary correction
+        for (auto it = this->begin(base_level);
+                it != this->end(base_level);
+                ++it)
+        {
+            bool _neighbors_exists=true;
+            for(int i=0;i<it->nNeighbors();++i)
+            {
+                if(!it->neighbor(i))
+                    _neighbors_exists=false;
+                else if(!it->neighbor(i)->data())
+                    _neighbors_exists=false;
+            }
+
+            if (!_neighbors_exists)
+            {
+                it->flag_correction(true);
+                it->aim_deletion(false);
+                //it->flag_leaf(false);
+                it->flag_leaf(true);
+            }
+        }
+    }
 
     void init_refine(int nRef, int level_up_max)
     {
@@ -283,52 +347,7 @@ public: //C/Dtors
                 this->tree()->construct_neighbor_lists();
             }
 
-            // Add correction buffers
-            for(int l=base_level+1;l<=nRef+base_level;++l)
-            {
-                for (auto it = this->begin(l);
-                        it != this->end(l);
-                        ++it)
-                {
-                    it->tree()->
-                        insert_correction_neighbor(*it,
-                            [this](auto child_it)
-                            {
-                            auto level = child_it->level()-this->tree()->base_level();
-                            auto bbase=t_->octant_to_level_coordinate(
-                                child_it->tree_coordinate(), level);
-
-                            bool init_field=this->is_client();
-                            child_it->data()=
-                            std::make_shared<datablock_t>(bbase, block_extent_,level,init_field);
-                            } );
-                }
-            }
-
-            this->tree()->construct_level_maps();
-            this->tree()->construct_influence_lists();
-            this->tree()->construct_neighbor_lists();
-
-            // flag base level boundary correction
-            for (auto it = this->begin(base_level);
-                    it != this->end(base_level);
-                    ++it)
-            {
-                bool _neighbors_exists=true;
-                for(int i=0;i<it->nNeighbors();++i)
-                {
-                    if(!it->neighbor(i))
-                        _neighbors_exists=false;
-                    else if(!it->neighbor(i)->data())
-                        _neighbors_exists=false;
-                }
-
-                if (!_neighbors_exists)
-                {
-                    it->flag_correction(true);
-                    //it->flag_leaf(false);
-                }
-            }
+            mark_correction();
         }
 
     }
@@ -338,6 +357,14 @@ public: //C/Dtors
     {
         decomposition_.template distribute<LoadCalculator, FmmMaskBuilder>();
     }
+
+    template<class CriterionField>
+    std::vector<octant_t*> adapt()
+    {
+        //communicating with server
+        return decomposition_.template adapt_decoposition<CriterionField>();
+    }
+
 
 
 public: // Iterators:
@@ -403,7 +430,9 @@ public:
 
                     bool init_field=this->is_client();
                     child_it->data()=
-                    std::make_shared<datablock_t>(bbase, block_extent_,level,init_field);
+                        std::make_shared<datablock_t>(bbase, block_extent_,level,init_field);
+                    child_it->aim_deletion(false);
+                    child_it->rank() = child_it->parent()->rank();
                 },
                 ratio_2to1
         );
@@ -722,6 +751,12 @@ private:
     refinement_condition_fct_t ref_cond_ = &Domain::refinement_cond_default;
 
     boost::mpi::communicator client_comm_;
+
+};
+
+class DomainOperators
+{
+
 
 };
 

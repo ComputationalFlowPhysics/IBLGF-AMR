@@ -249,6 +249,7 @@ public:
         return updates;
     }
 
+
     void update_decomposition()
     {
         auto updates=this->check_decomposition_updates();
@@ -262,6 +263,27 @@ public:
         }
     }
 
+
+    void recv_adapt_attempts(std::vector<key_t>& octs_all,
+            std::vector<int>& level_change_all)
+    {
+
+        for(int i=1;i<comm_.size();++i)
+        {
+            std::vector<key_t> octs;
+            std::vector<int>   level_change;
+
+            comm_.recv(i,i*2,octs);
+            comm_.recv(i,i*2+1,level_change);
+
+            for (auto key:octs)
+                octs_all.emplace_back(key);
+
+            for (auto l:level_change)
+                level_change_all.emplace_back(l);
+        }
+
+    }
 
 
     void send_keys()

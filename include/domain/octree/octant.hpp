@@ -129,19 +129,10 @@ public: //Ctors
     }
 
     std::array<key_type, nNeighbors()>
-    get_neighbor_keys (coordinate_type _offset=coordinate_type(1))
-    const noexcept
+    get_neighbor_keys()
     {
-        const auto key= this->key();
-        std::array<key_type,nNeighbors()> res;
-        int count=0;
-        rcIterator<Dim>::apply(-1*_offset,
-                                2*_offset+1,
-                               [&](const coordinate_type& _p)
-        {
-             res[count++] = key.neighbor(_p);
-        });
-        return res;
+        auto key=this->key();
+        return key.get_neighbor_keys();
     }
 
     bool is_correction()const noexcept{return flag_correction_;}
@@ -149,6 +140,9 @@ public: //Ctors
 
     bool is_leaf()const noexcept{return flag_leaf_;}
     void flag_leaf(const bool flag)noexcept {flag_leaf_ = flag;}
+
+    bool aim_deletion() const noexcept{return aim_deletion_;}
+    void aim_deletion(bool d) noexcept{aim_deletion_=d;}
 
     void flag_mask(const fmm_mask_type fmm_flag)noexcept {fmm_masks_ = fmm_flag;}
 
@@ -405,6 +399,7 @@ private:
 
     fmm_mask_type fmm_masks_;
     tree_type* t_=nullptr;
+    bool aim_deletion_=false;
 };
 
 

@@ -88,11 +88,26 @@ public: //helper struct
 
 struct ClientUpdate
 {
-    std::vector<key_t> send_octs; 
-    std::vector<int>   dest_ranks; 
-    std::vector<key_t> recv_octs; 
-    std::vector<int>   src_ranks; 
-                                                
+    std::vector<key_t> send_octs;
+    std::vector<int>   dest_ranks;
+    std::vector<key_t> recv_octs;
+    std::vector<int>   src_ranks;
+
+};
+struct AdaptAttempt
+{
+    AdaptAttempt()
+    {}
+
+    void insert(key_t _key,int _l_change)
+    {
+        octs.emplace_back(_key);
+        level_change.emplace_back(_l_change);
+    }
+
+    std::vector<key_t> octs;
+    std::vector<int>   level_change;
+
 };
 
 public:
@@ -164,7 +179,7 @@ public:
             auto it =domain_->tree()->find_octant(key);
             it->rank()=comm_.rank();
         }
-            
+
         return update;
     }
 
@@ -177,14 +192,14 @@ public:
         auto& recv_comm=
             task_manager_-> template recv_communicator<balance_task>();
 
-        //send the actuall octants 
+        //send the actuall octants
         for (std::size_t field_idx=0; field_idx<Field::nFields; ++field_idx)
         {
 
             int count=0;
             for(auto& key : _update.send_octs)
             {
-                //find the octant 
+                //find the octant
                 auto it =domain_->tree()->find_octant(key);
                 it->rank()=_update.dest_ranks[count];
                 const auto idx=get_octant_idx(it);
@@ -241,7 +256,7 @@ public:
         //remove octants
         for(auto& key : _update.send_octs)
         {
-            //find the octant 
+            //find the octant
             auto it =domain_->tree()->find_octant(key);
             if(!it)continue;
             if(it->is_leaf_search())
@@ -261,7 +276,41 @@ public:
         halo_initialized_=false;
     }
 
+    template <class Field, class Function>
+    void send_adapt_attempts(Function aim_adapt)
+    {
+        boost::mpi::communicator w;
 
+        std::vector<key_t> octs;
+        std::vector<int>   level_change;
+        const int myRank=w.rank();
+
+        int ac=0;
+        for (auto it = domain_->begin_leafs(); it != domain_->end_leafs(); ++it)
+        {
+            if (!it->locally_owned()) continue;
+
+            bool l_change = aim_adapt(*it, 2-it->refinement_level());
+            if( l_change)
+            {
+                octs.emplace_back(it->key());
+                level_change.emplace_back(1);
+            }
+        }
+
+        comm_.send(0,myRank*2,octs);
+        comm_.send(0,myRank*2+1,level_change);
+
+    }
+
+    template<class Field,class OctantType>
+    int level_change_aim(OctantType it)
+    {
+        if (it->refinement_level()>0)
+            return 1;
+        else
+            return 1;
+    }
 
     auto mask_query(std::vector<key_t>& task_dat)
     {
@@ -589,7 +638,7 @@ public:
 
 
     template<class SendField,class RecvField, template<class>class BufferPolicy>
-    void communicate_updownward_pass(int level, bool _upward, bool _use_masks, 
+    void communicate_updownward_pass(int level, bool _upward, bool _use_masks,
                                      int fmm_mask_idx, std::size_t field_idx)
     {
         int mask_id=(_upward) ?
@@ -626,7 +675,7 @@ public:
                             template get<RecvField>(field_idx).data_ptr();
                         auto task=recv_comm.post_task( data_ptr, r, true, idx);
                         task->requires_confirmation()=false;
-                    } 
+                    }
                     else
                     {
                         auto data_ptr=it->data()->
@@ -653,7 +702,7 @@ public:
                                     true,idx);
                         task->requires_confirmation()=false;
 
-                    } 
+                    }
                     else
                     {
                         const auto data_ptr=it->data()->
@@ -685,7 +734,7 @@ public:
 
     /** @brief communicate fields for up/downward pass of fmm */
     template<class SendField,class RecvField >
-    void communicate_updownward_add(int level, bool _upward, bool _use_masks, 
+    void communicate_updownward_add(int level, bool _upward, bool _use_masks,
                                     int fmm_mask_idx, std::size_t field_idx=0)
     {
         communicate_updownward_pass<SendField,RecvField,AddAssignRecv>
@@ -693,7 +742,7 @@ public:
     }
 
     template<class SendField,class RecvField >
-    void communicate_updownward_assign(int level, bool _upward, bool _use_masks, 
+    void communicate_updownward_assign(int level, bool _upward, bool _use_masks,
                                        int fmm_mask_idx, std::size_t field_idx=0)
     {
         communicate_updownward_pass<SendField,RecvField,CopyAssign>

@@ -10,10 +10,71 @@
 #include <global.hpp>
 #include <tensor/vector.hpp>
 #include <domain/octree/bitmasks.hpp>
+#include <utilities/rcIterator.hpp>
 
 
 namespace octree
 {
+
+template<typename T>
+constexpr T pow(const T& base, const int exp)
+{
+    return  exp == 0 ? 1 : base*pow(base,exp-1);
+}
+
+template<int Dim, int D=Dim-1>
+struct rcIterator
+{
+
+    template<class BlockType, class Function>
+    static void apply(const BlockType& _b,
+                      const Function& f)
+    {
+        const auto base=_b.base();
+        const auto extent=_b.extent();
+        auto p=base;
+        rcIterator<Dim, D>::apply_impl(p,f,base, extent );
+    }
+    template<class ArrayType, class Function>
+    static void apply(const ArrayType& _base,
+                      const ArrayType& _extent,
+                      const Function& f)
+    {
+        auto p=_base;
+        rcIterator<Dim, D>::apply_impl(p,f,_base, _extent );
+    }
+    template<class ArrayType, class Function>
+    static void apply_impl(ArrayType& _p,
+                           const Function& f,
+                           const ArrayType& _base,
+                           const ArrayType& _extent
+                       )
+    {
+        for(std::size_t k=0; k<static_cast<std::size_t>(_extent[D]);++k)
+        {
+            _p[D]=_base[D]+k;
+            rcIterator<Dim, D-1>::apply_impl(_p,f, _base, _extent);
+        }
+    }
+};
+
+template<int Dim>
+struct rcIterator<Dim,0>
+{
+    template<class ArrayType, class Function>
+    static void apply_impl(ArrayType& _p,
+                           const Function& f,
+                           const ArrayType& _base,
+                           const ArrayType& _extent )
+    {
+        for(std::size_t k=0; k<static_cast<std::size_t>(_extent[0]);++k)
+        {
+            _p[0]=_base[0]+k;
+            f(_p);
+        }
+    }
+};
+
 
 
 template<int Dim>
@@ -26,6 +87,7 @@ struct Key<3>
 public: // member types
 
     static constexpr int Dim=3;
+    static constexpr int nNeighbors(){return pow(3,Dim);}
 
     using bitmask_t = Bitmasks<Dim>;
     using value_type = bitmask_t::index_t;
@@ -37,6 +99,7 @@ public: // member types
     using real_coordinate_type = vector_type<float_type,Dim>;
 
 public: // static
+
 
     static constexpr level_type max_level() noexcept
     {
@@ -121,7 +184,6 @@ public: // static
 
         return false;
     }
-
 
 
 public: // Ctors
@@ -393,10 +455,28 @@ public: // queries
         return _index >= end(level())._index;
     }
 
+    //TODO: why I can't use nNeighbors()
+    std::array< Key, 27 >
+    get_neighbor_keys()
+    {
+        std::array<Key,27> res;
+        int count=0;
+        coordinate_type offset(1);
+
+        rcIterator<Dim>::apply(-1*offset,
+                2*offset+1,
+                [&](const coordinate_type& _p)
+                {
+                    res[count++] = this->neighbor(_p);
+                });
+        return res;
+    }
+
+
 
 private:
 
-  
+
     bool is_rend() const noexcept
     {
         return _index <= rend(level())._index;
@@ -480,7 +560,7 @@ public: // print
 private:
 
     friend class boost::serialization::access;
-                  
+
     template<class Archive>
     void serialize(Archive & ar, const unsigned int version)
     {

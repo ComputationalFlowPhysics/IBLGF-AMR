@@ -387,6 +387,7 @@ public:
                         view(lin_data_1, xt::range(1,-1), xt::range(1,-1), xt::range(1,-1));
             }
     }
+
     template<class From, class To>
     void intrp_to_correction_buffer(std::size_t real_mesh_field_idx, std::size_t tmp_type_field_idx, MeshObject mesh_type, bool correction_only = true, bool exclude_correction = false)
     {
@@ -411,7 +412,7 @@ public:
             }
         }
 
-}
+    }
 
     template<class From, class To>
     void source_coarsify(std::size_t real_mesh_field_idx, std::size_t tmp_type_field_idx, MeshObject mesh_type, bool correction_only = false, bool exclude_correction = false)
@@ -520,94 +521,6 @@ public:
     {
         //apply_laplace<Target, Laplace>();
     }
-
-
-    /** @brief Coarsify the source field.
-     *  @detail Given a parent, coarsify the field from its children and
-     *  assign it to the parent. Coarsification is an average, ie 2nd order
-     *  accurate.
-     */
-    //template<class Field >
-    //void coarsify(octant_t* _parent, MeshObject mesh_type, std::size_t _field_idx)
-    //{
-    //    int n = child.shape()[0];
-
-    //    int idx_x = (child_idx & ( 1 << 0 )) >> 0;
-    //    int idx_y = (child_idx & ( 1 << 1 )) >> 1;
-    //    int idx_z = (child_idx & ( 1 << 2 )) >> 2;
-
-    //    // Relative position 0 -> coincide with child
-    //    // Relative position 1 -> half cell off with the child
-
-    //    std::array<int, 3> relative_positions{{1,1,1}};
-    //    if (mesh_obj == MeshObject::face)
-    //        relative_positions[_field_idx]=0;
-    //    else if (mesh_obj == MeshObject::cell)
-    //    {
-    //    }
-    //    else
-    //        throw std::runtime_error(
-    //                "Wrong type of mesh to be interpolated");
-
-    //    idx_x += relative_positions[0]*max_relative_pos;
-    //    idx_y += relative_positions[1]*max_relative_pos;
-    //    idx_z += relative_positions[2]*max_relative_pos;
-
-    //    auto parent = _parent;
-    //    if(parent->is_leaf())return;
-
-    //    for (int i = 0; i < parent->num_children(); ++i)
-    //    {
-    //        auto child = parent->child(i);
-    //        if(child==nullptr || !child->data() || !child->locally_owned()) continue;
-    //        if (child->is_correction()) continue;
-
-    //        auto child_view= child->data()->descriptor();
-    //        auto cview =child->data()->node_field().view(child_view);
-
-    //        cview.iterate([&]( auto& n )
-    //        {
-    //            const float_type avg=1./8* n.template get<Field>();
-    //            auto pcoord=n.level_coordinate();
-    //            for(std::size_t d=0;d<pcoord.size();++d)
-    //                pcoord[d]= std::floor(pcoord[d]/2.0);
-    //            parent->data()-> template get<Field>(pcoord) +=avg;
-    //        });
-    //    }
-    //}
-
-
-    /** @brief Interplate the target field.
-     *  @detail Given a parent field, interpolate it onto the child meshes.
-     *  Interpolation is 2nd order accurate.
-     */
-    //template<class Field >
-    //void interpolate(const octant_t* _b_parent)
-    //{
-    //    for (int i = 0; i < _b_parent->num_children(); ++i)
-    //    {
-    //        auto child = _b_parent->child(i);
-    //        if (child==nullptr) continue;
-    //        block_type child_view =
-    //            child->data()->template get<Field>().real_block();
-    //        auto cview =child->data()->node_field().view(child_view);
-
-    //        cview.iterate([&]( auto& n )
-    //        {
-    //            const auto& coord=n.level_coordinate();
-    //            auto min =(coord+1)/2-1;
-    //            real_coordinate_type x=(coord-0.5)/2.0;
-
-    //            const float_type interp=
-    //                interpolation::interpolate(
-    //                        min.x(), min.y(), min.z(),
-    //                        x[0], x[1], x[2],
-    //                        _b_parent->data()->template get<Field>()) ;
-    //                n.template get<Field>()+=interp;
-    //        });
-    //    }
-    //}
-
 
 
     template<class Field_c, class Field_p >
@@ -734,13 +647,13 @@ public:
    const bool& use_correction()const noexcept{return use_correction_;}
    bool& use_correction()noexcept{return use_correction_;}
 
+    interpolation::cell_center_nli    c_cntr_nli_;///< Lagrange Interpolation
 
 private:
     domain_type*                      domain_;    ///< domain
     Fmm_t                             fmm_;       ///< fast-multipole
     lgf_lap_t                         lgf_lap_;
     lgf_if_t                          lgf_if_;
-    interpolation::cell_center_nli    c_cntr_nli_;///< Lagrange Interpolation
     interpolation::extrapolation_cell_center_nli    extrp_c_cntr_nli_;///< Lagrange Interpolation
     parallel_ostream::ParallelOstream pcout=parallel_ostream::ParallelOstream(1);
     bool use_correction_ =true;

@@ -235,6 +235,7 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
         this->solve();
         simulation_.write2("mesh.hdf5");
         domain_->decomposition().balance<source,phi_exact>();
+
         this->solve();
         simulation_.write2("mesh_new.hdf5");
     }

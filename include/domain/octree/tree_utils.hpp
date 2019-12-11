@@ -9,68 +9,8 @@
 #include <utilities/crtp.hpp>
 
 namespace octree{
-
-template<typename T>
-constexpr T pow(const T& base, const int exp)
-{
-    return  exp == 0 ? 1 : base*pow(base,exp-1);
-}
-
-template<int Dim, int D=Dim-1>
-struct rcIterator
-{
-
-    template<class BlockType, class Function>
-    static void apply(const BlockType& _b,
-                      const Function& f)
-    {
-        const auto base=_b.base();
-        const auto extent=_b.extent();
-        auto p=base;
-        rcIterator<Dim, D>::apply_impl(p,f,base, extent );
-    }
-    template<class ArrayType, class Function>
-    static void apply(const ArrayType& _base,
-                      const ArrayType& _extent,
-                      const Function& f)
-    {
-        auto p=_base;
-        rcIterator<Dim, D>::apply_impl(p,f,_base, _extent );
-    }
-    template<class ArrayType, class Function>
-    static void apply_impl(ArrayType& _p, 
-                           const Function& f,
-                           const ArrayType& _base, 
-                           const ArrayType& _extent
-                       )
-    {
-        for(std::size_t k=0; k<static_cast<std::size_t>(_extent[D]);++k)
-        {
-            _p[D]=_base[D]+k;
-            rcIterator<Dim, D-1>::apply_impl(_p,f, _base, _extent);
-        }
-    }
-};
-
-template<int Dim>
-struct rcIterator<Dim,0>
-{
-    template<class ArrayType, class Function>
-    static void apply_impl(ArrayType& _p, 
-                           const Function& f,
-                           const ArrayType& _base, 
-                           const ArrayType& _extent )
-    {
-        for(std::size_t k=0; k<static_cast<std::size_t>(_extent[0]);++k)
-        {
-            _p[0]=_base[0]+k;
-            f(_p);
-        }
-    }
-};
-
 template<class MapType>
-class MapKeyIterator : public MapType::iterator 
+class MapKeyIterator : public MapType::iterator
 {
 
 public:
@@ -83,19 +23,19 @@ public:
     MapKeyIterator()
     :iterator_t(){};
 
-    MapKeyIterator(iterator_t it_ ) 
+    MapKeyIterator(iterator_t it_ )
     :iterator_t(it_){};
 
 public:
     key_type* operator->() noexcept
     {
-        return (key_type* const )&( iterator_t::operator -> ( )->first ); 
+        return (key_type* const )&( iterator_t::operator -> ( )->first );
     }
     const key_type& operator*(){return iterator_t::operator*().first; }
 };
 
 template<class MapType>
-class MapValueIterator : public MapType::iterator 
+class MapValueIterator : public MapType::iterator
 {
 public:
     using mapped_type =typename MapType::mapped_type;
@@ -110,15 +50,15 @@ public:
     : iterator_t(_it){}
 
     mapped_type* operator->() noexcept
-    { 
-        return (mapped_type* const )&( iterator_t::operator->()->second ); 
+    {
+        return (mapped_type* const )&( iterator_t::operator->()->second );
     }
     const mapped_type& operator*() { return iterator_t::operator*().second; }
 };
 
 
 template<class MapType>
-class MapValuePtrIterator : public MapType::iterator 
+class MapValuePtrIterator : public MapType::iterator
 {
 public:
     using mapped_type =typename MapType::mapped_type;
@@ -133,8 +73,8 @@ public:
     : iterator_t(_it){}
 
     mapped_type operator->() const noexcept
-    { 
-        return iterator_t::operator->()->second ; 
+    {
+        return iterator_t::operator->()->second ;
     }
     mapped_type operator*() { return iterator_t::operator*().second; }
     mapped_type ptr() { return iterator_t::operator*().second; }
@@ -145,14 +85,14 @@ namespace tuple_utils
 {
 
     template <typename Tuple, typename F, std::size_t ...Indices>
-    void for_each_impl(Tuple&& tuple, F&& f, std::index_sequence<Indices...>) 
+    void for_each_impl(Tuple&& tuple, F&& f, std::index_sequence<Indices...>)
     {
         using swallow = int[];
         (void)swallow{1, (f(std::get<Indices>(std::forward<Tuple>(tuple))), void(), int{})...  };
     }
 
     template <typename Tuple, typename F>
-    void for_each(Tuple&& tuple, F&& f) 
+    void for_each(Tuple&& tuple, F&& f)
     {
         constexpr std::size_t N = std::tuple_size<std::remove_reference_t<Tuple>>::value;
         for_each_impl(std::forward<Tuple>(tuple), std::forward<F>(f),
@@ -172,7 +112,7 @@ class IteratorBase : public crtp::Crtps<Derived, IteratorBase<T,Derived>>
 public: //member types
     using difference_type=std::ptrdiff_t;
     using size_type=std::size_t;
-    using value_type=T; 
+    using value_type=T;
     using pointer=T*;
     using const_pointer=const T*;
     using reference=T&;
@@ -181,11 +121,11 @@ public: //member types
 
 public: //Ctors:
 
-    IteratorBase(const IteratorBase&) = default; 
-    IteratorBase(IteratorBase&&) = default; 
-	IteratorBase& operator=(const IteratorBase&) & = default; 
-	IteratorBase& operator=(IteratorBase&&) & = default; 
-    ~IteratorBase()=default; 
+    IteratorBase(const IteratorBase&) = default;
+    IteratorBase(IteratorBase&&) = default;
+	IteratorBase& operator=(const IteratorBase&) & = default;
+	IteratorBase& operator=(IteratorBase&&) & = default;
+    ~IteratorBase()=default;
 
     IteratorBase() =default;
     IteratorBase(pointer _ptr) : current_(_ptr), end_(false){}
@@ -209,12 +149,12 @@ public: //Acess
 
     IteratorBase operator++(int) noexcept //postcrement
     {
-        const IteratorBase tmp(*this); 
+        const IteratorBase tmp(*this);
         ++(*this);
         return tmp;
     }
 
-    IteratorBase& operator+=(size_type n) 
+    IteratorBase& operator+=(size_type n)
     {
         for(size_type i=0;i<n;++i){++(*this);}
         return *this;
@@ -222,7 +162,7 @@ public: //Acess
 
     friend bool operator==(const IteratorBase& lhs, const IteratorBase& rhs)noexcept
     {
-        return (lhs.end_ ? (lhs.end_==rhs.end_) : 
+        return (lhs.end_ ? (lhs.end_==rhs.end_) :
                 (rhs.end_ ? (false) : (lhs.current_==rhs.current_)));
         return lhs.current_==rhs.current_;
     }
@@ -234,7 +174,7 @@ public: //Acess
     pointer ptr()const noexcept{ return current_; }
 
 protected:
-    pointer current_=nullptr;    
+    pointer current_=nullptr;
     bool end_ = true;
 };
 
@@ -252,7 +192,7 @@ public: //member types
 
     using difference_type=typename iterator_base_type::difference_type;
     using size_type=typename iterator_base_type::size_type;
-    using value_type=typename iterator_base_type::value_type; 
+    using value_type=typename iterator_base_type::value_type;
     using pointer=typename iterator_base_type::pointer;
     using const_pointer=typename iterator_base_type::const_pointer;
     using reference=typename iterator_base_type::reference;
@@ -263,21 +203,21 @@ public: //ctors
 
     using iterator_base_type::IteratorBase;
 
-    IteratorBfs(const IteratorBfs&) = default; 
-    IteratorBfs(IteratorBfs&&) = default; 
-	IteratorBfs& operator=(const IteratorBfs&) & = default; 
-    ~IteratorBfs()=default; 
-    IteratorBfs()=default; 
+    IteratorBfs(const IteratorBfs&) = default;
+    IteratorBfs(IteratorBfs&&) = default;
+	IteratorBfs& operator=(const IteratorBfs&) & = default;
+    ~IteratorBfs()=default;
+    IteratorBfs()=default;
 
 
-    IteratorBfs& operator=(IteratorBfs&& other) 
+    IteratorBfs& operator=(IteratorBfs&& other)
     {
         this->current_ = other->current_;
         this->queue_ = std::move(other->queue_);
-    } 
+    }
 
     IteratorBfs(node_type* _ptr) noexcept
-    :   iterator_base_type(_ptr) 
+    :   iterator_base_type(_ptr)
     {
         queue_.push(_ptr);
     }
@@ -302,11 +242,11 @@ public: //operator overloads
         }
         if (this->current_->key().level() == 0){
             this->operator++();
-        } 
+        }
         return *this;
     }
 
-  
+
     friend void swap(IteratorBfs& l, IteratorBfs& r) noexcept
     {
         static_cast<iterator_base_type>(l).swap(r);
@@ -331,7 +271,7 @@ public: //member types
 
     using difference_type=typename iterator_base_type::difference_type;
     using size_type=typename iterator_base_type::size_type;
-    using value_type=typename iterator_base_type::value_type; 
+    using value_type=typename iterator_base_type::value_type;
     using pointer=typename iterator_base_type::pointer;
     using const_pointer=typename iterator_base_type::const_pointer;
     using reference=typename iterator_base_type::reference;
@@ -342,16 +282,16 @@ public: //ctors
 
     using iterator_base_type::IteratorBase;
 
-    IteratorDfs(const IteratorDfs&) = default; 
-	IteratorDfs& operator=(const IteratorDfs&) & = default; 
-    ~IteratorDfs()=default; 
-    IteratorDfs()=default; 
+    IteratorDfs(const IteratorDfs&) = default;
+	IteratorDfs& operator=(const IteratorDfs&) & = default;
+    ~IteratorDfs()=default;
+    IteratorDfs()=default;
 
-    IteratorDfs& operator=(IteratorDfs&& other) 
+    IteratorDfs& operator=(IteratorDfs&& other)
     {
         this->current_ = other->current_;
         this->stack_ = std::move(other->stack_);
-    } 
+    }
     IteratorDfs(node_type* _ptr) noexcept
     :iterator_base_type(_ptr) { stack_.push(_ptr); }
 
@@ -372,10 +312,10 @@ public: //operator overloads
         }
         if (this->current_->key().level() == 0){
             this->operator++();
-        } 
+        }
         return *this;
     }
-  
+
     friend void swap(IteratorDfs& l, IteratorDfs& r) noexcept
     {
         static_cast<iterator_base_type>(l).swap(r);
@@ -400,7 +340,7 @@ public: //Ctors
     //using Iterator::operator=;
 
     using condition_t =std::function<bool(ConditionalIterator&)>;
-    
+
 public: //Ctors
     ConditionalIterator(node_type* _ptr, condition_t _c ) noexcept
     :super_type(_ptr), cond_(_c)

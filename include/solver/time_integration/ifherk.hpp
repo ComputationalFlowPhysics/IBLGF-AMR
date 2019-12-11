@@ -161,6 +161,50 @@ public:
             psolver.template intrp_to_correction_buffer<Field, Field>(_field_idx, _field_idx, Field::mesh_type, true, false);
     }
 
+    template<class AdaptField, class CriterionField>
+    void adapt()
+    {
+        auto client = domain_->decomposition().client();
+
+        if (client)
+        {
+            //claen non leafs
+            clean<AdaptField>(true);
+
+            //Coarsification:
+            for (std::size_t _field_idx=0; _field_idx<AdaptField::nFields; ++_field_idx)
+                psolver.template source_coarsify<AdaptField,AdaptField>(_field_idx, _field_idx, AdaptField::mesh_type);
+
+        }
+
+        auto intrp_list = domain_->template adapt<CriterionField>();
+
+        if (client)
+        {
+
+            // Intrp
+            for (std::size_t _field_idx=0; _field_idx<AdaptField::nFields; ++_field_idx)
+            {
+
+                for (int l = domain_->tree()->depth()-2;
+                        l >= domain_->tree()->base_level(); --l)
+                {
+                    client->template buffer_exchange<AdaptField>(l);
+
+                    domain_->decomposition().client()->
+                    template communicate_updownward_assign
+                    <AdaptField, AdaptField>(l,false,false,-1,_field_idx);
+                }
+
+                for (auto oct:intrp_list)
+                {
+                    psolver.c_cntr_nli_.template nli_intrp_node<AdaptField, AdaptField>(oct, AdaptField::mesh_type, _field_idx, _field_idx, false, false);
+                }
+            }
+        }
+    }
+
+
     void time_step()
     {
         // Initialize IFHERK
@@ -168,33 +212,9 @@ public:
         boost::mpi::communicator world;
         auto client=domain_->decomposition().client();
 
-
         ////claen non leafs
         clean<u>(true);
         up_and_down<u>();
-
-        //Coarsification:
-        //for (std::size_t _field_idx=0; _field_idx<u::nFields; ++_field_idx)
-        //    psolver.template source_coarsify<u,u>(_field_idx, _field_idx, u::mesh_type);
-
-        //for (auto it  = domain_->begin(domain_->tree()->base_level()+1);
-        //          it != domain_->end(domain_->tree()->base_level()+1); ++it)
-        //{
-        //    if (!it->data()) continue;
-        //    if (!it ->data()->is_allocated())continue;
-
-        //    for (std::size_t field_idx=0; field_idx<u::nFields; ++field_idx)
-        //    {
-        //        auto& lin_data = it ->data()->
-        //            template get_linalg_data<u>(field_idx);
-
-        //        std::fill(lin_data.begin(),lin_data.end(),0.0);
-        //    }
-        //}
-
-        // Interpolate to correction buffer
-        //for (std::size_t _field_idx=0; _field_idx<u::nFields; ++_field_idx)
-        //    psolver.template intrp_to_correction_buffer<u, u>(_field_idx, _field_idx, u::mesh_type, true, false);
 
         // Solve stream function to pad base level u->u_pad
         pad_velocity<u, u>();

@@ -144,8 +144,8 @@ public:
             if (octant->level()+1 > depth_) depth_=octant->level()+1;
         }
     }
-    
-    
+
+
 
 public:
 
@@ -251,15 +251,62 @@ public:
             {
                 auto _neighbor=this->insert_td(k);
                 _f(_neighbor);
-                _neighbor->flag_correction(true);
             }
         }
+    }
+
+    bool try_2to1(key_type _k)
+    {
+        // Dynmaic Programming to rduce repeated checks
+        std::map<key_type, bool> checklist;
+        return try_2to1(_k, checklist);
+
+    }
+
+    bool try_2to1(key_type _k, std::map<key_type,bool>& checklist)
+    {
+        auto check=checklist.find(_k);
+
+        if (check == checklist.end())
+        {
+            bool refine_2to1=true;
+
+            int rf_l=_k.level() - base_level_;
+            if (rf_l<0)
+            {
+                checklist.emplace(_k, false);
+                return false;
+            }
+
+            auto neighbor_keys=_k.get_neighbor_keys();
+            for (auto nk:neighbor_keys)
+            {
+                const auto neighbor_i = this->find_octant(nk);
+                if(neighbor_i==nullptr)
+                {
+                    auto nk_p=nk.parent();
+                    if ( !try_2to1(nk_p, checklist) )
+                    {
+                        checklist.emplace(_k, false);
+                        return false;
+                    }
+                }
+            }
+
+            checklist.emplace(_k, true);
+            return true;
+        }
+        else
+        {
+            return check->second;
+        }
+
     }
 
     template<class Function>
     void refine(octant_type* _l, const Function& _f,
                  bool ratio_2to1 = true,
-                 bool _recursive = false)
+                 bool trail = false)
     {
 
         //Check 2:1 balance constraint
@@ -268,10 +315,13 @@ public:
         {
             for(int i=0;i<_l->nNeighbors();++i)
             {
-                if(!_l->neighbor(i))
+                auto n_i=_l->neighbor(i);
+                if(! n_i)
                     neighbors_exists=false;
-                else if(!_l->neighbor(i)->data())
+                else if(! n_i->data())
                     neighbors_exists=false;
+                else
+                    n_i->aim_deletion(false);
             }
 
             if(!neighbors_exists)
@@ -285,7 +335,7 @@ public:
                         auto parent_key=k.parent();
                         auto pa=this->insert_td(parent_key);
                         _f(pa);
-                        this->refine(pa,_f);
+                        this->refine(pa,_f, ratio_2to1, trail);
                     }
                 }
                 else{
@@ -854,7 +904,7 @@ public: //Query ranks of all octants, which are assigned in local tree
         this->query_children(_c);
         this->query_parents(_c);
     }
-    
+
 
     /** @brief Query from server and construct all
      *         maps for neighbors, influence
@@ -892,7 +942,7 @@ public: //Query ranks of all octants, which are assigned in local tree
             _o->data()=std::make_shared<DataType>(bbase,
                     _c->domain()->block_extent(),level, false);
         };
-        
+
         //Allocate Ghost octants
         dfs_iterator it_begin(root()); dfs_iterator it_end;
         for(auto it =it_begin;it!=it_end;++it)

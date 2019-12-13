@@ -455,11 +455,9 @@ public: // queries
         return _index >= end(level())._index;
     }
 
-    //TODO: why I can't use nNeighbors()
-    std::array< Key, 27 >
-    get_neighbor_keys()
+    auto get_neighbor_keys()
     {
-        std::array<Key,27> res;
+        std::array<Key,nNeighbors()> res;
         int count=0;
         coordinate_type offset(1);
 

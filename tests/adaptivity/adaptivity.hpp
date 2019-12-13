@@ -45,13 +45,13 @@ struct parameters
     Dim,
      (
         //name               type        Dim   lBuffer  hBuffer, storage type
-         (source           , float_type, 1,    1,       1,     cell,true ),
-         (error_u          , float_type, 3,    1,       1,     face,true ),
-         (decomposition    , float_type, 1,    1,       1,     cell,true ),
+         (source           , float_type, 1,    1,       1,     cell, true ),
+         (error_u          , float_type, 3,    1,       1,     face, true ),
+         (decomposition    , float_type, 1,    1,       1,     cell, true ),
         //IF-HERK
-         (u                , float_type, 3,    1,       1,     face,true ),
-         (u_ref            , float_type, 3,    1,       1,     face,true ),
-         (p                , float_type, 1,    1,       1,     cell,true )
+         (u                , float_type, 3,    1,       1,     face, true ),
+         (u_ref            , float_type, 3,    1,       1,     face, true ),
+         (p                , float_type, 1,    1,       1,     cell, true )
     ))
 };
 
@@ -206,6 +206,7 @@ struct Adaptivity:public SetupBase<Adaptivity,parameters>
                float_type z = static_cast<float_type>
                    (coord[2]-center[2]*scaling+0.5)*dx_level;
 
+               std::cout<<  it2->template get<source>();
                it2->template get<source>() =
                 vortex_ring_vor_ic(x,y,z,0)*vortex_ring_vor_ic(x,y,z,0) +
                 vortex_ring_vor_ic(x,y,z,1)*vortex_ring_vor_ic(x,y,z,1) +

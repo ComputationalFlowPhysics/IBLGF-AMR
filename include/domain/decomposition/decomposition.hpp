@@ -265,7 +265,6 @@ public: //memeber functions
                         deletion[child->rank()].emplace_back(child->key());
 
                         //child->deallocate_data();
-                        //TODO is it deep clean?
                         it->delete_child(i);
                     }
                     it->flag_leaf(true);

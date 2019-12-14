@@ -139,7 +139,7 @@ public: //Ctors
     void flag_correction(const bool flag)noexcept {flag_correction_ = flag;}
 
     bool is_leaf()const noexcept{return flag_leaf_;}
-    void flag_leaf(const bool flag)noexcept {flag_leaf_ = flag;}
+    void flag_leaf(bool flag)noexcept {flag_leaf_ = flag;}
 
     bool aim_deletion() const noexcept{return aim_deletion_;}
     void aim_deletion(bool d) noexcept{aim_deletion_=d;}

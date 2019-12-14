@@ -68,6 +68,7 @@ public: //member types
     c_cntr_nli_(domain_->block_extent()[0]+lBuffer+rBuffer),
     extrp_c_cntr_nli_(domain_->block_extent()[0]+lBuffer+rBuffer)
     {
+        std::cout<< "Poisson Solver initialized --- "  << std::endl;
     }
 
 public:
@@ -387,7 +388,6 @@ public:
                         view(lin_data_1, xt::range(1,-1), xt::range(1,-1), xt::range(1,-1));
             }
     }
-
     template<class From, class To>
     void intrp_to_correction_buffer(std::size_t real_mesh_field_idx, std::size_t tmp_type_field_idx, MeshObject mesh_type, bool correction_only = true, bool exclude_correction = false)
     {
@@ -412,7 +412,7 @@ public:
             }
         }
 
-    }
+}
 
     template<class From, class To>
     void source_coarsify(std::size_t real_mesh_field_idx, std::size_t tmp_type_field_idx, MeshObject mesh_type, bool correction_only = false, bool exclude_correction = false)
@@ -521,7 +521,6 @@ public:
     {
         //apply_laplace<Target, Laplace>();
     }
-
 
     template<class Field_c, class Field_p >
     void coarsify(octant_t* _parent, float_type factor=1.0, bool correction_only=false, bool exclude_correction = false)
@@ -647,6 +646,8 @@ public:
    const bool& use_correction()const noexcept{return use_correction_;}
    bool& use_correction()noexcept{return use_correction_;}
 
+
+public:
     interpolation::cell_center_nli    c_cntr_nli_;///< Lagrange Interpolation
 
 private:

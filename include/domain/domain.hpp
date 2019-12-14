@@ -240,7 +240,6 @@ public: //C/Dtors
 
     void mark_correction()
     {
-        if(is_client()) return;
 
         const auto base_level=this->tree()->base_level();
 
@@ -275,6 +274,7 @@ public: //C/Dtors
             }
         }
 
+        this->tree()->construct_leaf_maps(true);
         this->tree()->construct_level_maps();
         this->tree()->construct_neighbor_lists();
         this->tree()->construct_influence_lists();
@@ -284,6 +284,7 @@ public: //C/Dtors
                 it != this->end(base_level);
                 ++it)
         {
+            if (!it->is_leaf()) continue;
             bool _neighbors_exists=true;
             for(int i=0;i<it->nNeighbors();++i)
             {
@@ -298,9 +299,13 @@ public: //C/Dtors
                 it->flag_correction(true);
                 it->aim_deletion(false);
                 //it->flag_leaf(false);
-                it->flag_leaf(true);
             }
         }
+
+        this->tree()->construct_level_maps();
+        this->tree()->construct_neighbor_lists();
+        this->tree()->construct_influence_lists();
+
     }
 
     void init_refine(int nRef, int level_up_max)
@@ -432,7 +437,7 @@ public:
                     child_it->data()=
                         std::make_shared<datablock_t>(bbase, block_extent_,level,init_field);
                     child_it->aim_deletion(false);
-                    child_it->rank() = child_it->parent()->rank();
+                    //child_it->rank() = child_it->parent()->rank();
                 },
                 ratio_2to1
         );

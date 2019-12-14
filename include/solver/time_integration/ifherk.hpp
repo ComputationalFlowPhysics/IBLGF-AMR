@@ -67,9 +67,10 @@ public: //member types
     Ifherk(simulation_type* _simulation)
     :
     simulation_(_simulation),
-    domain_(_simulation->domain_.get()),
-    psolver(_simulation)
+    domain_(_simulation->domain_.get())
+    //psolver(_simulation)
     {
+        std::cout<< "IFHERK initialized --- "  << std::endl;
         dx_          = domain_->dx_base();
         cfl_         = _simulation->dictionary()->
             template get_or<float_type>("cfl",0.2);

@@ -130,10 +130,10 @@ struct Adaptivity:public SetupBase<Adaptivity,parameters>
     void run()
     {
         boost::mpi::communicator world;
-        //time_integration_t ifherk(&this->simulation_);
 
-        //simulation_.write2("adapt0.hdf5");
-        //ifherk.template adapt<source, source>();
+        simulation_.write2("adapt0.hdf5");
+        time_integration_t ifherk(&this->simulation_);
+        ifherk.template adapt<source, source>();
 
         //simulation_.write2("adapt1.hdf5");
         //ifherk.template adapt<source, source>();
@@ -168,9 +168,9 @@ struct Adaptivity:public SetupBase<Adaptivity,parameters>
     void initialize()
     {
         poisson_solver_t psolver(&this->simulation_);
+        if(domain_->is_server()) return ;
 
         boost::mpi::communicator world;
-        if(domain_->is_server()) return ;
         auto center = (domain_->bounding_box().max() -
                        domain_->bounding_box().min()) / 2.0 +
                        domain_->bounding_box().min();
@@ -206,7 +206,6 @@ struct Adaptivity:public SetupBase<Adaptivity,parameters>
                float_type z = static_cast<float_type>
                    (coord[2]-center[2]*scaling+0.5)*dx_level;
 
-               std::cout<<  it2->template get<source>();
                it2->template get<source>() =
                 vortex_ring_vor_ic(x,y,z,0)*vortex_ring_vor_ic(x,y,z,0) +
                 vortex_ring_vor_ic(x,y,z,1)*vortex_ring_vor_ic(x,y,z,1) +

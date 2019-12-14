@@ -232,9 +232,13 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
 
     void run()
     {
-        this->solve();
         simulation_.write2("mesh.hdf5");
+        this->solve();
+        pcout_c<<"Solve 1st time done" <<std::endl;
+        simulation_.write2("mesh.hdf5");
+        pcout_c<<"write" <<std::endl;
         domain_->decomposition().balance<source,phi_exact>();
+        pcout_c<<"decomposition done" <<std::endl;
 
         this->solve();
         simulation_.write2("mesh_new.hdf5");

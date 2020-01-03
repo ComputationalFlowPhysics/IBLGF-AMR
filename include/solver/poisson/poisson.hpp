@@ -160,6 +160,7 @@ public:
                 const bool base_level_only)
     {
 
+        std::cout<< "LGF --------------- 1" << std::endl;
         auto client = domain_->decomposition().client();
         if(!client)return;
 
@@ -173,6 +174,7 @@ public:
         clean_field<source_correction_tmp>();
 
         // Copy source
+        std::cout<< "LGF --------------- 2" << std::endl;
         copy_leaf<Source, source_tmp>(_field_idx, 0, true);
 
 #ifdef POISSON_TIMINGS
@@ -186,6 +188,7 @@ public:
         auto t0_coarsify=clock_type::now();
 #endif
 
+        std::cout<< "LGF --------------- 3" << std::endl;
         source_coarsify<source_tmp, source_tmp>(_field_idx, 0, Source::mesh_type);
 
 #ifdef POISSON_TIMINGS
@@ -217,6 +220,7 @@ public:
                 }
 
             // test for FMM
+            std::cout<< "LGF --------------- 4" << std::endl;
             fmm_.template apply<source_tmp, target_tmp>(domain_, _kernel, l, false, 1.0, base_level_only);
 
 #ifdef POISSON_TIMINGS
@@ -234,6 +238,7 @@ public:
 
             if (base_level_only) continue;
 
+            std::cout<< "LGF --------------- 5" << std::endl;
             fmm_.template apply<source_tmp, target_tmp>(domain_, _kernel, l, true, -1.0);
 
 #ifdef POISSON_TIMINGS
@@ -428,7 +433,7 @@ public:
             for (auto it_s  = domain_->begin(ls);
                     it_s != domain_->end(ls); ++it_s)
                 {
-                    if(!it_s->data() || !it_s->data()->is_allocated()) continue;
+                    if (it_s.ptr()==nullptr || !it_s->data() || !it_s->data()->is_allocated()) continue;
 
                     c_cntr_nli_.nli_antrp_node
                         <From, To>(*it_s, mesh_type, real_mesh_field_idx, tmp_type_field_idx, correction_only, exclude_correction);
@@ -440,10 +445,15 @@ public:
         }
 
         for (int l  = domain_->tree()->base_level();
-                l < domain_->tree()->depth(); ++l)
+                l < domain_->tree()->depth()-1; ++l)
             client->template buffer_exchange<To>(l);
 
     }
+
+auto& c_cntr_nli()
+{
+    return c_cntr_nli_;
+}
 
 
     /** @brief Compute the laplace operator of the target field and store
@@ -647,14 +657,13 @@ public:
    bool& use_correction()noexcept{return use_correction_;}
 
 
-public:
-    interpolation::cell_center_nli    c_cntr_nli_;///< Lagrange Interpolation
 
 private:
     domain_type*                      domain_;    ///< domain
     Fmm_t                             fmm_;       ///< fast-multipole
     lgf_lap_t                         lgf_lap_;
     lgf_if_t                          lgf_if_;
+    interpolation::cell_center_nli    c_cntr_nli_;///< Lagrange Interpolation
     interpolation::extrapolation_cell_center_nli    extrp_c_cntr_nli_;///< Lagrange Interpolation
     parallel_ostream::ParallelOstream pcout=parallel_ostream::ParallelOstream(1);
     bool use_correction_ =true;

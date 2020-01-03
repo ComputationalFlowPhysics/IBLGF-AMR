@@ -88,6 +88,8 @@ public: // member types
 
     static constexpr int Dim=3;
     static constexpr int nNeighbors(){return pow(3,Dim);}
+    static constexpr int nInfls(){return pow(6,Dim)-pow(3,Dim);}
+    static constexpr int nChildren(){return pow(2,Dim);}
 
     using bitmask_t = Bitmasks<Dim>;
     using value_type = bitmask_t::index_t;
@@ -467,6 +469,37 @@ public: // queries
                 {
                     res[count++] = this->neighbor(_p);
                 });
+        return res;
+    }
+
+    auto get_infl_keys()
+    {
+        std::vector<Key> res;
+        int count=0;
+
+        if  (this->level()==0) return res;
+        auto p_k=this->parent();
+
+        auto p_n_k=p_k.get_neighbor_keys();
+        for (auto& k:p_n_k)
+        {
+            if (k.is_end()) continue;
+            const auto coord = this->coordinate();
+
+            for(int p_n_child_id=0;
+                    p_n_child_id < nChildren();
+                    ++p_n_child_id)
+            {
+                const auto child_key = k.child(p_n_child_id);
+                const auto p_n_c_coord = child_key.coordinate();
+                if ((std::abs(p_n_c_coord.x() - coord.x())>1) ||
+                        (std::abs(p_n_c_coord.y() - coord.y())>1) ||
+                        (std::abs(p_n_c_coord.z() - coord.z())>1))
+                {
+                    res.emplace_back(child_key);
+                }
+            }
+        }
         return res;
     }
 

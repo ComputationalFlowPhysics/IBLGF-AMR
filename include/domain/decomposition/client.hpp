@@ -94,21 +94,6 @@ struct ClientUpdate
     std::vector<int>   src_ranks;
 
 };
-struct AdaptAttempt
-{
-    AdaptAttempt()
-    {}
-
-    void insert(key_t _key,int _l_change)
-    {
-        octs.emplace_back(_key);
-        level_change.emplace_back(_l_change);
-    }
-
-    std::vector<key_t> octs;
-    std::vector<int>   level_change;
-
-};
 
 public:
     Client(const Client&  other) = default;
@@ -280,9 +265,10 @@ public:
     void send_adapt_attempts(Function aim_adapt)
     {
         boost::mpi::communicator w;
+        float_type source_max=1.0;
 
-        std::vector<key_t> octs;
-        std::vector<int>   level_change;
+        std::vector<key_t> octs{};
+        std::vector<int>   level_change{};
         const int myRank=w.rank();
 
         int ac=0;
@@ -290,11 +276,11 @@ public:
         {
             if (!it->locally_owned()) continue;
 
-            bool l_change = aim_adapt(*it, 2-it->refinement_level());
-            if( l_change)
+            int l_change = aim_adapt(*it, source_max);
+            if( l_change!=0)
             {
                 octs.emplace_back(it->key());
-                level_change.emplace_back(1);
+                level_change.emplace_back(l_change);
             }
         }
 
@@ -430,7 +416,7 @@ public:
         else //Receivs
         {
             //int inf_rank=-1;
-            std::set<int> unique_inflRanks;
+            //std::set<int> unique_inflRanks;
             for(std::size_t i = 0; i< it->influence_number(); ++i)
             {
                 const auto inf=it->influence(i);
@@ -801,6 +787,11 @@ public:
 
         //Assign received message to field view
         hcomm.unpack_messages();
+    }
+
+    void halo_reset()
+    {
+        halo_initialized_=false;
     }
 
     void initialize_halo_communicators()noexcept

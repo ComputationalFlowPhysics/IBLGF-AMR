@@ -252,7 +252,7 @@ class key                                                                    \
     static constexpr const char* name_= STRINGIFY(key);                      \
     static constexpr MeshObject mesh_type = MeshObject::MeshObjectType;      \
     static constexpr std::size_t  nFields = NFields;                         \
-    static constexpr bool  output = _output;                                    \
+    static constexpr bool  output = _output;                                 \
     key ()                                                                   \
     {                                                                        \
         for(std::size_t i= 0; i<nFields; ++i)                                \

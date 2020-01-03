@@ -135,8 +135,18 @@ public: //Ctors
         return key.get_neighbor_keys();
     }
 
+    auto get_infl_keys()
+    {
+        auto key=this->key();
+        return key.get_infl_keys();
+    }
+
+
     bool is_correction()const noexcept{return flag_correction_;}
     void flag_correction(const bool flag)noexcept {flag_correction_ = flag;}
+
+    bool physical()const noexcept{return flag_physical_;}
+    void physical(bool flag) noexcept {flag_physical_ = flag;}
 
     bool is_leaf()const noexcept{return flag_leaf_;}
     void flag_leaf(bool flag)noexcept {flag_leaf_ = flag;}
@@ -217,8 +227,8 @@ public: //Ctors
        neighbor_[i] = new_neighbor;
     }
 
-    const auto influence_number () const noexcept{return influence_.size();}
-    void influence_number (int i) noexcept{/*influence_num = i;*/}
+    const auto influence_number () const noexcept{return influence_num;/*influence_.size();*/}
+    void influence_number (int i) noexcept{influence_num = i;}
 
     void influence_clear () noexcept{influence_.fill(nullptr);}
     Octant* influence (int i) const noexcept{return influence_[i];}
@@ -263,26 +273,16 @@ public: //mpi info
 
     bool has_locally_owned_children(int fmm_level, int mask_id) const noexcept
     {
-        for(int c=0;c<this->num_children();++c)
-        {
-            const auto child = this->child(c);
-            if(!child) continue;
-            if(child->locally_owned() && child->data() && (fmm_masks_[fmm_level][mask_id]))
-            {
-                return true;
-                break;
-            }
-        }
-        return false;
+        return has_locally_owned_children(fmm_masks_[fmm_level][mask_id]);
     }
 
-    bool has_locally_owned_children() const noexcept
+    bool has_locally_owned_children(bool fmm_masks=true) const noexcept
     {
         for(int c=0;c<this->num_children();++c)
         {
             const auto child = this->child(c);
             if(!child) continue;
-            if(child->locally_owned() && child->data())
+            if(child->locally_owned() && child->data() && fmm_masks)
             {
                 return true;
                 break;
@@ -293,12 +293,17 @@ public: //mpi info
 
     std::set<int> unique_child_ranks(int base_level, int mask_id) const noexcept
     {
+        return unique_child_ranks(fmm_masks_[base_level][mask_id]);
+    }
+
+    std::set<int> unique_child_ranks(bool fmm_masks=true) const noexcept
+    {
         std::set<int> unique_ranks;
         for(int c=0;c<this->num_children();++c)
         {
             auto child = this->child(c);
             if(!child) continue;
-            if(!child->locally_owned() && (fmm_masks_[base_level][mask_id]))
+            if(!child->locally_owned() && fmm_masks)
             {
                 unique_ranks.insert(child->rank());
             }
@@ -306,20 +311,59 @@ public: //mpi info
         return unique_ranks;
     }
 
-    std::set<int> unique_child_ranks() const noexcept
+    std::set<int> unique_infl_ranks()
     {
-        std::set<int> unique_ranks;
-        for(int c=0;c<this->num_children();++c)
+        std::set<int> unique_inflRanks;
+
+        for(int i=0; i< this->influence_number(); ++i)
         {
-            auto child = this->child(c);
-            if(!child) continue;
-            if(!child->locally_owned())
+            auto inf=this->influence(i);
+            if(inf && inf->data())
             {
-                unique_ranks.insert(child->rank());
+                unique_inflRanks.emplace(inf->rank());
             }
         }
-        return unique_ranks;
+        std::cout<< std::endl;
+        return unique_inflRanks;
     }
+
+    std::set<int> unique_neighbor_ranks()
+    {
+        std::set<int> unique_neighborRanks;
+        for(int i = 0; i< this->nNeighbors(); ++i)
+        {
+            const auto n=this->neighbor(i);
+            if(n && n->data())
+            {
+                std::cout<< n->rank() << " "<< n->key()<<std::endl;
+                unique_neighborRanks.emplace(n->rank());
+            }
+        }
+        return unique_neighborRanks;
+    }
+
+    std::set<int> unique_infl_neighbor_ranks()
+    {
+        auto l1 = unique_infl_ranks();
+        auto l2 = unique_neighbor_ranks();
+        //std::set<int> l12;
+        //std::merge(l1.begin(), l1.end(),
+        //        l2.begin(), l2.end(),
+        //        std::inserter(l12, l12.begin()));
+
+        //l1.merge(unique_neighbor_ranks());
+
+        for (auto r:l1)
+            std::cout<<r<<" ";
+        std::cout<<std::endl;
+
+        for (auto r:l2)
+            std::cout<<r<<" ";
+        std::cout<<std::endl;
+
+        return l1;
+    }
+
 
 public: //Access
 
@@ -394,6 +438,7 @@ private:
     int influence_num = 0;
     std::array<Octant*, 189 > influence_= {nullptr};
     bool flag_leaf_=false;
+    bool flag_physical_=false;
     bool flag_correction_=false;
     //std::array<bool, Mask_Last + 1> masks_ = {false};
 

@@ -102,7 +102,6 @@ struct Adaptivity:public SetupBase<Adaptivity,parameters>
         global_refinement_=simulation_.dictionary_->
             template get_or<int>("global_refinement",0);
 
-
         if (dt_<0)
             dt_=dx_*cfl_;
 
@@ -111,6 +110,9 @@ struct Adaptivity:public SetupBase<Adaptivity,parameters>
 
         pcout << "\n Setup:  Test - Simple IC \n" << std::endl;
         pcout << "Number of refinement levels: "<<nLevelRefinement_<<std::endl;
+
+        domain_->register_adapt_condition()=
+            [this](auto octant, float_type source_max){return this->template adapt_level_change<source>(octant, source_max);};
 
         domain_->register_refinement_condition()=
             [this](auto octant, int diff_level){return this->refinement(octant, diff_level);};
@@ -131,13 +133,14 @@ struct Adaptivity:public SetupBase<Adaptivity,parameters>
     {
         boost::mpi::communicator world;
 
-        simulation_.write2("adapt0.hdf5");
         time_integration_t ifherk(&this->simulation_);
+        simulation_.write2("adapt0.hdf5");
         ifherk.template adapt<source, source>();
-
-        //simulation_.write2("adapt1.hdf5");
-        //ifherk.template adapt<source, source>();
-        //simulation_.write2("adapt2.hdf5");
+        simulation_.write2("adapt1.hdf5");
+        ifherk.template adapt<source, source>();
+        simulation_.write2("adapt2.hdf5");
+        ifherk.template adapt<source, source>();
+        simulation_.write2("adapt3.hdf5");
 
         //poisson_solver_t psolver(&this->simulation_);
 
@@ -245,25 +248,25 @@ struct Adaptivity:public SetupBase<Adaptivity,parameters>
            }
         }
 
-        psolver.template apply_lgf<edge_aux, stream_f>();
-        auto client=domain_->decomposition().client();
+        //psolver.template apply_lgf<edge_aux, stream_f>();
+        //auto client=domain_->decomposition().client();
 
-        for (int l  = domain_->tree()->base_level();
-                l < domain_->tree()->depth(); ++l)
-        {
+        //for (int l  = domain_->tree()->base_level();
+        //        l < domain_->tree()->depth(); ++l)
+        //{
 
-            //client->template buffer_exchange<stream_f>(l);
+        //    //client->template buffer_exchange<stream_f>(l);
 
-            for (auto it  = domain_->begin(l);
-                    it != domain_->end(l); ++it)
-            {
-                if(!it->locally_owned() || !it->data()) continue;
-                const auto dx_level =  dx_base/std::pow(2,it->refinement_level());
-                domain::Operator::curl_transpose<stream_f,u>( *(it->data()),dx_level);
-            }
-            client->template buffer_exchange<u>(l);
+        //    for (auto it  = domain_->begin(l);
+        //            it != domain_->end(l); ++it)
+        //    {
+        //        if(!it->locally_owned() || !it->data()) continue;
+        //        const auto dx_level =  dx_base/std::pow(2,it->refinement_level());
+        //        domain::Operator::curl_transpose<stream_f,u>( *(it->data()),dx_level);
+        //    }
+        //    client->template buffer_exchange<u>(l);
 
-        }
+        //}
     }
 
 
@@ -288,6 +291,22 @@ struct Adaptivity:public SetupBase<Adaptivity,parameters>
             return w_theta*std::cos(theta);
         else
             return 0.0;
+
+    }
+    template<class Field, class OctantType>
+    int adapt_level_change(OctantType* it, float_type source_max)
+    {
+        float_type field_max = 0;
+
+        auto& nodes_domain=it->data()->nodes_domain();
+        for(auto it2=nodes_domain.begin();it2!=nodes_domain.end();++it2 )
+        {
+            if (std::fabs(it2->template get<Field>()) > field_max)
+                field_max = std::fabs(it2->template get<Field>());
+
+        }
+        int l_change = static_cast<int>( ceil(nLevelRefinement_-log(field_max/source_max) / log(refinement_factor_))) - it->refinement_level();
+        return l_change>0 ? l_change:0;
 
     }
 

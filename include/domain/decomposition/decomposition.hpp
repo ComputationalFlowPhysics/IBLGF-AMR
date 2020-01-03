@@ -9,8 +9,10 @@
 #include <dictionary/dictionary.hpp>
 
 #include <boost/mpi/communicator.hpp>
+#include <boost/serialization/set.hpp>
 #include <domain/decomposition/client.hpp>
 #include <domain/decomposition/server.hpp>
+
 
 #include <fmm/fmm.hpp>
 
@@ -76,6 +78,13 @@ public: //memeber functions
             server()->leaf_query();
             server()->correction_query();
             server()->mask_query();
+            int c_l=0;
+            for (auto it = domain_->begin(); it != domain_->end(); ++it)
+            {
+                if (it -> is_leaf())
+                    c_l++;
+            }
+
         }
         else if(client())
         {
@@ -91,6 +100,13 @@ public: //memeber functions
             client()->query_masks();
             client()->disconnect();
 
+            int c_l=0;
+            for (auto it = domain_->begin(); it != domain_->end(); ++it)
+            {
+                if (it -> is_leaf() && it->locally_owned())
+                    c_l++;
+            }
+            client()->halo_reset();
         }
     }
 
@@ -138,16 +154,16 @@ public: //memeber functions
     }
 
     template<class Field>
-    std::vector<octant_t*> adapt_decoposition()
+    auto adapt_decoposition()
     {
-        std::vector<octant_t*> interpolation_list{};
+        std::map<key_t,octant_t*> interpolation_list{};
 
         if (server())
         {
             std::vector<key_t> octs_all;
             std::vector<int>   level_change_all;
 
-            std::vector<octant_t*> refinement_server;
+            std::vector<octant_t*> refinement_server{};
             std::vector<std::vector<key_t>> refinement(comm_.size());
             std::vector<std::vector<key_t>> deletion(comm_.size());
 
@@ -168,6 +184,7 @@ public: //memeber functions
                 if (level_change_all[c]<0)
                 {
                     auto key = octs_all[c];
+                    std::cout<< "attempt deleting " << key<<std::endl;
                     auto it = domain_->tree()->find_octant(key);
                     if (!it)
                         throw std::runtime_error("can't find oct on server");
@@ -189,8 +206,12 @@ public: //memeber functions
                 if (level_change_all[c]>0)
                 {
                     auto key = octs_all[c];
+                    std::cout<< "attempt refining " << key<<std::endl;
 
-                    if (!domain_->tree()->try_2to1(key, checklist)) continue;
+                    if (!domain_->tree()->try_2to1(key, checklist))
+                    {
+                        continue;
+                    }
 
                     auto oct = domain_->tree()->find_octant(key);
                     if (oct->rank()==0)
@@ -201,11 +222,10 @@ public: //memeber functions
             }
 
             // refine those allow 2to1 ratio
-            for (auto oct:refinement_server)
+            for (auto& oct:refinement_server)
             {
+                if (!oct->is_leaf())
                 auto key = oct->key();
-                std::cout<<oct->key()<<std::endl;
-
 
                 //check if there is a correction child
                 for (int i = 0; i < oct->num_children(); ++i)
@@ -219,57 +239,59 @@ public: //memeber functions
                 }
 
                 domain_->refine(oct);
-
-                for (int i = 0; i < oct->num_children(); ++i)
-                {
-                    auto child = oct->child(i);
-                    child->rank() = oct->rank();
-                }
-
-                // this only stores the parent of all new leafs
-                refinement[oct->rank()].emplace_back(key);
             }
-            std::cout<< " start removing octants " << std::endl;
 
-            // unmark all new corrections
-            domain_->mark_correction();
+            domain_->tree()->construct_level_maps();
 
             // 4. check all that can be removed
-            // remove leafs
-            for (auto it = domain_->begin(); it != domain_->end(); ++it)
+            // 4.1 remove leafs
+
+            const auto base_level=domain_->tree()->base_level();
+            for(int l= domain_->tree()->depth()-1; l>=base_level;--l)
             {
-                if (it->is_correction()) continue;
-                bool delete_all_children=true;
-
-                for (int i = 0; i < it->num_children(); ++i)
+                for (auto it = domain_->begin(l);
+                        it != domain_->end(l);
+                        ++it)
                 {
-                    auto child = it->child(i);
-                    if (!child )
-                        continue;
+                    if (it->is_correction() || it->is_leaf()) continue;
+                    bool delete_all_children=true;
 
-                    if (!child->aim_deletion() || !child->is_leaf())
-                    {
-                        delete_all_children=false;
-                        break;
-                    }
-                }
-
-                if (delete_all_children)
-                {
                     for (int i = 0; i < it->num_children(); ++i)
                     {
                         auto child = it->child(i);
-                        if (!child )
+                        if (!child || !child->data())
                             continue;
-                        std::cout<<child->rank()<<std::endl;
-                        deletion[child->rank()].emplace_back(child->key());
 
-                        //child->deallocate_data();
-                        it->delete_child(i);
+                        if (!child->aim_deletion())
+                        {
+                            delete_all_children=false;
+                            break;
+                        }
                     }
-                    it->flag_leaf(true);
+
+                    if (delete_all_children)
+                    {
+                        for (int i = 0; i < it->num_children(); ++i)
+                        {
+                            auto child = it->child(i);
+                            if (!child || !child->data())
+                                continue;
+
+                            // only keop the locally owned ones to be be
+                            // correct
+                            deletion[child->rank()].emplace_back(child->key());
+                            child->rank()=-1;
+                            domain_->tree()->delete_oct(child);
+                        }
+                        it->flag_leaf(true);
+                    }
                 }
             }
+
+            // After delete all extra leafs, try to unmark the correction
+            // deletion mark
+            domain_->tree()->construct_level_maps();
+            domain_->mark_correction();
 
             // remove remove corrections
             for (auto it = domain_->begin(); it != domain_->end(); ++it)
@@ -277,20 +299,29 @@ public: //memeber functions
                 if (it->is_correction() && it->aim_deletion())
                 {
                     deletion[it->rank()].emplace_back(it->key());
+                    domain_->tree()->delete_oct(it.ptr());
                 }
             }
 
+            // for new octants, set the ranks to be equal to their parents'
+            // ranks
+            for (auto it = domain_->begin(); it != domain_->end(); ++it)
+            {
+                if (it->rank()!=-1 || !it->data()) continue;
+                it->rank()=it->parent()->rank();
+                refinement[it->rank()].emplace_back(it->key());
+            }
+
             // update the tree structure
+
             domain_->tree()->construct_leaf_maps(true);
             domain_->tree()->construct_level_maps();
-            domain_->tree()->construct_influence_lists();
-            domain_->tree()->construct_neighbor_lists();
+            domain_->tree()->construct_lists();
 
             fmm_mask_builder_t::fmm_lgf_mask_build(domain_);
             fmm_mask_builder_t::fmm_vortex_streamfun_mask(domain_);
 
             // 5. send back refine/delete keys
-            std::cout<< " Sending refinement/deletion lists back" << std::endl;
             for(int i=1;i<comm_.size();++i)
             {
                 comm_.send(i,i+0*comm_.size(), refinement[i] );
@@ -307,7 +338,7 @@ public: //memeber functions
             std::vector<key_t> refinement_local;
             std::vector<key_t> deletion_local;
 
-            client()->template send_adapt_attempts<Field>(domain_->register_refinement_condition());
+            client()->template send_adapt_attempts<Field>(domain_->register_adapt_condition());
 
             comm_.recv(0,comm_.rank()+0*comm_.size(),refinement_local);
             comm_.recv(0,comm_.rank()+1*comm_.size(),deletion_local);
@@ -315,18 +346,32 @@ public: //memeber functions
             comm_.recv(0,0,depth);
             domain_->tree()->depth()=depth;
 
-            for (auto k:deletion_local)
-                std::cout<<k<<std::endl;
-
             // Local refinement
+
+            domain_->tree()->insert_keys(refinement_local, [&](octant_t* _o){
+                    auto level = _o->refinement_level();
+                    level=level>=0?level:0;
+                    auto bbase=domain_->tree()->octant_to_level_coordinate(
+                            _o->tree_coordinate(),level);
+                    //if(!_o->data())
+                    {
+                    _o->data()=std::make_shared<datablock_t>(bbase,
+                            domain_->block_extent(),level, true);
+                    }
+                    _o->rank()=comm_.rank();
+                    });
+
             for (auto k:refinement_local)
             {
                 auto oct =domain_->tree()->find_octant(k);
-                domain_->refine(oct, false);
-                interpolation_list.emplace_back(oct);
+                std::cout<<"loacl: "<< oct->is_correction()<< oct->key()<<std::endl;
+                auto o_p = oct->parent();
+                interpolation_list.emplace(o_p->key(), o_p);
             }
 
             // Local deletion
+            std::sort(deletion_local.begin(), deletion_local.end(), [](key_t k1, key_t k2)->bool{return k1.level()>k2.level();});
+            boost::mpi::communicator world;
             for(auto& key : deletion_local)
             {
                 //find the octant
@@ -334,25 +379,12 @@ public: //memeber functions
                 if(!it)
                     throw std::runtime_error("can't find the octant to be deleted");
 
-                if(it->is_leaf_search())
-                {
-                    //delete
-                    int cnumber=it->key().child_number();
-                    it->deallocate_data();
-                    auto p=it->parent();
-                    if(p) p->delete_child(cnumber);
-                }
-                else
-                {
-                    it->deallocate_data();
-                }
+                domain_->tree()->delete_oct(it);
             }
 
         }
 
-        std::cout<<" Sync from server ----------------------- start" << std::endl;
         sync_decomposition();
-        std::cout<<" Sync from server ----------------------- end "<< std::endl;
 
         return interpolation_list;
 

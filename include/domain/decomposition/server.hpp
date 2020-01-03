@@ -211,12 +211,13 @@ public:
             }
         }
 
+        std::cout<<" Octant ranks" <<std::endl;
         for( auto it = domain_->begin_df(); it!= domain_->end_df();++it )
         {
             if(it->rank()==-1)
             {
-                throw std::runtime_error("Domain decomposition (Server):"
-                        " Some octant's rank was not set");
+                std::cout<<"Domain decomposition (Server):"
+                        " Some octant's rank was not set"<<std::endl;
             }
         }
         std::cout<<"Done with initial load balancing"<<std::endl;
@@ -354,13 +355,13 @@ public:
         for(auto& key : _task->data())
         {
             auto oct =domain_->tree()->find_octant(key);
-            if(oct)
+            if(oct&&oct->data())
             { (*_out)[count++]=(oct->fmm_mask());
             }
             else
             {
-                throw std::runtime_error(
-                        "can't find octant for mask query");
+                std::cout<<("Can't find mask for oct on server")<<std::endl;
+                //(*_out)[count++]=false;
             }
         }
     }
@@ -373,7 +374,7 @@ public:
         for(auto& key : _task->data())
         {
             auto oct =domain_->tree()->find_octant(key);
-            if(oct)
+            if(oct&&oct->data())
             { (*_out)[count++]=(oct->is_correction());
             }
             else
@@ -391,11 +392,12 @@ public:
         for(auto& key : _task->data())
         {
             auto oct =domain_->tree()->find_octant(key);
-            if(oct)
+            if(oct && oct->data())
             { (*_out)[count++]=(oct->is_leaf());
             }
             else
             {
+                std::cout<<("Can't find oct on server")<<std::endl;
                 (*_out)[count++]=false;
             }
         }
@@ -409,7 +411,7 @@ public:
         for(auto& key :  _task->data())
         {
             auto oct =domain_->tree()->find_octant(key);
-            if(oct)
+            if(oct && oct->data())
                 (*_out)[count++]=oct->rank();
             else
                 (*_out)[count++]=-1;

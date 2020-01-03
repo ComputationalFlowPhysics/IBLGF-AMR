@@ -260,7 +260,7 @@ namespace interpolation
                 for (int i = 0; i < parent->num_children(); ++i)
                 {
                     auto child = parent->child(i);
-                    if (child == nullptr ||
+                    if (!child ||
                             !child ->data() ||
                             !child->data()->is_allocated())
                         continue;

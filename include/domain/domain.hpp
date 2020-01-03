@@ -54,6 +54,7 @@ public:
     using decompositon_type = Decomposition<Domain>;
 
     using refinement_condition_fct_t = std::function<bool(octant_t*, int diff_level)>;
+    using adapt_condition_fct_t = std::function<int(octant_t*, float_type source_max)>;
 
     template<class DictionaryPtr>
     using block_initialze_fct = std::function<std::vector<extent_t>(DictionaryPtr,Domain*)>;
@@ -235,25 +236,52 @@ public: //C/Dtors
         auto base_=extent_t(min);
         bounding_box_=block_descriptor_t(base_*e, extent*e+1);
         return bases;
+        std::cout<<"Initial base level blocks done "<<std::endl;
 
     }
 
     void mark_correction()
     {
-
         const auto base_level=this->tree()->base_level();
 
         this->tree()->construct_leaf_maps(true);
         this->tree()->construct_level_maps();
-        this->tree()->construct_neighbor_lists();
+        this->tree()->construct_lists();
 
-        // Add correction buffers
-        for(int l=base_level+1;l<= this->tree()->depth();++l)
+        for (auto it=this->begin(); it!=this->end(); ++it)
+            it->physical(false);
+
+        for(int l=this->tree()->depth()-1; l>=base_level;--l)
         {
             for (auto it = this->begin(l);
                     it != this->end(l);
                     ++it)
             {
+                it->physical( it->is_leaf());
+
+                if (!it->physical())
+                {
+                    for (int i = 0; i < it->num_children(); ++i)
+                    {
+                        auto child = it->child(i);
+                        if (child && child->data())
+                            it->physical(it->physical() || child->physical());
+                    }
+                }
+            }
+        }
+
+
+
+        // Add correction buffers
+        for(int l=base_level+1;l< this->tree()->depth();++l)
+        {
+            for (auto it = this->begin(l);
+                    it != this->end(l);
+                    ++it)
+            {
+                if (!it->physical()) continue;
+
                 it->tree()->
                 insert_correction_neighbor(*it,
                         [this](auto neighbor_it)
@@ -263,28 +291,46 @@ public: //C/Dtors
                                 neighbor_it->tree_coordinate(), level);
 
                         bool init_field=false;
-                        neighbor_it->aim_deletion(false);
-                        neighbor_it->flag_correction(true);
-                        neighbor_it->flag_leaf(false);
-
                         neighbor_it->data()=
                             std::make_shared<datablock_t>(bbase, block_extent_,level,init_field);
-                        neighbor_it->rank()=neighbor_it->parent()->rank();
                         } );
             }
         }
 
-        this->tree()->construct_leaf_maps(true);
+        this->tree()->construct_lists();
         this->tree()->construct_level_maps();
-        this->tree()->construct_neighbor_lists();
-        this->tree()->construct_influence_lists();
+        this->tree()->construct_leaf_maps(true);
+
+        for(int l=base_level+1;l< this->tree()->depth();++l)
+        {
+            for (auto it = this->begin(l);
+                    it != this->end(l);
+                    ++it)
+            {
+                if (!it->is_leaf()) continue;
+
+                for(int i=0;i<it->nNeighbors();++i)
+                {
+                    auto neighbor_it=it->neighbor(i);
+                    if (!neighbor_it || !neighbor_it->data()|| neighbor_it->physical()) continue;
+
+                    neighbor_it->aim_deletion(false);
+                    neighbor_it->flag_correction(true);
+
+                }
+            }
+        }
+
+        this->tree()->construct_level_maps();
+        this->tree()->construct_leaf_maps(true);
+        this->tree()->construct_lists();
 
         // flag base level boundary correction
         for (auto it = this->begin(base_level);
                 it != this->end(base_level);
                 ++it)
         {
-            if (!it->is_leaf()) continue;
+            if (!it->physical()) continue;
             bool _neighbors_exists=true;
             for(int i=0;i<it->nNeighbors();++i)
             {
@@ -303,8 +349,7 @@ public: //C/Dtors
         }
 
         this->tree()->construct_level_maps();
-        this->tree()->construct_neighbor_lists();
-        this->tree()->construct_influence_lists();
+        this->tree()->construct_lists();
 
     }
 
@@ -314,7 +359,7 @@ public: //C/Dtors
         {
             this->tree()->construct_leaf_maps();
             this->tree()->construct_level_maps();
-            this->tree()->construct_neighbor_lists();
+            this->tree()->construct_lists();
 
             const auto base_level=this->tree()->base_level();
             for(int l=0;l<nRef;++l)
@@ -331,12 +376,10 @@ public: //C/Dtors
 
             this->tree()->construct_leaf_maps();
             this->tree()->construct_level_maps();
-            this->tree()->construct_neighbor_lists();
-            //this->tree()->construct_influence_lists();
+            this->tree()->construct_lists();
 
             for (int global_=0; global_<level_up_max; ++global_)
             {
-                std::cout<<global_<<std::endl;
                 for (int l = this->tree()->depth()-1; l>=base_level; --l)
                 {
                     for (auto it = begin(l); it != end(l); ++it)
@@ -349,7 +392,7 @@ public: //C/Dtors
                 }
                 this->tree()->construct_leaf_maps();
                 this->tree()->construct_level_maps();
-                this->tree()->construct_neighbor_lists();
+                this->tree()->construct_lists();
             }
 
             mark_correction();
@@ -364,7 +407,7 @@ public: //C/Dtors
     }
 
     template<class CriterionField>
-    std::vector<octant_t*> adapt()
+    auto adapt()
     {
         //communicating with server
         return decomposition_.template adapt_decoposition<CriterionField>();
@@ -429,15 +472,13 @@ public:
             refine(octant_it,
                 [this](auto child_it)
                 {
-                    auto level = child_it->level()-this->tree()->base_level();
+                    auto level = child_it->level() - this->tree()->base_level();
                     auto bbase=t_->octant_to_level_coordinate(
                         child_it->tree_coordinate(), level);
 
                     bool init_field=this->is_client();
                     child_it->data()=
                         std::make_shared<datablock_t>(bbase, block_extent_,level,init_field);
-                    child_it->aim_deletion(false);
-                    //child_it->rank() = child_it->parent()->rank();
                 },
                 ratio_2to1
         );
@@ -652,6 +693,16 @@ public: //Access
         return ref_cond_;
     }
 
+    const adapt_condition_fct_t& register_adapt_condition() const noexcept
+    {
+        return adapt_cond_;
+    }
+    adapt_condition_fct_t& register_adapt_condition() noexcept
+    {
+        return adapt_cond_;
+    }
+
+
     std::vector<int> get_nPoints() noexcept
     {
         //auto client_comm_ = this->client_communicator();
@@ -747,13 +798,24 @@ private:
     /** @brief Default refinement condition */
     static bool refinement_cond_default( octant_t*, int ) { return false; }
 
+    static int adapt_cond_default( octant_t* it, float_type source_max)
+    {
+        if (it->refinement_level()>1)
+            return -1;
+        else
+            return 1;
+        //return rand()%3-1;
+    }
+
 private:
     std::shared_ptr<tree_t> t_;
     extent_t block_extent_;
     block_descriptor_t bounding_box_;
     float_type dx_base_;
     decompositon_type decomposition_;
+
     refinement_condition_fct_t ref_cond_ = &Domain::refinement_cond_default;
+    adapt_condition_fct_t adapt_cond_ = &Domain::adapt_cond_default;
 
     boost::mpi::communicator client_comm_;
 

@@ -67,8 +67,8 @@ public: //member types
     Ifherk(simulation_type* _simulation)
     :
     simulation_(_simulation),
-    domain_(_simulation->domain_.get())
-    //psolver(_simulation)
+    domain_(_simulation->domain_.get()),
+    psolver(_simulation)
     {
         std::cout<< "IFHERK initialized --- "  << std::endl;
         dx_          = domain_->dx_base();
@@ -165,8 +165,11 @@ public:
     template<class AdaptField, class CriterionField>
     void adapt()
     {
+        boost::mpi::communicator world;
         auto client = domain_->decomposition().client();
 
+        world.barrier();
+        std::cout<< "Adapt - coarsify"  << std::endl;
         if (client)
         {
             //claen non leafs
@@ -178,11 +181,14 @@ public:
 
         }
 
+        world.barrier();
+        std::cout<< "Adapt - communication"  << std::endl;
         auto intrp_list = domain_->template adapt<CriterionField>();
 
+        world.barrier();
+        std::cout<< "Adapt - intrp"  << std::endl;
         if (client)
         {
-
             // Intrp
             for (std::size_t _field_idx=0; _field_idx<AdaptField::nFields; ++_field_idx)
             {
@@ -197,12 +203,17 @@ public:
                     <AdaptField, AdaptField>(l,false,false,-1,_field_idx);
                 }
 
-                for (auto oct:intrp_list)
+                for (auto& oct:intrp_list)
                 {
-                    psolver.c_cntr_nli_.template nli_intrp_node<AdaptField, AdaptField>(oct, AdaptField::mesh_type, _field_idx, _field_idx, false, false);
+                    std::cout<< oct.second << std::endl;
+                    if (!oct.second || !oct.second->data()) continue;
+                    //std::cout<<oct.second->key()<<std::endl;
+                    psolver.c_cntr_nli().template nli_intrp_node<AdaptField, AdaptField>(oct.second, AdaptField::mesh_type, _field_idx, _field_idx, false, true);
                 }
             }
         }
+        std::cout<< "Adapt - done"  << std::endl;
+        world.barrier();
     }
 
 

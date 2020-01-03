@@ -148,6 +148,8 @@ public:
 
 
 public:
+    auto begin() const noexcept {return dfs_iterator(root_.get());}
+    auto end () const noexcept {return dfs_iterator();}
 
     octant_iterator begin_leafs() const noexcept {return leafs_.begin();}
     octant_iterator end_leafs  () const noexcept {return leafs_.end();}
@@ -229,29 +231,37 @@ public:
 
     octant_type* root()const noexcept{return root_.get();}
 
+
+    auto unfounded_neighbors(octant_type* _l)
+    {
+        std::vector<key_type> keys;
+
+        auto _k=_l->key();
+        auto neighbor_keys=_k.get_neighbor_keys();
+
+        for(auto& nk:neighbor_keys)
+        {
+            if (nk.is_end()) continue;
+            if (nk==_k) continue;
+            const auto neighbor_i = this->find_octant(nk);
+            if (!neighbor_i || !neighbor_i->data())
+                keys.emplace_back(nk);
+        }
+
+        return keys;
+    }
+
     template<class Function>
     void insert_correction_neighbor(octant_type* _l, const Function& _f)
     {
 
-        bool _neighbors_exists=true;
-        for(int i=0;i<_l->nNeighbors();++i)
-        {
-            if(!_l->neighbor(i))
-                _neighbors_exists=false;
-            else if(!_l->neighbor(i)->data())
-                _neighbors_exists=false;
-        }
+        auto keys = unfounded_neighbors(_l);
 
-        if (!_neighbors_exists)
+        for(auto&k: keys)
         {
-            std::set<key_type> _neighbor_keys;
-            neighbor_lookup(_l, _neighbor_keys,true );
-
-            for(auto&k: _neighbor_keys)
-            {
-                auto _neighbor=this->insert_td(k);
+            auto _neighbor=this->insert_td(k);
+            if (!_neighbor || !_neighbor->data())
                 _f(_neighbor);
-            }
         }
     }
 
@@ -269,7 +279,6 @@ public:
 
         if (check == checklist.end())
         {
-            bool refine_2to1=true;
 
             int rf_l=_k.level() - base_level_;
             if (rf_l<0)
@@ -281,8 +290,9 @@ public:
             auto neighbor_keys=_k.get_neighbor_keys();
             for (auto nk:neighbor_keys)
             {
+                if (nk==_k) continue;
                 const auto neighbor_i = this->find_octant(nk);
-                if(neighbor_i==nullptr)
+                if(!neighbor_i || !neighbor_i->data() || !neighbor_i->is_leaf())
                 {
                     auto nk_p=nk.parent();
                     if ( !try_2to1(nk_p, checklist) )
@@ -305,8 +315,7 @@ public:
 
     template<class Function>
     void refine(octant_type* _l, const Function& _f,
-                 bool ratio_2to1 = true,
-                 bool trail = false)
+                 bool ratio_2to1 = true)
     {
 
         //Check 2:1 balance constraint
@@ -316,9 +325,7 @@ public:
             for(int i=0;i<_l->nNeighbors();++i)
             {
                 auto n_i=_l->neighbor(i);
-                if(! n_i)
-                    neighbors_exists=false;
-                else if(! n_i->data())
+                if(! n_i || !n_i->data())
                     neighbors_exists=false;
                 else
                     n_i->aim_deletion(false);
@@ -328,14 +335,13 @@ public:
             {
                 if(_l->refinement_level()>=1)
                 {
-                    std::set<key_type> neighbor_keys;
-                    neighbor_lookup(_l, neighbor_keys,true );
+                    auto neighbor_keys = unfounded_neighbors(_l);
                     for(auto&k: neighbor_keys)
                     {
                         auto parent_key=k.parent();
                         auto pa=this->insert_td(parent_key);
                         _f(pa);
-                        this->refine(pa,_f, ratio_2to1, trail);
+                        this->refine(pa,_f, ratio_2to1);
                     }
                 }
                 else{
@@ -350,11 +356,33 @@ public:
             if (_l->child(i)) continue;
             auto child=_l->refine(i);
             if(!child->data())_f(child);
-            child->flag_leaf(true);
         }
 
-        _l ->flag_leaf(false);
+        for(int i=0;i<_l->num_children();++i)
+        {
+            auto child = _l->child(i);
+            child->flag_leaf(true);
+            child->flag_correction(false);
+            child->aim_deletion(false);
+        }
+
+        _l->flag_leaf(false);
+        _l->flag_correction(false);
+        _l->aim_deletion(false);
+
         if(_l->level()+2 > depth_) depth_=_l->level()+2;
+    }
+
+    void delete_oct(octant_type* oct)
+    {
+        oct->rank()=-1;
+        oct->deallocate_data();
+        if(oct->is_leaf_search())
+        {
+            int cnumber=oct->key().child_number();
+            auto p=oct->parent();
+            if(p) p->delete_child(cnumber);
+        }
     }
 
     const auto& get_octant_to_level_coordinate() const noexcept
@@ -504,316 +532,156 @@ public: // misc
         dfs_iterator it_begin(root()); dfs_iterator it_end;
         for(auto it =it_begin;it!=it_end;++it)
         {
-           level_maps_[it->level()].emplace(it->key(),it.ptr());
+            if (it.ptr() && it->data())
+                level_maps_[it->level()].emplace(it->key(),it.ptr());
         }
     }
 
 
-public: // neighborlist
-    auto  construct_neighbor_lists(bool _global=true)noexcept
+public:
+
+    void lookup_local_change(std::set<key_type>& res)
     {
         dfs_iterator begin(root()); dfs_iterator end;
-        std::set<key_type> res;
         for(auto it =begin;it!=end;++it)
         {
-            neighbor_lookup(it.ptr(),res,_global);
+            res.emplace(it->key());
         }
-        return res;
     }
 
-    template<class Client>
-    void query_neighbor_octants( Client* _c)
+    void lookup_parents(std::set<key_type>& res)
     {
-        auto key_set=construct_neighbor_lists();
-
-        std::vector<key_type> keys;
-        keys.insert(keys.begin(),key_set.begin(), key_set.end());
-
-        auto ranks= _c->rank_query( keys );
-        for(std::size_t i = 0; i < ranks.size();++i )
+        dfs_iterator begin(root()); dfs_iterator end;
+        for(auto it =begin;it!=end;++it)
         {
-            if(ranks[i]>=0)
+            if (!it->locally_owned()) continue;
+            res.emplace(it->key().parent());
+        }
+    }
+
+    void lookup_children(std::set<key_type>& res)
+    {
+        dfs_iterator begin(root()); dfs_iterator end;
+        for(auto it =begin;it!=end;++it)
+        {
+            if (!it->locally_owned()) continue;
+            auto it_key=it->key();
+            for(int i=0;i<it->num_children();++i)
             {
-                auto nn = this->insert_td(keys[i]);
-                std::set<key_type> dummy;
-                neighbor_lookup(nn,dummy, false, true );
-                nn->rank()=ranks[i];
+                res.emplace(it_key.child(i));
             }
         }
     }
 
-public: // neighborlist
-    /** @brief Construction neighbor list based on  local tree */
-    void neighbor_lookup( octant_type* it,
-                          std::set<key_type>& res,
-                          bool _global,
-                          bool _update_neighbors=false )
+    void lookup_infls(std::set<key_type>& res)
     {
+        dfs_iterator begin(root()); dfs_iterator end;
+        for(auto it =begin;it!=end;++it)
+        {
+            if (!it->locally_owned()) continue;
+            auto n_keys=it->get_infl_keys();
+            for(auto& n_k:n_keys)
+                if (!n_k.is_end())
+                    res.emplace(n_k);
+        }
+    }
+
+    void lookup_neighbors(std::set<key_type>& res)
+    {
+        dfs_iterator begin(root()); dfs_iterator end;
+        for(auto it =begin;it!=end;++it)
+        {
+            if (!it->locally_owned()) continue;
+            auto n_keys=it->get_neighbor_keys();
+            for(auto& n_k:n_keys)
+                if (!n_k.is_end())
+                    res.emplace(n_k);
+        }
+    }
+
+    void construct_lists()
+    {
+        dfs_iterator begin(root()); dfs_iterator end;
+        for(auto it =begin;it!=end;++it)
+        {
+            neighbor_list_build(it.ptr());
+            influence_list_build(it.ptr());
+        }
+    }
+
+    void neighbor_list_build(octant_type* it)
+    {
+        boost::mpi::communicator  w;
+
         it->neighbor_clear();
         auto nkeys=it->get_neighbor_keys();
 
         for(std::size_t i = 0; i< nkeys.size();++i)
         {
-            if(nkeys[i].is_end()) continue;
             const auto neighbor_i = this->find_octant(nkeys[i]);
-            it->neighbor(i, neighbor_i);
-
-            if(_global && neighbor_i==nullptr)
-            {
-                res.emplace( nkeys[i] );
-            }
-            if(neighbor_i && _update_neighbors)
-            {
+            if (!neighbor_i || !neighbor_i->data())
+                it->neighbor(i, nullptr);
+            else
                 it->neighbor(i, neighbor_i);
-                const auto offset=
-                    it->tree_coordinate()-neighbor_i->tree_coordinate();
-                const auto idx=
-                    nearast_neighbor_hood.index(offset);
-                neighbor_i->neighbor(idx,it);
-            }
         }
+
     }
 
-
-public: // influence list
-
-
-
-    /** @brief Construct the influence list of this octrant
-     *
-     *  @detail: Influence list are the children of the parent of the octant it
-     *           without the nearest neighbor.
-     */
-    auto construct_influence_lists(bool _global= true)
+    void influence_list_build(octant_type* it)
     {
-        dfs_iterator it_begin(root()); dfs_iterator it_end;
-        std::set<influence_helper> res;
-        for(auto it =it_begin;it!=it_end;++it)
-        {
-            influence_lookup(it.ptr(),res);
-        }
-        return res;
-    }
-
-    template<class Client>
-    void query_influence_octants( Client* _c)
-    {
-        const auto infl_helper=construct_influence_lists();
-
-        std::vector<key_type> keys;
-        for(auto& inf : infl_helper)
-        {
-            keys.emplace_back(inf.key());
-        }
-
-        auto ranks= _c->rank_query( keys );
-        int count=0;
-        for(auto& inf : infl_helper)
-        {
-            if(ranks[count]>=0)
-            {
-                auto nn = this->insert_td(inf.key());
-                nn->rank()=ranks[count];
-                std::set<influence_helper> dummy;
-                influence_lookup(nn,dummy, false );
-                inf.set(nn);
-                //_f(nn);
-            }
-            ++count;
-        }
-    }
-
-private:// influence list
-
-    //FIXME: This is bullshit, lets thinks about a set or indexing the
-    //       whole 6^3 field
-    struct influence_helper
-    {
-        influence_helper( key_type _k ): key_(_k){ }
-        bool operator< (const influence_helper &other) const
-        {
-            return key_ < other.key_;
-        }
-
-        ///< append to lists
-        void update(octant_type* _oc, int _inf_number) const
-        {
-            influence_.emplace_back(_oc);
-            influence_number_.emplace_back(_inf_number);
-        }
-
-        //Set the octant belonging to key within the infl of ocant in
-        //influence_
-        void set(octant_type* oc) const
-        {
-            for(std::size_t i =0; i<influence_.size();++i)
-            {
-                influence_[i]->influence(influence_number_[i], oc);
-            }
-        }
-
-        const auto& key() const {return key_;}
-        auto& key() {return key_;}
-
-    private:
-        key_type key_; //of octant in questions
-
-        //ocntants influence by key-cotant and influence index
-        mutable  std::vector<octant_type*> influence_;
-        mutable std::vector<int> influence_number_;
-    };
-
-    /** @brief Construct the influence list of this octrant.
-     *
-     *  @detail: Influence list are the children of the parent of the octant it
-     *           without the nearest neighbor.
-     *           This list is stored direcly in the octrant
-     *  @return: List of keys that have not been in the local tree.
-     *           These keys need to checked for existence in the global tree.
-     */
-    auto influence_lookup(octant_type* it,
-                          std::set<influence_helper>& influence_set,
-                          bool _global=true)
-    {
-        if(!it) return;
         it->influence_clear();
-
         int infl_id = 0;
         it->influence_number(infl_id);
-        const auto coord = it->key().coordinate();
+        if(!it->parent() ) return;
 
-        if(!it->parent()) return;
-        octant_type* p = it->parent();
 
-        for (int p_n_id=0;
-                 p_n_id<static_cast<int>(p->num_neighbors());
-                 ++p_n_id)
+        auto nkeys=it->get_infl_keys();
+
+        for(std::size_t i = 0; i< nkeys.size();++i)
         {
-            octant_type*  p_n = p->neighbor(p_n_id);
-            if (p_n)
-            {
-                for(int p_n_child_id=0;
-                        p_n_child_id<static_cast<int>(p_n->num_children());
-                        ++p_n_child_id)
-                {
-                    const auto child_key = p_n->key().child(p_n_child_id);
-                    const auto p_n_c_coord = child_key.coordinate();
-                    if ((std::abs(p_n_c_coord.x() - coord.x())>1) ||
-                            (std::abs(p_n_c_coord.y() - coord.y())>1) ||
-                            (std::abs(p_n_c_coord.z() - coord.z())>1))
-                    {
-                        const auto p_n_child = p_n->child(p_n_child_id);
-                        if (p_n_child)
-                        {
-                            it->influence(infl_id, p_n_child);
-                        }
-                        else if( _global  )
-                        {
-                            auto inf= influence_set.emplace(child_key);
-                            inf.first->update( it, infl_id);
-                        }
-
-                        infl_id++;
-                    }
-                }
-            }
+            const auto infl_i = this->find_octant(nkeys[i]);
+            if (infl_i && infl_i->data())
+                it->influence(infl_id++, infl_i);
         }
         it->influence_number(infl_id);
+
     }
 
 
 public: //children and parent queries
 
-    /** @brief Query the ranks for all children */
     template<class Client>
-    void query_children( Client* _c)
+    void query_ranks( Client* _c, std::set<key_type>& res)
     {
         dfs_iterator it_begin(root()); dfs_iterator it_end;
 
         std::vector<key_type> keys;
-        for(auto it =it_begin;it!=it_end;++it)
-        {
-            const auto it_key = it->key();
-            if(it->locally_owned())
-            {
-                //Check children
-                for(int i=0;i<it->num_children();++i)
-                {
+        std::copy(res.begin(), res.end(), std::back_inserter(keys));
 
-                    if(!it->child(i))
-                    {
-                        keys.emplace_back(it_key.child(i));
-                    }
-                    else if(!it->child(i)->locally_owned())
-                    {
-                        keys.emplace_back(it_key.child(i));
-                    }
+        std::sort(keys.begin(), keys.end(), [](key_type k1, key_type k2)->bool{return k1.level()>k2.level();});
+        auto ranks= _c->rank_query( keys );
+        for(std::size_t i = 0; i < ranks.size();++i )
+        {
+            boost::mpi::communicator world;
+            auto nn = this->find_octant(keys[i]);
+            if (nn && nn->data())
+            {
+                if(ranks[i]>=0)
+                {
+                    nn->rank()=ranks[i];
+                }
+                else
+                {
+                    this->delete_oct(nn);
                 }
             }
-        }
-
-        auto ranks= _c->rank_query( keys );
-        for(std::size_t i = 0; i < ranks.size();++i )
-        {
-            if(ranks[i]>=0)
+            else
             {
-                auto nn = this->insert_td(keys[i]);
-                //_f(nn);
-                nn->rank()=ranks[i];
-            }
-        }
-    }
-
-  /** @brief Query the ranks for all children */
-    template<class Client>
-    void query_parents( Client* _c)
-    {
-        dfs_iterator it_begin(root()); dfs_iterator it_end;
-        ++it_begin;
-
-        std::set<key_type> keys_set;
-        std::vector<key_type> keys;
-        for(auto it =it_begin;it!=it_end;++it)
-        {
-            const auto it_key = it->key();
-            if(it->locally_owned())
-            {
-                //Check children
-                if( !(it->parent()) || (!it->parent()->locally_owned()) )
+                if (ranks[i]>=0)
                 {
-                    keys_set.insert(it_key.parent());
+                    auto nn=this->insert_td(keys[i]);
+                    nn->rank()=ranks[i];
                 }
-            }
-        }
-        std::copy(keys_set.begin(), keys_set.end(), std::back_inserter(keys));
-        auto ranks= _c->rank_query( keys );
-        for(std::size_t i = 0; i < ranks.size();++i )
-        {
-            if(ranks[i]>=0)
-            {
-                auto nn = this->insert_td(keys[i]);
-                nn->rank()=ranks[i];
-            }
-        }
-    }
-
-    template<class Client>
-    void query_ranks( Client* _c)
-    {
-        dfs_iterator it_begin(root()); dfs_iterator it_end;
-
-        std::vector<key_type> keys;
-        for(auto it =it_begin;it!=it_end;++it)
-        {
-            keys.emplace_back(it->key());
-        }
-        auto ranks= _c->rank_query( keys );
-        for(std::size_t i = 0; i < ranks.size();++i )
-        {
-            if(ranks[i]>=0)
-            {
-                auto nn = this->find_octant(keys[i]);
-                nn->rank()=ranks[i];
             }
         }
     }
@@ -826,7 +694,8 @@ public: //children and parent queries
         std::vector<key_type> keys;
         for(auto it =it_begin;it!=it_end;++it)
         {
-            keys.emplace_back(it->key());
+            if (it->data())
+                keys.emplace_back(it->key());
         }
 
         auto masks=_c->mask_query( keys );
@@ -852,7 +721,8 @@ public: //children and parent queries
         std::vector<key_type> keys;
         for(auto it =it_begin;it!=it_end;++it)
         {
-            keys.emplace_back(it->key());
+            if (it->data())
+                keys.emplace_back(it->key());
         }
 
         auto corrections=_c->correction_query( keys );
@@ -878,7 +748,8 @@ public: //children and parent queries
         std::vector<key_type> keys;
         for(auto it =it_begin;it!=it_end;++it)
         {
-            keys.emplace_back(it->key());
+            if (it->data())
+                keys.emplace_back(it->key());
         }
 
         auto leafs=_c->leaf_query( keys );
@@ -899,12 +770,16 @@ public: //Query ranks of all octants, which are assigned in local tree
     template<class Client>
     void construct_ghosts( Client* _c )
     {
-        this->query_neighbor_octants(_c);
-        this->query_influence_octants(_c);
-        this->query_children(_c);
-        this->query_parents(_c);
-    }
+        std::set<key_type> res;
+        this->lookup_neighbors(res);
+        this->lookup_infls(res);
+        this->lookup_children(res);
+        this->lookup_parents(res);
+        this->lookup_local_change(res);
 
+        this->query_ranks(_c, res);
+        this->allocate_ghosts(_c);
+    }
 
     /** @brief Query from server and construct all
      *         maps for neighbors, influence
@@ -913,66 +788,40 @@ public: //Query ranks of all octants, which are assigned in local tree
     template<class Client>
     void construct_maps( Client* _c )
     {
-        //Queries
-        this->construct_ghosts(_c);
-        this->query_ranks(_c);
-        this->allocate_ghosts(_c);
-
-        //Maps constructions
+        std::cout<< "Construct Ghosts" << std::endl;
+        this-> construct_ghosts(_c);
+        this-> construct_lists();
         this-> construct_level_maps();
     }
 
     template<class Client>
     void allocate_ghosts( Client* _c )
     {
-        auto _f =[_c, this](octant_type* _o){
+        auto _f =[_c, this](octant_type* _o, bool allocate_data){
             auto level = _o->refinement_level();
             level=level>=0?level:0;
             auto bbase=this->octant_to_level_coordinate(
                     _o->tree_coordinate(),level);
             _o->data()=std::make_shared<DataType>(bbase,
-                    _c->domain()->block_extent(),level, true);
-        };
-
-        auto _f2 =[_c, this](octant_type* _o){
-            auto level = _o->refinement_level();
-            level=level>=0?level:0;
-            auto bbase=this->octant_to_level_coordinate(
-                    _o->tree_coordinate(),level);
-            _o->data()=std::make_shared<DataType>(bbase,
-                    _c->domain()->block_extent(),level, false);
+                    _c->domain()->block_extent(),level, allocate_data);
         };
 
         //Allocate Ghost octants
         dfs_iterator it_begin(root()); dfs_iterator it_end;
         for(auto it =it_begin;it!=it_end;++it)
         {
-            //allocate neighbors
-            if(!it->locally_owned())continue;
+            if (it->locally_owned()) continue;
+            if (it->rank()<0) continue;
+            if (it->data() && it->data()->is_allocated()) continue;
 
-            if(it->refinement_level()>=0)
+            bool allocate_data = false;
+            for(int i=0;i<it->num_children();++i)
             {
-                for(std::size_t i=0;i<it->num_neighbors();++i)
-                {
-                    auto neighbor=it->neighbor(i);
-                    if(neighbor  &&
-                       !neighbor->locally_owned()
-                        &&!neighbor->data()) _f2(neighbor);
-                }
+                if (it->child(i) && it->child(i)->locally_owned())
+                    allocate_data=true;
             }
-
-            //allocate influence list
-            for(std::size_t i=0;i<it->influence_number();++i)
-            {
-                auto inf=it->influence(i);
-                if(inf  && !inf->locally_owned() && !inf->data()) _f2(inf);
-            }
-
-            //allocate parent
-            auto p=it->parent();
-            if(p && !p->locally_owned()) _f(p);
+            _f(it.ptr(),allocate_data);
         }
-
     }
 
 
@@ -991,6 +840,10 @@ public: // leafs maps
 
         for(auto it =it_begin;it!=it_end;++it)
         {
+            //TODO why would it not have ptr()
+            if (!it.ptr() || !it->data())
+                continue;
+
             if (!_from_existing_flag)
                 it->flag_leaf(it->is_leaf_search());
 

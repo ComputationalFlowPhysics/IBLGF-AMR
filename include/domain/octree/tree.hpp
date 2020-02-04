@@ -233,7 +233,7 @@ public:
     octant_type* root()const noexcept{return root_.get();}
 
 
-    auto unfounded_neighbors(octant_type* _l, bool correction_as_neighbors=true)
+    auto unfound_neighbors(octant_type* _l, bool correction_as_neighbors=true)
     {
         std::vector<key_type> keys;
 
@@ -259,7 +259,7 @@ public:
     void insert_correction_neighbor(octant_type* _l, const Function& _f)
     {
 
-        auto keys = unfounded_neighbors(_l);
+        auto keys = unfound_neighbors(_l);
 
         for(auto&k: keys)
         {
@@ -298,16 +298,6 @@ public:
                 neighbor_i->aim_deletion(false);
                 deletionReset_2to1(neighbor_i->parent(), checklist);
             }
-
-            //for(int i=0;i<_l->nNeighbors();++i)
-            //{
-            //    auto n_i=_l->neighbor(i);
-            //    if(n_i )
-            //    {
-            //        n_i->aim_deletion(false);
-            //        deletionReset_2to1(n_i->parent(), checklist);
-            //    }
-            //}
 
             checklist.emplace(_l);
         }
@@ -393,7 +383,7 @@ public:
 
             if(_l->refinement_level()>=0)
             {
-                auto neighbor_keys = unfounded_neighbors(_l,false);
+                auto neighbor_keys = unfound_neighbors(_l,false);
                 for(auto&k: neighbor_keys)
                 {
                     if (k.is_end()) continue;
@@ -455,23 +445,23 @@ public:
         oct->rank()=-1;
         oct->deallocate_data();
 
-        //if(oct->is_leaf_search())
-        //{
-        //    int cnumber=oct->key().child_number();
-        //    oct=oct->parent();
+        if(oct->is_leaf_search())
+        {
+            int cnumber=oct->key().child_number();
+            oct=oct->parent();
 
-        //    if(oct) oct->delete_child(cnumber);
-        //}
+            if(oct) oct->delete_child(cnumber);
+        }
 
-        //while (oct->refinement_level() <0 && oct->is_leaf_search())
-        //{
-        //    oct->rank()=-1;
-        //    oct->deallocate_data();
+        while (oct->refinement_level()<0 && oct->is_leaf_search())
+        {
+            oct->rank()=-1;
+            oct->deallocate_data();
 
-        //    int cnumber=oct->key().child_number();
-        //    oct=oct->parent();
-        //    if(oct) oct->delete_child(cnumber);
-        //}
+            int cnumber=oct->key().child_number();
+            oct=oct->parent();
+            if(oct) oct->delete_child(cnumber);
+        }
     }
 
     const auto& get_octant_to_level_coordinate() const noexcept

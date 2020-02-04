@@ -283,7 +283,7 @@ public: //mpi info
         for(int c=0;c<this->num_children();++c)
         {
             const auto child = this->child(c);
-            if(!child) continue;
+            if(!child || !child->data()) continue;
             if(child->locally_owned() && child->data() && child->data()->is_allocated() && fmm_masks)
             {
                 return true;
@@ -304,7 +304,7 @@ public: //mpi info
         for(int c=0;c<this->num_children();++c)
         {
             auto child = this->child(c);
-            if(!child) continue;
+            if(!child || !child->data()) continue;
             if(!child->locally_owned() && fmm_masks)
             {
                 unique_ranks.insert(child->rank());

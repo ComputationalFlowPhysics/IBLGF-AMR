@@ -139,16 +139,12 @@ struct Adaptivity:public SetupBase<Adaptivity,parameters>
         simulation_.write2("adapt0.hdf5");
         initialize();
 
-        domain_->output_level_test();
-        simulation_.write2("adapt1.hdf5");
-
-        int N=3;
-        for (int i=0;i<N;++i)
+        for (int i=0;i<tot_steps_;++i)
         {
-            //shift[2]=i;
+            shift[2]=i*2;
             initialize(shift);
             ifherk.template adapt<source, source>();
-            simulation_.write2("adapt"+std::to_string(i+2)+".hdf5");
+            simulation_.write2("adapt"+std::to_string(i+1)+".hdf5");
         }
 
 
@@ -370,7 +366,7 @@ struct Adaptivity:public SetupBase<Adaptivity,parameters>
     template<class Field, class OctantType>
     int adapt_level_change(OctantType* it, float_type source_max)
     {
-        float_type field_max = 0;
+        float_type field_max = 1e-14;
 
         auto& nodes_domain=it->data()->nodes_domain();
         for(auto it2=nodes_domain.begin();it2!=nodes_domain.end();++it2 )
@@ -386,19 +382,22 @@ struct Adaptivity:public SetupBase<Adaptivity,parameters>
 
         if (l_aim>nLevelRefinement_)
             l_aim=nLevelRefinement_;
-        l_change = l_aim - it->refinement_level();
 
         if (it->refinement_level()==0)
         {
             if (field_max>source_max*base_threshold)
-                l_change = std::max(l_change,0);
+                l_aim = std::max(l_aim,0);
         }
+
+        l_change = l_aim - it->refinement_level();
+        if (l_change>0)
+            std::cout<< field_max<<" " << l_change<<it->key()<<std::endl;
         //std::cout<<l_change<<" - " << it->key()<<std::endl;
         //return l_change<0 ? l_change:0;
         //return l_change>0 ? l_change:0;
-        //return l_change;
+        return l_change;
 
-        return (it->refinement_level()>0)? -1:0;
+        //return (it->refinement_level()>0)? -1:0;
     }
 
     /** @brief  Refienment conditon for octants.  */

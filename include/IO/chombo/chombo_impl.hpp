@@ -149,7 +149,7 @@ private:
                     auto* p = block;
                     while (i==track && recurse<recurse_lim) // only enters for first block in group
                     {
-                        unsigned int shift = pow(pow(2,Dim), recurse+1)-1;
+                        unsigned int shift = pow(pow(2,Dim), recurse+1)-1+1e10;
                         unsigned int shift_final = pow(pow(2,Dim), recurse);
 
                         if ( (p->key().child_number() == 0) &&

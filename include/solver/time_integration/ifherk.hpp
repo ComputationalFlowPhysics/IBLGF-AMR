@@ -172,32 +172,12 @@ public:
         std::cout<< "Adapt - coarsify"  << std::endl;
         if (client)
         {
-            ////claen non leafs
-            //clean<AdaptField>(true);
+            //claen non leafs
+            clean<AdaptField>(true);
 
-            ////Coarsification:
-            //for (std::size_t _field_idx=0; _field_idx<AdaptField::nFields; ++_field_idx)
-            //    psolver.template source_coarsify<AdaptField,AdaptField>(_field_idx, _field_idx, AdaptField::mesh_type);
-
-            for (auto it  = domain_->begin();
-                    it != domain_->end(); ++it)
-            {
-                if (!it->data()) continue;
-                if (!it ->data()->is_allocated())
-                    continue;
-
-                if (it->refinement_level()!=0) continue;
-
-
-                for (std::size_t field_idx=0; field_idx<AdaptField::nFields; ++field_idx)
-                {
-                    auto& lin_data = it->data()->
-                        template get_linalg_data<AdaptField>(field_idx);
-
-                    std::fill(lin_data.begin(),lin_data.end(),-1000.0);
-                }
-            }
-
+            //Coarsification:
+            for (std::size_t _field_idx=0; _field_idx<AdaptField::nFields; ++_field_idx)
+                psolver.template source_coarsify<AdaptField,AdaptField>(_field_idx, _field_idx, AdaptField::mesh_type);
 
         }
 
@@ -205,33 +185,55 @@ public:
         std::cout<< "Adapt - communication"  << std::endl;
         auto intrp_list = domain_->template adapt<CriterionField>();
 
-        //world.barrier();
-        //std::cout<< "Adapt - intrp"  << std::endl;
-        //if (client)
-        //{
-        //    // Intrp
-        //    for (std::size_t _field_idx=0; _field_idx<AdaptField::nFields; ++_field_idx)
-        //    {
+        world.barrier();
+        std::cout<< "Adapt - intrp"  << std::endl;
+        if (client)
+        {
+            // Intrp
+            for (std::size_t _field_idx=0; _field_idx<AdaptField::nFields; ++_field_idx)
+            {
 
-        //        for (int l = domain_->tree()->depth()-2;
-        //                l >= domain_->tree()->base_level(); --l)
-        //        {
-        //            client->template buffer_exchange<AdaptField>(l);
+                for (int l = domain_->tree()->depth()-2;
+                        l >= domain_->tree()->base_level(); --l)
+                {
+                    client->template buffer_exchange<AdaptField>(l);
 
-        //            domain_->decomposition().client()->
-        //            template communicate_updownward_assign
-        //            <AdaptField, AdaptField>(l,false,false,-1,_field_idx);
-        //        }
+                    domain_->decomposition().client()->
+                    template communicate_updownward_assign
+                    <AdaptField, AdaptField>(l,false,false,-1,_field_idx);
+                }
 
-        //        for (auto& oct:intrp_list)
-        //        {
-        //            if (!oct || !oct->data()) continue;
-        //            psolver.c_cntr_nli().template nli_intrp_node<AdaptField, AdaptField>(oct, AdaptField::mesh_type, _field_idx, _field_idx, false, true);
-        //        }
-        //    }
-        //}
-        //std::cout<< "Adapt - done"  << std::endl;
-        //world.barrier();
+                for (auto& oct:intrp_list)
+                {
+                    if (!oct || !oct->data()) continue;
+                    psolver.c_cntr_nli().template nli_intrp_node<AdaptField, AdaptField>(oct, AdaptField::mesh_type, _field_idx, _field_idx, false, true);
+                }
+            }
+        }
+        //test correction
+        for (std::size_t _field_idx=0; _field_idx<AdaptField::nFields; ++_field_idx)
+        {
+
+            for (int l = domain_->tree()->depth()-2;
+                    l >= domain_->tree()->base_level(); --l)
+            {
+                for (auto it=domain_->begin(l); it!=domain_->end(l); ++it)
+                {
+                    if (!it->locally_owned()) continue;
+                    for(int c=0;c<it->num_children();++c)
+                    {
+                        const auto child = it->child(c);
+                        if(!child || !child->data() || !child->is_correction() || child->is_leaf() ) continue;
+                        auto& lin_data = it->data()->
+                            template get_linalg_data<AdaptField>(_field_idx);
+
+                        std::fill(lin_data.begin(),lin_data.end(),-1000.0);
+                    }
+                }
+            }
+        }
+         std::cout<< "Adapt - done"  << std::endl;
+        world.barrier();
     }
 
 
@@ -359,7 +361,8 @@ private:
                 xt::noalias( view(lin_data,xt::all(),N+1,xt::all())) *= 0.0;
                 xt::noalias( view(lin_data,xt::all(),xt::all(),N+1)) *= 0.0;
 
-                if (non_leaf_only && it->is_leaf() && it->locally_owned() && !it->is_correction()) continue;
+                //TODO whether to clean base_level correction?
+                if (non_leaf_only && it->is_leaf() && it->locally_owned() ) continue;
                 std::fill(lin_data.begin(),lin_data.end(),0.0);
 
             }

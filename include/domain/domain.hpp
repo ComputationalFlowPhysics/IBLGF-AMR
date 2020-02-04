@@ -250,11 +250,23 @@ public: //C/Dtors
             if ( (max[d]+1)*e[d]> bd_base_[d]+bd_extent_[d])
             {
                 std::cout<<"The bouding box provided might be smaller than a domain block"<<std::endl;
-                bd_extent_[d]=(max[d]+1)*e[d];
+                bd_extent_[d]=(max[d]+1)*e[d] -  bd_base_[d];
             }
         }
 
         bounding_box_=block_descriptor_t(bd_base_, bd_extent_);
+
+        int baseBlockBufferNumber_=1;
+        auto bd_key_base_=bd_base_;
+        auto bd_key_extent_=bd_extent_;
+        for(std::size_t d=0;d<min.size();++d)
+        {
+            bd_key_base_[d]=bd_key_base_[d]/e[d];
+            bd_key_extent_[d]=bd_key_extent_[d]/e[d];
+        }
+
+        interior_key_coord_box_=block_descriptor_t(bd_key_base_, bd_key_extent_);
+
         return bases;
         std::cout<<"Initial base level blocks done "<<std::endl;
 
@@ -271,9 +283,9 @@ public: //C/Dtors
                         it != this->end(l);
                         ++it)
                 {
-                    //it->flag_leaf(it->refinement_level()==0);
-                    if (it->refinement_level()>0)
-                        this->tree()->delete_oct(it.ptr());
+                    it->flag_leaf(it->refinement_level()==0);
+                    //if (it->refinement_level()>0)
+                    //    this->tree()->delete_oct(it.ptr());
                 }
             }
             this->tree()->construct_lists();
@@ -281,6 +293,8 @@ public: //C/Dtors
             this->tree()->construct_leaf_maps(true);
 
         }
+
+        this->decomposition().sync_decomposition();
         int count=0;
         for (auto it = this->begin_leafs();
                 it != this->end_leafs();
@@ -289,10 +303,9 @@ public: //C/Dtors
             ++count;
         }
             std::cout<< " Number of leafs = " << count<< std::endl;
-        //this->decomposition().sync_decomposition();
     }
 
-    void delete_all_children(std::vector<octant_t*>& deletion_server, std::vector<std::vector<key_t>>& deletion, bool non_correction_child=true)
+    void delete_all_children(std::vector<std::vector<key_t>>& deletion, bool non_correction_child=true)
     {
         const int base_level=this->tree()->base_level();
         for(int l= this->tree()->depth()-2; l>=base_level;--l)
@@ -324,21 +337,16 @@ public: //C/Dtors
                     for (int i = 0; i < it->num_children(); ++i)
                     {
                         auto child = it->child(i);
-                        if( child && !child->data())
-                            std::cout<<child->key()<<std::endl;
 
                         if (!child || !child->data())
                             continue;
 
-
-
                         deletion[child->rank()].emplace_back(child->key());
-                        child->rank()=-1;
                         child->flag_leaf(false);
                         child->flag_correction(false);
                         child->aim_deletion(true);
 
-                        deletion_server.emplace_back(child);
+                        this->tree()->delete_oct(child);
                     }
                     //std::cout<<"server deleting - " <<it->rank()<<it->is_leaf() << it->is_correction()<< it->key() << std::endl;
                     std::cout<<"server deleting children of " << it->key()<<std::endl;
@@ -456,7 +464,7 @@ public: //C/Dtors
             {
                 it->flag_correction(true);
                 it->aim_deletion(false);
-                it->flag_leaf(false);
+                it->flag_leaf(true);
             }
         }
 
@@ -507,7 +515,7 @@ public: //C/Dtors
                 this->tree()->construct_lists();
             }
 
-            //mark_correction();
+            mark_correction();
         }
 
     }
@@ -864,6 +872,7 @@ public:
         os<<"Tree depth "<<d.tree()->depth()<<std::endl;
 
         os<<"Domain Bounding Box: "<<d.bounding_box_<<std::endl;
+        os<<"Interior Key Bounding Box: "<<d.interior_key_coord_box_<<std::endl;
         //os<<"Fields:"<<std::endl;
         //auto it=d.begin_leafs();
         //it->data()->for_fields([&](auto& field)
@@ -926,6 +935,7 @@ private:
     extent_t bd_base_, bd_extent_;
 
     block_descriptor_t bounding_box_;
+    block_descriptor_t interior_key_coord_box_;
     float_type dx_base_;
     decompositon_type decomposition_;
 

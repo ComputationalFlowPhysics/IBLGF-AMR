@@ -94,7 +94,11 @@ public: //C/Dtors
         else client_comm_=client_comm_.split(0);
 
         //Construct base mesh, vector of bases with a given block_extent_
-        block_extent_=_dictionary->template get_or<int>("block_extent", 10);
+        block_extent_=_dictionary->template get_or<int>("block_extent", 14);
+
+        bd_base_=_dictionary->template get<int,Dim>("bd_base");
+        bd_extent_=_dictionary->template get<int, Dim>("bd_extent");
+
         std::vector<extent_t> bases;
         if(_init_fct)
         {
@@ -109,8 +113,7 @@ public: //C/Dtors
         read_parameters(_dictionary);
 
         //Construct tree of base mesh
-        extent_t max_extent=_dictionary->template get_or<int>("max_extent", 4096);
-        construct_tree( bases,max_extent, block_extent_);
+        construct_tree( bases,bd_extent_, block_extent_);
     }
 
     template<class DictionaryPtr>
@@ -119,17 +122,21 @@ public: //C/Dtors
         if(_dictionary->has_key("Lx"))
         {
             const float_type L= _dictionary->template get<float_type>("Lx");
-            dx_base_=L/ (bounding_box_.extent()[0]-1);
+            dx_base_=L/ (bounding_box_.extent()[0]);
         }
         else if(_dictionary->has_key("Ly"))
         {
             const float_type L= _dictionary->template get<float_type>("Ly");
-            dx_base_=L/ (bounding_box_.extent()[1]-1);
+            dx_base_=L/ (bounding_box_.extent()[1]);
         }
         else if(_dictionary->has_key("Lz"))
         {
             const float_type L= _dictionary->template get<float_type>("Lz");
-            dx_base_=L/ (bounding_box_.extent()[2]-1);
+            dx_base_=L/ (bounding_box_.extent()[2]);
+        }
+        else if(_dictionary->has_key("dx_base"))
+        {
+            dx_base_=_dictionary->template get<float_type>("dx_base");
         }
         else
         {
@@ -232,11 +239,116 @@ public: //C/Dtors
            }
         }
 
-        extent_t extent(max-min+1);
-        auto base_=extent_t(min);
-        bounding_box_=block_descriptor_t(base_*e, extent*e+1);
+        for(std::size_t d=0;d<min.size();++d)
+        {
+            if ((min[d])*e[d]<bd_base_[d])
+            {
+                std::cout<<"The bouding box provided might be smaller than a domain block"<<std::endl;
+                bd_extent_[d]+=(bd_base_[d]-min[d]*e[d]);
+                bd_base_[d]=min[d]*e[d];
+            }
+            if ( (max[d]+1)*e[d]> bd_base_[d]+bd_extent_[d])
+            {
+                std::cout<<"The bouding box provided might be smaller than a domain block"<<std::endl;
+                bd_extent_[d]=(max[d]+1)*e[d];
+            }
+        }
+
+        bounding_box_=block_descriptor_t(bd_base_, bd_extent_);
         return bases;
         std::cout<<"Initial base level blocks done "<<std::endl;
+
+    }
+
+    void output_level_test()
+    {
+        if(is_server())
+        {
+            const int base_level=this->tree()->base_level();
+            for(int l= this->tree()->depth()-1; l>=base_level;--l)
+            {
+                for (auto it = this->begin(l);
+                        it != this->end(l);
+                        ++it)
+                {
+                    //it->flag_leaf(it->refinement_level()==0);
+                    if (it->refinement_level()>0)
+                        this->tree()->delete_oct(it.ptr());
+                }
+            }
+            this->tree()->construct_lists();
+            this->tree()->construct_level_maps();
+            this->tree()->construct_leaf_maps(true);
+
+        }
+        int count=0;
+        for (auto it = this->begin_leafs();
+                it != this->end_leafs();
+                ++it)
+        {
+            ++count;
+        }
+            std::cout<< " Number of leafs = " << count<< std::endl;
+        //this->decomposition().sync_decomposition();
+    }
+
+    void delete_all_children(std::vector<octant_t*>& deletion_server, std::vector<std::vector<key_t>>& deletion, bool non_correction_child=true)
+    {
+        const int base_level=this->tree()->base_level();
+        for(int l= this->tree()->depth()-2; l>=base_level;--l)
+        {
+            for (auto it = this->begin(l);
+                    it != this->end(l);
+                    ++it)
+            {
+                if (it->is_leaf_search(true)) continue;
+
+                bool delete_all_children=true;
+
+                for (int i = 0; i < it->num_children(); ++i)
+                {
+
+                    auto child = it->child(i);
+                    if (!child || !child->data())
+                        continue;
+
+                    if ( (!child->is_leaf() && !child->is_correction()) || !child->aim_deletion() || (child->is_correction() && non_correction_child) )
+                    {
+                        delete_all_children=false;
+                        break;
+                    }
+                }
+
+                if (delete_all_children)
+                {
+                    for (int i = 0; i < it->num_children(); ++i)
+                    {
+                        auto child = it->child(i);
+                        if( child && !child->data())
+                            std::cout<<child->key()<<std::endl;
+
+                        if (!child || !child->data())
+                            continue;
+
+
+
+                        deletion[child->rank()].emplace_back(child->key());
+                        child->rank()=-1;
+                        child->flag_leaf(false);
+                        child->flag_correction(false);
+                        child->aim_deletion(true);
+
+                        deletion_server.emplace_back(child);
+                    }
+                    //std::cout<<"server deleting - " <<it->rank()<<it->is_leaf() << it->is_correction()<< it->key() << std::endl;
+                    std::cout<<"server deleting children of " << it->key()<<std::endl;
+                    it->flag_leaf(true);
+                    it->flag_correction(false);
+                    it->aim_deletion(false);
+                }
+            }
+        }
+
 
     }
 
@@ -244,12 +356,11 @@ public: //C/Dtors
     {
         const auto base_level=this->tree()->base_level();
 
-        this->tree()->construct_leaf_maps(true);
-        this->tree()->construct_level_maps();
-        this->tree()->construct_lists();
-
         for (auto it=this->begin(); it!=this->end(); ++it)
+        {
             it->physical(false);
+        }
+
 
         for(int l=this->tree()->depth()-1; l>=base_level;--l)
         {
@@ -307,7 +418,8 @@ public: //C/Dtors
                     it != this->end(l);
                     ++it)
             {
-                if (!it->is_leaf()) continue;
+                if (!it->physical()) continue;
+                //it->flag_correction(false);
 
                 for(int i=0;i<it->nNeighbors();++i)
                 {
@@ -344,7 +456,7 @@ public: //C/Dtors
             {
                 it->flag_correction(true);
                 it->aim_deletion(false);
-                //it->flag_leaf(false);
+                it->flag_leaf(false);
             }
         }
 
@@ -374,7 +486,7 @@ public: //C/Dtors
                 }
             }
 
-            this->tree()->construct_leaf_maps();
+            this->tree()->construct_leaf_maps(true);
             this->tree()->construct_level_maps();
             this->tree()->construct_lists();
 
@@ -390,12 +502,12 @@ public: //C/Dtors
                         }
                     }
                 }
-                this->tree()->construct_leaf_maps();
+                this->tree()->construct_leaf_maps(true);
                 this->tree()->construct_level_maps();
                 this->tree()->construct_lists();
             }
 
-            mark_correction();
+            //mark_correction();
         }
 
     }
@@ -795,6 +907,7 @@ private:
     }
 
 
+
     /** @brief Default refinement condition */
     static bool refinement_cond_default( octant_t*, int ) { return false; }
 
@@ -810,6 +923,8 @@ private:
 private:
     std::shared_ptr<tree_t> t_;
     extent_t block_extent_;
+    extent_t bd_base_, bd_extent_;
+
     block_descriptor_t bounding_box_;
     float_type dx_base_;
     decompositon_type decomposition_;

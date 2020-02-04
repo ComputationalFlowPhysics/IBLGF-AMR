@@ -6,6 +6,7 @@
 #include <memory>
 #include <cmath>
 #include <set>
+#include <unordered_set>
 #include <string>
 #include <map>
 #include <unordered_map>
@@ -232,7 +233,7 @@ public:
     octant_type* root()const noexcept{return root_.get();}
 
 
-    auto unfounded_neighbors(octant_type* _l)
+    auto unfounded_neighbors(octant_type* _l, bool correction_as_neighbors=true)
     {
         std::vector<key_type> keys;
 
@@ -245,7 +246,10 @@ public:
             if (nk==_k) continue;
             const auto neighbor_i = this->find_octant(nk);
             if (!neighbor_i || !neighbor_i->data())
-                keys.emplace_back(nk);
+                    keys.emplace_back(nk);
+            else if( !correction_as_neighbors && neighbor_i->is_correction())
+                    keys.emplace_back(nk);
+
         }
 
         return keys;
@@ -268,12 +272,49 @@ public:
     bool try_2to1(key_type _k)
     {
         // Dynmaic Programming to rduce repeated checks
-        std::map<key_type, bool> checklist;
+        std::unordered_map<key_type, bool> checklist;
         return try_2to1(_k, checklist);
 
     }
 
-    bool try_2to1(key_type _k, std::map<key_type,bool>& checklist)
+    void deletionReset_2to1(octant_type* _l, std::unordered_set<octant_type*>& checklist)
+    {
+        auto check=checklist.find(_l);
+
+        if (check == checklist.end())
+        {
+            if (_l->refinement_level()<0)
+                return;
+
+            auto k = _l->key();
+            auto neighbor_keys=k.get_neighbor_keys();
+            for (auto nk:neighbor_keys)
+            {
+                auto neighbor_i = this->find_octant(nk);
+
+                if(!neighbor_i || !neighbor_i->data() )
+                    continue;
+
+                neighbor_i->aim_deletion(false);
+                deletionReset_2to1(neighbor_i->parent(), checklist);
+            }
+
+            //for(int i=0;i<_l->nNeighbors();++i)
+            //{
+            //    auto n_i=_l->neighbor(i);
+            //    if(n_i )
+            //    {
+            //        n_i->aim_deletion(false);
+            //        deletionReset_2to1(n_i->parent(), checklist);
+            //    }
+            //}
+
+            checklist.emplace(_l);
+        }
+
+    }
+
+    bool try_2to1(key_type _k, std::unordered_map<key_type,bool>& checklist)
     {
         auto check=checklist.find(_k);
 
@@ -281,30 +322,51 @@ public:
         {
 
             int rf_l=_k.level() - base_level_;
-            if (rf_l<0)
-            {
-                checklist.emplace(_k, false);
-                return false;
-            }
-
             auto neighbor_keys=_k.get_neighbor_keys();
-            for (auto nk:neighbor_keys)
+
+            //if (rf_l<0)
+            //{
+            //    checklist.emplace(_k, false);
+            //    return false;
+            //}
+
+            if (rf_l>0)
             {
-                if (nk==_k) continue;
-                const auto neighbor_i = this->find_octant(nk);
-                if(!neighbor_i || !neighbor_i->data() || !neighbor_i->is_leaf())
+                for (auto nk:neighbor_keys)
                 {
-                    auto nk_p=nk.parent();
-                    if ( !try_2to1(nk_p, checklist) )
+                    if (nk==_k) continue;
+                    const auto neighbor_i = this->find_octant(nk);
+                    if(!neighbor_i || !neighbor_i->data() || !neighbor_i->is_leaf())
+                    {
+                        auto nk_p=nk.parent();
+                        if ( !try_2to1(nk_p, checklist) )
+                        {
+                            checklist.emplace(_k, false);
+                            return false;
+                        }
+                    }
+                }
+
+                checklist.emplace(_k, true);
+                return true;
+            }
+            else
+            {
+                // TODO : base level needs to be n distance away from the
+                // bounding box
+
+                // here just use the max key
+                for (auto nk:neighbor_keys)
+                {
+                    if (nk.is_end())
                     {
                         checklist.emplace(_k, false);
                         return false;
                     }
                 }
+                checklist.emplace(_k, true);
+                return true;
             }
-
-            checklist.emplace(_k, true);
-            return true;
         }
         else
         {
@@ -325,35 +387,50 @@ public:
             for(int i=0;i<_l->nNeighbors();++i)
             {
                 auto n_i=_l->neighbor(i);
-                if(! n_i || !n_i->data())
-                    neighbors_exists=false;
-                else
+                if(n_i && n_i->data())
                     n_i->aim_deletion(false);
             }
 
-            if(!neighbors_exists)
+            if(_l->refinement_level()>=0)
             {
-                if(_l->refinement_level()>=1)
+                auto neighbor_keys = unfounded_neighbors(_l,false);
+                for(auto&k: neighbor_keys)
                 {
-                    auto neighbor_keys = unfounded_neighbors(_l);
-                    for(auto&k: neighbor_keys)
+                    if (k.is_end()) continue;
+
+                    if (_l->refinement_level()==0)
+                    {
+                        auto oct=this->insert_td(k);
+                        if (!oct->data())
+                            _f(oct);
+
+                        oct->flag_leaf(true);
+                        oct->flag_correction(false);
+                        oct->aim_deletion(false);
+                    }
+                    else
                     {
                         auto parent_key=k.parent();
-                        auto pa=this->insert_td(parent_key);
-                        _f(pa);
+
+                        auto pa = this->find_octant(parent_key);
+                        if (!pa )
+                        {
+                            pa=this->insert_td(parent_key);
+                            _f(pa);
+                        }
                         this->refine(pa,_f, ratio_2to1);
                     }
                 }
-                else{
-                    //throw
-                    //std::runtime_error("Cannot satisfy 2:1 refinement requirement for base level ");
-                }
+            }
+            else{
+                //throw
+                //std::runtime_error("Cannot satisfy 2:1 refinement requirement for base level ");
             }
         }
 
         for(int i=0;i<_l->num_children();++i)
         {
-            if (_l->child(i)) continue;
+            if (_l->child(i) && _l->child(i)->data()) continue;
             auto child=_l->refine(i);
             if(!child->data())_f(child);
         }
@@ -377,12 +454,24 @@ public:
     {
         oct->rank()=-1;
         oct->deallocate_data();
-        if(oct->is_leaf_search())
-        {
-            int cnumber=oct->key().child_number();
-            auto p=oct->parent();
-            if(p) p->delete_child(cnumber);
-        }
+
+        //if(oct->is_leaf_search())
+        //{
+        //    int cnumber=oct->key().child_number();
+        //    oct=oct->parent();
+
+        //    if(oct) oct->delete_child(cnumber);
+        //}
+
+        //while (oct->refinement_level() <0 && oct->is_leaf_search())
+        //{
+        //    oct->rank()=-1;
+        //    oct->deallocate_data();
+
+        //    int cnumber=oct->key().child_number();
+        //    oct=oct->parent();
+        //    if(oct) oct->delete_child(cnumber);
+        //}
     }
 
     const auto& get_octant_to_level_coordinate() const noexcept
@@ -457,7 +546,7 @@ private: //find
 
 
 
-private:  //Top down insert strategy
+public:  //Top down insert strategy
 
     octant_type* insert_td(const coordinate_type& x, int level)
     {
@@ -467,6 +556,8 @@ private:  //Top down insert strategy
     {
         return insert_impl_top_down(k,root_.get());
     }
+
+private:  //Top down insert strategy
 
     octant_type* insert_impl_top_down(const key_type& k, octant_type* n) const
     {
@@ -581,8 +672,10 @@ public:
             if (!it->locally_owned()) continue;
             auto n_keys=it->get_infl_keys();
             for(auto& n_k:n_keys)
+            {
                 if (!n_k.is_end())
                     res.emplace(n_k);
+            }
         }
     }
 
@@ -594,8 +687,10 @@ public:
             if (!it->locally_owned()) continue;
             auto n_keys=it->get_neighbor_keys();
             for(auto& n_k:n_keys)
+            {
                 if (!n_k.is_end())
                     res.emplace(n_k);
+            }
         }
     }
 
@@ -660,18 +755,22 @@ public: //children and parent queries
 
         std::sort(keys.begin(), keys.end(), [](key_type k1, key_type k2)->bool{return k1.level()>k2.level();});
         auto ranks= _c->rank_query( keys );
-        for(std::size_t i = 0; i < ranks.size();++i )
+        for(std::size_t i = 0; i < keys.size();++i )
         {
             boost::mpi::communicator world;
             auto nn = this->find_octant(keys[i]);
             if (nn && nn->data())
             {
-                if(ranks[i]>=0)
+                if(ranks[i]>0)
                 {
                     nn->rank()=ranks[i];
                 }
                 else
                 {
+                    nn->flag_leaf(false);
+                    nn->flag_correction(false);
+                    nn->aim_deletion(true);
+
                     this->delete_oct(nn);
                 }
             }
@@ -810,17 +909,17 @@ public: //Query ranks of all octants, which are assigned in local tree
         dfs_iterator it_begin(root()); dfs_iterator it_end;
         for(auto it =it_begin;it!=it_end;++it)
         {
-            if (it->locally_owned()) continue;
-            if (it->rank()<0) continue;
+            //if (it->locally_owned()) continue;
+            if (it->rank()<=0) continue;
             if (it->data() && it->data()->is_allocated()) continue;
 
             bool allocate_data = false;
             for(int i=0;i<it->num_children();++i)
             {
-                if (it->child(i) && it->child(i)->locally_owned())
+                if (it->child(i) && it->child(i)->data() && it->child(i)->locally_owned())
                     allocate_data=true;
             }
-            _f(it.ptr(),allocate_data);
+            _f(it.ptr(),allocate_data || it->locally_owned());
         }
     }
 
@@ -841,7 +940,7 @@ public: // leafs maps
         for(auto it =it_begin;it!=it_end;++it)
         {
             //TODO why would it not have ptr()
-            if (!it.ptr() || !it->data())
+            if ( !it->data())
                 continue;
 
             if (!_from_existing_flag)

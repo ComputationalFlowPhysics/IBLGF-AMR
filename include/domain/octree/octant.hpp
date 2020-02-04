@@ -128,8 +128,7 @@ public: //Ctors
         }
     }
 
-    std::array<key_type, nNeighbors()>
-    get_neighbor_keys()
+    auto get_neighbor_keys()
     {
         auto key=this->key();
         return key.get_neighbor_keys();
@@ -156,11 +155,14 @@ public: //Ctors
 
     void flag_mask(const fmm_mask_type fmm_flag)noexcept {fmm_masks_ = fmm_flag;}
 
-    bool is_leaf_search() const noexcept
+    bool is_leaf_search(bool require_data=false) const noexcept
     {
+        //TODO check if this is right
         for(int i = 0; i< this->num_children();++i)
         {
-            if(children_[i]!=nullptr ) return false;
+            if (require_data && children_[i] && children_[i]->data() ||
+                    !require_data && children_[i])
+                return false;
         }
         return true;
     }
@@ -282,7 +284,7 @@ public: //mpi info
         {
             const auto child = this->child(c);
             if(!child) continue;
-            if(child->locally_owned() && child->data() && fmm_masks)
+            if(child->locally_owned() && child->data() && child->data()->is_allocated() && fmm_masks)
             {
                 return true;
                 break;

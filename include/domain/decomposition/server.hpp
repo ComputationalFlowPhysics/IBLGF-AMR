@@ -397,7 +397,7 @@ public:
             }
             else
             {
-                std::cout<<("Can't find oct on server")<<std::endl;
+                std::cout<<("Can't find oct on server \n") << key<<std::endl;
                 (*_out)[count++]=false;
             }
         }

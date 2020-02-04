@@ -265,15 +265,16 @@ public:
     void send_adapt_attempts(Function aim_adapt)
     {
         boost::mpi::communicator w;
-        float_type source_max=1.0;
+        float_type source_max=1200.0;
 
-        std::vector<key_t> octs{};
-        std::vector<int>   level_change{};
+        std::vector<key_t> octs;
+        std::vector<int>   level_change;
         const int myRank=w.rank();
 
         int ac=0;
         for (auto it = domain_->begin_leafs(); it != domain_->end_leafs(); ++it)
         {
+
             if (!it->locally_owned()) continue;
 
             int l_change = aim_adapt(*it, source_max);
@@ -646,7 +647,7 @@ public:
 
             const auto idx=get_octant_idx(it);
 
-            if(it->locally_owned() && it->data() )
+            if(it->locally_owned() && it->data() && it->data()->is_allocated() )
             {
 
                 const auto unique_ranks=(_use_masks)?
@@ -673,7 +674,7 @@ public:
             }
 
             //Check if ghost has locally_owned children
-            if(!it->locally_owned() && it->data())
+            if(!it->locally_owned() && it->data() && it->data()->is_allocated())
             {
                 if( (_use_masks && it->has_locally_owned_children(fmm_mask_idx, mask_id)) ||
                     (!_use_masks && it->has_locally_owned_children())

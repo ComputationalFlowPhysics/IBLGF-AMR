@@ -132,15 +132,30 @@ struct Adaptivity:public SetupBase<Adaptivity,parameters>
     void run()
     {
         boost::mpi::communicator world;
+        decltype(domain_->bounding_box().max()) shift(0);
 
         time_integration_t ifherk(&this->simulation_);
+
         simulation_.write2("adapt0.hdf5");
-        ifherk.template adapt<source, source>();
+        initialize();
+
+        domain_->output_level_test();
         simulation_.write2("adapt1.hdf5");
-        ifherk.template adapt<source, source>();
-        simulation_.write2("adapt2.hdf5");
-        ifherk.template adapt<source, source>();
-        simulation_.write2("adapt3.hdf5");
+
+        int N=3;
+        for (int i=0;i<N;++i)
+        {
+            //shift[2]=i;
+            initialize(shift);
+            ifherk.template adapt<source, source>();
+            simulation_.write2("adapt"+std::to_string(i+2)+".hdf5");
+        }
+
+
+        //ifherk.template adapt<source, source>();
+        //simulation_.write2("adapt4.hdf5");
+        //ifherk.template adapt<source, source>();
+        //simulation_.write2("adapt5.hdf5");
 
         //poisson_solver_t psolver(&this->simulation_);
 
@@ -164,15 +179,8 @@ struct Adaptivity:public SetupBase<Adaptivity,parameters>
         //simulation_.write2("final.hdf5");
     }
 
-
-    /** @brief Initialization of poisson problem.
-     *  @detail Testing poisson with manufactured solutions: exp
-     */
-    void initialize()
+    void test_fill_everything()
     {
-        poisson_solver_t psolver(&this->simulation_);
-        if(domain_->is_server()) return ;
-
         boost::mpi::communicator world;
         auto center = (domain_->bounding_box().max() -
                        domain_->bounding_box().min()) / 2.0 +
@@ -189,6 +197,7 @@ struct Adaptivity:public SetupBase<Adaptivity,parameters>
                   it != domain_->end(); ++it)
         {
             if(!it->locally_owned()) continue;
+            //if(it->is_correction()) continue;
 
             auto dx_level =  dx_base/std::pow(2,it->refinement_level());
             auto scaling =  std::pow(2,it->refinement_level());
@@ -209,41 +218,106 @@ struct Adaptivity:public SetupBase<Adaptivity,parameters>
                float_type z = static_cast<float_type>
                    (coord[2]-center[2]*scaling+0.5)*dx_level;
 
-               it2->template get<source>() =
+               it2->template get<source>() = 1.0;
+           }
+        }
+
+
+    }
+
+
+    /** @brief Initialization of poisson problem.
+     *  @detail Testing poisson with manufactured solutions: exp
+     */
+    void initialize(decltype(domain_->bounding_box().max()) shift= (decltype(domain_->bounding_box().max()))(0))
+    {
+        //poisson_solver_t psolver(&this->simulation_);
+        if(domain_->is_server()) return ;
+
+        boost::mpi::communicator world;
+        auto center = (domain_->bounding_box().max() -
+                       domain_->bounding_box().min()) / 2.0 +
+                       domain_->bounding_box().min();
+
+        center += shift;
+        std::cout<<shift[0]<<shift[1]<<shift[2]<<std::endl;
+        std::cout<<center[0]<<center[1]<<center[2]<<std::endl;
+
+        //center+=0.5/std::pow(2,nRef);
+        const float_type dx_base = domain_->dx_base();
+
+        if (ic_filename_ != "null") return;
+
+        // Voriticity IC
+        for (auto it  = domain_->begin();
+                  it != domain_->end(); ++it)
+        {
+            if (!it.ptr() || !it->data() || !it ->data()->is_allocated())
+                continue;
+
+
+            auto dx_level =  dx_base/std::pow(2,it->refinement_level());
+            auto scaling =  std::pow(2,it->refinement_level());
+
+           auto view(it->data()->node_field().domain_view());
+           auto& nodes_domain=it->data()->nodes_domain();
+
+           //float_type T = dt_*tot_steps_;
+           for(auto it2=nodes_domain.begin();it2!=nodes_domain.end();++it2 )
+           {
+               // manufactured solution:
+               const auto& coord=it2->level_coordinate();
+
+               float_type x = static_cast<float_type>
+                   (coord[0]-center[0]*scaling+0.5)*dx_level;
+               float_type y = static_cast<float_type>
+                   (coord[1]-center[1]*scaling+0.5)*dx_level;
+               float_type z = static_cast<float_type>
+                   (coord[2]-center[2]*scaling+0.5)*dx_level;
+
+               if(!it->locally_owned() || !it->is_leaf())
+               {
+                   if (!it->locally_owned())
+                       it2->template get<source>() =0;
+                   else
+                       it2->template get<source>() =-1000;
+               }
+               else
+                   it2->template get<source>() =
                 vortex_ring_vor_ic(x,y,z,0)*vortex_ring_vor_ic(x,y,z,0) +
                 vortex_ring_vor_ic(x,y,z,1)*vortex_ring_vor_ic(x,y,z,1) +
                 vortex_ring_vor_ic(x,y,z,2)*vortex_ring_vor_ic(x,y,z,2);
 
 
-               /***********************************************************/
-                x = static_cast<float_type>
-                   (coord[0]-center[0]*scaling+0.5)*dx_level;
-                y = static_cast<float_type>
-                   (coord[1]-center[1]*scaling)*dx_level;
-                z = static_cast<float_type>
-                   (coord[2]-center[2]*scaling)*dx_level;
+               ///***********************************************************/
+               // x = static_cast<float_type>
+               //    (coord[0]-center[0]*scaling+0.5)*dx_level;
+               // y = static_cast<float_type>
+               //    (coord[1]-center[1]*scaling)*dx_level;
+               // z = static_cast<float_type>
+               //    (coord[2]-center[2]*scaling)*dx_level;
 
-               it2->template get<edge_aux>(0) = vortex_ring_vor_ic(x,y,z,0);
-               /***********************************************************/
-               x = static_cast<float_type>
-                   (coord[0]-center[0]*scaling)*dx_level;
-               y = static_cast<float_type>
-                   (coord[1]-center[1]*scaling+0.5)*dx_level;
-               z = static_cast<float_type>
-                   (coord[2]-center[2]*scaling)*dx_level;
+               //it2->template get<edge_aux>(0) = vortex_ring_vor_ic(x,y,z,0);
+               ///***********************************************************/
+               //x = static_cast<float_type>
+               //    (coord[0]-center[0]*scaling)*dx_level;
+               //y = static_cast<float_type>
+               //    (coord[1]-center[1]*scaling+0.5)*dx_level;
+               //z = static_cast<float_type>
+               //    (coord[2]-center[2]*scaling)*dx_level;
 
-               it2->template get<edge_aux>(1) = vortex_ring_vor_ic(x,y,z,1);
-               /***********************************************************/
-               x = static_cast<float_type>
-                   (coord[0]-center[0]*scaling)*dx_level;
-               y = static_cast<float_type>
-                   (coord[1]-center[1]*scaling)*dx_level;
-               z = static_cast<float_type>
-                   (coord[2]-center[2]*scaling+0.5)*dx_level;
+               //it2->template get<edge_aux>(1) = vortex_ring_vor_ic(x,y,z,1);
+               ///***********************************************************/
+               //x = static_cast<float_type>
+               //    (coord[0]-center[0]*scaling)*dx_level;
+               //y = static_cast<float_type>
+               //    (coord[1]-center[1]*scaling)*dx_level;
+               //z = static_cast<float_type>
+               //    (coord[2]-center[2]*scaling+0.5)*dx_level;
 
-               it2->template get<edge_aux>(2) = vortex_ring_vor_ic(x,y,z,2);
+               //it2->template get<edge_aux>(2) = vortex_ring_vor_ic(x,y,z,2);
 
-               /***********************************************************/
+               ///***********************************************************/
                it2->template get<decomposition>()=world.rank();
            }
         }
@@ -303,11 +377,28 @@ struct Adaptivity:public SetupBase<Adaptivity,parameters>
         {
             if (std::fabs(it2->template get<Field>()) > field_max)
                 field_max = std::fabs(it2->template get<Field>());
-
         }
-        int l_change = static_cast<int>( ceil(nLevelRefinement_-log(field_max/source_max) / log(refinement_factor_))) - it->refinement_level();
-        return l_change>0 ? l_change:0;
 
+        int l_change;
+        float_type base_threshold=1e-5;
+
+        int l_aim = static_cast<int>( ceil(nLevelRefinement_-log(field_max/source_max) / log(refinement_factor_)));
+
+        if (l_aim>nLevelRefinement_)
+            l_aim=nLevelRefinement_;
+        l_change = l_aim - it->refinement_level();
+
+        if (it->refinement_level()==0)
+        {
+            if (field_max>source_max*base_threshold)
+                l_change = std::max(l_change,0);
+        }
+        //std::cout<<l_change<<" - " << it->key()<<std::endl;
+        //return l_change<0 ? l_change:0;
+        //return l_change>0 ? l_change:0;
+        //return l_change;
+
+        return (it->refinement_level()>0)? -1:0;
     }
 
     /** @brief  Refienment conditon for octants.  */
@@ -330,7 +421,7 @@ struct Adaptivity:public SetupBase<Adaptivity,parameters>
         b.grow(2,2);
         auto corners= b.get_corners();
 
-        float_type w_max = std::abs(vortex_ring_vor_ic(float_type(R_),float_type(0.0),float_type(0.0),1));
+        float_type w_max = 1200;//std::abs(vortex_ring_vor_ic(float_type(R_),float_type(0.0),float_type(0.0),1));
 
         for(int i=b.base()[0];i<=b.max()[0];++i)
         {
@@ -345,32 +436,37 @@ struct Adaptivity:public SetupBase<Adaptivity,parameters>
                     float_type z = static_cast<float_type>
                     (k-center[2])*dx_level;
 
-                    float_type tmp_w = vortex_ring_vor_ic(x,y,z,0);
+                    float_type tmp_w =
+                    vortex_ring_vor_ic(x,y,z,0)*vortex_ring_vor_ic(x,y,z,0) +
+                    vortex_ring_vor_ic(x,y,z,1)*vortex_ring_vor_ic(x,y,z,1) +
+                    vortex_ring_vor_ic(x,y,z,2)*vortex_ring_vor_ic(x,y,z,2);
+
+
                     if(std::fabs(tmp_w) > w_max*pow(refinement_factor_, diff_level))
                         return true;
 
-                    x = static_cast<float_type>
-                    (i-center[0])*dx_level;
-                    y = static_cast<float_type>
-                    (j-center[1]+0.5)*dx_level;
-                    z = static_cast<float_type>
-                    (k-center[2])*dx_level;
+                    //x = static_cast<float_type>
+                    //(i-center[0])*dx_level;
+                    //y = static_cast<float_type>
+                    //(j-center[1]+0.5)*dx_level;
+                    //z = static_cast<float_type>
+                    //(k-center[2])*dx_level;
 
 
-                    tmp_w = vortex_ring_vor_ic(x,y,z,1);
-                    if(std::fabs(tmp_w) > w_max*pow(refinement_factor_, diff_level))
-                        return true;
+                    //tmp_w = vortex_ring_vor_ic(x,y,z,1);
+                    //if(std::fabs(tmp_w) > w_max*pow(refinement_factor_, diff_level))
+                    //    return true;
 
-                    x = static_cast<float_type>
-                    (i-center[0])*dx_level;
-                    y = static_cast<float_type>
-                    (j-center[1])*dx_level;
-                    z = static_cast<float_type>
-                    (k-center[2]+0.5)*dx_level;
+                    //x = static_cast<float_type>
+                    //(i-center[0])*dx_level;
+                    //y = static_cast<float_type>
+                    //(j-center[1])*dx_level;
+                    //z = static_cast<float_type>
+                    //(k-center[2]+0.5)*dx_level;
 
-                    tmp_w = vortex_ring_vor_ic(x,y,z,2);
-                    if(std::fabs(tmp_w) > w_max*pow(refinement_factor_, diff_level))
-                        return true;
+                    //tmp_w = vortex_ring_vor_ic(x,y,z,2);
+                    //if(std::fabs(tmp_w) > w_max*pow(refinement_factor_, diff_level))
+                    //    return true;
                 }
             }
         }
@@ -413,7 +509,7 @@ struct Adaptivity:public SetupBase<Adaptivity,parameters>
     float_type cfl_;
     float_type Re_;
     int tot_steps_;
-    float_type refinement_factor_=1./8;
+    float_type refinement_factor_=1./32;
 
     std::string ic_filename_, ref_filename_;
 };

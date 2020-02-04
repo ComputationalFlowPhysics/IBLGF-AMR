@@ -433,7 +433,7 @@ public:
             for (auto it_s  = domain_->begin(ls);
                     it_s != domain_->end(ls); ++it_s)
                 {
-                    if (it_s.ptr()==nullptr || !it_s->data() || !it_s->data()->is_allocated()) continue;
+                    if ( !it_s->data() || !it_s->data()->is_allocated()) continue;
 
                     c_cntr_nli_.nli_antrp_node
                         <From, To>(*it_s, mesh_type, real_mesh_field_idx, tmp_type_field_idx, correction_only, exclude_correction);

@@ -457,17 +457,17 @@ public: // queries
         return _index >= end(level())._index;
     }
 
-    auto get_neighbor_keys()
+    auto get_neighbor_keys(int distance=1)
     {
-        std::array<Key,nNeighbors()> res;
+        std::vector<Key> res;
         int count=0;
-        coordinate_type offset(1);
+        coordinate_type offset(distance);
 
         rcIterator<Dim>::apply(-1*offset,
                 2*offset+1,
                 [&](const coordinate_type& _p)
                 {
-                    res[count++] = this->neighbor(_p);
+                    res.emplace_back(this->neighbor(_p));
                 });
         return res;
     }
@@ -648,4 +648,16 @@ std::pair<Key<Dim>,Key<Dim>> normalized_range(const Key<Dim>& l, const Key<Dim>&
 
 }//namespace octree
 
+namespace std {
+
+    template <int Dim>
+    struct hash<octree::Key<Dim>>
+    {
+        auto operator()(const octree::Key<Dim>& k) const
+        {
+            return k.id();
+        }
+    };
+
+}
 #endif

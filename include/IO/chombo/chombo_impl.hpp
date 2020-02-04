@@ -595,10 +595,7 @@ public:
                                             auto n = field->get(i+base[0],j+base[1],k+base[2]);
 
                                             field_value = 0.0;
-                                            if (std::abs(n.template get<T>(fidx))>=1e-32)
-                                            {
                                                 field_value=static_cast<value_type>(n.template get<T>(fidx));
-                                            }
                                             single_block_data.push_back(field_value);
                                         }
                                     }

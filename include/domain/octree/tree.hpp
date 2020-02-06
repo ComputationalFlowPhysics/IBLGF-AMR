@@ -269,14 +269,6 @@ public:
         }
     }
 
-    bool try_2to1(key_type _k)
-    {
-        // Dynmaic Programming to rduce repeated checks
-        std::unordered_map<key_type, bool> checklist;
-        return try_2to1(_k, checklist);
-
-    }
-
     void deletionReset_2to1(octant_type* _l, std::unordered_set<octant_type*>& checklist)
     {
         auto check=checklist.find(_l);
@@ -304,56 +296,51 @@ public:
 
     }
 
-    bool try_2to1(key_type _k, std::unordered_map<key_type,bool>& checklist)
+    bool try_2to1(key_type _k,block_descriptor_type key_bd_box)
+    {
+        // Dynmaic Programming to rduce repeated checks
+        std::unordered_map<key_type, bool> checklist;
+        return try_2to1(_k,key_bd_box,checklist);
+
+    }
+
+    bool try_2to1(key_type _k, block_descriptor_type key_bd_box, std::unordered_map<key_type,bool>& checklist)
     {
         auto check=checklist.find(_k);
 
         if (check == checklist.end())
         {
-
             int rf_l=_k.level() - base_level_;
             auto neighbor_keys=_k.get_neighbor_keys();
 
-            //if (rf_l<0)
-            //{
-            //    checklist.emplace(_k, false);
-            //    return false;
-            //}
-
-            if (rf_l>0)
+            if (rf_l==0)
             {
                 for (auto nk:neighbor_keys)
                 {
                     if (nk==_k) continue;
-                    const auto neighbor_i = this->find_octant(nk);
-                    if(!neighbor_i || !neighbor_i->data() || !neighbor_i->is_leaf())
-                    {
-                        auto nk_p=nk.parent();
-                        if ( !try_2to1(nk_p, checklist) )
-                        {
-                            checklist.emplace(_k, false);
-                            return false;
-                        }
-                    }
-                }
-
-                checklist.emplace(_k, true);
-                return true;
-            }
-            else
-            {
-                // TODO : base level needs to be n distance away from the
-                // bounding box
-
-                // here just use the max key
-                for (auto nk:neighbor_keys)
-                {
-                    if (nk.is_end())
+                    if (!key_bd_box.is_inside(nk.coordinate()))
                     {
                         checklist.emplace(_k, false);
                         return false;
                     }
                 }
+                checklist.emplace(_k, true);
+                return true;
+            }
+            else if (rf_l>0)
+            {
+                for (auto nk:neighbor_keys)
+                {
+                    if (nk==_k) continue;
+
+                    auto nk_p=nk.parent();
+                    if ( !try_2to1(nk_p, key_bd_box, checklist) )
+                    {
+                        checklist.emplace(_k, false);
+                        return false;
+                    }
+                }
+
                 checklist.emplace(_k, true);
                 return true;
             }
@@ -877,7 +864,6 @@ public: //Query ranks of all octants, which are assigned in local tree
     template<class Client>
     void construct_maps( Client* _c )
     {
-        std::cout<< "Construct Ghosts" << std::endl;
         this-> construct_ghosts(_c);
         this-> construct_lists();
         this-> construct_level_maps();
@@ -959,9 +945,6 @@ private:
     std::vector<octant_ptr_map_type> level_maps_;   ///< Octants per level
     octant_ptr_map_type leafs_;                     ///< Map of tree leafs
 
-
-    const block_descriptor_type nearast_neighbor_hood=
-        block_descriptor_type(coordinate_type(-1), coordinate_type(3));
 };
 
 

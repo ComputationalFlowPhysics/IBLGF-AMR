@@ -22,6 +22,24 @@ public:
     Operator()=default;
 
 public:
+    template<class Field, class Block>
+    static float_type maxabs(Block& block) noexcept
+    {
+        float_type m=0.0;
+
+        auto& nodes_domain=block.nodes_domain();
+        for (std::size_t field_idx=0; field_idx<Field::nFields; ++field_idx)
+        {
+            for(auto it2=nodes_domain.begin();it2!=nodes_domain.end();++it2 )
+            {
+                auto tmp=std::fabs(it2->template get<Field>(field_idx));
+                if (tmp>m)
+                    m=tmp;
+            }
+        }
+        return m;
+    }
+
 
     template<class Source, class Dest, class Block>
     static void laplace(Block& block, float_type dx_level) noexcept

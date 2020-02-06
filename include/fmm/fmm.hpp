@@ -79,6 +79,16 @@ public:
                 );
     }
 
+    static void fmm_clean_load(Domain* domain_)
+    {
+        for (auto it = domain_->begin();
+                it != domain_->end();
+                ++it)
+        {
+            it->load()=0;
+        }
+     }
+
     static void fmm_lgf_mask_build(Domain* domain_)
     {
 

@@ -145,6 +145,7 @@ struct Adaptivity:public SetupBase<Adaptivity,parameters>
             initialize(shift);
             ifherk.template adapt<source, source>();
             simulation_.write2("adapt"+std::to_string(i+1)+".hdf5");
+            domain_->decomposition().balance<source>();
         }
 
 
@@ -236,8 +237,6 @@ struct Adaptivity:public SetupBase<Adaptivity,parameters>
                        domain_->bounding_box().min();
 
         center += shift;
-        std::cout<<shift[0]<<shift[1]<<shift[2]<<std::endl;
-        std::cout<<center[0]<<center[1]<<center[2]<<std::endl;
 
         //center+=0.5/std::pow(2,nRef);
         const float_type dx_base = domain_->dx_base();
@@ -390,14 +389,9 @@ struct Adaptivity:public SetupBase<Adaptivity,parameters>
         }
 
         l_change = l_aim - it->refinement_level();
-        if (l_change>0)
-            std::cout<< field_max<<" " << l_change<<it->key()<<std::endl;
-        //std::cout<<l_change<<" - " << it->key()<<std::endl;
         //return l_change<0 ? l_change:0;
         //return l_change>0 ? l_change:0;
         return l_change;
-
-        //return (it->refinement_level()>0)? -1:0;
     }
 
     /** @brief  Refienment conditon for octants.  */

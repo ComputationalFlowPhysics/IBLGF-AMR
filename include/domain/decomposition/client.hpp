@@ -262,10 +262,10 @@ public:
     }
 
     template <class Field, class Function>
-    void send_adapt_attempts(Function aim_adapt)
+    void send_adapt_attempts(Function aim_adapt, float_type source_max)
     {
         boost::mpi::communicator w;
-        float_type source_max=1200.0;
+        //float_type source_max=1200.0;
 
         std::vector<key_t> octs;
         std::vector<int>   level_change;

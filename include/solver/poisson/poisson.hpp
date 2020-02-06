@@ -68,7 +68,6 @@ public: //member types
     c_cntr_nli_(domain_->block_extent()[0]+lBuffer+rBuffer),
     extrp_c_cntr_nli_(domain_->block_extent()[0]+lBuffer+rBuffer)
     {
-        std::cout<< "Poisson Solver initialized --- "  << std::endl;
     }
 
 public:
@@ -160,7 +159,6 @@ public:
                 const bool base_level_only)
     {
 
-        std::cout<< "LGF --------------- 1" << std::endl;
         auto client = domain_->decomposition().client();
         if(!client)return;
 
@@ -174,7 +172,6 @@ public:
         clean_field<source_correction_tmp>();
 
         // Copy source
-        std::cout<< "LGF --------------- 2" << std::endl;
         copy_leaf<Source, source_tmp>(_field_idx, 0, true);
 
 #ifdef POISSON_TIMINGS
@@ -188,7 +185,6 @@ public:
         auto t0_coarsify=clock_type::now();
 #endif
 
-        std::cout<< "LGF --------------- 3" << std::endl;
         source_coarsify<source_tmp, source_tmp>(_field_idx, 0, Source::mesh_type);
 
 #ifdef POISSON_TIMINGS
@@ -220,7 +216,6 @@ public:
                 }
 
             // test for FMM
-            std::cout<< "LGF --------------- 4" << std::endl;
             fmm_.template apply<source_tmp, target_tmp>(domain_, _kernel, l, false, 1.0, base_level_only);
 
 #ifdef POISSON_TIMINGS
@@ -238,7 +233,6 @@ public:
 
             if (base_level_only) continue;
 
-            std::cout<< "LGF --------------- 5" << std::endl;
             fmm_.template apply<source_tmp, target_tmp>(domain_, _kernel, l, true, -1.0);
 
 #ifdef POISSON_TIMINGS

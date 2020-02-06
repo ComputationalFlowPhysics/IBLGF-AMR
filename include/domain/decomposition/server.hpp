@@ -113,6 +113,7 @@ public:
                std::vector<float_type>& _loads_perProc,
                Function& _exitCheck, Function1& _continueCheck) const noexcept
     {
+        if (_begin==_end) return;
 
         float_type total_load=0.0;
         const auto nProcs=comm_.size()-1;
@@ -180,6 +181,7 @@ public:
         auto exitCondition1=[](auto& it){return false;};
         auto continueCondition1=[&blevel](auto& it){return !(it->is_leaf() || it->is_correction());};
 
+
         for (int l = domain_->tree()->depth()-1; l >= 0; --l)
         {
 
@@ -196,7 +198,7 @@ public:
                 for(int i=0;i<it->num_children();++i)
                 {
                     const auto child = it->child(i);
-                    if(!child) continue;
+                    if(!child || !child->data()) continue;
 
                     if(child->rank()==-1) throw std::runtime_error("Child not set ");
                     if(total_loads_perProc[child->rank()] < min_load)
@@ -211,16 +213,14 @@ public:
             }
         }
 
-        std::cout<<" Octant ranks" <<std::endl;
         for( auto it = domain_->begin_df(); it!= domain_->end_df();++it )
         {
-            if(it->rank()==-1)
+            if(it->rank()==-1 && it->data())
             {
                 std::cout<<"Domain decomposition (Server):"
                         " Some octant's rank was not set"<<std::endl;
             }
         }
-        std::cout<<"Done with initial load balancing"<<std::endl;
         return tasks_perProc;
     }
 
@@ -235,7 +235,7 @@ public:
         {
             ranks_old.push_back(it->rank());
         }
-        compute_distribution(true);
+        compute_distribution();
 
         int c=0;
         DecompositionUpdate updates(comm_.size());

@@ -256,16 +256,19 @@ public: //C/Dtors
 
         bounding_box_=block_descriptor_t(bd_base_, bd_extent_);
 
-        int baseBlockBufferNumber_=1;
-        auto bd_key_base_=bd_base_;
-        auto bd_key_extent_=bd_extent_;
+        extent_t bd_key_base_(0);
+        extent_t bd_key_interior_base_(baseBlockBufferNumber_);
+        extent_t bd_key_extent_=bd_extent_;
+        extent_t bd_key_interior_extent_=bd_extent_;
+
         for(std::size_t d=0;d<min.size();++d)
         {
-            bd_key_base_[d]=bd_key_base_[d]/e[d];
+            bd_key_interior_extent_[d]=bd_key_interior_extent_[d]/e[d]-2*baseBlockBufferNumber_;
             bd_key_extent_[d]=bd_key_extent_[d]/e[d];
         }
 
-        interior_key_coord_box_=block_descriptor_t(bd_key_base_, bd_key_extent_);
+        key_bd_box_=block_descriptor_t(bd_key_base_, bd_key_extent_);
+        key_bd_interior_box_=block_descriptor_t(bd_key_interior_base_, bd_key_interior_extent_);
 
         return bases;
         std::cout<<"Initial base level blocks done "<<std::endl;
@@ -295,14 +298,6 @@ public: //C/Dtors
         }
 
         this->decomposition().sync_decomposition();
-        int count=0;
-        for (auto it = this->begin_leafs();
-                it != this->end_leafs();
-                ++it)
-        {
-            ++count;
-        }
-            std::cout<< " Number of leafs = " << count<< std::endl;
     }
 
     void delete_all_children(std::vector<std::vector<key_t>>& deletion, bool non_correction_child=true)
@@ -348,8 +343,6 @@ public: //C/Dtors
 
                         this->tree()->delete_oct(child);
                     }
-                    //std::cout<<"server deleting - " <<it->rank()<<it->is_leaf() << it->is_correction()<< it->key() << std::endl;
-                    std::cout<<"server deleting children of " << it->key()<<std::endl;
                     it->flag_leaf(true);
                     it->flag_correction(false);
                     it->aim_deletion(false);
@@ -527,10 +520,10 @@ public: //C/Dtors
     }
 
     template<class CriterionField>
-    auto adapt()
+    auto adapt(float_type source_max)
     {
         //communicating with server
-        return decomposition_.template adapt_decoposition<CriterionField>();
+        return decomposition_.template adapt_decoposition<CriterionField>(source_max);
     }
 
 
@@ -584,6 +577,14 @@ public:
     std::shared_ptr<tree_t> tree()const {return t_;}
 
     block_descriptor_t bounding_box()const noexcept{return bounding_box_;}
+    block_descriptor_t key_bounding_box(bool interior=true)
+    {
+        if (interior)
+            return key_bd_interior_box_;
+        else
+            return key_bd_box_;
+    }
+    int baseBlockBufferNumber() {return baseBlockBufferNumber_;}
 
     template<class Iterator>
     void refine(Iterator* octant_it, bool ratio_2to1=true)
@@ -872,7 +873,7 @@ public:
         os<<"Tree depth "<<d.tree()->depth()<<std::endl;
 
         os<<"Domain Bounding Box: "<<d.bounding_box_<<std::endl;
-        os<<"Interior Key Bounding Box: "<<d.interior_key_coord_box_<<std::endl;
+        os<<"Interior Key Bounding Box: "<<d.key_bd_box_<<std::endl;
         //os<<"Fields:"<<std::endl;
         //auto it=d.begin_leafs();
         //it->data()->for_fields([&](auto& field)
@@ -935,7 +936,8 @@ private:
     extent_t bd_base_, bd_extent_;
 
     block_descriptor_t bounding_box_;
-    block_descriptor_t interior_key_coord_box_;
+    block_descriptor_t key_bd_box_;
+    block_descriptor_t key_bd_interior_box_;
     float_type dx_base_;
     decompositon_type decomposition_;
 
@@ -943,6 +945,7 @@ private:
     adapt_condition_fct_t adapt_cond_ = &Domain::adapt_cond_default;
 
     boost::mpi::communicator client_comm_;
+    int baseBlockBufferNumber_=1;
 
 };
 

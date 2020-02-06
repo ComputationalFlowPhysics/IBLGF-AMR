@@ -202,6 +202,9 @@ public: //Ctors
     auto  data() const noexcept {return data_;}
     auto& data()       noexcept {return data_;}
 
+    int  aim_level_change() const noexcept {return aim_level_change_;}
+    int& aim_level_change()       noexcept {return aim_level_change_;}
+
     auto deallocate_data(){data_.reset();}
 
     Octant* parent()      const noexcept{return parent_;}
@@ -447,6 +450,7 @@ private:
     fmm_mask_type fmm_masks_;
     tree_type* t_=nullptr;
     bool aim_deletion_=false;
+    int aim_level_change_=0;
 };
 
 

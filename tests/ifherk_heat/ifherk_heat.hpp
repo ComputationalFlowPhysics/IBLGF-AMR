@@ -111,6 +111,9 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
         pcout << "\n Setup:  Test - Simple IC \n" << std::endl;
         pcout << "Number of refinement levels: "<<nLevelRefinement_<<std::endl;
 
+        domain_->register_adapt_condition()=
+            [this](auto octant, float_type source_max){return this->template adapt_level_change<cell_aux>(octant, source_max);};
+
         domain_->register_refinement_condition()=
             [this](auto octant, int diff_level){return this->refinement(octant, diff_level);};
 
@@ -150,6 +153,39 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
 
         simulation_.write2("final.hdf5");
     }
+
+    template<class Field, class OctantType>
+    int adapt_level_change(OctantType* it, float_type source_max)
+    {
+        float_type field_max = 1e-14;
+
+        auto& nodes_domain=it->data()->nodes_domain();
+        for(auto it2=nodes_domain.begin();it2!=nodes_domain.end();++it2 )
+        {
+            if (std::fabs(it2->template get<Field>()) > field_max)
+                field_max = std::fabs(it2->template get<Field>());
+        }
+
+        int l_change;
+        float_type base_threshold=1e-3;
+
+        int l_aim = static_cast<int>( ceil(nLevelRefinement_-log(field_max/source_max) / log(refinement_factor_)));
+
+        if (l_aim>nLevelRefinement_)
+            l_aim=nLevelRefinement_;
+
+        if (it->refinement_level()==0)
+        {
+            if (field_max>source_max*base_threshold)
+                l_aim = std::max(l_aim,0);
+        }
+
+        l_change = l_aim - it->refinement_level();
+        //return l_change<0 ? l_change:0;
+        //return l_change>0 ? l_change:0;
+        return l_change;
+    }
+
 
 
     /** @brief Initialization of poisson problem.

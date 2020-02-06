@@ -70,53 +70,61 @@ public: //member types
     domain_(_simulation->domain_.get()),
     psolver(_simulation)
     {
-        std::cout<< "IFHERK initialized --- "  << std::endl;
-        dx_          = domain_->dx_base();
-        cfl_         = _simulation->dictionary()->
-            template get_or<float_type>("cfl",0.2);
-        dt_          = _simulation->dictionary()->
-            template get_or<float_type>("dt",-1.0);
-        tot_steps_   = _simulation->dictionary()->
-            template get<int>("nBaseLevelTimeSteps");
-        cfl_max_     = _simulation->dictionary()->
-            template get_or<float_type>("cfl_max",1000);
-        Re_          = _simulation->dictionary()->
-            template get<float_type>("Re");
-        output_freq_ = _simulation->dictionary()->
-            template get<float_type>("output_frequency");
-        nLevelRefinement_=_simulation->dictionary_->
-            template get_or<int>("nLevels",0);
-        if (dt_<0)
-            dt_ = dx_*cfl_;
+        // parameters --------------------------------------------------------
 
-        dt_/=pow(2.0,nLevelRefinement_);
-        tot_steps_ *= pow(2,nLevelRefinement_);
-        output_freq_ *= pow(2,nLevelRefinement_);
+        dx_base_          = domain_->dx_base();
+        cfl_              = _simulation->dictionary()->template get_or<float_type>("cfl",0.2);
+        dt_base_          = _simulation->dictionary()->template get_or<float_type>("dt",-1.0);
+        tot_base_steps_   = _simulation->dictionary()->template get<int>("nBaseLevelTimeSteps");
+        Re_               = _simulation->dictionary()->template get<float_type>("Re");
+        output_base_freq_ = _simulation->dictionary()->template get<float_type>("output_frequency");
+        cfl_max_          = _simulation->dictionary()->template get_or<float_type>("cfl_max",1000);
 
-        float_type tmp = Re_*dx_*dx_/dt_;
+        if (dt_base_<0)
+            dt_base_ = dx_base_*cfl_;
 
+        // adaptivity --------------------------------------------------------
+        adapt_freq_       = _simulation->dictionary()->template get_or<float_type>("adapt_frequency", 1);
+        T_max_            = tot_base_steps_*dt_base_;
+        update_marching_parameters();
+
+        // IF constants ------------------------------------------------------
+        float_type tmp = Re_*dx_base_*dx_base_/dt_base_;
         alpha_[0]=(c_[1]-c_[0])/tmp;
         alpha_[1]=(c_[2]-c_[1])/tmp;
         alpha_[2]=(c_[3]-c_[2])/tmp;
         fname_prefix_="";
+
+        // miscs -------------------------------------------------------------
+        if(domain_->is_client())
+            client_comm_=client_comm_.split(1);
+        else
+            client_comm_=client_comm_.split(0);
     }
 
 public:
+    void update_marching_parameters()
+    {
+        nLevelRefinement_ = domain_->tree()->depth()-domain_->tree()->base_level()-1;
+        dt_               = dt_base_/pow(2.0,nLevelRefinement_);
+
+    }
     void time_march()
     {
         boost::mpi::communicator world;
         parallel_ostream::ParallelOstream pcout=parallel_ostream::ParallelOstream(world.size()-1);
 
+        pcout<<"Time marching ------------------------------------------------"<< std::endl;
         T_ = 0.0;
-        n_step_=0;
-
-        pcout<<"Time marching with dt = " << dt_ << std::endl;
-        pcout<<"                   nsteps = " << tot_steps_ << std::endl;
-
-
         write_timestep();
-        for (int i=0; i<tot_steps_; ++i)
+
+
+        int adapt_count=0;
+        while(T_<=T_max_+1e-10)
         {
+
+            // -------------------------------------------------------------
+            // time marching
             if(domain_->is_client())
             {
                 mDuration_type ifherk_if(0);
@@ -126,17 +134,58 @@ public:
                 pcout<<ifherk_if.count()<<std::endl;
             }
 
-            // Add dt to Time
-            T_ += dt_;
-            n_step_ = round(T_ / dt_);
-            pcout<<"T = " << T_ << " -----------------" << std::endl;
 
+            // -------------------------------------------------------------
+            // adapt
             world.barrier();
-            if ( n_step_ % output_freq_ == 0)
+            if (T_==0.0)
+                this->template update_source_max<cell_aux>();
+
+            if ( adapt_count % adapt_freq_ ==0)
+            {
+                this->template adapt<u, cell_aux>();
+                //domain_->decomposition().template balance<u>();
+            }
+            adapt_count++;
+
+            // -------------------------------------------------------------
+            // update stats & output
+            update_marching_parameters();
+            T_ += dt_;
+            pcout<<"T = " << T_ << " -----------------" << std::endl;
+            pcout<<"Total number of leaf octants: "<<domain_->num_leafs()<<std::endl;
+
+            //float_type tmp_n=T_/dt_base_;
+            //testing only
+            float_type tmp_n=T_/dt_;
+            if ( ( std::fabs(ceil(tmp_n) - tmp_n)<1e-10 ) && (int(tmp_n)%output_base_freq_==0) )
+            {
+                n_step_= (int) tmp_n;
                 write_timestep();
+            }
         }
 
     }
+
+    template<class Field>
+    void update_source_max()
+    {
+        float_type max_local=0.0;
+        for (auto it  = domain_->begin();
+                  it != domain_->end(); ++it)
+        {
+            if (!it->locally_owned()) continue;
+            float_type tmp=
+                    domain::Operator::maxabs<Field>(*(it->data()));
+
+            if (tmp>max_local)
+                max_local=tmp;
+        }
+
+        boost::mpi::all_reduce(client_comm_,max_local,source_max_,[&](const auto& v0,
+                    const auto& v1){return v0>v1? v0  :v1;} );
+    }
+
     void write_timestep()
     {
         pcout << "- writing at T = " << T_ << std::endl;
@@ -169,7 +218,7 @@ public:
         auto client = domain_->decomposition().client();
 
         world.barrier();
-        std::cout<< "Adapt - coarsify"  << std::endl;
+        pcout<< "Adapt - coarsify"  << std::endl;
         if (client)
         {
             //claen non leafs
@@ -182,11 +231,11 @@ public:
         }
 
         world.barrier();
-        std::cout<< "Adapt - communication"  << std::endl;
-        auto intrp_list = domain_->template adapt<CriterionField>();
+        pcout<< "Adapt - communication"  << std::endl;
+        auto intrp_list = domain_->template adapt<CriterionField>(source_max_);
 
         world.barrier();
-        std::cout<< "Adapt - intrp"  << std::endl;
+        pcout<< "Adapt - intrp"  << std::endl;
         if (client)
         {
             // Intrp
@@ -210,8 +259,9 @@ public:
                 }
             }
         }
+
         //test correction
-        for (std::size_t _field_idx=0; _field_idx<AdaptField::nFields; ++_field_idx)
+        for (std::size_t _field_idx=0; _field_idx<CriterionField::nFields; ++_field_idx)
         {
 
             for (int l = domain_->tree()->depth()-2;
@@ -225,14 +275,14 @@ public:
                         const auto child = it->child(c);
                         if(!child || !child->data() || !child->is_correction() || child->is_leaf() ) continue;
                         auto& lin_data = it->data()->
-                            template get_linalg_data<AdaptField>(_field_idx);
+                            template get_linalg_data<CriterionField>(_field_idx);
 
                         std::fill(lin_data.begin(),lin_data.end(),-1000.0);
                     }
                 }
             }
         }
-         std::cout<< "Adapt - done"  << std::endl;
+        pcout<< "Adapt - done"  << std::endl;
         world.barrier();
     }
 
@@ -325,7 +375,15 @@ private:
     void lin_sys_solve(float_type _alpha) noexcept
     {
          divergence<r_i, cell_aux>();
-         psolver.template apply_lgf<cell_aux, d_i>();
+
+         pcout<< "solving LGF" <<std::endl;
+         mDuration_type t_lgf(0);
+         TIME_CODE( t_lgf, SINGLE_ARG(
+                     psolver.template apply_lgf<cell_aux, d_i>();
+                     ));
+         pcout<< "solve LGF in "<<t_lgf.count() << std::endl;
+
+         //psolver.template apply_lgf<cell_aux, d_i>();
          gradient<d_i,face_aux>();
 
          add<face_aux, r_i>(-1.0);
@@ -620,12 +678,14 @@ private:
     domain_type* domain_;    ///< domain
     poisson_solver_t psolver;
 
-    float_type T_;
-    float_type dt_, dx_;
+    float_type T_, T_max_;
+    float_type dt_base_, dt_, dx_base_;
     float_type Re_;
     float_type cfl_max_, cfl_;
-    int output_freq_;
-    int tot_steps_;
+    float_type source_max_;
+    int output_base_freq_;
+    int adapt_freq_;
+    int tot_base_steps_;
     int n_step_;
     int nLevelRefinement_;
 
@@ -634,7 +694,7 @@ private:
     vector_type<float_type, 4> c_{{0.0, 1.0/3, 1.0, 1.0}};
     vector_type<float_type, 3> alpha_{{0.0,0.0,0.0}};
     parallel_ostream::ParallelOstream pcout=parallel_ostream::ParallelOstream(1);
-
+    boost::mpi::communicator            client_comm_;
 };
 
 }

@@ -300,7 +300,7 @@ public: //C/Dtors
         this->decomposition().sync_decomposition();
     }
 
-    void delete_all_children(std::vector<std::vector<key_t>>& deletion, bool non_correction_child=true)
+    void delete_all_children(std::vector<std::vector<key_t>>& deletion, bool only_unmark_deletion=true)
     {
         const int base_level=this->tree()->base_level();
         for(int l= this->tree()->depth()-2; l>=base_level;--l)
@@ -320,7 +320,7 @@ public: //C/Dtors
                     if (!child || !child->data())
                         continue;
 
-                    if ( (!child->is_leaf() && !child->is_correction()) || !child->aim_deletion() || (child->is_correction() && non_correction_child) )
+                    if ( !child->aim_deletion() || (!child->is_leaf() && !child->is_correction())  )
                     {
                         delete_all_children=false;
                         break;
@@ -329,24 +329,37 @@ public: //C/Dtors
 
                 if (delete_all_children)
                 {
+                    if (only_unmark_deletion)
+                    {
+                        for (int i = 0; i < it->num_children(); ++i)
+                        {
+                            auto child = it->child(i);
+                            if (!child || !child->data())
+                                continue;
+                            child->flag_leaf(false);
+                            child->flag_correction(false);
+                            child->aim_deletion(true);
+
+                        }
+                        it->flag_leaf(true);
+                        it->flag_correction(false);
+                        it->aim_deletion(false);
+
+                    }
+                    else
+                    {
+                    }
+                }
+                else
+                {
                     for (int i = 0; i < it->num_children(); ++i)
                     {
                         auto child = it->child(i);
 
-                        if (!child || !child->data())
-                            continue;
-
-                        deletion[child->rank()].emplace_back(child->key());
-                        child->flag_leaf(false);
-                        child->flag_correction(false);
-                        child->aim_deletion(true);
-
-                        this->tree()->delete_oct(child);
+                        if (child)
+                            child->aim_deletion(false);
                     }
-                    it->flag_leaf(true);
-                    it->flag_correction(false);
-                    it->aim_deletion(false);
-                }
+                 }
             }
         }
 
@@ -382,7 +395,6 @@ public: //C/Dtors
                 }
             }
         }
-
 
 
         // Add correction buffers
@@ -474,6 +486,7 @@ public: //C/Dtors
             this->tree()->construct_level_maps();
             this->tree()->construct_lists();
 
+            std::unordered_map<key_t, bool> checklist;
             const auto base_level=this->tree()->base_level();
             for(int l=0;l<nRef;++l)
             {
@@ -482,7 +495,8 @@ public: //C/Dtors
                     if(!ref_cond_) return;
                     if(ref_cond_(it.ptr(), nRef-l) && it->refinement_level()==l)
                     {
-                        this->refine(it.ptr());
+                        if (this->tree()->try_2to1(it->key(), this->key_bounding_box(), checklist))
+                            this->refine(it.ptr());
                     }
                 }
             }

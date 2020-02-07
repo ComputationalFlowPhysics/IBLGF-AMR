@@ -411,7 +411,7 @@ public:
             }
         }
 
-}
+    }
 
     template<class From, class To>
     void source_coarsify(std::size_t real_mesh_field_idx, std::size_t tmp_type_field_idx, MeshObject mesh_type, bool correction_only = false, bool exclude_correction = false)

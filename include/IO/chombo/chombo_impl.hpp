@@ -149,7 +149,7 @@ private:
                     auto* p = block;
                     while (i==track && recurse<recurse_lim) // only enters for first block in group
                     {
-                        unsigned int shift = pow(pow(2,Dim), recurse+1)-1+1e10;
+                        unsigned int shift = pow(pow(2,Dim), recurse+1)-1;
                         unsigned int shift_final = pow(pow(2,Dim), recurse);
 
                         if ( (p->key().child_number() == 0) &&
@@ -157,8 +157,7 @@ private:
                         {
                             auto& block_end = l.octants[i+shift];
 
-                            if (block->key()+shift==block_end->key() &&
-                                    group_rank==block_end->rank())
+                            if ( block_consecutive(l.octants, block->key(), i, shift))
                             {
                                 ++recurse;
                                 // Get parent to check bigger group.
@@ -179,6 +178,19 @@ private:
 
         }
     } // init
+
+bool block_consecutive(std::vector<octant_type*>& octs, key_type k_start, int idx_start, int shift)
+{
+    int count=0;
+    auto k_=k_start;
+    for (int i=0; i<=shift; ++i)
+    {
+        if (octs[i+idx_start]->key() != k_ || octs[i+idx_start]->rank()!=octs[idx_start]->rank())
+            return false;
+        k_++;
+    }
+    return true;
+}
 
 
 

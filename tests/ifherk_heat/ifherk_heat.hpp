@@ -157,6 +157,7 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
     template<class Field, class OctantType>
     int adapt_level_change(OctantType* it, float_type source_max)
     {
+        // ----------------------------------------------------------------
         float_type field_max = 1e-14;
 
         auto& nodes_domain=it->data()->nodes_domain();
@@ -166,24 +167,34 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
                 field_max = std::fabs(it2->template get<Field>());
         }
 
-        int l_change;
+        // ----------------------------------------------------------------
+
         float_type base_threshold=1e-3;
+        // set deletion_factor to be half of refinement_factor_ so it's easier
+        // to refine and harder to delete
+        // This prevent rapid change of level refinement
+        float_type deletion_factor=refinement_factor_*0.75;
 
         int l_aim = static_cast<int>( ceil(nLevelRefinement_-log(field_max/source_max) / log(refinement_factor_)));
+        int l_delete_aim = static_cast<int>( ceil(nLevelRefinement_-log(field_max/source_max) / log(deletion_factor)));
 
         if (l_aim>nLevelRefinement_)
             l_aim=nLevelRefinement_;
 
-        if (it->refinement_level()==0)
-        {
-            if (field_max>source_max*base_threshold)
-                l_aim = std::max(l_aim,0);
-        }
+        //if (it->refinement_level()==0)
+        //{
+        //    if (field_max>source_max*base_threshold)
+        //        l_aim = std::max(l_aim,0);
+        //}
 
-        l_change = l_aim - it->refinement_level();
+        int l_change = l_aim - it->refinement_level();
+        int l_delete_change = l_delete_aim - it->refinement_level();
+        if (l_delete_aim<0) return -1;
+        if (l_change>0) return 1;
+        return 0;
         //return l_change<0 ? l_change:0;
         //return l_change>0 ? l_change:0;
-        return l_change;
+        //return l_change;
     }
 
 

@@ -108,6 +108,9 @@ namespace interpolation
             xt::noalias(view(antrp_mat_sub_simple_sub_[3], xt::all(), xt::range(1,Nb_-1))) =
                 view(antrp_mat_sub_simple_[1],xt::all(),xt::range(Nb_-1,2*Nb_-3));
 
+            //std::cout<< " ------------------------- " <<std::endl;
+            //std::cout<< antrp_mat_sub_simple_sub_[0]<< std::endl;
+            //std::cout<< antrp_mat_sub_simple_sub_[1]<< std::endl;
             //std::cout<< antrp_mat_sub_simple_sub_[2]<< std::endl;
             //std::cout<< antrp_mat_sub_simple_sub_[3]<< std::endl;
             //std::cout<< antrp_mat_sub_simple_[1]<< std::endl;
@@ -465,7 +468,7 @@ namespace interpolation
 
     //private:
     public:
-        const int pts_cap = 9;
+        const int pts_cap = 3;
         int Nb_;
 
         std::vector<float_type> antrp_relative_pos_0_;

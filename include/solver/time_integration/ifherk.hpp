@@ -255,35 +255,43 @@ public:
                 for (auto& oct:intrp_list)
                 {
                     if (!oct || !oct->data()) continue;
-                    psolver.c_cntr_nli().template nli_intrp_node<AdaptField, AdaptField>(oct, AdaptField::mesh_type, _field_idx, _field_idx, false, true);
+                    psolver.c_cntr_nli().template nli_intrp_node<AdaptField, AdaptField>(oct, AdaptField::mesh_type, _field_idx, _field_idx, false, false);
                 }
             }
         }
 
         //test correction
-        for (std::size_t _field_idx=0; _field_idx<CriterionField::nFields; ++_field_idx)
-        {
+        //for (std::size_t _field_idx=0; _field_idx<cell_aux::nFields; ++_field_idx)
+        //{
 
-            for (int l = domain_->tree()->depth()-2;
-                    l >= domain_->tree()->base_level(); --l)
-            {
-                for (auto it=domain_->begin(l); it!=domain_->end(l); ++it)
-                {
-                    if (!it->locally_owned()) continue;
-                    for(int c=0;c<it->num_children();++c)
-                    {
-                        const auto child = it->child(c);
-                        if(!child || !child->data() || !child->is_correction() || child->is_leaf() ) continue;
-                        auto& lin_data = it->data()->
-                            template get_linalg_data<CriterionField>(_field_idx);
+        //    for (int l = domain_->tree()->depth()-2;
+        //            l >= domain_->tree()->base_level(); --l)
+        //    {
+        //        for (auto it=domain_->begin(l); it!=domain_->end(l); ++it)
+        //        {
+        //            if (!it->locally_owned()) continue;
 
-                        std::fill(lin_data.begin(),lin_data.end(),-1000.0);
-                    }
-                }
-            }
-        }
-        pcout<< "Adapt - done"  << std::endl;
+        //            auto& lin_data = it->data()->
+        //                template get_linalg_data<cell_aux>(_field_idx);
+
+        //            std::fill(lin_data.begin(),lin_data.end(),000.0);
+
+        //            for(int c=0;c<it->num_children();++c)
+        //            {
+        //                const auto child = it->child(c);
+        //                if(!child || !child->data() || !child->is_correction() ) continue;
+
+        //                auto& c_data = child->data()->
+        //                    template get_linalg_data<cell_aux>(_field_idx);
+
+        //                std::fill(c_data.begin(),c_data.end(),-1000.0);
+        //            }
+        //        }
+        //    }
+        //}
+
         world.barrier();
+        pcout<< "Adapt - done"  << std::endl;
     }
 
 
@@ -402,26 +410,28 @@ private:
                   it != domain_->end(); ++it)
         {
             if (!it->data()) continue;
-            if (!it ->data()->is_allocated())continue;
-
+            if (!it->data()->is_allocated())continue;
 
             for (std::size_t field_idx=0; field_idx<F::nFields; ++field_idx)
             {
-                auto& lin_data = it->data()->
-                template get_linalg_data<F>(field_idx);
+                auto& lin_data = it->data()->template get_linalg_data<F>(field_idx);
 
-                int N=it->data()->descriptor().extent()[0];
+                if (non_leaf_only && it->is_leaf() && it->locally_owned() )
+                {
+                    int N=it->data()->descriptor().extent()[0];
+                    xt::noalias( view(lin_data,xt::all(),xt::all(),0)) *= 0.0;
+                    xt::noalias( view(lin_data,xt::all(),0,xt::all())) *= 0.0;
+                    xt::noalias( view(lin_data,0,xt::all(),xt::all())) *= 0.0;
+                    xt::noalias( view(lin_data,N+1,xt::all(),xt::all())) *= 0.0;
+                    xt::noalias( view(lin_data,xt::all(),N+1,xt::all())) *= 0.0;
+                    xt::noalias( view(lin_data,xt::all(),xt::all(),N+1)) *= 0.0;
+                }
+                else
+                {
 
-                xt::noalias( view(lin_data,xt::all(),xt::all(),0)) *= 0.0;
-                xt::noalias( view(lin_data,xt::all(),0,xt::all())) *= 0.0;
-                xt::noalias( view(lin_data,0,xt::all(),xt::all())) *= 0.0;
-                xt::noalias( view(lin_data,N+1,xt::all(),xt::all())) *= 0.0;
-                xt::noalias( view(lin_data,xt::all(),N+1,xt::all())) *= 0.0;
-                xt::noalias( view(lin_data,xt::all(),xt::all(),N+1)) *= 0.0;
-
-                //TODO whether to clean base_level correction?
-                if (non_leaf_only && it->is_leaf() && it->locally_owned() ) continue;
-                std::fill(lin_data.begin(),lin_data.end(),0.0);
+                    //TODO whether to clean base_level correction?
+                    std::fill(lin_data.begin(),lin_data.end(),0.0);
+                }
 
             }
         }

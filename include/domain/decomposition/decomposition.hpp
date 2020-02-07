@@ -198,23 +198,25 @@ public: //memeber functions
 
                 int l_change=it->aim_level_change();
 
-                if (it->refinement_level()==0 && l_change<0)
-                {
-                    for(std::size_t i=0;i< it->num_neighbors();++i)
-                    {
-                        auto it2=it->neighbor(i);
-                        if(!it2 || !it2->data()) continue;
-                        if(!it2->is_leaf()) continue;
+                //if (it->refinement_level()==0 && l_change<0)
+                //{
+                //    for(std::size_t i=0;i< it->num_neighbors();++i)
+                //    {
+                //        auto it2=it->neighbor(i);
+                //        if(!it2 || !it2->data()) continue;
+                //        if(!it2->is_leaf()) continue;
 
-                        if (0 <= it2->aim_level_change())
-                            l_change = 0;
-                    }
-                }
+                //        if (0 <= it2->aim_level_change())
+                //            l_change = 0;
+                //    }
+                //}
 
                 if( l_change!=0 )
                 {
                     if (l_change<0)
+                    {
                         it->aim_deletion(true);
+                    }
                     else
                     {
                         if (!domain_->tree()->try_2to1(it->key(), domain_->key_bounding_box(), checklist))
@@ -357,7 +359,15 @@ public: //memeber functions
             domain_->delete_all_children(deletion);
             domain_->tree()->construct_level_maps();
             domain_->mark_correction();
-            domain_->delete_all_children(deletion,false);
+            //domain_->delete_all_children(deletion,false);
+            for (auto it = domain_->begin(); it != domain_->end(); ++it)
+            {
+                if (it->data() && it->aim_deletion() && it->refinement_level()>0)
+                {
+                    deletion[it->rank()].emplace_back(it->key());
+                    domain_->tree()->delete_oct(it.ptr());
+                }
+            }
 
             // --------------------------------------------------------------
             // 4. set rank of new octants
@@ -430,24 +440,16 @@ public: //memeber functions
             comm_.recv(0,0,depth);
             domain_->tree()->depth()=depth;
 
-            // Local refinement
-
-            domain_->tree()->insert_keys(refinement_local, [&](octant_t* _o){
-                    auto level = _o->refinement_level();
-                    level=level>=0?level:0;
-                    auto bbase=domain_->tree()->octant_to_level_coordinate(
-                            _o->tree_coordinate(),level);
-                    //if(!_o->data())
-                    {
-                    _o->data()=std::make_shared<datablock_t>(bbase,
-                            domain_->block_extent(),level, true);
-                    }
-                    _o->rank()=comm_.rank();
-                    });
-
             // Local deletion
             std::sort(deletion_local.begin(), deletion_local.end(), [](key_t k1, key_t k2)->bool{return k1.level()>k2.level();});
             boost::mpi::communicator world;
+
+            for (auto k:refinement_local)
+            {
+                auto oct =domain_->tree()->find_octant(k);
+                if (oct && oct->data() && oct->locally_owned())
+                    std::cout<< " wrong : oct already exists\n " << oct->key();
+            }
 
             for(auto& key : deletion_local)
             {
@@ -459,13 +461,27 @@ public: //memeber functions
                 domain_->tree()->delete_oct(it);
             }
 
+            // Local refinement
+            domain_->tree()->insert_keys(refinement_local, [&](octant_t* _o){
+                    auto level = _o->refinement_level();
+                    level=level>=0?level:0;
+                    auto bbase=domain_->tree()->octant_to_level_coordinate(
+                            _o->tree_coordinate(),level);
+                    //if(!_o->data())
+                    {
+                    _o->data()=std::make_shared<datablock_t>(bbase,
+                            domain_->block_extent(),level, true);
+                    }
+                    _o->rank()=comm_.rank();
+                    }, false);
+
             // ghost ranks are sync
             sync_decomposition();
 
             for (auto k:refinement_local)
             {
                 auto oct =domain_->tree()->find_octant(k);
-                if (oct->refinement_level()==0 || oct->is_correction()) continue;
+                if (oct->refinement_level()==0) continue;
 
                 auto o_p = oct->parent();
                 interpolation_list.emplace_back(o_p);

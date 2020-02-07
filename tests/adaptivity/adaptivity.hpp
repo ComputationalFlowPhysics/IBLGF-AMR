@@ -139,13 +139,37 @@ struct Adaptivity:public SetupBase<Adaptivity,parameters>
         simulation_.write2("adapt0.hdf5");
         initialize();
 
+        ifherk.template update_source_max<source>();
         for (int i=0;i<tot_steps_;++i)
         {
-            shift[2]=i*2;
+            shift[2]=-i;
             initialize(shift);
             ifherk.template adapt<source, source>();
+            ifherk.template up_and_down<source>();
+            //domain_->decomposition().balance<source>();
+
+            if(domain_->is_client())
+            {
+            auto client=domain_->decomposition().client();
+            const float_type dx_base = domain_->dx_base();
+            for (int l  = domain_->tree()->base_level();
+                    l < domain_->tree()->depth(); ++l)
+            {
+
+                client->template buffer_exchange<source>(l);
+
+                for (auto it  = domain_->begin(l);
+                        it != domain_->end(l); ++it)
+                {
+                    if(!it->locally_owned() || !it->data()) continue;
+                    const auto dx_level =  dx_base/std::pow(2,it->refinement_level());
+                    domain::Operator::template gradient<source,u>( *(it->data()),dx_level);
+                }
+                client->template buffer_exchange<u>(l);
+            }
+            }
+
             simulation_.write2("adapt"+std::to_string(i+1)+".hdf5");
-            domain_->decomposition().balance<source>();
         }
 
 
@@ -270,12 +294,9 @@ struct Adaptivity:public SetupBase<Adaptivity,parameters>
                float_type z = static_cast<float_type>
                    (coord[2]-center[2]*scaling+0.5)*dx_level;
 
-               if(!it->locally_owned() || !it->is_leaf())
+               if(!it->locally_owned())
                {
-                   if (!it->locally_owned())
                        it2->template get<source>() =0;
-                   else
-                       it2->template get<source>() =-1000;
                }
                else
                    it2->template get<source>() =

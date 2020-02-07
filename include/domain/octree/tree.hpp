@@ -136,13 +136,17 @@ public:
 
     template<class Function=std::function<void(octant_type* c)>>
     void insert_keys(const std::vector<key_type>& _keys,
-              const Function& f=[](octant_type* o){ return; })
+              const Function& f=[](octant_type* o){ return; }, bool update_depth=true)
     {
         for (auto& k : _keys)
         {
             auto octant = this->insert_td(k);
-            f(octant);
-            if (octant->level()+1 > depth_) depth_=octant->level()+1;
+            if (!octant->data() || !octant->data()->is_allocated())
+                f(octant);
+            else
+                std::cout<< " inserting already allocated data oct at " << k << std::endl;
+
+            if (update_depth && octant->level()+1 > depth_) depth_=octant->level()+1;
         }
     }
 
@@ -430,6 +434,7 @@ public:
     void delete_oct(octant_type* oct)
     {
         oct->rank()=-1;
+        oct->flag_correction(false);
         oct->deallocate_data();
 
         if(oct->is_leaf_search())
@@ -440,15 +445,15 @@ public:
             if(oct) oct->delete_child(cnumber);
         }
 
-        while (oct->refinement_level()<0 && oct->is_leaf_search())
-        {
-            oct->rank()=-1;
-            oct->deallocate_data();
+        //while (oct->refinement_level()<0 && oct->is_leaf_search())
+        //{
+        //    oct->rank()=-1;
+        //    oct->deallocate_data();
 
-            int cnumber=oct->key().child_number();
-            oct=oct->parent();
-            if(oct) oct->delete_child(cnumber);
-        }
+        //    int cnumber=oct->key().child_number();
+        //    oct=oct->parent();
+        //    if(oct) oct->delete_child(cnumber);
+        //}
     }
 
     const auto& get_octant_to_level_coordinate() const noexcept

@@ -135,8 +135,11 @@ public: //memeber functions
         else if(client())
         {
             auto update=client()->update_decomposition();
+            std::cout<< "client -------------------------- 3 "<< std::endl;
             (client()->template update_field<Field>(update), ...);
+            std::cout<< "client -------------------------- 4 "<< std::endl;
             client()->finish_decomposition_update(update);
+            std::cout<< "client -------------------------- 5 "<< std::endl;
         }
         sync_decomposition();
     }
@@ -226,79 +229,6 @@ public: //memeber functions
                 }
             }
 
-
-
-            // --------------------------------------------------------------
-            // 1. mark all delete attempts
-            //for (int c=0; c<octs_all.size(); ++c)
-            //{
-            //    if (level_change_all[c]<0)
-            //    {
-            //        auto key = octs_all[c];
-            //        //std::cout<< "attempt deleting " << key<<std::endl;
-            //        auto it = domain_->tree()->find_octant(key);
-            //        if (!it)
-            //            throw std::runtime_error("can't find oct on server");
-            //        it->aim_deletion(true);
-            //    }
-            //}
-
-            //// --------------------------------------------------------------
-            //// 2. try refine
-            //std::unordered_map<key_t, bool> checklist;
-            //for (int c=0; c<octs_all.size(); ++c)
-            //{
-            //    if (level_change_all[c]>0)
-            //    {
-            //        auto key = octs_all[c];
-            //        //std::cout<< "attempt refining " << key<<std::endl;
-
-            //        if (!domain_->tree()->try_2to1(key, domain_->key_bounding_box(), checklist))
-            //            continue;
-
-            //        auto oct = domain_->tree()->find_octant(key);
-            //        if (oct->rank()==0)
-            //            throw std::runtime_error("shouldn't try to refine rank 0 oct");
-
-            //        refinement_server.emplace_back(oct);
-            //    }
-            //}
-
-            // refine those allow 2to1 ratio
-            for (auto& oct:refinement_server)
-            {
-                if (!oct->is_leaf())
-                    continue;
-                auto key = oct->key();
-
-                //check if there is a correction child
-                for (int i = 0; i < oct->num_children(); ++i)
-                {
-                    auto child = oct->child(i);
-                    if (child && child->data() && child->is_correction() && child->rank()!=oct->rank())
-                    {
-                        deletion[child->rank()].emplace_back(child->key());
-                        oct->delete_child(i);
-                    }
-                }
-
-                domain_->refine(oct);
-            }
-
-            // --------------------------------------------------------------
-            // 3. try delete
-
-            domain_->tree()->construct_leaf_maps(true);
-            domain_->tree()->construct_level_maps();
-
-            // dynmaic Programming to rduce repeated checks
-            std::unordered_set<octant_t*> checklist_reset_2to1_aim_deletion;
-            for (auto it = domain_->begin_leafs(); it != domain_->end_leafs(); ++it)
-            {
-                if (it->refinement_level()>0)
-                    domain_->tree()->deletionReset_2to1(it->parent(), checklist_reset_2to1_aim_deletion);
-            }
-
             // Unmark deletion distance_N blocks from the solution domain
             std::unordered_set<key_t> listNBlockAway;
 
@@ -314,7 +244,7 @@ public: //memeber functions
             for (auto it = domain_->begin(base_level);
                     it != domain_->end(base_level); ++it)
             {
-                if (it->aim_deletion()) continue;
+                if (it->aim_deletion() || it->is_correction()) continue;
 
                 auto k=it->key();
                 auto nks=k.get_neighbor_keys(baseBlockBufferNumber_);
@@ -337,11 +267,40 @@ public: //memeber functions
                     f(oct);
                     oct->flag_leaf(true);
                     oct->flag_correction(false);
+                    oct->aim_deletion(false);
                 }
 
                 oct->aim_deletion(false);
             }
 
+            domain_->tree()->construct_leaf_maps(true);
+            domain_->tree()->construct_level_maps();
+
+
+
+           // refine those allow 2to1 ratio
+            for (auto& oct:refinement_server)
+            {
+                if (!oct->is_leaf())
+                    continue;
+                auto key = oct->key();
+
+                //domain_->refine_with_exisitng_correction(oct, deletion);
+                domain_->refine(oct);
+            }
+
+            // dynmaic Programming to rduce repeated checks
+            std::unordered_set<octant_t*> checklist_reset_2to1_aim_deletion;
+            for (auto it = domain_->begin_leafs(); it != domain_->end_leafs(); ++it)
+            {
+                if (it->refinement_level()>0)
+                    domain_->tree()->deletionReset_2to1(it->parent(), checklist_reset_2to1_aim_deletion);
+            }
+
+            // --------------------------------------------------------------
+            // 3. try delete
+
+            domain_->tree()->construct_leaf_maps(true);
             domain_->tree()->construct_level_maps();
 
             // Base level
@@ -360,12 +319,28 @@ public: //memeber functions
             domain_->tree()->construct_level_maps();
             domain_->mark_correction();
             //domain_->delete_all_children(deletion,false);
+
             for (auto it = domain_->begin(); it != domain_->end(); ++it)
             {
-                if (it->data() && it->aim_deletion() && it->refinement_level()>0)
+                if (it->aim_deletion() && it->refinement_level()>0)
                 {
                     deletion[it->rank()].emplace_back(it->key());
                     domain_->tree()->delete_oct(it.ptr());
+                }
+            }
+
+            for (int l = domain_->tree()->base_level()-1;
+                    l >0; --l)
+            {
+                for (auto it=domain_->begin(l); it!=domain_->end(l); ++it)
+                {
+                    if (it->is_leaf_search())
+                    {
+                        if (it->data())
+                            deletion[it->rank()].emplace_back(it->key());
+                        domain_->tree()->delete_oct(it.ptr());
+                    }
+
                 }
             }
 
@@ -377,13 +352,40 @@ public: //memeber functions
                 if (it->rank()==-1 && it->data())
                 {
                     auto pa=it->parent();
-                    while (pa->rank()==-1)
+                    while (pa->rank()<=0 && pa!=pa->parent())
                     {
                         pa=pa->parent();
                     }
 
-                    it->rank()=pa->rank();
-                    refinement[it->rank()].emplace_back(it->key());
+                    if (pa->rank()>0)
+                    {
+                        it->rank()=pa->rank();
+                        refinement[it->rank()].emplace_back(it->key());
+                    } else
+                    {
+                        auto k=it->key();
+                        auto nks=k.get_neighbor_keys();
+                        for (auto nk:nks)
+                        {
+                            auto oct =domain_->tree()->find_octant(nk);
+                            if (oct && oct->data() && oct->rank()>0)
+                            {
+                                it->rank()=oct->rank();
+                                refinement[it->rank()].emplace_back(it->key());
+                                break;
+                            }
+                        }
+                    }
+
+                    pa=it->parent();
+                    while (!pa->data())
+                    {
+                        f(pa);
+                        pa->rank()=it->rank();
+                        refinement[pa->rank()].emplace_back(pa->key());
+                        pa=pa->parent();
+                    }
+
                 }
             }
 
@@ -417,7 +419,6 @@ public: //memeber functions
             domain_->tree()->construct_level_maps();
             domain_->tree()->construct_lists();
 
-            //TODO for baseBlockBufferNumber_>1
             fmm_mask_builder_t::fmm_clean_load(domain_);
             fmm_mask_builder_t::fmm_lgf_mask_build(domain_);
             fmm_mask_builder_t::fmm_vortex_streamfun_mask(domain_);
@@ -476,16 +477,25 @@ public: //memeber functions
                     }, false);
 
             // ghost ranks are sync
+            auto old_leaf_map = domain_->tree()->leaf_map();
             sync_decomposition();
-
-            for (auto k:refinement_local)
+            for (auto it = domain_->begin_leafs(); it != domain_->end_leafs(); ++it)
             {
-                auto oct =domain_->tree()->find_octant(k);
-                if (oct->refinement_level()==0) continue;
-
-                auto o_p = oct->parent();
-                interpolation_list.emplace_back(o_p);
+                if (it->refinement_level()>0 && old_leaf_map.find(it->key())==old_leaf_map.end())
+                {
+                    interpolation_list.emplace_back(it->parent());
+                }
             }
+
+
+            //for (auto k:refinement_local)
+            //{
+            //    auto oct =domain_->tree()->find_octant(k);
+            //    if (oct->refinement_level()==0) continue;
+
+            //    auto o_p = oct->parent();
+            //    interpolation_list.emplace_back(o_p);
+            //}
 
         }
 

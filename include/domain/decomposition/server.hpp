@@ -191,7 +191,7 @@ public:
 
             for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
             {
-                if(it->is_leaf() || it->is_correction()) continue;
+                //if( !it->data() || it->is_leaf() || it->is_correction()) continue;
 
                 int rank_tobe=-1;
                 float_type min_load=std::numeric_limits<float_type>::max();
@@ -200,16 +200,25 @@ public:
                     const auto child = it->child(i);
                     if(!child || !child->data()) continue;
 
-                    if(child->rank()==-1) throw std::runtime_error("Child not set ");
-                    if(total_loads_perProc[child->rank()] < min_load)
+                    if(child->rank()<=0) throw std::runtime_error("Child not set ");
+                    if(total_loads_perProc[child->rank()-1] < min_load)
                     {
                         rank_tobe=child->rank();
+                        min_load=total_loads_perProc[child->rank()-1];
                     }
                 }
-                it->rank()=rank_tobe;
-                ctask_t task(it.ptr(), rank_tobe, it->load());
-                total_loads_perProc[rank_tobe-1]+=it->load();
-                tasks_perProc[rank_tobe-1].push_back(task);
+                if (rank_tobe>0)
+                {
+                    it->rank()=rank_tobe;
+                    ctask_t task(it.ptr(), rank_tobe, it->load());
+                    total_loads_perProc[rank_tobe-1]+=it->load();
+                    tasks_perProc[rank_tobe-1].push_back(task);
+                }
+                else
+                {
+                    //if (!it->is_leaf() && !it->is_correction())
+                    //    std::cout<< "no children found for " <<it->key()<< std::endl;
+                }
             }
         }
 
@@ -233,14 +242,17 @@ public:
         std::vector<int> ranks_old;
         for (auto it = domain_->begin(); it != domain_->end(); ++it)
         {
+            if (!it->data()) continue;
             ranks_old.push_back(it->rank());
         }
+
         compute_distribution();
 
         int c=0;
         DecompositionUpdate updates(comm_.size());
         for (auto it = domain_->begin(); it != domain_->end(); ++it)
         {
+            if (!it->data()) continue;
             if(ranks_old[c] != it->rank())
             {
                 updates.insert(ranks_old[c], it->rank(),it->key());
@@ -253,7 +265,9 @@ public:
 
     void update_decomposition()
     {
+        std::cout<< "server -------------------------- 1 "<< std::endl;
         auto updates=this->check_decomposition_updates();
+        std::cout<< "server -------------------------- 2 "<< std::endl;
         for(int i=1;i<comm_.size();++i)
         {
             comm_.send(i,i+0*comm_.size(), updates.send_octs[i] );

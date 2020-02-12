@@ -58,11 +58,23 @@ public:
         for (auto it = domain_->begin(base_level);
                 it != domain_->end(base_level); ++it)
         {
+            it->fmm_mask(fmm_mask_idx,MASK_LIST::Mask_FMM_Source, false);
+            it->fmm_mask(fmm_mask_idx,MASK_LIST::Mask_FMM_Target, false);
+            it->fmm_mask(fmm_mask_idx,MASK_LIST::Mask_FMM_Source, false);
+            it->fmm_mask(fmm_mask_idx,MASK_LIST::Mask_FMM_Target, false);
+        }
+
+
+        for (auto it = domain_->begin(base_level);
+                it != domain_->end(base_level); ++it)
+        {
+            if (!it->data()) continue;
 
            if (!it->is_correction())
                 it->fmm_mask(fmm_mask_idx,MASK_LIST::Mask_FMM_Source, true);
            else
-                it->fmm_mask(fmm_mask_idx,MASK_LIST::Mask_FMM_Source, false);
+                it->fmm_mask(fmm_mask_idx,MASK_LIST::Mask_FMM_Source, true);
+                //it->fmm_mask(fmm_mask_idx,MASK_LIST::Mask_FMM_Source, false);
 
            if (it->is_correction())
                 it->fmm_mask(fmm_mask_idx,MASK_LIST::Mask_FMM_Target, true);
@@ -139,7 +151,7 @@ public:
                 it->fmm_mask(_fmm_mask_idx,mask_source_id,false);
                 for ( int c = 0; c < it->num_children(); ++c )
                 {
-                    if ( it->child(c) && it->child(c)->fmm_mask(_fmm_mask_idx,mask_source_id) )
+                    if ( it->child(c) && it->child(c)->data() && it->child(c)->fmm_mask(_fmm_mask_idx,mask_source_id) )
                     {
                         it->fmm_mask(_fmm_mask_idx,mask_source_id, true);
                         break;
@@ -155,7 +167,7 @@ public:
                 it->fmm_mask(_fmm_mask_idx,mask_target_id,false);
                 for ( int c = 0; c < it->num_children(); ++c )
                 {
-                    if ( it->child(c) && it->child(c)->fmm_mask(_fmm_mask_idx,mask_target_id) )
+                    if ( it->child(c) && it->child(c)->data()&& it->child(c)->fmm_mask(_fmm_mask_idx,mask_target_id) )
                     {
                         it->fmm_mask(_fmm_mask_idx,mask_target_id, true);
                         break;
@@ -183,14 +195,24 @@ public:
             int _load_factor=1,
             bool _neighbor_only=false)
     {
+        for (auto it = domain_->begin(base_level);
+                it != domain_->end(base_level); ++it)
+        {
+            it->fmm_mask(_fmm_mask_idx,MASK_LIST::Mask_FMM_Source, false);
+            it->fmm_mask(_fmm_mask_idx,MASK_LIST::Mask_FMM_Target, false);
+            it->fmm_mask(_fmm_mask_idx,MASK_LIST::Mask_FMM_Source, false);
+            it->fmm_mask(_fmm_mask_idx,MASK_LIST::Mask_FMM_Target, false);
+        }
+
         if (non_leaf_as_source)
         {
             for (auto it = domain_->begin(base_level);
                     it != domain_->end(base_level); ++it)
             {
+                if (!it->data()) continue;
                 bool correction_parent=false;
                 for (std::size_t i=0; i<it->num_children(); ++i)
-                    if (it->child(i) && it->child(i)->is_correction())
+                    if (it->child(i) && it->child(i)->data() && it->child(i)->is_correction())
                         correction_parent = true;
 
                 //if (( it->is_leaf() && !correction_parent) || it->is_correction())
@@ -202,8 +224,7 @@ public:
                 {
                     it->fmm_mask(_fmm_mask_idx,MASK_LIST::Mask_FMM_Source, true);
                     //if (!it->is_correction())
-                        it->fmm_mask(_fmm_mask_idx,MASK_LIST::Mask_FMM_Target,
-                                true);
+                        it->fmm_mask(_fmm_mask_idx,MASK_LIST::Mask_FMM_Target,true);
 
                     if (!_neighbor_only)
                         it->add_load(it->influence_number()*_load_factor);
@@ -217,6 +238,7 @@ public:
             for(auto it = domain_->begin(base_level);
                  it!=domain_->end(base_level);++it)
                 {
+                    if (!it->data()) continue;
                     it->fmm_mask(_fmm_mask_idx,MASK_LIST::Mask_FMM_Source,
                             true);
 

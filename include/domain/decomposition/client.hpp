@@ -137,6 +137,7 @@ public:
         comm_.recv(0,comm_.rank()+2*comm_.size(),update.recv_octs);
         comm_.recv(0,comm_.rank()+3*comm_.size(),update.src_ranks);
 
+        std::cout<< "client -------------------------- 1 "<< std::endl;
         //instantiate new octants
         domain_->tree()->insert_keys(update.recv_octs, [&](octant_t* _o){
             auto level = _o->refinement_level();
@@ -148,20 +149,25 @@ public:
                 _o->data()=std::make_shared<datablock_t>(bbase,
                         domain_->block_extent(),level, true);
             }
-            _o->rank()=comm_.rank();
         }, false);
 
 
         int count=0;
+        std::cout<< "client -------------------------- 1 "<< std::endl;
         for(auto& key : update.send_octs)
         {
             auto it =domain_->tree()->find_octant(key);
+            if (!it|| !it->data())
+                std::cout<<"balacen: find no send oct\n" << key << std::endl;
+
             it->rank()=update.dest_ranks[count];
             ++count;
         }
         for(auto& key : update.recv_octs)
         {
             auto it =domain_->tree()->find_octant(key);
+            if (!it || !it->data())
+                std::cout<<"balacen: find no send oct\n" << key << std::endl;
             it->rank()=comm_.rank();
         }
 
@@ -243,20 +249,8 @@ public:
         {
             //find the octant
             auto it =domain_->tree()->find_octant(key);
-            if(!it)continue;
-            if(it->is_leaf_search())
-            {
-                //delete
-                int cnumber=it->key().child_number();
-                it->deallocate_data();
-                auto p=it->parent();
-                if(p) p->delete_child(cnumber);
-            }
-            else
-            {
-                //deallocate data
-                it->deallocate_data();
-            }
+            if(!it || !it->data())continue;
+            domain_->tree()->delete_oct(it);
         }
         halo_initialized_=false;
     }

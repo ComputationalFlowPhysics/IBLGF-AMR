@@ -320,7 +320,7 @@ public: //C/Dtors
                     if (!child || !child->data())
                         continue;
 
-                    if ( !child->aim_deletion() || (!child->is_leaf() && !child->is_correction())  )
+                    if ( !child->aim_deletion() && (child->is_leaf() || child->is_correction())  )
                     {
                         delete_all_children=false;
                         break;
@@ -334,7 +334,7 @@ public: //C/Dtors
                         for (int i = 0; i < it->num_children(); ++i)
                         {
                             auto child = it->child(i);
-                            if (!child || !child->data())
+                            if (!child )
                                 continue;
                             child->flag_leaf(false);
                             child->flag_correction(false);
@@ -356,7 +356,7 @@ public: //C/Dtors
                     {
                         auto child = it->child(i);
 
-                        if (child)
+                        if (child && child->is_leaf())
                             child->aim_deletion(false);
                     }
                  }
@@ -382,7 +382,8 @@ public: //C/Dtors
                     it != this->end(l);
                     ++it)
             {
-                it->physical( it->is_leaf());
+                if (!it->data()) continue;
+                it->physical( it->is_leaf() && !it->aim_deletion());
 
                 if (!it->physical())
                 {
@@ -404,6 +405,7 @@ public: //C/Dtors
                     it != this->end(l);
                     ++it)
             {
+                if (!it->data()) continue;
                 if (!it->physical()) continue;
 
                 it->tree()->
@@ -455,13 +457,12 @@ public: //C/Dtors
                 it != this->end(base_level);
                 ++it)
         {
+            if (!it->data()) continue;
             if (!it->physical()) continue;
             bool _neighbors_exists=true;
             for(int i=0;i<it->nNeighbors();++i)
             {
-                if(!it->neighbor(i))
-                    _neighbors_exists=false;
-                else if(!it->neighbor(i)->data())
+                if(!it->neighbor(i) || !it->neighbor(i)->data())
                     _neighbors_exists=false;
             }
 
@@ -471,11 +472,16 @@ public: //C/Dtors
                 it->aim_deletion(false);
                 it->flag_leaf(true);
             }
+            else
+            {
+                it->flag_correction(false);
+                it->aim_deletion(false);
+            }
         }
 
         this->tree()->construct_level_maps();
         this->tree()->construct_lists();
-
+        this->tree()->construct_leaf_maps(true);
     }
 
     void init_refine(int nRef, int level_up_max)
@@ -619,6 +625,32 @@ public:
         );
     }
 
+    template<class Iterator>
+    void refine_with_exisitng_correction(Iterator* octant_it, std::vector<std::vector<key_t>>& deletion, bool ratio_2to1=true)
+    {
+        tree()->
+            refine(octant_it,
+                [this, &deletion](auto child_it)
+                {
+                    if (child_it && child_it->data() && child_it->is_correction() && child_it->rank()!=child_it->parent()->rank())
+                    {
+                        deletion[child_it->rank()].emplace_back(child_it->key());
+                        child_it->rank()=-1;
+                    }
+
+                    auto level = child_it->level() - this->tree()->base_level();
+                    auto bbase=t_->octant_to_level_coordinate(
+                        child_it->tree_coordinate(), level);
+
+                    bool init_field=this->is_client();
+                    if (!child_it->data())
+                        child_it->data()=
+                            std::make_shared<datablock_t>(bbase, block_extent_,level,init_field);
+                },
+                ratio_2to1
+        );
+
+    }
 
 public:
 
@@ -959,7 +991,7 @@ private:
     adapt_condition_fct_t adapt_cond_ = &Domain::adapt_cond_default;
 
     boost::mpi::communicator client_comm_;
-    int baseBlockBufferNumber_=1;
+    int baseBlockBufferNumber_=2;
 
 };
 

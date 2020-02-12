@@ -80,9 +80,11 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
         cfl_ = simulation_.dictionary()->template get_or<float_type>("cfl",0.2);
         dt_  = simulation_.dictionary()->template get_or<float_type>("dt",-1.0);
 
-        tot_steps_ = simulation_.dictionary()->template get<int>("nBaseLevelTimeSteps");
-        Re_        = simulation_.dictionary()->template get<float_type>("Re");
-        R_         = simulation_.dictionary()->template get<float_type>("R");
+        tot_steps_   = simulation_.dictionary()->template get<int>("nBaseLevelTimeSteps");
+        Re_          = simulation_.dictionary()->template get<float_type>("Re");
+        R_           = simulation_.dictionary()->template get<float_type>("R");
+        d2v_         = simulation_.dictionary()->template get_or<float_type>("DistanceOfVortexRings", R_);
+        v_delta_     = simulation_.dictionary()->template get_or<float_type>("vDelta", 0.2*R_);
 
         ic_filename_ = simulation_.dictionary_->
             template get_or<std::string>("hdf5_ic_name", "null");
@@ -157,15 +159,25 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
     template<class Field, class OctantType>
     int adapt_level_change(OctantType* it, float_type source_max)
     {
+        auto& nodes_domain=it->data()->nodes_domain();
+
         // ----------------------------------------------------------------
         float_type field_max = 1e-14;
 
-        auto& nodes_domain=it->data()->nodes_domain();
         for(auto it2=nodes_domain.begin();it2!=nodes_domain.end();++it2 )
         {
             if (std::fabs(it2->template get<Field>()) > field_max)
                 field_max = std::fabs(it2->template get<Field>());
         }
+
+        //int count=0;
+        //field_max=0;
+        //for(auto it2=nodes_domain.begin();it2!=nodes_domain.end();++it2 )
+        //{
+        //    field_max+=it2->template get<Field>();
+        //    count++;
+        //}
+        //field_max /= count;
 
         // ----------------------------------------------------------------
 
@@ -184,7 +196,7 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
         //if (it->refinement_level()==0)
         //{
         //    if (field_max>source_max*base_threshold)
-        //        l_aim = std::max(l_aim,0);
+        //        l_delete_aim = std::max(l_delete_aim,0);
         //}
 
         int l_change = l_aim - it->refinement_level();
@@ -246,7 +258,7 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
                float_type z = static_cast<float_type>
                    (coord[2]-center[2]*scaling)*dx_level;
 
-               it2->template get<edge_aux>(0) = vortex_ring_vor_ic(x,y,z,0);
+               it2->template get<edge_aux>(0) = -vortex_ring_vor_ic(x,y,z-d2v_/2,0)+vortex_ring_vor_ic(x,y,z+d2v_/2,0);
                /***********************************************************/
                x = static_cast<float_type>
                    (coord[0]-center[0]*scaling)*dx_level;
@@ -255,7 +267,7 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
                z = static_cast<float_type>
                    (coord[2]-center[2]*scaling)*dx_level;
 
-               it2->template get<edge_aux>(1) = vortex_ring_vor_ic(x,y,z,1);
+               it2->template get<edge_aux>(1) = -vortex_ring_vor_ic(x,y,z-d2v_/2,1)+vortex_ring_vor_ic(x,y,z+d2v_/2,1);
                /***********************************************************/
                x = static_cast<float_type>
                    (coord[0]-center[0]*scaling)*dx_level;
@@ -264,7 +276,7 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
                z = static_cast<float_type>
                    (coord[2]-center[2]*scaling+0.5)*dx_level;
 
-               it2->template get<edge_aux>(2) = vortex_ring_vor_ic(x,y,z,2);
+               it2->template get<edge_aux>(2) = -vortex_ring_vor_ic(x,y,z-d2v_/2,2)+vortex_ring_vor_ic(x,y,z+d2v_/2,2);
 
                /***********************************************************/
                it2->template get<decomposition>()=world.rank();
@@ -285,7 +297,7 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
             {
                 if(!it->locally_owned() || !it->data()) continue;
                 const auto dx_level =  dx_base/std::pow(2,it->refinement_level());
-                domain::Operator::curl_transpose<stream_f,u>( *(it->data()),dx_level);
+                domain::Operator::curl_transpose<stream_f,u>( *(it->data()),dx_level, -1.0);
             }
             client->template buffer_exchange<u>(l);
 
@@ -293,8 +305,7 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
     }
 
 
-
-    float_type vortex_ring_vor_ic(float_type x, float_type y, float_type z, int field_idx) const
+    float_type vortex_ring_vor_fat_ic(float_type x, float_type y, float_type z, int field_idx) const
     {
         const float_type alpha = 0.54857674;
         float_type R2 = R_*R_;
@@ -307,6 +318,30 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
         float_type w_theta = alpha * 1.0/R2 * std::exp(-4.0*s2/(R2-s2));
 
         if (s2>=R2) return 0.0;
+
+        if (field_idx==0)
+            return -w_theta*std::sin(theta);
+        else if (field_idx==1)
+            return w_theta*std::cos(theta);
+        else
+            return 0.0;
+
+    }
+
+
+    float_type vortex_ring_vor_ic(float_type x, float_type y, float_type z, int field_idx) const
+    {
+        float_type delta_2 = v_delta_* v_delta_;
+        float_type R2 = R_*R_;
+
+        float_type r2 = x*x+y*y;
+        float_type r = sqrt(r2);
+        float_type s2 = z*z+(r-R_)*(r-R_);
+
+        float_type theta = std::atan2(y,x);
+        float_type w_theta = 1.0/M_PI/delta_2*std::exp(-s2/delta_2);
+
+        //if (s2>=delta_2) return 0.0;
 
         if (field_idx==0)
             return -w_theta*std::sin(theta);
@@ -402,6 +437,8 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
     private:
     boost::mpi::communicator client_comm_;
     float_type R_;
+    float_type v_delta_;
+    float_type d2v_;
     float_type source_max_;
 
     float_type rmin_ref_;

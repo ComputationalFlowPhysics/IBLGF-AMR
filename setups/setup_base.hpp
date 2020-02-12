@@ -49,13 +49,14 @@ public: //default fields
       (q_i,                 float_type,  3,  1,  1,  face,false),
       (u_i,                 float_type,  3,  1,  1,  face,false),
       (d_i,                 float_type,  1,  1,  1,  cell,false),
-      (g_i,                 float_type,  3,  1,  1,  face,false),
+      (g_i,                 float_type,  3,  1,  1,  face,true),
       (r_i,                 float_type,  3,  1,  1,  face,false),
       (w_1,                 float_type,  3,  1,  1,  face,false),
       (w_2,                 float_type,  3,  1,  1,  face,false),
       (cell_aux,            float_type,  1,  1,  1,  cell,true),
       (face_aux,            float_type,  3,  1,  1,  face,false),
-      (stream_f,            float_type,  3,  1,  1,  edge,false),
+      (stream_f,            float_type,  3,  1,  1,  edge,true),
+      (correction,          float_type,  1,  1,  1,  cell,true),
       (edge_aux,            float_type,  3,  1,  1,  edge,true)
     ))
 

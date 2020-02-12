@@ -143,10 +143,6 @@ public:
             auto octant = this->insert_td(k);
             if (!octant->data() || !octant->data()->is_allocated())
                 f(octant);
-            else
-                std::cout<< " inserting already allocated data oct at " << k << std::endl;
-
-            if (update_depth && octant->level()+1 > depth_) depth_=octant->level()+1;
         }
     }
 
@@ -681,6 +677,7 @@ public:
         dfs_iterator begin(root()); dfs_iterator end;
         for(auto it =begin;it!=end;++it)
         {
+            if (!it->data()) continue;
             neighbor_list_build(it.ptr());
             influence_list_build(it.ptr());
         }
@@ -758,7 +755,7 @@ public: //children and parent queries
             }
             else
             {
-                if (ranks[i]>=0)
+                if (ranks[i]>0)
                 {
                     auto nn=this->insert_td(keys[i]);
                     nn->rank()=ranks[i];

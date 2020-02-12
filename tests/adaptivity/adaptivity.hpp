@@ -403,11 +403,11 @@ struct Adaptivity:public SetupBase<Adaptivity,parameters>
         if (l_aim>nLevelRefinement_)
             l_aim=nLevelRefinement_;
 
-        if (it->refinement_level()==0)
-        {
-            if (field_max>source_max*base_threshold)
-                l_aim = std::max(l_aim,0);
-        }
+        //if (it->refinement_level()==0)
+        //{
+        //    if (field_max>source_max*base_threshold)
+        //        l_aim = std::max(l_aim,0);
+        //}
 
         l_change = l_aim - it->refinement_level();
         //return l_change<0 ? l_change:0;

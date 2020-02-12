@@ -60,6 +60,7 @@ public: //member types
     using w_2        = typename Setup::w_2;
     using u_i        = typename Setup::u_i;
 
+    using correction   = typename Setup::correction;
 
     static constexpr int lBuffer=1; ///< Lower left buffer for interpolation
     static constexpr int rBuffer=1; ///< Lower left buffer for interpolation
@@ -73,6 +74,7 @@ public: //member types
         // parameters --------------------------------------------------------
 
         dx_base_          = domain_->dx_base();
+        max_ref_level_    = _simulation->dictionary()->template get<float_type>("nLevels");
         cfl_              = _simulation->dictionary()->template get_or<float_type>("cfl",0.2);
         dt_base_          = _simulation->dictionary()->template get_or<float_type>("dt",-1.0);
         tot_base_steps_   = _simulation->dictionary()->template get<int>("nBaseLevelTimeSteps");
@@ -114,10 +116,50 @@ public:
         boost::mpi::communicator world;
         parallel_ostream::ParallelOstream pcout=parallel_ostream::ParallelOstream(world.size()-1);
 
-        pcout<<"Time marching ------------------------------------------------"<< std::endl;
+        // --------------------- clean up projection vorticity
+        //if(domain_->is_client())
+        //{
+
+        //    up_and_down<u>();
+        //    auto client = domain_->decomposition().client();
+        //    clean<edge_aux>();
+        //    clean<stream_f>();
+        //    for (int l  = domain_->tree()->base_level();
+        //            l < domain_->tree()->depth(); ++l)
+        //    {
+        //        client->template buffer_exchange<u>(l);
+        //        for (auto it  = domain_->begin(l);
+        //                it != domain_->end(l); ++it)
+        //        {
+        //            if(!it->locally_owned() ) continue;
+
+        //            const auto dx_level =  dx_base_/std::pow(2,it->refinement_level());
+        //            domain::Operator::curl<u,edge_aux>( *(it->data()),dx_level);
+        //        }
+        //    }
+        //    clean_leaf_correction_boundary<edge_aux>(domain_->tree()->base_level(), true);
+
+        //    clean<u>();
+        //    psolver.template apply_lgf<edge_aux, stream_f>();
+        //    for (int l  = domain_->tree()->base_level();
+        //            l < domain_->tree()->depth(); ++l)
+        //    {
+        //        for (auto it  = domain_->begin(l);
+        //                it != domain_->end(l); ++it)
+        //        {
+        //            if(!it->locally_owned() || !it->data()) continue;
+
+        //            const auto dx_level =  dx_base_/std::pow(2,it->refinement_level());
+        //            domain::Operator::curl_transpose<stream_f,u>( *(it->data()),dx_level, -1.0);
+        //        }
+        //        client->template buffer_exchange<u>(l);
+        //    }
+        //}
+        // --------------------- clean up projection vorticity
+
+        pcout<<"Time marching ------------------------------------------------ "<< std::endl;
         T_ = 0.0;
         write_timestep();
-
 
         int adapt_count=0;
         while(T_<=T_max_+1e-10)
@@ -144,7 +186,7 @@ public:
             if ( adapt_count % adapt_freq_ ==0)
             {
                 this->template adapt<u, cell_aux>();
-                //domain_->decomposition().template balance<u>();
+                domain_->decomposition().template balance<u>();
             }
             adapt_count++;
 
@@ -157,10 +199,11 @@ public:
 
             //float_type tmp_n=T_/dt_base_;
             //testing only
-            float_type tmp_n=T_/dt_;
-            if ( ( std::fabs(ceil(tmp_n) - tmp_n)<1e-10 ) && (int(tmp_n)%output_base_freq_==0) )
+            float_type tmp_n=T_/dt_base_*std::pow(2,max_ref_level_);
+            pcout<<tmp_n<<std::endl;
+            if ( ( std::fabs(int(tmp_n+0.5) - tmp_n)<1e-4 ) && (int(tmp_n+0.5)%output_base_freq_==0) )
             {
-                n_step_= (int) tmp_n;
+                n_step_= int(tmp_n+0.5);
                 write_timestep();
             }
         }
@@ -188,7 +231,7 @@ public:
 
     void write_timestep()
     {
-        pcout << "- writing at T = " << T_ << std::endl;
+        pcout << "- writing at T = " << T_ << ", n = "<< n_step_ << std::endl;
         simulation_->write2(fname(n_step_));
         pcout << "- finishing writing " << std::endl;
     }
@@ -216,6 +259,15 @@ public:
     {
         boost::mpi::communicator world;
         auto client = domain_->decomposition().client();
+
+        //adaptation neglect the boundary oscillations
+        clean_leaf_correction_boundary<cell_aux>(domain_->tree()->base_level(),true,3);
+
+        if(domain_->is_client())
+        {
+            clean<AdaptField>(true);
+            pad_velocity<AdaptField, AdaptField>();
+        }
 
         world.barrier();
         pcout<< "Adapt - coarsify"  << std::endl;
@@ -260,8 +312,27 @@ public:
             }
         }
 
-        //test correction
-        //for (std::size_t _field_idx=0; _field_idx<cell_aux::nFields; ++_field_idx)
+        //test correction --------------------------------------------------
+        for (std::size_t _field_idx=0; _field_idx<correction::nFields; ++_field_idx)
+        {
+
+            for (int l = domain_->tree()->depth()-1;
+                    l >= domain_->tree()->base_level(); --l)
+            {
+                for (auto it=domain_->begin(l); it!=domain_->end(l); ++it)
+                {
+                    if (!it->data() || !it->data()->is_allocated()) continue;
+                    auto& lin_data = it->data()->
+                        template get_linalg_data<correction>(_field_idx);
+                    if (it->is_correction())
+                        std::fill(lin_data.begin(),lin_data.end(),-1000.0);
+                    else
+                        std::fill(lin_data.begin(),lin_data.end(),0.0);
+                }
+            }
+        }
+
+        // for (std::size_t _field_idx=0; _field_idx<cell_aux::nFields; ++_field_idx)
         //{
 
         //    for (int l = domain_->tree()->depth()-2;
@@ -269,25 +340,22 @@ public:
         //    {
         //        for (auto it=domain_->begin(l); it!=domain_->end(l); ++it)
         //        {
-        //            if (!it->locally_owned()) continue;
-
-        //            auto& lin_data = it->data()->
-        //                template get_linalg_data<cell_aux>(_field_idx);
-
-        //            std::fill(lin_data.begin(),lin_data.end(),000.0);
 
         //            for(int c=0;c<it->num_children();++c)
         //            {
         //                const auto child = it->child(c);
-        //                if(!child || !child->data() || !child->is_correction() ) continue;
+        //                if(!child || !child->data() || !child->locally_owned() || !child->is_correction() ) continue;
 
-        //                auto& c_data = child->data()->
+        //                auto& lin_data = child->data()->
         //                    template get_linalg_data<cell_aux>(_field_idx);
 
-        //                std::fill(c_data.begin(),c_data.end(),-1000.0);
+        //                std::fill(lin_data.begin(),lin_data.end(),-1000.0);
         //            }
         //        }
         //    }
+
+        //    for (std::size_t _field_idx=0; _field_idx<cell_aux::nFields; ++_field_idx)
+        //        psolver.template source_coarsify<cell_aux,cell_aux>(_field_idx, _field_idx, cell_aux::mesh_type, true, false);
         //}
 
         world.barrier();
@@ -303,16 +371,17 @@ public:
         auto client=domain_->decomposition().client();
 
         ////claen non leafs
-        clean<u>(true);
         up_and_down<u>();
 
         // Solve stream function to pad base level u->u_pad
+        stage_idx_=0;
         pad_velocity<u, u>();
         copy<u, q_i>();
 
         // Stage 1
         // ******************************************************************
         pcout<<"Stage 1"<< std::endl;
+        stage_idx_=1;
         clean<g_i>();
         clean<d_i>();
         clean<cell_aux>();
@@ -327,6 +396,7 @@ public:
         // Stage 2
         // ******************************************************************
         pcout<<"Stage 2"<< std::endl;
+        stage_idx_=2;
         clean<r_i>();
         clean<d_i>();
         clean<cell_aux>();
@@ -344,6 +414,7 @@ public:
         add<q_i, r_i>();
         add<w_1, r_i>(dt_*coeff_a(2,1));
 
+        //pad_velocity<u_i, u_i>();
         up_and_down<u_i>();
         nonlinear<u_i,g_i>(coeff_a(2,2)*(-dt_));
         add<g_i, r_i>( );
@@ -353,6 +424,7 @@ public:
         // Stage 3
         // ******************************************************************
         pcout<<"Stage 3"<< std::endl;
+        stage_idx_=3;
         clean<d_i>();
         clean<cell_aux>();
         clean<w_2>();
@@ -365,7 +437,9 @@ public:
 
         psolver.template apply_lgf_IF<r_i, r_i>(alpha_[1]);
 
+        //pad_velocity<u_i, u_i>();
         up_and_down<u_i>();
+        //clean<u>(true);
         nonlinear<u_i,g_i>( coeff_a(3,3)*(-dt_) );
         add<g_i, r_i>();
 
@@ -382,23 +456,31 @@ public:
 private:
     void lin_sys_solve(float_type _alpha) noexcept
     {
-         divergence<r_i, cell_aux>();
+        auto client=domain_->decomposition().client();
 
-         pcout<< "solving LGF" <<std::endl;
-         mDuration_type t_lgf(0);
-         TIME_CODE( t_lgf, SINGLE_ARG(
-                     psolver.template apply_lgf<cell_aux, d_i>();
-                     ));
-         pcout<< "solve LGF in "<<t_lgf.count() << std::endl;
+        divergence<r_i, cell_aux>();
 
-         //psolver.template apply_lgf<cell_aux, d_i>();
-         gradient<d_i,face_aux>();
+        //for (int l  = domain_->tree()->base_level();
+        //        l < domain_->tree()->depth(); ++l)
+        //{
+        //    client->template buffer_exchange<cell_aux>(l);
+        //}
 
-         add<face_aux, r_i>(-1.0);
-         if (std::fabs(_alpha)>1e-4)
-             psolver.template apply_lgf_IF<r_i, u_i>(_alpha);
-         else
-             copy<r_i,u_i>();
+        pcout<< "solving LGF" <<std::endl;
+        mDuration_type t_lgf(0);
+        TIME_CODE( t_lgf, SINGLE_ARG(
+                    psolver.template apply_lgf<cell_aux, d_i>();
+                    ));
+        pcout<< "solve LGF in "<<t_lgf.count() << std::endl;
+
+        //psolver.template apply_lgf<cell_aux, d_i>();
+        gradient<d_i,face_aux>();
+
+        add<face_aux, r_i>(-1.0);
+        if (std::fabs(_alpha)>1e-4)
+            psolver.template apply_lgf_IF<r_i, u_i>(_alpha);
+        else
+            copy<r_i,u_i>();
     }
 
     float_type coeff_a(int i, int j)const noexcept {return a_[i*(i-1)/2+j-1];}
@@ -419,12 +501,12 @@ private:
                 if (non_leaf_only && it->is_leaf() && it->locally_owned() )
                 {
                     int N=it->data()->descriptor().extent()[0];
-                    xt::noalias( view(lin_data,xt::all(),xt::all(),0)) *= 0.0;
-                    xt::noalias( view(lin_data,xt::all(),0,xt::all())) *= 0.0;
-                    xt::noalias( view(lin_data,0,xt::all(),xt::all())) *= 0.0;
-                    xt::noalias( view(lin_data,N+1,xt::all(),xt::all())) *= 0.0;
-                    xt::noalias( view(lin_data,xt::all(),N+1,xt::all())) *= 0.0;
-                    xt::noalias( view(lin_data,xt::all(),xt::all(),N+1)) *= 0.0;
+                    view(lin_data,xt::all(),xt::all(),0) *= 0.0;
+                    view(lin_data,xt::all(),0,xt::all()) *= 0.0;
+                    view(lin_data,0,xt::all(),xt::all()) *= 0.0;
+                    view(lin_data,N+1,xt::all(),xt::all()) *= 0.0;
+                    view(lin_data,xt::all(),N+1,xt::all()) *= 0.0;
+                    view(lin_data,xt::all(),xt::all(),N+1) *= 0.0;
                 }
                 else
                 {
@@ -441,9 +523,27 @@ private:
     void pad_velocity()
     {
         auto client=domain_->decomposition().client();
-        clean<edge_aux>();
 
-        const auto dx_base = domain_->dx_base();
+        clean<edge_aux>();
+        clean<stream_f>();
+        int l  = domain_->tree()->base_level();
+        for (auto it  = domain_->begin(l);
+                it != domain_->end(l); ++it)
+        {
+            if(!it->locally_owned() || !it->data()) continue;
+            if(!it->is_correction()) continue;
+            for (std::size_t field_idx=0;
+                    field_idx<Velocity_in::nFields; ++field_idx)
+            {
+                auto& lin_data = it ->data()->
+                    template get_linalg_data<Velocity_in>(field_idx);
+
+                std::fill(lin_data.begin(),lin_data.end(),0.0);
+            }
+        }
+
+
+        auto dx_base = domain_->dx_base();
 
 
         for (int l  = domain_->tree()->base_level();
@@ -454,7 +554,7 @@ private:
                     it != domain_->end(l); ++it)
             {
                 if(!it->locally_owned() || !it->data()) continue;
-                if(it->is_correction()) continue;
+                //if(it->is_correction()) continue;
 
                 const auto dx_level =  dx_base/std::pow(2,it->refinement_level());
                 if (it->is_leaf())
@@ -462,10 +562,8 @@ private:
             }
         }
 
-        const int l  = domain_->tree()->base_level();
-
-        clean_leaf_correction_boundary<edge_aux>(l, true);
-
+        clean_leaf_correction_boundary<edge_aux>(l, true, 2);
+        //clean_leaf_correction_boundary<edge_aux>(l, false,2+stage_idx_);
         psolver.template apply_lgf<edge_aux, stream_f>(true);
 
         for (auto it  = domain_->begin(l);
@@ -482,8 +580,25 @@ private:
     }
 
     template <typename F>
-    void clean_leaf_correction_boundary(int l, bool leaf_only_boundary=false) noexcept
+    void clean_leaf_correction_boundary(int l, bool leaf_only_boundary=false, int clean_width=1) noexcept
     {
+        for (auto it  = domain_->begin(l);
+                it != domain_->end(l); ++it)
+        {
+            if(!it->locally_owned())
+            {
+                if(!it->data() || !it->data()->is_allocated()) continue;
+                for (std::size_t field_idx=0;
+                        field_idx<F::nFields; ++field_idx)
+                {
+                    auto& lin_data = it ->data()->
+                        template get_linalg_data<F>(field_idx);
+
+                    std::fill(lin_data.begin(),lin_data.end(),0.0);
+                }
+            }
+        }
+
         for (auto it  = domain_->begin(l);
                 it != domain_->end(l); ++it)
         {
@@ -503,37 +618,42 @@ private:
                 }
         }
 
+        //std::cout<< "-------------------------------------------------------"<<std::endl;
         if (l==domain_->tree()->base_level())
         for (auto it  = domain_->begin(l);
                 it != domain_->end(l); ++it)
         {
             if(!it->locally_owned()) continue;
             if(!it->data() || !it->data()->is_allocated()) continue;
+            //std::cout<<it->key()<<std::endl;
 
             for(std::size_t i=0;i< it->num_neighbors();++i)
             {
                 auto it2=it->neighbor(i);
-                if (!it2 || (leaf_only_boundary && it2->is_correction()))
+                //if (it2)
+                //    std::cout<<i<<it2->key()<<std::endl;
+                if ((!it2 || !it2->data()) || (leaf_only_boundary && it2->is_correction()))
                 {
                     for (std::size_t field_idx=0; field_idx<F::nFields; ++field_idx)
                     {
                         auto& lin_data = it->data()->
-                        template get_linalg_data<F>(field_idx);
+                            template get_linalg_data<F>(field_idx);
 
                         int N=it->data()->descriptor().extent()[0];
 
+                        // somehow we delete the outer 2 planes
                         if (i==4)
-                            xt::noalias( view(lin_data,xt::all(),xt::all(),1)) *= 0.0;
+                            view(lin_data,xt::all(),xt::all(),xt::range(0,clean_width))  *= 0.0;
                         else if (i==10)
-                            xt::noalias( view(lin_data,xt::all(),1,xt::all())) *= 0.0;
+                            view(lin_data,xt::all(),xt::range(0,clean_width),xt::all())  *= 0.0;
                         else if (i==12)
-                            xt::noalias( view(lin_data,1,xt::all(),xt::all())) *= 0.0;
+                            view(lin_data,xt::range(0,clean_width),xt::all(),xt::all())  *= 0.0;
                         else if (i==14)
-                            xt::noalias( view(lin_data,N,xt::all(),xt::all())) *= 0.0;
+                            view(lin_data,xt::range(N+2-clean_width,N+3),xt::all(),xt::all())  *= 0.0;
                         else if (i==16)
-                            xt::noalias( view(lin_data,xt::all(),N,xt::all())) *= 0.0;
+                            view(lin_data,xt::all(),xt::range(N+2-clean_width,N+3),xt::all())  *= 0.0;
                         else if (i==22)
-                            xt::noalias( view(lin_data,xt::all(),xt::all(),N)) *= 0.0;
+                            view(lin_data,xt::all(),xt::all(),xt::range(N+2-clean_width,N+3))  *= 0.0;
                     }
                 }
             }
@@ -560,21 +680,20 @@ private:
                     it != domain_->end(l); ++it)
             {
                 if(!it->locally_owned() || !it->data()) continue;
-                if(it->is_correction()) continue;
+                //if(it->is_correction()) continue;
 
                 const auto dx_level =  dx_base/std::pow(2,it->refinement_level());
                 domain::Operator::curl<Source,edge_aux>( *(it->data()),dx_level);
             }
 
             client->template buffer_exchange<edge_aux>(l);
-            clean_leaf_correction_boundary<edge_aux>(l, true);
+            clean_leaf_correction_boundary<edge_aux>(l, false,2+stage_idx_);
 
             for (auto it  = domain_->begin(l);
                     it != domain_->end(l); ++it)
             {
                 if(!it->locally_owned() || !it->data())continue;
-                //const auto dx_level =  dx_base/std::pow(2,it->refinement_level());
-                if(it->is_correction()) continue;
+                //if(it->is_correction()) continue;
 
                 domain::Operator::nonlinear<Source,edge_aux,Target>
                     ( *(it->data()));
@@ -590,7 +709,7 @@ private:
             }
 
             client->template buffer_exchange<Target>(l);
-            clean_leaf_correction_boundary<edge_aux>(l, false);
+            clean_leaf_correction_boundary<Target>(l, false,3+stage_idx_);
         }
     }
 
@@ -614,7 +733,8 @@ private:
             }
 
             //client->template buffer_exchange<Target>(l);
-            clean_leaf_correction_boundary<Target>(l, true);
+            //clean_leaf_correction_boundary<Target>(l, true, 1+stage_idx_);
+            clean_leaf_correction_boundary<Target>(l, false,4+stage_idx_);
         }
     }
     template<class Source, class Target>
@@ -693,11 +813,13 @@ private:
     float_type Re_;
     float_type cfl_max_, cfl_;
     float_type source_max_;
+    int max_ref_level_=0;
     int output_base_freq_;
     int adapt_freq_;
     int tot_base_steps_;
-    int n_step_;
+    int n_step_=0;
     int nLevelRefinement_;
+    int stage_idx_=0;
 
     std::string fname_prefix_;
     vector_type<float_type, 6> a_{{1.0/3, -1.0, 2.0, 0.0, 0.75, 0.25}};

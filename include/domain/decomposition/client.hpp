@@ -191,7 +191,7 @@ public:
                 //find the octant
                 auto it =domain_->tree()->find_octant(key);
                 it->rank()=_update.dest_ranks[count];
-                const auto idx=get_octant_idx(it);
+                const auto idx=get_octant_idx(it,field_idx);
 
                 auto send_ptr=it->data()->
                     template get<Field>(field_idx).data_ptr();
@@ -211,7 +211,7 @@ public:
             {
                 auto it =domain_->tree()->find_octant(key);
                 it->rank()=comm_.rank();
-                const auto idx=get_octant_idx(it);
+                const auto idx=get_octant_idx(it,field_idx);
 
                 const auto recv_ptr=it->data()->
                     template get<Field>(field_idx).data_ptr();
@@ -734,11 +734,11 @@ public:
     /** @brief communicate fields for up/downward pass of fmm */
     //TODO: Make it better and put in octant
     template<class T>
-    auto get_octant_idx(T it) const noexcept
+    auto get_octant_idx(T it, int field_idx=0) const noexcept
     {
         const auto cc=it->tree_coordinate();
         return static_cast<int>(
-                (it->level()+cc.x()*25+cc.y()*25*300+ 25*300*300*cc.z()) %
+                ( (it->level()+cc.x()*25+cc.y()*25*300+ 25*300*300*cc.z() )*(field_idx+1)) %
                 boost::mpi::environment::max_tag()
                 );
     }

@@ -73,8 +73,8 @@ public:
            if (!it->is_correction())
                 it->fmm_mask(fmm_mask_idx,MASK_LIST::Mask_FMM_Source, true);
            else
-                it->fmm_mask(fmm_mask_idx,MASK_LIST::Mask_FMM_Source, true);
-                //it->fmm_mask(fmm_mask_idx,MASK_LIST::Mask_FMM_Source, false);
+                //it->fmm_mask(fmm_mask_idx,MASK_LIST::Mask_FMM_Source, true);
+                it->fmm_mask(fmm_mask_idx,MASK_LIST::Mask_FMM_Source, false);
 
            if (it->is_correction())
                 it->fmm_mask(fmm_mask_idx,MASK_LIST::Mask_FMM_Target, true);

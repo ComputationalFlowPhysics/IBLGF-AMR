@@ -104,7 +104,8 @@ public:
 
     Client(Domain* _d, communicator_type _comm =communicator_type())
     :domain_(_d)
-    { }
+    {
+    }
 
 public:
     void receive_keys()
@@ -143,11 +144,14 @@ public:
             level=level>=0?level:0;
             auto bbase=domain_->tree()->octant_to_level_coordinate(
                     _o->tree_coordinate(),level);
-            //if(!_o->data())
-            {
-                _o->data()=std::make_shared<datablock_t>(bbase,
-                        domain_->block_extent(),level, true);
-            }
+            //if(!_o->data() || !_o->data()->is_allocated())
+
+            //_o->deallocate_data();
+            //if(_o->data() || _o->data()->is_allocated())
+            //    std::cout<<"why is it still allocated" << std::endl;
+
+            _o->data()=std::make_shared<datablock_t>(bbase,
+                    domain_->block_extent(),level, true);
         }, false);
 
 
@@ -182,7 +186,8 @@ public:
             task_manager_-> template recv_communicator<balance_task>();
 
         //send the actuall octants
-        for (std::size_t field_idx=0; field_idx<Field::nFields; ++field_idx)
+        //for (int field_idx=Field::nFields-1; field_idx>=0; --field_idx)
+        for (int field_idx=0; field_idx<Field::nFields; ++field_idx)
         {
 
             int count=0;
@@ -235,6 +240,7 @@ public:
             }
             recv_comm.clear();
             send_comm.clear();
+            domain_->client_communicator().barrier();
         }
 
 
@@ -833,6 +839,7 @@ private:
 
     std::vector<halo_communicators_tuple_t> halo_communicators_;
     bool halo_initialized_=false;
+
 };
 
 }

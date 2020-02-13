@@ -452,7 +452,7 @@ public: //memeber functions
                     level=level>=0?level:0;
                     auto bbase=domain_->tree()->octant_to_level_coordinate(
                             _o->tree_coordinate(),level);
-                    //if(!_o->data())
+                    if(!_o->data() || !_o->data()->is_allocated())
                     {
                     _o->data()=std::make_shared<datablock_t>(bbase,
                             domain_->block_extent(),level, true);

@@ -128,7 +128,7 @@ public:
             // balance load
             if ( (adapt_count-1) % adapt_freq_ ==0)
             {
-                domain_->decomposition().template balance<u>();
+                domain_->decomposition().template balance<u,p>();
             }
 
             // -------------------------------------------------------------
@@ -161,25 +161,27 @@ public:
                     up_and_down<u>();
                     pad_velocity<u, u>();
                 }
-                this->template adapt<u, cell_aux>();
+                this->template adapt<u, cell_aux>(false);
 
             }
+
             adapt_count++;
+
 
             // -------------------------------------------------------------
             // update stats & output
             update_marching_parameters();
+
             T_ += dt_;
             pcout<<"T = " << T_ << " -----------------" << std::endl;
             pcout<<"Total number of leaf octants: "<<domain_->num_leafs()<<std::endl;
 
-            //float_type tmp_n=T_/dt_base_;
-            //testing only
             float_type tmp_n=T_/dt_base_*std::pow(2,max_ref_level_);
-            pcout<<tmp_n<<std::endl;
-            if ( ( std::fabs(int(tmp_n+0.5) - tmp_n)<1e-4 ) && (int(tmp_n+0.5)%output_base_freq_==0) )
+            int tmp_int_n=int(tmp_n+0.5);
+
+            if ( ( std::fabs(tmp_int_n - tmp_n)<1e-4 ) && (tmp_int_n%output_base_freq_==0) )
             {
-                n_step_= int(tmp_n+0.5);
+                n_step_= tmp_int_n;
                 write_timestep();
             }
         }
@@ -275,7 +277,7 @@ public:
     }
 
     template<class AdaptField, class CriterionField>
-    void adapt()
+    void adapt(bool coarsify_field=true)
     {
         boost::mpi::communicator world;
         auto client = domain_->decomposition().client();
@@ -284,16 +286,20 @@ public:
         clean_leaf_correction_boundary<cell_aux>(domain_->tree()->base_level(),true);
 
         world.barrier();
-        pcout<< "Adapt - coarsify"  << std::endl;
-        if (client)
+
+        if (coarsify_field)
         {
-            //claen non leafs
-            clean<AdaptField>(true);
+            pcout<< "Adapt - coarsify"  << std::endl;
+            if (client)
+            {
+                //claen non leafs
+                clean<AdaptField>(true);
 
-            //Coarsification:
-            for (std::size_t _field_idx=0; _field_idx<AdaptField::nFields; ++_field_idx)
-                psolver.template source_coarsify<AdaptField,AdaptField>(_field_idx, _field_idx, AdaptField::mesh_type);
+                //Coarsification:
+                for (std::size_t _field_idx=0; _field_idx<AdaptField::nFields; ++_field_idx)
+                    psolver.template source_coarsify<AdaptField,AdaptField>(_field_idx, _field_idx, AdaptField::mesh_type);
 
+            }
         }
 
         world.barrier();
@@ -327,50 +333,50 @@ public:
         }
 
         //test correction --------------------------------------------------
-        for (std::size_t _field_idx=0; _field_idx<correction::nFields; ++_field_idx)
-        {
+        //for (std::size_t _field_idx=0; _field_idx<correction::nFields; ++_field_idx)
+        //{
 
-            for (int l = domain_->tree()->depth()-1;
-                    l >= domain_->tree()->base_level(); --l)
-            {
-                for (auto it=domain_->begin(l); it!=domain_->end(l); ++it)
-                {
-                    if (!it->data() || !it->data()->is_allocated()) continue;
-                    auto& lin_data = it->data()->
-                        template get_linalg_data<correction>(_field_idx);
-                    if (it->is_correction())
-                        std::fill(lin_data.begin(),lin_data.end(),-1000.0);
-                    else
-                        std::fill(lin_data.begin(),lin_data.end(),0.0);
-                }
-            }
-        }
+        //    for (int l = domain_->tree()->depth()-1;
+        //            l >= domain_->tree()->base_level(); --l)
+        //    {
+        //        for (auto it=domain_->begin(l); it!=domain_->end(l); ++it)
+        //        {
+        //            if (!it->data() || !it->data()->is_allocated()) continue;
+        //            auto& lin_data = it->data()->
+        //                template get_linalg_data<correction>(_field_idx);
+        //            if (it->is_correction())
+        //                std::fill(lin_data.begin(),lin_data.end(),-1000.0);
+        //            else
+        //                std::fill(lin_data.begin(),lin_data.end(),0.0);
+        //        }
+        //    }
+        //}
 
-         for (std::size_t _field_idx=0; _field_idx<correction::nFields; ++_field_idx)
-        {
+        // for (std::size_t _field_idx=0; _field_idx<correction::nFields; ++_field_idx)
+        //{
 
-            for (int l = domain_->tree()->depth()-2;
-                    l >= domain_->tree()->base_level(); --l)
-            {
-                for (auto it=domain_->begin(l); it!=domain_->end(l); ++it)
-                {
+        //    for (int l = domain_->tree()->depth()-2;
+        //            l >= domain_->tree()->base_level(); --l)
+        //    {
+        //        for (auto it=domain_->begin(l); it!=domain_->end(l); ++it)
+        //        {
 
-                    for(int c=0;c<it->num_children();++c)
-                    {
-                        const auto child = it->child(c);
-                        if(!child || !child->data() || !child->locally_owned() || !child->is_correction() ) continue;
+        //            for(int c=0;c<it->num_children();++c)
+        //            {
+        //                const auto child = it->child(c);
+        //                if(!child || !child->data() || !child->locally_owned() || !child->is_correction() ) continue;
 
-                        auto& lin_data = child->data()->
-                            template get_linalg_data<correction>(_field_idx);
+        //                auto& lin_data = child->data()->
+        //                    template get_linalg_data<correction>(_field_idx);
 
-                        std::fill(lin_data.begin(),lin_data.end(),-1000.0);
-                    }
-                }
-            }
+        //                std::fill(lin_data.begin(),lin_data.end(),-1000.0);
+        //            }
+        //        }
+        //    }
 
-            for (std::size_t _field_idx=0; _field_idx<correction::nFields; ++_field_idx)
-                psolver.template source_coarsify<correction,correction>(_field_idx, _field_idx, correction::mesh_type, true, false);
-        }
+        //    for (std::size_t _field_idx=0; _field_idx<correction::nFields; ++_field_idx)
+        //        psolver.template source_coarsify<correction,correction>(_field_idx, _field_idx, correction::mesh_type, true, false);
+        //}
 
         world.barrier();
         pcout<< "Adapt - done"  << std::endl;
@@ -462,35 +468,41 @@ public:
         copy<d_i, p>(1.0/coeff_a(3,3)/dt_);
         // ******************************************************************
 
-
     }
 
 
 private:
+    float_type coeff_a(int i, int j)const noexcept {return a_[i*(i-1)/2+j-1];}
+
+
     void lin_sys_solve(float_type _alpha) noexcept
     {
         auto client=domain_->decomposition().client();
 
         divergence<r_i, cell_aux>();
 
-        pcout<< "solving LGF" <<std::endl;
         mDuration_type t_lgf(0);
         TIME_CODE( t_lgf, SINGLE_ARG(
                     psolver.template apply_lgf<cell_aux, d_i>();
                     ));
-        pcout<< "solve LGF in "<<t_lgf.count() << std::endl;
+        pcout<< "LGF solved in "<<t_lgf.count() << std::endl;
 
         //psolver.template apply_lgf<cell_aux, d_i>();
         gradient<d_i,face_aux>();
 
         add<face_aux, r_i>(-1.0);
         if (std::fabs(_alpha)>1e-4)
-            psolver.template apply_lgf_IF<r_i, u_i>(_alpha);
+        {
+            mDuration_type t_if(0);
+            TIME_CODE( t_if, SINGLE_ARG(
+                        psolver.template apply_lgf_IF<r_i, u_i>(_alpha);
+                        ));
+            pcout<< "IF  solved in "<<t_if.count() << std::endl;
+        }
         else
             copy<r_i,u_i>();
     }
 
-    float_type coeff_a(int i, int j)const noexcept {return a_[i*(i-1)/2+j-1];}
 
     template <typename F>
     void clean(bool non_leaf_only=false, int clean_width=1) noexcept
@@ -526,6 +538,7 @@ private:
             }
         }
     }
+
 
     template<class Velocity_in, class Velocity_out>
     void pad_velocity()
@@ -571,6 +584,7 @@ private:
         client->template buffer_exchange<Velocity_out>(l);
 
     }
+
 
     template <typename F>
     void clean_leaf_correction_boundary(int l, bool leaf_only_boundary=false, int clean_width=1) noexcept
@@ -653,6 +667,8 @@ private:
         }
 
     }
+
+
     //TODO maybe to be put directly intor operators:
     template<class Source, class Target>
     void nonlinear(float_type _scale=1.0) noexcept
@@ -706,6 +722,7 @@ private:
         }
     }
 
+
     template<class Source, class Target>
     void divergence() noexcept
     {
@@ -730,6 +747,8 @@ private:
             clean_leaf_correction_boundary<Target>(l, false,4+stage_idx_);
         }
     }
+
+
     template<class Source, class Target>
     void gradient(float_type _scale=1.0) noexcept
     {
@@ -757,6 +776,7 @@ private:
         }
     }
 
+
     template <typename From, typename To>
     void add(float_type scale=1.0) noexcept
     {
@@ -774,6 +794,7 @@ private:
             }
         }
     }
+
 
     template <typename From, typename To>
     void copy(float_type scale=1.0) noexcept

@@ -141,8 +141,8 @@ public:
         for (auto& k : _keys)
         {
             auto octant = this->insert_td(k);
-            if (!octant->data() || !octant->data()->is_allocated())
-                f(octant);
+            //if (!octant->data() || !octant->data()->is_allocated())
+            f(octant);
         }
     }
 
@@ -878,6 +878,7 @@ public: //Query ranks of all octants, which are assigned in local tree
             level=level>=0?level:0;
             auto bbase=this->octant_to_level_coordinate(
                     _o->tree_coordinate(),level);
+
             _o->data()=std::make_shared<DataType>(bbase,
                     _c->domain()->block_extent(),level, allocate_data);
         };

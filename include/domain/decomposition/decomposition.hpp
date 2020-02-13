@@ -214,25 +214,6 @@ public: //memeber functions
                 }
             }
 
-            // refine those allow 2to1 ratio
-            for (auto& oct:refinement_server)
-            {
-                if (!oct->is_leaf())
-                    continue;
-                auto key = oct->key();
-
-                //domain_->refine_with_exisitng_correction(oct, deletion);
-                domain_->refine(oct);
-            }
-
-            // dynmaic Programming to rduce repeated checks
-            std::unordered_set<octant_t*> checklist_reset_2to1_aim_deletion;
-            for (auto it = domain_->begin_leafs(); it != domain_->end_leafs(); ++it)
-            {
-                if (it->refinement_level()>0)
-                    domain_->tree()->deletionReset_2to1(it->parent(), checklist_reset_2to1_aim_deletion);
-            }
-
             // Unmark deletion distance_N blocks from the solution domain
             std::unordered_set<key_t> listNBlockAway;
 
@@ -279,6 +260,25 @@ public: //memeber functions
 
             domain_->tree()->construct_leaf_maps(true);
             domain_->tree()->construct_level_maps();
+
+            // refine those allow 2to1 ratio
+            for (auto& oct:refinement_server)
+            {
+                if (!oct->is_leaf())
+                    continue;
+                auto key = oct->key();
+
+                //domain_->refine_with_exisitng_correction(oct, deletion);
+                domain_->refine(oct);
+            }
+
+            // dynmaic Programming to rduce repeated checks
+            std::unordered_set<octant_t*> checklist_reset_2to1_aim_deletion;
+            for (auto it = domain_->begin_leafs(); it != domain_->end_leafs(); ++it)
+            {
+                if (it->refinement_level()>0)
+                    domain_->tree()->deletionReset_2to1(it->parent(), checklist_reset_2to1_aim_deletion);
+            }
 
 
             // --------------------------------------------------------------

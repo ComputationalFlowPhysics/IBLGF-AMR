@@ -430,7 +430,6 @@ public:
     void delete_oct(octant_type* oct)
     {
         oct->rank()=-1;
-        oct->flag_correction(false);
         oct->deallocate_data();
 
         if(oct->is_leaf_search())

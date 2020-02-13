@@ -320,7 +320,7 @@ public: //C/Dtors
                     if (!child || !child->data())
                         continue;
 
-                    if ( !child->aim_deletion() && (child->is_leaf() || child->is_correction())  )
+                    if ( !child->aim_deletion() || (!child->is_leaf() && !child->is_correction())  )
                     {
                         delete_all_children=false;
                         break;

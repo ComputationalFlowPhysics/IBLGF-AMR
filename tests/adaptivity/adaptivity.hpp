@@ -145,7 +145,7 @@ struct Adaptivity:public SetupBase<Adaptivity,parameters>
             shift[2]=-i;
             initialize(shift);
             ifherk.template adapt<source, source>();
-            ifherk.template up_and_down<source>();
+            //ifherk.template up_and_down<source>();
             domain_->decomposition().balance<source>();
 
             if(domain_->is_client())
@@ -396,7 +396,7 @@ struct Adaptivity:public SetupBase<Adaptivity,parameters>
         }
 
         int l_change;
-        float_type base_threshold=1e-5;
+        float_type base_threshold=1e-3;
 
         int l_aim = static_cast<int>( ceil(nLevelRefinement_-log(field_max/source_max) / log(refinement_factor_)));
 

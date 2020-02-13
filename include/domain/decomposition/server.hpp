@@ -323,7 +323,10 @@ public:
             if (!it->data()) continue;
             if(ranks_old[c] != it->rank())
             {
-                updates.insert(ranks_old[c], it->rank(),it->key());
+                if(it->rank()<=0 || ranks_old[c]<=0)
+                    std::cout<< "Balance: new or old rank = " <<it->rank() << ranks_old[c]<<std::endl;
+                else
+                    updates.insert(ranks_old[c], it->rank(),it->key());
             }
             ++c;
         }

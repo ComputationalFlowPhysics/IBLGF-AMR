@@ -126,9 +126,9 @@ public:
         {
 
             // balance load
-            if ( adapt_count % adapt_freq_ ==0)
+            if ( (adapt_count+1) % adapt_freq_ ==0)
             {
-                //domain_->decomposition().template balance<u>();
+                domain_->decomposition().template balance<u>();
             }
 
             // -------------------------------------------------------------
@@ -145,13 +145,24 @@ public:
 
             // -------------------------------------------------------------
             // adapt
-            world.barrier();
+
+            // clean up the block boundary of cell_aux for smoother adaptation
+
+            if(domain_->is_client())
+                clean<cell_aux>(true, 2);
+
             if (T_<=1e-5)
                 this->template update_source_max<cell_aux>();
 
             if ( adapt_count % adapt_freq_ ==0)
             {
+                if(domain_->is_client())
+                {
+                    up_and_down<u>();
+                    pad_velocity<u, u>();
+                }
                 this->template adapt<u, cell_aux>();
+
             }
             adapt_count++;
 
@@ -270,13 +281,7 @@ public:
         auto client = domain_->decomposition().client();
 
         //adaptation neglect the boundary oscillations
-        clean_leaf_correction_boundary<cell_aux>(domain_->tree()->base_level(),true,3);
-
-        if(domain_->is_client())
-        {
-            up_and_down<u>();
-            pad_velocity<AdaptField, AdaptField>();
-        }
+        clean_leaf_correction_boundary<cell_aux>(domain_->tree()->base_level(),true);
 
         world.barrier();
         pcout<< "Adapt - coarsify"  << std::endl;
@@ -457,6 +462,7 @@ public:
         copy<d_i, p>(1.0/coeff_a(3,3)/dt_);
         // ******************************************************************
 
+
     }
 
 
@@ -487,7 +493,7 @@ private:
     float_type coeff_a(int i, int j)const noexcept {return a_[i*(i-1)/2+j-1];}
 
     template <typename F>
-    void clean(bool non_leaf_only=false) noexcept
+    void clean(bool non_leaf_only=false, int clean_width=1) noexcept
     {
         for (auto it  = domain_->begin();
                   it != domain_->end(); ++it)
@@ -502,12 +508,13 @@ private:
                 if (non_leaf_only && it->is_leaf() && it->locally_owned() )
                 {
                     int N=it->data()->descriptor().extent()[0];
-                    view(lin_data,xt::all(),xt::all(),0) *= 0.0;
-                    view(lin_data,xt::all(),0,xt::all()) *= 0.0;
-                    view(lin_data,0,xt::all(),xt::all()) *= 0.0;
-                    view(lin_data,N+1,xt::all(),xt::all()) *= 0.0;
-                    view(lin_data,xt::all(),N+1,xt::all()) *= 0.0;
-                    view(lin_data,xt::all(),xt::all(),N+1) *= 0.0;
+
+                    view(lin_data,xt::all(),xt::all(),xt::range(0,clean_width))  *= 0.0;
+                    view(lin_data,xt::all(),xt::range(0,clean_width),xt::all())  *= 0.0;
+                    view(lin_data,xt::range(0,clean_width),xt::all(),xt::all())  *= 0.0;
+                    view(lin_data,xt::range(N+2-clean_width,N+3),xt::all(),xt::all())  *= 0.0;
+                    view(lin_data,xt::all(),xt::range(N+2-clean_width,N+3),xt::all())  *= 0.0;
+                    view(lin_data,xt::all(),xt::all(),xt::range(N+2-clean_width,N+3))  *= 0.0;
                 }
                 else
                 {

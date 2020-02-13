@@ -143,7 +143,7 @@ public:
             level=level>=0?level:0;
             auto bbase=domain_->tree()->octant_to_level_coordinate(
                     _o->tree_coordinate(),level);
-            if(!_o->data())
+            //if(!_o->data())
             {
                 _o->data()=std::make_shared<datablock_t>(bbase,
                         domain_->block_extent(),level, true);
@@ -247,7 +247,8 @@ public:
         {
             //find the octant
             auto it =domain_->tree()->find_octant(key);
-            if(!it || !it->data())continue;
+            if(!it || !it->data())
+                std::cout<<"can't find the oct to send " <<std::endl;
             domain_->tree()->delete_oct(it);
         }
         halo_initialized_=false;

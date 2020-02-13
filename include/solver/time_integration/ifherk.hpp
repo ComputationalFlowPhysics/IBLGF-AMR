@@ -126,7 +126,7 @@ public:
         {
 
             // balance load
-            if ( (adapt_count+1) % adapt_freq_ ==0)
+            if ( (adapt_count-1) % adapt_freq_ ==0)
             {
                 domain_->decomposition().template balance<u>();
             }

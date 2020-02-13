@@ -638,7 +638,7 @@ public:
 
             if (_use_masks && !it->fmm_mask(fmm_mask_idx,mask_id) ) continue;
 
-            const auto idx=get_octant_idx(it);
+            const auto idx=get_octant_idx(it,field_idx);
 
             if(it->locally_owned() && it->data() && it->data()->is_allocated() )
             {
@@ -738,7 +738,7 @@ public:
     {
         const auto cc=it->tree_coordinate();
         return static_cast<int>(
-                ( (it->level()+cc.x()*25+cc.y()*25*300+ 25*300*300*cc.z() )*(field_idx+1)) %
+                (it->level()+field_idx*25+cc.x()*25*3+cc.y()*25*300*3+25*300*300*3*cc.z() ) %
                 boost::mpi::environment::max_tag()
                 );
     }

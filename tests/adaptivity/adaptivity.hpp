@@ -146,7 +146,7 @@ struct Adaptivity:public SetupBase<Adaptivity,parameters>
             initialize(shift);
             ifherk.template adapt<source, source>();
             ifherk.template up_and_down<source>();
-            //domain_->decomposition().balance<source>();
+            domain_->decomposition().balance<source>();
 
             if(domain_->is_client())
             {

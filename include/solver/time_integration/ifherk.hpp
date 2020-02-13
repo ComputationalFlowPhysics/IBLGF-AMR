@@ -116,54 +116,20 @@ public:
         boost::mpi::communicator world;
         parallel_ostream::ParallelOstream pcout=parallel_ostream::ParallelOstream(world.size()-1);
 
-        // --------------------- clean up projection vorticity
-        //if(domain_->is_client())
-        //{
-
-        //    up_and_down<u>();
-        //    auto client = domain_->decomposition().client();
-        //    clean<edge_aux>();
-        //    clean<stream_f>();
-        //    for (int l  = domain_->tree()->base_level();
-        //            l < domain_->tree()->depth(); ++l)
-        //    {
-        //        client->template buffer_exchange<u>(l);
-        //        for (auto it  = domain_->begin(l);
-        //                it != domain_->end(l); ++it)
-        //        {
-        //            if(!it->locally_owned() ) continue;
-
-        //            const auto dx_level =  dx_base_/std::pow(2,it->refinement_level());
-        //            domain::Operator::curl<u,edge_aux>( *(it->data()),dx_level);
-        //        }
-        //    }
-        //    clean_leaf_correction_boundary<edge_aux>(domain_->tree()->base_level(), true);
-
-        //    clean<u>();
-        //    psolver.template apply_lgf<edge_aux, stream_f>();
-        //    for (int l  = domain_->tree()->base_level();
-        //            l < domain_->tree()->depth(); ++l)
-        //    {
-        //        for (auto it  = domain_->begin(l);
-        //                it != domain_->end(l); ++it)
-        //        {
-        //            if(!it->locally_owned() || !it->data()) continue;
-
-        //            const auto dx_level =  dx_base_/std::pow(2,it->refinement_level());
-        //            domain::Operator::curl_transpose<stream_f,u>( *(it->data()),dx_level, -1.0);
-        //        }
-        //        client->template buffer_exchange<u>(l);
-        //    }
-        //}
-        // --------------------- clean up projection vorticity
-
         pcout<<"Time marching ------------------------------------------------ "<< std::endl;
         T_ = 0.0;
+        clean_up_initial_velocity();
         write_timestep();
 
         int adapt_count=0;
         while(T_<=T_max_+1e-10)
         {
+
+            // balance load
+            if ( adapt_count % adapt_freq_ ==0)
+            {
+                //domain_->decomposition().template balance<u>();
+            }
 
             // -------------------------------------------------------------
             // time marching
@@ -180,13 +146,12 @@ public:
             // -------------------------------------------------------------
             // adapt
             world.barrier();
-            if (T_==0.0)
+            if (T_<=1e-5)
                 this->template update_source_max<cell_aux>();
 
             if ( adapt_count % adapt_freq_ ==0)
             {
                 this->template adapt<u, cell_aux>();
-                domain_->decomposition().template balance<u>();
             }
             adapt_count++;
 
@@ -205,6 +170,48 @@ public:
             {
                 n_step_= int(tmp_n+0.5);
                 write_timestep();
+            }
+        }
+
+    }
+    void clean_up_initial_velocity()
+    {
+        if(domain_->is_client())
+        {
+
+            up_and_down<u>();
+            auto client = domain_->decomposition().client();
+            clean<edge_aux>();
+            clean<stream_f>();
+            for (int l  = domain_->tree()->base_level();
+                    l < domain_->tree()->depth(); ++l)
+            {
+                client->template buffer_exchange<u>(l);
+                for (auto it  = domain_->begin(l);
+                        it != domain_->end(l); ++it)
+                {
+                    if(!it->locally_owned() || it->is_correction()) continue;
+
+                    const auto dx_level =  dx_base_/std::pow(2,it->refinement_level());
+                    domain::Operator::curl<u,edge_aux>( *(it->data()),dx_level);
+                }
+            }
+            //clean_leaf_correction_boundary<edge_aux>(domain_->tree()->base_level(), true,2);
+
+            clean<u>();
+            psolver.template apply_lgf<edge_aux, stream_f>();
+            for (int l  = domain_->tree()->base_level();
+                    l < domain_->tree()->depth(); ++l)
+            {
+                for (auto it  = domain_->begin(l);
+                        it != domain_->end(l); ++it)
+                {
+                    if(!it->locally_owned() ) continue;
+
+                    const auto dx_level =  dx_base_/std::pow(2,it->refinement_level());
+                    domain::Operator::curl_transpose<stream_f,u>( *(it->data()),dx_level, -1.0);
+                }
+                client->template buffer_exchange<u>(l);
             }
         }
 
@@ -231,8 +238,10 @@ public:
 
     void write_timestep()
     {
+        boost::mpi::communicator world;
         pcout << "- writing at T = " << T_ << ", n = "<< n_step_ << std::endl;
         simulation_->write2(fname(n_step_));
+        world.barrier();
         pcout << "- finishing writing " << std::endl;
     }
 
@@ -265,7 +274,7 @@ public:
 
         if(domain_->is_client())
         {
-            clean<AdaptField>(true);
+            up_and_down<u>();
             pad_velocity<AdaptField, AdaptField>();
         }
 
@@ -332,31 +341,31 @@ public:
             }
         }
 
-        // for (std::size_t _field_idx=0; _field_idx<cell_aux::nFields; ++_field_idx)
-        //{
+         for (std::size_t _field_idx=0; _field_idx<correction::nFields; ++_field_idx)
+        {
 
-        //    for (int l = domain_->tree()->depth()-2;
-        //            l >= domain_->tree()->base_level(); --l)
-        //    {
-        //        for (auto it=domain_->begin(l); it!=domain_->end(l); ++it)
-        //        {
+            for (int l = domain_->tree()->depth()-2;
+                    l >= domain_->tree()->base_level(); --l)
+            {
+                for (auto it=domain_->begin(l); it!=domain_->end(l); ++it)
+                {
 
-        //            for(int c=0;c<it->num_children();++c)
-        //            {
-        //                const auto child = it->child(c);
-        //                if(!child || !child->data() || !child->locally_owned() || !child->is_correction() ) continue;
+                    for(int c=0;c<it->num_children();++c)
+                    {
+                        const auto child = it->child(c);
+                        if(!child || !child->data() || !child->locally_owned() || !child->is_correction() ) continue;
 
-        //                auto& lin_data = child->data()->
-        //                    template get_linalg_data<cell_aux>(_field_idx);
+                        auto& lin_data = child->data()->
+                            template get_linalg_data<correction>(_field_idx);
 
-        //                std::fill(lin_data.begin(),lin_data.end(),-1000.0);
-        //            }
-        //        }
-        //    }
+                        std::fill(lin_data.begin(),lin_data.end(),-1000.0);
+                    }
+                }
+            }
 
-        //    for (std::size_t _field_idx=0; _field_idx<cell_aux::nFields; ++_field_idx)
-        //        psolver.template source_coarsify<cell_aux,cell_aux>(_field_idx, _field_idx, cell_aux::mesh_type, true, false);
-        //}
+            for (std::size_t _field_idx=0; _field_idx<correction::nFields; ++_field_idx)
+                psolver.template source_coarsify<correction,correction>(_field_idx, _field_idx, correction::mesh_type, true, false);
+        }
 
         world.barrier();
         pcout<< "Adapt - done"  << std::endl;
@@ -414,7 +423,6 @@ public:
         add<q_i, r_i>();
         add<w_1, r_i>(dt_*coeff_a(2,1));
 
-        //pad_velocity<u_i, u_i>();
         up_and_down<u_i>();
         nonlinear<u_i,g_i>(coeff_a(2,2)*(-dt_));
         add<g_i, r_i>( );
@@ -437,7 +445,6 @@ public:
 
         psolver.template apply_lgf_IF<r_i, r_i>(alpha_[1]);
 
-        //pad_velocity<u_i, u_i>();
         up_and_down<u_i>();
         //clean<u>(true);
         nonlinear<u_i,g_i>( coeff_a(3,3)*(-dt_) );
@@ -459,12 +466,6 @@ private:
         auto client=domain_->decomposition().client();
 
         divergence<r_i, cell_aux>();
-
-        //for (int l  = domain_->tree()->base_level();
-        //        l < domain_->tree()->depth(); ++l)
-        //{
-        //    client->template buffer_exchange<cell_aux>(l);
-        //}
 
         pcout<< "solving LGF" <<std::endl;
         mDuration_type t_lgf(0);
@@ -526,25 +527,8 @@ private:
 
         clean<edge_aux>();
         clean<stream_f>();
-        int l  = domain_->tree()->base_level();
-        for (auto it  = domain_->begin(l);
-                it != domain_->end(l); ++it)
-        {
-            if(!it->locally_owned() || !it->data()) continue;
-            if(!it->is_correction()) continue;
-            for (std::size_t field_idx=0;
-                    field_idx<Velocity_in::nFields; ++field_idx)
-            {
-                auto& lin_data = it ->data()->
-                    template get_linalg_data<Velocity_in>(field_idx);
-
-                std::fill(lin_data.begin(),lin_data.end(),0.0);
-            }
-        }
-
 
         auto dx_base = domain_->dx_base();
-
 
         for (int l  = domain_->tree()->base_level();
                 l < domain_->tree()->depth(); ++l)
@@ -554,7 +538,7 @@ private:
                     it != domain_->end(l); ++it)
             {
                 if(!it->locally_owned() || !it->data()) continue;
-                //if(it->is_correction()) continue;
+                if(it->is_correction()) continue;
 
                 const auto dx_level =  dx_base/std::pow(2,it->refinement_level());
                 if (it->is_leaf())
@@ -562,7 +546,8 @@ private:
             }
         }
 
-        clean_leaf_correction_boundary<edge_aux>(l, true, 2);
+        int l  = domain_->tree()->base_level();
+        clean_leaf_correction_boundary<edge_aux>(l, true,2);
         //clean_leaf_correction_boundary<edge_aux>(l, false,2+stage_idx_);
         psolver.template apply_lgf<edge_aux, stream_f>(true);
 
@@ -575,6 +560,7 @@ private:
             const auto dx_level =  dx_base/std::pow(2,it->refinement_level());
             domain::Operator::curl_transpose<stream_f,Velocity_out>( *(it->data()),dx_level, -1.0);
         }
+
         client->template buffer_exchange<Velocity_out>(l);
 
     }

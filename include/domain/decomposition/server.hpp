@@ -1,6 +1,8 @@
 #ifndef DOMAIN_INCLUDED_SERVER_HPP
 #define DOMAIN_INCLUDED_SERVER_HPP
 
+#include <stdlib.h>
+
 #include <vector>
 #include <limits>
 #include <stdexcept>
@@ -159,6 +161,72 @@ public:
         }
     }
 
+    //auto compute_distribution(bool _rand=false) const
+    //{
+    //    std::cout<<"Computing domain decomposition for "<<comm_.size()<<" processors" <<std::endl;
+    //    const auto nProcs=comm_.size()-1;
+
+    //    std::mt19937_64 rng;
+    //    std::uniform_real_distribution<float_type> dist(0.5, 1);
+    //    float_type weight=1.0;
+    //    for( auto it = domain_->begin_df(); it!= domain_->end_df();++it )
+    //    {
+    //        if(_rand)weight =dist(rng);
+    //        it->load()=it->load()*weight;
+    //    }
+
+    //    const int blevel=domain_->tree()->base_level();
+    //    std::vector<std::list<ctask_t>> tasks_perProc(nProcs);
+    //    std::vector<float_type> total_loads_perProc(nProcs,0.0);
+
+    //    // Split leafs according to morton order
+    //    auto exitCondition1=[](auto& it){return false;};
+    //    auto continueCondition1=[&blevel](auto& it){return !(it->is_leaf() || it->is_correction());};
+
+    //    for (int l = domain_->tree()->depth()-1; l >= 0; --l)
+    //    {
+
+    //        split(domain_->begin(l),domain_->end(l),
+    //                tasks_perProc, total_loads_perProc,
+    //                exitCondition1,continueCondition1);
+
+    //        for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+    //        {
+    //            if(it->is_leaf() || it->is_correction()) continue;
+
+    //            int rank_tobe=-1;
+    //            float_type min_load=std::numeric_limits<float_type>::max();
+    //            for(int i=0;i<it->num_children();++i)
+    //            {
+    //                const auto child = it->child(i);
+    //                if(!child) continue;
+
+    //                if(child->rank()==-1) throw std::runtime_error("Child not set ");
+    //                if(total_loads_perProc[child->rank()] < min_load)
+    //                {
+    //                    rank_tobe=child->rank();
+    //                }
+    //            }
+    //            it->rank()=rank_tobe;
+    //            ctask_t task(it.ptr(), rank_tobe, it->load());
+    //            total_loads_perProc[rank_tobe-1]+=it->load();
+    //            tasks_perProc[rank_tobe-1].push_back(task);
+    //        }
+    //    }
+
+    //    for( auto it = domain_->begin_df(); it!= domain_->end_df();++it )
+    //    {
+    //        if(it->rank()==-1)
+    //        {
+    //            throw std::runtime_error("Domain decomposition (Server):"
+    //                    " Some octant's rank was not set");
+    //        }
+    //    }
+    //    std::cout<<"Done with initial load balancing"<<std::endl;
+    //    return tasks_perProc;
+    //}
+
+
     auto compute_distribution(bool _rand=false) const
     {
         std::cout<<"Computing domain decomposition for "<<comm_.size()<<" processors" <<std::endl;
@@ -191,7 +259,7 @@ public:
 
             for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
             {
-                //if( !it->data() || it->is_leaf() || it->is_correction()) continue;
+                if( !it->data() || it->is_leaf() || it->is_correction()) continue;
 
                 int rank_tobe=-1;
                 float_type min_load=std::numeric_limits<float_type>::max();
@@ -265,9 +333,7 @@ public:
 
     void update_decomposition()
     {
-        std::cout<< "server -------------------------- 1 "<< std::endl;
         auto updates=this->check_decomposition_updates();
-        std::cout<< "server -------------------------- 2 "<< std::endl;
         for(int i=1;i<comm_.size();++i)
         {
             comm_.send(i,i+0*comm_.size(), updates.send_octs[i] );

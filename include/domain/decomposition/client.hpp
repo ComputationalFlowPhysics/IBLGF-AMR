@@ -137,14 +137,13 @@ public:
         comm_.recv(0,comm_.rank()+2*comm_.size(),update.recv_octs);
         comm_.recv(0,comm_.rank()+3*comm_.size(),update.src_ranks);
 
-        std::cout<< "client -------------------------- 1 "<< std::endl;
         //instantiate new octants
         domain_->tree()->insert_keys(update.recv_octs, [&](octant_t* _o){
             auto level = _o->refinement_level();
             level=level>=0?level:0;
             auto bbase=domain_->tree()->octant_to_level_coordinate(
                     _o->tree_coordinate(),level);
-            //if(!_o->data())
+            if(!_o->data())
             {
                 _o->data()=std::make_shared<datablock_t>(bbase,
                         domain_->block_extent(),level, true);
@@ -153,7 +152,6 @@ public:
 
 
         int count=0;
-        std::cout<< "client -------------------------- 1 "<< std::endl;
         for(auto& key : update.send_octs)
         {
             auto it =domain_->tree()->find_octant(key);

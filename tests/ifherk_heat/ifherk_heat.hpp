@@ -387,7 +387,8 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
                     float_type z = static_cast<float_type>
                     (k-center[2])*dx_level;
 
-                    float_type tmp_w = vortex_ring_vor_ic(x,y,z,0);
+                    float_type tmp_w = -vortex_ring_vor_ic(x,y,z-d2v_/2,0)+vortex_ring_vor_ic(x,y,z+d2v_/2,0);
+
                     if(std::fabs(tmp_w) > w_max*pow(refinement_factor_, diff_level))
                         return true;
 
@@ -399,7 +400,7 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
                     (k-center[2])*dx_level;
 
 
-                    tmp_w = vortex_ring_vor_ic(x,y,z,1);
+                    tmp_w = -vortex_ring_vor_ic(x,y,z-d2v_/2,1)+vortex_ring_vor_ic(x,y,z+d2v_/2,1);
                     if(std::fabs(tmp_w) > w_max*pow(refinement_factor_, diff_level))
                         return true;
 
@@ -410,7 +411,7 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
                     z = static_cast<float_type>
                     (k-center[2]+0.5)*dx_level;
 
-                    tmp_w = vortex_ring_vor_ic(x,y,z,2);
+                    tmp_w = -vortex_ring_vor_ic(x,y,z-d2v_/2,2)+vortex_ring_vor_ic(x,y,z+d2v_/2,2);
                     if(std::fabs(tmp_w) > w_max*pow(refinement_factor_, diff_level))
                         return true;
                 }

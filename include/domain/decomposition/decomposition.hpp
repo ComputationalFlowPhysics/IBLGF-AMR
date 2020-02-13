@@ -135,11 +135,9 @@ public: //memeber functions
         else if(client())
         {
             auto update=client()->update_decomposition();
-            std::cout<< "client -------------------------- 3 "<< std::endl;
             (client()->template update_field<Field>(update), ...);
-            std::cout<< "client -------------------------- 4 "<< std::endl;
             client()->finish_decomposition_update(update);
-            std::cout<< "client -------------------------- 5 "<< std::endl;
+            client()->halo_reset();
         }
         sync_decomposition();
     }
@@ -201,19 +199,6 @@ public: //memeber functions
 
                 int l_change=it->aim_level_change();
 
-                //if (it->refinement_level()==0 && l_change<0)
-                //{
-                //    for(std::size_t i=0;i< it->num_neighbors();++i)
-                //    {
-                //        auto it2=it->neighbor(i);
-                //        if(!it2 || !it2->data()) continue;
-                //        if(!it2->is_leaf()) continue;
-
-                //        if (0 <= it2->aim_level_change())
-                //            l_change = 0;
-                //    }
-                //}
-
                 if( l_change!=0 )
                 {
                     if (l_change<0)
@@ -227,6 +212,25 @@ public: //memeber functions
                         refinement_server.emplace_back(it.ptr());
                     }
                 }
+            }
+
+            // refine those allow 2to1 ratio
+            for (auto& oct:refinement_server)
+            {
+                if (!oct->is_leaf())
+                    continue;
+                auto key = oct->key();
+
+                //domain_->refine_with_exisitng_correction(oct, deletion);
+                domain_->refine(oct);
+            }
+
+            // dynmaic Programming to rduce repeated checks
+            std::unordered_set<octant_t*> checklist_reset_2to1_aim_deletion;
+            for (auto it = domain_->begin_leafs(); it != domain_->end_leafs(); ++it)
+            {
+                if (it->refinement_level()>0)
+                    domain_->tree()->deletionReset_2to1(it->parent(), checklist_reset_2to1_aim_deletion);
             }
 
             // Unmark deletion distance_N blocks from the solution domain
@@ -276,26 +280,6 @@ public: //memeber functions
             domain_->tree()->construct_leaf_maps(true);
             domain_->tree()->construct_level_maps();
 
-
-
-           // refine those allow 2to1 ratio
-            for (auto& oct:refinement_server)
-            {
-                if (!oct->is_leaf())
-                    continue;
-                auto key = oct->key();
-
-                //domain_->refine_with_exisitng_correction(oct, deletion);
-                domain_->refine(oct);
-            }
-
-            // dynmaic Programming to rduce repeated checks
-            std::unordered_set<octant_t*> checklist_reset_2to1_aim_deletion;
-            for (auto it = domain_->begin_leafs(); it != domain_->end_leafs(); ++it)
-            {
-                if (it->refinement_level()>0)
-                    domain_->tree()->deletionReset_2to1(it->parent(), checklist_reset_2to1_aim_deletion);
-            }
 
             // --------------------------------------------------------------
             // 3. try delete
@@ -479,23 +463,15 @@ public: //memeber functions
             // ghost ranks are sync
             auto old_leaf_map = domain_->tree()->leaf_map();
             sync_decomposition();
+
             for (auto it = domain_->begin_leafs(); it != domain_->end_leafs(); ++it)
             {
+                if (!it->locally_owned()) continue;
                 if (it->refinement_level()>0 && old_leaf_map.find(it->key())==old_leaf_map.end())
                 {
                     interpolation_list.emplace_back(it->parent());
                 }
             }
-
-
-            //for (auto k:refinement_local)
-            //{
-            //    auto oct =domain_->tree()->find_octant(k);
-            //    if (oct->refinement_level()==0) continue;
-
-            //    auto o_p = oct->parent();
-            //    interpolation_list.emplace_back(o_p);
-            //}
 
         }
 

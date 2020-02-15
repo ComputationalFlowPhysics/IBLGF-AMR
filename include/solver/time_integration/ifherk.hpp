@@ -91,11 +91,7 @@ public: //member types
         update_marching_parameters();
 
         // IF constants ------------------------------------------------------
-        float_type tmp = Re_*dx_base_*dx_base_/dt_base_;
-        alpha_[0]=(c_[1]-c_[0])/tmp;
-        alpha_[1]=(c_[2]-c_[1])/tmp;
-        alpha_[2]=(c_[3]-c_[2])/tmp;
-        fname_prefix_="";
+       fname_prefix_="";
 
         // miscs -------------------------------------------------------------
         if(domain_->is_client())
@@ -110,7 +106,11 @@ public:
         nLevelRefinement_ = domain_->tree()->depth()-domain_->tree()->base_level()-1;
         dt_               = dt_base_/pow(2.0,nLevelRefinement_);
 
-    }
+        float_type tmp = Re_*dx_base_*dx_base_/dt_;
+        alpha_[0]=(c_[1]-c_[0])/tmp;
+        alpha_[1]=(c_[2]-c_[1])/tmp;
+        alpha_[2]=(c_[3]-c_[2])/tmp;
+ }
     void time_march()
     {
         boost::mpi::communicator world;
@@ -184,6 +184,7 @@ public:
                 n_step_= tmp_int_n;
                 write_timestep();
             }
+
         }
 
     }

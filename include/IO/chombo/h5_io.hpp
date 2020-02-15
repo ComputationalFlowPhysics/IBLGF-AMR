@@ -134,6 +134,7 @@ public:
         for(auto it=_lt->begin();it!=_lt->end();++it)
         {
             if (!it->data()|| it->refinement_level()<0 || (world.rank()>0 && !it->locally_owned())) continue;
+            if (!include_correction && it->is_correction() && !it->is_leaf()) continue;
             int rank = it->rank();
 
             if (rank==world.rank()  || world.rank()==0) {

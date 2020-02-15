@@ -329,7 +329,7 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
     }
 
 
-    float_type vortex_ring_vor_ic(float_type x, float_type y, float_type z, int field_idx) const
+    float_type vortex_ring_vor_ic(float_type x, float_type y, float_type z, int field_idx, bool perturbation=true) const
     {
         float_type delta_2 = v_delta_* v_delta_;
         float_type R2 = R_*R_;
@@ -341,12 +341,16 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
         float_type theta = std::atan2(y,x);
         float_type w_theta = 1.0/M_PI/delta_2*std::exp(-s2/delta_2);
 
+        float_type rd = (static_cast <float_type> (rand()) / static_cast <float_type> (RAND_MAX))-0.5;
+        float_type prtub=0.001;
+        rd *= prtub;
+
         //if (s2>=delta_2) return 0.0;
 
         if (field_idx==0)
-            return -w_theta*std::sin(theta);
+            return -w_theta*std::sin(theta)*(1+rd);
         else if (field_idx==1)
-            return w_theta*std::cos(theta);
+            return w_theta*std::cos(theta)*(1+rd);
         else
             return 0.0;
 

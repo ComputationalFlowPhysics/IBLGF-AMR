@@ -91,12 +91,6 @@ namespace interpolation
 
                     auto& child_linalg_data  = child ->data()->template get_linalg_data<to>();
 
-                    //std::cout<< "-----------------------------" << std::endl;
-                    //std::cout<< dx*dx << std::endl;
-                    //std::cout<< child_target_tmp << std::endl;
-                    //std::cout<< xt::amax(child_target_L_tmp*(1.0/(dx*dx))) << std::endl;
-                    //std::cout<< child_linalg_data << std::endl;
-
                     child_linalg_data -= (child_target_L_tmp * (1.0/(dx *dx)));
                 }
             }

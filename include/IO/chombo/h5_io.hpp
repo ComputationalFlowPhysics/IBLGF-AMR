@@ -102,9 +102,9 @@ public:
 
     }
 
-    void write_h5(std::string _filename, Domain* _lt )
+    void write_h5(std::string _filename, Domain* _lt, bool include_correction=false )
     {
-        auto octant_blocks = blocks_list_build(_lt);
+        auto octant_blocks = blocks_list_build(_lt, include_correction);
 
         hdf5_file<Dim> chombo_file(_filename);
 
@@ -114,13 +114,15 @@ public:
         ch_writer.write_level_info(&chombo_file);
     }
 
-    std::vector<octant_type*> blocks_list_build(Domain* _lt)
+    std::vector<octant_type*> blocks_list_build(Domain* _lt, bool include_correction=false)
     {
         boost::mpi::communicator world;
 
         int nPoints=0;
-        for(auto it=_lt->begin_leafs();it!=_lt->end_leafs();++it)
+        for(auto it=_lt->begin();it!=_lt->end();++it)
         {
+            if (!it->data() || it->refinement_level()<0) continue;
+            if (!include_correction && it->is_correction()) continue;
             auto b= it->data()->descriptor();
             b.grow(0,1); //grow by one to fill the gap
             nPoints+= b.nPoints();
@@ -129,13 +131,14 @@ public:
         std::vector<octant_type*> octant_blocks;
         int _count=0;
         // Collect block descriptor and data from each block
-        for(auto it=_lt->begin_leafs();it!=_lt->end_leafs();++it)
+        for(auto it=_lt->begin();it!=_lt->end();++it)
         {
+            if (!it->data()|| it->refinement_level()<0 || (world.rank()>0 && !it->locally_owned())) continue;
             int rank = it->rank();
 
             if (rank==world.rank()  || world.rank()==0) {
                 blockDescriptor_t block =it->data()->descriptor();
-                octant_blocks.push_back(*it);
+                octant_blocks.push_back(it.ptr());
 
                 it->index(_count*block.nPoints());
             }

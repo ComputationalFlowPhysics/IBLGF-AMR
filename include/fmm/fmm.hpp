@@ -219,7 +219,11 @@ public:
                 if ( it->is_leaf()  || it->is_correction())
                 {
                     it->fmm_mask(_fmm_mask_idx,MASK_LIST::Mask_FMM_Source, false);
-                    it->fmm_mask(_fmm_mask_idx,MASK_LIST::Mask_FMM_Target, false);
+
+                    if (!correction_parent)
+                        it->fmm_mask(_fmm_mask_idx,MASK_LIST::Mask_FMM_Target, false);
+                    else
+                        it->fmm_mask(_fmm_mask_idx,MASK_LIST::Mask_FMM_Target, true);
                 } else
                 {
                     it->fmm_mask(_fmm_mask_idx,MASK_LIST::Mask_FMM_Source, true);

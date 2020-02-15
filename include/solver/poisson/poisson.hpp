@@ -261,59 +261,62 @@ public:
             timings_.interpolation+=(t3-t2);
 #endif
 
-
-            if (l == domain_->tree()->depth()-1) continue;
-
-            // Correction for LGF
-            // Calculate PL numerically from target_tmp instead of assume PL
-            // L^-1 S gives back S exactly.  This improves the accuracy
-
-            for (auto it  = domain_->begin(l);
-                    it != domain_->end(l); ++it)
+            if (use_correction_)
             {
-                int refinement_level = it->refinement_level();
-                double dx_level = dx_base/std::pow(2,refinement_level);
 
-                if (!it->data() || !it->data()->is_allocated()) continue;
-                domain::Operator::laplace<target_tmp, corr_lap_tmp>
-                ( *(it->data()),dx_level);
-            }
+                if (l == domain_->tree()->depth()-1) continue;
 
-            client->template buffer_exchange<corr_lap_tmp>(l);
-            domain_->decomposition().client()->
-                template communicate_updownward_assign
-                <corr_lap_tmp, corr_lap_tmp>(l,false,false,-1);
+                // Correction for LGF
+                // Calculate PL numerically from target_tmp instead of assume PL
+                // L^-1 S gives back S exactly.  This improves the accuracy
 
-            for (auto it  = domain_->begin(l);
-                    it != domain_->end(l); ++it)
-            {
-                if(!it->data() || !it->data()->is_allocated()) continue;
-
-                const bool correction_buffer_only = false;
-                c_cntr_nli_.nli_intrp_node< corr_lap_tmp, correction_tmp>(it, Source::mesh_type, _field_idx, correction_buffer_only,false);
-            }
-
-
-            for (auto it  = domain_->begin(l);
-                    it != domain_->end(l); ++it)
-            {
-                int refinement_level = it->refinement_level();
-                double dx = dx_base/std::pow(2,refinement_level);
-                c_cntr_nli_.add_source_correction
-                    <target_tmp, correction_tmp>(it, dx/2.0);
-            }
-
-            for (auto it  = domain_->begin(l+1);
-                    it != domain_->end(l+1); ++it)
-                if (it->locally_owned())
+                for (auto it  = domain_->begin(l);
+                        it != domain_->end(l); ++it)
                 {
-                    auto& lin_data_1 = it->data()->
-                    template get_linalg_data<correction_tmp>(0);
-                    auto& lin_data_2 = it->data()->
-                    template get_linalg_data<source_tmp>(0);
+                    int refinement_level = it->refinement_level();
+                    double dx_level = dx_base/std::pow(2,refinement_level);
 
-                    xt::noalias(lin_data_2) += lin_data_1 * 1.0;
+                    if (!it->data() || !it->data()->is_allocated()) continue;
+                    domain::Operator::laplace<target_tmp, corr_lap_tmp>
+                    ( *(it->data()),dx_level);
                 }
+
+                client->template buffer_exchange<source_tmp>(l);
+                domain_->decomposition().client()->
+                    template communicate_updownward_assign
+                    <source_tmp, source_tmp>(l,false,false,-1);
+
+                for (auto it  = domain_->begin(l);
+                        it != domain_->end(l); ++it)
+                {
+                    if(!it->data() || !it->data()->is_allocated()) continue;
+
+                    const bool correction_buffer_only = true;
+                    c_cntr_nli_.nli_intrp_node<source_tmp, correction_tmp>(it, Source::mesh_type, _field_idx, 0, correction_buffer_only,false);
+                }
+
+
+                for (auto it  = domain_->begin(l);
+                        it != domain_->end(l); ++it)
+                {
+                    int refinement_level = it->refinement_level();
+                    double dx = dx_base/std::pow(2,refinement_level);
+                    c_cntr_nli_.add_source_correction
+                        <target_tmp, correction_tmp>(it, dx/2.0);
+                }
+
+                for (auto it  = domain_->begin(l+1);
+                        it != domain_->end(l+1); ++it)
+                    if (it->locally_owned())
+                    {
+                        auto& lin_data_1 = it->data()->
+                        template get_linalg_data<correction_tmp>(0);
+                        auto& lin_data_2 = it->data()->
+                        template get_linalg_data<source_tmp>(0);
+
+                        xt::noalias(lin_data_2) += lin_data_1 * 1.0;
+                    }
+            }
 #ifdef POISSON_TIMINGS
             const auto t1_level=clock_type::now();
             mDuration_type tmp=t1_level-t0_level;

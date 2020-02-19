@@ -14,6 +14,7 @@ include_directories(include)
 
 set(SOURCES
     "${CMAKE_CURRENT_LIST_DIR}/src/utilities/convolution.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/src/utilities/misc_math_functions.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/src/lgf/lgf_gl_lookup.cpp"
    )
 

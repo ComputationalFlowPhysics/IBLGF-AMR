@@ -10,6 +10,7 @@
 #include <global.hpp>
 #include <utilities/crtp.hpp>
 #include <lgf/lgf_gl_lookup.hpp>
+#include <utilities/misc_math_functions.hpp>
 
 namespace lgf
 {
@@ -68,7 +69,7 @@ protected:
 
         const auto base = _b.base();
         const auto max  = _b.max();
-        int step = pow(2, level_diff);
+        int step = math::pow2(level_diff);
 
         std::vector<float_type> _lgf_small;
         _lgf_small.resize(_b.size());

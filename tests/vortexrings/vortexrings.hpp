@@ -151,18 +151,25 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
         refinement_factor_ =simulation_.dictionary_->
             template get<float_type>("refinement_factor");
         pcout<<"Refienment factor "<<refinement_factor_<<std::endl;
+        subtract_non_leaf_ =simulation_.dictionary_->
+            template get_or<bool>("subtract_non_leaf", true);
         use_correction_ =simulation_.dictionary_->
             template get_or<bool>("correction", true);
-        pcout<<"Using correction "<<std::boolalpha<<use_correction_<<std::endl;
-
-
         pcout << "\n Setup:  Test - Vortex rings \n" << std::endl;
         pcout << "Number of refinement levels: "<<nLevels_<<std::endl;
+
         domain_->register_refinement_condition()=
             [this](auto octant, int diff_level){return this->refinement(octant, diff_level);};
+
         domain_->init_refine(_d->get_dictionary("simulation_parameters")
                 ->template get_or<int>("nLevels",0), global_refinement_);
+
+        pcout<<"Using correction = "<<std::boolalpha<<use_correction_<<std::endl;
+        pcout<<"Subtract non leaf = "<<std::boolalpha<<subtract_non_leaf_<<std::endl;
+
+        domain_->decomposition().subtract_non_leaf()=subtract_non_leaf_;
         domain_->distribute<fmm_mask_builder_t, fmm_mask_builder_t>();
+        pcout << "Initial distribution done"<<std::endl;
         this->initialize();
 
         boost::mpi::communicator world;
@@ -205,6 +212,7 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
             poisson_solver_t psolver(&this->simulation_);
 
             psolver.use_correction()=use_correction_;
+            psolver.subtract_non_leaf()=subtract_non_leaf_;
 
             mDuration_type solve_duration(0);
             client_comm_.barrier();
@@ -236,12 +244,12 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
         this->solve();
         pcout_c<<"Solve 1st time done" <<std::endl;
         simulation_.write2("mesh.hdf5");
-        pcout_c<<"write" <<std::endl;
-        domain_->decomposition().balance<source,phi_exact>();
-        pcout_c<<"decomposition done" <<std::endl;
+        //pcout_c<<"write" <<std::endl;
+        //domain_->decomposition().balance<source,phi_exact>();
+        //pcout_c<<"decomposition done" <<std::endl;
 
-        this->solve();
-        simulation_.write2("mesh_new.hdf5");
+        //this->solve();
+        //simulation_.write2("mesh_new.hdf5");
     }
 
 
@@ -417,6 +425,7 @@ private:
     std::vector<vortex_ring> vrings_;
     float_type refinement_factor_=1./8;
     bool use_correction_=true;
+    bool subtract_non_leaf_=false;
 };
 
 

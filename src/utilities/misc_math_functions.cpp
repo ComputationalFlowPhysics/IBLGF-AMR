@@ -1,0 +1,23 @@
+#include <utilities/misc_math_functions.hpp>
+
+namespace math
+{
+
+int next_pow_2(int n)
+{
+    int p = 1;
+    if (n && !(n & (n - 1)))
+        return n;
+
+    while (p < n)
+        p <<= 1;
+
+    return p;
+}
+
+int pow2(int n)
+{
+    return (1 << n);
+}
+
+}

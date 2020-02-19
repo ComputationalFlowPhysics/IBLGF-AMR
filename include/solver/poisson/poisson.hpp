@@ -139,6 +139,8 @@ public:
             _kernel->change_level(l-domain_->tree()->base_level());
 
             fmm_.template apply<source_tmp, target_tmp>(domain_, _kernel, l, false, 1.0, false);
+            if (!subtract_non_leaf_)
+                fmm_.template apply<source_tmp, target_tmp>(domain_, _kernel, l, true, 1.0, false);
 
             copy_level<target_tmp, Target>(l, 0, _field_idx, true);
         }
@@ -215,52 +217,99 @@ public:
                     cp2*=0.0;
                 }
 
-            // test for FMM
-            fmm_.template apply<source_tmp, target_tmp>(domain_, _kernel, l, false, 1.0, base_level_only);
+
+            if (subtract_non_leaf_)
+            {
+                fmm_.template apply<source_tmp, target_tmp>(domain_, _kernel, l, false, 1.0, base_level_only);
+                // Copy to Target
+                for (auto it  = domain_->begin(l);
+                        it != domain_->end(l); ++it)
+                    if (it->locally_owned() && it->is_leaf())
+                    {
+                        it->data()->template get_linalg<Target>(_field_idx).get()->
+                        cube_noalias_view() =
+                        it->data()->template get_linalg_data<target_tmp>();
+                    }
+                fmm_.template apply<source_tmp, target_tmp>(domain_, _kernel, l, true, -1.0);
+#ifdef POISSON_TIMINGS
+                timings_.fmm_level_nl[l-domain_->tree()->base_level()]=fmm_.timings();
+#endif
 
 #ifdef POISSON_TIMINGS
-            timings_.fmm_level[l-domain_->tree()->base_level()]=fmm_.timings();
+                const auto t2=clock_type::now();
 #endif
-            // Copy to Target
-            for (auto it  = domain_->begin(l);
-                    it != domain_->end(l); ++it)
-                if (it->locally_owned() && it->is_leaf())
+                // Interpolate
+                domain_->decomposition().client()->
+                template communicate_updownward_assign
+                <target_tmp, target_tmp>(l,false,false,-1);
+
+                for (auto it  = domain_->begin(l);
+                        it != domain_->end(l); ++it)
                 {
-                    it->data()->template get_linalg<Target>(_field_idx).get()->
-                    cube_noalias_view() =
-                    it->data()->template get_linalg_data<target_tmp>();
+                    if(!it->data() || !it->data()->is_allocated()) continue;
+                    c_cntr_nli_.nli_intrp_node< target_tmp, target_tmp >
+                    (it, Source::mesh_type, _field_idx, 0, false, false);
+
                 }
 
-            if (base_level_only) continue;
-
-            fmm_.template apply<source_tmp, target_tmp>(domain_, _kernel, l, true, -1.0);
-
 #ifdef POISSON_TIMINGS
-            timings_.fmm_level_nl[l-domain_->tree()->base_level()]=fmm_.timings();
+                const auto t3=clock_type::now();
+                timings_.interpolation+=(t3-t2);
+#endif
+
+
+            }
+            else
+            {
+                if (!base_level_only)
+                {
+                    fmm_.template apply<source_tmp, target_tmp>(domain_, _kernel, l, true, 1.0);
+#ifdef POISSON_TIMINGS
+                    timings_.fmm_level_nl[l-domain_->tree()->base_level()]=fmm_.timings();
 #endif
 
 #ifdef POISSON_TIMINGS
-            const auto t2=clock_type::now();
+                    const auto t2=clock_type::now();
 #endif
-            // Interpolate
-            domain_->decomposition().client()->
-                template communicate_updownward_assign
+                    // Interpolate
+                    domain_->decomposition().client()->
+                    template communicate_updownward_assign
                     <target_tmp, target_tmp>(l,false,false,-1);
 
-            for (auto it  = domain_->begin(l);
-                      it != domain_->end(l); ++it)
-            {
-                if(!it->data() || !it->data()->is_allocated()) continue;
-                c_cntr_nli_.nli_intrp_node< target_tmp, target_tmp >
-                    (it, Source::mesh_type, _field_idx, 0, false, false);
+                    for (auto it  = domain_->begin(l);
+                            it != domain_->end(l); ++it)
+                    {
+                        if(!it->data() || !it->data()->is_allocated()) continue;
+                        c_cntr_nli_.nli_intrp_node< target_tmp, target_tmp >
+                        (it, Source::mesh_type, _field_idx, 0, false, false);
+
+                    }
+
+#ifdef POISSON_TIMINGS
+                    const auto t3=clock_type::now();
+                    timings_.interpolation+=(t3-t2);
+#endif
+                }
+                // test for FMM
+                fmm_.template apply<source_tmp, target_tmp>(domain_, _kernel, l, false, 1.0, base_level_only);
+
+                // Copy to Target
+                for (auto it  = domain_->begin(l);
+                        it != domain_->end(l); ++it)
+                    if (it->locally_owned() && it->is_leaf())
+                    {
+                        it->data()->template get_linalg<Target>(_field_idx).get()->
+                        cube_noalias_view() =
+                        it->data()->template get_linalg_data<target_tmp>();
+                    }
 
             }
 
 #ifdef POISSON_TIMINGS
-            const auto t3=clock_type::now();
-            timings_.interpolation+=(t3-t2);
+            timings_.fmm_level[l-domain_->tree()->base_level()]=fmm_.timings();
 #endif
 
+            if (base_level_only) continue;
             if (use_correction_)
             {
 
@@ -417,7 +466,7 @@ public:
     }
 
     template<class From, class To>
-    void source_coarsify(std::size_t real_mesh_field_idx, std::size_t tmp_type_field_idx, MeshObject mesh_type, bool correction_only = false, bool exclude_correction = false)
+    void source_coarsify(std::size_t real_mesh_field_idx, std::size_t tmp_type_field_idx, MeshObject mesh_type, bool correction_only = false, bool exclude_correction = false, bool _buffer_exchange = false)
     {
 
         auto client = domain_->decomposition().client();
@@ -441,9 +490,12 @@ public:
                     (ls,true,false,-1, tmp_type_field_idx);
         }
 
-        for (int l  = domain_->tree()->base_level();
-                l < domain_->tree()->depth()-1; ++l)
-            client->template buffer_exchange<To>(l);
+        if (_buffer_exchange)
+        {
+            for (int l  = domain_->tree()->base_level();
+                    l < domain_->tree()->depth()-1; ++l)
+                client->template buffer_exchange<To>(l);
+        }
 
     }
 
@@ -650,6 +702,9 @@ auto& c_cntr_nli()
    }
 
 
+   const bool& subtract_non_leaf()const noexcept{return subtract_non_leaf_;}
+   bool& subtract_non_leaf()noexcept{return subtract_non_leaf_;}
+
    const bool& use_correction()const noexcept{return use_correction_;}
    bool& use_correction()noexcept{return use_correction_;}
 
@@ -664,6 +719,7 @@ private:
     interpolation::extrapolation_cell_center_nli    extrp_c_cntr_nli_;///< Lagrange Interpolation
     parallel_ostream::ParallelOstream pcout=parallel_ostream::ParallelOstream(1);
     bool use_correction_ =true;
+    bool subtract_non_leaf_ = false;
 
     //Timings:
     struct Timings{

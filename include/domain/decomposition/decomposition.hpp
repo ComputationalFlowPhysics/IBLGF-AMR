@@ -71,6 +71,9 @@ public:
 
 public: //memeber functions
 
+    const bool& subtract_non_leaf()const noexcept{return subtract_non_leaf_;}
+    bool& subtract_non_leaf()noexcept{return subtract_non_leaf_;}
+
     void sync_decomposition()
     {
         if(server())
@@ -104,7 +107,9 @@ public: //memeber functions
     {
         if(server())
         {
-            FmmMaskBuilder::fmm_lgf_mask_build(domain_);
+            std::cout<< "Initialization of masks start"<<std::endl;
+            FmmMaskBuilder::fmm_lgf_mask_build(domain_, subtract_non_leaf_);
+            std::cout<< "Initialization of masks done"<<std::endl;
             FmmMaskBuilder::fmm_vortex_streamfun_mask(domain_);
             //FmmMaskBuilder::fmm_if_load_build(domain_);
             // it's together with fmmMaskBuild for now
@@ -404,7 +409,7 @@ public: //memeber functions
             domain_->tree()->construct_lists();
 
             fmm_mask_builder_t::fmm_clean_load(domain_);
-            fmm_mask_builder_t::fmm_lgf_mask_build(domain_);
+            fmm_mask_builder_t::fmm_lgf_mask_build(domain_, subtract_non_leaf_);
             fmm_mask_builder_t::fmm_vortex_streamfun_mask(domain_);
 
             // --------------------------------------------------------------
@@ -503,6 +508,7 @@ private:
     std::shared_ptr<client_type> client_=nullptr;
     std::shared_ptr<server_type> server_=nullptr;
     int baseBlockBufferNumber_;
+    bool subtract_non_leaf_=false;
 };
 
 }

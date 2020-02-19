@@ -14,6 +14,7 @@
 #include <IO/parallel_ostream.hpp>
 #include <solver/poisson/poisson.hpp>
 #include <operators/operators.hpp>
+#include <utilities/misc_math_functions.hpp>
 
 namespace solver
 {
@@ -104,7 +105,7 @@ public:
     void update_marching_parameters()
     {
         nLevelRefinement_ = domain_->tree()->depth()-domain_->tree()->base_level()-1;
-        dt_               = dt_base_/pow(2.0,nLevelRefinement_);
+        dt_               = dt_base_/math::pow2(nLevelRefinement_);
 
         float_type tmp = Re_*dx_base_*dx_base_/dt_;
         alpha_[0]=(c_[1]-c_[0])/tmp;
@@ -173,16 +174,20 @@ public:
             update_marching_parameters();
 
             T_ += dt_;
-            pcout<<"T = " << T_ << " -----------------" << std::endl;
-            pcout<<"Total number of leaf octants: "<<domain_->num_leafs()<<std::endl;
-
-            float_type tmp_n=T_/dt_base_*std::pow(2,max_ref_level_);
+            float_type tmp_n=T_/dt_base_*math::pow2(max_ref_level_);
             int tmp_int_n=int(tmp_n+0.5);
 
             if ( ( std::fabs(tmp_int_n - tmp_n)<1e-4 ) && (tmp_int_n%output_base_freq_==0) )
             {
                 n_step_= tmp_int_n;
                 write_timestep();
+            }
+
+            world.barrier();
+            if (domain_->is_server())
+            {
+                std::cout<<"T = " << T_<<", n = "<< tmp_int_n << " -----------------" << std::endl;
+                std::cout<<"Total number of leaf octants: "<<domain_->num_leafs()<<std::endl;
             }
 
         }
@@ -206,7 +211,7 @@ public:
                 {
                     if(!it->locally_owned() || it->is_correction()) continue;
 
-                    const auto dx_level =  dx_base_/std::pow(2,it->refinement_level());
+                    const auto dx_level =  dx_base_/math::pow2(it->refinement_level());
                     domain::Operator::curl<u,edge_aux>( *(it->data()),dx_level);
                 }
             }
@@ -222,7 +227,7 @@ public:
                 {
                     if(!it->locally_owned() ) continue;
 
-                    const auto dx_level =  dx_base_/std::pow(2,it->refinement_level());
+                    const auto dx_level =  dx_base_/math::pow2(it->refinement_level());
                     domain::Operator::curl_transpose<stream_f,u>( *(it->data()),dx_level, -1.0);
                 }
                 client->template buffer_exchange<u>(l);
@@ -269,10 +274,22 @@ public:
     {
         //claen non leafs
         clean<Field>(true);
+        this->up<Field>();
+        this->down_to_correction<Field>();
+    }
+
+    template<class Field>
+    void up()
+    {
         //Coarsification:
         for (std::size_t _field_idx=0; _field_idx<Field::nFields; ++_field_idx)
             psolver.template source_coarsify<Field,Field>(_field_idx, _field_idx, Field::mesh_type);
-        // Interpolate to correction buffer
+    }
+
+    template<class Field>
+    void down_to_correction()
+    {
+       // Interpolate to correction buffer
         for (std::size_t _field_idx=0; _field_idx<Field::nFields; ++_field_idx)
             psolver.template intrp_to_correction_buffer<Field, Field>(_field_idx, _field_idx, Field::mesh_type, true, false);
     }
@@ -396,7 +413,13 @@ public:
 
         // Solve stream function to pad base level u->u_pad
         stage_idx_=0;
-        pad_velocity<u, u>();
+        mDuration_type t_pad(0);
+        TIME_CODE( t_pad, SINGLE_ARG(
+                    pad_velocity<u, u>();
+                    ));
+        pcout<< "pad u      in "<<t_pad.count() << std::endl;
+
+
         copy<u, q_i>();
 
         // Stage 1
@@ -458,7 +481,6 @@ public:
         psolver.template apply_lgf_IF<r_i, r_i>(alpha_[1]);
 
         up_and_down<u_i>();
-        //clean<u>(true);
         nonlinear<u_i,g_i>( coeff_a(3,3)*(-dt_) );
         add<g_i, r_i>();
 
@@ -542,7 +564,7 @@ private:
 
 
     template<class Velocity_in, class Velocity_out>
-    void pad_velocity()
+    void pad_velocity(bool _exchange_buffer=true)
     {
         auto client=domain_->decomposition().client();
 
@@ -554,14 +576,17 @@ private:
         for (int l  = domain_->tree()->base_level();
                 l < domain_->tree()->depth(); ++l)
         {
-            client->template buffer_exchange<Velocity_in>(l);
+            if (_exchange_buffer)
+                client->template buffer_exchange<Velocity_in>(l);
+
             for (auto it  = domain_->begin(l);
                     it != domain_->end(l); ++it)
             {
                 if(!it->locally_owned() || !it->data()) continue;
                 if(it->is_correction()) continue;
+                if(!it->is_leaf()) continue;
 
-                const auto dx_level =  dx_base/std::pow(2,it->refinement_level());
+                const auto dx_level =  dx_base/math::pow2(it->refinement_level());
                 if (it->is_leaf())
                     domain::Operator::curl<Velocity_in,edge_aux>( *(it->data()),dx_level);
             }
@@ -578,11 +603,11 @@ private:
             if(!it->locally_owned() || !it->data()) continue;
             if(!it->is_correction()) continue;
 
-            const auto dx_level =  dx_base/std::pow(2,it->refinement_level());
+            const auto dx_level =  dx_base/math::pow2(it->refinement_level());
             domain::Operator::curl_transpose<stream_f,Velocity_out>( *(it->data()),dx_level, -1.0);
         }
 
-        client->template buffer_exchange<Velocity_out>(l);
+        //client->template buffer_exchange<Velocity_out>(l);
 
     }
 
@@ -692,7 +717,7 @@ private:
                 if(!it->locally_owned() || !it->data()) continue;
                 //if(it->is_correction()) continue;
 
-                const auto dx_level =  dx_base/std::pow(2,it->refinement_level());
+                const auto dx_level =  dx_base/math::pow2(it->refinement_level());
                 domain::Operator::curl<Source,edge_aux>( *(it->data()),dx_level);
             }
 
@@ -718,7 +743,7 @@ private:
 
             }
 
-            client->template buffer_exchange<Target>(l);
+            //client->template buffer_exchange<Target>(l);
             clean_leaf_correction_boundary<Target>(l, false,3+stage_idx_);
         }
     }
@@ -728,6 +753,8 @@ private:
     void divergence() noexcept
     {
         auto client=domain_->decomposition().client();
+
+        up_and_down<Source>();
 
         for (int l  = domain_->tree()->base_level();
                 l < domain_->tree()->depth(); ++l)
@@ -739,7 +766,7 @@ private:
                     it != domain_->end(l); ++it)
             {
                 if(!it->locally_owned() || !it->data()) continue;
-                const auto dx_level =  dx_base/std::pow(2.0,it->refinement_level());
+                const auto dx_level =  dx_base/math::pow2(it->refinement_level());
                 domain::Operator::divergence<Source,Target>( *(it->data()),dx_level);
             }
 
@@ -753,6 +780,8 @@ private:
     template<class Source, class Target>
     void gradient(float_type _scale=1.0) noexcept
     {
+        //up_and_down<Source>();
+
         for (int l  = domain_->tree()->base_level();
                 l < domain_->tree()->depth(); ++l)
         {
@@ -763,7 +792,7 @@ private:
                     it != domain_->end(l); ++it)
             {
                 if(!it->locally_owned() || !it->data()) continue;
-                const auto dx_level =  dx_base/std::pow(2.0,it->refinement_level());
+                const auto dx_level =  dx_base/math::pow2(it->refinement_level());
                 domain::Operator::gradient<Source,Target>( *(it->data()),dx_level);
                 for (std::size_t field_idx=0; field_idx<Target::nFields; ++field_idx)
                 {

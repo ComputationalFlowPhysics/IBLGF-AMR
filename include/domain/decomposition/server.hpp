@@ -147,9 +147,10 @@ public:
                 it->rank()=crank+1;
                 auto load= it->load();
 
-                ctask_t task(it.ptr(), it->rank(), load);
                 _loads_perProc[crank]+=load;
-                _tasks_perProc[crank].push_back(task);
+
+                //ctask_t task(it.ptr(), it->rank(), load);
+                //_tasks_perProc[crank].push_back(task);
                 current_load+=load;
                 ++it;
                 ++count;
@@ -259,7 +260,7 @@ public:
 
             for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
             {
-                if( !it->data() || it->is_leaf() || it->is_correction()) continue;
+                if( !it->data() ) continue;
 
                 int rank_tobe=-1;
                 float_type min_load=std::numeric_limits<float_type>::max();
@@ -275,18 +276,45 @@ public:
                         min_load=total_loads_perProc[child->rank()-1];
                     }
                 }
+
                 if (rank_tobe>0)
                 {
+                    if (it->rank()>0)
+                        total_loads_perProc[it->rank()-1]-=it->load();
+
                     it->rank()=rank_tobe;
-                    ctask_t task(it.ptr(), rank_tobe, it->load());
                     total_loads_perProc[rank_tobe-1]+=it->load();
-                    tasks_perProc[rank_tobe-1].push_back(task);
+
+                    for(int i=0;i<it->num_children();++i)
+                    {
+                        const auto child = it->child(i);
+                        if(!child || !child->data()) continue;
+                        if (child->rank()!=rank_tobe)
+                        {
+                            total_loads_perProc[child->rank()-1]-=child->load();
+                            child->rank()=rank_tobe;
+                            total_loads_perProc[rank_tobe-1]+=child->load();
+                        }
+
+                    }
+
                 }
                 else
                 {
                     //if (!it->is_leaf() && !it->is_correction())
                     //    std::cout<< "no children found for " <<it->key()<< std::endl;
                 }
+
+            }
+        }
+
+        for (int l = domain_->tree()->depth()-1; l >= 0; --l)
+        {
+           for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            {
+                if( !it->data() ) continue;
+                ctask_t task(it.ptr(), it->rank(), it->load());
+                tasks_perProc[it->rank()-1].push_back(task);
             }
         }
 

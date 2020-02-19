@@ -55,7 +55,7 @@ dfft_r2c::dfft_r2c( dims_t _dims_padded, dims_t _dims_non_zero )
                     );
     }
 
-    c2c_1d_plans_dir_3 = 
+    c2c_1d_plans_dir_3 =
         fftw_plan_many_dft(1, &_dims_padded[0], dim_half * _dims_padded[1],
             reinterpret_cast<fftw_complex*> (&output_2[0]), NULL,
             dim_half*_dims_padded[1], 1,

@@ -464,6 +464,7 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
     int tot_steps_;
     float_type refinement_factor_=1./8;
 
+
     std::string ic_filename_, ref_filename_;
 };
 

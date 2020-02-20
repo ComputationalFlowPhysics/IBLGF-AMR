@@ -903,6 +903,7 @@ public: //Query ranks of all octants, which are assigned in local tree
 
 
 
+
 public: // leafs maps
 
     auto leaf_map()
@@ -935,6 +936,51 @@ public: // leafs maps
     static coordinate_type unit_transform(coordinate_type _x, int _level)
     {
         return _x;
+    }
+
+public: //Restart
+
+    void write(std::string _filename) const 
+    {
+        std::ofstream ofs(_filename, std::ios::binary);
+        if(!ofs.is_open())
+        {
+            throw std::runtime_error("Could not open file: " + _filename);
+        }
+        dfs_iterator begin(root()); dfs_iterator end;
+        for(auto it =begin;it!=end;++it)
+        {
+            const auto id=it->key().id();
+            ofs.write( reinterpret_cast<const char *>(&id), sizeof(id));
+        }
+        ofs.close();
+    }
+
+    auto read(std::string _filename) const 
+    {
+        std::ifstream ifs(_filename, std::ios::binary);
+
+        if(!ifs.is_open())
+        {
+            throw std::runtime_error("Could not open file: " + _filename);
+        }
+
+        ifs.seekg(0, std::ios::end);
+        const auto fileSize = ifs.tellg();
+        ifs.seekg(0, std::ios::beg);
+        const auto size=fileSize/sizeof(typename key_type::value_type);
+
+        std::vector<key_type> res(size);
+        for(auto& d: res)
+        {
+             typename key_type::value_type tmp;
+             ifs.read( reinterpret_cast<char *>(&tmp), sizeof(tmp));
+             d=key_type(tmp);
+
+        }
+        for(const auto& d: res) std::cout<<d<<std::endl;
+        ifs.close();
+        return res;
     }
 
 private:

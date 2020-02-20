@@ -140,7 +140,7 @@ link_directories(${GTEST_LIBRARY_DIR})
 
 add_subdirectory (tests/sever_client)
 add_subdirectory (tests/adaptivity)
-add_subdirectory (tests/vortexring)
+#add_subdirectory (tests/vortexring)
 add_subdirectory (tests/vortexrings)
 #add_subdirectory (tests/operators)
 add_subdirectory (tests/ifherk_heat)

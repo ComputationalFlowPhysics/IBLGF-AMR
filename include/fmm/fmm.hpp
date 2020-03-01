@@ -91,15 +91,49 @@ public:
                 );
     }
 
-    static void fmm_clean_load(Domain* domain_)
+    static void fmm_clean_load(Domain* domain_, float_type value=0.0)
     {
         for (auto it = domain_->begin();
                 it != domain_->end();
                 ++it)
         {
-            it->load()=0;
+            it->load()=value;
         }
      }
+
+    static void fmm_simple_level_load(Domain* domain_, int l)
+    {
+        for (int non_leaf_as_source=0; non_leaf_as_source<2; ++non_leaf_as_source)
+        {
+            int refinement_level = l-domain_->tree()->base_level();
+            if (refinement_level<0)
+                refinement_level=0;
+
+            int fmm_mask_idx = refinement_level*2+non_leaf_as_source+1;
+
+            for (auto it = domain_->begin(l);
+                    it != domain_->end(l);
+                    ++it)
+            {
+                if  (it->fmm_mask(fmm_mask_idx,MASK_LIST::Mask_FMM_Target))
+                {
+                    for(std::size_t i = 0; i< it->influence_number(); ++i)
+                    {
+                        const auto inf=it->influence(i);
+                        if (inf && inf->data() && inf->fmm_mask(fmm_mask_idx,MASK_LIST::Mask_FMM_Source))
+                            it->add_load(1.0);
+                    }
+
+                    for(std::size_t i = 0; i< it->neighbor_number(); ++i)
+                    {
+                        const auto ni=it->neighbor(i);
+                        if (ni && ni->data() && ni->fmm_mask(fmm_mask_idx,MASK_LIST::Mask_FMM_Source))
+                            it->add_load(1.0);
+                    }
+                }
+            }
+        }
+    }
 
     static void fmm_lgf_mask_build(Domain* domain_, bool subtract_non_leaf)
     {
@@ -111,6 +145,65 @@ public:
             fmm_dry(domain_, l, true, subtract_non_leaf);
         }
     }
+
+    static void fmm_rank_list_build(Domain* domain_)
+    {
+
+        //clean all fmm ranks
+        for (auto it = domain_->begin();
+                it != domain_->end(); ++it)
+        {
+            for (int i=1; i<it->rank_list().size(); ++i)
+                it->rank(i)=-1;
+        }
+
+        for (int non_leaf_as_source=0; non_leaf_as_source<2; ++non_leaf_as_source)
+        {
+            for (int bl  = domain_->tree()->base_level();
+                    bl < domain_->tree()->depth(); ++bl)
+            {
+                int refinement_level = bl-domain_->tree()->base_level();
+                int fmm_mask_idx = refinement_level*2+non_leaf_as_source+1;
+                int rank_idx = fmm_mask_idx;
+
+                // base level to be the same as ranklist 0
+                for (auto it = domain_->begin(bl);
+                        it != domain_->end(bl); ++it)
+                {
+                    if (it->fmm_mask(fmm_mask_idx,MASK_LIST::Mask_FMM_Source)
+                            || it->fmm_mask(fmm_mask_idx,MASK_LIST::Mask_FMM_Target))
+                        it->rank(rank_idx)=it->rank();
+                    else
+                        it->rank(rank_idx)=-1;
+                }
+
+                // upward passing
+                for (int level=bl-1; level>=0; --level)
+                {
+                    for (auto it = domain_->begin(level);
+                            it != domain_->end(level);
+                            ++it)
+                    {
+                        it->rank(rank_idx)=-1;
+
+                        float_type min_load=1e10;
+                        for ( int c = 0; c < it->num_children(); ++c )
+                        {
+                            if ( it->child(c) && it->child(c)->data()
+                                    && it->child(c)->rank(rank_idx)>0
+                                    && min_load>it->child(c)->load())
+                            {
+                                it->rank(rank_idx)=it->child(c)->rank(rank_idx);
+                                min_load=it->child(c)->load();
+                            }
+                        }
+
+                    }
+                }
+            }
+        }
+    }
+
     static void fmm_dry(Domain* domain_, int base_level, bool non_leaf_as_source, bool subtract_non_leaf)
     {
 
@@ -174,13 +267,19 @@ public:
                         break;
                     }
                 }
+            }
+
+            for (auto it = domain_->begin(level);
+                    it != domain_->end(level);
+                    ++it)
+            {
 
                 // calculate load
                 if  (it->fmm_mask(_fmm_mask_idx,mask_target_id))
                     for(std::size_t i = 0; i< it->influence_number(); ++i)
                     {
                         const auto inf=it->influence(i);
-                        if (inf && inf->fmm_mask(_fmm_mask_idx,mask_source_id))
+                        if (inf && inf->data() && inf->fmm_mask(_fmm_mask_idx,mask_source_id))
                             it->add_load(1.0 * _base_factor);
                     }
             }
@@ -232,11 +331,6 @@ public:
                         it->fmm_mask(_fmm_mask_idx,MASK_LIST::Mask_FMM_Source, true);
                         //if (!it->is_correction())
                         it->fmm_mask(_fmm_mask_idx,MASK_LIST::Mask_FMM_Target,true);
-
-                        if (!_neighbor_only)
-                            it->add_load(it->influence_number()*_load_factor);
-
-                        it->add_load(it->neighbor_number()*_load_factor);
                     }
                 }
                 else
@@ -255,10 +349,6 @@ public:
                         //if (!it->is_correction())
                         it->fmm_mask(_fmm_mask_idx,MASK_LIST::Mask_FMM_Target,true);
 
-                        if (!_neighbor_only)
-                            it->add_load(it->influence_number()*_load_factor);
-
-                        it->add_load(it->neighbor_number()*_load_factor);
                     }
                  }
             }
@@ -300,11 +390,32 @@ public:
                         }
                     }
 
-                    if (!_neighbor_only)
-                        it->add_load(it->influence_number()*_load_factor);
 
-                    it->add_load(it->neighbor_number()*_load_factor);
                 }
+        }
+
+        for (auto it = domain_->begin(base_level);
+                it != domain_->end(base_level);
+                ++it)
+        {
+
+            // calculate load
+            if  (it->fmm_mask(_fmm_mask_idx,MASK_LIST::Mask_FMM_Target))
+            {
+                for(std::size_t i = 0; i< it->influence_number(); ++i)
+                {
+                    const auto inf=it->influence(i);
+                    if (inf && inf->data() && inf->fmm_mask(_fmm_mask_idx,MASK_LIST::Mask_FMM_Source))
+                        it->add_load(1.0);
+                }
+
+                for(std::size_t i = 0; i< it->neighbor_number(); ++i)
+                {
+                    const auto ni=it->neighbor(i);
+                    if (ni && ni->data() && ni->fmm_mask(_fmm_mask_idx,MASK_LIST::Mask_FMM_Source))
+                        it->add_load(1.0);
+                }
+            }
         }
 
     }
@@ -352,6 +463,7 @@ public:
                float_type add_with_scale = 1.0,
                bool base_level_only=false)
     {
+
         const float_type dx_base=domain_->dx_base();
         auto refinement_level = level-domain_->tree()->base_level();
         auto dx_level =  dx_base/std::pow(2, refinement_level);
@@ -361,6 +473,8 @@ public:
             fmm_mask_idx_ = 0;
         else
             fmm_mask_idx_ = refinement_level*2+non_leaf_as_source+1;
+
+        rank_idx_=fmm_mask_idx_;
 
         if (_kernel->neighbor_only())
         {
@@ -412,10 +526,12 @@ public:
         // done at master node
 
 
+        std::cout<< " ------------------------------- FMM 1 " << std::endl;
         ////Initialize for each fmm//zero ing all tree
         fmm_init_zero<fmm_s>(domain_, MASK_LIST::Mask_FMM_Source);
         fmm_init_zero<fmm_t>(domain_, MASK_LIST::Mask_FMM_Target);
 
+        std::cout<< " ------------------------------- FMM 2 " << std::endl;
         //// Copy to temporary variables // only the base level
         fmm_init_copy<Source, fmm_s>(domain_);
         sort_bx_octants(domain, _kernel);
@@ -430,6 +546,7 @@ public:
 #ifdef POISSON_TIMINGS
         auto t0_anterp=clock_type::now();
 #endif
+        std::cout<< " ------------------------------- FMM 3 " << std::endl;
         fmm_antrp(domain_);
 #ifdef POISSON_TIMINGS
         //domain_->client_communicator().barrier();
@@ -442,6 +559,8 @@ public:
         //// FMM influence list
         //pcout<<"FMM Bx start" << std::endl;
         //fmm_Bx_itr_build(domain_, level);
+        domain_->client_communicator().barrier();
+        std::cout<< " ------------------------------- FMM 4 " << std::endl;
 #ifdef POISSON_TIMINGS
         auto t0_bx=clock_type::now();
 #endif
@@ -459,6 +578,8 @@ public:
         auto t0_interp=clock_type::now();
 #endif
         //// Interpolation
+        domain_->client_communicator().barrier();
+        std::cout<< " ------------------------------- FMM 5 " << std::endl;
         //pcout<<"FMM INTRP start" << std::endl;
         fmm_intrp(domain_);
 
@@ -473,6 +594,8 @@ public:
 
         //// Copy back
         //if (!non_leaf_as_source)
+        domain_->client_communicator().barrier();
+        std::cout<< " ------------------------------- FMM 6 " << std::endl;
         fmm_add_equal<Target, fmm_t>(domain_,add_with_scale);
         //else
         //fmm_minus_equal<Target, fmm_t>(domain_);
@@ -532,7 +655,7 @@ public:
             const int level = it->level();
             const bool _neighbor = (level==base_level_)? true:false;
 
-            if(it->locally_owned())
+            if(it->locally_owned(rank_idx_))
                 compute_influence_field(&(*it), _kernel,
                                        base_level_-level, scale, _neighbor);
 
@@ -592,7 +715,7 @@ public:
             for (int i=0; i<it->nNeighbors(); ++i)
             {
                 auto n_s = it->neighbor(i);
-                if (n_s && n_s->locally_owned()
+                if (n_s && n_s->locally_owned(rank_idx_)
                         && n_s->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Source))
                 {
                     fmm_tt(n_s, it, _kernel, 0);
@@ -605,7 +728,7 @@ public:
             for (std::size_t i=0; i< it->influence_number(); ++i)
             {
                 auto n_s = it->influence(i);
-                if (n_s && n_s->locally_owned()
+                if (n_s && n_s->locally_owned(rank_idx_)
                         && n_s->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Source))
                 {
                     fmm_tt(n_s, it, _kernel,level_diff);
@@ -631,7 +754,7 @@ public:
                 it != domain_->end(base_level_);
                 ++it)
         {
-            if(it->data() && it->locally_owned() &&
+            if(it->data() && it->locally_owned(rank_idx_) &&
                it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Target))
             {
                 it->data()->template get_linalg<f1>().get()->
@@ -648,7 +771,7 @@ public:
                 it != domain_->end(base_level_);
                 ++it)
         {
-            if(it->data() && it->locally_owned() &&
+            if(it->data() && it->locally_owned(rank_idx_) &&
                it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Target))
             {
 
@@ -688,7 +811,7 @@ public:
                 it != domain_->end(base_level_);
                 ++it)
         {
-            if(it->data() && it->locally_owned() &&
+            if(it->data() && it->locally_owned(rank_idx_) &&
                it->fmm_mask(fmm_mask_idx_,MASK_LIST::Mask_FMM_Source))
             {
                 auto lin_data_1 = it->data()->template get_linalg_data<from>();
@@ -745,10 +868,10 @@ public:
                     ++it)
             {
 
-                if (!it->locally_owned() && it->data() && it->data()->is_allocated())
+                if (!it->locally_owned(rank_idx_) && it->data() && it->data()->is_allocated())
                 {
                     auto& cp2 = it ->data()->template get_linalg_data<fmm_s>();
-                    cp2*=0.0;
+                    std::fill(cp2.begin(),cp2.end(),0.0);
                 }
             }
         }
@@ -830,6 +953,7 @@ public:
     Nli lagrange_intrp;
 private:
     int fmm_mask_idx_;
+    int rank_idx_;
     int base_level_;
     convolution_t            conv_;      ///< fft convolution
     parallel_ostream::ParallelOstream pcout=

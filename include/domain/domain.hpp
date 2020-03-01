@@ -52,6 +52,7 @@ public:
 
     using communicator_type = boost::mpi::communicator;
     using decompositon_type = Decomposition<Domain>;
+    using fmm_mask_builder_t = typename decompositon_type::fmm_mask_builder_t;
 
     using refinement_condition_fct_t = std::function<bool(octant_t*, int diff_level)>;
     using adapt_condition_fct_t = std::function<int(octant_t*, float_type source_max)>;
@@ -933,6 +934,9 @@ public:
     const auto& client_communicator() const noexcept { return client_comm_; }
     auto& client_communicator() noexcept { return client_comm_; }
 
+    const auto& communicator() const noexcept { return w_; }
+    auto& communicator() noexcept { return w_; }
+
 private:
 
     template<class DictionaryPtr, class Fct >
@@ -991,6 +995,7 @@ private:
     adapt_condition_fct_t adapt_cond_ = &Domain::adapt_cond_default;
 
     boost::mpi::communicator client_comm_;
+    boost::mpi::communicator w_;
     int baseBlockBufferNumber_=2;
 
 };

@@ -54,15 +54,17 @@ namespace fmm
 
         template<class field,
             typename octant_t>
-        void nli_intrp_node(octant_t parent, int mask_id, int base_level)
+        void nli_intrp_node(octant_t parent, int mask_id, int fmm_mask_idx)
             {
+                int rank_idx=fmm_mask_idx;
+
                 auto& parent_linalg_data =
                     parent->data()->template get_linalg_data<field>();
 
                 for (int i = 0; i < parent->num_children(); ++i)
                 {
                     auto child = parent->child(i);
-                    if (child == nullptr || !child->fmm_mask(base_level, mask_id) || !child->locally_owned()) continue;
+                    if (child == nullptr || !child->fmm_mask(fmm_mask_idx, mask_id) || !child->locally_owned(rank_idx)) continue;
                     if (!child ->data()) continue;
 
                     auto& child_linalg_data =
@@ -137,8 +139,9 @@ namespace fmm
 
 
         template< class field, typename octant_t>
-        void nli_antrp_node(octant_t parent, int mask_id, int base_level)
+        void nli_antrp_node(octant_t parent, int mask_id, int fmm_mask_idx)
             {
+                int rank_idx=fmm_mask_idx;
                 auto& parent_linalg_data = parent->data()->template get_linalg_data<field>();
 
                 for (int i = 0; i < parent->num_children(); ++i)
@@ -146,11 +149,11 @@ namespace fmm
 
                     auto child = parent->child(i);
                     if (child == nullptr ||
-                        !child->locally_owned() ||
-                        !child->fmm_mask(base_level, mask_id)) continue;
+                        !child->locally_owned(rank_idx) ||
+                        !child->fmm_mask(fmm_mask_idx, mask_id)) continue;
 
                     auto& child_linalg_data  =
-                        child ->data()->template get_linalg_data<field>();
+                        child ->data()->template get_linalg_data<field>();;
 
                     nli_antrp_node(child_linalg_data, parent_linalg_data, i);
                 }

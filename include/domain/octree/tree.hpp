@@ -613,6 +613,7 @@ public:
         dfs_iterator begin(root()); dfs_iterator end;
         for(auto it =begin;it!=end;++it)
         {
+            if (!it->locally_owned_during_any_fmm()) continue;
             res.emplace(it->key());
         }
     }
@@ -622,7 +623,7 @@ public:
         dfs_iterator begin(root()); dfs_iterator end;
         for(auto it =begin;it!=end;++it)
         {
-            if (!it->locally_owned()) continue;
+            if (!it->locally_owned_during_any_fmm()) continue;
             res.emplace(it->key().parent());
         }
     }
@@ -632,7 +633,7 @@ public:
         dfs_iterator begin(root()); dfs_iterator end;
         for(auto it =begin;it!=end;++it)
         {
-            if (!it->locally_owned()) continue;
+            if (!it->locally_owned_during_any_fmm()) continue;
             auto it_key=it->key();
             for(int i=0;i<it->num_children();++i)
             {
@@ -646,7 +647,7 @@ public:
         dfs_iterator begin(root()); dfs_iterator end;
         for(auto it =begin;it!=end;++it)
         {
-            if (!it->locally_owned()) continue;
+            if (!it->locally_owned_during_any_fmm()) continue;
             auto n_keys=it->get_infl_keys();
             for(auto& n_k:n_keys)
             {
@@ -661,7 +662,7 @@ public:
         dfs_iterator begin(root()); dfs_iterator end;
         for(auto it =begin;it!=end;++it)
         {
-            if (!it->locally_owned()) continue;
+            if (!it->locally_owned_during_any_fmm()) continue;
             auto n_keys=it->get_neighbor_keys();
             for(auto& n_k:n_keys)
             {
@@ -739,9 +740,10 @@ public: //children and parent queries
             auto nn = this->find_octant(keys[i]);
             if (nn && nn->data())
             {
-                if(ranks[i]>0)
+                if(ranks[i][0]>0)
                 {
-                    nn->rank()=ranks[i];
+                    nn->rank_list()=ranks[i];
+                    nn->aim_deletion(false);
                 }
                 else
                 {
@@ -754,10 +756,11 @@ public: //children and parent queries
             }
             else
             {
-                if (ranks[i]>0)
+                if (ranks[i][0]>0)
                 {
                     auto nn=this->insert_td(keys[i]);
-                    nn->rank()=ranks[i];
+                    nn->rank_list()=ranks[i];
+                    nn->aim_deletion(false);
                 }
             }
         }
@@ -847,6 +850,12 @@ public: //Query ranks of all octants, which are assigned in local tree
     template<class Client>
     void construct_ghosts( Client* _c )
     {
+        dfs_iterator it_begin(root()); dfs_iterator it_end;
+        for(auto it =it_begin;it!=it_end;++it)
+        {
+            it->aim_deletion(true);
+        }
+
         std::set<key_type> res;
         this->lookup_neighbors(res);
         this->lookup_infls(res);
@@ -856,6 +865,13 @@ public: //Query ranks of all octants, which are assigned in local tree
 
         this->query_ranks(_c, res);
         this->allocate_ghosts(_c);
+
+        for(auto it =it_begin;it!=it_end;++it)
+        {
+            if (it->aim_deletion())
+                this->delete_oct(it.ptr());
+        }
+
     }
 
     /** @brief Query from server and construct all
@@ -894,10 +910,10 @@ public: //Query ranks of all octants, which are assigned in local tree
             bool allocate_data = false;
             for(int i=0;i<it->num_children();++i)
             {
-                if (it->child(i) && it->child(i)->data() && it->child(i)->locally_owned())
+                if (it->child(i) && it->child(i)->data() && it->child(i)->locally_owned_during_any_fmm())
                     allocate_data=true;
             }
-            _f(it.ptr(),allocate_data || it->locally_owned());
+            _f(it.ptr(),allocate_data || it->locally_owned_during_any_fmm());
         }
     }
 

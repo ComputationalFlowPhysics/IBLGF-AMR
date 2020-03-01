@@ -26,9 +26,12 @@ struct ServerClientTraits
 
     using domain_t = Domain;
     using key_t  = typename  domain_t::key_t;
+    using octant_t  = typename domain_t::octant_t;
+
+    using rank_type = typename octant_t::rank_type;
 
     using key_query_t  = Task<tags::key_query,std::vector<key_t>>;
-    using rank_query_t = Task<tags::key_query,std::vector<int>>;
+    using rank_query_t = Task<tags::key_query,std::vector<rank_type>>;
 
     using correction_query_send_t = Task<tags::correction,std::vector<key_t>>;
     using correction_query_recv_t = Task<tags::correction,std::vector<bool>>;
@@ -36,7 +39,6 @@ struct ServerClientTraits
     using leaf_query_send_t = Task<tags::leaf,std::vector<key_t>>;
     using leaf_query_recv_t = Task<tags::leaf,std::vector<bool>>;
 
-    using octant_t  = typename domain_t::octant_t;
     using fmm_mask_type = typename octant_t::fmm_mask_type;
 
     using mask_init_query_send_t = Task<tags::mask_init,std::vector<key_t>>;

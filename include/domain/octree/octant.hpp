@@ -44,6 +44,7 @@ public:
     using octant_datafield_type = typename  domain::DataField<Octant*, Dim>;
 
     using data_type = DataType;
+    using rank_type = typename octant_base_t::rank_type;
 
     static constexpr int num_vertices(){return pow(2,Dim);}
     static constexpr int num_faces(){return 2*Dim;}
@@ -56,10 +57,8 @@ public:
         Mask_FMM_Target,
         Mask_Last};
 
-    static const int fmm_max_idx_=30;
-
     using fmm_mask_type =
-        std::array< std::array<bool, Mask_Last>, fmm_max_idx_>;
+        std::array< std::array<bool, Mask_Last>, super_type::fmm_max_idx()>;
 
 public:
     friend tree_type;
@@ -83,10 +82,9 @@ public: //Ctors
         : super_type(_k), t_(_tr) { null_init();}
 
     Octant(const coordinate_type& _x, int _level, tree_type* _tr)
-        : super_type(key_type(_x,_level)),t_(_tr) { null_init();}
+    : super_type(key_type(_x,_level)),t_(_tr) { null_init();}
 
-
-     /** @brief Find leaf that shares a vertex with octant
+    /** @brief Find leaf that shares a vertex with octant
       *         on same, plus or minus one level
       **/
     Octant* vertex_neighbor(const coordinate_type& _offset)
@@ -122,10 +120,10 @@ public: //Ctors
         std::fill(neighbor_.begin(),neighbor_.end(),nullptr);
         std::fill(influence_.begin(),influence_.end(),nullptr);
 
-        for (int i=0; i<fmm_max_idx_; ++i)
-        {
+        for (int i=0; i<super_type::fmm_max_idx(); ++i)
             std::fill(fmm_masks_[i].begin(),fmm_masks_[i].end(),false);
-        }
+
+        std::fill(this->rank_list().begin(),this->rank_list().end(),-1);
     }
 
     auto get_neighbor_keys()
@@ -273,21 +271,38 @@ public: //Ctors
 
 public: //mpi info
 
-    bool locally_owned() const noexcept { return comm_.rank()==this->rank(); }
-    bool ghost() const noexcept { return !locally_owned()&&this->rank()>=0; }
+    bool locally_owned(int rank_idx=0) const noexcept
+    {return comm_.rank()==this->rank(rank_idx);}
 
-    bool has_locally_owned_children(int fmm_level, int mask_id) const noexcept
+    bool locally_owned_during_any_fmm() const noexcept
     {
-        return has_locally_owned_children(fmm_masks_[fmm_level][mask_id]);
+        for (auto r:this->rank_list())
+        {
+            if (comm_.rank()==r)
+                return true;
+        }
+
+        return false;
     }
 
-    bool has_locally_owned_children(bool fmm_masks=true) const noexcept
+
+
+    bool ghost(int rank_idx=0) const noexcept
+    {return !locally_owned(rank_idx)&&this->rank(rank_idx)>=0;}
+
+    bool has_locally_owned_children(int fmm_mask_idx, int mask_id) const noexcept
+    {
+        int rank_idx=fmm_mask_idx;
+        return has_locally_owned_children(fmm_masks_[fmm_mask_idx][mask_id], rank_idx);
+    }
+
+    bool has_locally_owned_children(bool fmm_masks=true, int rank_idx=0) const noexcept
     {
         for(int c=0;c<this->num_children();++c)
         {
             const auto child = this->child(c);
             if(!child || !child->data()) continue;
-            if(child->locally_owned() && child->data() && child->data()->is_allocated() && fmm_masks)
+            if(child->locally_owned(rank_idx) && child->data() && child->data()->is_allocated() && fmm_masks)
             {
                 return true;
                 break;
@@ -296,78 +311,80 @@ public: //mpi info
         return false;
     }
 
-    std::set<int> unique_child_ranks(int base_level, int mask_id) const noexcept
+    std::set<int> unique_child_ranks(int fmm_mask_idx, int mask_id) const noexcept
     {
-        return unique_child_ranks(fmm_masks_[base_level][mask_id]);
+        int rank_idx=fmm_mask_idx;
+        return unique_child_ranks(fmm_masks_[fmm_mask_idx][mask_id], rank_idx);
     }
 
-    std::set<int> unique_child_ranks(bool fmm_masks=true) const noexcept
+    std::set<int> unique_child_ranks(bool fmm_masks=true, int rank_idx=0) const noexcept
     {
         std::set<int> unique_ranks;
         for(int c=0;c<this->num_children();++c)
         {
             auto child = this->child(c);
             if(!child || !child->data()) continue;
-            if(!child->locally_owned() && fmm_masks)
+            if(!child->locally_owned(rank_idx) && fmm_masks)
             {
-                unique_ranks.insert(child->rank());
+                if (child->rank(rank_idx)>-1)
+                    unique_ranks.insert(child->rank(rank_idx));
             }
         }
         return unique_ranks;
     }
 
-    std::set<int> unique_infl_ranks()
-    {
-        std::set<int> unique_inflRanks;
+    //std::set<int> unique_infl_ranks()
+    //{
+    //    std::set<int> unique_inflRanks;
 
-        for(int i=0; i< this->influence_number(); ++i)
-        {
-            auto inf=this->influence(i);
-            if(inf && inf->data())
-            {
-                unique_inflRanks.emplace(inf->rank());
-            }
-        }
-        std::cout<< std::endl;
-        return unique_inflRanks;
-    }
+    //    for(int i=0; i< this->influence_number(); ++i)
+    //    {
+    //        auto inf=this->influence(i);
+    //        if(inf && inf->data())
+    //        {
+    //            unique_inflRanks.emplace(inf->rank());
+    //        }
+    //    }
+    //    std::cout<< std::endl;
+    //    return unique_inflRanks;
+    //}
 
-    std::set<int> unique_neighbor_ranks()
-    {
-        std::set<int> unique_neighborRanks;
-        for(int i = 0; i< this->nNeighbors(); ++i)
-        {
-            const auto n=this->neighbor(i);
-            if(n && n->data())
-            {
-                std::cout<< n->rank() << " "<< n->key()<<std::endl;
-                unique_neighborRanks.emplace(n->rank());
-            }
-        }
-        return unique_neighborRanks;
-    }
+    //std::set<int> unique_neighbor_ranks()
+    //{
+    //    std::set<int> unique_neighborRanks;
+    //    for(int i = 0; i< this->nNeighbors(); ++i)
+    //    {
+    //        const auto n=this->neighbor(i);
+    //        if(n && n->data())
+    //        {
+    //            std::cout<< n->rank() << " "<< n->key()<<std::endl;
+    //            unique_neighborRanks.emplace(n->rank());
+    //        }
+    //    }
+    //    return unique_neighborRanks;
+    //}
 
-    std::set<int> unique_infl_neighbor_ranks()
-    {
-        auto l1 = unique_infl_ranks();
-        auto l2 = unique_neighbor_ranks();
-        //std::set<int> l12;
-        //std::merge(l1.begin(), l1.end(),
-        //        l2.begin(), l2.end(),
-        //        std::inserter(l12, l12.begin()));
+    //std::set<int> unique_infl_neighbor_ranks()
+    //{
+    //    auto l1 = unique_infl_ranks();
+    //    auto l2 = unique_neighbor_ranks();
+    //    //std::set<int> l12;
+    //    //std::merge(l1.begin(), l1.end(),
+    //    //        l2.begin(), l2.end(),
+    //    //        std::inserter(l12, l12.begin()));
 
-        //l1.merge(unique_neighbor_ranks());
+    //    //l1.merge(unique_neighbor_ranks());
 
-        for (auto r:l1)
-            std::cout<<r<<" ";
-        std::cout<<std::endl;
+    //    for (auto r:l1)
+    //        std::cout<<r<<" ";
+    //    std::cout<<std::endl;
 
-        for (auto r:l2)
-            std::cout<<r<<" ";
-        std::cout<<std::endl;
+    //    for (auto r:l2)
+    //        std::cout<<r<<" ";
+    //    std::cout<<std::endl;
 
-        return l1;
-    }
+    //    return l1;
+    //}
 
 
 public: //Access
@@ -451,6 +468,8 @@ private:
     tree_type* t_=nullptr;
     bool aim_deletion_=false;
     int aim_level_change_=0;
+
+
 };
 
 

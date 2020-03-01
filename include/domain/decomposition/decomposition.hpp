@@ -107,9 +107,8 @@ public: //memeber functions
     {
         if(server())
         {
-            std::cout<< "Initialization of masks start"<<std::endl;
+            fmm_mask_builder_t::fmm_clean_load(domain_);
             FmmMaskBuilder::fmm_lgf_mask_build(domain_, subtract_non_leaf_);
-            std::cout<< "Initialization of masks done"<<std::endl;
             FmmMaskBuilder::fmm_vortex_streamfun_mask(domain_);
             //FmmMaskBuilder::fmm_if_load_build(domain_);
             // it's together with fmmMaskBuild for now
@@ -128,6 +127,18 @@ public: //memeber functions
 
         //Construct neighborhood and influence list:
         sync_decomposition();
+
+        if(server())
+        {
+            for (auto it = domain_->begin(); it != domain_->end(); ++it)
+            {
+                std::cout<<it->key()<<std::endl;
+                for (auto r:it->rank_list())
+                    std::cout<<r<<" ";
+                std::cout<<std::endl;
+            }
+        }
+
     }
 
     template<class... Field>
@@ -411,6 +422,7 @@ public: //memeber functions
             fmm_mask_builder_t::fmm_clean_load(domain_);
             fmm_mask_builder_t::fmm_lgf_mask_build(domain_, subtract_non_leaf_);
             fmm_mask_builder_t::fmm_vortex_streamfun_mask(domain_);
+            fmm_mask_builder_t::fmm_rank_list_build(domain_);
 
             // --------------------------------------------------------------
             // 8. sync ghosts

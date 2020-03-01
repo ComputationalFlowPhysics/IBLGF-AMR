@@ -40,6 +40,7 @@ public:
     using fields_tuple_t = typename datablock_t::fields_tuple_t;
     using key_t  = typename  domain_t::key_t;
     using key_coord_t = typename key_t::coordinate_type;
+    using rank_t = typename octant_t::rank_type;
     using fmm_mask_type = typename octant_t::fmm_mask_type;
 
     using trait_t =  ServerClientTraits<Domain>;
@@ -128,6 +129,7 @@ public:
         int depth=domain_->tree()->depth();
         comm_.recv(0,0,depth);
         domain_->tree()->depth()=depth;
+
     }
 
     auto update_decomposition()
@@ -144,14 +146,11 @@ public:
             level=level>=0?level:0;
             auto bbase=domain_->tree()->octant_to_level_coordinate(
                     _o->tree_coordinate(),level);
-            //if(!_o->data() || !_o->data()->is_allocated())
 
-            //_o->deallocate_data();
-            //if(_o->data() || _o->data()->is_allocated())
-            //    std::cout<<"why is it still allocated" << std::endl;
+            if( !_o->data() || !_o->data()->is_allocated())
+                _o->data()=std::make_shared<datablock_t>(bbase,
+                        domain_->block_extent(),level, true);
 
-            _o->data()=std::make_shared<datablock_t>(bbase,
-                    domain_->block_extent(),level, true);
         }, false);
 
 
@@ -348,7 +347,7 @@ public:
         auto task= send_comm.post_task(&task_dat, 0);
         QueryRegistry<key_query_t, rank_query_t> mq;
 
-        std::vector<int> recvData;
+        std::vector<rank_t> recvData;
         mq.register_recvMap([&recvData](int i){return &recvData;} );
         this->wait(mq);
         return recvData;
@@ -383,9 +382,10 @@ public:
         int count =0;
         boost::mpi::communicator  w;
         const int myRank=w.rank();
+        int rank_idx=fmm_mask_idx;
 
         //sends
-        if( !it->locally_owned() )
+        if( !it->locally_owned(rank_idx) )
         {
 
             //Check if this ghost octant influenced by octants of this rank
@@ -393,10 +393,10 @@ public:
             for(std::size_t i = 0; i< it->influence_number(); ++i)
             {
                 const auto inf=it->influence(i);
-                if(inf && inf->rank()==myRank &&
+                if(inf && inf->rank(rank_idx)==myRank &&
                    inf->fmm_mask(fmm_mask_idx,MASK_LIST::Mask_FMM_Source))
                 {
-                    return (inf->rank()+1)*1000;
+                    return (inf->rank(rank_idx)+1)*1000;
                 }
             }
 
@@ -405,10 +405,10 @@ public:
                 for(int i = 0; i< it->nNeighbors(); ++i)
                 {
                     const auto inf=it->neighbor(i);
-                    if(inf && inf->rank()==myRank &&
+                    if(inf && inf->rank(rank_idx)==myRank &&
                        inf->fmm_mask(fmm_mask_idx,MASK_LIST::Mask_FMM_Source))
                     {
-                        return (inf->rank()+1)*1000;
+                        return (inf->rank(rank_idx)+1)*1000;
                     }
                 }
             }
@@ -420,10 +420,10 @@ public:
             for(std::size_t i = 0; i< it->influence_number(); ++i)
             {
                 const auto inf=it->influence(i);
-                if(inf && inf->rank()!=myRank &&
+                if(inf && inf->rank(rank_idx)!=myRank &&
                    inf->fmm_mask(fmm_mask_idx,MASK_LIST::Mask_FMM_Source))
                 {
-                    return (inf->rank()+1)*1000+1;
+                    return (inf->rank(rank_idx)+1)*1000+1;
                 }
             }
 
@@ -432,10 +432,10 @@ public:
                 for(int i = 0; i< it->nNeighbors(); ++i)
                 {
                     const auto inf=it->neighbor(i);
-                    if(inf && inf->rank()!=myRank &&
+                    if(inf && inf->rank(rank_idx)!=myRank &&
                        inf->fmm_mask(fmm_mask_idx,MASK_LIST::Mask_FMM_Source))
                     {
-                        return (inf->rank()+1)*1000+1;
+                        return (inf->rank(rank_idx)+1)*1000+1;
                     }
                 }
             }
@@ -452,6 +452,8 @@ public:
                                     bool _start_communication,
                                     int fmm_mask_idx)
     {
+        int rank_idx=fmm_mask_idx;
+
         if (!it->fmm_mask(fmm_mask_idx,MASK_LIST::Mask_FMM_Target)) return;
 
         boost::mpi::communicator w;
@@ -465,7 +467,7 @@ public:
         const int myRank=w.rank();
         const auto idx=get_octant_idx(it);
 
-        if( !it->locally_owned() )
+        if( !it->locally_owned(rank_idx) )
         {
 
             //Check if this ghost octant influenced by octants of this rank
@@ -478,7 +480,7 @@ public:
                 for(std::size_t i = 0; i< it->influence_number(); ++i)
                 {
                     const auto inf=it->influence(i);
-                    if(inf && inf->rank()==myRank &&
+                    if(inf && inf->rank(rank_idx)==myRank &&
                         inf->fmm_mask(fmm_mask_idx,MASK_LIST::Mask_FMM_Source))
                     { is_influenced=true ; break;}
                 }
@@ -489,7 +491,7 @@ public:
                 for(int i = 0; i< it->nNeighbors(); ++i)
                 {
                     const auto inf=it->neighbor(i);
-                    if(inf && inf->rank()==myRank &&
+                    if(inf && inf->rank(rank_idx)==myRank &&
                        inf->fmm_mask(fmm_mask_idx,MASK_LIST::Mask_FMM_Source))
                     { is_influenced=true ; break;}
                 }
@@ -500,9 +502,9 @@ public:
                 auto send_ptr=it->data()->
                 template get<SendField>().data_ptr();
 
-                auto task= send_comm.post_task(send_ptr, it->rank(), true, idx);
+                auto task= send_comm.post_task(send_ptr, it->rank(rank_idx), true, idx);
                 task->attach_data(send_ptr);
-                task->rank_other()=it->rank();
+                task->rank_other()=it->rank(rank_idx);
                 task->requires_confirmation()=false;
                 task->octant()=it;
                 auto size = it->data()->template get<SendField>().real_block().nPoints();
@@ -535,10 +537,10 @@ public:
                 for(std::size_t i = 0; i< it->influence_number(); ++i)
                 {
                     const auto inf=it->influence(i);
-                    if(inf && inf->rank()!=myRank &&
+                    if(inf && inf->rank(rank_idx)!=myRank &&
                             inf->fmm_mask(fmm_mask_idx,MASK_LIST::Mask_FMM_Source))
                     {
-                        unique_inflRanks.insert(inf->rank());
+                        unique_inflRanks.insert(inf->rank(rank_idx));
                     }
                 }
             }
@@ -548,10 +550,10 @@ public:
                 for(int i = 0; i< it->nNeighbors(); ++i)
                 {
                     const auto inf=it->neighbor(i);
-                    if(inf && inf->rank()!=myRank &&
+                    if(inf && inf->rank(rank_idx)!=myRank &&
                        inf->fmm_mask(fmm_mask_idx,MASK_LIST::Mask_FMM_Source))
                     {
-                        unique_inflRanks.insert(inf->rank());
+                        unique_inflRanks.insert(inf->rank(rank_idx));
                     }
                 }
             }
@@ -627,6 +629,8 @@ public:
     void communicate_updownward_pass(int level, bool _upward, bool _use_masks,
                                      int fmm_mask_idx, std::size_t field_idx)
     {
+        int rank_idx= (_use_masks)? fmm_mask_idx : 0;
+
         int mask_id=(_upward) ?
                 MASK_LIST::Mask_FMM_Source : MASK_LIST::Mask_FMM_Target;
 
@@ -646,7 +650,7 @@ public:
 
             const auto idx=get_octant_idx(it,field_idx);
 
-            if(it->locally_owned() && it->data() && it->data()->is_allocated() )
+            if(it->locally_owned(rank_idx) && it->data() && it->data()->is_allocated() )
             {
 
                 const auto unique_ranks=(_use_masks)?
@@ -673,7 +677,7 @@ public:
             }
 
             //Check if ghost has locally_owned children
-            if(!it->locally_owned() && it->data() && it->data()->is_allocated())
+            if(!it->locally_owned(rank_idx) && it->data() && it->data()->is_allocated())
             {
                 if( (_use_masks && it->has_locally_owned_children(fmm_mask_idx, mask_id)) ||
                     (!_use_masks && it->has_locally_owned_children())
@@ -684,7 +688,7 @@ public:
                         const auto data_ptr=it->data()->
                             template get<SendField>(field_idx).data_ptr();
                         auto task =
-                            send_comm.post_task(data_ptr, it->rank(),
+                            send_comm.post_task(data_ptr, it->rank(rank_idx),
                                     true,idx);
                         task->requires_confirmation()=false;
 
@@ -694,7 +698,7 @@ public:
                         const auto data_ptr=it->data()->
                             template get<RecvField>(field_idx).data_ptr();
                         auto task =
-                            recv_comm.post_task(data_ptr, it->rank(),
+                            recv_comm.post_task(data_ptr, it->rank(rank_idx),
                                     true,idx);
                         task->requires_confirmation()=false;
                     }

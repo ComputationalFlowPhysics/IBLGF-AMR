@@ -39,6 +39,8 @@ public:
     using domain_t = Domain;
     using communicator_type  = typename  domain_t::communicator_type;
     using octant_t  = typename  domain_t::octant_t;
+    using rank_t = typename octant_t::rank_type;
+
     using key_t  = typename  domain_t::key_t;
     using ctask_t = ComputeTask<octant_t>;
 
@@ -59,6 +61,7 @@ public:
 
     using task_manager_t = typename trait_t::task_manager_t;
 
+    using fmm_mask_builder_t = typename domain_t::fmm_mask_builder_t;
 public: //helper struct
 
 
@@ -254,6 +257,9 @@ public:
         for (int l = domain_->tree()->depth()-1; l >= 0; --l)
         {
 
+            fmm_mask_builder_t::fmm_clean_load(domain_);
+            fmm_mask_builder_t::fmm_simple_level_load(domain_, l);
+
             split(domain_->begin(l),domain_->end(l),
                     tasks_perProc, total_loads_perProc,
                     exitCondition1,continueCondition1);
@@ -277,13 +283,15 @@ public:
                     }
                 }
 
+
                 if (rank_tobe>0)
                 {
-                    if (it->rank()>0)
-                        total_loads_perProc[it->rank()-1]-=it->load();
 
-                    it->rank()=rank_tobe;
-                    total_loads_perProc[rank_tobe-1]+=it->load();
+                    if (it->rank()<0)
+                    {
+                        it->rank()=rank_tobe;
+                        total_loads_perProc[rank_tobe-1]+=it->load();
+                    }
 
                     for(int i=0;i<it->num_children();++i)
                     {
@@ -308,13 +316,28 @@ public:
             }
         }
 
+        // --------------------------------------------------------------
+
+        fmm_mask_builder_t::fmm_rank_list_build(domain_);
+
+        // --------------------------------------------------------------
+
         for (int l = domain_->tree()->depth()-1; l >= 0; --l)
         {
-           for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
             {
                 if( !it->data() ) continue;
-                ctask_t task(it.ptr(), it->rank(), it->load());
-                tasks_perProc[it->rank()-1].push_back(task);
+
+                auto unique_ranks = it->rank_list_unique();
+
+                for (auto r:unique_ranks)
+                {
+                    if (r>0)
+                    {
+                        ctask_t task(it.ptr(), r, it->load());
+                        tasks_perProc[r-1].push_back(task);
+                    }
+                }
             }
         }
 
@@ -407,6 +430,7 @@ public:
             for(auto& tt: t ) keys.push_back(tt.key());
             comm_.send(t.front().rank(),0, keys );
         }
+
         //Send global tree depth
         for(int i=1;i<comm_.size();++i)
         {
@@ -523,9 +547,9 @@ public:
         {
             auto oct =domain_->tree()->find_octant(key);
             if(oct && oct->data())
-                (*_out)[count++]=oct->rank();
+                (*_out)[count++]=oct->rank_list();
             else
-                (*_out)[count++]=-1;
+                (*_out)[count++]=octant_t::rank_default();
         }
     }
 

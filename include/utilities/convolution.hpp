@@ -7,7 +7,9 @@
 #include <vector>
 #include <map>
 #include <complex>
-#include <fftw3.h>
+//#include <fftw3.h>
+#include <fftw3_mkl.h>
+
 
 
 namespace fft
@@ -131,7 +133,7 @@ public:
     using real_vector_t = std::vector<float_type,
           xsimd::aligned_allocator<float_type, 32>>;
     using lgf_key_t = std::tuple<int, int, int>;
-    using lgf_matrix_ptr_map_type = std::map<lgf_key_t, 
+    using lgf_matrix_ptr_map_type = std::map<lgf_key_t,
                                         std::unique_ptr<complex_vector_t> >;
 
 public: //Ctors
@@ -144,7 +146,7 @@ public: //Ctors
 
     Convolution(dims_t _dims0, dims_t _dims1);
 
-public: //Members: 
+public: //Members:
 
     complex_vector_t& dft_r2c(std::vector<float_type>& _vec );
     void fft_backward_field_clean();

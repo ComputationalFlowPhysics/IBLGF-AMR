@@ -38,7 +38,19 @@ public:
     using key_index_type       = typename key_type::value_type;
 
     using tree_type = Tree<Dim, DataType>;
+
     static constexpr int num_children(){ return pow(2,Dim); };
+    static constexpr int fmm_max_idx(){ return 30; };
+
+    using rank_type = std::array<int, fmm_max_idx()>;
+    static constexpr rank_type rank_default()
+    {
+        rank_type r;
+        std::fill(r.begin(),r.end(),-1);
+
+        return r;
+    };
+
 
 public:
 
@@ -83,13 +95,34 @@ public:
         return os;
     }
 
-    const int& rank()const noexcept{return rank_;}
-    int& rank()noexcept{return rank_;}
+    const auto& rank_list()const noexcept{return ranks_;}
+    auto& rank_list() noexcept{return ranks_;}
+
+
+    auto rank_list_unique() noexcept
+    {
+        std::set<int> unique_ranks;
+        for (auto r:ranks_)
+        {
+            unique_ranks.emplace(r);
+        }
+
+        return unique_ranks;
+    }
+
+    const int& rank(int rank_idx=0)const noexcept
+    {
+        // rand_idx==0 means not using fmm ranks
+        return ranks_[rank_idx];
+    }
+
+    int& rank(int rank_idx=0) noexcept{return ranks_[rank_idx];}
 
 private: //Serialization
 
     friend class boost::serialization::access;
-                  
+
+
     template<class Archive>
     void serialize(Archive & ar, const unsigned int version)
     {
@@ -99,7 +132,8 @@ private: //Serialization
 
 protected:
     key_type key_;
-    int rank_=-1;
+    rank_type ranks_=rank_default();
+
 };
 
 

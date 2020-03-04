@@ -132,7 +132,7 @@ public: //memeber functions
         {
             for (auto it = domain_->begin(); it != domain_->end(); ++it)
             {
-                std::cout<<it->key()<<std::endl;
+                //std::cout<<it->key()<<std::endl;
                 for (auto r:it->rank_list())
                     std::cout<<r<<" ";
                 std::cout<<std::endl;
@@ -156,6 +156,7 @@ public: //memeber functions
             client()->halo_reset();
         }
         sync_decomposition();
+        domain_->communicator().barrier();
     }
 
     template<class Field>
@@ -389,6 +390,24 @@ public: //memeber functions
                 }
             }
 
+            domain_->tree()->construct_leaf_maps(true);
+            domain_->tree()->construct_level_maps();
+            domain_->tree()->construct_lists();
+
+            fmm_mask_builder_t::fmm_clean_load(domain_);
+            fmm_mask_builder_t::fmm_lgf_mask_build(domain_, subtract_non_leaf_);
+            fmm_mask_builder_t::fmm_vortex_streamfun_mask(domain_);
+            fmm_mask_builder_t::fmm_rank_list_build(domain_);
+
+            for (auto it = domain_->begin(); it != domain_->end(); ++it)
+            {
+                for (int r:it->rank_list_unique())
+                {
+                    if (r!=it->rank())
+                    refinement[r].emplace_back(it->key());
+                }
+            }
+
             // --------------------------------------------------------------
             // 5. update depth
 
@@ -413,18 +432,7 @@ public: //memeber functions
                 comm_.send(i,0, domain_->tree()->depth()) ;
 
             // --------------------------------------------------------------
-            // 7. construct maps / masks / loads
-
-            domain_->tree()->construct_leaf_maps(true);
-            domain_->tree()->construct_level_maps();
-            domain_->tree()->construct_lists();
-
-            fmm_mask_builder_t::fmm_clean_load(domain_);
-            fmm_mask_builder_t::fmm_lgf_mask_build(domain_, subtract_non_leaf_);
-            fmm_mask_builder_t::fmm_vortex_streamfun_mask(domain_);
-            fmm_mask_builder_t::fmm_rank_list_build(domain_);
-
-            // --------------------------------------------------------------
+           // --------------------------------------------------------------
             // 8. sync ghosts
             sync_decomposition();
         }

@@ -93,6 +93,7 @@ struct ClientUpdate
     std::vector<int>   dest_ranks;
     std::vector<key_t> recv_octs;
     std::vector<int>   src_ranks;
+    std::vector<key_t> fmm_octs;
 
 };
 
@@ -139,6 +140,7 @@ public:
         comm_.recv(0,comm_.rank()+1*comm_.size(),update.dest_ranks);
         comm_.recv(0,comm_.rank()+2*comm_.size(),update.recv_octs);
         comm_.recv(0,comm_.rank()+3*comm_.size(),update.src_ranks);
+        comm_.recv(0,comm_.rank()+4*comm_.size(),update.fmm_octs);
 
         //instantiate new octants
         domain_->tree()->insert_keys(update.recv_octs, [&](octant_t* _o){
@@ -147,9 +149,25 @@ public:
             auto bbase=domain_->tree()->octant_to_level_coordinate(
                     _o->tree_coordinate(),level);
 
+            _o->rank()=comm_.rank();
+
+            //if( !_o->data() || !_o->data()->is_allocated())
+            _o->data()=std::make_shared<datablock_t>(bbase,
+                    domain_->block_extent(),level, true);
+
+        }, false);
+
+        domain_->tree()->insert_keys(update.fmm_octs, [&](octant_t* _o){
+            auto level = _o->refinement_level();
+            level=level>=0?level:0;
+            auto bbase=domain_->tree()->octant_to_level_coordinate(
+                    _o->tree_coordinate(),level);
+
+            _o->rank()=comm_.rank();
+
             if( !_o->data() || !_o->data()->is_allocated())
-                _o->data()=std::make_shared<datablock_t>(bbase,
-                        domain_->block_extent(),level, true);
+            _o->data()=std::make_shared<datablock_t>(bbase,
+                    domain_->block_extent(),level, true);
 
         }, false);
 

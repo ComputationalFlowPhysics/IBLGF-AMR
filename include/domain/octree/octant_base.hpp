@@ -104,7 +104,8 @@ public:
         std::set<int> unique_ranks;
         for (auto r:ranks_)
         {
-            unique_ranks.emplace(r);
+            if (r>0)
+                unique_ranks.emplace(r);
         }
 
         return unique_ranks;

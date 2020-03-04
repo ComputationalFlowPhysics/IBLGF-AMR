@@ -44,9 +44,9 @@ public:
         writer.write_vtk(io::output().dir()+"/"+_filename, domain_.get());
     }
 
-    void write2(std::string _filename)
+    void write2(std::string _filename, bool include_correction=false)
     {
-        io_h5.write_h5(io::output().dir()+"/"+_filename, domain_.get());
+        io_h5.write_h5(io::output().dir()+"/"+_filename, domain_.get(), include_correction);
     }
 
     template<typename Field>

@@ -243,7 +243,7 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
         simulation_.write2("mesh.hdf5");
         this->solve();
         pcout_c<<"Solve 1st time done" <<std::endl;
-        simulation_.write2("mesh.hdf5");
+        simulation_.write2("mesh.hdf5", true);
         //pcout_c<<"write" <<std::endl;
         //domain_->decomposition().balance<source,phi_exact>();
         //pcout_c<<"decomposition done" <<std::endl;
@@ -345,10 +345,11 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
 
         int nPts=0;
         int nPts_global=0;
-        for (auto it  = domain_->begin_leafs();
-                  it != domain_->end_leafs(); ++it)
+        for (auto it  = domain_->begin();
+                  it != domain_->end(); ++it)
         {
-            if(it->data()) nPts+=it->data()->node_field().size();
+            if ( it->data() && (it->is_leaf() || it->is_correction()) )
+                nPts+=it->data()->node_field().size();
         }
         boost::mpi::all_reduce(client_comm_,nPts, nPts_global, std::plus<int>());
         return nPts_global;

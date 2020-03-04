@@ -882,14 +882,16 @@ public: //Access
 
         if(this->is_client())
         {
-            for (auto it  = this->begin_leafs();
-                    it != this->end_leafs(); ++it)
+            for (auto it  = this->begin();
+                    it != this->end(); ++it)
             {
                 if(!it->locally_owned() || !it->data())continue;
-
-                nPts+=it->data()->node_field().size();
-                nPoints_perLevel[it->refinement_level()]+=
+                if (it->is_leaf() || it->is_correction())
+                {
+                    nPts+=it->data()->node_field().size();
+                    nPoints_perLevel[it->refinement_level()]+=
                     it->data()->node_field().size();
+                }
             }
         }
         boost::mpi::all_reduce(client_comm_,nPts, nPts_global, std::plus<int>());

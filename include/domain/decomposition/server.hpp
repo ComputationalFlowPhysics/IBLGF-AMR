@@ -69,7 +69,8 @@ struct DecompositionUpdate
 {
     DecompositionUpdate(int _worldsize)
     : send_octs(_worldsize), dest_ranks(_worldsize),
-      recv_octs(_worldsize), src_ranks(_worldsize)
+      recv_octs(_worldsize), src_ranks(_worldsize),
+      fmm_octs(_worldsize)
     {
     }
 
@@ -84,12 +85,20 @@ struct DecompositionUpdate
 
     }
 
+    void insert_fmm(int _new_rank, key_t _key)
+    {
+        fmm_octs[_new_rank].emplace_back(_key);
+    }
+
+
     //octant key and dest rank,outer vector in current  rank
     std::vector<std::vector<key_t>> send_octs;
     std::vector<std::vector<int>>   dest_ranks;
     //octant key and src rank, outer vector in current  rank
     std::vector<std::vector<key_t>> recv_octs;
     std::vector<std::vector<int>>   src_ranks;
+
+    std::vector<std::vector<key_t>> fmm_octs;
 
 };
 
@@ -257,7 +266,7 @@ public:
         for (int l = domain_->tree()->depth()-1; l >= 0; --l)
         {
 
-            fmm_mask_builder_t::fmm_clean_load(domain_);
+            fmm_mask_builder_t::fmm_clean_load(domain_,1);
             fmm_mask_builder_t::fmm_simple_level_load(domain_, l);
 
             split(domain_->begin(l),domain_->end(l),
@@ -286,6 +295,9 @@ public:
 
                 if (rank_tobe>0)
                 {
+
+                    //it->rank()=rank_tobe;
+                    //total_loads_perProc[rank_tobe-1]+=it->load();
 
                     if (it->rank()<0)
                     {
@@ -359,16 +371,20 @@ public:
     auto check_decomposition_updates()
     {
         std::vector<int> ranks_old;
+        std::vector<std::set<int>> fmm_rank_set_old;
+
         for (auto it = domain_->begin(); it != domain_->end(); ++it)
         {
             if (!it->data()) continue;
             ranks_old.push_back(it->rank());
+            fmm_rank_set_old.push_back(it->rank_list_unique());
         }
 
         compute_distribution();
 
         int c=0;
         DecompositionUpdate updates(comm_.size());
+
         for (auto it = domain_->begin(); it != domain_->end(); ++it)
         {
             if (!it->data()) continue;
@@ -379,8 +395,18 @@ public:
                 else
                     updates.insert(ranks_old[c], it->rank(),it->key());
             }
+
+            for (int r:it->rank_list_unique())
+            {
+                if (r==it->rank()) continue;
+
+                if (fmm_rank_set_old[c].find(r)==fmm_rank_set_old[c].end())
+                    updates.fmm_octs[r].emplace_back(it->key());
+            }
+
             ++c;
         }
+
         return updates;
     }
 
@@ -395,6 +421,8 @@ public:
 
             comm_.send(i,i+2*comm_.size(), updates.recv_octs[i] );
             comm_.send(i,i+3*comm_.size(), updates.src_ranks[i] );
+
+            comm_.send(i,i+4*comm_.size(), updates.fmm_octs[i] );
         }
     }
 

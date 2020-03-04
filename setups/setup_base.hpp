@@ -39,7 +39,7 @@ public: //default fields
     (
       (coarse_target_sum,   float_type,  1,  1,  1,  cell,false),
       (source_tmp,          float_type,  1,  1,  1,  cell,false),
-      (correction_tmp,      float_type,  1,  1,  1,  cell,false),
+      (correction_tmp,      float_type,  1,  1,  1,  cell,true),
       (corr_lap_tmp,        float_type,  1,  1,  1,  cell,false),
       (source_correction_tmp,float_type, 1,  1,  1,  cell,false),
       (target_tmp,          float_type,  1,  1,  1,  cell,false),

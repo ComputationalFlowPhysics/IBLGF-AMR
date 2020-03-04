@@ -101,34 +101,40 @@ public:
         }
      }
 
-    static void fmm_simple_level_load(Domain* domain_, int l)
+    static void fmm_simple_level_load(Domain* domain_, int bl)
     {
         for (int non_leaf_as_source=0; non_leaf_as_source<2; ++non_leaf_as_source)
         {
-            int refinement_level = l-domain_->tree()->base_level();
+            int refinement_level = bl-domain_->tree()->base_level();
             if (refinement_level<0)
                 refinement_level=0;
 
             int fmm_mask_idx = refinement_level*2+non_leaf_as_source+1;
 
-            for (auto it = domain_->begin(l);
-                    it != domain_->end(l);
-                    ++it)
+            for (int l=bl-1; l>0; --l)
             {
-                if  (it->fmm_mask(fmm_mask_idx,MASK_LIST::Mask_FMM_Target))
+                for (auto it = domain_->begin(l);
+                        it != domain_->end(l);
+                        ++it)
                 {
-                    for(std::size_t i = 0; i< it->influence_number(); ++i)
+                    if  (it->fmm_mask(fmm_mask_idx,MASK_LIST::Mask_FMM_Target))
                     {
-                        const auto inf=it->influence(i);
-                        if (inf && inf->data() && inf->fmm_mask(fmm_mask_idx,MASK_LIST::Mask_FMM_Source))
-                            it->add_load(1.0);
-                    }
+                        for(std::size_t i = 0; i< it->influence_number(); ++i)
+                        {
+                            const auto inf=it->influence(i);
+                            if (inf && inf->data() && inf->fmm_mask(fmm_mask_idx,MASK_LIST::Mask_FMM_Source))
+                                it->add_load(1.0);
+                        }
 
-                    for(std::size_t i = 0; i< it->neighbor_number(); ++i)
-                    {
-                        const auto ni=it->neighbor(i);
-                        if (ni && ni->data() && ni->fmm_mask(fmm_mask_idx,MASK_LIST::Mask_FMM_Source))
-                            it->add_load(1.0);
+                        if (l==bl)
+                        {
+                            for(std::size_t i = 0; i< it->neighbor_number(); ++i)
+                            {
+                                const auto ni=it->neighbor(i);
+                                if (ni && ni->data() && ni->fmm_mask(fmm_mask_idx,MASK_LIST::Mask_FMM_Source))
+                                    it->add_load(1.0);
+                            }
+                        }
                     }
                 }
             }
@@ -162,9 +168,15 @@ public:
             for (int bl  = domain_->tree()->base_level();
                     bl < domain_->tree()->depth(); ++bl)
             {
+
+                fmm_clean_load(domain_);
+                fmm_simple_level_load(domain_, bl);
+
                 int refinement_level = bl-domain_->tree()->base_level();
                 int fmm_mask_idx = refinement_level*2+non_leaf_as_source+1;
                 int rank_idx = fmm_mask_idx;
+
+                std::vector<float_type> proc_load(domain_->communicator().size());
 
                 // base level to be the same as ranklist 0
                 for (auto it = domain_->begin(bl);
@@ -172,7 +184,10 @@ public:
                 {
                     if (it->fmm_mask(fmm_mask_idx,MASK_LIST::Mask_FMM_Source)
                             || it->fmm_mask(fmm_mask_idx,MASK_LIST::Mask_FMM_Target))
+                    {
                         it->rank(rank_idx)=it->rank();
+                        proc_load[it->rank(rank_idx)]+=it->load();
+                    }
                     else
                         it->rank(rank_idx)=-1;
                 }
@@ -186,18 +201,27 @@ public:
                     {
                         it->rank(rank_idx)=-1;
 
-                        float_type min_load=1e10;
-                        for ( int c = 0; c < it->num_children(); ++c )
+                        if (it->fmm_mask(fmm_mask_idx,MASK_LIST::Mask_FMM_Source)
+                                || it->fmm_mask(fmm_mask_idx,MASK_LIST::Mask_FMM_Target))
                         {
-                            if ( it->child(c) && it->child(c)->data()
-                                    && it->child(c)->rank(rank_idx)>0
-                                    && min_load>it->child(c)->load())
-                            {
-                                it->rank(rank_idx)=it->child(c)->rank(rank_idx);
-                                min_load=it->child(c)->load();
-                            }
-                        }
 
+                            float_type min_load=1e10;
+                            for ( int c = 0; c < it->num_children(); ++c )
+                            {
+                                if ( it->child(c) && it->child(c)->data()
+                                        && it->child(c)->rank(rank_idx)>0
+                                        && min_load>proc_load[it->child(c)->rank(rank_idx)])
+                                {
+                                    it->rank(rank_idx)=it->child(c)->rank(rank_idx);
+                                    min_load=proc_load[it->child(c)->rank(rank_idx)];
+                                }
+                            }
+                            if (it->rank(rank_idx)>0)
+                            {
+                                proc_load[it->rank(rank_idx)]+=it->load();
+                            }
+
+                        }
                     }
                 }
             }
@@ -526,12 +550,10 @@ public:
         // done at master node
 
 
-        std::cout<< " ------------------------------- FMM 1 " << std::endl;
         ////Initialize for each fmm//zero ing all tree
         fmm_init_zero<fmm_s>(domain_, MASK_LIST::Mask_FMM_Source);
         fmm_init_zero<fmm_t>(domain_, MASK_LIST::Mask_FMM_Target);
 
-        std::cout<< " ------------------------------- FMM 2 " << std::endl;
         //// Copy to temporary variables // only the base level
         fmm_init_copy<Source, fmm_s>(domain_);
         sort_bx_octants(domain, _kernel);
@@ -546,7 +568,6 @@ public:
 #ifdef POISSON_TIMINGS
         auto t0_anterp=clock_type::now();
 #endif
-        std::cout<< " ------------------------------- FMM 3 " << std::endl;
         fmm_antrp(domain_);
 #ifdef POISSON_TIMINGS
         //domain_->client_communicator().barrier();
@@ -560,7 +581,6 @@ public:
         //pcout<<"FMM Bx start" << std::endl;
         //fmm_Bx_itr_build(domain_, level);
         domain_->client_communicator().barrier();
-        std::cout<< " ------------------------------- FMM 4 " << std::endl;
 #ifdef POISSON_TIMINGS
         auto t0_bx=clock_type::now();
 #endif
@@ -579,7 +599,6 @@ public:
 #endif
         //// Interpolation
         domain_->client_communicator().barrier();
-        std::cout<< " ------------------------------- FMM 5 " << std::endl;
         //pcout<<"FMM INTRP start" << std::endl;
         fmm_intrp(domain_);
 
@@ -595,7 +614,6 @@ public:
         //// Copy back
         //if (!non_leaf_as_source)
         domain_->client_communicator().barrier();
-        std::cout<< " ------------------------------- FMM 6 " << std::endl;
         fmm_add_equal<Target, fmm_t>(domain_,add_with_scale);
         //else
         //fmm_minus_equal<Target, fmm_t>(domain_);

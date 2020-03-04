@@ -161,7 +161,6 @@ public:
                 const bool base_level_only)
     {
 
-        std::cout<<"Poisson ------------------------------- 1" <<std::endl;
         auto client = domain_->decomposition().client();
         if(!client)return;
 
@@ -188,7 +187,6 @@ public:
         auto t0_coarsify=clock_type::now();
 #endif
 
-        std::cout<<"Poisson ------------------------------- 2" <<std::endl;
         source_coarsify<source_tmp, source_tmp>(_field_idx, 0, Source::mesh_type);
 
 #ifdef POISSON_TIMINGS
@@ -218,7 +216,6 @@ public:
                     auto& cp2 = it_s ->data()->template get_linalg_data<source_tmp>();
                     cp2*=0.0;
                 }
-            std::cout<<"Poisson ------------------------------- 2.5 - l"<< l <<std::endl;
 
 
             if (subtract_non_leaf_)
@@ -264,7 +261,6 @@ public:
             }
             else
             {
-                std::cout<<"Poisson ------------------------------- 3 - l"<< l <<std::endl;
                 if (!base_level_only)
                 {
                     fmm_.template apply<source_tmp, target_tmp>(domain_, _kernel, l, true, 1.0);
@@ -275,7 +271,6 @@ public:
 #ifdef POISSON_TIMINGS
                     const auto t2=clock_type::now();
 #endif
-                    std::cout<<"Poisson ------------------------------- 4 - l"<< l <<std::endl;
                     // Interpolate
                     domain_->decomposition().client()->
                     template communicate_updownward_assign
@@ -295,7 +290,6 @@ public:
                     timings_.interpolation+=(t3-t2);
 #endif
                 }
-                std::cout<<"Poisson ------------------------------- 5 - l"<< l <<std::endl;
                 // test for FMM
                 fmm_.template apply<source_tmp, target_tmp>(domain_, _kernel, l, false, 1.0, base_level_only);
 

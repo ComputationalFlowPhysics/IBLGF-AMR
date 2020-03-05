@@ -100,14 +100,29 @@ public: //Ctors
     {
         domain_->initialize(simulation_.dictionary()->get_dictionary("domain"));
     }
+
     SetupBase(Dictionary* _d,domaint_init_f _fct)
     :simulation_(_d->get_dictionary("simulation_parameters")),
      domain_(simulation_.domain())
     {
-        domain_->initialize(
-            simulation_.dictionary()->get_dictionary("domain").get(),
-            _fct
-        );
+        auto d=_d->get_dictionary("simulation_parameters");
+        use_restart_=d->template get_or<bool>("use_restart",true);
+
+        if (use_restart_ && !simulation_.restart_dir_exist())
+            use_restart_=false;
+
+        if (!use_restart_)
+        {
+            domain_->initialize(
+                    simulation_.dictionary()->get_dictionary("domain").get(),
+                    _fct);
+        }
+        else
+        {
+            domain_->initialize_with_keys(
+                    simulation_.dictionary()->get_dictionary("domain").get(),
+                    simulation_.restart_domain_dir());
+        }
 
         if(domain_->is_client())client_comm_=client_comm_.split(1);
         else client_comm_=client_comm_.split(0);
@@ -121,6 +136,8 @@ public: //Ctors
 
 public: //memebers
 
+    bool use_restart()
+    {return use_restart_;}
 
     /** @brief Compute L2 and LInf errors */
     template<class Numeric, class Exact, class Error>
@@ -258,6 +275,7 @@ protected:
     parallel_ostream::ParallelOstream   pcout;           ///< parallel cout on master
     parallel_ostream::ParallelOstream   pcout_c=parallel_ostream::ParallelOstream(1);
 
+    bool use_restart_=false;
     int nLevels_=0;
     int global_refinement_;
 };

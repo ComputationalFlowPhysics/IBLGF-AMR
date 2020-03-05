@@ -248,6 +248,7 @@ public:
         if (fabs(round(base_level_diff_f) - base_level_diff_f)>1e-10)
             throw std::runtime_error("base dx doesn't match!");
         int base_level_diff = (int)(round(base_level_diff_f));
+        H5Gclose(level_group);
 
         //Start reading
         for (int l = 0; l<num_levels; ++l)
@@ -257,12 +258,12 @@ public:
             auto box_dataset_id =
                 H5Dopen2(level_group, "boxes", H5P_DEFAULT);
 
+
             // l+base_level+base_level_diff is the imaginary refinement level as if
             // everything is in the runtime octree
             int fake_level=l+base_level_diff;
             auto file_boxes = _file->
                 template read_box_descriptors<BlockDescriptor>(box_dataset_id, fake_level);
-
 
             auto dataset_id =
                 H5Dopen2(level_group, "data:datatype=0", H5P_DEFAULT);
@@ -362,8 +363,13 @@ public:
 
                 box_offset+=copy_b_dscriptr.extent()[0]*copy_b_dscriptr.extent()[1]*copy_b_dscriptr.extent()[2]*num_components;
             }
+
+            H5Dclose(box_dataset_id);
+            H5Dclose(dataset_id);
+            H5Gclose(level_group);
         }
-    //world.barrier();
+
+        H5Gclose(root);
     }
 
     void write_global_metaData( HDF5File* _file ,

@@ -100,9 +100,9 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
 
         nLevelRefinement_=simulation_.dictionary_->
             template get_or<int>("nLevels",0);
+
         global_refinement_=simulation_.dictionary_->
             template get_or<int>("global_refinement",0);
-
 
         if (dt_<0)
             dt_=dx_*cfl_;
@@ -119,11 +119,25 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
         domain_->register_refinement_condition()=
             [this](auto octant, int diff_level){return this->refinement(octant, diff_level);};
 
-        domain_->init_refine(_d->get_dictionary("simulation_parameters")
-                ->template get_or<int>("nLevels",0), global_refinement_);
+        if (!use_restart())
+        {
+            domain_->init_refine(_d->get_dictionary("simulation_parameters")
+                    ->template get_or<int>("nLevels",0), global_refinement_);
+        }
+        else
+        {
+            domain_->restart_list_construct();
+        }
 
         domain_->distribute<fmm_mask_builder_t, fmm_mask_builder_t>();
-        this->initialize();
+        if (!use_restart())
+        {
+            this->initialize();
+        }
+        else
+        {
+            simulation_.template read_h5<u>(simulation_.restart_field_dir());
+        }
 
         boost::mpi::communicator world;
         if(world.rank()==0)
@@ -142,7 +156,7 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
 
         mDuration_type ifherk_duration(0);
         TIME_CODE( ifherk_duration, SINGLE_ARG(
-                    ifherk.time_march();
+                    ifherk.time_march(use_restart());
                     ))
         pcout_c<<"Time to solution [ms] "<<ifherk_duration.count()<<std::endl;
 

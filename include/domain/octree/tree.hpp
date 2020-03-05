@@ -940,7 +940,7 @@ public: // leafs maps
 
 public: //Restart
 
-    void write(std::string _filename) const 
+    void write(std::string _filename) const
     {
         std::ofstream ofs(_filename, std::ios::binary);
         if(!ofs.is_open())
@@ -953,10 +953,16 @@ public: //Restart
             const auto id=it->key().id();
             ofs.write( reinterpret_cast<const char *>(&id), sizeof(id));
         }
+
+        for(auto it =begin;it!=end;++it)
+        {
+            const bool leaf_flag=it->is_leaf();
+            ofs.write( reinterpret_cast<const char *>(&leaf_flag), sizeof(leaf_flag));
+        }
         ofs.close();
     }
 
-    auto read(std::string _filename) const 
+    void read(std::string _filename, std::vector<key_type>& keys, std::vector<bool>& leafs) const
     {
         std::ifstream ifs(_filename, std::ios::binary);
 
@@ -968,19 +974,23 @@ public: //Restart
         ifs.seekg(0, std::ios::end);
         const auto fileSize = ifs.tellg();
         ifs.seekg(0, std::ios::beg);
-        const auto size=fileSize/sizeof(typename key_type::value_type);
+        const auto size=fileSize/(sizeof(typename key_type::value_type)+sizeof(bool));
 
-        std::vector<key_type> res(size);
-        for(auto& d: res)
+        for(int i=0; i<size; ++i)
         {
              typename key_type::value_type tmp;
              ifs.read( reinterpret_cast<char *>(&tmp), sizeof(tmp));
-             d=key_type(tmp);
+             keys.emplace_back(key_type(tmp));
 
         }
-        for(const auto& d: res) std::cout<<d<<std::endl;
+        for(int i=0; i<size; ++i)
+        {
+             bool leaf_flag;
+             ifs.read( reinterpret_cast<char *>(&leaf_flag), sizeof(leaf_flag));
+             leafs.emplace_back(leaf_flag);
+        }
+        //for(const auto& d: res) std::cout<<d<<std::endl;
         ifs.close();
-        return res;
     }
 
 private:

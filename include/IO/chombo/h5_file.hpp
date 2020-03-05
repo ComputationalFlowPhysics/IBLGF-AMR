@@ -125,7 +125,7 @@ class hdf5_file
         };
 
 
-        void open_file2(std::string _filename, bool default_open=true)
+        void open_file2(std::string _filename, bool default_open=false)
         {
             boost::mpi::communicator world;
             plist_id = H5Pcreate(H5P_FILE_ACCESS);
@@ -157,6 +157,7 @@ class hdf5_file
         ~hdf5_file()
         {
             close_everything();
+            close_file(file_id);
         }
 
 
@@ -542,7 +543,6 @@ class hdf5_file
              }
 
 
-            close_file(file_id);
         }
 
 
@@ -655,6 +655,7 @@ class hdf5_file
                 HDF5_CHECK_ERROR(status,"HDF5-Error: Could not open string attr: " );
 
                 std::string str(rdata);
+                H5Aclose(attr);
                 return str;
             }
         };

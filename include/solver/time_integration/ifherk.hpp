@@ -91,14 +91,16 @@ public: //member types
         T_max_            = tot_base_steps_*dt_base_;
         update_marching_parameters();
 
+        // restart -----------------------------------------------------------
+        write_restart_=_simulation->dictionary()->template get_or<bool>("write_restart",true);
+
+        if (write_restart_)
+            restart_base_freq_ = _simulation->dictionary()->template get<float_type>("restart_write_frequency");
+
         // IF constants ------------------------------------------------------
        fname_prefix_="";
 
         // miscs -------------------------------------------------------------
-        if(domain_->is_client())
-            client_comm_=client_comm_.split(1);
-        else
-            client_comm_=client_comm_.split(0);
     }
 
 public:
@@ -112,13 +114,26 @@ public:
         alpha_[1]=(c_[2]-c_[1])/tmp;
         alpha_[2]=(c_[3]-c_[2])/tmp;
  }
-    void time_march()
+    void time_march(bool use_restart=false)
     {
         boost::mpi::communicator world;
         parallel_ostream::ParallelOstream pcout=parallel_ostream::ParallelOstream(world.size()-1);
 
         pcout<<"Time marching ------------------------------------------------ "<< std::endl;
-        T_ = 0.0;
+        // --------------------------------------------------------------------
+        if (use_restart)
+        {
+            Dictionary info_d(simulation_->restart_load_dir()+"/restart_info");
+            T_=info_d.template get<float_type>("T");
+            source_max_=info_d.template get<float_type>("source_max");
+        }
+        else
+        {
+            T_ = 0.0;
+        }
+
+        // ----------------------------------- start -------------------------
+
         clean_up_initial_velocity();
         write_timestep();
 
@@ -165,7 +180,6 @@ public:
                 this->template adapt<u, cell_aux>(false);
 
             }
-
             adapt_count++;
 
 
@@ -176,6 +190,12 @@ public:
             T_ += dt_;
             float_type tmp_n=T_/dt_base_*math::pow2(max_ref_level_);
             int tmp_int_n=int(tmp_n+0.5);
+
+            if ( write_restart_ && ( std::fabs(tmp_int_n - tmp_n)<1e-4 ) && (tmp_int_n%restart_base_freq_==0) )
+            {
+                restart_n_last_=tmp_int_n;
+                write_restart();
+            }
 
             if ( ( std::fabs(tmp_int_n - tmp_n)<1e-4 ) && (tmp_int_n%output_base_freq_==0) )
             {
@@ -251,8 +271,23 @@ public:
                 max_local=tmp;
         }
 
-        boost::mpi::all_reduce(client_comm_,max_local,source_max_,[&](const auto& v0,
+        boost::mpi::all_reduce(comm_,max_local,source_max_,[&](const auto& v0,
                     const auto& v1){return v0>v1? v0  :v1;} );
+    }
+
+    void write_restart()
+    {
+        boost::mpi::communicator world;
+        simulation_->write2("", true);
+        world.barrier();
+        pcout << "- restart: field writing finished -" << std::endl;
+
+        if (domain_->is_server())
+        {
+            simulation_->write_tree();
+            std::cout << "- restart: field writing finished -" << std::endl;
+        }
+        write_info();
     }
 
     void write_timestep()
@@ -263,7 +298,26 @@ public:
         //simulation_->domain()->tree()->write("tree_restart.bin");
         world.barrier();
         //simulation_->domain()->tree()->read("tree_restart.bin");
-        pcout << "- finishing writing " << std::endl;
+        pcout << "- output writing finished -" << std::endl;
+    }
+
+    void write_info()
+    {
+        if (domain_->is_server())
+        {
+            std::ofstream ofs(simulation_->restart_write_dir()+"/restart_info", std::ofstream::out);
+            if(!ofs.is_open())
+            {
+                throw std::runtime_error("Could not open file for info write " );
+            }
+
+            ofs.precision(20);
+            ofs<<"T = " << T_ << ";" << std::endl;
+            ofs<<"source_max = " << source_max_ << ";" << std::endl;
+            ofs<<"restart_n_last = " << restart_n_last_ << ";" << std::endl;
+
+            ofs.close();
+        }
     }
 
     std::string fname(int _n)
@@ -271,6 +325,7 @@ public:
         return fname_prefix_+"ifherk_"+std::to_string(_n)+".hdf5";
     }
 
+    // ----------------------------------------------------------------------
     template<class Field>
     void up_and_down()
     {
@@ -864,15 +919,19 @@ private:
     int adapt_freq_;
     int tot_base_steps_;
     int n_step_=0;
+    int restart_n_last_=0;
     int nLevelRefinement_;
     int stage_idx_=0;
+
+    bool write_restart_=false;
+    int  restart_base_freq_;
 
     std::string fname_prefix_;
     vector_type<float_type, 6> a_{{1.0/3, -1.0, 2.0, 0.0, 0.75, 0.25}};
     vector_type<float_type, 4> c_{{0.0, 1.0/3, 1.0, 1.0}};
     vector_type<float_type, 3> alpha_{{0.0,0.0,0.0}};
     parallel_ostream::ParallelOstream pcout=parallel_ostream::ParallelOstream(1);
-    boost::mpi::communicator            client_comm_;
+    boost::mpi::communicator            comm_;
 };
 
 }

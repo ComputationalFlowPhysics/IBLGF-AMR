@@ -268,6 +268,7 @@ public:
             auto dataset_id =
                 H5Dopen2(level_group, "data:datatype=0", H5P_DEFAULT);
 
+            std::vector<float_type> data;
             int box_offset=0;
             for (auto& file_b_dscriptr:file_boxes)
             {
@@ -276,7 +277,7 @@ public:
                 for (auto& b:blocklist)
                 {
                     if (!b->locally_owned()) continue;
-                    //if (!b->is_leaf()) continue;
+                    if (!b->is_leaf()) continue;
 
                     auto b_dscrptr = b->data()->descriptor();
                     int level = b_dscrptr.level();
@@ -323,6 +324,7 @@ public:
 
                             float_type total_avg = (FV_avg[2][1]-FV_avg[2][0]+1) * (FV_avg[1][1]-FV_avg[1][0]+1) * (FV_avg[0][1]-FV_avg[0][0]+1);
 
+
                             for (int shift_k=FV_avg[2][0]; shift_k<=FV_avg[2][1]; ++shift_k)
                                 for (int k=0; k<overlap_local.extent()[2];++k)
                                 for (int shift_j=FV_avg[1][0]; shift_j<=FV_avg[1][1]; ++shift_j)
@@ -344,7 +346,7 @@ public:
                                         +(scale_up_overlap_local.base()[0]-file_b_dscriptr.base()[0])+shift_i;
 
                                         std::vector<hsize_t> base(1,offset), extent(1,overlap_local.extent()[0]), stride(1,factor);
-                                        auto data = _file ->template read_hyperslab<float_type>(dataset_id, base, extent, stride);
+                                        _file ->template read_hyperslab<float_type>(dataset_id, base, extent, stride, data);
 
                                     for (int i=0; i<overlap_local.extent()[0];++i)
                                     {

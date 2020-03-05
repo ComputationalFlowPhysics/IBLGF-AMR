@@ -391,7 +391,7 @@ class hdf5_file
 
 
         template<typename T, class Base, class Extent, class Stride, std::size_t Dset_Dim=NumDims>
-        std::vector<T> read_hyperslab(hid_type& dataset_id, Base base, Extent extent, Stride stride)
+        void read_hyperslab(hid_type& dataset_id, Base base, Extent extent, Stride stride, std::vector<T>& data)
         {
             hid_t dataspace_id = H5Dget_space(dataset_id);
             HDF5_CHECK_ERROR(dataspace_id, "hdf5: could not open dataspace")
@@ -420,7 +420,8 @@ class hdf5_file
                 step[d]  = static_cast<hsize_t>(stride[d]);
                 n_elements_domain*=extent[d];
             }
-            std::vector<float_type> data(n_elements_domain);
+            //std::vector<float_type> data(n_elements_domain);
+            data.resize(n_elements_domain);
 
             std::reverse(offset.begin(), offset.end());
             std::reverse(count.begin(),  count.end());
@@ -437,8 +438,6 @@ class hdf5_file
 
             auto hdf_t= hdf_type<T>::type();
             status= H5Dread(dataset_id, hdf_t, memspace, dataspace_id, H5P_DEFAULT, &data[0]);
-
-            return data;
         }
 
 

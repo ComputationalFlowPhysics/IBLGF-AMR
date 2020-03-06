@@ -41,6 +41,9 @@ public:
 
     void copy_restart()
     {
+        boost::filesystem::path backupdir(restart_write_dir()+"/backup/");
+        boost::filesystem::create_directories(backupdir);
+
         copy_file(restart_write_dir()+"/"+restart_field_file_,  restart_write_dir()+"/backup/"+restart_field_file_ );
         copy_file(restart_write_dir()+"/"+restart_domain_file_, restart_write_dir()+"/backup/"+restart_domain_file_);
         copy_file(restart_write_dir()+"/"+restart_info_file_,   restart_write_dir()+"/backup/"+restart_info_file_  );
@@ -48,8 +51,12 @@ public:
 
     void copy_file(std::string f_in, std::string f_out )
     {
+
         std::ifstream  src(f_in,  std::ios::binary);
         std::ofstream  dst(f_out, std::ios::binary);
+
+        if (!src.good()) return;
+        if (!dst.good()) return;
 
         if(!src.is_open())
             throw std::runtime_error("Could not open file: " + f_in);

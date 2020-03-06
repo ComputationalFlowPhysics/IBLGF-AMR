@@ -157,7 +157,7 @@ class hdf5_file
         ~hdf5_file()
         {
             close_everything();
-            close_file(file_id);
+            //close_file(file_id);
         }
 
 
@@ -530,18 +530,35 @@ class hdf5_file
         void close_everything(){close_everything(file_id);}
         void close_everything(hid_type file_id)
         {
-            update_plist();
+            //update_plist();
             //H5Eset_auto(NULL,NULL, NULL);
             //H5Eset_auto(nullptr,nullptr, nullptr);
-            auto numOpenObjs = H5Fget_obj_count(file_id, H5F_OBJ_ALL);
-            std::vector<hid_type> obj_id_list(numOpenObjs);
-            auto numReturnedOpenObjs = H5Fget_obj_ids(file_id, H5F_OBJ_ALL, numOpenObjs, &obj_id_list[0]);
-            for (hsize_type i = 0; i < static_cast<hsize_type>(numReturnedOpenObjs); ++i)
+            auto numOpenObjs = H5Fget_obj_count(file_id, H5F_OBJ_DATASET|H5F_OBJ_GROUP|H5F_OBJ_DATATYPE);
+            if (numOpenObjs>0)
             {
-                H5Oclose(obj_id_list[i]);
-             }
+                std::vector<hid_type> obj_id_list(numOpenObjs);
+                auto numReturnedOpenObjs = H5Fget_obj_ids(file_id, H5F_OBJ_DATASET|H5F_OBJ_GROUP|H5F_OBJ_DATATYPE, -1, &obj_id_list[0]);
+                for (hsize_type i = 0; i < numReturnedOpenObjs; ++i)
+                    H5Oclose(obj_id_list[i]);
+            }
 
+            numOpenObjs = H5Fget_obj_count(file_id, H5F_OBJ_ATTR);
+            if (numOpenObjs>0)
+            {
+                std::vector<hid_type> obj_id_list(numOpenObjs);
+                auto numReturnedOpenObjs = H5Fget_obj_ids(file_id, H5F_OBJ_ATTR, -1, &obj_id_list[0]);
+                for (hsize_type i = 0; i < numReturnedOpenObjs; ++i)
+                    H5Aclose(obj_id_list[i]);
+            }
 
+            numOpenObjs = H5Fget_obj_count(file_id, H5F_OBJ_FILE);
+            if (numOpenObjs>0)
+            {
+                std::vector<hid_type> obj_id_list(numOpenObjs);
+                auto numReturnedOpenObjs = H5Fget_obj_ids(file_id, H5F_OBJ_FILE, -1, &obj_id_list[0]);
+                for (hsize_type i = 0; i < numReturnedOpenObjs; ++i)
+                    H5Fclose(obj_id_list[i]);
+            }
         }
 
 

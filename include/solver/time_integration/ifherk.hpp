@@ -281,12 +281,13 @@ public:
         boost::mpi::communicator world;
 
         world.barrier();
-        if (domain_->is_server() && use_restart_)
+        if (domain_->is_server() && write_restart_)
         {
             std::cout<<"restart: backup" << std::endl;
-            //simulation_->copy_restart();
+            simulation_->copy_restart();
         }
         world.barrier();
+
         pcout<<"restart: write" << std::endl;
         simulation_->write2("", true);
 

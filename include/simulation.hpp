@@ -39,6 +39,26 @@ public:
         return os;
     }
 
+    void copy_restart()
+    {
+        copy_file(restart_write_dir()+"/"+restart_field_file_,  restart_write_dir()+"/backup/"+restart_field_file_ );
+        copy_file(restart_write_dir()+"/"+restart_domain_file_, restart_write_dir()+"/backup/"+restart_domain_file_);
+        copy_file(restart_write_dir()+"/"+restart_info_file_,   restart_write_dir()+"/backup/"+restart_info_file_  );
+    }
+
+    void copy_file(std::string f_in, std::string f_out )
+    {
+        std::ifstream  src(f_in,  std::ios::binary);
+        std::ofstream  dst(f_out, std::ios::binary);
+
+        if(!src.is_open())
+            throw std::runtime_error("Could not open file: " + f_in);
+        if(!dst.is_open())
+            throw std::runtime_error("Could not open file: " + f_in);
+
+        dst << src.rdbuf();
+    }
+
     void write_tree()
     {
         domain_->tree()->write(io::output().restart_save_dir()+"/"+restart_domain_file_);
@@ -91,6 +111,7 @@ public:
   io::Vtk_io<Domain> writer;
   io::H5_io<3, Domain> io_h5;
   io::IO_init io_init_;
+  std::string restart_info_file_="restart_info";
   std::string restart_domain_file_="restart_domain.bin";
   std::string restart_field_file_="restart_field.hdf5";
 

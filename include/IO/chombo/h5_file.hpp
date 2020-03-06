@@ -125,7 +125,7 @@ class hdf5_file
         };
 
 
-        void open_file2(std::string _filename, bool default_open=false)
+        void open_file2(std::string _filename, bool default_open=true)
         {
             boost::mpi::communicator world;
             plist_id = H5Pcreate(H5P_FILE_ACCESS);

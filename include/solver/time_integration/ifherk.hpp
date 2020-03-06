@@ -116,12 +116,13 @@ public:
  }
     void time_march(bool use_restart=false)
     {
+        use_restart_=use_restart;
         boost::mpi::communicator world;
         parallel_ostream::ParallelOstream pcout=parallel_ostream::ParallelOstream(world.size()-1);
 
         pcout<<"Time marching ------------------------------------------------ "<< std::endl;
         // --------------------------------------------------------------------
-        if (use_restart)
+        if (use_restart_)
         {
             Dictionary info_d(simulation_->restart_load_dir()+"/restart_info");
             T_=info_d.template get<float_type>("T");
@@ -278,14 +279,20 @@ public:
     void write_restart()
     {
         boost::mpi::communicator world;
-        simulation_->write2("", true);
+
         world.barrier();
-        pcout << "- restart: field writing finished -" << std::endl;
+        if (domain_->is_server() && use_restart_)
+        {
+            std::cout<<"restart: backup" << std::endl;
+            //simulation_->copy_restart();
+        }
+        world.barrier();
+        pcout<<"restart: write" << std::endl;
+        simulation_->write2("", true);
 
         if (domain_->is_server())
         {
             simulation_->write_tree();
-            std::cout << "- restart: field writing finished -" << std::endl;
         }
         write_info();
     }
@@ -567,9 +574,7 @@ private:
                     ));
         pcout<< "LGF solved in "<<t_lgf.count() << std::endl;
 
-        //psolver.template apply_lgf<cell_aux, d_i>();
         gradient<d_i,face_aux>();
-
         add<face_aux, r_i>(-1.0);
         if (std::fabs(_alpha)>1e-4)
         {
@@ -923,6 +928,7 @@ private:
     int nLevelRefinement_;
     int stage_idx_=0;
 
+    bool use_restart_=false;
     bool write_restart_=false;
     int  restart_base_freq_;
 

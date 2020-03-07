@@ -348,7 +348,7 @@ public:
     {
         //Coarsification:
         for (std::size_t _field_idx=0; _field_idx<Field::nFields; ++_field_idx)
-            psolver.template source_coarsify<Field,Field>(_field_idx, _field_idx, Field::mesh_type);
+            psolver.template source_coarsify<Field,Field>(_field_idx, _field_idx, Field::mesh_type, false, false, false, true);
     }
 
     template<class Field>
@@ -356,7 +356,7 @@ public:
     {
        // Interpolate to correction buffer
         for (std::size_t _field_idx=0; _field_idx<Field::nFields; ++_field_idx)
-            psolver.template intrp_to_correction_buffer<Field, Field>(_field_idx, _field_idx, Field::mesh_type, true, false);
+            psolver.template intrp_to_correction_buffer<Field, Field>(_field_idx, _field_idx, Field::mesh_type, true, false, true);
     }
 
     template<class AdaptField, class CriterionField>

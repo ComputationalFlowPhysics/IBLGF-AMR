@@ -51,7 +51,13 @@ public:
     static constexpr int nNeighbors(){return pow(3,Dim);;}
 
 public:
-    enum MASK_LIST {
+    enum FLAG_LIST{
+        FlagLeaf,
+        FlagCorrection,
+        FlagLeafBoundary,
+        FlagLast};
+
+    enum MASK_LIST{
         Mask_FMM_Source,
         Mask_FMM_Target,
         Mask_Last};
@@ -60,6 +66,16 @@ public:
 
     using fmm_mask_type =
         std::array< std::array<bool, Mask_Last>, fmm_max_idx_>;
+
+    using flag_list_type=
+        std::array<bool, FlagLast>;
+
+    static flag_list_type flag_list_default()
+    {
+        flag_list_type f;
+        f.fill(false);
+        return f;
+    }
 
 public:
     friend tree_type;
@@ -123,9 +139,9 @@ public: //Ctors
         std::fill(influence_.begin(),influence_.end(),nullptr);
 
         for (int i=0; i<fmm_max_idx_; ++i)
-        {
             std::fill(fmm_masks_[i].begin(),fmm_masks_[i].end(),false);
-        }
+
+        flags_.fill(false);
     }
 
     auto get_neighbor_keys()
@@ -140,15 +156,20 @@ public: //Ctors
         return key.get_infl_keys();
     }
 
+    const flag_list_type& flags()const noexcept{return flags_;}
+    flag_list_type& flags()noexcept{return flags_;}
 
-    bool is_correction()const noexcept{return flag_correction_;}
-    void flag_correction(const bool flag)noexcept {flag_correction_ = flag;}
+    const bool& leaf_boundary()const noexcept{return flags_[FlagLeafBoundary];}
+    bool& leaf_boundary()noexcept{return flags_[FlagLeafBoundary];}
+
+    bool is_leaf()const noexcept{return flags_[FlagLeaf];}
+    void flag_leaf(bool flag)noexcept {flags_[FlagLeaf] = flag;}
+
+    bool is_correction()const noexcept{return flags_[FlagCorrection];}
+    void flag_correction(const bool flag)noexcept {flags_[FlagCorrection] = flag;}
 
     bool physical()const noexcept{return flag_physical_;}
     void physical(bool flag) noexcept {flag_physical_ = flag;}
-
-    bool is_leaf()const noexcept{return flag_leaf_;}
-    void flag_leaf(bool flag)noexcept {flag_leaf_ = flag;}
 
     bool aim_deletion() const noexcept{return aim_deletion_;}
     void aim_deletion(bool d) noexcept{aim_deletion_=d;}
@@ -157,7 +178,6 @@ public: //Ctors
 
     bool is_leaf_search(bool require_data=false) const noexcept
     {
-        //TODO check if this is right
         for(int i = 0; i< this->num_children();++i)
         {
             if (require_data && children_[i] && children_[i]->data() ||
@@ -442,12 +462,17 @@ private:
     std::array<Octant*,pow(3,Dim) > neighbor_ = {nullptr};
     int influence_num = 0;
     std::array<Octant*, 189 > influence_= {nullptr};
-    bool flag_leaf_=false;
+
+
     bool flag_physical_=false;
-    bool flag_correction_=false;
+
+    //bool flag_leaf_=false;
+    //bool flag_correction_=false;
     //std::array<bool, Mask_Last + 1> masks_ = {false};
 
+    flag_list_type flags_;
     fmm_mask_type fmm_masks_;
+
     tree_type* t_=nullptr;
     bool aim_deletion_=false;
     int aim_level_change_=0;

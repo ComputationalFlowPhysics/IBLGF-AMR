@@ -79,8 +79,7 @@ public: //memeber functions
         if(server())
         {
             server()->rank_query();
-            server()->leaf_query();
-            server()->correction_query();
+            server()->flag_query();
             server()->mask_query();
         }
         else if(client())
@@ -88,10 +87,7 @@ public: //memeber functions
             client()->query_octants();
             client()->disconnect();
 
-            client()->query_leafs();
-            client()->disconnect();
-
-            client()->query_corrections();
+            client()->query_flags();
             client()->disconnect();
 
             client()->query_masks();
@@ -307,6 +303,7 @@ public: //memeber functions
             domain_->delete_all_children(deletion);
             domain_->tree()->construct_level_maps();
             domain_->mark_correction();
+            domain_->mark_leaf_boundary();
             //domain_->delete_all_children(deletion,false);
 
             for (auto it = domain_->begin(); it != domain_->end(); ++it)

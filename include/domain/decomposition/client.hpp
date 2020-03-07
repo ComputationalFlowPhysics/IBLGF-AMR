@@ -41,6 +41,7 @@ public:
     using key_t  = typename  domain_t::key_t;
     using key_coord_t = typename key_t::coordinate_type;
     using fmm_mask_type = typename octant_t::fmm_mask_type;
+    using flag_list_type = typename octant_t::flag_list_type;
 
     using trait_t =  ServerClientTraits<Domain>;
     using super_type = ClientBase<trait_t>;
@@ -50,10 +51,8 @@ public:
     using rank_query_t            = typename trait_t::rank_query_t;
     using mask_init_query_send_t  = typename trait_t::mask_init_query_send_t;
     using mask_init_query_recv_t  = typename trait_t::mask_init_query_recv_t;
-    using leaf_query_send_t       = typename trait_t::leaf_query_send_t;
-    using leaf_query_recv_t       = typename trait_t::leaf_query_recv_t;
-    using correction_query_send_t = typename trait_t::correction_query_send_t;
-    using correction_query_recv_t = typename trait_t::correction_query_recv_t;
+    using flag_query_send_t       = typename trait_t::flag_query_send_t;
+    using flag_query_recv_t       = typename trait_t::flag_query_recv_t;
 
     template<template<class>class BufferPolicy=OrAssignRecv>
     using mask_query_t = typename trait_t::template
@@ -312,29 +311,15 @@ public:
         return recvData;
     }
 
-    auto correction_query(std::vector<key_t>& task_dat)
+    auto flag_query(std::vector<key_t>& task_dat)
     {
         auto& send_comm=
-            task_manager_->template send_communicator<correction_query_send_t>();
+            task_manager_->template send_communicator<flag_query_send_t>();
 
         auto task= send_comm.post_task(&task_dat, 0);
-        QueryRegistry<correction_query_send_t, correction_query_recv_t> mq;
+        QueryRegistry<flag_query_send_t, flag_query_recv_t> mq;
 
-        std::vector<bool> recvData;
-        mq.register_recvMap([&recvData](int i){return &recvData;} );
-        this->wait(mq);
-        return recvData;
-    }
-
-    auto leaf_query(std::vector<key_t>& task_dat)
-    {
-        auto& send_comm=
-            task_manager_->template send_communicator<leaf_query_send_t>();
-
-        auto task= send_comm.post_task(&task_dat, 0);
-        QueryRegistry<leaf_query_send_t, leaf_query_recv_t> mq;
-
-        std::vector<bool> recvData;
+        std::vector<flag_list_type> recvData;
         mq.register_recvMap([&recvData](int i){return &recvData;} );
         this->wait(mq);
         return recvData;
@@ -625,7 +610,7 @@ public:
 
     template<class SendField,class RecvField, template<class>class BufferPolicy>
     void communicate_updownward_pass(int level, bool _upward, bool _use_masks,
-                                     int fmm_mask_idx, std::size_t field_idx)
+                                     int fmm_mask_idx, std::size_t field_idx, bool leaf_boundary)
     {
         int mask_id=(_upward) ?
                 MASK_LIST::Mask_FMM_Source : MASK_LIST::Mask_FMM_Target;
@@ -643,6 +628,7 @@ public:
         {
 
             if (_use_masks && !it->fmm_mask(fmm_mask_idx,mask_id) ) continue;
+            if (leaf_boundary && !it->leaf_boundary()) continue;
 
             const auto idx=get_octant_idx(it,field_idx);
 
@@ -721,20 +707,21 @@ public:
     /** @brief communicate fields for up/downward pass of fmm */
     template<class SendField,class RecvField >
     void communicate_updownward_add(int level, bool _upward, bool _use_masks,
-                                    int fmm_mask_idx, std::size_t field_idx=0)
+                                    int fmm_mask_idx, std::size_t field_idx=0,
+                                    bool leaf_boundary=false)
     {
         communicate_updownward_pass<SendField,RecvField,AddAssignRecv>
-        (level, _upward, _use_masks, fmm_mask_idx, field_idx);
+        (level, _upward, _use_masks, fmm_mask_idx, field_idx, leaf_boundary);
     }
 
     template<class SendField,class RecvField >
     void communicate_updownward_assign(int level, bool _upward, bool _use_masks,
-                                       int fmm_mask_idx, std::size_t field_idx=0)
+                                       int fmm_mask_idx, std::size_t field_idx=0,
+                                       bool leaf_boundary=false)
     {
         communicate_updownward_pass<SendField,RecvField,CopyAssign>
-        (level,_upward, _use_masks, fmm_mask_idx, field_idx);
+        (level,_upward, _use_masks, fmm_mask_idx, field_idx, leaf_boundary);
     }
-
 
 
     /** @brief communicate fields for up/downward pass of fmm */
@@ -810,14 +797,9 @@ public:
         halo_initialized_=true;
     }
 
-    void query_corrections()
+    void query_flags()
     {
-        domain_->tree()->query_corrections(this);
-    }
-
-    void query_leafs()
-    {
-        domain_->tree()->query_leafs(this);
+        domain_->tree()->query_flags(this);
         domain_->tree()->construct_leaf_maps(true);
     }
 

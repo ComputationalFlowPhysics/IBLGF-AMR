@@ -51,11 +51,8 @@ public:
     using mask_init_query_send_t  = typename trait_t::mask_init_query_send_t;
     using mask_init_query_recv_t  = typename trait_t::mask_init_query_recv_t;
 
-    using correction_query_send_t = typename trait_t::correction_query_send_t;
-    using correction_query_recv_t = typename trait_t::correction_query_recv_t;
-
-    using leaf_query_send_t   = typename trait_t::leaf_query_send_t;
-    using leaf_query_recv_t   = typename trait_t::leaf_query_recv_t;
+    using flag_query_send_t   = typename trait_t::flag_query_send_t;
+    using flag_query_recv_t   = typename trait_t::flag_query_recv_t;
 
     using task_manager_t = typename trait_t::task_manager_t;
 
@@ -425,23 +422,12 @@ public:
         this->run_query(mq);
     }
 
-    void correction_query()
+    void flag_query()
     {
-        InlineQueryRegistry<correction_query_recv_t, correction_query_send_t> mq(comm_.size());
+        InlineQueryRegistry<flag_query_recv_t, flag_query_send_t> mq(comm_.size());
         mq.register_completeFunc([this](auto _task, auto _answerData)
         {
-            this->get_octant_correction(_task, _answerData);
-        });
-
-        this->run_query(mq);
-    }
-
-    void leaf_query()
-    {
-        InlineQueryRegistry<leaf_query_recv_t, leaf_query_send_t> mq(comm_.size());
-        mq.register_completeFunc([this](auto _task, auto _answerData)
-        {
-            this->get_octant_leaf(_task, _answerData);
+            this->get_octant_flags(_task, _answerData);
         });
 
         this->run_query(mq);
@@ -478,25 +464,7 @@ public:
     }
 
     template<class TaskPtr, class OutPtr>
-    void get_octant_correction(TaskPtr _task, OutPtr _out)
-    {
-        _out->resize(_task->data().size());
-        int count=0;
-        for(auto& key : _task->data())
-        {
-            auto oct =domain_->tree()->find_octant(key);
-            if(oct&&oct->data())
-            { (*_out)[count++]=(oct->is_correction());
-            }
-            else
-            {
-                (*_out)[count++]=false;
-            }
-        }
-    }
-
-    template<class TaskPtr, class OutPtr>
-    void get_octant_leaf(TaskPtr _task, OutPtr _out)
+    void get_octant_flags(TaskPtr _task, OutPtr _out)
     {
         _out->resize(_task->data().size());
         int count=0;
@@ -504,12 +472,12 @@ public:
         {
             auto oct =domain_->tree()->find_octant(key);
             if(oct && oct->data())
-            { (*_out)[count++]=(oct->is_leaf());
+            { (*_out)[count++]=(oct->flags());
             }
             else
             {
                 std::cout<<("Can't find oct on server \n") << key<<std::endl;
-                (*_out)[count++]=false;
+                (*_out)[count++]=octant_t::flag_list_default();
             }
         }
     }

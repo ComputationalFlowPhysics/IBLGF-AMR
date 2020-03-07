@@ -447,6 +447,47 @@ public: //C/Dtors
 
     }
 
+    void mark_leaf_boundary()
+    {
+
+        for (auto it=this->begin(); it!=this->end(); ++it)
+            it->leaf_boundary()=false;
+
+        for (auto it=this->begin(); it!=this->end(); ++it)
+        {
+            if (!it->data()) continue;
+
+            if (it->is_leaf())
+            {
+                for(int i=0;i<it->nNeighbors();++i)
+                {
+                    auto neighbor_it=it->neighbor(i);
+                    if (!neighbor_it || !neighbor_it->data()|| neighbor_it->is_correction() || neighbor_it->is_leaf()) continue;
+                    it->leaf_boundary()=true;
+                }
+            } else
+            {
+                if (it->is_correction()) continue;
+                for(int i=0;i<it->nNeighbors();++i)
+                {
+                    auto neighbor_it=it->neighbor(i);
+                    if (!neighbor_it || !neighbor_it->data() || !neighbor_it->is_leaf()) continue;
+                    it->leaf_boundary()=true;
+                }
+            }
+
+            if (it->leaf_boundary())
+            {
+                for (int i = 0; i < it->num_children(); ++i)
+                {
+                    auto child = it->child(i);
+                    if (child && child->data())
+                        child->leaf_boundary()=true;
+                }
+            }
+        }
+     }
+
     void mark_correction()
     {
         const auto base_level=this->tree()->base_level();
@@ -573,6 +614,7 @@ public: //C/Dtors
             this->tree()->construct_lists();
             this->tree()->construct_leaf_maps(true);
             mark_correction();
+            mark_leaf_boundary();
         }
     }
 
@@ -621,6 +663,7 @@ public: //C/Dtors
             }
 
             mark_correction();
+            mark_leaf_boundary();
         }
 
     }

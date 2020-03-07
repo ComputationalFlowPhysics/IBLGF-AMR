@@ -440,7 +440,7 @@ public:
             }
     }
     template<class From, class To>
-    void intrp_to_correction_buffer(std::size_t real_mesh_field_idx, std::size_t tmp_type_field_idx, MeshObject mesh_type, bool correction_only = true, bool exclude_correction = false)
+    void intrp_to_correction_buffer(std::size_t real_mesh_field_idx, std::size_t tmp_type_field_idx, MeshObject mesh_type, bool correction_only = true, bool exclude_correction = false, bool leaf_boundary=false)
     {
         auto client = domain_->decomposition().client();
         if(!client)return;
@@ -452,12 +452,13 @@ public:
 
             domain_->decomposition().client()->
                 template communicate_updownward_assign
-                <From, From>(l,false,false,-1,tmp_type_field_idx);
+                <From, From>(l,false,false,-1,tmp_type_field_idx, leaf_boundary);
 
             for (auto it  = domain_->begin(l);
                     it != domain_->end(l); ++it)
             {
-                if(!it->data() || !it->data()->is_allocated()) continue;
+                if (!it->data() || !it->data()->is_allocated()) continue;
+                if (leaf_boundary && !it->leaf_boundary()) continue;
 
                 c_cntr_nli_.nli_intrp_node<From, To>(it, mesh_type, real_mesh_field_idx, tmp_type_field_idx, correction_only, exclude_correction);
             }
@@ -466,7 +467,7 @@ public:
     }
 
     template<class From, class To>
-    void source_coarsify(std::size_t real_mesh_field_idx, std::size_t tmp_type_field_idx, MeshObject mesh_type, bool correction_only = false, bool exclude_correction = false, bool _buffer_exchange = false)
+    void source_coarsify(std::size_t real_mesh_field_idx, std::size_t tmp_type_field_idx, MeshObject mesh_type, bool correction_only = false, bool exclude_correction = false, bool _buffer_exchange = false, bool leaf_boundary=false)
     {
 
         auto client = domain_->decomposition().client();
@@ -480,6 +481,7 @@ public:
                     it_s != domain_->end(ls); ++it_s)
                 {
                     if ( !it_s->data() || !it_s->data()->is_allocated()) continue;
+                    if ( leaf_boundary && !it_s->leaf_boundary()) continue;
 
                     c_cntr_nli_.nli_antrp_node
                         <From, To>(*it_s, mesh_type, real_mesh_field_idx, tmp_type_field_idx, correction_only, exclude_correction);
@@ -487,7 +489,7 @@ public:
 
             domain_->decomposition().client()->
                 template communicate_updownward_add<To, To>
-                    (ls,true,false,-1, tmp_type_field_idx);
+                    (ls,true,false,-1, tmp_type_field_idx, leaf_boundary);
         }
 
         if (_buffer_exchange)

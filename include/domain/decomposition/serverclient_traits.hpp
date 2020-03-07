@@ -30,17 +30,16 @@ struct ServerClientTraits
     using key_query_t  = Task<tags::key_query,std::vector<key_t>>;
     using rank_query_t = Task<tags::key_query,std::vector<int>>;
 
-    using correction_query_send_t = Task<tags::correction,std::vector<key_t>>;
-    using correction_query_recv_t = Task<tags::correction,std::vector<bool>>;
-
-    using leaf_query_send_t = Task<tags::leaf,std::vector<key_t>>;
-    using leaf_query_recv_t = Task<tags::leaf,std::vector<bool>>;
-
     using octant_t  = typename domain_t::octant_t;
     using fmm_mask_type = typename octant_t::fmm_mask_type;
+    using flag_list_type = typename octant_t::flag_list_type;
+
+    using flag_query_send_t = Task<tags::flags,std::vector<key_t>>;
+    using flag_query_recv_t = Task<tags::flags,std::vector<flag_list_type>>;
 
     using mask_init_query_send_t = Task<tags::mask_init,std::vector<key_t>>;
     using mask_init_query_recv_t = Task<tags::mask_init,std::vector<fmm_mask_type>>;
+
     template< template<class> class BufferPolicy >
     using mask_query_t = Task<tags::mask_query,
                                        bool, BufferPolicy>;
@@ -58,10 +57,8 @@ struct ServerClientTraits
 
     using task_manager_t = TaskManager<key_query_t,
                                        rank_query_t,
-                                       correction_query_send_t,
-                                       correction_query_recv_t,
-                                       leaf_query_send_t,
-                                       leaf_query_recv_t,
+                                       flag_query_send_t,
+                                       flag_query_recv_t,
                                        mask_init_query_send_t,
                                        mask_init_query_recv_t,
                                        mask_query_t<OrAssignRecv>,

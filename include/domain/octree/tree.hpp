@@ -816,7 +816,7 @@ public: //children and parent queries
     }
 
     template<class Client>
-    void query_leafs( Client* _c)
+    void query_flags( Client* _c)
     {
         boost::mpi::communicator  w;
 
@@ -829,15 +829,15 @@ public: //children and parent queries
                 keys.emplace_back(it->key());
         }
 
-        auto leafs=_c->leaf_query( keys );
+        auto flags=_c->flag_query( keys );
 
-        for(std::size_t i = 0; i < leafs.size();++i )
+        for(std::size_t i = 0; i < flags.size();++i )
         {
             auto nn = this->find_octant(keys[i]);
             if (!nn)
                 throw std::runtime_error(
                         "didn't find key for leaf query");
-            nn->flag_leaf((leafs[i]));
+            nn->flags()=flags[i];
         }
 
     }

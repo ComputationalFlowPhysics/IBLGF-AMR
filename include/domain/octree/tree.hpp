@@ -383,6 +383,7 @@ public:
 
                         oct->flag_leaf(true);
                         oct->flag_correction(false);
+                        oct->leaf_boundary()=false;
                         oct->aim_deletion(false);
                     }
                     else
@@ -417,11 +418,13 @@ public:
             auto child = _l->child(i);
             child->flag_leaf(true);
             child->flag_correction(false);
+            child->leaf_boundary()=false;
             child->aim_deletion(false);
         }
 
         _l->flag_leaf(false);
         _l->flag_correction(false);
+        _l->leaf_boundary()=false;
         _l->aim_deletion(false);
 
         if(_l->level()+2 > depth_) depth_=_l->level()+2;
@@ -747,6 +750,7 @@ public: //children and parent queries
                 {
                     nn->flag_leaf(false);
                     nn->flag_correction(false);
+                    nn->leaf_boundary()=false;
                     nn->aim_deletion(true);
 
                     this->delete_oct(nn);

@@ -419,11 +419,13 @@ public: //C/Dtors
                                 continue;
                             child->flag_leaf(false);
                             child->flag_correction(false);
+                            child->leaf_boundary()=false;
                             child->aim_deletion(true);
 
                         }
                         it->flag_leaf(true);
                         it->flag_correction(false);
+                        it->leaf_boundary()=false;
                         it->aim_deletion(false);
 
                     }

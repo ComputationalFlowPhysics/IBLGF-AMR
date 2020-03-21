@@ -245,14 +245,14 @@ public:
                     {
                         it->fmm_mask(_fmm_mask_idx,MASK_LIST::Mask_FMM_Source, true);
 
-                        if (!correction_parent)
+                        if (it->is_leaf())
                             it->fmm_mask(_fmm_mask_idx,MASK_LIST::Mask_FMM_Target, true);
                         else
-                            it->fmm_mask(_fmm_mask_idx,MASK_LIST::Mask_FMM_Target, true);
+                            it->fmm_mask(_fmm_mask_idx,MASK_LIST::Mask_FMM_Target, false);
+
                     } else
                     {
                         it->fmm_mask(_fmm_mask_idx,MASK_LIST::Mask_FMM_Source, false);
-                        //if (!it->is_correction())
                         it->fmm_mask(_fmm_mask_idx,MASK_LIST::Mask_FMM_Target,true);
 
                         if (!_neighbor_only)
@@ -289,10 +289,11 @@ public:
                         {
                             it->fmm_mask(_fmm_mask_idx,MASK_LIST::Mask_FMM_Source, false);
 
-                            if (!correction_parent)
-                                it->fmm_mask(_fmm_mask_idx,MASK_LIST::Mask_FMM_Target, true);
+                            if (it->is_leaf())
+                                it->fmm_mask(_fmm_mask_idx,MASK_LIST::Mask_FMM_Target,true);
                             else
-                                it->fmm_mask(_fmm_mask_idx,MASK_LIST::Mask_FMM_Target, true);
+                                it->fmm_mask(_fmm_mask_idx,MASK_LIST::Mask_FMM_Target, false);
+
                         } else
                         {
                             it->fmm_mask(_fmm_mask_idx,MASK_LIST::Mask_FMM_Source, true);

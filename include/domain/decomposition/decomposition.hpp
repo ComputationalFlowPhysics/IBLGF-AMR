@@ -253,6 +253,7 @@ public: //memeber functions
                     f(oct);
                     oct->flag_leaf(true);
                     oct->flag_correction(false);
+                    oct->leaf_boundary()=false;
                     oct->aim_deletion(false);
                 }
 

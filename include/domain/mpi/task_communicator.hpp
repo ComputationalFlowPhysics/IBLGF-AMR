@@ -153,32 +153,55 @@ public:
      *         the buffer of the individual task into a single task per cpu.
      *         If rank is set to -1 do it for all ranks
      *         */
-    void pack_messages(int _rank=-1) noexcept
+    void pack_messages() noexcept
     {
 
         boost::mpi::communicator world;
 
         //0. Clean and build accumulated task communicator 
-        acc_tasks.clear();
-        acc_fields.clear();
+        //acc_tasks.clear();
+        //acc_fields.clear();
         acc_tasks.resize(world.size());
         acc_fields.resize(world.size());
+
 
         if(buffer_queue_.empty()) return;
 
         this->derived().construct_acc_comm_();
-        
-        //1. Accumulate tasks per CPU rank and clear the task_ vector
-        for(auto& t : buffer_queue_)
+
+        std::sort(buffer_queue_.begin(),buffer_queue_.end(),
+        [&](const auto& t0, const auto& t1)
         {
-            acc_tasks[t->rank_other()].push_back(t);
+            return t0->octant()->key().id()< t1->octant()->key().id();
+        });
+        
+        //TODO: determine this properly
+        const int maxNMessages=100;
+        //1. Accumulate tasks per CPU rank with max number of ranks and clear
+        //the task_ vector
+        std::vector<bool> isNewTask(world.size(), false);
+        for(std::size_t i=0;i<isNewTask.size();++i) 
+        {
+            if(acc_tasks[i].empty()) isNewTask[i]=true;
         }
-        buffer_queue_.clear();
+
+        //Accumulate all task per rank
+        int size=0;
+        for(auto it=buffer_queue_.begin();it!=buffer_queue_.end();)
+        {
+            if(acc_tasks[(*it)->rank_other()].size()<maxNMessages)
+            {
+                acc_tasks[(*it)->rank_other()].push_back(*it);
+                it=buffer_queue_.erase(it);
+            }
+            else { ++it; }
+        }
 
         //2. Create one task and data vector per rank
         for(std::size_t rank_other=0; rank_other<acc_tasks.size();++rank_other)
         {
 
+            if(!isNewTask[rank_other])continue;
             std::sort(acc_tasks[rank_other].begin(),acc_tasks[rank_other].end(),
             [&](const auto& c0, const auto& c1)
             {
@@ -210,7 +233,19 @@ public:
     {
 
         this->derived().construct_acc_comm_();
-        this->derived().unpack_masseges_impl();
+        auto ftasks=this->derived().unpack_masseges_impl();
+        
+        //ftasks should be just one task per rank, this can now be deleted.
+        for(auto& t : ftasks)
+        { 
+            acc_tasks[t->rank_other()].clear();
+            acc_fields[t->rank_other()].clear();
+        }
+        if(!buffer_queue_.empty()) 
+        {
+            //std::cout<<"resubmission"<<std::endl;
+            this->pack_messages();
+        }
     }
 
     /** * @brief Finish communication (send or receive for this task)
@@ -363,10 +398,10 @@ public: //Memebers:
         }
     }
 
-    void unpack_masseges_impl() noexcept 
+    auto unpack_masseges_impl() noexcept 
     { 
         this->acc_comm()->start_communication(false); 
-        this->acc_comm()->finish_communication(); 
+        return this->acc_comm()->finish_communication(); 
     }
     
 
@@ -419,7 +454,7 @@ public: //members
         return; 
     }
 
-    void unpack_masseges_impl() noexcept
+    auto unpack_masseges_impl() noexcept
     {
         this->acc_comm()->start_communication(false);
         auto ftasks=this->acc_comm_->finish_communication();
@@ -436,10 +471,7 @@ public: //members
                 }
             }
         }
-
-        
-        
-        
+        return ftasks;
         
         //pack again
     }

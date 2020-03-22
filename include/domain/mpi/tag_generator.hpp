@@ -6,9 +6,9 @@
 #include "tags.hpp"
 
 /** @brief TagGenerator
- *  Generate mpi tags using a 3d periodic grid based upon baseTags of type
- *  enum, the message number for that tag as well as the rank.  Allows to keep
- *  track of multiple messages per tag.
+ *  Generate mpi tags using a periodic grid based upon baseTags of type
+ *  enum, as well as the message number for that tag. Allows to keep
+ *  track of multiple messages per tag and processor.
  *
  *  Requirement: Enum starts at zero and has nTags as
  *               last element
@@ -82,55 +82,6 @@ public: //members
         return idx;
     }
 
-
-    inline tag_type base_tag( tag_type _tag  ) const noexcept
-    {
-        return  _tag / (nMessages_*nProcs_);
-    }
-
-    inline tag_type message_nr(tag_type _tag) const noexcept
-    {
-        return  (_tag-base_tag(_tag)*nTags_) / nMessages_;
-    }
-
-    inline tag_type rank(tag_type _tag) const noexcept
-    {
-        const auto base_tag = base_tag(_tag);
-        const tag_type nr =  (_tag-base_tag*nTags_)/ nMessages_;
-        return  _tag-base_tag*nTags_ - nr*nMessages_;
-    }
-
-    const int& nProcessors() const noexcept {return nProcs_;}
-    int& nProcessors() noexcept {return nProcs_;}
-
-public:  //Some output functions
-    struct TagInfo
-    {
-        tag_type rank;
-        tag_type message_nr;
-        tag_type base_tag;
-        tag_type index;
-
-        friend std::ostream& operator<<(std::ostream& os, const TagInfo t)
-        {
-            os<<"index: "<<t.index<<" "
-              <<"rank :"<<t.rank<<" "
-              <<"message_nr "<<t.message_nr<<" "
-              <<"base Tag "<<t.base_tag<<" ";
-              return os;
-        }
-    };
-
-    TagInfo info( tag_type _tag )
-    {
-        TagInfo i;
-        i.base_tag = _tag / (nProcs_*nMessages_);
-        i.message_nr =  (_tag-i.base_tag*nProcs_*nMessages_ )/ nProcs_;
-        i.rank =  _tag-i.base_tag*nProcs_*nMessages_ - i.message_nr*nProcs_;
-        i.index =  _tag;
-        return i;
-    }
-
 private: //member functions
 
    template<class T>
@@ -144,12 +95,7 @@ private: //member functions
                          tag_type _message_nr, 
                          int _rank) const noexcept
    {
-       //x=_rank,       Nx=nProcs_, Nx_Stride=1;
-       //y=_message_nr, Ny= nMessages_, Ny_stride=Nx
-       //z=base_tag,    Nz=nTags_, Nz_stride=Nx*Ny
-       const auto base_tag=to_integral(_base_tag);
-       return _rank+(_message_nr%nMessages_)*nProcs_ + 
-                        base_tag*nProcs_*nMessages_;
+       return to_integral(_base_tag) + nTags_*(_message_nr%nMessages_);
    }
    template<class T>
    tag_type index(T _base_tag, int _rank)const noexcept

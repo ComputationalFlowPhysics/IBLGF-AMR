@@ -1,6 +1,6 @@
 simulation_parameters
 {
-    nLevels=3;
+    nLevels=1;
     global_refinement=0;
     refinement_factor=0.125;
     correction=false;
@@ -61,7 +61,10 @@ simulation_parameters
     domain
     {
         Lx=1.0;
-        max_extent = 300;
+
+        bd_base=(-128,-128,-128); 
+        bd_extent=(256,256,256); 
+
         block_extent=8;
 
         block

@@ -282,18 +282,17 @@ public:
                     it->rank()=rank_tobe;
                     total_loads_perProc[rank_tobe-1]+=it->load();
 
-                    for(int i=0;i<it->num_children();++i)
-                    {
-                        const auto child = it->child(i);
-                        if(!child || !child->data()) continue;
-                        if (child->rank()!=rank_tobe)
-                        {
-                            total_loads_perProc[child->rank()-1]-=child->load();
-                            child->rank()=rank_tobe;
-                            total_loads_perProc[rank_tobe-1]+=child->load();
-                        }
-
-                    }
+                    //for(int i=0;i<it->num_children();++i)
+                    //{
+                    //    const auto child = it->child(i);
+                    //    if(!child || !child->data()) continue;
+                    //    if (child->rank()!=rank_tobe)
+                    //    {
+                    //        total_loads_perProc[child->rank()-1]-=child->load();
+                    //        child->rank()=rank_tobe;
+                    //        total_loads_perProc[rank_tobe-1]+=child->load();
+                    //    }
+                    //}
 
                 }
                 else

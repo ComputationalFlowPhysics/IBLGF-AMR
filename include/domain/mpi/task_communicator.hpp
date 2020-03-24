@@ -176,7 +176,7 @@ public:
         });
         
         //TODO: determine this properly
-        const int maxNMessages=100;
+        const int maxNMessages=5;
         //1. Accumulate tasks per CPU rank with max number of ranks and clear
         //the task_ vector
         std::vector<bool> isNewTask(world.size(), false);

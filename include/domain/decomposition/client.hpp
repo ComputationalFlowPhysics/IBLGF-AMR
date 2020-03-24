@@ -362,8 +362,8 @@ public:
 
 
 
-    template<class SendField,class RecvField, class Octant_t>
-    int communicate_induced_fields_recv_m_send_count( Octant_t it, bool _neighbors, int fmm_mask_idx )
+    template<class SendField,class RecvField, class Octant_t, class Kernel>
+    int communicate_induced_fields_recv_m_send_count( Octant_t it,Kernel* _kernel,bool _neighbors, int fmm_mask_idx )
     {
         int count =0;
         boost::mpi::communicator  w;
@@ -375,13 +375,17 @@ public:
 
             //Check if this ghost octant influenced by octants of this rank
             //Check influence list
-            for(std::size_t i = 0; i< it->influence_number(); ++i)
+            //
+            if (!_kernel->neighbor_only())
             {
-                const auto inf=it->influence(i);
-                if(inf && inf->rank()==myRank &&
-                   inf->fmm_mask(fmm_mask_idx,MASK_LIST::Mask_FMM_Source))
+                for(std::size_t i = 0; i< it->influence_number(); ++i)
                 {
-                    return (inf->rank()+1)*1000;
+                    const auto inf=it->influence(i);
+                    if(inf && inf->rank()==myRank &&
+                       inf->fmm_mask(fmm_mask_idx,MASK_LIST::Mask_FMM_Source))
+                    {
+                        return (inf->rank()+1)*1000;
+                    }
                 }
             }
 
@@ -402,13 +406,17 @@ public:
         {
             //int inf_rank=-1;
             //std::set<int> unique_inflRanks;
-            for(std::size_t i = 0; i< it->influence_number(); ++i)
+
+            if (!_kernel->neighbor_only())
             {
-                const auto inf=it->influence(i);
-                if(inf && inf->rank()!=myRank &&
-                   inf->fmm_mask(fmm_mask_idx,MASK_LIST::Mask_FMM_Source))
+                for(std::size_t i = 0; i< it->influence_number(); ++i)
                 {
-                    return (inf->rank()+1)*1000+1;
+                    const auto inf=it->influence(i);
+                    if(inf && inf->rank()!=myRank &&
+                            inf->fmm_mask(fmm_mask_idx,MASK_LIST::Mask_FMM_Source))
+                    {
+                        return (inf->rank()+1)*1000+1;
+                    }
                 }
             }
 
@@ -483,7 +491,7 @@ public:
             if( is_influenced )
             {
                 auto send_ptr=it->data()->
-                template get<SendField>().data_ptr();
+                    template get<SendField>().data_ptr();
 
                 auto task= send_comm.post_task(send_ptr, it->rank(), true, idx);
                 task->attach_data(send_ptr);
@@ -578,6 +586,20 @@ public:
 
         send_comm.pack_messages();
         recv_comm.pack_messages();
+    }
+
+    template<class SendField, class RecvField>
+    void reset_comms_induced_fields() noexcept
+    {
+        auto& send_comm=
+            task_manager_-> template
+            send_communicator<induced_fields_task_t<InfluenceFieldBuffer>>();
+        auto& recv_comm=
+            task_manager_->template
+            recv_communicator<induced_fields_task_t<InfluenceFieldBuffer>>();
+
+        send_comm.clear();
+        recv_comm.clear();
     }
 
 

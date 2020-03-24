@@ -501,7 +501,7 @@ public:
 
                 int recv_m_send_count =
                     domain_->decomposition().client()->template
-                    communicate_induced_fields_recv_m_send_count<fmm_t, fmm_t>(it, _neighbor, fmm_mask_idx_);
+                    communicate_induced_fields_recv_m_send_count<fmm_t, fmm_t>(it, _kernel, _neighbor, fmm_mask_idx_);
 
                 sorted_octants_.emplace_back(std::make_pair(*it,recv_m_send_count));
             }
@@ -517,7 +517,7 @@ public:
                 float_type scale)
     {
 
-//#define packMessages
+#define packMessages
 
 #ifdef packMessages
         const bool start_communication = false;

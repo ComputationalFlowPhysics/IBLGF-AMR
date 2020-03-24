@@ -349,6 +349,7 @@ public:
         {
             return check->second;
         }
+        return false;
 
     }
 

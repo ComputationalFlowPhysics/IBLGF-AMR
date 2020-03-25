@@ -281,8 +281,8 @@ public:
                 max_local=tmp;
         }
 
-        boost::mpi::all_reduce(comm_,max_local,source_max_,[&](const auto& v0,
-                    const auto& v1){return v0>v1? v0  :v1;} );
+        boost::mpi::all_reduce(comm_,max_local,source_max_,
+                boost::mpi::maximum<float_type>() );
     }
 
     void write_restart()

@@ -212,11 +212,9 @@ public: //memebers
         boost::mpi::all_reduce(client_comm_,L2, L2_global, std::plus<float_type>());
         boost::mpi::all_reduce(client_comm_,L2_exact, L2_exact_global, std::plus<float_type>());
 
-        boost::mpi::all_reduce(client_comm_,LInf, LInf_global,[&](const auto& v0,
-                               const auto& v1){return v0>v1? v0  :v1;} );
-        boost::mpi::all_reduce(client_comm_,LInf_exact, LInf_exact_global,[&](const auto& v0,
-                               const auto& v1){return v0>v1? v0  :v1;} );
-
+        boost::mpi::all_reduce(client_comm_,LInf, LInf_global,boost::mpi::maximum<float_type>() );
+        boost::mpi::all_reduce(client_comm_,LInf_exact, LInf_exact_global,boost::mpi::maximum<float_type>() );
+        
         pcout_c << "Glabal "<<_output_prefix<<"L2_exact = " << std::sqrt(L2_exact_global)<< std::endl;
         pcout_c << "Global "<<_output_prefix<<"LInf_exact = " << LInf_exact_global << std::endl;
 
@@ -244,14 +242,12 @@ public: //memebers
             boost::mpi::all_reduce(client_comm_,L2_perLevel[i],
                                    L2_perLevel_global[i], std::plus<float_type>());
             boost::mpi::all_reduce(client_comm_,LInf_perLevel[i],
-                                   LInf_perLevel_global[i],[&](const auto& v0,
-                                       const auto& v1){return v0>v1? v0  :v1;});
+                                   LInf_perLevel_global[i],boost::mpi::maximum<float_type>());
 
             boost::mpi::all_reduce(client_comm_,L2_exact_perLevel[i],
                                    L2_exact_perLevel_global[i], std::plus<float_type>());
             boost::mpi::all_reduce(client_comm_,LInf_exact_perLevel[i],
-                                   LInf_exact_perLevel_global[i],[&](const auto& v0,
-                                       const auto& v1){return v0>v1? v0  :v1;});
+                                   LInf_exact_perLevel_global[i],boost::mpi::maximum<float_type>());
 
             pcout_c<<_output_prefix<<"L2_"<<i<<" "<<std::sqrt(L2_perLevel_global[i])<<std::endl;
             pcout_c<<_output_prefix<<"LInf_"<<i<<" "<<LInf_perLevel_global[i]<<std::endl;

@@ -359,7 +359,7 @@ public:
     {
 
         //Check 2:1 balance constraint
-        bool neighbors_exists=true;
+        //bool neighbors_exists=true;
         if (ratio_2to1)
         {
             for(int i=0;i<_l->nNeighbors();++i)
@@ -981,14 +981,14 @@ public: //Restart
         ifs.seekg(0, std::ios::beg);
         const auto size=fileSize/(sizeof(typename key_type::value_type)+sizeof(bool));
 
-        for(int i=0; i<size; ++i)
+        for(std::size_t i=0; i<size; ++i)
         {
              typename key_type::value_type tmp;
              ifs.read( reinterpret_cast<char *>(&tmp), sizeof(tmp));
              keys.emplace_back(key_type(tmp));
 
         }
-        for(int i=0; i<size; ++i)
+        for(std::size_t i=0; i<size; ++i)
         {
              bool leaf_flag;
              ifs.read( reinterpret_cast<char *>(&leaf_flag), sizeof(leaf_flag));

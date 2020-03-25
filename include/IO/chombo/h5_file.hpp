@@ -538,7 +538,7 @@ class hdf5_file
             {
                 std::vector<hid_type> obj_id_list(numOpenObjs);
                 auto numReturnedOpenObjs = H5Fget_obj_ids(file_id, H5F_OBJ_DATASET|H5F_OBJ_GROUP|H5F_OBJ_DATATYPE, -1, &obj_id_list[0]);
-                for (hsize_type i = 0; i < numReturnedOpenObjs; ++i)
+                for (hsize_type i = 0; i < static_cast<hsize_type>(numReturnedOpenObjs); ++i)
                     H5Oclose(obj_id_list[i]);
             }
 
@@ -547,7 +547,7 @@ class hdf5_file
             {
                 std::vector<hid_type> obj_id_list(numOpenObjs);
                 auto numReturnedOpenObjs = H5Fget_obj_ids(file_id, H5F_OBJ_ATTR, -1, &obj_id_list[0]);
-                for (hsize_type i = 0; i < numReturnedOpenObjs; ++i)
+                for (hsize_type i = 0; i < static_cast<hsize_type>(numReturnedOpenObjs); ++i)
                     H5Aclose(obj_id_list[i]);
             }
 
@@ -556,7 +556,7 @@ class hdf5_file
             {
                 std::vector<hid_type> obj_id_list(numOpenObjs);
                 auto numReturnedOpenObjs = H5Fget_obj_ids(file_id, H5F_OBJ_FILE, -1, &obj_id_list[0]);
-                for (hsize_type i = 0; i < numReturnedOpenObjs; ++i)
+                for (hsize_type i = 0; i < static_cast<hsize_type>(numReturnedOpenObjs); ++i)
                     H5Fclose(obj_id_list[i]);
             }
         }

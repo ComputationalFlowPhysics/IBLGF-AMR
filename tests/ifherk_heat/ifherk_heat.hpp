@@ -195,7 +195,7 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
 
         // ----------------------------------------------------------------
 
-        float_type base_threshold=1e-3;
+        //float_type base_threshold=1e-3;
         // set deletion_factor to be half of refinement_factor_ so it's easier
         // to refine and harder to delete
         // This prevent rapid change of level refinement
@@ -214,7 +214,7 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
         //}
 
         int l_change = l_aim - it->refinement_level();
-        int l_delete_change = l_delete_aim - it->refinement_level();
+        //int l_delete_change = l_delete_aim - it->refinement_level();
         if (l_delete_aim<0) return -1;
         if (l_change>0) return 1;
         return 0;
@@ -346,7 +346,6 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
     float_type vortex_ring_vor_ic(float_type x, float_type y, float_type z, int field_idx, bool perturbation=true) const
     {
         float_type delta_2 = v_delta_* v_delta_;
-        float_type R2 = R_*R_;
 
         float_type r2 = x*x+y*y;
         float_type r = sqrt(r2);

@@ -1,4 +1,5 @@
 #ifndef OCTREE_INCLUDED_CELL_HPP
+
 #define OCTREE_INCLUDED_CELL_HPP
 
 
@@ -180,8 +181,8 @@ public: //Ctors
     {
         for(int i = 0; i< this->num_children();++i)
         {
-            if (require_data && children_[i] && children_[i]->data() ||
-                    !require_data && children_[i])
+            if ( (require_data && children_[i] && children_[i]->data()) ||
+                    (!require_data && children_[i]))
                 return false;
         }
         return true;

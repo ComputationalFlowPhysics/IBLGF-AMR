@@ -460,7 +460,6 @@ public: // queries
     auto get_neighbor_keys(int distance=1)
     {
         std::vector<Key> res;
-        int count=0;
         coordinate_type offset(distance);
 
         rcIterator<Dim>::apply(-1*offset,
@@ -475,8 +474,6 @@ public: // queries
     auto get_infl_keys()
     {
         std::vector<Key> res;
-        int count=0;
-
         if  (this->level()==0) return res;
         auto p_k=this->parent();
 

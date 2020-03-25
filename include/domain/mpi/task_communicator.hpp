@@ -186,7 +186,6 @@ public:
         }
 
         //Accumulate all task per rank
-        int size=0;
         for(auto it=buffer_queue_.begin();it!=buffer_queue_.end();)
         {
             if(acc_tasks[(*it)->rank_other()].size()<maxNMessages)

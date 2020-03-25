@@ -186,7 +186,7 @@ public:
 
         //send the actuall octants
         //for (int field_idx=Field::nFields-1; field_idx>=0; --field_idx)
-        for (int field_idx=0; field_idx<Field::nFields; ++field_idx)
+        for (int field_idx=0; field_idx<static_cast<int>(Field::nFields); ++field_idx)
         {
 
             int count=0;
@@ -269,7 +269,6 @@ public:
         std::vector<int>   level_change;
         const int myRank=w.rank();
 
-        int ac=0;
         for (auto it = domain_->begin_leafs(); it != domain_->end_leafs(); ++it)
         {
 
@@ -378,7 +377,7 @@ public:
             //
             if (!_kernel->neighbor_only())
             {
-                for(std::size_t i = 0; i< it->influence_number(); ++i)
+                for(int i = 0; i< it->influence_number(); ++i)
                 {
                     const auto inf=it->influence(i);
                     if(inf && inf->rank()==myRank &&
@@ -409,7 +408,7 @@ public:
 
             if (!_kernel->neighbor_only())
             {
-                for(std::size_t i = 0; i< it->influence_number(); ++i)
+                for(int i = 0; i< it->influence_number(); ++i)
                 {
                     const auto inf=it->influence(i);
                     if(inf && inf->rank()!=myRank &&
@@ -468,7 +467,7 @@ public:
             if (!_kernel->neighbor_only())
             {
 
-                for(std::size_t i = 0; i< it->influence_number(); ++i)
+                for(int i = 0; i< it->influence_number(); ++i)
                 {
                     const auto inf=it->influence(i);
                     if(inf && inf->rank()==myRank &&
@@ -525,7 +524,7 @@ public:
             std::set<int> unique_inflRanks;
             if (!_kernel->neighbor_only())
             {
-                for(std::size_t i = 0; i< it->influence_number(); ++i)
+                for(int i = 0; i< it->influence_number(); ++i)
                 {
                     const auto inf=it->influence(i);
                     if(inf && inf->rank()!=myRank &&

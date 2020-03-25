@@ -182,7 +182,7 @@ public: //memeber functions
                 it->aim_level_change()=0;
             }
 
-            for (int c=0; c<octs_all.size(); ++c)
+            for (std::size_t c=0; c<octs_all.size(); ++c)
             {
                 if (level_change_all[c]!=0)
                 {
@@ -268,7 +268,6 @@ public: //memeber functions
             {
                 if (!oct->is_leaf())
                     continue;
-                auto key = oct->key();
 
                 //domain_->refine_with_exisitng_correction(oct, deletion);
                 domain_->refine(oct);

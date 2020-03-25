@@ -177,7 +177,7 @@ public:
 
                 // calculate load
                 if  (it->fmm_mask(_fmm_mask_idx,mask_target_id))
-                    for(std::size_t i = 0; i< it->influence_number(); ++i)
+                    for(int i = 0; i< it->influence_number(); ++i)
                     {
                         const auto inf=it->influence(i);
                         if (inf && inf->fmm_mask(_fmm_mask_idx,mask_source_id))
@@ -270,10 +270,10 @@ public:
                 {
                     if (!it->data()) continue;
 
-                    bool correction_parent=false;
-                    for (std::size_t i=0; i<it->num_children(); ++i)
-                        if (it->child(i) && it->child(i)->data() && it->child(i)->is_correction())
-                            correction_parent = true;
+                    //bool correction_parent=false;
+                    //for (std::size_t i=0; i<it->num_children(); ++i)
+                    //    if (it->child(i) && it->child(i)->data() && it->child(i)->is_correction())
+                    //        correction_parent = true;
 
                     if (subtract_non_leaf)
                     {
@@ -603,7 +603,7 @@ public:
 
         if (!_kernel->neighbor_only())
         {
-            for (std::size_t i=0; i< it->influence_number(); ++i)
+            for (int i=0; i< it->influence_number(); ++i)
             {
                 auto n_s = it->influence(i);
                 if (n_s && n_s->locally_owned()

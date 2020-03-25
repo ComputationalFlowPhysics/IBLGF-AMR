@@ -140,7 +140,7 @@ private:
                     l.octant_groups.push_back(v);
                     ++group_no;
                     l.octant_groups[group_no].push_back(block);
-                    int group_rank = block->rank();
+                    //int group_rank = block->rank();
 
                     // Check how big group is need to add subsequent blocks to the group (how
                     // Currently just grouping if all children exist (group cubes).
@@ -155,7 +155,7 @@ private:
                         if ( (p->key().child_number() == 0) &&
                                 (i+shift <= l.octants.size()-1) )  // contained?
                         {
-                            auto& block_end = l.octants[i+shift];
+                            //auto& block_end = l.octants[i+shift];
 
                             if ( block_consecutive(l.octants, block->key(), i, shift))
                             {
@@ -181,7 +181,6 @@ private:
 
 bool block_consecutive(std::vector<octant_type*>& octs, key_type k_start, int idx_start, int shift)
 {
-    int count=0;
     auto k_=k_start;
     for (int i=0; i<=shift; ++i)
     {

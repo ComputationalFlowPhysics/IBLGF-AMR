@@ -37,11 +37,8 @@ public: //default fields
     REGISTER_FIELDS
     (Dim,
     (
-      (coarse_target_sum,   float_type,  1,  1,  1,  cell,false),
       (source_tmp,          float_type,  1,  1,  1,  cell,false),
       (correction_tmp,      float_type,  1,  1,  1,  cell,false),
-      (corr_lap_tmp,        float_type,  1,  1,  1,  cell,false),
-      (source_correction_tmp,float_type, 1,  1,  1,  cell,false),
       (target_tmp,          float_type,  1,  1,  1,  cell,false),
       (fmm_s,               float_type,  1,  1,  1,  cell,false),
       (fmm_t,               float_type,  1,  1,  1,  cell,false),
@@ -56,7 +53,6 @@ public: //default fields
       (cell_aux,            float_type,  1,  1,  1,  cell,true),
       (face_aux,            float_type,  3,  1,  1,  face,false),
       (stream_f,            float_type,  3,  1,  1,  edge,true),
-      (correction,          float_type,  1,  1,  1,  cell,false),
       (edge_aux,            float_type,  3,  1,  1,  edge,true)
     ))
 

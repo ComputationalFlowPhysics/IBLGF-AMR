@@ -46,12 +46,10 @@ public: //member types
     using coordinate_type      = typename domain_type::coordinate_type;
 
     //Fields
-    using coarse_target_sum = typename Setup::coarse_target_sum;
-    using source_tmp        = typename Setup::source_tmp;
-    using target_tmp        = typename Setup::target_tmp;
-    using correction_tmp    = typename Setup::correction_tmp;
-    using corr_lap_tmp    = typename Setup::corr_lap_tmp;
-    using source_correction_tmp    = typename Setup::source_correction_tmp;
+    using source_tmp            = typename Setup::source_tmp;
+    using target_tmp            = typename Setup::target_tmp;
+    using correction_tmp        = typename Setup::correction_tmp;
+    //using corr_lap_tmp          = typename Setup::corr_lap_tmp;
 
     //FMM
     using Fmm_t     = typename Setup::Fmm_t;
@@ -167,11 +165,10 @@ public:
         const float_type dx_base=domain_->dx_base();
 
         // Cleaning
+        //clean_field<corr_lap_tmp>();
         clean_field<source_tmp>();
         clean_field<target_tmp>();
         clean_field<correction_tmp>();
-        clean_field<corr_lap_tmp>();
-        clean_field<source_correction_tmp>();
 
         // Copy source
         copy_leaf<Source, source_tmp>(_field_idx, 0, true);
@@ -319,16 +316,16 @@ public:
                 // Calculate PL numerically from target_tmp instead of assume PL
                 // L^-1 S gives back S exactly.  This improves the accuracy
 
-                for (auto it  = domain_->begin(l);
-                        it != domain_->end(l); ++it)
-                {
-                    int refinement_level = it->refinement_level();
-                    double dx_level = dx_base/std::pow(2,refinement_level);
+                //for (auto it  = domain_->begin(l);
+                //        it != domain_->end(l); ++it)
+                //{
+                //    int refinement_level = it->refinement_level();
+                //    double dx_level = dx_base/std::pow(2,refinement_level);
 
-                    if (!it->data() || !it->data()->is_allocated()) continue;
-                    domain::Operator::laplace<target_tmp, corr_lap_tmp>
-                    ( *(it->data()),dx_level);
-                }
+                //    if (!it->data() || !it->data()->is_allocated()) continue;
+                //    domain::Operator::laplace<target_tmp, corr_lap_tmp>
+                //    ( *(it->data()),dx_level);
+                //}
 
                 client->template buffer_exchange<source_tmp>(l);
                 domain_->decomposition().client()->

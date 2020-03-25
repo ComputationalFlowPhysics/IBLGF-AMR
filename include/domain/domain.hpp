@@ -698,6 +698,31 @@ public: // Iterators:
     auto begin(int _level)         { return t_->begin(_level); }
     auto end(int _level)           { return t_->end(_level); }
 
+    int num_corrections()
+    {
+        int c=0;
+        for (auto it=this->begin(); it!=this->end(); ++it)
+        {
+            if (it->is_correction())
+                ++c;
+        }
+
+        return c;
+    }
+
+    int num_allocations()
+    {
+        int c=0;
+        for (auto it=this->begin(); it!=this->end(); ++it)
+        {
+            if (it->data() && it->data()->is_allocated())
+                ++c;
+        }
+
+        return c;
+    }
+
+
     /** @brief ConditionalIterator based on generic conditon lambda.
      *  Iterate through tree and skip octant if condition is not fullfilled.
      */

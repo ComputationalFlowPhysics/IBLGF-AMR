@@ -61,7 +61,6 @@ public: //member types
     using w_2        = typename Setup::w_2;
     using u_i        = typename Setup::u_i;
 
-    using correction   = typename Setup::correction;
 
     static constexpr int lBuffer=1; ///< Lower left buffer for interpolation
     static constexpr int rBuffer=1; ///< Lower left buffer for interpolation
@@ -205,11 +204,21 @@ public:
             }
 
             world.barrier();
+
+            int c_allc_global;
+            int c_allc= domain_->num_allocations();
+            boost::mpi::all_reduce(world,c_allc,c_allc_global, std::plus<int>());
+
             if (domain_->is_server())
             {
                 std::cout<<"T = " << T_<<", n = "<< tmp_int_n << " -----------------" << std::endl;
                 std::cout<<"Total number of leaf octants: "<<domain_->num_leafs()<<std::endl;
+                std::cout<<"Total number of correction octants: "<<domain_->num_corrections()<<std::endl;
+                std::cout<<"Total number of allocated octants: "<<c_allc_global<<std::endl;
             }
+
+
+
 
         }
 
@@ -414,53 +423,6 @@ public:
                 }
             }
         }
-
-        //test correction --------------------------------------------------
-        //for (std::size_t _field_idx=0; _field_idx<correction::nFields; ++_field_idx)
-        //{
-
-        //    for (int l = domain_->tree()->depth()-1;
-        //            l >= domain_->tree()->base_level(); --l)
-        //    {
-        //        for (auto it=domain_->begin(l); it!=domain_->end(l); ++it)
-        //        {
-        //            if (!it->data() || !it->data()->is_allocated()) continue;
-        //            auto& lin_data = it->data()->
-        //                template get_linalg_data<correction>(_field_idx);
-        //            if (it->is_correction())
-        //                std::fill(lin_data.begin(),lin_data.end(),-1000.0);
-        //            else
-        //                std::fill(lin_data.begin(),lin_data.end(),0.0);
-        //        }
-        //    }
-        //}
-
-        // for (std::size_t _field_idx=0; _field_idx<correction::nFields; ++_field_idx)
-        //{
-
-        //    for (int l = domain_->tree()->depth()-2;
-        //            l >= domain_->tree()->base_level(); --l)
-        //    {
-        //        for (auto it=domain_->begin(l); it!=domain_->end(l); ++it)
-        //        {
-
-        //            for(int c=0;c<it->num_children();++c)
-        //            {
-        //                const auto child = it->child(c);
-        //                if(!child || !child->data() || !child->locally_owned() || !child->is_correction() ) continue;
-
-        //                auto& lin_data = child->data()->
-        //                    template get_linalg_data<correction>(_field_idx);
-
-        //                std::fill(lin_data.begin(),lin_data.end(),-1000.0);
-        //            }
-        //        }
-        //    }
-
-        //    for (std::size_t _field_idx=0; _field_idx<correction::nFields; ++_field_idx)
-        //        psolver.template source_coarsify<correction,correction>(_field_idx, _field_idx, correction::mesh_type, true, false);
-        //}
-
         world.barrier();
         pcout<< "Adapt - done"  << std::endl;
     }

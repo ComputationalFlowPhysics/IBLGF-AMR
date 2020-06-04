@@ -1,6 +1,8 @@
 #ifndef IBLGF_INCLUDED_VORTEXRINGS_HPP
 #define IBLGF_INCLUDED_VORTEXRINGS_HPP
 
+#ifdef IBLGF_VORTEX_RUN_ALL
+
 #define POISSON_TIMINGS
 
 #include <iostream>
@@ -194,7 +196,7 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
         return vrings;
     }
 
-    void solve()
+    float_type solve()
     {
 
         std::ofstream ofs,ofs_level, ofs_timings;
@@ -231,17 +233,19 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
             psolver.apply_laplace<phi_num,amr_lap_source>() ;
         }
 
-        this->compute_errors<phi_num,phi_exact,error>();
+        float_type inf_error=this->compute_errors<phi_num,phi_exact,error>();
         this->compute_errors<amr_lap_source,source,error_lap_source>("laplace_");
 
         //simulation_.write2("mesh.hdf5");
+
+        return inf_error;
     }
 
 
-    void run()
+    double run()
     {
         simulation_.write2("mesh.hdf5");
-        this->solve();
+        float_type Inf_error = this->solve();
         pcout_c<<"Solve 1st time done" <<std::endl;
         simulation_.write2("mesh.hdf5");
         //pcout_c<<"write" <<std::endl;
@@ -250,6 +254,7 @@ struct VortexRingTest:public SetupBase<VortexRingTest,parameters>
 
         //this->solve();
         //simulation_.write2("mesh_new.hdf5");
+        return Inf_error;
     }
 
 
@@ -428,5 +433,8 @@ private:
     bool subtract_non_leaf_=false;
 };
 
+#endif
+
+double vortex_run(std::string input, int argc=0, char **argv=nullptr);
 
 #endif // IBLGF_INCLUDED_POISSON_HPP

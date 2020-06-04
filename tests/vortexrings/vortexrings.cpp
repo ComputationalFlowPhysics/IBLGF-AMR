@@ -2,24 +2,14 @@
 #include <boost/mpi/environment.hpp>
 #include <boost/mpi/communicator.hpp>
 
+#define IBLGF_VORTEX_RUN_ALL
+
 #include "vortexrings.hpp"
 #include <dictionary/dictionary.hpp>
 
 
-int main(int argc, char *argv[])
+double vortex_run(const std::string input, int argc, char **argv)
 {
-
-	boost::mpi::environment env(argc, argv);
-	boost::mpi::communicator world;
-
-	std::string input="./";
-    input += std::string("configFile");
-
-    if (argc>1 && argv[1][0] != '-')
-    {
-        input = argv[1];
-    }
-
     // Read in dictionary
     Dictionary dictionary(input, argc, argv);
 
@@ -27,7 +17,10 @@ int main(int argc, char *argv[])
     VortexRingTest setup(&dictionary);
 
     // run setup
-    setup.run();
+    double L_inf_error=setup.run();
 
-    return 0;
+    double EXP_LInf=dictionary.get_dictionary("simulation_parameters")
+                            ->template get_or<double>("EXP_LInf", 0);
+
+    return L_inf_error-EXP_LInf;
 }

@@ -137,7 +137,7 @@ public: //memebers
 
     /** @brief Compute L2 and LInf errors */
     template<class Numeric, class Exact, class Error>
-    void compute_errors(std::string _output_prefix="", int field_idx = 0)
+    float_type compute_errors(std::string _output_prefix="", int field_idx = 0)
     {
         const float_type dx_base=domain_->dx_base();
         float_type L2   = 0.; float_type LInf = -1.0; int count=0;
@@ -156,7 +156,7 @@ public: //memebers
         parallel_ostream::ParallelOstream pofs_global(io::output().dir()+"/"+
             _output_prefix+"global_error.txt",1,ofs_global);
 
-        if(domain_->is_server())  return;
+        if(domain_->is_server())  return -1.0;
 
         for (auto it_t  = domain_->begin_leafs();
                 it_t != domain_->end_leafs(); ++it_t)
@@ -214,7 +214,7 @@ public: //memebers
 
         boost::mpi::all_reduce(client_comm_,LInf, LInf_global,boost::mpi::maximum<float_type>() );
         boost::mpi::all_reduce(client_comm_,LInf_exact, LInf_exact_global,boost::mpi::maximum<float_type>() );
-        
+
         pcout_c << "Glabal "<<_output_prefix<<"L2_exact = " << std::sqrt(L2_exact_global)<< std::endl;
         pcout_c << "Global "<<_output_prefix<<"LInf_exact = " << LInf_exact_global << std::endl;
 
@@ -256,6 +256,8 @@ public: //memebers
 
             pofs<<i<<" "<<std::sqrt(L2_perLevel_global[i])<<" "<<LInf_perLevel_global[i]<<std::endl;
         }
+
+        return LInf_global;
     }
 
 

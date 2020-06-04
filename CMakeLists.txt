@@ -31,7 +31,8 @@ set (CMAKE_CXX_STANDARD 17)
 
 if(${CMAKE_CXX_COMPILER_ID} STREQUAL "Intel")
     #set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3  -fmax-errors=4 ")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -ipo -O3 -static-intel -Wall -fmax-errors=4")
+    #set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -ipo -O3 -static-intel -Wall -fmax-errors=4")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -Wall -fmax-errors=4")
 else()
     message("Using compiler: " ${CMAKE_CXX_COMPILER_ID})
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -Wall ")
@@ -138,21 +139,24 @@ link_directories(${GTEST_LIBRARY_DIR})
 #                      ${FFTW_LIBRARIES} fftw3_omp blas
 #                      xtensor)
 
-add_subdirectory (tests/sever_client)
-add_subdirectory (tests/adaptivity)
+enable_testing()
+
+set(CTEST_WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/testing)
+
+#add_subdirectory (tests/sever_client)
+#add_subdirectory (tests/adaptivity)
 #add_subdirectory (tests/vortexring)
 add_subdirectory (tests/vortexrings)
 #add_subdirectory (tests/operators)
-add_subdirectory (tests/ifherk_heat)
-add_subdirectory (setups/poissonProblem)
-enable_testing ()
+#add_subdirectory (tests/ifherk_heat)
+#add_subdirectory (setups/poissonProblem)
+#add_subdirectory(tests/testAll)
 
 #Sample test
-set (test_parameters -np "2"  )
-add_test (NAME DomainTest
-          COMMAND "/usr/bin/mpirun.openmpi" ${test_parameters}
-          bin/decompTest.x
-          "${CMAKE_CURRENT_LIST_DIR}/tests/domain_decomposition/configFile")
-
+# set (test_parameters -np "2"  )
+# add_test (NAME DomainTest
+#           COMMAND "/usr/bin/mpirun.openmpi" ${test_parameters}
+#           bin/decompTest.x
+#           "${CMAKE_CURRENT_LIST_DIR}/tests/domain_decomposition/configFile")
 
 

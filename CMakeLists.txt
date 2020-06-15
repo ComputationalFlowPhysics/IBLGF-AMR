@@ -153,3 +153,5 @@ enable_testing()
 
 set(CTEST_WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/unit_testing)
 add_subdirectory (tests/vortexrings)
+add_subdirectory (tests/ifherk_heat)
+

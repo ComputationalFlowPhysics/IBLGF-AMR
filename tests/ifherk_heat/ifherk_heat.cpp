@@ -13,7 +13,7 @@ int main(int argc, char *argv[])
 	boost::mpi::communicator world;
 
 	std::string input="./";
-    input += std::string("ifherk_configFile");
+    input += std::string("configFile");
 
     if (argc>1 && argv[1][0] != '-')
     {

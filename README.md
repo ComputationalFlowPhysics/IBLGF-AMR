@@ -30,14 +30,15 @@ elliptic difference equations](https://doi.org/10.1016/j.jcp.2020.109270). Journ
 ### Prerequisites and external dependencies
 
 The following external libraries need to be installed on your system.
-All packages should be available through standard package manager. Be
+All packages should be available through standard package manager. 
+Be sure to install all libraries with mpi support. 
 
 * C++ compiler with c++17-support or above (tested with gcc-7 or above, intel 2018 or above)
 * Mpi implementation such as [OpenMpi](https://www.open-mpi.org/)
 * [Cmake](https://cmake.org/)
 * [Boost](https://www.boost.org/) (required libraries: system, filesystem, serialization,mpi)
 * [FFTW](http://www.fftw.org/)
-* [HDF5](https://www.hdfgroup.org/solutions/hdf5/)
+* [HDF5](https://www.hdfgroup.org/solutions/hdf5/) (The cxx binding are NOT needed.)
 * [Blas](https://www.openblas.net/)
 * [xTensor](https://github.com/xtensor-stack/xtensor)
 * [xTensor-Blas](https://github.com/xtensor-stack/xtensor-blas)

@@ -801,8 +801,13 @@ public:
 
             decltype(tlocal.global.count()) cglobal,canterp,cbx,cinterp,cfftw;
             std::size_t  cfftw_count_max,cfftw_count_min;
-            auto comp=[&](const auto& v0, const auto& v1){return v0>v1? v0  :v1;};
-            auto min_comp=[&](const auto& v0, const auto& v1){return v0>v1? v1  :v0;};
+
+            //auto comp=[&](const auto& v0, const auto& v1){    return v0>v1? v0  :v1;};
+            //auto min_comp=[&](const auto& v0, const auto& v1){return v0>v1? v1  :v0;};
+
+            auto comp=boost::mpi::maximum<float_type>();
+            auto min_comp=boost::mpi::minimum<float_type>();
+
             boost::mpi::all_reduce(_comm,tlocal.global.count(), cglobal,comp);
             boost::mpi::all_reduce(_comm,tlocal.anterp.count(), canterp,comp);
             boost::mpi::all_reduce(_comm,tlocal.bx.count(), cbx,comp);

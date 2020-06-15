@@ -740,15 +740,17 @@ private:
             clevel.resize(level.size());
             decltype(tlocal.global.count()) cglobal,ccoarsification,clevel_interaction, cinterpolation;
 
-
-            boost::mpi::all_reduce(_comm,tlocal.global.count(), cglobal,
-                    [&](const auto& v0, const auto& v1){return v0>v1? v0  :v1;} );
-            boost::mpi::all_reduce(_comm,tlocal.coarsification.count(), ccoarsification,
-                    [&](const auto& v0, const auto& v1){return v0>v1? v0  :v1;} );
-            boost::mpi::all_reduce(_comm,tlocal.level_interaction.count(), clevel_interaction,
-                    [&](const auto& v0, const auto& v1){return v0>v1? v0  :v1;} );
-            boost::mpi::all_reduce(_comm,tlocal.interpolation.count(), cinterpolation,
-                    [&](const auto& v0, const auto& v1){return v0>v1? v0  :v1;} );
+            boost::mpi::all_reduce(_comm, tlocal.global.count(), cglobal,
+                                   boost::mpi::maximum<float_type>());
+            boost::mpi::all_reduce(_comm, tlocal.coarsification.count(),
+                                   ccoarsification,
+                                   boost::mpi::maximum<float_type>());
+            boost::mpi::all_reduce(_comm, tlocal.level_interaction.count(),
+                                   clevel_interaction,
+                                   boost::mpi::maximum<float_type>());
+            boost::mpi::all_reduce(_comm, tlocal.interpolation.count(),
+                                   cinterpolation,
+                                   boost::mpi::maximum<float_type>());
 
             //For levels:
             for(std::size_t i =0;i<level.size();++i)
@@ -756,8 +758,9 @@ private:
                 fmm_level[i].accumulate(_comm);
                 fmm_level_nl[i].accumulate(_comm);
 
-                boost::mpi::all_reduce(_comm,tlocal.level[i].count(), clevel[i],
-                        [&](const auto& v0, const auto& v1){return v0>v1? v0  :v1;} );
+                boost::mpi::all_reduce(_comm, tlocal.level[i].count(),
+                                       clevel[i],
+                                       boost::mpi::maximum<float_type>());
                 this->level[i]=mDuration_type(clevel[i]);
             }
             this->global=mDuration_type(cglobal);

@@ -327,7 +327,6 @@ private:
 };
 
 
-
 /** @brief Iterator node with fullfilled condition (lambda function)*/
 template<class Iterator>
 struct ConditionalIterator : public Iterator

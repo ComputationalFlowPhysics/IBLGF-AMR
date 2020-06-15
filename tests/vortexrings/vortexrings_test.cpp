@@ -44,7 +44,7 @@ TEST(PoissonSolverTest, VortexRing_1)
 {
     boost::mpi::communicator world;
 
-    for (filesystem::directory_entry& entry : filesystem::directory_iterator("./configs"))
+    for (auto& entry : filesystem::directory_iterator("./configs"))
     {
         auto s=entry.path();
 

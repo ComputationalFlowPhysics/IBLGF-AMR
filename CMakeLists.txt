@@ -1,15 +1,33 @@
-cmake_minimum_required (VERSION 2.9)
+#            
+#            ▄▄▄▄▄▄▄▄▄▄▄  ▄▄▄▄▄▄▄▄▄▄   ▄            ▄▄▄▄▄▄▄▄▄▄▄  ▄▄▄▄▄▄▄▄▄▄▄ 
+#           ▐░░░░░░░░░░░▌▐░░░░░░░░░░▌ ▐░▌          ▐░░░░░░░░░░░▌▐░░░░░░░░░░░▌
+#            ▀▀▀▀█░█▀▀▀▀ ▐░█▀▀▀▀▀▀▀█░▌▐░▌          ▐░█▀▀▀▀▀▀▀▀▀ ▐░█▀▀▀▀▀▀▀▀▀ 
+#                ▐░▌     ▐░▌       ▐░▌▐░▌          ▐░▌          ▐░▌          
+#                ▐░▌     ▐░█▄▄▄▄▄▄▄█░▌▐░▌          ▐░▌ ▄▄▄▄▄▄▄▄ ▐░█▄▄▄▄▄▄▄▄▄ 
+#                ▐░▌     ▐░░░░░░░░░░▌ ▐░▌          ▐░▌▐░░░░░░░░▌▐░░░░░░░░░░░▌
+#                ▐░▌     ▐░█▀▀▀▀▀▀▀█░▌▐░▌          ▐░▌ ▀▀▀▀▀▀█░▌▐░█▀▀▀▀▀▀▀▀▀ 
+#                ▐░▌     ▐░▌       ▐░▌▐░▌          ▐░▌       ▐░▌▐░▌          
+#            ▄▄▄▄█░█▄▄▄▄ ▐░█▄▄▄▄▄▄▄█░▌▐░█▄▄▄▄▄▄▄▄▄ ▐░█▄▄▄▄▄▄▄█░▌▐░▌          
+#           ▐░░░░░░░░░░░▌▐░░░░░░░░░░▌ ▐░░░░░░░░░░░▌▐░░░░░░░░░░░▌▐░▌          
+#            ▀▀▀▀▀▀▀▀▀▀▀  ▀▀▀▀▀▀▀▀▀▀   ▀▀▀▀▀▀▀▀▀▀▀  ▀▀▀▀▀▀▀▀▀▀▀  ▀           
+#                                                                            
+#           
+#           
+
+
+cmake_minimum_required(VERSION 3.12.4)
 if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/CMakeLists.txt.user")
     include(${CMAKE_CURRENT_LIST_DIR}/CMakeLists.txt.user)
 else()
 endif()
-project (IBLGF)
+project(IBLGF VERSION 0.0.0)
 
 # Define path where to search for customised "Find.cmake" files
 # ------------------------------------------------------------------------------
 SET(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 # ------------------------------------------------------------------------------
 
+cmake_policy(SET CMP0048 NEW)
 include_directories(include)
 
 set(SOURCES
@@ -44,9 +62,14 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/bin)
 
 #MPI
 find_package(MPI REQUIRED)
+set(IBLGF_SKIP_MPICXX ON CACHE BOOL "True if your compiler wrapper includes MPI already (as CRAY PE for instance)")
+if (IBLGF_SKIP_MPICXX)
+    set(MPI_CXX_SKIP_MPICXX ON)
+else()
+    set(MPI_CXX_SKIP_MPICXX OFF)
+endif()
 include_directories(SYSTEM ${MPI_INCLUDE_PATH})
 link_directories(${MPI_LIBRARIES} )
-
 #BOOST
 #if(NOT DEFINED Boost_INCLUDE_DIR)
 find_package(Boost COMPONENTS system filesystem serialization mpi REQUIRED)
@@ -122,41 +145,11 @@ if (CMAKE_VERSION VERSION_LESS 2.8.11)
   include_directories("${gtest_SOURCE_DIR}/include")
 endif()
 
-# Now simply link against gtest or gtest_main as needed. Eg
-#add_executable(example example.cpp)
-#target_link_libraries(example gtest_main)
-#add_test(NAME example_test COMMAND example)
-
 # Define these in CMakeLists.txt.user (point to locally compiled Gtests)
 include_directories(${GTEST_INCLUDE_DIR})
 link_directories(${GTEST_LIBRARY_DIR})
 
-# add the executable
-#add_executable(iblgf "src/main.cpp")
-#target_link_libraries(iblgf
-#                      ${MPI_LIBRARIES}
-#                      ${Boost_LIBRARIES} boost_mpi
-#                      ${FFTW_LIBRARIES} fftw3_omp blas
-#                      xtensor)
-
 enable_testing()
 
-set(CTEST_WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/testing)
-
-#add_subdirectory (tests/sever_client)
-#add_subdirectory (tests/adaptivity)
-#add_subdirectory (tests/vortexring)
+set(CTEST_WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/unit_testing)
 add_subdirectory (tests/vortexrings)
-#add_subdirectory (tests/operators)
-#add_subdirectory (tests/ifherk_heat)
-#add_subdirectory (setups/poissonProblem)
-#add_subdirectory(tests/testAll)
-
-#Sample test
-# set (test_parameters -np "2"  )
-# add_test (NAME DomainTest
-#           COMMAND "/usr/bin/mpirun.openmpi" ${test_parameters}
-#           bin/decompTest.x
-#           "${CMAKE_CURRENT_LIST_DIR}/tests/domain_decomposition/configFile")
-
-

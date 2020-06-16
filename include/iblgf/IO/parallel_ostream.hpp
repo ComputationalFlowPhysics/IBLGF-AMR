@@ -17,6 +17,8 @@
 #include <boost/mpi.hpp>
 #include <boost/mpi/communicator.hpp>
 
+namespace iblgf
+{
 namespace parallel_ostream
 {
 class ParallelOstream
@@ -89,4 +91,5 @@ class ParallelOstream
 };
 
 } // namespace parallel_ostream
+} // namespace iblgf
 #endif

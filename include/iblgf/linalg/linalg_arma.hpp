@@ -13,6 +13,8 @@
 #include <iblgf/types.hpp>
 #include <armadillo>
 
+namespace iblgf
+{
 namespace linalg
 {
 class L_armadillo
@@ -45,4 +47,5 @@ class L_armadillo
 };
 
 } // namespace linalg
+} // namespace iblgf
 

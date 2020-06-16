@@ -27,6 +27,8 @@
 #include <iblgf/domain/dataFields/datafield.hpp>
 #include <iblgf/domain/octree/tree.hpp>
 
+namespace iblgf
+{
 namespace interpolation
 {
 class extrapolation_cell_center_nli
@@ -499,5 +501,6 @@ class extrapolation_cell_center_nli
 };
 
 } // namespace interpolation
+} // namespace iblgf
 
 #endif

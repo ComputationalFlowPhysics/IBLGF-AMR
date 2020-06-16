@@ -22,6 +22,8 @@
 #include "tag_generator.hpp"
 #include "task_communicator.hpp"
 
+namespace iblgf
+{
 namespace sr_mpi
 {
 template<class... TasksType>
@@ -90,5 +92,6 @@ class TaskManager
 };
 
 } // namespace sr_mpi
+} // namespace iblgf
 
 #endif

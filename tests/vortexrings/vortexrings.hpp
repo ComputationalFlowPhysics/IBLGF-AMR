@@ -23,6 +23,8 @@
 // IBLGF-specific
 #include "../../setups/setup_base.hpp"
 
+namespace iblgf
+{
 const int Dim = 3;
 
 struct parameters
@@ -456,4 +458,5 @@ struct VortexRingTest : public SetupBase<VortexRingTest, parameters>
 
 double vortex_run(std::string input, int argc = 0, char** argv = nullptr);
 
+} // namespace iblgf
 #endif // IBLGF_INCLUDED_POISSON_HPP

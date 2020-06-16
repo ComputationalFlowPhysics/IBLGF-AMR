@@ -23,6 +23,8 @@
 #include <iblgf/utilities/crtp.hpp>
 #include <iblgf/lgf/lgf_gl_lookup.hpp>
 
+namespace iblgf
+{
 namespace lgf
 {
 using namespace domain;
@@ -117,4 +119,5 @@ class LGF_Base : public crtp::Crtps<Derived, LGF_Base<Dim, Derived>>
 };
 
 } // namespace lgf
+} // namespace iblgf
 #endif

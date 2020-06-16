@@ -17,6 +17,9 @@
 #include <tuple>
 #include <utility>
 
+namespace iblgf
+{
+
 namespace domain
 {
 namespace tuple_utils
@@ -182,13 +185,8 @@ assign(const Field0& src, const BlockDescriptor& view_src, const Stride& strd_s,
     }
 }
 
-#define crtp_helper(DerivedType, func_name)                                    \
-    DerivedType*       func_name() { return static_cast<DerivedType*>(this); } \
-    const DerivedType* func_name() const                                       \
-    {                                                                          \
-        return static_cast<DerivedType*>(this);                                \
-    }
 
 } // namespace domain
+} // namespace iblgf
 
 #endif

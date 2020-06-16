@@ -24,6 +24,9 @@
 #include <iblgf/lgf/lgf_gl_lookup.hpp>
 #include <iblgf/utilities/misc_math_functions.hpp>
 
+
+namespace iblgf
+{
 namespace lgf
 {
 using namespace domain;
@@ -118,4 +121,5 @@ class LGF_Base : public crtp::Crtps<Derived, LGF_Base<Dim, Derived>>
 };
 
 } // namespace lgf
+} // namespace iblgf
 #endif

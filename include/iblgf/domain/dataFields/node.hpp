@@ -16,6 +16,8 @@
 #include <vector>
 #include <cmath>
 
+namespace iblgf
+{
 namespace domain
 {
 template<class Container>
@@ -210,5 +212,6 @@ class node
 };
 
 } // namespace domain
+} // namespace iblgf
 
 #endif

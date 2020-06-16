@@ -21,6 +21,8 @@
 #include <complex>
 #include <fftw3.h>
 
+namespace iblgf
+{
 namespace fft
 {
 class dfft_r2c
@@ -224,5 +226,6 @@ class Convolution
 };
 
 } // namespace fft
+} // namespace iblgf
 #endif
 

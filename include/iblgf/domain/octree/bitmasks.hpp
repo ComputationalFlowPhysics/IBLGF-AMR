@@ -16,6 +16,9 @@
 #include <stdint.h>
 #include <array>
 
+
+namespace iblgf
+{
 namespace octree
 {
 
@@ -169,5 +172,6 @@ constexpr decltype(Bitmasks<3>::coord_mask_arr) Bitmasks<3>::coord_mask_arr;
 constexpr decltype(Bitmasks<3>::max_coord_arr)  Bitmasks<3>::max_coord_arr;
 
 } // namespace octree
+} // namespace iblgf
 
 #endif // LB_INCLUDED_OCT_BIT_MASKS_HPP

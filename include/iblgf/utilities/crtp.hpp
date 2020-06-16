@@ -13,6 +13,8 @@
 #ifndef INCLUDED_CRTP_HPP
 #define INCLUDED_CRTP_HPP
 
+namespace iblgf
+{
 namespace crtp
 {
 template<typename DerivedType, template<typename> class CrtpType>
@@ -59,5 +61,6 @@ struct Mixin : public Base<Mixin>
 */
 
 } // namespace crtp
+} // namespace iblgf
 
 #endif

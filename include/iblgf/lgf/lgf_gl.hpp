@@ -27,6 +27,8 @@
 #include <iblgf/lgf/lgf_gl_lookup.hpp>
 #include <iblgf/lgf/lgf.hpp>
 
+namespace iblgf
+{
 namespace lgf
 {
 using namespace domain;
@@ -68,5 +70,6 @@ class LGF_GL : public LGF_Base<Dim, LGF_GL<Dim>>
 };
 
 } // namespace lgf
+} // namespace iblgf
 
 #endif

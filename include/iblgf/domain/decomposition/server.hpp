@@ -33,6 +33,8 @@
 #include <iblgf/domain/mpi/query_registry.hpp>
 #include "serverclient_traits.hpp"
 
+namespace iblgf
+{
 namespace domain
 {
 /** @brief ProcessType Server
@@ -492,5 +494,6 @@ class Server : public ServerBase<ServerClientTraits<Domain>>
 };
 
 } // namespace domain
+} // namespace iblgf
 
 #endif

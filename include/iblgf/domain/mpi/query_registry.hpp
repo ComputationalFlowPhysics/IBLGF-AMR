@@ -18,6 +18,8 @@
 
 #include <iblgf/utilities/crtp.hpp>
 
+namespace iblgf
+{
 namespace sr_mpi
 {
 template<class SendTask, class RecvTask = SendTask>
@@ -135,4 +137,5 @@ class InlineQueryRegistry : public QueryRegistry<SendTask, RecvTask>
 };
 
 } // namespace sr_mpi
+} // namespace iblgf
 #endif

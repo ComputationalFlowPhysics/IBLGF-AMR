@@ -33,6 +33,8 @@
 
 #include <iblgf/linalg/linalg.hpp>
 
+namespace iblgf
+{
 namespace solver
 {
 using namespace domain;
@@ -823,5 +825,6 @@ class PoissonSolver
 };
 
 } // namespace solver
+} // namespace iblgf
 
 #endif // IBLGF_INCLUDED_POISSON_HPP

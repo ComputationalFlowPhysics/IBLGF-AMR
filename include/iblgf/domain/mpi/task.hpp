@@ -18,6 +18,8 @@
 
 #include <iblgf/utilities/crtp.hpp>
 
+namespace iblgf
+{
 namespace sr_mpi
 {
 template<class TaskType>
@@ -304,4 +306,5 @@ class Task : public Task_base<TaskBuffer<Tag, T, ID>, BufferPolicy, ID>
 };
 
 } // namespace sr_mpi
+} // namespace iblgf
 #endif

@@ -13,6 +13,8 @@
 #ifndef INCLUDED_TAKS_BUFFER__HPP
 #define INCLUDED_TAKS_BUFFER__HPP
 
+namespace iblgf
+{
 namespace sr_mpi
 {
 template<class Buffer>
@@ -103,5 +105,6 @@ class TaskBufferContainer
 };
 
 } // namespace sr_mpi
+} // namespace iblgf
 
 #endif

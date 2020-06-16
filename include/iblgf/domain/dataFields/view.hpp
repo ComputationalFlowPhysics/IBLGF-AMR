@@ -22,6 +22,8 @@
 #include <iblgf/domain/dataFields/blockDescriptor.hpp>
 #include <iblgf/utilities/rcIterator.hpp>
 
+namespace iblgf
+{
 namespace domain
 {
 //Exent generators
@@ -162,5 +164,6 @@ class View : public BlockDescriptor<int, Dim>
 };
 
 } //namespace domain
+} // namespace iblgf
 
 #endif

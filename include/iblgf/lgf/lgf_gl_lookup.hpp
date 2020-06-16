@@ -22,6 +22,8 @@
 
 #include <iblgf/global.hpp>
 
+namespace iblgf
+{
 namespace lgf
 {
 class LGF_GL_Lookup
@@ -105,4 +107,5 @@ class LGF_GL_Lookup
 //decltype(Lookup::N_max) Lookup::N_max(100);
 
 } // namespace lgf
+} // namespace iblgf
 #endif

@@ -28,6 +28,8 @@
 #include <iblgf/domain/octree/octant.hpp>
 #include <iblgf/domain/octree/tree_utils.hpp>
 
+namespace iblgf
+{
 namespace octree
 {
 /** @brief Octree
@@ -958,4 +960,5 @@ class Tree
 };
 
 } //namespace octree
+} // namespace iblgf
 #endif

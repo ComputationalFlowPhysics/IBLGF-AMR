@@ -31,6 +31,8 @@
 #include <complex.h>
 #include <fftw3.h>
 
+namespace iblgf
+{
 namespace fft
 {
 // Usage: (after initializing the class)
@@ -97,6 +99,7 @@ class fftw_wrapper
 };
 
 } // namespace fft
+} // namespace iblgf
 #endif
 
 //std::vector<std::complex<float>, boost::alignment::aligned_allocator_adaptor<std::allocator<std::complex<float>>,32>>

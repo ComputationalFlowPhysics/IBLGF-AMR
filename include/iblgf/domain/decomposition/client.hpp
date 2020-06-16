@@ -28,6 +28,8 @@
 #include <iblgf/domain/mpi/haloCommunicator.hpp>
 #include "serverclient_traits.hpp"
 
+namespace iblgf
+{
 namespace domain
 {
 using namespace sr_mpi;
@@ -811,5 +813,6 @@ class Client : public ClientBase<ServerClientTraits<Domain>>
 };
 
 } // namespace domain
+} // namespace iblgf
 
 #endif

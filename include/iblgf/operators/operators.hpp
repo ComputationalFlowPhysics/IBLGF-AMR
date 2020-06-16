@@ -17,6 +17,8 @@
 #include <iblgf/domain/dataFields/datafield.hpp>
 #include <iblgf/types.hpp>
 
+namespace iblgf
+{
 namespace domain
 {
 struct Operator
@@ -258,5 +260,6 @@ struct Operator
   public:
 };
 } // namespace domain
+} // namespace iblgf
 
 #endif

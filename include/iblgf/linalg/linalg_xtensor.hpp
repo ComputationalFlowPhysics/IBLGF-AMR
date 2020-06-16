@@ -21,6 +21,8 @@
 #include <xtensor/xview.hpp>
 #include <xtensor-blas/xlinalg.hpp>
 
+namespace iblgf
+{
 namespace linalg
 {
 class L_xtensor
@@ -74,4 +76,5 @@ class L_xtensor
 };
 
 } // namespace linalg
+} // namespace iblgf
 

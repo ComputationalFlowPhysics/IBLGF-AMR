@@ -24,6 +24,8 @@
 #include <iblgf/global.hpp>
 #include <iblgf/domain/octree/key.hpp>
 
+namespace iblgf
+{
 namespace octree
 {
 enum class node_flag : int
@@ -107,4 +109,5 @@ class Octant_base
 };
 
 } //namespace octree
+} // namespace iblgf
 #endif

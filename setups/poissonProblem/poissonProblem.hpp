@@ -37,6 +37,8 @@
 
 #include "../setup_base.hpp"
 
+namespace iblgf
+{
 /**  @brief Parameters, for the PoissonProblem setup
  *          and aliases for datablock, domain and simulation.
  */
@@ -235,5 +237,6 @@ struct PoissonProblem
         pcout << "LInf_source = " << LInf_source << std::endl;
     }
 };
+} // namespace iblgf
 
 #endif // IBLGF_INCLUDED_POISSON_HPP

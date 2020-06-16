@@ -26,6 +26,10 @@
 #include <iblgf/domain/decomposition/server.hpp>
 #include <iblgf/fmm/fmm.hpp>
 
+
+
+namespace iblgf
+{
 namespace domain
 {
 /** @brief Domain decomposition.
@@ -505,5 +509,6 @@ class Decomposition
 };
 
 } // namespace domain
+} // namespace iblgf
 
 #endif

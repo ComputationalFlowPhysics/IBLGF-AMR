@@ -33,6 +33,8 @@
 #include <boost/unordered_map.hpp>
 #include <boost/serialization/vector.hpp>
 
+namespace iblgf
+{
 namespace chombo_writer
 {
 template<std::size_t Dim, class BlockDescriptor, class FieldData, class Domain,
@@ -960,5 +962,6 @@ class Chombo
     std::map<int, LevelInfo> level_map_;
 };
 } // namespace chombo_writer
+} // namespace iblgf
 
 #endif //Chombo

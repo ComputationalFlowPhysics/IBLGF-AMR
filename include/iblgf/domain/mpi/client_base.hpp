@@ -17,6 +17,8 @@
 #include "serverclient_base.hpp"
 #include "server_base.hpp"
 
+namespace iblgf
+{
 namespace sr_mpi
 {
 template<class Traits>
@@ -113,4 +115,5 @@ class ClientBase : public ServerClientBase<Traits>
 };
 
 } //namespace  sr_mpi
+} // namespace iblgf
 #endif

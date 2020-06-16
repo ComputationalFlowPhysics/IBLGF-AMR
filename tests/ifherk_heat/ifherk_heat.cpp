@@ -18,6 +18,8 @@
 #include <iblgf/dictionary/dictionary.hpp>
 
 
+using namespace iblgf;
+
 int main(int argc, char *argv[])
 {
 

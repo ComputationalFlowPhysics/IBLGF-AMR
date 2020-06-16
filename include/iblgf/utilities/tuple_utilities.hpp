@@ -13,6 +13,8 @@
 #ifndef INCLUDED_LGF_TUPLE_UTILITIES_HPP
 #define INCLUDED_LGF_TUPLE_UTILITIES_HPP
 
+namespace iblgf
+{
 namespace tuple_utils
 {
 template<typename Tuple, typename F, std::size_t... Indices>
@@ -62,5 +64,6 @@ struct make_from_tuple
 };
 
 } // namespace tuple_utils
+} // namespace iblgf
 
 #endif

@@ -19,6 +19,8 @@
 #include <complex.h>
 #include <iblgf/global.hpp>
 
+namespace iblgf
+{
 namespace interpolation
 {
 template<class Values, class Stencil>
@@ -82,4 +84,5 @@ interpolate(int min_x, int min_y, int min_z, float_type x, float_type y,
 }
 
 } // namespace interpolation
+} // namespace iblgf
 #endif

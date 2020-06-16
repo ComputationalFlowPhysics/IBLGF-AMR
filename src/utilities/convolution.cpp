@@ -17,6 +17,8 @@
 #include <iblgf/utilities/misc_math_functions.hpp>
 #include <iblgf/utilities/convolution.hpp>
 
+namespace iblgf
+{
 namespace fft
 {
 //using namespace domain;
@@ -215,3 +217,4 @@ Convolution::fft_backward_field_clean()
 
 } //namespace fft
 
+} // namespace iblgf

@@ -33,6 +33,8 @@
 #include <boost/preprocessor/tuple/pop_front.hpp>
 #include <tuple>
 
+namespace iblgf
+{
 namespace domain
 {
 enum class MeshObject : int
@@ -134,16 +136,6 @@ class DataField : public BlockDescriptor<int, Dim>
         return data_[real_block_.index(_c)];
     }
 
-    //inline const DataType&
-    //get_local(const coordinate_t& _c) const noexcept
-    //{
-    //    return data_[ real_block_.index_zeroBase(_c+lowBuffer_)];
-    //}
-    //inline DataType&
-    //get_local(const coordinate_t& _c) noexcept
-    //{
-    //    return data_[ real_block_.index_zeroBase(_c+lowBuffer_)];
-    //}
     inline const DataType& get_real_local(const coordinate_t& _c) const noexcept
     {
         return data_[real_block_.index_zeroBase(_c)];
@@ -171,19 +163,6 @@ class DataField : public BlockDescriptor<int, Dim>
         return data_[real_block_.index_zeroBase(_i, _j, _k)];
     }
 
-    //inline const DataType&
-    //get_local(int _i, int _j, int _k) const noexcept
-    //{
-    //    return data_[real_block_.index_zeroBase(_i+lowBuffer_[0],
-    //                                            _j+lowBuffer_[1],
-    //                                            _k+lowBuffer_[2])];
-    //}
-    //inline DataType& get_local(int _i, int _j, int _k) noexcept
-    //{
-    //    return data_[real_block_.index_zeroBase(_i+lowBuffer_[0],
-    //                                            _j+lowBuffer_[1],
-    //                                            _k+lowBuffer_[2])];
-    //}
     template<class BlockType, class OverlapType>
     bool buffer_overlap(
         const BlockType& other, OverlapType& overlap, int level) const noexcept
@@ -306,5 +285,6 @@ class DataField : public BlockDescriptor<int, Dim>
     MAKE_TUPLE_ALIAS(FIELD_TUPLES)
 
 } //namespace domain
+} // namespace iblgf
 
 #endif

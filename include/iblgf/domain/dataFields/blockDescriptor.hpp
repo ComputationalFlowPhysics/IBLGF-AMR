@@ -24,6 +24,8 @@
 
 #include <iblgf/types.hpp>
 
+namespace iblgf
+{
 namespace domain
 {
 namespace detail
@@ -666,5 +668,6 @@ class BlockDescriptor
 };
 
 } // namespace domain
+} // namespace iblgf
 
 #endif

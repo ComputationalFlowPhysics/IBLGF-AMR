@@ -18,8 +18,8 @@
 #include "vortexrings.hpp"
 #include <iblgf/dictionary/dictionary.hpp>
 
-double
-vortex_run(const std::string input, int argc, char** argv)
+namespace iblgf{
+double vortex_run(const std::string input, int argc, char** argv)
 {
     // Read in dictionary
     dictionary::Dictionary dictionary(input, argc, argv);
@@ -40,9 +40,7 @@ TEST(PoissonSolverTest, VortexRing_1)
 {
     boost::mpi::communicator world;
 
-    for (auto& entry :
-        std::filesystem::directory_iterator(
-            "/disk1/Dropbox/postdoc/develop/iblgf_repos/IBLGF-AMR/build/configs"))
+    for (auto& entry : std::filesystem::directory_iterator( "./configs"))
     {
         auto s = entry.path();
 
@@ -59,3 +57,4 @@ TEST(PoissonSolverTest, VortexRing_1)
         }
     }
 }
+} //namespace iblgf

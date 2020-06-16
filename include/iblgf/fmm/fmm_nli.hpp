@@ -26,6 +26,8 @@
 #include <iblgf/domain/dataFields/datafield.hpp>
 #include <iblgf/domain/octree/tree.hpp>
 
+namespace iblgf
+{
 namespace fmm
 {
 class Nli
@@ -384,5 +386,6 @@ class Nli
 };
 
 } // namespace fmm
+} // namespace iblgf
 
 #endif //IBLGF_INCLUDED_FMM_HPP

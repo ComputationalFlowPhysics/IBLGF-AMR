@@ -13,6 +13,8 @@
 #ifndef MATH_INCLUDED_MISC_MATH_HPP
 #define MATH_INCLUDED_MISC_MATH_HPP
 
+namespace iblgf
+{
 namespace math
 {
 
@@ -21,5 +23,6 @@ namespace math
     int pow2(int n);
 
 }
+} // namespace iblgf
 
 #endif // MATH_INCLUDED_MISC_MATH_HPP

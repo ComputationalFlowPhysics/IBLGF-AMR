@@ -21,6 +21,8 @@
 #include <cmath>
 #include <global.hpp>
 
+namespace iblgf
+{
 namespace lgf
 {
 class Lookup
@@ -104,4 +106,5 @@ class Lookup
 //decltype(Lookup::N_max) Lookup::N_max(100);
 
 } // namespace lgf
+} // namespace iblgf
 #endif

@@ -18,6 +18,8 @@
 
 #include <iblgf/utilities/crtp.hpp>
 
+namespace iblgf
+{
 namespace sr_mpi
 {
 /** @brief Communicate field buffers/halos for a given fields and a task type
@@ -300,4 +302,5 @@ class HaloCommunicator
 };
 
 } // namespace sr_mpi
+} // namespace iblgf
 #endif

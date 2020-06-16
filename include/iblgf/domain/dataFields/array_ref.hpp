@@ -23,6 +23,8 @@
 #include <iblgf/domain/dataFields/datafield_utils.hpp>
 #include <iblgf/domain/dataFields/blockDescriptor.hpp>
 
+namespace iblgf
+{
 namespace domain
 {
 //Exent generators
@@ -152,5 +154,6 @@ class Multiarray_ref
 };
 
 } //namespace domain
+} // namespace iblgf
 
 #endif

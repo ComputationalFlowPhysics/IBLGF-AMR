@@ -27,6 +27,8 @@
 #include <iblgf/domain/mpi/query_registry.hpp>
 #include <iblgf/domain/mpi/task.hpp>
 
+namespace iblgf
+{
 namespace domain
 {
 using namespace sr_mpi;
@@ -76,5 +78,6 @@ struct ServerClientTraits
 };
 
 } // namespace domain
+} // namespace iblgf
 
 #endif

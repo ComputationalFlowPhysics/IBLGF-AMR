@@ -21,6 +21,8 @@
 #include <iblgf/types.hpp>
 #include <iblgf/linalg/linalg_xtensor.hpp>
 
+namespace iblgf
+{
 namespace linalg
 {
 template<class Policy>
@@ -70,4 +72,5 @@ using Cube_t = Cube<L_xtensor>;
 using Mat_t = Mat<L_xtensor>;
 
 } // namespace linalg
+} // namespace iblgf
 #endif

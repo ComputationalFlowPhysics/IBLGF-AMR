@@ -13,6 +13,8 @@
 #ifndef INCLUDED_TAGS_HPP
 #define INCLUDED_TAGS_HPP
 
+namespace iblgf
+{
 namespace sr_mpi
 {
 namespace tags
@@ -40,5 +42,6 @@ enum type : int
 } // namespace tags
 
 } //namespace sr_mpi
+} // namespace iblgf
 
 #endif

@@ -23,6 +23,8 @@
 #include <iblgf/domain/octree/bitmasks.hpp>
 #include <iblgf/utilities/rcIterator.hpp>
 
+namespace iblgf
+{
 namespace octree
 {
 template<typename T>
@@ -678,13 +680,14 @@ normalized_range(const Key<Dim>& l, const Key<Dim>& r) noexcept
 }
 
 } //namespace octree
+} // namespace iblgf
 
 namespace std
 {
 template<int Dim>
-struct hash<octree::Key<Dim>>
+struct hash<iblgf::octree::Key<Dim>>
 {
-    auto operator()(const octree::Key<Dim>& k) const { return k.id(); }
+    auto operator()(const iblgf::octree::Key<Dim>& k) const { return k.id(); }
 };
 
 } // namespace std

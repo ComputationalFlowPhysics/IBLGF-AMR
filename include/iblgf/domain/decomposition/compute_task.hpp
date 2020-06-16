@@ -20,6 +20,8 @@
 
 #include <iblgf/global.hpp>
 
+namespace iblgf
+{
 namespace domain
 {
 /** @brief ProcessType Server 
@@ -65,5 +67,6 @@ class ComputeTask
 };
 
 } // namespace domain
+} // namespace iblgf
 
 #endif

@@ -28,6 +28,8 @@
 #include <iblgf/operators/operators.hpp>
 #include <iblgf/utilities/misc_math_functions.hpp>
 
+namespace iblgf
+{
 namespace solver
 {
 using namespace domain;
@@ -930,5 +932,6 @@ class Ifherk
 };
 
 } // namespace solver
+} // namespace iblgf
 
 #endif // IBLGF_INCLUDED_POISSON_HPP

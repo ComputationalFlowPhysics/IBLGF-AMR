@@ -17,6 +17,8 @@
 #include <type_traits>
 #include <iostream>
 
+namespace iblgf
+{
 namespace math
 {
 template<typename T, std::size_t N>
@@ -366,23 +368,24 @@ cross(const math::vector<U, N>& lhs, const math::vector<V, N>& rhs)
 }
 
 } // namespace math
+} // namespace iblgf
 
 namespace std
 {
 template<typename U, std::size_t N>
-math::vector<U, N>
-max(const math::vector<U, N>& lhs, const math::vector<U, N>& rhs)
+iblgf::math::vector<U, N>
+max(const iblgf::math::vector<U, N>& lhs, const iblgf::math::vector<U, N>& rhs)
 {
-    math::vector<U, N> res;
+    iblgf::math::vector<U, N> res;
     for (std::size_t n = 0; n < N; ++n) res[n] = std::max(lhs[n], rhs[n]);
     return res;
 }
 
 template<typename U, std::size_t N>
-math::vector<U, N>
-min(const math::vector<U, N>& lhs, const math::vector<U, N>& rhs)
+iblgf::math::vector<U, N>
+min(const iblgf::math::vector<U, N>& lhs, const iblgf::math::vector<U, N>& rhs)
 {
-    math::vector<U, N> res;
+    iblgf::math::vector<U, N> res;
     for (std::size_t n = 0; n < N; ++n) res[n] = std::min(lhs[n], rhs[n]);
     return res;
 }

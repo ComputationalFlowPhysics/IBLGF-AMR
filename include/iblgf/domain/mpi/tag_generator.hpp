@@ -17,6 +17,8 @@
 
 #include "tags.hpp"
 
+namespace iblgf
+{
 /** @brief TagGenerator
  *  Generate mpi tags using a periodic grid based upon baseTags of type
  *  enum, as well as the message number for that tag. Allows to keep
@@ -130,5 +132,6 @@ tag_gen()
 }
 
 } // namespace sr_mpi
+} // namespace iblgf
 
 #endif

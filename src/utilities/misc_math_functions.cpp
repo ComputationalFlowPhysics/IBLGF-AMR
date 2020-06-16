@@ -12,6 +12,8 @@
 
 #include <iblgf/utilities/misc_math_functions.hpp>
 
+namespace iblgf
+{
 namespace math
 {
 int
@@ -32,3 +34,4 @@ pow2(int n)
 }
 
 } // namespace math
+} // namespace iblgf

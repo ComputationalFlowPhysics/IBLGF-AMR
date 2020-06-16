@@ -24,6 +24,8 @@
 #include <iblgf/domain/dataFields/node.hpp>
 #include <iblgf/domain/dataFields/datafield.hpp>
 
+namespace iblgf
+{
 namespace domain
 {
 template<int Dim, template<class> class NodeType, class... DataFieldType>
@@ -358,6 +360,7 @@ class DataBlock : public BlockDescriptor<int, Dim>
 };
 
 } // namespace domain
+} // namespace iblgf
 
 #endif
 

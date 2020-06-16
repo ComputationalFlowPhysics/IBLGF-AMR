@@ -13,6 +13,8 @@
 #ifndef INCLUDED_LGF_RCITERATOR_HPP
 #define INCLUDED_LGF_RCITERATOR_HPP
 
+namespace iblgf
+{
 template<int Dim, int D = Dim - 1>
 struct rcIterator
 {
@@ -61,5 +63,6 @@ struct rcIterator<Dim, 0>
         }
     }
 };
+} // namespace iblgf
 
 #endif

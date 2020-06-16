@@ -17,6 +17,8 @@
 #include <iblgf/types.hpp>
 #include <iblgf/utilities/tuple_utilities.hpp>
 
+namespace iblgf
+{
 using namespace types;
 
 using clock_type = std::chrono::high_resolution_clock;
@@ -34,4 +36,5 @@ using time_point_type = typename clock_type::time_point;
         Duration += elapsed;                                                   \
     }
 
+} // namespace iblgf
 #endif // OCTREE_INCLUDED_GLOBAL_HPP

@@ -19,6 +19,8 @@
 #include <algorithm>
 #include <map>
 
+namespace iblgf
+{
 namespace string_utilities
 {
 namespace detail
@@ -243,6 +245,7 @@ erase_all_contents(std::string& _str, std::string _opening_delimiter,
 }
 
 } //namespace string_utilities
+} // namespace iblgf
 
 #endif //string utils
 

@@ -22,6 +22,8 @@
 
 #include "task_manager.hpp"
 
+namespace iblgf
+{
 namespace sr_mpi
 {
 template<class Traits>
@@ -56,5 +58,6 @@ class ServerClientBase
 };
 
 } // namespace sr_mpi
+} // namespace iblgf
 
 #endif

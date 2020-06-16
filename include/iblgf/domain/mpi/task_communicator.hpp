@@ -19,6 +19,9 @@
 #include <queue>
 #include <deque>
 
+namespace iblgf
+{
+
 namespace sr_mpi
 {
 /**
@@ -481,5 +484,6 @@ class RecvTaskCommunicator
 };
 
 } //namespace sr_mpi
+} // namespace iblgf
 
 #endif

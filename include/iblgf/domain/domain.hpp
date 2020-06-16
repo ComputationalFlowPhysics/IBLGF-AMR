@@ -22,6 +22,8 @@
 #include <iblgf/dictionary/dictionary.hpp>
 #include <iblgf/domain/decomposition/decomposition.hpp>
 
+namespace iblgf
+{
 namespace domain
 {
 using namespace dictionary;
@@ -1157,5 +1159,6 @@ class Domain
 //};
 
 } // namespace domain
+} // namespace iblgf
 
 #endif

@@ -44,6 +44,8 @@
 #include "../../setups/setup_base.hpp"
 #include <iblgf/operators/operators.hpp>
 
+namespace iblgf
+{
 const int Dim = 3;
 
 struct parameters
@@ -489,5 +491,6 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
     std::string ic_filename_, ref_filename_;
 };
 
+} // namespace iblgf
 
 #endif

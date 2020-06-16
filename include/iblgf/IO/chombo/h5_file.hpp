@@ -25,6 +25,8 @@
 //#include <IO/chombo/vector.hpp>
 #include <typeinfo>
 
+namespace iblgf
+{
 using float_type = double;
 
 //Basic hdf5-types
@@ -1499,5 +1501,6 @@ class hdf5_file
 
     static constexpr std::size_t maxChar = 1024;
 };
+} // namespace iblgf
 
 #endif //xlb_framework_io_chombo_hpp

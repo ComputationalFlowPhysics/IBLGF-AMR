@@ -16,6 +16,8 @@
 #include <cstddef>
 #include <iblgf/tensor/vector.hpp>
 
+namespace iblgf
+{
 namespace types
 {
 using float_type = double;
@@ -35,5 +37,6 @@ class void_mixin
 };
 
 } //namespace types
+} //namespace iblgf
 
 #endif

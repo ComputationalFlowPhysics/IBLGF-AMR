@@ -21,6 +21,8 @@
 #include <iblgf/dictionary/dictionary.hpp>
 #include <boost/filesystem.hpp>
 
+namespace iblgf
+{
 namespace io
 {
 struct IO_parameters;
@@ -146,4 +148,5 @@ struct IO_init
 };
 
 } // namespace io
+} // namespace iblgf
 #endif

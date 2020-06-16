@@ -18,6 +18,8 @@
 #include <iblgf/IO/chombo/h5_io.hpp>
 #include <iblgf/IO/output_directory.hpp>
 
+namespace iblgf
+{
 using namespace dictionary;
 
 template<class Domain>
@@ -137,4 +139,5 @@ class Simulation
     std::string                 restart_field_file_ = "restart_field.hdf5";
 };
 
+} // namespace iblgf
 #endif

@@ -33,6 +33,10 @@
 #include <boost/algorithm/string/classification.hpp>
 #include <boost/algorithm/string/split.hpp>
 
+
+namespace iblgf
+{
+
 namespace dictionary
 {
 class Dictionary
@@ -343,5 +347,6 @@ class Dictionary
 };
 
 } // namespace dictionary
+} // namespace iblgf
 
 #endif //Included dictionary

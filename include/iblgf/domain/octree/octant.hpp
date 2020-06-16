@@ -28,6 +28,8 @@
 #include <iblgf/domain/dataFields/datafield.hpp>
 #include <iblgf/utilities/crtp.hpp>
 
+namespace iblgf
+{
 namespace octree
 {
 template<int Dim, class DataType>
@@ -503,4 +505,5 @@ class Octant
 };
 
 } //namespace octree
+} // namespace iblgf
 #endif

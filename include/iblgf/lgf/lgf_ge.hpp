@@ -23,6 +23,8 @@
 #include <iblgf/lgf/lgf.hpp>
 #include <iblgf/domain/dataFields/blockDescriptor.hpp>
 
+namespace iblgf
+{
 namespace lgf
 {
 using namespace domain;
@@ -124,5 +126,5 @@ class LGF_GE : public LGF_Base<Dim, LGF_GE<Dim>>
 };
 
 } // namespace lgf
-
+} // namespace iblgf
 #endif

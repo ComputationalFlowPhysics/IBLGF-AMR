@@ -25,6 +25,8 @@
 #include <iblgf/solver/time_integration/ifherk.hpp>
 #include <iblgf/IO/parallel_ostream.hpp>
 
+namespace iblgf
+{
 using namespace domain;
 using namespace octree;
 using namespace types;
@@ -307,5 +309,6 @@ class SetupBase
     int  global_refinement_;
 };
 
+} // namespace iblgf
 #endif // IBLGF_INCLUDED_SETUP_BASE_HPP
 

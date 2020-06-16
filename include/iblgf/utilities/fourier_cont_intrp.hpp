@@ -28,6 +28,8 @@
 #include <iblgf/domain/dataFields/datafield.hpp>
 #include <iblgf/domain/octree/tree.hpp>
 
+namespace iblgf
+{
 namespace interpolation
 {
 class fourier_cont_intrp
@@ -411,5 +413,6 @@ class fourier_cont_intrp
 };
 
 } // namespace interpolation
+} // namespace iblgf
 
 #endif //IBLGF_INCLUDED_FMM_HPP

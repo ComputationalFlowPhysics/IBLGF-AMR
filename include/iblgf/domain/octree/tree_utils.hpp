@@ -21,6 +21,8 @@
 #include <iblgf/domain/octree/key.hpp>
 #include <iblgf/utilities/crtp.hpp>
 
+namespace iblgf
+{
 namespace octree
 {
 template<class MapType>
@@ -371,5 +373,6 @@ struct ConditionalIterator : public Iterator
 } //namespace detail
 
 } //namespace octree
+} // namespace iblgf
 
 #endif //INCLUDED_UTILS_HPP

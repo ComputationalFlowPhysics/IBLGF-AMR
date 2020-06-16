@@ -39,6 +39,8 @@
 #include <iblgf/IO/parallel_ostream.hpp>
 #include <iblgf/utilities/convolution.hpp>
 
+namespace iblgf
+{
 namespace fmm
 {
 template<class Domain>
@@ -839,5 +841,6 @@ class Fmm
 };
 
 } // namespace fmm
+} // namespace iblgf
 
 #endif //IBLGF_INCLUDED_FMM_HPP

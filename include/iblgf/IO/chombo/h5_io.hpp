@@ -27,6 +27,8 @@
 #include <iblgf/IO/chombo/h5_file.hpp>
 #include <iblgf/IO/parallel_ostream.hpp>
 
+namespace iblgf
+{
 namespace io
 {
 template<int Dim, class Domain>
@@ -161,5 +163,6 @@ class H5_io
 };
 
 } // namespace io
+} // namespace iblgf
 
 #endif

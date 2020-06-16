@@ -21,6 +21,8 @@
 // IBLGF-specific
 #include <iblgf/global.hpp>
 
+namespace iblgf
+{
 namespace io
 {
 template<class Domain>
@@ -237,5 +239,6 @@ class Vtk_io
 };
 
 } // namespace io
+} // namespace iblgf
 
 #endif

@@ -1,6 +1,17 @@
+//      ▄▄▄▄▄▄▄▄▄▄▄  ▄▄▄▄▄▄▄▄▄▄   ▄            ▄▄▄▄▄▄▄▄▄▄▄  ▄▄▄▄▄▄▄▄▄▄▄
+//     ▐░░░░░░░░░░░▌▐░░░░░░░░░░▌ ▐░▌          ▐░░░░░░░░░░░▌▐░░░░░░░░░░░▌
+//      ▀▀▀▀█░█▀▀▀▀ ▐░█▀▀▀▀▀▀▀█░▌▐░▌          ▐░█▀▀▀▀▀▀▀▀▀ ▐░█▀▀▀▀▀▀▀▀▀
+//          ▐░▌     ▐░▌       ▐░▌▐░▌          ▐░▌          ▐░▌
+//          ▐░▌     ▐░█▄▄▄▄▄▄▄█░▌▐░▌          ▐░▌ ▄▄▄▄▄▄▄▄ ▐░█▄▄▄▄▄▄▄▄▄
+//          ▐░▌     ▐░░░░░░░░░░▌ ▐░▌          ▐░▌▐░░░░░░░░▌▐░░░░░░░░░░░▌
+//          ▐░▌     ▐░█▀▀▀▀▀▀▀█░▌▐░▌          ▐░▌ ▀▀▀▀▀▀█░▌▐░█▀▀▀▀▀▀▀▀▀
+//          ▐░▌     ▐░▌       ▐░▌▐░▌          ▐░▌       ▐░▌▐░▌
+//      ▄▄▄▄█░█▄▄▄▄ ▐░█▄▄▄▄▄▄▄█░▌▐░█▄▄▄▄▄▄▄▄▄ ▐░█▄▄▄▄▄▄▄█░▌▐░▌
+//     ▐░░░░░░░░░░░▌▐░░░░░░░░░░▌ ▐░░░░░░░░░░░▌▐░░░░░░░░░░░▌▐░▌
+//      ▀▀▀▀▀▀▀▀▀▀▀  ▀▀▀▀▀▀▀▀▀▀   ▀▀▀▀▀▀▀▀▀▀▀  ▀▀▀▀▀▀▀▀▀▀▀  ▀
+
 #ifndef IBLGF_INCLUDED_IFHERK_HEAT_HPP
 #define IBLGF_INCLUDED_IFHERK_HEAT_HPP
-
 
 #include <iostream>
 #include <vector>
@@ -8,32 +19,30 @@
 #include <algorithm>
 #include <vector>
 #include <math.h>
+#include <chrono>
 #include <fftw3.h>
 #include <boost/mpi.hpp>
 #include <boost/mpi/environment.hpp>
 #include <boost/mpi/communicator.hpp>
 
 // IBLGF-specific
-#include <global.hpp>
-#include <simulation.hpp>
-#include <domain/domain.hpp>
-#include <domain/dataFields/dataBlock.hpp>
-#include <domain/dataFields/datafield.hpp>
-#include <domain/octree/tree.hpp>
-#include <chrono>
-#include <IO/parallel_ostream.hpp>
-#include <lgf/lgf.hpp>
-#include <fmm/fmm.hpp>
+#include <iblgf/global.hpp>
+#include <iblgf/simulation.hpp>
+#include <iblgf/domain/domain.hpp>
+#include <iblgf/domain/dataFields/dataBlock.hpp>
+#include <iblgf/domain/dataFields/datafield.hpp>
+#include <iblgf/domain/octree/tree.hpp>
+#include <iblgf/IO/parallel_ostream.hpp>
+#include <iblgf/lgf/lgf.hpp>
+#include <iblgf/fmm/fmm.hpp>
 
-#include<utilities/convolution.hpp>
-#include<utilities/interpolation.hpp>
-#include<solver/poisson/poisson.hpp>
-#include<solver/time_integration/ifherk.hpp>
+#include <iblgf/utilities/convolution.hpp>
+#include <iblgf/utilities/interpolation.hpp>
+#include <iblgf/solver/poisson/poisson.hpp>
+#include <iblgf/solver/time_integration/ifherk.hpp>
 
-#include"../../setups/setup_base.hpp"
-#include<operators/operators.hpp>
-
-
+#include "../../setups/setup_base.hpp"
+#include <iblgf/operators/operators.hpp>
 
 const int Dim = 3;
 
@@ -339,7 +348,6 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
             return w_theta*std::cos(theta);
         else
             return 0.0;
-
     }
 
 

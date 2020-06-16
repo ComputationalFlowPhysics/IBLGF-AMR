@@ -13,17 +13,17 @@
 #ifndef IBLGF_INCLUDED_SETUP_BASE_HPP
 #define IBLGF_INCLUDED_SETUP_BASE_HPP
 
-#include <global.hpp>
-#include <utilities/crtp.hpp>
-#include <domain/domain.hpp>
-#include <simulation.hpp>
-#include <lgf/lgf.hpp>
-#include <fmm/fmm.hpp>
-#include <domain/dataFields/dataBlock.hpp>
-#include <domain/dataFields/datafield.hpp>
-#include <solver/poisson/poisson.hpp>
-#include <solver/time_integration/ifherk.hpp>
-#include <IO/parallel_ostream.hpp>
+#include <iblgf/global.hpp>
+#include <iblgf/utilities/crtp.hpp>
+#include <iblgf/domain/domain.hpp>
+#include <iblgf/simulation.hpp>
+#include <iblgf/lgf/lgf.hpp>
+#include <iblgf/fmm/fmm.hpp>
+#include <iblgf/domain/dataFields/dataBlock.hpp>
+#include <iblgf/domain/dataFields/datafield.hpp>
+#include <iblgf/solver/poisson/poisson.hpp>
+#include <iblgf/solver/time_integration/ifherk.hpp>
+#include <iblgf/IO/parallel_ostream.hpp>
 
 using namespace domain;
 using namespace octree;

@@ -19,10 +19,10 @@
 #include <complex>
 #include <boost/math/special_functions/bessel.hpp>
 
-#include <global.hpp>
-#include <utilities/crtp.hpp>
-#include <lgf/lgf_gl_lookup.hpp>
-#include <utilities/misc_math_functions.hpp>
+#include <iblgf/global.hpp>
+#include <iblgf/utilities/crtp.hpp>
+#include <iblgf/lgf/lgf_gl_lookup.hpp>
+#include <iblgf/utilities/misc_math_functions.hpp>
 
 namespace lgf
 {

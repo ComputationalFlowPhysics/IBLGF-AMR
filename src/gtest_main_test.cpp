@@ -15,7 +15,7 @@
 #include <boost/mpi.hpp>
 #include <boost/mpi/environment.hpp>
 #include <boost/mpi/communicator.hpp>
-#include <googletest/gtest-mpi-listener.hpp>
+#include <iblgf/googletest/gtest-mpi-listener.hpp>
 
 int
 main(int argc, char** argv)

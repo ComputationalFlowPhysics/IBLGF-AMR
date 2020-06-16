@@ -16,7 +16,7 @@
 #include <boost/mpi/environment.hpp>
 
 #include "vortexrings.hpp"
-#include <dictionary/dictionary.hpp>
+#include <iblgf/dictionary/dictionary.hpp>
 
 double
 vortex_run(const std::string input, int argc, char** argv)

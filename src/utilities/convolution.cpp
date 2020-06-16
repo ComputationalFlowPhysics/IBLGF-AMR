@@ -13,9 +13,9 @@
 #include <xsimd/xsimd.hpp>
 #include <xsimd/stl/algorithms.hpp>
 
-#include <global.hpp>
-#include <utilities/misc_math_functions.hpp>
-#include <utilities/convolution.hpp>
+#include <iblgf/global.hpp>
+#include <iblgf/utilities/misc_math_functions.hpp>
+#include <iblgf/utilities/convolution.hpp>
 
 namespace fft
 {

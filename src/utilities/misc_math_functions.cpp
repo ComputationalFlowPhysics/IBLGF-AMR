@@ -10,7 +10,7 @@
 //     ▐░░░░░░░░░░░▌▐░░░░░░░░░░▌ ▐░░░░░░░░░░░▌▐░░░░░░░░░░░▌▐░▌
 //      ▀▀▀▀▀▀▀▀▀▀▀  ▀▀▀▀▀▀▀▀▀▀   ▀▀▀▀▀▀▀▀▀▀▀  ▀▀▀▀▀▀▀▀▀▀▀  ▀
 
-#include <utilities/misc_math_functions.hpp>
+#include <iblgf/utilities/misc_math_functions.hpp>
 
 namespace math
 {

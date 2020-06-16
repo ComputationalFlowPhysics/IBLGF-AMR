@@ -85,7 +85,6 @@ target_include_directories(iblgf INTERFACE
     )
 include_directories(include)
 include_directories(SYSTEM ${MPI_INCLUDE_PATH})
-target_include_directories(iblgf INTERFACE SYSTEM)
 target_include_directories(iblgf INTERFACE ${MPI_INCLUDE_PATH})
 target_link_libraries(iblgf INTERFACE Boost::boost)
 target_link_libraries(iblgf INTERFACE Boost::mpi)
@@ -125,3 +124,21 @@ if (IBLGF_TESTING )
     endif()
 endif()
 
+include(GNUInstallDirs)
+install(TARGETS iblgf EXPORT iblgf-targets LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR} ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
+install(EXPORT iblgf-targets
+  FILE iblgf-targets.cmake
+  NAMESPACE iblgf::
+  DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake
+  )
+install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+
+include(CMakePackageConfigHelpers)
+configure_package_config_file(cmake/iblgfConfig.cmake.in ${CMAKE_CURRENT_BINARY_DIR}/iblgfConfig.cmake
+                              INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake)
+write_basic_package_version_file(iblgfConfigVersion.cmake VERSION ${PROJECT_VERSION} COMPATIBILITY SameMajorVersion)
+install(
+    FILES
+        ${CMAKE_CURRENT_BINARY_DIR}/iblgfConfig.cmake
+    DESTINATION
+        ${CMAKE_INSTALL_LIBDIR}/cmake)

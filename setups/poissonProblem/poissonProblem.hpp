@@ -21,19 +21,19 @@
 #include <fftw3.h>
 
 // IBLGF-specific
-#include <global.hpp>
-#include <simulation.hpp>
-#include <domain/domain.hpp>
-#include <domain/dataFields/dataBlock.hpp>
-#include <domain/dataFields/datafield.hpp>
-#include <domain/octree/tree.hpp>
-#include <IO/parallel_ostream.hpp>
-#include <lgf/lgf.hpp>
-#include <fmm/fmm.hpp>
+#include <iblgf/global.hpp>
+#include <iblgf/simulation.hpp>
+#include <iblgf/domain/domain.hpp>
+#include <iblgf/domain/dataFields/dataBlock.hpp>
+#include <iblgf/domain/dataFields/datafield.hpp>
+#include <iblgf/domain/octree/tree.hpp>
+#include <iblgf/IO/parallel_ostream.hpp>
+#include <iblgf/lgf/lgf.hpp>
+#include <iblgf/fmm/fmm.hpp>
 
-#include <utilities/convolution.hpp>
-#include <utilities/interpolation.hpp>
-#include <solver/poisson/poisson.hpp>
+#include <iblgf/utilities/convolution.hpp>
+#include <iblgf/utilities/interpolation.hpp>
+#include <iblgf/solver/poisson/poisson.hpp>
 
 #include "../setup_base.hpp"
 

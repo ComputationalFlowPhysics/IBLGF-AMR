@@ -1,3 +1,15 @@
+//      ▄▄▄▄▄▄▄▄▄▄▄  ▄▄▄▄▄▄▄▄▄▄   ▄            ▄▄▄▄▄▄▄▄▄▄▄  ▄▄▄▄▄▄▄▄▄▄▄
+//     ▐░░░░░░░░░░░▌▐░░░░░░░░░░▌ ▐░▌          ▐░░░░░░░░░░░▌▐░░░░░░░░░░░▌
+//      ▀▀▀▀█░█▀▀▀▀ ▐░█▀▀▀▀▀▀▀█░▌▐░▌          ▐░█▀▀▀▀▀▀▀▀▀ ▐░█▀▀▀▀▀▀▀▀▀
+//          ▐░▌     ▐░▌       ▐░▌▐░▌          ▐░▌          ▐░▌
+//          ▐░▌     ▐░█▄▄▄▄▄▄▄█░▌▐░▌          ▐░▌ ▄▄▄▄▄▄▄▄ ▐░█▄▄▄▄▄▄▄▄▄
+//          ▐░▌     ▐░░░░░░░░░░▌ ▐░▌          ▐░▌▐░░░░░░░░▌▐░░░░░░░░░░░▌
+//          ▐░▌     ▐░█▀▀▀▀▀▀▀█░▌▐░▌          ▐░▌ ▀▀▀▀▀▀█░▌▐░█▀▀▀▀▀▀▀▀▀
+//          ▐░▌     ▐░▌       ▐░▌▐░▌          ▐░▌       ▐░▌▐░▌
+//      ▄▄▄▄█░█▄▄▄▄ ▐░█▄▄▄▄▄▄▄█░▌▐░█▄▄▄▄▄▄▄▄▄ ▐░█▄▄▄▄▄▄▄█░▌▐░▌
+//     ▐░░░░░░░░░░░▌▐░░░░░░░░░░▌ ▐░░░░░░░░░░░▌▐░░░░░░░░░░░▌▐░▌
+//      ▀▀▀▀▀▀▀▀▀▀▀  ▀▀▀▀▀▀▀▀▀▀   ▀▀▀▀▀▀▀▀▀▀▀  ▀▀▀▀▀▀▀▀▀▀▀  ▀
+
 #ifndef INCLUDED_LGF_DOMAIN_DATAFIELD_UITILS_HPP
 #define INCLUDED_LGF_DOMAIN_DATAFIELD_UITILS_HPP
 
@@ -9,41 +21,43 @@ namespace domain
 {
 namespace tuple_utils
 {
-
 template<class... T>
-struct typelist{};
-
+struct typelist
+{
+};
 
 /***************************************************************************/
 //Iterators:
 
-
 /**
  * \brief Implemnetation to iterate over elements of a tuple 
  */
-template <typename Tuple, typename F, std::size_t ...Indices>
-void for_each_impl(Tuple&& tuple, F&& f, std::index_sequence<Indices...>) 
+template<typename Tuple, typename F, std::size_t... Indices>
+void
+for_each_impl(Tuple&& tuple, F&& f, std::index_sequence<Indices...>)
 {
     using swallow = int[];
-    (void)swallow{1, (f(std::get<Indices>(std::forward<Tuple>(tuple))), void(), int{})...  };
+    (void)swallow{1,
+        (f(std::get<Indices>(std::forward<Tuple>(tuple))), void(), int{})...};
 }
 
 /**
  * \brief Iterate over all elements in a tuple and apply the functor f
  */
-template <typename Tuple, typename F>
-void for_each(Tuple&& tuple, F&& f) 
+template<typename Tuple, typename F>
+void
+for_each(Tuple&& tuple, F&& f)
 {
-    constexpr std::size_t N = std::tuple_size<std::remove_reference_t<Tuple>>::value;
+    constexpr std::size_t N =
+        std::tuple_size<std::remove_reference_t<Tuple>>::value;
     for_each_impl(std::forward<Tuple>(tuple), std::forward<F>(f),
-            std::make_index_sequence<N>{});
+        std::make_index_sequence<N>{});
 }
-
 
 /**
  * \brief Iterate over all types in a tuple and apply the functor f
  */
-template <typename... Ts>
+template<typename... Ts>
 struct TypeIterator
 {
     template<typename F>
@@ -53,9 +67,6 @@ struct TypeIterator
     }
 };
 
-
-
-
 /***************************************************************************/
 /**
  * \brief Concatenate tuples
@@ -63,7 +74,7 @@ struct TypeIterator
 template<class... Tuples>
 struct concat
 {
-    using type=decltype(std::tuple_cat(std::declval<Tuples>()...));
+    using type = decltype(std::tuple_cat(std::declval<Tuples>()...));
 };
 
 /**
@@ -72,24 +83,24 @@ struct concat
 template<class Tuple, class... Types>
 struct append
 {
-    using type=decltype(std::tuple_cat(std::declval<Tuple>(), 
-                                       std::declval<std::tuple<Types...>>()));
+    using type = decltype(std::tuple_cat(
+        std::declval<Tuple>(), std::declval<std::tuple<Types...>>()));
 };
 
 /**
  * \brief Concatenate typelist of tuples and Types to one tuple
  */
 template<class Tuples, class Types>
-struct concat_all { }; 
-
-template<class... Tuples, class... Types>
-struct concat_all<typelist<Tuples...>, typelist<Types...> >
+struct concat_all
 {
-    using concat_tuple_t=typename concat<Tuples...>::type; 
-    using type=typename append<concat_tuple_t, Types...>::type;
 };
 
-
+template<class... Tuples, class... Types>
+struct concat_all<typelist<Tuples...>, typelist<Types...>>
+{
+    using concat_tuple_t = typename concat<Tuples...>::type;
+    using type = typename append<concat_tuple_t, Types...>::type;
+};
 
 /***************************************************************************/
 /**
@@ -107,24 +118,22 @@ struct select_tuple_element_impl<Tuple, std::index_sequence<Is...>>
 /**
  * \brief Select the first N tuple elements and store it again
  */
-template<class Tuple,std::size_t N=std::tuple_size<Tuple>::value>
+template<class Tuple, std::size_t N = std::tuple_size<Tuple>::value>
 struct select_tuple_elements
 {
-    using type=typename select_tuple_element_impl<Tuple, 
-          std::make_index_sequence<N>>::type;
-
+    using type = typename select_tuple_element_impl<Tuple,
+        std::make_index_sequence<N>>::type;
 };
-
 
 /***************************************************************************/
 /**
  * \brief Implementation of make_from_tuple
  */
-template<template<typename...>class T,class Tuple, class V>
+template<template<typename...> class T, class Tuple, class V>
 struct make_from_tuple_impl;
 
-template<template<typename...>class T, class Tuple, size_t... Is>
-struct make_from_tuple_impl<T,Tuple, std::index_sequence<Is...>>
+template<template<typename...> class T, class Tuple, size_t... Is>
+struct make_from_tuple_impl<T, Tuple, std::index_sequence<Is...>>
 {
     using type = T<typename std::tuple_element<Is, Tuple>::type...>;
 };
@@ -132,15 +141,13 @@ struct make_from_tuple_impl<T,Tuple, std::index_sequence<Is...>>
 /**
  * \brief Get type, which takes a parameter pack, from tuple
  */
-template<template<typename...>class T, class Tuple>
+template<template<typename...> class T, class Tuple>
 struct make_from_tuple
 {
-    static constexpr std::size_t N=std::tuple_size<std::decay_t<Tuple>>::value;
-    using type=typename make_from_tuple_impl
-               <
-                   T, Tuple, 
-                   std::make_index_sequence<N>
-               >::type;
+    static constexpr std::size_t N =
+        std::tuple_size<std::decay_t<Tuple>>::value;
+    using type = typename make_from_tuple_impl<T, Tuple,
+        std::make_index_sequence<N>>::type;
 };
 
 } // namespace tuple_utils
@@ -149,38 +156,39 @@ struct make_from_tuple
  * \brief Assign fields 
  */
 template<class Field0, class Field1, class BlockDescriptor, class Stride>
-void assign(const Field0& src, const BlockDescriptor& view_src, 
-            const Stride& strd_s,
-            Field1& target, const BlockDescriptor& view_target, 
-            const Stride& strd_t)
+void
+assign(const Field0& src, const BlockDescriptor& view_src, const Stride& strd_s,
+    Field1& target, const BlockDescriptor& view_target, const Stride& strd_t)
 {
-    auto idxs=view_src.base();
+    auto idxs = view_src.base();
 
-    for(auto k = view_target.base()[2]; 
-             k <= view_target.max()[2]; k+=strd_t[2])
+    for (auto k = view_target.base()[2]; k <= view_target.max()[2];
+         k += strd_t[2])
     {
-        idxs[1]=view_src.base()[1];
-        for(auto j = view_target.base()[1]; 
-                 j <= view_target.max()[1]; j+=strd_t[1])
-        { 
-            idxs[0]=view_src.base()[0];
-            for(auto i = view_target.base()[0]; 
-                     i <= view_target.max()[0]; i+=strd_t[0])
+        idxs[1] = view_src.base()[1];
+        for (auto j = view_target.base()[1]; j <= view_target.max()[1];
+             j += strd_t[1])
+        {
+            idxs[0] = view_src.base()[0];
+            for (auto i = view_target.base()[0]; i <= view_target.max()[0];
+                 i += strd_t[0])
             {
-                target.get(i,j,k)=src.get(idxs[0], idxs[1], idxs[2]);
-                idxs[0]+=strd_s[0];
+                target.get(i, j, k) = src.get(idxs[0], idxs[1], idxs[2]);
+                idxs[0] += strd_s[0];
             }
-            idxs[1]+=strd_s[1];
+            idxs[1] += strd_s[1];
         }
-        idxs[2]+=strd_s[2];
+        idxs[2] += strd_s[2];
     }
 }
 
+#define crtp_helper(DerivedType, func_name)                                    \
+    DerivedType*       func_name() { return static_cast<DerivedType*>(this); } \
+    const DerivedType* func_name() const                                       \
+    {                                                                          \
+        return static_cast<DerivedType*>(this);                                \
+    }
 
-#define crtp_helper(DerivedType,func_name) \
-DerivedType* func_name(){return static_cast<DerivedType*>(this);} \
-const DerivedType* func_name()const {return static_cast<DerivedType*>(this);} 
+} // namespace domain
 
-}
-
-#endif 
+#endif

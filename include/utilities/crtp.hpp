@@ -1,33 +1,45 @@
+//      ▄▄▄▄▄▄▄▄▄▄▄  ▄▄▄▄▄▄▄▄▄▄   ▄            ▄▄▄▄▄▄▄▄▄▄▄  ▄▄▄▄▄▄▄▄▄▄▄
+//     ▐░░░░░░░░░░░▌▐░░░░░░░░░░▌ ▐░▌          ▐░░░░░░░░░░░▌▐░░░░░░░░░░░▌
+//      ▀▀▀▀█░█▀▀▀▀ ▐░█▀▀▀▀▀▀▀█░▌▐░▌          ▐░█▀▀▀▀▀▀▀▀▀ ▐░█▀▀▀▀▀▀▀▀▀
+//          ▐░▌     ▐░▌       ▐░▌▐░▌          ▐░▌          ▐░▌
+//          ▐░▌     ▐░█▄▄▄▄▄▄▄█░▌▐░▌          ▐░▌ ▄▄▄▄▄▄▄▄ ▐░█▄▄▄▄▄▄▄▄▄
+//          ▐░▌     ▐░░░░░░░░░░▌ ▐░▌          ▐░▌▐░░░░░░░░▌▐░░░░░░░░░░░▌
+//          ▐░▌     ▐░█▀▀▀▀▀▀▀█░▌▐░▌          ▐░▌ ▀▀▀▀▀▀█░▌▐░█▀▀▀▀▀▀▀▀▀
+//          ▐░▌     ▐░▌       ▐░▌▐░▌          ▐░▌       ▐░▌▐░▌
+//      ▄▄▄▄█░█▄▄▄▄ ▐░█▄▄▄▄▄▄▄█░▌▐░█▄▄▄▄▄▄▄▄▄ ▐░█▄▄▄▄▄▄▄█░▌▐░▌
+//     ▐░░░░░░░░░░░▌▐░░░░░░░░░░▌ ▐░░░░░░░░░░░▌▐░░░░░░░░░░░▌▐░▌
+//      ▀▀▀▀▀▀▀▀▀▀▀  ▀▀▀▀▀▀▀▀▀▀   ▀▀▀▀▀▀▀▀▀▀▀  ▀▀▀▀▀▀▀▀▀▀▀  ▀
+
 #ifndef INCLUDED_CRTP_HPP
 #define INCLUDED_CRTP_HPP
 
-
 namespace crtp
 {
-
-template <typename DerivedType, template<typename> class CrtpType>
+template<typename DerivedType, template<typename> class CrtpType>
 struct Crtp
 {
-    DerivedType& derived() { return static_cast<DerivedType&>(*this); }
-    DerivedType const& derived() const 
-    { 
-        return static_cast<DerivedType const&>(*this); 
+    DerivedType&       derived() { return static_cast<DerivedType&>(*this); }
+    DerivedType const& derived() const
+    {
+        return static_cast<DerivedType const&>(*this);
     }
-private:
-    Crtp(){}
+
+  private:
+    Crtp() {}
     friend CrtpType<DerivedType>;
 };
 
-template <typename DerivedType, class CrtpType>
+template<typename DerivedType, class CrtpType>
 struct Crtps
 {
-    DerivedType& derived() { return static_cast<DerivedType&>(*this); }
-    DerivedType const& derived() const 
-    { 
-        return static_cast<DerivedType const&>(*this); 
+    DerivedType&       derived() { return static_cast<DerivedType&>(*this); }
+    DerivedType const& derived() const
+    {
+        return static_cast<DerivedType const&>(*this);
     }
-private:
-    Crtps(){}
+
+  private:
+    Crtps() {}
     friend CrtpType;
 };
 /*Example Crtp
@@ -46,6 +58,6 @@ struct Mixin : public Base<Mixin>
 };
 */
 
-}
+} // namespace crtp
 
 #endif

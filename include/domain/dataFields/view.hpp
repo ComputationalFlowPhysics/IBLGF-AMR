@@ -1,3 +1,15 @@
+//      ▄▄▄▄▄▄▄▄▄▄▄  ▄▄▄▄▄▄▄▄▄▄   ▄            ▄▄▄▄▄▄▄▄▄▄▄  ▄▄▄▄▄▄▄▄▄▄▄
+//     ▐░░░░░░░░░░░▌▐░░░░░░░░░░▌ ▐░▌          ▐░░░░░░░░░░░▌▐░░░░░░░░░░░▌
+//      ▀▀▀▀█░█▀▀▀▀ ▐░█▀▀▀▀▀▀▀█░▌▐░▌          ▐░█▀▀▀▀▀▀▀▀▀ ▐░█▀▀▀▀▀▀▀▀▀
+//          ▐░▌     ▐░▌       ▐░▌▐░▌          ▐░▌          ▐░▌
+//          ▐░▌     ▐░█▄▄▄▄▄▄▄█░▌▐░▌          ▐░▌ ▄▄▄▄▄▄▄▄ ▐░█▄▄▄▄▄▄▄▄▄
+//          ▐░▌     ▐░░░░░░░░░░▌ ▐░▌          ▐░▌▐░░░░░░░░▌▐░░░░░░░░░░░▌
+//          ▐░▌     ▐░█▀▀▀▀▀▀▀█░▌▐░▌          ▐░▌ ▀▀▀▀▀▀█░▌▐░█▀▀▀▀▀▀▀▀▀
+//          ▐░▌     ▐░▌       ▐░▌▐░▌          ▐░▌       ▐░▌▐░▌
+//      ▄▄▄▄█░█▄▄▄▄ ▐░█▄▄▄▄▄▄▄█░▌▐░█▄▄▄▄▄▄▄▄▄ ▐░█▄▄▄▄▄▄▄█░▌▐░▌
+//     ▐░░░░░░░░░░░▌▐░░░░░░░░░░▌ ▐░░░░░░░░░░░▌▐░░░░░░░░░░░▌▐░▌
+//      ▀▀▀▀▀▀▀▀▀▀▀  ▀▀▀▀▀▀▀▀▀▀   ▀▀▀▀▀▀▀▀▀▀▀  ▀▀▀▀▀▀▀▀▀▀▀  ▀
+
 #ifndef INCLUDED_LGF_DOMAIN_VIEW_HPP
 #define INCLUDED_LGF_DOMAIN_VIEW_HPP
 
@@ -10,73 +22,75 @@
 #include <domain/dataFields/blockDescriptor.hpp>
 #include <utilities/rcIterator.hpp>
 
-
 namespace domain
 {
-
 //Exent generators
 template<class View, int Dim>
 class ViewIterator
 {
-public: 
-    using view_t =  View;
+  public:
+    using view_t = View;
     using coordinate_t = typename View::base_t;
     using element_t = typename view_t::element_t;
 
-    struct dummy_t {};
+    struct dummy_t
+    {
+    };
 
-public: 
-    ViewIterator()=delete;
-    ~ViewIterator() =default;
+  public:
+    ViewIterator() = delete;
+    ~ViewIterator() = default;
 
     ViewIterator(View* _view)
-    :view_(_view),coordinate_(_view->base())
-    { 
+    : view_(_view)
+    , coordinate_(_view->base())
+    {
     }
 
-
-public: 
-
+  public:
     element_t& operator*() noexcept { return view_->field()->get(coordinate_); }
-    const element_t& operator*()const  noexcept { return view_->field()->get(coordinate_); }
-    element_t* operator->() noexcept { return view_->field()->get_ptr(coordinate_); }
-    const element_t* operator->()const  noexcept { return (view_->field()->get_ptr(coordinate_)); }
+    const element_t& operator*() const noexcept
+    {
+        return view_->field()->get(coordinate_);
+    }
+    element_t* operator->() noexcept
+    {
+        return view_->field()->get_ptr(coordinate_);
+    }
+    const element_t* operator->() const noexcept
+    {
+        return (view_->field()->get_ptr(coordinate_));
+    }
     bool operator!=(dummy_t) const noexcept { return !_end; }
 
     inline auto& operator++() noexcept
     {
-        for (int i = 0;i < Dim;++i)
+        for (int i = 0; i < Dim; ++i)
         {
-            if (coordinate_[i]-view_->base()[i] < view_->extent()[i] - 1)
+            if (coordinate_[i] - view_->base()[i] < view_->extent()[i] - 1)
             {
-                coordinate_[i]+=view_->stride()[i];
-                for (int j = 0;j < i;++j)
-                {
-                    coordinate_[j] = view_->base()[j];
-                }
+                coordinate_[i] += view_->stride()[i];
+                for (int j = 0; j < i; ++j)
+                { coordinate_[j] = view_->base()[j]; }
                 return *this;
             }
         }
         _end = true;
         return *this;
     }
-    const auto& coordinate()const noexcept {return coordinate_;}
+    const auto& coordinate() const noexcept { return coordinate_; }
 
-
-private:
-    view_t* view_;
+  private:
+    view_t*      view_;
     coordinate_t coordinate_;
-    bool _end = false;
+    bool         _end = false;
 };
 
-
-
-template<class Field, int Dim=3>
+template<class Field, int Dim = 3>
 class View : public BlockDescriptor<int, Dim>
 {
-
-public: //member types
-    using block_type = BlockDescriptor<int ,Dim>;
+  public: //member types
+    using block_type = BlockDescriptor<int, Dim>;
     using super_type = block_type;
     using extent_t = typename block_type::extent_t;
     using base_t = typename block_type::base_t;
@@ -84,76 +98,69 @@ public: //member types
 
     using iterator_t = ViewIterator<View, Dim>;
 
-   
-public: //Ctors:
+  public: //Ctors:
+    View() = default;
+    ~View() = default;
+    View(const View& rhs) = default;
+    View& operator=(const View&) & = default;
 
-    View()=default;
-    ~View() =default;
-    View(const View& rhs)=default;
-	View& operator=(const View&) & = default ;
+    View(View&& rhs) = default;
+    View& operator=(View&&) & = default;
 
-    View(View&& rhs)=default;
-	View& operator=(View&&) & = default;
-
-    View(Field* _f, const block_type _view, extent_t _stride=extent_t(1))
-    :super_type(_view),field_(_f), stride_(_stride)
+    View(Field* _f, const block_type _view, extent_t _stride = extent_t(1))
+    : super_type(_view)
+    , field_(_f)
+    , stride_(_stride)
     {
     }
 
     template<class Function>
     void iterate(Function _f) noexcept
     {
-        rcIterator<Dim>::iterate(this->base(), this->extent(),stride_,
-               [this, &_f](const auto& _p)
-               {
-                   _f(field_->get(_p));
-               });
+        rcIterator<Dim>::iterate(this->base(), this->extent(), stride_,
+            [this, &_f](const auto& _p) { _f(field_->get(_p)); });
     }
 
-public: //member functions
+  public: //member functions
+    iterator_t begin() { return iterator_t(this); }
+    auto       end() { return typename iterator_t::dummy_t{}; }
 
-    iterator_t begin(){return iterator_t(this); }
-    auto end(){ return typename iterator_t::dummy_t{}; }
+    auto&       stride() noexcept { return stride_; }
+    const auto& stride() const noexcept { return stride_; }
 
-    auto& stride()noexcept {return stride_;}
-    const auto& stride()const noexcept {return stride_;}
-
-    const Field*& field()const noexcept { return field_; }
-    Field*& field()noexcept { return field_; }
-
+    const Field*& field() const noexcept { return field_; }
+    Field*&       field() noexcept { return field_; }
 
     template<class Container>
-    View&  operator=(Container& _c) noexcept
+    View& operator=(Container& _c) noexcept
     {
-        auto it_c=_c.begin();
-        this->iterate([&it_c](auto& n )
-        {
-            n=*it_c; ++it_c;
+        auto it_c = _c.begin();
+        this->iterate([&it_c](auto& n) {
+            n = *it_c;
+            ++it_c;
         });
         return *this;
     }
     template<class Container>
     void assign_toBuffer(Container& _c) noexcept
     {
-        auto it_c=_c.begin();
-        this->iterate([&it_c](auto& n )
-        {
-            *it_c=n; ++it_c;
+        auto it_c = _c.begin();
+        this->iterate([&it_c](auto& n) {
+            *it_c = n;
+            ++it_c;
         });
     }
     template<class Container>
     void assign_toView(Container& _c) noexcept
     {
-        *this=_c;
+        *this = _c;
     }
 
-public: //protected memeber:
-    Field* field_=nullptr;
-    extent_t stride_=extent_t(1);
+  public: //protected memeber:
+    Field*   field_ = nullptr;
+    extent_t stride_ = extent_t(1);
 };
-
-
 
 } //namespace domain
 
-#endif 
+#endif

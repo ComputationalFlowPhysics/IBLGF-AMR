@@ -1,3 +1,15 @@
+//      ▄▄▄▄▄▄▄▄▄▄▄  ▄▄▄▄▄▄▄▄▄▄   ▄            ▄▄▄▄▄▄▄▄▄▄▄  ▄▄▄▄▄▄▄▄▄▄▄
+//     ▐░░░░░░░░░░░▌▐░░░░░░░░░░▌ ▐░▌          ▐░░░░░░░░░░░▌▐░░░░░░░░░░░▌
+//      ▀▀▀▀█░█▀▀▀▀ ▐░█▀▀▀▀▀▀▀█░▌▐░▌          ▐░█▀▀▀▀▀▀▀▀▀ ▐░█▀▀▀▀▀▀▀▀▀
+//          ▐░▌     ▐░▌       ▐░▌▐░▌          ▐░▌          ▐░▌
+//          ▐░▌     ▐░█▄▄▄▄▄▄▄█░▌▐░▌          ▐░▌ ▄▄▄▄▄▄▄▄ ▐░█▄▄▄▄▄▄▄▄▄
+//          ▐░▌     ▐░░░░░░░░░░▌ ▐░▌          ▐░▌▐░░░░░░░░▌▐░░░░░░░░░░░▌
+//          ▐░▌     ▐░█▀▀▀▀▀▀▀█░▌▐░▌          ▐░▌ ▀▀▀▀▀▀█░▌▐░█▀▀▀▀▀▀▀▀▀
+//          ▐░▌     ▐░▌       ▐░▌▐░▌          ▐░▌       ▐░▌▐░▌
+//      ▄▄▄▄█░█▄▄▄▄ ▐░█▄▄▄▄▄▄▄█░▌▐░█▄▄▄▄▄▄▄▄▄ ▐░█▄▄▄▄▄▄▄█░▌▐░▌
+//     ▐░░░░░░░░░░░▌▐░░░░░░░░░░▌ ▐░░░░░░░░░░░▌▐░░░░░░░░░░░▌▐░▌
+//      ▀▀▀▀▀▀▀▀▀▀▀  ▀▀▀▀▀▀▀▀▀▀   ▀▀▀▀▀▀▀▀▀▀▀  ▀▀▀▀▀▀▀▀▀▀▀  ▀
+
 #ifndef __FFTWWrapper_h__
 #define __FFTWWrapper_h__
 
@@ -21,8 +33,6 @@
 
 namespace fft
 {
-
-
 // Usage: (after initializing the class)
 // 1. Fill input_buffer with input containing n_real_samples double
 //    numbers (note, set_input_zeropadded will copy your buffer with
@@ -32,71 +42,64 @@ namespace fft
 //    output_buffer[0], ..., output_buffer[output_size-1].
 //    Note that the output is composed of n_real_samples/2 + 1
 //    complex numbers.
-// 
+//
 // These 3 steps can be repeated many times.
-template <typename T1, typename T2>
+template<typename T1, typename T2>
 class fftw_wrapper
 {
-    
-public:
+  public:
     const int input_size;
     T1* const input_buffer;
-    
+
     const int output_size;
     T2* const output_buffer;
-    
-public:
-    fftw_wrapper(const fftw_wrapper& other)              = delete;
-    fftw_wrapper(fftw_wrapper&& other)                   = default;
-    fftw_wrapper& operator=(const fftw_wrapper& other) & = delete;
-    fftw_wrapper& operator=(fftw_wrapper&& other)      & = default;
-    ~fftw_wrapper() = default;
-    
-    // Constructors
-    fftw_wrapper(int n_real_samples):
-        input_size   (n_real_samples),
-        input_buffer (fftw_alloc_real(n_real_samples)),
-        output_size  (n_real_samples/2 + 1),
-        output_buffer(fftw_alloc_complex(n_real_samples/2 + 1))
-    {
-        plan = fftw_plan_dft_1d(n_real_samples,
-                                input_buffer,
-                                output_buffer,
-                                FFTW_ESTIMATE);
-    }
-    
-public:
 
+  public:
+    fftw_wrapper(const fftw_wrapper& other) = delete;
+    fftw_wrapper(fftw_wrapper&& other) = default;
+    fftw_wrapper& operator=(const fftw_wrapper& other) & = delete;
+    fftw_wrapper& operator=(fftw_wrapper&& other) & = default;
+    ~fftw_wrapper() = default;
+
+    // Constructors
+    fftw_wrapper(int n_real_samples)
+    : input_size(n_real_samples)
+    , input_buffer(fftw_alloc_real(n_real_samples))
+    , output_size(n_real_samples / 2 + 1)
+    , output_buffer(fftw_alloc_complex(n_real_samples / 2 + 1))
+    {
+        plan = fftw_plan_dft_1d(
+            n_real_samples, input_buffer, output_buffer, FFTW_ESTIMATE);
+    }
+
+  public:
     void set_input_zeropadded(const T1* buffer, int size)
     {
         assert(size <= input_size);
-        memcpy(input_buffer, buffer  , sizeof(T1)*size);
-        memset(&input_buffer[size], 0, sizeof(T1)*(input_size - size));
+        memcpy(input_buffer, buffer, sizeof(T1) * size);
+        memset(&input_buffer[size], 0, sizeof(T1) * (input_size - size));
     }
-    
+
     void set_input_zeropadded(const std::vector<T1>& vec)
     {
         set_input_zeropadded(&vec[0], vec.size());
     }
-    
-    void execute()
-    {
-        fftw_execute(plan);
-    }
-    
+
+    void execute() { fftw_execute(plan); }
+
     std::vector<T2> get_output()
     {
         return vector<T2>(output_buffer, output_buffer + output_size);
     }
 
-private:
+  private:
     fftw_plan plan;
 };
 
-} //namespace
+} // namespace fft
 #endif
 
-//std::vector<std::complex<float>, boost::alignment::aligned_allocator_adaptor<std::allocator<std::complex<float>>,32>> 
+//std::vector<std::complex<float>, boost::alignment::aligned_allocator_adaptor<std::allocator<std::complex<float>>,32>>
 //dft(float* data, unsigned int nx, unsigned int ny, unsigned int nz, int num_threads)
 //{
 //	// initialize multi-threading
@@ -105,10 +108,10 @@ private:
 //
 //	// set number of threads to use with following plans
 //	fftwf_plan_with_nthreads(num_threads);
-//	
+//
 //	// provide space for result
 //	std::vector<std::complex<float>, boost::alignment::aligned_allocator_adaptor<std::allocator<std::complex<float>>,32>> res(nz*ny*((nx/2)+1));
-//	
+//
 //	// make plan
 //	fftwf_plan plan = fftwf_plan_dft_r2c_3d(static_cast<int>(nz), static_cast<int>(ny), static_cast<int>(nx),
 //	                                        data, reinterpret_cast<fftwf_complex*>(&res[0]),
@@ -126,5 +129,4 @@ private:
 //	// return result
 //	return std::move(res);
 //}
-
 

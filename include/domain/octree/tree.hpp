@@ -1,6 +1,17 @@
+//      ▄▄▄▄▄▄▄▄▄▄▄  ▄▄▄▄▄▄▄▄▄▄   ▄            ▄▄▄▄▄▄▄▄▄▄▄  ▄▄▄▄▄▄▄▄▄▄▄
+//     ▐░░░░░░░░░░░▌▐░░░░░░░░░░▌ ▐░▌          ▐░░░░░░░░░░░▌▐░░░░░░░░░░░▌
+//      ▀▀▀▀█░█▀▀▀▀ ▐░█▀▀▀▀▀▀▀█░▌▐░▌          ▐░█▀▀▀▀▀▀▀▀▀ ▐░█▀▀▀▀▀▀▀▀▀
+//          ▐░▌     ▐░▌       ▐░▌▐░▌          ▐░▌          ▐░▌
+//          ▐░▌     ▐░█▄▄▄▄▄▄▄█░▌▐░▌          ▐░▌ ▄▄▄▄▄▄▄▄ ▐░█▄▄▄▄▄▄▄▄▄
+//          ▐░▌     ▐░░░░░░░░░░▌ ▐░▌          ▐░▌▐░░░░░░░░▌▐░░░░░░░░░░░▌
+//          ▐░▌     ▐░█▀▀▀▀▀▀▀█░▌▐░▌          ▐░▌ ▀▀▀▀▀▀█░▌▐░█▀▀▀▀▀▀▀▀▀
+//          ▐░▌     ▐░▌       ▐░▌▐░▌          ▐░▌       ▐░▌▐░▌
+//      ▄▄▄▄█░█▄▄▄▄ ▐░█▄▄▄▄▄▄▄█░▌▐░█▄▄▄▄▄▄▄▄▄ ▐░█▄▄▄▄▄▄▄█░▌▐░▌
+//     ▐░░░░░░░░░░░▌▐░░░░░░░░░░▌ ▐░░░░░░░░░░░▌▐░░░░░░░░░░░▌▐░▌
+//      ▀▀▀▀▀▀▀▀▀▀▀  ▀▀▀▀▀▀▀▀▀▀   ▀▀▀▀▀▀▀▀▀▀▀  ▀▀▀▀▀▀▀▀▀▀▀  ▀
+
 #ifndef OCTREE_INCLUDED_LINEAR_TREE_HPP
 #define OCTREE_INCLUDED_LINEAR_TREE_HPP
-
 
 #include <vector>
 #include <memory>
@@ -19,8 +30,6 @@
 
 namespace octree
 {
-
-
 /** @brief Octree
  *
  *  Parallel octree implementation using a full pointer-based implementation.
@@ -28,25 +37,24 @@ namespace octree
 template<int Dim, class DataType>
 class Tree
 {
-
-public: //memeber types
-
+  public: //memeber types
     static constexpr int dimension = Dim;
-    using octant_type              = Octant<Dim, DataType>;
-    using octant_base_type         = Octant_base<Dim, DataType>;
-    using real_coordinate_type     = typename octant_base_type::real_coordinate_type;
-    using key_type                 = typename octant_base_type::key_type;
-    using coordinate_type          = typename key_type::coordinate_type;
-    using scalar_coordinate_type   = typename key_type::scalar_coordinate_type;
+    using octant_type = Octant<Dim, DataType>;
+    using octant_base_type = Octant_base<Dim, DataType>;
+    using real_coordinate_type =
+        typename octant_base_type::real_coordinate_type;
+    using key_type = typename octant_base_type::key_type;
+    using coordinate_type = typename key_type::coordinate_type;
+    using scalar_coordinate_type = typename key_type::scalar_coordinate_type;
 
-    using octant_ptr_map_type = std::map<key_type,octant_type*>;
-    using octant_iterator     = MapValuePtrIterator<octant_ptr_map_type>;
+    using octant_ptr_map_type = std::map<key_type, octant_type*>;
+    using octant_iterator = MapValuePtrIterator<octant_ptr_map_type>;
     using raw_octant_iterator = typename octant_ptr_map_type::iterator;
 
     using dfs_iterator = typename detail::IteratorDfs<octant_type>;
     using bfs_iterator = typename detail::IteratorBfs<octant_type>;
 
-    template<class Iterator=bfs_iterator>
+    template<class Iterator = bfs_iterator>
     using conditional_iterator = typename detail::ConditionalIterator<Iterator>;
 
     using block_descriptor_type = typename octant_type::block_descriptor_type;
@@ -54,18 +62,17 @@ public: //memeber types
     using coordinate_transform_t =
         std::function<real_coordinate_type(real_coordinate_type, int _level)>;
 
-public:
+  public:
     friend octant_base_type;
     friend octant_type;
 
-public:
+  public:
     Tree() = default;
-    Tree(const Tree& other)              = delete;
-    Tree(Tree&& other)                   = default;
+    Tree(const Tree& other) = delete;
+    Tree(Tree&& other) = default;
     Tree& operator=(const Tree& other) & = delete;
-    Tree& operator=(Tree&& other)      & = default;
+    Tree& operator=(Tree&& other) & = default;
     ~Tree() = default;
-
 
     /**
      *  @brief Top-down construction of octree.
@@ -79,13 +86,10 @@ public:
      *  \param[in] _base_level Level of _points. Note that this fixed a maximum
      *                         extent, which can be respresented.
      */
-    Tree (const std::vector<coordinate_type>& _points, int _base_level)
+    Tree(const std::vector<coordinate_type>& _points, int _base_level)
     {
         std::vector<key_type> keys;
-        for(auto& p : _points )
-        {
-            keys.push_back(key_type(p,_base_level));
-        }
+        for (auto& p : _points) { keys.push_back(key_type(p, _base_level)); }
         this->init(keys, _base_level);
     }
 
@@ -94,7 +98,7 @@ public:
      *
      *  Basd on a vector of keys
      */
-    Tree(  const std::vector<key_type>& _keys, int _base_level)
+    Tree(const std::vector<key_type>& _keys, int _base_level)
     {
         this->init(_keys, _base_level);
     }
@@ -103,23 +107,22 @@ public:
     {
         this->base_level_ = _base_level;
         depth_ = base_level_ + 1;
-        root_ = std::make_shared<octant_type>(
-                coordinate_type(0), 0, this);
+        root_ = std::make_shared<octant_type>(coordinate_type(0), 0, this);
     }
 
-public:
-
-
-    template<class Function=std::function<void(octant_type* c)>>
-    void init(const std::vector<key_type>& _keys,
-              const Function& f=[](octant_type* o){ return; })
+  public:
+    template<class Function = std::function<void(octant_type* c)>>
+    void init(
+        const std::vector<key_type>& _keys,
+        const Function&              f = [](octant_type* o) { return; })
     {
-        this->init(_keys, this->base_level_,f);
+        this->init(_keys, this->base_level_, f);
     }
 
-    template<class Function=std::function<void(octant_type* c)>>
-    void init(const std::vector<key_type>& _keys, int _base_level,
-              const Function& f=[](octant_type* o){ return; })
+    template<class Function = std::function<void(octant_type* c)>>
+    void init(
+        const std::vector<key_type>& _keys, int _base_level,
+        const Function& f = [](octant_type* o) { return; })
     {
         this->base_level_ = _base_level;
         depth_ = base_level_ + 1;
@@ -134,9 +137,11 @@ public:
         //}
     }
 
-    template<class Function=std::function<void(octant_type* c)>>
-    void insert_keys(const std::vector<key_type>& _keys,
-              const Function& f=[](octant_type* o){ return; }, bool update_depth=true)
+    template<class Function = std::function<void(octant_type* c)>>
+    void insert_keys(
+        const std::vector<key_type>& _keys,
+        const Function&              f = [](octant_type* o) { return; },
+        bool                         update_depth = true)
     {
         for (auto& k : _keys)
         {
@@ -146,23 +151,21 @@ public:
         }
     }
 
+  public:
+    auto begin() const noexcept { return dfs_iterator(root_.get()); }
+    auto end() const noexcept { return dfs_iterator(); }
 
+    octant_iterator begin_leafs() const noexcept { return leafs_.begin(); }
+    octant_iterator end_leafs() const noexcept { return leafs_.end(); }
 
-public:
-    auto begin() const noexcept {return dfs_iterator(root_.get());}
-    auto end () const noexcept {return dfs_iterator();}
+    octant_iterator begin_leafs() noexcept { return leafs_.begin(); }
+    octant_iterator end_leafs() noexcept { return leafs_.end(); }
 
-    octant_iterator begin_leafs() const noexcept {return leafs_.begin();}
-    octant_iterator end_leafs  () const noexcept {return leafs_.end();}
-
-    octant_iterator begin_leafs() noexcept {return leafs_.begin();}
-    octant_iterator end_leafs  () noexcept {return leafs_.end();}
-
-    octant_iterator begin(int _level)noexcept
+    octant_iterator begin(int _level) noexcept
     {
         return level_maps_[_level].begin();
     }
-    octant_iterator end(int _level)noexcept
+    octant_iterator end(int _level) noexcept
     {
         return level_maps_[_level].end();
     }
@@ -170,7 +173,7 @@ public:
     {
         return level_maps_[_level].begin();
     }
-    octant_iterator end  (int _level) const noexcept
+    octant_iterator end(int _level) const noexcept
     {
         return level_maps_[_level].end();
     }
@@ -185,16 +188,15 @@ public:
         return level_maps_[_level].find(key);
     }
 
-    octant_type* find_octant(key_type _k)const
+    octant_type* find_octant(key_type _k) const
     {
-        return find_impl_top_down(_k,root());
+        return find_impl_top_down(_k, root());
         auto it = root();
         auto l = it->level();
         while (it->key() != _k)
         {
             auto child_ = it->child(_k.sib_number(l));
-            if  (child_ == nullptr)
-                return nullptr;
+            if (child_ == nullptr) return nullptr;
 
             it = child_;
             l++;
@@ -210,11 +212,12 @@ public:
         //return nullptr;
     }
 
-    octant_type* find_impl_top_down(const key_type& k, octant_type* n) const noexcept
+    octant_type* find_impl_top_down(const key_type& k, octant_type* n) const
+        noexcept
     {
         if (n->key() == k) return n;
         if (n->key().level() == k.level()) return nullptr;
-        for (int i=n->num_children()-1; i>=0; --i)
+        for (int i = n->num_children() - 1; i >= 0; --i)
         {
             if (n->child(i) && n->child(i)->key() <= k)
                 return find_impl_top_down(k, n->child(i));
@@ -222,34 +225,30 @@ public:
         return nullptr;
     }
 
+    auto num_leafs() const noexcept { return leafs_.size(); }
 
-    auto num_leafs() const noexcept {return leafs_.size();}
+    const int& base_level() const noexcept { return base_level_; }
+    int&       base_level() noexcept { return base_level_; }
+    const int& depth() const noexcept { return depth_; }
+    int&       depth() noexcept { return depth_; }
 
-    const int& base_level() const noexcept{return base_level_;}
-    int& base_level      () noexcept      {return base_level_;}
-    const int& depth     () const noexcept{return depth_;}
-    int& depth           () noexcept      {return depth_;}
+    octant_type* root() const noexcept { return root_.get(); }
 
-    octant_type* root()const noexcept{return root_.get();}
-
-
-    auto unfound_neighbors(octant_type* _l, bool correction_as_neighbors=true)
+    auto unfound_neighbors(octant_type* _l, bool correction_as_neighbors = true)
     {
         std::vector<key_type> keys;
 
-        auto _k=_l->key();
-        auto neighbor_keys=_k.get_neighbor_keys();
+        auto _k = _l->key();
+        auto neighbor_keys = _k.get_neighbor_keys();
 
-        for(auto& nk:neighbor_keys)
+        for (auto& nk : neighbor_keys)
         {
             if (nk.is_end()) continue;
-            if (nk==_k) continue;
+            if (nk == _k) continue;
             const auto neighbor_i = this->find_octant(nk);
-            if (!neighbor_i || !neighbor_i->data())
-                    keys.emplace_back(nk);
-            else if( !correction_as_neighbors && neighbor_i->is_correction())
-                    keys.emplace_back(nk);
-
+            if (!neighbor_i || !neighbor_i->data()) keys.emplace_back(nk);
+            else if (!correction_as_neighbors && neighbor_i->is_correction())
+                keys.emplace_back(nk);
         }
 
         return keys;
@@ -258,34 +257,31 @@ public:
     template<class Function>
     void insert_correction_neighbor(octant_type* _l, const Function& _f)
     {
-
         auto keys = unfound_neighbors(_l);
 
-        for(auto&k: keys)
+        for (auto& k : keys)
         {
-            auto _neighbor=this->insert_td(k);
-            if (!_neighbor || !_neighbor->data())
-                _f(_neighbor);
+            auto _neighbor = this->insert_td(k);
+            if (!_neighbor || !_neighbor->data()) _f(_neighbor);
         }
     }
 
-    void deletionReset_2to1(octant_type* _l, std::unordered_set<octant_type*>& checklist)
+    void deletionReset_2to1(
+        octant_type* _l, std::unordered_set<octant_type*>& checklist)
     {
-        auto check=checklist.find(_l);
+        auto check = checklist.find(_l);
 
         if (check == checklist.end())
         {
-            if (_l->refinement_level()<0)
-                return;
+            if (_l->refinement_level() < 0) return;
 
             auto k = _l->key();
-            auto neighbor_keys=k.get_neighbor_keys();
-            for (auto nk:neighbor_keys)
+            auto neighbor_keys = k.get_neighbor_keys();
+            for (auto nk : neighbor_keys)
             {
                 auto neighbor_i = this->find_octant(nk);
 
-                if(!neighbor_i || !neighbor_i->data() )
-                    continue;
+                if (!neighbor_i || !neighbor_i->data()) continue;
 
                 neighbor_i->aim_deletion(false);
                 deletionReset_2to1(neighbor_i->parent(), checklist);
@@ -293,31 +289,30 @@ public:
 
             checklist.emplace(_l);
         }
-
     }
 
-    bool try_2to1(key_type _k,block_descriptor_type key_bd_box)
+    bool try_2to1(key_type _k, block_descriptor_type key_bd_box)
     {
         // Dynmaic Programming to rduce repeated checks
         std::unordered_map<key_type, bool> checklist;
-        return try_2to1(_k,key_bd_box,checklist);
-
+        return try_2to1(_k, key_bd_box, checklist);
     }
 
-    bool try_2to1(key_type _k, block_descriptor_type key_bd_box, std::unordered_map<key_type,bool>& checklist)
+    bool try_2to1(key_type _k, block_descriptor_type key_bd_box,
+        std::unordered_map<key_type, bool>& checklist)
     {
-        auto check=checklist.find(_k);
+        auto check = checklist.find(_k);
 
         if (check == checklist.end())
         {
-            int rf_l=_k.level() - base_level_;
-            auto neighbor_keys=_k.get_neighbor_keys();
+            int  rf_l = _k.level() - base_level_;
+            auto neighbor_keys = _k.get_neighbor_keys();
 
-            if (rf_l==0)
+            if (rf_l == 0)
             {
-                for (auto nk:neighbor_keys)
+                for (auto nk : neighbor_keys)
                 {
-                    if (nk==_k) continue;
+                    if (nk == _k) continue;
                     if (!key_bd_box.is_inside(nk.coordinate()))
                     {
                         checklist.emplace(_k, false);
@@ -327,14 +322,14 @@ public:
                 checklist.emplace(_k, true);
                 return true;
             }
-            else if (rf_l>0)
+            else if (rf_l > 0)
             {
-                for (auto nk:neighbor_keys)
+                for (auto nk : neighbor_keys)
                 {
-                    if (nk==_k) continue;
+                    if (nk == _k) continue;
 
-                    auto nk_p=nk.parent();
-                    if ( !try_2to1(nk_p, key_bd_box, checklist) )
+                    auto nk_p = nk.parent();
+                    if (!try_2to1(nk_p, key_bd_box, checklist))
                     {
                         checklist.emplace(_k, false);
                         return false;
@@ -350,98 +345,94 @@ public:
             return check->second;
         }
         return false;
-
     }
 
     template<class Function>
-    void refine(octant_type* _l, const Function& _f,
-                 bool ratio_2to1 = true)
+    void refine(octant_type* _l, const Function& _f, bool ratio_2to1 = true)
     {
-
         //Check 2:1 balance constraint
         //bool neighbors_exists=true;
         if (ratio_2to1)
         {
-            for(int i=0;i<_l->nNeighbors();++i)
+            for (int i = 0; i < _l->nNeighbors(); ++i)
             {
-                auto n_i=_l->neighbor(i);
-                if(n_i && n_i->data())
-                    n_i->aim_deletion(false);
+                auto n_i = _l->neighbor(i);
+                if (n_i && n_i->data()) n_i->aim_deletion(false);
             }
 
-            if(_l->refinement_level()>=0)
+            if (_l->refinement_level() >= 0)
             {
-                auto neighbor_keys = unfound_neighbors(_l,false);
-                for(auto&k: neighbor_keys)
+                auto neighbor_keys = unfound_neighbors(_l, false);
+                for (auto& k : neighbor_keys)
                 {
                     if (k.is_end()) continue;
 
-                    if (_l->refinement_level()==0)
+                    if (_l->refinement_level() == 0)
                     {
-                        auto oct=this->insert_td(k);
-                        if (!oct->data())
-                            _f(oct);
+                        auto oct = this->insert_td(k);
+                        if (!oct->data()) _f(oct);
 
                         oct->flag_leaf(true);
                         oct->flag_correction(false);
-                        oct->leaf_boundary()=false;
+                        oct->leaf_boundary() = false;
                         oct->aim_deletion(false);
                     }
                     else
                     {
-                        auto parent_key=k.parent();
+                        auto parent_key = k.parent();
 
                         auto pa = this->find_octant(parent_key);
-                        if (!pa )
+                        if (!pa)
                         {
-                            pa=this->insert_td(parent_key);
+                            pa = this->insert_td(parent_key);
                             _f(pa);
                         }
-                        this->refine(pa,_f, ratio_2to1);
+                        this->refine(pa, _f, ratio_2to1);
                     }
                 }
             }
-            else{
+            else
+            {
                 //throw
                 //std::runtime_error("Cannot satisfy 2:1 refinement requirement for base level ");
             }
         }
 
-        for(int i=0;i<_l->num_children();++i)
+        for (int i = 0; i < _l->num_children(); ++i)
         {
             if (_l->child(i) && _l->child(i)->data()) continue;
-            auto child=_l->refine(i);
-            if(!child->data())_f(child);
+            auto child = _l->refine(i);
+            if (!child->data()) _f(child);
         }
 
-        for(int i=0;i<_l->num_children();++i)
+        for (int i = 0; i < _l->num_children(); ++i)
         {
             auto child = _l->child(i);
             child->flag_leaf(true);
             child->flag_correction(false);
-            child->leaf_boundary()=false;
+            child->leaf_boundary() = false;
             child->aim_deletion(false);
         }
 
         _l->flag_leaf(false);
         _l->flag_correction(false);
-        _l->leaf_boundary()=false;
+        _l->leaf_boundary() = false;
         _l->aim_deletion(false);
 
-        if(_l->level()+2 > depth_) depth_=_l->level()+2;
+        if (_l->level() + 2 > depth_) depth_ = _l->level() + 2;
     }
 
     void delete_oct(octant_type* oct)
     {
-        oct->rank()=-1;
+        oct->rank() = -1;
         oct->deallocate_data();
 
-        if(oct->is_leaf_search())
+        if (oct->is_leaf_search())
         {
-            int cnumber=oct->key().child_number();
-            oct=oct->parent();
+            int cnumber = oct->key().child_number();
+            oct = oct->parent();
 
-            if(oct) oct->delete_child(cnumber);
+            if (oct) oct->delete_child(cnumber);
         }
 
         //while (oct->refinement_level()<0 && oct->is_leaf_search())
@@ -464,25 +455,23 @@ public:
         return octant_to_real_coordinate_;
     }
     template<class T>
-    auto octant_to_level_coordinate(T _x, int _level=0)
+    auto octant_to_level_coordinate(T _x, int _level = 0)
     {
         return octant_to_real_coordinate_(_x, _level);
     }
 
-public: //traversals
-
-    /**
+  public: //traversals
+          /**
      * @brief Recursive depth-first traversal
      *
      * Note: Better to use the corresponding iterators.
      * @param [in] f Function to be applied to dfs-node
      */
-	template<class Function>
-	void traverse_dfs(Function f)
-	{
-		depth_first_traverse(root(), f);
-	}
-
+    template<class Function>
+    void traverse_dfs(Function f)
+    {
+        depth_first_traverse(root(), f);
+    }
 
     /**
      * @brief Recursive breadth-first traversal
@@ -492,23 +481,20 @@ public: //traversals
      * @param [in] min_level Startlevel
      * @param [in] max_level Endlevel
      */
-	template<class Function>
-	void traverse_bfs(Function f,
-                      int min_level=0,
-                      int max_level=key_type::max_level())
-	{
-		for (int i=min_level; i<max_level; ++i)
-			breadth_first_traverse(root(), f, i);
-	}
-
-private: //find
-
-    template<class Node>
-    bool has_leaf(Node& _node ) const
+    template<class Function>
+    void traverse_bfs(
+        Function f, int min_level = 0, int max_level = key_type::max_level())
     {
-        auto it=leafs_.find(_node.key());
-        if(it!=leafs_.end())
-            return true;
+        for (int i = min_level; i < max_level; ++i)
+            breadth_first_traverse(root(), f, i);
+    }
+
+  private: //find
+    template<class Node>
+    bool has_leaf(Node& _node) const
+    {
+        auto it = leafs_.find(_node.key());
+        if (it != leafs_.end()) return true;
         return false;
     }
 
@@ -519,38 +505,32 @@ private: //find
 
     octant_type* find_leaf(key_type _k)
     {
-        auto it=leafs_.find(_k);
-        if(it!=leafs_.end())
-            return it->second;
-        else return nullptr;
+        auto it = leafs_.find(_k);
+        if (it != leafs_.end()) return it->second;
+        else
+            return nullptr;
     }
 
-
-
-public:  //Top down insert strategy
-
+  public: //Top down insert strategy
     octant_type* insert_td(const coordinate_type& x, int level)
     {
-        return insert_td(key_type(x,level));
+        return insert_td(key_type(x, level));
     }
-	octant_type* insert_td(const key_type& k)
+    octant_type* insert_td(const key_type& k)
     {
-        return insert_impl_top_down(k,root_.get());
+        return insert_impl_top_down(k, root_.get());
     }
 
-private:  //Top down insert strategy
-
+  private: //Top down insert strategy
     octant_type* insert_impl_top_down(const key_type& k, octant_type* n) const
     {
         if (n->key() == k) return n;
-        for (int i=n->num_children()-1; i>=0; --i)
+        for (int i = n->num_children() - 1; i >= 0; --i)
         {
             if (n->children_[i])
             {
-                if ( n->children_[i]->key() <= k)
-                {
-                    return insert_impl_top_down(k, n->children_[i].get());
-                }
+                if (n->children_[i]->key() <= k)
+                { return insert_impl_top_down(k, n->children_[i].get()); }
             }
             else
             {
@@ -563,13 +543,10 @@ private:  //Top down insert strategy
             }
         }
         throw std::runtime_error(
-                "tree.hpp:insert_impl_top_down: Should have exited before!"
-                );
+            "tree.hpp:insert_impl_top_down: Should have exited before!");
     }
 
-
-private: //traversal
-
+  private: //traversal
     template<class Function>
     void breadth_first_traverse(octant_type* n, Function& f, int level)
     {
@@ -578,9 +555,9 @@ private: //traversal
             f(n);
             return;
         }
-        for (std::size_t i=0; i<n->num_children(); ++i)
+        for (std::size_t i = 0; i < n->num_children(); ++i)
         {
-            if(n->children_[i])
+            if (n->children_[i])
                 breadth_first_traverse(n->children_[i].get(), f, level);
         }
     }
@@ -589,42 +566,39 @@ private: //traversal
     void depth_first_traverse(octant_type* n, Function& f)
     {
         f(n);
-        for (std::size_t i=0; i<n->num_children(); ++i)
+        for (std::size_t i = 0; i < n->num_children(); ++i)
         {
-            if (n->child(i)) depth_first_traverse(n->child(i),f);
+            if (n->child(i)) depth_first_traverse(n->child(i), f);
         }
     }
 
-public: // misc
-
+  public: // misc
     void construct_level_maps()
     {
         level_maps_.clear();
         level_maps_.resize(key_type::max_level());
-        dfs_iterator it_begin(root()); dfs_iterator it_end;
-        for(auto it =it_begin;it!=it_end;++it)
+        dfs_iterator it_begin(root());
+        dfs_iterator it_end;
+        for (auto it = it_begin; it != it_end; ++it)
         {
             if (it.ptr() && it->data())
-                level_maps_[it->level()].emplace(it->key(),it.ptr());
+                level_maps_[it->level()].emplace(it->key(), it.ptr());
         }
     }
 
-
-public:
-
+  public:
     void lookup_local_change(std::set<key_type>& res)
     {
-        dfs_iterator begin(root()); dfs_iterator end;
-        for(auto it =begin;it!=end;++it)
-        {
-            res.emplace(it->key());
-        }
+        dfs_iterator begin(root());
+        dfs_iterator end;
+        for (auto it = begin; it != end; ++it) { res.emplace(it->key()); }
     }
 
     void lookup_parents(std::set<key_type>& res)
     {
-        dfs_iterator begin(root()); dfs_iterator end;
-        for(auto it =begin;it!=end;++it)
+        dfs_iterator begin(root());
+        dfs_iterator end;
+        for (auto it = begin; it != end; ++it)
         {
             if (!it->locally_owned()) continue;
             res.emplace(it->key().parent());
@@ -633,52 +607,52 @@ public:
 
     void lookup_children(std::set<key_type>& res)
     {
-        dfs_iterator begin(root()); dfs_iterator end;
-        for(auto it =begin;it!=end;++it)
+        dfs_iterator begin(root());
+        dfs_iterator end;
+        for (auto it = begin; it != end; ++it)
         {
             if (!it->locally_owned()) continue;
-            auto it_key=it->key();
-            for(int i=0;i<it->num_children();++i)
-            {
-                res.emplace(it_key.child(i));
-            }
+            auto it_key = it->key();
+            for (int i = 0; i < it->num_children(); ++i)
+            { res.emplace(it_key.child(i)); }
         }
     }
 
     void lookup_infls(std::set<key_type>& res)
     {
-        dfs_iterator begin(root()); dfs_iterator end;
-        for(auto it =begin;it!=end;++it)
+        dfs_iterator begin(root());
+        dfs_iterator end;
+        for (auto it = begin; it != end; ++it)
         {
             if (!it->locally_owned()) continue;
-            auto n_keys=it->get_infl_keys();
-            for(auto& n_k:n_keys)
+            auto n_keys = it->get_infl_keys();
+            for (auto& n_k : n_keys)
             {
-                if (!n_k.is_end())
-                    res.emplace(n_k);
+                if (!n_k.is_end()) res.emplace(n_k);
             }
         }
     }
 
     void lookup_neighbors(std::set<key_type>& res)
     {
-        dfs_iterator begin(root()); dfs_iterator end;
-        for(auto it =begin;it!=end;++it)
+        dfs_iterator begin(root());
+        dfs_iterator end;
+        for (auto it = begin; it != end; ++it)
         {
             if (!it->locally_owned()) continue;
-            auto n_keys=it->get_neighbor_keys();
-            for(auto& n_k:n_keys)
+            auto n_keys = it->get_neighbor_keys();
+            for (auto& n_k : n_keys)
             {
-                if (!n_k.is_end())
-                    res.emplace(n_k);
+                if (!n_k.is_end()) res.emplace(n_k);
             }
         }
     }
 
     void construct_lists()
     {
-        dfs_iterator begin(root()); dfs_iterator end;
-        for(auto it =begin;it!=end;++it)
+        dfs_iterator begin(root());
+        dfs_iterator end;
+        for (auto it = begin; it != end; ++it)
         {
             if (!it->data()) continue;
             neighbor_list_build(it.ptr());
@@ -688,20 +662,18 @@ public:
 
     void neighbor_list_build(octant_type* it)
     {
-        boost::mpi::communicator  w;
+        boost::mpi::communicator w;
 
         it->neighbor_clear();
-        auto nkeys=it->get_neighbor_keys();
+        auto nkeys = it->get_neighbor_keys();
 
-        for(std::size_t i = 0; i< nkeys.size();++i)
+        for (std::size_t i = 0; i < nkeys.size(); ++i)
         {
             const auto neighbor_i = this->find_octant(nkeys[i]);
-            if (!neighbor_i || !neighbor_i->data())
-                it->neighbor(i, nullptr);
+            if (!neighbor_i || !neighbor_i->data()) it->neighbor(i, nullptr);
             else
                 it->neighbor(i, neighbor_i);
         }
-
     }
 
     void influence_list_build(octant_type* it)
@@ -709,49 +681,45 @@ public:
         it->influence_clear();
         int infl_id = 0;
         it->influence_number(infl_id);
-        if(!it->parent() ) return;
+        if (!it->parent()) return;
 
+        auto nkeys = it->get_infl_keys();
 
-        auto nkeys=it->get_infl_keys();
-
-        for(std::size_t i = 0; i< nkeys.size();++i)
+        for (std::size_t i = 0; i < nkeys.size(); ++i)
         {
             const auto infl_i = this->find_octant(nkeys[i]);
-            if (infl_i && infl_i->data())
-                it->influence(infl_id++, infl_i);
+            if (infl_i && infl_i->data()) it->influence(infl_id++, infl_i);
         }
         it->influence_number(infl_id);
-
     }
 
-
-public: //children and parent queries
-
+  public: //children and parent queries
     template<class Client>
-    void query_ranks( Client* _c, std::set<key_type>& res)
+    void query_ranks(Client* _c, std::set<key_type>& res)
     {
-        dfs_iterator it_begin(root()); dfs_iterator it_end;
+        dfs_iterator it_begin(root());
+        dfs_iterator it_end;
 
         std::vector<key_type> keys;
         std::copy(res.begin(), res.end(), std::back_inserter(keys));
 
-        std::sort(keys.begin(), keys.end(), [](key_type k1, key_type k2)->bool{return k1.level()>k2.level();});
-        auto ranks= _c->rank_query( keys );
-        for(std::size_t i = 0; i < keys.size();++i )
+        std::sort(
+            keys.begin(), keys.end(), [](key_type k1, key_type k2) -> bool {
+                return k1.level() > k2.level();
+            });
+        auto ranks = _c->rank_query(keys);
+        for (std::size_t i = 0; i < keys.size(); ++i)
         {
             boost::mpi::communicator world;
-            auto nn = this->find_octant(keys[i]);
+            auto                     nn = this->find_octant(keys[i]);
             if (nn && nn->data())
             {
-                if(ranks[i]>0)
-                {
-                    nn->rank()=ranks[i];
-                }
+                if (ranks[i] > 0) { nn->rank() = ranks[i]; }
                 else
                 {
                     nn->flag_leaf(false);
                     nn->flag_correction(false);
-                    nn->leaf_boundary()=false;
+                    nn->leaf_boundary() = false;
                     nn->aim_deletion(true);
 
                     this->delete_oct(nn);
@@ -759,98 +727,90 @@ public: //children and parent queries
             }
             else
             {
-                if (ranks[i]>0)
+                if (ranks[i] > 0)
                 {
-                    auto nn=this->insert_td(keys[i]);
-                    nn->rank()=ranks[i];
+                    auto nn = this->insert_td(keys[i]);
+                    nn->rank() = ranks[i];
                 }
             }
         }
     }
 
     template<class Client>
-    void query_masks( Client* _c)
+    void query_masks(Client* _c)
     {
-        dfs_iterator it_begin(root()); dfs_iterator it_end;
+        dfs_iterator it_begin(root());
+        dfs_iterator it_end;
 
         std::vector<key_type> keys;
-        for(auto it =it_begin;it!=it_end;++it)
+        for (auto it = it_begin; it != it_end; ++it)
         {
-            if (it->data())
-                keys.emplace_back(it->key());
+            if (it->data()) keys.emplace_back(it->key());
         }
 
-        auto masks=_c->mask_query( keys );
+        auto masks = _c->mask_query(keys);
 
-        for(std::size_t i = 0; i < masks.size();++i )
+        for (std::size_t i = 0; i < masks.size(); ++i)
         {
             auto nn = this->find_octant(keys[i]);
-            if (!nn)
-                throw std::runtime_error(
-                        "didn't find key for mask query");
+            if (!nn) throw std::runtime_error("didn't find key for mask query");
             nn->flag_mask((masks[i]));
         }
-
     }
 
     template<class Client>
-    void query_corrections( Client* _c)
+    void query_corrections(Client* _c)
     {
-        boost::mpi::communicator  w;
+        boost::mpi::communicator w;
 
-        dfs_iterator it_begin(root()); dfs_iterator it_end;
+        dfs_iterator it_begin(root());
+        dfs_iterator it_end;
 
         std::vector<key_type> keys;
-        for(auto it =it_begin;it!=it_end;++it)
+        for (auto it = it_begin; it != it_end; ++it)
         {
-            if (it->data())
-                keys.emplace_back(it->key());
+            if (it->data()) keys.emplace_back(it->key());
         }
 
-        auto corrections=_c->correction_query( keys );
+        auto corrections = _c->correction_query(keys);
 
-        for(std::size_t i = 0; i < corrections.size();++i )
+        for (std::size_t i = 0; i < corrections.size(); ++i)
         {
             auto nn = this->find_octant(keys[i]);
             if (!nn)
                 throw std::runtime_error(
-                        "didn't find key for correction query");
+                    "didn't find key for correction query");
             nn->flag_correction((corrections[i]));
         }
-
     }
 
     template<class Client>
-    void query_flags( Client* _c)
+    void query_flags(Client* _c)
     {
-        boost::mpi::communicator  w;
+        boost::mpi::communicator w;
 
-        dfs_iterator it_begin(root()); dfs_iterator it_end;
+        dfs_iterator it_begin(root());
+        dfs_iterator it_end;
 
         std::vector<key_type> keys;
-        for(auto it =it_begin;it!=it_end;++it)
+        for (auto it = it_begin; it != it_end; ++it)
         {
-            if (it->data())
-                keys.emplace_back(it->key());
+            if (it->data()) keys.emplace_back(it->key());
         }
 
-        auto flags=_c->flag_query( keys );
+        auto flags = _c->flag_query(keys);
 
-        for(std::size_t i = 0; i < flags.size();++i )
+        for (std::size_t i = 0; i < flags.size(); ++i)
         {
             auto nn = this->find_octant(keys[i]);
-            if (!nn)
-                throw std::runtime_error(
-                        "didn't find key for leaf query");
-            nn->flags()=flags[i];
+            if (!nn) throw std::runtime_error("didn't find key for leaf query");
+            nn->flags() = flags[i];
         }
-
     }
 
-public: //Query ranks of all octants, which are assigned in local tree
-
+  public: //Query ranks of all octants, which are assigned in local tree
     template<class Client>
-    void construct_ghosts( Client* _c )
+    void construct_ghosts(Client* _c)
     {
         std::set<key_type> res;
         this->lookup_neighbors(res);
@@ -868,148 +828,134 @@ public: //Query ranks of all octants, which are assigned in local tree
      *         list, children and interior nodes
      **/
     template<class Client>
-    void construct_maps( Client* _c )
+    void construct_maps(Client* _c)
     {
-        this-> construct_ghosts(_c);
-        this-> construct_lists();
-        this-> construct_level_maps();
+        this->construct_ghosts(_c);
+        this->construct_lists();
+        this->construct_level_maps();
     }
 
     template<class Client>
-    void allocate_ghosts( Client* _c )
+    void allocate_ghosts(Client* _c)
     {
-        auto _f =[_c, this](octant_type* _o, bool allocate_data){
+        auto _f = [_c, this](octant_type* _o, bool allocate_data) {
             auto level = _o->refinement_level();
-            level=level>=0?level:0;
-            auto bbase=this->octant_to_level_coordinate(
-                    _o->tree_coordinate(),level);
+            level = level >= 0 ? level : 0;
+            auto bbase =
+                this->octant_to_level_coordinate(_o->tree_coordinate(), level);
 
-            _o->data()=std::make_shared<DataType>(bbase,
-                    _c->domain()->block_extent(),level, allocate_data);
+            _o->data() = std::make_shared<DataType>(
+                bbase, _c->domain()->block_extent(), level, allocate_data);
         };
 
         //Allocate Ghost octants
-        dfs_iterator it_begin(root()); dfs_iterator it_end;
-        for(auto it =it_begin;it!=it_end;++it)
+        dfs_iterator it_begin(root());
+        dfs_iterator it_end;
+        for (auto it = it_begin; it != it_end; ++it)
         {
             //if (it->locally_owned()) continue;
-            if (it->rank()<=0) continue;
+            if (it->rank() <= 0) continue;
             if (it->data() && it->data()->is_allocated()) continue;
 
             bool allocate_data = false;
-            for(int i=0;i<it->num_children();++i)
+            for (int i = 0; i < it->num_children(); ++i)
             {
-                if (it->child(i) && it->child(i)->data() && it->child(i)->locally_owned())
-                    allocate_data=true;
+                if (it->child(i) && it->child(i)->data() &&
+                    it->child(i)->locally_owned())
+                    allocate_data = true;
             }
-            _f(it.ptr(),allocate_data || it->locally_owned());
+            _f(it.ptr(), allocate_data || it->locally_owned());
         }
     }
 
+  public: // leafs maps
+    auto leaf_map() { return leafs_; }
 
-
-
-public: // leafs maps
-
-    auto leaf_map()
-    {
-        return leafs_;
-    }
-
-    void construct_leaf_maps(bool _from_existing_flag=false)
+    void construct_leaf_maps(bool _from_existing_flag = false)
     {
         leafs_.clear();
-        dfs_iterator it_begin(root()); dfs_iterator it_end;
+        dfs_iterator it_begin(root());
+        dfs_iterator it_end;
 
-        for(auto it =it_begin;it!=it_end;++it)
+        for (auto it = it_begin; it != it_end; ++it)
         {
             //TODO why would it not have ptr()
-            if ( !it->data())
-                continue;
+            if (!it->data()) continue;
 
-            if (!_from_existing_flag)
-                it->flag_leaf(it->is_leaf_search());
+            if (!_from_existing_flag) it->flag_leaf(it->is_leaf_search());
 
-            if(it->is_leaf())
-            {
-                leafs_.emplace(it->key(), it.ptr());
-            }
+            if (it->is_leaf()) { leafs_.emplace(it->key(), it.ptr()); }
         }
     }
-
 
     static coordinate_type unit_transform(coordinate_type _x, int _level)
     {
         return _x;
     }
 
-public: //Restart
-
+  public: //Restart
     void write(std::string _filename) const
     {
         std::ofstream ofs(_filename, std::ios::binary);
-        if(!ofs.is_open())
+        if (!ofs.is_open())
+        { throw std::runtime_error("Could not open file: " + _filename); }
+        dfs_iterator begin(root());
+        dfs_iterator end;
+        for (auto it = begin; it != end; ++it)
         {
-            throw std::runtime_error("Could not open file: " + _filename);
-        }
-        dfs_iterator begin(root()); dfs_iterator end;
-        for(auto it =begin;it!=end;++it)
-        {
-            const auto id=it->key().id();
-            ofs.write( reinterpret_cast<const char *>(&id), sizeof(id));
+            const auto id = it->key().id();
+            ofs.write(reinterpret_cast<const char*>(&id), sizeof(id));
         }
 
-        for(auto it =begin;it!=end;++it)
+        for (auto it = begin; it != end; ++it)
         {
-            const bool leaf_flag=it->is_leaf();
-            ofs.write( reinterpret_cast<const char *>(&leaf_flag), sizeof(leaf_flag));
+            const bool leaf_flag = it->is_leaf();
+            ofs.write(
+                reinterpret_cast<const char*>(&leaf_flag), sizeof(leaf_flag));
         }
         ofs.close();
     }
 
-    void read(std::string _filename, std::vector<key_type>& keys, std::vector<bool>& leafs) const
+    void read(std::string _filename, std::vector<key_type>& keys,
+        std::vector<bool>& leafs) const
     {
         std::ifstream ifs(_filename, std::ios::binary);
 
-        if(!ifs.is_open())
-        {
-            throw std::runtime_error("Could not open file: " + _filename);
-        }
+        if (!ifs.is_open())
+        { throw std::runtime_error("Could not open file: " + _filename); }
 
         ifs.seekg(0, std::ios::end);
         const auto fileSize = ifs.tellg();
         ifs.seekg(0, std::ios::beg);
-        const auto size=fileSize/(sizeof(typename key_type::value_type)+sizeof(bool));
+        const auto size =
+            fileSize / (sizeof(typename key_type::value_type) + sizeof(bool));
 
-        for(std::size_t i=0; i<size; ++i)
+        for (std::size_t i = 0; i < size; ++i)
         {
-             typename key_type::value_type tmp;
-             ifs.read( reinterpret_cast<char *>(&tmp), sizeof(tmp));
-             keys.emplace_back(key_type(tmp));
-
+            typename key_type::value_type tmp;
+            ifs.read(reinterpret_cast<char*>(&tmp), sizeof(tmp));
+            keys.emplace_back(key_type(tmp));
         }
-        for(std::size_t i=0; i<size; ++i)
+        for (std::size_t i = 0; i < size; ++i)
         {
-             bool leaf_flag;
-             ifs.read( reinterpret_cast<char *>(&leaf_flag), sizeof(leaf_flag));
-             leafs.emplace_back(leaf_flag);
+            bool leaf_flag;
+            ifs.read(reinterpret_cast<char*>(&leaf_flag), sizeof(leaf_flag));
+            leafs.emplace_back(leaf_flag);
         }
         //for(const auto& d: res) std::cout<<d<<std::endl;
         ifs.close();
     }
 
-private:
+  private:
     /** \brief Coordinate transform from octant coordinate to real coordinates*/
-    coordinate_transform_t octant_to_real_coordinate_=&Tree::unit_transform;
+    coordinate_transform_t octant_to_real_coordinate_ = &Tree::unit_transform;
 
-    int base_level_=0;                              ///< Base level
-    int depth_=0;                                   ///< Tree depth
-    std::shared_ptr<octant_type> root_=nullptr;     ///< Tree root
-    std::vector<octant_ptr_map_type> level_maps_;   ///< Octants per level
-    octant_ptr_map_type leafs_;                     ///< Map of tree leafs
-
+    int                              base_level_ = 0; ///< Base level
+    int                              depth_ = 0;      ///< Tree depth
+    std::shared_ptr<octant_type>     root_ = nullptr; ///< Tree root
+    std::vector<octant_ptr_map_type> level_maps_;     ///< Octants per level
+    octant_ptr_map_type              leafs_;          ///< Map of tree leafs
 };
-
 
 } //namespace octree
 #endif

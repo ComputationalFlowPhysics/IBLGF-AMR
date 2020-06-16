@@ -1,3 +1,15 @@
+//      ▄▄▄▄▄▄▄▄▄▄▄  ▄▄▄▄▄▄▄▄▄▄   ▄            ▄▄▄▄▄▄▄▄▄▄▄  ▄▄▄▄▄▄▄▄▄▄▄
+//     ▐░░░░░░░░░░░▌▐░░░░░░░░░░▌ ▐░▌          ▐░░░░░░░░░░░▌▐░░░░░░░░░░░▌
+//      ▀▀▀▀█░█▀▀▀▀ ▐░█▀▀▀▀▀▀▀█░▌▐░▌          ▐░█▀▀▀▀▀▀▀▀▀ ▐░█▀▀▀▀▀▀▀▀▀
+//          ▐░▌     ▐░▌       ▐░▌▐░▌          ▐░▌          ▐░▌
+//          ▐░▌     ▐░█▄▄▄▄▄▄▄█░▌▐░▌          ▐░▌ ▄▄▄▄▄▄▄▄ ▐░█▄▄▄▄▄▄▄▄▄
+//          ▐░▌     ▐░░░░░░░░░░▌ ▐░▌          ▐░▌▐░░░░░░░░▌▐░░░░░░░░░░░▌
+//          ▐░▌     ▐░█▀▀▀▀▀▀▀█░▌▐░▌          ▐░▌ ▀▀▀▀▀▀█░▌▐░█▀▀▀▀▀▀▀▀▀
+//          ▐░▌     ▐░▌       ▐░▌▐░▌          ▐░▌       ▐░▌▐░▌
+//      ▄▄▄▄█░█▄▄▄▄ ▐░█▄▄▄▄▄▄▄█░▌▐░█▄▄▄▄▄▄▄▄▄ ▐░█▄▄▄▄▄▄▄█░▌▐░▌
+//     ▐░░░░░░░░░░░▌▐░░░░░░░░░░▌ ▐░░░░░░░░░░░▌▐░░░░░░░░░░░▌▐░▌
+//      ▀▀▀▀▀▀▀▀▀▀▀  ▀▀▀▀▀▀▀▀▀▀   ▀▀▀▀▀▀▀▀▀▀▀  ▀▀▀▀▀▀▀▀▀▀▀  ▀
+
 #ifndef INCLUDED_HALOCOMMUNICATOR_HPP
 #define INCLUDED_HALOCOMMUNICATOR_HPP
 
@@ -8,20 +20,17 @@
 
 namespace sr_mpi
 {
-
 /** @brief Communicate field buffers/halos for a given fields and a task type
  */
-template<class TaskType,class Field,class Domain>
+template<class TaskType, class Field, class Domain>
 class HaloCommunicator
 {
-
-
-public: //Ctor
-	HaloCommunicator(const HaloCommunicator&) = default;
-	HaloCommunicator(HaloCommunicator&&) = default;
-	HaloCommunicator& operator=(const HaloCommunicator&) & = default;
-	HaloCommunicator& operator=(HaloCommunicator&&) & = default;
-    ~HaloCommunicator()=default;
+  public: //Ctor
+    HaloCommunicator(const HaloCommunicator&) = default;
+    HaloCommunicator(HaloCommunicator&&) = default;
+    HaloCommunicator& operator=(const HaloCommunicator&) & = default;
+    HaloCommunicator& operator=(HaloCommunicator&&) & = default;
+    ~HaloCommunicator() = default;
     HaloCommunicator()
     {
         boost::mpi::communicator world;
@@ -33,156 +42,150 @@ public: //Ctor
         recv_tasks_.resize(world.size());
     }
 
-    using field_t=Field;
+    using field_t = Field;
     using view_type = typename field_t::view_type;
     using octant_t = typename Domain::octant_t;
 
-private:
+  private:
     struct interface
     {
-        octant_t* src;  //sending octant
-        octant_t* dest; //recving octant
-        view_type view; //field view of overlap
-        int field_idx; //field view of overlap
+        octant_t* src;       //sending octant
+        octant_t* dest;      //recving octant
+        view_type view;      //field view of overlap
+        int       field_idx; //field view of overlap
     };
 
-public: //members
-
+  public: //members
     void extrapolate_to_buffer()
     {
         //
     }
 
-
     /** @brief Compute and store communication task for halo echange of fields*/
-    void compute_tasks(Domain* _domain, int _level, bool axis_neighbors_only=false) noexcept
+    void compute_tasks(
+        Domain* _domain, int _level, bool axis_neighbors_only = false) noexcept
     {
-        for(std::size_t j=0; j<Field::nFields;++j)
+        for (std::size_t j = 0; j < Field::nFields; ++j)
         {
-            for (auto it  = _domain->begin(_level);
-                    it != _domain->end(_level); ++it)
+            for (auto it = _domain->begin(_level); it != _domain->end(_level);
+                 ++it)
             {
-                if(!it->locally_owned()) continue;
-                if(!it->data() || !it->data()->is_allocated()) continue;
+                if (!it->locally_owned()) continue;
+                if (!it->data() || !it->data()->is_allocated()) continue;
 
-                for(std::size_t i=0;i< it->num_neighbors();++i)
+                for (std::size_t i = 0; i < it->num_neighbors(); ++i)
                 {
-                    auto it2=it->neighbor(i);
-                    if(!it2) continue;
-                    if(!it2->data()) continue;
+                    auto it2 = it->neighbor(i);
+                    if (!it2) continue;
+                    if (!it2->data()) continue;
 
                     auto& field = it->data()->template get<Field>(j);
                     auto& field2 = it2->data()->template get<Field>(j);
 
                     //send view
-                    if(auto overlap_opt = field.send_view( field2  ) )
+                    if (auto overlap_opt = field.send_view(field2))
                     {
                         interface sif;
-                        sif.src=*it;//it.ptr();
-                        sif.dest=it2;
-                        sif.field_idx=j;
-                        sif.view=std::move(overlap_opt.value());
+                        sif.src = *it; //it.ptr();
+                        sif.dest = it2;
+                        sif.field_idx = j;
+                        sif.view = std::move(overlap_opt.value());
 
-                        if(axis_neighbors_only &&
-                                (static_cast<int>(sif.view.nPoints()) <=
-                                 field.extent()[0])
-                          ) continue;
+                        if (axis_neighbors_only &&
+                            (static_cast<int>(sif.view.nPoints()) <=
+                                field.extent()[0]))
+                            continue;
 
                         if (it2->locally_owned())
                             intra_send_interface.emplace_back(std::move(sif));
                         else
-                            inter_send_interface[it2->rank()].
-                                emplace_back(std::move(sif));
+                            inter_send_interface[it2->rank()].emplace_back(
+                                std::move(sif));
                     }
                     //recv view
-                    if(auto overlap_opt = field.recv_view( field2  ) )
+                    if (auto overlap_opt = field.recv_view(field2))
                     {
                         interface sif;
-                        sif.src=it2;
-                        sif.dest=*it;//it.ptr();
-                        sif.field_idx=j;
-                        sif.view=std::move(overlap_opt.value());
+                        sif.src = it2;
+                        sif.dest = *it; //it.ptr();
+                        sif.field_idx = j;
+                        sif.view = std::move(overlap_opt.value());
 
-                        if(axis_neighbors_only &&
-                                (static_cast<int>(sif.view.nPoints()) <=
-                                 field.extent()[0])
-                          ) continue;
+                        if (axis_neighbors_only &&
+                            (static_cast<int>(sif.view.nPoints()) <=
+                                field.extent()[0]))
+                            continue;
 
-                        if(!it2->locally_owned())
+                        if (!it2->locally_owned())
                         {
-                            inter_recv_interface[it2->rank()].
-                                emplace_back(std::move(sif));
+                            inter_recv_interface[it2->rank()].emplace_back(
+                                std::move(sif));
                         }
                     }
-
                 }
             }
         }
 
         //sort & combine tasks
-        for(int rank_other=0;
-                rank_other < static_cast<int>(inter_send_interface.size());
-                ++rank_other)
+        for (int rank_other = 0;
+             rank_other < static_cast<int>(inter_send_interface.size());
+             ++rank_other)
         {
-            auto compare=[&](const auto& c0, const auto& c1)
-            {
-                if(c0.dest->key().id() == c1.dest->key().id())
+            auto compare = [&](const auto& c0, const auto& c1) {
+                if (c0.dest->key().id() == c1.dest->key().id())
                 {
-                    if(c0.src->key().id() == c1.src->key().id())
-                    {
-                        return c0.field_idx<c1.field_idx;
-                    }
+                    if (c0.src->key().id() == c1.src->key().id())
+                    { return c0.field_idx < c1.field_idx; }
                     else
                     {
-                        return c0.src->key().id()< c1.src->key().id();
-
+                        return c0.src->key().id() < c1.src->key().id();
                     }
                 }
                 else
                 {
-                    return c0.dest->key().id()< c1.dest->key().id();
+                    return c0.dest->key().id() < c1.dest->key().id();
                 }
-                return (c0.dest->key().id() == c1.dest->key().id()) ?
-                    (c0.src->key().id()< c1.src->key().id() ) :
-                    (c0.dest->key().id()< c1.dest->key().id() );
+                return (c0.dest->key().id() == c1.dest->key().id())
+                           ? (c0.src->key().id() < c1.src->key().id())
+                           : (c0.dest->key().id() < c1.dest->key().id());
             };
 
             //send:
             {
-                auto& tasks=inter_send_interface[rank_other];
-                std::sort(tasks.begin(),tasks.end(),compare);
+                auto& tasks = inter_send_interface[rank_other];
+                std::sort(tasks.begin(), tasks.end(), compare);
                 if (tasks.empty())
                 {
-                    send_tasks_[rank_other]=nullptr;
+                    send_tasks_[rank_other] = nullptr;
                     continue;
                 }
                 boost::mpi::communicator c;
-                int idx=tasks[0].src->idx();
-                idx=c.rank();
-                auto  task_ptr=std::make_shared<TaskType>(idx);
+                int                      idx = tasks[0].src->idx();
+                idx = c.rank();
+                auto task_ptr = std::make_shared<TaskType>(idx);
                 task_ptr->attach_data(&send_fields_[rank_other]);
-                task_ptr->rank_other()=rank_other;
-                task_ptr->requires_confirmation()=false;
-                send_tasks_[rank_other]=task_ptr;
+                task_ptr->rank_other() = rank_other;
+                task_ptr->requires_confirmation() = false;
+                send_tasks_[rank_other] = task_ptr;
             }
 
             //recv:
             {
-                auto& tasks=inter_recv_interface[rank_other];
-                std::sort(tasks.begin(),tasks.end(),compare);
+                auto& tasks = inter_recv_interface[rank_other];
+                std::sort(tasks.begin(), tasks.end(), compare);
 
                 if (tasks.empty())
                 {
-                    recv_tasks_[rank_other]=nullptr;
+                    recv_tasks_[rank_other] = nullptr;
                     continue;
                 }
-                int idx=tasks[0].src->idx();
-                idx=rank_other;
-                auto  task_ptr=std::make_shared<TaskType>(idx);
+                int idx = tasks[0].src->idx();
+                idx = rank_other;
+                auto task_ptr = std::make_shared<TaskType>(idx);
                 task_ptr->attach_data(&recv_fields_[rank_other]);
-                task_ptr->rank_other()=rank_other;
-                task_ptr->requires_confirmation()=false;
-                recv_tasks_[rank_other]=task_ptr;
+                task_ptr->rank_other() = rank_other;
+                task_ptr->requires_confirmation() = false;
+                recv_tasks_[rank_other] = task_ptr;
             }
         }
     }
@@ -191,46 +194,46 @@ public: //members
     void pack_messages()
     {
         //Copy locally owned fields to buffers:
-        for(auto& sf  : intra_send_interface)
+        for (auto& sf : intra_send_interface)
         {
-            auto& dfield=sf.dest->data()->template get<Field>(sf.field_idx);
-            auto dest_view = dfield.view(sf.view);
-            dest_view.assign_toView( sf.view );
+            auto& dfield = sf.dest->data()->template get<Field>(sf.field_idx);
+            auto  dest_view = dfield.view(sf.view);
+            dest_view.assign_toView(sf.view);
         }
 
         //Copy data into buffer:
-        for(int rank_other=0;
-            rank_other < static_cast<int>(inter_send_interface.size());
-            ++rank_other)
+        for (int rank_other = 0;
+             rank_other < static_cast<int>(inter_send_interface.size());
+             ++rank_other)
         {
-            auto& tasks=inter_send_interface[rank_other];
-            auto& rtasks=inter_recv_interface[rank_other];
+            auto& tasks = inter_send_interface[rank_other];
+            auto& rtasks = inter_recv_interface[rank_other];
 
-            if (tasks.empty()) {
-                send_tasks_[rank_other]=nullptr;
+            if (tasks.empty())
+            {
+                send_tasks_[rank_other] = nullptr;
                 continue;
             }
             if (rtasks.empty())
             {
-                recv_tasks_[rank_other]=nullptr;
+                recv_tasks_[rank_other] = nullptr;
                 continue;
             }
 
-            std::size_t size=0;
-            for(auto& interfc : inter_send_interface[rank_other] )
+            std::size_t size = 0;
+            for (auto& interfc : inter_send_interface[rank_other])
             {
-                for(auto it=interfc.view.begin();it!=interfc.view.end();++it)
-                {
-                    ++size;
-                }
+                for (auto it = interfc.view.begin(); it != interfc.view.end();
+                     ++it)
+                { ++size; }
             }
-            if(size!=send_fields_[rank_other].size())
+            if (size != send_fields_[rank_other].size())
                 send_fields_[rank_other].resize(size);
-            int count=0;
-            for(auto& interfc : inter_send_interface[rank_other] )
+            int count = 0;
+            for (auto& interfc : inter_send_interface[rank_other])
             {
-                interfc.view.iterate([&](const auto& val){
-                    send_fields_[rank_other][count++]=val;
+                interfc.view.iterate([&](const auto& val) {
+                    send_fields_[rank_other][count++] = val;
                 });
             }
             send_tasks_[rank_other]->attach_data(&send_fields_[rank_other]);
@@ -242,27 +245,27 @@ public: //members
     void unpack_messages()
     {
         //Copy received messages from buffer into views
-        for(int rank_other=0;
-            rank_other<static_cast<int>(inter_recv_interface.size());
-            ++rank_other)
+        for (int rank_other = 0;
+             rank_other < static_cast<int>(inter_recv_interface.size());
+             ++rank_other)
         {
-            int count=0;
-            for(auto& interfc : inter_recv_interface[rank_other])
+            int count = 0;
+            for (auto& interfc : inter_recv_interface[rank_other])
             {
-                auto& recv_view= interfc.view;
-                recv_view.iterate([&](auto& val){
-                    val= recv_fields_[rank_other][count++];
+                auto& recv_view = interfc.view;
+                recv_view.iterate([&](auto& val) {
+                    val = recv_fields_[rank_other][count++];
                 });
             }
         }
     }
 
-    auto& send_tasks()noexcept {return send_tasks_;}
-    const auto& send_tasks() const noexcept {return send_tasks_;}
+    auto&       send_tasks() noexcept { return send_tasks_; }
+    const auto& send_tasks() const noexcept { return send_tasks_; }
 
-    auto& recv_tasks()noexcept {return recv_tasks_;}
-    const auto& recv_tasks() const noexcept {return recv_tasks_;}
-    void clear()
+    auto&       recv_tasks() noexcept { return recv_tasks_; }
+    const auto& recv_tasks() const noexcept { return recv_tasks_; }
+    void        clear()
     {
         inter_send_interface.clear();
         inter_recv_interface.clear();
@@ -280,7 +283,7 @@ public: //members
         recv_tasks_.resize(world.size());
     }
 
-private:
+  private:
     //send/recv interfaces per processor
     std::vector<std::vector<interface>> inter_send_interface;
     std::vector<std::vector<interface>> inter_recv_interface;
@@ -294,9 +297,7 @@ private:
     //intra processor send/recv interfaces
     std::vector<interface> intra_send_interface;
     std::vector<interface> intra_recv_interface;
-
 };
 
-
-}
+} // namespace sr_mpi
 #endif

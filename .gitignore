@@ -29,6 +29,7 @@
 # Directories:
 .deps/
 builds/
+build/
 doc/
 
 # Executables
@@ -42,3 +43,4 @@ doc/
 *.swp
 Makefile.user
 CMakeLists.txt.user
+tags

@@ -348,8 +348,8 @@ struct VortexRingTest : public SetupBase<VortexRingTest, parameters>
                                    coord[2] - center[2] * scaling + 0.5) *
                                dx_level;
 
-                it2->template get<source>() = vorticity(x, y, z);
-                it2->template get<phi_exact>() = psi(x, y, z);
+                it2->get<source>() = vorticity(x, y, z);
+                it2->get<phi_exact>() = psi(x, y, z);
                 /***********************************************************/
             }
         }

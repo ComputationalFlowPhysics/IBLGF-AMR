@@ -30,7 +30,7 @@ class LGF_GL_Lookup
 {
   public:
     template<class Coordinate>
-    static auto get(const Coordinate& _c) noexcept
+    static float_type get(const Coordinate& _c) noexcept
     {
         int x = std::abs(static_cast<int>(_c.x()));
         int y = std::abs(static_cast<int>(_c.y()));
@@ -52,7 +52,7 @@ class LGF_GL_Lookup
     }
 
     //TODO: Vectorize this function. Takes a lot of time!
-    static auto asym(int n1, int n2, int n3)
+    static float_type asym(int n1, int n2, int n3)
     {
         const float_type n1_2 = n1 * n1, n2_2 = n2 * n2, n3_2 = n3 * n3;
         const float_type n_abs = sqrt(n1_2 + n2_2 + n3_2);

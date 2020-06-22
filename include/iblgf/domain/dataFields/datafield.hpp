@@ -14,6 +14,7 @@
 #define INCLUDED_LGF_DOMAIN_DATAFIELD_HPP
 
 #include <vector>
+#include <tuple>
 #include <iostream>
 #include <algorithm>
 
@@ -31,7 +32,6 @@
 #include <boost/preprocessor/tuple/enum.hpp>
 #include <boost/preprocessor/repetition/repeat.hpp>
 #include <boost/preprocessor/tuple/pop_front.hpp>
-#include <tuple>
 
 namespace iblgf
 {
@@ -213,34 +213,95 @@ class DataField : public BlockDescriptor<int, Dim>
     block_type real_block_; ///< Block descriptorinlcuding buffer
 };
 
+template<class Tag, class DataType,std::size_t NFields, std::size_t lBuff,
+         std::size_t hBuff, MeshObject MeshType, std::size_t Dim, bool _output>
+class Field : public DataField<DataType, Dim>
+{
+  public:
+    using data_field_t = DataField<DataType, Dim>;
+    using view_type = typename data_field_t::view_type;
+    using tag = Tag;
+
+    static constexpr std::size_t nField = NFields;
+    static constexpr MeshObject  mesh_type = MeshType;
+    static constexpr std::size_t nFields = NFields;
+    static constexpr bool        output = _output;
+
+    static auto name() noexcept { return tag::c_str(); }
+
+    Field()
+    {
+        for (std::size_t i = 0; i < nFields; ++i)
+        { fields_[i] = data_field_t(lBuff, hBuff); }
+    }
+    auto&       operator[](std::size_t i) noexcept { return fields_[i]; }
+    const auto& operator[](std::size_t i) const noexcept { return fields_[i]; }
+
+  private:
+    std::array<data_field_t, nFields> fields_;
+};
+
+
+//#define STRINGIFY(X) #X
+//
+//#define make_field_type_impl(Dim, Name, DataType, NFields, lBuff, hBuff, \
+//                             MeshObjectType, output)                     \
+//    static constexpr static_tag Name##_tag{STRINGIFY(Name)};             \
+//    static constexpr tag_type<Name##_tag> Name{};                        \
+//    using Name##_field_type =                                            \
+//        Field<tag_type<Name##_tag>, DataType, NFields, lBuff, hBuff,     \
+//              MeshObject::MeshObjectType, Dim, output>;
+//
+//#define make_field_type_impl_default(Dim, key, DataType, NFields, lBuffer, \
+//                                     hBuffer, MeshObjectType)              \
+//    make_field_type_impl(Dim, key, DataType, NFields, lBuffer, hBuffer,    \
+//                         MeshObjectType, true)
+//
+//#define GET_FIELD_MACRO(_1, _2, _3, _4, _5, _6, _7, _8, NAME, ...) NAME
+//#define make_field_type(...)                           \
+//    GET_FIELD_MACRO(__VA_ARGS__, make_field_type_impl, \
+//                    make_field_type_impl_default)      \
+//    (__VA_ARGS__)
+//
+//#define COMMA ,
+//
+//#define FIELD_N(Dim, FIELD_TUPLE)                                              \
+//    make_field_type(Dim, BOOST_PP_TUPLE_ENUM(BOOST_PP_TUPLE_SIZE(FIELD_TUPLE), \
+//                                             FIELD_TUPLE))
+//
+//#define FIELD_DECL(z, n, FIELD_TUPLES)            \
+//    FIELD_N(BOOST_PP_TUPLE_ELEM(0, FIELD_TUPLES), \
+//            BOOST_PP_TUPLE_ELEM(n, BOOST_PP_TUPLE_ELEM(1, FIELD_TUPLES)))
+//
+//#define FIELD_NAME_N(z, n, FIELD_TUPLES)                                       \
+//    COMMA                                                                      \
+//    BOOST_PP_CAT(BOOST_PP_TUPLE_ELEM(0, BOOST_PP_TUPLE_ELEM(n, FIELD_TUPLES)), \
+//                 _field_type)
+//
+//#define MAKE_TUPLE_ALIAS(FIELD_TUPLES)                                       \
+//    using fields_tuple_t = std::tuple<                                       \
+//        BOOST_PP_CAT(                                                        \
+//            BOOST_PP_TUPLE_ELEM(0, BOOST_PP_TUPLE_ELEM(0, FIELD_TUPLES)),    \
+//            _field_type)                                                     \
+//            BOOST_PP_REPEAT(                                                 \
+//                BOOST_PP_TUPLE_SIZE(BOOST_PP_TUPLE_POP_FRONT(FIELD_TUPLES)), \
+//                FIELD_NAME_N, BOOST_PP_TUPLE_POP_FRONT(FIELD_TUPLES))>;
+//
+//#define REGISTER_FIELDS(Dim, FIELD_TUPLES)                         \
+//    BOOST_PP_REPEAT(BOOST_PP_TUPLE_SIZE(FIELD_TUPLES), FIELD_DECL, \
+//                    (Dim, FIELD_TUPLES))                           \
+//    MAKE_TUPLE_ALIAS(FIELD_TUPLES)
+//
+
 #define STRINGIFY(X) #X
 
 #define make_field_type_impl(                                                  \
-    Dim, key, DataType, NFields, lBuffer, hBuffer, MeshObjectType, _output)    \
-    class key                                                                  \
-    {                                                                          \
-      public:                                                                  \
-        using data_field_t = DataField<DataType, Dim>;                         \
-        using view_type = typename data_field_t::view_type;                    \
-        static constexpr const char* name_ = STRINGIFY(key);                   \
-        static constexpr MeshObject  mesh_type = MeshObject::MeshObjectType;   \
-        static constexpr std::size_t nFields = NFields;                        \
-        static constexpr bool        output = _output;                         \
-        key()                                                                  \
-        {                                                                      \
-            for (std::size_t i = 0; i < nFields; ++i)                          \
-            { fields_[i] = data_field_t(lBuffer, hBuffer); }                   \
-        }                                                                      \
-        static auto name() noexcept { return key::name_; }                     \
-        auto&       operator[](size_type i) noexcept { return fields_[i]; }    \
-        const auto& operator[](size_type i) const noexcept                     \
-        {                                                                      \
-            return fields_[i];                                                 \
-        }                                                                      \
-        std::array<data_field_t, nFields> fields_;                             \
-    };
+    Dim, Name, DataType, NFields, lBuff, hBuff, MeshObjectType, output)        \
+    static constexpr static_tag           Name##_tag{STRINGIFY(Name)};         \
+    static constexpr tag_type<Name##_tag> Name##_field_tag{};                  \
+    using Name = Field<tag_type<Name##_tag>, DataType, NFields, lBuff, hBuff,  \
+        MeshObject::MeshObjectType, Dim, output>;
 
-//For 7 parameters with defaulted output
 #define make_field_type_impl_default(                                          \
     Dim, key, DataType, NFields, lBuffer, hBuffer, MeshObjectType)             \
     make_field_type_impl(                                                      \
@@ -272,12 +333,6 @@ class DataField : public BlockDescriptor<int, Dim>
             BOOST_PP_REPEAT(                                                   \
                 BOOST_PP_TUPLE_SIZE(BOOST_PP_TUPLE_POP_FRONT(FIELD_TUPLES)),   \
                 FIELD_NAME_N, BOOST_PP_TUPLE_POP_FRONT(FIELD_TUPLES))>;
-
-#define MAKE_PARAM_CLASS(NAME, FIELD_TUPLES)                                   \
-    struct NAME                                                                \
-    {                                                                          \
-        MAKE_TUPLE_ALIAS(FIELD_TUPLES)                                         \
-    };
 
 #define REGISTER_FIELDS(Dim, FIELD_TUPLES)                                     \
     BOOST_PP_REPEAT(                                                           \

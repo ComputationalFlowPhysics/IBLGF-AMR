@@ -96,7 +96,7 @@ class DataBlock : public BlockDescriptor<int, Dim>
     static_assert(T::nFields == 1,                                             \
         " Vector field (nFields>1) cannot be accessed without index ");
 
-  public: //member functions
+  public: //Get member functions
     template<class t>
     auto& get(int _idx)
     {
@@ -268,6 +268,30 @@ class DataBlock : public BlockDescriptor<int, Dim>
     {
         FIELD_ASSERT(Field) return get_local(_i, _j, _k);
     }
+
+    /*************************************************************************/
+    //
+    template<class Tag>
+    auto& operator()(Tag _tag) noexcept
+    {
+        return std::get<tuple_index<Tag, fields_tuple_t>::value>(fields);
+    }
+    template<class Tag>
+    const auto& operator()(Tag _tag) const noexcept
+    {
+        return std::get<tuple_index<Tag, fields_tuple_t>::value>(fields);
+    }
+    template<class Tag>
+    auto& operator()(Tag _tag, int _idx) noexcept
+    {
+        return std::get<tuple_index<Tag, fields_tuple_t>::value>(fields)[_idx];
+    }
+    template<class Tag>
+    const auto& operator()(Tag _tag, int _idx) const noexcept
+    {
+        return std::get<tuple_index<Tag, fields_tuple_t>::value>(fields)[_idx];
+    }
+    /*************************************************************************/
 
     //Node access:
     auto& node(int _i, int _j, int _k) noexcept

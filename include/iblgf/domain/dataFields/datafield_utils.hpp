@@ -185,6 +185,58 @@ assign(const Field0& src, const BlockDescriptor& view_src, const Stride& strd_s,
     }
 }
 
+/***************************************************************************/
+/**
+ * @brief Static id the generate/idnetify fields in tuple
+ */
+struct static_tag
+{
+    template<std::size_t N>
+    constexpr static_tag(const char(&a)[N]) :id_(a), size_(N-1){}
+
+    constexpr std::size_t size() const { return size_; }
+    constexpr auto id() const { return id_; }
+private:
+    const char* const id_;
+    const std::size_t size_;
+};
+
+template <char... id>
+struct tag_t{
+    static char const * c_str() {
+        static constexpr char str[]={id...,'\0'};
+        return str;
+    }
+};
+
+template<static_tag const& str,std::size_t... I>
+auto constexpr expand(std::index_sequence<I...>){
+    return tag_t<str.id()[I]...>{};
+}
+template <static_tag const& str>
+using tag_type =
+    decltype(expand<str>(std::make_index_sequence<str.size()>{}));
+
+
+
+template< size_t I, typename T, typename Tuple_t>
+constexpr size_t tuple_index_impl()
+{
+    typedef typename std::tuple_element<I,Tuple_t>::type el;
+    if constexpr(std::is_same<T,typename el::tag>::value ){
+        return I;
+    }else
+    {
+        return tuple_index_impl<I+1,T,Tuple_t>();
+    }
+}
+
+template<typename T, typename Tuple_t>
+struct tuple_index
+{
+    static constexpr size_t value = tuple_index_impl<0,T,Tuple_t>();
+};
+
 
 } // namespace domain
 } // namespace iblgf

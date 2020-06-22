@@ -13,6 +13,7 @@
 #include <iostream>
 #include <algorithm>
 
+#include <iblgf/types.hpp>
 #include "xtensor/xnoalias.hpp"
 #include <xtensor/xarray.hpp>
 #include <xtensor/xrandom.hpp>
@@ -28,7 +29,7 @@ namespace linalg
 class L_xtensor
 {
   public:
-    using tensor_t = typename xt::xarray<float_type>;
+    using tensor_t = typename xt::xarray<types::float_type>;
     using cube_t = tensor_t;
     using mat_t = tensor_t;
 

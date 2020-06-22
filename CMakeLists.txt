@@ -21,7 +21,7 @@ cmake_policy(SET CMP0048 NEW)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_EXTENSIONS OFF)
-set(CMAKE_CXX_FLAGS "-Wall -march=native -fmax-errors=4")
+set(CMAKE_CXX_FLAGS "-Wall -march=native")
 
 set(default_build_type "Release")
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
@@ -96,8 +96,8 @@ target_link_libraries(iblgf INTERFACE xtl)
 target_link_libraries(iblgf INTERFACE xtensor)
 target_link_libraries(iblgf INTERFACE xsimd)
 target_link_libraries(iblgf INTERFACE hdf5)
-target_link_libraries(iblgf INTERFACE fftw3)
 target_link_libraries(iblgf INTERFACE blas)
+target_link_libraries(iblgf INTERFACE ${FFTW_LIBRARIES})
 target_compile_features(iblgf INTERFACE cxx_std_17)
 
 enable_testing()

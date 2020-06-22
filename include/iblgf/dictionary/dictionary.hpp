@@ -36,7 +36,6 @@
 
 namespace iblgf
 {
-
 namespace dictionary
 {
 class Dictionary

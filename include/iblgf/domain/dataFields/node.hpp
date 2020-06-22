@@ -51,16 +51,16 @@ class node
     node& operator=(node&&) & = default;
 
   public: //Access
-    template<template<std::size_t> class Field>
-    auto& get_field(int _idx) noexcept
-    {
-        return c_->template get<Field>(_idx);
-    }
-    template<template<std::size_t> class Field>
-    const auto& get_field(int _idx) const noexcept
-    {
-        return c_->template get<Field>(_idx);
-    }
+    //template<template<std::size_t> class Field>
+    //auto& get_field(int _idx) noexcept
+    //{
+    //    return c_->template get<Field>(_idx);
+    //}
+    //template<template<std::size_t> class Field>
+    //const auto& get_field(int _idx) const noexcept
+    //{
+    //    return c_->template get<Field>(_idx);
+    //}
 
     template<template<std::size_t> class Field>
     auto& get(int _idx) noexcept

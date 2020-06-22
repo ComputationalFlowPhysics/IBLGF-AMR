@@ -72,6 +72,8 @@ class SetupBase
 
     using field_tuple = fields_tuple_t;
 
+    //Register fields gives us: source_tmp as the tag_type,
+
   public: //datablock
     template<class... DataFieldType>
     using db_template = domain::DataBlock<Dim, node, DataFieldType...>;

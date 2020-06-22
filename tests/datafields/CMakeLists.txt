@@ -10,6 +10,13 @@
 #     ▐░░░░░░░░░░░▌▐░░░░░░░░░░▌ ▐░░░░░░░░░░░▌▐░░░░░░░░░░░▌▐░▌
 #      ▀▀▀▀▀▀▀▀▀▀▀  ▀▀▀▀▀▀▀▀▀▀   ▀▀▀▀▀▀▀▀▀▀▀  ▀▀▀▀▀▀▀▀▀▀▀  ▀
 
-add_subdirectory (datafields)
-add_subdirectory (vortexrings)
-add_subdirectory (ifherk_heat)
+set(datafield_test datafields)
+
+foreach (item ${datafield_test})
+    add_executable(${item} ${item}.cpp ${SOURCES})
+    target_link_libraries(${item} iblgf_test_main)
+    add_test(
+        NAME ${item}
+        COMMAND mpirun ${MPIEXEC_NUMPROC_FLAG} 1 ${MPIEXEC_PREFLAGS} $<TARGET_FILE:${item}>
+    )
+endforeach()

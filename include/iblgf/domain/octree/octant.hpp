@@ -222,7 +222,7 @@ class Octant
     {
         for (int i = 0; i < this->num_children(); ++i)
         {
-            if ((require_data && children_[i] && children_[i]->data()) ||
+            if ((require_data && children_[i] && children_[i]->has_data()) ||
                 (!require_data && children_[i]))
                 return false;
         }
@@ -259,6 +259,14 @@ class Octant
 
     auto  data() const noexcept { return data_; }
     auto& data() noexcept { return data_; }
+
+    auto  data_ptr() const noexcept { return data_; }
+    auto& data_ptr() noexcept { return data_; }
+
+    bool has_data() const noexcept { return static_cast<bool>(data_); }
+
+    const auto& data_ref() const noexcept { return *data_; }
+    auto&       data_ref() noexcept { return *data_; }
 
     int  aim_level_change() const noexcept { return aim_level_change_; }
     int& aim_level_change() noexcept { return aim_level_change_; }
@@ -343,9 +351,9 @@ class Octant
         for (int c = 0; c < this->num_children(); ++c)
         {
             const auto child = this->child(c);
-            if (!child || !child->data()) continue;
-            if (child->locally_owned() && child->data() &&
-                child->data()->is_allocated() && fmm_masks)
+            if (!child || !child->has_data()) continue;
+            if (child->locally_owned() && child->has_data() &&
+                child->data_ref().is_allocated() && fmm_masks)
             {
                 return true;
                 break;
@@ -365,7 +373,7 @@ class Octant
         for (int c = 0; c < this->num_children(); ++c)
         {
             auto child = this->child(c);
-            if (!child || !child->data()) continue;
+            if (!child || !child->has_data()) continue;
             if (!child->locally_owned() && fmm_masks)
             { unique_ranks.insert(child->rank()); }
         }
@@ -379,7 +387,8 @@ class Octant
         for (int i = 0; i < this->influence_number(); ++i)
         {
             auto inf = this->influence(i);
-            if (inf && inf->data()) { unique_inflRanks.emplace(inf->rank()); }
+            if (inf && inf->has_data())
+            { unique_inflRanks.emplace(inf->rank()); }
         }
         std::cout << std::endl;
         return unique_inflRanks;
@@ -391,7 +400,7 @@ class Octant
         for (int i = 0; i < this->nNeighbors(); ++i)
         {
             const auto n = this->neighbor(i);
-            if (n && n->data())
+            if (n && n->has_data())
             {
                 std::cout << n->rank() << " " << n->key() << std::endl;
                 unique_neighborRanks.emplace(n->rank());

@@ -124,7 +124,7 @@ class Client : public ClientBase<ServerClientTraits<Domain>>
             level = level >= 0 ? level : 0;
             auto bbase = domain_->tree()->octant_to_level_coordinate(
                 _o->tree_coordinate(), level);
-            _o->data() = std::make_shared<datablock_t>(
+            _o->data_ptr() = std::make_shared<datablock_t>(
                 bbase, domain_->block_extent(), level, true);
             _o->rank() = comm_.rank();
         });
@@ -151,13 +151,13 @@ class Client : public ClientBase<ServerClientTraits<Domain>>
                 level = level >= 0 ? level : 0;
                 auto bbase = domain_->tree()->octant_to_level_coordinate(
                     _o->tree_coordinate(), level);
-                //if(!_o->data() || !_o->data()->is_allocated())
+                //if(!_o->has_data() || !_o->data_ref().is_allocated())
 
                 //_o->deallocate_data();
-                //if(_o->data() || _o->data()->is_allocated())
+                //if(_o->has_data() || _o->data_ref().is_allocated())
                 //    std::cout<<"why is it still allocated" << std::endl;
 
-                _o->data() = std::make_shared<datablock_t>(
+                _o->data_ptr() = std::make_shared<datablock_t>(
                     bbase, domain_->block_extent(), level, true);
             },
             false);
@@ -166,7 +166,7 @@ class Client : public ClientBase<ServerClientTraits<Domain>>
         for (auto& key : update.send_octs)
         {
             auto it = domain_->tree()->find_octant(key);
-            if (!it || !it->data())
+            if (!it || !it->has_data())
                 std::cout << "balacen: find no send oct\n" << key << std::endl;
 
             it->rank() = update.dest_ranks[count];
@@ -175,7 +175,7 @@ class Client : public ClientBase<ServerClientTraits<Domain>>
         for (auto& key : update.recv_octs)
         {
             auto it = domain_->tree()->find_octant(key);
-            if (!it || !it->data())
+            if (!it || !it->has_data())
                 std::cout << "balacen: find no send oct\n" << key << std::endl;
             it->rank() = comm_.rank();
         }
@@ -206,7 +206,7 @@ class Client : public ClientBase<ServerClientTraits<Domain>>
                 const auto idx = get_octant_idx(it, field_idx);
 
                 auto send_ptr =
-                    it->data()->template get<Field>(field_idx).data_ptr();
+                    it->data_ref().template get<Field>(field_idx).data_ptr();
 
                 auto task = send_comm.post_task(
                     send_ptr, _update.dest_ranks[count], true, idx);
@@ -226,7 +226,7 @@ class Client : public ClientBase<ServerClientTraits<Domain>>
                 const auto idx = get_octant_idx(it, field_idx);
 
                 const auto recv_ptr =
-                    it->data()->template get<Field>(field_idx).data_ptr();
+                    it->data_ref().template get<Field>(field_idx).data_ptr();
                 auto task = recv_comm.post_task(
                     recv_ptr, _update.src_ranks[count], true, idx);
 
@@ -258,7 +258,7 @@ class Client : public ClientBase<ServerClientTraits<Domain>>
         {
             //find the octant
             auto it = domain_->tree()->find_octant(key);
-            if (!it || !it->data())
+            if (!it || !it->has_data())
                 std::cout << "can't find the oct to send " << std::endl;
             domain_->tree()->delete_oct(it);
         }
@@ -477,7 +477,7 @@ class Client : public ClientBase<ServerClientTraits<Domain>>
             if (is_influenced)
             {
                 auto send_ptr =
-                    it->data()->template get<SendField>().data_ptr();
+                    it->data_ref().template get<SendField>().data_ptr();
 
                 auto task =
                     send_comm.post_task(send_ptr, it->rank(), true, idx);
@@ -485,8 +485,8 @@ class Client : public ClientBase<ServerClientTraits<Domain>>
                 task->rank_other() = it->rank();
                 task->requires_confirmation() = false;
                 task->octant() = it;
-                auto size = it->data()
-                                ->template get<SendField>()
+                auto size = it->data_ref()
+                                .template get<SendField>()
                                 .real_block()
                                 .nPoints();
 
@@ -497,7 +497,7 @@ class Client : public ClientBase<ServerClientTraits<Domain>>
                     buffer_vector.resize(size);
                     std::fill(buffer_vector.begin(), buffer_vector.end(), 0);
                     buffer_vector.swap(
-                        it->data()->template get<SendField>().data());
+                        it->data_ref().template get<SendField>().data());
 
                     //2. Compute influence field
                     _fmm->compute_influence_field(
@@ -505,7 +505,7 @@ class Client : public ClientBase<ServerClientTraits<Domain>>
 
                     //3. Swap sendfield with buffer
                     buffer_vector.swap(
-                        it->data()->template get<SendField>().data());
+                        it->data_ref().template get<SendField>().data());
                 };
                 task->register_sendCallback(send_callback);
             }
@@ -538,7 +538,7 @@ class Client : public ClientBase<ServerClientTraits<Domain>>
             for (auto& r : unique_inflRanks)
             {
                 const auto recv_ptr =
-                    it->data()->template get<RecvField>().data_ptr();
+                    it->data_ref().template get<RecvField>().data_ptr();
                 auto task = recv_comm.post_task(recv_ptr, r, true, idx);
 
                 //auto task = std::make_shared<induced_fields_task_t<InfluenceFieldBuffer>>(idx);
@@ -629,7 +629,8 @@ class Client : public ClientBase<ServerClientTraits<Domain>>
 
             const auto idx = get_octant_idx(it, field_idx);
 
-            if (it->locally_owned() && it->data() && it->data()->is_allocated())
+            if (it->locally_owned() && it->has_data() &&
+                it->data_ref().is_allocated())
             {
                 const auto unique_ranks =
                     (_use_masks) ? it->unique_child_ranks(fmm_mask_idx, mask_id)
@@ -639,16 +640,16 @@ class Client : public ClientBase<ServerClientTraits<Domain>>
                 {
                     if (_upward)
                     {
-                        auto data_ptr = it->data()
-                                            ->template get<RecvField>(field_idx)
+                        auto data_ptr = it->data_ref()
+                                            .template get<RecvField>(field_idx)
                                             .data_ptr();
                         auto task = recv_comm.post_task(data_ptr, r, true, idx);
                         task->requires_confirmation() = false;
                     }
                     else
                     {
-                        auto data_ptr = it->data()
-                                            ->template get<SendField>(field_idx)
+                        auto data_ptr = it->data_ref()
+                                            .template get<SendField>(field_idx)
                                             .data_ptr();
                         auto task = send_comm.post_task(data_ptr, r, true, idx);
                         task->requires_confirmation() = false;
@@ -657,8 +658,8 @@ class Client : public ClientBase<ServerClientTraits<Domain>>
             }
 
             //Check if ghost has locally_owned children
-            if (!it->locally_owned() && it->data() &&
-                it->data()->is_allocated())
+            if (!it->locally_owned() && it->has_data() &&
+                it->data_ref().is_allocated())
             {
                 if ((_use_masks && it->has_locally_owned_children(
                                        fmm_mask_idx, mask_id)) ||
@@ -667,8 +668,8 @@ class Client : public ClientBase<ServerClientTraits<Domain>>
                     if (_upward)
                     {
                         const auto data_ptr =
-                            it->data()
-                                ->template get<SendField>(field_idx)
+                            it->data_ref()
+                                .template get<SendField>(field_idx)
                                 .data_ptr();
                         auto task = send_comm.post_task(
                             data_ptr, it->rank(), true, idx);
@@ -677,8 +678,8 @@ class Client : public ClientBase<ServerClientTraits<Domain>>
                     else
                     {
                         const auto data_ptr =
-                            it->data()
-                                ->template get<RecvField>(field_idx)
+                            it->data_ref()
+                                .template get<RecvField>(field_idx)
                                 .data_ptr();
                         auto task = recv_comm.post_task(
                             data_ptr, it->rank(), true, idx);

@@ -148,7 +148,7 @@ class Tree
         for (auto& k : _keys)
         {
             auto octant = this->insert_td(k);
-            //if (!octant->data() || !octant->data()->is_allocated())
+            //if (!octant->has_data() || !octant->data_ref().is_allocated())
             f(octant);
         }
     }
@@ -248,7 +248,7 @@ class Tree
             if (nk.is_end()) continue;
             if (nk == _k) continue;
             const auto neighbor_i = this->find_octant(nk);
-            if (!neighbor_i || !neighbor_i->data()) keys.emplace_back(nk);
+            if (!neighbor_i || !neighbor_i->has_data()) keys.emplace_back(nk);
             else if (!correction_as_neighbors && neighbor_i->is_correction())
                 keys.emplace_back(nk);
         }
@@ -264,7 +264,7 @@ class Tree
         for (auto& k : keys)
         {
             auto _neighbor = this->insert_td(k);
-            if (!_neighbor || !_neighbor->data()) _f(_neighbor);
+            if (!_neighbor || !_neighbor->has_data()) _f(_neighbor);
         }
     }
 
@@ -283,7 +283,7 @@ class Tree
             {
                 auto neighbor_i = this->find_octant(nk);
 
-                if (!neighbor_i || !neighbor_i->data()) continue;
+                if (!neighbor_i || !neighbor_i->has_data()) continue;
 
                 neighbor_i->aim_deletion(false);
                 deletionReset_2to1(neighbor_i->parent(), checklist);
@@ -359,7 +359,7 @@ class Tree
             for (int i = 0; i < _l->nNeighbors(); ++i)
             {
                 auto n_i = _l->neighbor(i);
-                if (n_i && n_i->data()) n_i->aim_deletion(false);
+                if (n_i && n_i->has_data()) n_i->aim_deletion(false);
             }
 
             if (_l->refinement_level() >= 0)
@@ -372,7 +372,7 @@ class Tree
                     if (_l->refinement_level() == 0)
                     {
                         auto oct = this->insert_td(k);
-                        if (!oct->data()) _f(oct);
+                        if (!oct->has_data()) _f(oct);
 
                         oct->flag_leaf(true);
                         oct->flag_correction(false);
@@ -402,9 +402,9 @@ class Tree
 
         for (int i = 0; i < _l->num_children(); ++i)
         {
-            if (_l->child(i) && _l->child(i)->data()) continue;
+            if (_l->child(i) && _l->child(i)->has_data()) continue;
             auto child = _l->refine(i);
-            if (!child->data()) _f(child);
+            if (!child->has_data()) _f(child);
         }
 
         for (int i = 0; i < _l->num_children(); ++i)
@@ -583,7 +583,7 @@ class Tree
         dfs_iterator it_end;
         for (auto it = it_begin; it != it_end; ++it)
         {
-            if (it.ptr() && it->data())
+            if (it.ptr() && it->has_data())
                 level_maps_[it->level()].emplace(it->key(), it.ptr());
         }
     }
@@ -656,7 +656,7 @@ class Tree
         dfs_iterator end;
         for (auto it = begin; it != end; ++it)
         {
-            if (!it->data()) continue;
+            if (!it->has_data()) continue;
             neighbor_list_build(it.ptr());
             influence_list_build(it.ptr());
         }
@@ -672,7 +672,8 @@ class Tree
         for (std::size_t i = 0; i < nkeys.size(); ++i)
         {
             const auto neighbor_i = this->find_octant(nkeys[i]);
-            if (!neighbor_i || !neighbor_i->data()) it->neighbor(i, nullptr);
+            if (!neighbor_i || !neighbor_i->has_data())
+                it->neighbor(i, nullptr);
             else
                 it->neighbor(i, neighbor_i);
         }
@@ -690,7 +691,7 @@ class Tree
         for (std::size_t i = 0; i < nkeys.size(); ++i)
         {
             const auto infl_i = this->find_octant(nkeys[i]);
-            if (infl_i && infl_i->data()) it->influence(infl_id++, infl_i);
+            if (infl_i && infl_i->has_data()) it->influence(infl_id++, infl_i);
         }
         it->influence_number(infl_id);
     }
@@ -714,7 +715,7 @@ class Tree
         {
             boost::mpi::communicator world;
             auto                     nn = this->find_octant(keys[i]);
-            if (nn && nn->data())
+            if (nn && nn->has_data())
             {
                 if (ranks[i] > 0) { nn->rank() = ranks[i]; }
                 else
@@ -747,7 +748,7 @@ class Tree
         std::vector<key_type> keys;
         for (auto it = it_begin; it != it_end; ++it)
         {
-            if (it->data()) keys.emplace_back(it->key());
+            if (it->has_data()) keys.emplace_back(it->key());
         }
 
         auto masks = _c->mask_query(keys);
@@ -771,7 +772,7 @@ class Tree
         std::vector<key_type> keys;
         for (auto it = it_begin; it != it_end; ++it)
         {
-            if (it->data()) keys.emplace_back(it->key());
+            if (it->has_data()) keys.emplace_back(it->key());
         }
 
         auto corrections = _c->correction_query(keys);
@@ -797,7 +798,7 @@ class Tree
         std::vector<key_type> keys;
         for (auto it = it_begin; it != it_end; ++it)
         {
-            if (it->data()) keys.emplace_back(it->key());
+            if (it->has_data()) keys.emplace_back(it->key());
         }
 
         auto flags = _c->flag_query(keys);
@@ -846,7 +847,7 @@ class Tree
             auto bbase =
                 this->octant_to_level_coordinate(_o->tree_coordinate(), level);
 
-            _o->data() = std::make_shared<DataType>(
+            _o->data_ptr() = std::make_shared<DataType>(
                 bbase, _c->domain()->block_extent(), level, allocate_data);
         };
 
@@ -857,12 +858,12 @@ class Tree
         {
             //if (it->locally_owned()) continue;
             if (it->rank() <= 0) continue;
-            if (it->data() && it->data()->is_allocated()) continue;
+            if (it->has_data() && it->data_ref().is_allocated()) continue;
 
             bool allocate_data = false;
             for (int i = 0; i < it->num_children(); ++i)
             {
-                if (it->child(i) && it->child(i)->data() &&
+                if (it->child(i) && it->child(i)->has_data() &&
                     it->child(i)->locally_owned())
                     allocate_data = true;
             }
@@ -882,7 +883,7 @@ class Tree
         for (auto it = it_begin; it != it_end; ++it)
         {
             //TODO why would it not have ptr()
-            if (!it->data()) continue;
+            if (!it->has_data()) continue;
 
             if (!_from_existing_flag) it->flag_leaf(it->is_leaf_search());
 

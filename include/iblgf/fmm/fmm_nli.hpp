@@ -65,7 +65,7 @@ class Nli
     void nli_intrp_node(octant_t parent, int mask_id, int base_level)
     {
         auto& parent_linalg_data =
-            parent->data()->template get_linalg_data<field>();
+            parent->data_ref().template get_linalg_data<field>();
 
         for (int i = 0; i < parent->num_children(); ++i)
         {
@@ -73,10 +73,10 @@ class Nli
             if (child == nullptr || !child->fmm_mask(base_level, mask_id) ||
                 !child->locally_owned())
                 continue;
-            if (!child->data()) continue;
+            if (!child->has_data()) continue;
 
             auto& child_linalg_data =
-                child->data()->template get_linalg_data<field>();
+                child->data_ref().template get_linalg_data<field>();
 
             nli_intrp_node(child_linalg_data, parent_linalg_data, i);
         }
@@ -147,7 +147,7 @@ class Nli
     void nli_antrp_node(octant_t parent, int mask_id, int base_level)
     {
         auto& parent_linalg_data =
-            parent->data()->template get_linalg_data<field>();
+            parent->data_ref().template get_linalg_data<field>();
 
         for (int i = 0; i < parent->num_children(); ++i)
         {
@@ -157,7 +157,7 @@ class Nli
                 continue;
 
             auto& child_linalg_data =
-                child->data()->template get_linalg_data<field>();
+                child->data_ref().template get_linalg_data<field>();
 
             nli_antrp_node(child_linalg_data, parent_linalg_data, i);
         }

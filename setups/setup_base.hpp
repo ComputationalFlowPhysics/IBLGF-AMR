@@ -48,27 +48,23 @@ class SetupBase
     using SetupTraits::Dim;
 
   public: //default fields
-    REGISTER_FIELDS
-    (Dim,
-    (
-      (source_tmp,          float_type,  1,  1,  1,  cell,false),
-      (correction_tmp,      float_type,  1,  1,  1,  cell,false),
-      (target_tmp,          float_type,  1,  1,  1,  cell,false),
-      (fmm_s,               float_type,  1,  1,  1,  cell,false),
-      (fmm_t,               float_type,  1,  1,  1,  cell,false),
-      //flow variables
-      (q_i,                 float_type,  3,  1,  1,  face,false),
-      (u_i,                 float_type,  3,  1,  1,  face,false),
-      (d_i,                 float_type,  1,  1,  1,  cell,false),
-      (g_i,                 float_type,  3,  1,  1,  face,false),
-      (r_i,                 float_type,  3,  1,  1,  face,false),
-      (w_1,                 float_type,  3,  1,  1,  face,false),
-      (w_2,                 float_type,  3,  1,  1,  face,false),
-      (cell_aux,            float_type,  1,  1,  1,  cell,true),
-      (face_aux,            float_type,  3,  1,  1,  face,false),
-      (stream_f,            float_type,  3,  1,  1,  edge,true),
-      (edge_aux,            float_type,  3,  1,  1,  edge,true)
-    ))
+    REGISTER_FIELDS(Dim, ((source_tmp, float_type, 1, 1, 1, cell, false),
+                             (correction_tmp, float_type, 1, 1, 1, cell, false),
+                             (target_tmp, float_type, 1, 1, 1, cell, false),
+                             (fmm_s, float_type, 1, 1, 1, cell, false),
+                             (fmm_t, float_type, 1, 1, 1, cell, false),
+                             //flow variables
+                             (q_i, float_type, 3, 1, 1, face, false),
+                             (u_i, float_type, 3, 1, 1, face, false),
+                             (d_i, float_type, 1, 1, 1, cell, false),
+                             (g_i, float_type, 3, 1, 1, face, false),
+                             (r_i, float_type, 3, 1, 1, face, false),
+                             (w_1, float_type, 3, 1, 1, face, false),
+                             (w_2, float_type, 3, 1, 1, face, false),
+                             (cell_aux, float_type, 1, 1, 1, cell, true),
+                             (face_aux, float_type, 3, 1, 1, face, false),
+                             (stream_f, float_type, 3, 1, 1, edge, true),
+                             (edge_aux, float_type, 3, 1, 1, edge, true)))
 
     using field_tuple = fields_tuple_t;
 
@@ -178,13 +174,13 @@ class SetupBase
         for (auto it_t = domain_->begin_leafs(); it_t != domain_->end_leafs();
              ++it_t)
         {
-            if (!it_t->locally_owned() || !it_t->data()) continue;
+            if (!it_t->locally_owned() || !it_t->has_data()) continue;
             if (it_t->is_correction()) continue;
 
             int    refinement_level = it_t->refinement_level();
             double dx = dx_base / std::pow(2.0, refinement_level);
 
-            auto& nodes_domain = it_t->data()->nodes_domain();
+            auto& nodes_domain = it_t->data_ref().nodes_domain();
             for (auto it2 = nodes_domain.begin(); it2 != nodes_domain.end();
                  ++it2)
             {

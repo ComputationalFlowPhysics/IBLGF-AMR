@@ -44,19 +44,16 @@ namespace iblgf
  */
 struct ParametersPoissonProblem
 {
-    static constexpr std::size_t Dim= 3;
-    REGISTER_FIELDS
-    (
-    Dim,
-     (
-         //name              type        Dim    lBuffer. hBuffer  storage
-         (phi_num          , float_type, 1,     1,       1,       cell),
-         (source           , float_type, 1,     1,       1,       cell),
-         (phi_exact        , float_type, 1,     1,       1,       cell),
-         (error            , float_type, 1,     1,       1,       cell),
-         (amr_lap_source   , float_type, 1,     1,       1,       cell),
-         (error_lap_source , float_type, 1,     1,       1,       cell)
-    ))
+    static constexpr std::size_t Dim = 3;
+    REGISTER_FIELDS(Dim,
+        (
+            //name              type        Dim    lBuffer. hBuffer  storage
+            (phi_num, float_type, 1, 1, 1, cell),
+            (source, float_type, 1, 1, 1, cell),
+            (phi_exact, float_type, 1, 1, 1, cell),
+            (error, float_type, 1, 1, 1, cell),
+            (amr_lap_source, float_type, 1, 1, 1, cell),
+            (error_lap_source, float_type, 1, 1, 1, cell)))
 };
 
 /**  @brief Test-setup to solve the poisson problem in 3d using manufactured
@@ -94,7 +91,7 @@ struct PoissonProblem
             for (auto it = domain_->begin_leafs(); it != domain_->end_leafs();
                  ++it)
             {
-                auto b = it->data()->descriptor();
+                auto b = it->data_ref().descriptor();
 
                 const auto lower((center) / 2 - 2),
                     upper((center) / 2 + 2 - b.extent());
@@ -112,10 +109,10 @@ struct PoissonProblem
         {
             for (auto it = domain_->begin(lt); it != domain_->end(lt); ++it)
             {
-                if (it->data())
+                if (it->has_data())
                 {
-                    for (auto& e : it->data()->get_data<source>()) e = 0.0;
-                    for (auto& e : it->data()->get_data<phi_num>()) e = 0.0;
+                    for (auto& e : it->data_ref().get_data<source>()) e = 0.0;
+                    for (auto& e : it->data_ref().get_data<phi_num>()) e = 0.0;
                 }
             }
         }
@@ -130,8 +127,8 @@ struct PoissonProblem
             auto dx_level = dx_base / std::pow(2, it->refinement_level());
             auto scaling = std::pow(2, it->refinement_level());
 
-            auto  view(it->data()->node_field().domain_view());
-            auto& nodes_domain = it->data()->nodes_domain();
+            auto  view(it->data_ref().node_field().domain_view());
+            auto& nodes_domain = it->data_ref().nodes_domain();
             for (auto it2 = nodes_domain.begin(); it2 != nodes_domain.end();
                  ++it2)
             {
@@ -191,7 +188,7 @@ struct PoissonProblem
             int    refinement_level = it_t->refinement_level();
             double dx = dx_base / std::pow(2, refinement_level);
 
-            auto& nodes_domain = it_t->data()->nodes_domain();
+            auto& nodes_domain = it_t->data_ref().nodes_domain();
             for (auto it2 = nodes_domain.begin(); it2 != nodes_domain.end();
                  ++it2)
             {
@@ -218,7 +215,7 @@ struct PoissonProblem
             int    refinement_level = it_t->refinement_level();
             double dx = dx_base / std::pow(2, refinement_level);
 
-            auto& nodes_domain = it_t->data()->nodes_domain();
+            auto& nodes_domain = it_t->data_ref().nodes_domain();
             for (auto it2 = nodes_domain.begin(); it2 != nodes_domain.end();
                  ++it2)
             {

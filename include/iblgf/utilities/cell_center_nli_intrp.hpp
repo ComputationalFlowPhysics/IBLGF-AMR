@@ -14,7 +14,7 @@
 #define IBLGF_INCLUDED_C_CENTER_NLI
 
 #include <iostream>
-#include <algorithm> 
+#include <algorithm>
 #include <vector>
 #include <typeinfo>
 
@@ -138,14 +138,14 @@ class cell_center_nli
             auto child = parent->child(i);
             if (!child) continue;
             if (!child->locally_owned()) continue;
-            if (!child->data()) continue;
-            if (!child->data()->is_allocated()) continue;
+            if (!child->has_data()) continue;
+            if (!child->data_ref().is_allocated()) continue;
 
             auto& child_target_tmp =
-                child->data()->template get_linalg_data<from>();
+                child->data_ref().template get_linalg_data<from>();
 
             auto& child_linalg_data =
-                child->data()->template get_linalg_data<to>();
+                child->data_ref().template get_linalg_data<to>();
             for (int i = 1; i < Nb_ - 1; ++i)
             {
                 for (int j = 1; j < Nb_ - 1; ++j)
@@ -178,22 +178,22 @@ class cell_center_nli
         bool correction_only = false, bool exclude_correction = false)
     {
         auto& parent_linalg_data =
-            parent->data()->template get_linalg_data<from>(tmp_field_idx);
+            parent->data_ref().template get_linalg_data<from>(tmp_field_idx);
 
         for (int i = 0; i < parent->num_children(); ++i)
         {
             auto child = parent->child(i);
             if (!child) continue;
             if (!child->locally_owned()) continue;
-            if (child == nullptr || !child->data() ||
-                !child->data()->is_allocated())
+            if (child == nullptr || !child->has_data() ||
+                !child->data_ref().is_allocated())
                 continue;
 
             if (correction_only && !child->is_correction()) continue;
             if (exclude_correction && child->is_correction()) continue;
 
             auto& child_linalg_data =
-                child->data()->template get_linalg_data<to>(tmp_field_idx);
+                child->data_ref().template get_linalg_data<to>(tmp_field_idx);
             nli_intrp_node(child_linalg_data, parent_linalg_data, i, mesh_obj,
                 real_mesh_field_idx);
         }
@@ -269,12 +269,13 @@ class cell_center_nli
         bool correction_only = false, bool exclude_correction = false)
     {
         auto& parent_linalg_data =
-            parent->data()->template get_linalg_data<to>(tmp_field_idx);
+            parent->data_ref().template get_linalg_data<to>(tmp_field_idx);
 
         for (int i = 0; i < parent->num_children(); ++i)
         {
             auto child = parent->child(i);
-            if (!child || !child->data() || !child->data()->is_allocated())
+            if (!child || !child->has_data() ||
+                !child->data_ref().is_allocated())
                 continue;
 
             if (!child->locally_owned()) continue;
@@ -283,7 +284,7 @@ class cell_center_nli
             if (exclude_correction && child->is_correction()) continue;
 
             auto& child_linalg_data =
-                child->data()->template get_linalg_data<from>(tmp_field_idx);
+                child->data_ref().template get_linalg_data<from>(tmp_field_idx);
 
             nli_antrp_node(child_linalg_data, parent_linalg_data, i, mesh_obj,
                 real_mesh_field_idx);

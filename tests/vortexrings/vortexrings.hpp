@@ -30,19 +30,16 @@ const int Dim = 3;
 struct parameters
 {
     static constexpr std::size_t Dim = 3;
-    REGISTER_FIELDS
-    (
-    Dim,
-     (
-         //name              type       Dim   l/h-buf,mesh_obj, output(optional)
-         (phi_num          ,float_type, 1,    1, 1,   cell),
-         (source           ,float_type, 1,    1, 1,   cell),
-         (phi_exact        ,float_type, 1,    1, 1,   cell),
-         (error            ,float_type, 1,    1, 1,   cell),
-         (amr_lap_source   ,float_type, 1,    1, 1,   cell),
-         (error_lap_source ,float_type, 1,    1, 1,   cell),
-         (decomposition    ,float_type, 1,    1, 1,   cell)
-    ))
+    REGISTER_FIELDS(Dim,
+        (
+            //name              type       Dim   l/h-buf,mesh_obj, output(optional)
+            (phi_num, float_type, 1, 1, 1, cell),
+            (source, float_type, 1, 1, 1, cell),
+            (phi_exact, float_type, 1, 1, 1, cell),
+            (error, float_type, 1, 1, 1, cell),
+            (amr_lap_source, float_type, 1, 1, 1, cell),
+            (error_lap_source, float_type, 1, 1, 1, cell),
+            (decomposition, float_type, 1, 1, 1, cell)))
 };
 
 struct vortex_ring
@@ -314,11 +311,11 @@ struct VortexRingTest : public SetupBase<VortexRingTest, parameters>
         {
             if (it.ptr())
             {
-                if (it->locally_owned() && it->data()) { ++nLocally_owned; }
-                else if (it->data())
+                if (it->locally_owned() && it->has_data()) { ++nLocally_owned; }
+                else if (it->has_data())
                 {
                     ++nGhost;
-                    if (it->data()->is_allocated()) ++nAllocated;
+                    if (it->data_ref().is_allocated()) ++nAllocated;
                 }
             }
         }
@@ -326,12 +323,12 @@ struct VortexRingTest : public SetupBase<VortexRingTest, parameters>
         for (auto it = domain_->begin_leafs(); it != domain_->end_leafs(); ++it)
         {
             if (!it->locally_owned()) continue;
-            if (!(*it && it->data())) continue;
+            if (!(*it && it->has_data())) continue;
             auto dx_level = dx_base / std::pow(2, it->refinement_level());
             auto scaling = std::pow(2, it->refinement_level());
 
-            auto  view(it->data()->node_field().domain_view());
-            auto& nodes_domain = it->data()->nodes_domain();
+            auto  view(it->data_ref().node_field().domain_view());
+            auto& nodes_domain = it->data_ref().nodes_domain();
             for (auto it2 = nodes_domain.begin(); it2 != nodes_domain.end();
                  ++it2)
             {
@@ -381,7 +378,7 @@ struct VortexRingTest : public SetupBase<VortexRingTest, parameters>
         int nPts_global = 0;
         for (auto it = domain_->begin_leafs(); it != domain_->end_leafs(); ++it)
         {
-            if (it->data()) nPts += it->data()->node_field().size();
+            if (it->has_data()) nPts += it->data_ref().node_field().size();
         }
         boost::mpi::all_reduce(
             client_comm_, nPts, nPts_global, std::plus<int>());
@@ -393,7 +390,7 @@ struct VortexRingTest : public SetupBase<VortexRingTest, parameters>
     bool refinement(OctantType* it, int diff_level, bool use_all = false) const
         noexcept
     {
-        auto b = it->data()->descriptor();
+        auto b = it->data_ref().descriptor();
         b.level() = it->refinement_level();
         const float_type dx_base = domain_->dx_base();
 

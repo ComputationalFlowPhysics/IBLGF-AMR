@@ -13,7 +13,7 @@
 #ifndef IBLGF_INCLUDED_EXTR_C_CENTER_NLI
 #define IBLGF_INCLUDED_EXTR_C_CENTER_NLI
 
-#include <iostream>  
+#include <iostream>
 #include <algorithm>
 #include <vector>
 #include <typeinfo>
@@ -124,14 +124,14 @@ class extrapolation_cell_center_nli
             auto child = parent->child(i);
             if (!child) continue;
             if (!child->locally_owned()) continue;
-            if (!child->data()) continue;
-            if (!child->data()->is_allocated()) continue;
+            if (!child->has_data()) continue;
+            if (!child->data_ref().is_allocated()) continue;
 
             auto& child_target_tmp =
-                child->data()->template get_linalg_data<from>();
+                child->data_ref().template get_linalg_data<from>();
 
             auto& child_linalg_data =
-                child->data()->template get_linalg_data<to>();
+                child->data_ref().template get_linalg_data<to>();
             for (int i = 1; i < Nb_ - 1; ++i)
             {
                 for (int j = 1; j < Nb_ - 1; ++j)
@@ -164,15 +164,15 @@ class extrapolation_cell_center_nli
         bool exclude_correction = false)
     {
         auto& parent_linalg_data =
-            parent->data()->template get_linalg_data<from>();
+            parent->data_ref().template get_linalg_data<from>();
 
         for (int i = 0; i < parent->num_children(); ++i)
         {
             auto child = parent->child(i);
             if (!child) continue;
             if (!child->locally_owned()) continue;
-            if (child == nullptr || !child->data() ||
-                !child->data()->is_allocated())
+            if (child == nullptr || !child->has_data() ||
+                !child->data_ref().is_allocated())
                 continue;
 
             if (correction_only && !child->is_correction()) continue;
@@ -180,7 +180,7 @@ class extrapolation_cell_center_nli
             if (exclude_correction && child->is_correction()) continue;
 
             auto& child_linalg_data =
-                child->data()->template get_linalg_data<to>();
+                child->data_ref().template get_linalg_data<to>();
             nli_intrp_node(
                 child_linalg_data, parent_linalg_data, i, mesh_obj, _field_idx);
         }
@@ -255,19 +255,19 @@ class extrapolation_cell_center_nli
         octant_t parent, MeshObject mesh_obj, std::size_t _field_idx)
     {
         auto& parent_linalg_data =
-            parent->data()->template get_linalg_data<to>();
+            parent->data_ref().template get_linalg_data<to>();
 
         for (int i = 0; i < parent->num_children(); ++i)
         {
             auto child = parent->child(i);
-            if (child == nullptr || !child->data() ||
-                !child->data()->is_allocated())
+            if (child == nullptr || !child->has_data() ||
+                !child->data_ref().is_allocated())
                 continue;
 
             if (child->is_correction()) continue;
 
             auto& child_linalg_data =
-                child->data()->template get_linalg_data<from>();
+                child->data_ref().template get_linalg_data<from>();
 
             nli_antrp_node(
                 child_linalg_data, parent_linalg_data, i, mesh_obj, _field_idx);

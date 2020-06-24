@@ -161,9 +161,9 @@ struct Adaptivity:public SetupBase<Adaptivity,parameters>
                 for (auto it  = domain_->begin(l);
                         it != domain_->end(l); ++it)
                 {
-                    if(!it->locally_owned() || !it->data()) continue;
+                    if(!it->locally_owned() || !it->has_data()) continue;
                     const auto dx_level =  dx_base/std::pow(2,it->refinement_level());
-                    domain::Operator::template gradient<source,u>( *(it->data()),dx_level);
+                    domain::Operator::template gradient<source,u>( *(it->has_data()),dx_level);
                 }
                 client->template buffer_exchange<u>(l);
             }
@@ -220,14 +220,14 @@ struct Adaptivity:public SetupBase<Adaptivity,parameters>
             if(!it->locally_owned()) continue;
             //if(it->is_correction()) continue;
 
-            auto dx_level =  dx_base/std::pow(2,it->refinement_level());
-            auto scaling =  std::pow(2,it->refinement_level());
+           auto dx_level =  dx_base/std::pow(2,it->refinement_level());
+           auto scaling =  std::pow(2,it->refinement_level());
 
-           auto view(it->data()->node_field().domain_view());
-           auto& nodes_domain=it->data()->nodes_domain();
+          auto view(it->data_ref().node_field().domain_view());
+          auto& nodes_domain=it->data_ref().nodes_domain();
 
-           //float_type T = dt_*tot_steps_;
-           for(auto it2=nodes_domain.begin();it2!=nodes_domain.end();++it2 )
+          //float_type T = dt_*tot_steps_;
+          for(auto it2=nodes_domain.begin();it2!=nodes_domain.end();++it2 )
            {
                // manufactured solution:
                const auto& coord=it2->level_coordinate();
@@ -268,21 +268,21 @@ struct Adaptivity:public SetupBase<Adaptivity,parameters>
         if (ic_filename_ != "null") return;
 
         // Voriticity IC
-        for (auto it  = domain_->begin();
-                  it != domain_->end(); ++it)
-        {
-            if (!it.ptr() || !it->data() || !it ->data()->is_allocated())
-                continue;
+       for (auto it  = domain_->begin();
+                 it != domain_->end(); ++it)
+       {
+           if (!it.ptr() || !it->has_data() || !it ->data_ref().is_allocated())
+               continue;
 
 
-            auto dx_level =  dx_base/std::pow(2,it->refinement_level());
-            auto scaling =  std::pow(2,it->refinement_level());
+           auto dx_level =  dx_base/std::pow(2,it->refinement_level());
+           auto scaling =  std::pow(2,it->refinement_level());
 
-           auto view(it->data()->node_field().domain_view());
-           auto& nodes_domain=it->data()->nodes_domain();
+          auto view(it->data_ref().node_field().domain_view());
+          auto& nodes_domain=it->data_ref().nodes_domain();
 
-           //float_type T = dt_*tot_steps_;
-           for(auto it2=nodes_domain.begin();it2!=nodes_domain.end();++it2 )
+          //float_type T = dt_*tot_steps_;
+          for(auto it2=nodes_domain.begin();it2!=nodes_domain.end();++it2 )
            {
                // manufactured solution:
                const auto& coord=it2->level_coordinate();
@@ -350,9 +350,9 @@ struct Adaptivity:public SetupBase<Adaptivity,parameters>
         //    for (auto it  = domain_->begin(l);
         //            it != domain_->end(l); ++it)
         //    {
-        //        if(!it->locally_owned() || !it->data()) continue;
+        //        if(!it->locally_owned() || !it->has_data()) continue;
         //        const auto dx_level =  dx_base/std::pow(2,it->refinement_level());
-        //        domain::Operator::curl_transpose<stream_f,u>( *(it->data()),dx_level);
+        //        domain::Operator::curl_transpose<stream_f,u>( *(it->has_data()),dx_level);
         //    }
         //    client->template buffer_exchange<u>(l);
 
@@ -388,7 +388,7 @@ struct Adaptivity:public SetupBase<Adaptivity,parameters>
     {
         float_type field_max = 1e-14;
 
-        auto& nodes_domain=it->data()->nodes_domain();
+        auto& nodes_domain=it->data_ref().nodes_domain();
         for(auto it2=nodes_domain.begin();it2!=nodes_domain.end();++it2 )
         {
             if (std::fabs(it2->template get<Field>()) > field_max)
@@ -420,7 +420,7 @@ struct Adaptivity:public SetupBase<Adaptivity,parameters>
     bool refinement(OctantType* it, int diff_level,
             bool use_all=false) const noexcept
     {
-        auto b=it->data()->descriptor();
+        auto b=it->data_ref().descriptor();
         b.level()=it->refinement_level();
         const float_type dx_base = domain_->dx_base();
 

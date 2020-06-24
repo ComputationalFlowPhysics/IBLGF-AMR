@@ -263,14 +263,14 @@ class Server : public ServerBase<ServerClientTraits<Domain>>
 
             for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
             {
-                if (!it->data()) continue;
+                if (!it->has_data()) continue;
 
                 int        rank_tobe = -1;
                 float_type min_load = std::numeric_limits<float_type>::max();
                 for (int i = 0; i < it->num_children(); ++i)
                 {
                     const auto child = it->child(i);
-                    if (!child || !child->data()) continue;
+                    if (!child || !child->has_data()) continue;
 
                     if (child->rank() <= 0)
                         throw std::runtime_error("Child not set ");
@@ -292,7 +292,7 @@ class Server : public ServerBase<ServerClientTraits<Domain>>
                     //for(int i=0;i<it->num_children();++i)
                     //{
                     //    const auto child = it->child(i);
-                    //    if(!child || !child->data()) continue;
+                    //    if(!child || !child->has_data()) continue;
                     //    if (child->rank()!=rank_tobe)
                     //    {
                     //        total_loads_perProc[child->rank()-1]-=child->load();
@@ -313,7 +313,7 @@ class Server : public ServerBase<ServerClientTraits<Domain>>
         {
             for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
             {
-                if (!it->data()) continue;
+                if (!it->has_data()) continue;
                 ctask_t task(it.ptr(), it->rank(), it->load());
                 tasks_perProc[it->rank() - 1].push_back(task);
             }
@@ -321,7 +321,7 @@ class Server : public ServerBase<ServerClientTraits<Domain>>
 
         for (auto it = domain_->begin_df(); it != domain_->end_df(); ++it)
         {
-            if (it->rank() == -1 && it->data())
+            if (it->rank() == -1 && it->has_data())
             {
                 std::cout << "Domain decomposition (Server):"
                              " Some octant's rank was not set"
@@ -339,7 +339,7 @@ class Server : public ServerBase<ServerClientTraits<Domain>>
         std::vector<int> ranks_old;
         for (auto it = domain_->begin(); it != domain_->end(); ++it)
         {
-            if (!it->data()) continue;
+            if (!it->has_data()) continue;
             ranks_old.push_back(it->rank());
         }
 
@@ -349,7 +349,7 @@ class Server : public ServerBase<ServerClientTraits<Domain>>
         DecompositionUpdate updates(comm_.size());
         for (auto it = domain_->begin(); it != domain_->end(); ++it)
         {
-            if (!it->data()) continue;
+            if (!it->has_data()) continue;
             if (ranks_old[c] != it->rank())
             {
                 if (it->rank() <= 0 || ranks_old[c] <= 0)
@@ -447,7 +447,8 @@ class Server : public ServerBase<ServerClientTraits<Domain>>
         for (auto& key : _task->data())
         {
             auto oct = domain_->tree()->find_octant(key);
-            if (oct && oct->data()) { (*_out)[count++] = (oct->fmm_mask()); }
+            if (oct && oct->has_data())
+            { (*_out)[count++] = (oct->fmm_mask()); }
             else
             {
                 std::cout << ("Can't find mask for oct on server") << std::endl;
@@ -464,7 +465,7 @@ class Server : public ServerBase<ServerClientTraits<Domain>>
         for (auto& key : _task->data())
         {
             auto oct = domain_->tree()->find_octant(key);
-            if (oct && oct->data()) { (*_out)[count++] = (oct->flags()); }
+            if (oct && oct->has_data()) { (*_out)[count++] = (oct->flags()); }
             else
             {
                 std::cout << ("Can't find oct on server \n") << key
@@ -482,7 +483,7 @@ class Server : public ServerBase<ServerClientTraits<Domain>>
         for (auto& key : _task->data())
         {
             auto oct = domain_->tree()->find_octant(key);
-            if (oct && oct->data()) (*_out)[count++] = oct->rank();
+            if (oct && oct->has_data()) (*_out)[count++] = oct->rank();
             else
                 (*_out)[count++] = -1;
         }

@@ -183,7 +183,7 @@ class Domain
                 const int level = 0;
                 auto      bbase =
                     t_->octant_to_level_coordinate(it->tree_coordinate());
-                it->data() = std::make_shared<datablock_t>(
+                it->data_ptr() = std::make_shared<datablock_t>(
                     bbase, _blockExtent, level, false);
             }
         }
@@ -250,7 +250,7 @@ class Domain
                     auto bbase = this->tree()->octant_to_level_coordinate(
                         _o->tree_coordinate(), level);
 
-                    _o->data() = std::make_shared<datablock_t>(
+                    _o->data_ptr() = std::make_shared<datablock_t>(
                         bbase, this->block_extent(), level, false);
                 },
                 false);
@@ -408,7 +408,7 @@ class Domain
                 for (int i = 0; i < it->num_children(); ++i)
                 {
                     auto child = it->child(i);
-                    if (!child || !child->data()) continue;
+                    if (!child || !child->has_data()) continue;
 
                     if (!child->aim_deletion() ||
                         (!child->is_leaf() && !child->is_correction()))
@@ -461,14 +461,14 @@ class Domain
 
         for (auto it = this->begin(); it != this->end(); ++it)
         {
-            if (!it->data()) continue;
+            if (!it->has_data()) continue;
 
             if (it->is_leaf())
             {
                 for (int i = 0; i < it->nNeighbors(); ++i)
                 {
                     auto neighbor_it = it->neighbor(i);
-                    if (!neighbor_it || !neighbor_it->data() ||
+                    if (!neighbor_it || !neighbor_it->has_data() ||
                         neighbor_it->is_correction() || neighbor_it->is_leaf())
                         continue;
                     it->leaf_boundary() = true;
@@ -480,7 +480,7 @@ class Domain
                 for (int i = 0; i < it->nNeighbors(); ++i)
                 {
                     auto neighbor_it = it->neighbor(i);
-                    if (!neighbor_it || !neighbor_it->data() ||
+                    if (!neighbor_it || !neighbor_it->has_data() ||
                         !neighbor_it->is_leaf())
                         continue;
                     it->leaf_boundary() = true;
@@ -492,7 +492,8 @@ class Domain
                 for (int i = 0; i < it->num_children(); ++i)
                 {
                     auto child = it->child(i);
-                    if (child && child->data()) child->leaf_boundary() = true;
+                    if (child && child->has_data())
+                        child->leaf_boundary() = true;
                 }
             }
         }
@@ -509,7 +510,7 @@ class Domain
         {
             for (auto it = this->begin(l); it != this->end(l); ++it)
             {
-                if (!it->data()) continue;
+                if (!it->has_data()) continue;
                 it->physical(it->is_leaf() && !it->aim_deletion());
 
                 if (!it->physical())
@@ -517,7 +518,7 @@ class Domain
                     for (int i = 0; i < it->num_children(); ++i)
                     {
                         auto child = it->child(i);
-                        if (child && child->data())
+                        if (child && child->has_data())
                             it->physical(it->physical() || child->physical());
                     }
                 }
@@ -529,7 +530,7 @@ class Domain
         {
             for (auto it = this->begin(l); it != this->end(l); ++it)
             {
-                if (!it->data()) continue;
+                if (!it->has_data()) continue;
                 if (!it->physical()) continue;
 
                 it->tree()->insert_correction_neighbor(
@@ -540,7 +541,7 @@ class Domain
                             neighbor_it->tree_coordinate(), level);
 
                         bool init_field = false;
-                        neighbor_it->data() = std::make_shared<datablock_t>(
+                        neighbor_it->data_ptr() = std::make_shared<datablock_t>(
                             bbase, block_extent_, level, init_field);
                     });
             }
@@ -560,7 +561,7 @@ class Domain
                 for (int i = 0; i < it->nNeighbors(); ++i)
                 {
                     auto neighbor_it = it->neighbor(i);
-                    if (!neighbor_it || !neighbor_it->data() ||
+                    if (!neighbor_it || !neighbor_it->has_data() ||
                         neighbor_it->physical())
                         continue;
 
@@ -578,12 +579,12 @@ class Domain
         for (auto it = this->begin(base_level); it != this->end(base_level);
              ++it)
         {
-            if (!it->data()) continue;
+            if (!it->has_data()) continue;
             if (!it->physical()) continue;
             bool _neighbors_exists = true;
             for (int i = 0; i < it->nNeighbors(); ++i)
             {
-                if (!it->neighbor(i) || !it->neighbor(i)->data())
+                if (!it->neighbor(i) || !it->neighbor(i)->has_data())
                     _neighbors_exists = false;
             }
 
@@ -708,7 +709,7 @@ class Domain
         int c = 0;
         for (auto it = this->begin(); it != this->end(); ++it)
         {
-            if (it->data() && it->data()->is_allocated()) ++c;
+            if (it->has_data() && it->data_ref().is_allocated()) ++c;
         }
 
         return c;
@@ -756,12 +757,12 @@ class Domain
     template<class Iterator>
     auto begin_octant_nodes(Iterator it) noexcept
     {
-        return it->data().nodes_begin();
+        return it->has_data().nodes_begin();
     }
     template<class Iterator>
     auto end_octant_nodes(Iterator it) noexcept
     {
-        return it->data().nodes_end();
+        return it->has_data().nodes_end();
     }
 
   public:
@@ -787,7 +788,7 @@ class Domain
                     child_it->tree_coordinate(), level);
 
                 bool init_field = this->is_client();
-                child_it->data() = std::make_shared<datablock_t>(
+                child_it->data_ptr() = std::make_shared<datablock_t>(
                     bbase, block_extent_, level, init_field);
             },
             ratio_2to1);
@@ -800,7 +801,8 @@ class Domain
         tree()->refine(
             octant_it,
             [this, &deletion](auto child_it) {
-                if (child_it && child_it->data() && child_it->is_correction() &&
+                if (child_it && child_it->has_data() &&
+                    child_it->is_correction() &&
                     child_it->rank() != child_it->parent()->rank())
                 {
                     deletion[child_it->rank()].emplace_back(child_it->key());
@@ -812,8 +814,8 @@ class Domain
                     child_it->tree_coordinate(), level);
 
                 bool init_field = this->is_client();
-                if (!child_it->data())
-                    child_it->data() = std::make_shared<datablock_t>(
+                if (!child_it->has_data())
+                    child_it->data_ptr() = std::make_shared<datablock_t>(
                         bbase, block_extent_, level, init_field);
             },
             ratio_2to1);
@@ -833,31 +835,31 @@ class Domain
             auto neighbors = it->get_level_neighborhood(lbuff, hbuff);
 
             //box-overlap per field
-            it->data()->for_fields(
-                [this, it, _begin, _end, &neighbors](auto& field) {
-                    for (auto& jt : neighbors)
+            it->data_ref().for_fields([this, it, _begin, _end, &neighbors](
+                                          auto& field) {
+                for (auto& jt : neighbors)
+                {
+                    if (it->key() == jt->key()) continue;
+
+                    //Check for overlap with current
+                    block_descriptor_t overlap;
+                    if (field.buffer_overlap(jt->data_ref().descriptor(),
+                            overlap, jt->refinement_level()))
                     {
-                        if (it->key() == jt->key()) continue;
+                        using field_type =
+                            std::remove_reference_t<decltype(field)>;
+                        auto& src = jt->data_ref().template get<field_type>();
+                        const auto overlap_src = overlap;
 
-                        //Check for overlap with current
-                        block_descriptor_t overlap;
-                        if (field.buffer_overlap(jt->data()->descriptor(),
-                                overlap, jt->refinement_level()))
-                        {
-                            using field_type =
-                                std::remove_reference_t<decltype(field)>;
-                            auto& src = jt->data()->template get<field_type>();
-                            const auto overlap_src = overlap;
+                        //it is target and jt is source
+                        coordinate_type stride_tgt(1);
+                        coordinate_type stride_src(1);
 
-                            //it is target and jt is source
-                            coordinate_type stride_tgt(1);
-                            coordinate_type stride_src(1);
-
-                            assign(src, overlap, stride_src, field, overlap,
-                                stride_tgt);
-                        }
+                        assign(src, overlap, stride_src, field, overlap,
+                            stride_tgt);
                     }
-                });
+                }
+            });
         }
     }
 
@@ -874,47 +876,47 @@ class Domain
             auto neighbors = it->get_level_neighborhood(lbuff, hbuff);
 
             //box-overlap per field
-            it->data()->for_fields(
-                [this, it, _begin, _end, &neighbors](auto& field) {
-                    //for(auto& jt: neighbors)
-                    for (auto jt = _begin; jt != _end; ++jt)
+            it->data_ref().for_fields([this, it, _begin, _end, &neighbors](
+                                          auto& field) {
+                //for(auto& jt: neighbors)
+                for (auto jt = _begin; jt != _end; ++jt)
+                {
+                    if (it->key() == jt->key()) continue;
+
+                    //Check for overlap with current
+                    block_descriptor_t overlap;
+                    if (field.buffer_overlap(jt->data_ref().descriptor(),
+                            overlap, jt->refinement_level()))
                     {
-                        if (it->key() == jt->key()) continue;
+                        using field_type =
+                            std::remove_reference_t<decltype(field)>;
+                        auto& src = jt->data_ref().template get<field_type>();
+                        const auto overlap_src = overlap;
 
-                        //Check for overlap with current
-                        block_descriptor_t overlap;
-                        if (field.buffer_overlap(jt->data()->descriptor(),
-                                overlap, jt->refinement_level()))
+                        auto overlap_tgt = overlap_src;
+                        overlap_tgt.level_scale(it->refinement_level());
+
+                        //it is target and jt is source
+                        int tgt_stride = 1, src_stride = 1;
+                        if (it->refinement_level() > jt->refinement_level())
                         {
-                            using field_type =
-                                std::remove_reference_t<decltype(field)>;
-                            auto& src = jt->data()->template get<field_type>();
-                            const auto overlap_src = overlap;
-
-                            auto overlap_tgt = overlap_src;
-                            overlap_tgt.level_scale(it->refinement_level());
-
-                            //it is target and jt is source
-                            int tgt_stride = 1, src_stride = 1;
-                            if (it->refinement_level() > jt->refinement_level())
-                            {
-                                tgt_stride = 2;
-                                src_stride = 1;
-                            }
-                            else if (it->refinement_level() <
-                                     jt->refinement_level())
-                            {
-                                tgt_stride = 1;
-                                src_stride = 2;
-                            }
-                            coordinate_type stride_tgt(tgt_stride);
-                            coordinate_type stride_src(src_stride);
-
-                            assign(src, overlap_src, stride_src, field,
-                                overlap_tgt, stride_tgt);
+                            tgt_stride = 2;
+                            src_stride = 1;
                         }
+                        else if (it->refinement_level() <
+                                 jt->refinement_level())
+                        {
+                            tgt_stride = 1;
+                            src_stride = 2;
+                        }
+                        coordinate_type stride_tgt(tgt_stride);
+                        coordinate_type stride_src(src_stride);
+
+                        assign(src, overlap_src, stride_src, field, overlap_tgt,
+                            stride_tgt);
                     }
-                });
+                }
+            });
         }
     }
 
@@ -940,8 +942,8 @@ class Domain
 
                 //Check for overlap with current
                 block_descriptor_t overlap;
-                auto               fBlock = it->data()->descriptor();
-                auto               cBlock = jt->data()->descriptor();
+                auto               fBlock = it->data_ref().descriptor();
+                auto               cBlock = jt->data_ref().descriptor();
 
                 auto crBlock = cBlock;
                 cBlock.level_scale(it->refinement_level());
@@ -991,9 +993,9 @@ class Domain
                 for (int d = 0; d < Dim; ++d)
                 {
                     bb.base()[d] = std::min(
-                        bb.base()[d], it->data()->descriptor().base()[d]);
+                        bb.base()[d], it->data_ref().descriptor().base()[d]);
                 }
-                bb.enlarge_to_fit(it->data()->descriptor());
+                bb.enlarge_to_fit(it->data_ref().descriptor());
             }
         }
         return bb;
@@ -1050,11 +1052,11 @@ class Domain
         {
             for (auto it = this->begin_leafs(); it != this->end_leafs(); ++it)
             {
-                if (!it->locally_owned() || !it->data()) continue;
+                if (!it->locally_owned() || !it->has_data()) continue;
 
-                nPts += it->data()->node_field().size();
+                nPts += it->data_ref().node_field().size();
                 nPoints_perLevel[it->refinement_level()] +=
-                    it->data()->node_field().size();
+                    it->data_ref().node_field().size();
             }
         }
         boost::mpi::all_reduce(
@@ -1088,7 +1090,7 @@ class Domain
         os << "Interior Key Bounding Box: " << d.key_bd_box_ << std::endl;
         //os<<"Fields:"<<std::endl;
         //auto it=d.begin_leafs();
-        //it->data()->for_fields([&](auto& field)
+        //it->data_ref().for_fields([&](auto& field)
         //        {
         //            os<<"\t "<<field.name()<<std::endl;
         //        }

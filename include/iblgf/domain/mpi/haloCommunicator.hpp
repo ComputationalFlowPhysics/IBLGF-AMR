@@ -73,16 +73,16 @@ class HaloCommunicator
                  ++it)
             {
                 if (!it->locally_owned()) continue;
-                if (!it->data() || !it->data()->is_allocated()) continue;
+                if (!it->has_data() || !it->data_ref().is_allocated()) continue;
 
                 for (std::size_t i = 0; i < it->num_neighbors(); ++i)
                 {
                     auto it2 = it->neighbor(i);
                     if (!it2) continue;
-                    if (!it2->data()) continue;
+                    if (!it2->has_data()) continue;
 
-                    auto& field = it->data()->template get<Field>(j);
-                    auto& field2 = it2->data()->template get<Field>(j);
+                    auto& field = it->data_ref().template get<Field>(j);
+                    auto& field2 = it2->data_ref().template get<Field>(j);
 
                     //send view
                     if (auto overlap_opt = field.send_view(field2))
@@ -198,8 +198,9 @@ class HaloCommunicator
         //Copy locally owned fields to buffers:
         for (auto& sf : intra_send_interface)
         {
-            auto& dfield = sf.dest->data()->template get<Field>(sf.field_idx);
-            auto  dest_view = dfield.view(sf.view);
+            auto& dfield =
+                sf.dest->data_ref().template get<Field>(sf.field_idx);
+            auto dest_view = dfield.view(sf.view);
             dest_view.assign_toView(sf.view);
         }
 

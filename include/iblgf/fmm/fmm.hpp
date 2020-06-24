@@ -80,7 +80,7 @@ struct FmmMaskBuilder
         for (auto it = domain_->begin(base_level);
              it != domain_->end(base_level); ++it)
         {
-            if (!it->data()) continue;
+            if (!it->has_data()) continue;
 
             if (!it->is_correction())
                 it->fmm_mask(fmm_mask_idx, MASK_LIST::Mask_FMM_Source, true);
@@ -140,7 +140,7 @@ struct FmmMaskBuilder
                 it->fmm_mask(_fmm_mask_idx, mask_source_id, false);
                 for (int c = 0; c < it->num_children(); ++c)
                 {
-                    if (it->child(c) && it->child(c)->data() &&
+                    if (it->child(c) && it->child(c)->has_data() &&
                         it->child(c)->fmm_mask(_fmm_mask_idx, mask_source_id))
                     {
                         it->fmm_mask(_fmm_mask_idx, mask_source_id, true);
@@ -156,7 +156,7 @@ struct FmmMaskBuilder
                 it->fmm_mask(_fmm_mask_idx, mask_target_id, false);
                 for (int c = 0; c < it->num_children(); ++c)
                 {
-                    if (it->child(c) && it->child(c)->data() &&
+                    if (it->child(c) && it->child(c)->has_data() &&
                         it->child(c)->fmm_mask(_fmm_mask_idx, mask_target_id))
                     {
                         it->fmm_mask(_fmm_mask_idx, mask_target_id, true);
@@ -194,10 +194,10 @@ struct FmmMaskBuilder
             for (auto it = domain_->begin(base_level);
                  it != domain_->end(base_level); ++it)
             {
-                if (!it->data()) continue;
+                if (!it->has_data()) continue;
                 bool correction_parent = false;
                 for (std::size_t i = 0; i < it->num_children(); ++i)
-                    if (it->child(i) && it->child(i)->data() &&
+                    if (it->child(i) && it->child(i)->has_data() &&
                         it->child(i)->is_correction())
                         correction_parent = true;
 
@@ -263,11 +263,11 @@ struct FmmMaskBuilder
             for (auto it = domain_->begin(base_level);
                  it != domain_->end(base_level); ++it)
             {
-                if (!it->data()) continue;
+                if (!it->has_data()) continue;
 
                 //bool correction_parent=false;
                 //for (std::size_t i=0; i<it->num_children(); ++i)
-                //    if (it->child(i) && it->child(i)->data() && it->child(i)->is_correction())
+                //    if (it->child(i) && it->child(i)->has_data() && it->child(i)->is_correction())
                 //        correction_parent = true;
 
                 if (subtract_non_leaf)
@@ -484,7 +484,7 @@ class Fmm
                  ++it)
             {
                 bool _neighbor = (level == base_level_) ? true : false;
-                if (!(it->data()) ||
+                if (!(it->has_data()) ||
                     !it->fmm_mask(fmm_mask_idx_, MASK_LIST::Mask_FMM_Target))
                     continue;
 
@@ -578,7 +578,7 @@ class Fmm
     void compute_influence_field(octant_t* it, Kernel* _kernel, int level_diff,
         float_type dx_level, bool neighbor) noexcept
     {
-        if (!(it->data()) ||
+        if (!(it->has_data()) ||
             !it->fmm_mask(fmm_mask_idx_, MASK_LIST::Mask_FMM_Target))
             return;
 
@@ -607,13 +607,13 @@ class Fmm
         }
 
         const auto t_extent =
-            it->data()->template get<fmm_t_type>().real_block().extent();
+            it->data_ref().template get<fmm_t_type>().real_block().extent();
         block_dsrp_t extractor(dims_t(0), t_extent);
 
         float_type _scale =
             (_kernel->neighbor_only()) ? 1.0 : dx_level * dx_level;
         conv_.apply_backward(
-            extractor, it->data()->template get<fmm_t_type>(), _scale);
+            extractor, it->data_ref().template get<fmm_t_type>(), _scale);
     }
 
     template<class f1, class f2>
@@ -622,14 +622,14 @@ class Fmm
         for (auto it = domain_->begin(base_level_);
              it != domain_->end(base_level_); ++it)
         {
-            if (it->data() && it->locally_owned() &&
+            if (it->has_data() && it->locally_owned() &&
                 it->fmm_mask(fmm_mask_idx_, MASK_LIST::Mask_FMM_Target))
             {
-                it->data()
-                    ->template get_linalg<f1>()
+                it->data_ref()
+                    .template get_linalg<f1>()
                     .get()
                     ->cube_noalias_view() +=
-                    it->data()->template get_linalg_data<f2>() * scale;
+                    it->data_ref().template get_linalg_data<f2>() * scale;
             }
         }
     }
@@ -640,14 +640,14 @@ class Fmm
         for (auto it = domain_->begin(base_level_);
              it != domain_->end(base_level_); ++it)
         {
-            if (it->data() && it->locally_owned() &&
+            if (it->has_data() && it->locally_owned() &&
                 it->fmm_mask(fmm_mask_idx_, MASK_LIST::Mask_FMM_Target))
             {
-                it->data()
-                    ->template get_linalg<f1>()
+                it->data_ref()
+                    .template get_linalg<f1>()
                     .get()
                     ->cube_noalias_view() -=
-                    it->data()->template get_linalg_data<f2>();
+                    it->data_ref().template get_linalg_data<f2>();
             }
         }
     }
@@ -660,9 +660,9 @@ class Fmm
             for (auto it = domain_->begin(level); it != domain_->end(level);
                  ++it)
             {
-                if (it->data() && it->fmm_mask(fmm_mask_idx_, mask_id))
+                if (it->has_data() && it->fmm_mask(fmm_mask_idx_, mask_id))
                 {
-                    for (auto& e : it->data()->template get_data<field>())
+                    for (auto& e : it->data_ref().template get_data<field>())
                         e = 0.0;
                 }
             }
@@ -677,19 +677,20 @@ class Fmm
         for (auto it = domain_->begin(base_level_);
              it != domain_->end(base_level_); ++it)
         {
-            if (it->data() && it->locally_owned() &&
+            if (it->has_data() && it->locally_owned() &&
                 it->fmm_mask(fmm_mask_idx_, MASK_LIST::Mask_FMM_Source))
             {
-                auto lin_data_1 = it->data()->template get_linalg_data<from>();
-                auto lin_data_2 = it->data()->template get_linalg_data<to>();
+                auto lin_data_1 =
+                    it->data_ref().template get_linalg_data<from>();
+                auto lin_data_2 = it->data_ref().template get_linalg_data<to>();
 
                 xt::noalias(view(lin_data_2, xt::range(1, -1), xt::range(1, -1),
                     xt::range(1, -1))) = view(lin_data_1, xt::range(1, -1),
                     xt::range(1, -1), xt::range(1, -1));
 
-                //it->data()->template get_linalg<to>().get()->
+                //it->data_ref().template get_linalg<to>().get()->
                 //    cube_noalias_view() =
-                //     it->data()->template get_linalg_data<from>() * 1.0;
+                //     it->data_ref().template get_linalg_data<from>() * 1.0;
             }
         }
     }
@@ -707,7 +708,7 @@ class Fmm
             for (auto it = domain_->begin(level); it != domain_->end(level);
                  ++it)
             {
-                if (it->data() && it->fmm_mask(fmm_mask_idx_, mask_id))
+                if (it->has_data() && it->fmm_mask(fmm_mask_idx_, mask_id))
                     lagrange_intrp.nli_intrp_node<fmm_t_type>(
                         it, mask_id, fmm_mask_idx_);
             }
@@ -722,7 +723,7 @@ class Fmm
             for (auto it = domain_->begin(level); it != domain_->end(level);
                  ++it)
             {
-                if (it->data() && it->fmm_mask(fmm_mask_idx_, mask_id))
+                if (it->has_data() && it->fmm_mask(fmm_mask_idx_, mask_id))
                     lagrange_intrp.nli_antrp_node<fmm_s_type>(
                         it, mask_id, fmm_mask_idx_);
             }
@@ -735,11 +736,11 @@ class Fmm
             for (auto it = domain_->begin(level); it != domain_->end(level);
                  ++it)
             {
-                if (!it->locally_owned() && it->data() &&
-                    it->data()->is_allocated())
+                if (!it->locally_owned() && it->has_data() &&
+                    it->data_ref().is_allocated())
                 {
                     auto& cp2 =
-                        it->data()->template get_linalg_data<fmm_s_type>();
+                        it->data_ref().template get_linalg_data<fmm_s_type>();
                     cp2 *= 0.0;
                 }
             }
@@ -752,13 +753,13 @@ class Fmm
         const auto t0_fft = clock_type::now();
 
         const auto t_base =
-            o_t->data()->template get<fmm_t_type>().real_block().base();
+            o_t->data_ref().template get<fmm_t_type>().real_block().base();
         const auto s_base =
-            o_s->data()->template get<fmm_s_type>().real_block().base();
+            o_s->data_ref().template get<fmm_s_type>().real_block().base();
 
         // Get extent of Source region
         const auto s_extent =
-            o_s->data()->template get<fmm_s_type>().real_block().extent();
+            o_s->data_ref().template get<fmm_s_type>().real_block().extent();
         const auto shift = t_base - s_base;
 
         // Calculate the dimensions of the LGF to be allocated
@@ -768,7 +769,7 @@ class Fmm
         block_dsrp_t lgf_block(base_lgf, extent_lgf);
 
         conv_.apply_forward_add(lgf_block, _kernel, level_diff,
-            o_s->data()->template get<fmm_s_type>());
+            o_s->data_ref().template get<fmm_s_type>());
 
         const auto t1_fft = clock_type::now();
         timings_.fftw += t1_fft - t0_fft;

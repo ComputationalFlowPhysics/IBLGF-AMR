@@ -46,7 +46,7 @@ class Vtk_io
         int nPoints = 0;
         for (auto it = _lt->begin_leafs(); it != _lt->end_leafs(); ++it)
         {
-            auto b = it->data()->descriptor();
+            auto b = it->data_ref().descriptor();
             b.grow(0, 1); //grow by one to fill the gap
             nPoints += b.nPoints();
         }
@@ -56,7 +56,7 @@ class Vtk_io
         int _count = 0;
         for (auto it = _lt->begin_leafs(); it != _lt->end_leafs(); ++it)
         {
-            auto block = it->data()->descriptor();
+            auto block = it->data_ref().descriptor();
             int  e = block.nPoints();
             nCells += e;
             block.grow(0, 1);
@@ -70,7 +70,7 @@ class Vtk_io
                 {
                     for (auto i = base[0]; i <= max[0]; ++i)
                     {
-                        auto n = it->data()->node(i, j, k);
+                        auto n = it->data_ref().node(i, j, k);
                         ofs << n.global_coordinate() << std::endl;
                     }
                 }
@@ -83,7 +83,7 @@ class Vtk_io
         //connectivity
         for (auto it = _lt->begin_leafs(); it != _lt->end_leafs(); ++it)
         {
-            auto block = it->data()->descriptor();
+            auto block = it->data_ref().descriptor();
             auto base = block.base();
             auto max = block.max();
 
@@ -128,7 +128,7 @@ class Vtk_io
         //    ofs << "LOOKUP_TABLE default"          << std::endl;
         //    for (auto it = _lt->begin_leafs(); it != _lt->end_leafs(); ++it)
         //    {
-        //            for (auto& n : it->data()->nodes())
+        //            for (auto& n : it->data_ref().nodes())
         //            {
         //                ofs << n.template get<T>() << std::endl;
         //            }
@@ -141,7 +141,7 @@ class Vtk_io
             ofs << "LOOKUP_TABLE default" << std::endl;
             for (auto it = _lt->begin_leafs(); it != _lt->end_leafs(); ++it)
             {
-                auto block = it->data()->descriptor();
+                auto block = it->data_ref().descriptor();
                 auto base = block.base();
                 auto max = block.max();
 
@@ -153,7 +153,7 @@ class Vtk_io
                     {
                         for (auto i = base[0]; i <= max[0]; ++i)
                         {
-                            auto n = it->data()->node(i, j, k);
+                            auto n = it->data_ref().node(i, j, k);
                             if (std::fabs(n.template get<T>()) < 1e-32)
                                 ofs << 0.0 << std::endl;
                             else
@@ -174,20 +174,20 @@ class Vtk_io
         ofs << "DATASET UNSTRUCTURED_GRID" << std::endl;
         int nPoints = 0;
         for (auto it = _lt->begin_leafs(); it != _lt->end_leafs(); ++it)
-        { nPoints += it->data()->nodes().size(); }
+        { nPoints += it->data_ref().nodes().size(); }
 
         ofs << "POINTS " << nPoints << " float" << std::endl;
         int nCells = 0;
         int _count = 0;
         for (auto it = _lt->begin_leafs(); it != _lt->end_leafs(); ++it)
         {
-            auto block = it->data()->descriptor();
+            auto block = it->data_ref().descriptor();
             block.extent() -= 1;
             int e = block.nPoints();
             nCells += e;
-            for (auto& n : it->data()->nodes())
+            for (auto& n : it->data_ref().nodes())
             { ofs << n.global_coordinate() << std::endl; }
-            it->index(_count * it->data()->nPoints());
+            it->index(_count * it->data_ref().nPoints());
             ++_count;
         }
         ofs << "\nCELLS " << nCells << " " << nCells * 9 << std::endl;
@@ -195,7 +195,7 @@ class Vtk_io
         //connectivity
         for (auto it = _lt->begin_leafs(); it != _lt->end_leafs(); ++it)
         {
-            for (auto& n : it->data()->nodes())
+            for (auto& n : it->data_ref().nodes())
             {
                 if (!n.on_max_blockBorder())
                 //if (true)
@@ -231,7 +231,7 @@ class Vtk_io
             ofs << "LOOKUP_TABLE default" << std::endl;
             for (auto it = _lt->begin_leafs(); it != _lt->end_leafs(); ++it)
             {
-                for (auto& n : it->data()->nodes())
+                for (auto& n : it->data_ref().nodes())
                 { ofs << n.template get<T>() << std::endl; }
             }
         });

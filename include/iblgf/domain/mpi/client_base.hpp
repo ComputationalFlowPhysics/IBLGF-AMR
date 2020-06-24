@@ -63,7 +63,7 @@ class ClientBase : public ServerClientBase<Traits>
         //for(auto& e : ft)
         //{
         //    std::cout<<"Received answer on rank"<<comm_.rank()<<": \n";
-        //    for(auto& d: e->data()) std::cout<<d<<"  ";
+        //    for(auto& d: e->has_data()) std::cout<<d<<"  ";
         //    std::cout<<std::endl;
         //}
         if (recv_comm.done()) return true;

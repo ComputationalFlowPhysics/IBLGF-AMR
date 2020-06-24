@@ -26,8 +26,6 @@
 #include <iblgf/domain/decomposition/server.hpp>
 #include <iblgf/fmm/fmm.hpp>
 
-
-
 namespace iblgf
 {
 namespace domain
@@ -164,7 +162,7 @@ class Decomposition
 
             for (auto it = domain_->begin(); it != domain_->end(); ++it)
             {
-                if (!it->data()) continue;
+                if (!it->has_data()) continue;
 
                 if (it->is_correction() && it->refinement_level() > 0)
                     it->aim_deletion(true);
@@ -177,7 +175,7 @@ class Decomposition
             server()->recv_adapt_attempts(octs_all, level_change_all);
             for (auto it = domain_->begin(); it != domain_->end(); ++it)
             {
-                if (!it->data()) continue;
+                if (!it->has_data()) continue;
                 it->aim_level_change() = 0;
             }
 
@@ -187,7 +185,7 @@ class Decomposition
                 {
                     auto key = octs_all[c];
                     auto it = domain_->tree()->find_octant(key);
-                    if (!it || !it->data())
+                    if (!it || !it->has_data())
                         throw std::runtime_error("can't find oct on server");
                     it->aim_level_change() = level_change_all[c];
                 }
@@ -220,7 +218,7 @@ class Decomposition
                 level = level >= 0 ? level : 0;
                 auto bbase = domain_->tree()->octant_to_level_coordinate(
                     _o->tree_coordinate(), level);
-                _o->data() = std::make_shared<datablock_t>(
+                _o->data_ptr() = std::make_shared<datablock_t>(
                     bbase, domain_->block_extent(), level, false);
             };
 
@@ -246,7 +244,7 @@ class Decomposition
                 if (!domain_->key_bounding_box(false).is_inside(
                         nk.coordinate()))
                     continue;
-                if (!oct || !oct->data())
+                if (!oct || !oct->has_data())
                 {
                     oct = domain_->tree()->insert_td(nk);
                     f(oct);
@@ -320,7 +318,7 @@ class Decomposition
                 {
                     if (it->is_leaf_search())
                     {
-                        if (it->data())
+                        if (it->has_data())
                             deletion[it->rank()].emplace_back(it->key());
                         domain_->tree()->delete_oct(it.ptr());
                     }
@@ -332,7 +330,7 @@ class Decomposition
 
             for (auto it = domain_->begin(); it != domain_->end(); ++it)
             {
-                if (it->rank() == -1 && it->data())
+                if (it->rank() == -1 && it->has_data())
                 {
                     auto pa = it->parent();
                     while (pa->rank() <= 0 && pa != pa->parent())
@@ -350,7 +348,7 @@ class Decomposition
                         for (auto nk : nks)
                         {
                             auto oct = domain_->tree()->find_octant(nk);
-                            if (oct && oct->data() && oct->rank() > 0)
+                            if (oct && oct->has_data() && oct->rank() > 0)
                             {
                                 it->rank() = oct->rank();
                                 refinement[it->rank()].emplace_back(it->key());
@@ -360,7 +358,7 @@ class Decomposition
                     }
 
                     pa = it->parent();
-                    while (!pa->data())
+                    while (!pa->has_data())
                     {
                         f(pa);
                         pa->rank() = it->rank();
@@ -376,7 +374,7 @@ class Decomposition
             int depth = 0;
             for (auto it = domain_->begin(); it != domain_->end(); ++it)
             {
-                if (it->data() && it->level() + 1 > depth)
+                if (it->has_data() && it->level() + 1 > depth)
                     depth = it->level() + 1;
             }
             domain_->tree()->depth() = depth;
@@ -433,7 +431,7 @@ class Decomposition
             for (auto k : refinement_local)
             {
                 auto oct = domain_->tree()->find_octant(k);
-                if (oct && oct->data() && oct->locally_owned())
+                if (oct && oct->has_data() && oct->locally_owned())
                     std::cout << " wrong : oct already exists\n " << oct->key();
             }
 
@@ -456,9 +454,9 @@ class Decomposition
                     level = level >= 0 ? level : 0;
                     auto bbase = domain_->tree()->octant_to_level_coordinate(
                         _o->tree_coordinate(), level);
-                    if (!_o->data() || !_o->data()->is_allocated())
+                    if (!_o->has_data() || !_o->data_ref().is_allocated())
                     {
-                        _o->data() = std::make_shared<datablock_t>(
+                        _o->data_ptr() = std::make_shared<datablock_t>(
                             bbase, domain_->block_extent(), level, true);
                     }
                     _o->rank() = comm_.rank();

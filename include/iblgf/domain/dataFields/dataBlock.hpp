@@ -98,112 +98,59 @@ class DataBlock : public BlockDescriptor<int, Dim>
 
   public: //Get member functions
     template<class t>
-    auto& get(int _idx)
+    auto& get(int _idx=0)
     {
         return std::get<t>(fields)[_idx];
     }
     template<class t>
-    auto& get()
-    {
-        return get<t>(0);
-    }
-    template<class t>
-    const auto& get(int _idx) const
+    const auto& get(int _idx=0) const
     {
         return std::get<t>(fields)[_idx];
     }
-    template<class t>
-    const auto& get() const
-    {
-        return get<t>(0);
-    }
 
     template<class T>
-    inline auto& get_data(int _idx)
+    inline auto& get_data(int _idx=0)
     {
         return std::get<T>(fields)[_idx].data();
     }
-    template<class T>
-    inline auto& get_data()
-    {
-        FIELD_ASSERT(T) return this->get_data<T>(0);
-    }
-    template<class T>
-    inline const auto& get_data(int _idx) const
+    template<class T >
+    inline const auto& get_data(int _idx=0) const
     {
         return std::get<T>(fields)[_idx].data();
     }
-    template<class T>
-    inline const auto& get_data() const
-    {
-        FIELD_ASSERT(T) return this->get_data<T>(0);
-    }
 
     template<class T>
-    auto& get_linalg(int _idx)
+    auto& get_linalg(int _idx=0)
     {
         return std::get<T>(fields)[_idx].linalg();
     }
     template<class T>
-    auto& get_linalg()
-    {
-        FIELD_ASSERT(T) return get_linalg<T>(0);
-    }
-    template<class T>
-    const auto& get_linalg(int _idx) const
+    const auto& get_linalg(int _idx=0) const
     {
         return std::get<T>(fields)[_idx].linalg();
     }
     template<class T>
-    const auto& get_linalg() const
-    {
-        FIELD_ASSERT(T) return get_linalg<T>(0);
-    }
-
-    template<class T>
-    auto& get_linalg_data(int _idx)
+    auto& get_linalg_data(int _idx=0)
     {
         return std::get<T>(fields)[_idx].linalg_data();
     }
     template<class T>
-    auto& get_linalg_data()
-    {
-        FIELD_ASSERT(T) return get_linalg_data<T>(0);
-    }
-    template<class T>
-    const auto& get_linalg_data(int _idx) const
+    const auto& get_linalg_data(int _idx=0) const
     {
         return std::get<T>(fields)[_idx].linalg_data();
     }
-    template<class T>
-    const auto& get_linalg_data() const
-    {
-        FIELD_ASSERT(T) return get_linalg_data<T>(0);
-    }
 
     template<class Field>
-    auto& get(const coordinate_type& _c, int _idx) noexcept
+    auto& get(const coordinate_type& _c, int _idx=0) noexcept
     {
         return std::get<Field>(fields)[_idx].get(_c);
     }
     template<class Field>
-    const auto& get(const coordinate_type& _c, int _idx) const noexcept
+    const auto& get(const coordinate_type& _c, int _idx=0) const noexcept
     {
         return std::get<Field>(fields)[_idx].get(_c);
     }
 
-    template<class Field>
-    auto& get(const coordinate_type& _c) noexcept
-    {
-        FIELD_ASSERT(Field);
-        return get<Field>(_c, 0);
-    }
-    template<class Field>
-    const auto& get(const coordinate_type& _c) const noexcept
-    {
-        FIELD_ASSERT(Field);
-        return get<Field>(_c, 0);
-    }
 
     template<class Field>
     auto& get_local(const coordinate_type& _c, int _idx) noexcept

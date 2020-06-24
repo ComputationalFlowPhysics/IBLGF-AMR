@@ -251,9 +251,9 @@ struct VortexRingTest : public SetupBase<VortexRingTest, parameters>
 
             pcout_c << "Poisson equation ---------------------------------"
                     << std::endl;
-            TIME_CODE(
-                solve_duration, SINGLE_ARG(psolver.solve<source, phi_num>();
-                                           client_comm_.barrier();))
+            TIME_CODE(solve_duration,
+                SINGLE_ARG(psolver.solve<source_type, phi_num_type>();
+                           client_comm_.barrier();))
 
             pcout_c << "Elapsed time " << solve_duration.count() / 1.0e3
                     << " Rate " << pts.back() / (solve_duration.count() / 1.0e3)
@@ -262,13 +262,13 @@ struct VortexRingTest : public SetupBase<VortexRingTest, parameters>
 #ifdef POISSON_TIMINGS
             psolver.print_timings(pofs, pofs_level);
 #endif
-            psolver.apply_laplace<phi_num, amr_lap_source>();
+            psolver.apply_laplace<phi_num_type, amr_lap_source_type>();
         }
 
         float_type inf_error =
-            this->compute_errors<phi_num, phi_exact, error>();
-        this->compute_errors<amr_lap_source, source, error_lap_source>(
-            "laplace_");
+            this->compute_errors<phi_num_type, phi_exact_type, error_type>();
+        this->compute_errors<amr_lap_source_type, source_type,
+            error_lap_source_type>("laplace_");
 
         //simulation_.write2("mesh.hdf5");
 
@@ -282,8 +282,8 @@ struct VortexRingTest : public SetupBase<VortexRingTest, parameters>
         pcout_c << "Solve 1st time done" << std::endl;
         simulation_.write2("mesh.hdf5");
         //pcout_c<<"write" <<std::endl;
-        //domain_->decomposition().balance<source,phi_exact>();
-        //pcout_c<<"decomposition done" <<std::endl;
+        //domain_->decomposition().balance<source_type,phi_exact_type>();
+        //pcout_c<<"decompositiondone" <<std::endl;
 
         //this->solve();
         //simulation_.write2("mesh_new.hdf5");
@@ -335,8 +335,8 @@ struct VortexRingTest : public SetupBase<VortexRingTest, parameters>
             for (auto it2 = nodes_domain.begin(); it2 != nodes_domain.end();
                  ++it2)
             {
-                it2->get<source>() = 0.0;
-                it2->get<phi_num>() = 0.0;
+                it2->get<source_type>() = 0.0;
+                it2->get<phi_num_type>() = 0.0;
 
                 const auto& coord = it2->level_coordinate();
 
@@ -351,8 +351,8 @@ struct VortexRingTest : public SetupBase<VortexRingTest, parameters>
                                    coord[2] - center[2] * scaling + 0.5) *
                                dx_level;
 
-                it2->get<source>() = vorticity(x, y, z);
-                it2->get<phi_exact>() = psi(x, y, z);
+                it2->get<source_type>() = vorticity(x, y, z);
+                it2->get<phi_exact_type>() = psi(x, y, z);
                 /***********************************************************/
             }
         }

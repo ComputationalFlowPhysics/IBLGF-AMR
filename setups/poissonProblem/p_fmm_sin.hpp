@@ -46,8 +46,8 @@ struct p_fmm_sin
     make_field_type(error_lap_source , float_type, 1,       1)
 
     // FIXME: temporarily here for FMM
-    make_field_type(fmm_s            , float_type, 1,       1)
-    make_field_type(fmm_t            , float_type, 1,       1)
+    make_field_type(fmm_s_type            , float_type, 1,       1)
+    make_field_type(fmm_t_type            , float_type, 1,       1)
     make_field_type(fmm_tmp          , float_type, 1,       1)
     make_field_type(phi_num_fmm      , float_type, 1,       1)
 
@@ -62,8 +62,8 @@ struct p_fmm_sin
         source,
         phi_exact,
         error,
-        fmm_s,
-        fmm_t,
+        fmm_s_type,
+        fmm_t_type,
         fmm_tmp,
         phi_num_fmm,
         amr_lap_source,
@@ -243,7 +243,7 @@ struct p_fmm_sin
     {
 
         solver::PoissonSolver<simulation_type> psolver(&simulation_);
-        psolver.solve<source, phi_num, fmm_s, fmm_t, phi_num_fmm, fmm_tmp, amr_lap_source, amr_lap_tmp>();
+        psolver.solve<source, phi_num, fmm_s_type, fmm_t_type, phi_num_fmm, fmm_tmp, amr_lap_source, amr_lap_tmp>();
         compute_errors();
         simulation_.write("solution.vtk");
         pcout << "Writing solution " << std::endl;

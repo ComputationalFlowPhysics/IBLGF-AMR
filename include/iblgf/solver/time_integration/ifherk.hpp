@@ -52,25 +52,25 @@ class Ifherk
 
     //Fields
     //using coarse_target_sum = typename Setup::coarse_target_sum;
-    //using source_tmp = typename Setup::source_tmp;
+    //using source_tmp_type = typename Setup::source_tmp_type;
 
     //FMM
     using Fmm_t = typename Setup::Fmm_t;
 
-    using u = typename Setup::u;
-    using stream_f = typename Setup::stream_f;
-    using p = typename Setup::p;
-    using q_i = typename Setup::q_i;
-    using r_i = typename Setup::r_i;
-    using g_i = typename Setup::g_i;
-    using d_i = typename Setup::d_i;
+    using u_type = typename Setup::u_type;
+    using stream_f_type = typename Setup::stream_f_type;
+    using p_type = typename Setup::p_type;
+    using q_i_type = typename Setup::q_i_type;
+    using r_i_type = typename Setup::r_i_type;
+    using g_i_type = typename Setup::g_i_type;
+    using d_i_type = typename Setup::d_i_type;
 
-    using cell_aux = typename Setup::cell_aux;
-    using edge_aux = typename Setup::edge_aux;
-    using face_aux = typename Setup::face_aux;
-    using w_1 = typename Setup::w_1;
-    using w_2 = typename Setup::w_2;
-    using u_i = typename Setup::u_i;
+    using cell_aux_type = typename Setup::cell_aux_type;
+    using edge_aux_type = typename Setup::edge_aux_type;
+    using face_aux_type = typename Setup::face_aux_type;
+    using w_1_type = typename Setup::w_1_type;
+    using w_2_type = typename Setup::w_2_type;
+    using u_i_type = typename Setup::u_i_type;
 
     static constexpr int lBuffer = 1; ///< Lower left buffer for interpolation
     static constexpr int rBuffer = 1; ///< Lower left buffer for interpolation
@@ -165,7 +165,7 @@ class Ifherk
         {
             // balance load
             if ((adapt_count - 1) % adapt_freq_ == 0)
-            { domain_->decomposition().template balance<u, p>(); }
+            { domain_->decomposition().template balance<u_type, p_type>(); }
 
             // -------------------------------------------------------------
             // time marching
@@ -179,20 +179,20 @@ class Ifherk
             // -------------------------------------------------------------
             // adapt
 
-            // clean up the block boundary of cell_aux for smoother adaptation
+            // clean up the block boundary of cell_aux_type for smoother adaptation
 
-            if (domain_->is_client()) clean<cell_aux>(true, 2);
+            if (domain_->is_client()) clean<cell_aux_type>(true, 2);
 
-            if (T_ <= 1e-5) this->template update_source_max<cell_aux>();
+            if (T_ <= 1e-5) this->template update_source_max<cell_aux_type>();
 
             if (adapt_count % adapt_freq_ == 0)
             {
                 if (domain_->is_client())
                 {
-                    up_and_down<u>();
-                    pad_velocity<u, u>();
+                    up_and_down<u_type>();
+                    pad_velocity<u_type, u_type>();
                 }
-                this->template adapt<u, cell_aux>(false);
+                this->template adapt<u_type, cell_aux_type>(false);
             }
             adapt_count++;
 
@@ -242,28 +242,28 @@ class Ifherk
     {
         if (domain_->is_client())
         {
-            up_and_down<u>();
+            up_and_down<u_type>();
             auto client = domain_->decomposition().client();
-            clean<edge_aux>();
-            clean<stream_f>();
+            clean<edge_aux_type>();
+            clean<stream_f_type>();
             for (int l = domain_->tree()->base_level();
                  l < domain_->tree()->depth(); ++l)
             {
-                client->template buffer_exchange<u>(l);
+                client->template buffer_exchange<u_type>(l);
                 for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
                 {
                     if (!it->locally_owned() || it->is_correction()) continue;
 
                     const auto dx_level =
                         dx_base_ / math::pow2(it->refinement_level());
-                    domain::Operator::curl<u, edge_aux>(
+                    domain::Operator::curl<u_type, edge_aux_type>(
                         *(it->data()), dx_level);
                 }
             }
-            //clean_leaf_correction_boundary<edge_aux>(domain_->tree()->base_level(), true,2);
+            //clean_leaf_correction_boundary<edge_aux_type>(domain_->tree()->base_level(), true,2);
 
-            clean<u>();
-            psolver.template apply_lgf<edge_aux, stream_f>();
+            clean<u_type>();
+            psolver.template apply_lgf<edge_aux_type, stream_f_type>();
             for (int l = domain_->tree()->base_level();
                  l < domain_->tree()->depth(); ++l)
             {
@@ -273,10 +273,10 @@ class Ifherk
 
                     const auto dx_level =
                         dx_base_ / math::pow2(it->refinement_level());
-                    domain::Operator::curl_transpose<stream_f, u>(
+                    domain::Operator::curl_transpose<stream_f_type, u_type>(
                         *(it->data()), dx_level, -1.0);
                 }
-                client->template buffer_exchange<u>(l);
+                client->template buffer_exchange<u_type>(l);
             }
         }
     }
@@ -390,7 +390,7 @@ class Ifherk
         auto                     client = domain_->decomposition().client();
 
         //adaptation neglect the boundary oscillations
-        clean_leaf_correction_boundary<cell_aux>(
+        clean_leaf_correction_boundary<cell_aux_type>(
             domain_->tree()->base_level(), true);
 
         world.barrier();
@@ -451,59 +451,59 @@ class Ifherk
     void time_step()
     {
         // Initialize IFHERK
-        // q_1 = u
+        // q_1 = u_type
         boost::mpi::communicator world;
         auto                     client = domain_->decomposition().client();
 
         ////claen non leafs
-        up_and_down<u>();
+        up_and_down<u_type>();
 
-        // Solve stream function to pad base level u->u_pad
+        // Solve stream function to pad base level u_type->u_pad
         stage_idx_ = 0;
         mDuration_type t_pad(0);
-        TIME_CODE(t_pad, SINGLE_ARG(pad_velocity<u, u>();));
-        pcout << "pad u      in " << t_pad.count() << std::endl;
+        TIME_CODE(t_pad, SINGLE_ARG(pad_velocity<u_type, u_type>();));
+        pcout << "pad u_type      in " << t_pad.count() << std::endl;
 
-        copy<u, q_i>();
+        copy<u_type, q_i_type>();
 
         // Stage 1
         // ******************************************************************
         pcout << "Stage 1" << std::endl;
         stage_idx_ = 1;
-        clean<g_i>();
-        clean<d_i>();
-        clean<cell_aux>();
-        clean<face_aux>();
+        clean<g_i_type>();
+        clean<d_i_type>();
+        clean<cell_aux_type>();
+        clean<face_aux_type>();
 
-        nonlinear<u, g_i>(coeff_a(1, 1) * (-dt_));
-        copy<q_i, r_i>();
-        add<g_i, r_i>();
+        nonlinear<u_type, g_i_type>(coeff_a(1, 1) * (-dt_));
+        copy<q_i_type, r_i_type>();
+        add<g_i_type, r_i_type>();
         lin_sys_solve(alpha_[0]);
 
         // Stage 2
         // ******************************************************************
         pcout << "Stage 2" << std::endl;
         stage_idx_ = 2;
-        clean<r_i>();
-        clean<d_i>();
-        clean<cell_aux>();
+        clean<r_i_type>();
+        clean<d_i_type>();
+        clean<cell_aux_type>();
 
         //cal wii
-        //r_i = q_i + dt(a21 w21)
-        //w11 = (1/a11)* dt (g_i - face_aux)
+        //r_i_type = q_i_type + dt(a21 w21)
+        //w11 = (1/a11)* dt (g_i_type - face_aux_type)
 
-        add<g_i, face_aux>(-1.0);
-        copy<face_aux, w_1>(-1.0 / dt_ / coeff_a(1, 1));
+        add<g_i_type, face_aux_type>(-1.0);
+        copy<face_aux_type, w_1_type>(-1.0 / dt_ / coeff_a(1, 1));
 
-        psolver.template apply_lgf_IF<q_i, q_i>(alpha_[0]);
-        psolver.template apply_lgf_IF<w_1, w_1>(alpha_[0]);
+        psolver.template apply_lgf_IF<q_i_type, q_i_type>(alpha_[0]);
+        psolver.template apply_lgf_IF<w_1_type, w_1_type>(alpha_[0]);
 
-        add<q_i, r_i>();
-        add<w_1, r_i>(dt_ * coeff_a(2, 1));
+        add<q_i_type, r_i_type>();
+        add<w_1_type, r_i_type>(dt_ * coeff_a(2, 1));
 
-        up_and_down<u_i>();
-        nonlinear<u_i, g_i>(coeff_a(2, 2) * (-dt_));
-        add<g_i, r_i>();
+        up_and_down<u_i_type>();
+        nonlinear<u_i_type, g_i_type>(coeff_a(2, 2) * (-dt_));
+        add<g_i_type, r_i_type>();
 
         lin_sys_solve(alpha_[1]);
 
@@ -511,27 +511,27 @@ class Ifherk
         // ******************************************************************
         pcout << "Stage 3" << std::endl;
         stage_idx_ = 3;
-        clean<d_i>();
-        clean<cell_aux>();
-        clean<w_2>();
+        clean<d_i_type>();
+        clean<cell_aux_type>();
+        clean<w_2_type>();
 
-        add<g_i, face_aux>(-1.0);
-        copy<face_aux, w_2>(-1.0 / dt_ / coeff_a(2, 2));
-        copy<q_i, r_i>();
-        add<w_1, r_i>(dt_ * coeff_a(3, 1));
-        add<w_2, r_i>(dt_ * coeff_a(3, 2));
+        add<g_i_type, face_aux_type>(-1.0);
+        copy<face_aux_type, w_2_type>(-1.0 / dt_ / coeff_a(2, 2));
+        copy<q_i_type, r_i_type>();
+        add<w_1_type, r_i_type>(dt_ * coeff_a(3, 1));
+        add<w_2_type, r_i_type>(dt_ * coeff_a(3, 2));
 
-        psolver.template apply_lgf_IF<r_i, r_i>(alpha_[1]);
+        psolver.template apply_lgf_IF<r_i_type, r_i_type>(alpha_[1]);
 
-        up_and_down<u_i>();
-        nonlinear<u_i, g_i>(coeff_a(3, 3) * (-dt_));
-        add<g_i, r_i>();
+        up_and_down<u_i_type>();
+        nonlinear<u_i_type, g_i_type>(coeff_a(3, 3) * (-dt_));
+        add<g_i_type, r_i_type>();
 
         lin_sys_solve(alpha_[2]);
 
         // ******************************************************************
-        copy<u_i, u>();
-        copy<d_i, p>(1.0 / coeff_a(3, 3) / dt_);
+        copy<u_i_type, u_type>();
+        copy<d_i_type, p_type>(1.0 / coeff_a(3, 3) / dt_);
         // ******************************************************************
     }
 
@@ -545,24 +545,25 @@ class Ifherk
     {
         auto client = domain_->decomposition().client();
 
-        divergence<r_i, cell_aux>();
+        divergence<r_i_type, cell_aux_type>();
 
         mDuration_type t_lgf(0);
-        TIME_CODE(
-            t_lgf, SINGLE_ARG(psolver.template apply_lgf<cell_aux, d_i>();));
+        TIME_CODE(t_lgf,
+            SINGLE_ARG(psolver.template apply_lgf<cell_aux_type, d_i_type>();));
         pcout << "LGF solved in " << t_lgf.count() << std::endl;
 
-        gradient<d_i, face_aux>();
-        add<face_aux, r_i>(-1.0);
+        gradient<d_i_type, face_aux_type>();
+        add<face_aux_type, r_i_type>(-1.0);
         if (std::fabs(_alpha) > 1e-4)
         {
             mDuration_type t_if(0);
             TIME_CODE(t_if,
-                SINGLE_ARG(psolver.template apply_lgf_IF<r_i, u_i>(_alpha);));
+                SINGLE_ARG(psolver.template apply_lgf_IF<r_i_type, u_i_type>(
+                    _alpha);));
             pcout << "IF  solved in " << t_if.count() << std::endl;
         }
         else
-            copy<r_i, u_i>();
+            copy<r_i_type, u_i_type>();
     }
 
     template<typename F>
@@ -610,8 +611,8 @@ class Ifherk
     {
         auto client = domain_->decomposition().client();
 
-        clean<edge_aux>();
-        clean<stream_f>();
+        clean<edge_aux_type>();
+        clean<stream_f_type>();
 
         auto dx_base = domain_->dx_base();
 
@@ -630,15 +631,15 @@ class Ifherk
                 const auto dx_level =
                     dx_base / math::pow2(it->refinement_level());
                 if (it->is_leaf())
-                    domain::Operator::curl<Velocity_in, edge_aux>(
+                    domain::Operator::curl<Velocity_in, edge_aux_type>(
                         *(it->data()), dx_level);
             }
         }
 
         int l = domain_->tree()->base_level();
-        clean_leaf_correction_boundary<edge_aux>(l, true, 2);
-        //clean_leaf_correction_boundary<edge_aux>(l, false,2+stage_idx_);
-        psolver.template apply_lgf<edge_aux, stream_f>(true);
+        clean_leaf_correction_boundary<edge_aux_type>(l, true, 2);
+        //clean_leaf_correction_boundary<edge_aux_type>(l, false,2+stage_idx_);
+        psolver.template apply_lgf<edge_aux_type, stream_f_type>(true);
 
         for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
         {
@@ -646,7 +647,7 @@ class Ifherk
             if (!it->is_correction()) continue;
 
             const auto dx_level = dx_base / math::pow2(it->refinement_level());
-            domain::Operator::curl_transpose<stream_f, Velocity_out>(
+            domain::Operator::curl_transpose<stream_f_type, Velocity_out>(
                 *(it->data()), dx_level, -1.0);
         }
 
@@ -749,7 +750,7 @@ class Ifherk
     template<class Source, class Target>
     void nonlinear(float_type _scale = 1.0) noexcept
     {
-        clean<edge_aux>();
+        clean<edge_aux_type>();
         clean<Target>();
 
         auto       client = domain_->decomposition().client();
@@ -767,19 +768,20 @@ class Ifherk
 
                 const auto dx_level =
                     dx_base / math::pow2(it->refinement_level());
-                domain::Operator::curl<Source, edge_aux>(
+                domain::Operator::curl<Source, edge_aux_type>(
                     *(it->data()), dx_level);
             }
 
-            client->template buffer_exchange<edge_aux>(l);
-            clean_leaf_correction_boundary<edge_aux>(l, false, 2 + stage_idx_);
+            client->template buffer_exchange<edge_aux_type>(l);
+            clean_leaf_correction_boundary<edge_aux_type>(
+                l, false, 2 + stage_idx_);
 
             for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
             {
                 if (!it->locally_owned() || !it->data()) continue;
                 //if(it->is_correction()) continue;
 
-                domain::Operator::nonlinear<Source, edge_aux, Target>(
+                domain::Operator::nonlinear<Source, edge_aux_type, Target>(
                     *(it->data()));
 
                 for (std::size_t field_idx = 0; field_idx < Target::nFields;

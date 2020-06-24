@@ -45,8 +45,8 @@ struct p_fmm_rndm
     make_field_type(error           , float_type, 1,       1)
 
     // temporarily here for FMM
-    make_field_type(fmm_s           , float_type, 1,       1)
-    make_field_type(fmm_t           , float_type, 1,       1)
+    make_field_type(fmm_s_type           , float_type, 1,       1)
+    make_field_type(fmm_t_type           , float_type, 1,       1)
     make_field_type(fmm_tmp         , float_type, 1,       1)
     make_field_type(phi_num_fmm     , float_type, 1,       1)
 
@@ -56,8 +56,8 @@ struct p_fmm_rndm
         source,
         phi_exact,
         error,
-        fmm_s,
-        fmm_t,
+        fmm_s_type,
+        fmm_t_type,
         fmm_tmp,
         phi_num_fmm
         >;
@@ -219,7 +219,7 @@ struct p_fmm_rndm
     {
 
         solver::PoissonSolver<simulation_type> psolver(&simulation_);
-        psolver.solve<source, phi_num, fmm_s, fmm_t, phi_num_fmm, fmm_tmp>();
+        psolver.solve<source, phi_num, fmm_s_type, fmm_t_type, phi_num_fmm, fmm_tmp>();
         compute_errors();
         simulation_.write("solution.vtk");
         pcout << "Writing solution " << std::endl;

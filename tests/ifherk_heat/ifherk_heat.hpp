@@ -125,7 +125,7 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
         pcout << "Number of refinement levels: "<<nLevelRefinement_<<std::endl;
 
         domain_->register_adapt_condition()=
-            [this](auto octant, float_type source_max){return this->template adapt_level_change<cell_aux>(octant, source_max);};
+            [this](auto octant, float_type source_max){return this->template adapt_level_change<cell_aux_type>(octant, source_max);};
 
         domain_->register_refinement_condition()=
             [this](auto octant, int diff_level){return this->refinement(octant, diff_level);};
@@ -147,7 +147,7 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
         }
         else
         {
-            simulation_.template read_h5<u>(simulation_.restart_field_dir());
+            simulation_.template read_h5<u_type>(simulation_.restart_field_dir());
         }
 
         boost::mpi::communicator world;
@@ -163,7 +163,7 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
         time_integration_t ifherk(&this->simulation_);
 
         if (ic_filename_!="null")
-            simulation_.template read_h5<u>(ic_filename_);
+            simulation_.template read_h5<u_type>(ic_filename_);
 
         mDuration_type ifherk_duration(0);
         TIME_CODE( ifherk_duration, SINGLE_ARG(
@@ -172,11 +172,11 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
         pcout_c<<"Time to solution [ms] "<<ifherk_duration.count()<<std::endl;
 
         if (ref_filename_!="null")
-            simulation_.template read_h5<u_ref>(ref_filename_);
+            simulation_.template read_h5<u_ref_type>(ref_filename_);
 
-        this->compute_errors<u,u_ref,error_u>(std::string("u1_"),0);
-        this->compute_errors<u,u_ref,error_u>(std::string("u2_"),1);
-        this->compute_errors<u,u_ref,error_u>(std::string("u3_"),2);
+        this->compute_errors<u_type,u_ref_type,error_u_type>(std::string("u1_"),0);
+        this->compute_errors<u_type,u_ref_type,error_u_type>(std::string("u2_"),1);
+        this->compute_errors<u_type,u_ref_type,error_u_type>(std::string("u3_"),2);
 
         simulation_.write2("final.hdf5");
     }
@@ -283,7 +283,7 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
                float_type z = static_cast<float_type>
                    (coord[2]-center[2]*scaling)*dx_level;
 
-               it2->template get<edge_aux>(0) = -vortex_ring_vor_ic(x,y,z-d2v_/2,0)+vortex_ring_vor_ic(x,y,z+d2v_/2,0);
+               it2->template get<edge_aux_type>(0) = -vortex_ring_vor_ic(x,y,z-d2v_/2,0)+vortex_ring_vor_ic(x,y,z+d2v_/2,0);
                /***********************************************************/
                x = static_cast<float_type>
                    (coord[0]-center[0]*scaling)*dx_level;
@@ -292,7 +292,7 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
                z = static_cast<float_type>
                    (coord[2]-center[2]*scaling)*dx_level;
 
-               it2->template get<edge_aux>(1) = -vortex_ring_vor_ic(x,y,z-d2v_/2,1)+vortex_ring_vor_ic(x,y,z+d2v_/2,1);
+               it2->template get<edge_aux_type>(1) = -vortex_ring_vor_ic(x,y,z-d2v_/2,1)+vortex_ring_vor_ic(x,y,z+d2v_/2,1);
                /***********************************************************/
                x = static_cast<float_type>
                    (coord[0]-center[0]*scaling)*dx_level;
@@ -301,30 +301,30 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
                z = static_cast<float_type>
                    (coord[2]-center[2]*scaling+0.5)*dx_level;
 
-               it2->template get<edge_aux>(2) = -vortex_ring_vor_ic(x,y,z-d2v_/2,2)+vortex_ring_vor_ic(x,y,z+d2v_/2,2);
+               it2->template get<edge_aux_type>(2) = -vortex_ring_vor_ic(x,y,z-d2v_/2,2)+vortex_ring_vor_ic(x,y,z+d2v_/2,2);
 
                /***********************************************************/
-               it2->template get<decomposition>()=world.rank();
+               it2->template get<decomposition_type>()=world.rank();
            }
         }
 
-        psolver.template apply_lgf<edge_aux, stream_f>();
+        psolver.template apply_lgf<edge_aux_type, stream_f_type>();
         auto client=domain_->decomposition().client();
 
         for (int l  = domain_->tree()->base_level();
                 l < domain_->tree()->depth(); ++l)
         {
 
-            //client->template buffer_exchange<stream_f>(l);
+            //client->template buffer_exchange<stream_f_type>(l);
 
             for (auto it  = domain_->begin(l);
                     it != domain_->end(l); ++it)
             {
                 if(!it->locally_owned() || !it->data()) continue;
                 const auto dx_level =  dx_base/std::pow(2,it->refinement_level());
-                domain::Operator::curl_transpose<stream_f,u>( *(it->data()),dx_level, -1.0);
+                domain::Operator::curl_transpose<stream_f_type,u_type>( *(it->data()),dx_level, -1.0);
             }
-            client->template buffer_exchange<u>(l);
+            client->template buffer_exchange<u_type>(l);
 
         }
     }

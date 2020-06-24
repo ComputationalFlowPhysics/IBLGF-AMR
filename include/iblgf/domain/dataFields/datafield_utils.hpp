@@ -189,10 +189,10 @@ assign(const Field0& src, const BlockDescriptor& view_src, const Stride& strd_s,
 /**
  * @brief Static id the generate/idnetify fields in tuple
  */
-struct static_tag
+struct tuple_tag_h
 {
     template<std::size_t N>
-    constexpr static_tag(const char(&a)[N]) :id_(a), size_(N-1){}
+    constexpr tuple_tag_h(const char(&a)[N]) :id_(a), size_(N-1){}
 
     constexpr std::size_t size() const { return size_; }
     constexpr auto id() const { return id_; }
@@ -202,40 +202,38 @@ private:
 };
 
 template <char... id>
-struct tag_t{
+struct tuple_tag{
     static char const * c_str() {
         static constexpr char str[]={id...,'\0'};
         return str;
     }
-    using tag=tag_t;
+    using tag_type=tuple_tag;
 };
 
-template<static_tag const& str,std::size_t... I>
+template<tuple_tag_h const& str,std::size_t... I>
 auto constexpr expand(std::index_sequence<I...>){
-    return tag_t<str.id()[I]...>{};
+    return tuple_tag<str.id()[I]...>{};
 }
-template <static_tag const& str>
+template <tuple_tag_h const& str>
 using tag_type =
     decltype(expand<str>(std::make_index_sequence<str.size()>{}));
 
-
-
 template< size_t I, typename T, typename Tuple_t>
-constexpr size_t tuple_index_impl()
+constexpr size_t tagged_tuple_index_impl()
 {
     typedef typename std::tuple_element<I,Tuple_t>::type el;
-    if constexpr(std::is_same<T,typename el::tag>::value ){
+    if constexpr(std::is_same<T,typename el::tag_type>::value ){
         return I;
     }else
     {
-        return tuple_index_impl<I+1,T,Tuple_t>();
+        return tagged_tuple_index_impl<I+1,T,Tuple_t>();
     }
 }
 
 template<typename T, typename Tuple_t>
-struct tuple_index
+struct tagged_tuple_index
 {
-    static constexpr size_t value = tuple_index_impl<0,T,Tuple_t>();
+    static constexpr size_t value = tagged_tuple_index_impl<0,T,Tuple_t>();
 };
 
 

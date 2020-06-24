@@ -57,9 +57,9 @@ class PoissonSolver
     using coordinate_type = typename domain_type::coordinate_type;
 
     //Fields
-    using source_tmp = typename Setup::source_tmp;
-    using target_tmp = typename Setup::target_tmp;
-    using correction_tmp = typename Setup::correction_tmp;
+    using source_tmp_type = typename Setup::source_tmp_type;
+    using target_tmp_type = typename Setup::target_tmp_type;
+    using correction_tmp_type = typename Setup::correction_tmp_type;
     //using corr_lap_tmp          = typename Setup::corr_lap_tmp;
 
     //FMM
@@ -101,14 +101,14 @@ class PoissonSolver
         if (!client) return;
 
         // Cleaning
-        clean_field<source_tmp>();
-        clean_field<target_tmp>();
+        clean_field<source_tmp_type>();
+        clean_field<target_tmp_type>();
 
         // Copy source
-        copy_leaf<Source, source_tmp>(_field_idx, 0, true);
+        copy_leaf<Source, source_tmp_type>(_field_idx, 0, true);
 
         //Coarsification:
-        source_coarsify<source_tmp, source_tmp>(
+        source_coarsify<source_tmp_type, source_tmp_type>(
             _field_idx, 0, Source::mesh_type);
 
         // For IF, interpolate source to correction buffers
@@ -116,17 +116,17 @@ class PoissonSolver
         //        l < domain_->tree()->depth()-1; ++l)
         //{
 
-        //    client->template buffer_exchange<source_tmp>(l);
+        //    client->template buffer_exchange<source_tmp_type>(l);
         //    // Sync
         //    domain_->decomposition().client()->
         //        template communicate_updownward_assign
-        //            <source_tmp, source_tmp>(l,false,false,-1);
+        //            <source_tmp_type, source_tmp_type>(l,false,false,-1);
 
         //}
 
         // Interpolate to correction buffer
 
-        intrp_to_correction_buffer<source_tmp, source_tmp>(
+        intrp_to_correction_buffer<source_tmp_type, source_tmp_type>(
             _field_idx, 0, Source::mesh_type);
 
         for (int l = domain_->tree()->base_level();
@@ -137,19 +137,20 @@ class PoissonSolver
                 {
                     if (!it_s->data()->is_allocated()) continue;
                     auto& cp2 =
-                        it_s->data()->template get_linalg_data<source_tmp>();
+                        it_s->data()
+                            ->template get_linalg_data<source_tmp_type>();
                     std::fill(cp2.begin(), cp2.end(), 0.0);
                 }
 
             _kernel->change_level(l - domain_->tree()->base_level());
 
-            fmm_.template apply<source_tmp, target_tmp>(
+            fmm_.template apply<source_tmp_type, target_tmp_type>(
                 domain_, _kernel, l, false, 1.0, false);
             if (!subtract_non_leaf_)
-                fmm_.template apply<source_tmp, target_tmp>(
+                fmm_.template apply<source_tmp_type, target_tmp_type>(
                     domain_, _kernel, l, true, 1.0, false);
 
-            copy_level<target_tmp, Target>(l, 0, _field_idx, true);
+            copy_level<target_tmp_type, Target>(l, 0, _field_idx, true);
         }
     }
 
@@ -160,8 +161,8 @@ class PoissonSolver
      *  equation. FMM is used for the level convolution's and the near field
      *  convolutions are computed using FFT.
      *  Second order interpolation and coarsification operators are used
-     *  to project the solutions to fine and coarse meshes, respectively.
-     */
+    *  to project the solutions to fine and coarse meshes, respectively.
+    */
     template<class Source, class Target, class Kernel>
     void apply_lgf(Kernel* _kernel, const std::size_t _field_idx,
         const bool base_level_only)
@@ -173,12 +174,12 @@ class PoissonSolver
 
         // Cleaning
         //clean_field<corr_lap_tmp>();
-        clean_field<source_tmp>();
-        clean_field<target_tmp>();
-        clean_field<correction_tmp>();
+        clean_field<source_tmp_type>();
+        clean_field<target_tmp_type>();
+        clean_field<correction_tmp_type>();
 
         // Copy source
-        copy_leaf<Source, source_tmp>(_field_idx, 0, true);
+        copy_leaf<Source, source_tmp_type>(_field_idx, 0, true);
 
 #ifdef POISSON_TIMINGS
         timings_ = Timings();
@@ -191,7 +192,7 @@ class PoissonSolver
         auto t0_coarsify = clock_type::now();
 #endif
 
-        source_coarsify<source_tmp, source_tmp>(
+        source_coarsify<source_tmp_type, source_tmp_type>(
             _field_idx, 0, Source::mesh_type);
 
 #ifdef POISSON_TIMINGS
@@ -215,13 +216,14 @@ class PoissonSolver
                 {
                     if (!it_s->data()->is_allocated()) continue;
                     auto& cp2 =
-                        it_s->data()->template get_linalg_data<source_tmp>();
+                        it_s->data()
+                            ->template get_linalg_data<source_tmp_type>();
                     cp2 *= 0.0;
                 }
 
             if (subtract_non_leaf_)
             {
-                fmm_.template apply<source_tmp, target_tmp>(
+                fmm_.template apply<source_tmp_type, target_tmp_type>(
                     domain_, _kernel, l, false, 1.0, base_level_only);
                 // Copy to Target
                 for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
@@ -231,9 +233,10 @@ class PoissonSolver
                             ->template get_linalg<Target>(_field_idx)
                             .get()
                             ->cube_noalias_view() =
-                            it->data()->template get_linalg_data<target_tmp>();
+                            it->data()
+                                ->template get_linalg_data<target_tmp_type>();
                     }
-                fmm_.template apply<source_tmp, target_tmp>(
+                fmm_.template apply<source_tmp_type, target_tmp_type>(
                     domain_, _kernel, l, true, -1.0);
 #ifdef POISSON_TIMINGS
                 timings_.fmm_level_nl[l - domain_->tree()->base_level()] =
@@ -246,14 +249,15 @@ class PoissonSolver
                 // Interpolate
                 domain_->decomposition()
                     .client()
-                    ->template communicate_updownward_assign<target_tmp,
-                        target_tmp>(l, false, false, -1);
+                    ->template communicate_updownward_assign<target_tmp_type,
+                        target_tmp_type>(l, false, false, -1);
 
                 for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
                 {
                     if (!it->data() || !it->data()->is_allocated()) continue;
-                    c_cntr_nli_.nli_intrp_node<target_tmp, target_tmp>(
-                        it, Source::mesh_type, _field_idx, 0, false, false);
+                    c_cntr_nli_
+                        .nli_intrp_node<target_tmp_type, target_tmp_type>(
+                            it, Source::mesh_type, _field_idx, 0, false, false);
                 }
 
 #ifdef POISSON_TIMINGS
@@ -265,7 +269,7 @@ class PoissonSolver
             {
                 if (!base_level_only)
                 {
-                    fmm_.template apply<source_tmp, target_tmp>(
+                    fmm_.template apply<source_tmp_type, target_tmp_type>(
                         domain_, _kernel, l, true, 1.0);
 #ifdef POISSON_TIMINGS
                     timings_.fmm_level_nl[l - domain_->tree()->base_level()] =
@@ -278,16 +282,19 @@ class PoissonSolver
                     // Interpolate
                     domain_->decomposition()
                         .client()
-                        ->template communicate_updownward_assign<target_tmp,
-                            target_tmp>(l, false, false, -1);
+                        ->template communicate_updownward_assign<
+                            target_tmp_type, target_tmp_type>(
+                            l, false, false, -1);
 
                     for (auto it = domain_->begin(l); it != domain_->end(l);
                          ++it)
                     {
                         if (!it->data() || !it->data()->is_allocated())
                             continue;
-                        c_cntr_nli_.nli_intrp_node<target_tmp, target_tmp>(
-                            it, Source::mesh_type, _field_idx, 0, false, false);
+                        c_cntr_nli_
+                            .nli_intrp_node<target_tmp_type, target_tmp_type>(
+                                it, Source::mesh_type, _field_idx, 0, false,
+                                false);
                     }
 
 #ifdef POISSON_TIMINGS
@@ -296,7 +303,7 @@ class PoissonSolver
 #endif
                 }
                 // test for FMM
-                fmm_.template apply<source_tmp, target_tmp>(
+                fmm_.template apply<source_tmp_type, target_tmp_type>(
                     domain_, _kernel, l, false, 1.0, base_level_only);
 
                 // Copy to Target
@@ -307,7 +314,8 @@ class PoissonSolver
                             ->template get_linalg<Target>(_field_idx)
                             .get()
                             ->cube_noalias_view() =
-                            it->data()->template get_linalg_data<target_tmp>();
+                            it->data()
+                                ->template get_linalg_data<target_tmp_type>();
                     }
             }
 
@@ -322,7 +330,7 @@ class PoissonSolver
                 if (l == domain_->tree()->depth() - 1) continue;
 
                 // Correction for LGF
-                // Calculate PL numerically from target_tmp instead of assume PL
+                // Calculate PL numerically from target_tmp_type instead of assume PL
                 // L^-1 S gives back S exactly.  This improves the accuracy
 
                 //for (auto it  = domain_->begin(l);
@@ -332,33 +340,33 @@ class PoissonSolver
                 //    double dx_level = dx_base/std::pow(2,refinement_level);
 
                 //    if (!it->data() || !it->data()->is_allocated()) continue;
-                //    domain::Operator::laplace<target_tmp, corr_lap_tmp>
+                //    domain::Operator::laplace<target_tmp_type, corr_lap_tmp>
                 //    ( *(it->data()),dx_level);
                 //}
 
-                client->template buffer_exchange<source_tmp>(l);
+                client->template buffer_exchange<source_tmp_type>(l);
                 domain_->decomposition()
                     .client()
-                    ->template communicate_updownward_assign<source_tmp,
-                        source_tmp>(l, false, false, -1);
+                    ->template communicate_updownward_assign<source_tmp_type,
+                        source_tmp_type>(l, false, false, -1);
 
                 for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
                 {
                     if (!it->data() || !it->data()->is_allocated()) continue;
 
                     const bool correction_buffer_only = true;
-                    c_cntr_nli_.nli_intrp_node<source_tmp, correction_tmp>(it,
-                        Source::mesh_type, _field_idx, 0,
-                        correction_buffer_only, false);
+                    c_cntr_nli_
+                        .nli_intrp_node<source_tmp_type, correction_tmp_type>(
+                            it, Source::mesh_type, _field_idx, 0,
+                            correction_buffer_only, false);
                 }
 
                 for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
                 {
                     int    refinement_level = it->refinement_level();
                     double dx = dx_base / std::pow(2, refinement_level);
-                    c_cntr_nli_
-                        .add_source_correction<target_tmp, correction_tmp>(
-                            it, dx / 2.0);
+                    c_cntr_nli_.add_source_correction<target_tmp_type,
+                        correction_tmp_type>(it, dx / 2.0);
                 }
 
                 for (auto it = domain_->begin(l + 1); it != domain_->end(l + 1);
@@ -367,9 +375,11 @@ class PoissonSolver
                     {
                         auto& lin_data_1 =
                             it->data()
-                                ->template get_linalg_data<correction_tmp>(0);
+                                ->template get_linalg_data<correction_tmp_type>(
+                                    0);
                         auto& lin_data_2 =
-                            it->data()->template get_linalg_data<source_tmp>(0);
+                            it->data()
+                                ->template get_linalg_data<source_tmp_type>(0);
 
                         xt::noalias(lin_data_2) += lin_data_1 * 1.0;
                     }

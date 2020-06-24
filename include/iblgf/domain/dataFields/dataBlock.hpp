@@ -274,22 +274,22 @@ class DataBlock : public BlockDescriptor<int, Dim>
     template<class Tag>
     auto& operator()(Tag _tag) noexcept
     {
-        return std::get<tuple_index<typename Tag::tag, fields_tuple_t>::value>(fields);
+        return std::get<tagged_tuple_index<typename Tag::tag_type, fields_tuple_t>::value>(fields);
     }
     template<class Tag>
     const auto& operator()(Tag _tag) const noexcept
     {
-        return std::get<tuple_index<typename Tag::tag, fields_tuple_t>::value>(fields);
+        return std::get<tagged_tuple_index<typename Tag::tag_type, fields_tuple_t>::value>(fields);
     }
     template<class Tag>
     auto& operator()(Tag _tag, int _idx) noexcept
     {
-        return std::get<tuple_index<typename Tag::tag, fields_tuple_t>::value>(fields)[_idx];
+        return std::get<tagged_tuple_index<typename Tag::tag_type, fields_tuple_t>::value>(fields)[_idx];
     }
     template<class Tag>
     const auto& operator()(Tag _tag, int _idx) const noexcept
     {
-        return std::get<tuple_index<typename Tag::tag, fields_tuple_t>::value>(fields)[_idx];
+        return std::get<tagged_tuple_index<typename Tag::tag_type, fields_tuple_t>::value>(fields)[_idx];
     }
     /*************************************************************************/
 

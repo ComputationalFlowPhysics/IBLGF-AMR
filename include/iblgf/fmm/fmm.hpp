@@ -326,8 +326,8 @@ class Fmm
     using MASK_LIST = typename octant_t::MASK_LIST;
 
     //Fields:
-    using fmm_s = typename Setup::fmm_s;
-    using fmm_t = typename Setup::fmm_t;
+    using fmm_s_type = typename Setup::fmm_s_type;
+    using fmm_t_type = typename Setup::fmm_t_type;
 
     using convolution_t = fft::Convolution;
 
@@ -356,9 +356,9 @@ class Fmm
         if (_kernel->neighbor_only())
         {
             //pcout<<"Integrating factor for level: "<< level << std::endl;
-            fmm_init_zero<fmm_s>(domain_, MASK_LIST::Mask_FMM_Source);
-            fmm_init_zero<fmm_t>(domain_, MASK_LIST::Mask_FMM_Target);
-            fmm_init_copy<Source, fmm_s>(domain_);
+            fmm_init_zero<fmm_s_type>(domain_, MASK_LIST::Mask_FMM_Source);
+            fmm_init_zero<fmm_t_type>(domain_, MASK_LIST::Mask_FMM_Target);
+            fmm_init_copy<Source, fmm_s_type>(domain_);
 
             // Sort_BX
             // For IF one one doesn't have to scale it with dx, so the scale is
@@ -366,7 +366,7 @@ class Fmm
             sort_bx_octants(domain, _kernel);
             fmm_Bx(domain_, _kernel, 1.0);
 
-            fmm_add_equal<Target, fmm_t>(domain_, add_with_scale);
+            fmm_add_equal<Target, fmm_t_type>(domain_, add_with_scale);
 
             return;
         }
@@ -403,11 +403,11 @@ class Fmm
         // done at master node
 
         ////Initialize for each fmm//zero ing all tree
-        fmm_init_zero<fmm_s>(domain_, MASK_LIST::Mask_FMM_Source);
-        fmm_init_zero<fmm_t>(domain_, MASK_LIST::Mask_FMM_Target);
+        fmm_init_zero<fmm_s_type>(domain_, MASK_LIST::Mask_FMM_Source);
+        fmm_init_zero<fmm_t_type>(domain_, MASK_LIST::Mask_FMM_Target);
 
         //// Copy to temporary variables // only the base level
-        fmm_init_copy<Source, fmm_s>(domain_);
+        fmm_init_copy<Source, fmm_s_type>(domain_);
         sort_bx_octants(domain, _kernel);
 
 #ifdef POISSON_TIMINGS
@@ -462,9 +462,9 @@ class Fmm
 
         //// Copy back
         //if (!non_leaf_as_source)
-        fmm_add_equal<Target, fmm_t>(domain_, add_with_scale);
+        fmm_add_equal<Target, fmm_t_type>(domain_, add_with_scale);
         //else
-        //fmm_minus_equal<Target, fmm_t>(domain_);
+        //fmm_minus_equal<Target, fmm_t_type>(domain_);
 
         //std::cout<<"Rank "<<world.rank() << " FFTW_count = ";
         //std::cout<<conv_.fft_count << std::endl;
@@ -492,7 +492,7 @@ class Fmm
                     domain_->decomposition()
                         .client()
                         ->template communicate_induced_fields_recv_m_send_count<
-                            fmm_t, fmm_t>(
+                            fmm_t_type, fmm_t_type>(
                             it, _kernel, _neighbor, fmm_mask_idx_);
 
                 sorted_octants_.emplace_back(
@@ -535,9 +535,9 @@ class Fmm
             {
                 domain_->decomposition()
                     .client()
-                    ->template communicate_induced_fields<fmm_t, fmm_t>(&(*it),
-                        this, _kernel, base_level_ - level, scale, _neighbor,
-                        start_communication, fmm_mask_idx_);
+                    ->template communicate_induced_fields<fmm_t_type,
+                        fmm_t_type>(&(*it), this, _kernel, base_level_ - level,
+                        scale, _neighbor, start_communication, fmm_mask_idx_);
             }
 #ifdef packMessages
             else if (!combined_messages)
@@ -545,15 +545,16 @@ class Fmm
             {
                 domain_->decomposition()
                     .client()
-                    ->template combine_induced_field_messages<fmm_t, fmm_t>();
+                    ->template combine_induced_field_messages<fmm_t_type,
+                        fmm_t_type>();
                 combined_messages = true;
             }
             if (c % 5 == 0 && combined_messages)
             {
                 domain_->decomposition()
                     .client()
-                    ->template check_combined_induced_field_communication<fmm_t,
-                        fmm_t>(false);
+                    ->template check_combined_induced_field_communication<
+                        fmm_t_type, fmm_t_type>(false);
             }
             ++c;
 #endif
@@ -565,8 +566,8 @@ class Fmm
         {
             domain_->decomposition()
                 .client()
-                ->template check_combined_induced_field_communication<fmm_t,
-                    fmm_t>(true);
+                ->template check_combined_induced_field_communication<
+                    fmm_t_type, fmm_t_type>(true);
         }
 #else
         domain_->decomposition().client()->finish_induced_field_communication();
@@ -606,13 +607,13 @@ class Fmm
         }
 
         const auto t_extent =
-            it->data()->template get<fmm_t>().real_block().extent();
+            it->data()->template get<fmm_t_type>().real_block().extent();
         block_dsrp_t extractor(dims_t(0), t_extent);
 
         float_type _scale =
             (_kernel->neighbor_only()) ? 1.0 : dx_level * dx_level;
         conv_.apply_backward(
-            extractor, it->data()->template get<fmm_t>(), _scale);
+            extractor, it->data()->template get<fmm_t_type>(), _scale);
     }
 
     template<class f1, class f2>
@@ -700,14 +701,14 @@ class Fmm
         {
             domain_->decomposition()
                 .client()
-                ->template communicate_updownward_assign<fmm_t, fmm_t>(
-                    level, false, true, fmm_mask_idx_);
+                ->template communicate_updownward_assign<fmm_t_type,
+                    fmm_t_type>(level, false, true, fmm_mask_idx_);
 
             for (auto it = domain_->begin(level); it != domain_->end(level);
                  ++it)
             {
                 if (it->data() && it->fmm_mask(fmm_mask_idx_, mask_id))
-                    lagrange_intrp.nli_intrp_node<fmm_t>(
+                    lagrange_intrp.nli_intrp_node<fmm_t_type>(
                         it, mask_id, fmm_mask_idx_);
             }
         }
@@ -722,13 +723,13 @@ class Fmm
                  ++it)
             {
                 if (it->data() && it->fmm_mask(fmm_mask_idx_, mask_id))
-                    lagrange_intrp.nli_antrp_node<fmm_s>(
+                    lagrange_intrp.nli_antrp_node<fmm_s_type>(
                         it, mask_id, fmm_mask_idx_);
             }
 
             domain_->decomposition()
                 .client()
-                ->template communicate_updownward_add<fmm_s, fmm_s>(
+                ->template communicate_updownward_add<fmm_s_type, fmm_s_type>(
                     level, true, true, fmm_mask_idx_);
 
             for (auto it = domain_->begin(level); it != domain_->end(level);
@@ -737,7 +738,8 @@ class Fmm
                 if (!it->locally_owned() && it->data() &&
                     it->data()->is_allocated())
                 {
-                    auto& cp2 = it->data()->template get_linalg_data<fmm_s>();
+                    auto& cp2 =
+                        it->data()->template get_linalg_data<fmm_s_type>();
                     cp2 *= 0.0;
                 }
             }
@@ -750,13 +752,13 @@ class Fmm
         const auto t0_fft = clock_type::now();
 
         const auto t_base =
-            o_t->data()->template get<fmm_t>().real_block().base();
+            o_t->data()->template get<fmm_t_type>().real_block().base();
         const auto s_base =
-            o_s->data()->template get<fmm_s>().real_block().base();
+            o_s->data()->template get<fmm_s_type>().real_block().base();
 
         // Get extent of Source region
         const auto s_extent =
-            o_s->data()->template get<fmm_s>().real_block().extent();
+            o_s->data()->template get<fmm_s_type>().real_block().extent();
         const auto shift = t_base - s_base;
 
         // Calculate the dimensions of the LGF to be allocated
@@ -765,8 +767,8 @@ class Fmm
 
         block_dsrp_t lgf_block(base_lgf, extent_lgf);
 
-        conv_.apply_forward_add(
-            lgf_block, _kernel, level_diff, o_s->data()->template get<fmm_s>());
+        conv_.apply_forward_add(lgf_block, _kernel, level_diff,
+            o_s->data()->template get<fmm_s_type>());
 
         const auto t1_fft = clock_type::now();
         timings_.fftw += t1_fft - t0_fft;

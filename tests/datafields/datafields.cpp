@@ -34,35 +34,38 @@ TEST(datafield_test, ctors)
     static constexpr int Buff=1;
 
     //Manual way to generate fields
-    static constexpr static_tag f0_tag{"f0"};
+    static constexpr static_tag       f0_tag{"f0"};
     static constexpr tag_type<f0_tag> f0{};
-
-    static constexpr static_tag f1_tag{"f1"};
-    static constexpr tag_type<f1_tag> f1{};
-
-    using f0_field_type = Field<tag_type<f0_tag>, float_type, 3, Buff, Buff,
+    using f0_traits = field_traits<tag_type<f0_tag>, float_type, 3, Buff, Buff,
         MeshObject::cell, Dim, true>;
-    using f1_field_type = Field<tag_type<f1_tag>, float_type, 1, Buff, Buff,
-        MeshObject::vertex, Dim, true>;
+    using f0_field_type = Field<f0_traits>;
+
+    static constexpr static_tag       f1_tag{"f1"};
+    static constexpr tag_type<f1_tag> f1{};
+    using f1_traits = field_traits<tag_type<f1_tag>, float_type, 1, Buff, Buff,
+        MeshObject::cell, Dim, true>;
+    using f1_field_type = Field<f1_traits>;
 
     ////Using convience macro to generate fields:
     REGISTER_FIELDS
     (Dim,
-
     //Fields tuples
     (
         (p,    float_type,  1,  1,  1,  cell,true),
         (vel,  float_type,  3,  1,  1,  face,false)
     )
-    
+
     )
+
     using datablock_t = DataBlock<Dim, node,
+                                  f0_field_type,
+                                  f1_field_type,
                                   p, 
                                   vel
                                  >;
     datablock_t db;
-    auto& vel_field=db(vel_field_tag);
-    auto& pfield=db(p_field_tag);
+    auto& vel_field=db(f1_traits{});
+    //auto& pfield=db(p_field_tag);
     //auto& f1_field=db.template get<f1_field_type>();
 
 }

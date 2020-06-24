@@ -213,32 +213,54 @@ class DataField : public BlockDescriptor<int, Dim>
     block_type real_block_; ///< Block descriptorinlcuding buffer
 };
 
+template<class Traits>
+struct Field;
+
 template<class Tag, class DataType,std::size_t NFields, std::size_t lBuff,
          std::size_t hBuff, MeshObject MeshType, std::size_t Dim, bool _output>
-class Field : public DataField<DataType, Dim>
+struct field_traits
 {
-  public:
-    using data_field_t = DataField<DataType, Dim>;
-    using view_type = typename data_field_t::view_type;
-    using tag = Tag;
+    using tag=Tag;
+    using data_type=DataType;
+    using field_type=Field<field_traits>;
+    using data_field_t = DataField<data_type, Dim>;
 
-    static constexpr std::size_t nField = NFields;
-    static constexpr MeshObject  mesh_type = MeshType;
     static constexpr std::size_t nFields = NFields;
+    static constexpr MeshObject  mesh_type = MeshType;
+    static constexpr std::size_t nField = NFields;
     static constexpr bool        output = _output;
 
+    static constexpr std::size_t hBuffer = lBuff;
+    static constexpr std::size_t lBuffer = hBuff;
+
     static auto name() noexcept { return tag::c_str(); }
+};
+
+template<class Traits>
+class Field : public Traits
+{
+  public:
+    using traits = Traits;
+    using tag = typename Traits::tag;
+
+    static constexpr MeshObject  mesh_type = traits::mesh_type;
+    static constexpr bool        output = traits::output;
+    static constexpr std::size_t Dim = traits::Dim;
+
+    using data_type = typename traits::data_type;
+    using data_field_t = typename traits::data_field_t;
+    using view_type = typename data_field_t::view_type;
 
     Field()
     {
-        for (std::size_t i = 0; i < nFields; ++i)
-        { fields_[i] = data_field_t(lBuff, hBuff); }
+        for (std::size_t i = 0; i < traits::nFields; ++i)
+        { fields_[i] = data_field_t(traits::lBuffer, traits::hBuffer); }
     }
     auto&       operator[](std::size_t i) noexcept { return fields_[i]; }
     const auto& operator[](std::size_t i) const noexcept { return fields_[i]; }
 
   private:
-    std::array<data_field_t, nFields> fields_;
+    std::array<data_field_t, traits::nFields> fields_;
 };
 
 
@@ -299,8 +321,10 @@ class Field : public DataField<DataType, Dim>
     Dim, Name, DataType, NFields, lBuff, hBuff, MeshObjectType, output)        \
     static constexpr static_tag           Name##_tag{STRINGIFY(Name)};         \
     static constexpr tag_type<Name##_tag> Name##_field_tag{};                  \
-    using Name = Field<tag_type<Name##_tag>, DataType, NFields, lBuff, hBuff,  \
-        MeshObject::MeshObjectType, Dim, output>;
+    using Name##_traits_type = field_traits<tag_type<Name##_tag>, DataType,    \
+        NFields, lBuff, hBuff, MeshObject::MeshObjectType, Dim, output>;       \
+    static constexpr Name##_traits_type Name##_traits{}; \
+    using Name = Field<Name##_traits_type>;
 
 #define make_field_type_impl_default(                                          \
     Dim, key, DataType, NFields, lBuffer, hBuffer, MeshObjectType)             \

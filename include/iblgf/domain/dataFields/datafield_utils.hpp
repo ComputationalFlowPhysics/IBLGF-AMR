@@ -207,6 +207,7 @@ struct tag_t{
         static constexpr char str[]={id...,'\0'};
         return str;
     }
+    using tag=tag_t;
 };
 
 template<static_tag const& str,std::size_t... I>

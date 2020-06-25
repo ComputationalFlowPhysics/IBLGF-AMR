@@ -61,7 +61,9 @@ class DataBlock : public BlockDescriptor<int, Dim>
     using coordinate_type = base_t;
     using real_coordinate_type = vector_type<types::float_type>;
 
+
   public: //Ctors:
+
     DataBlock() = default;
     ~DataBlock() = default;
     DataBlock(const DataBlock& rhs) = delete;
@@ -92,99 +94,40 @@ class DataBlock : public BlockDescriptor<int, Dim>
         this->generate_nodes();
     }
 
-#define FIELD_ASSERT(T)                                                        \
-    static_assert(T::nFields == 1,                                             \
-        " Vector field (nFields>1) cannot be accessed without index ");
-
-  public: //Get member functions
-    template<class t>
-    auto& get(int _idx=0)
-    {
-        return std::get<t>(fields)[_idx];
-    }
-    template<class t>
-    const auto& get(int _idx=0) const
-    {
-        return std::get<t>(fields)[_idx];
-    }
-
-    template<class Field>
-    auto& get(const coordinate_type& _c, int _idx=0) noexcept
-    {
-        return std::get<Field>(fields)[_idx].get(_c);
-    }
-    template<class Field>
-    const auto& get(const coordinate_type& _c, int _idx=0) const noexcept
-    {
-        return std::get<Field>(fields)[_idx].get(_c);
-    }
 
 
-    template<class Field>
-    auto& get_local(const coordinate_type& _c, int _idx) noexcept
+  public: //Access and queries
+    template<class Function>
+    void for_fields(Function&& F)
     {
-        return std::get<Field>(fields)[_idx].get_local(_c);
-    }
-    template<class Field>
-    const auto& get_local(const coordinate_type& _c, int _idx) const noexcept
-    {
-        return std::get<Field>(fields)[_idx].get_local(_c);
-    }
-    template<class Field>
-    auto& get_local(const coordinate_type& _c) noexcept
-    {
-        FIELD_ASSERT(Field) return get_local(_c, 0);
-    }
-    template<class Field>
-    const auto& get_local(const coordinate_type& _c) const noexcept
-    {
-        FIELD_ASSERT(Field) return get_local(_c, 0);
+        tuple_utils::for_each(fields, F);
     }
 
-    //IJK access
-    template<class Field>
-    auto& get(int _i, int _j, int _k, int _idx) noexcept
+    block_descriptor_type&       descriptor() noexcept { return *this; }
+    const block_descriptor_type& descriptor() const noexcept { return *this; }
+
+    block_descriptor_type bounding_box() const noexcept
     {
-        return std::get<Field>(fields)[_idx].get(_i, _j, _k);
-    }
-    template<class Field>
-    const auto& get(int _i, int _j, int _k, int _idx) const noexcept
-    {
-        return std::get<Field>(fields)[_idx].get(_i, _j, _k);
-    }
-    template<class Field>
-    auto& get(int _i, int _j, int _k) noexcept
-    {
-        FIELD_ASSERT(Field) return get<Field>(_i, _j, _k);
-    }
-    template<class Field>
-    const auto& get(int _i, int _j, int _k) const noexcept
-    {
-        FIELD_ASSERT(Field) return get<Field>(_i, _j, _k);
+        return bounding_box_;
     }
 
-    template<class Field>
-    auto& get_local(int _i, int _j, int _k, int _idx) noexcept
-    {
-        return std::get<Field>(fields)[_idx].get_local(_i, _j, _k);
-    }
-    template<class Field>
-    const auto& get_local(int _i, int _j, int _k, int _idx) const noexcept
-    {
-        return std::get<Field>(fields)[_idx].get_local(_i, _j, _k);
-    }
-    template<class Field>
-    auto& get_local(int _i, int _j, int _k) noexcept
-    {
-        FIELD_ASSERT(Field) return get_local(_i, _j, _k);
-    }
-    template<class Field>
-    const auto& get_local(int _i, int _j, int _k) const noexcept
-    {
-        FIELD_ASSERT(Field) return get_local(_i, _j, _k);
-    }
+    auto&       node_field() noexcept { return node_field_; }
+    const auto& node_field() const noexcept { return node_field_; }
 
-    /*************************************************************************/
+    auto nodes_domain_begin() const noexcept { return nodes_domain_.begin(); }
+    auto nodes_domain_end() const noexcept { return nodes_domain_.end(); }
+    const auto& nodes_domain() const { return nodes_domain_; }
+    auto&       nodes_domain() { return nodes_domain_; }
+
+    auto begin() noexcept { return nodes_domain_.begin(); }
+    auto end() noexcept { return nodes_domain_.end(); }
+
+    bool is_allocated() { return std::get<0>(fields)[0].data().size() > 0; }
+
+
+
+  public: //Operators for tuple access
+
     template<class Tag,
         typename std::enable_if<
             std::tuple_element<tagged_tuple_index<typename Tag::tag_type,
@@ -266,13 +209,6 @@ class DataBlock : public BlockDescriptor<int, Dim>
             fields)[_idx]
             .get(_c);
     }
-    /*************************************************************************/
-
-    //Node access:
-    auto& node(int _i, int _j, int _k) noexcept
-    {
-        return node_field_.get(_i, _j, _k);
-    }
 
     friend std::ostream& operator<<(std::ostream& os, const DataBlock& c)
     {
@@ -282,36 +218,7 @@ class DataBlock : public BlockDescriptor<int, Dim>
         return os;
     }
 
-    template<class Function>
-    void for_fields(Function&& F)
-    {
-        tuple_utils::for_each(fields, F);
-    }
-
-    block_descriptor_type&       descriptor() noexcept { return *this; }
-    const block_descriptor_type& descriptor() const noexcept { return *this; }
-    block_descriptor_type        bounding_box() const noexcept
-    {
-        return bounding_box_;
-    }
-
-    size_type get_index(coordinate_type _coord) const noexcept
-    {
-        return this->index(_coord);
-    }
-
-    auto&       node_field() noexcept { return node_field_; }
-    const auto& node_field() const noexcept { return node_field_; }
-
-    auto nodes_domain_begin() const noexcept { return nodes_domain_.begin(); }
-    auto nodes_domain_end() const noexcept { return nodes_domain_.end(); }
-    const auto& nodes_domain() const { return nodes_domain_; }
-    auto&       nodes_domain() { return nodes_domain_; }
-
-    auto begin() noexcept { return nodes_domain_.begin(); }
-    auto end() noexcept { return nodes_domain_.end(); }
-
-    bool is_allocated() { return std::get<0>(fields)[0].data().size() > 0; }
+    /*************************************************************************/
 
   private: //private member helpers
     /** @brief Generate nodes from the field tuple, both domain and nodes incl

@@ -148,14 +148,6 @@ class DataField : public BlockDescriptor<int, Dim>, public Traits
     }
 
     //IJK access
-    inline const DataType& get(int _i, int _j, int _k) const noexcept
-    {
-        return data_[real_block_.index(_i, _j, _k)];
-    }
-    inline DataType& get(int _i, int _j, int _k) noexcept
-    {
-        return data_[real_block_.index(_i, _j, _k)];
-    }
     inline const DataType& get_real_local(int _i, int _j, int _k) const noexcept
     {
         return data_[real_block_.index_zeroBase(_i, _j, _k)];

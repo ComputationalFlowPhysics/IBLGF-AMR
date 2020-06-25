@@ -698,8 +698,9 @@ class Chombo
                                         for (auto i = 0; i < block_extent[0];
                                              ++i)
                                         {
-                                            auto n = field->get(i + base[0],
-                                                j + base[1], k + base[2]);
+
+                                            const coordinate_type<int, Dim> c({i + base[0], j + base[1], k + base[2]});
+                                            auto n = field->get(c);
 
                                             field_value = 0.0;
                                             field_value = static_cast<value_type>( n(T::tag(),fidx)); 

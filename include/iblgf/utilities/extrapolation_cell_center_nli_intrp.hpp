@@ -125,7 +125,7 @@ class extrapolation_cell_center_nli
             if (!child) continue;
             if (!child->locally_owned()) continue;
             if (!child->has_data()) continue;
-            if (!child->data_ref().is_allocated()) continue;
+            if (!child->data().is_allocated()) continue;
 
             auto& child_target_tmp = child->data_r(from::tag()).linalg_data();
 
@@ -169,7 +169,7 @@ class extrapolation_cell_center_nli
             if (!child) continue;
             if (!child->locally_owned()) continue;
             if (child == nullptr || !child->has_data() ||
-                !child->data_ref().is_allocated())
+                !child->data().is_allocated())
                 continue;
 
             if (correction_only && !child->is_correction()) continue;
@@ -256,7 +256,7 @@ class extrapolation_cell_center_nli
         {
             auto child = parent->child(i);
             if (child == nullptr || !child->has_data() ||
-                !child->data_ref().is_allocated())
+                !child->data().is_allocated())
                 continue;
 
             if (child->is_correction()) continue;

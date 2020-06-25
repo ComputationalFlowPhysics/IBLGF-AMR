@@ -73,7 +73,7 @@ class HaloCommunicator
                  ++it)
             {
                 if (!it->locally_owned()) continue;
-                if (!it->has_data() || !it->data_ref().is_allocated()) continue;
+                if (!it->has_data() || !it->data().is_allocated()) continue;
 
                 for (std::size_t i = 0; i < it->num_neighbors(); ++i)
                 {

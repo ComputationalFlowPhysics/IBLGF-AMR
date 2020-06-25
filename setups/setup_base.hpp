@@ -180,10 +180,10 @@ class SetupBase
             int    refinement_level = it_t->refinement_level();
             double dx = dx_base / std::pow(2.0, refinement_level);
 
-            //auto& nodes_domain = it_t->data_ref().nodes_domain();
+            //auto& nodes_domain = it_t->data().nodes_domain();
             //for (auto it2 = nodes_domain.begin(); it2 != nodes_domain.end();
             //     ++it2)
-            for(auto& node: it_t->data_ref())
+            for(auto& node: it_t->data())
             {
                 float_type tmp_exact = node(Exact::tag(),field_idx);
                 float_type tmp_num = node(Numeric::tag(),field_idx); 

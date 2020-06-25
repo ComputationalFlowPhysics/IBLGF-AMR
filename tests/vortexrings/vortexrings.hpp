@@ -315,7 +315,7 @@ struct VortexRingTest : public SetupBase<VortexRingTest, parameters>
                 else if (it->has_data())
                 {
                     ++nGhost;
-                    if (it->data_ref().is_allocated()) ++nAllocated;
+                    if (it->data().is_allocated()) ++nAllocated;
                 }
             }
         }
@@ -327,10 +327,10 @@ struct VortexRingTest : public SetupBase<VortexRingTest, parameters>
             auto dx_level = dx_base / std::pow(2, it->refinement_level());
             auto scaling = std::pow(2, it->refinement_level());
 
-            auto& nodes_domain = it->data_ref().nodes_domain();
+            auto& nodes_domain = it->data().nodes_domain();
             for (auto it2 = nodes_domain.begin(); it2 != nodes_domain.end();
                  ++it2)
-                for (auto& node : it->data_ref())
+                for (auto& node : it->data())
                 {
                     node(source) = 0.0;
                     node(phi_num) = 0.0;
@@ -378,7 +378,7 @@ struct VortexRingTest : public SetupBase<VortexRingTest, parameters>
         int nPts_global = 0;
         for (auto it = domain_->begin_leafs(); it != domain_->end_leafs(); ++it)
         {
-            if (it->has_data()) nPts += it->data_ref().node_field().size();
+            if (it->has_data()) nPts += it->data().node_field().size();
         }
         boost::mpi::all_reduce(
             client_comm_, nPts, nPts_global, std::plus<int>());
@@ -390,7 +390,7 @@ struct VortexRingTest : public SetupBase<VortexRingTest, parameters>
     bool refinement(OctantType* it, int diff_level, bool use_all = false) const
         noexcept
     {
-        auto b = it->data_ref().descriptor();
+        auto b = it->data().descriptor();
         b.level() = it->refinement_level();
         const float_type dx_base = domain_->dx_base();
 

@@ -726,7 +726,7 @@ class Fmm
                  ++it)
             {
                 if (!it->locally_owned() && it->has_data() &&
-                    it->data_ref().is_allocated())
+                    it->data().is_allocated())
                 {
                     auto& cp2 = it->data_r(fmm_s).linalg_data();
                     cp2 *= 0.0;

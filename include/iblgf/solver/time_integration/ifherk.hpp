@@ -253,7 +253,7 @@ class Ifherk
                     const auto dx_level =
                         dx_base_ / math::pow2(it->refinement_level());
                     domain::Operator::curl<u_type, edge_aux_type>(
-                        it->data_ref(), dx_level);
+                        it->data(), dx_level);
                 }
             }
             //clean_leaf_correction_boundary<edge_aux_type>(domain_->tree()->base_level(), true,2);
@@ -270,7 +270,7 @@ class Ifherk
                     const auto dx_level =
                         dx_base_ / math::pow2(it->refinement_level());
                     domain::Operator::curl_transpose<stream_f_type, u_type>(
-                        it->data_ref(), dx_level, -1.0);
+                        it->data(), dx_level, -1.0);
                 }
                 client->template buffer_exchange<u_type>(l);
             }
@@ -284,7 +284,7 @@ class Ifherk
         for (auto it = domain_->begin(); it != domain_->end(); ++it)
         {
             if (!it->locally_owned()) continue;
-            float_type tmp = domain::Operator::maxabs<Field>(it->data_ref());
+            float_type tmp = domain::Operator::maxabs<Field>(it->data());
 
             if (tmp > max_local) max_local = tmp;
         }
@@ -568,7 +568,7 @@ class Ifherk
         for (auto it = domain_->begin(); it != domain_->end(); ++it)
         {
             if (!it->has_data()) continue;
-            if (!it->data_ref().is_allocated()) continue;
+            if (!it->data().is_allocated()) continue;
 
             for (std::size_t field_idx = 0; field_idx < F::nFields; ++field_idx)
             {
@@ -576,7 +576,7 @@ class Ifherk
 
                 if (non_leaf_only && it->is_leaf() && it->locally_owned())
                 {
-                    int N = it->data_ref().descriptor().extent()[0];
+                    int N = it->data().descriptor().extent()[0];
 
                     view(lin_data, xt::all(), xt::all(),
                         xt::range(0, clean_width)) *= 0.0;
@@ -627,7 +627,7 @@ class Ifherk
                     dx_base / math::pow2(it->refinement_level());
                 if (it->is_leaf())
                     domain::Operator::curl<Velocity_in, edge_aux_type>(
-                        it->data_ref(), dx_level);
+                        it->data(), dx_level);
             }
         }
 
@@ -643,7 +643,7 @@ class Ifherk
 
             const auto dx_level = dx_base / math::pow2(it->refinement_level());
             domain::Operator::curl_transpose<stream_f_type, Velocity_out>(
-                it->data_ref(), dx_level, -1.0);
+                it->data(), dx_level, -1.0);
         }
 
         //client->template buffer_exchange<Velocity_out>(l);
@@ -657,7 +657,7 @@ class Ifherk
         {
             if (!it->locally_owned())
             {
-                if (!it->has_data() || !it->data_ref().is_allocated()) continue;
+                if (!it->has_data() || !it->data().is_allocated()) continue;
                 for (std::size_t field_idx = 0; field_idx < F::nFields;
                      ++field_idx)
                 {
@@ -671,7 +671,7 @@ class Ifherk
         for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
         {
             if (!it->locally_owned()) continue;
-            if (!it->has_data() || !it->data_ref().is_allocated()) continue;
+            if (!it->has_data() || !it->data().is_allocated()) continue;
 
             if (leaf_only_boundary && it->is_correction())
             {
@@ -690,7 +690,7 @@ class Ifherk
             for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
             {
                 if (!it->locally_owned()) continue;
-                if (!it->has_data() || !it->data_ref().is_allocated()) continue;
+                if (!it->has_data() || !it->data().is_allocated()) continue;
                 //std::cout<<it->key()<<std::endl;
 
                 for (std::size_t i = 0; i < it->num_neighbors(); ++i)
@@ -707,7 +707,7 @@ class Ifherk
                             auto& lin_data =
                                 it->data_r(F::tag(), field_idx).linalg_data();
 
-                            int N = it->data_ref().descriptor().extent()[0];
+                            int N = it->data().descriptor().extent()[0];
 
                             // somehow we delete the outer 2 planes
                             if (i == 4)
@@ -761,7 +761,7 @@ class Ifherk
                 const auto dx_level =
                     dx_base / math::pow2(it->refinement_level());
                 domain::Operator::curl<Source, edge_aux_type>(
-                    it->data_ref(), dx_level);
+                    it->data(), dx_level);
             }
 
             client->template buffer_exchange<edge_aux_type>(l);
@@ -774,7 +774,7 @@ class Ifherk
                 //if(it->is_correction()) continue;
 
                 domain::Operator::nonlinear<Source, edge_aux_type, Target>(
-                    it->data_ref());
+                    it->data());
 
                 for (std::size_t field_idx = 0; field_idx < Target::nFields;
                      ++field_idx)
@@ -809,7 +809,7 @@ class Ifherk
                 const auto dx_level =
                     dx_base / math::pow2(it->refinement_level());
                 domain::Operator::divergence<Source, Target>(
-                    it->data_ref(), dx_level);
+                    it->data(), dx_level);
             }
 
             clean_leaf_correction_boundary<Target>(l, false, 4 + stage_idx_);
@@ -833,7 +833,7 @@ class Ifherk
                 const auto dx_level =
                     dx_base / math::pow2(it->refinement_level());
                 domain::Operator::gradient<Source, Target>(
-                    it->data_ref(), dx_level);
+                    it->data(), dx_level);
                 for (std::size_t field_idx = 0; field_idx < Target::nFields;
                      ++field_idx)
                 {

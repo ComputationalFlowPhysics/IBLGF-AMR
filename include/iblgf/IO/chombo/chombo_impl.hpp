@@ -99,7 +99,7 @@ class Chombo
         //Blocks per level:
         for (auto& p : _octant_blocks)
         {
-            auto b = p->data_ref().descriptor(); // block descriptor
+            auto b = p->data().descriptor(); // block descriptor
             auto it = level_map_.find(b.level());
 
             // FIXME: Some blocks have -1 level
@@ -297,7 +297,7 @@ class Chombo
                     if (!b->locally_owned()) continue;
                     if (!b->is_leaf()) continue;
 
-                    auto b_dscrptr = b->data_ref().descriptor();
+                    auto b_dscrptr = b->data().descriptor();
                     int  level = b_dscrptr.level();
                     if (level > fake_level) continue;
 
@@ -594,7 +594,7 @@ class Chombo
                     {
                         hsize_type  nElements_patch = 1;
                         const auto& p = l.octant_groups[g][b];
-                        const auto& block_desc = p->data_ref().descriptor();
+                        const auto& block_desc = p->data().descriptor();
                         for (std::size_t d = 0; d < Dim;
                              ++d) // for node-centered
                         { nElements_patch *= block_desc.extent()[d]; }
@@ -689,9 +689,9 @@ class Chombo
                                         const auto& octant =
                                             (ordered_group)[group_coord];
                                         const auto& block_desc =
-                                            octant->data_ref().descriptor();
+                                            octant->data().descriptor();
                                         const auto& field =
-                                            &(octant->data_ref().node_field());
+                                            &(octant->data().node_field());
 
                                         auto base = block_desc.base();
 
@@ -762,7 +762,7 @@ class Chombo
                         // Loop through components in block
                         hsize_type  nElements_patch = 1;
                         const auto& block_desc =
-                            octant->data_ref().descriptor();
+                            octant->data().descriptor();
                         for (std::size_t d = 0; d < Dim;
                              ++d) // for node-centered
                         { nElements_patch *= block_desc.extent()[d]; }
@@ -807,7 +807,7 @@ class Chombo
                 {
                     hsize_type  nElements_patch = 1;
                     const auto& p = l.octants[b];
-                    const auto& block_desc = p->data_ref().descriptor();
+                    const auto& block_desc = p->data().descriptor();
 
                     for (std::size_t d = 0; d < Dim; ++d) // for node-centered
                     { nElements_patch *= block_desc.extent()[d]; }
@@ -841,7 +841,7 @@ class Chombo
             {
                 single_block_data.clear();
                 const auto& octant0 = l.octant_groups[g][0];
-                const auto& block_desc0 = octant0->data_ref().descriptor();
+                const auto& block_desc0 = octant0->data().descriptor();
 
                 auto base0 = block_desc0.base();
                 auto block_extent = block_desc0.extent();
@@ -856,7 +856,7 @@ class Chombo
                 for (std::size_t b = 0; b < l.octant_groups[g].size(); ++b)
                 {
                     const auto& p = l.octant_groups[g][b];
-                    const auto& block_desc = p->data_ref().descriptor();
+                    const auto& block_desc = p->data().descriptor();
 
                     // Get group coordinate based on shift
                     auto base_shift0 = block_desc.base() - base0;
@@ -899,7 +899,7 @@ class Chombo
             {
                 // Determine and write "boxes"
                 auto  p = l.octant_groups[0][0];
-                auto& block_desc = p->data_ref().descriptor();
+                auto& block_desc = p->data().descriptor();
 
                 auto pmin = block_desc.min(); // vector of ints size 3
                 auto pmax = block_desc.max();
@@ -913,7 +913,7 @@ class Chombo
                     for (std::size_t b = 0; b < l.octant_groups[g].size(); ++b)
                     {
                         const auto  p = l.octant_groups[g][b];
-                        const auto& block_desc = p->data_ref().descriptor();
+                        const auto& block_desc = p->data().descriptor();
                         if (b == 0)
                         {
                             mins_temp = block_desc.min();

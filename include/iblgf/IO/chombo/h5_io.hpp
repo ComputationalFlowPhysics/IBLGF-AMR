@@ -85,8 +85,8 @@ class H5_io
         BlockInfo(const octant_type* _leaf)
         {
             rank = _leaf->rank();
-            blockDescriptor = _leaf->data_ref().descriptor();
-            blockData = &(_leaf->data_ref().node_field());
+            blockDescriptor = _leaf->data().descriptor();
+            blockData = &(_leaf->data().node_field());
         }
     };
 
@@ -129,7 +129,7 @@ class H5_io
         {
             if (!it->has_data() || it->refinement_level() < 0) continue;
             if (!include_correction && it->is_correction()) continue;
-            auto b = it->data_ref().descriptor();
+            auto b = it->data().descriptor();
             b.grow(0, 1); //grow by one to fill the gap
             nPoints += b.nPoints();
         }
@@ -148,7 +148,7 @@ class H5_io
 
             if (rank == world.rank() || world.rank() == 0)
             {
-                blockDescriptor_t block = it->data_ref().descriptor();
+                blockDescriptor_t block = it->data().descriptor();
                 octant_blocks.push_back(it.ptr());
 
                 it->index(_count * block.nPoints());

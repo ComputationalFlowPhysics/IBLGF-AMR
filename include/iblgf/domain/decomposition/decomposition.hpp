@@ -454,7 +454,7 @@ class Decomposition
                     level = level >= 0 ? level : 0;
                     auto bbase = domain_->tree()->octant_to_level_coordinate(
                         _o->tree_coordinate(), level);
-                    if (!_o->has_data() || !_o->data_ref().is_allocated())
+                    if (!_o->has_data() || !_o->data().is_allocated())
                     {
                         _o->data_ptr() = std::make_shared<datablock_t>(
                             bbase, domain_->block_extent(), level, true);

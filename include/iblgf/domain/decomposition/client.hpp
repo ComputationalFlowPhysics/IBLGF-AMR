@@ -622,7 +622,7 @@ class Client : public ClientBase<ServerClientTraits<Domain>>
             const auto idx = get_octant_idx(it, field_idx);
 
             if (it->locally_owned() && it->has_data() &&
-                it->data_ref().is_allocated())
+                it->data().is_allocated())
             {
                 const auto unique_ranks =
                     (_use_masks) ? it->unique_child_ranks(fmm_mask_idx, mask_id)
@@ -647,7 +647,7 @@ class Client : public ClientBase<ServerClientTraits<Domain>>
 
             //Check if ghost has locally_owned children
             if (!it->locally_owned() && it->has_data() &&
-                it->data_ref().is_allocated())
+                it->data().is_allocated())
             {
                 if ((_use_masks && it->has_locally_owned_children(
                                        fmm_mask_idx, mask_id)) ||

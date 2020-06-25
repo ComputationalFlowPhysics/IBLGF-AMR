@@ -72,11 +72,11 @@ TEST(datafield_test, ctors)
 
     //Iteration over a fields, scalar or vector:
     //Scalar field:
-    for (auto& el : db[p]) { el = -3; }
+    for (auto& el : db(p)) { el = -3; }
     //Vector field:
     for (std::size_t i = 0; i < vel.nFields; ++i)
     {
-        for (auto& el : db[vel][0]) { el = 10; }
+        for (auto& el : db(vel,0)) { el = 10; }
     }
 
     //Iteration over entire datablock:

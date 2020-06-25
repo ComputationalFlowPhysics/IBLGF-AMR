@@ -138,7 +138,7 @@ class PoissonSolver
             for (auto it_s = domain_->begin(l); it_s != domain_->end(l); ++it_s)
                 if (it_s->has_data() && !it_s->locally_owned())
                 {
-                    if (!it_s->data_ref().is_allocated()) continue;
+                    if (!it_s->data().is_allocated()) continue;
                     auto& cp2 = it_s->data_r(source_tmp);
                     std::fill(cp2.begin(), cp2.end(), 0.0);
                 }
@@ -215,7 +215,7 @@ class PoissonSolver
             for (auto it_s = domain_->begin(l); it_s != domain_->end(l); ++it_s)
                 if (it_s->has_data() && !it_s->locally_owned())
                 {
-                    if (!it_s->data_ref().is_allocated()) continue;
+                    if (!it_s->data().is_allocated()) continue;
                     auto& cp2 = it_s->data_r(source_tmp).linalg_data();
                     cp2 *= 0.0;
                 }
@@ -252,7 +252,7 @@ class PoissonSolver
 
                 for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
                 {
-                    if (!it->has_data() || !it->data_ref().is_allocated())
+                    if (!it->has_data() || !it->data().is_allocated())
                         continue;
                     c_cntr_nli_
                         .nli_intrp_node<target_tmp_type, target_tmp_type>(
@@ -288,7 +288,7 @@ class PoissonSolver
                     for (auto it = domain_->begin(l); it != domain_->end(l);
                          ++it)
                     {
-                        if (!it->has_data() || !it->data_ref().is_allocated())
+                        if (!it->has_data() || !it->data().is_allocated())
                             continue;
                         c_cntr_nli_
                             .nli_intrp_node<target_tmp_type, target_tmp_type>(
@@ -337,7 +337,7 @@ class PoissonSolver
                 //    int refinement_level = it->refinement_level();
                 //    double dx_level = dx_base/std::pow(2,refinement_level);
 
-                //    if (!it->has_data() || !it->data_ref().is_allocated()) continue;
+                //    if (!it->has_data() || !it->data().is_allocated()) continue;
                 //    domain::Operator::laplace<target_tmp_type, corr_lap_tmp>
                 //    ( *(it->has_data()),dx_level);
                 //}
@@ -350,7 +350,7 @@ class PoissonSolver
 
                 for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
                 {
-                    if (!it->has_data() || !it->data_ref().is_allocated())
+                    if (!it->has_data() || !it->data().is_allocated())
                         continue;
 
                     const bool correction_buffer_only = true;
@@ -402,7 +402,7 @@ class PoissonSolver
     {
         for (auto it = domain_->begin(); it != domain_->end(); ++it)
         {
-            if (!it->has_data() || !it->data_ref().is_allocated()) continue;
+            if (!it->has_data() || !it->data().is_allocated()) continue;
 
             auto& lin_data = it->data_r(field::tag()).linalg_data();
             std::fill(lin_data.begin(), lin_data.end(), 0.0);
@@ -469,7 +469,7 @@ class PoissonSolver
 
             for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
             {
-                if (!it->has_data() || !it->data_ref().is_allocated()) continue;
+                if (!it->has_data() || !it->data().is_allocated()) continue;
                 if (leaf_boundary && !it->leaf_boundary()) continue;
 
                 c_cntr_nli_.nli_intrp_node<From, To>(it, mesh_type,
@@ -494,7 +494,7 @@ class PoissonSolver
             for (auto it_s = domain_->begin(ls); it_s != domain_->end(ls);
                  ++it_s)
             {
-                if (!it_s->has_data() || !it_s->data_ref().is_allocated())
+                if (!it_s->has_data() || !it_s->data().is_allocated())
                     continue;
                 if (leaf_boundary && !it_s->leaf_boundary()) continue;
 
@@ -538,7 +538,7 @@ class PoissonSolver
                  ++it_s)
             {
                 //if (!it_s->has_data()) continue;
-                if (!it_s->has_data() || !it_s->data_ref().is_allocated())
+                if (!it_s->has_data() || !it_s->data().is_allocated())
                     continue;
                 this->coarsify<Target, Target>(*it_s);
             }
@@ -557,7 +557,7 @@ class PoissonSolver
             for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
             {
                 if (!it->has_data() || !it->locally_owned() ||
-                    !it->data_ref().is_allocated())
+                    !it->data().is_allocated())
                     continue;
                 auto refinement_level = it->refinement_level();
                 auto dx_level = dx_base / std::pow(2, refinement_level);
@@ -568,7 +568,7 @@ class PoissonSolver
                 // laplace of it_t data with zero bcs
                 if ((it->is_leaf()))
                 {
-                    for (auto& node : it->data_ref())
+                    for (auto& node : it->data())
                     {
                         node(difftarget) = -6.0 * node(target) +
                                            node.at_offset(target, 0, 0, -1) +
@@ -611,9 +611,9 @@ class PoissonSolver
             if (correction_only && !child->is_correction()) continue;
             if (exclude_correction && child->is_correction()) continue;
 
-            auto child_view = child->data_ref().descriptor();
+            auto child_view = child->data().descriptor();
 
-            auto cview = child->data_ref().node_field().view(child_view);
+            auto cview = child->data().node_field().view(child_view);
 
             cview.iterate([&](auto& n) {
                 const float_type avg = 1. / 8 * n(Field_c::tag());

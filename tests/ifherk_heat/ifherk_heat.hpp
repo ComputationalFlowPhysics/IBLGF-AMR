@@ -190,7 +190,7 @@ struct IfherkHeat : public SetupBase<IfherkHeat, parameters>
     {
         // ----------------------------------------------------------------
         float_type field_max = 1e-14;
-        for (auto& n : it->data_ref())
+        for (auto& n : it->data())
         {
             if (std::fabs(n(Field::tag())) > field_max)
                 field_max = std::fabs(n(Field::tag()));
@@ -247,7 +247,7 @@ struct IfherkHeat : public SetupBase<IfherkHeat, parameters>
             auto dx_level = dx_base / std::pow(2, it->refinement_level());
             auto scaling = std::pow(2, it->refinement_level());
 
-            for (auto& n : it->data_ref())
+            for (auto& n : it->data())
             {
                 const auto& coord = n.level_coordinate();
                 /***********************************************************/
@@ -305,7 +305,7 @@ struct IfherkHeat : public SetupBase<IfherkHeat, parameters>
                 const auto dx_level =
                     dx_base / std::pow(2, it->refinement_level());
                 domain::Operator::curl_transpose<stream_f_type, u_type>(
-                    it->data_ref(), dx_level, -1.0);
+                    it->data(), dx_level, -1.0);
             }
             client->template buffer_exchange<u_type>(l);
         }
@@ -365,7 +365,7 @@ struct IfherkHeat : public SetupBase<IfherkHeat, parameters>
     bool refinement(OctantType* it, int diff_level, bool use_all = false) const
         noexcept
     {
-        auto b = it->data_ref().descriptor();
+        auto b = it->data().descriptor();
         b.level() = it->refinement_level();
         const float_type dx_base = domain_->dx_base();
 

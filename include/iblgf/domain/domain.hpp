@@ -709,7 +709,7 @@ class Domain
         int c = 0;
         for (auto it = this->begin(); it != this->end(); ++it)
         {
-            if (it->has_data() && it->data_ref().is_allocated()) ++c;
+            if (it->has_data() && it->data().is_allocated()) ++c;
         }
 
         return c;
@@ -835,7 +835,7 @@ class Domain
             auto neighbors = it->get_level_neighborhood(lbuff, hbuff);
 
             //box-overlap per field
-            it->data_ref().for_fields([this, it, _begin, _end, &neighbors](
+            it->data().for_fields([this, it, _begin, _end, &neighbors](
                                           auto& field) {
                 for (auto& jt : neighbors)
                 {
@@ -843,7 +843,7 @@ class Domain
 
                     //Check for overlap with current
                     block_descriptor_t overlap;
-                    if (field.buffer_overlap(jt->data_ref().descriptor(),
+                    if (field.buffer_overlap(jt->data().descriptor(),
                             overlap, jt->refinement_level()))
                     {
                         using field_type =
@@ -917,9 +917,9 @@ class Domain
             {
                 if (!it->locally_owned() || !it->has_data()) continue;
 
-                nPts += it->data_ref().node_field().size();
+                nPts += it->data().node_field().size();
                 nPoints_perLevel[it->refinement_level()] +=
-                    it->data_ref().node_field().size();
+                    it->data().node_field().size();
             }
         }
         boost::mpi::all_reduce(
@@ -953,7 +953,7 @@ class Domain
         os << "Interior Key Bounding Box: " << d.key_bd_box_ << std::endl;
         //os<<"Fields:"<<std::endl;
         //auto it=d.begin_leafs();
-        //it->data_ref().for_fields([&](auto& field)
+        //it->data().for_fields([&](auto& field)
         //        {
         //            os<<"\t "<<field.name()<<std::endl;
         //        }

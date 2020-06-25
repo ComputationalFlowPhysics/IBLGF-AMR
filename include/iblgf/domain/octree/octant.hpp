@@ -257,21 +257,28 @@ class Octant
     void index(int _idx) noexcept { idx_ = _idx; }
     int  index() const noexcept { return idx_; }
 
-    //FIXME: Delete
-    auto  data() const noexcept { return data_; }
-    auto& data() noexcept { return data_; }
+
+    /***********************************************************************/
+    //new data access
+    bool has_data() const noexcept { return static_cast<bool>(data_); }
 
     auto  data_ptr() const noexcept { return data_; }
     auto& data_ptr() noexcept { return data_; }
 
-    bool has_data() const noexcept { return static_cast<bool>(data_); }
+    const auto& data() const noexcept { return *data_; }
+    auto&       data() noexcept { return *data_; }
 
-    //FIXME: Rename to data
-    const auto& data_ref() const noexcept { return *data_; }
-    auto&       data_ref() noexcept { return *data_; }
+    template<class... Args>
+    const auto& data(Args&&... args) const noexcept
+    {
+        return (*data_)(std::forward<Args>(args)...);
+    }
+    template<class... Args>
+    auto& data(Args&&... args) noexcept
+    {
+        return (*data_)(std::forward<Args>(args)...);
+    }
 
-    /***********************************************************************/
-    //new data access
     template<class... Args>
     const auto& data_r(Args&&... args) const noexcept
     {
@@ -370,7 +377,7 @@ class Octant
             const auto child = this->child(c);
             if (!child || !child->has_data()) continue;
             if (child->locally_owned() && child->has_data() &&
-                child->data_ref().is_allocated() && fmm_masks)
+                child->data().is_allocated() && fmm_masks)
             {
                 return true;
                 break;

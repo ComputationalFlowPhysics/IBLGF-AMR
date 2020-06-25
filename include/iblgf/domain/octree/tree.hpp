@@ -148,7 +148,7 @@ class Tree
         for (auto& k : _keys)
         {
             auto octant = this->insert_td(k);
-            //if (!octant->has_data() || !octant->data_ref().is_allocated())
+            //if (!octant->has_data() || !octant->data().is_allocated())
             f(octant);
         }
     }
@@ -858,7 +858,7 @@ class Tree
         {
             //if (it->locally_owned()) continue;
             if (it->rank() <= 0) continue;
-            if (it->has_data() && it->data_ref().is_allocated()) continue;
+            if (it->has_data() && it->data().is_allocated()) continue;
 
             bool allocate_data = false;
             for (int i = 0; i < it->num_children(); ++i)

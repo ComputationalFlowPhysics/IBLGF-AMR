@@ -183,8 +183,8 @@ struct OperatorTest : public SetupBase<OperatorTest, parameters>
             auto dx_level = dx_base / std::pow(2, it->refinement_level());
             auto scaling = std::pow(2, it->refinement_level());
 
-            auto  view(it->data_ref().node_field().domain_view());
-            auto& nodes_domain = it->data_ref().nodes_domain();
+            auto  view(it->data().node_field().domain_view());
+            auto& nodes_domain = it->data().nodes_domain();
             for (auto it2 = nodes_domain.begin(); it2 != nodes_domain.end();
                  ++it2)
             {
@@ -365,7 +365,7 @@ struct OperatorTest : public SetupBase<OperatorTest, parameters>
             int    refinement_level = it_t->refinement_level();
             double dx = dx_base / std::pow(2.0, refinement_level);
 
-            auto& nodes_domain = it_t->data_ref().nodes_domain();
+            auto& nodes_domain = it_t->data().nodes_domain();
             for (auto it2 = nodes_domain.begin(); it2 != nodes_domain.end();
                  ++it2)
             {

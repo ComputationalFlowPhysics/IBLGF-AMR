@@ -327,31 +327,31 @@ struct VortexRingTest : public SetupBase<VortexRingTest, parameters>
             auto dx_level = dx_base / std::pow(2, it->refinement_level());
             auto scaling = std::pow(2, it->refinement_level());
 
-            auto  view(it->data_ref().node_field().domain_view());
             auto& nodes_domain = it->data_ref().nodes_domain();
             for (auto it2 = nodes_domain.begin(); it2 != nodes_domain.end();
                  ++it2)
-            {
-                it2->get<source_type>() = 0.0;
-                it2->get<phi_num_type>() = 0.0;
+                for (auto& node : it->data_ref())
+                {
+                    node(source) = 0.0;
+                    node(phi_num) = 0.0;
 
-                const auto& coord = it2->level_coordinate();
+                    const auto& coord = node.level_coordinate();
 
-                // manufactured solution:
-                float_type x = static_cast<float_type>(
-                                   coord[0] - center[0] * scaling + 0.5) *
-                               dx_level;
-                float_type y = static_cast<float_type>(
-                                   coord[1] - center[1] * scaling + 0.5) *
-                               dx_level;
-                float_type z = static_cast<float_type>(
-                                   coord[2] - center[2] * scaling + 0.5) *
-                               dx_level;
+                    // manufactured solution:
+                    float_type x = static_cast<float_type>(
+                                       coord[0] - center[0] * scaling + 0.5) *
+                                   dx_level;
+                    float_type y = static_cast<float_type>(
+                                       coord[1] - center[1] * scaling + 0.5) *
+                                   dx_level;
+                    float_type z = static_cast<float_type>(
+                                       coord[2] - center[2] * scaling + 0.5) *
+                                   dx_level;
 
-                it2->get<source_type>() = vorticity(x, y, z);
-                it2->get<phi_exact_type>() = psi(x, y, z);
-                /***********************************************************/
-            }
+                    node(source) = vorticity(x, y, z);
+                    node(phi_exact) = psi(x, y, z);
+                    /***********************************************************/
+                }
         }
     }
 

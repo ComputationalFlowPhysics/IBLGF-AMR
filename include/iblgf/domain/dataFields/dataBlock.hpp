@@ -108,38 +108,6 @@ class DataBlock : public BlockDescriptor<int, Dim>
         return std::get<t>(fields)[_idx];
     }
 
-    template<class T>
-    inline auto& get_data(int _idx=0)
-    {
-        return std::get<T>(fields)[_idx].data();
-    }
-    template<class T >
-    inline const auto& get_data(int _idx=0) const
-    {
-        return std::get<T>(fields)[_idx].data();
-    }
-
-    template<class T>
-    auto& get_linalg(int _idx=0)
-    {
-        return std::get<T>(fields)[_idx].linalg();
-    }
-    template<class T>
-    const auto& get_linalg(int _idx=0) const
-    {
-        return std::get<T>(fields)[_idx].linalg();
-    }
-    template<class T>
-    auto& get_linalg_data(int _idx=0)
-    {
-        return std::get<T>(fields)[_idx].linalg_data();
-    }
-    template<class T>
-    const auto& get_linalg_data(int _idx=0) const
-    {
-        return std::get<T>(fields)[_idx].linalg_data();
-    }
-
     template<class Field>
     auto& get(const coordinate_type& _c, int _idx=0) noexcept
     {

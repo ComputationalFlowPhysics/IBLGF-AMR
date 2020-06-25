@@ -180,19 +180,20 @@ class SetupBase
             int    refinement_level = it_t->refinement_level();
             double dx = dx_base / std::pow(2.0, refinement_level);
 
-            auto& nodes_domain = it_t->data_ref().nodes_domain();
-            for (auto it2 = nodes_domain.begin(); it2 != nodes_domain.end();
-                 ++it2)
+            //auto& nodes_domain = it_t->data_ref().nodes_domain();
+            //for (auto it2 = nodes_domain.begin(); it2 != nodes_domain.end();
+            //     ++it2)
+            for(auto& node: it_t->data_ref())
             {
-                float_type tmp_exact = it2->template get<Exact>(field_idx);
-                float_type tmp_num = it2->template get<Numeric>(field_idx);
+                float_type tmp_exact = node(Exact::tag(),field_idx);
+                float_type tmp_num = node(Numeric::tag(),field_idx); 
 
                 //if(std::isnan(tmp_num))
                 //    std::cout<<"this is nan at level = " << it_t->level()<<std::endl;
 
                 float_type error_tmp = tmp_num - tmp_exact;
 
-                it2->template get<Error>(field_idx) = error_tmp;
+                node(Error::tag(),field_idx);
 
                 L2 += error_tmp * error_tmp * (dx * dx * dx);
                 L2_exact += tmp_exact * tmp_exact * (dx * dx * dx);

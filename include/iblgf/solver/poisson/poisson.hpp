@@ -616,7 +616,7 @@ class PoissonSolver
             auto cview = child->data_ref().node_field().view(child_view);
 
             cview.iterate([&](auto& n) {
-                const float_type avg = 1. / 8 * n.template get<Field_c>();
+                const float_type avg = 1. / 8 * n(Field_c::tag());
                 auto             pcoord = n.level_coordinate();
                 for (std::size_t d = 0; d < pcoord.size(); ++d)
                     pcoord[d] = std::floor(pcoord[d] / 2.0);

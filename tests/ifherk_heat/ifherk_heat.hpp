@@ -188,25 +188,13 @@ struct IfherkHeat : public SetupBase<IfherkHeat, parameters>
     template<class Field, class OctantType>
     int adapt_level_change(OctantType* it, float_type source_max)
     {
-        auto& nodes_domain = it->data_ref().nodes_domain();
-
         // ----------------------------------------------------------------
         float_type field_max = 1e-14;
-
-        for (auto it2 = nodes_domain.begin(); it2 != nodes_domain.end(); ++it2)
+        for (auto& n : it->data_ref())
         {
-            if (std::fabs(it2->template get<Field>()) > field_max)
-                field_max = std::fabs(it2->template get<Field>());
+            if (std::fabs(n(Field::tag())) > field_max)
+                field_max = std::fabs(n(Field::tag()));
         }
-
-        //int count=0;
-        //field_max=0;
-        //for(auto it2=nodes_domain.begin();it2!=nodes_domain.end();++it2 )
-        //{
-        //    field_max+=it2->template get<Field>();
-        //    count++;
-        //}
-        //field_max /= count;
 
         // ----------------------------------------------------------------
 
@@ -225,20 +213,10 @@ struct IfherkHeat : public SetupBase<IfherkHeat, parameters>
 
         if (l_aim > nLevelRefinement_) l_aim = nLevelRefinement_;
 
-        //if (it->refinement_level()==0)
-        //{
-        //    if (field_max>source_max*base_threshold)
-        //        l_delete_aim = std::max(l_delete_aim,0);
-        //}
-
         int l_change = l_aim - it->refinement_level();
-        //int l_delete_change = l_delete_aim - it->refinement_level();
         if (l_delete_aim < 0) return -1;
         if (l_change > 0) return 1;
         return 0;
-        //return l_change<0 ? l_change:0;
-        //return l_change>0 ? l_change:0;
-        //return l_change;
     }
 
     /** @brief Initialization of poisson problem.
@@ -269,17 +247,9 @@ struct IfherkHeat : public SetupBase<IfherkHeat, parameters>
             auto dx_level = dx_base / std::pow(2, it->refinement_level());
             auto scaling = std::pow(2, it->refinement_level());
 
-            auto  view(it->data_ref().node_field().domain_view());
-            auto& nodes_domain = it->data_ref().nodes_domain();
-
-            //float_type T = dt_*tot_steps_;
-            for (auto it2 = nodes_domain.begin(); it2 != nodes_domain.end();
-                 ++it2)
+            for (auto& n : it->data_ref())
             {
-                //it2->get<source>() = 0.0;
-
-                const auto& coord = it2->level_coordinate();
-
+                const auto& coord = n.level_coordinate();
                 /***********************************************************/
                 float_type x = static_cast<float_type>(
                                    coord[0] - center[0] * scaling + 0.5) *
@@ -291,9 +261,8 @@ struct IfherkHeat : public SetupBase<IfherkHeat, parameters>
                     static_cast<float_type>(coord[2] - center[2] * scaling) *
                     dx_level;
 
-                it2->template get<edge_aux_type>(0) =
-                    -vortex_ring_vor_ic(x, y, z - d2v_ / 2, 0) +
-                    vortex_ring_vor_ic(x, y, z + d2v_ / 2, 0);
+                n(edge_aux, 0) = -vortex_ring_vor_ic(x, y, z - d2v_ / 2, 0) +
+                                 vortex_ring_vor_ic(x, y, z + d2v_ / 2, 0);
                 /***********************************************************/
                 x = static_cast<float_type>(coord[0] - center[0] * scaling) *
                     dx_level;
@@ -303,9 +272,8 @@ struct IfherkHeat : public SetupBase<IfherkHeat, parameters>
                 z = static_cast<float_type>(coord[2] - center[2] * scaling) *
                     dx_level;
 
-                it2->template get<edge_aux_type>(1) =
-                    -vortex_ring_vor_ic(x, y, z - d2v_ / 2, 1) +
-                    vortex_ring_vor_ic(x, y, z + d2v_ / 2, 1);
+                n(edge_aux, 1) = -vortex_ring_vor_ic(x, y, z - d2v_ / 2, 1) +
+                                 vortex_ring_vor_ic(x, y, z + d2v_ / 2, 1);
                 /***********************************************************/
                 x = static_cast<float_type>(coord[0] - center[0] * scaling) *
                     dx_level;
@@ -315,12 +283,11 @@ struct IfherkHeat : public SetupBase<IfherkHeat, parameters>
                         coord[2] - center[2] * scaling + 0.5) *
                     dx_level;
 
-                it2->template get<edge_aux_type>(2) =
-                    -vortex_ring_vor_ic(x, y, z - d2v_ / 2, 2) +
-                    vortex_ring_vor_ic(x, y, z + d2v_ / 2, 2);
+                n(edge_aux, 2) = -vortex_ring_vor_ic(x, y, z - d2v_ / 2, 2) +
+                                 vortex_ring_vor_ic(x, y, z + d2v_ / 2, 2);
 
                 /***********************************************************/
-                it2->template get<decomposition_type>() = world.rank();
+                n(decomposition) = world.rank();
             }
         }
 

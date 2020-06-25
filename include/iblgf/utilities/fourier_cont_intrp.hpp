@@ -68,7 +68,6 @@ class fourier_cont_intrp
     template<template<size_t> class from, template<size_t> class to>
     void add_source_correction(auto parent, double dx)
     {
-        //auto& parent_linalg_data = parent->d::tag()ata_ref().template get_linalg_data<from>();
 
         for (int i = 0; i < parent->num_children(); ++i)
         {

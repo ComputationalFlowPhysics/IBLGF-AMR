@@ -51,74 +51,51 @@ class node
     node& operator=(node&&) & = default;
 
   public: //Access
-    //template<template<std::size_t> class Field>
-    //auto& get_field(int _idx) noexcept
-    //{
-    //    return c_->template get<Field>(_idx);
-    //}
-    //template<template<std::size_t> class Field>
-    //const auto& get_field(int _idx) const noexcept
-    //{
-    //    return c_->template get<Field>(_idx);
-    //}
 
     /************************************************************************/
-
     template<class Tag>
     auto& operator[](Tag _tag) noexcept
     {
-        return (*c_)[_tag].get(level_coordinate_);
+        return (*c_)(_tag,level_coordinate_);
     }
     template<class Tag>
     auto& operator[](Tag _tag) const noexcept
     {
-        return (*c_)[_tag].get(level_coordinate_);
+        return (*c_)(_tag,level_coordinate_);
     }
     template<class Tag>
     auto& operator()(Tag _tag, int _idx=0) noexcept
     {
-        return (*c_)(_tag, _idx).get(level_coordinate_);
+        return (*c_)(_tag, level_coordinate_, _idx);
     }
     template<class Tag>
     auto& operator()(Tag _tag, int _idx=0) const noexcept
     {
-        return (*c_)(_tag, _idx).get(level_coordinate_);
+        return (*c_)(_tag, level_coordinate_,_idx);
     }
     template<class Tag>
     const auto& at_offset(Tag _tag, const coordinate_type& _offset, int _idx=0) const
         noexcept
     {
-        return (*c_)(_tag, _idx).get(level_coordinate_ + _offset);
+        return (*c_)(_tag, level_coordinate_ + _offset ,_idx);
     }
     template<class Tag>
     auto& at_offset(Tag _tag, int _i, int _j, int _k, int _idx=0) noexcept
     {
-        return (*c_)(_tag, _idx).get(
-            level_coordinate_ + coordinate_type({_i, _j, _k}));
+        return (*c_)(_tag,level_coordinate_ + coordinate_type({_i, _j, _k}), _idx);
     }
     /************************************************************************/
 
-    template<template<std::size_t> class Field>
-    auto& get(int _idx) noexcept
-    {
-        return c_->template get<Field>(_idx).get(level_coordinate_, _idx);
-    }
-    template<template<std::size_t> class Field>
-    const auto& get(int _idx) const noexcept
-    {
-        return c_->template get<Field>(_idx).get(level_coordinate_);
-    }
-
-    template<class T>
-    auto& get(int _idx) noexcept
-    {
-        return c_->template get<T>(_idx).get(level_coordinate_);
-    }
-    template<class T>
-    const auto& get(int _idx) const noexcept
-    {
-        return c_->template get<T>(_idx).get(level_coordinate_);
-    }
+    //template<class T>
+    //auto& get(int _idx) noexcept
+    //{
+    //    return c_->template get<T>(_idx).get(level_coordinate_);
+    //}
+    //template<class T>
+    //const auto& get(int _idx) const noexcept
+    //{
+    //    return c_->template get<T>(_idx).get(level_coordinate_);
+    //}
 
     template<class T>
     const auto& at_offset(const coordinate_type& _offset, int _idx) const
@@ -142,38 +119,38 @@ class node
 
     //scalar field overloads:
 
-    template<template<std::size_t> class Field>
-    auto& get_field() noexcept
-    {
-        return c_->template get<Field>();
-    }
-    template<template<std::size_t> class Field>
-    const auto& get_field() const noexcept
-    {
-        return c_->template get<Field>();
-    }
+    //template<template<std::size_t> class Field>
+    //auto& get_field() noexcept
+    //{
+    //    return c_->template get<Field>();
+    //}
+    //template<template<std::size_t> class Field>
+    //const auto& get_field() const noexcept
+    //{
+    //    return c_->template get<Field>();
+    //}
 
-    template<template<std::size_t> class Field>
-    auto& get() noexcept
-    {
-        return c_->template get<Field>().get(level_coordinate_);
-    }
-    template<template<std::size_t> class Field>
-    const auto& get() const noexcept
-    {
-        return c_->template get<Field>().get(level_coordinate_);
-    }
+    //template<template<std::size_t> class Field>
+    //auto& get() noexcept
+    //{
+    //    return c_->template get<Field>().get(level_coordinate_);
+    //}
+    //template<template<std::size_t> class Field>
+    //const auto& get() const noexcept
+    //{
+    //    return c_->template get<Field>().get(level_coordinate_);
+    //}
 
-    template<class T>
-    auto& get() noexcept
-    {
-        return c_->template get<T>().get(level_coordinate_);
-    }
-    template<class T>
-    const auto& get() const noexcept
-    {
-        return c_->template get<T>().get(level_coordinate_);
-    }
+    //template<class T>
+    //auto& get() noexcept
+    //{
+    //    return c_->template get<T>().get(level_coordinate_);
+    //}
+    //template<class T>
+    //const auto& get() const noexcept
+    //{
+    //    return c_->template get<T>().get(level_coordinate_);
+    //}
 
     template<class T>
     const auto& at_offset(const coordinate_type& _offset) const noexcept

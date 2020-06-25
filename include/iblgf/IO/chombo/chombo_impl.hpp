@@ -702,11 +702,8 @@ class Chombo
                                                 j + base[1], k + base[2]);
 
                                             field_value = 0.0;
-                                            field_value =
-                                                static_cast<value_type>(
-                                                    n.template get<T>(fidx));
-                                            single_block_data.push_back(
-                                                field_value);
+                                            field_value = static_cast<value_type>( n(T::tag(),fidx)); 
+                                            single_block_data.push_back( field_value);
                                         }
                                     }
             }

@@ -37,13 +37,11 @@ struct Operator
     {
         float_type m = 0.0;
 
-        auto& nodes_domain = block.nodes_domain();
         for (std::size_t field_idx = 0; field_idx < Field::nFields; ++field_idx)
         {
-            for (auto it2 = nodes_domain.begin(); it2 != nodes_domain.end();
-                 ++it2)
+            for (auto& n : block)
             {
-                auto tmp = std::fabs(it2->template get<Field>(field_idx));
+                auto tmp = std::fabs(n(Field::tag(), field_idx));
                 if (tmp > m) m = tmp;
             }
         }
@@ -53,20 +51,17 @@ struct Operator
     template<class Source, class Dest, class Block>
     static void laplace(Block& block, float_type dx_level) noexcept
     {
-        auto& nodes_domain = block.nodes_domain();
-
-        const auto fac = 1.0 / (dx_level * dx_level);
-        for (auto it2 = nodes_domain.begin(); it2 != nodes_domain.end(); ++it2)
+        const auto     fac = 1.0 / (dx_level * dx_level);
+        constexpr auto source = Source::tag();
+        constexpr auto dest = Dest::tag();
+        for (auto& n : block)
         {
-            it2->template get<Dest>() =
-                -6.0 * it2->template get<Source>() +
-                it2->template at_offset<Source>(0, 0, -1) +
-                it2->template at_offset<Source>(0, 0, +1) +
-                it2->template at_offset<Source>(0, -1, 0) +
-                it2->template at_offset<Source>(0, +1, 0) +
-                it2->template at_offset<Source>(-1, 0, 0) +
-                it2->template at_offset<Source>(+1, 0, 0);
-            it2->template get<Dest>() *= fac;
+            n(dest) =
+                -6.0 * n(source) + n.at_offset(source, 0, 0, -1) +
+                n.at_offset(source, 0, 0, +1) + n.at_offset(source, 0, -1, 0) +
+                n.at_offset(source, 0, +1, 0) + n.at_offset(source, -1, 0, 0) +
+                n.at_offset(source, +1, 0, 0);
+            n(dest) *= fac;
         }
     }
 
@@ -76,19 +71,14 @@ struct Operator
             void>::type* = nullptr>
     static void gradient(Block& block, float_type dx_level) noexcept
     {
-        auto&      nodes_domain = block.nodes_domain();
-        const auto fac = 1.0 / dx_level;
-        for (auto it2 = nodes_domain.begin(); it2 != nodes_domain.end(); ++it2)
+        const auto     fac = 1.0 / dx_level;
+        constexpr auto source = Source::tag();
+        constexpr auto dest = Dest::tag();
+        for (auto& n : block)
         {
-            it2->template get<Dest>(0) =
-                fac * (it2->template get<Source>() -
-                          it2->template at_offset<Source>(-1, 0, 0));
-            it2->template get<Dest>(1) =
-                fac * (it2->template get<Source>() -
-                          it2->template at_offset<Source>(0, -1, 0));
-            it2->template get<Dest>(2) =
-                fac * (it2->template get<Source>() -
-                          it2->template at_offset<Source>(0, 0, -1));
+            n(dest, 0) = fac * (n(source) - n.at_offset(source, -1, 0, 0));
+            n(dest, 1) = fac * (n(source) - n.at_offset(source, 0, -1, 0));
+            n(dest, 2) = fac * (n(source) - n.at_offset(source, 0, 0, -1));
         }
     }
 
@@ -99,18 +89,16 @@ struct Operator
             void>::type* = nullptr>
     static void divergence(Block& block, float_type dx_level) noexcept
     {
-        auto&      nodes_domain = block.nodes_domain();
-        const auto fac = 1.0 / dx_level;
-        for (auto it2 = nodes_domain.begin(); it2 != nodes_domain.end(); ++it2)
+        const auto     fac = 1.0 / dx_level;
+        constexpr auto source = SourceTuple::tag();
+        constexpr auto dest = Dest::tag();
+        for (auto& n : block)
         {
-            it2->template get<Dest>() =
-                -it2->template get<SourceTuple>(0) -
-                it2->template get<SourceTuple>(1) -
-                it2->template get<SourceTuple>(2) +
-                it2->template at_offset<SourceTuple>(1, 0, 0, 0) +
-                it2->template at_offset<SourceTuple>(0, 1, 0, 1) +
-                it2->template at_offset<SourceTuple>(0, 0, 1, 2);
-            it2->template get<Dest>() *= fac;
+            n(dest) = -n(source, 0) - n(source, 1) - n(source, 2) +
+                      n.at_offset(source, 1, 0, 0, 0) +
+                      n.at_offset(source, 0, 1, 0, 1) +
+                      n.at_offset(source, 0, 0, 1, 2);
+            n(dest) *= fac;
         }
     }
 
@@ -120,30 +108,22 @@ struct Operator
             void>::type* = nullptr>
     static void curl(Block& block, float_type dx_level) noexcept
     {
-        auto&      nodes_domain = block.nodes_domain();
-        const auto fac = 1.0 / dx_level;
-        for (auto it2 = nodes_domain.begin(); it2 != nodes_domain.end(); ++it2)
+        const auto     fac = 1.0 / dx_level;
+        constexpr auto source = Source::tag();
+        constexpr auto dest = Dest::tag();
+        for (auto& n : block)
         {
-            it2->template get<Dest>(0) =
-                +it2->template get<Source>(2) -
-                it2->template at_offset<Source>(0, -1, 0, 2) -
-                it2->template get<Source>(1) +
-                it2->template at_offset<Source>(0, 0, -1, 1);
-            it2->template get<Dest>(0) *= fac;
+            n(dest, 0) = n(source, 2) - n.at_offset(source, 0, -1, 0, 2) -
+                         n(source, 1) + n.at_offset(source, 0, 0, -1, 1);
+            n(dest, 0) *= fac;
 
-            it2->template get<Dest>(1) =
-                +it2->template get<Source>(0) -
-                it2->template at_offset<Source>(0, 0, -1, 0) -
-                it2->template get<Source>(2) +
-                it2->template at_offset<Source>(-1, 0, 0, 2);
-            it2->template get<Dest>(1) *= fac;
+            n(dest, 1) = n(source, 0) - n.at_offset(source, 0, 0, -1, 0) -
+                         n(source, 2) + n.at_offset(source, -1, 0, 0, 2);
+            n(dest, 1) *= fac;
 
-            it2->template get<Dest>(2) =
-                +it2->template get<Source>(1) -
-                it2->template at_offset<Source>(-1, 0, 0, 1) -
-                it2->template get<Source>(0) +
-                it2->template at_offset<Source>(0, -1, 0, 0);
-            it2->template get<Dest>(2) *= fac;
+            n(dest, 2) = n(source, 1) - n.at_offset(source, -1, 0, 0, 1) -
+                         n(source, 0) + n.at_offset(source, 0, -1, 0, 0);
+            n(dest, 2) *= fac;
         }
     }
 
@@ -154,51 +134,22 @@ struct Operator
     static void curl_transpose(
         Block& block, float_type dx_level, float_type scale = 1.0) noexcept
     {
-        auto&      nodes_domain = block.nodes_domain();
-        const auto fac = 1.0 / dx_level * scale;
-        for (auto it2 = nodes_domain.begin(); it2 != nodes_domain.end(); ++it2)
+        const auto     fac = 1.0 / dx_level * scale;
+        constexpr auto source = Source::tag();
+        constexpr auto dest = Dest::tag();
+        for (auto& n : block)
         {
-            it2->template get<Dest>(0) =
-                +it2->template get<Source>(1) -
-                it2->template at_offset<Source>(0, 0, 1, 1) +
-                it2->template at_offset<Source>(0, 1, 0, 2) -
-                it2->template get<Source>(2);
-            it2->template get<Dest>(0) *= fac;
+            n(dest, 0) = +n(source, 1) - n.at_offset(source, 0, 0, 1, 1) +
+                         n.at_offset(source, 0, 1, 0, 2) - n(source, 2);
+            n(dest, 0) *= fac;
 
-            it2->template get<Dest>(1) =
-                +it2->template get<Source>(2) -
-                it2->template at_offset<Source>(1, 0, 0, 2) +
-                it2->template at_offset<Source>(0, 0, 1, 0) -
-                it2->template get<Source>(0);
-            it2->template get<Dest>(1) *= fac;
+            n(dest, 1) = +n(source, 2) - n.at_offset(source, 1, 0, 0, 2) +
+                         n.at_offset(source, 0, 0, 1, 0) - n(source, 0);
+            n(dest, 1) *= fac;
 
-            it2->template get<Dest>(2) =
-                +it2->template get<Source>(0) -
-                it2->template at_offset<Source>(0, 1, 0, 0) +
-                it2->template at_offset<Source>(1, 0, 0, 1) -
-                it2->template get<Source>(1);
-            it2->template get<Dest>(2) *= fac;
-
-            //it2->template get<Dest>(0)=
-            //    +it2->template get<Source>(1)
-            //    -it2->template at_offset<Source>(0,0, 1,1)
-            //    +it2->template at_offset<Source>(0, 1,0,2)
-            //    -it2->template get<Source>(2);
-            //it2->template get<Dest>(0)*=fac;
-
-            //it2->template get<Dest>(1)=
-            //    +it2->template get<Source>(2)
-            //    -it2->template at_offset<Source>(1,0,0,2)
-            //    +it2->template at_offset<Source>(0,0,1,0)
-            //    -it2->template get<Source>(0);
-            //it2->template get<Dest>(1)*=fac;
-
-            //it2->template get<Dest>(2)=
-            //    +it2->template get<Source>(0)
-            //    -it2->template at_offset<Source>(0,1,0,0)
-            //    +it2->template at_offset<Source>(1,0,0,1)
-            //    -it2->template get<Source>(1);
-            //it2->template get<Dest>(2)*=fac;
+            n(dest, 2) = +n(source, 0) - n.at_offset(source, 0, 1, 0, 0) +
+                         n.at_offset(source, 1, 0, 0, 1) - n(source, 1);
+            n(dest, 2) *= fac;
         }
     }
 
@@ -209,55 +160,52 @@ struct Operator
             void>::type* = nullptr>
     static void nonlinear(Block& block) noexcept
     {
-        auto& nodes_domain = block.nodes_domain();
-        for (auto it2 = nodes_domain.begin(); it2 != nodes_domain.end(); ++it2)
+        constexpr auto face = Face::tag();
+        constexpr auto edge = Edge::tag();
+        constexpr auto dest = Dest::tag();
+        for (auto& n : block)
         {
             //TODO: Can be done much better by getting the appropriate nodes
             //      directly
-            it2->template get<Dest>(0) =
-                0.25 * (+it2->template at_offset<Edge>(0, 0, 0, 1) *
-                               (+it2->template at_offset<Face>(0, 0, 0, 2) +
-                                   it2->template at_offset<Face>(-1, 0, 0, 2)) +
-                           it2->template at_offset<Edge>(0, 0, 1, 1) *
-                               (+it2->template at_offset<Face>(0, 0, 1, 2) +
-                                   it2->template at_offset<Face>(-1, 0, 1, 2)) -
-                           it2->template at_offset<Edge>(0, 0, 0, 2) *
-                               (+it2->template at_offset<Face>(0, 0, 0, 1) +
-                                   it2->template at_offset<Face>(-1, 0, 0, 1)) -
-                           it2->template at_offset<Edge>(0, 1, 0, 2) *
-                               (+it2->template at_offset<Face>(0, 1, 0, 1) +
-                                   it2->template at_offset<Face>(-1, 1, 0, 1)));
+            n(dest, 0) = 0.25 * (+n.at_offset(edge, 0, 0, 0, 1) *
+                                        (+n.at_offset(face, 0, 0, 0, 2) +
+                                            n.at_offset(face, -1, 0, 0, 2)) +
+                                    n.at_offset(edge, 0, 0, 1, 1) *
+                                        (+n.at_offset(face, 0, 0, 1, 2) +
+                                            n.at_offset(face, -1, 0, 1, 2)) -
+                                    n.at_offset(edge, 0, 0, 0, 2) *
+                                        (+n.at_offset(face, 0, 0, 0, 1) +
+                                            n.at_offset(face, -1, 0, 0, 1)) -
+                                    n.at_offset(edge, 0, 1, 0, 2) *
+                                        (+n.at_offset(face, 0, 1, 0, 1) +
+                                            n.at_offset(face, -1, 1, 0, 1)));
 
-            it2->template get<Dest>(1) =
-                0.25 * (+it2->template at_offset<Edge>(0, 0, 0, 2) *
-                               (+it2->template at_offset<Face>(0, 0, 0, 0) +
-                                   it2->template at_offset<Face>(0, -1, 0, 0)) +
-                           it2->template at_offset<Edge>(1, 0, 0, 2) *
-                               (+it2->template at_offset<Face>(1, 0, 0, 0) +
-                                   it2->template at_offset<Face>(1, -1, 0, 0)) -
-                           it2->template at_offset<Edge>(0, 0, 0, 0) *
-                               (+it2->template at_offset<Face>(0, 0, 0, 2) +
-                                   it2->template at_offset<Face>(0, -1, 0, 2)) -
-                           it2->template at_offset<Edge>(0, 0, 1, 0) *
-                               (+it2->template at_offset<Face>(0, 0, 1, 2) +
-                                   it2->template at_offset<Face>(0, -1, 1, 2)));
-            it2->template get<Dest>(2) =
-                0.25 * (+it2->template at_offset<Edge>(0, 0, 0, 0) *
-                               (+it2->template at_offset<Face>(0, 0, 0, 1) +
-                                   it2->template at_offset<Face>(0, 0, -1, 1)) +
-                           it2->template at_offset<Edge>(0, 1, 0, 0) *
-                               (+it2->template at_offset<Face>(0, 1, 0, 1) +
-                                   it2->template at_offset<Face>(0, 1, -1, 1)) -
-                           it2->template at_offset<Edge>(0, 0, 0, 1) *
-                               (+it2->template at_offset<Face>(0, 0, 0, 0) +
-                                   it2->template at_offset<Face>(0, 0, -1, 0)) -
-                           it2->template at_offset<Edge>(1, 0, 0, 1) *
-                               (+it2->template at_offset<Face>(1, 0, 0, 0) +
-                                   it2->template at_offset<Face>(1, 0, -1, 0)));
+            n(dest, 1) = 0.25 * (+n.at_offset(edge, 0, 0, 0, 2) *
+                                        (+n.at_offset(face, 0, 0, 0, 0) +
+                                            n.at_offset(face, 0, -1, 0, 0)) +
+                                    n.at_offset(edge, 1, 0, 0, 2) *
+                                        (+n.at_offset(face, 1, 0, 0, 0) +
+                                            n.at_offset(face, 1, -1, 0, 0)) -
+                                    n.at_offset(edge, 0, 0, 0, 0) *
+                                        (+n.at_offset(face, 0, 0, 0, 2) +
+                                            n.at_offset(face, 0, -1, 0, 2)) -
+                                    n.at_offset(edge, 0, 0, 1, 0) *
+                                        (+n.at_offset(face, 0, 0, 1, 2) +
+                                            n.at_offset(face, 0, -1, 1, 2)));
+            n(dest, 2) = 0.25 * (+n.at_offset(edge, 0, 0, 0, 0) *
+                                        (+n.at_offset(face, 0, 0, 0, 1) +
+                                            n.at_offset(face, 0, 0, -1, 1)) +
+                                    n.at_offset(edge, 0, 1, 0, 0) *
+                                        (+n.at_offset(face, 0, 1, 0, 1) +
+                                            n.at_offset(face, 0, 1, -1, 1)) -
+                                    n.at_offset(edge, 0, 0, 0, 1) *
+                                        (+n.at_offset(face, 0, 0, 0, 0) +
+                                            n.at_offset(face, 0, 0, -1, 0)) -
+                                    n.at_offset(edge, 1, 0, 0, 1) *
+                                        (+n.at_offset(face, 1, 0, 0, 0) +
+                                            n.at_offset(face, 1, 0, -1, 0)));
         }
     }
-
-  public:
 };
 } // namespace domain
 } // namespace iblgf

@@ -60,7 +60,10 @@ class PoissonSolver
     using source_tmp_type = typename Setup::source_tmp_type;
     using target_tmp_type = typename Setup::target_tmp_type;
     using correction_tmp_type = typename Setup::correction_tmp_type;
-    //using corr_lap_tmp          = typename Setup::corr_lap_tmp;
+
+    static constexpr auto source_tmp = Setup::source_tmp;
+    static constexpr auto target_tmp = Setup::target_tmp;
+    static constexpr auto correction_tmp = Setup::correction_tmp;
 
     //FMM
     using Fmm_t = typename Setup::Fmm_t;
@@ -136,9 +139,7 @@ class PoissonSolver
                 if (it_s->has_data() && !it_s->locally_owned())
                 {
                     if (!it_s->data_ref().is_allocated()) continue;
-                    auto& cp2 =
-                        it_s->data_ref()
-                            .template get_linalg_data<source_tmp_type>();
+                    auto& cp2 = it_s->data_r(source_tmp);
                     std::fill(cp2.begin(), cp2.end(), 0.0);
                 }
 
@@ -215,9 +216,7 @@ class PoissonSolver
                 if (it_s->has_data() && !it_s->locally_owned())
                 {
                     if (!it_s->data_ref().is_allocated()) continue;
-                    auto& cp2 =
-                        it_s->data_ref()
-                            .template get_linalg_data<source_tmp_type>();
+                    auto& cp2 = it_s->data_r(source_tmp).linalg_data();
                     cp2 *= 0.0;
                 }
 
@@ -229,12 +228,11 @@ class PoissonSolver
                 for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
                     if (it->locally_owned() && it->is_leaf())
                     {
-                        it->data_ref()
-                            .template get_linalg<Target>(_field_idx)
+                        it->data_r(Target::tag(), _field_idx)
+                            .linalg()
                             .get()
                             ->cube_noalias_view() =
-                            it->data_ref()
-                                .template get_linalg_data<target_tmp_type>();
+                            it->data_r(target_tmp).linalg_data();
                     }
                 fmm_.template apply<source_tmp_type, target_tmp_type>(
                     domain_, _kernel, l, true, -1.0);
@@ -311,12 +309,11 @@ class PoissonSolver
                 for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
                     if (it->locally_owned() && it->is_leaf())
                     {
-                        it->data_ref()
-                            .template get_linalg<Target>(_field_idx)
+                        it->data_r(Target::tag(), _field_idx)
+                            .linalg()
                             .get()
                             ->cube_noalias_view() =
-                            it->data_ref()
-                                .template get_linalg_data<target_tmp_type>();
+                            it->data_r(target_tmp).linalg_data();
                     }
             }
 
@@ -376,12 +373,8 @@ class PoissonSolver
                     if (it->locally_owned())
                     {
                         auto& lin_data_1 =
-                            it->data_ref()
-                                .template get_linalg_data<correction_tmp_type>(
-                                    0);
-                        auto& lin_data_2 =
-                            it->data_ref()
-                                .template get_linalg_data<source_tmp_type>(0);
+                            it->data_r(correction_tmp).linalg_data();
+                        auto& lin_data_2 = it->data_r(source_tmp).linalg_data();
 
                         xt::noalias(lin_data_2) += lin_data_1 * 1.0;
                     }
@@ -411,8 +404,7 @@ class PoissonSolver
         {
             if (!it->has_data() || !it->data_ref().is_allocated()) continue;
 
-            auto& lin_data = it->data_ref().template get_linalg_data<field>();
-
+            auto& lin_data = it->data_r(field::tag()).linalg_data();
             std::fill(lin_data.begin(), lin_data.end(), 0.0);
         }
     }
@@ -425,10 +417,9 @@ class PoissonSolver
             if (it->locally_owned())
             {
                 auto& lin_data_1 =
-                    it->data_ref().template get_linalg_data<from>(
-                        _field_idx_from);
+                    it->data_r(from::tag(), _field_idx_from).linalg_data();
                 auto& lin_data_2 =
-                    it->data_ref().template get_linalg_data<to>(_field_idx_to);
+                    it->data_r(to::tag(), _field_idx_to).linalg_data();
 
                 if (with_buffer) xt::noalias(lin_data_2) = lin_data_1 * 1.0;
                 else
@@ -446,10 +437,9 @@ class PoissonSolver
             if (it->locally_owned())
             {
                 auto& lin_data_1 =
-                    it->data_ref().template get_linalg_data<from>(
-                        _field_idx_from);
+                    it->data_r(from::tag(), _field_idx_from).linalg_data();
                 auto& lin_data_2 =
-                    it->data_ref().template get_linalg_data<to>(_field_idx_to);
+                    it->data_r(to::tag(), _field_idx_to).linalg_data();
 
                 if (with_buffer) xt::noalias(lin_data_2) = lin_data_1 * 1.0;
                 else
@@ -536,6 +526,8 @@ class PoissonSolver
     void apply_laplace()
     {
         const float_type dx_base = domain_->dx_base();
+        const auto       target = Target::tag();
+        const auto       difftarget = DiffTarget::tag();
 
         //Coarsification:
         pcout << "Laplace - coarsification " << std::endl;
@@ -571,23 +563,20 @@ class PoissonSolver
                 auto dx_level = dx_base / std::pow(2, refinement_level);
 
                 auto& diff_target_data =
-                    it->data_ref().template get_linalg_data<DiffTarget>();
+                    it->data_r(DiffTarget::tag()).linalg_data();
 
                 // laplace of it_t data with zero bcs
                 if ((it->is_leaf()))
                 {
-                    auto& nodes_domain = it->data_ref().nodes_domain();
-                    for (auto it2 = nodes_domain.begin();
-                         it2 != nodes_domain.end(); ++it2)
+                    for (auto& node : it->data_ref())
                     {
-                        it2->template get<DiffTarget>() =
-                            -6.0 * it2->template get<Target>() +
-                            it2->template at_offset<Target>(0, 0, -1) +
-                            it2->template at_offset<Target>(0, 0, +1) +
-                            it2->template at_offset<Target>(0, -1, 0) +
-                            it2->template at_offset<Target>(0, +1, 0) +
-                            it2->template at_offset<Target>(-1, 0, 0) +
-                            it2->template at_offset<Target>(+1, 0, 0);
+                        node(difftarget) = -6.0 * node(target) +
+                                           node.at_offset(target, 0, 0, -1) +
+                                           node.at_offset(target, 0, 0, +1) +
+                                           node.at_offset(target, 0, -1, 0) +
+                                           node.at_offset(target, 0, +1, 0) +
+                                           node.at_offset(target, -1, 0, 0) +
+                                           node.at_offset(target, +1, 0, 0);
                     }
                 }
                 diff_target_data *= (1 / dx_level) * (1 / dx_level);
@@ -631,8 +620,7 @@ class PoissonSolver
                 auto             pcoord = n.level_coordinate();
                 for (std::size_t d = 0; d < pcoord.size(); ++d)
                     pcoord[d] = std::floor(pcoord[d] / 2.0);
-                parent->data_ref().template get<Field_p>(pcoord) +=
-                    avg * factor;
+                parent->data_r(Field_p::tag(), pcoord) += avg * factor;
             });
         }
     }

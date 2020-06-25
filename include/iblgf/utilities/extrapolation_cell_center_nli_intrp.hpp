@@ -127,11 +127,9 @@ class extrapolation_cell_center_nli
             if (!child->has_data()) continue;
             if (!child->data_ref().is_allocated()) continue;
 
-            auto& child_target_tmp =
-                child->data_ref().template get_linalg_data<from>();
+            auto& child_target_tmp = child->data_r(from::tag()).linalg_data();
 
-            auto& child_linalg_data =
-                child->data_ref().template get_linalg_data<to>();
+            auto& child_linalg_data = child->data_r(to::tag()).linalg_data();
             for (int i = 1; i < Nb_ - 1; ++i)
             {
                 for (int j = 1; j < Nb_ - 1; ++j)
@@ -163,8 +161,7 @@ class extrapolation_cell_center_nli
         std::size_t _field_idx, bool correction_only = false,
         bool exclude_correction = false)
     {
-        auto& parent_linalg_data =
-            parent->data_ref().template get_linalg_data<from>();
+        auto& parent_linalg_data = parent->data_r(from::tag()).linalg_data();
 
         for (int i = 0; i < parent->num_children(); ++i)
         {
@@ -179,8 +176,7 @@ class extrapolation_cell_center_nli
 
             if (exclude_correction && child->is_correction()) continue;
 
-            auto& child_linalg_data =
-                child->data_ref().template get_linalg_data<to>();
+            auto& child_linalg_data = child->data_r(to::tag()).linalg_data();
             nli_intrp_node(
                 child_linalg_data, parent_linalg_data, i, mesh_obj, _field_idx);
         }
@@ -254,8 +250,7 @@ class extrapolation_cell_center_nli
     void nli_antrp_node(
         octant_t parent, MeshObject mesh_obj, std::size_t _field_idx)
     {
-        auto& parent_linalg_data =
-            parent->data_ref().template get_linalg_data<to>();
+        auto& parent_linalg_data = parent->data_r(to::tag()).linalg_data();
 
         for (int i = 0; i < parent->num_children(); ++i)
         {
@@ -266,8 +261,7 @@ class extrapolation_cell_center_nli
 
             if (child->is_correction()) continue;
 
-            auto& child_linalg_data =
-                child->data_ref().template get_linalg_data<from>();
+            auto& child_linalg_data = child->data_r(from::tag()).linalg_data();
 
             nli_antrp_node(
                 child_linalg_data, parent_linalg_data, i, mesh_obj, _field_idx);

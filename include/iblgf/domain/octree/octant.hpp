@@ -257,6 +257,7 @@ class Octant
     void index(int _idx) noexcept { idx_ = _idx; }
     int  index() const noexcept { return idx_; }
 
+    //FIXME: Delete
     auto  data() const noexcept { return data_; }
     auto& data() noexcept { return data_; }
 
@@ -265,8 +266,24 @@ class Octant
 
     bool has_data() const noexcept { return static_cast<bool>(data_); }
 
+    //FIXME: Rename to data
     const auto& data_ref() const noexcept { return *data_; }
     auto&       data_ref() noexcept { return *data_; }
+
+    /***********************************************************************/
+    //new data access
+    template<class... Args>
+    const auto& data_r(Args&&... args) const noexcept
+    {
+        return (*data_)(std::forward<Args>(args)...);
+    }
+    template<class... Args>
+    auto& data_r(Args&&... args) noexcept
+    {
+        return (*data_)(std::forward<Args>(args)...);
+    }
+    //TODO: maybe also operator overloading here once the iterators are fixed
+    /***********************************************************************/
 
     int  aim_level_change() const noexcept { return aim_level_change_; }
     int& aim_level_change() noexcept { return aim_level_change_; }

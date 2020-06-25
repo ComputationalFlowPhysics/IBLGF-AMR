@@ -62,6 +62,42 @@ class node
     //    return c_->template get<Field>(_idx);
     //}
 
+    /************************************************************************/
+
+    template<class Tag>
+    auto& operator[](Tag _tag) noexcept
+    {
+        return (*c_)[_tag].get(level_coordinate_);
+    }
+    template<class Tag>
+    auto& operator[](Tag _tag) const noexcept
+    {
+        return (*c_)[_tag].get(level_coordinate_);
+    }
+    template<class Tag>
+    auto& operator()(Tag _tag, int _idx=0) noexcept
+    {
+        return (*c_)(_tag, _idx).get(level_coordinate_);
+    }
+    template<class Tag>
+    auto& operator()(Tag _tag, int _idx=0) const noexcept
+    {
+        return (*c_)(_tag, _idx).get(level_coordinate_);
+    }
+    template<class Tag>
+    const auto& at_offset(Tag _tag, const coordinate_type& _offset, int _idx=0) const
+        noexcept
+    {
+        return (*c_)(_tag, _idx).get(level_coordinate_ + _offset);
+    }
+    template<class Tag>
+    auto& at_offset(Tag _tag, int _i, int _j, int _k, int _idx=0) noexcept
+    {
+        return (*c_)(_tag, _idx).get(
+            level_coordinate_ + coordinate_type({_i, _j, _k}));
+    }
+    /************************************************************************/
+
     template<template<std::size_t> class Field>
     auto& get(int _idx) noexcept
     {
@@ -193,6 +229,21 @@ class node
     bool on_blockBorder() { return c_->on_boundary(level_coordinate_); }
     bool on_max_blockBorder() { return c_->on_max_boundary(level_coordinate_); }
 
+    friend std::ostream& operator<<(std::ostream& os, const node& _n)
+    {
+        _n.c_->for_fields([&](const auto& field) {
+            os << field.name() << " = ( ";
+
+            for (std::size_t i = 0; i < field.nFields; ++i)
+            { 
+                const auto sep= i+1==field.nFields? " ":",";
+                os << _n(field.tag(), i) << sep;
+            }
+            os <<")"<< std::endl;
+        });
+        return os;
+    }
+
   private:
     coordinate_type compute_level_coordinate() const noexcept
     {
@@ -204,6 +255,7 @@ class node
         res += c_->bounding_box().base();
         return res;
     }
+
 
   public: //members
     Container*      c_;

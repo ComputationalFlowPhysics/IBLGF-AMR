@@ -50,10 +50,6 @@ class Ifherk
     using coordinate_type = typename domain_type::coordinate_type;
     using poisson_solver_t = typename Setup::poisson_solver_t;
 
-    //Fields
-    //using coarse_target_sum = typename Setup::coarse_target_sum;
-    //using source_tmp_type = typename Setup::source_tmp_type;
-
     //FMM
     using Fmm_t = typename Setup::Fmm_t;
 
@@ -576,8 +572,7 @@ class Ifherk
 
             for (std::size_t field_idx = 0; field_idx < F::nFields; ++field_idx)
             {
-                auto& lin_data =
-                    it->data_ref().template get_linalg_data<F>(field_idx);
+                auto& lin_data = it->data_r(F::tag(), field_idx).linalg_data();
 
                 if (non_leaf_only && it->is_leaf() && it->locally_owned())
                 {
@@ -667,8 +662,7 @@ class Ifherk
                      ++field_idx)
                 {
                     auto& lin_data =
-                        it->data_ref().template get_linalg_data<F>(field_idx);
-
+                        it->data_r(F::tag(), field_idx).linalg_data();
                     std::fill(lin_data.begin(), lin_data.end(), 0.0);
                 }
             }
@@ -685,8 +679,7 @@ class Ifherk
                      ++field_idx)
                 {
                     auto& lin_data =
-                        it->data_ref().template get_linalg_data<F>(field_idx);
-
+                        it->data_r(F::tag(), field_idx).linalg_data();
                     std::fill(lin_data.begin(), lin_data.end(), 0.0);
                 }
             }
@@ -712,8 +705,7 @@ class Ifherk
                              ++field_idx)
                         {
                             auto& lin_data =
-                                it->data_ref().template get_linalg_data<F>(
-                                    field_idx);
+                                it->data_r(F::tag(), field_idx).linalg_data();
 
                             int N = it->data_ref().descriptor().extent()[0];
 
@@ -788,9 +780,7 @@ class Ifherk
                      ++field_idx)
                 {
                     auto& lin_data =
-                        it->data_ref().template get_linalg_data<Target>(
-                            field_idx);
-
+                        it->data_r(Target::tag(), field_idx).linalg_data();
                     lin_data *= _scale;
                 }
             }
@@ -822,8 +812,6 @@ class Ifherk
                     it->data_ref(), dx_level);
             }
 
-            //client->template buffer_exchange<Target>(l);
-            //clean_leaf_correction_boundary<Target>(l, true, 1+stage_idx_);
             clean_leaf_correction_boundary<Target>(l, false, 4 + stage_idx_);
         }
     }
@@ -850,8 +838,7 @@ class Ifherk
                      ++field_idx)
                 {
                     auto& lin_data =
-                        it->data_ref().template get_linalg_data<Target>(
-                            field_idx);
+                        it->data_r(Target::tag(), field_idx).linalg_data();
 
                     lin_data *= _scale;
                 }
@@ -871,12 +858,11 @@ class Ifherk
             for (std::size_t field_idx = 0; field_idx < From::nFields;
                  ++field_idx)
             {
-                it->data_ref()
-                    .template get_linalg<To>(field_idx)
+                it->data_r(To::tag(), field_idx)
+                    .linalg()
                     .get()
                     ->cube_noalias_view() +=
-                    it->data_ref().template get_linalg_data<From>(field_idx) *
-                    scale;
+                    it->data_r(From::tag(), field_idx).linalg_data() * scale;
             }
         }
     }
@@ -893,12 +879,11 @@ class Ifherk
             for (std::size_t field_idx = 0; field_idx < From::nFields;
                  ++field_idx)
             {
-                it->data_ref()
-                    .template get_linalg<To>(field_idx)
+                it->data_r(To::tag(), field_idx)
+                    .linalg()
                     .get()
                     ->cube_noalias_view() =
-                    it->data_ref().template get_linalg_data<From>(field_idx) *
-                    scale;
+                    it->data_r(From::tag(), field_idx).linalg_data() * scale;
             }
         }
     }
@@ -913,14 +898,15 @@ class Ifherk
     float_type Re_;
     float_type cfl_max_, cfl_;
     float_type source_max_;
-    int        max_ref_level_ = 0;
-    int        output_base_freq_;
-    int        adapt_freq_;
-    int        tot_base_steps_;
-    int        n_step_ = 0;
-    int        restart_n_last_ = 0;
-    int        nLevelRefinement_;
-    int        stage_idx_ = 0;
+
+    int max_ref_level_ = 0;
+    int output_base_freq_;
+    int adapt_freq_;
+    int tot_base_steps_;
+    int n_step_ = 0;
+    int restart_n_last_ = 0;
+    int nLevelRefinement_;
+    int stage_idx_ = 0;
 
     bool use_restart_ = false;
     bool write_restart_ = false;

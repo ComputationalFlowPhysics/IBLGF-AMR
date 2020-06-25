@@ -329,6 +329,9 @@ class Fmm
     using fmm_s_type = typename Setup::fmm_s_type;
     using fmm_t_type = typename Setup::fmm_t_type;
 
+    static constexpr auto fmm_s = Setup::fmm_s;
+    static constexpr auto fmm_t = Setup::fmm_t;
+
     using convolution_t = fft::Convolution;
 
   public:
@@ -606,14 +609,12 @@ class Fmm
             }
         }
 
-        const auto t_extent =
-            it->data_ref().template get<fmm_t_type>().real_block().extent();
+        const auto   t_extent = it->data_r(fmm_t).real_block().extent();
         block_dsrp_t extractor(dims_t(0), t_extent);
 
         float_type _scale =
             (_kernel->neighbor_only()) ? 1.0 : dx_level * dx_level;
-        conv_.apply_backward(
-            extractor, it->data_ref().template get<fmm_t_type>(), _scale);
+        conv_.apply_backward(extractor, it->data_r(fmm_t), _scale);
     }
 
     template<class f1, class f2>
@@ -625,11 +626,8 @@ class Fmm
             if (it->has_data() && it->locally_owned() &&
                 it->fmm_mask(fmm_mask_idx_, MASK_LIST::Mask_FMM_Target))
             {
-                it->data_ref()
-                    .template get_linalg<f1>()
-                    .get()
-                    ->cube_noalias_view() +=
-                    it->data_ref().template get_linalg_data<f2>() * scale;
+                it->data_r(f1::tag()).linalg().get()->cube_noalias_view() +=
+                    it->data_r(f2::tag()).linalg_data() * scale;
             }
         }
     }
@@ -643,11 +641,8 @@ class Fmm
             if (it->has_data() && it->locally_owned() &&
                 it->fmm_mask(fmm_mask_idx_, MASK_LIST::Mask_FMM_Target))
             {
-                it->data_ref()
-                    .template get_linalg<f1>()
-                    .get()
-                    ->cube_noalias_view() -=
-                    it->data_ref().template get_linalg_data<f2>();
+                it->data_r(f1::tag()).linalg().get()->cube_noalias_view() -=
+                    it->data_r(f2::tag()).linalg_data();
             }
         }
     }
@@ -662,8 +657,7 @@ class Fmm
             {
                 if (it->has_data() && it->fmm_mask(fmm_mask_idx_, mask_id))
                 {
-                    for (auto& e : it->data_ref().template get_data<field>())
-                        e = 0.0;
+                    for (auto& e : it->data_r(field::tag())) e = 0.0;
                 }
             }
         }
@@ -680,17 +674,12 @@ class Fmm
             if (it->has_data() && it->locally_owned() &&
                 it->fmm_mask(fmm_mask_idx_, MASK_LIST::Mask_FMM_Source))
             {
-                auto lin_data_1 =
-                    it->data_ref().template get_linalg_data<from>();
-                auto lin_data_2 = it->data_ref().template get_linalg_data<to>();
+                auto lin_data_1 = it->data_r(from::tag()).linalg_data();
+                auto lin_data_2 = it->data_r(to::tag()).linalg_data();
 
                 xt::noalias(view(lin_data_2, xt::range(1, -1), xt::range(1, -1),
                     xt::range(1, -1))) = view(lin_data_1, xt::range(1, -1),
                     xt::range(1, -1), xt::range(1, -1));
-
-                //it->data_ref().template get_linalg<to>().get()->
-                //    cube_noalias_view() =
-                //     it->data_ref().template get_linalg_data<from>() * 1.0;
             }
         }
     }
@@ -739,8 +728,7 @@ class Fmm
                 if (!it->locally_owned() && it->has_data() &&
                     it->data_ref().is_allocated())
                 {
-                    auto& cp2 =
-                        it->data_ref().template get_linalg_data<fmm_s_type>();
+                    auto& cp2 = it->data_r(fmm_s).linalg_data();
                     cp2 *= 0.0;
                 }
             }
@@ -752,14 +740,11 @@ class Fmm
     {
         const auto t0_fft = clock_type::now();
 
-        const auto t_base =
-            o_t->data_ref().template get<fmm_t_type>().real_block().base();
-        const auto s_base =
-            o_s->data_ref().template get<fmm_s_type>().real_block().base();
+        const auto t_base = o_t->data_r(fmm_t).real_block().base();
+        const auto s_base = o_s->data_r(fmm_s).real_block().base();
 
         // Get extent of Source region
-        const auto s_extent =
-            o_s->data_ref().template get<fmm_s_type>().real_block().extent();
+        const auto s_extent = o_s->data_r(fmm_s).real_block().extent();
         const auto shift = t_base - s_base;
 
         // Calculate the dimensions of the LGF to be allocated
@@ -768,8 +753,8 @@ class Fmm
 
         block_dsrp_t lgf_block(base_lgf, extent_lgf);
 
-        conv_.apply_forward_add(lgf_block, _kernel, level_diff,
-            o_s->data_ref().template get<fmm_s_type>());
+        conv_.apply_forward_add(
+            lgf_block, _kernel, level_diff, o_s->data_r(fmm_s));
 
         const auto t1_fft = clock_type::now();
         timings_.fftw += t1_fft - t0_fft;

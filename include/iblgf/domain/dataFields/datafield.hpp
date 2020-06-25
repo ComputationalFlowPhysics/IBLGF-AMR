@@ -45,8 +45,10 @@ enum class MeshObject : int
     vertex
 };
 
-template<class DataType, std::size_t Dim>
-class DataField : public BlockDescriptor<int, Dim>
+class Datafield_trait{};
+
+template<class DataType, std::size_t Dim, class Traits=Datafield_trait>
+class DataField : public BlockDescriptor<int, Dim>, public Traits
 {
   public: //member types
     using size_type = types::size_type;
@@ -108,8 +110,8 @@ class DataField : public BlockDescriptor<int, Dim>
     auto&       operator[](size_type i) noexcept { return data_[i]; }
     const auto& operator[](size_type i) const noexcept { return data_[i]; }
 
-    auto begin() const noexcept { return data_.begin(); }
-    auto end() const noexcept { return data_.end(); }
+    auto begin() noexcept { return data_.begin(); }
+    auto end() noexcept { return data_.end(); }
 
     auto& data() { return data_; }
     auto  data_ptr() { return &data_; }
@@ -223,7 +225,7 @@ struct field_traits
     using tag_type=Tag;
     using data_type=DataType;
     using field_type=Field<field_traits>;
-    using data_field_t = DataField<data_type, Dim>;
+    using data_field_t = DataField<data_type, Dim, field_traits>;
 
     static constexpr std::size_t nFields = NFields;
     static constexpr MeshObject  mesh_type = MeshType;
@@ -260,6 +262,11 @@ class Field : public Traits
     }
     auto&       operator[](std::size_t i) noexcept { return fields_[i]; }
     const auto& operator[](std::size_t i) const noexcept { return fields_[i]; }
+
+    auto& linalg(int _idx=0) noexcept { return fields_[_idx].linalg(); }
+    const auto& linalg(int _idx=0) const noexcept { return fields_[_idx].linalg(); }
+    auto& linalg_data(int _idx=0) noexcept { return fields_[_idx].linalg_data(); }
+    const auto& linalg_data(int _idx=0) const noexcept { return fields_[_idx].linalg_data(); }
 
   private:
     std::array<data_field_t, traits::nFields> fields_;

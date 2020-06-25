@@ -68,7 +68,7 @@ class fourier_cont_intrp
     template<template<size_t> class from, template<size_t> class to>
     void add_source_correction(auto parent, double dx)
     {
-        //auto& parent_linalg_data = parent->data_ref().template get_linalg_data<from>();
+        //auto& parent_linalg_data = parent->d::tag()ata_ref().template get_linalg_data<from>();
 
         for (int i = 0; i < parent->num_children(); ++i)
         {
@@ -81,8 +81,7 @@ class fourier_cont_intrp
             //child_target_tmp *= 0.0;
             child_target_L_tmp *= 0.0;
             //nli_intrp_node(child_target_tmp, parent_linalg_data, i);
-            auto& child_target_tmp =
-                child->data_ref().template get_linalg_data<from>();
+            auto& child_target_tmp = child->data_r(from::tag()).linalg_data();
 
             for (int i = 1; i < Nb_ - 1; ++i)
             {
@@ -109,8 +108,7 @@ class fourier_cont_intrp
                 }
             }
 
-            auto& child_linalg_data =
-                child->data_ref().template get_linalg_data<to>();
+            auto& child_linalg_data = child->data_r(to::tag()).linalg_data();
 
             child_linalg_data -= (child_target_L_tmp * (1.0 / (dx * dx)));
         }
@@ -119,16 +117,14 @@ class fourier_cont_intrp
     template<template<size_t> class from, template<size_t> class to>
     void nli_intrp_node(auto parent)
     {
-        auto& parent_linalg_data =
-            parent->data_ref().template get_linalg_data<from>();
+        auto& parent_linalg_data = parent->data_r(from::tag()).linalg_data();
 
         for (int i = 0; i < parent->num_children(); ++i)
         {
             auto child = parent->child(i);
             if (child == nullptr) continue;
 
-            auto& child_linalg_data =
-                child->data_ref().template get_linalg_data<to>();
+            auto& child_linalg_data = child->data_r(to::tag()).linalg_data();
             nli_intrp_node(child_linalg_data, parent_linalg_data, i);
         }
     }
@@ -179,16 +175,14 @@ class fourier_cont_intrp
     template<template<size_t> class field>
     void nli_antrp_node(auto parent)
     {
-        auto& parent_linalg_data =
-            parent->data_ref().template get_linalg_data<field>();
+        auto& parent_linalg_data = parent->data_r(field::tag()).linalg_data();
 
         for (int i = 0; i < parent->num_children(); ++i)
         {
             auto child = parent->child(i);
             if (child == nullptr) continue;
 
-            auto& child_linalg_data =
-                child->data_ref().template get_linalg_data<field>();
+            auto& child_linalg_data = child->data_r(field::tag()).linalg_data();
             nli_antrp_node(child_linalg_data, parent_linalg_data, i);
         }
     }

@@ -217,26 +217,86 @@ class DataBlock : public BlockDescriptor<int, Dim>
     }
 
     /*************************************************************************/
-    //
-    template<class Tag>
-    auto& operator()(Tag _tag) noexcept
+    template<class Tag,
+        typename std::enable_if<
+            std::tuple_element<tagged_tuple_index<typename Tag::tag_type,
+                                   fields_tuple_t>::value,
+                fields_tuple_t>::type::nFields == 1,
+            void>::type* = nullptr>
+    auto& operator[](Tag _tag) noexcept
     {
-        return std::get<tagged_tuple_index<typename Tag::tag_type, fields_tuple_t>::value>(fields);
+        return std::get<
+            tagged_tuple_index<typename Tag::tag_type, fields_tuple_t>::value>(
+            fields)[0];
+    }
+    template<class Tag,
+        typename std::enable_if<
+            std::tuple_element<tagged_tuple_index<typename Tag::tag_type,
+                                   fields_tuple_t>::value,
+                fields_tuple_t>::type::nFields == 1,
+            void>::type* = nullptr>
+    const auto& operator[](Tag _tag) const noexcept
+    {
+        return std::get<
+            tagged_tuple_index<typename Tag::tag_type, fields_tuple_t>::value>(
+            fields)[0];
+    }
+    template<class Tag,
+        typename std::enable_if<
+            std::tuple_element<tagged_tuple_index<typename Tag::tag_type,
+                                   fields_tuple_t>::value,
+                fields_tuple_t>::type::nFields >= 2,
+            void>::type* = nullptr>
+    auto& operator[](Tag _tag) noexcept
+    {
+        return std::get<
+            tagged_tuple_index<typename Tag::tag_type, fields_tuple_t>::value>(
+            fields);
+    }
+    template<class Tag,
+        typename std::enable_if<
+            std::tuple_element<tagged_tuple_index<typename Tag::tag_type,
+                                   fields_tuple_t>::value,
+                fields_tuple_t>::type::nFields >= 2,
+            void>::type* = nullptr>
+    const auto& operator[](Tag _tag) const noexcept
+    {
+        return std::get<
+            tagged_tuple_index<typename Tag::tag_type, fields_tuple_t>::value>(
+            fields);
+    }
+
+    template<class Tag>
+    auto& operator()(Tag _tag, int _idx=0) noexcept
+    {
+        return std::get<
+            tagged_tuple_index<typename Tag::tag_type, fields_tuple_t>::value>(
+            fields)[_idx];
     }
     template<class Tag>
-    const auto& operator()(Tag _tag) const noexcept
+    const auto& operator()(Tag _tag, int _idx=0) const noexcept
     {
-        return std::get<tagged_tuple_index<typename Tag::tag_type, fields_tuple_t>::value>(fields);
+        return std::get<
+            tagged_tuple_index<typename Tag::tag_type, fields_tuple_t>::value>(
+            fields)[_idx];
+    }
+
+    template<class Tag>
+    auto& operator()(Tag _tag, const coordinate_type& _c, int _idx = 0) noexcept
+    {
+        return std::get<
+            tagged_tuple_index<typename Tag::tag_type, fields_tuple_t>::value>(
+            fields)[_idx]
+            .get(_c);
     }
     template<class Tag>
-    auto& operator()(Tag _tag, int _idx) noexcept
+    const auto& operator()(
+        Tag _tag, const coordinate_type& _c, int _idx = 0) const noexcept
     {
-        return std::get<tagged_tuple_index<typename Tag::tag_type, fields_tuple_t>::value>(fields)[_idx];
-    }
-    template<class Tag>
-    const auto& operator()(Tag _tag, int _idx) const noexcept
-    {
-        return std::get<tagged_tuple_index<typename Tag::tag_type, fields_tuple_t>::value>(fields)[_idx];
+        return std::get<
+            tagged_tuple_index<typename Tag::tag_type, fields_tuple_t>::value>(
+            fields)[_idx]
+            .get(_c);
     }
     /*************************************************************************/
 
@@ -279,6 +339,9 @@ class DataBlock : public BlockDescriptor<int, Dim>
     auto nodes_domain_end() const noexcept { return nodes_domain_.end(); }
     const auto& nodes_domain() const { return nodes_domain_; }
     auto&       nodes_domain() { return nodes_domain_; }
+
+    auto begin() noexcept { return nodes_domain_.begin(); }
+    auto end() noexcept { return nodes_domain_.end(); }
 
     bool is_allocated() { return std::get<0>(fields)[0].data().size() > 0; }
 

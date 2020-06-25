@@ -64,8 +64,7 @@ class Nli
     template<class field, typename octant_t>
     void nli_intrp_node(octant_t parent, int mask_id, int base_level)
     {
-        auto& parent_linalg_data =
-            parent->data_ref().template get_linalg_data<field>();
+        auto& parent_linalg_data = parent->data_r(field::tag()).linalg_data();
 
         for (int i = 0; i < parent->num_children(); ++i)
         {
@@ -75,9 +74,7 @@ class Nli
                 continue;
             if (!child->has_data()) continue;
 
-            auto& child_linalg_data =
-                child->data_ref().template get_linalg_data<field>();
-
+            auto& child_linalg_data = child->data_r(field::tag()).linalg_data();
             nli_intrp_node(child_linalg_data, parent_linalg_data, i);
         }
     }
@@ -146,8 +143,7 @@ class Nli
     template<class field, typename octant_t>
     void nli_antrp_node(octant_t parent, int mask_id, int base_level)
     {
-        auto& parent_linalg_data =
-            parent->data_ref().template get_linalg_data<field>();
+        auto& parent_linalg_data = parent->data_r(field::tag()).linalg_data();
 
         for (int i = 0; i < parent->num_children(); ++i)
         {
@@ -156,8 +152,7 @@ class Nli
                 !child->fmm_mask(base_level, mask_id))
                 continue;
 
-            auto& child_linalg_data =
-                child->data_ref().template get_linalg_data<field>();
+            auto& child_linalg_data = child->data_r(field::tag()).linalg_data();
 
             nli_antrp_node(child_linalg_data, parent_linalg_data, i);
         }

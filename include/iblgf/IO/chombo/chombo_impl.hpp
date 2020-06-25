@@ -222,8 +222,7 @@ class Chombo
             for (auto& b : blocklist)
             {
                 if (!b->locally_owned()) continue;
-                auto& cp2 =
-                    b->data_ref().template get_linalg_data<Field>(field_idx);
+                auto& cp2 = b->data_r(Field::tag(), field_idx).linalg_data();
                 std::fill(cp2.begin(), cp2.end(), 0.0);
             }
         }
@@ -428,15 +427,18 @@ class Chombo
                                                         continue;
                                                     if (file_idx_0 < 0)
                                                         continue;
-                                                    b->data_ref()
-                                                        .template get<Field>(
-                                                            i + overlap_local
-                                                                    .base()[0],
+
+                                                    coordinate_type<int, Dim>
+                                                        coffset({i + overlap_local
+                                                                         .base()
+                                                                             [0],
                                                             j + overlap_local
                                                                     .base()[1],
                                                             k + overlap_local
-                                                                    .base()[2],
-                                                            field_idx) +=
+                                                                    .base()
+                                                                        [2]});
+                                                    b->data_r(Field::tag(),
+                                                        coffset, field_idx) +=
                                                         data[i] / total_avg;
                                                 }
                                             }

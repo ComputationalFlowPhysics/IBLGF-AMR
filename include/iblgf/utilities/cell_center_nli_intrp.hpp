@@ -141,11 +141,9 @@ class cell_center_nli
             if (!child->has_data()) continue;
             if (!child->data_ref().is_allocated()) continue;
 
-            auto& child_target_tmp =
-                child->data_ref().template get_linalg_data<from>();
+            auto& child_target_tmp = child->data_r(from::tag()).linalg_data();
 
-            auto& child_linalg_data =
-                child->data_ref().template get_linalg_data<to>();
+            auto& child_linalg_data = child->data_r(to::tag()).linalg_data();
             for (int i = 1; i < Nb_ - 1; ++i)
             {
                 for (int j = 1; j < Nb_ - 1; ++j)
@@ -178,7 +176,7 @@ class cell_center_nli
         bool correction_only = false, bool exclude_correction = false)
     {
         auto& parent_linalg_data =
-            parent->data_ref().template get_linalg_data<from>(tmp_field_idx);
+            parent->data_r(from::tag(), tmp_field_idx).linalg_data();
 
         for (int i = 0; i < parent->num_children(); ++i)
         {
@@ -193,7 +191,7 @@ class cell_center_nli
             if (exclude_correction && child->is_correction()) continue;
 
             auto& child_linalg_data =
-                child->data_ref().template get_linalg_data<to>(tmp_field_idx);
+                child->data_r(to::tag(), tmp_field_idx).linalg_data();
             nli_intrp_node(child_linalg_data, parent_linalg_data, i, mesh_obj,
                 real_mesh_field_idx);
         }
@@ -269,7 +267,7 @@ class cell_center_nli
         bool correction_only = false, bool exclude_correction = false)
     {
         auto& parent_linalg_data =
-            parent->data_ref().template get_linalg_data<to>(tmp_field_idx);
+            parent->data_r(to::tag(), tmp_field_idx).linalg_data();
 
         for (int i = 0; i < parent->num_children(); ++i)
         {
@@ -284,7 +282,7 @@ class cell_center_nli
             if (exclude_correction && child->is_correction()) continue;
 
             auto& child_linalg_data =
-                child->data_ref().template get_linalg_data<from>(tmp_field_idx);
+                child->data_r(from::tag(), tmp_field_idx).linalg_data();
 
             nli_antrp_node(child_linalg_data, parent_linalg_data, i, mesh_obj,
                 real_mesh_field_idx);

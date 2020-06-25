@@ -81,8 +81,8 @@ class HaloCommunicator
                     if (!it2) continue;
                     if (!it2->has_data()) continue;
 
-                    auto& field = it->data_ref().template get<Field>(j);
-                    auto& field2 = it2->data_ref().template get<Field>(j);
+                    auto& field = it->data_r(Field::tag(),j);
+                    auto& field2 = it2->data_r(Field::tag(),j);
 
                     //send view
                     if (auto overlap_opt = field.send_view(field2))
@@ -199,7 +199,7 @@ class HaloCommunicator
         for (auto& sf : intra_send_interface)
         {
             auto& dfield =
-                sf.dest->data_ref().template get<Field>(sf.field_idx);
+                sf.dest->data_r(Field::tag(),sf.field_idx);
             auto dest_view = dfield.view(sf.view);
             dest_view.assign_toView(sf.view);
         }

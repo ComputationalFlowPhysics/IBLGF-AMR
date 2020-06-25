@@ -848,7 +848,7 @@ class Domain
                     {
                         using field_type =
                             std::remove_reference_t<decltype(field)>;
-                        auto& src = jt->data_ref().template get<field_type>();
+                        auto& src = jt->data_r(field_type::tag());
                         const auto overlap_src = overlap;
 
                         //it is target and jt is source

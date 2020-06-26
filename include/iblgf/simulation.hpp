@@ -14,7 +14,6 @@
 #define IBLGF_INCLUDED_SIMULATION_HPP
 
 #include <iblgf/dictionary/dictionary.hpp>
-#include <iblgf/IO/vtk_io.hpp>
 #include <iblgf/IO/chombo/h5_io.hpp>
 #include <iblgf/IO/output_directory.hpp>
 
@@ -83,12 +82,7 @@ class Simulation
             io::output().restart_save_dir() + "/" + restart_domain_file_);
     }
 
-    void write(std::string _filename)
-    {
-        writer.write_vtk(io::output().dir() + "/" + _filename, domain_.get());
-    }
-
-    void write2(std::string _filename, bool to_restart = false)
+    void write(std::string _filename, bool to_restart = false)
     {
         if (to_restart)
             io_h5.write_h5(
@@ -131,7 +125,6 @@ class Simulation
     std::shared_ptr<Dictionary> dictionary_ = nullptr;
     std::shared_ptr<Domain>     domain_ = nullptr;
     boost::mpi::communicator    world_;
-    io::Vtk_io<Domain>          writer;
     io::H5_io<3, Domain>        io_h5;
     io::IO_init                 io_init_;
     std::string                 restart_info_file_ = "restart_info";

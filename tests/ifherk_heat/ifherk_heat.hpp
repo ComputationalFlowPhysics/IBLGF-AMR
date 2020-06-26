@@ -182,7 +182,7 @@ struct IfherkHeat : public SetupBase<IfherkHeat, parameters>
         this->compute_errors<u_type, u_ref_type, error_u_type>(
             std::string("u3_"), 2);
 
-        simulation_.write2("final.hdf5");
+        simulation_.write("final.hdf5");
     }
 
     template<class Field, class OctantType>

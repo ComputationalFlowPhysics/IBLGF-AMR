@@ -35,15 +35,9 @@ namespace octree
 template<int Dim, class DataType>
 class Tree;
 
-template<class T = void>
-class DefaultMixIn
-{
-};
-
-template<int Dim, class DataType, template<class> class MixIn = DefaultMixIn>
+template<int Dim, class DataType>
 class Octant
 : public Octant_base<Dim, DataType>
-, MixIn<Octant<Dim, DataType, MixIn>>
 {
   public:
     using super_type = Octant_base<Dim, DataType>;
@@ -62,11 +56,7 @@ class Octant
     static constexpr int num_vertices() { return pow(2, Dim); }
     static constexpr int num_faces() { return 2 * Dim; }
     static constexpr int num_edges() { return 2 * num_faces(); }
-    static constexpr int nNeighbors()
-    {
-        return pow(3, Dim);
-        ;
-    }
+    static constexpr int nNeighbors() { return pow(3, Dim); }
 
   public:
     enum FLAG_LIST
@@ -135,37 +125,6 @@ class Octant
         null_init();
     }
 
-    /** @brief Find leaf that shares a vertex with octant
-      *         on same, plus or minus one level
-      **/
-    Octant* vertex_neighbor(const coordinate_type& _offset)
-    {
-        // current level
-        // FIXME this could be implemented in a faster way
-        auto nn = this->key_.neighbor(_offset);
-        if (nn == this->key()) return nullptr;
-        auto nn_ptr = this->tree()->find_leaf(nn);
-        if (nn_ptr != nullptr) { return nn_ptr; }
-
-        // parent level
-        const auto parent = this->parent();
-        if (parent != nullptr)
-        {
-            auto p_nn = parent->key().neighbor(_offset);
-            if (p_nn == this->key()) return nullptr;
-            auto p_ptr = this->tree()->find_leaf(p_nn);
-            if (p_ptr) return p_ptr;
-        }
-
-        // child level
-        const auto child = this->construct_child(0);
-        auto       c_nn = child.key().neighbor(_offset);
-        if (c_nn == this->key()) return nullptr;
-        auto c_ptr = this->tree()->find_leaf(c_nn);
-        if (c_ptr) return c_ptr;
-
-        return nullptr;
-    }
     void null_init()
     {
         std::fill(neighbor_.begin(), neighbor_.end(), nullptr);
@@ -177,17 +136,12 @@ class Octant
         flags_.fill(false);
     }
 
-    auto get_neighbor_keys()
+  public: //Queries
+    auto get_neighbor_keys() const noexcept
     {
-        auto key = this->key();
-        return key.get_neighbor_keys();
+        return this->key().get_neighbor_keys();
     }
-
-    auto get_infl_keys()
-    {
-        auto key = this->key();
-        return key.get_infl_keys();
-    }
+    auto get_infl_keys() const noexcept { return this->key().get_infl_keys(); }
 
     const flag_list_type& flags() const noexcept { return flags_; }
     flag_list_type&       flags() noexcept { return flags_; }
@@ -201,6 +155,11 @@ class Octant
     bool is_leaf() const noexcept { return flags_[FlagLeaf]; }
     void flag_leaf(bool flag) noexcept { flags_[FlagLeaf] = flag; }
 
+    void flag_mask(const fmm_mask_type fmm_flag) noexcept
+    {
+        fmm_masks_ = fmm_flag;
+    }
+
     bool is_correction() const noexcept { return flags_[FlagCorrection]; }
     void flag_correction(const bool flag) noexcept
     {
@@ -213,11 +172,6 @@ class Octant
     bool aim_deletion() const noexcept { return aim_deletion_; }
     void aim_deletion(bool d) noexcept { aim_deletion_ = d; }
 
-    void flag_mask(const fmm_mask_type fmm_flag) noexcept
-    {
-        fmm_masks_ = fmm_flag;
-    }
-
     bool is_leaf_search(bool require_data = false) const noexcept
     {
         for (int i = 0; i < this->num_children(); ++i)
@@ -228,35 +182,6 @@ class Octant
         }
         return true;
     }
-
-    auto get_vertices() noexcept
-    {
-        std::vector<decltype(this->tree()->begin_leafs())> res;
-        if (this->is_hanging() || this->is_boundary()) return res;
-
-        rcIterator<Dim>::apply(coordinate_type(0), coordinate_type(2),
-            [&](const coordinate_type& _p) {
-                auto nnn = neighbor(_p);
-                if (nnn != this->tree()->end_leafs()) res.emplace_back(nnn);
-            });
-        return res;
-    }
-
-    template<typename octant_t>
-    bool inside(octant_t o1, octant_t o2)
-    {
-        auto k_ = this->key();
-        return ((k_ >= o1->key()) && (k_ <= o2->key()));
-    }
-
-    template<class Iterator>
-    auto compute_index(const Iterator& _it)
-    {
-        return std::distance(this->tree()->begin_leafs(), _it);
-    }
-    void index(int _idx) noexcept { idx_ = _idx; }
-    int  index() const noexcept { return idx_; }
-
 
     /***********************************************************************/
     //new data access
@@ -330,13 +255,6 @@ class Octant
         influence_[i] = new_influence;
     }
 
-    //bool mask(int i) noexcept{return masks_[i];}
-    //bool* mask_ptr(int i) noexcept{return &(masks_[i]);}
-    //void mask(int i, bool value)
-    //{
-    //   masks_[i] = value;
-    //}
-
     fmm_mask_type fmm_mask() noexcept { return fmm_masks_; }
 
     bool fmm_mask(int fmm_base_level, int i) noexcept
@@ -360,10 +278,6 @@ class Octant
 
   public: //mpi info
     bool locally_owned() const noexcept { return comm_.rank() == this->rank(); }
-    bool ghost() const noexcept
-    {
-        return !locally_owned() && this->rank() >= 0;
-    }
 
     bool has_locally_owned_children(int fmm_level, int mask_id) const noexcept
     {
@@ -402,55 +316,6 @@ class Octant
             { unique_ranks.insert(child->rank()); }
         }
         return unique_ranks;
-    }
-
-    std::set<int> unique_infl_ranks()
-    {
-        std::set<int> unique_inflRanks;
-
-        for (int i = 0; i < this->influence_number(); ++i)
-        {
-            auto inf = this->influence(i);
-            if (inf && inf->has_data())
-            { unique_inflRanks.emplace(inf->rank()); }
-        }
-        std::cout << std::endl;
-        return unique_inflRanks;
-    }
-
-    std::set<int> unique_neighbor_ranks()
-    {
-        std::set<int> unique_neighborRanks;
-        for (int i = 0; i < this->nNeighbors(); ++i)
-        {
-            const auto n = this->neighbor(i);
-            if (n && n->has_data())
-            {
-                std::cout << n->rank() << " " << n->key() << std::endl;
-                unique_neighborRanks.emplace(n->rank());
-            }
-        }
-        return unique_neighborRanks;
-    }
-
-    std::set<int> unique_infl_neighbor_ranks()
-    {
-        auto l1 = unique_infl_ranks();
-        auto l2 = unique_neighbor_ranks();
-        //std::set<int> l12;
-        //std::merge(l1.begin(), l1.end(),
-        //        l2.begin(), l2.end(),
-        //        std::inserter(l12, l12.begin()));
-
-        //l1.merge(unique_neighbor_ranks());
-
-        for (auto r : l1) std::cout << r << " ";
-        std::cout << std::endl;
-
-        for (auto r : l2) std::cout << r << " ";
-        std::cout << std::endl;
-
-        return l1;
     }
 
   public: //Access
@@ -524,10 +389,6 @@ class Octant
     std::array<Octant*, 189>                         influence_ = {nullptr};
 
     bool flag_physical_ = false;
-
-    //bool flag_leaf_=false;
-    //bool flag_correction_=false;
-    //std::array<bool, Mask_Last + 1> masks_ = {false};
 
     flag_list_type flags_;
     fmm_mask_type  fmm_masks_;

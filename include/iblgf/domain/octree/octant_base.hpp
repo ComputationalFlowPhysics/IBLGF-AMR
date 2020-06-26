@@ -59,14 +59,10 @@ class Octant_base
     ~Octant_base() = default;
 
     Octant_base(const coordinate_type& _x, int _level)
-    : key_(key_type(_x, _level))
-    {
-    }
+    : key_(key_type(_x, _level)) { }
 
     Octant_base(const key_type& _k)
-    : key_(_k)
-    {
-    }
+    : key_(_k) { }
 
   public:
     /** @brief Get octant key*/
@@ -84,14 +80,14 @@ class Octant_base
         return key_.coordinate();
     }
 
+    const int& rank() const noexcept { return rank_; }
+    int&       rank() noexcept { return rank_; }
+
     friend std::ostream& operator<<(std::ostream& os, const Octant_base& n)
     {
         os << n.key_;
         return os;
     }
-
-    const int& rank() const noexcept { return rank_; }
-    int&       rank() noexcept { return rank_; }
 
   private: //Serialization
     friend class boost::serialization::access;

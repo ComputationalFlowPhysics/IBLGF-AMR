@@ -157,7 +157,7 @@ struct OperatorTest : public SetupBase<OperatorTest, parameters>
         this->compute_errors<curl_target, curl_exact, curl_error>("Curl_");
         this->compute_errors<nonlinear_target, nonlinear_exact,
             nonlinear_error>("Nonlin_");
-        simulation_.write2("mesh.hdf5");
+        simulation_.write("mesh.hdf5");
     }
 
     /** @brief Initialization of poisson problem.

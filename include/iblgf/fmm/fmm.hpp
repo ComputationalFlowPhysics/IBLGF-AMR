@@ -50,19 +50,6 @@ struct FmmMaskBuilder
     using MASK_LIST = typename octant_t::MASK_LIST;
 
   public:
-    //static void fmm_if_load_build(Domain* domain_)
-    //{
-    //    int base_level=domain_->tree()->base_level();
-    //    // During 1 timestep
-    //    // IF called 6X3=18 times while fmm called 3 times
-    //    // effective factor 6
-
-    //    fmm_dry_init_base_level_masks(domain_, base_level, true,
-    //            6, true);
-    //    fmm_dry_init_base_level_masks(domain_, base_level, false,
-    //            6, true);
-    //}
-
     static void fmm_vortex_streamfun_mask(Domain* domain_)
     {
         int base_level = domain_->tree()->base_level();

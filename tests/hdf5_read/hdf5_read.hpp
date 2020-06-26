@@ -356,7 +356,7 @@ struct HDF5Read : public SetupBase<HDF5Read, parameters>
         if (filename_ != "null")
             simulation_.template read_h5<h5_read_test>(filename_);
 
-        simulation_.write2("mesh.hdf5");
+        simulation_.write("mesh.hdf5");
 
         this->compute_errors<h5_read_test, u, error_face>(std::string(""), 0);
         this->compute_errors<h5_read_test, u, error_face>(std::string(""), 1);

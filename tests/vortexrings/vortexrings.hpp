@@ -267,23 +267,23 @@ struct VortexRingTest : public SetupBase<VortexRingTest, parameters>
         this->compute_errors<amr_lap_source_type, source_type,
             error_lap_source_type>("laplace_");
 
-        //simulation_.write2("mesh.hdf5");
+        //simulation_.write("mesh.hdf5");
 
         return inf_error;
     }
 
     double run()
     {
-        simulation_.write2("mesh.hdf5");
+        simulation_.write("mesh.hdf5");
         float_type Inf_error = this->solve();
         pcout_c << "Solve 1st time done" << std::endl;
-        simulation_.write2("mesh.hdf5");
+        simulation_.write("mesh.hdf5");
         //pcout_c<<"write" <<std::endl;
         //domain_->decomposition().balance<source_type,phi_exact_type>();
         //pcout_c<<"decompositiondone" <<std::endl;
 
         //this->solve();
-        //simulation_.write2("mesh_new.hdf5");
+        //simulation_.write("mesh_new.hdf5");
         return Inf_error;
     }
 

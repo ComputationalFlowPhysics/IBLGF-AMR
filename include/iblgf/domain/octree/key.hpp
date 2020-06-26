@@ -253,7 +253,7 @@ struct Key
     /***********************************************************************/
     //FIXME: This is application code, please put these two functions somewhere else.
     /** @brief Get all neighbors of distance 1 */
-    auto get_neighbor_keys(int distance = 1)
+    auto get_neighbor_keys(int distance = 1) const noexcept
     {
         std::vector<Key> res;
         coordinate_type  offset(distance);
@@ -265,7 +265,7 @@ struct Key
     }
 
     /** @brief Get all influence keys */
-    auto get_infl_keys()
+    auto get_infl_keys() const noexcept
     {
         std::vector<Key> res;
         if (this->level() == 0) return res;

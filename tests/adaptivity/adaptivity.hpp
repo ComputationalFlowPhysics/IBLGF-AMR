@@ -136,7 +136,7 @@ struct Adaptivity:public SetupBase<Adaptivity,parameters>
 
         time_integration_t ifherk(&this->simulation_);
 
-        simulation_.write2("adapt0.hdf5");
+        simulation_.write("adapt0.hdf5");
         initialize();
 
         ifherk.template update_source_max<source>();
@@ -169,14 +169,14 @@ struct Adaptivity:public SetupBase<Adaptivity,parameters>
             }
             }
 
-            simulation_.write2("adapt"+std::to_string(i+1)+".hdf5");
+            simulation_.write("adapt"+std::to_string(i+1)+".hdf5");
         }
 
 
         //ifherk.template adapt<source, source>();
-        //simulation_.write2("adapt4.hdf5");
+        //simulation_.write("adapt4.hdf5");
         //ifherk.template adapt<source, source>();
-        //simulation_.write2("adapt5.hdf5");
+        //simulation_.write("adapt5.hdf5");
 
         //poisson_solver_t psolver(&this->simulation_);
 
@@ -197,7 +197,7 @@ struct Adaptivity:public SetupBase<Adaptivity,parameters>
         //this->compute_errors<u,u_ref,error_u>(std::string("u2_"),1);
         //this->compute_errors<u,u_ref,error_u>(std::string("u3_"),2);
 
-        //simulation_.write2("final.hdf5");
+        //simulation_.write("final.hdf5");
     }
 
     void test_fill_everything()

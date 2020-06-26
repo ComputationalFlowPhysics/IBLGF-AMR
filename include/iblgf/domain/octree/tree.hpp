@@ -77,7 +77,7 @@ class Tree
     ~Tree() = default;
 
     /**
-     *  @brief Top-down construction of octree.
+     *  @brief Construction of octree.
      *
      *  Given a vector of points and the correpsonding base level an
      *  octree is top down constructed, the leafs extracted and the level maps
@@ -130,13 +130,6 @@ class Tree
         depth_ = base_level_ + 1;
         root_ = std::make_shared<octant_type>(coordinate_type(0), 0, this);
         insert_keys(_keys, f);
-        //for (auto& k : _keys)
-        //{
-
-        //    auto octant = this->insert_td(k);
-        //    f(octant);
-        //    if (octant->level()+1 > depth_) depth_=octant->level()+1;
-        //}
     }
 
     template<class Function = std::function<void(octant_type* c)>>
@@ -147,13 +140,22 @@ class Tree
     {
         for (auto& k : _keys)
         {
-            auto octant = this->insert_td(k);
-            //if (!octant->has_data() || !octant->data().is_allocated())
+            octant_type* octant = this->insert(k);
             f(octant);
         }
     }
 
-  public:
+  public: //queries
+    auto num_leafs() const noexcept { return leafs_.size(); }
+
+    const int& base_level() const noexcept { return base_level_; }
+    int&       base_level() noexcept { return base_level_; }
+    const int& depth() const noexcept { return depth_; }
+    int&       depth() noexcept { return depth_; }
+
+    octant_type* root() const noexcept { return root_.get(); }
+
+  public: //iteration
     auto begin() const noexcept { return dfs_iterator(root_.get()); }
     auto end() const noexcept { return dfs_iterator(); }
 
@@ -180,6 +182,7 @@ class Tree
         return level_maps_[_level].end();
     }
 
+  public: //Find
     const octant_iterator find(int _level, key_type key) const noexcept
     {
         return level_maps_[_level].find(key);
@@ -190,52 +193,22 @@ class Tree
         return level_maps_[_level].find(key);
     }
 
-    octant_type* find_octant(key_type _k) const
+    /** @brief Find tree node based on key. */
+    octant_type* find_octant(const key_type& _k) const noexcept
     {
-        return find_impl_top_down(_k, root());
-        auto it = root();
-        auto l = it->level();
-        while (it->key() != _k)
+        auto n = root();
+        if (!n) return nullptr;
+        auto level = _k.level();
+        for (int l = 1; l <= level; ++l)
         {
-            auto child_ = it->child(_k.sib_number(l));
-            if (child_ == nullptr) return nullptr;
-
-            it = child_;
-            l++;
+            auto child = n->child(_k.child_number(l));
+            if (!child) { return nullptr; }
+            n = child;
         }
-        return it;
-        //dfs_iterator it_begin(root()); dfs_iterator it_end;
-        //for(auto it =it_begin;it!=it_end;++it)
-        //{
-        //    if(it->key()==_k)
-        //        return it.ptr();
-        //}
-        //return find_top_down(_k,root());
-        //return nullptr;
+        return n;
     }
 
-    octant_type* find_impl_top_down(const key_type& k, octant_type* n) const
-        noexcept
-    {
-        if (n->key() == k) return n;
-        if (n->key().level() == k.level()) return nullptr;
-        for (int i = n->num_children() - 1; i >= 0; --i)
-        {
-            if (n->child(i) && n->child(i)->key() <= k)
-                return find_impl_top_down(k, n->child(i));
-        }
-        return nullptr;
-    }
-
-    auto num_leafs() const noexcept { return leafs_.size(); }
-
-    const int& base_level() const noexcept { return base_level_; }
-    int&       base_level() noexcept { return base_level_; }
-    const int& depth() const noexcept { return depth_; }
-    int&       depth() noexcept { return depth_; }
-
-    octant_type* root() const noexcept { return root_.get(); }
-
+  public: //misc
     auto unfound_neighbors(octant_type* _l, bool correction_as_neighbors = true)
     {
         std::vector<key_type> keys;
@@ -263,7 +236,7 @@ class Tree
 
         for (auto& k : keys)
         {
-            auto _neighbor = this->insert_td(k);
+            auto _neighbor = this->insert(k);
             if (!_neighbor || !_neighbor->has_data()) _f(_neighbor);
         }
     }
@@ -371,7 +344,7 @@ class Tree
 
                     if (_l->refinement_level() == 0)
                     {
-                        auto oct = this->insert_td(k);
+                        auto oct = this->insert(k);
                         if (!oct->has_data()) _f(oct);
 
                         oct->flag_leaf(true);
@@ -386,17 +359,12 @@ class Tree
                         auto pa = this->find_octant(parent_key);
                         if (!pa)
                         {
-                            pa = this->insert_td(parent_key);
+                            pa = this->insert(parent_key);
                             _f(pa);
                         }
                         this->refine(pa, _f, ratio_2to1);
                     }
                 }
-            }
-            else
-            {
-                //throw
-                //std::runtime_error("Cannot satisfy 2:1 refinement requirement for base level ");
             }
         }
 
@@ -436,16 +404,6 @@ class Tree
 
             if (oct) oct->delete_child(cnumber);
         }
-
-        //while (oct->refinement_level()<0 && oct->is_leaf_search())
-        //{
-        //    oct->rank()=-1;
-        //    oct->deallocate_data();
-
-        //    int cnumber=oct->key().child_number();
-        //    oct=oct->parent();
-        //    if(oct) oct->delete_child(cnumber);
-        //}
     }
 
     const auto& get_octant_to_level_coordinate() const noexcept
@@ -460,35 +418,6 @@ class Tree
     auto octant_to_level_coordinate(T _x, int _level = 0)
     {
         return octant_to_real_coordinate_(_x, _level);
-    }
-
-  public: //traversals
-          /**
-     * @brief Recursive depth-first traversal
-     *
-     * Note: Better to use the corresponding iterators.
-     * @param [in] f Function to be applied to dfs-node
-     */
-    template<class Function>
-    void traverse_dfs(Function f)
-    {
-        depth_first_traverse(root(), f);
-    }
-
-    /**
-     * @brief Recursive breadth-first traversal
-     *
-     * Note: Better to use the corresponding iterators.
-     * @param [in] f Function to be applied to dfs-node
-     * @param [in] min_level Startlevel
-     * @param [in] max_level Endlevel
-     */
-    template<class Function>
-    void traverse_bfs(
-        Function f, int min_level = 0, int max_level = key_type::max_level())
-    {
-        for (int i = min_level; i < max_level; ++i)
-            breadth_first_traverse(root(), f, i);
     }
 
   private: //find
@@ -513,66 +442,30 @@ class Tree
             return nullptr;
     }
 
-  public: //Top down insert strategy
-    octant_type* insert_td(const coordinate_type& x, int level)
+  public: // Insert
+    /** @{ @brief Insertion of node.
+     *
+     *     Either based on coordinate and level or directly the morton key.
+     * */
+    octant_type* insert(const coordinate_type& _x, int _level) noexcept
     {
-        return insert_td(key_type(x, level));
+        return insert(key_type(_x, _level));
     }
-    octant_type* insert_td(const key_type& k)
+    octant_type* insert(key_type _k) noexcept
     {
-        return insert_impl_top_down(k, root_.get());
-    }
-
-  private: //Top down insert strategy
-    octant_type* insert_impl_top_down(const key_type& k, octant_type* n) const
-    {
-        if (n->key() == k) return n;
-        for (int i = n->num_children() - 1; i >= 0; --i)
+        if (!root_) root_ = std::make_shared<octant_type>(coordinate_type(0), 0,this);
+        auto n = root();
+        auto level = _k.level();
+        for (int l = 1; l <= level; ++l)
         {
-            if (n->children_[i])
-            {
-                if (n->children_[i]->key() <= k)
-                { return insert_impl_top_down(k, n->children_[i].get()); }
-            }
-            else
-            {
-                const auto ck = n->key().child(i);
-                if (ck <= k)
-                {
-                    n->refine(i);
-                    return insert_impl_top_down(k, n->children_[i].get());
-                }
-            }
+            auto child = n->child(_k.child_number(l));
+            if (!child) { child = n->refine(_k.child_number(l)); }
+            n = child;
         }
-        throw std::runtime_error(
-            "tree.hpp:insert_impl_top_down: Should have exited before!");
+        if (_k.level() + 1 > depth_) depth_ = _k.level() + 1;
+        return n;
     }
-
-  private: //traversal
-    template<class Function>
-    void breadth_first_traverse(octant_type* n, Function& f, int level)
-    {
-        if (n->level() == level)
-        {
-            f(n);
-            return;
-        }
-        for (std::size_t i = 0; i < n->num_children(); ++i)
-        {
-            if (n->children_[i])
-                breadth_first_traverse(n->children_[i].get(), f, level);
-        }
-    }
-
-    template<class Function>
-    void depth_first_traverse(octant_type* n, Function& f)
-    {
-        f(n);
-        for (std::size_t i = 0; i < n->num_children(); ++i)
-        {
-            if (n->child(i)) depth_first_traverse(n->child(i), f);
-        }
-    }
+    /** @} */
 
   public: // misc
     void construct_level_maps()
@@ -732,7 +625,7 @@ class Tree
             {
                 if (ranks[i] > 0)
                 {
-                    auto nn = this->insert_td(keys[i]);
+                    auto nn = this->insert(keys[i]);
                     nn->rank() = ranks[i];
                 }
             }
@@ -945,7 +838,6 @@ class Tree
             ifs.read(reinterpret_cast<char*>(&leaf_flag), sizeof(leaf_flag));
             leafs.emplace_back(leaf_flag);
         }
-        //for(const auto& d: res) std::cout<<d<<std::endl;
         ifs.close();
     }
 

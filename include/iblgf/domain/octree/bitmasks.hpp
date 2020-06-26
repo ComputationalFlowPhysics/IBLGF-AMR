@@ -15,161 +15,211 @@
 
 #include <stdint.h>
 #include <array>
-
+#include <bitset>
 
 namespace iblgf
 {
 namespace octree
 {
+/** @brief Static function returning the number of bit
+ * to needed for n, i.e. similar to ceil of log2*/
+constexpr std::size_t
+clog2(std::size_t n)
+{
+    return ((n < 2) ? 1 : 1 + clog2(n >> 1));
+}
+/** @brief Static power function*/
+template<typename T>
+constexpr T
+pow(const T& base, const int exp)
+{
+    return exp == 0 ? 1 : base * pow(base, exp - 1);
+}
 
-
+/** @brief  Helper class to generate some of the masks for the morton keys.
+ *
+ *  Most using static constexpr function to generate to bit masks efficiently.
+ *  @tparam Dim Spatial dimension
+ * */
 template<int Dim>
-struct Bitmasks { };
+class Bitmasks
+{
+  public: //Member types
+    using index_type = unsigned long long int;
+    using scalar_coordinate_type = int;
+    using level_type = int;
+    using difference_type = long long int;
 
-template<>
-struct Bitmasks<3>{
+  public: //Constexpr members
+    static std::size_t constexpr nBits = 64;
 
+    static constexpr std::size_t maxLevel()
+    {
+        int max_level = 0, nbits = 0, flagbits = 2;
+        while (true)
+        {
+            nbits = max_level * Dim + clog2(max_level) + flagbits;
+            if (nbits > static_cast<int>(nBits))
+            {
+                flagbits = nBits - clog2(max_level - 1) - (max_level - 1) * Dim;
+                return max_level - 1;
+            }
+            ++max_level;
+        }
+        return max_level;
+    }
+    static constexpr std::size_t max_level = maxLevel();
+    static constexpr std::size_t nLevelBits = clog2(max_level);
+    static constexpr std::size_t nFlagBits =
+        nBits - nLevelBits - (max_level)*Dim;
+    static constexpr std::size_t nCoordinateBits =
+        nBits - nLevelBits - nFlagBits;
+    static constexpr std::size_t ShiftToCoord = nLevelBits + nFlagBits;
 
+    static constexpr index_type reverseBits(index_type _number)
+    {
+        index_type reverse = 0;
+        for (std::size_t i = 0; i < nBits; ++i)
+        {
+            const index_type tmp =
+                (_number & (static_cast<index_type>(1) << i));
+            if (tmp)
+                reverse |= (static_cast<index_type>(1) << ((nBits - 1) - i));
+        }
+        return reverse;
+    }
 
-using index_t = unsigned long long int;
-using difference_type = long long int;
-using scalar_coordinate_type = int;
-using level_type = int;
-static constexpr level_type max_level = 19;
+  private: //Static constexpr functions
+    static constexpr index_type get_level_mask()
+    {
+        index_type idx = (1 << nLevelBits) - 1;
+        idx <<= nFlagBits;
+        return idx;
+    }
+    static constexpr index_type setBit(int idx, index_type _number = 0)
+    {
+        return _number |= static_cast<index_type>(1) << idx;
+    }
+    static constexpr index_type setBits(
+        int _start, int _end, index_type _number = 0)
+    {
+        //Least significant bit is bit[0]
+        if (_start > _end) return index_type(0);
+        index_type idx =
+            (static_cast<index_type>(1) << (_end - _start + 1)) - 1;
+        idx <<= _start;
+        return idx | _number;
+    }
 
-//Note 0b indicates that the binary literal is used
-//The key bits are encoded as follows
-//0--19*3-1=0--56 bit: coordinates
-//57--61 bit: level
-//61--63 bit: flags
-//                                       --1--2--3--4--5--6--7--8--9-10-11-12-13-14-15-16-17-18-19--lev--
-//                                       --|--|--|--|--|--|--|--|--|--|--|--|--|--|--|--|--|--|--|----|-|
-static constexpr index_t level_mask    = 0b0000000000000000000000000000000000000000000000000000000001111100;
-static constexpr index_t coord_mask    = 0b1111111111111111111111111111111111111111111111111111111110000000;
-static constexpr index_t flag_mask     = 0b0000000000000000000000000000000000000000000000000000000000000011;
-static constexpr index_t lo_mask       = 0b0000000000000000000000000000000000000000000000000000000000000001;
-static constexpr index_t hi_mask       = 0b1000000000000000000000000000000000000000000000000000000000000000;
-static constexpr index_t hi_3_mask     = 0b1110000000000000000000000000000000000000000000000000000000000000;
-static constexpr index_t x_mask        = 0b0010010010010010010010010010010010010010010010010010010010000000;
-static constexpr index_t y_mask        = 0b0100100100100100100100100100100100100100100100100100100100000000;
-static constexpr index_t z_mask        = 0b1001001001001001001001001001001001001001001001001001001000000000;
+    static constexpr index_type get_coord_mask()
+    {
+        index_type idx(0);
+        idx = setBits(nLevelBits + nFlagBits, nBits);
+        return idx;
+    }
 
-static constexpr index_t min_0         = 0b0000000000000000000000000000000000000000000000000000000000000001;
-static constexpr index_t min_1         = 0b0000000000000000000000000000000000000000000000000000000000000101;
-static constexpr index_t min_2         = 0b0000000000000000000000000000000000000000000000000000000000001001;
-static constexpr index_t min_3         = 0b0000000000000000000000000000000000000000000000000000000000001101;
-static constexpr index_t min_4         = 0b0000000000000000000000000000000000000000000000000000000000010001;
-static constexpr index_t min_5         = 0b0000000000000000000000000000000000000000000000000000000000010101;
-static constexpr index_t min_6         = 0b0000000000000000000000000000000000000000000000000000000000011001;
-static constexpr index_t min_7         = 0b0000000000000000000000000000000000000000000000000000000000011101;
-static constexpr index_t min_8         = 0b0000000000000000000000000000000000000000000000000000000000100001;
-static constexpr index_t min_9         = 0b0000000000000000000000000000000000000000000000000000000000100101;
-static constexpr index_t min_10        = 0b0000000000000000000000000000000000000000000000000000000000101001;
-static constexpr index_t min_11        = 0b0000000000000000000000000000000000000000000000000000000000101101;
-static constexpr index_t min_12        = 0b0000000000000000000000000000000000000000000000000000000000110001;
-static constexpr index_t min_13        = 0b0000000000000000000000000000000000000000000000000000000000110101;
-static constexpr index_t min_14        = 0b0000000000000000000000000000000000000000000000000000000000111001;
-static constexpr index_t min_15        = 0b0000000000000000000000000000000000000000000000000000000000111101;
-static constexpr index_t min_16        = 0b0000000000000000000000000000000000000000000000000000000001000001;
-static constexpr index_t min_17        = 0b0000000000000000000000000000000000000000000000000000000001000101;
-static constexpr index_t min_18        = 0b0000000000000000000000000000000000000000000000000000000001001001;
-static constexpr index_t min_19        = 0b0000000000000000000000000000000000000000000000000000000001001101;
+    static constexpr index_type get_lo_mask() noexcept { return setBit(0); }
+    static constexpr index_type get_hi_mask() noexcept
+    {
+        return setBit(nBits - 1);
+    }
 
-static constexpr std::array<index_t,20> min_arr = {{ min_0,  min_1,  min_2,  min_3,  min_4,
-	                                                 min_5,  min_6,  min_7,  min_8,  min_9,
-	                                                 min_10, min_11, min_12, min_13, min_14,
-	                                                 min_15, min_16, min_17, min_18, min_19  }};
+    static constexpr auto get_min_array() noexcept
+    {
+        std::array<index_type, max_level + 1> min_array{0};
+        for (std::size_t i = 0; i <= max_level; ++i)
+        {
+            index_type tmp(i);
+            tmp <<= 2;
+            min_array[i] = setBit(0, tmp);
+            ;
+        }
+        return min_array;
+    }
 
-static constexpr index_t max_0         = 0b0000000000000000000000000000000000000000000000000000000000000001;
-static constexpr index_t max_1         = 0b1110000000000000000000000000000000000000000000000000000000000101;
-static constexpr index_t max_2         = 0b1111110000000000000000000000000000000000000000000000000000001001;
-static constexpr index_t max_3         = 0b1111111110000000000000000000000000000000000000000000000000001101;
-static constexpr index_t max_4         = 0b1111111111110000000000000000000000000000000000000000000000010001;
-static constexpr index_t max_5         = 0b1111111111111110000000000000000000000000000000000000000000010101;
-static constexpr index_t max_6         = 0b1111111111111111110000000000000000000000000000000000000000011001;
-static constexpr index_t max_7         = 0b1111111111111111111110000000000000000000000000000000000000011101;
-static constexpr index_t max_8         = 0b1111111111111111111111110000000000000000000000000000000000100001;
-static constexpr index_t max_9         = 0b1111111111111111111111111110000000000000000000000000000000100101;
-static constexpr index_t max_10        = 0b1111111111111111111111111111110000000000000000000000000000101001;
-static constexpr index_t max_11        = 0b1111111111111111111111111111111110000000000000000000000000101101;
-static constexpr index_t max_12        = 0b1111111111111111111111111111111111110000000000000000000000110001;
-static constexpr index_t max_13        = 0b1111111111111111111111111111111111111110000000000000000000110101;
-static constexpr index_t max_14        = 0b1111111111111111111111111111111111111111110000000000000000111001;
-static constexpr index_t max_15        = 0b1111111111111111111111111111111111111111111110000000000000111101;
-static constexpr index_t max_16        = 0b1111111111111111111111111111111111111111111111110000000001000001;
-static constexpr index_t max_17        = 0b1111111111111111111111111111111111111111111111111110000001000101;
-static constexpr index_t max_18        = 0b1111111111111111111111111111111111111111111111111111110001001001;
-static constexpr index_t max_19        = 0b1111111111111111111111111111111111111111111111111111111111001101;
+    static constexpr auto get_coord_mask_arr() noexcept
+    {
+        std::array<index_type, max_level + 1> coord_mask_array{0};
+        for (std::size_t i = 0; i <= max_level; ++i)
+        { coord_mask_array[i] = setBits(nBits - i * Dim, nBits - 1); }
+        return coord_mask_array;
+    }
+    static constexpr auto get_level_coord_mask_arr() noexcept
+    {
+        std::array<index_type, max_level + 1> coord_mask_array{0};
+        for (std::size_t i = 1; i <= max_level; ++i)
+        {
+            coord_mask_array[i] =
+                setBits(nBits - i * Dim, nBits - i * Dim + Dim - 1);
+        }
+        return coord_mask_array;
+    }
 
-static constexpr std::array<index_t,20> max_arr = {{ max_0,  max_1,  max_2,  max_3,  max_4,
-	                                                 max_5,  max_6,  max_7,  max_8,  max_9,
-	                                                 max_10, max_11, max_12, max_13, max_14,
-	                                                 max_15, max_16, max_17, max_18, max_19  }};
+    static constexpr auto get_max_array() noexcept
+    {
+        auto max_array = get_min_array();
+        auto coord_mask_array = get_coord_mask_arr();
+        for (std::size_t i = 0; i <= max_level; ++i)
+        { max_array[i] |= coord_mask_array[i]; }
+        return max_array;
+    }
 
-static constexpr index_t coord_mask_0  = 0b0000000000000000000000000000000000000000000000000000000000000000;
-static constexpr index_t coord_mask_1  = 0b1110000000000000000000000000000000000000000000000000000000000000;
-static constexpr index_t coord_mask_2  = 0b1111110000000000000000000000000000000000000000000000000000000000;
-static constexpr index_t coord_mask_3  = 0b1111111110000000000000000000000000000000000000000000000000000000;
-static constexpr index_t coord_mask_4  = 0b1111111111110000000000000000000000000000000000000000000000000000;
-static constexpr index_t coord_mask_5  = 0b1111111111111110000000000000000000000000000000000000000000000000;
-static constexpr index_t coord_mask_6  = 0b1111111111111111110000000000000000000000000000000000000000000000;
-static constexpr index_t coord_mask_7  = 0b1111111111111111111110000000000000000000000000000000000000000000;
-static constexpr index_t coord_mask_8  = 0b1111111111111111111111110000000000000000000000000000000000000000;
-static constexpr index_t coord_mask_9  = 0b1111111111111111111111111110000000000000000000000000000000000000;
-static constexpr index_t coord_mask_10 = 0b1111111111111111111111111111110000000000000000000000000000000000;
-static constexpr index_t coord_mask_11 = 0b1111111111111111111111111111111110000000000000000000000000000000;
-static constexpr index_t coord_mask_12 = 0b1111111111111111111111111111111111110000000000000000000000000000;
-static constexpr index_t coord_mask_13 = 0b1111111111111111111111111111111111111110000000000000000000000000;
-static constexpr index_t coord_mask_14 = 0b1111111111111111111111111111111111111111110000000000000000000000;
-static constexpr index_t coord_mask_15 = 0b1111111111111111111111111111111111111111111110000000000000000000;
-static constexpr index_t coord_mask_16 = 0b1111111111111111111111111111111111111111111111110000000000000000;
-static constexpr index_t coord_mask_17 = 0b1111111111111111111111111111111111111111111111111110000000000000;
-static constexpr index_t coord_mask_18 = 0b1111111111111111111111111111111111111111111111111111110000000000;
-static constexpr index_t coord_mask_19 = 0b1111111111111111111111111111111111111111111111111111111110000000;
+    static constexpr auto get_max_coord_arr() noexcept
+    {
+        std::array<scalar_coordinate_type, max_level + 1> max_coord_array{0};
+        for (std::size_t i = 0; i < max_coord_array.size(); ++i)
+        { max_coord_array[i] = (static_cast<index_type>(1) << i); }
+        return max_coord_array;
+    }
 
-static constexpr std::array<index_t,20> coord_mask_arr = {{ coord_mask_0,  coord_mask_1,  coord_mask_2,
-                                                            coord_mask_3,  coord_mask_4,  coord_mask_5,
-                                                            coord_mask_6,  coord_mask_7,  coord_mask_8,
-                                                            coord_mask_9,  coord_mask_10, coord_mask_11,
-                                                            coord_mask_12, coord_mask_13, coord_mask_14,
-                                                            coord_mask_15, coord_mask_16, coord_mask_17,
-                                                            coord_mask_18, coord_mask_19  }};
+  public: //operators
+    friend std::ostream& operator<<(std::ostream& os, Bitmasks b)
+    {
+        os << " nBits " << Bitmasks::nBits << std::endl;
+        os << "level_mask " << std::endl;
+        os << std::bitset<64>(Bitmasks::level_mask) << std::endl;
+        os << "coord_mask " << std::endl;
+        os << std::bitset<64>(Bitmasks::coord_mask) << std::endl;
+        os << "lo_mask " << std::endl;
+        os << std::bitset<64>(Bitmasks::lo_mask) << std::endl;
+        os << "hi_mask " << std::endl;
+        os << std::bitset<64>(Bitmasks::hi_mask) << std::endl;
 
-static constexpr scalar_coordinate_type max_coord_0  =      1;
-static constexpr scalar_coordinate_type max_coord_1  =      2;
-static constexpr scalar_coordinate_type max_coord_2  =      4;
-static constexpr scalar_coordinate_type max_coord_3  =      8;
-static constexpr scalar_coordinate_type max_coord_4  =     16;
-static constexpr scalar_coordinate_type max_coord_5  =     32;
-static constexpr scalar_coordinate_type max_coord_6  =     64;
-static constexpr scalar_coordinate_type max_coord_7  =    128;
-static constexpr scalar_coordinate_type max_coord_8  =    256;
-static constexpr scalar_coordinate_type max_coord_9  =    512;
-static constexpr scalar_coordinate_type max_coord_10 =   1024;
-static constexpr scalar_coordinate_type max_coord_11 =   2048;
-static constexpr scalar_coordinate_type max_coord_12 =   4096;
-static constexpr scalar_coordinate_type max_coord_13 =   8192;
-static constexpr scalar_coordinate_type max_coord_14 =  16384;
-static constexpr scalar_coordinate_type max_coord_15 =  32768;
-static constexpr scalar_coordinate_type max_coord_16 =  65536;
-static constexpr scalar_coordinate_type max_coord_17 = 131072;
-static constexpr scalar_coordinate_type max_coord_18 = 262144;
-static constexpr scalar_coordinate_type max_coord_19 = 524288;
+        std::cout << "min_array " << std::endl;
+        for (std::size_t i = 0; i <= Bitmasks::max_level; ++i)
+            os << std::bitset<64>(Bitmasks::min_array[i]) << " " << i
+               << std::endl;
+        os << "max_array " << std::endl;
+        for (std::size_t i = 0; i <= Bitmasks::max_level; ++i)
+            os << std::bitset<64>(Bitmasks::max_array[i]) << " " << i
+               << std::endl;
+        os << "coord_mask_array " << std::endl;
+        for (std::size_t i = 0; i <= Bitmasks::max_level; ++i)
+            os << std::bitset<64>(Bitmasks::coord_mask_array[i]) << " " << i
+               << std::endl;
+        os << "level coord_mask_array " << std::endl;
+        for (std::size_t i = 0; i <= Bitmasks::max_level; ++i)
+            os << std::bitset<64>(Bitmasks::level_coord_mask_array[i]) << " "
+               << i << std::endl;
+        return os;
+    }
 
-static constexpr std::array<scalar_coordinate_type,20> max_coord_arr = {{ max_coord_0,  max_coord_1,  max_coord_2,
-                                                                   max_coord_3,  max_coord_4,  max_coord_5,
-                                                                   max_coord_6,  max_coord_7,  max_coord_8,
-                                                                   max_coord_9,  max_coord_10, max_coord_11,
-                                                                   max_coord_12, max_coord_13, max_coord_14,
-                                                                   max_coord_15, max_coord_16, max_coord_17,
-                                                                   max_coord_18, max_coord_19  }};
-
+  public: //static memebers:
+    static constexpr index_type coord_mask = get_coord_mask();
+    static constexpr index_type level_mask = get_level_mask();
+    static constexpr index_type lo_mask = get_lo_mask();
+    static constexpr index_type hi_mask = get_hi_mask();
+    static constexpr std::array<index_type, max_level + 1> min_array =
+        get_min_array();
+    static constexpr std::array<index_type, max_level + 1> max_array =
+        get_max_array();
+    static constexpr std::array<index_type, max_level + 1> coord_mask_array =
+        get_coord_mask_arr();
+    static constexpr std::array<index_type, max_level + 1>
+        level_coord_mask_array = get_level_coord_mask_arr();
+    static constexpr std::array<scalar_coordinate_type, max_level + 1>
+        max_coord_array = get_max_coord_arr();
 };
-
-constexpr decltype(Bitmasks<3>::min_arr) Bitmasks<3>::min_arr;
-constexpr decltype(Bitmasks<3>::max_arr) Bitmasks<3>::max_arr;
-constexpr decltype(Bitmasks<3>::coord_mask_arr) Bitmasks<3>::coord_mask_arr;
-constexpr decltype(Bitmasks<3>::max_coord_arr)  Bitmasks<3>::max_coord_arr;
 
 } // namespace octree
 } // namespace iblgf

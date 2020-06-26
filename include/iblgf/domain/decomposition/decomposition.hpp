@@ -246,7 +246,7 @@ class Decomposition
                     continue;
                 if (!oct || !oct->has_data())
                 {
-                    oct = domain_->tree()->insert_td(nk);
+                    oct = domain_->tree()->insert(nk);
                     f(oct);
                     oct->flag_leaf(true);
                     oct->flag_correction(false);

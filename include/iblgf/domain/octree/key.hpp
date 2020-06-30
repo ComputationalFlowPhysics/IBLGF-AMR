@@ -538,7 +538,6 @@ struct Key
     template<class Archive>
     void serialize(Archive& ar, const unsigned int version)
     {
-        BOOST_ATTRIBUTE_UNUSED(version);
         ar& index_;
     }
 

@@ -11,5 +11,6 @@
 #      ▀▀▀▀▀▀▀▀▀▀▀  ▀▀▀▀▀▀▀▀▀▀   ▀▀▀▀▀▀▀▀▀▀▀  ▀▀▀▀▀▀▀▀▀▀▀  ▀
 
 add_subdirectory (datafields)
+#add_subdirectory (tree)
 add_subdirectory (vortexrings)
 add_subdirectory (ifherk_heat)

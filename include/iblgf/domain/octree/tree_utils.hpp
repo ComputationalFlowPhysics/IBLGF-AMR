@@ -288,7 +288,7 @@ struct IteratorDfs : public IteratorBase<Node, IteratorDfs<Node, Dim>>
     using iterator_category = typename iterator_base_type::iterator_category;
 
   public: //ctors
-    using iterator_base_type::IteratorBase;
+    using typename iterator_base_type::IteratorBase;
 
     IteratorDfs(const IteratorDfs&) = default;
     IteratorDfs& operator=(const IteratorDfs&) & = default;

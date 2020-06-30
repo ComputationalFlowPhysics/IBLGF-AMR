@@ -236,7 +236,7 @@ class hdf5_file
     }
 
     hid_type create_simple_space(
-        int rank = 1, const hsize_t* dims = -1, const hsize_t* max_dims = NULL)
+        int rank = 1, const hsize_t* dims = NULL, const hsize_t* max_dims = NULL)
     {
         return H5Screate_simple(rank, dims, max_dims);
     }

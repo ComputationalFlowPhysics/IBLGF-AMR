@@ -285,11 +285,15 @@ class Task : public Task_base<TaskBuffer<Tag, T, ID>, BufferPolicy, ID>
 {
   public:
     using super_type = Task_base<TaskBuffer<Tag, T, ID>, BufferPolicy, ID>;
-    using super_type::Task_base;
+    using typename super_type::Task_base;
     using id_type = ID;
     using buffer_type = TaskBuffer<Tag, T, ID>;
     using buffer_container_type = typename buffer_type::container_t;
     using data_type = T;
+
+  public: //Ctors
+    Task()=default;
+    Task(id_type _id) :super_type(_id){}
 
     using inplace_task_type = Task<Tag, T, Inplace, MetaDataType, ID>;
 

@@ -69,8 +69,8 @@ class TaskManager
     template<class TaskType>
     bool done() const noexcept
     {
-        return send_communicator<TaskType>.done() &&
-               recv_communicator<TaskType>.done();
+        return (send_communicator<TaskType>().done() &&
+               recv_communicator<TaskType>().done());
     }
 
     bool all_done() const noexcept

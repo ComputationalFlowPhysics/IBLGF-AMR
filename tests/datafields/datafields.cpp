@@ -48,10 +48,17 @@ TEST(datafield_test, ctors)
     using f1_type = Field<f1_traits>;
 
     //Using convience macro to generate fields:
-    REGISTER_FIELDS(Dim,
-        //Fields tuples
-        ((p, int, 1, 1, 1, cell, true),
-            (vel, float_type, 3, 1, 1, face, false)))
+    // clang-format off
+    REGISTER_FIELDS
+    (Dim,
+     //Fields tuples
+     (
+        (p,    float_type,  1,  1,  1,  cell,true),
+        (vel,  float_type,  3,  1,  1,  face,false)
+     )
+
+     )
+    // clang-format on
 
     using datablock_t =
         DataBlock<Dim, node, f0_type, f1_type, p_type, vel_type>;

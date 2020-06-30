@@ -48,23 +48,29 @@ class SetupBase
     using SetupTraits::Dim;
 
   public: //default fields
-    REGISTER_FIELDS(Dim, ((source_tmp, float_type, 1, 1, 1, cell, false),
-                             (correction_tmp, float_type, 1, 1, 1, cell, false),
-                             (target_tmp, float_type, 1, 1, 1, cell, false),
-                             (fmm_s, float_type, 1, 1, 1, cell, false),
-                             (fmm_t, float_type, 1, 1, 1, cell, false),
-                             //flow variables
-                             (q_i, float_type, 3, 1, 1, face, false),
-                             (u_i, float_type, 3, 1, 1, face, false),
-                             (d_i, float_type, 1, 1, 1, cell, false),
-                             (g_i, float_type, 3, 1, 1, face, false),
-                             (r_i, float_type, 3, 1, 1, face, false),
-                             (w_1, float_type, 3, 1, 1, face, false),
-                             (w_2, float_type, 3, 1, 1, face, false),
-                             (cell_aux, float_type, 1, 1, 1, cell, true),
-                             (face_aux, float_type, 3, 1, 1, face, false),
-                             (stream_f, float_type, 3, 1, 1, edge, true),
-                             (edge_aux, float_type, 3, 1, 1, edge, true)))
+    // clang-format off
+    REGISTER_FIELDS
+    (Dim,
+    (
+      (source_tmp,          float_type,  1,  1,  1,  cell,false),
+      (correction_tmp,      float_type,  1,  1,  1,  cell,false),
+      (target_tmp,          float_type,  1,  1,  1,  cell,false),
+      (fmm_s,               float_type,  1,  1,  1,  cell,false),
+      (fmm_t,               float_type,  1,  1,  1,  cell,false),
+      //flow variables
+      (q_i,                 float_type,  3,  1,  1,  face,false),
+      (u_i,                 float_type,  3,  1,  1,  face,false),
+      (d_i,                 float_type,  1,  1,  1,  cell,false),
+      (g_i,                 float_type,  3,  1,  1,  face,false),
+      (r_i,                 float_type,  3,  1,  1,  face,false),
+      (w_1,                 float_type,  3,  1,  1,  face,false),
+      (w_2,                 float_type,  3,  1,  1,  face,false),
+      (cell_aux,            float_type,  1,  1,  1,  cell,true),
+      (face_aux,            float_type,  3,  1,  1,  face,false),
+      (stream_f,            float_type,  3,  1,  1,  edge,true),
+      (edge_aux,            float_type,  3,  1,  1,  edge,true)
+    ))
+    // clang-format on
 
     using field_tuple = fields_tuple_t;
 
@@ -183,17 +189,17 @@ class SetupBase
             //auto& nodes_domain = it_t->data().nodes_domain();
             //for (auto it2 = nodes_domain.begin(); it2 != nodes_domain.end();
             //     ++it2)
-            for(auto& node: it_t->data())
+            for (auto& node : it_t->data())
             {
-                float_type tmp_exact = node(Exact::tag(),field_idx);
-                float_type tmp_num = node(Numeric::tag(),field_idx); 
+                float_type tmp_exact = node(Exact::tag(), field_idx);
+                float_type tmp_num = node(Numeric::tag(), field_idx);
 
                 //if(std::isnan(tmp_num))
                 //    std::cout<<"this is nan at level = " << it_t->level()<<std::endl;
 
                 float_type error_tmp = tmp_num - tmp_exact;
 
-                node(Error::tag(),field_idx);
+                node(Error::tag(), field_idx);
 
                 L2 += error_tmp * error_tmp * (dx * dx * dx);
                 L2_exact += tmp_exact * tmp_exact * (dx * dx * dx);

@@ -51,15 +51,20 @@ const int Dim = 3;
 struct parameters
 {
     static constexpr std::size_t Dim = 3;
-    REGISTER_FIELDS(Dim,
-        (
-            //name               type        Dim   lBuffer  hBuffer, storage type
-            (error_u, float_type, 3, 1, 1, face, true),
-            (decomposition, float_type, 1, 1, 1, cell, true),
-            //IF-HERK
-            (u, float_type, 3, 1, 1, face, true),
-            (u_ref, float_type, 3, 1, 1, face, true),
-            (p, float_type, 1, 1, 1, cell, true)))
+    // clang-format off
+    REGISTER_FIELDS
+    (
+    Dim,
+     (
+        //name               type        Dim   lBuffer  hBuffer, storage type
+         (error_u          , float_type, 3,    1,       1,     face,true ),
+         (decomposition    , float_type, 1,    1,       1,     cell,true ),
+        //IF-HERK
+         (u                , float_type, 3,    1,       1,     face,true ),
+         (u_ref            , float_type, 3,    1,       1,     face,true ),
+         (p                , float_type, 1,    1,       1,     cell,true )
+    ))
+    // clang-format on
 };
 
 struct IfherkHeat : public SetupBase<IfherkHeat, parameters>

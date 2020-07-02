@@ -229,12 +229,7 @@ struct IteratorBfs : public IteratorBase<Node, IteratorBfs<Node, Dim>>
     IteratorBfs& operator=(const IteratorBfs&) & = default;
     ~IteratorBfs() = default;
     IteratorBfs() = default;
-
-    IteratorBfs& operator=(IteratorBfs&& other)
-    {
-        this->current_ = other->current_;
-        this->queue_ = std::move(other->queue_);
-    }
+    IteratorBfs& operator=(IteratorBfs&& other)=default;
 
     IteratorBfs(node_type* _ptr) noexcept
     : iterator_base_type(_ptr)
@@ -295,12 +290,8 @@ struct IteratorDfs : public IteratorBase<Node, IteratorDfs<Node, Dim>>
     IteratorDfs& operator=(const IteratorDfs&) & = default;
     ~IteratorDfs() = default;
     IteratorDfs() = default;
+    IteratorDfs& operator=(IteratorDfs&& other)=default;
 
-    IteratorDfs& operator=(IteratorDfs&& other)
-    {
-        this->current_ = other->current_;
-        this->stack_ = std::move(other->stack_);
-    }
     IteratorDfs(node_type* _ptr) noexcept
     : iterator_base_type(_ptr)
     {

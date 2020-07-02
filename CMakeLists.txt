@@ -75,7 +75,7 @@ else()
     set(MPI_CXX_SKIP_MPICXX OFF)
 endif()
 
-set(IBLGF_TESTING OFF CACHE BOOL "True if tests shall be built")
+set(IBLGF_TESTING ON CACHE BOOL "True if tests shall be built")
 
 add_library(iblgf INTERFACE)
 add_library(iblgf::iblgf ALIAS iblgf)

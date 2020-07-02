@@ -24,12 +24,7 @@ namespace iblgf
 namespace octree
 {
 using namespace types;
-/**
- *  @brief Test fixure for oct-tree
- *
- *  Here handing, boundary or buffer are used as identifiers.
- *
- */
+/** @brief Test fixure for oct-tree */
 class tree_tests : public ::testing::Test
 {
   public:

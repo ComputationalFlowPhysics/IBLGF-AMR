@@ -433,7 +433,7 @@ class PoissonSolver
     void copy_leaf(std::size_t _field_idx_from = 0,
         std::size_t _field_idx_to = 0, bool with_buffer = false)
     {
-        for (auto it = domain_->begin_leafs(); it != domain_->end_leafs(); ++it)
+        for (auto it = domain_->begin_leaves(); it != domain_->end_leaves(); ++it)
             if (it->locally_owned())
             {
                 auto& lin_data_1 =

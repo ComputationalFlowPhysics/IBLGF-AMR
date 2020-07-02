@@ -270,7 +270,7 @@ class Client : public ClientBase<ServerClientTraits<Domain>>
         std::vector<int>   level_change;
         const int          myRank = w.rank();
 
-        for (auto it = domain_->begin_leafs(); it != domain_->end_leafs(); ++it)
+        for (auto it = domain_->begin_leaves(); it != domain_->end_leaves(); ++it)
         {
             if (!it->locally_owned()) continue;
 

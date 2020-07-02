@@ -123,8 +123,8 @@ struct OperatorTest : public SetupBase<OperatorTest, parameters>
             mDuration_type lap_duration(0);
             TIME_CODE(lap_duration,
                 SINGLE_ARG(
-                    for (auto it = domain_->begin_leafs();
-                         it != domain_->end_leafs(); ++it) {
+                    for (auto it = domain_->begin_leaves();
+                         it != domain_->end_leaves(); ++it) {
                         if (!it->locally_owned() || !it->has_data()) continue;
                         auto dx_level =
                             dx_base / std::pow(2, it->refinement_level());
@@ -137,8 +137,8 @@ struct OperatorTest : public SetupBase<OperatorTest, parameters>
                         domain::Operator::gradient<grad_source, grad_target>(
                             *(it->has_data()), dx_level);
                     } client->buffer_exchange<curl_target>();
-                    for (auto it = domain_->begin_leafs();
-                         it != domain_->end_leafs(); ++it) {
+                    for (auto it = domain_->begin_leaves();
+                         it != domain_->end_leaves(); ++it) {
                         if (!it->locally_owned() || !it->has_data()) continue;
                         auto dx_level =
                             dx_base / std::pow(2, it->refinement_level());
@@ -176,7 +176,7 @@ struct OperatorTest : public SetupBase<OperatorTest, parameters>
         //center+=0.5/std::pow(2,nRef);
         const float_type dx_base = domain_->dx_base();
 
-        for (auto it = domain_->begin_leafs(); it != domain_->end_leafs(); ++it)
+        for (auto it = domain_->begin_leaves(); it != domain_->end_leaves(); ++it)
         {
             if (!it->locally_owned()) continue;
             if (!(*it && it->has_data())) continue;
@@ -357,7 +357,7 @@ struct OperatorTest : public SetupBase<OperatorTest, parameters>
 
         if (domain_->is_server()) return;
 
-        for (auto it_t = domain_->begin_leafs(); it_t != domain_->end_leafs();
+        for (auto it_t = domain_->begin_leaves(); it_t != domain_->end_leaves();
              ++it_t)
         {
             if (!it_t->locally_owned() || !it_t->has_data()) continue;

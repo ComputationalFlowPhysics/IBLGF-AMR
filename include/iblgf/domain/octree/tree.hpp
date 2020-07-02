@@ -64,11 +64,11 @@ class Tree
     using coordinate_transform_t =
         std::function<real_coordinate_type(real_coordinate_type, int _level)>;
 
-  public:
+  public: //friends
     friend octant_base_type;
     friend octant_type;
 
-  public:
+  public: //Ctors
     Tree() = default;
     Tree(const Tree& other) = delete;
     Tree(Tree&& other) = default;
@@ -95,16 +95,6 @@ class Tree
         this->init(keys, _base_level);
     }
 
-    /**
-     *  @brief Top-Down construction of octree.
-     *
-     *  Basd on a vector of keys
-     */
-    Tree(const std::vector<key_type>& _keys, int _base_level)
-    {
-        this->init(_keys, _base_level);
-    }
-
     Tree(int _base_level)
     {
         this->base_level_ = _base_level;
@@ -112,7 +102,24 @@ class Tree
         root_ = std::make_shared<octant_type>(coordinate_type(0), 0, this);
     }
 
-  public:
+    Tree(coordinate_type _extent)
+    {
+        base_level_ = -1;
+        for (auto& e : _extent)
+        {
+            const int l2 = static_cast<int>(clog2(e - 1));
+            base_level_ = l2 > base_level_ ? l2 : base_level_;
+        }
+        depth_ = base_level_ + 1;
+        root_ = std::make_shared<octant_type>(coordinate_type(0), 0, this);
+
+        rcIterator<Dim>::apply(
+            coordinate_type(0), _extent, [&](const coordinate_type& _p) {
+                this->insert(key_type(_p, base_level_));
+            });
+    }
+
+  public: //Initializers:
     template<class Function = std::function<void(octant_type* c)>>
     void init(
         const std::vector<key_type>& _keys,
@@ -146,7 +153,7 @@ class Tree
     }
 
   public: //queries
-    auto num_leafs() const noexcept { return leafs_.size(); }
+    auto num_leafs() const noexcept { return leaves_.size(); }
 
     const int& base_level() const noexcept { return base_level_; }
     int&       base_level() noexcept { return base_level_; }
@@ -156,15 +163,26 @@ class Tree
     octant_type* root() const noexcept { return root_.get(); }
 
   public: //iteration
-    auto begin() const noexcept { return dfs_iterator(root_.get()); }
-    auto end() const noexcept { return dfs_iterator(); }
+    /** @{ @brief Depth-first tree iterators*/
+    auto begin_df() const noexcept { return dfs_iterator(root()); }
+    auto end_df() const noexcept{ return dfs_iterator(); }
+    /** @} */
+    /** @{ @brief Breadth-first tree iterators*/
+    auto begin_bf() const noexcept{ return bfs_iterator(root()); }
+    auto end_bf() const noexcept{ return bfs_iterator(); }
+    /** @} */
+    /** @{ @brief Tree iterators, default is depth-first order */
+    auto begin() const noexcept { return begin_df(); }
+    auto end() const noexcept { return end_df(); }
+    /** @} */
+    /** @{ @brief leaf iterator */
+    octant_iterator begin_leaves() const noexcept { return leaves_.begin(); }
+    octant_iterator end_leaves() const noexcept { return leaves_.end(); }
+    octant_iterator begin_leaves() noexcept { return leaves_.begin(); }
+    octant_iterator end_leaves() noexcept { return leaves_.end(); }
+    /** @} */
 
-    octant_iterator begin_leafs() const noexcept { return leafs_.begin(); }
-    octant_iterator end_leafs() const noexcept { return leafs_.end(); }
-
-    octant_iterator begin_leafs() noexcept { return leafs_.begin(); }
-    octant_iterator end_leafs() noexcept { return leafs_.end(); }
-
+    /** @{ @brief Level iterators */
     octant_iterator begin(int _level) noexcept
     {
         return level_maps_[_level].begin();
@@ -181,17 +199,26 @@ class Tree
     {
         return level_maps_[_level].end();
     }
+    /** @} */
 
   public: //Find
-    const octant_iterator find(int _level, key_type key) const noexcept
+    /** @{ @brief Find tree nodes base on key or coordinate and level  */
+    template<class Iterator = dfs_iterator>
+    Iterator find(const coordinate_type& _c, int _level) const noexcept
     {
-        return level_maps_[_level].find(key);
+        return Iterator(find_octant(key_type(_c, _level)));
     }
-
-    octant_iterator find(int _level, key_type key) noexcept
+    template<class Iterator = dfs_iterator>
+    Iterator find(const coordinate_type& _c) const noexcept
     {
-        return level_maps_[_level].find(key);
+        return Iterator(find_octant(key_type(_c, base_level())));
     }
+    template<class Iterator = dfs_iterator>
+    Iterator find(key_type key) const noexcept
+    {
+        return Iterator(find_octant(key));
+    }
+    /** @} */
 
     /** @brief Find tree node based on key. */
     octant_type* find_octant(const key_type& _k) const noexcept
@@ -207,6 +234,32 @@ class Tree
         }
         return n;
     }
+
+  public: // Insert
+    /** @{ @brief Insertion of node.
+     *
+     *     Either based on coordinate and level or directly the morton key.
+     * */
+    octant_type* insert(const coordinate_type& _x, int _level) noexcept
+    {
+        return insert(key_type(_x, _level));
+    }
+    octant_type* insert(key_type _k) noexcept
+    {
+        if (!root_)
+            root_ = std::make_shared<octant_type>(coordinate_type(0), 0, this);
+        auto n = root();
+        auto level = _k.level();
+        for (int l = 1; l <= level; ++l)
+        {
+            auto child = n->child(_k.child_number(l));
+            if (!child) { child = n->refine(_k.child_number(l)); }
+            n = child;
+        }
+        if (_k.level() + 1 > depth_) depth_ = _k.level() + 1;
+        return n;
+    }
+    /** @} */
 
   public: //misc
     auto unfound_neighbors(octant_type* _l, bool correction_as_neighbors = true)
@@ -420,52 +473,6 @@ class Tree
         return octant_to_real_coordinate_(_x, _level);
     }
 
-  private: //find
-    template<class Node>
-    bool has_leaf(Node& _node) const
-    {
-        auto it = leafs_.find(_node.key());
-        if (it != leafs_.end()) return true;
-        return false;
-    }
-
-    auto find_leafs(octant_base_type _node)
-    {
-        return octant_iterator(leafs_.find(_node.key()));
-    }
-
-    octant_type* find_leaf(key_type _k)
-    {
-        auto it = leafs_.find(_k);
-        if (it != leafs_.end()) return it->second;
-        else
-            return nullptr;
-    }
-
-  public: // Insert
-    /** @{ @brief Insertion of node.
-     *
-     *     Either based on coordinate and level or directly the morton key.
-     * */
-    octant_type* insert(const coordinate_type& _x, int _level) noexcept
-    {
-        return insert(key_type(_x, _level));
-    }
-    octant_type* insert(key_type _k) noexcept
-    {
-        if (!root_) root_ = std::make_shared<octant_type>(coordinate_type(0), 0,this);
-        auto n = root();
-        auto level = _k.level();
-        for (int l = 1; l <= level; ++l)
-        {
-            auto child = n->child(_k.child_number(l));
-            if (!child) { child = n->refine(_k.child_number(l)); }
-            n = child;
-        }
-        if (_k.level() + 1 > depth_) depth_ = _k.level() + 1;
-        return n;
-    }
-    /** @} */
 
   public: // misc
     void construct_level_maps()
@@ -765,11 +772,11 @@ class Tree
     }
 
   public: // leafs maps
-    auto leaf_map() { return leafs_; }
+    auto leaf_map() { return leaves_; }
 
     void construct_leaf_maps(bool _from_existing_flag = false)
     {
-        leafs_.clear();
+        leaves_.clear();
         dfs_iterator it_begin(root());
         dfs_iterator it_end;
 
@@ -780,7 +787,7 @@ class Tree
 
             if (!_from_existing_flag) it->flag_leaf(it->is_leaf_search());
 
-            if (it->is_leaf()) { leafs_.emplace(it->key(), it.ptr()); }
+            if (it->is_leaf()) { leaves_.emplace(it->key(), it.ptr()); }
         }
     }
 
@@ -842,14 +849,14 @@ class Tree
     }
 
   private:
-    /** \brief Coordinate transform from octant coordinate to real coordinates*/
+    /** @brief Coordinate transform from octant coordinate to real coordinates*/
     coordinate_transform_t octant_to_real_coordinate_ = &Tree::unit_transform;
 
     int                              base_level_ = 0; ///< Base level
     int                              depth_ = 0;      ///< Tree depth
     std::shared_ptr<octant_type>     root_ = nullptr; ///< Tree root
     std::vector<octant_ptr_map_type> level_maps_;     ///< Octants per level
-    octant_ptr_map_type              leafs_;          ///< Map of tree leafs
+    octant_ptr_map_type              leaves_;         ///< Map of tree leafs
 };
 
 } //namespace octree

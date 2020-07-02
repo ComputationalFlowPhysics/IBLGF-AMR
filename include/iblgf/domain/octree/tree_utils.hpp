@@ -148,7 +148,7 @@ class IteratorBase : public crtp::Crtps<Derived, IteratorBase<T, Derived>>
     IteratorBase() = default;
     IteratorBase(pointer _ptr)
     : current_(_ptr)
-    , end_(false)
+    , end_( !_ptr)
     {
     }
 
@@ -188,7 +188,6 @@ class IteratorBase : public crtp::Crtps<Derived, IteratorBase<T, Derived>>
         return (lhs.end_
                     ? (lhs.end_ == rhs.end_)
                     : (rhs.end_ ? (false) : (lhs.current_ == rhs.current_)));
-        return lhs.current_ == rhs.current_;
     }
     friend bool operator!=(
         const IteratorBase& lhs, const IteratorBase& rhs) noexcept
@@ -197,6 +196,8 @@ class IteratorBase : public crtp::Crtps<Derived, IteratorBase<T, Derived>>
     }
 
     pointer ptr() const noexcept { return current_; }
+
+    bool is_end(){return end_;}
 
   protected:
     pointer current_ = nullptr;
@@ -344,8 +345,6 @@ struct ConditionalIterator : public Iterator
 
   public:                     //Ctors
     using Iterator::Iterator; //inherite base class ctors
-    //using Iterator::operator=;
-
     using condition_t = std::function<bool(ConditionalIterator&)>;
 
   public: //Ctors

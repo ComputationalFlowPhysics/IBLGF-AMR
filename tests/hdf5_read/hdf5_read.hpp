@@ -223,7 +223,7 @@ struct HDF5Read : public SetupBase<HDF5Read, parameters>
         //          <<", ghosts: "<<nGhost
         //          <<", allocated ghosts: "<<nAllocated<<std::endl;
 
-        for (auto it = domain_->begin_leafs(); it != domain_->end_leafs(); ++it)
+        for (auto it = domain_->begin_leaves(); it != domain_->end_leaves(); ++it)
         {
             if (!it->locally_owned()) continue;
             if (!(*it && it->has_data())) continue;

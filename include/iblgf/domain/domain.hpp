@@ -681,8 +681,8 @@ class Domain
     }
 
   public: // Iterators:
-    auto begin_leafs() noexcept { return t_->begin_leafs(); }
-    auto end_leafs() noexcept { return t_->end_leafs(); }
+    auto begin_leaves() noexcept { return t_->begin_leaves(); }
+    auto end_leaves() noexcept { return t_->end_leaves(); }
     auto num_leafs() const noexcept { return t_->num_leafs(); }
     auto begin_df() { return dfs_iterator(t_->root()); }
     auto end_df() { return dfs_iterator(); }
@@ -913,7 +913,7 @@ class Domain
 
         if (this->is_client())
         {
-            for (auto it = this->begin_leafs(); it != this->end_leafs(); ++it)
+            for (auto it = this->begin_leaves(); it != this->end_leaves(); ++it)
             {
                 if (!it->locally_owned() || !it->has_data()) continue;
 
@@ -952,7 +952,7 @@ class Domain
         os << "Domain Bounding Box: " << d.bounding_box_ << std::endl;
         os << "Interior Key Bounding Box: " << d.key_bd_box_ << std::endl;
         //os<<"Fields:"<<std::endl;
-        //auto it=d.begin_leafs();
+        //auto it=d.begin_leaves();
         //it->data().for_fields([&](auto& field)
         //        {
         //            os<<"\t "<<field.name()<<std::endl;

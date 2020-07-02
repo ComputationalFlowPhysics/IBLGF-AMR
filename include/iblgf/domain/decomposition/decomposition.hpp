@@ -192,7 +192,7 @@ class Decomposition
             }
 
             std::unordered_map<key_t, bool> checklist;
-            for (auto it = domain_->begin_leafs(); it != domain_->end_leafs();
+            for (auto it = domain_->begin_leaves(); it != domain_->end_leaves();
                  ++it)
             {
                 int l_change = it->aim_level_change();
@@ -271,7 +271,7 @@ class Decomposition
 
             // dynmaic Programming to rduce repeated checks
             std::unordered_set<octant_t*> checklist_reset_2to1_aim_deletion;
-            for (auto it = domain_->begin_leafs(); it != domain_->end_leafs();
+            for (auto it = domain_->begin_leaves(); it != domain_->end_leaves();
                  ++it)
             {
                 if (it->refinement_level() > 0)
@@ -467,7 +467,7 @@ class Decomposition
             auto old_leaf_map = domain_->tree()->leaf_map();
             sync_decomposition();
 
-            for (auto it = domain_->begin_leafs(); it != domain_->end_leafs();
+            for (auto it = domain_->begin_leaves(); it != domain_->end_leaves();
                  ++it)
             {
                 if (!it->locally_owned()) continue;

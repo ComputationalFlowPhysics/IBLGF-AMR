@@ -177,7 +177,7 @@ class SetupBase
 
         if (domain_->is_server()) return -1.0;
 
-        for (auto it_t = domain_->begin_leafs(); it_t != domain_->end_leafs();
+        for (auto it_t = domain_->begin_leaves(); it_t != domain_->end_leaves();
              ++it_t)
         {
             if (!it_t->locally_owned() || !it_t->has_data()) continue;

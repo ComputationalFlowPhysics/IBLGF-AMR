@@ -50,8 +50,7 @@ class vector
     template<typename T2>
     vector(const vector<T2, N>& other)
     {
-        for (unsigned int i = 0; i < N; ++i)
-            data[i] = static_cast<T>(other.data[i]);
+        for (unsigned int i = 0; i < N; ++i) data[i] = static_cast<T>(other[i]);
     }
     vector(const std::array<T, N>& _data)
     : data(_data)
@@ -71,14 +70,17 @@ class vector
     }
 
   public: // static member functions
-    static constexpr std::size_t size() { return N; }
+    static constexpr std::size_t size() noexcept { return N; }
 
   public: // member functions
-    reference       operator[](size_type pos) { return data[pos]; }
-    const_reference operator[](size_type pos) const { return data[pos]; }
+    reference       operator[](size_type pos) noexcept { return data[pos]; }
+    const_reference operator[](size_type pos) const noexcept
+    {
+        return data[pos];
+    }
 
-    reference       operator()(size_type i) { return data[i]; }
-    const_reference operator()(size_type i) const { return data[i]; }
+    reference       operator()(size_type i) noexcept { return data[i]; }
+    const_reference operator()(size_type i) const noexcept { return data[i]; }
 
     reference       front() { return data.front(); }
     const_reference front() const { return data.front(); }
@@ -119,213 +121,183 @@ class vector
     const_reverse_iterator rend() const { return data.rend(); }
     const_reverse_iterator crend() const { return data.crend(); }
 
-  public: // arithmetic member functions
-    vector& operator+=(const vector& other)
+  public: // arithmetic operator overloads
+    vector& operator+=(const vector& other) noexcept
     {
         for (unsigned int i = 0; i < N; ++i) data[i] += other[i];
         return *this;
     }
-    vector& operator+=(const T& element)
+    vector& operator+=(const T& element) noexcept
     {
         for (unsigned int i = 0; i < N; ++i) data[i] += element;
         return *this;
     }
-    vector& operator-=(const vector& other)
+    vector& operator-=(const vector& other) noexcept
     {
         for (unsigned int i = 0; i < N; ++i) data[i] -= other[i];
         return *this;
     }
-    vector& operator-=(const T& element)
+    vector& operator-=(const T& element) noexcept
     {
         for (unsigned int i = 0; i < N; ++i) data[i] -= element;
         return *this;
     }
-    vector& operator*=(const vector& other)
+    vector& operator*=(const vector& other) noexcept
     {
         for (unsigned int i = 0; i < N; ++i) data[i] *= other[i];
         return *this;
     }
-    vector& operator*=(const T& element)
+    vector& operator*=(const T& element) noexcept
     {
         for (unsigned int i = 0; i < N; ++i) data[i] *= element;
         return *this;
     }
-    vector& operator/=(const vector& other)
+    vector& operator/=(const vector& other) noexcept
     {
         for (unsigned int i = 0; i < N; ++i) data[i] /= other[i];
         return *this;
     }
-    vector& operator/=(const T& element)
+    vector& operator/=(const T& element) noexcept
     {
         for (unsigned int i = 0; i < N; ++i) data[i] /= element;
         return *this;
     }
 
-  public: // members
+    friend vector operator-(vector v) noexcept
+    {
+        for (unsigned int i = 0; i < N; ++i) v.data[i] = -v.data[i];
+        return v;
+    }
+
+  public: // Rational operator overloads
+    friend bool operator==(const vector& lhs, const vector& rhs) noexcept
+    {
+        return lhs.data == rhs.data;
+    }
+
+    friend bool operator!=(const vector& lhs, const vector& rhs) noexcept
+    {
+        return lhs.data != rhs.data;
+    }
+
+    friend bool operator<(const vector& lhs, const vector& rhs) noexcept
+    {
+        return lhs.data < rhs.data;
+    }
+
+    friend bool operator<=(const vector& lhs, const vector& rhs) noexcept
+    {
+        return lhs.data <= rhs.data;
+    }
+
+    friend bool operator>(const vector& lhs, const vector& rhs) noexcept
+    {
+        return lhs.data > rhs.data;
+    }
+
+    friend bool operator>=(const vector& lhs, const vector& rhs) noexcept
+    {
+        return lhs.data >= rhs.data;
+    }
+
+  private: // members
     data_type data;
 };
 
-template<class T, std::size_t N>
-bool
-operator==(const math::vector<T, N>& lhs, const math::vector<T, N>& rhs)
-{
-    return lhs.data == rhs.data;
-}
+/****************************************************************************/
+//Binary arithmetic operator overloads
 
-template<class T, std::size_t N>
-bool
-operator!=(const math::vector<T, N>& lhs, const math::vector<T, N>& rhs)
+template<typename U, typename V, std::size_t N>
+auto
+operator+(const vector<U, N>& lhs, const vector<V, N>& rhs)
 {
-    return lhs.data != rhs.data;
+    vector<typename std::common_type<U, V>::type, N> res(lhs);
+    return res += rhs;
 }
-
-template<class T, std::size_t N>
-bool
-operator<(const math::vector<T, N>& lhs, const math::vector<T, N>& rhs)
+template<typename U, typename V, std::size_t N>
+auto
+operator+(const vector<U, N>& lhs, const V& rhs)
 {
-    return lhs.data < rhs.data;
+    vector<typename std::common_type<U, V>::type, N> res(lhs);
+    return res += rhs;
 }
-
-template<class T, std::size_t N>
-bool
-operator<=(const math::vector<T, N>& lhs, const math::vector<T, N>& rhs)
+template<typename U, typename V, std::size_t N>
+auto
+operator+(const V& lhs, const vector<U, N>& rhs)
 {
-    return lhs.data <= rhs.data;
-}
-
-template<class T, std::size_t N>
-bool
-operator>(const math::vector<T, N>& lhs, const math::vector<T, N>& rhs)
-{
-    return lhs.data > rhs.data;
-}
-
-template<class T, std::size_t N>
-bool
-operator>=(const math::vector<T, N>& lhs, const math::vector<T, N>& rhs)
-{
-    return lhs.data >= rhs.data;
-}
-
-template<typename T, std::size_t N>
-math::vector<T, N>
-operator-(math::vector<T, N> v)
-{
-    for (unsigned int i = 0; i < N; ++i) v.data[i] = -v.data[i];
-    return std::move(v);
+    vector<typename std::common_type<U, V>::type, N> res(rhs);
+    return res += lhs;
 }
 
 template<typename U, typename V, std::size_t N>
-math::vector<typename std::common_type<U, V>::type, N>
-operator+(const math::vector<U, N>& lhs, const math::vector<V, N>& rhs)
+auto
+operator-(const vector<U, N>& lhs, const vector<V, N>& rhs)
 {
-    math::vector<typename std::common_type<U, V>::type, N> res(lhs);
-    for (unsigned int i = 0; i < N; ++i) res[i] += rhs[i];
-    return res;
+    vector<typename std::common_type<U, V>::type, N> res(lhs);
+    return res -= rhs;
+}
+template<typename U, typename V, std::size_t N>
+auto
+operator-(const vector<U, N>& lhs, const V& rhs)
+{
+    vector<typename std::common_type<U, V>::type, N> res(lhs);
+    return res -= rhs;
+}
+template<typename U, typename V, std::size_t N>
+auto
+operator-(const V& lhs, const vector<U, N>& rhs)
+{
+    vector<typename std::common_type<U, V>::type, N> res(rhs);
+    return res -= lhs;
 }
 
 template<typename U, typename V, std::size_t N>
-math::vector<typename std::common_type<U, V>::type, N>
-operator+(const math::vector<U, N>& lhs, const V& rhs)
+auto operator*(const vector<U, N>& lhs, const vector<V, N>& rhs)
 {
-    math::vector<typename std::common_type<U, V>::type, N> res(lhs);
-    for (unsigned int i = 0; i < N; ++i) res[i] += rhs;
-    return res;
+    vector<typename std::common_type<U, V>::type, N> res(lhs);
+    return res *= rhs;
+}
+template<typename U, typename V, std::size_t N>
+auto operator*(const vector<U, N>& lhs, const V& rhs)
+{
+    vector<typename std::common_type<U, V>::type, N> res(lhs);
+    return res *= rhs;
+}
+template<typename U, typename V, std::size_t N>
+auto operator*(const V& lhs, const vector<U, N>& rhs)
+{
+    vector<typename std::common_type<U, V>::type, N> res(rhs);
+    return res *= lhs;
 }
 
 template<typename U, typename V, std::size_t N>
-math::vector<typename std::common_type<U, V>::type, N>
-operator+(const V& lhs, const math::vector<U, N>& rhs)
+auto
+operator/(const vector<U, N>& lhs, const vector<V, N>& rhs)
 {
-    math::vector<typename std::common_type<U, V>::type, N> res(rhs);
-    for (unsigned int i = 0; i < N; ++i) res[i] += lhs;
-    return res;
+    vector<typename std::common_type<U, V>::type, N> res(lhs);
+    return res /= rhs;
 }
-
 template<typename U, typename V, std::size_t N>
-math::vector<typename std::common_type<U, V>::type, N>
-operator-(const math::vector<U, N>& lhs, const math::vector<V, N>& rhs)
+auto
+operator/(const vector<U, N>& lhs, const V& rhs)
 {
-    math::vector<typename std::common_type<U, V>::type, N> res(lhs);
-    for (unsigned int i = 0; i < N; ++i) res[i] -= rhs[i];
-    return res;
+    vector<typename std::common_type<U, V>::type, N> res(lhs);
+    return res /= rhs;
 }
-
 template<typename U, typename V, std::size_t N>
-math::vector<typename std::common_type<U, V>::type, N>
-operator-(const math::vector<U, N>& lhs, const V& rhs)
+auto
+operator/(const V& lhs, const vector<U, N>& rhs)
 {
-    math::vector<typename std::common_type<U, V>::type, N> res(lhs);
-    for (unsigned int i = 0; i < N; ++i) res[i] -= rhs;
-    return res;
-}
-
-template<typename U, typename V, std::size_t N>
-math::vector<typename std::common_type<U, V>::type, N>
-operator-(const V& lhs, const math::vector<U, N>& rhs)
-{
-    math::vector<typename std::common_type<U, V>::type, N> res(rhs);
-    for (unsigned int i = 0; i < N; ++i) res[i] -= lhs;
-    return res;
-}
-
-template<typename U, typename V, std::size_t N>
-math::vector<typename std::common_type<U, V>::type, N> operator*(
-    const math::vector<U, N>& lhs, const math::vector<V, N>& rhs)
-{
-    math::vector<typename std::common_type<U, V>::type, N> res(lhs);
-    for (unsigned int i = 0; i < N; ++i) res[i] *= rhs[i];
-    return res;
-}
-
-template<typename U, typename V, std::size_t N>
-math::vector<typename std::common_type<U, V>::type, N> operator*(
-    const math::vector<U, N>& lhs, const V& rhs)
-{
-    math::vector<typename std::common_type<U, V>::type, N> res(lhs);
-    for (unsigned int i = 0; i < N; ++i) res[i] *= rhs;
-    return res;
-}
-
-template<typename U, typename V, std::size_t N>
-math::vector<typename std::common_type<U, V>::type, N> operator*(
-    const V& lhs, const math::vector<U, N>& rhs)
-{
-    math::vector<typename std::common_type<U, V>::type, N> res(rhs);
-    for (unsigned int i = 0; i < N; ++i) res[i] *= lhs;
-    return res;
-}
-
-template<typename U, typename V, std::size_t N>
-math::vector<typename std::common_type<U, V>::type, N>
-operator/(const math::vector<U, N>& lhs, const math::vector<V, N>& rhs)
-{
-    math::vector<typename std::common_type<U, V>::type, N> res(lhs);
-    for (unsigned int i = 0; i < N; ++i) res[i] /= rhs[i];
-    return res;
-}
-
-template<typename U, typename V, std::size_t N>
-math::vector<typename std::common_type<U, V>::type, N>
-operator/(const math::vector<U, N>& lhs, const V& rhs)
-{
-    math::vector<typename std::common_type<U, V>::type, N> res(lhs);
-    for (unsigned int i = 0; i < N; ++i) res[i] /= rhs;
-    return res;
-}
-
-template<typename U, typename V, std::size_t N>
-math::vector<typename std::common_type<U, V>::type, N>
-operator/(const V& lhs, const math::vector<U, N>& rhs)
-{
-    math::vector<typename std::common_type<U, V>::type, N> res(rhs);
+    vector<typename std::common_type<U, V>::type, N> res(rhs);
     for (unsigned int i = 0; i < N; ++i) res[i] = lhs / res[i];
     return res;
 }
 
+/****************************************************************************/
+
 template<typename U, typename V, std::size_t N>
-typename std::common_type<U, V>::type
-dot(const math::vector<U, N>& lhs, const math::vector<V, N>& rhs)
+auto
+dot(const vector<U, N>& lhs, const vector<V, N>& rhs)
 {
     typename std::common_type<U, V>::type res(lhs[0] * rhs[0]);
     for (unsigned int i = 1; i < N; ++i) res += lhs[i] * rhs[i];
@@ -334,14 +306,14 @@ dot(const math::vector<U, N>& lhs, const math::vector<V, N>& rhs)
 
 template<typename U, std::size_t N>
 U
-norm2(const math::vector<U, N>& v)
+norm2(const vector<U, N>& v)
 {
     return dot(v, v);
 }
 
 template<typename U, std::size_t N>
 U
-norm_inf(const math::vector<U, N>& v)
+norm_inf(const vector<U, N>& v)
 {
     using namespace std;
     auto m = abs(v[0]);
@@ -351,10 +323,10 @@ norm_inf(const math::vector<U, N>& v)
 
 template<typename U, typename V, std::size_t N>
 typename std::enable_if<N == 3,
-    math::vector<typename std::common_type<U, V>::type, N>>::type
-cross(const math::vector<U, N>& lhs, const math::vector<V, N>& rhs)
+    vector<typename std::common_type<U, V>::type, N>>::type
+cross(const vector<U, N>& lhs, const vector<V, N>& rhs)
 {
-    return math::vector<typename std::common_type<U, V>::type, N>(
+    return vector<typename std::common_type<U, V>::type, N>(
         {lhs.y() * rhs.z() - lhs.z() * rhs.y(),
             lhs.z() * rhs.x() - lhs.x() * rhs.z(),
             lhs.x() * rhs.y() - lhs.y() * rhs.x()});
@@ -362,7 +334,7 @@ cross(const math::vector<U, N>& lhs, const math::vector<V, N>& rhs)
 
 template<typename U, typename V, std::size_t N>
 typename std::enable_if<N == 2, typename std::common_type<U, V>::type>::type
-cross(const math::vector<U, N>& lhs, const math::vector<V, N>& rhs)
+cross(const vector<U, N>& lhs, const vector<V, N>& rhs)
 {
     return lhs.x() * rhs.y() - lhs.y() * rhs.x();
 }

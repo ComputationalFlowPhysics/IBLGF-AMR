@@ -45,14 +45,17 @@ enum class MeshObject : int
     vertex
 };
 
-class Datafield_trait{};
+class Datafield_trait
+{
+};
 
-template<class DataType, std::size_t Dim, class Traits=Datafield_trait>
-class DataField : public BlockDescriptor<int, Dim>, public Traits
+template<class DataType, std::size_t Dim>
+class DataField : public BlockDescriptor<int, Dim>
 {
   public: //member types
     using size_type = types::size_type;
     using data_type = DataType;
+    static constexpr std::size_t dimension() { return Dim; };
 
     template<typename T>
     using vector_type = types::vector_type<T, Dim>;
@@ -65,23 +68,48 @@ class DataField : public BlockDescriptor<int, Dim>, public Traits
 
   public: //Ctors:
     DataField() = default;
-
     ~DataField() = default;
-    DataField(const DataField& rhs) = delete;
-    DataField& operator=(const DataField&) & = delete;
 
-    DataField(DataField&& rhs) = default;
-    DataField& operator=(DataField&&) & = default;
-
-    DataField(const buffer_d_t& _lBuffer, const buffer_d_t& _hBuffer)
-    : lowBuffer_(_lBuffer)
-    , highBuffer_(_hBuffer)
+    //FIXME: Remove that cube_ alias to avoid all that
+    DataField(const DataField& rhs)
+    : data_(rhs.data_)
+    , lowBuffer_(rhs.lowBuffer_)
+    , highBuffer_(rhs.highBuffer_)
+    , real_block_(rhs.real_block_)
+    , cube_(std::make_unique<linalg::Cube_t>(&data_[0], real_block_.extent()[0],
+          real_block_.extent()[1], real_block_.extent()[2]))
     {
     }
-    DataField(const int _lBuffer, const int _hBuffer)
-    : lowBuffer_(_lBuffer)
-    , highBuffer_(_hBuffer)
+
+    DataField& operator=(const DataField _other)
     {
+        std::swap(data_, _other.data);
+        std::swap(lowBuffer_, _other.lowBuffer_);
+        std::swap(highBuffer_, _other.highBuffer_);
+        std::swap(real_block_, _other.real_block_);
+        std::swap(cube_, _other.real_block_);
+        return *this;
+    }
+
+    DataField(DataField&& rhs)
+    : data_(std::move(rhs.data_))
+    , lowBuffer_(std::move(rhs.lowBuffer_))
+    , highBuffer_(std::move(rhs.highBuffer_))
+    , real_block_(std::move(rhs.real_block_))
+    , cube_(std::make_unique<linalg::Cube_t>(&data_[0], real_block_.extent()[0],
+          real_block_.extent()[1], real_block_.extent()[2]))
+    {
+    }
+    DataField& operator=(DataField&& _other)
+    {
+        data_ = std::move(_other.data);
+        lowBuffer_ = std::move(_other.lowBuffer_);
+        highBuffer_ = std::move(_other.highBuffer_);
+        real_block_ = std::move(_other.real_block_);
+        cube_ =
+            std::make_unique<linalg::Cube_t>(&data_[0], real_block_.extent()[0],
+                real_block_.extent()[1], real_block_.extent()[2]);
+        return *this;
     }
 
   public: //member functions
@@ -89,9 +117,13 @@ class DataField : public BlockDescriptor<int, Dim>, public Traits
      *
      *  @param[in] _b Blockdescriptor
      */
-    void initialize(block_type _b, bool _allocate = true, bool _default = false,
-        DataType _dval = DataType())
+    void initialize(block_type _b, buffer_d_t _lb = buffer_d_t(0),
+        buffer_d_t _hb = buffer_d_t(0), bool _allocate = true,
+        bool _default = false, data_type _dval = data_type()) noexcept
     {
+        lowBuffer_ = _lb;
+        highBuffer_ = _hb;
+
         this->real_block_.base(_b.base() - lowBuffer_);
         this->real_block_.extent(_b.extent() + lowBuffer_ + highBuffer_);
         this->real_block_.level() = _b.level();
@@ -102,16 +134,17 @@ class DataField : public BlockDescriptor<int, Dim>, public Traits
         if (_allocate) data_.resize(real_block_.nPoints());
         if (_default) { std::fill(data_.begin(), data_.end(), _dval); }
 
-        auto ext = real_block_.extent();
+        const auto ext = real_block_.extent();
         cube_ = std::make_unique<linalg::Cube_t>(
             (types::float_type*)&data_[0], ext[0], ext[1], ext[2]);
     }
 
-    auto&       operator[](size_type i) noexcept { return data_[i]; }
-    const auto& operator[](size_type i) const noexcept { return data_[i]; }
-
     auto begin() noexcept { return data_.begin(); }
     auto end() noexcept { return data_.end(); }
+
+  public: //Access
+    auto&       operator[](size_type i) noexcept { return data_[i]; }
+    const auto& operator[](size_type i) const noexcept { return data_[i]; }
 
     auto& data() { return data_; }
     auto  data_ptr() { return &data_; }
@@ -119,44 +152,177 @@ class DataField : public BlockDescriptor<int, Dim>, public Traits
     auto& linalg_data() { return cube_->data_; }
     auto& linalg() { return cube_; }
 
-    auto size() const noexcept { return data_.size(); }
-
-    inline DataType* get_ptr(const coordinate_t& _c) noexcept
+    inline data_type* get_ptr(const coordinate_t& _c) noexcept
     {
         return &data_[real_block_.index(_c)];
     }
-    inline const DataType* get_ptr(const coordinate_t& _c) const noexcept
+    inline const data_type* get_ptr(const coordinate_t& _c) const noexcept
     {
         return &data_[real_block_.index(_c)];
     }
-    inline DataType& get(const coordinate_t& _c) noexcept
+    inline data_type& get(const coordinate_t& _c) noexcept
     {
         return data_[real_block_.index(_c)];
     }
-    inline const DataType& get(const coordinate_t& _c) const noexcept
+    inline const data_type& get(const coordinate_t& _c) const noexcept
     {
         return data_[real_block_.index(_c)];
     }
 
-    inline const DataType& get_real_local(const coordinate_t& _c) const noexcept
+    inline const data_type& get_real_local(const coordinate_t& _c) const
+        noexcept
     {
         return data_[real_block_.index_zeroBase(_c)];
     }
-    inline DataType& get_real_local(const coordinate_t& _c) noexcept
+    inline data_type& get_real_local(const coordinate_t& _c) noexcept
     {
         return data_[real_block_.index_zeroBase(_c)];
     }
 
     //IJK access
-    inline const DataType& get_real_local(int _i, int _j, int _k) const noexcept
+    inline const data_type& get_real_local(int _i, int _j, int _k) const
+        noexcept
     {
         return data_[real_block_.index_zeroBase(_i, _j, _k)];
     }
-    inline DataType& get_real_local(int _i, int _j, int _k) noexcept
+    inline data_type& get_real_local(int _i, int _j, int _k) noexcept
     {
         return data_[real_block_.index_zeroBase(_i, _j, _k)];
     }
 
+  public: //unary arithmetic operator overloads
+    /** @brief Scalar assign operator */
+    DataField& operator=(const data_type& element) noexcept
+    {
+        std::fill(data_.begin(), data_.end(), element);
+        return *this;
+    }
+
+    /** @{
+     * @brief element wise add operator */
+    DataField& operator+=(const DataField& other) noexcept
+    {
+        for (unsigned int i = 0; i < data_.size(); ++i) data_[i] += other[i];
+        return *this;
+    }
+    DataField& operator+=(const data_type& element) noexcept
+    {
+        for (unsigned int i = 0; i < data_.size(); ++i) data_[i] += element;
+        return *this;
+    }
+    /** @} */
+
+    /** @{
+     * @brief element wise subtract operator */
+    DataField& operator-=(const DataField& other) noexcept
+    {
+        for (unsigned int i = 0; i < data_.size(); ++i) data_[i] -= other[i];
+        return *this;
+    }
+    DataField& operator-=(const data_type& element) noexcept
+    {
+        for (unsigned int i = 0; i < data_.size(); ++i) data_[i] -= element;
+        return *this;
+    }
+    /** @} */
+
+    /** @{
+     * @brief element wise multiply operator */
+    DataField& operator*=(const DataField& other) noexcept
+    {
+        for (unsigned int i = 0; i < data_.size(); ++i) data_[i] *= other[i];
+        return *this;
+    }
+    DataField& operator*=(const data_type& element) noexcept
+    {
+        for (unsigned int i = 0; i < data_.size(); ++i) data_[i] *= element;
+        return *this;
+    }
+    /** @} */
+
+    /** @{
+     * @brief element wise divide operator */
+    DataField& operator/=(const DataField& other) noexcept
+    {
+        for (unsigned int i = 0; i < data_.size(); ++i) data_[i] /= other[i];
+        return *this;
+    }
+    DataField& operator/=(const data_type& element) noexcept
+    {
+        for (unsigned int i = 0; i < data_.size(); ++i) data_[i] /= element;
+        return *this;
+    }
+    /** @} */
+
+  public: //binary arithmetic operator overloads
+    /****************************************************************************/
+    //Binary arithmetic operator overloads
+
+    /** @{
+     * @brief element wise add operator */
+    friend auto operator+(DataField lhs, const DataField& rhs) noexcept
+    {
+        return lhs += rhs;
+    }
+    friend auto operator+(DataField lhs, const data_type& rhs) noexcept
+    {
+        return lhs += rhs;
+    }
+    friend auto operator+(const data_type& lhs, DataField rhs) noexcept
+    {
+        return rhs += lhs;
+    }
+    /** @} */
+
+    /** @{
+     * @brief element wise subtract operator */
+    friend auto operator-(DataField lhs, const DataField& rhs) noexcept
+    {
+        return lhs -= rhs;
+    }
+    friend auto operator-(DataField lhs, const data_type& rhs) noexcept
+    {
+        return lhs -= rhs;
+    }
+    friend auto operator-(const data_type& lhs, DataField rhs) noexcept
+    {
+        return rhs -= lhs;
+    }
+    /** @} */
+
+    /** @{
+     * @brief element wise multiply operator */
+    friend auto operator*(DataField lhs, const DataField& rhs) noexcept
+    {
+        return lhs *= rhs;
+    }
+    friend auto operator*(DataField lhs, const data_type& rhs) noexcept
+    {
+        return lhs *= rhs;
+    }
+    friend auto operator*(const data_type& lhs, DataField rhs) noexcept
+    {
+        return rhs *= lhs;
+    }
+    /** @} */
+
+    /** @{
+   * @brief element wise divide operator */
+    friend auto operator/(DataField lhs, const DataField& rhs) noexcept
+    {
+        return lhs /= rhs;
+    }
+    friend auto operator/(DataField lhs, const data_type& rhs) noexcept
+    {
+        return lhs /= rhs;
+    }
+    friend auto operator/(const data_type& lhs, DataField rhs) noexcept
+    {
+        for (unsigned int i = 0; i < rhs.size(); ++i) rhs[i] = lhs / rhs[i];
+    }
+    /** @} */
+
+  public: //Misc members:
     template<class BlockType, class OverlapType>
     bool buffer_overlap(
         const BlockType& other, OverlapType& overlap, int level) const noexcept
@@ -189,6 +355,8 @@ class DataField : public BlockDescriptor<int, Dim>, public Traits
     const block_type& real_block() const noexcept { return real_block_; }
     block_type&       real_block() noexcept { return real_block_; }
 
+    auto size() const noexcept { return data_.size(); }
+
     /** @brief Get a (sub-)view of the datafield */
     auto view(
         const block_type& _b, coordinate_t _stride = coordinate_t(1)) noexcept
@@ -198,26 +366,29 @@ class DataField : public BlockDescriptor<int, Dim>, public Traits
     auto domain_view() noexcept { return view(*this); }
     auto real_domain_view() noexcept { return view(real_block_); }
 
-  protected:                     //protected memeber:
-    std::vector<DataType> data_; ///< actual data
-    std::unique_ptr<linalg::Cube_t>
-               cube_; ///< Linear algebra wrapper for the actual data >
+  protected:                                //protected memebers:
+    std::vector<data_type> data_;           ///< actual data
     buffer_d_t lowBuffer_ = buffer_d_t(0);  ///< Buffer in negative direction
     buffer_d_t highBuffer_ = buffer_d_t(0); ///< Buffer in positive direction
     block_type real_block_; ///< Block descriptorinlcuding buffer
+
+    /** @brief Linear algebra wrapper for the actual data */
+    std::unique_ptr<linalg::Cube_t> cube_;
 };
+
+/****************************************************************************/
 
 template<class Traits>
 struct Field;
 
-template<class Tag, class DataType,std::size_t NFields, std::size_t lBuff,
-         std::size_t hBuff, MeshObject MeshType, std::size_t Dim, bool _output>
+template<class Tag, class DataType, std::size_t NFields, std::size_t lBuff,
+    std::size_t hBuff, MeshObject MeshType, std::size_t Dim, bool _output>
 struct field_traits
 {
-    using tag_type=Tag;
-    using data_type=DataType;
-    using field_type=Field<field_traits>;
-    using data_field_t = DataField<data_type, Dim, field_traits>;
+    using tag_type = Tag;
+    using data_type = DataType;
+    using field_type = Field<field_traits>;
+    using data_field_t = DataField<data_type, Dim>;
 
     static constexpr std::size_t nFields = NFields;
     static constexpr MeshObject  mesh_type = MeshType;
@@ -227,8 +398,11 @@ struct field_traits
     static constexpr std::size_t hBuffer = lBuff;
     static constexpr std::size_t lBuffer = hBuff;
 
-    static auto name() noexcept { return tag_type::c_str(); }
-    static constexpr tag_type tag() {return tag_type{};}
+    //TODO: make all constexpr fcts and remove the rest
+    static constexpr std::size_t lowBuffer() { return lBuff; }
+    static constexpr std::size_t highBuffer() { return hBuff; }
+    static auto                  name() noexcept { return tag_type::c_str(); }
+    static constexpr tag_type    tag() { return tag_type{}; }
 };
 
 template<class Traits>
@@ -242,37 +416,52 @@ class Field : public Traits
     static constexpr bool        output = traits::output;
     static constexpr std::size_t Dim = traits::Dim;
 
-
     using data_type = typename traits::data_type;
     using data_field_t = typename traits::data_field_t;
     using view_type = typename data_field_t::view_type;
+    using block_type = typename data_field_t::block_type;
 
-    Field()
-    {
-        for (std::size_t i = 0; i < traits::nFields; ++i)
-        { fields_[i] = data_field_t(traits::lBuffer, traits::hBuffer); }
-    }
+    Field() = default;
+
     auto&       operator[](std::size_t i) noexcept { return fields_[i]; }
     const auto& operator[](std::size_t i) const noexcept { return fields_[i]; }
 
-    auto& linalg(int _idx=0) noexcept { return fields_[_idx].linalg(); }
-    const auto& linalg(int _idx=0) const noexcept { return fields_[_idx].linalg(); }
-    auto& linalg_data(int _idx=0) noexcept { return fields_[_idx].linalg_data(); }
-    const auto& linalg_data(int _idx=0) const noexcept { return fields_[_idx].linalg_data(); }
+    auto&       linalg(int _idx = 0) noexcept { return fields_[_idx].linalg(); }
+    const auto& linalg(int _idx = 0) const noexcept
+    {
+        return fields_[_idx].linalg();
+    }
+    auto& linalg_data(int _idx = 0) noexcept
+    {
+        return fields_[_idx].linalg_data();
+    }
+    const auto& linalg_data(int _idx = 0) const noexcept
+    {
+        return fields_[_idx].linalg_data();
+    }
+
+    void initialize(block_type _b, bool _allocate = true, bool _default = false,
+        data_type _dval = data_type())
+    {
+        for (std::size_t i = 0; i < traits::nFields; ++i)
+        {
+            fields_[i].initialize(_b, this->lowBuffer(), this->highBuffer(),
+                _allocate, _default, _dval);
+        }
+    }
 
   private:
     std::array<data_field_t, traits::nFields> fields_;
 };
 
-
 #define STRINGIFY(X) #X
 
 #define make_field_type_impl(                                                  \
     Dim, Name, DataType, NFields, lBuff, hBuff, MeshObjectType, output)        \
-    static constexpr tuple_tag_h           Name##_tag{STRINGIFY(Name)};         \
+    static constexpr tuple_tag_h Name##_tag{STRINGIFY(Name)};                  \
     using Name##_traits_type = field_traits<tag_type<Name##_tag>, DataType,    \
         NFields, lBuff, hBuff, MeshObject::MeshObjectType, Dim, output>;       \
-    static constexpr Name##_traits_type Name{}; \
+    static constexpr Name##_traits_type Name{};                                \
     using Name##_type = Field<Name##_traits_type>;
 
 #define make_field_type_impl_default(                                          \

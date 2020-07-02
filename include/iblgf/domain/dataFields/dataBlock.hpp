@@ -88,8 +88,7 @@ class DataBlock : public BlockDescriptor<int, Dim>
     void initialize(const block_descriptor_type& _b, bool _allocate)
     {
         tuple_utils::for_each(fields, [this, &_b, _allocate](auto& field) {
-            for (std::size_t fidx = 0; fidx < field.nFields; ++fidx)
-            { field[fidx].initialize(_b, _allocate, true, 0.0); }
+            field.initialize(_b, _allocate, true, 0.0);
         });
         this->generate_nodes();
     }
@@ -239,9 +238,7 @@ class DataBlock : public BlockDescriptor<int, Dim>
             bounding_box_.enlarge_to_fit(field[0].real_block());
         });
 
-        node_field_.lbuffer() = lbuff;
-        node_field_.hbuffer() = rbuff;
-        node_field_.initialize(*this);
+        node_field_.initialize(*this,lbuff,rbuff);
         for (std::size_t i = 0; i < node_field_.size(); ++i)
         { node_field_[i] = node_t(this, i); }
 

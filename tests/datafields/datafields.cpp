@@ -71,11 +71,11 @@ TEST(datafield_test, ctors)
         [](const auto& f) { std::cout << "Field: " << f.name() << std::endl; });
 
     auto& pfield1 = db(p);
-    std::cout << pfield1.name() << std::endl;
+    std::cout << pfield1.size() << std::endl;
     auto& pfield2 = db(p.tag());
-    std::cout << pfield2.name() << std::endl;
+    std::cout << pfield2.size() << std::endl;
     auto& pfield3 = db(p_type::tag());
-    std::cout << pfield3.name() << std::endl;
+    std::cout << pfield3.size() << std::endl;
 
     //Iteration over a fields, scalar or vector:
     //Scalar field:
@@ -97,6 +97,37 @@ TEST(datafield_test, ctors)
 
         if (count++ == 10) std::cout << "Fields on node: " << node << std::endl;
     }
+
+    //Operator overloads:
+
+    //Scalar assignment:
+    db(p)=-1;
+    for (auto& node : db) EXPECT_EQ(node(p), -1);
+    db(vel,0)=-1;
+    for (auto& node : db) EXPECT_EQ(node(vel,0), -1);
+
+    //Unary operators
+    db(p)+=3;
+    for (auto& node : db) EXPECT_EQ(node(p), 2);
+    db(p)-=1;
+    for (auto& node : db) EXPECT_EQ(node(p), 1);
+    db(p)/=2;
+    for (auto& node : db) EXPECT_EQ(node(p), 0.5);
+    db(p)*=2;
+    for (auto& node : db) EXPECT_EQ(node(p), 1);
+
+    //Binary operators
+    db(p)=1;
+    db(vel,0)=2;
+    auto p3=db(vel,0)+db(p);
+    for (auto& node : p3) EXPECT_EQ(node, 3);
+    auto p4=db(vel,0)-db(p);
+    for (auto& node : p4) EXPECT_EQ(node, 1);
+    auto p5=db(vel,0)*db(p);
+    for (auto& node : p5) EXPECT_EQ(node, 2);
+    auto p6=db(vel,0)/db(p);
+    for (auto& node : p6) EXPECT_EQ(node, 2);
+
 }
 } // namespace domain
 } //namespace iblgf

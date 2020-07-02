@@ -363,20 +363,20 @@ class Ifherk
     void up()
     {
         //Coarsification:
-        for (std::size_t _field_idx = 0; _field_idx < Field::nFields;
+        for (std::size_t _field_idx = 0; _field_idx < Field::nFields();
              ++_field_idx)
             psolver.template source_coarsify<Field, Field>(_field_idx,
-                _field_idx, Field::mesh_type, false, false, false, true);
+                _field_idx, Field::mesh_type(), false, false, false, true);
     }
 
     template<class Field>
     void down_to_correction()
     {
         // Interpolate to correction buffer
-        for (std::size_t _field_idx = 0; _field_idx < Field::nFields;
+        for (std::size_t _field_idx = 0; _field_idx < Field::nFields();
              ++_field_idx)
             psolver.template intrp_to_correction_buffer<Field, Field>(
-                _field_idx, _field_idx, Field::mesh_type, true, false, true);
+                _field_idx, _field_idx, Field::mesh_type(), true, false, true);
     }
 
     template<class AdaptField, class CriterionField>
@@ -401,9 +401,9 @@ class Ifherk
 
                 //Coarsification:
                 for (std::size_t _field_idx = 0;
-                     _field_idx < AdaptField::nFields; ++_field_idx)
+                     _field_idx < AdaptField::nFields(); ++_field_idx)
                     psolver.template source_coarsify<AdaptField, AdaptField>(
-                        _field_idx, _field_idx, AdaptField::mesh_type);
+                        _field_idx, _field_idx, AdaptField::mesh_type());
             }
         }
 
@@ -416,7 +416,7 @@ class Ifherk
         if (client)
         {
             // Intrp
-            for (std::size_t _field_idx = 0; _field_idx < AdaptField::nFields;
+            for (std::size_t _field_idx = 0; _field_idx < AdaptField::nFields();
                  ++_field_idx)
             {
                 for (int l = domain_->tree()->depth() - 2;
@@ -435,7 +435,7 @@ class Ifherk
                     if (!oct || !oct->has_data()) continue;
                     psolver.c_cntr_nli()
                         .template nli_intrp_node<AdaptField, AdaptField>(oct,
-                            AdaptField::mesh_type, _field_idx, _field_idx,
+                            AdaptField::mesh_type(), _field_idx, _field_idx,
                             false, false);
                 }
             }
@@ -570,7 +570,7 @@ class Ifherk
             if (!it->has_data()) continue;
             if (!it->data().is_allocated()) continue;
 
-            for (std::size_t field_idx = 0; field_idx < F::nFields; ++field_idx)
+            for (std::size_t field_idx = 0; field_idx < F::nFields(); ++field_idx)
             {
                 auto& lin_data = it->data_r(F::tag(), field_idx).linalg_data();
 
@@ -658,7 +658,7 @@ class Ifherk
             if (!it->locally_owned())
             {
                 if (!it->has_data() || !it->data().is_allocated()) continue;
-                for (std::size_t field_idx = 0; field_idx < F::nFields;
+                for (std::size_t field_idx = 0; field_idx < F::nFields();
                      ++field_idx)
                 {
                     auto& lin_data =
@@ -675,7 +675,7 @@ class Ifherk
 
             if (leaf_only_boundary && it->is_correction())
             {
-                for (std::size_t field_idx = 0; field_idx < F::nFields;
+                for (std::size_t field_idx = 0; field_idx < F::nFields();
                      ++field_idx)
                 {
                     auto& lin_data =
@@ -701,7 +701,7 @@ class Ifherk
                     if ((!it2 || !it2->has_data()) ||
                         (leaf_only_boundary && it2->is_correction()))
                     {
-                        for (std::size_t field_idx = 0; field_idx < F::nFields;
+                        for (std::size_t field_idx = 0; field_idx < F::nFields();
                              ++field_idx)
                         {
                             auto& lin_data =
@@ -776,7 +776,7 @@ class Ifherk
                 domain::Operator::nonlinear<Source, edge_aux_type, Target>(
                     it->data());
 
-                for (std::size_t field_idx = 0; field_idx < Target::nFields;
+                for (std::size_t field_idx = 0; field_idx < Target::nFields();
                      ++field_idx)
                 {
                     auto& lin_data =
@@ -834,7 +834,7 @@ class Ifherk
                     dx_base / math::pow2(it->refinement_level());
                 domain::Operator::gradient<Source, Target>(
                     it->data(), dx_level);
-                for (std::size_t field_idx = 0; field_idx < Target::nFields;
+                for (std::size_t field_idx = 0; field_idx < Target::nFields();
                      ++field_idx)
                 {
                     auto& lin_data =
@@ -850,12 +850,12 @@ class Ifherk
     template<typename From, typename To>
     void add(float_type scale = 1.0) noexcept
     {
-        static_assert(From::nFields == To::nFields,
+        static_assert(From::nFields() == To::nFields(),
             "number of fields doesn't match when add");
         for (auto it = domain_->begin(); it != domain_->end(); ++it)
         {
             if (!it->locally_owned() || !it->has_data()) continue;
-            for (std::size_t field_idx = 0; field_idx < From::nFields;
+            for (std::size_t field_idx = 0; field_idx < From::nFields();
                  ++field_idx)
             {
                 it->data_r(To::tag(), field_idx)
@@ -870,13 +870,13 @@ class Ifherk
     template<typename From, typename To>
     void copy(float_type scale = 1.0) noexcept
     {
-        static_assert(From::nFields == To::nFields,
+        static_assert(From::nFields() == To::nFields(),
             "number of fields doesn't match when copy");
 
         for (auto it = domain_->begin(); it != domain_->end(); ++it)
         {
             if (!it->locally_owned() || !it->has_data()) continue;
-            for (std::size_t field_idx = 0; field_idx < From::nFields;
+            for (std::size_t field_idx = 0; field_idx < From::nFields();
                  ++field_idx)
             {
                 it->data_r(To::tag(), field_idx)

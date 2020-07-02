@@ -131,7 +131,7 @@ class DataBlock : public BlockDescriptor<int, Dim>
         typename std::enable_if<
             std::tuple_element<tagged_tuple_index<typename Tag::tag_type,
                                    fields_tuple_t>::value,
-                fields_tuple_t>::type::nFields == 1,
+                fields_tuple_t>::type::nFields() == 1,
             void>::type* = nullptr>
     auto& operator[](Tag _tag) noexcept
     {
@@ -143,7 +143,7 @@ class DataBlock : public BlockDescriptor<int, Dim>
         typename std::enable_if<
             std::tuple_element<tagged_tuple_index<typename Tag::tag_type,
                                    fields_tuple_t>::value,
-                fields_tuple_t>::type::nFields == 1,
+                fields_tuple_t>::type::nFields() == 1,
             void>::type* = nullptr>
     const auto& operator[](Tag _tag) const noexcept
     {
@@ -155,7 +155,7 @@ class DataBlock : public BlockDescriptor<int, Dim>
         typename std::enable_if<
             std::tuple_element<tagged_tuple_index<typename Tag::tag_type,
                                    fields_tuple_t>::value,
-                fields_tuple_t>::type::nFields >= 2,
+                fields_tuple_t>::type::nFields() >= 2,
             void>::type* = nullptr>
     auto& operator[](Tag _tag) noexcept
     {
@@ -167,7 +167,7 @@ class DataBlock : public BlockDescriptor<int, Dim>
         typename std::enable_if<
             std::tuple_element<tagged_tuple_index<typename Tag::tag_type,
                                    fields_tuple_t>::value,
-                fields_tuple_t>::type::nFields >= 2,
+                fields_tuple_t>::type::nFields() >= 2,
             void>::type* = nullptr>
     const auto& operator[](Tag _tag) const noexcept
     {

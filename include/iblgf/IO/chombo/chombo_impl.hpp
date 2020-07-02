@@ -216,7 +216,7 @@ class Chombo
     void read_u(HDF5File* _file, Block_list_t& blocklist, Domain* domain)
     {
         // Cleaning ---------------------------------------------------------
-        std::size_t nFields = Field::nFields;
+        std::size_t nFields = Field::nFields();
         for (std::size_t field_idx = 0; field_idx < nFields; ++field_idx)
         {
             for (auto& b : blocklist)
@@ -325,16 +325,16 @@ class Chombo
                             // Finte Volume requires differnet averaging for
                             // differnt mesh objects
                             FV_avg = {avg, avg, avg};
-                            if (Field::mesh_type == MeshObject::face)
+                            if (Field::mesh_type() == MeshObject::face)
                                 FV_avg[field_idx] = single;
-                            else if (Field::mesh_type == MeshObject::edge)
+                            else if (Field::mesh_type() == MeshObject::edge)
                             {
                                 FV_avg = {single, single, single};
                                 FV_avg[field_idx] = avg;
                             }
-                            else if (Field::mesh_type == MeshObject::vertex)
+                            else if (Field::mesh_type() == MeshObject::vertex)
                                 FV_avg = {single, single, single};
-                            else if (Field::mesh_type == MeshObject::cell)
+                            else if (Field::mesh_type() == MeshObject::cell)
                             {
                             }
                             else
@@ -644,10 +644,10 @@ class Chombo
         auto operator()() const
         {
             std::string name = std::string(T::name());
-            if (!T::output) return;
-            if (T::nFields == 1) components_.push_back(name);
+            if (!T::output()) return;
+            if (T::nFields() == 1) components_.push_back(name);
             else
-                for (std::size_t fidx = 0; fidx < T::nFields; ++fidx)
+                for (std::size_t fidx = 0; fidx < T::nFields(); ++fidx)
                     components_.push_back(name + "_" + std::to_string(fidx));
         }
 
@@ -671,7 +671,7 @@ class Chombo
         auto operator()() const
         {
             if (!T::output) return;
-            for (std::size_t fidx = 0; fidx < T::nFields; ++fidx)
+            for (std::size_t fidx = 0; fidx < T::nFields(); ++fidx)
             {
                 double                   field_value = 0.0;
                 boost::mpi::communicator world;

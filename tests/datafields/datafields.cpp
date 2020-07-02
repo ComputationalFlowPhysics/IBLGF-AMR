@@ -81,7 +81,7 @@ TEST(datafield_test, ctors)
     //Scalar field:
     for (auto& el : db(p)) { el = -3; }
     //Vector field:
-    for (std::size_t i = 0; i < vel.nFields; ++i)
+    for (std::size_t i = 0; i < vel.nFields(); ++i)
     {
         for (auto& el : db(vel,0)) { el = 10; }
     }

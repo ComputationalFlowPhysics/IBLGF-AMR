@@ -70,7 +70,7 @@ class DataField : public BlockDescriptor<int, Dim>
     DataField() = default;
     ~DataField() = default;
 
-    //FIXME: Remove that cube_ alias to avoid all that
+    //TODO: Remove that cube_ alias to avoid all that
     DataField(const DataField& rhs)
     : data_(rhs.data_)
     , lowBuffer_(rhs.lowBuffer_)
@@ -113,10 +113,7 @@ class DataField : public BlockDescriptor<int, Dim>
     }
 
   public: //member functions
-    /** @brief Initialize the datafield and grow according to buffer
-     *
-     *  @param[in] _b Blockdescriptor
-     */
+    /** @brief Initialize the datafield and grow according to buffer */
     void initialize(block_type _b, buffer_d_t _lb = buffer_d_t(0),
         buffer_d_t _hb = buffer_d_t(0), bool _allocate = true,
         bool _default = false, data_type _dval = data_type()) noexcept
@@ -255,9 +252,6 @@ class DataField : public BlockDescriptor<int, Dim>
     /** @} */
 
   public: //binary arithmetic operator overloads
-    /****************************************************************************/
-    //Binary arithmetic operator overloads
-
     /** @{
      * @brief element wise add operator */
     friend auto operator+(DataField lhs, const DataField& rhs) noexcept
@@ -390,19 +384,13 @@ struct field_traits
     using field_type = Field<field_traits>;
     using data_field_t = DataField<data_type, Dim>;
 
-    static constexpr std::size_t nFields = NFields;
-    static constexpr MeshObject  mesh_type = MeshType;
-    static constexpr std::size_t nField = NFields;
-    static constexpr bool        output = _output;
-
-    static constexpr std::size_t hBuffer = lBuff;
-    static constexpr std::size_t lBuffer = hBuff;
-
-    //TODO: make all constexpr fcts and remove the rest
+    static auto                  name() noexcept { return tag_type::c_str(); }
+    static constexpr bool        output() { return _output; }
+    static constexpr tag_type    tag() { return tag_type{}; }
+    static constexpr std::size_t nFields() { return NFields; }
+    static constexpr MeshObject  mesh_type() { return MeshType; }
     static constexpr std::size_t lowBuffer() { return lBuff; }
     static constexpr std::size_t highBuffer() { return hBuff; }
-    static auto                  name() noexcept { return tag_type::c_str(); }
-    static constexpr tag_type    tag() { return tag_type{}; }
 };
 
 template<class Traits>
@@ -411,39 +399,19 @@ class Field : public Traits
   public:
     using traits = Traits;
     using tag_type = typename Traits::tag_type;
-
-    static constexpr MeshObject  mesh_type = traits::mesh_type;
-    static constexpr bool        output = traits::output;
-    static constexpr std::size_t Dim = traits::Dim;
-
     using data_type = typename traits::data_type;
     using data_field_t = typename traits::data_field_t;
     using view_type = typename data_field_t::view_type;
     using block_type = typename data_field_t::block_type;
 
-    Field() = default;
-
+  public:
     auto&       operator[](std::size_t i) noexcept { return fields_[i]; }
     const auto& operator[](std::size_t i) const noexcept { return fields_[i]; }
-
-    auto&       linalg(int _idx = 0) noexcept { return fields_[_idx].linalg(); }
-    const auto& linalg(int _idx = 0) const noexcept
-    {
-        return fields_[_idx].linalg();
-    }
-    auto& linalg_data(int _idx = 0) noexcept
-    {
-        return fields_[_idx].linalg_data();
-    }
-    const auto& linalg_data(int _idx = 0) const noexcept
-    {
-        return fields_[_idx].linalg_data();
-    }
 
     void initialize(block_type _b, bool _allocate = true, bool _default = false,
         data_type _dval = data_type())
     {
-        for (std::size_t i = 0; i < traits::nFields; ++i)
+        for (std::size_t i = 0; i < this->nFields(); ++i)
         {
             fields_[i].initialize(_b, this->lowBuffer(), this->highBuffer(),
                 _allocate, _default, _dval);
@@ -451,7 +419,7 @@ class Field : public Traits
     }
 
   private:
-    std::array<data_field_t, traits::nFields> fields_;
+    std::array<data_field_t, traits::nFields()> fields_;
 };
 
 #define STRINGIFY(X) #X

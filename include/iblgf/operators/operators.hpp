@@ -37,7 +37,7 @@ struct Operator
     {
         float_type m = 0.0;
 
-        for (std::size_t field_idx = 0; field_idx < Field::nFields; ++field_idx)
+        for (std::size_t field_idx = 0; field_idx < Field::nFields(); ++field_idx)
         {
             for (auto& n : block)
             {
@@ -66,8 +66,8 @@ struct Operator
     }
 
     template<class Source, class Dest, class Block,
-        typename std::enable_if<(Source::mesh_type == MeshObject::cell) &&
-                                    (Dest::mesh_type == MeshObject::face),
+        typename std::enable_if<(Source::mesh_type() == MeshObject::cell) &&
+                                    (Dest::mesh_type() == MeshObject::face),
             void>::type* = nullptr>
     static void gradient(Block& block, float_type dx_level) noexcept
     {
@@ -83,8 +83,8 @@ struct Operator
     }
 
     template<class SourceTuple, class Dest, class Block,
-        typename std::enable_if<(Dest::mesh_type == MeshObject::cell) &&
-                                    (SourceTuple::mesh_type ==
+        typename std::enable_if<(Dest::mesh_type() == MeshObject::cell) &&
+                                    (SourceTuple::mesh_type() ==
                                         MeshObject::face),
             void>::type* = nullptr>
     static void divergence(Block& block, float_type dx_level) noexcept
@@ -103,8 +103,8 @@ struct Operator
     }
 
     template<class Source, class Dest, class Block,
-        typename std::enable_if<(Source::mesh_type == MeshObject::face) &&
-                                    (Dest::mesh_type == MeshObject::edge),
+        typename std::enable_if<(Source::mesh_type() == MeshObject::face) &&
+                                    (Dest::mesh_type() == MeshObject::edge),
             void>::type* = nullptr>
     static void curl(Block& block, float_type dx_level) noexcept
     {
@@ -128,8 +128,8 @@ struct Operator
     }
 
     template<class Source, class Dest, class Block,
-        typename std::enable_if<(Source::mesh_type == MeshObject::edge) &&
-                                    (Dest::mesh_type == MeshObject::face),
+        typename std::enable_if<(Source::mesh_type() == MeshObject::edge) &&
+                                    (Dest::mesh_type() == MeshObject::face),
             void>::type* = nullptr>
     static void curl_transpose(
         Block& block, float_type dx_level, float_type scale = 1.0) noexcept
@@ -154,9 +154,9 @@ struct Operator
     }
 
     template<class Face, class Edge, class Dest, class Block,
-        typename std::enable_if<(Face::mesh_type == MeshObject::face) &&
-                                    (Edge::mesh_type == MeshObject::edge) &&
-                                    (Dest::mesh_type == MeshObject::face),
+        typename std::enable_if<(Face::mesh_type() == MeshObject::face) &&
+                                    (Edge::mesh_type() == MeshObject::edge) &&
+                                    (Dest::mesh_type() == MeshObject::face),
             void>::type* = nullptr>
     static void nonlinear(Block& block) noexcept
     {

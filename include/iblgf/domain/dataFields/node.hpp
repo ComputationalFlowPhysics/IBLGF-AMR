@@ -125,9 +125,9 @@ class node
         _n.c_->for_fields([&](const auto& field) {
             os << field.name() << " = ( ";
 
-            for (std::size_t i = 0; i < field.nFields; ++i)
+            for (std::size_t i = 0; i < field.nFields(); ++i)
             { 
-                const auto sep= i+1==field.nFields? " ":",";
+                const auto sep= i+1==field.nFields()? " ":",";
                 os << _n(field.tag(), i) << sep;
             }
             os <<")"<< std::endl;

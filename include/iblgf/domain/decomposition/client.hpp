@@ -188,8 +188,8 @@ class Client : public ClientBase<ServerClientTraits<Domain>>
             task_manager_->template recv_communicator<balance_task>();
 
         //send the actuall octants
-        //for (int field_idx=Field::nFields-1; field_idx>=0; --field_idx)
-        for (int field_idx = 0; field_idx < static_cast<int>(Field::nFields);
+        //for (int field_idx=Field::nFields()-1; field_idx>=0; --field_idx)
+        for (int field_idx = 0; field_idx < static_cast<int>(Field::nFields());
              ++field_idx)
         {
             int count = 0;

@@ -369,7 +369,7 @@ struct OperatorTest : public SetupBase<OperatorTest, parameters>
             for (auto it2 = nodes_domain.begin(); it2 != nodes_domain.end();
                  ++it2)
             {
-                for (std::size_t i = 0; i < Exact::nFields; ++i)
+                for (std::size_t i = 0; i < Exact::nFields(); ++i)
                 {
                     float_type tmp_exact = it2->template get<Exact>(i);
                     float_type tmp_num = it2->template get<Numeric>(i);

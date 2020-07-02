@@ -85,7 +85,7 @@ class PoissonSolver
     template<class Source, class Target>
     void apply_lgf(bool base_level_only = false)
     {
-        for (std::size_t entry = 0; entry < Source::nFields; ++entry)
+        for (std::size_t entry = 0; entry < Source::nFields(); ++entry)
             this->apply_lgf<Source, Target>(&lgf_lap_, entry, base_level_only);
     }
 
@@ -93,7 +93,7 @@ class PoissonSolver
     void apply_lgf_IF(float_type _alpha_base)
     {
         lgf_if_.alpha_base_level() = _alpha_base;
-        for (std::size_t entry = 0; entry < Source::nFields; ++entry)
+        for (std::size_t entry = 0; entry < Source::nFields(); ++entry)
             this->apply_if<Source, Target>(&lgf_if_, entry);
     }
 
@@ -112,7 +112,7 @@ class PoissonSolver
 
         //Coarsification:
         source_coarsify<source_tmp_type, source_tmp_type>(
-            _field_idx, 0, Source::mesh_type);
+            _field_idx, 0, Source::mesh_type());
 
         // For IF, interpolate source to correction buffers
         //for (int l  = domain_->tree()->base_level();
@@ -130,7 +130,7 @@ class PoissonSolver
         // Interpolate to correction buffer
 
         intrp_to_correction_buffer<source_tmp_type, source_tmp_type>(
-            _field_idx, 0, Source::mesh_type);
+            _field_idx, 0, Source::mesh_type());
 
         for (int l = domain_->tree()->base_level();
              l < domain_->tree()->depth(); ++l)
@@ -194,7 +194,7 @@ class PoissonSolver
 #endif
 
         source_coarsify<source_tmp_type, source_tmp_type>(
-            _field_idx, 0, Source::mesh_type);
+            _field_idx, 0, Source::mesh_type());
 
 #ifdef POISSON_TIMINGS
         auto t1_coarsify = clock_type::now();
@@ -256,7 +256,7 @@ class PoissonSolver
                         continue;
                     c_cntr_nli_
                         .nli_intrp_node<target_tmp_type, target_tmp_type>(
-                            it, Source::mesh_type, _field_idx, 0, false, false);
+                            it, Source::mesh_type(), _field_idx, 0, false, false);
                 }
 
 #ifdef POISSON_TIMINGS
@@ -292,7 +292,7 @@ class PoissonSolver
                             continue;
                         c_cntr_nli_
                             .nli_intrp_node<target_tmp_type, target_tmp_type>(
-                                it, Source::mesh_type, _field_idx, 0, false,
+                                it, Source::mesh_type(), _field_idx, 0, false,
                                 false);
                     }
 
@@ -356,7 +356,7 @@ class PoissonSolver
                     const bool correction_buffer_only = true;
                     c_cntr_nli_
                         .nli_intrp_node<source_tmp_type, correction_tmp_type>(
-                            it, Source::mesh_type, _field_idx, 0,
+                            it, Source::mesh_type(), _field_idx, 0,
                             correction_buffer_only, false);
                 }
 

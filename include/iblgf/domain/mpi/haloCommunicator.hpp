@@ -67,7 +67,7 @@ class HaloCommunicator
     void compute_tasks(
         Domain* _domain, int _level, bool axis_neighbors_only = false) noexcept
     {
-        for (std::size_t j = 0; j < Field::nFields; ++j)
+        for (std::size_t j = 0; j < Field::nFields(); ++j)
         {
             for (auto it = _domain->begin(_level); it != _domain->end(_level);
                  ++it)

@@ -20,7 +20,6 @@
 // IBLGF-specific
 #include <iblgf/types.hpp>
 #include <iblgf/domain/dataFields/blockDescriptor.hpp>
-#include <iblgf/domain/dataFields/datafield_utils.hpp>
 #include <iblgf/utilities/tuple_utilities.hpp>
 #include <iblgf/domain/dataFields/node.hpp>
 #include <iblgf/domain/dataFields/datafield.hpp>

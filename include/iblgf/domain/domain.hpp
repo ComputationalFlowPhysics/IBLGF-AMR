@@ -154,8 +154,8 @@ class Domain
     }
 
     /** @brief Initialize octree based on bases of the blocks.  **/
-    void construct_tree(std::vector<coordinate_type>& bases, coordinate_type _maxExtent,
-        coordinate_type _blockExtent)
+    void construct_tree(std::vector<coordinate_type>& bases,
+        coordinate_type _maxExtent, coordinate_type _blockExtent)
     {
         auto base_ = bounding_box_.base() / _blockExtent;
         for (auto& b : bases) b -= base_;
@@ -292,7 +292,7 @@ class Domain
         DictionaryPtr _dictionary, coordinate_type _blockExtent)
     {
         auto                         _baseBlocks = parse_blocks(_dictionary);
-        coordinate_type                     e(_blockExtent);
+        coordinate_type              e(_blockExtent);
         std::vector<coordinate_type> bases;
         for (auto& b : _baseBlocks)
         {
@@ -866,7 +866,10 @@ class Domain
     float_type dx_base() const noexcept { return dx_base_; }
 
     /**@brief Extent of each block */
-    const coordinate_type& block_extent() const noexcept { return block_extent_; }
+    const coordinate_type& block_extent() const noexcept
+    {
+        return block_extent_;
+    }
     /**@brief Extent of each block */
     coordinate_type& block_extent() noexcept { return block_extent_; }
 
@@ -998,8 +1001,8 @@ class Domain
 
   private:
     std::shared_ptr<tree_t> t_;
-    coordinate_type                block_extent_;
-    coordinate_type                bd_base_, bd_extent_;
+    coordinate_type         block_extent_;
+    coordinate_type         bd_base_, bd_extent_;
 
     block_descriptor_t bounding_box_;
     block_descriptor_t key_bd_box_;

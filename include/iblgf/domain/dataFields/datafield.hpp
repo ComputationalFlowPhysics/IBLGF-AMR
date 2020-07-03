@@ -22,7 +22,6 @@
 #include <iblgf/types.hpp>
 #include <iblgf/linalg/linalg.hpp>
 #include <iblgf/utilities/tuple_utilities.hpp>
-#include <iblgf/domain/dataFields/datafield_utils.hpp>
 #include <iblgf/domain/dataFields/blockDescriptor.hpp>
 #include <iblgf/domain/dataFields/array_ref.hpp>
 #include <iblgf/domain/dataFields/view.hpp>

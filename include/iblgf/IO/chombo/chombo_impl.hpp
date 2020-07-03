@@ -59,7 +59,7 @@ class Chombo
     using domain_t = Domain;
     using datablock_t = typename domain_t::datablock_t;
     using block_descriptor_t = typename datablock_t::block_descriptor_type;
-    using extent_t = typename block_descriptor_t::extent_t;
+    using extent_t = typename block_descriptor_t::coordinate_type;
 
     using MeshObject = domain::MeshObject;
 

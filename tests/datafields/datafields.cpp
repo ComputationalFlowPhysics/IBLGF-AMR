@@ -34,7 +34,7 @@ TEST(datafield_test, ctors)
     static constexpr int Buff = 1;
 
     using block_d_type = BlockDescriptor<int, Dim>;
-    using coordinate_t = typename block_d_type::base_t;
+    using coordinate_t = typename block_d_type::coordinate_type;
 
     //Manual way to generate fields
     static constexpr tuple_tag_h f0_tag{"f0"};
@@ -83,7 +83,7 @@ TEST(datafield_test, ctors)
     //Vector field:
     for (std::size_t i = 0; i < vel.nFields(); ++i)
     {
-        for (auto& el : db(vel,0)) { el = 10; }
+        for (auto& el : db(vel, 0)) { el = 10; }
     }
 
     //Iteration over entire datablock:
@@ -101,33 +101,32 @@ TEST(datafield_test, ctors)
     //Operator overloads:
 
     //Scalar assignment:
-    db(p)=-1;
+    db(p) = -1;
     for (auto& node : db) EXPECT_EQ(node(p), -1);
-    db(vel,0)=-1;
-    for (auto& node : db) EXPECT_EQ(node(vel,0), -1);
+    db(vel, 0) = -1;
+    for (auto& node : db) EXPECT_EQ(node(vel, 0), -1);
 
     //Unary operators
-    db(p)+=3;
+    db(p) += 3;
     for (auto& node : db) EXPECT_EQ(node(p), 2);
-    db(p)-=1;
+    db(p) -= 1;
     for (auto& node : db) EXPECT_EQ(node(p), 1);
-    db(p)/=2;
+    db(p) /= 2;
     for (auto& node : db) EXPECT_EQ(node(p), 0.5);
-    db(p)*=2;
+    db(p) *= 2;
     for (auto& node : db) EXPECT_EQ(node(p), 1);
 
     //Binary operators
-    db(p)=1;
-    db(vel,0)=2;
-    auto p3=db(vel,0)+db(p);
+    db(p) = 1;
+    db(vel, 0) = 2;
+    auto p3 = db(vel, 0) + db(p);
     for (auto& node : p3) EXPECT_EQ(node, 3);
-    auto p4=db(vel,0)-db(p);
+    auto p4 = db(vel, 0) - db(p);
     for (auto& node : p4) EXPECT_EQ(node, 1);
-    auto p5=db(vel,0)*db(p);
+    auto p5 = db(vel, 0) * db(p);
     for (auto& node : p5) EXPECT_EQ(node, 2);
-    auto p6=db(vel,0)/db(p);
+    auto p6 = db(vel, 0) / db(p);
     for (auto& node : p6) EXPECT_EQ(node, 2);
-
 }
 } // namespace domain
 } //namespace iblgf

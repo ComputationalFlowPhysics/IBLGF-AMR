@@ -21,6 +21,7 @@
 #include "task.hpp"
 #include "tag_generator.hpp"
 #include "task_communicator.hpp"
+#include <iblgf/utilities/tuple_utilities.hpp>
 
 namespace iblgf
 {

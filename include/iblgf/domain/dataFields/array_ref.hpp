@@ -22,6 +22,7 @@
 #include <iblgf/types.hpp>
 #include <iblgf/domain/dataFields/datafield_utils.hpp>
 #include <iblgf/domain/dataFields/blockDescriptor.hpp>
+#include <iblgf/utilities/tuple_utilities.hpp>
 
 namespace iblgf
 {

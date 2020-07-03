@@ -39,7 +39,7 @@ class LGF_GL : public LGF_Base<Dim, LGF_GL<Dim>>
   public: //Ctor:
     using super_type = LGF_Base<Dim, LGF_GL<Dim>>;
     using block_descriptor_t = BlockDescriptor<int, Dim>;
-    using coordinate_t = typename block_descriptor_t::base_t;
+    using coordinate_t = typename block_descriptor_t::coordinate_type;
     using complex_vector_t = typename super_type::complex_vector_t;
 
     using key_t = std::tuple<int, int, int>;

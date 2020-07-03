@@ -20,6 +20,7 @@
 #include <iblgf/lgf/lgf.hpp>
 #include <iblgf/fmm/fmm.hpp>
 #include <iblgf/domain/dataFields/dataBlock.hpp>
+#include <iblgf/utilities/tuple_utilities.hpp>
 #include <iblgf/domain/dataFields/datafield.hpp>
 #include <iblgf/solver/poisson/poisson.hpp>
 #include <iblgf/solver/time_integration/ifherk.hpp>
@@ -81,15 +82,13 @@ class SetupBase
     using db_template = domain::DataBlock<Dim, node, DataFieldType...>;
     template<class userFields>
     using datablock_template_t =
-        typename domain::tuple_utils::make_from_tuple<db_template,
-            typename domain::tuple_utils::concat<field_tuple,
-                userFields>::type>::type;
+        typename tuple_utils::make_from_tuple<db_template,
+            typename tuple_utils::concat<field_tuple, userFields>::type>::type;
 
   public: //Trait types to be used by others
     using user_fields = typename SetupTraits::fields_tuple_t;
     using datablock_t = datablock_template_t<user_fields>;
     using block_descriptor_t = typename datablock_t::block_descriptor_type;
-    using extent_t = typename block_descriptor_t::extent_t;
     using coordinate_t = typename datablock_t::coordinate_type;
     using domain_t = domain::Domain<Dim, datablock_t>;
     using domaint_init_f =

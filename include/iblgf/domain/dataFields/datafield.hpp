@@ -21,6 +21,7 @@
 // IBLGF-specific
 #include <iblgf/types.hpp>
 #include <iblgf/linalg/linalg.hpp>
+#include <iblgf/utilities/tuple_utilities.hpp>
 #include <iblgf/domain/dataFields/datafield_utils.hpp>
 #include <iblgf/domain/dataFields/blockDescriptor.hpp>
 #include <iblgf/domain/dataFields/array_ref.hpp>
@@ -63,7 +64,7 @@ class DataField : public BlockDescriptor<int, Dim>
     using super_type = BlockDescriptor<int, Dim>;
 
     using block_type = BlockDescriptor<int, Dim>;
-    using coordinate_t = typename block_type::base_t;
+    using coordinate_t = typename block_type::coordinate_type;
     using view_type = View<DataField, Dim>;
 
   public: //Ctors:

@@ -101,30 +101,6 @@ class MapValuePtrIterator : public MapType::iterator
     mapped_type ptr() { return iterator_t::operator*().second; }
 };
 
-namespace tuple_utils
-{
-template<typename Tuple, typename F, std::size_t... Indices>
-void
-for_each_impl(Tuple&& tuple, F&& f, std::index_sequence<Indices...>)
-{
-    using swallow = int[];
-    (void)swallow{1,
-        (f(std::get<Indices>(std::forward<Tuple>(tuple))), void(), int{})...};
-}
-
-template<typename Tuple, typename F>
-void
-for_each(Tuple&& tuple, F&& f)
-{
-    constexpr std::size_t N =
-        std::tuple_size<std::remove_reference_t<Tuple>>::value;
-    for_each_impl(std::forward<Tuple>(tuple), std::forward<F>(f),
-        std::make_index_sequence<N>{});
-}
-} // namespace tuple_utils
-
-namespace detail
-{
 template<class T, class Derived>
 class IteratorBase : public crtp::Crtps<Derived, IteratorBase<T, Derived>>
 {
@@ -148,7 +124,7 @@ class IteratorBase : public crtp::Crtps<Derived, IteratorBase<T, Derived>>
     IteratorBase() = default;
     IteratorBase(pointer _ptr)
     : current_(_ptr)
-    , end_( !_ptr)
+    , end_(!_ptr)
     {
     }
 
@@ -197,8 +173,6 @@ class IteratorBase : public crtp::Crtps<Derived, IteratorBase<T, Derived>>
 
     pointer ptr() const noexcept { return current_; }
 
-    bool is_end(){return end_;}
-
   protected:
     pointer current_ = nullptr;
     bool    end_ = true;
@@ -229,7 +203,7 @@ struct IteratorBfs : public IteratorBase<Node, IteratorBfs<Node, Dim>>
     IteratorBfs& operator=(const IteratorBfs&) & = default;
     ~IteratorBfs() = default;
     IteratorBfs() = default;
-    IteratorBfs& operator=(IteratorBfs&& other)=default;
+    IteratorBfs& operator=(IteratorBfs&& other) = default;
 
     IteratorBfs(node_type* _ptr) noexcept
     : iterator_base_type(_ptr)
@@ -290,7 +264,7 @@ struct IteratorDfs : public IteratorBase<Node, IteratorDfs<Node, Dim>>
     IteratorDfs& operator=(const IteratorDfs&) & = default;
     ~IteratorDfs() = default;
     IteratorDfs() = default;
-    IteratorDfs& operator=(IteratorDfs&& other)=default;
+    IteratorDfs& operator=(IteratorDfs&& other) = default;
 
     IteratorDfs(node_type* _ptr) noexcept
     : iterator_base_type(_ptr)
@@ -360,9 +334,7 @@ struct ConditionalIterator : public Iterator
     condition_t cond_;
 };
 
-} //namespace detail
-
-} //namespace octree
+} // namespace octree
 } // namespace iblgf
 
 #endif //INCLUDED_UTILS_HPP

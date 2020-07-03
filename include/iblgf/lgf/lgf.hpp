@@ -34,7 +34,7 @@ class LGF_Base : public crtp::Crtps<Derived, LGF_Base<Dim, Derived>>
 {
   public:
     using block_descriptor_t = BlockDescriptor<int, Dim>;
-    using coordinate_t = typename block_descriptor_t::base_t;
+    using coordinate_t = typename block_descriptor_t::coordinate_type;
     using dims_t = types::vector_type<int, 3>;
 
     using complex_vector_t = std::vector<std::complex<float_type>,

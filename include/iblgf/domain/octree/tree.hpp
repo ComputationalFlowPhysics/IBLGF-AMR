@@ -26,7 +26,7 @@
 // IBLGF-specific
 #include <iblgf/global.hpp>
 #include <iblgf/domain/octree/octant.hpp>
-#include <iblgf/domain/octree/tree_utils.hpp>
+#include <iblgf/domain/octree/iterators.hpp>
 
 namespace iblgf
 {
@@ -53,11 +53,11 @@ class Tree
     using octant_iterator = MapValuePtrIterator<octant_ptr_map_type>;
     using raw_octant_iterator = typename octant_ptr_map_type::iterator;
 
-    using dfs_iterator = typename detail::IteratorDfs<octant_type>;
-    using bfs_iterator = typename detail::IteratorBfs<octant_type>;
+    using dfs_iterator = IteratorDfs<octant_type>;
+    using bfs_iterator = IteratorBfs<octant_type>;
 
     template<class Iterator = bfs_iterator>
-    using conditional_iterator = typename detail::ConditionalIterator<Iterator>;
+    using conditional_iterator = ConditionalIterator<Iterator>;
 
     using block_descriptor_type = typename octant_type::block_descriptor_type;
 
@@ -165,11 +165,11 @@ class Tree
   public: //iteration
     /** @{ @brief Depth-first tree iterators*/
     auto begin_df() const noexcept { return dfs_iterator(root()); }
-    auto end_df() const noexcept{ return dfs_iterator(); }
+    auto end_df() const noexcept { return dfs_iterator(); }
     /** @} */
     /** @{ @brief Breadth-first tree iterators*/
-    auto begin_bf() const noexcept{ return bfs_iterator(root()); }
-    auto end_bf() const noexcept{ return bfs_iterator(); }
+    auto begin_bf() const noexcept { return bfs_iterator(root()); }
+    auto end_bf() const noexcept { return bfs_iterator(); }
     /** @} */
     /** @{ @brief Tree iterators, default is depth-first order */
     auto begin() const noexcept { return begin_df(); }
@@ -472,7 +472,6 @@ class Tree
     {
         return octant_to_real_coordinate_(_x, _level);
     }
-
 
   public: // misc
     void construct_level_maps()

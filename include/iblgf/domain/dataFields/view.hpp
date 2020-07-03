@@ -21,6 +21,7 @@
 #include <iblgf/domain/dataFields/datafield_utils.hpp>
 #include <iblgf/domain/dataFields/blockDescriptor.hpp>
 #include <iblgf/utilities/rcIterator.hpp>
+#include <iblgf/utilities/tuple_utilities.hpp>
 
 namespace iblgf
 {
@@ -30,12 +31,13 @@ namespace domain
 template<class View, int Dim>
 class ViewIterator
 {
-  public:
-    using view_t = View;
-    using coordinate_t = typename View::base_t;
-    using element_t = typename view_t::element_t;
 
-    struct dummy_t
+public:
+  using view_t = View;
+  using coordinate_t = typename View::coordinate_type;
+  using element_t = typename view_t::element_t;
+
+  struct dummy_t
     {
     };
 
@@ -92,13 +94,12 @@ template<class Field, int Dim = 3>
 class View : public BlockDescriptor<int, Dim>
 {
   public: //member types
-    using block_type = BlockDescriptor<int, Dim>;
-    using super_type = block_type;
-    using extent_t = typename block_type::extent_t;
-    using base_t = typename block_type::base_t;
-    using element_t = typename Field::data_type;
+  using block_type = BlockDescriptor<int, Dim>;
+  using super_type = block_type;
+  using coordinate_type = typename block_type::coordinate_type;
+  using element_t = typename Field::data_type;
 
-    using iterator_t = ViewIterator<View, Dim>;
+  using iterator_t = ViewIterator<View, Dim>;
 
   public: //Ctors:
     View() = default;
@@ -109,7 +110,7 @@ class View : public BlockDescriptor<int, Dim>
     View(View&& rhs) = default;
     View& operator=(View&&) & = default;
 
-    View(Field* _f, const block_type _view, extent_t _stride = extent_t(1))
+    View(Field* _f, const block_type _view, coordinate_type _stride = coordinate_type(1))
     : super_type(_view)
     , field_(_f)
     , stride_(_stride)
@@ -160,7 +161,7 @@ class View : public BlockDescriptor<int, Dim>
 
   public: //protected memeber:
     Field*   field_ = nullptr;
-    extent_t stride_ = extent_t(1);
+    coordinate_type stride_ = coordinate_type(1);
 };
 
 } //namespace domain

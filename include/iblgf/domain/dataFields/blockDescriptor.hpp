@@ -121,11 +121,13 @@ class BlockDescriptor
     template<typename U>
     using vector_t = typename types::vector_type<U, Dim>;
 
-    using base_t = vector_t<T>;
-    using extent_t = base_t;
+    using coordinate_type = typename types::vector_type<T, Dim>;
 
-    using min_t = base_t;
-    using max_t = base_t;
+    //using base_t = vector_t<T>;
+    //using extent_t = coordinate_type;
+
+    using min_t = coordinate_type;
+    using max_t = coordinate_type;
     using data_type = T;
 
     using size_type = types::size_type;
@@ -153,7 +155,8 @@ class BlockDescriptor
     BlockDescriptor(BlockDescriptor&& rhs) = default;
     BlockDescriptor& operator=(BlockDescriptor&& rhs) & = default;
 
-    BlockDescriptor(base_t _base, extent_t _extent, int _level = 0)
+    BlockDescriptor(
+        coordinate_type _base, coordinate_type _extent, int _level = 0)
     : base_(_base)
     , extent_(_extent)
     , level_(_level)
@@ -161,13 +164,13 @@ class BlockDescriptor
     }
 
   public: //Access
-    base_t&       base() noexcept { return base_; }
-    const base_t& base() const noexcept { return base_; }
-    void          base(const base_t& _base) noexcept { base_ = _base; }
+    coordinate_type&       base() noexcept { return base_; }
+    const coordinate_type& base() const noexcept { return base_; }
+    void base(const coordinate_type& _base) noexcept { base_ = _base; }
 
-    extent_t&       extent() noexcept { return extent_; }
-    const extent_t& extent() const noexcept { return extent_; }
-    void extent(const extent_t& _extent) noexcept { extent_ = _extent; }
+    coordinate_type&       extent() noexcept { return extent_; }
+    const coordinate_type& extent() const noexcept { return extent_; }
+    void extent(const coordinate_type& _extent) noexcept { extent_ = _extent; }
 
     min_t&       min() noexcept { return base_; }
     const min_t& min() const noexcept { return base_; }
@@ -195,7 +198,6 @@ class BlockDescriptor
         if (_level > level_)
         {
             base_ *= factor;
-            //extent_=(extent_-1)*factor +1;
             extent_ *= factor;
         }
         else
@@ -203,11 +205,6 @@ class BlockDescriptor
             //If no exact conversion possible:
             // => shrink it, e.g. base+=1, max-=1;
             auto max = this->max();
-
-            //for(std::size_t d=0;d<extent_.size();++d)
-            //{
-            //    base_[d]+=std::abs(base_[d]%factor);
-            //}
 
             for (std::size_t d = 0; d < extent_.size(); ++d)
             {
@@ -219,8 +216,6 @@ class BlockDescriptor
                 else
                     max[d] = max[d] / factor;
             }
-            //base_/=factor;
-            //max/=factor;
             this->max(max);
         }
         level_ = _level;
@@ -364,7 +359,7 @@ class BlockDescriptor
         return false;
     }
 
-    bool is_empty() const noexcept { return extent_ <= extent_t(0); }
+    bool is_empty() const noexcept { return extent_ <= coordinate_type(0); }
 
     template<typename Btype>
     void grow(Btype _lBuffer, Btype _rBuffer) noexcept
@@ -380,108 +375,6 @@ class BlockDescriptor
         return ext;
     }
 
-    template<class Block>
-    std::vector<BlockDescriptor> cutout(const std::vector<Block>& _blocks) const
-        noexcept
-    {
-        std::vector<Block> res;
-
-        //const auto dim=3;
-        constexpr auto                  dim = dimension();
-        std::array<std::vector<T>, dim> cut_locations;
-        auto                            blocks = _blocks;
-        for (auto& b : blocks)
-        {
-            b.level_scale(level_);
-            for (std::size_t d = 0; d < dim; ++d)
-            {
-                cut_locations[d].push_back(b.base()[d]);
-                cut_locations[d].push_back(b.max()[d] + 1);
-            }
-        }
-        for (std::size_t d = 0; d < dim; ++d)
-        {
-            cut_locations[d].push_back(this->base()[d]);
-            cut_locations[d].push_back(this->max()[d] + 1);
-        }
-
-        for (std::size_t d = 0; d < dim; ++d)
-            std::sort(cut_locations[d].begin(), cut_locations[d].end());
-
-        //Generate block out of cuts:
-        detail::subdivision_generator<dim, dim, Block>::apply(
-            cut_locations, res, level_);
-
-        //Erase the blocks from res:
-        for (auto it_res = res.begin(); it_res != res.end(); ++it_res)
-        {
-            for (auto& b : blocks)
-            {
-                if (it_res->base() == b.base() &&
-                    it_res->extent() == b.extent())
-                {
-                    res.erase(it_res);
-                    --it_res;
-                }
-            }
-        }
-
-        //Merging Blocks aling each dimension
-        for (unsigned int d = 0; d < dim; ++d)
-        {
-            for (auto cut_iter = res.begin(); cut_iter != res.end(); ++cut_iter)
-            {
-                auto start = cut_iter;
-                ++start;
-                for (auto cut_iter_next = start; cut_iter_next != res.end();
-                     ++cut_iter_next)
-                {
-                    //Check if no overlapping
-                    bool mergeable =
-                        cut_iter->max()[d] + 1 == cut_iter_next->base()[d];
-
-                    //Check extent match for all but my dimensions
-                    if (mergeable)
-                    {
-                        for (unsigned int i = 1; i < dim; ++i)
-                        {
-                            if ((cut_iter->base()[(d + i) % dim] !=
-                                        cut_iter_next->base()[(d + i) % dim] ||
-                                    cut_iter->extent()[(d + i) % dim] !=
-                                        cut_iter_next->extent()[(d + i) % dim]))
-                            {
-                                mergeable = false;
-                                break;
-                            }
-                        }
-                        if (mergeable)
-                        {
-                            cut_iter->extent()[d] += cut_iter_next->extent()[d];
-                            cut_iter_next = res.erase(cut_iter_next);
-                            --cut_iter_next;
-                        }
-                    }
-                }
-            }
-        }
-
-        return res;
-    }
-
-    template<typename PeriodicityBlock>
-    std::vector<BlockDescriptor> get_periodic_boxes(
-        const PeriodicityBlock& _periodicityBlock,
-        vector_t<bool> _periodicty = vector_t<bool>(true)) const noexcept
-    {
-        return get_periodic_boxes(*this, _periodicityBlock, _periodicty);
-    }
-
-    std::vector<BlockDescriptor> get_periodic_boxes(
-        vector_t<bool> _periodicty = vector_t<bool>(true)) const noexcept
-    {
-        return get_periodic_boxes(*this, *this, _periodicty);
-    }
-
     friend std::ostream& operator<<(std::ostream& os, const BlockDescriptor& b)
     {
         os << "Base: " << b.base_ << " extent: " << b.extent_
@@ -489,24 +382,14 @@ class BlockDescriptor
         return os;
     }
 
-    template<int D, class ArrayType>
-    auto get_corners_tmp(ArrayType& _base, ArrayType& _extent) const noexcept
-    {
-        std::vector<ArrayType> points;
-        ArrayType              p = _base;
-        detail::get_corners_helper<D>::apply(p, _base, _extent, points);
-        return points;
-    }
-
     auto get_corners() const noexcept
     {
-        std::vector<base_t> points;
-        base_t              p = base_;
+        std::vector<coordinate_type> points;
+        coordinate_type              p = base_;
         detail::get_corners_helper<Dim>::apply(p, base_, extent_, points);
         return points;
     }
-
-    auto divide_into(const extent_t& _e) const
+    auto divide_into(const coordinate_type& _e) const
     {
         std::array<std::vector<T>, dimension()> cuts;
         for (std::size_t d = 0; d < _e.size(); ++d)
@@ -525,146 +408,10 @@ class BlockDescriptor
         return generate_blocks_from_cuts(cuts, this->level());
     }
 
-    void append_box_stl(std::ofstream& ofs) const
-    {
-        const auto dim = base_.size();
-        bool       positive = true;
-        if (dim == 3)
-        {
-            for (std::size_t d = 0; d < dim; ++d)
-            {
-                append_plate_stl(ofs, d, positive);
-                append_plate_stl(ofs, d, !positive);
-            }
-        }
-        else if (dim == 2)
-        {
-            append_plate_stl(ofs, 2, !positive);
-        }
-        else
-        {
-            throw std::runtime_error("Cannot write stl for your dimension");
-        }
-    }
-
-    void write_stl(std::string _filename) const
-    {
-        std::ofstream ofs(_filename);
-        ofs << "solid Body_1" << std::endl;
-        append_box_stl(ofs);
-        ofs << "endsolid Body_1" << std::endl;
-    }
-
-    template<typename Array>
-    static void write_blocks(std::string _filename, Array& _blocks)
-    {
-        std::ofstream ofs(_filename);
-        ofs << "solid Body_1" << std::endl;
-        for (auto& b : _blocks) b.append_box_stl(ofs);
-        ofs << "endsolid Body_1" << std::endl;
-    }
-
-  private:
-    void append_plate_stl(std::ofstream& ofs, std::size_t _normal_idx,
-        bool positive) const noexcept
-    {
-        const auto dim = base_.size();
-        auto       p0 = base_;
-        if (positive) p0[_normal_idx] += extent_[_normal_idx];
-
-        auto       p1 = p0;
-        auto       p2 = p0;
-        const auto idx0 = (_normal_idx + 1) % dim;
-        const auto idx1 = (_normal_idx + 2) % dim;
-        p1[idx0] += extent_[idx0];
-        p2[idx1] += extent_[idx1];
-        auto p3 = p1;
-        p3[idx1] += extent_[idx1];
-
-        auto n = p0;
-        for (std::size_t d = 0; d < dim; ++d)
-        {
-            if (d == _normal_idx) n[d] = positive ? 1 : -1;
-        }
-
-        ofs << std::scientific << std::setprecision(6);
-        std::vector<decltype(p0)> vertices;
-        if (positive) vertices = {{p0, p1, p2, p1, p3, p2}};
-        else
-            vertices = {{p0, p2, p1, p1, p2, p3}};
-
-        for (unsigned int i = 0; i < 2; ++i)
-        {
-            ofs << "  facet normal " << n.x() << " " << n.y() << " " << n.z()
-                << "\n";
-            ofs << "    outer loop\n";
-            for (unsigned int j = 3 * i; j < 3 * i + 3; ++j)
-            {
-                ofs << "      vertex " << vertices[j].x() << " "
-                    << vertices[j].y() << " " << vertices[j].z() << "\n";
-                ;
-            }
-            ofs << "    endloop\n";
-            ofs << "  endfacet\n";
-        }
-    }
-
-    template<typename PeriodicityBlock>
-    std::vector<BlockDescriptor> get_periodic_boxes(BlockDescriptor _block,
-        const PeriodicityBlock& _periodicityBlock,
-        const vector_t<bool>& _periodicty, std::size_t _dimension = 0) const
-        noexcept
-    {
-        auto nDims = Dim;
-        if (!_periodicty[nDims - 1]) nDims -= 1;
-        while (!_periodicty[_dimension] && _dimension < nDims - 1) ++_dimension;
-
-        std::vector<BlockDescriptor> res;
-
-        if (_dimension < nDims - 1)
-        {
-            auto tmp = get_periodic_boxes(
-                _block, _periodicityBlock, _periodicty, _dimension + 1);
-
-            res.insert(res.end(), tmp.begin(), tmp.end());
-        }
-        else
-            res.push_back(_block);
-
-        //positive shift:
-        base_t shift(0);
-        shift[_dimension] = _periodicityBlock.extent()[_dimension];
-        _block.shift(shift);
-
-        if (_dimension < nDims - 1)
-        {
-            auto tmp = get_periodic_boxes(
-                _block, _periodicityBlock, _periodicty, _dimension + 1);
-            res.insert(res.end(), tmp.begin(), tmp.end());
-        }
-        else
-            res.push_back(_block);
-
-        //negative shift:
-        shift[_dimension] = -2 * _periodicityBlock.extent()[_dimension];
-        _block.shift(shift);
-
-        if (_dimension < nDims - 1)
-        {
-            auto tmp = get_periodic_boxes(
-                _block, _periodicityBlock, _periodicty, _dimension + 1);
-            res.insert(res.end(), tmp.begin(), tmp.end());
-        }
-        else
-            res.push_back(_block);
-
-        return res;
-    }
-
   protected:
-    base_t   base_;
-    extent_t extent_;
-    int      level_ = 0;
+    coordinate_type base_;
+    coordinate_type extent_;
+    int             level_ = 0;
 };
 
 } // namespace domain

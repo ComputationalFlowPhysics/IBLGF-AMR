@@ -23,7 +23,7 @@
 // IBLGF-specific
 #include <iblgf/global.hpp>
 #include <iblgf/domain/octree/octant_base.hpp>
-#include <iblgf/domain/octree/tree_utils.hpp>
+#include <iblgf/domain/octree/iterators.hpp>
 #include <iblgf/domain/dataFields/blockDescriptor.hpp>
 #include <iblgf/domain/dataFields/datafield.hpp>
 #include <iblgf/utilities/crtp.hpp>

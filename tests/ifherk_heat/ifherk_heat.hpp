@@ -439,7 +439,8 @@ struct IfherkHeat : public SetupBase<IfherkHeat, parameters>
     /** @brief  Initialization of the domain blocks. This is registered in the
      *          domain through the base setup class, passing it to the domain ctor.
      */
-    std::vector<extent_t> initialize_domain(Dictionary* _d, domain_t* _domain)
+    std::vector<coordinate_t> initialize_domain(
+        Dictionary* _d, domain_t* _domain)
     {
         auto res =
             _domain->construct_basemesh_blocks(_d, _domain->block_extent());

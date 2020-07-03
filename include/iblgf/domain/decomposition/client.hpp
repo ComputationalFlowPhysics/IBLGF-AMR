@@ -26,6 +26,7 @@
 #include <iblgf/domain/mpi/task_manager.hpp>
 #include <iblgf/domain/mpi/server_base.hpp>
 #include <iblgf/domain/mpi/haloCommunicator.hpp>
+#include <iblgf/utilities/tuple_utilities.hpp>
 #include "serverclient_traits.hpp"
 
 namespace iblgf

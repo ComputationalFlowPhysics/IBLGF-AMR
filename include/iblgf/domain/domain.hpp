@@ -40,8 +40,6 @@ class Domain
   public:
     using datablock_t = DataBlock;
     using block_descriptor_t = typename datablock_t::block_descriptor_type;
-    using extent_t = typename block_descriptor_t::extent_t;
-    using base_t = typename block_descriptor_t::base_t;
     using scalar_coord_type = typename block_descriptor_t::data_type;
 
     // tree related types
@@ -72,7 +70,7 @@ class Domain
 
     template<class DictionaryPtr>
     using block_initialze_fct =
-        std::function<std::vector<extent_t>(DictionaryPtr, Domain*)>;
+        std::function<std::vector<coordinate_type>(DictionaryPtr, Domain*)>;
 
     static constexpr int dimension() { return Dim; }
 
@@ -112,7 +110,7 @@ class Domain
         bd_base_ = _dictionary->template get<int, Dim>("bd_base");
         bd_extent_ = _dictionary->template get<int, Dim>("bd_extent");
 
-        std::vector<extent_t> bases;
+        std::vector<coordinate_type> bases;
         if (_init_fct) { bases = _init_fct(_dictionary, this); }
         else
         {
@@ -156,8 +154,8 @@ class Domain
     }
 
     /** @brief Initialize octree based on bases of the blocks.  **/
-    void construct_tree(std::vector<extent_t>& bases, extent_t _maxExtent,
-        extent_t _blockExtent)
+    void construct_tree(std::vector<coordinate_type>& bases, coordinate_type _maxExtent,
+        coordinate_type _blockExtent)
     {
         auto base_ = bounding_box_.base() / _blockExtent;
         for (auto& b : bases) b -= base_;
@@ -268,11 +266,11 @@ class Domain
             std::cout << "Server read restart from keys done " << std::endl;
         }
 
-        extent_t e(block_extent_);
-        extent_t bd_key_base_(0);
-        extent_t bd_key_interior_base_(baseBlockBufferNumber_);
-        extent_t bd_key_extent_ = bd_extent_;
-        extent_t bd_key_interior_extent_ = bd_extent_;
+        coordinate_type e(block_extent_);
+        coordinate_type bd_key_base_(0);
+        coordinate_type bd_key_interior_base_(baseBlockBufferNumber_);
+        coordinate_type bd_key_extent_ = bd_extent_;
+        coordinate_type bd_key_interior_extent_ = bd_extent_;
 
         for (std::size_t d = 0; d < bd_key_interior_extent_.size(); ++d)
         {
@@ -291,11 +289,11 @@ class Domain
      **/
     template<class DictionaryPtr>
     auto construct_basemesh_blocks(
-        DictionaryPtr _dictionary, extent_t _blockExtent)
+        DictionaryPtr _dictionary, coordinate_type _blockExtent)
     {
-        auto                _baseBlocks = parse_blocks(_dictionary);
-        extent_t            e(_blockExtent);
-        std::vector<base_t> bases;
+        auto                         _baseBlocks = parse_blocks(_dictionary);
+        coordinate_type                     e(_blockExtent);
+        std::vector<coordinate_type> bases;
         for (auto& b : _baseBlocks)
         {
             for (int d = 0; d < Dim; ++d)
@@ -319,8 +317,8 @@ class Domain
                 bases.push_back(base_normalized);
             }
         }
-        extent_t max(std::numeric_limits<scalar_coord_type>::lowest());
-        extent_t min(std::numeric_limits<scalar_coord_type>::max());
+        coordinate_type max(std::numeric_limits<scalar_coord_type>::lowest());
+        coordinate_type min(std::numeric_limits<scalar_coord_type>::max());
         for (auto& b : bases)
         {
             for (std::size_t d = 0; d < b.size(); ++d)
@@ -351,10 +349,10 @@ class Domain
 
         bounding_box_ = block_descriptor_t(bd_base_, bd_extent_);
 
-        extent_t bd_key_base_(0);
-        extent_t bd_key_interior_base_(baseBlockBufferNumber_);
-        extent_t bd_key_extent_ = bd_extent_;
-        extent_t bd_key_interior_extent_ = bd_extent_;
+        coordinate_type bd_key_base_(0);
+        coordinate_type bd_key_interior_base_(baseBlockBufferNumber_);
+        coordinate_type bd_key_extent_ = bd_extent_;
+        coordinate_type bd_key_interior_extent_ = bd_extent_;
 
         for (std::size_t d = 0; d < min.size(); ++d)
         {
@@ -835,43 +833,42 @@ class Domain
             auto neighbors = it->get_level_neighborhood(lbuff, hbuff);
 
             //box-overlap per field
-            it->data().for_fields([this, it, _begin, _end, &neighbors](
-                                          auto& field) {
-                for (auto& jt : neighbors)
-                {
-                    if (it->key() == jt->key()) continue;
-
-                    //Check for overlap with current
-                    block_descriptor_t overlap;
-                    if (field.buffer_overlap(jt->data().descriptor(),
-                            overlap, jt->refinement_level()))
+            it->data().for_fields(
+                [this, it, _begin, _end, &neighbors](auto& field) {
+                    for (auto& jt : neighbors)
                     {
-                        using field_type =
-                            std::remove_reference_t<decltype(field)>;
-                        auto& src = jt->data_r(field_type::tag());
-                        const auto overlap_src = overlap;
+                        if (it->key() == jt->key()) continue;
 
-                        //it is target and jt is source
-                        coordinate_type stride_tgt(1);
-                        coordinate_type stride_src(1);
+                        //Check for overlap with current
+                        block_descriptor_t overlap;
+                        if (field.buffer_overlap(jt->data().descriptor(),
+                                overlap, jt->refinement_level()))
+                        {
+                            using field_type =
+                                std::remove_reference_t<decltype(field)>;
+                            auto&      src = jt->data_r(field_type::tag());
+                            const auto overlap_src = overlap;
 
-                        assign(src, overlap, stride_src, field, overlap,
-                            stride_tgt);
+                            //it is target and jt is source
+                            coordinate_type stride_tgt(1);
+                            coordinate_type stride_src(1);
+
+                            assign(src, overlap, stride_src, field, overlap,
+                                stride_tgt);
+                        }
                     }
-                }
-            });
+                });
         }
     }
-
 
   public: //Access
     /**@brief Resolution on the base level */
     float_type dx_base() const noexcept { return dx_base_; }
 
     /**@brief Extent of each block */
-    const extent_t& block_extent() const noexcept { return block_extent_; }
+    const coordinate_type& block_extent() const noexcept { return block_extent_; }
     /**@brief Extent of each block */
-    extent_t& block_extent() noexcept { return block_extent_; }
+    coordinate_type& block_extent() noexcept { return block_extent_; }
 
     /**@brief Extent of each block */
     bool is_server() const noexcept { return decomposition_.is_server(); }
@@ -1001,8 +998,8 @@ class Domain
 
   private:
     std::shared_ptr<tree_t> t_;
-    extent_t                block_extent_;
-    extent_t                bd_base_, bd_extent_;
+    coordinate_type                block_extent_;
+    coordinate_type                bd_base_, bd_extent_;
 
     block_descriptor_t bounding_box_;
     block_descriptor_t key_bd_box_;

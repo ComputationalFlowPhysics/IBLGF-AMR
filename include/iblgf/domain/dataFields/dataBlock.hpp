@@ -21,6 +21,7 @@
 #include <iblgf/types.hpp>
 #include <iblgf/domain/dataFields/blockDescriptor.hpp>
 #include <iblgf/domain/dataFields/datafield_utils.hpp>
+#include <iblgf/utilities/tuple_utilities.hpp>
 #include <iblgf/domain/dataFields/node.hpp>
 #include <iblgf/domain/dataFields/datafield.hpp>
 
@@ -52,18 +53,14 @@ class DataBlock : public BlockDescriptor<int, Dim>
 
     using block_descriptor_type = BlockDescriptor<int, dimension>;
     using super_type = block_descriptor_type;
-    using extent_t = typename block_descriptor_type::extent_t;
-    using base_t = typename block_descriptor_type::base_t;
+    using coordinate_type = typename block_descriptor_type::coordinate_type;
 
     template<typename T>
     using vector_type = types::vector_type<T, dimension>;
 
-    using coordinate_type = base_t;
     using real_coordinate_type = vector_type<types::float_type>;
 
-
   public: //Ctors:
-
     DataBlock() = default;
     ~DataBlock() = default;
     DataBlock(const DataBlock& rhs) = delete;
@@ -72,8 +69,8 @@ class DataBlock : public BlockDescriptor<int, Dim>
     DataBlock(DataBlock&& rhs) = default;
     DataBlock& operator=(DataBlock&&) & = default;
 
-    DataBlock(
-        base_t _base, extent_t _extent, int _level = 0, bool _allocate = true)
+    DataBlock(coordinate_type _base, coordinate_type _extent, int _level = 0,
+        bool _allocate = true)
     : super_type(_base, _extent, _level)
     {
         this->initialize(this->descriptor(), _allocate);
@@ -92,8 +89,6 @@ class DataBlock : public BlockDescriptor<int, Dim>
         });
         this->generate_nodes();
     }
-
-
 
   public: //Access and queries
     template<class Function>
@@ -123,10 +118,7 @@ class DataBlock : public BlockDescriptor<int, Dim>
 
     bool is_allocated() { return std::get<0>(fields)[0].data().size() > 0; }
 
-
-
   public: //Operators for tuple access
-
     template<class Tag,
         typename std::enable_if<
             std::tuple_element<tagged_tuple_index<typename Tag::tag_type,
@@ -177,14 +169,14 @@ class DataBlock : public BlockDescriptor<int, Dim>
     }
 
     template<class Tag>
-    auto& operator()(Tag _tag, int _idx=0) noexcept
+    auto& operator()(Tag _tag, int _idx = 0) noexcept
     {
         return std::get<
             tagged_tuple_index<typename Tag::tag_type, fields_tuple_t>::value>(
             fields)[_idx];
     }
     template<class Tag>
-    const auto& operator()(Tag _tag, int _idx=0) const noexcept
+    const auto& operator()(Tag _tag, int _idx = 0) const noexcept
     {
         return std::get<
             tagged_tuple_index<typename Tag::tag_type, fields_tuple_t>::value>(
@@ -238,7 +230,7 @@ class DataBlock : public BlockDescriptor<int, Dim>
             bounding_box_.enlarge_to_fit(field[0].real_block());
         });
 
-        node_field_.initialize(*this,lbuff,rbuff);
+        node_field_.initialize(*this, lbuff, rbuff);
         for (std::size_t i = 0; i < node_field_.size(); ++i)
         { node_field_[i] = node_t(this, i); }
 

@@ -172,6 +172,7 @@ public: //memebers
             {
                 float_type tmp_exact = it2->template get<Exact>(field_idx);
                 float_type tmp_num   = it2->template get<Numeric>(field_idx);
+                if (std::fabs(tmp_exact)<1e-6) continue;
 
                 //if(std::isnan(tmp_num))
                 //    std::cout<<"this is nan at level = " << it_t->level()<<std::endl;

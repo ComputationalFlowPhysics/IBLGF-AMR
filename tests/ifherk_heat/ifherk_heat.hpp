@@ -163,6 +163,8 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
         if (ref_filename_!="null")
             simulation_.template read_h5<u_ref>(ref_filename_);
 
+        ifherk.clean<u_ref>(true, 2);
+
         this->compute_errors<u,u_ref,error_u>(std::string("u1_"),0);
         this->compute_errors<u,u_ref,error_u>(std::string("u2_"),1);
         this->compute_errors<u,u_ref,error_u>(std::string("u3_"),2);

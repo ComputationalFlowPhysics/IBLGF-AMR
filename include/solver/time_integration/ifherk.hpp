@@ -217,9 +217,6 @@ public:
                 std::cout<<"Total number of allocated octants: "<<c_allc_global<<std::endl;
             }
 
-
-
-
         }
 
     }
@@ -520,38 +517,6 @@ public:
 
     }
 
-
-private:
-    float_type coeff_a(int i, int j)const noexcept {return a_[i*(i-1)/2+j-1];}
-
-
-    void lin_sys_solve(float_type _alpha) noexcept
-    {
-        auto client=domain_->decomposition().client();
-
-        divergence<r_i, cell_aux>();
-
-        mDuration_type t_lgf(0);
-        TIME_CODE( t_lgf, SINGLE_ARG(
-                    psolver.template apply_lgf<cell_aux, d_i>();
-                    ));
-        pcout<< "LGF solved in "<<t_lgf.count() << std::endl;
-
-        gradient<d_i,face_aux>();
-        add<face_aux, r_i>(-1.0);
-        if (std::fabs(_alpha)>1e-4)
-        {
-            mDuration_type t_if(0);
-            TIME_CODE( t_if, SINGLE_ARG(
-                        psolver.template apply_lgf_IF<r_i, u_i>(_alpha);
-                        ));
-            pcout<< "IF  solved in "<<t_if.count() << std::endl;
-        }
-        else
-            copy<r_i,u_i>();
-    }
-
-
     template <typename F>
     void clean(bool non_leaf_only=false, int clean_width=1) noexcept
     {
@@ -586,6 +551,38 @@ private:
             }
         }
     }
+
+
+private:
+    float_type coeff_a(int i, int j)const noexcept {return a_[i*(i-1)/2+j-1];}
+
+
+    void lin_sys_solve(float_type _alpha) noexcept
+    {
+        auto client=domain_->decomposition().client();
+
+        divergence<r_i, cell_aux>();
+
+        mDuration_type t_lgf(0);
+        TIME_CODE( t_lgf, SINGLE_ARG(
+                    psolver.template apply_lgf<cell_aux, d_i>();
+                    ));
+        pcout<< "LGF solved in "<<t_lgf.count() << std::endl;
+
+        gradient<d_i,face_aux>();
+        add<face_aux, r_i>(-1.0);
+        if (std::fabs(_alpha)>1e-4)
+        {
+            mDuration_type t_if(0);
+            TIME_CODE( t_if, SINGLE_ARG(
+                        psolver.template apply_lgf_IF<r_i, u_i>(_alpha);
+                        ));
+            pcout<< "IF  solved in "<<t_if.count() << std::endl;
+        }
+        else
+            copy<r_i,u_i>();
+    }
+
 
 
     template<class Velocity_in, class Velocity_out>

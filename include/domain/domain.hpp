@@ -682,10 +682,10 @@ public: //C/Dtors
     }
 
     template<class CriterionField>
-    auto adapt(float_type source_max)
+    auto adapt(float_type source_max, bool &base_mesh_update)
     {
         //communicating with server
-        return decomposition_.template adapt_decoposition<CriterionField>(source_max);
+        return decomposition_.template adapt_decoposition<CriterionField>(source_max, base_mesh_update);
     }
 
 

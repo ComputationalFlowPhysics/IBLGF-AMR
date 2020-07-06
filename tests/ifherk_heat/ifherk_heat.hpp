@@ -60,6 +60,7 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
 
     using super_type =SetupBase<IfherkHeat,parameters>;
 
+    using vr_fct_t = std::function<float_type(float_type x, float_type y, float_type z, int field_idx, bool perturbation)>;
 
     //Timings
     using clock_type = std::chrono::high_resolution_clock;
@@ -85,6 +86,15 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
         R_           = simulation_.dictionary()->template get<float_type>("R");
         d2v_         = simulation_.dictionary()->template get_or<float_type>("DistanceOfVortexRings", R_);
         v_delta_     = simulation_.dictionary()->template get_or<float_type>("vDelta", 0.2*R_);
+        single_ring_ = simulation_.dictionary()->template get_or<bool>("single_ring", true);
+        perturbation_ = simulation_.dictionary()->template get_or<bool>("perturbation", false);
+        bool use_fat_ring = simulation_.dictionary()->template get_or<bool>("fat_ring", false);
+        if (use_fat_ring)
+            vr_fct_=
+            [this](float_type x, float_type y, float_type z, int field_idx, bool perturbation){return this->vortex_ring_vor_fat_ic(x,y,z,field_idx, perturbation);};
+        else
+            vr_fct_=
+            [this](float_type x, float_type y, float_type z, int field_idx, bool perturbation){return this->vortex_ring_vor_ic(x,y,z,field_idx, perturbation);};
 
         ic_filename_ = simulation_.dictionary_->
             template get_or<std::string>("hdf5_ic_name", "null");
@@ -163,7 +173,7 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
         if (ref_filename_!="null")
             simulation_.template read_h5<u_ref>(ref_filename_);
 
-        ifherk.clean<u_ref>(true, 2);
+        ifherk.clean_leaf_correction_boundary<u_ref>(true, 2);
 
         this->compute_errors<u,u_ref,error_u>(std::string("u1_"),0);
         this->compute_errors<u,u_ref,error_u>(std::string("u2_"),1);
@@ -197,7 +207,6 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
 
         // ----------------------------------------------------------------
 
-        //float_type base_threshold=1e-3;
         // set deletion_factor to be half of refinement_factor_ so it's easier
         // to refine and harder to delete
         // This prevent rapid change of level refinement
@@ -209,11 +218,12 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
         if (l_aim>nLevelRefinement_)
             l_aim=nLevelRefinement_;
 
-        //if (it->refinement_level()==0)
-        //{
-        //    if (field_max>source_max*base_threshold)
-        //        l_delete_aim = std::max(l_delete_aim,0);
-        //}
+        float_type base_threshold=1e-4;
+        if (it->refinement_level()==0)
+        {
+            if (field_max>source_max*base_threshold)
+                l_delete_aim = std::max(l_delete_aim,0);
+        }
 
         int l_change = l_aim - it->refinement_level();
         //int l_delete_change = l_delete_aim - it->refinement_level();
@@ -274,7 +284,7 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
                float_type z = static_cast<float_type>
                    (coord[2]-center[2]*scaling)*dx_level;
 
-               it2->template get<edge_aux>(0) = -vortex_ring_vor_ic(x,y,z-d2v_/2,0)+vortex_ring_vor_ic(x,y,z+d2v_/2,0);
+               it2->template get<edge_aux>(0) = vor(x,y,z,0);
                /***********************************************************/
                x = static_cast<float_type>
                    (coord[0]-center[0]*scaling)*dx_level;
@@ -283,7 +293,7 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
                z = static_cast<float_type>
                    (coord[2]-center[2]*scaling)*dx_level;
 
-               it2->template get<edge_aux>(1) = -vortex_ring_vor_ic(x,y,z-d2v_/2,1)+vortex_ring_vor_ic(x,y,z+d2v_/2,1);
+               it2->template get<edge_aux>(1) = vor(x,y,z,1);
                /***********************************************************/
                x = static_cast<float_type>
                    (coord[0]-center[0]*scaling)*dx_level;
@@ -292,7 +302,7 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
                z = static_cast<float_type>
                    (coord[2]-center[2]*scaling+0.5)*dx_level;
 
-               it2->template get<edge_aux>(2) = -vortex_ring_vor_ic(x,y,z-d2v_/2,2)+vortex_ring_vor_ic(x,y,z+d2v_/2,2);
+               it2->template get<edge_aux>(2) = vor(x,y,z,2);
 
                /***********************************************************/
                it2->template get<decomposition>()=world.rank();
@@ -321,7 +331,7 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
     }
 
 
-    float_type vortex_ring_vor_fat_ic(float_type x, float_type y, float_type z, int field_idx) const
+    float_type vortex_ring_vor_fat_ic(float_type x, float_type y, float_type z, int field_idx, bool perturbation)
     {
         const float_type alpha = 0.54857674;
         float_type R2 = R_*R_;
@@ -333,19 +343,32 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
         float_type theta = std::atan2(y,x);
         float_type w_theta = alpha * 1.0/R2 * std::exp(-4.0*s2/(R2-s2));
 
+        float_type rd = (static_cast <float_type> (rand()) / static_cast <float_type> (RAND_MAX))-0.5;
+        float_type prtub=0.001;
+        rd *= prtub * perturbation;
+
         if (s2>=R2) return 0.0;
 
         if (field_idx==0)
-            return -w_theta*std::sin(theta);
+            return -w_theta*std::sin(theta)*(1+rd);
         else if (field_idx==1)
-            return w_theta*std::cos(theta);
+            return w_theta*std::cos(theta)*(1+rd);
         else
             return 0.0;
 
     }
 
 
-    float_type vortex_ring_vor_ic(float_type x, float_type y, float_type z, int field_idx, bool perturbation=true) const
+    float_type vor(float_type x, float_type y, float_type z, int field_idx) const
+    {
+        if (single_ring_)
+            return vr_fct_(x,y,z,field_idx,perturbation_);
+        else
+            return -vr_fct_(x,y,z-d2v_/2,field_idx,perturbation_)+vr_fct_(x,y,z+d2v_/2,field_idx,perturbation_);
+    }
+
+
+    float_type vortex_ring_vor_ic(float_type x, float_type y, float_type z, int field_idx, bool perturbation)
     {
         float_type delta_2 = v_delta_* v_delta_;
 
@@ -358,7 +381,7 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
 
         float_type rd = (static_cast <float_type> (rand()) / static_cast <float_type> (RAND_MAX))-0.5;
         float_type prtub=0.001;
-        rd *= prtub;
+        rd *= prtub * perturbation;
 
         //if (s2>=delta_2) return 0.0;
 
@@ -391,7 +414,7 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
         b.grow(2,2);
         auto corners= b.get_corners();
 
-        float_type w_max = std::abs(vortex_ring_vor_ic(float_type(R_),float_type(0.0),float_type(0.0),1));
+        float_type w_max = std::abs(vr_fct_(float_type(R_),float_type(0.0),float_type(0.0),1,perturbation_));
 
         for(int i=b.base()[0];i<=b.max()[0];++i)
         {
@@ -406,7 +429,7 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
                     float_type z = static_cast<float_type>
                     (k-center[2])*dx_level;
 
-                    float_type tmp_w = -vortex_ring_vor_ic(x,y,z-d2v_/2,0)+vortex_ring_vor_ic(x,y,z+d2v_/2,0);
+                    float_type tmp_w = vor(x,y,z,0);
 
                     if(std::fabs(tmp_w) > w_max*pow(refinement_factor_, diff_level))
                         return true;
@@ -419,7 +442,8 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
                     (k-center[2])*dx_level;
 
 
-                    tmp_w = -vortex_ring_vor_ic(x,y,z-d2v_/2,1)+vortex_ring_vor_ic(x,y,z+d2v_/2,1);
+                    tmp_w = vor(x,y,z,1);
+
                     if(std::fabs(tmp_w) > w_max*pow(refinement_factor_, diff_level))
                         return true;
 
@@ -430,7 +454,8 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
                     z = static_cast<float_type>
                     (k-center[2]+0.5)*dx_level;
 
-                    tmp_w = -vortex_ring_vor_ic(x,y,z-d2v_/2,2)+vortex_ring_vor_ic(x,y,z+d2v_/2,2);
+                    tmp_w = vor(x,y,z,2);
+
                     if(std::fabs(tmp_w) > w_max*pow(refinement_factor_, diff_level))
                         return true;
                 }
@@ -455,7 +480,11 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
 
 
     private:
+
     boost::mpi::communicator client_comm_;
+
+    bool single_ring_=true;
+    bool perturbation_=false;
     float_type R_;
     float_type v_delta_;
     float_type d2v_;
@@ -478,6 +507,10 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
     float_type Re_;
     int tot_steps_;
     float_type refinement_factor_=1./8;
+
+
+
+    vr_fct_t vr_fct_;
 
 
     std::string ic_filename_, ref_filename_;

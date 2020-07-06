@@ -90,6 +90,12 @@ public: //member types
         T_max_            = tot_base_steps_*dt_base_;
         update_marching_parameters();
 
+        // support of IF in every dirrection is about 3.2 corresponding to 1e-5
+        // with coefficient alpha = 1
+        // so need update
+        max_vel_refresh_ = floor(14/(3.3/(Re_*dx_base_*dx_base_/dt_)));
+        pcout<<"maximum steps allowed without vel refresh = " << max_vel_refresh_ <<std::endl;
+
         // restart -----------------------------------------------------------
         write_restart_=_simulation->dictionary()->template get_or<bool>("write_restart",true);
 
@@ -112,6 +118,8 @@ public:
         alpha_[0]=(c_[1]-c_[0])/tmp;
         alpha_[1]=(c_[2]-c_[1])/tmp;
         alpha_[2]=(c_[3]-c_[2])/tmp;
+
+
  }
     void time_march(bool use_restart=false)
     {
@@ -137,15 +145,36 @@ public:
         clean_up_initial_velocity();
         write_timestep();
 
-        int adapt_count=0;
+        int adapt_count=-1;
         while(T_<=T_max_+1e-10)
         {
 
+            // -------------------------------------------------------------
+            // adapt
+
+            // clean up the block boundary of cell_aux for smoother adaptation
+
+            if(domain_->is_client())
+                clean<cell_aux>(true, 2);
+
+            if ( adapt_count % adapt_freq_ ==0)
+            {
+                //if(domain_->is_client())
+                //{
+                //    up_and_down<u>();
+                //    pad_velocity<u, u>();
+                //}
+                this->template adapt<u, cell_aux>(false);
+
+            }
+            adapt_count++;
+
             // balance load
-            if ( (adapt_count-1) % adapt_freq_ ==0)
+            if ( (adapt_count) % adapt_freq_ ==0)
             {
                 domain_->decomposition().template balance<u,p>();
             }
+
 
             // -------------------------------------------------------------
             // time marching
@@ -158,30 +187,8 @@ public:
                 pcout<<ifherk_if.count()<<std::endl;
             }
 
-
-            // -------------------------------------------------------------
-            // adapt
-
-            // clean up the block boundary of cell_aux for smoother adaptation
-
-            if(domain_->is_client())
-                clean<cell_aux>(true, 2);
-
             if (T_<=1e-5)
                 this->template update_source_max<cell_aux>();
-
-            if ( adapt_count % adapt_freq_ ==0)
-            {
-                if(domain_->is_client())
-                {
-                    up_and_down<u>();
-                    pad_velocity<u, u>();
-                }
-                this->template adapt<u, cell_aux>(false);
-
-            }
-            adapt_count++;
-
 
             // -------------------------------------------------------------
             // update stats & output
@@ -371,8 +378,10 @@ public:
         boost::mpi::communicator world;
         auto client = domain_->decomposition().client();
 
+        if (source_max_<1e-10) return;
+
         //adaptation neglect the boundary oscillations
-        clean_leaf_correction_boundary<cell_aux>(domain_->tree()->base_level(),true);
+        clean_leaf_correction_boundary<cell_aux>(domain_->tree()->base_level(),true,2);
 
         world.barrier();
 
@@ -393,7 +402,7 @@ public:
 
         world.barrier();
         pcout<< "Adapt - communication"  << std::endl;
-        auto intrp_list = domain_->template adapt<CriterionField>(source_max_);
+        auto intrp_list = domain_->template adapt<CriterionField>(source_max_, base_mesh_update_);
 
         world.barrier();
         pcout<< "Adapt - intrp"  << std::endl;
@@ -435,12 +444,20 @@ public:
         ////claen non leafs
         up_and_down<u>();
 
-        // Solve stream function to pad base level u->u_pad
         stage_idx_=0;
+
+        // Solve stream function to pad base level u->u_pad
         mDuration_type t_pad(0);
         TIME_CODE( t_pad, SINGLE_ARG(
-                    pad_velocity<u, u>();
+                    pcout<< "base level mesh update = "<<base_mesh_update_<< std::endl;
+                    if (    base_mesh_update_ ||
+                            ((T_-T_last_vel_refresh_)/(Re_*dx_base_*dx_base_) * 3.3>14))
+                    {
+                        pad_velocity<u, u>(false);
+                        T_last_vel_refresh_=T_;
+                    }
                     ));
+        base_mesh_update_=false;
         pcout<< "pad u      in "<<t_pad.count() << std::endl;
 
 
@@ -552,88 +569,6 @@ public:
         }
     }
 
-
-private:
-    float_type coeff_a(int i, int j)const noexcept {return a_[i*(i-1)/2+j-1];}
-
-
-    void lin_sys_solve(float_type _alpha) noexcept
-    {
-        auto client=domain_->decomposition().client();
-
-        divergence<r_i, cell_aux>();
-
-        mDuration_type t_lgf(0);
-        TIME_CODE( t_lgf, SINGLE_ARG(
-                    psolver.template apply_lgf<cell_aux, d_i>();
-                    ));
-        pcout<< "LGF solved in "<<t_lgf.count() << std::endl;
-
-        gradient<d_i,face_aux>();
-        add<face_aux, r_i>(-1.0);
-        if (std::fabs(_alpha)>1e-4)
-        {
-            mDuration_type t_if(0);
-            TIME_CODE( t_if, SINGLE_ARG(
-                        psolver.template apply_lgf_IF<r_i, u_i>(_alpha);
-                        ));
-            pcout<< "IF  solved in "<<t_if.count() << std::endl;
-        }
-        else
-            copy<r_i,u_i>();
-    }
-
-
-
-    template<class Velocity_in, class Velocity_out>
-    void pad_velocity(bool _exchange_buffer=true)
-    {
-        auto client=domain_->decomposition().client();
-
-        clean<edge_aux>();
-        clean<stream_f>();
-
-        auto dx_base = domain_->dx_base();
-
-        for (int l  = domain_->tree()->base_level();
-                l < domain_->tree()->depth(); ++l)
-        {
-            if (_exchange_buffer)
-                client->template buffer_exchange<Velocity_in>(l);
-
-            for (auto it  = domain_->begin(l);
-                    it != domain_->end(l); ++it)
-            {
-                if(!it->locally_owned() || !it->data()) continue;
-                if(it->is_correction()) continue;
-                if(!it->is_leaf()) continue;
-
-                const auto dx_level =  dx_base/math::pow2(it->refinement_level());
-                if (it->is_leaf())
-                    domain::Operator::curl<Velocity_in,edge_aux>( *(it->data()),dx_level);
-            }
-        }
-
-        int l  = domain_->tree()->base_level();
-        clean_leaf_correction_boundary<edge_aux>(l, true,2);
-        //clean_leaf_correction_boundary<edge_aux>(l, false,2+stage_idx_);
-        psolver.template apply_lgf<edge_aux, stream_f>(true);
-
-        for (auto it  = domain_->begin(l);
-                it != domain_->end(l); ++it)
-        {
-            if(!it->locally_owned() || !it->data()) continue;
-            if(!it->is_correction()) continue;
-
-            const auto dx_level =  dx_base/math::pow2(it->refinement_level());
-            domain::Operator::curl_transpose<stream_f,Velocity_out>( *(it->data()),dx_level, -1.0);
-        }
-
-        //client->template buffer_exchange<Velocity_out>(l);
-
-    }
-
-
     template <typename F>
     void clean_leaf_correction_boundary(int l, bool leaf_only_boundary=false, int clean_width=1) noexcept
     {
@@ -717,6 +652,94 @@ private:
     }
 
 
+
+private:
+    float_type coeff_a(int i, int j)const noexcept {return a_[i*(i-1)/2+j-1];}
+
+
+    void lin_sys_solve(float_type _alpha) noexcept
+    {
+        auto client=domain_->decomposition().client();
+
+        divergence<r_i, cell_aux>();
+
+        mDuration_type t_lgf(0);
+        TIME_CODE( t_lgf, SINGLE_ARG(
+                    psolver.template apply_lgf<cell_aux, d_i>();
+                    ));
+        pcout<< "LGF solved in "<<t_lgf.count() << std::endl;
+
+        gradient<d_i,face_aux>();
+        add<face_aux, r_i>(-1.0);
+        if (std::fabs(_alpha)>1e-4)
+        {
+            mDuration_type t_if(0);
+            TIME_CODE( t_if, SINGLE_ARG(
+                        psolver.template apply_lgf_IF<r_i, u_i>(_alpha);
+                        ));
+            pcout<< "IF  solved in "<<t_if.count() << std::endl;
+        }
+        else
+            copy<r_i,u_i>();
+    }
+
+
+
+    template<class Velocity_in, class Velocity_out>
+    void pad_velocity(bool refresh_correction_only=true)
+    {
+        auto client=domain_->decomposition().client();
+
+        clean<edge_aux>();
+        clean<stream_f>();
+
+        auto dx_base = domain_->dx_base();
+
+        for (int l  = domain_->tree()->base_level();
+                l < domain_->tree()->depth(); ++l)
+        {
+            client->template buffer_exchange<Velocity_in>(l);
+
+            for (auto it  = domain_->begin(l);
+                    it != domain_->end(l); ++it)
+            {
+                if(!it->locally_owned() || !it->data()) continue;
+                if(it->is_correction()) continue;
+                if(!it->is_leaf()) continue;
+
+                const auto dx_level =  dx_base/math::pow2(it->refinement_level());
+                if (it->is_leaf())
+                    domain::Operator::curl<Velocity_in,edge_aux>( *(it->data()),dx_level);
+            }
+        }
+
+        clean_leaf_correction_boundary<edge_aux>(domain_->tree()->base_level(), true, 7);
+        //clean_leaf_correction_boundary<edge_aux>(l, false,2+stage_idx_);
+        psolver.template apply_lgf<edge_aux, stream_f>(refresh_correction_only);
+
+        int l_max = refresh_correction_only ?
+            domain_->tree()->base_level()+1 : domain_->tree()->depth();
+
+        for (int l  = domain_->tree()->base_level();
+                l < l_max; ++l)
+        {
+            for (auto it  = domain_->begin(l);
+                    it != domain_->end(l); ++it)
+            {
+                if(!it->locally_owned() || !it->data()) continue;
+                if(!it->is_correction() && refresh_correction_only) continue;
+
+                const auto dx_level =  dx_base/math::pow2(it->refinement_level());
+                domain::Operator::curl_transpose<stream_f,Velocity_out>( *(it->data()),dx_level, -1.0);
+            }
+        }
+
+        //client->template buffer_exchange<Velocity_out>(l);
+
+    }
+
+
+
     //TODO maybe to be put directly intor operators:
     template<class Source, class Target>
     void nonlinear(float_type _scale=1.0) noexcept
@@ -744,7 +767,8 @@ private:
             }
 
             client->template buffer_exchange<edge_aux>(l);
-            clean_leaf_correction_boundary<edge_aux>(l, false,2+stage_idx_);
+            //clean_leaf_correction_boundary<edge_aux>(l, false,2+stage_idx_);
+            clean_leaf_correction_boundary<edge_aux>(l, true, 2);
 
             for (auto it  = domain_->begin(l);
                     it != domain_->end(l); ++it)
@@ -766,7 +790,7 @@ private:
             }
 
             //client->template buffer_exchange<Target>(l);
-            clean_leaf_correction_boundary<Target>(l, false,3+stage_idx_);
+            clean_leaf_correction_boundary<Target>(l, true,3);
         }
     }
 
@@ -874,11 +898,17 @@ private:
     domain_type* domain_;    ///< domain
     poisson_solver_t psolver;
 
+    bool base_mesh_update_=false;
+
     float_type T_, T_max_;
     float_type dt_base_, dt_, dx_base_;
     float_type Re_;
     float_type cfl_max_, cfl_;
     float_type source_max_;
+
+    float_type T_last_vel_refresh_=0.0;
+
+    int max_vel_refresh_=1;
     int max_ref_level_=0;
     int output_base_freq_;
     int adapt_freq_;

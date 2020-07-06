@@ -144,9 +144,10 @@ public: //memeber functions
     }
 
     template<class Field>
-    auto adapt_decoposition(float_type source_max)
+    auto adapt_decoposition(float_type source_max, bool &base_mesh_update)
     {
         std::vector<octant_t*> interpolation_list;
+        base_mesh_update=false;
 
         if (server())
         {
@@ -255,6 +256,7 @@ public: //memeber functions
                     oct->flag_correction(false);
                     oct->leaf_boundary()=false;
                     oct->aim_deletion(false);
+                    base_mesh_update=true;
                 }
 
                 oct->aim_deletion(false);
@@ -398,6 +400,9 @@ public: //memeber functions
             for(int i=1;i<comm_.size();++i)
                 comm_.send(i,0, domain_->tree()->depth()) ;
 
+            for(int i=1;i<comm_.size();++i)
+                comm_.send(i,0, base_mesh_update) ;
+
             // --------------------------------------------------------------
             // 7. construct maps / masks / loads
 
@@ -426,6 +431,10 @@ public: //memeber functions
             int depth;
             comm_.recv(0,0,depth);
             domain_->tree()->depth()=depth;
+
+            bool server_base_update;
+            comm_.recv(0,0,server_base_update);
+            base_mesh_update=server_base_update;
 
             // Local deletion
             std::sort(deletion_local.begin(), deletion_local.end(), [](key_t k1, key_t k2)->bool{return k1.level()>k2.level();});

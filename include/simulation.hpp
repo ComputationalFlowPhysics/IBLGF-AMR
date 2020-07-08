@@ -101,9 +101,9 @@ public:
     }
 
     template<typename Field>
-    void read_h5(std::string _filename)
+    void read_h5(std::string _filename, std::string field_name)
     {
-       io_h5.template read_h5<Field>(_filename, domain_.get());
+       io_h5.template read_h5<Field>(_filename, field_name, domain_.get());
     }
 
     auto& domain()noexcept{return domain_;}

@@ -259,15 +259,16 @@ public:
         halo_initialized_=false;
     }
 
-    template <class Field, class Function>
-    void send_adapt_attempts(Function aim_adapt, float_type source_max)
+    template<class Function>
+    void send_adapt_attempts(Function aim_adapt, std::vector<float_type> source_max)
     {
+
         boost::mpi::communicator w;
-        //float_type source_max=1200.0;
 
         std::vector<key_t> octs;
         std::vector<int>   level_change;
         const int myRank=w.rank();
+
 
         for (auto it = domain_->begin_leafs(); it != domain_->end_leafs(); ++it)
         {
@@ -275,6 +276,7 @@ public:
             if (!it->locally_owned()) continue;
 
             int l_change = aim_adapt(*it, source_max);
+
             if( l_change!=0)
             {
                 octs.emplace_back(it->key());
@@ -286,6 +288,7 @@ public:
         comm_.send(0,myRank*2+1,level_change);
 
     }
+
 
     template<class Field,class OctantType>
     int level_change_aim(OctantType it)

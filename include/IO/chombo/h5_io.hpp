@@ -89,7 +89,7 @@ public:
 public:
 
     template<typename Field>
-    void read_h5(std::string _filename, Domain* _lt )
+    void read_h5(std::string _filename, std::string read_field, Domain* _lt )
     {
         pcout<< "Start reading file -> " << _filename << std::endl;
         boost::mpi::communicator world;
@@ -98,7 +98,7 @@ public:
 
         hdf5_file<Dim> chombo_file(_filename, true);
         chombo_t ch_writer(octant_blocks);  // Initialize writer with vector of octants
-        ch_writer.template read_u<Field>(&chombo_file, octant_blocks, _lt );
+        ch_writer.template read_u<Field>(&chombo_file, read_field, octant_blocks, _lt );
 
     }
 

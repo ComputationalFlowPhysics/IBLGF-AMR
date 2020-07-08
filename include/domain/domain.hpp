@@ -54,7 +54,7 @@ public:
     using decompositon_type = Decomposition<Domain>;
 
     using refinement_condition_fct_t = std::function<bool(octant_t*, int diff_level)>;
-    using adapt_condition_fct_t = std::function<int(octant_t*, float_type source_max)>;
+    using adapt_condition_fct_t = std::function<int(octant_t*, std::vector<float_type> source_max)>;
 
     template<class DictionaryPtr>
     using block_initialze_fct = std::function<std::vector<extent_t>(DictionaryPtr,Domain*)>;
@@ -681,11 +681,10 @@ public: //C/Dtors
         decomposition_.template distribute<LoadCalculator, FmmMaskBuilder>();
     }
 
-    template<class CriterionField>
-    auto adapt(float_type source_max, bool &base_mesh_update)
+    auto adapt(std::vector<float_type> source_max, bool &base_mesh_update)
     {
         //communicating with server
-        return decomposition_.template adapt_decoposition<CriterionField>(source_max, base_mesh_update);
+        return decomposition_.adapt_decoposition(source_max, base_mesh_update);
     }
 
 
@@ -1137,12 +1136,9 @@ private:
     /** @brief Default refinement condition */
     static bool refinement_cond_default( octant_t*, int ) { return false; }
 
-    static int adapt_cond_default( octant_t* it, float_type source_max)
+    static int adapt_cond_default( octant_t* it, std::vector<float_type> source_max)
     {
-        if (it->refinement_level()>1)
-            return -1;
-        else
-            return 1;
+        return 0;
         //return rand()%3-1;
     }
 

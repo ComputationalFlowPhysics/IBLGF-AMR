@@ -143,8 +143,7 @@ public: //memeber functions
         sync_decomposition();
     }
 
-    template<class Field>
-    auto adapt_decoposition(float_type source_max, bool &base_mesh_update)
+    auto adapt_decoposition( std::vector<float_type> source_max, bool &base_mesh_update)
     {
         std::vector<octant_t*> interpolation_list;
         base_mesh_update=false;
@@ -423,7 +422,7 @@ public: //memeber functions
             std::vector<key_t> refinement_local;
             std::vector<key_t> deletion_local;
 
-            client()->template send_adapt_attempts<Field>(domain_->register_adapt_condition(), source_max);
+            client()->template send_adapt_attempts(domain_->register_adapt_condition(), source_max);
 
             comm_.recv(0,comm_.rank()+0*comm_.size(),refinement_local);
             comm_.recv(0,comm_.rank()+1*comm_.size(),deletion_local);

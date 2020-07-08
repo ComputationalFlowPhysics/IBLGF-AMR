@@ -196,7 +196,7 @@ bool block_consecutive(std::vector<octant_type*>& octs, key_type k_start, int id
 public:
 
     template<typename Field, typename Block_list_t>
-    void read_u( HDF5File* _file, Block_list_t& blocklist, Domain* domain)
+    void read_u( HDF5File* _file, std::string read_field, Block_list_t& blocklist, Domain* domain)
     {
 
         // Cleaning ---------------------------------------------------------
@@ -227,7 +227,7 @@ public:
         int num_levels =static_cast<int>( _file->template read_attribute<int>(root, "num_levels") );
 
         int component_idx = 0;
-        std::string read_in_name{"u"};
+        std::string read_in_name=read_field;
         for(int i=0; i<num_components; ++i)
         {
             auto attribute = _file->template read_attribute<std::string>(root,

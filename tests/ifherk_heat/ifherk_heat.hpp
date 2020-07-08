@@ -288,18 +288,17 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
         if (it->is_correction())
             return -1;
 
-        int l1=this->template adapt_levle_change_for_field<cell_aux>(it, source_max[0], false);
-        int l2=this->template adapt_levle_change_for_field<u>(it, source_max[1], true);
+        int l1=this->template adapt_levle_change_for_field<cell_aux>(it, source_max[0], true);
+        //int l2=this->template adapt_levle_change_for_field<u>(it, source_max[1], false);
+        int l2=-1;
 
         return std::max(l1,l2);
     }
 
     template<class Field, class OctantType>
-    int adapt_levle_change_for_field(OctantType* it, float_type source_max, bool base_level_up)
+    int adapt_levle_change_for_field(OctantType* it, float_type source_max, bool use_base_level_threshold)
     {
         auto& nodes_domain=it->data()->nodes_domain();
-        if (it->refinement_level()==0 && base_level_up)
-            return -1;
 
         // ----------------------------------------------------------------
 
@@ -316,7 +315,7 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
         if (l_aim>nLevelRefinement_)
             l_aim=nLevelRefinement_;
 
-        if (it->refinement_level()==0)
+        if (it->refinement_level()==0 && use_base_level_threshold)
         {
             if (field_max>source_max*base_threshold_)
                 l_aim = std::max(l_aim,0);
@@ -327,7 +326,7 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
 
         int l_change = l_aim - it->refinement_level();
 
-        if (l_delete_aim<0) return -1;
+        if (l_delete_aim<0 || (!use_base_level_threshold && l_aim==0)) return -1;
         if (l_change>0) return 1;
         return 0;
     }

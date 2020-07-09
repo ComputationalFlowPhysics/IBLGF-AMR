@@ -171,7 +171,12 @@ public:
         clean_field<correction_tmp>();
 
         // Copy source
-        copy_leaf<Source, source_tmp>(_field_idx, 0, true);
+        if (!base_level_only)
+            copy_leaf<Source, source_tmp>(_field_idx, 0, true);
+        else
+        {
+            copy_level<Source, source_tmp>(domain_->tree()->base_level(), _field_idx, 0, false);
+        }
 
 #ifdef POISSON_TIMINGS
         timings_=Timings() ;
@@ -184,7 +189,8 @@ public:
         auto t0_coarsify=clock_type::now();
 #endif
 
-        source_coarsify<source_tmp, source_tmp>(_field_idx, 0, Source::mesh_type);
+        if (!base_level_only)
+            source_coarsify<source_tmp, source_tmp>(_field_idx, 0, Source::mesh_type);
 
 #ifdef POISSON_TIMINGS
         auto t1_coarsify= clock_type::now();

@@ -150,8 +150,7 @@ public:
 
         // ----------------------------------- start -------------------------
 
-        clean_up_initial_velocity();
-        //pad_velocity<u, u>(false);
+        //clean_up_initial_velocity();
         write_timestep();
 
         while(T_<T_max_-1e-10)
@@ -408,7 +407,7 @@ public:
         if (source_max_[0]<1e-10 || source_max_[1]<1e-10) return;
 
         //adaptation neglect the boundary oscillations
-        clean_leaf_correction_boundary<cell_aux>(domain_->tree()->base_level(),true,2);
+        clean_leaf_correction_boundary<cell_aux>(domain_->tree()->base_level(),true,7);
 
         world.barrier();
 
@@ -480,7 +479,7 @@ public:
                     if (    base_mesh_update_ ||
                             ((T_-T_last_vel_refresh_)/(Re_*dx_base_*dx_base_) * 3.3>7))
                     {
-                        pad_velocity<u, u>(false);
+                        pad_velocity<u, u>(true);
                         T_last_vel_refresh_=T_;
                     }
                     ));
@@ -733,15 +732,15 @@ private:
             {
                 if(!it->locally_owned() || !it->data()) continue;
                 if(it->is_correction()) continue;
-                if(!it->is_leaf()) continue;
+                //if(!it->is_leaf()) continue;
 
                 const auto dx_level =  dx_base/math::pow2(it->refinement_level());
-                if (it->is_leaf())
-                    domain::Operator::curl<Velocity_in,edge_aux>( *(it->data()),dx_level);
+                //if (it->is_leaf())
+                domain::Operator::curl<Velocity_in,edge_aux>( *(it->data()),dx_level);
             }
         }
 
-        clean<Velocity_out>();
+        //clean<Velocity_out>();
         clean_leaf_correction_boundary<edge_aux>(domain_->tree()->base_level(), true, 2);
         //clean_leaf_correction_boundary<edge_aux>(l, false,2+stage_idx_);
         psolver.template apply_lgf<edge_aux, stream_f>(refresh_correction_only);
@@ -756,7 +755,7 @@ private:
                     it != domain_->end(l); ++it)
             {
                 if(!it->locally_owned() || !it->data()) continue;
-                if(!it->is_correction() && refresh_correction_only) continue;
+                //if(!it->is_correction() && refresh_correction_only) continue;
 
                 const auto dx_level =  dx_base/math::pow2(it->refinement_level());
                 domain::Operator::curl_transpose<stream_f,Velocity_out>( *(it->data()),dx_level, -1.0);

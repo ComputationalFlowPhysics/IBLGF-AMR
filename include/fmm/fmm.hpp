@@ -79,7 +79,7 @@ public:
            if (it->is_correction())
                 it->fmm_mask(fmm_mask_idx,MASK_LIST::Mask_FMM_Target, true);
            else
-                it->fmm_mask(fmm_mask_idx,MASK_LIST::Mask_FMM_Target, false);
+                it->fmm_mask(fmm_mask_idx,MASK_LIST::Mask_FMM_Target, true);
         }
 
         fmm_upward_pass_masks(

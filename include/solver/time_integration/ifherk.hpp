@@ -384,11 +384,11 @@ public:
     }
 
     template<class Field>
-    void up()
+    void up(bool leaf_boundary_only=true)
     {
         //Coarsification:
         for (std::size_t _field_idx=0; _field_idx<Field::nFields; ++_field_idx)
-            psolver.template source_coarsify<Field,Field>(_field_idx, _field_idx, Field::mesh_type, false, false, false, true);
+            psolver.template source_coarsify<Field,Field>(_field_idx, _field_idx, Field::mesh_type, false, false, false, leaf_boundary_only);
     }
 
     template<class Field>
@@ -468,11 +468,10 @@ public:
         auto client=domain_->decomposition().client();
 
         ////claen non leafs
-        up_and_down<u>();
 
         stage_idx_=0;
 
-        // Solve stream function to pad base level u->u_pad
+        // Solve stream function to refresh base level velocity
         mDuration_type t_pad(0);
         TIME_CODE( t_pad, SINGLE_ARG(
                     pcout<< "base level mesh update = "<<base_mesh_update_<< std::endl;
@@ -482,10 +481,13 @@ public:
                         pad_velocity<u, u>(true);
                         T_last_vel_refresh_=T_;
                     }
+                    else
+                    {
+                        up_and_down<u>();
+                    }
                     ));
         base_mesh_update_=false;
         pcout<< "pad u      in "<<t_pad.count() << std::endl;
-
 
         copy<u, q_i>();
 
@@ -648,7 +650,7 @@ public:
                 auto it2=it->neighbor(i);
                 //if (it2)
                 //    std::cout<<i<<it2->key()<<std::endl;
-                if ((!it2 || !it2->data()) || (leaf_only_boundary && (it->is_correction() || it->is_old_correction() )))
+                if ((!it2 || !it2->data()) || (leaf_only_boundary && (it2->is_correction() || it2->is_old_correction() )))
                 {
                     for (std::size_t field_idx=0; field_idx<F::nFields; ++field_idx)
                     {
@@ -716,7 +718,8 @@ private:
     {
         auto client=domain_->decomposition().client();
 
-        up_and_down<Velocity_in>();
+        //up_and_down<Velocity_in>();
+        this->up<Velocity_in>(false);
         clean<edge_aux>();
         clean<stream_f>();
 
@@ -764,7 +767,7 @@ private:
         }
 
         //client->template buffer_exchange<Velocity_out>(l);
-
+        this->down_to_correction<Velocity_out>();
     }
 
 
@@ -846,8 +849,8 @@ private:
             }
 
             //client->template buffer_exchange<Target>(l);
-            //clean_leaf_correction_boundary<Target>(l, true, 1+stage_idx_);
-            clean_leaf_correction_boundary<Target>(l, false,4+stage_idx_);
+            clean_leaf_correction_boundary<Target>(l, true, 2);
+            //clean_leaf_correction_boundary<Target>(l, false,4+stage_idx_);
         }
     }
 

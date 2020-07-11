@@ -719,6 +719,7 @@ private:
         auto client=domain_->decomposition().client();
 
         //up_and_down<Velocity_in>();
+        clean<Velocity_in>(true);
         this->up<Velocity_in>(false);
         clean<edge_aux>();
         clean<stream_f>();

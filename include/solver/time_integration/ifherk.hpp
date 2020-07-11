@@ -141,6 +141,10 @@ public:
             pcout<<"adapt_count = "<< adapt_count_<< std::endl;
             pcout<<"cell aux max = "<< source_max_[0]<< std::endl;
             pcout<<"u max = "<< source_max_[1]<< std::endl;
+            if(domain_->is_client())
+            {
+                pad_velocity<u, u>(true);
+            }
         }
         else
         {

@@ -248,7 +248,7 @@ public:
             {
                 std::cout<<"T = " << T_<<", n = "<< tmp_int_n << " -----------------" << std::endl;
                 std::cout<<"Total number of leaf octants: "<<domain_->num_leafs()<<std::endl;
-                std::cout<<"Total number of correction octants: "<<domain_->num_corrections()<<std::endl;
+                std::cout<<"Total number of leaf + correction octants: "<<domain_->num_corrections()+domain_->num_leafs()<<std::endl;
                 std::cout<<"Total number of allocated octants: "<<c_allc_global<<std::endl;
                 std::cout<<" -----------------" << std::endl;
             }
@@ -695,6 +695,7 @@ private:
 
         divergence<r_i, cell_aux>();
 
+        domain_->client_communicator().barrier();
         mDuration_type t_lgf(0);
         TIME_CODE( t_lgf, SINGLE_ARG(
                     psolver.template apply_lgf<cell_aux, d_i>();
@@ -706,6 +707,7 @@ private:
         if (std::fabs(_alpha)>1e-4)
         {
             mDuration_type t_if(0);
+            domain_->client_communicator().barrier();
             TIME_CODE( t_if, SINGLE_ARG(
                         psolver.template apply_lgf_IF<r_i, u_i>(_alpha);
                         ));

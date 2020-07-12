@@ -29,6 +29,7 @@ public:
      domain_(std::make_shared<domain_type>()),
      io_init_(_dictionary.get())
     {
+        intrp_order_ = dictionary_->template get_or<int>("intrp_order",3);
     }
 
     friend std::ostream& operator<<(std::ostream& os, Simulation& s)
@@ -111,6 +112,8 @@ public:
     auto& dictionary()noexcept{return dictionary_;}
     const auto& dictionary()const noexcept{return dictionary_;}
 
+    int intrp_order()noexcept{return intrp_order_;}
+
 public:
   std::shared_ptr<Dictionary> dictionary_=nullptr;
   std::shared_ptr<Domain> domain_=nullptr;
@@ -121,6 +124,8 @@ public:
   std::string restart_info_file_="restart_info";
   std::string restart_domain_file_="restart_domain.bin";
   std::string restart_field_file_="restart_field.hdf5";
+
+  int intrp_order_=3;
 
 };
 

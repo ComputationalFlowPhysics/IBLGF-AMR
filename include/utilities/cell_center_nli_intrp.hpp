@@ -27,7 +27,7 @@ namespace interpolation
     public: // constructor
 
         cell_center_nli() = delete;
-        cell_center_nli(size_t Nb_)
+        cell_center_nli(size_t Nb_, int intrp_order)
             : Nb_(Nb_),
             antrp_relative_pos_0_(Nb_ * Nb_ * 2, 0.0),
             antrp_mat_relative_pos_0_(&(antrp_relative_pos_0_[0]), Nb_, Nb_ * 2),
@@ -63,6 +63,7 @@ namespace interpolation
                             xt::xtensor<float_type, 2>(std::array<size_t, 2>{{Nb_,Nb_}})
                         }
         {
+            pts_cap=intrp_order;
             antrp_mat_relative_pos_0_calc(antrp_mat_relative_pos_0_.data_, Nb_);
             antrp_mat_relative_pos_1_calc(antrp_mat_relative_pos_1_.data_, Nb_);
 
@@ -468,7 +469,7 @@ namespace interpolation
 
     //private:
     public:
-        const int pts_cap = 2;
+        int pts_cap = 3;
         int Nb_;
 
         std::vector<float_type> antrp_relative_pos_0_;

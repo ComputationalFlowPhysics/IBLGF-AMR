@@ -707,7 +707,7 @@ public: // Iterators:
         int c=0;
         for (auto it=this->begin(); it!=this->end(); ++it)
         {
-            if (it->is_correction())
+            if (it->is_correction() && !it->is_leaf())
                 ++c;
         }
 

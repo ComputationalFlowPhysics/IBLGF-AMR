@@ -63,8 +63,7 @@ public: //member types
     :
     domain_(_simulation->domain_.get()),
     fmm_(domain_,domain_->block_extent()[0]+lBuffer+rBuffer),
-    c_cntr_nli_(domain_->block_extent()[0]+lBuffer+rBuffer),
-    extrp_c_cntr_nli_(domain_->block_extent()[0]+lBuffer+rBuffer)
+    c_cntr_nli_(domain_->block_extent()[0]+lBuffer+rBuffer, _simulation->intrp_order())
     {
     }
 
@@ -721,7 +720,6 @@ private:
     lgf_lap_t                         lgf_lap_;
     lgf_if_t                          lgf_if_;
     interpolation::cell_center_nli    c_cntr_nli_;///< Lagrange Interpolation
-    interpolation::extrapolation_cell_center_nli    extrp_c_cntr_nli_;///< Lagrange Interpolation
     parallel_ostream::ParallelOstream pcout=parallel_ostream::ParallelOstream(1);
     bool use_correction_ =true;
     bool subtract_non_leaf_ = false;

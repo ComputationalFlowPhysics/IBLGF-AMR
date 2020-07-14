@@ -201,7 +201,7 @@ public:
             // balance load
             if ( adapt_count_ % adapt_freq_ ==0)
             {
-
+                clean<u>(true);
                 domain_->decomposition().template balance<u,p>();
             }
 
@@ -422,10 +422,10 @@ public:
             {
                 //claen non leafs
                 clean<u>(true);
-
-                //Coarsification:
-                for (std::size_t _field_idx=0; _field_idx<u::nFields; ++_field_idx)
-                    psolver.template source_coarsify<u,u>(_field_idx, _field_idx, u::mesh_type);
+                this->up<u>(false);
+                ////Coarsification:
+                //for (std::size_t _field_idx=0; _field_idx<u::nFields; ++_field_idx)
+                //    psolver.template source_coarsify<u,u>(_field_idx, _field_idx, u::mesh_type);
 
             }
         }
@@ -807,7 +807,7 @@ private:
 
             client->template buffer_exchange<edge_aux>(l);
             //clean_leaf_correction_boundary<edge_aux>(l, false,2+stage_idx_);
-            clean_leaf_correction_boundary<edge_aux>(l, true, 2);
+            clean_leaf_correction_boundary<edge_aux>(l, false, 2);
 
             for (auto it  = domain_->begin(l);
                     it != domain_->end(l); ++it)

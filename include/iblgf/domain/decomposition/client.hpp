@@ -481,7 +481,7 @@ class Client : public ClientBase<ServerClientTraits<Domain>>
                 task->rank_other() = it->rank();
                 task->requires_confirmation() = false;
                 task->octant() = it;
-                auto size = it->data_r(SendField::tag()) .real_block() .nPoints();
+                auto size = it->data_r(SendField::tag()) .real_block() .size();
 
                 auto send_callback = [it, _fmm, _kernel, _neighbors,
                                          _level_diff, _dx_level,

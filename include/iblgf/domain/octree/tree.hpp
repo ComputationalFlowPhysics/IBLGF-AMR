@@ -64,6 +64,13 @@ class Tree
     using coordinate_transform_t =
         std::function<real_coordinate_type(real_coordinate_type, int _level)>;
 
+    //template<class Function>
+    //struct node_iterator_helper
+    //{
+    //    node_iterator_helper()
+    //    auto begin(){  }
+    //};
+
   public: //friends
     friend octant_base_type;
     friend octant_type;
@@ -113,7 +120,7 @@ class Tree
         depth_ = base_level_ + 1;
         root_ = std::make_shared<octant_type>(coordinate_type(0), 0, this);
 
-        rcIterator<Dim>::apply(
+        BlockIterator<Dim>::iterate(
             coordinate_type(0), _extent, [&](const coordinate_type& _p) {
                 this->insert(key_type(_p, base_level_));
             });

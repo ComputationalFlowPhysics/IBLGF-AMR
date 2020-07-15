@@ -335,8 +335,8 @@ class Dictionary
   private:
     bool              root = false;
     std::string       name_ = "default";
-    const std::string opening_delimiter_ = "{";
-    const std::string closing_delimiter_ = "}";
+    std::string opening_delimiter_ = "{";
+    std::string closing_delimiter_ = "}";
 
     std::string     content_;
     sd_vector_type  sub_dictionaries_;

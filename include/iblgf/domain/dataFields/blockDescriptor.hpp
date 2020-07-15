@@ -23,6 +23,7 @@
 #include <iomanip>
 
 #include <iblgf/types.hpp>
+#include <iblgf/utilities/block_iterator.hpp>
 
 namespace iblgf
 {
@@ -118,18 +119,8 @@ template<typename T, std::size_t Dim>
 class BlockDescriptor
 {
   public: //membery types:
-    template<typename U>
-    using vector_t = typename types::vector_type<U, Dim>;
-
-    using coordinate_type = typename types::vector_type<T, Dim>;
-
-    //using base_t = vector_t<T>;
-    //using extent_t = coordinate_type;
-
-    using min_t = coordinate_type;
-    using max_t = coordinate_type;
     using data_type = T;
-
+    using coordinate_type = typename types::vector_type<T, Dim>;
     using size_type = types::size_type;
 
   private: //Static members
@@ -172,25 +163,52 @@ class BlockDescriptor
     const coordinate_type& extent() const noexcept { return extent_; }
     void extent(const coordinate_type& _extent) noexcept { extent_ = _extent; }
 
-    min_t&       min() noexcept { return base_; }
-    const min_t& min() const noexcept { return base_; }
-    void         min(const min_t& _base) noexcept { base_ = _base; }
+    coordinate_type&       min() noexcept { return base_; }
+    const coordinate_type& min() const noexcept { return base_; }
+    void min(const coordinate_type& _base) noexcept { base_ = _base; }
 
-    max_t max() const noexcept { return base_ + extent_ - 1; }
-    void  max(const max_t& _max) noexcept { extent_ = _max - base_ + 1; }
+    coordinate_type max() const noexcept { return base_ + extent_ - 1; }
+    void            max(const coordinate_type& _max) noexcept
+    {
+        extent_ = _max - base_ + 1;
+    }
 
     const int& level() const noexcept { return level_; }
     int&       level() noexcept { return level_; }
     void       level(int _level) noexcept { level_ = _level; }
 
-    auto size() const noexcept
+    /** @brief Get number of integer points within block */
+    std::size_t size() const noexcept
     {
-        size_type size = 1;
-        for (std::size_t d = 0; d < extent().size(); ++d) size *= extent()[d];
-        return size;
+        std::size_t ext = 1;
+        for (auto e : extent_) ext *= e;
+        return ext;
     }
 
   public: //members
+    /** @brief Check block is not empty
+     *  @return True if block is empty
+     */
+    bool is_empty() const noexcept { return extent_ <= coordinate_type(0); }
+
+    /** @brief Grow left and right corners of block
+     *  @param _left_buffer Amount to grow the left corner
+     *  @param _right_buffer Amount to grow the right corner
+     */
+    template<typename Btype>
+    void grow(Btype _lBuffer, Btype _rBuffer) noexcept
+    {
+        base_ -= _lBuffer;
+        extent_ += _lBuffer + _rBuffer;
+    }
+
+    /** @brief Scale block_descriptor to certain level.
+     *
+     *  Note that if exact scaling down is not possible, the block is shrunk and yields
+     *  base+=1 and max-=1. Then, scaling down and up will not yield the original block.
+     *
+     *   @param[in] _level:  Level to wich block is scaled
+     */
     void level_scale(int _level) noexcept
     {
         const auto levelDifference = std::abs(level_ - _level);
@@ -221,12 +239,21 @@ class BlockDescriptor
         level_ = _level;
     }
 
+    /** @brief Shift base of block_descriptor
+     *  @param _shift Amount the base is shifted.
+     *  @tparam Shift Type of shift. Any coordinate_type for which +=-operator with coordinate_type
+     *   is overloaded.
+     * */
     template<class Shift>
     void shift(Shift _shift) noexcept
     {
         base_ += _shift;
     }
 
+    /** @brief Get a plane of the block.
+     *  @param idx index of normal, i.e. 0=x-normal, 1=y-normal, 2 is z-normal
+     *  @param dir=1; plane with positive normal, else negative normal
+     */
     BlockDescriptor bcPlane(int idx, int dir) noexcept
     {
         auto p = *this;
@@ -238,6 +265,8 @@ class BlockDescriptor
         return p;
     }
 
+    /** @brief Enlarge block such that _block is inside.
+     *  @param _block Block to be included. */
     void enlarge_to_fit(const BlockDescriptor& _b) noexcept
     {
         auto max = this->max();
@@ -249,6 +278,10 @@ class BlockDescriptor
         this->max(max);
     }
 
+    /** @brief Check if Point p is inside the block.
+     *  @param Query point
+     *  @return true if point is on block boundary
+     */
     template<class PointType>
     bool is_inside(const PointType& p) const noexcept
     {
@@ -258,12 +291,21 @@ class BlockDescriptor
         }
         return true;
     }
+
+    /** @brief Check if Point p is on the block boundary
+     *  @param Query point
+     *  @return true if point is on block boundary
+     */
     template<class PointType>
     bool on_boundary(const PointType& p) const noexcept
     {
         return (on_max_boundary(p) || on_min_boundary());
     }
 
+    /** @brief Check if Point p is on the min block boundary
+     *  @param Query point
+     *  @return true if point is on min block boundary
+     */
     template<class PointType>
     bool on_min_boundary(const PointType& p) const noexcept
     {
@@ -274,6 +316,10 @@ class BlockDescriptor
         return false;
     }
 
+    /** @brief Check if Point p is on the max block boundary
+     *  @param Query point
+     *  @return true if point is on max block boundary
+     */
     template<class PointType>
     bool on_max_boundary(const PointType& p) const noexcept
     {
@@ -284,7 +330,16 @@ class BlockDescriptor
         return false;
     }
 
-    //Flat indices
+  public: // indices & iterate
+    /** @{
+     *  @brief Compute flat index of point in 3D or 2D-block
+     *
+     *  Flat index takes base into account. That mean base() has index=0, which
+     *  does not necessarily correspond the coordinate_type(0)
+     *
+     *  @param Point, either as point-type or ijk 
+     *  @return Flat index
+     */
     template<class PointType, int D = Dim,
         typename std::enable_if<D == 3, void>::type* = nullptr>
     inline size_type index(const PointType& p) const noexcept
@@ -292,11 +347,10 @@ class BlockDescriptor
         return p[0] - base_[0] + extent_[0] * (p[1] - base_[1]) +
                extent_[0] * extent_[1] * (p[2] - base_[2]);
     }
-    template<class PointType, int D = Dim,
-        typename std::enable_if<D == 3, void>::type* = nullptr>
-    inline size_type index_zeroBase(const PointType& p) const noexcept
+    inline size_type index(int i, int j, int k) const noexcept
     {
-        return p[0] + extent_[0] * p[1] + extent_[0] * extent_[1] * p[2];
+        return i - base_[0] + extent_[0] * (j - base_[1]) +
+               extent_[0] * extent_[1] * (k - base_[2]);
     }
     template<class PointType, int D = Dim,
         typename std::enable_if<D == 2, void>::type* = nullptr>
@@ -304,30 +358,47 @@ class BlockDescriptor
     {
         return p[0] - base_[0] + extent_[0] * (p[1] - base_[1]);
     }
+    inline size_type index(int i, int j) const noexcept
+    {
+        return i - base_[0] + extent_[0] * (j - base_[1]);
+    }
+    /** @} */
+
+    /** @{
+     *  @brief Compute flat index of point in 3D or 2D-block without considering base of the block
+     *
+     *  Flat index does not take into account base. That mean coordinate_type(0) does always
+     *  have the index 0
+     *
+     *  @param Point Either as point-type (type supporting []-operator) or ijk 
+     *  @return Flat index
+     */
+    template<class PointType, int D = Dim,
+        typename std::enable_if<D == 3, void>::type* = nullptr>
+    inline size_type index_zeroBase(const PointType& p) const noexcept
+    {
+        return p[0] + extent_[0] * p[1] + extent_[0] * extent_[1] * p[2];
+    }
+    inline size_type index_zeroBase(int i, int j, int k) const noexcept
+    {
+        return i + extent_[0] * (j) + extent_[0] * extent_[1] * (k);
+    }
     template<class PointType, int D = Dim,
         typename std::enable_if<D == 2, void>::type* = nullptr>
     inline size_type index_zeroBase(const PointType& p) const noexcept
     {
         return p[0] + extent_[0] * p[1];
     }
-    inline size_type index(int i, int j, int k) const noexcept
-    {
-        return i - base_[0] + extent_[0] * (j - base_[1]) +
-               extent_[0] * extent_[1] * (k - base_[2]);
-    }
-    inline size_type index_zeroBase(int i, int j, int k) const noexcept
-    {
-        return i + extent_[0] * (j) + extent_[0] * extent_[1] * (k);
-    }
-    inline size_type index(int i, int j) const noexcept
-    {
-        return i - base_[0] + extent_[0] * (j - base_[1]);
-    }
     inline size_type index_zeroBase(int i, int j) const noexcept
     {
         return i + extent_[0] * j;
     }
+    /** @} */
 
+    /** @brief Get the overlap block with input block
+     *  @param other Block with whom the overlap is computed
+     *  @param overlap Overlap block between this and other.
+     */
     template<class BlockType, class OverlapType>
     bool overlap(BlockType other, OverlapType& overlap) const noexcept
     {
@@ -347,9 +418,14 @@ class BlockDescriptor
         return true;
     }
 
+    /** @brief Get the overlap block with input block
+     *  @param other Block with whom the overlap is computed
+     *  @param overlap Overlap block between this and other.
+     *  @param _level Level at which overlap is computed
+     */
     template<class BlockType, class OverlapType>
-    bool overlap(const BlockType& other, OverlapType& overlap, int _level) const
-        noexcept
+    bool overlap(
+        const BlockType& other, OverlapType& overlap, int _level) const noexcept
     {
         auto this_scaled = *this;
         auto other_scaled = other;
@@ -359,29 +435,7 @@ class BlockDescriptor
         return false;
     }
 
-    bool is_empty() const noexcept { return extent_ <= coordinate_type(0); }
-
-    template<typename Btype>
-    void grow(Btype _lBuffer, Btype _rBuffer) noexcept
-    {
-        base_ -= _lBuffer;
-        extent_ += _lBuffer + _rBuffer;
-    }
-
-    std::size_t nPoints() const noexcept
-    {
-        std::size_t ext = 1;
-        for (auto e : extent_) ext *= e;
-        return ext;
-    }
-
-    friend std::ostream& operator<<(std::ostream& os, const BlockDescriptor& b)
-    {
-        os << "Base: " << b.base_ << " extent: " << b.extent_
-           << " max: " << b.max() << " level: " << b.level();
-        return os;
-    }
-
+    /** @brief Get corner points/coordinates of this block */
     auto get_corners() const noexcept
     {
         std::vector<coordinate_type> points;
@@ -389,6 +443,7 @@ class BlockDescriptor
         detail::get_corners_helper<Dim>::apply(p, base_, extent_, points);
         return points;
     }
+    /** @brief Divide this block into block with extent e */
     auto divide_into(const coordinate_type& _e) const
     {
         std::array<std::vector<T>, dimension()> cuts;
@@ -408,10 +463,30 @@ class BlockDescriptor
         return generate_blocks_from_cuts(cuts, this->level());
     }
 
+    /** @brief Iterate over points in block in ijk fashion
+     *
+     *  @tparam Function - function type, i.e. lambda
+     *  @param _f Functor which is called as  _f(p)
+     */
+    template<class Function>
+    void ijk_iterate(const Function& _f) const noexcept
+    {
+        BlockIterator<Dim>::iterate(base_, extent_, _f);
+    }
+
+  public:
+    /** @brief Output operator */
+    friend std::ostream& operator<<(std::ostream& os, const BlockDescriptor& b)
+    {
+        os << "Base: " << b.base_ << " extent: " << b.extent_
+           << " max: " << b.max() << " level: " << b.level();
+        return os;
+    }
+
   protected:
-    coordinate_type base_;
-    coordinate_type extent_;
-    int             level_ = 0;
+    coordinate_type base_;      ///< lower-left corner of block
+    coordinate_type extent_;    ///< extent of block
+    int             level_ = 0; ///< refinement level of block
 };
 
 } // namespace domain

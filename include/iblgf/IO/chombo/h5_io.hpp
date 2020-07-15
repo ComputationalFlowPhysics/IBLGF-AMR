@@ -131,7 +131,7 @@ class H5_io
             if (!include_correction && it->is_correction()) continue;
             auto b = it->data().descriptor();
             b.grow(0, 1); //grow by one to fill the gap
-            nPoints += b.nPoints();
+            nPoints += b.size();
         }
 
         std::vector<octant_type*> octant_blocks;
@@ -151,7 +151,7 @@ class H5_io
                 blockDescriptor_t block = it->data().descriptor();
                 octant_blocks.push_back(it.ptr());
 
-                //it->index(_count * block.nPoints());
+                //it->index(_count * block.size());
             }
             ++_count;
         }

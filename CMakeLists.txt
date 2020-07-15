@@ -65,6 +65,7 @@ if(NOT DEFINED HDF5_INCLUDE_DIRS)
 find_package(HDF5)
 endif(NOT DEFINED HDF5_INCLUDE_DIRS)
 include_directories(${HDF5_INCLUDE_DIRS})
+include_directories(${Boost_INCLUDE_DIRS})
 link_directories(${HDF5_LIBRARY_DIRS} )
 #################################################################################################
 

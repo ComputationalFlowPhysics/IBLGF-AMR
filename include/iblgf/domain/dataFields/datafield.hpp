@@ -128,7 +128,7 @@ class DataField : public BlockDescriptor<int, Dim>
         this->base(_b.base());
         this->extent(_b.extent());
         this->level() = _b.level();
-        if (_allocate) data_.resize(real_block_.nPoints());
+        if (_allocate) data_.resize(real_block_.size());
         if (_default) { std::fill(data_.begin(), data_.end(), _dval); }
 
         const auto ext = real_block_.extent();
@@ -373,7 +373,7 @@ class DataField : public BlockDescriptor<int, Dim>
 /****************************************************************************/
 
 template<class Traits>
-struct Field;
+class Field;
 
 template<class Tag, class DataType, std::size_t NFields, std::size_t lBuff,
     std::size_t hBuff, MeshObject MeshType, std::size_t Dim, bool _output>

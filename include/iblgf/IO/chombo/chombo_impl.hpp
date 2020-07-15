@@ -670,7 +670,7 @@ class Chombo
         template<class T>
         auto operator()() const
         {
-            if (!T::output) return;
+            if (!T::output()) return;
             for (std::size_t fidx = 0; fidx < T::nFields(); ++fidx)
             {
                 double                   field_value = 0.0;

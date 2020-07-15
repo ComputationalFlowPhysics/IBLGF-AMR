@@ -19,7 +19,7 @@
 // IBLGF-specific
 #include <iblgf/types.hpp>
 #include <iblgf/domain/dataFields/blockDescriptor.hpp>
-#include <iblgf/utilities/rcIterator.hpp>
+#include <iblgf/utilities/block_iterator.hpp>
 #include <iblgf/utilities/tuple_utilities.hpp>
 
 namespace iblgf
@@ -119,7 +119,7 @@ class View : public BlockDescriptor<int, Dim>
     template<class Function>
     void iterate(Function _f) noexcept
     {
-        rcIterator<Dim>::iterate(this->base(), this->extent(), stride_,
+        BlockIterator<Dim>::iterate(this->base(), this->extent(), stride_,
             [this, &_f](const auto& _p) { _f(field_->get(_p)); });
     }
 

@@ -94,7 +94,7 @@ class HaloCommunicator
                         sif.view = std::move(overlap_opt.value());
 
                         if (axis_neighbors_only &&
-                            (static_cast<int>(sif.view.nPoints()) <=
+                            (static_cast<int>(sif.view.size()) <=
                                 field.extent()[0]))
                             continue;
 
@@ -114,7 +114,7 @@ class HaloCommunicator
                         sif.view = std::move(overlap_opt.value());
 
                         if (axis_neighbors_only &&
-                            (static_cast<int>(sif.view.nPoints()) <=
+                            (static_cast<int>(sif.view.size()) <=
                                 field.extent()[0]))
                             continue;
 

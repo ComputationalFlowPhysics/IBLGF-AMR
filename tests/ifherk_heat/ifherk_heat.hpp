@@ -456,18 +456,8 @@ struct IfherkHeat : public SetupBase<IfherkHeat, parameters>
     float_type               d2v_;
     float_type               source_max_;
 
-    float_type rmin_ref_;
-    float_type rmax_ref_;
-    float_type rz_ref_;
-    float_type c1 = 0;
-    float_type c2 = 0;
-    float_type eps_grad_ = 1.0e6;
-    ;
     int      nLevelRefinement_ = 0;
     int      global_refinement_ = 0;
-    fcoord_t offset_;
-
-    float_type a_ = 10.0;
 
     float_type dt_, dx_;
     float_type cfl_;

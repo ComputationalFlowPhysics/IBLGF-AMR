@@ -83,7 +83,7 @@ class DataBlock : public BlockDescriptor<int, Dim>
 
     void initialize(const block_descriptor_type& _b, bool _allocate)
     {
-        tuple_utils::for_each(fields, [this, &_b, _allocate](auto& field) {
+        tuple_utils::for_each(fields, [&_b, _allocate](auto& field) {
             field.initialize(_b, _allocate, true, 0.0);
         });
         this->generate_nodes();
@@ -235,7 +235,7 @@ class DataBlock : public BlockDescriptor<int, Dim>
 
         //Store most common views in vector of nodes:
         nodes_domain_.clear();
-        nodes_domain_.resize(this->nPoints());
+        nodes_domain_.resize(this->size());
         auto dview = node_field_.domain_view();
         int  count = 0;
         for (auto it = dview.begin(); it != dview.end(); ++it)

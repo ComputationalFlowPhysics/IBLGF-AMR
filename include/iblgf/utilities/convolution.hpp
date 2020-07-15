@@ -81,8 +81,6 @@ class dfft_r2c
     std::vector<fftw_plan> r2c_1d_plans;
     std::vector<fftw_plan> c2c_1d_plans_dir_2;
     fftw_plan              c2c_1d_plans_dir_3;
-
-    fftw_plan r2c_plan_1d;
 };
 
 class dfft_c2r
@@ -110,14 +108,11 @@ class dfft_c2r
     inline auto& output() { return output_; }
 
   private:
-    dims_t           dims_next_pow_2_;
     complex_vector_t input_, tmp_1_, tmp_2_;
     real_vector_t    output_;
 
     fftw_plan              plan, c2c_dir_1;
     std::vector<fftw_plan> c2c_dir_2, c2r_dir_3;
-
-    int dim_half;
 };
 
 ///template<class Kernel>

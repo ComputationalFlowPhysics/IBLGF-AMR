@@ -10,8 +10,13 @@
 #     ▐░░░░░░░░░░░▌▐░░░░░░░░░░▌ ▐░░░░░░░░░░░▌▐░░░░░░░░░░░▌▐░▌
 #      ▀▀▀▀▀▀▀▀▀▀▀  ▀▀▀▀▀▀▀▀▀▀   ▀▀▀▀▀▀▀▀▀▀▀  ▀▀▀▀▀▀▀▀▀▀▀  ▀
 
-add_subdirectory (server_client)
-add_subdirectory (datafields)
-add_subdirectory (tree)
-add_subdirectory (vortexrings)
-add_subdirectory (ifherk_heat)
+set(server_client_test server_client)
+
+foreach (item ${server_client_test})
+    add_executable(${item} ${item}.cpp ${SOURCES})
+    target_link_libraries(${item} iblgf_test_main)
+    add_test(
+        NAME ${item}
+        COMMAND mpirun ${MPIEXEC_NUMPROC_FLAG} 12 ${MPIEXEC_PREFLAGS} $<TARGET_FILE:${item}>
+    )
+endforeach()

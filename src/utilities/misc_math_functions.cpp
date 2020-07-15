@@ -17,7 +17,7 @@ namespace iblgf
 namespace math
 {
 int
-next_pow_2(int n)
+next_pow_2(int n) noexcept
 {
     int p = 1;
     if (n && !(n & (n - 1))) return n;
@@ -28,7 +28,7 @@ next_pow_2(int n)
 }
 
 int
-pow2(int n)
+pow2(int n) noexcept
 {
     return (1 << n);
 }

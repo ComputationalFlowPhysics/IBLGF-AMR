@@ -24,8 +24,7 @@
 #include <iblgf/domain/domain.hpp>
 #include <iblgf/IO/parallel_ostream.hpp>
 
-#include <iblgf/utilities/cell_center_nli_intrp.hpp>
-#include <iblgf/utilities/extrapolation_cell_center_nli_intrp.hpp>
+#include <iblgf/interpolation/interpolation.hpp>
 #include <iblgf/operators/operators.hpp>
 
 #include <iblgf/lgf/lgf_gl.hpp>
@@ -77,7 +76,6 @@ class PoissonSolver
     : domain_(_simulation->domain_.get())
     , fmm_(domain_, domain_->block_extent()[0] + lBuffer + rBuffer)
     , c_cntr_nli_(domain_->block_extent()[0] + lBuffer + rBuffer)
-    , extrp_c_cntr_nli_(domain_->block_extent()[0] + lBuffer + rBuffer)
     {
     }
 
@@ -744,8 +742,6 @@ class PoissonSolver
     lgf_lap_t                      lgf_lap_;
     lgf_if_t                       lgf_if_;
     interpolation::cell_center_nli c_cntr_nli_; ///< Lagrange Interpolation
-    interpolation::extrapolation_cell_center_nli
-                                      extrp_c_cntr_nli_; ///< Lagrange Interpolation
     parallel_ostream::ParallelOstream pcout =
         parallel_ostream::ParallelOstream(1);
     bool use_correction_ = true;

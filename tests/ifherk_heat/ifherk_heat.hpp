@@ -37,7 +37,7 @@
 #include <iblgf/fmm/fmm.hpp>
 
 #include <iblgf/utilities/convolution.hpp>
-#include <iblgf/utilities/interpolation.hpp>
+#include <iblgf/interpolation/interpolation.hpp>
 #include <iblgf/solver/poisson/poisson.hpp>
 #include <iblgf/solver/time_integration/ifherk.hpp>
 

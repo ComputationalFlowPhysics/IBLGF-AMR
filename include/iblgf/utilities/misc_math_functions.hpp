@@ -10,18 +10,15 @@
 //     ▐░░░░░░░░░░░▌▐░░░░░░░░░░▌ ▐░░░░░░░░░░░▌▐░░░░░░░░░░░▌▐░▌
 //      ▀▀▀▀▀▀▀▀▀▀▀  ▀▀▀▀▀▀▀▀▀▀   ▀▀▀▀▀▀▀▀▀▀▀  ▀▀▀▀▀▀▀▀▀▀▀  ▀
 
-#ifndef MATH_INCLUDED_MISC_MATH_HPP
-#define MATH_INCLUDED_MISC_MATH_HPP
+#ifndef IBLGF_MATH_INCLUDED_MISC_MATH_HPP
+#define IBLGF_MATH_INCLUDED_MISC_MATH_HPP
 
 namespace iblgf
 {
 namespace math
 {
-
-    int next_pow_2(int n);
-
-    int pow2(int n);
-
+    int next_pow_2(int n) noexcept;
+    int pow2(int n) noexcept;
 }
 } // namespace iblgf
 

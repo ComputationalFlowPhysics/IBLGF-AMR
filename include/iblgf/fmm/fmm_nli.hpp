@@ -92,12 +92,6 @@ class Nli
         {
             for (int l = 0; l < n; ++l)
             {
-                // Row major
-                //xt::noalias(nli_aux_1d_intrp) =
-                //      view(parent, q, l, xt::all()) * 1.0;
-                //xt::noalias( view( nli_aux_2d_intrp, l, xt::all() )) =
-                //    xt::linalg::dot( nli_aux_1d_intrp, antrp_mat_sub_[idx_x].data_ );
-
                 // Column major
                 xt::noalias(view(nli_aux_2d_intrp, xt::all(), l)) =
                     xt::linalg::dot(view(parent, xt::all(), l, q),
@@ -106,13 +100,6 @@ class Nli
 
             for (int l = 0; l < n; ++l)
             {
-                // For Y
-                // Row major
-                //xt::noalias(nli_aux_1d_intrp) =
-                //      view(nli_aux_2d_intrp, xt::all(), l) * 1.0;
-                //xt::noalias( view(nli_aux_3d_intrp, q, xt::all(), l) ) =
-                //    xt::linalg::dot(nli_aux_1d_intrp, antrp_mat_sub_[idx_y].data_);
-
                 // Column major
                 xt::noalias(view(nli_aux_3d_intrp, l, xt::all(), q)) =
                     xt::linalg::dot(view(nli_aux_2d_intrp, l, xt::all()),
@@ -124,14 +111,6 @@ class Nli
         {
             for (int q = 0; q < n; ++q)
             {
-                // For Z
-                // Row major
-                //xt::noalias(nli_aux_1d_intrp) =
-                //      view(nli_aux_3d_intrp, xt::all(), p, q) ;
-
-                //xt::noalias( view(child, xt::all(), p, q) ) +=
-                //    xt::linalg::dot(nli_aux_1d_intrp, antrp_mat_sub_[idx_z].data_ ) ;
-
                 // Column major
                 xt::noalias(view(child, q, p, xt::all())) +=
                     xt::linalg::dot(view(nli_aux_3d_intrp, q, p, xt::all()),
@@ -171,14 +150,6 @@ class Nli
         {
             for (int l = 0; l < n; ++l)
             {
-                // For Z
-                //xt::noalias(nli_aux_1d_antrp_tmp)=
-                //      view(child, xt::all(), l, q);
-
-                //xt::noalias( view(nli_aux_2d_antrp, xt::all(), l) ) =
-                //    xt::linalg::dot( antrp_mat_sub_[idx_z].data_,
-                //                        nli_aux_1d_antrp_tmp );
-
                 // Column major
                 xt::noalias(nli_aux_1d_antrp_tmp) =
                     view(child, q, l, xt::all());
@@ -189,13 +160,6 @@ class Nli
 
             for (int l = 0; l < n; ++l)
             {
-                // For Y
-                // nli_aux_3d_antrp(:,l,q) = nli_aux_2d_antrp(l,:) X cmat
-
-                //xt::noalias( view(nli_aux_3d_antrp, q, l, xt::all()) ) =
-                //    xt::linalg::dot( antrp_mat_sub_[idx_y].data_,
-                //                        view(nli_aux_2d_antrp, l, xt::all()) );
-
                 // Column major
                 xt::noalias(view(nli_aux_3d_antrp, xt::all(), l, q)) =
                     xt::linalg::dot(antrp_mat_sub_[idx_y].data_,
@@ -207,13 +171,6 @@ class Nli
         {
             for (int q = 0; q < n; ++q)
             {
-                // For X
-                //nli_aux_1d_antrp_tmp = view(nli_aux_3d_antrp, q,p,xt::all());
-
-                //xt::noalias( view(parent, p, q, xt::all()) ) +=
-                //    xt::linalg::dot( antrp_mat_sub_[idx_x].data_,
-                //                         nli_aux_1d_antrp_tmp);
-
                 // Column major
                 xt::noalias(view(parent, xt::all(), q, p)) +=
                     xt::linalg::dot(antrp_mat_sub_[idx_x].data_,
@@ -273,14 +230,6 @@ class Nli
                     exp((2.0 * M_PI * II / M * xj * K[k])) / M;
             }
         }
-
-        //for (int j = 1; j < 2*Nb_-1; ++j){
-        //    for (int k = 0; k< Nb_; ++k){
-        //        std::complex<double>  xj = (double)(j+0.5)/ (double)Nb_* M/2.0;
-        //        if (k!=Nb_/2)
-        //        mat_cal_intrp(j,k) = exp( (2.0*M_PI*II/M/2.0 * xj * K[k])) / M;
-        //    }
-        //}
 
         // copy
         auto wt = xt::transpose(xt::conj(mat_cal_basis));
@@ -360,8 +309,6 @@ class Nli
     //private:
   public:
     const int pts_cap = 10;
-
-    // antrp mat
 
     int                     Nb_;
     std::vector<float_type> antrp_;

@@ -10,80 +10,58 @@
 //     ▐░░░░░░░░░░░▌▐░░░░░░░░░░▌ ▐░░░░░░░░░░░▌▐░░░░░░░░░░░▌▐░▌
 //      ▀▀▀▀▀▀▀▀▀▀▀  ▀▀▀▀▀▀▀▀▀▀   ▀▀▀▀▀▀▀▀▀▀▀  ▀▀▀▀▀▀▀▀▀▀▀  ▀
 
-#include <gtest/gtest.h>
-#include <filesystem>
-#include <boost/mpi/communicator.hpp>
-#include <boost/mpi/environment.hpp>
+#ifndef INCLUDED_IBLGF_CLIENT_TEST_HPP
+#define INCLUDED_IBLGF_CLIENT_TEST_HPP
 
-#include <iblgf/dictionary/dictionary.hpp>
-#include <iblgf/types.hpp>
-#include <iblgf/domain/octree/tree.hpp>
+#include <iblgf/domain/mpi/task_manager.hpp>
+#include <iblgf/domain/mpi/client_base.hpp>
+#include <iblgf/domain/mpi/query_registry.hpp>
 
 namespace iblgf
 {
-namespace octree
+using namespace sr_mpi;
+
+struct ClientTraits
 {
-using namespace types;
-/** @brief Test fixure for oct-tree */
-class tree_tests : public ::testing::Test
-{
-  public:
-    struct block
-    {
-        int dat = -1;
-    };
-
-  public:
-    static constexpr int Dim = 3;
-    using tree_type = Tree<Dim, block>;
-    using coordinate_type = typename tree_type::coordinate_type;
-    using key_type = typename tree_type::key_type;
-
-  public:
-    tree_tests()
-    : ext(5)
-    , t(ext)
-    {
-    }
-
-  protected:
-    coordinate_type ext;
-    tree_type       t;
+    using key_query_t = Task<tags::key_query, std::vector<int>>;
+    using task_manager_t = TaskManager<key_query_t>;
 };
 
-TEST_F(tree_tests, Construction)
+class Client : public ClientBase<ClientTraits>
 {
+  public: // aliases
+    using trait_t = ClientTraits;
+    using super_type = ClientBase<trait_t>;
+    using key_query_t = typename trait_t::key_query_t;
+    using task_manager_t = typename trait_t::task_manager_t;
 
-    coordinate_type p0(0), p1(6);
-    ASSERT_EQ(t.base_level(), 3);
-    ASSERT_EQ(t.depth(), 4);
+  protected:
+    using ClientBase<ClientTraits>::comm_;
+    using ClientBase<ClientTraits>::task_manager_;
 
-    auto it = t.find(p0, t.base_level());
-    ASSERT_NE(it, t.end());
-    auto it2 = t.find(p1, t.base_level()+1);
-    ASSERT_EQ(it2, t.end());
+  public: // ctors
+    Client(const Client&) = default;
+    Client(Client&&) = default;
+    Client& operator=(const Client&) & = default;
+    Client& operator=(Client&&) & = default;
+    ~Client() = default;
 
+    using super_type::ClientBase;
 
-    ext += 1;
-    BlockIterator<Dim>::iterate(ext, [&](const auto& _p) {
-        auto it = t.find(_p);
-        if (it != t.end()) { EXPECT_TRUE(it->is_leaf_search()); }
-        else
-        {
-            // Cannot be found
-            const auto Linf = norm_inf(_p);
-            EXPECT_GE(Linf, 4);
-        }
-    });
-    for (auto it = t.begin(); it != t.end(); ++it)
+  public:
+    auto test()
     {
-        if (it->level() == t.base_level()) { EXPECT_TRUE(it->is_leaf_search()); }
-        else
-        {
-            EXPECT_FALSE(it->is_leaf());
-        }
-    }
-}
+        auto& send_comm =
+            task_manager_->template send_communicator<key_query_t>();
 
-} // namespace domain
-} //namespace iblgf
+        std::vector<int> task_dat(3, comm_.rank());
+        std::vector<int> recvData;
+        auto task = send_comm.post_task(&task_dat, this->server_rank_);
+        QueryRegistry<key_query_t, key_query_t> mq;
+        mq.register_recvMap([&recvData](int i) { return &recvData; });
+        wait(mq);
+        return recvData;
+    }
+};
+} // namespace iblgf
+#endif

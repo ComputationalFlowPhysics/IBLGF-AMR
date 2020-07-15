@@ -67,7 +67,7 @@ TEST_F(tree_tests, Construction)
 
 
     ext += 1;
-    rcIterator<Dim>::apply(coordinate_type(0), ext, [&](const auto& _p) {
+    BlockIterator<Dim>::iterate(ext, [&](const auto& _p) {
         auto it = t.find(_p);
         if (it != t.end()) { EXPECT_TRUE(it->is_leaf_search()); }
         else

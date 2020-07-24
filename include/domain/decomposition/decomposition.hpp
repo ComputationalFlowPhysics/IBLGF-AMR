@@ -362,6 +362,8 @@ public: //memeber functions
                                 break;
                             }
                         }
+                        if (it->rank()==0)
+                            throw std::runtime_error("can't set rank for new octant from parent or neighbors");
                     }
 
                     pa=it->parent();

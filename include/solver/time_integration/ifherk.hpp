@@ -120,7 +120,8 @@ public:
         alpha_[2]=(c_[3]-c_[2])/tmp;
 
 
- }
+    }
+
     void time_march(bool use_restart=false)
     {
         use_restart_=use_restart;
@@ -220,7 +221,6 @@ public:
 
             // -------------------------------------------------------------
             // update stats & output
-            update_marching_parameters();
 
             T_ += dt_;
             float_type tmp_n=T_/dt_base_*math::pow2(max_ref_level_);
@@ -236,6 +236,9 @@ public:
             {
                 n_step_= tmp_int_n;
                 write_timestep();
+                // only update dt after 1 output so it wouldn't do 3 5 7 9 ...
+                // and skip all outputs
+                update_marching_parameters();
             }
 
             world.barrier();

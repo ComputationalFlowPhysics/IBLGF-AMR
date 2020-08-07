@@ -101,6 +101,12 @@ class Ifherk
         T_max_ = tot_base_steps_ * dt_base_;
         update_marching_parameters();
 
+        // support of IF in every dirrection is about 3.2 corresponding to 1e-5
+        // with coefficient alpha = 1
+        // so need update
+        max_vel_refresh_ = floor(14/(3.3/(Re_*dx_base_*dx_base_/dt_)));
+        pcout<<"maximum steps allowed without vel refresh = " << max_vel_refresh_ <<std::endl;
+
         // restart -----------------------------------------------------------
         write_restart_ = _simulation->dictionary()->template get_or<bool>(
             "write_restart", true);
@@ -119,16 +125,18 @@ class Ifherk
   public:
     void update_marching_parameters()
     {
-        nLevelRefinement_ =
-            domain_->tree()->depth() - domain_->tree()->base_level() - 1;
-        dt_ = dt_base_ / math::pow2(nLevelRefinement_);
+        nLevelRefinement_ = domain_->tree()->depth()-domain_->tree()->base_level()-1;
+        dt_               = dt_base_/math::pow2(nLevelRefinement_);
 
-        float_type tmp = Re_ * dx_base_ * dx_base_ / dt_;
-        alpha_[0] = (c_[1] - c_[0]) / tmp;
-        alpha_[1] = (c_[2] - c_[1]) / tmp;
-        alpha_[2] = (c_[3] - c_[2]) / tmp;
+        float_type tmp = Re_*dx_base_*dx_base_/dt_;
+        alpha_[0]=(c_[1]-c_[0])/tmp;
+        alpha_[1]=(c_[2]-c_[1])/tmp;
+        alpha_[2]=(c_[3]-c_[2])/tmp;
+
+
     }
-    void time_march(bool use_restart = false)
+
+    void time_march(bool use_restart=false)
     {
         use_restart_ = use_restart;
         boost::mpi::communicator          world;
@@ -141,36 +149,34 @@ class Ifherk
         // --------------------------------------------------------------------
         if (use_restart_)
         {
-            Dictionary info_d(
-                simulation_->restart_load_dir() + "/restart_info");
-            T_ = info_d.template get<float_type>("T");
-            source_max_ = info_d.template get<float_type>("source_max");
+            Dictionary info_d(simulation_->restart_load_dir()+"/restart_info");
+            T_=info_d.template get<float_type>("T");
+            adapt_count_=info_d.template get<int>("adapt_count");
+            source_max_[0]=info_d.template get<float_type>("cell_aux_max");
+            source_max_[1]=info_d.template get<float_type>("u_max");
+            pcout<<"Restart info ------------------------------------------------ "<< std::endl;
+            pcout<<"T = "<< T_<< std::endl;
+            pcout<<"adapt_count = "<< adapt_count_<< std::endl;
+            pcout<<"cell aux max = "<< source_max_[0]<< std::endl;
+            pcout<<"u max = "<< source_max_[1]<< std::endl;
+            if(domain_->is_client())
+            {
+                pad_velocity<u, u>(true);
+            }
         }
         else
         {
             T_ = 0.0;
+            adapt_count_=-1;
         }
 
         // ----------------------------------- start -------------------------
 
-        clean_up_initial_velocity();
+        //clean_up_initial_velocity();
         write_timestep();
 
-        int adapt_count = 0;
-        while (T_ <= T_max_ + 1e-10)
+        while(T_<T_max_-1e-10)
         {
-            // balance load
-            if ((adapt_count - 1) % adapt_freq_ == 0)
-            { domain_->decomposition().template balance<u_type, p_type>(); }
-
-            // -------------------------------------------------------------
-            // time marching
-            if (domain_->is_client())
-            {
-                mDuration_type ifherk_if(0);
-                TIME_CODE(ifherk_if, SINGLE_ARG(time_step();));
-                pcout << ifherk_if.count() << std::endl;
-            }
 
             // -------------------------------------------------------------
             // adapt
@@ -179,22 +185,58 @@ class Ifherk
 
             if (domain_->is_client()) clean<cell_aux_type>(true, 2);
 
-            if (T_ <= 1e-5) this->template update_source_max<cell_aux_type>();
-
-            if (adapt_count % adapt_freq_ == 0)
+            // copy flag correction to flag old correction
+            for (auto it  = domain_->begin();
+                    it != domain_->end(); ++it)
             {
-                if (domain_->is_client())
-                {
-                    up_and_down<u_type>();
-                    pad_velocity<u_type, u_type>();
-                }
-                this->template adapt<u_type, cell_aux_type>(false);
+                it->flag_old_correction(false);
             }
-            adapt_count++;
+
+            for (auto it  = domain_->begin(domain_->tree()->base_level());
+                    it != domain_->end(domain_->tree()->base_level()); ++it)
+            {
+                it->flag_old_correction(it->is_correction());
+            }
+
+            if ( adapt_count_ % adapt_freq_ ==0)
+            {
+                if (adapt_count_==0)
+                {
+                    this->template update_source_max<cell_aux>(0);
+                    this->template update_source_max<u>(1);
+                }
+
+                //if(domain_->is_client())
+                //{
+                //    up_and_down<u>();
+                //    pad_velocity<u, u>();
+                //}
+                this->adapt(false);
+
+            }
+
+            // balance load
+            if ( adapt_count_ % adapt_freq_ ==0)
+            {
+                clean<u>(true);
+                domain_->decomposition().template balance<u,p>();
+            }
+
+            adapt_count_++;
+
+            // -------------------------------------------------------------
+            // time marching
+            if(domain_->is_client())
+            {
+                mDuration_type ifherk_if(0);
+                TIME_CODE( ifherk_if, SINGLE_ARG(
+                            time_step();
+                            ));
+                pcout<<ifherk_if.count()<<std::endl;
+            }
 
             // -------------------------------------------------------------
             // update stats & output
-            update_marching_parameters();
 
             T_ += dt_;
             float_type tmp_n = T_ / dt_base_ * math::pow2(max_ref_level_);
@@ -212,6 +254,9 @@ class Ifherk
             {
                 n_step_ = tmp_int_n;
                 write_timestep();
+                // only update dt after 1 output so it wouldn't do 3 5 7 9 ...
+                // and skip all outputs
+                update_marching_parameters();
             }
 
             world.barrier();
@@ -223,15 +268,13 @@ class Ifherk
 
             if (domain_->is_server())
             {
-                std::cout << "T = " << T_ << ", n = " << tmp_int_n
-                          << " -----------------" << std::endl;
-                std::cout << "Total number of leaf octants: "
-                          << domain_->num_leafs() << std::endl;
-                std::cout << "Total number of correction octants: "
-                          << domain_->num_corrections() << std::endl;
-                std::cout << "Total number of allocated octants: "
-                          << c_allc_global << std::endl;
+                std::cout<<"T = " << T_<<", n = "<< tmp_int_n << " -----------------" << std::endl;
+                std::cout<<"Total number of leaf octants: "<<domain_->num_leafs()<<std::endl;
+                std::cout<<"Total number of leaf + correction octants: "<<domain_->num_corrections()+domain_->num_leafs()<<std::endl;
+                std::cout<<"Total number of allocated octants: "<<c_allc_global<<std::endl;
+                std::cout<<" -----------------" << std::endl;
             }
+
         }
     }
     void clean_up_initial_velocity()
@@ -277,20 +320,21 @@ class Ifherk
         }
     }
 
-    template<class Field>
-    void update_source_max()
+    template<class F>
+    void update_source_max(int idx)
     {
         float_type max_local = 0.0;
         for (auto it = domain_->begin(); it != domain_->end(); ++it)
         {
             if (!it->locally_owned()) continue;
-            float_type tmp = domain::Operator::maxabs<Field>(it->data());
+            float_type tmp=
+                    domain::Operator::maxabs<F>(*(it->data()));
 
             if (tmp > max_local) max_local = tmp;
         }
 
-        boost::mpi::all_reduce(
-            comm_, max_local, source_max_, boost::mpi::maximum<float_type>());
+        boost::mpi::all_reduce(comm_,max_local,source_max_[idx],
+                boost::mpi::maximum<float_type>() );
     }
 
     void write_restart()
@@ -336,9 +380,11 @@ class Ifherk
             }
 
             ofs.precision(20);
-            ofs << "T = " << T_ << ";" << std::endl;
-            ofs << "source_max = " << source_max_ << ";" << std::endl;
-            ofs << "restart_n_last = " << restart_n_last_ << ";" << std::endl;
+            ofs<<"T = " << T_ << ";" << std::endl;
+            ofs<<"adapt_count = " << adapt_count_ << ";" << std::endl;
+            ofs<<"cell_aux_max = " << source_max_[0] << ";" << std::endl;
+            ofs<<"u_max = " << source_max_[1] << ";" << std::endl;
+            ofs<<"restart_n_last = " << restart_n_last_ << ";" << std::endl;
 
             ofs.close();
         }
@@ -360,13 +406,11 @@ class Ifherk
     }
 
     template<class Field>
-    void up()
+    void up(bool leaf_boundary_only=true)
     {
         //Coarsification:
-        for (std::size_t _field_idx = 0; _field_idx < Field::nFields();
-             ++_field_idx)
-            psolver.template source_coarsify<Field, Field>(_field_idx,
-                _field_idx, Field::mesh_type(), false, false, false, true);
+        for (std::size_t _field_idx=0; _field_idx<Field::nFields; ++_field_idx)
+            psolver.template source_coarsify<Field,Field>(_field_idx, _field_idx, Field::mesh_type, false, false, false, leaf_boundary_only);
     }
 
     template<class Field>
@@ -379,15 +423,15 @@ class Ifherk
                 _field_idx, _field_idx, Field::mesh_type(), true, false, true);
     }
 
-    template<class AdaptField, class CriterionField>
-    void adapt(bool coarsify_field = true)
+    void adapt(bool coarsify_field=true)
     {
         boost::mpi::communicator world;
         auto                     client = domain_->decomposition().client();
 
+        if (source_max_[0]<1e-10 || source_max_[1]<1e-10) return;
+
         //adaptation neglect the boundary oscillations
-        clean_leaf_correction_boundary<cell_aux_type>(
-            domain_->tree()->base_level(), true);
+        clean_leaf_correction_boundary<cell_aux>(domain_->tree()->base_level(),true,7);
 
         world.barrier();
 
@@ -397,46 +441,40 @@ class Ifherk
             if (client)
             {
                 //claen non leafs
-                clean<AdaptField>(true);
+                clean<u>(true);
+                this->up<u>(false);
+                ////Coarsification:
+                //for (std::size_t _field_idx=0; _field_idx<u::nFields; ++_field_idx)
+                //    psolver.template source_coarsify<u,u>(_field_idx, _field_idx, u::mesh_type);
 
-                //Coarsification:
-                for (std::size_t _field_idx = 0;
-                     _field_idx < AdaptField::nFields(); ++_field_idx)
-                    psolver.template source_coarsify<AdaptField, AdaptField>(
-                        _field_idx, _field_idx, AdaptField::mesh_type());
             }
         }
 
         world.barrier();
-        pcout << "Adapt - communication" << std::endl;
-        auto intrp_list = domain_->template adapt<CriterionField>(source_max_);
+        pcout<< "Adapt - communication"  << std::endl;
+        auto intrp_list = domain_->adapt(source_max_, base_mesh_update_);
 
         world.barrier();
         pcout << "Adapt - intrp" << std::endl;
         if (client)
         {
             // Intrp
-            for (std::size_t _field_idx = 0; _field_idx < AdaptField::nFields();
-                 ++_field_idx)
+            for (std::size_t _field_idx=0; _field_idx<u::nFields; ++_field_idx)
             {
                 for (int l = domain_->tree()->depth() - 2;
                      l >= domain_->tree()->base_level(); --l)
                 {
-                    client->template buffer_exchange<AdaptField>(l);
+                    client->template buffer_exchange<u>(l);
 
-                    domain_->decomposition()
-                        .client()
-                        ->template communicate_updownward_assign<AdaptField,
-                            AdaptField>(l, false, false, -1, _field_idx);
+                    domain_->decomposition().client()->
+                    template communicate_updownward_assign
+                    <u, u>(l,false,false,-1,_field_idx);
                 }
 
                 for (auto& oct : intrp_list)
                 {
-                    if (!oct || !oct->has_data()) continue;
-                    psolver.c_cntr_nli()
-                        .template nli_intrp_node<AdaptField, AdaptField>(oct,
-                            AdaptField::mesh_type(), _field_idx, _field_idx,
-                            false, false);
+                    if (!oct || !oct->data()) continue;
+                    psolver.c_cntr_nli().template nli_intrp_node<u, u>(oct, u::mesh_type, _field_idx, _field_idx, false, false);
                 }
             }
         }
@@ -452,15 +490,28 @@ class Ifherk
         auto                     client = domain_->decomposition().client();
 
         ////claen non leafs
-        up_and_down<u_type>();
 
-        // Solve stream function to pad base level u_type->u_pad
-        stage_idx_ = 0;
+        stage_idx_=0;
+
+        // Solve stream function to refresh base level velocity
         mDuration_type t_pad(0);
-        TIME_CODE(t_pad, SINGLE_ARG(pad_velocity<u_type, u_type>();));
-        pcout << "pad u_type      in " << t_pad.count() << std::endl;
+        TIME_CODE( t_pad, SINGLE_ARG(
+                    pcout<< "base level mesh update = "<<base_mesh_update_<< std::endl;
+                    if (    base_mesh_update_ ||
+                            ((T_-T_last_vel_refresh_)/(Re_*dx_base_*dx_base_) * 3.3>7))
+                    {
+                        pad_velocity<u, u>(true);
+                        T_last_vel_refresh_=T_;
+                    }
+                    else
+                    {
+                        up_and_down<u>();
+                    }
+                    ));
+        base_mesh_update_=false;
+        pcout<< "pad u      in "<<t_pad.count() << std::endl;
 
-        copy<u_type, q_i_type>();
+        copy<u, q_i>();
 
         // Stage 1
         // ******************************************************************
@@ -531,39 +582,8 @@ class Ifherk
         // ******************************************************************
     }
 
-  private:
-    float_type coeff_a(int i, int j) const noexcept
-    {
-        return a_[i * (i - 1) / 2 + j - 1];
-    }
-
-    void lin_sys_solve(float_type _alpha) noexcept
-    {
-        auto client = domain_->decomposition().client();
-
-        divergence<r_i_type, cell_aux_type>();
-
-        mDuration_type t_lgf(0);
-        TIME_CODE(t_lgf,
-            SINGLE_ARG(psolver.template apply_lgf<cell_aux_type, d_i_type>();));
-        pcout << "LGF solved in " << t_lgf.count() << std::endl;
-
-        gradient<d_i_type, face_aux_type>();
-        add<face_aux_type, r_i_type>(-1.0);
-        if (std::fabs(_alpha) > 1e-4)
-        {
-            mDuration_type t_if(0);
-            TIME_CODE(t_if,
-                SINGLE_ARG(psolver.template apply_lgf_IF<r_i_type, u_i_type>(
-                    _alpha);));
-            pcout << "IF  solved in " << t_if.count() << std::endl;
-        }
-        else
-            copy<r_i_type, u_i_type>();
-    }
-
-    template<typename F>
-    void clean(bool non_leaf_only = false, int clean_width = 1) noexcept
+    template <typename F>
+    void clean(bool non_leaf_only=false, int clean_width=1) noexcept
     {
         for (auto it = domain_->begin(); it != domain_->end(); ++it)
         {
@@ -601,57 +621,8 @@ class Ifherk
         }
     }
 
-    template<class Velocity_in, class Velocity_out>
-    void pad_velocity(bool _exchange_buffer = true)
-    {
-        auto client = domain_->decomposition().client();
-
-        clean<edge_aux_type>();
-        clean<stream_f_type>();
-
-        auto dx_base = domain_->dx_base();
-
-        for (int l = domain_->tree()->base_level();
-             l < domain_->tree()->depth(); ++l)
-        {
-            if (_exchange_buffer)
-                client->template buffer_exchange<Velocity_in>(l);
-
-            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
-            {
-                if (!it->locally_owned() || !it->has_data()) continue;
-                if (it->is_correction()) continue;
-                if (!it->is_leaf()) continue;
-
-                const auto dx_level =
-                    dx_base / math::pow2(it->refinement_level());
-                if (it->is_leaf())
-                    domain::Operator::curl<Velocity_in, edge_aux_type>(
-                        it->data(), dx_level);
-            }
-        }
-
-        int l = domain_->tree()->base_level();
-        clean_leaf_correction_boundary<edge_aux_type>(l, true, 2);
-        //clean_leaf_correction_boundary<edge_aux_type>(l, false,2+stage_idx_);
-        psolver.template apply_lgf<edge_aux_type, stream_f_type>(true);
-
-        for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
-        {
-            if (!it->locally_owned() || !it->has_data()) continue;
-            if (!it->is_correction()) continue;
-
-            const auto dx_level = dx_base / math::pow2(it->refinement_level());
-            domain::Operator::curl_transpose<stream_f_type, Velocity_out>(
-                it->data(), dx_level, -1.0);
-        }
-
-        //client->template buffer_exchange<Velocity_out>(l);
-    }
-
-    template<typename F>
-    void clean_leaf_correction_boundary(
-        int l, bool leaf_only_boundary = false, int clean_width = 1) noexcept
+    template <typename F>
+    void clean_leaf_correction_boundary(int l, bool leaf_only_boundary=false, int clean_width=1) noexcept
     {
         for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
         {
@@ -673,10 +644,7 @@ class Ifherk
             if (!it->locally_owned()) continue;
             if (!it->has_data() || !it->data().is_allocated()) continue;
 
-            if (leaf_only_boundary && it->is_correction())
-            {
-                for (std::size_t field_idx = 0; field_idx < F::nFields();
-                     ++field_idx)
+                if (leaf_only_boundary && (it->is_correction() || it->is_old_correction() ))
                 {
                     auto& lin_data =
                         it->data_r(F::tag(), field_idx).linalg_data();
@@ -689,11 +657,10 @@ class Ifherk
         if (l == domain_->tree()->base_level())
             for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
             {
-                if (!it->locally_owned()) continue;
-                if (!it->has_data() || !it->data().is_allocated()) continue;
-                //std::cout<<it->key()<<std::endl;
-
-                for (std::size_t i = 0; i < it->num_neighbors(); ++i)
+                auto it2=it->neighbor(i);
+                //if (it2)
+                //    std::cout<<i<<it2->key()<<std::endl;
+                if ((!it2 || !it2->data()) || (leaf_only_boundary && (it2->is_correction() || it2->is_old_correction() )))
                 {
                     auto it2 = it->neighbor(i);
                     //if (it2)
@@ -738,6 +705,101 @@ class Ifherk
             }
     }
 
+
+private:
+    float_type coeff_a(int i, int j)const noexcept {return a_[i*(i-1)/2+j-1];}
+
+
+    void lin_sys_solve(float_type _alpha) noexcept
+    {
+        auto client=domain_->decomposition().client();
+
+        divergence<r_i, cell_aux>();
+
+        domain_->client_communicator().barrier();
+        mDuration_type t_lgf(0);
+        TIME_CODE( t_lgf, SINGLE_ARG(
+                    psolver.template apply_lgf<cell_aux, d_i>();
+                    ));
+        pcout<< "LGF solved in "<<t_lgf.count() << std::endl;
+
+        gradient<d_i,face_aux>();
+        add<face_aux, r_i>(-1.0);
+        if (std::fabs(_alpha)>1e-4)
+        {
+            mDuration_type t_if(0);
+            domain_->client_communicator().barrier();
+            TIME_CODE( t_if, SINGLE_ARG(
+                        psolver.template apply_lgf_IF<r_i, u_i>(_alpha);
+                        ));
+            pcout<< "IF  solved in "<<t_if.count() << std::endl;
+        }
+        else
+            copy<r_i,u_i>();
+    }
+
+
+
+    template<class Velocity_in, class Velocity_out>
+    void pad_velocity(bool refresh_correction_only=true)
+    {
+        auto client=domain_->decomposition().client();
+
+        //up_and_down<Velocity_in>();
+        clean<Velocity_in>(true);
+        this->up<Velocity_in>(false);
+        clean<edge_aux>();
+        clean<stream_f>();
+
+        auto dx_base = domain_->dx_base();
+
+        for (int l  = domain_->tree()->base_level();
+                l < domain_->tree()->depth(); ++l)
+        {
+            client->template buffer_exchange<Velocity_in>(l);
+
+            for (auto it  = domain_->begin(l);
+                    it != domain_->end(l); ++it)
+            {
+                if(!it->locally_owned() || !it->data()) continue;
+                if(it->is_correction()) continue;
+                //if(!it->is_leaf()) continue;
+
+                const auto dx_level =  dx_base/math::pow2(it->refinement_level());
+                //if (it->is_leaf())
+                domain::Operator::curl<Velocity_in,edge_aux>( *(it->data()),dx_level);
+            }
+        }
+
+        //clean<Velocity_out>();
+        clean_leaf_correction_boundary<edge_aux>(domain_->tree()->base_level(), true, 2);
+        //clean_leaf_correction_boundary<edge_aux>(l, false,2+stage_idx_);
+        psolver.template apply_lgf<edge_aux, stream_f>(refresh_correction_only);
+
+        int l_max = refresh_correction_only ?
+            domain_->tree()->base_level()+1 : domain_->tree()->depth();
+
+        for (int l  = domain_->tree()->base_level();
+                l < l_max; ++l)
+        {
+            for (auto it  = domain_->begin(l);
+                    it != domain_->end(l); ++it)
+            {
+                if(!it->locally_owned() || !it->data()) continue;
+                //if(!it->is_correction() && refresh_correction_only) continue;
+
+                const auto dx_level =  dx_base/math::pow2(it->refinement_level());
+                domain::Operator::curl_transpose<stream_f,Velocity_out>( *(it->data()),dx_level, -1.0);
+            }
+            //client->template buffer_exchange<Velocity_out>(l);
+        }
+
+        //client->template buffer_exchange<Velocity_out>(l);
+        this->down_to_correction<Velocity_out>();
+    }
+
+
+
     //TODO maybe to be put directly intor operators:
     template<class Source, class Target>
     void nonlinear(float_type _scale = 1.0) noexcept
@@ -764,9 +826,9 @@ class Ifherk
                     it->data(), dx_level);
             }
 
-            client->template buffer_exchange<edge_aux_type>(l);
-            clean_leaf_correction_boundary<edge_aux_type>(
-                l, false, 2 + stage_idx_);
+            client->template buffer_exchange<edge_aux>(l);
+            //clean_leaf_correction_boundary<edge_aux>(l, false,2+stage_idx_);
+            clean_leaf_correction_boundary<edge_aux>(l, false, 2);
 
             for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
             {
@@ -786,7 +848,7 @@ class Ifherk
             }
 
             //client->template buffer_exchange<Target>(l);
-            clean_leaf_correction_boundary<Target>(l, false, 3 + stage_idx_);
+            clean_leaf_correction_boundary<Target>(l, true,3);
         }
     }
 
@@ -812,7 +874,9 @@ class Ifherk
                     it->data(), dx_level);
             }
 
-            clean_leaf_correction_boundary<Target>(l, false, 4 + stage_idx_);
+            //client->template buffer_exchange<Target>(l);
+            clean_leaf_correction_boundary<Target>(l, true, 2);
+            //clean_leaf_correction_boundary<Target>(l, false,4+stage_idx_);
         }
     }
 
@@ -893,13 +957,18 @@ class Ifherk
     domain_type*     domain_; ///< domain
     poisson_solver_t psolver;
 
+    bool base_mesh_update_=false;
+
     float_type T_, T_max_;
     float_type dt_base_, dt_, dx_base_;
     float_type Re_;
     float_type cfl_max_, cfl_;
-    float_type source_max_;
+    std::vector<float_type> source_max_{1.0, 1.0};
 
-    int max_ref_level_ = 0;
+    float_type T_last_vel_refresh_=0.0;
+
+    int max_vel_refresh_=1;
+    int max_ref_level_=0;
     int output_base_freq_;
     int adapt_freq_;
     int tot_base_steps_;
@@ -908,9 +977,10 @@ class Ifherk
     int nLevelRefinement_;
     int stage_idx_ = 0;
 
-    bool use_restart_ = false;
-    bool write_restart_ = false;
-    int  restart_base_freq_;
+    bool use_restart_=false;
+    bool write_restart_=false;
+    int restart_base_freq_;
+    int adapt_count_;
 
     std::string                       fname_prefix_;
     vector_type<float_type, 6>        a_{{1.0 / 3, -1.0, 2.0, 0.0, 0.75, 0.25}};

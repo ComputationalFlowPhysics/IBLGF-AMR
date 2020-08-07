@@ -73,9 +73,10 @@ class PoissonSolver
     static constexpr int rBuffer = 1; ///< Lower left buffer for interpolation
 
     PoissonSolver(simulation_type* _simulation)
-    : domain_(_simulation->domain_.get())
-    , fmm_(domain_, domain_->block_extent()[0] + lBuffer + rBuffer)
-    , c_cntr_nli_(domain_->block_extent()[0] + lBuffer + rBuffer)
+    :
+    domain_(_simulation->domain_.get()),
+    fmm_(domain_,domain_->block_extent()[0]+lBuffer+rBuffer),
+    c_cntr_nli_(domain_->block_extent()[0]+lBuffer+rBuffer, _simulation->intrp_order())
     {
     }
 
@@ -178,7 +179,12 @@ class PoissonSolver
         clean_field<correction_tmp_type>();
 
         // Copy source
-        copy_leaf<Source, source_tmp_type>(_field_idx, 0, true);
+        if (!base_level_only)
+            copy_leaf<Source, source_tmp>(_field_idx, 0, true);
+        else
+        {
+            copy_level<Source, source_tmp>(domain_->tree()->base_level(), _field_idx, 0, false);
+        }
 
 #ifdef POISSON_TIMINGS
         timings_ = Timings();
@@ -191,8 +197,8 @@ class PoissonSolver
         auto t0_coarsify = clock_type::now();
 #endif
 
-        source_coarsify<source_tmp_type, source_tmp_type>(
-            _field_idx, 0, Source::mesh_type());
+        if (!base_level_only)
+            source_coarsify<source_tmp, source_tmp>(_field_idx, 0, Source::mesh_type);
 
 #ifdef POISSON_TIMINGS
         auto t1_coarsify = clock_type::now();
@@ -483,6 +489,8 @@ class PoissonSolver
         bool correction_only = false, bool exclude_correction = false,
         bool _buffer_exchange = false, bool leaf_boundary = false)
     {
+
+        leaf_boundary=false;
         auto client = domain_->decomposition().client();
         if (!client) return;
 
@@ -647,104 +655,90 @@ class PoissonSolver
            << static_cast<float_type>(timings_.global.count() / 1.e3) /
                   pts.back()
            //<<std::defaultfloat
-           << std::setw(width)
-           << 100.0 * static_cast<float_type>(timings_.coarsification.count()) /
-                  timings_.global.count()
-           << std::setw(width)
-           << 100.0 *
-                  static_cast<float_type>(timings_.level_interaction.count()) /
-                  timings_.global.count()
-           << std::setw(width)
-           << 100.0 * static_cast<float_type>(timings_.interpolation.count()) /
-                  timings_.global.count()
-           << std::endl;
 
-        int c = 0;
-        width = 15;
-        os_level << std::left << std::scientific << std::setprecision(5)
-                 << std::setw(10) << "level" << std::setw(15) << "npts"
-                 << std::setw(width) << "gbl[s]" << std::setw(width)
-                 << "rate[pts/s]" << std::setw(width) << "eff[s/pt]"
+           <<std::setw(width) <<100.0*static_cast<float_type>(timings_.coarsification.count())/timings_.global.count()
+           <<std::setw(width) <<100.0*static_cast<float_type>(timings_.level_interaction.count())/timings_.global.count()
+           <<std::setw(width) <<100.0*static_cast<float_type>(timings_.interpolation.count())/timings_.global.count()
+       <<std::endl;
 
-                 << std::setw(width) << "fmm gbl " << std::setw(width)
-                 << "anterp " << std::setw(width) << "Bx " << std::setw(width)
-                 << "fft " << std::setw(width) << "fft ratio "
-                 << std::setw(width) << "interp "
 
-                 << std::setw(width) << "fmm_nl gbl " << std::setw(width)
-                 << "anterp " << std::setw(width) << "Bx " << std::setw(width)
-                 << "fft " << std::setw(width) << "fft ratio "
-                 << std::setw(width) << "interp " << std::endl;
+       int c=0;
+       width=15;
+       os_level<<std::left<<std::scientific<<std::setprecision(5)
+            <<std::setw(10) <<"level"
+            <<std::setw(15) <<"npts"
+            <<std::setw(width) <<"gbl[s]"
+            <<std::setw(width) <<"rate[pts/s]"
+            <<std::setw(width) <<"eff[s/pt]"
 
-        for (std::size_t i = 0; i < timings_.level.size(); ++i)
-        {
-            auto& t = timings_.level[i];
-            auto& fmm = timings_.fmm_level[i];
-            auto& fmm_nl = timings_.fmm_level_nl[i];
+            <<std::setw(width) <<"fmm gbl "
+            <<std::setw(width) <<"anterp "
+            <<std::setw(width) <<"Bx "
+            <<std::setw(width) <<"fft "
+            <<std::setw(width) <<"fft ratio "
+            <<std::setw(width) <<"interp "
 
-            os_level << std::setw(10) << c << std::setw(15) << pts[c]
-                     << std::setw(width)
-                     << static_cast<float_type>(t.count()) / 1.e3
-                     << std::setw(width)
-                     << pts[c] / (static_cast<float_type>(t.count()) / 1.e3)
-                     << std::setw(width)
-                     << (static_cast<float_type>(t.count()) / 1.e3) / pts[c]
+            <<std::setw(width) <<"fmm_nl gbl "
+            <<std::setw(width) <<"anterp "
+            <<std::setw(width) <<"Bx "
+            <<std::setw(width) <<"fft "
+            <<std::setw(width) <<"fft ratio "
+            <<std::setw(width) <<"interp "
+       <<std::endl;
 
-                     << std::setw(width)
-                     << (static_cast<float_type>(fmm.global.count()) / 1.e3)
-                     << std::setw(width)
-                     << (static_cast<float_type>(fmm.anterp.count()) / 1.e3)
-                     << std::setw(width)
-                     << (static_cast<float_type>(fmm.bx.count()) / 1.e3)
-                     << std::setw(width)
-                     << (static_cast<float_type>(fmm.fftw.count()) / 1.e3)
-                     << std::setw(width)
-                     << (static_cast<float_type>(fmm.fftw_count_max) /
-                            fmm.fftw_count_min)
-                     << std::setw(width)
-                     << (static_cast<float_type>(fmm.interp.count()) / 1.e3)
+       for(std::size_t i=0; i<timings_.level.size();++i)
+       {
 
-                     << std::setw(width)
-                     << (static_cast<float_type>(fmm_nl.global.count()) / 1.e3)
-                     << std::setw(width)
-                     << (static_cast<float_type>(fmm_nl.anterp.count()) / 1.e3)
-                     << std::setw(width)
-                     << (static_cast<float_type>(fmm_nl.bx.count()) / 1.e3)
-                     << std::setw(width)
-                     << (static_cast<float_type>(fmm_nl.fftw.count()) / 1.e3)
-                     << std::setw(width)
-                     << (static_cast<float_type>(fmm_nl.fftw_count_max) /
-                            fmm_nl.fftw_count_min)
-                     << std::setw(width)
-                     << (static_cast<float_type>(fmm_nl.interp.count()) / 1.e3)
+           auto& t=timings_.level[i];
+           auto& fmm=timings_.fmm_level[i];
+           auto& fmm_nl=timings_.fmm_level_nl[i];
 
-                     << std::endl;
-            ++c;
-        }
-        os_level << std::endl;
-        os << std::endl;
-        //os_level<<std::defaultfloat<<std::endl;
-        //os<<std::defaultfloat<<std::endl;
-    }
+           os_level<<std::setw(10)<<c
+             <<std::setw(15)<<pts[c]
+             <<std::setw(width)<<static_cast<float_type>(t.count())/1.e3
+             <<std::setw(width)<<pts[c]/(static_cast<float_type>(t.count())/1.e3)
+             <<std::setw(width)<<(static_cast<float_type>(t.count())/1.e3)/pts[c]
 
-    const bool& subtract_non_leaf() const noexcept
-    {
-        return subtract_non_leaf_;
-    }
-    bool& subtract_non_leaf() noexcept { return subtract_non_leaf_; }
+             <<std::setw(width)<<(static_cast<float_type>(fmm.global.count())/1.e3)
+             <<std::setw(width)<<(static_cast<float_type>(fmm.anterp.count())/1.e3)
+             <<std::setw(width)<<(static_cast<float_type>(fmm.bx.count())/1.e3)
+             <<std::setw(width)<<(static_cast<float_type>(fmm.fftw.count())/1.e3)
+             <<std::setw(width)<<(static_cast<float_type>(fmm.fftw_count_max)/fmm.fftw_count_min)
+             <<std::setw(width)<<(static_cast<float_type>(fmm.interp.count())/1.e3)
 
-    const bool& use_correction() const noexcept { return use_correction_; }
-    bool&       use_correction() noexcept { return use_correction_; }
+             <<std::setw(width)<<(static_cast<float_type>(fmm_nl.global.count())/1.e3)
+             <<std::setw(width)<<(static_cast<float_type>(fmm_nl.anterp.count())/1.e3)
+             <<std::setw(width)<<(static_cast<float_type>(fmm_nl.bx.count())/1.e3)
+             <<std::setw(width)<<(static_cast<float_type>(fmm_nl.fftw.count())/1.e3)
+             <<std::setw(width)<<(static_cast<float_type>(fmm_nl.fftw_count_max)/fmm_nl.fftw_count_min)
+             <<std::setw(width)<<(static_cast<float_type>(fmm_nl.interp.count())/1.e3)
 
-  private:
-    domain_type*                   domain_; ///< domain
-    Fmm_t                          fmm_;    ///< fast-multipole
-    lgf_lap_t                      lgf_lap_;
-    lgf_if_t                       lgf_if_;
-    interpolation::cell_center_nli c_cntr_nli_; ///< Lagrange Interpolation
-    parallel_ostream::ParallelOstream pcout =
-        parallel_ostream::ParallelOstream(1);
-    bool use_correction_ = true;
+           <<std::endl;
+           ++c;
+       }
+       os_level<<std::endl;
+       os<<std::endl;
+       //os_level<<std::defaultfloat<<std::endl;
+       //os<<std::defaultfloat<<std::endl;
+   }
+
+
+   const bool& subtract_non_leaf()const noexcept{return subtract_non_leaf_;}
+   bool& subtract_non_leaf()noexcept{return subtract_non_leaf_;}
+
+   const bool& use_correction()const noexcept{return use_correction_;}
+   bool& use_correction()noexcept{return use_correction_;}
+
+
+
+private:
+    domain_type*                      domain_;    ///< domain
+    Fmm_t                             fmm_;       ///< fast-multipole
+    lgf_lap_t                         lgf_lap_;
+    lgf_if_t                          lgf_if_;
+    interpolation::cell_center_nli    c_cntr_nli_;///< Lagrange Interpolation
+    parallel_ostream::ParallelOstream pcout=parallel_ostream::ParallelOstream(1);
+    bool use_correction_ =true;
     bool subtract_non_leaf_ = false;
 
     //Timings:

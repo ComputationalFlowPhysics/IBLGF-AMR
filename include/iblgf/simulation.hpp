@@ -39,6 +39,7 @@ class Simulation
     , domain_(std::make_shared<domain_type>())
     , io_init_(_dictionary.get())
     {
+        intrp_order_ = dictionary_->template get_or<int>("intrp_order",3);
     }
 
     friend std::ostream& operator<<(std::ostream& os, Simulation& s)
@@ -111,25 +112,31 @@ class Simulation
     }
 
     template<typename Field>
-    void read_h5(std::string _filename)
+    void read_h5(std::string _filename, std::string field_name)
     {
-        io_h5.template read_h5<Field>(_filename, domain_.get());
+       io_h5.template read_h5<Field>(_filename, field_name, domain_.get());
     }
 
-    auto&       domain() noexcept { return domain_; }
-    const auto& domain() const noexcept { return domain_; }
-    auto&       dictionary() noexcept { return dictionary_; }
-    const auto& dictionary() const noexcept { return dictionary_; }
+    auto& domain()noexcept{return domain_;}
+    const auto& domain()const noexcept{return domain_;}
+    auto& dictionary()noexcept{return dictionary_;}
+    const auto& dictionary()const noexcept{return dictionary_;}
 
-  public:
-    std::shared_ptr<Dictionary> dictionary_ = nullptr;
-    std::shared_ptr<Domain>     domain_ = nullptr;
-    boost::mpi::communicator    world_;
-    io::H5_io<3, Domain>        io_h5;
-    io::IO_init                 io_init_;
-    std::string                 restart_info_file_ = "restart_info";
-    std::string                 restart_domain_file_ = "restart_domain.bin";
-    std::string                 restart_field_file_ = "restart_field.hdf5";
+    int intrp_order()noexcept{return intrp_order_;}
+
+public:
+  std::shared_ptr<Dictionary> dictionary_=nullptr;
+  std::shared_ptr<Domain> domain_=nullptr;
+  boost::mpi::communicator world_;
+  io::Vtk_io<Domain> writer;
+  io::H5_io<3, Domain> io_h5;
+  io::IO_init io_init_;
+  std::string restart_info_file_="restart_info";
+  std::string restart_domain_file_="restart_domain.bin";
+  std::string restart_field_file_="restart_field.hdf5";
+
+  int intrp_order_=3;
+
 };
 
 } // namespace iblgf

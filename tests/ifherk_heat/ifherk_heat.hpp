@@ -58,10 +58,12 @@ struct parameters
      (
         //name               type        Dim   lBuffer  hBuffer, storage type
          (error_u          , float_type, 3,    1,       1,     face,true ),
+         (error_p          , float_type, 1,    1,       1,     cell,true ),
          (decomposition    , float_type, 1,    1,       1,     cell,true ),
         //IF-HERK
          (u                , float_type, 3,    1,       1,     face,true ),
          (u_ref            , float_type, 3,    1,       1,     face,true ),
+         (p_ref            , float_type, 1,    1,       1,     cell,true ),
          (p                , float_type, 1,    1,       1,     cell,true )
     ))
     // clang-format on
@@ -69,7 +71,8 @@ struct parameters
 
 struct IfherkHeat : public SetupBase<IfherkHeat, parameters>
 {
-    using super_type = SetupBase<IfherkHeat, parameters>;
+    using super_type =SetupBase<IfherkHeat,parameters>;
+    using vr_fct_t = std::function<float_type(float_type x, float_type y, float_type z, int field_idx, bool perturbation)>;
 
     //Timings
     using clock_type = std::chrono::high_resolution_clock;
@@ -91,14 +94,22 @@ struct IfherkHeat : public SetupBase<IfherkHeat, parameters>
             simulation_.dictionary()->template get_or<float_type>("cfl", 0.2);
         dt_ = simulation_.dictionary()->template get_or<float_type>("dt", -1.0);
 
-        tot_steps_ =
-            simulation_.dictionary()->template get<int>("nBaseLevelTimeSteps");
-        Re_ = simulation_.dictionary()->template get<float_type>("Re");
-        R_ = simulation_.dictionary()->template get<float_type>("R");
-        d2v_ = simulation_.dictionary()->template get_or<float_type>(
-            "DistanceOfVortexRings", R_);
-        v_delta_ = simulation_.dictionary()->template get_or<float_type>(
-            "vDelta", 0.2 * R_);
+        tot_steps_   = simulation_.dictionary()->template get<int>("nBaseLevelTimeSteps");
+        Re_          = simulation_.dictionary()->template get<float_type>("Re");
+        R_           = simulation_.dictionary()->template get<float_type>("R");
+        d2v_         = simulation_.dictionary()->template get_or<float_type>("DistanceOfVortexRings", R_);
+        v_delta_     = simulation_.dictionary()->template get_or<float_type>("vDelta", 0.2*R_);
+        single_ring_ = simulation_.dictionary()->template get_or<bool>("single_ring", true);
+        perturbation_ = simulation_.dictionary()->template get_or<bool>("perturbation", false);
+
+
+        bool use_fat_ring = simulation_.dictionary()->template get_or<bool>("fat_ring", false);
+        if (use_fat_ring)
+            vr_fct_=
+            [this](float_type x, float_type y, float_type z, int field_idx, bool perturbation){return this->vortex_ring_vor_fat_ic(x,y,z,field_idx, perturbation);};
+        else
+            vr_fct_=
+            [this](float_type x, float_type y, float_type z, int field_idx, bool perturbation){return this->vortex_ring_vor_ic(x,y,z,field_idx, perturbation);};
 
         ic_filename_ = simulation_.dictionary_->template get_or<std::string>(
             "hdf5_ic_name", "null");
@@ -112,8 +123,11 @@ struct IfherkHeat : public SetupBase<IfherkHeat, parameters>
         refinement_factor_ = simulation_.dictionary_->template get<float_type>(
             "refinement_factor");
 
-        nLevelRefinement_ =
-            simulation_.dictionary_->template get_or<int>("nLevels", 0);
+        base_threshold_ = simulation_.dictionary()->
+            template get_or<float_type>("base_level_threshold", 1e-4);
+
+        nLevelRefinement_=simulation_.dictionary_->
+            template get_or<int>("nLevels",0);
 
         global_refinement_ = simulation_.dictionary_->template get_or<int>(
             "global_refinement", 0);
@@ -127,11 +141,8 @@ struct IfherkHeat : public SetupBase<IfherkHeat, parameters>
         pcout << "Number of refinement levels: " << nLevelRefinement_
               << std::endl;
 
-        domain_->register_adapt_condition() = [this](auto    octant,
-                                                  float_type source_max) {
-            return this->template adapt_level_change<cell_aux_type>(
-                octant, source_max);
-        };
+        domain_->register_adapt_condition()=
+            [this](auto octant, std::vector<float_type> source_max){return this->template adapt_level_change<cell_aux, u>(octant, source_max);};
 
         domain_->register_refinement_condition() = [this](auto octant,
                                                        int     diff_level) {
@@ -153,8 +164,7 @@ struct IfherkHeat : public SetupBase<IfherkHeat, parameters>
         if (!use_restart()) { this->initialize(); }
         else
         {
-            simulation_.template read_h5<u_type>(
-                simulation_.restart_field_dir());
+            simulation_.template read_h5<u>(simulation_.restart_field_dir(),"u");
         }
 
         boost::mpi::communicator world;
@@ -168,43 +178,103 @@ struct IfherkHeat : public SetupBase<IfherkHeat, parameters>
 
         time_integration_t ifherk(&this->simulation_);
 
-        if (ic_filename_ != "null")
-            simulation_.template read_h5<u_type>(ic_filename_);
+        if (ic_filename_!="null")
+            simulation_.template read_h5<u>(ic_filename_,"u");
 
         mDuration_type ifherk_duration(0);
-        TIME_CODE(
-            ifherk_duration, SINGLE_ARG(ifherk.time_march(use_restart());))
-        pcout_c << "Time to solution [ms] " << ifherk_duration.count()
-                << std::endl;
+        TIME_CODE( ifherk_duration, SINGLE_ARG(
+                    ifherk.time_march(use_restart());
+                    ))
+        pcout_c<<"Time to solution [ms] "<<ifherk_duration.count()<<std::endl;
 
-        if (ref_filename_ != "null")
-            simulation_.template read_h5<u_ref_type>(ref_filename_);
+        if (ref_filename_!="null")
+        {
+            simulation_.template read_h5<u_ref>(ref_filename_, "u");
+            simulation_.template read_h5<p_ref>(ref_filename_, "p");
+
+            auto center = (domain_->bounding_box().max() -
+                    domain_->bounding_box().min()+1) / 2.0 +
+                    domain_->bounding_box().min();
+
+
+            for (auto it  = domain_->begin_leafs();
+                    it != domain_->end_leafs(); ++it)
+            {
+                if(!it->locally_owned()) continue;
+
+                auto dx_level =  domain_->dx_base()/std::pow(2,it->refinement_level());
+                auto scaling =  std::pow(2,it->refinement_level());
+
+                auto view(it->data()->node_field().domain_view());
+                auto& nodes_domain=it->data()->nodes_domain();
+
+                //float_type T = dt_*tot_steps_;
+                for(auto it2=nodes_domain.begin();it2!=nodes_domain.end();++it2 )
+                {
+
+                    const auto& coord=it2->level_coordinate();
+
+                    /***********************************************************/
+                    float_type x = static_cast<float_type>
+                        (coord[0]-center[0]*scaling)*dx_level;
+                    float_type y = static_cast<float_type>
+                        (coord[1]-center[1]*scaling)*dx_level;
+                    float_type z = static_cast<float_type>
+                        (coord[2]-center[2]*scaling)*dx_level;
+
+                    float_type r2 = x*x+y*y;
+
+                    if (std::fabs(z)>R_ || r2>4*R_*R_)
+                    {
+                        it2->get<u_ref>(0) = 0.0;
+                        it2->get<u_ref>(1) = 0.0;
+                        it2->get<u_ref>(2) = 0.0;
+                    }
+
+                }
+
+
+            }
+        }
+
+        ifherk.clean_leaf_correction_boundary<u>(domain_->tree()->base_level(),true,1);
 
         this->compute_errors<u_type, u_ref_type, error_u_type>(
-            std::string("u1_"), 0);
+                std::string("u1_"), 0);
         this->compute_errors<u_type, u_ref_type, error_u_type>(
-            std::string("u2_"), 1);
+                std::string("u2_"), 1);
         this->compute_errors<u_type, u_ref_type, error_u_type>(
-            std::string("u3_"), 2);
+                std::string("u3_"), 2);
 
         simulation_.write("final.hdf5");
+
+    }
+
+
+    template<class cell_aux, class u, class OctantType >
+    int adapt_level_change(OctantType* it, std::vector<float_type> source_max)
+    {
+        // no source in correction part by default
+        if (it->is_correction())
+            return -1;
+
+        int l1=this->template adapt_levle_change_for_field<cell_aux>(it, source_max[0], true);
+        //int l2=this->template adapt_levle_change_for_field<u>(it, source_max[1], false);
+        int l2=-1;
+
+        return std::max(l1,l2);
     }
 
     template<class Field, class OctantType>
-    int adapt_level_change(OctantType* it, float_type source_max)
+    int adapt_levle_change_for_field(OctantType* it, float_type source_max, bool use_base_level_threshold)
     {
-        // ----------------------------------------------------------------
-        float_type field_max = 1e-14;
-        for (auto& n : it->data())
-        {
-            if (std::fabs(n(Field::tag())) > field_max)
-                field_max = std::fabs(n(Field::tag()));
-        }
+        auto& nodes_domain=it->data()->nodes_domain();
 
         // ----------------------------------------------------------------
 
-        //float_type base_threshold=1e-3;
-        // set deletion_factor to be half of refinement_factor_ so it's easier
+        float_type field_max=
+            domain::Operator::maxabs<Field>(*(it->data()));
+
         // to refine and harder to delete
         // This prevent rapid change of level refinement
         float_type deletion_factor = refinement_factor_ * 0.75;
@@ -216,11 +286,19 @@ struct IfherkHeat : public SetupBase<IfherkHeat, parameters>
             ceil(nLevelRefinement_ -
                  log(field_max / source_max) / log(deletion_factor)));
 
-        if (l_aim > nLevelRefinement_) l_aim = nLevelRefinement_;
+        if (it->refinement_level()==0 && use_base_level_threshold)
+        {
+            if (field_max>source_max*base_threshold_)
+                l_aim = std::max(l_aim,0);
+
+            if (field_max>source_max*base_threshold_*deletion_factor)
+                l_delete_aim = std::max(l_delete_aim,0);
+        }
 
         int l_change = l_aim - it->refinement_level();
-        if (l_delete_aim < 0) return -1;
-        if (l_change > 0) return 1;
+
+        if (l_delete_aim<0 || (!use_base_level_threshold && l_aim==0)) return -1;
+        if (l_change>0) return 1;
         return 0;
     }
 
@@ -232,11 +310,10 @@ struct IfherkHeat : public SetupBase<IfherkHeat, parameters>
         poisson_solver_t psolver(&this->simulation_);
 
         boost::mpi::communicator world;
-        if (domain_->is_server()) return;
-        auto center =
-            (domain_->bounding_box().max() - domain_->bounding_box().min()) /
-                2.0 +
-            domain_->bounding_box().min();
+        if(domain_->is_server()) return ;
+        auto center = (domain_->bounding_box().max() -
+                       domain_->bounding_box().min()+1) / 2.0 +
+                       domain_->bounding_box().min();
 
         // Adapt center to always have peak value in a cell-center
         //center+=0.5/std::pow(2,nRef);
@@ -247,53 +324,52 @@ struct IfherkHeat : public SetupBase<IfherkHeat, parameters>
         // Voriticity IC
         for (auto it = domain_->begin(); it != domain_->end(); ++it)
         {
-            if (!it->locally_owned()) continue;
+            if(!it->locally_owned()) continue;
 
-            auto dx_level = dx_base / std::pow(2, it->refinement_level());
-            auto scaling = std::pow(2, it->refinement_level());
+            auto dx_level =  dx_base/std::pow(2,it->refinement_level());
+            auto scaling =  std::pow(2,it->refinement_level());
 
-            for (auto& n : it->data())
-            {
-                const auto& coord = n.level_coordinate();
-                /***********************************************************/
-                float_type x = static_cast<float_type>(
-                                   coord[0] - center[0] * scaling + 0.5) *
-                               dx_level;
-                float_type y =
-                    static_cast<float_type>(coord[1] - center[1] * scaling) *
-                    dx_level;
-                float_type z =
-                    static_cast<float_type>(coord[2] - center[2] * scaling) *
-                    dx_level;
+           auto view(it->data()->node_field().domain_view());
+           auto& nodes_domain=it->data()->nodes_domain();
 
-                n(edge_aux, 0) = -vortex_ring_vor_ic(x, y, z - d2v_ / 2, 0) +
-                                 vortex_ring_vor_ic(x, y, z + d2v_ / 2, 0);
-                /***********************************************************/
-                x = static_cast<float_type>(coord[0] - center[0] * scaling) *
-                    dx_level;
-                y = static_cast<float_type>(
-                        coord[1] - center[1] * scaling + 0.5) *
-                    dx_level;
-                z = static_cast<float_type>(coord[2] - center[2] * scaling) *
-                    dx_level;
+           //float_type T = dt_*tot_steps_;
+           for(auto it2=nodes_domain.begin();it2!=nodes_domain.end();++it2 )
+           {
+               //it2->get<source>() = 0.0;
 
-                n(edge_aux, 1) = -vortex_ring_vor_ic(x, y, z - d2v_ / 2, 1) +
-                                 vortex_ring_vor_ic(x, y, z + d2v_ / 2, 1);
-                /***********************************************************/
-                x = static_cast<float_type>(coord[0] - center[0] * scaling) *
-                    dx_level;
-                y = static_cast<float_type>(coord[1] - center[1] * scaling) *
-                    dx_level;
-                z = static_cast<float_type>(
-                        coord[2] - center[2] * scaling + 0.5) *
-                    dx_level;
+               const auto& coord=it2->level_coordinate();
 
-                n(edge_aux, 2) = -vortex_ring_vor_ic(x, y, z - d2v_ / 2, 2) +
-                                 vortex_ring_vor_ic(x, y, z + d2v_ / 2, 2);
+               /***********************************************************/
+               float_type x = static_cast<float_type>
+                   (coord[0]-center[0]*scaling+0.5)*dx_level;
+               float_type y = static_cast<float_type>
+                   (coord[1]-center[1]*scaling)*dx_level;
+               float_type z = static_cast<float_type>
+                   (coord[2]-center[2]*scaling)*dx_level;
 
-                /***********************************************************/
-                n(decomposition) = world.rank();
-            }
+               it2->template get<edge_aux>(0) = vor(x,y,z,0);
+               /***********************************************************/
+               x = static_cast<float_type>
+                   (coord[0]-center[0]*scaling)*dx_level;
+               y = static_cast<float_type>
+                   (coord[1]-center[1]*scaling+0.5)*dx_level;
+               z = static_cast<float_type>
+                   (coord[2]-center[2]*scaling)*dx_level;
+
+               it2->template get<edge_aux>(1) = vor(x,y,z,1);
+               /***********************************************************/
+               x = static_cast<float_type>
+                   (coord[0]-center[0]*scaling)*dx_level;
+               y = static_cast<float_type>
+                   (coord[1]-center[1]*scaling)*dx_level;
+               z = static_cast<float_type>
+                   (coord[2]-center[2]*scaling+0.5)*dx_level;
+
+               it2->template get<edge_aux>(2) = vor(x,y,z,2);
+
+               /***********************************************************/
+               it2->template get<decomposition>()=world.rank();
+           }
         }
 
         psolver.template apply_lgf<edge_aux_type, stream_f_type>();
@@ -316,8 +392,8 @@ struct IfherkHeat : public SetupBase<IfherkHeat, parameters>
         }
     }
 
-    float_type vortex_ring_vor_fat_ic(
-        float_type x, float_type y, float_type z, int field_idx) const
+
+    float_type vortex_ring_vor_fat_ic(float_type x, float_type y, float_type z, int field_idx, bool perturbation)
     {
         const float_type alpha = 0.54857674;
         float_type       R2 = R_ * R_;
@@ -329,17 +405,30 @@ struct IfherkHeat : public SetupBase<IfherkHeat, parameters>
         float_type theta = std::atan2(y, x);
         float_type w_theta = alpha * 1.0 / R2 * std::exp(-4.0 * s2 / (R2 - s2));
 
-        if (s2 >= R2) return 0.0;
+        float_type rd = (static_cast <float_type> (rand()) / static_cast <float_type> (RAND_MAX))-0.5;
+        float_type prtub=0.001;
+        rd *= prtub * perturbation;
 
-        if (field_idx == 0) return -w_theta * std::sin(theta);
-        else if (field_idx == 1)
-            return w_theta * std::cos(theta);
+        if (s2>=R2) return 0.0;
+
+        if (field_idx==0)
+            return -w_theta*std::sin(theta)*(1+rd);
+        else if (field_idx==1)
+            return w_theta*std::cos(theta)*(1+rd);
         else
             return 0.0;
     }
 
-    float_type vortex_ring_vor_ic(float_type x, float_type y, float_type z,
-        int field_idx, bool perturbation = true) const
+    float_type vor(float_type x, float_type y, float_type z, int field_idx) const
+    {
+        if (single_ring_)
+            return vr_fct_(x,y,z,field_idx,perturbation_);
+        else
+            return -vr_fct_(x,y,z-d2v_/2,field_idx,perturbation_)+vr_fct_(x,y,z+d2v_/2,field_idx,perturbation_);
+    }
+
+
+    float_type vortex_ring_vor_ic(float_type x, float_type y, float_type z, int field_idx, bool perturbation)
     {
         float_type delta_2 = v_delta_ * v_delta_;
 
@@ -350,11 +439,9 @@ struct IfherkHeat : public SetupBase<IfherkHeat, parameters>
         float_type theta = std::atan2(y, x);
         float_type w_theta = 1.0 / M_PI / delta_2 * std::exp(-s2 / delta_2);
 
-        float_type rd = (static_cast<float_type>(rand()) /
-                            static_cast<float_type>(RAND_MAX)) -
-                        0.5;
-        float_type prtub = 0.001;
-        rd *= prtub;
+        float_type rd = (static_cast <float_type> (rand()) / static_cast <float_type> (RAND_MAX))-0.5;
+        float_type prtub=0.001;
+        rd *= prtub * perturbation;
 
         //if (s2>=delta_2) return 0.0;
 
@@ -374,10 +461,9 @@ struct IfherkHeat : public SetupBase<IfherkHeat, parameters>
         b.level() = it->refinement_level();
         const float_type dx_base = domain_->dx_base();
 
-        auto center =
-            (domain_->bounding_box().max() - domain_->bounding_box().min()) /
-                2.0 +
-            domain_->bounding_box().min();
+        auto center = (domain_->bounding_box().max() -
+                       domain_->bounding_box().min()+1) / 2.0 +
+                       domain_->bounding_box().min();
 
         auto scaling = std::pow(2, b.level());
         center *= scaling;
@@ -386,8 +472,7 @@ struct IfherkHeat : public SetupBase<IfherkHeat, parameters>
         b.grow(2, 2);
         auto corners = b.get_corners();
 
-        float_type w_max = std::abs(vortex_ring_vor_ic(
-            float_type(R_), float_type(0.0), float_type(0.0), 1));
+        float_type w_max = std::abs(vr_fct_(float_type(R_),float_type(0.0),float_type(0.0),1,perturbation_));
 
         for (int i = b.base()[0]; i <= b.max()[0]; ++i)
         {
@@ -395,39 +480,34 @@ struct IfherkHeat : public SetupBase<IfherkHeat, parameters>
             {
                 for (int k = b.base()[2]; k <= b.max()[2]; ++k)
                 {
-                    float_type x =
-                        static_cast<float_type>(i - center[0] + 0.5) * dx_level;
-                    float_type y =
-                        static_cast<float_type>(j - center[1]) * dx_level;
-                    float_type z =
-                        static_cast<float_type>(k - center[2]) * dx_level;
+                    float_type x = static_cast<float_type>
+                    (i-center[0]+0.5)*dx_level;
+                    float_type y = static_cast<float_type>
+                    (j-center[1])*dx_level;
+                    float_type z = static_cast<float_type>
+                    (k-center[2])*dx_level;
 
-                    float_type tmp_w =
-                        -vortex_ring_vor_ic(x, y, z - d2v_ / 2, 0) +
-                        vortex_ring_vor_ic(x, y, z + d2v_ / 2, 0);
+                    float_type tmp_w = vor(x,y,z,0);
 
-                    if (std::fabs(tmp_w) >
-                        w_max * pow(refinement_factor_, diff_level))
+                    if(std::fabs(tmp_w) > w_max*pow(refinement_factor_, diff_level))
                         return true;
 
                     x = static_cast<float_type>(i - center[0]) * dx_level;
                     y = static_cast<float_type>(j - center[1] + 0.5) * dx_level;
                     z = static_cast<float_type>(k - center[2]) * dx_level;
 
-                    tmp_w = -vortex_ring_vor_ic(x, y, z - d2v_ / 2, 1) +
-                            vortex_ring_vor_ic(x, y, z + d2v_ / 2, 1);
-                    if (std::fabs(tmp_w) >
-                        w_max * pow(refinement_factor_, diff_level))
+                    tmp_w = vor(x,y,z,1);
+
+                    if(std::fabs(tmp_w) > w_max*pow(refinement_factor_, diff_level))
                         return true;
 
                     x = static_cast<float_type>(i - center[0]) * dx_level;
                     y = static_cast<float_type>(j - center[1]) * dx_level;
                     z = static_cast<float_type>(k - center[2] + 0.5) * dx_level;
 
-                    tmp_w = -vortex_ring_vor_ic(x, y, z - d2v_ / 2, 2) +
-                            vortex_ring_vor_ic(x, y, z + d2v_ / 2, 2);
-                    if (std::fabs(tmp_w) >
-                        w_max * pow(refinement_factor_, diff_level))
+                    tmp_w = vor(x,y,z,2);
+
+                    if(std::fabs(tmp_w) > w_max*pow(refinement_factor_, diff_level))
                         return true;
                 }
             }
@@ -449,21 +529,37 @@ struct IfherkHeat : public SetupBase<IfherkHeat, parameters>
         return res;
     }
 
-  private:
+    private:
+
     boost::mpi::communicator client_comm_;
-    float_type               R_;
-    float_type               v_delta_;
-    float_type               d2v_;
-    float_type               source_max_;
 
-    int      nLevelRefinement_ = 0;
-    int      global_refinement_ = 0;
+    bool single_ring_=true;
+    bool perturbation_=false;
+    float_type R_;
+    float_type v_delta_;
+    float_type d2v_;
+    float_type source_max_;
 
-    float_type dt_, dx_;
+    float_type rmin_ref_;
+    float_type rmax_ref_;
+    float_type rz_ref_;
+    float_type c1=0;
+    float_type c2=0;
+    float_type eps_grad_=1.0e6;;
+    int nLevelRefinement_=0;
+    int global_refinement_=0;
+    fcoord_t offset_;
+
+    float_type a_ = 10.0;
+
+    float_type dt_,dx_;
     float_type cfl_;
     float_type Re_;
-    int        tot_steps_;
-    float_type refinement_factor_ = 1. / 8;
+    int tot_steps_;
+    float_type refinement_factor_=1./8;
+    float_type base_threshold_=1e-4;
+
+    vr_fct_t vr_fct_;
 
     std::string ic_filename_, ref_filename_;
 };

@@ -17,8 +17,6 @@
 
 #include <fmm/fmm.hpp>
 
-namespace iblgf
-{
 namespace domain
 {
 
@@ -520,7 +518,6 @@ private:
     bool subtract_non_leaf_=false;
 };
 
-}
 }
 
 #endif

@@ -12,6 +12,7 @@
 
 #ifndef INCLUDED_LGF_TUPLE_UTILITIES_HPP
 #define INCLUDED_LGF_TUPLE_UTILITIES_HPP
+#include <tuple>
 
 namespace iblgf
 {
@@ -26,7 +27,7 @@ struct typelist
 //Iterators:
 
 /**
- * \brief Implemnetation to iterate over elements of a tuple 
+ * \brief Implemnetation to iterate over elements of a tuple
  */
 template<typename Tuple, typename F, std::size_t... Indices>
 void

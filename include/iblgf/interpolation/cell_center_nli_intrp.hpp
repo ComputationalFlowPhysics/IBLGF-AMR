@@ -35,76 +35,98 @@ class cell_center_nli
 {
     using MeshObject = domain::MeshObject;
 
-  public: // constructor
-    cell_center_nli() = delete;
-    cell_center_nli(size_t Nb_)
-    : Nb_(Nb_)
-    , antrp_relative_pos_0_(Nb_ * Nb_ * 2, 0.0)
-    , antrp_mat_relative_pos_0_(&(antrp_relative_pos_0_[0]), Nb_, Nb_ * 2)
-    , antrp_relative_pos_1_(Nb_ * Nb_ * 2, 0.0)
-    , antrp_mat_relative_pos_1_(&(antrp_relative_pos_1_[0]), Nb_, Nb_ * 2)
-    , antrp_sub_{std::vector<float_type>(Nb_ * Nb_, 0.0),
-          std::vector<float_type>(Nb_ * Nb_, 0.0),
-          std::vector<float_type>(Nb_ * Nb_, 0.0),
-          std::vector<float_type>(Nb_ * Nb_, 0.0)}
-    , antrp_mat_sub_{linalg::Mat_t(&antrp_sub_[0][0], Nb_, Nb_),
-          linalg::Mat_t(&antrp_sub_[1][0], Nb_, Nb_),
-          linalg::Mat_t(&antrp_sub_[2][0], Nb_, Nb_),
-          linalg::Mat_t(&antrp_sub_[3][0], Nb_, Nb_)}
-    , nli_aux_1d_intrp(std::array<size_t, 1>{{Nb_}})
-    , nli_aux_2d_intrp(std::array<size_t, 2>{{Nb_, Nb_}})
-    , nli_aux_3d_intrp(std::array<size_t, 3>{{Nb_, Nb_, Nb_}})
-    , nli_aux_2d_antrp(std::array<size_t, 2>{{Nb_, Nb_}})
-    , nli_aux_3d_antrp(std::array<size_t, 3>{{Nb_, Nb_, Nb_}})
-    , nli_aux_1d_antrp_tmp(std::array<size_t, 1>{{Nb_}})
-    , child_combine_(std::array<size_t, 3>{{2 * Nb_, 2 * Nb_, 2 * Nb_}})
-    , antrp_mat_sub_simple_{xt::xtensor<float_type, 2>(
-                                std::array<size_t, 2>{{Nb_, Nb_ * 2 - 2}}),
-          xt::xtensor<float_type, 2>(std::array<size_t, 2>{{Nb_, Nb_ * 2 - 2}})}
-    , antrp_mat_sub_simple_sub_{
-          xt::xtensor<float_type, 2>(std::array<size_t, 2>{{Nb_, Nb_}}),
-          xt::xtensor<float_type, 2>(std::array<size_t, 2>{{Nb_, Nb_}}),
-          xt::xtensor<float_type, 2>(std::array<size_t, 2>{{Nb_, Nb_}}),
-          xt::xtensor<float_type, 2>(std::array<size_t, 2>{{Nb_, Nb_}})}
-    {
-        antrp_mat_relative_pos_0_calc(antrp_mat_relative_pos_0_.data_, Nb_);
-        antrp_mat_relative_pos_1_calc(antrp_mat_relative_pos_1_.data_, Nb_);
+    public: // constructor
 
-        antrp_mat_sub_[0].data_ = xt::view(antrp_mat_relative_pos_0_.data_,
-            xt::range(0, Nb_), xt::range(0, Nb_));
-        antrp_mat_sub_[1].data_ = xt::view(antrp_mat_relative_pos_0_.data_,
-            xt::range(0, Nb_), xt::range(Nb_, 2 * Nb_));
-
-        antrp_mat_sub_[2].data_ = xt::view(antrp_mat_relative_pos_1_.data_,
-            xt::range(0, Nb_), xt::range(0, Nb_));
-        antrp_mat_sub_[3].data_ = xt::view(antrp_mat_relative_pos_1_.data_,
-            xt::range(0, Nb_), xt::range(Nb_, 2 * Nb_));
-
-        //antrp_mat_sub_2_ = antrp_mat_sub_;
-
-        // TODO switch to the commutative coarsifying instead of the simple
-        // one used here
-        std::fill(antrp_mat_sub_simple_[0].begin(),
-            antrp_mat_sub_simple_[0].end(), 0.0);
-        std::fill(antrp_mat_sub_simple_[1].begin(),
-            antrp_mat_sub_simple_[1].end(), 0.0);
-
-        std::fill(antrp_mat_sub_simple_sub_[0].begin(),
-            antrp_mat_sub_simple_sub_[0].end(), 0.0);
-        std::fill(antrp_mat_sub_simple_sub_[1].begin(),
-            antrp_mat_sub_simple_sub_[1].end(), 0.0);
-        std::fill(antrp_mat_sub_simple_sub_[2].begin(),
-            antrp_mat_sub_simple_sub_[2].end(), 0.0);
-        std::fill(antrp_mat_sub_simple_sub_[3].begin(),
-            antrp_mat_sub_simple_sub_[3].end(), 0.0);
-
-        for (size_t i = 1; i < Nb_ - 1; ++i)
-            antrp_mat_sub_simple_[0](i, i * 2 - 1) = 1.0;
-
-        for (size_t i = 1; i < Nb_ - 1; ++i)
+        cell_center_nli() = delete;
+        cell_center_nli(size_t Nb_, int intrp_order)
+            : Nb_(Nb_),
+            antrp_relative_pos_0_(Nb_ * Nb_ * 2, 0.0),
+            antrp_mat_relative_pos_0_(&(antrp_relative_pos_0_[0]), Nb_, Nb_ * 2),
+            antrp_relative_pos_1_(Nb_ * Nb_ * 2, 0.0),
+            antrp_mat_relative_pos_1_(&(antrp_relative_pos_1_[0]), Nb_, Nb_ * 2),
+            antrp_sub_{
+                        std::vector<float_type>(Nb_ * Nb_, 0.0),
+                        std::vector<float_type>(Nb_ * Nb_, 0.0),
+                        std::vector<float_type>(Nb_ * Nb_, 0.0),
+                        std::vector<float_type>(Nb_ * Nb_, 0.0)
+                        },
+            antrp_mat_sub_{
+                        linalg::Mat_t(&antrp_sub_[0][0], Nb_, Nb_ ),
+                        linalg::Mat_t(&antrp_sub_[1][0], Nb_, Nb_ ),
+                        linalg::Mat_t(&antrp_sub_[2][0], Nb_, Nb_ ),
+                        linalg::Mat_t(&antrp_sub_[3][0], Nb_, Nb_ )
+                        },
+            nli_aux_1d_intrp(std::array<size_t, 1>{{ Nb_ }}),
+            nli_aux_2d_intrp(std::array<size_t, 2>{{ Nb_, Nb_ }}),
+            nli_aux_3d_intrp(std::array<size_t, 3>{{ Nb_, Nb_, Nb_ }}),
+            nli_aux_2d_antrp(std::array<size_t, 2>{{ Nb_, Nb_ }}),
+            nli_aux_3d_antrp(std::array<size_t, 3>{{ Nb_, Nb_, Nb_ }}),
+            nli_aux_1d_antrp_tmp(std::array<size_t, 1>{{ Nb_}}),
+            child_combine_(std::array<size_t, 3>{{2*Nb_,2*Nb_,2*Nb_}}),
+            antrp_mat_sub_simple_{
+                            xt::xtensor<float_type, 2>(std::array<size_t, 2>{{Nb_,Nb_*2-2}}),
+                            xt::xtensor<float_type, 2>(std::array<size_t, 2>{{Nb_,Nb_*2-2}})
+                        },
+            antrp_mat_sub_simple_sub_{
+                            xt::xtensor<float_type, 2>(std::array<size_t, 2>{{Nb_,Nb_}}),
+                            xt::xtensor<float_type, 2>(std::array<size_t, 2>{{Nb_,Nb_}}),
+                            xt::xtensor<float_type, 2>(std::array<size_t, 2>{{Nb_,Nb_}}),
+                            xt::xtensor<float_type, 2>(std::array<size_t, 2>{{Nb_,Nb_}})
+                        }
         {
-            antrp_mat_sub_simple_[1](i, i * 2 - 1) = 0.5;
-            antrp_mat_sub_simple_[1](i, i * 2) = 0.5;
+            pts_cap=intrp_order;
+            antrp_mat_relative_pos_0_calc(antrp_mat_relative_pos_0_.data_, Nb_);
+            antrp_mat_relative_pos_1_calc(antrp_mat_relative_pos_1_.data_, Nb_);
+
+            antrp_mat_sub_[0].data_ =
+                xt::view(antrp_mat_relative_pos_0_.data_,xt::range(0,Nb_),xt::range(0  ,Nb_  ));
+            antrp_mat_sub_[1].data_ =
+                xt::view(antrp_mat_relative_pos_0_.data_,xt::range(0,Nb_),xt::range(Nb_,2*Nb_));
+
+            antrp_mat_sub_[2].data_ =
+                xt::view(antrp_mat_relative_pos_1_.data_,xt::range(0,Nb_),xt::range(0  ,Nb_  ));
+            antrp_mat_sub_[3].data_ =
+                xt::view(antrp_mat_relative_pos_1_.data_,xt::range(0,Nb_),xt::range(Nb_,2*Nb_));
+
+            //antrp_mat_sub_2_ = antrp_mat_sub_;
+
+            // TODO switch to the commutative coarsifying instead of the simple
+            // one used here
+            std::fill(antrp_mat_sub_simple_[0].begin(), antrp_mat_sub_simple_[0].end(), 0.0);
+            std::fill(antrp_mat_sub_simple_[1].begin(), antrp_mat_sub_simple_[1].end(), 0.0);
+
+            std::fill(antrp_mat_sub_simple_sub_[0].begin(), antrp_mat_sub_simple_sub_[0].end(), 0.0);
+            std::fill(antrp_mat_sub_simple_sub_[1].begin(), antrp_mat_sub_simple_sub_[1].end(), 0.0);
+            std::fill(antrp_mat_sub_simple_sub_[2].begin(), antrp_mat_sub_simple_sub_[2].end(), 0.0);
+            std::fill(antrp_mat_sub_simple_sub_[3].begin(), antrp_mat_sub_simple_sub_[3].end(), 0.0);
+
+            for (size_t i=1;i<Nb_-1;++i)
+                    antrp_mat_sub_simple_[0](i,i*2-1)=1.0;
+
+            for (size_t i=1;i<Nb_-1;++i)
+            {
+                    antrp_mat_sub_simple_[1](i,i*2-1)=0.5;
+                    antrp_mat_sub_simple_[1](i,i*2)=0.5;
+            }
+
+            xt::noalias(view(antrp_mat_sub_simple_sub_[0], xt::all(), xt::range(1,Nb_-1) )) =
+                view(antrp_mat_sub_simple_[0],xt::all(),xt::range(1,Nb_-1));
+            xt::noalias(view(antrp_mat_sub_simple_sub_[1], xt::all(), xt::range(1,Nb_-1))) =
+                view(antrp_mat_sub_simple_[0],xt::all(),xt::range(Nb_-1,2*Nb_-3));
+
+
+            xt::noalias(view(antrp_mat_sub_simple_sub_[2], xt::all(), xt::range(1,Nb_-1))) =
+                view(antrp_mat_sub_simple_[1],xt::all(),xt::range(1,Nb_-1));
+            xt::noalias(view(antrp_mat_sub_simple_sub_[3], xt::all(), xt::range(1,Nb_-1))) =
+                view(antrp_mat_sub_simple_[1],xt::all(),xt::range(Nb_-1,2*Nb_-3));
+
+            //std::cout<< " ------------------------- " <<std::endl;
+            //std::cout<< antrp_mat_sub_simple_sub_[0]<< std::endl;
+            //std::cout<< antrp_mat_sub_simple_sub_[1]<< std::endl;
+            //std::cout<< antrp_mat_sub_simple_sub_[2]<< std::endl;
+            //std::cout<< antrp_mat_sub_simple_sub_[3]<< std::endl;
+            //std::cout<< antrp_mat_sub_simple_[1]<< std::endl;
+
         }
 
         xt::noalias(view(
@@ -472,9 +494,9 @@ class cell_center_nli
     }
 
     //private:
-  public:
-    const int pts_cap = 3;
-    int       Nb_;
+    public:
+        int pts_cap = 3;
+        int Nb_;
 
     std::vector<float_type> antrp_relative_pos_0_;
     linalg::Mat_t           antrp_mat_relative_pos_0_;

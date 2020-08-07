@@ -114,6 +114,8 @@ class View : public BlockDescriptor<int, Dim>
     , field_(_f)
     , stride_(_stride)
     {
+        //TODO: Sanity checks on the blockd_type that is passed.
+        //Needs to be contained within the fields block
     }
 
     template<class Function>
@@ -157,6 +159,90 @@ class View : public BlockDescriptor<int, Dim>
     {
         *this = _c;
     }
+
+  public: //unary arithmetic operator overloads
+    /** @brief Scalar assign operator */
+    View& operator=(const element_t& element) noexcept
+    {
+        for (auto& e : *this) { e = element; }
+        return *this;
+    }
+
+    /** @{
+     * @brief element wise add operator */
+    View& operator+=(View& other) noexcept
+    {
+        assert((this->size() == other.size()) && (stride() == other.stride()));
+        auto it_other = other.begin();
+        this->iterate([&it_other](auto& n) {
+            n += *it_other;
+            ++it_other;
+        });
+        return *this;
+    }
+    View& operator+=(const element_t& element) noexcept
+    {
+        for (auto& e : *this) { e += element; }
+        return *this;
+    }
+    /** @} */
+
+    /** @{
+     * @brief element wise subtract operator */
+    View& operator-=(View& other) noexcept
+    {
+        assert((this->size() == other.size()) && (stride() == other.stride()));
+        auto it_other = other.begin();
+        this->iterate([&it_other](auto& n) {
+            n -= *it_other;
+            ++it_other;
+        });
+        return *this;
+    }
+    View& operator-=(const element_t& element) noexcept
+    {
+        for (auto& e : *this) { e -= element; }
+        return *this;
+    }
+    /** @} */
+
+    /** @{
+     * @brief element wise multiply operator */
+    View& operator*=(View& other) noexcept
+    {
+        assert((this->size() == other.size()) && (stride() == other.stride()));
+        auto it_other = other.begin();
+        this->iterate([&it_other](auto& n) {
+            n *= *it_other;
+            ++it_other;
+        });
+        return *this;
+    }
+    View& operator*=(const element_t& element) noexcept
+    {
+        for (auto& e : *this) { e *= element; }
+        return *this;
+    }
+    /** @} */
+
+    /** @{
+     * @brief element wise divide operator */
+    View& operator/=(View& other) noexcept
+    {
+        assert((this->size() == other.size()) && (stride() == other.stride()));
+        auto it_other = other.begin();
+        this->iterate([&it_other](auto& n) {
+            n /= *it_other;
+            ++it_other;
+        });
+        return *this;
+    }
+    View& operator/=(const element_t& element) noexcept
+    {
+        for (auto& e : *this) { e /= element; }
+        return *this;
+    }
+    /** @} */
 
   public: //protected memeber:
     Field*          field_ = nullptr;

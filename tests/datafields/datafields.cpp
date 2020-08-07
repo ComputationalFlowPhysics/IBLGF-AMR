@@ -34,7 +34,7 @@ TEST(datafield_test, ctors)
     static constexpr int Buff = 1;
 
     using block_d_type = BlockDescriptor<int, Dim>;
-    using coordinate_t = typename block_d_type::coordinate_type;
+    using coordinate_type = typename block_d_type::coordinate_type;
 
     //Manual way to generate fields
     static constexpr tuple_tag_h f0_tag{"f0"};
@@ -63,7 +63,7 @@ TEST(datafield_test, ctors)
     using datablock_t =
         DataBlock<Dim, node, f0_type, f1_type, p_type, vel_type>;
 
-    BlockDescriptor<int, Dim> blockD(coordinate_t(0), coordinate_t(8));
+    BlockDescriptor<int, Dim> blockD(coordinate_type(0), coordinate_type(8));
     datablock_t               db(blockD);
     auto&                     vel_field = db[vel];
     std::cout << vel_field.name() << std::endl;
@@ -128,5 +128,6 @@ TEST(datafield_test, ctors)
     auto p6 = db(vel, 0) / db(p);
     for (auto& node : p6) EXPECT_EQ(node, 2);
 }
+
 } // namespace domain
 } //namespace iblgf

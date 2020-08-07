@@ -299,7 +299,7 @@ class BlockDescriptor
     template<class PointType>
     bool on_boundary(const PointType& p) const noexcept
     {
-        return (on_max_boundary(p) || on_min_boundary());
+        return (on_max_boundary(p) || on_min_boundary(p));
     }
 
     /** @brief Check if Point p is on the min block boundary
@@ -483,10 +483,18 @@ class BlockDescriptor
         return os;
     }
 
+  public: // Rational operator overloads
+    friend bool operator==(
+        const BlockDescriptor& lhs, const BlockDescriptor& rhs) noexcept
+    {
+        return ((lhs.base_ == rhs.base_) && (lhs.extent_ == rhs.extent_) &&
+                (lhs.level_ == rhs.level_));
+    }
+
   protected:
-    coordinate_type base_;      ///< lower-left corner of block
-    coordinate_type extent_;    ///< extent of block
-    int             level_ = 0; ///< refinement level of block
+    coordinate_type base_ = coordinate_type(0); ///< lower-left corner of block
+    coordinate_type extent_ = coordinate_type(0); ///< extent of block
+    int             level_ = 0;                   ///< refinement level of block
 };
 
 } // namespace domain

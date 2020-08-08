@@ -16,6 +16,8 @@
 #include <array>
 #include <iomanip>
 #include <cmath>
+#include <boost/serialization/serialization.hpp>
+#include <boost/serialization/access.hpp>
 
 // IBLGF-specific
 #include <iblgf/global.hpp>

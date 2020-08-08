@@ -11,9 +11,6 @@
 //      ▀▀▀▀▀▀▀▀▀▀▀  ▀▀▀▀▀▀▀▀▀▀   ▀▀▀▀▀▀▀▀▀▀▀  ▀▀▀▀▀▀▀▀▀▀▀  ▀
 
 #include <gtest/gtest.h>
-#include <filesystem>
-#include <boost/mpi/communicator.hpp>
-#include <boost/mpi/environment.hpp>
 
 #include <iblgf/dictionary/dictionary.hpp>
 #include <iblgf/types.hpp>
@@ -25,41 +22,46 @@ namespace iblgf
 {
 namespace domain
 {
+namespace testing
+{
 using namespace types;
 
-TEST(datafield_test, ctors)
+
+struct datafield_test : public ::testing::Test
 {
-    std::cout << "Testing the datafields" << std::endl;
     static constexpr int Dim = 3;
     static constexpr int Buff = 1;
+
+    static constexpr const tuple_tag_h f0_tag{"f0"};                            
+    static constexpr const tuple_tag_h f1_tag{"f1"};                            
 
     using block_d_type = BlockDescriptor<int, Dim>;
     using coordinate_type = typename block_d_type::coordinate_type;
 
     //Manual way to generate fields
-    static constexpr tuple_tag_h f0_tag{"f0"};
     using f0_traits = field_traits<tag_type<f0_tag>, float_type, 3, Buff, Buff,
         MeshObject::cell, Dim, true>;
     using f0_type = Field<f0_traits>;
 
-    static constexpr tuple_tag_h f1_tag{"f1"};
     using f1_traits = field_traits<tag_type<f1_tag>, float_type, 1, Buff, Buff,
         MeshObject::cell, Dim, true>;
     using f1_type = Field<f1_traits>;
 
-    //Using convience macro to generate fields:
     // clang-format off
     REGISTER_FIELDS
     (Dim,
-     //Fields tuples
-     (
-        (p,    float_type,  1,  1,  1,  cell,true),
-        (vel,  float_type,  3,  1,  1,  face,false)
-     )
-
+         //Fields tuples
+         (
+            (p,    float_type,  1,  1,  1,  cell,true),
+            (vel,  float_type,  3,  1,  1,  face,false)
+         )
      )
     // clang-format on
+};
 
+TEST_F(datafield_test, ctors)
+{
+    //Using convience macro to generate fields:
     using datablock_t =
         DataBlock<Dim, node, f0_type, f1_type, p_type, vel_type>;
 
@@ -129,5 +131,6 @@ TEST(datafield_test, ctors)
     for (auto& node : p6) EXPECT_EQ(node, 2);
 }
 
+} // namespace testing
 } // namespace domain
 } //namespace iblgf

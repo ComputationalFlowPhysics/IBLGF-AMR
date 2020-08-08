@@ -11,9 +11,6 @@
 //      ▀▀▀▀▀▀▀▀▀▀▀  ▀▀▀▀▀▀▀▀▀▀   ▀▀▀▀▀▀▀▀▀▀▀  ▀▀▀▀▀▀▀▀▀▀▀  ▀
 
 #include <gtest/gtest.h>
-#include <filesystem>
-#include <boost/mpi/communicator.hpp>
-#include <boost/mpi/environment.hpp>
 
 #include <iblgf/dictionary/dictionary.hpp>
 #include <iblgf/types.hpp>
@@ -27,10 +24,8 @@ namespace domain
 {
 using namespace types;
 
-TEST(view_test, views)
+struct view_test : public ::testing::Test
 {
-    //Create a datablock with a scalar and a vector field
-
     // clang-format off
     static constexpr int Dim = 3;
     REGISTER_FIELDS
@@ -44,7 +39,13 @@ TEST(view_test, views)
 
     using blockd_type = BlockDescriptor<int, Dim>;
     using coordinate_type = blockd_type::coordinate_type;
+};
 
+TEST_F(view_test, views)
+{
+
+
+    //Create a datablock with a scalar and a vector field
     blockd_type blockD(coordinate_type(0), coordinate_type(8));
     datablock_t db(blockD);
 
@@ -56,7 +57,6 @@ TEST(view_test, views)
     //A view is constructed from a block_descriptor to set the viewing
     //area and a stride
     //view0 is edge along z
-    auto base = db.base();
     auto extent = coordinate_type(1);
     extent[2] = db.extent()[2];
     const auto  stride = coordinate_type(1);

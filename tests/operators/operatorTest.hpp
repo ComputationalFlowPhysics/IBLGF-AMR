@@ -1,3 +1,15 @@
+//      ▄▄▄▄▄▄▄▄▄▄▄  ▄▄▄▄▄▄▄▄▄▄   ▄            ▄▄▄▄▄▄▄▄▄▄▄  ▄▄▄▄▄▄▄▄▄▄▄
+//     ▐░░░░░░░░░░░▌▐░░░░░░░░░░▌ ▐░▌          ▐░░░░░░░░░░░▌▐░░░░░░░░░░░▌
+//      ▀▀▀▀█░█▀▀▀▀ ▐░█▀▀▀▀▀▀▀█░▌▐░▌          ▐░█▀▀▀▀▀▀▀▀▀ ▐░█▀▀▀▀▀▀▀▀▀
+//          ▐░▌     ▐░▌       ▐░▌▐░▌          ▐░▌          ▐░▌
+//          ▐░▌     ▐░█▄▄▄▄▄▄▄█░▌▐░▌          ▐░▌ ▄▄▄▄▄▄▄▄ ▐░█▄▄▄▄▄▄▄▄▄
+//          ▐░▌     ▐░░░░░░░░░░▌ ▐░▌          ▐░▌▐░░░░░░░░▌▐░░░░░░░░░░░▌
+//          ▐░▌     ▐░█▀▀▀▀▀▀▀█░▌▐░▌          ▐░▌ ▀▀▀▀▀▀█░▌▐░█▀▀▀▀▀▀▀▀▀
+//          ▐░▌     ▐░▌       ▐░▌▐░▌          ▐░▌       ▐░▌▐░▌
+//      ▄▄▄▄█░█▄▄▄▄ ▐░█▄▄▄▄▄▄▄█░▌▐░█▄▄▄▄▄▄▄▄▄ ▐░█▄▄▄▄▄▄▄█░▌▐░▌
+//     ▐░░░░░░░░░░░▌▐░░░░░░░░░░▌ ▐░░░░░░░░░░░▌▐░░░░░░░░░░░▌▐░▌
+//      ▀▀▀▀▀▀▀▀▀▀▀  ▀▀▀▀▀▀▀▀▀▀   ▀▀▀▀▀▀▀▀▀▀▀  ▀▀▀▀▀▀▀▀▀▀▀  ▀
+
 #ifndef IBLGF_INCLUDED_OPERATORTEST_HPP
 #define IBLGF_INCLUDED_OPERATORTEST_HPP
 
@@ -12,23 +24,26 @@
 #include <boost/mpi/communicator.hpp>
 
 // IBLGF-specific
-#include <global.hpp>
-#include <simulation.hpp>
-#include <domain/domain.hpp>
-#include <domain/dataFields/dataBlock.hpp>
-#include <domain/dataFields/datafield.hpp>
-#include <domain/octree/tree.hpp>
-#include <chrono>
-#include <IO/parallel_ostream.hpp>
-#include <lgf/lgf.hpp>
-#include <fmm/fmm.hpp>
+#include <iblgf/global.hpp>
+#include <iblgf/simulation.hpp>
+#include <iblgf/domain/domain.hpp>
+#include <iblgf/domain/dataFields/dataBlock.hpp>
+#include <iblgf/domain/dataFields/datafield.hpp>
+#include <iblgf/domain/octree/tree.hpp>
+#include <iblgf/IO/parallel_ostream.hpp>
+#include <iblgf/lgf/lgf.hpp>
+#include <iblgf/fmm/fmm.hpp>
 
-#include <utilities/convolution.hpp>
-#include <utilities/interpolation.hpp>
-#include <solver/poisson/poisson.hpp>
+#include <iblgf/utilities/convolution.hpp>
+#include <iblgf/interpolation/interpolation.hpp>
+#include <iblgf/solver/poisson/poisson.hpp>
+#include <iblgf/solver/time_integration/ifherk.hpp>
 
 #include "../../setups/setup_base.hpp"
-#include <operators/operators.hpp>
+#include <iblgf/operators/operators.hpp>
+
+namespace iblgf
+{
 
 const int Dim = 3;
 
@@ -38,30 +53,30 @@ struct parameters
     REGISTER_FIELDS(Dim,
         (
             //name               type        Dim   lBuffer  hBuffer, storage type
-            (grad_source, float_type, 1, 1, 1, cell),
-            (grad_target, float_type, 3, 1, 1, face),
-            (grad_exact, float_type, 3, 1, 1, face),
-            (grad_error, float_type, 3, 1, 1, face),
+            (grad_source, float_type, 1, 1, 1, cell,true),
+            (grad_target, float_type, 3, 1, 1, face,true),
+            (grad_exact, float_type, 3, 1, 1, face,true),
+            (grad_error, float_type, 3, 1, 1, face,true),
 
-            (lap_source, float_type, 1, 1, 1, cell),
-            (lap_target, float_type, 1, 1, 1, cell),
-            (lap_exact, float_type, 1, 1, 1, cell),
-            (lap_error, float_type, 1, 1, 1, cell),
+            (lap_source, float_type, 1, 1, 1, cell,true),
+            (lap_target, float_type, 1, 1, 1, cell,true),
+            (lap_exact, float_type, 1, 1, 1, cell,true),
+            (lap_error, float_type, 1, 1, 1, cell,true),
 
-            (div_source, float_type, 3, 1, 1, face),
-            (div_target, float_type, 1, 1, 1, cell),
-            (div_exact, float_type, 1, 1, 1, cell),
-            (div_error, float_type, 1, 1, 1, cell),
+            (div_source, float_type, 3, 1, 1, face,true),
+            (div_target, float_type, 1, 1, 1, cell,true),
+            (div_exact, float_type, 1, 1, 1, cell,true),
+            (div_error, float_type, 1, 1, 1, cell,true),
 
-            (curl_source, float_type, 3, 1, 1, face),
-            (curl_target, float_type, 3, 1, 1, edge),
-            (curl_exact, float_type, 3, 1, 1, edge),
-            (curl_error, float_type, 3, 1, 1, edge),
+            (curl_source, float_type, 3, 1, 1, face,true),
+            (curl_target, float_type, 3, 1, 1, edge,true),
+            (curl_exact, float_type, 3, 1, 1, edge,true),
+            (curl_error, float_type, 3, 1, 1, edge,true),
 
-            (nonlinear_source, float_type, 3, 1, 1, face),
-            (nonlinear_target, float_type, 3, 1, 1, face),
-            (nonlinear_exact, float_type, 3, 1, 1, face),
-            (nonlinear_error, float_type, 3, 1, 1, face)))
+            (nonlinear_source, float_type, 3, 1, 1, face,true),
+            (nonlinear_target, float_type, 3, 1, 1, face,true),
+            (nonlinear_exact, float_type, 3, 1, 1, face,true),
+            (nonlinear_error, float_type, 3, 1, 1, face,true)))
 };
 
 struct OperatorTest : public SetupBase<OperatorTest, parameters>
@@ -496,5 +511,7 @@ struct OperatorTest : public SetupBase<OperatorTest, parameters>
     int        global_refinement_;
     float_type a_ = 100.0;
 };
+
+} // namespace iblgf
 
 #endif // IBLGF_INCLUDED_POISSON_HPP

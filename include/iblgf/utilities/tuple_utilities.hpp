@@ -13,6 +13,8 @@
 #ifndef INCLUDED_LGF_TUPLE_UTILITIES_HPP
 #define INCLUDED_LGF_TUPLE_UTILITIES_HPP
 
+#include<tuple>
+
 namespace iblgf
 {
 namespace tuple_utils

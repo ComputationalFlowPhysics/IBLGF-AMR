@@ -19,6 +19,8 @@
 #include <set>
 #include <string>
 #include <map>
+#include <boost/mpi/communicator.hpp>
+#include <boost/mpi/environment.hpp>
 
 // IBLGF-specific
 #include <iblgf/global.hpp>

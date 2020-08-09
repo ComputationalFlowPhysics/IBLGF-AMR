@@ -19,7 +19,7 @@ add_custom_target(copy_files ALL
                       ${CTEST_WORKING_DIRECTORY}/${NAME}/configs
                       )
 
-set(Ptest_list psolve)
+set(Ptest_list poisson)
 
 foreach (item ${Ptest_list})
     add_executable(${item} ${item}.cpp ${SOURCES})

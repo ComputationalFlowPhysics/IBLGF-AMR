@@ -145,7 +145,7 @@ struct IfherkHeat : public SetupBase<IfherkHeat, parameters>
             [this](auto octant, std::vector<float_type> source_max){return this->template adapt_level_change<cell_aux, u>(octant, source_max);};
 
         domain_->register_refinement_condition() = [this](auto octant,
-                                                       int     diff_level) {
+                                                       int diff_level) {
             return this->refinement(octant, diff_level);
         };
 

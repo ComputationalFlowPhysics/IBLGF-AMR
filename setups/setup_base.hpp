@@ -46,7 +46,8 @@ class SetupBase
     const int n_ifherk_ij = 6;
 
   public:
-    using SetupTraits::Dim;
+
+    static constexpr std::size_t Dim = SetupTraits::Dim;
 
   public: //default fields
     // clang-format off

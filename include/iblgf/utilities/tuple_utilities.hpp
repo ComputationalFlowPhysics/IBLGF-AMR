@@ -14,6 +14,8 @@
 #define INCLUDED_LGF_TUPLE_UTILITIES_HPP
 #include <tuple>
 
+#include<tuple>
+
 namespace iblgf
 {
 namespace tuple_utils
@@ -193,18 +195,48 @@ template<size_t I, typename T, typename Tuple_t>
 constexpr size_t
 tagged_tuple_index_impl()
 {
+    static_assert(I < std::tuple_size<Tuple_t>::value,"The element is not in the tuple");
     typedef typename std::tuple_element<I, Tuple_t>::type el;
     if constexpr (std::is_same<T, typename el::tag_type>::value) { return I; }
     else
     {
         return tagged_tuple_index_impl<I + 1, T, Tuple_t>();
     }
+    return -1;
 }
+
+template<typename T, typename Tuple_t>
+struct tagged_tuple_index_old
+{
+    static constexpr size_t value = tagged_tuple_index_impl<0, T, Tuple_t>();
+};
+
+/***************************************************************************/
+template <class T, class Tuple>
+struct tuple_index;
+
+template <class T, class... Types>
+struct tuple_index<T, std::tuple<T, Types...>> {
+    static const std::size_t value = 0;
+};
+
+template<class T, class U, class... Types>
+struct tuple_index<T, std::tuple<U, Types...>> {
+    static const std::size_t value = 1 + tuple_index<T, std::tuple<Types...>>::value;
+};
+
+template<class Tuple>
+struct tag_tuple;
+
+template<class... Types>
+struct tag_tuple<std::tuple<Types...>>{
+    using type=std::tuple<typename Types::tag_type...>;
+};
 
 template<typename T, typename Tuple_t>
 struct tagged_tuple_index
 {
-    static constexpr size_t value = tagged_tuple_index_impl<0, T, Tuple_t>();
+    static constexpr size_t value = tuple_index<T, typename tag_tuple<Tuple_t>::type>::value;
 };
 
 } // namespace iblgf

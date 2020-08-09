@@ -135,7 +135,6 @@ class Ifherk
 
 
     }
-
     void time_march(bool use_restart=false)
     {
         use_restart_ = use_restart;
@@ -237,6 +236,7 @@ class Ifherk
 
             // -------------------------------------------------------------
             // update stats & output
+            update_marching_parameters();
 
             T_ += dt_;
             float_type tmp_n = T_ / dt_base_ * math::pow2(max_ref_level_);
@@ -254,9 +254,6 @@ class Ifherk
             {
                 n_step_ = tmp_int_n;
                 write_timestep();
-                // only update dt after 1 output so it wouldn't do 3 5 7 9 ...
-                // and skip all outputs
-                update_marching_parameters();
             }
 
             world.barrier();
@@ -327,14 +324,13 @@ class Ifherk
         for (auto it = domain_->begin(); it != domain_->end(); ++it)
         {
             if (!it->locally_owned()) continue;
-            float_type tmp=
-                    domain::Operator::maxabs<F>(*(it->data()));
+            float_type tmp = domain::Operator::maxabs<Field>(it->data());
 
             if (tmp > max_local) max_local = tmp;
         }
 
-        boost::mpi::all_reduce(comm_,max_local,source_max_[idx],
-                boost::mpi::maximum<float_type>() );
+        boost::mpi::all_reduce(
+            comm_, max_local, source_max_, boost::mpi::maximum<float_type>());
     }
 
     void write_restart()
@@ -406,7 +402,7 @@ class Ifherk
     }
 
     template<class Field>
-    void up(bool leaf_boundary_only=true)
+    void up(bool leaf_boundary_only=false)
     {
         //Coarsification:
         for (std::size_t _field_idx=0; _field_idx<Field::nFields; ++_field_idx)
@@ -644,12 +640,11 @@ class Ifherk
             if (!it->locally_owned()) continue;
             if (!it->has_data() || !it->data().is_allocated()) continue;
 
-                if (leaf_only_boundary && (it->is_correction() || it->is_old_correction() ))
-                {
-                    auto& lin_data =
-                        it->data_r(F::tag(), field_idx).linalg_data();
-                    std::fill(lin_data.begin(), lin_data.end(), 0.0);
-                }
+            if (leaf_only_boundary && (it->is_correction() || it->is_old_correction() ))
+            {
+                auto& lin_data =
+                    it->data_r(F::tag(), field_idx).linalg_data();
+                std::fill(lin_data.begin(), lin_data.end(), 0.0);
             }
         }
 
@@ -704,6 +699,7 @@ class Ifherk
                 }
             }
     }
+
 
 
 private:

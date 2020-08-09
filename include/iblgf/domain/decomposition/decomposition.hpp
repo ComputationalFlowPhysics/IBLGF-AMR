@@ -4,15 +4,20 @@
 #include <vector>
 #include <stdexcept>
 #include <unordered_map>
+#include <boost/mpi/communicator.hpp>
+#include <boost/serialization/set.hpp>
 
-#include <global.hpp>
-#include <domain/octree/tree.hpp>
-#include <dictionary/dictionary.hpp>
+
+#include <iblgf/global.hpp>
+#include <iblgf/domain/octree/tree.hpp>
+#include <iblgf/dictionary/dictionary.hpp>
+#include <iblgf/domain/decomposition/client.hpp>
+#include <iblgf/domain/decomposition/server.hpp>
+#include <iblgf/fmm/fmm.hpp>
+
 
 #include <boost/mpi/communicator.hpp>
 #include <boost/serialization/set.hpp>
-#include <domain/decomposition/client.hpp>
-#include <domain/decomposition/server.hpp>
 
 
 #include <fmm/fmm.hpp>

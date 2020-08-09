@@ -23,7 +23,6 @@
 #include <iblgf/linalg/linalg.hpp>
 #include <iblgf/utilities/tuple_utilities.hpp>
 #include <iblgf/domain/dataFields/blockDescriptor.hpp>
-#include <iblgf/domain/dataFields/array_ref.hpp>
 #include <iblgf/domain/dataFields/view.hpp>
 
 #include <boost/preprocessor/tuple/size.hpp>
@@ -166,8 +165,8 @@ class DataField : public BlockDescriptor<int, Dim>
         return data_[real_block_.index(_c)];
     }
 
-    inline const data_type& get_real_local(const coordinate_t& _c) const
-        noexcept
+    inline const data_type& get_real_local(
+        const coordinate_t& _c) const noexcept
     {
         return data_[real_block_.index_zeroBase(_c)];
     }
@@ -177,8 +176,8 @@ class DataField : public BlockDescriptor<int, Dim>
     }
 
     //IJK access
-    inline const data_type& get_real_local(int _i, int _j, int _k) const
-        noexcept
+    inline const data_type& get_real_local(
+        int _i, int _j, int _k) const noexcept
     {
         return data_[real_block_.index_zeroBase(_i, _j, _k)];
     }
@@ -426,11 +425,15 @@ class Field : public Traits
 
 #define make_field_type_impl(                                                  \
     Dim, Name, DataType, NFields, lBuff, hBuff, MeshObjectType, output)        \
-    static constexpr tuple_tag_h Name##_tag{STRINGIFY(Name)};                  \
-    using Name##_traits_type = field_traits<tag_type<Name##_tag>, DataType,    \
-        NFields, lBuff, hBuff, MeshObject::MeshObjectType, Dim, output>;       \
-    static constexpr Name##_traits_type Name{};                                \
-    using Name##_type = Field<Name##_traits_type>;
+    struct Name##_tag_helper                                                   \
+    {                                                                          \
+        static constexpr tuple_tag_h Name##_tag{STRINGIFY(Name)};              \
+    };                                                                         \
+    using Name##_traits_type =                                                 \
+        field_traits<tag_type<Name##_tag_helper::Name##_tag>, DataType,        \
+            NFields, lBuff, hBuff, MeshObject::MeshObjectType, Dim, output>;   \
+    using Name##_type = Field<Name##_traits_type>;                             \
+    static constexpr Name##_traits_type Name{};
 
 #define make_field_type_impl_default(                                          \
     Dim, key, DataType, NFields, lBuffer, hBuffer, MeshObjectType)             \

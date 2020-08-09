@@ -11,7 +11,7 @@
 //      ▀▀▀▀▀▀▀▀▀▀▀  ▀▀▀▀▀▀▀▀▀▀   ▀▀▀▀▀▀▀▀▀▀▀  ▀▀▀▀▀▀▀▀▀▀▀  ▀
 
 #include <gtest/gtest.h>
-#include <filesystem>
+#include <boost/filesystem.hpp>
 #include <boost/mpi/communicator.hpp>
 #include <boost/mpi/environment.hpp>
 
@@ -40,7 +40,7 @@ TEST(PoissonSolverTest, VortexRing_1)
 {
     boost::mpi::communicator world;
 
-    for (auto& entry : std::filesystem::directory_iterator( "./configs"))
+    for (auto& entry : boost::filesystem::directory_iterator( "./configs"))
     {
         auto s = entry.path();
 

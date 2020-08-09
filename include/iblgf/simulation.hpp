@@ -114,7 +114,7 @@ class Simulation
     template<typename Field>
     void read_h5(std::string _filename, std::string field_name)
     {
-       io_h5.template read_h5<Field>(_filename, field_name, domain_.get());
+        io_h5.template read_h5<Field>(_filename, field_name, domain_.get());
     }
 
     auto& domain()noexcept{return domain_;}
@@ -128,7 +128,7 @@ public:
   std::shared_ptr<Dictionary> dictionary_=nullptr;
   std::shared_ptr<Domain> domain_=nullptr;
   boost::mpi::communicator world_;
-  io::Vtk_io<Domain> writer;
+  //io::Vtk_io<Domain> writer;
   io::H5_io<3, Domain> io_h5;
   io::IO_init io_init_;
   std::string restart_info_file_="restart_info";

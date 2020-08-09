@@ -97,7 +97,7 @@ target_link_libraries(iblgf INTERFACE xtl)
 target_link_libraries(iblgf INTERFACE xtensor)
 target_link_libraries(iblgf INTERFACE xsimd)
 target_link_libraries(iblgf INTERFACE hdf5)
-target_link_libraries(iblgf INTERFACE blas)
+target_link_libraries(iblgf INTERFACE ${BLAS_LIBRARIES})
 target_link_libraries(iblgf INTERFACE ${FFTW_LIBRARIES})
 target_compile_features(iblgf INTERFACE cxx_std_17)
 

@@ -200,6 +200,7 @@ tagged_tuple_index_impl()
     {
         return tagged_tuple_index_impl<I + 1, T, Tuple_t>();
     }
+    return -1;
 }
 
 template<typename T, typename Tuple_t>

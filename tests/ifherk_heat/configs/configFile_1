@@ -4,7 +4,7 @@ simulation_parameters
 
     // Time Marching
     source_max=13.0;
-    nBaseLevelTimeSteps=4;
+    nBaseLevelTimeSteps=2;
     cfl = 0.35;
     cfl_max = 1000;
     Re = 1000.0;
@@ -31,7 +31,7 @@ simulation_parameters
     }
 
     restart_write_frequency=20;
-    write_restart=true;
+    write_restart=false;
     use_restart=false;
 
     restart
@@ -43,20 +43,19 @@ simulation_parameters
     domain
     {
 
-        bd_base = (-462,-462,-462);
-        bd_extent = (924,924,924);
+        bd_base = (-24,-24,-24);
+        bd_extent = (48,48,48);
 
 
-        dx_base=0.10714285714285714;
-        //Lx=1.5;
+        dx_base=0.5;
 
-        block_extent=14;
+        block_extent=6;
 
         block
         {
-            base=(-28,-28,-28);
-            extent=(56,56,56);
+            base=(-24,-24,-24);
+            extent=(48,48,48);
         }
     }
-    EXP_LInf=2.5e-06;
+    EXP_LInf=0.0003;
 }

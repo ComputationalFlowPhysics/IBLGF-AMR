@@ -69,7 +69,7 @@ class SetupBase
       (w_2,                 float_type,  3,  1,  1,  face,false),
       (cell_aux,            float_type,  1,  1,  1,  cell,true),
       (face_aux,            float_type,  3,  1,  1,  face,false),
-      (stream_f,            float_type,  3,  1,  1,  edge,true),
+      (stream_f,            float_type,  3,  1,  1,  edge,false),
       (edge_aux,            float_type,  3,  1,  1,  edge,true)
     ))
     // clang-format on

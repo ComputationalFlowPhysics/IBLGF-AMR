@@ -57,13 +57,13 @@ struct parameters
     Dim,
      (
         //name               type        Dim   lBuffer  hBuffer, storage type
-         (error_u          , float_type, 3,    1,       1,     face,true ),
-         (error_p          , float_type, 1,    1,       1,     cell,true ),
-         (decomposition    , float_type, 1,    1,       1,     cell,true ),
+         (error_u          , float_type, 3,    1,       1,     face,false ),
+         (error_p          , float_type, 1,    1,       1,     cell,false ),
+         (decomposition    , float_type, 1,    1,       1,     cell,false ),
         //IF-HERK
          (u                , float_type, 3,    1,       1,     face,true ),
-         (u_ref            , float_type, 3,    1,       1,     face,true ),
-         (p_ref            , float_type, 1,    1,       1,     cell,true ),
+         (u_ref            , float_type, 3,    1,       1,     face,false ),
+         (p_ref            , float_type, 1,    1,       1,     cell,false ),
          (p                , float_type, 1,    1,       1,     cell,true )
     ))
     // clang-format on

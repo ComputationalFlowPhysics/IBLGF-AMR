@@ -1,18 +1,18 @@
 #Bring the headers, such as Student.h into the project
 include_directories(${IBLGF_SOURCE_DIR}/src )
 
-set(NAME ifherk_heat)
+set(NAME ns_amr_lgf)
 add_custom_target(copy_ifherk_files ALL
                       COMMAND ${CMAKE_COMMAND} -E copy_directory
                       ${CMAKE_CURRENT_SOURCE_DIR}/configs
                       ${CTEST_WORKING_DIRECTORY}/${NAME}
                       )
 
-set(Ptest_list ns_amr_lgf)
+set(Ptest_list ns_amr_lgf_Test)
 
 # add the executable
-add_executable(ifherk_heat.x ifherk_heat.cpp ${SOURCES})
-target_link_libraries(ifherk_heat.x
+add_executable(ns_amr_lgf.x ns_amr_lgf.cpp ${SOURCES})
+target_link_libraries(ns_amr_lgf.x
                       ${MPI_LIBRARIES}
                       ${Boost_LIBRARIES}
                       ${FFTW_LIBRARIES}

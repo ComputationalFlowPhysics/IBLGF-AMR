@@ -10,8 +10,8 @@
 //     ▐░░░░░░░░░░░▌▐░░░░░░░░░░▌ ▐░░░░░░░░░░░▌▐░░░░░░░░░░░▌▐░▌
 //      ▀▀▀▀▀▀▀▀▀▀▀  ▀▀▀▀▀▀▀▀▀▀   ▀▀▀▀▀▀▀▀▀▀▀  ▀▀▀▀▀▀▀▀▀▀▀  ▀
 
-#ifndef IBLGF_INCLUDED_IFHERK_HEAT_HPP
-#define IBLGF_INCLUDED_IFHERK_HEAT_HPP
+#ifndef IBLGF_INCLUDED_NS_AMR_LGF_HPP
+#define IBLGF_INCLUDED_NS_AMR_LGF_HPP
 
 #include <iostream>
 #include <vector>
@@ -69,9 +69,9 @@ struct parameters
     // clang-format on
 };
 
-struct IfherkHeat : public SetupBase<IfherkHeat, parameters>
+struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 {
-    using super_type =SetupBase<IfherkHeat,parameters>;
+    using super_type =SetupBase<NS_AMR_LGF,parameters>;
     using vr_fct_t = std::function<float_type(float_type x, float_type y, float_type z, int field_idx, bool perturbation)>;
 
     //Timings
@@ -80,7 +80,7 @@ struct IfherkHeat : public SetupBase<IfherkHeat, parameters>
     using duration_type = typename clock_type::duration;
     using time_point_type = typename clock_type::time_point;
 
-    IfherkHeat(Dictionary* _d)
+    NS_AMR_LGF(Dictionary* _d)
     : super_type(_d, [this](auto _d, auto _domain) {
         return this->initialize_domain(_d, _domain);
     })

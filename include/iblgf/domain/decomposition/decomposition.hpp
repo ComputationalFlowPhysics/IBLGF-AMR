@@ -19,9 +19,6 @@
 #include <boost/mpi/communicator.hpp>
 #include <boost/serialization/set.hpp>
 
-
-#include <fmm/fmm.hpp>
-
 namespace iblgf
 {
 namespace domain

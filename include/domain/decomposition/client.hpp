@@ -754,10 +754,11 @@ public:
     auto get_octant_idx(T it, int field_idx=0) const noexcept
     {
         const auto cc=it->tree_coordinate();
-        return static_cast<int>(
-                (it->level()+field_idx*25+cc.x()*25*3+cc.y()*25*300*3+25*300*300*3*cc.z() ) %
-                boost::mpi::environment::max_tag()
-                );
+        unsigned long long int tmp =
+             (it->level()+field_idx*19+cc.x()*19*3+cc.y()*19*300*3+19*300*300*3*cc.z())
+                % boost::mpi::environment::max_tag() ;
+
+        return std::abs(static_cast<int>(tmp));
     }
 
     /** @brief Testing function for buffer/halo exchange for a field.

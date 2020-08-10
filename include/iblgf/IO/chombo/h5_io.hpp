@@ -92,7 +92,7 @@ class H5_io
 
   public:
     template<typename Field>
-    void read_h5(std::string _filename, Domain* _lt)
+    void read_h5(std::string _filename, std::string read_field, Domain* _lt )
     {
         pcout << "Start reading file -> " << _filename << std::endl;
         boost::mpi::communicator world;
@@ -100,9 +100,9 @@ class H5_io
         auto octant_blocks = blocks_list_build(_lt);
 
         hdf5_file<Dim> chombo_file(_filename, true);
-        chombo_t       ch_writer(
-            octant_blocks); // Initialize writer with vector of octants
-        ch_writer.template read_u<Field>(&chombo_file, octant_blocks, _lt);
+        chombo_t ch_writer(octant_blocks);  // Initialize writer with vector of octants
+        ch_writer.template read_u<Field>(&chombo_file, read_field, octant_blocks, _lt );
+
     }
 
     void write_h5(
@@ -142,7 +142,7 @@ class H5_io
             if (!it->has_data() || it->refinement_level() < 0 ||
                 (world.rank() > 0 && !it->locally_owned()))
                 continue;
-            if (!include_correction && it->is_correction() && !it->is_leaf())
+            if (!include_correction && it->is_correction())
                 continue;
             int rank = it->rank();
 

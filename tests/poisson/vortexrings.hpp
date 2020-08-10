@@ -173,17 +173,22 @@ struct VortexRingTest : public SetupBase<VortexRingTest, parameters>
                   << std::endl;
         }
 
-        vorticity_max_ = simulation_.dictionary_->template get_or<float_type>(
-            "source_max", max_vort);
-        pcout << "source_max " << vorticity_max_ << std::endl;
+        vorticity_max_ =simulation_.dictionary_->
+            template get_or<float_type>("source_max",max_vort);
+        pcout<<"source_max "<<vorticity_max_<<std::endl;
 
-        refinement_factor_ = simulation_.dictionary_->template get<float_type>(
-            "refinement_factor");
-        pcout << "Refienment factor " << refinement_factor_ << std::endl;
-        subtract_non_leaf_ = simulation_.dictionary_->template get_or<bool>(
-            "subtract_non_leaf", true);
-        use_correction_ =
-            simulation_.dictionary_->template get_or<bool>("correction", true);
+        refinement_factor_ =simulation_.dictionary_->
+            template get<float_type>("refinement_factor");
+        pcout<<"Refienment factor "<<refinement_factor_<<std::endl;
+        subtract_non_leaf_ =simulation_.dictionary_->
+            template get_or<bool>("subtract_non_leaf", true);
+
+        use_correction_ =simulation_.dictionary_->
+            template get_or<bool>("correction", true);
+
+        domain_->correction_buffer()= simulation_.dictionary_->
+            template get_or<bool>("correction_buffer", true);
+
         pcout << "\n Setup:  Test - Vortex rings \n" << std::endl;
         pcout << "Number of refinement levels: " << nLevels_ << std::endl;
 

@@ -10,7 +10,7 @@
 #     ▐░░░░░░░░░░░▌▐░░░░░░░░░░▌ ▐░░░░░░░░░░░▌▐░░░░░░░░░░░▌▐░▌
 #      ▀▀▀▀▀▀▀▀▀▀▀  ▀▀▀▀▀▀▀▀▀▀   ▀▀▀▀▀▀▀▀▀▀▀  ▀▀▀▀▀▀▀▀▀▀▀  ▀
 
-cmake_minimum_required(VERSION 3.12.2)
+cmake_minimum_required(VERSION 3.12.0)
 if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/CMakeLists.txt.user")
     include(${CMAKE_CURRENT_LIST_DIR}/CMakeLists.txt.user)
 else()
@@ -60,7 +60,7 @@ find_package(FFTW REQUIRED)
 find_package(BLAS REQUIRED)
 
 #################################################################################################
-#FIXME: 
+#FIXME:
 if(NOT DEFINED HDF5_INCLUDE_DIRS)
 find_package(HDF5)
 endif(NOT DEFINED HDF5_INCLUDE_DIRS)

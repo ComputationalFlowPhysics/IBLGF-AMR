@@ -63,10 +63,8 @@ class Domain
     using communicator_type = boost::mpi::communicator;
     using decompositon_type = Decomposition<Domain>;
 
-    using refinement_condition_fct_t =
-        std::function<bool(octant_t*, int diff_level)>;
-    using adapt_condition_fct_t =
-        std::function<int(octant_t*, float_type source_max)>;
+    using refinement_condition_fct_t = std::function<bool(octant_t*, int diff_level)>;
+    using adapt_condition_fct_t = std::function<int(octant_t*, std::vector<float_type> source_max)>;
 
     template<class DictionaryPtr>
     using block_initialze_fct =
@@ -103,6 +101,7 @@ class Domain
         if (w.rank() != 0) client_comm_ = client_comm_.split(1);
         else
             client_comm_ = client_comm_.split(0);
+
 
         //Construct base mesh, vector of bases with a given block_extent_
         block_extent_ = _dictionary->template get_or<int>("block_extent", 14);
@@ -524,54 +523,62 @@ class Domain
         }
 
         // Add correction buffers
-        for (int l = base_level + 1; l < this->tree()->depth(); ++l)
+        if (use_correction_buffer_)
         {
-            for (auto it = this->begin(l); it != this->end(l); ++it)
+            for(int l=base_level+1;l< this->tree()->depth();++l)
             {
-                if (!it->has_data()) continue;
-                if (!it->physical()) continue;
-
-                it->tree()->insert_correction_neighbor(
-                    *it, [this](auto neighbor_it) {
-                        auto level =
-                            neighbor_it->level() - this->tree()->base_level();
-                        auto bbase = t_->octant_to_level_coordinate(
-                            neighbor_it->tree_coordinate(), level);
-
-                        bool init_field = false;
-                        neighbor_it->data_ptr() = std::make_shared<datablock_t>(
-                            bbase, block_extent_, level, init_field);
-                    });
-            }
-        }
-
-        this->tree()->construct_lists();
-        this->tree()->construct_level_maps();
-        this->tree()->construct_leaf_maps(true);
-
-        for (int l = base_level + 1; l < this->tree()->depth(); ++l)
-        {
-            for (auto it = this->begin(l); it != this->end(l); ++it)
-            {
-                if (!it->physical()) continue;
-                //it->flag_correction(false);
-
-                for (int i = 0; i < it->nNeighbors(); ++i)
+                for (auto it = this->begin(l);
+                        it != this->end(l);
+                        ++it)
                 {
-                    auto neighbor_it = it->neighbor(i);
-                    if (!neighbor_it || !neighbor_it->has_data() ||
-                        neighbor_it->physical())
-                        continue;
+                    if (!it->has_data()) continue;
+                    if (!it->physical()) continue;
 
-                    neighbor_it->aim_deletion(false);
-                    neighbor_it->flag_correction(true);
+                    it->tree()->
+                    insert_correction_neighbor(*it,
+                            [this](auto neighbor_it)
+                            {
+                            auto level = neighbor_it->level()-this->tree()->base_level();
+                            auto bbase=t_->octant_to_level_coordinate(
+                                    neighbor_it->tree_coordinate(), level);
+
+                            bool init_field=false;
+                            neighbor_it->data_ptr()=
+                            std::make_shared<datablock_t>(bbase, block_extent_,level,init_field);
+                            } );
                 }
             }
-        }
 
-        this->tree()->construct_level_maps();
-        this->tree()->construct_leaf_maps(true);
-        this->tree()->construct_lists();
+            this->tree()->construct_lists();
+            this->tree()->construct_level_maps();
+            this->tree()->construct_leaf_maps(true);
+
+            for(int l=base_level+1;l< this->tree()->depth();++l)
+            {
+                for (auto it = this->begin(l);
+                        it != this->end(l);
+                        ++it)
+                {
+                    if (!it->physical()) continue;
+                    //it->flag_correction(false);
+
+                    for(int i=0;i<it->nNeighbors();++i)
+                    {
+                        auto neighbor_it=it->neighbor(i);
+                        if (!neighbor_it || !neighbor_it->has_data()|| neighbor_it->physical()) continue;
+
+                        neighbor_it->aim_deletion(false);
+                        neighbor_it->flag_correction(true);
+
+                    }
+                }
+            }
+
+            this->tree()->construct_level_maps();
+            this->tree()->construct_leaf_maps(true);
+            this->tree()->construct_lists();
+
+        }
 
         // flag base level boundary correction
         for (auto it = this->begin(base_level); it != this->end(base_level);
@@ -670,12 +677,10 @@ class Domain
         decomposition_.template distribute<LoadCalculator, FmmMaskBuilder>();
     }
 
-    template<class CriterionField>
-    auto adapt(float_type source_max)
+    auto adapt(std::vector<float_type> source_max, bool &base_mesh_update)
     {
         //communicating with server
-        return decomposition_.template adapt_decoposition<CriterionField>(
-            source_max);
+        return decomposition_.adapt_decoposition(source_max, base_mesh_update);
     }
 
   public: // Iterators:
@@ -696,7 +701,8 @@ class Domain
         int c = 0;
         for (auto it = this->begin(); it != this->end(); ++it)
         {
-            if (it->is_correction()) ++c;
+            if (it->is_correction() && !it->is_leaf())
+                ++c;
         }
 
         return c;
@@ -962,7 +968,10 @@ class Domain
     }
 
     const auto& client_communicator() const noexcept { return client_comm_; }
-    auto&       client_communicator() noexcept { return client_comm_; }
+    auto& client_communicator() noexcept { return client_comm_; }
+
+   const bool& correction_buffer()const noexcept{return use_correction_buffer_;}
+   bool& correction_buffer()noexcept{return use_correction_buffer_;}
 
   private:
     template<class DictionaryPtr, class Fct>
@@ -991,12 +1000,9 @@ class Domain
     /** @brief Default refinement condition */
     static bool refinement_cond_default(octant_t*, int) { return false; }
 
-    static int adapt_cond_default(octant_t* it, float_type source_max)
+    static int adapt_cond_default( octant_t* it, std::vector<float_type> source_max)
     {
-        if (it->refinement_level() > 1) return -1;
-        else
-            return 1;
-        //return rand()%3-1;
+        return 0;
     }
 
   private:
@@ -1014,7 +1020,9 @@ class Domain
     adapt_condition_fct_t      adapt_cond_ = &Domain::adapt_cond_default;
 
     boost::mpi::communicator client_comm_;
-    int                      baseBlockBufferNumber_ = 2;
+    int baseBlockBufferNumber_=2;
+
+    bool use_correction_buffer_=true;
 };
 
 //class DomainOperators

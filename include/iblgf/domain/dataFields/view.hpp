@@ -249,7 +249,7 @@ class View : public BlockDescriptor<int, Dim>
     coordinate_type stride_ = coordinate_type(1);
 };
 
-} //namespace domain
+} // namespace domain
 } // namespace iblgf
 
 #endif

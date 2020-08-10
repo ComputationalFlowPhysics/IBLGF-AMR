@@ -261,36 +261,41 @@ class Client : public ClientBase<ServerClientTraits<Domain>>
         halo_initialized_ = false;
     }
 
-    template<class Field, class Function>
-    void send_adapt_attempts(Function aim_adapt, float_type source_max)
+    template<class Function>
+    void send_adapt_attempts(Function aim_adapt, std::vector<float_type> source_max)
     {
+
         boost::mpi::communicator w;
-        //float_type source_max=1200.0;
 
         std::vector<key_t> octs;
         std::vector<int>   level_change;
-        const int          myRank = w.rank();
+        const int myRank=w.rank();
+
 
         for (auto it = domain_->begin_leaves(); it != domain_->end_leaves(); ++it)
         {
+
             if (!it->locally_owned()) continue;
 
             int l_change = aim_adapt(*it, source_max);
-            if (l_change != 0)
+
+            if( l_change!=0)
             {
                 octs.emplace_back(it->key());
                 level_change.emplace_back(l_change);
             }
         }
 
-        comm_.send(0, myRank * 2, octs);
-        comm_.send(0, myRank * 2 + 1, level_change);
+        comm_.send(0,myRank*2,octs);
+        comm_.send(0,myRank*2+1,level_change);
+
     }
 
-    template<class Field, class OctantType>
+    template<class Field,class OctantType>
     int level_change_aim(OctantType it)
     {
-        if (it->refinement_level() > 0) return 1;
+        if (it->refinement_level()>0)
+            return 1;
         else
             return 1;
     }

@@ -69,7 +69,7 @@ class SetupBase
       (w_2,                 float_type,  3,  1,  1,  face,false),
       (cell_aux,            float_type,  1,  1,  1,  cell,true),
       (face_aux,            float_type,  3,  1,  1,  face,false),
-      (stream_f,            float_type,  3,  1,  1,  edge,true),
+      (stream_f,            float_type,  3,  1,  1,  edge,false),
       (edge_aux,            float_type,  3,  1,  1,  edge,true)
     ))
     // clang-format on
@@ -190,10 +190,11 @@ class SetupBase
             {
                 float_type tmp_exact = node(Exact::tag(), field_idx);
                 float_type tmp_num = node(Numeric::tag(), field_idx);
+                if (std::fabs(tmp_exact)<1e-6) continue;
 
                 float_type error_tmp = tmp_num - tmp_exact;
 
-                node(Error::tag(), field_idx);
+                node(Error::tag(), field_idx) = error_tmp;
 
                 L2 += error_tmp * error_tmp * (dx * dx * dx);
                 L2_exact += tmp_exact * tmp_exact * (dx * dx * dx);

@@ -11,6 +11,9 @@
 //      ▀▀▀▀▀▀▀▀▀▀▀  ▀▀▀▀▀▀▀▀▀▀   ▀▀▀▀▀▀▀▀▀▀▀  ▀▀▀▀▀▀▀▀▀▀▀  ▀
 
 #include <gtest/gtest.h>
+#include <boost/filesystem.hpp>
+#include <boost/mpi/communicator.hpp>
+#include <boost/mpi/environment.hpp>
 
 #include <iblgf/dictionary/dictionary.hpp>
 #include <iblgf/types.hpp>
@@ -32,8 +35,8 @@ struct datafield_test : public ::testing::Test
     static constexpr int Dim = 3;
     static constexpr int Buff = 1;
 
-    static constexpr const tuple_tag_h f0_tag{"f0"};                            
-    static constexpr const tuple_tag_h f1_tag{"f1"};                            
+    static constexpr const tuple_tag_h f0_tag{"f0"};
+    static constexpr const tuple_tag_h f1_tag{"f1"};
 
     using block_d_type = BlockDescriptor<int, Dim>;
     using coordinate_type = typename block_d_type::coordinate_type;

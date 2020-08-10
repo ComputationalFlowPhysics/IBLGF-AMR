@@ -65,6 +65,7 @@ class Octant
     {
         FlagLeaf,
         FlagCorrection,
+        FlagOldCorrection, // this is for spatial adaptivity, when old boundary becomes the new interior, the vorticity still needs to be zeroed there
         FlagLeafBoundary,
         FlagLast
     };
@@ -161,13 +162,11 @@ class Octant
     {
         fmm_masks_ = fmm_flag;
     }
+    bool is_old_correction()const noexcept{return flags_[FlagOldCorrection];}
+    void flag_old_correction(const bool flag)noexcept {flags_[FlagOldCorrection] = flag;}
 
-    bool is_correction() const noexcept { return flags_[FlagCorrection]; }
-    void flag_correction(const bool flag) noexcept
-    {
-        flags_[FlagCorrection] = flag;
-    }
-
+    bool is_correction()const noexcept{return flags_[FlagCorrection];}
+    void flag_correction(const bool flag)noexcept {flags_[FlagCorrection] = flag;}
     bool physical() const noexcept { return flag_physical_; }
     void physical(bool flag) noexcept { flag_physical_ = flag; }
 

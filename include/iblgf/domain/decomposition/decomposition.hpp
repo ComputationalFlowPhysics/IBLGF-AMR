@@ -172,7 +172,7 @@ public: //memeber functions
 
             for (auto it = domain_->begin(); it != domain_->end(); ++it)
             {
-                if (!it->data()) continue;
+                if (!it->has_data()) continue;
 
                 if (it->is_correction() && it->refinement_level()>0)
                     it->aim_deletion(true);
@@ -185,7 +185,7 @@ public: //memeber functions
             server()->recv_adapt_attempts(octs_all, level_change_all);
             for (auto it = domain_->begin(); it != domain_->end(); ++it)
             {
-                if (!it->data()) continue;
+                if (!it->has_data()) continue;
                 it->aim_level_change()=0;
             }
 
@@ -195,14 +195,14 @@ public: //memeber functions
                 {
                     auto key = octs_all[c];
                     auto it = domain_->tree()->find_octant(key);
-                    if (!it || !it->data())
+                    if (!it || !it->has_data())
                         throw std::runtime_error("can't find oct on server");
                     it->aim_level_change()=level_change_all[c];
                 }
             }
 
             std::unordered_map<key_t, bool> checklist;
-            for (auto it = domain_->begin_leafs(); it != domain_->end_leafs(); ++it)
+            for (auto it = domain_->begin_leaves(); it != domain_->end_leaves(); ++it)
             {
 
                 int l_change=it->aim_level_change();
@@ -230,7 +230,7 @@ public: //memeber functions
                     level=level>=0?level:0;
                     auto bbase=domain_->tree()->octant_to_level_coordinate(
                             _o->tree_coordinate(),level);
-                    _o->data()=std::make_shared<datablock_t>(bbase,
+                    _o->data_ptr()=std::make_shared<datablock_t>(bbase,
                             domain_->block_extent(),level, false);
                     };
 
@@ -254,9 +254,9 @@ public: //memeber functions
                 auto oct =domain_->tree()->find_octant(nk);
                 if (!domain_->key_bounding_box(false).is_inside(nk.coordinate()))
                     continue;
-                if (!oct || !oct->data())
+                if (!oct || !oct->has_data())
                 {
-                    oct = domain_->tree()->insert_td(nk);
+                    oct = domain_->tree()->insert(nk);
                     f(oct);
                     oct->flag_leaf(true);
                     oct->flag_correction(false);
@@ -283,7 +283,7 @@ public: //memeber functions
 
             // dynmaic Programming to rduce repeated checks
             std::unordered_set<octant_t*> checklist_reset_2to1_aim_deletion;
-            for (auto it = domain_->begin_leafs(); it != domain_->end_leafs(); ++it)
+            for (auto it = domain_->begin_leaves(); it != domain_->end_leaves(); ++it)
             {
                 if (it->refinement_level()>0)
                     domain_->tree()->deletionReset_2to1(it->parent(), checklist_reset_2to1_aim_deletion);
@@ -330,7 +330,7 @@ public: //memeber functions
                 {
                     if (it->is_leaf_search())
                     {
-                        if (it->data())
+                        if (it->has_data())
                             deletion[it->rank()].emplace_back(it->key());
                         domain_->tree()->delete_oct(it.ptr());
                     }
@@ -343,7 +343,7 @@ public: //memeber functions
 
             for (auto it = domain_->begin(); it != domain_->end(); ++it)
             {
-                if (it->rank()==-1 && it->data())
+                if (it->rank()==-1 && it->has_data())
                 {
                     auto pa=it->parent();
                     while (pa->rank()<=0 && pa!=pa->parent())
@@ -362,7 +362,7 @@ public: //memeber functions
                         for (auto nk:nks)
                         {
                             auto oct =domain_->tree()->find_octant(nk);
-                            if (oct && oct->data() && oct->rank()>0)
+                            if (oct && oct->has_data() && oct->rank()>0)
                             {
                                 it->rank()=oct->rank();
                                 refinement[it->rank()].emplace_back(it->key());
@@ -374,7 +374,7 @@ public: //memeber functions
                     }
 
                     pa=it->parent();
-                    while (!pa->data())
+                    while (!pa->has_data())
                     {
                         f(pa);
                         pa->rank()=it->rank();
@@ -391,7 +391,7 @@ public: //memeber functions
             int depth=0;
             for (auto it = domain_->begin(); it != domain_->end(); ++it)
             {
-                if (it->data() && it->level()+1 > depth)
+                if (it->has_data() && it->level()+1 > depth)
                     depth=it->level()+1;
             }
             domain_->tree()->depth()=depth;
@@ -451,7 +451,7 @@ public: //memeber functions
             for (auto k:refinement_local)
             {
                 auto oct =domain_->tree()->find_octant(k);
-                if (oct && oct->data() && oct->locally_owned())
+                if (oct && oct->has_data() && oct->locally_owned())
                     std::cout<< " wrong : oct already exists\n " << oct->key();
             }
 
@@ -471,9 +471,9 @@ public: //memeber functions
                     level=level>=0?level:0;
                     auto bbase=domain_->tree()->octant_to_level_coordinate(
                             _o->tree_coordinate(),level);
-                    if(!_o->data() || !_o->data()->is_allocated())
+                    if(!_o->has_data() || !_o->data().is_allocated())
                     {
-                    _o->data()=std::make_shared<datablock_t>(bbase,
+                    _o->data_ptr()=std::make_shared<datablock_t>(bbase,
                             domain_->block_extent(),level, true);
                     }
                     _o->rank()=comm_.rank();
@@ -483,7 +483,7 @@ public: //memeber functions
             auto old_leaf_map = domain_->tree()->leaf_map();
             sync_decomposition();
 
-            for (auto it = domain_->begin_leafs(); it != domain_->end_leafs(); ++it)
+            for (auto it = domain_->begin_leaves(); it != domain_->end_leaves(); ++it)
             {
                 if (!it->locally_owned()) continue;
                 if (it->refinement_level()>0 && old_leaf_map.find(it->key())==old_leaf_map.end())

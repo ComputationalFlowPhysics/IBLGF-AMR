@@ -1,0 +1,61 @@
+simulation_parameters
+{
+    nLevels=0;
+
+    // Time Marching
+    source_max=13.0;
+    nBaseLevelTimeSteps=8;
+    cfl = 0.35;
+    cfl_max = 1000;
+    Re = 1000.0;
+    refinement_factor=0.125;
+    R=0.5;
+    DistanceOfVortexRings=0.25;
+    adapt_frequency=16;
+    output_frequency=4;
+    base_level_threshold=1e-5;
+
+    single_ring=true;
+    perturbation=false;
+    vDelta=0.2;
+
+    fat_ring=true;
+
+    //hdf5_ic_name=ic.hdf5;
+    hdf5_ref_name=ref.hdf5;
+
+    output
+    {
+        directory=output;
+    }
+
+    restart_write_frequency=20;
+    write_restart=true;
+    use_restart=false;
+
+    restart
+    {
+        load_directory=restart;
+        save_directory=restart;
+    }
+
+    domain
+    {
+
+        bd_base = (-462,-462,-462);
+        bd_extent = (924,924,924);
+
+
+        dx_base=0.05357142857142857;
+        //Lx=1.5;
+
+        block_extent=14;
+
+        block
+        {
+            base=(-42,-42,-42);
+            extent=(84,84,84);
+        }
+    }
+    EXP_LInf=1e-14;
+}

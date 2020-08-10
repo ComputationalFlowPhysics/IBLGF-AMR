@@ -180,10 +180,10 @@ class PoissonSolver
 
         // Copy source
         if (!base_level_only)
-            copy_leaf<Source, source_tmp>(_field_idx, 0, true);
+            copy_leaf<Source, source_tmp_type>(_field_idx, 0, true);
         else
         {
-            copy_level<Source, source_tmp>(domain_->tree()->base_level(), _field_idx, 0, false);
+            copy_level<Source, source_tmp_type>(domain_->tree()->base_level(), _field_idx, 0, false);
         }
 
 #ifdef POISSON_TIMINGS
@@ -198,7 +198,7 @@ class PoissonSolver
 #endif
 
         if (!base_level_only)
-            source_coarsify<source_tmp, source_tmp>(_field_idx, 0, Source::mesh_type);
+            source_coarsify<source_tmp_type, source_tmp_type>(_field_idx, 0, Source::mesh_type());
 
 #ifdef POISSON_TIMINGS
         auto t1_coarsify = clock_type::now();

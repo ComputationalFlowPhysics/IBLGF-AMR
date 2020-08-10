@@ -200,7 +200,7 @@ class SetupBase
 
                 float_type error_tmp = tmp_num - tmp_exact;
 
-                node(Error::tag(), field_idx);
+                node(Error::tag(), field_idx) = error_tmp;
 
                 L2 += error_tmp * error_tmp * (dx * dx * dx);
                 L2_exact += tmp_exact * tmp_exact * (dx * dx * dx);

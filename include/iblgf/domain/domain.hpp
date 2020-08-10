@@ -531,7 +531,7 @@ class Domain
                         it != this->end(l);
                         ++it)
                 {
-                    if (!it->data()) continue;
+                    if (!it->has_data()) continue;
                     if (!it->physical()) continue;
 
                     it->tree()->
@@ -543,7 +543,7 @@ class Domain
                                     neighbor_it->tree_coordinate(), level);
 
                             bool init_field=false;
-                            neighbor_it->data()=
+                            neighbor_it->data_ptr()=
                             std::make_shared<datablock_t>(bbase, block_extent_,level,init_field);
                             } );
                 }
@@ -565,7 +565,7 @@ class Domain
                     for(int i=0;i<it->nNeighbors();++i)
                     {
                         auto neighbor_it=it->neighbor(i);
-                        if (!neighbor_it || !neighbor_it->data()|| neighbor_it->physical()) continue;
+                        if (!neighbor_it || !neighbor_it->has_data()|| neighbor_it->physical()) continue;
 
                         neighbor_it->aim_deletion(false);
                         neighbor_it->flag_correction(true);

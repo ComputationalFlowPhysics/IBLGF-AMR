@@ -35,7 +35,7 @@ struct parameters
     (
     Dim,
      (
-         //name              type       Dim   l/h-buf,mesh_obj, output(optional)
+         //name, type, nFields, l/h-buf,mesh_obj, output(optional)
          (phi_num          ,float_type, 1,    1, 1,   cell),
          (source           ,float_type, 1,    1, 1,   cell),
          (phi_exact        ,float_type, 1,    1, 1,   cell),
@@ -49,8 +49,8 @@ struct parameters
 
 struct vortex_ring
 {
-    float_type vorticity(float_type x, float_type y, float_type z) const
-        noexcept
+    float_type vorticity(
+        float_type x, float_type y, float_type z) const noexcept
     {
         x -= center[0];
         y -= center[1];
@@ -330,43 +330,41 @@ struct VortexRingTest : public SetupBase<VortexRingTest, parameters>
             }
         }
 
-        for (auto it = domain_->begin_leaves(); it != domain_->end_leaves(); ++it)
+        for (auto it = domain_->begin_leaves(); it != domain_->end_leaves();
+             ++it)
         {
             if (!it->locally_owned()) continue;
             if (!(*it && it->has_data())) continue;
             auto dx_level = dx_base / std::pow(2, it->refinement_level());
             auto scaling = std::pow(2, it->refinement_level());
 
-            auto& nodes_domain = it->data().nodes_domain();
-            for (auto it2 = nodes_domain.begin(); it2 != nodes_domain.end();
-                 ++it2)
-                for (auto& node : it->data())
-                {
-                    node(source) = 0.0;
-                    node(phi_num) = 0.0;
+            for (auto& node : it->data())
+            {
+                node(source) = 0.0;
+                node(phi_num) = 0.0;
 
-                    const auto& coord = node.level_coordinate();
+                const auto& coord = node.level_coordinate();
 
-                    // manufactured solution:
-                    float_type x = static_cast<float_type>(
-                                       coord[0] - center[0] * scaling + 0.5) *
-                                   dx_level;
-                    float_type y = static_cast<float_type>(
-                                       coord[1] - center[1] * scaling + 0.5) *
-                                   dx_level;
-                    float_type z = static_cast<float_type>(
-                                       coord[2] - center[2] * scaling + 0.5) *
-                                   dx_level;
+                // manufactured solution:
+                float_type x = static_cast<float_type>(
+                                   coord[0] - center[0] * scaling + 0.5) *
+                               dx_level;
+                float_type y = static_cast<float_type>(
+                                   coord[1] - center[1] * scaling + 0.5) *
+                               dx_level;
+                float_type z = static_cast<float_type>(
+                                   coord[2] - center[2] * scaling + 0.5) *
+                               dx_level;
 
-                    node(source) = vorticity(x, y, z);
-                    node(phi_exact) = psi(x, y, z);
-                    /***********************************************************/
-                }
+                node(source) = vorticity(x, y, z);
+                node(phi_exact) = psi(x, y, z);
+                /***********************************************************/
+            }
         }
     }
 
-    float_type vorticity(float_type x, float_type y, float_type z) const
-        noexcept
+    float_type vorticity(
+        float_type x, float_type y, float_type z) const noexcept
     {
         float_type vort = 0.0;
         for (auto& vr : vrings_) { vort += vr.vorticity(x, y, z); }
@@ -386,7 +384,8 @@ struct VortexRingTest : public SetupBase<VortexRingTest, parameters>
 
         int nPts = 0;
         int nPts_global = 0;
-        for (auto it = domain_->begin_leaves(); it != domain_->end_leaves(); ++it)
+        for (auto it = domain_->begin_leaves(); it != domain_->end_leaves();
+             ++it)
         {
             if (it->has_data()) nPts += it->data().node_field().size();
         }
@@ -397,8 +396,8 @@ struct VortexRingTest : public SetupBase<VortexRingTest, parameters>
 
     /** @brief  Refienment conditon for octants.  */
     template<class OctantType>
-    bool refinement(OctantType* it, int diff_level, bool use_all = false) const
-        noexcept
+    bool refinement(
+        OctantType* it, int diff_level, bool use_all = false) const noexcept
     {
         auto b = it->data().descriptor();
         b.level() = it->refinement_level();
@@ -409,8 +408,8 @@ struct VortexRingTest : public SetupBase<VortexRingTest, parameters>
 
     /** @brief  Refienment conditon for blocks.  */
     bool refinement(block_descriptor_t b, float_type dx_base,
-        float_type vorticity_max, int diff_level, bool use_all = false) const
-        noexcept
+        float_type vorticity_max, int diff_level,
+        bool use_all = false) const noexcept
     {
         auto center =
             (domain_->bounding_box().max() - domain_->bounding_box().min()) /
@@ -448,7 +447,8 @@ struct VortexRingTest : public SetupBase<VortexRingTest, parameters>
 
     /** @brief  Initialization of the domain blocks. This is registered in the
      *          domain through the base setup class, passing it to the domain ctor. */
-    std::vector<coordinate_t> initialize_domain(Dictionary* _d, domain_t* _domain)
+    std::vector<coordinate_t> initialize_domain(
+        Dictionary* _d, domain_t* _domain)
     {
         auto res =
             _domain->construct_basemesh_blocks(_d, _domain->block_extent());

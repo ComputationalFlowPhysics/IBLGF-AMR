@@ -10,9 +10,9 @@
 #     ▐░░░░░░░░░░░▌▐░░░░░░░░░░▌ ▐░░░░░░░░░░░▌▐░░░░░░░░░░░▌▐░▌
 #      ▀▀▀▀▀▀▀▀▀▀▀  ▀▀▀▀▀▀▀▀▀▀   ▀▀▀▀▀▀▀▀▀▀▀  ▀▀▀▀▀▀▀▀▀▀▀  ▀
 
-#add_subdirectory (operators)
 add_subdirectory (server_client)
 add_subdirectory (datafields)
 add_subdirectory (tree)
 add_subdirectory (poisson)
+add_subdirectory (operators)
 add_subdirectory (ifherk_heat)

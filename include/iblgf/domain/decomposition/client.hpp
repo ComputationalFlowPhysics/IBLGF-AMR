@@ -728,7 +728,7 @@ class Client : public ClientBase<ServerClientTraits<Domain>>
      *         all fields.
      */
     template<class Field>
-    void buffer_exchange(const int _level)
+    void buffer_exchange(const int _level=0)
     {
         auto& send_comm =
             task_manager_->template send_communicator<halo_task_t>();

@@ -186,17 +186,11 @@ class SetupBase
             int    refinement_level = it_t->refinement_level();
             double dx = dx_base / std::pow(2.0, refinement_level);
 
-            //auto& nodes_domain = it_t->data().nodes_domain();
-            //for (auto it2 = nodes_domain.begin(); it2 != nodes_domain.end();
-            //     ++it2)
             for (auto& node : it_t->data())
             {
                 float_type tmp_exact = node(Exact::tag(), field_idx);
                 float_type tmp_num = node(Numeric::tag(), field_idx);
                 if (std::fabs(tmp_exact)<1e-6) continue;
-
-                //if(std::isnan(tmp_num))
-                //    std::cout<<"this is nan at level = " << it_t->level()<<std::endl;
 
                 float_type error_tmp = tmp_num - tmp_exact;
 

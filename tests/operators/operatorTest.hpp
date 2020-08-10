@@ -14,69 +14,55 @@
 #define IBLGF_INCLUDED_OPERATORTEST_HPP
 
 #include <iostream>
-#include <vector>
-#include <limits>
-#include <algorithm>
-#include <vector>
-#include <fftw3.h>
-#include <boost/mpi.hpp>
-#include <boost/mpi/environment.hpp>
-#include <boost/mpi/communicator.hpp>
-
-// IBLGF-specific
-#include <iblgf/global.hpp>
-#include <iblgf/simulation.hpp>
-#include <iblgf/domain/domain.hpp>
-#include <iblgf/domain/dataFields/dataBlock.hpp>
-#include <iblgf/domain/dataFields/datafield.hpp>
-#include <iblgf/domain/octree/tree.hpp>
-#include <iblgf/IO/parallel_ostream.hpp>
-#include <iblgf/lgf/lgf.hpp>
-#include <iblgf/fmm/fmm.hpp>
-
-#include <iblgf/utilities/convolution.hpp>
-#include <iblgf/interpolation/interpolation.hpp>
-#include <iblgf/solver/poisson/poisson.hpp>
-#include <iblgf/solver/time_integration/ifherk.hpp>
+#include <iblgf/dictionary/dictionary.hpp>
 
 #include "../../setups/setup_base.hpp"
 #include <iblgf/operators/operators.hpp>
 
 namespace iblgf
 {
+using namespace domain;
+using namespace types;
+using namespace dictionary;
 
 const int Dim = 3;
 
 struct parameters
 {
     static constexpr std::size_t Dim = 3;
-    REGISTER_FIELDS(Dim,
+    // clang-format off
+    REGISTER_FIELDS
+    (
+    Dim,
         (
-            //name               type        Dim   lBuffer  hBuffer, storage type
-            (grad_source, float_type, 1, 1, 1, cell,true),
-            (grad_target, float_type, 3, 1, 1, face,true),
-            (grad_exact, float_type, 3, 1, 1, face,true),
-            (grad_error, float_type, 3, 1, 1, face,true),
+            //name, type, nFields, l/h-buf,mesh_obj, output(optional)
+            (grad_source,       float_type, 1, 1, 1, cell, true),
+            (grad_target,       float_type, 3, 1, 1, face, true),
+            (grad_exact,        float_type, 3, 1, 1, face, true),
+            (grad_error,        float_type, 3, 1, 1, face, true),
 
-            (lap_source, float_type, 1, 1, 1, cell,true),
-            (lap_target, float_type, 1, 1, 1, cell,true),
-            (lap_exact, float_type, 1, 1, 1, cell,true),
-            (lap_error, float_type, 1, 1, 1, cell,true),
+            (lap_source,        float_type, 1, 1, 1, cell, true),
+            (lap_target,        float_type, 1, 1, 1, cell, true),
+            (lap_exact,         float_type, 1, 1, 1, cell, true),
+            (lap_error,         float_type, 1, 1, 1, cell, true),
 
-            (div_source, float_type, 3, 1, 1, face,true),
-            (div_target, float_type, 1, 1, 1, cell,true),
-            (div_exact, float_type, 1, 1, 1, cell,true),
-            (div_error, float_type, 1, 1, 1, cell,true),
+            (div_source,        float_type, 3, 1, 1, face, true),
+            (div_target,        float_type, 1, 1, 1, cell, true),
+            (div_exact,         float_type, 1, 1, 1, cell, true),
+            (div_error,         float_type, 1, 1, 1, cell, true),
 
-            (curl_source, float_type, 3, 1, 1, face,true),
-            (curl_target, float_type, 3, 1, 1, edge,true),
-            (curl_exact, float_type, 3, 1, 1, edge,true),
-            (curl_error, float_type, 3, 1, 1, edge,true),
+            (curl_source,       float_type, 3, 1, 1, face, true),
+            (curl_target,       float_type, 3, 1, 1, edge, true),
+            (curl_exact,        float_type, 3, 1, 1, edge, true),
+            (curl_error,        float_type, 3, 1, 1, edge, true),
 
-            (nonlinear_source, float_type, 3, 1, 1, face,true),
-            (nonlinear_target, float_type, 3, 1, 1, face,true),
-            (nonlinear_exact, float_type, 3, 1, 1, face,true),
-            (nonlinear_error, float_type, 3, 1, 1, face,true)))
+            (nonlinear_source,  float_type, 3, 1, 1, face, true),
+            (nonlinear_target,  float_type, 3, 1, 1, face, true),
+            (nonlinear_exact,   float_type, 3, 1, 1, face, true),
+            (nonlinear_error,   float_type, 3, 1, 1, face, true)
+        )
+    )
+    // clang-format on
 };
 
 struct OperatorTest : public SetupBase<OperatorTest, parameters>
@@ -128,50 +114,50 @@ struct OperatorTest : public SetupBase<OperatorTest, parameters>
 
             //Bufffer exchange of some fields
             auto client = domain_->decomposition().client();
-            client->buffer_exchange<lap_source>();
-            client->buffer_exchange<div_source>();
-            client->buffer_exchange<curl_source>();
-            client->buffer_exchange<grad_source>();
-            client->buffer_exchange<curl_exact>();
-            client->buffer_exchange<nonlinear_source>();
+            client->buffer_exchange<lap_source_type>();
+            client->buffer_exchange<div_source_type>();
+            client->buffer_exchange<curl_source_type>();
+            client->buffer_exchange<grad_source_type>();
+            client->buffer_exchange<curl_exact_type>();
+            client->buffer_exchange<nonlinear_source_type>();
 
-            mDuration_type lap_duration(0);
-            TIME_CODE(lap_duration,
-                SINGLE_ARG(
-                    for (auto it = domain_->begin_leaves();
-                         it != domain_->end_leaves(); ++it) {
-                        if (!it->locally_owned() || !it->has_data()) continue;
-                        auto dx_level =
-                            dx_base / std::pow(2, it->refinement_level());
-                        domain::Operator::laplace<lap_source, lap_target>(
-                            *(it->has_data()), dx_level);
-                        domain::Operator::divergence<div_source, div_target>(
-                            *(it->has_data()), dx_level);
-                        domain::Operator::curl<curl_source, curl_target>(
-                            *(it->has_data()), dx_level);
-                        domain::Operator::gradient<grad_source, grad_target>(
-                            *(it->has_data()), dx_level);
-                    } client->buffer_exchange<curl_target>();
-                    for (auto it = domain_->begin_leaves();
-                         it != domain_->end_leaves(); ++it) {
-                        if (!it->locally_owned() || !it->has_data()) continue;
-                        auto dx_level =
-                            dx_base / std::pow(2, it->refinement_level());
-                        domain::Operator::nonlinear<nonlinear_source,
-                            curl_target, nonlinear_target>(
-                            *(it->has_data()), dx_level);
-                    }))
+            for (auto it = domain_->begin_leaves(); it != domain_->end_leaves();
+                 ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
 
-            pcout_c << "Total time: " << lap_duration.count() << " on "
-                    << world.size() << std::endl;
+                auto dx_level = dx_base / std::pow(2, it->refinement_level());
+
+                domain::Operator::laplace<lap_source_type, lap_target_type>(
+                    it->data(), dx_level);
+                domain::Operator::divergence<div_source_type, div_target_type>(
+                    it->data(), dx_level);
+                domain::Operator::curl<curl_source_type, curl_target_type>(
+                    it->data(), dx_level);
+                domain::Operator::gradient<grad_source_type, grad_target_type>(
+                    it->data(), dx_level);
+            }
+            client->buffer_exchange<curl_target_type>();
+            for (auto it = domain_->begin_leaves(); it != domain_->end_leaves();
+                 ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
+
+                domain::Operator::nonlinear<nonlinear_source_type,
+                    curl_target_type, nonlinear_target_type>(it->data());
+            }
         }
 
-        this->compute_errors<lap_target, lap_exact, lap_error>("Lap_");
-        this->compute_errors<grad_target, grad_exact, grad_error>("Grad_");
-        this->compute_errors<div_target, div_exact, div_error>("Div_");
-        this->compute_errors<curl_target, curl_exact, curl_error>("Curl_");
-        this->compute_errors<nonlinear_target, nonlinear_exact,
-            nonlinear_error>("Nonlin_");
+        this->compute_errors<lap_target_type, lap_exact_type, lap_error_type>(
+            "Lap_");
+        this->compute_errors<grad_target_type, grad_exact_type,
+            grad_error_type>("Grad_");
+        this->compute_errors<div_target_type, div_exact_type, div_error_type>(
+            "Div_");
+        this->compute_errors<curl_target_type, curl_exact_type,
+            curl_error_type>("Curl_");
+        this->compute_errors<nonlinear_target_type, nonlinear_exact_type,
+            nonlinear_error_type>("Nonlin_");
         simulation_.write("mesh.hdf5");
     }
 
@@ -191,19 +177,17 @@ struct OperatorTest : public SetupBase<OperatorTest, parameters>
         //center+=0.5/std::pow(2,nRef);
         const float_type dx_base = domain_->dx_base();
 
-        for (auto it = domain_->begin_leaves(); it != domain_->end_leaves(); ++it)
+        for (auto it = domain_->begin_leaves(); it != domain_->end_leaves();
+             ++it)
         {
             if (!it->locally_owned()) continue;
             if (!(*it && it->has_data())) continue;
             auto dx_level = dx_base / std::pow(2, it->refinement_level());
             auto scaling = std::pow(2, it->refinement_level());
 
-            auto  view(it->data().node_field().domain_view());
-            auto& nodes_domain = it->data().nodes_domain();
-            for (auto it2 = nodes_domain.begin(); it2 != nodes_domain.end();
-                 ++it2)
+            for (auto& node : it->data())
             {
-                const auto& coord = it2->level_coordinate();
+                const auto& coord = node.level_coordinate();
 
                 //Cell centered coordinates
                 //This can obviously be made much less verbose
@@ -297,199 +281,59 @@ struct OperatorTest : public SetupBase<OperatorTest, parameters>
                 const auto tmpe2 = std::exp(-a_ * re2 * re2);
 
                 //Gradient
-                it2->get<grad_source>() = fct;
-                it2->get<grad_exact>(0) = -2 * a_ * xf0 * tmpf0;
-                it2->get<grad_exact>(1) = -2 * a_ * yf1 * tmpf1;
-                it2->get<grad_exact>(2) = -2 * a_ * zf2 * tmpf2;
+                node(grad_source) = fct;
+                node(grad_exact, 0) = -2 * a_ * xf0 * tmpf0;
+                node(grad_exact, 1) = -2 * a_ * yf1 * tmpf1;
+                node(grad_exact, 2) = -2 * a_ * zf2 * tmpf2;
 
                 //Laplace
-                it2->get<lap_source>(0) = tmpc;
-                it2->get<lap_exact>() = -6 * a_ * tmpc + 4 * a2 * xc2 * tmpc +
-                                        4 * a2 * yc2 * tmpc +
-                                        4 * a2 * zc2 * tmpc;
+                node(lap_source, 0) = tmpc;
+                node(lap_exact) = -6 * a_ * tmpc + 4 * a2 * xc2 * tmpc +
+                                  4 * a2 * yc2 * tmpc + 4 * a2 * zc2 * tmpc;
 
                 //Divergence
-                it2->get<div_source>(0) = tmpf0;
-                it2->get<div_source>(1) = tmpf1;
-                it2->get<div_source>(2) = tmpf2;
-                it2->get<div_exact>(0) = -2 * a_ * xc * tmpc -
-                                         2 * a_ * yc * tmpc -
-                                         2 * a_ * zc * tmpc;
+                node(div_source, 0) = tmpf0;
+                node(div_source, 1) = tmpf1;
+                node(div_source, 2) = tmpf2;
+                node(div_exact, 0) = -2 * a_ * xc * tmpc - 2 * a_ * yc * tmpc -
+                                     2 * a_ * zc * tmpc;
 
                 //Curl
-                it2->get<curl_source>(0) = tmpf0;
-                it2->get<curl_source>(1) = tmpf1;
-                it2->get<curl_source>(2) = tmpf2;
+                node(curl_source, 0) = tmpf0;
+                node(curl_source, 1) = tmpf1;
+                node(curl_source, 2) = tmpf2;
 
-                it2->get<curl_exact>(0) =
+                node(curl_exact, 0) =
                     2 * a_ * ze0 * tmpe0 - 2 * a_ * ye0 * tmpe0;
-                it2->get<curl_exact>(1) =
+                node(curl_exact, 1) =
                     2 * a_ * xe1 * tmpe1 - 2 * a_ * ze1 * tmpe1;
-                it2->get<curl_exact>(2) =
+                node(curl_exact, 2) =
                     2 * a_ * ye2 * tmpe2 - 2 * a_ * xe2 * tmpe2;
 
                 //non_linear
-                it2->get<nonlinear_source>(0) = tmpf0;
-                it2->get<nonlinear_source>(1) = tmpf1;
-                it2->get<nonlinear_source>(2) = tmpf2;
+                node(nonlinear_source, 0) = tmpf0;
+                node(nonlinear_source, 1) = tmpf1;
+                node(nonlinear_source, 2) = tmpf2;
 
-                it2->get<nonlinear_exact>(0) =
+                node(nonlinear_exact, 0) =
                     tmpf0 * (2 * a_ * xf0 * tmpf0 - 2 * a_ * yf0 * tmpf0) +
                     tmpf0 * (2 * a_ * xf0 * tmpf0 - 2 * a_ * zf0 * tmpf0);
 
-                it2->get<nonlinear_exact>(1) =
+                node(nonlinear_exact, 1) =
                     tmpf1 * (2 * a_ * yf1 * tmpf1 - 2 * a_ * zf1 * tmpf1) -
                     tmpf1 * (2 * a_ * xf1 * tmpf1 - 2 * a_ * yf1 * tmpf1);
 
-                it2->get<nonlinear_exact>(2) =
+                node(nonlinear_exact, 2) =
                     -tmpf2 * (2 * a_ * xf2 * tmpf2 - 2 * a_ * zf2 * tmpf2) -
                     tmpf2 * (2 * a_ * yf2 * tmpf2 - 2 * a_ * zf2 * tmpf2);
             }
         }
     }
 
-    /** @brief Compute L2 and LInf errors */
-    template<class Numeric, class Exact, class Error>
-    void compute_errors(std::string _output_prefix = "")
-    {
-        const float_type dx_base = domain_->dx_base();
-        float_type       L2 = 0.;
-        float_type       LInf = -1.0;
-        int              count = 0;
-        float_type       L2_exact = 0;
-        float_type       LInf_exact = -1.0;
-
-        std::vector<float_type> L2_perLevel(
-            nLevels_ + 1 + global_refinement_, 0.0);
-        std::vector<float_type> L2_exact_perLevel(
-            nLevels_ + 1 + global_refinement_, 0.0);
-        std::vector<float_type> LInf_perLevel(
-            nLevels_ + 1 + global_refinement_, 0.0);
-        std::vector<float_type> LInf_exact_perLevel(
-            nLevels_ + 1 + global_refinement_, 0.0);
-
-        std::vector<int> counts(nLevels_ + 1 + global_refinement_, 0);
-
-        if (domain_->is_server()) return;
-
-        for (auto it_t = domain_->begin_leaves(); it_t != domain_->end_leaves();
-             ++it_t)
-        {
-            if (!it_t->locally_owned() || !it_t->has_data()) continue;
-
-            int    refinement_level = it_t->refinement_level();
-            double dx = dx_base / std::pow(2.0, refinement_level);
-
-            auto& nodes_domain = it_t->data().nodes_domain();
-            for (auto it2 = nodes_domain.begin(); it2 != nodes_domain.end();
-                 ++it2)
-            {
-                for (std::size_t i = 0; i < Exact::nFields(); ++i)
-                {
-                    float_type tmp_exact = it2->template get<Exact>(i);
-                    float_type tmp_num = it2->template get<Numeric>(i);
-
-                    float_type error_tmp = tmp_num - tmp_exact;
-
-                    it2->template get<Error>(i) = error_tmp;
-
-                    L2 += error_tmp * error_tmp * (dx * dx * dx);
-                    L2_exact += tmp_exact * tmp_exact * (dx * dx * dx);
-
-                    L2_perLevel[refinement_level] +=
-                        error_tmp * error_tmp * (dx * dx * dx);
-                    L2_exact_perLevel[refinement_level] +=
-                        tmp_exact * tmp_exact * (dx * dx * dx);
-                    ++counts[refinement_level];
-
-                    if (std::fabs(tmp_exact) > LInf_exact)
-                        LInf_exact = std::fabs(tmp_exact);
-
-                    if (std::fabs(error_tmp) > LInf)
-                        LInf = std::fabs(error_tmp);
-
-                    if (std::fabs(error_tmp) > LInf_perLevel[refinement_level])
-                        LInf_perLevel[refinement_level] = std::fabs(error_tmp);
-
-                    if (std::fabs(tmp_exact) >
-                        LInf_exact_perLevel[refinement_level])
-                        LInf_exact_perLevel[refinement_level] =
-                            std::fabs(tmp_exact);
-
-                    ++count;
-                }
-            }
-        }
-
-        float_type L2_global(0.0);
-        float_type LInf_global(0.0);
-
-        float_type L2_exact_global(0.0);
-        float_type LInf_exact_global(0.0);
-
-        boost::mpi::all_reduce(
-            client_comm_, L2, L2_global, std::plus<float_type>());
-        boost::mpi::all_reduce(
-            client_comm_, L2_exact, L2_exact_global, std::plus<float_type>());
-
-        boost::mpi::all_reduce(client_comm_, LInf, LInf_global,
-            [&](const auto& v0, const auto& v1) { return v0 > v1 ? v0 : v1; });
-        boost::mpi::all_reduce(client_comm_, LInf_exact, LInf_exact_global,
-            [&](const auto& v0, const auto& v1) { return v0 > v1 ? v0 : v1; });
-
-        pcout_c << "Glabal " << _output_prefix
-                << "L2_exact = " << std::sqrt(L2_exact_global) << std::endl;
-        pcout_c << "Global " << _output_prefix
-                << "LInf_exact = " << LInf_exact_global << std::endl;
-
-        pcout_c << "Glabal " << _output_prefix
-                << "L2 = " << std::sqrt(L2_global) << std::endl;
-        pcout_c << "Global " << _output_prefix << "LInf = " << LInf_global
-                << std::endl;
-
-        //Level wise errros
-        std::vector<float_type> L2_perLevel_global(
-            nLevels_ + 1 + global_refinement_, 0.0);
-        std::vector<float_type> LInf_perLevel_global(
-            nLevels_ + 1 + global_refinement_, 0.0);
-
-        std::vector<float_type> L2_exact_perLevel_global(
-            nLevels_ + 1 + global_refinement_, 0.0);
-        std::vector<float_type> LInf_exact_perLevel_global(
-            nLevels_ + 1 + global_refinement_, 0.0);
-
-        std::vector<int> counts_global(nLevels_ + 1 + global_refinement_, 0);
-        for (std::size_t i = 0; i < LInf_perLevel_global.size(); ++i)
-        {
-            boost::mpi::all_reduce(client_comm_, counts[i], counts_global[i],
-                std::plus<float_type>());
-            boost::mpi::all_reduce(client_comm_, L2_perLevel[i],
-                L2_perLevel_global[i], std::plus<float_type>());
-            boost::mpi::all_reduce(client_comm_, LInf_perLevel[i],
-                LInf_perLevel_global[i], [&](const auto& v0, const auto& v1) {
-                    return v0 > v1 ? v0 : v1;
-                });
-
-            boost::mpi::all_reduce(client_comm_, L2_exact_perLevel[i],
-                L2_exact_perLevel_global[i], std::plus<float_type>());
-            boost::mpi::all_reduce(client_comm_, LInf_exact_perLevel[i],
-                LInf_exact_perLevel_global[i],
-                [&](const auto& v0, const auto& v1) {
-                    return v0 > v1 ? v0 : v1;
-                });
-
-            pcout_c << _output_prefix << "L2_" << i << " "
-                    << std::sqrt(L2_perLevel_global[i]) << std::endl;
-            pcout_c << _output_prefix << "LInf_" << i << " "
-                    << LInf_perLevel_global[i] << std::endl;
-            pcout_c << "count_" << i << " " << counts_global[i] << std::endl;
-        }
-    }
-
     /** @brief  Refienment conditon for octants.  */
     template<class OctantType>
-    bool refinement(OctantType* it, int diff_level, bool use_all = false) const
-        noexcept
+    bool refinement(
+        OctantType* it, int diff_level, bool use_all = false) const noexcept
     {
         return false;
     }
@@ -497,19 +341,18 @@ struct OperatorTest : public SetupBase<OperatorTest, parameters>
     /** @brief  Initialization of the domain blocks. This is registered in the
      *          domain through the base setup class, passing it to the domain ctor.
      */
-    std::vector<extent_t> initialize_domain(Dictionary* _d, domain_t* _domain)
+    std::vector<coordinate_t> initialize_domain(
+        Dictionary* _d, domain_t* _domain)
     {
         return _domain->construct_basemesh_blocks(_d, _domain->block_extent());
     }
 
   private:
     boost::mpi::communicator client_comm_;
-
-    float_type eps_grad_ = 1.0e6;
-    ;
-    int        nLevels_ = 0;
-    int        global_refinement_;
-    float_type a_ = 100.0;
+    float_type               eps_grad_ = 1.0e6;
+    int                      nLevels_ = 0;
+    int                      global_refinement_;
+    float_type               a_ = 100.0;
 };
 
 } // namespace iblgf

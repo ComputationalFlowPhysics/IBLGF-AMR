@@ -78,9 +78,13 @@ public: //memeber functions
     {
         if(server())
         {
+            server()->update_gid();
+
             server()->rank_query();
             server()->flag_query();
             server()->mask_query();
+            server()->gid_query();
+
         }
         else if(client())
         {
@@ -91,6 +95,9 @@ public: //memeber functions
             client()->disconnect();
 
             client()->query_masks();
+            client()->disconnect();
+
+            client()->query_gids();
             client()->disconnect();
 
             client()->halo_reset();

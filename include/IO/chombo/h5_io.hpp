@@ -142,7 +142,7 @@ public:
                 blockDescriptor_t block =it->data()->descriptor();
                 octant_blocks.push_back(it.ptr());
 
-                it->index(_count*block.nPoints());
+                //it->index(_count*block.nPoints());
             }
             ++_count;
         }

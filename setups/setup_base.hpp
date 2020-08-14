@@ -117,7 +117,7 @@ public: //Ctors
         {
             domain_->initialize_with_keys(
                     simulation_.dictionary()->get_dictionary("domain").get(),
-                    simulation_.restart_domain_dir());
+                    simulation_.tree_info_dir(true));
         }
 
         if(domain_->is_client())client_comm_=client_comm_.split(1);

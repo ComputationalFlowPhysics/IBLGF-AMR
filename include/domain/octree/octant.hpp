@@ -221,8 +221,8 @@ public: //Ctors
     {
         return std::distance(this->tree()->begin_leafs(), _it);
     }
-    void index(int _idx)       noexcept {idx_ = _idx;}
-    int  index()         const noexcept {return idx_;}
+    void global_id(int _gid)       noexcept {gid_ = _gid;}
+    int  global_id()         const noexcept {return gid_;}
 
     auto  data() const noexcept {return data_;}
     auto& data()       noexcept {return data_;}
@@ -457,7 +457,7 @@ public:
 
 private:
 
-    int idx_ = 0;
+    int gid_ = -1;
     float_type load_ = 0;
     boost::mpi::communicator comm_;
     std::shared_ptr<data_type> data_ = nullptr;

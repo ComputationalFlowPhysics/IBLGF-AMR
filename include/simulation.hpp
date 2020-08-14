@@ -46,7 +46,7 @@ public:
         boost::filesystem::create_directories(backupdir);
 
         copy_file(restart_write_dir()+"/"+restart_field_file_,  restart_write_dir()+"/backup/"+restart_field_file_ );
-        copy_file(restart_write_dir()+"/"+restart_domain_file_, restart_write_dir()+"/backup/"+restart_domain_file_);
+        copy_file(restart_write_dir()+"/"+tree_info_file_, restart_write_dir()+"/backup/"+tree_info_file_);
         copy_file(restart_write_dir()+"/"+restart_info_file_,   restart_write_dir()+"/backup/"+restart_info_file_  );
     }
 
@@ -67,9 +67,14 @@ public:
         dst << src.rdbuf();
     }
 
-    void write_tree()
+    void write_tree(bool restart_file=false)
     {
-        domain_->tree()->write(io::output().restart_save_dir()+"/"+restart_domain_file_);
+
+        if (restart_file==true)
+            domain_->tree()->write(io::output().restart_save_dir()+"/"+tree_info_file_);
+        else
+            domain_->tree()->write(io::output().dir()+"/"+tree_info_file_);
+
     }
 
     void write(std::string _filename)
@@ -77,9 +82,9 @@ public:
         writer.write_vtk(io::output().dir()+"/"+_filename, domain_.get());
     }
 
-    void write2(std::string _filename, bool to_restart=false)
+    void write2(std::string _filename, bool restart_file=false)
     {
-        if (to_restart)
+        if (restart_file)
             io_h5.write_h5(io::output().restart_save_dir()+"/"+restart_field_file_, domain_.get());
         else
             io_h5.write_h5(io::output().dir()+"/"+_filename, domain_.get());
@@ -87,15 +92,23 @@ public:
 
     auto restart_load_dir()
     {return io::output().restart_load_dir();}
+
     auto restart_write_dir()
     {return io::output().restart_save_dir();}
+
     auto restart_field_dir()
     {return io::output().restart_load_dir()+"/"+restart_field_file_;}
-    auto restart_domain_dir()
-    {return io::output().restart_load_dir()+"/"+restart_domain_file_;}
+
+    auto tree_info_dir(bool restart_file)
+    {
+        if (restart_file)
+            return io::output().restart_load_dir()+"/"+tree_info_file_;
+        else
+            return io::output().dir()+"/"+tree_info_file_;
+    }
     bool restart_dir_exist()
     {
-        std::ifstream f(restart_domain_dir());
+        std::ifstream f(tree_info_dir(true));
         if (!f.good() && domain_->is_server())
             std::cout<< " restart file doesn't exist yet" <<std::endl;
         return f.good();
@@ -122,7 +135,7 @@ public:
   io::H5_io<3, Domain> io_h5;
   io::IO_init io_init_;
   std::string restart_info_file_="restart_info";
-  std::string restart_domain_file_="restart_domain.bin";
+  std::string tree_info_file_="tree_info.bin";
   std::string restart_field_file_="restart_field.hdf5";
 
   int intrp_order_=3;

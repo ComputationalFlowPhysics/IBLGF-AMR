@@ -51,6 +51,9 @@ public:
     using mask_init_query_send_t  = typename trait_t::mask_init_query_send_t;
     using mask_init_query_recv_t  = typename trait_t::mask_init_query_recv_t;
 
+    using gid_query_send_t  = typename trait_t::gid_query_send_t;
+    using gid_query_recv_t  = typename trait_t::gid_query_recv_t;
+
     using flag_query_send_t   = typename trait_t::flag_query_send_t;
     using flag_query_recv_t   = typename trait_t::flag_query_recv_t;
 
@@ -394,6 +397,19 @@ public:
     }
 
 
+    void update_gid()
+    {
+        int id_count=0;
+        for (auto it = domain_->begin(); it != domain_->end(); ++it)
+        {
+            if (it->data())
+            {
+                it->global_id(id_count++);
+            }
+        }
+    }
+
+
     void send_keys()
     {
         auto tasks=compute_distribution();
@@ -408,6 +424,17 @@ public:
         {
             comm_.send(i,0, domain_->tree()->depth()) ;
         }
+    }
+
+    void gid_query()
+    {
+        InlineQueryRegistry<gid_query_send_t, gid_query_recv_t> mq(comm_.size());
+        mq.register_completeFunc([this](auto _task, auto _answerData)
+        {
+            this->get_octant_gid(_task, _answerData);
+        });
+
+        this->run_query(mq);
     }
 
     void mask_query()
@@ -495,6 +522,22 @@ public:
                 (*_out)[count++]=-1;
         }
     }
+
+    template<class TaskPtr, class OutPtr>
+    void get_octant_gid(TaskPtr _task, OutPtr _out)
+    {
+        _out->resize(_task->data().size());
+        int count=0;
+        for(auto& key :  _task->data())
+        {
+            auto oct =domain_->tree()->find_octant(key);
+            if(oct && oct->data())
+                (*_out)[count++]=oct->global_id();
+            else
+                (*_out)[count++]=-1;
+        }
+    }
+
 
 
 private:

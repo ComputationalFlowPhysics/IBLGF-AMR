@@ -40,6 +40,10 @@ struct ServerClientTraits
     using mask_init_query_send_t = Task<tags::mask_init,std::vector<key_t>>;
     using mask_init_query_recv_t = Task<tags::mask_init,std::vector<fmm_mask_type>>;
 
+    using gid_query_send_t = Task<tags::mask_init,std::vector<key_t>>;
+    using gid_query_recv_t = Task<tags::mask_init,std::vector<int>>;
+
+
     template< template<class> class BufferPolicy >
     using mask_query_t = Task<tags::mask_query,
                                        bool, BufferPolicy>;
@@ -61,6 +65,8 @@ struct ServerClientTraits
                                        flag_query_recv_t,
                                        mask_init_query_send_t,
                                        mask_init_query_recv_t,
+                                       gid_query_send_t,
+                                       gid_query_recv_t,
                                        mask_query_t<OrAssignRecv>,
                                        induced_fields_task_t<InfluenceFieldBuffer>,
                                        induced_fields_task_t<CopyAssign>,

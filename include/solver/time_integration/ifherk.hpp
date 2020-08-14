@@ -338,7 +338,7 @@ public:
 
         if (domain_->is_server())
         {
-            simulation_->write_tree();
+            simulation_->write_tree(true);
         }
         write_info();
     }
@@ -348,6 +348,7 @@ public:
         boost::mpi::communicator world;
         pcout << "- writing at T = " << T_ << ", n = "<< n_step_ << std::endl;
         simulation_->write2(fname(n_step_));
+        simulation_->write_tree(false);
         //simulation_->domain()->tree()->write("tree_restart.bin");
         world.barrier();
         //simulation_->domain()->tree()->read("tree_restart.bin");

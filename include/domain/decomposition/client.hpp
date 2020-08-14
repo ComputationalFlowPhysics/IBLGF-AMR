@@ -32,27 +32,29 @@ class Client : public ClientBase<ServerClientTraits<Domain>>
 {
 
 public:
-    using domain_t = Domain;
-    using MASK_LIST = typename domain_t::octant_t::MASK_LIST;
-    using communicator_type  = typename  domain_t::communicator_type;
-    using octant_t  = typename  domain_t::octant_t;
-    using datablock_t  = typename  domain_t::datablock_t;
-    using fields_tuple_t = typename datablock_t::fields_tuple_t;
-    using key_t  = typename  domain_t::key_t;
-    using key_coord_t = typename key_t::coordinate_type;
-    using fmm_mask_type = typename octant_t::fmm_mask_type;
-    using flag_list_type = typename octant_t::flag_list_type;
+    using domain_t          = Domain;
+    using MASK_LIST         = typename domain_t::octant_t::MASK_LIST;
+    using communicator_type = typename  domain_t::communicator_type;
+    using octant_t          = typename  domain_t::octant_t;
+    using datablock_t       = typename  domain_t::datablock_t;
+    using fields_tuple_t    = typename datablock_t::fields_tuple_t;
+    using key_t             = typename  domain_t::key_t;
+    using key_coord_t       = typename key_t::coordinate_type;
+    using fmm_mask_type     = typename octant_t::fmm_mask_type;
+    using flag_list_type    = typename octant_t::flag_list_type;
 
     using trait_t =  ServerClientTraits<Domain>;
     using super_type = ClientBase<trait_t>;
 
     //QueryTypes
-    using key_query_t             = typename trait_t::key_query_t;
-    using rank_query_t            = typename trait_t::rank_query_t;
-    using mask_init_query_send_t  = typename trait_t::mask_init_query_send_t;
-    using mask_init_query_recv_t  = typename trait_t::mask_init_query_recv_t;
-    using flag_query_send_t       = typename trait_t::flag_query_send_t;
-    using flag_query_recv_t       = typename trait_t::flag_query_recv_t;
+    using key_query_t            = typename trait_t::key_query_t;
+    using rank_query_t           = typename trait_t::rank_query_t;
+    using mask_init_query_send_t = typename trait_t::mask_init_query_send_t;
+    using mask_init_query_recv_t = typename trait_t::mask_init_query_recv_t;
+    using gid_query_send_t       = typename trait_t::gid_query_send_t;
+    using gid_query_recv_t       = typename trait_t::gid_query_recv_t;
+    using flag_query_send_t      = typename trait_t::flag_query_send_t;
+    using flag_query_recv_t      = typename trait_t::flag_query_recv_t;
 
     template<template<class>class BufferPolicy=OrAssignRecv>
     using mask_query_t = typename trait_t::template
@@ -298,6 +300,21 @@ public:
         else
             return 1;
     }
+
+    auto gid_query(std::vector<key_t>& task_dat)
+    {
+        auto& send_comm=
+            task_manager_->template send_communicator<gid_query_send_t>();
+
+        auto task= send_comm.post_task(&task_dat, 0);
+        QueryRegistry<gid_query_send_t, gid_query_recv_t> mq;
+
+        std::vector<int> recvData;
+        mq.register_recvMap([&recvData](int i){return &recvData;} );
+        this->wait(mq);
+        return recvData;
+    }
+
 
     auto mask_query(std::vector<key_t>& task_dat)
     {
@@ -826,6 +843,11 @@ public:
     {
         domain_->tree()->query_flags(this);
         domain_->tree()->construct_leaf_maps(true);
+    }
+
+    void query_gids()
+    {
+        domain_->tree()->query_gids(this);
     }
 
     void query_masks()

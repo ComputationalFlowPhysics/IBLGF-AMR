@@ -108,7 +108,6 @@ private:
 
 
 
-
 /** @brief Get a reference single instance  */
 inline IO_parameters& output()
 {

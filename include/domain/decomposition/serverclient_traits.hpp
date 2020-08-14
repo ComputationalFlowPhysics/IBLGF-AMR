@@ -40,8 +40,8 @@ struct ServerClientTraits
     using mask_init_query_send_t = Task<tags::mask_init,std::vector<key_t>>;
     using mask_init_query_recv_t = Task<tags::mask_init,std::vector<fmm_mask_type>>;
 
-    using gid_query_send_t = Task<tags::mask_init,std::vector<key_t>>;
-    using gid_query_recv_t = Task<tags::mask_init,std::vector<int>>;
+    using gid_query_send_t = Task<tags::gid_query,std::vector<key_t>>;
+    using gid_query_recv_t = Task<tags::gid_query,std::vector<int>>;
 
 
     template< template<class> class BufferPolicy >

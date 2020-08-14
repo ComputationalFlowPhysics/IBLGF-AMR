@@ -889,7 +889,6 @@ public: //Query ranks of all octants, which are assigned in local tree
         this->lookup_local_change(res);
 
         this->query_ranks(_c, res);
-        this->query_gids(_c);
         this->allocate_ghosts(_c);
     }
 

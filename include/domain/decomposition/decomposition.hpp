@@ -78,16 +78,25 @@ public: //memeber functions
     {
         if(server())
         {
+            server()->update_gid();
+            server()->gid_query();
 
             server()->rank_query();
             server()->flag_query();
             server()->mask_query();
-            //server()->update_gid();
-            //server()->gid_query();
 
         }
         else if(client())
         {
+            client()->query_gids();
+            client()->disconnect();
+
+            //for (auto it = domain_->begin(); it != domain_->end(); ++it)
+            //{
+
+            //    std::cout<< it->global_id();
+            //}
+
             client()->query_octants();
             client()->disconnect();
 
@@ -96,9 +105,6 @@ public: //memeber functions
 
             client()->query_masks();
             client()->disconnect();
-
-            //client()->query_gids();
-            //client()->disconnect();
 
             client()->halo_reset();
         }

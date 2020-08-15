@@ -403,9 +403,9 @@ public:
         for (auto it = domain_->begin(); it != domain_->end(); ++it)
         {
             if (it->data())
-            {
                 it->global_id(id_count++);
-            }
+            else
+                it->global_id(-1);
         }
     }
 
@@ -428,7 +428,7 @@ public:
 
     void gid_query()
     {
-        InlineQueryRegistry<gid_query_send_t, gid_query_recv_t> mq(comm_.size());
+        InlineQueryRegistry<gid_query_recv_t, gid_query_send_t> mq(comm_.size());
         mq.register_completeFunc([this](auto _task, auto _answerData)
         {
             this->get_octant_gid(_task, _answerData);

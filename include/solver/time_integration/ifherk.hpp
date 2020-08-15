@@ -150,7 +150,7 @@ public:
         else
         {
             T_ = 0.0;
-            adapt_count_=-1;
+            adapt_count_=0;
         }
 
         // ----------------------------------- start -------------------------
@@ -336,10 +336,6 @@ public:
         pcout<<"restart: write" << std::endl;
         simulation_->write2("", true);
 
-        if (domain_->is_server())
-        {
-            simulation_->write_tree(true);
-        }
         write_info();
     }
 
@@ -348,7 +344,6 @@ public:
         boost::mpi::communicator world;
         pcout << "- writing at T = " << T_ << ", n = "<< n_step_ << std::endl;
         simulation_->write2(fname(n_step_));
-        simulation_->write_tree(false);
         //simulation_->domain()->tree()->write("tree_restart.bin");
         world.barrier();
         //simulation_->domain()->tree()->read("tree_restart.bin");
@@ -378,7 +373,7 @@ public:
 
     std::string fname(int _n)
     {
-        return fname_prefix_+"ifherk_"+std::to_string(_n)+".hdf5";
+        return fname_prefix_+std::to_string(_n);
     }
 
     // ----------------------------------------------------------------------

@@ -776,8 +776,7 @@ public: //children and parent queries
         std::vector<key_type> keys;
         for(auto it =it_begin;it!=it_end;++it)
         {
-            if (it->data())
-                keys.emplace_back(it->key());
+            keys.emplace_back(it->key());
         }
 
         auto gids=_c->gid_query( keys );
@@ -789,9 +788,9 @@ public: //children and parent queries
                 throw std::runtime_error(
                         "didn't find key for gid query");
             nn->global_id(gids[i]);
-            if (gids[i]<0)
-                throw std::runtime_error(
-                        "gid < 0");
+            //if (gids[i]<0)
+            //    throw std::runtime_error(
+            //            "gid < 0");
         }
 
     }

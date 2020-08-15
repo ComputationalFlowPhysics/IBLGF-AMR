@@ -83,13 +83,14 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
         cfl_ = simulation_.dictionary()->template get_or<float_type>("cfl",0.2);
         dt_  = simulation_.dictionary()->template get_or<float_type>("dt",-1.0);
 
-        tot_steps_   = simulation_.dictionary()->template get<int>("nBaseLevelTimeSteps");
-        Re_          = simulation_.dictionary()->template get<float_type>("Re");
-        R_           = simulation_.dictionary()->template get<float_type>("R");
-        d2v_         = simulation_.dictionary()->template get_or<float_type>("DistanceOfVortexRings", R_);
-        v_delta_     = simulation_.dictionary()->template get_or<float_type>("vDelta", 0.2*R_);
-        single_ring_ = simulation_.dictionary()->template get_or<bool>("single_ring", true);
-        perturbation_ = simulation_.dictionary()->template get_or<bool>("perturbation", false);
+        tot_steps_      = simulation_.dictionary()->template get<int>("nBaseLevelTimeSteps");
+        Re_             = simulation_.dictionary()->template get<float_type>("Re");
+        R_              = simulation_.dictionary()->template get<float_type>("R");
+        d2v_            = simulation_.dictionary()->template get_or<float_type>("DistanceOfVortexRings", R_);
+        v_delta_        = simulation_.dictionary()->template get_or<float_type>("vDelta", 0.2*R_);
+        single_ring_    = simulation_.dictionary()->template get_or<bool>("single_ring", true);
+        perturbation_   = simulation_.dictionary()->template get_or<bool>("perturbation", false);
+        hard_max_level_ = simulation_.dictionary()->template get_or<bool>("hard_max_level", false);
 
 
         bool use_fat_ring = simulation_.dictionary()->template get_or<bool>("fat_ring", false);
@@ -131,7 +132,8 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
         pcout << "Number of refinement levels: "<<nLevelRefinement_<<std::endl;
 
         domain_->register_adapt_condition()=
-            [this](auto octant, std::vector<float_type> source_max){return this->template adapt_level_change<cell_aux, u>(octant, source_max);};
+            [this]( std::vector<float_type> source_max, auto& octs, std::vector<int>& level_change )
+                {return this->template adapt_level_change<cell_aux, correction_tmp>(source_max, octs, level_change);};
 
         domain_->register_refinement_condition()=
             [this](auto octant, int diff_level){return this->refinement(octant, diff_level);};
@@ -281,23 +283,42 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
 
     }
 
-    template<class cell_aux, class u, class OctantType >
-    int adapt_level_change(OctantType* it, std::vector<float_type> source_max)
+    template<class cell_aux, class correction_tmp, class key_t >
+    void adapt_level_change(std::vector<float_type> source_max,
+                            std::vector<key_t>& octs,
+                            std::vector<int>&   level_change )
     {
-        // no source in correction part by default
-        if (it->is_correction())
-            return -1;
+        for (auto it = domain_->begin(); it != domain_->end(); ++it)
+        {
 
-        int l1=this->template adapt_levle_change_for_field<cell_aux>(it, source_max[0], true);
-        //int l2=this->template adapt_levle_change_for_field<u>(it, source_max[1], false);
-        int l2=-1;
+            if (!it->locally_owned()) continue;
+            if (!it->is_leaf() && !it->is_correction()) continue;
+            int l1=-1;
+            int l2=-1;
 
-        return std::max(l1,l2);
+            if (!it->is_correction())
+                l1=this->template adapt_levle_change_for_field<cell_aux>(it, source_max[0], true);
+
+            if (it->is_correction() && !it->is_leaf())
+                l2=this->template adapt_levle_change_for_field<correction_tmp>(it, source_max[0], false);
+
+            int l=std::max(l1,l2);
+
+            if( l!=0)
+            {
+                if (it->is_leaf())
+                    octs.emplace_back(it->key());
+                else
+                    octs.emplace_back(it->key().parent());
+                level_change.emplace_back(l);
+            }
+        }
     }
 
     template<class Field, class OctantType>
-    int adapt_levle_change_for_field(OctantType* it, float_type source_max, bool use_base_level_threshold)
+    int adapt_levle_change_for_field(OctantType it, float_type source_max, bool use_base_level_threshold)
     {
+        source_max *=1.1;
         auto& nodes_domain=it->data()->nodes_domain();
 
         // ----------------------------------------------------------------
@@ -312,7 +333,7 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
         int l_aim = static_cast<int>( ceil(nLevelRefinement_-log(field_max/source_max) / log(refinement_factor_)));
         int l_delete_aim = static_cast<int>( ceil(nLevelRefinement_-log(field_max/source_max) / log(deletion_factor)));
 
-        if (l_aim>nLevelRefinement_)
+        if (l_aim>nLevelRefinement_ && hard_max_level_)
             l_aim=nLevelRefinement_;
 
         if (it->refinement_level()==0 && use_base_level_threshold)
@@ -580,6 +601,8 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
 
     bool single_ring_=true;
     bool perturbation_=false;
+    bool hard_max_level_=false;
+
     float_type R_;
     float_type v_delta_;
     float_type d2v_;

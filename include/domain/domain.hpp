@@ -54,7 +54,7 @@ public:
     using decompositon_type = Decomposition<Domain>;
 
     using refinement_condition_fct_t = std::function<bool(octant_t*, int diff_level)>;
-    using adapt_condition_fct_t = std::function<int(octant_t*, std::vector<float_type> source_max)>;
+    using adapt_condition_fct_t = std::function<void(std::vector<float_type>, std::vector<key_t>&, std::vector<int>& )>;
 
     template<class DictionaryPtr>
     using block_initialze_fct = std::function<std::vector<extent_t>(DictionaryPtr,Domain*)>;
@@ -1136,11 +1136,10 @@ private:
     /** @brief Default refinement condition */
     static bool refinement_cond_default( octant_t*, int ) { return false; }
 
-    static int adapt_cond_default( octant_t* it, std::vector<float_type> source_max)
-    {
-        return 0;
-        //return rand()%3-1;
-    }
+    static void adapt_cond_default(std::vector<float_type> source_max,
+            std::vector<key_t>& octs,
+            std::vector<int>& level_change )
+    {}
 
 private:
     std::shared_ptr<tree_t> t_;

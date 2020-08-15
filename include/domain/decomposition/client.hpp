@@ -271,24 +271,10 @@ public:
         std::vector<int>   level_change;
         const int myRank=w.rank();
 
-
-        for (auto it = domain_->begin_leafs(); it != domain_->end_leafs(); ++it)
-        {
-
-            if (!it->locally_owned()) continue;
-
-            int l_change = aim_adapt(*it, source_max);
-
-            if( l_change!=0)
-            {
-                octs.emplace_back(it->key());
-                level_change.emplace_back(l_change);
-            }
-        }
+        aim_adapt(source_max, octs, level_change);
 
         comm_.send(0,myRank*2,octs);
         comm_.send(0,myRank*2+1,level_change);
-
     }
 
 
@@ -774,9 +760,9 @@ public:
         //unsigned long long int tmp =
         //     (it->level()+field_idx*19+cc.x()*19*3+cc.y()*19*300*3+19*300*300*3*cc.z())
         //        % boost::mpi::environment::max_tag() ;
-
-        unsigned long long int tmp = ( it->global_id() % (boost::mpi::environment::max_tag()/3) ) * (field_idx+1);;
-        return (static_cast<int>(tmp));
+        int max_id =  (boost::mpi::environment::max_tag()/3)-1;
+        int tmp = (it->global_id()%max_id)+max_id*field_idx;
+        return std::abs(tmp);
     }
 
     /** @brief Testing function for buffer/halo exchange for a field.

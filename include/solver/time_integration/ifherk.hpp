@@ -86,7 +86,7 @@ public: //member types
             dt_base_ = dx_base_*cfl_;
 
         // adaptivity --------------------------------------------------------
-        adapt_freq_       = _simulation->dictionary()->template get_or<float_type>("adapt_frequency", 1);
+        adapt_freq_       = _simulation->dictionary()->template get_or<float_type>("adapt_frequency", 2);
         T_max_            = tot_base_steps_*dt_base_;
         update_marching_parameters();
 
@@ -150,7 +150,7 @@ public:
         else
         {
             T_ = 0.0;
-            adapt_count_=0;
+            adapt_count_=-1;
         }
 
         // ----------------------------------- start -------------------------

@@ -364,8 +364,11 @@ public:
                         template get_linalg_data<correction_tmp>(0);
                         auto& lin_data_2 = it->data()->
                         template get_linalg_data<source_tmp>(0);
+                        auto& lin_data_3 = it->data()->
+                        template get_linalg_data<Source>(_field_idx);
 
                         xt::noalias(lin_data_2) += lin_data_1 * 1.0;
+                        xt::noalias(lin_data_3) += lin_data_1 * 1.0;
                     }
             }
 #ifdef POISSON_TIMINGS

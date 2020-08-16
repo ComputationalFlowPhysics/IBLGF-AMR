@@ -247,9 +247,10 @@ public:
             int c_allc= domain_->num_allocations();
             boost::mpi::all_reduce(world,c_allc,c_allc_global, std::plus<int>());
 
+            // -------------- output info ------------------------------------
             if (domain_->is_server())
             {
-                std::cout<<"T = " << T_<<", n = "<< tmp_int_n << " -----------------" << std::endl;
+                std::cout<<"T = " << T_<<", n = "<< tmp_n << " -----------------" << std::endl;
                 std::cout<<"Total number of leaf octants: "<<domain_->num_leafs()<<std::endl;
                 std::cout<<"Total number of leaf + correction octants: "<<domain_->num_corrections()+domain_->num_leafs()<<std::endl;
                 std::cout<<"Total number of allocated octants: "<<c_allc_global<<std::endl;

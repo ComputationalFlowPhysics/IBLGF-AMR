@@ -762,7 +762,7 @@ public:
         //        % boost::mpi::environment::max_tag() ;
         int max_id =  (boost::mpi::environment::max_tag()/3)-1;
         int tmp = (it->global_id()%max_id)+max_id*field_idx;
-        return std::abs(tmp);
+        return tmp;
     }
 
     /** @brief Testing function for buffer/halo exchange for a field.

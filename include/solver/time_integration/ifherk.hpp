@@ -187,7 +187,7 @@ public:
                 if (adapt_count_==0)
                 {
                     this->template update_source_max<cell_aux>(0);
-                    this->template update_source_max<u>(1);
+                    this->template update_source_max<edge_aux>(1);
                 }
 
                 //if(domain_->is_client())
@@ -411,7 +411,7 @@ public:
         if (source_max_[0]<1e-10 || source_max_[1]<1e-10) return;
 
         //adaptation neglect the boundary oscillations
-        clean_leaf_correction_boundary<cell_aux>(domain_->tree()->base_level(),true,7);
+        clean_leaf_correction_boundary<cell_aux>(domain_->tree()->base_level(),true,2);
 
         world.barrier();
 
@@ -700,17 +700,19 @@ private:
         TIME_CODE( t_lgf, SINGLE_ARG(
                     psolver.template apply_lgf<cell_aux, d_i>();
                     ));
+        domain_->client_communicator().barrier();
         pcout<< "LGF solved in "<<t_lgf.count() << std::endl;
 
         gradient<d_i,face_aux>();
         add<face_aux, r_i>(-1.0);
+        domain_->client_communicator().barrier();
         if (std::fabs(_alpha)>1e-4)
         {
             mDuration_type t_if(0);
-            domain_->client_communicator().barrier();
             TIME_CODE( t_if, SINGLE_ARG(
                         psolver.template apply_lgf_IF<r_i, u_i>(_alpha);
                         ));
+            domain_->client_communicator().barrier();
             pcout<< "IF  solved in "<<t_if.count() << std::endl;
         }
         else

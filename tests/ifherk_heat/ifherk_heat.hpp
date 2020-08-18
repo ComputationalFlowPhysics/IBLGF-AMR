@@ -45,13 +45,13 @@ struct parameters
     Dim,
      (
         //name               type        Dim   lBuffer  hBuffer, storage type
-         (error_u          , float_type, 3,    1,       1,     face,true ),
-         (error_p          , float_type, 1,    1,       1,     cell,true ),
-         (decomposition    , float_type, 1,    1,       1,     cell,true ),
+         (error_u          , float_type, 3,    1,       1,     face,false ),
+         (error_p          , float_type, 1,    1,       1,     cell,false ),
+         (decomposition    , float_type, 1,    1,       1,     cell,false ),
         //IF-HERK
          (u                , float_type, 3,    1,       1,     face,true ),
-         (u_ref            , float_type, 3,    1,       1,     face,true ),
-         (p_ref            , float_type, 1,    1,       1,     cell,true ),
+         (u_ref            , float_type, 3,    1,       1,     face,false ),
+         (p_ref            , float_type, 1,    1,       1,     cell,false ),
          (p                , float_type, 1,    1,       1,     cell,true )
     ))
 };
@@ -295,6 +295,7 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
             if (!it->is_leaf() && !it->is_correction()) continue;
             int l1=-1;
             int l2=-1;
+            int l3=-1;
 
             if (!it->is_correction())
                 l1=this->template adapt_levle_change_for_field<cell_aux>(it, source_max[0], true);
@@ -302,7 +303,10 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
             if (it->is_correction() && !it->is_leaf())
                 l2=this->template adapt_levle_change_for_field<correction_tmp>(it, source_max[0], false);
 
-            int l=std::max(l1,l2);
+            if (it->is_correction() && !it->is_leaf())
+                l3=this->template adapt_levle_change_for_field<edge_aux>(it, source_max[1], true);
+
+            int l=std::max(std::max(l1,l2),l3);
 
             if( l!=0)
             {

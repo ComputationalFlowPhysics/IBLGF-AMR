@@ -38,7 +38,7 @@ Be sure to install all libraries with mpi support.
 * [Cmake](https://cmake.org/)
 * [Boost](https://www.boost.org/) (required libraries: system, filesystem, serialization,mpi)
 * [FFTW](http://www.fftw.org/)
-* [HDF5](https://www.hdfgroup.org/solutions/hdf5/) (The cxx binding are NOT needed.)
+* [HDF5](https://www.hdfgroup.org/solutions/hdf5/) (Mpi support needed. The cxx binding are NOT needed.)
 * [Blas](https://www.openblas.net/)
 * [xTensor](https://github.com/xtensor-stack/xtensor)
 * [xTensor-Blas](https://github.com/xtensor-stack/xtensor-blas)

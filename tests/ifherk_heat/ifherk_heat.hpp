@@ -346,7 +346,7 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
         float_type deletion_factor=0.7;
 
         int l_aim = static_cast<int>( ceil(nLevelRefinement_-log(field_max/source_max) / log(refinement_factor_)));
-        int l_delete_aim = static_cast<int>( ceil(nLevelRefinement_-((log(field_max/source_max) - log(deletion_factor)) / log(deletion_factor))));
+        int l_delete_aim = static_cast<int>( ceil(nLevelRefinement_-((log(field_max/source_max) - log(deletion_factor)) / log(refinement_factor_))));
 
         if (l_aim>nLevelRefinement_ && hard_max_level_)
             l_aim=nLevelRefinement_;

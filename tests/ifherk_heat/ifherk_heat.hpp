@@ -288,33 +288,42 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
                             std::vector<key_t>& octs,
                             std::vector<int>&   level_change )
     {
+        octs.clear();
+        level_change.clear();
         for (auto it = domain_->begin(); it != domain_->end(); ++it)
         {
 
             if (!it->locally_owned()) continue;
             if (!it->is_leaf() && !it->is_correction()) continue;
+            if (it->is_leaf() && it->is_correction()) continue;
+
             int l1=-1;
             int l2=-1;
             int l3=-1;
 
-            if (!it->is_correction())
-                l1=this->template adapt_levle_change_for_field<cell_aux>(it, source_max[0], true);
+            if (!it->is_correction() && it->is_leaf())
+                l1=this->template adapt_levle_change_for_field<cell_aux>(it, source_max[0], false);
 
             if (it->is_correction() && !it->is_leaf())
                 l2=this->template adapt_levle_change_for_field<correction_tmp>(it, source_max[0], false);
 
-            if (!it->is_correction())
-                l3=this->template adapt_levle_change_for_field<edge_aux>(it, source_max[1], false);
+            if (!it->is_correction() && it->is_leaf())
+                l3=this->template adapt_levle_change_for_field<edge_aux>(it, source_max[1], true);
 
             int l=std::max(std::max(l1,l2),l3);
 
             if( l!=0)
             {
-                if (it->is_leaf())
+                if (it->is_leaf()&&!it->is_correction())
+                {
                     octs.emplace_back(it->key());
-                else
+                    level_change.emplace_back(l);
+                }
+                else if (it->is_correction() && !it->is_leaf() && l2>0)
+                {
                     octs.emplace_back(it->key().parent());
-                level_change.emplace_back(l);
+                    level_change.emplace_back(l2);
+                }
             }
         }
     }
@@ -322,7 +331,7 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
     template<class Field, class OctantType>
     int adapt_levle_change_for_field(OctantType it, float_type source_max, bool use_base_level_threshold)
     {
-        source_max *=1.1;
+        source_max *=1.05;
         auto& nodes_domain=it->data()->nodes_domain();
 
         // ----------------------------------------------------------------
@@ -330,12 +339,14 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
         float_type field_max=
             domain::Operator::maxabs<Field>(*(it->data()));
 
+        if (field_max<1e-10) return -1;
+
         // to refine and harder to delete
         // This prevent rapid change of level refinement
-        float_type deletion_factor=refinement_factor_*0.75;
+        float_type deletion_factor=0.7;
 
         int l_aim = static_cast<int>( ceil(nLevelRefinement_-log(field_max/source_max) / log(refinement_factor_)));
-        int l_delete_aim = static_cast<int>( ceil(nLevelRefinement_-log(field_max/source_max) / log(deletion_factor)));
+        int l_delete_aim = static_cast<int>( ceil(nLevelRefinement_-((log(field_max/source_max) - log(deletion_factor)) / log(deletion_factor))));
 
         if (l_aim>nLevelRefinement_ && hard_max_level_)
             l_aim=nLevelRefinement_;
@@ -350,9 +361,12 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
         }
 
         int l_change = l_aim - it->refinement_level();
+        if (l_change>0)
+            return 1;
 
-        if (l_delete_aim<0 || (!use_base_level_threshold && l_aim==0)) return -1;
-        if (l_change>0) return 1;
+        l_change = l_delete_aim - it->refinement_level();
+        if (l_change<0) return -1;
+
         return 0;
     }
 

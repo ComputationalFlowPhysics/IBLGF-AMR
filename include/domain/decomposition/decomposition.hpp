@@ -174,7 +174,7 @@ public: //memeber functions
             {
                 if (!it->data()) continue;
 
-                if (it->is_correction() && it->refinement_level()>0)
+                if (it->is_correction() )
                     it->aim_deletion(true);
                 else
                     it->aim_deletion(false);
@@ -448,13 +448,6 @@ public: //memeber functions
             std::sort(deletion_local.begin(), deletion_local.end(), [](key_t k1, key_t k2)->bool{return k1.level()>k2.level();});
             boost::mpi::communicator world;
 
-            for (auto k:refinement_local)
-            {
-                auto oct =domain_->tree()->find_octant(k);
-                if (oct && oct->data() && oct->locally_owned())
-                    std::cout<< " wrong : oct already exists\n " << oct->key();
-            }
-
             for(auto& key : deletion_local)
             {
                 //find the octant
@@ -466,6 +459,13 @@ public: //memeber functions
             }
 
             // Local refinement
+            for (auto k:refinement_local)
+            {
+                auto oct =domain_->tree()->find_octant(k);
+                if (oct && oct->data() && oct->locally_owned())
+                    std::cout<< " wrong : oct already exists\n " << oct->key();
+            }
+
             domain_->tree()->insert_keys(refinement_local, [&](octant_t* _o){
                     auto level = _o->refinement_level();
                     level=level>=0?level:0;

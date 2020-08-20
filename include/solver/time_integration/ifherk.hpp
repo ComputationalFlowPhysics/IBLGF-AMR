@@ -56,6 +56,7 @@ public: //member types
 
     using cell_aux   = typename Setup::cell_aux;
     using edge_aux   = typename Setup::edge_aux;
+    using correction_tmp   = typename Setup::correction_tmp;
     using face_aux   = typename Setup::face_aux;
     using w_1        = typename Setup::w_1;
     using w_2        = typename Setup::w_2;
@@ -169,7 +170,8 @@ public:
             if(domain_->is_client())
             {
                 clean<cell_aux>(true, 2);
-                //clean<edge_aux>(true, 2);
+                clean<edge_aux>(true, 1);
+                clean<correction_tmp>(true, 2);
             }
 
             // copy flag correction to flag old correction
@@ -414,8 +416,8 @@ public:
         if (source_max_[0]<1e-10 || source_max_[1]<1e-10) return;
 
         //adaptation neglect the boundary oscillations
-        clean_leaf_correction_boundary<cell_aux>(domain_->tree()->base_level(),true,4);
-        clean_leaf_correction_boundary<edge_aux>(domain_->tree()->base_level(),true,4);
+        clean_leaf_correction_boundary<cell_aux>(domain_->tree()->base_level(),true,2);
+        clean_leaf_correction_boundary<edge_aux>(domain_->tree()->base_level(),true,2);
 
         world.barrier();
 

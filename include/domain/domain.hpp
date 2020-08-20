@@ -440,7 +440,7 @@ public: //C/Dtors
                     {
                         auto child = it->child(i);
 
-                        if (child && child->is_leaf())
+                        if (child )
                             child->aim_deletion(false);
                     }
                  }

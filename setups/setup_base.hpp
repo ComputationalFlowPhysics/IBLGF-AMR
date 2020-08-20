@@ -38,7 +38,7 @@ public: //default fields
     (Dim,
     (
       (source_tmp,          float_type,  1,  1,  1,  cell,false),
-      (correction_tmp,      float_type,  1,  1,  1,  cell,false),
+      (correction_tmp,      float_type,  1,  1,  1,  cell,true),
       (target_tmp,          float_type,  1,  1,  1,  cell,false),
       (fmm_s,               float_type,  1,  1,  1,  cell,false),
       (fmm_t,               float_type,  1,  1,  1,  cell,false),

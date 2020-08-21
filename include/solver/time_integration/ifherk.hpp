@@ -82,6 +82,9 @@ public: //member types
         Re_               = _simulation->dictionary()->template get<float_type>("Re");
         output_base_freq_ = _simulation->dictionary()->template get<float_type>("output_frequency");
         cfl_max_          = _simulation->dictionary()->template get_or<float_type>("cfl_max",1000);
+        use_correction_   = _simulation->dictionary()->template get_or<bool>("correction",true);
+
+        psolver.use_correction()=use_correction_;
 
         if (dt_base_<0)
             dt_base_ = dx_base_*cfl_;
@@ -946,6 +949,7 @@ private:
     poisson_solver_t psolver;
 
     bool base_mesh_update_=false;
+    bool use_correction_=true;
 
     float_type T_, T_max_;
     float_type dt_base_, dt_, dx_base_;

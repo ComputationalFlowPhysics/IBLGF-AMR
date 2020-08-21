@@ -204,6 +204,8 @@ class Octant
     {
         return (*data_)(std::forward<Args>(args)...);
     }
+    void global_id(int _gid)       noexcept {gid_ = _gid;}
+    int  global_id()         const noexcept {return gid_;}
 
     template<class... Args>
     const auto& data_r(Args&&... args) const noexcept
@@ -375,20 +377,20 @@ class Octant
         children_[i] = std::make_shared<Octant>(this->construct_child(i));
         children_[i]->parent_ = this;
         return children_[i].get();
-    }
+	}
 
-  private:
-    int                                              idx_ = 0;
-    float_type                                       load_ = 0;
-    boost::mpi::communicator                         comm_;
-    std::shared_ptr<data_type>                       data_ = nullptr;
-    Octant*                                          parent_ = nullptr;
-    std::array<std::shared_ptr<Octant>, pow(2, Dim)> children_ = {{nullptr,
-        nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr}};
-    std::array<Octant*, pow(3, Dim)>                 neighbor_ = {nullptr};
-    int                                              influence_num = 0;
-    std::array<Octant*, 189>                         influence_ = {nullptr};
+private:
 
+    int gid_ = -1;
+    float_type load_ = 0;
+    boost::mpi::communicator comm_;
+    std::shared_ptr<data_type> data_ = nullptr;
+    Octant* parent_=nullptr;
+    std::array<std::shared_ptr<Octant>,pow(2,Dim)> children_ =
+        {{nullptr,nullptr,nullptr,nullptr, nullptr,nullptr,nullptr,nullptr}};
+    std::array<Octant*,pow(3,Dim) > neighbor_ = {nullptr};
+    int influence_num = 0;
+    std::array<Octant*, 189 > influence_= {nullptr};
     bool flag_physical_ = false;
 
     flag_list_type flags_;

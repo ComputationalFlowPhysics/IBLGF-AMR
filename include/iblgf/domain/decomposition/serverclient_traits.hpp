@@ -53,29 +53,43 @@ struct ServerClientTraits
     using mask_init_query_recv_t =
         Task<tags::mask_init, std::vector<fmm_mask_type>>;
 
-    template<template<class> class BufferPolicy>
-    using mask_query_t = Task<tags::mask_query, bool, BufferPolicy>;
+    using gid_query_send_t = Task<tags::gid_query,std::vector<key_t>>;
+    using gid_query_recv_t = Task<tags::gid_query,std::vector<int>>;
+
+
+    template< template<class> class BufferPolicy >
+    using mask_query_t = Task<tags::mask_query,
+                                       bool, BufferPolicy>;
 
     template<template<class> class BufferPolicy>
     using induced_fields_task_t =
         Task<tags::field_query, std::vector<double>, BufferPolicy, octant_t>;
 
     using acc_induced_fields_task_t = Task<tags::accumulated_field_query,
-        std::vector<double>, Inplace, octant_t>;
+                                       std::vector<double>,Inplace,octant_t>;
 
-    using halo_task_t =
-        Task<tags::halo, std::vector<double>, Inplace, octant_t>;
+    using halo_task_t = Task<tags::halo,std::vector<double>,Inplace,octant_t>;
 
-    using balance_task =
-        Task<tags::balance, std::vector<double>, Inplace, octant_t>;
+    using balance_task = Task<tags::balance,std::vector<double>,Inplace,octant_t>;
 
-    using task_manager_t = TaskManager<key_query_t, rank_query_t,
-        flag_query_send_t, flag_query_recv_t, mask_init_query_send_t,
-        mask_init_query_recv_t, mask_query_t<OrAssignRecv>,
-        induced_fields_task_t<InfluenceFieldBuffer>,
-        induced_fields_task_t<CopyAssign>, induced_fields_task_t<AddAssignRecv>,
-        acc_induced_fields_task_t, halo_task_t, balance_task>;
+    using task_manager_t = TaskManager<key_query_t,
+                                       rank_query_t,
+                                       flag_query_send_t,
+                                       flag_query_recv_t,
+                                       mask_init_query_send_t,
+                                       mask_init_query_recv_t,
+                                       gid_query_send_t,
+                                       gid_query_recv_t,
+                                       mask_query_t<OrAssignRecv>,
+                                       induced_fields_task_t<InfluenceFieldBuffer>,
+                                       induced_fields_task_t<CopyAssign>,
+                                       induced_fields_task_t<AddAssignRecv>,
+                                       acc_induced_fields_task_t,
+                                       halo_task_t,
+                                       balance_task
+                                       >;
 };
+
 
 } // namespace domain
 } // namespace iblgf

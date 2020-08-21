@@ -24,6 +24,7 @@ enum type : int
     key_answer,
     key_query,
     mask_query,
+    gid_query,
     flags,
     mask_init,
     request,

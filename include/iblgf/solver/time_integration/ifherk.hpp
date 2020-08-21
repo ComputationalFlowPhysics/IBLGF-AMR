@@ -64,13 +64,13 @@ class Ifherk
     using cell_aux_type = typename Setup::cell_aux_type;
     using edge_aux_type = typename Setup::edge_aux_type;
     using face_aux_type = typename Setup::face_aux_type;
+    using correction_tmp_type = typename Setup::correction_tmp_type;
     using w_1_type = typename Setup::w_1_type;
     using w_2_type = typename Setup::w_2_type;
     using u_i_type = typename Setup::u_i_type;
 
     static constexpr int lBuffer = 1; ///< Lower left buffer for interpolation
     static constexpr int rBuffer = 1; ///< Lower left buffer for interpolation
-
     Ifherk(simulation_type* _simulation)
     : simulation_(_simulation)
     , domain_(_simulation->domain_.get())
@@ -182,7 +182,12 @@ class Ifherk
 
             // clean up the block boundary of cell_aux_type for smoother adaptation
 
-            if (domain_->is_client()) clean<cell_aux_type>(true, 2);
+            if(domain_->is_client())
+            {
+                clean<cell_aux_type>(true, 2);
+                clean<edge_aux_type>(true, 1);
+                clean<correction_tmp_type>(true, 2);
+            }
 
             // copy flag correction to flag old correction
             for (auto it  = domain_->begin();
@@ -202,7 +207,7 @@ class Ifherk
                 if (adapt_count_==0)
                 {
                     this->template update_source_max<cell_aux_type>(0);
-                    this->template update_source_max<u_type>(1);
+                    this->template update_source_max<edge_aux_type>(1);
                 }
 
                 //if(domain_->is_client())
@@ -236,7 +241,6 @@ class Ifherk
 
             // -------------------------------------------------------------
             // update stats & output
-            update_marching_parameters();
 
             T_ += dt_;
             float_type tmp_n = T_ / dt_base_ * math::pow2(max_ref_level_);
@@ -254,6 +258,9 @@ class Ifherk
             {
                 n_step_ = tmp_int_n;
                 write_timestep();
+                // only update dt after 1 output so it wouldn't do 3 5 7 9 ...
+                // and skip all outputs
+                update_marching_parameters();
             }
 
             world.barrier();
@@ -263,9 +270,10 @@ class Ifherk
             boost::mpi::all_reduce(
                 world, c_allc, c_allc_global, std::plus<int>());
 
+            // -------------- output info ------------------------------------
             if (domain_->is_server())
             {
-                std::cout<<"T = " << T_<<", n = "<< tmp_int_n << " -----------------" << std::endl;
+                std::cout<<"T = " << T_<<", n = "<< tmp_n << " -----------------" << std::endl;
                 std::cout<<"Total number of leaf octants: "<<domain_->num_leafs()<<std::endl;
                 std::cout<<"Total number of leaf + correction octants: "<<domain_->num_corrections()+domain_->num_leafs()<<std::endl;
                 std::cout<<"Total number of allocated octants: "<<c_allc_global<<std::endl;
@@ -348,7 +356,6 @@ class Ifherk
         pcout << "restart: write" << std::endl;
         simulation_->write("", true);
 
-        if (domain_->is_server()) { simulation_->write_tree(); }
         write_info();
     }
 
@@ -388,7 +395,7 @@ class Ifherk
 
     std::string fname(int _n)
     {
-        return fname_prefix_ + "ifherk_" + std::to_string(_n) + ".hdf5";
+        return fname_prefix_+std::to_string(_n);
     }
 
     // ----------------------------------------------------------------------
@@ -426,8 +433,11 @@ class Ifherk
 
         if (source_max_[0]<1e-10 || source_max_[1]<1e-10) return;
 
+        if (source_max_[0]<1e-10 || source_max_[1]<1e-10) return;
+
         //adaptation neglect the boundary oscillations
-        clean_leaf_correction_boundary<cell_aux_type>(domain_->tree()->base_level(),true,7);
+        clean_leaf_correction_boundary<cell_aux_type>(domain_->tree()->base_level(),true,2);
+        clean_leaf_correction_boundary<edge_aux_type>(domain_->tree()->base_level(),true,2);
 
         world.barrier();
 
@@ -442,7 +452,6 @@ class Ifherk
                 ////Coarsification:
                 //for (std::size_t _field_idx=0; _field_idx<u::nFields; ++_field_idx)
                 //    psolver.template source_coarsify<u_type,u_type>(_field_idx, _field_idx, u::mesh_type);
-
             }
         }
 
@@ -766,8 +775,7 @@ private:
         psolver.template apply_lgf<edge_aux_type, stream_f_type>(refresh_correction_only);
 
         int l_max = refresh_correction_only ?
-            domain_->tree()->base_level()+1 : domain_->tree()->depth();
-
+        domain_->tree()->base_level()+1 : domain_->tree()->depth();
         for (int l  = domain_->tree()->base_level();
                 l < l_max; ++l)
         {
@@ -778,12 +786,10 @@ private:
                 //if(!it->is_correction() && refresh_correction_only) continue;
 
                 const auto dx_level =  dx_base/math::pow2(it->refinement_level());
-                domain::Operator::curl_transpose<stream_f_type,Velocity_out>( it->data(),dx_level, -1.0);
+                    domain::Operator::curl_transpose<stream_f_type,Velocity_out>( it->data(),dx_level, -1.0);
             }
-            //client->template buffer_exchange<Velocity_out>(l);
         }
 
-        //client->template buffer_exchange<Velocity_out>(l);
         this->down_to_correction<Velocity_out>();
     }
 

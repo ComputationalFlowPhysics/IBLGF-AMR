@@ -94,15 +94,14 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
             simulation_.dictionary()->template get_or<float_type>("cfl", 0.2);
         dt_ = simulation_.dictionary()->template get_or<float_type>("dt", -1.0);
 
-        tot_steps_   = simulation_.dictionary()->template get<int>("nBaseLevelTimeSteps");
-        Re_          = simulation_.dictionary()->template get<float_type>("Re");
-        R_           = simulation_.dictionary()->template get<float_type>("R");
-        d2v_         = simulation_.dictionary()->template get_or<float_type>("DistanceOfVortexRings", R_);
-        v_delta_     = simulation_.dictionary()->template get_or<float_type>("vDelta", 0.2*R_);
-        single_ring_ = simulation_.dictionary()->template get_or<bool>("single_ring", true);
-        perturbation_ = simulation_.dictionary()->template get_or<bool>("perturbation", false);
-        hard_max_refinement_ = simulation_.dictionary()->template get_or<bool>("hard_max_refinement", false);
-
+        tot_steps_      = simulation_.dictionary()->template get<int>("nBaseLevelTimeSteps");
+        Re_             = simulation_.dictionary()->template get<float_type>("Re");
+        R_              = simulation_.dictionary()->template get<float_type>("R");
+        d2v_            = simulation_.dictionary()->template get_or<float_type>("DistanceOfVortexRings", R_);
+        v_delta_        = simulation_.dictionary()->template get_or<float_type>("vDelta", 0.2*R_);
+        single_ring_    = simulation_.dictionary()->template get_or<bool>("single_ring", true);
+        perturbation_   = simulation_.dictionary()->template get_or<bool>("perturbation", false);
+        hard_max_level_ = simulation_.dictionary()->template get_or<bool>("hard_max_level", false);
 
 
         bool use_fat_ring = simulation_.dictionary()->template get_or<bool>("fat_ring", false);
@@ -115,7 +114,6 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 
         ic_filename_ = simulation_.dictionary_->template get_or<std::string>(
             "hdf5_ic_name", "null");
-
         ref_filename_ = simulation_.dictionary_->template get_or<std::string>(
             "hdf5_ref_name", "null");
 
@@ -124,6 +122,9 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 
         refinement_factor_ = simulation_.dictionary_->template get<float_type>(
             "refinement_factor");
+
+        base_threshold_ = simulation_.dictionary()->
+            template get_or<float_type>("base_level_threshold", 1e-4);
 
         base_threshold_ = simulation_.dictionary()->
             template get_or<float_type>("base_level_threshold", 1e-4);
@@ -144,7 +145,8 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
               << std::endl;
 
         domain_->register_adapt_condition()=
-            [this](auto octant, std::vector<float_type> source_max){return this->template adapt_level_change<cell_aux_type, u_type>(octant, source_max);};
+            [this]( std::vector<float_type> source_max, auto& octs, std::vector<int>& level_change )
+                {return this->template adapt_level_change(source_max, octs, level_change);};
 
         domain_->register_refinement_condition() = [this](auto octant,
                                                        int diff_level) {
@@ -240,47 +242,74 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 
         simulation_.write("final.hdf5");
         return u3_linf;
-
     }
 
-
-    template<class cell_aux, class u, class OctantType >
-    int adapt_level_change(OctantType* it, std::vector<float_type> source_max)
+    template< class key_t >
+    void adapt_level_change(std::vector<float_type> source_max,
+                            std::vector<key_t>& octs,
+                            std::vector<int>&   level_change )
     {
-        // no source in correction part by default
-        if (it->is_correction())
-            return -1;
+        octs.clear();
+        level_change.clear();
+        for (auto it = domain_->begin(); it != domain_->end(); ++it)
+        {
 
-        int l1=this->template adapt_levle_change_for_field<cell_aux>(it, source_max[0], true);
-        //int l2=this->template adapt_levle_change_for_field<u>(it, source_max[1], false);
-        int l2=-1;
+            if (!it->locally_owned()) continue;
+            if (!it->is_leaf() && !it->is_correction()) continue;
+            if (it->is_leaf() && it->is_correction()) continue;
 
-        return std::max(l1,l2);
+            int l1=-1;
+            int l2=-1;
+            int l3=-1;
+
+            if (!it->is_correction() && it->is_leaf())
+                l1=this->template adapt_levle_change_for_field<cell_aux_type>(it, source_max[0], true);
+
+            if (it->is_correction() && !it->is_leaf())
+                l2=this->template adapt_levle_change_for_field<correction_tmp_type>(it, source_max[0], false);
+
+            if (!it->is_correction() && it->is_leaf())
+                l3=this->template adapt_levle_change_for_field<edge_aux_type>(it, source_max[1], false);
+
+            int l=std::max(std::max(l1,l2),l3);
+
+            if( l!=0)
+            {
+                if (it->is_leaf()&&!it->is_correction())
+                {
+                    octs.emplace_back(it->key());
+                    level_change.emplace_back(l);
+                }
+                else if (it->is_correction() && !it->is_leaf() && l2>0)
+                {
+                    octs.emplace_back(it->key().parent());
+                    level_change.emplace_back(l2);
+                }
+            }
+        }
     }
 
     template<class Field, class OctantType>
-    int adapt_levle_change_for_field(OctantType* it, float_type source_max, bool use_base_level_threshold)
+    int adapt_levle_change_for_field(OctantType it, float_type source_max, bool use_base_level_threshold)
     {
-        source_max*=1.1; // to avoid constant change
+        source_max *=1.05;
+
         // ----------------------------------------------------------------
 
         float_type field_max=
             domain::Operator::maxabs<Field>(it->data());
 
+        if (field_max<1e-10) return -1;
+
         // to refine and harder to delete
         // This prevent rapid change of level refinement
-        float_type deletion_factor = refinement_factor_ * 0.75;
+        float_type deletion_factor=0.7;
 
-        int l_aim = static_cast<int>(
-            ceil(nLevelRefinement_ -
-                 log(field_max / source_max) / log(refinement_factor_)));
-        int l_delete_aim = static_cast<int>(
-            ceil(nLevelRefinement_ -
-                 log(field_max / source_max) / log(deletion_factor)));
+        int l_aim = static_cast<int>( ceil(nLevelRefinement_-log(field_max/source_max) / log(refinement_factor_)));
+        int l_delete_aim = static_cast<int>( ceil(nLevelRefinement_-((log(field_max/source_max) - log(deletion_factor)) / log(refinement_factor_))));
 
-        if (hard_max_refinement_ && (l_aim>nLevelRefinement_))
+        if (l_aim>nLevelRefinement_ && hard_max_level_)
             l_aim=nLevelRefinement_;
-
 
         if (it->refinement_level()==0 && use_base_level_threshold)
         {
@@ -292,11 +321,15 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
         }
 
         int l_change = l_aim - it->refinement_level();
+        if (l_change>0)
+            return 1;
 
-        if (l_delete_aim<0 || (!use_base_level_threshold && l_aim==0)) return -1;
-        if (l_change>0) return 1;
+        l_change = l_delete_aim - it->refinement_level();
+        if (l_change<0) return -1;
+
         return 0;
     }
+
 
     /** @brief Initialization of poisson problem.
      *  @detail Testing poisson with manufactured solutions: exp
@@ -525,7 +558,8 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 
     bool single_ring_=true;
     bool perturbation_=false;
-    bool hard_max_refinement_=false;
+    bool hard_max_level_;
+
     float_type R_;
     float_type v_delta_;
     float_type d2v_;

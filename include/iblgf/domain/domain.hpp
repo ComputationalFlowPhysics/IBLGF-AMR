@@ -64,7 +64,7 @@ class Domain
     using decompositon_type = Decomposition<Domain>;
 
     using refinement_condition_fct_t = std::function<bool(octant_t*, int diff_level)>;
-    using adapt_condition_fct_t = std::function<int(octant_t*, std::vector<float_type> source_max)>;
+    using adapt_condition_fct_t = std::function<void(std::vector<float_type>, std::vector<key_t>&, std::vector<int>& )>;
 
     template<class DictionaryPtr>
     using block_initialze_fct =
@@ -101,6 +101,7 @@ class Domain
         if (w.rank() != 0) client_comm_ = client_comm_.split(1);
         else
             client_comm_ = client_comm_.split(0);
+
 
 
         //Construct base mesh, vector of bases with a given block_extent_
@@ -443,7 +444,7 @@ class Domain
                     {
                         auto child = it->child(i);
 
-                        if (child && child->is_leaf())
+                        if (child )
                             child->aim_deletion(false);
                     }
                 }
@@ -970,8 +971,8 @@ class Domain
     const auto& client_communicator() const noexcept { return client_comm_; }
     auto& client_communicator() noexcept { return client_comm_; }
 
-   const bool& correction_buffer()const noexcept{return use_correction_buffer_;}
-   bool& correction_buffer()noexcept{return use_correction_buffer_;}
+    const bool& correction_buffer()const noexcept{return use_correction_buffer_;}
+    bool& correction_buffer()noexcept{return use_correction_buffer_;}
 
   private:
     template<class DictionaryPtr, class Fct>
@@ -1000,10 +1001,10 @@ class Domain
     /** @brief Default refinement condition */
     static bool refinement_cond_default(octant_t*, int) { return false; }
 
-    static int adapt_cond_default( octant_t* it, std::vector<float_type> source_max)
-    {
-        return 0;
-    }
+    static void adapt_cond_default(std::vector<float_type> source_max,
+            std::vector<key_t>& octs,
+            std::vector<int>& level_change )
+    {}
 
   private:
     std::shared_ptr<tree_t> t_;

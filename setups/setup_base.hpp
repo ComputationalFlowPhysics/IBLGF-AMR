@@ -55,7 +55,7 @@ class SetupBase
     (Dim,
     (
       (source_tmp,          float_type,  1,  1,  1,  cell,false),
-      (correction_tmp,      float_type,  1,  1,  1,  cell,false),
+      (correction_tmp,      float_type,  1,  1,  1,  cell,true),
       (target_tmp,          float_type,  1,  1,  1,  cell,false),
       (fmm_s,               float_type,  1,  1,  1,  cell,false),
       (fmm_t,               float_type,  1,  1,  1,  cell,false),
@@ -129,7 +129,7 @@ class SetupBase
         {
             domain_->initialize_with_keys(
                 simulation_.dictionary()->get_dictionary("domain").get(),
-                simulation_.restart_domain_dir());
+                simulation_.restart_tree_info_dir());
         }
 
         if (domain_->is_client()) client_comm_ = client_comm_.split(1);

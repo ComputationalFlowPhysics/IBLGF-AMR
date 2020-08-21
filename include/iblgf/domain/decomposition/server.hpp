@@ -62,8 +62,11 @@ class Server : public ServerBase<ServerClientTraits<Domain>>
     using mask_init_query_send_t = typename trait_t::mask_init_query_send_t;
     using mask_init_query_recv_t = typename trait_t::mask_init_query_recv_t;
 
-    using flag_query_send_t = typename trait_t::flag_query_send_t;
-    using flag_query_recv_t = typename trait_t::flag_query_recv_t;
+    using gid_query_send_t  = typename trait_t::gid_query_send_t;
+    using gid_query_recv_t  = typename trait_t::gid_query_recv_t;
+
+    using flag_query_send_t   = typename trait_t::flag_query_send_t;
+    using flag_query_recv_t   = typename trait_t::flag_query_recv_t;
 
     using task_manager_t = typename trait_t::task_manager_t;
 
@@ -393,6 +396,19 @@ class Server : public ServerBase<ServerClientTraits<Domain>>
         }
     }
 
+    void update_gid()
+    {
+        int id_count=0;
+        for (auto it = domain_->begin(); it != domain_->end(); ++it)
+        {
+            //if (it->data())
+                it->global_id(id_count++);
+            //else
+            //    it->global_id(-1);
+        }
+    }
+
+
     void send_keys()
     {
         auto tasks = compute_distribution();
@@ -405,6 +421,17 @@ class Server : public ServerBase<ServerClientTraits<Domain>>
         //Send global tree depth
         for (int i = 1; i < comm_.size(); ++i)
         { comm_.send(i, 0, domain_->tree()->depth()); }
+    }
+
+    void gid_query()
+    {
+        InlineQueryRegistry<gid_query_recv_t, gid_query_send_t> mq(comm_.size());
+        mq.register_completeFunc([this](auto _task, auto _answerData)
+        {
+            this->get_octant_gid(_task, _answerData);
+        });
+
+        this->run_query(mq);
     }
 
     void mask_query()
@@ -489,8 +516,25 @@ class Server : public ServerBase<ServerClientTraits<Domain>>
         }
     }
 
-  private:
-    Domain*           domain_;
+    template<class TaskPtr, class OutPtr>
+    void get_octant_gid(TaskPtr _task, OutPtr _out)
+    {
+        _out->resize(_task->data().size());
+        int count=0;
+        for(auto& key :  _task->data())
+        {
+            auto oct =domain_->tree()->find_octant(key);
+            if(oct && oct->has_data())
+                (*_out)[count++]=oct->global_id();
+            else
+                (*_out)[count++]=-1;
+        }
+    }
+
+
+
+private:
+    Domain* domain_;
     communicator_type comm_;
 };
 

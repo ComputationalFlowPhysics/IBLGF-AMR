@@ -151,7 +151,6 @@ class H5_io
                 blockDescriptor_t block = it->data().descriptor();
                 octant_blocks.push_back(it.ptr());
 
-                //it->index(_count * block.size());
             }
             ++_count;
         }

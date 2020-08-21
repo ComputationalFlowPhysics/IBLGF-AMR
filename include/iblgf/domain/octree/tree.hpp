@@ -646,7 +646,35 @@ class Tree
     }
 
     template<class Client>
-    void query_masks(Client* _c)
+    void query_gids( Client* _c)
+    {
+        dfs_iterator it_begin(root()); dfs_iterator it_end;
+
+        std::vector<key_type> keys;
+        for(auto it =it_begin;it!=it_end;++it)
+        {
+            keys.emplace_back(it->key());
+        }
+
+        auto gids=_c->gid_query( keys );
+
+        for(std::size_t i = 0; i < gids.size();++i )
+        {
+            auto nn = this->find_octant(keys[i]);
+            if (!nn)
+                throw std::runtime_error(
+                        "didn't find key for gid query");
+            nn->global_id(gids[i]);
+            //if (gids[i]<0)
+            //    throw std::runtime_error(
+            //            "gid < 0");
+        }
+
+    }
+
+
+    template<class Client>
+    void query_masks( Client* _c)
     {
         dfs_iterator it_begin(root());
         dfs_iterator it_end;

@@ -85,6 +85,9 @@ public: //memeber functions
             server()->rank_query();
             server()->flag_query();
             server()->mask_query();
+
+            server()->update_gid();
+            server()->gid_query();
         }
         else if(client())
         {
@@ -95,6 +98,9 @@ public: //memeber functions
             client()->disconnect();
 
             client()->query_masks();
+            client()->disconnect();
+
+            client()->query_gids();
             client()->disconnect();
 
             client()->halo_reset();
@@ -171,7 +177,7 @@ public: //memeber functions
             {
                 if (!it->has_data()) continue;
 
-                if (it->is_correction() && it->refinement_level()>0)
+                if (it->is_correction() )
                     it->aim_deletion(true);
                 else
                     it->aim_deletion(false);

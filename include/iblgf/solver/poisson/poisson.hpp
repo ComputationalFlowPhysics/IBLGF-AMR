@@ -378,7 +378,8 @@ class PoissonSolver
                     {
                         auto& lin_data_1 =
                             it->data_r(correction_tmp).linalg_data();
-                        auto& lin_data_2 = it->data_r(source_tmp).linalg_data();
+                        auto& lin_data_2 =
+                            it->data_r(source_tmp).linalg_data();
 
                         xt::noalias(lin_data_2) += lin_data_1 * 1.0;
                     }

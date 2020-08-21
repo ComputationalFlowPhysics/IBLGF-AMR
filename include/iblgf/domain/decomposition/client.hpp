@@ -41,28 +41,31 @@ using namespace sr_mpi;
 template<class Domain>
 class Client : public ClientBase<ServerClientTraits<Domain>>
 {
-  public:
-    using domain_t = Domain;
-    using MASK_LIST = typename domain_t::octant_t::MASK_LIST;
-    using communicator_type = typename domain_t::communicator_type;
-    using octant_t = typename domain_t::octant_t;
-    using datablock_t = typename domain_t::datablock_t;
-    using fields_tuple_t = typename datablock_t::fields_tuple_t;
-    using key_t = typename domain_t::key_t;
-    using key_coord_t = typename key_t::coordinate_type;
-    using fmm_mask_type = typename octant_t::fmm_mask_type;
-    using flag_list_type = typename octant_t::flag_list_type;
+
+public:
+    using domain_t          = Domain;
+    using MASK_LIST         = typename domain_t::octant_t::MASK_LIST;
+    using communicator_type = typename  domain_t::communicator_type;
+    using octant_t          = typename  domain_t::octant_t;
+    using datablock_t       = typename  domain_t::datablock_t;
+    using fields_tuple_t    = typename datablock_t::fields_tuple_t;
+    using key_t             = typename  domain_t::key_t;
+    using key_coord_t       = typename key_t::coordinate_type;
+    using fmm_mask_type     = typename octant_t::fmm_mask_type;
+    using flag_list_type    = typename octant_t::flag_list_type;
 
     using trait_t = ServerClientTraits<Domain>;
     using super_type = ClientBase<trait_t>;
 
     //QueryTypes
-    using key_query_t = typename trait_t::key_query_t;
-    using rank_query_t = typename trait_t::rank_query_t;
+    using key_query_t            = typename trait_t::key_query_t;
+    using rank_query_t           = typename trait_t::rank_query_t;
     using mask_init_query_send_t = typename trait_t::mask_init_query_send_t;
     using mask_init_query_recv_t = typename trait_t::mask_init_query_recv_t;
-    using flag_query_send_t = typename trait_t::flag_query_send_t;
-    using flag_query_recv_t = typename trait_t::flag_query_recv_t;
+    using gid_query_send_t       = typename trait_t::gid_query_send_t;
+    using gid_query_recv_t       = typename trait_t::gid_query_recv_t;
+    using flag_query_send_t      = typename trait_t::flag_query_send_t;
+    using flag_query_recv_t      = typename trait_t::flag_query_recv_t;
 
     template<template<class> class BufferPolicy = OrAssignRecv>
     using mask_query_t = typename trait_t::template mask_query_t<BufferPolicy>;
@@ -271,25 +274,12 @@ class Client : public ClientBase<ServerClientTraits<Domain>>
         std::vector<int>   level_change;
         const int myRank=w.rank();
 
-
-        for (auto it = domain_->begin_leaves(); it != domain_->end_leaves(); ++it)
-        {
-
-            if (!it->locally_owned()) continue;
-
-            int l_change = aim_adapt(*it, source_max);
-
-            if( l_change!=0)
-            {
-                octs.emplace_back(it->key());
-                level_change.emplace_back(l_change);
-            }
-        }
+        aim_adapt(source_max, octs, level_change);
 
         comm_.send(0,myRank*2,octs);
         comm_.send(0,myRank*2+1,level_change);
-
     }
+
 
     template<class Field,class OctantType>
     int level_change_aim(OctantType it)
@@ -299,6 +289,21 @@ class Client : public ClientBase<ServerClientTraits<Domain>>
         else
             return 1;
     }
+
+    auto gid_query(std::vector<key_t>& task_dat)
+    {
+        auto& send_comm=
+            task_manager_->template send_communicator<gid_query_send_t>();
+
+        auto task= send_comm.post_task(&task_dat, 0);
+        QueryRegistry<gid_query_send_t, gid_query_recv_t> mq;
+
+        std::vector<int> recvData;
+        mq.register_recvMap([&recvData](int i){return &recvData;} );
+        this->wait(mq);
+        return recvData;
+    }
+
 
     auto mask_query(std::vector<key_t>& task_dat)
     {
@@ -716,12 +721,9 @@ class Client : public ClientBase<ServerClientTraits<Domain>>
     template<class T>
     auto get_octant_idx(T it, int field_idx=0) const noexcept
     {
-        const auto cc=it->tree_coordinate();
-        unsigned long long int tmp =
-             (it->level()+field_idx*19+cc.x()*19*3+cc.y()*19*300*3+19*300*300*3*cc.z())
-                % boost::mpi::environment::max_tag() ;
-
-        return std::abs(static_cast<int>(tmp));
+        int max_id =  (boost::mpi::environment::max_tag()/3)-1;
+        int tmp = (it->global_id()%max_id)+max_id*field_idx;
+        return tmp;
     }
 
     /** @brief Testing function for buffer/halo exchange for a field.
@@ -791,7 +793,15 @@ class Client : public ClientBase<ServerClientTraits<Domain>>
         domain_->tree()->construct_leaf_maps(true);
     }
 
-    void query_masks() { domain_->tree()->query_masks(this); }
+    void query_gids()
+    {
+        domain_->tree()->query_gids(this);
+    }
+
+    void query_masks()
+    {
+        domain_->tree()->query_masks(this);
+    }
 
     void query_octants() { domain_->tree()->construct_maps(this); }
 

@@ -302,13 +302,13 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
             int l3=-1;
 
             if (!it->is_correction() && it->is_leaf())
-                l1=this->template adapt_levle_change_for_field<cell_aux>(it, source_max[0], false);
+                l1=this->template adapt_levle_change_for_field<cell_aux>(it, source_max[0], true);
 
             if (it->is_correction() && !it->is_leaf())
                 l2=this->template adapt_levle_change_for_field<correction_tmp>(it, source_max[0], false);
 
             if (!it->is_correction() && it->is_leaf())
-                l3=this->template adapt_levle_change_for_field<edge_aux>(it, source_max[1], true);
+                l3=this->template adapt_levle_change_for_field<edge_aux>(it, source_max[1], false);
 
             int l=std::max(std::max(l1,l2),l3);
 

@@ -104,6 +104,9 @@ public: //Ctors
         auto d=_d->get_dictionary("simulation_parameters");
         use_restart_=d->template get_or<bool>("use_restart",true);
 
+        std::string postproc_flow_dir=_d->template get_or<std::string>("postproc_flow_dir","");
+        std::string postproc_tree_dir=_d->template get_or<std::string>("postproc_tree_dir","");
+
         if (use_restart_ && !simulation_.restart_dir_exist())
             use_restart_=false;
 

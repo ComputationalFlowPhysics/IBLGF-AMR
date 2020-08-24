@@ -61,9 +61,13 @@ find_package(BLAS REQUIRED)
 
 #################################################################################################
 #FIXME:
-if(NOT DEFINED HDF5_INCLUDE_DIRS)
+set(HDF5_ROOT "/usr/local/HDF_Group/HDF5/1.12.0/")
+set(HDF5_INCLUDE_DIRS "/usr/local/HDF_Group/HDF5/1.12.0/include/")
+set(HDF5_LIBRARY_DIRS "/usr/local/HDF_Group/HDF5/1.12.0/lib/")
+
+# if(NOT DEFINED HDF5_INCLUDE_DIRS)
 find_package(HDF5)
-endif(NOT DEFINED HDF5_INCLUDE_DIRS)
+# endif(NOT DEFINED HDF5_INCLUDE_DIRS)
 include_directories(${HDF5_INCLUDE_DIRS})
 include_directories(${Boost_INCLUDE_DIRS})
 include_directories(${xtensor_blas_INCLUDE_DIRS})

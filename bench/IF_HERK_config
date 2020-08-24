@@ -1,0 +1,24 @@
+simulation_parameters
+{
+    nLevels=0;
+
+    // Time Marching
+    source_max=13.0;
+    dt=0.01;
+    nTimeSteps=1;
+    cfl_max = 1000;
+    Re = 100.0;
+
+    domain
+    {
+        Lx=1.0;
+        max_extent   = 500;
+        block_extent=8;
+
+        block
+        {
+            base   = (-40,-40,-40);
+            extent = (80,80,80);
+        }
+    }
+}

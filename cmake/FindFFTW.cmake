@@ -1,70 +1,118 @@
-########################################################################
+# - Find the FFTW library
 #
-# FFTW configuration for IBLGF
+# Usage:
+#   find_package(FFTW [REQUIRED] [QUIET] )
+#     
+# It sets the following variables:
+#   FFTW_FOUND               ... true if fftw is found on the system
+#   FFTW_LIBRARIES           ... full path to fftw library
+#   FFTW_INCLUDES            ... fftw include directory
 #
-# - FindFFTW
-# Find the native FFTW includes and library
+# The following variables will be checked by the function
+#   FFTW_USE_STATIC_LIBS    ... if true, only static libraries are found
+#   FFTW_ROOT               ... if set, the libraries are exclusively searched
+#                               under this path
+#   FFTW_LIBRARY            ... fftw library to use
+#   FFTW_INCLUDE_DIR        ... fftw include directory
 #
-#  FFTW_INCLUDES    - where to find fftw3.h
-#  FFTW_LIBRARIES   - List of libraries when using FFTW.
-#  FFTW_FOUND       - True if FFTW found.
-########################################################################
 
-IF (IBLGF_USE_FFTW)
+#If environment variable FFTWDIR is specified, it has same effect as FFTW_ROOT
+if( NOT FFTW_ROOT AND ENV{FFTWDIR} )
+  set( FFTW_ROOT $ENV{FFTWDIR} )
+endif()
 
-    # Set some common FFTW search paths.
-    SET(FFTW_SEARCH_PATHS
-        $ENV{LD_LIBRARY_PATH}
-        $ENV{FFTW_HOME}/lib
-        $ENV{FFTWHOME}/lib)
+# Check if we can use PkgConfig
+find_package(PkgConfig)
 
-    FIND_LIBRARY(FFTW_LIBRARY NAMES fftw3 fftw3f PATHS ${FFTW_SEARCH_PATHS})
+#Determine from PKG
+if( PKG_CONFIG_FOUND AND NOT FFTW_ROOT )
+  pkg_check_modules( PKG_FFTW QUIET "fftw3" )
+endif()
 
-    IF (FFTW_LIBRARY)
-        GET_FILENAME_COMPONENT(FFTW_PATH ${FFTW_LIBRARY} PATH)
-        SET(FFTW_INCLUDE_DIR ${FFTW_PATH}/../include CACHE FILEPATH
-            "FFTW include directory.")
-        SET(BUILD_FFTW OFF)
-    ELSE()
-        SET(BUILD_FFTW ON)
-    ENDIF()
+#Check whether to search static or dynamic libs
+set( CMAKE_FIND_LIBRARY_SUFFIXES_SAV ${CMAKE_FIND_LIBRARY_SUFFIXES} )
 
-    INCLUDE_DIRECTORIES(SYSTEM ${FFTW_INCLUDE_DIR})
-    MARK_AS_ADVANCED(FFTW_LIBRARY)
-    MARK_AS_ADVANCED(FFTW_INCLUDE_DIR)
+if( ${FFTW_USE_STATIC_LIBS} )
+  set( CMAKE_FIND_LIBRARY_SUFFIXES ${CMAKE_STATIC_LIBRARY_SUFFIX} )
+else()
+  set( CMAKE_FIND_LIBRARY_SUFFIXES ${CMAKE_SHARED_LIBRARY_SUFFIX} )
+endif()
 
-    CMAKE_DEPENDENT_OPTION(THIRDPARTY_BUILD_FFTW
-    "Build FFTW from ThirdParty" ${BUILD_FFTW}
-    "IBLGF_USE_FFTW" OFF)
+if( FFTW_ROOT )
 
-    IF (THIRDPARTY_BUILD_FFTW)
-        INCLUDE(ExternalProject)
-        EXTERNALPROJECT_ADD(
-            fftw-3.3.5
-            STAMP_DIR ${TPBUILD}/stamp
-            DOWNLOAD_DIR ${TPSRC}
-            DOWNLOAD_COMMAND tar -xvf ${TPSRC}/fftw-3.3.5.tar.gz
-            SOURCE_DIR ${TPSRC}/fftw-3.3.5
-            BINARY_DIR ${TPBUILD}/fftw-3.3.5
-            TMP_DIR ${TPBUILD}/fftw-3.3.5-tmp
-            INSTALL_DIR ${TPDIST}
-            CONFIGURE_COMMAND ${TPSRC}/fftw-3.3.5/configure --prefix=${TPDIST}
-                        --quiet --enable-shared --disable-dependency-tracking)
+  #find libs
+  find_library(
+    FFTW_LIB
+    NAMES "fftw3"
+    PATHS ${FFTW_ROOT}
+    PATH_SUFFIXES "lib" "lib64"
+    NO_DEFAULT_PATH
+  )
 
-        SET(FFTW_LIBRARY fftw3 CACHE FILEPATH "FFTW library" FORCE)
-        SET(FFTW_INCLUDE_DIR ${TPDIST}/include CACHE FILEPATH "FFTW include" FORCE)
-        LINK_DIRECTORIES(${TPDIST}/lib)
-        MESSAGE(STATUS "Build FFTW: ${TPDIST}/lib/lib${FFTW_LIBRARY}.so")
-        SET(FFTW_CONFIG_INCLUDE_DIR ${TPINC})
+  find_library(
+    FFTWF_LIB
+    NAMES "fftw3f"
+    PATHS ${FFTW_ROOT}
+    PATH_SUFFIXES "lib" "lib64"
+    NO_DEFAULT_PATH
+  )
 
-    ELSE()
-        ADD_CUSTOM_TARGET(fftw-3.3.5 ALL)
-        MESSAGE(STATUS "Found FFTW: ${FFTW_LIBRARY}")
-        SET(FFTW_CONFIG_INCLUDE_DIR ${FFTW_INCLUDE_DIR})
-    ENDIF()
-ELSE()
-    MESSAGE(FATAL_ERROR "REQUIRED THIRDPARTY LIBRARY FFTW NOT FOUND." )
-ENDIF(IBLGF_USE_FFTW)
+  find_library(
+    FFTWL_LIB
+    NAMES "fftw3l"
+    PATHS ${FFTW_ROOT}
+    PATH_SUFFIXES "lib" "lib64"
+    NO_DEFAULT_PATH
+  )
+
+  #find includes
+  find_path(
+    FFTW_INCLUDES
+    NAMES "fftw3.h"
+    PATHS ${FFTW_ROOT}
+    PATH_SUFFIXES "include"
+    NO_DEFAULT_PATH
+  )
+
+else()
+
+  find_library(
+    FFTW_LIB
+    NAMES "fftw3"
+    PATHS ${PKG_FFTW_LIBRARY_DIRS} ${LIB_INSTALL_DIR}
+  )
+
+  find_library(
+    FFTWF_LIB
+    NAMES "fftw3f"
+    PATHS ${PKG_FFTW_LIBRARY_DIRS} ${LIB_INSTALL_DIR}
+  )
 
 
+  find_library(
+    FFTWL_LIB
+    NAMES "fftw3l"
+    PATHS ${PKG_FFTW_LIBRARY_DIRS} ${LIB_INSTALL_DIR}
+  )
 
+  find_path(
+    FFTW_INCLUDES
+    NAMES "fftw3.h"
+    PATHS ${PKG_FFTW_INCLUDE_DIRS} ${INCLUDE_INSTALL_DIR}
+  )
+
+endif( FFTW_ROOT )
+
+set(FFTW_LIBRARIES ${FFTW_LIB} ${FFTWF_LIB})
+
+if(FFTWL_LIB)
+  set(FFTW_LIBRARIES ${FFTW_LIBRARIES} ${FFTWL_LIB})
+endif()
+
+set( CMAKE_FIND_LIBRARY_SUFFIXES ${CMAKE_FIND_LIBRARY_SUFFIXES_SAV} )
+
+include(FindPackageHandleStandardArgs)
+find_package_handle_standard_args(FFTW DEFAULT_MSG
+                                  FFTW_INCLUDES FFTW_LIBRARIES)
+
+mark_as_advanced(FFTW_INCLUDES FFTW_LIBRARIES FFTW_LIB FFTWF_LIB FFTWL_LIB)

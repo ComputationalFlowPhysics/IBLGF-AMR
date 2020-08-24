@@ -1,0 +1,20 @@
+#!/bin/bash
+
+nProcs=( 8 16 32 64 96)
+
+files="configFile submit.sbatch decompTest.x "
+
+prevDir=$PWD
+for nProc in "${nProcs[@]}";
+do
+    destination=./Nprocs_$nProc
+    mkdir -p $destination
+    cp $files $destination
+
+    #Adapt Config Params and sbatch names:
+    sed -i "s/--job-name=.*/--job-name=ss_$nProc/g" $destination/submit.sbatch
+    sed -i "s/--ntasks=.*/--ntasks=$nProc/g" $destination/submit.sbatch
+    cd $destination
+    sbatch submit.sbatch
+    cd $prevDir
+done

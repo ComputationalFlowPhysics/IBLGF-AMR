@@ -26,7 +26,21 @@
 *.a
 *.lib
 
+# Directories:
+.deps/
+builds/
+build/
+doc/
+
 # Executables
 *.exe
 *.out
 *.app
+*.x
+
+
+#Misc:
+*.swp
+Makefile.user
+CMakeLists.txt.user
+tags

@@ -1,0 +1,29 @@
+simulation_parameters
+{
+    nLevels=0;
+
+    // Time Marching
+    source_max=13.0;
+    nBaseLevelTimeSteps=4;
+    cfl_max = 1000;
+    Re = 100.0;
+    output_frequency=1;
+    refinement_factor=0.25;
+    R=0.125;
+
+    //hdf5_ic_name=ic_4.hdf5;
+    //hdf5_ref_name=ref_4.hdf5;
+
+    domain
+    {
+        Lx=1.5;
+        max_extent   = 500;
+        block_extent=14;
+
+        block
+        {
+            base   = (-28,-28,-28);
+            extent = (56,56,56);
+        }
+    }
+}

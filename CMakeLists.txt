@@ -15,7 +15,7 @@ if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/CMakeLists.txt.user")
     include(${CMAKE_CURRENT_LIST_DIR}/CMakeLists.txt.user)
 else()
 endif()
-project(IBLGF VERSION 0.0.0)
+project(iblgf_amr VERSION 0.0.0)
 
 cmake_policy(SET CMP0048 NEW)
 
@@ -148,3 +148,6 @@ install(
         ${CMAKE_CURRENT_BINARY_DIR}/iblgfConfig.cmake
     DESTINATION
         ${CMAKE_INSTALL_LIBDIR}/cmake)
+
+##DOXYGEN 
+add_subdirectory(docs)

@@ -38,7 +38,9 @@
 #include <iblgf/fmm/fmm_nli.hpp>
 #include <iblgf/IO/parallel_ostream.hpp>
 #include <iblgf/utilities/convolution.hpp>
-
+/**
+ * @brief WHAT??
+ */
 namespace iblgf
 {
 namespace fmm

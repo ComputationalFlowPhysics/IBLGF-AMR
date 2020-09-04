@@ -15,7 +15,7 @@ if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/CMakeLists.txt.user")
     include(${CMAKE_CURRENT_LIST_DIR}/CMakeLists.txt.user)
 else()
 endif()
-project(IBLGF VERSION 0.0.0)
+project(iblgf_amr VERSION 0.0.0)
 
 cmake_policy(SET CMP0048 NEW)
 
@@ -73,6 +73,9 @@ include_directories(${Boost_INCLUDE_DIRS})
 include_directories(${xtensor_blas_INCLUDE_DIRS})
 link_directories(${HDF5_LIBRARY_DIRS} )
 #################################################################################################
+
+##DOXYGEN 
+add_subdirectory(docs)
 
 set(IBLGF_SKIP_MPICXX ON CACHE BOOL "True if your compiler wrapper includes MPI already (as CRAY PE for instance)")
 if (IBLGF_SKIP_MPICXX)

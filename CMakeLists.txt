@@ -74,9 +74,6 @@ include_directories(${xtensor_blas_INCLUDE_DIRS})
 link_directories(${HDF5_LIBRARY_DIRS} )
 #################################################################################################
 
-##DOXYGEN 
-add_subdirectory(docs)
-
 set(IBLGF_SKIP_MPICXX ON CACHE BOOL "True if your compiler wrapper includes MPI already (as CRAY PE for instance)")
 if (IBLGF_SKIP_MPICXX)
     set(MPI_CXX_SKIP_MPICXX ON)
@@ -151,3 +148,6 @@ install(
         ${CMAKE_CURRENT_BINARY_DIR}/iblgfConfig.cmake
     DESTINATION
         ${CMAKE_INSTALL_LIBDIR}/cmake)
+
+##DOXYGEN 
+add_subdirectory(docs)

@@ -1,0 +1,2 @@
+breathe          # interface between doxygen and sphinx
+sphinx-rtd-theme # documentation visual theme

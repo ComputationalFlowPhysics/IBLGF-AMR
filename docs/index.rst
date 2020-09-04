@@ -5,20 +5,10 @@
 
 Welcome to IBLGF-AMR's documentation!
 =====================================
+What now?
+Please tell me how to set the theme
 
 .. toctree::
    :maxdepth: 2
-   :caption: Contents:
 
-Docs
-====
-
-.. doxygenstruct:: cat
-   :members:
-
-Indices and tables
-==================
-
-* :ref:`genindex`
-* :ref:`modindex`
-* :ref:`search`
+   source/getting_started.rst

@@ -155,7 +155,7 @@ struct IfherkHeat:public SetupBase<IfherkHeat,parameters>
         }
         else
         {
-            simulation_.template read_h5<u>(simulation_.restart_field_dir(),"u");
+            simulation_.template read_h5<u>(simulation_.restart_field_dir(false),"u");
         }
 
         boost::mpi::communicator world;

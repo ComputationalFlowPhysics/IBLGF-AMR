@@ -136,7 +136,7 @@ public:
         // --------------------------------------------------------------------
         if (use_restart_)
         {
-            Dictionary info_d(simulation_->restart_load_dir()+"/restart_info");
+            Dictionary info_d(simulation_->restart_simulation_info_dir(false));
             T_=info_d.template get<float_type>("T");
             adapt_count_=info_d.template get<int>("adapt_count");
             source_max_[0]=info_d.template get<float_type>("cell_aux_max");
@@ -155,12 +155,12 @@ public:
         {
             T_ = 0.0;
             adapt_count_=-1;
+            write_timestep();
         }
 
         // ----------------------------------- start -------------------------
 
         //clean_up_initial_velocity();
-        write_timestep();
 
         while(T_<T_max_-1e-10)
         {
@@ -335,17 +335,17 @@ public:
         boost::mpi::communicator world;
 
         world.barrier();
-        if (domain_->is_server() && write_restart_)
-        {
-            std::cout<<"restart: backup" << std::endl;
-            simulation_->copy_restart();
-        }
-        world.barrier();
+        //if (domain_->is_server() && write_restart_)
+        //{
+        //    std::cout<<"restart: backup" << std::endl;
+        //    simulation_->copy_restart();
+        //}
+        //world.barrier();
 
         pcout<<"restart: write" << std::endl;
-        simulation_->write2("", true);
+        simulation_->write2("", restart_n_last_, true);
 
-        write_info();
+        write_simulation_info();
     }
 
     void write_timestep()
@@ -353,31 +353,34 @@ public:
         boost::mpi::communicator world;
         world.barrier();
         pcout << "- writing at T = " << T_ << ", n = "<< n_step_ << std::endl;
-        simulation_->write2(fname(n_step_));
-        //simulation_->domain()->tree()->write("tree_restart.bin");
+        simulation_->write2("", n_step_);
         world.barrier();
-        //simulation_->domain()->tree()->read("tree_restart.bin");
         pcout << "- output writing finished -" << std::endl;
     }
 
-    void write_info()
+    void write_simulation_info()
     {
         if (domain_->is_server())
         {
-            std::ofstream ofs(simulation_->restart_write_dir()+"/restart_info", std::ofstream::out);
+            std::ofstream ofs(simulation_->restart_laststep_info_dir(), std::ofstream::out);
             if(!ofs.is_open())
-            {
                 throw std::runtime_error("Could not open file for info write " );
-            }
 
             ofs.precision(20);
-            ofs<<"T = " << T_ << ";" << std::endl;
-            ofs<<"adapt_count = " << adapt_count_ << ";" << std::endl;
-            ofs<<"cell_aux_max = " << source_max_[0] << ";" << std::endl;
-            ofs<<"u_max = " << source_max_[1] << ";" << std::endl;
             ofs<<"restart_n_last = " << restart_n_last_ << ";" << std::endl;
-
             ofs.close();
+
+            std::ofstream fstat(simulation_->restart_simulation_info_dir(true, restart_n_last_), std::ofstream::out);
+            if(!fstat.is_open())
+                throw std::runtime_error("Could not open file for info write " );
+
+            fstat.precision(20);
+            fstat<<"T = " << T_ << ";" << std::endl;
+            fstat<<"adapt_count = " << adapt_count_ << ";" << std::endl;
+            fstat<<"cell_aux_max = " << source_max_[0] << ";" << std::endl;
+            fstat<<"u_max = " << source_max_[1] << ";" << std::endl;
+
+            fstat.close();
         }
     }
 

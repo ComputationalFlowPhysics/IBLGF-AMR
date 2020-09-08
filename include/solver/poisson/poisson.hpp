@@ -507,10 +507,10 @@ public:
 
     }
 
-auto& c_cntr_nli()
-{
-    return c_cntr_nli_;
-}
+    auto& c_cntr_nli()
+    {
+        return c_cntr_nli_;
+    }
 
 
     /** @brief Compute the laplace operator of the target field and store

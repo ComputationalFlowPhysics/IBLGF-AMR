@@ -101,7 +101,7 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
         v_delta_        = simulation_.dictionary()->template get_or<float_type>("vDelta", 0.2*R_);
         single_ring_    = simulation_.dictionary()->template get_or<bool>("single_ring", true);
         perturbation_   = simulation_.dictionary()->template get_or<bool>("perturbation", false);
-        hard_max_level_ = simulation_.dictionary()->template get_or<bool>("hard_max_level", false);
+        hard_max_level_ = simulation_.dictionary()->template get_or<bool>("hard_max_level", true);
 
 
         bool use_fat_ring = simulation_.dictionary()->template get_or<bool>("fat_ring", false);

@@ -29,8 +29,7 @@ jobs:
       shell: bash
       working-directory: ${{runner.workspace}}/dependencies
       run: |
-        wget -q https://dl.bintray.com/boostorg/release/1.74.0/source/boost_1_74_0.tar.gz
-        ls
+        wget -q https://dl.bintray.com/boostorg/release/1.74.0/source/boost_1_74_0.tar.gz \n
         tar -xf boost_1_74_0.tar.gz
         # cd boost_1_74_0
         # ./bootstrap.sh

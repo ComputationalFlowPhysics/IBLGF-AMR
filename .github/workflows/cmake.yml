@@ -35,6 +35,7 @@ jobs:
         sudo ./bootstrap.sh --prefix=/opt/boost
         echo "using mpi" >> project-config.jam
         sudo ./b2 install
+        
 
     - name: Configure CMake
       # Use a bash shell so we can use the same syntax for environment variable

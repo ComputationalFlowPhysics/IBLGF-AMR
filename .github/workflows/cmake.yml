@@ -30,10 +30,11 @@ jobs:
       working-directory: ${{runner.workspace}}/dependencies
       run: |
         wget https://dl.bintray.com/boostorg/release/1.74.0/source/boost_1_74_0.tar.gz |
+        ls
         tar -xf boost_1_74_0.tar.gz
-        cd boost_1_74_0
-        ./bootstrap.sh
-        ./b2 install
+        # cd boost_1_74_0
+        # ./bootstrap.sh
+        # ./b2 install
 
     - name: Configure CMake
       # Use a bash shell so we can use the same syntax for environment variable

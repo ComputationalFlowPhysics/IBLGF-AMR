@@ -27,7 +27,7 @@ jobs:
     
     - name: Installing dependencies
       shell: bash
-      working-directories: ${{runner.workspace}}/dependencies
+      working-directory: ${{runner.workspace}}/dependencies
       run: |
         wget https://dl.bintray.com/boostorg/release/1.74.0/source/boost_1_74_0.tar.gz |
         tar -xf boost_1_74_0.tar.gz

@@ -357,11 +357,13 @@ class Ifherk
         simulation_->write("", true);
 
         write_info();
+        world.barrier();
     }
 
     void write_timestep()
     {
         boost::mpi::communicator world;
+        world.barrier();
         pcout << "- writing at T = " << T_ << ", n = " << n_step_ << std::endl;
         simulation_->write(fname(n_step_));
         //simulation_->domain()->tree()->write("tree_restart.bin");

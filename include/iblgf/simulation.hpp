@@ -50,31 +50,36 @@ class Simulation
 
     void copy_restart()
     {
-        boost::filesystem::path backupdir(restart_write_dir() + "/backup/");
+        boost::filesystem::path backupdir_tmp(restart_write_dir()+"/backup_tmp/");
+        boost::filesystem::create_directories(backupdir_tmp);
+
+        boost::filesystem::path backupdir(restart_write_dir()+"/backup/");
         boost::filesystem::create_directories(backupdir);
 
-        copy_file(restart_write_dir()+"/"+restart_field_file_,
-                    restart_write_dir()+"/backup/"+restart_field_file_ );
-        copy_file(restart_write_dir()+"/"+tree_info_file_+".bin",
-                    restart_write_dir()+"/backup/"+tree_info_file_+".bin");
-        copy_file(restart_write_dir()+"/"+restart_info_file_,
-                    restart_write_dir()+"/backup/"+restart_info_file_  );
+        // in case it stops when moving files, add another backup
+        move_file(restart_write_dir()+"/backup/"+restart_field_file_,      restart_write_dir()+"/backup_tmp/"+restart_field_file_ );
+        move_file(restart_write_dir()+"/backup/"+tree_info_file_+".bin",   restart_write_dir()+"/backup_tmp/"+tree_info_file_+".bin");
+        move_file(restart_write_dir()+"/backup/"+restart_info_file_,       restart_write_dir()+"/backup_tmp/"+restart_info_file_  );
+
+        move_file(restart_write_dir()+"/"+restart_field_file_,  restart_write_dir()+"/backup/"+restart_field_file_ );
+        move_file(restart_write_dir()+"/"+tree_info_file_+".bin", restart_write_dir()+"/backup/"+tree_info_file_+".bin");
+        move_file(restart_write_dir()+"/"+restart_info_file_,   restart_write_dir()+"/backup/"+restart_info_file_  );
     }
 
-    void copy_file(std::string f_in, std::string f_out)
+    void move_file(std::string f_in, std::string f_out )
     {
-        std::ifstream src(f_in, std::ios::binary);
-        std::ofstream dst(f_out, std::ios::binary);
+
+        std::ifstream  src(f_in,  std::ios::binary);
+        std::ofstream  dst(f_out, std::ios::binary);
 
         if (!src.good()) return;
         if (!dst.good()) return;
 
-        if (!src.is_open())
+        if(!src.is_open())
             throw std::runtime_error("Could not open file: " + f_in);
-        if (!dst.is_open())
+        if(!dst.is_open())
             throw std::runtime_error("Could not open file: " + f_in);
-
-        dst << src.rdbuf();
+        boost::filesystem::rename(f_in, f_out);
     }
 
     void write_tree(std::string _filename, bool restart_file=false)

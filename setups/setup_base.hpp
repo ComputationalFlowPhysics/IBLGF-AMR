@@ -117,7 +117,7 @@ class SetupBase
         auto d = _d->get_dictionary("simulation_parameters");
         use_restart_ = d->template get_or<bool>("use_restart", true);
 
-        if (use_restart_ && !simulation_.restart_dir_exist())
+        if (!use_restart_ || !simulation_.restart_dir_exist())
             use_restart_ = false;
 
         if (!use_restart_)
@@ -140,6 +140,24 @@ class SetupBase
         global_refinement_ = simulation_.dictionary_->template get_or<int>(
             "global_refinement", 0);
     }
+
+    SetupBase(std::string restart_tree_dir)
+    : simulation_()
+    , domain_(simulation_.domain())
+    {
+        domain_->initialize_with_keys(
+                simulation_.dictionary()->get_dictionary("domain").get(),
+                restart_tree_dir);
+
+        if (domain_->is_client()) client_comm_ = client_comm_.split(1);
+        else
+            client_comm_ = client_comm_.split(0);
+
+        nLevels_ = simulation_.dictionary_->template get_or<int>("nLevels", 0);
+        global_refinement_ = simulation_.dictionary_->template get_or<int>(
+            "global_refinement", 0);
+    }
+
 
   public: //memebers
     bool use_restart() { return use_restart_; }

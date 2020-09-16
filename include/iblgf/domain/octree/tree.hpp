@@ -653,6 +653,7 @@ class Tree
         std::vector<key_type> keys;
         for(auto it =it_begin;it!=it_end;++it)
         {
+            if (it->has_data()) keys.emplace_back(it->key());
             keys.emplace_back(it->key());
         }
 
@@ -665,9 +666,6 @@ class Tree
                 throw std::runtime_error(
                         "didn't find key for gid query");
             nn->global_id(gids[i]);
-            //if (gids[i]<0)
-            //    throw std::runtime_error(
-            //            "gid < 0");
         }
 
     }

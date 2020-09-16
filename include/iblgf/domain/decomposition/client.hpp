@@ -722,6 +722,15 @@ public:
     auto get_octant_idx(T it, int field_idx=0) const noexcept
     {
         int max_id =  (boost::mpi::environment::max_tag()/3)-1;
+        if (it->global_id()<0)
+        {
+            std::cout<<"error: trying to get oct idx of -1"<<std::endl;
+            std::cout<<it->key()<<std::endl;
+            std::cout<<it->is_leaf()<<std::endl;
+            std::cout<<it->is_correction()<<std::endl;
+            return -1;
+        }
+
         int tmp = (it->global_id()%max_id)+max_id*field_idx;
         return tmp;
     }

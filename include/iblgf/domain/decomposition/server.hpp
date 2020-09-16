@@ -401,10 +401,10 @@ class Server : public ServerBase<ServerClientTraits<Domain>>
         int id_count=0;
         for (auto it = domain_->begin(); it != domain_->end(); ++it)
         {
-            //if (it->data())
+            if (it->has_data())
                 it->global_id(id_count++);
-            //else
-            //    it->global_id(-1);
+            else
+                it->global_id(-1);
         }
     }
 

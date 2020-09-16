@@ -425,15 +425,13 @@ class Ifherk
         for (std::size_t _field_idx = 0; _field_idx < Field::nFields();
              ++_field_idx)
             psolver.template intrp_to_correction_buffer<Field, Field>(
-                _field_idx, _field_idx, Field::mesh_type(), true, false, true);
+                _field_idx, _field_idx, Field::mesh_type(), true, false);
     }
 
     void adapt(bool coarsify_field=true)
     {
         boost::mpi::communicator world;
         auto                     client = domain_->decomposition().client();
-
-        if (source_max_[0]<1e-10 || source_max_[1]<1e-10) return;
 
         if (source_max_[0]<1e-10 || source_max_[1]<1e-10) return;
 

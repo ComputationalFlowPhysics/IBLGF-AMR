@@ -32,6 +32,45 @@ struct Operator
     Operator() = default;
 
   public:
+    template<class F_in, class F_tmp, class Block>
+    static void cell_center_average(Block& block) noexcept
+    {
+
+        constexpr auto f_in = F_in::tag();
+        constexpr auto tmp = F_tmp::tag();
+
+        for (std::size_t field_idx = 0; field_idx < F_in::nFields(); ++field_idx)
+        {
+
+            std::array<int, 3> off{{0,0,0}};
+
+            if (F_in::mesh_type() == MeshObject::face){
+                off[field_idx]=1;
+            }
+            else if (F_in::mesh_type() == MeshObject::cell){
+                return;
+            }
+            else if (F_in::mesh_type() == MeshObject::edge){
+                off[0] = 1;
+                off[1] = 1;
+                off[2] = 1;
+                off[field_idx] = 0;
+            }
+
+            for (auto& n : block){
+                n(tmp, 0) =
+                0.5 * (
+                    n(f_in,field_idx)
+                  + n.at_offset(f_in, off[0], off[1], off[2], field_idx));
+            }
+
+            for (auto& n : block){
+                n(f_in,field_idx) = n(tmp,0);
+            }
+        }
+
+    }
+
     template<class Field, class Block>
     static float_type maxabs(Block& block) noexcept
     {

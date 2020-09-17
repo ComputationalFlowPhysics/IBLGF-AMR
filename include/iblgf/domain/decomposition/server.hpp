@@ -78,24 +78,30 @@ class Server : public ServerBase<ServerClientTraits<Domain>>
         , dest_ranks(_worldsize)
         , recv_octs(_worldsize)
         , src_ranks(_worldsize)
+        , dest_gids(_worldsize)
+        , src_gids(_worldsize)
         {
         }
 
-        void insert(int _current_rank, int _new_rank, key_t _key)
+        void insert(int _current_rank, int _new_rank, key_t _key, int _gid)
         {
             send_octs[_current_rank].emplace_back(_key);
             dest_ranks[_current_rank].emplace_back(_new_rank);
+            dest_gids[_current_rank].emplace_back(_gid);
 
             recv_octs[_new_rank].emplace_back(_key);
             src_ranks[_new_rank].emplace_back(_current_rank);
+            src_gids[_new_rank].emplace_back(_gid);
         }
 
         //octant key and dest rank,outer vector in current  rank
         std::vector<std::vector<key_t>> send_octs;
         std::vector<std::vector<int>>   dest_ranks;
+        std::vector<std::vector<int>>   dest_gids;
         //octant key and src rank, outer vector in current  rank
         std::vector<std::vector<key_t>> recv_octs;
         std::vector<std::vector<int>>   src_ranks;
+        std::vector<std::vector<int>>   src_gids;
     };
 
   public: //Ctors
@@ -359,7 +365,7 @@ class Server : public ServerBase<ServerClientTraits<Domain>>
                     std::cout << "Balance: new or old rank = " << it->rank()
                               << ranks_old[c] << std::endl;
                 else
-                    updates.insert(ranks_old[c], it->rank(), it->key());
+                    updates.insert(ranks_old[c], it->rank(), it->key(), it->global_id());
             }
             ++c;
         }
@@ -373,9 +379,11 @@ class Server : public ServerBase<ServerClientTraits<Domain>>
         {
             comm_.send(i, i + 0 * comm_.size(), updates.send_octs[i]);
             comm_.send(i, i + 1 * comm_.size(), updates.dest_ranks[i]);
+            comm_.send(i, i + 2 * comm_.size(), updates.dest_gids[i]);
 
-            comm_.send(i, i + 2 * comm_.size(), updates.recv_octs[i]);
-            comm_.send(i, i + 3 * comm_.size(), updates.src_ranks[i]);
+            comm_.send(i, i + 3 * comm_.size(), updates.recv_octs[i]);
+            comm_.send(i, i + 4 * comm_.size(), updates.src_ranks[i]);
+            comm_.send(i, i + 5 * comm_.size(), updates.src_gids[i]);
         }
     }
 

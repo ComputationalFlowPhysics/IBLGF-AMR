@@ -142,16 +142,11 @@ public: //memeber functions
         if(server())
         {
             server()->update_decomposition();
-            server()->gid_query();
         }
 
         if(client())
         {
             auto update=client()->update_decomposition();
-
-            client()->query_gids();
-            client()->disconnect();
-
             (client()->template update_field<Field>(update), ...);
             client()->finish_decomposition_update(update);
             client()->halo_reset();

@@ -100,8 +100,10 @@ public:
     {
         std::vector<key_t> send_octs;
         std::vector<int>   dest_ranks;
+        std::vector<int>   dest_gids;
         std::vector<key_t> recv_octs;
         std::vector<int>   src_ranks;
+        std::vector<int>   src_gids;
     };
 
   public:
@@ -144,8 +146,10 @@ public:
         ClientUpdate update;
         comm_.recv(0, comm_.rank() + 0 * comm_.size(), update.send_octs);
         comm_.recv(0, comm_.rank() + 1 * comm_.size(), update.dest_ranks);
-        comm_.recv(0, comm_.rank() + 2 * comm_.size(), update.recv_octs);
-        comm_.recv(0, comm_.rank() + 3 * comm_.size(), update.src_ranks);
+        comm_.recv(0, comm_.rank() + 2 * comm_.size(), update.dest_gids);
+        comm_.recv(0, comm_.rank() + 3 * comm_.size(), update.recv_octs);
+        comm_.recv(0, comm_.rank() + 4 * comm_.size(), update.src_ranks);
+        comm_.recv(0, comm_.rank() + 5 * comm_.size(), update.src_gids);
 
         //instantiate new octants
         domain_->tree()->insert_keys(
@@ -169,14 +173,19 @@ public:
                 std::cout << "balacen: find no send oct\n" << key << std::endl;
 
             it->rank() = update.dest_ranks[count];
+            it->global_id(update.dest_gids[count]);
             ++count;
         }
+
+        count = 0;
         for (auto& key : update.recv_octs)
         {
             auto it = domain_->tree()->find_octant(key);
             if (!it || !it->has_data())
                 std::cout << "balacen: find no send oct\n" << key << std::endl;
             it->rank() = comm_.rank();
+            it->global_id(update.src_gids[count]);
+            ++count;
         }
 
         return update;

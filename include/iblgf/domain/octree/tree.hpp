@@ -653,7 +653,8 @@ class Tree
         std::vector<key_type> keys;
         for(auto it =it_begin;it!=it_end;++it)
         {
-            keys.emplace_back(it->key());
+            if (it->has_data()) keys.emplace_back(it->key());
+            //keys.emplace_back(it->key());
         }
 
         auto gids=_c->gid_query( keys );

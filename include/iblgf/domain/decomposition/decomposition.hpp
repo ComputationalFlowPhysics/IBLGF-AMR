@@ -142,17 +142,22 @@ public: //memeber functions
         if(server())
         {
             server()->update_decomposition();
-            sync_decomposition();
+            server()->gid_query();
         }
 
         if(client())
         {
             auto update=client()->update_decomposition();
-            sync_decomposition();
+
+            client()->query_gids();
+            client()->disconnect();
+
             (client()->template update_field<Field>(update), ...);
             client()->finish_decomposition_update(update);
             client()->halo_reset();
         }
+
+        sync_decomposition();
     }
 
     auto adapt_decoposition( std::vector<float_type> source_max, bool &base_mesh_update)

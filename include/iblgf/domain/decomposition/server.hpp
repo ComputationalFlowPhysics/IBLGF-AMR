@@ -401,10 +401,7 @@ class Server : public ServerBase<ServerClientTraits<Domain>>
         int id_count=0;
         for (auto it = domain_->begin(); it != domain_->end(); ++it)
         {
-            if (it->has_data())
-                it->global_id(id_count++);
-            else
-                it->global_id(-1);
+            it->global_id(id_count++);
         }
     }
 
@@ -524,7 +521,7 @@ class Server : public ServerBase<ServerClientTraits<Domain>>
         for(auto& key :  _task->data())
         {
             auto oct =domain_->tree()->find_octant(key);
-            if(oct && oct->has_data())
+            if(oct)
                 (*_out)[count++]=oct->global_id();
             else
                 (*_out)[count++]=-1;

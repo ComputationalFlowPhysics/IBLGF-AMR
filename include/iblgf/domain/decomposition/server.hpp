@@ -136,6 +136,8 @@ class Server : public ServerBase<ServerClientTraits<Domain>>
         {
             if (_exitCheck(it)) break;
             if (_continueCheck(it)) continue;
+            if (it->load()==0)
+                it->load()=1;
             total_load += it->load();
         }
 
@@ -337,6 +339,8 @@ class Server : public ServerBase<ServerClientTraits<Domain>>
                           << std::endl;
             }
         }
+
+        std::cout << "Computing domain decomposition done" << std::endl;
         return tasks_perProc;
     }
 

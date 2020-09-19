@@ -620,7 +620,7 @@ class Tree
         for (std::size_t i = 0; i < keys.size(); ++i)
         {
             boost::mpi::communicator world;
-            auto                     nn = this->find_octant(keys[i]);
+            auto  nn = this->find_octant(keys[i]);
             if (nn && nn->has_data())
             {
                 if (ranks[i] > 0) { nn->rank() = ranks[i]; }
@@ -795,7 +795,7 @@ class Tree
             bool allocate_data = false;
             for (int i = 0; i < it->num_children(); ++i)
             {
-                if (it->child(i) && it->child(i)->has_data() &&
+                if (it->child(i) &&
                     it->child(i)->locally_owned())
                     allocate_data = true;
             }

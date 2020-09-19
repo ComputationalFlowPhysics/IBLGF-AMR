@@ -82,6 +82,7 @@ struct PostProcessIntrp : public SetupBase<PostProcessIntrp, parameters>
         domain_->restart_list_construct();
         domain_->distribute<fmm_mask_builder_t, fmm_mask_builder_t>();
         simulation_.template read_h5<u_type>(restart_field_dir,"u");
+        simulation_.template read_h5<edge_aux_type>(restart_field_dir,"edge_aux");
     }
 
     void run( std::string output_name="PostTest")

@@ -103,7 +103,7 @@ int main(int argc, char *argv[])
                     flow_file);
 
             // run setup
-            setup.run("postProc_"+std::to_string(i));
+            setup.run(i);
             write_post_info(dir, i);
         }
     }

@@ -85,8 +85,9 @@ struct PostProcessIntrp : public SetupBase<PostProcessIntrp, parameters>
         simulation_.template read_h5<edge_aux_type>(restart_field_dir,"edge_aux");
     }
 
-    void run( std::string output_name="PostTest")
+    void run(int NoStep)
     {
+        std::string output_name="postProc_"+std::to_string(NoStep);
         boost::mpi::communicator world;
 
         time_integration_t ifherk(&this->simulation_);
@@ -111,9 +112,151 @@ struct PostProcessIntrp : public SetupBase<PostProcessIntrp, parameters>
                     domain::Operator::cell_center_average<edge_aux_type, f_tmp_type>(it->data());
                 }
             }
-
         }
+
         simulation_.write(output_name);
+
+        // Calculating statistics
+        std::vector<std::vector<float_type>> stats(5);
+        // hydrodynamic impulse I = 0.5 \int x cross omega
+        stats[0].resize(3);
+        // kinetic energy
+        stats[1].resize(1);
+        // enstrophy
+        stats[2].resize(1);
+        // Saffman-centroid
+        stats[3].resize(3);
+        //tmp
+        stats[4].resize(1);
+
+        for (auto& s:stats)
+            for (auto& element:s)
+                element=0;
+
+        if(domain_->is_client())
+        {
+            const float_type dx_base = domain_->dx_base();
+            for (auto it = domain_->begin_leaves(); it != domain_->end_leaves(); ++it)
+            {
+                if(!it->locally_owned()) continue;
+
+                auto dx_level =  dx_base/std::pow(2,it->refinement_level());
+                auto dx3 = dx_level*dx_level*dx_level;
+
+                for (auto& node : it->data())
+                {
+
+                    const auto& coord = node.level_coordinate();
+
+                    // cell center coordinates
+                    float_type x0 = static_cast<float_type>
+                        (coord[0]+0.5)*dx_level;
+                    float_type x1 = static_cast<float_type>
+                        (coord[1]+0.5)*dx_level;
+                    float_type x2 = static_cast<float_type>
+                        (coord[2]+0.5)*dx_level;
+
+                    // 1 hydrodynamic impulse I = 0.5 \int x cross omega
+                    std::vector<float_type> xXw(3);
+
+                    xXw[0] = x1*node(edge_aux,2)-x2*node(edge_aux,1);
+                    xXw[1] = x2*node(edge_aux,0)-x0*node(edge_aux,2);
+                    xXw[2] = x0*node(edge_aux,1)-x1*node(edge_aux,0);
+                    stats[0][0] += 0.5*xXw[0]*dx3;
+                    stats[0][1] += 0.5*xXw[1]*dx3;
+                    stats[0][2] += 0.5*xXw[2]*dx3;
+                    // 2 kinetic energy
+                    //stats[1][0] += 0.5*(node(u,0)*node(u,0) + node(u,1)*node(u,1) + node(u,2)*node(u,2)) * dx3;
+                    stats[1][0] += (node(u,0)*xXw[0] + node(u,1)*xXw[1] + node(u,2)*xXw[2]) * dx3;
+
+                    // 3 enstrophy
+                    stats[2][0] += 0.5*(node(edge_aux,0)*node(edge_aux,0) + node(edge_aux,1)*node(edge_aux,1) + node(edge_aux,2)*node(edge_aux,2)) * dx3;
+
+                    // 4 Saffman-centroid
+                    //float tmp0 = 0.5*(x1*node(edge_aux,2)-x2*node(edge_aux,1)) * dx3;
+                    //float tmp1 = 0.5*(x2*node(edge_aux,0)-x0*node(edge_aux,2)) * dx3;
+                    //float tmp2 = 0.5*(x2*node(edge_aux,0)-x0*node(edge_aux,2)) * dx3;
+                }
+            }
+        }
+
+        for (auto& s:stats)
+            for (auto& element:s)
+            {
+                float tmp_s=0;
+                float tmp = element;
+                boost::mpi::all_reduce(world, tmp, tmp_s, std::plus<float_type>());
+                world.barrier();
+                element=tmp_s;
+            }
+
+        // 4 Saffman-centroid / cause it uses I
+        if(domain_->is_client())
+        {
+            const float_type dx_base = domain_->dx_base();
+            for (auto it = domain_->begin_leaves(); it != domain_->end_leaves(); ++it)
+            {
+                if(!it->locally_owned()) continue;
+
+                auto dx_level =  dx_base/std::pow(2,it->refinement_level());
+                auto dx3 = dx_level*dx_level*dx_level;
+
+                for (auto& node : it->data())
+                {
+
+                    const auto& coord = node.level_coordinate();
+
+                    // cell center coordinates
+                    float_type x0 = static_cast<float_type>
+                        (coord[0]+0.5)*dx_level;
+                    float_type x1 = static_cast<float_type>
+                        (coord[1]+0.5)*dx_level;
+                    float_type x2 = static_cast<float_type>
+                        (coord[2]+0.5)*dx_level;
+
+                    std::vector<float_type> xXw(3);
+
+                    xXw[0] = x1*node(edge_aux,2)-x2*node(edge_aux,1);
+                    xXw[1] = x2*node(edge_aux,0)-x0*node(edge_aux,2);
+                    xXw[2] = x0*node(edge_aux,1)-x1*node(edge_aux,0);
+
+                    // 4 Saffman-centroid
+                    float I2 = stats[0][0]*stats[0][0] + stats[0][1]*stats[0][1] + stats[0][2]*stats[0][2];
+                    float tmp = (xXw[0]*stats[0][0]+xXw[1]*stats[0][1]+xXw[2]*stats[0][2])/I2;
+                    stats[3][0]+=0.5*tmp*x0*dx3;
+                    stats[3][1]+=0.5*tmp*x1*dx3;
+                    stats[3][2]+=0.5*tmp*x2*dx3;
+                }
+            }
+        }
+
+        for (auto& element:stats[3])
+        {
+            float tmp_s=0;
+            float tmp = element;
+            boost::mpi::all_reduce(world, tmp, tmp_s, std::plus<float_type>());
+            world.barrier();
+            element=tmp_s;
+        }
+
+        /// output
+
+        if(!domain_->is_client())
+        {
+            std::ofstream outfile;
+            int width=20;
+
+            outfile.open("stats.txt", std::ios_base::app); // append instead of overwrite
+            outfile <<std::setw(width) << NoStep<<std::setw(width)<<std::scientific<<std::setprecision(9);
+            for (auto& s:stats)
+            {
+                for (auto& element:s)
+                {
+                    outfile<<element<<std::setw(width);
+                }
+            }
+            outfile<<std::endl;
+        }
     }
 
     /** @brief  Initialization of the domain blocks. This is registered in the

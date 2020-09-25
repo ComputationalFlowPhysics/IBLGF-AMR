@@ -3,10 +3,10 @@ find_package(Doxygen REQUIRED)
 
 # some doxygen related variables 
 set(DOXYGEN_INPUT_DIR ${PROJECT_SOURCE_DIR}/src) # directory where headers are extracted
-set(DOXYGEN_OUTPUT_DIR ${CMAKE_CURRENT_BINARY_DIR}/docs/doxygen) # doxygen build result path
+set(DOXYGEN_OUTPUT_DIR ${PROJECT_SOURCE_DIR}/docs/doxyout) # doxygen build result path
 set(DOXYGEN_INDEX_FILE ${DOXYGEN_OUTPUT_DIR}/html/index.html) # doc entry file 
 set(DOXYFILE_IN ${CMAKE_CURRENT_SOURCE_DIR}/Doxyfile)
-set(DOXYFILE_OUT ${CMAKE_CURRENT_BINARY_DIR}/Doxyfile)
+set(DOXYFILE_OUT ${DOXYGEN_OUTPUT_DIR}/Doxyfile)
 
 configure_file(${DOXYFILE_IN} ${DOXYFILE_OUT} @ONLY)
 
@@ -23,9 +23,10 @@ find_package(Python REQUIRED)
 find_package(Sphinx REQUIRED)
 
 set(SPHINX_SOURCE ${CMAKE_CURRENT_SOURCE_DIR})
-set(SPHINX_BUILD ${CMAKE_CURRENT_BINARY_DIR}/docs/sphinx)
+set(SPHINX_BUILD ${DOXYGEN_OUTPUT_DIR}/sphinx)
 set(SPHINX_INDEX_FILE ${SPHINX_BUILD}/index.html)
 
+file(MAKE_DIRECTORY ${SPHINX_BUILD})
 add_custom_target(Sphinx ALL
                 COMMAND
                 ${SPHINX_EXECUTABLE} -b html

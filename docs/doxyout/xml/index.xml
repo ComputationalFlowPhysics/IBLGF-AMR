@@ -1,0 +1,17 @@
+<?xml version='1.0' encoding='UTF-8' standalone='no'?>
+<doxygenindex xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="index.xsd" version="1.8.13">
+  <compound refid="classAfterdoc__Test" kind="class"><name>Afterdoc_Test</name>
+    <member refid="classAfterdoc__Test_1adab0cd7ad3b4875e245ca8f6238a388a" kind="enum"><name>EnumType</name></member>
+    <member refid="classAfterdoc__Test_1adab0cd7ad3b4875e245ca8f6238a388aae054276790e35692ad0abe10c5b75da4" kind="enumvalue"><name>EVal1</name></member>
+    <member refid="classAfterdoc__Test_1adab0cd7ad3b4875e245ca8f6238a388aac849f37624d8d2d68ca72c4a8df9cf99" kind="enumvalue"><name>EVal2</name></member>
+    <member refid="classAfterdoc__Test_1a9287a08830e5cdfd9c732bb7932694a0" kind="variable"><name>value</name></member>
+    <member refid="classAfterdoc__Test_1a57ba94e9039ee90a1b191ae0009a05dd" kind="function"><name>member</name></member>
+  </compound>
+  <compound refid="gtest__main__test_8cpp" kind="file"><name>gtest_main_test.cpp</name>
+    <member refid="gtest__main__test_8cpp_1a3c04138a5bfe5d72780bb7e82a18e627" kind="function"><name>main</name></member>
+  </compound>
+  <compound refid="test__doc_8hpp" kind="file"><name>test_doc.hpp</name>
+  </compound>
+  <compound refid="dir_68267d1309a1af8e8297ef4c3efbcdba" kind="dir"><name>/home/qwang3/Desktop/work2/IBLGF-AMR/src</name>
+  </compound>
+</doxygenindex>

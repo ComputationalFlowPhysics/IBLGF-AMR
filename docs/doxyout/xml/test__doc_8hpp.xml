@@ -1,0 +1,28 @@
+<?xml version='1.0' encoding='UTF-8' standalone='no'?>
+<doxygen xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="compound.xsd" version="1.8.13">
+  <compounddef id="test__doc_8hpp" kind="file" language="C++">
+    <compoundname>test_doc.hpp</compoundname>
+    <innerclass refid="classAfterdoc__Test" prot="public">Afterdoc_Test</innerclass>
+    <briefdescription>
+    </briefdescription>
+    <detaileddescription>
+    </detaileddescription>
+    <programlisting>
+<codeline lineno="1"></codeline>
+<codeline lineno="3" refid="classAfterdoc__Test" refkind="compound"><highlight class="keyword">class<sp/></highlight><highlight class="normal"><ref refid="classAfterdoc__Test" kindref="compound">Afterdoc_Test</ref></highlight></codeline>
+<codeline lineno="4"><highlight class="normal">{</highlight></codeline>
+<codeline lineno="5"><highlight class="normal"><sp/><sp/></highlight><highlight class="keyword">public</highlight><highlight class="normal">:</highlight></codeline>
+<codeline lineno="9" refid="classAfterdoc__Test_1adab0cd7ad3b4875e245ca8f6238a388a" refkind="member"><highlight class="normal"><sp/><sp/><sp/><sp/></highlight><highlight class="keyword">enum</highlight><highlight class="normal"><sp/><ref refid="classAfterdoc__Test_1adab0cd7ad3b4875e245ca8f6238a388a" kindref="member">EnumType</ref></highlight></codeline>
+<codeline lineno="10"><highlight class="normal"><sp/><sp/><sp/><sp/>{</highlight></codeline>
+<codeline lineno="11" refid="classAfterdoc__Test_1adab0cd7ad3b4875e245ca8f6238a388aae054276790e35692ad0abe10c5b75da4" refkind="member"><highlight class="normal"><sp/><sp/><sp/><sp/><sp/><sp/></highlight><highlight class="keywordtype">int</highlight><highlight class="normal"><sp/><ref refid="classAfterdoc__Test_1adab0cd7ad3b4875e245ca8f6238a388aae054276790e35692ad0abe10c5b75da4" kindref="member">EVal1</ref>,<sp/><sp/><sp/><sp/><sp/></highlight></codeline>
+<codeline lineno="12" refid="classAfterdoc__Test_1adab0cd7ad3b4875e245ca8f6238a388aac849f37624d8d2d68ca72c4a8df9cf99" refkind="member"><highlight class="normal"><sp/><sp/><sp/><sp/><sp/><sp/></highlight><highlight class="keywordtype">int</highlight><highlight class="normal"><sp/><ref refid="classAfterdoc__Test_1adab0cd7ad3b4875e245ca8f6238a388aac849f37624d8d2d68ca72c4a8df9cf99" kindref="member">EVal2</ref><sp/><sp/><sp/><sp/><sp/><sp/></highlight></codeline>
+<codeline lineno="13"><highlight class="normal"><sp/><sp/><sp/><sp/>};</highlight></codeline>
+<codeline lineno="14"><highlight class="normal"><sp/><sp/><sp/><sp/></highlight><highlight class="keywordtype">void</highlight><highlight class="normal"><sp/><ref refid="classAfterdoc__Test_1a57ba94e9039ee90a1b191ae0009a05dd" kindref="member">member</ref>();<sp/><sp/><sp/></highlight></codeline>
+<codeline lineno="15"><highlight class="normal"><sp/><sp/><sp/><sp/></highlight></codeline>
+<codeline lineno="16"><highlight class="normal"><sp/><sp/></highlight><highlight class="keyword">protected</highlight><highlight class="normal">:</highlight></codeline>
+<codeline lineno="17" refid="classAfterdoc__Test_1a9287a08830e5cdfd9c732bb7932694a0" refkind="member"><highlight class="normal"><sp/><sp/><sp/><sp/></highlight><highlight class="keywordtype">int</highlight><highlight class="normal"><sp/><ref refid="classAfterdoc__Test_1a9287a08830e5cdfd9c732bb7932694a0" kindref="member">value</ref>;<sp/><sp/><sp/><sp/><sp/><sp/><sp/></highlight></codeline>
+<codeline lineno="18"><highlight class="normal">};</highlight></codeline>
+    </programlisting>
+    <location file="/home/qwang3/Desktop/work2/IBLGF-AMR/src/test_doc.hpp"/>
+  </compounddef>
+</doxygen>

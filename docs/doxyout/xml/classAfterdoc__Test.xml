@@ -1,0 +1,75 @@
+<?xml version='1.0' encoding='UTF-8' standalone='no'?>
+<doxygen xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="compound.xsd" version="1.8.13">
+  <compounddef id="classAfterdoc__Test" kind="class" language="C++" prot="public">
+    <compoundname>Afterdoc_Test</compoundname>
+    <includes refid="test__doc_8hpp" local="no">test_doc.hpp</includes>
+      <sectiondef kind="public-type">
+      <memberdef kind="enum" id="classAfterdoc__Test_1adab0cd7ad3b4875e245ca8f6238a388a" prot="public" static="no">
+        <name>EnumType</name>
+        <enumvalue id="classAfterdoc__Test_1adab0cd7ad3b4875e245ca8f6238a388aae054276790e35692ad0abe10c5b75da4" prot="public">
+          <name>EVal1</name>
+          <briefdescription>
+          </briefdescription>
+          <detaileddescription>
+<para>enum value 1 </para>          </detaileddescription>
+        </enumvalue>
+        <enumvalue id="classAfterdoc__Test_1adab0cd7ad3b4875e245ca8f6238a388aac849f37624d8d2d68ca72c4a8df9cf99" prot="public">
+          <name>EVal2</name>
+          <briefdescription>
+          </briefdescription>
+          <detaileddescription>
+<para>enum value 2 </para>          </detaileddescription>
+        </enumvalue>
+        <briefdescription>
+        </briefdescription>
+        <detaileddescription>
+<para>An enum type. The documentation block cannot be put after the enum! </para>        </detaileddescription>
+        <inbodydescription>
+        </inbodydescription>
+        <location file="/home/qwang3/Desktop/work2/IBLGF-AMR/src/test_doc.hpp" line="10" column="1" bodyfile="/home/qwang3/Desktop/work2/IBLGF-AMR/src/test_doc.hpp" bodystart="9" bodyend="13"/>
+      </memberdef>
+      </sectiondef>
+      <sectiondef kind="protected-attrib">
+      <memberdef kind="variable" id="classAfterdoc__Test_1a9287a08830e5cdfd9c732bb7932694a0" prot="protected" static="no" mutable="no">
+        <type>int</type>
+        <definition>int Afterdoc_Test::value</definition>
+        <argsstring></argsstring>
+        <name>value</name>
+        <briefdescription>
+        </briefdescription>
+        <detaileddescription>
+<para>an integer value </para>        </detaileddescription>
+        <inbodydescription>
+        </inbodydescription>
+        <location file="/home/qwang3/Desktop/work2/IBLGF-AMR/src/test_doc.hpp" line="17" column="1" bodyfile="/home/qwang3/Desktop/work2/IBLGF-AMR/src/test_doc.hpp" bodystart="17" bodyend="-1"/>
+      </memberdef>
+      </sectiondef>
+      <sectiondef kind="public-func">
+      <memberdef kind="function" id="classAfterdoc__Test_1a57ba94e9039ee90a1b191ae0009a05dd" prot="public" static="no" const="no" explicit="no" inline="no" virt="non-virtual">
+        <type>void</type>
+        <definition>void Afterdoc_Test::member</definition>
+        <argsstring>()</argsstring>
+        <name>member</name>
+        <briefdescription>
+<para>a member function. </para>        </briefdescription>
+        <detaileddescription>
+        </detaileddescription>
+        <inbodydescription>
+        </inbodydescription>
+        <location file="/home/qwang3/Desktop/work2/IBLGF-AMR/src/test_doc.hpp" line="14" column="1"/>
+      </memberdef>
+      </sectiondef>
+    <briefdescription>
+    </briefdescription>
+    <detaileddescription>
+<para>A test class </para>    </detaileddescription>
+    <location file="/home/qwang3/Desktop/work2/IBLGF-AMR/src/test_doc.hpp" line="4" column="1" bodyfile="/home/qwang3/Desktop/work2/IBLGF-AMR/src/test_doc.hpp" bodystart="3" bodyend="18"/>
+    <listofallmembers>
+      <member refid="classAfterdoc__Test_1adab0cd7ad3b4875e245ca8f6238a388a" prot="public" virt="non-virtual"><scope>Afterdoc_Test</scope><name>EnumType</name></member>
+      <member refid="classAfterdoc__Test_1adab0cd7ad3b4875e245ca8f6238a388aae054276790e35692ad0abe10c5b75da4" prot="public" virt="non-virtual"><scope>Afterdoc_Test</scope><name>EVal1</name></member>
+      <member refid="classAfterdoc__Test_1adab0cd7ad3b4875e245ca8f6238a388aac849f37624d8d2d68ca72c4a8df9cf99" prot="public" virt="non-virtual"><scope>Afterdoc_Test</scope><name>EVal2</name></member>
+      <member refid="classAfterdoc__Test_1a57ba94e9039ee90a1b191ae0009a05dd" prot="public" virt="non-virtual"><scope>Afterdoc_Test</scope><name>member</name></member>
+      <member refid="classAfterdoc__Test_1a9287a08830e5cdfd9c732bb7932694a0" prot="protected" virt="non-virtual"><scope>Afterdoc_Test</scope><name>value</name></member>
+    </listofallmembers>
+  </compounddef>
+</doxygen>

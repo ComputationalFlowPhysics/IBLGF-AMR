@@ -50,6 +50,9 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 set(IBLGF_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake")
 list(APPEND CMAKE_MODULE_PATH "${IBLGF_MODULE_PATH}")
 
+##DOXYGEN 
+add_subdirectory(docs)
+
 find_package(MPI REQUIRED)
 find_package(Boost COMPONENTS system filesystem serialization mpi REQUIRED )
 find_package(xsimd REQUIRED)
@@ -148,6 +151,3 @@ install(
         ${CMAKE_CURRENT_BINARY_DIR}/iblgfConfig.cmake
     DESTINATION
         ${CMAKE_INSTALL_LIBDIR}/cmake)
-
-##DOXYGEN 
-add_subdirectory(docs)

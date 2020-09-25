@@ -3,6 +3,7 @@
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
+
 Welcome to IBLGF-AMR's documentation!
 =====================================
 
@@ -22,9 +23,6 @@ Welcome to IBLGF-AMR's documentation!
 
 Immersed boundary lattice Green's function flow solver.
 
-Getting Started
----------------
-
 This code solves the incompressible Naiver-Stokes equations on unbounded domains
 using a mimetic finite volume approach and lattice Green's functions on
 adaptively refined meshes.
@@ -43,12 +41,14 @@ References
 
 Prerequisites and external dependencies
 ---------------------------------------
+
 The following external libraries need to be installed on your system.
 All packages should be available through standard package manager. 
 Be sure to install all libraries with mpi support. 
 
 * C++ compiler with c++17-support or above (tested with gcc-7 or above, intel 2018 or above)
 * Mpi implementation such as [OpenMpi](https://www.open-mpi.org/)
+
 * `Cmake <https://cmake.org/>`_
 * `Boost <https://www.boost.org/>`_ (required libraries: system, filesystem, serialization,mpi)
 * `FFTW <http://www.fftw.org/>`_
@@ -67,7 +67,9 @@ Benedikt Dorschner
 Ke Yu  
 Marcus Lee
 
+
 .. toctree::
    :maxdepth: 2
 
    source/getting_started.rst
+

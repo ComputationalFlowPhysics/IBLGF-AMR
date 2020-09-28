@@ -74,17 +74,17 @@ int main(int argc, char *argv[])
     // find the when it finished last time from reading the postProc_info
     std::string info_dir="./"+dir+"/postProc_info";
     std::ifstream f(info_dir);
-    int postStartIdx = 0;
+    int postStartIdx = -1;
     if (f.good())
     {
         Dictionary info_d(info_dir);
-        postStartIdx = info_d.template get_or<int>("postProcLast",0);
+        postStartIdx = info_d.template get_or<int>("postProcLast",-1);
     }
     else
-        postStartIdx = 0;
+        postStartIdx = -1;
 
 
-    for (int i=postStartIdx; i<=tot_steps; ++i)
+    for (int i=postStartIdx+1; i<=tot_steps; ++i)
     {
         std::string flow_file = "./"+dir+"/flow_"+std::to_string(i)+".hdf5";
         std::string tree_file = "./"+dir+"/tree_info_"+std::to_string(i)+".bin";

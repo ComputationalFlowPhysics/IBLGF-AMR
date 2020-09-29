@@ -448,6 +448,22 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
             return -vr_fct_(x,y,z-d2v_/2,field_idx,perturbation_)+vr_fct_(x,y,z+d2v_/2,field_idx,perturbation_);
     }
 
+    float_type noise(float_type theta, float_type perturbation)
+    {
+        std::vector<float_type> rd_phase{0.23952, 0.93281, 0.792195, 0.743415, 0.809997, 0.25604, 0.934906, \
+            0.887225, 0.73549, 0.458176, 0.457471, 0.742074, 0.514981, 0.679815, \
+            0.543974, 0.886245, 0.972392, 0.774492, 0.43179, 0.864585, 0.600469, \
+            0.0403256, 0.146207, 0.48862, 0.690213, 0.925106, 0.17203, 0.370254, \
+            0.065236, 0.898992, 0.189733, 0.736777, 0.664988, 0.152577, 0.144798, \
+            0.846399, 0.648571, 0.63376, 0.110466, 0.672082, 0.536401};
+
+        float_type tmp=0.0;
+        int N=32;
+        for (int i=1;i<N;++i)
+            tmp+=  std::cos(theta*i+rd_phase[i-1]*2*M_PI);
+
+        return perturbation*tmp;
+    }
 
     float_type vortex_ring_vor_ic(float_type x, float_type y, float_type z, int field_idx, float_type perturbation)
     {
@@ -460,14 +476,14 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
         float_type theta = std::atan2(y, x);
         float_type w_theta = 1.0 / M_PI / delta_2 * std::exp(-s2 / delta_2);
 
-        float_type rd = (static_cast <float_type> (rand()) / static_cast <float_type> (RAND_MAX));
-        rd *= perturbation;
+        //float_type rd = (static_cast <float_type> (rand()) / static_cast <float_type> (RAND_MAX));
+        //rd *= perturbation;
 
-        if (field_idx == 0) return -w_theta * std::sin(theta) * (1 + rd*std::cos(theta*4));
+        if (field_idx == 0) return -w_theta * std::sin(theta) * (1 + noise(theta, perturbation));
         else if (field_idx == 1)
-            return w_theta * std::cos(theta) * (1 + rd*std::cos(theta*4));
+            return w_theta * std::cos(theta) * (1 + noise(theta, perturbation));
         else
-            return rd*std::cos(theta*4);
+            return noise(theta,perturbation);
     }
 
     /** @brief  Refienment conditon for octants.  */

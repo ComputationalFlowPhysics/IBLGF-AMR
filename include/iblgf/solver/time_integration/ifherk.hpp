@@ -167,12 +167,10 @@ class Ifherk
         {
             T_ = 0.0;
             adapt_count_=-1;
+            write_timestep();
         }
 
         // ----------------------------------- start -------------------------
-
-        //clean_up_initial_velocity();
-        write_timestep();
 
         while(T_<T_max_-1e-10)
         {

@@ -72,7 +72,7 @@ struct parameters
 struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 {
     using super_type =SetupBase<NS_AMR_LGF,parameters>;
-    using vr_fct_t = std::function<float_type(float_type x, float_type y, float_type z, int field_idx, bool perturbation)>;
+    using vr_fct_t = std::function<float_type(float_type x, float_type y, float_type z, int field_idx, float_type perturbation)>;
 
     //Timings
     using clock_type = std::chrono::high_resolution_clock;
@@ -100,17 +100,16 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
         d2v_            = simulation_.dictionary()->template get_or<float_type>("DistanceOfVortexRings", R_);
         v_delta_        = simulation_.dictionary()->template get_or<float_type>("vDelta", 0.2*R_);
         single_ring_    = simulation_.dictionary()->template get_or<bool>("single_ring", true);
-        perturbation_   = simulation_.dictionary()->template get_or<bool>("perturbation", false);
+        perturbation_   = simulation_.dictionary()->template get_or<float_type>("perturbation", 0.0);
         hard_max_level_ = simulation_.dictionary()->template get_or<bool>("hard_max_level", true);
-
 
         bool use_fat_ring = simulation_.dictionary()->template get_or<bool>("fat_ring", false);
         if (use_fat_ring)
             vr_fct_=
-            [this](float_type x, float_type y, float_type z, int field_idx, bool perturbation){return this->vortex_ring_vor_fat_ic(x,y,z,field_idx, perturbation);};
+            [this](float_type x, float_type y, float_type z, int field_idx, float_type perturbation){return this->vortex_ring_vor_fat_ic(x,y,z,field_idx, perturbation);};
         else
             vr_fct_=
-            [this](float_type x, float_type y, float_type z, int field_idx, bool perturbation){return this->vortex_ring_vor_ic(x,y,z,field_idx, perturbation);};
+            [this](float_type x, float_type y, float_type z, int field_idx, float_type perturbation){return this->vortex_ring_vor_ic(x,y,z,field_idx, perturbation);};
 
         ic_filename_ = simulation_.dictionary_->template get_or<std::string>(
             "hdf5_ic_name", "null");
@@ -416,7 +415,7 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
     }
 
 
-    float_type vortex_ring_vor_fat_ic(float_type x, float_type y, float_type z, int field_idx, bool perturbation)
+    float_type vortex_ring_vor_fat_ic(float_type x, float_type y, float_type z, int field_idx, float_type perturbation)
     {
         const float_type alpha = 0.54857674;
         float_type       R2 = R_ * R_;
@@ -429,8 +428,7 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
         float_type w_theta = alpha * 1.0 / R2 * std::exp(-4.0 * s2 / (R2 - s2));
 
         float_type rd = (static_cast <float_type> (rand()) / static_cast <float_type> (RAND_MAX))-0.5;
-        float_type prtub=0.001;
-        rd *= prtub * perturbation;
+        rd *= perturbation;
 
         if (s2>=R2) return 0.0;
 
@@ -451,7 +449,7 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
     }
 
 
-    float_type vortex_ring_vor_ic(float_type x, float_type y, float_type z, int field_idx, bool perturbation)
+    float_type vortex_ring_vor_ic(float_type x, float_type y, float_type z, int field_idx, float_type perturbation)
     {
         float_type delta_2 = v_delta_ * v_delta_;
 
@@ -462,17 +460,14 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
         float_type theta = std::atan2(y, x);
         float_type w_theta = 1.0 / M_PI / delta_2 * std::exp(-s2 / delta_2);
 
-        float_type rd = (static_cast <float_type> (rand()) / static_cast <float_type> (RAND_MAX))-0.5;
-        float_type prtub=0.001;
-        rd *= prtub * perturbation;
+        float_type rd = (static_cast <float_type> (rand()) / static_cast <float_type> (RAND_MAX));
+        rd *= perturbation;
 
-        //if (s2>=delta_2) return 0.0;
-
-        if (field_idx == 0) return -w_theta * std::sin(theta) * (1 + rd);
+        if (field_idx == 0) return -w_theta * std::sin(theta) * (1 + rd*std::cos(theta*4));
         else if (field_idx == 1)
-            return w_theta * std::cos(theta) * (1 + rd);
+            return w_theta * std::cos(theta) * (1 + rd*std::cos(theta*4));
         else
-            return 0.0;
+            return rd*std::cos(theta*4);
     }
 
     /** @brief  Refienment conditon for octants.  */
@@ -557,7 +552,7 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
     boost::mpi::communicator client_comm_;
 
     bool single_ring_=true;
-    bool perturbation_=false;
+    float_type perturbation_;
     bool hard_max_level_;
 
     float_type R_;

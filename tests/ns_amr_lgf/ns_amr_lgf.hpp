@@ -471,19 +471,19 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 
         float_type r2 = x * x + y * y;
         float_type r = sqrt(r2);
-        float_type s2 = z * z + (r - R_) * (r - R_);
-
         float_type theta = std::atan2(y, x);
+        float_type s2 = z * z + (r - R_*(1 + noise(theta, perturbation))) * (r - R_*(1 + noise(theta, perturbation)));
+
         float_type w_theta = 1.0 / M_PI / delta_2 * std::exp(-s2 / delta_2);
 
         //float_type rd = (static_cast <float_type> (rand()) / static_cast <float_type> (RAND_MAX));
         //rd *= perturbation;
 
-        if (field_idx == 0) return -w_theta * std::sin(theta) * (1 + noise(theta, perturbation));
+        if (field_idx == 0) return -w_theta * std::sin(theta);
         else if (field_idx == 1)
-            return w_theta * std::cos(theta) * (1 + noise(theta, perturbation));
+            return w_theta * std::cos(theta);
         else
-            return noise(theta,perturbation);
+            return 0;
     }
 
     /** @brief  Refienment conditon for octants.  */

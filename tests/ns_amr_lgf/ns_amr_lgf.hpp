@@ -448,19 +448,29 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
             return -vr_fct_(x,y,z-d2v_/2,field_idx,perturbation_)+vr_fct_(x,y,z+d2v_/2,field_idx,perturbation_);
     }
 
-    float_type noise(float_type theta, float_type perturbation)
+    float_type noise(float_type theta, float_type perturbation, int leftring)
     {
-        std::vector<float_type> rd_phase{0.23952, 0.93281, 0.792195, 0.743415, 0.809997, 0.25604, 0.934906, \
+        std::vector<std::vector<float_type>> rd_phase{
+            {0.23952, 0.93281, 0.792195, 0.743415, 0.809997, 0.25604, 0.934906, \
             0.887225, 0.73549, 0.458176, 0.457471, 0.742074, 0.514981, 0.679815, \
             0.543974, 0.886245, 0.972392, 0.774492, 0.43179, 0.864585, 0.600469, \
             0.0403256, 0.146207, 0.48862, 0.690213, 0.925106, 0.17203, 0.370254, \
             0.065236, 0.898992, 0.189733, 0.736777, 0.664988, 0.152577, 0.144798, \
-            0.846399, 0.648571, 0.63376, 0.110466, 0.672082, 0.536401};
+            0.846399, 0.648571, 0.63376, 0.110466, 0.672082, 0.536401},
+            {0.422702, 0.936246, 0.881116, 0.694646, 0.668566, 0.574301, \
+            0.557115, 0.865498, 0.126846, 0.541819, 0.491133, 0.893088, 0.831923, \
+            0.834021, 0.0966956, 0.80156, 0.244035, 0.121746, 0.932934, \
+            0.0572397, 0.116674, 0.737242, 0.585802, 0.466478, 0.735447, \
+            0.231485, 0.980104, 0.295989, 0.916545, 0.408343, 0.0579712, \
+            0.0496912, 0.39271, 0.285154, 0.390967, 0.851305, 0.966866, 0.854457, \
+            0.299213, 0.97338, 0.186061, 0.564841}
+            };
+
 
         float_type tmp=0.0;
         int N=32;
-        for (int i=1;i<N;++i)
-            tmp+=  std::cos(theta*i+rd_phase[i-1]*2*M_PI);
+        for (int i=1;i<=N;++i)
+            tmp+=  std::cos(theta*i+rd_phase[leftring][i-1]*2*M_PI);
 
         return perturbation*tmp;
     }
@@ -472,7 +482,8 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
         float_type r2 = x * x + y * y;
         float_type r = sqrt(r2);
         float_type theta = std::atan2(y, x);
-        float_type s2 = z * z + (r - R_*(1 + noise(theta, perturbation))) * (r - R_*(1 + noise(theta, perturbation)));
+        int leftring=(z>0)? 1:0;
+        float_type s2 = z * z + (r - R_*(1 + noise(theta, perturbation, leftring))) * (r - R_*(1 + noise(theta, perturbation, leftring)));
 
         float_type w_theta = 1.0 / M_PI / delta_2 * std::exp(-s2 / delta_2);
 

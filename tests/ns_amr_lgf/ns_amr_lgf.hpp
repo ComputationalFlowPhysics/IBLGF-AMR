@@ -101,7 +101,6 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
         v_delta_        = simulation_.dictionary()->template get_or<float_type>("vDelta", 0.2*R_);
         single_ring_    = simulation_.dictionary()->template get_or<bool>("single_ring", true);
         perturbation_   = simulation_.dictionary()->template get_or<float_type>("perturbation", 0.0);
-        hard_max_level_ = simulation_.dictionary()->template get_or<bool>("hard_max_level", true);
 
         bool use_fat_ring = simulation_.dictionary()->template get_or<bool>("fat_ring", false);
         if (use_fat_ring)
@@ -125,11 +124,10 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
         base_threshold_ = simulation_.dictionary()->
             template get_or<float_type>("base_level_threshold", 1e-4);
 
-        base_threshold_ = simulation_.dictionary()->
-            template get_or<float_type>("base_level_threshold", 1e-4);
-
         nLevelRefinement_=simulation_.dictionary_->
             template get_or<int>("nLevels",0);
+
+        hard_max_level_ = simulation_.dictionary()->template get_or<int>("hard_max_level", nLevelRefinement_);
 
         global_refinement_ = simulation_.dictionary_->template get_or<int>(
             "global_refinement", 0);
@@ -307,8 +305,8 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
         int l_aim = static_cast<int>( ceil(nLevelRefinement_-log(field_max/source_max) / log(refinement_factor_)));
         int l_delete_aim = static_cast<int>( ceil(nLevelRefinement_-((log(field_max/source_max) - log(deletion_factor)) / log(refinement_factor_))));
 
-        if (l_aim>nLevelRefinement_ && hard_max_level_)
-            l_aim=nLevelRefinement_;
+        if (l_aim>hard_max_level_)
+            l_aim=hard_max_level_;
 
         if (it->refinement_level()==0 && use_base_level_threshold)
         {
@@ -580,7 +578,6 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 
     bool single_ring_=true;
     float_type perturbation_;
-    bool hard_max_level_;
 
     float_type R_;
     float_type v_delta_;
@@ -594,6 +591,7 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
     float_type c2=0;
     float_type eps_grad_=1.0e6;;
     int nLevelRefinement_=0;
+    int hard_max_level_;
     int global_refinement_=0;
     fcoord_t offset_;
 

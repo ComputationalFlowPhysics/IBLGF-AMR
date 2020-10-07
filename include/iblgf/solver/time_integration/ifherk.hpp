@@ -92,6 +92,9 @@ class Ifherk
             "output_frequency");
         cfl_max_ = _simulation->dictionary()->template get_or<float_type>(
             "cfl_max", 1000);
+        updating_source_max_ = _simulation->dictionary()->template get_or<bool>(
+            "updating_source_max", false);
+
 
         if (dt_base_ < 0) dt_base_ = dx_base_ * cfl_;
 
@@ -202,7 +205,7 @@ class Ifherk
 
             if ( adapt_count_ % adapt_freq_ ==0)
             {
-                if (adapt_count_==0)
+                if (adapt_count_==0 || updating_source_max_)
                 {
                     this->template update_source_max<cell_aux_type>(0);
                     this->template update_source_max<edge_aux_type>(1);
@@ -972,6 +975,7 @@ private:
 
     bool use_restart_=false;
     bool write_restart_=false;
+    bool updating_source_max_ = false;
     int restart_base_freq_;
     int adapt_count_;
 

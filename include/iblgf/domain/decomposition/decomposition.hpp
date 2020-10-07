@@ -273,7 +273,6 @@ public: //memeber functions
                 oct->aim_deletion(false);
             }
 
-            domain_->tree()->construct_leaf_maps(true);
             domain_->tree()->construct_level_maps();
 
             // refine those allow 2to1 ratio
@@ -287,6 +286,7 @@ public: //memeber functions
             }
 
             // dynmaic Programming to rduce repeated checks
+            domain_->tree()->construct_leaf_maps(true);
             std::unordered_set<octant_t*> checklist_reset_2to1_aim_deletion;
             for (auto it = domain_->begin_leaves(); it != domain_->end_leaves(); ++it)
             {

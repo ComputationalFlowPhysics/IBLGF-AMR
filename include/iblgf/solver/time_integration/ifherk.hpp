@@ -93,7 +93,7 @@ class Ifherk
         cfl_max_ = _simulation->dictionary()->template get_or<float_type>(
             "cfl_max", 1000);
         updating_source_max_ = _simulation->dictionary()->template get_or<bool>(
-            "updating_source_max", false);
+            "updating_source_max", true);
 
 
         if (dt_base_ < 0) dt_base_ = dx_base_ * cfl_;
@@ -338,8 +338,11 @@ class Ifherk
             if (tmp > max_local) max_local = tmp;
         }
 
+        float_type new_maximum=0.0;
         boost::mpi::all_reduce(
-            comm_, max_local, source_max_[idx], boost::mpi::maximum<float_type>());
+            comm_, max_local, new_maximum, boost::mpi::maximum<float_type>());
+
+        source_max_[idx] = max(source_max_[idx], new_maximum);
     }
 
     void write_restart()

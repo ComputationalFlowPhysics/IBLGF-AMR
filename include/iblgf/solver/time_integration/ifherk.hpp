@@ -342,7 +342,7 @@ class Ifherk
         boost::mpi::all_reduce(
             comm_, max_local, new_maximum, boost::mpi::maximum<float_type>());
 
-        source_max_[idx] = max(source_max_[idx], new_maximum);
+        source_max_[idx] = std::max(source_max_[idx], new_maximum);
     }
 
     void write_restart()

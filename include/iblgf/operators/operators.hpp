@@ -72,6 +72,26 @@ struct Operator
     }
 
     template<class Field, class Block>
+    static float_type blockNormMean(Block& block) noexcept
+    {
+        float_type m = 0.0;
+        float_type c = 0.0;
+
+        for (auto& n : block)
+        {
+            float_type tmp=0.0;
+            for (std::size_t field_idx = 0; field_idx < Field::nFields(); ++field_idx)
+            {
+                tmp += n(Field::tag(), field_idx)*n(Field::tag(), field_idx);
+            }
+            tmp = sqrt(tmp);
+            m+=tmp;
+            c+=1.0;
+        }
+        return m/c;
+    }
+
+    template<class Field, class Block>
     static float_type maxnorm(Block& block) noexcept
     {
         float_type m = 0.0;

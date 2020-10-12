@@ -333,7 +333,7 @@ class Ifherk
         for (auto it = domain_->begin(); it != domain_->end(); ++it)
         {
             if (!it->locally_owned()) continue;
-            float_type tmp = domain::Operator::maxnorm<Field>(it->data());
+            float_type tmp = domain::Operator::blockNormMean<Field>(it->data());
 
             if (tmp > max_local) max_local = tmp;
         }

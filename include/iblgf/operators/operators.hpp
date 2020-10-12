@@ -72,7 +72,7 @@ struct Operator
     }
 
     template<class Field, class Block>
-    static float_type blockNormMean(Block& block) noexcept
+    static float_type blockRootMeanSquare(Block& block) noexcept
     {
         float_type m = 0.0;
         float_type c = 0.0;
@@ -84,11 +84,10 @@ struct Operator
             {
                 tmp += n(Field::tag(), field_idx)*n(Field::tag(), field_idx);
             }
-            tmp = sqrt(tmp);
             m+=tmp;
             c+=1.0;
         }
-        return m/c;
+        return sqrt(m/c);
     }
 
     template<class Field, class Block>

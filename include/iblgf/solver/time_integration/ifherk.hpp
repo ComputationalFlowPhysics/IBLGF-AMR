@@ -962,7 +962,7 @@ private:
     float_type dt_base_, dt_, dx_base_;
     float_type Re_;
     float_type cfl_max_, cfl_;
-    std::vector<float_type> source_max_{1.0, 1.0};
+    std::vector<float_type> source_max_{0.0, 0.0};
 
     float_type T_last_vel_refresh_=0.0;
 

@@ -243,6 +243,19 @@ struct PostProcessIntrp : public SetupBase<PostProcessIntrp, parameters>
 
         if(!domain_->is_client())
         {
+            std::vector<int> leafC(domain_->tree()->depth()-domain_->tree()->base_level());
+            for (auto it = domain_->begin_leaves(); it != domain_->end_leaves(); ++it)
+            {
+                leafC[it->refinement_level()]+=1;
+            }
+            std::cout<<"LeafCount= ";
+            for (auto c: leafC)
+                std::cout<<c<<" ";
+            std::cout<<std::endl;
+        }
+
+        if(!domain_->is_client())
+        {
             std::ofstream outfile;
             int width=20;
 

@@ -499,7 +499,7 @@ class Fmm
     template<class Kernel>
     void fmm_Bx(domain_t* domain_, Kernel* _kernel, float_type scale)
     {
-//#define packMessages
+#define packMessages
 
 #ifdef packMessages
         const bool start_communication = false;

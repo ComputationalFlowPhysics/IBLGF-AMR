@@ -111,15 +111,16 @@ struct OperatorTest : public SetupBase<OperatorTest, parameters>
         if (domain_->is_client())
         {
             const float_type dx_base = domain_->dx_base();
+            const float_type base_level = domain_->tree()->base_level();
 
             //Bufffer exchange of some fields
             auto client = domain_->decomposition().client();
-            client->buffer_exchange<lap_source_type>();
-            client->buffer_exchange<div_source_type>();
-            client->buffer_exchange<curl_source_type>();
-            client->buffer_exchange<grad_source_type>();
-            client->buffer_exchange<curl_exact_type>();
-            client->buffer_exchange<nonlinear_source_type>();
+            client->buffer_exchange<lap_source_type>(base_level);
+            client->buffer_exchange<div_source_type>(base_level);
+            client->buffer_exchange<curl_source_type>(base_level);
+            client->buffer_exchange<grad_source_type>(base_level);
+            client->buffer_exchange<curl_exact_type>(base_level);
+            client->buffer_exchange<nonlinear_source_type>(base_level);
 
             for (auto it = domain_->begin_leaves(); it != domain_->end_leaves();
                  ++it)
@@ -137,7 +138,7 @@ struct OperatorTest : public SetupBase<OperatorTest, parameters>
                 domain::Operator::gradient<grad_source_type, grad_target_type>(
                     it->data(), dx_level);
             }
-            client->buffer_exchange<curl_target_type>();
+            client->buffer_exchange<curl_target_type>(base_level);
             for (auto it = domain_->begin_leaves(); it != domain_->end_leaves();
                  ++it)
             {

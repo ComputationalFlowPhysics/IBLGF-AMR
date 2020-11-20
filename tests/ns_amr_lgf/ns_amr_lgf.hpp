@@ -294,7 +294,7 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
         // ----------------------------------------------------------------
 
         float_type field_max=
-            domain::Operator::blockRootMeanSquare<Field>(it->data());
+            domain::Operator::maxnorm<Field>(it->data());
 
         if (field_max<1e-10) return -1;
 

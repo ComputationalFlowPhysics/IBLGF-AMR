@@ -80,13 +80,16 @@ class DataField : public BlockDescriptor<int, Dim>
     {
     }
 
-    DataField& operator=(const DataField _other)
+    DataField& operator=(const DataField& _other)
     {
-        std::swap(data_, _other.data);
-        std::swap(lowBuffer_, _other.lowBuffer_);
-        std::swap(highBuffer_, _other.highBuffer_);
-        std::swap(real_block_, _other.real_block_);
-        std::swap(cube_, _other.real_block_);
+        if (this == &_other) return *this;
+        data_=_other.data_;
+        lowBuffer_ = _other.lowBuffer_;
+        highBuffer_ = _other.highBuffer_;
+        real_block_ = _other.real_block_;
+        cube_ =
+            std::make_unique<linalg::Cube_t>(&data_[0], real_block_.extent()[0],
+                real_block_.extent()[1], real_block_.extent()[2]);
         return *this;
     }
 

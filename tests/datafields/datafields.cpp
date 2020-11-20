@@ -56,6 +56,7 @@ struct datafield_test : public ::testing::Test
          //Fields tuples
          (
             (p,    float_type,  1,  1,  1,  cell,true),
+            (p2,   float_type,  1,  1,  1,  cell,true),
             (vel,  float_type,  3,  1,  1,  face,false)
          )
      )
@@ -66,7 +67,7 @@ TEST_F(datafield_test, ctors)
 {
     //Using convience macro to generate fields:
     using datablock_t =
-        DataBlock<Dim, node, f0_type, f1_type, p_type, vel_type>;
+        DataBlock<Dim, node, f0_type, f1_type, p_type,p2_type, vel_type>;
 
     BlockDescriptor<int, Dim> blockD(coordinate_type(0), coordinate_type(8));
     datablock_t               db(blockD);
@@ -132,6 +133,12 @@ TEST_F(datafield_test, ctors)
     for (auto& node : p5) EXPECT_EQ(node, 2);
     auto p6 = db(vel, 0) / db(p);
     for (auto& node : p6) EXPECT_EQ(node, 2);
+
+    //Assignment of fields
+    db(p) = -1; db(vel,0)=100;
+    for (auto& node : db) EXPECT_EQ(node(p), -1);
+    db(p) = db(vel,0);
+    for (auto& node : db) EXPECT_EQ(node(p), 100);
 }
 
 } // namespace testing

@@ -103,12 +103,31 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
         perturbation_   = simulation_.dictionary()->template get_or<float_type>("perturbation", 0.0);
 
         bool use_fat_ring = simulation_.dictionary()->template get_or<bool>("fat_ring", false);
-        if (use_fat_ring)
-            vr_fct_=
-            [this](float_type x, float_type y, float_type z, int field_idx, float_type perturbation){return this->vortex_ring_vor_fat_ic(x,y,z,field_idx, perturbation);};
+        int ringType   = simulation_.dictionary()->template get_or<int>("ringType", -1);
+        if (ringType == -1)
+        {
+            if (use_fat_ring)
+                vr_fct_=
+                [this](float_type x, float_type y, float_type z, int field_idx, float_type perturbation){return this->vortex_ring_vor_fat_ic(x,y,z,field_idx, perturbation);};
+            else
+                vr_fct_=
+                [this](float_type x, float_type y, float_type z, int field_idx, float_type perturbation){return this->vortex_ring_vor_ic(x,y,z,field_idx, perturbation);};
+        }
         else
-            vr_fct_=
-            [this](float_type x, float_type y, float_type z, int field_idx, float_type perturbation){return this->vortex_ring_vor_ic(x,y,z,field_idx, perturbation);};
+        {
+            if (ringType==1)
+                vr_fct_=
+                [this](float_type x, float_type y, float_type z, int field_idx, float_type perturbation){return this->vortex_ring_vor_fat_ic(x,y,z,field_idx, perturbation);};
+            else if (ringType==2)
+                vr_fct_=
+                [this](float_type x, float_type y, float_type z, int field_idx, float_type perturbation){return this->vortex_ring_vor_ic(x,y,z,field_idx, perturbation);};
+            else if (ringType==3)
+                vr_fct_=
+                [this](float_type x, float_type y, float_type z, int field_idx, float_type perturbation){return this->vortex_ring_inclined(x,y,z,field_idx, perturbation);};
+            else
+                throw std::runtime_error(
+                        "RingType Undefined, please use from 1-3");
+        }
 
         ic_filename_ = simulation_.dictionary_->template get_or<std::string>(
             "hdf5_ic_name", "null");
@@ -443,7 +462,7 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
         if (single_ring_)
             return vr_fct_(x,y,z,field_idx,perturbation_);
         else
-            return -vr_fct_(x,y,z-d2v_/2,field_idx,perturbation_)+vr_fct_(x,y,z+d2v_/2,field_idx,perturbation_);
+            return -vr_fct_(x,y,z-d2v_/2,field_idx,perturbation_)+vr_fct_(x,y,-z-d2v_/2,field_idx,perturbation_);
     }
 
     float_type noise(float_type theta, float_type perturbation, int leftring)
@@ -471,6 +490,93 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
             tmp+=  std::cos(theta*i+rd_phase[leftring][i-1]*2*M_PI);
 
         return perturbation*tmp;
+    }
+
+    float_type vortex_ring_inclined(float_type x, float_type y, float_type z, int field_idx, float_type perturbation)
+    {
+        // Original Jie's code
+        //zc1=z(k)-zc+(1d0/sqrt(2d0)+0.1d0); yc1=y(j)-yc; xc1=x(i)-xc;
+
+        //zcp=zc1*cos(-pi/4)+xc1*sin(-pi/4);
+        //ycp=yc1
+        //xcp=-zc1*sin(-pi/4)+xc1*cos(-pi/4);
+        //cm=zcp/sqrt(zcp**2+ycp**2)
+        //sm=ycp/sqrt(zcp**2+ycp**2)
+
+        //if((zcp**2+ycp**2) .eq.0)
+        //{
+        //    cm=0
+        //    sm=0
+        //    endif
+        //}
+
+        //r1=sqrt((zcp-r0*cm)**2+(ycp-r0*sm)**2+(xcp)**2)
+        //omega1=-1.d0/rcut**2/pi*exp(-r1**2/rcut**2)
+        //oz1=omega1*(-sm)
+        //oy1=omega1*(cm)
+        //ox1=0d0
+
+        //oz(i,j,k)=cos(-pi/4)*oz1-sin(-pi/4)*ox1
+        //oy(i,j,k)=oy1
+        //ox(i,j,k)=sin(-pi/4)*oz1+cos(-pi/4)*ox1
+        // Original Jie's code
+
+
+        const float_type rcut = v_delta_;
+        const float_type r0 = 1.0;
+
+        //z += 1.0/sqrt(2.0)+0.1;
+        float_type zcp=z*cos(-M_PI/4)+x*sin(-M_PI/4);
+        float_type ycp=y;
+        float_type xcp=-z*sin(-M_PI/4)+x*cos(-M_PI/4);
+        float_type zcp2 = zcp*zcp;
+        float_type ycp2 = ycp*ycp;
+        float_type xcp2 = xcp*xcp;
+
+        float_type cm=zcp/sqrt(zcp2+ycp2);
+        float_type sm=ycp/sqrt(zcp2+ycp2);
+        if((zcp2+ycp2) == 0)
+        {
+            cm=0;
+            sm=0;
+        }
+
+        float_type r1=sqrt((zcp-r0*cm)*(zcp-r0*cm)+(ycp-r0*sm)*(ycp-r0*sm)+xcp2);
+        float_type omega1=-1.0/(rcut*rcut)/M_PI*exp(-r1*r1/(rcut*rcut));
+
+        float_type oz1=omega1*(-sm);
+        float_type oy1=omega1*(cm);
+        float_type ox1=0.0;
+
+        if (field_idx == 0)
+            return 0.0;
+        else if (field_idx ==1)
+            return omega1*(cm);
+        else
+            return omega1*(-sm);
+        //oz(i,j,k)=cos(-pi/4)*oz1-sin(-pi/4)*ox1
+        //oy(i,j,k)=oy1
+        //ox(i,j,k)=sin(-pi/4)*oz1+cos(-pi/4)*ox1
+
+
+        // float_type delta_2 = v_delta_ * v_delta_;
+
+        // float_type r2 = x * x + y * y;
+        // float_type r = sqrt(r2);
+        // float_type theta = std::atan2(y, x);
+        // int leftring=(z>0)? 1:0;
+        // float_type s2 = z * z + (r - R_*(1 + noise(theta, perturbation, leftring))) * (r - R_*(1 + noise(theta, perturbation, leftring)));
+
+        // float_type w_theta = 1.0 / M_PI / delta_2 * std::exp(-s2 / delta_2);
+
+        // //float_type rd = (static_cast <float_type> (rand()) / static_cast <float_type> (RAND_MAX));
+        // //rd *= perturbation;
+
+        // if (field_idx == 0) return -w_theta * std::sin(theta);
+        // else if (field_idx == 1)
+        //     return w_theta * std::cos(theta);
+        // else
+        //     return 0;
     }
 
     float_type vortex_ring_vor_ic(float_type x, float_type y, float_type z, int field_idx, float_type perturbation)

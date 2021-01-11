@@ -153,7 +153,7 @@ public:
   std::string tree_info_file_="tree_info";
   std::string restart_field_file_="restart_field.hdf5";
 
-  int intrp_order_=3;
+  int intrp_order_=5;
 
 };
 

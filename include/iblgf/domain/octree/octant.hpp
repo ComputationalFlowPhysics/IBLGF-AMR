@@ -67,7 +67,16 @@ class Octant
         FlagCorrection,
         FlagOldCorrection, // this is for spatial adaptivity, when old boundary becomes the new interior, the vorticity still needs to be zeroed there
         FlagLeafBoundary,
+        FlagIB,
         FlagLast
+    };
+
+    enum MASK_TYPE
+    {
+        STREAM,
+        AMR2AMR,
+        IB2IB,
+        IB2AMR
     };
 
     enum MASK_LIST
@@ -77,7 +86,24 @@ class Octant
         Mask_Last
     };
 
-    static const int fmm_max_idx_ = 30;
+    static int fmm_mask_idx_gen(int type, int refinement_level = 0, int non_leaf_as_source=0)
+    {
+        if (type==MASK_TYPE::STREAM) // base level stream function
+            return 0;
+        else if (type==MASK_TYPE::IB2IB) //
+            return 1;
+        else if (type==MASK_TYPE::IB2AMR) //
+            return refinement_level+2;
+        else if (type==MASK_TYPE::AMR2AMR) // number from 15 - 30
+            return refinement_level * 2 + non_leaf_as_source + 15;
+        else
+            throw std::runtime_error("Wrong mask Idx");
+
+        return -1;
+
+    }
+
+    static const int fmm_max_idx_ = 40;
 
     using fmm_mask_type = std::array<std::array<bool, Mask_Last>, fmm_max_idx_>;
 
@@ -165,8 +191,12 @@ class Octant
     bool is_old_correction()const noexcept{return flags_[FlagOldCorrection];}
     void flag_old_correction(const bool flag)noexcept {flags_[FlagOldCorrection] = flag;}
 
+    bool& is_ib() noexcept{return flags_[FlagIB];}
+    const bool& is_ib() const noexcept{return flags_[FlagIB];}
+
     bool is_correction()const noexcept{return flags_[FlagCorrection];}
     void flag_correction(const bool flag)noexcept {flags_[FlagCorrection] = flag;}
+
     bool physical() const noexcept { return flag_physical_; }
     void physical(bool flag) noexcept { flag_physical_ = flag; }
 

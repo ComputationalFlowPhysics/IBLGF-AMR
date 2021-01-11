@@ -78,11 +78,84 @@ public: //memeber functions
     const bool& subtract_non_leaf()const noexcept{return subtract_non_leaf_;}
     bool& subtract_non_leaf()noexcept{return subtract_non_leaf_;}
 
+
+    // IB:
+    void update_ib_rank_and_infl()
+    {
+
+        // now only clients know the ib ranks and infl list
+        // the pootential probelm is that if the ib smearing radius is bigger
+        // than the block size it might have a problem
+
+        if(server())
+        {
+            for (auto it  = domain_->begin();
+                    it != domain_->end(); ++it)
+                it->is_ib()=false;
+        }
+
+        int l_max = domain_->tree()->depth()-1;
+
+        auto ib = domain_->get_ib_ptr();
+        for (int i=0; i<ib->ib_tot(); ++i)
+        {
+            ib->rank(i)=-1;
+            ib->get_ib_infl(i).clear();
+
+            for (auto it  = domain_->begin(l_max);
+                    it != domain_->end(l_max); ++it)
+            {
+                if (!it->has_data() || !it->is_leaf())
+                    continue;
+
+                if (ib->ib_block_overlap(domain_->nLevels()-1, i, it->data().descriptor(), true ))
+                {
+                    if(server())
+                        it->is_ib()=true;
+
+                    ib->get_ib_infl(i).emplace_back(it.ptr());
+
+                    // check if it is strictly inside that black (flag = false)
+                    if (ib->ib_block_overlap(domain_->nLevels()-1, i, it->data().descriptor(), false ))
+                        ib->rank(i)=it->rank();
+
+                }
+            }
+        }
+
+        if(server())
+        {
+            for (int i=0; i<ib->ib_tot(); ++i)
+            {
+                if (ib->rank(i)==-1)
+                {
+                    auto coor = ib->get_ib_coordinate(i);
+                    std::cout<<"ib point ["<< coor[0]<<" "<<coor[1]<<" "<<coor[2]
+                        <<"] can't be put in the finest level, try increase domain size "
+                        <<std::endl;
+                    throw std::runtime_error("IB error");
+                }
+            }
+
+
+        std::cout<< " ib ranks = " << std::endl;
+        for (int i=0; i<ib->ib_tot(); ++i)
+            std::cout<< " ib id, rank, size of infl = "<<i<<" "<<ib->rank(i)<<" "<< ib->get_ib_infl(i).size()<< std::endl;
+        }
+
+    }
+
+
+
     void sync_decomposition()
     {
         if(server())
         {
             server()->rank_query();
+
+            // update ib infl list
+            update_ib_rank_and_infl();
+
             server()->flag_query();
             server()->mask_query();
 
@@ -94,6 +167,9 @@ public: //memeber functions
             client()->query_octants();
             client()->disconnect();
 
+            // update ib infl list
+            update_ib_rank_and_infl();
+
             client()->query_flags();
             client()->disconnect();
 
@@ -104,6 +180,7 @@ public: //memeber functions
             client()->disconnect();
 
             client()->halo_reset();
+
         }
     }
 
@@ -114,9 +191,10 @@ public: //memeber functions
         if(server())
         {
             std::cout<< "Initialization of masks start"<<std::endl;
-            FmmMaskBuilder::fmm_lgf_mask_build(domain_, subtract_non_leaf_);
-            std::cout<< "Initialization of masks done"<<std::endl;
-            FmmMaskBuilder::fmm_vortex_streamfun_mask(domain_);
+            FmmMaskBuilder::fmm_mask_build(domain_, subtract_non_leaf_);
+
+            //std::cout<< "Initialization of masks done"<<std::endl;
+            //FmmMaskBuilder::fmm_vortex_streamfun_mask(domain_);
             //FmmMaskBuilder::fmm_if_load_build(domain_);
             // it's together with fmmMaskBuild for now
             //LoadCalculator::calculate();
@@ -424,8 +502,8 @@ public: //memeber functions
             domain_->tree()->construct_lists();
 
             fmm_mask_builder_t::fmm_clean_load(domain_);
-            fmm_mask_builder_t::fmm_lgf_mask_build(domain_, subtract_non_leaf_);
-            fmm_mask_builder_t::fmm_vortex_streamfun_mask(domain_);
+            fmm_mask_builder_t::fmm_mask_build(domain_, subtract_non_leaf_);
+            //fmm_mask_builder_t::fmm_vortex_streamfun_mask(domain_);
 
             // --------------------------------------------------------------
             // 8. sync ghosts

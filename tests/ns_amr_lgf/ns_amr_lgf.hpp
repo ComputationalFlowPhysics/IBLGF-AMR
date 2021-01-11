@@ -124,6 +124,12 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
             else if (ringType==3)
                 vr_fct_=
                 [this](float_type x, float_type y, float_type z, int field_idx, float_type perturbation){return this->vortex_ring_inclined(x,y,z,field_idx, perturbation);};
+            else if (ringType==0)
+            {
+                std::cout<< "using trivial initial condition" << std::endl;
+                vr_fct_=
+                [this](float_type x, float_type y, float_type z, int field_idx, float_type perturbation){return this->trivial(x,y,z,field_idx, perturbation);};
+            }
             else
                 throw std::runtime_error(
                         "RingType Undefined, please use from 1-3");
@@ -164,10 +170,11 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
             [this]( std::vector<float_type> source_max, auto& octs, std::vector<int>& level_change )
                 {return this->template adapt_level_change(source_max, octs, level_change);};
 
-        domain_->register_refinement_condition() = [this](auto octant,
+        if (ringType!=0)
+            domain_->register_refinement_condition() = [this](auto octant,
                                                        int diff_level) {
-            return this->refinement(octant, diff_level);
-        };
+                return this->refinement(octant, diff_level);
+            };
 
         if (!use_restart())
         {
@@ -429,6 +436,11 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
             }
             client->template buffer_exchange<u_type>(l);
         }
+    }
+
+    float_type trivial(float_type x, float_type y, float_type z, int field_idx, float_type perturbation)
+    {
+        return 0.0;
     }
 
 

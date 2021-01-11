@@ -22,6 +22,8 @@
 #include <iblgf/dictionary/dictionary.hpp>
 #include <iblgf/domain/decomposition/decomposition.hpp>
 
+#include <iblgf/domain/ib.hpp>
+
 namespace iblgf
 {
 namespace domain
@@ -46,6 +48,10 @@ class Domain
     using tree_t = octree::Tree<Dim, datablock_t>;
     using key_t = typename tree_t::key_type;
     using octant_t = typename tree_t::octant_type;
+
+    // ib related types
+    using ib_t = ib::IB<Dim, datablock_t>;
+    using ib_points_t = typename ib_t::ib_points_type;
 
     // iterator types
     using dfs_iterator = typename tree_t::dfs_iterator;
@@ -122,6 +128,32 @@ class Domain
 
         //Construct tree of base mesh
         construct_tree(bases, bd_extent_, block_extent_);
+
+        //Construct IB surface
+        ib_points_t points = ib_read();
+        construct_ib(points);
+    }
+
+    ib_points_t ib_read()
+    {
+        ib_points_t points(Dim);
+
+        int nx = 16;
+        int nyz = nx;
+        float_type L = 1.0;
+        for (int ix = 0; ix<nx; ++ix)
+            for (int iyz = 0; iyz<nyz; ++iyz)
+            {
+                points[0].emplace_back( (ix * L)/nx -L/2.0);
+                points[1].emplace_back( (iyz* L)/nyz-L/2.0);
+                points[2].emplace_back( (iyz* L)/nyz-L/2.0);
+            }
+
+        //if (decomposition_.is_server())
+        //    for (auto p: points[0])
+        //        std::cout<<p<<" "<< std::endl;
+
+        return points;
     }
 
     template<class DictionaryPtr>
@@ -199,6 +231,27 @@ class Domain
                            blockExtent;
                 };
         }
+    }
+
+    void construct_ib(ib_points_t points)
+    {
+        // ib points only live on the finest level
+
+        //const float_type dx_base = this->dx_base() / std::pow(2, this->nLevels()-1);
+        //auto shift = this->bounding_box().base() * std::pow(2, this->nLevels()-1);
+        //for (int d = 0; d<Dim; d++)
+        //{
+        //    for (auto& p: points[d])
+        //    {
+        //        p/=dx_fine;
+        //        //p=p-shift[d];
+        //    }
+        //   // check
+        //   // for (auto& p: points[d])
+        //   //     std::cout<<p<<std::endl;
+        //}
+
+        ib_ = std::make_shared<ib_t>(points, this->dx_base());
     }
 
     template<class DictionaryPtr>
@@ -638,9 +691,11 @@ class Domain
             {
                 for (auto it = begin_df(); it != end_df(); ++it)
                 {
-                    if (!ref_cond_) return;
-                    if (ref_cond_(it.ptr(), nRef - l) &&
-                        it->refinement_level() == l)
+                    //if (!ref_cond_) return;
+                    if  ( it->refinement_level() == l &&
+                            (ref_cond_(it.ptr(), nRef - l) ||
+                             ib_->ib_block_overlap(nRef, it->data().descriptor() ))
+                        )
                     {
                         if (this->tree()->try_2to1(
                                 it->key(), this->key_bounding_box(), checklist))
@@ -671,6 +726,10 @@ class Domain
             mark_leaf_boundary();
         }
     }
+
+    // IB related:
+    auto get_ib_ptr(){return ib_;};
+
 
     template<class LoadCalculator, class FmmMaskBuilder>
     void distribute()
@@ -1008,6 +1067,7 @@ class Domain
 
   private:
     std::shared_ptr<tree_t> t_;
+    std::shared_ptr<ib_t> ib_;
     coordinate_type         block_extent_;
     coordinate_type         bd_base_, bd_extent_;
 

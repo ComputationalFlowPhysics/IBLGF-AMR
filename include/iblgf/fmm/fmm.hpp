@@ -47,13 +47,104 @@ template<class Domain>
 struct FmmMaskBuilder
 {
     using octant_t = typename Domain::octant_t;
+    using MASK_TYPE = typename octant_t::MASK_TYPE;
     using MASK_LIST = typename octant_t::MASK_LIST;
 
-  public:
+public:
+    static void fmm_mask_build(Domain* domain_, bool subtract_non_leaf_)
+    {
+        fmm_IB2IB_mask(domain_);
+        fmm_IB2AMR_mask(domain_);
+        fmm_vortex_streamfun_mask(domain_);
+        fmm_lgf_mask_build(domain_, subtract_non_leaf_);
+    }
+
+    static void fmm_IB2IB_mask(Domain* domain_)
+    {
+
+        int fmm_mask_idx = octant_t::fmm_mask_idx_gen(MASK_TYPE::IB2IB);
+
+        // clean
+        for (auto it = domain_->begin();
+             it != domain_->end(); ++it)
+        {
+            it->fmm_mask(fmm_mask_idx, MASK_LIST::Mask_FMM_Source, false);
+            it->fmm_mask(fmm_mask_idx, MASK_LIST::Mask_FMM_Target, false);
+        }
+
+        int l = domain_->tree()->depth()-1;
+
+        for (auto it = domain_->begin(l);
+             it != domain_->end(l); ++it)
+        {
+            if (it->is_ib())
+            {
+                it->fmm_mask(fmm_mask_idx, MASK_LIST::Mask_FMM_Source, true);
+                it->fmm_mask(fmm_mask_idx, MASK_LIST::Mask_FMM_Target, true);
+            }
+        }
+
+        fmm_upward_pass_masks(domain_, l, MASK_LIST::Mask_FMM_Source,
+                MASK_LIST::Mask_FMM_Target, fmm_mask_idx);
+
+    }
+
+    static void fmm_IB2AMR_mask(Domain* domain_)
+    {
+
+        // find all parents that are
+        for (int l = domain_->tree()->depth()-1;
+             l >= domain_->tree()->base_level() ; --l)
+        {
+            for (auto it = domain_->begin(l); it != domain_->end(l);
+                 ++it)
+            {
+                for (int c = 0; c < it->num_children(); ++c)
+                    if (it->child(c) && it->child(c)->has_data() && it->child(c)->is_ib())
+                        it->is_ib()=true;
+            }
+
+        }
+
+        for (int l = domain_->tree()->depth()-1;
+             l >= domain_->tree()->base_level() ; --l)
+        {
+
+            int fmm_mask_idx = octant_t::fmm_mask_idx_gen(MASK_TYPE::IB2AMR, l);
+
+            // clean
+            for (auto it = domain_->begin();
+                    it != domain_->end(); ++it)
+            {
+                it->fmm_mask(fmm_mask_idx, MASK_LIST::Mask_FMM_Source, false);
+                it->fmm_mask(fmm_mask_idx, MASK_LIST::Mask_FMM_Target, false);
+            }
+
+            for (auto it = domain_->begin(l);
+                    it != domain_->end(l); ++it)
+            {
+                it->fmm_mask(fmm_mask_idx, MASK_LIST::Mask_FMM_Target, true);
+
+                if (it->is_ib())
+                {
+                    it->fmm_mask(fmm_mask_idx, MASK_LIST::Mask_FMM_Source, true);
+                }
+
+            }
+
+            fmm_upward_pass_masks(domain_, l, MASK_LIST::Mask_FMM_Source,
+                    MASK_LIST::Mask_FMM_Target, fmm_mask_idx);
+
+        }
+
+    }
+
+
     static void fmm_vortex_streamfun_mask(Domain* domain_)
     {
         int base_level = domain_->tree()->base_level();
-        int fmm_mask_idx = 0;
+        int fmm_mask_idx = octant_t::fmm_mask_idx_gen(MASK_TYPE::STREAM);
+        //int fmm_mask_idx = 0;
 
         for (auto it = domain_->begin(base_level);
              it != domain_->end(base_level); ++it)
@@ -104,7 +195,8 @@ struct FmmMaskBuilder
         bool non_leaf_as_source, bool subtract_non_leaf)
     {
         int refinement_level = base_level - domain_->tree()->base_level();
-        int fmm_mask_idx = refinement_level * 2 + non_leaf_as_source + 1;
+        //int fmm_mask_idx = refinement_level * 2 + non_leaf_as_source + 1;
+        int fmm_mask_idx = octant_t::fmm_mask_idx_gen(MASK_TYPE::AMR2AMR, refinement_level, non_leaf_as_source);
 
         fmm_dry_init_base_level_masks(domain_, base_level, non_leaf_as_source,
             fmm_mask_idx, subtract_non_leaf);
@@ -311,6 +403,7 @@ class Fmm
     using domain_t = typename Setup::domain_t;
     using octant_t = typename domain_t::octant_t;
     using MASK_LIST = typename octant_t::MASK_LIST;
+    using MASK_TYPE = typename octant_t::MASK_TYPE;
 
     //Fields:
     using fmm_s_type = typename Setup::fmm_s_type;
@@ -339,9 +432,11 @@ class Fmm
         auto dx_level = dx_base / std::pow(2, refinement_level);
 
         base_level_ = level;
-        if (base_level_only) fmm_mask_idx_ = 0;
+        if (base_level_only)
+            fmm_mask_idx_ = octant_t::fmm_mask_idx_gen(MASK_TYPE::STREAM);
         else
-            fmm_mask_idx_ = refinement_level * 2 + non_leaf_as_source + 1;
+            fmm_mask_idx_ = octant_t::fmm_mask_idx_gen(MASK_TYPE::AMR2AMR, refinement_level, non_leaf_as_source);
+            //fmm_mask_idx_ = refinement_level * 2 + non_leaf_as_source + 1;
 
         if (_kernel->neighbor_only())
         {

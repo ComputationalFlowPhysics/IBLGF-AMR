@@ -74,6 +74,8 @@ class LinSysSolver
         if (domain_->is_server())
             return;
 
+        auto ddf = ib_->ddf();
+
         constexpr auto u = U::tag();
         for (int i=0; i<ib_->ib_tot(); ++i)
         {
@@ -83,10 +85,15 @@ class LinSysSolver
             for (auto it: ib_->get_ib_infl(i))
             {
                 auto& block = it->data();
-                for (auto& n : block)
+                for (auto& node : block)
                 {
-                    const auto& n_coord = n.level_coordinate();
-                    //std::cout<<n_coord << std::endl;
+                    auto n_coord = node.level_coordinate();
+                    auto dis = n_coord - ib_coord;
+
+                    node(u, 0) = ib_->get_force(i, 0) * ddf(dis+(0, 0.5, 0.5));
+                    node(u, 1) = ib_->get_force(i, 1) * ddf(dis+(0.5, 0, 0.5));
+                    node(u, 2) = ib_->get_force(i, 2) * ddf(dis+(0.5, 0.5, 0));
+
                 }
             }
         }

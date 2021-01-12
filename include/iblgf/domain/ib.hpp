@@ -39,7 +39,7 @@ public: // member types
     using octant_t = typename tree_t::octant_type;
     using ib_infl_type = std::vector<std::vector<octant_t*>>;
     using ib_rank_type = std::vector<int>;
-    using delta_func_type = std::function<float_type(float_type x)>;
+    using ddf_func_type = std::function<float_type(real_coordinate_type x)>;
 
 public: // friends
 
@@ -58,9 +58,16 @@ public: // Ctors
     ib_rank_(N_ib_),
     dx_base_(dx_base)
     {
-        forcing_.resize(N_ib_, (0,0,0));
+        forcing_.resize(N_ib_, (1,0,0));
+
         ddf_radius_ = 2;
-        delta_func_ = [this](float_type x){ return this->yang3(x);};
+
+        // will add more, default is yang3
+        ddf1D_ = [this](float_type x) { return yang3(x); };
+
+        // ddf 3D
+        ddf_func_ = [this](real_coordinate_type x)
+            { return ddf1D_(x[0]) * ddf1D_(x[0]) * ddf1D_(x[0]); };
     }
 
 public:
@@ -145,10 +152,8 @@ public: // functions
 
 public: // ddfs
 
-    const delta_func_type& ddf()
-    {
-        return delta_func_;
-    }
+    ddf_func_type& ddf() { return ddf_func_; }
+    const ddf_func_type& ddf() const { return ddf_func_; }
 
     float_type yang3(float_type x)
     {
@@ -184,8 +189,11 @@ private:
     ib_infl_type ib_infl_;
     ib_rank_type ib_rank_;
 
+
+    // discrete delta function
     float_type ddf_radius_;
-    delta_func_type delta_func_ ;
+    std::function<float_type(float_type x)> ddf1D_;
+    ddf_func_type ddf_func_ ;
 };
 
 

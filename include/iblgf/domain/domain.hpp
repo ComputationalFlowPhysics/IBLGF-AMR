@@ -138,9 +138,9 @@ class Domain
     {
         ib_points_t points(Dim);
 
-        int nx = 16;
+        int nx = 2;
         int nyz = nx;
-        float_type L = 1.0;
+        float_type L = 0.75;
         for (int ix = 0; ix<nx; ++ix)
             for (int iyz = 0; iyz<nyz; ++iyz)
             {
@@ -244,7 +244,6 @@ class Domain
         //    for (auto& p: points[d])
         //    {
         //        p/=dx_fine;
-        //        //p=p-shift[d];
         //    }
         //   // check
         //   // for (auto& p: points[d])

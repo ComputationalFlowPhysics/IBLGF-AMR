@@ -167,9 +167,6 @@ public: //memeber functions
             client()->query_octants();
             client()->disconnect();
 
-            // update ib infl list
-            update_ib_rank_and_infl();
-
             client()->query_flags();
             client()->disconnect();
 
@@ -180,6 +177,9 @@ public: //memeber functions
             client()->disconnect();
 
             client()->halo_reset();
+
+            // update ib infl list
+            update_ib_rank_and_infl();
 
         }
     }
@@ -292,7 +292,7 @@ public: //memeber functions
 
                 if( l_change!=0 )
                 {
-                    if (l_change<0)
+                    if (l_change<0 && !it->is_ib())
                     {
                         it->aim_deletion(true);
                     }

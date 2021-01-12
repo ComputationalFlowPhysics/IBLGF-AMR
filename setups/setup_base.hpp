@@ -23,6 +23,7 @@
 #include <iblgf/utilities/tuple_utilities.hpp>
 #include <iblgf/domain/dataFields/datafield.hpp>
 #include <iblgf/solver/poisson/poisson.hpp>
+#include <iblgf/solver/linsys/linsys.hpp>
 #include <iblgf/solver/time_integration/ifherk.hpp>
 #include <iblgf/IO/parallel_ostream.hpp>
 
@@ -101,6 +102,7 @@ class SetupBase
     using fmm_mask_builder_t = FmmMaskBuilder<domain_t>;
     using poisson_solver_t = solver::PoissonSolver<SetupBase>;
     using time_integration_t = solver::Ifherk<SetupBase>;
+    using linsys_solver_t = solver::LinSysSolver<SetupBase>;
 
   public: //Ctors
     SetupBase(Dictionary* _d)

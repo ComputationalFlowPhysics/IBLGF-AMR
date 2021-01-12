@@ -30,12 +30,13 @@ class IB
 public: // member types
     static constexpr int dimension = Dim;
     using datablock_t = DataType;
-    using ib_points_type = std::vector<std::vector<float_type>>;
+    using ib_points_type = std::vector< std::vector< float_type > >;
     using tree_t = octree::Tree<Dim, datablock_t>;
     using octant_t = typename tree_t::octant_type;
     using coordinate_type = typename tree_t::coordinate_type;
     using ib_infl_type = std::vector<std::vector<octant_t*>>;
     using ib_rank_type = std::vector<int>;
+    using delta_func_type = std::function<float_type(float_type x)>;
 
 public: // friends
 
@@ -54,18 +55,29 @@ public: // Ctors
     ib_rank_(N_ib_),
     dx_base_(dx_base)
     {
+        forcing_.resize(Dim, {});
+        for (int d=0; d<Dim; ++d)
+            forcing_[d].resize(N_ib_, 0);
+
         ddf_radius_ = 2;
-        delta_func = [this](float_type x){ return this->yang3(x);};
+        delta_func_ = [this](float_type x){ return this->yang3(x);};
     }
 
 public:
     ib_points_type& get_ib(){ return ib_points_;}
     const ib_points_type& get_ib() const { return ib_points_;}
 
+    ib_points_type& get_force(){ return forcing_;}
+    const ib_points_type& get_force() const { return forcing_;}
+
+    ib_points_type& get_force(int i, int idx){ return forcing_[idx][i];}
+    const ib_points_type& get_force(int i, int idx) const { return forcing_[idx][i];}
+
     std::vector<float_type> get_ib_coordinate(int i)
-    {
-        return { ib_points_[0][i], ib_points_[1][i], ib_points_[2][i] };
-    }
+    { return { ib_points_[0][i], ib_points_[1][i], ib_points_[2][i] }; }
+
+    float_type get_ib_coordinate(int i, int idx)
+    { return ib_points_[idx][i]; }
 
     ib_infl_type& get_ib_infl(){ return ib_infl_;}
     const ib_infl_type& get_ib_infl() const { return ib_infl_;}
@@ -103,7 +115,7 @@ public: // functions
         // the influence region of the ib point
 
         b_dscrptr.extent() += 1;
-        auto coor = this->get_ib_coordinate(idx);
+        //auto coor = this->get_ib_coordinate(idx);
 
         //std::cout<<"--------------------------"<<std::endl << b_dscrptr << std::endl;
         //std::cout<<"ib point ["<< coor[0]<<" "<<coor[1]<<" "<<coor[2] <<"]" <<std::endl;
@@ -112,23 +124,32 @@ public: // functions
 
         if (add_radius)
         {
-            b_dscrptr.extent() += ddf_radius_*2+safety_dis_*2;
-            b_dscrptr.base()   -= ddf_radius_+safety_dis_;
+            b_dscrptr.extent() += ddf_radius_*2 + safety_dis_*2;
+            b_dscrptr.base()   -= ddf_radius_ + safety_dis_;
         }
 
         float_type factor = std::pow(2, nRef)/dx_base_;
         //std::cout<<"block_descriptor" << b_dscrptr << std::endl;
         //std::cout<<"factor" << factor << std::endl;
+
         for (std::size_t d = 0; d < Dim; ++d)
         {
-            if (b_dscrptr.max()[d]+1<ib_points_[d][idx]* factor || b_dscrptr.min()[d]>=ib_points_[d][idx] * factor)
+            if (b_dscrptr.max()[d]<ib_points_[d][idx]* factor
+                    || b_dscrptr.min()[d]>=ib_points_[d][idx] * factor)
                 return false;
         }
         return true;
+
     }
 
 
 public: // ddfs
+
+    const delta_func_type& ddf()
+    {
+        return delta_func_;
+    }
+
     float_type yang3(float_type x)
     {
         float_type r = abs(x);
@@ -150,18 +171,21 @@ public: // ddfs
 private:
 
     int N_ib_;
-    int ib_level_;
+    //int ib_level_;
     int safety_dis_=0;
     float_type dx_base_;
 
-    std::shared_ptr<tree_t> t_;
+    //std::shared_ptr<tree_t> t_;
 
     ib_points_type ib_points_;
+    ib_points_type forcing_;
+
+
     ib_infl_type ib_infl_;
     ib_rank_type ib_rank_;
 
     float_type ddf_radius_;
-    std::function<float_type(float_type x)> delta_func ;
+    delta_func_type delta_func_ ;
 };
 
 

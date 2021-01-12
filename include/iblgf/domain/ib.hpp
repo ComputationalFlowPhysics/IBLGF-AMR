@@ -59,10 +59,11 @@ class IB
         ddf_radius_ = 2;
 
         // will add more, default is yang3
-        delta_func_1d_ = [this](float_type x) { return yang3(x); };
+        auto delta_func_1d_ = [this](float_type x) { return this->yang3(x); };
 
         // ddf 3D
-        delta_func_ = [this](real_coordinate_type x)
+        delta_func_ = [this, delta_func_1d_](real_coordinate_type x)
+            //{ return yang3(x[0]) * yang3(x[1]) * yang3(x[2]); };
             { return delta_func_1d_(x[0]) * delta_func_1d_(x[1]) * delta_func_1d_(x[2]); };
     }
 
@@ -197,7 +198,6 @@ class IB
     std::vector<int> ib_rank_;
 
     float_type      ddf_radius_ = 1;
-    std::function<float_type(float_type x)> delta_func_1d_;
     delta_func_type delta_func_;
 };
 

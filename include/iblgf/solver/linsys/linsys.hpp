@@ -62,8 +62,8 @@ class LinSysSolver
 
     float_type test()
     {
-        //this->smearing<u_type>();
-        //this->projection<u_type>();
+        this->smearing<u_type>();
+        this->projection<u_type>();
         return 0;
     }
 
@@ -74,7 +74,7 @@ class LinSysSolver
         if (domain_->is_server())
             return;
 
-        auto ddf = ib_->delta_func();
+        auto& ddf = ib_->delta_func();
 
         constexpr auto u = U::tag();
 
@@ -96,6 +96,7 @@ class LinSysSolver
                     auto dist = n_coord - ib_coord;
 
                     //FIXME: Make it dimension agnostic
+                    real_coordinate_type off(0.5);
                     node(u, 0) = ib_->force(i)[0] * ddf(dist+real_coordinate_type({0, 0.5, 0.5}));
                     node(u, 1) = ib_->force(i)[1] * ddf(dist+real_coordinate_type({0.5, 0, 0.5}));
                     node(u, 2) = ib_->force(i)[2] * ddf(dist+real_coordinate_type({0.5, 0.5, 0}));
@@ -115,7 +116,7 @@ class LinSysSolver
         if (domain_->is_server())
             return;
 
-        auto ddf = ib_->delta_func();
+        auto& ddf = ib_->delta_func();
 
         // clean f
         for (std::size_t i=0; i<ib_->size(); ++i)
@@ -139,9 +140,9 @@ class LinSysSolver
                     auto dist = n_coord - ib_coord;
 
                     //FIXME: Make it dimension agnostic
-                    ib_->force(i)[0] += node(u, 0) * ddf(dist+real_coordinate_type({0, 0.5, 0.5}));
-                    ib_->force(i)[1] += node(u, 1) * ddf(dist+real_coordinate_type({0.5, 0, 0.5}));
-                    ib_->force(i)[2] += node(u, 2) * ddf(dist+real_coordinate_type({0.5, 0.5, 0}));
+                    ib_->force(i)[0] += node(u, 0)* ddf(dist+real_coordinate_type({0, 0.5, 0.5}));
+                    ib_->force(i)[1] += node(u, 1)* ddf(dist+real_coordinate_type({0.5, 0, 0.5}));
+                    ib_->force(i)[2] += node(u, 2)* ddf(dist+real_coordinate_type({0.5, 0.5, 0}));
                 }
             }
         }

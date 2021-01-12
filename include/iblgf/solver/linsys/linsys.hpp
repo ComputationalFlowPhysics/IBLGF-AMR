@@ -63,7 +63,8 @@ class LinSysSolver
 
     float_type test()
     {
-        this-> smearing<u_type>();
+        this->smearing<u_type>();
+        this->projection<u_type>();
         return 0;
     }
 
@@ -77,6 +78,8 @@ class LinSysSolver
         auto ddf = ib_->ddf();
 
         constexpr auto u = U::tag();
+
+        float_type sum=0;
         for (int i=0; i<ib_->ib_tot(); ++i)
         {
             auto ib_coord = ib_->get_ib_coordinate(i);
@@ -84,6 +87,9 @@ class LinSysSolver
             std::cout<<ib_->get_ib_infl(i).size() << std::endl;
             for (auto it: ib_->get_ib_infl(i))
             {
+                if (!it->locally_owned())
+                    continue;
+
                 auto& block = it->data();
                 for (auto& node : block)
                 {
@@ -94,11 +100,53 @@ class LinSysSolver
                     node(u, 1) = ib_->get_force(i, 1) * ddf(dis+(0.5, 0, 0.5));
                     node(u, 2) = ib_->get_force(i, 2) * ddf(dis+(0.5, 0.5, 0));
 
+                    sum+=node(u, 0);
+
                 }
             }
         }
+        std::cout<<" total sum of u0 is "<<sum << std::endl;
 
     }
+
+    template<class U,
+        typename std::enable_if<(U::mesh_type() == MeshObject::face), void>::type* = nullptr>
+    void projection()
+    {
+        if (domain_->is_server())
+            return;
+
+        auto ddf = ib_->ddf();
+
+        // clean f
+        for (int i=0; i<ib_->ib_tot(); ++i)
+            ib_->get_force(i)=0.0;
+
+        constexpr auto u = U::tag();
+        for (int i=0; i<ib_->ib_tot(); ++i)
+        {
+            auto ib_coord = ib_->get_ib_coordinate(i);
+
+            std::cout<<ib_->get_ib_infl(i).size() << std::endl;
+            for (auto it: ib_->get_ib_infl(i))
+            {
+                if (!it->locally_owned())
+                    continue;
+
+                auto& block = it->data();
+                for (auto& node : block)
+                {
+                    auto n_coord = node.level_coordinate();
+                    auto dis = n_coord - ib_coord;
+
+                    ib_->get_force(i, 0) += node(u, 0) * ddf(dis+(0, 0.5, 0.5));
+                    ib_->get_force(i, 1) += node(u, 1) * ddf(dis+(0.5, 0, 0.5));
+                    ib_->get_force(i, 2) += node(u, 2) * ddf(dis+(0.5, 0.5, 0));
+                }
+            }
+        }
+    }
+
 
 
 

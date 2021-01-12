@@ -109,12 +109,16 @@ struct IBSOLVE : public SetupBase<IBSOLVE, parameters>
         if(domain_->is_server()) return ;
 
         for (auto it = domain_->begin(); it != domain_->end(); ++it)
+        {
+            if (!it->locally_owned())
+                continue;
             for (auto& node : it->data())
             {
                 node(u,0) = 0;
                 node(u,1) = 0;
                 node(u,2) = 0;
             }
+        }
     }
 
     /** @brief  Initialization of the domain blocks. This is registered in the

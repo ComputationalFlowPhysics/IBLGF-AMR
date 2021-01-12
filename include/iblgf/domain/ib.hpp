@@ -58,7 +58,9 @@ public: // Ctors
     ib_rank_(N_ib_),
     dx_base_(dx_base)
     {
-        forcing_.resize(N_ib_, (1,0,0));
+        forcing_.resize(N_ib_, (0,0,0));
+        for (auto& f: forcing_)
+            f[0]=1;
 
         ddf_radius_ = 2;
 
@@ -67,7 +69,7 @@ public: // Ctors
 
         // ddf 3D
         ddf_func_ = [this](real_coordinate_type x)
-            { return ddf1D_(x[0]) * ddf1D_(x[0]) * ddf1D_(x[0]); };
+            { return ddf1D_(x[0]) * ddf1D_(x[1]) * ddf1D_(x[2]); };
     }
 
 public:
@@ -76,6 +78,9 @@ public:
 
     ib_points_type& get_force(){ return forcing_;}
     const ib_points_type& get_force() const { return forcing_;}
+
+    real_coordinate_type& get_force(int i){ return forcing_[i];}
+    const real_coordinate_type& get_force(int i) const { return forcing_[i];}
 
     float_type& get_force(int i, int idx){ return forcing_[i][idx];}
     const float_type& get_force(int i, int idx) const { return forcing_[i][idx];}
@@ -157,17 +162,17 @@ public: // ddfs
 
     float_type yang3(float_type x)
     {
-        float_type r = abs(x);
+        float_type r = std::fabs(x);
         float_type ddf = 0;
         if (r>ddf_radius_)
             return 0;
 
         float_type r2 = r*r;
         if (r<=1.0)
-            ddf = 17/48+sqrt(3)*M_PI/108+r/4-r2/4+(1-2*r)/16.*sqrt(-12*r2+12*r+1)
-                        -sqrt(3)/12*std::asin(sqrt(3)/2*(2*r-1));
+            ddf = 17.0/48.0+sqrt(3)*M_PI/108.0+r/4.0-r2/4.0+(1.0-2*r)/16.0*sqrt(-12*r2+12*r+1.0)
+                        -sqrt(3)/12.0*std::asin(sqrt(3)/2*(2*r-1));
         else
-            ddf = 55/48-sqrt(3)*M_PI/108-13*r/12+r2/4+(2*r-3)/48.*sqrt(-12*r2+36*r-23)
+            ddf = 55.0/48.0-sqrt(3)*M_PI/108.0-13*r/12+r2/4+(2*r-3)/48.0*sqrt(-12*r2+36*r-23)
                         +sqrt(3)/36*std::asin(sqrt(3)/2*(2*r-3));
 
         return ddf;

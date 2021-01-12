@@ -137,7 +137,7 @@ class Domain
     ib_points_t ib_read()
     {
         ib_points_t points;
-        points.emplace_back((0,0,0));
+        points.emplace_back((0.01,0.01,0.01));
 
         //int nx = 2;
         //int nyz = nx;

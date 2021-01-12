@@ -30,10 +30,13 @@ class IB
 public: // member types
     static constexpr int dimension = Dim;
     using datablock_t = DataType;
-    using ib_points_type = std::vector< std::vector< float_type > >;
+
     using tree_t = octree::Tree<Dim, datablock_t>;
-    using octant_t = typename tree_t::octant_type;
+    using real_coordinate_type = typename tree_t::real_coordinate_type;
     using coordinate_type = typename tree_t::coordinate_type;
+
+    using ib_points_type = std::vector<real_coordinate_type>;
+    using octant_t = typename tree_t::octant_type;
     using ib_infl_type = std::vector<std::vector<octant_t*>>;
     using ib_rank_type = std::vector<int>;
     using delta_func_type = std::function<float_type(float_type x)>;
@@ -49,16 +52,13 @@ public: // Ctors
     ~IB() = default;
 
     IB(ib_points_type& points, float_type dx_base)
-    :N_ib_(size(points[0])),
+    :N_ib_(size(points)),
     ib_points_(points),
     ib_infl_(N_ib_),
     ib_rank_(N_ib_),
     dx_base_(dx_base)
     {
-        forcing_.resize(Dim, {});
-        for (int d=0; d<Dim; ++d)
-            forcing_[d].resize(N_ib_, 0);
-
+        forcing_.resize(N_ib_, (0,0,0));
         ddf_radius_ = 2;
         delta_func_ = [this](float_type x){ return this->yang3(x);};
     }
@@ -70,14 +70,14 @@ public:
     ib_points_type& get_force(){ return forcing_;}
     const ib_points_type& get_force() const { return forcing_;}
 
-    ib_points_type& get_force(int i, int idx){ return forcing_[idx][i];}
-    const ib_points_type& get_force(int i, int idx) const { return forcing_[idx][i];}
+    float_type& get_force(int i, int idx){ return forcing_[i][idx];}
+    const float_type& get_force(int i, int idx) const { return forcing_[i][idx];}
 
-    std::vector<float_type> get_ib_coordinate(int i)
-    { return { ib_points_[0][i], ib_points_[1][i], ib_points_[2][i] }; }
+    real_coordinate_type get_ib_coordinate(int i)
+    { return ib_points_[i]; }
 
     float_type get_ib_coordinate(int i, int idx)
-    { return ib_points_[idx][i]; }
+    { return ib_points_[i][idx]; }
 
     ib_infl_type& get_ib_infl(){ return ib_infl_;}
     const ib_infl_type& get_ib_infl() const { return ib_infl_;}
@@ -134,8 +134,8 @@ public: // functions
 
         for (std::size_t d = 0; d < Dim; ++d)
         {
-            if (b_dscrptr.max()[d]<ib_points_[d][idx]* factor
-                    || b_dscrptr.min()[d]>=ib_points_[d][idx] * factor)
+            if (b_dscrptr.max()[d]<ib_points_[idx][d]* factor
+                    || b_dscrptr.min()[d]>=ib_points_[idx][d] * factor)
                 return false;
         }
         return true;
@@ -172,7 +172,7 @@ private:
 
     int N_ib_;
     //int ib_level_;
-    int safety_dis_=0;
+    int safety_dis_=1;
     float_type dx_base_;
 
     //std::shared_ptr<tree_t> t_;

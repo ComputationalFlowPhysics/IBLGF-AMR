@@ -136,18 +136,17 @@ class Domain
 
     ib_points_t ib_read()
     {
-        ib_points_t points(Dim);
+        ib_points_t points;
+        points.emplace_back((0,0,0));
 
-        int nx = 2;
-        int nyz = nx;
-        float_type L = 0.75;
-        for (int ix = 0; ix<nx; ++ix)
-            for (int iyz = 0; iyz<nyz; ++iyz)
-            {
-                points[0].emplace_back( (ix * L)/nx -L/2.0);
-                points[1].emplace_back( (iyz* L)/nyz-L/2.0);
-                points[2].emplace_back( (iyz* L)/nyz-L/2.0);
-            }
+        //int nx = 2;
+        //int nyz = nx;
+        //float_type L = 0.7555555555555555;
+        //for (int ix = 0; ix<nx; ++ix)
+        //    for (int iyz = 0; iyz<nyz; ++iyz)
+        //    {
+        //        points.emplace_back(( (ix * L)/nx -L/2.0,  (iyz* L)/nyz-L/2.0,  (iyz* L)/nyz-L/2.0) );
+        //    }
 
         //if (decomposition_.is_server())
         //    for (auto p: points[0])

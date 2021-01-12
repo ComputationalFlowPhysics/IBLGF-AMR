@@ -96,11 +96,11 @@ public: //memeber functions
 
         int l_max = domain_->tree()->depth()-1;
 
-        auto ib = domain_->get_ib_ptr();
-        for (int i=0; i<ib->ib_tot(); ++i)
+        auto ib = domain_->ib_ptr();
+        for (std::size_t i=0; i<ib->size(); ++i)
         {
             ib->rank(i)=-1;
-            ib->get_ib_infl(i).clear();
+            ib->influence_list(i).clear();
 
             for (auto it  = domain_->begin(l_max);
                     it != domain_->end(l_max); ++it)
@@ -113,7 +113,7 @@ public: //memeber functions
                     if(server())
                         it->is_ib()=true;
 
-                    ib->get_ib_infl(i).emplace_back(it.ptr());
+                    ib->influence_list(i).emplace_back(it.ptr());
 
                     // check if it is strictly inside that black (flag = false)
                     if (ib->ib_block_overlap(domain_->nLevels()-1, i, it->data().descriptor(), false ))
@@ -125,11 +125,11 @@ public: //memeber functions
 
         if(server())
         {
-            for (int i=0; i<ib->ib_tot(); ++i)
+            for (std::size_t i=0; i<ib->size(); ++i)
             {
                 if (ib->rank(i)==-1)
                 {
-                    auto coor = ib->get_ib_coordinate(i);
+                    auto coor = ib->coordinate(i);
                     std::cout<<"ib point ["<< coor[0]<<" "<<coor[1]<<" "<<coor[2]
                         <<"] can't be put in the finest level, try increase domain size "
                         <<std::endl;
@@ -139,8 +139,8 @@ public: //memeber functions
 
 
         std::cout<< " ib ranks = " << std::endl;
-        for (int i=0; i<ib->ib_tot(); ++i)
-            std::cout<< " ib id, rank, size of infl = "<<i<<" "<<ib->rank(i)<<" "<< ib->get_ib_infl(i).size()<< std::endl;
+        for (std::size_t i=0; i<ib->size(); ++i)
+            std::cout<< " ib id, rank, size of infl = "<<i<<" "<<ib->rank(i)<<" "<< ib->influence_list(i).size()<< std::endl;
         }
 
     }

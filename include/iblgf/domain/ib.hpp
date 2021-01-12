@@ -14,7 +14,6 @@
 #define IMMERSED_BOUNDARY_HPP
 
 #include <vector>
-
 #include <iblgf/global.hpp>
 #include <iblgf/domain/octree/octant.hpp>
 
@@ -22,100 +21,113 @@ namespace iblgf
 {
 namespace ib
 {
-
-template<int Dim, class DataType>
+//TODO: @KE: Why do we store ib in the domain????
+//           Why is it constructed there and why do you store it as a shared pointer?
+//           I suggest defualt construct and maybe init with file name or so
+//           Should be in the simulation right? And why do we need to pass around
+//           the pointer instead of just a plain ref?
+//
+template<int Dim, class DataBlock>
 class IB
 {
-
-public: // member types
-    static constexpr int dimension = Dim;
-    using datablock_t = DataType;
-
+  public: // member types
+    using datablock_t = DataBlock;
     using tree_t = octree::Tree<Dim, datablock_t>;
+    using octant_t = typename tree_t::octant_type;
+
     using real_coordinate_type = typename tree_t::real_coordinate_type;
     using coordinate_type = typename tree_t::coordinate_type;
 
-    using ib_points_type = std::vector<real_coordinate_type>;
-    using octant_t = typename tree_t::octant_type;
-    using ib_infl_type = std::vector<std::vector<octant_t*>>;
-    using ib_rank_type = std::vector<int>;
     using delta_func_type = std::function<float_type(float_type x)>;
 
-public: // friends
-
-public: // Ctors
+  public: // friends
+  public: // Ctors
     IB() = default;
     IB(const IB& other) = delete;
-    IB(IB && other) = default;
+    IB(IB&& other) = default;
     IB& operator=(const IB& other) & = delete;
-    IB& operator=(IB && other) & = default;
+    IB& operator=(IB&& other) & = default;
     ~IB() = default;
 
-    IB(ib_points_type& points, float_type dx_base)
-    :N_ib_(size(points)),
-    ib_points_(points),
-    ib_infl_(N_ib_),
-    ib_rank_(N_ib_),
-    dx_base_(dx_base)
+    IB(std::vector<real_coordinate_type>& points, float_type dx_base)
+    : dx_base_(dx_base)
+    , coordinates_(points)
+    , forcing_(points.size(), real_coordinate_type((float_type)0))
+    , ib_infl_(points.size())
+    , ib_rank_(points.size())
     {
-        forcing_.resize(N_ib_, (0,0,0));
         ddf_radius_ = 2;
-        delta_func_ = [this](float_type x){ return this->yang3(x);};
+        delta_func_ = [this](float_type x) { return this->yang3(x); };
     }
 
-public:
-    ib_points_type& get_ib(){ return ib_points_;}
-    const ib_points_type& get_ib() const { return ib_points_;}
+  public: //Access
+    // @Ke: In general, we should NOT give full access to all memebers,
+    //      else we can make them public, which shoudl be avoided as much as possible.
+    //      Why all this access? Can this class not do the work and just return
+    //      results? If so please remove corresponding access-functions
 
-    ib_points_type& get_force(){ return forcing_;}
-    const ib_points_type& get_force() const { return forcing_;}
+    /** @{ @brief Get the force vector of  all immersed boundary points */
+    auto&       force() noexcept { return forcing_; }
+    const auto& force() const noexcept { return forcing_; }
+    /** @} */
 
-    float_type& get_force(int i, int idx){ return forcing_[i][idx];}
-    const float_type& get_force(int i, int idx) const { return forcing_[i][idx];}
+    /** @{ @brief Get the force of ith  immersed boundary point */
+    auto&       force(std::size_t _i) noexcept { return forcing_[_i]; }
+    const auto& force(std::size_t _i) const noexcept { return forcing_[_i]; }
 
-    real_coordinate_type get_ib_coordinate(int i)
-    { return ib_points_[i]; }
+    /** @{ @brief Get the coordinates of the ib points */
+    auto&       coordinate() noexcept { return coordinates_; }
+    const auto& coordinate() const noexcept { return coordinates_; }
+    /** @} */
+    /** @{ @brief Get the coordinates of the ith ib points */
+    auto&       coordinate(std::size_t _i) noexcept { return coordinates_[_i]; }
+    const auto& coordinate(std::size_t _i) const noexcept
+    {
+        return coordinates_[_i];
+    }
+    /** @} */
 
-    float_type get_ib_coordinate(int i, int idx)
-    { return ib_points_[i][idx]; }
+    /** @{ @brief Get the influence lists of the ib points */
+    auto&       influence_list() noexcept { return ib_infl_; }
+    const auto& influence_list() const noexcept { return ib_infl_; }
+    /** @} */
+    /** @{ @brief Get the influence list of the ith ib points */
+    auto&       influence_list(std::size_t _i) noexcept { return ib_infl_[_i]; }
+    const auto& influence_list(std::size_t _i) const noexcept
+    {
+        return ib_infl_[_i];
+    }
+    /** @} */
 
-    ib_infl_type& get_ib_infl(){ return ib_infl_;}
-    const ib_infl_type& get_ib_infl() const { return ib_infl_;}
+    /** @{ @brief Get the rank of the ith ib points */
+    auto&       rank(std::size_t _i) noexcept { return ib_rank_[_i]; }
+    const auto&  rank(std::size_t _i) const noexcept { return ib_rank_[_i]; }
 
-    auto& get_ib_infl(int idx) { return ib_infl_[idx];}
-    const auto& get_ib_infl(int idx) const { return ib_infl_[idx];}
+    auto size() const noexcept { return coordinates_.size(); }
+    auto ddf_radius() const noexcept { return ddf_radius_; }
 
-    int& rank(int idx) noexcept {return ib_rank_[idx];}
-    const int& rank(int idx) const noexcept {return ib_rank_[idx];}
-
-    int ib_tot() {return N_ib_;}
-
-    float_type ddf_radius(){ return ddf_radius_;}
-
-public: // iters
-
-public: // functions
+  public: // iters
+  public: // functions
     template<class BlockDscrptr>
     bool ib_block_overlap(int nRef, BlockDscrptr b_dscrptr)
     {
         // if a block overlap with ANY ib point
 
-        for (int i=0; i<N_ib_; i++)
-            if (ib_block_overlap(nRef, i, b_dscrptr))
-                return true;
+        for (std::size_t i = 0; i < size(); i++)
+            if (ib_block_overlap(nRef, i, b_dscrptr)) return true;
 
         return false;
-
     }
 
     template<class BlockDscrptr>
-    bool ib_block_overlap(int nRef, int idx, BlockDscrptr b_dscrptr, bool add_radius=true)
+    bool ib_block_overlap(
+        int nRef, int idx, BlockDscrptr b_dscrptr, bool add_radius = true)
     {
         // this function scale the block to the finest level and compare with
         // the influence region of the ib point
 
         b_dscrptr.extent() += 1;
-        //auto coor = this->get_ib_coordinate(idx);
+        //auto coor = this->coordinate(idx);
 
         //std::cout<<"--------------------------"<<std::endl << b_dscrptr << std::endl;
         //std::cout<<"ib point ["<< coor[0]<<" "<<coor[1]<<" "<<coor[2] <<"]" <<std::endl;
@@ -124,74 +136,66 @@ public: // functions
 
         if (add_radius)
         {
-            b_dscrptr.extent() += ddf_radius_*2 + safety_dis_*2;
-            b_dscrptr.base()   -= ddf_radius_ + safety_dis_;
+            b_dscrptr.extent() += ddf_radius_ * 2 + safety_dis_ * 2;
+            b_dscrptr.base() -= ddf_radius_ + safety_dis_;
         }
 
-        float_type factor = std::pow(2, nRef)/dx_base_;
+        float_type factor = std::pow(2, nRef) / dx_base_;
         //std::cout<<"block_descriptor" << b_dscrptr << std::endl;
         //std::cout<<"factor" << factor << std::endl;
 
         for (std::size_t d = 0; d < Dim; ++d)
         {
-            if (b_dscrptr.max()[d]<ib_points_[idx][d]* factor
-                    || b_dscrptr.min()[d]>=ib_points_[idx][d] * factor)
+            if (b_dscrptr.max()[d] < coordinates_[idx][d] * factor ||
+                b_dscrptr.min()[d] >= coordinates_[idx][d] * factor)
                 return false;
         }
         return true;
-
     }
 
-
-public: // ddfs
-
-    const delta_func_type& ddf()
+  public: // io
+    void read()
     {
-        return delta_func_;
+
     }
+  public: // ddfs
+    const auto& delta_func() const noexcept { return delta_func_; }
+    auto&       delta_func() noexcept { return delta_func_; }
 
     float_type yang3(float_type x)
     {
         float_type r = abs(x);
         float_type ddf = 0;
-        if (r>ddf_radius_)
-            return 0;
+        if (r > ddf_radius_) return 0;
 
-        float_type r2 = r*r;
-        if (r<=1.0)
-            ddf = 17/48+sqrt(3)*M_PI/108+r/4-r2/4+(1-2*r)/16.*sqrt(-12*r2+12*r+1)
-                        -sqrt(3)/12*std::asin(sqrt(3)/2*(2*r-1));
+        float_type r2 = r * r;
+        if (r <= 1.0)
+            ddf = 17 / 48 + sqrt(3) * M_PI / 108 + r / 4 - r2 / 4 +
+                  (1 - 2 * r) / 16. * sqrt(-12 * r2 + 12 * r + 1) -
+                  sqrt(3) / 12 * std::asin(sqrt(3) / 2 * (2 * r - 1));
         else
-            ddf = 55/48-sqrt(3)*M_PI/108-13*r/12+r2/4+(2*r-3)/48.*sqrt(-12*r2+36*r-23)
-                        +sqrt(3)/36*std::asin(sqrt(3)/2*(2*r-3));
+            ddf = 55 / 48 - sqrt(3) * M_PI / 108 - 13 * r / 12 + r2 / 4 +
+                  (2 * r - 3) / 48. * sqrt(-12 * r2 + 36 * r - 23) +
+                  sqrt(3) / 36 * std::asin(sqrt(3) / 2 * (2 * r - 3));
 
         return ddf;
     }
 
-private:
+  private:
+    int        safety_dis_ = 1;
+    float_type dx_base_ = 1;
 
-    int N_ib_;
-    //int ib_level_;
-    int safety_dis_=1;
-    float_type dx_base_;
+    std::vector<real_coordinate_type>   coordinates_;
+    std::vector<real_coordinate_type>   forcing_;
+    std::vector<std::vector<octant_t*>> ib_infl_;
+    std::vector<int> ib_rank_;
 
-    //std::shared_ptr<tree_t> t_;
-
-    ib_points_type ib_points_;
-    ib_points_type forcing_;
-
-
-    ib_infl_type ib_infl_;
-    ib_rank_type ib_rank_;
-
-    float_type ddf_radius_;
-    delta_func_type delta_func_ ;
+    float_type      ddf_radius_ = 1;
+    delta_func_type delta_func_;
 };
 
-
-
-}}
+} // namespace ib
+} // namespace iblgf
 
 #endif
-
 

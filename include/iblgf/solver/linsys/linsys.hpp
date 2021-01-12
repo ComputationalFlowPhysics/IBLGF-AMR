@@ -42,7 +42,6 @@ class LinSysSolver
     using octant_t = typename tree_t::octant_type;
     using block_type = typename datablock_type::block_descriptor_type;
     using ib_t = typename domain_type::ib_t;
-    using ib_points_t = typename ib_t::ib_points_type;
     using real_coordinate_type = typename domain_type::real_coordinate_type;
     using coordinate_type = typename domain_type::coordinate_type;
     // FMM
@@ -55,7 +54,7 @@ class LinSysSolver
     LinSysSolver(simulation_type* simulation)
     :simulation_(simulation),
     domain_(simulation->domain_.get()),
-    ib_(domain_->get_ib_ptr()),
+    ib_(domain_->ib_ptr()),
     psolver(simulation)
     {
 
@@ -71,25 +70,25 @@ class LinSysSolver
         typename std::enable_if<(U::mesh_type() == MeshObject::face), void>::type* = nullptr>
     void smearing()
     {
-        if (domain_->is_server())
-            return;
+        //if (domain_->is_server())
+        //    return;
 
-        constexpr auto u = U::tag();
-        for (int i=0; i<ib_->ib_tot(); ++i)
-        {
-            auto ib_coord = ib_->get_ib_coordinate(i);
+        ////constexpr auto u = U::tag();
+        //for (int i=0; i<ib_->ib_tot(); ++i)
+        //{
+        //    auto ib_coord = ib_->coordinate(i);
 
-            std::cout<<ib_->get_ib_infl(i).size() << std::endl;
-            for (auto it: ib_->get_ib_infl(i))
-            {
-                auto& block = it->data();
-                for (auto& n : block)
-                {
-                    const auto& n_coord = n.level_coordinate();
-                    //std::cout<<n_coord << std::endl;
-                }
-            }
-        }
+        //    std::cout<<ib_->influence_list(i).size() << std::endl;
+        //    for (auto it: ib_->influence_list(i))
+        //    {
+        //        auto& block = it->data();
+        //        for (auto& n : block)
+        //        {
+        //            const auto& n_coord = n.level_coordinate();
+        //            //std::cout<<n_coord << std::endl;
+        //        }
+        //    }
+        //}
 
     }
 

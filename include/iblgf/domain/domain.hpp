@@ -51,7 +51,6 @@ class Domain
 
     // ib related types
     using ib_t = ib::IB<Dim, datablock_t>;
-    using ib_points_t = typename ib_t::ib_points_type;
 
     // iterator types
     using dfs_iterator = typename tree_t::dfs_iterator;
@@ -69,8 +68,10 @@ class Domain
     using communicator_type = boost::mpi::communicator;
     using decompositon_type = Decomposition<Domain>;
 
-    using refinement_condition_fct_t = std::function<bool(octant_t*, int diff_level)>;
-    using adapt_condition_fct_t = std::function<void(std::vector<float_type>, std::vector<key_t>&, std::vector<int>& )>;
+    using refinement_condition_fct_t =
+        std::function<bool(octant_t*, int diff_level)>;
+    using adapt_condition_fct_t = std::function<void(
+        std::vector<float_type>, std::vector<key_t>&, std::vector<int>&)>;
 
     template<class DictionaryPtr>
     using block_initialze_fct =
@@ -108,8 +109,6 @@ class Domain
         else
             client_comm_ = client_comm_.split(0);
 
-
-
         //Construct base mesh, vector of bases with a given block_extent_
         block_extent_ = _dictionary->template get_or<int>("block_extent", 14);
 
@@ -130,27 +129,28 @@ class Domain
         construct_tree(bases, bd_extent_, block_extent_);
 
         //Construct IB surface
-        ib_points_t points = ib_read();
-        construct_ib(points);
+        auto points = ib_read();
+        ib_ = ib_t(points, this->dx_base());
     }
 
-    ib_points_t ib_read()
+    //FIXME: move init to class with an stl read
+    auto ib_read()
     {
-        ib_points_t points;
-        points.emplace_back((0,0,0));
+        std::vector<real_coordinate_type> points;
+        points.emplace_back(real_coordinate_type((float_type)0.));
 
-        //int nx = 2;
-        //int nyz = nx;
-        //float_type L = 0.7555555555555555;
-        //for (int ix = 0; ix<nx; ++ix)
-        //    for (int iyz = 0; iyz<nyz; ++iyz)
-        //    {
-        //        points.emplace_back(( (ix * L)/nx -L/2.0,  (iyz* L)/nyz-L/2.0,  (iyz* L)/nyz-L/2.0) );
-        //    }
+        int        nx = 2;
+        int        nyz = nx;
+        float_type L = 0.7555555555555555;
+        for (int ix = 0; ix < nx; ++ix)
+            for (int iyz = 0; iyz < nyz; ++iyz)
+            {
+                points.emplace_back(
+                    real_coordinate_type({(ix * L) / nx - L / 2.0, (iyz * L) / nyz - L / 2.0, (iyz * L) / nyz - L / 2.0}));
+            }
 
-        //if (decomposition_.is_server())
-        //    for (auto p: points[0])
-        //        std::cout<<p<<" "<< std::endl;
+        if (decomposition_.is_server())
+            for (auto p : points) std::cout << p << " " << std::endl;
 
         return points;
     }
@@ -230,26 +230,6 @@ class Domain
                            blockExtent;
                 };
         }
-    }
-
-    void construct_ib(ib_points_t points)
-    {
-        // ib points only live on the finest level
-
-        //const float_type dx_base = this->dx_base() / std::pow(2, this->nLevels()-1);
-        //auto shift = this->bounding_box().base() * std::pow(2, this->nLevels()-1);
-        //for (int d = 0; d<Dim; d++)
-        //{
-        //    for (auto& p: points[d])
-        //    {
-        //        p/=dx_fine;
-        //    }
-        //   // check
-        //   // for (auto& p: points[d])
-        //   //     std::cout<<p<<std::endl;
-        //}
-
-        ib_ = std::make_shared<ib_t>(points, this->dx_base());
     }
 
     template<class DictionaryPtr>
@@ -495,8 +475,7 @@ class Domain
                     {
                         auto child = it->child(i);
 
-                        if (child )
-                            child->aim_deletion(false);
+                        if (child) child->aim_deletion(false);
                     }
                 }
             }
@@ -577,51 +556,49 @@ class Domain
         // Add correction buffers
         if (use_correction_buffer_)
         {
-            for(int l=base_level+1;l< this->tree()->depth();++l)
+            for (int l = base_level + 1; l < this->tree()->depth(); ++l)
             {
-                for (auto it = this->begin(l);
-                        it != this->end(l);
-                        ++it)
+                for (auto it = this->begin(l); it != this->end(l); ++it)
                 {
                     if (!it->has_data()) continue;
                     if (!it->physical()) continue;
 
-                    it->tree()->
-                    insert_correction_neighbor(*it,
-                            [this](auto neighbor_it)
-                            {
-                            auto level = neighbor_it->level()-this->tree()->base_level();
-                            auto bbase=t_->octant_to_level_coordinate(
-                                    neighbor_it->tree_coordinate(), level);
+                    it->tree()->insert_correction_neighbor(
+                        *it, [this](auto neighbor_it) {
+                            auto level = neighbor_it->level() -
+                                         this->tree()->base_level();
+                            auto bbase = t_->octant_to_level_coordinate(
+                                neighbor_it->tree_coordinate(), level);
 
-                            bool init_field=false;
-                            neighbor_it->data_ptr()=
-                            std::make_shared<datablock_t>(bbase, block_extent_,level,init_field);
-                            } );
+                            bool init_field = false;
+                            neighbor_it->data_ptr() =
+                                std::make_shared<datablock_t>(
+                                    bbase, block_extent_, level, init_field);
+                        });
                 }
             }
 
+            //TODO: wrap that to avoid repetition
             this->tree()->construct_lists();
             this->tree()->construct_level_maps();
             this->tree()->construct_leaf_maps(true);
 
-            for(int l=base_level+1;l< this->tree()->depth();++l)
+            for (int l = base_level + 1; l < this->tree()->depth(); ++l)
             {
-                for (auto it = this->begin(l);
-                        it != this->end(l);
-                        ++it)
+                for (auto it = this->begin(l); it != this->end(l); ++it)
                 {
                     if (!it->physical()) continue;
                     //it->flag_correction(false);
 
-                    for(int i=0;i<it->nNeighbors();++i)
+                    for (int i = 0; i < it->nNeighbors(); ++i)
                     {
-                        auto neighbor_it=it->neighbor(i);
-                        if (!neighbor_it || !neighbor_it->has_data()|| neighbor_it->physical()) continue;
+                        auto neighbor_it = it->neighbor(i);
+                        if (!neighbor_it || !neighbor_it->has_data() ||
+                            neighbor_it->physical())
+                            continue;
 
                         neighbor_it->aim_deletion(false);
                         neighbor_it->flag_correction(true);
-
                     }
                 }
             }
@@ -629,7 +606,6 @@ class Domain
             this->tree()->construct_level_maps();
             this->tree()->construct_leaf_maps(true);
             this->tree()->construct_lists();
-
         }
 
         // flag base level boundary correction
@@ -690,10 +666,10 @@ class Domain
                 for (auto it = begin_df(); it != end_df(); ++it)
                 {
                     //if (!ref_cond_) return;
-                    if  ( it->refinement_level() == l &&
-                            (ref_cond_(it.ptr(), nRef - l) ||
-                             ib_->ib_block_overlap(nRef, it->data().descriptor() ))
-                        )
+                    if (it->refinement_level() == l &&
+                        (ref_cond_(it.ptr(), nRef - l) ||
+                            ib_.ib_block_overlap(
+                                nRef, it->data().descriptor())))
                     {
                         if (this->tree()->try_2to1(
                                 it->key(), this->key_bounding_box(), checklist))
@@ -726,8 +702,8 @@ class Domain
     }
 
     // IB related:
-    auto get_ib_ptr(){return ib_;};
-
+    //TODO: Make this a ref?
+    auto ib_ptr() { return &ib_; };
 
     template<class LoadCalculator, class FmmMaskBuilder>
     void distribute()
@@ -735,7 +711,7 @@ class Domain
         decomposition_.template distribute<LoadCalculator, FmmMaskBuilder>();
     }
 
-    auto adapt(std::vector<float_type> source_max, bool &base_mesh_update)
+    auto adapt(std::vector<float_type> source_max, bool& base_mesh_update)
     {
         //communicating with server
         return decomposition_.adapt_decoposition(source_max, base_mesh_update);
@@ -759,8 +735,7 @@ class Domain
         int c = 0;
         for (auto it = this->begin(); it != this->end(); ++it)
         {
-            if (it->is_correction() && !it->is_leaf())
-                ++c;
+            if (it->is_correction() && !it->is_leaf()) ++c;
         }
 
         return c;
@@ -947,8 +922,8 @@ class Domain
     }
     decompositon_type& decomposition() noexcept { return decomposition_; }
 
-    const refinement_condition_fct_t& register_refinement_condition() const
-        noexcept
+    const refinement_condition_fct_t&
+    register_refinement_condition() const noexcept
     {
         return ref_cond_;
     }
@@ -1026,10 +1001,13 @@ class Domain
     }
 
     const auto& client_communicator() const noexcept { return client_comm_; }
-    auto& client_communicator() noexcept { return client_comm_; }
+    auto&       client_communicator() noexcept { return client_comm_; }
 
-    const bool& correction_buffer()const noexcept{return use_correction_buffer_;}
-    bool& correction_buffer()noexcept{return use_correction_buffer_;}
+    const bool& correction_buffer() const noexcept
+    {
+        return use_correction_buffer_;
+    }
+    bool& correction_buffer() noexcept { return use_correction_buffer_; }
 
   private:
     template<class DictionaryPtr, class Fct>
@@ -1059,13 +1037,13 @@ class Domain
     static bool refinement_cond_default(octant_t*, int) { return false; }
 
     static void adapt_cond_default(std::vector<float_type> source_max,
-            std::vector<key_t>& octs,
-            std::vector<int>& level_change )
-    {}
+        std::vector<key_t>& octs, std::vector<int>& level_change)
+    {
+    }
 
   private:
     std::shared_ptr<tree_t> t_;
-    std::shared_ptr<ib_t> ib_;
+    ib_t                    ib_;
     coordinate_type         block_extent_;
     coordinate_type         bd_base_, bd_extent_;
 
@@ -1079,9 +1057,9 @@ class Domain
     adapt_condition_fct_t      adapt_cond_ = &Domain::adapt_cond_default;
 
     boost::mpi::communicator client_comm_;
-    int baseBlockBufferNumber_=2;
+    int                      baseBlockBufferNumber_ = 2;
 
-    bool use_correction_buffer_=true;
+    bool use_correction_buffer_ = true;
 };
 
 //class DomainOperators

@@ -63,11 +63,11 @@ struct parameters
     // clang-format on
 };
 
-struct IBSOLVE : public SetupBase<IBSOLVE, parameters>
+struct ibsolve : public SetupBase<ibsolve, parameters>
 {
-    using super_type =SetupBase<IBSOLVE,parameters>;
+    using super_type =SetupBase<ibsolve,parameters>;
 
-    IBSOLVE(Dictionary* _d)
+    ibsolve(Dictionary* _d)
     : super_type(_d,
             [this](auto _d, auto _domain)
             { return this->initialize_domain(_d, _domain);
@@ -109,12 +109,16 @@ struct IBSOLVE : public SetupBase<IBSOLVE, parameters>
         if(domain_->is_server()) return ;
 
         for (auto it = domain_->begin(); it != domain_->end(); ++it)
+        {
+            if(!it->locally_owned()) continue;
+
             for (auto& node : it->data())
             {
                 node(u,0) = 0;
                 node(u,1) = 0;
                 node(u,2) = 0;
             }
+        }
     }
 
     /** @brief  Initialization of the domain blocks. This is registered in the

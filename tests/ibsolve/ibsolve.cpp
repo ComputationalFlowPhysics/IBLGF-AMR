@@ -39,7 +39,7 @@ int main(int argc, char *argv[])
     dictionary::Dictionary dictionary(input, argc, argv);
 
     //Instantiate setup
-    IBSOLVE setup(&dictionary);
+    ibsolve setup(&dictionary);
 
     // run setup
     setup.run();

@@ -38,7 +38,7 @@ class IB
     using real_coordinate_type = typename tree_t::real_coordinate_type;
     using coordinate_type = typename tree_t::coordinate_type;
 
-    using delta_func_type = std::function<float_type(float_type x)>;
+    using delta_func_type = std::function<float_type(real_coordinate_type x)>;
 
   public: // friends
   public: // Ctors
@@ -52,12 +52,18 @@ class IB
     IB(std::vector<real_coordinate_type>& points, float_type dx_base)
     : dx_base_(dx_base)
     , coordinates_(points)
-    , forcing_(points.size(), real_coordinate_type((float_type)0))
+    , forces_(points.size(), real_coordinate_type((float_type)0))
     , ib_infl_(points.size())
     , ib_rank_(points.size())
     {
         ddf_radius_ = 2;
-        delta_func_ = [this](float_type x) { return this->yang3(x); };
+
+        // will add more, default is yang3
+        delta_func_1d_ = [this](float_type x) { return yang3(x); };
+
+        // ddf 3D
+        delta_func_ = [this](real_coordinate_type x)
+            { return delta_func_1d_(x[0]) * delta_func_1d_(x[1]) * delta_func_1d_(x[2]); };
     }
 
   public: //Access
@@ -67,13 +73,13 @@ class IB
     //      results? If so please remove corresponding access-functions
 
     /** @{ @brief Get the force vector of  all immersed boundary points */
-    auto&       force() noexcept { return forcing_; }
-    const auto& force() const noexcept { return forcing_; }
+    auto&       force() noexcept { return forces_; }
+    const auto& force() const noexcept { return forces_; }
     /** @} */
 
     /** @{ @brief Get the force of ith  immersed boundary point */
-    auto&       force(std::size_t _i) noexcept { return forcing_[_i]; }
-    const auto& force(std::size_t _i) const noexcept { return forcing_[_i]; }
+    auto&       force(std::size_t _i) noexcept { return forces_[_i]; }
+    const auto& force(std::size_t _i) const noexcept { return forces_[_i]; }
 
     /** @{ @brief Get the coordinates of the ib points */
     auto&       coordinate() noexcept { return coordinates_; }
@@ -164,7 +170,7 @@ class IB
 
     float_type yang3(float_type x)
     {
-        float_type r = abs(x);
+        float_type r = std::fabs(x);
         float_type ddf = 0;
         if (r > ddf_radius_) return 0;
 
@@ -186,11 +192,12 @@ class IB
     float_type dx_base_ = 1;
 
     std::vector<real_coordinate_type>   coordinates_;
-    std::vector<real_coordinate_type>   forcing_;
+    std::vector<real_coordinate_type>   forces_;
     std::vector<std::vector<octant_t*>> ib_infl_;
     std::vector<int> ib_rank_;
 
     float_type      ddf_radius_ = 1;
+    std::function<float_type(float_type x)> delta_func_1d_;
     delta_func_type delta_func_;
 };
 

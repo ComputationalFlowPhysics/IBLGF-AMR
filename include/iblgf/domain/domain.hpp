@@ -137,20 +137,20 @@ class Domain
     auto ib_read()
     {
         std::vector<real_coordinate_type> points;
-        points.emplace_back(real_coordinate_type((float_type)0.));
+        points.emplace_back(real_coordinate_type({0.01,0.01,0.01}));
 
-        int        nx = 2;
-        int        nyz = nx;
-        float_type L = 0.7555555555555555;
-        for (int ix = 0; ix < nx; ++ix)
-            for (int iyz = 0; iyz < nyz; ++iyz)
-            {
-                points.emplace_back(
-                    real_coordinate_type({(ix * L) / nx - L / 2.0, (iyz * L) / nyz - L / 2.0, (iyz * L) / nyz - L / 2.0}));
-            }
+        //int nx = 2;
+        //int nyz = nx;
+        //float_type L = 0.7555555555555555;
+        //for (int ix = 0; ix<nx; ++ix)
+        //    for (int iyz = 0; iyz<nyz; ++iyz)
+        //    {
+        //        points.emplace_back(( (ix * L)/nx -L/2.0,  (iyz* L)/nyz-L/2.0,  (iyz* L)/nyz-L/2.0) );
+        //    }
 
-        if (decomposition_.is_server())
-            for (auto p : points) std::cout << p << " " << std::endl;
+        //if (decomposition_.is_server())
+        //    for (auto p: points[0])
+        //        std::cout<<p<<" "<< std::endl;
 
         return points;
     }

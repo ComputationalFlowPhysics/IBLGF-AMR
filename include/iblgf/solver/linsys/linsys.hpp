@@ -62,7 +62,8 @@ class LinSysSolver
 
     float_type test()
     {
-        this-> smearing<u_type>();
+        //this->smearing<u_type>();
+        //this->projection<u_type>();
         return 0;
     }
 
@@ -70,34 +71,89 @@ class LinSysSolver
         typename std::enable_if<(U::mesh_type() == MeshObject::face), void>::type* = nullptr>
     void smearing()
     {
-        //if (domain_->is_server())
-        //    return;
+        if (domain_->is_server())
+            return;
 
-        ////constexpr auto u = U::tag();
-        //for (int i=0; i<ib_->ib_tot(); ++i)
-        //{
-        //    auto ib_coord = ib_->coordinate(i);
+        auto ddf = ib_->delta_func();
 
-        //    std::cout<<ib_->influence_list(i).size() << std::endl;
-        //    for (auto it: ib_->influence_list(i))
-        //    {
-        //        auto& block = it->data();
-        //        for (auto& n : block)
-        //        {
-        //            const auto& n_coord = n.level_coordinate();
-        //            //std::cout<<n_coord << std::endl;
-        //        }
-        //    }
-        //}
+        constexpr auto u = U::tag();
+
+        float_type sum=0;
+        for (std::size_t i=0; i<ib_->size(); ++i)
+        {
+            auto ib_coord = ib_->coordinate(i);
+
+            std::cout<<ib_->influence_list(i).size() << std::endl;
+            for (auto it: ib_->influence_list(i))
+            {
+                if (!it->locally_owned())
+                    continue;
+
+                auto& block = it->data();
+                for (auto& node : block)
+                {
+                    auto n_coord = node.level_coordinate();
+                    auto dist = n_coord - ib_coord;
+
+                    //FIXME: Make it dimension agnostic
+                    node(u, 0) = ib_->force(i)[0] * ddf(dist+real_coordinate_type({0, 0.5, 0.5}));
+                    node(u, 1) = ib_->force(i)[1] * ddf(dist+real_coordinate_type({0.5, 0, 0.5}));
+                    node(u, 2) = ib_->force(i)[2] * ddf(dist+real_coordinate_type({0.5, 0.5, 0}));
+                    sum+=node(u, 0);
+
+                }
+            }
+        }
+        std::cout<<" total sum of u0 is "<<sum << std::endl;
 
     }
+
+    template<class U,
+        typename std::enable_if<(U::mesh_type() == MeshObject::face), void>::type* = nullptr>
+    void projection()
+    {
+        if (domain_->is_server())
+            return;
+
+        auto ddf = ib_->delta_func();
+
+        // clean f
+        for (std::size_t i=0; i<ib_->size(); ++i)
+            ib_->force(i)=0.0;
+
+        constexpr auto u = U::tag();
+        for (std::size_t i=0; i<ib_->size(); ++i)
+        {
+            auto ib_coord = ib_->coordinate(i);
+
+            std::cout<<ib_->influence_list(i).size() << std::endl;
+            for (auto it: ib_->influence_list(i))
+            {
+                if (!it->locally_owned())
+                    continue;
+
+                auto& block = it->data();
+                for (auto& node : block)
+                {
+                    auto n_coord = node.level_coordinate();
+                    auto dist = n_coord - ib_coord;
+
+                    //FIXME: Make it dimension agnostic
+                    ib_->force(i)[0] += node(u, 0) * ddf(dist+real_coordinate_type({0, 0.5, 0.5}));
+                    ib_->force(i)[1] += node(u, 1) * ddf(dist+real_coordinate_type({0.5, 0, 0.5}));
+                    ib_->force(i)[2] += node(u, 2) * ddf(dist+real_coordinate_type({0.5, 0.5, 0}));
+                }
+            }
+        }
+    }
+
 
 
 
   private:
     simulation_type* simulation_;
     domain_type*     domain_; ///< domain
-    std::shared_ptr<ib_t> ib_;
+    ib_t* ib_;
     poisson_solver_t psolver;
 };
 

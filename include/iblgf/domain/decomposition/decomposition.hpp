@@ -79,7 +79,7 @@ public: //memeber functions
     bool& subtract_non_leaf()noexcept{return subtract_non_leaf_;}
 
 
-    // IB:
+    // IB: //FIXME: put this in the ib and pass the domain pointer?
     void update_ib_rank_and_infl()
     {
 
@@ -139,8 +139,8 @@ public: //memeber functions
 
 
         std::cout<< " ib ranks = " << std::endl;
-        for (std::size_t i=0; i<ib->size(); ++i)
-            std::cout<< " ib id, rank, size of infl = "<<i<<" "<<ib->rank(i)<<" "<< ib->influence_list(i).size()<< std::endl;
+        //for (std::size_t i=0; i<ib->size(); ++i)
+        //    std::cout<< " ib id, rank, size of infl = "<<i<<" "<<ib->rank(i)<<" "<< ib->influence_list(i).size()<< std::endl;
         }
 
     }

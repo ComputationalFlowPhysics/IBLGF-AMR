@@ -125,34 +125,11 @@ class Domain
         //Read scaling parameters from dictionary, bsaed on bounding box etc
         read_parameters(_dictionary);
 
+        //Construct IB surface
+        ib_.init(this->dx_base());
+
         //Construct tree of base mesh
         construct_tree(bases, bd_extent_, block_extent_);
-
-        //Construct IB surface
-        auto points = ib_read();
-        ib_ = ib_t(points, this->dx_base());
-    }
-
-    //FIXME: move init to class with an stl read
-    auto ib_read()
-    {
-        std::vector<real_coordinate_type> points;
-        points.emplace_back(real_coordinate_type({0.01,0.01,0.01}));
-
-        //int nx = 2;
-        //int nyz = nx;
-        //float_type L = 0.7555555555555555;
-        //for (int ix = 0; ix<nx; ++ix)
-        //    for (int iyz = 0; iyz<nyz; ++iyz)
-        //    {
-        //        points.emplace_back(( (ix * L)/nx -L/2.0,  (iyz* L)/nyz-L/2.0,  (iyz* L)/nyz-L/2.0) );
-        //    }
-
-        //if (decomposition_.is_server())
-        //    for (auto p: points[0])
-        //        std::cout<<p<<" "<< std::endl;
-
-        return points;
     }
 
     template<class DictionaryPtr>

@@ -14,19 +14,15 @@
 #define IMMERSED_BOUNDARY_HPP
 
 #include <vector>
+#include <functional>
 #include <iblgf/global.hpp>
 #include <iblgf/domain/octree/octant.hpp>
+#include <iblgf/domain/ib_communicator.hpp>
 
 namespace iblgf
 {
 namespace ib
 {
-//TODO: @KE: Why do we store ib in the domain????
-//           Why is it constructed there and why do you store it as a shared pointer?
-//           I suggest defualt construct and maybe init with file name or so
-//           Should be in the simulation right? And why do we need to pass around
-//           the pointer instead of just a plain ref?
-//
 template<int Dim, class DataBlock>
 class IB
 {
@@ -38,41 +34,68 @@ class IB
     using real_coordinate_type = typename tree_t::real_coordinate_type;
     using coordinate_type = typename tree_t::coordinate_type;
 
-    using delta_func_type = std::function<float_type(real_coordinate_type x)>;
+    using delta_func_type = std::function<float_type(real_coordinate_type)>;
 
-  public: // friends
+    using communicator_t = ib_communicator<IB>;
+
   public: // Ctors
-    IB() = default;
-    IB(const IB& other) = delete;
+    IB(const IB& other) = default;
     IB(IB&& other) = default;
-    IB& operator=(const IB& other) & = delete;
+    IB& operator=(const IB& other) & = default;
     IB& operator=(IB&& other) & = default;
     ~IB() = default;
 
-    IB(std::vector<real_coordinate_type>& points, float_type dx_base)
-    : dx_base_(dx_base)
-    , coordinates_(points)
-    , forces_(points.size(), real_coordinate_type((float_type)0))
-    , ib_infl_(points.size())
-    , ib_rank_(points.size())
+    IB()
+    : ib_comm_(this)
     {
+    }
+
+  public: // init functions
+    void init(float_type dx_base)
+    {
+        read_points();
         ddf_radius_ = 2;
+        dx_base_ = dx_base;
 
         // will add more, default is yang3
-        auto delta_func_1d_ = [this](float_type x) { return this->yang3(x); };
+        std::function<float_type(float_type x)> delta_func_1d_ =
+            [this](float_type x) { return this->yang3(x); };
 
         // ddf 3D
-        delta_func_ = [this, delta_func_1d_](real_coordinate_type x)
-            //{ return yang3(x[0]) * yang3(x[1]) * yang3(x[2]); };
-            { return delta_func_1d_(x[0]) * delta_func_1d_(x[1]) * delta_func_1d_(x[2]); };
+        this->delta_func_ = [this, delta_func_1d_](real_coordinate_type x) {
+            return delta_func_1d_(x[0]) * delta_func_1d_(x[1]) *
+                   delta_func_1d_(x[2]);
+        };
+        ib_infl_.resize(coordinates_.size());
+        ib_rank_.resize(coordinates_.size());
+        forces_.resize(
+            coordinates_.size(), real_coordinate_type((float_type)0));
+    }
+
+    void read_points() noexcept
+    {
+        coordinates_.emplace_back(real_coordinate_type({0.01, 0.01, 0.01}));
+
+        int        nx = 20;
+        int        nyz = nx;
+        float_type L = 0.7555555555555555;
+        for (int ix = 0; ix < nx; ++ix)
+            for (int iyz = 0; iyz < nyz; ++iyz)
+            {
+                coordinates_.emplace_back(
+                    real_coordinate_type({(ix * L) / nx - L / 2.0,
+                        (iyz * L) / nyz - L / 2.0, (iyz * L) / nyz - L / 2.0}));
+            }
+    }
+
+    /** @{ @brief Get the force vector of  all immersed boundary points */
+    void communicate_test(bool send_locally_owned) noexcept
+    {
+        ib_comm_.compute_indices();
+        ib_comm_.communicate(send_locally_owned);
     }
 
   public: //Access
-    // @Ke: In general, we should NOT give full access to all memebers,
-    //      else we can make them public, which shoudl be avoided as much as possible.
-    //      Why all this access? Can this class not do the work and just return
-    //      results? If so please remove corresponding access-functions
-
     /** @{ @brief Get the force vector of  all immersed boundary points */
     auto&       force() noexcept { return forces_; }
     const auto& force() const noexcept { return forces_; }
@@ -108,10 +131,18 @@ class IB
 
     /** @{ @brief Get the rank of the ith ib points */
     auto&       rank(std::size_t _i) noexcept { return ib_rank_[_i]; }
-    const auto&  rank(std::size_t _i) const noexcept { return ib_rank_[_i]; }
+    const auto& rank(std::size_t _i) const noexcept { return ib_rank_[_i]; }
+    /** @} */
 
+    /** @brief Get number of ib points */
     auto size() const noexcept { return coordinates_.size(); }
+    /** @brief Get delta function radius */
     auto ddf_radius() const noexcept { return ddf_radius_; }
+
+    /** @{ @brief Get ib mpi communicator  */
+    auto&       communicator() noexcept { return ib_comm_; }
+    const auto& communicator() const noexcept { return ib_comm_; }
+    /** @} */
 
   public: // iters
   public: // functions
@@ -160,11 +191,6 @@ class IB
         return true;
     }
 
-  public: // io
-    void read()
-    {
-
-    }
   public: // ddfs
     const auto& delta_func() const noexcept { return delta_func_; }
     auto&       delta_func() noexcept { return delta_func_; }
@@ -188,17 +214,19 @@ class IB
         return ddf;
     }
 
-  private:
+  public:
     int        safety_dis_ = 1;
     float_type dx_base_ = 1;
 
     std::vector<real_coordinate_type>   coordinates_;
     std::vector<real_coordinate_type>   forces_;
     std::vector<std::vector<octant_t*>> ib_infl_;
-    std::vector<int> ib_rank_;
+    std::vector<int>                    ib_rank_;
 
-    float_type      ddf_radius_ = 1;
     delta_func_type delta_func_;
+    float_type      ddf_radius_ = 1;
+
+    communicator_t ib_comm_;
 };
 
 } // namespace ib

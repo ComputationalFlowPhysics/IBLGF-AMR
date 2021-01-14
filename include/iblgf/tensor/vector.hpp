@@ -16,6 +16,7 @@
 #include <array>
 #include <type_traits>
 #include <iostream>
+#include <boost/serialization/array.hpp>
 
 namespace iblgf
 {
@@ -202,6 +203,13 @@ class vector
 
   private: // members
     data_type data;
+
+    friend class boost::serialization::access;
+    template<class Archive>
+    void serialize(Archive& ar, const unsigned int version)
+    {
+        ar& data;
+    }
 };
 
 /****************************************************************************/

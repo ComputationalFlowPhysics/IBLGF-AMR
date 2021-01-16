@@ -37,6 +37,7 @@ class IB
 
     using real_coordinate_type = typename tree_t::real_coordinate_type;
     using coordinate_type = typename tree_t::coordinate_type;
+    using force_type = std::vector<real_coordinate_type>;
 
     using delta_func_type = std::function<float_type(real_coordinate_type x)>;
 
@@ -63,35 +64,26 @@ class IB
 
         // ddf 3D
         delta_func_ = [this, delta_func_1d_](real_coordinate_type x)
-            //{ return yang3(x[0]) * yang3(x[1]) * yang3(x[2]); };
             { return delta_func_1d_(x[0]) * delta_func_1d_(x[1]) * delta_func_1d_(x[2]); };
     }
 
   public: //Access
-    // @Ke: In general, we should NOT give full access to all memebers,
-    //      else we can make them public, which shoudl be avoided as much as possible.
-    //      Why all this access? Can this class not do the work and just return
-    //      results? If so please remove corresponding access-functions
 
-    /** @{ @brief Get the force vector of  all immersed boundary points */
+    auto        force_copy() noexcept { return forces_; }
     auto&       force() noexcept { return forces_; }
-    const auto& force() const noexcept { return forces_; }
-    /** @} */
 
     /** @{ @brief Get the force of ith  immersed boundary point */
     auto&       force(std::size_t _i) noexcept { return forces_[_i]; }
     const auto& force(std::size_t _i) const noexcept { return forces_[_i]; }
 
-    /** @{ @brief Get the coordinates of the ib points */
-    auto&       coordinate() noexcept { return coordinates_; }
-    const auto& coordinate() const noexcept { return coordinates_; }
-    /** @} */
+    /** @{ @brief Get the force of ith  immersed boundary point, dimension idx = idx */
+    auto&       force(std::size_t _i, std::size_t _idx) noexcept { return forces_[_i][_idx]; }
+    const auto& force(std::size_t _i, std::size_t _idx) const noexcept { return forces_[_i][_idx]; }
+
     /** @{ @brief Get the coordinates of the ith ib points */
     auto&       coordinate(std::size_t _i) noexcept { return coordinates_[_i]; }
     const auto& coordinate(std::size_t _i) const noexcept
-    {
-        return coordinates_[_i];
-    }
+    {return coordinates_[_i];}
     /** @} */
 
     /** @{ @brief Get the influence lists of the ib points */
@@ -173,17 +165,17 @@ class IB
     {
         float_type r = std::fabs(x);
         float_type ddf = 0;
-        if (r > ddf_radius_) return 0;
+        if (r > 2) return 0;
 
         float_type r2 = r * r;
         if (r <= 1.0)
-            ddf = 17 / 48 + sqrt(3) * M_PI / 108 + r / 4 - r2 / 4 +
-                  (1 - 2 * r) / 16. * sqrt(-12 * r2 + 12 * r + 1) -
-                  sqrt(3) / 12 * std::asin(sqrt(3) / 2 * (2 * r - 1));
+            ddf = 17.0 / 48.0 + sqrt(3) * M_PI / 108.0 + r / 4.0 - r2 / 4.0 +
+                  (1.0 - 2.0 * r) / 16 * sqrt(-12.0 * r2 + 12.0 * r + 1.0) -
+                  sqrt(3) / 12.0 * std::asin(sqrt(3) / 2.0 * (2.0 * r - 1.0));
         else
-            ddf = 55 / 48 - sqrt(3) * M_PI / 108 - 13 * r / 12 + r2 / 4 +
-                  (2 * r - 3) / 48. * sqrt(-12 * r2 + 36 * r - 23) +
-                  sqrt(3) / 36 * std::asin(sqrt(3) / 2 * (2 * r - 3));
+            ddf = 55.0 / 48.0 - sqrt(3) * M_PI / 108.0 - 13.0 * r / 12.0 + r2 / 4.0 +
+                  (2.0 * r - 3.0) / 48.0 * sqrt(-12.0 * r2 + 36.0 * r - 23.0) +
+                  sqrt(3) / 36.0 * std::asin(sqrt(3) / 2.0 * (2 * r - 3.0));
 
         return ddf;
     }
@@ -193,11 +185,11 @@ class IB
     float_type dx_base_ = 1;
 
     std::vector<real_coordinate_type>   coordinates_;
-    std::vector<real_coordinate_type>   forces_;
+    force_type                          forces_;
     std::vector<std::vector<octant_t*>> ib_infl_;
     std::vector<int> ib_rank_;
 
-    float_type      ddf_radius_ = 1;
+    float_type      ddf_radius_;
     delta_func_type delta_func_;
 };
 

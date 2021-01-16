@@ -54,6 +54,7 @@ class PoissonSolver
     using block_type = typename datablock_type::block_descriptor_type;
     using real_coordinate_type = typename domain_type::real_coordinate_type;
     using coordinate_type = typename domain_type::coordinate_type;
+    using MASK_TYPE = typename octant_t::MASK_TYPE;
 
     //Fields
     using source_tmp_type = typename Setup::source_tmp_type;
@@ -82,10 +83,10 @@ class PoissonSolver
 
   public:
     template<class Source, class Target>
-    void apply_lgf(bool base_level_only = false)
+    void apply_lgf(int fmm_type = MASK_TYPE::AMR2AMR)
     {
         for (std::size_t entry = 0; entry < Source::nFields(); ++entry)
-            this->apply_lgf<Source, Target>(&lgf_lap_, entry, base_level_only);
+            this->apply_lgf<Source, Target>(&lgf_lap_, entry, fmm_type);
     }
 
     template<class Source, class Target>
@@ -165,7 +166,7 @@ class PoissonSolver
     */
     template<class Source, class Target, class Kernel>
     void apply_lgf(Kernel* _kernel, const std::size_t _field_idx,
-        const bool base_level_only)
+        const int fmm_type)
     {
         auto client = domain_->decomposition().client();
         if (!client) return;
@@ -179,12 +180,15 @@ class PoissonSolver
         clean_field<correction_tmp_type>();
 
         // Copy source
-        if (!base_level_only)
+        if (fmm_type == MASK_TYPE::AMR2AMR)
             copy_leaf<Source, source_tmp_type>(_field_idx, 0, true);
-        else
-        {
+        else if (fmm_type == MASK_TYPE::STREAM)
             copy_level<Source, source_tmp_type>(domain_->tree()->base_level(), _field_idx, 0, false);
-        }
+        else if (fmm_type == MASK_TYPE::IB2IB)
+            copy_level<Source, source_tmp_type>(domain_->tree()->depth()-1, _field_idx, 0, false);
+        else if (fmm_type == MASK_TYPE::IB2AMR)
+            copy_level<Source, source_tmp_type>(domain_->tree()->depth()-1, _field_idx, 0, false);
+
 
 #ifdef POISSON_TIMINGS
         timings_ = Timings();
@@ -197,7 +201,7 @@ class PoissonSolver
         auto t0_coarsify = clock_type::now();
 #endif
 
-        if (!base_level_only)
+        if (!fmm_type == MASK_TYPE::STREAM && !fmm_type == MASK_TYPE::IB2IB)
             source_coarsify<source_tmp_type, source_tmp_type>(_field_idx, 0, Source::mesh_type());
 
 #ifdef POISSON_TIMINGS
@@ -207,10 +211,14 @@ class PoissonSolver
 #endif
 
         //Level-Interactions
-        const int l_max = base_level_only ? domain_->tree()->base_level() + 1
-                                          : domain_->tree()->depth();
 
-        for (int l = domain_->tree()->base_level(); l < l_max; ++l)
+        const int l_max = (fmm_type != MASK_TYPE::STREAM) ?
+                    domain_->tree()->depth() : domain_->tree()->base_level()+1;
+
+        const int l_min = (fmm_type !=  MASK_TYPE::IB2IB) ?
+                    domain_->tree()->base_level() : domain_->tree()->depth()-1;
+
+        for (int l = l_min; l < l_max; ++l)
         {
 #ifdef POISSON_TIMINGS
             const auto t0_level = clock_type::now();
@@ -226,54 +234,55 @@ class PoissonSolver
 
             if (subtract_non_leaf_)
             {
-                fmm_.template apply<source_tmp_type, target_tmp_type>(
-                    domain_, _kernel, l, false, 1.0, base_level_only);
-                // Copy to Target
-                for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
-                    if (it->locally_owned() && it->is_leaf())
-                    {
-                        it->data_r(Target::tag(), _field_idx)
-                            .linalg()
-                            .get()
-                            ->cube_noalias_view() =
-                            it->data_r(target_tmp).linalg_data();
-                    }
-                fmm_.template apply<source_tmp_type, target_tmp_type>(
-                    domain_, _kernel, l, true, -1.0);
-#ifdef POISSON_TIMINGS
-                timings_.fmm_level_nl[l - domain_->tree()->base_level()] =
-                    fmm_.timings();
+                //fmm_.template apply<source_tmp_type, target_tmp_type>(
+                //    domain_, _kernel, l, false, 1.0, fmm_type);
+                //// Copy to Target
+                //for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+                //    if (it->locally_owned() && it->is_leaf())
+                //    {
+                //        it->data_r(Target::tag(), _field_idx)
+                //            .linalg()
+                //            .get()
+                //            ->cube_noalias_view() =
+                //            it->data_r(target_tmp).linalg_data();
+                //    }
+                //fmm_.template apply<source_tmp_type, target_tmp_type>(
+                //    domain_, _kernel, l, true, -1.0);
+#ifdef POISSON_T//IMINGS
+                //timings_.fmm_level_nl[l - domain_->tree()->base_level()] =
+                //    fmm_.timings();
 #endif
 
-#ifdef POISSON_TIMINGS
-                const auto t2 = clock_type::now();
+#ifdef POISSON_T//IMINGS
+                //const auto t2 = clock_type::now();
 #endif
-                // Interpolate
-                domain_->decomposition()
-                    .client()
-                    ->template communicate_updownward_assign<target_tmp_type,
-                        target_tmp_type>(l, false, false, -1);
+                //// Interpolate
+                //domain_->decomposition()
+                //    .client()
+                //    ->template communicate_updownward_assign<target_tmp_type,
+                //        target_tmp_type>(l, false, false, -1);
 
-                for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
-                {
-                    if (!it->has_data() || !it->data().is_allocated())
-                        continue;
-                    c_cntr_nli_
-                        .nli_intrp_node<target_tmp_type, target_tmp_type>(
-                            it, Source::mesh_type(), _field_idx, 0, false, false);
-                }
+                //for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+                //{
+                //    if (!it->has_data() || !it->data().is_allocated())
+                //        continue;
+                //    c_cntr_nli_
+                //        .nli_intrp_node<target_tmp_type, target_tmp_type>(
+                //            it, Source::mesh_type(), _field_idx, 0, false, false);
+                //}
 
-#ifdef POISSON_TIMINGS
-                const auto t3 = clock_type::now();
-                timings_.interpolation += (t3 - t2);
+#ifdef POISSON_T//IMINGS
+                //const auto t3 = clock_type::now();
+                //timings_.interpolation += (t3 - t2);
 #endif
             }
             else
             {
-                if (!base_level_only)
+                if (fmm_type == MASK_TYPE::AMR2AMR)
                 {
+                    // outside to inside
                     fmm_.template apply<source_tmp_type, target_tmp_type>(
-                        domain_, _kernel, l, true, 1.0);
+                        domain_, _kernel, l, true, 1.0, fmm_type);
 #ifdef POISSON_TIMINGS
                     timings_.fmm_level_nl[l - domain_->tree()->base_level()] =
                         fmm_.timings();
@@ -305,9 +314,10 @@ class PoissonSolver
                     timings_.interpolation += (t3 - t2);
 #endif
                 }
-                // test for FMM
+
+                // Inside to outside
                 fmm_.template apply<source_tmp_type, target_tmp_type>(
-                    domain_, _kernel, l, false, 1.0, base_level_only);
+                    domain_, _kernel, l, false, 1.0, fmm_type);
 
                 // Copy to Target
                 for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
@@ -326,7 +336,7 @@ class PoissonSolver
                 fmm_.timings();
 #endif
 
-            if (base_level_only) continue;
+            if (fmm_type!=MASK_TYPE::AMR2AMR) continue;
             if (use_correction_)
             {
                 if (l == domain_->tree()->depth() - 1) continue;

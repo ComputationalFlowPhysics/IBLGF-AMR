@@ -153,9 +153,6 @@ public: //memeber functions
         {
             server()->rank_query();
 
-            // update ib infl list
-            update_ib_rank_and_infl();
-
             server()->flag_query();
             server()->mask_query();
 
@@ -191,19 +188,15 @@ public: //memeber functions
         if(server())
         {
             std::cout<< "Initialization of masks start"<<std::endl;
-            FmmMaskBuilder::fmm_mask_build(domain_, subtract_non_leaf_);
+            FmmMaskBuilder::fmm_vortex_streamfun_mask(domain_);
+            FmmMaskBuilder::fmm_lgf_mask_build(domain_, subtract_non_leaf_);
 
-            //std::cout<< "Initialization of masks done"<<std::endl;
-            //FmmMaskBuilder::fmm_vortex_streamfun_mask(domain_);
-            //FmmMaskBuilder::fmm_if_load_build(domain_);
-            // it's together with fmmMaskBuild for now
-            //LoadCalculator::calculate();
-        }
+            server()->send_keys(); // also give ranks
+            // update ib infl list
+            update_ib_rank_and_infl();
+            FmmMaskBuilder::fmm_IB2IB_mask(domain_);
+            FmmMaskBuilder::fmm_IB2AMR_mask(domain_);
 
-        //Send the construction keys back and forth
-        if(server())
-        {
-            server()->send_keys();
         }
         else if(client())
         {

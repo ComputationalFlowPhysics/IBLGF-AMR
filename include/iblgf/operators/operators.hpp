@@ -16,6 +16,7 @@
 #include <iblgf/dictionary/dictionary.hpp>
 #include <iblgf/domain/dataFields/datafield.hpp>
 #include <iblgf/types.hpp>
+#include <cmath>
 
 namespace iblgf
 {
@@ -30,6 +31,162 @@ struct Operator
     Operator& operator=(Operator&& other) & = default;
     ~Operator() = default;
     Operator() = default;
+
+  public: // DomainOprs
+
+    template <typename F, class Domain>
+    static void domainClean(Domain* domain)
+    {
+        for (auto it = domain->begin(); it != domain->end(); ++it)
+        {
+            if (!it->has_data() || !it->data().is_allocated()) continue;
+            for (std::size_t field_idx = 0; field_idx < F::nFields();
+                    ++field_idx)
+            {
+                auto& lin_data = it->data_r(F::tag(), field_idx).linalg_data();
+                std::fill(lin_data.begin(), lin_data.end(), 0.0);
+            }
+        }
+    }
+
+    // TODO: move up_and_down
+
+    template <typename F, class Domain>
+    static void clean_leaf_correction_boundary(Domain* domain, int l, bool leaf_only_boundary=false, int clean_width=1) noexcept
+    {
+        for (auto it = domain->begin(l); it != domain->end(l); ++it)
+        {
+            if (!it->locally_owned())
+            {
+                if (!it->has_data() || !it->data().is_allocated()) continue;
+                for (std::size_t field_idx = 0; field_idx < F::nFields();
+                     ++field_idx)
+                {
+                    auto& lin_data =
+                        it->data_r(F::tag(), field_idx).linalg_data();
+                    std::fill(lin_data.begin(), lin_data.end(), 0.0);
+                }
+            }
+        }
+
+        for (auto it = domain->begin(l); it != domain->end(l); ++it)
+        {
+            if (!it->locally_owned()) continue;
+            if (!it->has_data() || !it->data().is_allocated()) continue;
+
+            if (leaf_only_boundary && (it->is_correction() || it->is_old_correction() ))
+            {
+                for (std::size_t field_idx = 0; field_idx < F::nFields();
+                     ++field_idx)
+                {
+                    auto& lin_data =
+                        it->data_r(F::tag(), field_idx).linalg_data();
+                    std::fill(lin_data.begin(), lin_data.end(), 0.0);
+                }
+            }
+        }
+
+        //---------------
+        if (l==domain->tree()->base_level())
+
+        for (auto it  = domain->begin(l);
+                it != domain->end(l); ++it)
+        {
+            if(!it->locally_owned()) continue;
+            if(!it->has_data() || !it->data().is_allocated()) continue;
+
+            for(std::size_t i=0;i< it->num_neighbors();++i)
+            {
+                auto it2=it->neighbor(i);
+                if ((!it2 || !it2->has_data()) || (leaf_only_boundary && (it2->is_correction() || it2->is_old_correction() )))
+                {
+                    for (std::size_t field_idx=0; field_idx<F::nFields(); ++field_idx)
+                    {
+                        auto& lin_data =
+                            it->data_r(F::tag(), field_idx).linalg_data();
+
+                        int N=it->data().descriptor().extent()[0];
+
+                        // somehow we delete the outer 2 planes
+                        if (i==4)
+                            view(lin_data,xt::all(),xt::all(),xt::range(0,clean_width))  *= 0.0;
+                        else if (i==10)
+                            view(lin_data,xt::all(),xt::range(0,clean_width),xt::all())  *= 0.0;
+                        else if (i==12)
+                            view(lin_data,xt::range(0,clean_width),xt::all(),xt::all())  *= 0.0;
+                        else if (i==14)
+                            view(lin_data,xt::range(N+2-clean_width,N+3),xt::all(),xt::all())  *= 0.0;
+                        else if (i==16)
+                            view(lin_data,xt::all(),xt::range(N+2-clean_width,N+3),xt::all())  *= 0.0;
+                        else if (i==22)
+                            view(lin_data,xt::all(),xt::all(),xt::range(N+2-clean_width,N+3))  *= 0.0;
+                    }
+                }
+            }
+        }
+    }
+
+    template<class Source, class Target, class Domain>
+    static void levelDivergence(Domain* domain, int l) noexcept
+    {
+        auto client = domain->decomposition().client();
+        client->template buffer_exchange<Source>(l);
+        const auto dx_base = domain->dx_base();
+
+        for (auto it = domain->begin(l); it != domain->end(l); ++it)
+        {
+            if (!it->locally_owned() || !it->has_data()) continue;
+
+            const auto dx_level = dx_base / std::pow(2,it->refinement_level());
+            divergence<Source, Target>( it->data(), dx_level);
+        }
+
+        clean_leaf_correction_boundary<Target>(domain, l, true, 2);
+    }
+
+    template<class Source, class Target, class Domain>
+    static void domainDivergence(Domain* domain) noexcept
+    {
+        auto client = domain->decomposition().client();
+
+        //up_and_down<Source>();
+
+        for (int l = domain->tree()->base_level();
+             l < domain->tree()->depth(); ++l)
+            this->template levelDivergence<Source, Target>(domain, l);
+    }
+
+    template<class Source, class Target, class Domain>
+    static void levelGradient(Domain* domain, int l) noexcept
+    {
+        auto client = domain->decomposition().client();
+        client->template buffer_exchange<Source>(l);
+        const auto dx_base = domain->dx_base();
+
+        for (auto it = domain->begin(l); it != domain->end(l); ++it)
+        {
+            if (!it->locally_owned() || !it->has_data()) continue;
+
+            const auto dx_level = dx_base / std::pow(2,it->refinement_level());
+            gradient<Source, Target>( it->data(), dx_level);
+        }
+
+        client->template buffer_exchange<Target>(l);
+    }
+
+
+    template<class Source, class Target, class Domain>
+    static void domainGradient(Domain* domain, float_type _scale = 1.0) noexcept
+    {
+        //up_and_down<Source>();
+
+        for (int l = domain->tree()->base_level();
+                l < domain->tree()->depth(); ++l)
+
+            this->template levelGradient<Source, Target>(domain, l);
+    }
+
+
 
   public:
     template<class F_in, class F_tmp, class Block>
@@ -68,7 +225,43 @@ struct Operator
                 n(f_in,field_idx) = n(tmp,0);
             }
         }
+    }
 
+    template<class U, class Block, class Coord, class Force, class DeltaFunc,
+        typename std::enable_if<(U::mesh_type() == MeshObject::face), void>::type* = nullptr>
+    static void ib_projection(Coord ib_coord, Force& f, Block& block, DeltaFunc& ddf)
+    {
+        constexpr auto u = U::tag();
+        for (auto& node : block)
+        {
+            auto n_coord = node.level_coordinate();
+            auto dist = n_coord - ib_coord;
+
+            for (std::size_t field_idx=0; field_idx<U::nFields(); field_idx++)
+            {
+                decltype(ib_coord) off(0.5); off[field_idx] = 0.0; // face data location
+                f[field_idx] += node(u, field_idx)  * ddf(dist+off);
+            }
+        }
+    }
+
+
+    template<class U, class Block, class Coord, class Force, class DeltaFunc,
+        typename std::enable_if<(U::mesh_type() == MeshObject::face), void>::type* = nullptr>
+    static void ib_smearing(Coord ib_coord, Force& f, Block& block, DeltaFunc& ddf)
+    {
+        constexpr auto u = U::tag();
+        for (auto& node : block)
+        {
+            auto n_coord = node.level_coordinate();
+            auto dist = n_coord - ib_coord;
+
+            for (std::size_t field_idx=0; field_idx<U::nFields(); field_idx++)
+            {
+                decltype(ib_coord) off(0.5); off[field_idx] = 0.0; // face data location
+                node(u, field_idx) += f[field_idx] * ddf(dist+off);
+            }
+        }
     }
 
     template<class Field, class Block>

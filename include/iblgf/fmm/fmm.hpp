@@ -93,7 +93,7 @@ public:
     {
 
         // find all parents that are
-        for (int l = domain_->tree()->depth()-1;
+        for (int l = domain_->tree()->depth()-2;
              l >= domain_->tree()->base_level() ; --l)
         {
             for (auto it = domain_->begin(l); it != domain_->end(l);
@@ -425,17 +425,22 @@ class Fmm
     template<class Source, class Target, class Kernel>
     void apply(domain_t* domain_, Kernel* _kernel, int level,
         bool non_leaf_as_source, float_type add_with_scale = 1.0,
-        bool base_level_only = false)
+        int fmm_type = MASK_TYPE::AMR2AMR)
     {
         const float_type dx_base = domain_->dx_base();
         auto refinement_level = level - domain_->tree()->base_level();
         auto dx_level = dx_base / std::pow(2, refinement_level);
 
         base_level_ = level;
-        if (base_level_only)
+        if (fmm_type == MASK_TYPE::STREAM)
             fmm_mask_idx_ = octant_t::fmm_mask_idx_gen(MASK_TYPE::STREAM);
-        else
+        else if (fmm_type == MASK_TYPE::AMR2AMR)
             fmm_mask_idx_ = octant_t::fmm_mask_idx_gen(MASK_TYPE::AMR2AMR, refinement_level, non_leaf_as_source);
+        else if (fmm_type == MASK_TYPE::IB2IB)
+            fmm_mask_idx_ = octant_t::fmm_mask_idx_gen(MASK_TYPE::IB2IB);
+        else if (fmm_type == MASK_TYPE::IB2AMR)
+            fmm_mask_idx_ = octant_t::fmm_mask_idx_gen(MASK_TYPE::IB2AMR, refinement_level);
+
             //fmm_mask_idx_ = refinement_level * 2 + non_leaf_as_source + 1;
 
         if (_kernel->neighbor_only())

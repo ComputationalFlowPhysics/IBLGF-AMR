@@ -163,7 +163,7 @@ class Ifherk
             pcout<<"u max = "<< source_max_[1]<< std::endl;
             if(domain_->is_client())
             {
-                pad_velocity<u_type, u_type>(true);
+                //pad_velocity<u_type, u_type>(true);
             }
         }
         else

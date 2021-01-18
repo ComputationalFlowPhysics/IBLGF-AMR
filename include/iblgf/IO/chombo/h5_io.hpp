@@ -92,12 +92,12 @@ class H5_io
 
   public:
     template<typename Field>
-    void read_h5(std::string _filename, std::string read_field, Domain* _lt )
+    void read_h5(std::string _filename, std::string read_field, Domain* _lt)
     {
         pcout << "Start reading file -> " << _filename << std::endl;
         boost::mpi::communicator world;
 
-        auto octant_blocks = blocks_list_build(_lt);
+        auto octant_blocks = blocks_list_build(_lt,true,true);
 
         hdf5_file<Dim> chombo_file(_filename, true);
         chombo_t ch_writer(octant_blocks);  // Initialize writer with vector of octants
@@ -106,9 +106,9 @@ class H5_io
     }
 
     void write_h5(
-        std::string _filename, Domain* _lt, bool include_correction = false)
+        std::string _filename, Domain* _lt, bool include_correction = false,  bool base_correction_only = true)
     {
-        auto octant_blocks = blocks_list_build(_lt, include_correction);
+        auto octant_blocks = blocks_list_build(_lt, include_correction, base_correction_only);
 
         hdf5_file<Dim> chombo_file(_filename);
 
@@ -120,7 +120,7 @@ class H5_io
     }
 
     std::vector<octant_type*> blocks_list_build(
-        Domain* _lt, bool include_correction = false)
+        Domain* _lt, bool include_correction = false,  bool base_correction_only = true)
     {
         boost::mpi::communicator world;
 
@@ -129,6 +129,7 @@ class H5_io
         {
             if (!it->has_data() || it->refinement_level() < 0) continue;
             if (!include_correction && it->is_correction()) continue;
+            if (base_correction_only && it->is_correction() && it->refinement_level()>0) continue;
             auto b = it->data().descriptor();
             b.grow(0, 1); //grow by one to fill the gap
             nPoints += b.size();
@@ -144,6 +145,7 @@ class H5_io
                 continue;
             if (!include_correction && it->is_correction())
                 continue;
+            if (base_correction_only && it->is_correction() && it->refinement_level()>0) continue;
             int rank = it->rank();
 
             if (rank == world.rank() || world.rank() == 0)

@@ -144,7 +144,7 @@ class LinSysSolver
 
         // Ax
         this->template ET_H_S_E<Ftmp>(f, Ax, fmm_type, alpha);
-        printvec(Ax, "Ax");
+        //printvec(Ax, "Ax");
 
         //  res = uc - Ax
         for (int i=0; i<ib_->size(); ++i)
@@ -152,7 +152,7 @@ class LinSysSolver
 
         // p = res
         auto p = r;
-        printvec(p, "r");
+        //printvec(p, "r");
 
         // rold = r'* r;
         float_type rsold = dot(r, r);
@@ -162,7 +162,7 @@ class LinSysSolver
         {
             // Ap = A(p)
             this->template ET_H_S_E<Ftmp>(p, Ap, fmm_type, alpha );
-            printvec(Ap, "Ap");
+            //printvec(Ap, "Ap");
             // alpha = rsold / p'*Ap
             float_type alpha = rsold / dot(p, Ap);
             // f = f + alpha * p;

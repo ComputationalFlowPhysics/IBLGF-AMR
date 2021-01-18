@@ -79,15 +79,15 @@ class IB
         //coordinates_.emplace_back(real_coordinate_type({0.01, 0.01, 0.01}));
 
         float_type L = 0.7555555555555555;
-        int        nx = 3;
-        //int        nx = int(L/dx_base_/1.5*pow(2,nRef_));
+        //int        nx = 3;
+        int        nx = int(L/dx_base_/1.5*pow(2,nRef_));
         int        nyz = nx;
         for (int ix = 0; ix < nx; ++ix)
             for (int iyz = 0; iyz < nyz; ++iyz)
             {
                 coordinates_.emplace_back(
                     real_coordinate_type(
-                        { (ix * L)/(nx-1) - L/2.0, 0, (iyz*L)/(nyz-1) - L/2.0 }));
+                        { (ix * L)/(nx-1) - L/2.0, (iyz*L)/(nyz-1) - L/2.0 , (iyz*L)/(nyz-1) - L/2.0 }));
             }
     }
 

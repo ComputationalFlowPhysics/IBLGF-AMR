@@ -65,23 +65,27 @@ struct parameters
 
 struct ibsolve : public SetupBase<ibsolve, parameters>
 {
-    using super_type =SetupBase<ibsolve,parameters>;
+    using super_type = SetupBase<ibsolve, parameters>;
+    using real_coordinate_type = typename types::vector_type<float_type, Dim>;
 
     ibsolve(Dictionary* _d)
-    : super_type(_d,
-            [this](auto _d, auto _domain)
-            { return this->initialize_domain(_d, _domain);
-            })
+    : super_type(_d, [this](auto _d, auto _domain) {
+        return this->initialize_domain(_d, _domain);
+    })
     {
-        if (domain_->is_client())
-            client_comm_ = client_comm_.split(1);
+        if (domain_->is_client()) client_comm_ = client_comm_.split(1);
         else
             client_comm_ = client_comm_.split(0);
 
         Re_ = 1.0;
-        domain_->init_refine(_d->get_dictionary("simulation_parameters")
-                    ->template get_or<int>("nLevels", 0),
-                    global_refinement_);
+
+        int nRef = _d->get_dictionary("simulation_parameters")
+                                 ->template get_or<int>("nLevels", 0);
+
+        //Construct IB surface
+        domain_->ib().init(domain_->dx_base(), nRef);
+
+        domain_->init_refine(nRef, global_refinement_);
 
         domain_->distribute<fmm_mask_builder_t, fmm_mask_builder_t>();
 
@@ -90,33 +94,135 @@ struct ibsolve : public SetupBase<ibsolve, parameters>
         boost::mpi::communicator world;
         if (world.rank() == 0)
             std::cout << "on Simulation: \n" << simulation_ << std::endl;
-
     }
 
     float_type run()
     {
         linsys_solver_t ibsolve(&this->simulation_);
         ibsolve.test();
+
+        if (!communication_locally_owned_test())
+        {
+            std::cout << "FAIL: communication_locally_owned_test()"
+                      << std::endl;
+        }
+        if (!communication_ghost_test())
+        { std::cout << "FAIL: communication_ghost_test()" << std::endl; }
+
         simulation_.write("ibtest.hdf5");
         return 0;
     }
 
-    /** @brief Initialization of poisson problem.
-     *  @detail Testing poisson with manufactured solutions: exp
-     */
+    /** @brief Test of send of locally_owned forces and assign in ghosts */
+    bool communication_locally_owned_test()
+    {
+        bool pass = true;
+
+        auto ib = domain_->ib();
+
+        boost::mpi::communicator world;
+        const auto               my_rank = world.rank();
+        for (std::size_t i = 0; i < ib.size(); ++i)
+        {
+            if (ib.rank(i) == world.rank())
+            {
+                ib.force(i) =
+                    real_coordinate_type(float_type(world.rank()));
+            }
+        }
+
+        bool send_locally_owned = true;
+        auto& f = ib.force();
+        ib.communicator().compute_indices();
+        ib.communicator().communicate(send_locally_owned, f);
+
+        for (std::size_t i = 0; i < ib.size(); ++i)
+        {
+            if (ib.rank(i) != my_rank)
+            {
+                for (auto& infl_block : ib.influence_list(i))
+                {
+                    if (infl_block->rank() == my_rank)
+                    {
+                        if (std::fabs(ib.rank(i) - ib.force(i).x()) >
+                            1e-8)
+                        { pass = false; }
+                    }
+                }
+            }
+        }
+
+        return pass;
+    }
+
+    /** @brief Test of send of ghost and add in locally owned */
+    bool communication_ghost_test()
+    {
+        bool pass = true;
+
+        auto ib = domain_->ib();
+
+        boost::mpi::communicator world;
+        const auto               my_rank = world.rank();
+        for (std::size_t i = 0; i < ib.size(); ++i)
+        {
+            if (ib.rank(i) != world.rank())
+            {
+                for (auto& infl_block : ib.influence_list(i))
+                {
+                    if (infl_block->rank() == my_rank)
+                    {
+                        ib.force(i) = real_coordinate_type(
+                            float_type(infl_block->rank()));
+                    }
+                }
+            }
+            else
+            {
+                ib.force(i) = real_coordinate_type(float_type(0.0));
+            }
+        }
+
+        auto& f = ib.force();
+        bool send_locally_owned = false;
+        ib.communicator().compute_indices();
+        ib.communicator().communicate(send_locally_owned, f);
+
+        for (std::size_t i = 0; i < ib.size(); ++i)
+        {
+            if (ib.rank(i) == my_rank)
+            {
+                float_type    acc_force = 0.;
+                std::set<int> unique_inflRanks;
+                for (auto& infl_block : ib.influence_list(i))
+                {
+                    //unique ranks
+                    if (infl_block->rank() != my_rank)
+                    { unique_inflRanks.insert(infl_block->rank()); }
+                }
+
+                for (auto& ur : unique_inflRanks) { acc_force += ur; }
+
+                if (std::fabs(acc_force - ib.force(i).x()) > 1e-8)
+                { pass = false; }
+            }
+        }
+        return pass;
+    }
+
     void initialize()
     {
-        if(domain_->is_server()) return ;
+        if (domain_->is_server()) return;
 
         for (auto it = domain_->begin(); it != domain_->end(); ++it)
         {
-            if(!it->locally_owned()) continue;
+            if (!it->locally_owned()) continue;
 
             for (auto& node : it->data())
             {
-                node(u,0) = 0;
-                node(u,1) = 0;
-                node(u,2) = 0;
+                node(u, 0) = 0;
+                node(u, 1) = 0;
+                node(u, 2) = 0;
             }
         }
     }
@@ -125,7 +231,7 @@ struct ibsolve : public SetupBase<ibsolve, parameters>
      *          domain through the base setup class, passing it to the domain ctor.
      */
     std::vector<coordinate_t> initialize_domain(
-            Dictionary* _d, domain_t* _domain)
+        Dictionary* _d, domain_t* _domain)
     {
         auto res =
             _domain->construct_basemesh_blocks(_d, _domain->block_extent());
@@ -135,12 +241,10 @@ struct ibsolve : public SetupBase<ibsolve, parameters>
         return res;
     }
 
-private:
-
+  private:
     boost::mpi::communicator client_comm_;
-    int global_refinement_=0;
-    float_type Re_;
-
+    int                      global_refinement_ = 0;
+    float_type               Re_;
 };
 
 } // namespace iblgf

@@ -90,15 +90,15 @@ class PoissonSolver
     }
 
     template<class Source, class Target>
-    void apply_lgf_IF(float_type _alpha_base)
+    void apply_lgf_IF(float_type _alpha_base, int fmm_type = MASK_TYPE::AMR2AMR)
     {
         lgf_if_.alpha_base_level() = _alpha_base;
         for (std::size_t entry = 0; entry < Source::nFields(); ++entry)
-            this->apply_if<Source, Target>(&lgf_if_, entry);
+            this->apply_if<Source, Target>(&lgf_if_, entry, fmm_type);
     }
 
     template<class Source, class Target, class Kernel>
-    void apply_if(Kernel* _kernel, std::size_t _field_idx = 0)
+    void apply_if(Kernel* _kernel, std::size_t _field_idx = 0, int fmm_type = MASK_TYPE::AMR2AMR)
     {
         auto client = domain_->decomposition().client();
         if (!client) return;
@@ -108,33 +108,34 @@ class PoissonSolver
         clean_field<target_tmp_type>();
 
         // Copy source
-        copy_leaf<Source, source_tmp_type>(_field_idx, 0, true);
+        if (fmm_type == MASK_TYPE::AMR2AMR)
+            copy_leaf<Source, source_tmp_type>(_field_idx, 0, true);
+        else if (fmm_type == MASK_TYPE::STREAM)
+            copy_level<Source, source_tmp_type>(domain_->tree()->base_level(), _field_idx, 0, false);
+        else if (fmm_type == MASK_TYPE::IB2IB)
+            copy_level<Source, source_tmp_type>(domain_->tree()->depth()-1, _field_idx, 0, false);
+        else if (fmm_type == MASK_TYPE::IB2AMR)
+            copy_level<Source, source_tmp_type>(domain_->tree()->depth()-1, _field_idx, 0, false);
 
-        //Coarsification:
-        source_coarsify<source_tmp_type, source_tmp_type>(
-            _field_idx, 0, Source::mesh_type());
-
-        // For IF, interpolate source to correction buffers
-        //for (int l  = domain_->tree()->base_level();
-        //        l < domain_->tree()->depth()-1; ++l)
-        //{
-
-        //    client->template buffer_exchange<source_tmp_type>(l);
-        //    // Sync
-        //    domain_->decomposition().client()->
-        //        template communicate_updownward_assign
-        //            <source_tmp_type, source_tmp_type>(l,false,false,-1);
-
-        //}
-
-        // Interpolate to correction buffer
-
-        intrp_to_correction_buffer<source_tmp_type, source_tmp_type>(
-            _field_idx, 0, Source::mesh_type());
-
-        for (int l = domain_->tree()->base_level();
-             l < domain_->tree()->depth(); ++l)
+        if (fmm_type != MASK_TYPE::STREAM && fmm_type != MASK_TYPE::IB2IB)
         {
+            // Coarsify
+            source_coarsify<source_tmp_type, source_tmp_type>(_field_idx, 0, Source::mesh_type());
+
+            // Interpolate to correction buffer
+            intrp_to_correction_buffer<source_tmp_type, source_tmp_type>(
+                    _field_idx, 0, Source::mesh_type());
+        }
+
+        const int l_max = (fmm_type != MASK_TYPE::STREAM) ?
+                    domain_->tree()->depth() : domain_->tree()->base_level()+1;
+
+        const int l_min = (fmm_type !=  MASK_TYPE::IB2IB) ?
+                    domain_->tree()->base_level() : domain_->tree()->depth()-1;
+
+        for (int l = l_min; l < l_max; ++l)
+        {
+
             for (auto it_s = domain_->begin(l); it_s != domain_->end(l); ++it_s)
                 if (it_s->has_data() && !it_s->locally_owned())
                 {
@@ -146,10 +147,11 @@ class PoissonSolver
             _kernel->change_level(l - domain_->tree()->base_level());
 
             fmm_.template apply<source_tmp_type, target_tmp_type>(
-                domain_, _kernel, l, false, 1.0, false);
+                domain_, _kernel, l, false, 1.0, fmm_type);
+
             if (!subtract_non_leaf_)
                 fmm_.template apply<source_tmp_type, target_tmp_type>(
-                    domain_, _kernel, l, true, 1.0, false);
+                    domain_, _kernel, l, true, 1.0, fmm_type);
 
             copy_level<target_tmp_type, Target>(l, 0, _field_idx, true);
         }
@@ -201,7 +203,7 @@ class PoissonSolver
         auto t0_coarsify = clock_type::now();
 #endif
 
-        if (!fmm_type == MASK_TYPE::STREAM && !fmm_type == MASK_TYPE::IB2IB)
+        if (fmm_type != MASK_TYPE::STREAM && fmm_type != MASK_TYPE::IB2IB)
             source_coarsify<source_tmp_type, source_tmp_type>(_field_idx, 0, Source::mesh_type());
 
 #ifdef POISSON_TIMINGS
@@ -280,7 +282,7 @@ class PoissonSolver
             {
                 if (fmm_type == MASK_TYPE::AMR2AMR)
                 {
-                    // outside to inside
+                    // outside to everywhere
                     fmm_.template apply<source_tmp_type, target_tmp_type>(
                         domain_, _kernel, l, true, 1.0, fmm_type);
 #ifdef POISSON_TIMINGS

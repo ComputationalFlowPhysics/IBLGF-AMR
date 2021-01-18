@@ -822,6 +822,39 @@ public:
 
     auto domain() const { return domain_; }
 
+    // IB related:
+    void update_ib_rank_and_infl()
+    {
+
+        int l_max = domain_->tree()->depth()-1;
+
+        auto& ib = domain_->ib();
+        for (std::size_t i=0; i<ib.size(); ++i)
+        {
+            ib.rank(i)=-1;
+            ib.influence_list(i).clear();
+
+            for (auto it  = domain_->begin(l_max);
+                    it != domain_->end(l_max); ++it)
+            {
+                if (!it->has_data() || !it->is_leaf())
+                    continue;
+
+                if (ib.ib_block_overlap(i, it->data().descriptor(), 1 ))
+                {
+                    ib.influence_list(i).emplace_back(it.ptr());
+
+                    // check if it is strictly inside that black (flag = false)
+                    if (ib.ib_block_overlap(i, it->data().descriptor(), 0 ))
+                        ib.rank(i)=it->rank();
+                }
+            }
+        }
+
+        ib.communicator().compute_indices();
+    }
+
+
   private:
     Domain* domain_;
 

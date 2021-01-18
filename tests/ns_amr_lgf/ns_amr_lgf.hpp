@@ -176,11 +176,13 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
                 return this->refinement(octant, diff_level);
             };
 
+        int nRef = _d->get_dictionary("simulation_parameters")
+                                 ->template get_or<int>("nLevels", 0);
+
+        domain_->ib().init(domain_->dx_base(), nRef);
         if (!use_restart())
         {
-            domain_->init_refine(_d->get_dictionary("simulation_parameters")
-                                     ->template get_or<int>("nLevels", 0),
-                global_refinement_);
+            domain_->init_refine(nRef, global_refinement_);
         }
         else
         {

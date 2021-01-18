@@ -25,6 +25,7 @@
 #include <iblgf/domain/domain.hpp>
 #include <iblgf/IO/parallel_ostream.hpp>
 #include <iblgf/solver/poisson/poisson.hpp>
+#include <iblgf/solver/linsys/linsys.hpp>
 #include <iblgf/operators/operators.hpp>
 #include <iblgf/utilities/misc_math_functions.hpp>
 
@@ -45,10 +46,12 @@ class Ifherk
     using datablock_type = typename domain_type::datablock_t;
     using tree_t = typename domain_type::tree_t;
     using octant_t = typename tree_t::octant_type;
+    using MASK_TYPE = typename octant_t::MASK_TYPE;
     using block_type = typename datablock_type::block_descriptor_type;
     using real_coordinate_type = typename domain_type::real_coordinate_type;
     using coordinate_type = typename domain_type::coordinate_type;
     using poisson_solver_t = typename Setup::poisson_solver_t;
+    using linsys_solver_t = typename Setup::linsys_solver_t;
 
     //FMM
     using Fmm_t = typename Setup::Fmm_t;
@@ -64,6 +67,7 @@ class Ifherk
     using cell_aux_type = typename Setup::cell_aux_type;
     using edge_aux_type = typename Setup::edge_aux_type;
     using face_aux_type = typename Setup::face_aux_type;
+    using face_aux2_type = typename Setup::face_aux2_type;
     using correction_tmp_type = typename Setup::correction_tmp_type;
     using w_1_type = typename Setup::w_1_type;
     using w_2_type = typename Setup::w_2_type;
@@ -75,6 +79,7 @@ class Ifherk
     : simulation_(_simulation)
     , domain_(_simulation->domain_.get())
     , psolver(_simulation)
+    , lsolver(_simulation)
     {
         // parameters --------------------------------------------------------
 
@@ -534,56 +539,56 @@ class Ifherk
         nonlinear<u_type, g_i_type>(coeff_a(1, 1) * (-dt_));
         copy<q_i_type, r_i_type>();
         add<g_i_type, r_i_type>();
-        lin_sys_solve(alpha_[0]);
+        lin_sys_with_ib_solve(alpha_[0]);
 
         // Stage 2
         // ******************************************************************
-        pcout << "Stage 2" << std::endl;
-        stage_idx_ = 2;
-        clean<r_i_type>();
-        clean<d_i_type>();
-        clean<cell_aux_type>();
+        //pcout << "Stage 2" << std::endl;
+        //stage_idx_ = 2;
+        //clean<r_i_type>();
+        //clean<d_i_type>();
+        //clean<cell_aux_type>();
 
-        //cal wii
-        //r_i_type = q_i_type + dt(a21 w21)
-        //w11 = (1/a11)* dt (g_i_type - face_aux_type)
+        ////cal wii
+        ////r_i_type = q_i_type + dt(a21 w21)
+        ////w11 = (1/a11)* dt (g_i_type - face_aux_type)
 
-        add<g_i_type, face_aux_type>(-1.0);
-        copy<face_aux_type, w_1_type>(-1.0 / dt_ / coeff_a(1, 1));
+        //add<g_i_type, face_aux_type>(-1.0);
+        //copy<face_aux_type, w_1_type>(-1.0 / dt_ / coeff_a(1, 1));
 
-        psolver.template apply_lgf_IF<q_i_type, q_i_type>(alpha_[0]);
-        psolver.template apply_lgf_IF<w_1_type, w_1_type>(alpha_[0]);
+        //psolver.template apply_lgf_IF<q_i_type, q_i_type>(alpha_[0]);
+        //psolver.template apply_lgf_IF<w_1_type, w_1_type>(alpha_[0]);
 
-        add<q_i_type, r_i_type>();
-        add<w_1_type, r_i_type>(dt_ * coeff_a(2, 1));
+        //add<q_i_type, r_i_type>();
+        //add<w_1_type, r_i_type>(dt_ * coeff_a(2, 1));
 
-        up_and_down<u_i_type>();
-        nonlinear<u_i_type, g_i_type>(coeff_a(2, 2) * (-dt_));
-        add<g_i_type, r_i_type>();
+        //up_and_down<u_i_type>();
+        //nonlinear<u_i_type, g_i_type>(coeff_a(2, 2) * (-dt_));
+        //add<g_i_type, r_i_type>();
 
-        lin_sys_solve(alpha_[1]);
+        //lin_sys_with_ib_solve(alpha_[1]);
 
-        // Stage 3
-        // ******************************************************************
-        pcout << "Stage 3" << std::endl;
-        stage_idx_ = 3;
-        clean<d_i_type>();
-        clean<cell_aux_type>();
-        clean<w_2_type>();
+        //// Stage 3
+        //// ******************************************************************
+        //pcout << "Stage 3" << std::endl;
+        //stage_idx_ = 3;
+        //clean<d_i_type>();
+        //clean<cell_aux_type>();
+        //clean<w_2_type>();
 
-        add<g_i_type, face_aux_type>(-1.0);
-        copy<face_aux_type, w_2_type>(-1.0 / dt_ / coeff_a(2, 2));
-        copy<q_i_type, r_i_type>();
-        add<w_1_type, r_i_type>(dt_ * coeff_a(3, 1));
-        add<w_2_type, r_i_type>(dt_ * coeff_a(3, 2));
+        //add<g_i_type, face_aux_type>(-1.0);
+        //copy<face_aux_type, w_2_type>(-1.0 / dt_ / coeff_a(2, 2));
+        //copy<q_i_type, r_i_type>();
+        //add<w_1_type, r_i_type>(dt_ * coeff_a(3, 1));
+        //add<w_2_type, r_i_type>(dt_ * coeff_a(3, 2));
 
-        psolver.template apply_lgf_IF<r_i_type, r_i_type>(alpha_[1]);
+        //psolver.template apply_lgf_IF<r_i_type, r_i_type>(alpha_[1]);
 
-        up_and_down<u_i_type>();
-        nonlinear<u_i_type, g_i_type>(coeff_a(3, 3) * (-dt_));
-        add<g_i_type, r_i_type>();
+        //up_and_down<u_i_type>();
+        //nonlinear<u_i_type, g_i_type>(coeff_a(3, 3) * (-dt_));
+        //add<g_i_type, r_i_type>();
 
-        lin_sys_solve(alpha_[2]);
+        //lin_sys_with_ib_solve(alpha_[2]);
 
         // ******************************************************************
         copy<u_i_type, u_type>();
@@ -711,7 +716,6 @@ class Ifherk
 private:
     float_type coeff_a(int i, int j)const noexcept {return a_[i*(i-1)/2+j-1];}
 
-
     void lin_sys_solve(float_type _alpha) noexcept
     {
         auto client=domain_->decomposition().client();
@@ -727,6 +731,47 @@ private:
 
         gradient<d_i_type,face_aux_type>();
         add<face_aux_type, r_i_type>(-1.0);
+        if (std::fabs(_alpha)>1e-4)
+        {
+            mDuration_type t_if(0);
+            domain_->client_communicator().barrier();
+            TIME_CODE( t_if, SINGLE_ARG(
+                        psolver.template apply_lgf_IF<r_i_type, u_i_type>(_alpha);
+                        ));
+            pcout<< "IF  solved in "<<t_if.count() << std::endl;
+        }
+        else
+            copy<r_i_type,u_i_type>();
+    }
+
+
+    void lin_sys_with_ib_solve(float_type _alpha) noexcept
+    {
+        auto client=domain_->decomposition().client();
+
+        divergence<r_i_type, cell_aux_type>();
+
+        domain_->client_communicator().barrier();
+        mDuration_type t_lgf(0);
+        TIME_CODE( t_lgf, SINGLE_ARG(
+                    psolver.template apply_lgf<cell_aux_type, d_i_type>();
+                    ));
+        pcout<< "LGF solved in "<<t_lgf.count() << std::endl;
+
+        copy<r_i_type, face_aux2_type>();
+        gradient<d_i_type,face_aux_type>();
+        add<face_aux_type, face_aux2_type>(-1.0);
+
+        // IB
+        psolver.template apply_lgf_IF<face_aux2_type, face_aux2_type>(_alpha, MASK_TYPE::IB2IB);
+        lsolver.template ib_solve<face_aux2_type>(_alpha);
+
+        // new presure field
+        lsolver.template pressure_correction<d_i_type>();
+        gradient<d_i_type, face_aux_type>();
+        lsolver.template smearing<face_aux_type>(domain_->ib().force(), false);
+        add<face_aux_type, r_i_type>(-1.0);
+
         if (std::fabs(_alpha)>1e-4)
         {
             mDuration_type t_if(0);
@@ -955,6 +1000,8 @@ private:
     simulation_type* simulation_;
     domain_type*     domain_; ///< domain
     poisson_solver_t psolver;
+    linsys_solver_t lsolver;
+
 
     bool base_mesh_update_=false;
 

@@ -110,7 +110,8 @@ public:
              l >= domain_->tree()->base_level() ; --l)
         {
 
-            int fmm_mask_idx = octant_t::fmm_mask_idx_gen(MASK_TYPE::IB2AMR, l);
+            int fmm_mask_idx = octant_t::fmm_mask_idx_gen(MASK_TYPE::IB2AMR,
+                    l-domain_->tree()->base_level());
 
             // clean
             for (auto it = domain_->begin();

@@ -14,19 +14,15 @@
 #define IMMERSED_BOUNDARY_HPP
 
 #include <vector>
+#include <functional>
 #include <iblgf/global.hpp>
 #include <iblgf/domain/octree/octant.hpp>
+#include <iblgf/domain/ib_communicator.hpp>
 
 namespace iblgf
 {
 namespace ib
 {
-//TODO: @KE: Why do we store ib in the domain????
-//           Why is it constructed there and why do you store it as a shared pointer?
-//           I suggest defualt construct and maybe init with file name or so
-//           Should be in the simulation right? And why do we need to pass around
-//           the pointer instead of just a plain ref?
-//
 template<int Dim, class DataBlock>
 class IB
 {
@@ -39,37 +35,71 @@ class IB
     using coordinate_type = typename tree_t::coordinate_type;
     using force_type = std::vector<real_coordinate_type>;
 
-    using delta_func_type = std::function<float_type(real_coordinate_type x)>;
+    using delta_func_type = std::function<float_type(real_coordinate_type)>;
 
-  public: // friends
+    using communicator_t = ib_communicator<IB>;
+
   public: // Ctors
-    IB() = default;
-    IB(const IB& other) = delete;
+    IB(const IB& other) = default;
     IB(IB&& other) = default;
-    IB& operator=(const IB& other) & = delete;
+    IB& operator=(const IB& other) & = default;
     IB& operator=(IB&& other) & = default;
     ~IB() = default;
 
-    IB(std::vector<real_coordinate_type>& points, float_type dx_base)
-    : dx_base_(dx_base)
-    , coordinates_(points)
-    , forces_(points.size(), real_coordinate_type((float_type)0))
-    , ib_infl_(points.size())
-    , ib_rank_(points.size())
+    IB()
+    : ib_comm_(this)
     {
-        ddf_radius_ = 2;
+    }
 
-        // will add more, default is yang3
-        auto delta_func_1d_ = [this](float_type x) { return this->yang3(x); };
+  public: // init functions
+    void init(float_type dx_base, int nRef)
+    {
+        ddf_radius_ = 3;
+        nRef_ = nRef;
+        dx_base_ = dx_base;
+
+        read_points();
+        // will add more, default is yang4
+        std::function<float_type(float_type x)> delta_func_1d_ =
+            [this](float_type x) { return this->yang4(x); };
 
         // ddf 3D
-        delta_func_ = [this, delta_func_1d_](real_coordinate_type x)
-            { return delta_func_1d_(x[0]) * delta_func_1d_(x[1]) * delta_func_1d_(x[2]); };
+        this->delta_func_ = [this, delta_func_1d_](real_coordinate_type x) {
+            return delta_func_1d_(x[0]) * delta_func_1d_(x[1]) *
+                   delta_func_1d_(x[2]);
+        };
+        ib_infl_.resize(coordinates_.size());
+        ib_rank_.resize(coordinates_.size());
+        forces_.resize(
+            coordinates_.size(), real_coordinate_type((float_type)0));
+    }
+
+    void read_points() noexcept
+    {
+        //coordinates_.emplace_back(real_coordinate_type({0.01, 0.01, 0.01}));
+
+        float_type L = 0.7555555555555555;
+        int        nx = 3;
+        //int        nx = int(L/dx_base_/1.5*pow(2,nRef_));
+        int        nyz = nx;
+        for (int ix = 0; ix < nx; ++ix)
+            for (int iyz = 0; iyz < nyz; ++iyz)
+            {
+                coordinates_.emplace_back(
+                    real_coordinate_type(
+                        { (ix * L)/(nx-1) - L/2.0, 0, (iyz*L)/(nyz-1) - L/2.0 }));
+            }
+    }
+
+    /** @{ @brief Get the force vector of  all immersed boundary points */
+    void communicate_test(bool send_locally_owned) noexcept
+    {
+        ib_comm_.compute_indices();
+        ib_comm_.communicate(send_locally_owned);
     }
 
   public: //Access
-
-    auto        force_copy() noexcept { return forces_; }
+    /** @{ @brief Get the force vector of  all immersed boundary points */
     auto&       force() noexcept { return forces_; }
 
     /** @{ @brief Get the force of ith  immersed boundary point */
@@ -86,6 +116,10 @@ class IB
     {return coordinates_[_i];}
     /** @} */
 
+    /** @{ @brief Get the coordinates of the ith ib points scaled by level */
+    auto       scaled_coordinate(std::size_t _i) noexcept { return coordinates_[_i] * std::pow(2, nRef_) / dx_base_; }
+    /** @} */
+
     /** @{ @brief Get the influence lists of the ib points */
     auto&       influence_list() noexcept { return ib_infl_; }
     const auto& influence_list() const noexcept { return ib_infl_; }
@@ -100,48 +134,51 @@ class IB
 
     /** @{ @brief Get the rank of the ith ib points */
     auto&       rank(std::size_t _i) noexcept { return ib_rank_[_i]; }
-    const auto&  rank(std::size_t _i) const noexcept { return ib_rank_[_i]; }
+    const auto& rank(std::size_t _i) const noexcept { return ib_rank_[_i]; }
+    /** @} */
 
+    /** @brief Get number of ib points */
     auto size() const noexcept { return coordinates_.size(); }
+    /** @brief Get delta function radius */
     auto ddf_radius() const noexcept { return ddf_radius_; }
+
+    /** @{ @brief Get ib mpi communicator  */
+    auto&       communicator() noexcept { return ib_comm_; }
+    const auto& communicator() const noexcept { return ib_comm_; }
+    /** @} */
 
   public: // iters
   public: // functions
     template<class BlockDscrptr>
-    bool ib_block_overlap(int nRef, BlockDscrptr b_dscrptr)
+    bool ib_block_overlap(BlockDscrptr b_dscrptr, int radius_level = 0)
     {
-        // if a block overlap with ANY ib point
 
         for (std::size_t i = 0; i < size(); i++)
-            if (ib_block_overlap(nRef, i, b_dscrptr)) return true;
+            if (ib_block_overlap(i, b_dscrptr, radius_level)) return true;
 
         return false;
     }
 
     template<class BlockDscrptr>
     bool ib_block_overlap(
-        int nRef, int idx, BlockDscrptr b_dscrptr, bool add_radius = true)
+        int idx, BlockDscrptr b_dscrptr, int radius_level = 0)
     {
         // this function scale the block to the finest level and compare with
         // the influence region of the ib point
 
         b_dscrptr.extent() += 1;
-        //auto coor = this->coordinate(idx);
+        b_dscrptr.level_scale(nRef_);
 
-        //std::cout<<"--------------------------"<<std::endl << b_dscrptr << std::endl;
-        //std::cout<<"ib point ["<< coor[0]<<" "<<coor[1]<<" "<<coor[2] <<"]" <<std::endl;
+        float_type added_radius = 0;
+        if (radius_level == 2)
+            added_radius += ddf_radius_+safety_dis_;
+        else if (radius_level == 1)
+            added_radius += ddf_radius_;
 
-        b_dscrptr.level_scale(nRef);
+        b_dscrptr.extent() += 2*added_radius;
+        b_dscrptr.base() -= added_radius;
 
-        if (add_radius)
-        {
-            b_dscrptr.extent() += ddf_radius_ * 2 + safety_dis_ * 2;
-            b_dscrptr.base() -= ddf_radius_ + safety_dis_;
-        }
-
-        float_type factor = std::pow(2, nRef) / dx_base_;
-        //std::cout<<"block_descriptor" << b_dscrptr << std::endl;
-        //std::cout<<"factor" << factor << std::endl;
+        float_type factor = std::pow(2, nRef_) / dx_base_;
 
         for (std::size_t d = 0; d < Dim; ++d)
         {
@@ -152,14 +189,30 @@ class IB
         return true;
     }
 
-  public: // io
-    void read()
-    {
-
-    }
   public: // ddfs
     const auto& delta_func() const noexcept { return delta_func_; }
     auto&       delta_func() noexcept { return delta_func_; }
+
+    float_type yang4(float_type x)
+    {
+        float_type r = std::fabs(x);
+        if (r>2.5) return 0;
+
+        float_type r2 = r * r;
+        float_type ddf = 0;
+
+        if (r<=0.5)
+            ddf = 3.0/8+M_PI/32.0-r2/4;
+        else if (r<=1.5)
+            ddf = 1.0/4+(1.0-r)/8.0 * sqrt(-2.0+8*r-4*r2) - 1.0/8 * asin(sqrt(2)*(r-1) );
+
+        else if (r<=2.5)
+            ddf = 17.0/16-M_PI/64.0-3.0/4*r+r2/8+(r-2.0)/16.0*sqrt(-14.0+16*r-4*r2)
+                    +1/16*asin(sqrt(2)*(r-2));
+
+        return ddf;
+
+    }
 
     float_type yang3(float_type x)
     {
@@ -180,17 +233,20 @@ class IB
         return ddf;
     }
 
-  private:
-    int        safety_dis_ = 1;
+  public:
+    int        nRef_ = 0;
+    int        safety_dis_ = 7;
     float_type dx_base_ = 1;
 
     std::vector<real_coordinate_type>   coordinates_;
     force_type                          forces_;
     std::vector<std::vector<octant_t*>> ib_infl_;
-    std::vector<int> ib_rank_;
+    std::vector<int>                    ib_rank_;
 
-    float_type      ddf_radius_;
     delta_func_type delta_func_;
+    float_type      ddf_radius_ = 0;
+
+    communicator_t ib_comm_;
 };
 
 } // namespace ib

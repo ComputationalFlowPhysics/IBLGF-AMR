@@ -540,6 +540,36 @@ class Server : public ServerBase<ServerClientTraits<Domain>>
         }
     }
 
+// IB related
+
+    void update_ib_flag()
+    {
+        const int added_radius_level = 2;
+
+        for (auto it  = domain_->begin();
+                it != domain_->end(); ++it)
+            it->is_ib()=false;
+
+        int l_max = domain_->tree()->depth()-1;
+
+        auto& ib = domain_->ib();
+        for (std::size_t i=0; i<ib.size(); ++i)
+        {
+            ib.rank(i)=-1;
+            ib.influence_list(i).clear();
+
+            for (auto it  = domain_->begin(l_max);
+                    it != domain_->end(l_max); ++it)
+            {
+                if (!it->has_data() || !it->is_leaf())
+                    continue;
+
+                if (ib.ib_block_overlap(i, it->data().descriptor(), added_radius_level))
+                    it->is_ib()=true;
+            }
+        }
+
+    }
 
 
 private:

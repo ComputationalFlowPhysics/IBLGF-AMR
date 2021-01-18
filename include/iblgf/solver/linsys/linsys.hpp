@@ -32,7 +32,6 @@ using namespace domain;
 template<class Setup>
 class LinSysSolver
 {
-
   public: //member types
     using simulation_type = typename Setup::simulation_t;
     using poisson_solver_t = typename Setup::poisson_solver_t;
@@ -51,40 +50,86 @@ class LinSysSolver
     using u_type = typename Setup::u_type;
     using r_i_type = typename Setup::r_i_type;
     using cell_aux2_type = typename Setup::cell_aux2_type;
+    using face_aux_type = typename Setup::face_aux_type;
+    using face_aux2_type = typename Setup::face_aux2_type;
 
   public:
-
     LinSysSolver(simulation_type* simulation)
-    :simulation_(simulation),
-    domain_(simulation->domain_.get()),
-    ib_(domain_->ib_ptr()),
-    psolver_(simulation)
+    : simulation_(simulation)
+    , domain_(simulation->domain_.get())
+    , ib_(&domain_->ib())
+    , psolver_(simulation)
     {
-
     }
 
     float_type test()
     {
+        float_type alpha =  0.0077777;
         if (domain_->is_server())
             return 0;
 
         for (std::size_t i=0; i<ib_->size(); ++i)
             ib_->force(i,0)=1;
 
-        auto uc = ib_->force_copy();
+        force_type uc(ib_->force());
 
-        //CG_solve(uc);
+        this->template CG_solve<u_type>(uc, alpha);
 
         force_type tmp(ib_->size(), (0.,0.,0.));
-        //printvec(ib_->force(), "force before recover");
-        ET_S_E(ib_->force(), tmp, MASK_TYPE::AMR2AMR);
+        printvec(ib_->force(), "force before recover");
+        this->template ET_H_S_E<u_type>(ib_->force(), tmp, MASK_TYPE::IB2AMR, alpha);
 
         return 0;
     }
 
-    template< class UcType>
-    void CG_solve(UcType& uc, int fmm_type = MASK_TYPE::IB2IB)
+    template<class Field>
+    void ib_solve(float_type alpha)
     {
+        // right hand side
+        force_type uc(ib_->size(), (0.,0.,0.));
+
+        this->projection<Field>(uc);
+        this->subtract_boundary_vel(uc);
+
+        domain::Operator::domainClean<face_aux2_type>(domain_);
+        this->template CG_solve<face_aux2_type>(uc, alpha);
+    }
+
+    template<class Field>
+    void pressure_correction()
+    {
+        auto& f = ib_->force();
+
+        domain::Operator::domainClean<face_aux2_type>(domain_);
+        domain::Operator::domainClean<cell_aux2_type>(domain_);
+        this->smearing<face_aux2_type>(ib_->force());
+
+        int l = domain_->tree()->depth()-1;
+        domain::Operator::levelDivergence<face_aux2_type, cell_aux2_type>(domain_, l);
+
+        // apply L^-1
+        psolver_.template apply_lgf<cell_aux2_type,cell_aux2_type>(MASK_TYPE::IB2AMR);
+
+        domain::Operator::add<cell_aux2_type, Field>(domain_, -1.0);
+    }
+
+    template<class ForceType>
+    void subtract_boundary_vel(ForceType& uc)
+    {
+        for (int i=0; i<uc.size(); ++i)
+            uc[i]-=boundaryVel(ib_->coordinate(i));
+    }
+
+    template<class ForceType>
+    ForceType boundaryVel(ForceType x)
+    {
+        return ForceType({1, 0, 0});
+    }
+
+    template<class Ftmp, class UcType>
+    void CG_solve(UcType& uc, float_type alpha, int fmm_type = MASK_TYPE::IB2IB)
+    {
+        std::cout<< " IF alpha = "<<alpha;
         auto& f = ib_->force();
         force_type Ax(ib_->size(), (0.,0.,0.));
         force_type r (ib_->size(), (0.,0.,0.));
@@ -93,28 +138,31 @@ class LinSysSolver
         if (domain_->is_server())
             return;
 
-        int Nitr = 20;
+        int Nitr = 8;
         float_type threshold=1e-5;
 
 
         // Ax
-        ET_S_E(f, Ax, fmm_type);
+        this->template ET_H_S_E<Ftmp>(f, Ax, fmm_type, alpha);
+        printvec(Ax, "Ax");
 
-        printvec(Ax, "Ax" );
         //  res = uc - Ax
         for (int i=0; i<ib_->size(); ++i)
             r[i]=uc[i]-Ax[i];
-        // p = res
-        printvec(r, "r" );
 
+        // p = res
         auto p = r;
+        printvec(p, "r");
+
         // rold = r'* r;
         float_type rsold = dot(r, r);
+        std::cout<< "residue square = "<< rsold << std::endl;;
 
         for (int k=0; k<Nitr; k++)
         {
             // Ap = A(p)
-            ET_S_E(p, Ap, fmm_type );
+            this->template ET_H_S_E<Ftmp>(p, Ap, fmm_type, alpha );
+            printvec(Ap, "Ap");
             // alpha = rsold / p'*Ap
             float_type alpha = rsold / dot(p, Ap);
             // f = f + alpha * p;
@@ -133,11 +181,6 @@ class LinSysSolver
         }
     }
 
-    void recover_potential_flow()
-    {
-            ET_L_inv_S_E(p, Ap);
-    }
-
 
     template <class F, class S>
     void printvec(F& f, S message)
@@ -148,53 +191,46 @@ class LinSysSolver
     }
 
 
-    void H_S()
-    {
-    }
+    //template <class VecType>
+    //void ET_S_E(VecType& fin, VecType& fout, int fmm_type = MASK_TYPE::IB2IB)
+    //{
 
-    template <class VecType>
-    void ET_S_E(VecType& fin, VecType& fout, int fmm_type = MASK_TYPE::IB2IB)
-    {
+    //    force_type ftmp(ib_->size(), (0.,0.,0.));
 
-        force_type ftmp(ib_->size(), (0.,0.,0.));
+    //    if (domain_->is_server())
+    //        return;
 
-        if (domain_->is_server())
-            return;
+    //    this->smearing<u_type>(fin);
+    //    this->projection<u_type>(fout);
+    //    this->template apply_Schur<u_type, u_type>(fmm_type);
+    //    this->projection<u_type>(ftmp);
 
-        this->smearing<u_type>(fin);
-        //this->projection<u_type>(fout);
-        //this->template apply_Schur<u_type, u_type>(fmm_type);
-        //this->projection<u_type>(ftmp);
+    //    add(fout, ftmp, 1, -1);
+    //}
 
-        add(fout, ftmp, 1, -1);
-    }
-
-    template <class VecType>
-    void ET_L_inv_S_E(VecType& fin, VecType& fout, int fmm_type = MASK_TYPE::IB2IB)
+    template <class Field, class VecType>
+    void ET_H_S_E(VecType& fin, VecType& fout, int fmm_type, float_type alpha)
     {
 
-        force_type ftmp(ib_->size(), (0.,0.,0.));
+        domain::Operator::domainClean<Field>(domain_);
+        domain::Operator::domainClean<face_aux_type>(domain_);
 
-        if (domain_->is_server())
-            return;
+        this->smearing<Field>(fin);
+        psolver_.template apply_lgf_IF<Field, Field>(alpha, fmm_type);
 
-        this->smearing<u_type>(fin);
-        psolver_.template apply_lgf<u_type,u_type>(fmm_type);
-        this->projection<u_type>(fout);
+        this->template apply_Schur<Field, face_aux_type>(fmm_type);
 
-        //this->smearing<u_type>(fin);
-        this->template apply_Schur<u_type, u_type>(fmm_type);
-        //psolver_.template apply_lgf<u_type,u_type>(MASK_TYPE::IB2IB);
+        domain::Operator::add<face_aux_type, Field>(domain_, -1.0);
 
-        this->projection<u_type>(ftmp);
-        add(fout, ftmp, 1, -1);
+        this->projection<Field>(fout);
+
+        //this->projection<face_aux2_type>(ftmp);
+        //add(fout, ftmp, 1, -1);
     }
 
     template<class Source, class Target>
     void apply_Schur(int fmm_type)
     {
-        if (domain_->is_server())
-            return;
 
         // finest level only
         int l = domain_->tree()->depth()-1;
@@ -203,35 +239,53 @@ class LinSysSolver
         domain::Operator::levelDivergence<Source, cell_aux2_type>(domain_, l);
 
         // apply L^-1
-        psolver_.template apply_lgf<cell_aux2_type,cell_aux2_type>(fmm_type);
+        psolver_.template apply_lgf<cell_aux2_type, cell_aux2_type>(fmm_type);
 
-        //// apply Gradient
-        domain::Operator::levelGradient<cell_aux2_type, Target>(domain_, l);
+        // apply Gradient
+        const int l_max = (fmm_type != MASK_TYPE::STREAM) ?
+                    domain_->tree()->depth() : domain_->tree()->base_level()+1;
 
+        const int l_min = (fmm_type !=  MASK_TYPE::IB2IB) ?
+                    domain_->tree()->base_level() : domain_->tree()->depth()-1;
+
+        for (int l = l_min; l < l_max; ++l)
+            domain::Operator::levelGradient<cell_aux2_type, Target>(domain_, l);
     }
 
     template<class U, class ForceType,
         typename std::enable_if<(U::mesh_type() == MeshObject::face), void>::type* = nullptr>
-    void smearing(ForceType& f)
+    void smearing(ForceType& f, bool cleaning=true)
     {
         if (domain_->is_server())
             return;
 
+        ib_->communicator().compute_indices();
+        ib_->communicator().communicate(true, f);
+
         //cleaning
-        domain::Operator::domainClean<U>(domain_);
+        if (cleaning)
+            domain::Operator::domainClean<U>(domain_);
 
         for (std::size_t i=0; i<ib_->size(); ++i)
         {
-            auto ib_coord = ib_->coordinate(i);
-            std::cout<<ib_coord<<std::endl;
+            auto ib_coord = ib_->scaled_coordinate(i);
             for (auto it: ib_->influence_list(i))
             {
-                if (!it->locally_owned())
-                    continue;
-
+                if (!it->locally_owned()) continue;
+                if (!it->has_data() || !it->data().is_allocated()) continue;
                 domain::Operator::ib_smearing<U>(ib_coord, f[i], it->data(), ib_->delta_func());
             }
         }
+
+        float_type sum = 0.0;
+        for (auto it = domain_->begin(); it != domain_->end(); ++it)
+        {
+            if (!it->locally_owned()) continue;
+            if (!it->has_data() || !it->data().is_allocated()) continue;
+            for (auto& n:it->data())
+                sum+=n(U::tag(), 0);
+        }
+        std::cout<<"sum of u0 = " << sum << std::endl;
 
     }
 
@@ -243,25 +297,25 @@ class LinSysSolver
 
         if (domain_->is_server())
             return;
-
         // clean f
         for (std::size_t i=0; i<ib_->size(); ++i)
             f[i]=0.0;
 
         for (std::size_t i=0; i<ib_->size(); ++i)
         {
-            auto ib_coord = ib_->coordinate(i);
+            auto ib_coord = ib_->scaled_coordinate(i);
 
             for (auto it: ib_->influence_list(i))
             {
-                if (!it->locally_owned())
-                    continue;
-
-                domain::Operator::ib_projection<u_type>
+                if (!it->locally_owned()) continue;
+                domain::Operator::ib_projection<U>
                     (ib_coord, f[i], it->data(), ib_->delta_func());
 
             }
         }
+
+        ib_->communicator().compute_indices();
+        ib_->communicator().communicate(false, f);
 
     }
 
@@ -289,9 +343,6 @@ class LinSysSolver
         }
     }
 
-
-
-
   private:
     simulation_type* simulation_;
     domain_type*     domain_; ///< domain
@@ -299,8 +350,7 @@ class LinSysSolver
     poisson_solver_t psolver_;
 };
 
-
-}
-}
+} // namespace solver
+} // namespace iblgf
 
 #endif

@@ -50,6 +50,44 @@ struct Operator
     }
 
     // TODO: move up_and_down
+    template <typename F, class Domain>
+    static void clean_ib_region_boundary(Domain* domain, int l, int clean_width=2) noexcept
+    {
+        for (auto it  = domain->begin(l);
+                it != domain->end(l); ++it)
+        {
+            if(!it->locally_owned()) continue;
+            if(!it->has_data() || !it->data().is_allocated()) continue;
+
+            for(std::size_t i=0;i< it->num_neighbors();++i)
+            {
+                auto it2=it->neighbor(i);
+                if ((!it2 || !it2->has_data()) || (!it2->is_ib()))
+                {
+                    for (std::size_t field_idx=0; field_idx<F::nFields(); ++field_idx)
+                    {
+                        auto& lin_data =
+                            it->data_r(F::tag(), field_idx).linalg_data();
+
+                        int N=it->data().descriptor().extent()[0];
+
+                        // somehow we delete the outer 2 planes
+                        if (i==4)
+                            view(lin_data,xt::all(),xt::all(),xt::range(0,clean_width))  *= 0.0;
+                        else if (i==10)
+                            view(lin_data,xt::all(),xt::range(0,clean_width),xt::all())  *= 0.0;
+                        else if (i==12)
+                            view(lin_data,xt::range(0,clean_width),xt::all(),xt::all())  *= 0.0;
+                        else if (i==14)
+                            view(lin_data,xt::range(N+2-clean_width,N+3),xt::all(),xt::all())  *= 0.0;
+                        else if (i==16)
+                            view(lin_data,xt::all(),xt::range(N+2-clean_width,N+3),xt::all())  *= 0.0;
+                        else if (i==22)
+                            view(lin_data,xt::all(),xt::all(),xt::range(N+2-clean_width,N+3))  *= 0.0;
+                    }
+                }
+            }
+        }}
 
     template <typename F, class Domain>
     static void clean_leaf_correction_boundary(Domain* domain, int l, bool leaf_only_boundary=false, int clean_width=1) noexcept
@@ -135,7 +173,8 @@ struct Operator
 
         for (auto it = domain->begin(l); it != domain->end(l); ++it)
         {
-            if (!it->locally_owned() || !it->has_data()) continue;
+            if (!it->locally_owned()) continue;
+            if (!it->has_data() || !it->data().is_allocated()) continue;
 
             const auto dx_level = dx_base / std::pow(2,it->refinement_level());
             divergence<Source, Target>( it->data(), dx_level);
@@ -165,7 +204,8 @@ struct Operator
 
         for (auto it = domain->begin(l); it != domain->end(l); ++it)
         {
-            if (!it->locally_owned() || !it->has_data()) continue;
+            if (!it->locally_owned()) continue;
+            if (!it->has_data() || !it->data().is_allocated()) continue;
 
             const auto dx_level = dx_base / std::pow(2,it->refinement_level());
             gradient<Source, Target>( it->data(), dx_level);
@@ -459,6 +499,27 @@ struct Operator
                                             n.at_offset(face, 1, 0, -1, 0)));
         }
     }
+
+    template<typename From, typename To, typename Domain>
+    static void add(Domain domain, float_type scale = 1.0) noexcept
+    {
+        static_assert(From::nFields() == To::nFields(),
+            "number of fields doesn't match when add");
+
+        for (auto it = domain->begin(); it != domain->end(); ++it)
+        {
+            if (!it->locally_owned() || !it->has_data()) continue;
+
+            for (std::size_t field_idx = 0; field_idx < From::nFields();
+                 ++field_idx)
+            {
+                for (auto& n:it->data().node_field())
+                    n(To::tag(), field_idx) += n(From::tag(), field_idx) * scale;
+            }
+        }
+    }
+
+
 };
 } // namespace domain
 } // namespace iblgf

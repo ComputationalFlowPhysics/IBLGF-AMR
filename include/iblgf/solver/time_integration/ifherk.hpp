@@ -174,7 +174,7 @@ class Ifherk
         else
         {
             T_ = 0.0;
-            adapt_count_=-1;
+            adapt_count_=0;
             write_timestep();
         }
 

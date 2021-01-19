@@ -39,7 +39,7 @@ class Simulation
     , domain_(std::make_shared<domain_type>())
     , io_init_(_dictionary.get())
     {
-        intrp_order_ = dictionary_->template get_or<int>("intrp_order",3);
+        intrp_order_ = dictionary_->template get_or<int>("intrp_order", 5);
     }
 
     friend std::ostream& operator<<(std::ostream& os, Simulation& s)
@@ -153,7 +153,7 @@ public:
   std::string tree_info_file_="tree_info";
   std::string restart_field_file_="restart_field.hdf5";
 
-  int intrp_order_=5;
+  int intrp_order_;
 
 };
 

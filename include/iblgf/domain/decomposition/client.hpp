@@ -833,6 +833,8 @@ public:
         {
             ib.rank(i)=-1;
             ib.influence_list(i).clear();
+            auto ib_coord = ib.scaled_coordinate(i);
+
 
             for (auto it  = domain_->begin();
                     it != domain_->end(); ++it)
@@ -847,12 +849,37 @@ public:
                     // check if it is strictly inside that black (flag = false)
                     if (ib.ib_block_overlap(i, it->data().descriptor(), 0 ))
                         ib.rank(i)=it->rank();
+
                 }
+            }
+
+            std::size_t oct_c = 0;
+            ib.influence_pts(i).resize(ib.influence_list(i).size());
+
+            for (auto& it:  ib.influence_list(i))
+            {
+                if (!it->locally_owned()) continue;
+
+                for (auto n:it->data())
+                {
+                    auto n_coord = n.level_coordinate();
+                    auto dist = n_coord - ib_coord;
+
+                    bool influenced = true;
+                    for (std::size_t field_idx=0; field_idx<domain_->dimension(); field_idx++)
+                        if (abs(dist[field_idx]) > ib.ddf_radius()+1)
+                            influenced = false;
+
+                    if (influenced)
+                        ib.influence_pts(i, oct_c).emplace_back(n);
+
+                }
+
+                oct_c+=1;
             }
 
         }
 
-        ib.communicator().compute_indices();
     }
 
 

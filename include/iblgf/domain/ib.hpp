@@ -28,6 +28,7 @@ class IB
 {
   public: // member types
     using datablock_t = DataBlock;
+    using node_t = typename datablock_t::node_t;
     using tree_t = octree::Tree<Dim, datablock_t>;
     using octant_t = typename tree_t::octant_type;
 
@@ -52,9 +53,12 @@ class IB
     }
 
   public: // init functions
-    void init(float_type dx_base, int nRef)
+    template<class DictionaryPtr>
+    void init(DictionaryPtr d, float_type dx_base, int nRef)
     {
-        ddf_radius_ = 2;
+
+        ibph_ = d->template get_or<float_type>("ibph", 1.25);
+        ddf_radius_ = 2.5;
         nRef_ = nRef;
         dx_base_ = dx_base;
 
@@ -69,6 +73,7 @@ class IB
                    delta_func_1d_(x[2]);
         };
         ib_infl_.resize(coordinates_.size());
+        ib_infl_pts_.resize(coordinates_.size());
         ib_rank_.resize(coordinates_.size());
         forces_.resize(
             coordinates_.size(), real_coordinate_type((float_type)0));
@@ -78,16 +83,16 @@ class IB
     {
         //coordinates_.emplace_back(real_coordinate_type({0.01, 0.01, 0.01}));
 
-        float_type L = 0.7555555555555555;
+        float_type L = 1.0;
         //int        nx = 2;
-        int        nx = int(L/dx_base_/1.0*pow(2,nRef_));
+        int        nx = int(L/dx_base_/ibph_*pow(2,nRef_));
         int        nyz = nx;
         for (int ix = 0; ix < nx; ++ix)
             for (int iyz = 0; iyz < nyz; ++iyz)
             {
                 coordinates_.emplace_back(
                     real_coordinate_type(
-                        { (iyz*L)/(nyz-1) - L/2.0 , (ix * L)/(nx-1) - L/2.0, (iyz*L)/(nyz-1) - L/2.0 }));
+                        { -(iyz*L)/(nyz-1) + L/2.0 , (ix * L)/(nx-1) - L/2.0, (iyz*L)/(nyz-1) - L/2.0 }));
             }
     }
 
@@ -119,6 +124,14 @@ class IB
     /** @{ @brief Get the coordinates of the ith ib points scaled by level */
     auto       scaled_coordinate(std::size_t _i) noexcept { return coordinates_[_i] * std::pow(2, nRef_) / dx_base_; }
     /** @} */
+
+    /** @{ @brief Get the influence lists of the ib points */
+    auto&       influence_pts(std::size_t i) noexcept { return ib_infl_pts_[i]; }
+    const auto& influence_pts(std::size_t i) const noexcept { return ib_infl_pts_[i]; }
+
+    /** @{ @brief Get the influence lists of the ib points */
+    auto&       influence_pts(std::size_t i, std::size_t oct_i ) noexcept { return ib_infl_pts_[i][oct_i]; }
+    const auto& influence_pts(std::size_t i, std::size_t oct_i ) const noexcept { return ib_infl_pts_[i][oct_i]; }
 
     /** @{ @brief Get the influence lists of the ib points */
     auto&       influence_list() noexcept { return ib_infl_; }
@@ -237,10 +250,12 @@ class IB
     int        nRef_ = 0;
     int        safety_dis_ = 4;
     float_type dx_base_ = 1;
+    float_type ibph_;
 
     std::vector<real_coordinate_type>   coordinates_;
     force_type                          forces_;
     std::vector<std::vector<octant_t*>> ib_infl_;
+    std::vector<std::vector<std::vector<node_t>>> ib_infl_pts_;
     std::vector<int>                    ib_rank_;
 
     delta_func_type delta_func_;

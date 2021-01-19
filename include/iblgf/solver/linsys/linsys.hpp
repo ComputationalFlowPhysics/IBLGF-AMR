@@ -60,6 +60,8 @@ class LinSysSolver
     , ib_(&domain_->ib())
     , psolver_(simulation)
     {
+        cg_threshold_ = simulation_->dictionary_->template get_or<float_type>("cg_threshold",1e-4);
+        cg_max_itr_ = simulation_->dictionary_->template get_or<int>("cg_max_itr", 20);
     }
 
     float_type test()
@@ -123,7 +125,7 @@ class LinSysSolver
     template<class ForceType>
     ForceType boundaryVel(ForceType x)
     {
-        return ForceType({1, 0, 0});
+        return ForceType({-1, 0, 0});
     }
 
     template<class Ftmp, class UcType>
@@ -136,9 +138,6 @@ class LinSysSolver
 
         if (domain_->is_server())
             return;
-
-        int Nitr = 20;
-        float_type threshold=1e-4;
 
         // Ax
         this->template ET_H_S_E<Ftmp>(f, Ax, fmm_type, alpha);
@@ -159,7 +158,7 @@ class LinSysSolver
         // rold = r'* r;
         float_type rsold = dot(r, r);
 
-        for (int k=0; k<Nitr; k++)
+        for (int k=0; k<cg_max_itr_; k++)
         {
             // Ap = A(p)
             this->template ET_H_S_E<Ftmp>(p, Ap, fmm_type, alpha );
@@ -173,7 +172,7 @@ class LinSysSolver
             float_type rsnew = dot(r, r);
             if (comm_.rank()==1)
                 std::cout<< "residue square = "<< rsnew/ib_->size()<<std::endl;;
-            if (sqrt(rsnew/ib_->size())<threshold)
+            if (sqrt(rsnew/ib_->size())<cg_threshold_)
                 break;
 
             // p = r + (rsnew / rsold) * p;
@@ -268,12 +267,14 @@ class LinSysSolver
 
         for (std::size_t i=0; i<ib_->size(); ++i)
         {
+            std::size_t oct_i=0;
             auto ib_coord = ib_->scaled_coordinate(i);
             for (auto it: ib_->influence_list(i))
             {
                 if (!it->locally_owned()) continue;
-                if (!it->has_data() || !it->data().is_allocated()) continue;
-                domain::Operator::ib_smearing<U>(ib_coord, f[i], it->data(), ib_->delta_func());
+                domain::Operator::ib_smearing<U>
+                    (ib_coord, f[i], ib_->influence_pts(i, oct_i), ib_->delta_func());
+                oct_i+=1;
             }
         }
 
@@ -294,14 +295,16 @@ class LinSysSolver
 
         for (std::size_t i=0; i<ib_->size(); ++i)
         {
+            std::size_t oct_i=0;
             auto ib_coord = ib_->scaled_coordinate(i);
 
             for (auto it: ib_->influence_list(i))
             {
                 if (!it->locally_owned()) continue;
                 domain::Operator::ib_projection<U>
-                    (ib_coord, f[i], it->data(), ib_->delta_func());
+                    (ib_coord, f[i], ib_->influence_pts(i, oct_i), ib_->delta_func());
 
+                oct_i+=1;
             }
         }
 
@@ -349,6 +352,9 @@ class LinSysSolver
     domain_type*     domain_; ///< domain
     ib_t* ib_;
     poisson_solver_t psolver_;
+
+    float_type cg_threshold_;
+    int  cg_max_itr_;
 };
 
 } // namespace solver

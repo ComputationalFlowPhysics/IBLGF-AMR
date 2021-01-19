@@ -83,7 +83,7 @@ struct ibsolve : public SetupBase<ibsolve, parameters>
                                  ->template get_or<int>("nLevels", 0);
 
         //Construct IB surface
-        domain_->ib().init(domain_->dx_base(), nRef);
+        domain_->ib().init(_d->get_dictionary("simulation_parameters"), domain_->dx_base(), nRef);
 
         domain_->init_refine(nRef, global_refinement_);
 

@@ -179,7 +179,8 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
         int nRef = _d->get_dictionary("simulation_parameters")
                                  ->template get_or<int>("nLevels", 0);
 
-        domain_->ib().init(domain_->dx_base(), nRef);
+        domain_->ib().init(_d->get_dictionary("simulation_parameters"), domain_->dx_base(), nRef);
+
         if (!use_restart())
         {
             domain_->init_refine(nRef, global_refinement_);

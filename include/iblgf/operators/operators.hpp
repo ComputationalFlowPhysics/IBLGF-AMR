@@ -199,7 +199,7 @@ struct Operator
     static void levelGradient(Domain* domain, int l) noexcept
     {
         auto client = domain->decomposition().client();
-        client->template buffer_exchange<Source>(l);
+        //client->template buffer_exchange<Source>(l);
         const auto dx_base = domain->dx_base();
 
         for (auto it = domain->begin(l); it != domain->end(l); ++it)

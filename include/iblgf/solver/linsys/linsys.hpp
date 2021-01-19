@@ -64,7 +64,7 @@ class LinSysSolver
 
     float_type test()
     {
-        float_type alpha =  0.0077777;
+        float_type alpha =  0.00;
         if (domain_->is_server())
             return 0;
 
@@ -129,7 +129,6 @@ class LinSysSolver
     template<class Ftmp, class UcType>
     void CG_solve(UcType& uc, float_type alpha, int fmm_type = MASK_TYPE::IB2IB)
     {
-        std::cout<< " IF alpha = "<<alpha;
         auto& f = ib_->force();
         force_type Ax(ib_->size(), (0.,0.,0.));
         force_type r (ib_->size(), (0.,0.,0.));
@@ -138,9 +137,8 @@ class LinSysSolver
         if (domain_->is_server())
             return;
 
-        int Nitr = 8;
-        float_type threshold=1e-5;
-
+        int Nitr = 20;
+        float_type threshold=1e-4;
 
         // Ax
         this->template ET_H_S_E<Ftmp>(f, Ax, fmm_type, alpha);
@@ -148,21 +146,23 @@ class LinSysSolver
 
         //  res = uc - Ax
         for (int i=0; i<ib_->size(); ++i)
-            r[i]=uc[i]-Ax[i];
+        {
+            if (ib_->rank(i)!=comm_.rank())
+                r[i]=0;
+            else
+                r[i]=uc[i]-Ax[i];
+        }
 
         // p = res
         auto p = r;
-        //printvec(p, "r");
 
         // rold = r'* r;
         float_type rsold = dot(r, r);
-        std::cout<< "residue square = "<< rsold << std::endl;;
 
         for (int k=0; k<Nitr; k++)
         {
             // Ap = A(p)
             this->template ET_H_S_E<Ftmp>(p, Ap, fmm_type, alpha );
-            //printvec(Ap, "Ap");
             // alpha = rsold / p'*Ap
             float_type alpha = rsold / dot(p, Ap);
             // f = f + alpha * p;
@@ -171,8 +171,9 @@ class LinSysSolver
             add(r, Ap, 1.0, -alpha);
             // rsnew = r' * r
             float_type rsnew = dot(r, r);
-            std::cout<< "residue square = "<< rsnew<<std::endl;;
-            if (sqrt(rsnew)<threshold)
+            if (comm_.rank()==1)
+                std::cout<< "residue square = "<< rsnew/ib_->size()<<std::endl;;
+            if (sqrt(rsnew/ib_->size())<threshold)
                 break;
 
             // p = r + (rsnew / rsold) * p;
@@ -216,7 +217,8 @@ class LinSysSolver
         domain::Operator::domainClean<face_aux_type>(domain_);
 
         this->smearing<Field>(fin);
-        psolver_.template apply_lgf_IF<Field, Field>(alpha, fmm_type);
+        if (std::fabs(alpha)>1e-4)
+            psolver_.template apply_lgf_IF<Field, Field>(alpha, fmm_type);
 
         this->template apply_Schur<Field, face_aux_type>(fmm_type);
 
@@ -256,8 +258,6 @@ class LinSysSolver
         typename std::enable_if<(U::mesh_type() == MeshObject::face), void>::type* = nullptr>
     void smearing(ForceType& f, bool cleaning=true)
     {
-        if (domain_->is_server())
-            return;
 
         ib_->communicator().compute_indices();
         ib_->communicator().communicate(true, f);
@@ -277,16 +277,6 @@ class LinSysSolver
             }
         }
 
-        float_type sum = 0.0;
-        for (auto it = domain_->begin(); it != domain_->end(); ++it)
-        {
-            if (!it->locally_owned()) continue;
-            if (!it->has_data() || !it->data().is_allocated()) continue;
-            for (auto& n:it->data())
-                sum+=n(U::tag(), 0);
-        }
-        std::cout<<"sum of u0 = " << sum << std::endl;
-
     }
 
     template<class U, class ForceType,
@@ -297,6 +287,7 @@ class LinSysSolver
 
         if (domain_->is_server())
             return;
+
         // clean f
         for (std::size_t i=0; i<ib_->size(); ++i)
             f[i]=0.0;
@@ -325,11 +316,17 @@ class LinSysSolver
         float_type s = 0;
         for (int i=0; i<a.size(); ++i)
         {
+            if (ib_->rank(i)!=comm_.rank())
+                continue;
+
             for (int d=0; d<a[0].size(); ++d)
                 s+=a[i][d]*b[i][d];
         }
 
-        return s;
+        float_type s_global=0.0;
+        boost::mpi::all_reduce(domain_->client_communicator(), s,
+                s_global, std::plus<float_type>());
+        return s_global;
     }
 
     template <class VecType>
@@ -338,12 +335,16 @@ class LinSysSolver
     {
         for (int i=0; i<a.size(); ++i)
         {
+            if (ib_->rank(i)!=comm_.rank())
+                continue;
+
             for (int d=0; d<a[0].size(); ++d)
                 a[i][d] = a[i][d]*scale1 + b[i][d]*scale2;
         }
     }
 
   private:
+    boost::mpi::communicator comm_;
     simulation_type* simulation_;
     domain_type*     domain_; ///< domain
     ib_t* ib_;

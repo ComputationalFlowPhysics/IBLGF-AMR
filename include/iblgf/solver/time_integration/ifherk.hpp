@@ -236,6 +236,8 @@ class Ifherk
 
             // -------------------------------------------------------------
             // time marching
+            domain_->ib().communicator().compute_indices();
+
             if(domain_->is_client())
             {
                 mDuration_type ifherk_if(0);
@@ -543,52 +545,52 @@ class Ifherk
 
         // Stage 2
         // ******************************************************************
-        //pcout << "Stage 2" << std::endl;
-        //stage_idx_ = 2;
-        //clean<r_i_type>();
-        //clean<d_i_type>();
-        //clean<cell_aux_type>();
+        pcout << "Stage 2" << std::endl;
+        stage_idx_ = 2;
+        clean<r_i_type>();
+        clean<d_i_type>();
+        clean<cell_aux_type>();
 
-        ////cal wii
-        ////r_i_type = q_i_type + dt(a21 w21)
-        ////w11 = (1/a11)* dt (g_i_type - face_aux_type)
+        //cal wii
+        //r_i_type = q_i_type + dt(a21 w21)
+        //w11 = (1/a11)* dt (g_i_type - face_aux_type)
 
-        //add<g_i_type, face_aux_type>(-1.0);
-        //copy<face_aux_type, w_1_type>(-1.0 / dt_ / coeff_a(1, 1));
+        add<g_i_type, face_aux_type>(-1.0);
+        copy<face_aux_type, w_1_type>(-1.0 / dt_ / coeff_a(1, 1));
 
-        //psolver.template apply_lgf_IF<q_i_type, q_i_type>(alpha_[0]);
-        //psolver.template apply_lgf_IF<w_1_type, w_1_type>(alpha_[0]);
+        psolver.template apply_lgf_IF<q_i_type, q_i_type>(alpha_[0]);
+        psolver.template apply_lgf_IF<w_1_type, w_1_type>(alpha_[0]);
 
-        //add<q_i_type, r_i_type>();
-        //add<w_1_type, r_i_type>(dt_ * coeff_a(2, 1));
+        add<q_i_type, r_i_type>();
+        add<w_1_type, r_i_type>(dt_ * coeff_a(2, 1));
 
-        //up_and_down<u_i_type>();
-        //nonlinear<u_i_type, g_i_type>(coeff_a(2, 2) * (-dt_));
-        //add<g_i_type, r_i_type>();
+        up_and_down<u_i_type>();
+        nonlinear<u_i_type, g_i_type>(coeff_a(2, 2) * (-dt_));
+        add<g_i_type, r_i_type>();
 
-        //lin_sys_with_ib_solve(alpha_[1]);
+        lin_sys_with_ib_solve(alpha_[1]);
 
-        //// Stage 3
-        //// ******************************************************************
-        //pcout << "Stage 3" << std::endl;
-        //stage_idx_ = 3;
-        //clean<d_i_type>();
-        //clean<cell_aux_type>();
-        //clean<w_2_type>();
+        // Stage 3
+        // ******************************************************************
+        pcout << "Stage 3" << std::endl;
+        stage_idx_ = 3;
+        clean<d_i_type>();
+        clean<cell_aux_type>();
+        clean<w_2_type>();
 
-        //add<g_i_type, face_aux_type>(-1.0);
-        //copy<face_aux_type, w_2_type>(-1.0 / dt_ / coeff_a(2, 2));
-        //copy<q_i_type, r_i_type>();
-        //add<w_1_type, r_i_type>(dt_ * coeff_a(3, 1));
-        //add<w_2_type, r_i_type>(dt_ * coeff_a(3, 2));
+        add<g_i_type, face_aux_type>(-1.0);
+        copy<face_aux_type, w_2_type>(-1.0 / dt_ / coeff_a(2, 2));
+        copy<q_i_type, r_i_type>();
+        add<w_1_type, r_i_type>(dt_ * coeff_a(3, 1));
+        add<w_2_type, r_i_type>(dt_ * coeff_a(3, 2));
 
-        //psolver.template apply_lgf_IF<r_i_type, r_i_type>(alpha_[1]);
+        psolver.template apply_lgf_IF<r_i_type, r_i_type>(alpha_[1]);
 
-        //up_and_down<u_i_type>();
-        //nonlinear<u_i_type, g_i_type>(coeff_a(3, 3) * (-dt_));
-        //add<g_i_type, r_i_type>();
+        up_and_down<u_i_type>();
+        nonlinear<u_i_type, g_i_type>(coeff_a(3, 3) * (-dt_));
+        add<g_i_type, r_i_type>();
 
-        //lin_sys_with_ib_solve(alpha_[2]);
+        lin_sys_with_ib_solve(alpha_[2]);
 
         // ******************************************************************
         copy<u_i_type, u_type>();
@@ -763,7 +765,8 @@ private:
         add<face_aux_type, face_aux2_type>(-1.0);
 
         // IB
-        psolver.template apply_lgf_IF<face_aux2_type, face_aux2_type>(_alpha, MASK_TYPE::IB2IB);
+        if (std::fabs(_alpha)>1e-4)
+            psolver.template apply_lgf_IF<face_aux2_type, face_aux2_type>(_alpha, MASK_TYPE::IB2IB);
         lsolver.template ib_solve<face_aux2_type>(_alpha);
 
         // new presure field
@@ -928,6 +931,7 @@ private:
     void gradient(float_type _scale = 1.0) noexcept
     {
         //up_and_down<Source>();
+        domain::Operator::domainClean<Target>(domain_);
 
         for (int l = domain_->tree()->base_level();
              l < domain_->tree()->depth(); ++l)

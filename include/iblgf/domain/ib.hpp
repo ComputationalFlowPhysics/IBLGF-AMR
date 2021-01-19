@@ -54,14 +54,14 @@ class IB
   public: // init functions
     void init(float_type dx_base, int nRef)
     {
-        ddf_radius_ = 3;
+        ddf_radius_ = 2;
         nRef_ = nRef;
         dx_base_ = dx_base;
 
         read_points();
         // will add more, default is yang4
         std::function<float_type(float_type x)> delta_func_1d_ =
-            [this](float_type x) { return this->yang4(x); };
+            [this](float_type x) { return this->yang3(x); };
 
         // ddf 3D
         this->delta_func_ = [this, delta_func_1d_](real_coordinate_type x) {
@@ -79,15 +79,15 @@ class IB
         //coordinates_.emplace_back(real_coordinate_type({0.01, 0.01, 0.01}));
 
         float_type L = 0.7555555555555555;
-        //int        nx = 3;
-        int        nx = int(L/dx_base_/1.5*pow(2,nRef_));
+        //int        nx = 2;
+        int        nx = int(L/dx_base_/1.0*pow(2,nRef_));
         int        nyz = nx;
         for (int ix = 0; ix < nx; ++ix)
             for (int iyz = 0; iyz < nyz; ++iyz)
             {
                 coordinates_.emplace_back(
                     real_coordinate_type(
-                        { (ix * L)/(nx-1) - L/2.0, (iyz*L)/(nyz-1) - L/2.0 , (iyz*L)/(nyz-1) - L/2.0 }));
+                        { (iyz*L)/(nyz-1) - L/2.0 , (ix * L)/(nx-1) - L/2.0, (iyz*L)/(nyz-1) - L/2.0 }));
             }
     }
 
@@ -235,7 +235,7 @@ class IB
 
   public:
     int        nRef_ = 0;
-    int        safety_dis_ = 7;
+    int        safety_dis_ = 4;
     float_type dx_base_ = 1;
 
     std::vector<real_coordinate_type>   coordinates_;

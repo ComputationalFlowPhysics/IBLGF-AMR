@@ -473,7 +473,7 @@ class cell_center_nli
 
     //private:
     public:
-        int pts_cap = 3;
+        int pts_cap = 5;
         int Nb_;
 
     std::vector<float_type> antrp_relative_pos_0_;

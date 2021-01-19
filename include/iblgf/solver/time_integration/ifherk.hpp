@@ -853,14 +853,21 @@ private:
     {
         clean<edge_aux_type>();
         clean<Target>();
+        clean<face_aux_type>();
 
         auto       client = domain_->decomposition().client();
         const auto dx_base = domain_->dx_base();
 
+        // add background velocity
+        copy<Source, face_aux_type>();
+        domain::Operator::add_field_expression<face_aux_type>(domain_, simulation_->frame_vel(), -1.0);
+
         for (int l = domain_->tree()->base_level();
              l < domain_->tree()->depth(); ++l)
         {
-            client->template buffer_exchange<Source>(l);
+
+
+            client->template buffer_exchange<face_aux_type>(l);
 
             for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
             {
@@ -869,7 +876,7 @@ private:
 
                 const auto dx_level =
                     dx_base / math::pow2(it->refinement_level());
-                domain::Operator::curl<Source, edge_aux_type>(
+                domain::Operator::curl<face_aux_type, edge_aux_type>(
                     it->data(), dx_level);
             }
 
@@ -882,7 +889,7 @@ private:
                 if (!it->locally_owned() || !it->has_data()) continue;
                 //if(it->is_correction()) continue;
 
-                domain::Operator::nonlinear<Source, edge_aux_type, Target>(
+                domain::Operator::nonlinear<face_aux_type, edge_aux_type, Target>(
                     it->data());
 
                 for (std::size_t field_idx = 0; field_idx < Target::nFields();
@@ -1040,6 +1047,7 @@ private:
     parallel_ostream::ParallelOstream pcout =
         parallel_ostream::ParallelOstream(1);
     boost::mpi::communicator comm_;
+
 };
 
 } // namespace solver

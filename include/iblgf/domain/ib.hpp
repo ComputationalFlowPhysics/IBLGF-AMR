@@ -84,15 +84,21 @@ class IB
         //coordinates_.emplace_back(real_coordinate_type({0.01, 0.01, 0.01}));
 
         float_type L = 1.0;
+        float_type AR = 2.0;
+        float_type Ly= L*AR;
         //int        nx = 2;
         int        nx = int(L/dx_base_/ibph_*pow(2,nRef_));
-        int        nyz = nx;
+        int        ny = nx*2;
+
+
         for (int ix = 0; ix < nx; ++ix)
-            for (int iyz = 0; iyz < nyz; ++iyz)
+            for (int iy = 0; iy < ny; ++iy)
             {
+                float_type w = (ix * L)/(nx-1)- L/2.0;
+
                 coordinates_.emplace_back(
                     real_coordinate_type(
-                        { -(iyz*L)/(nyz-1) + L/2.0 , (ix * L)/(nx-1) - L/2.0, (iyz*L)/(nyz-1) - L/2.0 }));
+                        { w * std::cos(M_PI/6), (iy * Ly) / (ny-1) - Ly/2.0, -w * std::sin(M_PI/6) }));
             }
     }
 

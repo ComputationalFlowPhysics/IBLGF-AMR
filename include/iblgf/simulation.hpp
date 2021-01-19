@@ -142,6 +142,8 @@ class Simulation
 
     int intrp_order()noexcept{return intrp_order_;}
 
+    auto& frame_vel() {return frame_vel_;}
+
 public:
   std::shared_ptr<Dictionary> dictionary_=nullptr;
   std::shared_ptr<Domain> domain_=nullptr;
@@ -153,6 +155,7 @@ public:
   std::string tree_info_file_="tree_info";
   std::string restart_field_file_="restart_field.hdf5";
 
+  std::function<float_type(std::size_t idx)> frame_vel_;
   int intrp_order_;
 
 };

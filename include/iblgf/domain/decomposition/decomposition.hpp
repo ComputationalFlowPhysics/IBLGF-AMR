@@ -122,12 +122,13 @@ public: //memeber functions
             FmmMaskBuilder::fmm_vortex_streamfun_mask(domain_);
             FmmMaskBuilder::fmm_lgf_mask_build(domain_, subtract_non_leaf_);
 
-            server()->send_keys(); // also give ranks
-
             server()->update_ib_flag();
 
             FmmMaskBuilder::fmm_IB2IB_mask(domain_);
             FmmMaskBuilder::fmm_IB2AMR_mask(domain_);
+
+            server()->send_keys(); // also give ranks
+
 
         }
         else if(client())
@@ -428,10 +429,10 @@ public: //memeber functions
             domain_->tree()->construct_lists();
 
             fmm_mask_builder_t::fmm_clean_load(domain_);
+            server()->update_ib_flag();
             fmm_mask_builder_t::fmm_vortex_streamfun_mask(domain_);
             fmm_mask_builder_t::fmm_lgf_mask_build(domain_,subtract_non_leaf_);
 
-            server()->update_ib_flag();
 
             fmm_mask_builder_t::fmm_IB2IB_mask(domain_);
             fmm_mask_builder_t::fmm_IB2AMR_mask(domain_);

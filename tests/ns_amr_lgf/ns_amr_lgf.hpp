@@ -88,7 +88,18 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
         if (domain_->is_client()) client_comm_ = client_comm_.split(1);
         else
             client_comm_ = client_comm_.split(0);
+        // ------------------------------------------------------------------
+        // ref frame velocity
+        simulation_.frame_vel() =
+            [](std::size_t idx){
+                if (idx == 0)
+                    return -1.0;
 
+                return 0.0;
+            };
+
+
+        // ------------------------------------------------------------------
         dx_ = domain_->dx_base();
         cfl_ =
             simulation_.dictionary()->template get_or<float_type>("cfl", 0.2);
@@ -101,6 +112,8 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
         v_delta_        = simulation_.dictionary()->template get_or<float_type>("vDelta", 0.2*R_);
         single_ring_    = simulation_.dictionary()->template get_or<bool>("single_ring", true);
         perturbation_   = simulation_.dictionary()->template get_or<float_type>("perturbation", 0.0);
+
+        // ------------------------------------------------------------------
 
         bool use_fat_ring = simulation_.dictionary()->template get_or<bool>("fat_ring", false);
         int ringType   = simulation_.dictionary()->template get_or<int>("ringType", -1);

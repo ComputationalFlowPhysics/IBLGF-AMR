@@ -500,8 +500,24 @@ struct Operator
         }
     }
 
+    template<typename Field, typename Domain, typename Func>
+    static void add_field_expression(Domain* domain, Func& f, float_type scale=1.0) noexcept
+    {
+        for (auto it = domain->begin(); it != domain->end(); ++it)
+        {
+            if (!it->locally_owned() || !it->has_data()) continue;
+
+            for (std::size_t field_idx = 0; field_idx < Field::nFields();
+                    ++field_idx)
+                for (auto& n:it->data().node_field())
+                {
+                    n(Field::tag(), field_idx) += f(field_idx)*scale;
+                }
+        }
+    }
+
     template<typename From, typename To, typename Domain>
-    static void add(Domain domain, float_type scale = 1.0) noexcept
+    static void add(Domain* domain, float_type scale = 1.0) noexcept
     {
         static_assert(From::nFields() == To::nFields(),
             "number of fields doesn't match when add");

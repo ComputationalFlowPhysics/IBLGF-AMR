@@ -81,6 +81,7 @@ public:
             {
                 it->fmm_mask(fmm_mask_idx, MASK_LIST::Mask_FMM_Source, true);
                 it->fmm_mask(fmm_mask_idx, MASK_LIST::Mask_FMM_Target, true);
+                it->add_load(it->neighbor_number() * 2);
             }
         }
 
@@ -129,6 +130,7 @@ public:
                 if (it->is_ib())
                 {
                     it->fmm_mask(fmm_mask_idx, MASK_LIST::Mask_FMM_Source, true);
+                    it->add_load(it->neighbor_number() * 2);
                 }
 
             }

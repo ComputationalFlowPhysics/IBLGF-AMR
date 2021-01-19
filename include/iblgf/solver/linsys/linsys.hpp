@@ -125,7 +125,7 @@ class LinSysSolver
     template<class ForceType>
     ForceType boundaryVel(ForceType x)
     {
-        return ForceType({-1, 0, 0});
+        return ForceType({1, 0, 0});
     }
 
     template<class Ftmp, class UcType>

@@ -77,6 +77,10 @@ class IB
         ib_rank_.resize(coordinates_.size());
         forces_.resize(
             coordinates_.size(), real_coordinate_type((float_type)0));
+
+        forces_prev_.resize(4);
+        for (auto& f:forces_prev_)
+            f.resize(coordinates_.size(), real_coordinate_type((float_type)0));
     }
 
     void read_points() noexcept
@@ -113,13 +117,16 @@ class IB
     /** @{ @brief Get the force vector of  all immersed boundary points */
     auto&       force() noexcept { return forces_; }
 
-    /** @{ @brief Get the force of ith  immersed boundary point */
     auto&       force(std::size_t _i) noexcept { return forces_[_i]; }
     const auto& force(std::size_t _i) const noexcept { return forces_[_i]; }
 
     /** @{ @brief Get the force of ith  immersed boundary point, dimension idx = idx */
     auto&       force(std::size_t _i, std::size_t _idx) noexcept { return forces_[_i][_idx]; }
     const auto& force(std::size_t _i, std::size_t _idx) const noexcept { return forces_[_i][_idx]; }
+
+    /** @{ @brief Get the force of previous timestep */
+    auto&       force_prev(std::size_t _i) noexcept { return forces_prev_[_i]; }
+    const auto& force_prev(std::size_t _i) const noexcept { return forces_prev_[_i]; }
 
     /** @{ @brief Get the coordinates of the ith ib points */
     auto&       coordinate(std::size_t _i) noexcept { return coordinates_[_i]; }
@@ -254,12 +261,13 @@ class IB
 
   public:
     int        nRef_ = 0;
-    int        safety_dis_ = 4;
+    int        safety_dis_ = 7;
     float_type dx_base_ = 1;
     float_type ibph_;
 
     std::vector<real_coordinate_type>   coordinates_;
     force_type                          forces_;
+    std::vector<force_type>             forces_prev_;
     std::vector<std::vector<octant_t*>> ib_infl_;
     std::vector<std::vector<std::vector<node_t>>> ib_infl_pts_;
     std::vector<int>                    ib_rank_;

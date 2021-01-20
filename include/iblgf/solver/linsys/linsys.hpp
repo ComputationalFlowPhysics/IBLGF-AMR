@@ -60,8 +60,8 @@ class LinSysSolver
     , ib_(&domain_->ib())
     , psolver_(simulation)
     {
-        cg_threshold_ = simulation_->dictionary_->template get_or<float_type>("cg_threshold",1e-4);
-        cg_max_itr_ = simulation_->dictionary_->template get_or<int>("cg_max_itr", 20);
+        cg_threshold_ = simulation_->dictionary_->template get_or<float_type>("cg_threshold",1e-3);
+        cg_max_itr_ = simulation_->dictionary_->template get_or<int>("cg_max_itr", 40);
     }
 
     float_type test()
@@ -172,9 +172,10 @@ class LinSysSolver
             add(r, Ap, 1.0, -alpha);
             // rsnew = r' * r
             float_type rsnew = dot(r, r);
+            float_type f2 = dot(f,f);
             if (comm_.rank()==1)
-                std::cout<< "residue square = "<< rsnew/ib_->size()<<std::endl;;
-            if (sqrt(rsnew/ib_->size())<cg_threshold_)
+                std::cout<< "residue square = "<< rsnew/f2<<std::endl;;
+            if (sqrt(rsnew/f2)<cg_threshold_)
                 break;
 
             // p = r + (rsnew / rsold) * p;

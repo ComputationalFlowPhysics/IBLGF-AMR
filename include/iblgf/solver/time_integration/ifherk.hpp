@@ -767,7 +767,17 @@ private:
         // IB
         if (std::fabs(_alpha)>1e-4)
             psolver.template apply_lgf_IF<face_aux2_type, face_aux2_type>(_alpha, MASK_TYPE::IB2IB);
-        lsolver.template ib_solve<face_aux2_type>(_alpha);
+
+        mDuration_type t_ib(0);
+        domain_->client_communicator().barrier();
+
+        domain_->ib().force() = domain_->ib().force_prev(stage_idx_);
+        TIME_CODE( t_ib, SINGLE_ARG(
+                    lsolver.template ib_solve<face_aux2_type>(_alpha);
+                    ));
+        domain_->ib().force_prev(stage_idx_) = domain_->ib().force();
+
+        pcout<< "IB  solved in "<<t_ib.count() << std::endl;
 
         // new presure field
         lsolver.template pressure_correction<d_i_type>();
@@ -1043,6 +1053,8 @@ private:
     std::string                       fname_prefix_;
     vector_type<float_type, 6>        a_{{1.0 / 3, -1.0, 2.0, 0.0, 0.75, 0.25}};
     vector_type<float_type, 4>        c_{{0.0, 1.0 / 3, 1.0, 1.0}};
+    //vector_type<float_type, 6>        a_{{1.0 / 2, sqrt(3)/3, (3-sqrt(3))/3, (3+sqrt(3))/6, -sqrt(3)/3, (3+sqrt(3))/6}};
+    //vector_type<float_type, 4>        c_{{0.0, 0.5, 1.0, 1.0}};
     vector_type<float_type, 3>        alpha_{{0.0, 0.0, 0.0}};
     parallel_ostream::ParallelOstream pcout =
         parallel_ostream::ParallelOstream(1);

@@ -192,7 +192,7 @@ struct Operator
 
         for (int l = domain->tree()->base_level();
              l < domain->tree()->depth(); ++l)
-            this->template levelDivergence<Source, Target>(domain, l);
+            levelDivergence<Source, Target>(domain, l);
     }
 
     template<class Source, class Target, class Domain>
@@ -223,7 +223,7 @@ struct Operator
         for (int l = domain->tree()->base_level();
                 l < domain->tree()->depth(); ++l)
 
-            this->template levelGradient<Source, Target>(domain, l);
+            levelGradient<Source, Target>(domain, l);
     }
 
 

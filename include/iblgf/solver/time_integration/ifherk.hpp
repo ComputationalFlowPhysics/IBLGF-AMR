@@ -151,6 +151,7 @@ class Ifherk
         // --------------------------------------------------------------------
         if (use_restart_)
         {
+            just_restarted_= true;
             Dictionary info_d(simulation_->restart_load_dir()+"/restart_info");
             T_=info_d.template get<float_type>("T");
             adapt_count_=info_d.template get<int>("adapt_count");
@@ -216,7 +217,9 @@ class Ifherk
                 //    up_and_down<u>();
                 //    pad_velocity<u, u>();
                 //}
-                this->adapt(false);
+                if (!just_restarted_)
+                    this->adapt(false);
+                just_restarted_=false;
 
             }
 
@@ -977,6 +980,7 @@ private:
     int stage_idx_ = 0;
 
     bool use_restart_=false;
+    bool just_restarted_=false;
     bool write_restart_=false;
     bool updating_source_max_ = false;
     int restart_base_freq_;

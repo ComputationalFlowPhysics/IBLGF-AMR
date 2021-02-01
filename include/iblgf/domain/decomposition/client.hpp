@@ -836,8 +836,8 @@ public:
             auto ib_coord = ib.scaled_coordinate(i);
 
 
-            for (auto it  = domain_->begin();
-                    it != domain_->end(); ++it)
+            for (auto it  = domain_->begin_leaves();
+                    it != domain_->end_leaves(); ++it)
             {
                 if (!it->has_data() || !it->is_leaf())
                     continue;
@@ -856,10 +856,11 @@ public:
             std::size_t oct_c = 0;
             ib.influence_pts(i).resize(ib.influence_list(i).size());
 
-            for (auto& it:  ib.influence_list(i))
+            int s = 0;
+            for (auto& it: ib.influence_list(i))
             {
                 if (!it->locally_owned()) continue;
-
+                ib.influence_pts(i, oct_c).clear();
                 for (auto n:it->data())
                 {
                     auto n_coord = n.level_coordinate();
@@ -867,11 +868,14 @@ public:
 
                     bool influenced = true;
                     for (std::size_t field_idx=0; field_idx<domain_->dimension(); field_idx++)
-                        if (abs(dist[field_idx]) > ib.ddf_radius()+1)
+                        if (abs(dist[field_idx]) >= ib.ddf_radius()+0.5)
                             influenced = false;
 
                     if (influenced)
+                    {
                         ib.influence_pts(i, oct_c).emplace_back(n);
+                        s+=1;
+                    }
 
                 }
 

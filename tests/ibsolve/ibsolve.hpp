@@ -91,6 +91,12 @@ struct ibsolve : public SetupBase<ibsolve, parameters>
 
         this->initialize();
 
+        simulation_.frame_vel() =
+            [](std::size_t idx, auto coord = {0, 0, 0}){
+                return -1;
+                //return coord[idx];
+            };
+
         boost::mpi::communicator world;
         if (world.rank() == 0)
             std::cout << "on Simulation: \n" << simulation_ << std::endl;

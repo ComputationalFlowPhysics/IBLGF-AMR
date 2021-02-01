@@ -429,10 +429,9 @@ public: //memeber functions
             domain_->tree()->construct_lists();
 
             fmm_mask_builder_t::fmm_clean_load(domain_);
-            server()->update_ib_flag();
             fmm_mask_builder_t::fmm_vortex_streamfun_mask(domain_);
             fmm_mask_builder_t::fmm_lgf_mask_build(domain_,subtract_non_leaf_);
-
+            server()->update_ib_flag();
 
             fmm_mask_builder_t::fmm_IB2IB_mask(domain_);
             fmm_mask_builder_t::fmm_IB2AMR_mask(domain_);

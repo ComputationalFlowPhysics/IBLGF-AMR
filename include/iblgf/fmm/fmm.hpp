@@ -149,8 +149,8 @@ public:
         int fmm_mask_idx = octant_t::fmm_mask_idx_gen(MASK_TYPE::STREAM);
         //int fmm_mask_idx = 0;
 
-        for (auto it = domain_->begin(base_level);
-             it != domain_->end(base_level); ++it)
+        for (auto it = domain_->begin();
+             it != domain_->end(); ++it)
         {
             it->fmm_mask(fmm_mask_idx, MASK_LIST::Mask_FMM_Source, false);
             it->fmm_mask(fmm_mask_idx, MASK_LIST::Mask_FMM_Target, false);

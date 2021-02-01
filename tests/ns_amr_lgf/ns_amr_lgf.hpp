@@ -58,7 +58,6 @@ struct parameters
      (
         //name               type        Dim   lBuffer  hBuffer, storage type
          (error_u          , float_type, 3,    1,       1,     face,false ),
-         (error_p          , float_type, 1,    1,       1,     cell,false ),
          (decomposition    , float_type, 1,    1,       1,     cell,false ),
         //IF-HERK
          (u                , float_type, 3,    1,       1,     face,true ),
@@ -91,7 +90,7 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
         // ------------------------------------------------------------------
         // ref frame velocity
         simulation_.frame_vel() =
-            [](std::size_t idx){
+            [](std::size_t idx, auto coord = {0, 0, 0}){
                 if (idx == 0)
                     return -1.0;
 

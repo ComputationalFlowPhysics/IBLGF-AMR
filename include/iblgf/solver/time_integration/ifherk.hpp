@@ -53,6 +53,9 @@ class Ifherk
     using poisson_solver_t = typename Setup::poisson_solver_t;
     using linsys_solver_t = typename Setup::linsys_solver_t;
 
+    using ib_t = typename domain_type::ib_t;
+    using force_type = typename ib_t::force_type;
+
     //FMM
     using Fmm_t = typename Setup::Fmm_t;
 
@@ -543,6 +546,7 @@ class Ifherk
         add<g_i_type, r_i_type>();
         lin_sys_with_ib_solve(alpha_[0]);
 
+
         // Stage 2
         // ******************************************************************
         pcout << "Stage 2" << std::endl;
@@ -775,6 +779,7 @@ private:
         TIME_CODE( t_ib, SINGLE_ARG(
                     lsolver.template ib_solve<face_aux2_type>(_alpha);
                     ));
+
         domain_->ib().force_prev(stage_idx_) = domain_->ib().force();
 
         pcout<< "IB  solved in "<<t_ib.count() << std::endl;
@@ -782,6 +787,7 @@ private:
         // new presure field
         lsolver.template pressure_correction<d_i_type>();
         gradient<d_i_type, face_aux_type>();
+
         lsolver.template smearing<face_aux_type>(domain_->ib().force(), false);
         add<face_aux_type, r_i_type>(-1.0);
 
@@ -796,6 +802,18 @@ private:
         }
         else
             copy<r_i_type,u_i_type>();
+
+        // test -------------------------------------
+        //force_type tmp(domain_->ib().force().size(), (0.,0.,0.));
+        //lsolver.template projection<u_i_type>(tmp);
+        //domain_->ib().communicator().compute_indices();
+        //domain_->ib().communicator().communicate(true, tmp);
+        //if (comm_.rank()==1)
+        //{
+        //    lsolver.printvec(tmp, "u");
+        //}
+
+
     }
 
 
@@ -834,7 +852,7 @@ private:
         //clean<Velocity_out>();
         clean_leaf_correction_boundary<edge_aux_type>(domain_->tree()->base_level(), true, 2);
         //clean_leaf_correction_boundary<edge_aux_type>(l, false,2+stage_idx_);
-        psolver.template apply_lgf<edge_aux_type, stream_f_type>(refresh_correction_only);
+        psolver.template apply_lgf<edge_aux_type, stream_f_type>(MASK_TYPE::STREAM);
 
         int l_max = refresh_correction_only ?
         domain_->tree()->base_level()+1 : domain_->tree()->depth();
@@ -868,6 +886,23 @@ private:
         auto       client = domain_->decomposition().client();
         const auto dx_base = domain_->dx_base();
 
+        for (int l = domain_->tree()->base_level();
+             l < domain_->tree()->depth(); ++l)
+        {
+
+            client->template buffer_exchange<Source>(l);
+
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
+
+                const auto dx_level =
+                    dx_base / math::pow2(it->refinement_level());
+                domain::Operator::curl<Source, edge_aux_type>(
+                    it->data(), dx_level);
+            }
+        }
+
         // add background velocity
         copy<Source, face_aux_type>();
         domain::Operator::add_field_expression<face_aux_type>(domain_, simulation_->frame_vel(), -1.0);
@@ -875,29 +910,12 @@ private:
         for (int l = domain_->tree()->base_level();
              l < domain_->tree()->depth(); ++l)
         {
-
-
-            client->template buffer_exchange<face_aux_type>(l);
-
-            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
-            {
-                if (!it->locally_owned() || !it->has_data()) continue;
-                //if(it->is_correction()) continue;
-
-                const auto dx_level =
-                    dx_base / math::pow2(it->refinement_level());
-                domain::Operator::curl<face_aux_type, edge_aux_type>(
-                    it->data(), dx_level);
-            }
-
             client->template buffer_exchange<edge_aux_type>(l);
-            //clean_leaf_correction_boundary<edge_aux_type>(l, false,2+stage_idx_);
             clean_leaf_correction_boundary<edge_aux_type>(l, false, 2);
 
             for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
             {
                 if (!it->locally_owned() || !it->has_data()) continue;
-                //if(it->is_correction()) continue;
 
                 domain::Operator::nonlinear<face_aux_type, edge_aux_type, Target>(
                     it->data());
@@ -1008,11 +1026,8 @@ private:
             for (std::size_t field_idx = 0; field_idx < From::nFields();
                  ++field_idx)
             {
-                it->data_r(To::tag(), field_idx)
-                    .linalg()
-                    .get()
-                    ->cube_noalias_view() =
-                    it->data_r(From::tag(), field_idx).linalg_data() * scale;
+                for (auto& n:it->data().node_field())
+                    n(To::tag(), field_idx) = n(From::tag(), field_idx) * scale;
             }
         }
     }

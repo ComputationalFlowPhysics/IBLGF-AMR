@@ -146,8 +146,9 @@ class PoissonSolver
 
             _kernel->change_level(l - domain_->tree()->base_level());
 
-            fmm_.template apply<source_tmp_type, target_tmp_type>(
-                domain_, _kernel, l, false, 1.0, fmm_type);
+            if (fmm_type == MASK_TYPE::AMR2AMR)
+                fmm_.template apply<source_tmp_type, target_tmp_type>(
+                        domain_, _kernel, l, false, 1.0, fmm_type);
 
             if (!subtract_non_leaf_)
                 fmm_.template apply<source_tmp_type, target_tmp_type>(

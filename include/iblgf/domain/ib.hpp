@@ -58,7 +58,7 @@ class IB
     {
 
         ibph_ = d->template get_or<float_type>("ibph", 1.25);
-        ddf_radius_ = 2.5;
+        ddf_radius_ = 2.0;
         nRef_ = nRef;
         dx_base_ = dx_base;
 
@@ -99,10 +99,11 @@ class IB
             for (int iy = 0; iy < ny; ++iy)
             {
                 float_type w = (ix * L)/(nx-1)- L/2.0;
+                float_type angle = M_PI/6;
 
                 coordinates_.emplace_back(
                     real_coordinate_type(
-                        { w * std::cos(M_PI/6), (iy * Ly) / (ny-1) - Ly/2.0, -w * std::sin(M_PI/6) }));
+                        { w * std::cos(angle), (iy * Ly) / (ny-1) - Ly/2.0, -w * std::sin(angle) }));
             }
     }
 
@@ -258,10 +259,24 @@ class IB
 
         return ddf;
     }
+    float_type roma(float_type x)
+    {
+        float_type r = std::fabs(x);
+        float_type ddf = 0;
+        if (r > 1.5) return 0;
+
+        float_type r2 = r*r;
+
+        if (r <= 0.5)
+            ddf = (1.0+sqrt(-3.*r2 + 1.0))/3.0;
+        else if (r <=1.5)
+            ddf = (5.0 - 3.0*r - sqrt( 1.0 - 3.0*(1-r)*(1-r) ) )/6.0;
+        return ddf;
+    }
 
   public:
     int        nRef_ = 0;
-    int        safety_dis_ = 7;
+    int        safety_dis_ = 6;
     float_type dx_base_ = 1;
     float_type ibph_;
 

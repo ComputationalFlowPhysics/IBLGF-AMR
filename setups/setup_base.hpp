@@ -55,9 +55,9 @@ class SetupBase
     REGISTER_FIELDS
     (Dim,
     (
-      (source_tmp,          float_type,  1,  1,  1,  cell,true),
-      (correction_tmp,      float_type,  1,  1,  1,  cell,true),
-      (target_tmp,          float_type,  1,  1,  1,  cell,true),
+      (source_tmp,          float_type,  1,  1,  1,  cell,false),
+      (correction_tmp,      float_type,  1,  1,  1,  cell,false),
+      (target_tmp,          float_type,  1,  1,  1,  cell,false),
       (fmm_s,               float_type,  1,  1,  1,  cell,false),
       (fmm_t,               float_type,  1,  1,  1,  cell,false),
       //flow variables
@@ -69,9 +69,9 @@ class SetupBase
       (w_1,                 float_type,  3,  1,  1,  face,false),
       (w_2,                 float_type,  3,  1,  1,  face,false),
       (cell_aux,            float_type,  1,  1,  1,  cell,true),
-      (cell_aux2,           float_type,  1,  1,  1,  cell,true),
-      (face_aux,            float_type,  3,  1,  1,  face,true),
-      (face_aux2,           float_type,  3,  1,  1,  face,true),
+      (cell_aux2,           float_type,  1,  1,  1,  cell,false),
+      (face_aux,            float_type,  3,  1,  1,  face,false),
+      (face_aux2,           float_type,  3,  1,  1,  face,false),
       (stream_f,            float_type,  3,  1,  1,  edge,false),
       (edge_aux,            float_type,  3,  1,  1,  edge,true)
     ))

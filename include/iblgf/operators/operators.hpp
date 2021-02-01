@@ -272,7 +272,7 @@ struct Operator
     static void ib_projection(Coord ib_coord, Force& f, Block& block, DeltaFunc& ddf)
     {
         constexpr auto u = U::tag();
-        for (auto& node : block)
+        for (auto node : block)
         {
             auto n_coord = node.level_coordinate();
             auto dist = n_coord - ib_coord;
@@ -288,10 +288,10 @@ struct Operator
 
     template<class U, class Block, class Coord, class Force, class DeltaFunc,
         typename std::enable_if<(U::mesh_type() == MeshObject::face), void>::type* = nullptr>
-    static void ib_smearing(Coord ib_coord, Force& f, Block& block, DeltaFunc& ddf)
+    static void ib_smearing(Coord ib_coord, Force& f, Block& block, DeltaFunc& ddf, float_type factor=1.0)
     {
         constexpr auto u = U::tag();
-        for (auto& node : block)
+        for (auto node : block)
         {
             auto n_coord = node.level_coordinate();
             auto dist = n_coord - ib_coord;
@@ -299,7 +299,7 @@ struct Operator
             for (std::size_t field_idx=0; field_idx<U::nFields(); field_idx++)
             {
                 decltype(ib_coord) off(0.5); off[field_idx] = 0.0; // face data location
-                node(u, field_idx) += f[field_idx] * ddf(dist+off);
+                node(u, field_idx) += f[field_idx] * ddf(dist+off) * factor;
             }
         }
     }
@@ -503,6 +503,7 @@ struct Operator
     template<typename Field, typename Domain, typename Func>
     static void add_field_expression(Domain* domain, Func& f, float_type scale=1.0) noexcept
     {
+        const auto dx_base = domain->dx_base();
         for (auto it = domain->begin(); it != domain->end(); ++it)
         {
             if (!it->locally_owned() || !it->has_data()) continue;
@@ -511,7 +512,8 @@ struct Operator
                     ++field_idx)
                 for (auto& n:it->data().node_field())
                 {
-                    n(Field::tag(), field_idx) += f(field_idx)*scale;
+                    auto coord = n.global_coordinate()*dx_base;
+                    n(Field::tag(), field_idx) += f(field_idx, coord)*scale;
                 }
         }
     }

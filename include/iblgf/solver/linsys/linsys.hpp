@@ -66,20 +66,43 @@ class LinSysSolver
 
     float_type test()
     {
-        float_type alpha =  0.00;
+        float_type alpha =  0.01;
         if (domain_->is_server())
             return 0;
 
         for (std::size_t i=0; i<ib_->size(); ++i)
             ib_->force(i,0)=1;
 
-        force_type uc(ib_->force());
+        //force_type uc(ib_->force());
 
-        this->template CG_solve<u_type>(uc, alpha);
+        //this->template CG_solve<u_type>(uc, alpha);
 
-        force_type tmp(ib_->size(), (0.,0.,0.));
-        printvec(ib_->force(), "force before recover");
-        this->template ET_H_S_E<u_type>(ib_->force(), tmp, MASK_TYPE::IB2AMR, alpha);
+        //force_type tmp(ib_->size(), (0.,0.,0.));
+        //this->template ET_H_S_E<u_type>(ib_->force(), tmp, MASK_TYPE::IB2AMR, alpha);
+
+        //ib_->communicator().compute_indices();
+        //ib_->communicator().communicate(true, ib_->force());
+
+        //if (comm_.rank()==1)
+        //{
+        //    printvec(ib_->force(), "forces");
+        //    printvec(tmp, "u");
+        //}
+
+        domain::Operator::domainClean<face_aux_type>(domain_);
+        domain::Operator::add_field_expression<face_aux_type>(domain_, simulation_->frame_vel(), 1.0);
+
+        force_type tmp2(ib_->size(), (0.,0.,0.));
+        this->projection<face_aux_type>(tmp2);
+        ib_->communicator().compute_indices();
+        ib_->communicator().communicate(true, tmp2);
+
+        if (comm_.rank()==1)
+        {
+            std::cout<< " Projection test" << std::endl;
+            for (std::size_t i=0; i<ib_->size(); ++i)
+                std::cout<<ib_->coordinate(i) << ", " << tmp2[i] << std::endl;
+        }
 
         return 0;
     }
@@ -121,7 +144,7 @@ class LinSysSolver
         auto& frame_vel = simulation_->frame_vel();
         for (int i=0; i<uc.size(); ++i)
             for (std::size_t idx=0; idx<uc[i].size(); ++idx)
-                uc[i][idx]-=frame_vel(idx);
+                uc[i][idx]-=frame_vel(idx, ib_->coordinate(i));
     }
 
     template<class ForceType>
@@ -219,12 +242,12 @@ class LinSysSolver
         domain::Operator::domainClean<face_aux_type>(domain_);
 
         this->smearing<Field>(fin);
-        if (std::fabs(alpha)>1e-4)
-            psolver_.template apply_lgf_IF<Field, Field>(alpha, fmm_type);
-
         this->template apply_Schur<Field, face_aux_type>(fmm_type);
 
         domain::Operator::add<face_aux_type, Field>(domain_, -1.0);
+
+        if (std::fabs(alpha)>1e-4)
+            psolver_.template apply_lgf_IF<Field, Field>(alpha, fmm_type);
 
         this->projection<Field>(fout);
 
@@ -287,7 +310,6 @@ class LinSysSolver
         typename std::enable_if<(U::mesh_type() == MeshObject::face), void>::type* = nullptr>
     void projection(ForceType& f)
     {
-        // (scale * node + add) * ddf(x)
 
         if (domain_->is_server())
             return;

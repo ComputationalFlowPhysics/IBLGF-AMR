@@ -124,7 +124,8 @@ public: //memeber functions
 
             server()->update_ib_flag();
 
-            FmmMaskBuilder::fmm_IB2IB_mask(domain_);
+            FmmMaskBuilder::fmm_IB2xIB_mask(domain_);
+            FmmMaskBuilder::fmm_xIB2IB_mask(domain_);
             FmmMaskBuilder::fmm_IB2AMR_mask(domain_);
 
             server()->send_keys(); // also give ranks
@@ -433,7 +434,8 @@ public: //memeber functions
             fmm_mask_builder_t::fmm_lgf_mask_build(domain_,subtract_non_leaf_);
             server()->update_ib_flag();
 
-            fmm_mask_builder_t::fmm_IB2IB_mask(domain_);
+            fmm_mask_builder_t::fmm_IB2xIB_mask(domain_);
+            fmm_mask_builder_t::fmm_xIB2IB_mask(domain_);
             fmm_mask_builder_t::fmm_IB2AMR_mask(domain_);
 
 

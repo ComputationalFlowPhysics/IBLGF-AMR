@@ -58,14 +58,14 @@ class IB
     {
 
         ibph_ = d->template get_or<float_type>("ibph", 1.25);
-        ddf_radius_ = 2.0;
+        ddf_radius_ = 1.5;
         nRef_ = nRef;
         dx_base_ = dx_base;
 
         read_points();
         // will add more, default is yang4
         std::function<float_type(float_type x)> delta_func_1d_ =
-            [this](float_type x) { return this->yang3(x); };
+            [this](float_type x) { return this->roma(x); };
 
         // ddf 3D
         this->delta_func_ = [this, delta_func_1d_](real_coordinate_type x) {
@@ -276,7 +276,7 @@ class IB
 
   public:
     int        nRef_ = 0;
-    int        safety_dis_ = 6;
+    int        safety_dis_ = 7;
     float_type dx_base_ = 1;
     float_type ibph_;
 

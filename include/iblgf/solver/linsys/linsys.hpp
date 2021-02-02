@@ -154,7 +154,7 @@ class LinSysSolver
     }
 
     template<class Ftmp, class UcType>
-    void CG_solve(UcType& uc, float_type alpha, int fmm_type = MASK_TYPE::IB2IB)
+    void CG_solve(UcType& uc, float_type alpha)
     {
         auto& f = ib_->force();
         force_type Ax(ib_->size(), (0.,0.,0.));
@@ -165,7 +165,7 @@ class LinSysSolver
             return;
 
         // Ax
-        this->template ET_H_S_E<Ftmp>(f, Ax, fmm_type, alpha);
+        this->template ET_H_S_E<Ftmp>(f, Ax, alpha);
         //printvec(Ax, "Ax");
 
         //  res = uc - Ax
@@ -186,7 +186,7 @@ class LinSysSolver
         for (int k=0; k<cg_max_itr_; k++)
         {
             // Ap = A(p)
-            this->template ET_H_S_E<Ftmp>(p, Ap, fmm_type, alpha );
+            this->template ET_H_S_E<Ftmp>(p, Ap, alpha );
             // alpha = rsold / p'*Ap
             float_type alpha = rsold / dot(p, Ap);
             // f = f + alpha * p;
@@ -235,24 +235,22 @@ class LinSysSolver
     //}
 
     template <class Field, class VecType>
-    void ET_H_S_E(VecType& fin, VecType& fout, int fmm_type, float_type alpha)
+    void ET_H_S_E(VecType& fin, VecType& fout, float_type alpha)
     {
 
         domain::Operator::domainClean<Field>(domain_);
         domain::Operator::domainClean<face_aux_type>(domain_);
 
         this->smearing<Field>(fin);
-        this->template apply_Schur<Field, face_aux_type>(fmm_type);
+        if (std::fabs(alpha)>1e-4)
+            psolver_.template apply_lgf_IF<Field, Field>(alpha, MASK_TYPE::IB2xIB);
+
+        this->template apply_Schur<Field, face_aux_type>(MASK_TYPE::xIB2IB);
 
         domain::Operator::add<face_aux_type, Field>(domain_, -1.0);
 
-        if (std::fabs(alpha)>1e-4)
-            psolver_.template apply_lgf_IF<Field, Field>(alpha, fmm_type);
-
         this->projection<Field>(fout);
 
-        //this->projection<face_aux2_type>(ftmp);
-        //add(fout, ftmp, 1, -1);
     }
 
     template<class Source, class Target>
@@ -272,7 +270,7 @@ class LinSysSolver
         const int l_max = (fmm_type != MASK_TYPE::STREAM) ?
                     domain_->tree()->depth() : domain_->tree()->base_level()+1;
 
-        const int l_min = (fmm_type !=  MASK_TYPE::IB2IB) ?
+        const int l_min = (fmm_type !=  MASK_TYPE::IB2xIB && fmm_type !=  MASK_TYPE::xIB2IB) ?
                     domain_->tree()->base_level() : domain_->tree()->depth()-1;
 
         for (int l = l_min; l < l_max; ++l)

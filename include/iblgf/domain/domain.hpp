@@ -642,7 +642,7 @@ class Domain
                     //if (!ref_cond_) return;
                     if (it->refinement_level() == l &&
                         (ref_cond_(it.ptr(), nRef - l) ||
-                            ib_.ib_block_overlap( it->data().descriptor(), 2)))
+                            ib_.ib_block_overlap( it->data().descriptor(), 1)))
                     {
                         if (this->tree()->try_2to1(
                                 it->key(), this->key_bounding_box(), checklist))

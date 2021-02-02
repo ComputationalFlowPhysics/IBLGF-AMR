@@ -51,18 +51,18 @@ struct FmmMaskBuilder
     using MASK_LIST = typename octant_t::MASK_LIST;
 
 public:
-    static void fmm_mask_build(Domain* domain_, bool subtract_non_leaf_)
-    {
-        fmm_IB2IB_mask(domain_);
-        fmm_IB2AMR_mask(domain_);
-        fmm_vortex_streamfun_mask(domain_);
-        fmm_lgf_mask_build(domain_, subtract_non_leaf_);
-    }
+    //static void fmm_mask_build(Domain* domain_, bool subtract_non_leaf_)
+    //{
+    //    fmm_IB2IB_mask(domain_);
+    //    fmm_IB2AMR_mask(domain_);
+    //    fmm_vortex_streamfun_mask(domain_);
+    //    fmm_lgf_mask_build(domain_, subtract_non_leaf_);
+    //}
 
-    static void fmm_IB2IB_mask(Domain* domain_)
+    static void fmm_IB2xIB_mask(Domain* domain_)
     {
 
-        int fmm_mask_idx = octant_t::fmm_mask_idx_gen(MASK_TYPE::IB2IB);
+        int fmm_mask_idx = octant_t::fmm_mask_idx_gen(MASK_TYPE::IB2xIB);
 
         // clean
         for (auto it = domain_->begin();
@@ -81,7 +81,48 @@ public:
             {
                 it->fmm_mask(fmm_mask_idx, MASK_LIST::Mask_FMM_Source, true);
                 it->fmm_mask(fmm_mask_idx, MASK_LIST::Mask_FMM_Target, true);
-                it->add_load(it->neighbor_number() * 2);
+                it->add_load(it->neighbor_number() );
+            }
+            if (it->is_extended_ib())
+            {
+                it->fmm_mask(fmm_mask_idx, MASK_LIST::Mask_FMM_Target, true);
+                it->add_load(it->neighbor_number() );
+            }
+        }
+
+        fmm_upward_pass_masks(domain_, l, MASK_LIST::Mask_FMM_Source,
+                MASK_LIST::Mask_FMM_Target, fmm_mask_idx);
+
+    }
+
+    static void fmm_xIB2IB_mask(Domain* domain_)
+    {
+
+        int fmm_mask_idx = octant_t::fmm_mask_idx_gen(MASK_TYPE::xIB2IB);
+
+        // clean
+        for (auto it = domain_->begin();
+             it != domain_->end(); ++it)
+        {
+            it->fmm_mask(fmm_mask_idx, MASK_LIST::Mask_FMM_Source, false);
+            it->fmm_mask(fmm_mask_idx, MASK_LIST::Mask_FMM_Target, false);
+        }
+
+        int l = domain_->tree()->depth()-1;
+
+        for (auto it = domain_->begin(l);
+             it != domain_->end(l); ++it)
+        {
+            if (it->is_ib())
+            {
+                it->fmm_mask(fmm_mask_idx, MASK_LIST::Mask_FMM_Source, true);
+                it->fmm_mask(fmm_mask_idx, MASK_LIST::Mask_FMM_Target, true);
+                it->add_load(it->neighbor_number() );
+            }
+            if (it->is_extended_ib())
+            {
+                it->fmm_mask(fmm_mask_idx, MASK_LIST::Mask_FMM_Source, true);
+                it->add_load(it->neighbor_number() );
             }
         }
 
@@ -439,8 +480,10 @@ class Fmm
             fmm_mask_idx_ = octant_t::fmm_mask_idx_gen(MASK_TYPE::STREAM);
         else if (fmm_type == MASK_TYPE::AMR2AMR)
             fmm_mask_idx_ = octant_t::fmm_mask_idx_gen(MASK_TYPE::AMR2AMR, refinement_level, non_leaf_as_source);
-        else if (fmm_type == MASK_TYPE::IB2IB)
-            fmm_mask_idx_ = octant_t::fmm_mask_idx_gen(MASK_TYPE::IB2IB);
+        else if (fmm_type == MASK_TYPE::IB2xIB)
+            fmm_mask_idx_ = octant_t::fmm_mask_idx_gen(MASK_TYPE::IB2xIB);
+        else if (fmm_type == MASK_TYPE::xIB2IB)
+            fmm_mask_idx_ = octant_t::fmm_mask_idx_gen(MASK_TYPE::xIB2IB);
         else if (fmm_type == MASK_TYPE::IB2AMR)
             fmm_mask_idx_ = octant_t::fmm_mask_idx_gen(MASK_TYPE::IB2AMR, refinement_level);
 

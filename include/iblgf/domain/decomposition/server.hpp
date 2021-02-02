@@ -544,11 +544,13 @@ class Server : public ServerBase<ServerClientTraits<Domain>>
 
     void update_ib_flag()
     {
-        const int added_radius_level = 2;
 
         for (auto it  = domain_->begin();
                 it != domain_->end(); ++it)
+        {
+            it->is_extended_ib()=false;
             it->is_ib()=false;
+        }
 
         int l_max = domain_->tree()->depth()-1;
 
@@ -564,8 +566,12 @@ class Server : public ServerBase<ServerClientTraits<Domain>>
                 if (!it->has_data() || !it->is_leaf())
                     continue;
 
-                if (ib.ib_block_overlap(i, it->data().descriptor(), added_radius_level))
-                    it->is_ib()=true;
+                if (ib.ib_block_overlap(i, it->data().descriptor(), 2))
+                {
+                    it->is_extended_ib()=true;
+                    if (ib.ib_block_overlap(i, it->data().descriptor(), 1))
+                        it->is_ib()=true;
+                }
             }
         }
 

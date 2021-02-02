@@ -112,12 +112,12 @@ class PoissonSolver
             copy_leaf<Source, source_tmp_type>(_field_idx, 0, true);
         else if (fmm_type == MASK_TYPE::STREAM)
             copy_level<Source, source_tmp_type>(domain_->tree()->base_level(), _field_idx, 0, false);
-        else if (fmm_type == MASK_TYPE::IB2IB)
+        else if (fmm_type == MASK_TYPE::IB2xIB || fmm_type == MASK_TYPE::xIB2IB)
             copy_level<Source, source_tmp_type>(domain_->tree()->depth()-1, _field_idx, 0, false);
         else if (fmm_type == MASK_TYPE::IB2AMR)
             copy_level<Source, source_tmp_type>(domain_->tree()->depth()-1, _field_idx, 0, false);
 
-        if (fmm_type != MASK_TYPE::STREAM && fmm_type != MASK_TYPE::IB2IB)
+        if (fmm_type != MASK_TYPE::STREAM && fmm_type != MASK_TYPE::IB2xIB && fmm_type != MASK_TYPE::xIB2IB)
         {
             // Coarsify
             source_coarsify<source_tmp_type, source_tmp_type>(_field_idx, 0, Source::mesh_type());
@@ -130,7 +130,7 @@ class PoissonSolver
         const int l_max = (fmm_type != MASK_TYPE::STREAM) ?
                     domain_->tree()->depth() : domain_->tree()->base_level()+1;
 
-        const int l_min = (fmm_type !=  MASK_TYPE::IB2IB) ?
+        const int l_min = (fmm_type !=  MASK_TYPE::IB2xIB && fmm_type !=  MASK_TYPE::xIB2IB) ?
                     domain_->tree()->base_level() : domain_->tree()->depth()-1;
 
         for (int l = l_min; l < l_max; ++l)
@@ -187,7 +187,7 @@ class PoissonSolver
             copy_leaf<Source, source_tmp_type>(_field_idx, 0, true);
         else if (fmm_type == MASK_TYPE::STREAM)
             copy_level<Source, source_tmp_type>(domain_->tree()->base_level(), _field_idx, 0, false);
-        else if (fmm_type == MASK_TYPE::IB2IB)
+        else if (fmm_type == MASK_TYPE::IB2xIB || fmm_type == MASK_TYPE::xIB2IB)
             copy_level<Source, source_tmp_type>(domain_->tree()->depth()-1, _field_idx, 0, false);
         else if (fmm_type == MASK_TYPE::IB2AMR)
             copy_level<Source, source_tmp_type>(domain_->tree()->depth()-1, _field_idx, 0, false);
@@ -204,7 +204,7 @@ class PoissonSolver
         auto t0_coarsify = clock_type::now();
 #endif
 
-        if (fmm_type != MASK_TYPE::STREAM && fmm_type != MASK_TYPE::IB2IB)
+        if (fmm_type != MASK_TYPE::STREAM && fmm_type != MASK_TYPE::IB2xIB && fmm_type != MASK_TYPE::xIB2IB)
             source_coarsify<source_tmp_type, source_tmp_type>(_field_idx, 0, Source::mesh_type());
 
 #ifdef POISSON_TIMINGS
@@ -218,7 +218,7 @@ class PoissonSolver
         const int l_max = (fmm_type != MASK_TYPE::STREAM) ?
                     domain_->tree()->depth() : domain_->tree()->base_level()+1;
 
-        const int l_min = (fmm_type !=  MASK_TYPE::IB2IB) ?
+        const int l_min = (fmm_type !=  MASK_TYPE::IB2xIB && fmm_type !=  MASK_TYPE::xIB2IB) ?
                     domain_->tree()->base_level() : domain_->tree()->depth()-1;
 
         for (int l = l_min; l < l_max; ++l)

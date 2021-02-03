@@ -770,7 +770,7 @@ private:
 
         // IB
         if (std::fabs(_alpha)>1e-4)
-            psolver.template apply_lgf_IF<face_aux2_type, face_aux2_type>(_alpha, MASK_TYPE::IB2IB);
+            psolver.template apply_lgf_IF<face_aux2_type, face_aux2_type>(_alpha, MASK_TYPE::IB2xIB);
 
         mDuration_type t_ib(0);
         domain_->client_communicator().barrier();

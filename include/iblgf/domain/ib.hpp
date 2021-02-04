@@ -57,7 +57,7 @@ class IB
     void init(DictionaryPtr d, float_type dx_base, int nRef)
     {
 
-        ibph_ = d->template get_or<float_type>("ibph", 1.25);
+        ibph_ = d->template get_or<float_type>("ibph", 1.5);
         ddf_radius_ = 1.5;
         nRef_ = nRef;
         dx_base_ = dx_base;

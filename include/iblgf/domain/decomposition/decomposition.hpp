@@ -130,7 +130,6 @@ public: //memeber functions
 
             server()->send_keys(); // also give ranks
 
-
         }
         else if(client())
         {

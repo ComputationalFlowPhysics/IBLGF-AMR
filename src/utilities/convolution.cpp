@@ -170,8 +170,8 @@ dfft_c2r::execute()
 
 Convolution::Convolution(dims_t _dims0, dims_t _dims1)
 : padded_dims_(_dims0 + _dims1 - 1)
-, padded_dims_next_pow_2_({math::next_pow_2(padded_dims_[0]),
-      math::next_pow_2(padded_dims_[1]), math::next_pow_2(padded_dims_[2])})
+, padded_dims_next_pow_2_({math::nextprod(padded_dims_[0]),
+      math::nextprod(padded_dims_[1]), math::nextprod(padded_dims_[2])})
 , dims0_(_dims0)
 , dims1_(_dims1)
 , fft_forward0_(padded_dims_next_pow_2_, _dims0)

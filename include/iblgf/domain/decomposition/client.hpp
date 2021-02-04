@@ -826,17 +826,17 @@ public:
     void update_ib_rank_and_infl()
     {
 
-        //int tot_leaves = 0;
-        //for (auto it  = domain_->begin_leaves();
-        //        it != domain_->end_leaves(); ++it)
-        //{
-        //    if (!it->has_data() || !it->is_leaf())
-        //        continue;
+        int tot_leaves = 0;
+        for (auto it  = domain_->begin_leaves();
+                it != domain_->end_leaves(); ++it)
+        {
+            if (!it->has_data() || !it->is_leaf())
+                continue;
 
-        //    tot_leaves+=1;
-        //    std::cout<<it->data().descriptor()<< std::endl;
-        //}
-        //std::cout<<"total levaes" << tot_leaves<< std::endl;
+            tot_leaves+=1;
+            std::cout<<it->data().descriptor()<< std::endl;
+        }
+        std::cout<<"total levaes" << tot_leaves<< std::endl;
 
         int l_max = domain_->tree()->depth()-1;
 

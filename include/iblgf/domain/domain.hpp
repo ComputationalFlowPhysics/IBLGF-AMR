@@ -333,24 +333,24 @@ class Domain
             }
         }
 
-        for (std::size_t d = 0; d < min.size(); ++d)
-        {
-            if ((min[d]) * e[d] < bd_base_[d])
-            {
-                std::cout
-                    << "The bouding box provided might be smaller than a domain block"
-                    << std::endl;
-                bd_extent_[d] += (bd_base_[d] - min[d] * e[d]);
-                bd_base_[d] = min[d] * e[d];
-            }
-            if ((max[d] + 1) * e[d] > bd_base_[d] + bd_extent_[d])
-            {
-                std::cout
-                    << "The bouding box provided might be smaller than a domain block"
-                    << std::endl;
-                bd_extent_[d] = (max[d] + 1) * e[d] - bd_base_[d];
-            }
-        }
+        //for (std::size_t d = 0; d < min.size(); ++d)
+        //{
+        //    if ((min[d]) * e[d] < bd_base_[d])
+        //    {
+        //        std::cout
+        //            << "The bouding box provided might be smaller than a domain block"
+        //            << std::endl;
+        //        bd_extent_[d] += (bd_base_[d] - min[d] * e[d]);
+        //        bd_base_[d] = min[d] * e[d];
+        //    }
+        //    if ((max[d] + 1) * e[d] > bd_base_[d] + bd_extent_[d])
+        //    {
+        //        std::cout
+        //            << "The bouding box provided might be smaller than a domain block"
+        //            << std::endl;
+        //        bd_extent_[d] = (max[d] + 1) * e[d] - bd_base_[d];
+        //    }
+        //}
 
         bounding_box_ = block_descriptor_t(bd_base_, bd_extent_);
 

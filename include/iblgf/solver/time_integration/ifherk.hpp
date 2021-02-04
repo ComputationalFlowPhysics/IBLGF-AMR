@@ -277,22 +277,7 @@ class Ifherk
                 update_marching_parameters();
             }
 
-            world.barrier();
-
-            int c_allc_global;
-            int c_allc = domain_->num_allocations();
-            boost::mpi::all_reduce(
-                world, c_allc, c_allc_global, std::plus<int>());
-
-            // -------------- output info ------------------------------------
-            if (domain_->is_server())
-            {
-                std::cout<<"T = " << T_<<", n = "<< tmp_n << " -----------------" << std::endl;
-                std::cout<<"Total number of leaf octants: "<<domain_->num_leafs()<<std::endl;
-                std::cout<<"Total number of leaf + correction octants: "<<domain_->num_corrections()+domain_->num_leafs()<<std::endl;
-                std::cout<<"Total number of allocated octants: "<<c_allc_global<<std::endl;
-                std::cout<<" -----------------" << std::endl;
-            }
+            write_stats(tmp_n);
 
         }
     }
@@ -374,6 +359,54 @@ class Ifherk
         simulation_->write("", true);
 
         write_info();
+        world.barrier();
+    }
+
+    void write_stats(int tmp_n)
+    {
+        boost::mpi::communicator world;
+        world.barrier();
+
+        // - Numeber of cells -----------------------------------------------
+        int c_allc_global;
+        int c_allc = domain_->num_allocations();
+        boost::mpi::all_reduce(
+                world, c_allc, c_allc_global, std::plus<int>());
+
+        if (domain_->is_server())
+        {
+            std::cout<<"T = " << T_<<", n = "<< tmp_n << " -----------------" << std::endl;
+            std::cout<<"Total number of leaf octants: "<<domain_->num_leafs()<<std::endl;
+            std::cout<<"Total number of leaf + correction octants: "<<domain_->num_corrections()+domain_->num_leafs()<<std::endl;
+            std::cout<<"Total number of allocated octants: "<<c_allc_global<<std::endl;
+            std::cout<<" -----------------" << std::endl;
+        }
+
+
+        // - Forcing ------------------------------------------------
+        auto& ib = domain_->ib();
+        ib.clean_non_local();
+
+        force_type sum_f(ib.force().size(), (0.,0.,0.));
+        boost::mpi::all_reduce(
+                world, &ib.force(0), ib.size(), &sum_f[0], std::plus<real_coordinate_type>());
+
+        if (domain_->is_server())
+        {
+            std::vector<float_type> f(domain_->dimension(), 0.);
+            for (std::size_t d=0; d<domain_->dimension(); ++d)
+                for (std::size_t i=0; i<ib.size(); ++i)
+                    f[d]+=sum_f[i][d] * 1.0 / coeff_a(3, 3) / dt_ * ib.force_scale();
+
+            std::cout<<"Forcing = ";
+
+            for (std::size_t d=0; d<domain_->dimension(); ++d)
+                std::cout<<f[d]<<" ";
+            std::cout<<std::endl;
+
+            std::cout<<" -----------------" << std::endl;
+        }
+
         world.barrier();
     }
 

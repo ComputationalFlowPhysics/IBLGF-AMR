@@ -174,8 +174,24 @@ class IB
     const auto& communicator() const noexcept { return ib_comm_; }
     /** @} */
 
+    bool locally_owned(std::size_t _i) noexcept { return ib_rank_[_i] == comm_.rank();}
+
+    float_type force_scale()
+    {
+        float_type tmp = dx_base_ / std::pow(2, nRef_);
+        return tmp*tmp*tmp;
+    }
+
   public: // iters
   public: // functions
+
+    void clean_non_local()
+    {
+        for (std::size_t i = 0; i < size(); i++)
+            if (!this->locally_owned(i))
+                this->force(i)=0.0;
+    }
+
     template<class BlockDscrptr>
     bool ib_block_overlap(BlockDscrptr b_dscrptr, int radius_level = 0)
     {
@@ -274,7 +290,10 @@ class IB
         return ddf;
     }
 
-  public:
+public:
+
+    boost::mpi::communicator comm_;
+
     int        nRef_ = 0;
     int        safety_dis_ = 7;
     float_type dx_base_ = 1;

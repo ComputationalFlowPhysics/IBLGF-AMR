@@ -138,7 +138,9 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
                 [this](float_type x, float_type y, float_type z, int field_idx, float_type perturbation){return this->vortex_ring_inclined(x,y,z,field_idx, perturbation);};
             else if (ringType==0)
             {
-                std::cout<< "using trivial initial condition" << std::endl;
+                if (!domain_->is_client())
+                    std::cout<< "using trivial initial condition" << std::endl;
+
                 vr_fct_=
                 [this](float_type x, float_type y, float_type z, int field_idx, float_type perturbation){return this->trivial(x,y,z,field_idx, perturbation);};
             }

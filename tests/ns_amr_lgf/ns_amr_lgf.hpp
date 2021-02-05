@@ -89,12 +89,17 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
             client_comm_ = client_comm_.split(0);
         // ------------------------------------------------------------------
         // ref frame velocity
-        simulation_.frame_vel() =
-            [](std::size_t idx, auto coord = {0, 0, 0}){
-                if (idx == 0)
-                    return -1.0;
 
-                return 0.0;
+        U_.resize(domain_->dimension());
+        U_[0] = simulation_.dictionary()->template get_or<float_type>("Ux", 1.0);
+        U_[1] = simulation_.dictionary()->template get_or<float_type>("Uy", 1.0);
+        if (domain_->dimension()>2)
+            U_[2] = simulation_.dictionary()->template get_or<float_type>("Uz", 1.0);
+
+        simulation_.frame_vel() =
+            [this](std::size_t idx, auto coord = {0, 0, 0})
+            {
+                return -U_[idx];
             };
 
 
@@ -713,6 +718,8 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 
     bool single_ring_=true;
     float_type perturbation_;
+
+    std::vector<float_type> U_;
 
     float_type R_;
     float_type v_delta_;

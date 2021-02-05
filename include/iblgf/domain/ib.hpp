@@ -131,6 +131,20 @@ class IB
                 coordinates_.emplace_back( real_coordinate_type({R*cos(theta)*sin(phi), R*sin(theta)*sin(phi), R*cos(phi)}));
             }
         }
+        else
+        {
+            std::fstream file(geometry_, std::ios_base::in);
+            int n; file >> n;
+
+            for (int i=0; i<n; i++)
+            {
+                real_coordinate_type p;
+                for (int field_idx = 0; field_idx<p.size(); field_idx++)
+                    file>>p[field_idx];
+
+                coordinates_.emplace_back(p);
+            }
+        }
     }
 
     /** @{ @brief Get the force vector of  all immersed boundary points */

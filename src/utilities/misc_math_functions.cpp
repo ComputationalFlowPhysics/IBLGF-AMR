@@ -30,7 +30,7 @@ int nextpow(int a, int x)
 
 int nextprod(int x)
 {
-    return nextprod({2,3,5}, x);
+    return nextprod({2,3}, x);
 }
 
 int nextprod(std::vector<int> a, int x)

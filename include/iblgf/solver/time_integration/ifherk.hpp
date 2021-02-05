@@ -405,6 +405,18 @@ class Ifherk
             std::cout<<std::endl;
 
             std::cout<<" -----------------" << std::endl;
+
+            std::ofstream outfile;
+            int width=20;
+
+            outfile.open("fstats.txt", std::ios_base::app); // append instead of overwrite
+            outfile <<std::setw(width) << tmp_n <<std::setw(width)<<std::scientific<<std::setprecision(9);
+            outfile <<std::setw(width) << T_ <<std::setw(width)<<std::scientific<<std::setprecision(9);
+            for (auto& element:f)
+            {
+                outfile<<element<<std::setw(width);
+            }
+            outfile<<std::endl;
         }
 
         world.barrier();

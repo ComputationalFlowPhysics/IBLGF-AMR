@@ -58,20 +58,24 @@ class IB
     {
 
         ibph_ = d->template get_or<float_type>("ibph", 1.5);
-        ddf_radius_ = 1.5;
+        geometry_ = d->template get_or<std::string>("geometry", "plate");
+
         nRef_ = nRef;
         dx_base_ = dx_base;
 
         read_points();
+
         // will add more, default is yang4
+        ddf_radius_ = 1.5;
         std::function<float_type(float_type x)> delta_func_1d_ =
             [this](float_type x) { return this->roma(x); };
 
-        // ddf 3D
         this->delta_func_ = [this, delta_func_1d_](real_coordinate_type x) {
             return delta_func_1d_(x[0]) * delta_func_1d_(x[1]) *
                    delta_func_1d_(x[2]);
         };
+
+        //temp variables
         ib_infl_.resize(coordinates_.size());
         ib_infl_pts_.resize(coordinates_.size());
         ib_rank_.resize(coordinates_.size());
@@ -83,28 +87,50 @@ class IB
             f.resize(coordinates_.size(), real_coordinate_type((float_type)0));
     }
 
-    void read_points() noexcept
+    void read_points()
     {
         //coordinates_.emplace_back(real_coordinate_type({0.01, 0.01, 0.01}));
 
-        float_type L = 1.0;
-        float_type AR = 2.0;
-        float_type Ly= L*AR;
-        //int        nx = 2;
-        int        nx = int(L/dx_base_/ibph_*pow(2,nRef_));
-        int        ny = nx*2;
+        if (geometry_=="plate")
+        {
+            float_type L = 1.0;
+            float_type AR = 2.0;
+            float_type Ly= L*AR;
+            //int        nx = 2;
+            int        nx = int(L/dx_base_/ibph_*pow(2,nRef_));
+            int        ny = nx*2;
 
 
-        for (int ix = 0; ix < nx; ++ix)
-            for (int iy = 0; iy < ny; ++iy)
+            for (int ix = 0; ix < nx; ++ix)
+                for (int iy = 0; iy < ny; ++iy)
+                {
+                    float_type w = (ix * L)/(nx-1)- L/2.0;
+                    float_type angle = M_PI/6;
+
+                    coordinates_.emplace_back(
+                            real_coordinate_type(
+                                { w * std::cos(angle), (iy * Ly) / (ny-1) - Ly/2.0, -w * std::sin(angle) }));
+                }
+        }
+        else if (geometry_=="sphere")
+        {
+            float_type R = 0.5;
+
+            float_type dx = dx_base_/pow(2,nRef_)*ibph_;
+            int n = floor(M_PI / (dx * dx * 0.86602540378) )+1;
+
+            if (comm_.rank()==1)
+                std::cout<< " Geometry = sphere, n = "<< n << std::endl;
+
+            float_type lambda = (1. + sqrt(5) ) / 2.0;
+            for (int i=0; i<n; ++i)
             {
-                float_type w = (ix * L)/(nx-1)- L/2.0;
-                float_type angle = M_PI/6;
-
-                coordinates_.emplace_back(
-                    real_coordinate_type(
-                        { w * std::cos(angle), (iy * Ly) / (ny-1) - Ly/2.0, -w * std::sin(angle) }));
+                float_type x = i+0.5;
+                float_type phi = std::acos(1.0 - 2 * x/n);
+                float_type theta = 2*M_PI * x / lambda;
+                coordinates_.emplace_back( real_coordinate_type({R*cos(theta)*sin(phi), R*sin(theta)*sin(phi), R*cos(phi)}));
             }
+        }
     }
 
     /** @{ @brief Get the force vector of  all immersed boundary points */
@@ -308,6 +334,8 @@ public:
 
     delta_func_type delta_func_;
     float_type      ddf_radius_ = 0;
+
+    std::string geometry_;
 
     communicator_t ib_comm_;
 };

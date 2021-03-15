@@ -93,6 +93,11 @@ class node
         return level_coordinate_;
     }
 
+    real_coordinate_type local_pct() const noexcept
+    {
+        return (level_coordinate_ - c_->bounding_box().base()) / real_coordinate_type(c_->bounding_box().extent()-1);
+    }
+
     real_coordinate_type global_coordinate() const noexcept
     {
         return (level_coordinate_) / std::pow(2, c_->level());
@@ -126,7 +131,7 @@ class node
             os << field.name() << " = ( ";
 
             for (std::size_t i = 0; i < field.nFields(); ++i)
-            { 
+            {
                 const auto sep= i+1==field.nFields()? " ":",";
                 os << _n(field.tag(), i) << sep;
             }

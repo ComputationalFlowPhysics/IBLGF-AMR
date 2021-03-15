@@ -227,6 +227,34 @@ struct Operator
     }
 
 
+    template<class Field, class Block>
+    static void smooth2zero(Block& block, std::size_t ngb_idx) noexcept
+    {
+        float_type fac=5.0;
+        for (std::size_t field_idx = 0; field_idx < Field::nFields();
+                ++field_idx)
+        {
+            for (auto& n: block.node_field())
+            {
+                auto pct  = n.local_pct();
+                float_type c = 1-(0.5 - 0.5 * tanh(fac*(-0.5)));
+
+                if (ngb_idx==4)
+                    n(Field::tag(), field_idx) = n(Field::tag(), field_idx) * ( (0.5 + 0.5 * tanh(fac*(pct[2]-0.5))) + c );
+                else if (ngb_idx==10)
+                    n(Field::tag(), field_idx) = n(Field::tag(), field_idx) * ( (0.5 + 0.5 * tanh(fac*(pct[1]-0.5))) + c );
+                else if (ngb_idx==12)
+                    n(Field::tag(), field_idx) = n(Field::tag(), field_idx) * ( (0.5 + 0.5 * tanh(fac*(pct[0]-0.5))) + c );
+                else if (ngb_idx==14)
+                    n(Field::tag(), field_idx) = n(Field::tag(), field_idx) * ( (0.5 - 0.5 * tanh(fac*(pct[0]-0.5))) + c );
+                else if (ngb_idx==16)
+                    n(Field::tag(), field_idx) = n(Field::tag(), field_idx) * ( (0.5 - 0.5 * tanh(fac*(pct[1]-0.5))) + c );
+                else if (ngb_idx==22)
+                    n(Field::tag(), field_idx) = n(Field::tag(), field_idx) * ( (0.5 - 0.5 * tanh(fac*(pct[2]-0.5))) + c );
+            }
+        }
+    }
+
 
   public:
     template<class F_in, class F_tmp, class Block>

@@ -741,24 +741,8 @@ class Ifherk
                 {
                     for (std::size_t field_idx=0; field_idx<F::nFields(); ++field_idx)
                     {
-                        auto& lin_data =
-                            it->data_r(F::tag(), field_idx).linalg_data();
-
                         int N=it->data().descriptor().extent()[0];
-
-                        // somehow we delete the outer 2 planes
-                        if (i==4)
-                            view(lin_data,xt::all(),xt::all(),xt::range(0,clean_width))  *= 0.0;
-                        else if (i==10)
-                            view(lin_data,xt::all(),xt::range(0,clean_width),xt::all())  *= 0.0;
-                        else if (i==12)
-                            view(lin_data,xt::range(0,clean_width),xt::all(),xt::all())  *= 0.0;
-                        else if (i==14)
-                            view(lin_data,xt::range(N+2-clean_width,N+3),xt::all(),xt::all())  *= 0.0;
-                        else if (i==16)
-                            view(lin_data,xt::all(),xt::range(N+2-clean_width,N+3),xt::all())  *= 0.0;
-                        else if (i==22)
-                            view(lin_data,xt::all(),xt::all(),xt::range(N+2-clean_width,N+3))  *= 0.0;
+                        domain::Operator::smooth2zero<edge_aux_type>( it->data(), i);
                     }
                 }
             }
@@ -951,6 +935,7 @@ private:
             }
         }
 
+        clean_leaf_correction_boundary<edge_aux_type>(domain_->tree()->base_level(), true, 2);
         // add background velocity
         copy<Source, face_aux_type>();
         domain::Operator::add_field_expression<face_aux_type>(domain_, simulation_->frame_vel(), -1.0);

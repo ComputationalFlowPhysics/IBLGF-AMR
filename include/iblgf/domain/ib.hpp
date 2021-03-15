@@ -136,6 +136,9 @@ class IB
             std::fstream file(geometry_, std::ios_base::in);
             int n; file >> n;
 
+            if (comm_.rank()==1)
+                std::cout<< " Geometry = read from text "<< geometry_ << std::endl;
+
             for (int i=0; i<n; i++)
             {
                 real_coordinate_type p;

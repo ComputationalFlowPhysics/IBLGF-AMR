@@ -529,7 +529,7 @@ struct Operator
     }
 
     template<typename Field, typename Domain, typename Func>
-    static void add_field_expression(Domain* domain, Func& f, float_type scale=1.0) noexcept
+    static void add_field_expression(Domain* domain, Func& f, float_type t, float_type scale=1.0) noexcept
     {
         const auto dx_base = domain->dx_base();
         for (auto it = domain->begin(); it != domain->end(); ++it)
@@ -541,7 +541,7 @@ struct Operator
                 for (auto& n:it->data().node_field())
                 {
                     auto coord = n.global_coordinate()*dx_base;
-                    n(Field::tag(), field_idx) += f(field_idx, coord)*scale;
+                    n(Field::tag(), field_idx) += f(field_idx, t, coord)*scale;
                 }
         }
     }

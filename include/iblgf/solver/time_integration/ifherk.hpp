@@ -556,6 +556,8 @@ class Ifherk
         boost::mpi::communicator world;
         auto                     client = domain_->decomposition().client();
 
+        T_stage_ = T_;
+
         ////claen non leafs
 
         stage_idx_=0;
@@ -583,6 +585,7 @@ class Ifherk
         // Stage 1
         // ******************************************************************
         pcout << "Stage 1" << std::endl;
+        T_stage_ += dt_*alpha_[0];
         stage_idx_ = 1;
         clean<g_i_type>();
         clean<d_i_type>();
@@ -598,6 +601,7 @@ class Ifherk
         // Stage 2
         // ******************************************************************
         pcout << "Stage 2" << std::endl;
+        T_stage_ += dt_*alpha_[1];
         stage_idx_ = 2;
         clean<r_i_type>();
         clean<d_i_type>();
@@ -625,6 +629,7 @@ class Ifherk
         // Stage 3
         // ******************************************************************
         pcout << "Stage 3" << std::endl;
+        T_stage_ += dt_*alpha_[2];
         stage_idx_ = 3;
         clean<d_i_type>();
         clean<cell_aux_type>();
@@ -809,7 +814,7 @@ private:
 
         domain_->ib().force() = domain_->ib().force_prev(stage_idx_);
         TIME_CODE( t_ib, SINGLE_ARG(
-                    lsolver.template ib_solve<face_aux2_type>(_alpha);
+                    lsolver.template ib_solve<face_aux2_type>(_alpha, T_stage_);
                     ));
 
         domain_->ib().force_prev(stage_idx_) = domain_->ib().force();
@@ -938,7 +943,7 @@ private:
         clean_leaf_correction_boundary<edge_aux_type>(domain_->tree()->base_level(), true, 2);
         // add background velocity
         copy<Source, face_aux_type>();
-        domain::Operator::add_field_expression<face_aux_type>(domain_, simulation_->frame_vel(), -1.0);
+        domain::Operator::add_field_expression<face_aux_type>(domain_, simulation_->frame_vel(), T_stage_, -1.0);
 
         for (int l = domain_->tree()->base_level();
              l < domain_->tree()->depth(); ++l)
@@ -1074,7 +1079,7 @@ private:
 
     bool base_mesh_update_=false;
 
-    float_type T_, T_max_;
+    float_type T_, T_stage_, T_max_;
     float_type dt_base_, dt_, dx_base_;
     float_type Re_;
     float_type cfl_max_, cfl_;

@@ -57,11 +57,11 @@ struct parameters
     Dim,
      (
         //name               type        Dim   lBuffer  hBuffer, storage type
-         (error_u          , float_type, 3,    1,       1,     face,false ),
+         (error_u          , float_type, 3,    1,       1,     face,true ),
          (decomposition    , float_type, 1,    1,       1,     cell,false ),
         //IF-HERK
          (u                , float_type, 3,    1,       1,     face,true ),
-         (u_ref            , float_type, 3,    1,       1,     face,false ),
+         (u_ref            , float_type, 3,    1,       1,     face,true ),
          (p_ref            , float_type, 1,    1,       1,     cell,false ),
          (p                , float_type, 1,    1,       1,     cell,true )
     ))
@@ -91,15 +91,25 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
         // ref frame velocity
 
         U_.resize(domain_->dimension());
-        U_[0] = simulation_.dictionary()->template get_or<float_type>("Ux", 1.0);
-        U_[1] = simulation_.dictionary()->template get_or<float_type>("Uy", 1.0);
+        U_[0] = simulation_.dictionary()->template get_or<float_type>("Ux", 0.0);
+        U_[1] = simulation_.dictionary()->template get_or<float_type>("Uy", 0.0);
         if (domain_->dimension()>2)
-            U_[2] = simulation_.dictionary()->template get_or<float_type>("Uz", 1.0);
+            U_[2] = simulation_.dictionary()->template get_or<float_type>("Uz", 0.0);
+
+        smooth_start_ = simulation_.dictionary()->template get_or<bool>("smooth_start", false);
 
         simulation_.frame_vel() =
-            [this](std::size_t idx, auto coord = {0, 0, 0})
+            [this](std::size_t idx, float_type t, auto coord = {0, 0, 0})
             {
-                return -U_[idx];
+                float_type T0 = 0.5;
+                if (t<T0 && smooth_start_)
+                {
+                    return -U_[idx] * t/T0;
+                }
+                else
+                {
+                    return -U_[idx];
+                }
             };
 
 
@@ -246,34 +256,34 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
                     domain_->bounding_box().min();
 
 
-            for (auto it  = domain_->begin_leaves();
-                    it != domain_->end_leaves(); ++it)
-            {
-                if(!it->locally_owned()) continue;
+            //for (auto it  = domain_->begin_leaves();
+            //        it != domain_->end_leaves(); ++it)
+            //{
+            //    if(!it->locally_owned()) continue;
 
-                auto dx_level =  domain_->dx_base()/std::pow(2,it->refinement_level());
-                auto scaling =  std::pow(2,it->refinement_level());
+            //    auto dx_level =  domain_->dx_base()/std::pow(2,it->refinement_level());
+            //    auto scaling =  std::pow(2,it->refinement_level());
 
-                for (auto& node : it->data())
-                {
-                    const auto& coord = node.level_coordinate();
-                    float_type x = static_cast<float_type>
-                        (coord[0]-center[0]*scaling)*dx_level;
-                    float_type y = static_cast<float_type>
-                        (coord[1]-center[1]*scaling)*dx_level;
-                    float_type z = static_cast<float_type>
-                        (coord[2]-center[2]*scaling)*dx_level;
+            //    for (auto& node : it->data())
+            //    {
+            //        const auto& coord = node.level_coordinate();
+            //        float_type x = static_cast<float_type>
+            //            (coord[0]-center[0]*scaling)*dx_level;
+            //        float_type y = static_cast<float_type>
+            //            (coord[1]-center[1]*scaling)*dx_level;
+            //        float_type z = static_cast<float_type>
+            //            (coord[2]-center[2]*scaling)*dx_level;
 
-                    float_type r2 = x*x+y*y;
-                    if (std::fabs(z)>R_ || r2>4*R_*R_)
-                    {
-                        node(u_ref, 0)=0.0;
-                        node(u_ref, 1)=0.0;
-                        node(u_ref, 2)=0.0;
-                    }
-                }
+            //        float_type r2 = x*x+y*y;
+            //        if (std::fabs(z)>R_ || r2>4*R_*R_)
+            //        {
+            //            node(u_ref, 0)=0.0;
+            //            node(u_ref, 1)=0.0;
+            //            node(u_ref, 2)=0.0;
+            //        }
+            //    }
 
-            }
+            //}
         }
 
         ifherk.clean_leaf_correction_boundary<u_type>(domain_->tree()->base_level(),true,1);
@@ -717,6 +727,7 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
     boost::mpi::communicator client_comm_;
 
     bool single_ring_=true;
+    bool smooth_start_;
     float_type perturbation_;
 
     std::vector<float_type> U_;

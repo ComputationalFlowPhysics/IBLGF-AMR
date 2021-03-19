@@ -195,6 +195,7 @@ class SetupBase
         for (auto it_t = domain_->begin_leaves(); it_t != domain_->end_leaves();
              ++it_t)
         {
+
             if (!it_t->locally_owned() || !it_t->has_data()) continue;
             if (it_t->is_correction()) continue;
 
@@ -203,6 +204,7 @@ class SetupBase
 
             for (auto& node : it_t->data())
             {
+
                 float_type tmp_exact = node(Exact::tag(), field_idx);
                 float_type tmp_num = node(Numeric::tag(), field_idx);
                 if (std::fabs(tmp_exact)<1e-6) continue;
@@ -210,6 +212,22 @@ class SetupBase
                 float_type error_tmp = tmp_num - tmp_exact;
 
                 node(Error::tag(), field_idx) = error_tmp;
+
+                // clean inside spehre
+                const auto& coord = node.level_coordinate();
+                float_type x = static_cast<float_type>(coord[0])*dx;
+                float_type y = static_cast<float_type>(coord[1])*dx;
+                float_type z = static_cast<float_type>(coord[2])*dx;
+
+                float_type r2 = x*x+y*y+z*z;
+                if (std::fabs(r2)< .5+dx*2)
+                {
+                    node(Error::tag(), 0)=0.0;
+                    node(Error::tag(), 1)=0.0;
+                    node(Error::tag(), 2)=0.0;
+                    error_tmp = 0;
+                }
+                // clean inside spehre
 
                 L2 += error_tmp * error_tmp * (dx * dx * dx);
                 L2_exact += tmp_exact * tmp_exact * (dx * dx * dx);

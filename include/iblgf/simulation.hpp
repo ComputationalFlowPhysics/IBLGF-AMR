@@ -155,7 +155,7 @@ public:
   std::string tree_info_file_="tree_info";
   std::string restart_field_file_="restart_field.hdf5";
 
-  std::function<float_type(std::size_t idx, typename domain_type::real_coordinate_type coord)> frame_vel_;
+  std::function<float_type(std::size_t idx, float_type t, typename domain_type::real_coordinate_type coord)> frame_vel_;
   int intrp_order_;
 
 };

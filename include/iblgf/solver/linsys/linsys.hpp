@@ -108,13 +108,13 @@ class LinSysSolver
     }
 
     template<class Field>
-    void ib_solve(float_type alpha)
+    void ib_solve(float_type alpha, float_type t)
     {
         // right hand side
         force_type uc(ib_->size(), (0.,0.,0.));
 
         this->projection<Field>(uc);
-        this->subtract_boundary_vel(uc);
+        this->subtract_boundary_vel(uc, t);
 
         domain::Operator::domainClean<face_aux2_type>(domain_);
         this->template CG_solve<face_aux2_type>(uc, alpha);
@@ -139,12 +139,12 @@ class LinSysSolver
     }
 
     template<class ForceType>
-    void subtract_boundary_vel(ForceType& uc)
+    void subtract_boundary_vel(ForceType& uc, float_type t)
     {
         auto& frame_vel = simulation_->frame_vel();
         for (int i=0; i<uc.size(); ++i)
             for (std::size_t idx=0; idx<uc[i].size(); ++idx)
-                uc[i][idx]-=frame_vel(idx, ib_->coordinate(i));
+                uc[i][idx]-=frame_vel(idx, t, ib_->coordinate(i));
     }
 
     template<class ForceType>
@@ -188,6 +188,12 @@ class LinSysSolver
             // Ap = A(p)
             this->template ET_H_S_E<Ftmp>(p, Ap, alpha );
             // alpha = rsold / p'*Ap
+            float_type pAp = dot(p,Ap);
+            if (pAp == 0.0)
+            {
+                return;
+            }
+
             float_type alpha = rsold / dot(p, Ap);
             // f = f + alpha * p;
             add(f, p, 1.0, alpha);

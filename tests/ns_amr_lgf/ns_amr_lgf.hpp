@@ -375,6 +375,9 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
                 l_delete_aim = std::max(l_delete_aim,0);
         }
 
+        if (it->is_ib())
+            return 0;
+
         int l_change = l_aim - it->refinement_level();
         if (l_change>0)
             return 1;

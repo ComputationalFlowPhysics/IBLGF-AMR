@@ -191,7 +191,9 @@ public: //memeber functions
 
             // --------------------------------------------------------------
             // 0. receive attempts
+            std::cout<< " Decomposition - receving adapt attempts " << std::endl;
             server()->recv_adapt_attempts(octs_all, level_change_all);
+            std::cout<< " Decomposition - update domain" << std::endl;
             for (auto it = domain_->begin(); it != domain_->end(); ++it)
             {
                 if (!it->has_data()) continue;
@@ -409,6 +411,7 @@ public: //memeber functions
             // --------------------------------------------------------------
             // 6. send back new locally owned octs
 
+            std::cout<< " Decomposition - send back new local octants" << std::endl;
             for(int i=1;i<comm_.size();++i)
             {
                 comm_.send(i,i+0*comm_.size(), refinement[i] );
@@ -424,6 +427,7 @@ public: //memeber functions
             // --------------------------------------------------------------
             // 7. construct maps / masks / loads
 
+            std::cout<< " Decomposition - construct maps" << std::endl;
             domain_->tree()->construct_leaf_maps(true);
             domain_->tree()->construct_level_maps();
             domain_->tree()->construct_lists();
@@ -440,6 +444,7 @@ public: //memeber functions
 
             // --------------------------------------------------------------
             // 8. sync ghosts
+            std::cout<< " Decomposition - sync" << std::endl;
             sync_decomposition();
         }
         else if (client())

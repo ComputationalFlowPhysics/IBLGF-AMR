@@ -58,6 +58,7 @@ struct parameters
      (
         //name               type        Dim   lBuffer  hBuffer, storage type
          (error_u          , float_type, 3,    1,       1,     face,true ),
+         (error_p          , float_type, 1,    1,       1,     cell,true ),
          (decomposition    , float_type, 1,    1,       1,     cell,false ),
         //IF-HERK
          (u                , float_type, 3,    1,       1,     face,true ),
@@ -102,9 +103,14 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
             [this](std::size_t idx, float_type t, auto coord = {0, 0, 0})
             {
                 float_type T0 = 0.5;
-                if (t<T0 && smooth_start_)
+                if (t<=0.0 && smooth_start_)
+                    return 0.0;
+                else if (t<T0 && smooth_start_)
                 {
-                    return -U_[idx] * t/T0;
+                    float_type h1 = exp(-1/( t/T0 ));
+                    float_type h2 = exp(-1/(1 - t/T0));
+
+                    return -U_[idx] * h1/(h1+h2);
                 }
                 else
                 {
@@ -294,6 +300,9 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
                 std::string("u2_"), 1);
         float_type u3_linf=this->compute_errors<u_type, u_ref_type, error_u_type>(
                 std::string("u3_"), 2);
+
+        float_type p_linf=this->compute_errors<p_type, p_ref_type, error_p_type>(
+                std::string("p_"), 0);
 
         simulation_.write("final.hdf5");
         return u3_linf;

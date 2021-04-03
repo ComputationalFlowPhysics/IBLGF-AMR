@@ -219,12 +219,26 @@ class SetupBase
                 float_type y = static_cast<float_type>(coord[1])*dx;
                 float_type z = static_cast<float_type>(coord[2])*dx;
 
-                float_type r2 = x*x+y*y+z*z;
-                if (std::fabs(r2)< .5+dx*2)
+                if (field_idx==0)
                 {
-                    node(Error::tag(), 0)=0.0;
-                    node(Error::tag(), 1)=0.0;
-                    node(Error::tag(), 2)=0.0;
+                    y+=0.5*dx;
+                    z+=0.5*dx;
+                }
+                else if (field_idx == 1)
+                {
+                    x+=0.5*dx;
+                    z+=0.5*dx;
+                }
+                else
+                {
+                    x+=0.5*dx;
+                    y+=0.5*dx;
+                }
+
+                float_type r2 = x*x+y*y+z*z;
+                if (std::fabs(r2) <= .5)
+                {
+                    node(Error::tag(), field_idx)=0.0;
                     error_tmp = 0;
                 }
                 // clean inside spehre

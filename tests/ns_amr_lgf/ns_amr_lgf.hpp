@@ -105,12 +105,12 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
                 float_type T0 = 0.5;
                 if (t<=0.0 && smooth_start_)
                     return 0.0;
-                else if (t<T0 && smooth_start_)
+                else if (t<T0-1e-10 && smooth_start_)
                 {
-                    float_type h1 = exp(-1/( t/T0 ));
+                    float_type h1 = exp(-1/(t/T0));
                     float_type h2 = exp(-1/(1 - t/T0));
 
-                    return -U_[idx] * h1/(h1+h2);
+                    return -U_[idx] * (h1/(h1+h2));
                 }
                 else
                 {

@@ -397,6 +397,7 @@ class Ifherk
             for (std::size_t d=0; d<domain_->dimension(); ++d)
                 for (std::size_t i=0; i<ib.size(); ++i)
                     f[d]+=sum_f[i][d] * 1.0 / coeff_a(3, 3) / dt_ * ib.force_scale();
+                    //f[d]+=sum_f[i][d] * 1.0 / dt_ * ib.force_scale();
 
             std::cout<<"Forcing = ";
 
@@ -813,11 +814,13 @@ private:
         domain_->client_communicator().barrier();
 
         domain_->ib().force() = domain_->ib().force_prev(stage_idx_);
+        //domain_->ib().scales(coeff_a(stage_idx_, stage_idx_));
         TIME_CODE( t_ib, SINGLE_ARG(
                     lsolver.template ib_solve<face_aux2_type>(_alpha, T_stage_);
                     ));
 
         domain_->ib().force_prev(stage_idx_) = domain_->ib().force();
+        //domain_->ib().scales(1.0/coeff_a(stage_idx_, stage_idx_));
 
         pcout<< "IB  solved in "<<t_ib.count() << std::endl;
 

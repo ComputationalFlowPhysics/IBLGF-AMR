@@ -870,7 +870,7 @@ public:
 
                     bool influenced = true;
                     for (std::size_t field_idx=0; field_idx<domain_->dimension(); field_idx++)
-                        if (abs(dist[field_idx]) >= ib.ddf_radius()+0.5)
+                        if (abs(dist[field_idx]) >= ib.ddf_radius()+1.0)
                             influenced = false;
 
                     if (influenced)

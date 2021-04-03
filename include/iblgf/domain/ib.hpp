@@ -94,7 +94,7 @@ class IB
         if (geometry_=="plate")
         {
             float_type L = 1.0;
-            float_type AR = 2.0;
+            float_type AR = 1.0;
             float_type Ly= L*AR;
             //int        nx = 2;
             int        nx = int(L/dx_base_/ibph_*pow(2,nRef_));
@@ -105,7 +105,7 @@ class IB
                 for (int iy = 0; iy < ny; ++iy)
                 {
                     float_type w = (ix * L)/(nx-1)- L/2.0;
-                    float_type angle = M_PI/6;
+                    float_type angle = M_PI/2;
 
                     coordinates_.emplace_back(
                             real_coordinate_type(
@@ -225,6 +225,13 @@ class IB
         return tmp*tmp*tmp;
     }
 
+    void scales(const float_type a)
+    {
+        for (std::size_t i = 0; i < size(); i++)
+            for (std::size_t field_idx = 0; field_idx<Dim; field_idx++)
+            this->force(i, field_idx) *= a;
+    }
+
   public: // iters
   public: // functions
 
@@ -257,9 +264,9 @@ class IB
 
         float_type added_radius = 0;
         if (radius_level == 2)
-            added_radius += ddf_radius_+safety_dis_;
+            added_radius += ddf_radius_+safety_dis_+1.0;
         else if (radius_level == 1)
-            added_radius += ddf_radius_;
+            added_radius += ddf_radius_+1.0;
 
         b_dscrptr.extent() += 2*added_radius;
         b_dscrptr.base() -= added_radius;

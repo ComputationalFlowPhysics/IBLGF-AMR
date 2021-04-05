@@ -235,6 +235,7 @@ public:
             fmm_dry(domain_, l, true, subtract_non_leaf);
         }
     }
+
     static void fmm_dry(Domain* domain_, int base_level,
         bool non_leaf_as_source, bool subtract_non_leaf)
     {
@@ -244,8 +245,91 @@ public:
 
         fmm_dry_init_base_level_masks(domain_, base_level, non_leaf_as_source,
             fmm_mask_idx, subtract_non_leaf);
-        fmm_upward_pass_masks(domain_, base_level, MASK_LIST::Mask_FMM_Source,
+        fmm_upward_pass_masks (domain_, base_level, MASK_LIST::Mask_FMM_Source,
             MASK_LIST::Mask_FMM_Target, fmm_mask_idx);
+        fmm_clean_no_inf_masks(domain_, base_level, MASK_LIST::Mask_FMM_Source,
+            MASK_LIST::Mask_FMM_Target, fmm_mask_idx);
+    }
+
+    static void fmm_clean_no_inf_masks(Domain* domain_, int base_level,
+        int mask_source_id, int mask_target_id, const int _fmm_mask_idx)
+    {
+        for (int level=0; level<base_level; ++level)
+        {
+            for (auto it = domain_->begin(level); it != domain_->end(level);
+                 ++it)
+            {
+
+                //domain_->tree()->influence_list_build(it.ptr());
+                //domain_->tree()->neighbor_list_build(it.ptr());
+                //for source masks
+                if (it->fmm_mask(_fmm_mask_idx, mask_source_id))
+                {
+                    if (it->parent() && it->parent()->has_data() && it->parent()->fmm_mask(_fmm_mask_idx, mask_source_id) )
+                        continue;
+
+                    bool has_target=false;
+                    for (int i = 0; i < it->influence_number(); ++i)
+                    {
+                        auto n_s = it->influence(i);
+                        if (n_s && n_s->has_data() &&
+                                n_s->fmm_mask(_fmm_mask_idx, mask_target_id))
+                        {
+                            has_target = true;
+                            break;
+                        }
+                    }
+
+                    //for (int i = 0; i < it->nNeighbors(); ++i)
+                    //{
+                    //    auto n_s = it->neighbor(i);
+                    //    if (n_s && n_s->has_data() &&
+                    //            n_s->fmm_mask(_fmm_mask_idx, mask_target_id))
+                    //    {
+                    //        has_target = true;
+                    //        break;
+                    //    }
+                    //}
+
+                    if (!has_target)
+                        it->fmm_mask(_fmm_mask_idx, mask_source_id, false);
+                }
+
+                // for target masks
+                if (it->fmm_mask(_fmm_mask_idx, mask_target_id))
+                {
+                    if (it->parent() && it->parent()->has_data() && it->parent()->fmm_mask(_fmm_mask_idx, mask_target_id) )
+                        continue;
+
+                    bool has_source=false;
+                    for (int i = 0; i < it->influence_number(); ++i)
+                    {
+                        auto n_s = it->influence(i);
+                        if (n_s && n_s->has_data() &&
+                                n_s->fmm_mask(_fmm_mask_idx, mask_source_id))
+                        {
+                            has_source = true;
+                            break;
+                        }
+                    }
+
+                    //for (int i = 0; i < it->nNeighbors(); ++i)
+                    //{
+                    //    auto n_s = it->neighbor(i);
+                    //    if (n_s && n_s->has_data() &&
+                    //            n_s->fmm_mask(_fmm_mask_idx, mask_source_id))
+                    //    {
+                    //        has_source = true;
+                    //        break;
+                    //    }
+                    //}
+
+                    if (!has_source)
+                        it->fmm_mask(_fmm_mask_idx, mask_target_id, false);
+                }
+
+            }
+        }
     }
 
     static void fmm_upward_pass_masks(Domain* domain_, int base_level,

@@ -94,7 +94,7 @@ class IB
         if (geometry_=="plate")
         {
             float_type L = 1.0;
-            float_type AR = 1.0;
+            float_type AR = 2.0;
             float_type Ly= L*AR;
             //int        nx = 2;
             int        nx = int(L/dx_base_/ibph_*pow(2,nRef_));
@@ -105,7 +105,7 @@ class IB
                 for (int iy = 0; iy < ny; ++iy)
                 {
                     float_type w = (ix * L)/(nx-1)- L/2.0;
-                    float_type angle = M_PI/2;
+                    float_type angle = M_PI/6;
 
                     coordinates_.emplace_back(
                             real_coordinate_type(

@@ -835,9 +835,10 @@ public:
             ib.influence_list(i).clear();
             auto ib_coord = ib.scaled_coordinate(i);
 
+            int l = domain_->tree()->depth()-1;
 
-            for (auto it  = domain_->begin_leaves();
-                    it != domain_->end_leaves(); ++it)
+            for (auto it  = domain_->begin(l);
+                    it != domain_->end(l); ++it)
             {
                 if (!it->has_data() || !it->is_leaf())
                     continue;
@@ -885,6 +886,48 @@ public:
             }
 
         }
+
+        //// check if everything adds up to 3
+        //std::vector<float_type> ib_s(ib.size());
+
+        //for (std::size_t i=0; i<ib.size(); ++i)
+        //{
+        //    //float_type ib_s = 0.0;
+
+        //    std::size_t oct_i=0;
+        //    auto ib_coord = ib.scaled_coordinate(i);
+        //    for (auto it: ib.influence_list(i))
+        //    {
+        //        if (!it->locally_owned()) continue;
+
+        //        for (auto node: ib.influence_pts(i, oct_i))
+        //        {
+        //            auto n_coord = node.level_coordinate();
+        //            auto dist = n_coord - ib_coord;
+
+        //            for (std::size_t field_idx=0; field_idx<domain_->dimension(); field_idx++)
+        //            {
+        //                decltype(ib_coord) off(0.5); off[field_idx] = 0.0; // face data location
+        //                ib_s[i] +=  ib.delta_func()(dist+off);
+        //            }
+        //        }
+
+        //        oct_i+=1;
+        //    }
+
+        //    //std::cout<< "ib sum = " << ib_s << std::endl;
+
+        //}
+
+        //for (std::size_t i=0; i<ib.size(); ++i)
+        //{
+        //    float_type s=0.0;
+        //    boost::mpi::all_reduce(domain_->client_communicator(), ib_s[i],
+        //            s, std::plus<float_type>());
+
+        //    if (domain_->client_communicator().rank()==1)
+        //        std::cout<< "ib sum = " << s << std::endl;
+        //}
 
     }
 

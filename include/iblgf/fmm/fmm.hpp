@@ -92,6 +92,8 @@ public:
 
         fmm_upward_pass_masks(domain_, l, MASK_LIST::Mask_FMM_Source,
                 MASK_LIST::Mask_FMM_Target, fmm_mask_idx);
+        //fmm_clean_no_inf_masks(domain_, l, MASK_LIST::Mask_FMM_Source,
+        //    MASK_LIST::Mask_FMM_Target, fmm_mask_idx);
 
     }
 
@@ -128,6 +130,8 @@ public:
 
         fmm_upward_pass_masks(domain_, l, MASK_LIST::Mask_FMM_Source,
                 MASK_LIST::Mask_FMM_Target, fmm_mask_idx);
+        //fmm_clean_no_inf_masks(domain_, l, MASK_LIST::Mask_FMM_Source,
+        //    MASK_LIST::Mask_FMM_Target, fmm_mask_idx);
 
     }
 
@@ -247,8 +251,8 @@ public:
             fmm_mask_idx, subtract_non_leaf);
         fmm_upward_pass_masks (domain_, base_level, MASK_LIST::Mask_FMM_Source,
             MASK_LIST::Mask_FMM_Target, fmm_mask_idx);
-        fmm_clean_no_inf_masks(domain_, base_level, MASK_LIST::Mask_FMM_Source,
-            MASK_LIST::Mask_FMM_Target, fmm_mask_idx);
+        //fmm_clean_no_inf_masks(domain_, base_level, MASK_LIST::Mask_FMM_Source,
+        //    MASK_LIST::Mask_FMM_Target, fmm_mask_idx);
     }
 
     static void fmm_clean_no_inf_masks(Domain* domain_, int base_level,
@@ -280,16 +284,16 @@ public:
                         }
                     }
 
-                    //for (int i = 0; i < it->nNeighbors(); ++i)
-                    //{
-                    //    auto n_s = it->neighbor(i);
-                    //    if (n_s && n_s->has_data() &&
-                    //            n_s->fmm_mask(_fmm_mask_idx, mask_target_id))
-                    //    {
-                    //        has_target = true;
-                    //        break;
-                    //    }
-                    //}
+                    for (int i = 0; i < it->nNeighbors(); ++i)
+                    {
+                        auto n_s = it->neighbor(i);
+                        if (n_s && n_s->has_data() &&
+                                n_s->fmm_mask(_fmm_mask_idx, mask_target_id))
+                        {
+                            has_target = true;
+                            break;
+                        }
+                    }
 
                     if (!has_target)
                         it->fmm_mask(_fmm_mask_idx, mask_source_id, false);
@@ -313,16 +317,16 @@ public:
                         }
                     }
 
-                    //for (int i = 0; i < it->nNeighbors(); ++i)
-                    //{
-                    //    auto n_s = it->neighbor(i);
-                    //    if (n_s && n_s->has_data() &&
-                    //            n_s->fmm_mask(_fmm_mask_idx, mask_source_id))
-                    //    {
-                    //        has_source = true;
-                    //        break;
-                    //    }
-                    //}
+                    for (int i = 0; i < it->nNeighbors(); ++i)
+                    {
+                        auto n_s = it->neighbor(i);
+                        if (n_s && n_s->has_data() &&
+                                n_s->fmm_mask(_fmm_mask_idx, mask_source_id))
+                        {
+                            has_source = true;
+                            break;
+                        }
+                    }
 
                     if (!has_source)
                         it->fmm_mask(_fmm_mask_idx, mask_target_id, false);

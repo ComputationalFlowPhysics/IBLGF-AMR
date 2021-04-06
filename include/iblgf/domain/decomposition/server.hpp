@@ -563,7 +563,7 @@ class Server : public ServerBase<ServerClientTraits<Domain>>
             for (auto it  = domain_->begin(l_max);
                     it != domain_->end(l_max); ++it)
             {
-                if (!it->has_data() || !it->is_leaf())
+                if ( !it->has_data() )
                     continue;
 
                 if (ib.ib_block_overlap(i, it->data().descriptor(), 2))

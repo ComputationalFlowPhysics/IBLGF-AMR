@@ -236,7 +236,7 @@ class SetupBase
                 }
 
                 float_type r2 = x*x+y*y+z*z;
-                if (std::fabs(r2) <= .5)
+                if (std::fabs(r2) <= .25)
                 {
                     node(Error::tag(), field_idx)=0.0;
                     error_tmp = 0;

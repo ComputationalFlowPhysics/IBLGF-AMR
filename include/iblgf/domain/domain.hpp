@@ -640,13 +640,18 @@ class Domain
                 for (auto it = begin_df(); it != end_df(); ++it)
                 {
                     //if (!ref_cond_) return;
-                    if (it->refinement_level() == l &&
-                        (ref_cond_(it.ptr(), nRef - l) ||
-                            ib_.ib_block_overlap( it->data().descriptor(), 2)))
+                    if (it->refinement_level() == l)
                     {
-                        if (this->tree()->try_2to1(
-                                it->key(), this->key_bounding_box(), checklist))
+                        if (ib_.ib_block_overlap( it->data().descriptor(), 1))
+                        {
                             this->refine(it.ptr());
+                        }
+                        else if (ref_cond_(it.ptr(), nRef - l))
+                        {
+                            if (this->tree()->try_2to1(
+                                        it->key(), this->key_bounding_box(), checklist))
+                                this->refine(it.ptr());
+                        }
                     }
                 }
             }

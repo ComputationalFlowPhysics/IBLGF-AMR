@@ -264,9 +264,9 @@ class IB
 
         float_type added_radius = 0;
         if (radius_level == 2)
-            added_radius += ddf_radius_+safety_dis_+1.0;
+            added_radius += ddf_radius_+safety_dis_+2.0;
         else if (radius_level == 1)
-            added_radius += ddf_radius_+1.0;
+            added_radius += ddf_radius_+2.0;
 
         b_dscrptr.extent() += 2*added_radius;
         b_dscrptr.base() -= added_radius;
@@ -345,7 +345,7 @@ public:
     boost::mpi::communicator comm_;
 
     int        nRef_ = 0;
-    int        safety_dis_ = 7;
+    int        safety_dis_ = 10.0;
     float_type dx_base_ = 1;
     float_type ibph_;
 

@@ -300,7 +300,7 @@ struct Operator
     static void ib_projection(Coord ib_coord, Force& f, Block& block, DeltaFunc& ddf)
     {
         constexpr auto u = U::tag();
-        for (auto node : block)
+        for (auto& node : block)
         {
             auto n_coord = node.level_coordinate();
             auto dist = n_coord - ib_coord;
@@ -319,7 +319,7 @@ struct Operator
     static void ib_smearing(Coord ib_coord, Force& f, Block& block, DeltaFunc& ddf, float_type factor=1.0)
     {
         constexpr auto u = U::tag();
-        for (auto node : block)
+        for (auto& node : block)
         {
             auto n_coord = node.level_coordinate();
             auto dist = n_coord - ib_coord;

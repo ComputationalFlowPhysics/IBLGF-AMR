@@ -825,20 +825,16 @@ public:
     // IB related:
     void update_ib_rank_and_infl()
     {
-
-        int l_max = domain_->tree()->depth()-1;
-
         auto& ib = domain_->ib();
+
+        const int l_max = domain_->tree()->depth()-1;
         for (std::size_t i=0; i<ib.size(); ++i)
         {
             ib.rank(i)=-1;
             ib.influence_list(i).clear();
-            auto ib_coord = ib.scaled_coordinate(i);
 
-            int l = domain_->tree()->depth()-1;
-
-            for (auto it  = domain_->begin(l);
-                    it != domain_->end(l); ++it)
+            for (auto it  = domain_->begin(l_max);
+                    it != domain_->end(l_max); ++it)
             {
                 if (!it->has_data() || !it->is_leaf())
                     continue;
@@ -851,6 +847,13 @@ public:
                     if (ib.ib_block_overlap(i, it->data().descriptor(), 0 ))
                     {
                         ib.rank(i)=it->rank();
+                        //std::cout<<it->key()<<std::endl;
+                        //auto b_dscrptr = it->data().descriptor();
+                        //std::cout<<b_dscrptr<<std::endl;
+                        //b_dscrptr.extent() += 1;
+                        //b_dscrptr.level_scale(ib.ib_level());
+                        //std::cout<<b_dscrptr<<std::endl;
+                        //std::cout<<ib.coordinate(i)<<std::endl;
                     }
 
                 }
@@ -866,6 +869,7 @@ public:
                 ib.influence_pts(i, oct_c).clear();
                 for (auto n:it->data())
                 {
+                    auto ib_coord = ib.scaled_coordinate(i, it->refinement_level());
                     auto n_coord = n.level_coordinate();
                     auto dist = n_coord - ib_coord;
 
@@ -886,6 +890,10 @@ public:
             }
 
         }
+
+        //for (std::size_t i=0; i<ib.size(); ++i)
+        //    std::cout<<ib.rank(i)<<" " << ib.coordinate(i) << std::endl;;
+
 
         //// check if everything adds up to 3
         //std::vector<float_type> ib_s(ib.size());

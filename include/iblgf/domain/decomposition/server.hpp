@@ -553,6 +553,7 @@ class Server : public ServerBase<ServerClientTraits<Domain>>
         }
 
         int l_max = domain_->tree()->depth()-1;
+        std::cout<<"Depth of the tree = " << l_max << std::endl;
 
         auto& ib = domain_->ib();
         for (std::size_t i=0; i<ib.size(); ++i)

@@ -54,7 +54,7 @@ class IB
 
   public: // init functions
     template<class DictionaryPtr>
-    void init(DictionaryPtr d, float_type dx_base, int nRef)
+    void init(DictionaryPtr d, float_type dx_base, int nRef, float_type Re)
     {
 
         ibph_ = d->template get_or<float_type>("ibph", 1.5);
@@ -62,11 +62,14 @@ class IB
 
         nRef_ = nRef;
         dx_base_ = dx_base;
+        dx_ib_ = dx_base/pow(2,nRef_);
 
         read_points();
 
         // will add more, default is yang4
         ddf_radius_ = 1.5;
+        safety_dis_ = 5.0/(Re*dx_ib_);
+
         std::function<float_type(float_type x)> delta_func_1d_ =
             [this](float_type x) { return this->roma(x); };
 
@@ -142,7 +145,7 @@ class IB
             for (int i=0; i<n; i++)
             {
                 real_coordinate_type p;
-                for (int field_idx = 0; field_idx<p.size(); field_idx++)
+                for (std::size_t field_idx = 0; field_idx<p.size(); field_idx++)
                     file>>p[field_idx];
 
                 coordinates_.emplace_back(p);
@@ -179,7 +182,7 @@ class IB
     /** @} */
 
     /** @{ @brief Get the coordinates of the ith ib points scaled by level */
-    auto       scaled_coordinate(std::size_t _i) noexcept { return coordinates_[_i] * std::pow(2, nRef_) / dx_base_; }
+    auto       scaled_coordinate(std::size_t _i, int level_up) noexcept { return coordinates_[_i] * std::pow(2, level_up) / dx_base_; }
     /** @} */
 
     /** @{ @brief Get the influence lists of the ib points */
@@ -207,6 +210,7 @@ class IB
     const auto& rank(std::size_t _i) const noexcept { return ib_rank_[_i]; }
     /** @} */
 
+    auto ib_level() const noexcept {return nRef_;}
     /** @brief Get number of ib points */
     auto size() const noexcept { return coordinates_.size(); }
     /** @brief Get delta function radius */
@@ -259,23 +263,22 @@ class IB
         // this function scale the block to the finest level and compare with
         // the influence region of the ib point
 
-        b_dscrptr.extent() += 1;
-        b_dscrptr.level_scale(nRef_);
-
         float_type added_radius = 0;
         if (radius_level == 2)
-            added_radius += ddf_radius_+safety_dis_+2.0;
+            added_radius += ddf_radius_+safety_dis_+1.0;
         else if (radius_level == 1)
-            added_radius += ddf_radius_+2.0;
+            added_radius += ddf_radius_+1.0;
 
         b_dscrptr.extent() += 2*added_radius;
         b_dscrptr.base() -= added_radius;
+
+        b_dscrptr.level_scale(nRef_);
 
         float_type factor = std::pow(2, nRef_) / dx_base_;
 
         for (std::size_t d = 0; d < Dim; ++d)
         {
-            if (b_dscrptr.max()[d] < coordinates_[idx][d] * factor ||
+            if ( (b_dscrptr.max()[d]+1) < coordinates_[idx][d] * factor ||
                 b_dscrptr.min()[d] >= coordinates_[idx][d] * factor)
                 return false;
         }
@@ -345,8 +348,9 @@ public:
     boost::mpi::communicator comm_;
 
     int        nRef_ = 0;
-    int        safety_dis_ = 10.0;
+    float_type safety_dis_ = 4.0;
     float_type dx_base_ = 1;
+    float_type dx_ib_ = 1;
     float_type ibph_;
 
     std::vector<real_coordinate_type>   coordinates_;

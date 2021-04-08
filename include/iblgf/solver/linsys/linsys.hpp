@@ -113,10 +113,14 @@ class LinSysSolver
         // right hand side
         force_type uc(ib_->size(), (0.,0.,0.));
 
+        domain_->client_communicator().barrier();
         this->projection<Field>(uc);
         this->subtract_boundary_vel(uc, t);
 
+        domain_->client_communicator().barrier();
         domain::Operator::domainClean<face_aux2_type>(domain_);
+
+        domain_->client_communicator().barrier();
         this->template CG_solve<face_aux2_type>(uc, alpha);
     }
 
@@ -298,10 +302,11 @@ class LinSysSolver
         for (std::size_t i=0; i<ib_->size(); ++i)
         {
             std::size_t oct_i=0;
-            auto ib_coord = ib_->scaled_coordinate(i);
             for (auto it: ib_->influence_list(i))
             {
                 if (!it->locally_owned()) continue;
+                auto ib_coord = ib_->scaled_coordinate(i, it->refinement_level());
+
                 domain::Operator::ib_smearing<U>
                     (ib_coord, f[i], ib_->influence_pts(i, oct_i), ib_->delta_func());
                 oct_i+=1;
@@ -325,11 +330,12 @@ class LinSysSolver
         for (std::size_t i=0; i<ib_->size(); ++i)
         {
             std::size_t oct_i=0;
-            auto ib_coord = ib_->scaled_coordinate(i);
 
             for (auto it: ib_->influence_list(i))
             {
                 if (!it->locally_owned()) continue;
+                auto ib_coord = ib_->scaled_coordinate(i, it->refinement_level());
+
                 domain::Operator::ib_projection<U>
                     (ib_coord, f[i], ib_->influence_pts(i, oct_i), ib_->delta_func());
 

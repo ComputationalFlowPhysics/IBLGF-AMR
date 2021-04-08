@@ -800,6 +800,7 @@ private:
         TIME_CODE( t_lgf, SINGLE_ARG(
                     psolver.template apply_lgf<cell_aux_type, d_i_type>();
                     ));
+        domain_->client_communicator().barrier();
         pcout<< "LGF solved in "<<t_lgf.count() << std::endl;
 
         copy<r_i_type, face_aux2_type>();
@@ -810,9 +811,9 @@ private:
         if (std::fabs(_alpha)>1e-4)
             psolver.template apply_lgf_IF<face_aux2_type, face_aux2_type>(_alpha, MASK_TYPE::IB2xIB);
 
-        mDuration_type t_ib(0);
         domain_->client_communicator().barrier();
-
+        pcout<< "IB IF solved "<<std::endl;
+        mDuration_type t_ib(0);
         domain_->ib().force() = domain_->ib().force_prev(stage_idx_);
         //domain_->ib().scales(coeff_a(stage_idx_, stage_idx_));
         TIME_CODE( t_ib, SINGLE_ARG(

@@ -109,30 +109,31 @@ class cell_center_nli
             //        antrp_mat_sub_simple_[1](i,i*2)=0.5;
             //}
 
+            int coarsen_cap = 4;
             for (int i = 1; i < Nb_ - 1; ++i)
             {
-                float_type pos [pts_cap];
-                int left = i*2 - (pts_cap-1)/2;
+                float_type pos [coarsen_cap];
+                int left = i*2 - (coarsen_cap-1)/2;
                 int start_pos = std::max(1, left);
                 int right_bd = (Nb_-1)*2-1;
-                int right = i*2 + (pts_cap)/2 + 1;
+                int right = i*2 + (coarsen_cap)/2 + 1;
                 int end_pos   = std::min(right_bd, right);
                 if (start_pos == 1) {
-                    end_pos = start_pos + pts_cap;
+                    end_pos = start_pos + coarsen_cap;
                 }
                 else if (end_pos == right_bd) {
-                    start_pos = end_pos - pts_cap;
+                    start_pos = end_pos - coarsen_cap;
                 }
 
-                for (int j  = 0; j < pts_cap; j++) {
+                for (int j  = 0; j < coarsen_cap; j++) {
                     pos[j] = static_cast<float_type>((start_pos-2*i))*1.0 + 0.5 + static_cast<float_type>(j);
                 }
                 float_type cp = 0.0; // relative pos of interpolation points
-                for (int j = 0; j < pts_cap; j++) {
+                for (int j = 0; j < coarsen_cap; j++) {
                     int yidx = start_pos + j;
                     float_type numerator = 1.0;
                     float_type denominator = 1.0;
-                    for (int k = 0; k < pts_cap;k++) {
+                    for (int k = 0; k < coarsen_cap;k++) {
                         if (j == k) continue;
                         numerator *= (cp - pos[k]);
                         denominator = denominator*(pos[j] - pos[k]);

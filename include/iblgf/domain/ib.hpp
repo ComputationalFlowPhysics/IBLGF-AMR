@@ -54,21 +54,21 @@ class IB
 
   public: // init functions
     template<class DictionaryPtr>
-    void init(DictionaryPtr d, float_type dx_base, int nRef, float_type Re)
+    void init(DictionaryPtr d, float_type dx_base, int level, float_type Re)
     {
 
         ibph_ = d->template get_or<float_type>("ibph", 1.5);
         geometry_ = d->template get_or<std::string>("geometry", "plate");
 
-        nRef_ = nRef;
+        IBlevel_ = level;
         dx_base_ = dx_base;
-        dx_ib_ = dx_base/pow(2,nRef_);
+        dx_ib_ = dx_base/pow(2,IBlevel_);
 
         read_points();
 
         // will add more, default is yang4
         ddf_radius_ = 1.5;
-        safety_dis_ = 5.0/(Re*dx_ib_);
+        safety_dis_ = 5.0/(Re*dx_ib_)+1.0;
 
         std::function<float_type(float_type x)> delta_func_1d_ =
             [this](float_type x) { return this->roma(x); };
@@ -100,7 +100,7 @@ class IB
             float_type AR = 2.0;
             float_type Ly= L*AR;
             //int        nx = 2;
-            int        nx = int(L/dx_base_/ibph_*pow(2,nRef_));
+            int        nx = int(L/dx_base_/ibph_*pow(2,IBlevel_));
             int        ny = nx*2;
 
 
@@ -119,7 +119,7 @@ class IB
         {
             float_type R = 0.5;
 
-            float_type dx = dx_base_/pow(2,nRef_)*ibph_;
+            float_type dx = dx_base_/pow(2,IBlevel_)*ibph_;
             int n = floor(M_PI / (dx * dx * 0.86602540378) )+1;
 
             if (comm_.rank()==1)
@@ -210,7 +210,7 @@ class IB
     const auto& rank(std::size_t _i) const noexcept { return ib_rank_[_i]; }
     /** @} */
 
-    auto ib_level() const noexcept {return nRef_;}
+    auto ib_level() const noexcept {return IBlevel_;}
     /** @brief Get number of ib points */
     auto size() const noexcept { return coordinates_.size(); }
     /** @brief Get delta function radius */
@@ -225,7 +225,7 @@ class IB
 
     float_type force_scale()
     {
-        float_type tmp = dx_base_ / std::pow(2, nRef_);
+        float_type tmp = dx_base_ / std::pow(2, IBlevel_);
         return tmp*tmp*tmp;
     }
 
@@ -272,9 +272,9 @@ class IB
         b_dscrptr.extent() += 2*added_radius;
         b_dscrptr.base() -= added_radius;
 
-        b_dscrptr.level_scale(nRef_);
+        b_dscrptr.level_scale(IBlevel_);
 
-        float_type factor = std::pow(2, nRef_) / dx_base_;
+        float_type factor = std::pow(2, IBlevel_) / dx_base_;
 
         for (std::size_t d = 0; d < Dim; ++d)
         {
@@ -347,10 +347,10 @@ public:
 
     boost::mpi::communicator comm_;
 
-    int        nRef_ = 0;
+    int        IBlevel_ = 0;
     float_type safety_dis_ = 4.0;
     float_type dx_base_ = 1;
-    float_type dx_ib_ = 1;
+    float_type dx_ib_;
     float_type ibph_;
 
     std::vector<real_coordinate_type>   coordinates_;

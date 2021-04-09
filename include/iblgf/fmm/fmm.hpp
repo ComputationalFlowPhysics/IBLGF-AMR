@@ -575,8 +575,6 @@ class Fmm
         else if (fmm_type == MASK_TYPE::IB2AMR)
             fmm_mask_idx_ = octant_t::fmm_mask_idx_gen(MASK_TYPE::IB2AMR, refinement_level);
 
-            //fmm_mask_idx_ = refinement_level * 2 + non_leaf_as_source + 1;
-
         if (_kernel->neighbor_only())
         {
             //pcout<<"Integrating factor for level: "<< level << std::endl;
@@ -744,7 +742,7 @@ class Fmm
 #endif
 
         for (auto B_it = sorted_octants_.begin(); B_it != sorted_octants_.end();
-             ++B_it)
+                ++B_it)
         {
             auto       it = B_it->first;
             const int  level = it->level();
@@ -752,51 +750,57 @@ class Fmm
 
             if (it->locally_owned())
                 compute_influence_field(
-                    &(*it), _kernel, base_level_ - level, scale, _neighbor);
+                        &(*it), _kernel, base_level_ - level, scale, _neighbor);
 
-            //setup the tasks
             if (B_it->second != 0)
             {
                 domain_->decomposition()
-                    .client()
-                    ->template communicate_induced_fields<fmm_t_type,
-                        fmm_t_type>(&(*it), this, _kernel, base_level_ - level,
+                .client()
+                ->template communicate_induced_fields<fmm_t_type,
+                fmm_t_type>(&(*it), this, _kernel, base_level_ - level,
                         scale, _neighbor, start_communication, fmm_mask_idx_);
             }
 #ifdef packMessages
             else if (!combined_messages)
-            //if(!combined_messages && B_it->second==0)
             {
                 domain_->decomposition()
-                    .client()
-                    ->template combine_induced_field_messages<fmm_t_type,
-                        fmm_t_type>();
+                .client()
+                ->template combine_induced_field_messages<fmm_t_type,
+                fmm_t_type>();
                 combined_messages = true;
             }
             if (c % 5 == 0 && combined_messages)
             {
                 domain_->decomposition()
-                    .client()
-                    ->template check_combined_induced_field_communication<
-                        fmm_t_type, fmm_t_type>(false);
+                .client()
+                ->template check_combined_induced_field_communication<
+                fmm_t_type, fmm_t_type>(false);
             }
             ++c;
 #endif
         }
 
 #ifdef packMessages
-        //Finish the communication
+        if (!combined_messages)
+        {
+            domain_->decomposition()
+            .client()
+            ->template combine_induced_field_messages<fmm_t_type,
+            fmm_t_type>();
+            combined_messages = true;
+        }
         if (combined_messages)
         {
             domain_->decomposition()
-                .client()
-                ->template check_combined_induced_field_communication<
-                    fmm_t_type, fmm_t_type>(true);
+            .client()
+            ->template check_combined_induced_field_communication<
+            fmm_t_type, fmm_t_type>(true);
         }
 #else
         domain_->decomposition().client()->finish_induced_field_communication();
 #endif
     }
+
 
     template<class Kernel>
     void compute_influence_field(octant_t* it, Kernel* _kernel, int level_diff,

@@ -107,11 +107,11 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
                     return 0.0;
                 else if (t<T0-1e-10 && smooth_start_)
                 {
-                    return -U_[idx] * t/T0;
-                    //float_type h1 = exp(-1/(t/T0));
-                    //float_type h2 = exp(-1/(1 - t/T0));
+                    //return -U_[idx] * t/T0;
+                    float_type h1 = exp(-1/(t/T0));
+                    float_type h2 = exp(-1/(1 - t/T0));
 
-                    //return -U_[idx] * (h1/(h1+h2));
+                    return -U_[idx] * (h1/(h1+h2));
                 }
                 else
                 {
@@ -212,14 +212,14 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
                 return this->refinement(octant, diff_level);
             };
 
-        int nRef = _d->get_dictionary("simulation_parameters")
-                                 ->template get_or<int>("nLevels", 0);
+        nIB_add_level_ = _d->get_dictionary("simulation_parameters")
+                                 ->template get_or<int>("nIB_add_level", 0);
 
-        domain_->ib().init(_d->get_dictionary("simulation_parameters"), domain_->dx_base(), nRef);
+        domain_->ib().init(_d->get_dictionary("simulation_parameters"), domain_->dx_base(), nLevelRefinement_+nIB_add_level_, Re_);
 
         if (!use_restart())
         {
-            domain_->init_refine(nRef, global_refinement_);
+            domain_->init_refine(nLevelRefinement_, global_refinement_, nIB_add_level_);
         }
         else
         {
@@ -357,6 +357,9 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
     template<class Field, class OctantType>
     int adapt_levle_change_for_field(OctantType it, float_type source_max, bool use_base_level_threshold)
     {
+        if (it->is_ib() && it->refinement_level()<nLevelRefinement_+nIB_add_level_)
+            return 1;
+
         source_max *=1.05;
 
         // ----------------------------------------------------------------
@@ -759,6 +762,7 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
     int nLevelRefinement_=0;
     int hard_max_level_;
     int global_refinement_=0;
+    int nIB_add_level_=0;
     fcoord_t offset_;
 
     float_type a_ = 10.0;

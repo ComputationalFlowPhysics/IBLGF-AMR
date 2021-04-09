@@ -625,13 +625,11 @@ class Domain
         }
     }
 
-    void init_refine(int nRef, int level_up_max)
+    void init_refine(int nRef, int level_up_max, int nIB_add_level)
     {
         if (is_server())
         {
             this->tree()->construct_leaf_maps();
-            this->tree()->construct_level_maps();
-            this->tree()->construct_lists();
 
             std::unordered_map<key_t, bool> checklist;
             const auto base_level = this->tree()->base_level();
@@ -656,9 +654,20 @@ class Domain
                 }
             }
 
-            this->tree()->construct_leaf_maps(true);
+            for (int l = 0; l < nIB_add_level; ++l)
+            {
+                for (auto it = begin_df(); it != end_df(); ++it)
+                {
+                    //if (!ref_cond_) return;
+                    if (it->refinement_level() == l+nRef)
+                    {
+                        if (ib_.ib_block_overlap( it->data().descriptor(), 1))
+                            this->refine(it.ptr());
+                    }
+                }
+            }
+
             this->tree()->construct_level_maps();
-            this->tree()->construct_lists();
 
             for (int global_ = 0; global_ < level_up_max; ++global_)
             {

@@ -92,8 +92,8 @@ public:
 
         fmm_upward_pass_masks(domain_, l, MASK_LIST::Mask_FMM_Source,
                 MASK_LIST::Mask_FMM_Target, fmm_mask_idx);
-        //fmm_clean_no_inf_masks(domain_, l, MASK_LIST::Mask_FMM_Source,
-        //    MASK_LIST::Mask_FMM_Target, fmm_mask_idx);
+        fmm_clean_no_inf_masks(domain_, l, MASK_LIST::Mask_FMM_Source,
+            MASK_LIST::Mask_FMM_Target, fmm_mask_idx);
 
     }
 
@@ -130,8 +130,8 @@ public:
 
         fmm_upward_pass_masks(domain_, l, MASK_LIST::Mask_FMM_Source,
                 MASK_LIST::Mask_FMM_Target, fmm_mask_idx);
-        //fmm_clean_no_inf_masks(domain_, l, MASK_LIST::Mask_FMM_Source,
-        //    MASK_LIST::Mask_FMM_Target, fmm_mask_idx);
+        fmm_clean_no_inf_masks(domain_, l, MASK_LIST::Mask_FMM_Source,
+            MASK_LIST::Mask_FMM_Target, fmm_mask_idx);
 
     }
 
@@ -251,8 +251,8 @@ public:
             fmm_mask_idx, subtract_non_leaf);
         fmm_upward_pass_masks (domain_, base_level, MASK_LIST::Mask_FMM_Source,
             MASK_LIST::Mask_FMM_Target, fmm_mask_idx);
-        //fmm_clean_no_inf_masks(domain_, base_level, MASK_LIST::Mask_FMM_Source,
-        //    MASK_LIST::Mask_FMM_Target, fmm_mask_idx);
+        fmm_clean_no_inf_masks(domain_, base_level, MASK_LIST::Mask_FMM_Source,
+            MASK_LIST::Mask_FMM_Target, fmm_mask_idx);
     }
 
     static void fmm_clean_no_inf_masks(Domain* domain_, int base_level,
@@ -302,7 +302,7 @@ public:
                 // for target masks
                 if (it->fmm_mask(_fmm_mask_idx, mask_target_id))
                 {
-                    if (it->parent() && it->parent()->has_data() && it->parent()->fmm_mask(_fmm_mask_idx, mask_target_id) )
+                    if ( it->parent() && it->parent()->has_data() && it->parent()->fmm_mask(_fmm_mask_idx, mask_target_id) )
                         continue;
 
                     bool has_source=false;

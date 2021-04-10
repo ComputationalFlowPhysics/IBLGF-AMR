@@ -109,7 +109,7 @@ class cell_center_nli
                     antrp_mat_sub_simple_[1](i,i*2)=0.5;
             }
 
-            //int coarsen_cap = 7;
+            //int coarsen_cap = 4;
             //for (int i = 1; i < Nb_ - 1; ++i)
             //{
             //    float_type pos [coarsen_cap];

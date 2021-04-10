@@ -166,6 +166,7 @@ public: //memeber functions
 
         if (server())
         {
+            bool ib_change = false;
             std::vector<key_t> octs_all;
             std::vector<int>   level_change_all;
 
@@ -227,9 +228,14 @@ public: //memeber functions
                     }
                     else
                     {
-                        if (!domain_->tree()->try_2to1(it->key(), domain_->key_bounding_box(), checklist))
+
+                        if (!it->is_ib() && !domain_->tree()->try_2to1(it->key(), domain_->key_bounding_box(), checklist))
                             continue;
+
                         refinement_server.emplace_back(it.ptr());
+
+                        if (it->is_ib())
+                            ib_change = true;
                     }
                 }
             }
@@ -435,7 +441,8 @@ public: //memeber functions
             fmm_mask_builder_t::fmm_clean_load(domain_);
             fmm_mask_builder_t::fmm_vortex_streamfun_mask(domain_);
             fmm_mask_builder_t::fmm_lgf_mask_build(domain_,subtract_non_leaf_);
-            server()->update_ib_flag();
+            if (ib_change)
+                server()->update_ib_flag();
 
             fmm_mask_builder_t::fmm_IB2xIB_mask(domain_);
             fmm_mask_builder_t::fmm_xIB2IB_mask(domain_);

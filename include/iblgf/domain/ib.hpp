@@ -269,10 +269,10 @@ class IB
         else if (radius_level == 1)
             added_radius += ddf_radius_+1.0;
 
+        b_dscrptr.level_scale(IBlevel_);
+
         b_dscrptr.extent() += 2*added_radius;
         b_dscrptr.base() -= added_radius;
-
-        b_dscrptr.level_scale(IBlevel_);
 
         float_type factor = std::pow(2, IBlevel_) / dx_base_;
 

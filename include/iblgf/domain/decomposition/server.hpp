@@ -570,7 +570,7 @@ class Server : public ServerBase<ServerClientTraits<Domain>>
                 if (ib.ib_block_overlap(i, it->data().descriptor(), 2))
                 {
                     it->is_extended_ib()=true;
-                    if (ib.ib_block_overlap(i, it->data().descriptor(), 1))
+                    if (ib.ib_block_overlap(i, it->data().descriptor(), 1) && it->is_leaf())
                         it->is_ib()=true;
                 }
             }

@@ -832,7 +832,6 @@ public:
         {
             ib.rank(i)=-1;
             ib.influence_list(i).clear();
-
             for (auto it  = domain_->begin(l_max);
                     it != domain_->end(l_max); ++it)
             {
@@ -890,10 +889,6 @@ public:
             }
 
         }
-
-        //for (std::size_t i=0; i<ib.size(); ++i)
-        //    std::cout<<ib.rank(i)<<" " << ib.coordinate(i) << std::endl;;
-
 
         //// check if everything adds up to 3
         //std::vector<float_type> ib_s(ib.size());

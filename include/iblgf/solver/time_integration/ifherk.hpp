@@ -747,7 +747,6 @@ class Ifherk
                 {
                     for (std::size_t field_idx=0; field_idx<F::nFields(); ++field_idx)
                     {
-                        int N=it->data().descriptor().extent()[0];
                         domain::Operator::smooth2zero<edge_aux_type>( it->data(), i);
                     }
                 }

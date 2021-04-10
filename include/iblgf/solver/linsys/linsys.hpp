@@ -115,20 +115,18 @@ class LinSysSolver
 
         domain_->client_communicator().barrier();
         this->projection<Field>(uc);
+        domain_->client_communicator().barrier();
+        //std::cout<<"subtract_boundary_vel" << std::endl;
         this->subtract_boundary_vel(uc, t);
 
         domain_->client_communicator().barrier();
         domain::Operator::domainClean<face_aux2_type>(domain_);
-
-        domain_->client_communicator().barrier();
         this->template CG_solve<face_aux2_type>(uc, alpha);
     }
 
     template<class Field>
     void pressure_correction()
     {
-        auto& f = ib_->force();
-
         domain::Operator::domainClean<face_aux2_type>(domain_);
         domain::Operator::domainClean<cell_aux2_type>(domain_);
         this->smearing<face_aux2_type>(ib_->force());
@@ -146,7 +144,7 @@ class LinSysSolver
     void subtract_boundary_vel(ForceType& uc, float_type t)
     {
         auto& frame_vel = simulation_->frame_vel();
-        for (int i=0; i<uc.size(); ++i)
+        for (std::size_t i=0; i<uc.size(); ++i)
             for (std::size_t idx=0; idx<uc[i].size(); ++idx)
                 uc[i][idx]-=frame_vel(idx, t, ib_->coordinate(i));
     }
@@ -352,12 +350,12 @@ class LinSysSolver
     float_type dot(VecType& a, VecType& b)
     {
         float_type s = 0;
-        for (int i=0; i<a.size(); ++i)
+        for (std::size_t i=0; i<a.size(); ++i)
         {
             if (ib_->rank(i)!=comm_.rank())
                 continue;
 
-            for (int d=0; d<a[0].size(); ++d)
+            for (std::size_t d=0; d<a[0].size(); ++d)
                 s+=a[i][d]*b[i][d];
         }
 

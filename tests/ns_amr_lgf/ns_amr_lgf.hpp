@@ -44,6 +44,9 @@
 #include "../../setups/setup_base.hpp"
 #include <iblgf/operators/operators.hpp>
 
+#include <gsl/gsl_integration.h>
+#include <unordered_map>
+
 namespace iblgf
 {
 const int Dim = 3;
@@ -107,11 +110,13 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
                     return 0.0;
                 else if (t<T0-1e-10 && smooth_start_)
                 {
-                    //return -U_[idx] * t/T0;
-                    float_type h1 = exp(-1/(t/T0));
-                    float_type h2 = exp(-1/(1 - t/T0));
+                    const float_type beta = 2.252283620690761;
+                    return 4.0*beta*-U_[idx]*ux_t_smart(t);
+                    ////return -U_[idx] * t/T0;
+                    //float_type h1 = exp(-1/(t/T0));
+                    //float_type h2 = exp(-1/(1 - t/T0));
 
-                    return -U_[idx] * (h1/(h1+h2));
+                    //return -U_[idx] * (h1/(h1+h2));
                 }
                 else
                 {
@@ -237,6 +242,37 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
         if (world.rank() == 0)
             std::cout << "on Simulation: \n" << simulation_ << std::endl;
     }
+
+    static float_type ux_ig(float_type tau, void* parms)
+    {
+        return exp( -1/(1 - (4*tau-1)*(4*tau-1)) );
+    }
+
+    float_type ux_t_smart(float_type t)
+    {
+        auto search = ux_lookup_.find(2);
+        if (search != ux_lookup_.end()) {
+            return search->second;
+        } else {
+            float_type ux = ux_t(t);
+            ux_lookup_.insert({t, ux});
+            return ux;
+        }
+    }
+
+    float_type ux_t(float_type t)
+    {
+        float_type result, error;
+        gsl_integration_workspace* w = gsl_integration_workspace_alloc (1000);
+
+        gsl_function F;
+        F.function = &ux_ig;
+
+        gsl_integration_qags (&F, 0, t, 0, 1e-8, 1000, w, &result, &error);
+        gsl_integration_workspace_free (w);
+        return result;
+    }
+
 
     float_type run()
     {
@@ -780,6 +816,8 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
     float_type base_threshold_=1e-4;
 
     vr_fct_t vr_fct_;
+
+    std::unordered_map<float_type, float_type> ux_lookup_;
 
     std::string ic_filename_, ref_filename_;
 };

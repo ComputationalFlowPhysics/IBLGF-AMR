@@ -250,7 +250,7 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 
     float_type ux_t_smart(float_type t)
     {
-        auto search = ux_lookup_.find(2);
+        auto search = ux_lookup_.find(t);
         if (search != ux_lookup_.end()) {
             return search->second;
         } else {

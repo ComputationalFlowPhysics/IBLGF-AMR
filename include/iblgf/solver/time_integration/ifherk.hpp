@@ -163,6 +163,7 @@ class Ifherk
             Dictionary info_d(simulation_->restart_load_dir()+"/restart_info");
             T_=info_d.template get<float_type>("T");
             adapt_count_=info_d.template get<int>("adapt_count");
+            T_last_vel_refresh_=info_d.template get_or<float_type>("T_last_vel_refresh", 0.0);
             source_max_[0]=info_d.template get<float_type>("cell_aux_max");
             source_max_[1]=info_d.template get<float_type>("u_max");
             pcout<<"Restart info ------------------------------------------------ "<< std::endl;
@@ -170,6 +171,7 @@ class Ifherk
             pcout<<"adapt_count = "<< adapt_count_<< std::endl;
             pcout<<"cell aux max = "<< source_max_[0]<< std::endl;
             pcout<<"u max = "<< source_max_[1]<< std::endl;
+            pcout<<"T_last_vel_refresh = "<< T_last_vel_refresh_<< std::endl;
             if(domain_->is_client())
             {
                 //pad_velocity<u_type, u_type>(true);
@@ -244,14 +246,11 @@ class Ifherk
             // time marching
             domain_->ib().communicator().compute_indices();
 
-            if(domain_->is_client())
-            {
-                mDuration_type ifherk_if(0);
-                TIME_CODE( ifherk_if, SINGLE_ARG(
-                            time_step();
-                            ));
-                pcout<<ifherk_if.count()<<std::endl;
-            }
+            mDuration_type ifherk_if(0);
+            TIME_CODE( ifherk_if, SINGLE_ARG(
+                        time_step();
+                        ));
+            pcout<<ifherk_if.count()<<std::endl;
 
             // -------------------------------------------------------------
             // update stats & output
@@ -453,6 +452,7 @@ class Ifherk
             ofs<<"cell_aux_max = " << source_max_[0] << ";" << std::endl;
             ofs<<"u_max = " << source_max_[1] << ";" << std::endl;
             ofs<<"restart_n_last = " << restart_n_last_ << ";" << std::endl;
+            ofs<<"T_last_vel_refresh = " << T_last_vel_refresh_ << ";" << std::endl;
 
             ofs.close();
         }
@@ -570,11 +570,15 @@ class Ifherk
                     if (    base_mesh_update_ ||
                             ((T_-T_last_vel_refresh_)/(Re_*dx_base_*dx_base_) * 3.3>7))
                     {
-                        pad_velocity<u_type, u_type>(true);
                         T_last_vel_refresh_=T_;
+                        if (!domain_->is_client())
+                            return;
+                        pad_velocity<u_type, u_type>(true);
                     }
                     else
                     {
+                        if (!domain_->is_client())
+                            return;
                         up_and_down<u_type>();
                     }
                     ));

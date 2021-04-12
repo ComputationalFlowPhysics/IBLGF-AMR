@@ -201,6 +201,9 @@ class Octant
     bool& is_ib() noexcept{return flags_[FlagIB];}
     const bool& is_ib() const noexcept{return flags_[FlagIB];}
 
+    bool& local_ib() noexcept{return local_ib_;}
+    const bool& local_ib() const noexcept{return local_ib_;}
+
     bool is_correction()const noexcept{return flags_[FlagCorrection];}
     void flag_correction(const bool flag)noexcept {flags_[FlagCorrection] = flag;}
 
@@ -435,6 +438,7 @@ private:
 
     tree_type* t_ = nullptr;
     bool       aim_deletion_ = false;
+    bool       local_ib_ = false;
     int        aim_level_change_ = 0;
 };
 

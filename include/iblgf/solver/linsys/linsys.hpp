@@ -245,11 +245,20 @@ class LinSysSolver
     template <class Field, class VecType>
     void ET_H_S_E(VecType& fin, VecType& fout, float_type alpha)
     {
+        auto client = domain_->decomposition().client();
 
         domain::Operator::domainClean<Field>(domain_);
         domain::Operator::domainClean<face_aux_type>(domain_);
 
         this->smearing<Field>(fin);
+
+        //this->template apply_Schur<Field, face_aux_type>(MASK_TYPE::IB2xIB);
+
+        //domain::Operator::add<face_aux_type, Field>(domain_, -1.0);
+
+        //if (std::fabs(alpha)>1e-4)
+        //    psolver_.template apply_lgf_IF<Field, Field>(alpha, MASK_TYPE::xIB2IB);
+
         if (std::fabs(alpha)>1e-4)
             psolver_.template apply_lgf_IF<Field, Field>(alpha, MASK_TYPE::IB2xIB);
 

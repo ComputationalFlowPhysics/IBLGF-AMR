@@ -825,8 +825,13 @@ public:
     // IB related:
     void update_ib_rank_and_infl()
     {
-        auto& ib = domain_->ib();
+        for (auto it  = domain_->begin();
+                it != domain_->end(); ++it)
+        {
+            it->local_ib()=false;
+        }
 
+        auto& ib = domain_->ib();
         const int l_max = domain_->tree()->depth()-1;
         for (std::size_t i=0; i<ib.size(); ++i)
         {
@@ -841,18 +846,12 @@ public:
                 if (ib.ib_block_overlap(i, it->data().descriptor(), 1 ))
                 {
                     ib.influence_list(i).emplace_back(it.ptr());
+                    it->local_ib()=true;
 
                     // check if it is strictly inside that black (flag = false)
                     if (ib.ib_block_overlap(i, it->data().descriptor(), 0 ))
                     {
                         ib.rank(i)=it->rank();
-                        //std::cout<<it->key()<<std::endl;
-                        //auto b_dscrptr = it->data().descriptor();
-                        //std::cout<<b_dscrptr<<std::endl;
-                        //b_dscrptr.extent() += 1;
-                        //b_dscrptr.level_scale(ib.ib_level());
-                        //std::cout<<b_dscrptr<<std::endl;
-                        //std::cout<<ib.coordinate(i)<<std::endl;
                     }
 
                 }
@@ -890,47 +889,50 @@ public:
 
         }
 
-        //// check if everything adds up to 3
-        //std::vector<float_type> ib_s(ib.size());
+        // check if everything adds up to 3
+        std::vector<float_type> ib_s(ib.size());
 
-        //for (std::size_t i=0; i<ib.size(); ++i)
-        //{
-        //    //float_type ib_s = 0.0;
+        for (std::size_t i=0; i<ib.size(); ++i)
+        {
+            //float_type ib_s = 0.0;
 
-        //    std::size_t oct_i=0;
-        //    auto ib_coord = ib.scaled_coordinate(i);
-        //    for (auto it: ib.influence_list(i))
-        //    {
-        //        if (!it->locally_owned()) continue;
+            std::size_t oct_i=0;
+            for (auto it: ib.influence_list(i))
+            {
+                auto ib_coord = ib.scaled_coordinate(i, it->refinement_level());
+                if (!it->locally_owned()) continue;
 
-        //        for (auto node: ib.influence_pts(i, oct_i))
-        //        {
-        //            auto n_coord = node.level_coordinate();
-        //            auto dist = n_coord - ib_coord;
+                for (auto node: ib.influence_pts(i, oct_i))
+                {
+                    auto n_coord = node.level_coordinate();
+                    auto dist = n_coord - ib_coord;
 
-        //            for (std::size_t field_idx=0; field_idx<domain_->dimension(); field_idx++)
-        //            {
-        //                decltype(ib_coord) off(0.5); off[field_idx] = 0.0; // face data location
-        //                ib_s[i] +=  ib.delta_func()(dist+off);
-        //            }
-        //        }
+                    for (std::size_t field_idx=0; field_idx<domain_->dimension(); field_idx++)
+                    {
+                        decltype(ib_coord) off(0.5); off[field_idx] = 0.0; // face data location
+                        ib_s[i] +=  ib.delta_func()(dist+off);
+                    }
+                }
 
-        //        oct_i+=1;
-        //    }
+                oct_i+=1;
+            }
 
-        //    //std::cout<< "ib sum = " << ib_s << std::endl;
+            //std::cout<< "ib sum = " << ib_s << std::endl;
 
-        //}
+        }
 
-        //for (std::size_t i=0; i<ib.size(); ++i)
-        //{
-        //    float_type s=0.0;
-        //    boost::mpi::all_reduce(domain_->client_communicator(), ib_s[i],
-        //            s, std::plus<float_type>());
+        for (std::size_t i=0; i<ib.size(); ++i)
+        {
+            float_type s=0.0;
+            boost::mpi::all_reduce(domain_->client_communicator(), ib_s[i],
+                    s, std::plus<float_type>());
 
-        //    if (domain_->client_communicator().rank()==1)
-        //        std::cout<< "ib sum = " << s << std::endl;
-        //}
+            if (domain_->client_communicator().rank()==1)
+                if (s<3-1e-10 || s>3+1e-10)
+                {
+                    std::cout<< "ib sum = " << s-3 << " at "<<ib.coordinate(i)<<std::endl;
+                }
+        }
 
     }
 

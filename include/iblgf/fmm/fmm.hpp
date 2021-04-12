@@ -284,16 +284,16 @@ public:
                         }
                     }
 
-                    for (int i = 0; i < it->nNeighbors(); ++i)
-                    {
-                        auto n_s = it->neighbor(i);
-                        if (n_s && n_s->has_data() &&
-                                n_s->fmm_mask(_fmm_mask_idx, mask_target_id))
-                        {
-                            has_target = true;
-                            break;
-                        }
-                    }
+                    //for (int i = 0; i < it->nNeighbors(); ++i)
+                    //{
+                    //    auto n_s = it->neighbor(i);
+                    //    if (n_s && n_s->has_data() &&
+                    //            n_s->fmm_mask(_fmm_mask_idx, mask_target_id))
+                    //    {
+                    //        has_target = true;
+                    //        break;
+                    //    }
+                    //}
 
                     if (!has_target)
                         it->fmm_mask(_fmm_mask_idx, mask_source_id, false);

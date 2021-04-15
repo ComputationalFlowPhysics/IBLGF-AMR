@@ -108,7 +108,6 @@ public: //memeber functions
 
             // update ib infl list
             client()->update_ib_rank_and_infl();
-
         }
     }
 
@@ -441,7 +440,7 @@ public: //memeber functions
             fmm_mask_builder_t::fmm_clean_load(domain_);
             fmm_mask_builder_t::fmm_vortex_streamfun_mask(domain_);
             fmm_mask_builder_t::fmm_lgf_mask_build(domain_,subtract_non_leaf_);
-            if (ib_change)
+            //if (ib_change)
                 server()->update_ib_flag();
 
             fmm_mask_builder_t::fmm_IB2xIB_mask(domain_);

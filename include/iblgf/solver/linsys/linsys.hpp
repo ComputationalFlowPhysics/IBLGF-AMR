@@ -114,6 +114,7 @@ class LinSysSolver
         force_type uc(ib_->size(), (0.,0.,0.));
 
         domain_->client_communicator().barrier();
+        //std::cout<<"projection" << std::endl;
         this->projection<Field>(uc);
         domain_->client_communicator().barrier();
         //std::cout<<"subtract_boundary_vel" << std::endl;

@@ -825,13 +825,8 @@ public:
     // IB related:
     void update_ib_rank_and_infl()
     {
-        for (auto it  = domain_->begin();
-                it != domain_->end(); ++it)
-        {
-            it->local_ib()=false;
-        }
-
         auto& ib = domain_->ib();
+
         const int l_max = domain_->tree()->depth()-1;
         for (std::size_t i=0; i<ib.size(); ++i)
         {
@@ -846,10 +841,9 @@ public:
                 if (ib.ib_block_overlap(i, it->data().descriptor(), 1 ))
                 {
                     ib.influence_list(i).emplace_back(it.ptr());
-                    it->local_ib()=true;
 
-                    // check if it is strictly inside that black (flag = false)
-                    if (ib.ib_block_overlap(i, it->data().descriptor(), 0 ))
+                    // check if it is strictly inside that black ( , , 0 )
+                    if ( ib.rank(i)==-1 && ib.ib_block_overlap(i, it->data().descriptor(), 0 ))
                     {
                         ib.rank(i)=it->rank();
                     }
@@ -858,6 +852,7 @@ public:
             }
 
             std::size_t oct_c = 0;
+            ib.influence_pts(i).clear();
             ib.influence_pts(i).resize(ib.influence_list(i).size());
 
             int s = 0;
@@ -888,6 +883,12 @@ public:
             }
 
         }
+
+        //for (std::size_t i=0; i<ib.size(); ++i)
+        //{
+        //    if (ib.rank(i)==-1)
+        //        std::cout<< ib.coordinate(i)<<std::endl;
+        //}
 
         // check if everything adds up to 3
         std::vector<float_type> ib_s(ib.size());
@@ -927,7 +928,6 @@ public:
             boost::mpi::all_reduce(domain_->client_communicator(), ib_s[i],
                     s, std::plus<float_type>());
 
-            if (domain_->client_communicator().rank()==1)
                 if (s<3-1e-10 || s>3+1e-10)
                 {
                     std::cout<< "ib sum = " << s-3 << " at "<<ib.coordinate(i)<<std::endl;

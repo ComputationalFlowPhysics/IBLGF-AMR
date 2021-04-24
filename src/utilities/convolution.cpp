@@ -215,6 +215,7 @@ Convolution::fft_backward_field_clean()
     std::fill(fft_backward_.input().begin(), fft_backward_.input().end(), 0);
 }
 
+
 } //namespace fft
 
 } // namespace iblgf

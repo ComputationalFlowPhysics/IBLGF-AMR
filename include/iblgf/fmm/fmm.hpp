@@ -559,6 +559,7 @@ class Fmm
         bool non_leaf_as_source, float_type add_with_scale = 1.0,
         int fmm_type = MASK_TYPE::AMR2AMR)
     {
+        conv_.sr_fft_map_clear();
         const float_type dx_base = domain_->dx_base();
         auto refinement_level = level - domain_->tree()->base_level();
         auto dx_level = dx_base / std::pow(2, refinement_level);
@@ -979,7 +980,7 @@ class Fmm
         block_dsrp_t lgf_block(base_lgf, extent_lgf);
 
         conv_.apply_forward_add(
-            lgf_block, _kernel, level_diff, o_s->data_r(fmm_s));
+            lgf_block, _kernel, level_diff, o_s->data_r(fmm_s), o_s->key().id());
 
         const auto t1_fft = clock_type::now();
         timings_.fftw += t1_fft - t0_fft;

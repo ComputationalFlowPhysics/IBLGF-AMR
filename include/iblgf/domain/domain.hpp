@@ -625,7 +625,7 @@ class Domain
         }
     }
 
-    void init_refine(int nRef, int level_up_max, int nIB_add_level)
+    void init_refine(int nRef, int level_up_max, int nIB_add_level=0)
     {
         if (is_server())
         {

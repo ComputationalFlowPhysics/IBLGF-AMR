@@ -20,6 +20,7 @@
 #include <map>
 #include <complex>
 #include <fftw3.h>
+#include <iblgf/domain/octree/key.hpp>
 
 namespace iblgf
 {
@@ -127,6 +128,8 @@ class Convolution
     using lgf_key_t = std::tuple<int, int, int>;
     using lgf_matrix_ptr_map_type =
         std::map<lgf_key_t, std::unique_ptr<complex_vector_t>>;
+    using sr_fft_map_type =
+        std::map<unsigned long long int, complex_vector_t>;
 
   public: //Ctors
     Convolution(const Convolution& other) = default;
@@ -144,11 +147,11 @@ class Convolution
                      const complex_vector_t& b, complex_vector_t& res);
     auto&             output() { return fft_backward_.output(); }
 
-    template<typename Source, typename BlockType, class Kernel>
+    template<typename Source, typename BlockType, class Kernel, class Key>
     void apply_forward_add(const BlockType& _lgf_block, Kernel* _kernel,
-        int _level_diff, const Source& _source)
+        int _level_diff, const Source& _source, const Key _k)
     {
-        execute_fwrd_field(_lgf_block, _kernel, _level_diff, _source);
+        execute_fwrd_field(_lgf_block, _kernel, _level_diff, _source, _k);
     }
 
     template<typename Target, typename BlockType>
@@ -167,19 +170,32 @@ class Convolution
         add_solution(_extractor, _target);
     }
 
-    template<class Field, class BlockType, class Kernel>
+    template<class Field, class BlockType, class Kernel, class Key>
     void execute_fwrd_field(const BlockType& _lgf_block, Kernel* _kernel,
-        int _level_diff, const Field& _b)
+        int _level_diff, const Field& _b, const Key _k)
     {
         auto& f0 = _kernel->dft(
             _lgf_block, padded_dims_next_pow_2_, this, _level_diff);
 
-        fft_forward1_.copy_field(_b, dims1_);
-        fft_forward1_.execute();
-        auto& f1 = fft_forward1_.output();
+        auto search = sr_fft_map_.find(_k);
+        if (search != sr_fft_map_.end())
+        {
+            std::cout<< "1" ;
+            auto& f1 = search->second;
+            simd_prod_complex_add(f0, f1, fft_backward_.input());
+        }
+        else
+        {
+            std::cout<< "0";
+            fft_forward1_.copy_field(_b, dims1_);
+            fft_forward1_.execute();
+            auto& f1 = fft_forward1_.output();
 
-        complex_vector_t prod(f0.size());
-        simd_prod_complex_add(f0, f1, fft_backward_.input());
+            complex_vector_t prod(f0.size());
+            simd_prod_complex_add(f0, f1, fft_backward_.input());
+
+            sr_fft_map_.insert({_k, f1});
+        }
     }
 
     template<class Block, class Field>
@@ -203,6 +219,12 @@ class Convolution
         }
     }
 
+
+    void sr_fft_map_clear()
+    {
+        sr_fft_map_.clear();
+    }
+
   public:
     int fft_count_ = 0;
 
@@ -218,6 +240,7 @@ class Convolution
 
     unsigned int     padded_size_;
     complex_vector_t tmp_prod;
+    sr_fft_map_type sr_fft_map_;
 };
 
 } // namespace fft

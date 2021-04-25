@@ -210,6 +210,8 @@ class Octant
     bool physical() const noexcept { return flag_physical_; }
     void physical(bool flag) noexcept { flag_physical_ = flag; }
 
+    bool& source_fft() noexcept {return source_fft_;}
+
     bool aim_deletion() const noexcept { return aim_deletion_; }
     void aim_deletion(bool d) noexcept { aim_deletion_ = d; }
 
@@ -421,25 +423,32 @@ class Octant
 
 private:
 
-    int gid_ = -1;
-    float_type load_ = 0;
     boost::mpi::communicator comm_;
-    std::shared_ptr<data_type> data_ = nullptr;
+
+    tree_type* t_ = nullptr;
     Octant* parent_=nullptr;
+
+    int gid_ = -1;
+
+    int influence_num = 0;
     std::array<std::shared_ptr<Octant>,pow(2,Dim)> children_ =
         {{nullptr,nullptr,nullptr,nullptr, nullptr,nullptr,nullptr,nullptr}};
     std::array<Octant*,pow(3,Dim) > neighbor_ = {nullptr};
-    int influence_num = 0;
     std::array<Octant*, 189 > influence_= {nullptr};
-    bool flag_physical_ = false;
+
+    std::shared_ptr<data_type> data_ = nullptr;
 
     flag_list_type flags_;
     fmm_mask_type  fmm_masks_;
 
-    tree_type* t_ = nullptr;
-    bool       aim_deletion_ = false;
-    bool       local_ib_ = false;
+
+    bool        aim_deletion_  = false;
+    bool        local_ib_      = false;
+    bool        flag_physical_ = false;
+    bool        source_fft_    = false;
+
     int        aim_level_change_ = 0;
+    float_type load_ = 0;
 };
 
 } //namespace octree

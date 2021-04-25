@@ -21,6 +21,7 @@
 #include <complex>
 #include <fftw3.h>
 #include <iblgf/domain/octree/key.hpp>
+#include <unordered_map>
 
 namespace iblgf
 {
@@ -147,11 +148,11 @@ class Convolution
                      const complex_vector_t& b, complex_vector_t& res);
     auto&             output() { return fft_backward_.output(); }
 
-    template<typename Source, typename BlockType, class Kernel, class Key>
+    template<typename Source, typename FMM_source_tmp, typename BlockType, class Kernel>
     void apply_forward_add(const BlockType& _lgf_block, Kernel* _kernel,
-        int _level_diff, const Source& _source, const Key _k)
+        int _level_diff, const Source& _source, FMM_source_tmp& _fmm_source_fft, bool& reuse_fft)
     {
-        execute_fwrd_field(_lgf_block, _kernel, _level_diff, _source, _k);
+        execute_fwrd_field(_lgf_block, _kernel, _level_diff, _source, _fmm_source_fft, reuse_fft);
     }
 
     template<typename Target, typename BlockType>
@@ -170,31 +171,26 @@ class Convolution
         add_solution(_extractor, _target);
     }
 
-    template<class Field, class BlockType, class Kernel, class Key>
+    template<class Field, class BlockType, typename FMM_source_tmp , class Kernel>
     void execute_fwrd_field(const BlockType& _lgf_block, Kernel* _kernel,
-        int _level_diff, const Field& _b, const Key _k)
+        int _level_diff, const Field& _b, FMM_source_tmp& _fmm_source_fft, bool& reuse_fft)
     {
         auto& f0 = _kernel->dft(
             _lgf_block, padded_dims_next_pow_2_, this, _level_diff);
 
-        auto search = sr_fft_map_.find(_k);
-        if (search != sr_fft_map_.end())
+        if (reuse_fft)
         {
-            std::cout<< "1" ;
-            auto& f1 = search->second;
-            simd_prod_complex_add(f0, f1, fft_backward_.input());
+            simd_prod_complex_add(f0, _fmm_source_fft, fft_backward_.input());
         }
         else
         {
-            std::cout<< "0";
             fft_forward1_.copy_field(_b, dims1_);
             fft_forward1_.execute();
             auto& f1 = fft_forward1_.output();
 
-            complex_vector_t prod(f0.size());
             simd_prod_complex_add(f0, f1, fft_backward_.input());
-
-            sr_fft_map_.insert({_k, f1});
+            _fmm_source_fft = f1;
+            reuse_fft=true;
         }
     }
 

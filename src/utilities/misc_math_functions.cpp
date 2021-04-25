@@ -10,8 +10,10 @@
 //     ▐░░░░░░░░░░░▌▐░░░░░░░░░░▌ ▐░░░░░░░░░░░▌▐░░░░░░░░░░░▌▐░▌
 //      ▀▀▀▀▀▀▀▀▀▀▀  ▀▀▀▀▀▀▀▀▀▀   ▀▀▀▀▀▀▀▀▀▀▀  ▀▀▀▀▀▀▀▀▀▀▀  ▀
 
-#include <iblgf/utilities/misc_math_functions.hpp>
 #include <math.h>
+
+#include <iblgf/utilities/misc_math_functions.hpp>
+#include <iblgf/tensor/vector.hpp>
 
 namespace iblgf
 {

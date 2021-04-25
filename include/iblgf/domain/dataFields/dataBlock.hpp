@@ -19,6 +19,7 @@
 
 // IBLGF-specific
 #include <iblgf/types.hpp>
+#include <iblgf/utilities/misc_math_functions.hpp>
 #include <iblgf/domain/dataFields/blockDescriptor.hpp>
 #include <iblgf/utilities/tuple_utilities.hpp>
 #include <iblgf/domain/dataFields/node.hpp>
@@ -41,6 +42,9 @@ class DataBlock : public BlockDescriptor<int, Dim>
     using field_type_iterator_t = tuple_utils::TypeIterator<DataFieldType...>;
     using node_field_type = DataField<node_t, Dim>;
     using buffer_type = typename node_field_type::buffer_d_t;
+
+    using complex_vector_t = std::vector<std::complex<float_type>,
+        xsimd::aligned_allocator<std::complex<float_type>, 32>>;
 
     using node_itertor = typename std::vector<node_t>::iterator;
     using node_const_iterator = typename std::vector<node_t>::const_iterator;
@@ -86,7 +90,16 @@ class DataBlock : public BlockDescriptor<int, Dim>
         tuple_utils::for_each(fields, [&_b, _allocate](auto& field) {
             field.initialize(_b, _allocate, true, 0.0);
         });
+
         this->generate_nodes();
+
+        //TODO: merge it with datafields
+        auto b_fmm=_b;
+        b_fmm.extent()+=2;
+        b_fmm.extent()=b_fmm.extent()*2-1;
+        auto s = math::nextprod(b_fmm.extent());
+
+        if (_allocate) fmm_source_fft_.resize(s[0] * s[1] * ((s[2] / 2) + 1));
     }
 
   public: //Access and queries
@@ -114,6 +127,8 @@ class DataBlock : public BlockDescriptor<int, Dim>
 
     auto begin() noexcept { return nodes_domain_.begin(); }
     auto end() noexcept { return nodes_domain_.end(); }
+
+    auto& fmm_source_fft(){return fmm_source_fft_;}
 
     bool is_allocated() { return std::get<0>(fields)[0].data().size() > 0; }
 
@@ -245,6 +260,7 @@ class DataBlock : public BlockDescriptor<int, Dim>
   private: //Data members
     /** @brief Fields stored in datablock */
     fields_tuple_t fields;
+    complex_vector_t fmm_source_fft_;
 
     /** @brief nodes in physical domain */
     std::vector<node_t> nodes_domain_;

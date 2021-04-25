@@ -23,6 +23,17 @@ namespace math
     int pow2(int n) noexcept;
     int nextprod(std::vector<int> a, int x);
     int nextprod(int x);
+
+    template <class Vec>
+    Vec nextprod(Vec x)
+    {
+        Vec s;
+        for (std::size_t idx = 0; idx< x.size(); idx++)
+            s[idx]=nextprod(x[idx]);
+
+        return s;
+    }
+
 }
 } // namespace iblgf
 

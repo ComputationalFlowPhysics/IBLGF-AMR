@@ -590,7 +590,7 @@ class Ifherk
         // Stage 1
         // ******************************************************************
         pcout << "Stage 1" << std::endl;
-        T_stage_ += dt_*alpha_[0];
+        T_stage_ = T_+c_[0];
         stage_idx_ = 1;
         clean<g_i_type>();
         clean<d_i_type>();
@@ -606,7 +606,7 @@ class Ifherk
         // Stage 2
         // ******************************************************************
         pcout << "Stage 2" << std::endl;
-        T_stage_ += dt_*alpha_[1];
+        T_stage_ = T_+c_[1];
         stage_idx_ = 2;
         clean<r_i_type>();
         clean<d_i_type>();
@@ -634,7 +634,7 @@ class Ifherk
         // Stage 3
         // ******************************************************************
         pcout << "Stage 3" << std::endl;
-        T_stage_ += dt_*alpha_[2];
+        T_stage_ = T_+c_[2];
         stage_idx_ = 3;
         clean<d_i_type>();
         clean<cell_aux_type>();
@@ -751,7 +751,7 @@ class Ifherk
                 {
                     for (std::size_t field_idx=0; field_idx<F::nFields(); ++field_idx)
                     {
-                        domain::Operator::smooth2zero<edge_aux_type>( it->data(), i);
+                        domain::Operator::smooth2zero<F>( it->data(), i);
                     }
                 }
             }
@@ -947,7 +947,7 @@ private:
             }
         }
 
-        clean_leaf_correction_boundary<edge_aux_type>(domain_->tree()->base_level(), true, 2);
+        //clean_leaf_correction_boundary<edge_aux_type>(domain_->tree()->base_level(), true, 2);
         // add background velocity
         copy<Source, face_aux_type>();
         domain::Operator::add_field_expression<face_aux_type>(domain_, simulation_->frame_vel(), T_stage_, -1.0);
@@ -975,7 +975,7 @@ private:
             }
 
             //client->template buffer_exchange<Target>(l);
-            clean_leaf_correction_boundary<Target>(l, true,3);
+            //clean_leaf_correction_boundary<Target>(l, true,3);
         }
     }
 

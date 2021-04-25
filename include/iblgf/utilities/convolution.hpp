@@ -144,6 +144,7 @@ class Convolution
   public: //Members:
     complex_vector_t& dft_r2c(std::vector<float_type>& _vec);
     void              fft_backward_field_clean();
+    void              simd_copy(const complex_vector_t& a, complex_vector_t& res);
     void              simd_prod_complex_add(const complex_vector_t& a,
                      const complex_vector_t& b, complex_vector_t& res);
     auto&             output() { return fft_backward_.output(); }
@@ -189,7 +190,7 @@ class Convolution
             auto& f1 = fft_forward1_.output();
 
             simd_prod_complex_add(f0, f1, fft_backward_.input());
-            _fmm_source_fft = f1;
+            simd_copy(f1, _fmm_source_fft);
             reuse_fft=true;
         }
     }

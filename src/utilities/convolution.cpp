@@ -183,8 +183,23 @@ Convolution::Convolution(dims_t _dims0, dims_t _dims1)
 {
 }
 
-void
-Convolution::simd_prod_complex_add(
+void Convolution::simd_copy(
+    const complex_vector_t& a,  complex_vector_t& res)
+{
+    std::size_t           size = a.size();
+    constexpr std::size_t simd_size =
+        xsimd::simd_type<std::complex<float_type>>::size;
+    std::size_t vec_size = size - size % simd_size;
+
+    for (std::size_t i = 0; i < vec_size; i += simd_size)
+    {
+        auto ba = xsimd::load_aligned(&a[i]);
+        ba.store_aligned(&res[i]);
+    }
+    for (std::size_t i = vec_size; i < size; ++i) { res[i] = a[i]; }
+}
+
+void Convolution::simd_prod_complex_add(
     const complex_vector_t& a, const complex_vector_t& b, complex_vector_t& res)
 {
     std::size_t           size = a.size();

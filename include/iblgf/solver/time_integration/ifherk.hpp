@@ -590,7 +590,7 @@ class Ifherk
         // Stage 1
         // ******************************************************************
         pcout << "Stage 1" << std::endl;
-        T_stage_ = T_+c_[0];
+        T_stage_ = T_+c_[0]*dt_;
         stage_idx_ = 1;
         clean<g_i_type>();
         clean<d_i_type>();
@@ -606,7 +606,7 @@ class Ifherk
         // Stage 2
         // ******************************************************************
         pcout << "Stage 2" << std::endl;
-        T_stage_ = T_+c_[1];
+        T_stage_ = T_+c_[1]*dt_;
         stage_idx_ = 2;
         clean<r_i_type>();
         clean<d_i_type>();
@@ -634,7 +634,7 @@ class Ifherk
         // Stage 3
         // ******************************************************************
         pcout << "Stage 3" << std::endl;
-        T_stage_ = T_+c_[2];
+        T_stage_ = T_+c_[2]*dt_;
         stage_idx_ = 3;
         clean<d_i_type>();
         clean<cell_aux_type>();

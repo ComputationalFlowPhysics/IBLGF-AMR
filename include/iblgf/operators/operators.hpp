@@ -248,7 +248,7 @@ struct Operator
         auto f =
         [](float_type x)
         {
-            const float_type fac=5.0;
+            const float_type fac=20.0;
             const float_type shift = 0.2;
             const float_type c = 1-(0.5 + 0.5 * tanh(fac*(1-shift)));
 

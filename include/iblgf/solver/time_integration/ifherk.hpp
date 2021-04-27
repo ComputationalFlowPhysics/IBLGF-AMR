@@ -579,9 +579,16 @@ class Ifherk
                     {
                         if (!domain_->is_client())
                             return;
-                        up_and_down<u_type>();
+                        mDuration_type t_updown(0);
+                        domain_->client_communicator().barrier();
+                        TIME_CODE( t_updown, SINGLE_ARG(
+                                    up_and_down<u_type>();
+                                    domain_->client_communicator().barrier();
+                                    ));
+                        pcout<< "Up & down in "<<t_updown.count() << std::endl;
+
                     }
-                    ));
+        ));
         base_mesh_update_=false;
         pcout<< "pad u      in "<<t_pad.count() << std::endl;
 
@@ -1002,7 +1009,7 @@ private:
             }
 
             //client->template buffer_exchange<Target>(l);
-            clean_leaf_correction_boundary<Target>(l, true, 2);
+            //clean_leaf_correction_boundary<Target>(l, true, 2);
             //clean_leaf_correction_boundary<Target>(l, false,4+stage_idx_);
         }
     }

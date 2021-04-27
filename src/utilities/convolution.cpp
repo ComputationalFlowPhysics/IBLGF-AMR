@@ -186,6 +186,7 @@ Convolution::Convolution(dims_t _dims0, dims_t _dims1)
 void Convolution::simd_copy(
     const complex_vector_t& a,  complex_vector_t& res)
 {
+    //std::copy( a.begin(), a.end(), res.begin() );
     std::size_t           size = a.size();
     constexpr std::size_t simd_size =
         xsimd::simd_type<std::complex<float_type>>::size;

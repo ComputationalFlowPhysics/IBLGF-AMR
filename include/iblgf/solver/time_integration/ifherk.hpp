@@ -244,7 +244,6 @@ class Ifherk
 
             // -------------------------------------------------------------
             // time marching
-            domain_->ib().communicator().compute_indices();
 
             mDuration_type ifherk_if(0);
             TIME_CODE( ifherk_if, SINGLE_ARG(

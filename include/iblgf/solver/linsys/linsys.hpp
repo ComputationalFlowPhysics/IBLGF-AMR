@@ -80,7 +80,6 @@ class LinSysSolver
         //force_type tmp(ib_->size(), (0.,0.,0.));
         //this->template ET_H_S_E<u_type>(ib_->force(), tmp, MASK_TYPE::IB2AMR, alpha);
 
-        //ib_->communicator().compute_indices();
         //ib_->communicator().communicate(true, ib_->force());
 
         //if (comm_.rank()==1)
@@ -94,7 +93,6 @@ class LinSysSolver
 
         force_type tmp2(ib_->size(), (0.,0.,0.));
         this->projection<face_aux_type>(tmp2);
-        ib_->communicator().compute_indices();
         ib_->communicator().communicate(true, tmp2);
 
         if (comm_.rank()==1)
@@ -300,7 +298,6 @@ class LinSysSolver
     void smearing(ForceType& f, bool cleaning=true)
     {
 
-        ib_->communicator().compute_indices();
         ib_->communicator().communicate(true, f);
 
         //cleaning
@@ -351,7 +348,6 @@ class LinSysSolver
             }
         }
 
-        ib_->communicator().compute_indices();
         ib_->communicator().communicate(false, f);
 
     }

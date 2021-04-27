@@ -108,6 +108,7 @@ public: //memeber functions
 
             // update ib infl list
             client()->update_ib_rank_and_infl();
+            domain_->ib().communicator().compute_indices();
         }
     }
 

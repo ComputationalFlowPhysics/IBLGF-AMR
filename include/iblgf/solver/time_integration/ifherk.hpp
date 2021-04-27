@@ -180,7 +180,7 @@ class Ifherk
         else
         {
             T_ = 0.0;
-            adapt_count_=0;
+            adapt_count_=-1;
             write_timestep();
         }
 
@@ -1008,7 +1008,7 @@ private:
             }
 
             //client->template buffer_exchange<Target>(l);
-            //clean_leaf_correction_boundary<Target>(l, true, 2);
+            clean_leaf_correction_boundary<Target>(l, true, 2);
             //clean_leaf_correction_boundary<Target>(l, false,4+stage_idx_);
         }
     }

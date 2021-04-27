@@ -231,29 +231,34 @@ struct Operator
     static void smooth2zero(Block& block, std::size_t ngb_idx) noexcept
     {
 
-        //auto f =
-        //    [](float_type x)
-        //    {
-        //        if (x>=1) return 1.0;
-        //        if (x<=0) return 0.0;
-        //        x = x - 0.3;
-
-        //        float_type h1 = exp(-1/x);
-        //        float_type h2 = exp(-1/(1 - x));
-
-        //        return h1/(h1+h2);
-        //    };
-
-
         auto f =
-        [](float_type x)
-        {
-            const float_type fac=20.0;
-            const float_type shift = 0.2;
-            const float_type c = 1-(0.5 + 0.5 * tanh(fac*(1-shift)));
+            [](float_type x)
+            {
+                if (x>=1) return 1.0;
+                if (x<=0) return 0.0;
+                x = x - 0.3;
 
-            return ( (0.5 + 0.5 * tanh(fac*(x-shift))) +c);
-        };
+                float_type h1 = exp(-1/x);
+                float_type h2 = exp(-1/(1 - x));
+
+                return h1/(h1+h2);
+            };
+
+        //auto f =
+        //[](float_type x)
+        //{
+        //    return x;
+        //};
+
+        //auto f =
+        //[](float_type x)
+        //{
+        //    const float_type fac=5.0;
+        //    const float_type shift = 0.2;
+        //    const float_type c = 1-(0.5 + 0.5 * tanh(fac*(1-shift)));
+
+        //    return ( (0.5 + 0.5 * tanh(fac*(x-shift))) +c);
+        //};
 
         const std::size_t dim = 3;
         std::size_t x = ngb_idx % dim;

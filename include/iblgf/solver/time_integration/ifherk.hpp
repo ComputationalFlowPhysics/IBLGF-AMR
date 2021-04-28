@@ -102,6 +102,9 @@ class Ifherk
             "cfl_max", 1000);
         updating_source_max_ = _simulation->dictionary()->template get_or<bool>(
             "updating_source_max", true);
+        use_present_source_max_ = _simulation->dictionary()->template get_or<bool>(
+            "use_present_source_max", true);
+
 
 
         if (dt_base_ < 0) dt_base_ = dx_base_ * cfl_;
@@ -338,7 +341,16 @@ class Ifherk
         boost::mpi::all_reduce(
             comm_, max_local, new_maximum, boost::mpi::maximum<float_type>());
 
-        source_max_[idx] = std::max(source_max_[idx], new_maximum);
+        if (use_present_source_max_)
+            source_max_[idx] = 0.5*(source_max_[idx] + new_maximum);
+        else
+            source_max_[idx] = std::max(source_max_[idx], new_maximum);
+
+        if (source_max_[idx]<1e-3)
+            source_max_[idx]=1e-3;
+
+        if (! domain_->decomposition().client())
+            std::cout<<"source max "<< idx << " = "<< source_max_[idx]<<std::endl;
     }
 
     void write_restart()
@@ -1103,6 +1115,7 @@ private:
     bool just_restarted_=false;
     bool write_restart_=false;
     bool updating_source_max_ = false;
+    bool use_present_source_max_ = true;
     int restart_base_freq_;
     int adapt_count_;
 

@@ -748,19 +748,8 @@ class Ifherk
         {
             if(!it->locally_owned()) continue;
             if(!it->has_data() || !it->data().is_allocated()) continue;
-            //std::cout<<it->key()<<std::endl;
 
-            for(std::size_t i=0;i< it->num_neighbors();++i)
-            {
-                auto it2=it->neighbor(i);
-                if ((!it2 || !it2->has_data()) || (leaf_only_boundary && (it2->is_correction() || it2->is_old_correction() )))
-                {
-                    for (std::size_t field_idx=0; field_idx<F::nFields(); ++field_idx)
-                    {
-                        domain::Operator::smooth2zero<F>( it->data(), i);
-                    }
-                }
-            }
+            domain::Operator::smooth2zero<F>( it, leaf_only_boundary);
         }
     }
 

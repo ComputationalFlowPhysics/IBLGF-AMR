@@ -227,22 +227,22 @@ struct Operator
     }
 
 
-    template<class Field, class Block>
-    static void smooth2zero(Block& block, std::size_t ngb_idx) noexcept
+    template<class Field, class Octant>
+    static void smooth2zero(Octant& it, bool leaf_only_boundary) noexcept
     {
 
-        auto f =
-            [](float_type x)
-            {
-                if (x>=1) return 1.0;
-                if (x<=0) return 0.0;
-                x = x - 0.3;
+        //auto f =
+        //    [](float_type x)
+        //    {
+        //        if (x>=1) return 1.0;
+        //        if (x<=0) return 0.0;
+        //        x = x - 0.3;
 
-                float_type h1 = exp(-1/x);
-                float_type h2 = exp(-1/(1 - x));
+        //        float_type h1 = exp(-1/x);
+        //        float_type h2 = exp(-1/(1 - x));
 
-                return h1/(h1+h2);
-            };
+        //        return h1/(h1+h2);
+        //    };
 
         //auto f =
         //[](float_type x)
@@ -250,86 +250,80 @@ struct Operator
         //    return x;
         //};
 
-        //auto f =
-        //[](float_type x)
-        //{
-        //    const float_type fac=5.0;
-        //    const float_type shift = 0.2;
-        //    const float_type c = 1-(0.5 + 0.5 * tanh(fac*(1-shift)));
+        auto f =
+        [](float_type x)
+        {
+            const float_type fac=15.0;
+            const float_type shift = 0.4;
+            const float_type c = 1-(0.5 + 0.5 * tanh(fac*(1-shift)));
 
-        //    return ( (0.5 + 0.5 * tanh(fac*(x-shift))) +c);
-        //};
-
-        const std::size_t dim = 3;
-        std::size_t x = ngb_idx % dim;
-        std::size_t y = (ngb_idx/dim) % dim;
-        std::size_t z = (ngb_idx/dim/dim) % dim;
+            return ( (0.5 + 0.5 * tanh(fac*(x-shift))) +c);
+        };
 
         for (std::size_t field_idx = 0; field_idx < Field::nFields();
                 ++field_idx)
         {
-            for (auto& n: block.node_field())
+            for (auto& n: it->data().node_field())
             {
                 auto pct  = n.local_pct();
+                float_type scale = 1.0;
 
-                float_type square = 0.0;
-                float_type c = 0;
-
-                if (z==0){
-                    square = std::max(square, f(pct[2]));
-                    c+=1;
-                }
-                else if (z==(dim-1))
+                for(std::size_t ngb_idx=0;ngb_idx< it->num_neighbors();++ngb_idx)
                 {
-                    square = std::max(square, f(1-pct[2]));
-                    c+=1;
+
+                    auto it2=it->neighbor(ngb_idx);
+                    if ((!it2 || !it2->has_data()) || (leaf_only_boundary && (it2->is_correction() || it2->is_old_correction() )))
+                    {
+                            //domain::Operator::smooth2zero<F>( it->data(), i);
+                        const std::size_t dim = 3;
+                        std::size_t x = ngb_idx % dim;
+                        std::size_t y = (ngb_idx/dim) % dim;
+                        std::size_t z = (ngb_idx/dim/dim) % dim;
+
+                        float_type square = 0.0;
+                        int c = 0;
+
+                        if (z==0){
+                            square += pct[2]*pct[2];
+                            c+=1;
+                        }
+                        else if (z==(dim-1))
+                        {
+                            square += (1-pct[2])*(1-pct[2]);
+                            c+=1;
+                        }
+
+                        if (y==0){
+                            square += pct[1]*pct[1];
+                            c+=1;
+                        }
+                        else if (y==(dim-1))
+                        {
+                            square += (1-pct[1])*(1-pct[1]);
+                            c+=1;
+                        }
+
+                        if (x==0){
+                            square += pct[0]*pct[0];
+                            c+=1;
+                        }
+                        else if (x==(dim-1))
+                        {
+                            square += (1-pct[0])*(1-pct[0]);
+                            c+=1;
+                        }
+
+                        if (c>0)
+                            scale = std::min(scale, f(sqrt(square)));
+
+                    }
                 }
 
-                if (y==0){
-                    square = std::max(square, f(pct[1]));
-                    c+=1;
-                }
-                else if (y==(dim-1))
-                {
-                    square = std::max(square, f(1-pct[1]));
-                    c+=1;
-                }
+                if (scale<1.0)
+                    n(Field::tag(), field_idx) = n(Field::tag(), field_idx) * scale;
 
-                if (x==0){
-                    square = std::max(square, f(pct[0]));
-                    c+=1;
-                }
-                else if (x==(dim-1))
-                {
-                    square = std::max(square, f(1-pct[0]));
-                    c+=1;
-                }
-
-
-                if (c>0)
-                    n(Field::tag(), field_idx) = n(Field::tag(), field_idx) * square;
-
-
-                //if      (z == 0)
-                //{
-                //    if (x != 0 && y!=0)
-                //        n(Field::tag(), field_idx) = n(Field::tag(), field_idx) * f(pct[2]);
-                //    else if (x==0 && y!=0)
-                //        n(Field::tag(), field_idx) = n(Field::tag(), field_idx) * sqrt(f(pct[2])*f(pct[2])+ f(pct[0])* f(pct[0]));
-                //    else if (x!=0 && y==0)
-                //        n(Field::tag(), field_idx) = n(Field::tag(), field_idx) * sqrt(f(pct[2])*f(pct[2])+ f(pct[0])* f(pct[0]));
-                //}
-                //else if (y == 0)
-                //    n(Field::tag(), field_idx) = n(Field::tag(), field_idx) * f(pct[1]);
-                //else if (x == 0)
-                //    n(Field::tag(), field_idx) = n(Field::tag(), field_idx) * f(pct[0]);
-                //else if (x == (dim-1))
-                //    n(Field::tag(), field_idx) = n(Field::tag(), field_idx) * f(1-pct[0]);
-                //else if (y == (dim-1))
-                //    n(Field::tag(), field_idx) = n(Field::tag(), field_idx) * f(1-pct[1]);
-                //else if (z == (dim-1))
-                //    n(Field::tag(), field_idx) = n(Field::tag(), field_idx) * f(1-pct[2]);
             }
+
         }
     }
 

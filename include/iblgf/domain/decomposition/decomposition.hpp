@@ -122,13 +122,13 @@ public: //memeber functions
             FmmMaskBuilder::fmm_vortex_streamfun_mask(domain_);
             FmmMaskBuilder::fmm_lgf_mask_build(domain_, subtract_non_leaf_);
 
+            server()->send_keys(); // also give ranks
+
             server()->update_ib_flag();
 
             FmmMaskBuilder::fmm_IB2xIB_mask(domain_);
             FmmMaskBuilder::fmm_xIB2IB_mask(domain_);
             FmmMaskBuilder::fmm_IB2AMR_mask(domain_);
-
-            server()->send_keys(); // also give ranks
 
         }
         else if(client())
@@ -143,6 +143,9 @@ public: //memeber functions
     template<class... Field>
     void balance()
     {
+        auto& ib = domain_->ib();
+        ib.ib_rank_backup();
+
         if(server())
         {
             server()->update_decomposition();
@@ -154,6 +157,11 @@ public: //memeber functions
             (client()->template update_field<Field>(update), ...);
             client()->finish_decomposition_update(update);
             client()->halo_reset();
+
+            // ------------------------------- IB -------------------
+            //client()->update_ib_rank_and_infl();
+            ib.communicator().compute_load_balance_indices();
+            ib.communicator().communicate(true, ib.force());
         }
 
         sync_decomposition();

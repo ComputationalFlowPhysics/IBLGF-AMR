@@ -82,6 +82,7 @@ class IB
         ib_infl_.resize(coordinates_.size());
         ib_infl_pts_.resize(coordinates_.size());
         ib_rank_.resize(coordinates_.size());
+        ib_old_rank_.resize(coordinates_.size());
         forces_.resize(
             coordinates_.size(), real_coordinate_type((float_type)0));
 
@@ -210,6 +211,11 @@ class IB
     const auto& rank(std::size_t _i) const noexcept { return ib_rank_[_i]; }
     /** @} */
 
+    /** @{ @brief Get the backup rank of the ith ib points */
+    auto&       old_rank(std::size_t _i) noexcept { return ib_old_rank_[_i]; }
+    const auto& old_rank(std::size_t _i) const noexcept { return ib_old_rank_[_i]; }
+    /** @} */
+
     auto ib_level() const noexcept {return IBlevel_;}
     /** @brief Get number of ib points */
     auto size() const noexcept { return coordinates_.size(); }
@@ -244,6 +250,21 @@ class IB
         for (std::size_t i = 0; i < size(); i++)
             if (!this->locally_owned(i))
                 this->force(i)=0.0;
+    }
+
+    void ib_rank_backup()
+    {
+        for (std::size_t i=0; i<this->size(); ++i)
+            this->old_rank(i) = this->rank(i);
+    }
+
+    template <class Domain>
+    auto find_containing_octant(int idx, Domain* domain_, int level)
+    {
+        int rflevel = level - domain_->tree()->base_level();
+        float_type factor = std::pow(2, rflevel) / dx_base_;
+        auto octant_coord = coordinate_type(coordinates_[idx]*factor - domain_->bounding_box().base()*std::pow(2, rflevel)) / domain_->block_extent();
+        return domain_->tree()->find(octant_coord, level).ptr();
     }
 
     template<class BlockDscrptr>
@@ -359,6 +380,7 @@ public:
     std::vector<std::vector<octant_t*>> ib_infl_;
     std::vector<std::vector<std::vector<node_t>>> ib_infl_pts_;
     std::vector<int>                    ib_rank_;
+    std::vector<int>                    ib_old_rank_;
 
     delta_func_type delta_func_;
     float_type      ddf_radius_ = 0;

@@ -630,7 +630,6 @@ class Domain
         if (is_server())
         {
             this->tree()->construct_leaf_maps();
-
             std::unordered_map<key_t, bool> checklist;
             const auto base_level = this->tree()->base_level();
             for (int l = 0; l < nRef; ++l)
@@ -685,6 +684,9 @@ class Domain
 
             mark_correction();
             mark_leaf_boundary();
+            this->tree()->construct_level_maps();
+            this->tree()->construct_lists();
+
         }
     }
 

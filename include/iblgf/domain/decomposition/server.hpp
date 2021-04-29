@@ -80,6 +80,10 @@ class Server : public ServerBase<ServerClientTraits<Domain>>
         , src_ranks(_worldsize)
         , dest_gids(_worldsize)
         , src_gids(_worldsize)
+        , ib_send_id(_worldsize)
+        , ib_dest_ranks(_worldsize)
+        , ib_recv_id(_worldsize)
+        , ib_src_ranks(_worldsize)
         {
         }
 
@@ -94,6 +98,16 @@ class Server : public ServerBase<ServerClientTraits<Domain>>
             src_gids[_new_rank].emplace_back(_gid);
         }
 
+        void insert_ib(int _current_rank, int _new_rank, int _ib_id)
+        {
+            ib_send_id[_current_rank].emplace_back(_ib_id);
+            ib_dest_ranks[_current_rank].emplace_back(_new_rank);
+
+            ib_recv_id[_new_rank].emplace_back(_ib_id);
+            ib_src_ranks[_new_rank].emplace_back(_current_rank);
+        }
+
+
         //octant key and dest rank,outer vector in current  rank
         std::vector<std::vector<key_t>> send_octs;
         std::vector<std::vector<int>>   dest_ranks;
@@ -102,6 +116,16 @@ class Server : public ServerBase<ServerClientTraits<Domain>>
         std::vector<std::vector<key_t>> recv_octs;
         std::vector<std::vector<int>>   src_ranks;
         std::vector<std::vector<int>>   src_gids;
+
+        //ib id and dest rank
+        std::vector<std::vector<int>>   ib_send_id;
+        std::vector<std::vector<int>>   ib_dest_ranks;
+
+        //ib id and src rank
+        std::vector<std::vector<int>>   ib_recv_id;
+        std::vector<std::vector<int>>   ib_src_ranks;
+
+
     };
 
   public: //Ctors
@@ -349,6 +373,9 @@ class Server : public ServerBase<ServerClientTraits<Domain>>
      */
     auto check_decomposition_updates()
     {
+        // backup old ranks
+        auto& ib = domain_->ib();
+
         std::vector<int> ranks_old;
         for (auto it = domain_->begin(); it != domain_->end(); ++it)
         {
@@ -356,6 +383,7 @@ class Server : public ServerBase<ServerClientTraits<Domain>>
             ranks_old.push_back(it->rank());
         }
 
+        // calculate new ranks
         compute_distribution();
 
         int                 c = 0;
@@ -373,6 +401,22 @@ class Server : public ServerBase<ServerClientTraits<Domain>>
             }
             ++c;
         }
+
+        // IB
+
+        this->update_ib_flag();
+        for (std::size_t i = 0; i < ib.size(); ++i)
+        {
+            if (ib.old_rank(i) != ib.rank(i))
+            {
+                if (ib.old_rank(i) <= 0 || ib.rank(i) <= 0)
+                    std::cout << "Balance: new or old rank = " << ib.old_rank(i)
+                              << ib.rank(i) << std::endl;
+                else
+                    updates.insert_ib(ib.old_rank(i), ib.rank(i), i);
+            }
+        }
+
         return updates;
     }
 
@@ -389,6 +433,16 @@ class Server : public ServerBase<ServerClientTraits<Domain>>
             comm_.send(i, i + 4 * comm_.size(), updates.src_ranks[i]);
             comm_.send(i, i + 5 * comm_.size(), updates.src_gids[i]);
         }
+
+        for (int i = 1; i < comm_.size(); ++i)
+        {
+            comm_.send(i, i + 6 * comm_.size(), updates.ib_send_id[i]);
+            comm_.send(i, i + 7 * comm_.size(), updates.ib_dest_ranks[i]);
+
+            comm_.send(i, i + 8 * comm_.size(), updates.ib_recv_id[i]);
+            comm_.send(i, i + 9 * comm_.size(), updates.ib_src_ranks[i]);
+        }
+
     }
 
     void recv_adapt_attempts(
@@ -556,27 +610,84 @@ class Server : public ServerBase<ServerClientTraits<Domain>>
         std::cout<<"Depth of the tree = " << l_max << std::endl;
 
         auto& ib = domain_->ib();
+
         for (std::size_t i=0; i<ib.size(); ++i)
         {
             ib.rank(i)=-1;
             ib.influence_list(i).clear();
-
-            for (auto it  = domain_->begin(l_max);
-                    it != domain_->end(l_max); ++it)
+            auto oct = ib.find_containing_octant(i, domain_, l_max);
+            //std::cout << ib.ib_block_overlap(i, oct->data().descriptor(), 0) << " at refinement level = " << oct->level()<< std::endl;
+            if (!oct || !oct->has_data())
             {
-                if ( !it->has_data() )
+                std::cout<< " can't find the block associated with ib = " << i << std::endl;
+                continue;
+            }
+
+            ib.rank(i)=oct->rank();
+
+            int c=0;
+            for (int ns = 0; ns < oct->nNeighbors(); ++ns)
+            {
+                auto it = oct->neighbor(ns);
+                if (!it || !it->has_data())
                     continue;
 
                 if (ib.ib_block_overlap(i, it->data().descriptor(), 2))
                 {
                     it->is_extended_ib()=true;
                     if (ib.ib_block_overlap(i, it->data().descriptor(), 1) && it->is_leaf())
+                    {
                         it->is_ib()=true;
+                    }
+                    c+=1;
                 }
+
             }
+            //std::cout<< "total infl = "<<c << std::endl;
+
         }
 
+
+        //for (std::size_t i=0; i<ib.size(); ++i)
+        //{
+        //    ib.rank(i)=-1;
+        //    ib.influence_list(i).clear();
+
+        //    for (auto it  = domain_->begin(l_max);
+        //            it != domain_->end(l_max); ++it)
+        //    {
+        //        if ( !it->has_data() )
+        //            continue;
+
+        //        if (ib.ib_block_overlap(i, it->data().descriptor(), 2))
+        //        {
+        //            it->is_extended_ib()=true;
+        //            if (ib.ib_block_overlap(i, it->data().descriptor(), 1) && it->is_leaf())
+        //            {
+        //                it->is_ib()=true;
+
+        //                if ( ib.rank(i)==-1 && ib.ib_block_overlap(i, it->data().descriptor(), 0 ))
+        //                {
+        //                    ib.rank(i)=it->rank();
+        //                    auto tmp = ib.find_containing_octant(i, domain_, l_max);
+        //                    if (!tmp)
+        //                        std::cout<< " can't find the block associated with ib = " << i << std::endl;
+        //                    else
+        //                    {
+        //                        std::cout<< (tmp->key() == it->key());
+        //                        if (tmp->key() != it->key())
+        //                            std::cout<< tmp->key() << std::endl << it->key() << std::endl;
+        //                    }
+        //                }
+
+        //            }
+        //        }
+        //    }
+        //}
+
     }
+
+
 
 
 private:

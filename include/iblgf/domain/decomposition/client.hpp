@@ -104,6 +104,15 @@ public:
         std::vector<key_t> recv_octs;
         std::vector<int>   src_ranks;
         std::vector<int>   src_gids;
+
+        //ib id and dest rank
+        std::vector<int>   ib_send_id;
+        std::vector<int>   ib_dest_ranks;
+
+        //ib id and src rank
+        std::vector<int>   ib_recv_id;
+        std::vector<int>   ib_src_ranks;
+
     };
 
   public:
@@ -151,7 +160,12 @@ public:
         comm_.recv(0, comm_.rank() + 4 * comm_.size(), update.src_ranks);
         comm_.recv(0, comm_.rank() + 5 * comm_.size(), update.src_gids);
 
-        //instantiate new octants
+        comm_.recv(0, comm_.rank() + 6 * comm_.size(), update.ib_send_id);
+        comm_.recv(0, comm_.rank() + 7 * comm_.size(), update.ib_dest_ranks);
+        comm_.recv(0, comm_.rank() + 8 * comm_.size(), update.ib_recv_id);
+        comm_.recv(0, comm_.rank() + 9 * comm_.size(), update.ib_src_ranks);
+
+         //instantiate new octants
         domain_->tree()->insert_keys(
             update.recv_octs,
             [&](octant_t* _o) {
@@ -185,6 +199,25 @@ public:
                 std::cout << "balacen: find no send oct\n" << key << std::endl;
             it->rank() = comm_.rank();
             it->global_id(update.src_gids[count]);
+            ++count;
+        }
+
+        // IB -------------------------------------------------------------
+        auto& ib = domain_->ib();
+
+        count = 0;
+        for (int idx : update.ib_send_id)
+        {
+            ib.old_rank(idx) = comm_.rank();
+            ib.rank(idx) = update.ib_dest_ranks[count];
+            ++count;
+        }
+
+        count = 0;
+        for (int idx : update.ib_recv_id)
+        {
+            ib.old_rank(idx) = update.ib_src_ranks[count];
+            ib.rank(idx) = comm_.rank();
             ++count;
         }
 
@@ -832,57 +865,115 @@ public:
         {
             ib.rank(i)=-1;
             ib.influence_list(i).clear();
-            for (auto it  = domain_->begin(l_max);
-                    it != domain_->end(l_max); ++it)
+            auto oct = ib.find_containing_octant(i, domain_, l_max);
+            //std::cout << ib.ib_block_overlap(i, oct->data().descriptor(), 0) << " at refinement level = " << oct->level()<< std::endl;
+            if (!oct || !oct->has_data())
+                continue;
+
+            ib.rank(i)=oct->rank();
+
+            for (int ns = 0; ns < oct->nNeighbors(); ++ns)
             {
-                if (!it->has_data() || !it->is_leaf())
+                auto it = oct->neighbor(ns);
+                if (!it || !it->has_data())
                     continue;
 
                 if (ib.ib_block_overlap(i, it->data().descriptor(), 1 ))
                 {
-                    ib.influence_list(i).emplace_back(it.ptr());
-
-                    // check if it is strictly inside that black ( , , 0 )
-                    if ( ib.rank(i)==-1 && ib.ib_block_overlap(i, it->data().descriptor(), 0 ))
-                    {
-                        ib.rank(i)=it->rank();
-                    }
-
+                    ib.influence_list(i).emplace_back(it);
                 }
-            }
 
-            std::size_t oct_c = 0;
-            ib.influence_pts(i).clear();
-            ib.influence_pts(i).resize(ib.influence_list(i).size());
+                std::size_t oct_c = 0;
+                ib.influence_pts(i).clear();
+                ib.influence_pts(i).resize(ib.influence_list(i).size());
 
-            int s = 0;
-            for (auto& it: ib.influence_list(i))
-            {
-                if (!it->locally_owned()) continue;
-                ib.influence_pts(i, oct_c).clear();
-                for (auto n:it->data())
+                int s = 0;
+                for (auto& it: ib.influence_list(i))
                 {
-                    auto ib_coord = ib.scaled_coordinate(i, it->refinement_level());
-                    auto n_coord = n.level_coordinate();
-                    auto dist = n_coord - ib_coord;
-
-                    bool influenced = true;
-                    for (std::size_t field_idx=0; field_idx<domain_->dimension(); field_idx++)
-                        if (abs(dist[field_idx]) >= ib.ddf_radius()+1.0)
-                            influenced = false;
-
-                    if (influenced)
+                    if (!it->locally_owned()) continue;
+                    ib.influence_pts(i, oct_c).clear();
+                    for (auto n:it->data())
                     {
-                        ib.influence_pts(i, oct_c).emplace_back(n);
-                        s+=1;
+                        auto ib_coord = ib.scaled_coordinate(i, it->refinement_level());
+                        auto n_coord = n.level_coordinate();
+                        auto dist = n_coord - ib_coord;
+
+                        bool influenced = true;
+                        for (std::size_t field_idx=0; field_idx<domain_->dimension(); field_idx++)
+                            if (abs(dist[field_idx]) >= ib.ddf_radius()+1.0)
+                                influenced = false;
+
+                        if (influenced)
+                        {
+                            ib.influence_pts(i, oct_c).emplace_back(n);
+                            s+=1;
+                        }
+
                     }
 
+                    oct_c+=1;
                 }
 
-                oct_c+=1;
-            }
 
+            }
         }
+
+
+        //for (std::size_t i=0; i<ib.size(); ++i)
+        //{
+        //    ib.rank(i)=-1;
+        //    ib.influence_list(i).clear();
+        //    for (auto it  = domain_->begin(l_max);
+        //            it != domain_->end(l_max); ++it)
+        //    {
+        //        if (!it->has_data() || !it->is_leaf())
+        //            continue;
+
+        //        if (ib.ib_block_overlap(i, it->data().descriptor(), 1 ))
+        //        {
+        //            ib.influence_list(i).emplace_back(it.ptr());
+
+        //            // check if it is strictly inside that black ( , , 0 )
+        //            if ( ib.rank(i)==-1 && ib.ib_block_overlap(i, it->data().descriptor(), 0 ))
+        //            {
+        //                ib.rank(i)=it->rank();
+        //            }
+
+        //        }
+        //    }
+
+        //    std::size_t oct_c = 0;
+        //    ib.influence_pts(i).clear();
+        //    ib.influence_pts(i).resize(ib.influence_list(i).size());
+
+        //    int s = 0;
+        //    for (auto& it: ib.influence_list(i))
+        //    {
+        //        if (!it->locally_owned()) continue;
+        //        ib.influence_pts(i, oct_c).clear();
+        //        for (auto n:it->data())
+        //        {
+        //            auto ib_coord = ib.scaled_coordinate(i, it->refinement_level());
+        //            auto n_coord = n.level_coordinate();
+        //            auto dist = n_coord - ib_coord;
+
+        //            bool influenced = true;
+        //            for (std::size_t field_idx=0; field_idx<domain_->dimension(); field_idx++)
+        //                if (abs(dist[field_idx]) >= ib.ddf_radius()+1.0)
+        //                    influenced = false;
+
+        //            if (influenced)
+        //            {
+        //                ib.influence_pts(i, oct_c).emplace_back(n);
+        //                s+=1;
+        //            }
+
+        //        }
+
+        //        oct_c+=1;
+        //    }
+
+        //}
 
         //for (std::size_t i=0; i<ib.size(); ++i)
         //{
@@ -917,8 +1008,6 @@ public:
 
                 oct_i+=1;
             }
-
-            //std::cout<< "ib sum = " << ib_s << std::endl;
 
         }
 

@@ -131,6 +131,7 @@ class Convolution
         std::map<lgf_key_t, std::unique_ptr<complex_vector_t>>;
     using sr_fft_map_type =
         std::map<unsigned long long int, complex_vector_t>;
+    using b_type = xsimd::simd_type<std::complex<float_type>>;
 
   public: //Ctors
     Convolution(const Convolution& other) = default;
@@ -238,6 +239,8 @@ class Convolution
     unsigned int     padded_size_;
     complex_vector_t tmp_prod;
     sr_fft_map_type sr_fft_map_;
+
+    b_type bres1_, bres2_;
 };
 
 } // namespace fft

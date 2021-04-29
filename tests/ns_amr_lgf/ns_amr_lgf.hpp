@@ -110,9 +110,9 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
                     return 0.0;
                 else if (t<T0-1e-10 && smooth_start_)
                 {
-                    const float_type beta = 2.252283620690761;
-                    return 4.0*beta*-U_[idx]*ux_t_smart(t);
-                    //return -U_[idx] * t/T0;
+                    //const float_type beta = 2.252283620690761;
+                    //return 4.0*beta*-U_[idx]*ux_t_smart(t);
+                    return -U_[idx] * t/T0;
                     //float_type h1 = exp(-1/(t/T0));
                     //float_type h2 = exp(-1/(1 - t/T0));
 

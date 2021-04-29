@@ -93,6 +93,31 @@ class ib_communicator
         }
     }
 
+    /**@brief Compute communication indices during load balacing.
+     * */
+    void compute_load_balance_indices() noexcept
+    {
+        const auto my_rank = comm_.rank();
+        this->clear();
+        for (std::size_t i = 0; i < ib_->size(); ++i)
+        {
+            if (ib_->old_rank(i) == my_rank)
+            {
+                std::set<int> unique_inflRanks;
+                if (ib_->rank(i) != my_rank && ib_->rank(i)>0)
+                {
+                    locally_owned_indices_[ib_->rank(i)].push_back(i);
+                }
+            }
+            else
+            {
+                if (ib_->rank(i) == my_rank && ib_->old_rank(i)>0)
+                    ghost_indices_[ib_->old_rank(i)].push_back(i);
+            }
+        }
+    }
+
+
     /**@brief Clear all data and resize vectors* */
     void clear()
     {

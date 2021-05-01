@@ -67,11 +67,11 @@ class IB
         read_points();
 
         // will add more, default is yang4
-        ddf_radius_ = 1.5;
+        ddf_radius_ = 2.0;
         safety_dis_ = 5.0/(Re*dx_ib_)+1.0;
 
         std::function<float_type(float_type x)> delta_func_1d_ =
-            [this](float_type x) { return this->roma(x); };
+            [this](float_type x) { return this->yang3(x); };
 
         this->delta_func_ = [this, delta_func_1d_](real_coordinate_type x) {
             return delta_func_1d_(x[0]) * delta_func_1d_(x[1]) *

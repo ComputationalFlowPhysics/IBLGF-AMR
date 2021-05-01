@@ -95,7 +95,7 @@ class node
 
     real_coordinate_type local_pct() const noexcept
     {
-        return (level_coordinate_ - c_->bounding_box().base()) / real_coordinate_type(c_->bounding_box().extent()-1);
+        return (level_coordinate_ - c_->base()) / real_coordinate_type(c_->extent()-1);
     }
 
     real_coordinate_type global_coordinate() const noexcept

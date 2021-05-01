@@ -272,10 +272,20 @@ class Ifherk
                 (tmp_int_n % output_base_freq_ == 0))
             {
                 n_step_ = tmp_int_n;
+
+                //test on smoothing
+                for (int l = domain_->tree()->base_level();
+                        l < domain_->tree()->depth(); ++l)
+                {
+                    for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+                    {
+                        if (!it->locally_owned() || it->is_correction()) continue;
+                        domain::Operator::smooth2zero<p_type>( it, true, 0.5);
+                    }
+                }
+                //done
+
                 write_timestep();
-                // only update dt after 1 output so it wouldn't do 3 5 7 9 ...
-                // and skip all outputs
-                update_marching_parameters();
             }
 
             write_stats(tmp_n);
@@ -510,8 +520,8 @@ class Ifherk
         if (source_max_[0]<1e-10 || source_max_[1]<1e-10) return;
 
         //adaptation neglect the boundary oscillations
-        clean_leaf_correction_boundary<cell_aux_type>(domain_->tree()->base_level(),true,2);
-        clean_leaf_correction_boundary<edge_aux_type>(domain_->tree()->base_level(),true,2);
+        clean_leaf_correction_boundary<cell_aux_type>(domain_->tree()->base_level(),true,0.6);
+        clean_leaf_correction_boundary<edge_aux_type>(domain_->tree()->base_level(),true,0.6);
 
         world.barrier();
 
@@ -718,7 +728,7 @@ class Ifherk
     }
 
     template <typename F>
-    void clean_leaf_correction_boundary(int l, bool leaf_only_boundary=false, int clean_width=1) noexcept
+    void clean_leaf_correction_boundary(int l, bool leaf_only_boundary=false, float_type pct=0.5) noexcept
     {
         for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
         {
@@ -740,6 +750,7 @@ class Ifherk
             if (!it->locally_owned()) continue;
             if (!it->has_data() || !it->data().is_allocated()) continue;
 
+            //if (leaf_only_boundary && (it->is_correction() || it->is_old_correction() ))
             if (leaf_only_boundary && (it->is_correction() || it->is_old_correction() ))
             {
                 for (std::size_t field_idx = 0; field_idx < F::nFields();
@@ -761,7 +772,7 @@ class Ifherk
             if(!it->locally_owned()) continue;
             if(!it->has_data() || !it->data().is_allocated()) continue;
 
-            domain::Operator::smooth2zero<F>( it, leaf_only_boundary);
+            domain::Operator::smooth2zero<F>( it, leaf_only_boundary, pct);
         }
     }
 
@@ -901,7 +912,7 @@ private:
         }
 
         //clean<Velocity_out>();
-        clean_leaf_correction_boundary<edge_aux_type>(domain_->tree()->base_level(), true, 2);
+        clean_leaf_correction_boundary<edge_aux_type>(domain_->tree()->base_level(), true, 0.3);
         //clean_leaf_correction_boundary<edge_aux_type>(l, false,2+stage_idx_);
         psolver.template apply_lgf<edge_aux_type, stream_f_type>(MASK_TYPE::STREAM);
 
@@ -963,7 +974,7 @@ private:
              l < domain_->tree()->depth(); ++l)
         {
             client->template buffer_exchange<edge_aux_type>(l);
-            clean_leaf_correction_boundary<edge_aux_type>(l, false, 2);
+            clean_leaf_correction_boundary<edge_aux_type>(l, false, 0.5);
 
             for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
             {

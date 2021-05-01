@@ -237,7 +237,6 @@ class Convolution
     dfft_c2r fft_backward_;
 
     unsigned int     padded_size_;
-    complex_vector_t tmp_prod;
     sr_fft_map_type sr_fft_map_;
 
     b_type bres1_, bres2_;

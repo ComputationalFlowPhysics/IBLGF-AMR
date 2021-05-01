@@ -228,7 +228,7 @@ struct Operator
 
 
     template<class Field, class Octant>
-    static void smooth2zero(Octant& it, bool leaf_only_boundary) noexcept
+    static void smooth2zero(Octant& it, bool leaf_only_boundary, float_type pct) noexcept
     {
 
         //auto f =
@@ -250,20 +250,32 @@ struct Operator
         //    return x;
         //};
 
-        auto f =
-        [](float_type x)
-        {
-            const float_type fac=15.0;
-            const float_type shift = 0.4;
-            const float_type c = 1-(0.5 + 0.5 * tanh(fac*(1-shift)));
+        //auto f =
+        //[pct](float_type x)
+        //{
+        //    const float_type fac=20.0;
+        //    const float_type shift = pct;
+        //    const float_type c = 1-(0.5 + 0.5 * tanh(fac*(1-shift)));
 
-            return ( (0.5 + 0.5 * tanh(fac*(x-shift))) +c);
+        //    return ( (0.5 + 0.5 * tanh(fac*(x-shift))) +c);
+        //};
+
+        auto f =
+        [pct](float_type x)
+        {
+            if (x>=1)
+                return 1.0;
+            else if (x<=0)
+                return 0.0;
+            else
+                return 1 - cos(x*M_PI);
         };
+
 
         for (std::size_t field_idx = 0; field_idx < Field::nFields();
                 ++field_idx)
         {
-            for (auto& n: it->data().node_field())
+            for (auto& n: it->data())
             {
                 auto pct  = n.local_pct();
                 float_type scale = 1.0;

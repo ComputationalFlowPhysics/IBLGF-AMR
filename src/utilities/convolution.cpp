@@ -179,7 +179,6 @@ Convolution::Convolution(dims_t _dims0, dims_t _dims1)
 , fft_backward_(padded_dims_next_pow_2_, _dims1)
 , padded_size_(padded_dims_next_pow_2_[0] * padded_dims_next_pow_2_[1] *
                padded_dims_next_pow_2_[2])
-, tmp_prod(padded_size_, std::complex<float_type>(0.0))
 {
 }
 

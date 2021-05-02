@@ -830,7 +830,7 @@ private:
 
         // IB
         if (std::fabs(_alpha)>1e-4)
-            psolver.template apply_lgf_IF<face_aux2_type, face_aux2_type>(_alpha, MASK_TYPE::IB2xIB);
+            psolver.template apply_lgf_IF<face_aux2_type, face_aux2_type>(_alpha, MASK_TYPE::xIB2IB);
 
         domain_->client_communicator().barrier();
         pcout<< "IB IF solved "<<std::endl;

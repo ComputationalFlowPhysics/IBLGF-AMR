@@ -813,7 +813,7 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
     float_type Re_;
     int tot_steps_;
     float_type refinement_factor_=1./8;
-    float_type base_threshold_=1e-4;
+    float_type base_threshold_;
 
     vr_fct_t vr_fct_;
 

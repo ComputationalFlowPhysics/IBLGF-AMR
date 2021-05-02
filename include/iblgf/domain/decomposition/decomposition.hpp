@@ -161,7 +161,9 @@ public: //memeber functions
             // ------------------------------- IB -------------------
             //client()->update_ib_rank_and_infl();
             ib.communicator().compute_load_balance_indices();
-            ib.communicator().communicate(true, ib.force());
+            ib.communicator().communicate(true, ib.force_prev(1));
+            ib.communicator().communicate(true, ib.force_prev(2));
+            ib.communicator().communicate(true, ib.force_prev(3));
         }
 
         sync_decomposition();

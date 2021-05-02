@@ -245,6 +245,13 @@ class IB
   public: // iters
   public: // functions
 
+    template< class Vec>
+    void clean(Vec& f)
+    {
+        for (std::size_t i = 0; i < size(); i++)
+            f[i]=0.0;
+    }
+
     void clean_non_local()
     {
         for (std::size_t i = 0; i < size(); i++)

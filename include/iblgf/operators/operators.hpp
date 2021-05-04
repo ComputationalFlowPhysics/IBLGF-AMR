@@ -253,7 +253,7 @@ struct Operator
         auto f =
         [pct](float_type x)
         {
-            const float_type fac=20.0;
+            const float_type fac=30.0;
             const float_type shift = pct;
             const float_type c = 1-(0.5 + 0.5 * tanh(fac*(1-shift)));
 
@@ -284,7 +284,7 @@ struct Operator
                 {
 
                     auto it2=it->neighbor(ngb_idx);
-                    if ((!it2 || !it2->has_data()) || (leaf_only_boundary && (it2->is_correction() || it2->is_old_correction() )))
+                    if ((!it2 || !it2->has_data()) || (leaf_only_boundary && (it2->is_correction() )))
                     {
                             //domain::Operator::smooth2zero<F>( it->data(), i);
                         const std::size_t dim = 3;
@@ -410,7 +410,7 @@ struct Operator
 
             for (std::size_t field_idx=0; field_idx<U::nFields(); field_idx++)
             {
-                decltype(ib_coord) off(0.5); off[field_idx] = 0.0; // face data location
+                decltype(ib_coord) off({0.5,0.5,0.5}); off[field_idx] = 0.0; // face data location
                 node(u, field_idx) += f[field_idx] * ddf(dist+off) * factor;
             }
         }

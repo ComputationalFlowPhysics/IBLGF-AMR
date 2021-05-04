@@ -64,11 +64,11 @@ class IB
         dx_base_ = dx_base;
         dx_ib_ = dx_base/pow(2,IBlevel_);
 
-        read_points();
+        read_points(d);
 
         // will add more, default is yang4
         ddf_radius_ = 2.0;
-        safety_dis_ = 5.0/(Re*dx_ib_)+1.0;
+        safety_dis_ = 5.0/(Re*dx_ib_)+2.0;
 
         std::function<float_type(float_type x)> delta_func_1d_ =
             [this](float_type x) { return this->yang3(x); };
@@ -91,7 +91,8 @@ class IB
             f.resize(coordinates_.size(), real_coordinate_type((float_type)0));
     }
 
-    void read_points()
+    template<class DictionaryPtr>
+    void read_points(DictionaryPtr d)
     {
         //coordinates_.emplace_back(real_coordinate_type({0.01, 0.01, 0.01}));
 
@@ -103,14 +104,12 @@ class IB
             //int        nx = 2;
             int        nx = int(L/dx_base_/ibph_*pow(2,IBlevel_));
             int        ny = nx*2;
-
+            float_type angle = d->template get_or<float_type>("AoA", M_PI/6);
 
             for (int ix = 0; ix < nx; ++ix)
                 for (int iy = 0; iy < ny; ++iy)
                 {
                     float_type w = (ix * L)/(nx-1)- L/2.0;
-                    float_type angle = M_PI/6;
-
                     coordinates_.emplace_back(
                             real_coordinate_type(
                                 { w * std::cos(angle), (iy * Ly) / (ny-1) - Ly/2.0, -w * std::sin(angle) }));

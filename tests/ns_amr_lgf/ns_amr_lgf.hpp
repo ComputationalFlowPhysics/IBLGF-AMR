@@ -184,6 +184,9 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
         source_max_ = simulation_.dictionary_->template get_or<float_type>(
             "source_max", 1.0);
 
+        use_weighted_threshold_ = simulation_.dictionary_->template get_or<bool>(
+            "use_weighted_threshold", false);
+
         refinement_factor_ = simulation_.dictionary_->template get<float_type>(
             "refinement_factor");
 
@@ -420,12 +423,18 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
         if (l_aim>hard_max_level_)
             l_aim=hard_max_level_;
 
+        // ----------------------------------------------------------------
+        //
         if (it->refinement_level()==0 && use_base_level_threshold)
         {
-            if (field_max>source_max*base_threshold_)
+            const float_type dx_base = domain_->dx_base();
+            float_type dis = norm2(it->global_coordinate())*dx_base;
+            float_type inv_weight = use_weighted_threshold_ ? std::max( 1.0, dis ) : 1.0;
+
+            if (field_max>source_max*base_threshold_*inv_weight)
                 l_aim = std::max(l_aim,0);
 
-            if (field_max>source_max*base_threshold_*deletion_factor)
+            if (field_max>source_max*base_threshold_*deletion_factor*inv_weight)
                 l_delete_aim = std::max(l_delete_aim,0);
         }
 
@@ -812,6 +821,8 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
     float_type cfl_;
     float_type Re_;
     int tot_steps_;
+
+    bool use_weighted_threshold_=false;
     float_type refinement_factor_=1./8;
     float_type base_threshold_;
 

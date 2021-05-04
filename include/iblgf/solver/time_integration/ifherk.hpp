@@ -90,7 +90,7 @@ class Ifherk
         max_ref_level_ =
             _simulation->dictionary()->template get<float_type>("nLevels");
         cfl_ =
-            _simulation->dictionary()->template get_or<float_type>("cfl", 0.2);
+            _simulation->dictionary()->template get_or<float_type>("cfl", 0.5);
         dt_base_ =
             _simulation->dictionary()->template get_or<float_type>("dt", -1.0);
         tot_base_steps_ =
@@ -104,7 +104,7 @@ class Ifherk
             "updating_source_max", true);
         use_present_source_max_ = _simulation->dictionary()->template get_or<bool>(
             "use_present_source_max", true);
-
+        use_adapt_ = _simulation->dictionary()->template get_or<bool>("use_adapt", true);
 
 
         if (dt_base_ < 0) dt_base_ = dx_base_ * cfl_;
@@ -183,7 +183,7 @@ class Ifherk
         else
         {
             T_ = 0.0;
-            adapt_count_=-1;
+            adapt_count_=0;
             write_timestep();
         }
 
@@ -217,7 +217,7 @@ class Ifherk
                 it->flag_old_correction(it->is_correction());
             }
 
-            if ( adapt_count_ % adapt_freq_ ==0)
+            if ( use_adapt_ && adapt_count_ % adapt_freq_ ==0)
             {
                 if (adapt_count_==0 || updating_source_max_)
                 {
@@ -520,8 +520,8 @@ class Ifherk
         if (source_max_[0]<1e-10 || source_max_[1]<1e-10) return;
 
         //adaptation neglect the boundary oscillations
-        clean_leaf_correction_boundary<cell_aux_type>(domain_->tree()->base_level(),true,0.6);
-        clean_leaf_correction_boundary<edge_aux_type>(domain_->tree()->base_level(),true,0.6);
+        clean_leaf_correction_boundary<cell_aux_type>(domain_->tree()->base_level(),true,0.3);
+        clean_leaf_correction_boundary<edge_aux_type>(domain_->tree()->base_level(),true,0.3);
 
         world.barrier();
 
@@ -751,7 +751,7 @@ class Ifherk
             if (!it->has_data() || !it->data().is_allocated()) continue;
 
             //if (leaf_only_boundary && (it->is_correction() || it->is_old_correction() ))
-            if (leaf_only_boundary && (it->is_correction() || it->is_old_correction() ))
+            if (leaf_only_boundary && (it->is_correction()))
             {
                 for (std::size_t field_idx = 0; field_idx < F::nFields();
                      ++field_idx)
@@ -912,7 +912,7 @@ private:
         }
 
         //clean<Velocity_out>();
-        clean_leaf_correction_boundary<edge_aux_type>(domain_->tree()->base_level(), true, 0.3);
+        clean_leaf_correction_boundary<edge_aux_type>(domain_->tree()->base_level(), true, 0.7);
         //clean_leaf_correction_boundary<edge_aux_type>(l, false,2+stage_idx_);
         psolver.template apply_lgf<edge_aux_type, stream_f_type>(MASK_TYPE::STREAM);
 
@@ -1020,7 +1020,7 @@ private:
             }
 
             //client->template buffer_exchange<Target>(l);
-            clean_leaf_correction_boundary<Target>(l, true, 2);
+            clean_leaf_correction_boundary<Target>(l, true, 0.2);
             //clean_leaf_correction_boundary<Target>(l, false,4+stage_idx_);
         }
     }
@@ -1122,6 +1122,7 @@ private:
     int nLevelRefinement_;
     int stage_idx_ = 0;
 
+    bool use_adapt_=true;
     bool use_restart_=false;
     bool just_restarted_=false;
     bool write_restart_=false;

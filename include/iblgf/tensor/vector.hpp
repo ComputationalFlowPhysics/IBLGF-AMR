@@ -316,7 +316,7 @@ template<typename U, std::size_t N>
 U
 norm2(const vector<U, N>& v)
 {
-    return dot(v, v);
+    return sqrt(dot(v, v));
 }
 
 template<typename U, std::size_t N>

@@ -298,6 +298,7 @@ class LinSysSolver
     void smearing(ForceType& f, bool cleaning=true)
     {
 
+        ib_->clean_non_local();
         ib_->communicator().communicate(true, f);
 
         //cleaning

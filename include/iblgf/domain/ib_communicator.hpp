@@ -52,8 +52,6 @@ class ib_communicator
     , ghost_indices_(comm_.size())
     , locally_owned_data_(comm_.size())
     , ghost_data_(comm_.size())
-    , send_reqs_(comm_.size())
-    , recv_reqs_(comm_.size())
     {
     }
 
@@ -102,15 +100,11 @@ class ib_communicator
         ghost_indices_.clear();
         locally_owned_data_.clear();
         ghost_data_.clear();
-        send_reqs_.clear();
-        recv_reqs_.clear();
 
         locally_owned_indices_.resize(comm_.size());
         ghost_indices_.resize(comm_.size());
         locally_owned_data_.resize(comm_.size());
         ghost_data_.resize(comm_.size());
-        send_reqs_.resize(comm_.size());
-        recv_reqs_.resize(comm_.size());
     }
 
     /**@brief Pack all messages, start send/recvs and store requests.
@@ -129,6 +123,8 @@ class ib_communicator
         auto& recv_data =
             send_locally_owned ? ghost_data_ : locally_owned_data_;
 
+        reqs.clear();
+
         //MPI tag is the sending rank
         const auto my_rank = comm_.rank();
         for (int rank_other = 1; rank_other < comm_.size(); ++rank_other)
@@ -136,14 +132,14 @@ class ib_communicator
             if (!send_indices[rank_other].empty())
             {
                 //dest=rank_other
-                send_reqs_[rank_other] =
-                    comm_.isend(rank_other, my_rank, send_data[rank_other]);
+                reqs.emplace_back(
+                    comm_.isend(rank_other, my_rank, send_data[rank_other]));
             }
             if (!recv_indices[rank_other].empty())
             {
                 //source=rank_other
-                recv_reqs_[rank_other] =
-                    comm_.irecv(rank_other, rank_other, recv_data[rank_other]);
+                reqs.emplace_back(
+                    comm_.irecv(rank_other, rank_other, recv_data[rank_other]));
             }
         }
     }
@@ -154,8 +150,7 @@ class ib_communicator
     template <class VecType>
     void finish_communication(bool send_locally_owned, VecType& f)
     {
-        boost::mpi::wait_all(send_reqs_.begin() + 1, send_reqs_.end());
-        boost::mpi::wait_all(recv_reqs_.begin() + 1, recv_reqs_.end());
+        boost::mpi::wait_all(reqs.begin(), reqs.end());
         this->unpack_messages(send_locally_owned, f);
     }
 
@@ -226,8 +221,7 @@ class ib_communicator
     std::vector<std::vector<real_coordinate_type>> locally_owned_data_;
     std::vector<std::vector<real_coordinate_type>> ghost_data_;
 
-    std::vector<boost::mpi::request> send_reqs_;
-    std::vector<boost::mpi::request> recv_reqs_;
+    std::vector<boost::mpi::request> reqs;
 };
 
 } // namespace ib

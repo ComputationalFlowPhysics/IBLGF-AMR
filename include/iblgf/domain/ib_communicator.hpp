@@ -70,22 +70,22 @@ class ib_communicator
         this->clear();
         for (std::size_t i = 0; i < ib_->size(); ++i)
         {
-            if (ib_->rank(i) == my_rank)
+            if (ib_->locally_owned(i))
             {
                 std::set<int> unique_inflRanks;
                 for (auto& infl_block : ib_->influence_list(i))
                 {
-                    if (infl_block->rank() != my_rank)
+                    if (!infl_block->locally_owned())
                     { unique_inflRanks.insert(infl_block->rank()); }
                 }
                 for (auto& ur : unique_inflRanks)
                 { locally_owned_indices_[ur].push_back(i); }
             }
-            else
+            else if (ib_->rank(i)>0)
             {
                 for (auto& infl_block : ib_->influence_list(i))
                 {
-                    if (infl_block->rank() == my_rank)
+                    if (infl_block->locally_owned())
                     {
                         ghost_indices_[ib_->rank(i)].push_back(i);
                         break;
@@ -131,7 +131,7 @@ class ib_communicator
 
         //MPI tag is the sending rank
         const auto my_rank = comm_.rank();
-        for (int rank_other = 0; rank_other < comm_.size(); ++rank_other)
+        for (int rank_other = 1; rank_other < comm_.size(); ++rank_other)
         {
             if (!send_indices[rank_other].empty())
             {

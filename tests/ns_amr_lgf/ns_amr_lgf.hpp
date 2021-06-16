@@ -60,13 +60,13 @@ struct parameters
     Dim,
      (
         //name               type        Dim   lBuffer  hBuffer, storage type
-         //(error_u          , float_type, 3,    1,       1,     face,true ),
-         //(error_p          , float_type, 1,    1,       1,     cell,true ),
-         //(decomposition    , float_type, 1,    1,       1,     cell,false ),
+         (error_u          , float_type, 3,    1,       1,     face,true ),
+         (error_p          , float_type, 1,    1,       1,     cell,true ),
+         (test             , float_type, 1,    1,       1,     cell,true ),
         //IF-HERK
          (u                , float_type, 3,    1,       1,     face,true ),
-         //(u_ref            , float_type, 3,    1,       1,     face,true ),
-         //(p_ref            , float_type, 1,    1,       1,     cell,false ),
+         (u_ref            , float_type, 3,    1,       1,     face,true ),
+         (p_ref            , float_type, 1,    1,       1,     cell,false ),
          (p                , float_type, 1,    1,       1,     cell,true )
     ))
     // clang-format on
@@ -291,60 +291,26 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 
 
         return 0.0;
-        //if (ref_filename_!="null")
-        //{
-        //    simulation_.template read_h5<u_ref_type>(ref_filename_, "u");
-        //    simulation_.template read_h5<p_ref_type>(ref_filename_, "p");
+        if (ref_filename_!="null")
+        {
+            simulation_.template read_h5<u_ref_type>(ref_filename_, "u");
+            simulation_.template read_h5<p_ref_type>(ref_filename_, "p");
+        }
 
-        //    auto center = (domain_->bounding_box().max() -
-        //            domain_->bounding_box().min()+1) / 2.0 +
-        //            domain_->bounding_box().min();
+        ifherk.clean_leaf_correction_boundary<u_type>(domain_->tree()->base_level(),true,1);
 
+        this->compute_errors<u_type, u_ref_type, error_u_type>(
+                std::string("u1_"), 0);
+        this->compute_errors<u_type, u_ref_type, error_u_type>(
+                std::string("u2_"), 1);
+        float_type u3_linf=this->compute_errors<u_type, u_ref_type, error_u_type>(
+                std::string("u3_"), 2);
 
-        //    //for (auto it  = domain_->begin_leaves();
-        //    //        it != domain_->end_leaves(); ++it)
-        //    //{
-        //    //    if(!it->locally_owned()) continue;
+        float_type p_linf=this->compute_errors<p_type, p_ref_type, error_p_type>(
+                std::string("p_"), 0);
 
-        //    //    auto dx_level =  domain_->dx_base()/std::pow(2,it->refinement_level());
-        //    //    auto scaling =  std::pow(2,it->refinement_level());
-
-        //    //    for (auto& node : it->data())
-        //    //    {
-        //    //        const auto& coord = node.level_coordinate();
-        //    //        float_type x = static_cast<float_type>
-        //    //            (coord[0]-center[0]*scaling)*dx_level;
-        //    //        float_type y = static_cast<float_type>
-        //    //            (coord[1]-center[1]*scaling)*dx_level;
-        //    //        float_type z = static_cast<float_type>
-        //    //            (coord[2]-center[2]*scaling)*dx_level;
-
-        //    //        float_type r2 = x*x+y*y;
-        //    //        if (std::fabs(z)>R_ || r2>4*R_*R_)
-        //    //        {
-        //    //            node(u_ref, 0)=0.0;
-        //    //            node(u_ref, 1)=0.0;
-        //    //            node(u_ref, 2)=0.0;
-        //    //        }
-        //    //    }
-
-        //    //}
-        //}
-
-        //ifherk.clean_leaf_correction_boundary<u_type>(domain_->tree()->base_level(),true,1);
-
-        //this->compute_errors<u_type, u_ref_type, error_u_type>(
-        //        std::string("u1_"), 0);
-        //this->compute_errors<u_type, u_ref_type, error_u_type>(
-        //        std::string("u2_"), 1);
-        //float_type u3_linf=this->compute_errors<u_type, u_ref_type, error_u_type>(
-        //        std::string("u3_"), 2);
-
-        //float_type p_linf=this->compute_errors<p_type, p_ref_type, error_p_type>(
-        //        std::string("p_"), 0);
-
-        //simulation_.write("final.hdf5");
-        //return u3_linf;
+        simulation_.write("final.hdf5");
+        return u3_linf;
     }
 
     template< class key_t >

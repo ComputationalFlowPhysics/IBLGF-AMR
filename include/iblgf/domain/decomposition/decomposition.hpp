@@ -108,7 +108,10 @@ public: //memeber functions
 
             // update ib infl list
             client()->update_ib_rank_and_infl();
+
+            domain_->ib().communicator().compute_indices();
         }
+
     }
 
 
@@ -179,11 +182,11 @@ public: //memeber functions
             // --------------------------------------------------------------
             // mark correction to be deleted
 
+            //server()->update_ib_flag();
             for (auto it = domain_->begin(); it != domain_->end(); ++it)
             {
-                if (!it->has_data()) continue;
 
-                if (it->is_correction() )
+                if (it->is_correction() && !it->is_ib() )
                     it->aim_deletion(true);
                 else
                     it->aim_deletion(false);
@@ -222,8 +225,7 @@ public: //memeber functions
                 {
                     if (l_change<0)
                     {
-                        if (!it->is_ib())
-                            it->aim_deletion(true);
+                        it->aim_deletion(true);
                     }
                     else
                     {
@@ -238,6 +240,19 @@ public: //memeber functions
                     }
                 }
             }
+
+            int cib=0;
+            for (auto it = domain_->begin_leaves(); it != domain_->end_leaves(); ++it)
+            {
+
+                if (it->is_ib() || it->is_extended_ib())
+                {
+                    it->aim_deletion(false);
+                    cib +=1;
+                }
+
+            }
+            std::cout<< "Total ib blocks = " << cib << std::endl;
 
             // Unmark deletion distance_N blocks from the solution domain
             std::unordered_set<key_t> listNBlockAway;
@@ -314,15 +329,18 @@ public: //memeber functions
             domain_->tree()->construct_level_maps();
 
             // Base level
+            int c =0;
             for (auto it = domain_->begin(base_level);
                     it != domain_->end(base_level); ++it)
             {
                 if (it->aim_deletion() && it->is_leaf())
                 {
+                    c+=1;
                     deletion[it->rank()].emplace_back(it->key());
                     domain_->tree()->delete_oct(it.ptr());
                 }
             }
+            std::cout<< " deleting blocks # = " << c << std::endl;
 
             domain_->tree()->construct_level_maps();
             domain_->delete_all_children(deletion);

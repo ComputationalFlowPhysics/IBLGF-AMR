@@ -59,6 +59,8 @@ class Ifherk
     //FMM
     using Fmm_t = typename Setup::Fmm_t;
 
+    using test_type = typename Setup::test_type;
+
     using u_type = typename Setup::u_type;
     using stream_f_type = typename Setup::stream_f_type;
     using p_type = typename Setup::p_type;
@@ -102,6 +104,8 @@ class Ifherk
             "cfl_max", 1000);
         updating_source_max_ = _simulation->dictionary()->template get_or<bool>(
             "updating_source_max", true);
+        all_time_max_ = _simulation->dictionary()->template get_or<bool>(
+            "all_time_max", true);
 
 
         if (dt_base_ < 0) dt_base_ = dx_base_ * cfl_;
@@ -181,6 +185,7 @@ class Ifherk
         {
             T_ = 0.0;
             adapt_count_=0;
+
             write_timestep();
         }
 
@@ -188,6 +193,7 @@ class Ifherk
 
         while(T_<T_max_-1e-10)
         {
+
 
             // -------------------------------------------------------------
             // adapt
@@ -199,6 +205,16 @@ class Ifherk
                 clean<cell_aux_type>(true, 2);
                 clean<edge_aux_type>(true, 1);
                 clean<correction_tmp_type>(true, 2);
+            }
+            else
+            {
+            auto lb = domain_->level_blocks();
+                std::cout<<"Blocks on each level: ";
+
+                for (int c: lb)
+                    std::cout<< c << " ";
+                std::cout<<std::endl;
+
             }
 
             // copy flag correction to flag old correction
@@ -213,6 +229,27 @@ class Ifherk
             {
                 it->flag_old_correction(it->is_correction());
             }
+
+            int c=0;
+
+            for (auto it = domain_->begin(); it != domain_->end(); ++it)
+            {
+                if (!it->locally_owned()) continue;
+                if (it->is_ib() || it->is_extended_ib())
+                {
+                    auto& lin_data =
+                        it->data_r(test_type::tag(), 0).linalg_data();
+                    std::fill(lin_data.begin(), lin_data.end(), 2.0);
+                    c+=1;
+                }
+
+            }
+            boost::mpi::communicator world;
+            int c_all;
+            boost::mpi::all_reduce(
+                world, c, c_all, std::plus<int>());
+            pcout<< "block = " << c_all << std::endl;
+
 
             if ( adapt_count_ % adapt_freq_ ==0)
             {
@@ -237,14 +274,13 @@ class Ifherk
             if ( adapt_count_ % adapt_freq_ ==0)
             {
                 clean<u_type>(true);
-                domain_->decomposition().template balance<u_type,p_type>();
+                //domain_->decomposition().template balance<u_type,p_type>();
             }
 
             adapt_count_++;
 
             // -------------------------------------------------------------
             // time marching
-            domain_->ib().communicator().compute_indices();
 
             mDuration_type ifherk_if(0);
             TIME_CODE( ifherk_if, SINGLE_ARG(
@@ -269,6 +305,14 @@ class Ifherk
             if ((std::fabs(tmp_int_n - tmp_n) < 1e-4) &&
                 (tmp_int_n % output_base_freq_ == 0))
             {
+                //test
+                //
+
+                //clean<test_type>();
+                //auto f = [](std::size_t idx, float_type t, auto coord = {0, 0, 0}){return 1.0;};
+                //domain::Operator::add_field_expression<test_type>(domain_, f, T_, 1.0);
+                //clean_leaf_correction_boundary<test_type>(domain_->tree()->base_level(),true,2);
+
                 n_step_ = tmp_int_n;
                 write_timestep();
                 // only update dt after 1 output so it wouldn't do 3 5 7 9 ...
@@ -339,7 +383,16 @@ class Ifherk
         boost::mpi::all_reduce(
             comm_, max_local, new_maximum, boost::mpi::maximum<float_type>());
 
-        source_max_[idx] = std::max(source_max_[idx], new_maximum);
+        //source_max_[idx] = std::max(source_max_[idx], new_maximum);
+        if (all_time_max_)
+            source_max_[idx] = std::max(source_max_[idx], new_maximum);
+        else
+            source_max_[idx] = 0.5*( source_max_[idx] + new_maximum );
+
+        if (source_max_[idx]< 1e-2)
+            source_max_[idx] = 1e-2;
+
+        pcout << "source max = "<< source_max_[idx] << std::endl;
     }
 
     void write_restart()
@@ -375,6 +428,13 @@ class Ifherk
         if (domain_->is_server())
         {
             std::cout<<"T = " << T_<<", n = "<< tmp_n << " -----------------" << std::endl;
+            auto lb = domain_->level_blocks();
+            std::cout<<"Blocks on each level: ";
+
+            for (int c: lb)
+                std::cout<< c << " ";
+            std::cout<<std::endl;
+
             std::cout<<"Total number of leaf octants: "<<domain_->num_leafs()<<std::endl;
             std::cout<<"Total number of leaf + correction octants: "<<domain_->num_corrections()+domain_->num_leafs()<<std::endl;
             std::cout<<"Total number of allocated octants: "<<c_allc_global<<std::endl;
@@ -570,6 +630,7 @@ class Ifherk
                     if (    base_mesh_update_ ||
                             ((T_-T_last_vel_refresh_)/(Re_*dx_base_*dx_base_) * 3.3>7))
                     {
+                        pcout<< "pad_velocity, last T_vel_refresh = "<<T_last_vel_refresh_<< std::endl;
                         T_last_vel_refresh_=T_;
                         if (!domain_->is_client())
                             return;
@@ -590,7 +651,7 @@ class Ifherk
         // Stage 1
         // ******************************************************************
         pcout << "Stage 1" << std::endl;
-        T_stage_ += dt_*alpha_[0];
+        T_stage_ = T_ + dt_*c_[0];
         stage_idx_ = 1;
         clean<g_i_type>();
         clean<d_i_type>();
@@ -606,7 +667,7 @@ class Ifherk
         // Stage 2
         // ******************************************************************
         pcout << "Stage 2" << std::endl;
-        T_stage_ += dt_*alpha_[1];
+        T_stage_ = T_ + dt_*c_[1];
         stage_idx_ = 2;
         clean<r_i_type>();
         clean<d_i_type>();
@@ -634,7 +695,7 @@ class Ifherk
         // Stage 3
         // ******************************************************************
         pcout << "Stage 3" << std::endl;
-        T_stage_ += dt_*alpha_[2];
+        T_stage_ = T_ + dt_*c_[2];
         stage_idx_ = 3;
         clean<d_i_type>();
         clean<cell_aux_type>();
@@ -751,7 +812,7 @@ class Ifherk
                 {
                     for (std::size_t field_idx=0; field_idx<F::nFields(); ++field_idx)
                     {
-                        domain::Operator::smooth2zero<edge_aux_type>( it->data(), i);
+                        domain::Operator::smooth2zero<F>( it->data(), i);
                     }
                 }
             }
@@ -947,7 +1008,7 @@ private:
             }
         }
 
-        clean_leaf_correction_boundary<edge_aux_type>(domain_->tree()->base_level(), true, 2);
+        //clean_leaf_correction_boundary<edge_aux_type>(domain_->tree()->base_level(), true, 2);
         // add background velocity
         copy<Source, face_aux_type>();
         domain::Operator::add_field_expression<face_aux_type>(domain_, simulation_->frame_vel(), T_stage_, -1.0);
@@ -975,7 +1036,7 @@ private:
             }
 
             //client->template buffer_exchange<Target>(l);
-            clean_leaf_correction_boundary<Target>(l, true,3);
+            //clean_leaf_correction_boundary<Target>(l, true,3);
         }
     }
 
@@ -1108,6 +1169,7 @@ private:
     bool just_restarted_=false;
     bool write_restart_=false;
     bool updating_source_max_ = false;
+    bool all_time_max_;
     int restart_base_freq_;
     int adapt_count_;
 

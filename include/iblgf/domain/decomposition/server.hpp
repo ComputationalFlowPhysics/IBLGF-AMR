@@ -558,8 +558,6 @@ class Server : public ServerBase<ServerClientTraits<Domain>>
         auto& ib = domain_->ib();
         for (std::size_t i=0; i<ib.size(); ++i)
         {
-            ib.rank(i)=-1;
-            ib.influence_list(i).clear();
 
             for (auto it  = domain_->begin(l_max);
                     it != domain_->end(l_max); ++it)
@@ -575,7 +573,18 @@ class Server : public ServerBase<ServerClientTraits<Domain>>
                 }
             }
         }
+        int c=0;
 
+        for (auto it  = domain_->begin_leaves();
+                it != domain_->end_leaves(); ++it)
+        {
+                if ( !it->has_data() )
+                    continue;
+                if (it->is_ib() || it->is_extended_ib())
+                    c+=1;
+
+        }
+        std::cout<< "total IB blocks = " << c<< std::endl;
     }
 
 

@@ -716,6 +716,20 @@ class Domain
     auto begin(int _level) { return t_->begin(_level); }
     auto end(int _level) { return t_->end(_level); }
 
+    auto level_blocks()
+    {
+
+        int nLevels = this->tree()->depth() - this->tree()->base_level();
+        std::vector<int> c(nLevels);
+        for (auto it = this->begin(); it != this->end(); ++it)
+        {
+            if (it->has_data())
+                    c[it->refinement_level()]+=1;
+        }
+
+        return c;
+    }
+
     int num_corrections()
     {
         int c = 0;

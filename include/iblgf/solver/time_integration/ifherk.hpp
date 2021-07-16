@@ -208,12 +208,12 @@ class Ifherk
             }
             else
             {
-            auto lb = domain_->level_blocks();
+            /*auto lb = domain_->level_blocks();
                 std::cout<<"Blocks on each level: ";
 
                 for (int c: lb)
                     std::cout<< c << " ";
-                std::cout<<std::endl;
+                std::cout<<std::endl;*/
 
             }
 
@@ -428,12 +428,12 @@ class Ifherk
         if (domain_->is_server())
         {
             std::cout<<"T = " << T_<<", n = "<< tmp_n << " -----------------" << std::endl;
-            auto lb = domain_->level_blocks();
+            /*auto lb = domain_->level_blocks();
             std::cout<<"Blocks on each level: ";
 
             for (int c: lb)
                 std::cout<< c << " ";
-            std::cout<<std::endl;
+            std::cout<<std::endl;*/
 
             std::cout<<"Total number of leaf octants: "<<domain_->num_leafs()<<std::endl;
             std::cout<<"Total number of leaf + correction octants: "<<domain_->num_corrections()+domain_->num_leafs()<<std::endl;

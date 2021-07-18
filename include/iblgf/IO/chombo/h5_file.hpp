@@ -416,12 +416,25 @@ class hdf5_file
         //TODO : somehow the direct conversion doesn't work
         for (int i = 0; i < static_cast<int>(dims[0]); ++i)
         {
-            vec_box[i] = BlockDescriptor(std::array<int, NumDims>({data[i].lo_i,
-                                             data[i].lo_j, data[i].lo_k}),
-                std::array<int, NumDims>({data[i].hi_i - data[i].lo_i + 1,
-                    data[i].hi_j - data[i].lo_j + 1,
-                    data[i].hi_k - data[i].lo_k + 1}),
-                fake_level);
+	    std::array<int, NumDims> coord0;
+	    std::array<int, NumDims> coord1;
+	    if (NumDims == 3) {
+	    	std::array<int , 3> tmp0 ={data[i].lo_i,    data[i].lo_j,     data[i].lo_k};
+		std::array<int , 3> tmp1 ={data[i].lo_i + 1,data[i].lo_j + 1, data[i].lo_k + 1};
+	    	for (int tmp_i = 0; tmp_i < NumDims; tmp_i++) {
+	    	    coord0[tmp_i]=tmp0[tmp_i];
+		    coord1[tmp_i]=tmp1[tmp_i];
+	    	}
+	    }
+	    else if (NumDims == 2){
+	    	std::array<int , 2> tmp0 ={data[i].lo_i,    data[i].lo_j};
+		std::array<int , 2> tmp1 ={data[i].lo_i + 1,data[i].lo_j + 1};
+	    	for (int tmp_i = 0; tmp_i < NumDims; tmp_i++) {
+	    	    coord0[tmp_i]=tmp0[tmp_i];
+		    coord1[tmp_i]=tmp1[tmp_i];
+	    	}
+	    }
+            vec_box[i] = BlockDescriptor(coord0,coord1,fake_level);
         }
         return vec_box;
     }

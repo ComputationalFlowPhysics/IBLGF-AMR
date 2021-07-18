@@ -730,6 +730,28 @@ class Domain
         return c;
     }
 
+    void level_blocks(std::vector<int> &Target) {
+
+        int nLevels = this->tree()->depth() - this->tree()->base_level();
+    	Target.resize(nLevels);
+	std::cout << 1 << std::endl;
+        //std::vector<int> c(nLevels);
+	std::fill(Target.begin(), Target.end(), 0);
+	std::cout << 2 << std::endl;
+        for (auto it = this->begin(); it != this->end(); ++it)
+        {
+            if (it->has_data())
+                    Target[it->refinement_level()]+=1;
+        }
+	std::cout << 3;
+	/*for (int i = 0; i < nLevels;i++) {
+	    std::cout << " " << i;
+	    Target[i] = c[i];
+	}*/
+	//std::copy(c.begin(), c.end(), Target.begin());
+	std::cout << " end" << std::endl;
+    }
+
     int num_corrections()
     {
         int c = 0;

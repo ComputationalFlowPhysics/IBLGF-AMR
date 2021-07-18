@@ -208,12 +208,15 @@ class Ifherk
             }
             else
             {
-            /*auto lb = domain_->level_blocks();
+                //const auto& lb = domain_->level_blocks();
+		/*std::vector<int> lb;
+		domain_->level_blocks(lb);
                 std::cout<<"Blocks on each level: ";
 
                 for (int c: lb)
                     std::cout<< c << " ";
-                std::cout<<std::endl;*/
+                std::cout<<std::endl;
+		lb.clear();*/
 
             }
 
@@ -428,7 +431,7 @@ class Ifherk
         if (domain_->is_server())
         {
             std::cout<<"T = " << T_<<", n = "<< tmp_n << " -----------------" << std::endl;
-            /*auto lb = domain_->level_blocks();
+            /*const auto& lb = domain_->level_blocks();
             std::cout<<"Blocks on each level: ";
 
             for (int c: lb)

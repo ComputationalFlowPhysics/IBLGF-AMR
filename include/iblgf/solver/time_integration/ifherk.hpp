@@ -208,7 +208,7 @@ class Ifherk
             }
             else
             {
-            auto lb = domain_->level_blocks();
+                auto lb = domain_->level_blocks();
                 std::cout<<"Blocks on each level: ";
 
                 for (int c: lb)
@@ -428,6 +428,7 @@ class Ifherk
         if (domain_->is_server())
         {
             std::cout<<"T = " << T_<<", n = "<< tmp_n << " -----------------" << std::endl;
+
             auto lb = domain_->level_blocks();
             std::cout<<"Blocks on each level: ";
 
@@ -447,24 +448,31 @@ class Ifherk
         ib.clean_non_local();
 
         force_type sum_f(ib.force().size(), (0.,0.,0.));
-        boost::mpi::all_reduce(
-                world, &ib.force(0), ib.size(), &sum_f[0], std::plus<real_coordinate_type>());
-
+        if (ib.size() > 0)
+        {
+            boost::mpi::all_reduce(world, &ib.force(0), ib.size(), &sum_f[0],
+                std::plus<real_coordinate_type>());
+        }
         if (domain_->is_server())
         {
             std::vector<float_type> f(domain_->dimension(), 0.);
-            for (std::size_t d=0; d<domain_->dimension(); ++d)
-                for (std::size_t i=0; i<ib.size(); ++i)
-                    f[d]+=sum_f[i][d] * 1.0 / coeff_a(3, 3) / dt_ * ib.force_scale();
-                    //f[d]+=sum_f[i][d] * 1.0 / dt_ * ib.force_scale();
+            if (ib.size() > 0)
+            {
+                for (std::size_t d = 0; d < domain_->dimension(); ++d)
+                    for (std::size_t i = 0; i < ib.size(); ++i)
+                        f[d] += sum_f[i][d] * 1.0 / coeff_a(3, 3) / dt_ *
+                                ib.force_scale();
+                //f[d]+=sum_f[i][d] * 1.0 / dt_ * ib.force_scale();
 
-            std::cout<<"Forcing = ";
+                std::cout<<"ib  size: "<<ib.size()<<std::endl;
+                std::cout << "Forcing = ";
 
-            for (std::size_t d=0; d<domain_->dimension(); ++d)
-                std::cout<<f[d]<<" ";
-            std::cout<<std::endl;
+                for (std::size_t d = 0; d < domain_->dimension(); ++d)
+                    std::cout << f[d] << " ";
+                std::cout << std::endl;
 
-            std::cout<<" -----------------" << std::endl;
+                std::cout << " -----------------" << std::endl;
+            }
 
             std::ofstream outfile;
             int width=20;

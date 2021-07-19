@@ -723,8 +723,10 @@ class Domain
         std::vector<int> c(nLevels);
         for (auto it = this->begin(); it != this->end(); ++it)
         {
-            if (it->has_data())
+            if ( it->has_data() && it->refinement_level()>=0 )
+            {
                     c[it->refinement_level()]+=1;
+            }
         }
 
         return c;

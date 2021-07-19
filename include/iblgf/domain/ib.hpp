@@ -58,7 +58,7 @@ class IB
     {
 
         ibph_ = d->template get_or<float_type>("ibph", 1.5);
-        geometry_ = d->template get_or<std::string>("geometry", "plate");
+        geometry_ = d->template get_or<std::string>("geometry", "none");
 
         IBlevel_ = level;
         dx_base_ = dx_base;
@@ -133,6 +133,10 @@ class IB
                 float_type theta = 2*M_PI * x / lambda;
                 coordinates_.emplace_back( real_coordinate_type({R*cos(theta)*sin(phi), R*sin(theta)*sin(phi), R*cos(phi)}));
             }
+        }
+        else if(geometry_=="none")
+        {
+
         }
         else
         {

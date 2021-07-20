@@ -80,9 +80,16 @@ class node
         return (*c_)(_tag, level_coordinate_ + _offset ,_idx);
     }
     template<class Tag>
-    auto& at_offset(Tag _tag, int _i, int _j, int _k, int _idx=0) noexcept
+    auto& at_offset(Tag _tag, int _i, int _j, int _k = 0, int _idx=0) noexcept
     {
-        return (*c_)(_tag,level_coordinate_ + coordinate_type({_i, _j, _k}), _idx);
+	int Dim = level_coordinate_.size();
+	std::vector<int> tmp = {_i,_j,_k};
+	coordinate_type add_coord;
+	for (int l = 0; l < Dim; l++) {
+	    add_coord[l] = tmp[l];
+	}
+        if (Dim == 3) return (*c_)(_tag,level_coordinate_ + add_coord, _idx);
+	else return (*c_)(_tag,level_coordinate_ + add_coord, _k);
     }
     /************************************************************************/
 
@@ -145,9 +152,16 @@ class node
     {
         coordinate_type res;
         const auto      e = c_->bounding_box().extent();
-        res[2] = index_ / (e[0] * e[1]);
-        res[1] = (index_ - res[2] * e[0] * e[1]) / e[0];
-        res[0] = (index_ - res[2] * e[0] * e[1] - res[1] * e[0]);
+	int Dim = level_coordinate_.size();
+	if (Dim == 3) {
+            res[2] = index_ / (e[0] * e[1]);
+	    res[1] = (index_ - res[2] * e[0] * e[1]) / e[0];
+	    res[0] = (index_ - res[2] * e[0] * e[1] - res[1] * e[0]);
+	}
+	else {
+	    res[1] = index_ / e[0];
+	    res[0] = (index_ - res[1] * e[0]);
+	}
         res += c_->bounding_box().base();
         return res;
     }

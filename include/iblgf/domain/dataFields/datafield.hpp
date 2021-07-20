@@ -75,9 +75,14 @@ class DataField : public BlockDescriptor<int, Dim>
     , lowBuffer_(rhs.lowBuffer_)
     , highBuffer_(rhs.highBuffer_)
     , real_block_(rhs.real_block_)
-    , cube_(std::make_unique<linalg::Cube_t>(&data_[0], real_block_.extent()[0],
-          real_block_.extent()[1], real_block_.extent()[2]))
+    /*, cube_(std::make_unique<linalg::Cube_t>(&data_[0], real_block_.extent()[0],
+          real_block_.extent()[1], real_block_.extent()[2]))*/
     {
+	if (Dim == 2) { 
+	    cube_ = std::make_unique<linalg::Cube_t>(&data_[0], real_block_.extent()[0],real_block_.extent()[1]);
+	} else {
+	    cube_ = std::make_unique<linalg::Cube_t>(&data_[0], real_block_.extent()[0],real_block_.extent()[1], real_block_.extent()[2]);
+	}
     }
 
     DataField& operator=(const DataField& _other)
@@ -87,9 +92,11 @@ class DataField : public BlockDescriptor<int, Dim>
         lowBuffer_ = _other.lowBuffer_;
         highBuffer_ = _other.highBuffer_;
         real_block_ = _other.real_block_;
-        cube_ =
-            std::make_unique<linalg::Cube_t>(&data_[0], real_block_.extent()[0],
-                real_block_.extent()[1], real_block_.extent()[2]);
+	if (Dim == 2) { 
+	    cube_ = std::make_unique<linalg::Cube_t>(&data_[0], real_block_.extent()[0],real_block_.extent()[1]);
+	} else {
+	    cube_ = std::make_unique<linalg::Cube_t>(&data_[0], real_block_.extent()[0],real_block_.extent()[1], real_block_.extent()[2]);
+	}
         return *this;
     }
 
@@ -98,9 +105,14 @@ class DataField : public BlockDescriptor<int, Dim>
     , lowBuffer_(std::move(rhs.lowBuffer_))
     , highBuffer_(std::move(rhs.highBuffer_))
     , real_block_(std::move(rhs.real_block_))
-    , cube_(std::make_unique<linalg::Cube_t>(&data_[0], real_block_.extent()[0],
-          real_block_.extent()[1], real_block_.extent()[2]))
-    {
+    /*, cube_(std::make_unique<linalg::Cube_t>(&data_[0], real_block_.extent()[0],
+          real_block_.extent()[1], real_block_.extent()[2]))*/
+    {	
+	if (Dim == 2) { 
+	    cube_ = std::make_unique<linalg::Cube_t>(&data_[0], real_block_.extent()[0],real_block_.extent()[1]);
+	} else {
+	    cube_ = std::make_unique<linalg::Cube_t>(&data_[0], real_block_.extent()[0],real_block_.extent()[1], real_block_.extent()[2]);
+	}
     }
     DataField& operator=(DataField&& _other)
     {
@@ -108,9 +120,11 @@ class DataField : public BlockDescriptor<int, Dim>
         lowBuffer_ = std::move(_other.lowBuffer_);
         highBuffer_ = std::move(_other.highBuffer_);
         real_block_ = std::move(_other.real_block_);
-        cube_ =
-            std::make_unique<linalg::Cube_t>(&data_[0], real_block_.extent()[0],
-                real_block_.extent()[1], real_block_.extent()[2]);
+	if (Dim == 2) { 
+	    cube_ = std::make_unique<linalg::Cube_t>(&data_[0], real_block_.extent()[0],real_block_.extent()[1]);
+	} else {
+	    cube_ = std::make_unique<linalg::Cube_t>(&data_[0], real_block_.extent()[0],real_block_.extent()[1], real_block_.extent()[2]);
+	}
         return *this;
     }
 
@@ -134,8 +148,15 @@ class DataField : public BlockDescriptor<int, Dim>
         if (_default) { std::fill(data_.begin(), data_.end(), _dval); }
 
         const auto ext = real_block_.extent();
-        cube_ = std::make_unique<linalg::Cube_t>(
+        /*cube_ = std::make_unique<linalg::Cube_t>(
+            (types::float_type*)&data_[0], ext[0], ext[1], ext[2]);*/
+	if (Dim == 2) {
+	    cube_ = std::make_unique<linalg::Cube_t>(
+            (types::float_type*)&data_[0], ext[0], ext[1]);
+	} else {
+	    cube_ = std::make_unique<linalg::Cube_t>(
             (types::float_type*)&data_[0], ext[0], ext[1], ext[2]);
+	}
     }
 
     auto begin() noexcept { return data_.begin(); }
@@ -179,6 +200,25 @@ class DataField : public BlockDescriptor<int, Dim>
     }
 
     //IJK access
+    /*inline const data_type& get_real_local(
+        int _i, int _j, int _k) const noexcept
+    {
+        return data_[real_block_.index_zeroBase(_i, _j, _k)];
+    }
+    inline data_type& get_real_local(int _i, int _j, int _k) noexcept
+    {
+        return data_[real_block_.index_zeroBase(_i, _j, _k)];
+    }*/
+    inline const data_type& get_real_local(
+        int _i, int _j) const noexcept
+    {
+        return data_[real_block_.index_zeroBase(_i, _j)];
+    }
+    inline data_type& get_real_local(int _i, int _j) noexcept
+    {
+        return data_[real_block_.index_zeroBase(_i, _j)];
+    }
+
     inline const data_type& get_real_local(
         int _i, int _j, int _k) const noexcept
     {

@@ -162,6 +162,7 @@ class Octant
     {
         std::fill(neighbor_.begin(), neighbor_.end(), nullptr);
         std::fill(influence_.begin(), influence_.end(), nullptr);
+	std::fill(children_.begin(), children_.end(), nullptr);
 
         for (int i = 0; i < fmm_max_idx_; ++i)
             std::fill(fmm_masks_[i].begin(), fmm_masks_[i].end(), false);
@@ -275,9 +276,15 @@ class Octant
     int idx() const noexcept
     {
         const auto cc = this->tree_coordinate();
-        return static_cast<int>(
+	auto tmp = this->level() + cc.x() * 25 + cc.y() * 25 * 300;
+        if (Dim == 3) tmp += 25 * 300 * 300 * cc.z();
+        /*return static_cast<int>(
             (this->level() + cc.x() * 25 + cc.y() * 25 * 300 +
                 25 * 300 * 300 * cc.z()) %
+            boost::mpi::environment::max_tag());*/
+
+        return static_cast<int>(
+            (tmp) %
             boost::mpi::environment::max_tag());
     }
 
@@ -427,7 +434,7 @@ private:
     std::shared_ptr<data_type> data_ = nullptr;
     Octant* parent_=nullptr;
     std::array<std::shared_ptr<Octant>,pow(2,Dim)> children_ =
-        {{nullptr,nullptr,nullptr,nullptr, nullptr,nullptr,nullptr,nullptr}};
+        {{nullptr}};
     std::array<Octant*,pow(3,Dim) > neighbor_ = {nullptr};
     int influence_num = 0;
     std::array<Octant*, 189 > influence_= {nullptr};

@@ -72,6 +72,8 @@ struct Operator
                         int N=it->data().descriptor().extent()[0];
 
                         // somehow we delete the outer 2 planes
+			int Dim = domain->dimension();
+			if (Dim == 3) {
                         if (i==4)
                             view(lin_data,xt::all(),xt::all(),xt::range(0,clean_width))  *= 0.0;
                         else if (i==10)
@@ -84,10 +86,22 @@ struct Operator
                             view(lin_data,xt::all(),xt::range(N+2-clean_width,N+3),xt::all())  *= 0.0;
                         else if (i==22)
                             view(lin_data,xt::all(),xt::all(),xt::range(N+2-clean_width,N+3))  *= 0.0;
+			}
+			if (Dim == 2) {
+			if (i==1)
+			    view(lin_data,xt::all(),xt::range(0,clean_width))  *= 0.0;
+			else if (i==3)
+			    view(lin_data,xt::range(0,clean_width),xt::all())  *= 0.0;
+			else if (i==5)
+			    view(lin_data,xt::range(N+2-clean_width,N+3),xt::all())  *= 0.0;
+			else if (i==7)
+			    view(lin_data,xt::all(),xt::range(N+2-clean_width,N+3))  *= 0.0;
+			}
                     }
                 }
             }
-        }}
+        }
+    }
 
     template <typename F, class Domain>
     static void clean_leaf_correction_boundary(Domain* domain, int l, bool leaf_only_boundary=false, int clean_width=1) noexcept
@@ -146,6 +160,8 @@ struct Operator
                         int N=it->data().descriptor().extent()[0];
 
                         // somehow we delete the outer 2 planes
+			int Dim = domain->dimension();
+			if (Dim == 3) {
                         if (i==4)
                             view(lin_data,xt::all(),xt::all(),xt::range(0,clean_width))  *= 0.0;
                         else if (i==10)
@@ -158,6 +174,29 @@ struct Operator
                             view(lin_data,xt::all(),xt::range(N+2-clean_width,N+3),xt::all())  *= 0.0;
                         else if (i==22)
                             view(lin_data,xt::all(),xt::all(),xt::range(N+2-clean_width,N+3))  *= 0.0;
+			}
+			if (Dim == 2) {
+			if (i==1)
+			    view(lin_data,xt::all(),xt::range(0,clean_width))  *= 0.0;
+			else if (i==3)
+			    view(lin_data,xt::range(0,clean_width),xt::all())  *= 0.0;
+			else if (i==5)
+			    view(lin_data,xt::range(N+2-clean_width,N+3),xt::all())  *= 0.0;
+			else if (i==7)
+			    view(lin_data,xt::all(),xt::range(N+2-clean_width,N+3))  *= 0.0;
+			}
+                        /*if (i==4)
+                            view(lin_data,xt::all(),xt::all(),xt::range(0,clean_width))  *= 0.0;
+                        else if (i==10)
+                            view(lin_data,xt::all(),xt::range(0,clean_width),xt::all())  *= 0.0;
+                        else if (i==12)
+                            view(lin_data,xt::range(0,clean_width),xt::all(),xt::all())  *= 0.0;
+                        else if (i==14)
+                            view(lin_data,xt::range(N+2-clean_width,N+3),xt::all(),xt::all())  *= 0.0;
+                        else if (i==16)
+                            view(lin_data,xt::all(),xt::range(N+2-clean_width,N+3),xt::all())  *= 0.0;
+                        else if (i==22)
+                            view(lin_data,xt::all(),xt::all(),xt::range(N+2-clean_width,N+3))  *= 0.0;*/
                     }
                 }
             }
@@ -266,15 +305,16 @@ struct Operator
             for (auto& n: block.node_field())
             {
                 auto pct  = n.local_pct();
+		int dimension = pct.size();
 
                 float_type square = 0.0;
                 float_type c = 0;
 
-                if (z==0){
+                if ((z==0) && (dimension == 3)){
                     square = std::max(square, f(pct[2]));
                     c+=1;
                 }
-                else if (z==(dim-1))
+                else if ((z==(dim-1)) && (dimension == 3))
                 {
                     square = std::max(square, f(1-pct[2]));
                     c+=1;
@@ -356,10 +396,22 @@ struct Operator
             }
 
             for (auto& n : block){
+                auto pct  = n.local_pct();
+		int dimension = pct.size();
+		if (dimension == 3) {
                 n(tmp, 0) =
                 0.5 * (
                     n(f_in,field_idx)
                   + n.at_offset(f_in, off[0], off[1], off[2], field_idx));
+		}
+		if (dimension == 2) {
+		    if (F_in::mesh_type() == MeshObject::edge) {
+		    	n(tmp, 0) = 0.5 * (n(f_in,field_idx) + n.at_offset(f_in, 1, 1, field_idx));
+		    }
+		    else {
+		    	n(tmp, 0) = 0.5 * (n(f_in,field_idx) + n.at_offset(f_in, off[0], off[1], field_idx));
+		    }
+		}
             }
 
             for (auto& n : block){
@@ -442,6 +494,22 @@ struct Operator
         return m;
     }
 
+    template<class Field, class Block>
+    static float_type maxabs(Block& block) noexcept
+    {
+	float_type m = 0.0;
+	for (std::size_t field_idx = 0; field_idx < Field::nFields(); ++field_idx)
+	{
+	    for (auto& n : block)
+	    {
+		auto tmp = std::fabs(n(Field::tag(), field_idx));
+		if (tmp > m) m = tmp;
+	    }
+	}
+	return m;
+    }
+
+
     template<class Source, class Dest, class Block>
     static void laplace(Block& block, float_type dx_level) noexcept
     {
@@ -450,11 +518,23 @@ struct Operator
         constexpr auto dest = Dest::tag();
         for (auto& n : block)
         {
+            auto pct  = n.local_pct();
+	    int dimension = pct.size();
+	    if (dimension == 3) {
             n(dest) =
                 -6.0 * n(source) + n.at_offset(source, 0, 0, -1) +
                 n.at_offset(source, 0, 0, +1) + n.at_offset(source, 0, -1, 0) +
                 n.at_offset(source, 0, +1, 0) + n.at_offset(source, -1, 0, 0) +
                 n.at_offset(source, +1, 0, 0);
+	    }
+	    else {
+            n(dest) =
+                -4.0 * n(source) + n.at_offset(source, 0, -1) +
+                n.at_offset(source, 0, +1) + n.at_offset(source, -1, 0) +
+                n.at_offset(source, +1, 0);
+	    	
+	    }
+
             n(dest) *= fac;
         }
     }
@@ -470,9 +550,17 @@ struct Operator
         constexpr auto dest = Dest::tag();
         for (auto& n : block)
         {
+            auto pct  = n.local_pct();
+	    int dimension = pct.size();
+	    if (dimension == 3) {
             n(dest, 0) = fac * (n(source) - n.at_offset(source, -1, 0, 0));
             n(dest, 1) = fac * (n(source) - n.at_offset(source, 0, -1, 0));
-            n(dest, 2) = fac * (n(source) - n.at_offset(source, 0, 0, -1));
+	    n(dest, 2) = fac * (n(source) - n.at_offset(source, 0, 0, -1));
+	    }
+	    else {
+            n(dest, 0) = fac * (n(source) - n.at_offset(source, -1, 0));
+            n(dest, 1) = fac * (n(source) - n.at_offset(source, 0, -1));	
+	    }
         }
     }
 
@@ -488,10 +576,19 @@ struct Operator
         constexpr auto dest = Dest::tag();
         for (auto& n : block)
         {
+            auto pct  = n.local_pct();
+	    int dimension = pct.size();
+	    if (dimension == 3) {
             n(dest) = -n(source, 0) - n(source, 1) - n(source, 2) +
                       n.at_offset(source, 1, 0, 0, 0) +
                       n.at_offset(source, 0, 1, 0, 1) +
                       n.at_offset(source, 0, 0, 1, 2);
+	    } 
+	    else {
+            n(dest) = -n(source, 0) - n(source, 1) +
+                      n.at_offset(source, 1, 0, 0) +
+                      n.at_offset(source, 0, 1, 1);
+	    }
             n(dest) *= fac;
         }
     }
@@ -507,6 +604,9 @@ struct Operator
         constexpr auto dest = Dest::tag();
         for (auto& n : block)
         {
+            auto pct  = n.local_pct();
+	    int dimension = pct.size();
+	    if (dimension == 3) {
             n(dest, 0) = n(source, 2) - n.at_offset(source, 0, -1, 0, 2) -
                          n(source, 1) + n.at_offset(source, 0, 0, -1, 1);
             n(dest, 0) *= fac;
@@ -518,6 +618,12 @@ struct Operator
             n(dest, 2) = n(source, 1) - n.at_offset(source, -1, 0, 0, 1) -
                          n(source, 0) + n.at_offset(source, 0, -1, 0, 0);
             n(dest, 2) *= fac;
+	    } 
+	    else {
+            n(dest, 0) = n(source, 1) - n.at_offset(source, -1, 0, 1) -
+                         n(source, 0) + n.at_offset(source, 0, -1, 0);
+            n(dest, 0) *= fac;
+	    }
         }
     }
 
@@ -533,6 +639,9 @@ struct Operator
         constexpr auto dest = Dest::tag();
         for (auto& n : block)
         {
+            auto pct  = n.local_pct();
+	    int dimension = pct.size();
+	    if (dimension == 3) {
             n(dest, 0) = +n(source, 1) - n.at_offset(source, 0, 0, 1, 1) +
                          n.at_offset(source, 0, 1, 0, 2) - n(source, 2);
             n(dest, 0) *= fac;
@@ -544,6 +653,13 @@ struct Operator
             n(dest, 2) = +n(source, 0) - n.at_offset(source, 0, 1, 0, 0) +
                          n.at_offset(source, 1, 0, 0, 1) - n(source, 1);
             n(dest, 2) *= fac;
+	    }
+	    else {
+	    	n(dest, 0) = -n(source) + n.at_offset(source, 0, 1);
+		n(dest, 0) *= fac;
+		n(dest, 1) = -n.at_offset(source, 1, 0) + n(source);
+		n(dest, 1) *= fac;
+	    }
         }
     }
 
@@ -561,6 +677,9 @@ struct Operator
         {
             //TODO: Can be done much better by getting the appropriate nodes
             //      directly
+            auto pct  = n.local_pct();
+	    int dimension = pct.size();
+	    if (dimension == 3) {
             n(dest, 0) = 0.25 * (+n.at_offset(edge, 0, 0, 0, 1) *
                                         (+n.at_offset(face, 0, 0, 0, 2) +
                                             n.at_offset(face, -1, 0, 0, 2)) +
@@ -598,6 +717,23 @@ struct Operator
                                     n.at_offset(edge, 1, 0, 0, 1) *
                                         (+n.at_offset(face, 1, 0, 0, 0) +
                                             n.at_offset(face, 1, 0, -1, 0)));
+	    }
+	    else {
+	    	n(dest, 0) = 0.25 * (-n.at_offset(edge, 0, 0, 0) *
+				(+n.at_offset(face, 0, 0, 1) +
+				 n.at_offset(face, -1, 0, 1)) -
+				n.at_offset(edge, 0, 1, 0) *
+				(+n.at_offset(face, 0, 1, 1) +
+				 n.at_offset(face, -1, 1, 1)));
+
+		n(dest, 1) = 0.25 * (+n.at_offset(edge, 0, 0, 0) *
+				(+n.at_offset(face, 0, 0, 0) +
+				 n.at_offset(face, 0, -1, 0)) +
+				n.at_offset(edge, 1, 0, 0) *
+				(+n.at_offset(face, 1, 0, 0) +
+				 n.at_offset(face, 1, -1, 0)));
+
+	    }
         }
     }
 

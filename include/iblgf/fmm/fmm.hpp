@@ -550,8 +550,14 @@ class Fmm
     Fmm(domain_t* _domain, int Nb)
     : domain(_domain)
     , lagrange_intrp(Nb)
-    , conv_(dims_t{{Nb, Nb, Nb}}, dims_t{{Nb, Nb, Nb}})
+    , conv_(dims_t(Nb), dims_t(Nb))
     {
+	/*dims_t tmp1, tmp2;
+	for(int i = 0; i < Dim; i++) {
+	    tmp1[i] = Nb;
+	    tmp2[i] = Nb;
+	}
+	conv_ = convolution_t(tmp1, tmp2);*/
     }
 
     template<class Source, class Target, class Kernel>
@@ -902,9 +908,15 @@ class Fmm
                 auto lin_data_1 = it->data_r(from::tag()).linalg_data();
                 auto lin_data_2 = it->data_r(to::tag()).linalg_data();
 
-                xt::noalias(view(lin_data_2, xt::range(1, -1), xt::range(1, -1),
+                if (Dim == 3) {
+		xt::noalias(view(lin_data_2, xt::range(1, -1), xt::range(1, -1),
                     xt::range(1, -1))) = view(lin_data_1, xt::range(1, -1),
                     xt::range(1, -1), xt::range(1, -1));
+		} 
+		else {
+		xt::noalias(view(lin_data_2, xt::range(1, -1), xt::range(1, -1))) 
+			= view(lin_data_1, xt::range(1, -1),xt::range(1, -1));
+		}
             }
         }
     }

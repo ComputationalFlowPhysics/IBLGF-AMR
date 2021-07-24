@@ -46,6 +46,8 @@ template<class Setup>
 class PoissonSolver
 {
   public: //member types
+    static constexpr std::size_t Dim = Setup::Dim;
+
     using simulation_type = typename Setup::simulation_t;
     using domain_type = typename simulation_type::domain_type;
     using datablock_type = typename domain_type::datablock_t;
@@ -67,8 +69,8 @@ class PoissonSolver
 
     //FMM
     using Fmm_t = typename Setup::Fmm_t;
-    using lgf_lap_t = typename lgf::LGF_GL<3>;
-    using lgf_if_t = typename lgf::LGF_GE<3>;
+    using lgf_lap_t = typename lgf::LGF_GL<Dim>;
+    using lgf_if_t = typename lgf::LGF_GE<Dim>;
 
     static constexpr int lBuffer = 1; ///< Lower left buffer for interpolation
     static constexpr int rBuffer = 1; ///< Lower left buffer for interpolation
@@ -440,10 +442,18 @@ class PoissonSolver
                     it->data_r(to::tag(), _field_idx_to).linalg_data();
 
                 if (with_buffer) xt::noalias(lin_data_2) = lin_data_1 * 1.0;
-                else
+                else {
+		    if (Dim == 3) {
                     xt::noalias(view(lin_data_2, xt::range(1, -1),
                         xt::range(1, -1), xt::range(1, -1))) = view(lin_data_1,
                         xt::range(1, -1), xt::range(1, -1), xt::range(1, -1));
+		    }
+		    else {
+                    xt::noalias(view(lin_data_2, xt::range(1, -1),
+                        xt::range(1, -1))) = view(lin_data_1,
+                        xt::range(1, -1), xt::range(1, -1));
+		    }
+		}
             }
     }
 
@@ -460,10 +470,21 @@ class PoissonSolver
                     it->data_r(to::tag(), _field_idx_to).linalg_data();
 
                 if (with_buffer) xt::noalias(lin_data_2) = lin_data_1 * 1.0;
-                else
+                /*else
+                    xt::noalias(view(lin_data_2, xt::range(1, -1),
+                        xt::range(1, -1), xt::range(1, -1))) = view(lin_data_1,
+                        xt::range(1, -1), xt::range(1, -1), xt::range(1, -1));*/
+
+		if (Dim == 3) {
                     xt::noalias(view(lin_data_2, xt::range(1, -1),
                         xt::range(1, -1), xt::range(1, -1))) = view(lin_data_1,
                         xt::range(1, -1), xt::range(1, -1), xt::range(1, -1));
+		}
+		else {
+                    xt::noalias(view(lin_data_2, xt::range(1, -1),
+                        xt::range(1, -1))) = view(lin_data_1,
+                        xt::range(1, -1), xt::range(1, -1));
+		}
             }
     }
     template<class From, class To>
@@ -590,6 +611,7 @@ class PoissonSolver
                 {
                     for (auto& node : it->data())
                     {
+			if (Dim == 3){
                         node(difftarget) = -6.0 * node(target) +
                                            node.at_offset(target, 0, 0, -1) +
                                            node.at_offset(target, 0, 0, +1) +
@@ -597,6 +619,14 @@ class PoissonSolver
                                            node.at_offset(target, 0, +1, 0) +
                                            node.at_offset(target, -1, 0, 0) +
                                            node.at_offset(target, +1, 0, 0);
+			}
+			else {
+                        node(difftarget) = -4.0 * node(target) +
+                                           node.at_offset(target, 0, -1) +
+                                           node.at_offset(target, 0, +1) +
+                                           node.at_offset(target, -1, 0) +
+                                           node.at_offset(target, +1, 0);
+			}
                     }
                 }
                 diff_target_data *= (1 / dx_level) * (1 / dx_level);
@@ -636,7 +666,7 @@ class PoissonSolver
             auto cview = child->data().node_field().view(child_view);
 
             cview.iterate([&](auto& n) {
-                const float_type avg = 1. / 8 * n(Field_c::tag());
+                const float_type avg = 1. / (std::pow(2,Dim)) * n(Field_c::tag());
                 auto             pcoord = n.level_coordinate();
                 for (std::size_t d = 0; d < pcoord.size(); ++d)
                     pcoord[d] = std::floor(pcoord[d] / 2.0);

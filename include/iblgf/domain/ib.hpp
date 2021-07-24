@@ -74,8 +74,13 @@ class IB
             [this](float_type x) { return this->roma(x); };
 
         this->delta_func_ = [this, delta_func_1d_](real_coordinate_type x) {
+	    if (Dim == 3) {
             return delta_func_1d_(x[0]) * delta_func_1d_(x[1]) *
                    delta_func_1d_(x[2]);
+	    }
+	    else {
+            return delta_func_1d_(x[0]) * delta_func_1d_(x[1]);
+	    }
         };
 
         //temp variables
@@ -110,9 +115,20 @@ class IB
                     float_type w = (ix * L)/(nx-1)- L/2.0;
                     float_type angle = M_PI/6;
 
+		    real_coordinate_type tmp;
+
+		    if (Dim == 3) {
+			    tmp.x() = w*std::cos(angle);
+			    tmp.y() = (iy * Ly) / (ny-1) - Ly/2.0;
+			    tmp.z() = -w*std::sin(angle);
+		    }
+		    else {
+			    tmp.x() = w*std::cos(angle);
+			    tmp.y() = -w*std::sin(angle);
+		    }
+
                     coordinates_.emplace_back(
-                            real_coordinate_type(
-                                { w * std::cos(angle), (iy * Ly) / (ny-1) - Ly/2.0, -w * std::sin(angle) }));
+                            real_coordinate_type(tmp));
                 }
         }
         else if (geometry_=="sphere")
@@ -131,7 +147,20 @@ class IB
                 float_type x = i+0.5;
                 float_type phi = std::acos(1.0 - 2 * x/n);
                 float_type theta = 2*M_PI * x / lambda;
-                coordinates_.emplace_back( real_coordinate_type({R*cos(theta)*sin(phi), R*sin(theta)*sin(phi), R*cos(phi)}));
+		real_coordinate_type tmp;
+		if (Dim == 3) {
+			tmp.x() = R*cos(theta)*sin(phi);
+			tmp.y() = R*sin(theta)*sin(phi);
+			tmp.z() = R*cos(phi);
+		}
+		else {
+			tmp.x() = R*cos(theta);
+			tmp.y() = R*sin(theta);
+		}
+
+                    coordinates_.emplace_back(
+                            real_coordinate_type(tmp));
+                //coordinates_.emplace_back( real_coordinate_type({R*cos(theta)*sin(phi), R*sin(theta)*sin(phi), R*cos(phi)}));
             }
         }
         else if(geometry_=="none")

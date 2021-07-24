@@ -26,6 +26,8 @@ class Simulation
 {
   public:
     using domain_type = Domain;
+    static constexpr std::size_t Dim = domain_type::dims;
+    using h5io_t = typename io::H5_io<Dim, Domain>;
 
   public:
     Simulation(const Simulation& other) = delete;
@@ -149,7 +151,7 @@ public:
   std::shared_ptr<Domain> domain_=nullptr;
   boost::mpi::communicator world_;
   //io::Vtk_io<Domain> writer;
-  io::H5_io<3, Domain> io_h5;
+  h5io_t io_h5;
   io::IO_init io_init_;
   std::string restart_info_file_="restart_info";
   std::string tree_info_file_="tree_info";

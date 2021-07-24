@@ -746,7 +746,7 @@ class Ifherk
                 if (non_leaf_only && it->is_leaf() && it->locally_owned())
                 {
                     int N = it->data().descriptor().extent()[0];
-
+		    if(domain_->dimension() == 3) {
                     view(lin_data, xt::all(), xt::all(),
                         xt::range(0, clean_width)) *= 0.0;
                     view(lin_data, xt::all(), xt::range(0, clean_width),
@@ -760,6 +760,13 @@ class Ifherk
                         0.0;
                     view(lin_data, xt::all(), xt::all(),
                         xt::range(N + 2 - clean_width, N + 3)) *= 0.0;
+		    }
+		    else {
+                    view(lin_data, xt::all(), xt::range(0, clean_width)) *= 0.0;
+                    view(lin_data, xt::range(0, clean_width), xt::all()) *= 0.0;
+                    view(lin_data, xt::range(N + 2 - clean_width, N + 3),xt::all()) *= 0.0;
+                    view(lin_data, xt::all(),xt::range(N + 2 - clean_width, N + 3)) *=0.0;
+		    }
                 }
                 else
                 {

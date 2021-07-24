@@ -217,9 +217,11 @@ class SetupBase
                 const auto& coord = node.level_coordinate();
                 float_type x = static_cast<float_type>(coord[0])*dx;
                 float_type y = static_cast<float_type>(coord[1])*dx;
-                float_type z = static_cast<float_type>(coord[2])*dx;
+                float_type z = 0.0;
+	       	if (domain_->dimension() == 3) z = static_cast<float_type>(coord[2])*dx;
 
-                if (field_idx==0)
+                if (domain_->dimension() == 3) {
+		if (field_idx==0)
                 {
                     y+=0.5*dx;
                     z+=0.5*dx;
@@ -241,15 +243,16 @@ class SetupBase
                     node(Error::tag(), field_idx)=0.0;
                     error_tmp = 0;
                 }
+		}
                 // clean inside spehre
-
-                L2 += error_tmp * error_tmp * (dx * dx * dx);
-                L2_exact += tmp_exact * tmp_exact * (dx * dx * dx);
+		float_type weight = std::pow(dx, domain_->dimension());
+                L2 += error_tmp * error_tmp * weight;
+                L2_exact += tmp_exact * tmp_exact * weight;
 
                 L2_perLevel[refinement_level] +=
-                    error_tmp * error_tmp * (dx * dx * dx);
+                    error_tmp * error_tmp * weight;
                 L2_exact_perLevel[refinement_level] +=
-                    tmp_exact * tmp_exact * (dx * dx * dx);
+                    tmp_exact * tmp_exact * weight;
                 ++counts[refinement_level];
 
                 if (std::fabs(tmp_exact) > LInf_exact)

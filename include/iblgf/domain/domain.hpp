@@ -40,6 +40,7 @@ template<int Dim, class DataBlock>
 class Domain
 {
   public:
+    static constexpr std::size_t dims = Dim;
     using datablock_t = DataBlock;
     using block_descriptor_t = typename datablock_t::block_descriptor_type;
     using scalar_coord_type = typename block_descriptor_t::data_type;

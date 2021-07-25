@@ -12,6 +12,7 @@
 
 #include <iblgf/utilities/misc_math_functions.hpp>
 #include <math.h>
+#include <array>
 
 namespace iblgf
 {
@@ -86,6 +87,21 @@ int next_pow_2(int n) noexcept
     while (p < n) p <<= 1;
 
     return p;
+}
+template<std::size_t N>
+std::array<int, N> next_prod(typename std::array<int, N>::const_iterator v) noexcept
+{
+    std::array<int, N> res;
+    for (int i = 0; i < N; i++) {res[i] = next_prod((*(v+i)));}
+    return res;
+}
+
+template<std::size_t N>
+int all_prod(typename std::array<int, N>::const_iterator v) noexcept 
+{
+    int res = 1.0;
+    for (int  i = 0; i < N; i++) {res *= (*(v+i));}
+    return res;
 }
 
 int pow2(int n) noexcept

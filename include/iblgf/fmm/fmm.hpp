@@ -544,7 +544,7 @@ class Fmm
     static constexpr auto fmm_s = Setup::fmm_s;
     static constexpr auto fmm_t = Setup::fmm_t;
 
-    using convolution_t = fft::Convolution;
+    using convolution_t = fft::Convolution<Dim>;
 
   public:
     Fmm(domain_t* _domain, int Nb)

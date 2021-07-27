@@ -1,0 +1,54 @@
+simulation_parameters
+{
+    nLevels=2;
+    nIB_add_level=0;
+    // Time Marching
+    source_max=13.0;
+    nBaseLevelTimeSteps=10000;
+    cfl = 0.75;
+    cfl_max = 1000;
+    Re = 100.0;
+    R = 0.5;
+    refinement_factor=0.125;
+    adapt_frequency=9;
+    output_frequency=10;
+    base_level_threshold=1e-4;
+    hard_max_refinement=true;
+    geometry=plate;
+    smooth_start=false;
+    ibph=1.5;
+    cg_threshold=1e-5;
+    cg_max_itr=80;
+    single_ring=true;
+    ringType=0;
+    perturbation=false;
+    vDelta=0.2;
+    fat_ring=true;
+    Ux = 1.0;
+    Uy = 0.0;
+    Uz = 0.0;
+    output
+    {
+        directory=output;
+    }
+    restart_write_frequency=33;
+    write_restart=true;
+    use_restart=false;
+    restart
+    {
+        load_directory=restart;
+        save_directory=restart;
+    }
+    domain
+    {
+        bd_base = (-224,-224,-224);
+        bd_extent = (448, 448, 448);
+        dx_base=0.1;
+        block_extent=14;
+        block
+        {
+            base=(-56,-56,-56);
+            extent=(112,112,112);
+        }
+    }
+}

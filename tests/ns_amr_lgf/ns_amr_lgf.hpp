@@ -198,6 +198,8 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
         global_refinement_ = simulation_.dictionary_->template get_or<int>(
             "global_refinement", 0);
 
+	//if (global_refinement_ == 0) global_refinement_ = nLevelRefinement_;
+
         if (dt_ < 0) dt_ = dx_ * cfl_;
 
         dt_ /= pow(2.0, nLevelRefinement_);
@@ -341,6 +343,7 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
                 l3=this->template adapt_levle_change_for_field<edge_aux_type>(it, source_max[1], false);
 
             int l=std::max(std::max(l1,l2),l3);
+	    l = 0;
 
             if( l!=0)
             {

@@ -175,9 +175,14 @@ class cell_center_nli
             if (!child->has_data()) continue;
             if (!child->data().is_allocated()) continue;
 
+
+
             auto& child_target_tmp = child->data_r(from::tag()).linalg_data();
 
             auto& child_linalg_data = child->data_r(to::tag()).linalg_data();
+
+	    int Dim = child_linalg_data.shape().size();
+	    if (Dim == 3) {
             for (int i = 1; i < Nb_ - 1; ++i)
             {
                 for (int j = 1; j < Nb_ - 1; ++j)
@@ -201,6 +206,26 @@ class cell_center_nli
                     }
                 }
             }
+	    }
+
+	    if (Dim == 2) {
+            	for (int i = 1; i < Nb_ - 1; ++i)
+            	{
+                    for (int j = 1; j < Nb_ - 1; ++j)
+                    {
+                        child_linalg_data(i, j) +=
+                            4.0 * child_target_tmp(i, j) * (1.0 / (dx * dx));
+                        child_linalg_data(i, j) -=
+                            child_target_tmp(i, j - 1) * (1.0 / (dx * dx));
+                        child_linalg_data(i, j) -=
+                            child_target_tmp(i, j + 1) * (1.0 / (dx * dx));
+                        child_linalg_data(i, j) -=
+                            child_target_tmp(i + 1, j) * (1.0 / (dx * dx));
+                        child_linalg_data(i, j) -=
+                            child_target_tmp(i - 1, j) * (1.0 / (dx * dx));
+                    }
+            	}
+	    }
         }
     }
 
@@ -240,6 +265,8 @@ class cell_center_nli
         int idx_y = (child_idx & (1 << 1)) >> 1;
         int idx_z = (child_idx & (1 << 2)) >> 2;
 
+	int Dim = child.shape().size();
+
         // Relative position 0 -> coincide with child
         // Relative position 1 -> half cell off with the child
 
@@ -253,7 +280,7 @@ class cell_center_nli
             relative_positions[0] = 0;
             relative_positions[1] = 0;
             relative_positions[2] = 0;
-            relative_positions[_field_idx] = 1;
+            if (Dim == 3) relative_positions[_field_idx] = 1;
         }
         else
             throw std::runtime_error("Wrong type of mesh to be interpolated");
@@ -261,6 +288,8 @@ class cell_center_nli
         idx_x += relative_positions[0] * max_relative_pos;
         idx_y += relative_positions[1] * max_relative_pos;
         idx_z += relative_positions[2] * max_relative_pos;
+
+	if (Dim == 3) {
 
         for (int q = 0; q < n; ++q)
         {
@@ -293,6 +322,22 @@ class cell_center_nli
                         antrp_mat_sub_[idx_z].data_);
             }
         }
+	}
+	if (Dim == 2) {
+	    for (int l = 0; l < n; ++l)
+	    {
+		    xt::noalias(view(nli_aux_2d_intrp, xt::all(), l)) =
+			    xt::linalg::dot(view(parent, xt::all(), l),
+					    antrp_mat_sub_[idx_x].data_);
+	    }
+
+	    for (int l = 0; l < n; ++l)
+	    {
+		    xt::noalias(view(child, l, xt::all())) =
+			    xt::linalg::dot(view(nli_aux_2d_intrp, l, xt::all()),
+					    antrp_mat_sub_[idx_y].data_);
+	    }
+	}
     }
 
     template<class from, class to, typename octant_t>
@@ -332,6 +377,8 @@ class cell_center_nli
         int idx_y = (child_idx & (1 << 1)) >> 1;
         int idx_z = (child_idx & (1 << 2)) >> 2;
 
+	int Dim = child.shape().size();
+
         // Relative position 0 -> coincide with child
         // Relative position 1 -> half cell off with the child
 
@@ -346,7 +393,7 @@ class cell_center_nli
             relative_positions[0] = 0;
             relative_positions[1] = 0;
             relative_positions[2] = 0;
-            relative_positions[_field_idx] = 1;
+            if (Dim == 3) relative_positions[_field_idx] = 1;
         }
         else
             throw std::runtime_error("Wrong type of mesh to be interpolated");
@@ -354,6 +401,8 @@ class cell_center_nli
         idx_x += relative_positions[0] * max_relative_pos;
         idx_y += relative_positions[1] * max_relative_pos;
         idx_z += relative_positions[2] * max_relative_pos;
+
+	if (Dim == 3) {
 
         for (int q = 0; q < n; ++q)
         {
@@ -390,6 +439,23 @@ class cell_center_nli
                         view(nli_aux_3d_antrp, q, p, xt::all()));
             }
         }
+	}
+	if (Dim == 2) {
+	    for (int l = 0; l < n; ++l)
+	    {
+		    xt::noalias(nli_aux_1d_antrp_tmp) = 
+			    view(child, l, xt::all());
+		    xt::noalias(view(nli_aux_2d_antrp,xt::all(), l)) =
+			    xt::linalg::dot(antrp_mat_sub_simple_sub_[idx_y],
+					    nli_aux_1d_antrp_tmp);
+	    }
+	    for (int q = 0; q < n; ++q)
+	    {
+		    xt::noalias(view(parent, xt::all(), q)) +=
+			    xt::linalg::dot(antrp_mat_sub_simple_sub_[idx_x],
+					    view(nli_aux_2d_antrp, q, xt::all()));
+	    }
+	}
     }
 
   private:

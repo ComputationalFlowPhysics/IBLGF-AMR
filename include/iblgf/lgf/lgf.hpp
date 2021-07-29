@@ -72,7 +72,7 @@ class LGF_Base : public crtp::Crtps<Derived, LGF_Base<Dim, Derived>>
         auto it = this->derived().dft_level_maps_2D[level_diff].find(k_);
 
         //Check if lgf is already stored
-        if (it == this->derived().dft_level_maps_2D[level_diff].end())
+        if (it == this->derived().dft_level_maps_2D[level_diff].end() || !this->neighbor_only())
         {
             this->get_subblock(
                 _lgf_block, _extended_dims, lgf_buffer_, level_diff);

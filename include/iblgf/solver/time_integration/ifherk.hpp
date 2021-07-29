@@ -448,8 +448,9 @@ class Ifherk
         // - Forcing ------------------------------------------------
         auto& ib = domain_->ib();
         ib.clean_non_local();
+	real_coordinate_type tmp_coord(0.0);
 
-        force_type sum_f(ib.force().size(), (0.,0.,0.));
+        force_type sum_f(ib.force().size(), tmp_coord);
         if (ib.size() > 0)
         {
             boost::mpi::all_reduce(world, &ib.force(0), ib.size(), &sum_f[0],

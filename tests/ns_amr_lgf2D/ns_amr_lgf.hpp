@@ -62,21 +62,21 @@ struct parameters
     Dim,
      (
         //name               type        Dim   lBuffer  hBuffer, storage type
-         (error_u          , float_type, 3,    1,       1,     face,true  ),
+         (error_u          , float_type, 2,    1,       1,     face,true  ),
          (error_p          , float_type, 1,    1,       1,     cell,false ),
          (test             , float_type, 1,    1,       1,     cell,false ),
         //IF-HERK
-         (u                , float_type, 3,    1,       1,     face,true  ),
-         (u_ref            , float_type, 3,    1,       1,     face,false ),
+         (u                , float_type, 2,    1,       1,     face,true  ),
+         (u_ref            , float_type, 2,    1,       1,     face,false ),
          (p_ref            , float_type, 1,    1,       1,     cell,false ),
          (p                , float_type, 1,    1,       1,     cell,true  ),
          (w_num            , float_type, 1,    1,       1,     edge,false ),
          (w_exact          , float_type, 1,    1,       1,     edge,false ),
          (error_w          , float_type, 1,    1,       1,     edge,false ),
          //for radial velocity
-         (exact_u_theta    , float_type, 3,    1,       1,     edge,false ),
-         (num_u_theta      , float_type, 3,    1,       1,     edge,false ),
-         (error_u_theta    , float_type, 3,    1,       1,     edge,false )
+         (exact_u_theta    , float_type, 2,    1,       1,     edge,false ),
+         (num_u_theta      , float_type, 2,    1,       1,     edge,false ),
+         (error_u_theta    , float_type, 2,    1,       1,     edge,false )
     ))
     // clang-format on
 };
@@ -102,10 +102,38 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 			client_comm_ = client_comm_.split(0);
 
 		//smooth_start_ = simulation_.dictionary()->template get_or<bool>("smooth_start", false);
+		U_.resize(domain_->dimension());
+		U_[0] = simulation_.dictionary()->template get_or<float_type>("Ux", 1.0);
+		U_[1] = simulation_.dictionary()->template get_or<float_type>("Uy", 0.0);
+		if (domain_->dimension()>2)
+			U_[2] = simulation_.dictionary()->template get_or<float_type>("Uz", 0.0);
+
+		smooth_start_ = simulation_.dictionary()->template get_or<bool>("smooth_start", false);
+
+		vortexType = simulation_.dictionary()->template get_or<int>("Vort_type", 0);
 
 		simulation_.frame_vel() =
+			[this](std::size_t idx, float_type t, auto coord = {0, 0})
+			{
+				float_type T0 = 0.5;
+				if (t<=0.0 && smooth_start_)
+					return 0.0;
+				else if (t<T0-1e-10 && smooth_start_)
+				{
+					float_type h1 = exp(-1/(t/T0));
+					float_type h2 = exp(-1/(1 - t/T0));
+
+					return -U_[idx] * (h1/(h1+h2));
+				}
+				else
+				{
+					return -U_[idx];
+				}
+			};
+
+		/*simulation_.frame_vel() =
 			[this](std::size_t idx, float_type t, auto coord = {0, 0, 0})
-			{return 0.0;};
+			{return 0.0;};*/
 
 
 		dx_ = domain_->dx_base();
@@ -159,6 +187,8 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 		nLevelRefinement_ = simulation_.dictionary_->
 			template get_or<int>("nLevels", 0);
 
+		hard_max_level_ = simulation_.dictionary()->template get_or<int>("hard_max_level", nLevelRefinement_);
+
 		global_refinement_ = simulation_.dictionary_->template get_or<int>(
 			"global_refinement", 0);
 
@@ -186,10 +216,12 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 			[this](auto octant, std::vector<float_type> source_max){return this->template adapt_level_change<edge_aux_type, edge_aux_type>(octant, source_max);};*/
 
 
+		if (vortexType != 0) {
 		domain_->register_refinement_condition() = [this](auto octant,
 			int diff_level) {
 				return this->refinement(octant, diff_level);
 		};
+		}
 
 		domain_->ib().init(_d->get_dictionary("simulation_parameters"), domain_->dx_base(), nLevelRefinement_, Re_);
 
@@ -451,8 +483,8 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 	template<class Field, class OctantType>
 	int adapt_levle_change_for_field(OctantType it, float_type source_max, bool use_base_level_threshold)
 	{
-		return 0;
-		if (/*it->is_ib() &&*/it->is_leaf())
+		//return 0;
+		if (it->is_ib() && it->is_leaf())
 			if (it->refinement_level()<nLevelRefinement_)
 				return 1;
 			else
@@ -461,7 +493,7 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 		source_max *=1.05;
 
 		float_type field_max=
-			domain::Operator::maxabs<Field>(it->data());
+			domain::Operator::maxnorm<Field>(it->data());
 
 		if (field_max<1e-10) return -1;
 
@@ -470,8 +502,8 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 		int l_aim = static_cast<int>( ceil(nLevelRefinement_-log(field_max/source_max) / log(refinement_factor_)));
 		int l_delete_aim = static_cast<int>( ceil(nLevelRefinement_-((log(field_max/source_max) - log(deletion_factor)) / log(refinement_factor_))));
 
-		/*if (l_aim>hard_max_level_)
-			l_aim=hard_max_level_;*/
+		if (l_aim>hard_max_level_)
+			l_aim=hard_max_level_;
 		if (l_aim > nLevelRefinement_) l_aim = nLevelRefinement_;
 
 		if (it->refinement_level()==0 && use_base_level_threshold)
@@ -483,8 +515,8 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 				l_delete_aim = std::max(l_delete_aim,0);
 		}
 
-		/*if (it->is_ib())
-			return 0;*/
+		if (it->is_ib())
+			return 0;
 
 		int l_change = l_aim - it->refinement_level();
 		if (l_change>0)
@@ -718,8 +750,11 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 			for (int j = b.base()[1]; j <= b.max()[1]; ++j)
 			{
 
-				float_type x = static_cast<float_type>(i - center[0]) * dx_level;
-				float_type y = static_cast<float_type>(j - center[1]) * dx_level;
+				//float_type x = static_cast<float_type>(i - center[0]) * dx_level;
+				//float_type y = static_cast<float_type>(j - center[1]) * dx_level;
+				
+				float_type x = static_cast<float_type>(i) * dx_level;
+				float_type y = static_cast<float_type>(j) * dx_level;
 
 				float_type half_block = static_cast<float_type>(b.extent()[0]) * dx_level / 2.0;
 				//z = static_cast<float_type>(k - center[2] + 0.5) * dx_level;
@@ -732,7 +767,7 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 				float_type max_c = std::max(std::fabs(x), std::fabs(y));
 				//float_type max_c = std::fabs(x) + std::fabs(y);
 				float_type rd = std::sqrt(x * x + y * y);
-				float_type bd = 9.6 / pow(2, b.level()) - half_block;
+				float_type bd = 4.8 / pow(2, b.level()) - half_block;
 
 				//float_type bd = 4.8 - 1.2*b.level() - half_block;
 				if (max_c < bd)
@@ -763,7 +798,16 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 	float_type u_vort(float_type x, float_type y, float_type td, int idx = 0) {
 		float_type x_loc = x - ctr_dis_x;
 		float_type y_loc = y - ctr_dis_y;
+		if (vortexType == 1) {
 		return u_taylor_vort(x_loc, y_loc, td, idx);
+		}
+		else if (vortexType == 2) {
+		return u_oseen_vort(x_loc, y_loc, td, idx);
+		}
+		else if (vortexType == 0) {
+		return 0.0;
+		}
+		else {return 0.0;}
 	}
 
 	float_type w_taylor_vort(float_type rd, float_type td) {
@@ -870,6 +914,10 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
     bool single_ring_=true;
     bool perturbation_=false;
     bool hard_max_refinement_=false;
+    bool smooth_start_;
+    int vortexType = 0;
+
+    std::vector<float_type> U_;
     //bool subtract_non_leaf_  = true;
     float_type R_;
     float_type v_delta_;
@@ -887,6 +935,7 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
     float_type c2=0;
     float_type eps_grad_=1.0e6;;
     int nLevelRefinement_=0;
+    int hard_max_level_ = 0;
     int global_refinement_=0;
     fcoord_t offset_;
 

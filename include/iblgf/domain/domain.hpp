@@ -583,7 +583,7 @@ class Domain
             this->tree()->construct_lists();
         }
 
-	if (Dim == 2) add_extra_buffer(base_level);
+	//if (Dim == 2) add_extra_buffer(base_level);
 
         // flag base level boundary correction
         for (auto it = this->begin(base_level); it != this->end(base_level);

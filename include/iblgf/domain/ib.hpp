@@ -108,16 +108,19 @@ class IB
             int        nx = int(L/dx_base_/ibph_*pow(2,IBlevel_));
             int        ny = nx*2;
 
-
-            for (int ix = 0; ix < nx; ++ix)
+	    if (Dim == 3) {
+            for (int ix = 0; ix < nx; ++ix) {
                 for (int iy = 0; iy < ny; ++iy)
                 {
                     float_type w = (ix * L)/(nx-1)- L/2.0;
                     float_type angle = M_PI/6;
 
 		    real_coordinate_type tmp;
+		    tmp.x() = w*std::cos(angle);
+		    tmp.y() = (iy * Ly) / (ny-1) - Ly/2.0;
+		    tmp.z() = -w*std::sin(angle);
 
-		    if (Dim == 3) {
+		    /*if (Dim == 3) {
 			    tmp.x() = w*std::cos(angle);
 			    tmp.y() = (iy * Ly) / (ny-1) - Ly/2.0;
 			    tmp.z() = -w*std::sin(angle);
@@ -125,11 +128,26 @@ class IB
 		    else {
 			    tmp.x() = w*std::cos(angle);
 			    tmp.y() = -w*std::sin(angle);
-		    }
+		    }*/
 
                     coordinates_.emplace_back(
                             real_coordinate_type(tmp));
                 }
+	    }
+	    }
+	    if (Dim == 2) {
+	    	for (int ix = 0; ix < nx; ++ix) {
+		    float_type w = (ix * L)/(nx-1)- L/2.0;
+                    float_type angle = 0.0;
+
+		    real_coordinate_type tmp;
+		    tmp.x() = w*std::cos(angle);
+		    tmp.y() = -w*std::sin(angle);
+
+                    coordinates_.emplace_back(
+                            real_coordinate_type(tmp));
+		}
+	    }
         }
         else if (geometry_=="sphere")
         {
@@ -163,6 +181,22 @@ class IB
                 //coordinates_.emplace_back( real_coordinate_type({R*cos(theta)*sin(phi), R*sin(theta)*sin(phi), R*cos(phi)}));
             }
         }
+	else if (geometry_ == "circle") {
+	    if (Dim == 2) {
+	    float_type R = 0.5;
+            float_type dx = dx_base_/pow(2,IBlevel_)*ibph_;
+	    int n = floor(2.0*R*M_PI/dx) + 1;
+	    if (comm_.rank() == 1) std::cout << "Geometry = circle, n = "<< n << std::endl;
+	    for (int i = 0; i < n; i++) {
+		float_type x = i + 0.5;
+	    	float_type theta = 2*M_PI * x / n;
+		real_coordinate_type tmp;
+		tmp.x() = R*cos(theta);
+		tmp.y() = R*sin(theta);
+		coordinates_.emplace_back(real_coordinate_type(tmp));
+	    }
+	    }
+	}
         else if(geometry_=="none")
         {
 
@@ -259,7 +293,7 @@ class IB
     float_type force_scale()
     {
         float_type tmp = dx_base_ / std::pow(2, IBlevel_);
-        return tmp*tmp*tmp;
+        return std::pow(tmp, Dim);
     }
 
     void scales(const float_type a)

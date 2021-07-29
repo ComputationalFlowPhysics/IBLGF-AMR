@@ -227,6 +227,7 @@ class PoissonSolver
         {
 #ifdef POISSON_TIMINGS
             const auto t0_level = clock_type::now();
+            _kernel->change_level(l - domain_->tree()->base_level());
 #endif
 
             for (auto it_s = domain_->begin(l); it_s != domain_->end(l); ++it_s)

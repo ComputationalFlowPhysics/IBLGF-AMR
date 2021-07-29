@@ -92,7 +92,9 @@ class LinSysSolver
         domain::Operator::domainClean<face_aux_type>(domain_);
         domain::Operator::add_field_expression<face_aux_type>(domain_, simulation_->frame_vel(), 1.0);
 
-        force_type tmp2(ib_->size(), (0.,0.,0.));
+	real_coordinate_type tmp_coord(0.0);
+
+        force_type tmp2(ib_->size(), tmp_coord);
         this->projection<face_aux_type>(tmp2);
         ib_->communicator().compute_indices();
         ib_->communicator().communicate(true, tmp2);
@@ -111,7 +113,8 @@ class LinSysSolver
     void ib_solve(float_type alpha, float_type t)
     {
         // right hand side
-        force_type uc(ib_->size(), (0.,0.,0.));
+	real_coordinate_type tmp_coord(0.0);
+        force_type uc(ib_->size(), tmp_coord);
 
         domain_->client_communicator().barrier();
         //std::cout<<"projection" << std::endl;
@@ -153,16 +156,23 @@ class LinSysSolver
     template<class ForceType>
     ForceType boundaryVel(ForceType x)
     {
+	if (domain_type::dims == 3) {
         return ForceType({1, 0, 0});
+	}
+	else {
+	return ForceType({1, 0});
+	}
     }
 
     template<class Ftmp, class UcType>
     void CG_solve(UcType& uc, float_type alpha)
     {
         auto& f = ib_->force();
-        force_type Ax(ib_->size(), (0.,0.,0.));
-        force_type r (ib_->size(), (0.,0.,0.));
-        force_type Ap(ib_->size(), (0.,0.,0.));
+
+	real_coordinate_type tmp_coord(0.0);
+        force_type Ax(ib_->size(), tmp_coord);
+        force_type r (ib_->size(), tmp_coord);
+        force_type Ap(ib_->size(), tmp_coord);
 
         if (domain_->is_server())
             return;
@@ -206,7 +216,7 @@ class LinSysSolver
             float_type rsnew = dot(r, r);
             float_type f2 = dot(f,f);
             if (comm_.rank()==1)
-                std::cout<< "residue square = "<< rsnew/f2<<std::endl;;
+                if (domain_type::dims == 3 || (domain_type::dims == 2 && (k % 20 == 0)))std::cout<< "residue square = "<< rsnew/f2<<std::endl;;
             if (sqrt(rsnew/f2)<cg_threshold_)
                 break;
 

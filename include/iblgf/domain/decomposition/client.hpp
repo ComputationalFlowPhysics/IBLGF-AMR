@@ -928,9 +928,9 @@ public:
             boost::mpi::all_reduce(domain_->client_communicator(), ib_s[i],
                     s, std::plus<float_type>());
 
-                if (s<3-1e-10 || s>3+1e-10)
+                if (s<domain_t::dims -1e-10 || s> domain_t::dims +1e-10)
                 {
-                    std::cout<< "ib sum = " << s-3 << " at "<<ib.coordinate(i)<<std::endl;
+                    std::cout<< "ib sum = " << s - domain_t::dims << " at "<<ib.coordinate(i)<<std::endl;
                 }
         }
 

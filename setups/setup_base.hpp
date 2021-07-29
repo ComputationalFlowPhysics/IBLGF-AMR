@@ -61,19 +61,19 @@ class SetupBase
       (fmm_s,               float_type,  1,  1,  1,  cell,false),
       (fmm_t,               float_type,  1,  1,  1,  cell,false),
       //flow variables
-      (q_i,                 float_type,  3,  1,  1,  face,false),
-      (u_i,                 float_type,  3,  1,  1,  face,false),
-      (d_i,                 float_type,  1,  1,  1,  cell,false),
-      (g_i,                 float_type,  3,  1,  1,  face,false),
-      (r_i,                 float_type,  3,  1,  1,  face,false),
-      (w_1,                 float_type,  3,  1,  1,  face,false),
-      (w_2,                 float_type,  3,  1,  1,  face,false),
+      (q_i,                 float_type,  Dim,  1,  1,  face,true),
+      (u_i,                 float_type,  Dim,  1,  1,  face,true),
+      (d_i,                 float_type,  1,  1,  1,  cell,true),
+      (g_i,                 float_type,  Dim,  1,  1,  face,true),
+      (r_i,                 float_type,  Dim,  1,  1,  face,true),
+      (w_1,                 float_type,  Dim,  1,  1,  face,true),
+      (w_2,                 float_type,  Dim,  1,  1,  face,true),
       (cell_aux,            float_type,  1,  1,  1,  cell,true),
-      (cell_aux2,           float_type,  1,  1,  1,  cell,false),
-      (face_aux,            float_type,  3,  1,  1,  face,false),
-      (face_aux2,           float_type,  3,  1,  1,  face,false),
-      (stream_f,            float_type,  3,  1,  1,  edge,false),
-      (edge_aux,            float_type,  3,  1,  1,  edge,true)
+      (cell_aux2,           float_type,  1,  1,  1,  cell,true),
+      (face_aux,            float_type,  Dim,  1,  1,  face,true),
+      (face_aux2,           float_type,  Dim,  1,  1,  face,true),
+      (stream_f,            float_type,  (Dim*2 - 3),  1,  1,  edge,true),
+      (edge_aux,            float_type,  (Dim*2 - 3),  1,  1,  edge,true)
     ))
     // clang-format on
 

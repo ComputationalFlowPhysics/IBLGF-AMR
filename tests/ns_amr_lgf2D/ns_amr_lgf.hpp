@@ -884,7 +884,7 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 		return u_val;
 	}
 
-	template<class field>
+	/*template<class field>
 	void assignWRef() {
 		if (!doamin_->is_server()) {
 			for (auto it_t = domain_->begin_leaves(); it_t != domain_->end_leaves(); ++it_t) {
@@ -904,7 +904,7 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 				}
 			}
 		}
-	}
+	}*/
 
 
     private:

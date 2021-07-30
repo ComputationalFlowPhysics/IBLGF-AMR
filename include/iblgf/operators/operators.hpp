@@ -58,6 +58,50 @@ struct Operator
         {
             if(!it->locally_owned()) continue;
             if(!it->has_data() || !it->data().is_allocated()) continue;
+	    int Dim = domain->dimension();
+
+
+	    if (Dim == 2) {
+
+	    int idx2D[it->num_neighbors()];
+	    for (int i = 0; i< it->num_neighbors(); i++){
+	    	idx2D[i] = 1;
+	    }
+	    auto coord_it = it->tree_coordinate();
+            for(std::size_t i=0;i< it->num_neighbors();++i)
+            {
+                auto it2=it->neighbor(i);
+                if ((!it2 || !it2->has_data()) || (leaf_only_boundary && (it2->is_correction() || it2->is_old_correction() )))
+                {
+		    continue;
+		}
+		auto cood = it2->tree_coordinate();
+		int tmp = 0;
+
+		tmp += 3 * (((cood.y() - coord_it.y()) > 0) + 1) + ((cood.x() - coord_it.x()) > 0) + 1;
+		idx2D[tmp] = -1;
+	    }
+
+            for(std::size_t i=0;i< it->num_neighbors();++i) {
+	    if (idx2D[i] > 0) {	
+                    for (std::size_t field_idx=0; field_idx<F::nFields(); ++field_idx)
+                    {
+                        auto& lin_data =
+                            it->data_r(F::tag(), field_idx).linalg_data();
+
+                        int N=it->data().descriptor().extent()[0];
+			if (i==1)
+			    view(lin_data,xt::all(),xt::range(0,clean_width))  *= 0.0;
+			else if (i==3)
+			    view(lin_data,xt::range(0,clean_width),xt::all())  *= 0.0;
+			else if (i==5)
+			    view(lin_data,xt::range(N+2-clean_width,N+3),xt::all())  *= 0.0;
+			else if (i==7)
+			    view(lin_data,xt::all(),xt::range(N+2-clean_width,N+3))  *= 0.0;
+		    }
+	    }
+	    }
+	    }
 
             for(std::size_t i=0;i< it->num_neighbors();++i)
             {
@@ -87,7 +131,7 @@ struct Operator
                         else if (i==22)
                             view(lin_data,xt::all(),xt::all(),xt::range(N+2-clean_width,N+3))  *= 0.0;
 			}
-			if (Dim == 2) {
+			/*if (Dim == 2) {
 			if (i==1)
 			    view(lin_data,xt::all(),xt::range(0,clean_width))  *= 0.0;
 			else if (i==3)
@@ -96,7 +140,7 @@ struct Operator
 			    view(lin_data,xt::range(N+2-clean_width,N+3),xt::all())  *= 0.0;
 			else if (i==7)
 			    view(lin_data,xt::all(),xt::range(N+2-clean_width,N+3))  *= 0.0;
-			}
+			}*/
                     }
                 }
             }
@@ -147,6 +191,51 @@ struct Operator
             if(!it->locally_owned()) continue;
             if(!it->has_data() || !it->data().is_allocated()) continue;
 
+	    int Dim = domain->dimension();
+
+	    if (Dim == 2) {
+
+	    int idx2D[it->num_neighbors()];
+	    for (int i = 0; i< it->num_neighbors(); i++){
+	    	idx2D[i] = 1;
+	    }
+	    auto coord_it = it->tree_coordinate();
+            for(std::size_t i=0;i< it->num_neighbors();++i)
+            {
+                auto it2=it->neighbor(i);
+                if ((!it2 || !it2->has_data()) || (leaf_only_boundary && (it2->is_correction() || it2->is_old_correction() )))
+                {
+		    continue;
+		}
+		auto cood = it2->tree_coordinate();
+		int tmp = 0;
+		tmp += 3 * (cood.y() - coord_it.y() + 1) + cood.x() - coord_it.x() + 1;
+
+		idx2D[tmp] = -1;
+	    }
+
+            for(std::size_t i=0;i< it->num_neighbors();++i) {
+	    if (idx2D[i] > 0) {	
+                    for (std::size_t field_idx=0; field_idx<F::nFields(); ++field_idx)
+                    {
+                        auto& lin_data =
+                            it->data_r(F::tag(), field_idx).linalg_data();
+
+                        int N=it->data().descriptor().extent()[0];
+			if (i==1)
+			    view(lin_data,xt::all(),xt::range(0,clean_width))  *= 0.0;
+			else if (i==3)
+			    view(lin_data,xt::range(0,clean_width),xt::all())  *= 0.0;
+			else if (i==5)
+			    view(lin_data,xt::range(N+2-clean_width,N+3),xt::all())  *= 0.0;
+			else if (i==7)
+			    view(lin_data,xt::all(),xt::range(N+2-clean_width,N+3))  *= 0.0;
+		    }
+	    }
+	    }
+	    }
+	    
+
             for(std::size_t i=0;i< it->num_neighbors();++i)
             {
                 auto it2=it->neighbor(i);
@@ -175,7 +264,7 @@ struct Operator
                         else if (i==22)
                             view(lin_data,xt::all(),xt::all(),xt::range(N+2-clean_width,N+3))  *= 0.0;
 			}
-			if (Dim == 2) {
+			/*if (Dim == 2) {
 			if (i==1)
 			    view(lin_data,xt::all(),xt::range(0,clean_width))  *= 0.0;
 			else if (i==3)
@@ -184,7 +273,7 @@ struct Operator
 			    view(lin_data,xt::range(N+2-clean_width,N+3),xt::all())  *= 0.0;
 			else if (i==7)
 			    view(lin_data,xt::all(),xt::range(N+2-clean_width,N+3))  *= 0.0;
-			}
+			}*/
                         /*if (i==4)
                             view(lin_data,xt::all(),xt::all(),xt::range(0,clean_width))  *= 0.0;
                         else if (i==10)

@@ -71,7 +71,7 @@ struct Operator
             for(std::size_t i=0;i< it->num_neighbors();++i)
             {
                 auto it2=it->neighbor(i);
-                if ((!it2 || !it2->has_data()) || (leaf_only_boundary && (it2->is_correction() || it2->is_old_correction() )))
+                if ((!it2 || !it2->has_data()) || (!it2->is_ib()))
                 {
 		    continue;
 		}

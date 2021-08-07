@@ -291,6 +291,10 @@ class Chombo
             int                     box_offset = 0;
             for (auto& file_b_dscriptr : file_boxes)
             {
+		if (box_offset < 0) {
+		    std::cout << file_b_dscriptr.extent()[0] << " " << file_b_dscriptr.extent()[1] << " " << box_offset << std::endl;
+		    throw std::runtime_error("Negative box_offset");
+		}
                 auto copy_b_dscriptr = file_b_dscriptr;
 
                 for (auto& b : blocklist)
@@ -515,7 +519,8 @@ class Chombo
                                                             .base()[0]) +
                                                     shift_i;
 
-                                                std::vector<hsize_t> base(
+
+                                                std::vector<hsize_type> base(
                                                     1, offset),
                                                     extent(1, overlap_local
                                                                   .extent()[0]),
@@ -567,10 +572,11 @@ class Chombo
                     }
                 }
 
-		float_type added_num = 1.0;
+		int added_num = 1;
 
 		for (int j = 0; j < Dim; j++) added_num *= copy_b_dscriptr.extent()[j];
 		box_offset += (added_num*num_components);
+		//std::cout << "copy descptr dim " << copy_b_dscriptr.extent()[0] << " " << copy_b_dscriptr.extent()[1] << " " << num_components << std::endl;
 
                 /*box_offset += copy_b_dscriptr.extent()[0] *
                               copy_b_dscriptr.extent()[1] *

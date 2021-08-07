@@ -419,16 +419,16 @@ class hdf5_file
 	    std::array<int, NumDims> coord0;
 	    std::array<int, NumDims> coord1;
 	    if (NumDims == 3) {
-	    	std::array<int , 3> tmp0 ={data[i].lo_i,    data[i].lo_j,     data[i].lo_k};
-		std::array<int , 3> tmp1 ={data[i].lo_i + 1,data[i].lo_j + 1, data[i].lo_k + 1};
+	    	std::array<int , 3> tmp0 ={data[i].lo_i,                    data[i].lo_j,                    data[i].lo_k};
+		std::array<int , 3> tmp1 ={data[i].hi_i - data[i].lo_i + 1, data[i].hi_j - data[i].lo_j + 1, data[i].hi_k - data[i].lo_k + 1};
 	    	for (int tmp_i = 0; tmp_i < NumDims; tmp_i++) {
 	    	    coord0[tmp_i]=tmp0[tmp_i];
 		    coord1[tmp_i]=tmp1[tmp_i];
 	    	}
 	    }
 	    else if (NumDims == 2){
-	    	std::array<int , 2> tmp0 ={data[i].lo_i,    data[i].lo_j};
-		std::array<int , 2> tmp1 ={data[i].lo_i + 1,data[i].lo_j + 1};
+	    	std::array<int , 2> tmp0 ={data[i].lo_i,                    data[i].lo_j};
+		std::array<int , 2> tmp1 ={data[i].hi_i - data[i].lo_i + 1, data[i].hi_j - data[i].lo_j + 1};
 	    	for (int tmp_i = 0; tmp_i < NumDims; tmp_i++) {
 	    	    coord0[tmp_i]=tmp0[tmp_i];
 		    coord1[tmp_i]=tmp1[tmp_i];

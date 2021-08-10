@@ -274,6 +274,8 @@ class Chombo
         for (int l = 0; l < num_levels; ++l)
         {
             auto level_group = _file->get_group("level_" + std::to_string(l));
+
+            //auto level_group_box = _file->get_group("level_" + std::to_string(l) + "/boxes");
             // Read box descriptors
             auto box_dataset_id = H5Dopen2(level_group, "boxes", H5P_DEFAULT);
 
@@ -283,6 +285,7 @@ class Chombo
             auto file_boxes =
                 _file->template read_box_descriptors<BlockDescriptor>(
                     box_dataset_id, fake_level);
+	    //auto file_boxes = _file->template read_box_from_group<BlockDescriptor>(level_group, fake_level);
 
             auto dataset_id =
                 H5Dopen2(level_group, "data:datatype=0", H5P_DEFAULT);
@@ -559,6 +562,8 @@ class Chombo
 						    for (int tmp_i = 0; tmp_i < Dim; tmp_i++) {
 						    	coffset[tmp_i] = tmp[tmp_i];
 						    }
+
+						    //std::cout << "coord is " << coffset[0] << " " << coffset[1] << " " << data[i] << std::endl;
                                                     
                                                     b->data_r(Field::tag(),
                                                         coffset, field_idx) +=
@@ -575,8 +580,9 @@ class Chombo
 		int added_num = 1;
 
 		for (int j = 0; j < Dim; j++) added_num *= copy_b_dscriptr.extent()[j];
+		//if (added_num == 1) continue;
 		box_offset += (added_num*num_components);
-		//std::cout << "copy descptr dim " << copy_b_dscriptr.extent()[0] << " " << copy_b_dscriptr.extent()[1] << " " << num_components << std::endl;
+		//std::cout << "copy descptr dim " << copy_b_dscriptr.extent()[0] << " " << copy_b_dscriptr.extent()[1] << " " << num_components << " " << " box_offset: " << box_offset << std::endl;
 
                 /*box_offset += copy_b_dscriptr.extent()[0] *
                               copy_b_dscriptr.extent()[1] *

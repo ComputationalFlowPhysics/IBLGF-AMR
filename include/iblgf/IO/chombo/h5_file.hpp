@@ -154,6 +154,38 @@ class hdf5_file
         std::string hi_k_str = "hi_k";
     };
 
+
+    struct box_compound2D
+    {
+        box_compound2D() = default;
+        ~box_compound2D() = default;
+        box_compound2D(const index_list_t& _min, const index_list_t& _max)
+        {
+            lo_i = static_cast<int>(_min[0]);
+            lo_j = static_cast<int>(_min[1]);
+            //if (dimension == 3) lo_k = static_cast<int>(_min[2]);
+            hi_i = static_cast<int>(_max[0]);
+            hi_j = static_cast<int>(_max[1]);
+            //if (dimension == 3) hi_k = static_cast<int>(_max[2]);
+        }
+
+
+        int         lo_i;
+        int         lo_j;
+        int         hi_i;
+        int         hi_j;
+        //int         lo_k;
+
+        //int         hi_k;
+        std::string lo_i_str = "lo_i";
+        std::string lo_j_str = "lo_j";
+        //std::string lo_k_str = "lo_k";
+        std::string hi_i_str = "hi_i";
+        std::string hi_j_str = "hi_j";
+        //std::string hi_k_str = "hi_k";
+    };
+
+
     void open_file2(std::string _filename, bool default_open = true)
     {
         boost::mpi::communicator world;
@@ -398,6 +430,53 @@ class hdf5_file
         read_dataset(dataset_id, memspace, dataspace_id, &data[0]);
     }
 
+
+    template<class BlockDescriptor>
+    std::vector<BlockDescriptor> read_box_from_group(
+        hid_t& _group_id, int fake_level)
+    {
+	auto lo_i = read_attribute<std::vector<int>>(_group_id, "lo_j");
+	std::cout << "finished reading lo_i" << std::endl;
+	auto lo_j = read_attribute<std::vector<int>>(_group_id, "lo_j");
+	auto hi_i = read_attribute<std::vector<int>>(_group_id, "hi_i");
+	auto hi_j = read_attribute<std::vector<int>>(_group_id, "hi_j");
+
+	int dimsV = lo_i.size();
+	
+	std::vector<int> lo_k, hi_k;
+	if (NumDims == 3) {    
+	    lo_k = read_attribute<std::vector<int>>(_group_id, "lo_k");
+	    hi_k = read_attribute<std::vector<int>>(_group_id, "hi_k");
+	}
+
+        std::vector<BlockDescriptor> vec_box(dimsV);
+        //TODO : somehow the direct conversion doesn't work
+        for (int i = 0; i < static_cast<int>(dimsV); ++i)
+        {
+	    std::array<int, NumDims> coord0;
+	    std::array<int, NumDims> coord1;
+	    if (NumDims == 3) {
+	    	std::array<int , 3> tmp0 ={lo_i[i],               lo_j[i],               lo_k[i]};
+		std::array<int , 3> tmp1 ={hi_i[i] - lo_i[i] + 1, hi_j[i] - lo_j[i] + 1, hi_k[i] - lo_k[i] + 1};
+	    	for (int tmp_i = 0; tmp_i < NumDims; tmp_i++) {
+	    	    coord0[tmp_i]=tmp0[tmp_i];
+		    coord1[tmp_i]=tmp1[tmp_i];
+	    	}
+	    }
+	    else if (NumDims == 2){
+	    	std::array<int , 2> tmp0 ={lo_i[i],               lo_j[i]};
+		std::array<int , 2> tmp1 ={hi_i[i] - lo_i[i] + 1, hi_j[i] - lo_i[i] + 1};
+	    	for (int tmp_i = 0; tmp_i < NumDims; tmp_i++) {
+	    	    coord0[tmp_i]=tmp0[tmp_i];
+		    coord1[tmp_i]=tmp1[tmp_i];
+	    	}
+		std::cout << "ext is " << coord0[0] << " " << coord0[1] << " " << coord1[0] << " " << coord1[1] << std::endl;
+	    }
+            vec_box[i] = BlockDescriptor(coord0,coord1,fake_level);
+        }
+        return vec_box;
+    }
+
     template<class BlockDescriptor>
     std::vector<BlockDescriptor> read_box_descriptors(
         hid_t& dataset_id, int fake_level)
@@ -407,11 +486,60 @@ class hdf5_file
         std::vector<hsize_t> dims(1);
         H5Sget_simple_extent_dims(dataspace_id, &dims[0], NULL);
 
+
         box_compound* data =
-            (box_compound*)malloc(dims[0] * sizeof(box_compound));
+            (box_compound*)malloc(static_cast<int>(dims[0]) * sizeof(box_compound));
+
+
+        //box_compound2D* data2D
+	//	= (box_compound2D*)malloc(static_cast<int>(dims[0]) * sizeof(box_compound2D));
+
+	/*for (int i = 0; i < static_cast<int>(dims[0]); i++) {
+	    data2D[i].lo_i = -1000;
+	    data2D[i].hi_i = -1000;
+	    data2D[i].lo_j = -1000;
+	    //data2D[i].lo_k = -1000;
+	    data2D[i].hi_j = -1000;
+	    //data2D[i].hi_k = -1000;
+	}*/
+
+	//int sizes[static_cast<int>(dims[0])];
 
         hid_t memtype = H5Dget_type(dataset_id);
-        H5Dread(dataset_id, memtype, H5S_ALL, H5S_ALL, H5P_DEFAULT, &data[0]);
+	//memtype = H5Tcreate(H5T_COMPOUND, sizeof(box_compound2D));
+
+	//int tmp11[static_cast<int>(dims[0]) * 50];
+	//memtype = H5Tcopy(H5T_NATIVE_INT);
+	//
+	//H5Pset_alignment(H5P_DEFAULT, 0,1);
+	hid_t s2_tid = H5Tcreate(H5T_COMPOUND, sizeof(box_compound));
+
+	H5Tinsert(s2_tid, "lo_i", HOFFSET(box_compound, lo_i), H5T_NATIVE_INT);
+	H5Tinsert(s2_tid, "lo_j", HOFFSET(box_compound, lo_j), H5T_NATIVE_INT);
+	H5Tinsert(s2_tid, "hi_i", HOFFSET(box_compound, hi_i), H5T_NATIVE_INT);
+	H5Tinsert(s2_tid, "hi_j", HOFFSET(box_compound, hi_j), H5T_NATIVE_INT);
+	if (NumDims == 3) {
+	H5Tinsert(s2_tid, "lo_k", HOFFSET(box_compound, lo_k), H5T_NATIVE_INT);
+	H5Tinsert(s2_tid, "hi_k", HOFFSET(box_compound, hi_k), H5T_NATIVE_INT);
+	}
+
+        if (NumDims == 3) H5Dread(dataset_id, s2_tid,        H5S_ALL, H5S_ALL, H5P_DEFAULT, &data[0]);
+        if (NumDims == 2) H5Dread(dataset_id, s2_tid,        H5S_ALL, H5S_ALL, H5P_DEFAULT, &data[0]);
+	/*for (int i = 0; i < dims[0]; i++) {
+	    data[i].lo_i = tmp11[i*2*NumDims];
+	    data[i].lo_j = tmp11[i*2*NumDims + 1];
+	    data[i].hi_i = tmp11[i*2*NumDims + 2];
+	    data[i].hi_j = tmp11[i*2*NumDims + 3];
+	}*/
+        //H5Aread(dataset_id, memtype, H5S_ALL, H5S_ALL, H5P_DEFAULT, &sizes[0]);
+	/*boost::mpi::communicator world;
+	if (world.rank() == 1) {
+	
+	for (int i = 0; i < static_cast<int>(dims[0]); i++) {
+	    std::cout << "data Range " << i << " blk " <<  data[i].lo_i << " "<< data[i].hi_i << " " << data[i].lo_j << " " << data[i].hi_j << std::endl;
+	}
+	std::cout << "finished output" <<std::endl;
+	}*/
         std::vector<BlockDescriptor> vec_box(dims[0]);
         //TODO : somehow the direct conversion doesn't work
         for (int i = 0; i < static_cast<int>(dims[0]); ++i)

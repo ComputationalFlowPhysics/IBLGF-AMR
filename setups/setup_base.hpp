@@ -244,6 +244,20 @@ class SetupBase
                     error_tmp = 0;
                 }
 		}
+
+		if (domain_->dimension() == 2) {
+		    if (field_idx == 0) {
+		    	y+=0.5*dx;
+		    }
+		    if (field_idx == 1) {
+		    	x+=0.5*dx;
+		    }
+		    float_type r2 = x*x + y*y;
+		    if (std::fabs(r2) <= 0.25) {
+		    	node(Error::tag(), field_idx)=0.0;
+			error_tmp = 0.0;
+		    }
+		}
                 // clean inside spehre
 		float_type weight = std::pow(dx, domain_->dimension());
                 L2 += error_tmp * error_tmp * weight;

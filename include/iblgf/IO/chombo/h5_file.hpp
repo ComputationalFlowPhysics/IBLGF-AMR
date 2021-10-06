@@ -411,6 +411,20 @@ class hdf5_file
             (box_compound*)malloc(dims[0] * sizeof(box_compound));
 
         hid_t memtype = H5Dget_type(dataset_id);
+
+
+	hid_t s2_tid = H5Tcreate(H5T_COMPOUND, sizeof(box_compound));
+
+	H5Tinsert(s2_tid, "lo_i", HOFFSET(box_compound, lo_i), H5T_NATIVE_INT);
+	H5Tinsert(s2_tid, "lo_j", HOFFSET(box_compound, lo_j), H5T_NATIVE_INT);
+	H5Tinsert(s2_tid, "hi_i", HOFFSET(box_compound, hi_i), H5T_NATIVE_INT);
+	H5Tinsert(s2_tid, "hi_j", HOFFSET(box_compound, hi_j), H5T_NATIVE_INT);
+	//if (NumDims == 3) {
+	H5Tinsert(s2_tid, "lo_k", HOFFSET(box_compound, lo_k), H5T_NATIVE_INT);
+	H5Tinsert(s2_tid, "hi_k", HOFFSET(box_compound, hi_k), H5T_NATIVE_INT);
+	//}
+
+
         H5Dread(dataset_id, memtype, H5S_ALL, H5S_ALL, H5P_DEFAULT, &data[0]);
         std::vector<BlockDescriptor> vec_box(dims[0]);
         //TODO : somehow the direct conversion doesn't work

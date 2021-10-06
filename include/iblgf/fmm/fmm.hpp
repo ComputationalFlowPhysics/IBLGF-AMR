@@ -47,16 +47,155 @@ template<class Domain>
 struct FmmMaskBuilder
 {
     using octant_t = typename Domain::octant_t;
+    using MASK_TYPE = typename octant_t::MASK_TYPE;
     using MASK_LIST = typename octant_t::MASK_LIST;
 
-  public:
+public:
+    //static void fmm_mask_build(Domain* domain_, bool subtract_non_leaf_)
+    //{
+    //    fmm_IB2IB_mask(domain_);
+    //    fmm_IB2AMR_mask(domain_);
+    //    fmm_vortex_streamfun_mask(domain_);
+    //    fmm_lgf_mask_build(domain_, subtract_non_leaf_);
+    //}
+
+    static void fmm_IB2xIB_mask(Domain* domain_)
+    {
+
+        int fmm_mask_idx = octant_t::fmm_mask_idx_gen(MASK_TYPE::IB2xIB);
+
+        // clean
+        for (auto it = domain_->begin();
+             it != domain_->end(); ++it)
+        {
+            it->fmm_mask(fmm_mask_idx, MASK_LIST::Mask_FMM_Source, false);
+            it->fmm_mask(fmm_mask_idx, MASK_LIST::Mask_FMM_Target, false);
+        }
+
+        int l = domain_->tree()->depth()-1;
+
+        for (auto it = domain_->begin(l);
+             it != domain_->end(l); ++it)
+        {
+            if (it->is_ib())
+            {
+                it->fmm_mask(fmm_mask_idx, MASK_LIST::Mask_FMM_Source, true);
+                it->fmm_mask(fmm_mask_idx, MASK_LIST::Mask_FMM_Target, true);
+                it->add_load(it->neighbor_number() );
+            }
+            if (it->is_extended_ib())
+            {
+                it->fmm_mask(fmm_mask_idx, MASK_LIST::Mask_FMM_Target, true);
+                it->add_load(it->neighbor_number() );
+            }
+        }
+
+        fmm_upward_pass_masks(domain_, l, MASK_LIST::Mask_FMM_Source,
+                MASK_LIST::Mask_FMM_Target, fmm_mask_idx);
+        fmm_clean_no_inf_masks(domain_, l, MASK_LIST::Mask_FMM_Source,
+            MASK_LIST::Mask_FMM_Target, fmm_mask_idx);
+
+    }
+
+    static void fmm_xIB2IB_mask(Domain* domain_)
+    {
+
+        int fmm_mask_idx = octant_t::fmm_mask_idx_gen(MASK_TYPE::xIB2IB);
+
+        // clean
+        for (auto it = domain_->begin();
+             it != domain_->end(); ++it)
+        {
+            it->fmm_mask(fmm_mask_idx, MASK_LIST::Mask_FMM_Source, false);
+            it->fmm_mask(fmm_mask_idx, MASK_LIST::Mask_FMM_Target, false);
+        }
+
+        int l = domain_->tree()->depth()-1;
+
+        for (auto it = domain_->begin(l);
+             it != domain_->end(l); ++it)
+        {
+            if (it->is_ib())
+            {
+                it->fmm_mask(fmm_mask_idx, MASK_LIST::Mask_FMM_Source, true);
+                it->fmm_mask(fmm_mask_idx, MASK_LIST::Mask_FMM_Target, true);
+                it->add_load(it->neighbor_number() );
+            }
+            if (it->is_extended_ib())
+            {
+                it->fmm_mask(fmm_mask_idx, MASK_LIST::Mask_FMM_Source, true);
+                it->add_load(it->neighbor_number() );
+            }
+        }
+
+        fmm_upward_pass_masks(domain_, l, MASK_LIST::Mask_FMM_Source,
+                MASK_LIST::Mask_FMM_Target, fmm_mask_idx);
+        fmm_clean_no_inf_masks(domain_, l, MASK_LIST::Mask_FMM_Source,
+            MASK_LIST::Mask_FMM_Target, fmm_mask_idx);
+
+    }
+
+    static void fmm_IB2AMR_mask(Domain* domain_)
+    {
+
+        // find all parents that are
+        for (int l = domain_->tree()->depth()-2;
+             l >= domain_->tree()->base_level() ; --l)
+        {
+            for (auto it = domain_->begin(l); it != domain_->end(l);
+                 ++it)
+            {
+                for (int c = 0; c < it->num_children(); ++c)
+                    if (it->child(c) && it->child(c)->has_data() && it->child(c)->is_ib())
+                        it->is_ib()=true;
+            }
+
+        }
+
+        for (int l = domain_->tree()->depth()-1;
+             l >= domain_->tree()->base_level() ; --l)
+        {
+
+            int fmm_mask_idx = octant_t::fmm_mask_idx_gen(MASK_TYPE::IB2AMR,
+                    l-domain_->tree()->base_level());
+
+            // clean
+            for (auto it = domain_->begin();
+                    it != domain_->end(); ++it)
+            {
+                it->fmm_mask(fmm_mask_idx, MASK_LIST::Mask_FMM_Source, false);
+                it->fmm_mask(fmm_mask_idx, MASK_LIST::Mask_FMM_Target, false);
+            }
+
+            for (auto it = domain_->begin(l);
+                    it != domain_->end(l); ++it)
+            {
+                it->fmm_mask(fmm_mask_idx, MASK_LIST::Mask_FMM_Target, true);
+
+                if (it->is_ib())
+                {
+                    it->fmm_mask(fmm_mask_idx, MASK_LIST::Mask_FMM_Source, true);
+                    it->add_load(it->neighbor_number() * 2);
+                }
+
+            }
+
+            fmm_upward_pass_masks(domain_, l, MASK_LIST::Mask_FMM_Source,
+                    MASK_LIST::Mask_FMM_Target, fmm_mask_idx);
+
+        }
+
+    }
+
+
     static void fmm_vortex_streamfun_mask(Domain* domain_)
     {
         int base_level = domain_->tree()->base_level();
-        int fmm_mask_idx = 0;
+        int fmm_mask_idx = octant_t::fmm_mask_idx_gen(MASK_TYPE::STREAM);
+        //int fmm_mask_idx = 0;
 
-        for (auto it = domain_->begin(base_level);
-             it != domain_->end(base_level); ++it)
+        for (auto it = domain_->begin();
+             it != domain_->end(); ++it)
         {
             it->fmm_mask(fmm_mask_idx, MASK_LIST::Mask_FMM_Source, false);
             it->fmm_mask(fmm_mask_idx, MASK_LIST::Mask_FMM_Target, false);
@@ -100,16 +239,101 @@ struct FmmMaskBuilder
             fmm_dry(domain_, l, true, subtract_non_leaf);
         }
     }
+
     static void fmm_dry(Domain* domain_, int base_level,
         bool non_leaf_as_source, bool subtract_non_leaf)
     {
         int refinement_level = base_level - domain_->tree()->base_level();
-        int fmm_mask_idx = refinement_level * 2 + non_leaf_as_source + 1;
+        //int fmm_mask_idx = refinement_level * 2 + non_leaf_as_source + 1;
+        int fmm_mask_idx = octant_t::fmm_mask_idx_gen(MASK_TYPE::AMR2AMR, refinement_level, non_leaf_as_source);
 
         fmm_dry_init_base_level_masks(domain_, base_level, non_leaf_as_source,
             fmm_mask_idx, subtract_non_leaf);
-        fmm_upward_pass_masks(domain_, base_level, MASK_LIST::Mask_FMM_Source,
+        fmm_upward_pass_masks (domain_, base_level, MASK_LIST::Mask_FMM_Source,
             MASK_LIST::Mask_FMM_Target, fmm_mask_idx);
+        fmm_clean_no_inf_masks(domain_, base_level, MASK_LIST::Mask_FMM_Source,
+            MASK_LIST::Mask_FMM_Target, fmm_mask_idx);
+    }
+
+    static void fmm_clean_no_inf_masks(Domain* domain_, int base_level,
+        int mask_source_id, int mask_target_id, const int _fmm_mask_idx)
+    {
+        for (int level=0; level<base_level; ++level)
+        {
+            for (auto it = domain_->begin(level); it != domain_->end(level);
+                 ++it)
+            {
+
+                //domain_->tree()->influence_list_build(it.ptr());
+                //domain_->tree()->neighbor_list_build(it.ptr());
+                //for source masks
+                if (it->fmm_mask(_fmm_mask_idx, mask_source_id))
+                {
+                    if (it->parent() && it->parent()->has_data() && it->parent()->fmm_mask(_fmm_mask_idx, mask_source_id) )
+                        continue;
+
+                    bool has_target=false;
+                    for (int i = 0; i < it->influence_number(); ++i)
+                    {
+                        auto n_s = it->influence(i);
+                        if (n_s && n_s->has_data() &&
+                                n_s->fmm_mask(_fmm_mask_idx, mask_target_id))
+                        {
+                            has_target = true;
+                            break;
+                        }
+                    }
+
+                    //for (int i = 0; i < it->nNeighbors(); ++i)
+                    //{
+                    //    auto n_s = it->neighbor(i);
+                    //    if (n_s && n_s->has_data() &&
+                    //            n_s->fmm_mask(_fmm_mask_idx, mask_target_id))
+                    //    {
+                    //        has_target = true;
+                    //        break;
+                    //    }
+                    //}
+
+                    if (!has_target)
+                        it->fmm_mask(_fmm_mask_idx, mask_source_id, false);
+                }
+
+                // for target masks
+                if (it->fmm_mask(_fmm_mask_idx, mask_target_id))
+                {
+                    if ( it->parent() && it->parent()->has_data() && it->parent()->fmm_mask(_fmm_mask_idx, mask_target_id) )
+                        continue;
+
+                    bool has_source=false;
+                    for (int i = 0; i < it->influence_number(); ++i)
+                    {
+                        auto n_s = it->influence(i);
+                        if (n_s && n_s->has_data() &&
+                                n_s->fmm_mask(_fmm_mask_idx, mask_source_id))
+                        {
+                            has_source = true;
+                            break;
+                        }
+                    }
+
+                    //for (int i = 0; i < it->nNeighbors(); ++i)
+                    //{
+                    //    auto n_s = it->neighbor(i);
+                    //    if (n_s && n_s->has_data() &&
+                    //            n_s->fmm_mask(_fmm_mask_idx, mask_source_id))
+                    //    {
+                    //        has_source = true;
+                    //        break;
+                    //    }
+                    //}
+
+                    if (!has_source)
+                        it->fmm_mask(_fmm_mask_idx, mask_target_id, false);
+                }
+
+            }
+        }
     }
 
     static void fmm_upward_pass_masks(Domain* domain_, int base_level,
@@ -311,6 +535,7 @@ class Fmm
     using domain_t = typename Setup::domain_t;
     using octant_t = typename domain_t::octant_t;
     using MASK_LIST = typename octant_t::MASK_LIST;
+    using MASK_TYPE = typename octant_t::MASK_TYPE;
 
     //Fields:
     using fmm_s_type = typename Setup::fmm_s_type;
@@ -332,16 +557,23 @@ class Fmm
     template<class Source, class Target, class Kernel>
     void apply(domain_t* domain_, Kernel* _kernel, int level,
         bool non_leaf_as_source, float_type add_with_scale = 1.0,
-        bool base_level_only = false)
+        int fmm_type = MASK_TYPE::AMR2AMR)
     {
         const float_type dx_base = domain_->dx_base();
         auto refinement_level = level - domain_->tree()->base_level();
         auto dx_level = dx_base / std::pow(2, refinement_level);
 
         base_level_ = level;
-        if (base_level_only) fmm_mask_idx_ = 0;
-        else
-            fmm_mask_idx_ = refinement_level * 2 + non_leaf_as_source + 1;
+        if (fmm_type == MASK_TYPE::STREAM)
+            fmm_mask_idx_ = octant_t::fmm_mask_idx_gen(MASK_TYPE::STREAM);
+        else if (fmm_type == MASK_TYPE::AMR2AMR)
+            fmm_mask_idx_ = octant_t::fmm_mask_idx_gen(MASK_TYPE::AMR2AMR, refinement_level, non_leaf_as_source);
+        else if (fmm_type == MASK_TYPE::IB2xIB)
+            fmm_mask_idx_ = octant_t::fmm_mask_idx_gen(MASK_TYPE::IB2xIB);
+        else if (fmm_type == MASK_TYPE::xIB2IB)
+            fmm_mask_idx_ = octant_t::fmm_mask_idx_gen(MASK_TYPE::xIB2IB);
+        else if (fmm_type == MASK_TYPE::IB2AMR)
+            fmm_mask_idx_ = octant_t::fmm_mask_idx_gen(MASK_TYPE::IB2AMR, refinement_level);
 
         if (_kernel->neighbor_only())
         {
@@ -510,7 +742,7 @@ class Fmm
 #endif
 
         for (auto B_it = sorted_octants_.begin(); B_it != sorted_octants_.end();
-             ++B_it)
+                ++B_it)
         {
             auto       it = B_it->first;
             const int  level = it->level();
@@ -518,51 +750,57 @@ class Fmm
 
             if (it->locally_owned())
                 compute_influence_field(
-                    &(*it), _kernel, base_level_ - level, scale, _neighbor);
+                        &(*it), _kernel, base_level_ - level, scale, _neighbor);
 
-            //setup the tasks
             if (B_it->second != 0)
             {
                 domain_->decomposition()
-                    .client()
-                    ->template communicate_induced_fields<fmm_t_type,
-                        fmm_t_type>(&(*it), this, _kernel, base_level_ - level,
+                .client()
+                ->template communicate_induced_fields<fmm_t_type,
+                fmm_t_type>(&(*it), this, _kernel, base_level_ - level,
                         scale, _neighbor, start_communication, fmm_mask_idx_);
             }
 #ifdef packMessages
             else if (!combined_messages)
-            //if(!combined_messages && B_it->second==0)
             {
                 domain_->decomposition()
-                    .client()
-                    ->template combine_induced_field_messages<fmm_t_type,
-                        fmm_t_type>();
+                .client()
+                ->template combine_induced_field_messages<fmm_t_type,
+                fmm_t_type>();
                 combined_messages = true;
             }
             if (c % 5 == 0 && combined_messages)
             {
                 domain_->decomposition()
-                    .client()
-                    ->template check_combined_induced_field_communication<
-                        fmm_t_type, fmm_t_type>(false);
+                .client()
+                ->template check_combined_induced_field_communication<
+                fmm_t_type, fmm_t_type>(false);
             }
             ++c;
 #endif
         }
 
 #ifdef packMessages
-        //Finish the communication
+        if (!combined_messages)
+        {
+            domain_->decomposition()
+            .client()
+            ->template combine_induced_field_messages<fmm_t_type,
+            fmm_t_type>();
+            combined_messages = true;
+        }
         if (combined_messages)
         {
             domain_->decomposition()
-                .client()
-                ->template check_combined_induced_field_communication<
-                    fmm_t_type, fmm_t_type>(true);
+            .client()
+            ->template check_combined_induced_field_communication<
+            fmm_t_type, fmm_t_type>(true);
         }
 #else
         domain_->decomposition().client()->finish_induced_field_communication();
 #endif
     }
+
 
     template<class Kernel>
     void compute_influence_field(octant_t* it, Kernel* _kernel, int level_diff,

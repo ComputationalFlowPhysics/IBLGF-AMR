@@ -25,6 +25,7 @@
 #include <iblgf/domain/domain.hpp>
 #include <iblgf/IO/parallel_ostream.hpp>
 #include <iblgf/solver/poisson/poisson.hpp>
+#include <iblgf/solver/linsys/linsys.hpp>
 #include <iblgf/operators/operators.hpp>
 #include <iblgf/utilities/misc_math_functions.hpp>
 
@@ -45,13 +46,20 @@ class Ifherk
     using datablock_type = typename domain_type::datablock_t;
     using tree_t = typename domain_type::tree_t;
     using octant_t = typename tree_t::octant_type;
+    using MASK_TYPE = typename octant_t::MASK_TYPE;
     using block_type = typename datablock_type::block_descriptor_type;
     using real_coordinate_type = typename domain_type::real_coordinate_type;
     using coordinate_type = typename domain_type::coordinate_type;
     using poisson_solver_t = typename Setup::poisson_solver_t;
+    using linsys_solver_t = typename Setup::linsys_solver_t;
+
+    using ib_t = typename domain_type::ib_t;
+    using force_type = typename ib_t::force_type;
 
     //FMM
     using Fmm_t = typename Setup::Fmm_t;
+
+    using test_type = typename Setup::test_type;
 
     using u_type = typename Setup::u_type;
     using stream_f_type = typename Setup::stream_f_type;
@@ -64,6 +72,7 @@ class Ifherk
     using cell_aux_type = typename Setup::cell_aux_type;
     using edge_aux_type = typename Setup::edge_aux_type;
     using face_aux_type = typename Setup::face_aux_type;
+    using face_aux2_type = typename Setup::face_aux2_type;
     using correction_tmp_type = typename Setup::correction_tmp_type;
     using w_1_type = typename Setup::w_1_type;
     using w_2_type = typename Setup::w_2_type;
@@ -75,6 +84,7 @@ class Ifherk
     : simulation_(_simulation)
     , domain_(_simulation->domain_.get())
     , psolver(_simulation)
+    , lsolver(_simulation)
     {
         // parameters --------------------------------------------------------
 
@@ -94,6 +104,8 @@ class Ifherk
             "cfl_max", 1000);
         updating_source_max_ = _simulation->dictionary()->template get_or<bool>(
             "updating_source_max", true);
+        all_time_max_ = _simulation->dictionary()->template get_or<bool>(
+            "all_time_max", true);
 
 
         if (dt_base_ < 0) dt_base_ = dx_base_ * cfl_;
@@ -155,6 +167,7 @@ class Ifherk
             Dictionary info_d(simulation_->restart_load_dir()+"/restart_info");
             T_=info_d.template get<float_type>("T");
             adapt_count_=info_d.template get<int>("adapt_count");
+            T_last_vel_refresh_=info_d.template get_or<float_type>("T_last_vel_refresh", 0.0);
             source_max_[0]=info_d.template get<float_type>("cell_aux_max");
             source_max_[1]=info_d.template get<float_type>("u_max");
             pcout<<"Restart info ------------------------------------------------ "<< std::endl;
@@ -162,6 +175,7 @@ class Ifherk
             pcout<<"adapt_count = "<< adapt_count_<< std::endl;
             pcout<<"cell aux max = "<< source_max_[0]<< std::endl;
             pcout<<"u max = "<< source_max_[1]<< std::endl;
+            pcout<<"T_last_vel_refresh = "<< T_last_vel_refresh_<< std::endl;
             if(domain_->is_client())
             {
                 //pad_velocity<u_type, u_type>(true);
@@ -170,7 +184,8 @@ class Ifherk
         else
         {
             T_ = 0.0;
-            adapt_count_=-1;
+            adapt_count_=0;
+
             write_timestep();
         }
 
@@ -178,6 +193,7 @@ class Ifherk
 
         while(T_<T_max_-1e-10)
         {
+
 
             // -------------------------------------------------------------
             // adapt
@@ -189,6 +205,16 @@ class Ifherk
                 clean<cell_aux_type>(true, 2);
                 clean<edge_aux_type>(true, 1);
                 clean<correction_tmp_type>(true, 2);
+            }
+            else
+            {
+                auto lb = domain_->level_blocks();
+                std::cout<<"Blocks on each level: ";
+
+                for (int c: lb)
+                    std::cout<< c << " ";
+                std::cout<<std::endl;
+
             }
 
             // copy flag correction to flag old correction
@@ -203,6 +229,27 @@ class Ifherk
             {
                 it->flag_old_correction(it->is_correction());
             }
+
+            int c=0;
+
+            for (auto it = domain_->begin(); it != domain_->end(); ++it)
+            {
+                if (!it->locally_owned()) continue;
+                if (it->is_ib() || it->is_extended_ib())
+                {
+                    auto& lin_data =
+                        it->data_r(test_type::tag(), 0).linalg_data();
+                    std::fill(lin_data.begin(), lin_data.end(), 2.0);
+                    c+=1;
+                }
+
+            }
+            boost::mpi::communicator world;
+            int c_all;
+            boost::mpi::all_reduce(
+                world, c, c_all, std::plus<int>());
+            pcout<< "block = " << c_all << std::endl;
+
 
             if ( adapt_count_ % adapt_freq_ ==0)
             {
@@ -227,21 +274,19 @@ class Ifherk
             if ( adapt_count_ % adapt_freq_ ==0)
             {
                 clean<u_type>(true);
-                domain_->decomposition().template balance<u_type,p_type>();
+                //domain_->decomposition().template balance<u_type,p_type>();
             }
 
             adapt_count_++;
 
             // -------------------------------------------------------------
             // time marching
-            if(domain_->is_client())
-            {
-                mDuration_type ifherk_if(0);
-                TIME_CODE( ifherk_if, SINGLE_ARG(
-                            time_step();
-                            ));
-                pcout<<ifherk_if.count()<<std::endl;
-            }
+
+            mDuration_type ifherk_if(0);
+            TIME_CODE( ifherk_if, SINGLE_ARG(
+                        time_step();
+                        ));
+            pcout<<ifherk_if.count()<<std::endl;
 
             // -------------------------------------------------------------
             // update stats & output
@@ -260,6 +305,14 @@ class Ifherk
             if ((std::fabs(tmp_int_n - tmp_n) < 1e-4) &&
                 (tmp_int_n % output_base_freq_ == 0))
             {
+                //test
+                //
+
+                //clean<test_type>();
+                //auto f = [](std::size_t idx, float_type t, auto coord = {0, 0, 0}){return 1.0;};
+                //domain::Operator::add_field_expression<test_type>(domain_, f, T_, 1.0);
+                //clean_leaf_correction_boundary<test_type>(domain_->tree()->base_level(),true,2);
+
                 n_step_ = tmp_int_n;
                 write_timestep();
                 // only update dt after 1 output so it wouldn't do 3 5 7 9 ...
@@ -267,22 +320,7 @@ class Ifherk
                 update_marching_parameters();
             }
 
-            world.barrier();
-
-            int c_allc_global;
-            int c_allc = domain_->num_allocations();
-            boost::mpi::all_reduce(
-                world, c_allc, c_allc_global, std::plus<int>());
-
-            // -------------- output info ------------------------------------
-            if (domain_->is_server())
-            {
-                std::cout<<"T = " << T_<<", n = "<< tmp_n << " -----------------" << std::endl;
-                std::cout<<"Total number of leaf octants: "<<domain_->num_leafs()<<std::endl;
-                std::cout<<"Total number of leaf + correction octants: "<<domain_->num_corrections()+domain_->num_leafs()<<std::endl;
-                std::cout<<"Total number of allocated octants: "<<c_allc_global<<std::endl;
-                std::cout<<" -----------------" << std::endl;
-            }
+            write_stats(tmp_n);
 
         }
     }
@@ -345,7 +383,16 @@ class Ifherk
         boost::mpi::all_reduce(
             comm_, max_local, new_maximum, boost::mpi::maximum<float_type>());
 
-        source_max_[idx] = std::max(source_max_[idx], new_maximum);
+        //source_max_[idx] = std::max(source_max_[idx], new_maximum);
+        if (all_time_max_)
+            source_max_[idx] = std::max(source_max_[idx], new_maximum);
+        else
+            source_max_[idx] = 0.5*( source_max_[idx] + new_maximum );
+
+        if (source_max_[idx]< 1e-2)
+            source_max_[idx] = 1e-2;
+
+        pcout << "source max = "<< source_max_[idx] << std::endl;
     }
 
     void write_restart()
@@ -364,6 +411,82 @@ class Ifherk
         simulation_->write("", true);
 
         write_info();
+        world.barrier();
+    }
+
+    void write_stats(int tmp_n)
+    {
+        boost::mpi::communicator world;
+        world.barrier();
+
+        // - Numeber of cells -----------------------------------------------
+        int c_allc_global;
+        int c_allc = domain_->num_allocations();
+        boost::mpi::all_reduce(
+                world, c_allc, c_allc_global, std::plus<int>());
+
+        if (domain_->is_server())
+        {
+            std::cout<<"T = " << T_<<", n = "<< tmp_n << " -----------------" << std::endl;
+
+            auto lb = domain_->level_blocks();
+            std::cout<<"Blocks on each level: ";
+
+            for (int c: lb)
+                std::cout<< c << " ";
+            std::cout<<std::endl;
+
+            std::cout<<"Total number of leaf octants: "<<domain_->num_leafs()<<std::endl;
+            std::cout<<"Total number of leaf + correction octants: "<<domain_->num_corrections()+domain_->num_leafs()<<std::endl;
+            std::cout<<"Total number of allocated octants: "<<c_allc_global<<std::endl;
+            std::cout<<" -----------------" << std::endl;
+        }
+
+
+        // - Forcing ------------------------------------------------
+        auto& ib = domain_->ib();
+        ib.clean_non_local();
+
+        force_type sum_f(ib.force().size(), (0.,0.,0.));
+        if (ib.size() > 0)
+        {
+            boost::mpi::all_reduce(world, &ib.force(0), ib.size(), &sum_f[0],
+                std::plus<real_coordinate_type>());
+        }
+        if (domain_->is_server())
+        {
+            std::vector<float_type> f(domain_->dimension(), 0.);
+            if (ib.size() > 0)
+            {
+                for (std::size_t d = 0; d < domain_->dimension(); ++d)
+                    for (std::size_t i = 0; i < ib.size(); ++i)
+                        f[d] += sum_f[i][d] * 1.0 / coeff_a(3, 3) / dt_ *
+                                ib.force_scale();
+                //f[d]+=sum_f[i][d] * 1.0 / dt_ * ib.force_scale();
+
+                std::cout<<"ib  size: "<<ib.size()<<std::endl;
+                std::cout << "Forcing = ";
+
+                for (std::size_t d = 0; d < domain_->dimension(); ++d)
+                    std::cout << f[d] << " ";
+                std::cout << std::endl;
+
+                std::cout << " -----------------" << std::endl;
+            }
+
+            std::ofstream outfile;
+            int width=20;
+
+            outfile.open("fstats.txt", std::ios_base::app); // append instead of overwrite
+            outfile <<std::setw(width) << tmp_n <<std::setw(width)<<std::scientific<<std::setprecision(9);
+            outfile <<std::setw(width) << T_ <<std::setw(width)<<std::scientific<<std::setprecision(9);
+            for (auto& element:f)
+            {
+                outfile<<element<<std::setw(width);
+            }
+            outfile<<std::endl;
+        }
+
         world.barrier();
     }
 
@@ -397,6 +520,7 @@ class Ifherk
             ofs<<"cell_aux_max = " << source_max_[0] << ";" << std::endl;
             ofs<<"u_max = " << source_max_[1] << ";" << std::endl;
             ofs<<"restart_n_last = " << restart_n_last_ << ";" << std::endl;
+            ofs<<"T_last_vel_refresh = " << T_last_vel_refresh_ << ";" << std::endl;
 
             ofs.close();
         }
@@ -501,6 +625,8 @@ class Ifherk
         boost::mpi::communicator world;
         auto                     client = domain_->decomposition().client();
 
+        T_stage_ = T_;
+
         ////claen non leafs
 
         stage_idx_=0;
@@ -512,11 +638,16 @@ class Ifherk
                     if (    base_mesh_update_ ||
                             ((T_-T_last_vel_refresh_)/(Re_*dx_base_*dx_base_) * 3.3>7))
                     {
-                        pad_velocity<u_type, u_type>(true);
+                        pcout<< "pad_velocity, last T_vel_refresh = "<<T_last_vel_refresh_<< std::endl;
                         T_last_vel_refresh_=T_;
+                        if (!domain_->is_client())
+                            return;
+                        pad_velocity<u_type, u_type>(true);
                     }
                     else
                     {
+                        if (!domain_->is_client())
+                            return;
                         up_and_down<u_type>();
                     }
                     ));
@@ -528,6 +659,7 @@ class Ifherk
         // Stage 1
         // ******************************************************************
         pcout << "Stage 1" << std::endl;
+        T_stage_ = T_ + dt_*c_[0];
         stage_idx_ = 1;
         clean<g_i_type>();
         clean<d_i_type>();
@@ -537,11 +669,13 @@ class Ifherk
         nonlinear<u_type, g_i_type>(coeff_a(1, 1) * (-dt_));
         copy<q_i_type, r_i_type>();
         add<g_i_type, r_i_type>();
-        lin_sys_solve(alpha_[0]);
+        lin_sys_with_ib_solve(alpha_[0]);
+
 
         // Stage 2
         // ******************************************************************
         pcout << "Stage 2" << std::endl;
+        T_stage_ = T_ + dt_*c_[1];
         stage_idx_ = 2;
         clean<r_i_type>();
         clean<d_i_type>();
@@ -564,11 +698,12 @@ class Ifherk
         nonlinear<u_i_type, g_i_type>(coeff_a(2, 2) * (-dt_));
         add<g_i_type, r_i_type>();
 
-        lin_sys_solve(alpha_[1]);
+        lin_sys_with_ib_solve(alpha_[1]);
 
         // Stage 3
         // ******************************************************************
         pcout << "Stage 3" << std::endl;
+        T_stage_ = T_ + dt_*c_[2];
         stage_idx_ = 3;
         clean<d_i_type>();
         clean<cell_aux_type>();
@@ -586,7 +721,7 @@ class Ifherk
         nonlinear<u_i_type, g_i_type>(coeff_a(3, 3) * (-dt_));
         add<g_i_type, r_i_type>();
 
-        lin_sys_solve(alpha_[2]);
+        lin_sys_with_ib_solve(alpha_[2]);
 
         // ******************************************************************
         copy<u_i_type, u_type>();
@@ -685,24 +820,7 @@ class Ifherk
                 {
                     for (std::size_t field_idx=0; field_idx<F::nFields(); ++field_idx)
                     {
-                        auto& lin_data =
-                            it->data_r(F::tag(), field_idx).linalg_data();
-
-                        int N=it->data().descriptor().extent()[0];
-
-                        // somehow we delete the outer 2 planes
-                        if (i==4)
-                            view(lin_data,xt::all(),xt::all(),xt::range(0,clean_width))  *= 0.0;
-                        else if (i==10)
-                            view(lin_data,xt::all(),xt::range(0,clean_width),xt::all())  *= 0.0;
-                        else if (i==12)
-                            view(lin_data,xt::range(0,clean_width),xt::all(),xt::all())  *= 0.0;
-                        else if (i==14)
-                            view(lin_data,xt::range(N+2-clean_width,N+3),xt::all(),xt::all())  *= 0.0;
-                        else if (i==16)
-                            view(lin_data,xt::all(),xt::range(N+2-clean_width,N+3),xt::all())  *= 0.0;
-                        else if (i==22)
-                            view(lin_data,xt::all(),xt::all(),xt::range(N+2-clean_width,N+3))  *= 0.0;
+                        domain::Operator::smooth2zero<F>( it->data(), i);
                     }
                 }
             }
@@ -713,7 +831,6 @@ class Ifherk
 
 private:
     float_type coeff_a(int i, int j)const noexcept {return a_[i*(i-1)/2+j-1];}
-
 
     void lin_sys_solve(float_type _alpha) noexcept
     {
@@ -741,6 +858,75 @@ private:
         }
         else
             copy<r_i_type,u_i_type>();
+    }
+
+
+    void lin_sys_with_ib_solve(float_type _alpha) noexcept
+    {
+        auto client=domain_->decomposition().client();
+
+        divergence<r_i_type, cell_aux_type>();
+
+        domain_->client_communicator().barrier();
+        mDuration_type t_lgf(0);
+        TIME_CODE( t_lgf, SINGLE_ARG(
+                    psolver.template apply_lgf<cell_aux_type, d_i_type>();
+                    ));
+        domain_->client_communicator().barrier();
+        pcout<< "LGF solved in "<<t_lgf.count() << std::endl;
+
+        copy<r_i_type, face_aux2_type>();
+        gradient<d_i_type,face_aux_type>();
+        add<face_aux_type, face_aux2_type>(-1.0);
+
+        // IB
+        if (std::fabs(_alpha)>1e-4)
+            psolver.template apply_lgf_IF<face_aux2_type, face_aux2_type>(_alpha, MASK_TYPE::IB2xIB);
+
+        domain_->client_communicator().barrier();
+        pcout<< "IB IF solved "<<std::endl;
+        mDuration_type t_ib(0);
+        domain_->ib().force() = domain_->ib().force_prev(stage_idx_);
+        //domain_->ib().scales(coeff_a(stage_idx_, stage_idx_));
+        TIME_CODE( t_ib, SINGLE_ARG(
+                    lsolver.template ib_solve<face_aux2_type>(_alpha, T_stage_);
+                    ));
+
+        domain_->ib().force_prev(stage_idx_) = domain_->ib().force();
+        //domain_->ib().scales(1.0/coeff_a(stage_idx_, stage_idx_));
+
+        pcout<< "IB  solved in "<<t_ib.count() << std::endl;
+
+        // new presure field
+        lsolver.template pressure_correction<d_i_type>();
+        gradient<d_i_type, face_aux_type>();
+
+        lsolver.template smearing<face_aux_type>(domain_->ib().force(), false);
+        add<face_aux_type, r_i_type>(-1.0);
+
+        if (std::fabs(_alpha)>1e-4)
+        {
+            mDuration_type t_if(0);
+            domain_->client_communicator().barrier();
+            TIME_CODE( t_if, SINGLE_ARG(
+                        psolver.template apply_lgf_IF<r_i_type, u_i_type>(_alpha);
+                        ));
+            pcout<< "IF  solved in "<<t_if.count() << std::endl;
+        }
+        else
+            copy<r_i_type,u_i_type>();
+
+        // test -------------------------------------
+        //force_type tmp(domain_->ib().force().size(), (0.,0.,0.));
+        //lsolver.template projection<u_i_type>(tmp);
+        //domain_->ib().communicator().compute_indices();
+        //domain_->ib().communicator().communicate(true, tmp);
+        //if (comm_.rank()==1)
+        //{
+        //    lsolver.printvec(tmp, "u");
+        //}
+
+
     }
 
 
@@ -779,7 +965,7 @@ private:
         //clean<Velocity_out>();
         clean_leaf_correction_boundary<edge_aux_type>(domain_->tree()->base_level(), true, 2);
         //clean_leaf_correction_boundary<edge_aux_type>(l, false,2+stage_idx_);
-        psolver.template apply_lgf<edge_aux_type, stream_f_type>(refresh_correction_only);
+        psolver.template apply_lgf<edge_aux_type, stream_f_type>(MASK_TYPE::STREAM);
 
         int l_max = refresh_correction_only ?
         domain_->tree()->base_level()+1 : domain_->tree()->depth();
@@ -808,6 +994,7 @@ private:
     {
         clean<edge_aux_type>();
         clean<Target>();
+        clean<face_aux_type>();
 
         auto       client = domain_->decomposition().client();
         const auto dx_base = domain_->dx_base();
@@ -815,29 +1002,36 @@ private:
         for (int l = domain_->tree()->base_level();
              l < domain_->tree()->depth(); ++l)
         {
+
             client->template buffer_exchange<Source>(l);
 
             for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
             {
                 if (!it->locally_owned() || !it->has_data()) continue;
-                //if(it->is_correction()) continue;
 
                 const auto dx_level =
                     dx_base / math::pow2(it->refinement_level());
                 domain::Operator::curl<Source, edge_aux_type>(
                     it->data(), dx_level);
             }
+        }
 
+        //clean_leaf_correction_boundary<edge_aux_type>(domain_->tree()->base_level(), true, 2);
+        // add background velocity
+        copy<Source, face_aux_type>();
+        domain::Operator::add_field_expression<face_aux_type>(domain_, simulation_->frame_vel(), T_stage_, -1.0);
+
+        for (int l = domain_->tree()->base_level();
+             l < domain_->tree()->depth(); ++l)
+        {
             client->template buffer_exchange<edge_aux_type>(l);
-            //clean_leaf_correction_boundary<edge_aux_type>(l, false,2+stage_idx_);
             clean_leaf_correction_boundary<edge_aux_type>(l, false, 2);
 
             for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
             {
                 if (!it->locally_owned() || !it->has_data()) continue;
-                //if(it->is_correction()) continue;
 
-                domain::Operator::nonlinear<Source, edge_aux_type, Target>(
+                domain::Operator::nonlinear<face_aux_type, edge_aux_type, Target>(
                     it->data());
 
                 for (std::size_t field_idx = 0; field_idx < Target::nFields();
@@ -850,7 +1044,7 @@ private:
             }
 
             //client->template buffer_exchange<Target>(l);
-            clean_leaf_correction_boundary<Target>(l, true,3);
+            //clean_leaf_correction_boundary<Target>(l, true,3);
         }
     }
 
@@ -886,6 +1080,7 @@ private:
     void gradient(float_type _scale = 1.0) noexcept
     {
         //up_and_down<Source>();
+        domain::Operator::domainClean<Target>(domain_);
 
         for (int l = domain_->tree()->base_level();
              l < domain_->tree()->depth(); ++l)
@@ -945,11 +1140,8 @@ private:
             for (std::size_t field_idx = 0; field_idx < From::nFields();
                  ++field_idx)
             {
-                it->data_r(To::tag(), field_idx)
-                    .linalg()
-                    .get()
-                    ->cube_noalias_view() =
-                    it->data_r(From::tag(), field_idx).linalg_data() * scale;
+                for (auto& n:it->data().node_field())
+                    n(To::tag(), field_idx) = n(From::tag(), field_idx) * scale;
             }
         }
     }
@@ -958,10 +1150,12 @@ private:
     simulation_type* simulation_;
     domain_type*     domain_; ///< domain
     poisson_solver_t psolver;
+    linsys_solver_t lsolver;
+
 
     bool base_mesh_update_=false;
 
-    float_type T_, T_max_;
+    float_type T_, T_stage_, T_max_;
     float_type dt_base_, dt_, dx_base_;
     float_type Re_;
     float_type cfl_max_, cfl_;
@@ -983,16 +1177,20 @@ private:
     bool just_restarted_=false;
     bool write_restart_=false;
     bool updating_source_max_ = false;
+    bool all_time_max_;
     int restart_base_freq_;
     int adapt_count_;
 
     std::string                       fname_prefix_;
     vector_type<float_type, 6>        a_{{1.0 / 3, -1.0, 2.0, 0.0, 0.75, 0.25}};
     vector_type<float_type, 4>        c_{{0.0, 1.0 / 3, 1.0, 1.0}};
+    //vector_type<float_type, 6>        a_{{1.0 / 2, sqrt(3)/3, (3-sqrt(3))/3, (3+sqrt(3))/6, -sqrt(3)/3, (3+sqrt(3))/6}};
+    //vector_type<float_type, 4>        c_{{0.0, 0.5, 1.0, 1.0}};
     vector_type<float_type, 3>        alpha_{{0.0, 0.0, 0.0}};
     parallel_ostream::ParallelOstream pcout =
         parallel_ostream::ParallelOstream(1);
     boost::mpi::communicator comm_;
+
 };
 
 } // namespace solver

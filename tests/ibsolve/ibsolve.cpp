@@ -10,20 +10,40 @@
 //     ▐░░░░░░░░░░░▌▐░░░░░░░░░░▌ ▐░░░░░░░░░░░▌▐░░░░░░░░░░░▌▐░▌
 //      ▀▀▀▀▀▀▀▀▀▀▀  ▀▀▀▀▀▀▀▀▀▀   ▀▀▀▀▀▀▀▀▀▀▀  ▀▀▀▀▀▀▀▀▀▀▀  ▀
 
-#ifndef IBLGF_MATH_INCLUDED_MISC_MATH_HPP
-#define IBLGF_MATH_INCLUDED_MISC_MATH_HPP
+#include <boost/mpi.hpp>
+#include <boost/mpi/environment.hpp>
+#include <boost/mpi/communicator.hpp>
 
-#include <vector>
+#include "ibsolve.hpp"
+#include <iblgf/dictionary/dictionary.hpp>
 
-namespace iblgf
+
+using namespace iblgf;
+
+int main(int argc, char *argv[])
 {
-namespace math
-{
-    int next_pow_2(int n) noexcept;
-    int pow2(int n) noexcept;
-    int nextprod(std::vector<int> a, int x);
-    int nextprod(int x);
+
+	boost::mpi::environment env(argc, argv);
+	boost::mpi::communicator world;
+
+	std::string input="./";
+    input += std::string("configFile");
+
+    if (argc>1 && argv[1][0] != '-')
+    {
+        input = argv[1];
+    }
+
+
+   // Read in dictionary
+    dictionary::Dictionary dictionary(input, argc, argv);
+
+    //Instantiate setup
+    ibsolve setup(&dictionary);
+
+    // run setup
+    setup.run();
+
+    return 0;
 }
-} // namespace iblgf
 
-#endif // MATH_INCLUDED_MISC_MATH_HPP

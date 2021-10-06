@@ -39,7 +39,7 @@ class Simulation
     , domain_(std::make_shared<domain_type>())
     , io_init_(_dictionary.get())
     {
-        intrp_order_ = dictionary_->template get_or<int>("intrp_order",3);
+        intrp_order_ = dictionary_->template get_or<int>("intrp_order", 5);
     }
 
     friend std::ostream& operator<<(std::ostream& os, Simulation& s)
@@ -142,6 +142,8 @@ class Simulation
 
     int intrp_order()noexcept{return intrp_order_;}
 
+    auto& frame_vel() {return frame_vel_;}
+
 public:
   std::shared_ptr<Dictionary> dictionary_=nullptr;
   std::shared_ptr<Domain> domain_=nullptr;
@@ -153,7 +155,8 @@ public:
   std::string tree_info_file_="tree_info";
   std::string restart_field_file_="restart_field.hdf5";
 
-  int intrp_order_=3;
+  std::function<float_type(std::size_t idx, float_type t, typename domain_type::real_coordinate_type coord)> frame_vel_;
+  int intrp_order_;
 
 };
 

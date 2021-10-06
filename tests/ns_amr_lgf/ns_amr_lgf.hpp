@@ -44,6 +44,9 @@
 #include "../../setups/setup_base.hpp"
 #include <iblgf/operators/operators.hpp>
 
+#include <gsl/gsl_integration.h>
+#include <unordered_map>
+
 namespace iblgf
 {
 const int Dim = 3;
@@ -57,12 +60,12 @@ struct parameters
     Dim,
      (
         //name               type        Dim   lBuffer  hBuffer, storage type
-         (error_u          , float_type, 3,    1,       1,     face,false ),
-         (error_p          , float_type, 1,    1,       1,     cell,false ),
-         (decomposition    , float_type, 1,    1,       1,     cell,false ),
+         (error_u          , float_type, 3,    1,       1,     face,true ),
+         (error_p          , float_type, 1,    1,       1,     cell,true ),
+         (test             , float_type, 1,    1,       1,     cell,true ),
         //IF-HERK
          (u                , float_type, 3,    1,       1,     face,true ),
-         (u_ref            , float_type, 3,    1,       1,     face,false ),
+         (u_ref            , float_type, 3,    1,       1,     face,true ),
          (p_ref            , float_type, 1,    1,       1,     cell,false ),
          (p                , float_type, 1,    1,       1,     cell,true )
     ))
@@ -88,7 +91,41 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
         if (domain_->is_client()) client_comm_ = client_comm_.split(1);
         else
             client_comm_ = client_comm_.split(0);
+        // ------------------------------------------------------------------
+        // ref frame velocity
 
+        U_.resize(domain_->dimension());
+        U_[0] = simulation_.dictionary()->template get_or<float_type>("Ux", 0.0);
+        U_[1] = simulation_.dictionary()->template get_or<float_type>("Uy", 0.0);
+        if (domain_->dimension()>2)
+            U_[2] = simulation_.dictionary()->template get_or<float_type>("Uz", 0.0);
+
+        smooth_start_ = simulation_.dictionary()->template get_or<bool>("smooth_start", false);
+
+        simulation_.frame_vel() =
+            [this](std::size_t idx, float_type t, auto coord = {0, 0, 0})
+            {
+                float_type T0 = 0.5;
+                if (t<=0.0 && smooth_start_)
+                    return 0.0;
+                else if (t<T0-1e-10 && smooth_start_)
+                {
+                    //const float_type beta = 2.252283620690761;
+                    //return 4.0*beta*-U_[idx]*ux_t_smart(t);
+                    ////return -U_[idx] * t/T0;
+                    float_type h1 = exp(-1/(t/T0));
+                    float_type h2 = exp(-1/(1 - t/T0));
+
+                    return -U_[idx] * (h1/(h1+h2));
+                }
+                else
+                {
+                    return -U_[idx];
+                }
+            };
+
+
+        // ------------------------------------------------------------------
         dx_ = domain_->dx_base();
         cfl_ =
             simulation_.dictionary()->template get_or<float_type>("cfl", 0.2);
@@ -101,6 +138,8 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
         v_delta_        = simulation_.dictionary()->template get_or<float_type>("vDelta", 0.2*R_);
         single_ring_    = simulation_.dictionary()->template get_or<bool>("single_ring", true);
         perturbation_   = simulation_.dictionary()->template get_or<float_type>("perturbation", 0.0);
+
+        // ------------------------------------------------------------------
 
         bool use_fat_ring = simulation_.dictionary()->template get_or<bool>("fat_ring", false);
         int ringType   = simulation_.dictionary()->template get_or<int>("ringType", -1);
@@ -124,6 +163,14 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
             else if (ringType==3)
                 vr_fct_=
                 [this](float_type x, float_type y, float_type z, int field_idx, float_type perturbation){return this->vortex_ring_inclined(x,y,z,field_idx, perturbation);};
+            else if (ringType==0)
+            {
+                if (!domain_->is_client())
+                    std::cout<< "using trivial initial condition" << std::endl;
+
+                vr_fct_=
+                [this](float_type x, float_type y, float_type z, int field_idx, float_type perturbation){return this->trivial(x,y,z,field_idx, perturbation);};
+            }
             else
                 throw std::runtime_error(
                         "RingType Undefined, please use from 1-3");
@@ -164,16 +211,20 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
             [this]( std::vector<float_type> source_max, auto& octs, std::vector<int>& level_change )
                 {return this->template adapt_level_change(source_max, octs, level_change);};
 
-        domain_->register_refinement_condition() = [this](auto octant,
+        if (ringType!=0)
+            domain_->register_refinement_condition() = [this](auto octant,
                                                        int diff_level) {
-            return this->refinement(octant, diff_level);
-        };
+                return this->refinement(octant, diff_level);
+            };
+
+        nIB_add_level_ = _d->get_dictionary("simulation_parameters")
+                                 ->template get_or<int>("nIB_add_level", 0);
+
+        domain_->ib().init(_d->get_dictionary("simulation_parameters"), domain_->dx_base(), nLevelRefinement_+nIB_add_level_, Re_);
 
         if (!use_restart())
         {
-            domain_->init_refine(_d->get_dictionary("simulation_parameters")
-                                     ->template get_or<int>("nLevels", 0),
-                global_refinement_);
+            domain_->init_refine(nLevelRefinement_, global_refinement_, nIB_add_level_);
         }
         else
         {
@@ -192,6 +243,37 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
             std::cout << "on Simulation: \n" << simulation_ << std::endl;
     }
 
+    static float_type ux_ig(float_type tau, void* parms)
+    {
+        return exp( -1/(1 - (4*tau-1)*(4*tau-1)) );
+    }
+
+    float_type ux_t_smart(float_type t)
+    {
+        auto search = ux_lookup_.find(t);
+        if (search != ux_lookup_.end()) {
+            return search->second;
+        } else {
+            float_type ux = ux_t(t);
+            ux_lookup_.insert({t, ux});
+            return ux;
+        }
+    }
+
+    float_type ux_t(float_type t)
+    {
+        float_type result, error;
+        gsl_integration_workspace* w = gsl_integration_workspace_alloc (1000);
+
+        gsl_function F;
+        F.function = &ux_ig;
+
+        gsl_integration_qags (&F, 0, t, 0, 1e-8, 1000, w, &result, &error);
+        gsl_integration_workspace_free (w);
+        return result;
+    }
+
+
     float_type run()
     {
         boost::mpi::communicator world;
@@ -207,44 +289,12 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
                     ))
         pcout_c<<"Time to solution [ms] "<<ifherk_duration.count()<<std::endl;
 
+
+        return 0.0;
         if (ref_filename_!="null")
         {
             simulation_.template read_h5<u_ref_type>(ref_filename_, "u");
             simulation_.template read_h5<p_ref_type>(ref_filename_, "p");
-
-            auto center = (domain_->bounding_box().max() -
-                    domain_->bounding_box().min()+1) / 2.0 +
-                    domain_->bounding_box().min();
-
-
-            for (auto it  = domain_->begin_leaves();
-                    it != domain_->end_leaves(); ++it)
-            {
-                if(!it->locally_owned()) continue;
-
-                auto dx_level =  domain_->dx_base()/std::pow(2,it->refinement_level());
-                auto scaling =  std::pow(2,it->refinement_level());
-
-                for (auto& node : it->data())
-                {
-                    const auto& coord = node.level_coordinate();
-                    float_type x = static_cast<float_type>
-                        (coord[0]-center[0]*scaling)*dx_level;
-                    float_type y = static_cast<float_type>
-                        (coord[1]-center[1]*scaling)*dx_level;
-                    float_type z = static_cast<float_type>
-                        (coord[2]-center[2]*scaling)*dx_level;
-
-                    float_type r2 = x*x+y*y;
-                    if (std::fabs(z)>R_ || r2>4*R_*R_)
-                    {
-                        node(u_ref, 0)=0.0;
-                        node(u_ref, 1)=0.0;
-                        node(u_ref, 2)=0.0;
-                    }
-                }
-
-            }
         }
 
         ifherk.clean_leaf_correction_boundary<u_type>(domain_->tree()->base_level(),true,1);
@@ -255,6 +305,9 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
                 std::string("u2_"), 1);
         float_type u3_linf=this->compute_errors<u_type, u_ref_type, error_u_type>(
                 std::string("u3_"), 2);
+
+        float_type p_linf=this->compute_errors<p_type, p_ref_type, error_p_type>(
+                std::string("p_"), 0);
 
         simulation_.write("final.hdf5");
         return u3_linf;
@@ -308,6 +361,12 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
     template<class Field, class OctantType>
     int adapt_levle_change_for_field(OctantType it, float_type source_max, bool use_base_level_threshold)
     {
+        if (it->is_ib() && it->is_leaf())
+            if (it->refinement_level()<nLevelRefinement_+nIB_add_level_)
+                return 1;
+            else
+                return 0;
+
         source_max *=1.05;
 
         // ----------------------------------------------------------------
@@ -335,6 +394,9 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
             if (field_max>source_max*base_threshold_*deletion_factor)
                 l_delete_aim = std::max(l_delete_aim,0);
         }
+
+        if (it->is_ib())
+            return 0;
 
         int l_change = l_aim - it->refinement_level();
         if (l_change>0)
@@ -429,6 +491,11 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
             }
             client->template buffer_exchange<u_type>(l);
         }
+    }
+
+    float_type trivial(float_type x, float_type y, float_type z, int field_idx, float_type perturbation)
+    {
+        return 0.0;
     }
 
 
@@ -683,7 +750,10 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
     boost::mpi::communicator client_comm_;
 
     bool single_ring_=true;
+    bool smooth_start_;
     float_type perturbation_;
+
+    std::vector<float_type> U_;
 
     float_type R_;
     float_type v_delta_;
@@ -699,6 +769,7 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
     int nLevelRefinement_=0;
     int hard_max_level_;
     int global_refinement_=0;
+    int nIB_add_level_=0;
     fcoord_t offset_;
 
     float_type a_ = 10.0;
@@ -711,6 +782,8 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
     float_type base_threshold_=1e-4;
 
     vr_fct_t vr_fct_;
+
+    std::unordered_map<float_type, float_type> ux_lookup_;
 
     std::string ic_filename_, ref_filename_;
 };

@@ -83,6 +83,7 @@ public: //memeber functions
         if(server())
         {
             server()->rank_query();
+
             server()->flag_query();
             server()->mask_query();
 
@@ -104,7 +105,13 @@ public: //memeber functions
             client()->disconnect();
 
             client()->halo_reset();
+
+            // update ib infl list
+            client()->update_ib_rank_and_infl();
+
+            domain_->ib().communicator().compute_indices();
         }
+
     }
 
 
@@ -114,18 +121,17 @@ public: //memeber functions
         if(server())
         {
             std::cout<< "Initialization of masks start"<<std::endl;
-            FmmMaskBuilder::fmm_lgf_mask_build(domain_, subtract_non_leaf_);
-            std::cout<< "Initialization of masks done"<<std::endl;
             FmmMaskBuilder::fmm_vortex_streamfun_mask(domain_);
-            //FmmMaskBuilder::fmm_if_load_build(domain_);
-            // it's together with fmmMaskBuild for now
-            //LoadCalculator::calculate();
-        }
+            FmmMaskBuilder::fmm_lgf_mask_build(domain_, subtract_non_leaf_);
 
-        //Send the construction keys back and forth
-        if(server())
-        {
-            server()->send_keys();
+            server()->update_ib_flag();
+
+            FmmMaskBuilder::fmm_IB2xIB_mask(domain_);
+            FmmMaskBuilder::fmm_xIB2IB_mask(domain_);
+            FmmMaskBuilder::fmm_IB2AMR_mask(domain_);
+
+            server()->send_keys(); // also give ranks
+
         }
         else if(client())
         {
@@ -162,6 +168,7 @@ public: //memeber functions
 
         if (server())
         {
+            bool ib_change = false;
             std::vector<key_t> octs_all;
             std::vector<int>   level_change_all;
 
@@ -175,11 +182,11 @@ public: //memeber functions
             // --------------------------------------------------------------
             // mark correction to be deleted
 
+            //server()->update_ib_flag();
             for (auto it = domain_->begin(); it != domain_->end(); ++it)
             {
-                if (!it->has_data()) continue;
 
-                if (it->is_correction() )
+                if (it->is_correction() && !it->is_ib() )
                     it->aim_deletion(true);
                 else
                     it->aim_deletion(false);
@@ -187,7 +194,9 @@ public: //memeber functions
 
             // --------------------------------------------------------------
             // 0. receive attempts
+            std::cout<< " Decomposition - receving adapt attempts " << std::endl;
             server()->recv_adapt_attempts(octs_all, level_change_all);
+            std::cout<< " Decomposition - update domain" << std::endl;
             for (auto it = domain_->begin(); it != domain_->end(); ++it)
             {
                 if (!it->has_data()) continue;
@@ -220,12 +229,30 @@ public: //memeber functions
                     }
                     else
                     {
-                        if (!domain_->tree()->try_2to1(it->key(), domain_->key_bounding_box(), checklist))
+
+                        if (!it->is_ib() && !domain_->tree()->try_2to1(it->key(), domain_->key_bounding_box(), checklist))
                             continue;
+
                         refinement_server.emplace_back(it.ptr());
+
+                        if (it->is_ib())
+                            ib_change = true;
                     }
                 }
             }
+
+            int cib=0;
+            for (auto it = domain_->begin_leaves(); it != domain_->end_leaves(); ++it)
+            {
+
+                if (it->is_ib() || it->is_extended_ib())
+                {
+                    it->aim_deletion(false);
+                    cib +=1;
+                }
+
+            }
+            std::cout<< "Total ib blocks = " << cib << std::endl;
 
             // Unmark deletion distance_N blocks from the solution domain
             std::unordered_set<key_t> listNBlockAway;
@@ -302,15 +329,18 @@ public: //memeber functions
             domain_->tree()->construct_level_maps();
 
             // Base level
+            int c =0;
             for (auto it = domain_->begin(base_level);
                     it != domain_->end(base_level); ++it)
             {
                 if (it->aim_deletion() && it->is_leaf())
                 {
+                    c+=1;
                     deletion[it->rank()].emplace_back(it->key());
                     domain_->tree()->delete_oct(it.ptr());
                 }
             }
+            std::cout<< " deleting blocks # = " << c << std::endl;
 
             domain_->tree()->construct_level_maps();
             domain_->delete_all_children(deletion);
@@ -404,6 +434,7 @@ public: //memeber functions
             // --------------------------------------------------------------
             // 6. send back new locally owned octs
 
+            std::cout<< " Decomposition - send back new local octants" << std::endl;
             for(int i=1;i<comm_.size();++i)
             {
                 comm_.send(i,i+0*comm_.size(), refinement[i] );
@@ -419,16 +450,25 @@ public: //memeber functions
             // --------------------------------------------------------------
             // 7. construct maps / masks / loads
 
+            std::cout<< " Decomposition - construct maps" << std::endl;
             domain_->tree()->construct_leaf_maps(true);
             domain_->tree()->construct_level_maps();
             domain_->tree()->construct_lists();
 
             fmm_mask_builder_t::fmm_clean_load(domain_);
-            fmm_mask_builder_t::fmm_lgf_mask_build(domain_, subtract_non_leaf_);
             fmm_mask_builder_t::fmm_vortex_streamfun_mask(domain_);
+            fmm_mask_builder_t::fmm_lgf_mask_build(domain_,subtract_non_leaf_);
+            //if (ib_change)
+                server()->update_ib_flag();
+
+            fmm_mask_builder_t::fmm_IB2xIB_mask(domain_);
+            fmm_mask_builder_t::fmm_xIB2IB_mask(domain_);
+            fmm_mask_builder_t::fmm_IB2AMR_mask(domain_);
+
 
             // --------------------------------------------------------------
             // 8. sync ghosts
+            std::cout<< " Decomposition - sync" << std::endl;
             sync_decomposition();
         }
         else if (client())

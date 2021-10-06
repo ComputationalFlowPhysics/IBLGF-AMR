@@ -23,6 +23,7 @@
 #include <iblgf/utilities/tuple_utilities.hpp>
 #include <iblgf/domain/dataFields/datafield.hpp>
 #include <iblgf/solver/poisson/poisson.hpp>
+#include <iblgf/solver/linsys/linsys.hpp>
 #include <iblgf/solver/time_integration/ifherk.hpp>
 #include <iblgf/IO/parallel_ostream.hpp>
 
@@ -55,7 +56,7 @@ class SetupBase
     (Dim,
     (
       (source_tmp,          float_type,  1,  1,  1,  cell,false),
-      (correction_tmp,      float_type,  1,  1,  1,  cell,true),
+      (correction_tmp,      float_type,  1,  1,  1,  cell,false),
       (target_tmp,          float_type,  1,  1,  1,  cell,false),
       (fmm_s,               float_type,  1,  1,  1,  cell,false),
       (fmm_t,               float_type,  1,  1,  1,  cell,false),
@@ -68,7 +69,9 @@ class SetupBase
       (w_1,                 float_type,  3,  1,  1,  face,false),
       (w_2,                 float_type,  3,  1,  1,  face,false),
       (cell_aux,            float_type,  1,  1,  1,  cell,true),
+      (cell_aux2,           float_type,  1,  1,  1,  cell,false),
       (face_aux,            float_type,  3,  1,  1,  face,false),
+      (face_aux2,           float_type,  3,  1,  1,  face,false),
       (stream_f,            float_type,  3,  1,  1,  edge,false),
       (edge_aux,            float_type,  3,  1,  1,  edge,true)
     ))
@@ -101,6 +104,7 @@ class SetupBase
     using fmm_mask_builder_t = FmmMaskBuilder<domain_t>;
     using poisson_solver_t = solver::PoissonSolver<SetupBase>;
     using time_integration_t = solver::Ifherk<SetupBase>;
+    using linsys_solver_t = solver::LinSysSolver<SetupBase>;
 
   public: //Ctors
     SetupBase(Dictionary* _d)
@@ -191,6 +195,7 @@ class SetupBase
         for (auto it_t = domain_->begin_leaves(); it_t != domain_->end_leaves();
              ++it_t)
         {
+
             if (!it_t->locally_owned() || !it_t->has_data()) continue;
             if (it_t->is_correction()) continue;
 
@@ -199,6 +204,7 @@ class SetupBase
 
             for (auto& node : it_t->data())
             {
+
                 float_type tmp_exact = node(Exact::tag(), field_idx);
                 float_type tmp_num = node(Numeric::tag(), field_idx);
                 if (std::fabs(tmp_exact)<1e-6) continue;
@@ -206,6 +212,36 @@ class SetupBase
                 float_type error_tmp = tmp_num - tmp_exact;
 
                 node(Error::tag(), field_idx) = error_tmp;
+
+                // clean inside spehre
+                const auto& coord = node.level_coordinate();
+                float_type x = static_cast<float_type>(coord[0])*dx;
+                float_type y = static_cast<float_type>(coord[1])*dx;
+                float_type z = static_cast<float_type>(coord[2])*dx;
+
+                if (field_idx==0)
+                {
+                    y+=0.5*dx;
+                    z+=0.5*dx;
+                }
+                else if (field_idx == 1)
+                {
+                    x+=0.5*dx;
+                    z+=0.5*dx;
+                }
+                else
+                {
+                    x+=0.5*dx;
+                    y+=0.5*dx;
+                }
+
+                float_type r2 = x*x+y*y+z*z;
+                if (std::fabs(r2) <= .25)
+                {
+                    node(Error::tag(), field_idx)=0.0;
+                    error_tmp = 0;
+                }
+                // clean inside spehre
 
                 L2 += error_tmp * error_tmp * (dx * dx * dx);
                 L2_exact += tmp_exact * tmp_exact * (dx * dx * dx);

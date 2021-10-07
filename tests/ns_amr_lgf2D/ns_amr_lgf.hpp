@@ -67,8 +67,8 @@ struct parameters
          (test             , float_type, 1,    1,       1,     cell,false ),
         //IF-HERK
          (u                , float_type, 2,    1,       1,     face,true  ),
-         (u_ref            , float_type, 2,    1,       1,     face,false ),
-         (p_ref            , float_type, 1,    1,       1,     cell,false ),
+         (u_ref            , float_type, 2,    1,       1,     face,true  ),
+         (p_ref            , float_type, 1,    1,       1,     cell,true  ),
          (p                , float_type, 1,    1,       1,     cell,true  ),
          (w_num            , float_type, 1,    1,       1,     edge,false ),
          (w_exact          , float_type, 1,    1,       1,     edge,false ),
@@ -270,8 +270,10 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 
 		if (ref_filename_ != "null")
 		{
-			//simulation_.template read_h5<u_ref_type>(ref_filename_, "u");
-			//simulation_.template read_h5<p_ref_type>(ref_filename_, "p");
+			if (vortexType == 0) {
+			simulation_.template read_h5<u_ref_type>(ref_filename_, "u");
+			simulation_.template read_h5<p_ref_type>(ref_filename_, "p");
+			}
 
 			auto center = (domain_->bounding_box().max() -
 				domain_->bounding_box().min() + 1) / 2.0 +
@@ -308,6 +310,7 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 					node(w_exact) = w_taylor_vort(r__, t_final);
 					node(w_num) = (node(u, 1) - node.at_offset(u, -1, 0, 1) -
 						node(u, 0) + node.at_offset(u, 0, -1, 0)) / dx_level;
+					if (vortexType != 0) {
 					x = static_cast<float_type>
 						(coord[0] - center[0] * scaling) * dx_level;
 					y = static_cast<float_type>
@@ -332,6 +335,7 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 					float_type u_theta = std::sqrt(u * u + v * v);
 					node(exact_u_theta, 0) = u_theta;
 					node(exact_u_theta, 1) = 0.0;     //0 is u_theta, 1 is u_r
+					}
 
 					
 				}
@@ -483,7 +487,7 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 	template<class Field, class OctantType>
 	int adapt_levle_change_for_field(OctantType it, float_type source_max, bool use_base_level_threshold)
 	{
-		//return 0;
+		if (vortexType != 0) return 0;
 		if (it->is_ib() && it->is_leaf())
 			if (it->refinement_level()<nLevelRefinement_)
 				return 1;

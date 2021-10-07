@@ -34,10 +34,10 @@ namespace lgf
 using namespace domain;
 
 template<std::size_t Dim>
-class Helmholtz : public LGF_Base<Dim, LGF_GL<Dim>>
+class Helmholtz : public LGF_Base<Dim, Helmholtz<Dim>>
 {
   public: //Ctor:
-    using super_type = LGF_Base<Dim, LGF_GL<Dim>>;
+    using super_type = LGF_Base<Dim, Helmholtz<Dim>>;
     using block_descriptor_t = BlockDescriptor<int, Dim>;
     using coordinate_t = typename block_descriptor_t::coordinate_type;
     using complex_vector_t = typename super_type::complex_vector_t;
@@ -76,17 +76,25 @@ class Helmholtz : public LGF_Base<Dim, LGF_GL<Dim>>
 
     auto get(const coordinate_t& _c) const noexcept
     {
-        if (Dim == 2) return Helmholtz_Lookup::get<coordinate_t>(_c) - origin;
+        if (Dim == 2) return Helmholtz_Lookup::get<coordinate_t>(_c, c) - origin;
         else {return Helmholtz_Lookup::get<coordinate_t>(_c) - origin;}
+
+    }
+
+    auto get(int N, int M) const noexcept
+    {
+        return Helmholtz_Lookup::get<coordinate_t>(coordinate_t({N,M}), c) - origin;
+        //else {return Helmholtz_Lookup::get<coordinate_t>(_c) - origin;}
 
     }
 
   public:
     std::vector<level_map_3D_t> dft_level_maps_3D; ///<lgf map for octants per level
     std::vector<level_map_2D_t> dft_level_maps_2D; ///<lgf map for octants per level
+    float_type origin = 0.0;
   private:
     float_type c_diff = 0.0;
-    float_type origin = 0.0;
+    
     float_type c = 0.0;
 };
 

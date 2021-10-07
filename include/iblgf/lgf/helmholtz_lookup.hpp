@@ -19,7 +19,8 @@
 #include <vector>
 #include <array>
 #include <cmath>
-#include <boost/math/special_functions/hypergeometric_pFq.hpp>
+#include <boost/math/quadrature/trapezoidal.hpp>
+//#include <boost/math/special_functions/hypergeometric_pFq.hpp>
 
 #include <iblgf/global.hpp>
 
@@ -52,34 +53,29 @@ class Helmholtz_Lookup
         }
     }
 
-
-
     template<class Coordinate>
-    static typename std::enable_if<Coordinate::size() == 2, float_type>::type get(const Coordinate& _c) noexcept
+    static typename std::enable_if<Coordinate::size() == 2, float_type>::type
+    get(const Coordinate& _c, float_type c) noexcept
     {
-	int x = std::abs(static_cast<int>(_c.x()));
-	int y = std::abs(static_cast<int>(_c.y()));
+        int x = std::abs(static_cast<int>(_c.x()));
+        int y = std::abs(static_cast<int>(_c.y()));
 
-	if (x <= N_max_2D && y <= N_max_2D) // using table
-	{
-		if (x < y) std::swap(x, y);
-		return -table_2D[x*(N_max_2D+2)+y]; 
-	}
-	else
-	{
-		return -asym(x, y);
-	}
+        if (x < y) std::swap(x, y);
+        
+        float_type res = integralHelmholtzTrap(x, y, c);
+        //std::cout << "getting values from correct function " << x << " " << y << " res is " << res << std::endl;
+        return res;
     }
 
     class integrand {
         public:
-        integrand(const float_type C, int N, int M) : c(c) {
+        integrand(const float_type C, int N, int M) : c(C) {
             n = std::abs(N);
             m = std::abs(m);
         }
         float_type operator()(const float_type& x) const {
             float_type a = 4.0 - 2.0*std::cos(x)+c*c;
-            float_type K = (a + std::sqrt((a*a - 4.0))/2.0;
+            float_type K = (a + std::sqrt(a*a - 4.0))/2.0;
             float_type int_val = (1.0 - std::cos(x*m))/(std::pow(K,n))*(1/(K - 1.0/K));
             return int_val/2.0/M_PI;
         }
@@ -103,8 +99,26 @@ class Helmholtz_Lookup
 
     static float_type origin_val(float_type c) {
         float_type z = 2.0/(2.0+c*c/2.0) * 2.0/(2.0+c*c/2.0);
-        return 0.5/(2.0+c*c/2.0)*boost::math::hypergeometric_pFq({0.5, 0.5},{1}, z);
+        return 0.5/(2.0+c*c/2.0)*hypergeometric(0.5, 0.5,1, z, 1.0e-20);
     }
+
+    static float_type hypergeometric(float_type a, float_type b, float_type c, float_type x, float_type tol)
+    {
+        const float_type TOLERANCE = tol;
+        float_type       term = a * b * x / c;
+        float_type       value = 1.0 + term;
+        int              n = 1;
+
+        while (abs(term) > TOLERANCE)
+        {
+            a++, b++, c++, n++;
+            term *= a * b * x / c / n;
+            value += term;
+        }
+
+        return value;
+    }
+
     template<typename function_type>
     static float_type integral(const float_type a, const float_type b,
         const float_type tol, function_type func)
@@ -114,7 +128,7 @@ class Helmholtz_Lookup
         float_type h = (b - a);
         float_type I = (func(a) + func(b)) * (h / 2);
 
-        for (unsigned k = 0U; k < 8U; k++)
+        for (unsigned k = 0U; k < 10000U; k++)
         {
             h /= 2;
 
@@ -142,6 +156,22 @@ class Helmholtz_Lookup
     //TODO: Vectorize this function. Takes a lot of time!
     static float_type integralHelmholtz(int n1, int n2, float_type c) {
         return integral(-M_PI, M_PI, 1.0e-14, integrand(c, n1, n2));
+    }
+
+    static float_type integrandFcn(int n, int m, float_type c, float_type x) {
+        float_type a = 4.0 - 2.0*std::cos(x)+c*c;
+        float_type K = (a + std::sqrt(a*a - 4.0))/2.0;
+        float_type int_val = (1.0 - std::cos(x*m)/std::pow(K,n))*(1/(K - 1.0/K));
+        return int_val/2.0/M_PI;
+    }
+
+    static float_type integralHelmholtzTrap(int n1, int n2, float_type c) {
+        
+        auto f = [&](float_type x) {
+            
+            return integrandFcn(n1, n2, c, x);
+        };
+        return boost::math::quadrature::trapezoidal(f, -M_PI, M_PI, 1.0e-20);
     }
 
   private:

@@ -32,7 +32,7 @@ class Helmholtz_Lookup
 {
   public:
     template<class Coordinate>
-    static typename std::enable_if<Coordinate::size() == 3, float_type>::type get(const Coordinate& _c) noexcept
+    static typename std::enable_if<Coordinate::size() == 3, float_type>::type get(const Coordinate& _c, float_type c) noexcept
     {
         int x = std::abs(static_cast<int>(_c.x()));
         int y = std::abs(static_cast<int>(_c.y()));

@@ -29,6 +29,7 @@
 
 #include <iblgf/lgf/lgf_gl.hpp>
 #include <iblgf/lgf/lgf_ge.hpp>
+#include <iblgf/lgf/helmholtz.hpp>
 
 #include <iblgf/linalg/linalg.hpp>
 
@@ -71,16 +72,23 @@ class PoissonSolver
     using Fmm_t = typename Setup::Fmm_t;
     using lgf_lap_t = typename lgf::LGF_GL<Dim>;
     using lgf_if_t = typename lgf::LGF_GE<Dim>;
+    using helm_t   = typename lgf::Helmholtz<Dim>;
 
     static constexpr int lBuffer = 1; ///< Lower left buffer for interpolation
     static constexpr int rBuffer = 1; ///< Lower left buffer for interpolation
 
-    PoissonSolver(simulation_type* _simulation)
+    PoissonSolver(simulation_type* _simulation, int _N = 0)
     :
     domain_(_simulation->domain_.get()),
     fmm_(domain_,domain_->block_extent()[0]+lBuffer+rBuffer),
-    c_cntr_nli_(domain_->block_extent()[0]+lBuffer+rBuffer, _simulation->intrp_order())
+    c_cntr_nli_(domain_->block_extent()[0]+lBuffer+rBuffer, _simulation->intrp_order()),
+    N_fourier_modes(_N)
     {
+        //initializing vector of helmholtz solvers
+        for (int i = 0; i < N_fourier_modes; i++) {
+            float_type c = (static_cast<float_type>(i)+1.0)/static_cast<float_type>(N_fourier_modes) * 2.0 * M_PI;
+            lgf_helm_vec.emplace_back(helm_t(c));
+        }
     }
 
   public:
@@ -90,6 +98,15 @@ class PoissonSolver
         for (std::size_t entry = 0; entry < Source::nFields(); ++entry)
             this->apply_lgf<Source, Target>(&lgf_lap_, entry, fmm_type);
     }
+
+    template<class Source, class Target>
+    void apply_helm(int n, int fmm_type = MASK_TYPE::AMR2AMR)
+    {
+        if (n >= N_fourier_modes) throw std::runtime_error("Fourier mode number too high");
+        for (std::size_t entry = 0; entry < Source::nFields(); ++entry)
+            this->apply_lgf<Source, Target>(&lgf_helm_vec[n], entry, fmm_type);
+    }
+
 
     template<class Source, class Target>
     void apply_lgf_IF(float_type _alpha_base, int fmm_type = MASK_TYPE::AMR2AMR)
@@ -781,6 +798,8 @@ private:
     Fmm_t                             fmm_;       ///< fast-multipole
     lgf_lap_t                         lgf_lap_;
     lgf_if_t                          lgf_if_;
+    std::vector<helm_t>               lgf_helm_vec;
+    int                               N_fourier_modes;
     interpolation::cell_center_nli    c_cntr_nli_;///< Lagrange Interpolation
     parallel_ostream::ParallelOstream pcout=parallel_ostream::ParallelOstream(1);
     bool use_correction_ =true;

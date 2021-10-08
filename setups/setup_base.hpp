@@ -238,11 +238,11 @@ class SetupBase
                 }
 
                 float_type r2 = x*x+y*y+z*z;
-                if (std::fabs(r2) <= .25)
+                /*if (std::fabs(r2) <= .25)
                 {
                     node(Error::tag(), field_idx)=0.0;
                     error_tmp = 0;
-                }
+                }*/
 		}
 
 		if (domain_->dimension() == 2) {
@@ -253,10 +253,10 @@ class SetupBase
 		    	x+=0.5*dx;
 		    }
 		    float_type r2 = x*x + y*y;
-		    if (std::fabs(r2) <= 0.25) {
+		    /*if (std::fabs(r2) <= 0.25) {
 		    	node(Error::tag(), field_idx)=0.0;
 			error_tmp = 0.0;
-		    }
+		    }*/
 		}
                 // clean inside spehre
 		float_type weight = std::pow(dx, domain_->dimension());

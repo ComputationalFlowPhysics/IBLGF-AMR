@@ -77,7 +77,7 @@ class Helmholtz : public LGF_Base<Dim, Helmholtz<Dim>>
     auto get(const coordinate_t& _c) const noexcept
     {
         if (Dim == 2) return Helmholtz_Lookup::get<coordinate_t>(_c, c) - origin;
-        else {return Helmholtz_Lookup::get<coordinate_t>(_c) - origin;}
+        else {return Helmholtz_Lookup::get<coordinate_t>(_c, c) - origin;}
 
     }
 

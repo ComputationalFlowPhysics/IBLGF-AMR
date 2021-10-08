@@ -19,6 +19,8 @@
 
 #include <iostream>
 #include <chrono>
+//#include <iblgf/lgf/lgf.hpp>
+//#include <iblgf/lgf/helmholtz.hpp>
 
 // IBLGF-specific
 #include "../../setups/setup_base.hpp"
@@ -86,12 +88,21 @@ struct VortexRingTest : public SetupBase<VortexRingTest, parameters>
     : super_type(_d, [this](auto _d, auto _domain) {
         return this->initialize_domain(_d, _domain);
     })
+    //, H_lgf(0.1)
     {
 
         float_type dx_base = domain_->dx_base();
         int nLevels = _d->get_dictionary("simulation_parameters")->template get_or<int>("nLevels", 0);
-        dx_fine = dx_base*std::pow(0.5, nLevels);
-        pcout << "dxfine " << dx_fine;
+        c_value     = _d->get_dictionary("simulation_parameters")->template get_or<int>("c_value", 2.0*M_PI);
+        dx_fine     = dx_base*std::pow(0.5, nLevels);
+        pcout << "dxfine " << dx_fine << std::endl;
+        float_type c_helm = c_value*dx_fine;
+
+        H_lgf.change_c(c_helm);
+
+        pcout << "c_helm is " << c_helm << std::endl;
+
+
 
         vrings_ = this->read_vrings(simulation_.dictionary_.get());
         float_type max_vort = 0.0;
@@ -152,7 +163,7 @@ struct VortexRingTest : public SetupBase<VortexRingTest, parameters>
             v_tmp.center = d->template get<float_type, 2>("center");
             n            = d->template get<int>("n");
             N            = d->template get<int>("N");
-            v_tmp.c      = (static_cast<float_type>(n)+1.0)/static_cast<float_type>(N) * 2.0 * M_PI/dx_fine;
+            v_tmp.c      = c_value;
             pcout << "value of c" << v_tmp.c << std::endl;
             vrings.push_back(v_tmp);
         }
@@ -185,7 +196,8 @@ struct VortexRingTest : public SetupBase<VortexRingTest, parameters>
             pcout_c << "Helmholtz equation ---------------------------------"
                     << std::endl;
             TIME_CODE(solve_duration,
-                SINGLE_ARG(psolver.apply_helm<source_type, phi_num_type>(n);
+                SINGLE_ARG(psolver.apply_helm<source_type, phi_num_type>(n, &H_lgf);
+                           //psolver.apply_helm<source_type, phi_num_type>(n, &H_lgf);
                            client_comm_.barrier();))
 
             pcout_c << "Elapsed time " << solve_duration.count() / 1.0e3
@@ -385,6 +397,8 @@ struct VortexRingTest : public SetupBase<VortexRingTest, parameters>
     bool                     subtract_non_leaf_ = false;
     int                      n;
     int                      N;
+    lgf::Helmholtz<2>        H_lgf;
+    int                      c_value;
 };
 
 //#endif

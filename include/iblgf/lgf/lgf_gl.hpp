@@ -52,6 +52,7 @@ class LGF_GL : public LGF_Base<Dim, LGF_GL<Dim>>
     : dft_level_maps_3D(super_type::max_lgf_map_level)
     , dft_level_maps_2D(super_type::max_lgf_map_level)
     {
+      this->LaplaceLGF_ = true;
     }
     template<int Dim1 = Dim>
     auto get_key(const block_descriptor_t& _b, typename std::enable_if<Dim1 == 3, int>::type _level_diff) const noexcept

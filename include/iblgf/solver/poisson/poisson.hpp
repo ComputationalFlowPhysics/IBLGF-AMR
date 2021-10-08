@@ -107,6 +107,15 @@ class PoissonSolver
             this->apply_lgf<Source, Target>(&lgf_helm_vec[n], entry, fmm_type);
     }
 
+    template<class Source, class Target, class Kernel>
+    void apply_helm(int n, Kernel* _kernel, int fmm_type = MASK_TYPE::AMR2AMR)
+    {
+        if (n >= N_fourier_modes) throw std::runtime_error("Fourier mode number too high");
+        for (std::size_t entry = 0; entry < Source::nFields(); ++entry)
+            this->apply_lgf<Source, Target>(_kernel, entry, fmm_type);
+    }
+
+
 
     template<class Source, class Target>
     void apply_lgf_IF(float_type _alpha_base, int fmm_type = MASK_TYPE::AMR2AMR)

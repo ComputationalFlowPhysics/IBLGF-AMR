@@ -16,6 +16,7 @@ simulation_parameters
     global_refinement=0;
     refinement_factor=0.125;
     correction=true;
+    c_value = M_PI;
 
 
     output

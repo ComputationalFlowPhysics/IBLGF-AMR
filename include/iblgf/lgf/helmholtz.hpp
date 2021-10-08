@@ -55,11 +55,25 @@ class Helmholtz : public LGF_Base<Dim, Helmholtz<Dim>>
     {
         origin = Helmholtz_Lookup::origin_val(c);
     }
+
+    Helmholtz()
+    : dft_level_maps_3D(super_type::max_lgf_map_level)
+    , dft_level_maps_2D(super_type::max_lgf_map_level)
+    {
+      c = 0.1;
+      origin = 0.0;
+    }
+
+    void change_c(float_type C) {
+      c = C;
+      origin = Helmholtz_Lookup::origin_val(c);
+    }
+
     template<int Dim1 = Dim>
     auto get_key(const block_descriptor_t& _b, typename std::enable_if<Dim1 == 3, int>::type _level_diff) const noexcept
     {
-        const auto base = _b.base();
-        return key_3D(base[0], base[1], base[2]);
+      const auto base = _b.base();
+      return key_3D(base[0], base[1], base[2]);
     }
 
 

@@ -52,37 +52,48 @@ class LGF_GL : public LGF_Base<Dim, LGF_GL<Dim>>
     : dft_level_maps_3D(super_type::max_lgf_map_level)
     , dft_level_maps_2D(super_type::max_lgf_map_level)
     {
-      this->LaplaceLGF_ = true;
+        this->LaplaceLGF_ = true;
     }
     template<int Dim1 = Dim>
-    auto get_key(const block_descriptor_t& _b, typename std::enable_if<Dim1 == 3, int>::type _level_diff) const noexcept
+    auto get_key(const block_descriptor_t&            _b,
+        typename std::enable_if<Dim1 == 3, int>::type _level_diff)
+        const noexcept
     {
         const auto base = _b.base();
         return key_3D(base[0], base[1], base[2]);
     }
 
-
     template<int Dim1 = Dim>
-    auto get_key(const block_descriptor_t& _b, typename std::enable_if<Dim1 == 2, int>::type _level_diff) const noexcept
+    auto get_key(const block_descriptor_t&            _b,
+        typename std::enable_if<Dim1 == 2, int>::type _level_diff)
+        const noexcept
     {
         const auto base = _b.base();
         return key_2D(base[0], base[1]);
     }
     void build_lt() {}
-    void change_level_impl(int _level_diff) {
-	if (Dim == 2) c_diff = -static_cast<float_type>(_level_diff)/2.0/M_PI*std::log(2.0);
+    float_type return_c_impl() {return 0.0;}
+    void change_level_impl(int _level_diff)
+    {
+        if (Dim == 2)
+            c_diff = -static_cast<float_type>(_level_diff) / 2.0 / M_PI *
+                     std::log(2.0);
     }
 
     auto get(const coordinate_t& _c) const noexcept
     {
         if (Dim == 2) return LGF_GL_Lookup::get<coordinate_t>(_c) + c_diff;
-	else {return LGF_GL_Lookup::get<coordinate_t>(_c);}
-
+        else
+        {
+            return LGF_GL_Lookup::get<coordinate_t>(_c);
+        }
     }
 
   public:
-    std::vector<level_map_3D_t> dft_level_maps_3D; ///<lgf map for octants per level
-    std::vector<level_map_2D_t> dft_level_maps_2D; ///<lgf map for octants per level
+    std::vector<level_map_3D_t>
+        dft_level_maps_3D; ///<lgf map for octants per level
+    std::vector<level_map_2D_t>
+        dft_level_maps_2D; ///<lgf map for octants per level
   private:
     float_type c_diff = 0.0;
 };

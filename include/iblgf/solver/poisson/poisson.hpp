@@ -253,8 +253,8 @@ class PoissonSolver
         {
 #ifdef POISSON_TIMINGS
             const auto t0_level = clock_type::now();
-            _kernel->change_level(l - domain_->tree()->base_level());
 #endif
+            _kernel->change_level(l - domain_->tree()->base_level());
 
             for (auto it_s = domain_->begin(l); it_s != domain_->end(l); ++it_s)
                 if (it_s->has_data() && !it_s->locally_owned())
@@ -415,7 +415,20 @@ class PoissonSolver
                 }
 
                 for (auto it = domain_->begin(l + 1); it != domain_->end(l + 1);
-                     ++it)
+                     ++it) {
+                    if (!_kernel->LaplaceLGF())
+                    {
+                        float_type c_val = _kernel->return_c_level()/2.0;
+                        if (it->locally_owned() && it->has_data() && it->data().is_allocated())
+                        {
+                            auto& lin_data_1 =
+                                it->data_r(target_tmp).linalg_data();
+                            auto& lin_data_2 =
+                                it->data_r(correction_tmp).linalg_data();
+
+                            xt::noalias(lin_data_2) += lin_data_1 * c_val * c_val;
+                        }
+                    }
                     if (it->locally_owned())
                     {
                         auto& lin_data_1 =
@@ -425,6 +438,7 @@ class PoissonSolver
 
                         xt::noalias(lin_data_2) += lin_data_1 * 1.0;
                     }
+                }
             }
 #ifdef POISSON_TIMINGS
             const auto     t1_level = clock_type::now();

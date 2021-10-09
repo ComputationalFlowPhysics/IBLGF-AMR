@@ -72,7 +72,7 @@ class LGF_Base : public crtp::Crtps<Derived, LGF_Base<Dim, Derived>>
         auto it = this->derived().dft_level_maps_2D[level_diff].find(k_);
 
         //Check if lgf is already stored
-        if (it == this->derived().dft_level_maps_2D[level_diff].end() || this->LaplaceLGF())
+        if (it == this->derived().dft_level_maps_2D[level_diff].end() || this->LaplaceLGF()  /*!this->neighbor_only()*/)
         {
             this->get_subblock(
                 _lgf_block, _extended_dims, lgf_buffer_, level_diff);
@@ -95,6 +95,11 @@ class LGF_Base : public crtp::Crtps<Derived, LGF_Base<Dim, Derived>>
     bool neighbor_only() { return neighbor_only_; }
 
     bool LaplaceLGF() {return LaplaceLGF_;}
+
+    float_type return_c_level() {
+        return this->derived().return_c_impl();
+    }
+
 
   protected:
     template<int Dim1 = Dim>
@@ -182,6 +187,7 @@ class LGF_Base : public crtp::Crtps<Derived, LGF_Base<Dim, Derived>>
     const int               max_lgf_map_level = 20;
     bool                    neighbor_only_ = false;
     bool                    LaplaceLGF_ = false;
+    
 };
 
 } // namespace lgf

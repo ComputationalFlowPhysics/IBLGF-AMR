@@ -96,7 +96,7 @@ struct VortexRingTest : public SetupBase<VortexRingTest, parameters>
         c_value     = _d->get_dictionary("simulation_parameters")->template get_or<int>("c_value", 2.0*M_PI);
         dx_fine     = dx_base*std::pow(0.5, nLevels);
         pcout << "dxfine " << dx_fine << std::endl;
-        float_type c_helm = c_value*dx_fine;
+        float_type c_helm = c_value*dx_base;
 
         H_lgf.change_c(c_helm);
 

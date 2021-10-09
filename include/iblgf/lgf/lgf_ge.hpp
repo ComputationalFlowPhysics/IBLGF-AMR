@@ -56,6 +56,7 @@ class LGF_GE : public LGF_Base<Dim, LGF_GE<Dim>>
 
   public:
     void build_lt() { build_lt(alpha_); }
+    float_type return_c_impl() {return 0.0;}
     template<int Dim1 = Dim>
     auto get_key(const block_descriptor_t& _b, typename std::enable_if<Dim1 == 3, int>::type _level_diff) const noexcept
     {

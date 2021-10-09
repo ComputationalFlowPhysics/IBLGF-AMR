@@ -43,7 +43,8 @@ class LGF_GL : public LGF_Base<Dim, LGF_GL<Dim>>
     using complex_vector_t = typename super_type::complex_vector_t;
 
     using key_3D = std::tuple<int, int, int>;
-    using key_2D = std::tuple<int, int>;
+    using key_2D = std::tuple<float, int, int>;
+    //using key_2D = std::tuple<int, int>;
     using level_map_3D_t = std::map<key_3D, std::unique_ptr<complex_vector_t>>;
     using level_map_2D_t = std::map<key_2D, std::unique_ptr<complex_vector_t>>;
 
@@ -69,7 +70,7 @@ class LGF_GL : public LGF_Base<Dim, LGF_GL<Dim>>
         const noexcept
     {
         const auto base = _b.base();
-        return key_2D(base[0], base[1]);
+        return key_2D(c_diff, base[0], base[1]);
     }
     void build_lt() {}
     float_type return_c_impl() {return 0.0;}

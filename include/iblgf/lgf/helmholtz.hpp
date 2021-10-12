@@ -125,7 +125,7 @@ class Helmholtz : public LGF_Base<Dim, Helmholtz<Dim>>
   private:
     float_type c_diff = 0.0;
 
-    float_type c = 0.0;
+    float_type c = 0.0;       //c is the wave number at the coarse level
     float_type c_level = 0.0; //for helmholtz equation solver
 
 };

@@ -33,15 +33,14 @@ struct Operator
     Operator() = default;
 
   public: // DomainOprs
-
-    template <typename F, class Domain>
+    template<typename F, class Domain>
     static void domainClean(Domain* domain)
     {
         for (auto it = domain->begin(); it != domain->end(); ++it)
         {
             if (!it->has_data() || !it->data().is_allocated()) continue;
             for (std::size_t field_idx = 0; field_idx < F::nFields();
-                    ++field_idx)
+                 ++field_idx)
             {
                 auto& lin_data = it->data_r(F::tag(), field_idx).linalg_data();
                 std::fill(lin_data.begin(), lin_data.end(), 0.0);
@@ -50,88 +49,107 @@ struct Operator
     }
 
     // TODO: move up_and_down
-    template <typename F, class Domain>
-    static void clean_ib_region_boundary(Domain* domain, int l, int clean_width=2) noexcept
+    template<typename F, class Domain>
+    static void clean_ib_region_boundary(Domain* domain, int l,
+        int clean_width = 2) noexcept
     {
-        for (auto it  = domain->begin(l);
-                it != domain->end(l); ++it)
+        for (auto it = domain->begin(l); it != domain->end(l); ++it)
         {
-            if(!it->locally_owned()) continue;
-            if(!it->has_data() || !it->data().is_allocated()) continue;
-	    int Dim = domain->dimension();
+            if (!it->locally_owned()) continue;
+            if (!it->has_data() || !it->data().is_allocated()) continue;
+            int Dim = domain->dimension();
 
-
-	    if (Dim == 2) {
-
-	    int idx2D[it->num_neighbors()];
-	    for (int i = 0; i< it->num_neighbors(); i++){
-	    	idx2D[i] = 1;
-	    }
-	    auto coord_it = it->tree_coordinate();
-            for(std::size_t i=0;i< it->num_neighbors();++i)
+            if (Dim == 2)
             {
-                auto it2=it->neighbor(i);
+                int idx2D[it->num_neighbors()];
+                for (int i = 0; i < it->num_neighbors(); i++) { idx2D[i] = 1; }
+                auto coord_it = it->tree_coordinate();
+                for (std::size_t i = 0; i < it->num_neighbors(); ++i)
+                {
+                    auto it2 = it->neighbor(i);
+                    if ((!it2 || !it2->has_data()) || (!it2->is_ib()))
+                    {
+                        continue;
+                    }
+                    auto cood = it2->tree_coordinate();
+                    int  tmp = 0;
+
+                    tmp += 3 * (((cood.y() - coord_it.y()) > 0) + 1) +
+                           ((cood.x() - coord_it.x()) > 0) + 1;
+                    idx2D[tmp] = -1;
+                }
+
+                for (std::size_t i = 0; i < it->num_neighbors(); ++i)
+                {
+                    if (idx2D[i] > 0)
+                    {
+                        for (std::size_t field_idx = 0;
+                             field_idx < F::nFields(); ++field_idx)
+                        {
+                            auto& lin_data =
+                                it->data_r(F::tag(), field_idx).linalg_data();
+
+                            int N = it->data().descriptor().extent()[0];
+                            if (i == 1)
+                                view(lin_data, xt::all(),
+                                    xt::range(0, clean_width)) *= 0.0;
+                            else if (i == 3)
+                                view(lin_data, xt::range(0, clean_width),
+                                    xt::all()) *= 0.0;
+                            else if (i == 5)
+                                view(lin_data,
+                                    xt::range(N + 2 - clean_width, N + 3),
+                                    xt::all()) *= 0.0;
+                            else if (i == 7)
+                                view(lin_data, xt::all(),
+                                    xt::range(N + 2 - clean_width, N + 3)) *=
+                                    0.0;
+                        }
+                    }
+                }
+            }
+
+            for (std::size_t i = 0; i < it->num_neighbors(); ++i)
+            {
+                auto it2 = it->neighbor(i);
                 if ((!it2 || !it2->has_data()) || (!it2->is_ib()))
                 {
-		    continue;
-		}
-		auto cood = it2->tree_coordinate();
-		int tmp = 0;
-
-		tmp += 3 * (((cood.y() - coord_it.y()) > 0) + 1) + ((cood.x() - coord_it.x()) > 0) + 1;
-		idx2D[tmp] = -1;
-	    }
-
-            for(std::size_t i=0;i< it->num_neighbors();++i) {
-	    if (idx2D[i] > 0) {	
-                    for (std::size_t field_idx=0; field_idx<F::nFields(); ++field_idx)
+                    for (std::size_t field_idx = 0; field_idx < F::nFields();
+                         ++field_idx)
                     {
                         auto& lin_data =
                             it->data_r(F::tag(), field_idx).linalg_data();
 
-                        int N=it->data().descriptor().extent()[0];
-			if (i==1)
-			    view(lin_data,xt::all(),xt::range(0,clean_width))  *= 0.0;
-			else if (i==3)
-			    view(lin_data,xt::range(0,clean_width),xt::all())  *= 0.0;
-			else if (i==5)
-			    view(lin_data,xt::range(N+2-clean_width,N+3),xt::all())  *= 0.0;
-			else if (i==7)
-			    view(lin_data,xt::all(),xt::range(N+2-clean_width,N+3))  *= 0.0;
-		    }
-	    }
-	    }
-	    }
-
-            for(std::size_t i=0;i< it->num_neighbors();++i)
-            {
-                auto it2=it->neighbor(i);
-                if ((!it2 || !it2->has_data()) || (!it2->is_ib()))
-                {
-                    for (std::size_t field_idx=0; field_idx<F::nFields(); ++field_idx)
-                    {
-                        auto& lin_data =
-                            it->data_r(F::tag(), field_idx).linalg_data();
-
-                        int N=it->data().descriptor().extent()[0];
+                        int N = it->data().descriptor().extent()[0];
 
                         // somehow we delete the outer 2 planes
-			int Dim = domain->dimension();
-			if (Dim == 3) {
-                        if (i==4)
-                            view(lin_data,xt::all(),xt::all(),xt::range(0,clean_width))  *= 0.0;
-                        else if (i==10)
-                            view(lin_data,xt::all(),xt::range(0,clean_width),xt::all())  *= 0.0;
-                        else if (i==12)
-                            view(lin_data,xt::range(0,clean_width),xt::all(),xt::all())  *= 0.0;
-                        else if (i==14)
-                            view(lin_data,xt::range(N+2-clean_width,N+3),xt::all(),xt::all())  *= 0.0;
-                        else if (i==16)
-                            view(lin_data,xt::all(),xt::range(N+2-clean_width,N+3),xt::all())  *= 0.0;
-                        else if (i==22)
-                            view(lin_data,xt::all(),xt::all(),xt::range(N+2-clean_width,N+3))  *= 0.0;
-			}
-			/*if (Dim == 2) {
+                        int Dim = domain->dimension();
+                        if (Dim == 3)
+                        {
+                            if (i == 4)
+                                view(lin_data, xt::all(), xt::all(),
+                                    xt::range(0, clean_width)) *= 0.0;
+                            else if (i == 10)
+                                view(lin_data, xt::all(),
+                                    xt::range(0, clean_width), xt::all()) *=
+                                    0.0;
+                            else if (i == 12)
+                                view(lin_data, xt::range(0, clean_width),
+                                    xt::all(), xt::all()) *= 0.0;
+                            else if (i == 14)
+                                view(lin_data,
+                                    xt::range(N + 2 - clean_width, N + 3),
+                                    xt::all(), xt::all()) *= 0.0;
+                            else if (i == 16)
+                                view(lin_data, xt::all(),
+                                    xt::range(N + 2 - clean_width, N + 3),
+                                    xt::all()) *= 0.0;
+                            else if (i == 22)
+                                view(lin_data, xt::all(), xt::all(),
+                                    xt::range(N + 2 - clean_width, N + 3)) *=
+                                    0.0;
+                        }
+                        /*if (Dim == 2) {
 			if (i==1)
 			    view(lin_data,xt::all(),xt::range(0,clean_width))  *= 0.0;
 			else if (i==3)
@@ -147,8 +165,9 @@ struct Operator
         }
     }
 
-    template <typename F, class Domain>
-    static void clean_leaf_correction_boundary(Domain* domain, int l, bool leaf_only_boundary=false, int clean_width=1) noexcept
+    template<typename F, class Domain>
+    static void clean_leaf_correction_boundary(Domain* domain, int l,
+        bool leaf_only_boundary = false, int clean_width = 1) noexcept
     {
         for (auto it = domain->begin(l); it != domain->end(l); ++it)
         {
@@ -170,7 +189,8 @@ struct Operator
             if (!it->locally_owned()) continue;
             if (!it->has_data() || !it->data().is_allocated()) continue;
 
-            if (leaf_only_boundary && (it->is_correction() || it->is_old_correction() ))
+            if (leaf_only_boundary &&
+                (it->is_correction() || it->is_old_correction()))
             {
                 for (std::size_t field_idx = 0; field_idx < F::nFields();
                      ++field_idx)
@@ -183,88 +203,114 @@ struct Operator
         }
 
         //---------------
-        if (l==domain->tree()->base_level())
+        if (l == domain->tree()->base_level())
 
-        for (auto it  = domain->begin(l);
-                it != domain->end(l); ++it)
-        {
-            if(!it->locally_owned()) continue;
-            if(!it->has_data() || !it->data().is_allocated()) continue;
-
-	    int Dim = domain->dimension();
-
-	    if (Dim == 2) {
-
-	    int idx2D[it->num_neighbors()];
-	    for (int i = 0; i< it->num_neighbors(); i++){
-	    	idx2D[i] = 1;
-	    }
-	    auto coord_it = it->tree_coordinate();
-            for(std::size_t i=0;i< it->num_neighbors();++i)
+            for (auto it = domain->begin(l); it != domain->end(l); ++it)
             {
-                auto it2=it->neighbor(i);
-                if ((!it2 || !it2->has_data()) || (leaf_only_boundary && (it2->is_correction() || it2->is_old_correction() )))
+                if (!it->locally_owned()) continue;
+                if (!it->has_data() || !it->data().is_allocated()) continue;
+
+                int Dim = domain->dimension();
+
+                if (Dim == 2)
                 {
-		    continue;
-		}
-		auto cood = it2->tree_coordinate();
-		int tmp = 0;
-		tmp += 3 * (cood.y() - coord_it.y() + 1) + cood.x() - coord_it.x() + 1;
-
-		idx2D[tmp] = -1;
-	    }
-
-            for(std::size_t i=0;i< it->num_neighbors();++i) {
-	    if (idx2D[i] > 0) {	
-                    for (std::size_t field_idx=0; field_idx<F::nFields(); ++field_idx)
+                    int idx2D[it->num_neighbors()];
+                    for (int i = 0; i < it->num_neighbors(); i++)
                     {
-                        auto& lin_data =
-                            it->data_r(F::tag(), field_idx).linalg_data();
+                        idx2D[i] = 1;
+                    }
+                    auto coord_it = it->tree_coordinate();
+                    for (std::size_t i = 0; i < it->num_neighbors(); ++i)
+                    {
+                        auto it2 = it->neighbor(i);
+                        if ((!it2 || !it2->has_data()) ||
+                            (leaf_only_boundary &&
+                                (it2->is_correction() ||
+                                    it2->is_old_correction())))
+                        {
+                            continue;
+                        }
+                        auto cood = it2->tree_coordinate();
+                        int  tmp = 0;
+                        tmp += 3 * (cood.y() - coord_it.y() + 1) + cood.x() -
+                               coord_it.x() + 1;
 
-                        int N=it->data().descriptor().extent()[0];
-			if (i==1)
-			    view(lin_data,xt::all(),xt::range(0,clean_width))  *= 0.0;
-			else if (i==3)
-			    view(lin_data,xt::range(0,clean_width),xt::all())  *= 0.0;
-			else if (i==5)
-			    view(lin_data,xt::range(N+2-clean_width,N+3),xt::all())  *= 0.0;
-			else if (i==7)
-			    view(lin_data,xt::all(),xt::range(N+2-clean_width,N+3))  *= 0.0;
-		    }
-	    }
-	    }
-	    }
-	    
+                        idx2D[tmp] = -1;
+                    }
 
-            for(std::size_t i=0;i< it->num_neighbors();++i)
-            {
-                auto it2=it->neighbor(i);
-                if ((!it2 || !it2->has_data()) || (leaf_only_boundary && (it2->is_correction() || it2->is_old_correction() )))
+                    for (std::size_t i = 0; i < it->num_neighbors(); ++i)
+                    {
+                        if (idx2D[i] > 0)
+                        {
+                            for (std::size_t field_idx = 0;
+                                 field_idx < F::nFields(); ++field_idx)
+                            {
+                                auto& lin_data = it->data_r(F::tag(), field_idx)
+                                                     .linalg_data();
+
+                                int N = it->data().descriptor().extent()[0];
+                                if (i == 1)
+                                    view(lin_data, xt::all(),
+                                        xt::range(0, clean_width)) *= 0.0;
+                                else if (i == 3)
+                                    view(lin_data, xt::range(0, clean_width),
+                                        xt::all()) *= 0.0;
+                                else if (i == 5)
+                                    view(lin_data,
+                                        xt::range(N + 2 - clean_width, N + 3),
+                                        xt::all()) *= 0.0;
+                                else if (i == 7)
+                                    view(lin_data, xt::all(),
+                                        xt::range(N + 2 - clean_width,
+                                            N + 3)) *= 0.0;
+                            }
+                        }
+                    }
+                }
+
+                for (std::size_t i = 0; i < it->num_neighbors(); ++i)
                 {
-                    for (std::size_t field_idx=0; field_idx<F::nFields(); ++field_idx)
+                    auto it2 = it->neighbor(i);
+                    if ((!it2 || !it2->has_data()) ||
+                        (leaf_only_boundary &&
+                            (it2->is_correction() || it2->is_old_correction())))
                     {
-                        auto& lin_data =
-                            it->data_r(F::tag(), field_idx).linalg_data();
+                        for (std::size_t field_idx = 0;
+                             field_idx < F::nFields(); ++field_idx)
+                        {
+                            auto& lin_data =
+                                it->data_r(F::tag(), field_idx).linalg_data();
 
-                        int N=it->data().descriptor().extent()[0];
+                            int N = it->data().descriptor().extent()[0];
 
-                        // somehow we delete the outer 2 planes
-			int Dim = domain->dimension();
-			if (Dim == 3) {
-                        if (i==4)
-                            view(lin_data,xt::all(),xt::all(),xt::range(0,clean_width))  *= 0.0;
-                        else if (i==10)
-                            view(lin_data,xt::all(),xt::range(0,clean_width),xt::all())  *= 0.0;
-                        else if (i==12)
-                            view(lin_data,xt::range(0,clean_width),xt::all(),xt::all())  *= 0.0;
-                        else if (i==14)
-                            view(lin_data,xt::range(N+2-clean_width,N+3),xt::all(),xt::all())  *= 0.0;
-                        else if (i==16)
-                            view(lin_data,xt::all(),xt::range(N+2-clean_width,N+3),xt::all())  *= 0.0;
-                        else if (i==22)
-                            view(lin_data,xt::all(),xt::all(),xt::range(N+2-clean_width,N+3))  *= 0.0;
-			}
-			/*if (Dim == 2) {
+                            // somehow we delete the outer 2 planes
+                            int Dim = domain->dimension();
+                            if (Dim == 3)
+                            {
+                                if (i == 4)
+                                    view(lin_data, xt::all(), xt::all(),
+                                        xt::range(0, clean_width)) *= 0.0;
+                                else if (i == 10)
+                                    view(lin_data, xt::all(),
+                                        xt::range(0, clean_width), xt::all()) *=
+                                        0.0;
+                                else if (i == 12)
+                                    view(lin_data, xt::range(0, clean_width),
+                                        xt::all(), xt::all()) *= 0.0;
+                                else if (i == 14)
+                                    view(lin_data,
+                                        xt::range(N + 2 - clean_width, N + 3),
+                                        xt::all(), xt::all()) *= 0.0;
+                                else if (i == 16)
+                                    view(lin_data, xt::all(),
+                                        xt::range(N + 2 - clean_width, N + 3),
+                                        xt::all()) *= 0.0;
+                                else if (i == 22)
+                                    view(lin_data, xt::all(), xt::all(),
+                                        xt::range(N + 2 - clean_width,
+                                            N + 3)) *= 0.0;
+                            }
+                            /*if (Dim == 2) {
 			if (i==1)
 			    view(lin_data,xt::all(),xt::range(0,clean_width))  *= 0.0;
 			else if (i==3)
@@ -274,7 +320,7 @@ struct Operator
 			else if (i==7)
 			    view(lin_data,xt::all(),xt::range(N+2-clean_width,N+3))  *= 0.0;
 			}*/
-                        /*if (i==4)
+                            /*if (i==4)
                             view(lin_data,xt::all(),xt::all(),xt::range(0,clean_width))  *= 0.0;
                         else if (i==10)
                             view(lin_data,xt::all(),xt::range(0,clean_width),xt::all())  *= 0.0;
@@ -286,10 +332,10 @@ struct Operator
                             view(lin_data,xt::all(),xt::range(N+2-clean_width,N+3),xt::all())  *= 0.0;
                         else if (i==22)
                             view(lin_data,xt::all(),xt::all(),xt::range(N+2-clean_width,N+3))  *= 0.0;*/
+                        }
                     }
                 }
             }
-        }
     }
 
     template<class Source, class Target, class Domain>
@@ -304,8 +350,8 @@ struct Operator
             if (!it->locally_owned()) continue;
             if (!it->has_data() || !it->data().is_allocated()) continue;
 
-            const auto dx_level = dx_base / std::pow(2,it->refinement_level());
-            divergence<Source, Target>( it->data(), dx_level);
+            const auto dx_level = dx_base / std::pow(2, it->refinement_level());
+            divergence<Source, Target>(it->data(), dx_level);
         }
 
         clean_leaf_correction_boundary<Target>(domain, l, true, 2);
@@ -318,8 +364,8 @@ struct Operator
 
         //up_and_down<Source>();
 
-        for (int l = domain->tree()->base_level();
-             l < domain->tree()->depth(); ++l)
+        for (int l = domain->tree()->base_level(); l < domain->tree()->depth();
+             ++l)
             levelDivergence<Source, Target>(domain, l);
     }
 
@@ -335,30 +381,27 @@ struct Operator
             if (!it->locally_owned()) continue;
             if (!it->has_data() || !it->data().is_allocated()) continue;
 
-            const auto dx_level = dx_base / std::pow(2,it->refinement_level());
-            gradient<Source, Target>( it->data(), dx_level);
+            const auto dx_level = dx_base / std::pow(2, it->refinement_level());
+            gradient<Source, Target>(it->data(), dx_level);
         }
 
         client->template buffer_exchange<Target>(l);
     }
-
 
     template<class Source, class Target, class Domain>
     static void domainGradient(Domain* domain, float_type _scale = 1.0) noexcept
     {
         //up_and_down<Source>();
 
-        for (int l = domain->tree()->base_level();
-                l < domain->tree()->depth(); ++l)
+        for (int l = domain->tree()->base_level(); l < domain->tree()->depth();
+             ++l)
 
             levelGradient<Source, Target>(domain, l);
     }
 
-
     template<class Field, class Block>
     static void smooth2zero(Block& block, std::size_t ngb_idx) noexcept
     {
-
         //auto f =
         //    [](float_type x)
         //    {
@@ -372,67 +415,67 @@ struct Operator
         //        return h1/(h1+h2);
         //    };
 
-
-        auto f =
-        [](float_type x)
+        auto f = [](float_type x)
         {
-            const float_type fac=10.0;
+            const float_type fac = 10.0;
             const float_type shift = 0.2;
-            const float_type c = 1-(0.5 + 0.5 * tanh(fac*(1-shift)));
+            const float_type c = 1 - (0.5 + 0.5 * tanh(fac * (1 - shift)));
 
-            return ( (0.5 + 0.5 * tanh(fac*(x-shift))) +c);
+            return ((0.5 + 0.5 * tanh(fac * (x - shift))) + c);
         };
 
         const std::size_t dim = 3;
-        std::size_t x = ngb_idx % dim;
-        std::size_t y = (ngb_idx/dim) % dim;
-        std::size_t z = (ngb_idx/dim/dim) % dim;
+        std::size_t       x = ngb_idx % dim;
+        std::size_t       y = (ngb_idx / dim) % dim;
+        std::size_t       z = (ngb_idx / dim / dim) % dim;
 
         for (std::size_t field_idx = 0; field_idx < Field::nFields();
-                ++field_idx)
+             ++field_idx)
         {
-            for (auto& n: block.node_field())
+            for (auto& n : block.node_field())
             {
-                auto pct  = n.local_pct();
-		int dimension = pct.size();
+                auto pct = n.local_pct();
+                int  dimension = pct.size();
 
                 float_type square = 0.0;
                 float_type c = 0;
 
-                if ((z==0) && (dimension == 3)){
+                if ((z == 0) && (dimension == 3))
+                {
                     square = std::max(square, f(pct[2]));
-                    c+=1;
+                    c += 1;
                 }
-                else if ((z==(dim-1)) && (dimension == 3))
+                else if ((z == (dim - 1)) && (dimension == 3))
                 {
-                    square = std::max(square, f(1-pct[2]));
-                    c+=1;
+                    square = std::max(square, f(1 - pct[2]));
+                    c += 1;
                 }
 
-                if (y==0){
+                if (y == 0)
+                {
                     square = std::max(square, f(pct[1]));
-                    c+=1;
+                    c += 1;
                 }
-                else if (y==(dim-1))
+                else if (y == (dim - 1))
                 {
-                    square = std::max(square, f(1-pct[1]));
-                    c+=1;
+                    square = std::max(square, f(1 - pct[1]));
+                    c += 1;
                 }
 
-                if (x==0){
+                if (x == 0)
+                {
                     square = std::max(square, f(pct[0]));
-                    c+=1;
+                    c += 1;
                 }
-                else if (x==(dim-1))
+                else if (x == (dim - 1))
                 {
-                    square = std::max(square, f(1-pct[0]));
-                    c+=1;
+                    square = std::max(square, f(1 - pct[0]));
+                    c += 1;
                 }
 
-
-                if (c>0)
-                    n(Field::tag(), field_idx) = n(Field::tag(), field_idx) * square;
-
+                if (c > 0)
+                    n(Field::tag(), field_idx) =
+                        n(Field::tag(), field_idx) * square;
 
                 //if      (z == 0)
                 //{
@@ -457,61 +500,67 @@ struct Operator
         }
     }
 
-
   public:
     template<class F_in, class F_tmp, class Block>
     static void cell_center_average(Block& block) noexcept
     {
-
         constexpr auto f_in = F_in::tag();
         constexpr auto tmp = F_tmp::tag();
 
-        for (std::size_t field_idx = 0; field_idx < F_in::nFields(); ++field_idx)
+        for (std::size_t field_idx = 0; field_idx < F_in::nFields();
+             ++field_idx)
         {
+            std::array<int, 3> off{{0, 0, 0}};
 
-            std::array<int, 3> off{{0,0,0}};
-
-            if (F_in::mesh_type() == MeshObject::face){
-                off[field_idx]=1;
-            }
-            else if (F_in::mesh_type() == MeshObject::cell){
+            if (F_in::mesh_type() == MeshObject::face) { off[field_idx] = 1; }
+            else if (F_in::mesh_type() == MeshObject::cell)
+            {
                 return;
             }
-            else if (F_in::mesh_type() == MeshObject::edge){
+            else if (F_in::mesh_type() == MeshObject::edge)
+            {
                 off[0] = 1;
                 off[1] = 1;
                 off[2] = 1;
                 off[field_idx] = 0;
             }
 
-            for (auto& n : block){
-                auto pct  = n.local_pct();
-		int dimension = pct.size();
-		if (dimension == 3) {
-                n(tmp, 0) =
-                0.5 * (
-                    n(f_in,field_idx)
-                  + n.at_offset(f_in, off[0], off[1], off[2], field_idx));
-		}
-		if (dimension == 2) {
-		    if (F_in::mesh_type() == MeshObject::edge) {
-		    	n(tmp, 0) = 0.5 * (n(f_in,field_idx) + n.at_offset(f_in, 1, 1, field_idx));
-		    }
-		    else {
-		    	n(tmp, 0) = 0.5 * (n(f_in,field_idx) + n.at_offset(f_in, off[0], off[1], field_idx));
-		    }
-		}
+            for (auto& n : block)
+            {
+                auto pct = n.local_pct();
+                int  dimension = pct.size();
+                if (dimension == 3)
+                {
+                    n(tmp, 0) = 0.5 * (n(f_in, field_idx) +
+                                          n.at_offset(f_in, off[0], off[1],
+                                              off[2], field_idx));
+                }
+                if (dimension == 2)
+                {
+                    if (F_in::mesh_type() == MeshObject::edge)
+                    {
+                        n(tmp, 0) =
+                            0.5 * (n(f_in, field_idx) +
+                                      n.at_offset(f_in, 1, 1, field_idx));
+                    }
+                    else
+                    {
+                        n(tmp, 0) = 0.5 * (n(f_in, field_idx) +
+                                              n.at_offset(f_in, off[0], off[1],
+                                                  field_idx));
+                    }
+                }
             }
 
-            for (auto& n : block){
-                n(f_in,field_idx) = n(tmp,0);
-            }
+            for (auto& n : block) { n(f_in, field_idx) = n(tmp, 0); }
         }
     }
 
     template<class U, class Block, class Coord, class Force, class DeltaFunc,
-        typename std::enable_if<(U::mesh_type() == MeshObject::face), void>::type* = nullptr>
-    static void ib_projection(Coord ib_coord, Force& f, Block& block, DeltaFunc& ddf)
+        typename std::enable_if<(U::mesh_type() == MeshObject::face),
+            void>::type* = nullptr>
+    static void ib_projection(Coord ib_coord, Force& f, Block& block,
+        DeltaFunc& ddf)
     {
         constexpr auto u = U::tag();
         for (auto& node : block)
@@ -519,18 +568,21 @@ struct Operator
             auto n_coord = node.level_coordinate();
             auto dist = n_coord - ib_coord;
 
-            for (std::size_t field_idx=0; field_idx<U::nFields(); field_idx++)
+            for (std::size_t field_idx = 0; field_idx < U::nFields();
+                 field_idx++)
             {
-                decltype(ib_coord) off(0.5); off[field_idx] = 0.0; // face data location
-                f[field_idx] += node(u, field_idx)  * ddf(dist+off);
+                decltype(ib_coord) off(0.5);
+                off[field_idx] = 0.0; // face data location
+                f[field_idx] += node(u, field_idx) * ddf(dist + off);
             }
         }
     }
 
-
     template<class U, class Block, class Coord, class Force, class DeltaFunc,
-        typename std::enable_if<(U::mesh_type() == MeshObject::face), void>::type* = nullptr>
-    static void ib_smearing(Coord ib_coord, Force& f, Block& block, DeltaFunc& ddf, float_type factor=1.0)
+        typename std::enable_if<(U::mesh_type() == MeshObject::face),
+            void>::type* = nullptr>
+    static void ib_smearing(Coord ib_coord, Force& f, Block& block,
+        DeltaFunc& ddf, float_type factor = 1.0)
     {
         constexpr auto u = U::tag();
         for (auto& node : block)
@@ -538,10 +590,12 @@ struct Operator
             auto n_coord = node.level_coordinate();
             auto dist = n_coord - ib_coord;
 
-            for (std::size_t field_idx=0; field_idx<U::nFields(); field_idx++)
+            for (std::size_t field_idx = 0; field_idx < U::nFields();
+                 field_idx++)
             {
-                decltype(ib_coord) off(0.5); off[field_idx] = 0.0; // face data location
-                node(u, field_idx) += f[field_idx] * ddf(dist+off) * factor;
+                decltype(ib_coord) off(0.5);
+                off[field_idx] = 0.0; // face data location
+                node(u, field_idx) += f[field_idx] * ddf(dist + off) * factor;
             }
         }
     }
@@ -554,15 +608,16 @@ struct Operator
 
         for (auto& n : block)
         {
-            float_type tmp=0.0;
-            for (std::size_t field_idx = 0; field_idx < Field::nFields(); ++field_idx)
+            float_type tmp = 0.0;
+            for (std::size_t field_idx = 0; field_idx < Field::nFields();
+                 ++field_idx)
             {
-                tmp += n(Field::tag(), field_idx)*n(Field::tag(), field_idx);
+                tmp += n(Field::tag(), field_idx) * n(Field::tag(), field_idx);
             }
-            m+=tmp;
-            c+=1.0;
+            m += tmp;
+            c += 1.0;
         }
-        return sqrt(m/c);
+        return sqrt(m / c);
     }
 
     template<class Field, class Block>
@@ -572,10 +627,11 @@ struct Operator
 
         for (auto& n : block)
         {
-            float_type tmp=0.0;
-            for (std::size_t field_idx = 0; field_idx < Field::nFields(); ++field_idx)
+            float_type tmp = 0.0;
+            for (std::size_t field_idx = 0; field_idx < Field::nFields();
+                 ++field_idx)
             {
-                tmp += n(Field::tag(), field_idx)*n(Field::tag(), field_idx);
+                tmp += n(Field::tag(), field_idx) * n(Field::tag(), field_idx);
             }
             tmp = sqrt(tmp);
             if (tmp > m) m = tmp;
@@ -586,18 +642,18 @@ struct Operator
     template<class Field, class Block>
     static float_type maxabs(Block& block) noexcept
     {
-	float_type m = 0.0;
-	for (std::size_t field_idx = 0; field_idx < Field::nFields(); ++field_idx)
-	{
-	    for (auto& n : block)
-	    {
-		auto tmp = std::fabs(n(Field::tag(), field_idx));
-		if (tmp > m) m = tmp;
-	    }
-	}
-	return m;
+        float_type m = 0.0;
+        for (std::size_t field_idx = 0; field_idx < Field::nFields();
+             ++field_idx)
+        {
+            for (auto& n : block)
+            {
+                auto tmp = std::fabs(n(Field::tag(), field_idx));
+                if (tmp > m) m = tmp;
+            }
+        }
+        return m;
     }
-
 
     template<class Source, class Dest, class Block>
     static void laplace(Block& block, float_type dx_level) noexcept
@@ -607,22 +663,24 @@ struct Operator
         constexpr auto dest = Dest::tag();
         for (auto& n : block)
         {
-            auto pct  = n.local_pct();
-	    int dimension = pct.size();
-	    if (dimension == 3) {
-            n(dest) =
-                -6.0 * n(source) + n.at_offset(source, 0, 0, -1) +
-                n.at_offset(source, 0, 0, +1) + n.at_offset(source, 0, -1, 0) +
-                n.at_offset(source, 0, +1, 0) + n.at_offset(source, -1, 0, 0) +
-                n.at_offset(source, +1, 0, 0);
-	    }
-	    else {
-            n(dest) =
-                -4.0 * n(source) + n.at_offset(source, 0, -1) +
-                n.at_offset(source, 0, +1) + n.at_offset(source, -1, 0) +
-                n.at_offset(source, +1, 0);
-	    	
-	    }
+            auto pct = n.local_pct();
+            int  dimension = pct.size();
+            if (dimension == 3)
+            {
+                n(dest) = -6.0 * n(source) + n.at_offset(source, 0, 0, -1) +
+                          n.at_offset(source, 0, 0, +1) +
+                          n.at_offset(source, 0, -1, 0) +
+                          n.at_offset(source, 0, +1, 0) +
+                          n.at_offset(source, -1, 0, 0) +
+                          n.at_offset(source, +1, 0, 0);
+            }
+            else
+            {
+                n(dest) = -4.0 * n(source) + n.at_offset(source, 0, -1) +
+                          n.at_offset(source, 0, +1) +
+                          n.at_offset(source, -1, 0) +
+                          n.at_offset(source, +1, 0);
+            }
 
             n(dest) *= fac;
         }
@@ -639,17 +697,19 @@ struct Operator
         constexpr auto dest = Dest::tag();
         for (auto& n : block)
         {
-            auto pct  = n.local_pct();
-	    int dimension = pct.size();
-	    if (dimension == 3) {
-            n(dest, 0) = fac * (n(source) - n.at_offset(source, -1, 0, 0));
-            n(dest, 1) = fac * (n(source) - n.at_offset(source, 0, -1, 0));
-	    n(dest, 2) = fac * (n(source) - n.at_offset(source, 0, 0, -1));
-	    }
-	    else {
-            n(dest, 0) = fac * (n(source) - n.at_offset(source, -1, 0));
-            n(dest, 1) = fac * (n(source) - n.at_offset(source, 0, -1));	
-	    }
+            auto pct = n.local_pct();
+            int  dimension = pct.size();
+            if (dimension == 3)
+            {
+                n(dest, 0) = fac * (n(source) - n.at_offset(source, -1, 0, 0));
+                n(dest, 1) = fac * (n(source) - n.at_offset(source, 0, -1, 0));
+                n(dest, 2) = fac * (n(source) - n.at_offset(source, 0, 0, -1));
+            }
+            else
+            {
+                n(dest, 0) = fac * (n(source) - n.at_offset(source, -1, 0));
+                n(dest, 1) = fac * (n(source) - n.at_offset(source, 0, -1));
+            }
         }
     }
 
@@ -665,19 +725,21 @@ struct Operator
         constexpr auto dest = Dest::tag();
         for (auto& n : block)
         {
-            auto pct  = n.local_pct();
-	    int dimension = pct.size();
-	    if (dimension == 3) {
-            n(dest) = -n(source, 0) - n(source, 1) - n(source, 2) +
-                      n.at_offset(source, 1, 0, 0, 0) +
-                      n.at_offset(source, 0, 1, 0, 1) +
-                      n.at_offset(source, 0, 0, 1, 2);
-	    } 
-	    else {
-            n(dest) = -n(source, 0) - n(source, 1) +
-                      n.at_offset(source, 1, 0, 0) +
-                      n.at_offset(source, 0, 1, 1);
-	    }
+            auto pct = n.local_pct();
+            int  dimension = pct.size();
+            if (dimension == 3)
+            {
+                n(dest) = -n(source, 0) - n(source, 1) - n(source, 2) +
+                          n.at_offset(source, 1, 0, 0, 0) +
+                          n.at_offset(source, 0, 1, 0, 1) +
+                          n.at_offset(source, 0, 0, 1, 2);
+            }
+            else
+            {
+                n(dest) = -n(source, 0) - n(source, 1) +
+                          n.at_offset(source, 1, 0, 0) +
+                          n.at_offset(source, 0, 1, 1);
+            }
             n(dest) *= fac;
         }
     }
@@ -693,26 +755,28 @@ struct Operator
         constexpr auto dest = Dest::tag();
         for (auto& n : block)
         {
-            auto pct  = n.local_pct();
-	    int dimension = pct.size();
-	    if (dimension == 3) {
-            n(dest, 0) = n(source, 2) - n.at_offset(source, 0, -1, 0, 2) -
-                         n(source, 1) + n.at_offset(source, 0, 0, -1, 1);
-            n(dest, 0) *= fac;
+            auto pct = n.local_pct();
+            int  dimension = pct.size();
+            if (dimension == 3)
+            {
+                n(dest, 0) = n(source, 2) - n.at_offset(source, 0, -1, 0, 2) -
+                             n(source, 1) + n.at_offset(source, 0, 0, -1, 1);
+                n(dest, 0) *= fac;
 
-            n(dest, 1) = n(source, 0) - n.at_offset(source, 0, 0, -1, 0) -
-                         n(source, 2) + n.at_offset(source, -1, 0, 0, 2);
-            n(dest, 1) *= fac;
+                n(dest, 1) = n(source, 0) - n.at_offset(source, 0, 0, -1, 0) -
+                             n(source, 2) + n.at_offset(source, -1, 0, 0, 2);
+                n(dest, 1) *= fac;
 
-            n(dest, 2) = n(source, 1) - n.at_offset(source, -1, 0, 0, 1) -
-                         n(source, 0) + n.at_offset(source, 0, -1, 0, 0);
-            n(dest, 2) *= fac;
-	    } 
-	    else {
-            n(dest, 0) = n(source, 1) - n.at_offset(source, -1, 0, 1) -
-                         n(source, 0) + n.at_offset(source, 0, -1, 0);
-            n(dest, 0) *= fac;
-	    }
+                n(dest, 2) = n(source, 1) - n.at_offset(source, -1, 0, 0, 1) -
+                             n(source, 0) + n.at_offset(source, 0, -1, 0, 0);
+                n(dest, 2) *= fac;
+            }
+            else
+            {
+                n(dest, 0) = n(source, 1) - n.at_offset(source, -1, 0, 1) -
+                             n(source, 0) + n.at_offset(source, 0, -1, 0);
+                n(dest, 0) *= fac;
+            }
         }
     }
 
@@ -720,35 +784,37 @@ struct Operator
         typename std::enable_if<(Source::mesh_type() == MeshObject::edge) &&
                                     (Dest::mesh_type() == MeshObject::face),
             void>::type* = nullptr>
-    static void curl_transpose(
-        Block& block, float_type dx_level, float_type scale = 1.0) noexcept
+    static void curl_transpose(Block& block, float_type dx_level,
+        float_type scale = 1.0) noexcept
     {
         const auto     fac = 1.0 / dx_level * scale;
         constexpr auto source = Source::tag();
         constexpr auto dest = Dest::tag();
         for (auto& n : block)
         {
-            auto pct  = n.local_pct();
-	    int dimension = pct.size();
-	    if (dimension == 3) {
-            n(dest, 0) = +n(source, 1) - n.at_offset(source, 0, 0, 1, 1) +
-                         n.at_offset(source, 0, 1, 0, 2) - n(source, 2);
-            n(dest, 0) *= fac;
+            auto pct = n.local_pct();
+            int  dimension = pct.size();
+            if (dimension == 3)
+            {
+                n(dest, 0) = +n(source, 1) - n.at_offset(source, 0, 0, 1, 1) +
+                             n.at_offset(source, 0, 1, 0, 2) - n(source, 2);
+                n(dest, 0) *= fac;
 
-            n(dest, 1) = +n(source, 2) - n.at_offset(source, 1, 0, 0, 2) +
-                         n.at_offset(source, 0, 0, 1, 0) - n(source, 0);
-            n(dest, 1) *= fac;
+                n(dest, 1) = +n(source, 2) - n.at_offset(source, 1, 0, 0, 2) +
+                             n.at_offset(source, 0, 0, 1, 0) - n(source, 0);
+                n(dest, 1) *= fac;
 
-            n(dest, 2) = +n(source, 0) - n.at_offset(source, 0, 1, 0, 0) +
-                         n.at_offset(source, 1, 0, 0, 1) - n(source, 1);
-            n(dest, 2) *= fac;
-	    }
-	    else {
-	    	n(dest, 0) = -n(source) + n.at_offset(source, 0, 1);
-		n(dest, 0) *= fac;
-		n(dest, 1) = -n.at_offset(source, 1, 0) + n(source);
-		n(dest, 1) *= fac;
-	    }
+                n(dest, 2) = +n(source, 0) - n.at_offset(source, 0, 1, 0, 0) +
+                             n.at_offset(source, 1, 0, 0, 1) - n(source, 1);
+                n(dest, 2) *= fac;
+            }
+            else
+            {
+                n(dest, 0) = -n(source) + n.at_offset(source, 0, 1);
+                n(dest, 0) *= fac;
+                n(dest, 1) = -n.at_offset(source, 1, 0) + n(source);
+                n(dest, 1) *= fac;
+            }
         }
     }
 
@@ -766,68 +832,73 @@ struct Operator
         {
             //TODO: Can be done much better by getting the appropriate nodes
             //      directly
-            auto pct  = n.local_pct();
-	    int dimension = pct.size();
-	    if (dimension == 3) {
-            n(dest, 0) = 0.25 * (+n.at_offset(edge, 0, 0, 0, 1) *
-                                        (+n.at_offset(face, 0, 0, 0, 2) +
-                                            n.at_offset(face, -1, 0, 0, 2)) +
-                                    n.at_offset(edge, 0, 0, 1, 1) *
-                                        (+n.at_offset(face, 0, 0, 1, 2) +
-                                            n.at_offset(face, -1, 0, 1, 2)) -
-                                    n.at_offset(edge, 0, 0, 0, 2) *
-                                        (+n.at_offset(face, 0, 0, 0, 1) +
-                                            n.at_offset(face, -1, 0, 0, 1)) -
-                                    n.at_offset(edge, 0, 1, 0, 2) *
-                                        (+n.at_offset(face, 0, 1, 0, 1) +
-                                            n.at_offset(face, -1, 1, 0, 1)));
+            auto pct = n.local_pct();
+            int  dimension = pct.size();
+            if (dimension == 3)
+            {
+                n(dest, 0) =
+                    0.25 * (+n.at_offset(edge, 0, 0, 0, 1) *
+                                   (+n.at_offset(face, 0, 0, 0, 2) +
+                                       n.at_offset(face, -1, 0, 0, 2)) +
+                               n.at_offset(edge, 0, 0, 1, 1) *
+                                   (+n.at_offset(face, 0, 0, 1, 2) +
+                                       n.at_offset(face, -1, 0, 1, 2)) -
+                               n.at_offset(edge, 0, 0, 0, 2) *
+                                   (+n.at_offset(face, 0, 0, 0, 1) +
+                                       n.at_offset(face, -1, 0, 0, 1)) -
+                               n.at_offset(edge, 0, 1, 0, 2) *
+                                   (+n.at_offset(face, 0, 1, 0, 1) +
+                                       n.at_offset(face, -1, 1, 0, 1)));
 
-            n(dest, 1) = 0.25 * (+n.at_offset(edge, 0, 0, 0, 2) *
-                                        (+n.at_offset(face, 0, 0, 0, 0) +
-                                            n.at_offset(face, 0, -1, 0, 0)) +
-                                    n.at_offset(edge, 1, 0, 0, 2) *
-                                        (+n.at_offset(face, 1, 0, 0, 0) +
-                                            n.at_offset(face, 1, -1, 0, 0)) -
-                                    n.at_offset(edge, 0, 0, 0, 0) *
-                                        (+n.at_offset(face, 0, 0, 0, 2) +
-                                            n.at_offset(face, 0, -1, 0, 2)) -
-                                    n.at_offset(edge, 0, 0, 1, 0) *
-                                        (+n.at_offset(face, 0, 0, 1, 2) +
-                                            n.at_offset(face, 0, -1, 1, 2)));
-            n(dest, 2) = 0.25 * (+n.at_offset(edge, 0, 0, 0, 0) *
-                                        (+n.at_offset(face, 0, 0, 0, 1) +
-                                            n.at_offset(face, 0, 0, -1, 1)) +
-                                    n.at_offset(edge, 0, 1, 0, 0) *
-                                        (+n.at_offset(face, 0, 1, 0, 1) +
-                                            n.at_offset(face, 0, 1, -1, 1)) -
-                                    n.at_offset(edge, 0, 0, 0, 1) *
-                                        (+n.at_offset(face, 0, 0, 0, 0) +
-                                            n.at_offset(face, 0, 0, -1, 0)) -
-                                    n.at_offset(edge, 1, 0, 0, 1) *
-                                        (+n.at_offset(face, 1, 0, 0, 0) +
-                                            n.at_offset(face, 1, 0, -1, 0)));
-	    }
-	    else {
-	    	n(dest, 0) = 0.25 * (-n.at_offset(edge, 0, 0, 0) *
-				(+n.at_offset(face, 0, 0, 1) +
-				 n.at_offset(face, -1, 0, 1)) -
-				n.at_offset(edge, 0, 1, 0) *
-				(+n.at_offset(face, 0, 1, 1) +
-				 n.at_offset(face, -1, 1, 1)));
+                n(dest, 1) =
+                    0.25 * (+n.at_offset(edge, 0, 0, 0, 2) *
+                                   (+n.at_offset(face, 0, 0, 0, 0) +
+                                       n.at_offset(face, 0, -1, 0, 0)) +
+                               n.at_offset(edge, 1, 0, 0, 2) *
+                                   (+n.at_offset(face, 1, 0, 0, 0) +
+                                       n.at_offset(face, 1, -1, 0, 0)) -
+                               n.at_offset(edge, 0, 0, 0, 0) *
+                                   (+n.at_offset(face, 0, 0, 0, 2) +
+                                       n.at_offset(face, 0, -1, 0, 2)) -
+                               n.at_offset(edge, 0, 0, 1, 0) *
+                                   (+n.at_offset(face, 0, 0, 1, 2) +
+                                       n.at_offset(face, 0, -1, 1, 2)));
+                n(dest, 2) =
+                    0.25 * (+n.at_offset(edge, 0, 0, 0, 0) *
+                                   (+n.at_offset(face, 0, 0, 0, 1) +
+                                       n.at_offset(face, 0, 0, -1, 1)) +
+                               n.at_offset(edge, 0, 1, 0, 0) *
+                                   (+n.at_offset(face, 0, 1, 0, 1) +
+                                       n.at_offset(face, 0, 1, -1, 1)) -
+                               n.at_offset(edge, 0, 0, 0, 1) *
+                                   (+n.at_offset(face, 0, 0, 0, 0) +
+                                       n.at_offset(face, 0, 0, -1, 0)) -
+                               n.at_offset(edge, 1, 0, 0, 1) *
+                                   (+n.at_offset(face, 1, 0, 0, 0) +
+                                       n.at_offset(face, 1, 0, -1, 0)));
+            }
+            else
+            {
+                n(dest, 0) = 0.25 * (-n.at_offset(edge, 0, 0, 0) *
+                                            (+n.at_offset(face, 0, 0, 1) +
+                                                n.at_offset(face, -1, 0, 1)) -
+                                        n.at_offset(edge, 0, 1, 0) *
+                                            (+n.at_offset(face, 0, 1, 1) +
+                                                n.at_offset(face, -1, 1, 1)));
 
-		n(dest, 1) = 0.25 * (+n.at_offset(edge, 0, 0, 0) *
-				(+n.at_offset(face, 0, 0, 0) +
-				 n.at_offset(face, 0, -1, 0)) +
-				n.at_offset(edge, 1, 0, 0) *
-				(+n.at_offset(face, 1, 0, 0) +
-				 n.at_offset(face, 1, -1, 0)));
-
-	    }
+                n(dest, 1) = 0.25 * (+n.at_offset(edge, 0, 0, 0) *
+                                            (+n.at_offset(face, 0, 0, 0) +
+                                                n.at_offset(face, 0, -1, 0)) +
+                                        n.at_offset(edge, 1, 0, 0) *
+                                            (+n.at_offset(face, 1, 0, 0) +
+                                                n.at_offset(face, 1, -1, 0)));
+            }
         }
     }
 
     template<typename Field, typename Domain, typename Func>
-    static void add_field_expression(Domain* domain, Func& f, float_type t, float_type scale=1.0) noexcept
+    static void add_field_expression(Domain* domain, Func& f, float_type t,
+        float_type scale = 1.0) noexcept
     {
         const auto dx_base = domain->dx_base();
         for (auto it = domain->begin(); it != domain->end(); ++it)
@@ -835,11 +906,12 @@ struct Operator
             if (!it->locally_owned() || !it->has_data()) continue;
 
             for (std::size_t field_idx = 0; field_idx < Field::nFields();
-                    ++field_idx)
-                for (auto& n:it->data().node_field())
+                 ++field_idx)
+                for (auto& n : it->data().node_field())
                 {
-                    auto coord = n.global_coordinate()*dx_base;
-                    n(Field::tag(), field_idx) += f(field_idx, t, coord)*scale;
+                    auto coord = n.global_coordinate() * dx_base;
+                    n(Field::tag(), field_idx) +=
+                        f(field_idx, t, coord) * scale;
                 }
         }
     }
@@ -857,13 +929,12 @@ struct Operator
             for (std::size_t field_idx = 0; field_idx < From::nFields();
                  ++field_idx)
             {
-                for (auto& n:it->data().node_field())
-                    n(To::tag(), field_idx) += n(From::tag(), field_idx) * scale;
+                for (auto& n : it->data().node_field())
+                    n(To::tag(), field_idx) +=
+                        n(From::tag(), field_idx) * scale;
             }
         }
     }
-
-
 };
 } // namespace domain
 } // namespace iblgf

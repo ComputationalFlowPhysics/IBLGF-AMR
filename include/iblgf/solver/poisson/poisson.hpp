@@ -85,8 +85,13 @@ class PoissonSolver
     N_fourier_modes(_N)
     {
         //initializing vector of helmholtz solvers
+        //_N is the number of Fourier modes computed at finest level, but c is the wave number at the base level. 
+        //Need to change the computation from 2pi*n/N to 2*pi*n*2^(levels)/N
+        const int l_max = domain_->tree()->depth();
+        const int l_min = domain_->tree()->base_level();
+        const int nLevels = l_max - l_min;
         for (int i = 0; i < N_fourier_modes; i++) {
-            float_type c = (static_cast<float_type>(i)+1.0)/static_cast<float_type>(N_fourier_modes) * 2.0 * M_PI;
+            float_type c = (static_cast<float_type>(i)+1.0)/static_cast<float_type>(N_fourier_modes + 1) * 2.0 * M_PI * std::pow(2.0, nLevels);
             lgf_helm_vec.emplace_back(helm_t(c));
         }
     }

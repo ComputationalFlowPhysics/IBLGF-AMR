@@ -49,7 +49,7 @@ class Helmholtz_Lookup
         }
         else
         {
-            return asym(x, y, z);
+            return asym(x, y);
         }
     }
 

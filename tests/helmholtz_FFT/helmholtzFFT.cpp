@@ -19,7 +19,7 @@ using namespace iblgf;
 int main(int argc, char *argv[])
 {
 
-	Helmholtz_FFT func(20, 20 ,2,1);
+	Helmholtz_FFT func(30, 20 ,2,1);
     func.testingTransform();
 
     return 0;

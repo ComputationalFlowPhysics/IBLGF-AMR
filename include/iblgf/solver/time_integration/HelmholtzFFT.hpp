@@ -43,29 +43,38 @@ class helm_dfft_r2c
     ~helm_dfft_r2c() { fftw_destroy_plan(plan); }
 
     /*helm_dfft_r2c(int _padded_dim, int _dim_nonzero, dims_2D _block_dim,
-        int numComp = 3),
-        input_(_block_dim[1] * _block_dim[0] * _padded_dim * numComp, 0.0),
-        output_(_block_dim[1] * _block_dim[0] * (_padded_dim / 2 + 1) * numComp)
-    {
-        int numTransform = _block_dim[0] * _block_dim[1] * numComp;
-        int dim_half = _padded_dim / 2 + 1;
-        plan = fftw_plan_many_dft_r2c(1, numTransform, input_, NULL, 1,
-            _padded_dim, reinterpret_cast<fftw_complex*>(&output_[0]), NULL, 1,
-            dim_half, FFTW_PATIENT);
-    }*/
+                int numComp = 3),
+                input_(_block_dim[1] * _block_dim[0] * _padded_dim * numComp, 0.0),
+                output_(_block_dim[1] * _block_dim[0] * (_padded_dim / 2 + 1) * numComp)
+            {
+                int numTransform = _block_dim[0] * _block_dim[1] * numComp;
+                int dim_half = _padded_dim / 2 + 1;
+                plan = fftw_plan_many_dft_r2c(1, numTransform, input_, NULL, 1,
+                    _padded_dim, reinterpret_cast<fftw_complex*>(&output_[0]), NULL, 1,
+                    dim_half, FFTW_PATIENT);
+            }*/
 
-    helm_dfft_r2c(int _padded_dim, int _dim_nonzero, int dim_0, int dim_1,
-        int numComp = 3)
-    : input_(dim_0 * dim_1 * _padded_dim * numComp, 0.0)
-    , output_(dim_0 * dim_1 * (_padded_dim / 2 + 1) * numComp,
+    helm_dfft_r2c(int _padded_dim, int _dim_nonzero, int _dim_0, int _dim_1,
+        int _numComp = 3)
+    : dim_0(_dim_0)
+    , dim_1(_dim_1)
+    , numComp(_numComp)
+    , padded_dim(_padded_dim)
+    , dim_nonzero(_dim_nonzero)
+    , input_(_dim_0 * _dim_1 * _padded_dim * _numComp, 0.0)
+    , output_(_dim_0 * _dim_1 * (_padded_dim / 2 + 1) * _numComp,
           std::complex<float_type>(0.0))
     {
-        int numTransform = dim_0 * dim_1 * numComp;
+        std::cout << "init constructor done" << std::endl;
+        std::cout << "padded dim is " << padded_dim << std::endl;
+        int numTransform = _dim_0 * _dim_1 * _numComp;
+        int numCells = _dim_0 * _dim_1;
         int dim_half = _padded_dim / 2 + 1;
         int secDim[1] = {_padded_dim};
-        plan = fftw_plan_many_dft_r2c(1, &secDim[0], numTransform, &input_[0], NULL, 1,
-            _padded_dim, reinterpret_cast<fftw_complex*>(&output_[0]), NULL, 1,
-            dim_half, FFTW_PATIENT);
+        plan = fftw_plan_many_dft_r2c(1, &secDim[0], numTransform, &input_[0],
+            NULL, 1, _padded_dim, reinterpret_cast<fftw_complex*>(&output_[0]),
+            NULL, 1, dim_half, FFTW_PATIENT);
+        std::cout << "constructed r2c" << std::endl;
     }
 
   public: //Interface
@@ -77,30 +86,66 @@ class helm_dfft_r2c
     template<class Vector>
     void copy_field(const Vector& _v) noexcept
     {
-        if (_v.size() != input_.size())
+        /*if (_v.size() != input_.size())
+                {
+                    std::cout
+                        << "Number of elements in copying vector for Helmholtz fft does not match in r2c"
+                        << std::endl;
+                }*/
+        //for (int i = 0; i < _v.size(); i++) { input_[i] = _v[i]; }
+
+        int numNonZero = dim_nonzero * dim_0 * dim_1 * numComp;
+        if (_v.size() != numNonZero)
         {
             std::cout
-                << "Number of elements in copying vector for Helmholtz fft does not match in r2c"
+                << "Number of elements in input vector for Helmholtz fft does not match in r2c"
                 << std::endl;
+            //_v.resize(numNonZero);
         }
-        for (int i = 0; i < _v.size(); i++) { input_[i] = _v[i]; }
+        int numTransform = dim_0 * dim_1 * numComp;
+        for (int i = 0; i < numTransform; i++)
+        {
+            for (int j = 0; j < dim_nonzero; j++)
+            {
+                int idx_to = i * dim_nonzero + j;
+                int idx_from =
+                    i * padded_dim + j + (padded_dim - dim_nonzero) / 2;
+                input_[idx_from] = _v[idx_to];
+            }
+        }
     }
 
     void output_field(std::vector<std::complex<float_type>>& _v) noexcept
     {
-        if (_v.size() != output_.size())
+        int numNonZero = (dim_nonzero / 2 + 1) * dim_0 * dim_1 * numComp;
+        if (_v.size() <= numNonZero)
         {
             std::cout
                 << "Number of elements in output vector for Helmholtz fft does not match in r2c"
                 << std::endl;
-            _v.resize(output_.size());
+            _v.resize(numNonZero);
         }
-        for (int i = 0; i < _v.size(); i++) { _v[i] = output_[i]; }
+        int numTransform = dim_0 * dim_1 * numComp;
+        for (int i = 0; i < numTransform; i++)
+        {
+            for (int j = 0; j < (dim_nonzero / 2 + 1); j++)
+            {
+                int idx_to = i * (dim_nonzero / 2 + 1) + j;
+                int idx_from = i * (padded_dim / 2 + 1) + j;
+                _v[idx_to] = output_[idx_from];
+            }
+        }
     }
 
   private:
     real_vector_t    input_;
     complex_vector_t output_;
+
+    int padded_dim;
+    int dim_nonzero;
+    int dim_0;
+    int dim_1;
+    int numComp;
 
     fftw_plan plan;
 };
@@ -121,15 +166,21 @@ class helm_dfft_c2r
     helm_dfft_c2r& operator=(helm_dfft_c2r&& other) & = default;
     ~helm_dfft_c2r() { fftw_destroy_plan(plan); }
 
-    helm_dfft_c2r(int _padded_dim, int _dim_nonzero, int dim_0, int dim_1,
-        int numComp = 3)
-    : input_(dim_0 * dim_1 * (_padded_dim / 2 + 1) * numComp,
+    helm_dfft_c2r(int _padded_dim, int _dim_nonzero, int _dim_0, int _dim_1,
+        int _numComp = 3)
+    : dim_0(_dim_0)
+    , dim_1(_dim_1)
+    , numComp(_numComp)
+    , padded_dim(_padded_dim)
+    , dim_nonzero(_dim_nonzero)
+    , input_(_dim_0 * _dim_1 * (_padded_dim / 2 + 1) * _numComp,
           std::complex<float_type>(0.0))
-    , output_(dim_0 * dim_1 * _padded_dim * numComp, 0.0)
+    , output_(_dim_0 * _dim_1 * _padded_dim * _numComp, 0.0)
     {
-        int numTransform = dim_0 * dim_1 * numComp;
+        int numTransform = _dim_0 * _dim_1 * _numComp;
+        int numCells = dim_0 * dim_1;
         int dim_half = _padded_dim / 2 + 1;
-        int secDim[1] = {_padded_dim};
+        int secDim[1] = {padded_dim};
         plan = fftw_plan_many_dft_c2r(1, &secDim[0], numTransform,
             reinterpret_cast<fftw_complex*>(&input_[0]), NULL, 1, dim_half,
             &output_[0], NULL, 1, _padded_dim, FFTW_PATIENT);
@@ -144,30 +195,78 @@ class helm_dfft_c2r
     template<class Vector>
     void copy_field(const Vector& _v) noexcept
     {
-        if (_v.size() != input_.size())
+        /*if (_v.size() != input_.size())
+                {
+                    std::cout
+                        << "Number of elements in copying vector for Helmholtz fft does not match in c2r"
+                        << std::endl;
+                }*/
+        //for (int i = 0; i < _v.size(); i++) { input_[i] = _v[i]; }
+
+        int numNonZero = (dim_nonzero / 2 + 1) * dim_0 * dim_1 * numComp;
+        if (_v.size() != numNonZero)
         {
             std::cout
-                << "Number of elements in copying vector for Helmholtz fft does not match in c2r"
+                << "Number of elements in input vector for Helmholtz fft does not match in c2r"
                 << std::endl;
+            //_v.resize(numNonZero);
         }
-        for (int i = 0; i < _v.size(); i++) { input_[i] = _v[i]; }
+        int numTransform = dim_0 * dim_1 * numComp;
+        for (int i = 0; i < numTransform; i++)
+        {
+            for (int j = 0; j < (dim_nonzero / 2 + 1); j++)
+            {
+                int idx_to = i * (dim_nonzero / 2 + 1) + j;
+                int idx_from = i * (padded_dim / 2 + 1) + j;
+                input_[idx_from] = _v[idx_to];
+            }
+        }
     }
 
     void output_field(std::vector<float_type>& _v) noexcept
     {
-        if (_v.size() != output_.size())
+        int numNonZero = dim_nonzero * dim_0 * dim_1 * numComp;
+        if (_v.size() <= numNonZero)
         {
             std::cout
                 << "Number of elements in output vector for Helmholtz fft does not match in c2r"
                 << std::endl;
-            _v.resize(output_.size());
+            _v.resize(numNonZero);
         }
-        for (int i = 0; i < _v.size(); i++) { _v[i] = output_[i]; }
+        int numTransform = dim_0 * dim_1 * numComp;
+        for (int i = 0; i < numTransform; i++)
+        {
+            for (int j = 0; j < dim_nonzero; j++)
+            {
+                int idx_to = i * dim_nonzero + j;
+                int idx_from = i * padded_dim + j;
+                _v[idx_to] = output_[idx_from];
+            }
+        }
+    }
+
+    void output_field_padded(std::vector<float_type>& _v) noexcept
+    {
+        int Padded_Num = padded_dim * dim_0 * dim_1 * numComp;
+        if (_v.size() <= Padded_Num)
+        {
+            std::cout
+                << "Number of elements in output vector for Helmholtz fft does not match in c2r"
+                << std::endl;
+            _v.resize(Padded_Num);
+        }
+        for (int i = 0; i < output_.size(); i++) { _v[i] = output_[i]; }
     }
 
   private:
-    complex_vector_t    input_;
-    real_vector_t       output_;
+    complex_vector_t input_;
+    real_vector_t    output_;
+
+    int padded_dim;
+    int dim_nonzero;
+    int dim_0;
+    int dim_1;
+    int numComp;
 
     fftw_plan plan;
 };

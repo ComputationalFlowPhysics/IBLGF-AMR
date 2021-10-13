@@ -28,6 +28,7 @@
 #include <iblgf/solver/linsys/linsys.hpp>
 #include <iblgf/operators/operators.hpp>
 #include <iblgf/utilities/misc_math_functions.hpp>
+#include <iblgf/solver/time_integration/HelmholtzFFT.hpp>
 
 namespace iblgf
 {
@@ -81,11 +82,15 @@ class Ifherk_HELM
     static constexpr int lBuffer = 1; ///< Lower left buffer for interpolation
     static constexpr int rBuffer = 1; ///< Lower left buffer for interpolation
     static constexpr std::size_t N_modes = Setup::N_modes/2; 
+    static constexpr std::size_t padded_dim = N_modes*3;
+    static constexpr std::size_t nonzero_dim = N_modes*2-1; //minus one to take out the zeroth mode (counted twice if multiply by two directly)
     Ifherk_HELM(simulation_type* _simulation)
     : simulation_(_simulation)
     , domain_(_simulation->domain_.get())
-    , psolver(_simulation, N_modes - 1) //minus one to exclude the mode at zero frequency number
+    , psolver(_simulation, N_modes - 1) //minus one to exclude the mode at zero frequency number, will be added back in the Poisson Solver
     , lsolver(_simulation)
+    , r2cFunc(padded_dim, nonzero_dim, (domain_->block_extent()[0]+lBuffer+rBuffer), (domain_->block_extent()[1]+lBuffer+rBuffer))
+    , c2rFunc(padded_dim, nonzero_dim, (domain_->block_extent()[0]+lBuffer+rBuffer), (domain_->block_extent()[1]+lBuffer+rBuffer))
     {
         // parameters --------------------------------------------------------
 
@@ -1027,6 +1032,25 @@ class Ifherk_HELM
 
                 const auto dx_level =
                     dx_base / math::pow2(it->refinement_level());
+
+                int totalComp = Source::nFields();
+                int dim_0 = domain_->block_extent()[0]+lBuffer+rBuffer;
+                int dim_1 = domain_->block_extent()[1]+lBuffer+rBuffer;
+
+                int vec_size = dim_0*dim_1*N_modes*3;
+                std::vector<std::complex<float_type>> tmp_vec(vec_size, std::complex<float_type>(0.0));
+                for (int i = 0; i < N_modes*3; i++) {
+                    auto& lin_data_real = it->data_r(Source::tag(), i*2);
+                    auto& lin_data_imag = it->data_r(Source::tag(), i*2 + 1);
+                    for (int j = 0; j < dim_0*dim_1; j++) {
+                        
+                    }
+                    
+                }
+                
+                
+
+
                 domain::Operator::curl<Source, edge_aux_type>(it->data(),
                     dx_level);
             }
@@ -1168,6 +1192,8 @@ class Ifherk_HELM
     domain_type*     domain_; ///< domain
     poisson_solver_t psolver;
     linsys_solver_t  lsolver;
+    fft::helm_dfft_r2c r2cFunc;
+    fft::helm_dfft_c2r c2rFunc;
 
     bool base_mesh_update_ = false;
 

@@ -55,13 +55,14 @@ class SetupBase
     //so only need f_{0}, f_{1}, ...f_{N - 2}, f_{N - 1} to be stored. With real and complex part (treating f_0 as complex as well). need 2N components 
     //data is like 
     //(Re[v_x_0],Im[v_x_0],
-    // Re[v_y_0],Im[v_y_0],
-    // Re[v_z_0],Im[v_z_0],
     // Re[v_x_1],Im[v_x_1],
+    // Re[v_x_2],Im[v_x_2], ...
+    // Re[v_y_0],Im[v_y_0],
     // Re[v_y_1],Im[v_y_1],
+    // Re[v_y_2],Im[v_y_2], ...
+    // Re[v_z_0],Im[v_z_0],
     // Re[v_z_1],Im[v_z_1],
-    // Re[v_x_2],Im[v_x_2],
-    // Re[v_y_2],Im[v_y_2], ...)
+    // Re[v_z_1],Im[v_z_2], ...)
 
   public: //default fields
     // clang-format off

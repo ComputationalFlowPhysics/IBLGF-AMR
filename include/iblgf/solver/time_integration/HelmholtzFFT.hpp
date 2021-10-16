@@ -94,7 +94,7 @@ class helm_dfft_r2c
                 }*/
         //for (int i = 0; i < _v.size(); i++) { input_[i] = _v[i]; }
 
-        int numNonZero = dim_nonzero * dim_0 * dim_1 * numComp;
+        int numNonZero = padded_dim * dim_0 * dim_1 * numComp;
         if (_v.size() != numNonZero)
         {
             std::cout
@@ -105,11 +105,11 @@ class helm_dfft_r2c
         int numTransform = dim_0 * dim_1 * numComp;
         for (int i = 0; i < numTransform; i++)
         {
-            for (int j = 0; j < dim_nonzero; j++)
+            for (int j = 0; j < padded_dim; j++)
             {
-                int idx_to = i * dim_nonzero + j;
+                int idx_to = i * padded_dim + j;
                 int idx_from =
-                    i * padded_dim + j + (padded_dim - dim_nonzero) / 2;
+                    i * padded_dim + j;
                 input_[idx_from] = _v[idx_to];
             }
         }
@@ -131,6 +131,28 @@ class helm_dfft_r2c
             for (int j = 0; j < (dim_nonzero / 2 + 1); j++)
             {
                 int idx_to = i * (dim_nonzero / 2 + 1) + j;
+                int idx_from = i * (padded_dim / 2 + 1) + j;
+                _v[idx_to] = output_[idx_from];
+            }
+        }
+    }
+
+    void output_field_neglect_last(std::vector<std::complex<float_type>>& _v) noexcept
+    {
+        int numNonZero = (dim_nonzero / 2) * dim_0 * dim_1 * numComp;
+        if (_v.size() <= numNonZero)
+        {
+            std::cout
+                << "Number of elements in output vector for Helmholtz fft does not match in r2c"
+                << std::endl;
+            _v.resize(numNonZero);
+        }
+        int numTransform = dim_0 * dim_1 * numComp;
+        for (int i = 0; i < numTransform; i++)
+        {
+            for (int j = 0; j < (dim_nonzero / 2); j++)
+            {
+                int idx_to = i * (dim_nonzero / 2) + j;
                 int idx_from = i * (padded_dim / 2 + 1) + j;
                 _v[idx_to] = output_[idx_from];
             }
@@ -250,9 +272,9 @@ class helm_dfft_c2r
         int Padded_Num = padded_dim * dim_0 * dim_1 * numComp;
         if (_v.size() <= Padded_Num)
         {
-            std::cout
+            /*std::cout
                 << "Number of elements in output vector for Helmholtz fft does not match in c2r"
-                << std::endl;
+                << std::endl;*/
             _v.resize(Padded_Num);
         }
         for (int i = 0; i < output_.size(); i++) { _v[i] = output_[i]; }

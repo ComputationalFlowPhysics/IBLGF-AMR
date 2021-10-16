@@ -78,10 +78,15 @@ class Ifherk_HELM
     using w_1_type = typename Setup::w_1_type;
     using w_2_type = typename Setup::w_2_type;
     using u_i_type = typename Setup::u_i_type;
+    using u_i_real_type = typename Setup::u_i_real_type;
+    using vort_i_real_type = typename Setup::vort_i_real_type;
+    using r_i_real_type = typename Setup::r_i_real_type;
+    using face_aux_real_type = typename Setup::face_aux_real_type;
+
 
     static constexpr int lBuffer = 1; ///< Lower left buffer for interpolation
     static constexpr int rBuffer = 1; ///< Lower left buffer for interpolation
-    static constexpr std::size_t N_modes = Setup::N_modes/2; 
+    static constexpr std::size_t N_modes = Setup::N_modes; //number of complex modes
     static constexpr std::size_t padded_dim = N_modes*3;
     static constexpr std::size_t nonzero_dim = N_modes*2-1; //minus one to take out the zeroth mode (counted twice if multiply by two directly)
     Ifherk_HELM(simulation_type* _simulation)
@@ -1021,6 +1026,8 @@ class Ifherk_HELM
         auto       client = domain_->decomposition().client();
         const auto dx_base = domain_->dx_base();
 
+        const float_type dx_fine = dx_base/std::pow(2.0, max_ref_level_)/1.5; //dx at z (homogeneous) direction, is different from others. Also consider the 3/2 rule so that dx decreased by 1.5
+
         for (int l = domain_->tree()->base_level();
              l < domain_->tree()->depth(); ++l)
         {
@@ -1043,49 +1050,108 @@ class Ifherk_HELM
                     auto& lin_data_real = it->data_r(Source::tag(), i*2);
                     auto& lin_data_imag = it->data_r(Source::tag(), i*2 + 1);
                     for (int j = 0; j < dim_0*dim_1; j++) {
-                        
+                        std::complex<float_type> tmp_val(lin_data_real[j], lin_data_real[j]);
+                        int idx = j * N_modes * 3 + i;
+                        tmp_vec[idx] = tmp_val;
                     }
                     
                 }
-                
-                
+
+                c2rFunc.copy_field(tmp_vec);
+                c2rFunc.execute();
+                std::vector<float_type> output_vel;
+                c2rFunc.output_field_padded(output_vel);
 
 
-                domain::Operator::curl<Source, edge_aux_type>(it->data(),
-                    dx_level);
+                for (int i = 0; i < padded_dim*3; i++) {
+                    auto& lin_data_ = it->data_r(u_i_real_type::tag(), i);
+                    for (int j = 0; j < dim_0*dim_1; j++) {
+                        int idx = j * padded_dim * 3 + i;
+                        lin_data[j] = output_vel[idx];
+                    }
+                    
+                }
+                domain::Operator::curl_helmholtz<u_i_real_type, vort_i_real_type>(it->data(),
+                    dx_level, N_modes, dx_fine);
             }
         }
 
         //clean_leaf_correction_boundary<edge_aux_type>(domain_->tree()->base_level(), true, 2);
         // add background velocity
-        copy<Source, face_aux_type>();
-        domain::Operator::add_field_expression<face_aux_type>(domain_,
+        copy<u_i_real_type, face_aux_real_type>();
+        domain::Operator::add_field_expression_nonlinear_helmholtz<face_aux_real_type>(domain_,N_modes,
             simulation_->frame_vel(), T_stage_, -1.0);
 
         for (int l = domain_->tree()->base_level();
              l < domain_->tree()->depth(); ++l)
         {
-            client->template buffer_exchange<edge_aux_type>(l);
-            clean_leaf_correction_boundary<edge_aux_type>(l, false, 2);
+            client->template buffer_exchange<vort_i_real_type>(l);
+            clean_leaf_correction_boundary<vort_i_real_type>(l, false, 2);
 
             for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
             {
                 if (!it->locally_owned() || !it->has_data()) continue;
 
-                domain::Operator::nonlinear<face_aux_type, edge_aux_type,
-                    Target>(it->data());
+                domain::Operator::nonlinear_helmholtz<face_aux_real_type, vort_i_real_type,
+                    r_i_real_type>(it->data(), N_modes);
 
-                for (std::size_t field_idx = 0; field_idx < Target::nFields();
+                for (std::size_t field_idx = 0; field_idx < r_i_real_type::nFields();
                      ++field_idx)
                 {
                     auto& lin_data =
-                        it->data_r(Target::tag(), field_idx).linalg_data();
+                        it->data_r(r_i_real_type::tag(), field_idx).linalg_data();
                     lin_data *= _scale;
                 }
             }
 
             //client->template buffer_exchange<Target>(l);
             //clean_leaf_correction_boundary<Target>(l, true,3);
+        }
+        //transform back
+        for (int l = domain_->tree()->base_level();
+             l < domain_->tree()->depth(); ++l)
+        {
+            //client->template buffer_exchange<Source>(l);
+
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
+
+                const auto dx_level =
+                    dx_base / math::pow2(it->refinement_level());
+
+                int totalComp = Source::nFields();
+                int dim_0 = domain_->block_extent()[0]+lBuffer+rBuffer;
+                int dim_1 = domain_->block_extent()[1]+lBuffer+rBuffer;
+
+                int vec_size = dim_0*dim_1*N_modes*3*3;
+                std::vector<float_type> tmp_vec(vec_size, 0.0);
+                for (int i = 0; i < N_modes*3*3; i++) {
+                    auto& lin_data_ = it->data_r(r_i_real_type::tag(), i);
+                    for (int j = 0; j < dim_0*dim_1; j++) {
+                        
+                        int idx = j * N_modes * 3 * 3 + i;
+                        tmp_vec[idx] = tmp_val;
+                    }
+                    
+                }
+
+                r2cFunc.copy_field(tmp_vec);
+                r2cFunc.execute();
+                std::vector<std::complex<float_type>> output_vel;
+                r2cFunc.output_field(output_vel);
+
+
+                for (int i = 0; i < padded_dim; i++) {
+                    auto& lin_data_real = it->data_r(Target::tag(), i*2);
+                    auto& lin_data_imag = it->data_r(Target::tag(), i*2+1);
+                    for (int j = 0; j < dim_0*dim_1; j++) {
+                        int idx = j * padded_dim + i;
+                        lin_data_real[j] = output_vel[idx].real();
+                        lin_data_imag[j] = output_vel[idx].imag();
+                    }   
+                }
+            }
         }
     }
 

@@ -37,7 +37,7 @@ namespace iblgf
         Helmholtz_FFT(int _padded_dim, int _dim_nonzero, int _dim_0, int _dim_1)
             : dim_0(_dim_0)
             , dim_1(_dim_1)
-            , r2cFunc(_dim_nonzero, _dim_nonzero, _dim_0, _dim_1, 2)
+            , r2cFunc(_padded_dim, _dim_nonzero, _dim_0, _dim_1, 2)
             , c2rFunc(_padded_dim, _dim_nonzero, _dim_0, _dim_1, 2)
             , padded_dim(_padded_dim)
             , dim_nonzero(_dim_nonzero) {
@@ -47,17 +47,17 @@ namespace iblgf
         void testingTransform() {
             int num_transform = 2 * dim_0 * dim_1;
             int numCells = dim_0 * dim_1;
-            std::vector<double> v(dim_nonzero * num_transform, 0.0);
+            std::vector<double> v(padded_dim * num_transform, 0.0);
             std::cout << "start to transform" << std::endl;
             /*for (int k = 0; k < 2; k++)
             {*/
-                for (int i = 0; i < dim_nonzero; i++)
+                for (int i = 0; i < padded_dim; i++)
                 {
                     for (int j = 0; j < num_transform; j++)
                     {
-                        v[i + j * dim_nonzero] =
+                        v[i + j * padded_dim] =
                             std::sin(static_cast<double>(i) /
-                                static_cast<double>(dim_nonzero) * 2.0 *
+                                static_cast<double>(padded_dim) * 2.0 *
                                 M_PI);
                     }
                     //v[i] = std::cos(static_cast<double>(i)/static_cast<double>(padded_dim)*2.0*M_PI);
@@ -97,7 +97,7 @@ namespace iblgf
                 //v[i] = std::cos(static_cast<double>(i)/static_cast<double>(padded_dim)*2.0*M_PI);
             }
             for (int i = 0; i < realRes.size(); i++) {
-                std::cout << (realRes[i] / static_cast<double>(dim_nonzero) - v_fine[i]) << std::endl;
+                std::cout << (realRes[i] / static_cast<double>(padded_dim) - v_fine[i]) << std::endl;
             }
         }
 

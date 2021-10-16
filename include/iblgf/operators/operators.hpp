@@ -781,6 +781,72 @@ struct Operator
     }
 
     template<class Source, class Dest, class Block,
+        typename std::enable_if<(Source::mesh_type() == MeshObject::face) &&
+                                    (Dest::mesh_type() == MeshObject::edge),
+            void>::type* = nullptr>
+    static void curl_helmholtz(Block& block, float_type dx_level, int N_modes, float_type dx_fine) noexcept
+    {
+        const auto     fac = 1.0 / dx_level;
+        constexpr auto source = Source::tag();
+        constexpr auto dest = Dest::tag();
+        for (auto& n : block)
+        {
+            int sep = N_modes*3;
+            for (int i = 1; i < (N_modes * 3) ; i++) {
+                n(dest, 0 * sep + i) = 
+                (n(source, 2 * sep + i) - n.at_offset(source, 0, -1, 2 * sep + i)) / dx_level -
+                (n(source, 1 * sep + i) - n.at_offset(source, 0, 0,  1 * sep + i - 1)) / dx_fine;
+                //n(dest, 0 * sep + i) *= fac;
+
+                n(dest, 1 * sep + i) = 
+                (n(source, 0 * sep + i) - n.at_offset(source, 0, 0,  0 * sep + i - 1)) / dx_fine -
+                (n(source, 2 * sep + i) - n.at_offset(source, -1, 0, 2 * sep + i)) / dx_level;
+                //n(dest, 1 * sep + i) *= fac;
+
+                n(dest, 2 * sep + i) = 
+                n(source, 1 * sep + i) - n.at_offset(source, -1, 0, 1 * sep + i) -
+                n(source, 0 * sep + i) + n.at_offset(source, 0, -1, 0 * sep + i);
+                n(dest, 2) *= fac;
+            }
+
+            //i = 0 case
+            n(dest, 0 * sep) = (n(source, 2 * sep) -
+                               n.at_offset(source, 0, -1, 2 * sep)) / dx_level -
+                               (n(source, 1 * sep) -
+                               n.at_offset(source, 0, 0, 1 * sep + sep - 1)) / dx_fine;
+            //n(dest, 0 * sep) *= fac;
+
+            n(dest, 1 * sep) = (n(source, 0 * sep) -
+                               n.at_offset(source, 0, 0, 0 * sep + sep - 1)) / dx_fine -
+                               (n(source, 2 * sep) -
+                               n.at_offset(source, -1, 0, 2 * sep)) / dx_level;
+            //n(dest, 1 * sep) *= fac;
+
+            n(dest, 2 * sep) = n(source, 1 * sep) -
+                               n.at_offset(source, -1, 0, 1 * sep) -
+                               n(source, 0 * sep) +
+                               n.at_offset(source, 0, -1, 0 * sep);
+            n(dest, 2 * sep) *= fac;
+
+            /*//i = sep - 1 case
+            n(dest, 0 * sep + sep - 1) = 
+                n(source, 2 * sep + sep - 1) - n.at_offset(source, 0, -1, 2 * sep + sep - 1) -
+                n(source, 1 * sep + sep - 1) + n.at_offset(source, 0, 0,  1 * sep + sep - 1 - 1);
+                n(dest, 0 * sep + sep - 1) *= fac;
+
+                n(dest, 1 * sep + i) = 
+                n(source, 0 * sep + i) - n.at_offset(source, 0, 0,   0 * sep + sep - 1 - 1) -
+                n(source, 2 * sep + i) + n.at_offset(source, -1, 0,  2 * sep + sep - 1);
+                n(dest, 1 * sep + i) *= fac;
+
+                n(dest, 2 * sep + i) = 
+                n(source, 1 * sep + i) - n.at_offset(source, -1, 0, 1 * sep + sep - 1) -
+                n(source, 0 * sep + i) + n.at_offset(source, 0, -1, 0 * sep + sep - 1);
+                n(dest, 2) *= fac;*/
+        }
+    }
+
+    template<class Source, class Dest, class Block,
         typename std::enable_if<(Source::mesh_type() == MeshObject::edge) &&
                                     (Dest::mesh_type() == MeshObject::face),
             void>::type* = nullptr>
@@ -896,6 +962,156 @@ struct Operator
         }
     }
 
+    template<class Face, class Edge, class Dest, class Block,
+        typename std::enable_if<(Face::mesh_type() == MeshObject::face) &&
+                                    (Edge::mesh_type() == MeshObject::edge) &&
+                                    (Dest::mesh_type() == MeshObject::face),
+            void>::type* = nullptr>
+    static void nonlinear_helmholtz(Block& block, int N_modes) noexcept
+    {
+        constexpr auto face = Face::tag();
+        constexpr auto edge = Edge::tag();
+        constexpr auto dest = Dest::tag();
+        for (auto& n : block)
+        {
+            //TODO: Can be done much better by getting the appropriate nodes
+            //      directly
+
+            int sep = N_modes * 3;
+            for (int i = 1; i < (N_modes * 3 - 1); i++)
+            {
+                n(dest, 0 * sep + i) =
+                    0.25 *
+                    (+n.at_offset(edge, 0, 0, 1 * sep + i) *
+                            (+n.at_offset(face, 0, 0, 2 * sep + i) +
+                                n.at_offset(face, -1, 0, 2 * sep + i)) +
+                        n.at_offset(edge, 0, 0, 1 * sep + i + 1) *
+                            (+n.at_offset(face, 0, 0, 2 * sep + i + 1) +
+                                n.at_offset(face, -1, 0, 2 * sep + i + 1)) -
+                        n.at_offset(edge, 0, 0, 2 * sep + i) *
+                            (+n.at_offset(face, 0, 0, 1 * sep + i) +
+                                n.at_offset(face, -1, 0, 1 * sep + i)) -
+                        n.at_offset(edge, 0, 1, 2 * sep + i) *
+                            (+n.at_offset(face, 0, 1, 1 * sep + i) +
+                                n.at_offset(face, -1, 1, 1 * sep + i)));
+
+                n(dest, 1 * sep + i) =
+                    0.25 *
+                    (+n.at_offset(edge, 0, 0, 2 * sep + i) *
+                            (+n.at_offset(face, 0, 0, 0 * sep + i) +
+                                n.at_offset(face, 0, -1, 0 * sep + i)) +
+                        n.at_offset(edge, 1, 0, 2 * sep + i) *
+                            (+n.at_offset(face, 1, 0, 0 * sep + i) +
+                                n.at_offset(face, 1, -1, 0 * sep + i)) -
+                        n.at_offset(edge, 0, 0, 0 * sep + i) *
+                            (+n.at_offset(face, 0, 0, 2 * sep + i) +
+                                n.at_offset(face, 0, -1, 2 * sep + i)) -
+                        n.at_offset(edge, 0, 0, 0 * sep + i + 1) *
+                            (+n.at_offset(face, 0, 0, 2 * sep + i + 1) +
+                                n.at_offset(face, 0, -1, 2 * sep + i + 1)));
+                n(dest, 2 * sep + i) =
+                    0.25 *
+                    (+n.at_offset(edge, 0, 0, 0 * sep + i) *
+                            (+n.at_offset(face, 0, 0, 1 * sep + i) +
+                                n.at_offset(face, 0, 0, 1 * sep + i - 1)) +
+                        n.at_offset(edge, 0, 1, 0 * sep + i) *
+                            (+n.at_offset(face, 0, 1, 1 * sep + i) +
+                                n.at_offset(face, 0, 1, 1 * sep + i - 1)) -
+                        n.at_offset(edge, 0, 0, 1 * sep + i) *
+                            (+n.at_offset(face, 0, 0, 0 * sep + i) +
+                                n.at_offset(face, 0, 0, 0 * sep + i - 1)) -
+                        n.at_offset(edge, 1, 0, 1 * sep + i) *
+                            (+n.at_offset(face, 1, 0, 0 * sep + i) +
+                                n.at_offset(face, 1, 0, 0 * sep + i - 1)));
+            }
+            //i = 0
+            n(dest, 0 * sep) =
+                0.25 * (+n.at_offset(edge, 0, 0, 1 * sep) *
+                               (+n.at_offset(face, 0, 0, 2 * sep) +
+                                   n.at_offset(face, -1, 0, 2 * sep)) +
+                           n.at_offset(edge, 0, 0, 1 * sep + 1) *
+                               (+n.at_offset(face, 0, 0, 2 * sep + 1) +
+                                   n.at_offset(face, -1, 0, 2 * sep + 1)) -
+                           n.at_offset(edge, 0, 0, 2 * sep) *
+                               (+n.at_offset(face, 0, 0, 1 * sep) +
+                                   n.at_offset(face, -1, 0, 1 * sep)) -
+                           n.at_offset(edge, 0, 1, 2 * sep) *
+                               (+n.at_offset(face, 0, 1, 1 * sep) +
+                                   n.at_offset(face, -1, 1, 1 * sep)));
+
+            n(dest, 1 * sep) =
+                0.25 * (+n.at_offset(edge, 0, 0, 2 * sep) *
+                               (+n.at_offset(face, 0, 0, 0 * sep) +
+                                   n.at_offset(face, 0, -1, 0 * sep)) +
+                           n.at_offset(edge, 1, 0, 2 * sep) *
+                               (+n.at_offset(face, 1, 0, 0 * sep) +
+                                   n.at_offset(face, 1, -1, 0 * sep)) -
+                           n.at_offset(edge, 0, 0, 0 * sep) *
+                               (+n.at_offset(face, 0, 0, 2 * sep) +
+                                   n.at_offset(face, 0, -1, 2 * sep)) -
+                           n.at_offset(edge, 0, 0, 0 * sep + 1) *
+                               (+n.at_offset(face, 0, 0, 2 * sep + 1) +
+                                   n.at_offset(face, 0, -1, 2 * sep + 1)));
+            n(dest, 2 * sep) =
+                0.25 * (+n.at_offset(edge, 0, 0, 0 * sep) *
+                               (+n.at_offset(face, 0, 0, 1 * sep) +
+                                   n.at_offset(face, 0, 0, 1 * sep + sep - 1)) +
+                           n.at_offset(edge, 0, 1, 0 * sep) *
+                               (+n.at_offset(face, 0, 1, 1 * sep) +
+                                   n.at_offset(face, 0, 1, 1 * sep + sep - 1)) -
+                           n.at_offset(edge, 0, 0, 1 * sep) *
+                               (+n.at_offset(face, 0, 0, 0 * sep) +
+                                   n.at_offset(face, 0, 0, 0 * sep + sep - 1)) -
+                           n.at_offset(edge, 1, 0, 1 * sep) *
+                               (+n.at_offset(face, 1, 0, 0 * sep) +
+                                   n.at_offset(face, 1, 0, 0 * sep + sep - 1)));
+            //i = sep - 1
+            n(dest, 0 * sep + sep - 1) =
+                0.25 *
+                (+n.at_offset(edge, 0, 0, 1 * sep + sep - 1) *
+                        (+n.at_offset(face, 0, 0, 2 * sep + sep - 1) +
+                            n.at_offset(face, -1, 0, 2 * sep + sep - 1)) +
+                    n.at_offset(edge, 0, 0, 1 * sep) *
+                        (+n.at_offset(face, 0, 0, 2 * sep) +
+                            n.at_offset(face, -1, 0, 2 * sep)) -
+                    n.at_offset(edge, 0, 0, 2 * sep + sep - 1) *
+                        (+n.at_offset(face, 0, 0, 1 * sep + sep - 1) +
+                            n.at_offset(face, -1, 0, 1 * sep + sep - 1)) -
+                    n.at_offset(edge, 0, 1, 2 * sep + sep - 1) *
+                        (+n.at_offset(face, 0, 1, 1 * sep + sep - 1) +
+                            n.at_offset(face, -1, 1, 1 * sep + sep - 1)));
+
+            n(dest, 1 * sep + sep - 1) =
+                0.25 *
+                (+n.at_offset(edge, 0, 0, 2 * sep + sep - 1) *
+                        (+n.at_offset(face, 0, 0, 0 * sep + sep - 1) +
+                            n.at_offset(face, 0, -1, 0 * sep + sep - 1)) +
+                    n.at_offset(edge, 1, 0, 2 * sep + sep - 1) *
+                        (+n.at_offset(face, 1, 0, 0 * sep + sep - 1) +
+                            n.at_offset(face, 1, -1, 0 * sep + sep - 1)) -
+                    n.at_offset(edge, 0, 0, 0 * sep + sep - 1) *
+                        (+n.at_offset(face, 0, 0, 2 * sep + sep - 1) +
+                            n.at_offset(face, 0, -1, 2 * sep + sep - 1)) -
+                    n.at_offset(edge, 0, 0, 0 * sep) *
+                        (+n.at_offset(face, 0, 0, 2 * sep) +
+                            n.at_offset(face, 0, -1, 2 * sep)));
+            n(dest, 2 * sep + sep - 1) =
+                0.25 *
+                (+n.at_offset(edge, 0, 0, 0 * sep + sep - 1) *
+                        (+n.at_offset(face, 0, 0, 1 * sep + sep - 1) +
+                            n.at_offset(face, 0, 0, 1 * sep + sep - 1 - 1)) +
+                    n.at_offset(edge, 0, 1, 0 * sep + sep - 1) *
+                        (+n.at_offset(face, 0, 1, 1 * sep + sep - 1) +
+                            n.at_offset(face, 0, 1, 1 * sep + sep - 1 - 1)) -
+                    n.at_offset(edge, 0, 0, 1 * sep + sep - 1) *
+                        (+n.at_offset(face, 0, 0, 0 * sep + sep - 1) +
+                            n.at_offset(face, 0, 0, 0 * sep + sep - 1 - 1)) -
+                    n.at_offset(edge, 1, 0, 1 * sep + sep - 1) *
+                        (+n.at_offset(face, 1, 0, 0 * sep + sep - 1) +
+                            n.at_offset(face, 1, 0, 0 * sep + sep - 1 - 1)));
+        }
+    }
+
     template<typename Field, typename Domain, typename Func>
     static void add_field_expression(Domain* domain, Func& f, float_type t,
         float_type scale = 1.0) noexcept
@@ -913,6 +1129,32 @@ struct Operator
                     n(Field::tag(), field_idx) +=
                         f(field_idx, t, coord) * scale;
                 }
+        }
+    }
+
+    template<typename Field, typename Domain, typename Func>
+    static void add_field_expression_nonlinear_helmholtz(Domain* domain, int N_modes,
+        Func& f, float_type t, float_type scale = 1.0) noexcept
+    {
+        const auto dx_base = domain->dx_base();
+        int sep = 3*N_modes; 
+        // because of 3/2 rule from fft and conjugate relation from real variable transform. 
+        // With 3/2 * 2 * N_modes, the total number of components are 3*3*N_modes
+        for (auto it = domain->begin(); it != domain->end(); ++it)
+        {
+            if (!it->locally_owned() || !it->has_data()) continue;
+
+            for (std::size_t field_idx = 0; field_idx < Field::nFields();
+                 ++field_idx)
+            {
+                int comp_idx = field_idx/sep;
+                for (auto& n : it->data().node_field())
+                {
+                    auto coord = n.global_coordinate() * dx_base;
+                    n(Field::tag(), field_idx) +=
+                        f(comp_idx, t, coord) * scale;
+                }
+            }
         }
     }
 

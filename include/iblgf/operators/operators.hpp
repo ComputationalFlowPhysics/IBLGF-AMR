@@ -784,18 +784,19 @@ struct Operator
         typename std::enable_if<(Source::mesh_type() == MeshObject::face) &&
                                     (Dest::mesh_type() == MeshObject::edge),
             void>::type* = nullptr>
-    static void curl_helmholtz(Block& block, float_type dx_level, int N_modes, float_type dx_fine) noexcept
+    static void curl_helmholtz(Block& block, float_type dx_level, int N_modes, float_type dx_fine, int PREFAC = 3) noexcept
     {
         const auto     fac = 1.0 / dx_level;
         constexpr auto source = Source::tag();
         constexpr auto dest = Dest::tag();
         for (auto& n : block)
         {
-            int sep = N_modes*3;
-            for (int i = 1; i < (N_modes * 3) ; i++) {
+            int sep = N_modes*PREFAC;
+            for (int i = 1; i < (N_modes * PREFAC) ; i++) {
                 n(dest, 0 * sep + i) = 
                 (n(source, 2 * sep + i) - n.at_offset(source, 0, -1, 2 * sep + i)) / dx_level -
-                (n(source, 1 * sep + i) - n.at_offset(source, 0, 0,  1 * sep + i - 1)) / dx_fine;
+                //(n(source, 1 * sep + i) - n.at_offset(source, 0, 0,  1 * sep + i - 1)) / dx_fine;
+                (n(source, 1 * sep + i) - n(source, 1 * sep + i - 1)) / dx_fine;
                 //n(dest, 0 * sep + i) *= fac;
 
                 n(dest, 1 * sep + i) = 
@@ -806,7 +807,7 @@ struct Operator
                 n(dest, 2 * sep + i) = 
                 n(source, 1 * sep + i) - n.at_offset(source, -1, 0, 1 * sep + i) -
                 n(source, 0 * sep + i) + n.at_offset(source, 0, -1, 0 * sep + i);
-                n(dest, 2) *= fac;
+                n(dest, 2 * sep + i) *= fac;
             }
 
             //i = 0 case
@@ -822,11 +823,11 @@ struct Operator
                                n.at_offset(source, -1, 0, 2 * sep)) / dx_level;
             //n(dest, 1 * sep) *= fac;
 
-            n(dest, 2 * sep) = n(source, 1 * sep) -
-                               n.at_offset(source, -1, 0, 1 * sep) -
-                               n(source, 0 * sep) +
-                               n.at_offset(source, 0, -1, 0 * sep);
-            n(dest, 2 * sep) *= fac;
+            n(dest, 2 * sep) = (n(source, 1 * sep) -
+                               n.at_offset(source, -1, 0, 1 * sep)) / dx_level -
+                               (n(source, 0 * sep) -
+                               n.at_offset(source, 0, -1, 0 * sep)) / dx_level;
+            //n(dest, 2 * sep) *= fac;
 
             /*//i = sep - 1 case
             n(dest, 0 * sep + sep - 1) = 

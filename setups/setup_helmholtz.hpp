@@ -39,8 +39,8 @@ using namespace dictionary;
  *          and aliases for datablock, domain and simulation.
  */
 template<class Setup, class SetupTraits>
-class SetupBase
-: private crtp::Crtps<Setup, SetupBase<Setup, SetupTraits>>
+class Setup_helmholtz
+: private crtp::Crtps<Setup, Setup_helmholtz<Setup, SetupTraits>>
 , public SetupTraits
 {
     const int n_ifherk_stage = 3;
@@ -118,21 +118,21 @@ class SetupBase
     using simulation_t = Simulation<domain_t>;
     using fcoord_t = coordinate_type<float_type, Dim>;
 
-    using Fmm_t = Fmm<SetupBase>;
+    using Fmm_t = Fmm<Setup_helmholtz>;
     using fmm_mask_builder_t = FmmMaskBuilder<domain_t>;
-    using poisson_solver_t = solver::PoissonSolver<SetupBase>;
-    using time_integration_t = solver::Ifherk<SetupBase>;
-    using linsys_solver_t = solver::LinSysSolver<SetupBase>;
+    using poisson_solver_t = solver::PoissonSolver<Setup_helmholtz>;
+    using time_integration_t = solver::Ifherk<Setup_helmholtz>;
+    using linsys_solver_t = solver::LinSysSolver<Setup_helmholtz>;
 
   public: //Ctors
-    SetupBase(Dictionary* _d)
+    Setup_helmholtz(Dictionary* _d)
     : simulation_(_d->get_dictionary("simulation_parameters"))
     , domain_(simulation_.domain())
     {
         domain_->initialize(simulation_.dictionary()->get_dictionary("domain"));
     }
 
-    SetupBase(Dictionary* _d, domaint_init_f _fct,
+    Setup_helmholtz(Dictionary* _d, domaint_init_f _fct,
         std::string restart_tree_dir = "")
     : simulation_(_d->get_dictionary("simulation_parameters"))
     , domain_(simulation_.domain())
@@ -180,7 +180,9 @@ class SetupBase
     /** @brief Compute L2 and LInf errors */
     template<class Numeric, class Exact, class Error>
     float_type compute_errors(std::string _output_prefix = "",
-        int                               field_idx = 0)
+        int                               field_idx = 0, 
+        bool                              print_error = true, 
+        bool                              L_inf = true)
     {
         const float_type dx_base = domain_->dx_base();
         float_type       L2 = 0.;
@@ -315,13 +317,13 @@ class SetupBase
             boost::mpi::maximum<float_type>());
         boost::mpi::all_reduce(client_comm_, LInf_exact, LInf_exact_global,
             boost::mpi::maximum<float_type>());
-
-        pcout_c << "Glabal " << _output_prefix
+        if (print_error) {
+        pcout_c << "Global " << _output_prefix
                 << "L2_exact = " << std::sqrt(L2_exact_global) << std::endl;
         pcout_c << "Global " << _output_prefix
                 << "LInf_exact = " << LInf_exact_global << std::endl;
 
-        pcout_c << "Glabal " << _output_prefix
+        pcout_c << "Global " << _output_prefix
                 << "L2 = " << std::sqrt(L2_global) << std::endl;
         pcout_c << "Global " << _output_prefix << "LInf = " << LInf_global
                 << std::endl;
@@ -329,6 +331,7 @@ class SetupBase
         ofs_global << std::sqrt(L2_exact_global) << " " << LInf_exact_global
                    << " " << std::sqrt(L2_global) << " " << LInf_global
                    << std::endl;
+        }
 
         //Level wise errros
         std::vector<float_type> L2_perLevel_global(
@@ -358,6 +361,7 @@ class SetupBase
             boost::mpi::all_reduce(client_comm_, LInf_exact_perLevel[i],
                 LInf_exact_perLevel_global[i],
                 boost::mpi::maximum<float_type>());
+            if (print_error) {
 
             pcout_c << _output_prefix << "L2_" << i << " "
                     << std::sqrt(L2_perLevel_global[i]) << std::endl;
@@ -367,9 +371,47 @@ class SetupBase
 
             pofs << i << " " << std::sqrt(L2_perLevel_global[i]) << " "
                  << LInf_perLevel_global[i] << std::endl;
+            }
+        }
+        if (L_inf) {
+            return LInf_global;
+        }
+        else {
+            return L2_global;
+        }
+    }
+
+
+
+    /** @brief Compute L2 and LInf errors */
+    template<class Numeric, class Exact, class Error>
+    float_type compute_errors_for_all(float_type dz = 0.1,
+                                      std::string _output_prefix = "", 
+                                      int field_idx = 0,
+                                      int N_modes = 1,
+                                      float_type L_z = 1.0)
+    {
+        const float_type dx_base = domain_->dx_base();
+        float_type       L2 = 0.;
+        float_type       LInf = -1.0;
+        int              count = 0;
+        float_type       L2_exact = 0;
+        float_type       LInf_exact = -1.0;
+
+        int begin_idx = field_idx*N_modes;
+        int end_idx = begin_idx + N_modes;
+        if (end_idx > Numeric::nFields()) pcout_c << "too many fields when computing all fields error" << std::endl;
+        for (int i = begin_idx ; i < end_idx ; i++) {
+            float_type L2_tmp = this->template compute_errors<Numeric, Exact, Error>(_output_prefix, i, false, false);
+            L2 += L2_tmp * dz;
+            float_type L_inf_tmp = this->template compute_errors<Numeric, Exact, Error>(_output_prefix, i, false, true);
+            if (L_inf_tmp > LInf) LInf = L_inf_tmp;
         }
 
-        return LInf_global;
+        pcout_c << "Global " << _output_prefix << " L2_error_" << field_idx << " " << std::sqrt(L2/L_z) << std::endl;
+        pcout_c << "Global " << _output_prefix << " L_inf_error_" << field_idx << " " << LInf << std::endl;
+        return LInf;
+        
     }
 
   protected:

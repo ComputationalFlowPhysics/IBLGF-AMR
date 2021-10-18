@@ -968,7 +968,7 @@ struct Operator
                                     (Edge::mesh_type() == MeshObject::edge) &&
                                     (Dest::mesh_type() == MeshObject::face),
             void>::type* = nullptr>
-    static void nonlinear_helmholtz(Block& block, int N_modes) noexcept
+    static void nonlinear_helmholtz(Block& block, int N_modes, int PREFAC = 3) noexcept
     {
         constexpr auto face = Face::tag();
         constexpr auto edge = Edge::tag();
@@ -978,8 +978,8 @@ struct Operator
             //TODO: Can be done much better by getting the appropriate nodes
             //      directly
 
-            int sep = N_modes * 3;
-            for (int i = 1; i < (N_modes * 3 - 1); i++)
+            int sep = N_modes * PREFAC;
+            for (int i = 1; i < (N_modes * PREFAC - 1); i++)
             {
                 n(dest, 0 * sep + i) =
                     0.25 *

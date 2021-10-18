@@ -30,7 +30,7 @@ const int Dim = 2;
 struct parameters
 {
     static constexpr std::size_t Dim = 2;
-    static constexpr std::size_t N_modes= 32;
+    static constexpr std::size_t N_modes= 64;
     static constexpr std::size_t PREFAC  = 1;
     // clang-format off
     REGISTER_FIELDS
@@ -136,7 +136,7 @@ struct OperatorTest : public Setup_helmholtz<OperatorTest, parameters>
             client->buffer_exchange<curl_source_type>(base_level);
             //client->buffer_exchange<grad_source_type>(base_level);
             //client->buffer_exchange<curl_exact_type>(base_level);
-            //client->buffer_exchange<nonlinear_source_type>(base_level);
+            client->buffer_exchange<nonlinear_source_type>(base_level);
 
             for (auto it = domain_->begin_leaves(); it != domain_->end_leaves();
                  ++it)
@@ -154,15 +154,15 @@ struct OperatorTest : public Setup_helmholtz<OperatorTest, parameters>
                 /*domain::Operator::gradient<grad_source_type, grad_target_type>(
                     it->data(), dx_level);*/
             }
-            /*client->buffer_exchange<curl_target_type>(base_level);
+            client->buffer_exchange<curl_target_type>(base_level);
             for (auto it = domain_->begin_leaves(); it != domain_->end_leaves();
                  ++it)
             {
                 if (!it->locally_owned() || !it->has_data()) continue;
 
-                domain::Operator::nonlinear<nonlinear_source_type,
-                    curl_target_type, nonlinear_target_type>(it->data());
-            }*/
+                domain::Operator::nonlinear_helmholtz<nonlinear_source_type,
+                    curl_target_type, nonlinear_target_type>(it->data(), N_modes, PREFAC);
+            }
 
         }
 
@@ -183,6 +183,13 @@ struct OperatorTest : public Setup_helmholtz<OperatorTest, parameters>
                 curl_error_type>(dz, "Curl_", 1, N_modes, L_z);
         this->compute_errors_for_all<curl_target_type, curl_exact_type,
                 curl_error_type>(dz, "Curl_", 2, N_modes, L_z);
+
+        this->compute_errors_for_all<nonlinear_target_type, nonlinear_exact_type,
+                nonlinear_error_type>(dz, "Nonlin_", 0, N_modes, L_z);
+        this->compute_errors_for_all<nonlinear_target_type, nonlinear_exact_type,
+                nonlinear_error_type>(dz, "Nonlin_", 1, N_modes, L_z);
+        this->compute_errors_for_all<nonlinear_target_type, nonlinear_exact_type,
+                nonlinear_error_type>(dz, "Nonlin_", 2, N_modes, L_z);
         /*this->compute_errors<curl_target_type, curl_exact_type,
             curl_error_type>("Curl_");*/
         /*this->compute_errors<nonlinear_target_type, nonlinear_exact_type,
@@ -323,6 +330,26 @@ struct OperatorTest : public Setup_helmholtz<OperatorTest, parameters>
                     node(curl_exact, PREFAC*N_modes  +i)  =  tmpe1*std::sin(2.0*M_PI*tmp_z/c_z)*xe1*2.0
                                                +2.0*M_PI/c_z*tmpe1*std::cos(2.0*M_PI*tmp_z/c_z);
                     node(curl_exact, PREFAC*N_modes*2+i)  = 2.0*(ye2 - xe2)*tmpe2*std::sin(2.0*M_PI*(tmp_z+0.5*dz)/c_z);
+
+                    node(nonlinear_source, i)                  = tmpf0*std::sin(2.0*M_PI*(tmp_z+0.5*dz)/c_z);
+                    node(nonlinear_source, PREFAC*N_modes  +i) = tmpf1*std::sin(2.0*M_PI*(tmp_z+0.5*dz)/c_z);
+                    node(nonlinear_source, PREFAC*N_modes*2+i) = tmpf2*std::sin(2.0*M_PI*(tmp_z)/c_z);
+
+                    node(nonlinear_exact, i)                   = tmpf0*std::sin(2.0*M_PI*(tmp_z+0.5*dz)/c_z) * 
+                                                                 (
+                                                                     (tmpf0*std::sin(2.0*M_PI*(tmp_z+0.5*dz)/c_z)*xf0*2.0 + 2.0*M_PI/c_z*tmpf0*std::cos(2.0*M_PI*(tmp_z+0.5*dz)/c_z)) - 
+                                                                     2.0*(yf0 - xf0)*tmpf0*std::sin(2.0*M_PI*(tmp_z+0.5*dz)/c_z)
+                                                                 );
+                    node(nonlinear_exact, PREFAC*N_modes  +i)  = tmpf1*std::sin(2.0*M_PI*(tmp_z+0.5*dz)/c_z) * 
+                                                                 (
+                                                                     2.0*(yf1 - xf1)*tmpf1*std::sin(2.0*M_PI*(tmp_z+0.5*dz)/c_z) -
+                                                                     (-tmpf1*std::sin(2.0*M_PI*(tmp_z+0.5*dz)/c_z)*yf1*2.0 - 2.0*M_PI/c_z*tmpf1*std::cos(2.0*M_PI*(tmp_z+0.5*dz)/c_z))
+                                                                 );
+                    node(nonlinear_exact, PREFAC*N_modes*2+i)  = tmpf2*std::sin(2.0*M_PI*(tmp_z)/c_z) * 
+                                                                 (
+                                                                     (-tmpf2*std::sin(2.0*M_PI*tmp_z/c_z)*yf2*2.0 - 2.0*M_PI/c_z*tmpf2*std::cos(2.0*M_PI*tmp_z/c_z)) - 
+                                                                     ( tmpf2*std::sin(2.0*M_PI*tmp_z/c_z)*xf2*2.0 + 2.0*M_PI/c_z*tmpf2*std::cos(2.0*M_PI*tmp_z/c_z))
+                                                                 );
 
                     /*node(curl_source, i)                  = tmpf0;
                     node(curl_source, PREFAC*N_modes  +i) = tmpf1;

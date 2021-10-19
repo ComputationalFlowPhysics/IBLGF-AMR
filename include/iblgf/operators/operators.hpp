@@ -16,6 +16,7 @@
 #include <iblgf/dictionary/dictionary.hpp>
 #include <iblgf/domain/dataFields/datafield.hpp>
 #include <iblgf/types.hpp>
+#include <iblgf/solver/time_integration/HelmholtzFFT.hpp>
 #include <cmath>
 
 namespace iblgf
@@ -1175,6 +1176,220 @@ struct Operator
                 for (auto& n : it->data().node_field())
                     n(To::tag(), field_idx) +=
                         n(From::tag(), field_idx) * scale;
+            }
+        }
+    }
+
+    /*template<typename From, typename To, typename Domain>
+    static void FourierTransformC2R(Domain* domain_, int N_modes,
+        int padded_dim, int nonzero_dim, fft::helm_dfft_c2r& c2rFunc,
+        int NComp = 3, int PREFAC_FROM = 2, int PREFAC_TO = 3, int lBuffer=1, int rBuffer=1)
+    {
+        int N_from = From::nFields();
+        int N_to = To::nFields();
+
+        for (int l = domain_->tree()->base_level();
+             l < domain_->tree()->depth(); ++l)
+        {
+            client->template buffer_exchange<Source>(l);
+
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
+
+                int totalComp = Source::nFields();
+                int dim_0 = domain_->block_extent()[0]+lBuffer+rBuffer;
+                int dim_1 = domain_->block_extent()[1]+lBuffer+rBuffer;
+
+                int vec_size = dim_0*dim_1*N_modes*NComp;
+
+                std::vector<std::complex<float_type>> tmp_vec(vec_size,
+                    std::complex<float_type>(0.0));
+                for (int i = 0; i < N_modes * NComp; i++)
+                {
+                    auto& lin_data_real = it->data_r(From::tag(), i * 2);
+                    auto& lin_data_imag = it->data_r(From::tag(), i * 2 + 1);
+                    for (int j = 0; j < dim_0 * dim_1; j++)
+                    {
+                        if (i % N_modes == 0) lin_data_imag[j] = 0;
+                        std::complex<float_type> tmp_val(lin_data_real[j],
+                            lin_data_imag[j]);
+                        //stacking data from the same x y location contiguous
+                        //[x_0(0,0), x_1(0,0) ...][y_0(0,0), y_1(0,0) ...][z_0(0,0), z_1(0,0) ...]
+                        //[x_0(0,1), x_1(0,1) ...][y_0(0,1), y_1(0,1) ...][z_0(0,1), z_1(0,1) ...]
+                        //...
+                        int idx = j * N_modes * NComp + i;
+                        tmp_vec[idx] = tmp_val;
+                    }
+                }
+
+                c2rFunc.copy_field(tmp_vec);
+                c2rFunc.execute();
+                std::vector<float_type> output_vel;
+                c2rFunc.output_field_padded(output_vel);
+
+                for (int i = 0; i < padded_dim * NComp; i++)
+                {
+                    auto& lin_data_ = it->data_r(To::tag(), i);
+                    for (int j = 0; j < dim_0 * dim_1; j++)
+                    {
+                        int idx = j * padded_dim * NComp + i;
+                        lin_data[j] = output_vel[idx];
+                    }
+                }
+            }
+        }
+    }
+
+    template<typename From, typename To, typename Domain>
+    static void FourierTransformR2C(Domain* domain_, int N_modes,
+        int padded_dim, int nonzero_dim, fft::helm_dfft_r2c& r2cFunc,
+        int NComp = 3, int PREFAC_FROM = 3, int PREFAC_TO = 2, int lBuffer=1, int rBuffer=1)
+    {
+        int N_from = From::nFields();
+        int N_to = To::nFields();
+
+        for (int l = domain_->tree()->base_level();
+             l < domain_->tree()->depth(); ++l)
+        {
+            client->template buffer_exchange<Source>(l);
+
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
+
+                int totalComp = Source::nFields();
+                int dim_0 = domain_->block_extent()[0] + lBuffer + rBuffer;
+                int dim_1 = domain_->block_extent()[1] + lBuffer + rBuffer;
+
+                int vec_size = dim_0*dim_1*N_modes*NComp*PREFAC_FROM;
+
+                std::vector<float_type> tmp_vec(vec_size, 0.0);
+                for (int i = 0; i < N_modes * PREFAC_FROM * NComp; i++)
+                {
+                    auto& lin_data_ = it->data_r(r_i_real_type::tag(), i);
+                    for (int j = 0; j < dim_0 * dim_1; j++)
+                    {
+                        int idx = j * N_modes * PREFAC_FROM * NComp + i;
+                        tmp_vec[idx] = tmp_val;
+                    }
+                }
+
+                r2cFunc.copy_field(tmp_vec);
+                r2cFunc.execute();
+                std::vector<std::complex<float_type>> output_vel;
+                r2cFunc.output_field(output_vel);
+
+                for (int i = 0; i < N_modes * NComp; i++)
+                {
+                    auto& lin_data_real = it->data_r(Target::tag(), i * 2);
+                    auto& lin_data_imag = it->data_r(Target::tag(), i * 2 + 1);
+                    for (int j = 0; j < dim_0 * dim_1; j++)
+                    {
+                        //stacking data from the same x y location contiguous
+                        //[x_0(0,0), x_1(0,0) ...][y_0(0,0), y_1(0,0) ...][z_0(0,0), z_1(0,0) ...]
+                        //[x_0(0,1), x_1(0,1) ...][y_0(0,1), y_1(0,1) ...][z_0(0,1), z_1(0,1) ...]
+                        //...
+                        int idx = j * PREFAC_FROM * (nonzero_dim / 2 + 1) + i;
+                        //use (nonzero_dim/2 + 1) when use output_field
+                        //use (nonzero_dim/2)     when use output_field_neglect_last
+                        lin_data_real[j] = output_vel[idx].real() /
+                                           static_cast<float_type>(nonzero_dim);
+                        lin_data_imag[j] = output_vel[idx].imag() /
+                                           static_cast<float_type>(nonzero_dim);
+                    }
+                }
+            }
+        }
+    }*/
+    template<typename From, typename To, typename Block>
+    static void FourierTransformC2R(Block it, int N_modes,
+        int padded_dim, int vec_size, int nonzero_dim, int dim_0, int dim_1, 
+        fft::helm_dfft_c2r& c2rFunc,
+        int NComp = 3, int PREFAC_FROM = 2, int PREFAC_TO = 3, int lBuffer = 1,
+        int rBuffer = 1)
+    {
+        int N_from = From::nFields();
+        int N_to = To::nFields();
+
+        std::vector<std::complex<float_type>> tmp_vec(vec_size,
+            std::complex<float_type>(0.0));
+        for (int i = 0; i < N_modes * NComp; i++)
+        {
+            auto& lin_data_real = it->data_r(From::tag(), i * 2);
+            auto& lin_data_imag = it->data_r(From::tag(), i * 2 + 1);
+            for (int j = 0; j < dim_0 * dim_1; j++)
+            {
+                if (i % N_modes == 0) lin_data_imag[j] = 0;
+                std::complex<float_type> tmp_val(lin_data_real[j],
+                    lin_data_imag[j]);
+                //stacking data from the same x y location contiguous
+                //[x_0(0,0), x_1(0,0) ...][y_0(0,0), y_1(0,0) ...][z_0(0,0), z_1(0,0) ...]
+                //[x_0(0,1), x_1(0,1) ...][y_0(0,1), y_1(0,1) ...][z_0(0,1), z_1(0,1) ...]
+                //...
+                int idx = j * N_modes * NComp + i;
+                tmp_vec[idx] = tmp_val;
+            }
+        }
+
+        c2rFunc.copy_field(tmp_vec);
+        c2rFunc.execute();
+        std::vector<float_type> output_vel;
+        c2rFunc.output_field_padded(output_vel);
+
+        for (int i = 0; i < padded_dim * NComp; i++)
+        {
+            auto& lin_data_ = it->data_r(To::tag(), i);
+            for (int j = 0; j < dim_0 * dim_1; j++)
+            {
+                int idx = j * padded_dim * NComp + i;
+                lin_data_[j] = output_vel[idx]; 
+            }
+        }
+    }
+
+    template<typename From, typename To, typename Block>
+    static void FourierTransformR2C(Block it, int N_modes, int padded_dim,
+        int vec_size, int nonzero_dim, int dim_0, int dim_1,
+        fft::helm_dfft_r2c& r2cFunc, int NComp = 3, int PREFAC_FROM = 3,
+        int PREFAC_TO = 2, int lBuffer = 1, int rBuffer = 1)
+    {
+        int N_from = From::nFields();
+        int N_to = To::nFields();
+
+        std::vector<float_type> tmp_vec(vec_size, 0.0);
+        for (int i = 0; i < N_modes * PREFAC_FROM * NComp; i++)
+        {
+            auto& lin_data_ = it->data_r(From::tag(), i);
+            for (int j = 0; j < dim_0 * dim_1; j++)
+            {
+                int idx = j * N_modes * PREFAC_FROM * NComp + i;
+                tmp_vec[idx] = lin_data_[j];
+            }
+        }
+
+        r2cFunc.copy_field(tmp_vec);
+        r2cFunc.execute();
+        std::vector<std::complex<float_type>> output_vel;
+        r2cFunc.output_field(output_vel);
+
+        for (int i = 0; i < N_modes * NComp; i++)
+        {
+            auto& lin_data_real = it->data_r(To::tag(), i * 2);
+            auto& lin_data_imag = it->data_r(To::tag(), i * 2 + 1);
+            for (int j = 0; j < dim_0 * dim_1; j++)
+            {
+                //stacking data from the same x y location contiguous
+                //[x_0(0,0), x_1(0,0) ...][y_0(0,0), y_1(0,0) ...][z_0(0,0), z_1(0,0) ...]
+                //[x_0(0,1), x_1(0,1) ...][y_0(0,1), y_1(0,1) ...][z_0(0,1), z_1(0,1) ...]
+                //...
+                int idx = j * PREFAC_FROM * (nonzero_dim / 2 + 1) + i;
+                //use (nonzero_dim/2 + 1) when use output_field
+                //use (nonzero_dim/2)     when use output_field_neglect_last
+                lin_data_real[j] = output_vel[idx].real() /
+                                   static_cast<float_type>(padded_dim);
+                lin_data_imag[j] = output_vel[idx].imag() /
+                                   static_cast<float_type>(padded_dim);
             }
         }
     }

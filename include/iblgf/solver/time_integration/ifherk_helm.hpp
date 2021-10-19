@@ -1050,7 +1050,7 @@ class Ifherk_HELM
                     auto& lin_data_real = it->data_r(Source::tag(), i*2);
                     auto& lin_data_imag = it->data_r(Source::tag(), i*2 + 1);
                     for (int j = 0; j < dim_0*dim_1; j++) {
-                        std::complex<float_type> tmp_val(lin_data_real[j], lin_data_real[j]);
+                        std::complex<float_type> tmp_val(lin_data_real[j], lin_data_imag[j]);
                         int idx = j * N_modes * 3 + i;
                         tmp_vec[idx] = tmp_val;
                     }

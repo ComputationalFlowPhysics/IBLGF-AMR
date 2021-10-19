@@ -65,16 +65,16 @@ class helm_dfft_r2c
     , output_(_dim_0 * _dim_1 * (_padded_dim / 2 + 1) * _numComp,
           std::complex<float_type>(0.0))
     {
-        std::cout << "init constructor done" << std::endl;
-        std::cout << "padded dim is " << padded_dim << std::endl;
+        //std::cout << "init constructor done" << std::endl;
+        //std::cout << "padded dim is " << padded_dim << std::endl;
         int numTransform = _dim_0 * _dim_1 * _numComp;
         int numCells = _dim_0 * _dim_1;
         int dim_half = _padded_dim / 2 + 1;
         int secDim[1] = {_padded_dim};
         plan = fftw_plan_many_dft_r2c(1, &secDim[0], numTransform, &input_[0],
             NULL, 1, _padded_dim, reinterpret_cast<fftw_complex*>(&output_[0]),
-            NULL, 1, dim_half, FFTW_PATIENT);
-        std::cout << "constructed r2c" << std::endl;
+            NULL, 1, dim_half, FFTW_PATIENT); //elements in the same x y locations are contiguous
+        //std::cout << "constructed r2c" << std::endl;
     }
 
   public: //Interface
@@ -120,9 +120,9 @@ class helm_dfft_r2c
         int numNonZero = (dim_nonzero / 2 + 1) * dim_0 * dim_1 * numComp;
         if (_v.size() <= numNonZero)
         {
-            std::cout
+            /*std::cout
                 << "Number of elements in output vector for Helmholtz fft does not match in r2c"
-                << std::endl;
+                << std::endl;*/
             _v.resize(numNonZero);
         }
         int numTransform = dim_0 * dim_1 * numComp;
@@ -142,9 +142,9 @@ class helm_dfft_r2c
         int numNonZero = (dim_nonzero / 2) * dim_0 * dim_1 * numComp;
         if (_v.size() <= numNonZero)
         {
-            std::cout
+            /*std::cout
                 << "Number of elements in output vector for Helmholtz fft does not match in r2c"
-                << std::endl;
+                << std::endl;*/
             _v.resize(numNonZero);
         }
         int numTransform = dim_0 * dim_1 * numComp;
@@ -217,6 +217,10 @@ class helm_dfft_c2r
     template<class Vector>
     void copy_field(const Vector& _v) noexcept
     {
+        std::complex<float_type> zero_val(0.0);
+        for (int i = 0; i < input_.size();i++) {
+            input_[i] = zero_val;
+        }
         /*if (_v.size() != input_.size())
                 {
                     std::cout

@@ -10,19 +10,15 @@
 #     ▐░░░░░░░░░░░▌▐░░░░░░░░░░▌ ▐░░░░░░░░░░░▌▐░░░░░░░░░░░▌▐░▌
 #      ▀▀▀▀▀▀▀▀▀▀▀  ▀▀▀▀▀▀▀▀▀▀   ▀▀▀▀▀▀▀▀▀▀▀  ▀▀▀▀▀▀▀▀▀▀▀  ▀
 
-add_subdirectory (server_client)
-add_subdirectory (datafields)
-add_subdirectory (tree)
-add_subdirectory (poisson)
-add_subdirectory (operators)
-add_subdirectory (ns_amr_lgf)
-add_subdirectory (ns_amr_lgf2D)
-add_subdirectory (postProcessIntrp)
-add_subdirectory (ibsolve)
-add_subdirectory (helmholtz_lgf)
-add_subdirectory (helmholtz)
-add_subdirectory (Poisson2D)
-add_subdirectory (helmholtz_FFT)
-add_subdirectory (operators_helmholtz)
-add_subdirectory (helmholtzFFT_operatorTest)
-add_subdirectory (operators_helmholtz_complex)
+set(operator_test operators_helmholtz_complex)
+
+foreach (item ${operator_test})
+    add_executable(${item} ${item}.cpp ${SOURCES})
+    target_link_libraries(${item} iblgf_test_main)
+    add_test(
+        NAME ${item}
+        COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 2 ${MPIEXEC_PREFLAGS} $<TARGET_FILE:${item}>
+    )
+endforeach()
+
+

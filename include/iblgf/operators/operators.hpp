@@ -687,6 +687,7 @@ struct Operator
         }
     }
 
+
     template<class Source, class Dest, class Block,
         typename std::enable_if<(Source::mesh_type() == MeshObject::cell) &&
                                     (Dest::mesh_type() == MeshObject::face),
@@ -778,6 +779,158 @@ struct Operator
                              n(source, 0) + n.at_offset(source, 0, -1, 0);
                 n(dest, 0) *= fac;
             }
+        }
+    }
+
+
+    template<class Source, class Dest, class Block>
+    static void laplace_helmholtz_complex(Block& block, float_type dx_level,
+        int                                   N_modes,
+        float_type                            c,
+        int                                   PREFAC = 2) noexcept
+    {
+        const auto     fac = 1.0 / (dx_level * dx_level);
+        constexpr auto source = Source::tag();
+        constexpr auto dest = Dest::tag();
+        for (auto& n : block)
+        {
+
+            int sep = N_modes*PREFAC;
+            for (int i = 0; i < sep ; i++) {
+                n(dest, i) = -4.0 * n(source, i) + n.at_offset(source, 0, -1, i) +
+                          n.at_offset(source, 0, +1, i) +
+                          n.at_offset(source, -1, 0, i) +
+                          n.at_offset(source, +1, 0, i);
+
+                n(dest, i) *= fac;
+            }
+            
+            for (int i = 0; i < N_modes; i++) { 
+                float_type omega = 2.0*M_PI*static_cast<float_type>(i)/c;
+
+                n(dest, i * 2)     -= n(source, i * 2    ) * omega * omega;
+                n(dest, i * 2 + 1) -= n(source, i * 2 + 1) * omega * omega;
+
+            }            
+        }
+    }
+
+
+    template<class Source, class Dest, class Block,
+        typename std::enable_if<(Source::mesh_type() == MeshObject::cell) &&
+                                    (Dest::mesh_type() == MeshObject::face),
+            void>::type* = nullptr>
+    static void gradient_helmholtz_complex(Block& block, float_type dx_level,
+        int                                   N_modes,
+        float_type                            c,
+        int                                   PREFAC = 2) noexcept
+    {
+        const auto     fac = 1.0 / dx_level;
+        constexpr auto source = Source::tag();
+        constexpr auto dest = Dest::tag();
+        for (auto& n : block)
+        {
+
+
+            int sep = N_modes*PREFAC;
+            for (int i = 0; i < sep ; i++) {
+                n(dest, 0 * sep + i) =  fac * (n(source, i) - n.at_offset(source, -1, 0, i));
+
+                n(dest, 1 * sep + i) =  fac * (n(source, i) - n.at_offset(source, 0, -1, i));
+            }
+
+            for (int i = 0; i < N_modes; i++) { 
+                float_type omega = 2.0*M_PI*static_cast<float_type>(i)/c;
+
+                n(dest, 2 * sep + i * 2)     = -n(source, i * 2 + 1) * omega;
+                n(dest, 2 * sep + i * 2 + 1) =  n(source, i * 2    ) * omega;
+
+            }
+
+        }
+    }
+
+
+
+    template<class SourceTuple, class Dest, class Block,
+        typename std::enable_if<(Dest::mesh_type() == MeshObject::cell) &&
+                                    (SourceTuple::mesh_type() ==
+                                        MeshObject::face),
+            void>::type* = nullptr>
+    static void divergence_helmholtz_complex(Block& block, float_type dx_level,
+        int                                   N_modes,
+        float_type                            c,
+        int                                   PREFAC = 2) noexcept
+    {
+        const auto     fac = 1.0 / dx_level;
+        constexpr auto source = SourceTuple::tag();
+        constexpr auto dest = Dest::tag();
+        for (auto& n : block)
+        {
+
+
+            int sep = N_modes*PREFAC;
+            for (int i = 0; i < sep ; i++) {
+                n(dest, i) =  -n(source, 0 * sep + i) - n(source, 1 * sep + i) +
+                          n.at_offset(source, 1, 0, 0 * sep + i) +
+                          n.at_offset(source, 0, 1, 1 * sep + i);
+
+                n(dest, i) *= fac;
+            }
+
+            for (int i = 0; i < N_modes; i++) { 
+                float_type omega = 2.0*M_PI*static_cast<float_type>(i)/c;
+
+                n(dest, i * 2)     -= n(source, 2 * sep + i * 2 + 1) * omega;
+                n(dest, i * 2 + 1) += n(source, 2 * sep + i * 2    ) * omega;
+
+            }
+
+        }
+    }
+
+
+    template<class Source, class Dest, class Block,
+        typename std::enable_if<(Source::mesh_type() == MeshObject::face) &&
+                                    (Dest::mesh_type() == MeshObject::edge),
+            void>::type* = nullptr>
+    static void curl_helmholtz_complex(Block& block,
+        float_type                            dx_level,
+        int                                   N_modes,
+        float_type                            c,
+        int                                   PREFAC = 2) noexcept
+    {
+        const auto     fac = 1.0 / dx_level;
+        constexpr auto source = Source::tag();
+        constexpr auto dest = Dest::tag();
+        for (auto& n : block)
+        {
+
+
+            int sep = N_modes*PREFAC;
+            for (int i = 0; i < (N_modes * PREFAC) ; i++) {
+                n(dest, 0 * sep + i) =   n(source, 2 * sep + i) - n.at_offset(source, 0, -1, 2 * sep + i);
+                n(dest, 0 * sep + i) *= fac;
+
+                n(dest, 1 * sep + i) =  -n(source, 2 * sep + i) + n.at_offset(source, -1, 0, 2 * sep + i);
+                n(dest, 1 * sep + i) *= fac;
+
+                n(dest, 2 * sep + i) = 
+                n(source, 1 * sep + i) - n.at_offset(source, -1, 0, 1 * sep + i) -
+                n(source, 0 * sep + i) + n.at_offset(source, 0, -1, 0 * sep + i);
+                n(dest, 2 * sep + i) *= fac;
+            }
+
+            for (int i = 0; i < (N_modes) ; i++) { 
+                float_type omega = 2.0*M_PI*static_cast<float_type>(i)/c;
+                n(dest, 0 * sep + i * 2)     += n(source, 1 * sep + i * 2 + 1) * omega;
+                n(dest, 0 * sep + i * 2 + 1) -= n(source, 1 * sep + i * 2    ) * omega;
+
+                n(dest, 1 * sep + i * 2)     -= n(source, 0 * sep + i * 2 + 1) * omega;
+                n(dest, 1 * sep + i * 2 + 1) += n(source, 0 * sep + i * 2    ) * omega;
+
+            }
+
         }
     }
 
@@ -1141,7 +1294,7 @@ struct Operator
         const auto dx_base = domain->dx_base();
         int sep = 3*N_modes; 
         // because of 3/2 rule from fft and conjugate relation from real variable transform. 
-        // With 3/2 * 2 * N_modes, the total number of components are 3*3*N_modes
+        // With 3/2 * 2 * N_modes, the total number of value in the container are 3 components * 3*N_modes
         for (auto it = domain->begin(); it != domain->end(); ++it)
         {
             if (!it->locally_owned() || !it->has_data()) continue;
@@ -1180,128 +1333,7 @@ struct Operator
         }
     }
 
-    /*template<typename From, typename To, typename Domain>
-    static void FourierTransformC2R(Domain* domain_, int N_modes,
-        int padded_dim, int nonzero_dim, fft::helm_dfft_c2r& c2rFunc,
-        int NComp = 3, int PREFAC_FROM = 2, int PREFAC_TO = 3, int lBuffer=1, int rBuffer=1)
-    {
-        int N_from = From::nFields();
-        int N_to = To::nFields();
-
-        for (int l = domain_->tree()->base_level();
-             l < domain_->tree()->depth(); ++l)
-        {
-            client->template buffer_exchange<Source>(l);
-
-            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
-            {
-                if (!it->locally_owned() || !it->has_data()) continue;
-
-                int totalComp = Source::nFields();
-                int dim_0 = domain_->block_extent()[0]+lBuffer+rBuffer;
-                int dim_1 = domain_->block_extent()[1]+lBuffer+rBuffer;
-
-                int vec_size = dim_0*dim_1*N_modes*NComp;
-
-                std::vector<std::complex<float_type>> tmp_vec(vec_size,
-                    std::complex<float_type>(0.0));
-                for (int i = 0; i < N_modes * NComp; i++)
-                {
-                    auto& lin_data_real = it->data_r(From::tag(), i * 2);
-                    auto& lin_data_imag = it->data_r(From::tag(), i * 2 + 1);
-                    for (int j = 0; j < dim_0 * dim_1; j++)
-                    {
-                        if (i % N_modes == 0) lin_data_imag[j] = 0;
-                        std::complex<float_type> tmp_val(lin_data_real[j],
-                            lin_data_imag[j]);
-                        //stacking data from the same x y location contiguous
-                        //[x_0(0,0), x_1(0,0) ...][y_0(0,0), y_1(0,0) ...][z_0(0,0), z_1(0,0) ...]
-                        //[x_0(0,1), x_1(0,1) ...][y_0(0,1), y_1(0,1) ...][z_0(0,1), z_1(0,1) ...]
-                        //...
-                        int idx = j * N_modes * NComp + i;
-                        tmp_vec[idx] = tmp_val;
-                    }
-                }
-
-                c2rFunc.copy_field(tmp_vec);
-                c2rFunc.execute();
-                std::vector<float_type> output_vel;
-                c2rFunc.output_field_padded(output_vel);
-
-                for (int i = 0; i < padded_dim * NComp; i++)
-                {
-                    auto& lin_data_ = it->data_r(To::tag(), i);
-                    for (int j = 0; j < dim_0 * dim_1; j++)
-                    {
-                        int idx = j * padded_dim * NComp + i;
-                        lin_data[j] = output_vel[idx];
-                    }
-                }
-            }
-        }
-    }
-
-    template<typename From, typename To, typename Domain>
-    static void FourierTransformR2C(Domain* domain_, int N_modes,
-        int padded_dim, int nonzero_dim, fft::helm_dfft_r2c& r2cFunc,
-        int NComp = 3, int PREFAC_FROM = 3, int PREFAC_TO = 2, int lBuffer=1, int rBuffer=1)
-    {
-        int N_from = From::nFields();
-        int N_to = To::nFields();
-
-        for (int l = domain_->tree()->base_level();
-             l < domain_->tree()->depth(); ++l)
-        {
-            client->template buffer_exchange<Source>(l);
-
-            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
-            {
-                if (!it->locally_owned() || !it->has_data()) continue;
-
-                int totalComp = Source::nFields();
-                int dim_0 = domain_->block_extent()[0] + lBuffer + rBuffer;
-                int dim_1 = domain_->block_extent()[1] + lBuffer + rBuffer;
-
-                int vec_size = dim_0*dim_1*N_modes*NComp*PREFAC_FROM;
-
-                std::vector<float_type> tmp_vec(vec_size, 0.0);
-                for (int i = 0; i < N_modes * PREFAC_FROM * NComp; i++)
-                {
-                    auto& lin_data_ = it->data_r(r_i_real_type::tag(), i);
-                    for (int j = 0; j < dim_0 * dim_1; j++)
-                    {
-                        int idx = j * N_modes * PREFAC_FROM * NComp + i;
-                        tmp_vec[idx] = tmp_val;
-                    }
-                }
-
-                r2cFunc.copy_field(tmp_vec);
-                r2cFunc.execute();
-                std::vector<std::complex<float_type>> output_vel;
-                r2cFunc.output_field(output_vel);
-
-                for (int i = 0; i < N_modes * NComp; i++)
-                {
-                    auto& lin_data_real = it->data_r(Target::tag(), i * 2);
-                    auto& lin_data_imag = it->data_r(Target::tag(), i * 2 + 1);
-                    for (int j = 0; j < dim_0 * dim_1; j++)
-                    {
-                        //stacking data from the same x y location contiguous
-                        //[x_0(0,0), x_1(0,0) ...][y_0(0,0), y_1(0,0) ...][z_0(0,0), z_1(0,0) ...]
-                        //[x_0(0,1), x_1(0,1) ...][y_0(0,1), y_1(0,1) ...][z_0(0,1), z_1(0,1) ...]
-                        //...
-                        int idx = j * PREFAC_FROM * (nonzero_dim / 2 + 1) + i;
-                        //use (nonzero_dim/2 + 1) when use output_field
-                        //use (nonzero_dim/2)     when use output_field_neglect_last
-                        lin_data_real[j] = output_vel[idx].real() /
-                                           static_cast<float_type>(nonzero_dim);
-                        lin_data_imag[j] = output_vel[idx].imag() /
-                                           static_cast<float_type>(nonzero_dim);
-                    }
-                }
-            }
-        }
-    }*/
+    
     template<typename From, typename To, typename Block>
     static void FourierTransformC2R(Block it, int N_modes,
         int padded_dim, int vec_size, int nonzero_dim, int dim_0, int dim_1, 

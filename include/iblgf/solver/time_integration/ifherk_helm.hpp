@@ -1045,32 +1045,8 @@ class Ifherk_HELM
                 int dim_1 = domain_->block_extent()[1]+lBuffer+rBuffer;
 
                 int vec_size = dim_0*dim_1*N_modes*3;
-                std::vector<std::complex<float_type>> tmp_vec(vec_size, std::complex<float_type>(0.0));
-                for (int i = 0; i < N_modes*3; i++) {
-                    auto& lin_data_real = it->data_r(Source::tag(), i*2);
-                    auto& lin_data_imag = it->data_r(Source::tag(), i*2 + 1);
-                    for (int j = 0; j < dim_0*dim_1; j++) {
-                        std::complex<float_type> tmp_val(lin_data_real[j], lin_data_imag[j]);
-                        int idx = j * N_modes * 3 + i;
-                        tmp_vec[idx] = tmp_val;
-                    }
-                    
-                }
-
-                c2rFunc.copy_field(tmp_vec);
-                c2rFunc.execute();
-                std::vector<float_type> output_vel;
-                c2rFunc.output_field_padded(output_vel);
-
-
-                for (int i = 0; i < padded_dim*3; i++) {
-                    auto& lin_data_ = it->data_r(u_i_real_type::tag(), i);
-                    for (int j = 0; j < dim_0*dim_1; j++) {
-                        int idx = j * padded_dim * 3 + i;
-                        lin_data[j] = output_vel[idx];
-                    }
-                    
-                }
+                domain::Operator::FourierTransformC2R<Source, Target>(
+                    it, N_modes, padded_dim, vec_size, nonzero_dim, dim_0, dim_1, c2rFunc);
                 domain::Operator::curl_helmholtz<u_i_real_type, vort_i_real_type>(it->data(),
                     dx_level, N_modes, dx_fine);
             }
@@ -1125,7 +1101,10 @@ class Ifherk_HELM
                 int dim_1 = domain_->block_extent()[1]+lBuffer+rBuffer;
 
                 int vec_size = dim_0*dim_1*N_modes*3*3;
-                std::vector<float_type> tmp_vec(vec_size, 0.0);
+                domain::Operator::FourierTransformC2R<r_i_real_type, Target>(
+                    it, N_modes, padded_dim, vec_size, nonzero_dim, dim_0, dim_1, c2rFunc);
+
+                /*std::vector<float_type> tmp_vec(vec_size, 0.0);
                 for (int i = 0; i < N_modes*3*3; i++) {
                     auto& lin_data_ = it->data_r(r_i_real_type::tag(), i);
                     for (int j = 0; j < dim_0*dim_1; j++) {
@@ -1151,6 +1130,7 @@ class Ifherk_HELM
                         lin_data_imag[j] = output_vel[idx].imag();
                     }   
                 }
+                */
             }
         }
     }

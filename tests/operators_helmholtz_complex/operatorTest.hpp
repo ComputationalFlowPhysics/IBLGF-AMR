@@ -152,8 +152,8 @@ struct OperatorTest : public Setup_helmholtz<OperatorTest, parameters>
 
                 auto dx_level = dx_base / std::pow(2, it->refinement_level());
 
-                /*domain::Operator::laplace<lap_source_type, lap_target_type>(
-                    it->data(), dx_level);*/
+                domain::Operator::laplace_helmholtz_complex<grad_source_type, lap_target_type>(
+                    it->data(), dx_level, N_modes, L_z);
                 domain::Operator::divergence_helmholtz_complex<curl_source_type, div_target_type>(
                     it->data(), dx_level, N_modes, L_z);
                 domain::Operator::curl_helmholtz_complex<curl_source_type, curl_target_type>(
@@ -202,13 +202,16 @@ struct OperatorTest : public Setup_helmholtz<OperatorTest, parameters>
         this->compute_errors_for_all<div_target_type, div_exact_type,
                 div_error_type>(dz, "Div_", 0, N_modes*PREFAC, L_z);
 
+        this->compute_errors_for_all<lap_target_type, lap_exact_type,
+                div_error_type>(dz, "Lap_", 0, N_modes*PREFAC, L_z);
+
         //div source type is zero to see the magnitude of numerical solutions
-        this->compute_errors_for_all<grad_target_type, div_source_type,
+        /*this->compute_errors_for_all<grad_target_type, div_source_type,
                 grad_error_type>(dz, "Grad_", 0, N_modes*PREFAC, L_z);
         this->compute_errors_for_all<grad_target_type, div_source_type,
                 grad_error_type>(dz, "Grad_", 1, N_modes*PREFAC, L_z);
         this->compute_errors_for_all<grad_target_type, div_source_type,
-                grad_error_type>(dz, "Grad_", 2, N_modes*PREFAC, L_z);
+                grad_error_type>(dz, "Grad_", 2, N_modes*PREFAC, L_z);*/
 
 
 
@@ -393,6 +396,11 @@ struct OperatorTest : public Setup_helmholtz<OperatorTest, parameters>
 
                     node(div_exact, i*2)                        = -tmpc*std::cos(omega)*(2.0*yc +2.0*xc) - omega*tmpc*std::sin(omega);
                     node(div_exact, i*2 + 1)                    = -tmpc*std::sin(omega)*(2.0*yc +2.0*xc) + omega*tmpc*std::cos(omega);
+
+                    node(lap_exact, i*2)                        = 4.0*tmpc*std::cos(omega)*(r_2 - 1.0)
+                                                                  - omega*omega*tmpc*std::cos(omega);
+                    node(lap_exact, i*2 + 1)                    = 4.0*tmpc*std::sin(omega)*(r_2 - 1.0)
+                                                                  - omega*omega*tmpc*std::sin(omega);
 
                 }
                 /*node(grad_exact, 0) = -2 * a_ * xf0 * tmpf0;

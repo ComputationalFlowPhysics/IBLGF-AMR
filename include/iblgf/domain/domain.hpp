@@ -36,7 +36,7 @@ using namespace dictionary;
  *  octree of blocks. Base blocks are read in from *  the config file.
  */
 
-template<int Dim, class DataBlock>
+template<int Dim, class DataBlock, bool helmholtz = false, int N_modes = 1>
 class Domain
 {
   public:
@@ -51,7 +51,8 @@ class Domain
     using octant_t = typename tree_t::octant_type;
 
     // ib related types
-    using ib_t = ib::IB<Dim, datablock_t>;
+    using ib_t = ib::IB<Dim, datablock_t, helmholtz, N_modes>;
+    //using ib_t_helm = ib:IB_helm<Dim, datablock_t, N_modes>:
 
     // iterator types
     using dfs_iterator = typename tree_t::dfs_iterator;

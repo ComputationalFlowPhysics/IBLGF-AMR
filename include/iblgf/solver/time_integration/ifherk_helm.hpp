@@ -25,7 +25,7 @@
 #include <iblgf/domain/domain.hpp>
 #include <iblgf/IO/parallel_ostream.hpp>
 #include <iblgf/solver/poisson/poisson.hpp>
-#include <iblgf/solver/linsys/linsys.hpp>
+#include <iblgf/solver/linsys/linsys_helm.hpp>
 #include <iblgf/operators/operators.hpp>
 #include <iblgf/utilities/misc_math_functions.hpp>
 #include <iblgf/solver/time_integration/HelmholtzFFT.hpp>
@@ -56,6 +56,7 @@ class Ifherk_HELM
 
     using ib_t = typename domain_type::ib_t;
     using force_type = typename ib_t::force_type;
+    using point_force_type = typename ib_t::point_force_type;
 
     //FMM
     using Fmm_t = typename Setup::Fmm_t;
@@ -117,6 +118,8 @@ class Ifherk_HELM
             "updating_source_max", true);
         all_time_max_ = _simulation->dictionary()->template get_or<bool>(
             "all_time_max", true);
+        c_z = _simulation->dictionary()->template get_or<float_type>(
+            "L_z", 1);
 
         if (dt_base_ < 0) dt_base_ = dx_base_ * cfl_;
 
@@ -348,14 +351,14 @@ class Ifherk_HELM
 
                     const auto dx_level =
                         dx_base_ / math::pow2(it->refinement_level());
-                    domain::Operator::curl<u_type, edge_aux_type>(it->data(),
-                        dx_level);
+                    domain::Operator::curl_helmholtz_complex<u_type, edge_aux_type>(it->data(),
+                        dx_level, N_modes, c_z);
                 }
             }
             //clean_leaf_correction_boundary<edge_aux_type>(domain_->tree()->base_level(), true,2);
 
             clean<u_type>();
-            psolver.template apply_lgf<edge_aux_type, stream_f_type>();
+            psolver.template apply_lgf_and_helm<edge_aux_type, stream_f_type>(N_modes, 3);
             for (int l = domain_->tree()->base_level();
                  l < domain_->tree()->depth(); ++l)
             {
@@ -365,8 +368,8 @@ class Ifherk_HELM
 
                     const auto dx_level =
                         dx_base_ / math::pow2(it->refinement_level());
-                    domain::Operator::curl_transpose<stream_f_type, u_type>(
-                        it->data(), dx_level, -1.0);
+                    domain::Operator::curl_transpose_helmholtz_complex<stream_f_type, u_type>(
+                        it->data(), dx_level, N_modes, c_z, -1.0);
                 }
                 client->template buffer_exchange<u_type>(l);
             }
@@ -453,20 +456,20 @@ class Ifherk_HELM
         // - Forcing ------------------------------------------------
         auto& ib = domain_->ib();
         ib.clean_non_local();
-        real_coordinate_type tmp_coord(0.0);
+        point_force_type tmp_force(0.0);
 
-        force_type sum_f(ib.force().size(), tmp_coord);
+        force_type sum_f(ib.force().size(), tmp_force);
         if (ib.size() > 0)
         {
             boost::mpi::all_reduce(world, &ib.force(0), ib.size(), &sum_f[0],
-                std::plus<real_coordinate_type>());
+                std::plus<point_force_type>());
         }
         if (domain_->is_server())
         {
-            std::vector<float_type> f(domain_->dimension(), 0.);
+            std::vector<float_type> f(ib_t::force_dim, 0.);
             if (ib.size() > 0)
             {
-                for (std::size_t d = 0; d < domain_->dimension(); ++d)
+                for (std::size_t d = 0; d < ib_t::force_dim; ++d)
                     for (std::size_t i = 0; i < ib.size(); ++i)
                         f[d] += sum_f[i][d] * 1.0 / coeff_a(3, 3) / dt_ *
                                 ib.force_scale();
@@ -475,8 +478,8 @@ class Ifherk_HELM
                 std::cout << "ib  size: " << ib.size() << std::endl;
                 std::cout << "Forcing = ";
 
-                for (std::size_t d = 0; d < domain_->dimension(); ++d)
-                    std::cout << f[d] << " ";
+                for (std::size_t d = 0; d < 3; ++d)
+                    std::cout << f[d*2*N_modes] << " ";
                 std::cout << std::endl;
 
                 std::cout << " -----------------" << std::endl;
@@ -491,8 +494,10 @@ class Ifherk_HELM
                     << std::scientific << std::setprecision(9);
             outfile << std::setw(width) << T_ << std::setw(width)
                     << std::scientific << std::setprecision(9);
-            for (auto& element : f) { outfile << element << std::setw(width); }
+            for (int  i = 0 ; i < 3; i++) { outfile << f[i*2*N_modes] << std::setw(width); }
             outfile << std::endl;
+            outfile.close();
+            std::cout << "finished writing forcing" << std::endl;
         }
 
         world.barrier();
@@ -703,8 +708,11 @@ class Ifherk_HELM
         add<g_i_type, face_aux_type>(-1.0);
         copy<face_aux_type, w_1_type>(-1.0 / dt_ / coeff_a(1, 1));
 
-        psolver.template apply_lgf_IF<q_i_type, q_i_type>(alpha_[0]);
-        psolver.template apply_lgf_IF<w_1_type, w_1_type>(alpha_[0]);
+        //psolver.template apply_lgf_IF<q_i_type, q_i_type>(alpha_[0]);
+        //psolver.template apply_lgf_IF<w_1_type, w_1_type>(alpha_[0]);
+
+        psolver.template apply_helm_if<q_i_type, q_i_type>(alpha_[0], N_modes, c_z);
+        psolver.template apply_helm_if<w_1_type, w_1_type>(alpha_[0], N_modes, c_z);
 
         add<q_i_type, r_i_type>();
         add<w_1_type, r_i_type>(dt_ * coeff_a(2, 1));
@@ -730,7 +738,7 @@ class Ifherk_HELM
         add<w_1_type, r_i_type>(dt_ * coeff_a(3, 1));
         add<w_2_type, r_i_type>(dt_ * coeff_a(3, 2));
 
-        psolver.template apply_lgf_IF<r_i_type, r_i_type>(alpha_[1]);
+        psolver.template apply_helm_if<r_i_type, r_i_type>(alpha_[1], N_modes, c_z);
 
         up_and_down<u_i_type>();
         nonlinear<u_i_type, g_i_type>(coeff_a(3, 3) * (-dt_));
@@ -874,7 +882,7 @@ class Ifherk_HELM
         domain_->client_communicator().barrier();
         mDuration_type t_lgf(0);
         TIME_CODE(t_lgf,
-            SINGLE_ARG(psolver.template apply_lgf<cell_aux_type, d_i_type>();));
+            SINGLE_ARG(psolver.template apply_lgf_and_helm<cell_aux_type, d_i_type>(N_modes);));
         pcout << "LGF solved in " << t_lgf.count() << std::endl;
 
         gradient<d_i_type, face_aux_type>();
@@ -884,8 +892,8 @@ class Ifherk_HELM
             mDuration_type t_if(0);
             domain_->client_communicator().barrier();
             TIME_CODE(t_if,
-                SINGLE_ARG(psolver.template apply_lgf_IF<r_i_type, u_i_type>(
-                    _alpha);));
+                SINGLE_ARG(psolver.template apply_helm_if<r_i_type, u_i_type>(
+                    _alpha, N_modes, c_z);));
             pcout << "IF  solved in " << t_if.count() << std::endl;
         }
         else
@@ -901,7 +909,7 @@ class Ifherk_HELM
         domain_->client_communicator().barrier();
         mDuration_type t_lgf(0);
         TIME_CODE(t_lgf,
-            SINGLE_ARG(psolver.template apply_lgf<cell_aux_type, d_i_type>();));
+            SINGLE_ARG(psolver.template apply_lgf_and_helm<cell_aux_type, d_i_type>(N_modes);));
         domain_->client_communicator().barrier();
         pcout << "LGF solved in " << t_lgf.count() << std::endl;
 
@@ -911,8 +919,8 @@ class Ifherk_HELM
 
         // IB
         if (std::fabs(_alpha) > 1e-4)
-            psolver.template apply_lgf_IF<face_aux2_type, face_aux2_type>(
-                _alpha, MASK_TYPE::IB2xIB);
+            psolver.template apply_helm_if<face_aux2_type, face_aux2_type>(
+                _alpha, N_modes, c_z, 3, MASK_TYPE::IB2xIB);
 
         domain_->client_communicator().barrier();
         pcout << "IB IF solved " << std::endl;
@@ -939,8 +947,8 @@ class Ifherk_HELM
             mDuration_type t_if(0);
             domain_->client_communicator().barrier();
             TIME_CODE(t_if,
-                SINGLE_ARG(psolver.template apply_lgf_IF<r_i_type, u_i_type>(
-                    _alpha);));
+                SINGLE_ARG(psolver.template apply_helm_if<r_i_type, u_i_type>(
+                    _alpha, N_modes, c_z);));
             pcout << "IF  solved in " << t_if.count() << std::endl;
         }
         else
@@ -984,8 +992,8 @@ class Ifherk_HELM
                 const auto dx_level =
                     dx_base / math::pow2(it->refinement_level());
                 //if (it->is_leaf())
-                domain::Operator::curl<Velocity_in, edge_aux_type>(it->data(),
-                    dx_level);
+                domain::Operator::curl_helmholtz_complex<Velocity_in, edge_aux_type>(it->data(),
+                    dx_level, N_modes, c_z);
             }
         }
 
@@ -993,7 +1001,7 @@ class Ifherk_HELM
         clean_leaf_correction_boundary<edge_aux_type>(
             domain_->tree()->base_level(), true, 2);
         //clean_leaf_correction_boundary<edge_aux_type>(l, false,2+stage_idx_);
-        psolver.template apply_lgf<edge_aux_type, stream_f_type>(
+        psolver.template apply_lgf_and_helm<edge_aux_type, stream_f_type>(N_modes, 3, 
             MASK_TYPE::STREAM);
 
         int l_max = refresh_correction_only ? domain_->tree()->base_level() + 1
@@ -1007,8 +1015,8 @@ class Ifherk_HELM
 
                 const auto dx_level =
                     dx_base / math::pow2(it->refinement_level());
-                domain::Operator::curl_transpose<stream_f_type, Velocity_out>(
-                    it->data(), dx_level, -1.0);
+                domain::Operator::curl_transpose_helmholtz_complex<stream_f_type, Velocity_out>(
+                    it->data(), dx_level, N_modes, c_z, -1.0);
             }
         }
 
@@ -1021,7 +1029,9 @@ class Ifherk_HELM
     {
         clean<edge_aux_type>();
         clean<Target>();
-        clean<face_aux_type>();
+        clean<face_aux_real_type>();
+        clean<u_i_real_type>();
+        clean<vort_i_real_type>();
 
         auto       client = domain_->decomposition().client();
         const auto dx_base = domain_->dx_base();
@@ -1045,7 +1055,7 @@ class Ifherk_HELM
                 int dim_1 = domain_->block_extent()[1]+lBuffer+rBuffer;
 
                 int vec_size = dim_0*dim_1*N_modes*3;
-                domain::Operator::FourierTransformC2R<Source, Target>(
+                domain::Operator::FourierTransformC2R<Source, u_i_real_type>(
                     it, N_modes, padded_dim, vec_size, nonzero_dim, dim_0, dim_1, c2rFunc);
                 domain::Operator::curl_helmholtz<u_i_real_type, vort_i_real_type>(it->data(),
                     dx_level, N_modes, dx_fine);
@@ -1101,8 +1111,8 @@ class Ifherk_HELM
                 int dim_1 = domain_->block_extent()[1]+lBuffer+rBuffer;
 
                 int vec_size = dim_0*dim_1*N_modes*3*3;
-                domain::Operator::FourierTransformC2R<r_i_real_type, Target>(
-                    it, N_modes, padded_dim, vec_size, nonzero_dim, dim_0, dim_1, c2rFunc);
+                domain::Operator::FourierTransformR2C<r_i_real_type, Target>(
+                    it, N_modes, padded_dim, vec_size, nonzero_dim, dim_0, dim_1, r2cFunc);
 
                 /*std::vector<float_type> tmp_vec(vec_size, 0.0);
                 for (int i = 0; i < N_modes*3*3; i++) {
@@ -1153,8 +1163,8 @@ class Ifherk_HELM
                 if (!it->locally_owned() || !it->has_data()) continue;
                 const auto dx_level =
                     dx_base / math::pow2(it->refinement_level());
-                domain::Operator::divergence<Source, Target>(it->data(),
-                    dx_level);
+                domain::Operator::divergence_helmholtz_complex<Source, Target>(it->data(),
+                    dx_level, N_modes, c_z);
             }
 
             //client->template buffer_exchange<Target>(l);
@@ -1180,8 +1190,8 @@ class Ifherk_HELM
                 if (!it->locally_owned() || !it->has_data()) continue;
                 const auto dx_level =
                     dx_base / math::pow2(it->refinement_level());
-                domain::Operator::gradient<Source, Target>(it->data(),
-                    dx_level);
+                domain::Operator::gradient_helmholtz_complex<Source, Target>(it->data(),
+                    dx_level, N_modes, c_z);
                 for (std::size_t field_idx = 0; field_idx < Target::nFields();
                      ++field_idx)
                 {
@@ -1240,6 +1250,7 @@ class Ifherk_HELM
     linsys_solver_t  lsolver;
     fft::helm_dfft_r2c r2cFunc;
     fft::helm_dfft_c2r c2rFunc;
+    float_type c_z; //for the period in the homogeneous direction
 
     bool base_mesh_update_ = false;
 

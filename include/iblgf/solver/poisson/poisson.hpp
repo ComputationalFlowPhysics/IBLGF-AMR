@@ -112,6 +112,68 @@ class PoissonSolver
             this->apply_lgf<Source, Target>(&lgf_helm_vec[n], entry, fmm_type);
     }
 
+    template<class Source, class Target>
+    void apply_lgf_and_helm(int N_modes, int NComp = 1,
+        int fmm_type = MASK_TYPE::AMR2AMR)
+    {
+        if (N_modes != (N_fourier_modes + 1))
+            throw std::runtime_error(
+                "Fourier modes do not match in helmholtz solver");
+        if (Source::nFields() != N_modes * 2 * NComp)
+            throw std::runtime_error(
+                "Fourier modes number elements do not match in helmholtz solver");
+        for (int i = 0; i < NComp; i++)
+        {
+            int add_num = i * N_modes*2;
+            for (std::size_t entry = 0; entry < 2; ++entry)
+                this->apply_lgf<Source, Target>(&lgf_lap_, (add_num + entry), fmm_type);
+            for (std::size_t idx = 0; idx < N_fourier_modes; ++idx)
+            {
+                //int entry = idx*2 + NComp*2;
+                for (std::size_t addentry = 0; addentry < 2; addentry++)
+                {
+                    int entry = addentry + idx * 2 + 2 + add_num;
+                    this->apply_lgf<Source, Target>(&lgf_helm_vec[idx], entry,
+                        fmm_type);
+                }
+            }
+        }
+    }
+
+
+
+    template<class Source, class Target>
+    void apply_helm_if(float_type _alpha_base, int N_modes, float_type L_z, int NComp = 3, 
+        int fmm_type = MASK_TYPE::AMR2AMR)
+    {
+        lgf_if_.alpha_base_level() = _alpha_base;
+        if (N_modes != (N_fourier_modes + 1))
+            throw std::runtime_error(
+                "Fourier modes do not match in helmholtz solver");
+        if (Source::nFields() != N_modes * 2 * NComp)
+            throw std::runtime_error(
+                "Fourier modes number elements do not match in helmholtz solver");
+        for (int i = 0; i < NComp; i++)
+        {
+            int add_num = i * N_modes*2;
+            for (std::size_t entry = 0; entry < 2; ++entry) {
+                this->apply_if<Source, Target>(&lgf_if_, (add_num + entry), fmm_type);
+            }
+                //this->apply_lgf<Source, Target>(&lgf_if_, (add_num + entry), fmm_type);
+            for (std::size_t idx = 0; idx < N_fourier_modes; ++idx)
+            {
+                //int entry = idx*2 + NComp*2;
+                float_type omega = static_cast<float_type>(idx + 1) * 2.0 * M_PI / L_z;
+                for (std::size_t addentry = 0; addentry < 2; addentry++)
+                {
+                    int entry = addentry + idx * 2 + 2 + add_num;
+                    this->apply_if_helm<Source, Target>(&lgf_if_, omega, entry,
+                        fmm_type);
+                }
+            }
+        }
+    }
+
     template<class Source, class Target, class Kernel>
     void apply_helm(int n, Kernel* _kernel, int fmm_type = MASK_TYPE::AMR2AMR)
     {
@@ -186,6 +248,72 @@ class PoissonSolver
             if (!subtract_non_leaf_)
                 fmm_.template apply<source_tmp_type, target_tmp_type>(
                     domain_, _kernel, l, true, 1.0, fmm_type);
+
+            copy_level<target_tmp_type, Target>(l, 0, _field_idx, true);
+        }
+    }
+
+
+        template<class Source, class Target, class Kernel>
+    void apply_if_helm(Kernel* _kernel, float_type omega, std::size_t _field_idx = 0, int fmm_type = MASK_TYPE::AMR2AMR)
+    {
+        auto client = domain_->decomposition().client();
+        if (!client) return;
+
+        // Cleaning
+        clean_field<source_tmp_type>();
+        clean_field<target_tmp_type>();
+
+        // Copy source
+        if (fmm_type == MASK_TYPE::AMR2AMR)
+            copy_leaf<Source, source_tmp_type>(_field_idx, 0, true);
+        else if (fmm_type == MASK_TYPE::STREAM)
+            copy_level<Source, source_tmp_type>(domain_->tree()->base_level(), _field_idx, 0, false);
+        else if (fmm_type == MASK_TYPE::IB2xIB || fmm_type == MASK_TYPE::xIB2IB)
+            copy_level<Source, source_tmp_type>(domain_->tree()->depth()-1, _field_idx, 0, false);
+        else if (fmm_type == MASK_TYPE::IB2AMR)
+            copy_level<Source, source_tmp_type>(domain_->tree()->depth()-1, _field_idx, 0, false);
+
+        if (fmm_type != MASK_TYPE::STREAM && fmm_type != MASK_TYPE::IB2xIB && fmm_type != MASK_TYPE::xIB2IB)
+        {
+            // Coarsify
+            source_coarsify<source_tmp_type, source_tmp_type>(_field_idx, 0, Source::mesh_type());
+
+            // Interpolate to correction buffer
+            intrp_to_correction_buffer<source_tmp_type, source_tmp_type>(
+                    _field_idx, 0, Source::mesh_type());
+        }
+
+        const int l_max = (fmm_type != MASK_TYPE::STREAM) ?
+                    domain_->tree()->depth() : domain_->tree()->base_level()+1;
+
+        const int l_min = (fmm_type !=  MASK_TYPE::IB2xIB && fmm_type !=  MASK_TYPE::xIB2IB) ?
+                    domain_->tree()->base_level() : domain_->tree()->depth()-1;
+
+        for (int l = l_min; l < l_max; ++l)
+        {
+
+            for (auto it_s = domain_->begin(l); it_s != domain_->end(l); ++it_s)
+                if (it_s->has_data() && !it_s->locally_owned())
+                {
+                    if (!it_s->data().is_allocated()) continue;
+                    auto& cp2 = it_s->data_r(source_tmp);
+                    std::fill(cp2.begin(), cp2.end(), 0.0);
+                }
+
+            _kernel->change_level(l - domain_->tree()->base_level());
+
+            //compute the add scale
+            float_type alpha_level = _kernel->alpha_;
+            float_type helm_weights = std::exp(-omega*omega*alpha_level);
+
+            if (fmm_type == MASK_TYPE::AMR2AMR)
+                fmm_.template apply<source_tmp_type, target_tmp_type>(
+                        domain_, _kernel, l, false, helm_weights, fmm_type);
+
+            if (!subtract_non_leaf_)
+                fmm_.template apply<source_tmp_type, target_tmp_type>(
+                    domain_, _kernel, l, true, helm_weights, fmm_type);
 
             copy_level<target_tmp_type, Target>(l, 0, _field_idx, true);
         }

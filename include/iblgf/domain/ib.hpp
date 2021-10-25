@@ -23,7 +23,7 @@ namespace iblgf
 {
 namespace ib
 {
-template<int Dim, class DataBlock>
+template<int Dim, class DataBlock, bool helmholtz_ = false, int N_modes_ = 1>
 class IB
 {
   public: // member types
@@ -34,7 +34,11 @@ class IB
 
     using real_coordinate_type = typename tree_t::real_coordinate_type;
     using coordinate_type = typename tree_t::coordinate_type;
-    using force_type = std::vector<real_coordinate_type>;
+    static constexpr bool helmholtz = helmholtz_;
+    static constexpr std::size_t force_dim = (helmholtz ?  N_modes_*3*2 : Dim);
+    using point_force_type = types::vector_type<float_type, force_dim>;
+    //using force_type = std::vector<real_coordinate_type>;
+    using force_type = std::vector<point_force_type>;
 
     using delta_func_type = std::function<float_type(real_coordinate_type)>;
 
@@ -88,11 +92,11 @@ class IB
         ib_infl_pts_.resize(coordinates_.size());
         ib_rank_.resize(coordinates_.size());
         forces_.resize(
-            coordinates_.size(), real_coordinate_type((float_type)0));
+            coordinates_.size(), point_force_type((float_type)0));
 
         forces_prev_.resize(4);
         for (auto& f:forces_prev_)
-            f.resize(coordinates_.size(), real_coordinate_type((float_type)0));
+            f.resize(coordinates_.size(), point_force_type((float_type)0));
     }
 
     void read_points()

@@ -23,8 +23,8 @@
 #include <iblgf/utilities/tuple_utilities.hpp>
 #include <iblgf/domain/dataFields/datafield.hpp>
 #include <iblgf/solver/poisson/poisson.hpp>
-#include <iblgf/solver/linsys/linsys.hpp>
-#include <iblgf/solver/time_integration/ifherk.hpp>
+#include <iblgf/solver/linsys/linsys_helm.hpp>
+#include <iblgf/solver/time_integration/ifherk_helm.hpp>
 #include <iblgf/IO/parallel_ostream.hpp>
 
 namespace iblgf
@@ -90,7 +90,7 @@ class Setup_helmholtz
       (cell_aux2,           float_type,  2*N_modes,    1,  1,  cell,true),
       (face_aux,            float_type,  3*2*N_modes,  1,  1,  face,true),
       (face_aux2,           float_type,  3*2*N_modes,  1,  1,  face,true),
-      (stream_f,            float_type,  2*N_modes,    1,  1,  edge,true),
+      (stream_f,            float_type,  3*2*N_modes,  1,  1,  edge,true),
       (edge_aux,            float_type,  3*2*N_modes,  1,  1,  edge,true)
     ))
     // clang-format on
@@ -112,7 +112,7 @@ class Setup_helmholtz
     using datablock_t = datablock_template_t<user_fields>;
     using block_descriptor_t = typename datablock_t::block_descriptor_type;
     using coordinate_t = typename datablock_t::coordinate_type;
-    using domain_t = domain::Domain<Dim, datablock_t>;
+    using domain_t = domain::Domain<Dim, datablock_t, true, N_modes>;
     using domaint_init_f =
         typename domain_t::template block_initialze_fct<Dictionary*>;
     using simulation_t = Simulation<domain_t>;
@@ -121,8 +121,8 @@ class Setup_helmholtz
     using Fmm_t = Fmm<Setup_helmholtz>;
     using fmm_mask_builder_t = FmmMaskBuilder<domain_t>;
     using poisson_solver_t = solver::PoissonSolver<Setup_helmholtz>;
-    using time_integration_t = solver::Ifherk<Setup_helmholtz>;
-    using linsys_solver_t = solver::LinSysSolver<Setup_helmholtz>;
+    using time_integration_t = solver::Ifherk_HELM<Setup_helmholtz>;
+    using linsys_solver_t = solver::LinSysSolver_helm<Setup_helmholtz>;
 
   public: //Ctors
     Setup_helmholtz(Dictionary* _d)

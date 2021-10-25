@@ -32,7 +32,7 @@ namespace ib
  *  in their influence list.
  */
 template<class IBType>
-class ib_communicator
+class ib_communicator_helm
 {
   public: // member types
     using ib_type = IBType;
@@ -41,13 +41,13 @@ class ib_communicator
     using coordinate_type = typename ib_type::coordinate_type;
 
   public: // Ctors
-    ib_communicator(const ib_communicator& other) = default;
-    ib_communicator(ib_communicator&& other) = default;
-    ib_communicator& operator=(const ib_communicator& other) & = default;
-    ib_communicator& operator=(ib_communicator&& other) & = default;
-    ~ib_communicator() = default;
+    ib_communicator_helm(const ib_communicator& other) = default;
+    ib_communicator_helm(ib_communicator_helm&& other) = default;
+    ib_communicator_helm& operator=(const ib_communicator& other) & = default;
+    ib_communicator_helm& operator=(ib_communicator&& other) & = default;
+    ~ib_communicator_helm() = default;
 
-    ib_communicator(ib_type* _ib)
+    ib_communicator_helm(ib_type* _ib)
     : ib_(_ib)
     , locally_owned_indices_(comm_.size())
     , ghost_indices_(comm_.size())
@@ -219,8 +219,8 @@ class ib_communicator
     std::vector<std::vector<std::size_t>> locally_owned_indices_;
     std::vector<std::vector<std::size_t>> ghost_indices_;
 
-    std::vector<std::vector<point_force_type>> locally_owned_data_;
-    std::vector<std::vector<point_force_type>> ghost_data_;
+    std::vector<point_force_type> locally_owned_data_;
+    std::vector<point_force_type> ghost_data_;
 
     std::vector<boost::mpi::request> reqs;
 };

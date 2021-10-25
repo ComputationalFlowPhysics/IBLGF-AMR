@@ -358,6 +358,26 @@ struct Operator
         clean_leaf_correction_boundary<Target>(domain, l, true, 2);
     }
 
+
+    template<class Source, class Target, class Domain>
+    static void levelDivergence_helmholtz_complex(Domain* domain, int l, int N_modes, float_type c) noexcept
+    {
+        auto client = domain->decomposition().client();
+        client->template buffer_exchange<Source>(l);
+        const auto dx_base = domain->dx_base();
+
+        for (auto it = domain->begin(l); it != domain->end(l); ++it)
+        {
+            if (!it->locally_owned()) continue;
+            if (!it->has_data() || !it->data().is_allocated()) continue;
+
+            const auto dx_level = dx_base / std::pow(2, it->refinement_level());
+            divergence_helmholtz_complex<Source, Target>(it->data(), dx_level, N_modes, c);
+        }
+
+        clean_leaf_correction_boundary<Target>(domain, l, true, 2);
+    }
+
     template<class Source, class Target, class Domain>
     static void domainDivergence(Domain* domain) noexcept
     {
@@ -384,6 +404,25 @@ struct Operator
 
             const auto dx_level = dx_base / std::pow(2, it->refinement_level());
             gradient<Source, Target>(it->data(), dx_level);
+        }
+
+        client->template buffer_exchange<Target>(l);
+    }
+
+    template<class Source, class Target, class Domain>
+    static void levelGradient_helmholtz_complex(Domain* domain, int l, int N_modes, float_type c) noexcept
+    {
+        auto client = domain->decomposition().client();
+        //client->template buffer_exchange<Source>(l);
+        const auto dx_base = domain->dx_base();
+
+        for (auto it = domain->begin(l); it != domain->end(l); ++it)
+        {
+            if (!it->locally_owned()) continue;
+            if (!it->has_data() || !it->data().is_allocated()) continue;
+
+            const auto dx_level = dx_base / std::pow(2, it->refinement_level());
+            gradient_helmholtz_complex<Source, Target>(it->data(), dx_level, N_modes, c);
         }
 
         client->template buffer_exchange<Target>(l);
@@ -582,6 +621,28 @@ struct Operator
     template<class U, class Block, class Coord, class Force, class DeltaFunc,
         typename std::enable_if<(U::mesh_type() == MeshObject::face),
             void>::type* = nullptr>
+    static void ib_projection_helmholtz(Coord ib_coord, Force& f, Block& block,
+        DeltaFunc& ddf, int sep)
+    {
+        constexpr auto u = U::tag();
+        for (auto& node : block)
+        {
+            auto n_coord = node.level_coordinate();
+            auto dist = n_coord - ib_coord;
+
+            for (std::size_t field_idx = 0; field_idx < U::nFields();
+                 field_idx++)
+            {
+                decltype(ib_coord) off(0.5);
+                off[field_idx/sep] = 0.0; // face data location
+                f[field_idx] += node(u, field_idx) * ddf(dist + off);
+            }
+        }
+    }
+
+    template<class U, class Block, class Coord, class Force, class DeltaFunc,
+        typename std::enable_if<(U::mesh_type() == MeshObject::face),
+            void>::type* = nullptr>
     static void ib_smearing(Coord ib_coord, Force& f, Block& block,
         DeltaFunc& ddf, float_type factor = 1.0)
     {
@@ -596,6 +657,28 @@ struct Operator
             {
                 decltype(ib_coord) off(0.5);
                 off[field_idx] = 0.0; // face data location
+                node(u, field_idx) += f[field_idx] * ddf(dist + off) * factor;
+            }
+        }
+    }
+
+    template<class U, class Block, class Coord, class Force, class DeltaFunc,
+        typename std::enable_if<(U::mesh_type() == MeshObject::face),
+            void>::type* = nullptr>
+    static void ib_smearing_helmholtz(Coord ib_coord, Force& f, Block& block,
+        DeltaFunc& ddf, int sep, float_type factor = 1.0)
+    {
+        constexpr auto u = U::tag();
+        for (auto& node : block)
+        {
+            auto n_coord = node.level_coordinate();
+            auto dist = n_coord - ib_coord;
+
+            for (std::size_t field_idx = 0; field_idx < U::nFields();
+                 field_idx++)
+            {
+                decltype(ib_coord) off(0.5);
+                off[field_idx/sep] = 0.0; // face data location
                 node(u, field_idx) += f[field_idx] * ddf(dist + off) * factor;
             }
         }
@@ -928,6 +1011,52 @@ struct Operator
 
                 n(dest, 1 * sep + i * 2)     -= n(source, 0 * sep + i * 2 + 1) * omega;
                 n(dest, 1 * sep + i * 2 + 1) += n(source, 0 * sep + i * 2    ) * omega;
+
+            }
+
+        }
+    }
+
+
+    template<class Source, class Dest, class Block,
+        typename std::enable_if<(Source::mesh_type() == MeshObject::edge) &&
+                                    (Dest::mesh_type() == MeshObject::face),
+            void>::type* = nullptr>
+    static void curl_transpose_helmholtz_complex(Block& block,
+        float_type                            dx_level,
+        int                                   N_modes,
+        float_type                            c,
+        float_type                            scale = 1.0,
+        int                                   PREFAC = 2) noexcept
+    {
+        const auto     fac = 1.0 / dx_level *scale;
+        constexpr auto source = Source::tag();
+        constexpr auto dest = Dest::tag();
+        for (auto& n : block)
+        {
+
+
+            int sep = N_modes*PREFAC;
+            for (int i = 0; i < (N_modes * PREFAC) ; i++) {
+                n(dest, 0 * sep + i) =  - n(source, 2 * sep + i) + n.at_offset(source, 0, 1, 2 * sep + i);
+                n(dest, 0 * sep + i) *= fac;
+
+                n(dest, 1 * sep + i) =  n(source, 2 * sep + i) - n.at_offset(source, 1, 0, 2 * sep + i);
+                n(dest, 1 * sep + i) *= fac;
+
+                n(dest, 2 * sep + i) = 
+                - n(source, 1 * sep + i) + n.at_offset(source, 1, 0, 1 * sep + i) +
+                n(source, 0 * sep + i) - n.at_offset(source, 0, 1, 0 * sep + i);
+                n(dest, 2 * sep + i) *= fac;
+            }
+
+            for (int i = 0; i < (N_modes) ; i++) { 
+                float_type omega = 2.0*M_PI*static_cast<float_type>(i)/c;
+                n(dest, 0 * sep + i * 2)     += n(source, 1 * sep + i * 2 + 1) * omega * scale;
+                n(dest, 0 * sep + i * 2 + 1) -= n(source, 1 * sep + i * 2    ) * omega * scale;
+
+                n(dest, 1 * sep + i * 2)     -= n(source, 0 * sep + i * 2 + 1) * omega * scale;
+                n(dest, 1 * sep + i * 2 + 1) += n(source, 0 * sep + i * 2    ) * omega * scale;
 
             }
 
@@ -1310,6 +1439,23 @@ struct Operator
                         f(comp_idx, t, coord) * scale;
                 }
             }
+        }
+    }
+
+    template<typename Field, typename Domain, typename Func>
+    static void add_field_expression_complex_helmholtz(Domain* domain, int N_modes,
+        Func& f, float_type t, float_type scale = 1.0) noexcept
+    {
+        const auto dx_base = domain->dx_base();
+        int sep = 2*N_modes; 
+        
+        for (auto it = domain->begin(); it != domain->end(); ++it)
+        {
+            if (!it->locally_owned() || !it->has_data()) continue;
+
+            n(Field::tag(), 0)     += f(0, t, coord) * scale;
+            n(Field::tag(), sep)   += f(1, t, coord) * scale;
+            n(Field::tag(), 2*sep) += f(2, t, coord) * scale;
         }
     }
 

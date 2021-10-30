@@ -18,6 +18,8 @@
 #include <vector>
 #include <cmath>
 #include <array>
+#include <time.h>
+#include <random>
 
 // IBLGF-specific
 #include <iblgf/global.hpp>
@@ -118,8 +120,19 @@ class Ifherk_HELM
             "updating_source_max", true);
         all_time_max_ = _simulation->dictionary()->template get_or<bool>(
             "all_time_max", true);
-        c_z = _simulation->dictionary()->template get_or<float_type>(
-            "L_z", 1);
+        //c_z = _simulation->dictionary()->template get_or<float_type>(
+        //    "L_z", 1);
+        const int l_max = domain_->tree()->depth();
+        const int l_min = domain_->tree()->base_level();
+        const int nLevels = l_max - l_min;
+        c_z = dx_base_*N_modes*2/std::pow(2.0, nLevels - 1);
+
+        pcout << "c_z is " << c_z << std::endl;
+
+        perturb_nonlin = _simulation->dictionary()->template get_or<float_type>(
+            "perturb_nonlin", 0.0);
+
+        additional_modes = _simulation->dictionary()->template get_or<int>("add_modes", N_modes - 1);
 
         if (dt_base_ < 0) dt_base_ = dx_base_ * cfl_;
 
@@ -618,13 +631,14 @@ class Ifherk_HELM
                      l >= domain_->tree()->base_level(); --l)
                 {
                     client->template buffer_exchange<u_type>(l);
-
+                    //std::cout << world.rank() << " after buffer exchange" << std::endl;
                     domain_->decomposition()
                         .client()
                         ->template communicate_updownward_assign<u_type,
                             u_type>(l, false, false, -1, _field_idx);
+                    //std::cout << world.rank() << " after communicate_updownward_assign" << std::endl;
                 }
-
+                //std::cout << world.rank() << " after first block" << std::endl;
                 for (auto& oct : intrp_list)
                 {
                     if (!oct || !oct->has_data()) continue;
@@ -633,6 +647,7 @@ class Ifherk_HELM
                             u_type::mesh_type(), _field_idx, _field_idx, false,
                             false);
                 }
+                //std::cout << world.rank() << " after interpolation" << std::endl;
             }
         }
         world.barrier();
@@ -1036,7 +1051,8 @@ class Ifherk_HELM
         auto       client = domain_->decomposition().client();
         const auto dx_base = domain_->dx_base();
 
-        const float_type dx_fine = dx_base/std::pow(2.0, max_ref_level_)/1.5; //dx at z (homogeneous) direction, is different from others. Also consider the 3/2 rule so that dx decreased by 1.5
+        //const float_type dx_fine = dx_base/std::pow(2.0, max_ref_level_)/1.5; //dx at z (homogeneous) direction, is different from others. Also consider the 3/2 rule so that dx decreased by 1.5
+        const float_type dx_fine = c_z/static_cast<float_type>(padded_dim); //dx at z (homogeneous) direction, is different from others. Also consider the 3/2 rule so that dx decreased by 1.5
 
         for (int l = domain_->tree()->base_level();
              l < domain_->tree()->depth(); ++l)
@@ -1068,11 +1084,15 @@ class Ifherk_HELM
         domain::Operator::add_field_expression_nonlinear_helmholtz<face_aux_real_type>(domain_,N_modes,
             simulation_->frame_vel(), T_stage_, -1.0);
 
+        //float_type rand_num[domain_->tree()->depth() - domain_->tree()->base_level()];
+        
         for (int l = domain_->tree()->base_level();
              l < domain_->tree()->depth(); ++l)
         {
             client->template buffer_exchange<vort_i_real_type>(l);
             clean_leaf_correction_boundary<vort_i_real_type>(l, false, 2);
+
+            
 
             for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
             {
@@ -1112,7 +1132,7 @@ class Ifherk_HELM
 
                 int vec_size = dim_0*dim_1*N_modes*3*3;
                 domain::Operator::FourierTransformR2C<r_i_real_type, Target>(
-                    it, N_modes, padded_dim, vec_size, nonzero_dim, dim_0, dim_1, r2cFunc);
+                    it, N_modes, padded_dim, vec_size, nonzero_dim, dim_0, dim_1, r2cFunc, (1 + additional_modes));
 
                 /*std::vector<float_type> tmp_vec(vec_size, 0.0);
                 for (int i = 0; i < N_modes*3*3; i++) {
@@ -1142,6 +1162,31 @@ class Ifherk_HELM
                 }
                 */
             }
+        }
+        //adding perturbation
+        for (int l = domain_->tree()->base_level();
+             l < domain_->tree()->depth(); ++l)
+        {
+            srand(time(0));
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
+
+                for (std::size_t field_idx = 0;
+                     field_idx < Target::nFields(); ++field_idx)
+                {
+                    for (auto& n : it->data().node_field())
+                    {
+                        float_type rand_num = static_cast<float_type>(std::rand())/static_cast<float_type>(RAND_MAX) - 0.5;
+                        auto coord = n.global_coordinate() * dx_base;
+                        n(Target::tag(), field_idx) +=
+                            rand_num*perturb_nonlin;
+                    }
+                }
+            }
+
+            //client->template buffer_exchange<Target>(l);
+            //clean_leaf_correction_boundary<Target>(l, true,3);
         }
     }
 
@@ -1251,6 +1296,9 @@ class Ifherk_HELM
     fft::helm_dfft_r2c r2cFunc;
     fft::helm_dfft_c2r c2rFunc;
     float_type c_z; //for the period in the homogeneous direction
+    float_type perturb_nonlin = 0.0;
+
+    int additional_modes = 0;
 
     bool base_mesh_update_ = false;
 

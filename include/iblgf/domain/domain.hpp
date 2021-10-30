@@ -52,6 +52,8 @@ class Domain
 
     // ib related types
     using ib_t = ib::IB<Dim, datablock_t, helmholtz, N_modes>;
+    static constexpr bool helmholtz_bool = helmholtz;
+    static constexpr int  N_modes_val = N_modes;
     //using ib_t_helm = ib:IB_helm<Dim, datablock_t, N_modes>:
 
     // iterator types

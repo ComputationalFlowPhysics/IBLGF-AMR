@@ -1452,10 +1452,21 @@ struct Operator
         for (auto it = domain->begin(); it != domain->end(); ++it)
         {
             if (!it->locally_owned() || !it->has_data()) continue;
+	    
+            for (auto& n : it->data().node_field()) {
+	    
+            auto coord = n.global_coordinate() * dx_base;
 
             n(Field::tag(), 0)     += f(0, t, coord) * scale;
             n(Field::tag(), sep)   += f(1, t, coord) * scale;
             n(Field::tag(), 2*sep) += f(2, t, coord) * scale;
+	    }
+
+            /*auto coord = n.global_coordinate() * dx_base;
+
+            n(Field::tag(), 0)     += f(0, t, coord) * scale;
+            n(Field::tag(), sep)   += f(1, t, coord) * scale;
+            n(Field::tag(), 2*sep) += f(2, t, coord) * scale;*/
         }
     }
 
@@ -1529,7 +1540,7 @@ struct Operator
     template<typename From, typename To, typename Block>
     static void FourierTransformR2C(Block it, int N_modes, int padded_dim,
         int vec_size, int nonzero_dim, int dim_0, int dim_1,
-        fft::helm_dfft_r2c& r2cFunc, int NComp = 3, int PREFAC_FROM = 3,
+        fft::helm_dfft_r2c& r2cFunc, int N_outputModes, int NComp = 3, int PREFAC_FROM = 3,
         int PREFAC_TO = 2, int lBuffer = 1, int rBuffer = 1)
     {
         int N_from = From::nFields();
@@ -1551,7 +1562,7 @@ struct Operator
         std::vector<std::complex<float_type>> output_vel;
         r2cFunc.output_field(output_vel);
 
-        for (int i = 0; i < N_modes * NComp; i++)
+        for (int i = 0; i < N_outputModes * NComp; i++)
         {
             auto& lin_data_real = it->data_r(To::tag(), i * 2);
             auto& lin_data_imag = it->data_r(To::tag(), i * 2 + 1);

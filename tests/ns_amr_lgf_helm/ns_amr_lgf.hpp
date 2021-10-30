@@ -56,7 +56,7 @@ const int Dim = 2;
 struct parameters
 {
     static constexpr std::size_t Dim = 2;
-	static constexpr std::size_t N_modes = 8;
+	static constexpr std::size_t N_modes = 16;
     // clang-format off
     REGISTER_FIELDS
     (
@@ -118,12 +118,12 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
 			[this](std::size_t idx, float_type t, auto coord = {0, 0})
 			{
 				float_type T0 = 0.5;
-				/*if (idx == 2) {
+				if (idx == 2) {
 					float_type h1 = exp(-1/(t/T0));
 					float_type h2 = exp(-1/(1 - t/T0));
 					float_type U_sin = std::sin(2*M_PI*t);
 					return U_sin * (h1/(h1+h2)) * w_perturb;
-				}*/
+				}
 				if (t<=0.0 && smooth_start_)
 					return 0.0;
 				else if (t<T0-1e-10 && smooth_start_)
@@ -253,15 +253,19 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
 		}
 
 		boost::mpi::communicator world;
+		//world.barrier();
 		if (world.rank() == 0)
 			std::cout << "on Simulation: \n" << simulation_ << std::endl;
 	}
 
 	float_type run()
 	{
+		
 		boost::mpi::communicator world;
-
+		//std::cout << world.rank() << " start running" << std::endl;
 		time_integration_t ifherk(&this->simulation_);
+
+		//std::cout << world.rank() << " ifherk initialized" << std::endl;
 
 		if (ic_filename_ != "null")
 			simulation_.template read_h5<u_type>(ic_filename_, "u");
@@ -593,7 +597,7 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
      */
 	void initialize()
 	{
-		poisson_solver_t psolver(&this->simulation_);
+		//poisson_solver_t psolver(&this->simulation_);
 
 		boost::mpi::communicator world;
 		if (domain_->is_server()) return;

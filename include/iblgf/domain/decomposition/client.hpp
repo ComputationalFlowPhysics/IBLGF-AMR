@@ -91,6 +91,9 @@ public:
     using task_manager_t = typename trait_t::task_manager_t;
     using intra_client_server_t = ServerBase<trait_t>;
 
+    static constexpr int N_modes = Domain::N_modes_val;
+    static constexpr bool helmholtz = Domain::helmholtz_bool;
+
   protected:
     using super_type::comm_;
     using super_type::task_manager_;
@@ -730,7 +733,10 @@ public:
     template<class T>
     auto get_octant_idx(T it, int field_idx=0) const noexcept
     {
-        int max_id =  (boost::mpi::environment::max_tag()/3)-1;
+        
+        int sep = 3;
+        if (helmholtz) sep = N_modes * 9;
+        int max_id =  (boost::mpi::environment::max_tag()/sep)-1;
         if (it->global_id()<0)
         {
             std::cout<<"error: trying to get oct idx of -1"<<std::endl;
@@ -910,7 +916,11 @@ public:
 
                     for (std::size_t field_idx=0; field_idx<domain_->dimension(); field_idx++)
                     {
+                        //int sep = 1;
+                        //if (helmholtz) sep = 2 * N_modes;
                         decltype(ib_coord) off(0.5); off[field_idx] = 0.0; // face data location
+                        //off[field_idx/sep] = 0.0; // face data location
+
                         ib_s[i] +=  ib.delta_func()(dist+off);
                     }
                 }

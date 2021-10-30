@@ -91,9 +91,14 @@ class PoissonSolver
         const int l_min = domain_->tree()->base_level();
         const int nLevels = l_max - l_min;
         for (int i = 0; i < N_fourier_modes; i++) {
-            float_type c = (static_cast<float_type>(i)+1.0)/static_cast<float_type>(N_fourier_modes + 1) * 2.0 * M_PI * std::pow(2.0, nLevels);
+            float_type c = (static_cast<float_type>(i)+1.0)/static_cast<float_type>(N_fourier_modes + 1) * 2.0 * M_PI * std::pow(2.0, nLevels - 1);
             lgf_helm_vec.emplace_back(helm_t(c));
         }
+
+        //setting if only advect a subset of modes, the total simulated modes are additional_modes + 1
+        additional_modes = _simulation->dictionary()->template get_or<int>("add_modes", N_fourier_modes);
+        //std::cout << "Number of Fourier modes are " << N_fourier_modes <<std::endl;
+        if (additional_modes > N_fourier_modes) throw std::runtime_error("Additional modes cannot be higher than the number of Fourier modes");
     }
 
   public:
@@ -112,7 +117,7 @@ class PoissonSolver
             this->apply_lgf<Source, Target>(&lgf_helm_vec[n], entry, fmm_type);
     }
 
-    template<class Source, class Target>
+    /*template<class Source, class Target>
     void apply_lgf_and_helm(int N_modes, int NComp = 1,
         int fmm_type = MASK_TYPE::AMR2AMR)
     {
@@ -138,9 +143,69 @@ class PoissonSolver
                 }
             }
         }
+    }*/
+
+    template<class Source, class Target>
+    void apply_lgf_and_helm(int N_modes, int NComp = 1,
+        int fmm_type = MASK_TYPE::AMR2AMR)
+    {
+        if (N_modes != (N_fourier_modes + 1))
+            throw std::runtime_error(
+                "Fourier modes do not match in helmholtz solver");
+        if (Source::nFields() != N_modes * 2 * NComp)
+            throw std::runtime_error(
+                "Fourier modes number elements do not match in helmholtz solver");
+        for (int i = 0; i < NComp; i++)
+        {
+            int add_num = i * N_modes*2;
+            for (std::size_t entry = 0; entry < 2; ++entry)
+                this->apply_lgf<Source, Target>(&lgf_lap_, (add_num + entry), fmm_type);
+            for (std::size_t idx = 0; idx < additional_modes; ++idx)
+            {
+                //int entry = idx*2 + NComp*2;
+                for (std::size_t addentry = 0; addentry < 2; addentry++)
+                {
+                    int entry = addentry + idx * 2 + 2 + add_num;
+                    this->apply_lgf<Source, Target>(&lgf_helm_vec[idx], entry,
+                        fmm_type);
+                }
+            }
+        }
     }
 
 
+
+    /*template<class Source, class Target>
+    void apply_helm_if(float_type _alpha_base, int N_modes, float_type L_z, int NComp = 3, 
+        int fmm_type = MASK_TYPE::AMR2AMR)
+    {
+        lgf_if_.alpha_base_level() = _alpha_base;
+        if (N_modes != (N_fourier_modes + 1))
+            throw std::runtime_error(
+                "Fourier modes do not match in helmholtz solver");
+        if (Source::nFields() != N_modes * 2 * NComp)
+            throw std::runtime_error(
+                "Fourier modes number elements do not match in helmholtz solver");
+        for (int i = 0; i < NComp; i++)
+        {
+            int add_num = i * N_modes*2;
+            for (std::size_t entry = 0; entry < 2; ++entry) {
+                this->apply_if<Source, Target>(&lgf_if_, (add_num + entry), fmm_type);
+            }
+                //this->apply_lgf<Source, Target>(&lgf_if_, (add_num + entry), fmm_type);
+            for (std::size_t idx = 0; idx < N_fourier_modes; ++idx)
+            {
+                //int entry = idx*2 + NComp*2;
+                float_type omega = static_cast<float_type>(idx + 1) * 2.0 * M_PI / L_z;
+                for (std::size_t addentry = 0; addentry < 2; addentry++)
+                {
+                    int entry = addentry + idx * 2 + 2 + add_num;
+                    this->apply_if_helm<Source, Target>(&lgf_if_, omega, entry,
+                        fmm_type);
+                }
+            }
+        }
+    }*/
 
     template<class Source, class Target>
     void apply_helm_if(float_type _alpha_base, int N_modes, float_type L_z, int NComp = 3, 
@@ -160,7 +225,7 @@ class PoissonSolver
                 this->apply_if<Source, Target>(&lgf_if_, (add_num + entry), fmm_type);
             }
                 //this->apply_lgf<Source, Target>(&lgf_if_, (add_num + entry), fmm_type);
-            for (std::size_t idx = 0; idx < N_fourier_modes; ++idx)
+            for (std::size_t idx = 0; idx < additional_modes; ++idx)
             {
                 //int entry = idx*2 + NComp*2;
                 float_type omega = static_cast<float_type>(idx + 1) * 2.0 * M_PI / L_z;
@@ -254,7 +319,7 @@ class PoissonSolver
     }
 
 
-        template<class Source, class Target, class Kernel>
+    template<class Source, class Target, class Kernel>
     void apply_if_helm(Kernel* _kernel, float_type omega, std::size_t _field_idx = 0, int fmm_type = MASK_TYPE::AMR2AMR)
     {
         auto client = domain_->decomposition().client();
@@ -960,6 +1025,8 @@ private:
     parallel_ostream::ParallelOstream pcout=parallel_ostream::ParallelOstream(1);
     bool use_correction_ =true;
     bool subtract_non_leaf_ = false;
+
+    int additional_modes = 0;
 
     //Timings:
     struct Timings

@@ -72,8 +72,15 @@ class LinSysSolver_helm
     {
         cg_threshold_ = simulation_->dictionary_->template get_or<float_type>("cg_threshold",1e-3);
         cg_max_itr_ = simulation_->dictionary_->template get_or<int>("cg_max_itr", 40);
-        c_z = simulation_->dictionary()->template get_or<float_type>(
-            "L_z", 1.0);
+        //c_z = simulation_->dictionary()->template get_or<float_type>(
+        //    "L_z", 1.0);
+        float_type dx_base_ = domain_->dx_base();
+        const int l_max = domain_->tree()->depth();
+        const int l_min = domain_->tree()->base_level();
+        const int nLevels = l_max - l_min;
+        c_z = dx_base_*N_modes*2/std::pow(2.0, nLevels - 1);
+
+        additional_modes = simulation_->dictionary()->template get_or<int>("add_modes", N_modes - 1);
     }
 
     float_type test()
@@ -110,6 +117,9 @@ class LinSysSolver_helm
         this->projection<face_aux_type>(tmp2);
         ib_->communicator().compute_indices();
         ib_->communicator().communicate(true, tmp2);
+
+
+        
 
         if (comm_.rank()==1)
         {
@@ -148,7 +158,7 @@ class LinSysSolver_helm
         this->smearing<face_aux2_type>(ib_->force());
 
         int l = domain_->tree()->depth()-1;
-        domain::Operator::levelDivergence_helmholtz_complex<face_aux2_type, cell_aux2_type>(domain_, l, N_modes, c_z);
+        domain::Operator::levelDivergence_helmholtz_complex<face_aux2_type, cell_aux2_type>(domain_, l, (1 + additional_modes), c_z);
 
         // apply L^-1
         psolver_.template apply_lgf_and_helm<cell_aux2_type,cell_aux2_type>(N_modes, 1, MASK_TYPE::IB2AMR);
@@ -302,7 +312,7 @@ class LinSysSolver_helm
         int l = domain_->tree()->depth()-1;
 
         // div
-        domain::Operator::levelDivergence_helmholtz_complex<Source, cell_aux2_type>(domain_, l, N_modes, c_z);
+        domain::Operator::levelDivergence_helmholtz_complex<Source, cell_aux2_type>(domain_, l, (1 + additional_modes), c_z);
 
         // apply L^-1
         psolver_.template apply_lgf_and_helm<cell_aux2_type, cell_aux2_type>(N_modes, 1, fmm_type);
@@ -315,7 +325,7 @@ class LinSysSolver_helm
                     domain_->tree()->base_level() : domain_->tree()->depth()-1;
 
         for (int l = l_min; l < l_max; ++l)
-            domain::Operator::levelGradient_helmholtz_complex<cell_aux2_type, Target>(domain_, l, N_modes, c_z);
+            domain::Operator::levelGradient_helmholtz_complex<cell_aux2_type, Target>(domain_, l, (1 + additional_modes), c_z);
     }
 
     template<class U, class ForceType,
@@ -420,6 +430,8 @@ class LinSysSolver_helm
     domain_type*     domain_; ///< domain
     ib_t* ib_;
     poisson_solver_t psolver_;
+
+    int additional_modes = 0;
 
     float_type c_z; //length in the homogeneous direction
 

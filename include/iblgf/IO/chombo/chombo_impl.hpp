@@ -141,7 +141,7 @@ class Chombo
             std::vector<octant_type*> v;
 
             // Loop through blocks in level map.
-	    //std::cout << "octant size " << l.octants.size() << std::endl;
+            //std::cout << "octant size " << l.octants.size() << std::endl;
             for (unsigned int i = 0; i != l.octants.size(); ++i)
             {
                 auto& block = l.octants[i];
@@ -214,7 +214,8 @@ class Chombo
 
   public:
     template<typename Field, typename Block_list_t>
-    void read_u( HDF5File* _file, std::string read_field, Block_list_t& blocklist, Domain* domain)
+    void read_u(HDF5File* _file, std::string read_field,
+        Block_list_t& blocklist, Domain* domain)
     {
         // Cleaning ---------------------------------------------------------
         std::size_t nFields = Field::nFields();
@@ -244,9 +245,9 @@ class Chombo
         int num_levels = static_cast<int>(
             _file->template read_attribute<int>(root, "num_levels"));
 
-        int component_idx = 0;
-        std::string read_in_name=read_field;
-        for(int i=0; i<num_components; ++i)
+        int         component_idx = 0;
+        std::string read_in_name = read_field;
+        for (int i = 0; i < num_components; ++i)
         {
             auto attribute = _file->template read_attribute<std::string>(
                 root, "component_" + std::to_string(i));
@@ -285,7 +286,7 @@ class Chombo
             auto file_boxes =
                 _file->template read_box_descriptors<BlockDescriptor>(
                     box_dataset_id, fake_level);
-	    //auto file_boxes = _file->template read_box_from_group<BlockDescriptor>(level_group, fake_level);
+            //auto file_boxes = _file->template read_box_from_group<BlockDescriptor>(level_group, fake_level);
 
             auto dataset_id =
                 H5Dopen2(level_group, "data:datatype=0", H5P_DEFAULT);
@@ -294,10 +295,13 @@ class Chombo
             int                     box_offset = 0;
             for (auto& file_b_dscriptr : file_boxes)
             {
-		if (box_offset < 0) {
-		    std::cout << file_b_dscriptr.extent()[0] << " " << file_b_dscriptr.extent()[1] << " " << box_offset << std::endl;
-		    throw std::runtime_error("Negative box_offset");
-		}
+                if (box_offset < 0)
+                {
+                    std::cout << file_b_dscriptr.extent()[0] << " "
+                              << file_b_dscriptr.extent()[1] << " "
+                              << box_offset << std::endl;
+                    throw std::runtime_error("Negative box_offset");
+                }
                 auto copy_b_dscriptr = file_b_dscriptr;
 
                 for (auto& b : blocklist)
@@ -324,33 +328,38 @@ class Chombo
                     std::array<int, 2> single{0, 0};
                     std::array<int, 2> avg{(factor - 1) / 2, factor / 2};
                     //std::array<std::array<int, 2>, 3> FV_avg{avg, avg, avg};
-		    std::array<std::array<int, 2>, Dim> FV_avg;
+                    std::array<std::array<int, 2>, Dim> FV_avg;
 
-		    for (int i = 0; i < Dim; i++) FV_avg[i] = avg;
+                    for (int i = 0; i < Dim; i++) FV_avg[i] = avg;
 
                     if (has_overlap)
                     {
                         for (std::size_t field_idx = 0; field_idx < nFields;
                              ++field_idx)
                         {
+                            int sep = 1;
+                            if (domain->helmholtz_bool) sep = domain->N_modes_val * 3;
                             // Finte Volume requires differnet averaging for
                             // differnt mesh objects
                             //FV_avg = {avg, avg, avg};
 
-		    	    for (int j = 0; j < Dim; j++) FV_avg[j] = avg;
+                            for (int j = 0; j < Dim; j++) FV_avg[j] = avg;
                             if (Field::mesh_type() == MeshObject::face)
-                                FV_avg[field_idx] = single;
+                                FV_avg[field_idx/sep] = single;
                             else if (Field::mesh_type() == MeshObject::edge)
                             {
                                 //FV_avg = {single, single, single};
 
-		    	    	for (int j = 0; j < Dim; j++) FV_avg[j] = single;
-                                FV_avg[field_idx] = avg;
+                                for (int j = 0; j < Dim; j++)
+                                    FV_avg[j] = single;
+                                FV_avg[field_idx/sep] = avg;
                             }
-                            else if (Field::mesh_type() == MeshObject::vertex) {
+                            else if (Field::mesh_type() == MeshObject::vertex)
+                            {
                                 //FV_avg = {single, single, single};
-				for (int j = 0; j < Dim; j++) FV_avg[j] = single;
-			    }
+                                for (int j = 0; j < Dim; j++)
+                                    FV_avg[j] = single;
+                            }
                             else if (Field::mesh_type() == MeshObject::cell)
                             {
                             }
@@ -364,225 +373,247 @@ class Chombo
                                 (FV_avg[2][1] - FV_avg[2][0] + 1) *
                                 (FV_avg[1][1] - FV_avg[1][0] + 1) *
                                 (FV_avg[0][1] - FV_avg[0][0] + 1);*/
-			    float_type total_avg = 1.0;
-			    for (int j = 0; j < Dim; j++) total_avg *= (FV_avg[j][1] - FV_avg[j][0] + 1);
+                            float_type total_avg = 1.0;
+                            for (int j = 0; j < Dim; j++)
+                                total_avg *= (FV_avg[j][1] - FV_avg[j][0] + 1);
 
-			    if (Dim == 3) {
-                            for (int shift_k = FV_avg[2][0];
-                                 shift_k <= FV_avg[2][1]; ++shift_k) {
-                                for (int k = 0; k < overlap_local.extent()[2];
-                                     ++k) {
-                                    for (int shift_j = FV_avg[1][0];
-                                         shift_j <= FV_avg[1][1]; ++shift_j) {
-                                        for (int j = 0;
-                                             j < overlap_local.extent()[1]; ++j) {
-                                            for (int shift_i = FV_avg[0][0];
-                                                 shift_i <= FV_avg[0][1];
-                                                 ++shift_i)
+                            if (Dim == 3)
+                            {
+                                for (int shift_k = FV_avg[2][0];
+                                     shift_k <= FV_avg[2][1]; ++shift_k)
+                                {
+                                    for (int k = 0;
+                                         k < overlap_local.extent()[2]; ++k)
+                                    {
+                                        for (int shift_j = FV_avg[1][0];
+                                             shift_j <= FV_avg[1][1]; ++shift_j)
+                                        {
+                                            for (int j = 0;
+                                                 j < overlap_local.extent()[1];
+                                                 ++j)
                                             {
-                                                int file_idx_2 =
-                                                    scale_up_overlap_local
-                                                        .base()[2] -
-                                                    file_b_dscriptr.base()[2] +
-                                                    k * factor + shift_k;
-                                                int file_idx_1 =
-                                                    scale_up_overlap_local
-                                                        .base()[1] -
-                                                    file_b_dscriptr.base()[1] +
-                                                    j * factor + shift_j;
-                                                if (file_idx_2 >=
-                                                    file_b_dscriptr.extent()[2])
-                                                    continue;
-                                                if (file_idx_2 < 0) continue;
-                                                if (file_idx_1 >=
-                                                    file_b_dscriptr.extent()[1])
-                                                    continue;
-                                                if (file_idx_1 < 0) continue;
-
-                                                int offset =
-                                                    box_offset +
-                                                    (component_idx +
-                                                        field_idx) *
-                                                        file_b_dscriptr
-                                                            .extent()[0] *
-                                                        file_b_dscriptr
-                                                            .extent()[1] *
-                                                        file_b_dscriptr
-                                                            .extent()[2] +
-                                                    (file_idx_2)*file_b_dscriptr
-                                                            .extent()[0] *
-                                                        file_b_dscriptr
-                                                            .extent()[1] +
-                                                    (file_idx_1)*file_b_dscriptr
-                                                        .extent()[0] +
-                                                    (scale_up_overlap_local
-                                                            .base()[0] -
-                                                        file_b_dscriptr
-                                                            .base()[0]) +
-                                                    shift_i;
-
-                                                std::vector<hsize_t> base(
-                                                    1, offset),
-                                                    extent(1, overlap_local
-                                                                  .extent()[0]),
-                                                    stride(1, factor);
-                                                _file->template read_hyperslab<
-                                                    float_type>(dataset_id,
-                                                    base, extent, stride, data);
-
-                                                for (int i = 0;
-                                                     i <
-                                                     overlap_local.extent()[0];
-                                                     ++i)
+                                                for (int shift_i = FV_avg[0][0];
+                                                     shift_i <= FV_avg[0][1];
+                                                     ++shift_i)
                                                 {
-                                                    int file_idx_0 =
+                                                    int file_idx_2 =
                                                         scale_up_overlap_local
-                                                            .base()[0] -
+                                                            .base()[2] -
                                                         file_b_dscriptr
-                                                            .base()[0] +
-                                                        i * factor + shift_i;
-                                                    if (file_idx_0 >=
+                                                            .base()[2] +
+                                                        k * factor + shift_k;
+                                                    int file_idx_1 =
+                                                        scale_up_overlap_local
+                                                            .base()[1] -
                                                         file_b_dscriptr
-                                                            .extent()[0])
+                                                            .base()[1] +
+                                                        j * factor + shift_j;
+                                                    if (file_idx_2 >=
+                                                        file_b_dscriptr
+                                                            .extent()[2])
                                                         continue;
-                                                    if (file_idx_0 < 0)
+                                                    if (file_idx_2 < 0)
+                                                        continue;
+                                                    if (file_idx_1 >=
+                                                        file_b_dscriptr
+                                                            .extent()[1])
+                                                        continue;
+                                                    if (file_idx_1 < 0)
                                                         continue;
 
-						    const coordinate_type<int, 3> 
-							    tmp({i + overlap_local
+                                                    int offset =
+                                                        box_offset +
+                                                        (component_idx +
+                                                            field_idx) *
+                                                            file_b_dscriptr
+                                                                .extent()[0] *
+                                                            file_b_dscriptr
+                                                                .extent()[1] *
+                                                            file_b_dscriptr
+                                                                .extent()[2] +
+                                                        (file_idx_2)*file_b_dscriptr
+                                                                .extent()[0] *
+                                                            file_b_dscriptr
+                                                                .extent()[1] +
+                                                        (file_idx_1)*file_b_dscriptr
+                                                            .extent()[0] +
+                                                        (scale_up_overlap_local
+                                                                .base()[0] -
+                                                            file_b_dscriptr
+                                                                .base()[0]) +
+                                                        shift_i;
+
+                                                    std::vector<hsize_t> base(
+                                                        1, offset),
+                                                        extent(1,
+                                                            overlap_local
+                                                                .extent()[0]),
+                                                        stride(1, factor);
+                                                    _file
+                                                        ->template read_hyperslab<
+                                                            float_type>(
+                                                            dataset_id, base,
+                                                            extent, stride,
+                                                            data);
+
+                                                    for (int i = 0;
+                                                         i < overlap_local
+                                                                 .extent()[0];
+                                                         ++i)
+                                                    {
+                                                        int file_idx_0 =
+                                                            scale_up_overlap_local
+                                                                .base()[0] -
+                                                            file_b_dscriptr
+                                                                .base()[0] +
+                                                            i * factor +
+                                                            shift_i;
+                                                        if (file_idx_0 >=
+                                                            file_b_dscriptr
+                                                                .extent()[0])
+                                                            continue;
+                                                        if (file_idx_0 < 0)
+                                                            continue;
+
+                                                        const coordinate_type<
+                                                            int, 3>
+                                                            tmp({i + overlap_local
                                                                          .base()
                                                                              [0],
-                                                            j + overlap_local
-                                                                    .base()[1],
-                                                            k + overlap_local
-                                                                    .base()
-                                                                        [2]});
+                                                                j + overlap_local
+                                                                        .base()
+                                                                            [1],
+                                                                k + overlap_local
+                                                                        .base()
+                                                                            [2]});
 
-                                                    coordinate_type<int, Dim>
-                                                        coffset;
-						    for (int tmp_i = 0; tmp_i < Dim; tmp_i++) {
-						    	coffset[tmp_i] = tmp[tmp_i];
-						    }
-                                                    b->data_r(Field::tag(),
-                                                        coffset, field_idx) +=
-                                                        data[i] / total_avg;
+                                                        coordinate_type<int,
+                                                            Dim>
+                                                            coffset;
+                                                        for (int tmp_i = 0;
+                                                             tmp_i < Dim;
+                                                             tmp_i++)
+                                                        {
+                                                            coffset[tmp_i] =
+                                                                tmp[tmp_i];
+                                                        }
+                                                        b->data_r(Field::tag(),
+                                                            coffset,
+                                                            field_idx) +=
+                                                            data[i] / total_avg;
+                                                    }
                                                 }
                                             }
-					}
-				    }
-				}
-			    }
-			    }
-			    else if (Dim == 2) {
-			    	
-                            /*for (int shift_k = FV_avg[2][0];
+                                        }
+                                    }
+                                }
+                            }
+                            else if (Dim == 2)
+                            {
+                                /*for (int shift_k = FV_avg[2][0];
                                  shift_k <= FV_avg[2][1]; ++shift_k) {
                                 for (int k = 0; k < overlap_local.extent()[2];
                                      ++k) {*/
-                                    for (int shift_j = FV_avg[1][0];
-                                         shift_j <= FV_avg[1][1]; ++shift_j) {
-                                        for (int j = 0;
-                                             j < overlap_local.extent()[1]; ++j) {
-                                            for (int shift_i = FV_avg[0][0];
-                                                 shift_i <= FV_avg[0][1];
-                                                 ++shift_i)
-                                            {
-                                                /*int file_idx_2 =
+                                for (int shift_j = FV_avg[1][0];
+                                     shift_j <= FV_avg[1][1]; ++shift_j)
+                                {
+                                    for (int j = 0;
+                                         j < overlap_local.extent()[1]; ++j)
+                                    {
+                                        for (int shift_i = FV_avg[0][0];
+                                             shift_i <= FV_avg[0][1]; ++shift_i)
+                                        {
+                                            /*int file_idx_2 =
                                                     scale_up_overlap_local
                                                         .base()[2] -
                                                     file_b_dscriptr.base()[2] +
                                                     k * factor + shift_k;*/
-                                                int file_idx_1 =
-                                                    scale_up_overlap_local
-                                                        .base()[1] -
-                                                    file_b_dscriptr.base()[1] +
-                                                    j * factor + shift_j;
-                                                /*if (file_idx_2 >=
+                                            int file_idx_1 =
+                                                scale_up_overlap_local
+                                                    .base()[1] -
+                                                file_b_dscriptr.base()[1] +
+                                                j * factor + shift_j;
+                                            /*if (file_idx_2 >=
                                                     file_b_dscriptr.extent()[2])
                                                     continue;
                                                 if (file_idx_2 < 0) continue;*/
-                                                if (file_idx_1 >=
-                                                    file_b_dscriptr.extent()[1])
+                                            if (file_idx_1 >=
+                                                file_b_dscriptr.extent()[1])
+                                                continue;
+                                            if (file_idx_1 < 0) continue;
+
+                                            int offset =
+                                                box_offset +
+                                                (component_idx + field_idx) *
+                                                    file_b_dscriptr
+                                                        .extent()[0] *
+                                                    file_b_dscriptr
+                                                        .extent()[1] +
+                                                (file_idx_1)*file_b_dscriptr
+                                                    .extent()[0] +
+                                                (scale_up_overlap_local
+                                                        .base()[0] -
+                                                    file_b_dscriptr.base()[0]) +
+                                                shift_i;
+
+                                            std::vector<hsize_type> base(
+                                                1, offset),
+                                                extent(1,
+                                                    overlap_local.extent()[0]),
+                                                stride(1, factor);
+                                            _file->template read_hyperslab<
+                                                float_type>(dataset_id, base,
+                                                extent, stride, data);
+
+                                            for (int i = 0;
+                                                 i < overlap_local.extent()[0];
+                                                 ++i)
+                                            {
+                                                int file_idx_0 =
+                                                    scale_up_overlap_local
+                                                        .base()[0] -
+                                                    file_b_dscriptr.base()[0] +
+                                                    i * factor + shift_i;
+                                                if (file_idx_0 >=
+                                                    file_b_dscriptr.extent()[0])
                                                     continue;
-                                                if (file_idx_1 < 0) continue;
+                                                if (file_idx_0 < 0) continue;
 
-                                                int offset =
-                                                    box_offset +
-                                                    (component_idx +
-                                                        field_idx) *
-                                                        file_b_dscriptr
-                                                            .extent()[0] *
-                                                        file_b_dscriptr
-                                                            .extent()[1] +
-                                                    (file_idx_1)*file_b_dscriptr
-                                                        .extent()[0] +
-                                                    (scale_up_overlap_local
-                                                            .base()[0] -
-                                                        file_b_dscriptr
-                                                            .base()[0]) +
-                                                    shift_i;
+                                                const coordinate_type<int, 2>
+                                                    tmp({i + overlap_local
+                                                                 .base()[0],
+                                                        j + overlap_local
+                                                                .base()[1]});
 
-
-                                                std::vector<hsize_type> base(
-                                                    1, offset),
-                                                    extent(1, overlap_local
-                                                                  .extent()[0]),
-                                                    stride(1, factor);
-                                                _file->template read_hyperslab<
-                                                    float_type>(dataset_id,
-                                                    base, extent, stride, data);
-
-                                                for (int i = 0;
-                                                     i <
-                                                     overlap_local.extent()[0];
-                                                     ++i)
+                                                coordinate_type<int, Dim>
+                                                    coffset;
+                                                for (int tmp_i = 0; tmp_i < Dim;
+                                                     tmp_i++)
                                                 {
-                                                    int file_idx_0 =
-                                                        scale_up_overlap_local
-                                                            .base()[0] -
-                                                        file_b_dscriptr
-                                                            .base()[0] +
-                                                        i * factor + shift_i;
-                                                    if (file_idx_0 >=
-                                                        file_b_dscriptr
-                                                            .extent()[0])
-                                                        continue;
-                                                    if (file_idx_0 < 0)
-                                                        continue;
-
-						    const coordinate_type<int, 2> 
-							    tmp({i + overlap_local
-                                                                         .base()
-                                                                             [0],
-                                                            j + overlap_local
-                                                                    .base()[1]});
-
-                                                    coordinate_type<int, Dim>
-                                                        coffset;
-						    for (int tmp_i = 0; tmp_i < Dim; tmp_i++) {
-						    	coffset[tmp_i] = tmp[tmp_i];
-						    }
-
-						    //std::cout << "coord is " << coffset[0] << " " << coffset[1] << " " << data[i] << std::endl;
-                                                    
-                                                    b->data_r(Field::tag(),
-                                                        coffset, field_idx) +=
-                                                        data[i] / total_avg;
+                                                    coffset[tmp_i] = tmp[tmp_i];
                                                 }
+
+                                                //std::cout << "coord is " << coffset[0] << " " << coffset[1] << " " << data[i] << std::endl;
+
+                                                b->data_r(Field::tag(), coffset,
+                                                    field_idx) +=
+                                                    data[i] / total_avg;
                                             }
-					}
-				    }
-			    }
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
 
-		int added_num = 1;
+                int added_num = 1;
 
-		for (int j = 0; j < Dim; j++) added_num *= copy_b_dscriptr.extent()[j];
-		//if (added_num == 1) continue;
-		box_offset += (added_num*num_components);
-		//std::cout << "copy descptr dim " << copy_b_dscriptr.extent()[0] << " " << copy_b_dscriptr.extent()[1] << " " << num_components << " " << " box_offset: " << box_offset << std::endl;
+                for (int j = 0; j < Dim; j++)
+                    added_num *= copy_b_dscriptr.extent()[j];
+                //if (added_num == 1) continue;
+                box_offset += (added_num * num_components);
+                //std::cout << "copy descptr dim " << copy_b_dscriptr.extent()[0] << " " << copy_b_dscriptr.extent()[1] << " " << num_components << " " << " box_offset: " << box_offset << std::endl;
 
                 /*box_offset += copy_b_dscriptr.extent()[0] *
                               copy_b_dscriptr.extent()[1] *
@@ -726,38 +757,42 @@ class Chombo
                 auto l = it_lvl->second;
 
                 // Determine size of dataset for this level to create dataset
-		//std::cout << "octant group size " << l.octant_groups.size() << " num_comp " << num_components << std::endl;
+                //std::cout << "octant group size " << l.octant_groups.size() << " num_comp " << num_components << std::endl;
                 for (std::size_t g = 0; g < l.octant_groups.size(); ++g)
                 {
-		    //std::cout << "sub group size: " << l.octant_groups[g].size() << " dset_size " << dset_size << std::endl;
+                    //std::cout << "sub group size: " << l.octant_groups[g].size() << " dset_size " << dset_size << std::endl;
                     for (std::size_t b = 0; b < l.octant_groups[g].size(); ++b)
                     {
                         hsize_type  nElements_patch = 1;
                         const auto& p = l.octant_groups[g][b];
                         const auto& block_desc = p->data().descriptor();
-			//std::cout << "Dim " << Dim << std::endl;
-			//std::cout << "Block size: ";
-			bool flag = true;
-			while (flag) {
-			    hsize_type c = 1;
-			    for (std::size_t d = 0; d < Dim; ++d) {
-			    	c *= block_desc.extent()[d];
-			    }
-			    if (c > 1) {flag = false;dset_size += c*num_components;}
-			}
-                        /*for (std::size_t d = 0; d < Dim;
+                        //std::cout << "Dim " << Dim << std::endl;
+                        //std::cout << "Block size: ";
+                        bool flag = true;
+                        /*while (flag)
+                        {
+                            hsize_type c = 1;
+                            for (std::size_t d = 0; d < Dim; ++d)
+                            { c *= block_desc.extent()[d]; }
+                            if (c > 1)
+                            {
+                                flag = false;
+                                dset_size += c * num_components;
+                            }
+                        }*/
+                        for (std::size_t d = 0; d < Dim;
                              ++d) // for node-centered
                         {
 				nElements_patch *= block_desc.extent()[d];
-			}*/
-			//std::cout << std::endl;
-                        //dset_size += nElements_patch * num_components;
+			}
+                        //std::cout << std::endl;
+                        dset_size += nElements_patch * num_components;
                     }
                 }
                 offsets_size = l.octant_groups.size() + 1;
-		//std::cout << "dset_size: " << dset_size << std::endl;
+                //std::cout << "dset_size: " << dset_size << std::endl;
             }
-	    world.barrier();
+            world.barrier();
 
             // Scatter size of "offsets"
             boost::mpi::broadcast(
@@ -778,7 +813,7 @@ class Chombo
                 world, dset_size, 0); // send from server to all others
 
             // Create full empty dataset with all processes
-	    //std::cout << "rank " << world.rank() << " dset size " << dset_size << std::endl;
+            //std::cout << "rank " << world.rank() << " dset size " << dset_size << std::endl;
             auto space = _file->create_simple_space(1, &dset_size, NULL);
             auto dset_id = _file->template create_dataset<value_type>(
                 group_id_lvl, "data:datatype=0", space); //collective
@@ -831,83 +866,102 @@ class Chombo
             {
                 double                   field_value = 0.0;
                 boost::mpi::communicator world;
-                if (world.rank() != 0) {
-		    if (Dim == 3) {
-		    	
-                    for (auto z = 0; z < group_extent; ++z){
-                        // base and max should be based on 0 (*block_extent)
-                        for (auto k = 0; k < block_extent[2]; ++k) {
-                            for (auto y = 0; y < group_extent; ++y) {
-                                for (auto j = 0; j < block_extent[1]; ++j) {
-                                    for (auto x = 0; x < group_extent; ++x)
+                if (world.rank() != 0)
+                {
+                    if (Dim == 3)
+                    {
+                        for (auto z = 0; z < group_extent; ++z)
+                        {
+                            // base and max should be based on 0 (*block_extent)
+                            for (auto k = 0; k < block_extent[2]; ++k)
+                            {
+                                for (auto y = 0; y < group_extent; ++y)
+                                {
+                                    for (auto j = 0; j < block_extent[1]; ++j)
                                     {
-                                        int group_coord =
-                                            x + y * group_extent +
-                                            z * pow(group_extent, 2);
-                                        const auto& octant =
-                                            (ordered_group)[group_coord];
-                                        const auto& block_desc =
-                                            octant->data().descriptor();
-                                        const auto& field =
-                                            &(octant->data().node_field());
-
-                                        auto base = block_desc.base();
-
-                                        for (auto i = 0; i < block_extent[0];
-                                             ++i)
+                                        for (auto x = 0; x < group_extent; ++x)
                                         {
-					    const coordinate_type<int, 3> tmp({i + base[0], j + base[1], k + base[2]});
-                                            coordinate_type<int, Dim> c;
-					    for (int tmp_i = 0; tmp_i < Dim; tmp_i++) c[tmp_i] = tmp[tmp_i];
-                                            auto n = field->get(c);
+                                            int group_coord =
+                                                x + y * group_extent +
+                                                z * pow(group_extent, 2);
+                                            const auto& octant =
+                                                (ordered_group)[group_coord];
+                                            const auto& block_desc =
+                                                octant->data().descriptor();
+                                            const auto& field =
+                                                &(octant->data().node_field());
 
-                                            field_value = 0.0;
-                                            field_value = static_cast<value_type>( n(T::tag(),fidx));
-                                            single_block_data.push_back( field_value);
+                                            auto base = block_desc.base();
+
+                                            for (auto i = 0;
+                                                 i < block_extent[0]; ++i)
+                                            {
+                                                const coordinate_type<int, 3>
+                                                                          tmp({i + base[0],
+                                                        j + base[1],
+                                                        k + base[2]});
+                                                coordinate_type<int, Dim> c;
+                                                for (int tmp_i = 0; tmp_i < Dim;
+                                                     tmp_i++)
+                                                    c[tmp_i] = tmp[tmp_i];
+                                                auto n = field->get(c);
+
+                                                field_value = 0.0;
+                                                field_value =
+                                                    static_cast<value_type>(
+                                                        n(T::tag(), fidx));
+                                                single_block_data.push_back(
+                                                    field_value);
+                                            }
                                         }
                                     }
-				}
-			    }
-			}
-		    }
-		    }
-		    else if (Dim == 2) {
-                            for (auto y = 0; y < group_extent; ++y) {
-                                for (auto j = 0; j < block_extent[1]; ++j) {
-                                    for (auto x = 0; x < group_extent; ++x)
+                                }
+                            }
+                        }
+                    }
+                    else if (Dim == 2)
+                    {
+                        for (auto y = 0; y < group_extent; ++y)
+                        {
+                            for (auto j = 0; j < block_extent[1]; ++j)
+                            {
+                                for (auto x = 0; x < group_extent; ++x)
+                                {
+                                    int group_coord = x + y * group_extent /* +
+                                            z * pow(group_extent, 2)*/
+                                        ;
+                                    const auto& octant =
+                                        (ordered_group)[group_coord];
+                                    const auto& block_desc =
+                                        octant->data().descriptor();
+                                    const auto& field =
+                                        &(octant->data().node_field());
+
+                                    auto base = block_desc.base();
+
+                                    for (auto i = 0; i < block_extent[0]; ++i)
                                     {
-                                        int group_coord =
-                                            x + y * group_extent/* +
-                                            z * pow(group_extent, 2)*/;
-                                        const auto& octant =
-                                            (ordered_group)[group_coord];
-                                        const auto& block_desc =
-                                            octant->data().descriptor();
-                                        const auto& field =
-                                            &(octant->data().node_field());
+                                        //const coordinate_type<int, Dim> c({i + base[0], j + base[1]});
+                                        //auto n = field->get(c);
+                                        const coordinate_type<int, 2> tmp(
+                                            {i + base[0], j + base[1]});
+                                        coordinate_type<int, Dim> c;
+                                        for (int tmp_i = 0; tmp_i < Dim;
+                                             tmp_i++)
+                                            c[tmp_i] = tmp[tmp_i];
+                                        auto n = field->get(c);
 
-                                        auto base = block_desc.base();
-
-                                        for (auto i = 0; i < block_extent[0];
-                                             ++i)
-                                        {
-
-                                            //const coordinate_type<int, Dim> c({i + base[0], j + base[1]});
-                                            //auto n = field->get(c);
-					    const coordinate_type<int, 2> tmp({i + base[0], j + base[1]});
-                                            coordinate_type<int, Dim> c;
-					    for (int tmp_i = 0; tmp_i < Dim; tmp_i++) c[tmp_i] = tmp[tmp_i];
-                                            auto n = field->get(c);
-
-                                            field_value = 0.0;
-                                            field_value = static_cast<value_type>( n(T::tag(),fidx));
-                                            single_block_data.push_back( field_value);
-                                        }
+                                        field_value = 0.0;
+                                        field_value = static_cast<value_type>(
+                                            n(T::tag(), fidx));
+                                        single_block_data.push_back(
+                                            field_value);
                                     }
-				}
-			    }
-		    }
-		}
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
 
@@ -962,8 +1016,7 @@ class Chombo
                         int         rank = octant->rank();
                         // Loop through components in block
                         hsize_type  nElements_patch = 1;
-                        const auto& block_desc =
-                            octant->data().descriptor();
+                        const auto& block_desc = octant->data().descriptor();
                         for (std::size_t d = 0; d < Dim;
                              ++d) // for node-centered
                         { nElements_patch *= block_desc.extent()[d]; }
@@ -1033,9 +1086,9 @@ class Chombo
 
             // ----------------------------------------------------------------
             // Write DATA for different components-----------------------------
-	    //std::cout << world.rank() << " before opening" << std::endl;
+            //std::cout << world.rank() << " before opening" << std::endl;
             auto dset_id = _file->open_dataset(group_id, "data:datatype=0");
-	    //std::cout << world.rank() << " after opening" << std::endl;
+            //std::cout << world.rank() << " after opening" << std::endl;
 
             std::vector<value_type> single_block_data;
 
@@ -1049,9 +1102,11 @@ class Chombo
                 auto base0 = block_desc0.base();
                 auto block_extent = block_desc0.extent();
                 // for cubic blocks and cubic extents
-		int group_extent = 0;
-                if (Dim == 3) group_extent = std::cbrt(l.octant_groups[g].size());
-		if (Dim == 2) group_extent = std::sqrt(l.octant_groups[g].size());
+                int group_extent = 0;
+                if (Dim == 3)
+                    group_extent = std::cbrt(l.octant_groups[g].size());
+                if (Dim == 2)
+                    group_extent = std::sqrt(l.octant_groups[g].size());
 
                 // Order octants:
                 std::vector<octant_type*> ordered_group(
@@ -1071,7 +1126,9 @@ class Chombo
                     int group_coord =
                         base_shift0[0] / block_extent[0] +
                         base_shift0[1] / block_extent[1] * group_extent;
-		    if (Dim == 3) group_coord += base_shift0[2] / block_extent[2] * group_extent * group_extent;
+                    if (Dim == 3)
+                        group_coord += base_shift0[2] / block_extent[2] *
+                                       group_extent * group_extent;
 
                     ordered_group[group_coord] = p;
                 }

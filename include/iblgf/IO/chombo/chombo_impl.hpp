@@ -769,7 +769,7 @@ class Chombo
                         //std::cout << "Dim " << Dim << std::endl;
                         //std::cout << "Block size: ";
                         bool flag = true;
-                        /*while (flag)
+                        while (flag)
                         {
                             hsize_type c = 1;
                             for (std::size_t d = 0; d < Dim; ++d)
@@ -779,14 +779,14 @@ class Chombo
                                 flag = false;
                                 dset_size += c * num_components;
                             }
-                        }*/
-                        for (std::size_t d = 0; d < Dim;
+                        }
+                        /*for (std::size_t d = 0; d < Dim;
                              ++d) // for node-centered
                         {
 				nElements_patch *= block_desc.extent()[d];
 			}
                         //std::cout << std::endl;
-                        dset_size += nElements_patch * num_components;
+                        dset_size += nElements_patch * num_components;*/
                     }
                 }
                 offsets_size = l.octant_groups.size() + 1;

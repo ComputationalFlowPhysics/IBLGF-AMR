@@ -140,6 +140,21 @@ class Setup_helmholtz
         auto d = _d->get_dictionary("simulation_parameters");
         use_restart_ = d->template get_or<bool>("use_restart", true);
 
+        use_tree_ = d->template get_or<bool>("use_init_tree", false);
+        std::string ic_name_2D = d->template get_or<std::string>(
+			"hdf5_ic_name_2D", "null");
+
+        std::string ic_name_ = d->template get_or<std::string>(
+			"hdf5_ic_name", "null");
+
+        std::string ic_tree = d->template get_or<std::string>(
+			"hdf5_ic_tree_2D", "null");
+        
+        if ((ic_name_ != "null" || ic_name_2D != "null") && !use_tree_) {
+            throw std::runtime_error("need initial tree to use ic file");
+        }
+
+
         if (restart_tree_dir == "")
         {
             if (!simulation_.restart_dir_exist()) { use_restart_ = false; }
@@ -153,10 +168,15 @@ class Setup_helmholtz
             use_restart_ = true;
         }
 
-        if (!use_restart_)
+        if (!use_restart_ && !use_tree_)
         {
             domain_->initialize(
                 simulation_.dictionary()->get_dictionary("domain").get(), _fct);
+        }
+        else if (use_tree_) {
+            domain_->initialize_with_keys(
+                simulation_.dictionary()->get_dictionary("domain").get(),
+                ic_tree);
         }
         else
         {
@@ -425,6 +445,7 @@ class Setup_helmholtz
         parallel_ostream::ParallelOstream(1);
 
     bool use_restart_ = false;
+    bool use_tree_ = false;
     int  nLevels_ = 0;
     int  global_refinement_;
 };

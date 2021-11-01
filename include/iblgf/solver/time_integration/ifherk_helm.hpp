@@ -120,6 +120,7 @@ class Ifherk_HELM
             "updating_source_max", true);
         all_time_max_ = _simulation->dictionary()->template get_or<bool>(
             "all_time_max", true);
+        customized_ic = _simulation->dictionary()->template get_or<bool>("use_init_tree", false);
         //c_z = _simulation->dictionary()->template get_or<float_type>(
         //    "L_z", 1);
         const int l_max = domain_->tree()->depth();
@@ -191,6 +192,7 @@ class Ifherk_HELM
         if (use_restart_)
         {
             just_restarted_ = true;
+            customized_ic   = false;
             Dictionary info_d(
                 simulation_->restart_load_dir() + "/restart_info");
             T_ = info_d.template get<float_type>("T");
@@ -291,8 +293,9 @@ class Ifherk_HELM
                 //    up_and_down<u>();
                 //    pad_velocity<u, u>();
                 //}
-                if (!just_restarted_) this->adapt(false);
+                if (!just_restarted_ && !customized_ic) this->adapt(false);
                 just_restarted_ = false;
+                customized_ic   = false;
             }
 
             // balance load
@@ -1322,6 +1325,7 @@ class Ifherk_HELM
 
     bool use_restart_ = false;
     bool just_restarted_ = false;
+    bool customized_ic = false; // if initial cond it provided, need to treat adapt process like just restarted
     bool write_restart_ = false;
     bool updating_source_max_ = false;
     bool all_time_max_;

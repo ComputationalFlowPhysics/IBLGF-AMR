@@ -107,6 +107,10 @@ class Simulation
             io_h5.write_h5(io::output().dir()+"/flow_"+_filename+".hdf5", domain_.get(), false, false);
             if (domain_->is_server())
                 write_tree("_"+_filename, false);
+
+            io_h5.write_h5(io::output().dir()+"/flow_init_"+_filename+".hdf5", domain_.get(), true, true);
+            if (domain_->is_server())
+                write_tree("_init_"+_filename, false);
         }
     }
 
@@ -135,6 +139,12 @@ class Simulation
     void read_h5(std::string _filename, std::string field_name)
     {
        io_h5.template read_h5<Field>(_filename, field_name, domain_.get());
+    }
+
+    template<typename Field>
+    void read_h5_2D(std::string _filename, std::string field_name)
+    {
+       io_h5.template read_h5_2D<Field>(_filename, field_name, domain_.get());
     }
 
     auto& domain()noexcept{return domain_;}

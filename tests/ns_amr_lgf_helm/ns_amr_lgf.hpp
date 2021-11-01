@@ -181,6 +181,9 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
 		ic_filename_ = simulation_.dictionary_->template get_or<std::string>(
 			"hdf5_ic_name", "null");
 
+		ic_filename_2D_ = simulation_.dictionary_->template get_or<std::string>(
+			"hdf5_ic_name_2D", "null");
+
 		ref_filename_ = simulation_.dictionary_->template get_or<std::string>(
 			"hdf5_ref_name", "null");
 
@@ -200,6 +203,8 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
 
 		global_refinement_ = simulation_.dictionary_->template get_or<int>(
 			"global_refinement", 0);
+
+		bool use_tree_ = simulation_.dictionary_->template get_or<bool>("use_init_tree", false);
 
 		//bool subtract_non_leaf_ = simulation_.dictionaty()->template get_or<bool>("subtract_non_leaf", true);
 
@@ -234,7 +239,7 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
 
 		domain_->ib().init(_d->get_dictionary("simulation_parameters"), domain_->dx_base(), nLevelRefinement_, Re_);
 
-		if (!use_restart())
+		if (!use_restart() && !use_tree_)
 		{
 			domain_->init_refine(_d->get_dictionary("simulation_parameters")
 				->template get_or<int>("nLevels", 0),
@@ -246,14 +251,15 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
 		}
 
 		domain_->distribute<fmm_mask_builder_t, fmm_mask_builder_t>();
-		if (!use_restart()) { this->initialize(); }
+		if (!use_restart() && !use_tree_) { this->initialize(); }
+		else if (use_tree_) {simulation_.template read_h5_2D<u_type>(ic_filename_2D_, "u");}
 		else
 		{
 			simulation_.template read_h5<u_type>(simulation_.restart_field_dir(), "u");
 		}
 
 		boost::mpi::communicator world;
-		//world.barrier();
+		world.barrier();
 		if (world.rank() == 0)
 			std::cout << "on Simulation: \n" << simulation_ << std::endl;
 	}
@@ -269,6 +275,9 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
 
 		if (ic_filename_ != "null")
 			simulation_.template read_h5<u_type>(ic_filename_, "u");
+
+		/*if (ic_filename_2D_ != "null")
+			simulation_.template read_h5_2D<u_type>(ic_filename_2D_, "u");*/
 
 		mDuration_type ifherk_duration(0);
 		TIME_CODE(ifherk_duration, SINGLE_ARG(
@@ -500,6 +509,7 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
 	template<class Field, class OctantType>
 	int adapt_levle_change_for_field(OctantType it, float_type source_max, bool use_base_level_threshold)
 	{
+		//return 0; //for testing purpose
 		if (vortexType != 0) return 0;
 		if (it->is_ib() && it->is_leaf())
 			if (it->refinement_level()<nLevelRefinement_)
@@ -976,7 +986,7 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
 
     vr_fct_t vr_fct_;
 
-    std::string ic_filename_, ref_filename_;
+    std::string ic_filename_, ref_filename_, ic_filename_2D_;
 
     float_type Lx;
 };

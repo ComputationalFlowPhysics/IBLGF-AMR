@@ -63,13 +63,13 @@ struct parameters
     Dim,
      (
         //name               type        Dim   lBuffer  hBuffer, storage type
-         (error_u          , float_type, 3*2*N_modes,    1,       1,     face,true  ),
+         (error_u          , float_type, 3*2*N_modes,    1,       1,     face,false ),
          (error_p          , float_type, 1*2*N_modes,    1,       1,     cell,false ),
          (test             , float_type, 1*2*N_modes,    1,       1,     cell,false ),
         //IF-HERK
          (u                , float_type, 3*2*N_modes,    1,       1,     face,true  ),
-         (u_ref            , float_type, 3*2*N_modes,    1,       1,     face,true  ),
-         (p_ref            , float_type, 1*2*N_modes,    1,       1,     cell,true  ),
+         (u_ref            , float_type, 3*2*N_modes,    1,       1,     face,false ),
+         (p_ref            , float_type, 1*2*N_modes,    1,       1,     cell,false ),
          (p                , float_type, 1*2*N_modes,    1,       1,     cell,true  ),
          (w_num            , float_type, 1*2*N_modes,    1,       1,     edge,false ),
          (w_exact          , float_type, 1*2*N_modes,    1,       1,     edge,false ),
@@ -205,6 +205,7 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
 			"global_refinement", 0);
 
 		bool use_tree_ = simulation_.dictionary_->template get_or<bool>("use_init_tree", false);
+		bool restart_2D_ = simulation_.dictionary_->template get_or<bool>("use_2D_restart", false);
 
 		//bool subtract_non_leaf_ = simulation_.dictionaty()->template get_or<bool>("subtract_non_leaf", true);
 
@@ -253,6 +254,9 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
 		domain_->distribute<fmm_mask_builder_t, fmm_mask_builder_t>();
 		if (!use_restart() && !use_tree_) { this->initialize(); }
 		else if (use_tree_) {simulation_.template read_h5_2D<u_type>(ic_filename_2D_, "u");}
+		else if (restart_2D_) {
+			pcout << "reading restart from 2D profile" << std::endl;
+			simulation_.template read_h5_2D<u_type>(simulation_.restart_field_dir(), "u");}
 		else
 		{
 			simulation_.template read_h5<u_type>(simulation_.restart_field_dir(), "u");

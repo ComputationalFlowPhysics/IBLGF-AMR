@@ -1048,6 +1048,7 @@ class Ifherk_HELM
         clean<edge_aux_type>();
         clean<Target>();
         clean<face_aux_real_type>();
+        clean<face_aux_type>();
         clean<u_i_real_type>();
         clean<vort_i_real_type>();
 
@@ -1084,11 +1085,14 @@ class Ifherk_HELM
         //clean_leaf_correction_boundary<edge_aux_type>(domain_->tree()->base_level(), true, 2);
         // add background velocity
         copy<u_i_real_type, face_aux_real_type>();
-        domain::Operator::add_field_expression_nonlinear_helmholtz<face_aux_real_type>(domain_,N_modes,
-            simulation_->frame_vel(), T_stage_, -1.0);
+        domain::Operator::add_field_expression_nonlinear_helmholtz<face_aux_real_type>(
+            domain_, N_modes, simulation_->frame_vel(), T_stage_, -1.0);
 
+        copy<Source, face_aux_type>();
+        domain::Operator::add_field_expression_complex_helmholtz<face_aux_type>(
+            domain_, N_modes, simulation_->frame_vel(), T_stage_, -1.0);
         //float_type rand_num[domain_->tree()->depth() - domain_->tree()->base_level()];
-        
+
         for (int l = domain_->tree()->base_level();
              l < domain_->tree()->depth(); ++l)
         {
@@ -1167,7 +1171,7 @@ class Ifherk_HELM
             }
         }
         //adding perturbation
-        for (int l = domain_->tree()->base_level();
+        /*for (int l = domain_->tree()->base_level();
              l < domain_->tree()->depth(); ++l)
         {
             srand(time(0));
@@ -1190,7 +1194,7 @@ class Ifherk_HELM
 
             //client->template buffer_exchange<Target>(l);
             //clean_leaf_correction_boundary<Target>(l, true,3);
-        }
+        }*/
     }
 
     template<class Source, class Target>

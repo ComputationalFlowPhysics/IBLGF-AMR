@@ -31,9 +31,13 @@ namespace iblgf
 {
 namespace interpolation
 {
+template<class domain_type>
 class cell_center_nli
 {
     using MeshObject = domain::MeshObject;
+    static constexpr bool helmholtz = domain_type::helmholtz_bool;
+    static constexpr int  N_modes = domain_type::N_modes_val;
+    static constexpr int  sep = (helmholtz ?  N_modes*2 : 1);
 
     public: // constructor
 
@@ -271,7 +275,7 @@ class cell_center_nli
         // Relative position 1 -> half cell off with the child
 
         std::array<int, 3> relative_positions{{1, 1, 1}};
-        if (mesh_obj == MeshObject::face) relative_positions[_field_idx] = 0;
+        if (mesh_obj == MeshObject::face) relative_positions[_field_idx/sep] = 0;
         else if (mesh_obj == MeshObject::cell)
         {
         }
@@ -281,6 +285,7 @@ class cell_center_nli
             relative_positions[1] = 0;
             relative_positions[2] = 0;
             if (Dim == 3) relative_positions[_field_idx] = 1;
+            if (helmholtz) relative_positions[_field_idx/sep] = 1;
         }
         else
             throw std::runtime_error("Wrong type of mesh to be interpolated");
@@ -384,7 +389,7 @@ class cell_center_nli
 
         std::array<int, 3> relative_positions{{1, 1, 1}};
         if (mesh_obj == MeshObject::face)
-        { relative_positions[_field_idx] = 0; }
+        { relative_positions[_field_idx/sep] = 0; }
         else if (mesh_obj == MeshObject::cell)
         {
         }
@@ -394,6 +399,7 @@ class cell_center_nli
             relative_positions[1] = 0;
             relative_positions[2] = 0;
             if (Dim == 3) relative_positions[_field_idx] = 1;
+            if (helmholtz) relative_positions[_field_idx/sep] = 1;
         }
         else
             throw std::runtime_error("Wrong type of mesh to be interpolated");

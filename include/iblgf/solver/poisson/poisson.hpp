@@ -51,6 +51,7 @@ class PoissonSolver
 
     using simulation_type = typename Setup::simulation_t;
     using domain_type = typename simulation_type::domain_type;
+    using interpolation_type = typename interpolation::cell_center_nli<domain_type>;
     using datablock_type = typename domain_type::datablock_t;
     using tree_t = typename domain_type::tree_t;
     using octant_t = typename tree_t::octant_type;
@@ -533,8 +534,7 @@ class PoissonSolver
                     {
                         if (!it->has_data() || !it->data().is_allocated())
                             continue;
-                        c_cntr_nli_
-                            .nli_intrp_node<target_tmp_type, target_tmp_type>(
+                        c_cntr_nli_.template nli_intrp_node<target_tmp_type, target_tmp_type>(
                                 it, Source::mesh_type(), _field_idx, 0, false,
                                 false);
                     }
@@ -598,8 +598,7 @@ class PoissonSolver
                         continue;
 
                     const bool correction_buffer_only = true;
-                    c_cntr_nli_
-                        .nli_intrp_node<source_tmp_type, correction_tmp_type>(
+                    c_cntr_nli_.template nli_intrp_node<source_tmp_type, correction_tmp_type>(
                             it, Source::mesh_type(), _field_idx, 0,
                             correction_buffer_only, false);
                 }
@@ -608,7 +607,7 @@ class PoissonSolver
                 {
                     int    refinement_level = it->refinement_level();
                     double dx = dx_base / std::pow(2, refinement_level);
-                    c_cntr_nli_.add_source_correction<target_tmp_type,
+                    c_cntr_nli_.template add_source_correction<target_tmp_type,
                         correction_tmp_type>(it, dx / 2.0);
                 }
 
@@ -750,7 +749,7 @@ class PoissonSolver
                 if (!it->has_data() || !it->data().is_allocated()) continue;
                 if (leaf_boundary && !it->leaf_boundary()) continue;
 
-                c_cntr_nli_.nli_intrp_node<From, To>(it, mesh_type,
+                c_cntr_nli_.template nli_intrp_node<From, To>(it, mesh_type,
                     real_mesh_field_idx, tmp_type_field_idx, correction_only,
                     exclude_correction);
             }
@@ -778,7 +777,7 @@ class PoissonSolver
                     continue;
                 if (leaf_boundary && !it_s->leaf_boundary()) continue;
 
-                c_cntr_nli_.nli_antrp_node<From, To>(*it_s, mesh_type,
+                c_cntr_nli_.template nli_antrp_node<From, To>(*it_s, mesh_type,
                     real_mesh_field_idx, tmp_type_field_idx, correction_only,
                     exclude_correction);
             }
@@ -1021,7 +1020,7 @@ private:
     lgf_if_t                          lgf_if_;
     std::vector<helm_t>               lgf_helm_vec;
     int                               N_fourier_modes;
-    interpolation::cell_center_nli    c_cntr_nli_;///< Lagrange Interpolation
+    interpolation_type                c_cntr_nli_;///< Lagrange Interpolation
     parallel_ostream::ParallelOstream pcout=parallel_ostream::ParallelOstream(1);
     bool use_correction_ =true;
     bool subtract_non_leaf_ = false;

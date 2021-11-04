@@ -312,7 +312,7 @@ class Ifherk_HELM
 
             mDuration_type ifherk_if(0);
             TIME_CODE(ifherk_if, SINGLE_ARG(time_step();));
-            pcout << ifherk_if.count() << std::endl;
+            pcout << "RK3 solved in " << ifherk_if.count() << std::endl;
 
             // -------------------------------------------------------------
             // update stats & output
@@ -705,7 +705,12 @@ class Ifherk_HELM
         clean<cell_aux_type>();
         clean<face_aux_type>();
 
-        nonlinear<u_type, g_i_type>(coeff_a(1, 1) * (-dt_));
+        mDuration_type nonlinear1(0);
+        TIME_CODE(nonlinear1, SINGLE_ARG(nonlinear<u_type, g_i_type>(coeff_a(1, 1) * (-dt_));));
+        pcout << "nonlinear term solved in " << nonlinear1.count() << std::endl;
+
+        
+        //nonlinear<u_type, g_i_type>(coeff_a(1, 1) * (-dt_));
         copy<q_i_type, r_i_type>();
         add<g_i_type, r_i_type>();
         lin_sys_with_ib_solve(alpha_[0]);
@@ -736,7 +741,11 @@ class Ifherk_HELM
         add<w_1_type, r_i_type>(dt_ * coeff_a(2, 1));
 
         up_and_down<u_i_type>();
-        nonlinear<u_i_type, g_i_type>(coeff_a(2, 2) * (-dt_));
+        
+        mDuration_type nonlinear2(0);
+        TIME_CODE(nonlinear2, SINGLE_ARG(nonlinear<u_i_type, g_i_type>(coeff_a(2, 2) * (-dt_));));
+        pcout << "nonlinear term solved in " << nonlinear2.count() << std::endl;
+        //nonlinear<u_i_type, g_i_type>(coeff_a(2, 2) * (-dt_));
         add<g_i_type, r_i_type>();
 
         lin_sys_with_ib_solve(alpha_[1]);
@@ -759,7 +768,12 @@ class Ifherk_HELM
         psolver.template apply_helm_if<r_i_type, r_i_type>(alpha_[1], N_modes, c_z);
 
         up_and_down<u_i_type>();
-        nonlinear<u_i_type, g_i_type>(coeff_a(3, 3) * (-dt_));
+
+        mDuration_type nonlinear3(0);
+        TIME_CODE(nonlinear3, SINGLE_ARG(nonlinear<u_i_type, g_i_type>(coeff_a(3, 3) * (-dt_));));
+        pcout << "nonlinear term solved in " << nonlinear3.count() << std::endl;
+
+        //nonlinear<u_i_type, g_i_type>(coeff_a(3, 3) * (-dt_));
         add<g_i_type, r_i_type>();
 
         lin_sys_with_ib_solve(alpha_[2]);
@@ -875,11 +889,11 @@ class Ifherk_HELM
                         (leaf_only_boundary &&
                             (it2->is_correction() || it2->is_old_correction())))
                     {
-                        for (std::size_t field_idx = 0;
+                        /*for (std::size_t field_idx = 0;
                              field_idx < F::nFields(); ++field_idx)
-                        {
+                        {*/
                             domain::Operator::smooth2zero<F>(it->data(), i);
-                        }
+                        //}
                     }
                 }
             }
@@ -923,6 +937,7 @@ class Ifherk_HELM
         auto client = domain_->decomposition().client();
 
         divergence<r_i_type, cell_aux_type>();
+        addPerturb<cell_aux_type>();
 
         domain_->client_communicator().barrier();
         mDuration_type t_lgf(0);
@@ -1028,7 +1043,7 @@ class Ifherk_HELM
         {
             for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
             {
-                if (!it->locally_owned() || !it->has_data()) continue;
+                if (!it->locally_owned() || !it->has_data() || !it->data().is_allocated()) continue;
                 //if(!it->is_correction() && refresh_correction_only) continue;
 
                 const auto dx_level =
@@ -1058,6 +1073,9 @@ class Ifherk_HELM
         //const float_type dx_fine = dx_base/std::pow(2.0, max_ref_level_)/1.5; //dx at z (homogeneous) direction, is different from others. Also consider the 3/2 rule so that dx decreased by 1.5
         const float_type dx_fine = c_z/static_cast<float_type>(padded_dim); //dx at z (homogeneous) direction, is different from others. Also consider the 3/2 rule so that dx decreased by 1.5
 
+
+        auto t0 = clock_type::now();
+
         for (int l = domain_->tree()->base_level();
              l < domain_->tree()->depth(); ++l)
         {
@@ -1065,7 +1083,7 @@ class Ifherk_HELM
 
             for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
             {
-                if (!it->locally_owned() || !it->has_data()) continue;
+                if (!it->locally_owned() || !it->has_data() || !it->data().is_allocated()) continue;
 
                 const auto dx_level =
                     dx_base / math::pow2(it->refinement_level());
@@ -1082,6 +1100,11 @@ class Ifherk_HELM
             }
         }
 
+        auto t1 = clock_type::now();
+
+        mDuration_type ms_int = t1 - t0;
+        pcout << "Fourier transform with curl_helmholtz solved in " << ms_int.count() << std::endl;
+
         //clean_leaf_correction_boundary<edge_aux_type>(domain_->tree()->base_level(), true, 2);
         // add background velocity
         copy<u_i_real_type, face_aux_real_type>();
@@ -1091,7 +1114,10 @@ class Ifherk_HELM
         copy<Source, face_aux_type>();
         domain::Operator::add_field_expression_complex_helmholtz<face_aux_type>(
             domain_, N_modes, simulation_->frame_vel(), T_stage_, -1.0);
-        //float_type rand_num[domain_->tree()->depth() - domain_->tree()->base_level()];
+
+        auto t2 = clock_type::now();
+        ms_int = t2 - t1;
+        pcout << "Added field expression in " << ms_int.count() << std::endl;
 
         for (int l = domain_->tree()->base_level();
              l < domain_->tree()->depth(); ++l)
@@ -1103,7 +1129,7 @@ class Ifherk_HELM
 
             for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
             {
-                if (!it->locally_owned() || !it->has_data()) continue;
+                if (!it->locally_owned() || !it->has_data() || !it->data().is_allocated()) continue;
 
                 domain::Operator::nonlinear_helmholtz<face_aux_real_type, vort_i_real_type,
                     r_i_real_type>(it->data(), N_modes);
@@ -1120,6 +1146,10 @@ class Ifherk_HELM
             //client->template buffer_exchange<Target>(l);
             //clean_leaf_correction_boundary<Target>(l, true,3);
         }
+
+        auto t3 = clock_type::now();
+        ms_int = t3 - t2;
+        pcout << "Nonlinear term in real variable solved in " << ms_int.count() << std::endl;
         //transform back
         for (int l = domain_->tree()->base_level();
              l < domain_->tree()->depth(); ++l)
@@ -1170,31 +1200,49 @@ class Ifherk_HELM
                 */
             }
         }
-        //adding perturbation
-        /*for (int l = domain_->tree()->base_level();
-             l < domain_->tree()->depth(); ++l)
-        {
-            srand(time(0));
-            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
-            {
-                if (!it->locally_owned() || !it->has_data()) continue;
 
-                for (std::size_t field_idx = 0;
-                     field_idx < Target::nFields(); ++field_idx)
+        auto t4 = clock_type::now();
+        ms_int = t4 - t3;
+        pcout << "R2C transform solved in " << ms_int.count() << std::endl;
+    }
+
+
+
+    template<class Target>
+    void addPerturb() noexcept
+    {
+        if (perturb_nonlin > 1e-10)
+        {
+            auto       client = domain_->decomposition().client();
+            const auto dx_base = domain_->dx_base();
+            for (int l = domain_->tree()->base_level();
+                 l < domain_->tree()->depth(); ++l)
+            {
+                srand(time(0));
+                for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
                 {
-                    for (auto& n : it->data().node_field())
+                    if (!it->locally_owned() || !it->has_data()) continue;
+
+                    for (std::size_t field_idx = 0;
+                         field_idx < Target::nFields(); ++field_idx)
                     {
-                        float_type rand_num = static_cast<float_type>(std::rand())/static_cast<float_type>(RAND_MAX) - 0.5;
-                        auto coord = n.global_coordinate() * dx_base;
-                        n(Target::tag(), field_idx) +=
-                            rand_num*perturb_nonlin;
+                        for (auto& n : it->data().node_field())
+                        {
+                            float_type rand_num =
+                                static_cast<float_type>(std::rand()) /
+                                    static_cast<float_type>(RAND_MAX) -
+                                0.5;
+                            auto coord = n.global_coordinate() * dx_base;
+                            float_type x = coord[0];
+                            float_type y = coord[1];
+                            float_type Gaussian = std::exp(-x*x - y*y);
+                            n(Target::tag(), field_idx) +=
+                                rand_num * perturb_nonlin * Gaussian;
+                        }
                     }
                 }
             }
-
-            //client->template buffer_exchange<Target>(l);
-            //clean_leaf_correction_boundary<Target>(l, true,3);
-        }*/
+        }
     }
 
     template<class Source, class Target>

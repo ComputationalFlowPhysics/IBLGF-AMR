@@ -71,6 +71,13 @@ class LGF_Base : public crtp::Crtps<Derived, LGF_Base<Dim, Derived>>
         auto k_ = this->derived().get_key(_lgf_block, level_diff);
         auto it = this->derived().dft_level_maps_2D[level_diff].find(k_);
 
+        if (it == this->derived().dft_level_maps_2D[level_diff].end() && this->HelmholtzLGF()) {
+            bool needToEval = std::get<0>(k_);
+            if (!needToEval) {
+                return emptyVec;
+            }
+        }
+
         //Check if lgf is already stored
         if (it == this->derived().dft_level_maps_2D[level_diff].end()/* || this->LaplaceLGF()  !this->neighbor_only()*/)
         {
@@ -95,6 +102,8 @@ class LGF_Base : public crtp::Crtps<Derived, LGF_Base<Dim, Derived>>
     bool neighbor_only() { return neighbor_only_; }
 
     bool LaplaceLGF() {return LaplaceLGF_;}
+
+    bool HelmholtzLGF() {return HelmholtzLGF_;}
 
     float_type return_c_level() {
         return this->derived().return_c_impl();
@@ -184,9 +193,11 @@ class LGF_Base : public crtp::Crtps<Derived, LGF_Base<Dim, Derived>>
     }
 
     std::vector<float_type> lgf_buffer_; ///<lgf buffer
+    complex_vector_t        emptyVec; //a empty vector that will be returned if Helmholtz LGF is too small
     const int               max_lgf_map_level = 20;
     bool                    neighbor_only_ = false;
     bool                    LaplaceLGF_ = false;
+    bool                    HelmholtzLGF_ = false;
     
 };
 

@@ -80,14 +80,11 @@ class dfft_r2c
     template<class Vector>
     void copy_field(const Vector& _v, dims_2D _dims_v) noexcept
     {
-            for (int j = 0; j < _dims_v[1]; ++j)
-            {
-                for (int i = 0; i < _dims_v[0]; ++i)
-                {
-                    input_[i + dims_input_2D[0] * j] =
-                        _v.get_real_local(i, j);
-                }
-            }
+        for (int j = 0; j < _dims_v[1]; ++j)
+        {
+            for (int i = 0; i < _dims_v[0]; ++i)
+            { input_[i + dims_input_2D[0] * j] = _v.get_real_local(i, j); }
+        }
     }
 
   private:
@@ -173,54 +170,54 @@ class Convolution
     {
     }
 
-    dims_t helper_next_pow_2(dims_t v) {
-    	dims_t tmp;
-	for (int i = 0; i < dimension; i++) {
-		tmp[i] = v[i];
-	}
-	return tmp;
+    dims_t helper_next_pow_2(dims_t v)
+    {
+        dims_t tmp;
+        for (int i = 0; i < dimension; i++) { tmp[i] = v[i]; }
+        return tmp;
     }
-    int helper_all_prod(dims_t v) {
-    	int tmp = 1;
-	for (int i = 0; i < dimension; i++) {
-		tmp*=v[i];
-	}
-	return tmp;
+    int helper_all_prod(dims_t v)
+    {
+        int tmp = 1;
+        for (int i = 0; i < dimension; i++) { tmp *= v[i]; }
+        return tmp;
     }
-
-
 
   public: //Members:
-    complex_vector_t& dft_r2c(std::vector<float_type>& _vec) {
-    	fft_forward0_.copy_input(_vec, dims0_);
-	fft_forward0_.execute_whole();
-	return fft_forward0_.output();
+    complex_vector_t& dft_r2c(std::vector<float_type>& _vec)
+    {
+        fft_forward0_.copy_input(_vec, dims0_);
+        fft_forward0_.execute_whole();
+        return fft_forward0_.output();
     }
 
-    void              fft_backward_field_clean() {
-    	std::fill(fft_backward_.input().begin(), fft_backward_.input().end(), 0);
+    void fft_backward_field_clean()
+    {
+        number_fwrd_executed = 0;
+        std::fill(
+            fft_backward_.input().begin(), fft_backward_.input().end(), 0);
     }
 
-    void              simd_prod_complex_add(const complex_vector_t& a,
-                     const complex_vector_t& b, complex_vector_t& res) {
-    	std::size_t           size = a.size();
-	constexpr std::size_t simd_size =
-		xsimd::simd_type<std::complex<float_type>>::size;
-	std::size_t vec_size = size - size % simd_size;
+    void simd_prod_complex_add(const complex_vector_t& a,
+        const complex_vector_t& b, complex_vector_t& res)
+    {
+        std::size_t           size = a.size();
+        constexpr std::size_t simd_size =
+            xsimd::simd_type<std::complex<float_type>>::size;
+        std::size_t vec_size = size - size % simd_size;
 
-	for (std::size_t i = 0; i < vec_size; i += simd_size)
-	{
-		auto ba = xsimd::load_aligned(&a[i]);
-		auto bb = xsimd::load_aligned(&b[i]);
-		auto res_old = xsimd::load_aligned(&res[i]);
-		auto bres = ba * bb + res_old;
-		bres.store_aligned(&res[i]);
-	}
-	for (std::size_t i = vec_size; i < size; ++i) { res[i] += a[i] * b[i]; }
+        for (std::size_t i = 0; i < vec_size; i += simd_size)
+        {
+            auto ba = xsimd::load_aligned(&a[i]);
+            auto bb = xsimd::load_aligned(&b[i]);
+            auto res_old = xsimd::load_aligned(&res[i]);
+            auto bres = ba * bb + res_old;
+            bres.store_aligned(&res[i]);
+        }
+        for (std::size_t i = vec_size; i < size; ++i) { res[i] += a[i] * b[i]; }
     }
 
-
-    auto&             output() { return fft_backward_.output(); }
+    auto& output() { return fft_backward_.output(); }
 
     template<typename Source, typename BlockType, class Kernel>
     void apply_forward_add(const BlockType& _lgf_block, Kernel* _kernel,
@@ -232,10 +229,11 @@ class Convolution
     template<typename Target, typename BlockType>
     void apply_backward(
         const BlockType& _extractor, Target& _target, float_type _extra_scale)
-    {	
-        float_type scale =
-            1.0;
-	for (int i = 0; i < dimension; i++) {scale /= padded_dims_next_pow_2_[i];}
+    {
+        if (number_fwrd_executed == 0) return;
+        float_type scale = 1.0;
+        for (int i = 0; i < dimension; i++)
+        { scale /= padded_dims_next_pow_2_[i]; }
         scale *= _extra_scale;
         for (std::size_t i = 0; i < fft_backward_.input().size(); ++i)
         { fft_backward_.input()[i] *= scale; }
@@ -248,8 +246,12 @@ class Convolution
     void execute_fwrd_field(const BlockType& _lgf_block, Kernel* _kernel,
         int _level_diff, const Field& _b)
     {
+        
         auto& f0 = _kernel->dft(
             _lgf_block, padded_dims_next_pow_2_, this, _level_diff);
+
+        if (f0.size() == 0) return;
+        number_fwrd_executed++;
 
         fft_forward1_.copy_field(_b, dims1_);
         fft_forward1_.execute();
@@ -262,34 +264,39 @@ class Convolution
     template<class Block, class Field>
     void add_solution(const Block& _b, Field& _F)
     {
-	if (dimension == 3) {
-        for (int k = dims0_[2] - 1; k < dims0_[2] + _b.extent()[2] - 1; ++k)
+        if (dimension == 3)
+        {
+            for (int k = dims0_[2] - 1; k < dims0_[2] + _b.extent()[2] - 1; ++k)
+            {
+                for (int j = dims0_[1] - 1; j < dims0_[1] + _b.extent()[1] - 1;
+                     ++j)
+                {
+                    for (int i = dims0_[0] - 1;
+                         i < dims0_[0] + _b.extent()[0] - 1; ++i)
+                    {
+                        _F.get_real_local(i - dims0_[0] + 1, j - dims0_[1] + 1,
+                            k - dims0_[2] + 1) +=
+                            fft_backward_
+                                .output()[i + j * padded_dims_next_pow_2_[0] +
+                                          k * padded_dims_next_pow_2_[0] *
+                                              padded_dims_next_pow_2_[1]];
+                    }
+                }
+            }
+        }
+        else
         {
             for (int j = dims0_[1] - 1; j < dims0_[1] + _b.extent()[1] - 1; ++j)
             {
                 for (int i = dims0_[0] - 1; i < dims0_[0] + _b.extent()[0] - 1;
                      ++i)
                 {
-                    _F.get_real_local(i - dims0_[0] + 1, j - dims0_[1] + 1,
-                        k - dims0_[2] + 1) +=
+                    _F.get_real_local(i - dims0_[0] + 1, j - dims0_[1] + 1) +=
                         fft_backward_
-                            .output()[i + j * padded_dims_next_pow_2_[0] +
-                                      k * padded_dims_next_pow_2_[0] *
-                                          padded_dims_next_pow_2_[1]];
+                            .output()[i + j * padded_dims_next_pow_2_[0]];
                 }
             }
         }
-	}
-	else {
-	for (int j = dims0_[1] - 1; j < dims0_[1] + _b.extent()[1] - 1; ++j)
-	{
-		for (int i = dims0_[0] - 1; i < dims0_[0] + _b.extent()[0] - 1;
-				++i)
-		{
-			_F.get_real_local(i - dims0_[0] + 1, j - dims0_[1] + 1) += fft_backward_.output()[i + j * padded_dims_next_pow_2_[0]];
-		}
-	}
-	}
     }
 
     //void simd_prod_complex_add(const complex_vector_t& a, const complex_vector_t& b, complex_vector_t& res);
@@ -300,6 +307,7 @@ class Convolution
 
   public:
     int fft_count_ = 0;
+    int number_fwrd_executed = 0;  //register the number of forward procedure applied, if no forward applied, then don't need to apply backward one as well.
 
   private:
     dims_t padded_dims_;
@@ -318,4 +326,3 @@ class Convolution
 } // namespace fft
 } // namespace iblgf
 #endif
-

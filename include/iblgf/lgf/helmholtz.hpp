@@ -42,8 +42,8 @@ class Helmholtz : public LGF_Base<Dim, Helmholtz<Dim>>
     using coordinate_t = typename block_descriptor_t::coordinate_type;
     using complex_vector_t = typename super_type::complex_vector_t;
 
-    using key_3D = std::tuple<float_type, int, int, int>;
-    using key_2D = std::tuple<float_type, int, int>;
+    using key_3D = std::tuple<bool, float_type, int, int, int>; //the boolean is needed to pass the information if the LGF need to be evaluated or not
+    using key_2D = std::tuple<bool, float_type, int, int>;
     using level_map_3D_t = std::map<key_3D, std::unique_ptr<complex_vector_t>>;
     using level_map_2D_t = std::map<key_2D, std::unique_ptr<complex_vector_t>>;
 
@@ -55,6 +55,8 @@ class Helmholtz : public LGF_Base<Dim, Helmholtz<Dim>>
     , c_level(C)
     {
         origin = Helmholtz_Lookup::origin_val(c);
+        this->HelmholtzLGF_ = true;
+        this->emptyVec.resize(0);
     }
 
     Helmholtz()
@@ -64,6 +66,10 @@ class Helmholtz : public LGF_Base<Dim, Helmholtz<Dim>>
         c = 0.1;
         c_level = c;
         origin = 0.0;
+
+        this->HelmholtzLGF_ = true;
+        this->emptyVec.resize(0);
+
     }
 
     void change_c(float_type C)
@@ -79,7 +85,7 @@ class Helmholtz : public LGF_Base<Dim, Helmholtz<Dim>>
         const noexcept
     {
         const auto base = _b.base();
-        return key_3D(c_level, base[0], base[1], base[2]);
+        return key_3D(true, c_level, base[0], base[1], base[2]);
     }
 
     template<int Dim1 = Dim>
@@ -88,7 +94,29 @@ class Helmholtz : public LGF_Base<Dim, Helmholtz<Dim>>
         const noexcept
     {
         const auto base = _b.base();
-        return key_2D(c_level, base[0], base[1]);
+        const auto max =  _b.max();
+
+        int k_max = 0;
+
+        if (int i = 0; i < 2) {
+            if (std::abs(base[i]) > std::abs(max[i])) {
+                k_max += std::abs(max[i]);
+            }
+            else {
+                k_max += std::abs(base[i]);
+            }
+        }
+        float_type factor = 4.0/(4.0 + c_level * c_level);
+        float_type eps = std::pow(factor, (k_max - 1));
+        //float_type a = 2 + c_level*c_level/2.0;
+        //float_type factor = (a / 2.0 + std::sqrt(a*a/4.0 - 1));
+        //float_type eps = std::pow(factor, -k_max) * std::pow((a*a - 4), 0.25) / std::sqrt(k_max);
+        bool tmp = true;
+        if (eps < 1e-13) {
+            tmp = false;
+        }
+
+        return key_2D(tmp, c_level, base[0], base[1]);
     }
     void build_lt() {}
     float_type return_c_impl() {return c_level;}

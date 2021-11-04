@@ -937,7 +937,6 @@ class Ifherk_HELM
         auto client = domain_->decomposition().client();
 
         divergence<r_i_type, cell_aux_type>();
-        addPerturb<cell_aux_type>();
 
         domain_->client_communicator().barrier();
         mDuration_type t_lgf(0);
@@ -1171,6 +1170,11 @@ class Ifherk_HELM
                 domain::Operator::FourierTransformR2C<r_i_real_type, Target>(
                     it, N_modes, padded_dim, vec_size, nonzero_dim, dim_0, dim_1, r2cFunc, (1 + additional_modes));
 
+                //int vec_size = dim_0*dim_1*N_modes*3*3;
+                //also transform vorticity for refinement
+                domain::Operator::FourierTransformR2C<vort_i_real_type, edge_aux_type>(
+                    it, N_modes, padded_dim, vec_size, nonzero_dim, dim_0, dim_1, r2cFunc, (1 + additional_modes));
+
                 /*std::vector<float_type> tmp_vec(vec_size, 0.0);
                 for (int i = 0; i < N_modes*3*3; i++) {
                     auto& lin_data_ = it->data_r(r_i_real_type::tag(), i);
@@ -1204,6 +1208,7 @@ class Ifherk_HELM
         auto t4 = clock_type::now();
         ms_int = t4 - t3;
         pcout << "R2C transform solved in " << ms_int.count() << std::endl;
+        addPerturb<Target>();
     }
 
 

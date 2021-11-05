@@ -713,7 +713,11 @@ class Ifherk_HELM
         //nonlinear<u_type, g_i_type>(coeff_a(1, 1) * (-dt_));
         copy<q_i_type, r_i_type>();
         add<g_i_type, r_i_type>();
-        lin_sys_with_ib_solve(alpha_[0]);
+
+        mDuration_type linsys1(0);
+        TIME_CODE(linsys1, SINGLE_ARG(lin_sys_with_ib_solve(alpha_[0]);));
+        pcout << "linsys solved in " << linsys1.count() << std::endl;
+        //lin_sys_with_ib_solve(alpha_[0]);
 
         // Stage 2
         // ******************************************************************
@@ -748,7 +752,11 @@ class Ifherk_HELM
         //nonlinear<u_i_type, g_i_type>(coeff_a(2, 2) * (-dt_));
         add<g_i_type, r_i_type>();
 
-        lin_sys_with_ib_solve(alpha_[1]);
+        mDuration_type linsys2(0);
+        TIME_CODE(linsys2, SINGLE_ARG(lin_sys_with_ib_solve(alpha_[1]);));
+        pcout << "linsys solved in " << linsys2.count() << std::endl;
+
+        //lin_sys_with_ib_solve(alpha_[1]);
 
         // Stage 3
         // ******************************************************************
@@ -776,7 +784,11 @@ class Ifherk_HELM
         //nonlinear<u_i_type, g_i_type>(coeff_a(3, 3) * (-dt_));
         add<g_i_type, r_i_type>();
 
-        lin_sys_with_ib_solve(alpha_[2]);
+        mDuration_type linsys3(0);
+        TIME_CODE(linsys3, SINGLE_ARG(lin_sys_with_ib_solve(alpha_[2]);));
+        pcout << "linsys solved in " << linsys3.count() << std::endl;
+
+        //lin_sys_with_ib_solve(alpha_[2]);
 
         // ******************************************************************
         copy<u_i_type, u_type>();

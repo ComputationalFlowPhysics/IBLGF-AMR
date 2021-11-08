@@ -91,10 +91,21 @@ class PoissonSolver
         const int l_max = domain_->tree()->depth();
         const int l_min = domain_->tree()->base_level();
         const int nLevels = l_max - l_min;
+
+        const float_type dx_base = domain_->dx_base();
+
+        c_z_ = _simulation->dictionary()->template get_or<float_type>("L_z", 1.0);
+
         for (int i = 0; i < N_fourier_modes; i++) {
-            float_type c = (static_cast<float_type>(i)+1.0)/static_cast<float_type>(N_fourier_modes + 1) * 2.0 * M_PI * std::pow(2.0, nLevels - 1);
+            float_type c = (static_cast<float_type>(i)+1.0) * 2.0 * M_PI * dx_base/c_z_;
             lgf_helm_vec.emplace_back(helm_t(c));
         }
+
+        /*for (int i = 0; i < N_fourier_modes; i++) {
+            float_type c = (static_cast<float_type>(i)+1.0)/static_cast<float_type>(N_fourier_modes + 1) * 2.0 * M_PI * std::pow(2.0, nLevels - 1);
+            lgf_helm_vec.emplace_back(helm_t(c));
+        }*/
+
 
         //setting if only advect a subset of modes, the total simulated modes are additional_modes + 1
         additional_modes = _simulation->dictionary()->template get_or<int>("add_modes", N_fourier_modes);
@@ -330,6 +341,8 @@ class PoissonSolver
         clean_field<source_tmp_type>();
         clean_field<target_tmp_type>();
 
+        const float_type dx_base = domain_->dx_base();
+
         // Copy source
         if (fmm_type == MASK_TYPE::AMR2AMR)
             copy_leaf<Source, source_tmp_type>(_field_idx, 0, true);
@@ -358,6 +371,7 @@ class PoissonSolver
 
         for (int l = l_min; l < l_max; ++l)
         {
+            
 
             for (auto it_s = domain_->begin(l); it_s != domain_->end(l); ++it_s)
                 if (it_s->has_data() && !it_s->locally_owned())
@@ -369,9 +383,11 @@ class PoissonSolver
 
             _kernel->change_level(l - domain_->tree()->base_level());
 
+            double dx = dx_base / std::pow(2, l - domain_->tree()->base_level());
+
             //compute the add scale
             float_type alpha_level = _kernel->alpha_;
-            float_type helm_weights = std::exp(-omega*omega*alpha_level);
+            float_type helm_weights = std::exp(-omega*omega*alpha_level * dx * dx);
 
             if (fmm_type == MASK_TYPE::AMR2AMR)
                 fmm_.template apply<source_tmp_type, target_tmp_type>(
@@ -1026,6 +1042,7 @@ private:
     bool subtract_non_leaf_ = false;
 
     int additional_modes = 0;
+    float_type c_z_ = 1.0;
 
     //Timings:
     struct Timings

@@ -121,12 +121,12 @@ class Ifherk_HELM
         all_time_max_ = _simulation->dictionary()->template get_or<bool>(
             "all_time_max", true);
         customized_ic = _simulation->dictionary()->template get_or<bool>("use_init_tree", false);
-        //c_z = _simulation->dictionary()->template get_or<float_type>(
-        //    "L_z", 1);
-        const int l_max = domain_->tree()->depth();
+        c_z = _simulation->dictionary()->template get_or<float_type>(
+            "L_z", 1);
+        /*const int l_max = domain_->tree()->depth();
         const int l_min = domain_->tree()->base_level();
         const int nLevels = l_max - l_min;
-        c_z = dx_base_*N_modes*2/std::pow(2.0, nLevels - 1);
+        c_z = dx_base_*N_modes*2/std::pow(2.0, nLevels - 1);*/
 
         pcout << "c_z is " << c_z << std::endl;
 

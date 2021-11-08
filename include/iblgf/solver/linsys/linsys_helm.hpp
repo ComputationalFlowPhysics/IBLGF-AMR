@@ -72,13 +72,13 @@ class LinSysSolver_helm
     {
         cg_threshold_ = simulation_->dictionary_->template get_or<float_type>("cg_threshold",1e-3);
         cg_max_itr_ = simulation_->dictionary_->template get_or<int>("cg_max_itr", 40);
-        //c_z = simulation_->dictionary()->template get_or<float_type>(
-        //    "L_z", 1.0);
-        float_type dx_base_ = domain_->dx_base();
+        c_z = simulation_->dictionary()->template get_or<float_type>(
+            "L_z", 1.0);
+        /*float_type dx_base_ = domain_->dx_base();
         const int l_max = domain_->tree()->depth();
         const int l_min = domain_->tree()->base_level();
         const int nLevels = l_max - l_min;
-        c_z = dx_base_*N_modes*2/std::pow(2.0, nLevels - 1);
+        c_z = dx_base_*N_modes*2/std::pow(2.0, nLevels - 1);*/
 
         additional_modes = simulation_->dictionary()->template get_or<int>("add_modes", N_modes - 1);
     }

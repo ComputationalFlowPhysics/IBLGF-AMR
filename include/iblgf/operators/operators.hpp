@@ -1075,6 +1075,49 @@ struct Operator
         for (auto& n : block)
         {
             int sep = N_modes*PREFAC;
+            /*for (int i = 1; i < (N_modes * PREFAC) ; i++) {
+                n(dest, 0 * sep + i) = 
+                (n(source, 2 * sep + i) - n.at_offset(source, 0, -1, 2 * sep + i)) / dx_level / 2,0 +
+                (n(source, 2 * sep + i - 1) - n.at_offset(source, 0, -1, 2 * sep + i - 1)) / dx_level / 2.0 -
+                //(n(source, 1 * sep + i) - n.at_offset(source, 0, 0,  1 * sep + i - 1)) / dx_fine;
+                (n(source, 1 * sep + i) - n(source, 1 * sep + i - 1)) / dx_fine;
+                //n(dest, 0 * sep + i) *= fac;
+
+                n(dest, 1 * sep + i) = 
+                (n(source, 0 * sep + i) - n.at_offset(source, 0, 0,  0 * sep + i - 1)) / dx_fine -
+                (n(source, 2 * sep + i) - n.at_offset(source, -1, 0, 2 * sep + i)) / dx_level / 2.0 - 
+                (n(source, 2 * sep + i - 1) - n.at_offset(source, -1, 0, 2 * sep + i - 1)) / dx_level / 2.0;
+                //n(dest, 1 * sep + i) *= fac;
+
+                n(dest, 2 * sep + i) = 
+                n(source, 1 * sep + i) - n.at_offset(source, -1, 0, 1 * sep + i) -
+                n(source, 0 * sep + i) + n.at_offset(source, 0, -1, 0 * sep + i);
+                n(dest, 2 * sep + i) *= fac;
+            }
+
+            //i = 0 case
+            n(dest, 0 * sep) = (n(source, 2 * sep) -
+                               n.at_offset(source, 0, -1, 2 * sep)) / dx_level / 2.0 +
+                               (n(source, 2 * sep + sep - 1) -
+                               n.at_offset(source, 0, -1, 2 * sep + sep - 1)) / dx_level / 2.0 -
+                               (n(source, 1 * sep) -
+                               n.at_offset(source, 0, 0, 1 * sep + sep - 1)) / dx_fine;
+            //n(dest, 0 * sep) *= fac;
+
+            n(dest, 1 * sep) = (n(source, 0 * sep) -
+                               n.at_offset(source, 0, 0, 0 * sep + sep - 1)) / dx_fine -
+                               (n(source, 2 * sep) -
+                               n.at_offset(source, -1, 0, 2 * sep)) / dx_level / 2.0 - 
+                               (n(source, 2 * sep + sep - 1) -
+                               n.at_offset(source, -1, 0, 2 * sep + sep - 1)) / dx_level / 2.0;
+            //n(dest, 1 * sep) *= fac;
+
+            n(dest, 2 * sep) = (n(source, 1 * sep) -
+                               n.at_offset(source, -1, 0, 1 * sep)) / dx_level -
+                               (n(source, 0 * sep) -
+                               n.at_offset(source, 0, -1, 0 * sep)) / dx_level;*/
+
+            
             for (int i = 1; i < (N_modes * PREFAC) ; i++) {
                 n(dest, 0 * sep + i) = 
                 (n(source, 2 * sep + i) - n.at_offset(source, 0, -1, 2 * sep + i)) / dx_level -
@@ -1576,7 +1619,53 @@ struct Operator
         std::vector<float_type> output_vel;
         c2rFunc.output_field_padded(output_vel);
 
-        for (int i = 0; i < padded_dim * NComp; i++)
+        if (NComp > 1)
+        {
+            for (int i = 0; i < padded_dim * (NComp - 1); i++)
+            {
+                auto& lin_data_ = it->data_r(To::tag(), i);
+                for (int j = 0; j < dim_0 * dim_1; j++)
+                {
+                    int idx = j * padded_dim * NComp + i;
+                    lin_data_[j] = output_vel[idx];
+                }
+            }
+            for (int i = padded_dim * (NComp - 1); i < padded_dim * NComp; i++)
+            {
+                auto& lin_data_ = it->data_r(To::tag(), i);
+                for (int j = 0; j < dim_0 * dim_1; j++)
+                {
+                    if (i != (padded_dim * NComp - 1))
+                    {
+                        int idx = j * padded_dim * NComp + i;
+                        lin_data_[j] =
+                            output_vel[idx] / 2.0 + output_vel[idx + 1] / 2.0;
+                    }
+                    else
+                    {
+                        int idx = j * padded_dim * NComp + i;
+                        int idx0 =
+                            j * padded_dim * NComp + padded_dim * (NComp - 1);
+                        lin_data_[j] =
+                            output_vel[idx] / 2.0 + output_vel[idx0] / 2.0;
+                    }
+                }
+            }
+        }
+        else
+        {
+            for (int i = 0; i < padded_dim * NComp; i++)
+            {
+                auto& lin_data_ = it->data_r(To::tag(), i);
+                for (int j = 0; j < dim_0 * dim_1; j++)
+                {
+                    int idx = j * padded_dim * NComp + i;
+                    lin_data_[j] = output_vel[idx];
+                }
+            }
+        }
+
+        /*for (int i = 0; i < padded_dim * NComp; i++)
         {
             auto& lin_data_ = it->data_r(To::tag(), i);
             for (int j = 0; j < dim_0 * dim_1; j++)
@@ -1584,7 +1673,7 @@ struct Operator
                 int idx = j * padded_dim * NComp + i;
                 lin_data_[j] = output_vel[idx]; 
             }
-        }
+        }*/
     }
 
     template<typename From, typename To, typename Block>
@@ -1597,7 +1686,47 @@ struct Operator
         int N_to = To::nFields();
 
         std::vector<float_type> tmp_vec(vec_size, 0.0);
-        for (int i = 0; i < N_modes * PREFAC_FROM * NComp; i++)
+        if (NComp > 1)
+        {
+
+            for (int i = 0; i < padded_dim * (NComp - 1); i++)
+            {
+                auto& lin_data_ = it->data_r(To::tag(), i);
+                for (int j = 0; j < dim_0 * dim_1; j++)
+                {
+                    int idx = j * padded_dim * NComp + i;
+                    tmp_vec[idx] = lin_data_[j];
+                }
+            }
+            for (int i = padded_dim * (NComp - 1); i < padded_dim * NComp; i++)
+            {
+                auto& lin_data_0 = it->data_r(To::tag(), i);
+                auto& lin_data_1 = it->data_r(To::tag(), i - 1);
+                if (i == padded_dim * (NComp - 1)) {
+                    lin_data_1 = it->data_r(To::tag(), (padded_dim*NComp - 1));
+                }
+                for (int j = 0; j < dim_0 * dim_1; j++)
+                {
+                    
+                    int idx = j * padded_dim * NComp + i;
+                    tmp_vec[idx] = (lin_data_0[j] / 2.0 + lin_data_1[j] / 2.0);
+                    
+                }
+            }
+        }
+        else
+        {
+            for (int i = 0; i < padded_dim * NComp; i++)
+            {
+                auto& lin_data_ = it->data_r(From::tag(), i);
+                for (int j = 0; j < dim_0 * dim_1; j++)
+                {
+                    int idx = j * padded_dim * NComp + i;
+                    tmp_vec[idx] = lin_data_[j];
+                }
+            }
+        }
+        /*for (int i = 0; i < N_modes * PREFAC_FROM * NComp; i++)
         {
             auto& lin_data_ = it->data_r(From::tag(), i);
             for (int j = 0; j < dim_0 * dim_1; j++)
@@ -1605,7 +1734,7 @@ struct Operator
                 int idx = j * N_modes * PREFAC_FROM * NComp + i;
                 tmp_vec[idx] = lin_data_[j];
             }
-        }
+        }*/
 
         r2cFunc.copy_field(tmp_vec);
         r2cFunc.execute();

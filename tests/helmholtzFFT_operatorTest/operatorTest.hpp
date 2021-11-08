@@ -366,7 +366,7 @@ struct OperatorTest : public Setup_helmholtz<OperatorTest, parameters>
                     //node(r2c_source, PREFAC_REAL*N_modes  +i) = 2.0*tmpf1*std::cos(2.0*M_PI*(tmp_z+0.5*dz)/c_z);
                     node(r2c_source, i)                  = xe0*1.0*tmpf0*std::cos(2.0*M_PI*(tmp_z)/c_z);
                     node(r2c_source, PREFAC_REAL*N_modes  +i) = ye1*2.0*tmpf1*std::cos(2.0*M_PI*(tmp_z)/c_z);
-                    node(r2c_source, PREFAC_REAL*N_modes*2+i) = 3.0*tmpf2*std::cos(2.0*M_PI*(tmp_z)/c_z);
+                    node(r2c_source, PREFAC_REAL*N_modes*2+i) = 3.0*tmpf2*std::cos(2.0*M_PI*(tmp_z + 0.5*dz)/c_z);
 
 
                     /*if (i == 3) {

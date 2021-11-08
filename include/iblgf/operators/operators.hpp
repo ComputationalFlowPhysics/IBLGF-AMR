@@ -1688,10 +1688,9 @@ struct Operator
         std::vector<float_type> tmp_vec(vec_size, 0.0);
         if (NComp > 1)
         {
-
             for (int i = 0; i < padded_dim * (NComp - 1); i++)
             {
-                auto& lin_data_ = it->data_r(To::tag(), i);
+                auto& lin_data_ = it->data_r(From::tag(), i);
                 for (int j = 0; j < dim_0 * dim_1; j++)
                 {
                     int idx = j * padded_dim * NComp + i;
@@ -1700,17 +1699,26 @@ struct Operator
             }
             for (int i = padded_dim * (NComp - 1); i < padded_dim * NComp; i++)
             {
-                auto& lin_data_0 = it->data_r(To::tag(), i);
-                auto& lin_data_1 = it->data_r(To::tag(), i - 1);
-                if (i == padded_dim * (NComp - 1)) {
-                    lin_data_1 = it->data_r(To::tag(), (padded_dim*NComp - 1));
-                }
+                auto& lin_data_0 = it->data_r(From::tag(), i);
+                auto& lin_data_1 = it->data_r(From::tag(), i - 1);
+
+                auto& lin_data_2 =
+                    it->data_r(From::tag(), (padded_dim * NComp - 1));
+
                 for (int j = 0; j < dim_0 * dim_1; j++)
                 {
-                    
-                    int idx = j * padded_dim * NComp + i;
-                    tmp_vec[idx] = (lin_data_0[j] / 2.0 + lin_data_1[j] / 2.0);
-                    
+                    if (i != padded_dim * (NComp - 1))
+                    {
+                        int idx = j * padded_dim * NComp + i;
+                        tmp_vec[idx] =
+                            (lin_data_0[j] / 2.0 + lin_data_1[j] / 2.0);
+                    }
+                    else
+                    {
+                        int idx = j * padded_dim * NComp + i;
+                        tmp_vec[idx] =
+                            (lin_data_0[j] / 2.0 + lin_data_2[j] / 2.0);
+                    }
                 }
             }
         }

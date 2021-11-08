@@ -102,13 +102,15 @@ struct OperatorTest : public Setup_helmholtz<OperatorTest, parameters>
         global_refinement_ = simulation_.dictionary_->template get_or<int>(
             "global_refinement", 0);
 
-        c_z = simulation_.dictionary_->template get_or<int>(
+        c_z = simulation_.dictionary_->template get_or<float_type>(
             "c_z", 1.0);
 
-        L_z = simulation_.dictionary_->template get_or<int>(
-            "L_z", 1.0);
+        ratio = simulation_.dictionary_->template get_or<int>(
+            "ratio", 1);
 
         //PREFAC = 1;
+
+        L_z = c_z * ratio;
 
         dz = L_z/static_cast<float_type>(N_modes)/static_cast<float_type>(PREFAC_REAL);
 
@@ -167,7 +169,7 @@ struct OperatorTest : public Setup_helmholtz<OperatorTest, parameters>
 
                 int vec_size = dim_0*dim_1*N_modes*3*PREFAC_REAL;
                 domain::Operator::FourierTransformR2C<r2c_source_type, r2c_target_type>(
-                    it, N_modes, padded_dim, vec_size, nonzero_dim, dim_0, dim_1, r2cFunc, 3, PREFAC_REAL);
+                    it, N_modes, padded_dim, vec_size, nonzero_dim, dim_0, dim_1, r2cFunc, N_modes, 3, PREFAC_REAL);
                 vec_size = dim_0*dim_1*N_modes*3;
                 domain::Operator::FourierTransformC2R<r2c_exact_type, c2r_target_type>(
                     it, N_modes, padded_dim, vec_size, nonzero_dim, dim_0, dim_1, c2rFunc, 3, PREFAC_COMP);
@@ -383,7 +385,7 @@ struct OperatorTest : public Setup_helmholtz<OperatorTest, parameters>
                 }
 
                 for (int i = 0 ; i < PREFAC_COMP*N_modes ; i++) {
-                    if (i == 2) {
+                    if (i == ratio*2) {
                         node(r2c_exact, i)                         = xe0*1.0*tmpf0/2.0;
                         node(r2c_exact, PREFAC_COMP*N_modes  +i)   = ye1*2.0*tmpf1/2.0;
                         node(r2c_exact, PREFAC_COMP*N_modes*2+i)   = 3.0*tmpf2/2.0;
@@ -478,6 +480,7 @@ struct OperatorTest : public Setup_helmholtz<OperatorTest, parameters>
     float_type               c_z = 1.0;
     float_type               dz;
     float_type               L_z = 1.0;  //length of z dimension 
+    int                      ratio = 1;
     //int                      PREFAC = 3; //3 FOR THE 3/2 RULE IN REAL DOMAIN, 2 ON THE OPERATORS FOR THE COMPLEX VARIABLES
     fft::helm_dfft_r2c r2cFunc;
     fft::helm_dfft_c2r c2rFunc;

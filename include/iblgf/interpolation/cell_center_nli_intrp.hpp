@@ -169,7 +169,7 @@ class cell_center_nli
 
   public: // functionalities
     template<class from, class to, typename octant_t>
-    void add_source_correction(octant_t parent, double dx)
+    void add_source_correction(octant_t parent, double dx, float_type omega = 0.0)
     {
         for (int i = 0; i < parent->num_children(); ++i)
         {
@@ -207,6 +207,8 @@ class cell_center_nli
                             child_target_tmp(i + 1, j, k) * (1.0 / (dx * dx));
                         child_linalg_data(i, j, k) -=
                             child_target_tmp(i - 1, j, k) * (1.0 / (dx * dx));
+                        child_linalg_data(i, j, k) +=
+                            omega * omega * child_target_tmp(i, j, k);
                     }
                 }
             }
@@ -227,6 +229,8 @@ class cell_center_nli
                             child_target_tmp(i + 1, j) * (1.0 / (dx * dx));
                         child_linalg_data(i, j) -=
                             child_target_tmp(i - 1, j) * (1.0 / (dx * dx));
+                        child_linalg_data(i, j) +=
+                            omega * omega * child_target_tmp(i, j);
                     }
             	}
 	    }

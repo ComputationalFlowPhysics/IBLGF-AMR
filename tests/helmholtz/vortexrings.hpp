@@ -93,7 +93,7 @@ struct VortexRingTest : public SetupBase<VortexRingTest, parameters>
 
         float_type dx_base = domain_->dx_base();
         int nLevels = _d->get_dictionary("simulation_parameters")->template get_or<int>("nLevels", 0);
-        c_value     = _d->get_dictionary("simulation_parameters")->template get_or<int>("c_value", 2.0*M_PI);
+        c_value     = _d->get_dictionary("simulation_parameters")->template get_or<float_type>("c_value", 2.0*M_PI);
         dx_fine     = dx_base*std::pow(0.5, nLevels);
         pcout << "dxfine " << dx_fine << std::endl;
         float_type c_helm = c_value*dx_base;

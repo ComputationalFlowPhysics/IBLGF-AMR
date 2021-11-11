@@ -607,6 +607,11 @@ class PoissonSolver
                     .client()
                     ->template communicate_updownward_assign<source_tmp_type,
                         source_tmp_type>(l, false, false, -1);
+                client->template buffer_exchange<target_tmp_type>(l+1);
+                domain_->decomposition()
+                    .client()
+                    ->template communicate_updownward_assign<target_tmp_type,
+                        target_tmp_type>(l+1, false, false, -1);
 
                 for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
                 {
@@ -623,15 +628,28 @@ class PoissonSolver
                 {
                     int    refinement_level = it->refinement_level();
                     double dx = dx_base / std::pow(2, refinement_level);
-                    c_cntr_nli_.template add_source_correction<target_tmp_type,
+                    
+                    
+
+                    if (!_kernel->LaplaceLGF())
+                    {
+                        float_type c_val = _kernel->return_c_level() / dx;
+                        c_cntr_nli_.template add_source_correction<target_tmp_type,
+                        correction_tmp_type>(it, dx / 2.0, c_val);
+                    }
+                    else {
+                        c_cntr_nli_.template add_source_correction<target_tmp_type,
                         correction_tmp_type>(it, dx / 2.0);
+                    }
                 }
 
                 for (auto it = domain_->begin(l + 1); it != domain_->end(l + 1);
                      ++it) {
-                    if (!_kernel->LaplaceLGF())
+                    /*if (!_kernel->LaplaceLGF())
                     {
-                        float_type c_val = _kernel->return_c_level()/2.0;
+                        int    refinement_level = it->refinement_level();
+                        double dx = dx_base / std::pow(2, refinement_level);
+                        float_type c_val = _kernel->return_c_level() / 2.0 / dx;
                         if (it->locally_owned() && it->has_data() && it->data().is_allocated())
                         {
                             auto& lin_data_1 =
@@ -641,7 +659,7 @@ class PoissonSolver
 
                             xt::noalias(lin_data_2) += lin_data_1 * c_val * c_val;
                         }
-                    }
+                    }*/
                     if (it->locally_owned())
                     {
                         auto& lin_data_1 =

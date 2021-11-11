@@ -56,7 +56,7 @@ const int Dim = 2;
 struct parameters
 {
     static constexpr std::size_t Dim = 2;
-	static constexpr std::size_t N_modes = 16;
+	static constexpr std::size_t N_modes = 64;
     // clang-format off
     REGISTER_FIELDS
     (
@@ -92,6 +92,7 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
     using milliseconds = std::chrono::milliseconds;
     using duration_type = typename clock_type::duration;
     using time_point_type = typename clock_type::time_point;
+	static constexpr int N_modes = parameters::N_modes;
 
 	NS_AMR_LGF(Dictionary* _d)
 		: super_type(_d, [this](auto _d, auto _domain) {
@@ -103,14 +104,14 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
 			client_comm_ = client_comm_.split(0);
 
 		//smooth_start_ = simulation_.dictionary()->template get_or<bool>("smooth_start", false);
-		U_.resize(domain_->dimension());
+		U_.resize(3);
 		U_[0] = simulation_.dictionary()->template get_or<float_type>("Ux", 1.0);
 		U_[1] = simulation_.dictionary()->template get_or<float_type>("Uy", 0.0);
-		if (domain_->dimension()>2)
-			U_[2] = simulation_.dictionary()->template get_or<float_type>("Uz", 0.0);
+		
+		U_[2] = simulation_.dictionary()->template get_or<float_type>("Uz", 0.0);
 
 		smooth_start_ = simulation_.dictionary()->template get_or<bool>("smooth_start", false);
-		w_perturb = simulation_.dictionary()->template get_or<float_type>("w_pert", 0.0001);
+		w_perturb = simulation_.dictionary()->template get_or<float_type>("w_pert", 0.000);
 
 		vortexType = simulation_.dictionary()->template get_or<int>("Vort_type", 0);
 
@@ -118,12 +119,6 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
 			[this](std::size_t idx, float_type t, auto coord = {0, 0})
 			{
 				float_type T0 = 0.5;
-				if (idx == 2) {
-					float_type h1 = exp(-1/(t/T0));
-					float_type h2 = exp(-1/(1 - t/T0));
-					float_type U_sin = std::sin(2*M_PI*t);
-					return U_sin * (h1/(h1+h2)) * w_perturb;
-				}
 				if (t<=0.0 && smooth_start_)
 					return 0.0;
 				else if (t<T0-1e-10 && smooth_start_)
@@ -256,7 +251,9 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
 		else if (use_tree_) {simulation_.template read_h5_2D<u_type>(ic_filename_2D_, "u");}
 		else if (restart_2D_) {
 			pcout << "reading restart from 2D profile" << std::endl;
-			simulation_.template read_h5_2D<u_type>(simulation_.restart_field_dir(), "u");}
+			simulation_.template read_h5_2D<u_type>(simulation_.restart_field_dir(), "u");
+			perturbIC();
+		}
 		else
 		{
 			simulation_.template read_h5<u_type>(simulation_.restart_field_dir(), "u");
@@ -474,6 +471,7 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
 				l3=this->template adapt_levle_change_for_field<edge_aux_type>(it, source_max[1], false);
 
 			int l=std::max(std::max(l1,l2),l3);
+			//int l = std::max(l1,l2);
 
 			if( l!=0)
 			{
@@ -674,13 +672,7 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
 				x = static_cast<float_type>(coord[0]-center[0]*scaling+0.5)*dx_level;
 				y = static_cast<float_type>(coord[1]-center[1]*scaling)*dx_level;
 				node(u, 1) = u_vort(x,y,0,1);
-                if (perturb_Fourier)
-                {
-                    for (int i = 0; i < u_type::nFields(); i++) { 
-						float_type rd = (static_cast <float_type> (rand()) / static_cast <float_type> (RAND_MAX)) - 0.5;
-						node(u, i) += rd*w_perturb; 
-					}
-                }
+
             }
 
 		}
@@ -706,8 +698,56 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
 
 	}
 
+    void perturbIC()
+    {
+        if (!perturb_Fourier) return;
+        //poisson_solver_t psolver(&this->simulation_);
 
-	float_type vortex_ring_vor_fat_ic(float_type x, float_type y, int field_idx, bool perturbation)
+        boost::mpi::communicator world;
+        if (domain_->is_server()) return;
+        auto center = (domain_->bounding_box().max() -
+                          domain_->bounding_box().min() + 1) /
+                          2.0 +
+                      domain_->bounding_box().min();
+
+        // Adapt center to always have peak value in a cell-center
+        //center+=0.5/std::pow(2,nRef);
+        const float_type dx_base = domain_->dx_base();
+
+        if (ic_filename_ != "null") return;
+
+        // Voriticity IC
+        for (auto it = domain_->begin(); it != domain_->end(); ++it)
+        {
+            if (!it->locally_owned()) continue;
+
+            auto dx_level = dx_base / std::pow(2, it->refinement_level());
+            auto scaling = std::pow(2, it->refinement_level());
+
+            for (auto& node : it->data())
+            {
+                for (int i = 1; i < N_modes; i++)
+                {
+                    float_type mag = 1.0 / static_cast<float_type>(i * i);
+                    for (int j = 0; j < 3; j++)
+                    {
+                        float_type rd = (static_cast<float_type>(rand()) /
+                                            static_cast<float_type>(RAND_MAX)) -
+                                        0.5;
+                        node(u, j * N_modes * 2 + i * 2) +=
+                            rd * w_perturb * mag;
+                        rd = (static_cast<float_type>(rand()) /
+                                 static_cast<float_type>(RAND_MAX)) -
+                             0.5;
+                        node(u, j * N_modes * 2 + i * 2 + 1) +=
+                            rd * w_perturb * mag;
+                    }
+                }
+            }
+        }
+    }
+
+    float_type vortex_ring_vor_fat_ic(float_type x, float_type y, int field_idx, bool perturbation)
 	{
 		//return 1;
 		//const float_type alpha = 0.54857674;

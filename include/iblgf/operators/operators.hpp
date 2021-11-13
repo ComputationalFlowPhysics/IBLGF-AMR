@@ -622,8 +622,9 @@ struct Operator
         typename std::enable_if<(U::mesh_type() == MeshObject::face),
             void>::type* = nullptr>
     static void ib_projection_helmholtz(Coord ib_coord, Force& f, Block& block,
-        DeltaFunc& ddf, int sep)
+        DeltaFunc& ddf, int N_modes, std::vector<bool>& ModesBool)
     {
+        int sep = 2*N_modes;
         constexpr auto u = U::tag();
         for (auto& node : block)
         {
@@ -637,6 +638,24 @@ struct Operator
                 off[field_idx/sep] = 0.0; // face data location
                 f[field_idx] += node(u, field_idx) * ddf(dist + off);
             }
+
+            /*for (std::size_t n = 0; n < N_modes;
+                 n++)
+            {
+                if (!ModesBool[n]) continue;
+                decltype(ib_coord) off(0.5);
+                f[4*N_modes + 2*n] += node(u, (4*N_modes + 2*n)) * ddf(dist + off);
+                f[4*N_modes + 2*n + 1] += node(u, (4*N_modes + 2*n + 1)) * ddf(dist + off);
+                
+                off[0] = 0.0;
+                f[2*n] += node(u, 2*n) * ddf(dist + off);
+                f[2*n + 1] += node(u, (2*n + 1)) * ddf(dist + off);
+
+                off[1] = 0.0;
+                off[0] = 0.5;
+                f[2*N_modes + 2*n] += node(u, (2*N_modes + 2*n)) * ddf(dist + off);
+                f[2*N_modes + 2*n + 1] += node(u, (2*N_modes + 2*n + 1)) * ddf(dist + off);
+            }*/
         }
     }
 
@@ -666,8 +685,9 @@ struct Operator
         typename std::enable_if<(U::mesh_type() == MeshObject::face),
             void>::type* = nullptr>
     static void ib_smearing_helmholtz(Coord ib_coord, Force& f, Block& block,
-        DeltaFunc& ddf, int sep, float_type factor = 1.0)
+        DeltaFunc& ddf, int N_modes, std::vector<bool>& ModesBool, float_type factor = 1.0)
     {
+        int sep = 2*N_modes;
         constexpr auto u = U::tag();
         for (auto& node : block)
         {
@@ -681,6 +701,24 @@ struct Operator
                 off[field_idx/sep] = 0.0; // face data location
                 node(u, field_idx) += f[field_idx] * ddf(dist + off) * factor;
             }
+            /*for (std::size_t n = 0; n < N_modes;
+                 n++)
+            {
+                if (!ModesBool[n]) continue;
+                decltype(ib_coord) off(0.5);
+                node(u, (4*N_modes + 2*n)) +=f[4*N_modes + 2*n] * ddf(dist + off) * factor;
+                node(u, (4*N_modes + 2*n + 1)) +=f[4*N_modes + 2*n + 1] * ddf(dist + off) * factor;
+                
+                off[0] = 0.0;
+                node(u, (2*N_modes + 2*n)) +=f[2*N_modes + 2*n] * ddf(dist + off) * factor;
+                node(u, (2*N_modes + 2*n + 1)) +=f[2*N_modes + 2*n + 1] * ddf(dist + off) * factor;
+
+                off[1] = 0.0;
+                off[0] = 0.5;
+                node(u, (2*n)) +=f[2*n] * ddf(dist + off) * factor;
+                node(u, (2*n + 1)) +=f[2*n + 1] * ddf(dist + off) * factor;
+
+            }*/
         }
     }
 
@@ -962,6 +1000,47 @@ struct Operator
             }
 
             for (int i = 0; i < N_modes; i++) { 
+                float_type omega = 2.0*M_PI*static_cast<float_type>(i)/c;
+
+                n(dest, i * 2)     -= n(source, 2 * sep + i * 2 + 1) * omega;
+                n(dest, i * 2 + 1) += n(source, 2 * sep + i * 2    ) * omega;
+
+            }
+
+        }
+    }
+
+
+    template<class SourceTuple, class Dest, class Block,
+        typename std::enable_if<(Dest::mesh_type() == MeshObject::cell) &&
+                                    (SourceTuple::mesh_type() ==
+                                        MeshObject::face),
+            void>::type* = nullptr>
+    static void divergence_helmholtz_complex_Modes(Block& block, float_type dx_level,
+        int                                   N_modes,
+        float_type                            c,
+        std::vector<bool>                     ModesBool,
+        int                                   PREFAC = 2) noexcept
+    {
+        const auto     fac = 1.0 / dx_level;
+        constexpr auto source = SourceTuple::tag();
+        constexpr auto dest = Dest::tag();
+        for (auto& n : block)
+        {
+
+
+            int sep = N_modes*PREFAC;
+            for (int i = 0; i < sep ; i++) {
+                if (!ModesBool[i/PREFAC]) continue;
+                n(dest, i) =  -n(source, 0 * sep + i) - n(source, 1 * sep + i) +
+                          n.at_offset(source, 1, 0, 0 * sep + i) +
+                          n.at_offset(source, 0, 1, 1 * sep + i);
+
+                n(dest, i) *= fac;
+            }
+
+            for (int i = 0; i < N_modes; i++) { 
+                if (!ModesBool[i]) continue;
                 float_type omega = 2.0*M_PI*static_cast<float_type>(i)/c;
 
                 n(dest, i * 2)     -= n(source, 2 * sep + i * 2 + 1) * omega;

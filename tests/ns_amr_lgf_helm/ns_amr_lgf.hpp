@@ -56,7 +56,7 @@ const int Dim = 2;
 struct parameters
 {
     static constexpr std::size_t Dim = 2;
-	static constexpr std::size_t N_modes = 64;
+	static constexpr std::size_t N_modes = 16;
     // clang-format off
     REGISTER_FIELDS
     (
@@ -92,12 +92,14 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
     using milliseconds = std::chrono::milliseconds;
     using duration_type = typename clock_type::duration;
     using time_point_type = typename clock_type::time_point;
+	using poisson_solver_t = typename super_type::poisson_solver_t;
 	static constexpr int N_modes = parameters::N_modes;
 
 	NS_AMR_LGF(Dictionary* _d)
 		: super_type(_d, [this](auto _d, auto _domain) {
 		return this->initialize_domain(_d, _domain);
 			})
+		, psolver(&this->simulation_, N_modes - 1)
 	{
 		if (domain_->is_client()) client_comm_ = client_comm_.split(1);
 		else
@@ -157,6 +159,9 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
 
 		auto domain_range = domain_->bounding_box().max() - domain_->bounding_box().min();
 		Lx = domain_range[0] * dx_;
+
+		c_z = simulation_.dictionary()->template get_or<float_type>(
+            "L_z", 1);
 
 
 
@@ -734,6 +739,78 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
                         float_type rd = (static_cast<float_type>(rand()) /
                                             static_cast<float_type>(RAND_MAX)) -
                                         0.5;
+                        node(edge_aux, j * N_modes * 2 + i * 2) +=
+                            rd * w_perturb * mag;
+                        rd = (static_cast<float_type>(rand()) /
+                                 static_cast<float_type>(RAND_MAX)) -
+                             0.5;
+                        node(edge_aux, j * N_modes * 2 + i * 2 + 1) +=
+                            rd * w_perturb * mag;
+                    }
+                }
+            }
+        }
+
+		psolver.template apply_lgf_and_helm<edge_aux_type, stream_f_type>(N_modes, 3);
+		auto client = domain_->decomposition().client();
+
+		for (int l = domain_->tree()->base_level();
+			l < domain_->tree()->depth(); ++l)
+		{
+			client->template buffer_exchange<stream_f_type>(l);
+
+			for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+			{
+				if (!it->locally_owned() || !it->has_data()) continue;
+				const auto dx_level =
+					dx_base / std::pow(2, it->refinement_level());
+				domain::Operator::curl_transpose_helmholtz_complex<stream_f_type, u_i_type>(
+                    it->data(), dx_level, N_modes, c_z, -1.0);
+				//domain::Operator::curl_transpose_helmholtz_complex<stream_f_type, u_type>(
+				//	it->data(), dx_level, -1.0);
+			}
+			client->template buffer_exchange<u_i_type>(l);
+		}
+		add<u_i_type, u_type>();
+    }
+
+
+	void perturbIC_Discrete()
+    {
+        if (!perturb_Fourier) return;
+        //poisson_solver_t psolver(&this->simulation_);
+
+        boost::mpi::communicator world;
+        if (domain_->is_server()) return;
+        auto center = (domain_->bounding_box().max() -
+                          domain_->bounding_box().min() + 1) /
+                          2.0 +
+                      domain_->bounding_box().min();
+
+        // Adapt center to always have peak value in a cell-center
+        //center+=0.5/std::pow(2,nRef);
+        const float_type dx_base = domain_->dx_base();
+
+        if (ic_filename_ != "null") return;
+
+        // Voriticity IC
+        for (auto it = domain_->begin(); it != domain_->end(); ++it)
+        {
+            if (!it->locally_owned()) continue;
+
+            auto dx_level = dx_base / std::pow(2, it->refinement_level());
+            auto scaling = std::pow(2, it->refinement_level());
+
+            for (auto& node : it->data())
+            {
+                for (int i = 1; i < N_modes; i++)
+                {
+                    float_type mag = 1.0 / static_cast<float_type>(i * i);
+                    for (int j = 0; j < 3; j++)
+                    {
+                        float_type rd = (static_cast<float_type>(rand()) /
+                                            static_cast<float_type>(RAND_MAX)) -
+                                        0.5;
                         node(u, j * N_modes * 2 + i * 2) +=
                             rd * w_perturb * mag;
                         rd = (static_cast<float_type>(rand()) /
@@ -743,6 +820,27 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
                             rd * w_perturb * mag;
                     }
                 }
+            }
+        }
+    }
+
+
+	template<typename From, typename To>
+    void add(float_type scale = 1.0) noexcept
+    {
+        static_assert(From::nFields() == To::nFields(),
+            "number of fields doesn't match when add");
+        for (auto it = domain_->begin(); it != domain_->end(); ++it)
+        {
+            if (!it->locally_owned() || !it->has_data()) continue;
+            for (std::size_t field_idx = 0; field_idx < From::nFields();
+                 ++field_idx)
+            {
+                it->data_r(To::tag(), field_idx)
+                    .linalg()
+                    .get()
+                    ->cube_noalias_view() +=
+                    it->data_r(From::tag(), field_idx).linalg_data() * scale;
             }
         }
     }
@@ -989,6 +1087,8 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
 
     boost::mpi::communicator client_comm_;
 
+	poisson_solver_t psolver;
+
     bool single_ring_=true;
     bool perturbation_=false;
     bool hard_max_refinement_=false;
@@ -996,6 +1096,7 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
 	bool perturb_Fourier;
     int vortexType = 0;
 	float_type w_perturb;
+	float_type c_z;
 
     std::vector<float_type> U_;
     //bool subtract_non_leaf_  = true;

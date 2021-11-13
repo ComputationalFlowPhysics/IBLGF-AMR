@@ -81,6 +81,10 @@ class LinSysSolver_helm
         c_z = dx_base_*N_modes*2/std::pow(2.0, nLevels - 1);*/
 
         additional_modes = simulation_->dictionary()->template get_or<int>("add_modes", N_modes - 1);
+        _compute_Modes.resize(N_modes);
+        for (int i = 0; i < N_modes; i++) {
+            this->_compute_Modes[i] = true;
+        }
     }
 
     float_type test()
@@ -191,6 +195,11 @@ class LinSysSolver_helm
     void CG_solve(UcType& uc, float_type alpha)
     {
         auto& f = ib_->force();
+
+        
+        for (int i = 0; i < N_modes; i++) {
+            this->_compute_Modes[i] = true;
+        }
 
         point_force_type tmp(0.0);
         force_type Ax(ib_->size(), tmp);
@@ -350,7 +359,7 @@ class LinSysSolver_helm
                 auto ib_coord = ib_->scaled_coordinate(i, it->refinement_level());
 
                 domain::Operator::ib_smearing_helmholtz<U>
-                    (ib_coord, f[i], ib_->influence_pts(i, oct_i), ib_->delta_func(), sep);
+                    (ib_coord, f[i], ib_->influence_pts(i, oct_i), ib_->delta_func(), N_modes, this->_compute_Modes);
                 oct_i+=1;
             }
         }
@@ -380,7 +389,7 @@ class LinSysSolver_helm
                 auto ib_coord = ib_->scaled_coordinate(i, it->refinement_level());
 
                 domain::Operator::ib_projection_helmholtz<U>
-                    (ib_coord, f[i], ib_->influence_pts(i, oct_i), ib_->delta_func(), sep);
+                    (ib_coord, f[i], ib_->influence_pts(i, oct_i), ib_->delta_func(), N_modes, this->_compute_Modes);
 
                 oct_i+=1;
             }
@@ -410,6 +419,31 @@ class LinSysSolver_helm
         return s_global;
     }
 
+    template<class VecType>
+    std::vector<float_type> dot_Mode(VecType& a, VecType& b)
+    {
+        std::vector<float_type> s(N_modes, 0.0);
+        for (std::size_t i=0; i<a.size(); ++i)
+        {
+            if (ib_->rank(i)!=comm_.rank())
+                continue;
+
+            for (std::size_t n = 0; n < N_modes; n++) {
+                s[n] += (a[i][2*n] * b[i][2*n] + 
+                         a[i][2*n + 1] * b[i][2*n + 1] +
+                         a[i][2*N_modes + 2*n] * b[i][2*N_modes + 2*n] + 
+                         a[i][2*N_modes + 2*n + 1] * b[i][2*N_modes + 2*n + 1] + 
+                         a[i][4*N_modes + 2*n] * b[i][4*N_modes + 2*n] + 
+                         a[i][4*N_modes + 2*n + 1] * b[i][4*N_modes + 2*n + 1]);
+            }
+        }
+
+        std::vector<float_type> s_global(N_modes, 0.0);
+        boost::mpi::all_reduce(domain_->client_communicator(), s,
+                s_global, std::plus<std::vector<float_type>>());
+        return s_global;
+    }
+
     template <class VecType>
     void add(VecType& a, VecType& b,
             float_type scale1=1.0, float_type scale2=1.0)
@@ -426,6 +460,7 @@ class LinSysSolver_helm
 
   private:
     boost::mpi::communicator comm_;
+    std::vector<bool> _compute_Modes;
     simulation_type* simulation_;
     domain_type*     domain_; ///< domain
     ib_t* ib_;

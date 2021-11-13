@@ -91,7 +91,7 @@ class Setup_helmholtz
       (face_aux,            float_type,  3*2*N_modes,  1,  1,  face,false),
       (face_aux2,           float_type,  3*2*N_modes,  1,  1,  face,false),
       (stream_f,            float_type,  3*2*N_modes,  1,  1,  edge,false),
-      (edge_aux,            float_type,  3*2*N_modes,  1,  1,  edge,false)
+      (edge_aux,            float_type,  3*2*N_modes,  1,  1,  edge,true)
     ))
     // clang-format on
 

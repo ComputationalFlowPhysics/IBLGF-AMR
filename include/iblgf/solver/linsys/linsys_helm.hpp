@@ -17,6 +17,7 @@
 #include <algorithm>
 #include <vector>
 #include <cmath>
+#include <complex>
 
 // IBLGF-specific
 #include <iblgf/global.hpp>
@@ -151,7 +152,7 @@ class LinSysSolver_helm
 
         domain_->client_communicator().barrier();
         domain::Operator::domainClean<face_aux2_type>(domain_);
-        this->template CG_solve<face_aux2_type>(uc, alpha);
+        this->template BCGstab_solve<face_aux2_type>(uc, alpha);
     }
 
     template<class Field>
@@ -258,6 +259,338 @@ class LinSysSolver_helm
         }
     }
 
+    template<class Ftmp, class UcType>
+    void BCG_solve(UcType& uc, float_type alpha_)
+    {
+        auto& f = ib_->force();
+
+        
+        for (int i = 0; i < N_modes; i++) {
+            this->_compute_Modes[i] = true;
+        }
+
+        point_force_type tmp(0.0);
+        force_type Ax(ib_->size(), tmp);
+        force_type r(ib_->size(), tmp);
+        //force_type v(ib_->size(), tmp); //sort of like a residue in QMR but not really
+        //force_type v_prev(ib_->size(), tmp); //store previous v
+        force_type Ap(ib_->size(), tmp);
+        force_type Error(ib_->size(), tmp);
+
+        if (domain_->is_server())
+            return;
+
+        // Ax
+        this->template ET_H_S_E<Ftmp>(f, Ax, alpha_);
+        //printvec(Ax, "Ax");
+
+        //  res = uc - Ax
+        for (int i=0; i<ib_->size(); ++i)
+        {
+            if (ib_->rank(i)!=comm_.rank())
+                r[i]=0;
+            else
+                r[i]=uc[i]-Ax[i];
+        }
+
+        //float_type w = dot(v,v);
+
+        //std::complex<float_type> beta_sq = product(v,v);
+        //std::complex<float_type> beta = std::sqrt(beta_sq);
+
+        //std::complex<float_type> tao = beta*w;
+
+        // p = res
+        auto p = r;
+
+        // rold = r'* r;
+        std::complex<float_type> rsold = product(r, r);
+
+        const std::complex<float_type> OneComp(1.0, 0.0);
+
+        for (int k=0; k<cg_max_itr_; k++)
+        {
+            // Ap = A(p)
+            this->template ET_H_S_E<Ftmp>(p, Ap, alpha_);
+            // alpha = rsold / p'*Ap
+            std::complex<float_type> pAp = product(p,Ap);
+            if (std::abs(pAp) == 0.0 || std::abs(rsold) == 0.0)
+            {
+                return;
+            }
+
+            std::complex<float_type> alpha = rsold / pAp;
+            // f = f + alpha * p;
+            add_complex(f, p, OneComp, alpha);
+            // r = r - alpha*Ap
+            add_complex(r, Ap, OneComp, -alpha);
+            // rsnew = r' * r
+            std::complex<float_type> rsnew = product(r, r);
+            float_type f2 = dot(f,f);
+            float_type rs_mag = std::abs(rsnew);
+
+            this->template ET_H_S_E<Ftmp>(f, Ax, alpha_);
+            for (int i = 0; i < ib_->size(); ++i)
+            {
+                if (ib_->rank(i) != comm_.rank()) Error[i] = 0;
+                else
+                    Error[i] = uc[i] - Ax[i];
+            }
+            float_type errorMag = dot(Error, Error);
+            if (comm_.rank()==1)
+                std::cout<< "BCG residue square = "<< rs_mag/f2<< " Error is " << errorMag << std::endl;
+            if (sqrt(rs_mag/f2)<cg_threshold_)
+                break;
+
+            // p = r + (rsnew / rsold) * p;
+            add_complex(p, r, rsnew/rsold, OneComp);
+            rsold = rsnew;
+        }
+    }
+
+    template<class Ftmp, class UcType>
+    void BCGstab_solve(UcType& uc, float_type alpha_)
+    {
+        auto& f = ib_->force();
+
+        
+        for (int i = 0; i < N_modes; i++) {
+            this->_compute_Modes[i] = true;
+        }
+
+        point_force_type tmp(0.0);
+        force_type Ax(ib_->size(), tmp);
+        force_type As(ib_->size(), tmp);
+        force_type r(ib_->size(), tmp);
+        force_type v(ib_->size(), tmp);
+        force_type p(ib_->size(), tmp);
+        force_type r_old(ib_->size(), tmp);
+        force_type r_hat(ib_->size(), tmp);
+        //force_type v(ib_->size(), tmp); //sort of like a residue in QMR but not really
+        //force_type v_prev(ib_->size(), tmp); //store previous v
+        force_type Ap(ib_->size(), tmp);
+        force_type Error(ib_->size(), tmp);
+
+        if (domain_->is_server())
+            return;
+
+        // Ax
+        this->template ET_H_S_E<Ftmp>(f, Ax, alpha_);
+        //printvec(Ax, "Ax");
+
+        //  res = uc - Ax
+        for (int i=0; i<ib_->size(); ++i)
+        {
+            if (ib_->rank(i)!=comm_.rank())
+                r[i]=0;
+            else
+                r[i]=uc[i]-Ax[i];
+        }
+
+        r_hat = r;
+
+        // rold = r'* r;
+        float_type rsold = dot(r, r);
+        float_type rho = 1;
+        float_type rho_old = rho;
+        float_type w = 1;
+        float_type alpha = 1;
+
+        for (int k=0; k<cg_max_itr_; k++)
+        {
+            rho = dot(r_hat, r);
+            float_type beta = (rho/rho_old)*(alpha/w);
+            add(p, v, 1.0, -w);
+            add(p, r, beta, 1.0);
+            // Ap = A(p)
+            this->template ET_H_S_E<Ftmp>(p, v, alpha_);
+            alpha = rho/dot(r_hat, v);
+
+            add(f, p, 1.0, alpha);
+
+            auto s = r;
+            add(s, v, 1.0, -alpha);
+            this->template ET_H_S_E<Ftmp>(s, As, alpha_);
+            w = dot(As, s)/dot(As, As);
+            add(f, s, 1.0, w);
+            r = s;
+            add(r, As, 1.0, -w);
+
+            std::complex<float_type> rsnew = product(r, r);
+            float_type f2 = dot(f,f);
+            float_type rs_mag = std::abs(rsnew);
+
+            this->template ET_H_S_E<Ftmp>(f, Ax, alpha_);
+            for (int i = 0; i < ib_->size(); ++i)
+            {
+                if (ib_->rank(i) != comm_.rank()) Error[i] = 0;
+                else
+                    Error[i] = uc[i] - Ax[i];
+            }
+            float_type errorMag = dot(Error, Error);
+            if (comm_.rank()==1)
+                std::cout<< "BCGstab residue square = "<< rs_mag/f2<< " Error is " << errorMag << std::endl;
+            if (sqrt(rs_mag/f2)<cg_threshold_)
+                break;
+
+            // p = r + (rsnew / rsold) * p;
+            rho_old = rho;
+        }
+    }
+
+    template<class Ftmp, class UcType>
+    void QMR_solve(UcType& uc, float_type alpha_)
+    {
+        auto& f = ib_->force();
+
+        const std::complex<float_type> OneComp(1.0, 0.0);
+
+        
+        for (int i = 0; i < N_modes; i++) {
+            this->_compute_Modes[i] = true;
+        }
+
+        point_force_type tmp(0.0);
+        force_type Ax(ib_->size(), tmp);
+        //force_type r(ib_->size(), tmp);
+        force_type v(ib_->size(), tmp); //v_tilde sort of like a residue in QMR but not really
+        force_type v_prev(ib_->size(), tmp); //store previous v_tilde
+        force_type v_k(ib_->size(), tmp); //actual v
+        force_type h(ib_->size(), tmp); //something to keep track of residue
+        force_type v_k_old(ib_->size(), tmp);
+        force_type Av(ib_->size(), tmp);
+
+        if (domain_->is_server())
+            return;
+
+        // Ax
+        this->template ET_H_S_E<Ftmp>(f, Ax, alpha_);
+        //printvec(Ax, "Ax");
+
+        //  res = uc - Ax
+        for (int i=0; i<ib_->size(); ++i)
+        {
+            if (ib_->rank(i)!=comm_.rank())
+                v[i]=0;
+            else
+                v[i]=uc[i]-Ax[i];
+        }
+
+
+        std::complex<float_type> beta_sq = product(v,v);
+        std::complex<float_type> beta = std::sqrt(beta_sq);
+
+
+        auto tmp_v_k = v;
+        scale_complex(tmp_v_k, OneComp/beta);
+        float_type w = dot(tmp_v_k,tmp_v_k);
+        w = std::sqrt(w);
+        float_type w_old = w;
+        float_type w_new = w;
+
+
+
+        h = v;
+
+        std::complex<float_type> tao_tilde = beta*w;
+        std::complex<float_type> tao_tilde_old = beta*w;
+
+        std::complex<float_type> s(0.0,0.0);
+
+        std::complex<float_type> s_old = s;
+        std::complex<float_type> s_oold = s; //s_{k-2}
+
+        std::complex<float_type> c(1.0,0.0);
+        std::complex<float_type> c_old = c;
+        std::complex<float_type> c_oold = c;
+
+        // p = res
+        auto p = v_k;
+        auto p_old = p;
+        auto p_oold = p_old;
+
+        std::complex<float_type> s_cum(1.0, 0.0);//value to find the accumulative product of s
+
+        // rold = r'* r;
+        
+
+        
+
+        for (int k=0; k<cg_max_itr_; k++)
+        {
+            if (std::abs(beta) == 0.0) {
+                return;
+            }
+            v_k_old = v_k;
+            v_k = v;
+            scale_complex(v_k, OneComp/beta);
+            //updating w, w_old
+            w_old=w;
+            w = w_new;
+            //compute Av_k
+            this->template ET_H_S_E<Ftmp>(v_k, Av, alpha_);
+            std::complex<float_type> alpha = product(v_k, Av);
+            //v_tilde = Av_k - alpha_k*v_k - beta_k*v_{k-1}
+            v = Av;
+            add_complex(v, v_k, OneComp, -alpha);
+            add_complex(v, v_k_old, OneComp, -beta);
+            std::complex<float_type> beta_new_sq = product(v, v);
+            std::complex<float_type> beta_new    = std::sqrt(beta_new_sq);
+            //updating w
+            auto v_tmp = v; //use this v as the v for next step to compute w
+            scale_complex(v_tmp, OneComp/beta_new);
+            w_new = sqrt(dot(v_tmp, v_tmp));
+            //compute theta, eta, xi, c, and s
+            std::complex<float_type> theta_k = std::conj(s_oold)*beta*w_old;
+            std::complex<float_type> eta     = c_old*c_oold*beta*w_old + std::conj(s_old)*alpha*w;
+            std::complex<float_type> xi_tilde= c_old*alpha*w - s_old*c_oold*beta*w_old;
+            float_type xi_mag = std::sqrt(std::abs(xi_tilde)*std::abs(xi_tilde)
+                                        + w_new * w_new * std::abs(beta_new) * std::abs(beta_new));
+            std::complex<float_type> xi(xi_mag, 0.0);
+            if (std::abs(xi_tilde) != 0.0) {
+                xi = xi_mag * xi_tilde / std::abs(xi_tilde);
+            } 
+            c = xi_tilde/xi;
+            s = beta_new/xi*w_new;
+            //updating c_oold c_old s_oold s_old
+            c_oold = c_old;
+            c_old = c;
+            s_oold = s_old;
+            s_old = s;
+
+            auto p_tmp = v_k;
+            add_complex(p_tmp, p_old, OneComp, -eta);
+            add_complex(p_tmp, p_oold, OneComp, -theta_k);
+            scale_complex(p_tmp, OneComp/xi);
+
+            //updating p_old and p_oold
+            p_oold = p_old;
+            p_old = p;
+            p = p_tmp;
+
+            //tao_k = c_k tao_tilde_k
+            std::complex<float_type> tao = c*tao_tilde;
+            tao_tilde = -s*tao_tilde;
+            //updating f
+            add_complex(f, p, OneComp, tao);
+            //updating beta and updating h and s_cum
+            s_cum *= s;
+            beta = beta_new;
+            auto h_tmp = v;
+            //get v_{k+1} = v_tilde/beta_new
+            scale_complex(h_tmp, OneComp/beta_new);
+            auto scaleVal = c*tao_tilde/(std::abs(s_cum)*std::abs(s_cum))*w_new;
+            add_complex(h, h_tmp, OneComp, scaleVal);
+            float_type f2 = dot(f,f);
+            float_type rs_mag = (std::abs(s_cum)*std::abs(s_cum)) * (std::abs(s_cum)*std::abs(s_cum))*dot(h,h);
+
+            if (comm_.rank()==1)
+                std::cout<< "residue square = "<< rs_mag/f2<<std::endl;;
+            if (sqrt(rs_mag/f2)<cg_threshold_)
+                break;
+        }
+    }
+
 
     template <class F, class S>
     void printvec(F& f, S message)
@@ -302,7 +635,7 @@ class LinSysSolver_helm
         //if (std::fabs(alpha)>1e-4)
         //    psolver_.template apply_lgf_IF<Field, Field>(alpha, MASK_TYPE::xIB2IB);
 
-        if (std::fabs(alpha)>1e-4)
+        if (std::fabs(alpha)>1e-12)
             psolver_.template apply_helm_if<Field, Field>(alpha, N_modes, c_z, 3, MASK_TYPE::IB2xIB);
 
         this->template apply_Schur<Field, face_aux_type>(MASK_TYPE::xIB2IB);
@@ -312,6 +645,7 @@ class LinSysSolver_helm
         this->projection<Field>(fout);
 
     }
+
 
     template<class Source, class Target>
     void apply_Schur(int fmm_type)
@@ -418,6 +752,35 @@ class LinSysSolver_helm
                 s_global, std::plus<float_type>());
         return s_global;
     }
+    /*product of v^Tv for complex vectors*/
+    template<class VecType>
+    std::complex<float_type> product(VecType& a, VecType& b)
+    {
+        
+        float_type real = 0;
+        float_type imag = 0;
+        for (std::size_t i=0; i<a.size(); ++i)
+        {
+            if (ib_->rank(i)!=comm_.rank())
+                continue;
+
+            int Num = a[i].size()/2;
+            if (a[i].size() % 2 != 0) throw std::runtime_error("Number of elements in vector is not even (in QMR solve product)");
+            for (std::size_t d=0; d<Num; ++d) {
+                real+= (a[i][d*2]*b[i][d*2] - a[i][d*2 + 1]*b[i][d*2 + 1]);
+                imag+= (a[i][d*2]*b[i][d*2 + 1] + b[i][d*2]*a[i][d*2 + 1]);
+            }
+        }
+        float_type real_global = 0.0;
+        float_type imag_global = 0.0;
+        
+        boost::mpi::all_reduce(domain_->client_communicator(), real,
+                real_global, std::plus<float_type>());
+        boost::mpi::all_reduce(domain_->client_communicator(), imag,
+                imag_global, std::plus<float_type>());
+        std::complex<float_type> s_global(real_global,imag_global);
+        return s_global;
+    }
 
     template<class VecType>
     std::vector<float_type> dot_Mode(VecType& a, VecType& b)
@@ -455,6 +818,50 @@ class LinSysSolver_helm
 
             for (int d=0; d<a[0].size(); ++d)
                 a[i][d] = a[i][d]*scale1 + b[i][d]*scale2;
+        }
+    }
+
+    template <class VecType>
+    void add_complex(VecType& a, VecType& b,
+            std::complex<float_type> scale1, std::complex<float_type> scale2)
+    {
+        for (int i=0; i<a.size(); ++i)
+        {
+            if (ib_->rank(i)!=comm_.rank())
+                continue;
+
+            int Num = a[i].size()/2;
+            if (a[i].size() % 2 != 0) throw std::runtime_error("Number of elements in vector is not even (in QMR solve product)");
+            VecType a_tmp = a;
+            for (std::size_t d=0; d<Num; ++d) {
+                float_type real = a[i][d*2];
+                float_type imag = a[i][d*2+1];
+                a[i][d*2]   = (real*scale1.real() - imag*scale1.imag()
+                             + b[i][d*2]*scale2.real() - b[i][d*2 + 1]*scale2.imag());
+                a[i][d*2+1] = (imag*scale1.real() + real*scale1.imag() 
+                             + b[i][d*2 + 1]*scale2.real() + b[i][d*2]*scale2.imag());
+            }
+        }
+    }
+
+
+    template <class VecType>
+    void scale_complex(VecType& a, std::complex<float_type> scale1)
+    {
+        for (int i=0; i<a.size(); ++i)
+        {
+            if (ib_->rank(i)!=comm_.rank())
+                continue;
+
+            int Num = a[i].size()/2;
+            if (a[i].size() % 2 != 0) throw std::runtime_error("Number of elements in vector is not even (in QMR solve product)");
+            VecType a_tmp = a;
+            for (std::size_t d=0; d<Num; ++d) {
+                float_type real = a[i][d*2];
+                float_type imag = a[i][d*2+1];
+                a[i][d*2]   = (real*scale1.real() - imag*scale1.imag());
+                a[i][d*2+1] = (imag*scale1.real() + real*scale1.imag());
+            }
         }
     }
 

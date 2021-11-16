@@ -170,8 +170,10 @@ class PoissonSolver
         for (int i = 0; i < NComp; i++)
         {
             int add_num = i * N_modes*2;
-            for (std::size_t entry = 0; entry < 2; ++entry)
+            for (std::size_t entry = 0; entry < 2; ++entry) {
                 this->apply_lgf<Source, Target>(&lgf_lap_, (add_num + entry), fmm_type);
+                domain_->client_communicator().barrier();
+            }
             for (std::size_t idx = 0; idx < additional_modes; ++idx)
             {
                 //int entry = idx*2 + NComp*2;
@@ -180,6 +182,7 @@ class PoissonSolver
                     int entry = addentry + idx * 2 + 2 + add_num;
                     this->apply_lgf<Source, Target>(&lgf_helm_vec[idx], entry,
                         fmm_type);
+                    domain_->client_communicator().barrier();
                 }
             }
         }
@@ -235,6 +238,7 @@ class PoissonSolver
             int add_num = i * N_modes*2;
             for (std::size_t entry = 0; entry < 2; ++entry) {
                 this->apply_if<Source, Target>(&lgf_if_, (add_num + entry), fmm_type);
+                domain_->client_communicator().barrier();
             }
                 //this->apply_lgf<Source, Target>(&lgf_if_, (add_num + entry), fmm_type);
             for (std::size_t idx = 0; idx < additional_modes; ++idx)
@@ -246,6 +250,7 @@ class PoissonSolver
                     int entry = addentry + idx * 2 + 2 + add_num;
                     this->apply_if_helm<Source, Target>(&lgf_if_, omega, entry,
                         fmm_type);
+                    domain_->client_communicator().barrier();
                 }
             }
         }

@@ -931,7 +931,7 @@ class Ifherk_HELM
 
         gradient<d_i_type, face_aux_type>();
         add<face_aux_type, r_i_type>(-1.0);
-        if (std::fabs(_alpha) > 1e-4)
+        if (std::fabs(_alpha) > 1e-12)
         {
             mDuration_type t_if(0);
             domain_->client_communicator().barrier();
@@ -962,7 +962,7 @@ class Ifherk_HELM
         add<face_aux_type, face_aux2_type>(-1.0);
 
         // IB
-        if (std::fabs(_alpha) > 1e-4)
+        if (std::fabs(_alpha) > 1e-12)
             psolver.template apply_helm_if<face_aux2_type, face_aux2_type>(
                 _alpha, N_modes, c_z, 3, MASK_TYPE::IB2xIB);
 
@@ -986,7 +986,7 @@ class Ifherk_HELM
         lsolver.template smearing<face_aux_type>(domain_->ib().force(), false);
         add<face_aux_type, r_i_type>(-1.0);
 
-        if (std::fabs(_alpha) > 1e-4)
+        if (std::fabs(_alpha) > 1e-12)
         {
             mDuration_type t_if(0);
             domain_->client_communicator().barrier();

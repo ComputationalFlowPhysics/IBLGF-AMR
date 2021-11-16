@@ -262,6 +262,7 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
 		else
 		{
 			simulation_.template read_h5<u_type>(simulation_.restart_field_dir(), "u");
+			perturbIC();
 		}
 
 		boost::mpi::communicator world;
@@ -705,7 +706,7 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
 
     void perturbIC()
     {
-        if (!perturb_Fourier) return;
+        if (w_perturb < 1e-10) return;
         //poisson_solver_t psolver(&this->simulation_);
 
         boost::mpi::communicator world;
@@ -731,21 +732,34 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
 
             for (auto& node : it->data())
             {
+
+				const auto& coord = node.level_coordinate();
                 for (int i = 1; i < N_modes; i++)
                 {
                     float_type mag = 1.0 / static_cast<float_type>(i * i);
                     for (int j = 0; j < 3; j++)
                     {
+                        float_type x = static_cast<float_type>(
+                                           coord[0]) *
+                                       dx_level;
+                        float_type y = static_cast<float_type>(
+                                           coord[1]) *
+                                       dx_level;
+
+						float_type r2 = x*x + y*y;
+
+						float_type Gaussian = exp(-r2);
+
                         float_type rd = (static_cast<float_type>(rand()) /
                                             static_cast<float_type>(RAND_MAX)) -
                                         0.5;
                         node(edge_aux, j * N_modes * 2 + i * 2) +=
-                            rd * w_perturb * mag;
+                            rd * w_perturb * mag * Gaussian;
                         rd = (static_cast<float_type>(rand()) /
                                  static_cast<float_type>(RAND_MAX)) -
                              0.5;
                         node(edge_aux, j * N_modes * 2 + i * 2 + 1) +=
-                            rd * w_perturb * mag;
+                            rd * w_perturb * mag * Gaussian;
                     }
                 }
             }

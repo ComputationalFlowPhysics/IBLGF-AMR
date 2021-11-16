@@ -108,9 +108,9 @@ class Simulation
             if (domain_->is_server())
                 write_tree("_"+_filename, false);
 
-            io_h5.write_h5(io::output().dir()+"/flow_init_"+_filename+".hdf5", domain_.get(), true, true);
+            /*io_h5.write_h5(io::output().dir()+"/flow_init_"+_filename+".hdf5", domain_.get(), true, true);
             if (domain_->is_server())
-                write_tree("_init_"+_filename, false);
+                write_tree("_init_"+_filename, false);*/
         }
     }
 

@@ -420,16 +420,16 @@ class LinSysSolver_helm
             float_type f2 = dot(f,f);
             float_type rs_mag = std::abs(rsnew);
 
-            this->template ET_H_S_E<Ftmp>(f, Ax, alpha_);
+            /*this->template ET_H_S_E<Ftmp>(f, Ax, alpha_);
             for (int i = 0; i < ib_->size(); ++i)
             {
                 if (ib_->rank(i) != comm_.rank()) Error[i] = 0;
                 else
                     Error[i] = uc[i] - Ax[i];
             }
-            float_type errorMag = dot(Error, Error);
+            float_type errorMag = dot(Error, Error);*/
             if (comm_.rank()==1)
-                std::cout<< "BCGstab residue square = "<< rs_mag/f2<< " Error is " << errorMag << std::endl;
+                std::cout<< "BCGstab residue square = "<< rs_mag/f2/*<< " Error is " << errorMag*/ << std::endl;
             if (sqrt(rs_mag/f2)<cg_threshold_)
                 break;
 

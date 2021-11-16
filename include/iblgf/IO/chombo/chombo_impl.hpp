@@ -263,7 +263,7 @@ class Chombo
         // Find the imainary tree base level for the read file ----
         auto       level_group = _file->get_group("level_0");
         float_type file_dx_base = static_cast<float_type>(
-            _file->template read_attribute<float_type>(level_group, "dx"));
+            _file->template read_attribute<float_type>(level_group, "dx_"));
 
         float_type base_level_diff_f = log2(dx_base / file_dx_base);
         if (fabs(round(base_level_diff_f) - base_level_diff_f) > 1e-10)
@@ -680,7 +680,7 @@ class Chombo
         // Find the imainary tree base level for the read file ----
         auto       level_group = _file->get_group("level_0");
         float_type file_dx_base = static_cast<float_type>(
-            _file->template read_attribute<float_type>(level_group, "dx"));
+            _file->template read_attribute<float_type>(level_group, "dx_"));
 
         float_type base_level_diff_f = log2(dx_base / file_dx_base);
         if (fabs(round(base_level_diff_f) - base_level_diff_f) > 1e-10)
@@ -962,8 +962,11 @@ class Chombo
 
             // dx
             value_type dx = _dx / (std::pow(2, lvl)); // dx = 1/(2^i)
-            _file->template create_attribute<value_type>(
-                group_id_lvl, "dx", dx);
+            
+            _file->template create_attribute<value_type>(group_id_lvl, "dx_",
+                dx);
+
+
 
             // ref_ratio
             _file->template create_attribute<int>(
@@ -1004,6 +1007,11 @@ class Chombo
                 min_cellCentered,
                 max_cellCentered); // write prob_domain as attribute
 
+            _file->template write_vec_dx<Dim>(group_id_lvl, "vec_dx",
+                dx,
+                dx,
+                dx); 
+
             // Create "boxes" dataset: ****************************************
             hsize_type boxes_size = 0;
 
@@ -1020,6 +1028,10 @@ class Chombo
 
             _file->template create_boxCompound<Dim>(
                 group_id_lvl, "boxes", boxes_size, false);
+
+
+            _file->template create_vec_dx<Dim>(
+                group_id_lvl, "vec_dx", boxes_size, false);
 
             // Create dataset for data and "offsets" **************************
             // Server gets size:
@@ -1324,6 +1336,9 @@ class Chombo
             auto group_id =
                 _file->create_group(root, "level_" + std::to_string(lvl));
 
+            auto       level_group = _file->get_group("level_" + std::to_string(lvl));
+            float_type dx = static_cast<float_type>(_file->template read_attribute<float_type>(level_group, "dx_"));
+
             /*****************************************************************/
             // Write level data
             // Write "offsets" ------------------------------------------------
@@ -1475,6 +1490,8 @@ class Chombo
                 // 2 Write boxes with just rank 0
                 _file->template open_write_boxCompound<Dim>(
                     group_id, "boxes", mins, maxs, false);
+                _file->template open_write_vec_dx<Dim>(
+                    group_id, "vec_dx", dx, dx*2, dx*4, mins, false);
             }
 
             // Close spaces:

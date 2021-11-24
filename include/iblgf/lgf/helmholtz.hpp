@@ -57,6 +57,7 @@ class Helmholtz : public LGF_Base<Dim, Helmholtz<Dim>>
         origin = Helmholtz_Lookup::origin_val(c);
         this->HelmholtzLGF_ = true;
         this->emptyVec.resize(0);
+        
     }
 
     Helmholtz()
@@ -116,14 +117,41 @@ class Helmholtz : public LGF_Base<Dim, Helmholtz<Dim>>
             tmp = false;
         }
 
-        return key_2D(tmp, c_level, base[0], base[1]);
+        return key_2D(true, c_level, base[0], base[1]);
     }
     void build_lt() {}
     float_type return_c_impl() {return c_level;}
     void change_level_impl(int _level_diff)
     {
         c_level = c*std::pow(0.5, _level_diff);
-        origin = Helmholtz_Lookup::origin_val(c_level);
+        if ((ori_value.size()) < (_level_diff + 1)) {
+            auto tmp = ori_value;
+            auto tmp_bool = ori_bool;
+            ori_value.resize((_level_diff + 1));
+            ori_bool.resize((_level_diff + 1));
+            for (int i = 0; i < tmp.size(); i++) {
+                ori_value[i] = tmp[i];
+                ori_bool[i] = tmp_bool[i];
+            }
+            for (int i = tmp.size(); i < ori_value.size(); i++) {
+                ori_bool[i] = false;
+            }
+            origin = Helmholtz_Lookup::origin_val(c_level);
+            ori_value[_level_diff] = origin;
+            ori_bool[_level_diff] = true;
+        }
+        else if (!(ori_bool[_level_diff])){
+            origin = Helmholtz_Lookup::origin_val(c_level);
+            ori_value[_level_diff] = origin;
+            ori_bool[_level_diff] = true;
+        }
+        else {
+            origin = ori_value[_level_diff];
+        }
+        if (_level_diff > (ori_value.size())) {
+            throw std::runtime_error("Level diff is too large in helmholtz");
+        }
+        //origin = Helmholtz_Lookup::origin_val(c_level);
     }
 
     auto get(const coordinate_t& _c) const noexcept
@@ -155,6 +183,9 @@ class Helmholtz : public LGF_Base<Dim, Helmholtz<Dim>>
 
     float_type c = 0.0;       //c is the wave number at the coarse level
     float_type c_level = 0.0; //for helmholtz equation solver
+    std::vector<float_type> ori_value;
+    std::vector<bool> ori_bool;
+
 
 };
 

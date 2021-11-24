@@ -152,7 +152,7 @@ class LinSysSolver_helm
 
         domain_->client_communicator().barrier();
         domain::Operator::domainClean<face_aux2_type>(domain_);
-        this->template BCGstab_solve<face_aux2_type>(uc, alpha);
+        this->template CG_solve<face_aux2_type>(uc, alpha);
     }
 
     template<class Field>
@@ -248,6 +248,7 @@ class LinSysSolver_helm
             // rsnew = r' * r
             float_type rsnew = dot(r, r);
             float_type f2 = dot(f,f);
+            //auto ModeError = dot_Mode(r,r);
             if (comm_.rank()==1)
                 std::cout<< "residue square = "<< rsnew/f2<<std::endl;;
             if (sqrt(rsnew/f2)<cg_threshold_)

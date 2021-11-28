@@ -1698,7 +1698,7 @@ struct Operator
         std::vector<float_type> output_vel;
         c2rFunc.output_field_padded(output_vel);
 
-        if (NComp > 1)
+        if (NComp > 1 && From::mesh_type() != MeshObject::edge)
         {
             for (int i = 0; i < padded_dim * (NComp - 1); i++)
             {
@@ -1714,21 +1714,54 @@ struct Operator
                 auto& lin_data_ = it->data_r(To::tag(), i);
                 for (int j = 0; j < dim_0 * dim_1; j++)
                 {
-                    if (i != (padded_dim * NComp - 1))
+                    if (i % padded_dim != 0)
                     {
                         int idx = j * padded_dim * NComp + i;
                         lin_data_[j] =
-                            output_vel[idx] / 2.0 + output_vel[idx + 1] / 2.0;
+                            output_vel[idx] / 2.0 + output_vel[idx - 1] / 2.0;
                     }
                     else
                     {
                         int idx = j * padded_dim * NComp + i;
                         int idx0 =
-                            j * padded_dim * NComp + padded_dim * (NComp - 1);
+                            j * padded_dim * NComp +  i + padded_dim - 1;
                         lin_data_[j] =
                             output_vel[idx] / 2.0 + output_vel[idx0] / 2.0;
                     }
                 }
+            }
+        }
+        else if (NComp > 1 && From::mesh_type() == MeshObject::edge)
+        {
+            for (int i = 0; i < padded_dim * (NComp - 1); i++)
+            {
+                auto& lin_data_ = it->data_r(To::tag(), i);
+                for (int j = 0; j < dim_0 * dim_1; j++)
+                {
+                    if (i % padded_dim != 0)
+                    {
+                        int idx = j * padded_dim * NComp + i;
+                        lin_data_[j] =
+                            output_vel[idx] / 2.0 + output_vel[idx - 1] / 2.0;
+                    }
+                    else
+                    {
+                        int idx = j * padded_dim * NComp + i;
+                        int idx0 =
+                            j * padded_dim * NComp +  i + padded_dim - 1;
+                        lin_data_[j] =
+                            output_vel[idx] / 2.0 + output_vel[idx0] / 2.0;
+                    }
+                }
+            }
+            for (int i = padded_dim * (NComp - 1); i < padded_dim * NComp; i++)
+            {
+                auto& lin_data_ = it->data_r(To::tag(), i);
+                for (int j = 0; j < dim_0 * dim_1; j++)
+                {
+                    int idx = j * padded_dim * NComp + i;
+                    lin_data_[j] = output_vel[idx];
+                }                
             }
         }
         else
@@ -1779,14 +1812,14 @@ struct Operator
             for (int i = padded_dim * (NComp - 1); i < padded_dim * NComp; i++)
             {
                 auto& lin_data_0 = it->data_r(From::tag(), i);
-                auto& lin_data_1 = it->data_r(From::tag(), i - 1);
+                auto& lin_data_1 = it->data_r(From::tag(), i + 1);
 
                 auto& lin_data_2 =
-                    it->data_r(From::tag(), (padded_dim * NComp - 1));
+                    it->data_r(From::tag(), (padded_dim * (NComp - 1)));
 
                 for (int j = 0; j < dim_0 * dim_1; j++)
                 {
-                    if (i != padded_dim * (NComp - 1))
+                    if (i != (padded_dim * NComp - 1))
                     {
                         int idx = j * padded_dim * NComp + i;
                         tmp_vec[idx] =

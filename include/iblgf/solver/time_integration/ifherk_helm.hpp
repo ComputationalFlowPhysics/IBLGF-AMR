@@ -1106,8 +1106,13 @@ class Ifherk_HELM
                 int vec_size = dim_0*dim_1*N_modes*3;
                 domain::Operator::FourierTransformC2R<Source, u_i_real_type>(
                     it, N_modes, padded_dim, vec_size, nonzero_dim, dim_0, dim_1, c2rFunc);
-                domain::Operator::curl_helmholtz<u_i_real_type, vort_i_real_type>(it->data(),
-                    dx_level, N_modes, dx_fine);
+                /*domain::Operator::curl_helmholtz<u_i_real_type, vort_i_real_type>(it->data(),
+                    dx_level, N_modes, dx_fine);*/
+                domain::Operator::curl_helmholtz_complex<Source, edge_aux_type>(it->data(),
+                    dx_level, N_modes, c_z);
+                domain::Operator::FourierTransformC2R<edge_aux_type, vort_i_real_type>(
+                    it, N_modes, padded_dim, vec_size, nonzero_dim, dim_0, dim_1, c2rFunc);
+                
             }
         }
 
@@ -1184,8 +1189,8 @@ class Ifherk_HELM
 
                 //int vec_size = dim_0*dim_1*N_modes*3*3;
                 //also transform vorticity for refinement
-                domain::Operator::FourierTransformR2C<vort_i_real_type, edge_aux_type>(
-                    it, N_modes, padded_dim, vec_size, nonzero_dim, dim_0, dim_1, r2cFunc, (1 + additional_modes));
+                /*domain::Operator::FourierTransformR2C<vort_i_real_type, edge_aux_type>(
+                    it, N_modes, padded_dim, vec_size, nonzero_dim, dim_0, dim_1, r2cFunc, (1 + additional_modes));*/
 
                 /*std::vector<float_type> tmp_vec(vec_size, 0.0);
                 for (int i = 0; i < N_modes*3*3; i++) {

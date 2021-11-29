@@ -1387,54 +1387,11 @@ struct Operator
             int x_s = 0;
             int y_s = sep;
             int z_s = sep*2;
-            for (int i = 1; i < (N_modes * PREFAC - 1); i++)
+            /*for (int i = 1; i < (N_modes * PREFAC - 1); i++)
             {
                 int x_p = x_s + i;
                 int y_p = y_s + i;
                 int z_p = z_s + i;
-                /*n(dest, 0 * sep + i) =
-                    0.25 *
-                    (+n.at_offset(edge, 0, 0, 1 * sep + i) *
-                            (+n.at_offset(face, 0, 0, 2 * sep + i) +
-                                n.at_offset(face, -1, 0, 2 * sep + i)) +
-                        n.at_offset(edge, 0, 0, 1 * sep + i + 1) *
-                            (+n.at_offset(face, 0, 0, 2 * sep + i + 1) +
-                                n.at_offset(face, -1, 0, 2 * sep + i + 1)) -
-                        n.at_offset(edge, 0, 0, 2 * sep + i) *
-                            (+n.at_offset(face, 0, 0, 1 * sep + i) +
-                                n.at_offset(face, -1, 0, 1 * sep + i)) -
-                        n.at_offset(edge, 0, 1, 2 * sep + i) *
-                            (+n.at_offset(face, 0, 1, 1 * sep + i) +
-                                n.at_offset(face, -1, 1, 1 * sep + i)));
-
-                n(dest, 1 * sep + i) =
-                    0.25 *
-                    (+n.at_offset(edge, 0, 0, 2 * sep + i) *
-                            (+n.at_offset(face, 0, 0, 0 * sep + i) +
-                                n.at_offset(face, 0, -1, 0 * sep + i)) +
-                        n.at_offset(edge, 1, 0, 2 * sep + i) *
-                            (+n.at_offset(face, 1, 0, 0 * sep + i) +
-                                n.at_offset(face, 1, -1, 0 * sep + i)) -
-                        n.at_offset(edge, 0, 0, 0 * sep + i) *
-                            (+n.at_offset(face, 0, 0, 2 * sep + i) +
-                                n.at_offset(face, 0, -1, 2 * sep + i)) -
-                        n.at_offset(edge, 0, 0, 0 * sep + i + 1) *
-                            (+n.at_offset(face, 0, 0, 2 * sep + i + 1) +
-                                n.at_offset(face, 0, -1, 2 * sep + i + 1)));
-                n(dest, 2 * sep + i) =
-                    0.25 *
-                    (+n.at_offset(edge, 0, 0, 0 * sep + i) *
-                            (+n.at_offset(face, 0, 0, 1 * sep + i) +
-                                n.at_offset(face, 0, 0, 1 * sep + i - 1)) +
-                        n.at_offset(edge, 0, 1, 0 * sep + i) *
-                            (+n.at_offset(face, 0, 1, 1 * sep + i) +
-                                n.at_offset(face, 0, 1, 1 * sep + i - 1)) -
-                        n.at_offset(edge, 0, 0, 1 * sep + i) *
-                            (+n.at_offset(face, 0, 0, 0 * sep + i) +
-                                n.at_offset(face, 0, 0, 0 * sep + i - 1)) -
-                        n.at_offset(edge, 1, 0, 1 * sep + i) *
-                            (+n.at_offset(face, 1, 0, 0 * sep + i) +
-                                n.at_offset(face, 1, 0, 0 * sep + i - 1)));*/
 
                 n(dest, x_p) =
                     0.25 *
@@ -1564,7 +1521,132 @@ struct Operator
                             n.at_offset(face, 0, 0, 0 * sep + sep - 1 - 1)) -
                     n.at_offset(edge, 1, 0, 1 * sep + sep - 1) *
                         (+n.at_offset(face, 1, 0, 0 * sep + sep - 1) +
-                            n.at_offset(face, 1, 0, 0 * sep + sep - 1 - 1)));
+                            n.at_offset(face, 1, 0, 0 * sep + sep - 1 - 1)));*/
+            //nonlinear term adapt to collocation DFT
+            for (int i = 0; i < (N_modes * PREFAC); i++)
+            {
+                int x_p = x_s + i;
+                int y_p = y_s + i;
+                int z_p = z_s + i;
+
+                n(dest, x_p) =
+                    0.5 * n.at_offset(edge, 0, 0, y_p) *
+                        (n.at_offset(face, 0, 0, z_p) +
+                            n.at_offset(face, -1, 0, z_p)) -
+                    0.25 * (n.at_offset(edge, 0, 0, z_p) *
+                                   (n.at_offset(face, 0, 0, y_p) +
+                                    n.at_offset(face, -1, 0, y_p)) +
+                            n.at_offset(edge, 0, 1, z_p) *
+                                   (n.at_offset(face,  0, 1, y_p) +
+                                    n.at_offset(face, -1, 1, y_p)));
+
+                n(dest, y_p) =
+                    0.25 *
+                    (n.at_offset(edge, 0, 0, z_p) *
+                            (n.at_offset(face, 0, 0, x_p) +
+                                n.at_offset(face, 0, -1, x_p)) +
+                        n.at_offset(edge, 1, 0, z_p) *
+                            (n.at_offset(face, 1, 0, x_p) +
+                                n.at_offset(face, 1, -1, x_p))) -
+                    0.5 * n.at_offset(edge, 0, 0, x_p) *
+                            (+n.at_offset(face, 0, 0, z_p) +
+                                n.at_offset(face, 0, -1, z_p));
+                n(dest, z_p) =
+                    0.5 *
+                    (n.at_offset(edge, 0, 0, x_p) *
+                            n.at_offset(face, 0, 0, y_p) +
+                        n.at_offset(edge, 0, 1, x_p) *
+                            n.at_offset(face, 0, 1, y_p) -
+                        n.at_offset(edge, 0, 0, y_p) *
+                            n.at_offset(face, 0, 0, x_p) -
+                        n.at_offset(edge, 1, 0, y_p) *
+                            n.at_offset(face, 1, 0, x_p));
+            }
+            //i = 0
+            /*n(dest, 0 * sep) =
+                0.25 * (+n.at_offset(edge, 0, 0, 1 * sep) *
+                               (+n.at_offset(face, 0, 0, 2 * sep) +
+                                   n.at_offset(face, -1, 0, 2 * sep)) +
+                           n.at_offset(edge, 0, 0, 1 * sep + 1) *
+                               (+n.at_offset(face, 0, 0, 2 * sep + 1) +
+                                   n.at_offset(face, -1, 0, 2 * sep + 1)) -
+                           n.at_offset(edge, 0, 0, 2 * sep) *
+                               (+n.at_offset(face, 0, 0, 1 * sep) +
+                                   n.at_offset(face, -1, 0, 1 * sep)) -
+                           n.at_offset(edge, 0, 1, 2 * sep) *
+                               (+n.at_offset(face, 0, 1, 1 * sep) +
+                                   n.at_offset(face, -1, 1, 1 * sep)));
+
+            n(dest, 1 * sep) =
+                0.25 * (+n.at_offset(edge, 0, 0, 2 * sep) *
+                               (+n.at_offset(face, 0, 0, 0 * sep) +
+                                   n.at_offset(face, 0, -1, 0 * sep)) +
+                           n.at_offset(edge, 1, 0, 2 * sep) *
+                               (+n.at_offset(face, 1, 0, 0 * sep) +
+                                   n.at_offset(face, 1, -1, 0 * sep)) -
+                           n.at_offset(edge, 0, 0, 0 * sep) *
+                               (+n.at_offset(face, 0, 0, 2 * sep) +
+                                   n.at_offset(face, 0, -1, 2 * sep)) -
+                           n.at_offset(edge, 0, 0, 0 * sep + 1) *
+                               (+n.at_offset(face, 0, 0, 2 * sep + 1) +
+                                   n.at_offset(face, 0, -1, 2 * sep + 1)));
+            n(dest, 2 * sep) =
+                0.25 * (+n.at_offset(edge, 0, 0, 0 * sep) *
+                               (+n.at_offset(face, 0, 0, 1 * sep) +
+                                   n.at_offset(face, 0, 0, 1 * sep + sep - 1)) +
+                           n.at_offset(edge, 0, 1, 0 * sep) *
+                               (+n.at_offset(face, 0, 1, 1 * sep) +
+                                   n.at_offset(face, 0, 1, 1 * sep + sep - 1)) -
+                           n.at_offset(edge, 0, 0, 1 * sep) *
+                               (+n.at_offset(face, 0, 0, 0 * sep) +
+                                   n.at_offset(face, 0, 0, 0 * sep + sep - 1)) -
+                           n.at_offset(edge, 1, 0, 1 * sep) *
+                               (+n.at_offset(face, 1, 0, 0 * sep) +
+                                   n.at_offset(face, 1, 0, 0 * sep + sep - 1)));
+            //i = sep - 1
+            n(dest, 0 * sep + sep - 1) =
+                0.25 *
+                (+n.at_offset(edge, 0, 0, 1 * sep + sep - 1) *
+                        (+n.at_offset(face, 0, 0, 2 * sep + sep - 1) +
+                            n.at_offset(face, -1, 0, 2 * sep + sep - 1)) +
+                    n.at_offset(edge, 0, 0, 1 * sep) *
+                        (+n.at_offset(face, 0, 0, 2 * sep) +
+                            n.at_offset(face, -1, 0, 2 * sep)) -
+                    n.at_offset(edge, 0, 0, 2 * sep + sep - 1) *
+                        (+n.at_offset(face, 0, 0, 1 * sep + sep - 1) +
+                            n.at_offset(face, -1, 0, 1 * sep + sep - 1)) -
+                    n.at_offset(edge, 0, 1, 2 * sep + sep - 1) *
+                        (+n.at_offset(face, 0, 1, 1 * sep + sep - 1) +
+                            n.at_offset(face, -1, 1, 1 * sep + sep - 1)));
+
+            n(dest, 1 * sep + sep - 1) =
+                0.25 *
+                (+n.at_offset(edge, 0, 0, 2 * sep + sep - 1) *
+                        (+n.at_offset(face, 0, 0, 0 * sep + sep - 1) +
+                            n.at_offset(face, 0, -1, 0 * sep + sep - 1)) +
+                    n.at_offset(edge, 1, 0, 2 * sep + sep - 1) *
+                        (+n.at_offset(face, 1, 0, 0 * sep + sep - 1) +
+                            n.at_offset(face, 1, -1, 0 * sep + sep - 1)) -
+                    n.at_offset(edge, 0, 0, 0 * sep + sep - 1) *
+                        (+n.at_offset(face, 0, 0, 2 * sep + sep - 1) +
+                            n.at_offset(face, 0, -1, 2 * sep + sep - 1)) -
+                    n.at_offset(edge, 0, 0, 0 * sep) *
+                        (+n.at_offset(face, 0, 0, 2 * sep) +
+                            n.at_offset(face, 0, -1, 2 * sep)));
+            n(dest, 2 * sep + sep - 1) =
+                0.25 *
+                (+n.at_offset(edge, 0, 0, 0 * sep + sep - 1) *
+                        (+n.at_offset(face, 0, 0, 1 * sep + sep - 1) +
+                            n.at_offset(face, 0, 0, 1 * sep + sep - 1 - 1)) +
+                    n.at_offset(edge, 0, 1, 0 * sep + sep - 1) *
+                        (+n.at_offset(face, 0, 1, 1 * sep + sep - 1) +
+                            n.at_offset(face, 0, 1, 1 * sep + sep - 1 - 1)) -
+                    n.at_offset(edge, 0, 0, 1 * sep + sep - 1) *
+                        (+n.at_offset(face, 0, 0, 0 * sep + sep - 1) +
+                            n.at_offset(face, 0, 0, 0 * sep + sep - 1 - 1)) -
+                    n.at_offset(edge, 1, 0, 1 * sep + sep - 1) *
+                        (+n.at_offset(face, 1, 0, 0 * sep + sep - 1) +
+                            n.at_offset(face, 1, 0, 0 * sep + sep - 1 - 1)));*/
         }
     }
 
@@ -1698,7 +1780,7 @@ struct Operator
         std::vector<float_type> output_vel;
         c2rFunc.output_field_padded(output_vel);
 
-        if (NComp > 1 && From::mesh_type() != MeshObject::edge)
+        /*if (NComp > 1 && From::mesh_type() != MeshObject::edge)
         {
             for (int i = 0; i < padded_dim * (NComp - 1); i++)
             {
@@ -1775,9 +1857,9 @@ struct Operator
                     lin_data_[j] = output_vel[idx];
                 }
             }
-        }
+        }*/
 
-        /*for (int i = 0; i < padded_dim * NComp; i++)
+        for (int i = 0; i < padded_dim * NComp; i++)
         {
             auto& lin_data_ = it->data_r(To::tag(), i);
             for (int j = 0; j < dim_0 * dim_1; j++)
@@ -1785,7 +1867,7 @@ struct Operator
                 int idx = j * padded_dim * NComp + i;
                 lin_data_[j] = output_vel[idx]; 
             }
-        }*/
+        }
     }
 
     template<typename From, typename To, typename Block>
@@ -1798,7 +1880,7 @@ struct Operator
         int N_to = To::nFields();
 
         std::vector<float_type> tmp_vec(vec_size, 0.0);
-        if (NComp > 1)
+        /*if (NComp > 1)
         {
             for (int i = 0; i < padded_dim * (NComp - 1); i++)
             {
@@ -1845,8 +1927,9 @@ struct Operator
                     tmp_vec[idx] = lin_data_[j];
                 }
             }
-        }
-        /*for (int i = 0; i < N_modes * PREFAC_FROM * NComp; i++)
+        }*/
+        //use collocation in z direction
+        for (int i = 0; i < N_modes * PREFAC_FROM * NComp; i++)
         {
             auto& lin_data_ = it->data_r(From::tag(), i);
             for (int j = 0; j < dim_0 * dim_1; j++)
@@ -1854,7 +1937,7 @@ struct Operator
                 int idx = j * N_modes * PREFAC_FROM * NComp + i;
                 tmp_vec[idx] = lin_data_[j];
             }
-        }*/
+        }
 
         r2cFunc.copy_field(tmp_vec);
         r2cFunc.execute();

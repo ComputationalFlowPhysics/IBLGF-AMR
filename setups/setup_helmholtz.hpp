@@ -78,7 +78,7 @@ class Setup_helmholtz
       (q_i,                 float_type,  3*2*N_modes,  1,  1,  face,false),
       (u_i,                 float_type,  3*2*N_modes,  1,  1,  face,false),
       (u_i_real,            float_type,  3*3*N_modes,  1,  1,  face,false), //these are stored 1.5 times more than the complex counter part due to the 3/2 rule for convolution
-      (vort_i_real,         float_type,  3*3*N_modes,  1,  1,  edge,false),
+      (vort_i_real,         float_type,  3*3*N_modes,  1,  1,  edge,true),
       (r_i_real,            float_type,  3*3*N_modes,  1,  1,  face,false),
       (face_aux_real,       float_type,  3*3*N_modes,  1,  1,  face,false),
       (d_i,                 float_type,  2*N_modes,    1,  1,  cell,false),

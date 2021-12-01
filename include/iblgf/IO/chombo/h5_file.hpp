@@ -946,6 +946,16 @@ class hdf5_file
         write_boxCompound(_group_id, _cName, &_c, tag(0), 1, asAttr);
     }
 
+    void write_boxCompound_helm_3D(hid_type& _group_id, std::string _cName,
+        index_list_t& _min, index_list_t& _max, int N_modes = 1, bool asAttr = true)
+    {
+        box_compound _c(_min, _max);
+        _c.lo_k = 0;
+        _c.hi_k = N_modes*3 - 1;
+        using tag = std::integral_constant<std::size_t, 3>*;
+        write_boxCompound(_group_id, _cName, &_c, tag(0), 1, asAttr);
+    }
+
     template<std::size_t ND = dimension>
     void write_vec_dx(hid_type& _group_id, std::string _cName,
         float_type x, float_type y, float_type z, bool asAttr = true)
@@ -1324,6 +1334,24 @@ class hdf5_file
             boxes.push_back(_c);
         }
         using tag = std::integral_constant<std::size_t, ND>*;
+        hsize_type size = static_cast<hsize_type>(_min.size());
+        open_write_boxCompound(
+            _group_id, _cName, &boxes[0], tag(0), size, asAttr);
+    }
+
+    void open_write_boxCompound_helm3D(hid_type& _group_id, std::string _cName,
+        std::vector<index_list_t>& _min, std::vector<index_list_t>& _max,
+        bool asAttr = true, int N_modes_ = 1)
+    {
+        std::vector<box_compound> boxes;
+        for (unsigned int i = 0; i < _min.size(); ++i)
+        {
+            box_compound _c(_min[i], _max[i]);
+            _c.hi_k = N_modes_*3 - 1;
+            _c.lo_k = 0;
+            boxes.push_back(_c);
+        }
+        using tag = std::integral_constant<std::size_t, 3>*;
         hsize_type size = static_cast<hsize_type>(_min.size());
         open_write_boxCompound(
             _group_id, _cName, &boxes[0], tag(0), size, asAttr);

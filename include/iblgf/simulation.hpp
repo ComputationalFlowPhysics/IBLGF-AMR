@@ -26,6 +26,8 @@ class Simulation
 {
   public:
     using domain_type = Domain;
+    static constexpr int  N_modes = Domain::N_modes_val;
+    static constexpr bool  helmholtz = Domain::helmholtz_bool;
     static constexpr std::size_t Dim = domain_type::dims;
     using h5io_t = typename io::H5_io<Dim, Domain>;
 
@@ -108,9 +110,11 @@ class Simulation
             if (domain_->is_server())
                 write_tree("_"+_filename, false);
 
-            /*io_h5.write_h5(io::output().dir()+"/flow_init_"+_filename+".hdf5", domain_.get(), true, true);
-            if (domain_->is_server())
-                write_tree("_init_"+_filename, false);*/
+            if (helmholtz) {
+                float_type c_z = dictionary_->template get_or<float_type>("L_z", 1);
+                float_type dz = c_z / static_cast<float_type>(N_modes*3);
+                io_h5.write_helm_3D(io::output().dir()+"/vort_"+_filename+".hdf5", domain_.get(), dz, false, false);
+            }
         }
     }
 

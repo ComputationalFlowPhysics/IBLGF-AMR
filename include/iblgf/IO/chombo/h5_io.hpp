@@ -56,6 +56,8 @@ class H5_io
     using chombo_t = typename chombo_writer::Chombo<Dim, blockDescriptor_t,
         blockData_t, Domain, hdf5_file<Dim, base_t>>;
 
+    static constexpr int  N_modes = Domain::N_modes_val;
+
   public:
     struct BlockInfo
     {
@@ -131,6 +133,20 @@ class H5_io
 
         ch_writer.write_global_metaData(&chombo_file, _lt->dx_base());
         ch_writer.write_level_info(&chombo_file);
+    }
+
+    void write_helm_3D(
+        std::string _filename, Domain* _lt, float_type dz, bool include_correction = false,  bool base_correction_only = true)
+    {
+        auto octant_blocks = blocks_list_build(_lt, include_correction, base_correction_only);
+
+        hdf5_file<Dim> chombo_file(_filename);
+
+        chombo_t ch_writer(
+            octant_blocks); // Initialize writer with vector of octants
+
+        ch_writer.write_global_metaData(&chombo_file, _lt->dx_base(), 0.0, 1, 2, true, N_modes, dz);
+        ch_writer.write_level_info(&chombo_file, 0.0, 1, 2, true, N_modes);
     }
 
     std::vector<octant_type*> blocks_list_build(

@@ -906,21 +906,38 @@ class Chombo
     }
 
     void write_global_metaData(HDF5File* _file, value_type _dx = 1,
-        value_type _time = 0.0, int _dt = 1, int _ref_ratio = 2)
+        value_type _time = 0.0, int _dt = 1, int _ref_ratio = 2, bool helm3D = false, int N_modes = 1, float_type dz = 0.0)
     {
         boost::mpi::communicator world;
         auto                     root = _file->get_root();
 
         // iterate through field to get field names
         std::vector<std::string> components;
-        field_type_iterator_t::for_types(
+
+
+        if (!helm3D) {
+            field_type_iterator_t::for_types(
             component_push_back_for_each(components));
+        }
+        else {
+            field_type_iterator_t::for_types(
+            component_push_back_for_each_helm_real(components));
+        }
 
         // rite components, number of components and number of levels
+        if (!helm3D) {
         for (std::size_t i = 0; i < components.size(); ++i)
         {
             _file->template create_attribute<std::string>(
                 root, "component_" + std::to_string(i), components[i]);
+        }
+        }
+        else {
+            for (std::size_t i = 0; i < components.size(); i+=3*N_modes)
+        {
+            _file->template create_attribute<std::string>(
+                root, "component_" + std::to_string((i/3/N_modes)), components[i]);
+        }
         }
 
         // Get number of levels from server and communicate to all ranks
@@ -933,8 +950,14 @@ class Chombo
 
         // num_components
         const int num_components = components.size();
+        if (!helm3D) {
         _file->template create_attribute<int>(
             root, "num_components", static_cast<int>(num_components));
+        }
+        else {
+            _file->template create_attribute<int>(
+            root, "num_components", static_cast<int>(num_components)/3/N_modes);
+        }
 
         // Ordering of the dataspaces
         _file->template create_attribute<std::string>(
@@ -943,8 +966,14 @@ class Chombo
         _file->template create_attribute<int>(root, "data_centering", 6);
 
         auto global_id = _file->create_group(root, "Chombo_global");
+        if (helm3D) {
+            _file->template create_attribute<int>(
+            global_id, "SpaceDim", static_cast<int>(3));
+        }
+        else {
         _file->template create_attribute<int>(
             global_id, "SpaceDim", static_cast<int>(Dim));
+        }
         _file->close_group(global_id);
 
         // *******************************************************************
@@ -963,8 +992,14 @@ class Chombo
             // dx
             value_type dx = _dx / (std::pow(2, lvl)); // dx = 1/(2^i)
             
-            _file->template create_attribute<value_type>(group_id_lvl, "dx",
+            if (!helm3D) {
+                _file->template create_attribute<value_type>(group_id_lvl, "dx",
                 dx);
+            }
+            else {
+                _file->template create_attribute<value_type>(group_id_lvl, "dx_",
+                dx);
+            }
 
 
 
@@ -1003,14 +1038,30 @@ class Chombo
             if (Dim == 3) boost::mpi::broadcast(world, max_cellCentered[2], 0);
 
             // 3: All write prob_domain
+
+            if (!helm3D) {
             _file->template write_boxCompound<Dim>(group_id_lvl, "prob_domain",
                 min_cellCentered,
                 max_cellCentered); // write prob_domain as attribute
+            }
+            else {
+                _file->write_boxCompound_helm_3D(group_id_lvl, "prob_domain",
+                min_cellCentered,
+                max_cellCentered, N_modes, true); // write prob_domain as attribute
+            }
 
+            if (!helm3D) {
             _file->template write_vec_dx<Dim>(group_id_lvl, "vec_dx",
                 dx,
                 dx,
                 dx); 
+            }
+            else {
+                _file->template write_vec_dx<3>(group_id_lvl, "vec_dx",
+                dx,
+                dx,
+                dz); 
+            }
 
             // Create "boxes" dataset: ****************************************
             hsize_type boxes_size = 0;
@@ -1025,9 +1076,14 @@ class Chombo
             }
             boost::mpi::broadcast(
                 world, boxes_size, 0); // send from server to all others
-
+            if (!helm3D) {
             _file->template create_boxCompound<Dim>(
                 group_id_lvl, "boxes", boxes_size, false);
+            }
+            else {
+                _file->template create_boxCompound<3>(
+                group_id_lvl, "boxes", boxes_size, false);
+            }
 
 
             /*_file->template create_vec_dx<Dim>(
@@ -1125,6 +1181,33 @@ class Chombo
         {
             std::string name = std::string(T::name());
             if (!T::output()) return;
+            if (T::nFields() == 1) components_.push_back(name);
+            else
+                for (std::size_t fidx = 0; fidx < T::nFields(); ++fidx)
+                    components_.push_back(name + "_" + std::to_string(fidx));
+        }
+
+        std::vector<std::string>& components_;
+    };
+
+    struct component_push_back_for_each_helm_real
+    {
+        component_push_back_for_each_helm_real(std::vector<std::string>& components)
+        : components_(components)
+        {
+            //components_=&components;
+        }
+
+        template<class T>
+        auto operator()() const
+        {
+            std::string name = std::string(T::name());
+            if (!T::output()) return;
+            std::string tmp("abcd");
+            for (int i = 0; i < tmp.length(); i++) {
+                tmp[i] = name[name.length() - i - 1];
+            }
+            if (tmp != "laer") return; //laer backwards is real
             if (T::nFields() == 1) components_.push_back(name);
             else
                 for (std::size_t fidx = 0; fidx < T::nFields(); ++fidx)
@@ -1261,8 +1344,142 @@ class Chombo
         std::vector<octant_type*>& ordered_group;
     };
 
+    struct write_data_for_each_helm_real
+    {
+        write_data_for_each_helm_real(std::vector<value_type>& _single_block_data,
+            boost::mpi::communicator _world, extent_t _block_extent,
+            int _group_extent, std::vector<octant_type*>& _ordered_group)
+        : single_block_data(_single_block_data)
+        , ordered_group(_ordered_group)
+        {
+            world = _world;
+            block_extent = _block_extent;
+            group_extent = _group_extent;
+        }
+
+        template<class T>
+        auto operator()() const
+        {
+            if (!T::output()) return;
+            std::string name = std::string(T::name());
+            if (!T::output()) return;
+            std::string tmp("abcd");
+            for (int i = 0; i < tmp.length(); i++) {
+                tmp[i] = name[name.length() - i - 1];
+            }
+            if (tmp != "laer") return; //laer backwards is real
+            for (std::size_t fidx = 0; fidx < T::nFields(); ++fidx)
+            {
+                double                   field_value = 0.0;
+                boost::mpi::communicator world;
+                if (world.rank() != 0)
+                {
+                    if (Dim == 3)
+                    {
+                        for (auto z = 0; z < group_extent; ++z)
+                        {
+                            // base and max should be based on 0 (*block_extent)
+                            for (auto k = 0; k < block_extent[2]; ++k)
+                            {
+                                for (auto y = 0; y < group_extent; ++y)
+                                {
+                                    for (auto j = 0; j < block_extent[1]; ++j)
+                                    {
+                                        for (auto x = 0; x < group_extent; ++x)
+                                        {
+                                            int group_coord =
+                                                x + y * group_extent +
+                                                z * pow(group_extent, 2);
+                                            const auto& octant =
+                                                (ordered_group)[group_coord];
+                                            const auto& block_desc =
+                                                octant->data().descriptor();
+                                            const auto& field =
+                                                &(octant->data().node_field());
+
+                                            auto base = block_desc.base();
+
+                                            for (auto i = 0;
+                                                 i < block_extent[0]; ++i)
+                                            {
+                                                const coordinate_type<int, 3>
+                                                                          tmp({i + base[0],
+                                                        j + base[1],
+                                                        k + base[2]});
+                                                coordinate_type<int, Dim> c;
+                                                for (int tmp_i = 0; tmp_i < Dim;
+                                                     tmp_i++)
+                                                    c[tmp_i] = tmp[tmp_i];
+                                                auto n = field->get(c);
+
+                                                field_value = 0.0;
+                                                field_value =
+                                                    static_cast<value_type>(
+                                                        n(T::tag(), fidx));
+                                                single_block_data.push_back(
+                                                    field_value);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    else if (Dim == 2)
+                    {
+                        for (auto y = 0; y < group_extent; ++y)
+                        {
+                            for (auto j = 0; j < block_extent[1]; ++j)
+                            {
+                                for (auto x = 0; x < group_extent; ++x)
+                                {
+                                    int group_coord = x + y * group_extent /* +
+                                            z * pow(group_extent, 2)*/
+                                        ;
+                                    const auto& octant =
+                                        (ordered_group)[group_coord];
+                                    const auto& block_desc =
+                                        octant->data().descriptor();
+                                    const auto& field =
+                                        &(octant->data().node_field());
+
+                                    auto base = block_desc.base();
+
+                                    for (auto i = 0; i < block_extent[0]; ++i)
+                                    {
+                                        //const coordinate_type<int, Dim> c({i + base[0], j + base[1]});
+                                        //auto n = field->get(c);
+                                        const coordinate_type<int, 2> tmp(
+                                            {i + base[0], j + base[1]});
+                                        coordinate_type<int, Dim> c;
+                                        for (int tmp_i = 0; tmp_i < Dim;
+                                             tmp_i++)
+                                            c[tmp_i] = tmp[tmp_i];
+                                        auto n = field->get(c);
+
+                                        field_value = 0.0;
+                                        field_value = static_cast<value_type>(
+                                            n(T::tag(), fidx));
+                                        single_block_data.push_back(
+                                            field_value);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        std::vector<value_type>&   single_block_data;
+        boost::mpi::communicator   world;
+        extent_t                   block_extent;
+        int                        group_extent;
+        std::vector<octant_type*>& ordered_group;
+    };
+
     void write_level_info(HDF5File* _file, value_type _time = 0.0, int _dt = 1,
-        int _ref_ratio = 2)
+        int _ref_ratio = 2, bool helm3D = false, int N_modes = 1)
     {
         boost::mpi::communicator world;
 
@@ -1271,8 +1488,14 @@ class Chombo
         auto root = _file->get_root();
 
         // get field names and number of components
-        field_type_iterator_t::for_types(
+        if (!helm3D) {
+            field_type_iterator_t::for_types(
             component_push_back_for_each(components));
+        }
+        else {
+            field_type_iterator_t::for_types(
+            component_push_back_for_each_helm_real(components));
+        }
         const int num_components = components.size();
 
         std::vector<std::vector<std::vector<offset_type>>> offset_vector;
@@ -1337,7 +1560,7 @@ class Chombo
                 _file->create_group(root, "level_" + std::to_string(lvl));
 
             auto       level_group = _file->get_group("level_" + std::to_string(lvl));
-            float_type dx = static_cast<float_type>(_file->template read_attribute<float_type>(level_group, "dx"));
+            //float_type dx = static_cast<float_type>(_file->template read_attribute<float_type>(level_group, "dx"));
 
             /*****************************************************************/
             // Write level data
@@ -1432,9 +1655,16 @@ class Chombo
 
                 // ------------------------------------------------------------
                 // COMPONENT ITERATOR
+                if (!helm3D) {
                 field_type_iterator_t::for_types(
                     write_data_for_each(single_block_data, world, block_extent,
                         group_extent, ordered_group));
+                }
+                else {
+                    field_type_iterator_t::for_types(
+                    write_data_for_each_helm_real(single_block_data, world, block_extent,
+                        group_extent, ordered_group));
+                }
 
                 // Write single block data
                 hsize_type block_data_size = single_block_data.size();
@@ -1488,8 +1718,14 @@ class Chombo
                 }
 
                 // 2 Write boxes with just rank 0
+                if (!helm3D) {
                 _file->template open_write_boxCompound<Dim>(
                     group_id, "boxes", mins, maxs, false);
+                }
+                else {
+                    _file->open_write_boxCompound_helm3D(
+                    group_id, "boxes", mins, maxs, false, N_modes);
+                }
                 /*_file->template open_write_vec_dx<Dim>(
                     group_id, "vec_dx", dx, dx*2, dx*4, mins, false);*/
             }

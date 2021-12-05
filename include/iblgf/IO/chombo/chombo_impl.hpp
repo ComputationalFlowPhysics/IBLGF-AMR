@@ -933,10 +933,10 @@ class Chombo
         }
         }
         else {
-            for (std::size_t i = 0; i < components.size(); i+=3*N_modes)
+            for (std::size_t i = 0; i < components.size()/3/N_modes; i++)
         {
             _file->template create_attribute<std::string>(
-                root, "component_" + std::to_string((i/3/N_modes)), components[i]);
+                root, "component_" + std::to_string(i), components[i]);
         }
         }
 

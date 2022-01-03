@@ -1086,6 +1086,33 @@ class Ifherk_HELM
 
 
         auto t0 = clock_type::now();
+        //clean Fourier coefficents that should be zero
+        for (int l = domain_->tree()->base_level();
+             l < domain_->tree()->depth(); ++l)
+        {
+            int levelDiff = domain_->tree()->depth() - l - 1;
+            int levelFactor = std::pow(2,levelDiff);
+            int LevelModes = N_modes*2/levelFactor;
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data() || !it->data().is_allocated()) continue;
+
+                for (std::size_t field_idx = LevelModes; field_idx < N_modes*2;
+                     ++field_idx)
+                {
+                    auto& lin_data =
+                        it->data_r(Source::tag(), field_idx).linalg_data();
+                    lin_data *= 0;
+                    auto& lin_data1 =
+                        it->data_r(Source::tag(), field_idx+N_modes*2).linalg_data();
+                    lin_data1 *= 0;
+                    auto& lin_data2 =
+                        it->data_r(Source::tag(), field_idx+N_modes*4).linalg_data();
+                    lin_data2 *= 0;
+                }
+                
+            }
+        }
 
         for (int l = domain_->tree()->base_level();
              l < domain_->tree()->depth(); ++l)

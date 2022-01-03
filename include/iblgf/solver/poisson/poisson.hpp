@@ -171,7 +171,7 @@ class PoissonSolver
         const int l_max = (fmm_type != MASK_TYPE::STREAM) ? domain_->tree()->depth() : domain_->tree()->base_level()+1;
         const int l_min = (fmm_type !=  MASK_TYPE::IB2xIB && fmm_type !=  MASK_TYPE::xIB2IB) ? domain_->tree()->base_level() : domain_->tree()->depth()-1;
 
-        const int tot_ref_l = l_max - l_min;
+        const int tot_ref_l = l_max - l_min - 1;
                 
         for (int i = 0; i < NComp; i++)
         {
@@ -184,7 +184,7 @@ class PoissonSolver
             {
                 //int entry = idx*2 + NComp*2;
                 
-                int addLevel_raw = std::log2((additional_modes + 1)/(idx+1));
+                int addLevel_raw = std::log2((additional_modes + 1)/(idx+2));
                 int addLevel = 0;
                 if (addLevel_raw < tot_ref_l) {
                     addLevel = tot_ref_l - addLevel_raw;
@@ -246,6 +246,12 @@ class PoissonSolver
         if (Source::nFields() != N_modes * 2 * NComp)
             throw std::runtime_error(
                 "Fourier modes number elements do not match in helmholtz solver");
+
+        const int l_max = (fmm_type != MASK_TYPE::STREAM) ? domain_->tree()->depth() : domain_->tree()->base_level()+1;
+        const int l_min = (fmm_type !=  MASK_TYPE::IB2xIB && fmm_type !=  MASK_TYPE::xIB2IB) ? domain_->tree()->base_level() : domain_->tree()->depth()-1;
+
+        const int tot_ref_l = l_max - l_min - 1;
+
         for (int i = 0; i < NComp; i++)
         {
             int add_num = i * N_modes*2;
@@ -256,13 +262,20 @@ class PoissonSolver
                 //this->apply_lgf<Source, Target>(&lgf_if_, (add_num + entry), fmm_type);
             for (std::size_t idx = 0; idx < additional_modes; ++idx)
             {
+
+                int addLevel_raw = std::log2((additional_modes + 1)/(idx+2));
+                int addLevel = 0;
+                if (addLevel_raw < tot_ref_l) {
+                    addLevel = tot_ref_l - addLevel_raw;
+                }
+
                 //int entry = idx*2 + NComp*2;
                 float_type omega = static_cast<float_type>(idx + 1) * 2.0 * M_PI / L_z;
                 for (std::size_t addentry = 0; addentry < 2; addentry++)
                 {
                     int entry = addentry + idx * 2 + 2 + add_num;
                     this->apply_if_helm<Source, Target>(&lgf_if_, omega, entry,
-                        fmm_type);
+                        fmm_type, addLevel);
                     domain_->client_communicator().barrier();
                 }
             }
@@ -350,7 +363,7 @@ class PoissonSolver
 
 
     template<class Source, class Target, class Kernel>
-    void apply_if_helm(Kernel* _kernel, float_type omega, std::size_t _field_idx = 0, int fmm_type = MASK_TYPE::AMR2AMR)
+    void apply_if_helm(Kernel* _kernel, float_type omega, std::size_t _field_idx = 0, int fmm_type = MASK_TYPE::AMR2AMR, int addLevel=0)
     {
         auto client = domain_->decomposition().client();
         if (!client) return;
@@ -385,7 +398,12 @@ class PoissonSolver
                     domain_->tree()->depth() : domain_->tree()->base_level()+1;
 
         const int l_min = (fmm_type !=  MASK_TYPE::IB2xIB && fmm_type !=  MASK_TYPE::xIB2IB) ?
-                    domain_->tree()->base_level() : domain_->tree()->depth()-1;
+                    (domain_->tree()->base_level() + addLevel) : domain_->tree()->depth()-1;
+
+
+        if (l_min >= l_max)
+            throw std::runtime_error(
+                "Lmax smaller than Lmin in IF");
 
         for (int l = l_min; l < l_max; ++l)
         {

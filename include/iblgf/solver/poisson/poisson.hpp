@@ -111,6 +111,9 @@ class PoissonSolver
         additional_modes = _simulation->dictionary()->template get_or<int>("add_modes", N_fourier_modes);
         //std::cout << "Number of Fourier modes are " << N_fourier_modes <<std::endl;
         if (additional_modes > N_fourier_modes) throw std::runtime_error("Additional modes cannot be higher than the number of Fourier modes");
+
+        adapt_Fourier = _simulation->dictionary()->template get_or<bool>(
+            "adapt_Fourier", true);
     }
 
   public:
@@ -186,7 +189,7 @@ class PoissonSolver
                 
                 int addLevel_raw = std::log2((additional_modes + 1)/(idx+2));
                 int addLevel = 0;
-                if (addLevel_raw < tot_ref_l) {
+                if (addLevel_raw < tot_ref_l && adapt_Fourier) {
                     addLevel = tot_ref_l - addLevel_raw;
                 }
 
@@ -265,7 +268,7 @@ class PoissonSolver
 
                 int addLevel_raw = std::log2((additional_modes + 1)/(idx+2));
                 int addLevel = 0;
-                if (addLevel_raw < tot_ref_l) {
+                if (addLevel_raw < tot_ref_l && adapt_Fourier) {
                     addLevel = tot_ref_l - addLevel_raw;
                 }
 
@@ -1100,6 +1103,7 @@ private:
     bool subtract_non_leaf_ = false;
 
     int additional_modes = 0;
+    bool adapt_Fourier = false;
     float_type c_z_ = 1.0;
 
     //Timings:

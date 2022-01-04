@@ -123,6 +123,9 @@ class Ifherk_HELM
         customized_ic = _simulation->dictionary()->template get_or<bool>("use_init_tree", false);
         c_z = _simulation->dictionary()->template get_or<float_type>(
             "L_z", 1);
+
+        adapt_Fourier = _simulation->dictionary()->template get_or<bool>(
+            "adapt_Fourier", true);
         /*const int l_max = domain_->tree()->depth();
         const int l_min = domain_->tree()->base_level();
         const int nLevels = l_max - l_min;
@@ -237,6 +240,12 @@ class Ifherk_HELM
                 clean<cell_aux_type>(true, 2);
                 clean<edge_aux_type>(true, 1);
                 clean<correction_tmp_type>(true, 2);
+                if (adapt_Fourier)
+                {
+                    clean_Fourier_modes_all<cell_aux_type>();
+                    clean_Fourier_modes_all<edge_aux_type>();
+                    //clean_Fourier_modes_all<correction_tmp_type>();
+                }
             }
             else
             {
@@ -692,12 +701,17 @@ class Ifherk_HELM
                              }));
         base_mesh_update_ = false;
         pcout << "pad u      in " << t_pad.count() << std::endl;
-
+        if (adapt_Fourier) clean_Fourier_modes_all<u_type>();
         copy<u_type, q_i_type>();
 
         // Stage 1
         // ******************************************************************
         pcout << "Stage 1" << std::endl;
+        if (adapt_Fourier) {
+            clean_Fourier_modes_all<u_i_type>();
+            clean_Fourier_modes_all<r_i_type>();
+            clean_Fourier_modes_all<q_i_type>();
+        }
         T_stage_ = T_ + dt_ * c_[0];
         stage_idx_ = 1;
         clean<g_i_type>();
@@ -722,6 +736,11 @@ class Ifherk_HELM
         // Stage 2
         // ******************************************************************
         pcout << "Stage 2" << std::endl;
+        if (adapt_Fourier) {
+            clean_Fourier_modes_all<u_i_type>();
+            clean_Fourier_modes_all<q_i_type>();
+            clean_Fourier_modes_all<g_i_type>();
+        }
         T_stage_ = T_ + dt_ * c_[1];
         stage_idx_ = 2;
         clean<r_i_type>();
@@ -761,6 +780,12 @@ class Ifherk_HELM
         // Stage 3
         // ******************************************************************
         pcout << "Stage 3" << std::endl;
+        if (adapt_Fourier) {
+            clean_Fourier_modes_all<u_i_type>();
+            clean_Fourier_modes_all<r_i_type>();
+            clean_Fourier_modes_all<q_i_type>();
+            clean_Fourier_modes_all<g_i_type>();
+        }
         T_stage_ = T_ + dt_ * c_[2];
         stage_idx_ = 3;
         clean<d_i_type>();
@@ -911,6 +936,82 @@ class Ifherk_HELM
             }
     }
 
+    template<typename F>
+    void clean_Fourier_modes(int l) noexcept
+    {
+        int N_max = F::nFields();
+
+        int residue = N_max % (2 * N_modes);
+
+        if (residue != 0)
+            throw std::runtime_error(
+                "Number of elements are not multiple of 2*N_modes");
+
+        int NComp = N_max / (2 * N_modes);
+
+        int levelDiff = domain_->tree()->depth() - l - 1;
+        int levelFactor = std::pow(2, levelDiff);
+        int LevelModes = N_modes * 2 / levelFactor;
+
+        for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+        {
+            if (!it->locally_owned()) continue;
+            if (!it->has_data() || !it->data().is_allocated()) continue;
+
+            for (std::size_t field_idx = LevelModes; field_idx < N_modes * 2;
+                 ++field_idx)
+            {
+                for (int i = 0; i < NComp; i++)
+                {
+                    auto& lin_data =
+                        it->data_r(F::tag(), field_idx + N_modes * 2 * i)
+                            .linalg_data();
+                    lin_data *= 0;
+                }
+            }
+        }
+    }
+
+    template<typename F>
+    void clean_Fourier_modes_all() noexcept
+    {
+        int N_max = F::nFields();
+
+        int residue = N_max % (2 * N_modes);
+
+        if (residue != 0)
+            throw std::runtime_error(
+                "Number of elements are not multiple of 2*N_modes");
+
+        int NComp = N_max / (2 * N_modes);
+
+        for (int l = domain_->tree()->base_level();
+             l < domain_->tree()->depth(); ++l)
+        {
+            int levelDiff = domain_->tree()->depth() - l - 1;
+            int levelFactor = std::pow(2, levelDiff);
+            int LevelModes = N_modes * 2 / levelFactor;
+
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned()) continue;
+                if (!it->has_data() || !it->data().is_allocated()) continue;
+
+                for (std::size_t field_idx = LevelModes;
+                     field_idx < N_modes * 2; ++field_idx)
+                {
+                    for (int i = 0; i < NComp; i++)
+                    {
+                        auto& lin_data =
+                            it->data_r(F::tag(), field_idx + N_modes * 2 * i)
+                                .linalg_data();
+                        lin_data *= 0;
+                    }
+                }
+            }
+        }
+    }
+
   private:
     float_type coeff_a(int i, int j) const noexcept
     {
@@ -971,6 +1072,12 @@ class Ifherk_HELM
         mDuration_type t_ib(0);
         domain_->ib().force() = domain_->ib().force_prev(stage_idx_);
         //domain_->ib().scales(coeff_a(stage_idx_, stage_idx_));
+        if (adapt_Fourier)
+        {
+            clean_Fourier_modes_all<face_aux2_type>();
+            clean_Fourier_modes_all<edge_aux_type>();
+            //clean_Fourier_modes_all<correction_tmp_type>();
+        }
         TIME_CODE(t_ib, SINGLE_ARG(lsolver.template ib_solve<face_aux2_type>(
                             _alpha, T_stage_);));
 
@@ -1087,10 +1194,14 @@ class Ifherk_HELM
 
         auto t0 = clock_type::now();
         //clean Fourier coefficents that should be zero
-        for (int l = domain_->tree()->base_level();
-             l < domain_->tree()->depth(); ++l)
+        if (adapt_Fourier)
         {
-            int levelDiff = domain_->tree()->depth() - l - 1;
+            for (int l = domain_->tree()->base_level();
+                 l < domain_->tree()->depth(); ++l)
+            {
+                clean_Fourier_modes<Source>(l);
+
+                /*int levelDiff = domain_->tree()->depth() - l - 1;
             int levelFactor = std::pow(2,levelDiff);
             int LevelModes = N_modes*2/levelFactor;
             for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
@@ -1111,6 +1222,7 @@ class Ifherk_HELM
                     lin_data2 *= 0;
                 }
                 
+            }*/
             }
         }
 
@@ -1430,6 +1542,7 @@ class Ifherk_HELM
     bool write_restart_ = false;
     bool updating_source_max_ = false;
     bool all_time_max_;
+    bool adapt_Fourier;
     int  restart_base_freq_;
     int  adapt_count_;
 

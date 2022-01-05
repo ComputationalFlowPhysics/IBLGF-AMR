@@ -60,6 +60,8 @@ class LinSysSolver_helm
 
     static constexpr std::size_t N_modes = Setup::N_modes; //number of complex modes
 
+    using ModesVector_type = types::vector_type<float_type, N_modes>;
+
 
     using point_force_type = types::vector_type<float_type, 3 * 2 * N_modes>;
     using force_type = std::vector<point_force_type>;
@@ -296,18 +298,24 @@ class LinSysSolver_helm
         auto p = r;
 
         // rold = r'* r;
-        std::vector<float_type> rsold = dot_mode(r, r);
+        ModesVector_type rsold = dot_mode(r, r);
 
         for (int k=0; k<cg_max_itr_; k++)
         {
             // Ap = A(p)
             this->template ET_H_S_E<Ftmp>(p, Ap, alpha );
             // alpha = rsold / p'*Ap
-            std::vector<float_type> pAp = dot_mode(p,Ap);
+            ModesVector_type pAp = dot_mode(p,Ap);
+            /*if (comm_.rank()==1){
+            for (int i = 0; i < N_modes; i++) {
+                std::cout << pAp[i] << " ";
+            }
+            std::cout << std::endl;
+            }*/
             bool if_return = true;
             for (int i = 0; i < N_modes;i++) {
                 if (pAp[i] == 0) {
-                    _compute_Modes[i] = false;
+                    this->_compute_Modes[i] = false;
                 }
                 else {
                     if_return = false;
@@ -318,17 +326,38 @@ class LinSysSolver_helm
                 return;
             }
             
-            std::vector<float_type> alpha;
+            ModesVector_type alpha;
             for (int i = 0; i < rsold.size();i++) {
                 float_type ratio = rsold[i]/pAp[i];
-                alpha.push_back(ratio);
+                if (this->_compute_Modes[i])
+                {
+                    alpha[i] = ratio;
+                }
+                else
+                {
+                    alpha[i] = 0;
+                }
             }
 
-            std::vector<float_type> n_alpha;
+            ModesVector_type n_alpha;
             for (int i = 0; i < rsold.size();i++) {
                 float_type ratio = -rsold[i]/pAp[i];
-                alpha.push_back(ratio);
+                if (this->_compute_Modes[i])
+                {
+                    n_alpha[i] = ratio;
+                }
+                else
+                {
+                    n_alpha[i] = 0;
+                }
+                //n_alpha[i] = ratio;
             }
+            /*if (comm_.rank()==1){
+            for (int i = 0; i < N_modes; i++) {
+                std::cout << alpha[i] << " ";
+            }
+            std::cout << std::endl;
+            }*/
             // f = f + alpha * p;
             add_forcing_weighted_2(f, p, 1.0, alpha);
             // r = r - alpha*Ap
@@ -339,14 +368,29 @@ class LinSysSolver_helm
 
             //auto ModeError = dot_Mode(r,r);
             //auto Modef = dot_Mode(f,f);
-            std::vector<float_type> ratio_i;
+            ModesVector_type ratio_i;
             float_type max_i = -1;
-            for (int i = 0; i < rsnew.size();i++) {
-                float_type ratio = rsnew[i]/f2[i];
-                ratio_i.push_back(ratio);
-                if (ratio > max_i) max_i = ratio;
-                if (sqrt(ratio)<cg_threshold_) _compute_Modes[i] = false;
+            for (int i = 0; i < rsnew.size(); i++)
+            {
+                float_type ratio = rsnew[i] / f2[i];
+                if (this->_compute_Modes[i])
+                {
+                    ratio_i[i] = ratio;
+                    if (ratio > max_i) max_i = ratio;
+                    if (sqrt(ratio) < cg_threshold_) this->_compute_Modes[i] = false;
+                }
+                else
+                {
+                    ratio_i[i] = 0;
+                }
             }
+
+            /*if (comm_.rank()==1){
+            for (int i = 0; i < N_modes; i++) {
+                std::cout << ratio_i[i] << " ";
+            }
+            std::cout << std::endl;
+            }*/
             /*if (comm_.rank()==1)
                 std::cout<< "residue square = "<< rsnew/f2<<std::endl;;
             if (sqrt(rsnew/f2)<cg_threshold_)
@@ -365,10 +409,16 @@ class LinSysSolver_helm
 
             // p = r + (rsnew / rsold) * p;
             //auto add_ratio = divide_mode(rsnew, rsold);
-            std::vector<float_type> add_ratio;
+            ModesVector_type add_ratio;
             for (int i = 0; i < rsold.size();i++) {
                 float_type ratio = rsnew[i]/rsold[i];
-                add_ratio .push_back(ratio);
+
+                if (this->_compute_Modes[i]) {
+                    add_ratio[i] = ratio;
+                }
+                else {
+                    add_ratio[i] = 0;
+                }
             }
             add_forcing_weighted(p, r, add_ratio, 1.0);
             rsold = rsnew;
@@ -899,15 +949,16 @@ class LinSysSolver_helm
     }
 
     template<class VecType>
-    std::vector<float_type> dot_mode(VecType& a, VecType& b)
+    ModesVector_type dot_mode(VecType& a, VecType& b)
     {
-        std::vector<float_type> s(N_modes, 0.0);
+        ModesVector_type s(0.0);
         for (std::size_t i=0; i<a.size(); ++i)
         {
             if (ib_->rank(i)!=comm_.rank())
                 continue;
 
             for (std::size_t n = 0; n < N_modes; n++) {
+                if (!this->_compute_Modes[n]) continue;
                 s[n] += (a[i][2*n] * b[i][2*n] + 
                          a[i][2*n + 1] * b[i][2*n + 1] +
                          a[i][2*N_modes + 2*n] * b[i][2*N_modes + 2*n] + 
@@ -917,9 +968,9 @@ class LinSysSolver_helm
             }
         }
 
-        std::vector<float_type> s_global(N_modes, 0.0);
+        ModesVector_type s_global(0.0);
         boost::mpi::all_reduce(domain_->client_communicator(), s,
-                s_global, std::plus<std::vector<float_type>>());
+                s_global, std::plus<ModesVector_type>());
         return s_global;
     }
 
@@ -949,8 +1000,8 @@ class LinSysSolver_helm
             for (std::size_t n = 0; n < N_modes; n++) {
                 if (!_compute_Modes[n]) continue;
                 for (int k = 0; k < 3; k++) {
-                    a[i][n + 2*N_modes*k]   = a[i][n + 2*N_modes*k] *   scale1 + b[i][n + 2*N_modes*k] *   scale2;
-                    a[i][n+1 + 2*N_modes*k] = a[i][n+1 + 2*N_modes*k] * scale1 + b[i][n+1 + 2*N_modes*k] * scale2;
+                    a[i][2*n + 2*N_modes*k]   = a[i][2*n + 2*N_modes*k] *   scale1 + b[i][2*n + 2*N_modes*k] *   scale2;
+                    a[i][2*n+1 + 2*N_modes*k] = a[i][2*n+1 + 2*N_modes*k] * scale1 + b[i][2*n+1 + 2*N_modes*k] * scale2;
                 }
 
             }
@@ -969,8 +1020,8 @@ class LinSysSolver_helm
             for (std::size_t n = 0; n < N_modes; n++) {
                 if (!_compute_Modes[n]) continue;
                 for (int k = 0; k < 3; k++) {
-                    a[i][n + 2*N_modes*k]   = a[i][n + 2*N_modes*k] *   scale1[n] + b[i][n + 2*N_modes*k] *   scale2;
-                    a[i][n+1 + 2*N_modes*k] = a[i][n+1 + 2*N_modes*k] * scale1[n] + b[i][n+1 + 2*N_modes*k] * scale2;
+                    a[i][2*n + 2*N_modes*k]   = a[i][2*n + 2*N_modes*k] *   scale1[n] + b[i][2*n + 2*N_modes*k] *   scale2;
+                    a[i][2*n+1 + 2*N_modes*k] = a[i][2*n+1 + 2*N_modes*k] * scale1[n] + b[i][2*n+1 + 2*N_modes*k] * scale2;
                 }
 
             }
@@ -989,8 +1040,8 @@ class LinSysSolver_helm
             for (std::size_t n = 0; n < N_modes; n++) {
                 if (!_compute_Modes[n]) continue;
                 for (int k = 0; k < 3; k++) {
-                    a[i][n + 2*N_modes*k]   = a[i][n + 2*N_modes*k] *   scale1 + b[i][n + 2*N_modes*k] *   scale2[n];
-                    a[i][n+1 + 2*N_modes*k] = a[i][n+1 + 2*N_modes*k] * scale1 + b[i][n+1 + 2*N_modes*k] * scale2[n];
+                    a[i][2*n + 2*N_modes*k]   = a[i][2*n + 2*N_modes*k] *   scale1 + b[i][2*n + 2*N_modes*k] *   scale2[n];
+                    a[i][2*n+1 + 2*N_modes*k] = a[i][2*n+1 + 2*N_modes*k] * scale1 + b[i][2*n+1 + 2*N_modes*k] * scale2[n];
                 }
 
             }

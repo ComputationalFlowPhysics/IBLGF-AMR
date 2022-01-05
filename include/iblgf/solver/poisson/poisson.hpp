@@ -204,8 +204,6 @@ class PoissonSolver
         }
     }
 
-
-
     /*template<class Source, class Target>
     void apply_helm_if(float_type _alpha_base, int N_modes, float_type L_z, int NComp = 3, 
         int fmm_type = MASK_TYPE::AMR2AMR)
@@ -265,6 +263,114 @@ class PoissonSolver
                 //this->apply_lgf<Source, Target>(&lgf_if_, (add_num + entry), fmm_type);
             for (std::size_t idx = 0; idx < additional_modes; ++idx)
             {
+
+                int addLevel_raw = std::log2((additional_modes + 1)/(idx+2));
+                int addLevel = 0;
+                if (addLevel_raw < tot_ref_l && adapt_Fourier) {
+                    addLevel = tot_ref_l - addLevel_raw;
+                }
+
+                //int entry = idx*2 + NComp*2;
+                float_type omega = static_cast<float_type>(idx + 1) * 2.0 * M_PI / L_z;
+                for (std::size_t addentry = 0; addentry < 2; addentry++)
+                {
+                    int entry = addentry + idx * 2 + 2 + add_num;
+                    this->apply_if_helm<Source, Target>(&lgf_if_, omega, entry,
+                        fmm_type, addLevel);
+                    domain_->client_communicator().barrier();
+                }
+            }
+        }
+    }
+
+    template<class Source, class Target>
+    void apply_lgf_and_helm_ib(int N_modes,
+        std::vector<bool>& ModesBool, int NComp = 1, int fmm_type = MASK_TYPE::AMR2AMR)
+    {
+        if (N_modes != (N_fourier_modes + 1))
+            throw std::runtime_error(
+                "Fourier modes do not match in helmholtz solver");
+        if (Source::nFields() != N_modes * 2 * NComp)
+            throw std::runtime_error(
+                "Fourier modes number elements do not match in helmholtz solver");
+
+        const int l_max = (fmm_type != MASK_TYPE::STREAM)
+                              ? domain_->tree()->depth()
+                              : domain_->tree()->base_level() + 1;
+        const int l_min =
+            (fmm_type != MASK_TYPE::IB2xIB && fmm_type != MASK_TYPE::xIB2IB)
+                ? domain_->tree()->base_level()
+                : domain_->tree()->depth() - 1;
+
+        const int tot_ref_l = l_max - l_min - 1;
+
+        for (int i = 0; i < NComp; i++)
+        {
+            int add_num = i * N_modes * 2;
+            if (ModesBool[0])
+            {
+                for (std::size_t entry = 0; entry < 2; ++entry)
+                {
+                    this->apply_lgf<Source, Target>(&lgf_lap_,
+                        (add_num + entry), fmm_type);
+                    domain_->client_communicator().barrier();
+                }
+            }
+            for (std::size_t idx = 0; idx < additional_modes; ++idx)
+            {
+                //int entry = idx*2 + NComp*2;
+                if (ModesBool[idx + 1])
+                {
+                    int addLevel_raw =
+                        std::log2((additional_modes + 1) / (idx + 2));
+                    int addLevel = 0;
+                    if (addLevel_raw < tot_ref_l && adapt_Fourier)
+                    {
+                        addLevel = tot_ref_l - addLevel_raw;
+                    }
+
+                    for (std::size_t addentry = 0; addentry < 2; addentry++)
+                    {
+                        int entry = addentry + idx * 2 + 2 + add_num;
+                        this->apply_lgf<Source, Target>(&lgf_helm_vec[idx],
+                            entry, fmm_type, addLevel);
+                        domain_->client_communicator().barrier();
+                    }
+                }
+            }
+        }
+    }
+
+    template<class Source, class Target>
+    void apply_helm_if_ib(float_type _alpha_base, int N_modes, float_type L_z, std::vector<bool>& ModesBool, int NComp = 3, 
+        int fmm_type = MASK_TYPE::AMR2AMR)
+    {
+        lgf_if_.alpha_base_level() = _alpha_base;
+        if (N_modes != (N_fourier_modes + 1))
+            throw std::runtime_error(
+                "Fourier modes do not match in helmholtz solver");
+        if (Source::nFields() != N_modes * 2 * NComp)
+            throw std::runtime_error(
+                "Fourier modes number elements do not match in helmholtz solver");
+
+        const int l_max = (fmm_type != MASK_TYPE::STREAM) ? domain_->tree()->depth() : domain_->tree()->base_level()+1;
+        const int l_min = (fmm_type !=  MASK_TYPE::IB2xIB && fmm_type !=  MASK_TYPE::xIB2IB) ? domain_->tree()->base_level() : domain_->tree()->depth()-1;
+
+        const int tot_ref_l = l_max - l_min - 1;
+
+        for (int i = 0; i < NComp; i++)
+        {
+            int add_num = i * N_modes*2;
+            if (ModesBool[0]){
+            for (std::size_t entry = 0; entry < 2; ++entry) {
+                this->apply_if<Source, Target>(&lgf_if_, (add_num + entry), fmm_type);
+                domain_->client_communicator().barrier();
+            }
+            }
+                //this->apply_lgf<Source, Target>(&lgf_if_, (add_num + entry), fmm_type);
+            for (std::size_t idx = 0; idx < additional_modes; ++idx)
+            {
+                if (!ModesBool[idx + 1]) {continue;}
 
                 int addLevel_raw = std::log2((additional_modes + 1)/(idx+2));
                 int addLevel = 0;

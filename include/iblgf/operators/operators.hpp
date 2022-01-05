@@ -360,7 +360,7 @@ struct Operator
 
 
     template<class Source, class Target, class Domain>
-    static void levelDivergence_helmholtz_complex(Domain* domain, int l, int N_modes, float_type c) noexcept
+    static void levelDivergence_helmholtz_complex(Domain* domain, int l, int N_modes, float_type c, std::vector<bool>& ModesBool) noexcept
     {
         auto client = domain->decomposition().client();
         client->template buffer_exchange<Source>(l);
@@ -372,7 +372,7 @@ struct Operator
             if (!it->has_data() || !it->data().is_allocated()) continue;
 
             const auto dx_level = dx_base / std::pow(2, it->refinement_level());
-            divergence_helmholtz_complex<Source, Target>(it->data(), dx_level, N_modes, c);
+            divergence_helmholtz_complex<Source, Target>(it->data(), dx_level, N_modes, c, ModesBool);
         }
 
         clean_leaf_correction_boundary<Target>(domain, l, true, 2);
@@ -410,7 +410,7 @@ struct Operator
     }
 
     template<class Source, class Target, class Domain>
-    static void levelGradient_helmholtz_complex(Domain* domain, int l, int N_modes, float_type c) noexcept
+    static void levelGradient_helmholtz_complex(Domain* domain, int l, int N_modes, float_type c, std::vector<bool>& ModesBool) noexcept
     {
         auto client = domain->decomposition().client();
         //client->template buffer_exchange<Source>(l);
@@ -422,7 +422,7 @@ struct Operator
             if (!it->has_data() || !it->data().is_allocated()) continue;
 
             const auto dx_level = dx_base / std::pow(2, it->refinement_level());
-            gradient_helmholtz_complex<Source, Target>(it->data(), dx_level, N_modes, c);
+            gradient_helmholtz_complex<Source, Target>(it->data(), dx_level, N_modes, c, ModesBool);
         }
 
         client->template buffer_exchange<Target>(l);
@@ -634,6 +634,9 @@ struct Operator
             for (std::size_t field_idx = 0; field_idx < U::nFields();
                  field_idx++)
             {
+                int res = field_idx % sep;
+                int modesN = res/2;
+                if (!ModesBool[modesN]) continue;
                 decltype(ib_coord) off(0.5);
                 off[field_idx/sep] = 0.0; // face data location
                 f[field_idx] += node(u, field_idx) * ddf(dist + off);
@@ -697,6 +700,11 @@ struct Operator
             for (std::size_t field_idx = 0; field_idx < U::nFields();
                  field_idx++)
             {
+
+                int res = field_idx % sep;
+                int modesN = res/2;
+                if (!ModesBool[modesN]) continue;
+                
                 decltype(ib_coord) off(0.5);
                 off[field_idx/sep] = 0.0; // face data location
                 node(u, field_idx) += f[field_idx] * ddf(dist + off) * factor;
@@ -972,6 +980,45 @@ struct Operator
     }
 
 
+    template<class Source, class Dest, class Block,
+        typename std::enable_if<(Source::mesh_type() == MeshObject::cell) &&
+                                    (Dest::mesh_type() == MeshObject::face),
+            void>::type* = nullptr>
+    static void gradient_helmholtz_complex(Block& block, float_type dx_level,
+        int                                   N_modes,
+        float_type                            c,
+        std::vector<bool>                     ModesBool,
+        int                                   PREFAC = 2) noexcept
+    {
+        const auto     fac = 1.0 / dx_level;
+        constexpr auto source = Source::tag();
+        constexpr auto dest = Dest::tag();
+        for (auto& n : block)
+        {
+
+
+            int sep = N_modes*PREFAC;
+            for (int i = 0; i < sep ; i++) {
+                int idx = i/PREFAC;
+                if (!ModesBool[idx]) continue;
+                n(dest, 0 * sep + i) =  fac * (n(source, i) - n.at_offset(source, -1, 0, i));
+
+                n(dest, 1 * sep + i) =  fac * (n(source, i) - n.at_offset(source, 0, -1, i));
+            }
+
+            for (int i = 0; i < N_modes; i++) { 
+                if (!ModesBool[i]) continue;
+                float_type omega = 2.0*M_PI*static_cast<float_type>(i)/c;
+
+                n(dest, 2 * sep + i * 2)     = -n(source, i * 2 + 1) * omega;
+                n(dest, 2 * sep + i * 2 + 1) =  n(source, i * 2    ) * omega;
+
+            }
+
+        }
+    }
+
+
 
     template<class SourceTuple, class Dest, class Block,
         typename std::enable_if<(Dest::mesh_type() == MeshObject::cell) &&
@@ -1000,6 +1047,48 @@ struct Operator
             }
 
             for (int i = 0; i < N_modes; i++) { 
+                float_type omega = 2.0*M_PI*static_cast<float_type>(i)/c;
+
+                n(dest, i * 2)     -= n(source, 2 * sep + i * 2 + 1) * omega;
+                n(dest, i * 2 + 1) += n(source, 2 * sep + i * 2    ) * omega;
+
+            }
+
+        }
+    }
+
+
+    template<class SourceTuple, class Dest, class Block,
+        typename std::enable_if<(Dest::mesh_type() == MeshObject::cell) &&
+                                    (SourceTuple::mesh_type() ==
+                                        MeshObject::face),
+            void>::type* = nullptr>
+    static void divergence_helmholtz_complex(Block& block, float_type dx_level,
+        int                                   N_modes,
+        float_type                            c,
+        std::vector<bool>                     ModesBool,
+        int                                   PREFAC = 2) noexcept
+    {
+        const auto     fac = 1.0 / dx_level;
+        constexpr auto source = SourceTuple::tag();
+        constexpr auto dest = Dest::tag();
+        for (auto& n : block)
+        {
+
+
+            int sep = N_modes*PREFAC;
+            for (int i = 0; i < sep ; i++) {
+                int idx = i/PREFAC;
+                if (!ModesBool[idx]) continue;
+                n(dest, i) =  -n(source, 0 * sep + i) - n(source, 1 * sep + i) +
+                          n.at_offset(source, 1, 0, 0 * sep + i) +
+                          n.at_offset(source, 0, 1, 1 * sep + i);
+
+                n(dest, i) *= fac;
+            }
+
+            for (int i = 0; i < N_modes; i++) { 
+                if (!ModesBool[i]) continue;
                 float_type omega = 2.0*M_PI*static_cast<float_type>(i)/c;
 
                 n(dest, i * 2)     -= n(source, 2 * sep + i * 2 + 1) * omega;

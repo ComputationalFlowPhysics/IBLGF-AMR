@@ -152,7 +152,7 @@ class LinSysSolver_helm
 
         domain_->client_communicator().barrier();
         domain::Operator::domainClean<face_aux2_type>(domain_);
-        this->template CG_solve<face_aux2_type>(uc, alpha);
+        this->template CG_solve_mode<face_aux2_type>(uc, alpha);
     }
 
     template<class Field>
@@ -163,10 +163,10 @@ class LinSysSolver_helm
         this->smearing<face_aux2_type>(ib_->force());
 
         int l = domain_->tree()->depth()-1;
-        domain::Operator::levelDivergence_helmholtz_complex<face_aux2_type, cell_aux2_type>(domain_, l, (1 + additional_modes), c_z);
+        domain::Operator::levelDivergence_helmholtz_complex<face_aux2_type, cell_aux2_type>(domain_, l, (1 + additional_modes), c_z, this->_compute_Modes);
 
         // apply L^-1
-        psolver_.template apply_lgf_and_helm<cell_aux2_type,cell_aux2_type>(N_modes, 1, MASK_TYPE::IB2AMR);
+        psolver_.template apply_lgf_and_helm_ib<cell_aux2_type,cell_aux2_type>(N_modes, this->_compute_Modes, 1, MASK_TYPE::IB2AMR);
 
         domain::Operator::add<cell_aux2_type, Field>(domain_, -1.0);
     }
@@ -256,6 +256,121 @@ class LinSysSolver_helm
 
             // p = r + (rsnew / rsold) * p;
             add(p, r, rsnew/rsold, 1.0);
+            rsold = rsnew;
+        }
+    }
+
+
+    template<class Ftmp, class UcType>
+    void CG_solve_mode(UcType& uc, float_type alpha)
+    {
+        auto& f = ib_->force();
+
+        
+        for (int i = 0; i < N_modes; i++) {
+            this->_compute_Modes[i] = true;
+        }
+
+        point_force_type tmp(0.0);
+        force_type Ax(ib_->size(), tmp);
+        force_type r (ib_->size(), tmp);
+        force_type Ap(ib_->size(), tmp);
+
+        if (domain_->is_server())
+            return;
+
+        // Ax
+        this->template ET_H_S_E<Ftmp>(f, Ax, alpha);
+        //printvec(Ax, "Ax");
+
+        //  res = uc - Ax
+        for (int i=0; i<ib_->size(); ++i)
+        {
+            if (ib_->rank(i)!=comm_.rank())
+                r[i]=0;
+            else
+                r[i]=uc[i]-Ax[i];
+        }
+
+        // p = res
+        auto p = r;
+
+        // rold = r'* r;
+        std::vector<float_type> rsold = dot_mode(r, r);
+
+        for (int k=0; k<cg_max_itr_; k++)
+        {
+            // Ap = A(p)
+            this->template ET_H_S_E<Ftmp>(p, Ap, alpha );
+            // alpha = rsold / p'*Ap
+            std::vector<float_type> pAp = dot_mode(p,Ap);
+            bool if_return = true;
+            for (int i = 0; i < N_modes;i++) {
+                if (pAp[i] == 0) {
+                    _compute_Modes[i] = false;
+                }
+                else {
+                    if_return = false;
+                }
+            }
+            if (if_return)
+            {
+                return;
+            }
+            
+            std::vector<float_type> alpha;
+            for (int i = 0; i < rsold.size();i++) {
+                float_type ratio = rsold[i]/pAp[i];
+                alpha.push_back(ratio);
+            }
+
+            std::vector<float_type> n_alpha;
+            for (int i = 0; i < rsold.size();i++) {
+                float_type ratio = -rsold[i]/pAp[i];
+                alpha.push_back(ratio);
+            }
+            // f = f + alpha * p;
+            add_forcing_weighted_2(f, p, 1.0, alpha);
+            // r = r - alpha*Ap
+            add_forcing_weighted_2(r, Ap, 1.0, n_alpha);
+            // rsnew = r' * r
+            auto rsnew = dot_mode(r, r);
+            auto f2 = dot_mode(f,f);
+
+            //auto ModeError = dot_Mode(r,r);
+            //auto Modef = dot_Mode(f,f);
+            std::vector<float_type> ratio_i;
+            float_type max_i = -1;
+            for (int i = 0; i < rsnew.size();i++) {
+                float_type ratio = rsnew[i]/f2[i];
+                ratio_i.push_back(ratio);
+                if (ratio > max_i) max_i = ratio;
+                if (sqrt(ratio)<cg_threshold_) _compute_Modes[i] = false;
+            }
+            /*if (comm_.rank()==1)
+                std::cout<< "residue square = "<< rsnew/f2<<std::endl;;
+            if (sqrt(rsnew/f2)<cg_threshold_)
+                break;*/
+
+            if (comm_.rank()==1)
+                std::cout<< "residue square max = "<< max_i <<std::endl;;
+            if (sqrt(max_i) < cg_threshold_)
+            {
+                for (int i = 0; i < N_modes; i++)
+                {
+                    this->_compute_Modes[i] = true;
+                }
+                break;
+            }
+
+            // p = r + (rsnew / rsold) * p;
+            //auto add_ratio = divide_mode(rsnew, rsold);
+            std::vector<float_type> add_ratio;
+            for (int i = 0; i < rsold.size();i++) {
+                float_type ratio = rsnew[i]/rsold[i];
+                add_ratio .push_back(ratio);
+            }
+            add_forcing_weighted(p, r, add_ratio, 1.0);
             rsold = rsnew;
         }
     }
@@ -587,7 +702,7 @@ class LinSysSolver_helm
 
             if (comm_.rank()==1)
                 std::cout<< "residue square = "<< rs_mag/f2<<std::endl;;
-            if (sqrt(rs_mag/f2)<cg_threshold_)
+            if (sqrt(rs_mag/f2)<cg_threshold_) 
                 break;
         }
     }
@@ -637,7 +752,7 @@ class LinSysSolver_helm
         //    psolver_.template apply_lgf_IF<Field, Field>(alpha, MASK_TYPE::xIB2IB);
 
         if (std::fabs(alpha)>1e-12)
-            psolver_.template apply_helm_if<Field, Field>(alpha, N_modes, c_z, 3, MASK_TYPE::IB2xIB);
+            psolver_.template apply_helm_if_ib<Field, Field>(alpha, N_modes, c_z, this->_compute_Modes, 3, MASK_TYPE::IB2xIB);
 
         this->template apply_Schur<Field, face_aux_type>(MASK_TYPE::xIB2IB);
 
@@ -656,10 +771,10 @@ class LinSysSolver_helm
         int l = domain_->tree()->depth()-1;
 
         // div
-        domain::Operator::levelDivergence_helmholtz_complex<Source, cell_aux2_type>(domain_, l, (1 + additional_modes), c_z);
+        domain::Operator::levelDivergence_helmholtz_complex<Source, cell_aux2_type>(domain_, l, (1 + additional_modes), c_z, this->_compute_Modes);
 
         // apply L^-1
-        psolver_.template apply_lgf_and_helm<cell_aux2_type, cell_aux2_type>(N_modes, 1, fmm_type);
+        psolver_.template apply_lgf_and_helm_ib<cell_aux2_type, cell_aux2_type>(N_modes, this->_compute_Modes, 1, fmm_type);
 
         // apply Gradient
         const int l_max = (fmm_type != MASK_TYPE::STREAM) ?
@@ -669,7 +784,7 @@ class LinSysSolver_helm
                     domain_->tree()->base_level() : domain_->tree()->depth()-1;
 
         for (int l = l_min; l < l_max; ++l)
-            domain::Operator::levelGradient_helmholtz_complex<cell_aux2_type, Target>(domain_, l, (1 + additional_modes), c_z);
+            domain::Operator::levelGradient_helmholtz_complex<cell_aux2_type, Target>(domain_, l, (1 + additional_modes), c_z, this->_compute_Modes);
     }
 
     template<class U, class ForceType,
@@ -784,7 +899,7 @@ class LinSysSolver_helm
     }
 
     template<class VecType>
-    std::vector<float_type> dot_Mode(VecType& a, VecType& b)
+    std::vector<float_type> dot_mode(VecType& a, VecType& b)
     {
         std::vector<float_type> s(N_modes, 0.0);
         for (std::size_t i=0; i<a.size(); ++i)
@@ -821,6 +936,83 @@ class LinSysSolver_helm
                 a[i][d] = a[i][d]*scale1 + b[i][d]*scale2;
         }
     }
+
+    template <class VecType>
+    void add_forcing(VecType& a, VecType& b,
+            float_type scale1=1.0, float_type scale2=1.0)
+    {
+        for (int i=0; i<a.size(); ++i)
+        {
+            if (ib_->rank(i)!=comm_.rank())
+                continue;
+
+            for (std::size_t n = 0; n < N_modes; n++) {
+                if (!_compute_Modes[n]) continue;
+                for (int k = 0; k < 3; k++) {
+                    a[i][n + 2*N_modes*k]   = a[i][n + 2*N_modes*k] *   scale1 + b[i][n + 2*N_modes*k] *   scale2;
+                    a[i][n+1 + 2*N_modes*k] = a[i][n+1 + 2*N_modes*k] * scale1 + b[i][n+1 + 2*N_modes*k] * scale2;
+                }
+
+            }
+        }
+    }
+
+    template <class VecType, class VecType2>
+    void add_forcing_weighted(VecType& a, VecType& b,
+            VecType2& scale1, float_type scale2=1.0)
+    {
+        for (int i=0; i<a.size(); ++i)
+        {
+            if (ib_->rank(i)!=comm_.rank())
+                continue;
+
+            for (std::size_t n = 0; n < N_modes; n++) {
+                if (!_compute_Modes[n]) continue;
+                for (int k = 0; k < 3; k++) {
+                    a[i][n + 2*N_modes*k]   = a[i][n + 2*N_modes*k] *   scale1[n] + b[i][n + 2*N_modes*k] *   scale2;
+                    a[i][n+1 + 2*N_modes*k] = a[i][n+1 + 2*N_modes*k] * scale1[n] + b[i][n+1 + 2*N_modes*k] * scale2;
+                }
+
+            }
+        }
+    }
+
+    template <class VecType, class VecType2>
+    void add_forcing_weighted_2(VecType& a, VecType& b,
+            float_type scale1, VecType2& scale2)
+    {
+        for (int i=0; i<a.size(); ++i)
+        {
+            if (ib_->rank(i)!=comm_.rank())
+                continue;
+
+            for (std::size_t n = 0; n < N_modes; n++) {
+                if (!_compute_Modes[n]) continue;
+                for (int k = 0; k < 3; k++) {
+                    a[i][n + 2*N_modes*k]   = a[i][n + 2*N_modes*k] *   scale1 + b[i][n + 2*N_modes*k] *   scale2[n];
+                    a[i][n+1 + 2*N_modes*k] = a[i][n+1 + 2*N_modes*k] * scale1 + b[i][n+1 + 2*N_modes*k] * scale2[n];
+                }
+
+            }
+        }
+    }
+
+    template <class VecType>
+    void add_mode(VecType& a, VecType& b,
+            float_type scale1=1.0, float_type scale2=1.0)
+    {
+        for (int i=0; i<a.size(); ++i)
+        {
+            if (ib_->rank(i)!=comm_.rank())
+                continue;
+
+            for (std::size_t n = 0; n < N_modes; n++) {
+                if (!_compute_Modes[n]) continue;
+                a[i][n]   = a[i][n] *  scale1 + b[i][n] * scale2;
+            }
+        }
+    }
+
 
     template <class VecType>
     void add_complex(VecType& a, VecType& b,

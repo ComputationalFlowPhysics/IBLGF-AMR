@@ -979,6 +979,75 @@ struct Operator
         }
     }
 
+    template<class Source, class Dest, class Block,
+        typename std::enable_if<(Source::mesh_type() == MeshObject::cell) &&
+                                    (Dest::mesh_type() == MeshObject::face),
+            void>::type* = nullptr>
+    static void gradient_helmholtz_complex_refined(Block& block, float_type dx_level,
+        int                                   N_modes,
+        int                                   ref_level_up,
+        float_type                            c,
+        int                                   PREFAC = 2) noexcept
+    {
+        const auto     fac = 1.0 / dx_level;
+        constexpr auto source = Source::tag();
+        constexpr auto dest = Dest::tag();
+
+        int divisor = std::pow(2,ref_level_up);
+
+        int N_comp_modes = N_modes/divisor;
+
+        if (N_modes % divisor != 0) {
+            throw std::runtime_error("Number of modes not divisible by divisor in gradient");
+        }
+
+        int sep = N_modes*PREFAC;
+
+        for (int i = 0; i < N_comp_modes * PREFAC; i++)
+        {
+            for (auto& n : block)
+            {
+                n(dest, 0 * sep + i) =
+                    fac * (n(source, i) - n.at_offset(source, -1, 0, i));
+
+                n(dest, 1 * sep + i) =
+                    fac * (n(source, i) - n.at_offset(source, 0, -1, i));
+            }
+        }
+
+        for (int i = 0; i < N_comp_modes; i++)
+        {
+            float_type omega = 2.0 * M_PI * static_cast<float_type>(i) / c;
+
+            for (auto& n : block)
+            {
+                n(dest, 2 * sep + i * 2) = -n(source, i * 2 + 1) * omega;
+                n(dest, 2 * sep + i * 2 + 1) = n(source, i * 2) * omega;
+            }
+        }
+
+        /*for (auto& n : block)
+        {
+
+
+            int sep = N_modes*PREFAC;
+            for (int i = 0; i < sep ; i++) {
+                n(dest, 0 * sep + i) =  fac * (n(source, i) - n.at_offset(source, -1, 0, i));
+
+                n(dest, 1 * sep + i) =  fac * (n(source, i) - n.at_offset(source, 0, -1, i));
+            }
+
+            for (int i = 0; i < N_modes; i++) { 
+                float_type omega = 2.0*M_PI*static_cast<float_type>(i)/c;
+
+                n(dest, 2 * sep + i * 2)     = -n(source, i * 2 + 1) * omega;
+                n(dest, 2 * sep + i * 2 + 1) =  n(source, i * 2    ) * omega;
+
+            }
+
+        }*/
+    }
+
 
     template<class Source, class Dest, class Block,
         typename std::enable_if<(Source::mesh_type() == MeshObject::cell) &&
@@ -1054,6 +1123,56 @@ struct Operator
 
             }
 
+        }
+    }
+
+
+    template<class SourceTuple, class Dest, class Block,
+        typename std::enable_if<(Dest::mesh_type() == MeshObject::cell) &&
+                                    (SourceTuple::mesh_type() ==
+                                        MeshObject::face),
+            void>::type* = nullptr>
+    static void divergence_helmholtz_complex_refined(Block& block, float_type dx_level,
+        int                                   N_modes,
+        int                                   ref_level_up,
+        float_type                            c,
+        int                                   PREFAC = 2) noexcept
+    {
+        const auto     fac = 1.0 / dx_level;
+        constexpr auto source = SourceTuple::tag();
+        constexpr auto dest = Dest::tag();
+
+
+        int divisor = std::pow(2,ref_level_up);
+
+        int N_comp_modes = N_modes/divisor;
+
+        if (N_modes % divisor != 0) {
+            throw std::runtime_error("Number of modes not divisible by divisor in divergence");
+        }
+
+        int sep = N_modes*PREFAC;
+
+        for (int i = 0; i < N_comp_modes * PREFAC; i++)
+        {
+            for (auto& n : block)
+            {
+                n(dest, i) =  -n(source, 0 * sep + i) - n(source, 1 * sep + i) +
+                          n.at_offset(source, 1, 0, 0 * sep + i) +
+                          n.at_offset(source, 0, 1, 1 * sep + i);
+                n(dest, i) *= fac;
+            }
+        }
+
+        for (int i = 0; i < N_comp_modes; i++)
+        {
+            float_type omega = 2.0 * M_PI * static_cast<float_type>(i) / c;
+
+            for (auto& n : block)
+            {
+                n(dest, i * 2)     -= n(source, 2 * sep + i * 2 + 1) * omega;
+                n(dest, i * 2 + 1) += n(source, 2 * sep + i * 2    ) * omega;
+            }
         }
     }
 

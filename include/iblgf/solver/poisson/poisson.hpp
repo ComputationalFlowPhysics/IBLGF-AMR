@@ -882,7 +882,9 @@ class PoissonSolver
     void copy_leaf(std::size_t _field_idx_from = 0,
         std::size_t _field_idx_to = 0, bool with_buffer = false)
     {
-        for (auto it = domain_->begin_leaves(); it != domain_->end_leaves(); ++it)
+        for (auto it = domain_->begin_leaves(); it != domain_->end_leaves();
+             ++it)
+        {
             if (it->locally_owned())
             {
                 auto& lin_data_1 =
@@ -896,18 +898,22 @@ class PoissonSolver
                         xt::range(1, -1), xt::range(1, -1))) = view(lin_data_1,
                         xt::range(1, -1), xt::range(1, -1), xt::range(1, -1));*/
 
-		if (Dim == 3) {
+                if (Dim == 3)
+                {
                     xt::noalias(view(lin_data_2, xt::range(1, -1),
                         xt::range(1, -1), xt::range(1, -1))) = view(lin_data_1,
                         xt::range(1, -1), xt::range(1, -1), xt::range(1, -1));
-		}
-		else {
-                    xt::noalias(view(lin_data_2, xt::range(1, -1),
-                        xt::range(1, -1))) = view(lin_data_1,
-                        xt::range(1, -1), xt::range(1, -1));
-		}
+                }
+                else
+                {
+                    xt::noalias(
+                        view(lin_data_2, xt::range(1, -1), xt::range(1, -1))) =
+                        view(lin_data_1, xt::range(1, -1), xt::range(1, -1));
+                }
             }
+        }
     }
+
     template<class From, class To>
     void intrp_to_correction_buffer(std::size_t real_mesh_field_idx,
         std::size_t tmp_type_field_idx, MeshObject mesh_type,
@@ -935,6 +941,44 @@ class PoissonSolver
                 c_cntr_nli_.template nli_intrp_node<From, To>(it, mesh_type,
                     real_mesh_field_idx, tmp_type_field_idx, correction_only,
                     exclude_correction);
+            }
+        }
+    }
+
+    template<class From, class To>
+    void intrp_to_correction_buffer_all_comp(MeshObject mesh_type,
+        bool correction_only = true, bool exclude_correction = false,
+        bool leaf_boundary = false)
+    {
+        auto client = domain_->decomposition().client();
+        if (!client) return;
+
+        for (int l = domain_->tree()->depth() - 2;
+             l >= domain_->tree()->base_level(); --l)
+        {
+            client->template buffer_exchange<From>(l);
+
+            for (std::size_t _field_idx = 0; _field_idx < From::nFields();
+                 ++_field_idx)
+            {
+                domain_->decomposition()
+                    .client()
+                    ->template communicate_updownward_assign<From, From>(l,
+                        false, false, -1, _field_idx, leaf_boundary);
+            }
+
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            {
+                if (!it->has_data() || !it->data().is_allocated()) continue;
+                if (leaf_boundary && !it->leaf_boundary()) continue;
+
+                for (std::size_t _field_idx = 0; _field_idx < From::nFields();
+                     ++_field_idx)
+                {
+                    c_cntr_nli_.template nli_intrp_node<From, To>(it, mesh_type,
+                        _field_idx, _field_idx, correction_only,
+                        exclude_correction);
+                }
             }
         }
     }

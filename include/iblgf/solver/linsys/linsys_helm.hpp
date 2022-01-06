@@ -370,9 +370,14 @@ class LinSysSolver_helm
             //auto Modef = dot_Mode(f,f);
             ModesVector_type ratio_i;
             float_type max_i = -1;
+
+            float_type f2_sum = 0;
+            for (int i = 0; i < f2.size();i++){
+                f2_sum+=f2[i];
+            }
             for (int i = 0; i < rsnew.size(); i++)
             {
-                float_type ratio = rsnew[i] / f2[i];
+                float_type ratio = rsnew[i] / f2_sum;
                 if (this->_compute_Modes[i])
                 {
                     ratio_i[i] = ratio;

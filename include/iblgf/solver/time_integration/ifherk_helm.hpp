@@ -572,9 +572,19 @@ class Ifherk_HELM
     void up_and_down()
     {
         //claen non leafs
+        auto t0 = clock_type::now();
         clean<Field>(true);
+        auto t1 = clock_type::now();
+        mDuration_type ms_int = t1 - t0;
+        pcout << "Cleaning in up and down in " << ms_int.count() << std::endl;
         this->up<Field>();
+        auto t2 = clock_type::now();
+        mDuration_type ms_up = t2 - t1;
+        pcout << "Upward interpolation in up and down in " << ms_up.count() << std::endl;
         this->down_to_correction<Field>();
+        auto t3 = clock_type::now();
+        mDuration_type ms_down = t3 - t2;
+        pcout << "Downward interpolation in up and down in " << ms_down.count() << std::endl;
     }
 
     template<class Field>
@@ -592,10 +602,12 @@ class Ifherk_HELM
     void down_to_correction()
     {
         // Interpolate to correction buffer
-        for (std::size_t _field_idx = 0; _field_idx < Field::nFields();
+        /*for (std::size_t _field_idx = 0; _field_idx < Field::nFields();
              ++_field_idx)
             psolver.template intrp_to_correction_buffer<Field, Field>(
-                _field_idx, _field_idx, Field::mesh_type(), true, false);
+                _field_idx, _field_idx, Field::mesh_type(), true, false);*/
+        psolver.template intrp_to_correction_buffer_all_comp<Field, Field>(
+            Field::mesh_type(), true, false);
     }
 
     void adapt(bool coarsify_field = true)
@@ -707,26 +719,39 @@ class Ifherk_HELM
         // Stage 1
         // ******************************************************************
         pcout << "Stage 1" << std::endl;
+        auto t0 = clock_type::now();
+
+        
         if (adapt_Fourier) {
             clean_Fourier_modes_all<u_i_type>();
             clean_Fourier_modes_all<r_i_type>();
             clean_Fourier_modes_all<q_i_type>();
         }
+        auto t1 = clock_type::now();
+        mDuration_type ms_int = t1 - t0;
+        pcout << "Cleaning Fourier coeff in " << ms_int.count() << std::endl;
         T_stage_ = T_ + dt_ * c_[0];
         stage_idx_ = 1;
         clean<g_i_type>();
         clean<d_i_type>();
         clean<cell_aux_type>();
         clean<face_aux_type>();
+        auto t2 = clock_type::now();
+        mDuration_type ms_int_clean = t2 - t1;
+        pcout << "Cleaning fields in " << ms_int_clean.count() << std::endl;
 
         mDuration_type nonlinear1(0);
         TIME_CODE(nonlinear1, SINGLE_ARG(nonlinear<u_type, g_i_type>(coeff_a(1, 1) * (-dt_));));
         pcout << "nonlinear term solved in " << nonlinear1.count() << std::endl;
 
-        
+        auto t3 = clock_type::now();       
         //nonlinear<u_type, g_i_type>(coeff_a(1, 1) * (-dt_));
         copy<q_i_type, r_i_type>();
         add<g_i_type, r_i_type>();
+
+        auto t4 = clock_type::now();
+        mDuration_type ms_int_add_copy = t4 - t3;
+        pcout << "Add and copy fields in " << ms_int_add_copy.count() << std::endl;
 
         mDuration_type linsys1(0);
         TIME_CODE(linsys1, SINGLE_ARG(lin_sys_with_ib_solve(alpha_[0]);));
@@ -763,7 +788,13 @@ class Ifherk_HELM
         add<q_i_type, r_i_type>();
         add<w_1_type, r_i_type>(dt_ * coeff_a(2, 1));
 
+        auto t5 = clock_type::now();
+
         up_and_down<u_i_type>();
+
+        auto t6 = clock_type::now();
+        mDuration_type ms_up_and_down = t6 - t5;
+        pcout << "Up and down in " << ms_up_and_down.count() << std::endl;
         
         mDuration_type nonlinear2(0);
         TIME_CODE(nonlinear2, SINGLE_ARG(nonlinear<u_i_type, g_i_type>(coeff_a(2, 2) * (-dt_));));
@@ -1049,7 +1080,13 @@ class Ifherk_HELM
     {
         auto client = domain_->decomposition().client();
 
+        auto t0 = clock_type::now();
+
         divergence<r_i_type, cell_aux_type>();
+
+        auto t1 = clock_type::now();
+        mDuration_type ms_div = t1 - t0;
+        pcout << "Linsys Divergence in " << ms_div.count() << std::endl;
 
         domain_->client_communicator().barrier();
         mDuration_type t_lgf(0);
@@ -1058,9 +1095,15 @@ class Ifherk_HELM
         domain_->client_communicator().barrier();
         pcout << "LGF solved in " << t_lgf.count() << std::endl;
 
+        auto t2 = clock_type::now();
+
         copy<r_i_type, face_aux2_type>();
         gradient<d_i_type, face_aux_type>();
         add<face_aux_type, face_aux2_type>(-1.0);
+
+        auto t3 = clock_type::now();
+        mDuration_type ms_grad = t3 - t2;
+        pcout << "Linsys copy grad add in " << ms_grad.count() << std::endl;
 
         // IB
         if (std::fabs(_alpha) > 1e-12)
@@ -1087,10 +1130,21 @@ class Ifherk_HELM
         pcout << "IB  solved in " << t_ib.count() << std::endl;
 
         // new presure field
+        auto t4 = clock_type::now();
         lsolver.template pressure_correction<d_i_type>();
+        auto t5 = clock_type::now();
+        mDuration_type ms_pressure = t5 - t4;
+        pcout << "Linsys pressure_corrected in " << ms_pressure.count() << std::endl;
+
         gradient<d_i_type, face_aux_type>();
 
+        auto t6 = clock_type::now();
+
         lsolver.template smearing<face_aux_type>(domain_->ib().force(), false);
+
+        auto t7 = clock_type::now();
+        mDuration_type ms_smearing = t7 - t6;
+        pcout << "Linsys smearing in " << ms_smearing.count() << std::endl;
         add<face_aux_type, r_i_type>(-1.0);
 
         if (std::fabs(_alpha) > 1e-12)
@@ -1424,8 +1478,21 @@ class Ifherk_HELM
                 if (!it->locally_owned() || !it->has_data()) continue;
                 const auto dx_level =
                     dx_base / math::pow2(it->refinement_level());
-                domain::Operator::divergence_helmholtz_complex<Source, Target>(it->data(),
-                    dx_level, N_modes, c_z);
+
+                if (!adapt_Fourier)
+                {
+                    domain::Operator::divergence_helmholtz_complex<Source,
+                        Target>(it->data(), dx_level, N_modes, c_z);
+                }
+                else
+                {
+                    int ref_level_up = domain_->tree()->depth() - l - 1;
+                    domain::Operator::divergence_helmholtz_complex_refined<Source,
+                        Target>(it->data(), dx_level, N_modes, ref_level_up,
+                        c_z);
+                }
+                /*domain::Operator::divergence_helmholtz_complex<Source, Target>(it->data(),
+                    dx_level, N_modes, c_z);*/
             }
 
             //client->template buffer_exchange<Target>(l);
@@ -1451,8 +1518,18 @@ class Ifherk_HELM
                 if (!it->locally_owned() || !it->has_data()) continue;
                 const auto dx_level =
                     dx_base / math::pow2(it->refinement_level());
-                domain::Operator::gradient_helmholtz_complex<Source, Target>(it->data(),
-                    dx_level, N_modes, c_z);
+                if (!adapt_Fourier)
+                {
+                    domain::Operator::gradient_helmholtz_complex<Source,
+                        Target>(it->data(), dx_level, N_modes, c_z);
+                }
+                else
+                {
+                    int ref_level_up = domain_->tree()->depth() - l - 1;
+                    domain::Operator::gradient_helmholtz_complex_refined<Source,
+                        Target>(it->data(), dx_level, N_modes, ref_level_up,
+                        c_z);
+                }
                 for (std::size_t field_idx = 0; field_idx < Target::nFields();
                      ++field_idx)
                 {

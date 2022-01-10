@@ -1065,7 +1065,7 @@ class PoissonSolver
             domain_->decomposition()
                 .client()
                 ->template communicate_updownward_add<To, To>(
-                    ls, true, false, -1, tmp_type_field_idx, leaf_boundary);
+                    l, true, false, -1, tmp_type_field_idx, leaf_boundary);
         }
 
         if (_buffer_exchange)

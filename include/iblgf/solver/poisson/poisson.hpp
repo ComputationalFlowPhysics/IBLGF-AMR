@@ -181,7 +181,7 @@ class PoissonSolver
             int add_num = i * N_modes*2;
             for (std::size_t entry = 0; entry < 2; ++entry) {
                 this->apply_lgf<Source, Target>(&lgf_lap_, (add_num + entry), fmm_type);
-                domain_->client_communicator().barrier();
+                //domain_->client_communicator().barrier();
             }
             for (std::size_t idx = 0; idx < additional_modes; ++idx)
             {
@@ -198,7 +198,7 @@ class PoissonSolver
                     int entry = addentry + idx * 2 + 2 + add_num;
                     this->apply_lgf<Source, Target>(&lgf_helm_vec[idx], entry,
                         fmm_type, addLevel);
-                    domain_->client_communicator().barrier();
+                    //domain_->client_communicator().barrier();
                 }
             }
         }
@@ -258,7 +258,7 @@ class PoissonSolver
             int add_num = i * N_modes*2;
             for (std::size_t entry = 0; entry < 2; ++entry) {
                 this->apply_if<Source, Target>(&lgf_if_, (add_num + entry), fmm_type);
-                domain_->client_communicator().barrier();
+                //domain_->client_communicator().barrier();
             }
                 //this->apply_lgf<Source, Target>(&lgf_if_, (add_num + entry), fmm_type);
             for (std::size_t idx = 0; idx < additional_modes; ++idx)
@@ -277,7 +277,7 @@ class PoissonSolver
                     int entry = addentry + idx * 2 + 2 + add_num;
                     this->apply_if_helm<Source, Target>(&lgf_if_, omega, entry,
                         fmm_type, addLevel);
-                    domain_->client_communicator().barrier();
+                    //domain_->client_communicator().barrier();
                 }
             }
         }
@@ -313,7 +313,7 @@ class PoissonSolver
                 {
                     this->apply_lgf<Source, Target>(&lgf_lap_,
                         (add_num + entry), fmm_type);
-                    domain_->client_communicator().barrier();
+                    //domain_->client_communicator().barrier();
                 }
             }
             for (std::size_t idx = 0; idx < additional_modes; ++idx)
@@ -334,7 +334,7 @@ class PoissonSolver
                         int entry = addentry + idx * 2 + 2 + add_num;
                         this->apply_lgf<Source, Target>(&lgf_helm_vec[idx],
                             entry, fmm_type, addLevel);
-                        domain_->client_communicator().barrier();
+                        //domain_->client_communicator().barrier();
                     }
                 }
             }
@@ -364,7 +364,7 @@ class PoissonSolver
             if (ModesBool[0]){
             for (std::size_t entry = 0; entry < 2; ++entry) {
                 this->apply_if<Source, Target>(&lgf_if_, (add_num + entry), fmm_type);
-                domain_->client_communicator().barrier();
+                //domain_->client_communicator().barrier();
             }
             }
                 //this->apply_lgf<Source, Target>(&lgf_if_, (add_num + entry), fmm_type);
@@ -385,7 +385,7 @@ class PoissonSolver
                     int entry = addentry + idx * 2 + 2 + add_num;
                     this->apply_if_helm<Source, Target>(&lgf_if_, omega, entry,
                         fmm_type, addLevel);
-                    domain_->client_communicator().barrier();
+                    //domain_->client_communicator().barrier();
                 }
             }
         }
@@ -958,6 +958,8 @@ class PoissonSolver
         {
             client->template buffer_exchange<From>(l);
 
+            int ref_level_up = domain_->tree()->depth() - l - 1;
+
             for (std::size_t _field_idx = 0; _field_idx < From::nFields();
                  ++_field_idx)
             {
@@ -975,6 +977,23 @@ class PoissonSolver
                 for (std::size_t _field_idx = 0; _field_idx < From::nFields();
                      ++_field_idx)
                 {
+                    if (adapt_Fourier)
+                    {
+                        int NComp = From::nFields() / (2 * N_fourier_modes + 2);
+                        int res = From::nFields() % (2 * N_fourier_modes + 2);
+                        if (res != 0)
+                        {
+                            throw std::runtime_error(
+                                "nFields in intrp to correction buffer not a multiple of N_modes*2");
+                        }
+
+                        int res_modes = _field_idx % (2 * N_fourier_modes + 2);
+
+                        int divisor = std::pow(2, ref_level_up);
+
+                        int N_comp_modes = (additional_modes + 1) * 2 / divisor;
+                        if (res_modes >= N_comp_modes) continue;
+                    }
                     c_cntr_nli_.template nli_intrp_node<From, To>(it, mesh_type,
                         _field_idx, _field_idx, correction_only,
                         exclude_correction);

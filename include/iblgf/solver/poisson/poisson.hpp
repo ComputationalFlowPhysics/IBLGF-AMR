@@ -1013,10 +1013,44 @@ class PoissonSolver
         auto client = domain_->decomposition().client();
         if (!client) return;
 
-        for (int ls = domain_->tree()->depth() - 2;
-             ls >= domain_->tree()->base_level(); --ls)
+        for (int l = domain_->tree()->depth() - 2;
+             l >= domain_->tree()->base_level(); --l)
         {
-            for (auto it_s = domain_->begin(ls); it_s != domain_->end(ls);
+            int ref_level_up = domain_->tree()->depth() - l - 1;
+
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            {
+                if (!it->has_data() || !it->data().is_allocated()) continue;
+                if (leaf_boundary && !it->leaf_boundary()) continue;
+
+                for (std::size_t _field_idx = 0; _field_idx < From::nFields();
+                     ++_field_idx)
+                {
+                    if (adapt_Fourier)
+                    {
+                        int NComp = From::nFields() / (2 * N_fourier_modes + 2);
+                        int res = From::nFields() % (2 * N_fourier_modes + 2);
+                        if (res != 0)
+                        {
+                            throw std::runtime_error(
+                                "nFields in intrp to correction buffer not a multiple of N_modes*2");
+                        }
+
+                        int res_modes = _field_idx % (2 * N_fourier_modes + 2);
+
+                        int divisor = std::pow(2, ref_level_up);
+
+                        int N_comp_modes = (additional_modes + 1) * 2 / divisor;
+                        if (res_modes >= N_comp_modes) continue;
+                    }
+                    c_cntr_nli_.template nli_intrp_node<From, To>(it, mesh_type,
+                        _field_idx, _field_idx, correction_only,
+                        exclude_correction);
+                }
+            }
+
+
+            /*for (auto it_s = domain_->begin(ls); it_s != domain_->end(ls);
                  ++it_s)
             {
                 if (!it_s->has_data() || !it_s->data().is_allocated())
@@ -1026,7 +1060,7 @@ class PoissonSolver
                 c_cntr_nli_.template nli_antrp_node<From, To>(*it_s, mesh_type,
                     real_mesh_field_idx, tmp_type_field_idx, correction_only,
                     exclude_correction);
-            }
+            }*/
 
             domain_->decomposition()
                 .client()

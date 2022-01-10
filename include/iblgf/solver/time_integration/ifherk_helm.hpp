@@ -591,10 +591,12 @@ class Ifherk_HELM
     void up(bool leaf_boundary_only = false)
     {
         //Coarsification:
-        for (std::size_t _field_idx = 0; _field_idx < Field::nFields();
+        /*for (std::size_t _field_idx = 0; _field_idx < Field::nFields();
              ++_field_idx)
-            psolver.template source_coarsify<Field, Field>(_field_idx,
+            psolver.template source_coarsify_refined<Field, Field>(_field_idx,
                 _field_idx, Field::mesh_type(), false, false, false,
+                leaf_boundary_only);*/
+        psolver.template source_coarsify_all_comp<Field, Field>(Field::mesh_type(), false, false, false,
                 leaf_boundary_only);
     }
 

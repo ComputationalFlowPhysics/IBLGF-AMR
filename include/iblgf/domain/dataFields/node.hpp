@@ -23,6 +23,7 @@ namespace domain
 template<class Container>
 class node
 {
+    static constexpr auto Dim = Container::dimension;
   public:
     using coordinate_type = typename Container::coordinate_type;
     using real_coordinate_type = typename Container::real_coordinate_type;
@@ -79,17 +80,27 @@ class node
     {
         return (*c_)(_tag, level_coordinate_ + _offset ,_idx);
     }
-    template<class Tag>
-    auto& at_offset(Tag _tag, int _i, int _j, int _k = 0, int _idx=0) noexcept
+    /*template<class Tag>
+    auto& at_offset(Tag _tag, int _i, int _j, int _k = 0, int _idx = 0) noexcept
     {
-	int Dim = level_coordinate_.size();
-	std::vector<int> tmp = {_i,_j,_k};
-	coordinate_type add_coord;
-	for (int l = 0; l < Dim; l++) {
-	    add_coord[l] = tmp[l];
-	}
-        if (Dim == 3) return (*c_)(_tag,level_coordinate_ + add_coord, _idx);
-	else return (*c_)(_tag,level_coordinate_ + add_coord, _k);
+        int              Dim = level_coordinate_.size();
+        std::vector<int> tmp = {_i, _j, _k};
+        coordinate_type  add_coord;
+        for (int l = 0; l < Dim; l++) { add_coord[l] = tmp[l]; }
+        if (Dim == 3) return (*c_)(_tag, level_coordinate_ + add_coord, _idx);
+        else
+            return (*c_)(_tag, level_coordinate_ + add_coord, _k);
+    }*/
+    template<class Tag, int Dim1 = Dim>
+    auto& at_offset(Tag _tag, int _i, int _j, int _k, typename std::enable_if<Dim1 == 3, int>::type _idx = 0) noexcept
+    {
+        return (*c_)(_tag,level_coordinate_ + coordinate_type({_i, _j, _k}), _idx);
+    }
+
+    template<class Tag, int Dim1 = Dim>
+    auto& at_offset(Tag _tag, int _i, int _j, typename std::enable_if<Dim1 == 2, int>::type _idx = 0) noexcept
+    {
+        return (*c_)(_tag,level_coordinate_ + coordinate_type({_i, _j}), _idx);
     }
     /************************************************************************/
 

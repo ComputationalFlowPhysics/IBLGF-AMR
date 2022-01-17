@@ -926,12 +926,23 @@ class PoissonSolver
         for (int l = domain_->tree()->depth() - 2;
              l >= domain_->tree()->base_level(); --l)
         {
+            int ref_level_up = domain_->tree()->depth() - l - 1;
+            if (adapt_Fourier)
+            {
+                int res_modes = real_mesh_field_idx % (2 * N_fourier_modes + 2);
+
+                int divisor = std::pow(2, ref_level_up);
+
+                int N_comp_modes = (additional_modes + 1) * 2 / divisor;
+                if (res_modes >= N_comp_modes) continue;
+            }
+
             client->template buffer_exchange<From>(l);
 
             domain_->decomposition()
                 .client()
-                ->template communicate_updownward_assign<From, From>(
-                    l, false, false, -1, tmp_type_field_idx, leaf_boundary);
+                ->template communicate_updownward_assign<From, From>(l, false,
+                    false, -1, tmp_type_field_idx, leaf_boundary);
 
             for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
             {
@@ -1008,20 +1019,29 @@ class PoissonSolver
         bool correction_only = false, bool exclude_correction = false,
         bool _buffer_exchange = false, bool leaf_boundary = false)
     {
-
-        leaf_boundary=false;
+        leaf_boundary = false;
         auto client = domain_->decomposition().client();
         if (!client) return;
 
         for (int ls = domain_->tree()->depth() - 2;
              ls >= domain_->tree()->base_level(); --ls)
         {
+            int ref_level_up = domain_->tree()->depth() - ls - 1;
+
+            if (adapt_Fourier)
+            {
+                int res_modes = real_mesh_field_idx % (2 * N_fourier_modes + 2);
+
+                int divisor = std::pow(2, ref_level_up);
+
+                int N_comp_modes = (additional_modes + 1) * 2 / divisor;
+                if (res_modes >= N_comp_modes) continue;
+            }
 
             for (auto it_s = domain_->begin(ls); it_s != domain_->end(ls);
                  ++it_s)
             {
-                if (!it_s->has_data() || !it_s->data().is_allocated())
-                    continue;
+                if (!it_s->has_data() || !it_s->data().is_allocated()) continue;
                 if (leaf_boundary && !it_s->leaf_boundary()) continue;
 
                 c_cntr_nli_.template nli_antrp_node<From, To>(*it_s, mesh_type,
@@ -1031,8 +1051,8 @@ class PoissonSolver
 
             domain_->decomposition()
                 .client()
-                ->template communicate_updownward_add<To, To>(
-                    ls, true, false, -1, tmp_type_field_idx, leaf_boundary);
+                ->template communicate_updownward_add<To, To>(ls, true, false,
+                    -1, tmp_type_field_idx, leaf_boundary);
         }
 
         if (_buffer_exchange)
@@ -1042,7 +1062,6 @@ class PoissonSolver
                 client->template buffer_exchange<To>(l);
         }
     }
-
 
     template<class From, class To>
     void source_coarsify_all_comp(MeshObject mesh_type,

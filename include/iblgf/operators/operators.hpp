@@ -1304,6 +1304,62 @@ struct Operator
         }
     }
 
+    template<class Source, class Dest, class Block,
+        typename std::enable_if<(Source::mesh_type() == MeshObject::face) &&
+                                    (Dest::mesh_type() == MeshObject::edge),
+            void>::type* = nullptr>
+    static void curl_helmholtz_complex_refined(Block& block,
+        float_type                            dx_level,
+        int                                   N_modes,
+        int                                   ref_level_up,
+        float_type                            c,
+        int                                   PREFAC = 2) noexcept
+    {
+        const auto     fac = 1.0 / dx_level;
+        constexpr auto source = Source::tag();
+        constexpr auto dest = Dest::tag();
+
+        int divisor = std::pow(2,ref_level_up);
+
+        int N_comp_modes = N_modes/divisor;
+
+        if (N_modes % divisor != 0) {
+            throw std::runtime_error("Number of modes not divisible by divisor in curl");
+        }
+
+        int sep = N_modes*PREFAC;
+
+        for (auto& n : block)
+        {
+
+
+            int sep = N_modes*PREFAC;
+            for (int i = 0; i < (N_comp_modes * PREFAC) ; i++) {
+                n(dest, 0 * sep + i) =   n(source, 2 * sep + i) - n.at_offset(source, 0, -1, 2 * sep + i);
+                n(dest, 0 * sep + i) *= fac;
+
+                n(dest, 1 * sep + i) =  -n(source, 2 * sep + i) + n.at_offset(source, -1, 0, 2 * sep + i);
+                n(dest, 1 * sep + i) *= fac;
+
+                n(dest, 2 * sep + i) = 
+                n(source, 1 * sep + i) - n.at_offset(source, -1, 0, 1 * sep + i) -
+                n(source, 0 * sep + i) + n.at_offset(source, 0, -1, 0 * sep + i);
+                n(dest, 2 * sep + i) *= fac;
+            }
+
+            for (int i = 0; i < (N_comp_modes) ; i++) { 
+                float_type omega = 2.0*M_PI*static_cast<float_type>(i)/c;
+                n(dest, 0 * sep + i * 2)     += n(source, 1 * sep + i * 2 + 1) * omega;
+                n(dest, 0 * sep + i * 2 + 1) -= n(source, 1 * sep + i * 2    ) * omega;
+
+                n(dest, 1 * sep + i * 2)     -= n(source, 0 * sep + i * 2 + 1) * omega;
+                n(dest, 1 * sep + i * 2 + 1) += n(source, 0 * sep + i * 2    ) * omega;
+
+            }
+
+        }
+    }
+
 
     template<class Source, class Dest, class Block,
         typename std::enable_if<(Source::mesh_type() == MeshObject::edge) &&
@@ -1597,6 +1653,156 @@ struct Operator
             int z_s = sep*2;
             //nonlinear term adapt to collocation DFT
             for (int i = 0; i < (N_modes * PREFAC); i++)
+            {
+                int x_p = x_s + i;
+                int y_p = y_s + i;
+                int z_p = z_s + i;
+
+                n(dest, x_p) =
+                    0.5 * n.at_offset(edge, 0, 0, y_p) *
+                        (n.at_offset(face, 0, 0, z_p) +
+                            n.at_offset(face, -1, 0, z_p)) -
+                    0.25 * (n.at_offset(edge, 0, 0, z_p) *
+                                   (n.at_offset(face, 0, 0, y_p) +
+                                    n.at_offset(face, -1, 0, y_p)) +
+                            n.at_offset(edge, 0, 1, z_p) *
+                                   (n.at_offset(face,  0, 1, y_p) +
+                                    n.at_offset(face, -1, 1, y_p)));
+
+                n(dest, y_p) =
+                    0.25 *
+                    (n.at_offset(edge, 0, 0, z_p) *
+                            (n.at_offset(face, 0, 0, x_p) +
+                                n.at_offset(face, 0, -1, x_p)) +
+                        n.at_offset(edge, 1, 0, z_p) *
+                            (n.at_offset(face, 1, 0, x_p) +
+                                n.at_offset(face, 1, -1, x_p))) -
+                    0.5 * n.at_offset(edge, 0, 0, x_p) *
+                            (+n.at_offset(face, 0, 0, z_p) +
+                                n.at_offset(face, 0, -1, z_p));
+                n(dest, z_p) =
+                    0.5 *
+                    (n.at_offset(edge, 0, 0, x_p) *
+                            n.at_offset(face, 0, 0, y_p) +
+                        n.at_offset(edge, 0, 1, x_p) *
+                            n.at_offset(face, 0, 1, y_p) -
+                        n.at_offset(edge, 0, 0, y_p) *
+                            n.at_offset(face, 0, 0, x_p) -
+                        n.at_offset(edge, 1, 0, y_p) *
+                            n.at_offset(face, 1, 0, x_p));
+            }
+            //i = 0
+            /*n(dest, 0 * sep) =
+                0.25 * (+n.at_offset(edge, 0, 0, 1 * sep) *
+                               (+n.at_offset(face, 0, 0, 2 * sep) +
+                                   n.at_offset(face, -1, 0, 2 * sep)) +
+                           n.at_offset(edge, 0, 0, 1 * sep + 1) *
+                               (+n.at_offset(face, 0, 0, 2 * sep + 1) +
+                                   n.at_offset(face, -1, 0, 2 * sep + 1)) -
+                           n.at_offset(edge, 0, 0, 2 * sep) *
+                               (+n.at_offset(face, 0, 0, 1 * sep) +
+                                   n.at_offset(face, -1, 0, 1 * sep)) -
+                           n.at_offset(edge, 0, 1, 2 * sep) *
+                               (+n.at_offset(face, 0, 1, 1 * sep) +
+                                   n.at_offset(face, -1, 1, 1 * sep)));
+
+            n(dest, 1 * sep) =
+                0.25 * (+n.at_offset(edge, 0, 0, 2 * sep) *
+                               (+n.at_offset(face, 0, 0, 0 * sep) +
+                                   n.at_offset(face, 0, -1, 0 * sep)) +
+                           n.at_offset(edge, 1, 0, 2 * sep) *
+                               (+n.at_offset(face, 1, 0, 0 * sep) +
+                                   n.at_offset(face, 1, -1, 0 * sep)) -
+                           n.at_offset(edge, 0, 0, 0 * sep) *
+                               (+n.at_offset(face, 0, 0, 2 * sep) +
+                                   n.at_offset(face, 0, -1, 2 * sep)) -
+                           n.at_offset(edge, 0, 0, 0 * sep + 1) *
+                               (+n.at_offset(face, 0, 0, 2 * sep + 1) +
+                                   n.at_offset(face, 0, -1, 2 * sep + 1)));
+            n(dest, 2 * sep) =
+                0.25 * (+n.at_offset(edge, 0, 0, 0 * sep) *
+                               (+n.at_offset(face, 0, 0, 1 * sep) +
+                                   n.at_offset(face, 0, 0, 1 * sep + sep - 1)) +
+                           n.at_offset(edge, 0, 1, 0 * sep) *
+                               (+n.at_offset(face, 0, 1, 1 * sep) +
+                                   n.at_offset(face, 0, 1, 1 * sep + sep - 1)) -
+                           n.at_offset(edge, 0, 0, 1 * sep) *
+                               (+n.at_offset(face, 0, 0, 0 * sep) +
+                                   n.at_offset(face, 0, 0, 0 * sep + sep - 1)) -
+                           n.at_offset(edge, 1, 0, 1 * sep) *
+                               (+n.at_offset(face, 1, 0, 0 * sep) +
+                                   n.at_offset(face, 1, 0, 0 * sep + sep - 1)));
+            //i = sep - 1
+            n(dest, 0 * sep + sep - 1) =
+                0.25 *
+                (+n.at_offset(edge, 0, 0, 1 * sep + sep - 1) *
+                        (+n.at_offset(face, 0, 0, 2 * sep + sep - 1) +
+                            n.at_offset(face, -1, 0, 2 * sep + sep - 1)) +
+                    n.at_offset(edge, 0, 0, 1 * sep) *
+                        (+n.at_offset(face, 0, 0, 2 * sep) +
+                            n.at_offset(face, -1, 0, 2 * sep)) -
+                    n.at_offset(edge, 0, 0, 2 * sep + sep - 1) *
+                        (+n.at_offset(face, 0, 0, 1 * sep + sep - 1) +
+                            n.at_offset(face, -1, 0, 1 * sep + sep - 1)) -
+                    n.at_offset(edge, 0, 1, 2 * sep + sep - 1) *
+                        (+n.at_offset(face, 0, 1, 1 * sep + sep - 1) +
+                            n.at_offset(face, -1, 1, 1 * sep + sep - 1)));
+
+            n(dest, 1 * sep + sep - 1) =
+                0.25 *
+                (+n.at_offset(edge, 0, 0, 2 * sep + sep - 1) *
+                        (+n.at_offset(face, 0, 0, 0 * sep + sep - 1) +
+                            n.at_offset(face, 0, -1, 0 * sep + sep - 1)) +
+                    n.at_offset(edge, 1, 0, 2 * sep + sep - 1) *
+                        (+n.at_offset(face, 1, 0, 0 * sep + sep - 1) +
+                            n.at_offset(face, 1, -1, 0 * sep + sep - 1)) -
+                    n.at_offset(edge, 0, 0, 0 * sep + sep - 1) *
+                        (+n.at_offset(face, 0, 0, 2 * sep + sep - 1) +
+                            n.at_offset(face, 0, -1, 2 * sep + sep - 1)) -
+                    n.at_offset(edge, 0, 0, 0 * sep) *
+                        (+n.at_offset(face, 0, 0, 2 * sep) +
+                            n.at_offset(face, 0, -1, 2 * sep)));
+            n(dest, 2 * sep + sep - 1) =
+                0.25 *
+                (+n.at_offset(edge, 0, 0, 0 * sep + sep - 1) *
+                        (+n.at_offset(face, 0, 0, 1 * sep + sep - 1) +
+                            n.at_offset(face, 0, 0, 1 * sep + sep - 1 - 1)) +
+                    n.at_offset(edge, 0, 1, 0 * sep + sep - 1) *
+                        (+n.at_offset(face, 0, 1, 1 * sep + sep - 1) +
+                            n.at_offset(face, 0, 1, 1 * sep + sep - 1 - 1)) -
+                    n.at_offset(edge, 0, 0, 1 * sep + sep - 1) *
+                        (+n.at_offset(face, 0, 0, 0 * sep + sep - 1) +
+                            n.at_offset(face, 0, 0, 0 * sep + sep - 1 - 1)) -
+                    n.at_offset(edge, 1, 0, 1 * sep + sep - 1) *
+                        (+n.at_offset(face, 1, 0, 0 * sep + sep - 1) +
+                            n.at_offset(face, 1, 0, 0 * sep + sep - 1 - 1)));*/
+        }
+    }
+
+
+    template<class Face, class Edge, class Dest, class Block,
+        typename std::enable_if<(Face::mesh_type() == MeshObject::face) &&
+                                    (Edge::mesh_type() == MeshObject::edge) &&
+                                    (Dest::mesh_type() == MeshObject::face),
+            void>::type* = nullptr>
+    static void nonlinear_helmholtz_refined(Block& block, int N_modes, int ref_level_up, int PREFAC = 3) noexcept
+    {
+        constexpr auto face = Face::tag();
+        constexpr auto edge = Edge::tag();
+        constexpr auto dest = Dest::tag();
+
+        int stride = std::pow(2, ref_level_up);
+        for (auto& n : block)
+        {
+            //TODO: Can be done much better by getting the appropriate nodes
+            //      directly
+
+            int sep = N_modes * PREFAC;
+            int x_s = 0;
+            int y_s = sep;
+            int z_s = sep*2;
+            //nonlinear term adapt to collocation DFT
+            for (int i = 0; i < (N_modes * PREFAC); i+=stride)
             {
                 int x_p = x_s + i;
                 int y_p = y_s + i;
@@ -2036,6 +2242,134 @@ struct Operator
                                    static_cast<float_type>(padded_dim);
             }
         }
+    }
+
+    /*template<typename From, typename To, typename Block>
+    static void FourierTransformC2R_refine(Block it, int ref_level_up, int N_modes,
+        int padded_dim, int vec_size, int nonzero_dim, int dim_0, int dim_1,
+        fft::helm_dfft_c2r& c2rFunc, int NComp = 3, int PREFAC_FROM = 2,
+        int PREFAC_TO = 3, int lBuffer = 1, int rBuffer = 1)
+    {
+        int N_from = From::nFields();
+        int N_to = To::nFields();
+
+        int divisor = std::pow(2,ref_level_up);
+
+        int N_comp_modes = N_modes/divisor;
+
+        std::vector<std::complex<float_type>> tmp_vec(vec_size,
+            std::complex<float_type>(0.0));
+        for (int N = 0; N < NComp; N++)
+        {
+            int added_idx_unref = N_modes * N * 2;
+            int added_idx_ref = N_comp_modes * N * 2;
+            for (int i = 0; i < N_comp_modes; i++)
+            {
+                auto& lin_data_real = it->data_r(From::tag(), i * 2 + added_idx_unref);
+                auto& lin_data_imag = it->data_r(From::tag(), i * 2 + 1 + added_idx_unref);
+                for (int j = 0; j < dim_0 * dim_1; j++)
+                {
+                    if (i == 0) lin_data_imag[j] = 0;
+                    std::complex<float_type> tmp_val(lin_data_real[j],
+                        lin_data_imag[j]);
+                    //stacking data from the same x y location contiguous
+                    //[x_0(0,0), x_1(0,0) ...][y_0(0,0), y_1(0,0) ...][z_0(0,0), z_1(0,0) ...]
+                    //[x_0(0,1), x_1(0,1) ...][y_0(0,1), y_1(0,1) ...][z_0(0,1), z_1(0,1) ...]
+                    //...
+                    int idx = j * N_comp_modes * NComp + i + added_idx_ref;
+                    tmp_vec[idx] = tmp_val;
+                }
+            }
+        }
+
+        c2rFunc.copy_field(tmp_vec);
+        c2rFunc.execute();
+        std::vector<float_type> output_vel;
+        c2rFunc.output_field_padded(output_vel);
+
+        for (int i = 0; i < padded_dim * NComp; i++)
+        {
+            auto& lin_data_ = it->data_r(To::tag(), i);
+            for (int j = 0; j < dim_0 * dim_1; j++)
+            {
+                int idx = j * padded_dim * NComp + i;
+                lin_data_[j] = output_vel[idx];
+            }
+        }
+    }*/
+
+    template<typename From, typename To, typename Block>
+    static void FourierTransformR2C_refine(Block it, int ref_level_up, int N_modes, int padded_dim,
+        int vec_size, int nonzero_dim, int dim_0, int dim_1,
+        std::unique_ptr<fft::helm_dfft_r2c>& r2cFunc, int N_outputModes, int NComp = 3, int PREFAC_FROM = 3,
+        int PREFAC_TO = 2, int lBuffer = 1, int rBuffer = 1)
+    {
+        int N_from = From::nFields();
+        int N_to = To::nFields();
+
+        int divisor = std::pow(2,ref_level_up);
+
+        int N_comp_modes = N_modes/divisor;
+
+        std::vector<float_type> tmp_vec(vec_size/divisor, 0.0);
+        //use collocation in z direction
+        for (int i = 0; i < N_modes * PREFAC_FROM * NComp; i += divisor)
+        {
+            auto& lin_data_ = it->data_r(From::tag(), i);
+            for (int j = 0; j < dim_0 * dim_1; j++)
+            {
+                int idx = j * N_comp_modes * PREFAC_FROM * NComp + i/divisor;
+                tmp_vec[idx] = lin_data_[j];
+            }
+        }
+
+        r2cFunc->copy_field(tmp_vec);
+        r2cFunc->execute();
+        std::vector<std::complex<float_type>> output_vel;
+        r2cFunc->output_field(output_vel);
+
+
+
+        for (int N = 0; N < NComp; N++)
+        {
+            int added_idx_unref = N_modes * N * 2;
+            int added_idx_ref = N_comp_modes * N * 2;
+            for (int i = 0; i < N_comp_modes; i++)
+            {
+                auto& lin_data_real = it->data_r(To::tag(), i * 2 + added_idx_unref);
+                auto& lin_data_imag = it->data_r(To::tag(), i * 2 + 1 + added_idx_unref);
+                for (int j = 0; j < dim_0 * dim_1; j++)
+                {
+                    int idx = j * PREFAC_FROM * (nonzero_dim / 2 + 1) + i + N_comp_modes * N;
+                    //use (nonzero_dim/2 + 1) when use output_field
+                    //use (nonzero_dim/2)     when use output_field_neglect_last
+                    lin_data_real[j] = output_vel[idx].real() /
+                                   static_cast<float_type>(padded_dim);
+                    lin_data_imag[j] = output_vel[idx].imag() /
+                                   static_cast<float_type>(padded_dim);
+                }
+            }
+        }
+
+        /*for (int i = 0; i < N_outputModes * NComp; i++)
+        {
+            auto& lin_data_real = it->data_r(To::tag(), i * 2);
+            auto& lin_data_imag = it->data_r(To::tag(), i * 2 + 1);
+            for (int j = 0; j < dim_0 * dim_1; j++)
+            {
+                //stacking data from the same x y location contiguous
+                //[x_0(0,0), x_1(0,0) ...][y_0(0,0), y_1(0,0) ...][z_0(0,0), z_1(0,0) ...]
+                //[x_0(0,1), x_1(0,1) ...][y_0(0,1), y_1(0,1) ...][z_0(0,1), z_1(0,1) ...]
+                //...
+                int idx = j * PREFAC_FROM * (nonzero_dim / 2 + 1) + i;
+                //use (nonzero_dim/2 + 1) when use output_field
+                //use (nonzero_dim/2)     when use output_field_neglect_last
+                lin_data_real[j] = output_vel[idx].real() /
+                                   static_cast<float_type>(padded_dim);
+                lin_data_imag[j] = output_vel[idx].imag() /
+                                   static_cast<float_type>(padded_dim);
+            }
+        }*/
     }
 };
 } // namespace domain

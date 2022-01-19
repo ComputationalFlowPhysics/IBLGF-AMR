@@ -167,6 +167,21 @@ class Ifherk_HELM
         fname_prefix_ = "";
 
         // miscs -------------------------------------------------------------
+
+        //initialize the FFT vector
+
+        for (int i = max_ref_level_; i >= 0; i--)
+        {
+            //std::cout << i << std::endl;
+            int padded_dim_loc = padded_dim / std::pow(2, i);
+            int nonzero_dim_loc = N_modes / std::pow(2, i) * 2 - 1;
+            padded_dim_vec.emplace_back(padded_dim_loc);
+            nonzero_dim_vec.emplace_back(nonzero_dim_loc);
+            r2cFunc_vec.emplace_back(std::make_unique<fft::helm_dfft_r2c>(padded_dim_loc, nonzero_dim_loc,
+                    (domain_->block_extent()[0] + lBuffer + rBuffer),
+                    (domain_->block_extent()[1] + lBuffer + rBuffer)));
+            
+        }
     }
 
   public:
@@ -1245,8 +1260,10 @@ class Ifherk_HELM
         const auto dx_base = domain_->dx_base();
 
         //const float_type dx_fine = dx_base/std::pow(2.0, max_ref_level_)/1.5; //dx at z (homogeneous) direction, is different from others. Also consider the 3/2 rule so that dx decreased by 1.5
-        const float_type dx_fine = c_z/static_cast<float_type>(padded_dim); //dx at z (homogeneous) direction, is different from others. Also consider the 3/2 rule so that dx decreased by 1.5
-
+        const float_type dx_fine =
+            c_z /
+            static_cast<float_type>(
+                padded_dim); //dx at z (homogeneous) direction, is different from others. Also consider the 3/2 rule so that dx decreased by 1.5
 
         auto t0 = clock_type::now();
         //clean Fourier coefficents that should be zero
@@ -1289,38 +1306,56 @@ class Ifherk_HELM
 
             for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
             {
-                if (!it->locally_owned() || !it->has_data() || !it->data().is_allocated()) continue;
+                if (!it->locally_owned() || !it->has_data() ||
+                    !it->data().is_allocated())
+                    continue;
 
                 const auto dx_level =
                     dx_base / math::pow2(it->refinement_level());
 
                 int totalComp = Source::nFields();
-                int dim_0 = domain_->block_extent()[0]+lBuffer+rBuffer;
-                int dim_1 = domain_->block_extent()[1]+lBuffer+rBuffer;
+                int dim_0 = domain_->block_extent()[0] + lBuffer + rBuffer;
+                int dim_1 = domain_->block_extent()[1] + lBuffer + rBuffer;
 
-                int vec_size = dim_0*dim_1*N_modes*3;
-                domain::Operator::FourierTransformC2R<Source, u_i_real_type>(
-                    it, N_modes, padded_dim, vec_size, nonzero_dim, dim_0, dim_1, c2rFunc);
+                int vec_size = dim_0 * dim_1 * N_modes * 3;
+                domain::Operator::FourierTransformC2R<Source, u_i_real_type>(it,
+                    N_modes, padded_dim, vec_size, nonzero_dim, dim_0, dim_1,
+                    c2rFunc);
                 /*domain::Operator::curl_helmholtz<u_i_real_type, vort_i_real_type>(it->data(),
                     dx_level, N_modes, dx_fine);*/
-                domain::Operator::curl_helmholtz_complex<Source, edge_aux_type>(it->data(),
-                    dx_level, N_modes, c_z);
-                domain::Operator::FourierTransformC2R<edge_aux_type, vort_i_real_type>(
-                    it, N_modes, padded_dim, vec_size, nonzero_dim, dim_0, dim_1, c2rFunc);
-                
+                if (adapt_Fourier)
+                {
+                    int ref_level_up = domain_->tree()->depth() - l - 1;
+                    domain::Operator::curl_helmholtz_complex_refined<Source,
+                        edge_aux_type>(it->data(), dx_level, N_modes,
+                        ref_level_up, c_z);
+                }
+                else
+                {
+                    domain::Operator::curl_helmholtz_complex<Source,
+                        edge_aux_type>(it->data(), dx_level, N_modes, c_z);
+                }
+
+                /*domain::Operator::curl_helmholtz_complex<Source, edge_aux_type>(it->data(),
+                    dx_level, N_modes, c_z);*/
+                domain::Operator::FourierTransformC2R<edge_aux_type,
+                    vort_i_real_type>(it, N_modes, padded_dim, vec_size,
+                    nonzero_dim, dim_0, dim_1, c2rFunc);
             }
         }
 
         auto t1 = clock_type::now();
 
         mDuration_type ms_int = t1 - t0;
-        pcout << "Fourier transform with curl_helmholtz solved in " << ms_int.count() << std::endl;
+        pcout << "Fourier transform with curl_helmholtz solved in "
+              << ms_int.count() << std::endl;
 
         //clean_leaf_correction_boundary<edge_aux_type>(domain_->tree()->base_level(), true, 2);
         // add background velocity
         copy<u_i_real_type, face_aux_real_type>();
-        domain::Operator::add_field_expression_nonlinear_helmholtz<face_aux_real_type>(
-            domain_, N_modes, simulation_->frame_vel(), T_stage_, -1.0);
+        domain::Operator::add_field_expression_nonlinear_helmholtz<
+            face_aux_real_type>(domain_, N_modes, simulation_->frame_vel(),
+            T_stage_, -1.0);
 
         copy<Source, face_aux_type>();
         domain::Operator::add_field_expression_complex_helmholtz<face_aux_type>(
@@ -1336,20 +1371,31 @@ class Ifherk_HELM
             client->template buffer_exchange<vort_i_real_type>(l);
             clean_leaf_correction_boundary<vort_i_real_type>(l, false, 2);
 
-            
-
             for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
             {
-                if (!it->locally_owned() || !it->has_data() || !it->data().is_allocated()) continue;
-
-                domain::Operator::nonlinear_helmholtz<face_aux_real_type, vort_i_real_type,
-                    r_i_real_type>(it->data(), N_modes);
-
-                for (std::size_t field_idx = 0; field_idx < r_i_real_type::nFields();
-                     ++field_idx)
+                if (!it->locally_owned() || !it->has_data() ||
+                    !it->data().is_allocated())
+                    continue;
+                if (adapt_Fourier)
                 {
-                    auto& lin_data =
-                        it->data_r(r_i_real_type::tag(), field_idx).linalg_data();
+                    int ref_level_up = domain_->tree()->depth() - l - 1;
+                    domain::Operator::nonlinear_helmholtz_refined<
+                        face_aux_real_type, vort_i_real_type, r_i_real_type>(
+                        it->data(), N_modes, ref_level_up);
+                }
+                else
+                {
+                    domain::Operator::nonlinear_helmholtz<face_aux_real_type,
+                        vort_i_real_type, r_i_real_type>(it->data(), N_modes);
+                }
+                /*domain::Operator::nonlinear_helmholtz<face_aux_real_type, vort_i_real_type,
+                    r_i_real_type>(it->data(), N_modes);*/
+
+                for (std::size_t field_idx = 0;
+                     field_idx < r_i_real_type::nFields(); ++field_idx)
+                {
+                    auto& lin_data = it->data_r(r_i_real_type::tag(), field_idx)
+                                         .linalg_data();
                     lin_data *= _scale;
                 }
             }
@@ -1360,11 +1406,13 @@ class Ifherk_HELM
 
         auto t3 = clock_type::now();
         ms_int = t3 - t2;
-        pcout << "Nonlinear term in real variable solved in " << ms_int.count() << std::endl;
+        pcout << "Nonlinear term in real variable solved in " << ms_int.count()
+              << std::endl;
         //transform back
         for (int l = domain_->tree()->base_level();
              l < domain_->tree()->depth(); ++l)
         {
+            int ref_level = l - domain_->tree()->base_level();
             //client->template buffer_exchange<Source>(l);
 
             for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
@@ -1375,12 +1423,25 @@ class Ifherk_HELM
                     dx_base / math::pow2(it->refinement_level());
 
                 int totalComp = Source::nFields();
-                int dim_0 = domain_->block_extent()[0]+lBuffer+rBuffer;
-                int dim_1 = domain_->block_extent()[1]+lBuffer+rBuffer;
+                int dim_0 = domain_->block_extent()[0] + lBuffer + rBuffer;
+                int dim_1 = domain_->block_extent()[1] + lBuffer + rBuffer;
 
-                int vec_size = dim_0*dim_1*N_modes*3*3;
-                domain::Operator::FourierTransformR2C<r_i_real_type, Target>(
-                    it, N_modes, padded_dim, vec_size, nonzero_dim, dim_0, dim_1, r2cFunc, (1 + additional_modes));
+                int vec_size = dim_0 * dim_1 * N_modes * 3 * 3;
+                if (adapt_Fourier)
+                {
+                    int ref_level_up = domain_->tree()->depth() - l - 1;
+                    domain::Operator::FourierTransformR2C_refine<r_i_real_type,
+                        Target>(it, ref_level_up, N_modes,
+                        padded_dim_vec[ref_level], vec_size,
+                        nonzero_dim_vec[ref_level], dim_0, dim_1,
+                        r2cFunc_vec[ref_level], (1 + additional_modes));
+                }
+                else
+                {
+                    domain::Operator::FourierTransformR2C<r_i_real_type,
+                        Target>(it, N_modes, padded_dim, vec_size, nonzero_dim,
+                        dim_0, dim_1, r2cFunc, (1 + additional_modes));
+                }
 
                 //int vec_size = dim_0*dim_1*N_modes*3*3;
                 //also transform vorticity for refinement
@@ -1422,8 +1483,6 @@ class Ifherk_HELM
         pcout << "R2C transform solved in " << ms_int.count() << std::endl;
         addPerturb<Target>();
     }
-
-
 
     template<class Target>
     void addPerturb() noexcept
@@ -1590,6 +1649,9 @@ class Ifherk_HELM
     linsys_solver_t  lsolver;
     fft::helm_dfft_r2c r2cFunc;
     fft::helm_dfft_c2r c2rFunc;
+    std::vector<std::unique_ptr<fft::helm_dfft_r2c>> r2cFunc_vec;
+    std::vector<int> padded_dim_vec;
+    std::vector<int> nonzero_dim_vec;
     float_type c_z; //for the period in the homogeneous direction
     float_type perturb_nonlin = 0.0;
 

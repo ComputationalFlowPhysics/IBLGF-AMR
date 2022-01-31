@@ -113,7 +113,7 @@ class PoissonSolver
         if (additional_modes > N_fourier_modes) throw std::runtime_error("Additional modes cannot be higher than the number of Fourier modes");
 
         adapt_Fourier = _simulation->dictionary()->template get_or<bool>(
-            "adapt_Fourier", true);
+            "adapt_Fourier", false);
     }
 
   public:

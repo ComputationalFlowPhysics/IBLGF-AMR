@@ -102,6 +102,13 @@ class node
     {
         return (*c_)(_tag,level_coordinate_ + coordinate_type({_i, _j}), _idx);
     }
+    //just need this to compile the 2D codem need a more elegant solution
+    template<class Tag, int Dim1 = Dim>
+    auto& at_offset(Tag _tag, int _i, int _j, int k, typename std::enable_if<Dim1 == 2, int>::type _idx ) noexcept
+    {
+        throw std::runtime_error("this at_offsrt function should not be used");
+        return (*c_)(_tag,level_coordinate_ + coordinate_type({_i, _j}), _idx);
+    }
     /************************************************************************/
 
 

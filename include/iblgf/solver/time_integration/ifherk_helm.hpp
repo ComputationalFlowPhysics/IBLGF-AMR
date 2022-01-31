@@ -125,7 +125,7 @@ class Ifherk_HELM
             "L_z", 1);
 
         adapt_Fourier = _simulation->dictionary()->template get_or<bool>(
-            "adapt_Fourier", true);
+            "adapt_Fourier", false);
         /*const int l_max = domain_->tree()->depth();
         const int l_min = domain_->tree()->base_level();
         const int nLevels = l_max - l_min;

@@ -699,7 +699,7 @@ class NewtonIteration
         add<nonlinear_tmp1_type, R_1_type>();
         nonlinear_jac<u_type, u_type, nonlinear_tmp1_type>();
         add<nonlinear_tmp1_type, R_1_type>(-1.0);
-        Solve_Jacobian();
+        //Solve_Jacobian();
     }
 
 
@@ -991,7 +991,7 @@ class NewtonIteration
 
         add<g_i_type, Target_face>(-1);
 
-        add<laplacian_face_type, Target_face>(1.0 / Re);
+        add<laplacian_face_type, Target_face>(1.0 / Re_);
 
         clean<face_aux_tmp_type>();
         gradient<Source_cell, face_aux_tmp_type>();
@@ -1044,7 +1044,7 @@ class NewtonIteration
 
         add<g_i_type, Target_face>(-1);
 
-        add<laplacian_face_type, Target_face>(1.0 / Re);
+        add<laplacian_face_type, Target_face>(1.0 / Re_);
 
         clean<face_aux_tmp_type>();
         gradient<Source_cell, face_aux_tmp_type>();
@@ -1085,6 +1085,8 @@ class NewtonIteration
     void Vel_from_vort()
     {
         auto client = domain_->decomposition().client();
+
+        auto dx_base = domain_->dx_base();
 
         //up_and_down<Velocity_in>();
         clean<Target>(true);
@@ -1502,6 +1504,34 @@ class NewtonIteration
     }
 
     template<class Source, class Target>
+    void Curl() noexcept
+    {
+        auto client = domain_->decomposition().client();
+
+        up_and_down<Source>();
+
+        for (int l = domain_->tree()->base_level();
+             l < domain_->tree()->depth(); ++l)
+        {
+            client->template buffer_exchange<Source>(l);
+            const auto dx_base = domain_->dx_base();
+
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
+                const auto dx_level =
+                    dx_base / math::pow2(it->refinement_level());
+                domain::Operator::curl<Source, Target>(it->data(),
+                    dx_level);
+            }
+
+            //client->template buffer_exchange<Target>(l);
+            clean_leaf_correction_boundary<Target>(l, true, 2);
+            //clean_leaf_correction_boundary<Target>(l, false,4+stage_idx_);
+        }
+    }
+
+    template<class Source, class Target>
     void laplacian() noexcept
     {
         auto client = domain_->decomposition().client();
@@ -1581,7 +1611,7 @@ class NewtonIteration
     }
 
     template<typename From, typename To>
-    void addScales(float_type scale1 = 1.0, float_type scale2 = 1.0) noexcept
+    void addScale(float_type scale1 = 1.0, float_type scale2 = 1.0) noexcept
     {
         static_assert(From::nFields() == To::nFields(),
             "number of fields doesn't match when add");
@@ -1632,7 +1662,7 @@ class NewtonIteration
         for (auto it = domain_->begin(); it != domain_->end(); ++it)
         {
             if (!it->locally_owned() || !it->has_data()) continue;
-            float_type m _tmp =
+            float_type m_tmp =
                 domain::Operator::blockDot<Field1, Field2>(it->data());
             m += m_tmp;
         }

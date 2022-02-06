@@ -1504,7 +1504,7 @@ class NewtonIteration
     }
 
     template<class Source, class Target>
-    void Curl() noexcept
+    void curl() noexcept
     {
         auto client = domain_->decomposition().client();
 

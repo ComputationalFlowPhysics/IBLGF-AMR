@@ -78,7 +78,8 @@ class Octant
         AMR2AMR,
         IB2xIB,
         xIB2IB,
-        IB2AMR
+        IB2AMR,
+        Laplacian_BC
     };
 
     enum MASK_LIST
@@ -96,6 +97,22 @@ class Octant
             return 1;
         else if (type==MASK_TYPE::xIB2IB) //
             return 2;
+        else if (type==MASK_TYPE::Laplacian_BC)
+            return 3;
+        else if (type==MASK_TYPE::IB2AMR) //
+            return refinement_level + 4;
+        else if (type==MASK_TYPE::AMR2AMR) // number from 16 - 30
+            return refinement_level * 2 + non_leaf_as_source + 16;
+        else
+            throw std::runtime_error("Wrong mask Idx");
+
+        return -1;
+        /*if (type==MASK_TYPE::STREAM) // base level stream function
+            return 0;
+        else if (type==MASK_TYPE::IB2xIB) //
+            return 1;
+        else if (type==MASK_TYPE::xIB2IB) //
+            return 2;
         else if (type==MASK_TYPE::IB2AMR) //
             return refinement_level+3;
         else if (type==MASK_TYPE::AMR2AMR) // number from 15 - 30
@@ -103,7 +120,7 @@ class Octant
         else
             throw std::runtime_error("Wrong mask Idx");
 
-        return -1;
+        return -1;*/
 
     }
 

@@ -224,6 +224,43 @@ public:
             MASK_LIST::Mask_FMM_Target, fmm_mask_idx);
     }
 
+
+    static void fmm_laplacian_BC_mask(Domain* domain_)
+    {
+        int base_level = domain_->tree()->base_level();
+        int fmm_mask_idx = octant_t::fmm_mask_idx_gen(MASK_TYPE::Laplacian_BC);
+        //int fmm_mask_idx = 0;
+
+        for (auto it = domain_->begin();
+             it != domain_->end(); ++it)
+        {
+            it->fmm_mask(fmm_mask_idx, MASK_LIST::Mask_FMM_Source, false);
+            it->fmm_mask(fmm_mask_idx, MASK_LIST::Mask_FMM_Target, false);
+            it->fmm_mask(fmm_mask_idx, MASK_LIST::Mask_FMM_Source, false);
+            it->fmm_mask(fmm_mask_idx, MASK_LIST::Mask_FMM_Target, false);
+        }
+
+        for (auto it = domain_->begin(base_level);
+             it != domain_->end(base_level); ++it)
+        {
+            if (!it->has_data()) continue;
+
+            if (!it->is_correction())
+                it->fmm_mask(fmm_mask_idx, MASK_LIST::Mask_FMM_Source, true);
+            else
+                //it->fmm_mask(fmm_mask_idx,MASK_LIST::Mask_FMM_Source, true);
+                it->fmm_mask(fmm_mask_idx, MASK_LIST::Mask_FMM_Source, false);
+
+            if (it->is_correction())
+                it->fmm_mask(fmm_mask_idx, MASK_LIST::Mask_FMM_Target, true);
+            else
+                it->fmm_mask(fmm_mask_idx, MASK_LIST::Mask_FMM_Target, false);
+        }
+
+        fmm_upward_pass_masks(domain_, base_level, MASK_LIST::Mask_FMM_Source,
+            MASK_LIST::Mask_FMM_Target, fmm_mask_idx);
+    }
+
     static void fmm_clean_load(Domain* domain_)
     {
         for (auto it = domain_->begin(); it != domain_->end(); ++it)

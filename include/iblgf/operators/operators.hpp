@@ -750,6 +750,28 @@ struct Operator
         return sqrt(m / c);
     }
 
+    template<class Field1, class Field2, class Block>
+    static float_type blockDot(Block& block) noexcept
+    {
+        static_assert(Field1::nFields() == Field2::nFields(),
+            "number of fields doesn't match when taking dot product");
+        float_type m = 0.0;
+        //float_type c = 0.0;
+
+        for (auto& n : block)
+        {
+            float_type tmp = 0.0;
+            for (std::size_t field_idx = 0; field_idx < Field1::nFields();
+                 ++field_idx)
+            {
+                tmp += n(Field1::tag(), field_idx) * n(Field2::tag(), field_idx);
+            }
+            m += tmp;
+            //c += 1.0;
+        }
+        return m;
+    }
+
     template<class Field, class Block>
     static float_type maxnorm(Block& block) noexcept
     {
@@ -1628,6 +1650,42 @@ struct Operator
                                         n.at_offset(edge, 1, 0, 0) *
                                             (+n.at_offset(face, 1, 0, 0) +
                                                 n.at_offset(face, 1, -1, 0)));
+            }
+        }
+    }
+
+
+    template<class Face_old, class Face_new, class Dest, class Block,
+        typename std::enable_if<(Face_old::mesh_type() == MeshObject::face) &&
+                                    (Face_new::mesh_type() == MeshObject::face) &&
+                                    (Dest::mesh_type() == MeshObject::edge),
+            void>::type* = nullptr>
+    static void nonlinear_adjoint_p1(Block& block) noexcept
+    {
+        constexpr auto face_old = Face_old::tag();
+        constexpr auto face_new = Face_new::tag();
+        constexpr auto dest = Dest::tag();
+        for (auto& n : block)
+        {
+            //TODO: Can be done much better by getting the appropriate nodes
+            //      directly
+            auto pct = n.local_pct();
+            int  dimension = pct.size();
+            if (dimension == 3)
+            {
+                std::cout << "nonlinear adjoint for 3D not implemented yet" << std::endl;
+            }
+            else
+            {
+                n(dest, 0) =
+                    0.25 * ((n.at_offset(face_old, 0, 0, 0) +
+                                n.at_offset(face_old, 0, -1, 0)) *
+                                   (n.at_offset(face_new, 0, 0, 1) +
+                                       n.at_offset(face_new, -1, 0, 1)) -
+                               (n.at_offset(face_new, 0, 0, 0) +
+                                   n.at_offset(face_new, 0, -1, 0)) *
+                                   (n.at_offset(face_old, 0, 0, 1) +
+                                       n.at_offset(face_old, -1, 0, 1)));
             }
         }
     }

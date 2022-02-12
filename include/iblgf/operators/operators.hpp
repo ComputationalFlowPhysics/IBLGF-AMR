@@ -813,31 +813,34 @@ struct Operator
         const auto     fac = 1.0 / (dx_level * dx_level);
         constexpr auto source = Source::tag();
         constexpr auto dest = Dest::tag();
-        for (auto& n : block)
+        for (std::size_t field_idx = 0; field_idx < Source::nFields();
+             ++field_idx)
         {
-            auto pct = n.local_pct();
-            int  dimension = pct.size();
-            if (dimension == 3)
+            for (auto& n : block)
             {
-                n(dest) = -6.0 * n(source) + n.at_offset(source, 0, 0, -1) +
-                          n.at_offset(source, 0, 0, +1) +
-                          n.at_offset(source, 0, -1, 0) +
-                          n.at_offset(source, 0, +1, 0) +
-                          n.at_offset(source, -1, 0, 0) +
-                          n.at_offset(source, +1, 0, 0);
-            }
-            else
-            {
-                n(dest) = -4.0 * n(source) + n.at_offset(source, 0, -1) +
-                          n.at_offset(source, 0, +1) +
-                          n.at_offset(source, -1, 0) +
-                          n.at_offset(source, +1, 0);
-            }
+                auto pct = n.local_pct();
+                int  dimension = pct.size();
+                if (dimension == 3)
+                {
+                    n(dest, field_idx) = -6.0 * n(source, field_idx) + n.at_offset(source, 0, 0, -1, field_idx) +
+                              n.at_offset(source, 0, 0, +1, field_idx) +
+                              n.at_offset(source, 0, -1, 0, field_idx) +
+                              n.at_offset(source, 0, +1, 0, field_idx) +
+                              n.at_offset(source, -1, 0, 0, field_idx) +
+                              n.at_offset(source, +1, 0, 0, field_idx);
+                }
+                else
+                {
+                    n(dest, field_idx) = -4.0 * n(source, field_idx) + n.at_offset(source, 0, -1, field_idx) +
+                              n.at_offset(source, 0, +1, field_idx) +
+                              n.at_offset(source, -1, 0, field_idx) +
+                              n.at_offset(source, +1, 0, field_idx);
+                }
 
-            n(dest) *= fac;
+                n(dest, field_idx) *= fac;
+            }
         }
     }
-
 
     template<class Source, class Dest, class Block,
         typename std::enable_if<(Source::mesh_type() == MeshObject::cell) &&

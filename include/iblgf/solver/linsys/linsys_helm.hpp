@@ -535,11 +535,11 @@ class LinSysSolver_helm
         force_type r(ib_->size(), tmp);
         force_type v(ib_->size(), tmp);
         force_type p(ib_->size(), tmp);
-        force_type r_old(ib_->size(), tmp);
+        //force_type r_old(ib_->size(), tmp);
         force_type r_hat(ib_->size(), tmp);
         //force_type v(ib_->size(), tmp); //sort of like a residue in QMR but not really
         //force_type v_prev(ib_->size(), tmp); //store previous v
-        force_type Ap(ib_->size(), tmp);
+        //force_type Ap(ib_->size(), tmp);
         force_type Error(ib_->size(), tmp);
 
         if (domain_->is_server())

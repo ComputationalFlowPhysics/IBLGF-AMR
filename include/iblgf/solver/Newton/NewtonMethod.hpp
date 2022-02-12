@@ -62,10 +62,16 @@ class NewtonIteration
     using test_type = typename Setup::test_type;
 
     using u_type = typename Setup::u_type;
-    using stream_f_type = typename Setup::stream_f_type;
     using p_type = typename Setup::p_type;
+    using du_i_type = typename Setup::du_i_type;
+    using dp_i_type = typename Setup::dp_i_type;
+    using fu_i_type = typename Setup::fu_i_type; //store first block of f(x) in Newton method
+    using fp_i_type = typename Setup::fp_i_type; //store second block of f(x) in Newton method
+    using stream_f_type = typename Setup::stream_f_type;
+    //using p_type = typename Setup::p_type;
     //using q_i_type = typename Setup::q_i_type;
     //using r_i_type = typename Setup::r_i_type;
+    //using cell_aux2_type = typename Setup::cell_aux2_type;
     using g_i_type = typename Setup::g_i_type;
     //using d_i_type = typename Setup::d_i_type;
 
@@ -73,9 +79,9 @@ class NewtonIteration
     using nonlinear_tmp_type = typename Setup::nonlinear_tmp_type;
     using face_aux_tmp_type = typename Setup::face_aux_tmp_type;
     using laplacian_face_type = typename Setup::laplacian_face_type;
-    using d_i_type = typename Setup::d_i_type;
+    //using d_i_type = typename Setup::d_i_type;
 
-    using R_1_type = typename Setup::R_1_type; //R_1 is the first block in the RHS in the Newton iteration
+    //using R_1_type = typename Setup::R_1_type; //R_1 is the first block in the RHS in the Newton iteration
     using nonlinear_tmp1_type = typename Setup::nonlinear_tmp1_type; //temporarily store the nonlinear term
 
     // initialize some tmp fields for adjoint of Jacobian
@@ -88,21 +94,29 @@ class NewtonIteration
     using cell_aux_tmp_type = typename Setup::cell_aux_tmp_type;
 
     //variable fields for conjugate gradient
-    /*using conj_r_face_aux_type = typename Setup::conj_r_face_aux_type;
+    using conj_r_face_aux_type = typename Setup::conj_r_face_aux_type;
     using conj_r_cell_aux_type = typename Setup::conj_r_cell_aux_type;
     using conj_p_face_aux_type = typename Setup::conj_p_face_aux_type;
     using conj_p_cell_aux_type = typename Setup::conj_p_cell_aux_type;
     using conj_Ap_face_aux_type = typename Setup::conj_Ap_face_aux_type;
     using conj_Ap_cell_aux_type = typename Setup::conj_Ap_cell_aux_type;
     using conj_Ax_face_aux_type = typename Setup::conj_Ax_face_aux_type;
-    using conj_Ax_cell_aux_type = typename Setup::conj_Ax_cell_aux_type;*/
+    using conj_Ax_cell_aux_type = typename Setup::conj_Ax_cell_aux_type;
+    //needed for BCGStab
+    using conj_rh_face_aux_type = typename Setup::conj_rh_face_aux_type;
+    using conj_rh_cell_aux_type = typename Setup::conj_rh_cell_aux_type;
+    using conj_As_face_aux_type = typename Setup::conj_As_face_aux_type;
+    using conj_As_cell_aux_type = typename Setup::conj_As_cell_aux_type;
+    using conj_s_face_aux_type = typename Setup::conj_s_face_aux_type;
+    using conj_s_cell_aux_type = typename Setup::conj_s_cell_aux_type;
 
+    //fields for evaluating Jacobian
     using cell_aux_type = typename Setup::cell_aux_type;
     using edge_aux_type = typename Setup::edge_aux_type;
     using face_aux_type = typename Setup::face_aux_type;
     //using face_aux2_type = typename Setup::face_aux2_type;
     using correction_tmp_type = typename Setup::correction_tmp_type;
-    using u_i_type = typename Setup::u_i_type;
+    //using u_i_type = typename Setup::u_i_type;
 
     static constexpr int lBuffer = 1; ///< Lower left buffer for interpolation
     static constexpr int rBuffer = 1; ///< Lower left buffer for interpolation
@@ -134,6 +148,8 @@ class NewtonIteration
             "all_time_max", true);
 
         cg_threshold_ = simulation_->dictionary_->template get_or<float_type>("cg_threshold",1e-3);
+        Newton_threshold_ = simulation_->dictionary_->template get_or<float_type>("Newton_threshold",1e-3);
+        cg_max_itr_ = simulation_->dictionary_->template get_or<int>("cg_max_itr", 40);
 
         if (dt_base_ < 0) dt_base_ = dx_base_ * cfl_;
 
@@ -693,12 +709,22 @@ class NewtonIteration
         base_mesh_update_ = false;
         pcout << "pad u      in " << t_pad.count() << std::endl;
 
-        clean<R_1_type>();
-        copy<u_type, u_i_type>();
-        nonlinear<u_type, nonlinear_tmp1_type>();
-        add<nonlinear_tmp1_type, R_1_type>();
-        nonlinear_jac<u_type, u_type, nonlinear_tmp1_type>();
-        add<nonlinear_tmp1_type, R_1_type>(-1.0);
+        //clean<R_1_type>();
+        //copy<u_type, u_i_type>();
+        auto forcing_df = forcing_old;
+        NewtonRHS<u_type, p_type, fu_i_type, fp_i_type>(forcing_old, forcing_tmp);
+        //Solve_Jacobian<fu_i_type, fp_i_type, du_i_type, dp_i_type>(forcing_tmp, forcing_df);
+        BCG_Stab<fu_i_type, fp_i_type, du_i_type, dp_i_type>(forcing_tmp, forcing_df);
+        //add<nonlinear_tmp1_type, R_1_type>();
+        AddAll<du_i_type, dp_i_type, u_type, p_type>(forcing_df, forcing_old, -1.0);
+
+        float_type res = this->template dotAll<fu_i_type, fp_i_type, fu_i_type, fp_i_type>(forcing_tmp, forcing_tmp);
+        float_type f2 = this->template dotAll<u_type, p_type, u_type, p_type>(forcing_old, forcing_old);
+        if (comm_.rank()==1)
+            std::cout<< "Newton residue square = "<< res/f2<<std::endl;;
+        if (sqrt(res/f2)<Newton_threshold_)
+            return;
+        //add<nonlinear_tmp1_type, R_1_type>(-1.0);
         //Solve_Jacobian();
     }
 
@@ -717,7 +743,7 @@ class NewtonIteration
             {
                 auto& lin_data = it->data_r(F::tag(), field_idx).linalg_data();
 
-                if (non_leaf_only && it->is_leaf() && it->locally_owned())
+                if (non_leaf_only && (it->is_leaf() || (it->is_correction() && it->refinement_level() == 0)) && it->locally_owned())
                 {
                     int N = it->data().descriptor().extent()[0];
                     if (domain_->dimension() == 3)
@@ -819,16 +845,19 @@ class NewtonIteration
             }
     }
 
-    /*template<class Source_face, class Source_cell, class Target_face, class Target_cell>
+    template<class Source_face, class Source_cell, class Target_face, class Target_cell>
     void Solve_Jacobian(force_type& force_source, force_type& force_target) noexcept
     {
+
+        if (domain_->is_server())
+            return;
         
         //TODO: solver to solve the inverse of Jacobian with the vectors
-        clean<Target_face>();
-        clean<Target_cell>();
+        //clean<Target_face>();
+        //clean<Target_cell>();
         real_coordinate_type tmp_coord(0.0);
-        std::fill(force_target.begin(), force_target.end(),
-            tmp_coord);
+        //std::fill(force_target.begin(), force_target.end(),
+        //    tmp_coord);
 
         real_coordinate_type tmp(0.0);
         //force_type Ax(ib_->size(), tmp);
@@ -840,19 +869,22 @@ class NewtonIteration
         clean<conj_Ax_face_aux_type>();
         clean<conj_r_cell_aux_type>();
         clean<conj_r_face_aux_type>();
+        clean<conj_p_cell_aux_type>();
+        clean<conj_p_face_aux_type>();
         force_type Ax_force(domain_->ib().size(), tmp);
         force_type Ap_force(domain_->ib().size(), tmp);
         force_type r_force(domain_->ib().size(), tmp);
 
         //Compute the actual source term
+        //std::cout << "computing actual forcing term" << std::endl;
         Adjoint_Jacobian<Source_face,Source_cell, conj_r_face_aux_type, conj_r_cell_aux_type>(force_source, r_force);
 
-        if (domain_->is_server())
-            return;
+        
 
         // Ax
         //this->template ET_H_S_E<Ftmp>(f, Ax, alpha);
-        this->template ATA<Target_face, Target_cell, conj_Ax_face_aux_type, conj_Ax_cell_aux_type>(force_source, Ax_force);
+        //std::cout << "computing Ax" << std::endl;
+        this->template ATA<Target_face, Target_cell, conj_Ax_face_aux_type, conj_Ax_cell_aux_type>(force_target, Ax_force);
         //printvec(Ax, "Ax");
 
         //  res = uc - Ax
@@ -864,6 +896,8 @@ class NewtonIteration
                 r_force[i]=r_force[i]-Ax_force[i];
         }
 
+        //std::cout << "computing rsold" << std::endl;
+
         add<conj_Ax_face_aux_type, conj_r_face_aux_type>(-1.0);
         add<conj_Ax_cell_aux_type, conj_r_cell_aux_type>(-1.0);
 
@@ -874,15 +908,22 @@ class NewtonIteration
         copy<conj_r_face_aux_type, conj_p_face_aux_type>();
 
         // rold = r'* r;
+
+        float_type f2 = this->template dotAll<Target_face, Target_cell, Target_face, Target_cell>(force_target, force_target);
         
-        float_type rsold = dotAll<conj_r_face_aux_type, conj_r_cell_aux_type, conj_r_face_aux_type, conj_r_cell_aux_type>(r_force, r_force)();
+        float_type rsold = this->template dotAll<conj_r_face_aux_type, conj_r_cell_aux_type, conj_r_face_aux_type, conj_r_cell_aux_type>(r_force, r_force);
+
+        if (comm_.rank()==1)
+            std::cout<< "residue square = "<< rsold/f2<<std::endl;;
+        if (sqrt(rsold/f2)<cg_threshold_)
+            return;
 
         for (int k=0; k<cg_max_itr_; k++)
         {
             // Ap = A(p)
             this->template ATA<conj_p_face_aux_type, conj_p_cell_aux_type, conj_Ap_face_aux_type, conj_Ap_cell_aux_type>(p_force, Ap_force);
             // alpha = rsold / p'*Ap
-            float_type pAp = dotAll<conj_p_face_aux_type, conj_p_cell_aux_type, conj_Ap_face_aux_type, conj_Ap_cell_aux_type>(p_force, Ap_force);
+            float_type pAp = this->template dotAll<conj_p_face_aux_type, conj_p_cell_aux_type, conj_Ap_face_aux_type, conj_Ap_cell_aux_type>(p_force, Ap_force);
             if (pAp == 0.0)
             {
                 return;
@@ -891,13 +932,13 @@ class NewtonIteration
             float_type alpha = rsold / pAp;
             // f = f + alpha * p;
             AddAll<conj_p_face_aux_type, conj_p_cell_aux_type, Target_face, Target_cell>(p_force, force_target, alpha);
-            add(f, p, 1.0, alpha);
+            //add(f, p, 1.0, alpha);
             // r = r - alpha*Ap
             AddAll<conj_Ap_face_aux_type, conj_Ap_cell_aux_type, conj_r_face_aux_type, conj_r_cell_aux_type>(Ap_force, r_force, -alpha);
             //add(r, Ap, 1.0, -alpha);
             // rsnew = r' * r
-            float_type rsnew = dotAll<conj_r_face_aux_type, conj_r_cell_aux_type, conj_r_face_aux_type, conj_r_cell_aux_type>(r_force, r_force)();
-            float_type f2 = dotAll<Target_face, Target_cell, Target_face, Target_cell>(force_target, force_target)();
+            float_type rsnew = this->template dotAll<conj_r_face_aux_type, conj_r_cell_aux_type, conj_r_face_aux_type, conj_r_cell_aux_type>(r_force, r_force);
+            float_type f2 = this->template dotAll<Target_face, Target_cell, Target_face, Target_cell>(force_target, force_target);
             //auto ModeError = dot_Mode(r,r);
             if (comm_.rank()==1)
                 std::cout<< "residue square = "<< rsnew/f2<<std::endl;;
@@ -905,17 +946,166 @@ class NewtonIteration
                 break;
 
             // p = r + (rsnew / rsold) * p;
-            add(p, r, rsnew/rsold, 1.0);
+            //add(p, r, rsnew/rsold, 1.0);
             AddAll<conj_r_face_aux_type, conj_r_cell_aux_type, conj_p_face_aux_type, conj_p_cell_aux_type>(r_force, p_force, 1.0, rsnew/rsold);
             rsold = rsnew;
         }
-    }*/
+    }
+
+
+    template<class Source_face, class Source_cell, class Target_face, class Target_cell>
+    void BCG_Stab(force_type& force_source, force_type& force_target) noexcept
+    {
+
+        if (domain_->is_server())
+            return;
+        
+        //TODO: solver to solve the inverse of Jacobian with the vectors
+        //clean<Target_face>();
+        //clean<Target_cell>();
+        real_coordinate_type tmp_coord(0.0);
+        //std::fill(force_target.begin(), force_target.end(),
+        //    tmp_coord);
+
+        real_coordinate_type tmp(0.0);
+        //force_type Ax(ib_->size(), tmp);
+        //force_type r (ib_->size(), tmp);
+        //force_type Ap(ib_->size(), tmp);
+        clean<conj_Ap_cell_aux_type>();
+        clean<conj_Ap_face_aux_type>();
+        clean<conj_Ax_cell_aux_type>();
+        clean<conj_Ax_face_aux_type>();
+        clean<conj_r_cell_aux_type>();
+        clean<conj_r_face_aux_type>();
+        clean<conj_p_cell_aux_type>();
+        clean<conj_p_face_aux_type>();
+        clean<conj_rh_cell_aux_type>();
+        clean<conj_rh_face_aux_type>();
+        clean<conj_As_cell_aux_type>();
+        clean<conj_As_face_aux_type>();
+        clean<conj_s_cell_aux_type>();
+        clean<conj_s_face_aux_type>();
+        force_type Ax_force(domain_->ib().size(), tmp);
+        force_type Ap_force(domain_->ib().size(), tmp);
+        force_type r_force(domain_->ib().size(), tmp);
+        force_type p_force(domain_->ib().size(), tmp);
+        force_type rh_force(domain_->ib().size(), tmp);
+        force_type As_force(domain_->ib().size(), tmp);
+        force_type s_force(domain_->ib().size(), tmp);
+
+        //Compute the actual source term
+        //std::cout << "computing actual forcing term" << std::endl;
+        //Adjoint_Jacobian<Source_face,Source_cell, conj_r_face_aux_type, conj_r_cell_aux_type>(force_source, r_force);
+
+        
+
+        // Ax
+        //this->template ET_H_S_E<Ftmp>(f, Ax, alpha);
+        //std::cout << "computing Ax" << std::endl;
+        this->template Jacobian<Target_face, Target_cell, conj_Ax_face_aux_type, conj_Ax_cell_aux_type>(force_target, Ax_force);
+        //printvec(Ax, "Ax");
+
+        //  res = uc - Ax
+        for (int i=0; i<domain_->ib().size(); ++i)
+        {
+            if (domain_->ib().rank(i)!=comm_.rank())
+                r_force[i]=0;
+            else
+                r_force[i]=force_source[i]-Ax_force[i];
+        }
+
+        //std::cout << "computing rsold" << std::endl;
+
+        copy<Target_face, conj_r_face_aux_type>();
+        copy<Target_cell, conj_r_cell_aux_type>();
+
+        add<conj_Ax_face_aux_type, conj_r_face_aux_type>(-1.0);
+        add<conj_Ax_cell_aux_type, conj_r_cell_aux_type>(-1.0);
+
+        // p = res
+        rh_force = r_force;
+
+        copy<conj_r_cell_aux_type, conj_rh_cell_aux_type>();
+        copy<conj_r_face_aux_type, conj_rh_face_aux_type>();
+
+        // rold = r'* r;
+
+        float_type f2 = this->template dotAll<Target_face, Target_cell, Target_face, Target_cell>(force_target, force_target);
+        
+        float_type rsold = this->template dotAll<conj_r_face_aux_type, conj_r_cell_aux_type, conj_r_face_aux_type, conj_r_cell_aux_type>(r_force, r_force);
+
+        if (comm_.rank()==1)
+            std::cout<< "residue square = "<< rsold/f2<<std::endl;;
+        if (sqrt(rsold/f2)<cg_threshold_)
+            return;
+        
+        float_type rho = 1;
+        float_type rho_old = rho;
+        float_type w = 1;
+        float_type alpha = 1;
+
+        for (int k=0; k<cg_max_itr_; k++)
+        {
+
+            rho = this->template dotAll<conj_rh_face_aux_type, conj_rh_cell_aux_type, conj_r_face_aux_type, conj_r_cell_aux_type>(rh_force, r_force);
+            float_type beta = (rho/rho_old)*(alpha/w);
+            AddAll<conj_Ap_face_aux_type, conj_Ap_cell_aux_type, conj_p_face_aux_type, conj_p_cell_aux_type>(Ap_force, p_force, -w);
+            AddAll<conj_r_face_aux_type, conj_r_cell_aux_type, conj_p_face_aux_type, conj_p_cell_aux_type>(r_force, p_force, 1.0, beta);
+            
+            // Ap = A(p)
+            this->template Jacobian<conj_p_face_aux_type, conj_p_cell_aux_type, conj_Ap_face_aux_type, conj_Ap_cell_aux_type>(p_force, Ap_force);
+            float_type r_hat_v = this->template dotAll<conj_rh_face_aux_type, conj_rh_cell_aux_type, conj_Ap_face_aux_type, conj_Ap_cell_aux_type>(rh_force, Ap_force);
+            alpha = rho/r_hat_v;
+
+            //add(f, p, 1.0, alpha);
+            AddAll<conj_p_face_aux_type, conj_p_cell_aux_type, Target_face, Target_cell>(p_force, force_target, alpha);
+
+            //auto s = r;
+            copy<conj_r_face_aux_type, conj_s_face_aux_type>();
+            copy<conj_r_cell_aux_type, conj_s_cell_aux_type>();
+            s_force = r_force;
+            //add(s, v, 1.0, -alpha);
+            AddAll<conj_Ap_face_aux_type, conj_Ap_cell_aux_type, conj_s_face_aux_type, conj_s_cell_aux_type>(Ap_force, s_force, -alpha);
+            this->template Jacobian<conj_s_face_aux_type, conj_s_cell_aux_type, conj_As_face_aux_type, conj_As_cell_aux_type>(s_force, As_force);
+            float_type As_s = this->template dotAll<conj_As_face_aux_type, conj_As_cell_aux_type, conj_s_face_aux_type, conj_s_cell_aux_type>(As_force, s_force);
+            float_type As_As = this->template dotAll<conj_As_face_aux_type, conj_As_cell_aux_type, conj_As_face_aux_type, conj_As_cell_aux_type>(As_force, As_force);
+            w = As_s/As_As;
+            //add(f, s, 1.0, w);
+            AddAll<conj_s_face_aux_type, conj_s_cell_aux_type, Target_face, Target_cell>(s_force, force_target, w);
+            //r = s;
+            copy<conj_s_cell_aux_type, conj_r_cell_aux_type>();
+            copy<conj_s_face_aux_type, conj_r_face_aux_type>();
+            r_force = s_force;
+            //add(r, As, 1.0, -w);
+            AddAll<conj_As_face_aux_type, conj_As_cell_aux_type, conj_r_face_aux_type, conj_r_cell_aux_type>(As_force, r_force, -w);
+
+            float_type rsnew = this->template dotAll<conj_r_face_aux_type, conj_r_cell_aux_type, conj_r_face_aux_type, conj_r_cell_aux_type>(r_force, r_force);
+            float_type f2 = this->template dotAll<Target_face, Target_cell, Target_face, Target_cell>(force_target, force_target);
+            //float_type rs_mag = std::abs(rsnew);
+
+            /*this->template ET_H_S_E<Ftmp>(f, Ax, alpha_);
+            for (int i = 0; i < ib_->size(); ++i)
+            {
+                if (ib_->rank(i) != comm_.rank()) Error[i] = 0;
+                else
+                    Error[i] = uc[i] - Ax[i];
+            }
+            float_type errorMag = dot(Error, Error);*/
+            if (comm_.rank()==1)
+                std::cout<< "BCGstab residue square = "<< rsnew/f2/*<< " Error is " << errorMag*/ << std::endl;
+            if (sqrt(rsnew/f2)<cg_threshold_)
+                break;
+
+            // p = r + (rsnew / rsold) * p;
+            rho_old = rho;
+        }
+    }
 
     template<class Source_face, class Source_cell, class Target_face, class Target_cell>
     void ATA(force_type& force_source, force_type& force_target) noexcept
     {
         auto client = domain_->decomposition().client();
-        auto& forcing_tmp = force_source;
+        auto forcing_tmp = force_source;
         real_coordinate_type tmp_coord(0.0);
         std::fill(forcing_tmp.begin(), forcing_tmp.end(),
             tmp_coord);
@@ -929,12 +1119,12 @@ class NewtonIteration
         domain_->client_communicator().barrier();
     }
 
-    template<class Source_face, class Source_cell, class Target_face, class Target_cel>
+    template<class Source_face, class Source_cell, class Target_face, class Target_cell>
     void AddAll(force_type& force_source, force_type& force_target, float_type scale1=1.0, float_type scale2=1.0) noexcept
     {
         //Target = Source*scale1+Target*scale2
         addScale<Source_face, Target_face>(scale1, scale2);
-        addScale<Source_cell, Target_face>(scale1, scale2);
+        addScale<Source_cell, Target_cell>(scale1, scale2);
         for (int i=0; i<domain_->ib().size(); ++i)
         {
             if (domain_->ib().rank(i)!=comm_.rank())
@@ -957,6 +1147,8 @@ class NewtonIteration
     template<class Source_face, class Source_cell, class Target_face, class Target_cell>
     void Adjoint_Jacobian(force_type& force_source, force_type& force_target) noexcept
     {
+        if (domain_->is_server())
+            return;
         auto client = domain_->decomposition().client();
 
         clean<laplacian_face_type>();
@@ -976,14 +1168,14 @@ class NewtonIteration
 
         domain_->client_communicator().barrier();
         mDuration_type t_lgf(0);
-        TIME_CODE(t_lgf,
-            SINGLE_ARG(Vel_from_vort<edge_aux_type, u_i_bc_type>;));
-        //domain_->client_communicator().barrier();
-        pcout << "BCs solved in " << t_lgf.count() << std::endl;
+        /*TIME_CODE(t_lgf,
+            SINGLE_ARG(Vel_from_vort<edge_aux_type, u_i_bc_type>();));
+        domain_->client_communicator().barrier();
+        //pcout << "BCs solved in " << t_lgf.count() << std::endl;
 
         copy_base_level_BC<u_i_bc_type, Source_face>();
 
-        domain_->client_communicator().barrier();
+        domain_->client_communicator().barrier();*/
 
         laplacian<Source_face, laplacian_face_type>();
 
@@ -994,6 +1186,8 @@ class NewtonIteration
         add<laplacian_face_type, Target_face>(1.0 / Re_);
 
         clean<face_aux_tmp_type>();
+
+        //up_and_down<Source_cell>();
         gradient<Source_cell, face_aux_tmp_type>();
         //add<face_aux_tmp_type, Target_face>();
 
@@ -1001,7 +1195,7 @@ class NewtonIteration
 
         add<face_aux_tmp_type, Target_face>(1.0);
 
-        divergence<Source_face, Target_cell>();
+        divergence<Source_face, Target_cell>(-1.0);
 
         lsolver.template projection<Source_face>(
             force_target); //need to change this vector in the bracket
@@ -1010,6 +1204,8 @@ class NewtonIteration
     template<class Source_face, class Source_cell, class Target_face, class Target_cell>
     void Jacobian(force_type& force_source, force_type& force_target) noexcept
     {
+        if (domain_->is_server())
+            return;
         auto client = domain_->decomposition().client();
 
         clean<laplacian_face_type>();
@@ -1025,22 +1221,29 @@ class NewtonIteration
             tmp_coord); //use forcing tmp to store the last block,
             //use forcing_old to store the forcing at previous Newton iteration
 
+
         curl<Source_face, edge_aux_type>();
 
         domain_->client_communicator().barrier();
-        mDuration_type t_lgf(0);
+        /*mDuration_type t_lgf(0);
         TIME_CODE(t_lgf,
-            SINGLE_ARG(Vel_from_vort<edge_aux_type, u_i_bc_type>;));
-        //domain_->client_communicator().barrier();
-        pcout << "BCs solved in " << t_lgf.count() << std::endl;
+            SINGLE_ARG(Vel_from_vort<edge_aux_type, u_i_bc_type>();));
+        domain_->client_communicator().barrier();
+        //pcout << "BCs solved in " << t_lgf.count() << std::endl;
 
         copy_base_level_BC<u_i_bc_type, Source_face>();
+
+        //pcout << "Copied BC "  << std::endl;*/
 
         domain_->client_communicator().barrier();
 
         laplacian<Source_face, laplacian_face_type>();
 
+        //pcout << "Computed Laplacian " << std::endl;
+
         nonlinear_jac<u_type, Source_face, g_i_type>();
+
+        //pcout << "Computed Nonlinear Jac " << std::endl;
 
         add<g_i_type, Target_face>(-1);
 
@@ -1048,13 +1251,87 @@ class NewtonIteration
 
         clean<face_aux_tmp_type>();
         gradient<Source_cell, face_aux_tmp_type>();
+
+        //pcout << "Computed Gradient" << std::endl;
         //add<face_aux_tmp_type, Target_face>();
 
         lsolver.template smearing<face_aux_tmp_type>(force_source, false);
 
+        //pcout << "Computed Smearing" << std::endl;
+
         add<face_aux_tmp_type, Target_face>(1.0);
 
-        divergence<Source_face, Target_cell>();
+        divergence<Source_face, Target_cell>(-1.0);
+
+        //pcout << "Computed Divergence" << std::endl;
+
+        lsolver.template projection<Source_face>(
+            force_target); //need to change this vector in the bracket
+    }
+
+    template<class Source_face, class Source_cell, class Target_face, class Target_cell>
+    void NewtonRHS(force_type& force_source, force_type& force_target) noexcept
+    {
+        if (domain_->is_server())
+            return;
+        auto client = domain_->decomposition().client();
+
+        clean<laplacian_face_type>();
+        clean<u_i_bc_type>();
+        clean<edge_aux_type>();
+
+        //clean<r_i_T_type>(); //use r_i as the result of applying Jcobian in the first block
+        //clean<cell_aux_T_type>(); //use cell aux_type to be the second block
+        clean<Target_face>();
+        clean<Target_cell>();
+        real_coordinate_type tmp_coord(0.0);
+        std::fill(force_target.begin(), force_target.end(),
+            tmp_coord); //use forcing tmp to store the last block,
+            //use forcing_old to store the forcing at previous Newton iteration
+
+
+        curl<Source_face, edge_aux_type>();
+
+        domain_->client_communicator().barrier();
+        mDuration_type t_lgf(0);
+        TIME_CODE(t_lgf,
+            SINGLE_ARG(Vel_from_vort<edge_aux_type, u_i_bc_type>();));
+        domain_->client_communicator().barrier();
+        //pcout << "BCs solved in " << t_lgf.count() << std::endl;
+
+        copy_base_level_BC<u_i_bc_type, Source_face>();
+
+        //pcout << "Copied BC "  << std::endl;
+
+        domain_->client_communicator().barrier();
+
+        laplacian<Source_face, laplacian_face_type>();
+
+        //pcout << "Computed Laplacian " << std::endl;
+
+        nonlinear<Source_face, g_i_type>();
+
+        //pcout << "Computed Nonlinear Jac " << std::endl;
+
+        add<g_i_type, Target_face>(-1);
+
+        add<laplacian_face_type, Target_face>(1.0 / Re_);
+
+        clean<face_aux_tmp_type>();
+        gradient<Source_cell, face_aux_tmp_type>();
+
+        //pcout << "Computed Gradient" << std::endl;
+        //add<face_aux_tmp_type, Target_face>();
+
+        lsolver.template smearing<face_aux_tmp_type>(force_source, false);
+
+        //pcout << "Computed Smearing" << std::endl;
+
+        add<face_aux_tmp_type, Target_face>(1.0);
+
+        divergence<Source_face, Target_cell>(-1.0);
+
+        //pcout << "Computed Divergence" << std::endl;
 
         lsolver.template projection<Source_face>(
             force_target); //need to change this vector in the bracket
@@ -1074,6 +1351,25 @@ class NewtonIteration
         this->nonlinear_jac_adjoint<Source1, Source2, Target>();
     }
 
+    template<class VecType>
+    float_type dotVec(VecType& a, VecType& b)
+    {
+        float_type s = 0;
+        for (std::size_t i=0; i<a.size(); ++i)
+        {
+            if (domain_->ib().rank(i)!=comm_.rank())
+                continue;
+
+            for (std::size_t d=0; d<a[0].size(); ++d)
+                s+=a[i][d]*b[i][d];
+        }
+
+        float_type s_global=0.0;
+        boost::mpi::all_reduce(domain_->client_communicator(), s,
+                s_global, std::plus<float_type>());
+        return s_global;
+    }
+
 
   private:
     float_type coeff_a(int i, int j) const noexcept
@@ -1089,7 +1385,7 @@ class NewtonIteration
         auto dx_base = domain_->dx_base();
 
         //up_and_down<Velocity_in>();
-        clean<Target>(true);
+        clean<Target>();
         up_and_down<Source>();
 
         //clean<Velocity_out>();
@@ -1097,6 +1393,7 @@ class NewtonIteration
             true, 2);
         //clean_leaf_correction_boundary<edge_aux_type>(l, false,2+stage_idx_);
         psolver.template apply_lgf<Source, stream_f_type>(MASK_TYPE::STREAM);
+        //psolver.template apply_lgf<Source, stream_f_type>(MASK_TYPE::Laplacian_BC);
 
         int l_max = domain_->tree()->depth();
         for (int l = domain_->tree()->base_level(); l < l_max; ++l)
@@ -1174,7 +1471,7 @@ class NewtonIteration
         this->down_to_correction<Velocity_out>();
     }
 
-    //TODO maybe to be put directly intor operators:
+    //TODO maybe to be put directly into operators:
     template<class Source, class Target>
     void nonlinear(float_type _scale = 1.0) noexcept
     {
@@ -1244,6 +1541,9 @@ class NewtonIteration
         clean<nonlinear_tmp_type>();
 
         //std::cout << "part 0" << std::endl;
+
+        up_and_down<Source_old>();
+        up_and_down<Source_new>();
 
         auto       client = domain_->decomposition().client();
         const auto dx_base = domain_->dx_base();
@@ -1370,6 +1670,9 @@ class NewtonIteration
 
         //curl transpose of (vel_old cross vel_new)
 
+        up_and_down<Source_old>();
+        up_and_down<Source_new>();
+
         auto       client = domain_->decomposition().client();
         const auto dx_base = domain_->dx_base();
 
@@ -1476,9 +1779,11 @@ class NewtonIteration
     }
 
     template<class Source, class Target>
-    void divergence() noexcept
+    void divergence(float_type _scale = 1.0) noexcept
     {
         auto client = domain_->decomposition().client();
+
+        domain::Operator::domainClean<Target>(domain_);
 
         up_and_down<Source>();
 
@@ -1495,18 +1800,32 @@ class NewtonIteration
                     dx_base / math::pow2(it->refinement_level());
                 domain::Operator::divergence<Source, Target>(it->data(),
                     dx_level);
+
+                for (std::size_t field_idx = 0; field_idx < Target::nFields();
+                     ++field_idx)
+                {
+                    auto& lin_data =
+                        it->data_r(Target::tag(), field_idx).linalg_data();
+
+                    lin_data *= _scale;
+                }
             }
 
             //client->template buffer_exchange<Target>(l);
             clean_leaf_correction_boundary<Target>(l, true, 2);
             //clean_leaf_correction_boundary<Target>(l, false,4+stage_idx_);
         }
+
+        clean<Source>(true);
+        clean<Target>(true);
     }
 
     template<class Source, class Target>
     void curl() noexcept
     {
         auto client = domain_->decomposition().client();
+
+        domain::Operator::domainClean<Target>(domain_);
 
         up_and_down<Source>();
 
@@ -1529,12 +1848,17 @@ class NewtonIteration
             clean_leaf_correction_boundary<Target>(l, true, 2);
             //clean_leaf_correction_boundary<Target>(l, false,4+stage_idx_);
         }
+
+        clean<Source>(true);
+        clean<Target>(true);
     }
 
     template<class Source, class Target>
     void laplacian() noexcept
     {
         auto client = domain_->decomposition().client();
+
+        domain::Operator::domainClean<Target>(domain_);
 
         up_and_down<Source>();
 
@@ -1556,6 +1880,9 @@ class NewtonIteration
             clean_leaf_correction_boundary<Target>(l, true, 2);
             //clean_leaf_correction_boundary<Target>(l, false,4+stage_idx_);
         }
+
+        clean<Source>(true);
+        clean<Target>(true);
     }
 
     template<class Source, class Target>
@@ -1564,11 +1891,13 @@ class NewtonIteration
         //up_and_down<Source>();
         domain::Operator::domainClean<Target>(domain_);
 
+        up_and_down<Source>();
+
         for (int l = domain_->tree()->base_level();
              l < domain_->tree()->depth(); ++l)
         {
             auto client = domain_->decomposition().client();
-            //client->template buffer_exchange<Source>(l);
+            client->template buffer_exchange<Source>(l);
             const auto dx_base = domain_->dx_base();
             for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
             {
@@ -1588,6 +1917,9 @@ class NewtonIteration
             }
             client->template buffer_exchange<Target>(l);
         }
+
+        clean<Source>(true);
+        clean<Target>(true);
     }
 
     template<typename From, typename To>
@@ -1652,45 +1984,54 @@ class NewtonIteration
     }
 
     template<typename Field1, typename Field2>
-    float_type dotField() noexcept
+    float_type dotField(bool exclude_correction = true) noexcept
     {
         static_assert(Field1::nFields() == Field2::nFields(),
-            "number of fields doesn't match when copy");
+            "number of fields doesn't match when doing dot product");
+
+        float_type m = 0.0;
+
+        for (int l = domain_->tree()->base_level();
+             l < domain_->tree()->depth(); ++l)
+        {
+            auto client = domain_->decomposition().client();
+            //client->template buffer_exchange<Source>(l);
+            const auto dx_base = domain_->dx_base();
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
+                if (!it->is_leaf()) continue;
+                if (exclude_correction && it->is_correction()) continue;
+
+                float_type m_tmp =
+                    domain::Operator::blockDot<Field1, Field2>(it->data());
+                m += m_tmp;
+            }
+            //client->template buffer_exchange<Target>(l);
+        }
+
+        /*static_assert(Field1::nFields() == Field2::nFields(),
+            "number of fields doesn't match when doing dot product");
 
         float_type m = 0.0;
 
         for (auto it = domain_->begin(); it != domain_->end(); ++it)
         {
             if (!it->locally_owned() || !it->has_data()) continue;
+            if (exclude_correction && it->is_correction()) continue;
             float_type m_tmp =
                 domain::Operator::blockDot<Field1, Field2>(it->data());
             m += m_tmp;
         }
         //MPI Command to all_reduce and broadcast
-        boost::mpi::communicator world;
-        float_type               m_all;
-        boost::mpi::all_reduce(world, m, m_all, std::plus<float_type>());
+        //boost::mpi::communicator world;*/
+        float_type m_all=0.0;
+        boost::mpi::all_reduce(domain_->client_communicator(), m, m_all,
+            std::plus<float_type>());
         return m_all;
     }
 
-    template<class VecType>
-    float_type dotVec(VecType& a, VecType& b)
-    {
-        float_type s = 0;
-        for (std::size_t i=0; i<a.size(); ++i)
-        {
-            if (domain_->ib().rank(i)!=comm_.rank())
-                continue;
-
-            for (std::size_t d=0; d<a[0].size(); ++d)
-                s+=a[i][d]*b[i][d];
-        }
-
-        float_type s_global=0.0;
-        boost::mpi::all_reduce(domain_->client_communicator(), s,
-                s_global, std::plus<float_type>());
-        return s_global;
-    }
+    
 
     template<typename From, typename To>
     void copy_base_level_BC(float_type scale = 1.0) noexcept
@@ -1727,6 +2068,7 @@ class NewtonIteration
     float_type              Re_;
     float_type              cfl_max_, cfl_;
     float_type              cg_threshold_;
+    float_type              Newton_threshold_;
     std::vector<float_type> source_max_{0.0, 0.0};
 
     float_type T_last_vel_refresh_ = 0.0;
@@ -1740,6 +2082,7 @@ class NewtonIteration
     int restart_n_last_ = 0;
     int nLevelRefinement_;
     int stage_idx_ = 0;
+    int cg_max_itr_;
 
     bool use_restart_ = false;
     bool just_restarted_ = false;

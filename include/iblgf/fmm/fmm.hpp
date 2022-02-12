@@ -251,10 +251,30 @@ public:
                 //it->fmm_mask(fmm_mask_idx,MASK_LIST::Mask_FMM_Source, true);
                 it->fmm_mask(fmm_mask_idx, MASK_LIST::Mask_FMM_Source, false);
 
-            if (it->is_correction())
+            if (it->is_correction()) {
                 it->fmm_mask(fmm_mask_idx, MASK_LIST::Mask_FMM_Target, true);
-            else
+                /*for (int i = 0; i < it->num_neighbors();i++) {
+                    auto its = it->neighbor(i);
+                    if (!its || !its->has_data()) continue;
+                    its->fmm_mask(fmm_mask_idx, MASK_LIST::Mask_FMM_Target, true);
+                }*/
+            }
+            else {
+                /*bool flag = true;
+                for (int i = 0; i < it->num_neighbors();i++) {
+                    auto its = it->neighbor(i);
+                    if (!its || !its->has_data()) continue;
+                    if (its->is_correction()) {
+                        it->fmm_mask(fmm_mask_idx, MASK_LIST::Mask_FMM_Target, true);
+                        flag = false;
+                        break;
+                    }
+                }
+                if (flag) {
+                    it->fmm_mask(fmm_mask_idx, MASK_LIST::Mask_FMM_Target, false);
+                }*/
                 it->fmm_mask(fmm_mask_idx, MASK_LIST::Mask_FMM_Target, false);
+            }
         }
 
         fmm_upward_pass_masks(domain_, base_level, MASK_LIST::Mask_FMM_Source,

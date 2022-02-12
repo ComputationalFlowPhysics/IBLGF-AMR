@@ -63,24 +63,16 @@ struct parameters
     Dim,
      (
         //name               type        Dim   lBuffer  hBuffer, storage type
-         (error_nl_jac     , float_type, 2,    1,       1,     face,true  ),
-		 (error_nl_jac_T   , float_type, 2,    1,       1,     face,true  ),
-         //(error_p          , float_type, 1,    1,       1,     cell,false ),
+         //(error_u          , float_type, 2,    1,       1,     face,true  ),
+		 //(error_p          , float_type, 1,    1,       1,     cell,true  ),
          (test             , float_type, 1,    1,       1,     cell,false ),
         //IF-HERK
-         (u                , float_type, 2,    1,       1,     face,true  ),
-		 (u_s              , float_type, 2,    1,       1,     face,true  ),
-		 (u_p              , float_type, 2,    1,       1,     face,true  ),
-		 (nl_jac_exact     , float_type, 2,    1,       1,     face,true  ),
-		 (nl_jac_num       , float_type, 2,    1,       1,     face,true  ),
-		 (nl_jac_T_exact   , float_type, 2,    1,       1,     face,true  ),
-		 (nl_jac_T_num     , float_type, 2,    1,       1,     face,true  )//,
-         //(u_ref            , float_type, 2,    1,       1,     face,true  ),
-         //(p_ref            , float_type, 1,    1,       1,     cell,true  ),
-         //(p                , float_type, 1,    1,       1,     cell,true  )//,
-         //(w_num            , float_type, 1,    1,       1,     edge,false ),
-         //(w_exact          , float_type, 1,    1,       1,     edge,false ),
-         //(error_w          , float_type, 1,    1,       1,     edge,false )
+         (u_ref            , float_type, 2,    1,       1,     face,true  ),
+		 (u                , float_type, 2,    1,       1,     face,true  ),
+		 (p                , float_type, 1,    1,       1,     cell,true  ),
+		 (p_ref            , float_type, 1,    1,       1,     cell,true  )
+		 //(u_num            , float_type, 2,    1,       1,     face,true  ),
+		 //(p_num            , float_type, 1,    1,       1,     cell,true  )
     ))
     // clang-format on
 };
@@ -95,6 +87,13 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
     using milliseconds = std::chrono::milliseconds;
     using duration_type = typename clock_type::duration;
     using time_point_type = typename clock_type::time_point;
+
+	using simulation_type = typename super_type::simulation_t;
+	using domain_type = typename simulation_type::domain_type;
+	using ib_t = typename domain_type::ib_t;
+    using force_type = typename ib_t::force_type;
+
+	using real_coordinate_type = typename domain_type::real_coordinate_type;
 
 	NS_AMR_LGF(Dictionary* _d)
 		: super_type(_d, [this](auto _d, auto _domain) {
@@ -115,6 +114,8 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
 		smooth_start_ = simulation_.dictionary()->template get_or<bool>("smooth_start", false);
 
 		vortexType = simulation_.dictionary()->template get_or<int>("Vort_type", 0);
+
+		pert_mag = simulation_.dictionary()->template get_or<float_type>("pert_mag", 0.1);
 
 		simulation_.frame_vel() =
 			[this](std::size_t idx, float_type t, auto coord = {0, 0})
@@ -162,6 +163,9 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
 
 		ctr_dis_x = 0.0*dx_; //this is setup as the center of the vortex in the unit of grid spacing
 		ctr_dis_y = 0.0*dx_;
+
+
+		
 
 
 
@@ -222,9 +226,29 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
 		}
 
 		domain_->distribute<fmm_mask_builder_t, fmm_mask_builder_t>();
-		this->initialize();
-
 		boost::mpi::communicator world;
+		if (!use_restart()) { this->initialize(); }
+		else
+		{
+			if (world.rank() == 0)
+				std::cout << "reading u profile from data" << std::endl;
+			simulation_.template read_h5<u_type>(simulation_.restart_field_dir(), "u");
+			simulation_.template read_h5<p_type>(simulation_.restart_field_dir(), "p");
+
+			simulation_.template read_h5<du_i_type>(simulation_.restart_field_dir(), "u");
+			simulation_.template read_h5<dp_i_type>(simulation_.restart_field_dir(), "p");
+			//this->initialize(); 
+		}
+
+		real_coordinate_type tmp_coord(0.0);
+        forcing_tar.resize(domain_->ib().size());
+        std::fill(forcing_tar.begin(), forcing_tar.end(), tmp_coord);
+        forcing_num.resize(domain_->ib().size());
+        std::fill(forcing_num.begin(), forcing_num.end(), tmp_coord);
+		forcing_ref.resize(domain_->ib().size());
+        std::fill(forcing_ref.begin(), forcing_ref.end(), tmp_coord);
+
+		
 		if (world.rank() == 0)
 			std::cout << "on Simulation: \n" << simulation_ << std::endl;
 	}
@@ -235,27 +259,39 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
 
 		time_integration_t ifherk(&this->simulation_);
 
-		if (domain_->is_client()) {
-			ifherk.nonlinear_Jac_access<u_s_type, u_p_type, nl_jac_num_type>();
-			ifherk.nonlinear_Jac_T_access<u_s_type, u_p_type, nl_jac_T_num_type>();
-		}
+		//if (domain_->is_client()) {
+		mDuration_type ifherk_duration(0);
+		TIME_CODE(ifherk_duration, SINGLE_ARG(
+			ifherk.time_march(use_restart());
+		))
+			pcout_c << "Time to solution [ms] " << ifherk_duration.count() << std::endl;
 
-		float_type u1_inf = this->compute_errors<nl_jac_num_type, nl_jac_exact_type, error_nl_jac_type>(
-			std::string("nonlinear_jac_0_"), 0);
-		float_type u2_inf = this->compute_errors<nl_jac_num_type, nl_jac_exact_type, error_nl_jac_type>(
-			std::string("nonlinear_jac_1_"), 1);
+		ifherk.clean_leaf_correction_boundary<u_type>(domain_->tree()->base_level(), true, 1);
 
-		float_type u1_T_inf = this->compute_errors<nl_jac_T_num_type, nl_jac_T_exact_type, error_nl_jac_T_type>(
-			std::string("nonlinear_jac_T_0_"), 0);
-		float_type u2_T_inf = this->compute_errors<nl_jac_T_num_type, nl_jac_T_exact_type, error_nl_jac_T_type>(
-			std::string("nonlinear_jac_T_1_"), 1);
+		//}
+
+		
+
+		
+		/*if (world.rank() == 1)
+			std::cout << "L2 Error of forcing is " << std::sqrt(err_forcing) << std::endl;
+
+		float_type u1_inf = this->compute_errors<u_num_type, u_ref_type, error_u_type>(
+			std::string("u_0_"), 0);
+		float_type u2_inf = this->compute_errors<u_num_type, u_ref_type, error_u_type>(
+			std::string("u_1_"), 1);
+
+		float_type p_inf = this->compute_errors<p_num_type, p_ref_type, error_p_type>(
+			std::string("p_0_"), 0);*/
+		//float_type u2_T_inf = this->compute_errors<nl_jac_T_num_type, nl_jac_T_exact_type, error_nl_jac_T_type>(
+		//	std::string("nonlinear_jac_T_1_"), 1);
 
 		//float_type w_inf = this->compute_errors<edge_aux_type, w_exact_type, error_w_type>(std::string("w_"), 0);
 		//float_type u3_linf=this->compute_errors<u_type, u_ref_type, error_u_type>(
 		//        std::string("u3_"), 2);
 
 		simulation_.write("final.hdf5");
-		return u1_inf;
+		return 0;
 
 	}
 
@@ -396,29 +432,36 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
                 const auto tmpe1 = std::exp(-re1 * re1);
                 const auto tmpe2 = std::exp(-re2 * re2);
 
-				node(u_s, 0) = tmpf0*yf0;
-				node(u_s, 1) = tmpf1*xf1;
+				//node(u_ref, 0) = -tmpf0*yf0;
+				//node(u_ref, 1) = tmpf1*xf1;
 
-				node(u_p, 0) = tmpf0*cos(yf0);
-				node(u_p, 1) = tmpf1*cos(xf1);
+				int rand_val = rand();
 
-				
+				float_type v_1 = static_cast<float_type>(rand_val)/static_cast<float_type>(RAND_MAX) * pert_mag*2 - pert_mag;
+				rand_val = rand();
+				float_type v_2 = static_cast<float_type>(rand_val)/static_cast<float_type>(RAND_MAX) * pert_mag*2 - pert_mag;
+				rand_val = rand();
+				float_type v_3 = static_cast<float_type>(rand_val)/static_cast<float_type>(RAND_MAX) * pert_mag*2 - pert_mag;
 
-				node(nl_jac_exact, 0) = 4*tmpf0*tmpf0*xf0*xf0*cos(xf0) - 2*tmpf0*tmpf0*yf0*yf0*cos(xf0)
-				 - 2*tmpf0*tmpf0*xf0*yf0*cos(yf0) + tmpf0*tmpf0*xf0*sin(xf0) - tmpf0*tmpf0*xf0*sin(yf0);
+				node(u,0) = v_1;
+				node(u,1) = v_2;
+				node(p,0) = v_3;
 
-				//node(nl_jac_exact, 0) = 1.0;
+				//node(p_ref, 0) = tmpc;
 
-				node(nl_jac_exact, 1) = 4*tmpf1*tmpf1*yf1*yf1*cos(yf1) - 2*tmpf1*tmpf1*xf1*xf1*cos(yf1)
-				 - 2*tmpf1*tmpf1*xf1*yf1*cos(xf1) + tmpf1*tmpf1*yf1*sin(yf1) - tmpf1*tmpf1*yf1*sin(xf1);
+				//int rand_val = rand();
 
-				node(nl_jac_T_exact, 0) = 4*tmpf0*tmpf0*xf0*yf0*cos(yf0) - 2*tmpf0*tmpf0*xf0*xf0*cos(xf0)
-				 - 2*tmpf0*tmpf0*yf0*yf0*cos(xf0) + tmpf0*tmpf0*cos(xf0) + tmpf0*tmpf0*xf0*sin(yf0);
+				/*float_type v_1 = static_cast<float_type>(rand_val)/static_cast<float_type>(RAND_MAX) * pert_mag*2 - pert_mag;
 
-				//node(nl_jac_exact, 0) = 1.0;
+				rand_val = rand();
+				float_type v_2 = static_cast<float_type>(rand_val)/static_cast<float_type>(RAND_MAX) * pert_mag*2 - pert_mag;
 
-				node(nl_jac_T_exact, 1) = 4*tmpf1*tmpf1*xf1*yf1*cos(xf1) - 2*tmpf1*tmpf1*xf1*xf1*cos(yf1)
-				 - 2*tmpf1*tmpf1*yf1*yf1*cos(yf1) + tmpf1*tmpf1*yf1*sin(xf1) + tmpf1*tmpf1*cos(yf1);
+				rand_val = rand();
+				float_type v_3 = static_cast<float_type>(rand_val)/static_cast<float_type>(RAND_MAX) * pert_mag*2 - pert_mag;
+
+				node(u_num, 0) = node(u_ref,0) + v_1*tmpf0;
+				node(u_num, 1) = node(u_ref,1) + v_2*tmpf1;
+				node(p_num, 0) = tmpc + v_3*tmpc;*/
 			}
 
 		}
@@ -442,6 +485,11 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
     float_type source_max_;
     float_type vort_sep;
 
+
+	force_type forcing_tar;
+    force_type forcing_num;
+	force_type forcing_ref;
+
 	float_type ctr_dis_x = 0.0;
 	float_type ctr_dis_y = 0.0;
 
@@ -451,6 +499,8 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
     float_type c1=0;
     float_type c2=0;
     float_type eps_grad_=1.0e6;;
+
+	float_type pert_mag;
     int nLevelRefinement_=0;
     int hard_max_level_ = 0;
     int global_refinement_=0;

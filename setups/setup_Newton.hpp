@@ -61,7 +61,11 @@ class SetupNewton
       (fmm_t,               float_type,  1,  1,  1,  cell,false),
       //flow variables
       //(q_i,                 float_type,  Dim,  1,  1,  face,true),
-      (u_i,                 float_type,  Dim,  1,  1,  face,true),
+      //(u_i,                 float_type,  Dim,  1,  1,  face,true),
+      (du_i,                float_type,  Dim,  1,  1,  face,true),
+      (dp_i,                float_type,  1,  1,  1,  cell,true),
+      (fu_i,                float_type,  Dim,  1,  1,  face,true),
+      (fp_i,                float_type,  1,  1,  1,  cell,true),
       (g_i,                 float_type,  Dim,  1,  1,  face,true),
       (r_i,                 float_type,  Dim,  1,  1,  face,true),
       (cell_aux,            float_type,  1,  1,  1,  cell,true),
@@ -75,9 +79,9 @@ class SetupNewton
       (nonlinear_tmp,       float_type,  Dim,  1,  1,  face,true),
       (face_aux_tmp,        float_type,  Dim,  1,  1,  face,true),
       (laplacian_face,      float_type,  Dim,  1,  1,  face,true),
-      (R_1,                 float_type,  Dim,  1,  1,  face,true),
+      //(R_1,                 float_type,  Dim,  1,  1,  face,true),
       (nonlinear_tmp1,      float_type,  Dim,  1,  1,  face,true),
-      (d_i,                 float_type,  1,  1,  1,  cell,true),
+      //(d_i,                 float_type,  1,  1,  1,  cell,true),
       //(r_i_T,               float_type,  Dim,  1,  1,  face,true),
       //(cell_aux_T,          float_type,  1,  1,  1,  cell,true),
       //(u_i_T,               float_type,  Dim,  1,  1,  face,true),
@@ -90,6 +94,13 @@ class SetupNewton
       (conj_p_cell_aux,         float_type,  1,  1,  1,  cell,true),
       (conj_Ap_cell_aux,        float_type,  1,  1,  1,  cell,true),
       (conj_Ax_cell_aux,        float_type,  1,  1,  1,  cell,true),
+      //field needed if BCG_Stab
+      (conj_rh_face_aux,        float_type,  Dim,  1,  1,  face,true),
+      (conj_As_face_aux,         float_type,  Dim,  1,  1,  face,true),
+      (conj_s_face_aux,         float_type,  Dim,  1,  1,  face,true),
+      (conj_rh_cell_aux,        float_type,  1,  1,  1,  cell,true),
+      (conj_As_cell_aux,         float_type,  1,  1,  1,  cell,true),
+      (conj_s_cell_aux,         float_type,  1,  1,  1,  cell,true),
       //Tmp fields for the Conjugate gradient solve
       (r_i_tmp,             float_type,  Dim,  1,  1,  face,true),
       (cell_aux_tmp,        float_type,  1,  1,  1,  cell,true)

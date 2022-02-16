@@ -93,8 +93,14 @@ class NewtonIteration
     using r_i_tmp_type = typename Setup::r_i_tmp_type;
     using cell_aux_tmp_type = typename Setup::cell_aux_tmp_type;
 
+    // index fields
+    using idx_u_type = typename Setup::idx_u_type;
+    using idx_p_type = typename Setup::idx_p_type;
+    using idx_u_g_type = typename Setup::idx_u_g_type;
+    using idx_p_g_type = typename Setup::idx_p_g_type;
+
     //variable fields for conjugate gradient
-    using conj_r_face_aux_type = typename Setup::conj_r_face_aux_type;
+    /*using conj_r_face_aux_type = typename Setup::conj_r_face_aux_type;
     using conj_r_cell_aux_type = typename Setup::conj_r_cell_aux_type;
     using conj_p_face_aux_type = typename Setup::conj_p_face_aux_type;
     using conj_p_cell_aux_type = typename Setup::conj_p_cell_aux_type;
@@ -105,10 +111,10 @@ class NewtonIteration
     //needed for BCGStab
     using conj_rh_face_aux_type = typename Setup::conj_rh_face_aux_type;
     using conj_rh_cell_aux_type = typename Setup::conj_rh_cell_aux_type;
-    using conj_As_face_aux_type = typename Setup::conj_As_face_aux_type;
-    using conj_As_cell_aux_type = typename Setup::conj_As_cell_aux_type;
+    //using conj_As_face_aux_type = typename Setup::conj_As_face_aux_type;
+    //using conj_As_cell_aux_type = typename Setup::conj_As_cell_aux_type;
     using conj_s_face_aux_type = typename Setup::conj_s_face_aux_type;
-    using conj_s_cell_aux_type = typename Setup::conj_s_cell_aux_type;
+    using conj_s_cell_aux_type = typename Setup::conj_s_cell_aux_type;*/
 
     //fields for evaluating Jacobian
     using cell_aux_type = typename Setup::cell_aux_type;
@@ -184,6 +190,10 @@ class NewtonIteration
         std::fill(forcing_tmp.begin(), forcing_tmp.end(), tmp_coord);
         forcing_old.resize(domain_->ib().size());
         std::fill(forcing_old.begin(), forcing_old.end(), tmp_coord);
+        forcing_idx.resize(domain_->ib().size());
+        std::fill(forcing_idx.begin(), forcing_idx.end(), tmp_coord);
+        forcing_idx_g.resize(domain_->ib().size());
+        std::fill(forcing_idx_g.begin(), forcing_idx_g.end(), tmp_coord);
 
         // miscs -------------------------------------------------------------
     }
@@ -714,7 +724,7 @@ class NewtonIteration
         auto forcing_df = forcing_old;
         NewtonRHS<u_type, p_type, fu_i_type, fp_i_type>(forcing_old, forcing_tmp);
         //Solve_Jacobian<fu_i_type, fp_i_type, du_i_type, dp_i_type>(forcing_tmp, forcing_df);
-        BCG_Stab<fu_i_type, fp_i_type, du_i_type, dp_i_type>(forcing_tmp, forcing_df);
+        //BCG_Stab<fu_i_type, fp_i_type, du_i_type, dp_i_type>(forcing_tmp, forcing_df);
         //add<nonlinear_tmp1_type, R_1_type>();
         AddAll<du_i_type, dp_i_type, u_type, p_type>(forcing_df, forcing_old, -1.0);
 
@@ -845,7 +855,448 @@ class NewtonIteration
             }
     }
 
-    template<class Source_face, class Source_cell, class Target_face, class Target_cell>
+    void Assigning_idx() {
+        //currently only implemented for uniform grid with no LGF yet
+        boost::mpi::communicator world;
+        world.barrier();
+        int counter = 0;
+        if (world.rank() == 0) {
+            max_idx_from_prev_prc = 0;
+            counter = 0;
+            world.send(1, 0, counter);
+            return;
+        }
+
+        int base_level = domain_->tree()->base_level();
+        
+        
+        for (auto it = domain_->begin(base_level); it != domain_->end(base_level); ++it)
+        {
+            if (!it->locally_owned() || !it->has_data()) continue;
+            if (it->is_leaf() && !it->is_correction())
+            {
+                for (std::size_t field_idx = 0;
+                     field_idx < idx_u_type::nFields(); ++field_idx)
+                {
+                    for (auto& n : it->data())
+                    {
+                        counter++;
+                        n(idx_u_type::tag(), field_idx) =
+                            static_cast<float_type>(counter) + 0.5;
+                    }
+                }
+            }
+            else
+            {
+                for (std::size_t field_idx = 0;
+                     field_idx < idx_u_type::nFields(); ++field_idx)
+                {
+                    for (auto& n : it->data())
+                    {
+                        //counter++;
+                        n(idx_u_type::tag(), field_idx) = -1;
+                    }
+                }
+            }
+
+            //if (it->is_correction()) continue;
+        }
+        for (auto it = domain_->begin(base_level); it != domain_->end(base_level); ++it)
+        {
+            if (!it->locally_owned() || !it->has_data()) continue;
+            /*if (!it->is_leaf()) continue;
+            if (it->is_correction()) continue;
+            for (std::size_t field_idx = 0; field_idx < idx_p_type::nFields();
+                 ++field_idx)
+            {
+                for (auto& n : it->data()) {
+                    counter++;
+                    n(idx_p_type::tag(), field_idx) = static_cast<float_type>(counter) + 0.5;
+                }
+            }*/
+            if (it->is_leaf() && !it->is_correction())
+            {
+                for (std::size_t field_idx = 0;
+                     field_idx < idx_p_type::nFields(); ++field_idx)
+                {
+                    for (auto& n : it->data())
+                    {
+                        counter++;
+                        n(idx_p_type::tag(), field_idx) =
+                            static_cast<float_type>(counter) + 0.5;
+                    }
+                }
+            }
+            else
+            {
+                for (std::size_t field_idx = 0;
+                     field_idx < idx_p_type::nFields(); ++field_idx)
+                {
+                    for (auto& n : it->data())
+                    {
+                        //counter++;
+                        n(idx_p_type::tag(), field_idx) = -1;
+                    }
+                }
+            }
+        }
+        for (std::size_t i=0; i<forcing_idx.size(); ++i)
+        {
+            if (domain_->ib().rank(i)!=comm_.rank()) {
+                forcing_idx[i]=-1;
+                continue;
+            }
+
+            for (std::size_t d=0; d<forcing_idx[0].size(); ++d) {
+                counter++;
+                forcing_idx[i][d] = static_cast<float_type>(counter) + 0.5;
+            }
+        }
+        max_local_idx = counter;
+        domain_->client_communicator().barrier();
+        
+        if (world.rank() != 0)                  world.recv(world.rank()-1, world.rank() - 1, max_idx_from_prev_prc);
+        if (world.rank() != (world.size() - 1)) world.send(world.rank()+1, world.rank(), (counter + max_idx_from_prev_prc));
+        for (int i = 1; i < world.size();i++) {
+            if (world.rank() == i) std::cout << "rank " << world.rank() << " counter + max idx is " << (counter + max_idx_from_prev_prc) << " max idx from prev prc " << max_idx_from_prev_prc << std::endl;
+            domain_->client_communicator().barrier();
+        }
+
+        //Also get global idx
+        for (auto it = domain_->begin(base_level); it != domain_->end(base_level); ++it)
+        {
+            if (!it->locally_owned() || !it->has_data()) continue;
+            if (it->is_leaf() && !it->is_correction())
+            {
+                for (std::size_t field_idx = 0;
+                     field_idx < idx_u_g_type::nFields(); ++field_idx)
+                {
+                    for (auto& n : it->data())
+                    {
+                        n(idx_u_g_type::tag(), field_idx) = n(idx_u_type::tag(), field_idx)+max_idx_from_prev_prc;
+                    }
+                }
+            }
+            else
+            {
+                for (std::size_t field_idx = 0;
+                     field_idx < idx_u_g_type::nFields(); ++field_idx)
+                {
+                    for (auto& n : it->data())
+                    {
+                        //counter++;
+                        n(idx_u_g_type::tag(), field_idx) = -1;
+                    }
+                }
+            }
+
+            //if (it->is_correction()) continue;
+        }
+        for (auto it = domain_->begin(base_level); it != domain_->end(base_level); ++it)
+        {
+            if (!it->locally_owned() || !it->has_data()) continue;
+            if (it->is_leaf() && !it->is_correction())
+            {
+                for (std::size_t field_idx = 0;
+                     field_idx < idx_p_g_type::nFields(); ++field_idx)
+                {
+                    for (auto& n : it->data())
+                    {
+                        n(idx_p_g_type::tag(), field_idx) = n(idx_p_type::tag(), field_idx)+max_idx_from_prev_prc;
+                    }
+                }
+            }
+            else
+            {
+                for (std::size_t field_idx = 0;
+                     field_idx < idx_p_g_type::nFields(); ++field_idx)
+                {
+                    for (auto& n : it->data())
+                    {
+                        //counter++;
+                        n(idx_p_g_type::tag(), field_idx) = -1;
+                    }
+                }
+            }
+        }
+        for (std::size_t i=0; i<forcing_idx_g.size(); ++i)
+        {
+            if (domain_->ib().rank(i)!=comm_.rank()) {
+                forcing_idx_g[i]=-1;
+                continue;
+            }
+
+            for (std::size_t d=0; d<forcing_idx_g[0].size(); ++d) {
+                counter++;
+                forcing_idx_g[i][d] = forcing_idx[i][d] + max_idx_from_prev_prc;
+            }
+        }
+        domain_->client_communicator().barrier();
+    }
+
+    void constructing_laplacian() {
+        boost::mpi::communicator world;
+        world.barrier();
+
+        if (world.rank() == 0) {
+            return;
+        }
+
+        
+        
+        if (max_local_idx == 0) {
+            std::cout << "idx not initialized, please call Assigning_idx()" << std::endl;
+        }
+
+        const auto dx_base = domain_->dx_base();
+
+        mat.resizing_row(max_local_idx+1);
+
+        int base_level = domain_->tree()->base_level();
+        if (domain_->is_client())
+        {
+            auto client = domain_->decomposition().client();
+
+            client->template buffer_exchange<idx_u_type>(base_level);
+            client->template buffer_exchange<idx_u_g_type>(base_level);
+        }
+        for (auto it = domain_->begin(base_level); it != domain_->end(base_level); ++it)
+        {
+            if (!it->locally_owned() || !it->has_data()) continue;
+            if (!it->is_leaf()) continue;
+            if (it->is_correction()) continue;
+            for (std::size_t field_idx = 0; field_idx < idx_u_type::nFields();
+                 ++field_idx)
+            {
+                for (auto& n : it->data()) {
+                    int cur_idx = n(idx_u_type::tag(), field_idx);
+                    int glo_idx = n(idx_u_g_type::tag(), field_idx);
+                    mat.add_element(cur_idx, glo_idx, -4.0/dx_base/dx_base);
+                    glo_idx = n.at_offset(idx_u_g_type::tag(), 0, 1, field_idx);
+                    mat.add_element(cur_idx, glo_idx, 1.0/dx_base/dx_base);
+                    glo_idx = n.at_offset(idx_u_g_type::tag(), 1, 0, field_idx);
+                    mat.add_element(cur_idx, glo_idx, 1.0/dx_base/dx_base);
+                    glo_idx = n.at_offset(idx_u_g_type::tag(), 0, -1, field_idx);
+                    mat.add_element(cur_idx, glo_idx, 1.0/dx_base/dx_base);
+                    glo_idx = n.at_offset(idx_u_g_type::tag(), -1, 0, field_idx);
+                    mat.add_element(cur_idx, glo_idx, 1.0/dx_base/dx_base);
+                }
+            }
+        }
+        if (domain_->is_client())
+        {
+            auto client = domain_->decomposition().client();
+
+            client->template buffer_exchange<idx_p_type>(base_level);
+            client->template buffer_exchange<idx_p_g_type>(base_level);
+        }
+        for (auto it = domain_->begin(base_level); it != domain_->end(base_level); ++it)
+        {
+            if (!it->locally_owned() || !it->has_data()) continue;
+            if (!it->is_leaf()) continue;
+            if (it->is_correction()) continue;
+            for (std::size_t field_idx = 0; field_idx < idx_p_type::nFields();
+                 ++field_idx)
+            {
+                for (auto& n : it->data()) {
+                    int cur_idx = n(idx_p_type::tag(), field_idx);
+                    int glo_idx = n(idx_p_g_type::tag(), field_idx);
+                    mat.add_element(cur_idx, glo_idx, -4.0/dx_base/dx_base);
+                    glo_idx = n.at_offset(idx_p_g_type::tag(), 0, 1, field_idx);
+                    mat.add_element(cur_idx, glo_idx, 1.0/dx_base/dx_base);
+                    glo_idx = n.at_offset(idx_p_g_type::tag(), 1, 0, field_idx);
+                    mat.add_element(cur_idx, glo_idx, 1.0/dx_base/dx_base);
+                    glo_idx = n.at_offset(idx_p_g_type::tag(), 0, -1, field_idx);
+                    mat.add_element(cur_idx, glo_idx, 1.0/dx_base/dx_base);
+                    glo_idx = n.at_offset(idx_p_g_type::tag(), -1, 0, field_idx);
+                    mat.add_element(cur_idx, glo_idx, 1.0/dx_base/dx_base);
+                }
+            }
+        }
+        /*for (std::size_t i=0; i<forcing_idx.size(); ++i)
+        {
+            if (domain_->ib().rank(i)!=comm_.rank()) {
+                forcing_idx[i]=-1;
+                continue;
+            }
+
+            for (std::size_t d=0; d<forcing_idx[0].size(); ++d) {
+                counter++;
+                forcing_idx[i][d] = static_cast<float_type>(counter) + 0.5;
+            }
+        }*/
+        domain_->client_communicator().barrier();
+    }
+
+    template<class Face, class Cell, class val_type>
+    void Grid2CSR(val_type* b) {
+        boost::mpi::communicator world;
+
+        if (world.rank() == 0) {
+            return;
+        }
+
+        domain_->client_communicator().barrier();
+
+        
+        
+        if (max_local_idx == 0) {
+            std::cout << "idx not initialized, please call Assigning_idx()" << std::endl;
+        }
+
+        //mat.resizing_row(max_local_idx+1);
+
+        int base_level = domain_->tree()->base_level();
+        if (domain_->is_client())
+        {
+            auto client = domain_->decomposition().client();
+
+            client->template buffer_exchange<idx_u_type>(base_level);
+        }
+        for (auto it = domain_->begin(base_level); it != domain_->end(base_level); ++it)
+        {
+            if (!it->locally_owned() || !it->has_data()) continue;
+            if (!it->is_leaf()) continue;
+            if (it->is_correction()) continue;
+            for (std::size_t field_idx = 0; field_idx < idx_u_type::nFields();
+                 ++field_idx)
+            {
+                for (auto& n : it->data()) {
+                    int cur_idx = n(idx_u_type::tag(), field_idx);
+                    b[cur_idx - 1] = n(Face::tag(), field_idx);
+                }
+            }
+        }
+        if (domain_->is_client())
+        {
+            auto client = domain_->decomposition().client();
+
+            client->template buffer_exchange<idx_p_type>(base_level);
+        }
+        for (auto it = domain_->begin(base_level); it != domain_->end(base_level); ++it)
+        {
+            if (!it->locally_owned() || !it->has_data()) continue;
+            if (!it->is_leaf()) continue;
+            if (it->is_correction()) continue;
+            for (std::size_t field_idx = 0; field_idx < idx_p_type::nFields();
+                 ++field_idx)
+            {
+                for (auto& n : it->data()) {
+                    int cur_idx = n(idx_p_type::tag(), field_idx);
+                    b[cur_idx - 1] = n(Cell::tag(), field_idx);
+                }
+            }
+        }
+        /*for (std::size_t i=0; i<forcing_idx.size(); ++i)
+        {
+            if (domain_->ib().rank(i)!=comm_.rank()) {
+                forcing_idx[i]=-1;
+                continue;
+            }
+
+            for (std::size_t d=0; d<forcing_idx[0].size(); ++d) {
+                counter++;
+                forcing_idx[i][d] = static_cast<float_type>(counter) + 0.5;
+            }
+        }*/
+        domain_->client_communicator().barrier();
+    }
+
+    template<class Face, class Cell, class val_type>
+    void CSR2Grid(val_type* b) {
+        boost::mpi::communicator world;
+
+        if (world.rank() == 0) {
+            return;
+        }
+
+        domain_->client_communicator().barrier();
+
+        
+        
+        if (max_local_idx == 0) {
+            std::cout << "idx not initialized, please call Assigning_idx()" << std::endl;
+        }
+
+        //mat.resizing_row(max_local_idx+1);
+
+        int base_level = domain_->tree()->base_level();
+        if (domain_->is_client())
+        {
+            auto client = domain_->decomposition().client();
+
+            client->template buffer_exchange<idx_u_type>(base_level);
+        }
+        for (auto it = domain_->begin(base_level); it != domain_->end(base_level); ++it)
+        {
+            if (!it->locally_owned() || !it->has_data()) continue;
+            if (!it->is_leaf()) continue;
+            if (it->is_correction()) continue;
+            for (std::size_t field_idx = 0; field_idx < idx_u_type::nFields();
+                 ++field_idx)
+            {
+                for (auto& n : it->data()) {
+                    int cur_idx = n(idx_u_type::tag(), field_idx);
+                    n(Face::tag(), field_idx) = b[cur_idx-1];
+                }
+            }
+        }
+        if (domain_->is_client())
+        {
+            auto client = domain_->decomposition().client();
+
+            client->template buffer_exchange<idx_p_type>(base_level);
+        }
+        for (auto it = domain_->begin(base_level); it != domain_->end(base_level); ++it)
+        {
+            if (!it->locally_owned() || !it->has_data()) continue;
+            if (!it->is_leaf()) continue;
+            if (it->is_correction()) continue;
+            for (std::size_t field_idx = 0; field_idx < idx_p_type::nFields();
+                 ++field_idx)
+            {
+                for (auto& n : it->data()) {
+                    int cur_idx = n(idx_p_type::tag(), field_idx);
+                    n(Cell::tag(), field_idx) = b[cur_idx-1];
+                }
+            }
+        }
+        /*for (std::size_t i=0; i<forcing_idx.size(); ++i)
+        {
+            if (domain_->ib().rank(i)!=comm_.rank()) {
+                forcing_idx[i]=-1;
+                continue;
+            }
+
+            for (std::size_t d=0; d<forcing_idx[0].size(); ++d) {
+                counter++;
+                forcing_idx[i][d] = static_cast<float_type>(counter) + 0.5;
+            }
+        }*/
+        domain_->client_communicator().barrier();
+    }
+
+    void printing_mat(int n, int rank = 1) {
+        boost::mpi::communicator world;
+
+        if (world.rank() == rank) mat.print_row(n);
+    }
+
+    int num_start() {
+        return max_idx_from_prev_prc+1;
+    }
+    int num_end() {
+        return max_local_idx + max_idx_from_prev_prc;
+    }
+    int total_dim() {
+        boost::mpi::communicator world;
+        int tot_dim_tmp = max_local_idx + max_idx_from_prev_prc;
+        boost::mpi::broadcast(world, tot_dim_tmp, (world.size()-1));
+        return tot_dim_tmp;
+        
+    }
+
+    /*template<class Source_face, class Source_cell, class Target_face, class Target_cell>
     void Solve_Jacobian(force_type& force_source, force_type& force_target) noexcept
     {
 
@@ -950,10 +1401,10 @@ class NewtonIteration
             AddAll<conj_r_face_aux_type, conj_r_cell_aux_type, conj_p_face_aux_type, conj_p_cell_aux_type>(r_force, p_force, 1.0, rsnew/rsold);
             rsold = rsnew;
         }
-    }
+    }*/
 
 
-    template<class Source_face, class Source_cell, class Target_face, class Target_cell>
+    /*template<class Source_face, class Source_cell, class Target_face, class Target_cell>
     void BCG_Stab(force_type& force_source, force_type& force_target) noexcept
     {
 
@@ -981,8 +1432,8 @@ class NewtonIteration
         clean<conj_p_face_aux_type>();
         clean<conj_rh_cell_aux_type>();
         clean<conj_rh_face_aux_type>();
-        clean<conj_As_cell_aux_type>();
-        clean<conj_As_face_aux_type>();
+        //clean<conj_As_cell_aux_type>();
+        //clean<conj_As_face_aux_type>();
         clean<conj_s_cell_aux_type>();
         clean<conj_s_face_aux_type>();
         force_type Ax_force(domain_->ib().size(), tmp);
@@ -990,7 +1441,7 @@ class NewtonIteration
         force_type r_force(domain_->ib().size(), tmp);
         force_type p_force(domain_->ib().size(), tmp);
         force_type rh_force(domain_->ib().size(), tmp);
-        force_type As_force(domain_->ib().size(), tmp);
+        //force_type As_force(domain_->ib().size(), tmp);
         force_type s_force(domain_->ib().size(), tmp);
 
         //Compute the actual source term
@@ -1066,9 +1517,9 @@ class NewtonIteration
             s_force = r_force;
             //add(s, v, 1.0, -alpha);
             AddAll<conj_Ap_face_aux_type, conj_Ap_cell_aux_type, conj_s_face_aux_type, conj_s_cell_aux_type>(Ap_force, s_force, -alpha);
-            this->template Jacobian<conj_s_face_aux_type, conj_s_cell_aux_type, conj_As_face_aux_type, conj_As_cell_aux_type>(s_force, As_force);
-            float_type As_s = this->template dotAll<conj_As_face_aux_type, conj_As_cell_aux_type, conj_s_face_aux_type, conj_s_cell_aux_type>(As_force, s_force);
-            float_type As_As = this->template dotAll<conj_As_face_aux_type, conj_As_cell_aux_type, conj_As_face_aux_type, conj_As_cell_aux_type>(As_force, As_force);
+            this->template Jacobian<conj_s_face_aux_type, conj_s_cell_aux_type, conj_Ax_face_aux_type, conj_Ax_cell_aux_type>(s_force, Ax_force);
+            float_type As_s = this->template dotAll<conj_Ax_face_aux_type, conj_Ax_cell_aux_type, conj_s_face_aux_type, conj_s_cell_aux_type>(Ax_force, s_force);
+            float_type As_As = this->template dotAll<conj_Ax_face_aux_type, conj_Ax_cell_aux_type, conj_Ax_face_aux_type, conj_Ax_cell_aux_type>(Ax_force, Ax_force);
             w = As_s/As_As;
             //add(f, s, 1.0, w);
             AddAll<conj_s_face_aux_type, conj_s_cell_aux_type, Target_face, Target_cell>(s_force, force_target, w);
@@ -1077,7 +1528,7 @@ class NewtonIteration
             copy<conj_s_face_aux_type, conj_r_face_aux_type>();
             r_force = s_force;
             //add(r, As, 1.0, -w);
-            AddAll<conj_As_face_aux_type, conj_As_cell_aux_type, conj_r_face_aux_type, conj_r_cell_aux_type>(As_force, r_force, -w);
+            AddAll<conj_Ax_face_aux_type, conj_Ax_cell_aux_type, conj_r_face_aux_type, conj_r_cell_aux_type>(Ax_force, r_force, -w);
 
             float_type rsnew = this->template dotAll<conj_r_face_aux_type, conj_r_cell_aux_type, conj_r_face_aux_type, conj_r_cell_aux_type>(r_force, r_force);
             float_type f2 = this->template dotAll<Target_face, Target_cell, Target_face, Target_cell>(force_target, force_target);
@@ -1091,15 +1542,15 @@ class NewtonIteration
                     Error[i] = uc[i] - Ax[i];
             }
             float_type errorMag = dot(Error, Error);*/
-            if (comm_.rank()==1)
-                std::cout<< "BCGstab residue square = "<< rsnew/f2/*<< " Error is " << errorMag*/ << std::endl;
+            /*if (comm_.rank()==1)
+                std::cout<< "BCGstab residue square = "<< rsnew/f2/*<< " Error is " << errorMag*//* << std::endl;
             if (sqrt(rsnew/f2)<cg_threshold_)
                 break;
 
             // p = r + (rsnew / rsold) * p;
             rho_old = rho;
         }
-    }
+    }*/
 
     template<class Source_face, class Source_cell, class Target_face, class Target_cell>
     void ATA(force_type& force_source, force_type& force_target) noexcept
@@ -2056,6 +2507,123 @@ class NewtonIteration
     }
 
   private:
+    class sparse_mat
+    {
+      public:
+        sparse_mat() = default;
+        void resizing_row(int n) { mat.resize(n); }
+        void add_element(int n, int m, float_type val) {
+            if (m < 0) return;
+            auto it = mat[n].find(m);
+            if (it == mat[n].end()) {
+                mat[n][m] = val;
+            }
+            else {
+                it->second += val;
+            }   
+        }
+
+        sparse_mat operator+(const sparse_mat& b) {
+            if (this->mat.size() != b.mat.size()) {
+                std::cout << "sparse matrix does not have the same dim, cannot add" << std::endl;
+                return NULL;
+            }
+            sparse_mat res;
+            res.mat(this->mat.size());
+            for (int i = 1; i < mat.size();i++) {
+                for (const auto& [key, val] : this->mat[i])
+                {
+                    res.mat[i][key] = val;
+                }
+                for (const auto& [key, val] : b.mat[i])
+                {
+                    res.add_element(i, key, val);
+                }
+            }
+            return res;
+        }
+
+        void add_vec(const sparse_mat& b) {
+            if (this->mat.size() != b.mat.size()) {
+                std::cout << "sparse matrix does not have the same dim, cannot in place add" << std::endl;
+                return;
+            }
+            for (int i = 1; i < mat.size();i++) {
+                for (const auto& [key, val] : b.mat[i])
+                {
+                    this->add_element(i, key, val);
+                }
+            }
+        }
+
+        void print_row(int n)
+        {
+            for (const auto& [key, val] : this->mat[n])
+            {
+                //int idx1 = std::get<0>(key1);
+                std::cout << n << " " << key << " " << val << " || ";
+            }
+            std::cout << std::endl;
+        }
+
+        //get the number of element to reserve space for CSR format
+        int tot_size(bool include_zero=false) {
+            //should not include zero but the result should be the same, this is only for debugging
+            int res = 0;
+            int begin_num = 1;
+            if (include_zero) {
+                begin_num = 0;
+            }
+            for (int i = begin_num; i < mat.size(); i++) {
+                res+=mat[i].size();
+            }
+            return res;
+        }
+        template<class int_type, class value_type>
+        void getCSR(int_type* ia, int_type* ja, value_type* a)
+        {
+            int counter = 0;
+            for (int i = 1; i < mat.size(); i++)
+            {
+                ia[i-1] = counter+1;
+                for (const auto& [key, val] : mat[i])
+                {
+                    //int idx1 = std::get<0>(key1);
+                    //std::cout << n << " " << key << " " << val << " || ";
+                    if (key < 0) {
+                        std::cout << "Negative key" << std::endl;
+                    }
+                    ja[counter] = key;
+                    a[counter] = val;
+                    counter++;
+                }
+            }
+            ia[mat.size()-1] = counter+1;
+        }
+
+        int numRow_loc(){
+            return mat.size()-1;
+        }
+
+      public:
+        std::vector<std::map<int, float_type>> mat;
+    };
+
+  public:
+    //for testing
+    sparse_mat mat;
+
+    //for constructing sparse matrix
+    sparse_mat L; //upper left matrix laplacian
+    sparse_mat LN; //linearized convective term
+    sparse_mat Div; //Divergence
+    sparse_mat Grad; //Gradient
+    sparse_mat project; //ib projection
+    sparse_mat smearing; //ib smearing
+
+  private:
+    
+
     simulation_type* simulation_;
     domain_type*     domain_; ///< domain
     poisson_solver_t psolver;
@@ -2092,12 +2660,19 @@ class NewtonIteration
     int  restart_base_freq_;
     int  adapt_count_;
 
+    //variables for indexing for constructing matrix
+    int max_idx_from_prev_prc = 0;
+    int max_local_idx = 0;
+    
+
     std::string                fname_prefix_;
     vector_type<float_type, 6> a_{{1.0 / 3, -1.0, 2.0, 0.0, 0.75, 0.25}};
     vector_type<float_type, 4> c_{{0.0, 1.0 / 3, 1.0, 1.0}};
 
     force_type forcing_tmp;
     force_type forcing_old;
+    force_type forcing_idx;
+    force_type forcing_idx_g;
     //vector_type<float_type, 6>        a_{{1.0 / 2, sqrt(3)/3, (3-sqrt(3))/3, (3+sqrt(3))/6, -sqrt(3)/3, (3+sqrt(3))/6}};
     //vector_type<float_type, 4>        c_{{0.0, 0.5, 1.0, 1.0}};
     vector_type<float_type, 3>        alpha_{{0.0, 0.0, 0.0}};

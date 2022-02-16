@@ -81,12 +81,16 @@ class SetupNewton
       (laplacian_face,      float_type,  Dim,  1,  1,  face,true),
       //(R_1,                 float_type,  Dim,  1,  1,  face,true),
       (nonlinear_tmp1,      float_type,  Dim,  1,  1,  face,true),
+      (idx_u,               float_type,  Dim,  1,   1, face,true),
+      (idx_p,               float_type,  1,  1,   1, cell,true),
+      (idx_u_g,             float_type,  Dim,  1,   1, face,true),
+      (idx_p_g,             float_type,  1,  1,   1, cell,true),  //global index across all processors
       //(d_i,                 float_type,  1,  1,  1,  cell,true),
       //(r_i_T,               float_type,  Dim,  1,  1,  face,true),
       //(cell_aux_T,          float_type,  1,  1,  1,  cell,true),
       //(u_i_T,               float_type,  Dim,  1,  1,  face,true),
       //Fields for conjugate gradient
-      (conj_r_face_aux,         float_type,  Dim,  1,  1,  face,true),
+      /*(conj_r_face_aux,         float_type,  Dim,  1,  1,  face,true),
       (conj_p_face_aux,         float_type,  Dim,  1,  1,  face,true),
       (conj_Ap_face_aux,        float_type,  Dim,  1,  1,  face,true),
       (conj_Ax_face_aux,        float_type,  Dim,  1,  1,  face,true),
@@ -96,11 +100,11 @@ class SetupNewton
       (conj_Ax_cell_aux,        float_type,  1,  1,  1,  cell,true),
       //field needed if BCG_Stab
       (conj_rh_face_aux,        float_type,  Dim,  1,  1,  face,true),
-      (conj_As_face_aux,         float_type,  Dim,  1,  1,  face,true),
+      //(conj_As_face_aux,         float_type,  Dim,  1,  1,  face,true),
       (conj_s_face_aux,         float_type,  Dim,  1,  1,  face,true),
       (conj_rh_cell_aux,        float_type,  1,  1,  1,  cell,true),
-      (conj_As_cell_aux,         float_type,  1,  1,  1,  cell,true),
-      (conj_s_cell_aux,         float_type,  1,  1,  1,  cell,true),
+      //(conj_As_cell_aux,         float_type,  1,  1,  1,  cell,true),
+      (conj_s_cell_aux,         float_type,  1,  1,  1,  cell,true),*/
       //Tmp fields for the Conjugate gradient solve
       (r_i_tmp,             float_type,  Dim,  1,  1,  face,true),
       (cell_aux_tmp,        float_type,  1,  1,  1,  cell,true)

@@ -25,6 +25,7 @@
 #include "/home/root/intel-oneAPI/oneAPI/mkl/latest/include/mkl.h"
 #include "/home/root/intel-oneAPI/oneAPI/mkl/latest/include/mkl_cluster_sparse_solver.h"
 
+//need those defined so that xTensor does not load its own CBLAS and resulting in conflicts
 #define CXXBLAS_DRIVERS_MKLBLAS_H
 #define CXXBLAS_DRIVERS_CBLAS_H
 #define CXXLAPACK_CXXLAPACK_CXX

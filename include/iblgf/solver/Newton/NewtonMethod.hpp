@@ -1130,6 +1130,11 @@ class NewtonIteration
 
     template<class Face, class Cell, class val_type>
     void Grid2CSR(val_type* b) {
+        Grid2CSR<Face, Cell>(b, this->forcing_tmp);
+    }
+
+    template<class Face, class Cell, class val_type>
+    void Grid2CSR(val_type* b, force_type& forcing_vec) {
         boost::mpi::communicator world;
 
         if (world.rank() == 0) {
@@ -1187,23 +1192,27 @@ class NewtonIteration
                 }
             }
         }
-        /*for (std::size_t i=0; i<forcing_idx.size(); ++i)
+        for (std::size_t i=0; i<forcing_idx.size(); ++i)
         {
             if (domain_->ib().rank(i)!=comm_.rank()) {
-                forcing_idx[i]=-1;
                 continue;
             }
 
             for (std::size_t d=0; d<forcing_idx[0].size(); ++d) {
-                counter++;
-                forcing_idx[i][d] = static_cast<float_type>(counter) + 0.5;
+                int cur_idx = forcing_idx[i][d];
+                b[cur_idx - 1] = forcing_vec[i][d];
             }
-        }*/
+        }
         domain_->client_communicator().barrier();
     }
 
     template<class Face, class Cell, class val_type>
     void CSR2Grid(val_type* b) {
+        CSR2Grid<Face, Cell>(b, this->forcing_tmp);
+    }
+
+    template<class Face, class Cell, class val_type>
+    void CSR2Grid(val_type* b, force_type& forcing_vec) {
         boost::mpi::communicator world;
 
         if (world.rank() == 0) {
@@ -1273,6 +1282,17 @@ class NewtonIteration
                 forcing_idx[i][d] = static_cast<float_type>(counter) + 0.5;
             }
         }*/
+        for (std::size_t i=0; i<forcing_idx.size(); ++i)
+        {
+            if (domain_->ib().rank(i)!=comm_.rank()) {
+                continue;
+            }
+
+            for (std::size_t d=0; d<forcing_idx[0].size(); ++d) {
+                int cur_idx = forcing_idx[i][d];
+                forcing_vec[i][d] = b[cur_idx - 1];
+            }
+        }
         domain_->client_communicator().barrier();
     }
 
@@ -1294,6 +1314,454 @@ class NewtonIteration
         boost::mpi::broadcast(world, tot_dim_tmp, (world.size()-1));
         return tot_dim_tmp;
         
+    }
+
+
+    void construction_laplacian_u() {
+        //construction of laplacian for u during stability, resolvent, and Newton iteration
+        boost::mpi::communicator world;
+        world.barrier();
+
+        if (world.rank() == 0) {
+            return;
+        }
+       
+        if (max_local_idx == 0) {
+            std::cout << "idx not initialized, please call Assigning_idx()" << std::endl;
+        }
+
+        const auto dx_base = domain_->dx_base();
+
+        L.resizing_row(max_local_idx+1);
+
+        int base_level = domain_->tree()->base_level();
+        if (domain_->is_client())
+        {
+            auto client = domain_->decomposition().client();
+
+            client->template buffer_exchange<idx_u_type>(base_level);
+            client->template buffer_exchange<idx_u_g_type>(base_level);
+        }
+        for (auto it = domain_->begin(base_level); it != domain_->end(base_level); ++it)
+        {
+            if (!it->locally_owned() || !it->has_data()) continue;
+            if (!it->is_leaf()) continue;
+            if (it->is_correction()) continue;
+            for (std::size_t field_idx = 0; field_idx < idx_u_type::nFields();
+                 ++field_idx)
+            {
+                for (auto& n : it->data()) {
+                    int cur_idx = n(idx_u_type::tag(), field_idx);
+                    int glo_idx = n(idx_u_g_type::tag(), field_idx);
+                    L.add_element(cur_idx, glo_idx, -4.0/dx_base/dx_base);
+                    glo_idx = n.at_offset(idx_u_g_type::tag(), 0, 1, field_idx);
+                    L.add_element(cur_idx, glo_idx, 1.0/dx_base/dx_base);
+                    glo_idx = n.at_offset(idx_u_g_type::tag(), 1, 0, field_idx);
+                    L.add_element(cur_idx, glo_idx, 1.0/dx_base/dx_base);
+                    glo_idx = n.at_offset(idx_u_g_type::tag(), 0, -1, field_idx);
+                    L.add_element(cur_idx, glo_idx, 1.0/dx_base/dx_base);
+                    glo_idx = n.at_offset(idx_u_g_type::tag(), -1, 0, field_idx);
+                    L.add_element(cur_idx, glo_idx, 1.0/dx_base/dx_base);
+                }
+            }
+        }
+        domain_->client_communicator().barrier();
+    }
+
+    template<typename U_old>
+    void construction_DN_u() {
+        boost::mpi::communicator world;
+        world.barrier();
+
+        if (world.rank() == 0) {
+            return;
+        }
+       
+        if (max_local_idx == 0) {
+            std::cout << "idx not initialized, please call Assigning_idx()" << std::endl;
+        }
+
+        const auto dx_base = domain_->dx_base();
+
+        DN.resizing_row(max_local_idx+1);
+
+        int base_level = domain_->tree()->base_level();
+        if (domain_->is_client())
+        {
+            auto client = domain_->decomposition().client();
+
+            client->template buffer_exchange<idx_u_type>(base_level);
+            client->template buffer_exchange<idx_u_g_type>(base_level);
+            client->template buffer_exchange<U_old>(base_level);
+            clean<edge_aux_type>();
+        }
+        for (auto it = domain_->begin(base_level); it != domain_->end(base_level); ++it)
+        {
+            if (!it->locally_owned() || !it->has_data()) continue;
+            if (!it->is_leaf()) continue;
+            if (it->is_correction()) continue;
+
+            for (auto& n : it->data())
+            {
+                int cur_idx_0 = n(idx_u_type::tag(), 0);
+                int cur_idx_1 = n(idx_u_type::tag(), 1);
+
+                int glob_idx_0 = n(idx_u_g_type::tag(), 0);
+                int glob_idx_1 = n(idx_u_g_type::tag(), 1);
+
+                int glob_idx_0_1 = n.at_offset(idx_u_g_type::tag(), 0, -1, 0);
+                int glob_idx_0_2 = n.at_offset(idx_u_g_type::tag(), 0,  1, 0);
+                int glob_idx_0_3 = n.at_offset(idx_u_g_type::tag(), 1,  0, 0);
+                int glob_idx_0_4 = n.at_offset(idx_u_g_type::tag(), 1, -1, 0);
+
+                int glob_idx_1_1 = n.at_offset(idx_u_g_type::tag(), -1, 0, 1);
+                int glob_idx_1_2 = n.at_offset(idx_u_g_type::tag(),  0, 1, 1);
+                int glob_idx_1_3 = n.at_offset(idx_u_g_type::tag(), -1, 1, 1);
+                int glob_idx_1_4 = n.at_offset(idx_u_g_type::tag(),  1, 0, 1);
+
+                /*float_type v_s_00 = n(U_old::tag, 1);
+                float_type v_s_10 = n.at_offset(U_old::tag, -1, 0, 1);
+                float_type v_s_01 = n.at_offset(U_old::tag,  0, 1, 1);
+                float_type v_s_11 = n.at_offset(U_old::tag, -1, 1, 1);
+
+                float_type u_s_00 = n(U_old::tag, 0);
+                float_type u_s_01 = n.at_offset(U_old::tag, 0, -1, 0);
+                float_type u_s_10 = n.at_offset(U_old::tag, 1,  0, 0);
+                float_type u_s_11 = n.at_offset(U_old::tag, 1, -1, 0);*/
+
+                float_type v_s_0010 = -(n(U_old::tag, 1)                   + n.at_offset(U_old::tag, -1, 0, 1))*0.25;
+                float_type v_s_0111 = -(n.at_offset(U_old::tag,  0, 1, 1)  + n.at_offset(U_old::tag, -1, 1, 1))*0.25;
+                float_type u_s_0001 =  (n(U_old::tag, 0)                   + n.at_offset(U_old::tag, 0, -1, 0))*0.25;
+                float_type u_s_1011 =  (n.at_offset(U_old::tag,  1, 0, 0)  + n.at_offset(U_old::tag, 1, -1, 0))*0.25;
+
+                //-n.at_offset(edge, 0, 0, 0) *(n.at_offset(face, 0, 0, 1) + n.at_offset(face, -1, 0, 1))
+                DN.add_element(cur_idx_0, glob_idx_1,    v_s_0010/dx);
+                DN.add_element(cur_idx_0, glob_idx_1_1, -v_s_0010/dx);
+                //-n.at_offset(edge, 0, 1, 0) *(n.at_offset(face, 0, 1, 1) + n.at_offset(face, -1, 1, 1))
+                DN.add_element(cur_idx_0, glob_idx_1_2,  v_s_0111/dx);
+                DN.add_element(cur_idx_0, glob_idx_1_3, -v_s_0111/dx);
+
+                //-n.at_offset(edge, 0, 0, 0) *(n.at_offset(face, 0, 0, 1) + n.at_offset(face, -1, 0, 1))
+                DN.add_element(cur_idx_0, glob_idx_0,   -v_s_0010/dx);
+                DN.add_element(cur_idx_0, glob_idx_0_1,  v_s_0010/dx);
+                //-n.at_offset(edge, 0, 1, 0) *(n.at_offset(face, 0, 1, 1) + n.at_offset(face, -1, 1, 1))
+                DN.add_element(cur_idx_0, glob_idx_0_2, -v_s_0111/dx);
+                DN.add_element(cur_idx_0, glob_idx_0,    v_s_0111/dx);
+
+                // n.at_offset(edge, 0, 0, 0) *(n.at_offset(face, 0, 0, 0) + n.at_offset(face, 0, -1, 0))
+                DN.add_element(cur_idx_1, glob_idx_1,    u_s_0001/dx);
+                DN.add_element(cur_idx_1, glob_idx_1_1, -u_s_0001/dx);
+                // n.at_offset(edge, 1, 0, 0) *(n.at_offset(face, 1, 0, 0) + n.at_offset(face, 1, -1, 0))
+                DN.add_element(cur_idx_1, glob_idx_1_4,  u_s_1011/dx);
+                DN.add_element(cur_idx_1, glob_idx_1,   -u_s_1011/dx);
+
+                // n.at_offset(edge, 0, 0, 0) *(n.at_offset(face, 0, 0, 0) + n.at_offset(face, 0, -1, 0))
+                DN.add_element(cur_idx_1, glob_idx_0,   -u_s_0001/dx);
+                DN.add_element(cur_idx_1, glob_idx_0_1,  u_s_0001/dx);
+                // n.at_offset(edge, 1, 0, 0) *(n.at_offset(face, 1, 0, 0) + n.at_offset(face, 1, -1, 0))
+                DN.add_element(cur_idx_1, glob_idx_0_3, -u_s_1011/dx);
+                DN.add_element(cur_idx_1, glob_idx_0_4,  u_s_1011/dx);
+            }
+        }
+        domain_->client_communicator().barrier();
+
+        curl<U_old, edge_aux_type>();
+        if (domain_->is_client())
+        {
+            auto client = domain_->decomposition().client();
+            client->template buffer_exchange<edge_aux_type>(base_level);
+        }
+
+        for (auto it = domain_->begin(base_level); it != domain_->end(base_level); ++it)
+        {
+            if (!it->locally_owned() || !it->has_data()) continue;
+            if (!it->is_leaf()) continue;
+            if (it->is_correction()) continue;
+
+            for (auto& n : it->data())
+            {
+                int cur_idx_0 = n(idx_u_type::tag(), 0);
+                int cur_idx_1 = n(idx_u_type::tag(), 1);
+
+                int glob_idx_0_00 = n.at_offset(idx_u_g_type::tag(), 0,  0, 0);
+                int glob_idx_0_01 = n.at_offset(idx_u_g_type::tag(), 0, -1, 0);
+                int glob_idx_0_10 = n.at_offset(idx_u_g_type::tag(), 1,  0, 0);
+                int glob_idx_0_11 = n.at_offset(idx_u_g_type::tag(), 1, -1, 0);
+
+                int glob_idx_1_00 = n.at_offset(idx_u_g_type::tag(),  0, 0, 1);
+                int glob_idx_1_01 = n.at_offset(idx_u_g_type::tag(),  0, 1, 1);
+                int glob_idx_1_10 = n.at_offset(idx_u_g_type::tag(), -1, 0, 1);
+                int glob_idx_1_11 = n.at_offset(idx_u_g_type::tag(), -1, 1, 1);
+
+                float_type om_00 = n.at_offset(edge_aux_type::tag(), 0, 0, 0)*0.25;
+                float_type om_01 = n.at_offset(edge_aux_type::tag(), 0, 1, 0)*0.25;
+                float_type om_10 = n.at_offset(edge_aux_type::tag(), 1, 0, 0)*0.25;
+
+
+                DN.add_element(cur_idx_0, glob_idx_1_00, -om_00);
+                DN.add_element(cur_idx_0, glob_idx_1_10, -om_00);
+                DN.add_element(cur_idx_0, glob_idx_1_01, -om_01);
+                DN.add_element(cur_idx_0, glob_idx_1_11, -om_01);
+
+                DN.add_element(cur_idx_1, glob_idx_0_00,  om_00);
+                DN.add_element(cur_idx_1, glob_idx_0_01,  om_00);
+                DN.add_element(cur_idx_1, glob_idx_0_10,  om_10);
+                DN.add_element(cur_idx_1, glob_idx_0_11,  om_10);
+            }
+        }
+        domain_->client_communicator().barrier();
+    }
+
+    void construction_Grad() {
+        //construction of Gradient
+        boost::mpi::communicator world;
+        world.barrier();
+
+        if (world.rank() == 0) {
+            return;
+        }
+       
+        if (max_local_idx == 0) {
+            std::cout << "idx not initialized, please call Assigning_idx()" << std::endl;
+        }
+
+        const auto dx_base = domain_->dx_base();
+
+        Grad.resizing_row(max_local_idx+1);
+
+        int base_level = domain_->tree()->base_level();
+        if (domain_->is_client())
+        {
+            auto client = domain_->decomposition().client();
+
+            //client->template buffer_exchange<idx_u_type>(base_level);
+            client->template buffer_exchange<idx_u_g_type>(base_level);
+
+            //client->template buffer_exchange<idx_p_type>(base_level);
+            client->template buffer_exchange<idx_p_g_type>(base_level);
+        }
+        for (auto it = domain_->begin(base_level);
+             it != domain_->end(base_level); ++it)
+        {
+            if (!it->locally_owned() || !it->has_data()) continue;
+            if (!it->is_leaf()) continue;
+            if (it->is_correction()) continue;
+
+            for (auto& n : it->data())
+            {
+                int cur_idx_0 = n(idx_u_type::tag(), 0);
+                int cur_idx_1 = n(idx_u_type::tag(), 1);
+
+                int glo_idx = n(idx_p_g_type::tag(), 0);
+                Grad.add_element(cur_idx_0, glo_idx, 1.0 / dx_base);
+                Grad.add_element(cur_idx_1, glo_idx, 1.0 / dx_base);
+
+                glo_idx = n.at_offset(idx_p_g_type::tag(), -1, 0, 0);
+                Grad.add_element(cur_idx_0, glo_idx, -1.0 / dx_base);
+
+                glo_idx = n.at_offset(idx_u_g_type::tag(), 0, -1, 0);
+                Grad.add_element(cur_idx_1, glo_idx, -1.0 / dx_base);
+            }
+        }
+        domain_->client_communicator().barrier();
+    }
+
+    void construction_Div() {
+        //construction of Gradient
+        boost::mpi::communicator world;
+        world.barrier();
+
+        if (world.rank() == 0) {
+            return;
+        }
+       
+        if (max_local_idx == 0) {
+            std::cout << "idx not initialized, please call Assigning_idx()" << std::endl;
+        }
+
+        const auto dx_base = domain_->dx_base();
+
+        Div.resizing_row(max_local_idx+1);
+
+        int base_level = domain_->tree()->base_level();
+        if (domain_->is_client())
+        {
+            auto client = domain_->decomposition().client();
+
+            //client->template buffer_exchange<idx_u_type>(base_level);
+            client->template buffer_exchange<idx_u_g_type>(base_level);
+
+            //client->template buffer_exchange<idx_p_type>(base_level);
+            client->template buffer_exchange<idx_p_g_type>(base_level);
+        }
+        for (auto it = domain_->begin(base_level);
+             it != domain_->end(base_level); ++it)
+        {
+            if (!it->locally_owned() || !it->has_data()) continue;
+            if (!it->is_leaf()) continue;
+            if (it->is_correction()) continue;
+
+            for (auto& n : it->data())
+            {
+                int glo_idx_0 = n(idx_u_g_type::tag(), 0);
+                int glo_idx_1 = n(idx_u_g_type::tag(), 1);
+
+                int cur_idx = n(idx_p_type::tag(), 0);
+                Div.add_element(cur_idx, glo_idx_0, -1.0 / dx_base);
+                Div.add_element(cur_idx, glo_idx_1, -1.0 / dx_base);
+
+                glo_idx_0 = n.at_offset(idx_u_g_type::tag(), 1, 0, 0);
+                Div.add_element(cur_idx, glo_idx_0, 1.0 / dx_base);
+
+                glo_idx_1 = n.at_offset(idx_u_g_type::tag(), 0, 1, 1);
+                Div.add_element(cur_idx, glo_idx_1, 1.0 / dx_base);
+            }
+        }
+        domain_->client_communicator().barrier();
+    }
+
+
+    void construction_Smearing(float_type factor = 1.0) {
+        //construction of Gradient
+        boost::mpi::communicator world;
+        world.barrier();
+
+        if (world.rank() == 0) {
+            return;
+        }
+       
+        if (max_local_idx == 0) {
+            std::cout << "idx not initialized, please call Assigning_idx()" << std::endl;
+        }
+
+        const auto dx_base = domain_->dx_base();
+
+        smearing.resizing_row(max_local_idx+1);
+
+        //int base_level = domain_->tree()->base_level();
+
+        domain_->ib().communicator().compute_indices();
+        domain_->ib().communicator().communicate(true, forcing_idx_g);
+
+        if (domain_->is_client())
+        {
+            auto client = domain_->decomposition().client();
+
+            //client->template buffer_exchange<idx_u_type>(base_level);
+            client->template buffer_exchange<idx_u_g_type>(base_level);
+
+            //client->template buffer_exchange<idx_p_type>(base_level);
+            //client->template buffer_exchange<idx_p_g_type>(base_level);
+        }
+        for (std::size_t i=0; i<domain_->ib().size(); ++i)
+        {
+            std::size_t oct_i=0;
+            for (auto it: domain_->ib().influence_list(i))
+            {
+                if (!it->locally_owned()) continue;
+                auto ib_coord = domain_->ib().scaled_coordinate(i, it->refinement_level());
+
+                auto block = domain_->ib().influence_pts(i, oct_i);
+
+                for (auto& node : block)
+                {
+                    auto n_coord = node.level_coordinate();
+                    auto dist = n_coord - ib_coord;
+
+                    for (std::size_t field_idx = 0; field_idx < idx_u_type::nFields();
+                         field_idx++)
+                    {
+                        decltype(ib_coord) off(0.5);
+                        off[field_idx] = 0.0; // face data location
+
+                        float_type val = ddf(dist + off) * factor;
+                        int u_loc = node(idx_u_type::tag(),field_idx);
+                        int f_glob = forcing_idx_g[i][field_idx];
+                        smearing.add_element(u_loc, f_glob, val);
+                        /*node(u, field_idx) +=
+                            f[field_idx] * ddf(dist + off) * factor;*/
+                    }
+                }
+
+                /*domain::Operator::ib_smearing<U>
+                    (ib_coord, f[i], domain_->ib().influence_pts(i, oct_i), domain_->ib().delta_func());*/
+                oct_i+=1;
+            }
+        }
+        domain_->client_communicator().barrier();
+    }
+
+
+    void construction_Projection() {
+        //construction of Gradient
+        boost::mpi::communicator world;
+        world.barrier();
+
+        if (world.rank() == 0) {
+            return;
+        }
+       
+        if (max_local_idx == 0) {
+            std::cout << "idx not initialized, please call Assigning_idx()" << std::endl;
+        }
+
+        const auto dx_base = domain_->dx_base();
+
+        projection.resizing_row(max_local_idx+1);
+
+        //int base_level = domain_->tree()->base_level();
+
+        //domain_->ib().communicator().compute_indices();
+        //domain_->ib().communicator().communicate(true, forcing_idx_g);
+
+        if (domain_->is_client())
+        {
+            auto client = domain_->decomposition().client();
+
+            //client->template buffer_exchange<idx_u_type>(base_level);
+            client->template buffer_exchange<idx_u_g_type>(base_level);
+
+            //client->template buffer_exchange<idx_p_type>(base_level);
+            //client->template buffer_exchange<idx_p_g_type>(base_level);
+        }
+        for (std::size_t i=0; i<domain_->ib().size(); ++i)
+        {
+            std::size_t oct_i=0;
+
+            for (auto it: domain_->ib().influence_list(i))
+            {
+                if (!it->locally_owned()) continue;
+                auto ib_coord = domain_->ib().scaled_coordinate(i, it->refinement_level());
+
+                auto block = domain_->ib().influence_pts(i, oct_i);
+
+                for (auto& node : block)
+                {
+                    auto n_coord = node.level_coordinate();
+                    auto dist = n_coord - ib_coord;
+
+                    for (std::size_t field_idx = 0; field_idx < idx_u_g_type::nFields();
+                         field_idx++)
+                    {
+                        decltype(ib_coord) off(0.5);
+                        off[field_idx] = 0.0; // face data location
+
+                        float_type val = ddf(dist + off);
+                        int u_glob = node(idx_u_g_type::tag(),field_idx);
+                        int f_loc = forcing_idx[i][field_idx];
+                        projection.add_element(f_loc, u_glob, val);
+                        /*node(u, field_idx) +=
+                            f[field_idx] * ddf(dist + off) * factor;*/
+                    }
+                }
+
+                /*domain::Operator::ib_projection<U>
+                    (ib_coord, f[i], ib_->influence_pts(i, oct_i), ib_->delta_func());*/
+
+                oct_i+=1;
+            }
+        }
+        domain_->client_communicator().barrier();
     }
 
     /*template<class Source_face, class Source_cell, class Target_face, class Target_cell>
@@ -2615,7 +3083,7 @@ class NewtonIteration
 
     //for constructing sparse matrix
     sparse_mat L; //upper left matrix laplacian
-    sparse_mat LN; //linearized convective term
+    sparse_mat DN; //linearized convective term, i.e. omega_s cross u + omega cross u_s, have not taken negative yet
     sparse_mat Div; //Divergence
     sparse_mat Grad; //Gradient
     sparse_mat project; //ib projection

@@ -29,6 +29,8 @@
 #include <iblgf/operators/operators.hpp>
 #include <iblgf/utilities/misc_math_functions.hpp>
 
+#include <boost/serialization/map.hpp>
+
 namespace iblgf
 {
 namespace solver
@@ -52,6 +54,7 @@ class NewtonIteration
     using coordinate_type = typename domain_type::coordinate_type;
     using poisson_solver_t = typename Setup::poisson_solver_t;
     using linsys_solver_t = typename Setup::linsys_solver_t;
+    using lgf_lap_t = typename poisson_solver_t::lgf_lap_t;
 
     using ib_t = typename domain_type::ib_t;
     using force_type = typename ib_t::force_type;
@@ -873,7 +876,7 @@ class NewtonIteration
         for (auto it = domain_->begin(base_level); it != domain_->end(base_level); ++it)
         {
             if (!it->locally_owned() || !it->has_data()) continue;
-            if (it->is_leaf() && !it->is_correction())
+            if (it->is_leaf() || it->is_correction())
             {
                 for (std::size_t field_idx = 0;
                      field_idx < idx_u_type::nFields(); ++field_idx)
@@ -966,7 +969,7 @@ class NewtonIteration
         for (auto it = domain_->begin(base_level); it != domain_->end(base_level); ++it)
         {
             if (!it->locally_owned() || !it->has_data()) continue;
-            if (it->is_leaf() && !it->is_correction())
+            if (it->is_leaf() || it->is_correction())
             {
                 for (std::size_t field_idx = 0;
                      field_idx < idx_u_g_type::nFields(); ++field_idx)
@@ -1317,6 +1320,30 @@ class NewtonIteration
     }
 
 
+    template<class U_old>
+    void construct_linear_mat() {
+        boost::mpi::communicator world;
+        
+        Jac.clean();
+        Jac.resizing_row(max_local_idx+1);
+        construction_BCMat();
+        construction_laplacian_u();
+        construction_DN_u<U_old>();
+        construction_Div();
+        construction_Grad();
+        construction_Projection();
+        construction_Smearing();
+        if (world.rank() == 0) {
+            return;
+        }
+        Jac = boundary_u + L;
+        Jac.add_vec(DN, -1.0);
+        Jac.add_vec(Div, -1.0);
+        Jac.add_vec(Grad);
+        Jac.add_vec(project);
+        Jac.add_vec(smearing);
+    }
+
     void construction_laplacian_u() {
         //construction of laplacian for u during stability, resolvent, and Newton iteration
         boost::mpi::communicator world;
@@ -1324,6 +1351,10 @@ class NewtonIteration
 
         if (world.rank() == 0) {
             return;
+        }
+
+        if (world.rank() == 1) {
+            std::cout << "Constructing Laplacian_u matrix" << std::endl;
         }
        
         if (max_local_idx == 0) {
@@ -1353,28 +1384,32 @@ class NewtonIteration
                 for (auto& n : it->data()) {
                     int cur_idx = n(idx_u_type::tag(), field_idx);
                     int glo_idx = n(idx_u_g_type::tag(), field_idx);
-                    L.add_element(cur_idx, glo_idx, -4.0/dx_base/dx_base);
+                    L.add_element(cur_idx, glo_idx, -4.0/dx_base/dx_base/Re_);
                     glo_idx = n.at_offset(idx_u_g_type::tag(), 0, 1, field_idx);
-                    L.add_element(cur_idx, glo_idx, 1.0/dx_base/dx_base);
+                    L.add_element(cur_idx, glo_idx, 1.0/dx_base/dx_base/Re_);
                     glo_idx = n.at_offset(idx_u_g_type::tag(), 1, 0, field_idx);
-                    L.add_element(cur_idx, glo_idx, 1.0/dx_base/dx_base);
+                    L.add_element(cur_idx, glo_idx, 1.0/dx_base/dx_base/Re_);
                     glo_idx = n.at_offset(idx_u_g_type::tag(), 0, -1, field_idx);
-                    L.add_element(cur_idx, glo_idx, 1.0/dx_base/dx_base);
+                    L.add_element(cur_idx, glo_idx, 1.0/dx_base/dx_base/Re_);
                     glo_idx = n.at_offset(idx_u_g_type::tag(), -1, 0, field_idx);
-                    L.add_element(cur_idx, glo_idx, 1.0/dx_base/dx_base);
+                    L.add_element(cur_idx, glo_idx, 1.0/dx_base/dx_base/Re_);
                 }
             }
         }
         domain_->client_communicator().barrier();
     }
 
-    template<typename U_old>
-    void construction_DN_u() {
+    template<class U_old>
+    void construction_DN_u(float_type t = 1) {
         boost::mpi::communicator world;
         world.barrier();
 
         if (world.rank() == 0) {
             return;
+        }
+
+        if (world.rank() == 1) {
+            std::cout << "Constructing DN_u matrix" << std::endl;
         }
        
         if (max_local_idx == 0) {
@@ -1397,6 +1432,7 @@ class NewtonIteration
         }
         for (auto it = domain_->begin(base_level); it != domain_->end(base_level); ++it)
         {
+            float_type dx = dx_base;
             if (!it->locally_owned() || !it->has_data()) continue;
             if (!it->is_leaf()) continue;
             if (it->is_correction()) continue;
@@ -1429,10 +1465,15 @@ class NewtonIteration
                 float_type u_s_10 = n.at_offset(U_old::tag, 1,  0, 0);
                 float_type u_s_11 = n.at_offset(U_old::tag, 1, -1, 0);*/
 
-                float_type v_s_0010 = -(n(U_old::tag, 1)                   + n.at_offset(U_old::tag, -1, 0, 1))*0.25;
-                float_type v_s_0111 = -(n.at_offset(U_old::tag,  0, 1, 1)  + n.at_offset(U_old::tag, -1, 1, 1))*0.25;
-                float_type u_s_0001 =  (n(U_old::tag, 0)                   + n.at_offset(U_old::tag, 0, -1, 0))*0.25;
-                float_type u_s_1011 =  (n.at_offset(U_old::tag,  1, 0, 0)  + n.at_offset(U_old::tag, 1, -1, 0))*0.25;
+                auto coord = n.global_coordinate() * dx_base;
+                auto field_func = simulation_->frame_vel();
+                float_type u_field_vel = field_func(0, t, coord)*(-1.0);
+                float_type v_field_vel = field_func(1, t, coord)*(-1.0);
+
+                float_type v_s_0010 = -(n(U_old::tag(), 1)                   + n.at_offset(U_old::tag(), -1, 0, 1))*0.25 - v_field_vel * 0.5;
+                float_type v_s_0111 = -(n.at_offset(U_old::tag(),  0, 1, 1)  + n.at_offset(U_old::tag(), -1, 1, 1))*0.25 - v_field_vel * 0.5;
+                float_type u_s_0001 =  (n(U_old::tag(), 0)                   + n.at_offset(U_old::tag(), 0, -1, 0))*0.25 + u_field_vel * 0.5;
+                float_type u_s_1011 =  (n.at_offset(U_old::tag(),  1, 0, 0)  + n.at_offset(U_old::tag(), 1, -1, 0))*0.25 + u_field_vel * 0.5;
 
                 //-n.at_offset(edge, 0, 0, 0) *(n.at_offset(face, 0, 0, 1) + n.at_offset(face, -1, 0, 1))
                 DN.add_element(cur_idx_0, glob_idx_1,    v_s_0010/dx);
@@ -1517,8 +1558,15 @@ class NewtonIteration
         boost::mpi::communicator world;
         world.barrier();
 
+
+        
+
         if (world.rank() == 0) {
             return;
+        }
+
+        if (world.rank() == 1) {
+            std::cout << "Constructing Grad matrix" << std::endl;
         }
        
         if (max_local_idx == 0) {
@@ -1573,6 +1621,10 @@ class NewtonIteration
 
         if (world.rank() == 0) {
             return;
+        }
+
+        if (world.rank() == 1) {
+            std::cout << "Constructing div matrix" << std::endl;
         }
        
         if (max_local_idx == 0) {
@@ -1629,6 +1681,10 @@ class NewtonIteration
         if (world.rank() == 0) {
             return;
         }
+
+        if (world.rank() == 1) {
+            std::cout << "Constructing smearing matrix" << std::endl;
+        }
        
         if (max_local_idx == 0) {
             std::cout << "idx not initialized, please call Assigning_idx()" << std::endl;
@@ -1638,10 +1694,29 @@ class NewtonIteration
 
         smearing.resizing_row(max_local_idx+1);
 
-        //int base_level = domain_->tree()->base_level();
+        int base_level = domain_->tree()->base_level();
 
         domain_->ib().communicator().compute_indices();
-        domain_->ib().communicator().communicate(true, forcing_idx_g);
+
+        force_type tmp_f_idx_g = forcing_idx_g;
+        for (std::size_t i=0; i<tmp_f_idx_g.size(); ++i)
+        {
+
+            for (std::size_t d=0; d<tmp_f_idx_g[0].size(); ++d) {
+                if (tmp_f_idx_g[i][d] < 0) tmp_f_idx_g[i][d] = 0;
+            }
+        }
+        domain_->client_communicator().barrier();
+
+        real_coordinate_type tmp_coord(0.0);
+        force_type forcing_idx_all(domain_->ib().size(), tmp_coord);
+        if (domain_->ib().size() > 0)
+        {
+            boost::mpi::all_reduce(domain_->client_communicator(), &forcing_idx_g[0], domain_->ib().size(), &forcing_idx_all[0],
+                std::plus<real_coordinate_type>());
+        }
+        
+        //domain_->ib().communicator().communicate(true, forcing_idx_g);
 
         if (domain_->is_client())
         {
@@ -1674,9 +1749,13 @@ class NewtonIteration
                         decltype(ib_coord) off(0.5);
                         off[field_idx] = 0.0; // face data location
 
+                        auto ddf = domain_->ib().delta_func();
+
                         float_type val = ddf(dist + off) * factor;
+                        if (std::abs(val) < 1e-12) continue;
                         int u_loc = node(idx_u_type::tag(),field_idx);
-                        int f_glob = forcing_idx_g[i][field_idx];
+                        //int f_glob = forcing_idx_g[i][field_idx];
+                        int f_glob = forcing_idx_all[i][field_idx];
                         smearing.add_element(u_loc, f_glob, val);
                         /*node(u, field_idx) +=
                             f[field_idx] * ddf(dist + off) * factor;*/
@@ -1691,23 +1770,29 @@ class NewtonIteration
         domain_->client_communicator().barrier();
     }
 
-
-    void construction_Projection() {
+    void construction_Projection()
+    {
         //construction of Gradient
         boost::mpi::communicator world;
         world.barrier();
 
-        if (world.rank() == 0) {
-            return;
+        //if (world.rank() == 0) { return; }
+
+        if (world.rank() == 1)
+        {
+            std::cout << "Constructing projection matrix" << std::endl;
         }
-       
-        if (max_local_idx == 0) {
-            std::cout << "idx not initialized, please call Assigning_idx()" << std::endl;
+
+        if (max_local_idx == 0 && world.rank() != 0)
+        {
+            std::cout << "idx not initialized, please call Assigning_idx()"
+                      << std::endl;
         }
 
         const auto dx_base = domain_->dx_base();
 
-        projection.resizing_row(max_local_idx+1);
+        if (world.rank() != 0) project.resizing_row(max_local_idx + 1);
+        int base_level = domain_->tree()->base_level();
 
         //int base_level = domain_->tree()->base_level();
 
@@ -1724,44 +1809,457 @@ class NewtonIteration
             //client->template buffer_exchange<idx_p_type>(base_level);
             //client->template buffer_exchange<idx_p_g_type>(base_level);
         }
-        for (std::size_t i=0; i<domain_->ib().size(); ++i)
+        for (std::size_t i = 0; i < domain_->ib().size(); ++i)
         {
-            std::size_t oct_i=0;
-
-            for (auto it: domain_->ib().influence_list(i))
+            std::vector<int> ib_rank_vec;
+            int loc_ib_rank = domain_->ib().rank(i);
+            boost::mpi::gather(world, loc_ib_rank, ib_rank_vec, 0);
+            int ac_rank = -1;
+            if (world.rank() == 0)
             {
-                if (!it->locally_owned()) continue;
-                auto ib_coord = domain_->ib().scaled_coordinate(i, it->refinement_level());
-
-                auto block = domain_->ib().influence_pts(i, oct_i);
-
-                for (auto& node : block)
+                for (int j = 0; j < ib_rank_vec.size(); j++)
                 {
-                    auto n_coord = node.level_coordinate();
-                    auto dist = n_coord - ib_coord;
-
-                    for (std::size_t field_idx = 0; field_idx < idx_u_g_type::nFields();
-                         field_idx++)
+                    if (ac_rank > 0 && ib_rank_vec[j] > 0 &&
+                        ib_rank_vec[j] != ac_rank)
                     {
-                        decltype(ib_coord) off(0.5);
-                        off[field_idx] = 0.0; // face data location
-
-                        float_type val = ddf(dist + off);
-                        int u_glob = node(idx_u_g_type::tag(),field_idx);
-                        int f_loc = forcing_idx[i][field_idx];
-                        projection.add_element(f_loc, u_glob, val);
-                        /*node(u, field_idx) +=
-                            f[field_idx] * ddf(dist + off) * factor;*/
+                        std::cout
+                            << "IB_rank wrong with two different positive ranks "
+                            << ac_rank << " and " << ib_rank_vec[j]
+                            << std::endl;
                     }
+                    if (ib_rank_vec[j] > 0) { ac_rank = ib_rank_vec[j]; }
                 }
+                if (ac_rank < 0)
+                {
+                    std::cout << "No processors have the right IB rank"
+                              << std::endl;
+                }
+            }
 
-                /*domain::Operator::ib_projection<U>
-                    (ib_coord, f[i], ib_->influence_pts(i, oct_i), ib_->delta_func());*/
+            int ib_rank = ac_rank;
+            boost::mpi::broadcast(world, ib_rank, 0);
+            if (world.rank() == 0) continue;
+            for (std::size_t field_idx = 0; field_idx < idx_u_g_type::nFields();
+                 field_idx++)
+            {
+                //if (world.rank() == 1) std::cout << "comm_ rank " << comm_.rank();
+                int f_loc = forcing_idx[i][field_idx];
+                if (domain_->ib().rank(i) != comm_.rank())
+                {
+                    //std::cout << "Rank " << world.rank() << " ib rank " << domain_->ib().rank(i) << std::endl;
+                    
+                    //compute and send to the target processor
+                    std::map<int, float_type> tmp_row;
+                    std::size_t oct_i = 0;
 
-                oct_i+=1;
+                    for (auto it : domain_->ib().influence_list(i))
+                    {
+                        if (!it->locally_owned()) continue;
+                        auto ib_coord = domain_->ib().scaled_coordinate(i,
+                            it->refinement_level());
+
+                        auto block = domain_->ib().influence_pts(i, oct_i);
+
+                        for (auto& node : block)
+                        {
+                            auto n_coord = node.level_coordinate();
+                            auto dist = n_coord - ib_coord;
+
+                            decltype(ib_coord) off(0.5);
+                            off[field_idx] = 0.0; // face data location
+
+                            auto ddf = domain_->ib().delta_func();
+
+                            float_type val = ddf(dist + off);
+                            if (std::abs(val) < 1e-12) continue;
+                            int u_glob = node(idx_u_g_type::tag(), field_idx);
+                            //int f_loc = forcing_idx[i][field_idx];
+                            this->map_add_element(u_glob, val, tmp_row);
+                            /*node(u, field_idx) +=
+                            f[field_idx] * ddf(dist + off) * factor;*/
+                            
+                        }
+
+                        oct_i += 1;
+                    }
+                    //std::cout << "Rank " << world.rank() << "start sending" << std::endl;
+                    world.send(ib_rank, world.rank(), tmp_row);
+                } 
+                else
+                {
+                    //std::cout << "Rank " << world.rank() << " ib rank " << domain_->ib().rank(i) << std::endl;
+                    std::size_t oct_i = 0;
+
+                    for (auto it : domain_->ib().influence_list(i))
+                    {
+                        if (!it->locally_owned()) continue;
+                        auto ib_coord = domain_->ib().scaled_coordinate(i,
+                            it->refinement_level());
+
+                        auto block = domain_->ib().influence_pts(i, oct_i);
+
+                        for (auto& node : block)
+                        {
+                            auto n_coord = node.level_coordinate();
+                            auto dist = n_coord - ib_coord;
+
+                            decltype(ib_coord) off(0.5);
+                            off[field_idx] = 0.0; // face data location
+
+                            auto ddf = domain_->ib().delta_func();
+
+                            float_type val = ddf(dist + off);
+                            if (std::abs(val) < 1e-12) continue;
+                            int u_glob = node(idx_u_g_type::tag(), field_idx);
+                            
+                            project.add_element(f_loc, u_glob, val);
+                            /*node(u, field_idx) +=
+                            f[field_idx] * ddf(dist + off) * factor;*/
+                        }
+
+                        oct_i += 1;
+                    }
+
+                    for (int k = 1; k < world.size(); k++)
+                    {
+                        if (k == world.rank()) continue;
+                        std::map<int, float_type> res;
+                        world.recv(k, k, res);
+                        for (const auto& [key, val] : res)
+                        {
+                            project.add_element(f_loc, key, val);
+                        }
+                        //std::cout << "received " << k << std::endl;
+                    }
+                    //std::cout << "after recieving" << std::endl;
+                }
+                domain_->client_communicator().barrier();
             }
         }
+        world.barrier();
+    }
+
+    void construction_BCMat() {
+        //construction of Gradient
+        boost::mpi::communicator world;
+        world.barrier();
+
+        /*if (world.rank() == 0) {
+            return;
+        }*/
+
+        if (world.rank() == 1) {
+            std::cout << "Constructing BC matrix" << std::endl;
+        }
+       
+        if (max_local_idx == 0 && world.rank() != 0) {
+            std::cout << "idx not initialized, please call Assigning_idx()" << std::endl;
+        }
+
+        const auto dx_base = domain_->dx_base();
+        int base_level = domain_->tree()->base_level();
+
+        boundary_u.resizing_row(max_local_idx+1);
+
+        int counter = 0; //count the number of bc pts in this processor
+
+        if (world.rank() != 0)
+        {
+            for (auto it = domain_->begin(base_level);
+                 it != domain_->end(base_level); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
+                //if (!it->is_leaf()) continue;
+                if (!it->is_correction()) continue;
+
+                for (auto& n : it->data())
+                {
+                    int cur_idx_0 = n(idx_u_type::tag(), 0);
+                    int cur_idx_1 = n(idx_u_type::tag(), 1);
+
+                    if (cur_idx_0 > 0) { counter++; }
+                }
+            }
+        }
+
+        world.barrier();
+
+        std::vector<int> tasks_vec;
+
+        tasks_vec.resize(world.size());
+
+        tasks_vec[0] = 0;
+
+        if (world.rank() == 0) {
+            for (int i = 1; i < world.size();i++) {
+                int tmp_counter;
+                world.recv(i, i, tmp_counter);
+                tasks_vec[i] = tmp_counter;
+            }
+        }
+        else {
+            world.send(0, world.rank(), counter);
+        }
+
+        world.barrier();
+
+        boost::mpi::broadcast(world, tasks_vec, 0);
+
+        if (world.rank() == 0) {
+            std::cout << "Number of tasks received is " << tasks_vec.size() << std::endl;
+            int sum = 0;
+            for (int i = 0; i < tasks_vec.size(); i++) {
+                sum += tasks_vec[i];
+            }
+            std::cout << "Number of node points need to compute " << sum << std::endl;
+        }
+
+        world.barrier();
+        /*if (world.rank() == 0) {
+            return;
+        }*/
+
+
+        //int base_level = domain_->tree()->base_level();
+
+        //domain_->ib().communicator().compute_indices();
+        //domain_->ib().communicator().communicate(true, forcing_idx_g);
+
+        if (domain_->is_client())
+        {
+            auto client = domain_->decomposition().client();
+
+            //client->template buffer_exchange<idx_u_type>(base_level);
+            client->template buffer_exchange<idx_u_g_type>(base_level);
+
+            //client->template buffer_exchange<idx_p_type>(base_level);
+            //client->template buffer_exchange<idx_p_g_type>(base_level);
+        }
+
+        for (int i = 1; i < tasks_vec.size(); i++)
+        {
+            int root_rank = domain_->client_communicator().rank();
+            
+            boost::mpi::broadcast(world, root_rank, i);
+            if (world.rank() == 0) {
+                continue;
+            }
+            if (world.rank() == i)
+            {
+                std::cout << "Rank " << i << " root rank " << root_rank << std::endl;
+                for (auto it = domain_->begin(base_level);
+                     it != domain_->end(base_level); ++it)
+                {
+                    if (!it->locally_owned() || !it->has_data()) continue;
+                    //if (!it->is_leaf()) continue;
+                    if (!it->is_correction()) continue;
+
+                    for (auto& n : it->data())
+                    {
+                        int cur_idx_0 = n(idx_u_type::tag(), 0);
+                        int cur_idx_1 = n(idx_u_type::tag(), 1);
+
+                        if (cur_idx_0 > 0)
+                        {
+                            //int cur_idx_0 = n(idx_u_type::tag(), 0);
+                            //int cur_idx_1 = n(idx_u_type::tag(), 1);
+                            int glob_idx_0 = n(idx_u_g_type::tag(), 0);
+                            int glob_idx_1 = n(idx_u_g_type::tag(), 1);
+
+                            //TODO: use function that inquires all the idx from other processors
+                            const auto& coord_cur = n.level_coordinate();
+
+                            std::map<int, float_type> row_u;
+                            std::map<int, float_type> row_v;
+
+                            get_BC_idx_from_client(coord_cur,
+                                root_rank, row_u,
+                                row_v);
+
+                            for (const auto& [key, val] : row_u)
+                            {
+                                boundary_u.add_element(cur_idx_0, key, val);
+                            }
+                            for (const auto& [key, val] : row_v)
+                            {
+                                boundary_u.add_element(cur_idx_1, key, val);
+                            }
+
+                            //add the negative of identity here
+                            boundary_u.add_element(cur_idx_0, glob_idx_0, -1.0);
+                            boundary_u.add_element(cur_idx_1, glob_idx_1, -1.0);
+                        }
+                    }
+                }
+            }
+            else {
+                std::map<int, float_type> row_u;
+                std::map<int, float_type> row_v;
+                for (int j = 0; j < tasks_vec[i]; j++) {
+                    get_BC_idx_from_client(coordinate_type({0, 0}),
+                                root_rank, row_u,
+                                row_v);
+                }
+            }
+            domain_->client_communicator().barrier();
+        }
+
+        /*for (auto it = domain_->begin(base_level);
+             it != domain_->end(base_level); ++it)
+        {
+            if (!it->locally_owned() || !it->has_data()) continue;
+            //if (!it->is_leaf()) continue;
+            if (!it->is_correction()) continue;
+
+            for (auto& n : it->data())
+            {
+                int cur_idx_0 = n(idx_u_type::tag(), 0);
+                int cur_idx_1 = n(idx_u_type::tag(), 1);
+
+                if (cur_idx_0 > 0) {
+                    //int cur_idx_0 = n(idx_u_type::tag(), 0);
+                    //int cur_idx_1 = n(idx_u_type::tag(), 1);
+                    int glob_idx_0 = n(idx_u_g_type::tag(), 0);
+                    int glob_idx_1 = n(idx_u_g_type::tag(), 1);
+
+                    //TODO: use function that inquires all the idx from other processors
+                    const auto& coord_cur = n.level_coordinate();
+
+                    std::map<int, float_type> row_u;
+                    std::map<int, float_type> row_v;
+
+                    get_BC_idx_from_client(coord_cur, domain_->client_communicator().rank(), row_u,
+                        row_v);
+
+                    for (const auto& [key, val] : row_u)
+                    {
+                        boundary_u.add_element(cur_idx_0, key, val);
+                    }
+                    for (const auto& [key, val] : row_v)
+                    {
+                        boundary_u.add_element(cur_idx_1, key, val);
+                    }
+
+                    //add the negative of identity here
+                    boundary_u.add_element(cur_idx_0, glob_idx_0, -1.0);
+                    boundary_u.add_element(cur_idx_1, glob_idx_1, -1.0);
+                }
+            }
+        }*/
         domain_->client_communicator().barrier();
+    }
+
+    void get_BC_idx_from_client(coordinate_type c, int root, std::map<int, float_type>& row_u, std::map<int, float_type>& row_v) {
+        //Send and recv 
+        //send coordinates to other processes
+
+        //clear the destination matrix rows
+        row_u.clear();
+        row_v.clear();
+
+        coordinate_type c_loc = c;
+        boost::mpi::broadcast(domain_->client_communicator(), c_loc, root);
+        std::map<int, float_type> loc_smat_u; //local resulting matrix to get BC
+        std::map<int, float_type> loc_smat_v; //local resulting matrix to get BC
+
+        int base_level = domain_->tree()->base_level();
+        const auto dx_base = domain_->dx_base();
+        if (domain_->is_client())
+        {
+            auto client = domain_->decomposition().client();
+
+            //client->template buffer_exchange<idx_u_type>(base_level);
+            client->template buffer_exchange<idx_u_g_type>(base_level);
+
+            //client->template buffer_exchange<idx_p_type>(base_level);
+            //client->template buffer_exchange<idx_p_g_type>(base_level);
+        }
+        for (auto it = domain_->begin(base_level);
+             it != domain_->end(base_level); ++it)
+        {
+            if (!it->locally_owned() || !it->has_data()) continue;
+            if (!it->is_leaf()) continue;
+            if (it->is_correction()) continue;
+
+            for (auto& n : it->data())
+            {
+                int u_idx_0 = n(idx_u_g_type::tag(), 0);
+                int u_idx_0_1 = n.at_offset(idx_u_g_type::tag(), 0, -1, 0);
+                int u_idx_1 = n(idx_u_g_type::tag(), 1);
+                int u_idx_1_1 = n.at_offset(idx_u_g_type::tag(), -1, 0, 1);
+
+                const auto& coord_loc = n.level_coordinate();
+
+                int x_c = c_loc[0] - coord_loc[0];
+                if (x_c != (c_loc[0] - coord_loc[0]))
+                {
+                    std::cout << "Coordinate type not INT" << std::endl;
+                }
+
+                int        y_c = c_loc[1] - coord_loc[1];
+                float_type lgf_val_00 =
+                    lgf_lap_.derived().get(coordinate_type({x_c, y_c}));
+                float_type lgf_val_01 =
+                    lgf_lap_.derived().get(coordinate_type({x_c, (y_c + 1)}));
+                float_type lgf_val_10 =
+                    lgf_lap_.derived().get(coordinate_type({(x_c + 1), y_c}));
+
+                float_type u_weight = lgf_val_01 - lgf_val_00;
+                float_type v_weight = lgf_val_00 - lgf_val_10;
+
+                //u = 1/dx * C^T L^inv (dx^2) 1/dx C
+                //so all dx cancels
+
+                this->map_add_element(u_idx_0, u_weight, loc_smat_u);
+                this->map_add_element(u_idx_0_1, -u_weight, loc_smat_u);
+                this->map_add_element(u_idx_1, -u_weight, loc_smat_u);
+                this->map_add_element(u_idx_1_1, u_weight, loc_smat_u);
+
+                this->map_add_element(u_idx_0, v_weight, loc_smat_v);
+                this->map_add_element(u_idx_0_1, -v_weight, loc_smat_v);
+                this->map_add_element(u_idx_1, -v_weight, loc_smat_v);
+                this->map_add_element(u_idx_1_1, v_weight, loc_smat_v);
+            }
+        }
+
+        domain_->client_communicator().barrier();
+        std::vector<std::map<int, float_type>> dest_mat_u;
+        std::vector<std::map<int, float_type>> dest_mat_v;
+        boost::mpi::gather(domain_->client_communicator(), loc_smat_u, dest_mat_u, root);
+        boost::mpi::gather(domain_->client_communicator(), loc_smat_v, dest_mat_v, root);
+
+        if (domain_->client_communicator().rank() != root) {
+            return;
+        }
+
+        for (int i = 0; i < dest_mat_u.size();i++) {
+            //accumulate vectors from other processors
+            map_add_map(dest_mat_u[i], row_u);
+        }
+
+        for (int i = 0; i < dest_mat_v.size();i++) {
+            //accumulate vectors from other processors
+            map_add_map(dest_mat_v[i], row_v);
+        }
+    }
+
+    void map_add_element(int m, float_type val, std::map<int, float_type>& target)
+    {
+        if (m < 0) return;
+        auto it = target.find(m);
+        if (it == target.end()) { target[m] = val; }
+        else
+        {
+            it->second += val;
+        }
+    }
+
+    void map_add_map(const std::map<int, float_type>& source, std::map<int, float_type>& target)
+    {
+        for (const auto& [key, val] : source)
+        {
+            map_add_element(key, val, target);
+        }
     }
 
     /*template<class Source_face, class Source_cell, class Target_face, class Target_cell>
@@ -2974,14 +3472,15 @@ class NewtonIteration
         }
     }
 
-  private:
+  public:
     class sparse_mat
     {
       public:
         sparse_mat() = default;
         void resizing_row(int n) { mat.resize(n); }
+        void clean() { mat.resize(0); }
         void add_element(int n, int m, float_type val) {
-            if (m < 0) return;
+            if (m <= 0) return;
             auto it = mat[n].find(m);
             if (it == mat[n].end()) {
                 mat[n][m] = val;
@@ -2993,11 +3492,11 @@ class NewtonIteration
 
         sparse_mat operator+(const sparse_mat& b) {
             if (this->mat.size() != b.mat.size()) {
-                std::cout << "sparse matrix does not have the same dim, cannot add" << std::endl;
-                return NULL;
+                std::cout << "size are " << this->mat.size() << " and " << b.mat.size() << std::endl;
+                throw std::runtime_error("sparse matrix does not have the same dim, cannot add");
             }
             sparse_mat res;
-            res.mat(this->mat.size());
+            res.mat.resize(this->mat.size());
             for (int i = 1; i < mat.size();i++) {
                 for (const auto& [key, val] : this->mat[i])
                 {
@@ -3011,7 +3510,7 @@ class NewtonIteration
             return res;
         }
 
-        void add_vec(const sparse_mat& b) {
+        void add_vec(const sparse_mat& b, float_type factor = 1.0) {
             if (this->mat.size() != b.mat.size()) {
                 std::cout << "sparse matrix does not have the same dim, cannot in place add" << std::endl;
                 return;
@@ -3019,7 +3518,7 @@ class NewtonIteration
             for (int i = 1; i < mat.size();i++) {
                 for (const auto& [key, val] : b.mat[i])
                 {
-                    this->add_element(i, key, val);
+                    this->add_element(i, key, (val*factor));
                 }
             }
         }
@@ -3088,6 +3587,10 @@ class NewtonIteration
     sparse_mat Grad; //Gradient
     sparse_mat project; //ib projection
     sparse_mat smearing; //ib smearing
+    sparse_mat boundary_u; //the matrix for the boundary of u from LGF
+
+    //Jacobian Matrix
+    sparse_mat Jac;
 
   private:
     
@@ -3096,6 +3599,7 @@ class NewtonIteration
     domain_type*     domain_; ///< domain
     poisson_solver_t psolver;
     linsys_solver_t  lsolver;
+    lgf_lap_t        lgf_lap_;
 
     bool base_mesh_update_ = false;
 

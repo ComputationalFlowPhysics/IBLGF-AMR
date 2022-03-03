@@ -83,8 +83,10 @@ class SetupNewton
       (nonlinear_tmp1,      float_type,  Dim,  1,  1,  face,true),
       (idx_u,               float_type,  Dim,  1,   1, face,true),
       (idx_p,               float_type,  1,  1,   1, cell,true),
+      (idx_w,               float_type,  1,  1,   1, edge, true),
       (idx_u_g,             float_type,  Dim,  1,   1, face,true),
-      (idx_p_g,             float_type,  1,  1,   1, cell,true),  //global index across all processors
+      (idx_p_g,             float_type,  1,  1,   1, cell, true),  
+      (idx_w_g,             float_type,  1,  1,   1, edge, true),//global index across all processors
       //(d_i,                 float_type,  1,  1,  1,  cell,true),
       //(r_i_T,               float_type,  Dim,  1,  1,  face,true),
       //(cell_aux_T,          float_type,  1,  1,  1,  cell,true),

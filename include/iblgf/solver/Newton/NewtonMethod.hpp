@@ -18,6 +18,7 @@
 #include <vector>
 #include <cmath>
 #include <array>
+#include <set>
 
 // IBLGF-specific
 #include <iblgf/global.hpp>
@@ -45,9 +46,12 @@ class NewtonIteration
   public: //member types
     using simulation_type = typename Setup::simulation_t;
     using domain_type = typename simulation_type::domain_type;
+    using interpolation_type = typename interpolation::cell_center_nli<domain_type>;
     using datablock_type = typename domain_type::datablock_t;
     using tree_t = typename domain_type::tree_t;
+    using key_type = typename tree_t::key_type;
     using octant_t = typename tree_t::octant_type;
+    using octant_base_t = typename octant_t::octant_base_t;
     using MASK_TYPE = typename octant_t::MASK_TYPE;
     using block_type = typename datablock_type::block_descriptor_type;
     using real_coordinate_type = typename domain_type::real_coordinate_type;
@@ -99,8 +103,10 @@ class NewtonIteration
     // index fields
     using idx_u_type = typename Setup::idx_u_type;
     using idx_p_type = typename Setup::idx_p_type;
+    using idx_w_type = typename Setup::idx_w_type;
     using idx_u_g_type = typename Setup::idx_u_g_type;
     using idx_p_g_type = typename Setup::idx_p_g_type;
+    using idx_w_g_type = typename Setup::idx_w_g_type;
 
     //variable fields for conjugate gradient
     /*using conj_r_face_aux_type = typename Setup::conj_r_face_aux_type;
@@ -134,6 +140,8 @@ class NewtonIteration
     , domain_(_simulation->domain_.get())
     , psolver(_simulation)
     , lsolver(_simulation)
+    , c_cntr_nli_(domain_->block_extent()[0]+lBuffer+rBuffer, _simulation->intrp_order()) 
+    //get the interpolation matrix
     {
         // parameters --------------------------------------------------------
 
@@ -199,6 +207,10 @@ class NewtonIteration
         std::fill(forcing_idx_g.begin(), forcing_idx_g.end(), tmp_coord);
 
         // Get FMM Info
+
+        Curl_factor = _simulation->dictionary()->template get_or<float_type>(
+            "Curl_factor", 1000);
+
         use_FMM = _simulation->dictionary()->template get_or<bool>(
             "use_FMM_in_Jac", false);
         N_sep = _simulation->dictionary()->template get_or<int>(
@@ -1082,7 +1094,7 @@ class NewtonIteration
             }
             else if (it->is_correction()) {
                 //only setting the leaf points that is next to the leaf to be active
-                int N = it->data().descriptor().extent()[0];
+                /*int N = it->data().descriptor().extent()[0];
                 bool tmp[N][N] = {false};
                 for (int i = 0; i < it->num_neighbors();i++) {
                     auto it2 = it->neighbor(i);
@@ -1091,17 +1103,7 @@ class NewtonIteration
                         continue;
                     }
                     else {
-                        /*if (i == 1) {
-                            for (int j = 0; j < N; j++) {
-                                tmp[j][0] = true;
-                            }
-                        }
-                        if (i == 3) {
-                            for (int j = 0; j < N; j++) {
-                                tmp[0][j] = true;
-                            }
-                        }*/
-                        /*if (i == 5) {
+                        if (i == 5) {
                             for (int j = 0; j < N; j++) {
                                 tmp[N-1][j] = true;
                             }
@@ -1110,7 +1112,7 @@ class NewtonIteration
                             for (int j = 0; j < N; j++) {
                                 tmp[j][N-1] = true;
                             }
-                        }*/
+                        }
                         continue;
                     }
 
@@ -1132,7 +1134,7 @@ class NewtonIteration
                             view(lin_data, i + 1, j + 1) = -1;
                         }
                     }
-                }
+                }*/
             }
             else
             {
@@ -1147,6 +1149,144 @@ class NewtonIteration
                 }
             }
         }
+
+        //also get idx for w (vorticity)
+        for (auto it = domain_->begin(base_level); it != domain_->end(base_level); ++it)
+        {
+            if (!it->locally_owned() || !it->has_data()) continue;
+            if (it->is_leaf() && !it->is_correction())
+            {
+                for (std::size_t field_idx = 0;
+                     field_idx < idx_w_type::nFields(); ++field_idx)
+                {
+                    for (auto& n : it->data())
+                    {
+                        counter++;
+                        n(idx_w_type::tag(), field_idx) =
+                            static_cast<float_type>(counter) + 0.5;
+                    }
+                }
+            }
+            else if (it->is_correction()) {
+                //only setting the leaf points that is next to the leaf to be active
+                int N = it->data().descriptor().extent()[0];
+                bool tmp[N][N] = {false};
+                for (int i = 0; i < it->num_neighbors();i++) {
+                    auto it2 = it->neighbor(i);
+                    if (!it2 || !it2->is_leaf() || it2->is_correction())
+                    {
+                        continue;
+                    }
+                    else {
+                        if (i == 0) {
+                            tmp[0][0] = true;
+                        }
+                        if (i == 1) {
+                            for (int j = 0; j < N; j++) {
+                                tmp[j][0] = true;
+                            }
+                        }
+                        /*if (i == 2) {
+                            tmp[N-1][0] = true;
+                        }*/
+                        if (i == 3) {
+                            for (int j = 0; j < N; j++) {
+                                tmp[0][j] = true;
+                            }
+                        }
+                        /*if (i == 5) {
+                            for (int j = 0; j < N; j++) {
+                                tmp[N-1][j] = true;
+                            }
+                        }
+                        if (i == 6) {
+                            tmp[0][N-1] = true;
+                        }
+                        if (i == 7) {
+                            for (int j = 0; j < N; j++) {
+                                tmp[j][N-1] = true;
+                            }
+                        }
+                        if (i == 8) {
+                            tmp[N-1][N-1] = true;
+                        }*/
+                    }
+
+                }
+                for (std::size_t field_idx = 0;
+                     field_idx < idx_w_type::nFields(); ++field_idx)
+                {
+                    auto& lin_data =
+                        it->data_r(idx_w_type::tag(), field_idx).linalg_data();
+                    for (int i = 0; i < N; i++)
+                    {
+                        for (int j = 0; j < N; j++)
+                        {
+                            if (tmp[i][j])
+                            {
+                                counter++;
+                                view(lin_data, i+1, j+1) =
+                                    static_cast<float_type>(counter) + 0.5;
+                            }
+                            else
+                            {
+                                view(lin_data, i+1, j+1) = -1;
+                            }
+                        }
+                    }
+                }
+            }
+            else
+            {
+                for (std::size_t field_idx = 0;
+                     field_idx < idx_w_type::nFields(); ++field_idx)
+                {
+                    for (auto& n : it->data())
+                    {
+                        //counter++;
+                        n(idx_w_type::tag(), field_idx) = -1;
+                    }
+                }
+            }
+        }
+
+        for (int l = base_level - 1; l >= 0; l--)
+        {
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            {
+                //if (!it) continue;
+                if (!it->locally_owned() || !it->has_data()) continue;
+                //if (it->is_leaf() && !it->is_correction())
+                //{
+                for (std::size_t field_idx = 0;
+                     field_idx < idx_w_type::nFields(); ++field_idx)
+                {
+                    int N = it->data().descriptor().extent()[0];
+
+                    auto& lin_data =
+                        it->data_r(idx_w_type::tag(), field_idx).linalg_data();
+                    for (int i = 0; i < (N+2); i++)
+                    {
+                        for (int j = 0; j < (N+2); j++)
+                        {
+                            counter++;
+                            view(lin_data, i, j) =
+                                static_cast<float_type>(counter) + 0.5;
+                        }
+                    }
+
+
+                    /*for (auto& n : it->data())
+                    {
+                        counter++;
+                        n(idx_w_type::tag(), field_idx) =
+                            static_cast<float_type>(counter) + 0.5;
+                    }*/
+                }
+                //}
+            }
+        }
+
         for (std::size_t i=0; i<forcing_idx.size(); ++i)
         {
             if (domain_->ib().rank(i)!=comm_.rank()) {
@@ -1207,7 +1347,7 @@ class NewtonIteration
         for (auto it = domain_->begin(base_level); it != domain_->end(base_level); ++it)
         {
             if (!it->locally_owned() || !it->has_data()) continue;
-            if (it->is_leaf() || !it->is_correction())
+            if (it->is_leaf() || it->is_correction())
             {
                 for (std::size_t field_idx = 0;
                      field_idx < idx_p_g_type::nFields(); ++field_idx)
@@ -1235,6 +1375,102 @@ class NewtonIteration
                         n(idx_p_g_type::tag(), field_idx) = -1;
                     }
                 }
+            }
+        }
+
+        for (auto it = domain_->begin(base_level); it != domain_->end(base_level); ++it)
+        {
+            if (!it->locally_owned() || !it->has_data()) continue;
+            if (it->is_leaf() || it->is_correction())
+            {
+                for (std::size_t field_idx = 0;
+                     field_idx < idx_w_g_type::nFields(); ++field_idx)
+                {
+                    for (auto& n : it->data())
+                    {
+                        if (n(idx_w_type::tag(), field_idx) > 0) {
+                            n(idx_w_g_type::tag(), field_idx) = n(idx_w_type::tag(), field_idx)+max_idx_from_prev_prc;
+                        }
+                        else {
+                            n(idx_w_g_type::tag(), field_idx) = -1;
+                        }
+                        //n(idx_p_g_type::tag(), field_idx) = n(idx_p_type::tag(), field_idx)+max_idx_from_prev_prc;
+                    }
+                }
+            }
+            else
+            {
+                for (std::size_t field_idx = 0;
+                     field_idx < idx_w_g_type::nFields(); ++field_idx)
+                {
+                    for (auto& n : it->data())
+                    {
+                        //counter++;
+                        n(idx_w_g_type::tag(), field_idx) = -1;
+                    }
+                }
+            }
+        }
+
+        /*for (int l = base_level - 1; l >= 0; l--)
+        {
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            {
+                //if (!it) continue;
+                if (!it->locally_owned() || !it->has_data()) continue;
+                //if (it->is_leaf() && !it->is_correction())
+                //{
+                for (std::size_t field_idx = 0;
+                     field_idx < idx_w_type::nFields(); ++field_idx)
+                {
+                    for (auto& n : it->data())
+                    {
+                        n(idx_w_g_type::tag(), field_idx) =
+                            n(idx_w_type::tag(), field_idx) +
+                            max_idx_from_prev_prc;
+                    }
+                }
+                //}
+            }
+        }*/
+
+        
+
+        for (int l = base_level - 1; l >= 0; l--)
+        {
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            {
+                //if (!it) continue;
+                if (!it->locally_owned() || !it->has_data()) continue;
+                //if (it->is_leaf() && !it->is_correction())
+                //{
+                int N = it->data().descriptor().extent()[0];
+                for (std::size_t field_idx = 0;
+                     field_idx < idx_w_type::nFields(); ++field_idx)
+                {
+
+                    auto& lin_data1 =
+                        it->data_r(idx_w_g_type::tag(), field_idx).linalg_data();
+                    auto& lin_data2 =
+                        it->data_r(idx_w_type::tag(), field_idx).linalg_data();
+                    for (int i = 0; i < (N+2); i++)
+                    {
+                        for (int j = 0; j < (N+2); j++)
+                        {
+                            view(lin_data1, i, j) =
+                                view(lin_data2, i, j) + max_idx_from_prev_prc;
+                        }
+                    }
+
+
+                    /*for (auto& n : it->data())
+                    {
+                        counter++;
+                        n(idx_w_type::tag(), field_idx) =
+                            static_cast<float_type>(counter) + 0.5;
+                    }*/
+                }
+                //}
             }
         }
         for (std::size_t i=0; i<forcing_idx_g.size(); ++i)
@@ -1348,10 +1584,10 @@ class NewtonIteration
 
     template<class Face, class Cell, class val_type>
     void Grid2CSR(val_type* b) {
-        Grid2CSR<Face, Cell>(b, this->forcing_tmp);
+        Grid2CSR<Face, Cell, edge_aux_type>(b, this->forcing_tmp);
     }
 
-    template<class Face, class Cell, class val_type>
+    template<class Face, class Cell, class Edge, class val_type>
     void Grid2CSR(val_type* b, force_type& forcing_vec, bool set_corr_zero = true) {
         boost::mpi::communicator world;
 
@@ -1387,6 +1623,22 @@ class NewtonIteration
                 {
                     for (auto& n : it->data())
                     {
+                        int p_idx_w = n.at_offset(idx_p_type::tag(), -1, 0, 0);
+                        int p_idx_e = n.at_offset(idx_p_type::tag(), 1, 0, 0);
+                        int p_idx_n = n.at_offset(idx_p_type::tag(), 0, 1, 0);
+                        int p_idx_s = n.at_offset(idx_p_type::tag(), 0, -1, 0);
+                        if (p_idx_w < 0 && field_idx == 0 && set_corr_zero)
+                        {
+                            int cur_idx = n(idx_u_type::tag(), 0);
+                            b[cur_idx - 1] = 0;
+                            continue;
+                        }
+                        if (p_idx_s < 0 && field_idx == 1 && set_corr_zero)
+                        {
+                            int cur_idx = n(idx_u_type::tag(), 1);
+                            b[cur_idx - 1] = 0;
+                            continue;
+                        }
                         int cur_idx = n(idx_u_type::tag(), field_idx);
                         b[cur_idx - 1] = n(Face::tag(), field_idx);
                     }
@@ -1465,6 +1717,119 @@ class NewtonIteration
             }
             
         }
+
+        if (domain_->is_client())
+        {
+            auto client = domain_->decomposition().client();
+
+            client->template buffer_exchange<idx_w_type>(base_level);
+        }
+        for (auto it = domain_->begin(base_level); it != domain_->end(base_level); ++it)
+        {
+            if (!it->locally_owned() || !it->has_data()) continue;
+            if (!it->is_leaf()) continue;
+            if (!it->is_correction()) {
+            for (std::size_t field_idx = 0; field_idx < idx_w_type::nFields();
+                 ++field_idx)
+            {
+                for (auto& n : it->data()) {
+                    int cur_idx = n(idx_w_type::tag(), field_idx);
+                    b[cur_idx - 1] = n(Edge::tag(), field_idx);
+                }
+            }
+            }
+            else if (it->is_correction() && set_corr_zero)
+            {
+                for (std::size_t field_idx = 0;
+                     field_idx < idx_w_type::nFields(); ++field_idx)
+                {
+                    for (auto& n : it->data())
+                    {
+                        int cur_idx = n(idx_w_type::tag(), field_idx);
+                        if (n(idx_w_type::tag(), field_idx) < 0) { continue; }
+                        b[cur_idx - 1] = 0;
+                    }
+                }
+            }
+            else {
+                for (std::size_t field_idx = 0;
+                     field_idx < idx_w_type::nFields(); ++field_idx)
+                {
+                    for (auto& n : it->data())
+                    {
+                        int cur_idx = n(idx_w_type::tag(), field_idx);
+                        if (n(idx_w_type::tag(), field_idx) < 0) { continue; }
+                        b[cur_idx - 1] = n(Edge::tag(), field_idx);
+                    }
+                }
+            }
+            
+        }
+
+        
+
+        /*for (int l = base_level - 1; l >= 0; l--)
+        {
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            {
+                //if (!it) continue;
+                if (!it->locally_owned() || !it->has_data()) continue;
+                //if (it->is_leaf() && !it->is_correction())
+                //{
+                for (std::size_t field_idx = 0;
+                     field_idx < idx_w_type::nFields(); ++field_idx)
+                {
+                    for (auto& n : it->data())
+                    {
+                        int cur_idx = n(idx_w_type::tag(), field_idx);
+                        b[cur_idx - 1] = n(Edge::tag(), field_idx);
+                    }
+                }
+                //}
+            }
+        }*/
+
+        for (int l = base_level - 1; l >= 0; l--)
+        {
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            {
+                //if (!it) continue;
+                if (!it->locally_owned() || !it->has_data()) continue;
+                //if (it->is_leaf() && !it->is_correction())
+                //{
+                for (std::size_t field_idx = 0;
+                     field_idx < idx_w_type::nFields(); ++field_idx)
+                {
+                    int N = it->data().descriptor().extent()[0];
+
+                    auto& lin_data =
+                        it->data_r(idx_w_type::tag(), field_idx).linalg_data();
+                    auto& lin_data_tar =
+                        it->data_r(Edge::tag(), field_idx).linalg_data();
+                    for (int i = 0; i < (N+2); i++)
+                    {
+                        for (int j = 0; j < (N+2); j++)
+                        {
+                            int cur_idx = lin_data.at(i,j);
+                            if (!set_corr_zero) b[cur_idx - 1] = lin_data_tar.at(i,j);
+                            else  {
+                                b[cur_idx - 1] = 0;
+                            }
+                        }
+                    }
+
+
+                    /*for (auto& n : it->data())
+                    {
+                        counter++;
+                        n(idx_w_type::tag(), field_idx) =
+                            static_cast<float_type>(counter) + 0.5;
+                    }*/
+                }
+                //}
+            }
+        }
+
         for (std::size_t i=0; i<forcing_idx.size(); ++i)
         {
             if (domain_->ib().rank(i)!=comm_.rank()) {
@@ -1553,10 +1918,10 @@ class NewtonIteration
 
     template<class Face, class Cell, class val_type>
     void CSR2Grid(val_type* b) {
-        CSR2Grid<Face, Cell>(b, this->forcing_tmp);
+        CSR2Grid<Face, Cell, edge_aux_type>(b, this->forcing_tmp);
     }
 
-    template<class Face, class Cell, class val_type>
+    template<class Face, class Cell, class Edge, class val_type>
     void CSR2Grid(val_type* b, force_type& forcing_vec) {
         boost::mpi::communicator world;
 
@@ -1615,6 +1980,85 @@ class NewtonIteration
                 }
             }
         }
+
+        if (domain_->is_client())
+        {
+            auto client = domain_->decomposition().client();
+
+            client->template buffer_exchange<idx_w_type>(base_level);
+        }
+        for (auto it = domain_->begin(base_level); it != domain_->end(base_level); ++it)
+        {
+            if (!it->locally_owned() || !it->has_data()) continue;
+            if (!it->is_leaf()) continue;
+            //if (it->is_correction()) continue;
+            for (std::size_t field_idx = 0; field_idx < idx_w_type::nFields();
+                 ++field_idx)
+            {
+                for (auto& n : it->data()) {
+                    int cur_idx = n(idx_w_type::tag(), field_idx);
+                    if (cur_idx > 0) n(Edge::tag(), field_idx) = b[cur_idx-1];
+                }
+            }
+        }
+
+        /*for (int l = base_level - 1; l >= 0; l--)
+        {
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            {
+                //if (!it) continue;
+                if (!it->locally_owned() || !it->has_data()) continue;
+                //if (it->is_leaf() && !it->is_correction())
+                //{
+                for (std::size_t field_idx = 0;
+                     field_idx < idx_w_type::nFields(); ++field_idx)
+                {
+                    for (auto& n : it->data())
+                    {
+                        int cur_idx = n(idx_w_type::tag(), field_idx);
+                        n(Edge::tag(), field_idx) = b[cur_idx - 1];
+                    }
+                }
+            }
+        }*/
+
+        for (int l = base_level - 1; l >= 0; l--)
+        {
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            {
+                //if (!it) continue;
+                if (!it->locally_owned() || !it->has_data()) continue;
+                //if (it->is_leaf() && !it->is_correction())
+                //{
+                for (std::size_t field_idx = 0;
+                     field_idx < idx_w_type::nFields(); ++field_idx)
+                {
+                    int N = it->data().descriptor().extent()[0];
+
+                    auto& lin_data =
+                        it->data_r(idx_w_type::tag(), field_idx).linalg_data();
+                    auto& lin_data_tar =
+                        it->data_r(Edge::tag(), field_idx).linalg_data();
+                    for (int i = 0; i < (N+2); i++)
+                    {
+                        for (int j = 0; j < (N+2); j++)
+                        {
+                            int cur_idx = lin_data.at(i,j);
+                            lin_data_tar.at(i,j) = b[cur_idx - 1];
+                        }
+                    }
+
+
+                    /*for (auto& n : it->data())
+                    {
+                        counter++;
+                        n(idx_w_type::tag(), field_idx) =
+                            static_cast<float_type>(counter) + 0.5;
+                    }*/
+                }
+                //}
+            }
+        }
         /*for (std::size_t i=0; i<forcing_idx.size(); ++i)
         {
             if (domain_->ib().rank(i)!=comm_.rank()) {
@@ -1644,6 +2088,79 @@ class NewtonIteration
         domain_->client_communicator().barrier();
     }
 
+    template<class Edge1, class Edge2>
+    void compute_error_nonleaf(std::string _output_prefix = "", bool write_output=false) {
+        boost::mpi::communicator world;
+        
+        const auto dx_base = domain_->dx_base();
+        int base_level = domain_->tree()->base_level();
+
+        
+        if (world.rank() != 0)
+        {
+            for (int l = base_level - 1; l >= 0; l--)
+            {
+                float_type sum_val =  0.0;
+                float_type max_val = -1.0;
+
+                std::ofstream myfile;
+                if (write_output) myfile.open(_output_prefix + "rank" + std::to_string(world.rank()) + "level" + std::to_string(l) + "err.txt");
+
+                for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+                {
+                    float_type dx_level =
+                        dx_base * std::pow(2.0, base_level - l);
+                    //if (!it) continue;
+                    if (!it->locally_owned() || !it->has_data()) continue;
+                    //if (it->is_leaf() && !it->is_correction())
+                    //{
+                    for (std::size_t field_idx = 0;
+                         field_idx < idx_w_type::nFields(); ++field_idx)
+                    {
+                        for (auto& n : it->data())
+                        {
+                            auto c = n.level_coordinate();
+                            int x_c = c.x();
+                            int y_c = c.y();
+
+                            if (write_output) myfile << x_c << " " << y_c << " ";
+                            float_type val1 = n(Edge1::tag(), field_idx);
+                            float_type val2 = n(Edge2::tag(), field_idx);
+
+                            float_type diff_w = val1 - val2;
+                            if (write_output) myfile << diff_w << std::endl;
+
+                            float_type diff = std::abs(val1 - val2);
+                            sum_val += diff * diff * dx_level*dx_level;
+                            if (max_val < diff) { max_val = diff; }
+                        }
+                    }
+                }
+
+                if (write_output) myfile.close();
+                float_type max_g;
+                float_type sum_g;
+                boost::mpi::all_reduce(domain_->client_communicator(), sum_val, sum_g, std::plus<float_type>());
+
+                boost::mpi::all_reduce(domain_->client_communicator(), max_val, max_g, boost::mpi::maximum<float_type>());
+
+                if (world.rank() == 1)
+                {
+                    std::cout << _output_prefix
+                              << "L2 error of upward interpolation from level" << l << " is "
+                              << std::sqrt(sum_g) << std::endl;
+                    std::cout << _output_prefix
+                              << "L_inf error of upward interpolation from level" << l << " is "
+                              << max_g << std::endl;
+                }
+            }
+        }
+        
+
+        
+
+    }
+
     void printing_mat(int n, int rank = 1) {
         boost::mpi::communicator world;
 
@@ -1671,13 +2188,18 @@ class NewtonIteration
         
         Jac.clean();
         Jac.resizing_row(max_local_idx+1);
+        construct_upward_intrp();
+        /*if (!use_FMM) construction_BCMat();
+        else construction_BCMat_FMM();*/
         construction_BCMat();
         construction_laplacian_u();
         construction_DN_u<U_old>();
         construction_Div();
         construction_Grad();
+        construction_Curl();
         construction_Projection();
         construction_Smearing();
+        
         if (world.rank() == 0) {
             return;
         }
@@ -1685,8 +2207,10 @@ class NewtonIteration
         Jac.add_vec(DN, -1.0);
         Jac.add_vec(Div, -1.0);
         Jac.add_vec(Grad);
+        Jac.add_vec(Curl);
         Jac.add_vec(project);
         Jac.add_vec(smearing);
+        Jac.add_vec(upward_intrp);
     }
 
     void construction_laplacian_u() {
@@ -1716,6 +2240,7 @@ class NewtonIteration
             auto client = domain_->decomposition().client();
 
             client->template buffer_exchange<idx_u_type>(base_level);
+            client->template buffer_exchange<idx_p_type>(base_level);
             client->template buffer_exchange<idx_u_g_type>(base_level);
         }
         for (auto it = domain_->begin(base_level); it != domain_->end(base_level); ++it)
@@ -1727,6 +2252,34 @@ class NewtonIteration
                  ++field_idx)
             {
                 for (auto& n : it->data()) {
+                    int p_idx_w = n.at_offset(idx_p_type::tag(), -1, 0, 0);
+                    int p_idx_e = n.at_offset(idx_p_type::tag(),  1, 0, 0);
+                    int p_idx_n = n.at_offset(idx_p_type::tag(),  0, 1, 0);
+                    int p_idx_s = n.at_offset(idx_p_type::tag(), 0, -1, 0);
+                    if (p_idx_w < 0 && field_idx == 0){
+                        int cur_idx = n(idx_u_type::tag(), 0);
+                        int glo_idx = n(idx_u_g_type::tag(), 0);
+                        L.add_element(cur_idx, glo_idx, 1.0/dx_base);
+                        glo_idx = n.at_offset(idx_u_g_type::tag(), -1, 0, 0);
+                        L.add_element(cur_idx, glo_idx, -1.0/dx_base);
+                        glo_idx = n.at_offset(idx_u_g_type::tag(), -1, 0, 1);
+                        L.add_element(cur_idx, glo_idx, -1.0/dx_base);
+                        glo_idx = n.at_offset(idx_u_g_type::tag(), -1, 1, 1);
+                        L.add_element(cur_idx, glo_idx, 1.0/dx_base);
+                        continue;
+                    }
+                    if (p_idx_s < 0 && field_idx == 1){
+                        int cur_idx = n(idx_u_type::tag(), 1);
+                        int glo_idx = n(idx_u_g_type::tag(), 1);
+                        L.add_element(cur_idx, glo_idx, 1.0/dx_base);
+                        glo_idx = n.at_offset(idx_u_g_type::tag(), 0, -1, 1);
+                        L.add_element(cur_idx, glo_idx, -1.0/dx_base);
+                        glo_idx = n.at_offset(idx_u_g_type::tag(), 0, -1, 0);
+                        L.add_element(cur_idx, glo_idx, -1.0/dx_base);
+                        glo_idx = n.at_offset(idx_u_g_type::tag(), 1, -1, 0);
+                        L.add_element(cur_idx, glo_idx, 1.0/dx_base);
+                        continue;
+                    }
                     int cur_idx = n(idx_u_type::tag(), field_idx);
                     int glo_idx = n(idx_u_g_type::tag(), field_idx);
                     L.add_element(cur_idx, glo_idx, -4.0/dx_base/dx_base/Re_);
@@ -1772,6 +2325,7 @@ class NewtonIteration
 
             client->template buffer_exchange<idx_u_type>(base_level);
             client->template buffer_exchange<idx_u_g_type>(base_level);
+            client->template buffer_exchange<idx_w_g_type>(base_level);
             client->template buffer_exchange<U_old>(base_level);
             clean<edge_aux_type>();
         }
@@ -1784,6 +2338,9 @@ class NewtonIteration
 
             for (auto& n : it->data())
             {
+                
+                
+
                 int cur_idx_0 = n(idx_u_type::tag(), 0);
                 int cur_idx_1 = n(idx_u_type::tag(), 1);
 
@@ -1799,6 +2356,10 @@ class NewtonIteration
                 int glob_idx_1_2 = n.at_offset(idx_u_g_type::tag(),  0, 1, 1);
                 int glob_idx_1_3 = n.at_offset(idx_u_g_type::tag(), -1, 1, 1);
                 int glob_idx_1_4 = n.at_offset(idx_u_g_type::tag(),  1, 0, 1);
+
+                int glob_idx_00 = n(idx_w_g_type::tag(), 0);
+                int glob_idx_01 = n.at_offset(idx_w_g_type::tag(),  0, 1, 0);
+                int glob_idx_10 = n.at_offset(idx_w_g_type::tag(),  1, 0, 0);
 
                 /*float_type v_s_00 = n(U_old::tag, 1);
                 float_type v_s_10 = n.at_offset(U_old::tag, -1, 0, 1);
@@ -1821,7 +2382,7 @@ class NewtonIteration
                 float_type u_s_1011 =  (n.at_offset(U_old::tag(),  1, 0, 0)  + n.at_offset(U_old::tag(), 1, -1, 0))*0.25 + u_field_vel * 0.5;
 
                 //-n.at_offset(edge, 0, 0, 0) *(n.at_offset(face, 0, 0, 1) + n.at_offset(face, -1, 0, 1))
-                DN.add_element(cur_idx_0, glob_idx_1,    v_s_0010/dx);
+                /*DN.add_element(cur_idx_0, glob_idx_1,    v_s_0010/dx);
                 DN.add_element(cur_idx_0, glob_idx_1_1, -v_s_0010/dx);
                 //-n.at_offset(edge, 0, 1, 0) *(n.at_offset(face, 0, 1, 1) + n.at_offset(face, -1, 1, 1))
                 DN.add_element(cur_idx_0, glob_idx_1_2,  v_s_0111/dx);
@@ -1846,7 +2407,62 @@ class NewtonIteration
                 DN.add_element(cur_idx_1, glob_idx_0_1,  u_s_0001/dx);
                 // n.at_offset(edge, 1, 0, 0) *(n.at_offset(face, 1, 0, 0) + n.at_offset(face, 1, -1, 0))
                 DN.add_element(cur_idx_1, glob_idx_0_3, -u_s_1011/dx);
-                DN.add_element(cur_idx_1, glob_idx_0_4,  u_s_1011/dx);
+                DN.add_element(cur_idx_1, glob_idx_0_4,  u_s_1011/dx);*/
+
+                int p_idx_w = n.at_offset(idx_p_type::tag(), -1, 0, 0);
+                int p_idx_e = n.at_offset(idx_p_type::tag(), 1, 0, 0);
+                int p_idx_n = n.at_offset(idx_p_type::tag(), 0, 1, 0);
+                int p_idx_s = n.at_offset(idx_p_type::tag(), 0, -1, 0);
+
+                /*if (p_idx_w > 0)
+                {
+                    DN.add_element(cur_idx_0, glob_idx_00, v_s_0010);
+                    DN.add_element(cur_idx_0, glob_idx_01, v_s_0111);
+                }
+                if (p_idx_s > 0)
+                {
+                    DN.add_element(cur_idx_1, glob_idx_00, u_s_0001);
+                    DN.add_element(cur_idx_1, glob_idx_10, u_s_1011);
+                }*/
+
+                if (p_idx_w > 0)
+                {
+                    //-n.at_offset(edge, 0, 0, 0) *(n.at_offset(face, 0, 0, 1) + n.at_offset(face, -1, 0, 1))
+                    DN.add_element(cur_idx_0, glob_idx_1, v_s_0010 / dx);
+                    DN.add_element(cur_idx_0, glob_idx_1_1, -v_s_0010 / dx);
+                    //-n.at_offset(edge, 0, 1, 0) *(n.at_offset(face, 0, 1, 1) + n.at_offset(face, -1, 1, 1))
+                    DN.add_element(cur_idx_0, glob_idx_1_2, v_s_0111 / dx);
+                    DN.add_element(cur_idx_0, glob_idx_1_3, -v_s_0111 / dx);
+
+                    //-n.at_offset(edge, 0, 0, 0) *(n.at_offset(face, 0, 0, 1) + n.at_offset(face, -1, 0, 1))
+                    DN.add_element(cur_idx_0, glob_idx_0, -v_s_0010 / dx);
+                    DN.add_element(cur_idx_0, glob_idx_0_1, v_s_0010 / dx);
+                    //-n.at_offset(edge, 0, 1, 0) *(n.at_offset(face, 0, 1, 1) + n.at_offset(face, -1, 1, 1))
+                    DN.add_element(cur_idx_0, glob_idx_0_2, -v_s_0111 / dx);
+                    DN.add_element(cur_idx_0, glob_idx_0, v_s_0111 / dx);
+                }
+                if (p_idx_s > 0)
+                {
+                    // n.at_offset(edge, 0, 0, 0) *(n.at_offset(face, 0, 0, 0) + n.at_offset(face, 0, -1, 0))
+                    DN.add_element(cur_idx_1, glob_idx_1, u_s_0001 / dx);
+                    DN.add_element(cur_idx_1, glob_idx_1_1, -u_s_0001 / dx);
+                    // n.at_offset(edge, 1, 0, 0) *(n.at_offset(face, 1, 0, 0) + n.at_offset(face, 1, -1, 0))
+                    DN.add_element(cur_idx_1, glob_idx_1_4, u_s_1011 / dx);
+                    DN.add_element(cur_idx_1, glob_idx_1, -u_s_1011 / dx);
+
+                    // n.at_offset(edge, 0, 0, 0) *(n.at_offset(face, 0, 0, 0) + n.at_offset(face, 0, -1, 0))
+                    DN.add_element(cur_idx_1, glob_idx_0, -u_s_0001 / dx);
+                    DN.add_element(cur_idx_1, glob_idx_0_1, u_s_0001 / dx);
+                    // n.at_offset(edge, 1, 0, 0) *(n.at_offset(face, 1, 0, 0) + n.at_offset(face, 1, -1, 0))
+                    DN.add_element(cur_idx_1, glob_idx_0_3, -u_s_1011 / dx);
+                    DN.add_element(cur_idx_1, glob_idx_0_4, u_s_1011 / dx);
+                }
+
+                /*DN.add_element(cur_idx_0, glob_idx_00, v_s_0010);
+                DN.add_element(cur_idx_0, glob_idx_01, v_s_0111);
+
+                DN.add_element(cur_idx_1, glob_idx_00, u_s_0001);
+                DN.add_element(cur_idx_1, glob_idx_10, u_s_1011);*/
             }
         }
         domain_->client_communicator().barrier();
@@ -1866,6 +2482,8 @@ class NewtonIteration
 
             for (auto& n : it->data())
             {
+                
+                
                 int cur_idx_0 = n(idx_u_type::tag(), 0);
                 int cur_idx_1 = n(idx_u_type::tag(), 1);
 
@@ -1883,8 +2501,27 @@ class NewtonIteration
                 float_type om_01 = n.at_offset(edge_aux_type::tag(), 0, 1, 0)*0.25;
                 float_type om_10 = n.at_offset(edge_aux_type::tag(), 1, 0, 0)*0.25;
 
+                int p_idx_w = n.at_offset(idx_p_type::tag(), -1, 0, 0);
+                int p_idx_e = n.at_offset(idx_p_type::tag(), 1, 0, 0);
+                int p_idx_n = n.at_offset(idx_p_type::tag(), 0, 1, 0);
+                int p_idx_s = n.at_offset(idx_p_type::tag(), 0, -1, 0);
 
-                DN.add_element(cur_idx_0, glob_idx_1_00, -om_00);
+                if (p_idx_w > 0)
+                {
+                    DN.add_element(cur_idx_0, glob_idx_1_00, -om_00);
+                    DN.add_element(cur_idx_0, glob_idx_1_10, -om_00);
+                    DN.add_element(cur_idx_0, glob_idx_1_01, -om_01);
+                    DN.add_element(cur_idx_0, glob_idx_1_11, -om_01);
+                }
+                if (p_idx_s > 0)
+                {
+                    DN.add_element(cur_idx_1, glob_idx_0_00, om_00);
+                    DN.add_element(cur_idx_1, glob_idx_0_01, om_00);
+                    DN.add_element(cur_idx_1, glob_idx_0_10, om_10);
+                    DN.add_element(cur_idx_1, glob_idx_0_11, om_10);
+                }
+
+                /*DN.add_element(cur_idx_0, glob_idx_1_00, -om_00);
                 DN.add_element(cur_idx_0, glob_idx_1_10, -om_00);
                 DN.add_element(cur_idx_0, glob_idx_1_01, -om_01);
                 DN.add_element(cur_idx_0, glob_idx_1_11, -om_01);
@@ -1892,7 +2529,7 @@ class NewtonIteration
                 DN.add_element(cur_idx_1, glob_idx_0_00,  om_00);
                 DN.add_element(cur_idx_1, glob_idx_0_01,  om_00);
                 DN.add_element(cur_idx_1, glob_idx_0_10,  om_10);
-                DN.add_element(cur_idx_1, glob_idx_0_11,  om_10);
+                DN.add_element(cur_idx_1, glob_idx_0_11,  om_10);*/
             }
         }
         domain_->client_communicator().barrier();
@@ -1958,6 +2595,11 @@ class NewtonIteration
             }
         }*/
 
+        int p_left_bot_idx = -1;
+        int p_left_bot_ldx = -1; //locall index
+        int u_left_bot_idx = -1;
+        int v_left_bot_idx = -1;
+
         for (auto it = domain_->begin(base_level);
              it != domain_->end(base_level); ++it)
         {
@@ -1965,7 +2607,8 @@ class NewtonIteration
             if (!it->is_leaf()) continue;
             if (it->is_correction())
             {
-                for (auto& n : it->data())
+                continue;
+                /*for (auto& n : it->data())
                 {
                     int cur_idx_0 = n(idx_u_type::tag(), 0);
                     int cur_idx_1 = n(idx_u_type::tag(), 1);
@@ -1975,28 +2618,19 @@ class NewtonIteration
                     int glo_idx_01 = n.at_offset(idx_p_g_type::tag(), 0, -1, 0);
                     if (glo_idx < 0) continue;
 
-                    if (glo_idx_10 > 0 && glo_idx_01 > 0) {
+                    if (glo_idx_10 > 0) {
                         Grad.add_element(cur_idx_0, glo_idx, 1.0 / dx_base);
                         Grad.add_element(cur_idx_0, glo_idx_10, -1.0 / dx_base);
-
+                    }
+                    if (glo_idx_01 > 0) {
                         Grad.add_element(cur_idx_1, glo_idx, 1.0 / dx_base);
                         Grad.add_element(cur_idx_1, glo_idx_01, -1.0 / dx_base);
                     }
-                    /*Grad.add_element(cur_idx_0, glo_idx, 1.0 / dx_base);
-                    //glo_idx = n(idx_p_g_type::tag(), 1);
-                    Grad.add_element(cur_idx_1, glo_idx, 1.0 / dx_base);
-
-                    glo_idx = n.at_offset(idx_p_g_type::tag(), -1, 0, 0);
-                    if (glo_idx > 0) {
-                    Grad.add_element(cur_idx_0, glo_idx, -1.0 / dx_base);
-
-                    glo_idx = n.at_offset(idx_p_g_type::tag(), 0, -1, 0);
-                    Grad.add_element(cur_idx_1, glo_idx, -1.0 / dx_base);*/
-                }
+                }*/
             }
             else
             {
-                for (auto& n : it->data())
+                /*for (auto& n : it->data())
                 {
                     int cur_idx_0 = n(idx_u_type::tag(), 0);
                     int cur_idx_1 = n(idx_u_type::tag(), 1);
@@ -2011,9 +2645,42 @@ class NewtonIteration
 
                     glo_idx = n.at_offset(idx_p_g_type::tag(), 0, -1, 0);
                     Grad.add_element(cur_idx_1, glo_idx, -1.0 / dx_base);
+                }*/
+                for (auto& n : it->data())
+                {
+                    int cur_idx_0 = n(idx_u_type::tag(), 0);
+                    int cur_idx_1 = n(idx_u_type::tag(), 1);
+
+                    int glo_idx_0  = n(idx_p_g_type::tag(), 0);
+                    int glo_idx_10 = n.at_offset(idx_p_g_type::tag(), -1, 0, 0);
+                    int glo_idx_01 = n.at_offset(idx_p_g_type::tag(), 0, -1, 0);
+
+                    /*if (glo_idx_10 < 0 && glo_idx_01 < 0) {
+                        p_left_bot_idx = glo_idx_0;
+                        p_left_bot_ldx = n(idx_p_type::tag(), 0);
+                        u_left_bot_idx = n.at_offset(idx_u_type::tag(), 1, 0, 0);
+                        v_left_bot_idx = n.at_offset(idx_u_type::tag(), 0, 1, 1);
+                    }*/
+
+                    if (glo_idx_10 > 0) {
+                        Grad.add_element(cur_idx_0, glo_idx_0, 1.0 / dx_base);
+                        Grad.add_element(cur_idx_0, glo_idx_10, -1.0 / dx_base);
+                    }
+                    if (glo_idx_01 > 0) {
+                        Grad.add_element(cur_idx_1, glo_idx_0, 1.0 / dx_base);
+                        Grad.add_element(cur_idx_1, glo_idx_01, -1.0 / dx_base);
+                    }
                 }
             }
         }
+
+        /*if (p_left_bot_idx > 0) {
+            Grad.add_element(u_left_bot_idx, p_left_bot_idx, 1.0 / dx_base);
+            Grad.add_element(v_left_bot_idx, p_left_bot_idx, 1.0 / dx_base);
+        }*/
+
+        Grad.clean_entry(1e-15);
+
         domain_->client_communicator().barrier();
     }
 
@@ -2088,13 +2755,14 @@ class NewtonIteration
                     int glo_idx_0_0 = n(idx_u_g_type::tag(), 0);
                     int glo_idx_1_0 = n(idx_u_g_type::tag(), 1);
 
-                    int glo_idx_0_1 = n.at_offset(idx_u_g_type::tag(), 1, 0, 0);
-                    int glo_idx_1_1 = n.at_offset(idx_u_g_type::tag(), 0, 1, 1);
+                    int glo_idx_0_1 = n.at_offset(idx_u_g_type::tag(), -1, 0, 0);
+                    int glo_idx_1_1 = n.at_offset(idx_u_g_type::tag(), 0, -1, 1);
 
-                    if (glo_idx_0_0 < 0 || glo_idx_0_1 < 0 || 
-                        glo_idx_1_0 < 0 || glo_idx_1_1 < 0) {
-                            continue;
-                        }
+                    if (glo_idx_0_0 < 0 || glo_idx_0_1 < 0 || glo_idx_1_0 < 0 ||
+                        glo_idx_1_1 < 0)
+                    {
+                        continue;
+                    }
 
                     Div.add_element(cur_idx, glo_idx_0_0, -1.0 / dx_base);
                     Div.add_element(cur_idx, glo_idx_1_0, -1.0 / dx_base);
@@ -2108,6 +2776,18 @@ class NewtonIteration
                 for (auto& n : it->data())
                 {
                     int cur_idx = n(idx_p_type::tag(), 0);
+
+                    int glo_p_idx_10 = n.at_offset(idx_p_g_type::tag(), -1,  0,  0);
+                    int glo_p_idx_01 = n.at_offset(idx_p_g_type::tag(),  0, -1,  0);
+
+                    if (glo_p_idx_10 < 0 && glo_p_idx_01 < 0) {
+                        //does not enforce divergence free on one corner, instead force the pressure at that point to be zero
+                        //here we chose the bottom left one for convenience during development and verification, 
+                        //in the future, need to change to a unique point
+                        int glo_p_idx = n(idx_p_g_type::tag(), 0);
+                        Div.add_element(cur_idx, glo_p_idx,1.0);
+                        continue;
+                    }
                     if (cur_idx < 0) continue;
                     int glo_idx_0 = n(idx_u_g_type::tag(), 0);
                     int glo_idx_1 = n(idx_u_g_type::tag(), 1);
@@ -2123,6 +2803,91 @@ class NewtonIteration
                 }
             }
         }
+        domain_->client_communicator().barrier();
+    }
+
+    void construction_Curl() {
+        //construction of Gradient
+        boost::mpi::communicator world;
+        world.barrier();
+
+        if (world.rank() == 0) {
+            return;
+        }
+
+        if (world.rank() == 1) {
+            std::cout << "Constructing div matrix" << std::endl;
+        }
+       
+        if (max_local_idx == 0) {
+            std::cout << "idx not initialized, please call Assigning_idx()" << std::endl;
+        }
+
+        const auto dx_base = domain_->dx_base();
+
+        Curl.resizing_row(max_local_idx+1);
+
+        int base_level = domain_->tree()->base_level();
+        if (domain_->is_client())
+        {
+            auto client = domain_->decomposition().client();
+
+            client->template buffer_exchange<idx_u_g_type>(base_level);
+            client->template buffer_exchange<idx_w_g_type>(base_level);
+        }
+        for (auto it = domain_->begin(base_level);
+             it != domain_->end(base_level); ++it)
+        {
+            if (!it->locally_owned() || !it->has_data()) continue;
+            if (!it->is_leaf()) continue;
+            /*if (!it->is_correction())
+            {
+                for (auto& n : it->data())
+                {
+                    int cur_idx = n(idx_w_type::tag(), 0);
+                    int glo_idx = n(idx_w_g_type::tag(), 0);
+                    if (cur_idx < 0) continue;
+                    int glo_idx_0_0 = n(idx_u_g_type::tag(), 0);
+                    int glo_idx_1_0 = n(idx_u_g_type::tag(), 1);
+
+                    int glo_idx_0_1 = n.at_offset(idx_u_g_type::tag(), 0, -1, 0);
+                    int glo_idx_1_1 = n.at_offset(idx_u_g_type::tag(), -1, 0, 1);
+
+                    Curl.add_element(cur_idx, glo_idx_0_0, -1.0 / dx_base);
+                    Curl.add_element(cur_idx, glo_idx_1_0, 1.0 / dx_base);
+                    Curl.add_element(cur_idx, glo_idx_0_1, 1.0 / dx_base);
+                    Curl.add_element(cur_idx, glo_idx_1_1, -1.0 / dx_base);
+                    Curl.add_element(cur_idx, glo_idx, -1.0);
+                }
+                //continue;
+            }*/
+            for (auto& n : it->data())
+            {
+                int cur_idx = n(idx_w_type::tag(), 0);
+                int glo_idx = n(idx_w_g_type::tag(), 0);
+                if (cur_idx < 0) continue;
+                int glo_idx_0_0 = n(idx_u_g_type::tag(), 0);
+                int glo_idx_1_0 = n(idx_u_g_type::tag(), 1);
+
+                int glo_idx_0_1 = n.at_offset(idx_u_g_type::tag(), 0, -1, 0);
+                int glo_idx_1_1 = n.at_offset(idx_u_g_type::tag(), -1, 0, 1);
+
+                Curl.add_element(cur_idx, glo_idx_0_0, -1.0 / dx_base);
+                Curl.add_element(cur_idx, glo_idx_1_0, 1.0 / dx_base);
+                Curl.add_element(cur_idx, glo_idx_0_1, 1.0 / dx_base);
+                Curl.add_element(cur_idx, glo_idx_1_1, -1.0 / dx_base);
+                Curl.add_element(cur_idx, glo_idx, -1.0);
+
+                /*Curl.add_element(cur_idx, glo_idx_0_0, -1.0 / dx_base * Curl_factor);
+                Curl.add_element(cur_idx, glo_idx_1_0, 1.0 / dx_base * Curl_factor);
+                Curl.add_element(cur_idx, glo_idx_0_1, 1.0 / dx_base * Curl_factor);
+                Curl.add_element(cur_idx, glo_idx_1_1, -1.0 / dx_base * Curl_factor);
+                Curl.add_element(cur_idx, glo_idx, -1.0 * Curl_factor);*/ //divide by dx to make condition number bigger
+
+
+            }
+        }
+        Curl.scale_entries(Curl_factor);
         domain_->client_communicator().barrier();
     }
 
@@ -2400,7 +3165,8 @@ class NewtonIteration
         world.barrier();
     }
 
-    void construction_BCMat() {
+    void construction_BCMat()
+    {
         //construction of Gradient
         boost::mpi::communicator world;
         world.barrier();
@@ -2409,18 +3175,21 @@ class NewtonIteration
             return;
         }*/
 
-        if (world.rank() == 1) {
+        if (world.rank() == 1)
+        {
             std::cout << "Constructing BC matrix" << std::endl;
         }
-       
-        if (max_local_idx == 0 && world.rank() != 0) {
-            std::cout << "idx not initialized, please call Assigning_idx()" << std::endl;
+
+        if (max_local_idx == 0 && world.rank() != 0)
+        {
+            std::cout << "idx not initialized, please call Assigning_idx()"
+                      << std::endl;
         }
 
         const auto dx_base = domain_->dx_base();
-        int base_level = domain_->tree()->base_level();
+        int        base_level = domain_->tree()->base_level();
 
-        boundary_u.resizing_row(max_local_idx+1);
+        boundary_u.resizing_row(max_local_idx + 1);
 
         int counter = 0; //count the number of bc pts in this processor
 
@@ -2451,14 +3220,17 @@ class NewtonIteration
 
         tasks_vec[0] = 0;
 
-        if (world.rank() == 0) {
-            for (int i = 1; i < world.size();i++) {
+        if (world.rank() == 0)
+        {
+            for (int i = 1; i < world.size(); i++)
+            {
                 int tmp_counter;
                 world.recv(i, i, tmp_counter);
                 tasks_vec[i] = tmp_counter;
             }
         }
-        else {
+        else
+        {
             world.send(0, world.rank(), counter);
         }
 
@@ -2466,20 +3238,20 @@ class NewtonIteration
 
         boost::mpi::broadcast(world, tasks_vec, 0);
 
-        if (world.rank() == 0) {
-            std::cout << "Number of tasks received is " << tasks_vec.size() << std::endl;
+        if (world.rank() == 0)
+        {
+            std::cout << "Number of tasks received is " << tasks_vec.size()
+                      << std::endl;
             int sum = 0;
-            for (int i = 0; i < tasks_vec.size(); i++) {
-                sum += tasks_vec[i];
-            }
-            std::cout << "Number of node points need to compute " << sum << std::endl;
+            for (int i = 0; i < tasks_vec.size(); i++) { sum += tasks_vec[i]; }
+            std::cout << "Number of node points need to compute " << sum
+                      << std::endl;
         }
 
         world.barrier();
         /*if (world.rank() == 0) {
             return;
         }*/
-
 
         //int base_level = domain_->tree()->base_level();
 
@@ -2500,14 +3272,13 @@ class NewtonIteration
         for (int i = 1; i < tasks_vec.size(); i++)
         {
             int root_rank = domain_->client_communicator().rank();
-            
+
             boost::mpi::broadcast(world, root_rank, i);
-            if (world.rank() == 0) {
-                continue;
-            }
+            if (world.rank() == 0) { continue; }
             if (world.rank() == i)
             {
-                std::cout << "Rank " << i << " root rank " << root_rank << std::endl;
+                std::cout << "Rank " << i << " root rank " << root_rank
+                          << std::endl;
                 for (auto it = domain_->begin(base_level);
                      it != domain_->end(base_level); ++it)
                 {
@@ -2533,9 +3304,19 @@ class NewtonIteration
                             std::map<int, float_type> row_u;
                             std::map<int, float_type> row_v;
 
-                            get_BC_idx_from_client(coord_cur,
-                                root_rank, row_u,
-                                row_v);
+                            if (use_FMM)
+                            {
+                                auto lb_c = it->data_r(idx_w_g_type::tag())
+                                                .real_block()
+                                                .base();
+                                get_BC_blk_from_client_FMM(lb_c, coord_cur, root_rank,
+                                    row_u, row_v);
+                            }
+                            else
+                            {
+                                get_BC_idx_from_client(coord_cur, root_rank,
+                                    row_u, row_v);
+                            }
 
                             for (const auto& [key, val] : row_u)
                             {
@@ -2553,61 +3334,31 @@ class NewtonIteration
                     }
                 }
             }
-            else {
-                
-                for (int j = 0; j < tasks_vec[i]; j++) {
+            else
+            {
+                for (int j = 0; j < tasks_vec[i]; j++)
+                {
                     std::map<int, float_type> row_u;
                     std::map<int, float_type> row_v;
-                    get_BC_idx_from_client(coordinate_type({0, 0}),
+                    /*get_BC_idx_from_client(coordinate_type({0, 0}),
                                 root_rank, row_u,
-                                row_v);
+                                row_v);*/
+
+                    if (use_FMM)
+                    {
+                        get_BC_blk_from_client_FMM(coordinate_type({0, 0}),
+                            coordinate_type({0, 0}), root_rank, row_u, row_v);
+                    }
+                    else
+                    {
+                        get_BC_idx_from_client(coordinate_type({0, 0}),
+                            root_rank, row_u, row_v);
+                    }
                 }
             }
             domain_->client_communicator().barrier();
         }
 
-        /*for (auto it = domain_->begin(base_level);
-             it != domain_->end(base_level); ++it)
-        {
-            if (!it->locally_owned() || !it->has_data()) continue;
-            //if (!it->is_leaf()) continue;
-            if (!it->is_correction()) continue;
-
-            for (auto& n : it->data())
-            {
-                int cur_idx_0 = n(idx_u_type::tag(), 0);
-                int cur_idx_1 = n(idx_u_type::tag(), 1);
-
-                if (cur_idx_0 > 0) {
-                    //int cur_idx_0 = n(idx_u_type::tag(), 0);
-                    //int cur_idx_1 = n(idx_u_type::tag(), 1);
-                    int glob_idx_0 = n(idx_u_g_type::tag(), 0);
-                    int glob_idx_1 = n(idx_u_g_type::tag(), 1);
-
-                    //TODO: use function that inquires all the idx from other processors
-                    const auto& coord_cur = n.level_coordinate();
-
-                    std::map<int, float_type> row_u;
-                    std::map<int, float_type> row_v;
-
-                    get_BC_idx_from_client(coord_cur, domain_->client_communicator().rank(), row_u,
-                        row_v);
-
-                    for (const auto& [key, val] : row_u)
-                    {
-                        boundary_u.add_element(cur_idx_0, key, val);
-                    }
-                    for (const auto& [key, val] : row_v)
-                    {
-                        boundary_u.add_element(cur_idx_1, key, val);
-                    }
-
-                    //add the negative of identity here
-                    boundary_u.add_element(cur_idx_0, glob_idx_0, -1.0);
-                    boundary_u.add_element(cur_idx_1, glob_idx_1, -1.0);
-                }
-            }
-        }*/
         domain_->client_communicator().barrier();
     }
 
@@ -2739,6 +3490,1203 @@ class NewtonIteration
             //accumulate vectors from other processors
             map_add_map(dest_mat_v[i], row_v);
         }
+    }
+
+    void get_BC_blk_from_client_FMM(coordinate_type lb_c_r, coordinate_type c, int root, 
+        std::map<int, float_type>& row_u, std::map<int, float_type>& row_v)
+    {
+        //Send and recv
+        //send coordinates to other processes
+
+        //clear the destination matrix rows
+        boost::mpi::communicator world;
+        row_u.clear();
+        row_v.clear();
+
+        coordinate_type base = domain_->bounding_box().base();
+        coordinate_type c_loc = c - base;
+        coordinate_type lb_c= lb_c_r - base;
+
+        boost::mpi::broadcast(domain_->client_communicator(), c_loc, root);
+        boost::mpi::broadcast(domain_->client_communicator(), lb_c, root);
+        //std::cout << root << " " <<domain_->client_communicator().rank() << " c is " << c_loc[0] << " " << c_loc[1] << std::endl;
+        std::map<int, float_type> loc_smat_u; //local resulting matrix to get BC
+        std::map<int, float_type> loc_smat_v; //local resulting matrix to get BC
+
+        int        base_level = domain_->tree()->base_level();
+        const auto dx_base = domain_->dx_base();
+
+        for (int l = base_level; l >= 1; l--)
+        {
+            for (auto it = domain_->begin(l);
+                 it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
+                if (!it->is_leaf() && l == base_level) continue;
+                if (it->is_correction() && l == base_level) continue;
+
+                //check if this block should be included
+                bool include_oct = false;
+                int N = domain_->block_extent()[0];
+                coordinate_type add_one;
+                add_one[0] = 1;
+                add_one[1] = 1;
+
+                int n_range_p = std::pow(2, base_level - l + 1) * N;
+                int n_range_c = std::pow(2, base_level - l) * N;
+                
+                auto cur_real_base = (it->data_r(idx_w_g_type::tag()).real_block().base() - base + add_one) * std::pow(2, base_level - l);
+                auto prt_real_base = (it->parent()->data_r(idx_w_g_type::tag()).real_block().base() - base + add_one) * std::pow(2, base_level - l + 1);
+                auto tar_real_base = lb_c + add_one;
+
+                //check if parents are neighbors
+                auto dist = tar_real_base - prt_real_base;
+                if (dist[0] >= -n_range_p && dist[0] < n_range_p * 2 &&
+                    dist[1] >= -n_range_p && dist[1] < n_range_p * 2) {
+                    include_oct = true;
+                }
+
+                auto dist_c = tar_real_base - cur_real_base;
+
+                if (l != base_level &&
+                    dist_c[0] >= -n_range_c && dist_c[0] < n_range_c * 2 &&
+                    dist_c[1] >= -n_range_c && dist_c[1] < n_range_c * 2) {
+                    include_oct = false;
+                }
+
+                if (!include_oct) continue;
+
+                if (l != base_level)
+                {
+                    int   N = domain_->block_extent()[0] + lBuffer + rBuffer;
+                    auto& lin_data_g =
+                        it->data_r(idx_w_g_type::tag(), 0).linalg_data();
+                    for (int sub_i = 0; sub_i < N; sub_i++)
+                    {
+                        for (int sub_j = 0; sub_j < N; sub_j++)
+                        {
+                            auto real_base = it->data_r(idx_w_g_type::tag())
+                                                 .real_block()
+                                                 .base() -
+                                             base;
+
+                            int x_c_tmp = (real_base[0] + sub_i) *
+                                          std::pow(2, base_level - l);
+                            int y_c_tmp = (real_base[1] + sub_j) *
+                                          std::pow(2, base_level - l);
+
+                            int x_c = c_loc[0] - x_c_tmp;
+                            if (x_c != (c_loc[0] - x_c_tmp))
+                            {
+                                std::cout << "Coordinate type not INT"
+                                          << std::endl;
+                            }
+
+                            int y_c = c_loc[1] - y_c_tmp;
+
+                            float_type lgf_val_00 = lgf_lap_.derived().get(
+                                coordinate_type({x_c, y_c}));
+                            float_type lgf_val_01 = lgf_lap_.derived().get(
+                                coordinate_type({x_c, (y_c + 1)}));
+                            float_type lgf_val_10 = lgf_lap_.derived().get(
+                                coordinate_type({(x_c + 1), y_c}));
+
+                            float_type u_weight = (lgf_val_01 - lgf_val_00);
+                            float_type v_weight = (lgf_val_00 - lgf_val_10);
+
+                            int w_idx = lin_data_g.at(sub_i, sub_j);
+
+                            this->map_add_element(w_idx, -u_weight * dx_base,
+                                loc_smat_u);
+
+                            this->map_add_element(w_idx, -v_weight * dx_base,
+                                loc_smat_v);
+                        }
+                    }
+                }
+
+                else
+                {
+                    for (auto& n : it->data())
+                    {
+                        const auto& coord_loc_level =
+                            n.level_coordinate() - base;
+                        const auto& coord_loc =
+                            coord_loc_level * std::pow(2, base_level - l);
+
+                        int x_c = c_loc[0] - coord_loc[0];
+                        if (x_c != (c_loc[0] - coord_loc[0]))
+                        {
+                            std::cout << "Coordinate type not INT" << std::endl;
+                        }
+
+                        int y_c = c_loc[1] - coord_loc[1];
+
+                        float_type lgf_val_00 =
+                            lgf_lap_.derived().get(coordinate_type({x_c, y_c}));
+                        float_type lgf_val_01 = lgf_lap_.derived().get(
+                            coordinate_type({x_c, (y_c + 1)}));
+                        float_type lgf_val_10 = lgf_lap_.derived().get(
+                            coordinate_type({(x_c + 1), y_c}));
+
+                        float_type u_weight = (lgf_val_01 - lgf_val_00);
+                        float_type v_weight = (lgf_val_00 - lgf_val_10);
+
+                        int w_idx = n(idx_w_g_type::tag(), 0);
+
+                        this->map_add_element(w_idx, -u_weight * dx_base,
+                            loc_smat_u);
+
+                        this->map_add_element(w_idx, -v_weight * dx_base,
+                            loc_smat_v);
+                    }
+                }
+            }
+        }
+        domain_->client_communicator().barrier();
+        std::vector<std::map<int, float_type>> dest_mat_u;
+        std::vector<std::map<int, float_type>> dest_mat_v;
+        boost::mpi::gather(domain_->client_communicator(), loc_smat_u, dest_mat_u, root);
+        boost::mpi::gather(domain_->client_communicator(), loc_smat_v, dest_mat_v, root);
+
+        if (domain_->client_communicator().rank() != root) {
+            return;
+        }
+
+        for (int i = 0; i < dest_mat_u.size();i++) {
+            //accumulate vectors from other processors
+            map_add_map(dest_mat_u[i], row_u);
+        }
+
+        for (int i = 0; i < dest_mat_v.size();i++) {
+            //accumulate vectors from other processors
+            map_add_map(dest_mat_v[i], row_v);
+        }
+    }
+
+    void construction_BCMat_FMM() {
+        //Not in use
+        boost::mpi::communicator world;
+        boost::mpi::communicator client_comm = domain_->client_communicator();
+        world.barrier();
+
+        /*if (world.rank() == 0) {
+            return;
+        }*/
+
+        if (world.rank() == 1) {
+            std::cout << "Constructing BC matrix using FMM" << std::endl;
+        }
+       
+        if (max_local_idx == 0 && world.rank() != 0) {
+            std::cout << "idx not initialized, please call Assigning_idx()" << std::endl;
+        }
+
+        const auto dx_base = domain_->dx_base();
+        int base_level = domain_->tree()->base_level();
+
+        boundary_u.clean();
+
+        boundary_u.resizing_row(max_local_idx+1);
+
+        //int counter = 0; //count the number of bc pts in this processor
+
+        //compute the octants needed at each processor
+        std::vector<std::set<int>> gid_to_recv;
+        gid_to_recv.resize(world.size());
+        std::vector<std::set<int>> gid_to_send;
+        gid_to_send.resize(world.size());
+        for (auto it = domain_->begin(base_level);
+             it != domain_->end(base_level); ++it)
+        {
+            if (world.rank() == 0) continue;
+            if (!it->locally_owned() || !it->has_data()) continue;
+            if (!it->is_leaf()) continue;
+            if (!it->is_correction()) continue;
+
+            octant_t* prt_oct = it.ptr();
+
+            for (int l = base_level - 1; l >= 0; l--)
+            {
+                //if (world.rank() == 1) std::cout << "rank " << world.rank() << " at level " << l << std::endl;
+                octant_t* chd_oct =
+                    prt_oct; //chd_oct is the child of the octant at the current level containing the targete octant
+
+                prt_oct =
+                    prt_oct
+                        ->parent(); //prt_oct is the parent octant on the level l
+
+                if (!prt_oct) break;
+
+                //if (world.rank() == 1) std::cout << "rank " << world.rank() << " at level " << l << " updated parents " << std::endl;
+
+                for (std::size_t i = 0; i < prt_oct->num_neighbors(); ++i)
+                {
+                    //if (world.rank() == 1) std::cout << "rank " << world.rank() << " at neighbor " << i << std::endl;
+                    auto it2 = prt_oct->neighbor(i);
+                    if (!it2) continue;
+                    for (int j = 0; j < it2->num_children(); ++j)
+                    {
+                        //if (world.rank() == 1) std::cout << "rank " << world.rank() << " at child " << j << std::endl;
+                        //only apply to non-neighboring ones
+                        auto child = it2->child(j);
+                        if (!child)
+                            continue;
+                        if (!child->is_leaf() && l == (base_level - 1))
+                            continue; //on the base level, the octant needs to be leaf octant
+                        bool is_neighbor = false;
+
+                        if (l != (base_level - 1))
+                        {
+                            //if (world.rank() == 1) std::cout << "rank " << world.rank() << " checking neighbors" << std::endl;
+                            //if  child is on the base level, do not exclude neighbors
+                            for (std::size_t k = 0;
+                                 k < chd_oct->num_neighbors(); ++k)
+                            {
+                                auto neighbor_tmp = chd_oct->neighbor(k);
+                                if (!neighbor_tmp) continue;
+                                if (child->global_id() == neighbor_tmp->global_id())
+                                {
+                                    is_neighbor = true;
+                                    break;
+                                }
+                            }
+                        }
+                        if (!is_neighbor) {
+                            //if (world.rank() == 1) std::cout << "rank " << world.rank() << " registering new octant gids" << std::endl;
+                            int gid_loc = child->global_id();
+                            int child_rank = child->rank();
+                            if (child_rank <= 0) continue;
+                            //if (world.rank() == 1) std::cout << "rank " << world.rank() << " child rank " << child_rank << std::endl;
+                            gid_to_recv[child_rank].insert(gid_loc);
+                        }
+                    }
+                }
+            }
+        }
+
+        
+        std::cout << "rank " << world.rank() << " tasks to gather" << std::endl;
+
+        int rank = world.rank();
+
+        for (int i = 1; i < world.size();i++) {
+            boost::mpi::gather(world, gid_to_recv[i], gid_to_send, i);
+        }
+
+        int n_send = 0;
+
+        for (int i =1; i < world.size(); i++) {
+            if (i == world.rank()) continue;
+            n_send += gid_to_send[i].size();
+        }
+
+        //std::cout << "rank " << world.rank() << " tasks gathered" << std::endl;
+
+        if (world.rank() == 0) return;
+
+        std::cout << "rank " << world.rank() << " tasks gathered with size " << n_send << std::endl;
+
+        std::map<int, std::vector<int>> idx_maps_nonloc;
+        std::map<int, coordinate_type> base_maps_nonloc;
+
+        
+        for (int l = base_level; l >=0 ; l--) {
+            //iterate through levels to send idx vectors to influenced processors
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it) {
+                if (it->locally_owned() && it->has_data()) {
+                    if (!it->is_leaf() && l == base_level) continue;
+
+                    int N = it->data().descriptor().extent()[0];
+
+                    int idx_size = (N+2) * (N+2);
+
+                    std::vector<int> tmp_idx_vec;
+
+                    tmp_idx_vec.resize(idx_size);
+
+                    auto child_idx_vec =
+                        it->data_r(idx_w_g_type::tag(), 0).linalg_data();
+
+                    for (int idx_i = 0; idx_i < (N + 2); idx_i++)
+                    {
+                        for (int idx_j = 0; idx_j < (N + 2); idx_j++)
+                        {
+                            int loc_idx = idx_i * (N + 2) + idx_j;
+                            tmp_idx_vec[loc_idx] =
+                                child_idx_vec.at(idx_i, idx_j);
+                        }
+                    }
+
+                    for (int rk = 1; rk < world.size(); rk++) {
+                        if (rk == world.rank()) continue;
+                        int gid_cur = it->global_id();
+                        auto it2 = gid_to_send[rk].find(gid_cur);
+                        if (it2 == gid_to_send[rk].end()) continue;
+                        coordinate_type loc_base = it->data_r(idx_w_g_type::tag(), 0).real_block().base();
+                        world.isend(rk, 2*gid_cur, tmp_idx_vec);
+                        world.isend(rk, 2*gid_cur+1, loc_base);
+                    }
+                }
+            }
+        }
+
+        std::cout << "rank " << world.rank() << " tasks sent" << std::endl;
+
+        int counter = 0;
+
+        int N_m = domain_->block_extent()[0]+lBuffer+rBuffer;
+        int idx_size = N_m*N_m;
+
+        for (int rk = 1; rk < world.size(); rk++) {
+            if (rk == world.rank()) continue;
+            std::set<int> oct_to_recv = gid_to_recv[rk];
+            for (auto it = oct_to_recv.begin(); it != oct_to_recv.end(); ++it) {
+                std::vector<int> idx_vec_tmp;
+                idx_vec_tmp.resize(idx_size);
+                coordinate_type tmp;
+                int cur_gid = *it;
+                boost::mpi::request reqs[2];
+                reqs[0] = world.irecv(rk, 2*cur_gid, idx_vec_tmp);
+                reqs[1] = world.irecv(rk, 2*cur_gid+1, tmp);
+                boost::mpi::wait_all(reqs, reqs + 2);
+                //counter++;
+                idx_maps_nonloc[cur_gid] = idx_vec_tmp;
+                base_maps_nonloc[cur_gid] = tmp;
+            }
+        }
+        //boost::mpi::wait_all(reqs_vec.begin(), reqs_vec.end());
+
+        std::cout << "rank " << world.rank() << " recv all idx vecs" << std::endl;
+
+        for (auto it = domain_->begin(base_level);
+             it != domain_->end(base_level); ++it)
+        {
+            
+
+            if (!it->locally_owned() || !it->has_data()) continue;
+            if (!it->is_leaf()) continue;
+            if (!it->is_correction()) continue;
+
+            int gid_cur = it->global_id();
+
+            std::cout << "Rank " << world.rank() << " computing BC terms gid " << gid_cur << std::endl;
+
+            auto target_ptr = it.ptr();
+
+            for (auto& n : it->data())
+            {
+                int cur_idx_0 = n(idx_u_type::tag(), 0);
+                int cur_idx_1 = n(idx_u_type::tag(), 1);
+
+                if (cur_idx_0 > 0)
+                {
+                    //int cur_idx_0 = n(idx_u_type::tag(), 0);
+                    //int cur_idx_1 = n(idx_u_type::tag(), 1);
+                    int glob_idx_0 = n(idx_u_g_type::tag(), 0);
+                    int glob_idx_1 = n(idx_u_g_type::tag(), 1);
+
+                    //function that inquires all the idx from other processors
+                    const auto& coord_cur = n.level_coordinate();
+
+                    std::map<int, float_type> row_u;
+                    std::map<int, float_type> row_v;
+
+                    //const auto& tree_coord = it->tree_coordinate();
+                    //int oct_idx = it->idx();
+                    //key_type key_tar = it->key();
+                    //int gid_cur = it->global_id();
+
+                    
+                    get_BC_idx_from_client_FMM(target_ptr, coord_cur, idx_maps_nonloc, base_maps_nonloc,
+                        row_u, row_v);
+
+                    for (const auto& [key, val] : row_u)
+                    {
+                        boundary_u.add_element(cur_idx_0, key, val);
+                    }
+                    for (const auto& [key, val] : row_v)
+                    {
+                        boundary_u.add_element(cur_idx_1, key, val);
+                    }
+
+                    //add the negative of identity here
+                    boundary_u.add_element(cur_idx_0, glob_idx_0, -1.0);
+                    boundary_u.add_element(cur_idx_1, glob_idx_1, -1.0);
+                }
+            }
+        }
+
+        domain_->client_communicator().barrier();
+
+        std::cout << "rank " << world.rank() << " constructed matrix" << std::endl;
+    }
+
+    void get_BC_idx_from_client_FMM(octant_t* target_octant, coordinate_type c,
+        const std::map<int, std::vector<int>>& idx_maps_nonloc,
+        const std::map<int, coordinate_type>&  base_maps_nonloc,
+        std::map<int, float_type>& row_u, std::map<int, float_type>& row_v)
+    {
+        //Not in use
+        //Send and recv
+        //send coordinates to other processes
+
+        //clear the destination matrix rows
+        boost::mpi::communicator world;
+        row_u.clear();
+        row_v.clear();
+
+        coordinate_type base = domain_->bounding_box().base();
+        coordinate_type c_loc = c - base;
+        //std::cout << root << " " <<domain_->client_communicator().rank() << " c is " << c_loc[0] << " " << c_loc[1] << std::endl;
+        //std::map<int, float_type> loc_smat_u; //local resulting matrix to get BC
+        //std::map<int, float_type> loc_smat_v; //local resulting matrix to get BC
+
+        int        base_level = domain_->tree()->base_level();
+        const auto dx_base = domain_->dx_base();
+
+        /*if (domain_->is_client())
+        {
+            auto client = domain_->decomposition().client();
+
+            //client->template buffer_exchange<idx_u_type>(base_level);
+            client->template buffer_exchange<idx_u_g_type>(base_level);
+
+            //client->template buffer_exchange<idx_p_type>(base_level);
+            //client->template buffer_exchange<idx_p_g_type>(base_level);
+        }*/
+
+        octant_t* prt_oct =
+            target_octant; //store the pointer to the parent octant
+
+        for (int l = base_level - 1; l >= 0; l--)
+        {
+            //std::cout << "rank " << world.rank() << " at level " << l << std::endl;
+            octant_t* chd_oct =
+                prt_oct; //chd_oct is the child of the octant at the current level containing the targete octant
+
+            prt_oct =
+                prt_oct->parent(); //prt_oct is the parent octant on the level l
+
+            if (!prt_oct) return;
+
+            //std::cout << "rank " << world.rank() << " at level " << l << " updated parents " << std::endl;
+
+            for (std::size_t i = 0; i < prt_oct->num_neighbors(); ++i)
+            {
+                //std::cout << "rank " << world.rank() << " at neighbor " << i << std::endl;
+                auto it2 = prt_oct->neighbor(i);
+                if (!it2) continue;
+                for (int j = 0; j < it2->num_children(); j++)
+                {
+                    //std::cout << "rank " << world.rank() << " at child " << j << std::endl;
+                    //only apply to non-neighboring ones
+                    auto child = it2->child(j);
+                    if (!child) continue;
+                    if (!child->is_leaf() && l == (base_level - 1))
+                        continue; //on the base level, the octant needs to be leaf octant
+                    bool is_neighbor = false;
+
+                    if (l != (base_level - 1))
+                    {
+                        //if  child is on the base level, do not exclude neighbors
+                        for (std::size_t k = 0; k < chd_oct->num_neighbors();
+                             ++k)
+                        {
+                            auto neighbor_tmp = chd_oct->neighbor(k);
+                            if (!neighbor_tmp) continue;
+                            if (child->global_id() == neighbor_tmp->global_id())
+                            {
+                                is_neighbor = true;
+                                break;
+                            }
+                        }
+                    }
+                    //std::cout << "rank " << world.rank() << " after at child " << j << std::endl;
+                    if (!is_neighbor && child->locally_owned() && child->has_data())
+                    {
+                        //not neighbor, keep constructing matrix for this octant
+
+                        if (l != (base_level - 1))
+                        {
+                            int N =
+                                domain_->block_extent()[0] + lBuffer + rBuffer;
+                            
+                            auto& lin_data_g =
+                                child->data_r(idx_w_g_type::tag(), 0)
+                                    .linalg_data();
+                            for (int sub_i = 0; sub_i < N; sub_i++)
+                            {
+                                for (int sub_j = 0; sub_j < N; sub_j++)
+                                {
+                                    auto real_base =
+                                        child->data_r(idx_w_g_type::tag())
+                                            .real_block()
+                                            .base() -
+                                        base;
+
+                                    int x_c_tmp =
+                                        (real_base[0] + sub_i) *
+                                        std::pow(2, base_level - (l + 1));
+                                    int y_c_tmp =
+                                        (real_base[1] + sub_j) *
+                                        std::pow(2, base_level - (l + 1));
+
+                                    int x_c = c_loc[0] - x_c_tmp;
+                                    if (x_c != (c_loc[0] - x_c_tmp))
+                                    {
+                                        std::cout << "Coordinate type not INT"
+                                                  << std::endl;
+                                    }
+
+                                    int y_c = c_loc[1] - y_c_tmp;
+
+                                    float_type lgf_val_00 =
+                                        lgf_lap_.derived().get(
+                                            coordinate_type({x_c, y_c}));
+                                    float_type lgf_val_01 =
+                                        lgf_lap_.derived().get(
+                                            coordinate_type({x_c, (y_c + 1)}));
+                                    float_type lgf_val_10 =
+                                        lgf_lap_.derived().get(
+                                            coordinate_type({(x_c + 1), y_c}));
+
+                                    float_type u_weight =
+                                        (lgf_val_01 - lgf_val_00);
+                                    float_type v_weight =
+                                        (lgf_val_00 - lgf_val_10);
+
+                                    int w_idx = lin_data_g.at(sub_i, sub_j);
+
+                                    this->map_add_element(w_idx,
+                                        -u_weight * dx_base, row_u);
+
+                                    this->map_add_element(w_idx,
+                                        -v_weight * dx_base, row_v);
+                                }
+                            }
+                        }
+
+                        else
+                        {
+                            for (auto& n : child->data())
+                            {
+                                const auto& coord_loc_level =
+                                    n.level_coordinate() - base;
+                                const auto& coord_loc =
+                                    coord_loc_level *
+                                    std::pow(2, base_level - (l + 1));
+
+                                int x_c = c_loc[0] - coord_loc[0];
+                                if (x_c != (c_loc[0] - coord_loc[0]))
+                                {
+                                    std::cout << "Coordinate type not INT"
+                                              << std::endl;
+                                }
+
+                                int y_c = c_loc[1] - coord_loc[1];
+
+                                float_type lgf_val_00 = lgf_lap_.derived().get(
+                                    coordinate_type({x_c, y_c}));
+                                float_type lgf_val_01 = lgf_lap_.derived().get(
+                                    coordinate_type({x_c, (y_c + 1)}));
+                                float_type lgf_val_10 = lgf_lap_.derived().get(
+                                    coordinate_type({(x_c + 1), y_c}));
+
+                                float_type u_weight = (lgf_val_01 - lgf_val_00);
+                                float_type v_weight = (lgf_val_00 - lgf_val_10);
+
+                                int w_idx = n(idx_w_g_type::tag(), 0);
+
+                                this->map_add_element(w_idx,
+                                    -u_weight * dx_base, row_u);
+
+                                this->map_add_element(w_idx,
+                                    -v_weight * dx_base, row_v);
+                            }
+                        }
+                    }
+
+                    else if (!is_neighbor)
+                    {
+                        //std::cout << "rank " << world.rank() << " not child but on other proc " << std::endl;
+                        //not neighbor, keep constructing matrix for this octant
+
+                        int  gid_loc = child->global_id();
+                        auto it3 = idx_maps_nonloc.find(gid_loc);
+                        if (it3 == idx_maps_nonloc.end()) {
+                            //std::cout << "Rank " << world.rank() << " cannot find octant with gid " << gid_loc << std::endl;
+                            continue;
+                        }
+                        auto it4 = base_maps_nonloc.find(gid_loc);
+                        if (it4 == base_maps_nonloc.end()) {
+                            //std::cout << "Rank " << world.rank() << " cannot find octant with gid " << gid_loc << std::endl;
+                            continue;
+                        }
+                        auto base_loc = it4->second;
+                        auto idx_loc = it3->second;
+
+                        if (l != (base_level - 1))
+                        {
+                            int N =
+                                domain_->block_extent()[0] + lBuffer + rBuffer;
+                            
+                            
+                            for (int sub_i = 0; sub_i < N; sub_i++)
+                            {
+                                for (int sub_j = 0; sub_j < N; sub_j++)
+                                {
+                                    auto real_base = base_loc - base;
+
+                                    int x_c_tmp =
+                                        (real_base[0] + sub_i) *
+                                        std::pow(2, base_level - (l + 1));
+                                    int y_c_tmp =
+                                        (real_base[1] + sub_j) *
+                                        std::pow(2, base_level - (l + 1));
+
+                                    int x_c = c_loc[0] - x_c_tmp;
+                                    if (x_c != (c_loc[0] - x_c_tmp))
+                                    {
+                                        std::cout << "Coordinate type not INT"
+                                                  << std::endl;
+                                    }
+
+                                    int y_c = c_loc[1] - y_c_tmp;
+
+                                    float_type lgf_val_00 =
+                                        lgf_lap_.derived().get(
+                                            coordinate_type({x_c, y_c}));
+                                    float_type lgf_val_01 =
+                                        lgf_lap_.derived().get(
+                                            coordinate_type({x_c, (y_c + 1)}));
+                                    float_type lgf_val_10 =
+                                        lgf_lap_.derived().get(
+                                            coordinate_type({(x_c + 1), y_c}));
+
+                                    float_type u_weight =
+                                        (lgf_val_01 - lgf_val_00);
+                                    float_type v_weight =
+                                        (lgf_val_00 - lgf_val_10);
+
+                                    int loc_idx = sub_i * N + sub_j;
+                                    int w_idx = idx_loc[loc_idx];
+
+                                    this->map_add_element(w_idx,
+                                        -u_weight * dx_base, row_u);
+
+                                    this->map_add_element(w_idx,
+                                        -v_weight * dx_base, row_v);
+                                }
+                            }
+                        }
+
+                        else
+                        {
+                            int N =
+                                domain_->block_extent()[0] + lBuffer + rBuffer;
+                            
+                            
+                            for (int sub_i = 1; sub_i < N-1; sub_i++)
+                            {
+                                for (int sub_j = 1; sub_j < N-1; sub_j++)
+                                {
+                                    auto real_base = base_loc - base;
+
+                                    int x_c_tmp =
+                                        (real_base[0] + sub_i) *
+                                        std::pow(2, base_level - (l + 1));
+                                    int y_c_tmp =
+                                        (real_base[1] + sub_j) *
+                                        std::pow(2, base_level - (l + 1));
+
+                                    int x_c = c_loc[0] - x_c_tmp;
+                                    if (x_c != (c_loc[0] - x_c_tmp))
+                                    {
+                                        std::cout << "Coordinate type not INT"
+                                                  << std::endl;
+                                    }
+
+                                    int y_c = c_loc[1] - y_c_tmp;
+
+                                    float_type lgf_val_00 =
+                                        lgf_lap_.derived().get(
+                                            coordinate_type({x_c, y_c}));
+                                    float_type lgf_val_01 =
+                                        lgf_lap_.derived().get(
+                                            coordinate_type({x_c, (y_c + 1)}));
+                                    float_type lgf_val_10 =
+                                        lgf_lap_.derived().get(
+                                            coordinate_type({(x_c + 1), y_c}));
+
+                                    float_type u_weight =
+                                        (lgf_val_01 - lgf_val_00);
+                                    float_type v_weight =
+                                        (lgf_val_00 - lgf_val_10);
+
+                                    int loc_idx = sub_i * N + sub_j;
+                                    int w_idx = idx_loc[loc_idx];
+
+                                    this->map_add_element(w_idx,
+                                        -u_weight * dx_base, row_u);
+
+                                    this->map_add_element(w_idx,
+                                        -v_weight * dx_base, row_v);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /*void get_BC_idx_from_client_FMM(coordinate_type c, int gid, int root, std::map<int, float_type>& row_u, std::map<int, float_type>& row_v) {
+        //Send and recv 
+        //send coordinates to other processes
+
+        //clear the destination matrix rows
+        row_u.clear();
+        row_v.clear();
+
+        
+        coordinate_type base = domain_->bounding_box().base();
+        coordinate_type c_loc = c - base;
+        int gid_loc = gid;
+        boost::mpi::broadcast(domain_->client_communicator(), c_loc, root);
+        boost::mpi::broadcast(domain_->client_communicator(), gid_loc, root);
+
+        //std::cout << root << " " <<domain_->client_communicator().rank() << " c is " << c_loc[0] << " " << c_loc[1] << std::endl;
+        std::map<int, float_type> loc_smat_u; //local resulting matrix to get BC
+        std::map<int, float_type> loc_smat_v; //local resulting matrix to get BC
+
+        int base_level = domain_->tree()->base_level();
+        const auto dx_base = domain_->dx_base();
+
+        
+        if (domain_->is_client())
+        {
+            auto client = domain_->decomposition().client();
+
+            //client->template buffer_exchange<idx_u_type>(base_level);
+            client->template buffer_exchange<idx_u_g_type>(base_level);
+
+            //client->template buffer_exchange<idx_p_type>(base_level);
+            //client->template buffer_exchange<idx_p_g_type>(base_level);
+        }
+
+        auto tree_ptr = domain_->tree()->root();
+
+        auto cur_ptr = domain_->tree()->root();
+
+        octant_t* target_octant = nullptr;
+
+        for (int l = 0; l <= base_level; l++) {
+            for (int child_idx = 0; child_idx < cur_ptr->num_children(); child_idx++) {
+                auto child = cur_ptr->child(child_idx);
+                if ()
+            }
+        }
+
+        //octant_t* target_octant = tree_ptr->find_octant(key_tar_loc);
+        //find the target octant locally
+
+        boost::mpi::communicator world;
+
+        if (!target_octant) {
+            std::cout << "rank " << world.rank() << " cannot find octant target" << std::endl;
+            throw std::runtime_error("Did not found the target octant");
+        }
+
+        octant_t* prt_oct = target_octant; //store the pointer to the parent octant
+
+        for (int l = base_level - 1; l >= 0; l--)
+        {
+            //std::cout << "rank " << world.rank() << " at level " << l << std::endl;
+            octant_t* chd_oct = prt_oct; //chd_oct is the child of the octant at the current level containing the targete octant
+            
+            prt_oct = prt_oct->parent(); //prt_oct is the parent octant on the level l
+
+            if (!prt_oct) return;
+
+            //std::cout << "rank " << world.rank() << " at level " << l << " updated parents " << std::endl;
+
+            for (std::size_t i = 0; i < prt_oct->num_neighbors(); ++i) {
+                //std::cout << "rank " << world.rank() << " at neighbor " << i << std::endl;
+                auto it2 = prt_oct->neighbor(i);
+                if (!it2) continue;
+                for (int j = 0; j < it2->num_children();j++) {
+                    //std::cout << "rank " << world.rank() << " at child " << j << std::endl;
+                    //only apply to non-neighboring ones
+                    auto child = it2->child(j);
+                    if (!child || !child->locally_owned() || !child->has_data()) continue;
+                    if (!child->is_leaf() && l == (base_level - 1)) continue; //on the base level, the octant needs to be leaf octant
+                    bool is_neighbor = false;
+
+                    if (l != (base_level - 1))
+                    {
+                        //if  child is on the base level, do not exclude neighbors
+                        for (std::size_t k = 0; k < chd_oct->num_neighbors();
+                             ++k)
+                        {
+                            auto neighbor_tmp = chd_oct->neighbor(k);
+                            if (!neighbor_tmp) continue;
+                            if (child->key() == neighbor_tmp->key())
+                            {
+                                is_neighbor = true;
+                                break;
+                            }
+                        }
+                    }
+                    //std::cout << "rank " << world.rank() << " after at child " << j << std::endl;
+                    if (!is_neighbor) {
+                        //not neighbor, keep constructing matrix for this octant
+
+                        if (l != (base_level - 1)) {
+                            int N = domain_->block_extent()[0]+lBuffer+rBuffer;
+                            auto& lin_data_g = child->data_r(idx_w_g_type::tag(), 0).linalg_data();
+                            for (int sub_i = 0; sub_i < N; sub_i++) {
+                                for (int sub_j = 0; sub_j < N; sub_j++) {
+                                    auto real_base = child->data_r(idx_w_g_type::tag()).real_block().base()  - base;
+
+                                    int x_c_tmp = (real_base[0] + sub_i) * std::pow(2, base_level - (l+1));
+                                    int y_c_tmp = (real_base[1] + sub_j) * std::pow(2, base_level - (l+1));
+
+                                    int x_c = c_loc[0] - x_c_tmp;
+                                    if (x_c != (c_loc[0] - x_c_tmp))
+                                    {
+                                        std::cout << "Coordinate type not INT"
+                                                  << std::endl;
+                                    }
+
+                                    int y_c = c_loc[1] -  y_c_tmp;
+
+                                    float_type lgf_val_00 =
+                                        lgf_lap_.derived().get(
+                                            coordinate_type({x_c, y_c}));
+                                    float_type lgf_val_01 =
+                                        lgf_lap_.derived().get(
+                                            coordinate_type({x_c, (y_c + 1)}));
+                                    float_type lgf_val_10 =
+                                        lgf_lap_.derived().get(
+                                            coordinate_type({(x_c + 1), y_c}));
+
+                                    float_type u_weight =
+                                        (lgf_val_01 - lgf_val_00);
+                                    float_type v_weight =
+                                        (lgf_val_00 - lgf_val_10);
+
+                                    int w_idx = lin_data_g.at(sub_i, sub_j);
+
+                                    this->map_add_element(w_idx,
+                                        -u_weight * dx_base, loc_smat_u);
+
+                                    this->map_add_element(w_idx,
+                                        -v_weight * dx_base, loc_smat_v);
+                                }
+                            }
+                        }
+
+                        else
+                        {
+                            for (auto& n : child->data())
+                            {
+                                const auto& coord_loc_level =
+                                    n.level_coordinate() - base;
+                                const auto& coord_loc =
+                                    coord_loc_level *
+                                    std::pow(2, base_level - (l + 1));
+
+                                int x_c = c_loc[0] - coord_loc[0];
+                                if (x_c != (c_loc[0] - coord_loc[0]))
+                                {
+                                    std::cout << "Coordinate type not INT"
+                                              << std::endl;
+                                }
+
+                                int y_c = c_loc[1] - coord_loc[1];
+
+                                float_type lgf_val_00 = lgf_lap_.derived().get(
+                                    coordinate_type({x_c, y_c}));
+                                float_type lgf_val_01 = lgf_lap_.derived().get(
+                                    coordinate_type({x_c, (y_c + 1)}));
+                                float_type lgf_val_10 = lgf_lap_.derived().get(
+                                    coordinate_type({(x_c + 1), y_c}));
+
+                                float_type u_weight = (lgf_val_01 - lgf_val_00);
+                                float_type v_weight = (lgf_val_00 - lgf_val_10);
+
+                                int w_idx = n(idx_w_g_type::tag(), 0);
+
+                                this->map_add_element(w_idx,
+                                    -u_weight * dx_base, loc_smat_u);
+
+                                this->map_add_element(w_idx,
+                                    -v_weight * dx_base, loc_smat_v);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        domain_->client_communicator().barrier();
+        std::vector<std::map<int, float_type>> dest_mat_u;
+        std::vector<std::map<int, float_type>> dest_mat_v;
+        boost::mpi::gather(domain_->client_communicator(), loc_smat_u, dest_mat_u, root);
+        boost::mpi::gather(domain_->client_communicator(), loc_smat_v, dest_mat_v, root);
+
+        if (domain_->client_communicator().rank() != root) {
+            return;
+        }
+
+        for (int i = 0; i < dest_mat_u.size();i++) {
+            //accumulate vectors from other processors
+            map_add_map(dest_mat_u[i], row_u);
+        }
+
+        for (int i = 0; i < dest_mat_v.size();i++) {
+            //accumulate vectors from other processors
+            map_add_map(dest_mat_v[i], row_v);
+        }
+    }*/
+
+    void construct_upward_intrp() {
+        boost::mpi::communicator world;
+        world.barrier();
+
+        if (world.rank() == 0) {
+            return;
+        }
+
+        if (world.rank() == 1) {
+            std::cout << "Constructing upward interpolation matrix" << std::endl;
+        }
+       
+        if (max_local_idx == 0 && world.rank() != 0) {
+            std::cout << "idx not initialized, please call Assigning_idx()" << std::endl;
+        }
+
+        const auto dx_base = domain_->dx_base();
+        int base_level = domain_->tree()->base_level();
+
+        upward_intrp.resizing_row(max_local_idx+1);
+
+        /*if (domain_->is_client())
+        {
+            auto client = domain_->decomposition().client();
+
+            //client->template buffer_exchange<idx_u_type>(base_level);
+            client->template buffer_exchange<idx_w_g_type>(base_level);
+            
+        }*/
+
+        auto c_cntr_nli = psolver.c_cntr_nli();
+
+        for (int l = base_level - 1; l >= 0; l--)
+        {
+            /*if (domain_->is_client())
+            {
+                auto client = domain_->decomposition().client();
+
+                //client->template buffer_exchange<idx_u_type>(base_level);
+                client->template buffer_exchange<idx_w_g_type>(l + 1);
+            }*/
+            for (auto it = domain_->begin(l);
+                 it != domain_->end(l); ++it)
+            {
+                //if (!it->locally_owned() || !it->has_data()) continue;
+                //if (!it->is_leaf()) continue;
+                //if (!it->is_correction()) continue;
+                const int num_child = it->num_children();
+                //octant_base_t oct_base_tmp(coordinate_type({0,0}), base_level);
+                //std::vector<octant_t> octant_vec(num_child, octant_t(oct_base_tmp));
+                std::vector<std::vector<int>> idx_vec;
+                idx_vec.resize(num_child);
+
+                int N = it->data().descriptor().extent()[0];
+
+                int idx_size = (N+2) * (N+2);
+                /*for (int i = 0; i < num_child;i++) {
+                    idx_vec[i].resize(idx_size);
+                }*/
+                if (it->locally_owned() && it->has_data()) {
+                    
+                    //octant located in this processor, need to receive data
+                    //octant_vec.resize(num_child);
+                    for (int i = 0; i < it->num_children(); i++) {
+                        auto child = it->child(i);
+                        if (child && child->locally_owned() && child->has_data()) {
+                            idx_vec[i].resize(idx_size);
+
+                            auto child_idx_vec = child->data_r(idx_w_g_type::tag(), 0).linalg_data();
+
+                            for (int idx_i = 0; idx_i < (N + 2); idx_i++) {
+                                for (int idx_j = 0; idx_j < (N + 2); idx_j++) {
+                                    int loc_idx = idx_i * (N + 2) + idx_j;
+                                    idx_vec[i][loc_idx] = child_idx_vec.at(idx_i, idx_j);
+                                }
+                            }
+
+
+                            //octant_vec[i] = (*child);
+                            continue;
+                        }
+                        else if (child) {
+                            
+                            int source_rank = child->rank();
+
+                            int tag_val = child->global_id();
+
+                            idx_vec[i].resize(idx_size);
+                            //std::cout << "Receiving at rank " << world.rank() << " gid is " << tag_val << std::endl;
+
+                            //world.recv(source_rank, tag_val, octant_vec[i]);
+                            world.recv(source_rank, tag_val, idx_vec[i]);
+                        }
+                    }
+                }
+                else {
+                    //search for children is on this processor
+                    for (int i = 0; i < it->num_children(); i++)
+                    {
+                        auto child = it->child(i);
+                        int parent_rank = it->rank();
+                        if (!child || !child->locally_owned() || !child->has_data()) continue;
+
+                        std::vector<int> tmp_idx_vec;
+
+                        tmp_idx_vec.resize(idx_size);
+
+                        auto child_idx_vec =
+                            child->data_r(idx_w_g_type::tag(), 0).linalg_data();
+
+                        for (int idx_i = 0; idx_i < (N + 2); idx_i++)
+                        {
+                            for (int idx_j = 0; idx_j < (N + 2);
+                                 idx_j++)
+                            {
+                                int loc_idx = idx_i * (N + 2) + idx_j;
+                                tmp_idx_vec[loc_idx] =
+                                    child_idx_vec.at(idx_i, idx_j);
+                            }
+                        }
+
+                        int tag_val = child->global_id();
+                        //std::cout << "Sending at rank " << world.rank() << " gid is " << tag_val << std::endl;
+                        world.send(parent_rank, tag_val, tmp_idx_vec);
+                    }
+                }
+
+                //domain_->client_communicator().barrier();
+
+                //std::cout << "rank " << world.rank() << " finished communication " << "level " << l << std::endl;
+
+                if (it->locally_owned() && it->has_data()) {
+                    int N = it->data().descriptor().extent()[0];
+                    auto& lin_data = it->data_r(idx_w_type::tag(), 0).linalg_data();
+                    auto& lin_data_g = it->data_r(idx_w_g_type::tag(), 0).linalg_data();
+                    //start computing the matrix
+                    for (int i = 0; i < N+2; i++) {
+                        for (int j = 0; j < N+2; j++) {
+
+                            //if (l <= 4) std::cout << "rank " << world.rank() << " level " << l << " i " << i << " j " << j << std::endl; 
+                            //get current idx
+                            int cur_idx = lin_data.at(i, j);
+                            int cur_g_idx = lin_data_g.at(i, j);
+                            if (cur_idx < 0) {
+                                std::cout << "cur_idx < 0 in constructing upward interpolation matrix" << std::endl;
+                            }
+                            upward_intrp.add_element(cur_idx, cur_g_idx, -1.0);
+
+                            //if (l <= 4) std::cout << "rank " << world.rank() << " level " << l << " i " << i << " j " << j << " cur idx " << cur_idx << " g idx " << cur_g_idx << std::endl; 
+
+                            for (int child_idx = 0; child_idx < it->num_children(); child_idx++) {
+
+                                //if (l <= 4) std::cout << "rank " << world.rank() << " level " << l << " child idx " << child_idx << std::endl; 
+                                auto child = it->child(child_idx);
+                                //int  n = lin_data_g->shape()[0];
+                                int  idx_x = (child_idx & (1 << 0)) >> 0;
+                                int  idx_y = (child_idx & (1 << 1)) >> 1;
+
+                                //idx_x += 1;
+                                //idx_y += 1;
+                                //this indexing is only for 2D
+
+                                auto x_intrp_mat = c_cntr_nli_.antrp_mat_sub_[idx_x].data_;
+                                auto y_intrp_mat = c_cntr_nli_.antrp_mat_sub_[idx_y].data_;
+
+                                //auto child_cur = octant_vec[child_idx];
+
+                                //if (!child || !child_cur.has_data()) continue;
+
+                                if (idx_vec[child_idx].size() == 0) continue;
+
+                                //auto& child_idx_vec = octant_vec[child_idx].data_r(idx_w_g_type::tag(), 0).linalg_data();
+                                //auto child_idx_vec = child_cur.data_r(idx_w_g_type::tag(), 0).linalg_data();
+                                if (l != (base_level - 1))
+                                {
+                                    for (int sub_i = 0; sub_i < (N + 2);
+                                         sub_i++)
+                                    {
+                                        for (int sub_j = 0; sub_j < (N + 2);
+                                             sub_j++)
+                                        {
+                                            /*int              child_idx_g =
+                                                child_idx_vec.at(sub_i, sub_j);*/
+                                            int loc_idx = sub_i * (N + 2) + sub_j;
+                                            int child_idx_g = idx_vec[child_idx][loc_idx];
+                                            float_type val_x =
+                                                x_intrp_mat.at(i, sub_i);
+                                            float_type val_y =
+                                                y_intrp_mat.at(j, sub_j);
+                                            float_type val_t = val_x * val_y;
+                                            //if (std::abs(val_t) < 1e-12)
+                                            //    continue;
+                                            upward_intrp.add_element(cur_idx,
+                                                child_idx_g, val_t);
+                                        }
+                                    }
+                                }
+
+                                else
+                                {
+                                    for (int sub_i = 1; sub_i < (N + 1);
+                                         sub_i++)
+                                    {
+                                        for (int sub_j = 1; sub_j < (N + 1);
+                                             sub_j++)
+                                        {
+                                            /*int              child_idx_g =
+                                                child_idx_vec.at(sub_i, sub_j);*/
+
+                                            int loc_idx = sub_i * (N + 2) + sub_j;
+                                            int child_idx_g = idx_vec[child_idx][loc_idx];
+                                            float_type val_x =
+                                                x_intrp_mat.at(i, sub_i);
+                                            float_type val_y =
+                                                y_intrp_mat.at(j, sub_j);
+                                            float_type val_t = val_x * val_y;
+                                            //if (std::abs(val_t) < 1e-12)
+                                                //continue;
+                                            upward_intrp.add_element(cur_idx,
+                                                child_idx_g, val_t);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                //std::cout << "rank " << world.rank() << " finished computing " << "level " << l << std::endl;
+            }
+
+            //domain_->client_communicator().barrier();
+        }
+
+        upward_intrp.scale_entries(Curl_factor);
+
+        domain_->client_communicator().barrier();
     }
 
     void map_add_element(int m, float_type val, std::map<int, float_type>& target)
@@ -3116,6 +5064,93 @@ class NewtonIteration
             force_target); //need to change this vector in the bracket
     }
 
+    template<class From, class To>
+    void Upward_interpolation()
+    {
+        boost::mpi::communicator world;
+        if (world.rank() != 0)
+        {
+            
+            int base_level = domain_->tree()->base_level();
+            for (int field_idx = 0; field_idx < From::nFields(); field_idx++)
+            {
+                for (int l = base_level; l >= 0; l--)
+                {
+                    for (auto it_s = domain_->begin(l); it_s != domain_->end(l);
+                         ++it_s)
+                    {
+
+                        if (!it_s->has_data()) continue;
+                        if (!it_s->data().is_allocated()) continue;
+
+                        auto& lin_data = it_s->data_r(correction_tmp_type::tag(), 0).linalg_data();
+                        std::fill(lin_data.begin(), lin_data.end(), 0.0);
+                    }
+
+                }
+                for (auto it = domain_->begin(base_level); it != domain_->end(base_level);
+                     ++it)
+                {
+                    if (it->locally_owned() && it->is_leaf() && !it->is_correction())
+                    {
+                        auto& lin_data_1 =
+                            it->data_r(From::tag(), field_idx).linalg_data();
+                        auto& lin_data_2 =
+                            it->data_r(correction_tmp_type::tag(), field_idx)
+                                .linalg_data();
+
+                        xt::noalias(view(lin_data_2, xt::range(1, -1),
+                            xt::range(1, -1))) = view(lin_data_1,
+                            xt::range(1, -1), xt::range(1, -1));
+                    }
+                }
+                for (int l = base_level - 1; l >= 0; l--)
+                {
+                    for (auto it_s = domain_->begin(l); it_s != domain_->end(l);
+                         ++it_s)
+                    {
+                        if (!it_s->has_data() || !it_s->data().is_allocated())
+                            continue;
+
+                        c_cntr_nli_.template nli_intrp_T_node<correction_tmp_type, correction_tmp_type>(*it_s,
+                            From::mesh_type(), field_idx,
+                            field_idx, false, false);
+                    }
+                    domain_->decomposition()
+                        .client()
+                        ->template communicate_updownward_add<correction_tmp_type, correction_tmp_type>(l, true,
+                            false, -1, field_idx, false);
+
+                    for (auto it = domain_->begin(l);
+                         it != domain_->end(l); ++it)
+                    {
+                        if (!it->locally_owned() && it->has_data() &&
+                            it->data().is_allocated())
+                        {
+                            auto& cp2 = it->data_r(correction_tmp_type::tag(), 0).linalg_data();
+                            cp2 *= 0.0;
+                        }
+                    }
+
+                    for (auto it_s = domain_->begin(l); it_s != domain_->end(l);
+                         ++it_s)
+                    {
+                        if (!it_s->locally_owned()) continue;
+
+                        //auto& lin_data_1 = it->data_r(correction_tmp_type::tag(), 0).linalg_data();
+                        //auto& lin_data_2 = it->data_r(To::tag(), field_idx).linalg_data();
+                        it_s->data_r(To::tag(), field_idx)
+                            .linalg()
+                            .get()
+                            ->cube_noalias_view() =
+                            it_s->data_r(correction_tmp_type::tag(), 0).linalg_data();
+                    }
+
+                }
+            }
+        }
+    }
+
     template<class Source_face, class Source_cell, class Target_face, class Target_cell>
     void Jacobian(force_type& force_source, force_type& force_target) noexcept
     {
@@ -3264,6 +5299,44 @@ class NewtonIteration
         //boost::mpi::communicator world;
         //std::cout << "rank " << (world.rank()) << " starting nonlinear jacobian" << std::endl;
         this->nonlinear_jac_adjoint<Source1, Source2, Target>();
+    }
+
+    template<class Source, class Target>
+    void Curl_access() {
+
+
+        auto client = domain_->decomposition().client();
+
+        //up_and_down<Velocity_in>();
+        clean<Source>(true);
+        this->up<Source>(false);
+        clean<Target>();
+        //clean<stream_f_type>();
+
+        auto dx_base = domain_->dx_base();
+
+        for (int l = domain_->tree()->base_level();
+             l < domain_->tree()->depth(); ++l)
+        {
+            client->template buffer_exchange<Source>(l);
+
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
+                if (it->is_correction()) continue;
+                //if(!it->is_leaf()) continue;
+
+                const auto dx_level =
+                    dx_base / math::pow2(it->refinement_level());
+                //if (it->is_leaf())
+                domain::Operator::curl<Source, Target>(it->data(),
+                    dx_level);
+            }
+        }
+
+        //clean<Velocity_out>();
+        clean_leaf_correction_boundary<Target>(
+            domain_->tree()->base_level(), true, 1);
     }
 
     template<class VecType>
@@ -3835,7 +5908,7 @@ class NewtonIteration
                 }
             }
             client->template buffer_exchange<Target>(l);
-            clean_leaf_correction_boundary<Target>(l, true, 2);
+            //clean_leaf_correction_boundary<Target>(l, true, 2);
         }
 
         clean<Source>(true);
@@ -4084,6 +6157,19 @@ class NewtonIteration
             ia[mat.size()-1] = counter+1;
         }
 
+        void clean_entry(float_type th_val = 1e-12) {
+            for (int i = 1; i < mat.size(); i++)
+            {
+                for (const auto& [key, val] : mat[i])
+                {
+                    if (std::abs(val) < th_val) {
+                        mat[i].erase(key);
+                    }
+                    
+                }
+            }
+        }
+
         template<class value_type>
         void Apply(value_type* x, value_type* b)
         {
@@ -4107,6 +6193,21 @@ class NewtonIteration
             //ia[mat.size()-1] = counter+1;
         }
 
+        void scale_entries(float_type factor) {
+            for (int i = 1; i < mat.size(); i++)
+            {
+                for (const auto& [key, val] : mat[i])
+                {
+                    //int idx1 = std::get<0>(key1);
+                    //std::cout << n << " " << key << " " << val << " || ";
+                    if (key < 0) {
+                        std::cout << "Negative key" << std::endl;
+                    }
+                    mat[i][key] *= factor;
+                }
+            }
+        }
+
         int numRow_loc(){
             return mat.size()-1;
         }
@@ -4124,9 +6225,11 @@ class NewtonIteration
     sparse_mat DN; //linearized convective term, i.e. omega_s cross u + omega cross u_s, have not taken negative yet
     sparse_mat Div; //Divergence
     sparse_mat Grad; //Gradient
+    sparse_mat Curl; //Curl minus identity
     sparse_mat project; //ib projection
     sparse_mat smearing; //ib smearing
     sparse_mat boundary_u; //the matrix for the boundary of u from LGF
+    sparse_mat upward_intrp; //upward interpolation matris for FMM
 
     //Jacobian Matrix
     sparse_mat Jac;
@@ -4139,6 +6242,8 @@ class NewtonIteration
     poisson_solver_t psolver;
     linsys_solver_t  lsolver;
     lgf_lap_t        lgf_lap_;
+
+    interpolation_type                c_cntr_nli_; //can use this to get the matrix
 
     bool base_mesh_update_ = false;
 
@@ -4159,6 +6264,7 @@ class NewtonIteration
     float_type              cfl_max_, cfl_;
     float_type              cg_threshold_;
     float_type              Newton_threshold_;
+    float_type              Curl_factor; //the factor to better enforce vorticity criterion
     std::vector<float_type> source_max_{0.0, 0.0};
 
     float_type T_last_vel_refresh_ = 0.0;

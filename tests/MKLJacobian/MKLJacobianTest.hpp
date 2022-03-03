@@ -95,18 +95,23 @@ struct parameters
         //name               type        Dim   lBuffer  hBuffer, storage type
          (error_u          , float_type, 2,    1,       1,     face,true  ),
 		 (error_p          , float_type, 1,    1,       1,     cell,true  ),
+         (error_w          , float_type, 1,    1,       1,     edge,true  ),
          (test             , float_type, 1,    1,       1,     cell,false ),
         //IF-HERK
-         (u_tar            , float_type, 2,    1,       1,     face,true  ),
 		 (u                , float_type, 2,    1,       1,     face,true  ),
 		 (p                , float_type, 1,    1,       1,     cell,true  ),
          (u_num_inv        , float_type, 2,    1,       1,     face,true  ),
 		 (p_num_inv        , float_type, 1,    1,       1,     cell,true  ),
+         (w_num_inv        , float_type, 1,    1,       1,     edge,true  ),
 		 (u_ref            , float_type, 2,    1,       1,     face,true  ),
 		 (p_ref            , float_type, 1,    1,       1,     cell,true  ),
+         (w_ref            , float_type, 1,    1,       1,     edge,true  ),
+         (u_tar            , float_type, 2,    1,       1,     face,true  ),
 		 (p_tar            , float_type, 1,    1,       1,     cell,true  ),
+         (w_tar            , float_type, 1,    1,       1,     edge,true  ),
 		 (u_num            , float_type, 2,    1,       1,     face,true  ),
-		 (p_num            , float_type, 1,    1,       1,     cell,true  )
+		 (p_num            , float_type, 1,    1,       1,     cell,true  ),
+         (w_num            , float_type, 1,    1,       1,     edge,true  )
     ))
     // clang-format on
 };
@@ -324,11 +329,29 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
 			forcing_ref[i][0] = val_u;
 			forcing_ref[i][1] = val_v;
 		}
+
+        world.barrier();
+        
         if (world.rank() != 0) ifherk.pad_velocity<u_type, u_ref_type>(false);
         if (world.rank() != 0) ifherk.pad_velocity<u_type, u_type>(false);
+
+        world.barrier();
+        if (world.rank() == 1) std::cout << "Curl" << std::endl;
+        
+        if (world.rank() != 0) ifherk.Curl_access<u_ref_type, w_ref_type>();
+
+        
 		ifherk.Jacobian<u_ref_type, p_ref_type, u_tar_type, p_tar_type>(forcing_ref, forcing_tar);
+
+        
+        world.barrier();
+        if (world.rank() == 1) std::cout << "Upward interpolation" << std::endl;
+        if (world.rank() != 0) ifherk.Upward_interpolation<w_ref_type, w_ref_type>();
+        world.barrier();
+        if (world.rank() == 1) std::cout << "Clean" << std::endl;
+        if (world.rank() != 0) ifherk.clean<w_tar_type>();
         if (clean_p_tar) {
-            ifherk.clean<p_tar_type>();
+            if (world.rank() != 0) ifherk.clean<p_tar_type>();
         }
 
         for (int i = 0; i < forcing_ref.size();i++) {
@@ -350,160 +373,14 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
 			forcing_ref[i][0] = val_u;
 			forcing_ref[i][1] = val_v;
 		}
+        world.barrier();
+        if (world.rank() == 1) std::cout << "constructing matrix" << std::endl;
         ifherk.Assigning_idx();
 		world.barrier();
 		simulation_.write("init.hdf5");
 
         ifherk.construct_linear_mat<u_type>();
-
-		if (print_mat)
-        {
-            /*for (int k = 1; k < world.size(); k++)
-            {
-                if (world.rank() == k)
-                {
-                    for (int i = 1; i < ifherk.Jac.numRow_loc(); i++)
-                    {
-                        std::cout << i << " ";
-                        ifherk.Jac.print_row(i);
-                    }
-                }
-                world.barrier();
-            }*/
-
-            if (world.rank() == 0) {
-                std::cout << "L" << std::endl;                
-            }
-            world.barrier();
-
-            for (int k = 1; k < world.size(); k++)
-            {
-                if (world.rank() == k)
-                {
-                    for (int i = 1; i < ifherk.Jac.numRow_loc(); i++)
-                    {
-                        std::cout << i << " ";
-                        ifherk.L.print_row(i);
-                    }
-                }
-                world.barrier();
-            }
-            world.barrier();
-
-            if (world.rank() == 0) {
-                std::cout << "DN" << std::endl;          
-            }
-            world.barrier();
-
-            for (int k = 1; k < world.size(); k++)
-            {
-                if (world.rank() == k)
-                {
-                    for (int i = 1; i < ifherk.Jac.numRow_loc(); i++)
-                    {
-                        std::cout << i << " ";
-                        ifherk.DN.print_row(i);
-                    }
-                }
-                world.barrier();
-            }
-            world.barrier();
-
-            if (world.rank() == 0) {
-                std::cout << "Div" << std::endl;          
-            }
-            world.barrier();
-
-            for (int k = 1; k < world.size(); k++)
-            {
-                if (world.rank() == k)
-                {
-                    for (int i = 1; i < ifherk.Jac.numRow_loc(); i++)
-                    {
-                        std::cout << i << " ";
-                        ifherk.Div.print_row(i);
-                    }
-                }
-                world.barrier();
-            }
-            world.barrier();
-
-            if (world.rank() == 0) {
-                std::cout << "Grad" << std::endl;          
-            }
-            world.barrier();
-
-            for (int k = 1; k < world.size(); k++)
-            {
-                if (world.rank() == k)
-                {
-                    for (int i = 1; i < ifherk.Jac.numRow_loc(); i++)
-                    {
-                        std::cout << i << " ";
-                        ifherk.Grad.print_row(i);
-                    }
-                }
-                world.barrier();
-            }
-            world.barrier();
-
-            if (world.rank() == 0) {
-                std::cout << "project" << std::endl;          
-            }
-            world.barrier();
-
-            for (int k = 1; k < world.size(); k++)
-            {
-                if (world.rank() == k)
-                {
-                    for (int i = 1; i < ifherk.Jac.numRow_loc(); i++)
-                    {
-                        std::cout << i << " ";
-                        ifherk.project.print_row(i);
-                    }
-                }
-                world.barrier();
-            }
-            world.barrier();
-
-            if (world.rank() == 0) {
-                std::cout << "smearing" << std::endl;          
-            }
-            world.barrier();
-
-            for (int k = 1; k < world.size(); k++)
-            {
-                if (world.rank() == k)
-                {
-                    for (int i = 1; i < ifherk.Jac.numRow_loc(); i++)
-                    {
-                        std::cout << i << " ";
-                        ifherk.smearing.print_row(i);
-                    }
-                }
-                world.barrier();
-            }
-            world.barrier();
-
-            if (world.rank() == 0) {
-                std::cout << "boundary_u" << std::endl;          
-            }
-            world.barrier();
-
-            for (int k = 1; k < world.size(); k++)
-            {
-                if (world.rank() == k)
-                {
-                    for (int i = 1; i < ifherk.Jac.numRow_loc(); i++)
-                    {
-                        std::cout << i << " ";
-                        ifherk.boundary_u.print_row(i);
-                    }
-                }
-                world.barrier();
-            }
-            world.barrier();
-        }
+        ifherk.Jac.clean_entry(1e-15);
 
         world.barrier();
         if (world.rank() == 1) {
@@ -533,7 +410,7 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
         else {
             allVec = (float_type*)MKL_malloc(sizeof(float_type) * ndim, 64);
             loc_vec = (float_type*)MKL_malloc(sizeof(float_type) * loc_size, 64);
-            ifherk.Grid2CSR<u_ref_type, p_ref_type>(loc_vec, forcing_ref, false);
+            ifherk.Grid2CSR<u_ref_type, p_ref_type, w_ref_type>(loc_vec, forcing_ref, false);
         }
 
         boost::mpi::gather(world, loc_size, allSize, 0);
@@ -644,6 +521,10 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
 
         ifherk.Jac.Apply(allVec, res);*/
 
+        if (world.rank() != 0) ifherk.clean<edge_aux_type>();
+
+        
+
         float_type* BC_diff;
 
         BC_diff = (float_type*)MKL_malloc(sizeof(float_type) * loc_size, 64);
@@ -671,7 +552,10 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
             std::cout << "BC error is " << BC_diff_sum << std::endl;
         }
 
-        ifherk.CSR2Grid<u_num_type, p_num_type>(res, forcing_num);
+        ifherk.CSR2Grid<u_num_type, p_num_type, w_num_type>(res, forcing_num);
+
+        ifherk.compute_error_nonleaf<edge_aux_type, w_num_type>("num_", false);
+        ifherk.compute_error_nonleaf<edge_aux_type, w_ref_type>("ref_", false);
 
         world.barrier();
         for (int i = 1; i < world.size(); i++)
@@ -693,6 +577,9 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
 
 		float_type p_inf = this->compute_errors<p_num_type, p_tar_type, error_p_type>(
 			std::string("p_0_"), 0);
+
+        float_type w_inf = this->compute_errors<w_num_type, w_tar_type, error_w_type>(
+			std::string("w_0_"), 0);
 
 		force_type errVec;
 
@@ -718,9 +605,11 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
 
         //ifherk.clean<u_num_type>();
         ifherk.clean<p_num_type>();
+        ifherk.clean<w_num_type>();
 
         ifherk.clean<error_u_type>();
         ifherk.clean<error_p_type>();
+        ifherk.clean<error_w_type>();
 
         //std::fill(forcing_num.begin(), forcing_num.end(), tmp_coord);
 
@@ -774,15 +663,16 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
         comm = MPI_Comm_c2f(MPI_COMM_WORLD);
 
 		iparm[0] = 1; /* Solver default parameters overriden with provided by iparm */
-        iparm[1] = 2;  /* Use METIS for fill-in reordering */
+        iparm[1] = 0;  /* Use METIS for fill-in reordering */
         iparm[5] = 0;  /* Write solution into x */
-        iparm[7] = 2;  /* Max number of iterative refinement steps */
-        iparm[9] = 13; /* Perturb the pivot elements with 1E-13 */
+        iparm[7] = 100;  /* Max number of iterative refinement steps */
+        iparm[9] = 8; /* Perturb the pivot elements with 1E-13 */
         iparm[10] = 1; /* Use nonsymmetric permutation and scaling MPS */
         iparm[12] = 1; /* Switch on Maximum Weighted Matching algorithm (default for non-symmetric) */
         iparm[17] = -1; /* Output: Number of nonzeros in the factor LU */
         iparm[18] = -1; /* Output: Mflops for LU factorization */
-        iparm[26] = 1;  /* Check input data for correctness */
+        //iparm[23] = 10;
+        iparm[26] = 1;  /* Check input data for correctness */ 
         iparm[39] = 2; /* Input: matrix/rhs/solution are distributed between MPI processes  */
 
         if (world.rank() != 0) {
@@ -815,7 +705,8 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
 
             ifherk.Jac.getCSR(ia, ja, a);
             //ifherk.Grid2CSR<u_num_type, p_num_type>(b, forcing_num);
-            ifherk.Grid2CSR<u_tar_type, p_tar_type>(b, forcing_tar);
+            //ifherk.Grid2CSR<u_num_type, p_num_type, w_num_type>(b, forcing_num);
+            ifherk.Grid2CSR<u_num_type, p_num_type, w_num_type>(b, forcing_num);
 
             if (print_mat) {
                 for (int i = 0; i < loc_size; i++) {
@@ -951,7 +842,7 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
         //mpi_stat = MPI_Finalize();
         //std::cout << "  MPI_FINALIZED" << std::endl;
 
-        ifherk.CSR2Grid<u_num_inv_type, p_num_inv_type>(x, forcing_num_inv);
+        ifherk.CSR2Grid<u_num_inv_type, p_num_inv_type, w_num_inv_type>(x, forcing_num_inv);
 
         float_type tmp_sum = 0;
         for (int i = 0; i < loc_size; i++) {
@@ -974,6 +865,9 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
 
 		/*float_type*/ p_inf = this->compute_errors<p_num_inv_type, p_ref_type, error_p_type>(
 			std::string("p_0_"), 0);
+
+        w_inf = this->compute_errors<w_num_inv_type, w_ref_type, error_w_type>(
+			std::string("w_0_"), 0);
 
 		//force_type errVec;
 

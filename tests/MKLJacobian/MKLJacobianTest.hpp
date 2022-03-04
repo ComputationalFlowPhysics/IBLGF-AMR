@@ -197,6 +197,7 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
 
         clean_p_tar = simulation_.dictionary()->template get_or<bool>("clean_p_tar", false);
         testing_smearing = simulation_.dictionary()->template get_or<bool>("testing_smearing", false);
+        num_input = simulation_.dictionary()->template get_or<bool>("num_input", false);
 
 		auto domain_range = domain_->bounding_box().max() - domain_->bounding_box().min();
 		Lx = domain_range[0] * dx_;
@@ -490,6 +491,8 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
         res_tmp = (float_type*)MKL_malloc(sizeof(float_type) * loc_size, 64);
         res = (float_type*)MKL_malloc(sizeof(float_type) * loc_size, 64);
 
+        
+
         ifherk.Jac.Apply(allVec, res);
         //ifherk.smearing.Apply(allVec, res_tmp);
         //apply once to get the BC
@@ -606,12 +609,59 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
         //ifherk.clean<u_num_type>();
         ifherk.clean<p_num_type>();
         ifherk.clean<w_num_type>();
+        ifherk.clean<w_tar_type>();
+        ifherk.clean<p_tar_type>();
 
         ifherk.clean<error_u_type>();
         ifherk.clean<error_p_type>();
         ifherk.clean<error_w_type>();
 
         //std::fill(forcing_num.begin(), forcing_num.end(), tmp_coord);
+
+        float_type* res_num;
+        float_type* res_tar;
+        res_num = (float_type*)MKL_malloc(sizeof(float_type) * loc_size, 64);
+        res_tar = (float_type*)MKL_malloc(sizeof(float_type) * loc_size, 64);
+
+        float_type* errvec;
+        errvec = (float_type*)MKL_malloc(sizeof(float_type) * loc_size, 64);
+
+        ifherk.Grid2CSR<u_tar_type, p_tar_type, w_tar_type>(res_tar, forcing_tar);
+        ifherk.Grid2CSR<u_num_type, p_num_type, w_num_type>(res_num, forcing_num);
+
+        float_type diff_sum = 0.0;
+        if (world.rank() != 0)
+        {
+            for (int i = 0; i < loc_size; i++)
+            {
+                float_type tmp_err = res_tar[i] - res_num[i];
+                diff_sum += tmp_err*tmp_err;
+                errvec[i] = tmp_err;
+            }
+        }
+
+        for (int i=0; i<domain_->ib().size(); ++i)
+        {
+            
+            errVec[i]=0;
+            
+        }
+
+        ifherk.CSR2Grid<error_u_type, error_p_type, error_w_type>(errvec, errVec);
+
+        //ifherk.compute_error_nonleaf<edge_aux_type, error_w_type>("error_copy_", true);
+
+        //simulation_.write("final_copy.hdf5");
+
+
+
+        float_type diff_sum_all = 0.0;
+
+        boost::mpi::all_reduce(world, diff_sum, diff_sum_all, std::plus<float_type>());
+
+        if (world.rank() == 1) {
+            std::cout << "Diff error is " << diff_sum_all << std::endl;
+        }
 
         MKL_INT n = ndim;
 		MKL_INT mtype = 11;
@@ -663,7 +713,8 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
         comm = MPI_Comm_c2f(MPI_COMM_WORLD);
 
 		iparm[0] = 1; /* Solver default parameters overriden with provided by iparm */
-        iparm[1] = 0;  /* Use METIS for fill-in reordering */
+        //iparm[1] = 0;  /* Use METIS for fill-in reordering */
+        iparm[1] = 2;  /* Use METIS for fill-in reordering */
         iparm[5] = 0;  /* Write solution into x */
         iparm[7] = 100;  /* Max number of iterative refinement steps */
         iparm[9] = 8; /* Perturb the pivot elements with 1E-13 */
@@ -706,7 +757,8 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
             ifherk.Jac.getCSR(ia, ja, a);
             //ifherk.Grid2CSR<u_num_type, p_num_type>(b, forcing_num);
             //ifherk.Grid2CSR<u_num_type, p_num_type, w_num_type>(b, forcing_num);
-            ifherk.Grid2CSR<u_num_type, p_num_type, w_num_type>(b, forcing_num);
+            if (num_input)  ifherk.Grid2CSR<u_num_type, p_num_type, w_num_type>(b, forcing_num);
+            if (!num_input) ifherk.Grid2CSR<u_tar_type, p_tar_type, w_tar_type>(b, forcing_tar);
 
             if (print_mat) {
                 for (int i = 0; i < loc_size; i++) {
@@ -1095,6 +1147,7 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
     bool hard_max_refinement_=false;
     bool smooth_start_;
     bool print_mat;
+    bool num_input;
     int vortexType = 0;
 
     int row_to_print = 0;

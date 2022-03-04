@@ -211,6 +211,9 @@ class NewtonIteration
         Curl_factor = _simulation->dictionary()->template get_or<float_type>(
             "Curl_factor", 1000);
 
+        FMM_fac = _simulation->dictionary()->template get_or<int>(
+            "Fmm_factor", 1); //factor of which FMM is conducted Nb_ times this is the effective block size
+
         use_FMM = _simulation->dictionary()->template get_or<bool>(
             "use_FMM_in_Jac", false);
         N_sep = _simulation->dictionary()->template get_or<int>(
@@ -1135,6 +1138,15 @@ class NewtonIteration
                         }
                     }
                 }*/
+                for (std::size_t field_idx = 0;
+                     field_idx < idx_p_type::nFields(); ++field_idx)
+                {
+                    for (auto& n : it->data())
+                    {
+                        //counter++;
+                        n(idx_p_type::tag(), field_idx) = -1;
+                    }
+                }
             }
             else
             {
@@ -1486,6 +1498,54 @@ class NewtonIteration
             }
         }
         domain_->client_communicator().barrier();
+
+
+        //finding one point cross all processors that need to be set to zero
+
+        //int base_level = domain_->tree()->base_level();
+        if (domain_->is_client())
+        {
+            auto client = domain_->decomposition().client();
+
+            //client->template buffer_exchange<idx_p_type>(base_level);
+            client->template buffer_exchange<idx_p_g_type>(base_level);
+        }
+
+        int tmp_set_zero_p = -10;
+
+        for (auto it = domain_->begin(base_level);
+             it != domain_->end(base_level); ++it)
+        {
+            bool flag = false;
+            if (!it->locally_owned() || !it->has_data()) continue;
+            if (!it->is_leaf()) continue;
+            if (!it->is_correction())
+            {
+                for (auto& n : it->data())
+                {
+                    int cur_idx = n(idx_p_type::tag(), 0);
+                    int glo_p_idx = n(idx_p_g_type::tag(), 0);
+
+                    int glo_p_idx_10 =
+                        n.at_offset(idx_p_g_type::tag(), -1, 0, 0);
+                    int glo_p_idx_01 =
+                        n.at_offset(idx_p_g_type::tag(), 0, -1, 0);
+
+                    if (glo_p_idx_10 < 0 && glo_p_idx_01 < 0)
+                    {
+                        //does not enforce divergence free on one corner, instead force the pressure at that point to be zero
+                        tmp_set_zero_p = glo_p_idx;
+                        flag = true;
+                        break;
+                    }
+                }
+            }
+            if (flag) { break; }
+        }
+
+        domain_->client_communicator().barrier();
+
+        boost::mpi::all_reduce(domain_->client_communicator(), tmp_set_zero_p, set_zero_idx, boost::mpi::maximum<int>());
     }
 
     void constructing_laplacian() {
@@ -1611,6 +1671,7 @@ class NewtonIteration
             auto client = domain_->decomposition().client();
 
             client->template buffer_exchange<idx_u_type>(base_level);
+            client->template buffer_exchange<idx_p_type>(base_level);
         }
         for (auto it = domain_->begin(base_level); it != domain_->end(base_level); ++it)
         {
@@ -1728,15 +1789,29 @@ class NewtonIteration
         {
             if (!it->locally_owned() || !it->has_data()) continue;
             if (!it->is_leaf()) continue;
-            if (!it->is_correction()) {
-            for (std::size_t field_idx = 0; field_idx < idx_w_type::nFields();
-                 ++field_idx)
+            if (!it->is_correction() && !set_corr_zero)
             {
-                for (auto& n : it->data()) {
-                    int cur_idx = n(idx_w_type::tag(), field_idx);
-                    b[cur_idx - 1] = n(Edge::tag(), field_idx);
+                for (std::size_t field_idx = 0;
+                     field_idx < idx_w_type::nFields(); ++field_idx)
+                {
+                    for (auto& n : it->data())
+                    {
+                        int cur_idx = n(idx_w_type::tag(), field_idx);
+                        b[cur_idx - 1] = n(Edge::tag(), field_idx);
+                    }
                 }
             }
+            else if (!it->is_correction() && set_corr_zero)
+            {
+                for (std::size_t field_idx = 0;
+                     field_idx < idx_w_type::nFields(); ++field_idx)
+                {
+                    for (auto& n : it->data())
+                    {
+                        int cur_idx = n(idx_w_type::tag(), field_idx);
+                        b[cur_idx - 1] = 0.0;
+                    }
+                }
             }
             else if (it->is_correction() && set_corr_zero)
             {
@@ -2252,11 +2327,12 @@ class NewtonIteration
                  ++field_idx)
             {
                 for (auto& n : it->data()) {
-                    int p_idx_w = n.at_offset(idx_p_type::tag(), -1, 0, 0);
+                    /*int p_idx_w = n.at_offset(idx_p_type::tag(), -1, 0, 0);
                     int p_idx_e = n.at_offset(idx_p_type::tag(),  1, 0, 0);
                     int p_idx_n = n.at_offset(idx_p_type::tag(),  0, 1, 0);
                     int p_idx_s = n.at_offset(idx_p_type::tag(), 0, -1, 0);
                     if (p_idx_w < 0 && field_idx == 0){
+                        //enforcing div free at BC points
                         int cur_idx = n(idx_u_type::tag(), 0);
                         int glo_idx = n(idx_u_g_type::tag(), 0);
                         L.add_element(cur_idx, glo_idx, 1.0/dx_base);
@@ -2279,7 +2355,7 @@ class NewtonIteration
                         glo_idx = n.at_offset(idx_u_g_type::tag(), 1, -1, 0);
                         L.add_element(cur_idx, glo_idx, 1.0/dx_base);
                         continue;
-                    }
+                    }*/
                     int cur_idx = n(idx_u_type::tag(), field_idx);
                     int glo_idx = n(idx_u_g_type::tag(), field_idx);
                     L.add_element(cur_idx, glo_idx, -4.0/dx_base/dx_base/Re_);
@@ -2324,6 +2400,7 @@ class NewtonIteration
             auto client = domain_->decomposition().client();
 
             client->template buffer_exchange<idx_u_type>(base_level);
+            client->template buffer_exchange<idx_p_type>(base_level);
             client->template buffer_exchange<idx_u_g_type>(base_level);
             client->template buffer_exchange<idx_w_g_type>(base_level);
             client->template buffer_exchange<U_old>(base_level);
@@ -2382,7 +2459,7 @@ class NewtonIteration
                 float_type u_s_1011 =  (n.at_offset(U_old::tag(),  1, 0, 0)  + n.at_offset(U_old::tag(), 1, -1, 0))*0.25 + u_field_vel * 0.5;
 
                 //-n.at_offset(edge, 0, 0, 0) *(n.at_offset(face, 0, 0, 1) + n.at_offset(face, -1, 0, 1))
-                /*DN.add_element(cur_idx_0, glob_idx_1,    v_s_0010/dx);
+                DN.add_element(cur_idx_0, glob_idx_1,    v_s_0010/dx);
                 DN.add_element(cur_idx_0, glob_idx_1_1, -v_s_0010/dx);
                 //-n.at_offset(edge, 0, 1, 0) *(n.at_offset(face, 0, 1, 1) + n.at_offset(face, -1, 1, 1))
                 DN.add_element(cur_idx_0, glob_idx_1_2,  v_s_0111/dx);
@@ -2407,7 +2484,7 @@ class NewtonIteration
                 DN.add_element(cur_idx_1, glob_idx_0_1,  u_s_0001/dx);
                 // n.at_offset(edge, 1, 0, 0) *(n.at_offset(face, 1, 0, 0) + n.at_offset(face, 1, -1, 0))
                 DN.add_element(cur_idx_1, glob_idx_0_3, -u_s_1011/dx);
-                DN.add_element(cur_idx_1, glob_idx_0_4,  u_s_1011/dx);*/
+                DN.add_element(cur_idx_1, glob_idx_0_4,  u_s_1011/dx);
 
                 int p_idx_w = n.at_offset(idx_p_type::tag(), -1, 0, 0);
                 int p_idx_e = n.at_offset(idx_p_type::tag(), 1, 0, 0);
@@ -2425,7 +2502,7 @@ class NewtonIteration
                     DN.add_element(cur_idx_1, glob_idx_10, u_s_1011);
                 }*/
 
-                if (p_idx_w > 0)
+                /*if (p_idx_w > 0)
                 {
                     //-n.at_offset(edge, 0, 0, 0) *(n.at_offset(face, 0, 0, 1) + n.at_offset(face, -1, 0, 1))
                     DN.add_element(cur_idx_0, glob_idx_1, v_s_0010 / dx);
@@ -2456,7 +2533,7 @@ class NewtonIteration
                     // n.at_offset(edge, 1, 0, 0) *(n.at_offset(face, 1, 0, 0) + n.at_offset(face, 1, -1, 0))
                     DN.add_element(cur_idx_1, glob_idx_0_3, -u_s_1011 / dx);
                     DN.add_element(cur_idx_1, glob_idx_0_4, u_s_1011 / dx);
-                }
+                }*/
 
                 /*DN.add_element(cur_idx_0, glob_idx_00, v_s_0010);
                 DN.add_element(cur_idx_0, glob_idx_01, v_s_0111);
@@ -2506,7 +2583,7 @@ class NewtonIteration
                 int p_idx_n = n.at_offset(idx_p_type::tag(), 0, 1, 0);
                 int p_idx_s = n.at_offset(idx_p_type::tag(), 0, -1, 0);
 
-                if (p_idx_w > 0)
+                /*if (p_idx_w > 0)
                 {
                     DN.add_element(cur_idx_0, glob_idx_1_00, -om_00);
                     DN.add_element(cur_idx_0, glob_idx_1_10, -om_00);
@@ -2519,9 +2596,9 @@ class NewtonIteration
                     DN.add_element(cur_idx_1, glob_idx_0_01, om_00);
                     DN.add_element(cur_idx_1, glob_idx_0_10, om_10);
                     DN.add_element(cur_idx_1, glob_idx_0_11, om_10);
-                }
+                }*/
 
-                /*DN.add_element(cur_idx_0, glob_idx_1_00, -om_00);
+                DN.add_element(cur_idx_0, glob_idx_1_00, -om_00);
                 DN.add_element(cur_idx_0, glob_idx_1_10, -om_00);
                 DN.add_element(cur_idx_0, glob_idx_1_01, -om_01);
                 DN.add_element(cur_idx_0, glob_idx_1_11, -om_01);
@@ -2529,7 +2606,7 @@ class NewtonIteration
                 DN.add_element(cur_idx_1, glob_idx_0_00,  om_00);
                 DN.add_element(cur_idx_1, glob_idx_0_01,  om_00);
                 DN.add_element(cur_idx_1, glob_idx_0_10,  om_10);
-                DN.add_element(cur_idx_1, glob_idx_0_11,  om_10);*/
+                DN.add_element(cur_idx_1, glob_idx_0_11,  om_10);
             }
         }
         domain_->client_communicator().barrier();
@@ -2776,18 +2853,26 @@ class NewtonIteration
                 for (auto& n : it->data())
                 {
                     int cur_idx = n(idx_p_type::tag(), 0);
+                    int glo_p_idx = n(idx_p_g_type::tag(), 0);
 
                     int glo_p_idx_10 = n.at_offset(idx_p_g_type::tag(), -1,  0,  0);
                     int glo_p_idx_01 = n.at_offset(idx_p_g_type::tag(),  0, -1,  0);
 
-                    if (glo_p_idx_10 < 0 && glo_p_idx_01 < 0) {
+                    /*if (glo_p_idx_10 < 0 && glo_p_idx_01 < 0) {
                         //does not enforce divergence free on one corner, instead force the pressure at that point to be zero
                         //here we chose the bottom left one for convenience during development and verification, 
                         //in the future, need to change to a unique point
                         int glo_p_idx = n(idx_p_g_type::tag(), 0);
                         Div.add_element(cur_idx, glo_p_idx,1.0);
                         continue;
+                    }*/
+
+                    if (glo_p_idx == set_zero_idx) {
+                        //int glo_p_idx = n(idx_p_g_type::tag(), 0);
+                        Div.add_element(cur_idx, glo_p_idx,1.0/dx_base);
+                        continue;
                     }
+
                     if (cur_idx < 0) continue;
                     int glo_idx_0 = n(idx_u_g_type::tag(), 0);
                     int glo_idx_1 = n(idx_u_g_type::tag(), 1);
@@ -3532,8 +3617,8 @@ class NewtonIteration
                 add_one[0] = 1;
                 add_one[1] = 1;
 
-                int n_range_p = std::pow(2, base_level - l + 1) * N;
-                int n_range_c = std::pow(2, base_level - l) * N;
+                int n_range_p = std::pow(2, base_level - l + 1) * N * FMM_fac;
+                int n_range_c = std::pow(2, base_level - l) * N * FMM_fac;
                 
                 auto cur_real_base = (it->data_r(idx_w_g_type::tag()).real_block().base() - base + add_one) * std::pow(2, base_level - l);
                 auto prt_real_base = (it->parent()->data_r(idx_w_g_type::tag()).real_block().base() - base + add_one) * std::pow(2, base_level - l + 1);
@@ -6252,6 +6337,9 @@ class NewtonIteration
     bool add_Div = true;
     bool add_Grad = true;
     bool add_Boundary_u = true;
+
+    int set_zero_idx = -10; //the idx where the pressure is set to zero (just one point)
+    int FMM_fac = 1;
 
     int N_sep;
     bool use_FMM = false;

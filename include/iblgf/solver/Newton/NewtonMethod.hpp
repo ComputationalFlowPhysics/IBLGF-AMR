@@ -216,6 +216,8 @@ class NewtonIteration
 
         use_FMM = _simulation->dictionary()->template get_or<bool>(
             "use_FMM_in_Jac", false);
+        FMM_include_center = _simulation->dictionary()->template get_or<bool>(
+            "use_FMM_with_center", false);
         N_sep = _simulation->dictionary()->template get_or<int>(
             "FMM_sep", 14); //definition of well separated in FMM
 
@@ -3592,6 +3594,16 @@ class NewtonIteration
         coordinate_type c_loc = c - base;
         coordinate_type lb_c= lb_c_r - base;
 
+        int N_ext = domain_->block_extent()[0];
+
+        coordinate_type center = -base; //find the center coordinate
+
+        for (int d = 0; d < center.size(); d++) {
+            int blk_idx_tmp = center[d]/N_ext;
+            center[d] = blk_idx_tmp*N_ext;
+        }
+        
+
         boost::mpi::broadcast(domain_->client_communicator(), c_loc, root);
         boost::mpi::broadcast(domain_->client_communicator(), lb_c, root);
         //std::cout << root << " " <<domain_->client_communicator().rank() << " c is " << c_loc[0] << " " << c_loc[1] << std::endl;
@@ -3631,12 +3643,37 @@ class NewtonIteration
                     include_oct = true;
                 }
 
+                if (FMM_include_center)
+                {
+                    //auto tar_real_center = center;
+                    auto dist = center - prt_real_base;
+                    if (dist[0] >= -n_range_p && dist[0] < n_range_p * 2 &&
+                        dist[1] >= -n_range_p && dist[1] < n_range_p * 2)
+                    {
+                        include_oct = true;
+                    }
+                }
+
                 auto dist_c = tar_real_base - cur_real_base;
 
                 if (l != base_level &&
                     dist_c[0] >= -n_range_c && dist_c[0] < n_range_c * 2 &&
                     dist_c[1] >= -n_range_c && dist_c[1] < n_range_c * 2) {
                     include_oct = false;
+                }
+
+                
+                if (FMM_include_center)
+                {
+
+                    auto dist_c = center - cur_real_base;
+
+                    if (l != base_level && dist_c[0] >= -n_range_c &&
+                        dist_c[0] < n_range_c * 2 && dist_c[1] >= -n_range_c &&
+                        dist_c[1] < n_range_c * 2)
+                    {
+                        include_oct = false;
+                    }
                 }
 
                 if (!include_oct) continue;
@@ -6343,6 +6380,7 @@ class NewtonIteration
 
     int N_sep;
     bool use_FMM = false;
+    bool FMM_include_center = false;
     std::map<int, int> FMM_bin; // the map that structured like N_sep, 1;N_sep*2+N_sep, 2; N_sep*2^2+N_sep*2+N_sep, 2^2;...
     //the first int is the max value for that bin, the second value is the stride for that bin
 

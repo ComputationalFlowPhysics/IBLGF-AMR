@@ -290,10 +290,22 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
 		boost::mpi::communicator world;
 
 		time_integration_t ifherk(&this->simulation_);
+        if (world.rank() == 1) {
+            std::cout << "start assigning idx" << std::endl;
+        }
         ifherk.Assigning_idx();
+        if (world.rank() == 1) {
+            std::cout << "finished assigning idx" << std::endl;
+        }
 
         simulation_.write("init.hdf5");
+        if (world.rank() == 1) {
+            std::cout << "finished writing init file" << std::endl;
+        }
         ifherk.constructing_laplacian();
+        if (world.rank() == 1) {
+            std::cout << "finished constructing laplacian" << std::endl;
+        }
         ifherk.printing_mat(row_to_print);
         if (print_mat)
         {
@@ -531,14 +543,7 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
         }
 
         MPI_Barrier(MPI_COMM_WORLD);
-        if (rank  != 0)
-        {
-            MKL_free(ia);
-            MKL_free(ja);
-            MKL_free(a);
-            MKL_free(x);
-            MKL_free(b);
-        }
+        
         //Do not finalize MPI again since boost mpi calls it already
         //mpi_stat = MPI_Finalize();
         //std::cout << "  MPI_FINALIZED" << std::endl;
@@ -550,8 +555,19 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
 		float_type u2_inf = this->compute_errors<u_num_type, u_ref_type, error_u_type>(
 			std::string("u_1_"), 1);
 
-		float_type p_inf = this->compute_errors<p_num_type, p_ref_type, error_p_type>(
-			std::string("p_0_"), 0);
+		/*float_type p_inf = this->compute_errors<p_num_type, p_ref_type, error_p_type>(
+			std::string("p_0_"), 0);*/
+
+        simulation_.write("final.hdf5");
+
+        if (rank  != 0)
+        {
+            MKL_free(ia);
+            MKL_free(ja);
+            MKL_free(a);
+            MKL_free(x);
+            MKL_free(b);
+        }
 
         return 0;
 
@@ -562,6 +578,37 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
     bool refinement(
         OctantType* it, int diff_level, bool use_all = false) const noexcept
     {
+        auto b = it->data().descriptor();
+        auto center =
+            (domain_->bounding_box().max() - domain_->bounding_box().min()) /
+                2.0 +
+            domain_->bounding_box().min();
+        
+        const auto dx_base = domain_->dx_base();
+
+        auto scaling = std::pow(2, b.level());
+        center *= scaling;
+        auto dx_level = dx_base / std::pow(2, b.level());
+
+        b.grow(2, 2);
+        auto corners = b.get_corners();
+        for (int i = b.base()[0]; i <= b.max()[0]; ++i)
+        {
+            for (int j = b.base()[1]; j <= b.max()[1]; ++j)
+            {
+                const float_type x =
+                    static_cast<float_type>(i - center[0] + 0.5) * dx_level;
+                const float_type y =
+                    static_cast<float_type>(j - center[1] + 0.5) * dx_level;
+
+                const auto vort = std::exp(-x*x-y*y)*(4*x*x - 2.0 + 4*y*y - 2.0);
+                if (std::fabs(vort) >
+                    source_max_ * pow(refinement_factor_, diff_level))
+                {
+                    return true;
+                }
+            }
+        }
         return false;
     }
 

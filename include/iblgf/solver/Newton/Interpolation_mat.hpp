@@ -68,8 +68,8 @@ class cell_nli_mat
             nli_aux_1d_antrp_tmp(std::array<size_t, 1>{{ Nb_}}),
             child_combine_(std::array<size_t, 3>{{2*Nb_,2*Nb_,2*Nb_}}),
             antrp_mat_sub_simple_{
-                            xt::xtensor<float_type, 2>(std::array<size_t, 2>{{Nb_,Nb_*2-2}}),
-                            xt::xtensor<float_type, 2>(std::array<size_t, 2>{{Nb_,Nb_*2-2}})
+                            xt::xtensor<float_type, 2>(std::array<size_t, 2>{{Nb_,Nb_*2}}),
+                            xt::xtensor<float_type, 2>(std::array<size_t, 2>{{Nb_,Nb_*2}})
                         },
             antrp_mat_sub_simple_sub_{
                             xt::xtensor<float_type, 2>(std::array<size_t, 2>{{Nb_,Nb_}}),
@@ -104,12 +104,12 @@ class cell_nli_mat
             std::fill(antrp_mat_sub_simple_sub_[2].begin(), antrp_mat_sub_simple_sub_[2].end(), 0.0);
             std::fill(antrp_mat_sub_simple_sub_[3].begin(), antrp_mat_sub_simple_sub_[3].end(), 0.0);
 
-            for (size_t i=1;i<Nb_-1;++i)
-                    antrp_mat_sub_simple_[0](i,i*2-1)=1.0;
+            for (size_t i=0;i<Nb_;++i)
+                    antrp_mat_sub_simple_[0](i,i*2)=1.0;
 
-            for (size_t i=1;i<Nb_-1;++i)
+            for (size_t i=0;i<Nb_;++i)
             {
-                    antrp_mat_sub_simple_[1](i,i*2-1)=0.5;
+                    antrp_mat_sub_simple_[1](i,i*2+1)=0.5;
                     antrp_mat_sub_simple_[1](i,i*2)=0.5;
             }
 
@@ -147,16 +147,16 @@ class cell_nli_mat
             //    }
             //}
 
-            xt::noalias(view(antrp_mat_sub_simple_sub_[0], xt::all(), xt::range(1,Nb_-1) )) =
-                view(antrp_mat_sub_simple_[0],xt::all(),xt::range(1,Nb_-1));
-            xt::noalias(view(antrp_mat_sub_simple_sub_[1], xt::all(), xt::range(1,Nb_-1))) =
-                view(antrp_mat_sub_simple_[0],xt::all(),xt::range(Nb_-1,2*Nb_-3));
+            xt::noalias(view(antrp_mat_sub_simple_sub_[0], xt::all(), xt::range(0,Nb_) )) =
+                view(antrp_mat_sub_simple_[0],xt::all(),xt::range(0,Nb_));
+            xt::noalias(view(antrp_mat_sub_simple_sub_[1], xt::all(), xt::range(0,Nb_))) =
+                view(antrp_mat_sub_simple_[0],xt::all(),xt::range(Nb_,2*Nb_));
 
 
-            xt::noalias(view(antrp_mat_sub_simple_sub_[2], xt::all(), xt::range(1,Nb_-1))) =
-                view(antrp_mat_sub_simple_[1],xt::all(),xt::range(1,Nb_-1));
-            xt::noalias(view(antrp_mat_sub_simple_sub_[3], xt::all(), xt::range(1,Nb_-1))) =
-                view(antrp_mat_sub_simple_[1],xt::all(),xt::range(Nb_-1,2*Nb_-3));
+            xt::noalias(view(antrp_mat_sub_simple_sub_[2], xt::all(), xt::range(0,Nb_))) =
+                view(antrp_mat_sub_simple_[1],xt::all(),xt::range(0,Nb_));
+            xt::noalias(view(antrp_mat_sub_simple_sub_[3], xt::all(), xt::range(0,Nb_))) =
+                view(antrp_mat_sub_simple_[1],xt::all(),xt::range(Nb_,2*Nb_));
 
             //std::cout<< " ------------------------- " <<std::endl;
             //std::cout<< antrp_mat_sub_simple_sub_[0]<< std::endl;

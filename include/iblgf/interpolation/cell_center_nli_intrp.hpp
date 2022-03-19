@@ -733,6 +733,11 @@ class cell_center_nli
                                                                  antrp_sub_;
     std::array<linalg::Mat_t, max_1D_child_n * max_relative_pos> antrp_mat_sub_;
 
+    std::array<xt::xtensor<float_type, 2>, max_relative_pos>
+        antrp_mat_sub_simple_;
+    std::array<xt::xtensor<float_type, 2>, max_1D_child_n * max_relative_pos>
+        antrp_mat_sub_simple_sub_;
+
   private:
     xt::xtensor<float_type, 1> nli_aux_1d_intrp;
     xt::xtensor<float_type, 2> nli_aux_2d_intrp;
@@ -744,10 +749,7 @@ class cell_center_nli
 
     xt::xtensor<float_type, 3> child_combine_;
 
-    std::array<xt::xtensor<float_type, 2>, max_relative_pos>
-        antrp_mat_sub_simple_;
-    std::array<xt::xtensor<float_type, 2>, max_1D_child_n * max_relative_pos>
-        antrp_mat_sub_simple_sub_;
+    
 };
 
 } // namespace interpolation

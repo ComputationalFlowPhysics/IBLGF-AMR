@@ -333,8 +333,8 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
 
         world.barrier();
         
-        if (world.rank() != 0) ifherk.pad_velocity<u_type, u_ref_type>(false);
-        if (world.rank() != 0) ifherk.pad_velocity<u_type, u_type>(false);
+        if (world.rank() != 0) ifherk.pad_velocity<u_type, u_ref_type>(true);
+        if (world.rank() != 0) ifherk.pad_velocity<u_type, u_type>(true);
 
         world.barrier();
         if (world.rank() == 1) std::cout << "Curl" << std::endl;
@@ -347,7 +347,10 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
         
         world.barrier();
         if (world.rank() == 1) std::cout << "Upward interpolation" << std::endl;
+        if (world.rank() != 0) ifherk.up_and_down<w_ref_type>();
         if (world.rank() != 0) ifherk.Upward_interpolation<w_ref_type, w_ref_type>();
+        if (world.rank() != 0) ifherk.up_and_down<u_ref_type>();
+        if (world.rank() != 0) ifherk.up_and_down<p_ref_type>();
         world.barrier();
         if (world.rank() == 1) std::cout << "Clean" << std::endl;
         if (world.rank() != 0) ifherk.clean<w_tar_type>();
@@ -557,8 +560,8 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
 
         ifherk.CSR2Grid<u_num_type, p_num_type, w_num_type>(res, forcing_num);
 
-        ifherk.compute_error_nonleaf<edge_aux_type, w_num_type>("num_", false);
-        ifherk.compute_error_nonleaf<edge_aux_type, w_ref_type>("ref_", false);
+        ifherk.compute_error_nonleaf<edge_aux_type, w_num_type>("num_", true);
+        ifherk.compute_error_nonleaf<edge_aux_type, w_ref_type>("ref_", true);
 
         world.barrier();
         for (int i = 1; i < world.size(); i++)

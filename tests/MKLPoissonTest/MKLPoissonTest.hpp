@@ -223,6 +223,8 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
         row_to_print = simulation_.dictionary_->template get_or<int>(
 			"row_to_print", 100);
 
+        N_pts = simulation_.dictionary()->template get_or<int>("N_pts", 27);
+
         print_mat = simulation_.dictionary_->template get_or<bool>(
 			"print_mat",  false);
 
@@ -588,7 +590,11 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
 
         auto scaling = std::pow(2, b.level());
         center *= scaling;
+
+        
         auto dx_level = dx_base / std::pow(2, b.level());
+
+        float_type max_c = N_pts*dx_level;
 
         b.grow(2, 2);
         auto corners = b.get_corners();
@@ -601,12 +607,16 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
                 const float_type y =
                     static_cast<float_type>(j - center[1] + 0.5) * dx_level;
 
-                const auto vort = std::exp(-x*x-y*y)*(4*x*x - 2.0 + 4*y*y - 2.0);
+                if (std::fabs(x) < max_c && std::fabs(y) < max_c) {
+                    return true;
+                }
+
+                /*const auto vort = std::exp(-x*x-y*y)*(4*x*x - 2.0 + 4*y*y - 2.0);
                 if (std::fabs(vort) >
                     source_max_ * pow(refinement_factor_, diff_level))
                 {
                     return true;
-                }
+                }*/
             }
         }
         return false;
@@ -792,6 +802,7 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
     int vortexType = 0;
 
     int row_to_print = 0;
+    int N_pts;
 
     std::vector<float_type> U_;
     //bool subtract_non_leaf_  = true;

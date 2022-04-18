@@ -332,14 +332,18 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
 		}
 
         world.barrier();
+
+        if (world.rank() != 0) ifherk.clean_up_initial_velocity<u_type>();
+        if (world.rank() != 0) ifherk.clean_up_initial_velocity<u_ref_type>();
+
         
-        if (world.rank() != 0) ifherk.pad_velocity<u_type, u_ref_type>(true);
+        if (world.rank() != 0) ifherk.pad_velocity<u_ref_type, u_ref_type>(true);
         if (world.rank() != 0) ifherk.pad_velocity<u_type, u_type>(true);
 
         world.barrier();
         if (world.rank() == 1) std::cout << "Curl" << std::endl;
         
-        if (world.rank() != 0) ifherk.Curl_access<u_ref_type, w_ref_type>();
+        //if (world.rank() != 0) ifherk.Curl_access<u_ref_type, w_ref_type>();
 
         
 		ifherk.Jacobian<u_ref_type, p_ref_type, u_tar_type, p_tar_type>(forcing_ref, forcing_tar);
@@ -347,9 +351,13 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
         
         world.barrier();
         if (world.rank() == 1) std::cout << "Upward interpolation" << std::endl;
-        if (world.rank() != 0) ifherk.up_and_down<w_ref_type>();
-        if (world.rank() != 0) ifherk.Upward_interpolation<w_ref_type, w_ref_type>();
+        
+        
+        
+        //if (world.rank() != 0) ifherk.Upward_interpolation<w_ref_type, w_ref_type>();
         if (world.rank() != 0) ifherk.up_and_down<u_ref_type>();
+        if (world.rank() != 0) ifherk.Curl_access<u_ref_type, w_ref_type>();
+        if (world.rank() != 0) ifherk.Upward_interpolation<w_ref_type, w_ref_type>();
         if (world.rank() != 0) ifherk.up_and_down<p_ref_type>();
         world.barrier();
         if (world.rank() == 1) std::cout << "Clean" << std::endl;
@@ -546,7 +554,7 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
         {
             for (int i = 0; i < loc_size; i++)
             {
-                err_BC += BC_diff[i] * BC_diff[i];
+                err_BC += std::abs(BC_diff[i]);
             }
         }
 
@@ -560,8 +568,16 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
 
         ifherk.CSR2Grid<u_num_type, p_num_type, w_num_type>(res, forcing_num);
 
-        ifherk.compute_error_nonleaf<edge_aux_type, w_num_type>("num_", true);
-        ifherk.compute_error_nonleaf<edge_aux_type, w_ref_type>("ref_", true);
+        ifherk.compute_error_nonleaf<edge_aux_type, w_num_type, idx_w_type>("edge_num_", true);
+        ifherk.compute_error_nonleaf<edge_aux_type, w_ref_type, idx_w_type>("edge_ref_", true);
+
+        ifherk.clean<face_aux_type>();
+        ifherk.compute_error_nonleaf<face_aux_type, u_ref_type, idx_u_type>("face_ref_", true);
+        ifherk.compute_error_nonleaf<face_aux_type, u_num_type, idx_u_type>("face_num_", true);
+
+        ifherk.clean<cell_aux_type>();
+        ifherk.compute_error_nonleaf<cell_aux_type, p_ref_type, idx_p_type>("cell_ref_", true);
+        ifherk.compute_error_nonleaf<cell_aux_type, p_num_type, idx_p_type>("cell_num_", true);
 
         world.barrier();
         for (int i = 1; i < world.size(); i++)
@@ -610,10 +626,10 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
 		simulation_.write("final_apply.hdf5");
 
         //ifherk.clean<u_num_type>();
-        ifherk.clean<p_num_type>();
+        if (clean_p_tar) ifherk.clean<p_num_type>();
         ifherk.clean<w_num_type>();
         ifherk.clean<w_tar_type>();
-        ifherk.clean<p_tar_type>();
+        if (clean_p_tar) ifherk.clean<p_tar_type>();
 
         ifherk.clean<error_u_type>();
         ifherk.clean<error_p_type>();
@@ -719,8 +735,8 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
         //iparm[1] = 0;  /* Use METIS for fill-in reordering */
         iparm[1] = 2;  /* Use METIS for fill-in reordering */
         iparm[5] = 0;  /* Write solution into x */
-        iparm[7] = 100;  /* Max number of iterative refinement steps */
-        iparm[9] = 8; /* Perturb the pivot elements with 1E-13 */
+        iparm[7] = 10;  /* Max number of iterative refinement steps */
+        iparm[9] = 13; /* Perturb the pivot elements with 1E-13 */
         iparm[10] = 1; /* Use nonsymmetric permutation and scaling MPS */
         iparm[12] = 1; /* Switch on Maximum Weighted Matching algorithm (default for non-symmetric) */
         iparm[17] = -1; /* Output: Number of nonzeros in the factor LU */

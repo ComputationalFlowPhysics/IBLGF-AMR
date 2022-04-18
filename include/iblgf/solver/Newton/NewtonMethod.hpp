@@ -457,32 +457,34 @@ class NewtonIteration
             write_stats(tmp_n);
         }
     }
+    template<class Field>
     void clean_up_initial_velocity()
     {
         if (domain_->is_client())
         {
-            up_and_down<u_type>();
+            up_and_down<Field>();
             auto client = domain_->decomposition().client();
             clean<edge_aux_type>();
             clean<stream_f_type>();
             for (int l = domain_->tree()->base_level();
                  l < domain_->tree()->depth(); ++l)
             {
-                client->template buffer_exchange<u_type>(l);
+                client->template buffer_exchange<Field>(l);
                 for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
                 {
                     if (!it->locally_owned() || it->is_correction()) continue;
 
                     const auto dx_level =
                         dx_base_ / math::pow2(it->refinement_level());
-                    domain::Operator::curl<u_type, edge_aux_type>(it->data(),
+                    domain::Operator::curl<Field, edge_aux_type>(it->data(),
                         dx_level);
                 }
             }
-            //clean_leaf_correction_boundary<edge_aux_type>(domain_->tree()->base_level(), true,2);
+            clean_leaf_correction_boundary<edge_aux_type>(domain_->tree()->base_level(), true,2);
 
-            clean<u_type>();
+            clean<Field>();
             psolver.template apply_lgf<edge_aux_type, stream_f_type>();
+            
             for (int l = domain_->tree()->base_level();
                  l < domain_->tree()->depth(); ++l)
             {
@@ -492,11 +494,32 @@ class NewtonIteration
 
                     const auto dx_level =
                         dx_base_ / math::pow2(it->refinement_level());
-                    domain::Operator::curl_transpose<stream_f_type, u_type>(
+                    domain::Operator::curl_transpose<stream_f_type, Field>(
                         it->data(), dx_level, -1.0);
                 }
-                client->template buffer_exchange<u_type>(l);
+                client->template buffer_exchange<Field>(l);
             }
+        }
+    }
+    template<class Field>
+    void clean_up_initial_velocity_decomp()
+    {
+        if (domain_->is_client())
+        {
+            clean<face_aux_type>();
+            copy<Field, face_aux_type>();
+            up_and_down<face_aux_type>();
+            domain_->client_communicator().barrier();
+            clean<cell_aux_type>();
+            clean<cell_aux_tmp_type>();
+            clean<face_aux_tmp_type>();
+            divergence<face_aux_type, cell_aux_type>();
+            domain_->client_communicator().barrier();
+            psolver.template apply_lgf<cell_aux_type, cell_aux_tmp_type>();
+            domain_->client_communicator().barrier();
+            gradient<cell_aux_tmp_type,face_aux_tmp_type>();
+            domain_->client_communicator().barrier();
+            add<face_aux_tmp_type, Field>(-1.0);
         }
     }
 
@@ -998,7 +1021,7 @@ class NewtonIteration
                  it != domain_->end(l); ++it)
             {
                 if (!it->locally_owned() || !it->has_data()) continue;
-                if (it->is_leaf() && !it->is_correction())
+                if (/*it->is_leaf() && */!it->is_correction())
                 {
                     for (std::size_t field_idx = 0;
                          field_idx < idx_u_type::nFields(); ++field_idx)
@@ -1083,9 +1106,9 @@ class NewtonIteration
                         }
                     }
                 }
-                else //if (!it->is_leaf() /* && it->is_correction() && l != base_level*/)
+                else //if (it->is_correction())
                 {
-                    //only setting the leaf points that is next to the leaf to be active
+                    //only setting the points that is next to the leaf to be active
                     int  N = it->data().descriptor().extent()[0];
                     bool tmp[N][N] = {false};
                     for (int i = 0; i < it->num_neighbors(); i++)
@@ -1158,6 +1181,17 @@ class NewtonIteration
                             }
                         }
                     }
+                    //need this to compute the edge values
+                    /*for (std::size_t field_idx = 0;
+                         field_idx < idx_u_type::nFields(); ++field_idx)
+                    {
+                        for (auto& n : it->data())
+                        {
+                            counter++;
+                            n(idx_u_type::tag(), field_idx) =
+                                static_cast<float_type>(counter) + 0.5;
+                        }
+                    }*/
                 }
                 /*else
                 {
@@ -1207,6 +1241,80 @@ class NewtonIteration
                                 n(idx_p_type::tag(), field_idx) = -1;
                             }
                         }
+
+                        /*int  N = it->data().descriptor().extent()[0];
+                        bool tmp[N][N] = {false};
+                        for (int i = 0; i < it->num_neighbors(); i++)
+                        {
+                            auto it2 = it->neighbor(i);
+                            if (!it2 || !it2->is_leaf() || it2->is_correction())
+                            {
+                                continue;
+                            }
+                            else
+                            {
+                                if (i == 0) { tmp[0][0] = true; }
+                                if (i == 1)
+                                {
+                                    for (int j = 0; j < N; j++)
+                                    {
+                                        tmp[j][0] = true;
+                                        //tmp[j][1] = true;
+                                    }
+                                }
+                                if (i == 2) { tmp[N - 1][0] = true; }
+                                if (i == 3)
+                                {
+                                    for (int j = 0; j < N; j++)
+                                    {
+                                        tmp[0][j] = true;
+                                        //tmp[1][j] = true;
+                                    }
+                                }
+                                if (i == 5)
+                                {
+                                    for (int j = 0; j < N; j++)
+                                    {
+                                        tmp[N - 1][j] = true;
+                                        //tmp[N - 2][j] = true;
+                                    }
+                                }
+                                if (i == 6) { tmp[0][N - 1] = true; }
+                                if (i == 7)
+                                {
+                                    for (int j = 0; j < N; j++)
+                                    {
+                                        tmp[j][N - 1] = true;
+                                        //tmp[j][N - 2] = true;
+                                    }
+                                }
+                                if (i == 8) { tmp[N - 1][N - 1] = true; }
+                            }
+                        }
+                        for (std::size_t field_idx = 0;
+                             field_idx < idx_p_type::nFields(); ++field_idx)
+                        {
+                            auto& lin_data =
+                                it->data_r(idx_p_type::tag(), field_idx)
+                                    .linalg_data();
+                            for (int i = 0; i < N; i++)
+                            {
+                                for (int j = 0; j < N; j++)
+                                {
+                                    if (tmp[i][j])
+                                    {
+                                        counter++;
+                                        view(lin_data, i + 1, j + 1) =
+                                            static_cast<float_type>(counter) +
+                                            0.5;
+                                    }
+                                    else
+                                    {
+                                        view(lin_data, i + 1, j + 1) = -1;
+                                    }
+                                }
+                            }
+                        }*/
                     }
                     else if (!it->is_leaf())
                     {
@@ -1222,22 +1330,22 @@ class NewtonIteration
                             }
                             else
                             {
-                                //if (i == 0) { tmp[0][0] = true; }
+                                if (i == 0) { tmp[0][0] = true; }
                                 if (i == 1)
                                 {
                                     for (int j = 0; j < N; j++)
                                     {
                                         tmp[j][0] = true;
-                                        tmp[j][1] = true;
+                                        //tmp[j][1] = true;
                                     }
                                 }
-                                //if (i == 2) { tmp[N - 1][0] = true; }
+                                if (i == 2) { tmp[N - 1][0] = true; }
                                 if (i == 3)
                                 {
                                     for (int j = 0; j < N; j++)
                                     {
                                         tmp[0][j] = true;
-                                        tmp[1][j] = true;
+                                        //tmp[1][j] = true;
                                     }
                                 }
                                 if (i == 5)
@@ -1245,19 +1353,19 @@ class NewtonIteration
                                     for (int j = 0; j < N; j++)
                                     {
                                         tmp[N - 1][j] = true;
-                                        tmp[N - 2][j] = true;
+                                        //tmp[N - 2][j] = true;
                                     }
                                 }
-                                //if (i == 6) { tmp[0][N - 1] = true; }
+                                if (i == 6) { tmp[0][N - 1] = true; }
                                 if (i == 7)
                                 {
                                     for (int j = 0; j < N; j++)
                                     {
                                         tmp[j][N - 1] = true;
-                                        tmp[j][N - 2] = true;
+                                        //tmp[j][N - 2] = true;
                                     }
                                 }
-                                //if (i == 8) { tmp[N - 1][N - 1] = true; }
+                                if (i == 8) { tmp[N - 1][N - 1] = true; }
                             }
                         }
                         for (std::size_t field_idx = 0;
@@ -1323,7 +1431,7 @@ class NewtonIteration
                             }
                         }
                     }
-                    else if (it->is_correction())
+                    else if (it->is_correction() && l != base_level)
                     {
                         //only setting the leaf points that is next to the leaf to be active
                         int  N = it->data().descriptor().extent()[0];
@@ -1376,6 +1484,17 @@ class NewtonIteration
                                         view(lin_data, i + 1, j + 1) = -1;
                                     }
                                 }
+                            }
+                        }
+                    }
+                    else {
+                        for (std::size_t field_idx = 0;
+                             field_idx < idx_w_type::nFields(); ++field_idx)
+                        {
+                            for (auto& n : it->data())
+                            {
+                                counter++;
+                                n(idx_w_type::tag(), field_idx) = -1;
                             }
                         }
                     }
@@ -1925,7 +2044,7 @@ class NewtonIteration
                 {
                     if (!it->locally_owned() || !it->has_data()) continue;
                     //if (!it->is_leaf()) continue;
-                    if (!it->is_correction())
+                    if (!it->is_leaf())
                     {
                         for (std::size_t field_idx = 0;
                              field_idx < idx_p_type::nFields(); ++field_idx)
@@ -1938,7 +2057,7 @@ class NewtonIteration
                             }
                         }
                     }
-                    else if (it->is_correction() && set_corr_zero)
+                    else if (!it->is_leaf() && set_corr_zero)
                     {
                         for (std::size_t field_idx = 0;
                              field_idx < idx_p_type::nFields(); ++field_idx)
@@ -2176,7 +2295,7 @@ class NewtonIteration
             for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
             {
                 if (!it->locally_owned() || !it->has_data()) continue;
-                if (!it->is_leaf()) continue;
+                //if (!it->is_leaf()) continue;
                 //if (it->is_correction()) continue;
                 for (std::size_t field_idx = 0;
                      field_idx < idx_u_type::nFields(); ++field_idx)
@@ -2303,7 +2422,7 @@ class NewtonIteration
         domain_->client_communicator().barrier();
     }
 
-    template<class Edge1, class Edge2>
+    template<class Edge1, class Edge2, class idxField>
     void compute_error_nonleaf(std::string _output_prefix = "", bool write_output=false) {
         boost::mpi::communicator world;
         
@@ -2333,13 +2452,16 @@ class NewtonIteration
                             dx_base * std::pow(2.0, base_level - l);
                         //if (!it) continue;
                         if (!it->locally_owned() || !it->has_data()) continue;
-                        if (it->is_leaf()) continue;
+                        if (it->is_leaf() && !it->is_correction()) continue;
                         //{
                         for (std::size_t field_idx = 0;
-                             field_idx < idx_w_type::nFields(); ++field_idx)
+                             field_idx < 1; ++field_idx)
                         {
+                            //only print the first component to see error
                             for (auto& n : it->data())
                             {
+                                int idx = n(idxField::tag(), field_idx);
+                                if (idx <= 0) continue;
                                 auto c = n.level_coordinate();
                                 int  x_c = c.x();
                                 int  y_c = c.y();
@@ -2354,7 +2476,7 @@ class NewtonIteration
 
                                 float_type diff = std::abs(val1 - val2);
                                 sum_val += diff * diff * dx_level * dx_level;
-                                if (max_val < diff) { max_val = diff; }
+                                if (max_val < diff) { max_val = diff_w; }
                             }
                         }
                     }
@@ -2467,6 +2589,8 @@ class NewtonIteration
 
                 client->template buffer_exchange<idx_u_type>(l);
                 client->template buffer_exchange<idx_u_g_type>(l);
+                client->template buffer_exchange<idx_p_type>(l);
+                client->template buffer_exchange<idx_p_g_type>(l);
                 if (l != (domain_->tree()->depth() - 1)) client->template buffer_exchange<idx_u_type>(l+1);
                 if (l != (domain_->tree()->depth() - 1)) client->template buffer_exchange<idx_u_g_type>(l+1);
             }
@@ -2490,11 +2614,11 @@ class NewtonIteration
                 {
                     for (auto& n : it->data())
                     {
-                        int p_idx_w = n.at_offset(idx_p_type::tag(), -1, 0, 0);
-                        int p_idx_e = n.at_offset(idx_p_type::tag(), 1, 0, 0);
-                        int p_idx_n = n.at_offset(idx_p_type::tag(), 0, 1, 0);
-                        int p_idx_s = n.at_offset(idx_p_type::tag(), 0, -1, 0);
-                        if (p_idx_w < 0 && field_idx == 0 && l == base_level)
+                        /*int p_idx_w = n.at_offset(idx_p_g_type::tag(), -1, 0, 0);
+                        int p_idx_e = n.at_offset(idx_p_g_type::tag(), 1, 0, 0);
+                        int p_idx_n = n.at_offset(idx_p_g_type::tag(), 0, 1, 0);
+                        int p_idx_s = n.at_offset(idx_p_g_type::tag(), 0, -1, 0);
+                        if (p_idx_w <= 0 && field_idx == 0 && l == base_level)
                         {
                             //enforcing div free at BC points
                             int cur_idx = n(idx_u_type::tag(), 0);
@@ -2511,7 +2635,7 @@ class NewtonIteration
                             L.add_element(cur_idx, glo_idx, 1.0 / dx_base * Re_);
                             continue;
                         }
-                        if (p_idx_s < 0 && field_idx == 1 && l == base_level)
+                        if (p_idx_s <= 0 && field_idx == 1 && l == base_level)
                         {
                             int cur_idx = n(idx_u_type::tag(), 1);
                             int glo_idx = n(idx_u_g_type::tag(), 1);
@@ -2526,7 +2650,7 @@ class NewtonIteration
                                 n.at_offset(idx_u_g_type::tag(), 1, -1, 0);
                             L.add_element(cur_idx, glo_idx, 1.0 / dx_base * Re_);
                             continue;
-                        }
+                        }*/
                         int cur_idx = n(idx_u_type::tag(), field_idx);
                         int glo_idx = n(idx_u_g_type::tag(), field_idx);
                         L.add_element(cur_idx, glo_idx,
@@ -2581,7 +2705,7 @@ class NewtonIteration
             std::cout << "finished constructing the p BC of laplacian" << std::endl;
         }
 
-        this->template construct_upward_BC_intrp<idx_w_type, idx_w_g_type>(L);
+        //this->template construct_upward_BC_intrp<idx_w_type, idx_w_g_type>(L);
 
         this->template construct_interpolation<idx_w_type, idx_w_g_type>(L);
 
@@ -3029,7 +3153,7 @@ class NewtonIteration
                 if (!it->is_leaf()) continue;
                 if (it->is_correction())
                 {
-                    for (auto& n : it->data())
+                    /*for (auto& n : it->data())
                     {
                         int cur_idx = n(idx_p_type::tag(), 0);
                         if (cur_idx < 0) continue;
@@ -3051,8 +3175,8 @@ class NewtonIteration
                         Div.add_element(cur_idx, glo_idx_1_0, -1.0 / dx_level);
                         Div.add_element(cur_idx, glo_idx_0_1, 1.0 / dx_level);
                         Div.add_element(cur_idx, glo_idx_1_1, 1.0 / dx_level);
-                    }
-                    //continue;
+                    }*/
+                    continue;
                 }
                 else
                 {
@@ -3130,7 +3254,7 @@ class NewtonIteration
             {
                 float_type dx_level = dx_base / math::pow2(it->refinement_level());
                 if (!it->locally_owned() || !it->has_data()) continue;
-                if (!it->is_leaf()) continue;
+                if (!it->is_leaf() && it->is_correction()) continue;
                 for (auto& n : it->data())
                 {
                     int cur_idx = n(idx_w_type::tag(), 0);
@@ -5630,7 +5754,7 @@ class NewtonIteration
             for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
             {
                 if (!it->locally_owned() || !it->has_data()) continue;
-                if (it->is_correction()) continue;
+                //if (it->is_correction()) continue;
                 //if(!it->is_leaf()) continue;
 
                 const auto dx_level =
@@ -5642,8 +5766,9 @@ class NewtonIteration
         }
 
         //clean<Velocity_out>();
-        clean_leaf_correction_boundary<Target>(
-            domain_->tree()->base_level(), true, 1);
+        //clean_leaf_correction_boundary<Target>(
+        //    domain_->tree()->base_level(), true, 1);
+        down_to_correction<Target>();
     }
 
     template<class VecType>
@@ -5717,7 +5842,8 @@ class NewtonIteration
 
         //up_and_down<Velocity_in>();
         clean<Velocity_in>(true);
-        this->up<Velocity_in>(false);
+        up_and_down<Velocity_in>();
+        //this->up<Velocity_in>(false);
         clean<edge_aux_type>();
         clean<stream_f_type>();
 
@@ -5743,8 +5869,7 @@ class NewtonIteration
         }
 
         //clean<Velocity_out>();
-        clean_leaf_correction_boundary<edge_aux_type>(
-            domain_->tree()->base_level(), true, 2);
+        clean_leaf_correction_boundary<edge_aux_type>(domain_->tree()->base_level(), false, 2);
         //clean_leaf_correction_boundary<edge_aux_type>(l, false,2+stage_idx_);
         psolver.template apply_lgf<edge_aux_type, stream_f_type>(
             MASK_TYPE::STREAM);
@@ -5805,10 +5930,43 @@ class NewtonIteration
                 }
 
                 int N_ext = domain_->block_extent()[0];
+                
 
                 for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
                 {
-                    if (!it->is_leaf()) continue;
+                    
+
+                    int x_begin = 1;
+                    int x_end = N_ext + 1;
+                    int y_begin = 1;
+                    int y_end = N_ext + 1;
+
+                    for (std::size_t i = 0; i < it->num_neighbors(); ++i)
+                    {
+                        auto it2 = it->neighbor(i);
+                        if (!it2) {
+                            continue;
+                        }
+                        if (!it2->is_leaf() && !it2->is_correction())
+                        {
+                            int N = it->data().descriptor().extent()[0];
+                            if (i == 1) { y_begin = 2; }
+                            else if (i == 3)
+                            {
+                                x_begin = 2;
+                            }
+                            else if (i == 5)
+                            {
+                                x_end = N_ext;
+                            }
+                            else if (i == 7)
+                            {
+                                y_end = N_ext;
+                            }
+                        }
+                    }
+
+                    
 
                     float_type dx_level = dx_base / math::pow2(it->refinement_level());
 
@@ -5860,7 +6018,7 @@ class NewtonIteration
                                 int tag_val = child->global_id();
 
                                 idx_vec[i].resize(idx_size);
-                                //std::cout << "Receiving at rank " << world.rank() << " gid is " << tag_val << std::endl;
+                                //std::cout << "Receiving at rank " << world.rank() << " from " << source_rank << " gid is " << tag_val << std::endl;
 
                                 //world.recv(source_rank, tag_val, octant_vec[i]);
                                 world.recv(source_rank, tag_val, idx_vec[i]);
@@ -5874,13 +6032,14 @@ class NewtonIteration
                         {
                             auto child = it->child(i);
                             int  parent_rank = it->rank();
-                            if (!child || !child->locally_owned() ||
-                                !child->has_data() || !child->is_correction())
+                            if (!child || !child->locally_owned() || !child->is_correction())
                                 continue;
 
                             std::vector<int> tmp_idx_vec;
 
                             tmp_idx_vec.resize(idx_size);
+
+                            if (child->has_data()) {
 
                             auto child_idx_vec =
                                 child->data_r(idxField_g::tag(), field_idx)
@@ -5895,12 +6054,18 @@ class NewtonIteration
                                         child_idx_vec.at(idx_i, idx_j);
                                 }
                             }
+                            }
 
                             int tag_val = child->global_id();
-                            //std::cout << "Sending at rank " << world.rank() << " gid is " << tag_val << std::endl;
+                            //std::cout << "Sending at rank " << world.rank() << " to rank " << parent_rank << " gid is " << tag_val << std::endl;
                             world.send(parent_rank, tag_val, tmp_idx_vec);
                         }
                     }
+
+                    //domain_->client_communicator().barrier();
+
+                    
+                    
 
                     //get idx from the leaf points adjacent to the correction
                     if (it->locally_owned() && it->has_data() && it->is_leaf())
@@ -5912,6 +6077,8 @@ class NewtonIteration
                             for (int n_idx = 0; n_idx < child->num_neighbors();
                                  n_idx++)
                             {
+                                bool inc = correction_adjacent(i, n_idx);
+                                if (!inc) continue;
                                 auto n = child->neighbor(n_idx);
                                 if (n && n->locally_owned() && n->has_data() &&
                                     n->is_leaf())
@@ -5949,7 +6116,7 @@ class NewtonIteration
                                     int vec_idx = i*num_neighbor + n_idx;
                                     leafBC[vec_idx].resize(idx_size);
 
-                                    //std::cout << "Receiving at rank " << world.rank() << " gid is " << tag_val << std::endl;
+                                    //std::cout << "Receiving at leafBC rank " << world.rank() << " gid is " << tag_val << std::endl;
 
                                     //world.recv(source_rank, tag_val, octant_vec[i]);
                                     world.recv(source_rank, tag_val,
@@ -5964,20 +6131,25 @@ class NewtonIteration
                         for (int i = 0; i < it->num_children(); i++)
                         {
                             auto child = it->child(i);
-
                             if (!child) continue;
                             for (int n_idx = 0; n_idx < child->num_neighbors();
                                  n_idx++)
                             {
+                                bool inc = correction_adjacent(i, n_idx);
+                                if (!inc) continue;
                                 auto n = child->neighbor(n_idx);
-                                if (n && n->locally_owned() && n->has_data() &&
+                                if (n && n->locally_owned() &&
                                     n->is_leaf())
                                 {
                                     std::vector<int> tmp_idx_vec;
 
                                     tmp_idx_vec.resize(idx_size);
 
+
+
                                     int  parent_rank = it->rank();
+
+                                    if (n->has_data()) {
 
                                     auto n_idx_vec =
                                         n->data_r(idxField_g::tag(), field_idx).linalg_data();
@@ -5994,49 +6166,28 @@ class NewtonIteration
                                                 n_idx_vec.at(idx_i, idx_j);
                                         }
                                     }
+                                    }
 
                                     int tag_val = n->global_id();
-                                    //std::cout << "Sending at rank " << world.rank() << " gid is " << tag_val << std::endl;
+                                    //std::cout << "Sending at leafBC rank " << world.rank() << " gid is " << tag_val << std::endl;
                                     world.send(parent_rank, tag_val,
                                         tmp_idx_vec);
                                 }
                             }
                         }
-                    }                    
-
-                    if (!it->locally_owned() || !it->has_data()) continue;
-                    
-                    if (it->is_correction()) continue;
-
-                    int x_begin = 1;
-                    int x_end = N_ext + 1;
-                    int y_begin = 1;
-                    int y_end = N_ext + 1;
-
-                    for (std::size_t i = 0; i < it->num_neighbors(); ++i)
-                    {
-                        auto it2 = it->neighbor(i);
-                        if (!it2) {
-                            continue;
-                        }
-                        if (!it2->is_leaf() && !it2->is_correction())
-                        {
-                            int N = it->data().descriptor().extent()[0];
-                            if (i == 1) { y_begin = 2; }
-                            else if (i == 3)
-                            {
-                                x_begin = 2;
-                            }
-                            else if (i == 5)
-                            {
-                                x_end = N_ext;
-                            }
-                            else if (i == 7)
-                            {
-                                y_end = N_ext;
-                            }
-                        }
                     }
+
+                    if (!it->is_leaf()) continue;
+                    if (it->is_correction()) continue;                    
+
+                    
+                    if (!it->locally_owned() || !it->has_data()) continue;
+
+                    if (x_begin == 1 && x_end == (N_ext+1) &&
+                        y_begin == 1 && y_end == (N_ext+1)) {
+                        continue;
+                    }
+                   
 
 
                     if (y_begin == 2)
@@ -6447,6 +6598,26 @@ class NewtonIteration
         domain_->client_communicator().barrier();
     }
 
+    bool correction_adjacent(int ch_idx, int neighb_idx) {
+        if (ch_idx == 0) {
+            if (neighb_idx == 1 || neighb_idx == 3) return true;
+            else return false;
+        }
+        if (ch_idx == 1) {
+            if (neighb_idx == 1 || neighb_idx == 5) return true;
+            else return false;
+        }
+        if (ch_idx == 2) {
+            if (neighb_idx == 7 || neighb_idx == 3) return true;
+            else return false;
+        }
+        if (ch_idx == 3) {
+            if (neighb_idx == 7 || neighb_idx == 5) return true;
+            else return false;
+        }
+        return false;
+    }
+
     template<class idxField, class idxField_g>
     void construct_upward_BC_intrp(sparse_mat& mat_tar) {
         //this function constructs the Dirichlet BC interpolation for face centered variables
@@ -6476,6 +6647,7 @@ class NewtonIteration
                 for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
                 {
                     if (it->is_leaf()) continue;
+                    if (it->is_correction()) continue;
                     const int num_child = it->num_children();
                     //octant_base_t oct_base_tmp(coordinate_type({0,0}), base_level);
                     //std::vector<octant_t> octant_vec(num_child, octant_t(oct_base_tmp));
@@ -6722,6 +6894,15 @@ class NewtonIteration
         {
             for (int l = base_level + 1; l < domain_->tree()->depth(); l++)
             {
+                if (domain_->is_client())
+                {
+                    auto client = domain_->decomposition().client();
+
+                    client->template buffer_exchange<idxField>(l);
+                    client->template buffer_exchange<idxField_g>(l);
+                    client->template buffer_exchange<idxField>(l - 1);
+                    client->template buffer_exchange<idxField_g>(l - 1);
+                }
                 for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
                 {
                     if (!it->is_correction()) continue;
@@ -6867,7 +7048,7 @@ class NewtonIteration
                                 idx_z +=
                                     relative_positions[2] * max_relative_pos;
 
-                                auto x_intrp_mat = c_cntr_nli_mat.antrp_mat_sub_[idx_x].data_;
+                                /*auto x_intrp_mat = c_cntr_nli_mat.antrp_mat_sub_[idx_x].data_;
                                 auto y_intrp_mat = c_cntr_nli_mat.antrp_mat_sub_[idx_y].data_;
 
                                 for (int sub_i = 1; sub_i < (N + 1); sub_i++)
@@ -6882,6 +7063,29 @@ class NewtonIteration
                                             x_intrp_mat.at(sub_i-1, i-1);
                                         float_type val_y =
                                             y_intrp_mat.at(sub_j-1, j-1);
+                                        float_type val_t = val_x * val_y;
+                                        if (std::abs(val_t) < 1e-14)
+                                            continue;
+                                        mat_tar.add_element(cur_idx,
+                                            prt_idx_g, val_t);
+                                    }
+                                }*/
+
+                                auto x_intrp_mat = c_cntr_nli.antrp_mat_sub_[idx_x].data_;
+                                auto y_intrp_mat = c_cntr_nli.antrp_mat_sub_[idx_y].data_;
+
+                                for (int sub_i = 0; sub_i < (N + 2); sub_i++)
+                                {
+                                    for (int sub_j = 0; sub_j < (N + 2);
+                                         sub_j++)
+                                    {
+                                        int loc_idx = sub_i * (N + 2) + sub_j;
+                                        int prt_idx_g =
+                                            idx_vec[loc_idx];
+                                        float_type val_x =
+                                            x_intrp_mat.at(sub_i, i);
+                                        float_type val_y =
+                                            y_intrp_mat.at(sub_j, j);
                                         float_type val_t = val_x * val_y;
                                         if (std::abs(val_t) < 1e-14)
                                             continue;

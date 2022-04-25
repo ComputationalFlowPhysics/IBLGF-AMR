@@ -389,7 +389,7 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
 		iparm[0] = 1; /* Solver default parameters overriden with provided by iparm */
         iparm[1] = 2;  /* Use METIS for fill-in reordering */
         iparm[5] = 0;  /* Write solution into x */
-        iparm[7] = 2;  /* Max number of iterative refinement steps */
+        iparm[7] = 100;  /* Max number of iterative refinement steps */
         iparm[9] = 13; /* Perturb the pivot elements with 1E-13 */
         iparm[10] = 1; /* Use nonsymmetric permutation and scaling MPS */
         iparm[12] = 1; /* Switch on Maximum Weighted Matching algorithm (default for non-symmetric) */

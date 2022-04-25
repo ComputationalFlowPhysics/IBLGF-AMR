@@ -245,6 +245,36 @@ class NewtonIteration
         N_sep = _simulation->dictionary()->template get_or<int>(
             "FMM_sep", 14); //definition of well separated in FMM
 
+        add_L = _simulation->dictionary()->template get_or<bool>(
+            "add_L", true);
+
+        add_DN = _simulation->dictionary()->template get_or<bool>(
+            "add_DN", true);
+
+        add_Div = _simulation->dictionary()->template get_or<bool>(
+            "add_Div", true);
+
+        add_Grad = _simulation->dictionary()->template get_or<bool>(
+            "add_Grad", true);
+        add_Curl = _simulation->dictionary()->template get_or<bool>(
+            "add_Curl", true);
+        add_Boundary_u = _simulation->dictionary()->template get_or<bool>(
+            "add_Boundary_u", true);
+        add_upward_intrp = _simulation->dictionary()->template get_or<bool>(
+            "add_upward_intrp", true);
+        add_smearing = _simulation->dictionary()->template get_or<bool>(
+            "add_smearing", true);
+        add_project = _simulation->dictionary()->template get_or<bool>(
+            "add_project", true);
+
+        force_loc_set_zero = _simulation->dictionary()->template get_or<bool>(
+            "force_loc_set_zero", false);
+
+        if (force_loc_set_zero) {
+            set_zero_nx = _simulation->dictionary()->template get<int>("set_zero_nx");
+            set_zero_ny = _simulation->dictionary()->template get<int>("set_zero_ny");
+        }
+
         FMM_bin.clear();
 
         if (use_FMM) {
@@ -1773,6 +1803,8 @@ class NewtonIteration
             }
 
             int tmp_set_zero_p = -10;
+            int n_x;
+            int n_y;
 
             for (auto it = domain_->begin(base_level);
                  it != domain_->end(base_level); ++it)
@@ -1788,16 +1820,23 @@ class NewtonIteration
                         int glo_p_idx = n(idx_p_g_type::tag(), 0);
 
                         int glo_p_idx_10 =
-                            n.at_offset(idx_p_g_type::tag(), -1, 0, 0);
+                            n.at_offset(idx_p_g_type::tag(), 1, 0, 0);
                         int glo_p_idx_01 =
-                            n.at_offset(idx_p_g_type::tag(), 0, -1, 0);
+                            n.at_offset(idx_p_g_type::tag(), 0, 1, 0);
 
                         if (glo_p_idx_10 < 0 && glo_p_idx_01 < 0)
                         {
                             //does not enforce divergence free on one corner, instead force the pressure at that point to be zero
-                            tmp_set_zero_p = glo_p_idx;
-                            flag = true;
-                            break;
+                            
+                            auto n_coord = n.level_coordinate();
+                            n_x = n_coord[0];
+                            n_y = n_coord[1];
+                            if (!force_loc_set_zero || (n_x == set_zero_nx && n_y == set_zero_ny))
+                            {
+                                tmp_set_zero_p = glo_p_idx;
+                                flag = true;
+                                break;
+                            }
                         }
                     }
                 }
@@ -1808,6 +1847,10 @@ class NewtonIteration
 
             boost::mpi::all_reduce(domain_->client_communicator(),
                 tmp_set_zero_p, set_zero_idx, boost::mpi::maximum<int>());
+            
+            if (tmp_set_zero_p == set_zero_idx) {
+                std::cout << "rank " << world.rank() << " location to set zero: nx = " << n_x << " ny = " << n_y << std::endl;
+            }
         }
     }
 
@@ -1855,7 +1898,7 @@ class NewtonIteration
             {
                 if (!it->locally_owned() || !it->has_data()) continue;
                 if (!it->is_leaf()) continue;
-                if (it->is_correction()) continue;
+                if (it->is_correction() && l != base_level) continue;
 
                 float_type dx_level = dx_base / math::pow2(it->refinement_level());
                 
@@ -1866,6 +1909,7 @@ class NewtonIteration
                     for (auto& n : it->data())
                     {
                         int cur_idx = n(idx_u_type::tag(), field_idx);
+                        if (cur_idx < 0) continue;
                         int glo_idx = n(idx_u_g_type::tag(), field_idx);
                         mat.add_element(cur_idx, glo_idx,
                             -4.0 / dx_level / dx_level);
@@ -2044,8 +2088,20 @@ class NewtonIteration
                 {
                     if (!it->locally_owned() || !it->has_data()) continue;
                     //if (!it->is_leaf()) continue;
-                    if (!it->is_leaf())
-                    {
+
+                    if (set_corr_zero) {
+                        for (std::size_t field_idx = 0;
+                             field_idx < idx_p_type::nFields(); ++field_idx)
+                        {
+                            for (auto& n : it->data())
+                            {
+                                int cur_idx = n(idx_p_type::tag(), field_idx);
+                                if (cur_idx <= 0) continue;
+                                b[cur_idx - 1] = 0.0;
+                            }
+                        }
+                    }
+                    else {
                         for (std::size_t field_idx = 0;
                              field_idx < idx_p_type::nFields(); ++field_idx)
                         {
@@ -2057,7 +2113,7 @@ class NewtonIteration
                             }
                         }
                     }
-                    else if (!it->is_leaf() && set_corr_zero)
+                    /*else if (!it->is_leaf() && set_corr_zero)
                     {
                         for (std::size_t field_idx = 0;
                              field_idx < idx_p_type::nFields(); ++field_idx)
@@ -2088,7 +2144,7 @@ class NewtonIteration
                                 b[cur_idx - 1] = n(Cell::tag(), field_idx);
                             }
                         }
-                    }
+                    }*/
                 }
                 for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
                 {
@@ -2503,6 +2559,57 @@ class NewtonIteration
         }
     }
 
+    template<class idxField>
+    void upward_intrp_statistics() {
+        boost::mpi::communicator world;
+        
+        const auto dx_base = domain_->dx_base();
+        int base_level = domain_->tree()->base_level();
+
+        
+        if (world.rank() != 0)
+        {
+            for (int l = domain_->tree()->base_level() - 1; l >= 0; l--)
+            {
+                int loc_entries = 0;
+                for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+                {
+                    //if (!it) continue;
+                    if (!it->locally_owned() || !it->has_data()) continue;
+                    //if (it->is_leaf() && !it->is_correction()) continue;
+                    //{
+                    for (std::size_t field_idx = 0; field_idx < 1; ++field_idx)
+                    {
+                        //only print the first component to see error
+                        for (auto& n : it->data())
+                        {
+                            int idx = n(idxField::tag(), field_idx);
+                            if (idx <= 0) continue;
+                            
+
+                            int entries_tmp = upward_intrp.mat[idx].size();
+                            loc_entries += entries_tmp;
+                        }
+                    }
+                }
+                domain_->client_communicator().barrier();
+
+                
+                //float_type max_g;
+                int sum_g = 0;
+                boost::mpi::all_reduce(domain_->client_communicator(), loc_entries, sum_g, std::plus<int>());
+
+                //boost::mpi::all_reduce(domain_->client_communicator(), max_val, max_g, boost::mpi::maximum<float_type>());
+
+                if (world.rank() == 1)
+                {
+                    std::cout << "number of entries in upward interpolation at level" << l << " is "
+                              << sum_g << std::endl;
+                }
+            }
+        }
+    }
+
     void printing_mat(int n, int rank = 1) {
         boost::mpi::communicator world;
 
@@ -2545,14 +2652,23 @@ class NewtonIteration
         if (world.rank() == 0) {
             return;
         }
-        Jac = boundary_u + L;
+        /*Jac = boundary_u + L;
         Jac.add_vec(DN, -1.0);
         Jac.add_vec(Div, -1.0);
         Jac.add_vec(Grad);
         Jac.add_vec(Curl);
         Jac.add_vec(project);
         Jac.add_vec(smearing);
-        Jac.add_vec(upward_intrp);
+        Jac.add_vec(upward_intrp);*/
+        if (add_Boundary_u) Jac.add_vec(boundary_u);
+        if (add_L) Jac.add_vec(L);
+        if (add_DN) Jac.add_vec(DN, -1.0);
+        if (add_Div) Jac.add_vec(Div, -1.0);
+        if (add_Grad) Jac.add_vec(Grad);
+        if (add_Curl) Jac.add_vec(Curl);
+        if (add_project) Jac.add_vec(project);
+        if (add_smearing) Jac.add_vec(smearing);
+        if (add_upward_intrp) Jac.add_vec(upward_intrp);
     }
 
     void construction_laplacian_u() {
@@ -2591,6 +2707,8 @@ class NewtonIteration
                 client->template buffer_exchange<idx_u_g_type>(l);
                 client->template buffer_exchange<idx_p_type>(l);
                 client->template buffer_exchange<idx_p_g_type>(l);
+                client->template buffer_exchange<idx_w_type>(l);
+                client->template buffer_exchange<idx_w_g_type>(l);
                 if (l != (domain_->tree()->depth() - 1)) client->template buffer_exchange<idx_u_type>(l+1);
                 if (l != (domain_->tree()->depth() - 1)) client->template buffer_exchange<idx_u_g_type>(l+1);
             }
@@ -3195,7 +3313,7 @@ class NewtonIteration
                         if (glo_p_idx == set_zero_idx)
                         {
                             //int glo_p_idx = n(idx_p_g_type::tag(), 0);
-                            Div.add_element(cur_idx, glo_p_idx, 1.0 / dx_level);
+                            Div.add_element(cur_idx, glo_p_idx, 1.0);
                             continue;
                         }
 
@@ -5072,7 +5190,7 @@ class NewtonIteration
                                             float_type val_y =
                                                 y_intrp_mat.at(j, sub_j);
                                             float_type val_t = val_x * val_y;
-                                            if (std::abs(val_t) < 1e-14)
+                                            if (std::abs(val_t) < 1e-15)
                                                 continue;
                                             upward_intrp.add_element(cur_idx,
                                                 child_idx_g, val_t);
@@ -5098,8 +5216,8 @@ class NewtonIteration
                                             float_type val_y =
                                                 y_intrp_mat.at(j, sub_j);
                                             float_type val_t = val_x * val_y;
-                                            //if (std::abs(val_t) < 1e-12)
-                                                //continue;
+                                            if (std::abs(val_t) < 1e-15)
+                                                continue;
                                             upward_intrp.add_element(cur_idx,
                                                 child_idx_g, val_t);
                                         }
@@ -6828,8 +6946,10 @@ class NewtonIteration
 
                                     //if (!child || !child_cur.has_data()) continue;
 
-                                    if (idx_vec[child_idx].size() == 0)
+                                    if (idx_vec[child_idx].size() == 0) {
+                                        std::cout << "missing at child" << std::endl;
                                         continue;
+                                    }
 
                                     //auto& child_idx_vec = octant_vec[child_idx].data_r(idx_w_g_type::tag(), 0).linalg_data();
                                     //auto child_idx_vec = child_cur.data_r(idx_w_g_type::tag(), 0).linalg_data();
@@ -6906,6 +7026,7 @@ class NewtonIteration
                 for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
                 {
                     if (!it->is_correction()) continue;
+                    if (it->is_leaf()) continue;
                     std::vector<int> idx_vec;
 
                     int N = it->data().descriptor().extent()[0];
@@ -7798,6 +7919,28 @@ class NewtonIteration
             ia[mat.size()-1] = counter+1;
         }
 
+        template<class int_type, class value_type>
+        void getCSR_zero_begin(int_type* ia, int_type* ja, value_type* a)
+        {
+            int_type counter = 0;
+            for (int i = 1; i < mat.size(); i++)
+            {
+                ia[i-1] = counter;
+                for (const auto& [key, val] : mat[i])
+                {
+                    //int idx1 = std::get<0>(key1);
+                    //std::cout << n << " " << key << " " << val << " || ";
+                    if (key <= 0) {
+                        std::cout << "Negative key" << std::endl;
+                    }
+                    ja[counter] = key - 1;
+                    a[counter] = val;
+                    counter++;
+                }
+            }
+            ia[mat.size()-1] = counter;
+        }
+
         void clean_entry(float_type th_val = 1e-12) {
             for (int i = 1; i < mat.size(); i++)
             {
@@ -7895,7 +8038,15 @@ class NewtonIteration
     bool add_DN = true;
     bool add_Div = true;
     bool add_Grad = true;
+    bool add_Curl = true;
     bool add_Boundary_u = true;
+    bool add_upward_intrp = true;
+    bool add_smearing = true;
+    bool add_project = true;
+
+    bool force_loc_set_zero = false;
+    int set_zero_nx;
+    int set_zero_ny;
 
     int set_zero_idx = -10; //the idx where the pressure is set to zero (just one point)
     int FMM_fac = 1;

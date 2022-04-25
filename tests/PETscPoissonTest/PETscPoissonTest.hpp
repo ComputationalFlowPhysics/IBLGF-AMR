@@ -18,10 +18,13 @@
 #endif
 #define DEBUG_POISSON
 
-
+static char help[] = "Solves a tridiagonal linear system.\n\n";
 
 //need c2f
 #include "mpi.h"
+#include <iostream>
+#include <petscksp.h>
+#include <petscsys.h>
 //#include "/home/root/intel-oneAPI/oneAPI/mkl/latest/include/mkl.h"
 //#include "/home/root/intel-oneAPI/oneAPI/mkl/latest/include/mkl_cluster_sparse_solver.h"
 
@@ -287,7 +290,7 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
 			std::cout << "on Simulation: \n" << simulation_ << std::endl;
 	}
 
-	float_type run()
+	float_type run(int argc, char *argv[])
 	{
 		boost::mpi::communicator world;
 
@@ -332,6 +335,165 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
         }
 
         int ndim = ifherk.total_dim();
+
+        Vec            x, b, u;          /* approx solution, RHS, exact solution */
+        Mat            A;                /* linear system matrix */
+        KSP            ksp;              /* linear solver context */
+        PC             pc;               /* preconditioner context */
+        PetscReal      norm,tol=1000.*PETSC_MACHINE_EPSILON;  /* norm of solution error */
+        PetscInt       i,n = ndim,col[3],its,rstart,rend,nlocal;
+
+        PetscMPIInt    rank, size;
+        MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+        PetscScalar    one = 1.0,value[3], zero = 0.0;
+
+        PetscCall(PetscInitialize(&argc,&argv,(char*)0,help));
+
+        PetscCall(VecCreate(PETSC_COMM_WORLD, &x));
+
+        PetscInt* ia = NULL;
+        PetscInt* ja = NULL;
+        double*  a = NULL;
+        double*  b_val= NULL;
+        double*  x_val= NULL;
+
+        int loc_size = 0;
+
+        if (world.rank() != 0) {
+            int begin_row = ifherk.num_start();
+            int end_row = ifherk.num_end();
+
+            loc_size = end_row - begin_row+1;
+            int check_size = ifherk.mat.numRow_loc();
+
+            if (loc_size != check_size) {
+                std::cout << "Rank " << world.rank() << " local matrix size does not match " << loc_size << " vs " << check_size << std::endl;
+                return 1;
+            }
+
+            int tot_size = ifherk.mat.tot_size();
+            int size_allocated;
+            PetscMalloc(sizeof(PetscInt) * (loc_size + 1), &ia);
+            PetscMalloc(sizeof(PetscInt) * tot_size, &ja);
+            PetscMalloc(sizeof(float_type) * tot_size, &a);
+
+            PetscMalloc(sizeof(float_type) * loc_size, &b_val);
+            PetscMalloc(sizeof(float_type) * loc_size, &x_val);
+            //x = (float_type*)PetscMalloc(sizeof(float_type) * loc_size);
+            //b = (float_type*)PetscMalloc(sizeof(float_type) * loc_size);
+
+            ifherk.mat.getCSR_zero_begin(ia, ja, a);
+            ifherk.Grid2CSR<u_type, p_type>(b_val);
+        }
+        else {
+            PetscMalloc(sizeof(PetscInt) * 0, &ia);
+            PetscMalloc(sizeof(PetscInt) * 0, &ja);
+            PetscMalloc(sizeof(float_type) * 0, &a);
+
+            PetscMalloc(sizeof(float_type) * 0, &b_val);
+            PetscMalloc(sizeof(float_type) * 0, &x_val);
+        }
+
+
+        PetscCall(VecSetSizes(x, loc_size, n));
+        PetscCall(VecSetFromOptions(x));
+        PetscCall(VecDuplicate(x, &b));
+        PetscCall(VecDuplicate(x, &u));
+
+        /* Identify the starting and ending mesh points on each
+        processor for the interior part of the mesh. We let PETSc decide
+        above. */
+
+        PetscCall(VecGetOwnershipRange(x, &rstart, &rend));
+
+        std::cout << "rank " << rank << " start and end " << rstart << " " << rend <<std::endl;
+        PetscCall(VecGetLocalSize(x, &nlocal));
+
+        if (nlocal != loc_size) {
+            std::cout << "rank " << rank << " nlocal and loc_size does not match " << std::endl;
+        }
+
+        PetscCall(MatCreate(PETSC_COMM_WORLD, &A));
+        //PetscCall(MatCreateMPIAIJWithArrays(PETSC_COMM_WORLD, nlocal, nlocal, n, n, ia, ja, a, &A));
+        PetscCall(MatSetSizes(A, nlocal, nlocal, n, n));
+        PetscCall(MatSetFromOptions(A));
+        PetscCall(MatSetUp(A));
+
+        for (i = rstart; i < rend; i++)
+        {
+            int i_loc = i - rstart;
+            std::map<int, float_type> row = ifherk.mat.mat[i_loc+1];
+            for (const auto& [key, val] : row)
+            {
+                int loc_col = key-1;
+                PetscCall(MatSetValues(A, 1, &i, 1, &loc_col, &val, INSERT_VALUES));
+            }
+        }
+
+        MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY);
+        MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY);
+
+        PetscCall(VecSet(u, zero));
+        //PetscCall(MatMult(A,u,b));
+
+        for (i = rstart; i < rend;i++) {
+            int i_loc = i - rstart;
+            float_type v = b_val[i_loc];
+            PetscCall(VecSetValues(b, 1, &i, &v, INSERT_VALUES));
+        }
+
+        VecAssemblyBegin(b);
+        VecAssemblyEnd(b);
+
+        PetscCall(KSPCreate(PETSC_COMM_WORLD, &ksp));
+        PetscCall(KSPSetOperators(ksp, A, A));
+        PetscCall(KSPGetPC(ksp, &pc));
+        PetscCall(PCSetType(pc, PCLU));
+#if defined(PETSC_HAVE_MUMPS)
+        PetscCall(PCFactorSetMatSolverType(pc, MATSOLVERMUMPS));
+#endif
+
+        PetscCall(KSPSetTolerances(ksp, 1.e-7, PETSC_DEFAULT, PETSC_DEFAULT,
+            PETSC_DEFAULT));
+
+        PetscCall(KSPSetFromOptions(ksp));
+
+        PetscCall(KSPSolve(ksp, b, x));
+
+        PetscCall(KSPView(ksp, PETSC_VIEWER_STDOUT_WORLD));
+
+        PetscCall(VecAXPY(x, -1.0, u));
+        PetscCall(VecNorm(x, NORM_2, &norm));
+        if (rank == 0) { std::cout << "solution mag is " << norm << std::endl; }
+        PetscCall(KSPGetIterationNumber(ksp, &its));
+        /*if (norm > tol)
+        {
+            PetscCall(PetscPrintf(PETSC_COMM_WORLD,
+                "Norm of error %g, Iterations %" PetscInt_FMT "\n",
+                (double)norm, its));
+        }*/
+
+        for (i = rstart; i < rend;i++) {
+            int i_loc = i - rstart;
+            PetscCall(VecGetValues(x, 1, &i, &(x_val[i_loc])));
+        }
+
+        ifherk.CSR2Grid<u_num_type, p_num_type>(x_val);
+
+        float_type u1_inf = this->compute_errors<u_num_type, u_ref_type, error_u_type>(
+			std::string("u_0_"), 0);
+		float_type u2_inf = this->compute_errors<u_num_type, u_ref_type, error_u_type>(
+			std::string("u_1_"), 1);
+
+        simulation_.write("final.hdf5");
+
+        PetscCall(VecDestroy(&x));
+        PetscCall(VecDestroy(&u));
+        PetscCall(VecDestroy(&b));
+        PetscCall(MatDestroy(&A));
+        PetscCall(KSPDestroy(&ksp));
+
+        PetscCall(PetscFinalize());
 
         return 0;
 

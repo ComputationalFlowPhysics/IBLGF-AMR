@@ -26,7 +26,7 @@
 #include <boost/mpi/environment.hpp>
 #include <boost/mpi/communicator.hpp>
 
-#include "PETscPoissonTest.hpp"
+#include "PETscJacobian.hpp"
 #include <iblgf/dictionary/dictionary.hpp>
 
 

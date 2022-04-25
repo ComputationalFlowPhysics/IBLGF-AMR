@@ -18,21 +18,20 @@
 #endif
 #define DEBUG_POISSON
 
-
+static char help[] = "Solves a tridiagonal linear system.\n\n";
 
 //need c2f
 #include "mpi.h"
-#include "/home/root/intel-oneAPI/oneAPI/mkl/latest/include/mkl.h"
-#include "/home/root/intel-oneAPI/oneAPI/mkl/latest/include/mkl_cluster_sparse_solver.h"
+#include <iostream>
+#include <petscksp.h>
+#include <petscsys.h>
+//#include "/home/root/intel-oneAPI/oneAPI/mkl/latest/include/mkl.h"
+//#include "/home/root/intel-oneAPI/oneAPI/mkl/latest/include/mkl_cluster_sparse_solver.h"
 
 //need those defined so that xTensor does not load its own CBLAS and resulting in conflicts
 //#define CXXBLAS_DRIVERS_MKLBLAS_H
 //#define CXXBLAS_DRIVERS_CBLAS_H
-#define CXXLAPACK_CXXLAPACK_CXX
-#define WITH_MKLBLAS 1
-#define CXXBLAS_DRIVERS_MKLBLAS_H 1
-#define UNDEF_XT_CBLAS
-//Need to add line to undef HAVE_CBLAS at driver.h in xtensor-blas
+//#define CXXLAPACK_CXXLAPACK_CXX
 
 #include <iostream>
 #include <vector>
@@ -240,6 +239,8 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
         row_to_print = simulation_.dictionary_->template get_or<int>(
 			"row_to_print", 100);
 
+        N_pts = simulation_.dictionary()->template get_or<int>("N_pts", 27);
+
         print_mat = simulation_.dictionary_->template get_or<bool>(
 			"print_mat",  false);
 
@@ -286,11 +287,6 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
 
             simulation_.template read_h5<u_ref_type>(simulation_.restart_field_dir(), "u");
 			simulation_.template read_h5<p_ref_type>(simulation_.restart_field_dir(), "p");
-
-			//this->initialize();
-
-			//simulation_.template read_h5<du_i_type>(simulation_.restart_field_dir(), "u");
-			//simulation_.template read_h5<dp_i_type>(simulation_.restart_field_dir(), "p");
 			//this->initialize(); 
 		}
 
@@ -301,15 +297,13 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
         std::fill(forcing_num.begin(), forcing_num.end(), tmp_coord);
 		forcing_ref.resize(domain_->ib().size());
         std::fill(forcing_ref.begin(), forcing_ref.end(), tmp_coord);
-        forcing_num_inv.resize(domain_->ib().size());
-        std::fill(forcing_num_inv.begin(), forcing_num_inv.end(), tmp_coord);
 
 		
 		if (world.rank() == 0)
 			std::cout << "on Simulation: \n" << simulation_ << std::endl;
 	}
 
-	float_type run()
+	float_type run(int argc, char *argv[])
 	{
 		boost::mpi::communicator world;
 
@@ -392,30 +386,17 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
 		simulation_.write("init.hdf5");
 
         ifherk.construct_linear_mat<u_type>();
-        ifherk.Jac.clean_entry(1e-10);
+        ifherk.Jac.clean_entry(1e-15);
 
         world.barrier();
         if (world.rank() == 1) {
             std::cout << "finishing constructing matrix" << std::endl;
         }
-        
 
 		if (world.rank() == 1) {
             std::cout << "including zero size is " << ifherk.Jac.tot_size(true) << std::endl;
             std::cout << "not including zero size is " << ifherk.Jac.tot_size(false) << std::endl;
         }
-
-        int size_loc = ifherk.Jac.tot_size(true);
-        int size_glob;
-
-        boost::mpi::all_reduce(world, size_loc, size_glob, std::plus<int>());
-
-        if (world.rank() == 1) {
-            std::cout << "Global size is " << size_glob << std::endl;
-            //std::cout << "not including zero size is " << ifherk.Jac.tot_size(false) << std::endl;
-        }
-
-        ifherk.upward_intrp_statistics<idx_w_type>();
 
 		int ndim = ifherk.total_dim();
 
@@ -429,12 +410,11 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
 
         if (world.rank() == 0) {
 
-            allVec = (float_type*)MKL_malloc(sizeof(float_type) * ndim, 64);
-            //loc_vec = (float_type*)MKL_malloc(sizeof(float_type) * ndim, 64);
+            PetscMalloc(sizeof(float_type) * ndim, &allVec);
         }
         else {
-            allVec = (float_type*)MKL_malloc(sizeof(float_type) * ndim, 64);
-            loc_vec = (float_type*)MKL_malloc(sizeof(float_type) * loc_size, 64);
+            PetscMalloc(sizeof(float_type) * ndim, &allVec);
+            PetscMalloc(sizeof(float_type) * loc_size, &loc_vec);
             ifherk.Grid2CSR<u_ref_type, p_ref_type, w_ref_type>(loc_vec, forcing_ref, false);
         }
 
@@ -512,8 +492,8 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
 
         float_type* res_tmp;
         float_type* res;
-        res_tmp = (float_type*)MKL_malloc(sizeof(float_type) * loc_size, 64);
-        res = (float_type*)MKL_malloc(sizeof(float_type) * loc_size, 64);
+        PetscMalloc(sizeof(float_type) * loc_size, &res_tmp);
+        PetscMalloc(sizeof(float_type) * loc_size, &res);
 
         
 
@@ -554,7 +534,7 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
 
         float_type* BC_diff;
 
-        BC_diff = (float_type*)MKL_malloc(sizeof(float_type) * loc_size, 64);
+        PetscMalloc(sizeof(float_type) * loc_size, &BC_diff);
 
         for (int i = 0; i < loc_size;i++) {
             BC_diff[i] = 0.0;
@@ -652,11 +632,12 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
 
         float_type* res_num;
         float_type* res_tar;
-        res_num = (float_type*)MKL_malloc(sizeof(float_type) * loc_size, 64);
-        res_tar = (float_type*)MKL_malloc(sizeof(float_type) * loc_size, 64);
+
+        PetscMalloc(sizeof(float_type) * loc_size, &res_num);
+        PetscMalloc(sizeof(float_type) * loc_size, &res_tar);
 
         float_type* errvec;
-        errvec = (float_type*)MKL_malloc(sizeof(float_type) * loc_size, 64);
+        PetscMalloc(sizeof(float_type) * loc_size, &errvec);
 
         ifherk.Grid2CSR<u_tar_type, p_tar_type, w_tar_type>(res_tar, forcing_tar);
         ifherk.Grid2CSR<u_num_type, p_num_type, w_num_type>(res_num, forcing_num);
@@ -695,76 +676,34 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
             std::cout << "Diff error is " << diff_sum_all << std::endl;
         }
 
-        MKL_INT n = ndim;
-		MKL_INT mtype = 11;
+        Vec            x, b, u;          /* approx solution, RHS, exact solution */
+        Mat            A;                /* linear system matrix */
+        KSP            ksp;              /* linear solver context */
+        PC             pc;               /* preconditioner context */
+        PetscReal      norm,tol=1000.*PETSC_MACHINE_EPSILON;  /* norm of solution error */
+        PetscInt       i,n = ndim,col[3],its,rstart,rend,nlocal;
 
-		MKL_INT nrhs = 1;
-		void *pt[64] = { 0 };
-		MKL_INT iparm[64];
+        PetscMPIInt    rank, size;
+        MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+        PetscScalar    one = 1.0,value[3], zero = 0.0;
 
-		for (int i = 0; i < 64;i++) {
-			iparm[i] = 0;
-		}		
+        PetscCall(PetscInitialize(&argc,&argv,(char*)0,help));
 
-		MKL_INT maxfct, mnum, phase, msglvl, error, err_mem;
+        PetscCall(VecCreate(PETSC_COMM_WORLD, &x));
 
-		//int comm;
+        PetscInt* ia = NULL;
+        PetscInt* ja = NULL;
+        double*  a = NULL;
+        double*  b_val= NULL;
+        double*  x_val= NULL;
 
-		float_type  ddum; /* Double dummy   */
-    	MKL_INT idum; /* Integer dummy. */
-    	MKL_INT j;
-
-
-		maxfct = 1;
-		mnum = 1;
-		msglvl = 1;
-		error = 0;
-		err_mem = 0;
-
-		/*MKL_INT ia[21];
-		MKL_INT ja[20];
-		float_type b[20];
-		float_type a[20];
-		float_type x[20];*/
-
-        MKL_INT* ia = NULL;
-        MKL_INT* ja = NULL;
-        float_type*  a = NULL;
-        /* RHS and solution vectors. */
-        float_type* b = NULL;
-        float_type* x = NULL;
-
-        int    mpi_stat = 0;
-        int    argc = 0;
-        int    comm, rank, size;
-        char** argv;
-
-        mpi_stat = MPI_Init(&argc, &argv);
-        mpi_stat = MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-        mpi_stat = MPI_Comm_size(MPI_COMM_WORLD, &size);
-        comm = MPI_Comm_c2f(MPI_COMM_WORLD);
-
-		iparm[0] = 1; /* Solver default parameters overriden with provided by iparm */
-        //iparm[1] = 0;  /* Use METIS for fill-in reordering */
-        iparm[1] = 2;  /* Use METIS for fill-in reordering */
-        iparm[5] = 0;  /* Write solution into x */
-        iparm[7] = 10;  /* Max number of iterative refinement steps */
-        iparm[9] = 13; /* Perturb the pivot elements with 1E-13 */
-        iparm[10] = 1; /* Use nonsymmetric permutation and scaling MPS */
-        iparm[12] = 1; /* Switch on Maximum Weighted Matching algorithm (default for non-symmetric) */
-        iparm[17] = -1; /* Output: Number of nonzeros in the factor LU */
-        iparm[18] = -1; /* Output: Mflops for LU factorization */
-        //iparm[23] = 10;
-        iparm[26] = 1;  /* Check input data for correctness */ 
-        iparm[39] = 2; /* Input: matrix/rhs/solution are distributed between MPI processes  */
+        loc_size = 0;
 
         if (world.rank() != 0) {
             int begin_row = ifherk.num_start();
             int end_row = ifherk.num_end();
-            iparm[40] = begin_row;
-            iparm[41] = end_row;
 
-            int loc_size = end_row - begin_row+1;
+            loc_size = end_row - begin_row+1;
             int check_size = ifherk.Jac.numRow_loc();
 
             if (loc_size != check_size) {
@@ -773,218 +712,130 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
             }
 
             int tot_size = ifherk.Jac.tot_size();
-            ia = (MKL_INT*)MKL_malloc(sizeof(MKL_INT) * (loc_size + 1), 64);
-            ja = (MKL_INT*)MKL_malloc(sizeof(MKL_INT) * tot_size, 64);
-            a = (float_type*)MKL_malloc(sizeof(float_type) * tot_size, 64);
-            for (int k =0 ; k < tot_size; k++) {
-                a[k] = 0;
-            }
-            x = (float_type*)MKL_malloc(sizeof(float_type) * loc_size, 64);
-            b = (float_type*)MKL_malloc(sizeof(float_type) * loc_size, 64);
-            for (int k =0 ; k < loc_size; k++) {
-                x[k] = 0;
-                b[k] = 0;
-            }
+            int size_allocated;
+            PetscMalloc(sizeof(PetscInt) * (loc_size + 1), &ia);
+            PetscMalloc(sizeof(PetscInt) * tot_size, &ja);
+            PetscMalloc(sizeof(float_type) * tot_size, &a);
 
-            ifherk.Jac.getCSR(ia, ja, a);
-            //ifherk.Grid2CSR<u_num_type, p_num_type>(b, forcing_num);
-            //ifherk.Grid2CSR<u_num_type, p_num_type, w_num_type>(b, forcing_num);
-            if (num_input)  ifherk.Grid2CSR<u_num_type, p_num_type, w_num_type>(b, forcing_num);
-            if (!num_input) ifherk.Grid2CSR<u_tar_type, p_tar_type, w_tar_type>(b, forcing_tar);
+            PetscMalloc(sizeof(float_type) * loc_size, &b_val);
+            PetscMalloc(sizeof(float_type) * loc_size, &x_val);
+            //x = (float_type*)PetscMalloc(sizeof(float_type) * loc_size);
+            //b = (float_type*)PetscMalloc(sizeof(float_type) * loc_size);
 
-            if (print_mat) {
-                for (int i = 0; i < loc_size; i++) {
-                    std::cout << i << " " << b[i] << std::endl;
-                }
-            }
+            ifherk.Jac.getCSR_zero_begin(ia, ja, a);
+            ifherk.Grid2CSR<u_type, p_type>(b_val);
         }
         else {
-            iparm[40] = 2;
-			iparm[41] = 1;
+            PetscMalloc(sizeof(PetscInt) * 0, &ia);
+            PetscMalloc(sizeof(PetscInt) * 0, &ja);
+            PetscMalloc(sizeof(float_type) * 0, &a);
+
+            PetscMalloc(sizeof(float_type) * 0, &b_val);
+            PetscMalloc(sizeof(float_type) * 0, &x_val);
         }
 
-        MPI_Barrier(MPI_COMM_WORLD);
-        if (world.rank() == 1) std::cout << "Start computing" << std::endl;
 
-        /*if (world.rank() == 0) {
-			iparm[40] = 1;
-			iparm[41] = 20;
-			for (int i = 0; i < 20; i++) {
-				ia[i] = i+1;
-				ja[i] = i+1;
-				a[i] = static_cast<float_type>(i+1);
-				b[i] = 1.0/static_cast<float_type>(i+1);
-			}
-			ia[20]=21;
-		}
-		else if (world.rank() == 1) {
-			iparm[40] = 21;
-			iparm[41] = 40;
-			for (int i = 0; i < 20; i++) {
-				ia[i] = i+1;
-				ja[i] = i+21;
-				a[i] = static_cast<float_type>(i+21);
-				b[i] = 1.0/static_cast<float_type>(i+21);
-			}
-			ia[20]=21;
-		}
-		else {
-			iparm[40] = 2;
-			iparm[41] = 1;
-		}*/
+        PetscCall(VecSetSizes(x, loc_size, n));
+        PetscCall(VecSetFromOptions(x));
+        PetscCall(VecDuplicate(x, &b));
+        PetscCall(VecDuplicate(x, &u));
 
-        /* -------------------------------------------------------------------- */
-        /* .. Reordering and Symbolic Factorization. This step also allocates   */
-        /* all memory that is necessary for the factorization.                  */
-        /* -------------------------------------------------------------------- */
-        phase = 11;
-        cluster_sparse_solver(pt, &maxfct, &mnum, &mtype, &phase, &n, a, ia, ja,
-            &idum, &nrhs, iparm, &msglvl, &ddum, &ddum, &comm, &error);
-        if (error != 0)
-        {
-            if (rank == 0)
-                std::cout << "\nERROR during symbolic factorization: " << 
-                    error << std::endl;
-            return 1;
+        /* Identify the starting and ending mesh points on each
+        processor for the interior part of the mesh. We let PETSc decide
+        above. */
+
+        PetscCall(VecGetOwnershipRange(x, &rstart, &rend));
+
+        std::cout << "rank " << rank << " start and end " << rstart << " " << rend <<std::endl;
+        PetscCall(VecGetLocalSize(x, &nlocal));
+
+        if (nlocal != loc_size) {
+            std::cout << "rank " << rank << " nlocal and loc_size does not match " << std::endl;
         }
 
-        if (rank == 0) std::cout << "\nReordering completed ... " << std::endl;
+        PetscCall(MatCreate(PETSC_COMM_WORLD, &A));
+        //PetscCall(MatCreateMPIAIJWithArrays(PETSC_COMM_WORLD, nlocal, nlocal, n, n, ia, ja, a, &A));
+        PetscCall(MatSetSizes(A, nlocal, nlocal, n, n));
+        PetscCall(MatSetFromOptions(A));
+        PetscCall(MatSetUp(A));
 
-        /* -------------------------------------------------------------------- */
-        /* .. Numerical factorization.                                          */
-        /* -------------------------------------------------------------------- */
-        phase = 22;
-        cluster_sparse_solver(pt, &maxfct, &mnum, &mtype, &phase, &n, a, ia, ja,
-            &idum, &nrhs, iparm, &msglvl, &ddum, &ddum, &comm, &error);
-        if (error != 0)
+        for (i = rstart; i < rend; i++)
         {
-            if (rank == 0)
-                printf("\nERROR during numerical factorization: %lli",
-                    (long long int)error);
-            return 1;
-        }
-        if (rank == 0) printf("\nFactorization completed ... ");
-
-        /* -------------------------------------------------------------------- */
-        /* .. Back substitution and iterative refinement.                       */
-        /* -------------------------------------------------------------------- */
-        phase = 33;
-
-        if (rank == 0) printf("\nSolving system...");
-        cluster_sparse_solver(pt, &maxfct, &mnum, &mtype, &phase, &n, a, ia, ja,
-            &idum, &nrhs, iparm, &msglvl, b, x, &comm, &error);
-        if (error != 0)
-        {
-            if (world.rank() == 0)
-                std::cout << "\nERROR during solution: " << error << std::endl;
-            return 1;
-        }
-        /* The solution of the system is distributed between MPI processes like as input matrix
-       so MPI processes with rank 0 and 1 keep only part of solution */
-        if (rank == 2)
-        {
-            printf("\nThe solution of the system is: ");
-            for (j = 0; j < 3; j++)
+            int i_loc = i - rstart;
+            std::map<int, float_type> row = ifherk.Jac.mat[i_loc+1];
+            for (const auto& [key, val] : row)
             {
-                std::cout << "\n on zero process x " << j << "=" <<
-                    x[j];
+                int loc_col = key-1;
+                PetscCall(MatSetValues(A, 1, &i, 1, &loc_col, &val, INSERT_VALUES));
             }
-            
         }
-        MPI_Barrier(MPI_COMM_WORLD);
 
-        if (rank == 1)
+        MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY);
+        MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY);
+
+        PetscCall(VecSet(u, zero));
+        //PetscCall(MatMult(A,u,b));
+
+        for (i = rstart; i < rend;i++) {
+            int i_loc = i - rstart;
+            float_type v = b_val[i_loc];
+            PetscCall(VecSetValues(b, 1, &i, &v, INSERT_VALUES));
+        }
+
+        VecAssemblyBegin(b);
+        VecAssemblyEnd(b);
+
+        PetscCall(KSPCreate(PETSC_COMM_WORLD, &ksp));
+        PetscCall(KSPSetOperators(ksp, A, A));
+        PetscCall(KSPGetPC(ksp, &pc));
+        PetscCall(PCSetType(pc, PCLU));
+#if defined(PETSC_HAVE_MUMPS)
+        PetscCall(PCFactorSetMatSolverType(pc, MATSOLVERMUMPS));
+        icntl = 29; ival = 2;
+        MatMumpsSetIcntl(F,icntl,ival);
+#endif
+
+        PetscCall(KSPSetTolerances(ksp, 1.e-7, PETSC_DEFAULT, PETSC_DEFAULT,
+            PETSC_DEFAULT));
+
+        PetscCall(KSPSetFromOptions(ksp));
+
+        PetscCall(KSPSolve(ksp, b, x));
+
+        PetscCall(KSPView(ksp, PETSC_VIEWER_STDOUT_WORLD));
+
+        PetscCall(VecAXPY(x, -1.0, u));
+        PetscCall(VecNorm(x, NORM_2, &norm));
+        if (rank == 0) { std::cout << "solution mag is " << norm << std::endl; }
+        PetscCall(KSPGetIterationNumber(ksp, &its));
+        /*if (norm > tol)
         {
-            printf("\nThe solution of the system is: ");
-            for (j = 0; j < 3; j++)
-            {
-                std::cout << "\n on first process x " << j << "=" <<
-                    x[j];
-            }
-            std::cout << std::endl;
-            
-        }
-        MPI_Barrier(MPI_COMM_WORLD);
+            PetscCall(PetscPrintf(PETSC_COMM_WORLD,
+                "Norm of error %g, Iterations %" PetscInt_FMT "\n",
+                (double)norm, its));
+        }*/
 
-        /* -------------------------------------------------------------------- */
-        /* .. Termination and release of memory. */
-        /* -------------------------------------------------------------------- */
-        phase = -1; /* Release internal memory. */
-        cluster_sparse_solver(pt, &maxfct, &mnum, &mtype, &phase, &n, &ddum, ia,
-            ja, &idum, &nrhs, iparm, &msglvl, &ddum, &ddum, &comm, &error);
-        if (error != 0)
-        {
-            if (rank == 0)
-                std::cout << "\nERROR during release memory: " << 
-                    error << std::endl;
-            return 1;
+        for (i = rstart; i < rend;i++) {
+            int i_loc = i - rstart;
+            PetscCall(VecGetValues(x, 1, &i, &(x_val[i_loc])));
         }
 
-        MPI_Barrier(MPI_COMM_WORLD);
-        
-        //Do not finalize MPI again since boost mpi calls it already
-        //mpi_stat = MPI_Finalize();
-        //std::cout << "  MPI_FINALIZED" << std::endl;
+        ifherk.CSR2Grid<u_num_type, p_num_type>(x_val);
 
-        ifherk.CSR2Grid<u_num_inv_type, p_num_inv_type, w_num_inv_type>(x, forcing_num_inv);
-
-        float_type tmp_sum = 0;
-        for (int i = 0; i < loc_size; i++) {
-            tmp_sum += x[i]*x[i];
-        }
-
-        for (int i = 1; i < world.size();i++) {
-            if (i == world.rank()) {
-                std::cout << "sum of results at Rank " << i << " is " << tmp_sum << std::endl;
-            }
-            world.barrier();
-        }
-
-        
-
-        /*float_type*/ u1_inf = this->compute_errors<u_num_inv_type, u_ref_type, error_u_type>(
+        u1_inf = this->compute_errors<u_num_type, u_ref_type, error_u_type>(
 			std::string("u_0_"), 0);
-		/*float_type*/ u2_inf = this->compute_errors<u_num_inv_type, u_ref_type, error_u_type>(
+		u2_inf = this->compute_errors<u_num_type, u_ref_type, error_u_type>(
 			std::string("u_1_"), 1);
 
-		/*float_type*/ p_inf = this->compute_errors<p_num_inv_type, p_ref_type, error_p_type>(
-			std::string("p_0_"), 0);
+        simulation_.write("final.hdf5");
 
-        w_inf = this->compute_errors<w_num_inv_type, w_ref_type, error_w_type>(
-			std::string("w_0_"), 0);
+        PetscCall(VecDestroy(&x));
+        PetscCall(VecDestroy(&u));
+        PetscCall(VecDestroy(&b));
+        PetscCall(MatDestroy(&A));
+        PetscCall(KSPDestroy(&ksp));
 
-		//force_type errVec;
-
-		//real_coordinate_type tmp_coord(0.0);
-        errVec.resize(domain_->ib().size());
-        std::fill(errVec.begin(), errVec.end(), tmp_coord);
-
-		for (int i=0; i<domain_->ib().size(); ++i)
-        {
-            if (domain_->ib().rank(i)!=world.rank())
-                errVec[i]=0;
-            else
-                errVec[i]=forcing_ref[i]-forcing_num_inv[i];
-        }
-		
-		/*float_type*/ err_forcing = ifherk.dotVec(errVec, errVec);
-
-		
-		if (world.rank() == 1)
-			std::cout << "L2 Error of forcing is " << std::sqrt(err_forcing) << std::endl;
-
-		simulation_.write("final.hdf5");
-
-        MPI_Barrier(MPI_COMM_WORLD);
-
-        if (rank  != 0)
-        {
-            MKL_free(ia);
-            MKL_free(ja);
-            MKL_free(a);
-            MKL_free(x);
-            MKL_free(b);
-        }
+        PetscCall(PetscFinalize());
 
         return 0;
 
@@ -995,6 +846,45 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
     bool refinement(
         OctantType* it, int diff_level, bool use_all = false) const noexcept
     {
+        auto b = it->data().descriptor();
+        auto center =
+            (domain_->bounding_box().max() - domain_->bounding_box().min()) /
+                2.0 +
+            domain_->bounding_box().min();
+        
+        const auto dx_base = domain_->dx_base();
+
+        auto scaling = std::pow(2, b.level());
+        center *= scaling;
+
+        
+        auto dx_level = dx_base / std::pow(2, b.level());
+
+        float_type max_c = N_pts*dx_level;
+
+        b.grow(2, 2);
+        auto corners = b.get_corners();
+        for (int i = b.base()[0]; i <= b.max()[0]; ++i)
+        {
+            for (int j = b.base()[1]; j <= b.max()[1]; ++j)
+            {
+                const float_type x =
+                    static_cast<float_type>(i - center[0] + 0.5) * dx_level;
+                const float_type y =
+                    static_cast<float_type>(j - center[1] + 0.5) * dx_level;
+
+                if (std::fabs(x) < max_c && std::fabs(y) < max_c) {
+                    return true;
+                }
+
+                /*const auto vort = std::exp(-x*x-y*y)*(4*x*x - 2.0 + 4*y*y - 2.0);
+                if (std::fabs(vort) >
+                    source_max_ * pow(refinement_factor_, diff_level))
+                {
+                    return true;
+                }*/
+            }
+        }
         return false;
     }
 
@@ -1130,25 +1020,21 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
 				//node(u_ref, 0) = -tmpf0*yf0;
 				//node(u_ref, 1) = tmpf1*xf1;
 
-				/*int rand_val = rand();
+				int rand_val = rand();
 
 				float_type v_1 = static_cast<float_type>(rand_val)/static_cast<float_type>(RAND_MAX) * pert_mag*2 - pert_mag;
 				rand_val = rand();
 				float_type v_2 = static_cast<float_type>(rand_val)/static_cast<float_type>(RAND_MAX) * pert_mag*2 - pert_mag;
 				rand_val = rand();
-				float_type v_3 = static_cast<float_type>(rand_val)/static_cast<float_type>(RAND_MAX) * pert_mag*2 - pert_mag;*/
+				float_type v_3 = static_cast<float_type>(rand_val)/static_cast<float_type>(RAND_MAX) * pert_mag*2 - pert_mag;
 
-				//node(u,0) = tmpf0*(4*xf0*xf0 - 2.0 + 4*yf0*yf0 - 2.0);
-				//node(u,1) = tmpf1*(4*xf1*xf1 - 2.0 + 4*yf1*yf1 - 2.0);
-				//node(p,0) = tmpc*(4*xc*xc - 2.0 + 4*yc*yc - 2.0);
+				node(u,0) = tmpf0*(4*xf0*xf0 - 2.0 + 4*yf0*yf0 - 2.0);
+				node(u,1) = tmpf1*(4*xf1*xf1 - 2.0 + 4*yf1*yf1 - 2.0);
+				node(p,0) = tmpc*(4*xc*xc - 2.0 + 4*yc*yc - 2.0);
 
-                //node(u_ref,0) = tmpf0;
-                //node(u_ref,1) = tmpf1;
-                //node(p_ref,0) = tmpc;
-                node(u_ref,0) = 10.0;
-                node(u_ref,1) = 10.0;
-                node(p_ref,0) = 10.0;
-                //node(p_ref,0) = 0;
+                node(u_ref,0) = tmpf0;
+                node(u_ref,1) = tmpf1;
+                node(p_ref,0) = tmpc;
 
 				//node(p_ref, 0) = tmpc;
 
@@ -1183,6 +1069,7 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
     int vortexType = 0;
 
     int row_to_print = 0;
+    int N_pts;
 
     bool clean_p_tar;
     bool testing_smearing = false;

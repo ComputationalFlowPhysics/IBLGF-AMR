@@ -20,6 +20,7 @@
 
 
 #include <iblgf/solver/DirectSolver/MKLPardiso_solve.hpp>
+#include <iblgf/solver/Stability_solver/Stability_solver.hpp>
 //need c2f
 //#include "mpi.h"
 //#include "/home/root/intel-oneAPI/oneAPI/mkl/latest/include/mkl.h"
@@ -121,6 +122,7 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
     using super_type =SetupNewton<NS_AMR_LGF,parameters>;
     using vr_fct_t = std::function<float_type(float_type x, float_type y, int field_idx, bool perturbation)>;
     using solver_t = iblgf::solver::IntelPardisoSolve<float_type>;
+    using stability_t = typename super_type::stability_t;
 
     //Timings
     using clock_type = std::chrono::high_resolution_clock;
@@ -139,6 +141,7 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
 		: super_type(_d, [this](auto _d, auto _domain) {
 		return this->initialize_domain(_d, _domain);
 			})
+        , stab_solve(&this->simulation_) 
 	{
 		if (domain_->is_client()) client_comm_ = client_comm_.split(1);
 		else
@@ -288,9 +291,9 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
             simulation_.template read_h5<u_ref_type>(simulation_.restart_field_dir(), "u");
 			simulation_.template read_h5<p_ref_type>(simulation_.restart_field_dir(), "p");
 
-            
-
 			//this->initialize();
+
+            //this->randomize();
 
 			//simulation_.template read_h5<du_i_type>(simulation_.restart_field_dir(), "u");
 			//simulation_.template read_h5<dp_i_type>(simulation_.restart_field_dir(), "p");
@@ -316,613 +319,19 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
 	{
 		boost::mpi::communicator world;
 
-		time_integration_t ifherk(&this->simulation_);
+        time_integration_t ifherk(&this->simulation_);
 
-        float_type dx_finest = dx_/std::pow(2,nLevelRefinement_);
+        //if (world.rank() != 0) ifherk.clean_up_initial_velocity<u_type>();
 
-		for (int i = 0; i < forcing_ref.size();i++) {
-            if (domain_->ib().rank(i)!=world.rank()) {
-                forcing_ref[i]=0;
-                continue;
-            }
+        ifherk.NewtonRHS<u_type, p_type, u_num_type, p_num_type>(forcing_num, forcing_tar);
+        ifherk.ComputeForcing<u_type, p_type, u_num_type, p_num_type>(forcing_num);
 
-			float_type t = static_cast<float_type>(i)/static_cast<float_type>(forcing_ref.size());
-			float_type val_u = std::sin(2*M_PI*t); 
-			float_type val_v = std::cos(2*M_PI*t); 
+        simulation_.write("NewtonRHS.hdf5");
 
-            /*float_type val_u = 1.0; 
-			float_type val_v = 1.0;*/ 
-
-			forcing_ref[i][0] = val_u/dx_finest;
-			forcing_ref[i][1] = val_v/dx_finest;
-		}
-
-        world.barrier();
-
-        if (world.rank() != 0) ifherk.clean_up_initial_velocity<u_type>();
-        if (world.rank() != 0) ifherk.clean_up_initial_velocity<u_ref_type>();
-
-        
-        if (world.rank() != 0) ifherk.pad_velocity<u_ref_type, u_ref_type>(true);
-        if (world.rank() != 0) ifherk.pad_velocity<u_type, u_type>(true);
-
-        world.barrier();
-        if (world.rank() == 1) std::cout << "Curl" << std::endl;
-        
-        //if (world.rank() != 0) ifherk.Curl_access<u_ref_type, w_ref_type>();
-
-        
-		ifherk.Jacobian<u_ref_type, p_ref_type, u_tar_type, p_tar_type>(forcing_ref, forcing_tar);
-
-        
-        world.barrier();
-        if (world.rank() == 1) std::cout << "Upward interpolation" << std::endl;
-        
-        
-        
-        //if (world.rank() != 0) ifherk.Upward_interpolation<w_ref_type, w_ref_type>();
-        if (world.rank() != 0) ifherk.up_and_down<u_ref_type>();
-        if (world.rank() != 0) ifherk.Curl_access<u_ref_type, w_ref_type>();
-        if (world.rank() != 0) ifherk.Upward_interpolation<w_ref_type, w_ref_type>();
-        if (world.rank() != 0) ifherk.up_and_down<p_ref_type>();
-        world.barrier();
-        if (world.rank() == 1) std::cout << "Clean" << std::endl;
-        if (world.rank() != 0) ifherk.clean<w_tar_type>();
-        if (clean_p_tar) {
-            if (world.rank() != 0) ifherk.clean<p_tar_type>();
-        }
-
-        
-
-        for (int i = 0; i < forcing_ref.size();i++) {
-            if (domain_->ib().rank(i)!=world.rank()) {
-                /*if (forcing_ref[i][0]!=0 || forcing_ref[i][1]!=0) {
-                    std::cout << "Now local forcing got reassigned" << std::endl;
-                }*/
-                forcing_ref[i] = 0;
-                continue;
-            }
-
-			float_type t = static_cast<float_type>(i)/static_cast<float_type>(forcing_ref.size());
-			float_type val_u = std::sin(2*M_PI*t); 
-			float_type val_v = std::cos(2*M_PI*t); 
-
-            /*float_type val_u = 1.0; 
-			float_type val_v = 1.0;*/ 
-
-			forcing_ref[i][0] = val_u/dx_finest;
-			forcing_ref[i][1] = val_v/dx_finest;
-		}
-        world.barrier();
-        if (world.rank() == 1) std::cout << "constructing matrix" << std::endl;
-        ifherk.Assigning_idx();
-		world.barrier();
-		simulation_.write("init.hdf5");
-
-        ifherk.construct_linear_mat<u_type>();
-        ifherk.Jac.clean_entry(1e-10);
-
-        world.barrier();
-        if (world.rank() == 1) {
-            std::cout << "finishing constructing matrix" << std::endl;
-        }
-        
-
-		if (world.rank() == 1) {
-            std::cout << "including zero size is " << ifherk.Jac.tot_size(true) << std::endl;
-            std::cout << "not including zero size is " << ifherk.Jac.tot_size(false) << std::endl;
-        }
-
-        int size_loc = ifherk.Jac.tot_size(true);
-        int size_glob;
-
-        boost::mpi::all_reduce(world, size_loc, size_glob, std::plus<int>());
-
-        if (world.rank() == 1) {
-            std::cout << "Global size is " << size_glob << std::endl;
-            //std::cout << "not including zero size is " << ifherk.Jac.tot_size(false) << std::endl;
-        }
-
-        ifherk.upward_intrp_statistics<idx_w_type>();
-
-		int ndim = ifherk.total_dim();
-
-        float_type* allVec;
-        float_type* loc_vec;
-        
-
-        std::vector<int> allSize;
-
-        int loc_size = ifherk.Jac.numRow_loc();
-
-        if (world.rank() == 0) {
-
-            allVec = (float_type*)MKL_malloc(sizeof(float_type) * ndim, 64);
-            //loc_vec = (float_type*)MKL_malloc(sizeof(float_type) * ndim, 64);
-        }
-        else {
-            allVec = (float_type*)MKL_malloc(sizeof(float_type) * ndim, 64);
-            loc_vec = (float_type*)MKL_malloc(sizeof(float_type) * loc_size, 64);
-            ifherk.Grid2CSR<u_ref_type, p_ref_type, w_ref_type>(loc_vec, forcing_ref, false);
-        }
-
-        boost::mpi::gather(world, loc_size, allSize, 0);
-
-        if (world.rank() == 0)
-        {
-            int begin_idx = 0;
-
-            for (int i = 1; i < world.size(); i++)
-            {
-                //std::cout << "receiving data from " << i << std::endl;
-                world.recv(i, i, &allVec[begin_idx], allSize[i]);
-                begin_idx += allSize[i];
-            }
-        }
-        else {
-            //std::cout << "rank " << world.rank() << " sending data" << std::endl;
-            world.send(0, world.rank(), &loc_vec[0], loc_size);
-        }
-
-        boost::mpi::broadcast(world, &allVec[0], ndim, 0);
-
-        float_type sum = 0.0;
-
-        for (int i = 0; i < ndim;i++) {
-            sum += allVec[i]*allVec[i];
-        }
-
-        /*for (int i = 0; i < world.size();i++) {
-            if (world.rank() == i) {
-                std::cout << "Rank " << i << " sum " << sum << std::endl;
-            }
-            world.barrier();
-        }*/
-
-        world.barrier();
-
-        if (testing_smearing) {
-            if (world.rank() == 0) {
-                std::cout << "smearing" << std::endl;          
-            }
-            world.barrier();
-
-            for (int k = 1; k < world.size(); k++)
-            {
-                if (world.rank() == k)
-                {
-                    for (int i = 1; i <= ifherk.Jac.numRow_loc(); i++)
-                    {
-                        std::cout << i << " ";
-                        ifherk.smearing.print_row(i);
-                    }
-                }
-                world.barrier();
-            }
-            world.barrier();
-
-            if (world.rank() == 0) {
-                std::cout << "Value" << std::endl;          
-            }
-            for (int k = 1; k < world.size(); k++)
-            {
-                if (world.rank() == k)
-                {
-                    std::cout << "Rank " << k << std::endl;
-                    for (int i = 0; i < ndim; i++)
-                    {
-                        std::cout << i << " " << allVec[i] << std::endl;
-                    }
-                }
-                world.barrier();
-            }
-        }
-
-        float_type* res_tmp;
-        float_type* res;
-        res_tmp = (float_type*)MKL_malloc(sizeof(float_type) * loc_size, 64);
-        res = (float_type*)MKL_malloc(sizeof(float_type) * loc_size, 64);
-
-        
-
-        ifherk.Jac.Apply(allVec, res);
-        //ifherk.smearing.Apply(allVec, res_tmp);
-        //apply once to get the BC
-        /*ifherk.CSR2CSR_correction(res_tmp, loc_vec, 1.0); 
-
-        //clean to receive values again
-        for (int i = 0; i < ndim;i++) {
-            allVec[i] = 0.0;
-        }
-
-
-        if (world.rank() == 0)
-        {
-            int begin_idx = 0;
-
-            for (int i = 1; i < world.size(); i++)
-            {
-                std::cout << "receiving data from " << i << std::endl;
-                world.recv(i, i, &allVec[begin_idx], allSize[i]);
-                begin_idx += allSize[i];
-            }
-        }
-        else {
-            std::cout << "rank " << world.rank() << " sending data" << std::endl;
-            world.send(0, world.rank(), &loc_vec[0], loc_size);
-        }
-
-        boost::mpi::broadcast(world, &allVec[0], ndim, 0);
-
-        ifherk.Jac.Apply(allVec, res);*/
-
-        if (world.rank() != 0) ifherk.clean<edge_aux_type>();
-
-        
-
-        float_type* BC_diff;
-
-        BC_diff = (float_type*)MKL_malloc(sizeof(float_type) * loc_size, 64);
-
-        for (int i = 0; i < loc_size;i++) {
-            BC_diff[i] = 0.0;
-        }
-
-        ifherk.CSR2CSR_correction(res, BC_diff, 1.0); 
-
-        float_type err_BC = 0.0;
-        if (world.rank() != 0)
-        {
-            for (int i = 0; i < loc_size; i++)
-            {
-                err_BC += std::abs(BC_diff[i]);
-            }
-        }
-
-        float_type BC_diff_sum = 0.0;
-
-        boost::mpi::all_reduce(world, err_BC, BC_diff_sum, std::plus<float_type>());
-
-        if (world.rank() == 1) {
-            std::cout << "BC error is " << BC_diff_sum << std::endl;
-        }
-
-        ifherk.CSR2Grid<u_num_type, p_num_type, w_num_type>(res, forcing_num);
-
-        ifherk.compute_error_nonleaf<edge_aux_type, w_num_type, idx_w_type>("edge_num_", true);
-        ifherk.compute_error_nonleaf<edge_aux_type, w_ref_type, idx_w_type>("edge_ref_", true);
-
-        ifherk.clean<face_aux_type>();
-        ifherk.compute_error_nonleaf<face_aux_type, u_ref_type, idx_u_type>("face_ref_", true);
-        ifherk.compute_error_nonleaf<face_aux_type, u_num_type, idx_u_type>("face_num_", true);
-
-        ifherk.clean<cell_aux_type>();
-        ifherk.compute_error_nonleaf<cell_aux_type, p_ref_type, idx_p_type>("cell_ref_", true);
-        ifherk.compute_error_nonleaf<cell_aux_type, p_num_type, idx_p_type>("cell_num_", true);
-
-        world.barrier();
-        for (int i = 1; i < world.size(); i++)
-        {
-            if (print_mat && (i == world.rank()))
-            {
-                for (int i = 0; i < loc_size; i++)
-                {
-                    std::cout << i << " " << res[i] << std::endl;
-                }
-            }
-            world.barrier();
-        }
-
-        float_type u1_inf = this->compute_errors<u_num_type, u_tar_type, error_u_type>(
-			std::string("u_0_"), 0);
-		float_type u2_inf = this->compute_errors<u_num_type, u_tar_type, error_u_type>(
-			std::string("u_1_"), 1);
-
-		float_type p_inf = this->compute_errors<p_num_type, p_tar_type, error_p_type>(
-			std::string("p_0_"), 0);
-
-        float_type w_inf = this->compute_errors<w_num_type, w_tar_type, error_w_type>(
-			std::string("w_0_"), 0);
-
-		force_type errVec;
-
-		real_coordinate_type tmp_coord(0.0);
-        errVec.resize(domain_->ib().size());
-        std::fill(errVec.begin(), errVec.end(), tmp_coord);
-
-		for (int i=0; i<domain_->ib().size(); ++i)
-        {
-            if (domain_->ib().rank(i)!=world.rank())
-                errVec[i]=0;
-            else
-                errVec[i]=forcing_tar[i]-forcing_num[i];
-        }
-
-        if (forcing_num.size() > 0)
-        {
-            real_coordinate_type tmp_coord(0.0);
-            //std::vector<float_type> f(domain_->dimension(), 0.);
-            force_type sum_f(domain_->ib().force().size(), tmp_coord);
-            force_type sum_n(domain_->ib().force().size(), tmp_coord);
-            force_type sum_e(domain_->ib().force().size(), tmp_coord);
-            //std::vector<float_type> f(domain_->dimension(), 0.);
-            for (std::size_t d = 0; d < domain_->dimension(); ++d)
-            {
-                for (std::size_t i = 0; i < forcing_ref.size(); ++i)
-                {
-                    if (world.rank() != domain_->ib().rank(i))
-                    {
-                        forcing_tar[i][d] = 0.0;
-                        forcing_num[i][d] = 0.0;
-                        errVec[i][d] = 0.0;
-                    }
-                }
-            }
-
-            boost::mpi::all_reduce(domain_->client_communicator(),
-                &forcing_tar[0], forcing_tar.size(), &sum_f[0],
-                std::plus<real_coordinate_type>());
-            boost::mpi::all_reduce(domain_->client_communicator(),
-                &forcing_num[0], forcing_num.size(), &sum_n[0],
-                std::plus<real_coordinate_type>());
-            boost::mpi::all_reduce(domain_->client_communicator(),
-                &errVec[0], errVec.size(), &sum_e[0],
-                std::plus<real_coordinate_type>());
-
-            //boost::mpi::all_reduce(world, &ib.force(0), ib.size(), &sum_f[0], std::plus<std::vector<float_type>>());
-            if (world.rank() == 1)
-            {
-                for (int i = 0; i < domain_->ib().size(); ++i)
-                {
-                    std::cout << "n = " << i << " " << sum_f[i][0] << " "
-                              << sum_f[i][1] << " " << sum_n[i][0] << " "
-                              << sum_n[i][1] << " " << sum_e[i][0] << " "
-                              << sum_e[i][1] << std::endl;
-                }
-            }
-        }
-		
-		float_type err_forcing = ifherk.dotVec(errVec, errVec);
-
-		
-		if (world.rank() == 1)
-			std::cout << "L2 Error of forcing is " << std::sqrt(err_forcing) << std::endl;
-
-		simulation_.write("final_apply.hdf5");
-
-        //ifherk.clean<u_num_type>();
-        if (clean_p_tar) ifherk.clean<p_num_type>();
-        ifherk.clean<w_num_type>();
-        ifherk.clean<w_tar_type>();
-        if (clean_p_tar) ifherk.clean<p_tar_type>();
-
-        ifherk.clean<error_u_type>();
-        ifherk.clean<error_p_type>();
-        ifherk.clean<error_w_type>();
-
-        //std::fill(forcing_num.begin(), forcing_num.end(), tmp_coord);
-
-        float_type* res_num;
-        float_type* res_tar;
-        res_num = (float_type*)MKL_malloc(sizeof(float_type) * loc_size, 64);
-        res_tar = (float_type*)MKL_malloc(sizeof(float_type) * loc_size, 64);
-
-        float_type* errvec;
-        errvec = (float_type*)MKL_malloc(sizeof(float_type) * loc_size, 64);
-
-        ifherk.Grid2CSR<u_tar_type, p_tar_type, w_tar_type>(res_tar, forcing_tar);
-        ifherk.Grid2CSR<u_num_type, p_num_type, w_num_type>(res_num, forcing_num);
-
-        float_type diff_sum = 0.0;
-        if (world.rank() != 0)
-        {
-            for (int i = 0; i < loc_size; i++)
-            {
-                float_type tmp_err = res_tar[i] - res_num[i];
-                diff_sum += tmp_err*tmp_err;
-                errvec[i] = tmp_err;
-            }
-        }
-
-        for (int i=0; i<domain_->ib().size(); ++i)
-        {
-            
-            errVec[i]=0;
-            
-        }
-
-        ifherk.CSR2Grid<error_u_type, error_p_type, error_w_type>(errvec, errVec);
-
-        //ifherk.compute_error_nonleaf<edge_aux_type, error_w_type>("error_copy_", true);
-
-        //simulation_.write("final_copy.hdf5");
-
-
-
-        float_type diff_sum_all = 0.0;
-
-        boost::mpi::all_reduce(world, diff_sum, diff_sum_all, std::plus<float_type>());
-
-        if (world.rank() == 1) {
-            std::cout << "Diff error is " << diff_sum_all << std::endl;
-        }
-
-        std::vector<MKL_INT> iparm;
-
-        
-        iparm.resize(64);
-
-        for (int i = 0; i < 64; i++) {
-            iparm[i] = 0;
-        }
-        
-        /* RHS and solution vectors. */
-        float_type* b = NULL;
-        float_type* x = NULL;
-
-        
-
-		iparm[0] = 1; /* Solver default parameters overriden with provided by iparm */
-        //iparm[1] = 0;  /* Use METIS for fill-in reordering */
-        iparm[1] = 2;  /* Use METIS for fill-in reordering */
-        iparm[5] = 0;  /* Write solution into x */
-        iparm[7] = 10;  /* Max number of iterative refinement steps */
-        iparm[9] = 13; /* Perturb the pivot elements with 1E-13 */
-        iparm[10] = 1; /* Use nonsymmetric permutation and scaling MPS */
-        iparm[12] = 1; /* Switch on Maximum Weighted Matching algorithm (default for non-symmetric) */
-        iparm[17] = -1; /* Output: Number of nonzeros in the factor LU */
-        iparm[18] = -1; /* Output: Mflops for LU factorization */
-        //iparm[23] = 10;
-        iparm[26] = 1;  /* Check input data for correctness */ 
-        iparm[39] = 2; /* Input: matrix/rhs/solution are distributed between MPI processes  */
-
-        solver_t Pardiso(iparm, ndim);
-
-        if (world.rank() != 0) {
-            int begin_row = ifherk.num_start();
-            int end_row = ifherk.num_end();
-
-            int loc_size = end_row - begin_row+1;
-            int check_size = ifherk.Jac.numRow_loc();
-
-            if (loc_size != check_size) {
-                std::cout << "Rank " << world.rank() << " local matrix size does not match " << loc_size << " vs " << check_size << std::endl;
-                return 1;
-            }
-
-            int tot_size = ifherk.Jac.tot_size();
-            x = (float_type*)MKL_malloc(sizeof(float_type) * loc_size, 64);
-            b = (float_type*)MKL_malloc(sizeof(float_type) * loc_size, 64);
-            for (int k =0 ; k < loc_size; k++) {
-                x[k] = 0;
-                b[k] = 0;
-            }
-
-            
-            if (num_input)  ifherk.Grid2CSR<u_num_type, p_num_type, w_num_type>(b, forcing_num);
-            /*if (num_input) {
-            for (int k =0 ; k < loc_size; k++) {
-                b[k] = res[k];
-            }
-            }*/
-            if (!num_input) ifherk.Grid2CSR<u_tar_type, p_tar_type, w_tar_type>(b, forcing_tar);
-
-        }
-        Pardiso.load_matrix(ifherk.Jac, ifherk);
-        Pardiso.load_RHS(ifherk.Jac, ifherk, b);
-        Pardiso.reordering();
-        Pardiso.factorization();
-        Pardiso.back_substitution();
-        Pardiso.getSolution(ifherk.Jac, ifherk, x);
-        Pardiso.release_internal_mem();
-        Pardiso.FreeSolver();
-
-        MPI_Barrier(MPI_COMM_WORLD);
-        
-        //Do not finalize MPI again since boost mpi calls it already
-        //mpi_stat = MPI_Finalize();
-        //std::cout << "  MPI_FINALIZED" << std::endl;
-
-        ifherk.CSR2Grid<u_num_inv_type, p_num_inv_type, w_num_inv_type>(x, forcing_num_inv);
-
-        float_type tmp_sum = 0;
-        for (int i = 0; i < loc_size; i++) {
-            tmp_sum += x[i]*x[i];
-        }
-
-        for (int i = 1; i < world.size();i++) {
-            if (i == world.rank()) {
-                std::cout << "sum of results at Rank " << i << " is " << tmp_sum << std::endl;
-            }
-            world.barrier();
-        }
-
-        
-
-        /*float_type*/ u1_inf = this->compute_errors<u_num_inv_type, u_ref_type, error_u_type>(
-			std::string("u_0_"), 0);
-		/*float_type*/ u2_inf = this->compute_errors<u_num_inv_type, u_ref_type, error_u_type>(
-			std::string("u_1_"), 1);
-
-		/*float_type*/ p_inf = this->compute_errors<p_num_inv_type, p_ref_type, error_p_type>(
-			std::string("p_0_"), 0);
-
-        w_inf = this->compute_errors<w_num_inv_type, w_ref_type, error_w_type>(
-			std::string("w_0_"), 0);
-
-		//force_type errVec;
-
-		//real_coordinate_type tmp_coord(0.0);
-        errVec.resize(domain_->ib().size());
-        std::fill(errVec.begin(), errVec.end(), tmp_coord);
-
-		for (int i=0; i<domain_->ib().size(); ++i)
-        {
-            if (domain_->ib().rank(i)!=world.rank())
-                errVec[i]=0;
-            else
-                errVec[i]=forcing_ref[i]-forcing_num_inv[i];
-        }
-		
-		/*float_type*/ err_forcing = ifherk.dotVec(errVec, errVec);
-
-        float_type forcing_mag = ifherk.dotVec(forcing_ref, forcing_ref);
-
-		
-		if (world.rank() == 1) {
-			std::cout << "L2 Error of forcing is " << std::sqrt(err_forcing) << std::endl;
-            std::cout << "L2 Norm  of forcing is " << std::sqrt(forcing_mag) << std::endl;
-        }
-
-        if (forcing_ref.size() > 0)
-        {
-            real_coordinate_type tmp_coord(0.0);
-            //std::vector<float_type> f(domain_->dimension(), 0.);
-            force_type sum_f(domain_->ib().force().size(), tmp_coord);
-            force_type sum_n(domain_->ib().force().size(), tmp_coord);
-            //std::vector<float_type> f(domain_->dimension(), 0.);
-            for (std::size_t d = 0; d < domain_->dimension(); ++d)
-            {
-                for (std::size_t i = 0; i < forcing_ref.size(); ++i)
-                {
-                    if (world.rank() != domain_->ib().rank(i))
-                    {
-                        forcing_ref[i][d] = 0.0;
-                        forcing_num_inv[i][d] = 0.0;
-                    }
-                }
-            }
-
-            boost::mpi::all_reduce(domain_->client_communicator(),
-                &forcing_ref[0], forcing_ref.size(), &sum_f[0],
-                std::plus<real_coordinate_type>());
-            boost::mpi::all_reduce(domain_->client_communicator(),
-                &forcing_num_inv[0], forcing_num_inv.size(), &sum_n[0],
-                std::plus<real_coordinate_type>());
-
-            //boost::mpi::all_reduce(world, &ib.force(0), ib.size(), &sum_f[0], std::plus<std::vector<float_type>>());
-            if (world.rank() == 1)
-            {
-                for (int i = 0; i < domain_->ib().size(); ++i)
-                {
-                    std::cout << "n = " << i << " " << sum_f[i][0] << " "
-                              << sum_f[i][1] << " " << sum_n[i][0] << " "
-                              << sum_n[i][1] << std::endl;
-                }
-            }
-        }
+        //stab_solve.template Init_Construct_Newton_Matrix<u_type>();
+        stab_solve.template NewtonIteration<u_type, p_type, w_num_type>(forcing_num);
 
         simulation_.write("final.hdf5");
-
-        
-
-        MPI_Barrier(MPI_COMM_WORLD);
-
-        if (world.rank()  != 0)
-        {
-            MKL_free(x);
-            MKL_free(b);
-        }
 
         return 0;
 
@@ -1131,27 +540,29 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
                 
                 float_type u_0 = static_cast<float_type>(rand_num)/static_cast<float_type>(1000) - 0.5;
 
-				node(u,0) += u_0;
+				node(u,0) /= 2.0;
 
                 rand_num = rand() % 1000;
 
                 float_type u_1 = static_cast<float_type>(rand_num)/static_cast<float_type>(1000) - 0.5;
 
-				node(u,1) += u_1;
+				node(u,1) /= 2.0;
 
                 rand_num = rand() % 1000;
 
                 float_type p_0 = static_cast<float_type>(rand_num)/static_cast<float_type>(1000) - 0.5;
 
-				node(p,0) += p_0;
+				node(p,0) /= 2.0;
 			}
 
 		}
     }
 
+
     private:
 
     boost::mpi::communicator client_comm_;
+    stability_t stab_solve;
 
     bool single_ring_=true;
     bool perturbation_=false;
@@ -1212,7 +623,7 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
     float_type Lx;
 };
 
-double vortex_run(std::string input, int argc = 0, char** argv = nullptr);
+
 
 } // namespace iblgf
 

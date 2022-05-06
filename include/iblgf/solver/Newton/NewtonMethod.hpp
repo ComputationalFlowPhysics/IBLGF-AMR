@@ -39,6 +39,191 @@ namespace solver
 {
 using namespace domain;
 
+class sparse_mat
+{
+  public:
+    sparse_mat() = default;
+    void resizing_row(int n) { mat.resize(n); }
+    void clean() { mat.resize(0); }
+    void add_element(int n, int m, float_type val)
+    {
+        if (m <= 0) return;
+        auto it = mat[n].find(m);
+        if (it == mat[n].end()) { mat[n][m] = val; }
+        else
+        {
+            it->second += val;
+        }
+    }
+
+    sparse_mat operator+(const sparse_mat& b)
+    {
+        if (this->mat.size() != b.mat.size())
+        {
+            std::cout << "size are " << this->mat.size() << " and "
+                      << b.mat.size() << std::endl;
+            throw std::runtime_error(
+                "sparse matrix does not have the same dim, cannot add");
+        }
+        sparse_mat res;
+        res.mat.resize(this->mat.size());
+        for (int i = 1; i < mat.size(); i++)
+        {
+            for (const auto& [key, val] : this->mat[i])
+            {
+                res.mat[i][key] = val;
+            }
+            for (const auto& [key, val] : b.mat[i])
+            {
+                res.add_element(i, key, val);
+            }
+        }
+        return res;
+    }
+
+    void add_vec(const sparse_mat& b, float_type factor = 1.0)
+    {
+        if (this->mat.size() != b.mat.size())
+        {
+            std::cout
+                << "sparse matrix does not have the same dim, cannot in place add"
+                << std::endl;
+            return;
+        }
+        for (int i = 1; i < mat.size(); i++)
+        {
+            for (const auto& [key, val] : b.mat[i])
+            {
+                this->add_element(i, key, (val * factor));
+            }
+        }
+    }
+
+    void print_row(int n)
+    {
+        for (const auto& [key, val] : this->mat[n])
+        {
+            //int idx1 = std::get<0>(key1);
+            std::cout << n << " " << key << " " << val << " || ";
+        }
+        std::cout << std::endl;
+    }
+
+    void print_row_full(int n)
+    {
+        for (int i = 0; i < mat.size(); i++)
+        {
+            auto it = mat[n].find(i);
+            if (it == mat[n].end()) { std::cout << 0.00 << " " << std::endl; }
+            else
+            {
+                std::cout << it->second << " ";
+            }
+        }
+        std::cout << std::endl;
+    }
+
+    //get the number of element to reserve space for CSR format
+    int tot_size(bool include_zero = false)
+    {
+        //should not include zero but the result should be the same, this is only for debugging
+        int res = 0;
+        int begin_num = 1;
+        if (include_zero) { begin_num = 0; }
+        for (int i = begin_num; i < mat.size(); i++) { res += mat[i].size(); }
+        return res;
+    }
+    template<class int_type, class value_type>
+    void getCSR(int_type* ia, int_type* ja, value_type* a)
+    {
+        int_type counter = 0;
+        for (int i = 1; i < mat.size(); i++)
+        {
+            ia[i - 1] = counter + 1;
+            for (const auto& [key, val] : mat[i])
+            {
+                //int idx1 = std::get<0>(key1);
+                //std::cout << n << " " << key << " " << val << " || ";
+                if (key < 0) { std::cout << "Negative key" << std::endl; }
+                ja[counter] = key;
+                a[counter] = val;
+                counter++;
+            }
+        }
+        ia[mat.size() - 1] = counter + 1;
+    }
+
+    template<class int_type, class value_type>
+    void getCSR_zero_begin(int_type* ia, int_type* ja, value_type* a)
+    {
+        int_type counter = 0;
+        for (int i = 1; i < mat.size(); i++)
+        {
+            ia[i - 1] = counter;
+            for (const auto& [key, val] : mat[i])
+            {
+                //int idx1 = std::get<0>(key1);
+                //std::cout << n << " " << key << " " << val << " || ";
+                if (key <= 0) { std::cout << "Negative key" << std::endl; }
+                ja[counter] = key - 1;
+                a[counter] = val;
+                counter++;
+            }
+        }
+        ia[mat.size() - 1] = counter;
+    }
+
+    void clean_entry(float_type th_val = 1e-12)
+    {
+        for (int i = 1; i < mat.size(); i++)
+        {
+            for (const auto& [key, val] : mat[i])
+            {
+                if (std::abs(val) < th_val) { mat[i].erase(key); }
+            }
+        }
+    }
+
+    template<class value_type>
+    void Apply(value_type* x, value_type* b)
+    {
+        int counter = 0;
+        for (int i = 1; i < mat.size(); i++)
+        {
+            value_type tmp = 0;
+
+            for (const auto& [key, val] : mat[i])
+            {
+                //int idx1 = std::get<0>(key1);
+                //std::cout << n << " " << key << " " << val << " || ";
+                if (key < 0) { std::cout << "Negative key" << std::endl; }
+                tmp += x[key - 1] * val;
+            }
+            b[i - 1] = tmp;
+        }
+        //ia[mat.size()-1] = counter+1;
+    }
+
+    void scale_entries(float_type factor)
+    {
+        for (int i = 1; i < mat.size(); i++)
+        {
+            for (const auto& [key, val] : mat[i])
+            {
+                //int idx1 = std::get<0>(key1);
+                //std::cout << n << " " << key << " " << val << " || ";
+                if (key < 0) { std::cout << "Negative key" << std::endl; }
+                mat[i][key] *= factor;
+            }
+        }
+    }
+
+    int numRow_loc() { return mat.size() - 1; }
+
+  public:
+    std::vector<std::map<int, float_type>> mat;
+};
+
 /** @brief Integrating factor 3-stage Runge-Kutta time integration
  * */
 template<class Setup>
@@ -58,7 +243,7 @@ class NewtonIteration
 
     static constexpr int Dim = Setup::Dim;
 
-    class sparse_mat; //declare here, definition at the end
+    //class sparse_mat; //declare here, definition at the end
 
     using interpolation_type = typename interpolation::cell_center_nli<domain_type>;
     using interpolation_mat_type = typename interpolation::cell_nli_mat<domain_type>;
@@ -85,8 +270,6 @@ class NewtonIteration
 
     using u_type = typename Setup::u_type;
     using p_type = typename Setup::p_type;
-    using du_i_type = typename Setup::du_i_type;
-    using dp_i_type = typename Setup::dp_i_type;
     using fu_i_type = typename Setup::fu_i_type; //store first block of f(x) in Newton method
     using fp_i_type = typename Setup::fp_i_type; //store second block of f(x) in Newton method
     using stream_f_type = typename Setup::stream_f_type;
@@ -857,7 +1040,7 @@ class NewtonIteration
         //Solve_Jacobian<fu_i_type, fp_i_type, du_i_type, dp_i_type>(forcing_tmp, forcing_df);
         //BCG_Stab<fu_i_type, fp_i_type, du_i_type, dp_i_type>(forcing_tmp, forcing_df);
         //add<nonlinear_tmp1_type, R_1_type>();
-        AddAll<du_i_type, dp_i_type, u_type, p_type>(forcing_df, forcing_old, -1.0);
+        //AddAll<du_i_type, dp_i_type, u_type, p_type>(forcing_df, forcing_old, -1.0);
 
         float_type res = this->template dotAll<fu_i_type, fp_i_type, fu_i_type, fp_i_type>(forcing_tmp, forcing_tmp);
         float_type f2 = this->template dotAll<u_type, p_type, u_type, p_type>(forcing_old, forcing_old);
@@ -1035,8 +1218,22 @@ class NewtonIteration
         //currently only implemented for uniform grid with no LGF yet
         boost::mpi::communicator world;
         world.barrier();
+
+        //need to do this again since when contructor is called, the domain is not initialized yet
+        real_coordinate_type tmp_coord(0.0);
+        forcing_tmp.resize(domain_->ib().size());
+        std::fill(forcing_tmp.begin(), forcing_tmp.end(), tmp_coord);
+        forcing_old.resize(domain_->ib().size());
+        std::fill(forcing_old.begin(), forcing_old.end(), tmp_coord);
+        forcing_idx.resize(domain_->ib().size());
+        std::fill(forcing_idx.begin(), forcing_idx.end(), tmp_coord);
+        forcing_idx_g.resize(domain_->ib().size());
+        std::fill(forcing_idx_g.begin(), forcing_idx_g.end(), tmp_coord);
+
+
         int counter = 0;
         if (world.rank() == 0) {
+            max_local_idx = -1;
             max_idx_from_prev_prc = 0;
             counter = 0;
             world.send(1, 0, counter);
@@ -1461,7 +1658,7 @@ class NewtonIteration
                             }
                         }
                     }
-                    else if (it->is_correction() && l != base_level)
+                    else if (it->is_correction()/* && l != base_level*/)
                     {
                         //only setting the leaf points that is next to the leaf to be active
                         int  N = it->data().descriptor().extent()[0];
@@ -2009,13 +2206,13 @@ class NewtonIteration
                                 n.at_offset(idx_p_type::tag(), 0, 1, 0);
                             int p_idx_s =
                                 n.at_offset(idx_p_type::tag(), 0, -1, 0);
-                            if (p_idx_w < 0 && field_idx == 0 && set_corr_zero)
+                            if ((p_idx_w < 0 || p_idx_e < 0) && field_idx == 0 && set_corr_zero && l == base_level)
                             {
                                 //int cur_idx = n(idx_u_type::tag(), 0);
                                 b[cur_idx - 1] = 0;
                                 continue;
                             }
-                            if (p_idx_s < 0 && field_idx == 1 && set_corr_zero)
+                            if ((p_idx_s < 0 || p_idx_n < 0) && field_idx == 1 && set_corr_zero && l == base_level)
                             {
                                 //int cur_idx = n(idx_u_type::tag(), 1);
                                 b[cur_idx - 1] = 0;
@@ -2026,6 +2223,7 @@ class NewtonIteration
                         }
                     }
                 }
+                //comment out for debugging purpose
                 else if (!it->is_leaf() && set_corr_zero) {
                     for (std::size_t field_idx = 0;
                          field_idx < idx_u_type::nFields(); ++field_idx)
@@ -2039,7 +2237,7 @@ class NewtonIteration
                         }
                     }
                 }
-                else if (it->is_correction() && set_corr_zero)
+                else if (it->is_correction() && set_corr_zero/* && l != base_level*/)
                 {
                     for (std::size_t field_idx = 0;
                          field_idx < idx_u_type::nFields(); ++field_idx)
@@ -2089,7 +2287,8 @@ class NewtonIteration
                     if (!it->locally_owned() || !it->has_data()) continue;
                     //if (!it->is_leaf()) continue;
 
-                    if (set_corr_zero) {
+                    
+                    if (!it->is_leaf() && set_corr_zero) {
                         for (std::size_t field_idx = 0;
                              field_idx < idx_p_type::nFields(); ++field_idx)
                         {
@@ -2108,43 +2307,18 @@ class NewtonIteration
                             for (auto& n : it->data())
                             {
                                 int cur_idx = n(idx_p_type::tag(), field_idx);
+                                int glo_p_idx = n(idx_p_g_type::tag(), 0);
+
                                 if (cur_idx <= 0) continue;
-                                b[cur_idx - 1] = n(Cell::tag(), field_idx);
-                            }
-                        }
-                    }
-                    /*else if (!it->is_leaf() && set_corr_zero)
-                    {
-                        for (std::size_t field_idx = 0;
-                             field_idx < idx_p_type::nFields(); ++field_idx)
-                        {
-                            for (auto& n : it->data())
-                            {
-                                int cur_idx = n(idx_p_type::tag(), field_idx);
-                                if (n(idx_p_type::tag(), field_idx) < 0)
-                                {
-                                    continue;
-                                }
-                                b[cur_idx - 1] = 0;
-                            }
-                        }
-                    }
-                    else
-                    {
-                        for (std::size_t field_idx = 0;
-                             field_idx < idx_p_type::nFields(); ++field_idx)
-                        {
-                            for (auto& n : it->data())
-                            {
-                                int cur_idx = n(idx_p_type::tag(), field_idx);
-                                if (n(idx_p_type::tag(), field_idx) < 0)
-                                {
+                                if (glo_p_idx == set_zero_idx && set_corr_zero) {
+                                    b[cur_idx - 1] = 0.0;
                                     continue;
                                 }
                                 b[cur_idx - 1] = n(Cell::tag(), field_idx);
                             }
                         }
-                    }*/
+                    }
+                    
                 }
                 for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
                 {
@@ -2516,7 +2690,7 @@ class NewtonIteration
                             //only print the first component to see error
                             for (auto& n : it->data())
                             {
-                                int idx = n(idxField::tag(), field_idx);
+                                int idx = n(idxField::tag(), (Edge1::nFields() - 1));
                                 if (idx <= 0) continue;
                                 auto c = n.level_coordinate();
                                 int  x_c = c.x();
@@ -2524,8 +2698,8 @@ class NewtonIteration
 
                                 if (write_output)
                                     myfile << x_c << " " << y_c << " ";
-                                float_type val1 = n(Edge1::tag(), field_idx);
-                                float_type val2 = n(Edge2::tag(), field_idx);
+                                float_type val1 = n(Edge1::tag(), (Edge1::nFields() - 1));
+                                float_type val2 = n(Edge2::tag(), (Edge2::nFields() - 1));
 
                                 float_type diff_w = val1 - val2;
                                 if (write_output) myfile << diff_w << std::endl;
@@ -2638,8 +2812,6 @@ class NewtonIteration
         Jac.clean();
         Jac.resizing_row(max_local_idx+1);
         construct_upward_intrp();
-        /*if (!use_FMM) construction_BCMat();
-        else construction_BCMat_FMM();*/
         construction_BCMat();
         construction_laplacian_u();
         construction_DN_u<U_old>();
@@ -2664,11 +2836,57 @@ class NewtonIteration
         if (add_L) Jac.add_vec(L);
         if (add_DN) Jac.add_vec(DN, -1.0);
         if (add_Div) Jac.add_vec(Div, -1.0);
-        if (add_Grad) Jac.add_vec(Grad);
+        if (add_Grad) Jac.add_vec(Grad, -1.0);
         if (add_Curl) Jac.add_vec(Curl);
         if (add_project) Jac.add_vec(project);
         if (add_smearing) Jac.add_vec(smearing);
         if (add_upward_intrp) Jac.add_vec(upward_intrp);
+    }
+
+    void construct_Jac_p() {
+        boost::mpi::communicator world;
+        
+        Jac_p.clean();
+        Jac_p.resizing_row(max_local_idx+1);
+        construct_upward_intrp();
+        construction_BCMat();
+        construction_laplacian_u();
+        //construction_DN_u<U_old>();
+        construction_Div();
+        construction_Grad();
+        construction_Curl();
+        construction_Projection();
+        construction_Smearing();
+        
+        if (world.rank() == 0) {
+            return;
+        }
+
+        if (add_Boundary_u) Jac_p.add_vec(boundary_u);
+        if (add_L) Jac_p.add_vec(L);
+        if (add_Div) Jac_p.add_vec(Div, -1.0);
+        if (add_Grad) Jac_p.add_vec(Grad, -1.0);
+        if (add_Curl) Jac_p.add_vec(Curl);
+        if (add_project) Jac_p.add_vec(project);
+        if (add_smearing) Jac_p.add_vec(smearing);
+        if (add_upward_intrp) Jac_p.add_vec(upward_intrp);
+    }
+
+    template<class U_old>
+    void construct_Jac_from_Jac_p() {
+        boost::mpi::communicator world;
+        
+        Jac.clean();
+        Jac.resizing_row(max_local_idx+1);
+        DN.clean();
+        construction_DN_u<U_old>();
+        
+        
+        if (world.rank() == 0) {
+            return;
+        }
+        Jac.add_vec(Jac_p);
+        if (add_DN) Jac.add_vec(DN, -1.0);
     }
 
     void construction_laplacian_u() {
@@ -2918,6 +3136,7 @@ class NewtonIteration
 
         int base_level = domain_->tree()->base_level();
         clean<edge_aux_type>();
+        //pad_velocity<U_old, U_old>(true);
         curl<U_old, edge_aux_type>();
         //up_and_down(edge_aux_type)();
         up_and_down<U_old>();
@@ -3346,7 +3565,7 @@ class NewtonIteration
         }
 
         if (world.rank() == 1) {
-            std::cout << "Constructing div matrix" << std::endl;
+            std::cout << "Constructing curl matrix" << std::endl;
         }
        
         if (max_local_idx == 0) {
@@ -3515,6 +3734,7 @@ class NewtonIteration
         if (world.rank() == 1)
         {
             std::cout << "Constructing projection matrix" << std::endl;
+            std::cout << "max idx is " << max_local_idx << std::endl;
         }
 
         if (max_local_idx == 0 && world.rank() != 0)
@@ -3526,6 +3746,8 @@ class NewtonIteration
         const auto dx_base = domain_->dx_base();
 
         if (world.rank() != 0) project.resizing_row(max_local_idx + 1);
+
+        
         int base_level = domain_->tree()->base_level();
 
         //int base_level = domain_->tree()->base_level();
@@ -3533,12 +3755,14 @@ class NewtonIteration
         //domain_->ib().communicator().compute_indices();
         //domain_->ib().communicator().communicate(true, forcing_idx_g);
 
+        int dpt = domain_->tree()->depth() - 1;
+
         if (domain_->is_client())
         {
             auto client = domain_->decomposition().client();
 
             //client->template buffer_exchange<idx_u_type>(base_level);
-            client->template buffer_exchange<idx_u_g_type>(base_level);
+            client->template buffer_exchange<idx_u_g_type>(dpt);
 
             //client->template buffer_exchange<idx_p_type>(base_level);
             //client->template buffer_exchange<idx_p_g_type>(base_level);
@@ -5749,7 +5973,7 @@ class NewtonIteration
         add<laplacian_face_type, Target_face>(1.0 / Re_);
 
         clean<face_aux_tmp_type>();
-        gradient<Source_cell, face_aux_tmp_type>();
+        gradient<Source_cell, face_aux_tmp_type>(-1.0);
 
         //pcout << "Computed Gradient" << std::endl;
         //add<face_aux_tmp_type, Target_face>();
@@ -5775,6 +5999,10 @@ class NewtonIteration
             return;
         auto client = domain_->decomposition().client();
 
+        boost::mpi::communicator world;
+
+        pad_velocity<Source_face, Source_face>(true);
+
         clean<laplacian_face_type>();
         clean<u_i_bc_type>();
         clean<edge_aux_type>();
@@ -5789,20 +6017,19 @@ class NewtonIteration
             //use forcing_old to store the forcing at previous Newton iteration
 
 
-        curl<Source_face, edge_aux_type>();
+        //curl<Source_face, edge_aux_type>();
 
         domain_->client_communicator().barrier();
         mDuration_type t_lgf(0);
-        TIME_CODE(t_lgf,
-            SINGLE_ARG(Vel_from_vort<edge_aux_type, u_i_bc_type>();));
+        //TIME_CODE(t_lgf, SINGLE_ARG(Vel_from_vort<edge_aux_type, u_i_bc_type>();));
         domain_->client_communicator().barrier();
         //pcout << "BCs solved in " << t_lgf.count() << std::endl;
 
-        copy_base_level_BC<u_i_bc_type, Source_face>();
+        //copy_base_level_BC<u_i_bc_type, Source_face>();
 
         //pcout << "Copied BC "  << std::endl;
 
-        domain_->client_communicator().barrier();
+        //domain_->client_communicator().barrier();
 
         laplacian<Source_face, laplacian_face_type>();
 
@@ -5817,7 +6044,7 @@ class NewtonIteration
         add<laplacian_face_type, Target_face>(1.0 / Re_);
 
         clean<face_aux_tmp_type>();
-        gradient<Source_cell, face_aux_tmp_type>();
+        gradient<Source_cell, face_aux_tmp_type>(-1.0);
 
         //pcout << "Computed Gradient" << std::endl;
         //add<face_aux_tmp_type, Target_face>();
@@ -5834,6 +6061,153 @@ class NewtonIteration
 
         lsolver.template projection<Source_face>(
             force_target); //need to change this vector in the bracket
+
+        auto u_f = simulation_->frame_vel();
+
+        
+
+        for (std::size_t i=0; i<force_target.size(); ++i)
+        {
+            if (domain_->ib().rank(i)!=comm_.rank())
+                continue;
+
+            for (std::size_t d=0; d<force_target[0].size(); ++d) {
+                //need to change to arbitrary points, this only works for uniform flow
+                if (world.rank() != domain_->ib().rank(i)) continue;
+                float_type u_inf = u_f(d, 5, coordinate_type({0,0}));
+                force_target[i][d] -= u_inf;
+            }
+        }
+    }
+
+    template<class Source_face, class Source_cell, class Target_face, class Target_cell>
+    void ComputeForcing(force_type& force_target) noexcept
+    {
+        if (domain_->is_server())
+            return;
+        auto client = domain_->decomposition().client();
+
+        boost::mpi::communicator world;
+
+        pad_velocity<Source_face, Source_face>(true);
+
+        clean<laplacian_face_type>();
+        clean<u_i_bc_type>();
+        clean<edge_aux_type>();
+
+        //clean<r_i_T_type>(); //use r_i as the result of applying Jcobian in the first block
+        //clean<cell_aux_T_type>(); //use cell aux_type to be the second block
+        clean<Target_face>();
+        clean<Target_cell>();
+        real_coordinate_type tmp_coord(0.0);
+        auto forcing_tmp = force_target;
+        std::fill(forcing_tmp.begin(), forcing_tmp.end(),
+            tmp_coord);
+        std::fill(force_target.begin(), force_target.end(),
+            tmp_coord); //use forcing tmp to store the last block,
+            //use forcing_old to store the forcing at previous Newton iteration
+
+        laplacian<Source_face, laplacian_face_type>();
+
+        clean<face_aux_tmp_type>();
+        gradient<Source_cell, face_aux_tmp_type>(1.0);
+
+        //pcout << "Computed Laplacian " << std::endl;
+
+        nonlinear<Source_face, g_i_type>();
+
+        //pcout << "Computed Nonlinear Jac " << std::endl;
+
+        add<g_i_type, Target_face>(1);
+
+        add<laplacian_face_type, Target_face>(-1.0 / Re_);
+
+        add<face_aux_tmp_type, Target_face>(1.0);
+
+        lsolver.template projection<Target_face>(forcing_tmp);
+
+        auto r = forcing_tmp;
+
+        //force_target = forcing_tmp;
+
+        float_type r2_old = dotVec(r, r);
+
+        if (r2_old < 1e-12) {
+            if (world.rank() == 1) {
+                std::cout << "r0 small, exiting" << std::endl;
+            }
+            return;
+        }
+
+        auto p = r;
+
+        for (int i = 0; i < cg_max_itr_; i++) {
+            clean<face_aux_tmp_type>();
+            lsolver.template smearing<face_aux_tmp_type>(p, false);
+            auto Ap = r;
+            cleanVec(Ap,false);
+            lsolver.template projection<face_aux_tmp_type>(Ap);
+            r2_old = dotVec(r, r);
+            float_type pAp = dotVec(p, Ap);
+            float_type alpha = r2_old/pAp;
+            //force_target += alpha*p;
+            addVec(force_target, p, 1.0, alpha);
+            //r -= alpha*Ap;
+            addVec(r, Ap, 1.0, -alpha);
+            float_type r2_new = dotVec(r, r);
+            float_type f2 = dotVec(force_target, force_target);
+            if (world.rank() == 1)
+            {
+                std::cout << "r2/f2 = " << r2_new / f2 << " f2 = " << f2 << std::endl;
+            }
+
+            if (std::sqrt(r2_new/f2) < cg_threshold_) {
+                
+                return;
+            }
+            float_type beta = r2_new/r2_old;
+            //p = r+beta*p;
+            addVec(p, r, beta, 1.0);
+
+        }        
+    }
+
+    template<class VecType>
+    void addVec(VecType& a, VecType& b, float_type w1, float_type w2)
+    {
+        float_type s = 0;
+        for (std::size_t i=0; i<a.size(); ++i)
+        {
+            if (domain_->ib().rank(i)!=comm_.rank()) {
+                for (std::size_t d=0; d<a[0].size(); ++d) {
+                    a[i][d] = 0;
+                }
+                continue;
+            }
+
+            for (std::size_t d=0; d<a[0].size(); ++d)
+                a[i][d] =a[i][d]*w1 + b[i][d]*w2;
+        }
+    }
+
+    template<class VecType>
+    void cleanVec(VecType& a, bool nonloc = true)
+    {
+        
+        for (std::size_t i=0; i<a.size(); ++i)
+        {
+            if (domain_->ib().rank(i)!=comm_.rank()) {
+                for (std::size_t d=0; d<a[0].size(); ++d) {
+                    a[i][d] = 0;
+                }
+                continue;
+            }
+
+            if (!nonloc)
+            {
+                for (std::size_t d = 0; d < a[0].size(); ++d) { a[i][d] = 0; }
+            }
+        }
     }
 
     template<class Source1, class Source2, class Target>
@@ -5924,7 +6298,7 @@ class NewtonIteration
 
         //up_and_down<Velocity_in>();
         clean<Target>();
-        c<Source>();
+        up_and_down<Source>();
 
         //clean<Velocity_out>();
         clean_leaf_correction_boundary<Source>(domain_->tree()->base_level(),
@@ -7262,7 +7636,7 @@ class NewtonIteration
              l < domain_->tree()->depth(); ++l)
         {
             client->template buffer_exchange<edge_aux_type>(l);
-            clean_leaf_correction_boundary<edge_aux_type>(l, false, 2);
+            //if (l == domain_->tree()->base_level()) clean_leaf_correction_boundary<edge_aux_type>(l, false, 2);
 
             for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
             {
@@ -7281,8 +7655,10 @@ class NewtonIteration
             }
 
             //client->template buffer_exchange<Target>(l);
-            //clean_leaf_correction_boundary<Target>(l, true,3);
+            //clean_leaf_correction_boundary<Target>(l, true,2);
         }
+
+        //clean_leaf_correction_boundary<Target>(domain_->tree()->base_level(), true,2);
     }
 
     template<class Source_old, class Source_new, class Target>
@@ -7570,8 +7946,10 @@ class NewtonIteration
             //clean_leaf_correction_boundary<Target>(l, false,4+stage_idx_);
         }
 
-        clean<Source>(true);
-        clean<Target>(true);
+        //clean_leaf_correction_boundary<Target>(domain_->tree()->base_level(), true, 2);
+
+        //clean<Source>(true);
+        //clean<Target>(true);
     }
 
     template<class Source, class Target>
@@ -7635,8 +8013,8 @@ class NewtonIteration
             //clean_leaf_correction_boundary<Target>(l, false,4+stage_idx_);
         }
 
-        clean<Source>(true);
-        clean<Target>(true);
+        //clean<Source>(true);
+        //clean<Target>(true);
     }
 
     template<class Source, class Target>
@@ -7673,8 +8051,7 @@ class NewtonIteration
             //clean_leaf_correction_boundary<Target>(l, true, 2);
         }
 
-        clean<Source>(true);
-        clean<Target>(true);
+        clean_leaf_correction_boundary<Target>(domain_->tree()->base_level(), true,2);
     }
 
     template<typename From, typename To>
@@ -7811,196 +8188,6 @@ class NewtonIteration
     }
 
   public:
-    class sparse_mat
-    {
-      public:
-        sparse_mat() = default;
-        void resizing_row(int n) { mat.resize(n); }
-        void clean() { mat.resize(0); }
-        void add_element(int n, int m, float_type val) {
-            if (m <= 0) return;
-            auto it = mat[n].find(m);
-            if (it == mat[n].end()) {
-                mat[n][m] = val;
-            }
-            else {
-                it->second += val;
-            }   
-        }
-
-        sparse_mat operator+(const sparse_mat& b) {
-            if (this->mat.size() != b.mat.size()) {
-                std::cout << "size are " << this->mat.size() << " and " << b.mat.size() << std::endl;
-                throw std::runtime_error("sparse matrix does not have the same dim, cannot add");
-            }
-            sparse_mat res;
-            res.mat.resize(this->mat.size());
-            for (int i = 1; i < mat.size();i++) {
-                for (const auto& [key, val] : this->mat[i])
-                {
-                    res.mat[i][key] = val;
-                }
-                for (const auto& [key, val] : b.mat[i])
-                {
-                    res.add_element(i, key, val);
-                }
-            }
-            return res;
-        }
-
-        void add_vec(const sparse_mat& b, float_type factor = 1.0) {
-            if (this->mat.size() != b.mat.size()) {
-                std::cout << "sparse matrix does not have the same dim, cannot in place add" << std::endl;
-                return;
-            }
-            for (int i = 1; i < mat.size();i++) {
-                for (const auto& [key, val] : b.mat[i])
-                {
-                    this->add_element(i, key, (val*factor));
-                }
-            }
-        }
-
-        void print_row(int n)
-        {
-            for (const auto& [key, val] : this->mat[n])
-            {
-                //int idx1 = std::get<0>(key1);
-                std::cout << n << " " << key << " " << val << " || ";
-            }
-            std::cout << std::endl;
-        }
-
-        void print_row_full(int n) {
-            for (int i = 0; i < mat.size(); i++) {
-                auto it = mat[n].find(i);
-                if (it == mat[n].end()) {
-                    std::cout << 0.00 << " " std::endl;
-                }
-                else {
-                    std::cout << it->second << " ";
-                }
-            }
-            std::cout << std::endl;
-        }
-
-        //get the number of element to reserve space for CSR format
-        int tot_size(bool include_zero=false) {
-            //should not include zero but the result should be the same, this is only for debugging
-            int res = 0;
-            int begin_num = 1;
-            if (include_zero) {
-                begin_num = 0;
-            }
-            for (int i = begin_num; i < mat.size(); i++) {
-                res+=mat[i].size();
-            }
-            return res;
-        }
-        template<class int_type, class value_type>
-        void getCSR(int_type* ia, int_type* ja, value_type* a)
-        {
-            int_type counter = 0;
-            for (int i = 1; i < mat.size(); i++)
-            {
-                ia[i-1] = counter+1;
-                for (const auto& [key, val] : mat[i])
-                {
-                    //int idx1 = std::get<0>(key1);
-                    //std::cout << n << " " << key << " " << val << " || ";
-                    if (key < 0) {
-                        std::cout << "Negative key" << std::endl;
-                    }
-                    ja[counter] = key;
-                    a[counter] = val;
-                    counter++;
-                }
-            }
-            ia[mat.size()-1] = counter+1;
-        }
-
-        template<class int_type, class value_type>
-        void getCSR_zero_begin(int_type* ia, int_type* ja, value_type* a)
-        {
-            int_type counter = 0;
-            for (int i = 1; i < mat.size(); i++)
-            {
-                ia[i-1] = counter;
-                for (const auto& [key, val] : mat[i])
-                {
-                    //int idx1 = std::get<0>(key1);
-                    //std::cout << n << " " << key << " " << val << " || ";
-                    if (key <= 0) {
-                        std::cout << "Negative key" << std::endl;
-                    }
-                    ja[counter] = key - 1;
-                    a[counter] = val;
-                    counter++;
-                }
-            }
-            ia[mat.size()-1] = counter;
-        }
-
-        void clean_entry(float_type th_val = 1e-12) {
-            for (int i = 1; i < mat.size(); i++)
-            {
-                for (const auto& [key, val] : mat[i])
-                {
-                    if (std::abs(val) < th_val) {
-                        mat[i].erase(key);
-                    }
-                    
-                }
-            }
-        }
-
-        template<class value_type>
-        void Apply(value_type* x, value_type* b)
-        {
-            int counter = 0;
-            for (int i = 1; i < mat.size(); i++)
-            {
-                value_type tmp = 0;
-                
-                for (const auto& [key, val] : mat[i])
-                {
-                    
-                    //int idx1 = std::get<0>(key1);
-                    //std::cout << n << " " << key << " " << val << " || ";
-                    if (key < 0) {
-                        std::cout << "Negative key" << std::endl;
-                    }
-                    tmp+=x[key-1]*val;
-                }
-                b[i-1] = tmp;
-            }
-            //ia[mat.size()-1] = counter+1;
-        }
-
-        void scale_entries(float_type factor) {
-            for (int i = 1; i < mat.size(); i++)
-            {
-                for (const auto& [key, val] : mat[i])
-                {
-                    //int idx1 = std::get<0>(key1);
-                    //std::cout << n << " " << key << " " << val << " || ";
-                    if (key < 0) {
-                        std::cout << "Negative key" << std::endl;
-                    }
-                    mat[i][key] *= factor;
-                }
-            }
-        }
-
-        int numRow_loc(){
-            return mat.size()-1;
-        }
-
-      public:
-        std::vector<std::map<int, float_type>> mat;
-    };
-
-  public:
     //for testing
     sparse_mat mat;
 
@@ -8017,6 +8204,9 @@ class NewtonIteration
 
     //Jacobian Matrix
     sparse_mat Jac;
+
+    //Part of Jac without DN
+    sparse_mat Jac_p;
 
   private:
     

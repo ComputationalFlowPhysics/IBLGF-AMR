@@ -13,6 +13,8 @@
 #ifndef IBLGF_INCLUDED_SETUP_NEWTON_HPP
 #define IBLGF_INCLUDED_SETUP_NEWTON_HPP
 
+
+
 #include <iblgf/global.hpp>
 #include <iblgf/utilities/crtp.hpp>
 #include <iblgf/domain/domain.hpp>
@@ -25,6 +27,7 @@
 #include <iblgf/solver/poisson/poisson.hpp>
 #include <iblgf/solver/linsys/linsys.hpp>
 #include <iblgf/solver/time_integration/ifherk.hpp>
+#include <iblgf/solver/Stability_solver/Stability_solver.hpp>
 #include <iblgf/IO/parallel_ostream.hpp>
 
 namespace iblgf
@@ -62,10 +65,9 @@ class SetupNewton
       //flow variables
       //(q_i,                 float_type,  Dim,  1,  1,  face,true),
       //(u_i,                 float_type,  Dim,  1,  1,  face,true),
-      (du_i,                float_type,  Dim,  1,  1,  face,true),
-      (dp_i,                float_type,  1,  1,  1,  cell,true),
       (fu_i,                float_type,  Dim,  1,  1,  face,true),
       (fp_i,                float_type,  1,  1,  1,  cell,true),
+      (fw_i,                float_type,  (Dim*2 - 3),  1,  1,  edge,true),
       (g_i,                 float_type,  Dim,  1,  1,  face,true),
       (r_i,                 float_type,  Dim,  1,  1,  face,true),
       (cell_aux,            float_type,  1,  1,  1,  cell,true),
@@ -141,6 +143,7 @@ class SetupNewton
     using poisson_solver_t = solver::PoissonSolver<SetupNewton>;
     using time_integration_t = solver::NewtonIteration<SetupNewton>;
     using linsys_solver_t = solver::LinSysSolver<SetupNewton>;
+    using stability_t = solver::Stability<SetupNewton>;
 
   public: //Ctors
     SetupNewton(Dictionary* _d)

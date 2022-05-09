@@ -1266,6 +1266,11 @@ class NewtonIteration
                     //only setting the leaf points that is next to the leaf to be active
                     int  N = it->data().descriptor().extent()[0];
                     bool tmp[N][N] = {false};
+                    for (int i = 0; i < N; i++) {
+                            for (int j = 0; j < N; j++) {
+                                tmp[i][j] = false;
+                            }
+                        }
                     for (int i = 0; i < it->num_neighbors(); i++)
                     {
                         auto it2 = it->neighbor(i);
@@ -1338,6 +1343,11 @@ class NewtonIteration
                     //only setting the points that is next to the leaf to be active
                     int  N = it->data().descriptor().extent()[0];
                     bool tmp[N][N] = {false};
+                    for (int i = 0; i < N; i++) {
+                            for (int j = 0; j < N; j++) {
+                                tmp[i][j] = false;
+                            }
+                        }
                     for (int i = 0; i < it->num_neighbors(); i++)
                     {
                         auto it2 = it->neighbor(i);
@@ -1548,6 +1558,11 @@ class NewtonIteration
                         //only setting the leaf points that is next to the leaf to be active
                         int  N = it->data().descriptor().extent()[0];
                         bool tmp[N][N] = {false};
+                        for (int i = 0; i < N; i++) {
+                            for (int j = 0; j < N; j++) {
+                                tmp[i][j] = false;
+                            }
+                        }
                         for (int i = 0; i < it->num_neighbors(); i++)
                         {
                             auto it2 = it->neighbor(i);
@@ -1645,7 +1660,100 @@ class NewtonIteration
                      it != domain_->end(l); ++it)
                 {
                     if (!it->locally_owned() || !it->has_data()) continue;
-                    if (!it->is_correction())
+                    if (!it->is_correction() && l == base_level)
+                    {
+                        /*for (std::size_t field_idx = 0;
+                             field_idx < idx_w_type::nFields(); ++field_idx)
+                        {
+                            for (auto& n : it->data())
+                            {
+                                counter++;
+                                n(idx_w_type::tag(), field_idx) =
+                                    static_cast<float_type>(counter) + 0.5;
+                            }
+                        }*/
+
+                        //only setting the leaf points that is next to the leaf to be active
+                        int  N = it->data().descriptor().extent()[0];
+                        bool tmp[N][N] = {true};
+                        for (int i = 0; i < N; i++) {
+                            for (int j = 0; j < N; j++) {
+                                tmp[i][j] = true;
+                            }
+                        }
+                        for (int i = 0; i < it->num_neighbors(); i++)
+                        {
+                            auto it2 = it->neighbor(i);
+                            if (it2 && (!it2->is_correction()))
+                            {
+                                continue;
+                            }
+                            else
+                            {
+                                if (i == 0) { tmp[0][0] = false; }
+                                if (i == 1)
+                                {
+                                    for (int j = 0; j < N; j++)
+                                    {
+                                        tmp[j][0] = false;
+                                        //tmp[j][1] = true;
+                                    }
+                                }
+                                if (i == 2) { tmp[N - 1][0] = false; }
+                                if (i == 3)
+                                {
+                                    for (int j = 0; j < N; j++)
+                                    {
+                                        tmp[0][j] = false;
+                                        //tmp[1][j] = true;
+                                    }
+                                }
+                                if (i == 5)
+                                {
+                                    for (int j = 0; j < N; j++)
+                                    {
+                                        tmp[N - 1][j] = false;
+                                        //tmp[N - 2][j] = true;
+                                    }
+                                }
+                                if (i == 6) { tmp[0][N - 1] = false; }
+                                if (i == 7)
+                                {
+                                    for (int j = 0; j < N; j++)
+                                    {
+                                        tmp[j][N - 1] = false;
+                                        //tmp[j][N - 2] = true;
+                                    }
+                                }
+                                if (i == 8) { tmp[N - 1][N - 1] = false; }
+                            }
+                        }
+                        for (std::size_t field_idx = 0;
+                             field_idx < idx_w_type::nFields(); ++field_idx)
+                        {
+                            auto& lin_data =
+                                it->data_r(idx_w_type::tag(), field_idx)
+                                    .linalg_data();
+                            for (int i = 0; i < N; i++)
+                            {
+                                for (int j = 0; j < N; j++)
+                                {
+                                    if (tmp[i][j])
+                                    {
+                                        counter++;
+                                        view(lin_data, i + 1, j + 1) =
+                                            static_cast<float_type>(counter) +
+                                            0.5;
+                                    }
+                                    else
+                                    {
+                                        view(lin_data, i + 1, j + 1) = -1;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    else if (!it->is_correction() && l != base_level)
                     {
                         for (std::size_t field_idx = 0;
                              field_idx < idx_w_type::nFields(); ++field_idx)
@@ -1658,11 +1766,16 @@ class NewtonIteration
                             }
                         }
                     }
-                    else if (it->is_correction()/* && l != base_level*/)
+                    else if (it->is_correction() && l != base_level)
                     {
                         //only setting the leaf points that is next to the leaf to be active
                         int  N = it->data().descriptor().extent()[0];
                         bool tmp[N][N] = {false};
+                        for (int i = 0; i < N; i++) {
+                            for (int j = 0; j < N; j++) {
+                                tmp[i][j] = false;
+                            }
+                        }
                         for (int i = 0; i < it->num_neighbors(); i++)
                         {
                             auto it2 = it->neighbor(i);
@@ -3238,12 +3351,12 @@ class NewtonIteration
                 int p_idx_n = n.at_offset(idx_p_type::tag(), 0, 1, 0);
                 int p_idx_s = n.at_offset(idx_p_type::tag(), 0, -1, 0);
 
-                /*if (p_idx_w > 0)
+                /*if (p_idx_w > 0 || l != base_level)
                 {
                     DN.add_element(cur_idx_0, glob_idx_00, v_s_0010);
                     DN.add_element(cur_idx_0, glob_idx_01, v_s_0111);
                 }
-                if (p_idx_s > 0)
+                if (p_idx_s > 0 || l != base_level)
                 {
                     DN.add_element(cur_idx_1, glob_idx_00, u_s_0001);
                     DN.add_element(cur_idx_1, glob_idx_10, u_s_1011);
@@ -7636,7 +7749,7 @@ class NewtonIteration
              l < domain_->tree()->depth(); ++l)
         {
             client->template buffer_exchange<edge_aux_type>(l);
-            //if (l == domain_->tree()->base_level()) clean_leaf_correction_boundary<edge_aux_type>(l, false, 2);
+            if (l == domain_->tree()->base_level()) clean_leaf_correction_boundary<edge_aux_type>(l, true, 2);
 
             for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
             {
@@ -7658,7 +7771,7 @@ class NewtonIteration
             //clean_leaf_correction_boundary<Target>(l, true,2);
         }
 
-        //clean_leaf_correction_boundary<Target>(domain_->tree()->base_level(), true,2);
+        clean_leaf_correction_boundary<Target>(domain_->tree()->base_level(), true,2);
     }
 
     template<class Source_old, class Source_new, class Target>
@@ -7946,7 +8059,7 @@ class NewtonIteration
             //clean_leaf_correction_boundary<Target>(l, false,4+stage_idx_);
         }
 
-        //clean_leaf_correction_boundary<Target>(domain_->tree()->base_level(), true, 2);
+        clean_leaf_correction_boundary<Target>(domain_->tree()->base_level(), true, 2);
 
         //clean<Source>(true);
         //clean<Target>(true);
@@ -7982,6 +8095,8 @@ class NewtonIteration
         }
 
         clean<Source>(true);
+
+        clean_leaf_correction_boundary<Target>(domain_->tree()->base_level(), true, 2);
         //clean<Target>(true);
     }
 
@@ -8012,6 +8127,8 @@ class NewtonIteration
             //clean_leaf_correction_boundary<Target>(l, true, 2);
             //clean_leaf_correction_boundary<Target>(l, false,4+stage_idx_);
         }
+
+        //clean_leaf_correction_boundary<Target>(domain_->tree()->base_level(), true, 2);
 
         //clean<Source>(true);
         //clean<Target>(true);

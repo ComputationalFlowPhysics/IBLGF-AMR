@@ -321,7 +321,7 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
 
         time_integration_t ifherk(&this->simulation_);
 
-        //if (world.rank() != 0) ifherk.clean_up_initial_velocity<u_type>();
+        if (world.rank() != 0) ifherk.clean_up_initial_velocity<u_type>();
 
         ifherk.NewtonRHS<u_type, p_type, u_num_type, p_num_type>(forcing_num, forcing_tar);
         ifherk.ComputeForcing<u_type, p_type, u_num_type, p_num_type>(forcing_num);

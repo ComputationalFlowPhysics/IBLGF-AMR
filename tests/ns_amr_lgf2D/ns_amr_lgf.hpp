@@ -150,6 +150,7 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 		perturbation_ = simulation_.dictionary()->template get_or<bool>("perturbation", false);
 		vort_sep = simulation_.dictionary()->template get_or<float_type>("vortex_separation", 1.0 * R_);
 		hard_max_refinement_ = simulation_.dictionary()->template get_or<bool>("hard_max_refinement", false);
+		non_base_level_update = simulation_.dictionary()->template get_or<bool>("no_base_level_update", false);
 
 		auto domain_range = domain_->bounding_box().max() - domain_->bounding_box().min();
 		Lx = domain_range[0] * dx_;
@@ -431,8 +432,10 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 		{
 
 			if (!it->locally_owned()) continue;
+			
 			if (!it->is_leaf() && !it->is_correction()) continue;
-			if (it->is_leaf() && it->is_correction()) continue;
+			//if (it->is_leaf() && it->is_correction()) continue;
+			//if (it->refinement_level() == 0 && non_base_level_update) continue; 
 
 			int l1=-1;
 			int l2=-1;
@@ -449,7 +452,16 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 
 			int l=std::max(std::max(l1,l2),l3);
 
-			if( l!=0)
+            if (it->is_leaf() && it->is_correction())
+
+            {
+                l = -1;
+
+                octs.emplace_back(it->key());
+                level_change.emplace_back(l);
+            }
+
+            if( l!=0)
 			{
 				if (it->is_leaf()&&!it->is_correction())
 				{
@@ -488,6 +500,7 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 	int adapt_levle_change_for_field(OctantType it, float_type source_max, bool use_base_level_threshold)
 	{
 		if (vortexType != 0) return 0;
+		if (it->refinement_level() == 0 && non_base_level_update) return 0; 
 		if (it->is_ib() && it->is_leaf())
 			if (it->refinement_level()<nLevelRefinement_)
 				return 1;
@@ -919,6 +932,7 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
     bool perturbation_=false;
     bool hard_max_refinement_=false;
     bool smooth_start_;
+	bool non_base_level_update = false;
     int vortexType = 0;
 
     std::vector<float_type> U_;

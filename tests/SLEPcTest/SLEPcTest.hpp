@@ -18,21 +18,22 @@
 #endif
 #define DEBUG_POISSON
 
+static char help[] = "Solves a tridiagonal linear system.\n\n";
 
-#include <iblgf/solver/DirectSolver/MKLPardiso_solve.hpp>
 //need c2f
-//#include "mpi.h"
+#include <iblgf/solver/DirectSolver/MKLPardiso_solve.hpp>
+#include "mpi.h"
+#include <iostream>
+#include <slepceps.h>
+#include <petscksp.h>
+#include <petscsys.h>
 //#include "/home/root/intel-oneAPI/oneAPI/mkl/latest/include/mkl.h"
 //#include "/home/root/intel-oneAPI/oneAPI/mkl/latest/include/mkl_cluster_sparse_solver.h"
 
 //need those defined so that xTensor does not load its own CBLAS and resulting in conflicts
 //#define CXXBLAS_DRIVERS_MKLBLAS_H
 //#define CXXBLAS_DRIVERS_CBLAS_H
-#define CXXLAPACK_CXXLAPACK_CXX
-#define WITH_MKLBLAS 1
-#define CXXBLAS_DRIVERS_MKLBLAS_H 1
-#define UNDEF_XT_CBLAS
-//Need to add line to undef HAVE_CBLAS at driver.h in xtensor-blas
+//#define CXXLAPACK_CXXLAPACK_CXX
 
 #include <iostream>
 #include <vector>
@@ -120,7 +121,6 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
 {
     using super_type =SetupNewton<NS_AMR_LGF,parameters>;
     using vr_fct_t = std::function<float_type(float_type x, float_type y, int field_idx, bool perturbation)>;
-    using solver_t = iblgf::solver::IntelPardisoSolve<float_type>;
 
     //Timings
     using clock_type = std::chrono::high_resolution_clock;
@@ -241,6 +241,8 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
         row_to_print = simulation_.dictionary_->template get_or<int>(
 			"row_to_print", 100);
 
+        N_pts = simulation_.dictionary()->template get_or<int>("N_pts", 27);
+
         print_mat = simulation_.dictionary_->template get_or<bool>(
 			"print_mat",  false);
 
@@ -287,13 +289,6 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
 
             simulation_.template read_h5<u_ref_type>(simulation_.restart_field_dir(), "u");
 			simulation_.template read_h5<p_ref_type>(simulation_.restart_field_dir(), "p");
-
-            
-
-			//this->initialize();
-
-			//simulation_.template read_h5<du_i_type>(simulation_.restart_field_dir(), "u");
-			//simulation_.template read_h5<dp_i_type>(simulation_.restart_field_dir(), "p");
 			//this->initialize(); 
 		}
 
@@ -304,22 +299,17 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
         std::fill(forcing_num.begin(), forcing_num.end(), tmp_coord);
 		forcing_ref.resize(domain_->ib().size());
         std::fill(forcing_ref.begin(), forcing_ref.end(), tmp_coord);
-        forcing_num_inv.resize(domain_->ib().size());
-        std::fill(forcing_num_inv.begin(), forcing_num_inv.end(), tmp_coord);
 
 		
 		if (world.rank() == 0)
 			std::cout << "on Simulation: \n" << simulation_ << std::endl;
 	}
 
-	float_type run()
+	float_type run(int argc, char *argv[])
 	{
 		boost::mpi::communicator world;
 
 		time_integration_t ifherk(&this->simulation_);
-
-        float_type dx_finest = dx_/std::pow(2,nLevelRefinement_);
-
 		for (int i = 0; i < forcing_ref.size();i++) {
             if (domain_->ib().rank(i)!=world.rank()) {
                 forcing_ref[i]=0;
@@ -333,8 +323,8 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
             /*float_type val_u = 1.0; 
 			float_type val_v = 1.0;*/ 
 
-			forcing_ref[i][0] = val_u/dx_finest;
-			forcing_ref[i][1] = val_v/dx_finest;
+			forcing_ref[i][0] = val_u;
+			forcing_ref[i][1] = val_v;
 		}
 
         world.barrier();
@@ -372,8 +362,6 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
             if (world.rank() != 0) ifherk.clean<p_tar_type>();
         }
 
-        
-
         for (int i = 0; i < forcing_ref.size();i++) {
             if (domain_->ib().rank(i)!=world.rank()) {
                 /*if (forcing_ref[i][0]!=0 || forcing_ref[i][1]!=0) {
@@ -390,8 +378,8 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
             /*float_type val_u = 1.0; 
 			float_type val_v = 1.0;*/ 
 
-			forcing_ref[i][0] = val_u/dx_finest;
-			forcing_ref[i][1] = val_v/dx_finest;
+			forcing_ref[i][0] = val_u;
+			forcing_ref[i][1] = val_v;
 		}
         world.barrier();
         if (world.rank() == 1) std::cout << "constructing matrix" << std::endl;
@@ -400,30 +388,17 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
 		simulation_.write("init.hdf5");
 
         ifherk.construct_linear_mat<u_type>();
-        ifherk.Jac.clean_entry(1e-10);
+        ifherk.Jac.clean_entry(1e-15);
 
         world.barrier();
         if (world.rank() == 1) {
             std::cout << "finishing constructing matrix" << std::endl;
         }
-        
 
 		if (world.rank() == 1) {
             std::cout << "including zero size is " << ifherk.Jac.tot_size(true) << std::endl;
             std::cout << "not including zero size is " << ifherk.Jac.tot_size(false) << std::endl;
         }
-
-        int size_loc = ifherk.Jac.tot_size(true);
-        int size_glob;
-
-        boost::mpi::all_reduce(world, size_loc, size_glob, std::plus<int>());
-
-        if (world.rank() == 1) {
-            std::cout << "Global size is " << size_glob << std::endl;
-            //std::cout << "not including zero size is " << ifherk.Jac.tot_size(false) << std::endl;
-        }
-
-        ifherk.upward_intrp_statistics<idx_w_type>();
 
 		int ndim = ifherk.total_dim();
 
@@ -437,12 +412,11 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
 
         if (world.rank() == 0) {
 
-            allVec = (float_type*)MKL_malloc(sizeof(float_type) * ndim, 64);
-            //loc_vec = (float_type*)MKL_malloc(sizeof(float_type) * ndim, 64);
+            PetscMalloc(sizeof(float_type) * ndim, &allVec);
         }
         else {
-            allVec = (float_type*)MKL_malloc(sizeof(float_type) * ndim, 64);
-            loc_vec = (float_type*)MKL_malloc(sizeof(float_type) * loc_size, 64);
+            PetscMalloc(sizeof(float_type) * ndim, &allVec);
+            PetscMalloc(sizeof(float_type) * loc_size, &loc_vec);
             ifherk.Grid2CSR<u_ref_type, p_ref_type, w_ref_type>(loc_vec, forcing_ref, false);
         }
 
@@ -520,8 +494,8 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
 
         float_type* res_tmp;
         float_type* res;
-        res_tmp = (float_type*)MKL_malloc(sizeof(float_type) * loc_size, 64);
-        res = (float_type*)MKL_malloc(sizeof(float_type) * loc_size, 64);
+        PetscMalloc(sizeof(float_type) * loc_size, &res_tmp);
+        PetscMalloc(sizeof(float_type) * loc_size, &res);
 
         
 
@@ -562,7 +536,7 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
 
         float_type* BC_diff;
 
-        BC_diff = (float_type*)MKL_malloc(sizeof(float_type) * loc_size, 64);
+        PetscMalloc(sizeof(float_type) * loc_size, &BC_diff);
 
         for (int i = 0; i < loc_size;i++) {
             BC_diff[i] = 0.0;
@@ -637,50 +611,6 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
             else
                 errVec[i]=forcing_tar[i]-forcing_num[i];
         }
-
-        if (forcing_num.size() > 0)
-        {
-            real_coordinate_type tmp_coord(0.0);
-            //std::vector<float_type> f(domain_->dimension(), 0.);
-            force_type sum_f(domain_->ib().force().size(), tmp_coord);
-            force_type sum_n(domain_->ib().force().size(), tmp_coord);
-            force_type sum_e(domain_->ib().force().size(), tmp_coord);
-            //std::vector<float_type> f(domain_->dimension(), 0.);
-            for (std::size_t d = 0; d < domain_->dimension(); ++d)
-            {
-                for (std::size_t i = 0; i < forcing_ref.size(); ++i)
-                {
-                    if (world.rank() != domain_->ib().rank(i))
-                    {
-                        forcing_tar[i][d] = 0.0;
-                        forcing_num[i][d] = 0.0;
-                        errVec[i][d] = 0.0;
-                    }
-                }
-            }
-
-            boost::mpi::all_reduce(domain_->client_communicator(),
-                &forcing_tar[0], forcing_tar.size(), &sum_f[0],
-                std::plus<real_coordinate_type>());
-            boost::mpi::all_reduce(domain_->client_communicator(),
-                &forcing_num[0], forcing_num.size(), &sum_n[0],
-                std::plus<real_coordinate_type>());
-            boost::mpi::all_reduce(domain_->client_communicator(),
-                &errVec[0], errVec.size(), &sum_e[0],
-                std::plus<real_coordinate_type>());
-
-            //boost::mpi::all_reduce(world, &ib.force(0), ib.size(), &sum_f[0], std::plus<std::vector<float_type>>());
-            if (world.rank() == 1)
-            {
-                for (int i = 0; i < domain_->ib().size(); ++i)
-                {
-                    std::cout << "n = " << i << " " << sum_f[i][0] << " "
-                              << sum_f[i][1] << " " << sum_n[i][0] << " "
-                              << sum_n[i][1] << " " << sum_e[i][0] << " "
-                              << sum_e[i][1] << std::endl;
-                }
-            }
-        }
 		
 		float_type err_forcing = ifherk.dotVec(errVec, errVec);
 
@@ -704,16 +634,12 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
 
         float_type* res_num;
         float_type* res_tar;
-        res_num = (float_type*)MKL_malloc(sizeof(float_type) * loc_size, 64);
-        res_tar = (float_type*)MKL_malloc(sizeof(float_type) * loc_size, 64);
 
-        for (int i = 0; i < loc_size;i++) {
-            res_num[i] = 0;
-            res_tar[i] = 0;
-        }
+        PetscMalloc(sizeof(float_type) * loc_size, &res_num);
+        PetscMalloc(sizeof(float_type) * loc_size, &res_tar);
 
         float_type* errvec;
-        errvec = (float_type*)MKL_malloc(sizeof(float_type) * loc_size, 64);
+        PetscMalloc(sizeof(float_type) * loc_size, &errvec);
 
         ifherk.Grid2CSR<u_tar_type, p_tar_type, w_tar_type>(res_tar, forcing_tar);
         ifherk.Grid2CSR<u_num_type, p_num_type, w_num_type>(res_num, forcing_num);
@@ -752,42 +678,41 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
             std::cout << "Diff error is " << diff_sum_all << std::endl;
         }
 
-        std::vector<MKL_INT> iparm;
+        Vec            x, b, u;          /* approx solution, RHS, exact solution */
+        Mat            A, B;             /* linear system matrix */
+        EPS            eps;              /* eigenproblem solver context */
+        EPSType        type;
+        PetscBool      flg,terse;
+        PetscReal      tol;
+        PetscInt       nev, maxit, its;
+        char           filename[PETSC_MAX_PATH_LEN];
+        PetscViewer    viewer;
+        KSP            ksp;              /* linear solver context */
+        PC             pc;               /* preconditioner context */
+        PetscReal      norm;  /* norm of solution error */
+        PetscInt       i,n = ndim,col[3],rstart,rend,nlocal;
 
-        
-        iparm.resize(64);
+        PetscMPIInt    rank, size;
+        MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+        PetscScalar    one = 1.0,value[3], zero = 0.0;
 
-        for (int i = 0; i < 64; i++) {
-            iparm[i] = 0;
-        }
-        
-        /* RHS and solution vectors. */
-        float_type* b = NULL;
-        float_type* x = NULL;
+        PetscCall(SlepcInitialize(&argc,&argv,(char*)0,help));
 
-        
+        PetscCall(VecCreate(PETSC_COMM_WORLD, &x));
 
-		iparm[0] = 1; /* Solver default parameters overriden with provided by iparm */
-        //iparm[1] = 0;  /* Use METIS for fill-in reordering */
-        iparm[1] = 2;  /* Use METIS for fill-in reordering */
-        iparm[5] = 0;  /* Write solution into x */
-        iparm[7] = 10;  /* Max number of iterative refinement steps */
-        iparm[9] = 13; /* Perturb the pivot elements with 1E-13 */
-        iparm[10] = 1; /* Use nonsymmetric permutation and scaling MPS */
-        iparm[12] = 1; /* Switch on Maximum Weighted Matching algorithm (default for non-symmetric) */
-        iparm[17] = -1; /* Output: Number of nonzeros in the factor LU */
-        iparm[18] = -1; /* Output: Mflops for LU factorization */
-        //iparm[23] = 10;
-        iparm[26] = 1;  /* Check input data for correctness */ 
-        iparm[39] = 2; /* Input: matrix/rhs/solution are distributed between MPI processes  */
+        PetscInt* ia = NULL;
+        PetscInt* ja = NULL;
+        double*  a = NULL;
+        double*  b_val= NULL;
+        double*  x_val= NULL;
 
-        solver_t Pardiso(iparm, ndim);
+        loc_size = 0;
 
         if (world.rank() != 0) {
             int begin_row = ifherk.num_start();
             int end_row = ifherk.num_end();
 
-            int loc_size = end_row - begin_row+1;
+            loc_size = end_row - begin_row+1;
             int check_size = ifherk.Jac.numRow_loc();
 
             if (loc_size != check_size) {
@@ -796,138 +721,143 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
             }
 
             int tot_size = ifherk.Jac.tot_size();
-            x = (float_type*)MKL_malloc(sizeof(float_type) * loc_size, 64);
-            b = (float_type*)MKL_malloc(sizeof(float_type) * loc_size, 64);
-            for (int k =0 ; k < loc_size; k++) {
-                x[k] = 0;
-                b[k] = 0;
-            }
+            int size_allocated;
+            PetscMalloc(sizeof(PetscInt) * (loc_size + 1), &ia);
+            PetscMalloc(sizeof(PetscInt) * tot_size, &ja);
+            PetscMalloc(sizeof(float_type) * tot_size, &a);
 
+            PetscMalloc(sizeof(float_type) * loc_size, &b_val);
+            PetscMalloc(sizeof(float_type) * loc_size, &x_val);
+            //x = (float_type*)PetscMalloc(sizeof(float_type) * loc_size);
+            //b = (float_type*)PetscMalloc(sizeof(float_type) * loc_size);
+
+            ifherk.Jac.getCSR_zero_begin(ia, ja, a);
+            ifherk.Grid2CSR<u_type, p_type>(b_val);
+        }
+        else {
+            PetscMalloc(sizeof(PetscInt) * 0, &ia);
+            PetscMalloc(sizeof(PetscInt) * 0, &ja);
+            PetscMalloc(sizeof(float_type) * 0, &a);
+
+            PetscMalloc(sizeof(float_type) * 0, &b_val);
+            PetscMalloc(sizeof(float_type) * 0, &x_val);
+        }
+
+
+        PetscCall(VecSetSizes(x, loc_size, n));
+        PetscCall(VecSetFromOptions(x));
+        PetscCall(VecDuplicate(x, &b));
+        PetscCall(VecDuplicate(x, &u));
+
+        /* Identify the starting and ending mesh points on each
+        processor for the interior part of the mesh. We let PETSc decide
+        above. */
+
+        PetscCall(VecGetOwnershipRange(x, &rstart, &rend));
+
+        std::cout << "rank " << rank << " start and end " << rstart << " " << rend <<std::endl;
+        PetscCall(VecGetLocalSize(x, &nlocal));
+
+        if (nlocal != loc_size) {
+            std::cout << "rank " << rank << " nlocal and loc_size does not match " << std::endl;
+        }
+
+        PetscCall(MatCreate(PETSC_COMM_WORLD, &A));
+        //PetscCall(MatCreateMPIAIJWithArrays(PETSC_COMM_WORLD, nlocal, nlocal, n, n, ia, ja, a, &A));
+        PetscCall(MatSetSizes(A, nlocal, nlocal, n, n));
+        PetscCall(MatSetFromOptions(A));
+        PetscCall(MatSetUp(A));
+
+        for (i = rstart; i < rend; i++)
+        {
+            int i_loc = i - rstart;
+            float_type loc_v = static_cast<float_type>((i - 303421));
+
+            PetscCall(MatSetValues(A, 1, &i, 1, &i, &loc_v, INSERT_VALUES));
             
-            if (num_input)  ifherk.Grid2CSR<u_num_type, p_num_type, w_num_type>(b, forcing_num);
-            /*if (num_input) {
-            for (int k =0 ; k < loc_size; k++) {
-                b[k] = res[k];
-            }
+            int i_s = i -1;
+            //if (i!= 0) PetscCall(MatSetValues(A, 1, &i, 1, &i_s, &loc_v, INSERT_VALUES));
+            /*std::map<int, float_type> row = ifherk.Jac.mat[i_loc+1];
+            for (const auto& [key, val] : row)
+            {
+                int loc_col = key-1;
+                PetscCall(MatSetValues(A, 1, &i, 1, &loc_col, &val, INSERT_VALUES));
             }*/
-            if (!num_input) ifherk.Grid2CSR<u_tar_type, p_tar_type, w_tar_type>(b, forcing_tar);
-
-        }
-        Pardiso.load_matrix(ifherk.Jac, ifherk);
-        Pardiso.load_RHS(ifherk.Jac, ifherk, b);
-        Pardiso.reordering();
-        Pardiso.factorization();
-        Pardiso.back_substitution();
-        Pardiso.getSolution(ifherk.Jac, ifherk, x);
-        Pardiso.release_internal_mem();
-        Pardiso.FreeSolver();
-
-        MPI_Barrier(MPI_COMM_WORLD);
-        
-        //Do not finalize MPI again since boost mpi calls it already
-        //mpi_stat = MPI_Finalize();
-        //std::cout << "  MPI_FINALIZED" << std::endl;
-
-        ifherk.CSR2Grid<u_num_inv_type, p_num_inv_type, w_num_inv_type>(x, forcing_num_inv);
-
-        float_type tmp_sum = 0;
-        for (int i = 0; i < loc_size; i++) {
-            tmp_sum += x[i]*x[i];
         }
 
-        for (int i = 1; i < world.size();i++) {
-            if (i == world.rank()) {
-                std::cout << "sum of results at Rank " << i << " is " << tmp_sum << std::endl;
-            }
-            world.barrier();
-        }
 
         
 
-        /*float_type*/ u1_inf = this->compute_errors<u_num_inv_type, u_ref_type, error_u_type>(
-			std::string("u_0_"), 0);
-		/*float_type*/ u2_inf = this->compute_errors<u_num_inv_type, u_ref_type, error_u_type>(
-			std::string("u_1_"), 1);
+        MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY);
+        MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY);
 
-		/*float_type*/ p_inf = this->compute_errors<p_num_inv_type, p_ref_type, error_p_type>(
-			std::string("p_0_"), 0);
+        PetscCall(EPSCreate(PETSC_COMM_WORLD, &eps));
 
-        w_inf = this->compute_errors<w_num_inv_type, w_ref_type, error_w_type>(
-			std::string("w_0_"), 0);
+        /*
+     Set operators. In this case, it is a standard eigenvalue problem
+  */
+        PetscCall(EPSSetOperators(eps, A, NULL));
+        EPSSetProblemType(eps,EPS_NHEP);
+        EPSSetDimensions(eps,10,PETSC_DEFAULT,PETSC_DEFAULT);
+        EPSSetWhichEigenpairs(eps,EPS_LARGEST_REAL);
 
-		//force_type errVec;
+        /*
+     Set solver parameters at runtime
+  */
+        PetscCall(EPSSetFromOptions(eps));
 
-		//real_coordinate_type tmp_coord(0.0);
-        errVec.resize(domain_->ib().size());
-        std::fill(errVec.begin(), errVec.end(), tmp_coord);
+        /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+                      Solve the eigensystem
+     - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
 
-		for (int i=0; i<domain_->ib().size(); ++i)
+        PetscCall(EPSSolve(eps));
+        PetscCall(EPSGetIterationNumber(eps, &its));
+        PetscCall(PetscPrintf(PETSC_COMM_WORLD,
+            " Number of iterations of the method: %" PetscInt_FMT "\n", its));
+
+        /*
+     Optional: Get some information from the solver and display it
+  */
+        PetscCall(EPSGetType(eps, &type));
+        PetscCall(
+            PetscPrintf(PETSC_COMM_WORLD, " Solution method: %s\n\n", type));
+        PetscCall(EPSGetDimensions(eps, &nev, NULL, NULL));
+        PetscCall(PetscPrintf(PETSC_COMM_WORLD,
+            " Number of requested eigenvalues: %" PetscInt_FMT "\n", nev));
+        PetscCall(EPSGetTolerances(eps, &tol, &maxit));
+        PetscCall(PetscPrintf(PETSC_COMM_WORLD,
+            " Stopping condition: tol=%.4g, maxit=%" PetscInt_FMT "\n",
+            (double)tol, maxit));
+
+        /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+                    Display solution and clean up
+     - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
+
+        /* show detailed info unless -terse option is given by user */
+        PetscCall(PetscOptionsHasName(NULL, NULL, "-terse", &terse));
+        if (terse) PetscCall(EPSErrorView(eps, EPS_ERROR_RELATIVE, NULL));
+        else
         {
-            if (domain_->ib().rank(i)!=world.rank())
-                errVec[i]=0;
-            else
-                errVec[i]=forcing_ref[i]-forcing_num_inv[i];
+            PetscCall(PetscViewerPushFormat(PETSC_VIEWER_STDOUT_WORLD,
+                PETSC_VIEWER_ASCII_INFO_DETAIL));
+            PetscCall(EPSConvergedReasonView(eps, PETSC_VIEWER_STDOUT_WORLD));
+            PetscCall(EPSErrorView(eps, EPS_ERROR_RELATIVE,
+                PETSC_VIEWER_STDOUT_WORLD));
+            PetscCall(PetscViewerPopFormat(PETSC_VIEWER_STDOUT_WORLD));
         }
-		
-		/*float_type*/ err_forcing = ifherk.dotVec(errVec, errVec);
-
-        float_type forcing_mag = ifherk.dotVec(forcing_ref, forcing_ref);
-
-		
-		if (world.rank() == 1) {
-			std::cout << "L2 Error of forcing is " << std::sqrt(err_forcing) << std::endl;
-            std::cout << "L2 Norm  of forcing is " << std::sqrt(forcing_mag) << std::endl;
-        }
-
-        if (forcing_ref.size() > 0)
-        {
-            real_coordinate_type tmp_coord(0.0);
-            //std::vector<float_type> f(domain_->dimension(), 0.);
-            force_type sum_f(domain_->ib().force().size(), tmp_coord);
-            force_type sum_n(domain_->ib().force().size(), tmp_coord);
-            //std::vector<float_type> f(domain_->dimension(), 0.);
-            for (std::size_t d = 0; d < domain_->dimension(); ++d)
-            {
-                for (std::size_t i = 0; i < forcing_ref.size(); ++i)
-                {
-                    if (world.rank() != domain_->ib().rank(i))
-                    {
-                        forcing_ref[i][d] = 0.0;
-                        forcing_num_inv[i][d] = 0.0;
-                    }
-                }
-            }
-
-            boost::mpi::all_reduce(domain_->client_communicator(),
-                &forcing_ref[0], forcing_ref.size(), &sum_f[0],
-                std::plus<real_coordinate_type>());
-            boost::mpi::all_reduce(domain_->client_communicator(),
-                &forcing_num_inv[0], forcing_num_inv.size(), &sum_n[0],
-                std::plus<real_coordinate_type>());
-
-            //boost::mpi::all_reduce(world, &ib.force(0), ib.size(), &sum_f[0], std::plus<std::vector<float_type>>());
-            if (world.rank() == 1)
-            {
-                for (int i = 0; i < domain_->ib().size(); ++i)
-                {
-                    std::cout << "n = " << i << " " << sum_f[i][0] << " "
-                              << sum_f[i][1] << " " << sum_n[i][0] << " "
-                              << sum_n[i][1] << std::endl;
-                }
-            }
-        }
-
-        simulation_.write("final.hdf5");
+        PetscCall(EPSDestroy(&eps));
+        PetscCall(MatDestroy(&A));
+        //PetscCall(MatDestroy(&B));
+        
 
         
 
-        MPI_Barrier(MPI_COMM_WORLD);
+        PetscCall(VecDestroy(&x));
+        PetscCall(VecDestroy(&u));
+        PetscCall(VecDestroy(&b));
+        //PetscCall(KSPDestroy(&ksp));
 
-        if (world.rank()  != 0)
-        {
-            MKL_free(x);
-            MKL_free(b);
-        }
+        PetscCall(SlepcFinalize());
 
         return 0;
 
@@ -938,6 +868,45 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
     bool refinement(
         OctantType* it, int diff_level, bool use_all = false) const noexcept
     {
+        auto b = it->data().descriptor();
+        auto center =
+            (domain_->bounding_box().max() - domain_->bounding_box().min()) /
+                2.0 +
+            domain_->bounding_box().min();
+        
+        const auto dx_base = domain_->dx_base();
+
+        auto scaling = std::pow(2, b.level());
+        center *= scaling;
+
+        
+        auto dx_level = dx_base / std::pow(2, b.level());
+
+        float_type max_c = N_pts*dx_level;
+
+        b.grow(2, 2);
+        auto corners = b.get_corners();
+        for (int i = b.base()[0]; i <= b.max()[0]; ++i)
+        {
+            for (int j = b.base()[1]; j <= b.max()[1]; ++j)
+            {
+                const float_type x =
+                    static_cast<float_type>(i - center[0] + 0.5) * dx_level;
+                const float_type y =
+                    static_cast<float_type>(j - center[1] + 0.5) * dx_level;
+
+                if (std::fabs(x) < max_c && std::fabs(y) < max_c) {
+                    return true;
+                }
+
+                /*const auto vort = std::exp(-x*x-y*y)*(4*x*x - 2.0 + 4*y*y - 2.0);
+                if (std::fabs(vort) >
+                    source_max_ * pow(refinement_factor_, diff_level))
+                {
+                    return true;
+                }*/
+            }
+        }
         return false;
     }
 
@@ -1073,25 +1042,21 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
 				//node(u_ref, 0) = -tmpf0*yf0;
 				//node(u_ref, 1) = tmpf1*xf1;
 
-				/*int rand_val = rand();
+				int rand_val = rand();
 
 				float_type v_1 = static_cast<float_type>(rand_val)/static_cast<float_type>(RAND_MAX) * pert_mag*2 - pert_mag;
 				rand_val = rand();
 				float_type v_2 = static_cast<float_type>(rand_val)/static_cast<float_type>(RAND_MAX) * pert_mag*2 - pert_mag;
 				rand_val = rand();
-				float_type v_3 = static_cast<float_type>(rand_val)/static_cast<float_type>(RAND_MAX) * pert_mag*2 - pert_mag;*/
+				float_type v_3 = static_cast<float_type>(rand_val)/static_cast<float_type>(RAND_MAX) * pert_mag*2 - pert_mag;
 
-				//node(u,0) = tmpf0*(4*xf0*xf0 - 2.0 + 4*yf0*yf0 - 2.0);
-				//node(u,1) = tmpf1*(4*xf1*xf1 - 2.0 + 4*yf1*yf1 - 2.0);
-				//node(p,0) = tmpc*(4*xc*xc - 2.0 + 4*yc*yc - 2.0);
+				node(u,0) = tmpf0*(4*xf0*xf0 - 2.0 + 4*yf0*yf0 - 2.0);
+				node(u,1) = tmpf1*(4*xf1*xf1 - 2.0 + 4*yf1*yf1 - 2.0);
+				node(p,0) = tmpc*(4*xc*xc - 2.0 + 4*yc*yc - 2.0);
 
-                //node(u_ref,0) = tmpf0;
-                //node(u_ref,1) = tmpf1;
-                //node(p_ref,0) = tmpc;
-                node(u_ref,0) = 10.0;
-                node(u_ref,1) = 10.0;
-                node(p_ref,0) = 10.0;
-                //node(p_ref,0) = 0;
+                node(u_ref,0) = tmpf0;
+                node(u_ref,1) = tmpf1;
+                node(p_ref,0) = tmpc;
 
 				//node(p_ref, 0) = tmpc;
 
@@ -1113,47 +1078,6 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
 		}
 	}
 
-    void randomize()
-	{
-		
-
-		boost::mpi::communicator world;
-		if (domain_->is_server()) return;
-		
-
-		//if (ic_filename_ != "null") return;
-
-		// Voriticity IC
-		for (auto it = domain_->begin(); it != domain_->end(); ++it)
-		{
-			if (!it->locally_owned()) continue;
-
-			
-
-			for (auto& node : it->data())
-			{
-                int rand_num = rand() % 1000;
-                
-                float_type u_0 = static_cast<float_type>(rand_num)/static_cast<float_type>(1000) - 0.5;
-
-				node(u,0) += u_0;
-
-                rand_num = rand() % 1000;
-
-                float_type u_1 = static_cast<float_type>(rand_num)/static_cast<float_type>(1000) - 0.5;
-
-				node(u,1) += u_1;
-
-                rand_num = rand() % 1000;
-
-                float_type p_0 = static_cast<float_type>(rand_num)/static_cast<float_type>(1000) - 0.5;
-
-				node(p,0) += p_0;
-			}
-
-		}
-    }
-
     private:
 
     boost::mpi::communicator client_comm_;
@@ -1167,6 +1091,7 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
     int vortexType = 0;
 
     int row_to_print = 0;
+    int N_pts;
 
     bool clean_p_tar;
     bool testing_smearing = false;

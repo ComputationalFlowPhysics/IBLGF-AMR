@@ -18,6 +18,8 @@ INCLUDE_DIRECTORIES(${PETSC_INCLUDES})
 INCLUDE_DIRECTORIES(${SLEPC_INC})
 ADD_DEFINITIONS(${PETSC_DEFINITIONS})
 
+set(MKLROOT "/home/root/intel-oneAPI/oneAPI/mkl/latest")
+
 
 
 
@@ -39,6 +41,7 @@ set(Ptest_list SLEPcTest_Test)
 # add the executable
 add_executable(SLEPcTest.x SLEPcTest.cpp ${SOURCES})
 target_link_libraries(SLEPcTest.x
+                      "-Wl,--start-group /home/root/intel-oneAPI/oneAPI/mkl/latest/lib/intel64/libmkl_intel_ilp64.a /home/root/intel-oneAPI/oneAPI/mkl/latest/lib/intel64/libmkl_sequential.a /home/root/intel-oneAPI/oneAPI/mkl/latest/lib/intel64/libmkl_core.a /home/root/intel-oneAPI/oneAPI/mkl/latest/lib/intel64/libmkl_blacs_intelmpi_ilp64.a -Wl,--end-group -lpthread -lm -ldl"
                       ${MPI_LIBRARIES}
                       ${Boost_LIBRARIES}
                       ${FFTW_LIBRARIES}
@@ -48,6 +51,9 @@ target_link_libraries(SLEPcTest.x
                       ${SLEPC_LIB}
                       xtensor
                       xsimd)
+
+target_compile_options(SLEPcTest.x PUBLIC -DMKL_ILP64  -I"/home/root/intel-oneAPI/oneAPI/mkl/latest/include")
+target_include_directories(SLEPcTest.x PUBLIC ${MKLROOT})
 # target_link_libraries(MKLSolver.x PUBLIC $<LINK_ONLY:MKL::MKL_C>)
 
 foreach (item ${Ptest_list})

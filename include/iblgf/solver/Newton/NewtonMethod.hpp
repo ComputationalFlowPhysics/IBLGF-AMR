@@ -2765,6 +2765,114 @@ class NewtonIteration
         domain_->client_communicator().barrier();
     }
 
+    template<class val_type>
+    float_type GetStateMag(val_type* b) {
+        //this only return magnitude (L2 norm squared) of the part of the vector including:
+        //leaf velocity, leaf pressure, and forcing 
+        boost::mpi::communicator world;
+
+        float_type mag_loc = 0.0;
+
+        if (world.rank() != 0)
+        {
+            domain_->client_communicator().barrier();
+
+            if (max_local_idx == 0)
+            {
+                std::cout << "idx not initialized, please call Assigning_idx()"
+                          << std::endl;
+            }
+
+            //mat.resizing_row(max_local_idx+1);
+
+            int base_level = domain_->tree()->base_level();
+            for (int l = domain_->tree()->base_level();
+                 l < domain_->tree()->depth(); ++l)
+            {
+                if (domain_->is_client())
+                {
+                    auto client = domain_->decomposition().client();
+
+                    client->template buffer_exchange<idx_u_type>(l);
+                }
+                for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+                {
+                    if (!it->locally_owned() || !it->has_data()) continue;
+                    if (!it->is_leaf()) continue;
+                    if (it->is_correction()) continue;
+                    for (std::size_t field_idx = 0;
+                         field_idx < idx_u_type::nFields(); ++field_idx)
+                    {
+                        for (auto& n : it->data())
+                        {
+                            int cur_idx = n(idx_u_type::tag(), field_idx);
+                            if (cur_idx > 0)
+                            {
+                                mag_loc += b[cur_idx - 1] * b[cur_idx - 1];
+                            }
+                        }
+                    }
+                }
+            }
+            if (!testing_u_lap_only)
+            {
+                for (int l = domain_->tree()->base_level();
+                     l < domain_->tree()->depth(); ++l)
+                {
+                    if (domain_->is_client())
+                    {
+                        auto client = domain_->decomposition().client();
+
+                        client->template buffer_exchange<idx_p_type>(l);
+                    }
+                    for (auto it = domain_->begin(l); it != domain_->end(l);
+                         ++it)
+                    {
+                        if (!it->locally_owned() || !it->has_data()) continue;
+                        if (!it->is_leaf()) continue;
+                        if (it->is_correction()) continue;
+                        for (std::size_t field_idx = 0;
+                             field_idx < idx_p_type::nFields(); ++field_idx)
+                        {
+                            for (auto& n : it->data())
+                            {
+                                int cur_idx = n(idx_p_type::tag(), field_idx);
+                                if (cur_idx > 0)
+                                {
+                                    mag_loc += b[cur_idx - 1] * b[cur_idx - 1];
+                                }
+                            }
+                        }
+                    }
+                }
+
+                for (std::size_t i = 0; i < forcing_idx.size(); ++i)
+                {
+                    if (domain_->ib().rank(i) != comm_.rank()) { continue; }
+
+                    for (std::size_t d = 0; d < forcing_idx[0].size(); ++d)
+                    {
+                        int cur_idx = forcing_idx[i][d];
+                        if (cur_idx < 0)
+                        {
+                            std::cout << "IB forcing idx not consistent"
+                                      << std::endl;
+                        }
+                        mag_loc += b[cur_idx - 1] * b[cur_idx - 1];
+                    }
+                }
+            }
+
+            domain_->client_communicator().barrier();
+        }
+
+        float_type mag_glob = 0.0;
+
+        boost::mpi::all_reduce(world, mag_loc, mag_glob, std::plus<float_type>());
+
+        return mag_glob;
+    }
+
     template<class Edge1, class Edge2, class idxField>
     void compute_error_nonleaf(std::string _output_prefix = "", bool write_output=false) {
         boost::mpi::communicator world;
@@ -3224,6 +3332,79 @@ class NewtonIteration
             }
         }
         domain_->client_communicator().barrier();*/
+    }
+
+
+    void construction_B_matrix() {
+        //construction of B matrix from the LHS of the linearized equations 
+        //this matrix is diagonal with 1 for leaf velocities and 0 o/w
+        boost::mpi::communicator world;
+        world.barrier();
+
+        if (world.rank() == 0) {
+            return;
+        }
+
+        if (world.rank() == 1) {
+            std::cout << "Constructing B matrix" << std::endl;
+        }
+       
+        if (max_local_idx == 0) {
+            std::cout << "idx not initialized, please call Assigning_idx()" << std::endl;
+        }
+
+        const auto dx_base = domain_->dx_base();
+
+        B.resizing_row(max_local_idx+1);
+
+        int base_level = domain_->tree()->base_level();
+
+         int N_ext = domain_->block_extent()[0];
+
+        
+        for (int l = base_level; l < domain_->tree()->depth(); l++)
+        {
+            if (domain_->is_client())
+            {
+                auto client = domain_->decomposition().client();
+
+                client->template buffer_exchange<idx_u_type>(l);
+                client->template buffer_exchange<idx_u_g_type>(l);
+                client->template buffer_exchange<idx_p_type>(l);
+                client->template buffer_exchange<idx_p_g_type>(l);
+                client->template buffer_exchange<idx_w_type>(l);
+                client->template buffer_exchange<idx_w_g_type>(l);
+            }
+
+            
+
+            
+
+            for (auto it = domain_->begin(l);
+                 it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
+                if (!it->is_leaf()) continue;
+                if (it->is_correction()) continue;
+
+                float_type dx_level = dx_base / math::pow2(it->refinement_level());
+                
+
+                for (std::size_t field_idx = 0;
+                     field_idx < idx_u_type::nFields(); ++field_idx)
+                {
+                    for (auto& n : it->data())
+                    {
+                        
+                        int cur_idx = n(idx_u_type::tag(), field_idx);
+                        int glo_idx = n(idx_u_g_type::tag(), field_idx);
+                        B.add_element(cur_idx, glo_idx, 1.0);
+                    }
+                }
+            }
+        }
+
+        domain_->client_communicator().barrier();
     }
 
     template<class U_old>
@@ -8324,6 +8505,9 @@ class NewtonIteration
 
     //Part of Jac without DN
     sparse_mat Jac_p;
+
+    //B matrix on the LHS in the generalized eigenvalue problem (Bdq/dt=Aq)
+    sparse_mat B;
 
   private:
     

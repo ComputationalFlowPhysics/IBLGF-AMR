@@ -21,10 +21,12 @@
 static char help[] = "Solves a tridiagonal linear system.\n\n";
 
 //need c2f
+
 #include "mpi.h"
 #include <iostream>
 #include <petscksp.h>
 #include <petscsys.h>
+#include <iblgf/solver/DirectSolver/MKLPardiso_solve.hpp>
 //#include "/home/root/intel-oneAPI/oneAPI/mkl/latest/include/mkl.h"
 //#include "/home/root/intel-oneAPI/oneAPI/mkl/latest/include/mkl_cluster_sparse_solver.h"
 
@@ -68,15 +70,7 @@ static char help[] = "Solves a tridiagonal linear system.\n\n";
 #include "../../setups/setup_Newton.hpp"
 #include <iblgf/operators/operators.hpp>
 
-#ifdef MKL_ILP64
-#define MPI_DT MPI_LONG
-#else
-#define MPI_DT MPI_INT
-#endif
 
-#define MPI_REDUCE_AND_BCAST \
-        MPI_Reduce(&err_mem, &error, 1, MPI_DT, MPI_SUM, 0, MPI_COMM_WORLD); \
-        MPI_Bcast(&error, 1, MPI_DT, 0, MPI_COMM_WORLD);
 
 
 namespace iblgf
@@ -272,8 +266,8 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
 			simulation_.template read_h5<u_type>(simulation_.restart_field_dir(), "u");
 			simulation_.template read_h5<p_type>(simulation_.restart_field_dir(), "p");
 
-			simulation_.template read_h5<du_i_type>(simulation_.restart_field_dir(), "u");
-			simulation_.template read_h5<dp_i_type>(simulation_.restart_field_dir(), "p");
+			//simulation_.template read_h5<du_i_type>(simulation_.restart_field_dir(), "u");
+			//simulation_.template read_h5<dp_i_type>(simulation_.restart_field_dir(), "p");
 			//this->initialize(); 
 		}
 
@@ -373,26 +367,30 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
 
             int tot_size = ifherk.mat.tot_size();
             int size_allocated;
-            PetscMalloc(sizeof(PetscInt) * (loc_size + 1), &ia);
-            PetscMalloc(sizeof(PetscInt) * tot_size, &ja);
-            PetscMalloc(sizeof(float_type) * tot_size, &a);
+            //PetscMalloc(sizeof(PetscInt) * (loc_size + 1), &ia);
+            //PetscMalloc(sizeof(PetscInt) * tot_size, &ja);
+            //PetscMalloc(sizeof(float_type) * tot_size, &a);
 
             PetscMalloc(sizeof(float_type) * loc_size, &b_val);
             PetscMalloc(sizeof(float_type) * loc_size, &x_val);
             //x = (float_type*)PetscMalloc(sizeof(float_type) * loc_size);
             //b = (float_type*)PetscMalloc(sizeof(float_type) * loc_size);
 
-            ifherk.mat.getCSR_zero_begin(ia, ja, a);
+            //ifherk.mat.getCSR_zero_begin(ia, ja, a);
             ifherk.Grid2CSR<u_type, p_type>(b_val);
         }
         else {
-            PetscMalloc(sizeof(PetscInt) * 0, &ia);
-            PetscMalloc(sizeof(PetscInt) * 0, &ja);
-            PetscMalloc(sizeof(float_type) * 0, &a);
+            //PetscMalloc(sizeof(PetscInt) * 1, &ia);
+            //PetscMalloc(sizeof(PetscInt) * 0, &ja);
+            //PetscMalloc(sizeof(float_type) * 0, &a);
 
-            PetscMalloc(sizeof(float_type) * 0, &b_val);
-            PetscMalloc(sizeof(float_type) * 0, &x_val);
+            PetscMalloc(sizeof(float_type) * 1, &b_val);
+            b_val[0] = 0;
+            PetscMalloc(sizeof(float_type) * 1, &x_val);
         }
+
+        if (world.rank() == 1) {loc_size = loc_size - 1;}
+        if (world.rank() == 0) {loc_size = 1;}
 
 
         PetscCall(VecSetSizes(x, loc_size, n));
@@ -415,9 +413,20 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
 
         PetscCall(MatCreate(PETSC_COMM_WORLD, &A));
         //PetscCall(MatCreateMPIAIJWithArrays(PETSC_COMM_WORLD, nlocal, nlocal, n, n, ia, ja, a, &A));
+
+        
         PetscCall(MatSetSizes(A, nlocal, nlocal, n, n));
         PetscCall(MatSetFromOptions(A));
         PetscCall(MatSetUp(A));
+
+        std::map<int, float_type> row;
+
+        if (world.rank() == 1) row = ifherk.mat.mat[1];
+
+        if (world.rank() == 1) world.send(0, 0, row);
+        if (world.rank() == 0) world.recv(1, 0, row);
+
+        if (world.rank() != 0) {
 
         for (i = rstart; i < rend; i++)
         {
@@ -427,6 +436,15 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
             {
                 int loc_col = key-1;
                 PetscCall(MatSetValues(A, 1, &i, 1, &loc_col, &val, INSERT_VALUES));
+            }
+        }
+        }
+        else {
+            //int  i = 0;
+            for (const auto& [key, val] : row)
+            {
+                int loc_col = key-1;
+                PetscCall(MatSetValues(A, 1, &rstart, 1, &loc_col, &val, INSERT_VALUES));
             }
         }
 

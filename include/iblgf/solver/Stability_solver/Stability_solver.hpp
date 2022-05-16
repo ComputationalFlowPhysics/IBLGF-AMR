@@ -13,10 +13,7 @@
 #ifndef IBLGF_INCLUDED_STABILITY_SOLVER_HPP
 #define IBLGF_INCLUDED_STABILITY_SOLVER_HPP
 
-#ifndef DEBUG_IFHERK
-#define DEBUG_IFHERK
-#endif
-#define DEBUG_POISSON
+
 
 
 #include <iblgf/solver/DirectSolver/MKLPardiso_solve.hpp>
@@ -51,15 +48,7 @@
 #include <iblgf/utilities/misc_math_functions.hpp>
 #include <iblgf/solver/Newton/NewtonMethod.hpp>
 
-#ifdef MKL_ILP64
-#define MPI_DT MPI_LONG
-#else
-#define MPI_DT MPI_INT
-#endif
 
-#define MPI_REDUCE_AND_BCAST \
-        MPI_Reduce(&err_mem, &error, 1, MPI_DT, MPI_SUM, 0, MPI_COMM_WORLD); \
-        MPI_Bcast(&error, 1, MPI_DT, 0, MPI_COMM_WORLD);
 
 
 namespace iblgf
@@ -210,7 +199,7 @@ class Stability
     }
 
     template<class Face, class Cell, class Edge>
-    float_type NewtonUpdate(force_type& forcing_vec, float_type& res_inf) {
+    float_type NewtonUpdate(force_type& forcing_vec, float_type& res_inf, float_type& state_err) {
         //update using Newton Iteration
         boost::mpi::communicator world;
         //if (world.rank() != 0) ifherk.template clean_up_initial_velocity<Face>();
@@ -299,6 +288,11 @@ class Stability
             }
         }
 
+        float_type res_val = ifherk.GetStateMag(x);
+        float_type state_val = ifherk.GetStateMag(x_old);
+
+        state_err = res_val/state_val;
+
         ifherk.template CSR2Grid<Face, Cell, Edge>(x_old, forcing_vec);
 
         float_type res_glob = 0.0;
@@ -319,6 +313,7 @@ class Stability
         //Newton iteration
         boost::mpi::communicator world;
         float_type linf_err;
+        float_type state_err;
 
         if (forcing_vec.size() > 0)
         {
@@ -364,7 +359,7 @@ class Stability
         this->template Init_Construct_Newton_Matrix<Face>();
 
         for (int i = 0; i < Newton_max_itr_;i++) {
-            float_type err = this->template NewtonUpdate<Face, Cell, Edge>(forcing_vec, linf_err);
+            float_type err = this->template NewtonUpdate<Face, Cell, Edge>(forcing_vec, linf_err, state_err);
 
             if (forcing_vec.size() > 0)
             {
@@ -401,9 +396,10 @@ class Stability
 
             if (world.rank() == 1) {
                 std::cout << "L2  Res of Newton Iteration is " << err << std::endl;
+                std::cout << "L2  Res physical var of Newton Iteration is " << state_err << std::endl;
                 std::cout << "Inf Res of Newton Iteration is " << linf_err << std::endl;
             }
-            if (std::sqrt(err) < Newton_threshold_) {
+            if (std::sqrt(state_err) < Newton_threshold_) {
                 break;
             }
 

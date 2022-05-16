@@ -21,12 +21,12 @@
 static char help[] = "Solves a tridiagonal linear system.\n\n";
 
 //need c2f
-#include <iblgf/solver/DirectSolver/MKLPardiso_solve.hpp>
 #include "mpi.h"
 #include <iostream>
 #include <slepceps.h>
 #include <petscksp.h>
 #include <petscsys.h>
+#include <iblgf/solver/DirectSolver/MKLPardiso_solve.hpp>
 //#include "/home/root/intel-oneAPI/oneAPI/mkl/latest/include/mkl.h"
 //#include "/home/root/intel-oneAPI/oneAPI/mkl/latest/include/mkl_cluster_sparse_solver.h"
 
@@ -70,15 +70,7 @@ static char help[] = "Solves a tridiagonal linear system.\n\n";
 #include "../../setups/setup_Newton.hpp"
 #include <iblgf/operators/operators.hpp>
 
-#ifdef MKL_ILP64
-#define MPI_DT MPI_LONG
-#else
-#define MPI_DT MPI_INT
-#endif
 
-#define MPI_REDUCE_AND_BCAST \
-        MPI_Reduce(&err_mem, &error, 1, MPI_DT, MPI_SUM, 0, MPI_COMM_WORLD); \
-        MPI_Bcast(&error, 1, MPI_DT, 0, MPI_COMM_WORLD);
 
 
 namespace iblgf
@@ -388,7 +380,8 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
 		simulation_.write("init.hdf5");
 
         ifherk.construct_linear_mat<u_type>();
-        ifherk.Jac.clean_entry(1e-15);
+        ifherk.construction_B_matrix();
+        ifherk.Jac.clean_entry(1e-10);
 
         world.barrier();
         if (world.rank() == 1) {
@@ -678,8 +671,21 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
             std::cout << "Diff error is " << diff_sum_all << std::endl;
         }
 
+        PetscMPIInt    rank, size;
+        MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+
+        PetscMPIInt Color = 0;
+        if (world.rank() != 0) {
+            Color = 1;
+        }
+
+        MPI_Comm_split(MPI_COMM_WORLD, Color, 0, &PETSC_COMM_WORLD);
+        if (Color != 0) {
+
         Vec            x, b, u;          /* approx solution, RHS, exact solution */
         Mat            A, B;             /* linear system matrix */
+
+        Mat            K, K1;
         EPS            eps;              /* eigenproblem solver context */
         EPSType        type;
         PetscBool      flg,terse;
@@ -689,11 +695,11 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
         PetscViewer    viewer;
         KSP            ksp;              /* linear solver context */
         PC             pc;               /* preconditioner context */
+        ST             st;
         PetscReal      norm;  /* norm of solution error */
         PetscInt       i,n = ndim,col[3],rstart,rend,nlocal;
 
-        PetscMPIInt    rank, size;
-        MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+        
         PetscScalar    one = 1.0,value[3], zero = 0.0;
 
         PetscCall(SlepcInitialize(&argc,&argv,(char*)0,help));
@@ -707,6 +713,31 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
         double*  x_val= NULL;
 
         loc_size = 0;
+
+        
+        std::vector<int> iparm;
+
+        
+        iparm.resize(64);
+
+        for (int i = 0; i < 64; i++) {
+            iparm[i] = 0;
+        }        
+
+		iparm[0] = 1; /* Solver default parameters overriden with provided by iparm */
+        //iparm[1] = 0;  /* Use METIS for fill-in reordering */
+        iparm[1] = 2;  /* Use METIS for fill-in reordering */
+        iparm[5] = 0;  /* Write solution into x */
+        iparm[7] = 10;  /* Max number of iterative refinement steps */
+        iparm[9] = 13; /* Perturb the pivot elements with 1E-13 */
+        iparm[10] = 1; /* Use nonsymmetric permutation and scaling MPS */
+        iparm[12] = 1; /* Switch on Maximum Weighted Matching algorithm (default for non-symmetric) */
+        iparm[17] = -1; /* Output: Number of nonzeros in the factor LU */
+        iparm[18] = -1; /* Output: Mflops for LU factorization */
+        //iparm[23] = 10;
+        iparm[26] = 1;  /* Check input data for correctness */ 
+        iparm[39] = 2; /* Input: matrix/rhs/solution are distributed between MPI processes  */
+
 
         if (world.rank() != 0) {
             int begin_row = ifherk.num_start();
@@ -722,26 +753,32 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
 
             int tot_size = ifherk.Jac.tot_size();
             int size_allocated;
-            PetscMalloc(sizeof(PetscInt) * (loc_size + 1), &ia);
-            PetscMalloc(sizeof(PetscInt) * tot_size, &ja);
-            PetscMalloc(sizeof(float_type) * tot_size, &a);
+            //PetscMalloc(sizeof(PetscInt) * (loc_size + 1), &ia);
+            //PetscMalloc(sizeof(PetscInt) * tot_size, &ja);
+            //PetscMalloc(sizeof(float_type) * tot_size, &a);
 
-            PetscMalloc(sizeof(float_type) * loc_size, &b_val);
-            PetscMalloc(sizeof(float_type) * loc_size, &x_val);
+            /*if (world.rank() == 1) 
+            {
+                PetscMalloc(sizeof(float_type) * (loc_size-1), &b_val);
+                PetscMalloc(sizeof(float_type) * loc_size, &x_val);
+            }*/
             //x = (float_type*)PetscMalloc(sizeof(float_type) * loc_size);
             //b = (float_type*)PetscMalloc(sizeof(float_type) * loc_size);
 
-            ifherk.Jac.getCSR_zero_begin(ia, ja, a);
-            ifherk.Grid2CSR<u_type, p_type>(b_val);
+            //ifherk.Jac.getCSR_zero_begin(ia, ja, a);
+            //ifherk.Grid2CSR<u_type, p_type>(b_val);
         }
         else {
-            PetscMalloc(sizeof(PetscInt) * 0, &ia);
-            PetscMalloc(sizeof(PetscInt) * 0, &ja);
-            PetscMalloc(sizeof(float_type) * 0, &a);
+            //PetscMalloc(sizeof(PetscInt) * 0, &ia);
+            //PetscMalloc(sizeof(PetscInt) * 0, &ja);
+            //PetscMalloc(sizeof(float_type) * 0, &a);
 
-            PetscMalloc(sizeof(float_type) * 0, &b_val);
-            PetscMalloc(sizeof(float_type) * 0, &x_val);
+            //PetscMalloc(sizeof(float_type) * 0, &b_val);
+            //PetscMalloc(sizeof(float_type) * 0, &x_val);
         }
+
+        //if (world.rank() == 1) {loc_size = loc_size - 10;}
+        //if (world.rank() == 0) {loc_size = 10;}
 
 
         PetscCall(VecSetSizes(x, loc_size, n));
@@ -763,26 +800,62 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
         }
 
         PetscCall(MatCreate(PETSC_COMM_WORLD, &A));
+        MatSetType(A,MATMPIAIJ);
         //PetscCall(MatCreateMPIAIJWithArrays(PETSC_COMM_WORLD, nlocal, nlocal, n, n, ia, ja, a, &A));
         PetscCall(MatSetSizes(A, nlocal, nlocal, n, n));
         PetscCall(MatSetFromOptions(A));
         PetscCall(MatSetUp(A));
 
+        PetscCall(MatCreate(PETSC_COMM_WORLD, &B));
+        MatSetType(B,MATMPIAIJ);
+        //PetscCall(MatCreateMPIAIJWithArrays(PETSC_COMM_WORLD, nlocal, nlocal, n, n, ia, ja, a, &A));
+        PetscCall(MatSetSizes(B, nlocal, nlocal, n, n));
+        PetscCall(MatSetFromOptions(B));
+        PetscCall(MatSetUp(B));
+
         for (i = rstart; i < rend; i++)
         {
+            //int range = rend - rstart;
+            //int range_nonzero = range/2;
             int i_loc = i - rstart;
-            float_type loc_v = static_cast<float_type>((i - 303421));
+            /*float_type loc_v = std::sqrt(static_cast<float_type>(i) + 0.5) - 90;
 
-            PetscCall(MatSetValues(A, 1, &i, 1, &i, &loc_v, INSERT_VALUES));
+            PetscScalar valComplex = loc_v + 0.0*PETSC_i;
+
+            PetscCall(MatSetValues(A, 1, &i, 1, &i, &valComplex, INSERT_VALUES));*/
+
+            //float_type v = 1;
+
+            //if (i_loc < range_nonzero) PetscCall(MatSetValues(B, 1, &i, 1, &i, &v, INSERT_VALUES));
             
-            int i_s = i -1;
+            //int i_s = i -1;
             //if (i!= 0) PetscCall(MatSetValues(A, 1, &i, 1, &i_s, &loc_v, INSERT_VALUES));
-            /*std::map<int, float_type> row = ifherk.Jac.mat[i_loc+1];
+            std::map<int, float_type> row = ifherk.Jac.mat[i_loc+1];
             for (const auto& [key, val] : row)
             {
                 int loc_col = key-1;
-                PetscCall(MatSetValues(A, 1, &i, 1, &loc_col, &val, INSERT_VALUES));
+                if (!std::isfinite(val)) {
+                    std::cout << "mat A rank " << world.rank() << " row " << i << " loc_col " << loc_col << std::endl;
+                }
+
+                PetscScalar valComplex = val + 0.0*PETSC_i;
+                PetscCall(MatSetValues(A, 1, &i, 1, &loc_col, &valComplex, INSERT_VALUES));
+            }
+
+            std::map<int, float_type> row1 = ifherk.B.mat[i_loc+1];
+            /*if (row1.size() == 0) {
+                float_type val = 0.0;
+                PetscCall(MatSetValues(B, 1, &i, 1, &i, &val, INSERT_VALUES));
             }*/
+            for (const auto& [key, val] : row1)
+            {
+                int loc_col = key-1;
+                if (!std::isfinite(val)) {
+                    std::cout << "mat B rank " << world.rank() << " row " << i << " loc_col " << loc_col << std::endl;
+                }
+                PetscScalar valComplex = val + 0.0*PETSC_i;
+                PetscCall(MatSetValues(B, 1, &i, 1, &loc_col, &valComplex, INSERT_VALUES));
+            }
         }
 
 
@@ -791,15 +864,71 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
         MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY);
         MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY);
 
+        MatAssemblyBegin(B,MAT_FINAL_ASSEMBLY);
+        MatAssemblyEnd(B,MAT_FINAL_ASSEMBLY);
+
+
+        
+
         PetscCall(EPSCreate(PETSC_COMM_WORLD, &eps));
 
         /*
-     Set operators. In this case, it is a standard eigenvalue problem
+     Set operators. In this case, it is a Generalized eigenvalue problem
   */
-        PetscCall(EPSSetOperators(eps, A, NULL));
-        EPSSetProblemType(eps,EPS_NHEP);
-        EPSSetDimensions(eps,10,PETSC_DEFAULT,PETSC_DEFAULT);
-        EPSSetWhichEigenpairs(eps,EPS_LARGEST_REAL);
+        PetscCall(EPSSetOperators(eps, A, B));
+        EPSSetProblemType(eps,EPS_PGNHEP);
+        EPSSetDimensions(eps,5,PETSC_DEFAULT,PETSC_DEFAULT);
+        
+        EPSSetWhichEigenpairs(eps,	EPS_TARGET_MAGNITUDE);
+        PetscScalar valComplex = 1.5 + 1.5*PETSC_i;
+        PetscCall(EPSSetTarget(eps,valComplex));
+        //EPSSetWhichEigenpairs(eps,EPS_SMALLEST_MAGNITUDE);
+
+        PetscCall(EPSGetST(eps, &st));
+        PetscCall(STSetType(st, STSINVERT));
+
+        PetscCall(STGetKSP(st, &ksp));
+        PetscCall(KSPSetType(ksp, KSPPREONLY));
+        PetscCall(KSPGetPC(ksp, &pc));
+        PetscCall(PCSetType(pc, PCLU));
+
+#if defined(PETSC_HAVE_MUMPS)
+       if (world.rank() == 1) {
+           std::cout << "using MUMPS" << std::endl;
+       }
+       PCFactorSetMatSolverType(pc,MATSOLVERMUMPS);
+       /* the next line is required to force the creation of the ST operator and its passing to KSP */
+       STGetOperator(st,NULL);
+       PCFactorSetUpMatSolverType(pc);
+       PCFactorGetMatrix(pc,&K);
+       MatMumpsSetIcntl(K,14,50);
+       MatMumpsSetCntl(K,3,1e-12);
+#endif
+#if defined(PETSC_HAVE_MKL_PARDISO)
+       PCFactorSetMatSolverType(pc,MATSOLVERMKL_CPARDISO);
+       if (world.rank() == 1) {
+           std::cout << "using Pardiso" << std::endl;
+       }
+       /* the next line is required to force the creation of the ST operator and its passing to KSP */
+       STGetOperator(st,NULL);
+       PCFactorSetUpMatSolverType(pc);
+       PCFactorGetMatrix(pc,&K);
+       MatMkl_CPardisoSetCntl(K,iparm[0],1);
+       MatMkl_CPardisoSetCntl(K,iparm[1],2);
+       MatMkl_CPardisoSetCntl(K,iparm[5],6);
+       MatMkl_CPardisoSetCntl(K,iparm[7],8);
+       MatMkl_CPardisoSetCntl(K,iparm[9],10);
+       MatMkl_CPardisoSetCntl(K,iparm[10],11);
+       MatMkl_CPardisoSetCntl(K,iparm[12],13);
+       MatMkl_CPardisoSetCntl(K,iparm[17],18);
+       MatMkl_CPardisoSetCntl(K,iparm[18],19);
+       MatMkl_CPardisoSetCntl(K,iparm[26],27);
+       //MatMkl_CPardisoSetCntl(K,iparm[39],40);
+       //MatMumpsSetIcntl(K,14,50);
+       //MatMumpsSetCntl(K,3,1e-12);
+#endif
+
+
 
         /*
      Set solver parameters at runtime
@@ -847,7 +976,7 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
         }
         PetscCall(EPSDestroy(&eps));
         PetscCall(MatDestroy(&A));
-        //PetscCall(MatDestroy(&B));
+        PetscCall(MatDestroy(&B));
         
 
         
@@ -855,9 +984,11 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
         PetscCall(VecDestroy(&x));
         PetscCall(VecDestroy(&u));
         PetscCall(VecDestroy(&b));
+        
         //PetscCall(KSPDestroy(&ksp));
 
         PetscCall(SlepcFinalize());
+        }
 
         return 0;
 

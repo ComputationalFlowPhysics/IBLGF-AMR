@@ -185,22 +185,115 @@ class IB
                 //coordinates_.emplace_back( real_coordinate_type({R*cos(theta)*sin(phi), R*sin(theta)*sin(phi), R*cos(phi)}));
             }
         }
-	else if (geometry_ == "circle") {
-	    if (Dim == 2) {
-	    float_type R = 0.5;
-            float_type dx = dx_base_/pow(2,IBlevel_)*ibph_;
-	    int n = floor(2.0*R*M_PI/dx) + 1;
-	    if (comm_.rank() == 1) std::cout << "Geometry = circle, n = "<< n << std::endl;
-	    for (int i = 0; i < n; i++) {
-		float_type x = i + 0.5;
-	    	float_type theta = 2*M_PI * x / n;
-		real_coordinate_type tmp;
-		tmp.x() = R*cos(theta);
-		tmp.y() = R*sin(theta);
-		coordinates_.emplace_back(real_coordinate_type(tmp));
-	    }
-	    }
-	}
+        else if (geometry_ == "circle")
+        {
+            if (Dim == 2)
+            {
+                float_type R = 0.5;
+                float_type dx = dx_base_ / pow(2, IBlevel_) * ibph_;
+                int        n = floor(2.0 * R * M_PI / dx) + 1;
+                if (comm_.rank() == 1)
+                    std::cout << "Geometry = circle, n = " << n << std::endl;
+                for (int i = 0; i < n; i++)
+                {
+                    float_type           x = i + 0.5;
+                    float_type           theta = 2 * M_PI * x / n;
+                    real_coordinate_type tmp;
+                    tmp.x() = R * cos(theta);
+                    tmp.y() = R * sin(theta);
+                    coordinates_.emplace_back(real_coordinate_type(tmp));
+                }
+            }
+        }
+        else if (geometry_ == "ForTim15000")
+        {
+            //create a 16000 IB points
+            if (Dim == 2)
+            {
+                float_type R = 0.5;
+                float_type dx = dx_base_ / pow(2, IBlevel_) * ibph_;
+                int        n_0 = floor(2.0 * R * M_PI / dx) + 1;
+                int        n_1 = floor(2.0 * R / dx) + 1;
+                int        n_5_p = floor(1.0 * R / dx) + 1;
+                int        n = n_0 * 3 + n_1 + n_5_p*5;
+                if (comm_.rank() == 1)
+                    std::cout << "Geometry = ForTim15000, n = " << n
+                              << std::endl;
+                //1
+                for (int i = 0; i < n_1; i++)
+                {
+                    float_type           x = i + 0.5;
+                    float_type           theta = 1.0 * x / n_1 - 0.5;
+                    real_coordinate_type tmp;
+                    tmp.x() = 0.0;
+                    tmp.y() = theta;
+                    coordinates_.emplace_back(real_coordinate_type(tmp));
+                }
+                //5
+                for (int i = 0; i < n_5_p; i++)
+                {
+                    float_type           x = i + 0.5;
+                    float_type           theta = 0.5 * x / n_5_p - 0.25 + 2.0;
+                    real_coordinate_type tmp;
+                    tmp.x() = theta;
+                    tmp.y() = 0.5;
+                    coordinates_.emplace_back(real_coordinate_type(tmp));
+                }
+                for (int i = 0; i < n_5_p; i++)
+                {
+                    float_type           x = i + 0.5;
+                    float_type           theta = 0.5 * x / n_5_p - 0.25 + 2.0;
+                    real_coordinate_type tmp;
+                    tmp.x() = theta;
+                    tmp.y() = 0.0;
+                    coordinates_.emplace_back(real_coordinate_type(tmp));
+                }
+                for (int i = 0; i < n_5_p; i++)
+                {
+                    float_type           x = i + 0.5;
+                    float_type           theta = 0.5 * x / n_5_p - 0.25 + 2.0;
+                    real_coordinate_type tmp;
+                    tmp.x() = theta;
+                    tmp.y() = -0.5;
+                    coordinates_.emplace_back(real_coordinate_type(tmp));
+                }
+                for (int i = 0; i < n_5_p; i++)
+                {
+
+                    float_type           x = i + 0.5;
+                    float_type           theta = 0.5 * x / n_5_p + 0.0;
+                    real_coordinate_type tmp;
+                    tmp.x() = 1.75;
+                    tmp.y() = theta;
+                    coordinates_.emplace_back(real_coordinate_type(tmp));
+                }
+                for (int i = 0; i < n_5_p; i++)
+                {
+
+                    float_type           x = i + 0.5;
+                    float_type           theta = 0.5 * x / n_5_p - 0.5;
+                    real_coordinate_type tmp;
+                    tmp.x() = 2.25;
+                    tmp.y() = theta;
+                    coordinates_.emplace_back(real_coordinate_type(tmp));
+                }
+                //000
+                for (int j = 0; j < 3; j++)
+                {
+                    for (int i = 0; i < n_0; i++)
+                    {
+                        float_type           c_x = 4 + j * 2;
+                        float_type           c_y = 0;
+                        float_type           x = i + 0.5;
+                        float_type           theta = 2 * M_PI * x / n_0;
+                        real_coordinate_type tmp;
+                        tmp.x() = R * cos(theta) + c_x;
+                        tmp.y() = R * sin(theta) + c_y;
+                        coordinates_.emplace_back(real_coordinate_type(tmp));
+                    }
+                }
+            }
+        }
         else if(geometry_=="none")
         {
 

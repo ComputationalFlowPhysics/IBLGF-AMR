@@ -238,6 +238,9 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
         print_mat = simulation_.dictionary_->template get_or<bool>(
 			"print_mat",  false);
 
+        set_deflation = simulation_.dictionary_->template get_or<bool>(
+			"set_deflation",  false);
+
 		//bool subtract_non_leaf_ = simulation_.dictionaty()->template get_or<bool>("subtract_non_leaf", true);
 
 		if (dt_ < 0) dt_ = dx_ * cfl_;
@@ -302,6 +305,7 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
 		boost::mpi::communicator world;
 
 		time_integration_t ifherk(&this->simulation_);
+        ifherk.Assigning_idx();
 		for (int i = 0; i < forcing_ref.size();i++) {
             if (domain_->ib().rank(i)!=world.rank()) {
                 forcing_ref[i]=0;
@@ -321,8 +325,8 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
 
         world.barrier();
 
-        if (world.rank() != 0) ifherk.clean_up_initial_velocity<u_type>();
-        if (world.rank() != 0) ifherk.clean_up_initial_velocity<u_ref_type>();
+        //if (world.rank() != 0) ifherk.clean_up_initial_velocity<u_type>();
+        //if (world.rank() != 0) ifherk.clean_up_initial_velocity<u_ref_type>();
 
         
         if (world.rank() != 0) ifherk.pad_velocity<u_ref_type, u_ref_type>(true);
@@ -375,7 +379,7 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
 		}
         world.barrier();
         if (world.rank() == 1) std::cout << "constructing matrix" << std::endl;
-        ifherk.Assigning_idx();
+        
 		world.barrier();
 		simulation_.write("init.hdf5");
 
@@ -556,12 +560,15 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
 
         ifherk.CSR2Grid<u_num_type, p_num_type, w_num_type>(res, forcing_num);
 
-        ifherk.compute_error_nonleaf<edge_aux_type, w_num_type, idx_w_type>("edge_num_", true);
-        ifherk.compute_error_nonleaf<edge_aux_type, w_ref_type, idx_w_type>("edge_ref_", true);
+        ifherk.compute_error_nonleaf<edge_aux_type, w_num_type, idx_w_type>("edge_num_", true, 0);
+        ifherk.compute_error_nonleaf<edge_aux_type, w_ref_type, idx_w_type>("edge_ref_", true, 0);
 
         ifherk.clean<face_aux_type>();
-        ifherk.compute_error_nonleaf<face_aux_type, u_ref_type, idx_u_type>("face_ref_", true);
-        ifherk.compute_error_nonleaf<face_aux_type, u_num_type, idx_u_type>("face_num_", true);
+        ifherk.compute_error_nonleaf<face_aux_type, u_ref_type, idx_u_type>("face_ref_0_", true, 0);
+        ifherk.compute_error_nonleaf<face_aux_type, u_num_type, idx_u_type>("face_num_0_", true, 0);
+
+        ifherk.compute_error_nonleaf<face_aux_type, u_ref_type, idx_u_type>("face_ref_1_", true, 1);
+        ifherk.compute_error_nonleaf<face_aux_type, u_num_type, idx_u_type>("face_num_1_", true, 1);
 
         ifherk.clean<cell_aux_type>();
         ifherk.compute_error_nonleaf<cell_aux_type, p_ref_type, idx_p_type>("cell_ref_", true);
@@ -671,6 +678,16 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
             std::cout << "Diff error is " << diff_sum_all << std::endl;
         }
 
+        //need to store eigenvectors
+        float_type*  x0_real= NULL;
+        float_type*  x0_imag= NULL;
+        float_type*  x1_real= NULL;
+        float_type*  x1_imag= NULL;
+        float_type*  x2_real= NULL;
+        float_type*  x2_imag= NULL;
+        float_type*  x3_real= NULL;
+        float_type*  x3_imag= NULL;
+
         PetscMPIInt    rank, size;
         MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
@@ -682,7 +699,8 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
         MPI_Comm_split(MPI_COMM_WORLD, Color, 0, &PETSC_COMM_WORLD);
         if (Color != 0) {
 
-        Vec            x, b, u;          /* approx solution, RHS, exact solution */
+        Vec            x, b, b1, u;          /* approx solution, RHS, exact solution */
+        //Vec*           Cv;               /*deflation of 
         Mat            A, B;             /* linear system matrix */
 
         Mat            K, K1;
@@ -708,9 +726,11 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
 
         PetscInt* ia = NULL;
         PetscInt* ja = NULL;
-        double*  a = NULL;
+        PetscScalar*  a = NULL;
         double*  b_val= NULL;
-        double*  x_val= NULL;
+
+        float_type* P_1 = NULL;
+        
 
         loc_size = 0;
 
@@ -726,7 +746,7 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
 
 		iparm[0] = 1; /* Solver default parameters overriden with provided by iparm */
         //iparm[1] = 0;  /* Use METIS for fill-in reordering */
-        iparm[1] = 2;  /* Use METIS for fill-in reordering */
+        iparm[1] = 3;  /* Use PARALLEL METIS for fill-in reordering */
         iparm[5] = 0;  /* Write solution into x */
         iparm[7] = 10;  /* Max number of iterative refinement steps */
         iparm[9] = 13; /* Perturb the pivot elements with 1E-13 */
@@ -737,6 +757,8 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
         //iparm[23] = 10;
         iparm[26] = 1;  /* Check input data for correctness */ 
         iparm[39] = 2; /* Input: matrix/rhs/solution are distributed between MPI processes  */
+
+        
 
 
         if (world.rank() != 0) {
@@ -752,20 +774,26 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
             }
 
             int tot_size = ifherk.Jac.tot_size();
-            int size_allocated;
-            //PetscMalloc(sizeof(PetscInt) * (loc_size + 1), &ia);
+            //PetscMalloc(sizeof(PetscInt) * tot_size, &ia);
             //PetscMalloc(sizeof(PetscInt) * tot_size, &ja);
-            //PetscMalloc(sizeof(float_type) * tot_size, &a);
+            //PetscMalloc(sizeof(PetscScalar) * tot_size, &a);
 
             /*if (world.rank() == 1) 
             {
                 PetscMalloc(sizeof(float_type) * (loc_size-1), &b_val);
                 PetscMalloc(sizeof(float_type) * loc_size, &x_val);
             }*/
+
+            PetscMalloc(sizeof(float_type) * loc_size, &P_1);
+
+            for (int i = 0; i < loc_size; i++) {
+                P_1[i] = 0.0;
+            }
+            ifherk.Pressure_nullspace(P_1);
             //x = (float_type*)PetscMalloc(sizeof(float_type) * loc_size);
             //b = (float_type*)PetscMalloc(sizeof(float_type) * loc_size);
 
-            //ifherk.Jac.getCSR_zero_begin(ia, ja, a);
+            //ifherk.Jac.getIdx(ia, ja, a, rstart);
             //ifherk.Grid2CSR<u_type, p_type>(b_val);
         }
         else {
@@ -780,17 +808,52 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
         //if (world.rank() == 1) {loc_size = loc_size - 10;}
         //if (world.rank() == 0) {loc_size = 10;}
 
-
         PetscCall(VecSetSizes(x, loc_size, n));
         PetscCall(VecSetFromOptions(x));
         PetscCall(VecDuplicate(x, &b));
+        //PetscCall(VecDuplicate(x, &b1));
         PetscCall(VecDuplicate(x, &u));
+
+        PetscInt* idx_ = NULL;
+
+        float_type sum = 0;
+
+        for (int i = 0; i < loc_size; i++) {
+            //idx_[i] = i;
+            sum += P_1[i];
+            PetscScalar tmp = P_1[i];
+            VecSetValues(b, 1, &i, &tmp, INSERT_VALUES);
+            //PetscScalar tmp = P_1[i]*PETSC_i;
+            //VecSetValues(b1, 1, &i, &tmp, INSERT_VALUES);
+        }
+
+        if (world.rank() == 1) {
+            std::cout << "Sum of all P_1 is " << sum << std::endl;
+        }
+
+        PetscCall(VecAssemblyBegin(b));
+        PetscCall(VecAssemblyEnd(b));
+
+        //PetscCall(VecAssemblyBegin(b1));
+        //PetscCall(VecAssemblyEnd(b1));
+
+        
 
         /* Identify the starting and ending mesh points on each
         processor for the interior part of the mesh. We let PETSc decide
         above. */
 
         PetscCall(VecGetOwnershipRange(x, &rstart, &rend));
+
+        PetscMalloc(sizeof(float_type) * loc_size, &x0_real);
+        PetscMalloc(sizeof(float_type) * loc_size, &x0_imag);
+        PetscMalloc(sizeof(float_type) * loc_size, &x1_real);
+        PetscMalloc(sizeof(float_type) * loc_size, &x1_imag);
+        PetscMalloc(sizeof(float_type) * loc_size, &x2_real);
+        PetscMalloc(sizeof(float_type) * loc_size, &x2_imag);
+        PetscMalloc(sizeof(float_type) * loc_size, &x3_real);
+        PetscMalloc(sizeof(float_type) * loc_size, &x3_imag);
+        
 
         std::cout << "rank " << rank << " start and end " << rstart << " " << rend <<std::endl;
         PetscCall(VecGetLocalSize(x, &nlocal));
@@ -799,10 +862,50 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
             std::cout << "rank " << rank << " nlocal and loc_size does not match " << std::endl;
         }
 
-        PetscCall(MatCreate(PETSC_COMM_WORLD, &A));
+
+        //compute the d_nnz and o_nnz vectors
+        PetscInt* d_nnz = NULL;
+        PetscInt* o_nnz = NULL;
+        if (world.rank() == 1) {
+            std::cout << "Initialized d_nnz and o_nnz" << std::endl;
+        }
+        PetscMalloc(sizeof(PetscInt) * loc_size, &d_nnz);
+        PetscMalloc(sizeof(PetscInt) * loc_size, &o_nnz);
+
+        if (world.rank() == 1) {
+            std::cout << "Allocated d_nnz and o_nnz" << std::endl;
+        }
+
+
+        for (i = rstart; i < rend; i++)
+        {
+            int i_loc = i - rstart;
+            std::map<int, float_type> row = ifherk.Jac.mat[i_loc+1];
+            PetscInt n_loc = 0;
+            PetscInt n_out = 0;
+            
+            for (const auto& [key, val] : row) {
+                PetscInt key1 = key;
+                if (key1 <= rend && key1 > rstart) {
+                    //key is 1-based while the rstart rend indices are zero based
+                    n_loc += 1;
+                }
+                else {
+                    n_out += 1;
+                }
+            }
+            d_nnz[i_loc] = n_loc;
+            o_nnz[i_loc] = n_out;
+        }
+
+        if (world.rank() == 1) {
+            std::cout << "Computed d_nnz and o_nnz" << std::endl;
+        }
+        
+        PetscCall(MatCreateAIJ(PETSC_COMM_WORLD, nlocal, nlocal, n, n, NULL, d_nnz, NULL, o_nnz, &A));
         MatSetType(A,MATMPIAIJ);
         //PetscCall(MatCreateMPIAIJWithArrays(PETSC_COMM_WORLD, nlocal, nlocal, n, n, ia, ja, a, &A));
-        PetscCall(MatSetSizes(A, nlocal, nlocal, n, n));
+        //PetscCall(MatSetSizes(A, nlocal, nlocal, n, n));
         PetscCall(MatSetFromOptions(A));
         PetscCall(MatSetUp(A));
 
@@ -831,7 +934,26 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
             //int i_s = i -1;
             //if (i!= 0) PetscCall(MatSetValues(A, 1, &i, 1, &i_s, &loc_v, INSERT_VALUES));
             std::map<int, float_type> row = ifherk.Jac.mat[i_loc+1];
-            for (const auto& [key, val] : row)
+            std::vector<PetscScalar> row_val;
+            std::vector<PetscInt> row_idx;
+            row_val.resize(row.size());
+            row_idx.resize(row.size());
+            int counter = 0;
+            
+            for (const auto& [key, val] : row) {
+                row_val[counter] = val;
+                row_idx[counter] = key - 1;
+                counter++;
+            }
+
+            /*if (counter > 200) {
+                if (world.rank() == 1) {
+                    std::cout << "On rank 1, start to fill in matrix row " << i << " with number of entries " << counter <<  std::endl;
+                }
+            }*/
+
+            PetscCall(MatSetValues(A, 1, &i, counter, row_idx.data(), row_val.data(), INSERT_VALUES));
+            /*for (const auto& [key, val] : row)
             {
                 int loc_col = key-1;
                 if (!std::isfinite(val)) {
@@ -840,7 +962,13 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
 
                 PetscScalar valComplex = val + 0.0*PETSC_i;
                 PetscCall(MatSetValues(A, 1, &i, 1, &loc_col, &valComplex, INSERT_VALUES));
-            }
+            }*/
+
+            /*if (counter > 200) {
+                if (world.rank() == 1) {
+                    std::cout << "On rank 1, end filling in matrix row " << i << " with number of entries " << counter <<  std::endl;
+                }
+            }*/
 
             std::map<int, float_type> row1 = ifherk.B.mat[i_loc+1];
             /*if (row1.size() == 0) {
@@ -849,17 +977,18 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
             }*/
             for (const auto& [key, val] : row1)
             {
-                int loc_col = key-1;
+                PetscInt loc_col = key-1;
                 if (!std::isfinite(val)) {
                     std::cout << "mat B rank " << world.rank() << " row " << i << " loc_col " << loc_col << std::endl;
                 }
-                PetscScalar valComplex = val + 0.0*PETSC_i;
-                PetscCall(MatSetValues(B, 1, &i, 1, &loc_col, &valComplex, INSERT_VALUES));
+                PetscScalar valComplex = val;
+                PetscCall(MatSetValue(B, i, loc_col, valComplex, INSERT_VALUES));
             }
         }
 
-
-        
+        if (world.rank() == 1) {
+            std::cout << "finished setting values" << std::endl;
+        }
 
         MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY);
         MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY);
@@ -868,7 +997,9 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
         MatAssemblyEnd(B,MAT_FINAL_ASSEMBLY);
 
 
-        
+        if (world.rank() == 1) {
+            std::cout << "finished Assemblying" << std::endl;
+        }
 
         PetscCall(EPSCreate(PETSC_COMM_WORLD, &eps));
 
@@ -878,9 +1009,11 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
         PetscCall(EPSSetOperators(eps, A, B));
         EPSSetProblemType(eps,EPS_PGNHEP);
         EPSSetDimensions(eps,5,PETSC_DEFAULT,PETSC_DEFAULT);
+
+        
         
         EPSSetWhichEigenpairs(eps,	EPS_TARGET_MAGNITUDE);
-        PetscScalar valComplex = 1.5 + 1.5*PETSC_i;
+        PetscScalar valComplex = 1.5;
         PetscCall(EPSSetTarget(eps,valComplex));
         //EPSSetWhichEigenpairs(eps,EPS_SMALLEST_MAGNITUDE);
 
@@ -923,24 +1056,42 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
        MatMkl_CPardisoSetCntl(K,iparm[17],18);
        MatMkl_CPardisoSetCntl(K,iparm[18],19);
        MatMkl_CPardisoSetCntl(K,iparm[26],27);
+       MatMkl_CPardisoSetCntl(K,1,        68); //display all info
        //MatMkl_CPardisoSetCntl(K,iparm[39],40);
        //MatMumpsSetIcntl(K,14,50);
        //MatMumpsSetCntl(K,3,1e-12);
 #endif
 
-
+        if (world.rank() == 2) {
+            std::cout << "set up of pardiso finished" << std::endl;
+        }
 
         /*
      Set solver parameters at runtime
   */
         PetscCall(EPSSetFromOptions(eps));
 
+        if (world.rank() == 2) {
+            std::cout << "set up of eps finished" << std::endl;
+        }
+
         /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
                       Solve the eigensystem
      - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
 
+        if (set_deflation) PetscCall(EPSSetDeflationSpace(eps, 1, &b));
+
         PetscCall(EPSSolve(eps));
+
+        if (world.rank() == 2) {
+            std::cout << "EPS solved" << std::endl;
+        }
+
         PetscCall(EPSGetIterationNumber(eps, &its));
+
+        if (world.rank() == 2) {
+            std::cout << "Iteration number got" << std::endl;
+        } 
         PetscCall(PetscPrintf(PETSC_COMM_WORLD,
             " Number of iterations of the method: %" PetscInt_FMT "\n", its));
 
@@ -974,7 +1125,49 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
                 PETSC_VIEWER_STDOUT_WORLD));
             PetscCall(PetscViewerPopFormat(PETSC_VIEWER_STDOUT_WORLD));
         }
-        PetscCall(EPSDestroy(&eps));
+
+        EPSGetEigenvector(eps,0, x, NULL);
+
+        for (i = rstart; i < rend;i++) {
+            int i_loc = i - rstart;
+            PetscScalar tmp;
+            PetscCall(VecGetValues(x, 1, &i, &tmp));
+            x0_real[i_loc] = PetscRealPart(tmp);
+            x0_imag[i_loc] = PetscImaginaryPart(tmp);
+        }
+
+        EPSGetEigenvector(eps,1, x, NULL);
+
+        for (i = rstart; i < rend;i++) {
+            int i_loc = i - rstart;
+            PetscScalar tmp;
+            PetscCall(VecGetValues(x, 1, &i, &tmp));
+            x1_real[i_loc] = PetscRealPart(tmp);
+            x1_imag[i_loc] = PetscImaginaryPart(tmp);
+        }
+
+        EPSGetEigenvector(eps,2, x, NULL);
+
+        for (i = rstart; i < rend;i++) {
+            int i_loc = i - rstart;
+            PetscScalar tmp;
+            PetscCall(VecGetValues(x, 1, &i, &tmp));
+            x2_real[i_loc] = PetscRealPart(tmp);
+            x2_imag[i_loc] = PetscImaginaryPart(tmp);
+        }
+
+        EPSGetEigenvector(eps,3, x, NULL);
+
+        for (i = rstart; i < rend;i++) {
+            int i_loc = i - rstart;
+            PetscScalar tmp;
+            PetscCall(VecGetValues(x, 1, &i, &tmp));
+            x3_real[i_loc] = PetscRealPart(tmp);
+            x3_imag[i_loc] = PetscImaginaryPart(tmp);
+        }
+
+        MPI_Barrier(PETSC_COMM_WORLD);
+        //PetscCall(EPSDestroy(&eps));
         PetscCall(MatDestroy(&A));
         PetscCall(MatDestroy(&B));
         
@@ -989,6 +1182,40 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
 
         PetscCall(SlepcFinalize());
         }
+
+
+        ifherk.CSR2Grid<u_num_inv_type, p_num_inv_type, w_num_inv_type>(x0_real, forcing_ref);
+        //if (world.rank() != 0) ifherk.pad_velocity<u_num_inv_type, u_num_inv_type>(true);
+        if (world.rank() != 0) ifherk.Curl_access<u_num_inv_type, w_ref_type>();
+        simulation_.write("x0_real.hdf5");
+        ifherk.CSR2Grid<u_num_inv_type, p_num_inv_type, w_num_inv_type>(x0_imag, forcing_ref);
+        //if (world.rank() != 0) ifherk.pad_velocity<u_num_inv_type, u_num_inv_type>(true);
+        if (world.rank() != 0) ifherk.Curl_access<u_num_inv_type, w_ref_type>();
+        simulation_.write("x0_imag.hdf5");
+        ifherk.CSR2Grid<u_num_inv_type, p_num_inv_type, w_num_inv_type>(x1_real, forcing_ref);
+        //if (world.rank() != 0) ifherk.pad_velocity<u_num_inv_type, u_num_inv_type>(true);
+        if (world.rank() != 0) ifherk.Curl_access<u_num_inv_type, w_ref_type>();
+        simulation_.write("x1_real.hdf5");
+        ifherk.CSR2Grid<u_num_inv_type, p_num_inv_type, w_num_inv_type>(x1_imag, forcing_ref);
+        //if (world.rank() != 0) ifherk.pad_velocity<u_num_inv_type, u_num_inv_type>(true);
+        if (world.rank() != 0) ifherk.Curl_access<u_num_inv_type, w_ref_type>();
+        simulation_.write("x1_imag.hdf5");
+        ifherk.CSR2Grid<u_num_inv_type, p_num_inv_type, w_num_inv_type>(x2_real, forcing_ref);
+        //if (world.rank() != 0) ifherk.pad_velocity<u_num_inv_type, u_num_inv_type>(true);
+        if (world.rank() != 0) ifherk.Curl_access<u_num_inv_type, w_ref_type>();
+        simulation_.write("x2_real.hdf5");
+        ifherk.CSR2Grid<u_num_inv_type, p_num_inv_type, w_num_inv_type>(x2_imag, forcing_ref);
+        //if (world.rank() != 0) ifherk.pad_velocity<u_num_inv_type, u_num_inv_type>(true);
+        if (world.rank() != 0) ifherk.Curl_access<u_num_inv_type, w_ref_type>();
+        simulation_.write("x2_imag.hdf5");
+        ifherk.CSR2Grid<u_num_inv_type, p_num_inv_type, w_num_inv_type>(x3_real, forcing_ref);
+        //if (world.rank() != 0) ifherk.pad_velocity<u_num_inv_type, u_num_inv_type>(true);
+        if (world.rank() != 0) ifherk.Curl_access<u_num_inv_type, w_ref_type>();
+        simulation_.write("x3_real.hdf5");
+        ifherk.CSR2Grid<u_num_inv_type, p_num_inv_type, w_num_inv_type>(x3_imag, forcing_ref);
+        //if (world.rank() != 0) ifherk.pad_velocity<u_num_inv_type, u_num_inv_type>(true);
+        if (world.rank() != 0) ifherk.Curl_access<u_num_inv_type, w_ref_type>();
+        simulation_.write("x3_imag.hdf5");
 
         return 0;
 
@@ -1226,6 +1453,7 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
 
     bool clean_p_tar;
     bool testing_smearing = false;
+    bool set_deflation=false;
 
     std::vector<float_type> U_;
     //bool subtract_non_leaf_  = true;

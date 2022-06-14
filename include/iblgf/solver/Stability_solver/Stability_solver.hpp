@@ -138,10 +138,12 @@ class Stability
 
 		//time_integration_t ifherk(&this->simulation_);
 
+        ifherk.Assigning_idx();
+
         if (world.rank() != 0) ifherk.template pad_velocity<U_old, U_old>(true);
 
         
-        ifherk.Assigning_idx();
+        
 		world.barrier();
 
         ifherk.construct_Jac_p();
@@ -167,11 +169,11 @@ class Stability
         //iparm[1] = 0;  /* Use METIS for fill-in reordering */
         iparm[1] = 2;  /* Use METIS for fill-in reordering */
         iparm[5] = 0;  /* Write solution into x */
-        iparm[7] = 10;  /* Max number of iterative refinement steps */
+        iparm[7] = 5;  /* Max number of iterative refinement steps, negative means using quad precision */
         iparm[9] = 13; /* Perturb the pivot elements with 1E-13 */
         iparm[10] = 1; /* Use nonsymmetric permutation and scaling MPS */
-        iparm[12] = 1; /* Switch on Maximum Weighted Matching algorithm (default for non-symmetric) */
-        //iparm[12] = 0; /* Switch on Maximum Weighted Matching algorithm (default for non-symmetric) */
+        iparm[12] = 1; /* Switch on Maximum Weighted Matching algorithm */
+        //iparm[12] = 0; /* Switch off Maximum Weighted Matching algorithm */
         iparm[17] = -1; /* Output: Number of nonzeros in the factor LU */
         iparm[18] = -1; /* Output: Mflops for LU factorization */
         //iparm[23] = 10;
@@ -193,7 +195,7 @@ class Stability
         if (world.rank() != 0) ifherk.template pad_velocity<U_old, U_old>(true);
 
         ifherk.template construct_Jac_from_Jac_p<U_old>();
-        ifherk.Jac.clean_entry(1e-10);
+        ifherk.Jac.clean_entry(1e-12);
 
         return 0;
     }
@@ -215,6 +217,8 @@ class Stability
         forcing_tmp.resize(domain_->ib().size());
 
         ifherk.template NewtonRHS<Face, Cell, fu_i_type, fp_i_type>(forcing_vec, forcing_tmp);
+
+        //if (world.rank() != 0) ifherk.template Curl_access<Face, fw_i_type>();
 
         ifherk.template clean<face_aux_type>();
         ifherk.template clean<cell_aux_type>();
@@ -279,6 +283,7 @@ class Stability
             int check_size = ifherk.Jac.numRow_loc();
 
             for (int k =0 ; k < loc_size; k++) {
+                //if (std::abs(x[k]) > 1e6) continue;
                 x_old[k] -= x[k];
                 res_loc += (x[k]*x[k]);
                 f2_loc += x_old[k]*x_old[k];
@@ -400,6 +405,7 @@ class Stability
                 std::cout << "Inf Res of Newton Iteration is " << linf_err << std::endl;
             }
             if (std::sqrt(state_err) < Newton_threshold_) {
+                write_restart();
                 break;
             }
 
@@ -411,6 +417,25 @@ class Stability
             simulation_->write(dest_name);
             this->template Update_Newton_Matrix<Face>();
         }
+    }
+
+    void write_restart()
+    {
+        boost::mpi::communicator world;
+
+        world.barrier();
+        if (domain_->is_server())
+        {
+            std::cout << "restart: backup" << std::endl;
+            simulation_->copy_restart();
+        }
+        world.barrier();
+
+        if (world.rank() == 1) std::cout << "restart: write" << std::endl;
+        simulation_->write("", true);
+
+        //write_info();
+        world.barrier();
     }
 
     template<class Numeric, class Exact, class Error>

@@ -10,13 +10,8 @@
 //     ▐░░░░░░░░░░░▌▐░░░░░░░░░░▌ ▐░░░░░░░░░░░▌▐░░░░░░░░░░░▌▐░▌
 //      ▀▀▀▀▀▀▀▀▀▀▀  ▀▀▀▀▀▀▀▀▀▀   ▀▀▀▀▀▀▀▀▀▀▀  ▀▀▀▀▀▀▀▀▀▀▀  ▀
 
-#ifndef IBLGF_INCLUDED_LINEAR_NS_HPP
-#define IBLGF_INCLUDED_LINEAR_NS_HPP
-
-//this is the operator for linearized Navier-Stokes equations, 
-//The difference of this from the Newton iteration Jacobian is that this method is that
-//we use LGF to compute boundary condition of pressure instead of velocity
-//and use -C^TC as the laplacian (since u is div free) 
+#ifndef IBLGF_INCLUDED_LINEARNS_HPP
+#define IBLGF_INCLUDED_LINEARNS_HPP
 
 #include <iostream>
 #include <algorithm>
@@ -26,6 +21,7 @@
 #include <set>
 
 // IBLGF-specific
+#include <iblgf/solver/Newton/SparseMat.hpp>
 #include <iblgf/global.hpp>
 #include <iblgf/simulation.hpp>
 #include <iblgf/domain/domain.hpp>
@@ -44,219 +40,10 @@ namespace solver
 {
 using namespace domain;
 
-class sparse_mat
-{
-  public:
-    sparse_mat() = default;
-    void resizing_row(int n) { mat.resize(n); }
-    void clean() { mat.resize(0); }
-    void add_element(int n, int m, float_type val)
-    {
-        if (m <= 0) return;
-        auto it = mat[n].find(m);
-        if (it == mat[n].end()) { mat[n][m] = val; }
-        else
-        {
-            it->second += val;
-        }
-    }
-
-    sparse_mat operator+(const sparse_mat& b)
-    {
-        if (this->mat.size() != b.mat.size())
-        {
-            std::cout << "size are " << this->mat.size() << " and "
-                      << b.mat.size() << std::endl;
-            throw std::runtime_error(
-                "sparse matrix does not have the same dim, cannot add");
-        }
-        sparse_mat res;
-        res.mat.resize(this->mat.size());
-        for (int i = 1; i < mat.size(); i++)
-        {
-            for (const auto& [key, val] : this->mat[i])
-            {
-                res.mat[i][key] = val;
-            }
-            for (const auto& [key, val] : b.mat[i])
-            {
-                res.add_element(i, key, val);
-            }
-        }
-        return res;
-    }
-
-    void add_vec(const sparse_mat& b, float_type factor = 1.0)
-    {
-        if (this->mat.size() != b.mat.size())
-        {
-            std::cout
-                << "sparse matrix does not have the same dim, cannot in place add"
-                << std::endl;
-            return;
-        }
-        for (int i = 1; i < mat.size(); i++)
-        {
-            for (const auto& [key, val] : b.mat[i])
-            {
-                this->add_element(i, key, (val * factor));
-            }
-        }
-    }
-
-    void print_row(int n)
-    {
-        for (const auto& [key, val] : this->mat[n])
-        {
-            //int idx1 = std::get<0>(key1);
-            std::cout << n << " " << key << " " << val << " || ";
-        }
-        std::cout << std::endl;
-    }
-
-    void print_row_full(int n)
-    {
-        for (int i = 0; i < mat.size(); i++)
-        {
-            auto it = mat[n].find(i);
-            if (it == mat[n].end()) { std::cout << 0.00 << " " << std::endl; }
-            else
-            {
-                std::cout << it->second << " ";
-            }
-        }
-        std::cout << std::endl;
-    }
-
-    //get the number of element to reserve space for CSR format
-    int tot_size(bool include_zero = false)
-    {
-        //should not include zero but the result should be the same, this is only for debugging
-        int res = 0;
-        int begin_num = 1;
-        if (include_zero) { begin_num = 0; }
-        for (int i = begin_num; i < mat.size(); i++) { res += mat[i].size(); }
-        return res;
-    }
-    template<class int_type, class value_type>
-    void getCSR(int_type* ia, int_type* ja, value_type* a)
-    {
-        //for intel Pardiso default CSR format
-        int_type counter = 0;
-        for (int i = 1; i < mat.size(); i++)
-        {
-            ia[i - 1] = counter + 1;
-            for (const auto& [key, val] : mat[i])
-            {
-                //int idx1 = std::get<0>(key1);
-                //std::cout << n << " " << key << " " << val << " || ";
-                if (key < 0) { std::cout << "Negative key" << std::endl; }
-                ja[counter] = key;
-                a[counter] = val;
-                counter++;
-            }
-        }
-        ia[mat.size() - 1] = counter + 1;
-    }
-
-    template<class int_type, class value_type>
-    void getIdx(int_type* ia, int_type* ja, value_type* a, int_type begin)
-    {
-        //get the entry idx i and j from (a_ij) 
-        //this is beginning with 0, 0
-        //this is only used to set matrix for Petsc, cannot be used with Intel Pardiso directly
-        int_type counter = 0;
-        for (int i = 1; i < mat.size(); i++)
-        {
-            //ia[i - 1] = counter + 1;
-            for (const auto& [key, val] : mat[i])
-            {
-                //int idx1 = std::get<0>(key1);
-                //std::cout << n << " " << key << " " << val << " || ";
-                if (key < 0) { std::cout << "Negative key" << std::endl; }
-                ja[counter] = key - 1;
-                ia[counter] = i - 1 + begin;
-                a[counter] = val;
-                counter++;
-            }
-        }
-    }
-
-    template<class int_type, class value_type>
-    void getCSR_zero_begin(int_type* ia, int_type* ja, value_type* a)
-    {
-        int_type counter = 0;
-        for (int i = 1; i < mat.size(); i++)
-        {
-            ia[i - 1] = counter;
-            for (const auto& [key, val] : mat[i])
-            {
-                //int idx1 = std::get<0>(key1);
-                //std::cout << n << " " << key << " " << val << " || ";
-                if (key <= 0) { std::cout << "Negative key" << std::endl; }
-                ja[counter] = key - 1;
-                a[counter] = val;
-                counter++;
-            }
-        }
-        ia[mat.size() - 1] = counter;
-    }
-
-    void clean_entry(float_type th_val = 1e-12)
-    {
-        for (int i = 1; i < mat.size(); i++)
-        {
-            for (const auto& [key, val] : mat[i])
-            {
-                if (std::abs(val) < th_val) { mat[i].erase(key); }
-            }
-        }
-    }
-
-    template<class value_type>
-    void Apply(value_type* x, value_type* b)
-    {
-        int counter = 0;
-        for (int i = 1; i < mat.size(); i++)
-        {
-            value_type tmp = 0;
-
-            for (const auto& [key, val] : mat[i])
-            {
-                //int idx1 = std::get<0>(key1);
-                //std::cout << n << " " << key << " " << val << " || ";
-                if (key < 0) { std::cout << "Negative key" << std::endl; }
-                tmp += x[key - 1] * val;
-            }
-            b[i - 1] = tmp;
-        }
-        //ia[mat.size()-1] = counter+1;
-    }
-
-    void scale_entries(float_type factor)
-    {
-        for (int i = 1; i < mat.size(); i++)
-        {
-            for (const auto& [key, val] : mat[i])
-            {
-                //int idx1 = std::get<0>(key1);
-                //std::cout << n << " " << key << " " << val << " || ";
-                if (key < 0) { std::cout << "Negative key" << std::endl; }
-                mat[i][key] *= factor;
-            }
-        }
-    }
-
-    int numRow_loc() { return mat.size() - 1; }
-
-  public:
-    std::vector<std::map<int, float_type>> mat;
-};
-
 /** @brief Integrating factor 3-stage Runge-Kutta time integration
  * */
 template<class Setup>
-class NewtonIteration
+class LinearNS
 {
   public: //member types
 
@@ -331,9 +118,13 @@ class NewtonIteration
     using idx_u_type = typename Setup::idx_u_type;
     using idx_p_type = typename Setup::idx_p_type;
     using idx_w_type = typename Setup::idx_w_type;
+    using idx_N_type = typename Setup::idx_N_type;
+    using idx_cs_type = typename Setup::idx_cs_type;
     using idx_u_g_type = typename Setup::idx_u_g_type;
     using idx_p_g_type = typename Setup::idx_p_g_type;
     using idx_w_g_type = typename Setup::idx_w_g_type;
+    using idx_N_g_type = typename Setup::idx_N_g_type;
+    using idx_cs_g_type = typename Setup::idx_cs_g_type;
 
     //variable fields for conjugate gradient
     /*using conj_r_face_aux_type = typename Setup::conj_r_face_aux_type;
@@ -362,7 +153,7 @@ class NewtonIteration
 
     static constexpr int lBuffer = 1; ///< Lower left buffer for interpolation
     static constexpr int rBuffer = 1; ///< Lower left buffer for interpolation
-    NewtonIteration(simulation_type* _simulation)
+    LinearNS(simulation_type* _simulation)
     : simulation_(_simulation)
     , domain_(_simulation->domain_.get())
     , psolver(_simulation)
@@ -403,7 +194,6 @@ class NewtonIteration
         adapt_freq_ = _simulation->dictionary()->template get_or<float_type>(
             "adapt_frequency", 1);
         T_max_ = tot_base_steps_ * dt_base_;
-        update_marching_parameters();
 
         // support of IF in every dirrection is about 3.2 corresponding to 1e-5
         // with coefficient alpha = 1
@@ -525,186 +315,6 @@ class NewtonIteration
     }
 
   public:
-    void update_marching_parameters()
-    {
-        nLevelRefinement_ =
-            domain_->tree()->depth() - domain_->tree()->base_level() - 1;
-        dt_ = dt_base_ / math::pow2(nLevelRefinement_);
-
-        float_type tmp = Re_ * dx_base_ * dx_base_ / dt_;
-        alpha_[0] = (c_[1] - c_[0]) / tmp;
-        alpha_[1] = (c_[2] - c_[1]) / tmp;
-        alpha_[2] = (c_[3] - c_[2]) / tmp;
-    }
-    void time_march(bool use_restart = false)
-    {
-        use_restart_ = use_restart;
-        boost::mpi::communicator          world;
-        parallel_ostream::ParallelOstream pcout =
-            parallel_ostream::ParallelOstream(world.size() - 1);
-
-        pcout
-            << "Time marching ------------------------------------------------ "
-            << std::endl;
-        // --------------------------------------------------------------------
-        if (use_restart_)
-        {
-            just_restarted_ = true;
-            Dictionary info_d(
-                simulation_->restart_load_dir() + "/restart_info");
-            T_ = info_d.template get<float_type>("T");
-            adapt_count_ = info_d.template get<int>("adapt_count");
-            T_last_vel_refresh_ =
-                info_d.template get_or<float_type>("T_last_vel_refresh", 0.0);
-            source_max_[0] = info_d.template get<float_type>("cell_aux_max");
-            source_max_[1] = info_d.template get<float_type>("u_max");
-            pcout
-                << "Restart info ------------------------------------------------ "
-                << std::endl;
-            pcout << "T = " << T_ << std::endl;
-            pcout << "adapt_count = " << adapt_count_ << std::endl;
-            pcout << "cell aux max = " << source_max_[0] << std::endl;
-            pcout << "u max = " << source_max_[1] << std::endl;
-            pcout << "T_last_vel_refresh = " << T_last_vel_refresh_
-                  << std::endl;
-            if (domain_->is_client())
-            {
-                //pad_velocity<u_type, u_type>(true);
-            }
-        }
-        else
-        {
-            T_ = 0.0;
-            adapt_count_ = 0;
-
-            write_timestep();
-        }
-
-        // ----------------------------------- start -------------------------
-
-        while (T_ < T_max_ - 1e-10)
-        {
-            // -------------------------------------------------------------
-            // adapt
-
-            // clean up the block boundary of cell_aux_type for smoother adaptation
-
-            if (domain_->is_client())
-            {
-                clean<cell_aux_type>(true, 2);
-                clean<edge_aux_type>(true, 1);
-                clean<correction_tmp_type>(true, 2);
-            }
-            else
-            {
-                //const auto& lb = domain_->level_blocks();
-                /*std::vector<int> lb;
-		domain_->level_blocks(lb);*/
-                auto lb = domain_->level_blocks();
-                std::cout << "Blocks on each level: ";
-
-                for (int c : lb) std::cout << c << " ";
-                std::cout << std::endl;
-            }
-
-            // copy flag correction to flag old correction
-            for (auto it = domain_->begin(); it != domain_->end(); ++it)
-            {
-                it->flag_old_correction(false);
-            }
-
-            for (auto it = domain_->begin(domain_->tree()->base_level());
-                 it != domain_->end(domain_->tree()->base_level()); ++it)
-            {
-                it->flag_old_correction(it->is_correction());
-            }
-
-            int c = 0;
-
-            for (auto it = domain_->begin(); it != domain_->end(); ++it)
-            {
-                if (!it->locally_owned()) continue;
-                if (it->is_ib() || it->is_extended_ib())
-                {
-                    auto& lin_data =
-                        it->data_r(test_type::tag(), 0).linalg_data();
-                    std::fill(lin_data.begin(), lin_data.end(), 2.0);
-                    c += 1;
-                }
-            }
-            boost::mpi::communicator world;
-            int                      c_all;
-            boost::mpi::all_reduce(world, c, c_all, std::plus<int>());
-            pcout << "block = " << c_all << std::endl;
-
-            if (adapt_count_ % adapt_freq_ == 0)
-            {
-                if (adapt_count_ == 0 || updating_source_max_)
-                {
-                    this->template update_source_max<cell_aux_type>(0);
-                    this->template update_source_max<edge_aux_type>(1);
-                }
-
-                //if(domain_->is_client())
-                //{
-                //    up_and_down<u>();
-                //    pad_velocity<u, u>();
-                //}
-                if (!just_restarted_) this->adapt(false);
-                just_restarted_ = false;
-            }
-
-            // balance load
-            if (adapt_count_ % adapt_freq_ == 0)
-            {
-                clean<u_type>(true);
-                //domain_->decomposition().template balance<u_type,p_type>();
-            }
-
-            adapt_count_++;
-
-            // -------------------------------------------------------------
-            // time marching
-
-            mDuration_type ifherk_if(0);
-            TIME_CODE(ifherk_if, SINGLE_ARG(time_step();));
-            pcout << ifherk_if.count() << std::endl;
-
-            // -------------------------------------------------------------
-            // update stats & output
-
-            T_ += dt_;
-            float_type tmp_n = T_ / dt_base_ * math::pow2(max_ref_level_);
-            int        tmp_int_n = int(tmp_n + 0.5);
-
-            if (write_restart_ && (std::fabs(tmp_int_n - tmp_n) < 1e-4) &&
-                (tmp_int_n % restart_base_freq_ == 0))
-            {
-                restart_n_last_ = tmp_int_n;
-                write_restart();
-            }
-
-            if ((std::fabs(tmp_int_n - tmp_n) < 1e-4) &&
-                (tmp_int_n % output_base_freq_ == 0))
-            {
-                //test
-                //
-
-                //clean<test_type>();
-                //auto f = [](std::size_t idx, float_type t, auto coord = {0, 0, 0}){return 1.0;};
-                //domain::Operator::add_field_expression<test_type>(domain_, f, T_, 1.0);
-                //clean_leaf_correction_boundary<test_type>(domain_->tree()->base_level(),true,2);
-
-                n_step_ = tmp_int_n;
-                write_timestep();
-                // only update dt after 1 output so it wouldn't do 3 5 7 9 ...
-                // and skip all outputs
-                update_marching_parameters();
-            }
-
-            write_stats(tmp_n);
-        }
-    }
     template<class Field>
     void clean_up_initial_velocity()
     {
@@ -768,168 +378,6 @@ class NewtonIteration
             gradient<cell_aux_tmp_type,face_aux_tmp_type>();
             domain_->client_communicator().barrier();
             add<face_aux_tmp_type, Field>(-1.0);
-        }
-    }
-
-    template<class Field>
-    void update_source_max(int idx)
-    {
-        float_type max_local = 0.0;
-        for (auto it = domain_->begin(); it != domain_->end(); ++it)
-        {
-            if (!it->locally_owned()) continue;
-            float_type tmp =
-                domain::Operator::blockRootMeanSquare<Field>(it->data());
-
-            if (tmp > max_local) max_local = tmp;
-        }
-
-        float_type new_maximum = 0.0;
-        boost::mpi::all_reduce(comm_, max_local, new_maximum,
-            boost::mpi::maximum<float_type>());
-
-        //source_max_[idx] = std::max(source_max_[idx], new_maximum);
-        if (all_time_max_)
-            source_max_[idx] = std::max(source_max_[idx], new_maximum);
-        else
-            source_max_[idx] = 0.5 * (source_max_[idx] + new_maximum);
-
-        if (source_max_[idx] < 1e-2) source_max_[idx] = 1e-2;
-
-        pcout << "source max = " << source_max_[idx] << std::endl;
-    }
-
-    void write_restart()
-    {
-        boost::mpi::communicator world;
-
-        world.barrier();
-        if (domain_->is_server() && write_restart_)
-        {
-            std::cout << "restart: backup" << std::endl;
-            simulation_->copy_restart();
-        }
-        world.barrier();
-
-        pcout << "restart: write" << std::endl;
-        simulation_->write("", true);
-
-        write_info();
-        world.barrier();
-    }
-
-    void write_stats(int tmp_n)
-    {
-        boost::mpi::communicator world;
-        world.barrier();
-
-        // - Numeber of cells -----------------------------------------------
-        int c_allc_global;
-        int c_allc = domain_->num_allocations();
-        boost::mpi::all_reduce(world, c_allc, c_allc_global, std::plus<int>());
-
-        if (domain_->is_server())
-        {
-            std::cout << "T = " << T_ << ", n = " << tmp_n
-                      << " -----------------" << std::endl;
-            auto lb = domain_->level_blocks();
-            std::cout << "Blocks on each level: ";
-
-            for (int c : lb) std::cout << c << " ";
-            std::cout << std::endl;
-
-            std::cout << "Total number of leaf octants: "
-                      << domain_->num_leafs() << std::endl;
-            std::cout << "Total number of leaf + correction octants: "
-                      << domain_->num_corrections() + domain_->num_leafs()
-                      << std::endl;
-            std::cout << "Total number of allocated octants: " << c_allc_global
-                      << std::endl;
-            std::cout << " -----------------" << std::endl;
-        }
-
-        // - Forcing ------------------------------------------------
-        auto& ib = domain_->ib();
-        ib.clean_non_local();
-        real_coordinate_type tmp_coord(0.0);
-
-        force_type sum_f(ib.force().size(), tmp_coord);
-        if (ib.size() > 0)
-        {
-            boost::mpi::all_reduce(world, &ib.force(0), ib.size(), &sum_f[0],
-                std::plus<real_coordinate_type>());
-        }
-        if (domain_->is_server())
-        {
-            std::vector<float_type> f(domain_->dimension(), 0.);
-            if (ib.size() > 0)
-            {
-                for (std::size_t d = 0; d < domain_->dimension(); ++d)
-                    for (std::size_t i = 0; i < ib.size(); ++i)
-                        f[d] += sum_f[i][d] * 1.0 / coeff_a(3, 3) / dt_ *
-                                ib.force_scale();
-                //f[d]+=sum_f[i][d] * 1.0 / dt_ * ib.force_scale();
-
-                std::cout << "ib  size: " << ib.size() << std::endl;
-                std::cout << "Forcing = ";
-
-                for (std::size_t d = 0; d < domain_->dimension(); ++d)
-                    std::cout << f[d] << " ";
-                std::cout << std::endl;
-
-                std::cout << " -----------------" << std::endl;
-            }
-
-            std::ofstream outfile;
-            int           width = 20;
-
-            outfile.open("fstats.txt",
-                std::ios_base::app); // append instead of overwrite
-            outfile << std::setw(width) << tmp_n << std::setw(width)
-                    << std::scientific << std::setprecision(9);
-            outfile << std::setw(width) << T_ << std::setw(width)
-                    << std::scientific << std::setprecision(9);
-            for (auto& element : f) { outfile << element << std::setw(width); }
-            outfile << std::endl;
-        }
-
-        world.barrier();
-    }
-
-    void write_timestep()
-    {
-        boost::mpi::communicator world;
-        world.barrier();
-        pcout << "- writing at T = " << T_ << ", n = " << n_step_ << std::endl;
-        simulation_->write(fname(n_step_));
-        //simulation_->domain()->tree()->write("tree_restart.bin");
-        world.barrier();
-        //simulation_->domain()->tree()->read("tree_restart.bin");
-        pcout << "- output writing finished -" << std::endl;
-    }
-
-    void write_info()
-    {
-        if (domain_->is_server())
-        {
-            std::ofstream ofs(simulation_->restart_write_dir() +
-                                  "/restart_info",
-                std::ofstream::out);
-            if (!ofs.is_open())
-            {
-                throw std::runtime_error("Could not open file for info write ");
-            }
-
-            ofs.precision(20);
-            ofs << "T = " << T_ << ";" << std::endl;
-            ofs << "adapt_count = " << adapt_count_ << ";" << std::endl;
-            ofs << "cell_aux_max = " << source_max_[0] << ";" << std::endl;
-            ofs << "u_max = " << source_max_[1] << ";" << std::endl;
-            ofs << "restart_n_last = " << restart_n_last_ << ";" << std::endl;
-            ofs << "T_last_vel_refresh = " << T_last_vel_refresh_ << ";"
-                << std::endl;
-
-            ofs.close();
         }
     }
 
@@ -1031,62 +479,6 @@ class NewtonIteration
         world.barrier();
         pcout << "Adapt - done" << std::endl;
     }
-
-    void time_step()
-    {
-        // Initialize IFHERK
-        // q_1 = u_type
-        boost::mpi::communicator world;
-        auto                     client = domain_->decomposition().client();
-
-        T_stage_ = T_;
-
-        ////claen non leafs
-
-        stage_idx_ = 0;
-
-        // Solve stream function to refresh base level velocity
-        mDuration_type t_pad(0);
-        TIME_CODE(t_pad, SINGLE_ARG(
-                             pcout << "base level mesh update = "
-                                   << base_mesh_update_ << std::endl;
-                             if (base_mesh_update_ ||
-                                 ((T_ - T_last_vel_refresh_) /
-                                         (Re_ * dx_base_ * dx_base_) * 3.3 >
-                                     7))
-                             {
-                                 pcout << "pad_velocity, last T_vel_refresh = "
-                                       << T_last_vel_refresh_ << std::endl;
-                                 T_last_vel_refresh_ = T_;
-                                 if (!domain_->is_client()) return;
-                                 pad_velocity<u_type, u_type>(true);
-                             } else
-                             {
-                                 if (!domain_->is_client()) return;
-                                 up_and_down<u_type>();
-                             }));
-        base_mesh_update_ = false;
-        pcout << "pad u      in " << t_pad.count() << std::endl;
-
-        //clean<R_1_type>();
-        //copy<u_type, u_i_type>();
-        auto forcing_df = forcing_old;
-        NewtonRHS<u_type, p_type, fu_i_type, fp_i_type>(forcing_old, forcing_tmp);
-        //Solve_Jacobian<fu_i_type, fp_i_type, du_i_type, dp_i_type>(forcing_tmp, forcing_df);
-        //BCG_Stab<fu_i_type, fp_i_type, du_i_type, dp_i_type>(forcing_tmp, forcing_df);
-        //add<nonlinear_tmp1_type, R_1_type>();
-        //AddAll<du_i_type, dp_i_type, u_type, p_type>(forcing_df, forcing_old, -1.0);
-
-        float_type res = this->template dotAll<fu_i_type, fp_i_type, fu_i_type, fp_i_type>(forcing_tmp, forcing_tmp);
-        float_type f2 = this->template dotAll<u_type, p_type, u_type, p_type>(forcing_old, forcing_old);
-        if (comm_.rank()==1)
-            std::cout<< "Newton residue square = "<< res/f2<<std::endl;;
-        if (sqrt(res/f2)<Newton_threshold_)
-            return;
-        //add<nonlinear_tmp1_type, R_1_type>(-1.0);
-        //Solve_Jacobian();
-    }
-
 
 
     template<typename F>
@@ -1242,6 +634,43 @@ class NewtonIteration
                     }
                 }
             }
+    }
+
+
+    template<typename F, typename idx_F>
+    void clean_leaf_according_to_idx(int l) noexcept
+    {
+        for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+        {
+            if (!it->locally_owned())
+            {
+                if (!it->has_data() || !it->data().is_allocated()) continue;
+                for (std::size_t field_idx = 0; field_idx < F::nFields();
+                     ++field_idx)
+                {
+                    auto& lin_data =
+                        it->data_r(F::tag(), field_idx).linalg_data();
+                    std::fill(lin_data.begin(), lin_data.end(), 0.0);
+                }
+            }
+        }
+
+        for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+        {
+            if (!it->locally_owned()) continue;
+            if (!it->has_data() || !it->data().is_allocated()) continue;
+
+            for (std::size_t field_idx = 0; field_idx < F::nFields();
+                 ++field_idx)
+            {
+                for (auto& n : it->data()) {
+                    int cur_idx = n(idx_F::tag(), field_idx);
+                    if (cur_idx <= 0) {
+                        n(F::tag(), field_idx) = 0.0;
+                    }
+                }
+            }
+        }
     }
 
     /*template<class U_tar, class P_tar>
@@ -1516,6 +945,11 @@ class NewtonIteration
 
                         int  N = it->data().descriptor().extent()[0];
                         bool tmp[N][N] = {false};
+                        for (int i = 0; i < N; i++) {
+                            for (int j = 0; j < N; j++) {
+                                tmp[i][j] = false;
+                            }
+                        }
                         for (int i = 0; i < it->num_neighbors(); i++)
                         {
                             auto it2 = it->neighbor(i);
@@ -1525,24 +959,24 @@ class NewtonIteration
                             }
                             else
                             {
-                                //if (i == 0) { tmp[0][0] = true; }
-                                /*if (i == 1)
+                                if (i == 0) { tmp[0][0] = true; }
+                                if (i == 1)
                                 {
                                     for (int j = 0; j < N; j++)
                                     {
                                         tmp[j][0] = true;
                                         //tmp[j][1] = true;
                                     }
-                                }*/
+                                }
                                 //if (i == 2) { tmp[N - 1][0] = true; }
-                                /*if (i == 3)
+                                if (i == 3)
                                 {
                                     for (int j = 0; j < N; j++)
                                     {
                                         tmp[0][j] = true;
                                         //tmp[1][j] = true;
                                     }
-                                }*/
+                                }
                                 if (i == 5)
                                 {
                                     for (int j = 0; j < N; j++)
@@ -1551,7 +985,7 @@ class NewtonIteration
                                         //tmp[N - 2][j] = true;
                                     }
                                 }
-                                //if (i == 6) { tmp[0][N - 1] = true; }
+                                if (i == 6) { tmp[0][N - 1] = true; }
                                 if (i == 7)
                                 {
                                     for (int j = 0; j < N; j++)
@@ -1560,7 +994,7 @@ class NewtonIteration
                                         //tmp[j][N - 2] = true;
                                     }
                                 }
-                                //if (i == 8) { tmp[N - 1][N - 1] = true; }
+                                if (i == 8) { tmp[N - 1][N - 1] = true; }
                             }
                         }
                         for (std::size_t field_idx = 0;
@@ -1684,6 +1118,202 @@ class NewtonIteration
                     }
                 }
             }
+
+            //idx_N assign
+            for (int l = base_level; l < domain_->tree()->depth(); l++)
+            {
+                for (auto it = domain_->begin(l);
+                     it != domain_->end(l); ++it)
+                {
+                    if (!it->locally_owned() || !it->has_data()) continue;
+                    if (it->is_leaf() && !it->is_correction())
+                    {
+                        for (std::size_t field_idx = 0;
+                             field_idx < idx_N_type::nFields(); ++field_idx)
+                        {
+                            for (auto& n : it->data())
+                            {
+                                counter++;
+                                n(idx_N_type::tag(), field_idx) =
+                                    static_cast<float_type>(counter) + 0.5;
+                            }
+                        }
+                    }
+                    else if (!it->is_leaf())
+                    {
+                        //only setting the leaf points that is next to the leaf to be active
+                        int  N = it->data().descriptor().extent()[0];
+                        bool tmp[N][N] = {false};
+                        for (int i = 0; i < N; i++) {
+                            for (int j = 0; j < N; j++) {
+                                tmp[i][j] = false;
+                            }
+                        }
+                        for (int i = 0; i < it->num_neighbors(); i++)
+                        {
+                            auto it2 = it->neighbor(i);
+                            if (!it2 || !it2->is_leaf() || it2->is_correction())
+                            {
+                                continue;
+                            }
+                            else
+                            {
+                                if (i == 0) { tmp[0][0] = true; }
+                                if (i == 1)
+                                {
+                                    for (int j = 0; j < N; j++)
+                                    {
+                                        tmp[j][0] = true;
+                                    }
+                                }
+                                if (i == 3)
+                                {
+                                    for (int j = 0; j < N; j++)
+                                    {
+                                        tmp[0][j] = true;
+                                    }
+                                }
+
+                                if (i == 0) { tmp[0][0] = true; }
+                                if (i == 1)
+                                {
+                                    for (int j = 0; j < N; j++)
+                                    {
+                                        tmp[j][0] = true;
+                                    }
+                                }
+                                if (i == 2) { tmp[N - 1][0] = true; }
+                                if (i == 3)
+                                {
+                                    for (int j = 0; j < N; j++)
+                                    {
+                                        tmp[0][j] = true;
+                                        //tmp[1][j] = true;
+                                    }
+                                }
+                                if (i == 5)
+                                {
+                                    for (int j = 0; j < N; j++)
+                                    {
+                                        tmp[N - 1][j] = true;
+                                        //tmp[N - 2][j] = true;
+                                    }
+                                }
+                                if (i == 6) { tmp[0][N - 1] = true; }
+                                if (i == 7)
+                                {
+                                    for (int j = 0; j < N; j++)
+                                    {
+                                        tmp[j][N - 1] = true;
+                                        //tmp[j][N - 2] = true;
+                                    }
+                                }
+                                if (i == 8) { tmp[N - 1][N - 1] = true; }
+                            }
+                        }
+                        for (std::size_t field_idx = 0;
+                             field_idx < idx_N_type::nFields(); ++field_idx)
+                        {
+                            auto& lin_data =
+                                it->data_r(idx_N_type::tag(), field_idx)
+                                    .linalg_data();
+                            for (int i = 0; i < N; i++)
+                            {
+                                for (int j = 0; j < N; j++)
+                                {
+                                    if (tmp[i][j])
+                                    {
+                                        counter++;
+                                        view(lin_data, i + 1, j + 1) =
+                                            static_cast<float_type>(counter) +
+                                            0.5;
+                                    }
+                                    else
+                                    {
+                                        view(lin_data, i + 1, j + 1) = -1;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    else {
+                        for (std::size_t field_idx = 0;
+                             field_idx < idx_N_type::nFields(); ++field_idx)
+                        {
+                            for (auto& n : it->data())
+                            {
+                                counter++;
+                                n(idx_N_type::tag(), field_idx) = -1;
+                            }
+                        }
+                    }
+                }
+            }
+
+
+            //idx_cs assign
+            for (int l = base_level; l < domain_->tree()->depth(); l++)
+            {
+                for (auto it = domain_->begin(l);
+                     it != domain_->end(l); ++it)
+                {
+                    if (!it->locally_owned() || !it->has_data()) continue;
+                    if (!it->is_correction())
+                    {
+                        for (std::size_t field_idx = 0;
+                             field_idx < idx_cs_type::nFields(); ++field_idx)
+                        {
+                            for (auto& n : it->data())
+                            {
+                                counter++;
+                                n(idx_cs_type::tag(), field_idx) =
+                                    static_cast<float_type>(counter) + 0.5;
+                            }
+                        }
+                    }
+                    else {
+                        for (std::size_t field_idx = 0;
+                             field_idx < idx_cs_type::nFields(); ++field_idx)
+                        {
+                            for (auto& n : it->data())
+                            {
+                                counter++;
+                                n(idx_cs_type::tag(), field_idx) = -1;
+                            }
+                        }
+                    }
+                }
+            }
+
+
+            for (int l = base_level - 1; l >= 0; l--)
+            {
+                for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+                {
+                    //if (!it) continue;
+                    if (!it->locally_owned() || !it->has_data()) continue;
+                    //if (it->is_leaf() && !it->is_correction())
+                    //{
+                    for (std::size_t field_idx = 0;
+                         field_idx < idx_cs_type::nFields(); ++field_idx)
+                    {
+                        int N = it->data().descriptor().extent()[0];
+
+                        auto& lin_data =
+                            it->data_r(idx_cs_type::tag(), field_idx)
+                                .linalg_data();
+                        for (int i = 0; i < (N + 2); i++)
+                        {
+                            for (int j = 0; j < (N + 2); j++)
+                            {
+                                counter++;
+                                view(lin_data, i, j) =
+                                    static_cast<float_type>(counter) + 0.5;
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         if (!no_vort_idx)
@@ -1697,7 +1327,7 @@ class NewtonIteration
                     if (!it->locally_owned() || !it->has_data()) continue;
                     if (!it->is_correction() && l == base_level)
                     {
-                        /*for (std::size_t field_idx = 0;
+                        for (std::size_t field_idx = 0;
                              field_idx < idx_w_type::nFields(); ++field_idx)
                         {
                             for (auto& n : it->data())
@@ -1706,7 +1336,7 @@ class NewtonIteration
                                 n(idx_w_type::tag(), field_idx) =
                                     static_cast<float_type>(counter) + 0.5;
                             }
-                        }*/
+                        }
 
                         //only setting the leaf points that is next to the leaf to be active
                         int  N = it->data().descriptor().extent()[0];
@@ -1736,7 +1366,7 @@ class NewtonIteration
                                         //tmp[j][1] = true;
                                     }
                                 }
-                                //if (i == 2) { tmp[N - 1][0] = false; }
+                                if (i == 2) { tmp[N - 1][0] = false; }
                                 if (i == 3)
                                 {
                                     for (int j = 0; j < N; j++)
@@ -1745,7 +1375,7 @@ class NewtonIteration
                                         //tmp[1][j] = true;
                                     }
                                 }
-                                /*if (i == 5)
+                                if (i == 5)
                                 {
                                     for (int j = 0; j < N; j++)
                                     {
@@ -1762,10 +1392,10 @@ class NewtonIteration
                                         //tmp[j][N - 2] = true;
                                     }
                                 }
-                                if (i == 8) { tmp[N - 1][N - 1] = false; }*/
+                                if (i == 8) { tmp[N - 1][N - 1] = false; }
                             }
                         }
-                        for (std::size_t field_idx = 0;
+                        /*for (std::size_t field_idx = 0;
                              field_idx < idx_w_type::nFields(); ++field_idx)
                         {
                             auto& lin_data =
@@ -1788,7 +1418,7 @@ class NewtonIteration
                                     }
                                 }
                             }
-                        }
+                        }*/
                     }
                     else if (!it->is_correction() && l != base_level)
                     {
@@ -1803,6 +1433,67 @@ class NewtonIteration
                             }
                         }
                     }
+                    /*else if (it->is_correction() && l == base_level)
+                    {
+                        //only setting the leaf points that is next to the leaf to be active
+                        int  N = it->data().descriptor().extent()[0];
+                        bool tmp[N][N] = {false};
+                        for (int i = 0; i < N; i++) {
+                            for (int j = 0; j < N; j++) {
+                                tmp[i][j] = false;
+                            }
+                        }
+                        for (int i = 0; i < it->num_neighbors(); i++)
+                        {
+                            auto it2 = it->neighbor(i);
+                            if (!it2 || !it2->is_leaf() || it2->is_correction())
+                            {
+                                continue;
+                            }
+                            else
+                            {
+                                //if (i == 0) { tmp[0][0] = true; }
+                                if (i == 1)
+                                {
+                                    for (int j = 0; j < N; j++)
+                                    {
+                                        tmp[j][0] = true;
+                                    }
+                                }
+                                if (i == 3)
+                                {
+                                    for (int j = 0; j < N; j++)
+                                    {
+                                        tmp[0][j] = true;
+                                    }
+                                }
+                            }
+                        }
+                        for (std::size_t field_idx = 0;
+                             field_idx < idx_w_type::nFields(); ++field_idx)
+                        {
+                            auto& lin_data =
+                                it->data_r(idx_w_type::tag(), field_idx)
+                                    .linalg_data();
+                            for (int i = 0; i < N; i++)
+                            {
+                                for (int j = 0; j < N; j++)
+                                {
+                                    if (tmp[i][j])
+                                    {
+                                        counter++;
+                                        view(lin_data, i + 1, j + 1) =
+                                            static_cast<float_type>(counter) +
+                                            0.5;
+                                    }
+                                    else
+                                    {
+                                        view(lin_data, i + 1, j + 1) = -1;
+                                    }
+                                }
+                            }
+                        }
+                    }*/
                     else if (it->is_correction() && l != base_level)
                     {
                         //only setting the leaf points that is next to the leaf to be active
@@ -2015,6 +1706,102 @@ class NewtonIteration
                     }*/
                 }
             }
+
+            for (int l = base_level; l < domain_->tree()->depth(); l++)
+            {
+                for (auto it = domain_->begin(l);
+                     it != domain_->end(l); ++it)
+                {
+                    if (!it->locally_owned() || !it->has_data()) continue;
+                    //if (it->is_leaf() || it->is_correction())
+                    //{
+                    for (std::size_t field_idx = 0;
+                         field_idx < idx_N_g_type::nFields(); ++field_idx)
+                    {
+                        for (auto& n : it->data())
+                        {
+                            if (n(idx_N_type::tag(), field_idx) > 0)
+                            {
+                                n(idx_N_g_type::tag(), field_idx) =
+                                    n(idx_N_type::tag(), field_idx) +
+                                    max_idx_from_prev_prc;
+                            }
+                            else
+                            {
+                                n(idx_N_g_type::tag(), field_idx) = -1;
+                            }
+                        }
+                    }
+
+                }
+            }
+
+            for (int l = base_level; l < domain_->tree()->depth(); l++)
+            {
+                for (auto it = domain_->begin(l);
+                     it != domain_->end(l); ++it)
+                {
+                    if (!it->locally_owned() || !it->has_data()) continue;
+                    //if (it->is_leaf() || it->is_correction())
+                    //{
+                    for (std::size_t field_idx = 0;
+                         field_idx < idx_cs_g_type::nFields(); ++field_idx)
+                    {
+                        for (auto& n : it->data())
+                        {
+                            if (n(idx_cs_type::tag(), field_idx) > 0)
+                            {
+                                n(idx_cs_g_type::tag(), field_idx) =
+                                    n(idx_cs_type::tag(), field_idx) +
+                                    max_idx_from_prev_prc;
+                            }
+                            else
+                            {
+                                n(idx_cs_g_type::tag(), field_idx) = -1;
+                            }
+                        }
+                    }
+
+                }
+            }
+
+            for (int l = base_level - 1; l >= 0; l--)
+            {
+                for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+                {
+                    //if (!it) continue;
+                    if (!it->locally_owned() || !it->has_data()) continue;
+                    //if (it->is_leaf() && !it->is_correction())
+                    //{
+                    int N = it->data().descriptor().extent()[0];
+                    for (std::size_t field_idx = 0;
+                         field_idx < idx_cs_type::nFields(); ++field_idx)
+                    {
+                        auto& lin_data1 =
+                            it->data_r(idx_cs_g_type::tag(), field_idx)
+                                .linalg_data();
+                        auto& lin_data2 =
+                            it->data_r(idx_cs_type::tag(), field_idx)
+                                .linalg_data();
+                        for (int i = 0; i < (N + 2); i++)
+                        {
+                            for (int j = 0; j < (N + 2); j++)
+                            {
+                                view(lin_data1, i, j) = view(lin_data2, i, j) +
+                                                        max_idx_from_prev_prc;
+                            }
+                        }
+
+                        /*for (auto& n : it->data())
+                    {
+                        counter++;
+                        n(idx_w_type::tag(), field_idx) =
+                            static_cast<float_type>(counter) + 0.5;
+                    }*/
+                    }
+                    //}
+                }
+            }
         }
 
         if (!no_vort_idx)
@@ -2042,46 +1829,11 @@ class NewtonIteration
                             {
                                 n(idx_w_g_type::tag(), field_idx) = -1;
                             }
-                            //n(idx_p_g_type::tag(), field_idx) = n(idx_p_type::tag(), field_idx)+max_idx_from_prev_prc;
                         }
                     }
-                    //}
-                    /*else
-                {
-                    for (std::size_t field_idx = 0;
-                         field_idx < idx_w_g_type::nFields(); ++field_idx)
-                    {
-                        for (auto& n : it->data())
-                        {
-                            //counter++;
-                            n(idx_w_g_type::tag(), field_idx) = -1;
-                        }
-                    }
-                }*/
-                }
-            }
 
-            /*for (int l = base_level - 1; l >= 0; l--)
-        {
-            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
-            {
-                //if (!it) continue;
-                if (!it->locally_owned() || !it->has_data()) continue;
-                //if (it->is_leaf() && !it->is_correction())
-                //{
-                for (std::size_t field_idx = 0;
-                     field_idx < idx_w_type::nFields(); ++field_idx)
-                {
-                    for (auto& n : it->data())
-                    {
-                        n(idx_w_g_type::tag(), field_idx) =
-                            n(idx_w_type::tag(), field_idx) +
-                            max_idx_from_prev_prc;
-                    }
                 }
-                //}
             }
-        }*/
 
             for (int l = base_level - 1; l >= 0; l--)
             {
@@ -2164,6 +1916,7 @@ class NewtonIteration
                     for (auto& n : it->data())
                     {
                         int cur_idx = n(idx_p_type::tag(), 0);
+                        if (cur_idx <= 0) continue;
                         int glo_p_idx = n(idx_p_g_type::tag(), 0);
 
                         int glo_p_idx_10 =
@@ -2300,12 +2053,9 @@ class NewtonIteration
         this->template construct_interpolation<idx_u_type, idx_u_g_type>(mat);
     }
 
-    template<class Face, class Cell, class val_type>
-    void Grid2CSR(val_type* b) {
-        Grid2CSR<Face, Cell, edge_aux_type>(b, this->forcing_tmp);
-    }
 
-    template<class Face, class Cell, class Edge, class val_type>
+
+    template<class Face, class Cell, class Edge, class N_source, class P_source, class val_type>
     void Grid2CSR(val_type* b, force_type& forcing_vec, bool set_corr_zero = true) {
         boost::mpi::communicator world;
 
@@ -2356,7 +2106,7 @@ class NewtonIteration
                                 n.at_offset(idx_p_type::tag(), 0, 1, 0);
                             int p_idx_s =
                                 n.at_offset(idx_p_type::tag(), 0, -1, 0);
-                            if ((p_idx_w < 0 || p_idx_e < 0) && field_idx == 0 && set_corr_zero && l == base_level)
+                            /*if ((p_idx_w < 0 || p_idx_e < 0) && field_idx == 0 && set_corr_zero && l == base_level)
                             {
                                 //int cur_idx = n(idx_u_type::tag(), 0);
                                 b[cur_idx - 1] = 0;
@@ -2367,7 +2117,7 @@ class NewtonIteration
                                 //int cur_idx = n(idx_u_type::tag(), 1);
                                 b[cur_idx - 1] = 0;
                                 continue;
-                            }
+                            }*/
                             //int cur_idx = n(idx_u_type::tag(), field_idx);
                             b[cur_idx - 1] = n(Face::tag(), field_idx);
                         }
@@ -2460,7 +2210,7 @@ class NewtonIteration
                                 int glo_p_idx = n(idx_p_g_type::tag(), 0);
 
                                 if (cur_idx <= 0) continue;
-                                if (glo_p_idx == set_zero_idx && set_corr_zero) {
+                                if (glo_p_idx == set_zero_idx && set_corr_zero && p_set_zero) {
                                     b[cur_idx - 1] = 0.0;
                                     continue;
                                 }
@@ -2470,6 +2220,71 @@ class NewtonIteration
                     }
                     
                 }
+                //Nonlinear term + smearing
+                for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+                {
+                    if (!it->locally_owned() || !it->has_data()) continue;
+                    //if (!it->is_leaf()) continue;
+                    if (!set_corr_zero)
+                    {
+                        for (std::size_t field_idx = 0;
+                             field_idx < idx_N_type::nFields(); ++field_idx)
+                        {
+                            for (auto& n : it->data())
+                            {
+                                int cur_idx = n(idx_N_type::tag(), field_idx);
+                                if (cur_idx <= 0) continue;
+                                b[cur_idx - 1] = n(N_source::tag(), field_idx);
+                            }
+                        }
+                    }
+                    else
+                    {
+                        for (std::size_t field_idx = 0;
+                             field_idx < idx_N_type::nFields(); ++field_idx)
+                        {
+                            for (auto& n : it->data())
+                            {
+                                int cur_idx = n(idx_N_type::tag(), field_idx);
+                                if (cur_idx <= 0) continue;
+                                b[cur_idx - 1] = 0.0;
+                            }
+                        }
+                    }
+                }
+                //Div of Nonlinear term + smearing
+                for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+                {
+                    if (!it->locally_owned() || !it->has_data()) continue;
+                    //if (!it->is_leaf()) continue;
+                    if (!set_corr_zero)
+                    {
+                        for (std::size_t field_idx = 0;
+                             field_idx < idx_cs_type::nFields(); ++field_idx)
+                        {
+                            for (auto& n : it->data())
+                            {
+                                int cur_idx = n(idx_cs_type::tag(), field_idx);
+                                if (cur_idx <= 0) continue;
+                                b[cur_idx - 1] = n(P_source::tag(), field_idx);
+                            }
+                        }
+                    }
+                    else
+                    {
+                        for (std::size_t field_idx = 0;
+                             field_idx < idx_cs_type::nFields(); ++field_idx)
+                        {
+                            for (auto& n : it->data())
+                            {
+                                int cur_idx = n(idx_cs_type::tag(), field_idx);
+                                if (cur_idx <= 0) continue;
+                                b[cur_idx - 1] = 0.0;
+                            }
+                        }
+                    }
+                }
+                //VORTICITY
                 for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
                 {
                     if (!it->locally_owned() || !it->has_data()) continue;
@@ -2487,6 +2302,19 @@ class NewtonIteration
                             }
                         }
                     }
+                    /*else if (it->is_correction() && set_corr_zero && l == base_level)
+                    {
+                        for (std::size_t field_idx = 0;
+                             field_idx < idx_w_type::nFields(); ++field_idx)
+                        {
+                            for (auto& n : it->data())
+                            {
+                                int cur_idx = n(idx_w_type::tag(), field_idx);
+                                if (cur_idx <= 0) continue;
+                                b[cur_idx - 1] = n(Edge::tag(), field_idx);
+                            }
+                        }
+                    }*/
                     else if (!it->is_correction() && set_corr_zero)
                     {
                         for (std::size_t field_idx = 0;
@@ -2573,6 +2401,43 @@ class NewtonIteration
                         n(idx_w_type::tag(), field_idx) =
                             static_cast<float_type>(counter) + 0.5;
                     }*/
+                    }
+                    //}
+                }
+            }
+            //tree structure of P_source
+
+            for (int l = base_level - 1; l >= 0; l--)
+            {
+                for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+                {
+                    //if (!it) continue;
+                    if (!it->locally_owned() || !it->has_data()) continue;
+                    //if (it->is_leaf() && !it->is_correction())
+                    //{
+                    for (std::size_t field_idx = 0;
+                         field_idx < idx_cs_type::nFields(); ++field_idx)
+                    {
+                        int N = it->data().descriptor().extent()[0];
+
+                        auto& lin_data =
+                            it->data_r(idx_cs_type::tag(), field_idx)
+                                .linalg_data();
+                        auto& lin_data_tar =
+                            it->data_r(P_source::tag(), field_idx).linalg_data();
+                        for (int i = 0; i < (N + 2); i++)
+                        {
+                            for (int j = 0; j < (N + 2); j++)
+                            {
+                                int cur_idx = lin_data.at(i, j);
+                                if (!set_corr_zero)
+                                    b[cur_idx - 1] = lin_data_tar.at(i, j);
+                                else
+                                {
+                                    b[cur_idx - 1] = 0;
+                                }
+                            }
+                        }
                     }
                     //}
                 }
@@ -2695,12 +2560,7 @@ class NewtonIteration
         domain_->client_communicator().barrier();
     }
 
-    template<class Face, class Cell, class val_type>
-    void CSR2Grid(val_type* b) {
-        CSR2Grid<Face, Cell, edge_aux_type>(b, this->forcing_tmp);
-    }
-
-    template<class Face, class Cell, class Edge, class val_type>
+    template<class Face, class Cell, class Edge, class N_source, class P_source, class val_type>
     void CSR2Grid(val_type* b, force_type& forcing_vec) {
         boost::mpi::communicator world;
 
@@ -2781,6 +2641,33 @@ class NewtonIteration
                 {
                     auto client = domain_->decomposition().client();
 
+                    client->template buffer_exchange<idx_N_type>(l);
+                }
+                for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+                {
+                    if (!it->locally_owned() || !it->has_data()) continue;
+                    //if (!it->is_leaf()) continue;
+                    //if (it->is_correction()) continue;
+                    for (std::size_t field_idx = 0;
+                         field_idx < idx_N_type::nFields(); ++field_idx)
+                    {
+                        for (auto& n : it->data())
+                        {
+                            int cur_idx = n(idx_N_type::tag(), field_idx);
+                            if (cur_idx > 0)
+                                n(N_source::tag(), field_idx) = b[cur_idx - 1];
+                        }
+                    }
+                }
+            }
+
+            for (int l = domain_->tree()->base_level();
+                 l < domain_->tree()->depth(); ++l)
+            {
+                if (domain_->is_client())
+                {
+                    auto client = domain_->decomposition().client();
+
                     client->template buffer_exchange<idx_w_type>(l);
                 }
                 for (auto it = domain_->begin(l);
@@ -2820,6 +2707,72 @@ class NewtonIteration
                                 .linalg_data();
                         auto& lin_data_tar =
                             it->data_r(Edge::tag(), field_idx).linalg_data();
+                        for (int i = 0; i < (N + 2); i++)
+                        {
+                            for (int j = 0; j < (N + 2); j++)
+                            {
+                                int cur_idx = lin_data.at(i, j);
+                                lin_data_tar.at(i, j) = b[cur_idx - 1];
+                            }
+                        }
+
+                        /*for (auto& n : it->data())
+                    {
+                        counter++;
+                        n(idx_w_type::tag(), field_idx) =
+                            static_cast<float_type>(counter) + 0.5;
+                    }*/
+                    }
+                    //}
+                }
+            }
+
+            for (int l = domain_->tree()->base_level();
+                 l < domain_->tree()->depth(); ++l)
+            {
+                if (domain_->is_client())
+                {
+                    auto client = domain_->decomposition().client();
+
+                    client->template buffer_exchange<idx_cs_type>(l);
+                }
+                for (auto it = domain_->begin(l);
+                     it != domain_->end(l); ++it)
+                {
+                    if (!it->locally_owned() || !it->has_data()) continue;
+                    //if (!it->is_leaf()) continue;
+                    //if (it->is_correction()) continue;
+                    for (std::size_t field_idx = 0;
+                         field_idx < idx_cs_type::nFields(); ++field_idx)
+                    {
+                        for (auto& n : it->data())
+                        {
+                            int cur_idx = n(idx_cs_type::tag(), field_idx);
+                            if (cur_idx > 0)
+                                n(P_source::tag(), field_idx) = b[cur_idx - 1];
+                        }
+                    }
+                }
+            }
+
+            for (int l = base_level - 1; l >= 0; l--)
+            {
+                for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+                {
+                    //if (!it) continue;
+                    if (!it->locally_owned() || !it->has_data()) continue;
+                    //if (it->is_leaf() && !it->is_correction())
+                    //{
+                    for (std::size_t field_idx = 0;
+                         field_idx < idx_cs_type::nFields(); ++field_idx)
+                    {
+                        int N = it->data().descriptor().extent()[0];
+
+                        auto& lin_data =
+                            it->data_r(idx_cs_type::tag(), field_idx)
+                                .linalg_data();
+                        auto& lin_data_tar =
+                            it->data_r(P_source::tag(), field_idx).linalg_data();
                         for (int i = 0; i < (N + 2); i++)
                         {
                             for (int j = 0; j < (N + 2); j++)
@@ -2967,7 +2920,7 @@ class NewtonIteration
     }
 
     template<class Edge1, class Edge2, class idxField>
-    void compute_error_nonleaf(std::string _output_prefix = "", bool write_output=false) {
+    void compute_error_nonleaf(std::string _output_prefix = "", bool write_output=false,int field_idx = 0) {
         boost::mpi::communicator world;
         
         const auto dx_base = domain_->dx_base();
@@ -3004,7 +2957,7 @@ class NewtonIteration
                             //only print the first component to see error
                             for (auto& n : it->data())
                             {
-                                int idx = n(idxField::tag(), (Edge1::nFields() - 1));
+                                int idx = n(idxField::tag(), field_idx);
                                 if (idx <= 0) continue;
                                 auto c = n.level_coordinate();
                                 int  x_c = c.x();
@@ -3012,8 +2965,8 @@ class NewtonIteration
 
                                 if (write_output)
                                     myfile << x_c << " " << y_c << " ";
-                                float_type val1 = n(Edge1::tag(), (Edge1::nFields() - 1));
-                                float_type val2 = n(Edge2::tag(), (Edge2::nFields() - 1));
+                                float_type val1 = n(Edge1::tag(), field_idx);
+                                float_type val2 = n(Edge2::tag(), field_idx);
 
                                 float_type diff_w = val1 - val2;
                                 if (write_output) myfile << diff_w << std::endl;
@@ -3126,6 +3079,7 @@ class NewtonIteration
         Jac.clean();
         Jac.resizing_row(max_local_idx+1);
         construct_upward_intrp();
+        construction_Div_psource();
         construction_BCMat();
         construction_laplacian_u();
         construction_DN_u<U_old>();
@@ -3148,7 +3102,8 @@ class NewtonIteration
         Jac.add_vec(upward_intrp);*/
         if (add_Boundary_u) Jac.add_vec(boundary_u);
         if (add_L) Jac.add_vec(L);
-        if (add_DN) Jac.add_vec(DN, -1.0);
+        Jac.add_vec(Div_cs);
+        if (add_DN) Jac.add_vec(DN);
         if (add_Div) Jac.add_vec(Div, -1.0);
         if (add_Grad) Jac.add_vec(Grad, -1.0);
         if (add_Curl) Jac.add_vec(Curl);
@@ -3200,7 +3155,7 @@ class NewtonIteration
             return;
         }
         Jac.add_vec(Jac_p);
-        if (add_DN) Jac.add_vec(DN, -1.0);
+        if (add_DN) Jac.add_vec(DN);
     }
 
     void construction_laplacian_u() {
@@ -3226,7 +3181,7 @@ class NewtonIteration
 
         int base_level = domain_->tree()->base_level();
 
-         int N_ext = domain_->block_extent()[0];
+        int N_ext = domain_->block_extent()[0];
 
         
         for (int l = base_level; l < domain_->tree()->depth(); l++)
@@ -3264,10 +3219,12 @@ class NewtonIteration
                 {
                     for (auto& n : it->data())
                     {
-                        /*int p_idx_w = n.at_offset(idx_p_g_type::tag(), -1, 0, 0);
+                        int p_idx_w = n.at_offset(idx_p_g_type::tag(), -1, 0, 0);
                         int p_idx_e = n.at_offset(idx_p_g_type::tag(), 1, 0, 0);
                         int p_idx_n = n.at_offset(idx_p_g_type::tag(), 0, 1, 0);
                         int p_idx_s = n.at_offset(idx_p_g_type::tag(), 0, -1, 0);
+
+                        if (p_set_zero) {
                         if (p_idx_w <= 0 && field_idx == 0 && l == base_level)
                         {
                             //enforcing div free at BC points
@@ -3300,7 +3257,9 @@ class NewtonIteration
                                 n.at_offset(idx_u_g_type::tag(), 1, -1, 0);
                             L.add_element(cur_idx, glo_idx, 1.0 / dx_base * Re_);
                             continue;
-                        }*/
+                        }
+                        }
+                        //velocity formulation
                         int cur_idx = n(idx_u_type::tag(), field_idx);
                         int glo_idx = n(idx_u_g_type::tag(), field_idx);
                         L.add_element(cur_idx, glo_idx,
@@ -3321,6 +3280,24 @@ class NewtonIteration
                             n.at_offset(idx_u_g_type::tag(), -1, 0, field_idx);
                         L.add_element(cur_idx, glo_idx,
                             1.0 / dx_level / dx_level);
+
+                        //vorticity formulation L = -C^TC = -C^Tw (since divergence free)
+                        /*int cur_idx = n(idx_u_type::tag(), field_idx);
+                        //int glo_idx = n(idx_u_g_type::tag(), field_idx);
+                        
+
+                        if (field_idx == 0) {
+                            int glo_idx = n(idx_w_g_type::tag(), 0);
+                            L.add_element(cur_idx, glo_idx, 1.0 / dx_level);
+                            glo_idx = n.at_offset(idx_w_g_type::tag(), 0, 1, 0);
+                            L.add_element(cur_idx, glo_idx, -1.0 / dx_level);
+                        }
+                        if (field_idx == 1) {
+                            int glo_idx = n(idx_w_g_type::tag(), 0);
+                            L.add_element(cur_idx, glo_idx, -1.0 / dx_level);
+                            glo_idx = n.at_offset(idx_w_g_type::tag(), 1, 0, 0);
+                            L.add_element(cur_idx, glo_idx, 1.0 / dx_level);
+                        }*/
                     }
                 }
             }
@@ -3494,15 +3471,15 @@ class NewtonIteration
                         int p_idx_n = n.at_offset(idx_p_g_type::tag(), 0, 1, 0);
                         int p_idx_s = n.at_offset(idx_p_g_type::tag(), 0, -1, 0);
 
-                        /*if ((p_idx_w <= 0 || p_idx_e <=0) && field_idx == 0 && l == base_level)
+                        if ((p_idx_w <= 0) && field_idx == 0 && l == base_level && p_set_zero)
                         {
                             //enforcing div free at BC points
                             continue;
                         }
-                        if ((p_idx_n <= 0 || p_idx_s <=0) && field_idx == 1 && l == base_level)
+                        if ((p_idx_s <= 0) && field_idx == 1 && l == base_level && p_set_zero)
                         {
                             continue;
-                        }*/
+                        }
                         
                         int cur_idx = n(idx_u_type::tag(), field_idx);
                         int glo_idx = n(idx_u_g_type::tag(), field_idx);
@@ -3567,8 +3544,11 @@ class NewtonIteration
                 
                 
 
-                int cur_idx_0 = n(idx_u_type::tag(), 0);
-                int cur_idx_1 = n(idx_u_type::tag(), 1);
+                int cur_idx_0 = n(idx_N_type::tag(), 0);
+                int cur_idx_1 = n(idx_N_type::tag(), 1);
+                
+                int cur_idx_u_0 = n(idx_u_type::tag(), 0);
+                int cur_idx_u_1 = n(idx_u_type::tag(), 1);
 
                 int glob_idx_0 = n(idx_u_g_type::tag(), 0);
                 int glob_idx_1 = n(idx_u_g_type::tag(), 1);
@@ -3651,7 +3631,10 @@ class NewtonIteration
                     DN.add_element(cur_idx_1, glob_idx_10, u_s_1011);
                 }*/
 
+
                 //(p_idx_w <= 0 || p_idx_e <=0)
+
+                if (p_set_zero) {
 
                 if ((p_idx_w > 0 && p_idx_e > 0) || l != base_level)
                 {
@@ -3685,6 +3668,49 @@ class NewtonIteration
                     DN.add_element(cur_idx_1, glob_idx_0_3, -u_s_1011 / dx);
                     DN.add_element(cur_idx_1, glob_idx_0_4, u_s_1011 / dx);
                 }
+                }
+
+                else {
+
+                
+
+                //-n.at_offset(edge, 0, 0, 0) *(n.at_offset(face, 0, 0, 1) + n.at_offset(face, -1, 0, 1))
+                DN.add_element(cur_idx_0, glob_idx_1, v_s_0010 / dx);
+                DN.add_element(cur_idx_0, glob_idx_1_1, -v_s_0010 / dx);
+                //-n.at_offset(edge, 0, 0, 0) *(n.at_offset(face, 0, 0, 1) + n.at_offset(face, -1, 0, 1))
+                DN.add_element(cur_idx_0, glob_idx_0, -v_s_0010 / dx);
+                DN.add_element(cur_idx_0, glob_idx_0_1, v_s_0010 / dx);
+                //if (p_idx_n > 0) {
+                //-n.at_offset(edge, 0, 1, 0) *(n.at_offset(face, 0, 1, 1) + n.at_offset(face, -1, 1, 1))
+                DN.add_element(cur_idx_0, glob_idx_1_2, v_s_0111 / dx);
+                DN.add_element(cur_idx_0, glob_idx_1_3, -v_s_0111 / dx);
+                //-n.at_offset(edge, 0, 1, 0) *(n.at_offset(face, 0, 1, 1) + n.at_offset(face, -1, 1, 1))
+                DN.add_element(cur_idx_0, glob_idx_0_2, -v_s_0111 / dx);
+                DN.add_element(cur_idx_0, glob_idx_0, v_s_0111 / dx);
+                //}
+
+                
+                
+
+                // n.at_offset(edge, 0, 0, 0) *(n.at_offset(face, 0, 0, 0) + n.at_offset(face, 0, -1, 0))
+                DN.add_element(cur_idx_1, glob_idx_1, u_s_0001 / dx);
+                DN.add_element(cur_idx_1, glob_idx_1_1, -u_s_0001 / dx);
+                // n.at_offset(edge, 0, 0, 0) *(n.at_offset(face, 0, 0, 0) + n.at_offset(face, 0, -1, 0))
+                DN.add_element(cur_idx_1, glob_idx_0, -u_s_0001 / dx);
+                DN.add_element(cur_idx_1, glob_idx_0_1, u_s_0001 / dx);
+
+                //if (p_idx_e > 0) {
+
+                // n.at_offset(edge, 1, 0, 0) *(n.at_offset(face, 1, 0, 0) + n.at_offset(face, 1, -1, 0))
+                DN.add_element(cur_idx_1, glob_idx_1_4, u_s_1011 / dx);
+                DN.add_element(cur_idx_1, glob_idx_1, -u_s_1011 / dx);
+
+                
+                // n.at_offset(edge, 1, 0, 0) *(n.at_offset(face, 1, 0, 0) + n.at_offset(face, 1, -1, 0))
+                DN.add_element(cur_idx_1, glob_idx_0_3, -u_s_1011 / dx);
+                DN.add_element(cur_idx_1, glob_idx_0_4, u_s_1011 / dx);
+                //}
+                }
 
                 /*DN.add_element(cur_idx_0, glob_idx_00, v_s_0010);
                 DN.add_element(cur_idx_0, glob_idx_01, v_s_0111);
@@ -3712,8 +3738,14 @@ class NewtonIteration
             {
                 
                 
-                int cur_idx_0 = n(idx_u_type::tag(), 0);
-                int cur_idx_1 = n(idx_u_type::tag(), 1);
+                int cur_idx_0 = n(idx_N_type::tag(), 0);
+                int cur_idx_1 = n(idx_N_type::tag(), 1);
+                
+                int cur_idx_u_0 = n(idx_u_type::tag(), 0);
+                int cur_idx_u_1 = n(idx_u_type::tag(), 1);
+
+                int gN_idx_0 = n(idx_N_g_type::tag(), 0);
+                int gN_idx_1 = n(idx_N_g_type::tag(), 1);
 
                 int glob_idx_0_00 = n.at_offset(idx_u_g_type::tag(), 0,  0, 0);
                 int glob_idx_0_01 = n.at_offset(idx_u_g_type::tag(), 0, -1, 0);
@@ -3734,6 +3766,8 @@ class NewtonIteration
                 int p_idx_n = n.at_offset(idx_p_type::tag(), 0, 1, 0);
                 int p_idx_s = n.at_offset(idx_p_type::tag(), 0, -1, 0);
 
+                if (p_set_zero) {
+
                 if ((p_idx_w > 0 && p_idx_e > 0) || l != base_level)
                 {
                     DN.add_element(cur_idx_0, glob_idx_1_00, -om_00);
@@ -3748,8 +3782,10 @@ class NewtonIteration
                     DN.add_element(cur_idx_1, glob_idx_0_10, om_10);
                     DN.add_element(cur_idx_1, glob_idx_0_11, om_10);
                 }
+                }
+                else {
 
-                /*DN.add_element(cur_idx_0, glob_idx_1_00, -om_00);
+                DN.add_element(cur_idx_0, glob_idx_1_00, -om_00);
                 DN.add_element(cur_idx_0, glob_idx_1_10, -om_00);
                 DN.add_element(cur_idx_0, glob_idx_1_01, -om_01);
                 DN.add_element(cur_idx_0, glob_idx_1_11, -om_01);
@@ -3757,10 +3793,23 @@ class NewtonIteration
                 DN.add_element(cur_idx_1, glob_idx_0_00,  om_00);
                 DN.add_element(cur_idx_1, glob_idx_0_01,  om_00);
                 DN.add_element(cur_idx_1, glob_idx_0_10,  om_10);
-                DN.add_element(cur_idx_1, glob_idx_0_11,  om_10);*/
+                DN.add_element(cur_idx_1, glob_idx_0_11,  om_10);
+                }
+
+                DN.add_element(cur_idx_0, gN_idx_0, -1.0);
+                DN.add_element(cur_idx_1, gN_idx_1, -1.0);
+
+                DN.add_element(cur_idx_u_0, gN_idx_0, -1.0);
+                DN.add_element(cur_idx_u_1, gN_idx_1, -1.0);
             }
         }
         }
+        domain_->client_communicator().barrier();
+
+        this->template construct_upward_BC_intrp<idx_N_type, idx_N_g_type>(DN);
+
+        this->template construct_interpolation<idx_N_type, idx_N_g_type>(DN);
+
         domain_->client_communicator().barrier();
     }
 
@@ -3829,15 +3878,30 @@ class NewtonIteration
                         int glo_idx_01 =
                             n.at_offset(idx_p_g_type::tag(), 0, -1, 0);
 
-                        if (glo_idx_10 > 0 || (!p_set_zero && glo_idx_0 == set_zero_idx))
+                        if (p_set_zero)
+                        {
+                            if (glo_idx_10 > 0)
+                            {
+                                Grad.add_element(cur_idx_0, glo_idx_0,
+                                    1.0 / dx_level);
+                                Grad.add_element(cur_idx_0, glo_idx_10,
+                                    -1.0 / dx_level);
+                            }
+                            if (glo_idx_01 > 0)
+                            {
+                                Grad.add_element(cur_idx_1, glo_idx_0,
+                                    1.0 / dx_level);
+                                Grad.add_element(cur_idx_1, glo_idx_01,
+                                    -1.0 / dx_level);
+                            }
+                        }
+                        else
                         {
                             Grad.add_element(cur_idx_0, glo_idx_0,
                                 1.0 / dx_level);
                             Grad.add_element(cur_idx_0, glo_idx_10,
                                 -1.0 / dx_level);
-                        }
-                        if (glo_idx_01 > 0)
-                        {
+
                             Grad.add_element(cur_idx_1, glo_idx_0,
                                 1.0 / dx_level);
                             Grad.add_element(cur_idx_1, glo_idx_01,
@@ -3894,7 +3958,7 @@ class NewtonIteration
                 if (!it->is_leaf()) continue;
                 if (it->is_correction())
                 {
-                    for (auto& n : it->data())
+                    /*for (auto& n : it->data())
                     {
                         int cur_idx = n(idx_p_type::tag(), 0);
                         if (cur_idx < 0) continue;
@@ -3916,8 +3980,8 @@ class NewtonIteration
                         Div.add_element(cur_idx, glo_idx_1_0, -1.0 / dx_level);
                         Div.add_element(cur_idx, glo_idx_0_1, 1.0 / dx_level);
                         Div.add_element(cur_idx, glo_idx_1_1, 1.0 / dx_level);
-                    }
-                    //continue;
+                    }*/
+                    continue;
                 }
                 else
                 {
@@ -3956,6 +4020,105 @@ class NewtonIteration
                 }
             }
         }
+        domain_->client_communicator().barrier();
+    }
+
+
+    void construction_Div_psource() {
+        //construction of Gradient
+        boost::mpi::communicator world;
+        world.barrier();
+
+        if (world.rank() == 0) {
+            return;
+        }
+
+        if (world.rank() == 1) {
+            std::cout << "Constructing div matrix" << std::endl;
+        }
+       
+        if (max_local_idx == 0) {
+            std::cout << "idx not initialized, please call Assigning_idx()" << std::endl;
+        }
+
+        const auto dx_base = domain_->dx_base();
+
+        Div_cs.resizing_row(max_local_idx+1);
+
+        int base_level = domain_->tree()->base_level();
+        for (int l = base_level; l < domain_->tree()->depth(); l++)
+        {
+            if (domain_->is_client())
+            {
+                auto client = domain_->decomposition().client();
+
+                //client->template buffer_exchange<idx_p_type>(base_level);
+                client->template buffer_exchange<idx_N_g_type>(l);
+            }
+            for (auto it = domain_->begin(l);
+                 it != domain_->end(l); ++it)
+            {
+                float_type dx_level = dx_base / math::pow2(it->refinement_level());
+                if (!it->locally_owned() || !it->has_data()) continue;
+                if (!it->is_leaf()) continue;
+                if (it->is_correction())
+                {
+                    /*for (auto& n : it->data())
+                    {
+                        int cur_idx = n(idx_p_type::tag(), 0);
+                        if (cur_idx < 0) continue;
+                        int glo_idx_0_0 = n(idx_u_g_type::tag(), 0);
+                        int glo_idx_1_0 = n(idx_u_g_type::tag(), 1);
+
+                        int glo_idx_0_1 =
+                            n.at_offset(idx_u_g_type::tag(), 1, 0, 0);
+                        int glo_idx_1_1 =
+                            n.at_offset(idx_u_g_type::tag(), 0, 1, 1);
+
+                        if (glo_idx_0_0 < 0 || glo_idx_0_1 < 0 ||
+                            glo_idx_1_0 < 0 || glo_idx_1_1 < 0)
+                        {
+                            continue;
+                        }
+
+                        Div.add_element(cur_idx, glo_idx_0_0, -1.0 / dx_level);
+                        Div.add_element(cur_idx, glo_idx_1_0, -1.0 / dx_level);
+                        Div.add_element(cur_idx, glo_idx_0_1, 1.0 / dx_level);
+                        Div.add_element(cur_idx, glo_idx_1_1, 1.0 / dx_level);
+                    }*/
+                    continue;
+                }
+                else
+                {
+                    for (auto& n : it->data())
+                    {
+                        int cur_idx = n(idx_cs_type::tag(), 0);
+                        int glo_cs_idx = n(idx_cs_g_type::tag(), 0);
+
+                        if (cur_idx < 0) continue;
+
+                        
+                        int glo_idx_0 = n(idx_N_g_type::tag(), 0);
+                        int glo_idx_1 = n(idx_N_g_type::tag(), 1);
+
+                        Div_cs.add_element(cur_idx, glo_idx_0, -1.0 / dx_level);
+                        Div_cs.add_element(cur_idx, glo_idx_1, -1.0 / dx_level);
+
+                        glo_idx_0 = n.at_offset(idx_N_g_type::tag(), 1, 0, 0);
+                        Div_cs.add_element(cur_idx, glo_idx_0, 1.0 / dx_level);
+
+                        glo_idx_1 = n.at_offset(idx_N_g_type::tag(), 0, 1, 1);
+                        Div_cs.add_element(cur_idx, glo_idx_1, 1.0 / dx_level);
+
+                        Div_cs.add_element(cur_idx, glo_cs_idx, -1.0);
+                    }
+                }
+            }
+        }
+        domain_->client_communicator().barrier();
+
+        this->template construct_upward_BC_intrp<idx_cs_type, idx_cs_g_type>(Div_cs);
+
         domain_->client_communicator().barrier();
     }
 
@@ -4106,15 +4269,18 @@ class NewtonIteration
 
                         auto ddf = domain_->ib().delta_func();
 
-                        float_type val = ddf(dist + off) * factor;
+                        float_type val = ddf(dist + off) * factor * -1; //-1 is here for the sign of smearing w.r.t. nonlinear term
                         if (std::abs(val) < 1e-12) {
                             //std::cout << "uninfluenced node found with val " << val << std::endl;
                             continue;
                         }
-                        int u_loc = node(idx_u_type::tag(),field_idx);
+                        //int u_loc = node(idx_u_type::tag(),field_idx);
+                        //int f_glob = forcing_idx_g[i][field_idx];
+
+                        int N_loc = node(idx_N_type::tag(),field_idx);
                         //int f_glob = forcing_idx_g[i][field_idx];
                         int f_glob = forcing_idx_all[i][field_idx];
-                        smearing.add_element(u_loc, f_glob, val);
+                        smearing.add_element(N_loc, f_glob, val);
                         /*node(u, field_idx) +=
                             f[field_idx] * ddf(dist + off) * factor;*/
                     }
@@ -4427,6 +4593,7 @@ class NewtonIteration
                     {
                         int cur_idx_0 = n(idx_u_type::tag(), 0);
                         int cur_idx_1 = n(idx_u_type::tag(), 1);
+                        int cur_idx_p = n(idx_p_type::tag(), 0);
 
                         if (cur_idx_0 > 0)
                         {
@@ -4434,12 +4601,14 @@ class NewtonIteration
                             //int cur_idx_1 = n(idx_u_type::tag(), 1);
                             int glob_idx_0 = n(idx_u_g_type::tag(), 0);
                             int glob_idx_1 = n(idx_u_g_type::tag(), 1);
+                            int glob_idx_p = n(idx_p_g_type::tag(), 0);
 
                             //function that inquires all the idx from other processors
                             const auto& coord_cur = n.level_coordinate();
 
                             std::map<int, float_type> row_u;
                             std::map<int, float_type> row_v;
+                            std::map<int, float_type> row_p;
 
                             if (use_FMM)
                             {
@@ -4448,11 +4617,15 @@ class NewtonIteration
                                                 .base();
                                 get_BC_blk_from_client_FMM(lb_c, coord_cur, root_rank,
                                     row_u, row_v);
+                                get_BC_blk_from_client_FMM_p(lb_c, coord_cur, root_rank,
+                                    row_p);
                             }
                             else
                             {
                                 get_BC_idx_from_client(coord_cur, root_rank,
                                     row_u, row_v);
+                                get_BC_idx_from_client_p(coord_cur, root_rank,
+                                    row_p);
                             }
 
                             for (const auto& [key, val] : row_u)
@@ -4464,9 +4637,17 @@ class NewtonIteration
                                 boundary_u.add_element(cur_idx_1, key, val);
                             }
 
+                            if (cur_idx_p > 0) {
+                            for (const auto& [key, val] : row_p)
+                            {
+                                boundary_u.add_element(cur_idx_p, key, val);
+                            }
+                            }
+
                             //add the negative of identity here
                             boundary_u.add_element(cur_idx_0, glob_idx_0, -1.0);
                             boundary_u.add_element(cur_idx_1, glob_idx_1, -1.0);
+                            if (cur_idx_p > 0) boundary_u.add_element(cur_idx_p, glob_idx_p, -1.0);
                         }
                     }
                 }
@@ -4477,6 +4658,7 @@ class NewtonIteration
                 {
                     std::map<int, float_type> row_u;
                     std::map<int, float_type> row_v;
+                    std::map<int, float_type> row_p;
                     /*get_BC_idx_from_client(coordinate_type({0, 0}),
                                 root_rank, row_u,
                                 row_v);*/
@@ -4485,11 +4667,15 @@ class NewtonIteration
                     {
                         get_BC_blk_from_client_FMM(coordinate_type({0, 0}),
                             coordinate_type({0, 0}), root_rank, row_u, row_v);
+                        get_BC_blk_from_client_FMM_p(coordinate_type({0, 0}),
+                            coordinate_type({0, 0}), root_rank, row_p);
                     }
                     else
                     {
                         get_BC_idx_from_client(coordinate_type({0, 0}),
                             root_rank, row_u, row_v);
+                        get_BC_idx_from_client_p(coordinate_type({0, 0}),
+                            root_rank, row_p);
                     }
                 }
             }
@@ -4500,6 +4686,14 @@ class NewtonIteration
     }
 
     void get_BC_idx_from_client(coordinate_type c, int root, std::map<int, float_type>& row_u, std::map<int, float_type>& row_v) {
+        get_BC_idx_from_client_w(c, root, row_u, row_v);
+    }
+
+    void get_BC_blk_from_client_FMM(coordinate_type lb_c_r, coordinate_type c, int root, std::map<int, float_type>& row_u, std::map<int, float_type>& row_v) {
+        get_BC_blk_from_client_FMM_w(lb_c_r, c, root, row_u, row_v);
+    }
+
+    void get_BC_idx_from_client_w(coordinate_type c, int root, std::map<int, float_type>& row_u, std::map<int, float_type>& row_v) {
         //Send and recv 
         //send coordinates to other processes
 
@@ -4530,7 +4724,7 @@ class NewtonIteration
         {
             if (!it->locally_owned() || !it->has_data()) continue;
             //if (!it->is_leaf()) continue;
-            if (it->is_correction()) continue;
+            //if (it->is_correction()) continue;
 
             for (auto& n : it->data())
             {
@@ -4635,7 +4829,106 @@ class NewtonIteration
         }
     }
 
-    void get_BC_blk_from_client_FMM(coordinate_type lb_c_r, coordinate_type c, int root, 
+    void get_BC_idx_from_client_p(coordinate_type c, int root, std::map<int, float_type>& row_u) {
+        //Send and recv 
+        //send coordinates to other processes
+
+        //clear the destination matrix rows
+        row_u.clear();
+        //row_v.clear();
+
+        coordinate_type c_loc = c;
+        boost::mpi::broadcast(domain_->client_communicator(), c_loc, root);
+        //std::cout << root << " " <<domain_->client_communicator().rank() << " c is " << c_loc[0] << " " << c_loc[1] << std::endl;
+        std::map<int, float_type> loc_smat_u; //local resulting matrix to get BC
+        std::map<int, float_type> loc_smat_v; //local resulting matrix to get BC
+
+        int base_level = domain_->tree()->base_level();
+        const auto dx_base = domain_->dx_base();
+        if (domain_->is_client())
+        {
+            auto client = domain_->decomposition().client();
+
+            //client->template buffer_exchange<idx_u_type>(base_level);
+            client->template buffer_exchange<idx_u_g_type>(base_level);
+
+            //client->template buffer_exchange<idx_p_type>(base_level);
+            //client->template buffer_exchange<idx_p_g_type>(base_level);
+        }
+        for (auto it = domain_->begin(base_level);
+             it != domain_->end(base_level); ++it)
+        {
+            if (!it->locally_owned() || !it->has_data()) continue;
+            //if (!it->is_leaf()) continue;
+            //if (it->is_correction()) continue;
+
+            for (auto& n : it->data())
+            {
+                int u_idx_0 = n(idx_u_g_type::tag(), 0);
+                int u_idx_0_1 = n.at_offset(idx_u_g_type::tag(), 0, -1, 0);
+                int u_idx_1 = n(idx_u_g_type::tag(), 1);
+                int u_idx_1_1 = n.at_offset(idx_u_g_type::tag(), -1, 0, 1);
+
+                const auto& coord_loc = n.level_coordinate();
+
+                int x_c = c_loc[0] - coord_loc[0];
+                if (x_c != (c_loc[0] - coord_loc[0]))
+                {
+                    std::cout << "Coordinate type not INT" << std::endl;
+                }
+
+                int        y_c = c_loc[1] - coord_loc[1];
+
+                int factor = 1.0;
+    
+                float_type lgf_val_00 =
+                    lgf_lap_.derived().get(coordinate_type({x_c, y_c}));
+                float_type lgf_val_01 =
+                    lgf_lap_.derived().get(coordinate_type({x_c, (y_c + 1)}));
+                float_type lgf_val_10 =
+                    lgf_lap_.derived().get(coordinate_type({(x_c + 1), y_c}));
+
+                float_type u_weight = (lgf_val_01 - lgf_val_00)*factor;
+                float_type v_weight = (lgf_val_00 - lgf_val_10)*factor;
+
+                //u = -1/dx * C^T L^inv (dx^2) 1/dx C
+                //so all dx cancels
+
+                int w_idx = n(idx_cs_g_type::tag(), 0);
+
+                this->map_add_element(w_idx, -lgf_val_00*dx_base*dx_base, loc_smat_u);
+
+                //this->map_add_element(w_idx, -v_weight * dx_base, loc_smat_v);
+
+                /*this->map_add_element(u_idx_0, u_weight, loc_smat_u);
+                this->map_add_element(u_idx_0_1, -u_weight, loc_smat_u);
+                this->map_add_element(u_idx_1, -u_weight, loc_smat_u);
+                this->map_add_element(u_idx_1_1, u_weight, loc_smat_u);
+
+                this->map_add_element(u_idx_0, v_weight, loc_smat_v);
+                this->map_add_element(u_idx_0_1, -v_weight, loc_smat_v);
+                this->map_add_element(u_idx_1, -v_weight, loc_smat_v);
+                this->map_add_element(u_idx_1_1, v_weight, loc_smat_v);*/
+            }
+        }
+
+        domain_->client_communicator().barrier();
+        std::vector<std::map<int, float_type>> dest_mat_u;
+        //std::vector<std::map<int, float_type>> dest_mat_v;
+        boost::mpi::gather(domain_->client_communicator(), loc_smat_u, dest_mat_u, root);
+        //boost::mpi::gather(domain_->client_communicator(), loc_smat_v, dest_mat_v, root);
+
+        if (domain_->client_communicator().rank() != root) {
+            return;
+        }
+
+        for (int i = 0; i < dest_mat_u.size();i++) {
+            //accumulate vectors from other processors
+            map_add_map(dest_mat_u[i], row_u);
+        }
+    }
+
+    void get_BC_blk_from_client_FMM_w(coordinate_type lb_c_r, coordinate_type c, int root, 
         std::map<int, float_type>& row_u, std::map<int, float_type>& row_v)
     {
         //Send and recv
@@ -4842,777 +5135,194 @@ class NewtonIteration
         }
     }
 
-    void construction_BCMat_FMM() {
-        //Not in use
-        boost::mpi::communicator world;
-        boost::mpi::communicator client_comm = domain_->client_communicator();
-        world.barrier();
 
-        /*if (world.rank() == 0) {
-            return;
-        }*/
-
-        if (world.rank() == 1) {
-            std::cout << "Constructing BC matrix using FMM" << std::endl;
-        }
-       
-        if (max_local_idx == 0 && world.rank() != 0) {
-            std::cout << "idx not initialized, please call Assigning_idx()" << std::endl;
-        }
-
-        const auto dx_base = domain_->dx_base();
-        int base_level = domain_->tree()->base_level();
-
-        boundary_u.clean();
-
-        boundary_u.resizing_row(max_local_idx+1);
-
-        //int counter = 0; //count the number of bc pts in this processor
-
-        //compute the octants needed at each processor
-        std::vector<std::set<int>> gid_to_recv;
-        gid_to_recv.resize(world.size());
-        std::vector<std::set<int>> gid_to_send;
-        gid_to_send.resize(world.size());
-        for (auto it = domain_->begin(base_level);
-             it != domain_->end(base_level); ++it)
-        {
-            if (world.rank() == 0) continue;
-            if (!it->locally_owned() || !it->has_data()) continue;
-            if (!it->is_leaf()) continue;
-            if (!it->is_correction()) continue;
-
-            octant_t* prt_oct = it.ptr();
-
-            for (int l = base_level - 1; l >= 0; l--)
-            {
-                //if (world.rank() == 1) std::cout << "rank " << world.rank() << " at level " << l << std::endl;
-                octant_t* chd_oct =
-                    prt_oct; //chd_oct is the child of the octant at the current level containing the targete octant
-
-                prt_oct =
-                    prt_oct
-                        ->parent(); //prt_oct is the parent octant on the level l
-
-                if (!prt_oct) break;
-
-                //if (world.rank() == 1) std::cout << "rank " << world.rank() << " at level " << l << " updated parents " << std::endl;
-
-                for (std::size_t i = 0; i < prt_oct->num_neighbors(); ++i)
-                {
-                    //if (world.rank() == 1) std::cout << "rank " << world.rank() << " at neighbor " << i << std::endl;
-                    auto it2 = prt_oct->neighbor(i);
-                    if (!it2) continue;
-                    for (int j = 0; j < it2->num_children(); ++j)
-                    {
-                        //if (world.rank() == 1) std::cout << "rank " << world.rank() << " at child " << j << std::endl;
-                        //only apply to non-neighboring ones
-                        auto child = it2->child(j);
-                        if (!child)
-                            continue;
-                        if (!child->is_leaf() && l == (base_level - 1))
-                            continue; //on the base level, the octant needs to be leaf octant
-                        bool is_neighbor = false;
-
-                        if (l != (base_level - 1))
-                        {
-                            //if (world.rank() == 1) std::cout << "rank " << world.rank() << " checking neighbors" << std::endl;
-                            //if  child is on the base level, do not exclude neighbors
-                            for (std::size_t k = 0;
-                                 k < chd_oct->num_neighbors(); ++k)
-                            {
-                                auto neighbor_tmp = chd_oct->neighbor(k);
-                                if (!neighbor_tmp) continue;
-                                if (child->global_id() == neighbor_tmp->global_id())
-                                {
-                                    is_neighbor = true;
-                                    break;
-                                }
-                            }
-                        }
-                        if (!is_neighbor) {
-                            //if (world.rank() == 1) std::cout << "rank " << world.rank() << " registering new octant gids" << std::endl;
-                            int gid_loc = child->global_id();
-                            int child_rank = child->rank();
-                            if (child_rank <= 0) continue;
-                            //if (world.rank() == 1) std::cout << "rank " << world.rank() << " child rank " << child_rank << std::endl;
-                            gid_to_recv[child_rank].insert(gid_loc);
-                        }
-                    }
-                }
-            }
-        }
-
-        
-        std::cout << "rank " << world.rank() << " tasks to gather" << std::endl;
-
-        int rank = world.rank();
-
-        for (int i = 1; i < world.size();i++) {
-            boost::mpi::gather(world, gid_to_recv[i], gid_to_send, i);
-        }
-
-        int n_send = 0;
-
-        for (int i =1; i < world.size(); i++) {
-            if (i == world.rank()) continue;
-            n_send += gid_to_send[i].size();
-        }
-
-        //std::cout << "rank " << world.rank() << " tasks gathered" << std::endl;
-
-        if (world.rank() == 0) return;
-
-        std::cout << "rank " << world.rank() << " tasks gathered with size " << n_send << std::endl;
-
-        std::map<int, std::vector<int>> idx_maps_nonloc;
-        std::map<int, coordinate_type> base_maps_nonloc;
-
-        
-        for (int l = base_level; l >=0 ; l--) {
-            //iterate through levels to send idx vectors to influenced processors
-            for (auto it = domain_->begin(l); it != domain_->end(l); ++it) {
-                if (it->locally_owned() && it->has_data()) {
-                    if (!it->is_leaf() && l == base_level) continue;
-
-                    int N = it->data().descriptor().extent()[0];
-
-                    int idx_size = (N+2) * (N+2);
-
-                    std::vector<int> tmp_idx_vec;
-
-                    tmp_idx_vec.resize(idx_size);
-
-                    auto child_idx_vec =
-                        it->data_r(idx_w_g_type::tag(), 0).linalg_data();
-
-                    for (int idx_i = 0; idx_i < (N + 2); idx_i++)
-                    {
-                        for (int idx_j = 0; idx_j < (N + 2); idx_j++)
-                        {
-                            int loc_idx = idx_i * (N + 2) + idx_j;
-                            tmp_idx_vec[loc_idx] =
-                                child_idx_vec.at(idx_i, idx_j);
-                        }
-                    }
-
-                    for (int rk = 1; rk < world.size(); rk++) {
-                        if (rk == world.rank()) continue;
-                        int gid_cur = it->global_id();
-                        auto it2 = gid_to_send[rk].find(gid_cur);
-                        if (it2 == gid_to_send[rk].end()) continue;
-                        coordinate_type loc_base = it->data_r(idx_w_g_type::tag(), 0).real_block().base();
-                        world.isend(rk, 2*gid_cur, tmp_idx_vec);
-                        world.isend(rk, 2*gid_cur+1, loc_base);
-                    }
-                }
-            }
-        }
-
-        std::cout << "rank " << world.rank() << " tasks sent" << std::endl;
-
-        int counter = 0;
-
-        int N_m = domain_->block_extent()[0]+lBuffer+rBuffer;
-        int idx_size = N_m*N_m;
-
-        for (int rk = 1; rk < world.size(); rk++) {
-            if (rk == world.rank()) continue;
-            std::set<int> oct_to_recv = gid_to_recv[rk];
-            for (auto it = oct_to_recv.begin(); it != oct_to_recv.end(); ++it) {
-                std::vector<int> idx_vec_tmp;
-                idx_vec_tmp.resize(idx_size);
-                coordinate_type tmp;
-                int cur_gid = *it;
-                boost::mpi::request reqs[2];
-                reqs[0] = world.irecv(rk, 2*cur_gid, idx_vec_tmp);
-                reqs[1] = world.irecv(rk, 2*cur_gid+1, tmp);
-                boost::mpi::wait_all(reqs, reqs + 2);
-                //counter++;
-                idx_maps_nonloc[cur_gid] = idx_vec_tmp;
-                base_maps_nonloc[cur_gid] = tmp;
-            }
-        }
-        //boost::mpi::wait_all(reqs_vec.begin(), reqs_vec.end());
-
-        std::cout << "rank " << world.rank() << " recv all idx vecs" << std::endl;
-
-        for (auto it = domain_->begin(base_level);
-             it != domain_->end(base_level); ++it)
-        {
-            
-
-            if (!it->locally_owned() || !it->has_data()) continue;
-            if (!it->is_leaf()) continue;
-            if (!it->is_correction()) continue;
-
-            int gid_cur = it->global_id();
-
-            std::cout << "Rank " << world.rank() << " computing BC terms gid " << gid_cur << std::endl;
-
-            auto target_ptr = it.ptr();
-
-            for (auto& n : it->data())
-            {
-                int cur_idx_0 = n(idx_u_type::tag(), 0);
-                int cur_idx_1 = n(idx_u_type::tag(), 1);
-
-                if (cur_idx_0 > 0)
-                {
-                    //int cur_idx_0 = n(idx_u_type::tag(), 0);
-                    //int cur_idx_1 = n(idx_u_type::tag(), 1);
-                    int glob_idx_0 = n(idx_u_g_type::tag(), 0);
-                    int glob_idx_1 = n(idx_u_g_type::tag(), 1);
-
-                    //function that inquires all the idx from other processors
-                    const auto& coord_cur = n.level_coordinate();
-
-                    std::map<int, float_type> row_u;
-                    std::map<int, float_type> row_v;
-
-                    //const auto& tree_coord = it->tree_coordinate();
-                    //int oct_idx = it->idx();
-                    //key_type key_tar = it->key();
-                    //int gid_cur = it->global_id();
-
-                    
-                    get_BC_idx_from_client_FMM(target_ptr, coord_cur, idx_maps_nonloc, base_maps_nonloc,
-                        row_u, row_v);
-
-                    for (const auto& [key, val] : row_u)
-                    {
-                        boundary_u.add_element(cur_idx_0, key, val);
-                    }
-                    for (const auto& [key, val] : row_v)
-                    {
-                        boundary_u.add_element(cur_idx_1, key, val);
-                    }
-
-                    //add the negative of identity here
-                    boundary_u.add_element(cur_idx_0, glob_idx_0, -1.0);
-                    boundary_u.add_element(cur_idx_1, glob_idx_1, -1.0);
-                }
-            }
-        }
-
-        domain_->client_communicator().barrier();
-
-        std::cout << "rank " << world.rank() << " constructed matrix" << std::endl;
-    }
-
-    void get_BC_idx_from_client_FMM(octant_t* target_octant, coordinate_type c,
-        const std::map<int, std::vector<int>>& idx_maps_nonloc,
-        const std::map<int, coordinate_type>&  base_maps_nonloc,
-        std::map<int, float_type>& row_u, std::map<int, float_type>& row_v)
+    void get_BC_blk_from_client_FMM_p(coordinate_type lb_c_r, coordinate_type c, int root, 
+        std::map<int, float_type>& row_u)
     {
-        //Not in use
         //Send and recv
         //send coordinates to other processes
 
         //clear the destination matrix rows
         boost::mpi::communicator world;
         row_u.clear();
-        row_v.clear();
 
         coordinate_type base = domain_->bounding_box().base();
         coordinate_type c_loc = c - base;
+        coordinate_type lb_c= lb_c_r - base;
+
+        int N_ext = domain_->block_extent()[0];
+
+        coordinate_type center = -base; //find the center coordinate
+
+        for (int d = 0; d < center.size(); d++) {
+            int blk_idx_tmp = center[d]/N_ext;
+            center[d] = blk_idx_tmp*N_ext;
+        }
+        
+
+        boost::mpi::broadcast(domain_->client_communicator(), c_loc, root);
+        boost::mpi::broadcast(domain_->client_communicator(), lb_c, root);
         //std::cout << root << " " <<domain_->client_communicator().rank() << " c is " << c_loc[0] << " " << c_loc[1] << std::endl;
-        //std::map<int, float_type> loc_smat_u; //local resulting matrix to get BC
+        std::map<int, float_type> loc_smat_u; //local resulting matrix to get BC
         //std::map<int, float_type> loc_smat_v; //local resulting matrix to get BC
 
         int        base_level = domain_->tree()->base_level();
         const auto dx_base = domain_->dx_base();
 
-        /*if (domain_->is_client())
+        for (int l = base_level; l >= 1; l--)
         {
-            auto client = domain_->decomposition().client();
-
-            //client->template buffer_exchange<idx_u_type>(base_level);
-            client->template buffer_exchange<idx_u_g_type>(base_level);
-
-            //client->template buffer_exchange<idx_p_type>(base_level);
-            //client->template buffer_exchange<idx_p_g_type>(base_level);
-        }*/
-
-        octant_t* prt_oct =
-            target_octant; //store the pointer to the parent octant
-
-        for (int l = base_level - 1; l >= 0; l--)
-        {
-            //std::cout << "rank " << world.rank() << " at level " << l << std::endl;
-            octant_t* chd_oct =
-                prt_oct; //chd_oct is the child of the octant at the current level containing the targete octant
-
-            prt_oct =
-                prt_oct->parent(); //prt_oct is the parent octant on the level l
-
-            if (!prt_oct) return;
-
-            //std::cout << "rank " << world.rank() << " at level " << l << " updated parents " << std::endl;
-
-            for (std::size_t i = 0; i < prt_oct->num_neighbors(); ++i)
+            for (auto it = domain_->begin(l);
+                 it != domain_->end(l); ++it)
             {
-                //std::cout << "rank " << world.rank() << " at neighbor " << i << std::endl;
-                auto it2 = prt_oct->neighbor(i);
-                if (!it2) continue;
-                for (int j = 0; j < it2->num_children(); j++)
+                if (!it->locally_owned() || !it->has_data()) continue;
+                //if (!it->is_leaf() && l == base_level) continue;
+                if (it->is_correction() && l == base_level) continue;
+
+                //check if this block should be included
+                bool include_oct = false;
+                int N = domain_->block_extent()[0];
+                coordinate_type add_one;
+                add_one[0] = 1;
+                add_one[1] = 1;
+
+                int n_range_p = std::pow(2, base_level - l + 1) * N * FMM_fac;
+                int n_range_c = std::pow(2, base_level - l) * N * FMM_fac;
+                
+                auto cur_real_base = (it->data_r(idx_w_g_type::tag()).real_block().base() - base + add_one) * std::pow(2, base_level - l);
+                auto prt_real_base = (it->parent()->data_r(idx_w_g_type::tag()).real_block().base() - base + add_one) * std::pow(2, base_level - l + 1);
+                auto tar_real_base = lb_c + add_one;
+
+                //check if parents are neighbors
+                auto dist = tar_real_base - prt_real_base;
+                if (dist[0] >= -n_range_p && dist[0] < n_range_p * 2 &&
+                    dist[1] >= -n_range_p && dist[1] < n_range_p * 2) {
+                    include_oct = true;
+                }
+
+                if (FMM_include_center)
                 {
-                    //std::cout << "rank " << world.rank() << " at child " << j << std::endl;
-                    //only apply to non-neighboring ones
-                    auto child = it2->child(j);
-                    if (!child) continue;
-                    if (!child->is_leaf() && l == (base_level - 1))
-                        continue; //on the base level, the octant needs to be leaf octant
-                    bool is_neighbor = false;
-
-                    if (l != (base_level - 1))
+                    //auto tar_real_center = center;
+                    auto dist = center - prt_real_base;
+                    if (dist[0] >= -n_range_p && dist[0] < n_range_p * 2 &&
+                        dist[1] >= -n_range_p && dist[1] < n_range_p * 2)
                     {
-                        //if  child is on the base level, do not exclude neighbors
-                        for (std::size_t k = 0; k < chd_oct->num_neighbors();
-                             ++k)
+                        include_oct = true;
+                    }
+                }
+
+                auto dist_c = tar_real_base - cur_real_base;
+
+                if (l != base_level &&
+                    dist_c[0] >= -n_range_c && dist_c[0] < n_range_c * 2 &&
+                    dist_c[1] >= -n_range_c && dist_c[1] < n_range_c * 2) {
+                    include_oct = false;
+                }
+
+                
+                if (FMM_include_center)
+                {
+
+                    auto dist_c = center - cur_real_base;
+
+                    if (l != base_level && dist_c[0] >= -n_range_c &&
+                        dist_c[0] < n_range_c * 2 && dist_c[1] >= -n_range_c &&
+                        dist_c[1] < n_range_c * 2)
+                    {
+                        include_oct = false;
+                    }
+                }
+
+                if (!include_oct) continue;
+
+                if (l != base_level)
+                {
+                    int   N = domain_->block_extent()[0] + lBuffer + rBuffer;
+                    auto& lin_data_g =
+                        it->data_r(idx_cs_g_type::tag(), 0).linalg_data();
+                    for (int sub_i = 0; sub_i < N; sub_i++)
+                    {
+                        for (int sub_j = 0; sub_j < N; sub_j++)
                         {
-                            auto neighbor_tmp = chd_oct->neighbor(k);
-                            if (!neighbor_tmp) continue;
-                            if (child->global_id() == neighbor_tmp->global_id())
+                            auto real_base = it->data_r(idx_cs_g_type::tag())
+                                                 .real_block()
+                                                 .base() -
+                                             base;
+
+                            int x_c_tmp = (real_base[0] + sub_i) *
+                                          std::pow(2, base_level - l);
+                            int y_c_tmp = (real_base[1] + sub_j) *
+                                          std::pow(2, base_level - l);
+
+                            int x_c = c_loc[0] - x_c_tmp;
+                            if (x_c != (c_loc[0] - x_c_tmp))
                             {
-                                is_neighbor = true;
-                                break;
+                                std::cout << "Coordinate type not INT"
+                                          << std::endl;
                             }
+
+                            int y_c = c_loc[1] - y_c_tmp;
+
+                            float_type lgf_val_00 = lgf_lap_.derived().get(
+                                coordinate_type({x_c, y_c}));
+                            float_type lgf_val_01 = lgf_lap_.derived().get(
+                                coordinate_type({x_c, (y_c + 1)}));
+                            float_type lgf_val_10 = lgf_lap_.derived().get(
+                                coordinate_type({(x_c + 1), y_c}));
+
+                            float_type u_weight = (lgf_val_01 - lgf_val_00);
+                            float_type v_weight = (lgf_val_00 - lgf_val_10);
+
+                            int cs_idx = lin_data_g.at(sub_i, sub_j);
+
+                            this->map_add_element(cs_idx, -lgf_val_00*dx_base*dx_base, loc_smat_u);
+
+                            //this->map_add_element(w_idx, -v_weight * dx_base, loc_smat_v);
                         }
                     }
-                    //std::cout << "rank " << world.rank() << " after at child " << j << std::endl;
-                    if (!is_neighbor && child->locally_owned() && child->has_data())
+                }
+
+                else
+                {
+                    for (auto& n : it->data())
                     {
-                        //not neighbor, keep constructing matrix for this octant
+                        const auto& coord_loc_level =
+                            n.level_coordinate() - base;
+                        const auto& coord_loc =
+                            coord_loc_level * std::pow(2, base_level - l);
 
-                        if (l != (base_level - 1))
+                        int x_c = c_loc[0] - coord_loc[0];
+                        if (x_c != (c_loc[0] - coord_loc[0]))
                         {
-                            int N =
-                                domain_->block_extent()[0] + lBuffer + rBuffer;
-                            
-                            auto& lin_data_g =
-                                child->data_r(idx_w_g_type::tag(), 0)
-                                    .linalg_data();
-                            for (int sub_i = 0; sub_i < N; sub_i++)
-                            {
-                                for (int sub_j = 0; sub_j < N; sub_j++)
-                                {
-                                    auto real_base =
-                                        child->data_r(idx_w_g_type::tag())
-                                            .real_block()
-                                            .base() -
-                                        base;
-
-                                    int x_c_tmp =
-                                        (real_base[0] + sub_i) *
-                                        std::pow(2, base_level - (l + 1));
-                                    int y_c_tmp =
-                                        (real_base[1] + sub_j) *
-                                        std::pow(2, base_level - (l + 1));
-
-                                    int x_c = c_loc[0] - x_c_tmp;
-                                    if (x_c != (c_loc[0] - x_c_tmp))
-                                    {
-                                        std::cout << "Coordinate type not INT"
-                                                  << std::endl;
-                                    }
-
-                                    int y_c = c_loc[1] - y_c_tmp;
-
-                                    float_type lgf_val_00 =
-                                        lgf_lap_.derived().get(
-                                            coordinate_type({x_c, y_c}));
-                                    float_type lgf_val_01 =
-                                        lgf_lap_.derived().get(
-                                            coordinate_type({x_c, (y_c + 1)}));
-                                    float_type lgf_val_10 =
-                                        lgf_lap_.derived().get(
-                                            coordinate_type({(x_c + 1), y_c}));
-
-                                    float_type u_weight =
-                                        (lgf_val_01 - lgf_val_00);
-                                    float_type v_weight =
-                                        (lgf_val_00 - lgf_val_10);
-
-                                    int w_idx = lin_data_g.at(sub_i, sub_j);
-
-                                    this->map_add_element(w_idx,
-                                        -u_weight * dx_base, row_u);
-
-                                    this->map_add_element(w_idx,
-                                        -v_weight * dx_base, row_v);
-                                }
-                            }
+                            std::cout << "Coordinate type not INT" << std::endl;
                         }
 
-                        else
-                        {
-                            for (auto& n : child->data())
-                            {
-                                const auto& coord_loc_level =
-                                    n.level_coordinate() - base;
-                                const auto& coord_loc =
-                                    coord_loc_level *
-                                    std::pow(2, base_level - (l + 1));
+                        int y_c = c_loc[1] - coord_loc[1];
 
-                                int x_c = c_loc[0] - coord_loc[0];
-                                if (x_c != (c_loc[0] - coord_loc[0]))
-                                {
-                                    std::cout << "Coordinate type not INT"
-                                              << std::endl;
-                                }
+                        float_type lgf_val_00 =
+                            lgf_lap_.derived().get(coordinate_type({x_c, y_c}));
+                        float_type lgf_val_01 = lgf_lap_.derived().get(
+                            coordinate_type({x_c, (y_c + 1)}));
+                        float_type lgf_val_10 = lgf_lap_.derived().get(
+                            coordinate_type({(x_c + 1), y_c}));
 
-                                int y_c = c_loc[1] - coord_loc[1];
+                        float_type u_weight = (lgf_val_01 - lgf_val_00);
+                        float_type v_weight = (lgf_val_00 - lgf_val_10);
 
-                                float_type lgf_val_00 = lgf_lap_.derived().get(
-                                    coordinate_type({x_c, y_c}));
-                                float_type lgf_val_01 = lgf_lap_.derived().get(
-                                    coordinate_type({x_c, (y_c + 1)}));
-                                float_type lgf_val_10 = lgf_lap_.derived().get(
-                                    coordinate_type({(x_c + 1), y_c}));
+                        int cs_idx = n(idx_cs_g_type::tag(), 0);
 
-                                float_type u_weight = (lgf_val_01 - lgf_val_00);
-                                float_type v_weight = (lgf_val_00 - lgf_val_10);
+                        this->map_add_element(cs_idx, -lgf_val_00*dx_base*dx_base,
+                            loc_smat_u);
 
-                                int w_idx = n(idx_w_g_type::tag(), 0);
-
-                                this->map_add_element(w_idx,
-                                    -u_weight * dx_base, row_u);
-
-                                this->map_add_element(w_idx,
-                                    -v_weight * dx_base, row_v);
-                            }
-                        }
-                    }
-
-                    else if (!is_neighbor)
-                    {
-                        //std::cout << "rank " << world.rank() << " not child but on other proc " << std::endl;
-                        //not neighbor, keep constructing matrix for this octant
-
-                        int  gid_loc = child->global_id();
-                        auto it3 = idx_maps_nonloc.find(gid_loc);
-                        if (it3 == idx_maps_nonloc.end()) {
-                            //std::cout << "Rank " << world.rank() << " cannot find octant with gid " << gid_loc << std::endl;
-                            continue;
-                        }
-                        auto it4 = base_maps_nonloc.find(gid_loc);
-                        if (it4 == base_maps_nonloc.end()) {
-                            //std::cout << "Rank " << world.rank() << " cannot find octant with gid " << gid_loc << std::endl;
-                            continue;
-                        }
-                        auto base_loc = it4->second;
-                        auto idx_loc = it3->second;
-
-                        if (l != (base_level - 1))
-                        {
-                            int N =
-                                domain_->block_extent()[0] + lBuffer + rBuffer;
-                            
-                            
-                            for (int sub_i = 0; sub_i < N; sub_i++)
-                            {
-                                for (int sub_j = 0; sub_j < N; sub_j++)
-                                {
-                                    auto real_base = base_loc - base;
-
-                                    int x_c_tmp =
-                                        (real_base[0] + sub_i) *
-                                        std::pow(2, base_level - (l + 1));
-                                    int y_c_tmp =
-                                        (real_base[1] + sub_j) *
-                                        std::pow(2, base_level - (l + 1));
-
-                                    int x_c = c_loc[0] - x_c_tmp;
-                                    if (x_c != (c_loc[0] - x_c_tmp))
-                                    {
-                                        std::cout << "Coordinate type not INT"
-                                                  << std::endl;
-                                    }
-
-                                    int y_c = c_loc[1] - y_c_tmp;
-
-                                    float_type lgf_val_00 =
-                                        lgf_lap_.derived().get(
-                                            coordinate_type({x_c, y_c}));
-                                    float_type lgf_val_01 =
-                                        lgf_lap_.derived().get(
-                                            coordinate_type({x_c, (y_c + 1)}));
-                                    float_type lgf_val_10 =
-                                        lgf_lap_.derived().get(
-                                            coordinate_type({(x_c + 1), y_c}));
-
-                                    float_type u_weight =
-                                        (lgf_val_01 - lgf_val_00);
-                                    float_type v_weight =
-                                        (lgf_val_00 - lgf_val_10);
-
-                                    int loc_idx = sub_i * N + sub_j;
-                                    int w_idx = idx_loc[loc_idx];
-
-                                    this->map_add_element(w_idx,
-                                        -u_weight * dx_base, row_u);
-
-                                    this->map_add_element(w_idx,
-                                        -v_weight * dx_base, row_v);
-                                }
-                            }
-                        }
-
-                        else
-                        {
-                            int N =
-                                domain_->block_extent()[0] + lBuffer + rBuffer;
-                            
-                            
-                            for (int sub_i = 1; sub_i < N-1; sub_i++)
-                            {
-                                for (int sub_j = 1; sub_j < N-1; sub_j++)
-                                {
-                                    auto real_base = base_loc - base;
-
-                                    int x_c_tmp =
-                                        (real_base[0] + sub_i) *
-                                        std::pow(2, base_level - (l + 1));
-                                    int y_c_tmp =
-                                        (real_base[1] + sub_j) *
-                                        std::pow(2, base_level - (l + 1));
-
-                                    int x_c = c_loc[0] - x_c_tmp;
-                                    if (x_c != (c_loc[0] - x_c_tmp))
-                                    {
-                                        std::cout << "Coordinate type not INT"
-                                                  << std::endl;
-                                    }
-
-                                    int y_c = c_loc[1] - y_c_tmp;
-
-                                    float_type lgf_val_00 =
-                                        lgf_lap_.derived().get(
-                                            coordinate_type({x_c, y_c}));
-                                    float_type lgf_val_01 =
-                                        lgf_lap_.derived().get(
-                                            coordinate_type({x_c, (y_c + 1)}));
-                                    float_type lgf_val_10 =
-                                        lgf_lap_.derived().get(
-                                            coordinate_type({(x_c + 1), y_c}));
-
-                                    float_type u_weight =
-                                        (lgf_val_01 - lgf_val_00);
-                                    float_type v_weight =
-                                        (lgf_val_00 - lgf_val_10);
-
-                                    int loc_idx = sub_i * N + sub_j;
-                                    int w_idx = idx_loc[loc_idx];
-
-                                    this->map_add_element(w_idx,
-                                        -u_weight * dx_base, row_u);
-
-                                    this->map_add_element(w_idx,
-                                        -v_weight * dx_base, row_v);
-                                }
-                            }
-                        }
+                        //this->map_add_element(w_idx, -v_weight * dx_base, loc_smat_v);
                     }
                 }
             }
         }
-    }
-
-    /*void get_BC_idx_from_client_FMM(coordinate_type c, int gid, int root, std::map<int, float_type>& row_u, std::map<int, float_type>& row_v) {
-        //Send and recv 
-        //send coordinates to other processes
-
-        //clear the destination matrix rows
-        row_u.clear();
-        row_v.clear();
-
-        
-        coordinate_type base = domain_->bounding_box().base();
-        coordinate_type c_loc = c - base;
-        int gid_loc = gid;
-        boost::mpi::broadcast(domain_->client_communicator(), c_loc, root);
-        boost::mpi::broadcast(domain_->client_communicator(), gid_loc, root);
-
-        //std::cout << root << " " <<domain_->client_communicator().rank() << " c is " << c_loc[0] << " " << c_loc[1] << std::endl;
-        std::map<int, float_type> loc_smat_u; //local resulting matrix to get BC
-        std::map<int, float_type> loc_smat_v; //local resulting matrix to get BC
-
-        int base_level = domain_->tree()->base_level();
-        const auto dx_base = domain_->dx_base();
-
-        
-        if (domain_->is_client())
-        {
-            auto client = domain_->decomposition().client();
-
-            //client->template buffer_exchange<idx_u_type>(base_level);
-            client->template buffer_exchange<idx_u_g_type>(base_level);
-
-            //client->template buffer_exchange<idx_p_type>(base_level);
-            //client->template buffer_exchange<idx_p_g_type>(base_level);
-        }
-
-        auto tree_ptr = domain_->tree()->root();
-
-        auto cur_ptr = domain_->tree()->root();
-
-        octant_t* target_octant = nullptr;
-
-        for (int l = 0; l <= base_level; l++) {
-            for (int child_idx = 0; child_idx < cur_ptr->num_children(); child_idx++) {
-                auto child = cur_ptr->child(child_idx);
-                if ()
-            }
-        }
-
-        //octant_t* target_octant = tree_ptr->find_octant(key_tar_loc);
-        //find the target octant locally
-
-        boost::mpi::communicator world;
-
-        if (!target_octant) {
-            std::cout << "rank " << world.rank() << " cannot find octant target" << std::endl;
-            throw std::runtime_error("Did not found the target octant");
-        }
-
-        octant_t* prt_oct = target_octant; //store the pointer to the parent octant
-
-        for (int l = base_level - 1; l >= 0; l--)
-        {
-            //std::cout << "rank " << world.rank() << " at level " << l << std::endl;
-            octant_t* chd_oct = prt_oct; //chd_oct is the child of the octant at the current level containing the targete octant
-            
-            prt_oct = prt_oct->parent(); //prt_oct is the parent octant on the level l
-
-            if (!prt_oct) return;
-
-            //std::cout << "rank " << world.rank() << " at level " << l << " updated parents " << std::endl;
-
-            for (std::size_t i = 0; i < prt_oct->num_neighbors(); ++i) {
-                //std::cout << "rank " << world.rank() << " at neighbor " << i << std::endl;
-                auto it2 = prt_oct->neighbor(i);
-                if (!it2) continue;
-                for (int j = 0; j < it2->num_children();j++) {
-                    //std::cout << "rank " << world.rank() << " at child " << j << std::endl;
-                    //only apply to non-neighboring ones
-                    auto child = it2->child(j);
-                    if (!child || !child->locally_owned() || !child->has_data()) continue;
-                    if (!child->is_leaf() && l == (base_level - 1)) continue; //on the base level, the octant needs to be leaf octant
-                    bool is_neighbor = false;
-
-                    if (l != (base_level - 1))
-                    {
-                        //if  child is on the base level, do not exclude neighbors
-                        for (std::size_t k = 0; k < chd_oct->num_neighbors();
-                             ++k)
-                        {
-                            auto neighbor_tmp = chd_oct->neighbor(k);
-                            if (!neighbor_tmp) continue;
-                            if (child->key() == neighbor_tmp->key())
-                            {
-                                is_neighbor = true;
-                                break;
-                            }
-                        }
-                    }
-                    //std::cout << "rank " << world.rank() << " after at child " << j << std::endl;
-                    if (!is_neighbor) {
-                        //not neighbor, keep constructing matrix for this octant
-
-                        if (l != (base_level - 1)) {
-                            int N = domain_->block_extent()[0]+lBuffer+rBuffer;
-                            auto& lin_data_g = child->data_r(idx_w_g_type::tag(), 0).linalg_data();
-                            for (int sub_i = 0; sub_i < N; sub_i++) {
-                                for (int sub_j = 0; sub_j < N; sub_j++) {
-                                    auto real_base = child->data_r(idx_w_g_type::tag()).real_block().base()  - base;
-
-                                    int x_c_tmp = (real_base[0] + sub_i) * std::pow(2, base_level - (l+1));
-                                    int y_c_tmp = (real_base[1] + sub_j) * std::pow(2, base_level - (l+1));
-
-                                    int x_c = c_loc[0] - x_c_tmp;
-                                    if (x_c != (c_loc[0] - x_c_tmp))
-                                    {
-                                        std::cout << "Coordinate type not INT"
-                                                  << std::endl;
-                                    }
-
-                                    int y_c = c_loc[1] -  y_c_tmp;
-
-                                    float_type lgf_val_00 =
-                                        lgf_lap_.derived().get(
-                                            coordinate_type({x_c, y_c}));
-                                    float_type lgf_val_01 =
-                                        lgf_lap_.derived().get(
-                                            coordinate_type({x_c, (y_c + 1)}));
-                                    float_type lgf_val_10 =
-                                        lgf_lap_.derived().get(
-                                            coordinate_type({(x_c + 1), y_c}));
-
-                                    float_type u_weight =
-                                        (lgf_val_01 - lgf_val_00);
-                                    float_type v_weight =
-                                        (lgf_val_00 - lgf_val_10);
-
-                                    int w_idx = lin_data_g.at(sub_i, sub_j);
-
-                                    this->map_add_element(w_idx,
-                                        -u_weight * dx_base, loc_smat_u);
-
-                                    this->map_add_element(w_idx,
-                                        -v_weight * dx_base, loc_smat_v);
-                                }
-                            }
-                        }
-
-                        else
-                        {
-                            for (auto& n : child->data())
-                            {
-                                const auto& coord_loc_level =
-                                    n.level_coordinate() - base;
-                                const auto& coord_loc =
-                                    coord_loc_level *
-                                    std::pow(2, base_level - (l + 1));
-
-                                int x_c = c_loc[0] - coord_loc[0];
-                                if (x_c != (c_loc[0] - coord_loc[0]))
-                                {
-                                    std::cout << "Coordinate type not INT"
-                                              << std::endl;
-                                }
-
-                                int y_c = c_loc[1] - coord_loc[1];
-
-                                float_type lgf_val_00 = lgf_lap_.derived().get(
-                                    coordinate_type({x_c, y_c}));
-                                float_type lgf_val_01 = lgf_lap_.derived().get(
-                                    coordinate_type({x_c, (y_c + 1)}));
-                                float_type lgf_val_10 = lgf_lap_.derived().get(
-                                    coordinate_type({(x_c + 1), y_c}));
-
-                                float_type u_weight = (lgf_val_01 - lgf_val_00);
-                                float_type v_weight = (lgf_val_00 - lgf_val_10);
-
-                                int w_idx = n(idx_w_g_type::tag(), 0);
-
-                                this->map_add_element(w_idx,
-                                    -u_weight * dx_base, loc_smat_u);
-
-                                this->map_add_element(w_idx,
-                                    -v_weight * dx_base, loc_smat_v);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
         domain_->client_communicator().barrier();
         std::vector<std::map<int, float_type>> dest_mat_u;
-        std::vector<std::map<int, float_type>> dest_mat_v;
+        //std::vector<std::map<int, float_type>> dest_mat_v;
         boost::mpi::gather(domain_->client_communicator(), loc_smat_u, dest_mat_u, root);
-        boost::mpi::gather(domain_->client_communicator(), loc_smat_v, dest_mat_v, root);
+        //boost::mpi::gather(domain_->client_communicator(), loc_smat_v, dest_mat_v, root);
 
         if (domain_->client_communicator().rank() != root) {
             return;
@@ -5622,12 +5332,8 @@ class NewtonIteration
             //accumulate vectors from other processors
             map_add_map(dest_mat_u[i], row_u);
         }
+    }
 
-        for (int i = 0; i < dest_mat_v.size();i++) {
-            //accumulate vectors from other processors
-            map_add_map(dest_mat_v[i], row_v);
-        }
-    }*/
 
     void construct_upward_intrp() {
         boost::mpi::communicator world;
@@ -5865,6 +5571,210 @@ class NewtonIteration
         upward_intrp.scale_entries(Curl_factor);
 
         domain_->client_communicator().barrier();
+
+        //source of pressure
+        for (int l = base_level - 1; l >= 0; l--)
+        {
+            /*if (domain_->is_client())
+            {
+                auto client = domain_->decomposition().client();
+
+                //client->template buffer_exchange<idx_u_type>(base_level);
+                client->template buffer_exchange<idx_w_g_type>(l + 1);
+            }*/
+            for (auto it = domain_->begin(l);
+                 it != domain_->end(l); ++it)
+            {
+                //if (!it->locally_owned() || !it->has_data()) continue;
+                //if (!it->is_leaf()) continue;
+                //if (!it->is_correction()) continue;
+                const int num_child = it->num_children();
+                //octant_base_t oct_base_tmp(coordinate_type({0,0}), base_level);
+                //std::vector<octant_t> octant_vec(num_child, octant_t(oct_base_tmp));
+                std::vector<std::vector<int>> idx_vec;
+                idx_vec.resize(num_child);
+
+                int N = it->data().descriptor().extent()[0];
+
+                int idx_size = (N+2) * (N+2);
+                /*for (int i = 0; i < num_child;i++) {
+                    idx_vec[i].resize(idx_size);
+                }*/
+                if (it->locally_owned() && it->has_data()) {
+                    
+                    //octant located in this processor, need to receive data
+                    //octant_vec.resize(num_child);
+                    for (int i = 0; i < it->num_children(); i++) {
+                        auto child = it->child(i);
+                        if (child && child->locally_owned() && child->has_data()) {
+                            idx_vec[i].resize(idx_size);
+
+                            auto child_idx_vec = child->data_r(idx_cs_g_type::tag(), 0).linalg_data();
+
+                            for (int idx_i = 0; idx_i < (N + 2); idx_i++) {
+                                for (int idx_j = 0; idx_j < (N + 2); idx_j++) {
+                                    int loc_idx = idx_i * (N + 2) + idx_j;
+                                    idx_vec[i][loc_idx] = child_idx_vec.at(idx_i, idx_j);
+                                }
+                            }
+
+
+                            //octant_vec[i] = (*child);
+                            continue;
+                        }
+                        else if (child) {
+                            
+                            int source_rank = child->rank();
+
+                            int tag_val = child->global_id();
+
+                            idx_vec[i].resize(idx_size);
+                            //std::cout << "Receiving at rank " << world.rank() << " gid is " << tag_val << std::endl;
+
+                            //world.recv(source_rank, tag_val, octant_vec[i]);
+                            world.recv(source_rank, tag_val, idx_vec[i]);
+                        }
+                    }
+                }
+                else {
+                    //search for children is on this processor
+                    for (int i = 0; i < it->num_children(); i++)
+                    {
+                        auto child = it->child(i);
+                        int parent_rank = it->rank();
+                        if (!child || !child->locally_owned() || !child->has_data()) continue;
+
+                        std::vector<int> tmp_idx_vec;
+
+                        tmp_idx_vec.resize(idx_size);
+
+                        auto child_idx_vec =
+                            child->data_r(idx_cs_g_type::tag(), 0).linalg_data();
+
+                        for (int idx_i = 0; idx_i < (N + 2); idx_i++)
+                        {
+                            for (int idx_j = 0; idx_j < (N + 2);
+                                 idx_j++)
+                            {
+                                int loc_idx = idx_i * (N + 2) + idx_j;
+                                tmp_idx_vec[loc_idx] =
+                                    child_idx_vec.at(idx_i, idx_j);
+                            }
+                        }
+
+                        int tag_val = child->global_id();
+                        //std::cout << "Sending at rank " << world.rank() << " gid is " << tag_val << std::endl;
+                        world.send(parent_rank, tag_val, tmp_idx_vec);
+                    }
+                }
+
+                //domain_->client_communicator().barrier();
+
+                //std::cout << "rank " << world.rank() << " finished communication " << "level " << l << std::endl;
+
+                if (it->locally_owned() && it->has_data()) {
+                    int N = it->data().descriptor().extent()[0];
+                    auto& lin_data = it->data_r(idx_cs_type::tag(), 0).linalg_data();
+                    auto& lin_data_g = it->data_r(idx_cs_g_type::tag(), 0).linalg_data();
+                    //start computing the matrix
+                    for (int i = 0; i < N+2; i++) {
+                        for (int j = 0; j < N+2; j++) {
+
+                            //if (l <= 4) std::cout << "rank " << world.rank() << " level " << l << " i " << i << " j " << j << std::endl; 
+                            //get current idx
+                            int cur_idx = lin_data.at(i, j);
+                            int cur_g_idx = lin_data_g.at(i, j);
+                            if (cur_idx < 0) {
+                                std::cout << "cur_idx < 0 in constructing upward interpolation matrix" << std::endl;
+                            }
+                            upward_intrp.add_element(cur_idx, cur_g_idx, -1.0);
+
+                            //if (l <= 4) std::cout << "rank " << world.rank() << " level " << l << " i " << i << " j " << j << " cur idx " << cur_idx << " g idx " << cur_g_idx << std::endl; 
+
+                            for (int child_idx = 0; child_idx < it->num_children(); child_idx++) {
+
+                                //if (l <= 4) std::cout << "rank " << world.rank() << " level " << l << " child idx " << child_idx << std::endl; 
+                                auto child = it->child(child_idx);
+                                //int  n = lin_data_g->shape()[0];
+                                int  idx_x = (child_idx & (1 << 0)) >> 0;
+                                int  idx_y = (child_idx & (1 << 1)) >> 1;
+
+                                //idx_x += 2;
+                                //idx_y += 2;
+                                //this indexing is only for 2D
+
+                                auto x_intrp_mat = c_cntr_nli_.antrp_mat_sub_[idx_x].data_;
+                                auto y_intrp_mat = c_cntr_nli_.antrp_mat_sub_[idx_y].data_;
+
+                                //auto child_cur = octant_vec[child_idx];
+
+                                //if (!child || !child_cur.has_data()) continue;
+
+                                if (idx_vec[child_idx].size() == 0) continue;
+
+                                //auto& child_idx_vec = octant_vec[child_idx].data_r(idx_w_g_type::tag(), 0).linalg_data();
+                                //auto child_idx_vec = child_cur.data_r(idx_w_g_type::tag(), 0).linalg_data();
+                                if (l != (base_level - 1))
+                                {
+                                    for (int sub_i = 0; sub_i < (N + 2);
+                                         sub_i++)
+                                    {
+                                        for (int sub_j = 0; sub_j < (N + 2);
+                                             sub_j++)
+                                        {
+                                            /*int              child_idx_g =
+                                                child_idx_vec.at(sub_i, sub_j);*/
+                                            int loc_idx = sub_i * (N + 2) + sub_j;
+                                            int child_idx_g = idx_vec[child_idx][loc_idx];
+                                            float_type val_x =
+                                                x_intrp_mat.at(i, sub_i);
+                                            float_type val_y =
+                                                y_intrp_mat.at(j, sub_j);
+                                            float_type val_t = val_x * val_y;
+                                            if (std::abs(val_t) < 1e-15)
+                                                continue;
+                                            upward_intrp.add_element(cur_idx,
+                                                child_idx_g, val_t);
+                                        }
+                                    }
+                                }
+
+                                else
+                                {
+                                    for (int sub_i = 1; sub_i < (N + 1);
+                                         sub_i++)
+                                    {
+                                        for (int sub_j = 1; sub_j < (N + 1);
+                                             sub_j++)
+                                        {
+                                            /*int              child_idx_g =
+                                                child_idx_vec.at(sub_i, sub_j);*/
+
+                                            int loc_idx = sub_i * (N + 2) + sub_j;
+                                            int child_idx_g = idx_vec[child_idx][loc_idx];
+                                            float_type val_x =
+                                                x_intrp_mat.at(i, sub_i);
+                                            float_type val_y =
+                                                y_intrp_mat.at(j, sub_j);
+                                            float_type val_t = val_x * val_y;
+                                            if (std::abs(val_t) < 1e-15)
+                                                continue;
+                                            upward_intrp.add_element(cur_idx,
+                                                child_idx_g, val_t);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                //std::cout << "rank " << world.rank() << " finished computing " << "level " << l << std::endl;
+            }
+
+            //domain_->client_communicator().barrier();
+        }
+
+        domain_->client_communicator().barrier();
     }
 
     void map_add_element(int m, float_type val, std::map<int, float_type>& target)
@@ -5885,262 +5795,6 @@ class NewtonIteration
             map_add_element(key, val, target);
         }
     }
-
-    /*template<class Source_face, class Source_cell, class Target_face, class Target_cell>
-    void Solve_Jacobian(force_type& force_source, force_type& force_target) noexcept
-    {
-
-        if (domain_->is_server())
-            return;
-        
-        //TODO: solver to solve the inverse of Jacobian with the vectors
-        //clean<Target_face>();
-        //clean<Target_cell>();
-        real_coordinate_type tmp_coord(0.0);
-        //std::fill(force_target.begin(), force_target.end(),
-        //    tmp_coord);
-
-        real_coordinate_type tmp(0.0);
-        //force_type Ax(ib_->size(), tmp);
-        //force_type r (ib_->size(), tmp);
-        //force_type Ap(ib_->size(), tmp);
-        clean<conj_Ap_cell_aux_type>();
-        clean<conj_Ap_face_aux_type>();
-        clean<conj_Ax_cell_aux_type>();
-        clean<conj_Ax_face_aux_type>();
-        clean<conj_r_cell_aux_type>();
-        clean<conj_r_face_aux_type>();
-        clean<conj_p_cell_aux_type>();
-        clean<conj_p_face_aux_type>();
-        force_type Ax_force(domain_->ib().size(), tmp);
-        force_type Ap_force(domain_->ib().size(), tmp);
-        force_type r_force(domain_->ib().size(), tmp);
-
-        //Compute the actual source term
-        //std::cout << "computing actual forcing term" << std::endl;
-        Adjoint_Jacobian<Source_face,Source_cell, conj_r_face_aux_type, conj_r_cell_aux_type>(force_source, r_force);
-
-        
-
-        // Ax
-        //this->template ET_H_S_E<Ftmp>(f, Ax, alpha);
-        //std::cout << "computing Ax" << std::endl;
-        this->template ATA<Target_face, Target_cell, conj_Ax_face_aux_type, conj_Ax_cell_aux_type>(force_target, Ax_force);
-        //printvec(Ax, "Ax");
-
-        //  res = uc - Ax
-        for (int i=0; i<domain_->ib().size(); ++i)
-        {
-            if (domain_->ib().rank(i)!=comm_.rank())
-                r_force[i]=0;
-            else
-                r_force[i]=r_force[i]-Ax_force[i];
-        }
-
-        //std::cout << "computing rsold" << std::endl;
-
-        add<conj_Ax_face_aux_type, conj_r_face_aux_type>(-1.0);
-        add<conj_Ax_cell_aux_type, conj_r_cell_aux_type>(-1.0);
-
-        // p = res
-        force_type p_force = r_force;
-
-        copy<conj_r_cell_aux_type, conj_p_cell_aux_type>();
-        copy<conj_r_face_aux_type, conj_p_face_aux_type>();
-
-        // rold = r'* r;
-
-        float_type f2 = this->template dotAll<Target_face, Target_cell, Target_face, Target_cell>(force_target, force_target);
-        
-        float_type rsold = this->template dotAll<conj_r_face_aux_type, conj_r_cell_aux_type, conj_r_face_aux_type, conj_r_cell_aux_type>(r_force, r_force);
-
-        if (comm_.rank()==1)
-            std::cout<< "residue square = "<< rsold/f2<<std::endl;;
-        if (sqrt(rsold/f2)<cg_threshold_)
-            return;
-
-        for (int k=0; k<cg_max_itr_; k++)
-        {
-            // Ap = A(p)
-            this->template ATA<conj_p_face_aux_type, conj_p_cell_aux_type, conj_Ap_face_aux_type, conj_Ap_cell_aux_type>(p_force, Ap_force);
-            // alpha = rsold / p'*Ap
-            float_type pAp = this->template dotAll<conj_p_face_aux_type, conj_p_cell_aux_type, conj_Ap_face_aux_type, conj_Ap_cell_aux_type>(p_force, Ap_force);
-            if (pAp == 0.0)
-            {
-                return;
-            }
-
-            float_type alpha = rsold / pAp;
-            // f = f + alpha * p;
-            AddAll<conj_p_face_aux_type, conj_p_cell_aux_type, Target_face, Target_cell>(p_force, force_target, alpha);
-            //add(f, p, 1.0, alpha);
-            // r = r - alpha*Ap
-            AddAll<conj_Ap_face_aux_type, conj_Ap_cell_aux_type, conj_r_face_aux_type, conj_r_cell_aux_type>(Ap_force, r_force, -alpha);
-            //add(r, Ap, 1.0, -alpha);
-            // rsnew = r' * r
-            float_type rsnew = this->template dotAll<conj_r_face_aux_type, conj_r_cell_aux_type, conj_r_face_aux_type, conj_r_cell_aux_type>(r_force, r_force);
-            float_type f2 = this->template dotAll<Target_face, Target_cell, Target_face, Target_cell>(force_target, force_target);
-            //auto ModeError = dot_Mode(r,r);
-            if (comm_.rank()==1)
-                std::cout<< "residue square = "<< rsnew/f2<<std::endl;;
-            if (sqrt(rsnew/f2)<cg_threshold_)
-                break;
-
-            // p = r + (rsnew / rsold) * p;
-            //add(p, r, rsnew/rsold, 1.0);
-            AddAll<conj_r_face_aux_type, conj_r_cell_aux_type, conj_p_face_aux_type, conj_p_cell_aux_type>(r_force, p_force, 1.0, rsnew/rsold);
-            rsold = rsnew;
-        }
-    }*/
-
-
-    /*template<class Source_face, class Source_cell, class Target_face, class Target_cell>
-    void BCG_Stab(force_type& force_source, force_type& force_target) noexcept
-    {
-
-        if (domain_->is_server())
-            return;
-        
-        //TODO: solver to solve the inverse of Jacobian with the vectors
-        //clean<Target_face>();
-        //clean<Target_cell>();
-        real_coordinate_type tmp_coord(0.0);
-        //std::fill(force_target.begin(), force_target.end(),
-        //    tmp_coord);
-
-        real_coordinate_type tmp(0.0);
-        //force_type Ax(ib_->size(), tmp);
-        //force_type r (ib_->size(), tmp);
-        //force_type Ap(ib_->size(), tmp);
-        clean<conj_Ap_cell_aux_type>();
-        clean<conj_Ap_face_aux_type>();
-        clean<conj_Ax_cell_aux_type>();
-        clean<conj_Ax_face_aux_type>();
-        clean<conj_r_cell_aux_type>();
-        clean<conj_r_face_aux_type>();
-        clean<conj_p_cell_aux_type>();
-        clean<conj_p_face_aux_type>();
-        clean<conj_rh_cell_aux_type>();
-        clean<conj_rh_face_aux_type>();
-        //clean<conj_As_cell_aux_type>();
-        //clean<conj_As_face_aux_type>();
-        clean<conj_s_cell_aux_type>();
-        clean<conj_s_face_aux_type>();
-        force_type Ax_force(domain_->ib().size(), tmp);
-        force_type Ap_force(domain_->ib().size(), tmp);
-        force_type r_force(domain_->ib().size(), tmp);
-        force_type p_force(domain_->ib().size(), tmp);
-        force_type rh_force(domain_->ib().size(), tmp);
-        //force_type As_force(domain_->ib().size(), tmp);
-        force_type s_force(domain_->ib().size(), tmp);
-
-        //Compute the actual source term
-        //std::cout << "computing actual forcing term" << std::endl;
-        //Adjoint_Jacobian<Source_face,Source_cell, conj_r_face_aux_type, conj_r_cell_aux_type>(force_source, r_force);
-
-        
-
-        // Ax
-        //this->template ET_H_S_E<Ftmp>(f, Ax, alpha);
-        //std::cout << "computing Ax" << std::endl;
-        this->template Jacobian<Target_face, Target_cell, conj_Ax_face_aux_type, conj_Ax_cell_aux_type>(force_target, Ax_force);
-        //printvec(Ax, "Ax");
-
-        //  res = uc - Ax
-        for (int i=0; i<domain_->ib().size(); ++i)
-        {
-            if (domain_->ib().rank(i)!=comm_.rank())
-                r_force[i]=0;
-            else
-                r_force[i]=force_source[i]-Ax_force[i];
-        }
-
-        //std::cout << "computing rsold" << std::endl;
-
-        copy<Target_face, conj_r_face_aux_type>();
-        copy<Target_cell, conj_r_cell_aux_type>();
-
-        add<conj_Ax_face_aux_type, conj_r_face_aux_type>(-1.0);
-        add<conj_Ax_cell_aux_type, conj_r_cell_aux_type>(-1.0);
-
-        // p = res
-        rh_force = r_force;
-
-        copy<conj_r_cell_aux_type, conj_rh_cell_aux_type>();
-        copy<conj_r_face_aux_type, conj_rh_face_aux_type>();
-
-        // rold = r'* r;
-
-        float_type f2 = this->template dotAll<Target_face, Target_cell, Target_face, Target_cell>(force_target, force_target);
-        
-        float_type rsold = this->template dotAll<conj_r_face_aux_type, conj_r_cell_aux_type, conj_r_face_aux_type, conj_r_cell_aux_type>(r_force, r_force);
-
-        if (comm_.rank()==1)
-            std::cout<< "residue square = "<< rsold/f2<<std::endl;;
-        if (sqrt(rsold/f2)<cg_threshold_)
-            return;
-        
-        float_type rho = 1;
-        float_type rho_old = rho;
-        float_type w = 1;
-        float_type alpha = 1;
-
-        for (int k=0; k<cg_max_itr_; k++)
-        {
-
-            rho = this->template dotAll<conj_rh_face_aux_type, conj_rh_cell_aux_type, conj_r_face_aux_type, conj_r_cell_aux_type>(rh_force, r_force);
-            float_type beta = (rho/rho_old)*(alpha/w);
-            AddAll<conj_Ap_face_aux_type, conj_Ap_cell_aux_type, conj_p_face_aux_type, conj_p_cell_aux_type>(Ap_force, p_force, -w);
-            AddAll<conj_r_face_aux_type, conj_r_cell_aux_type, conj_p_face_aux_type, conj_p_cell_aux_type>(r_force, p_force, 1.0, beta);
-            
-            // Ap = A(p)
-            this->template Jacobian<conj_p_face_aux_type, conj_p_cell_aux_type, conj_Ap_face_aux_type, conj_Ap_cell_aux_type>(p_force, Ap_force);
-            float_type r_hat_v = this->template dotAll<conj_rh_face_aux_type, conj_rh_cell_aux_type, conj_Ap_face_aux_type, conj_Ap_cell_aux_type>(rh_force, Ap_force);
-            alpha = rho/r_hat_v;
-
-            //add(f, p, 1.0, alpha);
-            AddAll<conj_p_face_aux_type, conj_p_cell_aux_type, Target_face, Target_cell>(p_force, force_target, alpha);
-
-            //auto s = r;
-            copy<conj_r_face_aux_type, conj_s_face_aux_type>();
-            copy<conj_r_cell_aux_type, conj_s_cell_aux_type>();
-            s_force = r_force;
-            //add(s, v, 1.0, -alpha);
-            AddAll<conj_Ap_face_aux_type, conj_Ap_cell_aux_type, conj_s_face_aux_type, conj_s_cell_aux_type>(Ap_force, s_force, -alpha);
-            this->template Jacobian<conj_s_face_aux_type, conj_s_cell_aux_type, conj_Ax_face_aux_type, conj_Ax_cell_aux_type>(s_force, Ax_force);
-            float_type As_s = this->template dotAll<conj_Ax_face_aux_type, conj_Ax_cell_aux_type, conj_s_face_aux_type, conj_s_cell_aux_type>(Ax_force, s_force);
-            float_type As_As = this->template dotAll<conj_Ax_face_aux_type, conj_Ax_cell_aux_type, conj_Ax_face_aux_type, conj_Ax_cell_aux_type>(Ax_force, Ax_force);
-            w = As_s/As_As;
-            //add(f, s, 1.0, w);
-            AddAll<conj_s_face_aux_type, conj_s_cell_aux_type, Target_face, Target_cell>(s_force, force_target, w);
-            //r = s;
-            copy<conj_s_cell_aux_type, conj_r_cell_aux_type>();
-            copy<conj_s_face_aux_type, conj_r_face_aux_type>();
-            r_force = s_force;
-            //add(r, As, 1.0, -w);
-            AddAll<conj_Ax_face_aux_type, conj_Ax_cell_aux_type, conj_r_face_aux_type, conj_r_cell_aux_type>(Ax_force, r_force, -w);
-
-            float_type rsnew = this->template dotAll<conj_r_face_aux_type, conj_r_cell_aux_type, conj_r_face_aux_type, conj_r_cell_aux_type>(r_force, r_force);
-            float_type f2 = this->template dotAll<Target_face, Target_cell, Target_face, Target_cell>(force_target, force_target);
-            //float_type rs_mag = std::abs(rsnew);
-
-            /*this->template ET_H_S_E<Ftmp>(f, Ax, alpha_);
-            for (int i = 0; i < ib_->size(); ++i)
-            {
-                if (ib_->rank(i) != comm_.rank()) Error[i] = 0;
-                else
-                    Error[i] = uc[i] - Ax[i];
-            }
-            float_type errorMag = dot(Error, Error);*/
-            /*if (comm_.rank()==1)
-                std::cout<< "BCGstab residue square = "<< rsnew/f2/*<< " Error is " << errorMag*//* << std::endl;
-            if (sqrt(rsnew/f2)<cg_threshold_)
-                break;
-
-            // p = r + (rsnew / rsold) * p;
-            rho_old = rho;
-        }
-    }*/
 
     template<class Source_face, class Source_cell, class Target_face, class Target_cell>
     void ATA(force_type& force_source, force_type& force_target) noexcept
@@ -6289,9 +5943,9 @@ class NewtonIteration
                     {
                         if (!it_s->has_data() || !it_s->data().is_allocated())
                             continue;
-
+                        //only do edge interpolation in 2D, need to switch to vertex in 3D/homogeneous case
                         c_cntr_nli_.template nli_intrp_T_node<correction_tmp_type, correction_tmp_type>(*it_s,
-                            From::mesh_type(), field_idx,
+                            /*From::mesh_type()*/MeshObject::edge, field_idx,
                             field_idx, false, false);
                     }
                     domain_->decomposition()
@@ -6397,6 +6051,29 @@ class NewtonIteration
             force_target); //need to change this vector in the bracket
     }
 
+
+    template<class Source_face>
+    void AddSmearing(force_type& force_source) noexcept
+    {
+        if (domain_->is_server())
+            return;
+        auto client = domain_->decomposition().client();
+
+        auto force_new = force_source;
+
+        for (std::size_t i=0; i<force_new.size(); ++i)
+        {
+            if (domain_->ib().rank(i)!=comm_.rank())
+                continue;
+
+            for (std::size_t d=0; d<force_new[0].size(); ++d)
+                force_new[i][d]*=-1;
+        }
+
+        lsolver.template smearing<Source_face>(force_new, false);
+
+    }
+
     template<class Source_face, class Source_cell, class Target_face, class Target_cell>
     void NewtonRHS(force_type& force_source, force_type& force_target) noexcept
     {
@@ -6449,6 +6126,8 @@ class NewtonIteration
         add<laplacian_face_type, Target_face>(1.0 / Re_);
 
         clean<face_aux_tmp_type>();
+
+        if (!p_set_zero) clean_leaf_correction_boundary<Source_cell>(domain_->tree()->base_level(), true, 1);
         gradient<Source_cell, face_aux_tmp_type>(-1.0);
 
         //pcout << "Computed Gradient" << std::endl;
@@ -6622,6 +6301,12 @@ class NewtonIteration
         this->nonlinear_jac<Source1, Source2, Target>();
     }
 
+    template<class Source, class Target>
+    void div_access() {
+        this->divergence<Source, Target>();
+        clean_leaf_according_to_idx<Target, idx_cs_g_type>(domain_->tree()->base_level());
+    }
+
     template<class Source1, class Source2, class Target>
     void nonlinear_Jac_T_access() {
         //boost::mpi::communicator world;
@@ -6754,7 +6439,7 @@ class NewtonIteration
             for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
             {
                 if (!it->locally_owned() || !it->has_data()) continue;
-                if (it->is_correction()) continue;
+                //if (it->is_correction()) continue;
                 //if(!it->is_leaf()) continue;
 
                 const auto dx_level =
@@ -6766,7 +6451,9 @@ class NewtonIteration
         }
 
         //clean<Velocity_out>();
-        clean_leaf_correction_boundary<edge_aux_type>(domain_->tree()->base_level(), false, 2);
+        //clean_leaf_correction_boundary<edge_aux_type>(domain_->tree()->base_level(), false, 1);
+        //clean_leaf_correction_boundary<edge_aux_type>(domain_->tree()->base_level(), true, 1);
+        clean_leaf_according_to_idx<edge_aux_type, idx_w_g_type>(domain_->tree()->base_level());
         //clean_leaf_correction_boundary<edge_aux_type>(l, false,2+stage_idx_);
         psolver.template apply_lgf<edge_aux_type, stream_f_type>(
             MASK_TYPE::STREAM);
@@ -6789,6 +6476,38 @@ class NewtonIteration
         }
 
         this->down_to_correction<Velocity_out>();
+    }
+
+    template<class P_source, class P_out>
+    void pad_pressure(bool refresh_correction_only = true)
+    {
+        auto client = domain_->decomposition().client();
+
+        //up_and_down<Velocity_in>();
+        //clean<P_out>(true);
+        up_and_down<P_source>();
+        //this->up<Velocity_in>(false);
+        //clean<P_out>();
+        clean<cell_aux_tmp_type>();
+        
+        clean_leaf_according_to_idx<P_source, idx_cs_g_type>(domain_->tree()->base_level());
+        psolver.template apply_lgf<P_source, cell_aux_tmp_type>();
+
+        int l_max = refresh_correction_only ? domain_->tree()->base_level() + 1
+                                            : domain_->tree()->depth();
+        for (int l = domain_->tree()->base_level(); l < l_max; ++l)
+        {
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
+                if(!it->is_correction() && refresh_correction_only) continue;
+
+                for (auto& n : it->data())
+                    n(P_out::tag(), 0) = n(cell_aux_tmp_type::tag(), 0) * (-1);
+            }
+        }
+
+        this->down_to_correction<P_out>();
     }
     private:
 
@@ -8012,6 +7731,8 @@ class NewtonIteration
         clean<Target>();
         clean<face_aux_type>();
 
+        up_and_down<Source>();
+
         auto       client = domain_->decomposition().client();
         const auto dx_base = domain_->dx_base();
 
@@ -8035,13 +7756,13 @@ class NewtonIteration
         // add background velocity
         copy<Source, face_aux_type>();
         domain::Operator::add_field_expression<face_aux_type>(domain_,
-            simulation_->frame_vel(), T_stage_, -1.0);
+            simulation_->frame_vel(), 5, -1.0);
 
         for (int l = domain_->tree()->base_level();
              l < domain_->tree()->depth(); ++l)
         {
             client->template buffer_exchange<edge_aux_type>(l);
-            if (l == domain_->tree()->base_level()) clean_leaf_correction_boundary<edge_aux_type>(l, true, 2);
+            //if (l == domain_->tree()->base_level()) clean_leaf_correction_boundary<edge_aux_type>(l, true, 1);
 
             for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
             {
@@ -8063,7 +7784,7 @@ class NewtonIteration
             //clean_leaf_correction_boundary<Target>(l, true,2);
         }
 
-        clean_leaf_correction_boundary<Target>(domain_->tree()->base_level(), true,2);
+        //clean_leaf_correction_boundary<Target>(domain_->tree()->base_level(), true,2);
     }
 
     template<class Source_old, class Source_new, class Target>
@@ -8351,7 +8072,7 @@ class NewtonIteration
             //clean_leaf_correction_boundary<Target>(l, false,4+stage_idx_);
         }
 
-        clean_leaf_correction_boundary<Target>(domain_->tree()->base_level(), true, 2);
+        //clean_leaf_correction_boundary<Target>(domain_->tree()->base_level(), true, 2);
 
         //clean<Source>(true);
         //clean<Target>(true);
@@ -8384,11 +8105,13 @@ class NewtonIteration
             //client->template buffer_exchange<Target>(l);
             //clean_leaf_correction_boundary<Target>(l, true, 2);
             //clean_leaf_correction_boundary<Target>(l, false,4+stage_idx_);
+            
         }
 
         clean<Source>(true);
 
-        clean_leaf_correction_boundary<Target>(domain_->tree()->base_level(), true, 2);
+        //clean_leaf_correction_boundary<Target>(domain_->tree()->base_level(), true, 1);
+        //clean_leaf_according_to_idx<Target, idx_w_g_type>(domain_->tree()->base_level());
         //clean<Target>(true);
     }
 
@@ -8460,7 +8183,7 @@ class NewtonIteration
             //clean_leaf_correction_boundary<Target>(l, true, 2);
         }
 
-        clean_leaf_correction_boundary<Target>(domain_->tree()->base_level(), true,2);
+        //clean_leaf_correction_boundary<Target>(domain_->tree()->base_level(), true,2);
     }
 
     template<typename From, typename To>
@@ -8518,7 +8241,7 @@ class NewtonIteration
             for (std::size_t field_idx = 0; field_idx < From::nFields();
                  ++field_idx)
             {
-                for (auto& n : it->data().node_field())
+                for (auto& n : it->data())
                     n(To::tag(), field_idx) = n(From::tag(), field_idx) * scale;
             }
         }
@@ -8604,6 +8327,7 @@ class NewtonIteration
     sparse_mat L; //upper left matrix laplacian
     sparse_mat DN; //linearized convective term, i.e. omega_s cross u + omega cross u_s, have not taken negative yet
     sparse_mat Div; //Divergence
+    sparse_mat Div_cs; //Source of pressure (divergence of nonlinear + smearing)
     sparse_mat Grad; //Gradient
     sparse_mat Curl; //Curl minus identity
     sparse_mat project; //ib projection

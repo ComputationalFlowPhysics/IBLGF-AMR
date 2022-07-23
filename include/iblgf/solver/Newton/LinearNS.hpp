@@ -959,24 +959,24 @@ class LinearNS
                             }
                             else
                             {
-                                if (i == 0) { tmp[0][0] = true; }
-                                if (i == 1)
+                                //if (i == 0) { tmp[0][0] = true; }
+                                /*if (i == 1)
                                 {
                                     for (int j = 0; j < N; j++)
                                     {
                                         tmp[j][0] = true;
                                         //tmp[j][1] = true;
                                     }
-                                }
+                                }*/
                                 //if (i == 2) { tmp[N - 1][0] = true; }
-                                if (i == 3)
+                                /*if (i == 3)
                                 {
                                     for (int j = 0; j < N; j++)
                                     {
                                         tmp[0][j] = true;
                                         //tmp[1][j] = true;
                                     }
-                                }
+                                }*/
                                 if (i == 5)
                                 {
                                     for (int j = 0; j < N; j++)
@@ -985,7 +985,7 @@ class LinearNS
                                         //tmp[N - 2][j] = true;
                                     }
                                 }
-                                if (i == 6) { tmp[0][N - 1] = true; }
+                                //if (i == 6) { tmp[0][N - 1] = true; }
                                 if (i == 7)
                                 {
                                     for (int j = 0; j < N; j++)

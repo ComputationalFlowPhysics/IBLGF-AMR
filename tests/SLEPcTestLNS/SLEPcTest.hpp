@@ -927,7 +927,18 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
                     n_out += 1;
                 }
             }
-            d_nnz[i_loc] = n_loc;
+
+            PetscInt diagonal_mod = 1; //if there is no entry in the diagonal, reserve one more for diagonal zero entry
+
+            for (const auto& [key, val] : row) {
+                PetscInt key1 = key;
+                if (key1 == (i + 1)) {
+                    diagonal_mod = 0;
+                    break;
+                }
+            }
+
+            d_nnz[i_loc] = n_loc + diagonal_mod; //get one more entry to reserve if not having diagonal entries
             o_nnz[i_loc] = n_out;
         }
 
@@ -936,18 +947,25 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
         }
         
         PetscCall(MatCreateAIJ(PETSC_COMM_WORLD, nlocal, nlocal, n, n, NULL, d_nnz, NULL, o_nnz, &A));
-        MatSetType(A,MATMPIAIJ);
+        //(A,MATMPIAIJ);
         //PetscCall(MatCreateMPIAIJWithArrays(PETSC_COMM_WORLD, nlocal, nlocal, n, n, ia, ja, a, &A));
         //PetscCall(MatSetSizes(A, nlocal, nlocal, n, n));
+
+        //PetscCall(MatCreate(PETSC_COMM_WORLD, &A));
+        PetscCall(MatSetSizes(A, nlocal, nlocal, n, n));
+
         PetscCall(MatSetFromOptions(A));
         PetscCall(MatSetUp(A));
 
         PetscCall(MatCreate(PETSC_COMM_WORLD, &B));
-        MatSetType(B,MATMPIAIJ);
+        //MatSetType(B,MATMPIAIJ);
         //PetscCall(MatCreateMPIAIJWithArrays(PETSC_COMM_WORLD, nlocal, nlocal, n, n, ia, ja, a, &A));
         PetscCall(MatSetSizes(B, nlocal, nlocal, n, n));
         PetscCall(MatSetFromOptions(B));
         PetscCall(MatSetUp(B));
+
+        int counter_zero_diag = 0;
+        std::vector<int> zero_diag_idx;
 
         for (i = rstart; i < rend; i++)
         {
@@ -979,35 +997,38 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
                 counter++;
             }
 
-            /*if (counter > 200) {
-                if (world.rank() == 1) {
-                    std::cout << "On rank 1, start to fill in matrix row " << i << " with number of entries " << counter <<  std::endl;
-                }
-            }*/
-
             PetscCall(MatSetValues(A, 1, &i, counter, row_idx.data(), row_val.data(), INSERT_VALUES));
-            /*for (const auto& [key, val] : row)
-            {
-                int loc_col = key-1;
-                if (!std::isfinite(val)) {
-                    std::cout << "mat A rank " << world.rank() << " row " << i << " loc_col " << loc_col << std::endl;
-                }
 
-                PetscScalar valComplex = val + 0.0*PETSC_i;
-                PetscCall(MatSetValues(A, 1, &i, 1, &loc_col, &valComplex, INSERT_VALUES));
-            }*/
+            PetscInt diagonal_mod = 1; //if there is no entry in the diagonal, set the diagonal entry to be zero
 
-            /*if (counter > 200) {
-                if (world.rank() == 1) {
-                    std::cout << "On rank 1, end filling in matrix row " << i << " with number of entries " << counter <<  std::endl;
+            for (const auto& [key, val] : row) {
+                PetscInt key1 = key;
+                if (key1 == (i + 1)) {
+                    diagonal_mod = 0;
+                    break;
                 }
-            }*/
+            }
+
+            
+
+            if (diagonal_mod == 1) {
+                counter_zero_diag++;
+                zero_diag_idx.emplace_back(i);
+                float_type val = 0.0;
+                PetscScalar valComplex = val;
+                PetscCall(MatSetValue(A, i, i, valComplex, INSERT_VALUES));
+            }
+            
 
             std::map<int, float_type> row1 = ifherk.B.mat[i_loc+1];
-            /*if (row1.size() == 0) {
+            if (row1.size() == 0) {
                 float_type val = 0.0;
-                PetscCall(MatSetValues(B, 1, &i, 1, &i, &val, INSERT_VALUES));
-            }*/
+                PetscScalar valComplex = val;
+                PetscScalar valA = val+PETSC_i;
+                //PetscCall(MatSetValues(B, 1, &i, 1, &i, &val, INSERT_VALUES));
+                PetscCall(MatSetValue(B, i, i, valComplex, INSERT_VALUES));
+                //PetscCall(MatSetValue(A, i, i, valA, INSERT_VALUES));
+            }
             for (const auto& [key, val] : row1)
             {
                 PetscInt loc_col = key-1;
@@ -1016,11 +1037,16 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
                 }
                 PetscScalar valComplex = val;
                 PetscCall(MatSetValue(B, i, loc_col, valComplex, INSERT_VALUES));
+                //for debugging, setting a diagonal matrix with some zeros
+                //PetscCall(MatSetValue(A, i, loc_col, valComplex, INSERT_VALUES));
             }
         }
 
         if (world.rank() == 1) {
             std::cout << "finished setting values" << std::endl;
+            std::cout << "number of zero diagnonals " << counter_zero_diag << std::endl;
+            int n = zero_diag_idx.size();
+            if (n != 0) std::cout << "min number zero diags " << zero_diag_idx[0] << " max number zero diags " << zero_diag_idx[n-1] << std::endl;
         }
 
         MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY);
@@ -1040,14 +1066,17 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
      Set operators. In this case, it is a Generalized eigenvalue problem
   */
         PetscCall(EPSSetOperators(eps, A, B));
+        //PetscCall(EPSSetOperators(eps, A, NULL));
         EPSSetProblemType(eps,EPS_PGNHEP);
+        //EPSSetProblemType(eps,EPS_NHEP);
+        
         EPSSetDimensions(eps,5,PETSC_DEFAULT,PETSC_DEFAULT);
 
         
         
         EPSSetWhichEigenpairs(eps,	EPS_TARGET_MAGNITUDE);
-        PetscScalar valComplex = 1.5;
-        PetscCall(EPSSetTarget(eps,valComplex));
+        PetscScalar valComplex = 0.0;
+        //PetscCall(EPSSetTarget(eps,valComplex));
         //EPSSetWhichEigenpairs(eps,EPS_SMALLEST_MAGNITUDE);
 
         PetscCall(EPSGetST(eps, &st));
@@ -1063,7 +1092,7 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
            std::cout << "using MUMPS" << std::endl;
        }
        PCFactorSetMatSolverType(pc,MATSOLVERMUMPS);
-       /* the next line is required to force the creation of the ST operator and its passing to KSP */
+       // the next line is required to force the creation of the ST operator and its passing to KSP 
        STGetOperator(st,NULL);
        PCFactorSetUpMatSolverType(pc);
        PCFactorGetMatrix(pc,&K);
@@ -1075,7 +1104,7 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
        if (world.rank() == 1) {
            std::cout << "using Pardiso" << std::endl;
        }
-       /* the next line is required to force the creation of the ST operator and its passing to KSP */
+       // the next line is required to force the creation of the ST operator and its passing to KSP 
        STGetOperator(st,NULL);
        PCFactorSetUpMatSolverType(pc);
        PCFactorGetMatrix(pc,&K);
@@ -1217,38 +1246,38 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
         }
 
 
-        /*ifherk.CSR2Grid<u_num_inv_type, p_num_inv_type, w_num_inv_type>(x0_real, forcing_ref);
+        ifherk.CSR2Grid<u_num_inv_type, p_num_inv_type, w_num_inv_type, N_num_type, cs_num_type>(x0_real, forcing_ref);
         //if (world.rank() != 0) ifherk.pad_velocity<u_num_inv_type, u_num_inv_type>(true);
         if (world.rank() != 0) ifherk.Curl_access<u_num_inv_type, w_ref_type>();
         simulation_.write("x0_real.hdf5");
-        ifherk.CSR2Grid<u_num_inv_type, p_num_inv_type, w_num_inv_type>(x0_imag, forcing_ref);
+        ifherk.CSR2Grid<u_num_inv_type, p_num_inv_type, w_num_inv_type, N_num_type, cs_num_type>(x0_imag, forcing_ref);
         //if (world.rank() != 0) ifherk.pad_velocity<u_num_inv_type, u_num_inv_type>(true);
         if (world.rank() != 0) ifherk.Curl_access<u_num_inv_type, w_ref_type>();
         simulation_.write("x0_imag.hdf5");
-        ifherk.CSR2Grid<u_num_inv_type, p_num_inv_type, w_num_inv_type>(x1_real, forcing_ref);
+        ifherk.CSR2Grid<u_num_inv_type, p_num_inv_type, w_num_inv_type, N_num_type, cs_num_type>(x1_real, forcing_ref);
         //if (world.rank() != 0) ifherk.pad_velocity<u_num_inv_type, u_num_inv_type>(true);
         if (world.rank() != 0) ifherk.Curl_access<u_num_inv_type, w_ref_type>();
         simulation_.write("x1_real.hdf5");
-        ifherk.CSR2Grid<u_num_inv_type, p_num_inv_type, w_num_inv_type>(x1_imag, forcing_ref);
+        ifherk.CSR2Grid<u_num_inv_type, p_num_inv_type, w_num_inv_type, N_num_type, cs_num_type>(x1_imag, forcing_ref);
         //if (world.rank() != 0) ifherk.pad_velocity<u_num_inv_type, u_num_inv_type>(true);
         if (world.rank() != 0) ifherk.Curl_access<u_num_inv_type, w_ref_type>();
         simulation_.write("x1_imag.hdf5");
-        ifherk.CSR2Grid<u_num_inv_type, p_num_inv_type, w_num_inv_type>(x2_real, forcing_ref);
+        ifherk.CSR2Grid<u_num_inv_type, p_num_inv_type, w_num_inv_type, N_num_type, cs_num_type>(x2_real, forcing_ref);
         //if (world.rank() != 0) ifherk.pad_velocity<u_num_inv_type, u_num_inv_type>(true);
         if (world.rank() != 0) ifherk.Curl_access<u_num_inv_type, w_ref_type>();
         simulation_.write("x2_real.hdf5");
-        ifherk.CSR2Grid<u_num_inv_type, p_num_inv_type, w_num_inv_type>(x2_imag, forcing_ref);
+        ifherk.CSR2Grid<u_num_inv_type, p_num_inv_type, w_num_inv_type, N_num_type, cs_num_type>(x2_imag, forcing_ref);
         //if (world.rank() != 0) ifherk.pad_velocity<u_num_inv_type, u_num_inv_type>(true);
         if (world.rank() != 0) ifherk.Curl_access<u_num_inv_type, w_ref_type>();
         simulation_.write("x2_imag.hdf5");
-        ifherk.CSR2Grid<u_num_inv_type, p_num_inv_type, w_num_inv_type>(x3_real, forcing_ref);
+        ifherk.CSR2Grid<u_num_inv_type, p_num_inv_type, w_num_inv_type, N_num_type, cs_num_type>(x3_real, forcing_ref);
         //if (world.rank() != 0) ifherk.pad_velocity<u_num_inv_type, u_num_inv_type>(true);
         if (world.rank() != 0) ifherk.Curl_access<u_num_inv_type, w_ref_type>();
         simulation_.write("x3_real.hdf5");
-        ifherk.CSR2Grid<u_num_inv_type, p_num_inv_type, w_num_inv_type>(x3_imag, forcing_ref);
+        ifherk.CSR2Grid<u_num_inv_type, p_num_inv_type, w_num_inv_type, N_num_type, cs_num_type>(x3_imag, forcing_ref);
         //if (world.rank() != 0) ifherk.pad_velocity<u_num_inv_type, u_num_inv_type>(true);
         if (world.rank() != 0) ifherk.Curl_access<u_num_inv_type, w_ref_type>();
-        simulation_.write("x3_imag.hdf5");*/
+        simulation_.write("x3_imag.hdf5");
 
         return 0;
 

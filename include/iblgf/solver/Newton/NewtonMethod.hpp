@@ -1760,7 +1760,7 @@ class NewtonIteration
                         {
                             for (auto& n : it->data())
                             {
-                                counter++;
+                                //counter++;
                                 n(idx_w_type::tag(), field_idx) = -1;
                             }
                         }

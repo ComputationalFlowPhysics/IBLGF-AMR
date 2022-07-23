@@ -1126,7 +1126,111 @@ class LinearNS
                      it != domain_->end(l); ++it)
                 {
                     if (!it->locally_owned() || !it->has_data()) continue;
-                    if (it->is_leaf() && !it->is_correction())
+                    if (!it->is_correction() && l == base_level && it->is_leaf())
+                    {
+                        /*for (std::size_t field_idx = 0;
+                             field_idx < idx_N_type::nFields(); ++field_idx)
+                        {
+                            for (auto& n : it->data())
+                            {
+                                counter++;
+                                n(idx_w_type::tag(), field_idx) =
+                                    static_cast<float_type>(counter) + 0.5;
+                            }
+                        }*/
+
+                        //only setting the leaf points that is next to the leaf to be active
+                        int  N = it->data().descriptor().extent()[0];
+                        bool next2corr = false;
+                        bool tmp[N][N] = {true};
+                        for (int i = 0; i < N; i++) {
+                            for (int j = 0; j < N; j++) {
+                                tmp[i][j] = true;
+                            }
+                        }
+                        for (int i = 0; i < it->num_neighbors(); i++)
+                        {
+                            auto it2 = it->neighbor(i);
+                            if (it2 && (!it2->is_correction()))
+                            {
+                                continue;
+                            }
+                            else
+                            {
+                                next2corr = true;
+                                if (i == 0) { tmp[0][0] = false; }
+                                if (i == 1)
+                                {
+                                    for (int j = 0; j < N; j++)
+                                    {
+                                        tmp[j][0] = false;
+                                        //tmp[j][1] = true;
+                                    }
+                                }
+                                if (i == 2) { tmp[N - 1][0] = false; }
+                                if (i == 3)
+                                {
+                                    for (int j = 0; j < N; j++)
+                                    {
+                                        tmp[0][j] = false;
+                                        //tmp[1][j] = true;
+                                    }
+                                }
+                                if (i == 5)
+                                {
+                                    for (int j = 0; j < N; j++)
+                                    {
+                                        tmp[N - 1][j] = false;
+                                        //tmp[N - 2][j] = true;
+                                    }
+                                }
+                                if (i == 6) { tmp[0][N - 1] = false; }
+                                if (i == 7)
+                                {
+                                    for (int j = 0; j < N; j++)
+                                    {
+                                        tmp[j][N - 1] = false;
+                                        //tmp[j][N - 2] = true;
+                                    }
+                                }
+                                if (i == 8) { tmp[N - 1][N - 1] = false; }
+                            }
+                        }
+                        for (std::size_t field_idx = 0;
+                             field_idx < idx_N_type::nFields(); ++field_idx)
+                        {
+                            auto& lin_data =
+                                it->data_r(idx_N_type::tag(), field_idx)
+                                    .linalg_data();
+                            for (int i = 0; i < N; i++)
+                            {
+                                for (int j = 0; j < N; j++)
+                                {
+                                    /*if (tmp[i][j] && !(next2corr && vort_buffer))
+                                    {
+                                        counter++;
+                                        view(lin_data, i + 1, j + 1) =
+                                            static_cast<float_type>(counter) +
+                                            0.5;
+                                    }
+                                    else
+                                    {
+                                        view(lin_data, i + 1, j + 1) = -1;
+                                    }*/
+                                    if (next2corr) {
+                                        view(lin_data, i + 1, j + 1) = -1;
+                                    }
+                                    else {
+                                        counter++;
+                                        view(lin_data, i + 1, j + 1) =
+                                            static_cast<float_type>(counter) +
+                                            0.5;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    else if (it->is_leaf() && !it->is_correction())
                     {
                         for (std::size_t field_idx = 0;
                              field_idx < idx_N_type::nFields(); ++field_idx)
@@ -1242,7 +1346,7 @@ class LinearNS
                         {
                             for (auto& n : it->data())
                             {
-                                counter++;
+                                //counter++;
                                 n(idx_N_type::tag(), field_idx) = -1;
                             }
                         }
@@ -1277,7 +1381,7 @@ class LinearNS
                         {
                             for (auto& n : it->data())
                             {
-                                counter++;
+                                //counter++;
                                 n(idx_cs_type::tag(), field_idx) = -1;
                             }
                         }
@@ -1561,7 +1665,7 @@ class LinearNS
                         {
                             for (auto& n : it->data())
                             {
-                                counter++;
+                                //counter++;
                                 n(idx_w_type::tag(), field_idx) = -1;
                             }
                         }
@@ -1929,8 +2033,8 @@ class LinearNS
                             //does not enforce divergence free on one corner, instead force the pressure at that point to be zero
                             
                             auto n_coord = n.level_coordinate();
-                            n_x = n_coord[0];
-                            n_y = n_coord[1];
+                            n_x = n_coord.x();
+                            n_y = n_coord.y();
                             if (!force_loc_set_zero || (n_x == set_zero_nx && n_y == set_zero_ny))
                             {
                                 tmp_set_zero_p = glo_p_idx;
@@ -3084,6 +3188,7 @@ class LinearNS
         construction_laplacian_u();
         construction_DN_u<U_old>();
         construction_Div();
+        //construction_Div_pressure_Poisson();
         construction_Grad();
         construction_Curl();
         construction_Projection();
@@ -3103,7 +3208,7 @@ class LinearNS
         if (add_Boundary_u) Jac.add_vec(boundary_u);
         if (add_L) Jac.add_vec(L);
         Jac.add_vec(Div_cs);
-        if (add_DN) Jac.add_vec(DN);
+        if (add_DN) Jac.add_vec(DN, -1.0);
         if (add_Div) Jac.add_vec(Div, -1.0);
         if (add_Grad) Jac.add_vec(Grad, -1.0);
         if (add_Curl) Jac.add_vec(Curl);
@@ -3260,7 +3365,7 @@ class LinearNS
                         }
                         }
                         //velocity formulation
-                        int cur_idx = n(idx_u_type::tag(), field_idx);
+                        /*int cur_idx = n(idx_u_type::tag(), field_idx);
                         int glo_idx = n(idx_u_g_type::tag(), field_idx);
                         L.add_element(cur_idx, glo_idx,
                             -4.0 / dx_level / dx_level);
@@ -3279,10 +3384,10 @@ class LinearNS
                         glo_idx =
                             n.at_offset(idx_u_g_type::tag(), -1, 0, field_idx);
                         L.add_element(cur_idx, glo_idx,
-                            1.0 / dx_level / dx_level);
+                            1.0 / dx_level / dx_level);*/
 
                         //vorticity formulation L = -C^TC = -C^Tw (since divergence free)
-                        /*int cur_idx = n(idx_u_type::tag(), field_idx);
+                        int cur_idx = n(idx_u_type::tag(), field_idx);
                         //int glo_idx = n(idx_u_g_type::tag(), field_idx);
                         
 
@@ -3297,7 +3402,7 @@ class LinearNS
                             L.add_element(cur_idx, glo_idx, -1.0 / dx_level);
                             glo_idx = n.at_offset(idx_w_g_type::tag(), 1, 0, 0);
                             L.add_element(cur_idx, glo_idx, 1.0 / dx_level);
-                        }*/
+                        }
                     }
                 }
             }
@@ -3546,6 +3651,8 @@ class LinearNS
 
                 int cur_idx_0 = n(idx_N_type::tag(), 0);
                 int cur_idx_1 = n(idx_N_type::tag(), 1);
+
+                if (cur_idx_0 < 0 || cur_idx_1 < 0) continue;
                 
                 int cur_idx_u_0 = n(idx_u_type::tag(), 0);
                 int cur_idx_u_1 = n(idx_u_type::tag(), 1);
@@ -3651,6 +3758,21 @@ class LinearNS
                     //-n.at_offset(edge, 0, 1, 0) *(n.at_offset(face, 0, 1, 1) + n.at_offset(face, -1, 1, 1))
                     DN.add_element(cur_idx_0, glob_idx_0_2, -v_s_0111 / dx);
                     DN.add_element(cur_idx_0, glob_idx_0, v_s_0111 / dx);
+
+                    //add entries in momentum equation
+                    //-n.at_offset(edge, 0, 0, 0) *(n.at_offset(face, 0, 0, 1) + n.at_offset(face, -1, 0, 1))
+                    DN.add_element(cur_idx_u_0, glob_idx_1, v_s_0010 / dx);
+                    DN.add_element(cur_idx_u_0, glob_idx_1_1, -v_s_0010 / dx);
+                    //-n.at_offset(edge, 0, 1, 0) *(n.at_offset(face, 0, 1, 1) + n.at_offset(face, -1, 1, 1))
+                    DN.add_element(cur_idx_u_0, glob_idx_1_2, v_s_0111 / dx);
+                    DN.add_element(cur_idx_u_0, glob_idx_1_3, -v_s_0111 / dx);
+
+                    //-n.at_offset(edge, 0, 0, 0) *(n.at_offset(face, 0, 0, 1) + n.at_offset(face, -1, 0, 1))
+                    DN.add_element(cur_idx_u_0, glob_idx_0, -v_s_0010 / dx);
+                    DN.add_element(cur_idx_u_0, glob_idx_0_1, v_s_0010 / dx);
+                    //-n.at_offset(edge, 0, 1, 0) *(n.at_offset(face, 0, 1, 1) + n.at_offset(face, -1, 1, 1))
+                    DN.add_element(cur_idx_u_0, glob_idx_0_2, -v_s_0111 / dx);
+                    DN.add_element(cur_idx_u_0, glob_idx_0, v_s_0111 / dx);
                 }
                 if ((p_idx_n > 0 && p_idx_s > 0) || l != base_level)
                 {
@@ -3667,48 +3789,81 @@ class LinearNS
                     // n.at_offset(edge, 1, 0, 0) *(n.at_offset(face, 1, 0, 0) + n.at_offset(face, 1, -1, 0))
                     DN.add_element(cur_idx_1, glob_idx_0_3, -u_s_1011 / dx);
                     DN.add_element(cur_idx_1, glob_idx_0_4, u_s_1011 / dx);
+
+                    //add entries in momentum equation
+                    // n.at_offset(edge, 0, 0, 0) *(n.at_offset(face, 0, 0, 0) + n.at_offset(face, 0, -1, 0))
+                    DN.add_element(cur_idx_u_1, glob_idx_1, u_s_0001 / dx);
+                    DN.add_element(cur_idx_u_1, glob_idx_1_1, -u_s_0001 / dx);
+                    // n.at_offset(edge, 1, 0, 0) *(n.at_offset(face, 1, 0, 0) + n.at_offset(face, 1, -1, 0))
+                    DN.add_element(cur_idx_u_1, glob_idx_1_4, u_s_1011 / dx);
+                    DN.add_element(cur_idx_u_1, glob_idx_1, -u_s_1011 / dx);
+
+                    // n.at_offset(edge, 0, 0, 0) *(n.at_offset(face, 0, 0, 0) + n.at_offset(face, 0, -1, 0))
+                    DN.add_element(cur_idx_u_1, glob_idx_0, -u_s_0001 / dx);
+                    DN.add_element(cur_idx_u_1, glob_idx_0_1, u_s_0001 / dx);
+                    // n.at_offset(edge, 1, 0, 0) *(n.at_offset(face, 1, 0, 0) + n.at_offset(face, 1, -1, 0))
+                    DN.add_element(cur_idx_u_1, glob_idx_0_3, -u_s_1011 / dx);
+                    DN.add_element(cur_idx_u_1, glob_idx_0_4, u_s_1011 / dx);
                 }
                 }
 
                 else {
+                    //-n.at_offset(edge, 0, 0, 0) *(n.at_offset(face, 0, 0, 1) + n.at_offset(face, -1, 0, 1))
+                    DN.add_element(cur_idx_0, glob_idx_1, v_s_0010 / dx);
+                    DN.add_element(cur_idx_0, glob_idx_1_1, -v_s_0010 / dx);
+                    //-n.at_offset(edge, 0, 0, 0) *(n.at_offset(face, 0, 0, 1) + n.at_offset(face, -1, 0, 1))
+                    DN.add_element(cur_idx_0, glob_idx_0, -v_s_0010 / dx);
+                    DN.add_element(cur_idx_0, glob_idx_0_1, v_s_0010 / dx);
+                    //if (p_idx_n > 0) {
+                    //-n.at_offset(edge, 0, 1, 0) *(n.at_offset(face, 0, 1, 1) + n.at_offset(face, -1, 1, 1))
+                    DN.add_element(cur_idx_0, glob_idx_1_2, v_s_0111 / dx);
+                    DN.add_element(cur_idx_0, glob_idx_1_3, -v_s_0111 / dx);
+                    //-n.at_offset(edge, 0, 1, 0) *(n.at_offset(face, 0, 1, 1) + n.at_offset(face, -1, 1, 1))
+                    DN.add_element(cur_idx_0, glob_idx_0_2, -v_s_0111 / dx);
+                    DN.add_element(cur_idx_0, glob_idx_0, v_s_0111 / dx);
+                    //}
 
-                
+                    //add entries in momentum equation
+                    //-n.at_offset(edge, 0, 0, 0) *(n.at_offset(face, 0, 0, 1) + n.at_offset(face, -1, 0, 1))
+                    DN.add_element(cur_idx_u_0, glob_idx_1, v_s_0010 / dx);
+                    DN.add_element(cur_idx_u_0, glob_idx_1_1, -v_s_0010 / dx);
+                    //-n.at_offset(edge, 0, 1, 0) *(n.at_offset(face, 0, 1, 1) + n.at_offset(face, -1, 1, 1))
+                    DN.add_element(cur_idx_u_0, glob_idx_1_2, v_s_0111 / dx);
+                    DN.add_element(cur_idx_u_0, glob_idx_1_3, -v_s_0111 / dx);
+                    //-n.at_offset(edge, 0, 0, 0) *(n.at_offset(face, 0, 0, 1) + n.at_offset(face, -1, 0, 1))
+                    DN.add_element(cur_idx_u_0, glob_idx_0, -v_s_0010 / dx);
+                    DN.add_element(cur_idx_u_0, glob_idx_0_1, v_s_0010 / dx);
+                    //-n.at_offset(edge, 0, 1, 0) *(n.at_offset(face, 0, 1, 1) + n.at_offset(face, -1, 1, 1))
+                    DN.add_element(cur_idx_u_0, glob_idx_0_2, -v_s_0111 / dx);
+                    DN.add_element(cur_idx_u_0, glob_idx_0, v_s_0111 / dx);
 
-                //-n.at_offset(edge, 0, 0, 0) *(n.at_offset(face, 0, 0, 1) + n.at_offset(face, -1, 0, 1))
-                DN.add_element(cur_idx_0, glob_idx_1, v_s_0010 / dx);
-                DN.add_element(cur_idx_0, glob_idx_1_1, -v_s_0010 / dx);
-                //-n.at_offset(edge, 0, 0, 0) *(n.at_offset(face, 0, 0, 1) + n.at_offset(face, -1, 0, 1))
-                DN.add_element(cur_idx_0, glob_idx_0, -v_s_0010 / dx);
-                DN.add_element(cur_idx_0, glob_idx_0_1, v_s_0010 / dx);
-                //if (p_idx_n > 0) {
-                //-n.at_offset(edge, 0, 1, 0) *(n.at_offset(face, 0, 1, 1) + n.at_offset(face, -1, 1, 1))
-                DN.add_element(cur_idx_0, glob_idx_1_2, v_s_0111 / dx);
-                DN.add_element(cur_idx_0, glob_idx_1_3, -v_s_0111 / dx);
-                //-n.at_offset(edge, 0, 1, 0) *(n.at_offset(face, 0, 1, 1) + n.at_offset(face, -1, 1, 1))
-                DN.add_element(cur_idx_0, glob_idx_0_2, -v_s_0111 / dx);
-                DN.add_element(cur_idx_0, glob_idx_0, v_s_0111 / dx);
-                //}
+                    // n.at_offset(edge, 0, 0, 0) *(n.at_offset(face, 0, 0, 0) + n.at_offset(face, 0, -1, 0))
+                    DN.add_element(cur_idx_1, glob_idx_1, u_s_0001 / dx);
+                    DN.add_element(cur_idx_1, glob_idx_1_1, -u_s_0001 / dx);
+                    // n.at_offset(edge, 0, 0, 0) *(n.at_offset(face, 0, 0, 0) + n.at_offset(face, 0, -1, 0))
+                    DN.add_element(cur_idx_1, glob_idx_0, -u_s_0001 / dx);
+                    DN.add_element(cur_idx_1, glob_idx_0_1, u_s_0001 / dx);
+                    // n.at_offset(edge, 1, 0, 0) *(n.at_offset(face, 1, 0, 0) + n.at_offset(face, 1, -1, 0))
+                    DN.add_element(cur_idx_1, glob_idx_1_4, u_s_1011 / dx);
+                    DN.add_element(cur_idx_1, glob_idx_1, -u_s_1011 / dx);
+                    // n.at_offset(edge, 1, 0, 0) *(n.at_offset(face, 1, 0, 0) + n.at_offset(face, 1, -1, 0))
+                    DN.add_element(cur_idx_1, glob_idx_0_3, -u_s_1011 / dx);
+                    DN.add_element(cur_idx_1, glob_idx_0_4, u_s_1011 / dx);
 
-                
-                
+                    //add entries in momentum equation
+                    // n.at_offset(edge, 0, 0, 0) *(n.at_offset(face, 0, 0, 0) + n.at_offset(face, 0, -1, 0))
+                    DN.add_element(cur_idx_u_1, glob_idx_1, u_s_0001 / dx);
+                    DN.add_element(cur_idx_u_1, glob_idx_1_1, -u_s_0001 / dx);
+                    // n.at_offset(edge, 1, 0, 0) *(n.at_offset(face, 1, 0, 0) + n.at_offset(face, 1, -1, 0))
+                    DN.add_element(cur_idx_u_1, glob_idx_1_4, u_s_1011 / dx);
+                    DN.add_element(cur_idx_u_1, glob_idx_1, -u_s_1011 / dx);
 
-                // n.at_offset(edge, 0, 0, 0) *(n.at_offset(face, 0, 0, 0) + n.at_offset(face, 0, -1, 0))
-                DN.add_element(cur_idx_1, glob_idx_1, u_s_0001 / dx);
-                DN.add_element(cur_idx_1, glob_idx_1_1, -u_s_0001 / dx);
-                // n.at_offset(edge, 0, 0, 0) *(n.at_offset(face, 0, 0, 0) + n.at_offset(face, 0, -1, 0))
-                DN.add_element(cur_idx_1, glob_idx_0, -u_s_0001 / dx);
-                DN.add_element(cur_idx_1, glob_idx_0_1, u_s_0001 / dx);
-
-                //if (p_idx_e > 0) {
-
-                // n.at_offset(edge, 1, 0, 0) *(n.at_offset(face, 1, 0, 0) + n.at_offset(face, 1, -1, 0))
-                DN.add_element(cur_idx_1, glob_idx_1_4, u_s_1011 / dx);
-                DN.add_element(cur_idx_1, glob_idx_1, -u_s_1011 / dx);
-
-                
-                // n.at_offset(edge, 1, 0, 0) *(n.at_offset(face, 1, 0, 0) + n.at_offset(face, 1, -1, 0))
-                DN.add_element(cur_idx_1, glob_idx_0_3, -u_s_1011 / dx);
-                DN.add_element(cur_idx_1, glob_idx_0_4, u_s_1011 / dx);
+                    // n.at_offset(edge, 0, 0, 0) *(n.at_offset(face, 0, 0, 0) + n.at_offset(face, 0, -1, 0))
+                    DN.add_element(cur_idx_u_1, glob_idx_0, -u_s_0001 / dx);
+                    DN.add_element(cur_idx_u_1, glob_idx_0_1, u_s_0001 / dx);
+                    // n.at_offset(edge, 1, 0, 0) *(n.at_offset(face, 1, 0, 0) + n.at_offset(face, 1, -1, 0))
+                    DN.add_element(cur_idx_u_1, glob_idx_0_3, -u_s_1011 / dx);
+                    DN.add_element(cur_idx_u_1, glob_idx_0_4, u_s_1011 / dx);
                 //}
                 }
 
@@ -3740,6 +3895,8 @@ class LinearNS
                 
                 int cur_idx_0 = n(idx_N_type::tag(), 0);
                 int cur_idx_1 = n(idx_N_type::tag(), 1);
+
+                if (cur_idx_0 < 0 || cur_idx_1 < 0) continue;
                 
                 int cur_idx_u_0 = n(idx_u_type::tag(), 0);
                 int cur_idx_u_1 = n(idx_u_type::tag(), 1);
@@ -3774,6 +3931,11 @@ class LinearNS
                     DN.add_element(cur_idx_0, glob_idx_1_10, -om_00);
                     DN.add_element(cur_idx_0, glob_idx_1_01, -om_01);
                     DN.add_element(cur_idx_0, glob_idx_1_11, -om_01);
+
+                    DN.add_element(cur_idx_u_0, glob_idx_1_00, -om_00);
+                    DN.add_element(cur_idx_u_0, glob_idx_1_10, -om_00);
+                    DN.add_element(cur_idx_u_0, glob_idx_1_01, -om_01);
+                    DN.add_element(cur_idx_u_0, glob_idx_1_11, -om_01);
                 }
                 if ((p_idx_n > 0 && p_idx_s > 0) || l != base_level)
                 {
@@ -3781,6 +3943,11 @@ class LinearNS
                     DN.add_element(cur_idx_1, glob_idx_0_01, om_00);
                     DN.add_element(cur_idx_1, glob_idx_0_10, om_10);
                     DN.add_element(cur_idx_1, glob_idx_0_11, om_10);
+
+                    DN.add_element(cur_idx_u_1, glob_idx_0_00, om_00);
+                    DN.add_element(cur_idx_u_1, glob_idx_0_01, om_00);
+                    DN.add_element(cur_idx_u_1, glob_idx_0_10, om_10);
+                    DN.add_element(cur_idx_u_1, glob_idx_0_11, om_10);
                 }
                 }
                 else {
@@ -3794,13 +3961,23 @@ class LinearNS
                 DN.add_element(cur_idx_1, glob_idx_0_01,  om_00);
                 DN.add_element(cur_idx_1, glob_idx_0_10,  om_10);
                 DN.add_element(cur_idx_1, glob_idx_0_11,  om_10);
+
+                DN.add_element(cur_idx_u_0, glob_idx_1_00, -om_00);
+                DN.add_element(cur_idx_u_0, glob_idx_1_10, -om_00);
+                DN.add_element(cur_idx_u_0, glob_idx_1_01, -om_01);
+                DN.add_element(cur_idx_u_0, glob_idx_1_11, -om_01);
+
+                DN.add_element(cur_idx_u_1, glob_idx_0_00,  om_00);
+                DN.add_element(cur_idx_u_1, glob_idx_0_01,  om_00);
+                DN.add_element(cur_idx_u_1, glob_idx_0_10,  om_10);
+                DN.add_element(cur_idx_u_1, glob_idx_0_11,  om_10);
                 }
 
-                DN.add_element(cur_idx_0, gN_idx_0, -1.0);
+                DN.add_element(cur_idx_0, gN_idx_0, -1.0); 
                 DN.add_element(cur_idx_1, gN_idx_1, -1.0);
 
-                DN.add_element(cur_idx_u_0, gN_idx_0, -1.0);
-                DN.add_element(cur_idx_u_1, gN_idx_1, -1.0);
+                //DN.add_element(cur_idx_u_0, gN_idx_0, -1.0);
+                //DN.add_element(cur_idx_u_1, gN_idx_1, -1.0);
             }
         }
         }
@@ -4016,6 +4193,108 @@ class LinearNS
 
                         glo_idx_1 = n.at_offset(idx_u_g_type::tag(), 0, 1, 1);
                         Div.add_element(cur_idx, glo_idx_1, 1.0 / dx_level);
+                    }
+                }
+            }
+        }
+        domain_->client_communicator().barrier();
+    }
+
+
+    void construction_Div_pressure_Poisson() {
+        //construction of Gradient
+        boost::mpi::communicator world;
+        world.barrier();
+
+        if (world.rank() == 0) {
+            return;
+        }
+
+        if (world.rank() == 1) {
+            std::cout << "Constructing div matrix using pressure Poisson equation" << std::endl;
+        }
+       
+        if (max_local_idx == 0) {
+            std::cout << "idx not initialized, please call Assigning_idx()" << std::endl;
+        }
+
+        const auto dx_base = domain_->dx_base();
+
+        Div.resizing_row(max_local_idx+1);
+
+        int base_level = domain_->tree()->base_level();
+        for (int l = base_level; l < domain_->tree()->depth(); l++)
+        {
+            if (domain_->is_client())
+            {
+                auto client = domain_->decomposition().client();
+
+                //client->template buffer_exchange<idx_u_type>(base_level);
+                client->template buffer_exchange<idx_u_g_type>(l);
+
+                //client->template buffer_exchange<idx_p_type>(base_level);
+                client->template buffer_exchange<idx_p_g_type>(l);
+            }
+            for (auto it = domain_->begin(l);
+                 it != domain_->end(l); ++it)
+            {
+                float_type dx_level = dx_base / math::pow2(it->refinement_level());
+                if (!it->locally_owned() || !it->has_data()) continue;
+                if (!it->is_leaf()) continue;
+                if (it->is_correction())
+                {
+                    /*for (auto& n : it->data())
+                    {
+                        int cur_idx = n(idx_p_type::tag(), 0);
+                        if (cur_idx < 0) continue;
+                        int glo_idx_0_0 = n(idx_u_g_type::tag(), 0);
+                        int glo_idx_1_0 = n(idx_u_g_type::tag(), 1);
+
+                        int glo_idx_0_1 =
+                            n.at_offset(idx_u_g_type::tag(), 1, 0, 0);
+                        int glo_idx_1_1 =
+                            n.at_offset(idx_u_g_type::tag(), 0, 1, 1);
+
+                        if (glo_idx_0_0 < 0 || glo_idx_0_1 < 0 ||
+                            glo_idx_1_0 < 0 || glo_idx_1_1 < 0)
+                        {
+                            continue;
+                        }
+
+                        Div.add_element(cur_idx, glo_idx_0_0, -1.0 / dx_level);
+                        Div.add_element(cur_idx, glo_idx_1_0, -1.0 / dx_level);
+                        Div.add_element(cur_idx, glo_idx_0_1, 1.0 / dx_level);
+                        Div.add_element(cur_idx, glo_idx_1_1, 1.0 / dx_level);
+                    }*/
+                    continue;
+                }
+                else
+                {
+                    for (auto& n : it->data())
+                    {
+                        int cur_idx = n(idx_p_type::tag(), 0);
+                        int glo_idx = n(idx_p_g_type::tag(), 0);
+                        Div.add_element(cur_idx, glo_idx,
+                            -4.0 / dx_level / dx_level);
+                        glo_idx =
+                            n.at_offset(idx_p_g_type::tag(), 0, 1, 0);
+                        Div.add_element(cur_idx, glo_idx,
+                            1.0 / dx_level / dx_level);
+                        glo_idx =
+                            n.at_offset(idx_p_g_type::tag(), 1, 0, 0);
+                        Div.add_element(cur_idx, glo_idx,
+                            1.0 / dx_level / dx_level);
+                        glo_idx =
+                            n.at_offset(idx_p_g_type::tag(), 0, -1, 0);
+                        Div.add_element(cur_idx, glo_idx,
+                            1.0 / dx_level / dx_level);
+                        glo_idx =
+                            n.at_offset(idx_p_g_type::tag(), -1, 0, 0);
+                        Div.add_element(cur_idx, glo_idx,
+                            1.0 / dx_level / dx_level);
+
+                        glo_idx = n(idx_cs_g_type::tag(), 0);
+                        Div.add_element(cur_idx, glo_idx, 1.0);
                     }
                 }
             }
@@ -4269,7 +4548,7 @@ class LinearNS
 
                         auto ddf = domain_->ib().delta_func();
 
-                        float_type val = ddf(dist + off) * factor * -1; //-1 is here for the sign of smearing w.r.t. nonlinear term
+                        float_type val = ddf(dist + off) * factor;
                         if (std::abs(val) < 1e-12) {
                             //std::cout << "uninfluenced node found with val " << val << std::endl;
                             continue;
@@ -4278,9 +4557,11 @@ class LinearNS
                         //int f_glob = forcing_idx_g[i][field_idx];
 
                         int N_loc = node(idx_N_type::tag(),field_idx);
+                        int u_loc = node(idx_u_type::tag(),field_idx);
                         //int f_glob = forcing_idx_g[i][field_idx];
                         int f_glob = forcing_idx_all[i][field_idx];
-                        smearing.add_element(N_loc, f_glob, val);
+                        smearing.add_element(N_loc, f_glob, val); //-1 is here for the sign of smearing w.r.t. nonlinear term
+                        smearing.add_element(u_loc, f_glob, val);
                         /*node(u, field_idx) +=
                             f[field_idx] * ddf(dist + off) * factor;*/
                     }
@@ -4896,7 +5177,7 @@ class LinearNS
 
                 int w_idx = n(idx_cs_g_type::tag(), 0);
 
-                this->map_add_element(w_idx, -lgf_val_00*dx_base*dx_base, loc_smat_u);
+                this->map_add_element(w_idx, lgf_val_00*dx_base*dx_base, loc_smat_u);
 
                 //this->map_add_element(w_idx, -v_weight * dx_base, loc_smat_v);
 
@@ -5274,7 +5555,7 @@ class LinearNS
 
                             int cs_idx = lin_data_g.at(sub_i, sub_j);
 
-                            this->map_add_element(cs_idx, -lgf_val_00*dx_base*dx_base, loc_smat_u);
+                            this->map_add_element(cs_idx, lgf_val_00*dx_base*dx_base, loc_smat_u);
 
                             //this->map_add_element(w_idx, -v_weight * dx_base, loc_smat_v);
                         }
@@ -5310,7 +5591,7 @@ class LinearNS
 
                         int cs_idx = n(idx_cs_g_type::tag(), 0);
 
-                        this->map_add_element(cs_idx, -lgf_val_00*dx_base*dx_base,
+                        this->map_add_element(cs_idx, lgf_val_00*dx_base*dx_base,
                             loc_smat_u);
 
                         //this->map_add_element(w_idx, -v_weight * dx_base, loc_smat_v);
@@ -6503,7 +6784,7 @@ class LinearNS
                 if(!it->is_correction() && refresh_correction_only) continue;
 
                 for (auto& n : it->data())
-                    n(P_out::tag(), 0) = n(cell_aux_tmp_type::tag(), 0) * (-1);
+                    n(P_out::tag(), 0) = n(cell_aux_tmp_type::tag(), 0);
             }
         }
 

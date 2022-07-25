@@ -94,22 +94,22 @@ struct parameters
     Dim,
      (
         //name               type        Dim   lBuffer  hBuffer, storage type
-         (error_u          , float_type, 2,    1,       1,     face,true  ),
-		 (error_p          , float_type, 1,    1,       1,     cell,true  ),
-         (error_w          , float_type, 1,    1,       1,     edge,true  ),
+         //(error_u          , float_type, 2,    1,       1,     face,true  ),
+		 //(error_p          , float_type, 1,    1,       1,     cell,true  ),
+         //(error_w          , float_type, 1,    1,       1,     edge,true  ),
          (test             , float_type, 1,    1,       1,     cell,false ),
         //IF-HERK
 		 (u                , float_type, 2,    1,       1,     face,true  ),
 		 (p                , float_type, 1,    1,       1,     cell,true  ),
-         (u_num_inv        , float_type, 2,    1,       1,     face,true  ),
-		 (p_num_inv        , float_type, 1,    1,       1,     cell,true  ),
-         (w_num_inv        , float_type, 1,    1,       1,     edge,true  ),
-		 (u_ref            , float_type, 2,    1,       1,     face,true  ),
-		 (p_ref            , float_type, 1,    1,       1,     cell,true  ),
-         (w_ref            , float_type, 1,    1,       1,     edge,true  ),
-         (u_tar            , float_type, 2,    1,       1,     face,true  ),
-		 (p_tar            , float_type, 1,    1,       1,     cell,true  ),
-         (w_tar            , float_type, 1,    1,       1,     edge,true  ),
+         //(u_num_inv        , float_type, 2,    1,       1,     face,true  ),
+		 //(p_num_inv        , float_type, 1,    1,       1,     cell,true  ),
+         //(w_num_inv        , float_type, 1,    1,       1,     edge,true  ),
+		 //(u_ref            , float_type, 2,    1,       1,     face,true  ),
+		 //(p_ref            , float_type, 1,    1,       1,     cell,true  ),
+         //(w_ref            , float_type, 1,    1,       1,     edge,true  ),
+         //(u_tar            , float_type, 2,    1,       1,     face,true  ),
+		 //(p_tar            , float_type, 1,    1,       1,     cell,true  ),
+         //(w_tar            , float_type, 1,    1,       1,     edge,true  ),
 		 (u_num            , float_type, 2,    1,       1,     face,true  ),
 		 (p_num            , float_type, 1,    1,       1,     cell,true  ),
          (w_num            , float_type, 1,    1,       1,     edge,true  )
@@ -288,8 +288,8 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
 			simulation_.template read_h5<u_type>(simulation_.restart_field_dir(), "u");
 			simulation_.template read_h5<p_type>(simulation_.restart_field_dir(), "p");
 
-            simulation_.template read_h5<u_ref_type>(simulation_.restart_field_dir(), "u");
-			simulation_.template read_h5<p_ref_type>(simulation_.restart_field_dir(), "p");
+            //simulation_.template read_h5<u_ref_type>(simulation_.restart_field_dir(), "u");
+			//simulation_.template read_h5<p_ref_type>(simulation_.restart_field_dir(), "p");
 
 			//this->initialize();
 
@@ -494,9 +494,9 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
                 //node(u_ref,0) = tmpf0;
                 //node(u_ref,1) = tmpf1;
                 //node(p_ref,0) = tmpc;
-                node(u_ref,0) = 10.0;
-                node(u_ref,1) = 10.0;
-                node(p_ref,0) = 10.0;
+                node(u,0) = 10.0;
+                node(u,1) = 10.0;
+                node(p,0) = 10.0;
                 //node(p_ref,0) = 0;
 
 				//node(p_ref, 0) = tmpc;

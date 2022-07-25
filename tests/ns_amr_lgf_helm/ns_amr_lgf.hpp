@@ -204,6 +204,12 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
 		global_refinement_ = simulation_.dictionary_->template get_or<int>(
 			"global_refinement", 0);
 
+		use_rand_perturb = simulation_.dictionary_->template get_or<bool>(
+			"use_rand_perturb", true);
+
+		pert_pow = simulation_.dictionary_->template get_or<int>(
+			"pert_pow", 5); //power scaling of perturbation for Fourier modes
+
 		bool use_tree_ = simulation_.dictionary_->template get_or<bool>("use_init_tree", false);
 		bool restart_2D_ = simulation_.dictionary_->template get_or<bool>("use_2D_restart", false);
 
@@ -220,10 +226,7 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
 
 		//domain_->decomposition().subtract_non_leaf() = true;
 
-		domain_->register_adapt_condition()=
-			[this]( std::vector<float_type> source_max, auto& octs, std::vector<int>& level_change ) 
-			{return this->template adapt_level_change(source_max, octs, level_change);};
-
+		
 		/*domain_->register_adapt_condition() =
 			[this](auto octant, std::vector<float_type> source_max) {return this->template adapt_level_change<cell_aux_type, u_type>(octant, source_max); };*/
 
@@ -233,6 +236,12 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
 
 		if (vortexType != 0) {
 		domain_->register_refinement_condition() = [this](auto octant,
+			int diff_level) {
+				return this->refinement(octant, diff_level);
+		};
+		}
+		else {
+			domain_->register_refinement_condition() = [this](auto octant,
 			int diff_level) {
 				return this->refinement(octant, diff_level);
 		};
@@ -251,8 +260,17 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
 			domain_->restart_list_construct();
 		}
 
+		domain_->register_adapt_condition()=
+			[this]( std::vector<float_type> source_max, auto& octs, std::vector<int>& level_change ) 
+			{return this->template adapt_level_change(source_max, octs, level_change);};
+
+
 		domain_->distribute<fmm_mask_builder_t, fmm_mask_builder_t>();
-		if (!use_restart() && !use_tree_) { this->initialize(); }
+		if (!use_restart() && !use_tree_ && vortexType != 0) { this->initialize(); }
+		else if (!use_restart() && !use_tree_ && vortexType == 0) {
+			pcout << "start fresh, perturbing Fourier modes" << std::endl;
+			perturbIC();
+		}
 		else if (use_tree_) {simulation_.template read_h5_2D<u_type>(ic_filename_2D_, "u");}
 		else if (restart_2D_) {
 			pcout << "reading restart from 2D profile" << std::endl;
@@ -495,6 +513,89 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
 		}
 	}
 
+	template< class key_t >
+	void adapt_level_change_init(std::vector<float_type> source_max,
+			        std::vector<key_t>& octs,
+				        std::vector<int>&   level_change )
+	{
+		octs.clear();
+		level_change.clear();
+
+		float_type dx_base = domain_->dx_base();
+		int N_ext = domain_->block_extent()[0];
+		for (auto it = domain_->begin(); it != domain_->end(); ++it)
+		{
+
+			if (!it->locally_owned()) continue;
+			if (!it->is_leaf() && !it->is_correction()) continue;
+			if (it->is_leaf() && it->is_correction()) continue;
+
+
+			auto dx_level = dx_base / std::pow(2, it->refinement_level());
+
+            for (auto& n : it->data())
+            {
+                
+
+                auto n_coord = n.level_coordinate();
+                int n_x = n_coord.x();
+                int n_y = n_coord.y();
+
+				float_type x = static_cast<float_type>(n_x) * dx_level;
+                float_type y = static_cast<float_type>(n_y) * dx_level;
+
+                float_type half_block =
+                    static_cast<float_type>(N_ext) * dx_level / 2.0;
+                //z = static_cast<float_type>(k - center[2] + 0.5) * dx_level;
+
+                //tmp_w =  vor(x,y-0.5*vort_sep,0)+ vor(x,y+0.5*vort_sep,0);
+
+                float_type maxLevel = 4.0;
+                float_type max_c = std::max(std::fabs(x), std::fabs(y));
+                //float_type max_c = std::fabs(x) + std::fabs(y);
+                float_type rd = std::sqrt(x * x + y * y);
+                float_type bd = 4.8 / pow(2, it->refinement_level()) - half_block;
+
+                //float_type bd = 4.8 - 1.2*b.level() - half_block;
+                //if (max_c < bd) return true;
+
+                /*if (std::fabs(tmp_w) > 1.0 * pow(refinement_factor_, diff_level))
+					return true;*/
+                //}
+            }
+
+            int l1=-1;
+			int l2=-1;
+			int l3=-1;
+
+			if (!it->is_correction() && it->is_leaf())
+				l1=this->template adapt_levle_change_for_field<cell_aux_type>(it, source_max[0], true);
+
+			if (it->is_correction() && !it->is_leaf())
+				l2=this->template adapt_levle_change_for_field<correction_tmp_type>(it, source_max[0], false);
+
+			if (!it->is_correction() && it->is_leaf())
+				l3=this->template adapt_levle_change_for_field<edge_aux_type>(it, source_max[1], false);
+
+			int l=std::max(std::max(l1,l2),l3);
+			//int l = std::max(l1,l2);
+
+			if( l!=0)
+			{
+				if (it->is_leaf()&&!it->is_correction())
+				{
+					octs.emplace_back(it->key());
+					level_change.emplace_back(l);
+				}
+				else if (it->is_correction() && !it->is_leaf() && l2>0)
+				{
+					octs.emplace_back(it->key().parent());
+					level_change.emplace_back(l2);
+				}
+			}
+		}
+	}
+
 
 
 
@@ -517,7 +618,7 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
 	template<class Field, class OctantType>
 	int adapt_levle_change_for_field(OctantType it, float_type source_max, bool use_base_level_threshold)
 	{
-		//return 0; //for testing purpose
+		return 0; //for testing purpose
 		if (vortexType != 0) return 0;
 		if (it->is_ib() && it->is_leaf())
 			if (it->refinement_level()<nLevelRefinement_)
@@ -736,7 +837,8 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
 				const auto& coord = node.level_coordinate();
                 for (int i = 1; i < N_modes; i++)
                 {
-                    float_type mag = 1.0 / static_cast<float_type>(i * i);
+                    float_type mag_i = 1.0 / static_cast<float_type>(i * i);
+					float_type mag = std::pow(mag_i, pert_pow);
                     for (int j = 0; j < 3; j++)
                     {
                         float_type x = static_cast<float_type>(
@@ -750,14 +852,22 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
 
 						float_type Gaussian = exp(-r2);
 
-                        float_type rd = (static_cast<float_type>(rand()) /
-                                            static_cast<float_type>(RAND_MAX)) -
-                                        0.5;
+						float_type rd = 1.0;
+
+                        if (use_rand_perturb)
+                        {
+                            rd = (static_cast<float_type>(rand()) /
+                                    static_cast<float_type>(RAND_MAX)) -
+                                0.5;
+                        }
                         node(edge_aux, j * N_modes * 2 + i * 2) +=
                             rd * w_perturb * mag * Gaussian;
-                        rd = (static_cast<float_type>(rand()) /
-                                 static_cast<float_type>(RAND_MAX)) -
-                             0.5;
+                        if (use_rand_perturb)
+                        {
+                            rd = (static_cast<float_type>(rand()) /
+                                    static_cast<float_type>(RAND_MAX)) -
+                                0.5;
+                        }
                         node(edge_aux, j * N_modes * 2 + i * 2 + 1) +=
                             rd * w_perturb * mag * Gaussian;
                     }
@@ -771,7 +881,7 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
 		for (int l = domain_->tree()->base_level();
 			l < domain_->tree()->depth(); ++l)
 		{
-			client->template buffer_exchange<stream_f_type>(l);
+			//client->template buffer_exchange<stream_f_type>(l);
 
 			for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
 			{
@@ -1108,6 +1218,8 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
     bool hard_max_refinement_=false;
     bool smooth_start_;
 	bool perturb_Fourier;
+	bool use_rand_perturb = true;
+	int pert_pow = 5;
     int vortexType = 0;
 	float_type w_perturb;
 	float_type c_z;

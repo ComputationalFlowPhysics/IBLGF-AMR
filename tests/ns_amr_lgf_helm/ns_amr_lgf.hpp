@@ -57,6 +57,7 @@ struct parameters
 {
     static constexpr std::size_t Dim = 2;
 	static constexpr std::size_t N_modes = 16;
+	static constexpr std::size_t PREFAC  = 2; //2 for complex values 
     // clang-format off
     REGISTER_FIELDS
     (
@@ -68,8 +69,8 @@ struct parameters
          (test             , float_type, 1*2*N_modes,    1,       1,     cell,false ),
         //IF-HERK
          (u                , float_type, 3*2*N_modes,    1,       1,     face,true  ),
-         (u_ref            , float_type, 3*2*N_modes,    1,       1,     face,false ),
-         (p_ref            , float_type, 1*2*N_modes,    1,       1,     cell,false ),
+         (u_ref            , float_type, 3*2*N_modes,    1,       1,     face,true  ),
+         (p_ref            , float_type, 1*2*N_modes,    1,       1,     cell,true  ),
          (p                , float_type, 1*2*N_modes,    1,       1,     cell,true  ),
          (w_num            , float_type, 1*2*N_modes,    1,       1,     edge,false ),
          (w_exact          , float_type, 1*2*N_modes,    1,       1,     edge,false ),
@@ -395,16 +396,29 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
 		pcout << "the max numerical vorticity is " << maxNumVort << std::endl;
 		ifherk.clean_leaf_correction_boundary<u_type>(domain_->tree()->base_level(), true, 1);
 
-		float_type u1_inf = this->compute_errors<u_type, u_ref_type, error_u_type>(
+		float_type L_z = simulation_.dictionary_->template get_or<float_type>(
+            "L_z", 1.0);
+
+        //PREFAC = 1;
+
+        float_type dz = L_z/static_cast<float_type>(N_modes)/static_cast<float_type>(PREFAC);
+
+		float_type u1_inf = this->compute_errors_for_all<u_type, u_ref_type, error_u_type>(dz, "u1_", 0, N_modes*PREFAC, L_z);
+		float_type u2_inf = this->compute_errors_for_all<u_type, u_ref_type, error_u_type>(dz, "u2_", 1, N_modes*PREFAC, L_z);
+		float_type u3_inf = this->compute_errors_for_all<u_type, u_ref_type, error_u_type>(dz, "u3_", 2, N_modes*PREFAC, L_z);
+
+		/*float_type u1_inf = this->compute_errors<u_type, u_ref_type, error_u_type>(
 			std::string("u1_"), 0);
 		float_type u2_inf = this->compute_errors<u_type, u_ref_type, error_u_type>(
 			std::string("u2_"), 1);
+		float_type u3_inf = this->compute_errors<u_type, u_ref_type, error_u_type>(
+			std::string("u3_"), 2);
 		float_type u_t_inf = this->compute_errors<num_u_theta_type, exact_u_theta_type, error_u_theta_type>(
 			std::string("u_t_"), 0);
 		float_type u_r_inf = this->compute_errors<num_u_theta_type, exact_u_theta_type, error_u_theta_type>(
 			std::string("u_r_"), 1);
 
-		float_type w_inf = this->compute_errors<edge_aux_type, w_exact_type, error_w_type>(std::string("w_"), 0);
+		float_type w_inf = this->compute_errors<edge_aux_type, w_exact_type, error_w_type>(std::string("w_"), 0);*/
 		//float_type u3_linf=this->compute_errors<u_type, u_ref_type, error_u_type>(
 		//        std::string("u3_"), 2);
 
@@ -835,12 +849,19 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
             {
 
 				const auto& coord = node.level_coordinate();
-                for (int i = 1; i < N_modes; i++)
+                for (int i = 0; i < N_modes; i++)
                 {
-                    float_type mag_i = 1.0 / static_cast<float_type>(i * i);
+                    float_type mag_i = 1.0 / static_cast<float_type>((i+1) * (i+1));
 					float_type mag = std::pow(mag_i, pert_pow);
                     for (int j = 0; j < 3; j++)
                     {
+
+						if (j != 2) {
+							node(edge_aux, j * N_modes * 2 + i * 2) = 0.0;
+							node(edge_aux, j * N_modes * 2 + i * 2+1) = 0.0;
+							continue;
+						}
+						
                         float_type x = static_cast<float_type>(
                                            coord[0]) *
                                        dx_level;
@@ -860,7 +881,7 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
                                     static_cast<float_type>(RAND_MAX)) -
                                 0.5;
                         }
-                        node(edge_aux, j * N_modes * 2 + i * 2) +=
+                        node(edge_aux, j * N_modes * 2 + i * 2) =
                             rd * w_perturb * mag * Gaussian;
                         if (use_rand_perturb)
                         {
@@ -868,8 +889,8 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
                                     static_cast<float_type>(RAND_MAX)) -
                                 0.5;
                         }
-                        node(edge_aux, j * N_modes * 2 + i * 2 + 1) +=
-                            rd * w_perturb * mag * Gaussian;
+                        if (i != 0) node(edge_aux, j * N_modes * 2 + i * 2 + 1) = rd * w_perturb * mag * Gaussian;
+						else node(edge_aux, j * N_modes * 2 + i * 2 + 1) = 0.0;
                     }
                 }
             }

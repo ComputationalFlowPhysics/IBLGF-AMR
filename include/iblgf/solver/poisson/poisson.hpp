@@ -87,7 +87,8 @@ class PoissonSolver
     {
         //initializing vector of helmholtz solvers
         //_N is the number of Fourier modes computed at finest level, but c is the wave number at the base level. 
-        //Need to change the computation from 2pi*n/N to 2*pi*n*2^(levels)/N
+        //Currently the baselevel value is used as the parameter for LGF, the LGF structure includes this parameter and can be changed
+        //when change level, thus we only need to initialize using base level parameter
         const int l_max = domain_->tree()->depth();
         const int l_min = domain_->tree()->base_level();
         const int nLevels = l_max - l_min;

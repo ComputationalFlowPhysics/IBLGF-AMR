@@ -64,8 +64,8 @@ struct parameters
     Dim,
      (
         //name               type        Dim   lBuffer  hBuffer, storage type
-         (error_u          , float_type, 3*2*N_modes,    1,       1,     face,false ),
-         (error_p          , float_type, 1*2*N_modes,    1,       1,     cell,false ),
+         (error_u          , float_type, 3*2*N_modes,    1,       1,     face,true ),
+         (error_p          , float_type, 1*2*N_modes,    1,       1,     cell,true ),
          (test             , float_type, 1*2*N_modes,    1,       1,     cell,false ),
         //IF-HERK
          (u                , float_type, 3*2*N_modes,    1,       1,     face,true  ),
@@ -349,9 +349,10 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
 					float_type r2 = x * x + y * y;
 					if (r2 > 4 * R_ * R_)
 					{
-						node(u_ref, 0) = 0.0;
-						node(u_ref, 1) = 0.0;
-						//node(u_ref, 2)=0.0;
+						for (int field_idx = 0; field_idx < u_type::nFields(); field_idx++) {
+							node(u, field_idx) = 0.0;
+							node(u_ref, field_idx) = 0.0;
+						}
 					}
 					float_type r__ = std::sqrt(x * x + y * y);
 					float_type t_final = dt_ * tot_steps_;

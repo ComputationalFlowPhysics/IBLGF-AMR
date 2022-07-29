@@ -292,7 +292,7 @@ class Chombo
                 H5Dopen2(level_group, "data:datatype=0", H5P_DEFAULT);
 
             std::vector<float_type> data;
-            int                     box_offset = 0;
+            long long               box_offset = 0;
             for (auto& file_b_dscriptr : file_boxes)
             {
                 if (box_offset < 0)
@@ -338,7 +338,7 @@ class Chombo
                              ++field_idx)
                         {
                             int sep = 1;
-                            if (domain->helmholtz_bool) sep = domain->N_modes_val * 3;
+                            if (domain->helmholtz_bool) sep = domain->N_modes_val * 2;
                             // Finte Volume requires differnet averaging for
                             // differnt mesh objects
                             //FV_avg = {avg, avg, avg};
@@ -423,7 +423,7 @@ class Chombo
                                                     if (file_idx_1 < 0)
                                                         continue;
 
-                                                    int offset =
+                                                    long long offset =
                                                         box_offset +
                                                         (component_idx +
                                                             field_idx) *

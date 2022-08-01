@@ -546,7 +546,8 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
             PetscCall(VecGetLocalSize(x, &nlocal));
 
             PetscCall(MatCreateDense(PETSC_COMM_WORLD,nlocal, nlocal, n, n, NULL, &A));
-
+            MatSetType(A,MATSCALAPACK);
+            //PetscCall(MatCreateScaLAPACK(PETSC_COMM_WORLD,nlocal, n, n, n, 0,0, &A));
             //PetscCall(MatSetSizes(A, nlocal, nlocal, n, n));
             PetscCall(MatSetFromOptions(A));
             PetscCall(MatSetUp(A));
@@ -625,15 +626,43 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
 
             PetscCall(KSPCreate(PETSC_COMM_WORLD, &ksp));
             PetscCall(KSPSetOperators(ksp, A, A));
+            auto t0 = clock_type::now();
             PetscCall(KSPGetPC(ksp, &pc));
             PetscCall(PCSetType(pc, PCLU));
+            auto t1 = clock_type::now();
+            mDuration_type ms_PC = t1 - t0;
+            if (rank == 0) {
+            std::cout << "Set LU in " << ms_PC.count() << std::endl;
+            }
+
 
             PetscCall(KSPSetTolerances(ksp, 1.e-7, PETSC_DEFAULT, PETSC_DEFAULT,
                 PETSC_DEFAULT));
 
             PetscCall(KSPSetFromOptions(ksp));
+            auto t2 = clock_type::now();
 
             PetscCall(KSPSolve(ksp, b, x));
+            auto t3 = clock_type::now();
+            mDuration_type ms_solve = t3 - t2;
+
+            PetscCall(VecAXPY(x, -1.0, u));
+            PetscCall(VecNorm(x, NORM_2, &norm));
+            if (rank == 0)
+            {
+                std::cout << "solution mag is " << norm << std::endl;
+            }
+            if (rank == 0) {
+            std::cout << "First solve in " << ms_solve.count() << std::endl;
+            }
+            auto t4 = clock_type::now();
+
+            PetscCall(KSPSolve(ksp, b, x));
+            auto t5 = clock_type::now();
+            mDuration_type ms_solve2 = t5 - t4;
+            if (rank == 0) {
+            std::cout << "Second solve in " << ms_solve2.count() << std::endl;
+            }
 
             PetscCall(KSPView(ksp, PETSC_VIEWER_STDOUT_WORLD));
 

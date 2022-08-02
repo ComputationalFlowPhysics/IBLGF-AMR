@@ -494,19 +494,95 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
                 for (int j = 0; j < Ap[0].size(); j++) { Ap[i][j] = 0.0; }
             }
         }
-
+        domain_->client_communicator().barrier();
+        auto t1 = clock_type::now();
         boost::mpi::all_reduce(domain_->client_communicator(), &Ap[0], domain_->ib().size(), &Ap_glob[0], std::plus<point_force_type>());
+        domain_->client_communicator().barrier();
+        auto t2 = clock_type::now();
+        mDuration_type plus_t = t2 - t1;
+        if (world.rank() == 1) {
+            std::cout << "Acrossing all processes summed in " << plus_t.count() << std::endl;
         }
+        }
+
+        //Now find if number of processes is larger than number of complex modes or otherwise
+        //if more processes, each modes will have at least one processes with some have more than one
+        //Otherwise, some processes will have more than one modes
 
         PetscMPIInt    rank, size;
         MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+        MPI_Comm_size(MPI_COMM_WORLD, &size);
 
         PetscMPIInt Color = 0;
+
+        int ProcDist[N_modes]; //array holding the Processes distribution on each mode
+
+        std::vector<int> localModes; //storing the modes need to be computed in this processor
+        //if number of modes is larger than number of processors, the size can be bigger than one
+        //otherwise, equal to one
+
+        for (int i = 0; i < N_modes; i++) {
+            ProcDist[i] = 0;
+        }
+
+        if ((size - 1) > N_modes) {
+            localModes.resize(1);
+            int nProc = (size - 1) / N_modes;
+            int res_proc = (size - 1) % N_modes;
+            for (int i = 0; i < N_modes; i++) { 
+                if (i < res_proc) ProcDist[i] = nProc + 1;
+                else  ProcDist[i] = nProc;
+            }
+            int cumNum = 0;
+            for (int i = 0; i < N_modes; i++) {
+                if ((rank - 1) >= cumNum && (rank - 1) < (cumNum + ProcDist[i])) {
+                    localModes[0] = i;
+                    break;
+                }
+                cumNum += ProcDist[i];
+            }
+        }
+        else {
+            //processes <= N_modes
+            
+            int numLocModes = N_modes / (size - 1);
+            int startMode = 0;
+            if (N_modes % (size - 1) > (rank - 1)) {
+                numLocModes += 1;
+            }
+            if (N_modes % (size - 1) > (rank - 1)) {
+                startMode = (rank - 1) * numLocModes;
+            }
+            else {
+                startMode = (N_modes % (size - 1)) * (numLocModes + 1) + (rank - 1 - (N_modes % (size - 1))) * numLocModes;
+            }
+            localModes.resize(numLocModes);
+            for (int i = 0; i < numLocModes; i++) {
+                localModes[i] = startMode + i;
+            }
+        }
         if (world.rank() != 0) {
-            Color = 1;
+            if ((size - 1) > N_modes) Color = localModes[0];
+            else Color = rank;
+        }
+
+        for (int i = 0; i < world.size(); i++) {
+            if (world.rank() == i) {
+                std::cout << "rank " << i << " Color " << Color << " Modes ";
+
+                for (int j = 0; j < localModes.size();j++) {
+                    std::cout << localModes[j] << " ";
+                }
+                std::cout << std::endl;
+            }
+            world.barrier();
         }
 
         MPI_Comm_split(MPI_COMM_WORLD, Color, 0, &PETSC_COMM_WORLD);
+
+        for (int ModeNum = 0; ModeNum < localModes.size(); ModeNum++) {
+        int ModeIdx = localModes[ModeNum];
+
         if (Color != 0)
         {
             Vec       x, b, u; /* approx solution, RHS, exact solution */
@@ -516,7 +592,7 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
             PetscReal norm,
                 tol =
                     1000. * PETSC_MACHINE_EPSILON; /* norm of solution error */
-            PetscInt i, n = force_dim, col[3], its, rstart, rend, nlocal;
+            PetscInt i, n = force_dim, col[3], its, rstartx, rendx, rstartb, rendb, nlocal;
 
             
 
@@ -532,30 +608,36 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
 
             PetscCall(PetscInitialize(&argc, &argv, (char*)0, help));
 
-            PetscCall(VecCreate(PETSC_COMM_WORLD, &x));
+            
 
-            PetscCall(VecSetSizes(x, nlocal, n));
-            PetscCall(VecSetFromOptions(x));
-            PetscCall(VecDuplicate(x, &b));
-            PetscCall(VecDuplicate(x, &u));
+            
 
-            PetscCall(VecGetOwnershipRange(x, &rstart, &rend));
+            
+            //PetscCall(VecGetLocalSize(x, &nlocal));
 
-            std::cout << "rank " << rank << " start and end " << rstart << " "
-                      << rend << std::endl;
-            PetscCall(VecGetLocalSize(x, &nlocal));
-
-            PetscCall(MatCreateDense(PETSC_COMM_WORLD,nlocal, nlocal, n, n, NULL, &A));
-            MatSetType(A,MATSCALAPACK);
-            //PetscCall(MatCreateScaLAPACK(PETSC_COMM_WORLD,nlocal, n, n, n, 0,0, &A));
+            //PetscCall(MatCreateDense(PETSC_COMM_WORLD,PETSC_DECIDE, PETSC_DECIDE, n, n, NULL, &A));
+            //MatSetType(A,MATSCALAPACK);
+            PetscCall(MatCreateScaLAPACK(PETSC_COMM_WORLD,PETSC_DECIDE , PETSC_DECIDE , n, n, 0,0, &A));
             //PetscCall(MatSetSizes(A, nlocal, nlocal, n, n));
             PetscCall(MatSetFromOptions(A));
             PetscCall(MatSetUp(A));
 
-            for (i = rstart; i < rend; i++)
+            PetscCall(MatCreateVecs(A,&x,&b));
+
+            PetscCall(VecSetFromOptions(x));
+            PetscCall(VecDuplicate(x, &u));
+
+            PetscCall(VecGetOwnershipRange(x, &rstartx, &rendx));
+
+            PetscCall(VecGetOwnershipRange(b, &rstartb, &rendb));
+
+            std::cout << "rank " << rank << " start and end " << rstartx << " "
+                      << rendx << " " << rstartb << " " << rendb << std::endl;
+
+            for (int i = rstartb; i < rendb; i++)
             {
                 
-                for (int j = 0; j < force_dim; j++)
+                for (int j = 0; j < n; j++)
                 {
                     int ib_idx_i = i / ((u_type::nFields()) / N_modes);
                     int field_idx_i = i % ((u_type::nFields()) / N_modes);
@@ -580,13 +662,10 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
                         2; //zero if real part but one if complex part
 
                     int field_idx_now_j =
-                        idx_complex_j * N_modes * 2 + realcomp_j;
-                    int field_idx_short_j = idx_complex_j*N_modes*2 + realcomp_j;
+                        idx_complex_j * N_modes * 2 + realcomp_j  + ModeIdx*2;
 
                     float_type val_ij =
                         matrix_force_glob[i][ib_idx_j][field_idx_now_j];
-                    float_type val_ji =
-                        matrix_force_glob[j][ib_idx_i][field_idx_now_i];
 
                     PetscScalar valA = val_ij;
                     PetscCall(MatSetValues(A, 1, &i, 1, &j, &valA,
@@ -597,7 +676,9 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
             MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY);
             MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY);
 
-            for (i = rstart; i < rend; i++)
+            
+
+            for (i = rstartb; i < rendb; i++)
             {
                 int ib_idx_i = i / ((u_type::nFields()) / N_modes);
                 int field_idx_i = i % ((u_type::nFields()) / N_modes);
@@ -607,13 +688,14 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
                 int realcomp_i =
                     field_idx_i % 2; //zero if real part but one if complex part
 
-                int field_idx_now_i = idx_complex_i * N_modes * 2 + realcomp_i;
-                int field_idx_short_i =
-                    idx_complex_i * N_modes * 2 + realcomp_i;
+                int field_idx_now_i = idx_complex_i * N_modes * 2 + realcomp_i + ModeIdx*2;
 
                 PetscScalar v = Ap_glob[ib_idx_i][field_idx_now_i];
                 PetscCall(VecSetValues(b, 1, &i, &v, INSERT_VALUES));
+            }
 
+            for (i = rstartx; i < rendx; i++)
+            {
                 PetscScalar vx = 1.0;
                 PetscCall(VecSetValues(u, 1, &i, &vx, INSERT_VALUES));
             }
@@ -632,7 +714,7 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
             auto t1 = clock_type::now();
             mDuration_type ms_PC = t1 - t0;
             if (rank == 0) {
-            std::cout << "Set LU in " << ms_PC.count() << std::endl;
+            std::cout << "Mode " << ModeIdx << " Set LU in " << ms_PC.count() << std::endl;
             }
 
 
@@ -650,10 +732,10 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
             PetscCall(VecNorm(x, NORM_2, &norm));
             if (rank == 0)
             {
-                std::cout << "solution mag is " << norm << std::endl;
+                std::cout << "Mode " << ModeIdx << " solution mag is " << norm << std::endl;
             }
             if (rank == 0) {
-            std::cout << "First solve in " << ms_solve.count() << std::endl;
+            std::cout << "Mode " << ModeIdx << " First solve in " << ms_solve.count() << std::endl;
             }
             auto t4 = clock_type::now();
 
@@ -661,7 +743,7 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
             auto t5 = clock_type::now();
             mDuration_type ms_solve2 = t5 - t4;
             if (rank == 0) {
-            std::cout << "Second solve in " << ms_solve2.count() << std::endl;
+            std::cout << "Mode " << ModeIdx << " Second solve in " << ms_solve2.count() << std::endl;
             }
 
             PetscCall(KSPView(ksp, PETSC_VIEWER_STDOUT_WORLD));
@@ -670,9 +752,10 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
             PetscCall(VecNorm(x, NORM_2, &norm));
             if (rank == 0)
             {
-                std::cout << "solution mag is " << norm << std::endl;
+                std::cout << "Mode " << ModeIdx << " solution mag is " << norm << std::endl;
             }
             PetscCall(KSPGetIterationNumber(ksp, &its));
+        }
         }
 
         return 0;

@@ -1,6 +1,13 @@
 #Bring the headers, such as Student.h into the project
 include_directories(${IBLGF_SOURCE_DIR}/src )
 
+find_package(PETSc)
+find_package(SLEPc)
+
+INCLUDE_DIRECTORIES(${PETSC_INCLUDES})
+INCLUDE_DIRECTORIES(${SLEPC_INC})
+ADD_DEFINITIONS(${PETSC_DEFINITIONS})
+
 set(NAME ns_amr_lgf_helm)
 add_custom_target(copy_ifherk_files_helm ALL
                       COMMAND ${CMAKE_COMMAND} -E copy_directory
@@ -18,6 +25,7 @@ target_link_libraries(ns_amr_lgf_helm.x
                       ${FFTW_LIBRARIES}
                       ${HDF5_LIBRARIES} hdf5
                       ${BLAS_LIBRARIES}
+                      ${PETSC_LIBRARIES}
                       xtensor
                       xsimd)
 

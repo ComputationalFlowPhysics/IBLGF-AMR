@@ -164,6 +164,53 @@ class DirectIB {
 
     }
 
+    DirectIB(simulation_type* _simulation, std::vector<int> localModes_, bool splitting_comm)
+    : domain_(_simulation->domain_.get()) {
+        boost::mpi::communicator world;
+
+        PetscMPIInt    rank, size;
+        MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+        MPI_Comm_size(MPI_COMM_WORLD, &size);
+
+        Color = -1;
+
+        int force_dim = domain_->ib().size()*(u_type::nFields())/N_modes;
+
+        n = force_dim;
+
+        localModes = localModes_;
+        if (world.rank() != 0) {
+            if ((size - 1) > N_modes) Color = localModes[0];
+            else Color = rank;
+        }
+
+        if (splitting_comm) MPI_Comm_split(MPI_COMM_WORLD, Color, 0, &PETSC_COMM_WORLD);
+
+
+        int ModeSize = localModes.size();
+        
+        x.resize(ModeSize);
+        b.resize(ModeSize);
+        u.resize(ModeSize);
+        
+        A.resize(ModeSize);
+        
+        ksp.resize(ModeSize);
+        
+        pc.resize(ModeSize);
+        
+        norm.resize(ModeSize);
+        tol.resize(ModeSize);
+        for (int i = 0; i < ModeSize; i++) {
+            tol[i] = 1000. * PETSC_MACHINE_EPSILON;
+        }
+        rstartx.resize(ModeSize);
+        rstartb.resize(ModeSize);
+        rendx.resize(ModeSize);
+        rendb.resize(ModeSize);
+
+    }
+
     int load_matrix(std::vector<force_type>& mat_, bool summed = true) {
         boost::mpi::communicator world;
         mat = mat_;
@@ -383,6 +430,11 @@ class DirectIB {
                         &res_loc[0], domain_->ib().size(), &res[0],
                         std::plus<point_force_type>());
 
+    }
+
+    std::vector<int> getlocal_modes() {
+        std::vector<int> _localModes = localModes;
+        return _localModes;
     }
 
   private:

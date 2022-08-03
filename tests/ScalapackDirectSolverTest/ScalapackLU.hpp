@@ -276,18 +276,21 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
         }
 
         linsys_solve_t ib_solve(&this->simulation_);
+        time_integration_t ifherk(&this->simulation_);
 
         int force_dim = tmp_f.size()*(u_type::nFields())/N_modes;
 
         float_type alpha = 0.01;
 
-        std::vector<force_type> matrix_force;
+        std::vector<force_type> matrix_force_glob;
 
         if (world.rank() == 1) {
             std::cout << "finished initializing" << std::endl;
         }
 
-        if (world.rank() != 0) {
+        ib_solve.creating_matrix(matrix_force_glob, alpha);
+
+        /*if (world.rank() != 0) {
         for (int num = 0; num < force_dim;num++) {
             if (world.rank() == 1)
             {
@@ -313,11 +316,7 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
                 }
                 //tmp_f[ib_idx][field_idx] = 1.0;
             }
-            /*for (int i = 0; i < tmp_f.size(); i++)
-            {
-                if (domain_->ib().rank(i)!=world.rank()) continue;
-                tmp_f[i][num] = 1.0;
-            }*/
+            
             force_type Ap(domain_->ib().size(), tmp);
             for (int i = 0; i < Ap.size(); i++)
             {
@@ -337,58 +336,12 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
             std::cout << "finished constructing" << std::endl;
             std::cout << "number of rows " << matrix_force.size() << std::endl;
         }
-        }
-
-        int zeros = 0;
-        int nonzeros = 0;
-
-        if (world.rank() != 0) {
-
-        for (int i = 0; i < matrix_force.size(); i++) {
-            //if (domain_->ib().rank(i)!=world.rank()) continue;
-            force_type force_tmp = matrix_force[i];
-            for (int j = 0; j < force_tmp.size(); j++) {
-                if (domain_->ib().rank(j)!=world.rank()) continue;
-                for (int k = 0; k < force_tmp[0].size(); k++) {
-                    float_type v_tmp = force_tmp[j][k];
-                    if (std::abs(v_tmp) > 1e-12) {
-                        nonzeros += 1;
-                    }
-                    else {
-                        zeros += 1;
-                    }
-                }
-            }
-        }
-        }
+        }*/
 
         
-        
-
-        if (world.rank() == 0) {
-            zeros = 0;
-            nonzeros = 0;
-        }
-
-        int zeros_glob;
-        int non_zeros_glob;
-		
-        boost::mpi::all_reduce(world, zeros, zeros_glob, std::plus<int>());
-        boost::mpi::all_reduce(world, nonzeros, non_zeros_glob, std::plus<int>());
-
-        if (world.rank() == 1) {
-            std::cout << "nonzeros are " << non_zeros_glob << std::endl;
-            std::cout << "zeros are " << zeros_glob << std::endl;
-        }
-
-        std::vector<force_type> matrix_force_glob = matrix_force;
-
-        for (int i = 0; i < matrix_force_glob.size(); i++) {
-            boost::mpi::all_reduce(domain_->client_communicator(), &matrix_force[i][0], domain_->ib().size(), &matrix_force_glob[i][0], std::plus<point_force_type>());
-        }
-
         float_type sum = 0;
         if (world.rank() == 1) {
+            std::cout << "starting compute asymetry" << std::endl;
             for (int nModes = 0; nModes < N_modes; nModes++) {
                 for (int i = 0; i < force_dim; i++) {
                     for (int j = i; j < force_dim; j++) {
@@ -509,8 +462,62 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
 
         PetscCall(PetscInitialize(&argc, &argv, (char*)0, help));
 
+        vector_type<float_type, 3> alpha_vec = ifherk.returnAlpha();
 
-        solver::DirectIB<super_type> Direct_IB(&this->simulation_);
+        ib_solve.Initializing_solvers(alpha_vec);
+
+        force_type res(domain_->ib().size(), tmp);
+
+        for (int k = 0; k < 3; k++)
+        {
+            if (world.rank() == 0) continue;
+            if (world.rank() == 1) {
+                std::cout << "Starting stage " << k << std::endl;
+            }
+            float_type alpha_ = alpha_vec[k];
+            for (int i = 0; i < Ap.size(); i++)
+            {
+                for (int j = 0; j < Ap[0].size(); j++) { Ap[i][j] = 0.0; }
+            }
+            ib_solve.ET_H_S_E<face_aux2_type>(p, Ap, alpha_);
+            for (int i = 0; i < Ap.size(); i++)
+            {
+                if (domain_->ib().rank(i) != world.rank())
+                {
+                    for (int j = 0; j < Ap[0].size(); j++) { Ap[i][j] = 0.0; }
+                }
+            }
+            ib_solve.DirectSolve(k, Ap, res);
+
+            float_type diff = 0;
+            //float_type sumv = 0;
+
+            if (world.rank() != 0)
+            {
+                for (int i = 0; i < res.size(); i++)
+                {
+                    if (domain_->ib().rank(i) == world.rank())
+                    {
+                        for (int j = 0; j < res[0].size(); j++)
+                        {
+                            diff += (res[i][j] - 1.0) * (res[i][j] - 1.0);
+                            //sumv += (res[i][j]) * (res[i][j]);
+                        }
+                    }
+                }
+            }
+
+            float_type diff_glob = 0.0;
+
+            boost::mpi::all_reduce(domain_->client_communicator(), diff, diff_glob,
+                std::plus<float_type>());
+
+            if (world.rank() == 1) {
+                std::cout << "Error for " << k << " stage is " << diff_glob << std::endl;
+            }
+        }
+
+        /*solver::DirectIB<super_type> Direct_IB(&this->simulation_);
 
         Direct_IB.load_matrix(matrix_force_glob);
         world.barrier();
@@ -550,8 +557,89 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
         boost::mpi::all_reduce(world, diff, diff_glob, std::plus<float_type>());
 
         if (world.rank() == 1) {
-            std::cout << "Error is " << diff_glob << std::endl;
+            std::cout << "First solve Error is " << diff_glob << std::endl;
         }
+
+
+        Direct_IB.load_RHS(Ap_glob);
+        world.barrier();
+        if (world.rank() == 1) {
+            std::cout << "Finished load RHS again" << std::endl;
+        }
+
+        Direct_IB.getSolution(res);
+
+        world.barrier();
+        if (world.rank() == 1) {
+            std::cout << "Finished solving again" << std::endl;
+        }
+
+        diff = 0;
+
+        if (world.rank() != 0) {
+        
+        for (int i = 0; i < res.size(); i++)
+        {
+            if (domain_->ib().rank(i) == world.rank())
+            {
+                for (int j = 0; j < res[0].size(); j++) { diff += (res[i][j] - 1.0)*(res[i][j] - 1.0); }
+            }
+        }
+        }
+
+        diff_glob = 0.0;
+
+
+        boost::mpi::all_reduce(world, diff, diff_glob, std::plus<float_type>());
+
+        if (world.rank() == 1) {
+            std::cout << "First solve Error is (again) " << diff_glob << std::endl;
+        }
+
+        std::vector<int> localModes_ = Direct_IB.getlocal_modes();
+
+        solver::DirectIB<super_type> Direct_IB_new(&this->simulation_, localModes_, false);
+
+        Direct_IB_new.load_matrix(matrix_force_glob);
+        world.barrier();
+        if (world.rank() == 1) {
+            std::cout << "Finished loading matrix new " << std::endl;
+        }
+        Direct_IB_new.load_RHS(Ap_glob);
+        world.barrier();
+        if (world.rank() == 1) {
+            std::cout << "Finished load RHS new " << std::endl;
+        }
+
+        force_type res_new(domain_->ib().size(), tmp);
+        Direct_IB_new.getSolution(res_new);
+
+        world.barrier();
+        if (world.rank() == 1) {
+            std::cout << "Finished solving new " << std::endl;
+        }
+
+        diff = 0;
+
+        if (world.rank() != 0) {
+        
+        for (int i = 0; i < res_new.size(); i++)
+        {
+            if (domain_->ib().rank(i) == world.rank())
+            {
+                for (int j = 0; j < res_new[0].size(); j++) { diff += (res_new[i][j] - 1.0)*(res_new[i][j] - 1.0); }
+            }
+        }
+        }
+
+        diff_glob = 0.0;
+
+
+        boost::mpi::all_reduce(world, diff, diff_glob, std::plus<float_type>());
+
+        if (world.rank() == 1) {
+            std::cout << "Second solve Error is " << diff_glob << std::endl;
+        }*/
 
 
         //Now find if number of processes is larger than number of complex modes or otherwise

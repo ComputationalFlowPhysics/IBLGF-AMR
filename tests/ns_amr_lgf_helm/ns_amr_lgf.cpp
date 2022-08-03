@@ -41,7 +41,7 @@ int main(int argc, char *argv[])
     NS_AMR_LGF setup(&dictionary);
 
     // run setup
-    setup.run();
+    setup.run(argc, argv);
 
     return 0;
 }

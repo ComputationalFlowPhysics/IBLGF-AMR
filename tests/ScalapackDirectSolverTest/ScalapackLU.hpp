@@ -51,6 +51,8 @@ static char help[] = "Solves a IB system.\n\n";
 #include <iblgf/solver/poisson/poisson.hpp>
 #include <iblgf/solver/time_integration/ifherk_helm.hpp>
 
+#include <iblgf/solver/time_integration/ScaLAPACK_ib.hpp>
+
 #include "../../setups/setup_helmholtz.hpp"
 #include <iblgf/operators/operators.hpp>
 
@@ -505,11 +507,58 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
         }
         }
 
+        PetscCall(PetscInitialize(&argc, &argv, (char*)0, help));
+
+
+        solver::DirectIB<super_type> Direct_IB(&this->simulation_);
+
+        Direct_IB.load_matrix(matrix_force_glob);
+        world.barrier();
+        if (world.rank() == 1) {
+            std::cout << "Finished loading matrix" << std::endl;
+        }
+        Direct_IB.load_RHS(Ap_glob);
+        world.barrier();
+        if (world.rank() == 1) {
+            std::cout << "Finished load RHS" << std::endl;
+        }
+
+        force_type res(domain_->ib().size(), tmp);
+        Direct_IB.getSolution(res);
+
+        world.barrier();
+        if (world.rank() == 1) {
+            std::cout << "Finished solving" << std::endl;
+        }
+
+        float_type diff = 0;
+
+        if (world.rank() != 0) {
+        
+        for (int i = 0; i < res.size(); i++)
+        {
+            if (domain_->ib().rank(i) == world.rank())
+            {
+                for (int j = 0; j < res[0].size(); j++) { diff += (res[i][j] - 1.0)*(res[i][j] - 1.0); }
+            }
+        }
+        }
+
+        float_type diff_glob = 0.0;
+
+
+        boost::mpi::all_reduce(world, diff, diff_glob, std::plus<float_type>());
+
+        if (world.rank() == 1) {
+            std::cout << "Error is " << diff_glob << std::endl;
+        }
+
+
         //Now find if number of processes is larger than number of complex modes or otherwise
         //if more processes, each modes will have at least one processes with some have more than one
         //Otherwise, some processes will have more than one modes
 
-        PetscMPIInt    rank, size;
+        /*PetscMPIInt    rank, size;
         MPI_Comm_rank(MPI_COMM_WORLD, &rank);
         MPI_Comm_size(MPI_COMM_WORLD, &size);
 
@@ -578,63 +627,64 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
             world.barrier();
         }
 
+        PetscCall(PetscInitialize(&argc, &argv, (char*)0, help));
+
         MPI_Comm_split(MPI_COMM_WORLD, Color, 0, &PETSC_COMM_WORLD);
 
+        int ModeSize = localModes.size();
+
+        PetscInt  n = force_dim;
+
+        std::vector<Vec>       x, b, u; // approx solution, RHS, exact solution 
+        x.resize(ModeSize);
+        b.resize(ModeSize);
+        u.resize(ModeSize);
+        std::vector<Mat>       A;       // linear system matrix 
+        A.resize(ModeSize);
+        std::vector<KSP>       ksp;     // linear solver context 
+        ksp.resize(ModeSize);
+        std::vector<PC>        pc;      // preconditioner context 
+        pc.resize(ModeSize);
+        std::vector<PetscReal> norm, tol(ModeSize, 1000. * PETSC_MACHINE_EPSILON); // norm of solution error 
+        norm.resize(ModeSize);
+        std::vector<PetscInt> rstartx(ModeSize, 0), its(ModeSize, 0), rendx(ModeSize, 0), rstartb(ModeSize, 0), rendb(ModeSize, 0);
+
+        
+
         for (int ModeNum = 0; ModeNum < localModes.size(); ModeNum++) {
-        int ModeIdx = localModes[ModeNum];
+        int ModeIdx = localModes[ModeNum];        
 
         if (Color != 0)
         {
-            Vec       x, b, u; /* approx solution, RHS, exact solution */
-            Mat       A;       /* linear system matrix */
-            KSP       ksp;     /* linear solver context */
-            PC        pc;      /* preconditioner context */
-            PetscReal norm,
-                tol =
-                    1000. * PETSC_MACHINE_EPSILON; /* norm of solution error */
-            PetscInt i, n = force_dim, col[3], its, rstartx, rendx, rstartb, rendb, nlocal;
-
-            
-
             PetscMPIInt rank, size;
             MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
             MPI_Comm_size(PETSC_COMM_WORLD, &size);
 
-            if (rank != (size-1)) nlocal = n / (size - 1);
-            else nlocal = n % (size - 1);
 
-
-            PetscScalar one = 1.0, value[3], zero = 0.0;
-
-            PetscCall(PetscInitialize(&argc, &argv, (char*)0, help));
-
-            
-
-            
-
+            PetscScalar one = 1.0, value[3], zero = 0.0;        
             
             //PetscCall(VecGetLocalSize(x, &nlocal));
 
             //PetscCall(MatCreateDense(PETSC_COMM_WORLD,PETSC_DECIDE, PETSC_DECIDE, n, n, NULL, &A));
             //MatSetType(A,MATSCALAPACK);
-            PetscCall(MatCreateScaLAPACK(PETSC_COMM_WORLD,PETSC_DECIDE , PETSC_DECIDE , n, n, 0,0, &A));
+            PetscCall(MatCreateScaLAPACK(PETSC_COMM_WORLD,PETSC_DECIDE , PETSC_DECIDE , n, n, 0,0, &A[ModeNum]));
             //PetscCall(MatSetSizes(A, nlocal, nlocal, n, n));
-            PetscCall(MatSetFromOptions(A));
-            PetscCall(MatSetUp(A));
+            PetscCall(MatSetFromOptions(A[ModeNum]));
+            PetscCall(MatSetUp(A[ModeNum]));
 
-            PetscCall(MatCreateVecs(A,&x,&b));
+            PetscCall(MatCreateVecs(A[ModeNum],&x[ModeNum],&b[ModeNum]));
 
-            PetscCall(VecSetFromOptions(x));
-            PetscCall(VecDuplicate(x, &u));
+            //PetscCall(VecSetFromOptions(x[ModeNum]));
+            PetscCall(VecDuplicate(x[ModeNum], &u[ModeNum]));
 
-            PetscCall(VecGetOwnershipRange(x, &rstartx, &rendx));
+            PetscCall(VecGetOwnershipRange(x[ModeNum], &rstartx[ModeNum], &rendx[ModeNum]));
 
-            PetscCall(VecGetOwnershipRange(b, &rstartb, &rendb));
+            PetscCall(VecGetOwnershipRange(b[ModeNum], &rstartb[ModeNum], &rendb[ModeNum]));
 
-            std::cout << "rank " << rank << " start and end " << rstartx << " "
-                      << rendx << " " << rstartb << " " << rendb << std::endl;
+            std::cout << "rank " << rank << " start and end " << rstartx[ModeNum] << " "
+                      << rendx[ModeNum] << " " << rstartb[ModeNum] << " " << rendb[ModeNum] << std::endl;
 
-            for (int i = rstartb; i < rendb; i++)
+            for (int i = rstartb[ModeNum]; i < rendb[ModeNum]; i++)
             {
                 
                 for (int j = 0; j < n; j++)
@@ -668,17 +718,17 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
                         matrix_force_glob[i][ib_idx_j][field_idx_now_j];
 
                     PetscScalar valA = val_ij;
-                    PetscCall(MatSetValues(A, 1, &i, 1, &j, &valA,
+                    PetscCall(MatSetValues(A[ModeNum], 1, &i, 1, &j, &valA,
                         INSERT_VALUES));
                 }
             }
 
-            MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY);
-            MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY);
+            MatAssemblyBegin(A[ModeNum],MAT_FINAL_ASSEMBLY);
+            MatAssemblyEnd(A[ModeNum],MAT_FINAL_ASSEMBLY);
 
             
 
-            for (i = rstartb; i < rendb; i++)
+            for (int i = rstartb[ModeNum]; i < rendb[ModeNum]; i++)
             {
                 int ib_idx_i = i / ((u_type::nFields()) / N_modes);
                 int field_idx_i = i % ((u_type::nFields()) / N_modes);
@@ -691,26 +741,26 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
                 int field_idx_now_i = idx_complex_i * N_modes * 2 + realcomp_i + ModeIdx*2;
 
                 PetscScalar v = Ap_glob[ib_idx_i][field_idx_now_i];
-                PetscCall(VecSetValues(b, 1, &i, &v, INSERT_VALUES));
+                PetscCall(VecSetValues(b[ModeNum], 1, &i, &v, INSERT_VALUES));
             }
 
-            for (i = rstartx; i < rendx; i++)
+            for (int i = rstartx[ModeNum]; i < rendx[ModeNum]; i++)
             {
                 PetscScalar vx = 1.0;
-                PetscCall(VecSetValues(u, 1, &i, &vx, INSERT_VALUES));
+                PetscCall(VecSetValues(u[ModeNum], 1, &i, &vx, INSERT_VALUES));
             }
 
-            VecAssemblyBegin(b);
-            VecAssemblyEnd(b);
+            VecAssemblyBegin(b[ModeNum]);
+            VecAssemblyEnd(b[ModeNum]);
 
-            VecAssemblyBegin(u);
-            VecAssemblyEnd(u);
+            VecAssemblyBegin(u[ModeNum]);
+            VecAssemblyEnd(u[ModeNum]);
 
-            PetscCall(KSPCreate(PETSC_COMM_WORLD, &ksp));
-            PetscCall(KSPSetOperators(ksp, A, A));
+            PetscCall(KSPCreate(PETSC_COMM_WORLD, &ksp[ModeNum]));
+            PetscCall(KSPSetOperators(ksp[ModeNum], A[ModeNum], A[ModeNum]));
             auto t0 = clock_type::now();
-            PetscCall(KSPGetPC(ksp, &pc));
-            PetscCall(PCSetType(pc, PCLU));
+            PetscCall(KSPGetPC(ksp[ModeNum], &pc[ModeNum]));
+            PetscCall(PCSetType(pc[ModeNum], PCLU));
             auto t1 = clock_type::now();
             mDuration_type ms_PC = t1 - t0;
             if (rank == 0) {
@@ -718,45 +768,88 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
             }
 
 
-            PetscCall(KSPSetTolerances(ksp, 1.e-7, PETSC_DEFAULT, PETSC_DEFAULT,
+            PetscCall(KSPSetTolerances(ksp[ModeNum], 1.e-7, PETSC_DEFAULT, PETSC_DEFAULT,
                 PETSC_DEFAULT));
 
-            PetscCall(KSPSetFromOptions(ksp));
+            PetscCall(KSPSetFromOptions(ksp[ModeNum]));
             auto t2 = clock_type::now();
 
-            PetscCall(KSPSolve(ksp, b, x));
+            PetscCall(KSPSolve(ksp[ModeNum], b[ModeNum], x[ModeNum]));
             auto t3 = clock_type::now();
             mDuration_type ms_solve = t3 - t2;
 
-            PetscCall(VecAXPY(x, -1.0, u));
-            PetscCall(VecNorm(x, NORM_2, &norm));
+            PetscCall(VecAXPY(x[ModeNum], -1.0, u[ModeNum]));
+            PetscCall(VecNorm(x[ModeNum], NORM_2, &norm[ModeNum]));
             if (rank == 0)
             {
-                std::cout << "Mode " << ModeIdx << " solution mag is " << norm << std::endl;
+                std::cout << "Mode " << ModeIdx << " solution mag is " << norm[ModeNum] << std::endl;
             }
             if (rank == 0) {
-            std::cout << "Mode " << ModeIdx << " First solve in " << ms_solve.count() << std::endl;
+                std::cout << "Mode " << ModeIdx << " First solve in " << ms_solve.count() << std::endl;
             }
+        }
+        }
+
+        for (int ModeNum = 0; ModeNum < localModes.size(); ModeNum++) {
+        int ModeIdx = localModes[ModeNum];        
+
+        if (Color != 0)
+        {
+            PetscMPIInt rank, size;
+            MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
+            MPI_Comm_size(PETSC_COMM_WORLD, &size);
+
+
+            PetscScalar one = 1.0, value[3], zero = 0.0;          
+
+            for (int i = rstartb[ModeNum]; i < rendb[ModeNum]; i++)
+            {
+                int ib_idx_i = i / ((u_type::nFields()) / N_modes);
+                int field_idx_i = i % ((u_type::nFields()) / N_modes);
+                int idx_complex_i =
+                    field_idx_i /
+                    2; //the number of components (zero for u, one for v, two for w)
+                int realcomp_i =
+                    field_idx_i % 2; //zero if real part but one if complex part
+
+                int field_idx_now_i = idx_complex_i * N_modes * 2 + realcomp_i + ModeIdx*2;
+
+                PetscScalar v = Ap_glob[ib_idx_i][field_idx_now_i];
+                PetscCall(VecSetValues(b[ModeNum], 1, &i, &v, INSERT_VALUES));
+            }
+
+            for (int i = rstartx[ModeNum]; i < rendx[ModeNum]; i++)
+            {
+                PetscScalar vx = 1.0;
+                PetscCall(VecSetValues(u[ModeNum], 1, &i, &vx, INSERT_VALUES));
+            }
+
+            VecAssemblyBegin(b[ModeNum]);
+            VecAssemblyEnd(b[ModeNum]);
+
+            VecAssemblyBegin(u[ModeNum]);
+            VecAssemblyEnd(u[ModeNum]);
+
             auto t4 = clock_type::now();
 
-            PetscCall(KSPSolve(ksp, b, x));
+            PetscCall(KSPSolve(ksp[ModeNum], b[ModeNum], x[ModeNum]));
             auto t5 = clock_type::now();
             mDuration_type ms_solve2 = t5 - t4;
             if (rank == 0) {
             std::cout << "Mode " << ModeIdx << " Second solve in " << ms_solve2.count() << std::endl;
             }
 
-            PetscCall(KSPView(ksp, PETSC_VIEWER_STDOUT_WORLD));
+            //PetscCall(KSPView(ksp[ModeNum], PETSC_VIEWER_STDOUT_WORLD));
 
-            PetscCall(VecAXPY(x, -1.0, u));
-            PetscCall(VecNorm(x, NORM_2, &norm));
+            PetscCall(VecAXPY(x[ModeNum], -1.0, u[ModeNum]));
+            PetscCall(VecNorm(x[ModeNum], NORM_2, &norm[ModeNum]));
             if (rank == 0)
             {
-                std::cout << "Mode " << ModeIdx << " solution mag is " << norm << std::endl;
+                std::cout << "Mode " << ModeIdx << " solution mag is " << norm[ModeNum] << std::endl;
             }
-            PetscCall(KSPGetIterationNumber(ksp, &its));
+            PetscCall(KSPGetIterationNumber(ksp[ModeNum], &its[ModeNum]));
         }
-        }
+        }*/
 
         return 0;
 

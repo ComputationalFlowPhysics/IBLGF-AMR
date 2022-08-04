@@ -2,7 +2,7 @@
 include_directories(${IBLGF_SOURCE_DIR}/src )
 
 find_package(PETSc)
-find_package(SLEPc)
+#find_package(SLEPc)
 
 INCLUDE_DIRECTORIES(${PETSC_INCLUDES})
 INCLUDE_DIRECTORIES(${SLEPC_INC})

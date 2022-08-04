@@ -1,9 +1,9 @@
 #Bring the headers, such as Student.h into the project
 include_directories(${IBLGF_SOURCE_DIR}/src )
-set(MKLROOT "/home/root/intel-oneAPI/oneAPI/mkl/latest")
+#set(MKLROOT "/home/root/intel-oneAPI/oneAPI/mkl/latest")
 
 find_package(PETSc)
-find_package(SLEPc)
+#find_package(SLEPc)
 #find_package(PkgConfig REQUIRED) 
 #pkg_check_modules(SLEPC_PKG REQUIRED IMPORTED_TARGET SLEPc)
 
@@ -26,7 +26,6 @@ set(Ptest_list ScalapackLU_Test)
 # add the executable
 add_executable(ScalapackLU.x ScalapackLU.cpp ${SOURCES})
 target_link_libraries(ScalapackLU.x
-                      "-Wl,--start-group /home/root/intel-oneAPI/oneAPI/mkl/latest/lib/intel64/libmkl_intel_ilp64.a /home/root/intel-oneAPI/oneAPI/mkl/latest/lib/intel64/libmkl_sequential.a /home/root/intel-oneAPI/oneAPI/mkl/latest/lib/intel64/libmkl_core.a /home/root/intel-oneAPI/oneAPI/mkl/latest/lib/intel64/libmkl_blacs_intelmpi_ilp64.a -Wl,--end-group -lpthread -lm -ldl"
                       ${MPI_LIBRARIES}
                       ${Boost_LIBRARIES}
                       ${FFTW_LIBRARIES}
@@ -36,14 +35,13 @@ target_link_libraries(ScalapackLU.x
                       xtensor
                       xsimd)
                       
-
-target_compile_options(ScalapackLU.x PUBLIC -DMKL_ILP64  -I"/home/root/intel-oneAPI/oneAPI/mkl/latest/include")
-target_include_directories(ScalapackLU.x PUBLIC ${MKLROOT})
+#target_compile_options(ScalapackLU.x PUBLIC -DMKL_ILP64  -I"/home/root/intel-oneAPI/oneAPI/mkl/latest/include")
+#target_include_directories(ScalapackLU.x PUBLIC ${MKLROOT})
 # target_link_libraries(MKLSolver.x PUBLIC $<LINK_ONLY:MKL::MKL_C>)
 
 foreach (item ${Ptest_list})
     add_executable(${item} ${item}.cpp ${SOURCES})
-    add_dependencies(${item} copy_MKLSolver)
+    add_dependencies(${item} copy_ScalapackLU)
     target_link_libraries(${item} iblgf_test_main)
     add_test(
         NAME ${item}_parallel_np13

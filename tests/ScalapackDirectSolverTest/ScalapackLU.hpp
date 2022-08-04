@@ -275,6 +275,9 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
             }
         }
 
+
+        PetscCall(PetscInitialize(&argc, &argv, (char*)0, help));
+
         linsys_solve_t ib_solve(&this->simulation_);
         time_integration_t ifherk(&this->simulation_);
 
@@ -460,13 +463,61 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
         }
         }
 
-        PetscCall(PetscInitialize(&argc, &argv, (char*)0, help));
+
+
+
+        solver::DirectIB<super_type> Direct_IB(&this->simulation_);
+
+        if (world.rank() != 0) Direct_IB.load_matrix(matrix_force_glob);
+        world.barrier();
+        if (world.rank() == 1) {
+            std::cout << "Finished loading matrix" << std::endl;
+        }
+        if (world.rank() != 0) Direct_IB.load_RHS(Ap_glob);
+        world.barrier();
+        if (world.rank() == 1) {
+            std::cout << "Finished load RHS" << std::endl;
+        }
+
+        force_type res(domain_->ib().size(), tmp);
+        if (world.rank()!=0) Direct_IB.getSolution(res);
+
+        world.barrier();
+        if (world.rank() == 1) {
+            std::cout << "Finished solving" << std::endl;
+        }
+
+        float_type diff = 0;
+
+        if (world.rank() != 0) {
+        
+        for (int i = 0; i < res.size(); i++)
+        {
+            if (domain_->ib().rank(i) == world.rank())
+            {
+                for (int j = 0; j < res[0].size(); j++) { diff += (res[i][j] - 1.0)*(res[i][j] - 1.0); }
+            }
+        }
+        }
+
+        float_type diff_glob = 0.0;
+
+
+        boost::mpi::all_reduce(world, diff, diff_glob, std::plus<float_type>());
+
+        if (world.rank() == 1) {
+            std::cout << "First solve Error is " << diff_glob << std::endl;
+        }
+
+	world.barrier();
 
         vector_type<float_type, 3> alpha_vec = ifherk.returnAlpha();
 
         ib_solve.Initializing_solvers(alpha_vec);
 
-        force_type res(domain_->ib().size(), tmp);
+	world.barrier();
+
+        //force_type res(domain_->ib().size(), tmp);
 
         for (int k = 0; k < 3; k++)
         {
@@ -480,6 +531,11 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
                 for (int j = 0; j < Ap[0].size(); j++) { Ap[i][j] = 0.0; }
             }
             ib_solve.ET_H_S_E<face_aux2_type>(p, Ap, alpha_);
+	    domain_->client_communicator().barrier();
+	    if (world.rank() == 1) {
+		    std::cout << "finished ET_H_S_E" << std::endl;
+	    }
+	    domain_->client_communicator().barrier();
             for (int i = 0; i < Ap.size(); i++)
             {
                 if (domain_->ib().rank(i) != world.rank())
@@ -488,8 +544,12 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
                 }
             }
             ib_solve.DirectSolve(k, Ap, res);
+	    domain_->client_communicator().barrier();
+	    if (world.rank() == 1) {
+		    std::cout << "Finished getting solution" << std::endl;
+	    }
 
-            float_type diff = 0;
+            diff = 0;
             //float_type sumv = 0;
 
             if (world.rank() != 0)
@@ -507,7 +567,7 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
                 }
             }
 
-            float_type diff_glob = 0.0;
+            diff_glob = 0.0;
 
             boost::mpi::all_reduce(domain_->client_communicator(), diff, diff_glob,
                 std::plus<float_type>());

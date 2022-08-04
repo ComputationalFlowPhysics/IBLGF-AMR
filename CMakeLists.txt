@@ -21,7 +21,7 @@ cmake_policy(SET CMP0048 NEW)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_EXTENSIONS OFF)
-set(CMAKE_CXX_FLAGS "-Werror -march=native -Wno-error=deprecated-declarations")
+set(CMAKE_CXX_FLAGS "-march=native -Wno-error=deprecated-declarations")
 
 set(default_build_type "Release")
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)

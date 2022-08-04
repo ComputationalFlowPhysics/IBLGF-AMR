@@ -290,12 +290,15 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
 			std::cout << "on Simulation: \n" << simulation_ << std::endl;
 	}
 
-	float_type run()
+	float_type run(int argc, char *argv[])
 	{
 		
 		boost::mpi::communicator world;
 		//std::cout << world.rank() << " start running" << std::endl;
+		PetscCall(PetscInitialize(&argc, &argv, (char*)0, NULL));
 		time_integration_t ifherk(&this->simulation_);
+
+		
 
 		//std::cout << world.rank() << " ifherk initialized" << std::endl;
 

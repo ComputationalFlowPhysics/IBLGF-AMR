@@ -27,6 +27,8 @@
 #include <cstddef>
 #include <iblgf/tensor/vector.hpp>
 
+#include <iblgf/solver/time_integration/ScaLAPACK_ib.hpp>
+
 namespace iblgf
 {
 namespace solver
@@ -84,9 +86,119 @@ class LinSysSolver_helm
         c_z = dx_base_*N_modes*2/std::pow(2.0, nLevels - 1);*/
 
         additional_modes = simulation_->dictionary()->template get_or<int>("add_modes", N_modes - 1);
+
+        usingDirectSolve = simulation_->dictionary()->template get_or<bool>("useDirectSolve", false);
+
         _compute_Modes.resize(N_modes);
         for (int i = 0; i < N_modes; i++) {
             this->_compute_Modes[i] = true;
+        }
+
+    }
+
+    void Initializing_solvers(vector_type<float_type, 3> alpha_) {
+        for (int i = 0; i < 3; i++) {
+            this->creating_matrix(matrix_ib, alpha_[i]);
+            if (i == 0) {
+                DirectSolvers.emplace_back(simulation_);
+            }
+            else {
+                std::vector<int> localModes_ = DirectSolvers[0].getlocal_modes();
+                DirectSolvers.emplace_back(simulation_, localModes_, false);
+            }
+            DirectSolvers[i].load_matrix(matrix_ib);
+        }
+    }
+
+    void DirectSolve(int stage_idx, force_type& forcing, force_type& res) {
+        DirectSolvers[stage_idx].load_RHS(forcing, false);
+        DirectSolvers[stage_idx].getSolution(res);
+
+        boost::mpi::communicator world;
+
+        if (world.rank() != 0)
+        {
+            for (int i = 0; i < res.size(); i++)
+            {
+                if (domain_->ib().rank(i) != world.rank())
+                {
+                    for (int j = 0; j < res[0].size(); j++) { res[i][j] = 0; }
+                }
+            }
+        }
+    }
+
+    void creating_matrix(std::vector<force_type>& matrix_force_glob, float_type alpha) {
+        boost::mpi::communicator world;
+
+        point_force_type tmp(0.0);
+
+        force_type tmp_f(domain_->ib().size(), tmp);
+
+        int force_dim = tmp_f.size()*(u_type::nFields())/N_modes;
+
+        matrix_force_glob.resize(0);
+
+        std::vector<force_type> matrix_force = matrix_force_glob; 
+
+        matrix_force.resize(0);
+
+        if (world.rank() != 0) {
+        for (int num = 0; num < force_dim;num++) {
+            if (world.rank() == 1)
+            {
+                if (num % ((u_type::nFields())/N_modes) == 0)
+                {
+                    std::cout << "Constructing matrix for IB, alpha = " << alpha << " number solved " << num << " over "
+                              << force_dim << std::endl;
+                }
+            }
+            for (int i = 0; i < tmp_f.size(); i++)
+            {
+                for (int j = 0; j < tmp_f[0].size(); j++) { tmp_f[i][j] = 0.0; }
+            }
+            int ib_idx = num / ((u_type::nFields())/N_modes);
+            int field_idx = num % ((u_type::nFields())/N_modes);
+            int idx_complex = field_idx/2; //the number of components (zero for u, one for v, two for w)
+            int realcomp = field_idx % 2;  //zero if real part but one if complex part
+
+            if (domain_->ib().rank(ib_idx)==world.rank()) {
+                for (int ModeN = 0; ModeN < N_modes; ModeN++) {
+                    int field_idx_now = idx_complex*N_modes*2 + ModeN*2 + realcomp;
+                    tmp_f[ib_idx][field_idx_now] = 1.0;
+                }
+                //tmp_f[ib_idx][field_idx] = 1.0;
+            }
+            /*for (int i = 0; i < tmp_f.size(); i++)
+            {
+                if (domain_->ib().rank(i)!=world.rank()) continue;
+                tmp_f[i][num] = 1.0;
+            }*/
+            force_type Ap(domain_->ib().size(), tmp);
+            for (int i = 0; i < Ap.size(); i++)
+            {
+                for (int j = 0; j < Ap[0].size(); j++) { Ap[i][j] = 0.0; }
+            }
+            this->template ET_H_S_E<face_aux2_type>(tmp_f, Ap, alpha);
+            for (int i = 0; i < Ap.size(); i++)
+            {
+                if (domain_->ib().rank(i)!=world.rank()) {
+                    for (int j = 0; j < Ap[0].size(); j++) { Ap[i][j] = 0.0; }
+                }
+            }
+            matrix_force.emplace_back(Ap);
+        }
+
+        if (world.rank() == 1) {
+            std::cout << "finished constructing" << std::endl;
+            std::cout << "number of rows " << matrix_force.size() << std::endl;
+        }
+        }
+
+        matrix_force_glob = matrix_force;
+
+        for (int i = 0; i < matrix_force_glob.size(); i++) {
+            boost::mpi::all_reduce(domain_->client_communicator(), &matrix_force[i][0], domain_->ib().size(), &matrix_force_glob[i][0], std::plus<point_force_type>());
         }
     }
 
@@ -139,7 +251,7 @@ class LinSysSolver_helm
     }
 
     template<class Field>
-    void ib_solve(float_type alpha, float_type t)
+    void ib_solve(float_type alpha, float_type t, int stage_idx)
     {
         // right hand side
         point_force_type tmp(0.0);
@@ -154,7 +266,11 @@ class LinSysSolver_helm
 
         domain_->client_communicator().barrier();
         domain::Operator::domainClean<face_aux2_type>(domain_);
-        this->template CG_solve_mode<face_aux2_type>(uc, alpha);
+        if (!usingDirectSolve) this->template CG_solve_mode<face_aux2_type>(uc, alpha);
+        else {
+            auto& f = ib_->force();
+            this->DirectSolve((stage_idx-1), uc, f);
+        }
     }
 
     template<class Field>
@@ -806,7 +922,7 @@ class LinSysSolver_helm
         //if (std::fabs(alpha)>1e-4)
         //    psolver_.template apply_lgf_IF<Field, Field>(alpha, MASK_TYPE::xIB2IB);
 
-        if (std::fabs(alpha)>1e-12)
+        if (std::fabs(alpha)>1e-14)
             psolver_.template apply_helm_if_ib<Field, Field>(alpha, N_modes, c_z, this->_compute_Modes, 3, MASK_TYPE::IB2xIB);
 
         this->template apply_Schur<Field, face_aux_type>(MASK_TYPE::xIB2IB);
@@ -1121,6 +1237,10 @@ class LinSysSolver_helm
     domain_type*     domain_; ///< domain
     ib_t* ib_;
     poisson_solver_t psolver_;
+
+    std::vector<force_type> matrix_ib; //matrix for IB terms
+    std::vector<DirectIB<Setup>> DirectSolvers;
+    bool usingDirectSolve = false;
 
     int additional_modes = 0;
 

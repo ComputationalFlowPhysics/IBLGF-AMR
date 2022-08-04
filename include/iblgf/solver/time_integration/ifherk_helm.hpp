@@ -158,6 +158,11 @@ class Ifherk_HELM
         write_restart_ = _simulation->dictionary()->template get_or<bool>(
             "write_restart", true);
 
+        bool usingDirectSolve = simulation_->dictionary()->template get_or<bool>("useDirectSolve", false);
+        if (usingDirectSolve) {
+            lsolver.Initializing_solvers(alpha_);
+        }
+
         if (write_restart_)
             restart_base_freq_ =
                 _simulation->dictionary()->template get<float_type>(
@@ -195,6 +200,11 @@ class Ifherk_HELM
         alpha_[0] = (c_[1] - c_[0]) / tmp;
         alpha_[1] = (c_[2] - c_[1]) / tmp;
         alpha_[2] = (c_[3] - c_[2]) / tmp;
+    }
+
+    vector_type<float_type, 3> returnAlpha() {
+        vector_type<float_type, 3> tmp_alpha = alpha_;
+        return tmp_alpha;
     }
     void time_march(bool use_restart = false)
     {
@@ -1060,6 +1070,8 @@ class Ifherk_HELM
         }
     }
 
+    
+
   private:
     float_type coeff_a(int i, int j) const noexcept
     {
@@ -1123,7 +1135,7 @@ class Ifherk_HELM
         pcout << "Linsys copy grad add in " << ms_grad.count() << std::endl;
 
         // IB
-        if (std::fabs(_alpha) > 1e-12)
+        if (std::fabs(_alpha) > 1e-14)
             psolver.template apply_helm_if<face_aux2_type, face_aux2_type>(
                 _alpha, N_modes, c_z, 3, MASK_TYPE::IB2xIB);
 
@@ -1139,7 +1151,7 @@ class Ifherk_HELM
             //clean_Fourier_modes_all<correction_tmp_type>();
         }
         TIME_CODE(t_ib, SINGLE_ARG(lsolver.template ib_solve<face_aux2_type>(
-                            _alpha, T_stage_);));
+                            _alpha, T_stage_, stage_idx_);));
 
         domain_->ib().force_prev(stage_idx_) = domain_->ib().force();
         //domain_->ib().scales(1.0/coeff_a(stage_idx_, stage_idx_));
@@ -1186,6 +1198,8 @@ class Ifherk_HELM
         //    lsolver.printvec(tmp, "u");
         //}
     }
+
+    
 
     template<class Velocity_in, class Velocity_out>
     void pad_velocity(bool refresh_correction_only = true)
@@ -1654,6 +1668,8 @@ class Ifherk_HELM
     std::vector<int> nonzero_dim_vec;
     float_type c_z; //for the period in the homogeneous direction
     float_type perturb_nonlin = 0.0;
+
+    
 
     int additional_modes = 0;
 

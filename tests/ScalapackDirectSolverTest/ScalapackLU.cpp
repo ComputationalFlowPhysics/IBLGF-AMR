@@ -14,7 +14,7 @@
 #include <boost/mpi/environment.hpp>
 #include <boost/mpi/communicator.hpp>
 
-#include "ns_amr_lgf.hpp"
+#include "ScalapackLU.hpp"
 #include <iblgf/dictionary/dictionary.hpp>
 
 

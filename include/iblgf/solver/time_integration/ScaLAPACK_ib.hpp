@@ -430,6 +430,8 @@ class DirectIB {
                         &res_loc[0], domain_->ib().size(), &res[0],
                         std::plus<point_force_type>());
 
+        return 0;
+
     }
 
     std::vector<int> getlocal_modes() {

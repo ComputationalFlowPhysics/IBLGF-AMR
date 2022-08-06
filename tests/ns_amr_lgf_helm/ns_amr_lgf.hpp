@@ -572,7 +572,7 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
                 float_type max_c = std::max(std::fabs(x), std::fabs(y));
                 //float_type max_c = std::fabs(x) + std::fabs(y);
                 float_type rd = std::sqrt(x * x + y * y);
-                float_type bd = 4.8 / pow(2, it->refinement_level()) - half_block;
+                float_type bd = 2.4 / pow(2, it->refinement_level()) - half_block;
 
                 //float_type bd = 4.8 - 1.2*b.level() - half_block;
                 //if (max_c < bd) return true;
@@ -855,8 +855,8 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
 				const auto& coord = node.level_coordinate();
                 for (int i = 0; i < N_modes; i++)
                 {
-                    float_type mag_i = 1.0 / static_cast<float_type>((i+1) * (i+1));
-					float_type mag = std::pow(mag_i, pert_pow);
+                    float_type mag_i = -static_cast<float_type>((i) * (i));
+					float_type mag = std::exp(mag_i*pert_pow);
                     for (int j = 0; j < 3; j++)
                     {
 

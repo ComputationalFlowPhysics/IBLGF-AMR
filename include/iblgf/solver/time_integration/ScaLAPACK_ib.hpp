@@ -213,7 +213,7 @@ class DirectIB {
 
     int load_matrix(std::vector<force_type>& mat_, bool summed = true) {
         boost::mpi::communicator world;
-        mat = mat_;
+	std::vector<force_type> mat = mat_;
         std::vector<force_type> mat_loc = mat_;
         if (world.rank() != 0)
         {
@@ -440,7 +440,7 @@ class DirectIB {
     }
 
   private:
-    std::vector<force_type> mat;
+    //std::vector<force_type> mat;
 
     PetscMPIInt Color = -1; //this is the Color for splitting communicators
     std::vector<int> localModes;

@@ -108,7 +108,8 @@ class LinSysSolver_helm
             }
             DirectSolvers[i].load_matrix(matrix_ib);
         }
-	matrix_ib.resize(0); //resizing to free up the memory
+	matrix_ib.clear();
+        matrix_ib.shrink_to_fit();//resizing to free up the memory
     }
 
     void DirectSolve(int stage_idx, force_type& forcing, force_type& res) {

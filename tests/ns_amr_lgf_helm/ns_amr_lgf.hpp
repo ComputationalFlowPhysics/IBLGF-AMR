@@ -1092,7 +1092,7 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
 				float_type max_c = std::max(std::fabs(x), std::fabs(y));
 				//float_type max_c = std::fabs(x) + std::fabs(y);
 				float_type rd = std::sqrt(x * x + y * y);
-				float_type bd = 4.8 / pow(2, b.level()) - half_block;
+				float_type bd = 1.92 / pow(2, b.level()) - half_block;
 
 				//float_type bd = 4.8 - 1.2*b.level() - half_block;
 				if (max_c < bd)

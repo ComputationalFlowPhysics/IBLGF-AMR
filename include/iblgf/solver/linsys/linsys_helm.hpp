@@ -1627,7 +1627,7 @@ class LinSysSolver_helm
         }
         auto A_tmp = A;
         //real part is aA - bB
-        add_matrix(B, A,, -b, a);
+        add_matrix(B, A, -b, a);
         //imag part is bA + aB
         add_matrix(A_tmp, B, b, a);
     }

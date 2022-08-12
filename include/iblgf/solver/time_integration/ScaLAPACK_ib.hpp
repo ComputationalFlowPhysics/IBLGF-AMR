@@ -221,7 +221,7 @@ class DirectIB {
             {
                 for (int k = 0; k < mat_loc.size(); k++)
                 {
-                    for (int i = 0; i < mat_loc[i].size(); i++)
+                    for (int i = 0; i < mat_loc[k].size(); i++)
                     {
                         if (domain_->ib().rank(i) != world.rank())
                         {
@@ -324,6 +324,169 @@ class DirectIB {
 
             PetscCall(KSPSetTolerances(ksp[ModeNum], 1.e-7, PETSC_DEFAULT, PETSC_DEFAULT,
                 PETSC_DEFAULT));
+
+            PetscCall(KSPSetFromOptions(ksp[ModeNum]));
+        }
+        return 0;
+    }
+
+    int settingUpMatrix() {
+        boost::mpi::communicator world;
+        if (Color == -1) return 0;
+
+
+        for (int ModeNum = 0; ModeNum < localModes.size(); ModeNum++) {
+
+            int ModeIdx = localModes[ModeNum];
+
+            PetscMPIInt rank, size;
+            MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
+            MPI_Comm_size(PETSC_COMM_WORLD, &size);
+
+
+            PetscScalar one = 1.0, value[3], zero = 0.0;        
+            
+            //PetscCall(VecGetLocalSize(x, &nlocal));
+
+            //PetscCall(MatCreateDense(PETSC_COMM_WORLD,PETSC_DECIDE, PETSC_DECIDE, n, n, NULL, &A));
+            //MatSetType(A,MATSCALAPACK);
+            PetscCall(MatCreateScaLAPACK(PETSC_COMM_WORLD,PETSC_DECIDE , PETSC_DECIDE , n, n, 0,0, &A[ModeNum]));
+            //PetscCall(MatSetSizes(A, nlocal, nlocal, n, n));
+            PetscCall(MatSetFromOptions(A[ModeNum]));
+            PetscCall(MatSetUp(A[ModeNum]));
+
+            PetscCall(MatCreateVecs(A[ModeNum],&x[ModeNum],&b[ModeNum]));
+
+            //PetscCall(VecSetFromOptions(x[ModeNum]));
+            PetscCall(VecDuplicate(x[ModeNum], &u[ModeNum]));
+
+            PetscCall(VecGetOwnershipRange(x[ModeNum], &rstartx[ModeNum], &rendx[ModeNum]));
+
+            PetscCall(VecGetOwnershipRange(b[ModeNum], &rstartb[ModeNum], &rendb[ModeNum]));
+
+            //std::cout << "rank " << rank << " start and end " << rstartx[ModeNum] << " "
+            //          << rendx[ModeNum] << " " << rstartb[ModeNum] << " " << rendb[ModeNum] << std::endl;
+        }
+        return 0;
+    }
+
+
+    int load_matrix_row(force_type& mat_, int row_n, bool summed = true) {
+        boost::mpi::communicator world;
+	    force_type mat = mat_;
+        force_type mat_loc = mat_;
+        if (world.rank() != 0)
+        {
+            if (!summed)
+            {
+                for (int i = 0; i < mat_loc.size(); i++)
+                {
+                    if (domain_->ib().rank(i) != world.rank())
+                    {
+                        for (int j = 0; j < mat_loc[0].size(); j++)
+                        {
+                            mat_loc[i][j] = 0.0;
+                        }
+                    }
+                }
+                domain_->client_communicator().barrier();
+                boost::mpi::all_reduce(domain_->client_communicator(),
+                    &mat_loc[0], domain_->ib().size(), &mat[0],
+                    std::plus<point_force_type>());
+            }
+        }
+
+        if (Color == -1) return 0;
+
+
+        for (int ModeNum = 0; ModeNum < localModes.size(); ModeNum++) {
+
+            int ModeIdx = localModes[ModeNum];
+
+            PetscMPIInt rank, size;
+            MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
+            MPI_Comm_size(PETSC_COMM_WORLD, &size);
+
+
+            PetscScalar one = 1.0, value[3], zero = 0.0;        
+            
+            //PetscCall(VecGetLocalSize(x, &nlocal));
+
+            //PetscCall(MatCreateDense(PETSC_COMM_WORLD,PETSC_DECIDE, PETSC_DECIDE, n, n, NULL, &A));
+            //MatSetType(A,MATSCALAPACK);
+            /*PetscCall(MatCreateScaLAPACK(PETSC_COMM_WORLD,PETSC_DECIDE , PETSC_DECIDE , n, n, 0,0, &A[ModeNum]));
+            //PetscCall(MatSetSizes(A, nlocal, nlocal, n, n));
+            PetscCall(MatSetFromOptions(A[ModeNum]));
+            PetscCall(MatSetUp(A[ModeNum]));
+
+            PetscCall(MatCreateVecs(A[ModeNum],&x[ModeNum],&b[ModeNum]));
+
+            //PetscCall(VecSetFromOptions(x[ModeNum]));
+            PetscCall(VecDuplicate(x[ModeNum], &u[ModeNum]));
+
+            PetscCall(VecGetOwnershipRange(x[ModeNum], &rstartx[ModeNum], &rendx[ModeNum]));
+
+            PetscCall(VecGetOwnershipRange(b[ModeNum], &rstartb[ModeNum], &rendb[ModeNum]));
+
+            //std::cout << "rank " << rank << " start and end " << rstartx[ModeNum] << " "
+            //          << rendx[ModeNum] << " " << rstartb[ModeNum] << " " << rendb[ModeNum] << std::endl;*/
+
+            if (row_n < rstartb[ModeNum] || row_n >= rendb[ModeNum]) continue;
+
+            int i = row_n;
+
+            for (int j = 0; j < n; j++)
+            {
+                int ib_idx_i = i / ((u_type::nFields()) / N_modes);
+                int field_idx_i = i % ((u_type::nFields()) / N_modes);
+                int idx_complex_i =
+                    field_idx_i /
+                    2; //the number of components (zero for u, one for v, two for w)
+                int realcomp_i =
+                    field_idx_i % 2; //zero if real part but one if complex part
+
+                int field_idx_now_i = idx_complex_i * N_modes * 2 + realcomp_i;
+                int field_idx_short_i =
+                    idx_complex_i * N_modes * 2 + realcomp_i;
+
+                int ib_idx_j = j / ((u_type::nFields()) / N_modes);
+                int field_idx_j = j % ((u_type::nFields()) / N_modes);
+                int idx_complex_j =
+                    field_idx_j /
+                    2; //the number of components (zero for u, one for v, two for w)
+                int realcomp_j =
+                    field_idx_j % 2; //zero if real part but one if complex part
+
+                int field_idx_now_j =
+                    idx_complex_j * N_modes * 2 + realcomp_j + ModeIdx * 2;
+
+                float_type val_ij = mat[ib_idx_j][field_idx_now_j];
+
+                PetscScalar valA = val_ij;
+                PetscCall(MatSetValues(A[ModeNum], 1, &i, 1, &j, &valA,
+                    INSERT_VALUES));
+            }
+        }
+        return 0;
+    }
+
+    int final_assemble()
+    {
+        if (Color == -1) return 0;
+
+        for (int ModeNum = 0; ModeNum < localModes.size(); ModeNum++)
+        {
+            MatAssemblyBegin(A[ModeNum], MAT_FINAL_ASSEMBLY);
+            MatAssemblyEnd(A[ModeNum], MAT_FINAL_ASSEMBLY);
+
+            PetscCall(KSPCreate(PETSC_COMM_WORLD, &ksp[ModeNum]));
+            PetscCall(KSPSetOperators(ksp[ModeNum], A[ModeNum], A[ModeNum]));
+
+            PetscCall(KSPGetPC(ksp[ModeNum], &pc[ModeNum]));
+            PetscCall(PCSetType(pc[ModeNum], PCLU));
+
+            PetscCall(KSPSetTolerances(ksp[ModeNum], 1.e-7, PETSC_DEFAULT,
+                PETSC_DEFAULT, PETSC_DEFAULT));
 
             PetscCall(KSPSetFromOptions(ksp[ModeNum]));
         }

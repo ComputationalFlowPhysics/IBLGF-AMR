@@ -172,6 +172,8 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
 		vort_sep = simulation_.dictionary()->template get_or<float_type>("vortex_separation", 1.0 * R_);
 		hard_max_refinement_ = simulation_.dictionary()->template get_or<bool>("hard_max_refinement", false);
 
+        N_direct_mode = simulation_.dictionary()->template get_or<int>("N_direct_mode", 0);
+
 		auto domain_range = domain_->bounding_box().max() - domain_->bounding_box().min();
 		Lx = domain_range[0] * dx_;
 
@@ -274,6 +276,25 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
                 tmp_f[i][j] = 0.0;
             }
         }
+
+
+        /*for (int i = 0; i < world.size(); i++) {
+            if (world.rank() == i) {
+                int ib_size = domain_->ib().size();
+                std::cout << "rank " << i << " ib size is " << ib_size << std::endl;
+                for (int j = 0; j < ib_size; j++) {
+                    std::cout << "ibp " << j << ": ";
+                    for (int d = 0; d < Dim; d++)
+                    {
+                        std::cout << domain_->ib().coordinate(j)[d] << " ";
+                    }
+                    std::cout << std::endl;
+                }
+            }
+            world.barrier();
+        }*/
+
+        world.barrier();
 
 
         PetscCall(PetscInitialize(&argc, &argv, (char*)0, help));
@@ -509,7 +530,167 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
             std::cout << "First solve Error is " << diff_glob << std::endl;
         }
 
-	world.barrier();
+        /*std::vector<std::vector<std::vector<float_type>>> mat_testing;
+
+        int Mode_N = N_direct_mode;
+        
+
+        if (world.rank() != 0) ib_solve.testing_nth(mat_testing, alpha,Mode_N);
+
+        //std::cout << "rank " << world.rank() << " finished computing matrix" << std::endl;
+
+        world.barrier();
+
+        if (world.rank() == 1) {
+            std::cout << "all processes finished computing matrix " << std::endl;
+        }
+        
+
+        int ibp_counter = 0;
+        std::map<int, int> ibpvec;
+
+        for (int i = 0; i < domain_->ib().size();i++) {
+            if (world.rank() == domain_->ib().rank(i)) {
+                ibpvec.insert({i, ibp_counter});
+                ibp_counter++;
+            }
+        }
+
+        if (world.rank() != 0) {
+            if (mat_testing[0].size() != 0 && ibp_counter != mat_testing[0][0].size()) {
+                std::cout << "rank " << world.rank() << " ibp_counter = " << ibp_counter << ", mat dim = " << mat_testing[0].size() << std::endl;
+            }
+        }
+
+        float_type diff_testing = 0;
+
+        float_type diff_testing_0 = 0;
+        float_type diff_testing_1 = 0;
+        float_type diff_testing_2 = 0;
+        float_type diff_testing_3 = 0;
+
+        if (world.rank() != 0) {
+
+        for (int i = 0; i < force_dim; i++)
+        {
+            for (int j = 0; j < force_dim; j++)
+            {
+                int ib_idx_i = i / ((u_type::nFields()) / N_modes);
+
+                if (domain_->ib().rank(ib_idx_i) != world.rank()) continue;
+                int field_idx_i = i % ((u_type::nFields()) / N_modes);
+                int idx_complex_i =
+                    field_idx_i /
+                    2; //the number of components (zero for u, one for v, two for w)
+                int realcomp_i =
+                    field_idx_i % 2; //zero if real part but one if complex part
+
+                int field_idx_now_i = idx_complex_i * N_modes * 2 + Mode_N*2 + realcomp_i;
+                int field_idx_short_i =
+                    idx_complex_i * N_modes * 2 + realcomp_i;
+
+                int ib_idx_j = j / ((u_type::nFields()) / N_modes);
+                int field_idx_j = j % ((u_type::nFields()) / N_modes);
+                int idx_complex_j =
+                    field_idx_j /
+                    2; //the number of components (zero for u, one for v, two for w)
+                int realcomp_j =
+                    field_idx_j % 2; //zero if real part but one if complex part
+
+                int field_idx_now_j = idx_complex_j * N_modes * 2 + Mode_N*2 + realcomp_j;
+                int field_idx_short_j =
+                    idx_complex_j * N_modes * 2 + realcomp_j;
+
+                float_type val_ij =
+                    matrix_force_glob[i][ib_idx_j][field_idx_now_j];
+                
+                auto it = ibpvec.find(ib_idx_i);
+                if (it == ibpvec.end()) {
+                    std::cout << "cannot find local idx for ibp " << std::endl;
+                }
+                int loc_idx = it->second;
+
+                float_type val_testing = mat_testing[idx_complex_i*3+idx_complex_j][ib_idx_j][loc_idx];
+
+                if (realcomp_i == realcomp_j) {
+                    //real and imag part of u, v does not depend and real/imag part of w, and vise versa
+                    if ((idx_complex_i == 2 || idx_complex_j == 2) && (idx_complex_i != idx_complex_j)) {
+                        //one is w, the other is not
+                        val_testing = 0;
+                    }
+                }
+                else {
+                    //when one real one imag, u,v only depend on w, and vise versa
+                    if (idx_complex_i == idx_complex_j && idx_complex_i == 2) {
+                        //both w
+                        val_testing = 0;
+                    }
+                    if (idx_complex_i != 2 && idx_complex_j != 2) {
+                        //both not w
+                        val_testing = 0;
+                    }
+                    //for imaginary u and v, sign flipped for w entries
+                    //same for real w
+                    if (idx_complex_i != 2 && realcomp_i == 1 && idx_complex_j == 2) {
+                        //imaginary u and v target
+                        val_testing *= -1;
+                    }
+                    if (idx_complex_i == 2 && realcomp_i == 0 && idx_complex_j != 2) {
+                        val_testing *= -1;
+                    }
+                }
+
+                diff_testing += (val_testing - val_ij) * (val_testing - val_ij);
+
+                if (idx_complex_i != 2 && idx_complex_j != 2 && realcomp_i == 0 && realcomp_j == 0) {
+                    diff_testing_0 += (val_testing - val_ij) * (val_testing - val_ij);
+                }
+                if (idx_complex_i != 2 && idx_complex_j == 2 && realcomp_i == 0 && realcomp_j != 0) {
+                    diff_testing_1 += (val_testing - val_ij) * (val_testing - val_ij);
+                }
+                if (idx_complex_i == 2 && idx_complex_j != 2 && realcomp_i != 0 && realcomp_j == 0) {
+                    diff_testing_2 += (val_testing - val_ij) * (val_testing - val_ij);
+                }
+                if (idx_complex_i == 2 && idx_complex_j == 2 && realcomp_i != 0 && realcomp_j != 0) {
+                    diff_testing_3 += (val_testing - val_ij) * (val_testing - val_ij);
+                }
+            }
+        }
+        }
+
+        float_type diff_testing_glob;
+
+        boost::mpi::all_reduce(world, diff_testing, diff_testing_glob, std::plus<float_type>());
+
+        if (world.rank() == 1) {
+            std::cout << "Error between iterative and direct method (total) is " << diff_testing_glob << std::endl;
+        }
+
+        boost::mpi::all_reduce(world, diff_testing_0, diff_testing_glob, std::plus<float_type>());
+
+        if (world.rank() == 1) {
+            std::cout << "Error between iterative and direct method is " << diff_testing_glob << std::endl;
+        }
+
+        boost::mpi::all_reduce(world, diff_testing_1, diff_testing_glob, std::plus<float_type>());
+
+        if (world.rank() == 1) {
+            std::cout << "Error between iterative and direct method is " << diff_testing_glob << std::endl;
+        }
+
+        boost::mpi::all_reduce(world, diff_testing_2, diff_testing_glob, std::plus<float_type>());
+
+        if (world.rank() == 1) {
+            std::cout << "Error between iterative and direct method is " << diff_testing_glob << std::endl;
+        }
+
+        boost::mpi::all_reduce(world, diff_testing_3, diff_testing_glob, std::plus<float_type>());
+
+        if (world.rank() == 1) {
+            std::cout << "Error between iterative and direct method is " << diff_testing_glob << std::endl;
+        }*/
+
+    world.barrier();
 
         vector_type<float_type, 3> alpha_vec = ifherk.returnAlpha();
 
@@ -576,428 +757,6 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
                 std::cout << "Error for " << k << " stage is " << diff_glob << std::endl;
             }
         }
-
-        /*solver::DirectIB<super_type> Direct_IB(&this->simulation_);
-
-        Direct_IB.load_matrix(matrix_force_glob);
-        world.barrier();
-        if (world.rank() == 1) {
-            std::cout << "Finished loading matrix" << std::endl;
-        }
-        Direct_IB.load_RHS(Ap_glob);
-        world.barrier();
-        if (world.rank() == 1) {
-            std::cout << "Finished load RHS" << std::endl;
-        }
-
-        force_type res(domain_->ib().size(), tmp);
-        Direct_IB.getSolution(res);
-
-        world.barrier();
-        if (world.rank() == 1) {
-            std::cout << "Finished solving" << std::endl;
-        }
-
-        float_type diff = 0;
-
-        if (world.rank() != 0) {
-        
-        for (int i = 0; i < res.size(); i++)
-        {
-            if (domain_->ib().rank(i) == world.rank())
-            {
-                for (int j = 0; j < res[0].size(); j++) { diff += (res[i][j] - 1.0)*(res[i][j] - 1.0); }
-            }
-        }
-        }
-
-        float_type diff_glob = 0.0;
-
-
-        boost::mpi::all_reduce(world, diff, diff_glob, std::plus<float_type>());
-
-        if (world.rank() == 1) {
-            std::cout << "First solve Error is " << diff_glob << std::endl;
-        }
-
-
-        Direct_IB.load_RHS(Ap_glob);
-        world.barrier();
-        if (world.rank() == 1) {
-            std::cout << "Finished load RHS again" << std::endl;
-        }
-
-        Direct_IB.getSolution(res);
-
-        world.barrier();
-        if (world.rank() == 1) {
-            std::cout << "Finished solving again" << std::endl;
-        }
-
-        diff = 0;
-
-        if (world.rank() != 0) {
-        
-        for (int i = 0; i < res.size(); i++)
-        {
-            if (domain_->ib().rank(i) == world.rank())
-            {
-                for (int j = 0; j < res[0].size(); j++) { diff += (res[i][j] - 1.0)*(res[i][j] - 1.0); }
-            }
-        }
-        }
-
-        diff_glob = 0.0;
-
-
-        boost::mpi::all_reduce(world, diff, diff_glob, std::plus<float_type>());
-
-        if (world.rank() == 1) {
-            std::cout << "First solve Error is (again) " << diff_glob << std::endl;
-        }
-
-        std::vector<int> localModes_ = Direct_IB.getlocal_modes();
-
-        solver::DirectIB<super_type> Direct_IB_new(&this->simulation_, localModes_, false);
-
-        Direct_IB_new.load_matrix(matrix_force_glob);
-        world.barrier();
-        if (world.rank() == 1) {
-            std::cout << "Finished loading matrix new " << std::endl;
-        }
-        Direct_IB_new.load_RHS(Ap_glob);
-        world.barrier();
-        if (world.rank() == 1) {
-            std::cout << "Finished load RHS new " << std::endl;
-        }
-
-        force_type res_new(domain_->ib().size(), tmp);
-        Direct_IB_new.getSolution(res_new);
-
-        world.barrier();
-        if (world.rank() == 1) {
-            std::cout << "Finished solving new " << std::endl;
-        }
-
-        diff = 0;
-
-        if (world.rank() != 0) {
-        
-        for (int i = 0; i < res_new.size(); i++)
-        {
-            if (domain_->ib().rank(i) == world.rank())
-            {
-                for (int j = 0; j < res_new[0].size(); j++) { diff += (res_new[i][j] - 1.0)*(res_new[i][j] - 1.0); }
-            }
-        }
-        }
-
-        diff_glob = 0.0;
-
-
-        boost::mpi::all_reduce(world, diff, diff_glob, std::plus<float_type>());
-
-        if (world.rank() == 1) {
-            std::cout << "Second solve Error is " << diff_glob << std::endl;
-        }*/
-
-
-        //Now find if number of processes is larger than number of complex modes or otherwise
-        //if more processes, each modes will have at least one processes with some have more than one
-        //Otherwise, some processes will have more than one modes
-
-        /*PetscMPIInt    rank, size;
-        MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-        MPI_Comm_size(MPI_COMM_WORLD, &size);
-
-        PetscMPIInt Color = 0;
-
-        int ProcDist[N_modes]; //array holding the Processes distribution on each mode
-
-        std::vector<int> localModes; //storing the modes need to be computed in this processor
-        //if number of modes is larger than number of processors, the size can be bigger than one
-        //otherwise, equal to one
-
-        for (int i = 0; i < N_modes; i++) {
-            ProcDist[i] = 0;
-        }
-
-        if ((size - 1) > N_modes) {
-            localModes.resize(1);
-            int nProc = (size - 1) / N_modes;
-            int res_proc = (size - 1) % N_modes;
-            for (int i = 0; i < N_modes; i++) { 
-                if (i < res_proc) ProcDist[i] = nProc + 1;
-                else  ProcDist[i] = nProc;
-            }
-            int cumNum = 0;
-            for (int i = 0; i < N_modes; i++) {
-                if ((rank - 1) >= cumNum && (rank - 1) < (cumNum + ProcDist[i])) {
-                    localModes[0] = i;
-                    break;
-                }
-                cumNum += ProcDist[i];
-            }
-        }
-        else {
-            //processes <= N_modes
-            
-            int numLocModes = N_modes / (size - 1);
-            int startMode = 0;
-            if (N_modes % (size - 1) > (rank - 1)) {
-                numLocModes += 1;
-            }
-            if (N_modes % (size - 1) > (rank - 1)) {
-                startMode = (rank - 1) * numLocModes;
-            }
-            else {
-                startMode = (N_modes % (size - 1)) * (numLocModes + 1) + (rank - 1 - (N_modes % (size - 1))) * numLocModes;
-            }
-            localModes.resize(numLocModes);
-            for (int i = 0; i < numLocModes; i++) {
-                localModes[i] = startMode + i;
-            }
-        }
-        if (world.rank() != 0) {
-            if ((size - 1) > N_modes) Color = localModes[0];
-            else Color = rank;
-        }
-
-        for (int i = 0; i < world.size(); i++) {
-            if (world.rank() == i) {
-                std::cout << "rank " << i << " Color " << Color << " Modes ";
-
-                for (int j = 0; j < localModes.size();j++) {
-                    std::cout << localModes[j] << " ";
-                }
-                std::cout << std::endl;
-            }
-            world.barrier();
-        }
-
-        PetscCall(PetscInitialize(&argc, &argv, (char*)0, help));
-
-        MPI_Comm_split(MPI_COMM_WORLD, Color, 0, &PETSC_COMM_WORLD);
-
-        int ModeSize = localModes.size();
-
-        PetscInt  n = force_dim;
-
-        std::vector<Vec>       x, b, u; // approx solution, RHS, exact solution 
-        x.resize(ModeSize);
-        b.resize(ModeSize);
-        u.resize(ModeSize);
-        std::vector<Mat>       A;       // linear system matrix 
-        A.resize(ModeSize);
-        std::vector<KSP>       ksp;     // linear solver context 
-        ksp.resize(ModeSize);
-        std::vector<PC>        pc;      // preconditioner context 
-        pc.resize(ModeSize);
-        std::vector<PetscReal> norm, tol(ModeSize, 1000. * PETSC_MACHINE_EPSILON); // norm of solution error 
-        norm.resize(ModeSize);
-        std::vector<PetscInt> rstartx(ModeSize, 0), its(ModeSize, 0), rendx(ModeSize, 0), rstartb(ModeSize, 0), rendb(ModeSize, 0);
-
-        
-
-        for (int ModeNum = 0; ModeNum < localModes.size(); ModeNum++) {
-        int ModeIdx = localModes[ModeNum];        
-
-        if (Color != 0)
-        {
-            PetscMPIInt rank, size;
-            MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
-            MPI_Comm_size(PETSC_COMM_WORLD, &size);
-
-
-            PetscScalar one = 1.0, value[3], zero = 0.0;        
-            
-            //PetscCall(VecGetLocalSize(x, &nlocal));
-
-            //PetscCall(MatCreateDense(PETSC_COMM_WORLD,PETSC_DECIDE, PETSC_DECIDE, n, n, NULL, &A));
-            //MatSetType(A,MATSCALAPACK);
-            PetscCall(MatCreateScaLAPACK(PETSC_COMM_WORLD,PETSC_DECIDE , PETSC_DECIDE , n, n, 0,0, &A[ModeNum]));
-            //PetscCall(MatSetSizes(A, nlocal, nlocal, n, n));
-            PetscCall(MatSetFromOptions(A[ModeNum]));
-            PetscCall(MatSetUp(A[ModeNum]));
-
-            PetscCall(MatCreateVecs(A[ModeNum],&x[ModeNum],&b[ModeNum]));
-
-            //PetscCall(VecSetFromOptions(x[ModeNum]));
-            PetscCall(VecDuplicate(x[ModeNum], &u[ModeNum]));
-
-            PetscCall(VecGetOwnershipRange(x[ModeNum], &rstartx[ModeNum], &rendx[ModeNum]));
-
-            PetscCall(VecGetOwnershipRange(b[ModeNum], &rstartb[ModeNum], &rendb[ModeNum]));
-
-            std::cout << "rank " << rank << " start and end " << rstartx[ModeNum] << " "
-                      << rendx[ModeNum] << " " << rstartb[ModeNum] << " " << rendb[ModeNum] << std::endl;
-
-            for (int i = rstartb[ModeNum]; i < rendb[ModeNum]; i++)
-            {
-                
-                for (int j = 0; j < n; j++)
-                {
-                    int ib_idx_i = i / ((u_type::nFields()) / N_modes);
-                    int field_idx_i = i % ((u_type::nFields()) / N_modes);
-                    int idx_complex_i =
-                        field_idx_i /
-                        2; //the number of components (zero for u, one for v, two for w)
-                    int realcomp_i =
-                        field_idx_i %
-                        2; //zero if real part but one if complex part
-
-                    int field_idx_now_i =
-                        idx_complex_i * N_modes * 2 + realcomp_i;
-                    int field_idx_short_i = idx_complex_i*N_modes*2 + realcomp_i;
-
-                    int ib_idx_j = j / ((u_type::nFields()) / N_modes);
-                    int field_idx_j = j % ((u_type::nFields()) / N_modes);
-                    int idx_complex_j =
-                        field_idx_j /
-                        2; //the number of components (zero for u, one for v, two for w)
-                    int realcomp_j =
-                        field_idx_j %
-                        2; //zero if real part but one if complex part
-
-                    int field_idx_now_j =
-                        idx_complex_j * N_modes * 2 + realcomp_j  + ModeIdx*2;
-
-                    float_type val_ij =
-                        matrix_force_glob[i][ib_idx_j][field_idx_now_j];
-
-                    PetscScalar valA = val_ij;
-                    PetscCall(MatSetValues(A[ModeNum], 1, &i, 1, &j, &valA,
-                        INSERT_VALUES));
-                }
-            }
-
-            MatAssemblyBegin(A[ModeNum],MAT_FINAL_ASSEMBLY);
-            MatAssemblyEnd(A[ModeNum],MAT_FINAL_ASSEMBLY);
-
-            
-
-            for (int i = rstartb[ModeNum]; i < rendb[ModeNum]; i++)
-            {
-                int ib_idx_i = i / ((u_type::nFields()) / N_modes);
-                int field_idx_i = i % ((u_type::nFields()) / N_modes);
-                int idx_complex_i =
-                    field_idx_i /
-                    2; //the number of components (zero for u, one for v, two for w)
-                int realcomp_i =
-                    field_idx_i % 2; //zero if real part but one if complex part
-
-                int field_idx_now_i = idx_complex_i * N_modes * 2 + realcomp_i + ModeIdx*2;
-
-                PetscScalar v = Ap_glob[ib_idx_i][field_idx_now_i];
-                PetscCall(VecSetValues(b[ModeNum], 1, &i, &v, INSERT_VALUES));
-            }
-
-            for (int i = rstartx[ModeNum]; i < rendx[ModeNum]; i++)
-            {
-                PetscScalar vx = 1.0;
-                PetscCall(VecSetValues(u[ModeNum], 1, &i, &vx, INSERT_VALUES));
-            }
-
-            VecAssemblyBegin(b[ModeNum]);
-            VecAssemblyEnd(b[ModeNum]);
-
-            VecAssemblyBegin(u[ModeNum]);
-            VecAssemblyEnd(u[ModeNum]);
-
-            PetscCall(KSPCreate(PETSC_COMM_WORLD, &ksp[ModeNum]));
-            PetscCall(KSPSetOperators(ksp[ModeNum], A[ModeNum], A[ModeNum]));
-            auto t0 = clock_type::now();
-            PetscCall(KSPGetPC(ksp[ModeNum], &pc[ModeNum]));
-            PetscCall(PCSetType(pc[ModeNum], PCLU));
-            auto t1 = clock_type::now();
-            mDuration_type ms_PC = t1 - t0;
-            if (rank == 0) {
-            std::cout << "Mode " << ModeIdx << " Set LU in " << ms_PC.count() << std::endl;
-            }
-
-
-            PetscCall(KSPSetTolerances(ksp[ModeNum], 1.e-7, PETSC_DEFAULT, PETSC_DEFAULT,
-                PETSC_DEFAULT));
-
-            PetscCall(KSPSetFromOptions(ksp[ModeNum]));
-            auto t2 = clock_type::now();
-
-            PetscCall(KSPSolve(ksp[ModeNum], b[ModeNum], x[ModeNum]));
-            auto t3 = clock_type::now();
-            mDuration_type ms_solve = t3 - t2;
-
-            PetscCall(VecAXPY(x[ModeNum], -1.0, u[ModeNum]));
-            PetscCall(VecNorm(x[ModeNum], NORM_2, &norm[ModeNum]));
-            if (rank == 0)
-            {
-                std::cout << "Mode " << ModeIdx << " solution mag is " << norm[ModeNum] << std::endl;
-            }
-            if (rank == 0) {
-                std::cout << "Mode " << ModeIdx << " First solve in " << ms_solve.count() << std::endl;
-            }
-        }
-        }
-
-        for (int ModeNum = 0; ModeNum < localModes.size(); ModeNum++) {
-        int ModeIdx = localModes[ModeNum];        
-
-        if (Color != 0)
-        {
-            PetscMPIInt rank, size;
-            MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
-            MPI_Comm_size(PETSC_COMM_WORLD, &size);
-
-
-            PetscScalar one = 1.0, value[3], zero = 0.0;          
-
-            for (int i = rstartb[ModeNum]; i < rendb[ModeNum]; i++)
-            {
-                int ib_idx_i = i / ((u_type::nFields()) / N_modes);
-                int field_idx_i = i % ((u_type::nFields()) / N_modes);
-                int idx_complex_i =
-                    field_idx_i /
-                    2; //the number of components (zero for u, one for v, two for w)
-                int realcomp_i =
-                    field_idx_i % 2; //zero if real part but one if complex part
-
-                int field_idx_now_i = idx_complex_i * N_modes * 2 + realcomp_i + ModeIdx*2;
-
-                PetscScalar v = Ap_glob[ib_idx_i][field_idx_now_i];
-                PetscCall(VecSetValues(b[ModeNum], 1, &i, &v, INSERT_VALUES));
-            }
-
-            for (int i = rstartx[ModeNum]; i < rendx[ModeNum]; i++)
-            {
-                PetscScalar vx = 1.0;
-                PetscCall(VecSetValues(u[ModeNum], 1, &i, &vx, INSERT_VALUES));
-            }
-
-            VecAssemblyBegin(b[ModeNum]);
-            VecAssemblyEnd(b[ModeNum]);
-
-            VecAssemblyBegin(u[ModeNum]);
-            VecAssemblyEnd(u[ModeNum]);
-
-            auto t4 = clock_type::now();
-
-            PetscCall(KSPSolve(ksp[ModeNum], b[ModeNum], x[ModeNum]));
-            auto t5 = clock_type::now();
-            mDuration_type ms_solve2 = t5 - t4;
-            if (rank == 0) {
-            std::cout << "Mode " << ModeIdx << " Second solve in " << ms_solve2.count() << std::endl;
-            }
-
-            //PetscCall(KSPView(ksp[ModeNum], PETSC_VIEWER_STDOUT_WORLD));
-
-            PetscCall(VecAXPY(x[ModeNum], -1.0, u[ModeNum]));
-            PetscCall(VecNorm(x[ModeNum], NORM_2, &norm[ModeNum]));
-            if (rank == 0)
-            {
-                std::cout << "Mode " << ModeIdx << " solution mag is " << norm[ModeNum] << std::endl;
-            }
-            PetscCall(KSPGetIterationNumber(ksp[ModeNum], &its[ModeNum]));
-        }
-        }*/
 
         return 0;
 
@@ -1186,6 +945,8 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
     int vortexType = 0;
 
     int row_to_print = 0;
+
+    int N_direct_mode = 0; //the mode number to construct IB matrix
 
     std::vector<float_type> U_;
     //bool subtract_non_leaf_  = true;

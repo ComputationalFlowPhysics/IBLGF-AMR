@@ -18,6 +18,7 @@
 #include <vector>
 #include <cmath>
 #include <complex>
+#include <string>
 
 // IBLGF-specific
 #include <iblgf/global.hpp>
@@ -39,8 +40,15 @@ template<class Setup>
 class LinSysSolver_helm
 {
   public: //member types
+    static constexpr std::size_t Dim = Setup::Dim;
+
     using simulation_type = typename Setup::simulation_t;
     using poisson_solver_t = typename Setup::poisson_solver_t;
+    //use all these to obtain values of LGF and IF
+    using lgf_lap_t = typename poisson_solver_t::lgf_lap_t;
+    using lgf_if_t = typename poisson_solver_t::lgf_if_t;
+    using helm_t = typename poisson_solver_t::helm_t;
+
     using domain_type = typename simulation_type::domain_type;
     using datablock_type = typename domain_type::datablock_t;
     using tree_t = typename domain_type::tree_t;
@@ -49,6 +57,8 @@ class LinSysSolver_helm
     using block_type = typename datablock_type::block_descriptor_type;
     using ib_t = typename domain_type::ib_t;
     using real_coordinate_type = typename domain_type::real_coordinate_type;
+
+    using key_2D = std::tuple<int, int>;
     //using force_type = typename ib_t::force_type;
     
     using coordinate_type = typename domain_type::coordinate_type;
@@ -89,6 +99,8 @@ class LinSysSolver_helm
 
         usingDirectSolve = simulation_->dictionary()->template get_or<bool>("useDirectSolve", false);
 
+        support_ext_factor = simulation_->dictionary()->template get_or<int>("support_ext_factor", 2);
+
         _compute_Modes.resize(N_modes);
         for (int i = 0; i < N_modes; i++) {
             this->_compute_Modes[i] = true;
@@ -96,20 +108,36 @@ class LinSysSolver_helm
 
     }
 
-    void Initializing_solvers(vector_type<float_type, 3> alpha_) {
-        for (int i = 0; i < 3; i++) {
-            this->creating_matrix(matrix_ib, alpha_[i]);
-            if (i == 0) {
-                DirectSolvers.emplace_back(simulation_);
-            }
-            else {
-                std::vector<int> localModes_ = DirectSolvers[0].getlocal_modes();
+    void Initializing_solvers(vector_type<float_type, 3> alpha_)
+    {
+        point_force_type tmp(0.0);
+
+        force_type tmp_f(domain_->ib().size(), tmp);
+
+        int force_dim = tmp_f.size()*(u_type::nFields())/N_modes;
+        for (int i = 0; i < 3; i++)
+        {
+            //this->creating_matrix(matrix_ib, alpha_[i]);
+            if (i == 0) { DirectSolvers.emplace_back(simulation_); }
+            else
+            {
+                std::vector<int> localModes_ =
+                    DirectSolvers[0].getlocal_modes();
                 DirectSolvers.emplace_back(simulation_, localModes_, false);
             }
-            DirectSolvers[i].load_matrix(matrix_ib);
+
+            int err = DirectSolvers[i].settingUpMatrix();
+
+            for (int row_n = 0; row_n < force_dim; row_n++) {
+                force_type row;
+                creating_matrix_row(row, alpha_[i], row_n);
+                err = DirectSolvers[i].load_matrix_row(row, row_n);
+            }
+            err = DirectSolvers[i].final_assemble();
+            //DirectSolvers[i].load_matrix(matrix_ib);
         }
-	matrix_ib.clear();
-        matrix_ib.shrink_to_fit();//resizing to free up the memory
+        //matrix_ib.clear();
+        //matrix_ib.shrink_to_fit(); //resizing to free up the memory
     }
 
     void DirectSolve(int stage_idx, force_type& forcing, force_type& res) {
@@ -128,6 +156,306 @@ class LinSysSolver_helm
                 }
             }
         }
+    }
+
+
+    void creating_matrix_row(force_type& matrix_force_glob, float_type alpha, int k) {
+        //k is the row to construct
+        boost::mpi::communicator world;
+
+        if (world.rank() == 0) return;
+
+        point_force_type tmp(0.0);
+
+        force_type tmp_f(domain_->ib().size(), tmp);
+
+        int force_dim = tmp_f.size()*(u_type::nFields())/N_modes;
+
+        
+
+        int num = k;
+
+        force_type Ap(domain_->ib().size(), tmp);
+
+        matrix_force_glob = Ap;
+
+        if (world.rank() != 0) {
+            if (world.rank() == 1)
+            {
+                if (num % ((u_type::nFields())/N_modes) == 0)
+                {
+                    std::cout << "Constructing matrix for IB, alpha = " << alpha << " number solved " << num << " over "
+                              << force_dim << std::endl;
+                }
+            }
+            for (int i = 0; i < tmp_f.size(); i++)
+            {
+                for (int j = 0; j < tmp_f[0].size(); j++) { tmp_f[i][j] = 0.0; }
+            }
+            int ib_idx = num / ((u_type::nFields())/N_modes);
+            int field_idx = num % ((u_type::nFields())/N_modes);
+            int idx_complex = field_idx/2; //the number of components (zero for u, one for v, two for w)
+            int realcomp = field_idx % 2;  //zero if real part but one if complex part
+
+            if (domain_->ib().rank(ib_idx)==world.rank()) {
+                for (int ModeN = 0; ModeN < N_modes; ModeN++) {
+                    int field_idx_now = idx_complex*N_modes*2 + ModeN*2 + realcomp;
+                    tmp_f[ib_idx][field_idx_now] = 1.0;
+                }
+                //tmp_f[ib_idx][field_idx] = 1.0;
+            }
+            /*for (int i = 0; i < tmp_f.size(); i++)
+            {
+                if (domain_->ib().rank(i)!=world.rank()) continue;
+                tmp_f[i][num] = 1.0;
+            }*/
+            //force_type Ap(domain_->ib().size(), tmp);
+            for (int i = 0; i < Ap.size(); i++)
+            {
+                for (int j = 0; j < Ap[0].size(); j++) { Ap[i][j] = 0.0; }
+            }
+            this->template ET_H_S_E<face_aux2_type>(tmp_f, Ap, alpha);
+            for (int i = 0; i < Ap.size(); i++)
+            {
+                if (domain_->ib().rank(i)!=world.rank()) {
+                    for (int j = 0; j < Ap[0].size(); j++) { Ap[i][j] = 0.0; }
+                }
+            }
+        }
+
+        boost::mpi::all_reduce(domain_->client_communicator(), &Ap[0], domain_->ib().size(), &matrix_force_glob[0], std::plus<point_force_type>());
+    }
+
+    void creating_matrix_direct(std::vector<force_type>& matrix_force_glob, float_type alpha) {
+        /*boost::mpi::communicator world;
+        std::map<key_2D, float_type> lgf_mat; //will store LGF for each Fourier mode
+        std::map<key_2D, float_type> if_mat; //will store integrating factor for each Fourier mode
+        std::map<key_2D, float_type> grad, div;
+        std::vector<std::map<key_2D, float_type>> smearing;
+
+        float_type safe_dist_ib = domain_->ib().safety_dis_;
+        float_type ib_radius = domain_->ib().ddf_radius();
+        float_type added_radius = ib_radius+safety_dist_ib+10.0; //copied directly from ib_overlap function in ib.hpp
+
+        int conv_range = std::ceil(added_radius) * 2; 
+        //times 2 just to be safe since we are no longer have all the redundent points in ib extended blocks
+
+        float_type dx_ib = domain_->ib().dx_ib_;
+
+        lgf_lap_t   lgf_lap_;
+        lgf_if_t    lgf_if_;
+        lgf_if_.alpha_base_level() = alpha;
+        //helm_t      lgf_helm;
+        Conv_matrix if_mat(conv_range, conv_range, dx_ib, lgf_if_);
+        Conv_matrix lgf_mat(conv_range, conv_range, dx_ib, lgf_lap_);
+
+        const float_type dx_base = domain_->dx_base();
+
+        std::vector<std::map<key_2D, float_type>> smearing_loc_x = smearing_matrix(true, 0);
+        std::vector<std::map<key_2D, float_type>> smearing_loc_y = smearing_matrix(true, 1);
+        std::vector<std::map<key_2D, float_type>> smearing_loc_z = smearing_matrix(true, 2);
+
+        std::vector<std::map<key_2D, float_type>> smearing_all_x = smearing_matrix(false, 0);
+        std::vector<std::map<key_2D, float_type>> smearing_all_y = smearing_matrix(false, 1);
+        std::vector<std::map<key_2D, float_type>> smearing_all_z = smearing_matrix(false, 2);
+
+        std::string div = "div";
+        std::string grad = "grad";
+
+        auto dxP0 = dx_matrix(smearing_loc_x, 0, div, dx_ib);
+        auto dxP1 = dx_matrix(smearing_loc_y, 1, div, dx_ib);
+        auto div_all_0 = dxP1;
+
+        add_matrix(dxP0, div_all_0, 1, 1);
+        //add_matrix(dxP1, div_all_0);
+
+        auto L_inv_app = lgf_mat.apply_mat(div_all_0);
+
+        auto grad_0 = dx_matrix(L_inv_app, 0, grad, dx_ib);
+        auto grad_1 = dx_matrix(L_inv_app, 1, grad, dx_ib);
+
+        auto pp0 = smearing_loc_x;
+        auto pp1 = smearing_loc_y;
+        auto pp2 = smearing_loc_z;
+        add_matrix(grad_0, pp0, -1, 1);
+        add_matrix(grad_1, pp1, -1, 1);
+
+        auto h0 = if_mat.apply_mat(pp0);
+        auto h1 = if_mat.apply_mat(pp1);
+        auto h2 = if_mat.apply_mat(pp2);
+
+        auto res0 = denseProd(smearing_all_x, h0);
+        auto res1 = denseProd(smearing_all_y, h1);
+        auto res2 = denseProd(smearing_all_z, h2);*/
+
+        /*for (int i = 1; i < N_modes; i++) {
+            float_type c = (static_cast<float_type>(i)) * 2.0 * M_PI * dx_base/c_z;
+            helm_t lgf_helm(c);
+            Conv_matrix helm_mat(conv_range, conv_range, dx_ib, lgf_helm);
+        }*/
+    }
+
+
+    void testing_nth(std::vector<std::vector<std::vector<float_type>>>& res, float_type alpha, int N=0) {
+        //not really worth doing, much slower than direct construct
+        boost::mpi::communicator world;
+
+        res.resize(9);
+        
+        float_type safe_dist_ib = domain_->ib().safety_dis_;
+        float_type ib_radius = domain_->ib().ddf_radius();
+        float_type added_radius = ib_radius+safe_dist_ib+10.0; //copied directly from ib_overlap function in ib.hpp
+
+        int ib_range = std::ceil(added_radius) * support_ext_factor; 
+        
+        //times 2 just to be safe since we are no longer have all the redundent points in ib extended blocks
+
+        float_type dx_ib = domain_->ib().dx_ib_;
+
+
+        int conv_range = ib_range + std::ceil(1.0/dx_ib);
+
+        const float_type dx_base = domain_->dx_base();
+
+        float_type c = static_cast<float_type>(N) * 2.0 * M_PI * dx_base/c_z;
+
+        if (N == 0) {
+            c = 0.1;
+        }
+
+        lgf_lap_t   lgf_lap_;
+        lgf_if_t    lgf_if_;
+        helm_t      helm(c);
+        lgf_if_.alpha_base_level() = alpha;
+        //helm_t      lgf_helm;
+        Conv_matrix if_mat(ib_range, ib_range, 1.0, lgf_if_, simulation_);
+        Conv_matrix lgf_mat(conv_range, conv_range, dx_ib, lgf_lap_, simulation_);
+        Conv_matrix helm_mat(conv_range, conv_range, dx_ib, helm, simulation_);
+
+        
+
+        std::vector<std::map<key_2D, float_type>> smearing_loc_x = smearing_matrix(true, 0);
+        std::vector<std::map<key_2D, float_type>> smearing_loc_y = smearing_matrix(true, 1);
+        std::vector<std::map<key_2D, float_type>> smearing_loc_z = smearing_matrix(true, 2);
+
+
+        std::vector<std::map<key_2D, float_type>> smearing_all_x = smearing_matrix(false, 0);
+        std::vector<std::map<key_2D, float_type>> smearing_all_y = smearing_matrix(false, 1);
+        std::vector<std::map<key_2D, float_type>> smearing_all_z = smearing_matrix(false, 2);
+
+
+        auto h0 = if_mat.apply_mat(smearing_loc_x);
+        auto h1 = if_mat.apply_mat(smearing_loc_y);
+        auto h2 = if_mat.apply_mat(smearing_loc_z);
+
+        std::string div = "div";
+        std::string grad = "grad";
+
+        float_type omega = 2.0*M_PI*static_cast<float_type>(N)/c_z;
+
+        float_type alpha_level = lgf_if_.alpha_;
+        float_type helm_weights = std::exp(-omega*omega*alpha_level * dx_ib * dx_ib); 
+
+        if (N != 0) {
+            h0 = scale_matrix_real(h0, helm_weights);
+            h1 = scale_matrix_real(h1, helm_weights);
+            h2 = scale_matrix_real(h2, helm_weights);
+        }
+        //this needs to be called after initializing conv_matrix so that appropriate alpha is set
+
+        //float_type omega = static_cast<float_type>(idx + 1) * 2.0 * M_PI / L_z;
+
+        auto dxP0 = dx_matrix(h0, 0, div, dx_ib);
+        auto dxP1 = dx_matrix(h1, 1, div, dx_ib);
+        auto dxP2 = scale_matrix_real(h2, -omega);
+
+        std::vector<std::map<key_2D, float_type>> L_inv_app_0;
+        std::vector<std::map<key_2D, float_type>> L_inv_app_1;
+        std::vector<std::map<key_2D, float_type>> L_inv_app_2;
+
+        if (N == 0)
+        {
+            L_inv_app_0 = lgf_mat.apply_mat(dxP0);
+            L_inv_app_1 = lgf_mat.apply_mat(dxP1);
+            L_inv_app_2 = lgf_mat.apply_mat(dxP2);
+        }
+        else {
+            L_inv_app_0 = helm_mat.apply_mat(dxP0);
+            L_inv_app_1 = helm_mat.apply_mat(dxP1);
+            L_inv_app_2 = helm_mat.apply_mat(dxP2);
+        }
+
+        auto grad_00 = dx_matrix(L_inv_app_0, 0, grad, dx_ib);
+        auto grad_10 = dx_matrix(L_inv_app_0, 1, grad, dx_ib);
+        
+        auto grad_01 = dx_matrix(L_inv_app_1, 0, grad, dx_ib);
+        auto grad_11 = dx_matrix(L_inv_app_1, 1, grad, dx_ib);
+
+        auto grad_02 = dx_matrix(L_inv_app_2, 0, grad, dx_ib);
+        auto grad_12 = dx_matrix(L_inv_app_2, 1, grad, dx_ib);
+        
+        auto grad_20 = scale_matrix_real(L_inv_app_0, omega);
+        auto grad_21 = scale_matrix_real(L_inv_app_1, omega);
+        auto grad_22 = scale_matrix_real(L_inv_app_2, omega);
+
+
+        auto pp0 = h0;
+        auto pp1 = h1;
+        auto pp2 = h2;
+        add_matrix(grad_00, pp0, -1, 1);
+        add_matrix(grad_11, pp1, -1, 1);
+        add_matrix(grad_22, pp2, -1, 1);
+
+
+        grad_01 = scale_matrix_real(grad_01, -1);
+        grad_02 = scale_matrix_real(grad_02, -1);
+        grad_10 = scale_matrix_real(grad_10, -1);
+        grad_12 = scale_matrix_real(grad_12, -1);
+        grad_20 = scale_matrix_real(grad_20, -1);
+        grad_21 = scale_matrix_real(grad_21, -1);
+
+        /*auto h00 = if_mat.apply_mat(pp0);
+        auto h01 = if_mat.apply_mat(grad_01);
+        auto h02 = if_mat.apply_mat(grad_02);
+
+        auto h10 = if_mat.apply_mat(grad_10);
+        auto h11 = if_mat.apply_mat(pp1);
+        auto h12 = if_mat.apply_mat(grad_12);
+
+        auto h20 = if_mat.apply_mat(grad_20);
+        auto h21 = if_mat.apply_mat(grad_21);
+        auto h22 = if_mat.apply_mat(pp2);*/
+
+
+        res[0] = denseProd(smearing_all_x, pp0); //00
+        res[1] = denseProd(smearing_all_y, grad_10); //10
+        res[2] = denseProd(smearing_all_z, grad_20); //20
+
+        res[3] = denseProd(smearing_all_x, grad_01); //01
+        res[4] = denseProd(smearing_all_y, pp1); //11
+        res[5] = denseProd(smearing_all_z, grad_21); //21
+
+        res[6] = denseProd(smearing_all_x, grad_02); //02
+        res[7] = denseProd(smearing_all_y, grad_12); //12
+        res[8] = denseProd(smearing_all_z, pp2); //22
+
+        /*res[0] = denseProd(smearing_all_x, h00); //00
+        res[1] = denseProd(smearing_all_y, h10); //10
+        res[2] = denseProd(smearing_all_z, h20); //20
+
+        res[3] = denseProd(smearing_all_x, h01); //01
+        res[4] = denseProd(smearing_all_y, h11); //11
+        res[5] = denseProd(smearing_all_z, h21); //21
+
+        res[6] = denseProd(smearing_all_x, h02); //02
+        res[7] = denseProd(smearing_all_y, h12); //12
+        res[8] = denseProd(smearing_all_z, h22); //22*/
+
+        /*for (int i = 1; i < N_modes; i++) {
+            float_type c = (static_cast<float_type>(i)) * 2.0 * M_PI * dx_base/c_z;
+            helm_t lgf_helm(c);
+            Conv_matrix helm_mat(conv_range, conv_range, dx_ib, lgf_helm);
+        }*/
     }
 
     void creating_matrix(std::vector<force_type>& matrix_force_glob, float_type alpha) {
@@ -1231,6 +1559,7 @@ class LinSysSolver_helm
             }
         }
     }
+    
 
   private:
     boost::mpi::communicator comm_;
@@ -1239,6 +1568,8 @@ class LinSysSolver_helm
     domain_type*     domain_; ///< domain
     ib_t* ib_;
     poisson_solver_t psolver_;
+
+    int support_ext_factor = 2;
 
     std::vector<force_type> matrix_ib; //matrix for IB terms
     std::vector<DirectIB<Setup>> DirectSolvers;
@@ -1250,6 +1581,300 @@ class LinSysSolver_helm
 
     float_type cg_threshold_;
     int  cg_max_itr_;
+
+    void add_matrix(const std::vector<std::map<key_2D, float_type>>& A, std::vector<std::map<key_2D, float_type>>& B, float_type a, float_type b) {
+        //compute the matrix aA + bB, and store in B
+        //requires size of A and B to be the same
+        //this operation is specially designed for computing P - GL^(-1)DP where P is the smearing operator
+        if (A.size() != B.size()) {
+            std::cout << "size not equal in matrix add in linsys" << std::endl;
+        }
+        for (int i = 0; i < B.size(); i++) {
+            std::map<key_2D, float_type> colB = B[i];
+            std::map<key_2D, float_type> colA = A[i];
+            for (const auto& [key, val] : colB) {
+                auto it = colA.find(key);
+                if (it == colA.end()) {
+                    B[i][key] = val * b;
+                }
+                else {
+                    B[i][key] = val * b + it->second * a;
+                }
+            }
+        }
+    }
+
+    std::vector<std::map<key_2D, float_type>> scale_matrix_real(const std::vector<std::map<key_2D, float_type>>& A, float_type a) {
+        //compute the matrix aA 
+        std::vector<std::map<key_2D, float_type>> res;
+        res.resize(A.size());
+        for (int i = 0; i < A.size(); i++) {
+            std::map<key_2D, float_type> colA = A[i];
+            for (const auto& [key, val] : colA) {
+                float_type val_s = a*val;
+                res[i].emplace(key, val_s);
+            }
+        }
+        return res;
+    }
+
+    void scale_matrix(std::vector<std::map<key_2D, float_type>>& A, std::vector<std::map<key_2D, float_type>>& B, float_type a, float_type b) {
+        //compute the matrix (a + ib)(A + iB), and store back in A, B
+        //requires size of A and B to be the same
+        //this operation is specially designed for computing d/dz part of P - GL^(-1)DP where P is the smearing operator
+        if (A.size() != B.size()) {
+            std::cout << "size not equal in complex matrix scale in linsys" << std::endl;
+        }
+        auto A_tmp = A;
+        //real part is aA - bB
+        add_matrix(B, A,, -b, a);
+        //imag part is bA + aB
+        add_matrix(A_tmp, B, b, a);
+    }
+
+    std::vector<std::map<key_2D, float_type>> dx_matrix(const std::vector<std::map<key_2D, float_type>>& A, int comp, std::string op, float_type dx) {
+        //compute the matrix derivative A from divergence/grad, and return
+        //the comp arg means the direction on which the derivative is taken
+        boost::mpi::communicator world;
+        std::string div = "div";
+        std::string grad = "grad";
+        bool is_div = false;
+        bool is_grad = false;
+        if (op == div) {
+            is_div = true;
+            if (world.rank() == 1) std::cout << "computing divergence" << std::endl;
+        }
+        else if (op == grad) {
+            is_grad = true;
+            if (world.rank() == 1) std::cout << "compute gradient" << std::endl;
+        }
+        else {
+            if (world.rank() == 1) std::cout << "op given is not available" << std::endl;
+        }
+        std::vector<std::map<key_2D, float_type>> res;
+        res.resize(A.size());
+        for (int i = 0; i < A.size(); i++) {
+            std::map<key_2D, float_type> colA = A[i];
+            for (const auto& [key, val] : colA) {
+                
+                int idx0 = std::get<0>(key);
+                int idx1 = std::get<1>(key);
+                if (is_div && comp == 0) {
+                    idx0 += 1;
+                }
+                else if (is_div && comp == 1) {
+                    idx1 += 1;
+                }
+                else if (is_grad && comp == 0) {
+                    idx0 -= 1;
+                }
+                else if (is_grad && comp == 1) {
+                    idx1 -= 1;
+                }
+                key_2D tmp(idx0, idx1);
+                auto it = colA.find(tmp);
+                if (it == colA.end()) {
+                    //if (is_div) { res[i][key] = -val / dx; }
+                    //else if (is_grad) { res[i][key] = val / dx; }
+                    continue;
+                }
+                if (is_div) {
+                    res[i][key] = (it->second - val)/dx;
+                }
+                else if (is_grad) {
+                    res[i][key] = (val - it->second)/dx;
+                }
+            }
+        }
+        return res;
+    }
+
+
+    std::vector<std::map<key_2D, float_type>> smearing_matrix(bool local, int dir) {
+        //compute the smearing matrix
+        //if local is true, only compute the smearing matrix associated with local ib points
+        //if local is false, compute the smearing matrix for all the ib points
+        boost::mpi::communicator world;
+
+        std::vector<std::map<key_2D, float_type>> res;
+
+        const int l_max = domain_->tree()->depth() - 1;
+        const int l_min = domain_->tree()->base_level();
+
+        const int ref_l = l_max - l_min;
+
+        auto ddf = ib_->delta_func();
+        for (int i = 0; i < domain_->ib().size();i++) {
+            if ((domain_->ib().rank(i) != world.rank()) && local) continue;
+
+            std::map<key_2D, float_type> col;
+
+            auto ib_coord = ib_->scaled_coordinate(i, ref_l);
+
+            float_type ib_radius = domain_->ib().ddf_radius();
+
+            int l_0 = std::floor((ib_coord[0] - ib_radius - 1));
+            int r_0 = std::ceil((ib_coord[0] + ib_radius + 1));
+            int l_1 = std::floor((ib_coord[1] - ib_radius - 1));
+            int r_1 = std::ceil((ib_coord[1] + ib_radius + 1));
+
+            for (int idx0 = l_0; idx0 < (r_0 + 1); idx0++) {
+                for (int idx1 = l_1; idx1 < (r_1 + 1); idx1++) {
+                    key_2D loc(idx0, idx1);
+                    float_type x_loc = static_cast<float_type>(idx0) - ib_coord[0] + 0.5;
+                    float_type y_loc = static_cast<float_type>(idx1) - ib_coord[1] + 0.5;
+                    if (dir == 0) x_loc -= 0.5;
+                    if (dir == 1) y_loc -= 0.5;
+
+                    real_coordinate_type tmp_coord;
+                    tmp_coord[0] = x_loc;
+                    tmp_coord[1] = y_loc;
+
+                    float_type val = ddf(tmp_coord);
+
+                    if (std::abs(val) > 1e-12) col.emplace(loc, val);
+                }
+            }
+
+            res.emplace_back(col);
+        }
+
+        return res;
+        
+    }
+
+
+    std::vector<std::vector<float_type>> denseProd(const std::vector<std::map<key_2D, float_type>>& A, const std::vector<std::map<key_2D, float_type>>& B) {
+        //compute a dense matrix product, this is designed for P^T H(I - GL^{-1}D)P
+        //where P^T = A^T, and H(I - GL^{-1}D)P = B
+        boost::mpi::communicator world;
+
+        std::vector<std::vector<float_type>> res;
+
+        res.resize(A.size());
+
+        for (int i = 0; i < A.size(); i++) {
+            res[i].resize(B.size());
+        }
+
+        
+        for (int i = 0; i < A.size(); i++) {
+            std::map<key_2D, float_type> row = A[i];
+            for (int j = 0; j < B.size(); j++) {
+                std::map<key_2D, float_type> col = B[j];
+                float_type sum = 0;
+                //search according to col since A is much sparser
+                //so that finding element in row is much faster
+                for (const auto& [key, val] : col) {
+                    auto it = row.find(key);
+                    if (it != row.end()) {
+                        sum += val * (it->second);
+                    }
+                }
+                res[i][j] = sum;
+            }
+        }
+        return res;
+    }
+
+    class Conv_matrix {
+        public:
+        template<class Kernel>
+        Conv_matrix(int _t_l, int _s_l, float_type dx, Kernel& kernel, simulation_type* simulation) 
+        : _domain_(simulation->domain_.get())
+        {
+            //need to set alpha before calling constructor if constructing IF, and dx = 1.0
+            if (_t_l <= 0 || _s_l <= 0) {
+                std::cout << "range or source negative" << std::endl;
+            }
+            t_l = -_t_l;
+            t_r = _t_l;
+            s_l = -_s_l;
+            s_r = _s_l;
+
+            mat.resize(t_r);
+            for (int i = 0; i < mat.size(); i++) {
+                mat[i].resize(t_r);
+            }
+
+            const int l = _domain_->tree()->depth() - 1;
+
+            kernel.change_level(l - _domain_->tree()->base_level());
+
+            if (kernel.neighbor_only()) {
+                kernel.derived().build_lt();
+            }
+
+            for (int i = 0; i < mat.size(); i++) {
+                for (int j = 0; j < t_r; j++) {
+                    float_type val = kernel.derived().get(coordinate_type({i, j}));
+                    mat[i][j] = val*std::pow(dx, Dim);
+                }
+            }
+        }
+
+
+        std::vector<std::map<key_2D, float_type>> apply_mat(const std::vector<std::map<key_2D, float_type>>& B) {
+            //compute the matrix res = conv(mat,B)
+            std::vector<std::map<key_2D, float_type>> res;
+            //res.resize(B.size());
+            for (int j = 0; j < B.size(); j++) {
+                std::map<key_2D, float_type> col = B[j]; //jth local column in B
+                std::map<key_2D, float_type> col_res;
+                key_2D tmp_coord = col.begin()->first;
+                int min_0 = std::get<0>(tmp_coord);
+                int max_0 = std::get<0>(tmp_coord);
+                int min_1 = std::get<1>(tmp_coord);
+                int max_1 = std::get<1>(tmp_coord);
+                for (const auto& [key, val] : col) {
+                    int idx0 = std::get<0>(key);
+                    int idx1 = std::get<1>(key);
+
+                    if (idx0 > max_0) {
+                        max_0 = idx0;
+                    }
+                    if (idx0 < min_0) {
+                        min_0 = idx0;
+                    }
+                    if (idx1 > max_1) {
+                        max_1 = idx1;
+                    }
+                    if (idx1 < min_1) {
+                        min_1 = idx1;
+                    }
+                }
+                for (int i_x = (s_l + min_0); i_x <= (s_r + max_0); i_x++) {
+                    for (int i_y = (s_l + min_1); i_y <= (s_r + max_1); i_y++)
+                    {
+                        float_type sum = 0.0;
+                        for (const auto& [key, val] : col)
+                        {
+                            int id_0 = std::get<0>(key);
+                            int id_1 = std::get<1>(key);
+                            int num_i = std::abs((i_x - id_0));
+                            int num_j = std::abs((i_y - id_1));
+                            if (num_i >= t_r || num_j >= t_r) continue;
+                            float_type tmp = mat[num_i][num_j] * val;
+                            sum += tmp;
+                        }
+                        col_res.emplace(key_2D(i_x, i_y), sum);
+                    }
+                }
+                res.emplace_back(col_res);
+            }
+            return res;
+        }
+
+        std::vector<std::vector<float_type>> mat;
+        domain_type*     _domain_;
+        int t_l; //left bound of target range
+        int t_r; //right bound of target range
+
+        int s_l; //left bound of source range
+        int s_r; //right bound of source range
+    };
+
+    
 };
 
 } // namespace solver

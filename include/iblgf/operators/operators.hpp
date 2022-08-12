@@ -631,6 +631,24 @@ struct Operator
             auto n_coord = node.level_coordinate();
             auto dist = n_coord - ib_coord;
 
+
+            decltype(ib_coord) off_tmp(0.5);
+            off_tmp[0] = 0.0;
+
+            float_type val_x = ddf(dist + off_tmp);
+
+            off_tmp[0] = 0.5;
+            off_tmp[1] = 0.0;
+            float_type val_y = ddf(dist + off_tmp);
+
+            off_tmp[1] = 0.5;
+            //off_tmp[1] = 0.0;
+            float_type val_z = ddf(dist + off_tmp);
+
+            if (std::abs(val_x) < 1e-14 && std::abs(val_y) < 1e-14 && std::abs(val_z) < 1e-14) {
+                continue;
+            }
+
             for (std::size_t field_idx = 0; field_idx < U::nFields();
                  field_idx++)
             {
@@ -696,6 +714,24 @@ struct Operator
         {
             auto n_coord = node.level_coordinate();
             auto dist = n_coord - ib_coord;
+
+            decltype(ib_coord) off_tmp(0.5);
+            off_tmp[0] = 0.0;
+
+            float_type val_x = ddf(dist + off_tmp);
+
+            off_tmp[0] = 0.5;
+            off_tmp[1] = 0.0;
+            float_type val_y = ddf(dist + off_tmp);
+
+            off_tmp[1] = 0.5;
+            //off_tmp[1] = 0.0;
+            float_type val_z = ddf(dist + off_tmp);
+
+            if (std::abs(val_x) < 1e-14 && std::abs(val_y) < 1e-14 && std::abs(val_z) < 1e-14) {
+                continue;
+            }
+
 
             for (std::size_t field_idx = 0; field_idx < U::nFields();
                  field_idx++)

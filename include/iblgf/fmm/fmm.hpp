@@ -278,7 +278,8 @@ public:
         }
 
         fmm_upward_pass_masks(domain_, base_level, MASK_LIST::Mask_FMM_Source,
-            MASK_LIST::Mask_FMM_Target, fmm_mask_idx);
+            MASK_LIST::Mask_FMM_Target, fmm_mask_idx, 0);
+	//this is only needed for the stability solver, set weight to 0 to not mess with nonlinear solver
     }
 
     static void fmm_clean_load(Domain* domain_)

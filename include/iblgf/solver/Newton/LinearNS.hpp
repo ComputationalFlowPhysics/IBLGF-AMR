@@ -737,7 +737,8 @@ class LinearNS
                         }
                     for (int i = 0; i < it->num_neighbors(); i++)
                     {
-                        auto it2 = it->neighbor(i);
+                        //try not setting bc for velocity
+                        /*auto it2 = it->neighbor(i);
                         if (!it2 || !it2->is_leaf() || it2->is_correction())
                         {
                             continue;
@@ -776,7 +777,7 @@ class LinearNS
                                 }
                             }
                             if (i == 8) { tmp[N - 1][N - 1] = true; }
-                        }
+                        }*/
                     }
                     for (std::size_t field_idx = 0;
                          field_idx < idx_u_type::nFields(); ++field_idx)
@@ -4451,6 +4452,12 @@ class LinearNS
                     int glo_idx_1_1 =
                         n.at_offset(idx_u_g_type::tag(), -1, 0, 1);
 
+                    if (glo_idx_0_1 < 0 || glo_idx_1_1 < 0 || glo_idx_1_0 < 0 || glo_idx_1_0 < 0) {
+                        //zero out vorticity at boundary
+                        Curl.add_element(cur_idx, glo_idx, -1.0);
+                        continue;
+                    }
+
                     Curl.add_element(cur_idx, glo_idx_0_0, -1.0 / dx_level);
                     Curl.add_element(cur_idx, glo_idx_1_0, 1.0 / dx_level);
                     Curl.add_element(cur_idx, glo_idx_0_1, 1.0 / dx_level);
@@ -4791,7 +4798,9 @@ class LinearNS
                     int cur_idx_0 = n(idx_u_type::tag(), 0);
                     int cur_idx_1 = n(idx_u_type::tag(), 1);
 
-                    if (cur_idx_0 > 0) { counter++; }
+                    int cur_idx_p = n(idx_p_type::tag(), 0);
+
+                    if (cur_idx_0 > 0 || cur_idx_p > 0) { counter++; }
                 }
             }
         }
@@ -4876,7 +4885,7 @@ class LinearNS
                         int cur_idx_1 = n(idx_u_type::tag(), 1);
                         int cur_idx_p = n(idx_p_type::tag(), 0);
 
-                        if (cur_idx_0 > 0)
+                        if (cur_idx_0 > 0 || cur_idx_p > 0)
                         {
                             //int cur_idx_0 = n(idx_u_type::tag(), 0);
                             //int cur_idx_1 = n(idx_u_type::tag(), 1);
@@ -4909,13 +4918,18 @@ class LinearNS
                                     row_p);
                             }
 
+                            if (cur_idx_0 > 0) {
+
                             for (const auto& [key, val] : row_u)
                             {
                                 boundary_u.add_element(cur_idx_0, key, val);
                             }
+                            }
+                            if (cur_idx_1 > 0) {
                             for (const auto& [key, val] : row_v)
                             {
                                 boundary_u.add_element(cur_idx_1, key, val);
+                            }
                             }
 
                             if (cur_idx_p > 0) {

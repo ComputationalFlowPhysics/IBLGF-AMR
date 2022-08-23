@@ -56,7 +56,7 @@ const int Dim = 2;
 struct parameters
 {
     static constexpr std::size_t Dim = 2;
-	static constexpr std::size_t N_modes = 16;
+	static constexpr std::size_t N_modes = 144;
 	static constexpr std::size_t PREFAC  = 2; //2 for complex values 
     // clang-format off
     REGISTER_FIELDS
@@ -286,6 +286,9 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
 
 		boost::mpi::communicator world;
 		world.barrier();
+		if (world.rank() == 0) {
+			std::cout << "Number of nonnegative complex modes = " << N_modes << std::endl;
+		}
 		if (world.rank() == 0)
 			std::cout << "on Simulation: \n" << simulation_ << std::endl;
 	}

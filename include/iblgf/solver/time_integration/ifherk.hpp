@@ -890,7 +890,7 @@ private:
         add<face_aux_type, face_aux2_type>(-1.0);
 
         // IB
-        if (std::fabs(_alpha)>1e-4)
+        if (std::fabs(_alpha)>1e-14)
             psolver.template apply_lgf_IF<face_aux2_type, face_aux2_type>(_alpha, MASK_TYPE::IB2xIB);
 
         domain_->client_communicator().barrier();
@@ -914,7 +914,7 @@ private:
         lsolver.template smearing<face_aux_type>(domain_->ib().force(), false);
         add<face_aux_type, r_i_type>(-1.0);
 
-        if (std::fabs(_alpha)>1e-4)
+        if (std::fabs(_alpha)>1e-14)
         {
             mDuration_type t_if(0);
             domain_->client_communicator().barrier();

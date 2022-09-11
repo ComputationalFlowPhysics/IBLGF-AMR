@@ -13,6 +13,10 @@
 #ifndef IBLGF_INCLUDED_NS_AMR_LGF_HPP
 #define IBLGF_INCLUDED_NS_AMR_LGF_HPP
 
+//Compiler flag for convergence tests
+//undefine this to save memory when running large cases
+//#define CONVERGENCE_TEST
+
 #ifndef DEBUG_IFHERK
 #define DEBUG_IFHERK
 #endif
@@ -64,21 +68,23 @@ struct parameters
     Dim,
      (
         //name               type        Dim   lBuffer  hBuffer, storage type
+#ifdef CONVERGENCE_TEST
          (error_u          , float_type, 3*2*N_modes,    1,       1,     face,true ),
          (error_p          , float_type, 1*2*N_modes,    1,       1,     cell,true ),
-         (test             , float_type, 1*2*N_modes,    1,       1,     cell,false ),
-        //IF-HERK
-         (u                , float_type, 3*2*N_modes,    1,       1,     face,true  ),
-         (u_ref            , float_type, 3*2*N_modes,    1,       1,     face,true  ),
+		 (u_ref            , float_type, 3*2*N_modes,    1,       1,     face,true  ),
          (p_ref            , float_type, 1*2*N_modes,    1,       1,     cell,true  ),
-         (p                , float_type, 1*2*N_modes,    1,       1,     cell,true  ),
          (w_num            , float_type, 1*2*N_modes,    1,       1,     edge,false ),
          (w_exact          , float_type, 1*2*N_modes,    1,       1,     edge,false ),
          (error_w          , float_type, 1*2*N_modes,    1,       1,     edge,false ),
          //for radial velocity
          (exact_u_theta    , float_type, 3*2*N_modes,    1,       1,     edge,false ),
          (num_u_theta      , float_type, 3*2*N_modes,    1,       1,     edge,false ),
-         (error_u_theta    , float_type, 3*2*N_modes,    1,       1,     edge,false )
+         (error_u_theta    , float_type, 3*2*N_modes,    1,       1,     edge,false ),
+#endif
+		 //IF-HERK
+         (u                , float_type, 3*2*N_modes,    1,       1,     face,true  ),
+         (p                , float_type, 1*2*N_modes,    1,       1,     cell,true  ),
+		 (test             , float_type, 1*2*N_modes,    1,       1,     cell,false )
     ))
     // clang-format on
 };
@@ -248,7 +254,12 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
 		};
 		}
 
+		pcout << "Finished register refinement condition" << std::endl;
+
 		domain_->ib().init(_d->get_dictionary("simulation_parameters"), domain_->dx_base(), nLevelRefinement_, Re_);
+
+
+		pcout << "Finished getting IB pts" << std::endl;
 
 		if (!use_restart() && !use_tree_)
 		{
@@ -265,6 +276,7 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
 			[this]( std::vector<float_type> source_max, auto& octs, std::vector<int>& level_change ) 
 			{return this->template adapt_level_change(source_max, octs, level_change);};
 
+		pcout << "Start distribute" << std::endl;
 
 		domain_->distribute<fmm_mask_builder_t, fmm_mask_builder_t>();
 		if (!use_restart() && !use_tree_ && vortexType != 0) { this->initialize(); }
@@ -318,6 +330,8 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
 			pcout_c << "Time to solution [ms] " << ifherk_duration.count() << std::endl;
 
 		ifherk.clean_leaf_correction_boundary<u_type>(domain_->tree()->base_level(), true, 1);
+
+#ifdef CONVERGENCE_TEST
 
 		float_type maxNumVort = -1;
 
@@ -431,6 +445,10 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
 
 		simulation_.write("final.hdf5");
 		return u1_inf;
+
+#else
+		return 0.0;
+#endif
 
 	}
 
@@ -639,7 +657,10 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
 	template<class Field, class OctantType>
 	int adapt_levle_change_for_field(OctantType it, float_type source_max, bool use_base_level_threshold)
 	{
+
+#ifdef CONVERGENCE_TEST
 		return 0; //for testing purpose
+#endif
 		if (vortexType != 0) return 0;
 		if (it->is_ib() && it->is_leaf())
 			if (it->refinement_level()<nLevelRefinement_)
@@ -862,12 +883,13 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
 					float_type mag = std::exp(mag_i*pert_pow);
                     for (int j = 0; j < 3; j++)
                     {
-
+#ifdef CONVERGENCE_TEST
 						if (j != 2) {
 							node(edge_aux, j * N_modes * 2 + i * 2) = 0.0;
 							node(edge_aux, j * N_modes * 2 + i * 2+1) = 0.0;
 							continue;
 						}
+#endif
 						
                         float_type x = static_cast<float_type>(
                                            coord[0]) *
@@ -1023,6 +1045,9 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
     {
 		float_type x_loc = x - ctr_dis_x;
 		float_type y_loc = y - ctr_dis_y;
+		if (vortexType == 0) {
+			return 0.0;
+		}
         return vr_fct_(x_loc,y_loc,field_idx,perturbation_)/* - vr_fct_(x_loc,y_loc-vort_sep,field_idx,perturbation_))*/; 
         //else
         //return -vr_fct_(x,y,z-d2v_/2,field_idx,perturbation_)+vr_fct_(x,y,z+d2v_/2,field_idx,perturbation_);
@@ -1098,12 +1123,16 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
 				float_type bd = 1.92 / pow(2, b.level()) - half_block;
 
 				//float_type bd = 4.8 - 1.2*b.level() - half_block;
+
+#ifdef CONVERGENCE_TEST
 				if (max_c < bd)
 					return true;
+#else
 
-				/*if (std::fabs(tmp_w) > 1.0 * pow(refinement_factor_, diff_level))
-					return true;*/
-				//}
+				if (std::fabs(tmp_w) > 1.0 * pow(refinement_factor_, diff_level)) {
+					return true;
+				}
+#endif
 			}
 		}
 

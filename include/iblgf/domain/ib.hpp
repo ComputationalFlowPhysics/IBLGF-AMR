@@ -117,7 +117,7 @@ class IB
                 for (int iy = 0; iy < ny; ++iy)
                 {
                     float_type w = (ix * L)/(nx-1)- L/2.0;
-                    float_type angle = M_PI/6;
+                    float_type angle = M_PI/12;
 
 		    real_coordinate_type tmp;
 		    tmp.x() = w*std::cos(angle);

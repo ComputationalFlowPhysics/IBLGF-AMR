@@ -10,8 +10,8 @@
 //     ▐░░░░░░░░░░░▌▐░░░░░░░░░░▌ ▐░░░░░░░░░░░▌▐░░░░░░░░░░░▌▐░▌
 //      ▀▀▀▀▀▀▀▀▀▀▀  ▀▀▀▀▀▀▀▀▀▀   ▀▀▀▀▀▀▀▀▀▀▀  ▀▀▀▀▀▀▀▀▀▀▀  ▀
 
-#ifndef IBLGF_INCLUDED_LINEARNS_HPP
-#define IBLGF_INCLUDED_LINEARNS_HPP
+#ifndef IBLGF_INCLUDED_HELM_STAB_HPP
+#define IBLGF_INCLUDED_HELM_STAB_HPP
 
 #include <iostream>
 #include <algorithm>
@@ -40,10 +40,10 @@ namespace solver
 {
 using namespace domain;
 
-/** @brief Integrating factor 3-stage Runge-Kutta time integration
+/** @brief Stability analysis of Flow with one homogeneous direction
  * */
 template<class Setup>
-class LinearNS
+class Helm_stab
 {
   public: //member types
 
@@ -75,6 +75,8 @@ class LinearNS
     using poisson_solver_t = typename Setup::poisson_solver_t;
     using linsys_solver_t = typename Setup::linsys_solver_t;
     using lgf_lap_t = typename poisson_solver_t::lgf_lap_t;
+    using helm_t = typename poisson_solver_t::helm_t;
+    using key_2D = std::tuple<int, int>;
 
     using ib_t = typename domain_type::ib_t;
     using force_type = typename ib_t::force_type;
@@ -86,8 +88,8 @@ class LinearNS
 
     using u_type = typename Setup::u_type;
     using p_type = typename Setup::p_type;
-    using fu_i_type = typename Setup::fu_i_type; //store first block of f(x) in Newton method
-    using fp_i_type = typename Setup::fp_i_type; //store second block of f(x) in Newton method
+    //using fu_i_type = typename Setup::fu_i_type; //store first block of f(x) in Newton method
+    //using fp_i_type = typename Setup::fp_i_type; //store second block of f(x) in Newton method
     using stream_f_type = typename Setup::stream_f_type;
     //using p_type = typename Setup::p_type;
     //using q_i_type = typename Setup::q_i_type;
@@ -120,31 +122,19 @@ class LinearNS
     using idx_w_type = typename Setup::idx_w_type;
     using idx_N_type = typename Setup::idx_N_type;
     using idx_cs_type = typename Setup::idx_cs_type;
+    using idx_uz_type = typename Setup::idx_uz_type;
+    using idx_Nz_type = typename Setup::idx_Nz_type;
     using idx_u_g_type = typename Setup::idx_u_g_type;
     using idx_p_g_type = typename Setup::idx_p_g_type;
     using idx_w_g_type = typename Setup::idx_w_g_type;
     using idx_N_g_type = typename Setup::idx_N_g_type;
     using idx_cs_g_type = typename Setup::idx_cs_g_type;
-
-    //variable fields for conjugate gradient
-    /*using conj_r_face_aux_type = typename Setup::conj_r_face_aux_type;
-    using conj_r_cell_aux_type = typename Setup::conj_r_cell_aux_type;
-    using conj_p_face_aux_type = typename Setup::conj_p_face_aux_type;
-    using conj_p_cell_aux_type = typename Setup::conj_p_cell_aux_type;
-    using conj_Ap_face_aux_type = typename Setup::conj_Ap_face_aux_type;
-    using conj_Ap_cell_aux_type = typename Setup::conj_Ap_cell_aux_type;
-    using conj_Ax_face_aux_type = typename Setup::conj_Ax_face_aux_type;
-    using conj_Ax_cell_aux_type = typename Setup::conj_Ax_cell_aux_type;
-    //needed for BCGStab
-    using conj_rh_face_aux_type = typename Setup::conj_rh_face_aux_type;
-    using conj_rh_cell_aux_type = typename Setup::conj_rh_cell_aux_type;
-    //using conj_As_face_aux_type = typename Setup::conj_As_face_aux_type;
-    //using conj_As_cell_aux_type = typename Setup::conj_As_cell_aux_type;
-    using conj_s_face_aux_type = typename Setup::conj_s_face_aux_type;
-    using conj_s_cell_aux_type = typename Setup::conj_s_cell_aux_type;*/
+    using idx_uz_g_type = typename Setup::idx_uz_g_type;
+    using idx_Nz_g_type = typename Setup::idx_Nz_g_type;
 
     //fields for evaluating Jacobian
     using cell_aux_type = typename Setup::cell_aux_type;
+    using cell_aux2_type = typename Setup::cell_aux2_type;
     using edge_aux_type = typename Setup::edge_aux_type;
     using face_aux_type = typename Setup::face_aux_type;
     //using face_aux2_type = typename Setup::face_aux2_type;
@@ -153,7 +143,7 @@ class LinearNS
 
     static constexpr int lBuffer = 1; ///< Lower left buffer for interpolation
     static constexpr int rBuffer = 1; ///< Lower left buffer for interpolation
-    LinearNS(simulation_type* _simulation)
+    Helm_stab(simulation_type* _simulation)
     : simulation_(_simulation)
     , domain_(_simulation->domain_.get())
     , psolver(_simulation)
@@ -225,6 +215,11 @@ class LinearNS
         forcing_idx_g.resize(domain_->ib().size());
         std::fill(forcing_idx_g.begin(), forcing_idx_g.end(), tmp_coord);
 
+        forcing_z_idx.resize(domain_->ib().size());
+        std::fill(forcing_idx.begin(), forcing_idx.end(), 0);
+        forcing_z_idx_g.resize(domain_->ib().size());
+        std::fill(forcing_idx_g.begin(), forcing_idx_g.end(), 0);
+
         // Get FMM Info
 
         Curl_factor = _simulation->dictionary()->template get_or<float_type>(
@@ -277,6 +272,16 @@ class LinearNS
 
         force_loc_set_zero = _simulation->dictionary()->template get_or<bool>(
             "force_loc_set_zero", false);
+
+        mode_c = _simulation->dictionary()->template get_or<float_type>("mode_c", 0.1);
+
+        if (mode_c < 0.0) {
+            mode_c = -mode_c;
+        }
+
+        if (mode_c > 1e-12) {
+            kernel_vec.init(mode_c);
+        }
 
         if (force_loc_set_zero) {
             set_zero_nx = _simulation->dictionary()->template get<int>("set_zero_nx");
@@ -693,6 +698,11 @@ class LinearNS
         forcing_idx_g.resize(domain_->ib().size());
         std::fill(forcing_idx_g.begin(), forcing_idx_g.end(), tmp_coord);
 
+        forcing_z_idx.resize(domain_->ib().size());
+        std::fill(forcing_idx.begin(), forcing_idx.end(), 0);
+        forcing_z_idx_g.resize(domain_->ib().size());
+        std::fill(forcing_idx_g.begin(), forcing_idx_g.end(), 0);
+
 
         int counter = 0;
         if (world.rank() == 0) {
@@ -720,6 +730,17 @@ class LinearNS
                         {
                             counter++;
                             n(idx_u_type::tag(), field_idx) =
+                                static_cast<float_type>(counter) + 0.5;
+                        }
+                    }
+
+                    for (std::size_t field_idx = 0;
+                         field_idx < idx_uz_type::nFields(); ++field_idx)
+                    {
+                        for (auto& n : it->data())
+                        {
+                            counter++;
+                            n(idx_uz_type::tag(), field_idx) =
                                 static_cast<float_type>(counter) + 0.5;
                         }
                     }
@@ -801,6 +822,30 @@ class LinearNS
                             }
                         }
                     }
+
+                    for (std::size_t field_idx = 0;
+                         field_idx < idx_uz_type::nFields(); ++field_idx)
+                    {
+                        auto& lin_data =
+                            it->data_r(idx_uz_type::tag(), field_idx)
+                                .linalg_data();
+                        for (int i = 0; i < N; i++)
+                        {
+                            for (int j = 0; j < N; j++)
+                            {
+                                if (tmp[i][j])
+                                {
+                                    counter++;
+                                    view(lin_data, i + 1, j + 1) =
+                                        static_cast<float_type>(counter) + 0.5;
+                                }
+                                else
+                                {
+                                    view(lin_data, i + 1, j + 1) = -1;
+                                }
+                            }
+                        }
+                    }
                 }
                 else //if (it->is_correction())
                 {
@@ -864,6 +909,30 @@ class LinearNS
                     {
                         auto& lin_data =
                             it->data_r(idx_u_type::tag(), field_idx)
+                                .linalg_data();
+                        for (int i = 0; i < N; i++)
+                        {
+                            for (int j = 0; j < N; j++)
+                            {
+                                if (tmp[i][j])
+                                {
+                                    counter++;
+                                    view(lin_data, i + 1, j + 1) =
+                                        static_cast<float_type>(counter) + 0.5;
+                                }
+                                else
+                                {
+                                    view(lin_data, i + 1, j + 1) = -1;
+                                }
+                            }
+                        }
+                    }
+
+                    for (std::size_t field_idx = 0;
+                         field_idx < idx_uz_type::nFields(); ++field_idx)
+                    {
+                        auto& lin_data =
+                            it->data_r(idx_uz_type::tag(), field_idx)
                                 .linalg_data();
                         for (int i = 0; i < N; i++)
                         {
@@ -1229,6 +1298,30 @@ class LinearNS
                                 }
                             }
                         }
+
+
+                        for (std::size_t field_idx = 0;
+                             field_idx < idx_Nz_type::nFields(); ++field_idx)
+                        {
+                            auto& lin_data =
+                                it->data_r(idx_Nz_type::tag(), field_idx)
+                                    .linalg_data();
+                            for (int i = 0; i < N; i++)
+                            {
+                                for (int j = 0; j < N; j++)
+                                {
+                                    if (next2corr) {
+                                        view(lin_data, i + 1, j + 1) = -1;
+                                    }
+                                    else {
+                                        counter++;
+                                        view(lin_data, i + 1, j + 1) =
+                                            static_cast<float_type>(counter) +
+                                            0.5;
+                                    }
+                                }
+                            }
+                        }
                     }
                     else if (it->is_leaf() && !it->is_correction())
                     {
@@ -1239,6 +1332,16 @@ class LinearNS
                             {
                                 counter++;
                                 n(idx_N_type::tag(), field_idx) =
+                                    static_cast<float_type>(counter) + 0.5;
+                            }
+                        }
+                        for (std::size_t field_idx = 0;
+                             field_idx < idx_Nz_type::nFields(); ++field_idx)
+                        {
+                            for (auto& n : it->data())
+                            {
+                                counter++;
+                                n(idx_Nz_type::tag(), field_idx) =
                                     static_cast<float_type>(counter) + 0.5;
                             }
                         }
@@ -1339,6 +1442,30 @@ class LinearNS
                                 }
                             }
                         }
+                        for (std::size_t field_idx = 0;
+                             field_idx < idx_Nz_type::nFields(); ++field_idx)
+                        {
+                            auto& lin_data =
+                                it->data_r(idx_Nz_type::tag(), field_idx)
+                                    .linalg_data();
+                            for (int i = 0; i < N; i++)
+                            {
+                                for (int j = 0; j < N; j++)
+                                {
+                                    if (tmp[i][j])
+                                    {
+                                        counter++;
+                                        view(lin_data, i + 1, j + 1) =
+                                            static_cast<float_type>(counter) +
+                                            0.5;
+                                    }
+                                    else
+                                    {
+                                        view(lin_data, i + 1, j + 1) = -1;
+                                    }
+                                }
+                            }
+                        }
                     }
                     else {
                         for (std::size_t field_idx = 0;
@@ -1348,6 +1475,15 @@ class LinearNS
                             {
                                 //counter++;
                                 n(idx_N_type::tag(), field_idx) = -1;
+                            }
+                        }
+                        for (std::size_t field_idx = 0;
+                             field_idx < idx_Nz_type::nFields(); ++field_idx)
+                        {
+                            for (auto& n : it->data())
+                            {
+                                //counter++;
+                                n(idx_Nz_type::tag(), field_idx) = -1;
                             }
                         }
                     }
@@ -1672,35 +1808,6 @@ class LinearNS
                     }
                 }
             }
-
-            for (int l = base_level - 1; l >= 0; l--)
-            {
-                for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
-                {
-                    //if (!it) continue;
-                    if (!it->locally_owned() || !it->has_data()) continue;
-                    //if (it->is_leaf() && !it->is_correction())
-                    //{
-                    for (std::size_t field_idx = 0;
-                         field_idx < idx_w_type::nFields(); ++field_idx)
-                    {
-                        int N = it->data().descriptor().extent()[0];
-
-                        auto& lin_data =
-                            it->data_r(idx_w_type::tag(), field_idx)
-                                .linalg_data();
-                        for (int i = 0; i < (N + 2); i++)
-                        {
-                            for (int j = 0; j < (N + 2); j++)
-                            {
-                                counter++;
-                                view(lin_data, i, j) =
-                                    static_cast<float_type>(counter) + 0.5;
-                            }
-                        }
-                    }
-                }
-            }
         }
 
         for (std::size_t i=0; i<forcing_idx.size(); ++i)
@@ -1714,6 +1821,20 @@ class LinearNS
                 counter++;
                 forcing_idx[i][d] = static_cast<float_type>(counter) + 0.5;
             }
+        }
+
+
+        for (std::size_t i=0; i<forcing_idx.size(); ++i)
+        {
+            if (domain_->ib().rank(i)!=comm_.rank()) {
+                forcing_z_idx[i]=-1;
+                continue;
+            }
+
+            
+            counter++;
+            forcing_z_idx[i] = counter;
+            
         }
         max_local_idx = counter;
         domain_->client_communicator().barrier();
@@ -1748,6 +1869,23 @@ class LinearNS
                         else
                         {
                             n(idx_u_g_type::tag(), field_idx) = -1;
+                        }
+                    }
+                }
+                for (std::size_t field_idx = 0;
+                     field_idx < idx_uz_g_type::nFields(); ++field_idx)
+                {
+                    for (auto& n : it->data())
+                    {
+                        if (n(idx_uz_type::tag(), field_idx) > 0)
+                        {
+                            n(idx_uz_g_type::tag(), field_idx) =
+                                n(idx_uz_type::tag(), field_idx) +
+                                max_idx_from_prev_prc;
+                        }
+                        else
+                        {
+                            n(idx_uz_g_type::tag(), field_idx) = -1;
                         }
                     }
                 }
@@ -1833,6 +1971,23 @@ class LinearNS
                             else
                             {
                                 n(idx_N_g_type::tag(), field_idx) = -1;
+                            }
+                        }
+                    }
+                    for (std::size_t field_idx = 0;
+                         field_idx < idx_Nz_g_type::nFields(); ++field_idx)
+                    {
+                        for (auto& n : it->data())
+                        {
+                            if (n(idx_Nz_type::tag(), field_idx) > 0)
+                            {
+                                n(idx_Nz_g_type::tag(), field_idx) =
+                                    n(idx_Nz_type::tag(), field_idx) +
+                                    max_idx_from_prev_prc;
+                            }
+                            else
+                            {
+                                n(idx_Nz_g_type::tag(), field_idx) = -1;
                             }
                         }
                     }
@@ -1938,44 +2093,6 @@ class LinearNS
 
                 }
             }
-
-            for (int l = base_level - 1; l >= 0; l--)
-            {
-                for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
-                {
-                    //if (!it) continue;
-                    if (!it->locally_owned() || !it->has_data()) continue;
-                    //if (it->is_leaf() && !it->is_correction())
-                    //{
-                    int N = it->data().descriptor().extent()[0];
-                    for (std::size_t field_idx = 0;
-                         field_idx < idx_w_type::nFields(); ++field_idx)
-                    {
-                        auto& lin_data1 =
-                            it->data_r(idx_w_g_type::tag(), field_idx)
-                                .linalg_data();
-                        auto& lin_data2 =
-                            it->data_r(idx_w_type::tag(), field_idx)
-                                .linalg_data();
-                        for (int i = 0; i < (N + 2); i++)
-                        {
-                            for (int j = 0; j < (N + 2); j++)
-                            {
-                                view(lin_data1, i, j) = view(lin_data2, i, j) +
-                                                        max_idx_from_prev_prc;
-                            }
-                        }
-
-                        /*for (auto& n : it->data())
-                    {
-                        counter++;
-                        n(idx_w_type::tag(), field_idx) =
-                            static_cast<float_type>(counter) + 0.5;
-                    }*/
-                    }
-                    //}
-                }
-            }
         }
         for (std::size_t i=0; i<forcing_idx_g.size(); ++i)
         {
@@ -1988,6 +2105,18 @@ class LinearNS
                 //counter++;
                 forcing_idx_g[i][d] = forcing_idx[i][d] + max_idx_from_prev_prc;
             }
+        }
+
+        for (std::size_t i=0; i<forcing_idx_g.size(); ++i)
+        {
+            if (domain_->ib().rank(i)!=comm_.rank()) {
+                forcing_z_idx_g[i]=-1;
+                continue;
+            }
+
+            
+            forcing_z_idx_g[i] = forcing_z_idx[i] + max_idx_from_prev_prc;
+            
         }
         domain_->client_communicator().barrier();
 
@@ -2159,8 +2288,8 @@ class LinearNS
 
 
 
-    template<class Face, class Cell, class Edge, class N_source, class P_source, class val_type>
-    void Grid2CSR(val_type* b, force_type& forcing_vec, bool set_corr_zero = true) {
+    template<class Face, class Cell, class Edge, class N_source, class P_source, class Uz, class Nz, class val_type>
+    void Grid2CSR(val_type* b, force_type& forcing_vec, std::vector<float_type> fz, bool set_corr_zero = true) {
         boost::mpi::communicator world;
 
         if (world.rank() == 0) {
@@ -2202,29 +2331,14 @@ class LinearNS
 
                             int cur_idx = n(idx_u_type::tag(), field_idx);
                             if (cur_idx <= 0) continue;
-                            int p_idx_w =
-                                n.at_offset(idx_p_type::tag(), -1, 0, 0);
-                            int p_idx_e =
-                                n.at_offset(idx_p_type::tag(), 1, 0, 0);
-                            int p_idx_n =
-                                n.at_offset(idx_p_type::tag(), 0, 1, 0);
-                            int p_idx_s =
-                                n.at_offset(idx_p_type::tag(), 0, -1, 0);
-                            /*if ((p_idx_w < 0 || p_idx_e < 0) && field_idx == 0 && set_corr_zero && l == base_level)
-                            {
-                                //int cur_idx = n(idx_u_type::tag(), 0);
-                                b[cur_idx - 1] = 0;
-                                continue;
-                            }
-                            if ((p_idx_s < 0 || p_idx_n < 0) && field_idx == 1 && set_corr_zero && l == base_level)
-                            {
-                                //int cur_idx = n(idx_u_type::tag(), 1);
-                                b[cur_idx - 1] = 0;
-                                continue;
-                            }*/
-                            //int cur_idx = n(idx_u_type::tag(), field_idx);
                             b[cur_idx - 1] = n(Face::tag(), field_idx);
                         }
+                    }
+                    for (auto& n : it->data())
+                    {
+                        int cur_idx = n(idx_uz_type::tag(), 0);
+                        if (cur_idx <= 0) continue;
+                        b[cur_idx - 1] = n(Uz::tag(), 0);
                     }
                 }
                 //comment out for debugging purpose
@@ -2239,6 +2353,13 @@ class LinearNS
                             if (cur_idx <= 0) continue;
                             b[cur_idx - 1] = 0.0;
                         }
+                    }
+
+                    for (auto& n : it->data())
+                    {
+                        int cur_idx = n(idx_uz_type::tag(), 0);
+                        if (cur_idx <= 0) continue;
+                        b[cur_idx - 1] = 0.0;
                     }
                 }
                 else if (it->is_correction() && set_corr_zero/* && l != base_level*/)
@@ -2256,6 +2377,12 @@ class LinearNS
                             b[cur_idx - 1] = 0;
                         }
                     }
+                    for (auto& n : it->data())
+                    {
+                        int cur_idx = n(idx_uz_type::tag(), 0);
+                        if (cur_idx) { continue; }
+                        b[cur_idx - 1] = 0;
+                    }
                 }
                 else
                 {
@@ -2271,6 +2398,12 @@ class LinearNS
                             }
                             b[cur_idx - 1] = n(Face::tag(), field_idx);
                         }
+                    }
+                    for (auto& n : it->data())
+                    {
+                        int cur_idx = n(idx_uz_type::tag(), 0);
+                        if (cur_idx <= 0) { continue; }
+                        b[cur_idx - 1] = n(Uz::tag(), 0);
                     }
                 }
             }
@@ -2341,6 +2474,13 @@ class LinearNS
                                 b[cur_idx - 1] = n(N_source::tag(), field_idx);
                             }
                         }
+
+                        for (auto& n : it->data())
+                        {
+                            int cur_idx = n(idx_Nz_type::tag(), 0);
+                            if (cur_idx <= 0) continue;
+                            b[cur_idx - 1] = n(Nz::tag(), 0);
+                        }
                     }
                     else
                     {
@@ -2353,6 +2493,12 @@ class LinearNS
                                 if (cur_idx <= 0) continue;
                                 b[cur_idx - 1] = 0.0;
                             }
+                        }
+                        for (auto& n : it->data())
+                        {
+                            int cur_idx = n(idx_Nz_type::tag(), 0);
+                            if (cur_idx <= 0) continue;
+                            b[cur_idx - 1] = 0.0;
                         }
                     }
                 }
@@ -2556,6 +2702,9 @@ class LinearNS
                     int cur_idx = forcing_idx[i][d];
                     b[cur_idx - 1] = forcing_vec[i][d];
                 }
+
+                int cur_idx = forcing_z_idx[i];
+                b[cur_idx - 1] = fz[i];
             }
         }
         domain_->client_communicator().barrier();
@@ -2664,8 +2813,8 @@ class LinearNS
         domain_->client_communicator().barrier();
     }
 
-    template<class Face, class Cell, class Edge, class N_source, class P_source, class val_type>
-    void CSR2Grid(val_type* b, force_type& forcing_vec) {
+    template<class Face, class Cell, class Edge, class N_source, class P_source, class Uz, class Nz, class val_type>
+    void CSR2Grid(val_type* b, force_type& forcing_vec, std::vector<float_type> fz) {
         boost::mpi::communicator world;
 
         if (world.rank() == 0) {
@@ -2706,6 +2855,11 @@ class LinearNS
                         if (cur_idx > 0)
                             n(Face::tag(), field_idx) = b[cur_idx - 1];
                     }
+                }
+                for (auto& n : it->data())
+                {
+                    int cur_idx = n(idx_uz_type::tag(), 0);
+                    if (cur_idx > 0) n(Uz::tag(), 0) = b[cur_idx - 1];
                 }
             }
         }
@@ -2761,6 +2915,11 @@ class LinearNS
                             if (cur_idx > 0)
                                 n(N_source::tag(), field_idx) = b[cur_idx - 1];
                         }
+                    }
+                    for (auto& n : it->data())
+                    {
+                        int cur_idx = n(idx_Nz_type::tag(), 0);
+                        if (cur_idx > 0) n(Nz::tag(), 0) = b[cur_idx - 1];
                     }
                 }
             }
@@ -2910,6 +3069,8 @@ class LinearNS
                     }
                     forcing_vec[i][d] = b[cur_idx - 1];
                 }
+                int cur_idx = forcing_z_idx[i];
+                fz[i] = b[cur_idx - 1];
             }
         }
         domain_->client_communicator().barrier();
@@ -3329,79 +3490,41 @@ class LinearNS
                         int p_idx_n = n.at_offset(idx_p_g_type::tag(), 0, 1, 0);
                         int p_idx_s = n.at_offset(idx_p_g_type::tag(), 0, -1, 0);
 
-                        if (p_set_zero) {
-                        if (p_idx_w <= 0 && field_idx == 0 && l == base_level)
-                        {
-                            //enforcing div free at BC points
-                            int cur_idx = n(idx_u_type::tag(), 0);
-                            int glo_idx = n(idx_u_g_type::tag(), 0);
-                            L.add_element(cur_idx, glo_idx, 1.0 / dx_base * Re_);
-                            glo_idx =
-                                n.at_offset(idx_u_g_type::tag(), -1, 0, 0);
-                            L.add_element(cur_idx, glo_idx, -1.0 / dx_base * Re_);
-                            glo_idx =
-                                n.at_offset(idx_u_g_type::tag(), -1, 0, 1);
-                            L.add_element(cur_idx, glo_idx, -1.0 / dx_base * Re_);
-                            glo_idx =
-                                n.at_offset(idx_u_g_type::tag(), -1, 1, 1);
-                            L.add_element(cur_idx, glo_idx, 1.0 / dx_base * Re_);
-                            continue;
-                        }
-                        if (p_idx_s <= 0 && field_idx == 1 && l == base_level)
-                        {
-                            int cur_idx = n(idx_u_type::tag(), 1);
-                            int glo_idx = n(idx_u_g_type::tag(), 1);
-                            L.add_element(cur_idx, glo_idx, 1.0 / dx_base * Re_);
-                            glo_idx =
-                                n.at_offset(idx_u_g_type::tag(), 0, -1, 1);
-                            L.add_element(cur_idx, glo_idx, -1.0 / dx_base * Re_);
-                            glo_idx =
-                                n.at_offset(idx_u_g_type::tag(), 0, -1, 0);
-                            L.add_element(cur_idx, glo_idx, -1.0 / dx_base * Re_);
-                            glo_idx =
-                                n.at_offset(idx_u_g_type::tag(), 1, -1, 0);
-                            L.add_element(cur_idx, glo_idx, 1.0 / dx_base * Re_);
-                            continue;
-                        }
-                        }
-                        //velocity formulation
-                        /*int cur_idx = n(idx_u_type::tag(), field_idx);
-                        int glo_idx = n(idx_u_g_type::tag(), field_idx);
-                        L.add_element(cur_idx, glo_idx,
-                            -4.0 / dx_level / dx_level);
-                        glo_idx =
-                            n.at_offset(idx_u_g_type::tag(), 0, 1, field_idx);
-                        L.add_element(cur_idx, glo_idx,
-                            1.0 / dx_level / dx_level);
-                        glo_idx =
-                            n.at_offset(idx_u_g_type::tag(), 1, 0, field_idx);
-                        L.add_element(cur_idx, glo_idx,
-                            1.0 / dx_level / dx_level);
-                        glo_idx =
-                            n.at_offset(idx_u_g_type::tag(), 0, -1, field_idx);
-                        L.add_element(cur_idx, glo_idx,
-                            1.0 / dx_level / dx_level);
-                        glo_idx =
-                            n.at_offset(idx_u_g_type::tag(), -1, 0, field_idx);
-                        L.add_element(cur_idx, glo_idx,
-                            1.0 / dx_level / dx_level);*/
-
                         //vorticity formulation L = -C^TC = -C^Tw (since divergence free)
                         int cur_idx = n(idx_u_type::tag(), field_idx);
                         //int glo_idx = n(idx_u_g_type::tag(), field_idx);
                         
 
                         if (field_idx == 0) {
-                            int glo_idx = n(idx_w_g_type::tag(), 0);
+                            int glo_idx = n(idx_w_g_type::tag(), 2);
                             L.add_element(cur_idx, glo_idx, 1.0 / dx_level);
-                            glo_idx = n.at_offset(idx_w_g_type::tag(), 0, 1, 0);
+                            glo_idx = n.at_offset(idx_w_g_type::tag(), 0, 1, 2);
                             L.add_element(cur_idx, glo_idx, -1.0 / dx_level);
+
+                            glo_idx = n(idx_w_g_type::tag(), 1);
+                            L.add_element(cur_idx, glo_idx, -mode_c);
+
+                            //laplacian u_z
+                            cur_idx = n(idx_uz_type::tag(), 0);
+
+                            glo_idx = n(idx_w_g_type::tag(), 1);
+                            L.add_element(cur_idx, glo_idx, 1.0 / dx_level);
+                            glo_idx = n.at_offset(idx_w_g_type::tag(), 1, 0, 1);
+                            L.add_element(cur_idx, glo_idx, -1.0 / dx_level);
+
+                            glo_idx = n(idx_w_g_type::tag(), 0);
+                            L.add_element(cur_idx, glo_idx, -1.0 / dx_level);
+                            glo_idx = n.at_offset(idx_w_g_type::tag(), 0, 1, 0);
+                            L.add_element(cur_idx, glo_idx, 1.0 / dx_level);
                         }
                         if (field_idx == 1) {
-                            int glo_idx = n(idx_w_g_type::tag(), 0);
+                            int glo_idx = n(idx_w_g_type::tag(), 2);
                             L.add_element(cur_idx, glo_idx, -1.0 / dx_level);
-                            glo_idx = n.at_offset(idx_w_g_type::tag(), 1, 0, 0);
+                            glo_idx = n.at_offset(idx_w_g_type::tag(), 1, 0, 2);
                             L.add_element(cur_idx, glo_idx, 1.0 / dx_level);
+
+                            glo_idx = n(idx_w_g_type::tag(), 0);
+                            L.add_element(cur_idx, glo_idx, mode_c);
                         }
                     }
                 }
@@ -3445,69 +3568,6 @@ class LinearNS
         if (world.rank() == 1) {
             std::cout << "finished constructing the w BC of laplacian" << std::endl;
         }
-
-        
-        /*if (domain_->is_client())
-        {
-            auto client = domain_->decomposition().client();
-
-            client->template buffer_exchange<idx_u_type>(base_level);
-            client->template buffer_exchange<idx_p_type>(base_level);
-            client->template buffer_exchange<idx_u_g_type>(base_level);
-        }
-        for (auto it = domain_->begin(base_level); it != domain_->end(base_level); ++it)
-        {
-            if (!it->locally_owned() || !it->has_data()) continue;
-            if (!it->is_leaf()) continue;
-            if (it->is_correction()) continue;
-            for (std::size_t field_idx = 0; field_idx < idx_u_type::nFields();
-                 ++field_idx)
-            {
-                for (auto& n : it->data()) {
-                    int p_idx_w = n.at_offset(idx_p_type::tag(), -1, 0, 0);
-                    int p_idx_e = n.at_offset(idx_p_type::tag(),  1, 0, 0);
-                    int p_idx_n = n.at_offset(idx_p_type::tag(),  0, 1, 0);
-                    int p_idx_s = n.at_offset(idx_p_type::tag(), 0, -1, 0);
-                    if (p_idx_w < 0 && field_idx == 0){
-                        //enforcing div free at BC points
-                        int cur_idx = n(idx_u_type::tag(), 0);
-                        int glo_idx = n(idx_u_g_type::tag(), 0);
-                        L.add_element(cur_idx, glo_idx, 1.0/dx_base);
-                        glo_idx = n.at_offset(idx_u_g_type::tag(), -1, 0, 0);
-                        L.add_element(cur_idx, glo_idx, -1.0/dx_base);
-                        glo_idx = n.at_offset(idx_u_g_type::tag(), -1, 0, 1);
-                        L.add_element(cur_idx, glo_idx, -1.0/dx_base);
-                        glo_idx = n.at_offset(idx_u_g_type::tag(), -1, 1, 1);
-                        L.add_element(cur_idx, glo_idx, 1.0/dx_base);
-                        continue;
-                    }
-                    if (p_idx_s < 0 && field_idx == 1){
-                        int cur_idx = n(idx_u_type::tag(), 1);
-                        int glo_idx = n(idx_u_g_type::tag(), 1);
-                        L.add_element(cur_idx, glo_idx, 1.0/dx_base);
-                        glo_idx = n.at_offset(idx_u_g_type::tag(), 0, -1, 1);
-                        L.add_element(cur_idx, glo_idx, -1.0/dx_base);
-                        glo_idx = n.at_offset(idx_u_g_type::tag(), 0, -1, 0);
-                        L.add_element(cur_idx, glo_idx, -1.0/dx_base);
-                        glo_idx = n.at_offset(idx_u_g_type::tag(), 1, -1, 0);
-                        L.add_element(cur_idx, glo_idx, 1.0/dx_base);
-                        continue;
-                    }
-                    int cur_idx = n(idx_u_type::tag(), field_idx);
-                    int glo_idx = n(idx_u_g_type::tag(), field_idx);
-                    L.add_element(cur_idx, glo_idx, -4.0/dx_base/dx_base/Re_);
-                    glo_idx = n.at_offset(idx_u_g_type::tag(), 0, 1, field_idx);
-                    L.add_element(cur_idx, glo_idx, 1.0/dx_base/dx_base/Re_);
-                    glo_idx = n.at_offset(idx_u_g_type::tag(), 1, 0, field_idx);
-                    L.add_element(cur_idx, glo_idx, 1.0/dx_base/dx_base/Re_);
-                    glo_idx = n.at_offset(idx_u_g_type::tag(), 0, -1, field_idx);
-                    L.add_element(cur_idx, glo_idx, 1.0/dx_base/dx_base/Re_);
-                    glo_idx = n.at_offset(idx_u_g_type::tag(), -1, 0, field_idx);
-                    L.add_element(cur_idx, glo_idx, 1.0/dx_base/dx_base/Re_);
-                }
-            }
-        }
-        domain_->client_communicator().barrier();*/
     }
 
 
@@ -3591,14 +3651,23 @@ class LinearNS
                         B.add_element(cur_idx, glo_idx, 1.0);
                     }
                 }
+
+                for (auto& n : it->data())
+                {
+                    
+
+                    int cur_idx = n(idx_uz_type::tag(), 0);
+                    int glo_idx = n(idx_uz_g_type::tag(), 0);
+                    B.add_element(cur_idx, glo_idx, 1.0);
+                }
             }
         }
 
         domain_->client_communicator().barrier();
     }
 
-    template<class U_old>
-    void construction_DN_u(float_type t = 1) {
+    template<class U_old, class W_old>
+    void construction_DN_u(float_type t = 5) {
         boost::mpi::communicator world;
         world.barrier();
 
@@ -3621,7 +3690,8 @@ class LinearNS
         int base_level = domain_->tree()->base_level();
         clean<edge_aux_type>();
         //pad_velocity<U_old, U_old>(true);
-        curl<U_old, edge_aux_type>();
+        curl<U_old, W_old, edge_aux_type>(0.0);
+        //curl2D<U_old, edge_aux_type>();
         //up_and_down(edge_aux_type)();
         up_and_down<U_old>();
         for (int l = base_level; l < domain_->tree()->depth(); l++)
@@ -3631,8 +3701,10 @@ class LinearNS
             auto client = domain_->decomposition().client();
 
             client->template buffer_exchange<idx_u_type>(l);
+            client->template buffer_exchange<idx_uz_type>(l);
             client->template buffer_exchange<idx_p_type>(l);
             client->template buffer_exchange<idx_u_g_type>(l);
+            client->template buffer_exchange<idx_uz_g_type>(l);
             client->template buffer_exchange<idx_w_g_type>(l);
             client->template buffer_exchange<U_old>(l);
             
@@ -3646,19 +3718,25 @@ class LinearNS
 
             for (auto& n : it->data())
             {
-                
-                
+                //omega cross u_s
 
                 int cur_idx_0 = n(idx_N_type::tag(), 0);
                 int cur_idx_1 = n(idx_N_type::tag(), 1);
+
+                int cur_idx_2 = n(idx_Nz_type::tag(), 0);
+                int gN_idx_2 = n(idx_Nz_g_type::tag(), 0);
 
                 if (cur_idx_0 < 0 || cur_idx_1 < 0) continue;
                 
                 int cur_idx_u_0 = n(idx_u_type::tag(), 0);
                 int cur_idx_u_1 = n(idx_u_type::tag(), 1);
 
+                int cur_idx_u_2 = n(idx_uz_type::tag(), 0);
+
                 int glob_idx_0 = n(idx_u_g_type::tag(), 0);
                 int glob_idx_1 = n(idx_u_g_type::tag(), 1);
+
+                int glob_idx_2 = n(idx_uz_g_type::tag(), 0);
 
                 int glob_idx_0_1 = n.at_offset(idx_u_g_type::tag(), 0, -1, 0);
                 int glob_idx_0_2 = n.at_offset(idx_u_g_type::tag(), 0,  1, 0);
@@ -3674,218 +3752,100 @@ class LinearNS
                 int glob_idx_01 = n.at_offset(idx_w_g_type::tag(),  0, 1, 0);
                 int glob_idx_10 = n.at_offset(idx_w_g_type::tag(),  1, 0, 0);
 
-                /*float_type v_s_00 = n(U_old::tag, 1);
-                float_type v_s_10 = n.at_offset(U_old::tag, -1, 0, 1);
-                float_type v_s_01 = n.at_offset(U_old::tag,  0, 1, 1);
-                float_type v_s_11 = n.at_offset(U_old::tag, -1, 1, 1);
-
-                float_type u_s_00 = n(U_old::tag, 0);
-                float_type u_s_01 = n.at_offset(U_old::tag, 0, -1, 0);
-                float_type u_s_10 = n.at_offset(U_old::tag, 1,  0, 0);
-                float_type u_s_11 = n.at_offset(U_old::tag, 1, -1, 0);*/
+                int glob_idx_00_1 = n(idx_w_g_type::tag(), 1);
+                int glob_idx_00_2 = n(idx_w_g_type::tag(), 2);
+                int glob_idx_01_1 = n.at_offset(idx_w_g_type::tag(),  0, 1, 1);
+                int glob_idx_10_1 = n.at_offset(idx_w_g_type::tag(),  1, 0, 1);
+                int glob_idx_01_2 = n.at_offset(idx_w_g_type::tag(),  0, 1, 2);
+                int glob_idx_10_2 = n.at_offset(idx_w_g_type::tag(),  1, 0, 2);
 
                 auto coord = n.global_coordinate() * dx;
                 auto field_func = simulation_->frame_vel();
                 float_type u_field_vel = field_func(0, t, coord)*(-1.0);
                 float_type v_field_vel = field_func(1, t, coord)*(-1.0);
+                float_type w_field_vel = field_func(2, t, coord)*(-1.0);
 
                 float_type v_s_0010 = -(n(U_old::tag(), 1)                   + n.at_offset(U_old::tag(), -1, 0, 1))*0.25 - v_field_vel * 0.5;
                 float_type v_s_0111 = -(n.at_offset(U_old::tag(),  0, 1, 1)  + n.at_offset(U_old::tag(), -1, 1, 1))*0.25 - v_field_vel * 0.5;
                 float_type u_s_0001 =  (n(U_old::tag(), 0)                   + n.at_offset(U_old::tag(), 0, -1, 0))*0.25 + u_field_vel * 0.5;
                 float_type u_s_1011 =  (n.at_offset(U_old::tag(),  1, 0, 0)  + n.at_offset(U_old::tag(), 1, -1, 0))*0.25 + u_field_vel * 0.5;
+                float_type W_s_0010 =  (n(W_old::tag(), 0)                   + n.at_offset(W_old::tag(), -1, 0, 0))*0.5  + w_field_vel;
+                float_type w_s_0001 =  (n(W_old::tag(), 0)                   + n.at_offset(W_old::tag(), 0, -1, 0))*0.5  + w_field_vel;
 
-                //-n.at_offset(edge, 0, 0, 0) *(n.at_offset(face, 0, 0, 1) + n.at_offset(face, -1, 0, 1))
-                /*DN.add_element(cur_idx_0, glob_idx_1,    v_s_0010/dx);
-                DN.add_element(cur_idx_0, glob_idx_1_1, -v_s_0010/dx);
-                //-n.at_offset(edge, 0, 1, 0) *(n.at_offset(face, 0, 1, 1) + n.at_offset(face, -1, 1, 1))
-                DN.add_element(cur_idx_0, glob_idx_1_2,  v_s_0111/dx);
-                DN.add_element(cur_idx_0, glob_idx_1_3, -v_s_0111/dx);
 
-                //-n.at_offset(edge, 0, 0, 0) *(n.at_offset(face, 0, 0, 1) + n.at_offset(face, -1, 0, 1))
-                DN.add_element(cur_idx_0, glob_idx_0,   -v_s_0010/dx);
-                DN.add_element(cur_idx_0, glob_idx_0_1,  v_s_0010/dx);
-                //-n.at_offset(edge, 0, 1, 0) *(n.at_offset(face, 0, 1, 1) + n.at_offset(face, -1, 1, 1))
-                DN.add_element(cur_idx_0, glob_idx_0_2, -v_s_0111/dx);
-                DN.add_element(cur_idx_0, glob_idx_0,    v_s_0111/dx);
+                float_type v_s_00   =  n(U_old::tag(), 1)                  + v_field_vel;
+                float_type v_s_01   =  n.at_offset(U_old::tag(),  0, 1, 1) + v_field_vel;
+                float_type u_s_00   =  n(U_old::tag(), 0)                  + u_field_vel;
+                float_type u_s_10   =  n.at_offset(U_old::tag(),  1, 0, 0) + u_field_vel;
 
-                // n.at_offset(edge, 0, 0, 0) *(n.at_offset(face, 0, 0, 0) + n.at_offset(face, 0, -1, 0))
-                DN.add_element(cur_idx_1, glob_idx_1,    u_s_0001/dx);
-                DN.add_element(cur_idx_1, glob_idx_1_1, -u_s_0001/dx);
-                // n.at_offset(edge, 1, 0, 0) *(n.at_offset(face, 1, 0, 0) + n.at_offset(face, 1, -1, 0))
-                DN.add_element(cur_idx_1, glob_idx_1_4,  u_s_1011/dx);
-                DN.add_element(cur_idx_1, glob_idx_1,   -u_s_1011/dx);
-
-                // n.at_offset(edge, 0, 0, 0) *(n.at_offset(face, 0, 0, 0) + n.at_offset(face, 0, -1, 0))
-                DN.add_element(cur_idx_1, glob_idx_0,   -u_s_0001/dx);
-                DN.add_element(cur_idx_1, glob_idx_0_1,  u_s_0001/dx);
-                // n.at_offset(edge, 1, 0, 0) *(n.at_offset(face, 1, 0, 0) + n.at_offset(face, 1, -1, 0))
-                DN.add_element(cur_idx_1, glob_idx_0_3, -u_s_1011/dx);
-                DN.add_element(cur_idx_1, glob_idx_0_4,  u_s_1011/dx);*/
 
                 int p_idx_w = n.at_offset(idx_p_type::tag(), -1, 0, 0);
                 int p_idx_e = n.at_offset(idx_p_type::tag(), 1, 0, 0);
                 int p_idx_n = n.at_offset(idx_p_type::tag(), 0, 1, 0);
                 int p_idx_s = n.at_offset(idx_p_type::tag(), 0, -1, 0);
 
-                if (p_idx_w > 0 || l != base_level)
-                {
-                    //-n.at_offset(edge, 0, 0, 0) *(n.at_offset(face, 0, 0, 1) + n.at_offset(face, -1, 0, 1))
-                    DN.add_element(cur_idx_0, glob_idx_00, v_s_0010);
-                    //-n.at_offset(edge, 0, 1, 0) *(n.at_offset(face, 0, 1, 1) + n.at_offset(face, -1, 1, 1))
-                    DN.add_element(cur_idx_0, glob_idx_01, v_s_0111);
+                /*
+                //x_component
+                //-n.at_offset(edge, 0, 0, 0) *(n.at_offset(face, 0, 0, 1) + n.at_offset(face, -1, 0, 1))
+                DN.add_element(cur_idx_0, glob_idx_00_2, v_s_0010);
+                //-n.at_offset(edge, 0, 1, 0) *(n.at_offset(face, 0, 1, 1) + n.at_offset(face, -1, 1, 1))
+                DN.add_element(cur_idx_0, glob_idx_01_2, v_s_0111);
 
-                    //-n.at_offset(edge, 0, 0, 0) *(n.at_offset(face, 0, 0, 1) + n.at_offset(face, -1, 0, 1))
-                    DN.add_element(cur_idx_u_0, glob_idx_00, v_s_0010);
-                    //-n.at_offset(edge, 0, 1, 0) *(n.at_offset(face, 0, 1, 1) + n.at_offset(face, -1, 1, 1))
-                    DN.add_element(cur_idx_u_0, glob_idx_01, v_s_0111);
-                }
-                if (p_idx_s > 0 || l != base_level)
-                {
-                    // n.at_offset(edge, 0, 0, 0) *(n.at_offset(face, 0, 0, 0) + n.at_offset(face, 0, -1, 0))
-                    DN.add_element(cur_idx_1, glob_idx_00, u_s_0001);
-                    // n.at_offset(edge, 1, 0, 0) *(n.at_offset(face, 1, 0, 0) + n.at_offset(face, 1, -1, 0))
-                    DN.add_element(cur_idx_1, glob_idx_10, u_s_1011);
+                //adding it to momentum equation
+                //-n.at_offset(edge, 0, 0, 0) *(n.at_offset(face, 0, 0, 1) + n.at_offset(face, -1, 0, 1))
+                DN.add_element(cur_idx_u_0, glob_idx_00_2, v_s_0010);
+                //-n.at_offset(edge, 0, 1, 0) *(n.at_offset(face, 0, 1, 1) + n.at_offset(face, -1, 1, 1))
+                DN.add_element(cur_idx_u_0, glob_idx_01_2, v_s_0111);
 
-                    // n.at_offset(edge, 0, 0, 0) *(n.at_offset(face, 0, 0, 0) + n.at_offset(face, 0, -1, 0))
-                    DN.add_element(cur_idx_u_1, glob_idx_00, u_s_0001);
-                    // n.at_offset(edge, 1, 0, 0) *(n.at_offset(face, 1, 0, 0) + n.at_offset(face, 1, -1, 0))
-                    DN.add_element(cur_idx_u_1, glob_idx_10, u_s_1011);
-                }
+                //y_component
+                // n.at_offset(edge, 0, 0, 0) *(n.at_offset(face, 0, 0, 0) + n.at_offset(face, 0, -1, 0))
+                DN.add_element(cur_idx_1, glob_idx_00_2, u_s_0001);
+                // n.at_offset(edge, 1, 0, 0) *(n.at_offset(face, 1, 0, 0) + n.at_offset(face, 1, -1, 0))
+                DN.add_element(cur_idx_1, glob_idx_10_2, u_s_1011);
+
+                //adding it to momentum equation
+                // n.at_offset(edge, 0, 0, 0) *(n.at_offset(face, 0, 0, 0) + n.at_offset(face, 0, -1, 0))
+                DN.add_element(cur_idx_u_1, glob_idx_00_2, u_s_0001);
+                // n.at_offset(edge, 1, 0, 0) *(n.at_offset(face, 1, 0, 0) + n.at_offset(face, 1, -1, 0))
+                DN.add_element(cur_idx_u_1, glob_idx_10_2, u_s_1011);
+
+                //z_component
+                DN.add_element(cur_idx_2, glob_idx_00, v_s_00*0.5);
+                DN.add_element(cur_idx_2, glob_idx_01, v_s_01*0.5);
+                DN.add_element(cur_idx_2, glob_idx_00_1, -u_s_00*0.5);
+                DN.add_element(cur_idx_2, glob_idx_10_1, -u_s_10*0.5);
+
+                DN.add_element(cur_idx_u_2, glob_idx_00, v_s_00*0.5);
+                DN.add_element(cur_idx_u_2, glob_idx_01, v_s_01*0.5);
+                DN.add_element(cur_idx_u_2, glob_idx_00_1, -u_s_00*0.5);
+                DN.add_element(cur_idx_u_2, glob_idx_10_1, -u_s_10*0.5);
+
+                //DN.add_element(cur_idx_2, glob_idx_2, -1.0);
+                DN.add_element(cur_idx_2, gN_idx_2, -1.0);*/
+
+                //0.5 * n.at_offset(edge, 0, 0, y_p) * (n.at_offset(face, 0, 0, z_p) + n.at_offset(face, -1, 0, z_p))
+                DN.add_element(cur_idx_0, glob_idx_00_1, w_s_0010);
+                //-n.at_offset(edge, 0, 0, z_p) *  (n.at_offset(face, 0, 0, y_p) + n.at_offset(face, -1, 0, y_p))
+                DN.add_element(cur_idx_0, glob_idx_00_2, v_s_0010);
+                //-n.at_offset(edge, 0, 1, z_p) * (n.at_offset(face,  0, 1, y_p) + n.at_offset(face, -1, 1, y_p))
+                DN.add_element(cur_idx_0, glob_idx_01_2, v_s_0111);
 
 
-                //(p_idx_w <= 0 || p_idx_e <=0)
-
-                /*if (p_set_zero) {
-
-                if ((p_idx_w > 0 && p_idx_e > 0) || l != base_level)
-                {
-                    //-n.at_offset(edge, 0, 0, 0) *(n.at_offset(face, 0, 0, 1) + n.at_offset(face, -1, 0, 1))
-                    DN.add_element(cur_idx_0, glob_idx_1, v_s_0010 / dx);
-                    DN.add_element(cur_idx_0, glob_idx_1_1, -v_s_0010 / dx);
-                    //-n.at_offset(edge, 0, 1, 0) *(n.at_offset(face, 0, 1, 1) + n.at_offset(face, -1, 1, 1))
-                    DN.add_element(cur_idx_0, glob_idx_1_2, v_s_0111 / dx);
-                    DN.add_element(cur_idx_0, glob_idx_1_3, -v_s_0111 / dx);
-
-                    //-n.at_offset(edge, 0, 0, 0) *(n.at_offset(face, 0, 0, 1) + n.at_offset(face, -1, 0, 1))
-                    DN.add_element(cur_idx_0, glob_idx_0, -v_s_0010 / dx);
-                    DN.add_element(cur_idx_0, glob_idx_0_1, v_s_0010 / dx);
-                    //-n.at_offset(edge, 0, 1, 0) *(n.at_offset(face, 0, 1, 1) + n.at_offset(face, -1, 1, 1))
-                    DN.add_element(cur_idx_0, glob_idx_0_2, -v_s_0111 / dx);
-                    DN.add_element(cur_idx_0, glob_idx_0, v_s_0111 / dx);
-
-                    //add entries in momentum equation
-                    //-n.at_offset(edge, 0, 0, 0) *(n.at_offset(face, 0, 0, 1) + n.at_offset(face, -1, 0, 1))
-                    DN.add_element(cur_idx_u_0, glob_idx_1, v_s_0010 / dx);
-                    DN.add_element(cur_idx_u_0, glob_idx_1_1, -v_s_0010 / dx);
-                    //-n.at_offset(edge, 0, 1, 0) *(n.at_offset(face, 0, 1, 1) + n.at_offset(face, -1, 1, 1))
-                    DN.add_element(cur_idx_u_0, glob_idx_1_2, v_s_0111 / dx);
-                    DN.add_element(cur_idx_u_0, glob_idx_1_3, -v_s_0111 / dx);
-
-                    //-n.at_offset(edge, 0, 0, 0) *(n.at_offset(face, 0, 0, 1) + n.at_offset(face, -1, 0, 1))
-                    DN.add_element(cur_idx_u_0, glob_idx_0, -v_s_0010 / dx);
-                    DN.add_element(cur_idx_u_0, glob_idx_0_1, v_s_0010 / dx);
-                    //-n.at_offset(edge, 0, 1, 0) *(n.at_offset(face, 0, 1, 1) + n.at_offset(face, -1, 1, 1))
-                    DN.add_element(cur_idx_u_0, glob_idx_0_2, -v_s_0111 / dx);
-                    DN.add_element(cur_idx_u_0, glob_idx_0, v_s_0111 / dx);
-                }
-                if ((p_idx_n > 0 && p_idx_s > 0) || l != base_level)
-                {
-                    // n.at_offset(edge, 0, 0, 0) *(n.at_offset(face, 0, 0, 0) + n.at_offset(face, 0, -1, 0))
-                    DN.add_element(cur_idx_1, glob_idx_1, u_s_0001 / dx);
-                    DN.add_element(cur_idx_1, glob_idx_1_1, -u_s_0001 / dx);
-                    // n.at_offset(edge, 1, 0, 0) *(n.at_offset(face, 1, 0, 0) + n.at_offset(face, 1, -1, 0))
-                    DN.add_element(cur_idx_1, glob_idx_1_4, u_s_1011 / dx);
-                    DN.add_element(cur_idx_1, glob_idx_1, -u_s_1011 / dx);
-
-                    // n.at_offset(edge, 0, 0, 0) *(n.at_offset(face, 0, 0, 0) + n.at_offset(face, 0, -1, 0))
-                    DN.add_element(cur_idx_1, glob_idx_0, -u_s_0001 / dx);
-                    DN.add_element(cur_idx_1, glob_idx_0_1, u_s_0001 / dx);
-                    // n.at_offset(edge, 1, 0, 0) *(n.at_offset(face, 1, 0, 0) + n.at_offset(face, 1, -1, 0))
-                    DN.add_element(cur_idx_1, glob_idx_0_3, -u_s_1011 / dx);
-                    DN.add_element(cur_idx_1, glob_idx_0_4, u_s_1011 / dx);
-
-                    //add entries in momentum equation
-                    // n.at_offset(edge, 0, 0, 0) *(n.at_offset(face, 0, 0, 0) + n.at_offset(face, 0, -1, 0))
-                    DN.add_element(cur_idx_u_1, glob_idx_1, u_s_0001 / dx);
-                    DN.add_element(cur_idx_u_1, glob_idx_1_1, -u_s_0001 / dx);
-                    // n.at_offset(edge, 1, 0, 0) *(n.at_offset(face, 1, 0, 0) + n.at_offset(face, 1, -1, 0))
-                    DN.add_element(cur_idx_u_1, glob_idx_1_4, u_s_1011 / dx);
-                    DN.add_element(cur_idx_u_1, glob_idx_1, -u_s_1011 / dx);
-
-                    // n.at_offset(edge, 0, 0, 0) *(n.at_offset(face, 0, 0, 0) + n.at_offset(face, 0, -1, 0))
-                    DN.add_element(cur_idx_u_1, glob_idx_0, -u_s_0001 / dx);
-                    DN.add_element(cur_idx_u_1, glob_idx_0_1, u_s_0001 / dx);
-                    // n.at_offset(edge, 1, 0, 0) *(n.at_offset(face, 1, 0, 0) + n.at_offset(face, 1, -1, 0))
-                    DN.add_element(cur_idx_u_1, glob_idx_0_3, -u_s_1011 / dx);
-                    DN.add_element(cur_idx_u_1, glob_idx_0_4, u_s_1011 / dx);
-                }
-                }
-
-                else {
-                    //-n.at_offset(edge, 0, 0, 0) *(n.at_offset(face, 0, 0, 1) + n.at_offset(face, -1, 0, 1))
-                    DN.add_element(cur_idx_0, glob_idx_1, v_s_0010 / dx);
-                    DN.add_element(cur_idx_0, glob_idx_1_1, -v_s_0010 / dx);
-                    //-n.at_offset(edge, 0, 0, 0) *(n.at_offset(face, 0, 0, 1) + n.at_offset(face, -1, 0, 1))
-                    DN.add_element(cur_idx_0, glob_idx_0, -v_s_0010 / dx);
-                    DN.add_element(cur_idx_0, glob_idx_0_1, v_s_0010 / dx);
-                    //if (p_idx_n > 0) {
-                    //-n.at_offset(edge, 0, 1, 0) *(n.at_offset(face, 0, 1, 1) + n.at_offset(face, -1, 1, 1))
-                    DN.add_element(cur_idx_0, glob_idx_1_2, v_s_0111 / dx);
-                    DN.add_element(cur_idx_0, glob_idx_1_3, -v_s_0111 / dx);
-                    //-n.at_offset(edge, 0, 1, 0) *(n.at_offset(face, 0, 1, 1) + n.at_offset(face, -1, 1, 1))
-                    DN.add_element(cur_idx_0, glob_idx_0_2, -v_s_0111 / dx);
-                    DN.add_element(cur_idx_0, glob_idx_0, v_s_0111 / dx);
-                    //}
-
-                    //add entries in momentum equation
-                    //-n.at_offset(edge, 0, 0, 0) *(n.at_offset(face, 0, 0, 1) + n.at_offset(face, -1, 0, 1))
-                    DN.add_element(cur_idx_u_0, glob_idx_1, v_s_0010 / dx);
-                    DN.add_element(cur_idx_u_0, glob_idx_1_1, -v_s_0010 / dx);
-                    //-n.at_offset(edge, 0, 1, 0) *(n.at_offset(face, 0, 1, 1) + n.at_offset(face, -1, 1, 1))
-                    DN.add_element(cur_idx_u_0, glob_idx_1_2, v_s_0111 / dx);
-                    DN.add_element(cur_idx_u_0, glob_idx_1_3, -v_s_0111 / dx);
-                    //-n.at_offset(edge, 0, 0, 0) *(n.at_offset(face, 0, 0, 1) + n.at_offset(face, -1, 0, 1))
-                    DN.add_element(cur_idx_u_0, glob_idx_0, -v_s_0010 / dx);
-                    DN.add_element(cur_idx_u_0, glob_idx_0_1, v_s_0010 / dx);
-                    //-n.at_offset(edge, 0, 1, 0) *(n.at_offset(face, 0, 1, 1) + n.at_offset(face, -1, 1, 1))
-                    DN.add_element(cur_idx_u_0, glob_idx_0_2, -v_s_0111 / dx);
-                    DN.add_element(cur_idx_u_0, glob_idx_0, v_s_0111 / dx);
-
-                    // n.at_offset(edge, 0, 0, 0) *(n.at_offset(face, 0, 0, 0) + n.at_offset(face, 0, -1, 0))
-                    DN.add_element(cur_idx_1, glob_idx_1, u_s_0001 / dx);
-                    DN.add_element(cur_idx_1, glob_idx_1_1, -u_s_0001 / dx);
-                    // n.at_offset(edge, 0, 0, 0) *(n.at_offset(face, 0, 0, 0) + n.at_offset(face, 0, -1, 0))
-                    DN.add_element(cur_idx_1, glob_idx_0, -u_s_0001 / dx);
-                    DN.add_element(cur_idx_1, glob_idx_0_1, u_s_0001 / dx);
-                    // n.at_offset(edge, 1, 0, 0) *(n.at_offset(face, 1, 0, 0) + n.at_offset(face, 1, -1, 0))
-                    DN.add_element(cur_idx_1, glob_idx_1_4, u_s_1011 / dx);
-                    DN.add_element(cur_idx_1, glob_idx_1, -u_s_1011 / dx);
-                    // n.at_offset(edge, 1, 0, 0) *(n.at_offset(face, 1, 0, 0) + n.at_offset(face, 1, -1, 0))
-                    DN.add_element(cur_idx_1, glob_idx_0_3, -u_s_1011 / dx);
-                    DN.add_element(cur_idx_1, glob_idx_0_4, u_s_1011 / dx);
-
-                    //add entries in momentum equation
-                    // n.at_offset(edge, 0, 0, 0) *(n.at_offset(face, 0, 0, 0) + n.at_offset(face, 0, -1, 0))
-                    DN.add_element(cur_idx_u_1, glob_idx_1, u_s_0001 / dx);
-                    DN.add_element(cur_idx_u_1, glob_idx_1_1, -u_s_0001 / dx);
-                    // n.at_offset(edge, 1, 0, 0) *(n.at_offset(face, 1, 0, 0) + n.at_offset(face, 1, -1, 0))
-                    DN.add_element(cur_idx_u_1, glob_idx_1_4, u_s_1011 / dx);
-                    DN.add_element(cur_idx_u_1, glob_idx_1, -u_s_1011 / dx);
-
-                    // n.at_offset(edge, 0, 0, 0) *(n.at_offset(face, 0, 0, 0) + n.at_offset(face, 0, -1, 0))
-                    DN.add_element(cur_idx_u_1, glob_idx_0, -u_s_0001 / dx);
-                    DN.add_element(cur_idx_u_1, glob_idx_0_1, u_s_0001 / dx);
-                    // n.at_offset(edge, 1, 0, 0) *(n.at_offset(face, 1, 0, 0) + n.at_offset(face, 1, -1, 0))
-                    DN.add_element(cur_idx_u_1, glob_idx_0_3, -u_s_1011 / dx);
-                    DN.add_element(cur_idx_u_1, glob_idx_0_4, u_s_1011 / dx);
-                //}
-                }*/
-
-                /*DN.add_element(cur_idx_0, glob_idx_00, v_s_0010);
-                DN.add_element(cur_idx_0, glob_idx_01, v_s_0111);
-
-                DN.add_element(cur_idx_1, glob_idx_00, u_s_0001);
-                DN.add_element(cur_idx_1, glob_idx_10, u_s_1011);*/
+                // n.at_offset(edge, 0, 0, z_p) * (n.at_offset(face, 0, 0, x_p) + n.at_offset(face, 0, -1, x_p))
+                DN.add_element(cur_idx_1, glob_idx_00_2, u_s_0001);
+                // n.at_offset(edge, 1, 0, z_p) * (n.at_offset(face, 1, 0, x_p) + n.at_offset(face, 1, -1, x_p))
+                DN.add_element(cur_idx_1, glob_idx_10_2, u_s_1011);
+                //-0.5 * n.at_offset(edge, 0, 0, x_p) * (+n.at_offset(face, 0, 0, z_p) + n.at_offset(face, 0, -1, z_p))
+                DN.add_element(cur_idx_1, glob_idx_00, w_s_0001);
+                
+                //0.5 * (n.at_offset(edge, 0, 0, x_p) * n.at_offset(face, 0, 0, y_p)  
+                //+n.at_offset(edge, 0, 1, x_p) * n.at_offset(face, 0, 1, y_p) 
+                //-n.at_offset(edge, 0, 0, y_p) * n.at_offset(face, 0, 0, x_p) 
+                //-n.at_offset(edge, 1, 0, y_p) * n.at_offset(face, 1, 0, x_p))
+                DN.add_element(cur_idx_2, glob_idx_00, v_s_00*0.5);
+                DN.add_element(cur_idx_2, glob_idx_01, v_s_01*0.5);
+                DN.add_element(cur_idx_2, glob_idx_00_1, -u_s_00*0.5);
+                DN.add_element(cur_idx_2, glob_idx_10_1, -u_s_10*0.5);
             }
         }
         domain_->client_communicator().barrier();
@@ -3909,14 +3869,17 @@ class LinearNS
                 
                 int cur_idx_0 = n(idx_N_type::tag(), 0);
                 int cur_idx_1 = n(idx_N_type::tag(), 1);
+                int cur_idx_2 = n(idx_Nz_type::tag(), 0);
 
                 if (cur_idx_0 < 0 || cur_idx_1 < 0) continue;
                 
                 int cur_idx_u_0 = n(idx_u_type::tag(), 0);
                 int cur_idx_u_1 = n(idx_u_type::tag(), 1);
+                int cur_idx_u_2 = n(idx_uz_type::tag(), 0);
 
                 int gN_idx_0 = n(idx_N_g_type::tag(), 0);
                 int gN_idx_1 = n(idx_N_g_type::tag(), 1);
+                int gN_idx_2 = n(idx_Nz_g_type::tag(), 0);
 
                 int glob_idx_0_00 = n.at_offset(idx_u_g_type::tag(), 0,  0, 0);
                 int glob_idx_0_01 = n.at_offset(idx_u_g_type::tag(), 0, -1, 0);
@@ -3928,16 +3891,30 @@ class LinearNS
                 int glob_idx_1_10 = n.at_offset(idx_u_g_type::tag(), -1, 0, 1);
                 int glob_idx_1_11 = n.at_offset(idx_u_g_type::tag(), -1, 1, 1);
 
-                float_type om_00 = n.at_offset(edge_aux_type::tag(), 0, 0, 0)*0.25;
-                float_type om_01 = n.at_offset(edge_aux_type::tag(), 0, 1, 0)*0.25;
-                float_type om_10 = n.at_offset(edge_aux_type::tag(), 1, 0, 0)*0.25;
+                int glob_idx_2_00 = n.at_offset(idx_uz_g_type::tag(), 0,  0, 0);
+                int glob_idx_2_01 = n.at_offset(idx_uz_g_type::tag(), 0, -1, 0);
+                int glob_idx_2_10 = n.at_offset(idx_uz_g_type::tag(), -1, 0, 0);
+                int glob_idx_2_11 = n.at_offset(idx_uz_g_type::tag(), 1, -1, 0);
+
+                float_type om_00_0 = n.at_offset(edge_aux_type::tag(), 0, 0, 0)*0.5;
+                float_type om_01_0 = n.at_offset(edge_aux_type::tag(), 0, 1, 0)*0.5;
+                float_type om_10_0 = n.at_offset(edge_aux_type::tag(), 1, 0, 0)*0.5;
+
+                float_type om_00_1 = n.at_offset(edge_aux_type::tag(), 0, 0, 1)*0.5;
+                float_type om_01_1 = n.at_offset(edge_aux_type::tag(), 0, 1, 1)*0.5;
+                float_type om_10_1 = n.at_offset(edge_aux_type::tag(), 1, 0, 1)*0.5;
+
+                float_type om_00_2 = n.at_offset(edge_aux_type::tag(), 0, 0, 2)*0.25;
+                float_type om_01_2 = n.at_offset(edge_aux_type::tag(), 0, 1, 2)*0.25;
+                float_type om_10_2 = n.at_offset(edge_aux_type::tag(), 1, 0, 2)*0.25;
+
 
                 int p_idx_w = n.at_offset(idx_p_type::tag(), -1, 0, 0);
                 int p_idx_e = n.at_offset(idx_p_type::tag(), 1, 0, 0);
                 int p_idx_n = n.at_offset(idx_p_type::tag(), 0, 1, 0);
                 int p_idx_s = n.at_offset(idx_p_type::tag(), 0, -1, 0);
 
-                if (p_set_zero) {
+                /*if (p_set_zero) {
 
                 if ((p_idx_w > 0 && p_idx_e > 0) || l != base_level)
                 {
@@ -3988,10 +3965,52 @@ class LinearNS
                 }
 
                 DN.add_element(cur_idx_0, gN_idx_0, -1.0); 
-                DN.add_element(cur_idx_1, gN_idx_1, -1.0);
+                DN.add_element(cur_idx_1, gN_idx_1, -1.0);*/
 
                 //DN.add_element(cur_idx_u_0, gN_idx_0, -1.0);
                 //DN.add_element(cur_idx_u_1, gN_idx_1, -1.0);
+
+                //0.5 * n.at_offset(edge, 0, 0, y_p) * (n.at_offset(face, 0, 0, z_p) + n.at_offset(face, -1, 0, z_p))
+                DN.add_element(cur_idx_0, glob_idx_2_00, om_00_1);
+                DN.add_element(cur_idx_0, glob_idx_2_10, om_00_1);
+
+                //-n.at_offset(edge, 0, 0, z_p) *  (n.at_offset(face, 0, 0, y_p) + n.at_offset(face, -1, 0, y_p))
+                //-n.at_offset(edge, 0, 1, z_p) * (n.at_offset(face,  0, 1, y_p) + n.at_offset(face, -1, 1, y_p))
+                DN.add_element(cur_idx_0, glob_idx_1_00, -om_00_2);
+                DN.add_element(cur_idx_0, glob_idx_1_10, -om_00_2);
+                DN.add_element(cur_idx_0, glob_idx_1_01, -om_01_2);
+                DN.add_element(cur_idx_0, glob_idx_1_11, -om_01_2);
+
+                // n.at_offset(edge, 0, 0, z_p) * (n.at_offset(face, 0, 0, x_p) + n.at_offset(face, 0, -1, x_p))
+                // n.at_offset(edge, 1, 0, z_p) * (n.at_offset(face, 1, 0, x_p) + n.at_offset(face, 1, -1, x_p))
+                DN.add_element(cur_idx_1, glob_idx_0_00,  om_00_2);
+                DN.add_element(cur_idx_1, glob_idx_0_01,  om_00_2);
+                DN.add_element(cur_idx_1, glob_idx_0_10,  om_10_2);
+                DN.add_element(cur_idx_1, glob_idx_0_11,  om_10_2);
+                //-0.5 * n.at_offset(edge, 0, 0, x_p) * (+n.at_offset(face, 0, 0, z_p) + n.at_offset(face, 0, -1, z_p))
+                DN.add_element(cur_idx_1, glob_idx_2_00, -om_00_0);
+                DN.add_element(cur_idx_1, glob_idx_2_01, -om_00_0);
+
+                //0.5 * (n.at_offset(edge, 0, 0, x_p) * n.at_offset(face, 0, 0, y_p)  
+                //+n.at_offset(edge, 0, 1, x_p) * n.at_offset(face, 0, 1, y_p) 
+                //-n.at_offset(edge, 0, 0, y_p) * n.at_offset(face, 0, 0, x_p) 
+                //-n.at_offset(edge, 1, 0, y_p) * n.at_offset(face, 1, 0, x_p))
+                DN.add_element(cur_idx_2, glob_idx_1_00,  om_00_0);
+                DN.add_element(cur_idx_2, glob_idx_1_01,  om_01_0);
+                DN.add_element(cur_idx_2, glob_idx_0_00, -om_00_1);
+                DN.add_element(cur_idx_2, glob_idx_0_10, -om_10_1);
+
+
+                DN.add_element(cur_idx_0, gN_idx_0, -1.0); 
+                DN.add_element(cur_idx_1, gN_idx_1, -1.0);
+                DN.add_element(cur_idx_2, gN_idx_2, -1.0);
+
+                DN.add_element(cur_idx_u_0, gN_idx_0, 1.0);
+                DN.add_element(cur_idx_u_1, gN_idx_1, 1.0);
+                DN.add_element(cur_idx_u_2, gN_idx_2, 1.0);
+
+
+
             }
         }
         }
@@ -4000,6 +4019,10 @@ class LinearNS
         this->template construct_upward_BC_intrp<idx_N_type, idx_N_g_type>(DN);
 
         this->template construct_interpolation<idx_N_type, idx_N_g_type>(DN);
+
+        this->template construct_upward_BC_intrp<idx_Nz_type, idx_Nz_g_type>(DN);
+
+        this->template construct_interpolation<idx_Nz_type, idx_Nz_g_type>(DN);
 
         domain_->client_communicator().barrier();
     }
@@ -4062,6 +4085,7 @@ class LinearNS
                     {
                         int cur_idx_0 = n(idx_u_type::tag(), 0);
                         int cur_idx_1 = n(idx_u_type::tag(), 1);
+                        int cur_idx_2 = n(idx_uz_type::tag(), 0);
 
                         int glo_idx_0 = n(idx_p_g_type::tag(), 0);
                         int glo_idx_10 =
@@ -4069,35 +4093,13 @@ class LinearNS
                         int glo_idx_01 =
                             n.at_offset(idx_p_g_type::tag(), 0, -1, 0);
 
-                        if (p_set_zero)
-                        {
-                            if (glo_idx_10 > 0)
-                            {
-                                Grad.add_element(cur_idx_0, glo_idx_0,
-                                    1.0 / dx_level);
-                                Grad.add_element(cur_idx_0, glo_idx_10,
-                                    -1.0 / dx_level);
-                            }
-                            if (glo_idx_01 > 0)
-                            {
-                                Grad.add_element(cur_idx_1, glo_idx_0,
-                                    1.0 / dx_level);
-                                Grad.add_element(cur_idx_1, glo_idx_01,
-                                    -1.0 / dx_level);
-                            }
-                        }
-                        else
-                        {
-                            Grad.add_element(cur_idx_0, glo_idx_0,
-                                1.0 / dx_level);
-                            Grad.add_element(cur_idx_0, glo_idx_10,
-                                -1.0 / dx_level);
+                        Grad.add_element(cur_idx_0, glo_idx_0, 1.0 / dx_level);
+                        Grad.add_element(cur_idx_0, glo_idx_10, -1.0 / dx_level);
 
-                            Grad.add_element(cur_idx_1, glo_idx_0,
-                                1.0 / dx_level);
-                            Grad.add_element(cur_idx_1, glo_idx_01,
-                                -1.0 / dx_level);
-                        }
+                        Grad.add_element(cur_idx_1, glo_idx_0, 1.0 / dx_level);
+                        Grad.add_element(cur_idx_1, glo_idx_01, -1.0 / dx_level);
+
+                        Grad.add_element(cur_idx_2, glo_idx_0, -mode_c);
                     }
                 }
             }
@@ -4149,29 +4151,6 @@ class LinearNS
                 if (!it->is_leaf()) continue;
                 if (it->is_correction())
                 {
-                    /*for (auto& n : it->data())
-                    {
-                        int cur_idx = n(idx_p_type::tag(), 0);
-                        if (cur_idx < 0) continue;
-                        int glo_idx_0_0 = n(idx_u_g_type::tag(), 0);
-                        int glo_idx_1_0 = n(idx_u_g_type::tag(), 1);
-
-                        int glo_idx_0_1 =
-                            n.at_offset(idx_u_g_type::tag(), 1, 0, 0);
-                        int glo_idx_1_1 =
-                            n.at_offset(idx_u_g_type::tag(), 0, 1, 1);
-
-                        if (glo_idx_0_0 < 0 || glo_idx_0_1 < 0 ||
-                            glo_idx_1_0 < 0 || glo_idx_1_1 < 0)
-                        {
-                            continue;
-                        }
-
-                        Div.add_element(cur_idx, glo_idx_0_0, -1.0 / dx_level);
-                        Div.add_element(cur_idx, glo_idx_1_0, -1.0 / dx_level);
-                        Div.add_element(cur_idx, glo_idx_0_1, 1.0 / dx_level);
-                        Div.add_element(cur_idx, glo_idx_1_1, 1.0 / dx_level);
-                    }*/
                     continue;
                 }
                 else
@@ -4207,6 +4186,9 @@ class LinearNS
 
                         glo_idx_1 = n.at_offset(idx_u_g_type::tag(), 0, 1, 1);
                         Div.add_element(cur_idx, glo_idx_1, 1.0 / dx_level);
+
+                        int glo_idx_2 = n(idx_uz_g_type::tag(), 0);
+                        Div.add_element(cur_idx, glo_idx_2, -mode_c);
                     }
                 }
             }
@@ -4288,8 +4270,10 @@ class LinearNS
                     {
                         int cur_idx = n(idx_p_type::tag(), 0);
                         int glo_idx = n(idx_p_g_type::tag(), 0);
+
+                        float_type val_center = -4.0 / dx_level / dx_level - mode_c*mode_c;
                         Div.add_element(cur_idx, glo_idx,
-                            -4.0 / dx_level / dx_level);
+                            val_center);
                         glo_idx =
                             n.at_offset(idx_p_g_type::tag(), 0, 1, 0);
                         Div.add_element(cur_idx, glo_idx,
@@ -4403,6 +4387,9 @@ class LinearNS
                         glo_idx_1 = n.at_offset(idx_N_g_type::tag(), 0, 1, 1);
                         Div_cs.add_element(cur_idx, glo_idx_1, 1.0 / dx_level);
 
+                        int glo_idx_2 = n(idx_Nz_g_type::tag(), 0);
+                        Div_cs.add_element(cur_idx, glo_idx_2, -mode_c); //ic*i = -c
+
                         Div_cs.add_element(cur_idx, glo_cs_idx, -1.0);
                     }
                 }
@@ -4454,29 +4441,54 @@ class LinearNS
                 if (!it->is_leaf() && it->is_correction()) continue;
                 for (auto& n : it->data())
                 {
-                    int cur_idx = n(idx_w_type::tag(), 0);
-                    int glo_idx = n(idx_w_g_type::tag(), 0);
-                    if (cur_idx < 0) continue;
+                    int cur_idx_0 = n(idx_w_type::tag(), 0);
+                    int glo_idx_0 = n(idx_w_g_type::tag(), 0);
+
+                    int cur_idx_1 = n(idx_w_type::tag(), 1);
+                    int glo_idx_1 = n(idx_w_g_type::tag(), 1);
+
+                    int cur_idx_2 = n(idx_w_type::tag(), 2);
+                    int glo_idx_2 = n(idx_w_g_type::tag(), 2);
+                    if (cur_idx_0 < 0) continue;
                     int glo_idx_0_0 = n(idx_u_g_type::tag(), 0);
                     int glo_idx_1_0 = n(idx_u_g_type::tag(), 1);
+                    int glo_idx_2_0 = n(idx_uz_g_type::tag(), 0);
 
                     int glo_idx_0_1 =
                         n.at_offset(idx_u_g_type::tag(), 0, -1, 0);
                     int glo_idx_1_1 =
                         n.at_offset(idx_u_g_type::tag(), -1, 0, 1);
+                    int glo_idx_2_10 =
+                        n.at_offset(idx_uz_g_type::tag(), -1, 0, 0);
+                    int glo_idx_2_01 =
+                        n.at_offset(idx_uz_g_type::tag(), 0, -1, 0);
 
                     if (glo_idx_0_1 < 0 || glo_idx_1_1 < 0 || glo_idx_1_0 < 0 || glo_idx_1_0 < 0) {
                         //zero out vorticity at boundary
-                        Curl.add_element(cur_idx, glo_idx, -1.0);
+                        Curl.add_element(cur_idx_0, glo_idx_0, -1.0);
+                        Curl.add_element(cur_idx_1, glo_idx_1, -1.0);
+                        Curl.add_element(cur_idx_2, glo_idx_2, -1.0);
                         continue;
                     }
 
-                    Curl.add_element(cur_idx, glo_idx_0_0, -1.0 / dx_level);
-                    Curl.add_element(cur_idx, glo_idx_1_0, 1.0 / dx_level);
-                    Curl.add_element(cur_idx, glo_idx_0_1, 1.0 / dx_level);
-                    Curl.add_element(cur_idx, glo_idx_1_1, -1.0 / dx_level);
+                    Curl.add_element(cur_idx_0, glo_idx_2_01, -1.0 / dx_level);
+                    Curl.add_element(cur_idx_0, glo_idx_2_0, 1.0 / dx_level);
+                    Curl.add_element(cur_idx_0, glo_idx_1_0, -mode_c);
                     
-                    Curl.add_element(cur_idx, glo_idx, -1.0);
+                    Curl.add_element(cur_idx_0, glo_idx_0, -1.0);
+
+                    Curl.add_element(cur_idx_1, glo_idx_2_10, 1.0 / dx_level);
+                    Curl.add_element(cur_idx_1, glo_idx_2_0, -1.0 / dx_level);
+                    Curl.add_element(cur_idx_1, glo_idx_0_0, mode_c);
+                    
+                    Curl.add_element(cur_idx_1, glo_idx_1, -1.0);
+
+                    Curl.add_element(cur_idx_2, glo_idx_0_0, -1.0 / dx_level);
+                    Curl.add_element(cur_idx_2, glo_idx_1_0, 1.0 / dx_level);
+                    Curl.add_element(cur_idx_2, glo_idx_0_1, 1.0 / dx_level);
+                    Curl.add_element(cur_idx_2, glo_idx_1_1, -1.0 / dx_level);
+                    
+                    Curl.add_element(cur_idx_2, glo_idx_2, -1.0);
                 }
             }
         }
@@ -4527,6 +4539,22 @@ class LinearNS
         {
             boost::mpi::all_reduce(domain_->client_communicator(), &tmp_f_idx_g[0], domain_->ib().size(), &forcing_idx_all[0],
                 std::plus<real_coordinate_type>());
+        }
+
+        std::vector<int> tmp_fz_idx_g = forcing_z_idx_g;
+
+        for (std::size_t i=0; i<tmp_fz_idx_g.size(); ++i)
+        {
+            if (forcing_z_idx_g[i] < 0) tmp_fz_idx_g[i] = 0;
+            
+        }
+
+        std::vector<int> tmp_fz_idx_all(domain_->ib().size(), 0);
+
+        if (domain_->ib().size() > 0)
+        {
+            boost::mpi::all_reduce(domain_->client_communicator(), &tmp_fz_idx_g[0], domain_->ib().size(), &tmp_fz_idx_all[0],
+                std::plus<int>());
         }
 
         /*for (int i = 0; i < domain_->ib().size();i++) {
@@ -4581,10 +4609,31 @@ class LinearNS
                         //int f_glob = forcing_idx_g[i][field_idx];
                         int f_glob = forcing_idx_all[i][field_idx];
                         smearing.add_element(N_loc, f_glob, val); //-1 is here for the sign of smearing w.r.t. nonlinear term
-                        smearing.add_element(u_loc, f_glob, val);
+                        //smearing.add_element(u_loc, f_glob, val);
                         /*node(u, field_idx) +=
                             f[field_idx] * ddf(dist + off) * factor;*/
                     }
+
+                    decltype(ib_coord) off(0.5);
+                    //off[field_idx] = 0.0; // face data location
+
+                    auto ddf = domain_->ib().delta_func();
+
+                    float_type val = ddf(dist + off) * factor;
+                    if (std::abs(val) < 1e-12)
+                    {
+                        //std::cout << "uninfluenced node found with val " << val << std::endl;
+                        continue;
+                    }
+                    //int u_loc = node(idx_u_type::tag(),field_idx);
+                    //int f_glob = forcing_idx_g[i][field_idx];
+
+                    int N_loc = node(idx_Nz_type::tag(), 0);
+                    int u_loc = node(idx_uz_type::tag(), 0);
+                    //int f_glob = forcing_idx_g[i][field_idx];
+                    int f_glob = tmp_fz_idx_all[i];
+                    smearing.add_element(N_loc, f_glob, val); //-1 is here for the sign of smearing w.r.t. nonlinear term
+                    //smearing.add_element(u_loc, f_glob, val);
                 }
 
                 /*domain::Operator::ib_smearing<U>
@@ -4765,6 +4814,97 @@ class LinearNS
                 }
                 domain_->client_communicator().barrier();
             }
+            //if (world.rank() == 1) std::cout << "comm_ rank " << comm_.rank();
+            int f_loc = forcing_z_idx[i];
+            if (domain_->ib().rank(i) != comm_.rank())
+            {
+                //std::cout << "Rank " << world.rank() << " ib rank " << domain_->ib().rank(i) << std::endl;
+
+                //compute and send to the target processor
+                std::map<int, float_type> tmp_row;
+                std::size_t               oct_i = 0;
+
+                for (auto it : domain_->ib().influence_list(i))
+                {
+                    if (!it->locally_owned()) continue;
+                    auto ib_coord = domain_->ib().scaled_coordinate(i,
+                        it->refinement_level());
+
+                    auto block = domain_->ib().influence_pts(i, oct_i);
+
+                    for (auto& node : block)
+                    {
+                        auto n_coord = node.level_coordinate();
+                        auto dist = n_coord - ib_coord;
+
+                        decltype(ib_coord) off(0.5);
+                        //off[field_idx] = 0.0; // face data location
+
+                        auto ddf = domain_->ib().delta_func();
+
+                        float_type val = ddf(dist + off);
+                        if (std::abs(val) < 1e-12) continue;
+                        int u_glob = node(idx_uz_g_type::tag());
+                        //int f_loc = forcing_idx[i][field_idx];
+                        this->map_add_element(u_glob, val, tmp_row);
+                        /*node(u, field_idx) +=
+                            f[field_idx] * ddf(dist + off) * factor;*/
+                    }
+
+                    oct_i += 1;
+                }
+                //std::cout << "Rank " << world.rank() << "start sending" << std::endl;
+                world.send(ib_rank, world.rank(), tmp_row);
+            }
+            else
+            {
+                //std::cout << "Rank " << world.rank() << " ib rank " << domain_->ib().rank(i) << std::endl;
+                std::size_t oct_i = 0;
+
+                for (auto it : domain_->ib().influence_list(i))
+                {
+                    if (!it->locally_owned()) continue;
+                    auto ib_coord = domain_->ib().scaled_coordinate(i,
+                        it->refinement_level());
+
+                    auto block = domain_->ib().influence_pts(i, oct_i);
+
+                    for (auto& node : block)
+                    {
+                        auto n_coord = node.level_coordinate();
+                        auto dist = n_coord - ib_coord;
+
+                        decltype(ib_coord) off(0.5);
+                        //off[field_idx] = 0.0; // face data location
+
+                        auto ddf = domain_->ib().delta_func();
+
+                        float_type val = ddf(dist + off);
+                        if (std::abs(val) < 1e-12) continue;
+                        int u_glob = node(idx_uz_g_type::tag());
+
+                        project.add_element(f_loc, u_glob, val);
+                        /*node(u, field_idx) +=
+                            f[field_idx] * ddf(dist + off) * factor;*/
+                    }
+
+                    oct_i += 1;
+                }
+
+                for (int k = 1; k < world.size(); k++)
+                {
+                    if (k == world.rank()) continue;
+                    std::map<int, float_type> res;
+                    world.recv(k, k, res);
+                    for (const auto& [key, val] : res)
+                    {
+                        project.add_element(f_loc, key, val);
+                    }
+                    //std::cout << "received " << k << std::endl;
+                }
+                //std::cout << "after recieving" << std::endl;
+            }
+            domain_->client_communicator().barrier();
         }
         world.barrier();
     }
@@ -4808,12 +4948,10 @@ class LinearNS
 
                 for (auto& n : it->data())
                 {
-                    int cur_idx_0 = n(idx_u_type::tag(), 0);
-                    int cur_idx_1 = n(idx_u_type::tag(), 1);
 
                     int cur_idx_p = n(idx_p_type::tag(), 0);
 
-                    if (cur_idx_0 > 0 || cur_idx_p > 0) { counter++; }
+                    if (cur_idx_p > 0) { counter++; }
                 }
             }
         }
@@ -4869,10 +5007,10 @@ class LinearNS
             auto client = domain_->decomposition().client();
 
             //client->template buffer_exchange<idx_u_type>(base_level);
-            client->template buffer_exchange<idx_u_g_type>(base_level);
+            //client->template buffer_exchange<idx_u_g_type>(base_level);
 
             //client->template buffer_exchange<idx_p_type>(base_level);
-            //client->template buffer_exchange<idx_p_g_type>(base_level);
+            client->template buffer_exchange<idx_p_g_type>(base_level);
         }
 
         for (int i = 1; i < tasks_vec.size(); i++)
@@ -4894,16 +5032,10 @@ class LinearNS
 
                     for (auto& n : it->data())
                     {
-                        int cur_idx_0 = n(idx_u_type::tag(), 0);
-                        int cur_idx_1 = n(idx_u_type::tag(), 1);
                         int cur_idx_p = n(idx_p_type::tag(), 0);
 
-                        if (cur_idx_0 > 0 || cur_idx_p > 0)
+                        if (cur_idx_p > 0)
                         {
-                            //int cur_idx_0 = n(idx_u_type::tag(), 0);
-                            //int cur_idx_1 = n(idx_u_type::tag(), 1);
-                            int glob_idx_0 = n(idx_u_g_type::tag(), 0);
-                            int glob_idx_1 = n(idx_u_g_type::tag(), 1);
                             int glob_idx_p = n(idx_p_g_type::tag(), 0);
 
                             //function that inquires all the idx from other processors
@@ -4918,31 +5050,13 @@ class LinearNS
                                 auto lb_c = it->data_r(idx_w_g_type::tag())
                                                 .real_block()
                                                 .base();
-                                get_BC_blk_from_client_FMM(lb_c, coord_cur, root_rank,
-                                    row_u, row_v);
                                 get_BC_blk_from_client_FMM_p(lb_c, coord_cur, root_rank,
                                     row_p);
                             }
                             else
                             {
-                                get_BC_idx_from_client(coord_cur, root_rank,
-                                    row_u, row_v);
                                 get_BC_idx_from_client_p(coord_cur, root_rank,
                                     row_p);
-                            }
-
-                            if (cur_idx_0 > 0) {
-
-                            for (const auto& [key, val] : row_u)
-                            {
-                                boundary_u.add_element(cur_idx_0, key, val);
-                            }
-                            }
-                            if (cur_idx_1 > 0) {
-                            for (const auto& [key, val] : row_v)
-                            {
-                                boundary_u.add_element(cur_idx_1, key, val);
-                            }
                             }
 
                             if (cur_idx_p > 0) {
@@ -4953,8 +5067,6 @@ class LinearNS
                             }
 
                             //add the negative of identity here
-                            if (cur_idx_0 > 0) boundary_u.add_element(cur_idx_0, glob_idx_0, -1.0);
-                            if (cur_idx_1 > 0) boundary_u.add_element(cur_idx_1, glob_idx_1, -1.0);
                             if (cur_idx_p > 0) boundary_u.add_element(cur_idx_p, glob_idx_p, -1.0);
                         }
                     }
@@ -4964,8 +5076,6 @@ class LinearNS
             {
                 for (int j = 0; j < tasks_vec[i]; j++)
                 {
-                    std::map<int, float_type> row_u;
-                    std::map<int, float_type> row_v;
                     std::map<int, float_type> row_p;
                     /*get_BC_idx_from_client(coordinate_type({0, 0}),
                                 root_rank, row_u,
@@ -4973,15 +5083,11 @@ class LinearNS
 
                     if (use_FMM)
                     {
-                        get_BC_blk_from_client_FMM(coordinate_type({0, 0}),
-                            coordinate_type({0, 0}), root_rank, row_u, row_v);
                         get_BC_blk_from_client_FMM_p(coordinate_type({0, 0}),
                             coordinate_type({0, 0}), root_rank, row_p);
                     }
                     else
                     {
-                        get_BC_idx_from_client(coordinate_type({0, 0}),
-                            root_rank, row_u, row_v);
                         get_BC_idx_from_client_p(coordinate_type({0, 0}),
                             root_rank, row_p);
                     }
@@ -4991,150 +5097,6 @@ class LinearNS
         }
 
         domain_->client_communicator().barrier();
-    }
-
-    void get_BC_idx_from_client(coordinate_type c, int root, std::map<int, float_type>& row_u, std::map<int, float_type>& row_v) {
-        get_BC_idx_from_client_w(c, root, row_u, row_v);
-    }
-
-    void get_BC_blk_from_client_FMM(coordinate_type lb_c_r, coordinate_type c, int root, std::map<int, float_type>& row_u, std::map<int, float_type>& row_v) {
-        get_BC_blk_from_client_FMM_w(lb_c_r, c, root, row_u, row_v);
-    }
-
-    void get_BC_idx_from_client_w(coordinate_type c, int root, std::map<int, float_type>& row_u, std::map<int, float_type>& row_v) {
-        //Send and recv 
-        //send coordinates to other processes
-
-        //clear the destination matrix rows
-        row_u.clear();
-        row_v.clear();
-
-        coordinate_type c_loc = c;
-        boost::mpi::broadcast(domain_->client_communicator(), c_loc, root);
-        //std::cout << root << " " <<domain_->client_communicator().rank() << " c is " << c_loc[0] << " " << c_loc[1] << std::endl;
-        std::map<int, float_type> loc_smat_u; //local resulting matrix to get BC
-        std::map<int, float_type> loc_smat_v; //local resulting matrix to get BC
-
-        int base_level = domain_->tree()->base_level();
-        const auto dx_base = domain_->dx_base();
-        if (domain_->is_client())
-        {
-            auto client = domain_->decomposition().client();
-
-            //client->template buffer_exchange<idx_u_type>(base_level);
-            client->template buffer_exchange<idx_u_g_type>(base_level);
-
-            //client->template buffer_exchange<idx_p_type>(base_level);
-            //client->template buffer_exchange<idx_p_g_type>(base_level);
-        }
-        for (auto it = domain_->begin(base_level);
-             it != domain_->end(base_level); ++it)
-        {
-            if (!it->locally_owned() || !it->has_data()) continue;
-            //if (!it->is_leaf()) continue;
-            //if (it->is_correction()) continue;
-
-            for (auto& n : it->data())
-            {
-                int u_idx_0 = n(idx_u_g_type::tag(), 0);
-                int u_idx_0_1 = n.at_offset(idx_u_g_type::tag(), 0, -1, 0);
-                int u_idx_1 = n(idx_u_g_type::tag(), 1);
-                int u_idx_1_1 = n.at_offset(idx_u_g_type::tag(), -1, 0, 1);
-
-                const auto& coord_loc = n.level_coordinate();
-
-                int x_c = c_loc[0] - coord_loc[0];
-                if (x_c != (c_loc[0] - coord_loc[0]))
-                {
-                    std::cout << "Coordinate type not INT" << std::endl;
-                }
-
-                int        y_c = c_loc[1] - coord_loc[1];
-
-                int factor = 1.0;
-
-                /*if (use_FMM)
-                {
-                    int max_idx = std::abs(x_c);
-                    if (std::abs(x_c) < std::abs(y_c))
-                    {
-                        max_idx = std::abs(y_c);
-                    }
-                    int prev_bin = 0;
-                    int stride = 1;
-                    int center_idx = 0;
-                    for (const auto& [key, val] : FMM_bin)
-                    {
-                        if (max_idx < key) {
-                            //this is the bin to stay in and check if the point need to be included
-                            stride = val;
-                            center_idx = (stride - 1)/2;
-                            if (center_idx*2 != (stride - 1)) {
-                                throw std::runtime_error("stride is not odd so not power of 3");
-                            }
-                            break;
-                        }
-                        prev_bin = key;
-                    }
-                    int rel_idx_x = prev_bin + std::abs(x_c);
-                    int rel_idx_y = prev_bin + std::abs(y_c);
-                    if ((rel_idx_x % stride != center_idx) || (rel_idx_y % stride != center_idx)) {
-                        continue;
-                    }
-                    else {
-                        factor = stride*stride;
-                    }
-                }*/
-                float_type lgf_val_00 =
-                    lgf_lap_.derived().get(coordinate_type({x_c, y_c}));
-                float_type lgf_val_01 =
-                    lgf_lap_.derived().get(coordinate_type({x_c, (y_c + 1)}));
-                float_type lgf_val_10 =
-                    lgf_lap_.derived().get(coordinate_type({(x_c + 1), y_c}));
-
-                float_type u_weight = (lgf_val_01 - lgf_val_00)*factor;
-                float_type v_weight = (lgf_val_00 - lgf_val_10)*factor;
-
-                //u = -1/dx * C^T L^inv (dx^2) 1/dx C
-                //so all dx cancels
-
-                int w_idx = n(idx_w_g_type::tag(), 0);
-
-                this->map_add_element(w_idx, -u_weight * dx_base, loc_smat_u);
-
-                this->map_add_element(w_idx, -v_weight * dx_base, loc_smat_v);
-
-                /*this->map_add_element(u_idx_0, u_weight, loc_smat_u);
-                this->map_add_element(u_idx_0_1, -u_weight, loc_smat_u);
-                this->map_add_element(u_idx_1, -u_weight, loc_smat_u);
-                this->map_add_element(u_idx_1_1, u_weight, loc_smat_u);
-
-                this->map_add_element(u_idx_0, v_weight, loc_smat_v);
-                this->map_add_element(u_idx_0_1, -v_weight, loc_smat_v);
-                this->map_add_element(u_idx_1, -v_weight, loc_smat_v);
-                this->map_add_element(u_idx_1_1, v_weight, loc_smat_v);*/
-            }
-        }
-
-        domain_->client_communicator().barrier();
-        std::vector<std::map<int, float_type>> dest_mat_u;
-        std::vector<std::map<int, float_type>> dest_mat_v;
-        boost::mpi::gather(domain_->client_communicator(), loc_smat_u, dest_mat_u, root);
-        boost::mpi::gather(domain_->client_communicator(), loc_smat_v, dest_mat_v, root);
-
-        if (domain_->client_communicator().rank() != root) {
-            return;
-        }
-
-        for (int i = 0; i < dest_mat_u.size();i++) {
-            //accumulate vectors from other processors
-            map_add_map(dest_mat_u[i], row_u);
-        }
-
-        for (int i = 0; i < dest_mat_v.size();i++) {
-            //accumulate vectors from other processors
-            map_add_map(dest_mat_v[i], row_v);
-        }
     }
 
     void get_BC_idx_from_client_p(coordinate_type c, int root, std::map<int, float_type>& row_u) {
@@ -5191,13 +5153,10 @@ class LinearNS
     
                 float_type lgf_val_00 =
                     lgf_lap_.derived().get(coordinate_type({x_c, y_c}));
-                float_type lgf_val_01 =
-                    lgf_lap_.derived().get(coordinate_type({x_c, (y_c + 1)}));
-                float_type lgf_val_10 =
-                    lgf_lap_.derived().get(coordinate_type({(x_c + 1), y_c}));
 
-                float_type u_weight = (lgf_val_01 - lgf_val_00)*factor;
-                float_type v_weight = (lgf_val_00 - lgf_val_10)*factor;
+                if (kernel_vec.canUse()) {
+                    lgf_val_00 = kernel_vec.getValue(x_c, y_c);
+                }
 
                 //u = -1/dx * C^T L^inv (dx^2) 1/dx C
                 //so all dx cancels
@@ -5205,18 +5164,6 @@ class LinearNS
                 int w_idx = n(idx_cs_g_type::tag(), 0);
 
                 this->map_add_element(w_idx, lgf_val_00*dx_base*dx_base, loc_smat_u);
-
-                //this->map_add_element(w_idx, -v_weight * dx_base, loc_smat_v);
-
-                /*this->map_add_element(u_idx_0, u_weight, loc_smat_u);
-                this->map_add_element(u_idx_0_1, -u_weight, loc_smat_u);
-                this->map_add_element(u_idx_1, -u_weight, loc_smat_u);
-                this->map_add_element(u_idx_1_1, u_weight, loc_smat_u);
-
-                this->map_add_element(u_idx_0, v_weight, loc_smat_v);
-                this->map_add_element(u_idx_0_1, -v_weight, loc_smat_v);
-                this->map_add_element(u_idx_1, -v_weight, loc_smat_v);
-                this->map_add_element(u_idx_1_1, v_weight, loc_smat_v);*/
             }
         }
 
@@ -5233,213 +5180,6 @@ class LinearNS
         for (int i = 0; i < dest_mat_u.size();i++) {
             //accumulate vectors from other processors
             map_add_map(dest_mat_u[i], row_u);
-        }
-    }
-
-    void get_BC_blk_from_client_FMM_w(coordinate_type lb_c_r, coordinate_type c, int root, 
-        std::map<int, float_type>& row_u, std::map<int, float_type>& row_v)
-    {
-        //Send and recv
-        //send coordinates to other processes
-
-        //clear the destination matrix rows
-        boost::mpi::communicator world;
-        row_u.clear();
-        row_v.clear();
-
-        coordinate_type base = domain_->bounding_box().base();
-        coordinate_type c_loc = c - base;
-        coordinate_type lb_c= lb_c_r - base;
-
-        int N_ext = domain_->block_extent()[0];
-
-        coordinate_type center = -base; //find the center coordinate
-
-        for (int d = 0; d < center.size(); d++) {
-            int blk_idx_tmp = center[d]/N_ext;
-            center[d] = blk_idx_tmp*N_ext;
-        }
-        
-
-        boost::mpi::broadcast(domain_->client_communicator(), c_loc, root);
-        boost::mpi::broadcast(domain_->client_communicator(), lb_c, root);
-        //std::cout << root << " " <<domain_->client_communicator().rank() << " c is " << c_loc[0] << " " << c_loc[1] << std::endl;
-        std::map<int, float_type> loc_smat_u; //local resulting matrix to get BC
-        std::map<int, float_type> loc_smat_v; //local resulting matrix to get BC
-
-        int        base_level = domain_->tree()->base_level();
-        const auto dx_base = domain_->dx_base();
-
-        for (int l = base_level; l >= 1; l--)
-        {
-            for (auto it = domain_->begin(l);
-                 it != domain_->end(l); ++it)
-            {
-                if (!it->locally_owned() || !it->has_data()) continue;
-                //if (!it->is_leaf() && l == base_level) continue;
-                if (it->is_correction() && l == base_level) continue;
-
-                //check if this block should be included
-                bool include_oct = false;
-                int N = domain_->block_extent()[0];
-                coordinate_type add_one;
-                add_one[0] = 1;
-                add_one[1] = 1;
-
-                int n_range_p = std::pow(2, base_level - l + 1) * N * FMM_fac;
-                int n_range_c = std::pow(2, base_level - l) * N * FMM_fac;
-                
-                auto cur_real_base = (it->data_r(idx_w_g_type::tag()).real_block().base() - base + add_one) * std::pow(2, base_level - l);
-                auto prt_real_base = (it->parent()->data_r(idx_w_g_type::tag()).real_block().base() - base + add_one) * std::pow(2, base_level - l + 1);
-                auto tar_real_base = lb_c + add_one;
-
-                //check if parents are neighbors
-                auto dist = tar_real_base - prt_real_base;
-                if (dist[0] >= -n_range_p && dist[0] < n_range_p * 2 &&
-                    dist[1] >= -n_range_p && dist[1] < n_range_p * 2) {
-                    include_oct = true;
-                }
-
-                if (FMM_include_center)
-                {
-                    //auto tar_real_center = center;
-                    auto dist = center - prt_real_base;
-                    if (dist[0] >= -n_range_p && dist[0] < n_range_p * 2 &&
-                        dist[1] >= -n_range_p && dist[1] < n_range_p * 2)
-                    {
-                        include_oct = true;
-                    }
-                }
-
-                auto dist_c = tar_real_base - cur_real_base;
-
-                if (l != base_level &&
-                    dist_c[0] >= -n_range_c && dist_c[0] < n_range_c * 2 &&
-                    dist_c[1] >= -n_range_c && dist_c[1] < n_range_c * 2) {
-                    include_oct = false;
-                }
-
-                
-                if (FMM_include_center)
-                {
-
-                    auto dist_c = center - cur_real_base;
-
-                    if (l != base_level && dist_c[0] >= -n_range_c &&
-                        dist_c[0] < n_range_c * 2 && dist_c[1] >= -n_range_c &&
-                        dist_c[1] < n_range_c * 2)
-                    {
-                        include_oct = false;
-                    }
-                }
-
-                if (!include_oct) continue;
-
-                if (l != base_level)
-                {
-                    int   N = domain_->block_extent()[0] + lBuffer + rBuffer;
-                    auto& lin_data_g =
-                        it->data_r(idx_w_g_type::tag(), 0).linalg_data();
-                    for (int sub_i = 0; sub_i < N; sub_i++)
-                    {
-                        for (int sub_j = 0; sub_j < N; sub_j++)
-                        {
-                            auto real_base = it->data_r(idx_w_g_type::tag())
-                                                 .real_block()
-                                                 .base() -
-                                             base;
-
-                            int x_c_tmp = (real_base[0] + sub_i) *
-                                          std::pow(2, base_level - l);
-                            int y_c_tmp = (real_base[1] + sub_j) *
-                                          std::pow(2, base_level - l);
-
-                            int x_c = c_loc[0] - x_c_tmp;
-                            if (x_c != (c_loc[0] - x_c_tmp))
-                            {
-                                std::cout << "Coordinate type not INT"
-                                          << std::endl;
-                            }
-
-                            int y_c = c_loc[1] - y_c_tmp;
-
-                            float_type lgf_val_00 = lgf_lap_.derived().get(
-                                coordinate_type({x_c, y_c}));
-                            float_type lgf_val_01 = lgf_lap_.derived().get(
-                                coordinate_type({x_c, (y_c + 1)}));
-                            float_type lgf_val_10 = lgf_lap_.derived().get(
-                                coordinate_type({(x_c + 1), y_c}));
-
-                            float_type u_weight = (lgf_val_01 - lgf_val_00);
-                            float_type v_weight = (lgf_val_00 - lgf_val_10);
-
-                            int w_idx = lin_data_g.at(sub_i, sub_j);
-
-                            this->map_add_element(w_idx, -u_weight * dx_base,
-                                loc_smat_u);
-
-                            this->map_add_element(w_idx, -v_weight * dx_base,
-                                loc_smat_v);
-                        }
-                    }
-                }
-
-                else
-                {
-                    for (auto& n : it->data())
-                    {
-                        const auto& coord_loc_level =
-                            n.level_coordinate() - base;
-                        const auto& coord_loc =
-                            coord_loc_level * std::pow(2, base_level - l);
-
-                        int x_c = c_loc[0] - coord_loc[0];
-                        if (x_c != (c_loc[0] - coord_loc[0]))
-                        {
-                            std::cout << "Coordinate type not INT" << std::endl;
-                        }
-
-                        int y_c = c_loc[1] - coord_loc[1];
-
-                        float_type lgf_val_00 =
-                            lgf_lap_.derived().get(coordinate_type({x_c, y_c}));
-                        float_type lgf_val_01 = lgf_lap_.derived().get(
-                            coordinate_type({x_c, (y_c + 1)}));
-                        float_type lgf_val_10 = lgf_lap_.derived().get(
-                            coordinate_type({(x_c + 1), y_c}));
-
-                        float_type u_weight = (lgf_val_01 - lgf_val_00);
-                        float_type v_weight = (lgf_val_00 - lgf_val_10);
-
-                        int w_idx = n(idx_w_g_type::tag(), 0);
-
-                        this->map_add_element(w_idx, -u_weight * dx_base,
-                            loc_smat_u);
-
-                        this->map_add_element(w_idx, -v_weight * dx_base,
-                            loc_smat_v);
-                    }
-                }
-            }
-        }
-        domain_->client_communicator().barrier();
-        std::vector<std::map<int, float_type>> dest_mat_u;
-        std::vector<std::map<int, float_type>> dest_mat_v;
-        boost::mpi::gather(domain_->client_communicator(), loc_smat_u, dest_mat_u, root);
-        boost::mpi::gather(domain_->client_communicator(), loc_smat_v, dest_mat_v, root);
-
-        if (domain_->client_communicator().rank() != root) {
-            return;
-        }
-
-        for (int i = 0; i < dest_mat_u.size();i++) {
-            //accumulate vectors from other processors
-            map_add_map(dest_mat_u[i], row_u);
-        }
-
-        for (int i = 0; i < dest_mat_v.size();i++) {
-            //accumulate vectors from other processors
-            map_add_map(dest_mat_v[i], row_v);
         }
     }
 
@@ -5572,13 +5312,10 @@ class LinearNS
 
                             float_type lgf_val_00 = lgf_lap_.derived().get(
                                 coordinate_type({x_c, y_c}));
-                            float_type lgf_val_01 = lgf_lap_.derived().get(
-                                coordinate_type({x_c, (y_c + 1)}));
-                            float_type lgf_val_10 = lgf_lap_.derived().get(
-                                coordinate_type({(x_c + 1), y_c}));
-
-                            float_type u_weight = (lgf_val_01 - lgf_val_00);
-                            float_type v_weight = (lgf_val_00 - lgf_val_10);
+                            if (kernel_vec.canUse())
+                            {
+                                lgf_val_00 = kernel_vec.getValue(x_c, y_c);
+                            }
 
                             int cs_idx = lin_data_g.at(sub_i, sub_j);
 
@@ -5608,13 +5345,10 @@ class LinearNS
 
                         float_type lgf_val_00 =
                             lgf_lap_.derived().get(coordinate_type({x_c, y_c}));
-                        float_type lgf_val_01 = lgf_lap_.derived().get(
-                            coordinate_type({x_c, (y_c + 1)}));
-                        float_type lgf_val_10 = lgf_lap_.derived().get(
-                            coordinate_type({(x_c + 1), y_c}));
-
-                        float_type u_weight = (lgf_val_01 - lgf_val_00);
-                        float_type v_weight = (lgf_val_00 - lgf_val_10);
+                        if (kernel_vec.canUse())
+                        {
+                            lgf_val_00 = kernel_vec.getValue(x_c, y_c);
+                        }
 
                         int cs_idx = n(idx_cs_g_type::tag(), 0);
 
@@ -6236,7 +5970,7 @@ class LinearNS
                         auto& lin_data_1 =
                             it->data_r(From::tag(), field_idx).linalg_data();
                         auto& lin_data_2 =
-                            it->data_r(correction_tmp_type::tag(), field_idx)
+                            it->data_r(correction_tmp_type::tag(), 0)
                                 .linalg_data();
 
                         xt::noalias(view(lin_data_2, xt::range(1, -1),
@@ -6254,12 +5988,12 @@ class LinearNS
                         //only do edge interpolation in 2D, need to switch to vertex in 3D/homogeneous case
                         c_cntr_nli_.template nli_intrp_T_node<correction_tmp_type, correction_tmp_type>(*it_s,
                             /*From::mesh_type()*/MeshObject::edge, field_idx,
-                            field_idx, false, false);
+                            0, false, false);
                     }
                     domain_->decomposition()
                         .client()
                         ->template communicate_updownward_add<correction_tmp_type, correction_tmp_type>(l, true,
-                            false, -1, field_idx, false);
+                            false, -1, 0, false);
 
                     for (auto it = domain_->begin(l);
                          it != domain_->end(l); ++it)
@@ -6291,8 +6025,8 @@ class LinearNS
         }
     }
 
-    template<class Source_face, class Source_cell, class Target_face, class Target_cell>
-    void Jacobian(force_type& force_source, force_type& force_target) noexcept
+    template<class Source_face, class Uz, class Source_cell, class Target_face, class TargetUz, class Target_cell>
+    void Jacobian(force_type& force_source, std::vector<float_type>& force_sUz, force_type& force_target, std::vector<float_type>& force_tUz) noexcept
     {
         if (domain_->is_server())
             return;
@@ -6310,9 +6044,10 @@ class LinearNS
         std::fill(force_target.begin(), force_target.end(),
             tmp_coord); //use forcing tmp to store the last block,
             //use forcing_old to store the forcing at previous Newton iteration
+        
+        std::fill(force_tUz.begin(), force_tUz.end(), 0.0);
 
-
-        curl<Source_face, edge_aux_type>();
+        curl<Source_face, Uz, edge_aux_type>();
 
         domain_->client_communicator().barrier();
         /*mDuration_type t_lgf(0);
@@ -6328,35 +6063,45 @@ class LinearNS
         domain_->client_communicator().barrier();
 
         laplacian<Source_face, laplacian_face_type>();
+        laplacian<Uz, cell_aux_type>();
+
+        add<laplacian_face_type, Target_face>(1.0 / Re_);
+        add<cell_aux_type, TargetUz>(1.0 / Re_);
+
+        clean<cell_aux_type>();
 
         //pcout << "Computed Laplacian " << std::endl;
 
-        nonlinear_jac<u_type, Source_face, g_i_type>();
+        nonlinear_jac<u_type, Source_face, Uz, g_i_type, cell_aux_type>();
 
         //pcout << "Computed Nonlinear Jac " << std::endl;
 
         add<g_i_type, Target_face>(-1);
+        add<cell_aux_type, TargetUz>(-1);
 
-        add<laplacian_face_type, Target_face>(1.0 / Re_);
+        
 
         clean<face_aux_tmp_type>();
         gradient<Source_cell, face_aux_tmp_type>(-1.0);
+        add<Source_cell, TargetUz>(mode_c); //no negative sign here because it should be substracted so -(-c)p becomes cp
 
         //pcout << "Computed Gradient" << std::endl;
         //add<face_aux_tmp_type, Target_face>();
 
         lsolver.template smearing<face_aux_tmp_type>(force_source, false);
+        lsolver.template smearing<TargetUz>(force_sUz, false);
 
         //pcout << "Computed Smearing" << std::endl;
 
         add<face_aux_tmp_type, Target_face>(1.0);
 
         divergence<Source_face, Target_cell>(-1.0);
+        add<Uz, Target_cell>(mode_c);
 
         //pcout << "Computed Divergence" << std::endl;
 
-        lsolver.template projection<Source_face>(
-            force_target); //need to change this vector in the bracket
+        lsolver.template projection<Source_face>(force_target);
+        lsolver.template projection<Uz>(force_tUz);
     }
 
 
@@ -6379,6 +6124,28 @@ class LinearNS
         }
 
         lsolver.template smearing<Source_face>(force_new, false);
+
+    }
+
+    template<class target_Uz>
+    void AddSmearingUz(std::vector<float_type>& force_source) noexcept
+    {
+        if (domain_->is_server())
+            return;
+        auto client = domain_->decomposition().client();
+
+        auto force_new = force_source;
+
+        for (std::size_t i=0; i<force_new.size(); ++i)
+        {
+            if (domain_->ib().rank(i)!=comm_.rank())
+                continue;
+
+            //for (std::size_t d=0; d<force_new[0].size(); ++d)
+            force_new[i]*=-1;
+        }
+
+        lsolver.template smearing<target_Uz>(force_new, false);
 
     }
 
@@ -6602,16 +6369,17 @@ class LinearNS
         }
     }
 
-    template<class Source1, class Source2, class Target>
+    template<class Source1, class Source2, class Uz, class Target, class Target_Uz>
     void nonlinear_Jac_access() {
         //boost::mpi::communicator world;
         //std::cout << "rank " << (world.rank()) << " starting nonlinear jacobian" << std::endl;
-        this->nonlinear_jac<Source1, Source2, Target>();
+        this->nonlinear_jac<Source1, Source2, Uz, Target, Target_Uz>();
     }
 
-    template<class Source, class Target>
+    template<class Source, class Uz, class Target>
     void div_access() {
         this->divergence<Source, Target>();
+        add<Uz, Target>(-mode_c);
         clean_leaf_according_to_idx<Target, idx_cs_g_type>(domain_->tree()->base_level());
     }
 
@@ -6622,7 +6390,7 @@ class LinearNS
         this->nonlinear_jac_adjoint<Source1, Source2, Target>();
     }
 
-    template<class Source, class Target>
+    template<class Source, class Uz, class Target>
     void Curl_access() {
 
 
@@ -6631,6 +6399,8 @@ class LinearNS
         //up_and_down<Velocity_in>();
         clean<Source>(true);
         up_and_down<Source>();
+        clean<Uz>(true);
+        up_and_down<Uz>();
         clean<Target>();
         //clean<stream_f_type>();
 
@@ -6640,6 +6410,7 @@ class LinearNS
              l < domain_->tree()->depth(); ++l)
         {
             client->template buffer_exchange<Source>(l);
+            client->template buffer_exchange<Uz>(l);
 
             for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
             {
@@ -6650,8 +6421,8 @@ class LinearNS
                 const auto dx_level =
                     dx_base / math::pow2(it->refinement_level());
                 //if (it->is_leaf())
-                domain::Operator::curl<Source, Target>(it->data(),
-                    dx_level);
+                domain::Operator::curl_helmholtz_real<Source, Uz, Target>(it->data(),
+                    dx_level, mode_c);
             }
         }
 
@@ -6725,7 +6496,7 @@ class LinearNS
 
 
 
-    template<class Velocity_in, class Velocity_out>
+    template<class Velocity_in, class Uz, class Velocity_out, class Uz_out>
     void pad_velocity(bool refresh_correction_only = true)
     {
         auto client = domain_->decomposition().client();
@@ -6733,6 +6504,8 @@ class LinearNS
         //up_and_down<Velocity_in>();
         clean<Velocity_in>(true);
         up_and_down<Velocity_in>();
+        clean<Uz>(true);
+        up_and_down<Uz>();
         //this->up<Velocity_in>(false);
         clean<edge_aux_type>();
         clean<stream_f_type>();
@@ -6743,6 +6516,7 @@ class LinearNS
              l < domain_->tree()->depth(); ++l)
         {
             client->template buffer_exchange<Velocity_in>(l);
+            client->template buffer_exchange<Uz>(l);
 
             for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
             {
@@ -6753,8 +6527,8 @@ class LinearNS
                 const auto dx_level =
                     dx_base / math::pow2(it->refinement_level());
                 //if (it->is_leaf())
-                domain::Operator::curl<Velocity_in, edge_aux_type>(it->data(),
-                    dx_level);
+                domain::Operator::curl_helmholtz_real<Velocity_in, Uz, edge_aux_type>(it->data(),
+                    dx_level, mode_c);
             }
         }
 
@@ -6763,8 +6537,17 @@ class LinearNS
         //clean_leaf_correction_boundary<edge_aux_type>(domain_->tree()->base_level(), true, 1);
         clean_leaf_according_to_idx<edge_aux_type, idx_w_g_type>(domain_->tree()->base_level());
         //clean_leaf_correction_boundary<edge_aux_type>(l, false,2+stage_idx_);
-        psolver.template apply_lgf<edge_aux_type, stream_f_type>(
-            MASK_TYPE::STREAM);
+
+        if (mode_c > 1e-12) {
+            helm_t kernel;
+            kernel.change_c(mode_c);
+            for (int i = 0; i < stream_f_type::nFields(); i++)
+                psolver.template apply_lgf<edge_aux_type, stream_f_type>(&kernel, i, MASK_TYPE::STREAM);
+        }
+        else {
+            psolver.template apply_lgf<edge_aux_type, stream_f_type>(MASK_TYPE::STREAM);
+        }
+        //psolver.template apply_lgf<edge_aux_type, stream_f_type>(MASK_TYPE::STREAM);
 
         int l_max = refresh_correction_only ? domain_->tree()->base_level() + 1
                                             : domain_->tree()->depth();
@@ -6778,12 +6561,13 @@ class LinearNS
 
                 const auto dx_level =
                     dx_base / math::pow2(it->refinement_level());
-                domain::Operator::curl_transpose<stream_f_type, Velocity_out>(
-                    it->data(), dx_level, -1.0);
+                domain::Operator::curl_transpose_helmholtz_complex_linear<stream_f_type, Velocity_out, Uz_out>(
+                    it->data(), dx_level, mode_c, -1.0);
             }
         }
 
         this->down_to_correction<Velocity_out>();
+        this->down_to_correction<Uz_out>();
     }
 
     template<class P_source, class P_out>
@@ -6799,7 +6583,14 @@ class LinearNS
         clean<cell_aux_tmp_type>();
         
         clean_leaf_according_to_idx<P_source, idx_cs_g_type>(domain_->tree()->base_level());
-        psolver.template apply_lgf<P_source, cell_aux_tmp_type>();
+        if (mode_c > 1e-12) {
+            helm_t kernel;
+            kernel.change_c(mode_c);
+            psolver.template apply_lgf<P_source, cell_aux_tmp_type>(&kernel, 0, MASK_TYPE::AMR2AMR);
+        }
+        else {
+            psolver.template apply_lgf<P_source, cell_aux_tmp_type>();
+        }
 
         int l_max = refresh_correction_only ? domain_->tree()->base_level() + 1
                                             : domain_->tree()->depth();
@@ -7720,11 +7511,8 @@ class LinearNS
                                         relative_positions[0] = 0;
                                         relative_positions[1] = 0;
                                         relative_positions[2] = 0;
-                                        if (Dim == 3)
-                                            relative_positions[field_idx] = 1;
-                                        if (helmholtz)
-                                            relative_positions[field_idx /
-                                                               sep] = 1;
+
+                                        relative_positions[field_idx] = 1; //treat as if it is 3D
                                     }
                                     else
                                         throw std::runtime_error(
@@ -7961,8 +7749,7 @@ class LinearNS
                                     relative_positions[0] = 0;
                                     relative_positions[1] = 0;
                                     relative_positions[2] = 0;
-                                    if (Dim == 3) relative_positions[field_idx] = 1;
-                                    if (helmholtz) relative_positions[field_idx / sep] = 1;
+                                    relative_positions[field_idx] = 1; //treat this as if in 3D case
                                 }
                                 else
                                     throw std::runtime_error(
@@ -8095,19 +7882,21 @@ class LinearNS
         //clean_leaf_correction_boundary<Target>(domain_->tree()->base_level(), true,2);
     }
 
-    template<class Source_old, class Source_new, class Target>
+    template<class Source_old, class Source_new, class Uz, class Target, class Target_Uz>
     void nonlinear_jac(float_type _scale = 1.0) noexcept
     {
         //std::cout << "part begin" << std::endl;
         clean<edge_aux_type>();
         clean<Target>();
         clean<face_aux_tmp_type>();
+        clean<cell_aux_tmp_type>();
         clean<nonlinear_tmp_type>();
 
         //std::cout << "part 0" << std::endl;
 
         up_and_down<Source_old>();
         up_and_down<Source_new>();
+        up_and_down<Uz>();
 
         auto       client = domain_->decomposition().client();
         const auto dx_base = domain_->dx_base();
@@ -8116,6 +7905,7 @@ class LinearNS
              l < domain_->tree()->depth(); ++l)
         {
             client->template buffer_exchange<Source_new>(l);
+            client->template buffer_exchange<Uz>(l);
 
             for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
             {
@@ -8123,8 +7913,8 @@ class LinearNS
 
                 const auto dx_level =
                     dx_base / math::pow2(it->refinement_level());
-                domain::Operator::curl<Source_new, edge_aux_type>(it->data(),
-                    dx_level);
+                domain::Operator::curl_helmholtz_real<Source_new, Uz, edge_aux_type>(it->data(),
+                    dx_level, mode_c);
             }
         }
 
@@ -8147,8 +7937,8 @@ class LinearNS
             {
                 if (!it->locally_owned() || !it->has_data()) continue;
 
-                domain::Operator::nonlinear<face_aux_tmp_type, edge_aux_type,
-                    nonlinear_tmp_type>(it->data());
+                domain::Operator::nonlinear_linear_helm<face_aux_tmp_type, edge_aux_type,
+                    nonlinear_tmp_type, cell_aux_tmp_type>(it->data());
             }
         }
 
@@ -8171,7 +7961,7 @@ class LinearNS
 
                 const auto dx_level =
                     dx_base / math::pow2(it->refinement_level());
-                domain::Operator::curl<Source_old, edge_aux_type>(it->data(),
+                domain::Operator::curl_helmholtz_real<Source_old, edge_aux_type>(it->data(),
                     dx_level);
             }
         }
@@ -8194,11 +7984,12 @@ class LinearNS
             {
                 if (!it->locally_owned() || !it->has_data()) continue;
 
-                domain::Operator::nonlinear<face_aux_tmp_type, edge_aux_type,
-                    Target>(it->data());
+                domain::Operator::nonlinear_linear_helm<face_aux_tmp_type, edge_aux_type,
+                    Target, Target_Uz>(it->data());
             }
         }
         add<nonlinear_tmp_type, Target>();
+        add<cell_aux_tmp_type, Target_Uz>();
 
         //std::cout << "part 4" << std::endl;
 
@@ -8220,6 +8011,8 @@ class LinearNS
                         it->data_r(Target::tag(), field_idx).linalg_data();
                     lin_data *= _scale;
                 }
+                auto& lin_data = it->data_r(Target_Uz::tag(), 0).linalg_data();
+                lin_data *= _scale;
             }
         }
     }
@@ -8386,8 +8179,8 @@ class LinearNS
         //clean<Target>(true);
     }
 
-    template<class Source, class Target>
-    void curl() noexcept
+    template<class Source, class Uz, class Target>
+    void curl(float_type _mode_c=mode_c) noexcept
     {
         auto client = domain_->decomposition().client();
 
@@ -8406,7 +8199,45 @@ class LinearNS
                 if (!it->locally_owned() || !it->has_data()) continue;
                 const auto dx_level =
                     dx_base / math::pow2(it->refinement_level());
-                domain::Operator::curl<Source, Target>(it->data(),
+                domain::Operator::curl_helmholtz_real<Source, Uz, Target>(it->data(),
+                    dx_level, _mode_c);
+            }
+
+            //client->template buffer_exchange<Target>(l);
+            //clean_leaf_correction_boundary<Target>(l, true, 2);
+            //clean_leaf_correction_boundary<Target>(l, false,4+stage_idx_);
+            
+        }
+
+        clean<Source>(true);
+
+        //clean_leaf_correction_boundary<Target>(domain_->tree()->base_level(), true, 1);
+        //clean_leaf_according_to_idx<Target, idx_w_g_type>(domain_->tree()->base_level());
+        //clean<Target>(true);
+    }
+
+
+    template<class Source, class Target>
+    void curl2D() noexcept
+    {
+        auto client = domain_->decomposition().client();
+
+        domain::Operator::domainClean<Target>(domain_);
+
+        up_and_down<Source>();
+
+        for (int l = domain_->tree()->base_level();
+             l < domain_->tree()->depth(); ++l)
+        {
+            client->template buffer_exchange<Source>(l);
+            const auto dx_base = domain_->dx_base();
+
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
+                const auto dx_level =
+                    dx_base / math::pow2(it->refinement_level());
+                domain::Operator::curl_helmholtz_real<Source, Target>(it->data(),
                     dx_level);
             }
 
@@ -8627,6 +8458,63 @@ class LinearNS
         }
     }
 
+    class Kernel_vec {
+        public:
+        Kernel_vec() {
+            //in this part, we only need the one on the coarsest level
+            //need to set alpha before calling constructor if constructing IF, and dx = 1.0
+
+            canUse_ = false;
+        }
+
+        void init(float_type c) {
+            canUse_ = true;
+            //can only use it when init is called
+            kernel.change_c(c);
+            //kernel.derived().build_lt();
+        }
+
+        float_type getValue(key_2D loc) {
+            
+            auto it = vec.find(loc);
+            
+            if (it == vec.end()) {
+                int i = std::get<0>(loc);
+                int j = std::get<1>(loc);
+                kernel->change_level(0);
+                float_type val = kernel.derived().get(coordinate_type({i, j}));
+                vec.emplace(loc, val);
+                return val;
+            }
+            return it->second;
+        }
+
+
+        float_type getValue(int i, int j) {
+            key_2D loc(i,j);
+            auto it = vec.find(loc);
+            
+            if (it == vec.end()) {
+                kernel.change_level(0);
+                float_type val = kernel.derived().get(coordinate_type({i, j}));
+                vec.emplace(loc, val);
+                return val;
+            }
+            return it->second;
+        }
+
+        bool canUse() {
+            return canUse_;
+        }
+
+        private:
+
+
+        std::map<key_2D, float_type> vec;
+        helm_t kernel;
+        bool canUse_ = false;
+    };
+
   public:
     //for testing
     sparse_mat mat;
@@ -8740,6 +8628,12 @@ class LinearNS
     force_type forcing_old;
     force_type forcing_idx;
     force_type forcing_idx_g;
+    std::vector<int> forcing_z_idx;
+    std::vector<int> forcing_z_idx_g;
+    float_type mode_c; 
+    //this is the normalized Fourier mode number, i.e. if the periodic length is L_z, mode_c = 2pi n/L_z, n is the number of Fourier mode
+    Kernel_vec kernel_vec;
+
     //vector_type<float_type, 6>        a_{{1.0 / 2, sqrt(3)/3, (3-sqrt(3))/3, (3+sqrt(3))/6, -sqrt(3)/3, (3+sqrt(3))/6}};
     //vector_type<float_type, 4>        c_{{0.0, 0.5, 1.0, 1.0}};
     vector_type<float_type, 3>        alpha_{{0.0, 0.0, 0.0}};

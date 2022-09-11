@@ -619,6 +619,24 @@ struct Operator
     }
 
     template<class U, class Block, class Coord, class Force, class DeltaFunc,
+        typename std::enable_if<(U::mesh_type() == MeshObject::cell),
+            void>::type* = nullptr>
+    static void ib_projection(Coord ib_coord, Force& f, Block& block,
+        DeltaFunc& ddf)
+    {
+        constexpr auto u = U::tag();
+        for (auto& node : block)
+        {
+            auto n_coord = node.level_coordinate();
+            auto dist = n_coord - ib_coord;
+
+            decltype(ib_coord) off(0.5);
+            //off[field_idx] = 0.0; // face data location
+            f += node(u, 0) * ddf(dist + off);
+        }
+    }
+
+    template<class U, class Block, class Coord, class Force, class DeltaFunc,
         typename std::enable_if<(U::mesh_type() == MeshObject::face),
             void>::type* = nullptr>
     static void ib_projection_helmholtz(Coord ib_coord, Force& f, Block& block,
@@ -699,6 +717,27 @@ struct Operator
                 off[field_idx] = 0.0; // face data location
                 node(u, field_idx) += f[field_idx] * ddf(dist + off) * factor;
             }
+        }
+    }
+
+    template<class U, class Block, class Coord, class Force, class DeltaFunc,
+        typename std::enable_if<(U::mesh_type() == MeshObject::cell),
+            void>::type* = nullptr>
+    static void ib_smearing(Coord ib_coord, Force f, Block& block,
+        DeltaFunc& ddf, float_type factor = 1.0)
+    {
+        //needed for stability solver at Uz
+        constexpr auto u = U::tag();
+        for (auto& node : block)
+        {
+            auto n_coord = node.level_coordinate();
+            auto dist = n_coord - ib_coord;
+
+            
+            decltype(ib_coord) off(0.5);
+            //off[field_idx] = 0.0; // face data location
+            node(u, 0) += f * ddf(dist + off) * factor;
+            
         }
     }
 
@@ -1369,6 +1408,68 @@ struct Operator
         typename std::enable_if<(Source::mesh_type() == MeshObject::face) &&
                                     (Dest::mesh_type() == MeshObject::edge),
             void>::type* = nullptr>
+    static void curl_helmholtz_real(Block& block,
+        float_type                            dx_level) noexcept
+    {
+        //used for linearization
+        const auto     fac = 1.0 / dx_level;
+        constexpr auto source = Source::tag();
+        constexpr auto dest = Dest::tag();
+        for (auto& n : block)
+        {
+            n(dest, 0) = 0;
+            n(dest, 1) = 0;
+            n(dest, 2) = n(source, 1) -
+                                   n.at_offset(source, -1, 0, 1) -
+                                   n(source, 0 ) +
+                                   n.at_offset(source, 0, -1, 0);
+            n(dest, 2) *= fac;
+
+        }
+    }
+
+    template<class Source, class Uz, class Dest, class Block,
+        typename std::enable_if<(Source::mesh_type() == MeshObject::face) &&
+                                    (Dest::mesh_type() == MeshObject::edge),
+            void>::type* = nullptr>
+    static void curl_helmholtz_real(Block& block,
+        float_type                            dx_level,
+        float_type                            c) noexcept
+    {
+        //used for linearization
+        const auto     fac = 1.0 / dx_level;
+        constexpr auto source = Source::tag();
+        constexpr auto uz = Uz::tag();
+        constexpr auto dest = Dest::tag();
+        for (auto& n : block)
+        {
+            n(dest, 0) = n(uz, 0) -
+                                   n.at_offset(uz, 0, -1, 0);
+            n(dest, 0) *= fac;
+
+            n(dest, 1) = -n(uz, 0) +
+                                   n.at_offset(uz, -1, 0, 0);
+            n(dest, 1) *= fac;
+
+            n(dest, 2) = n(source, 1) -
+                                   n.at_offset(source, -1, 0, 1) -
+                                   n(source, 0 ) +
+                                   n.at_offset(source, 0, -1, 0);
+            n(dest, 2) *= fac;
+
+            n(dest, 0)     -= n(source, 1) * c;
+                
+
+            n(dest, 1)     += n(source, 0) * c;
+                
+
+        }
+    }
+
+    template<class Source, class Dest, class Block,
+        typename std::enable_if<(Source::mesh_type() == MeshObject::face) &&
+                                    (Dest::mesh_type() == MeshObject::edge),
+            void>::type* = nullptr>
     static void curl_helmholtz_complex_refined(Block& block,
         float_type                            dx_level,
         int                                   N_modes,
@@ -1466,6 +1567,41 @@ struct Operator
 
         }
     }
+
+
+
+    template<class Source, class Dest, class DestUz, class Block,
+        typename std::enable_if<(Source::mesh_type() == MeshObject::edge) &&
+                                    (Dest::mesh_type() == MeshObject::face),
+            void>::type* = nullptr>
+    static void curl_transpose_helmholtz_complex_linear(Block& block,
+        float_type                            dx_level,
+        float_type                            c,
+        float_type                            scale = 1.0) noexcept
+    {
+        const auto     fac = 1.0 / dx_level *scale;
+        constexpr auto source = Source::tag();
+        constexpr auto dest = Dest::tag();
+        constexpr auto destUz = DestUz::tag();
+        for (auto& n : block)
+        {
+            n(dest, 0) = -n(source, 2) + n.at_offset(source, 0, 1, 2);
+            n(dest, 0) *= fac;
+
+            n(dest, 1) = n(source, 2) - n.at_offset(source, 1, 0, 2);
+            n(dest, 1) *= fac;
+
+            n(destUz, 0) = -n(source, 1) + n.at_offset(source, 1, 0, 1) +
+                         n(source, 0) - n.at_offset(source, 0, 1, 0);
+            n(destUz, 0) *= fac;
+
+            n(dest, 0) += n(source, 1) * c * scale;
+
+            n(dest, 1) -= n(source, 0) * c * scale;
+        }
+    }
+
+    
 
     template<class Source, class Dest, class Block,
         typename std::enable_if<(Source::mesh_type() == MeshObject::face) &&
@@ -1690,6 +1826,46 @@ struct Operator
                                             (+n.at_offset(face, 1, 0, 0) +
                                                 n.at_offset(face, 1, -1, 0)));
             }
+        }
+    }
+
+
+    template<class Face, class Edge, class Dest_face, class Dest_uz, class Block,
+        typename std::enable_if<(Face::mesh_type() == MeshObject::face) &&
+                                    (Edge::mesh_type() == MeshObject::edge) &&
+                                    (Dest_face::mesh_type() == MeshObject::face),
+            void>::type* = nullptr>
+    static void nonlinear_linear_helm(Block& block) noexcept
+    {
+        //linearized convective term after Fourier transform
+        constexpr auto face = Face::tag();
+        constexpr auto edge = Edge::tag();
+        constexpr auto dest = Dest_face::tag();
+        constexpr auto dest_uz = Dest_uz::tag();
+        for (auto& n : block)
+        {
+            
+
+            n(dest, 0) = 0.25 * (-n.at_offset(edge, 0, 0, 2) *
+                                        (+n.at_offset(face, 0, 0, 1) +
+                                            n.at_offset(face, -1, 0, 1)) -
+                                    n.at_offset(edge, 0, 1, 2) *
+                                        (+n.at_offset(face, 0, 1, 1) +
+                                            n.at_offset(face, -1, 1, 1)));
+
+            n(dest, 1) = 0.25 * (+n.at_offset(edge, 0, 0, 2) *
+                                        (+n.at_offset(face, 0, 0, 0) +
+                                            n.at_offset(face, 0, -1, 0)) +
+                                    n.at_offset(edge, 1, 0, 2) *
+                                        (+n.at_offset(face, 1, 0, 0) +
+                                            n.at_offset(face, 1, -1, 0)));
+
+            n(dest_uz, 0) =
+                0.5 *
+                (n.at_offset(edge, 0, 0, 0) * n.at_offset(face, 0, 0, 1) +
+                    n.at_offset(edge, 0, 1, 0) * n.at_offset(face, 0, 1, 1) -
+                    n.at_offset(edge, 0, 0, 1) * n.at_offset(face, 0, 0, 0) -
+                    n.at_offset(edge, 1, 0, 1) * n.at_offset(face, 1, 0, 0));
         }
     }
 

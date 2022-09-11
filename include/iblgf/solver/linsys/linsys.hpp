@@ -333,6 +333,47 @@ class LinSysSolver
 
     }
 
+
+    template<class U, class ForceType,
+        typename std::enable_if<(U::mesh_type() == MeshObject::cell), void>::type* = nullptr>
+    void smearing(ForceType& f, bool cleaning=true)
+    {
+
+        real_coordinate_type tmp_coord(0.0);
+        force_type tmp_f(ib_->size(), tmp_coord);
+        for (std::size_t i=0; i<tmp_f.size(); ++i)
+        {
+            tmp_f[i][0]=f[i];
+        }
+        //needed for stability solver
+        ib_->communicator().compute_indices();
+        ib_->communicator().communicate(true, tmp_f);
+
+        for (std::size_t i=0; i<tmp_f.size(); ++i)
+        {
+            f[i] = tmp_f[i][0];
+        }
+
+        //cleaning
+        if (cleaning)
+            domain::Operator::domainClean<U>(domain_);
+
+        for (std::size_t i=0; i<ib_->size(); ++i)
+        {
+            std::size_t oct_i=0;
+            for (auto it: ib_->influence_list(i))
+            {
+                if (!it->locally_owned()) continue;
+                auto ib_coord = ib_->scaled_coordinate(i, it->refinement_level());
+
+                domain::Operator::ib_smearing<U>
+                    (ib_coord, f[i], ib_->influence_pts(i, oct_i), ib_->delta_func());
+                oct_i+=1;
+            }
+        }
+
+    }
+
     template<class U, class ForceType,
         typename std::enable_if<(U::mesh_type() == MeshObject::face), void>::type* = nullptr>
     void projection(ForceType& f)
@@ -363,6 +404,54 @@ class LinSysSolver
 
         ib_->communicator().compute_indices();
         ib_->communicator().communicate(false, f);
+
+    }
+
+
+    template<class U, class ForceType,
+        typename std::enable_if<(U::mesh_type() == MeshObject::cell), void>::type* = nullptr>
+    void projection(ForceType& f)
+    {
+        //needed for stability solver
+        if (domain_->is_server())
+            return;
+
+        // clean f
+        for (std::size_t i=0; i<ib_->size(); ++i)
+            f[i]=0.0;
+
+        for (std::size_t i=0; i<ib_->size(); ++i)
+        {
+            std::size_t oct_i=0;
+
+            for (auto it: ib_->influence_list(i))
+            {
+                if (!it->locally_owned()) continue;
+                auto ib_coord = ib_->scaled_coordinate(i, it->refinement_level());
+
+                domain::Operator::ib_projection<U>
+                    (ib_coord, f[i], ib_->influence_pts(i, oct_i), ib_->delta_func());
+
+                oct_i+=1;
+            }
+        }
+
+        real_coordinate_type tmp_coord(0.0);
+
+
+        force_type tmp_f(ib_->size(), tmp_coord);
+        for (std::size_t i=0; i<tmp_f.size(); ++i)
+        {
+            tmp_f[i][0]=f[i];
+        }
+        //needed for stability solver
+        ib_->communicator().compute_indices();
+        ib_->communicator().communicate(false, tmp_f);
+
+        for (std::size_t i=0; i<tmp_f.size(); ++i)
+        {
+            f[i] = tmp_f[i][0];
+        }
 
     }
 

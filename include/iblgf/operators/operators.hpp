@@ -1457,10 +1457,10 @@ struct Operator
                                    n.at_offset(source, 0, -1, 0);
             n(dest, 2) *= fac;
 
-            n(dest, 0)     -= n(source, 1) * c;
+            //n(dest, 0)     -= n(source, 1) * c;
                 
 
-            n(dest, 1)     += n(source, 0) * c;
+            //n(dest, 1)     += n(source, 0) * c;
                 
 
         }

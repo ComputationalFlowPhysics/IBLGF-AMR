@@ -133,9 +133,6 @@ class Helm_stab
     using idx_uz_g_type = typename Setup::idx_uz_g_type;
     using idx_Nz_g_type = typename Setup::idx_Nz_g_type;
 
-    using idx_u_B_type = typename Setup::idx_u_B_type; //index for C matrix where input is only the velocities
-    using idx_uz_B_type = typename Setup::idx_uz_B_type;
-
     //fields for evaluating Jacobian
     using cell_aux_type = typename Setup::cell_aux_type;
     using cell_aux2_type = typename Setup::cell_aux2_type;
@@ -279,10 +276,6 @@ class Helm_stab
 
         mode_c = _simulation->dictionary()->template get_or<float_type>("mode_c", 0.1);
 
-        mode_c_filter = _simulation->dictionary()->template get_or<float_type>("mode_c_filter", 1);
-
-        alpha_f = _simulation->dictionary()->template get_or<float_type>("alpha_f", 0.0);
-
         Q_2DOnly = _simulation->dictionary()->template get_or<bool>("Q_2DOnly", false);
 
         if (mode_c < 0.0) {
@@ -293,12 +286,6 @@ class Helm_stab
             const float_type dx_base = domain_->dx_base();
             float_type mode_helm = mode_c * dx_base;
             kernel_vec.init(mode_helm);
-        }
-
-        if (mode_c_filter > 1e-12) {
-            //const float_type dx_base = domain_->dx_base();
-            //float_type mode_helm = mode_c * dx_base;
-            kernel_vec_filter.init(mode_c_filter);
         }
 
         if (force_loc_set_zero) {
@@ -723,7 +710,6 @@ class Helm_stab
 
 
         int counter = 0;
-        int counterB = 0;
         if (world.rank() == 0) {
             max_local_idx = -1;
             max_idx_from_prev_prc = 0;
@@ -762,32 +748,6 @@ class Helm_stab
                             n(idx_uz_type::tag(), field_idx) =
                                 static_cast<float_type>(counter) + 0.5;
                         }
-                    }
-
-
-                    for (std::size_t field_idx = 0;
-                         field_idx < idx_u_B_type::nFields(); ++field_idx)
-                    {
-                        for (auto& n : it->data())
-                        {
-                            counterB++;
-                            n(idx_u_type::tag(), field_idx) =
-                                static_cast<float_type>(counter) + 0.5;
-                        }
-                    }
-
-                    if (!Q_2DOnly) {
-
-                    for (std::size_t field_idx = 0;
-                         field_idx < idx_uz_B_type::nFields(); ++field_idx)
-                    {
-                        for (auto& n : it->data())
-                        {
-                            counterB++;
-                            n(idx_uz_type::tag(), field_idx) =
-                                static_cast<float_type>(counter) + 0.5;
-                        }
-                    }
                     }
                 }
                 else if (it->is_leaf() && it->is_correction() && l == base_level)
@@ -911,24 +871,22 @@ class Helm_stab
                         }
                         else
                         {
-                            if (i == 0) { tmp[0][0] = true; tmp[1][0] = true;
-                                          tmp[0][1] = true; tmp[1][1] = true;}
+                            if (i == 0) { tmp[0][0] = true; }
                             if (i == 1)
                             {
                                 for (int j = 0; j < N; j++)
                                 {
                                     tmp[j][0] = true;
-                                    tmp[j][1] = true;
+                                    //tmp[j][1] = true;
                                 }
                             }
-                            if (i == 2) { tmp[N - 1][0] = true; tmp[N - 1][1] = true;
-                                          tmp[N - 2][0] = true; tmp[N - 2][1] = true;}
+                            if (i == 2) { tmp[N - 1][0] = true; }
                             if (i == 3)
                             {
                                 for (int j = 0; j < N; j++)
                                 {
                                     tmp[0][j] = true;
-                                    tmp[1][j] = true;
+                                    //tmp[1][j] = true;
                                 }
                             }
                             if (i == 5)
@@ -936,21 +894,19 @@ class Helm_stab
                                 for (int j = 0; j < N; j++)
                                 {
                                     tmp[N - 1][j] = true;
-                                    tmp[N - 2][j] = true;
+                                    //tmp[N - 2][j] = true;
                                 }
                             }
-                            if (i == 6) { tmp[0][N - 1] = true; tmp[1][N - 1] = true;
-                                          tmp[0][N - 2] = true; tmp[1][N - 2] = true;}
+                            if (i == 6) { tmp[0][N - 1] = true; }
                             if (i == 7)
                             {
                                 for (int j = 0; j < N; j++)
                                 {
                                     tmp[j][N - 1] = true;
-                                    tmp[j][N - 2] = true;
+                                    //tmp[j][N - 2] = true;
                                 }
                             }
-                            if (i == 8) { tmp[N - 1][N - 1] = true; tmp[N - 2][N - 1] = true;
-                                          tmp[N - 1][N - 2] = true; tmp[N - 2][N - 2] = true;}
+                            if (i == 8) { tmp[N - 1][N - 1] = true; }
                         }
                     }
                     for (std::size_t field_idx = 0;
@@ -1000,59 +956,6 @@ class Helm_stab
                             }
                         }
                     }
-
-
-                    for (std::size_t field_idx = 0;
-                         field_idx < idx_u_B_type::nFields(); ++field_idx)
-                    {
-                        auto& lin_data =
-                            it->data_r(idx_u_B_type::tag(), field_idx)
-                                .linalg_data();
-                        for (int i = 0; i < N; i++)
-                        {
-                            for (int j = 0; j < N; j++)
-                            {
-                                if (tmp[i][j])
-                                {
-                                    counterB++;
-                                    view(lin_data, i + 1, j + 1) =
-                                        static_cast<float_type>(counter) + 0.5;
-                                }
-                                else
-                                {
-                                    view(lin_data, i + 1, j + 1) = -1;
-                                }
-                            }
-                        }
-                    }
-
-                    if (!Q_2DOnly) {
-
-                    for (std::size_t field_idx = 0;
-                         field_idx < idx_uz_B_type::nFields(); ++field_idx)
-                    {
-                        auto& lin_data =
-                            it->data_r(idx_uz_B_type::tag(), field_idx)
-                                .linalg_data();
-                        for (int i = 0; i < N; i++)
-                        {
-                            for (int j = 0; j < N; j++)
-                            {
-                                if (tmp[i][j])
-                                {
-                                    counterB++;
-                                    view(lin_data, i + 1, j + 1) =
-                                        static_cast<float_type>(counter) + 0.5;
-                                }
-                                else
-                                {
-                                    view(lin_data, i + 1, j + 1) = -1;
-                                }
-                            }
-                        }
-                    }
-                    }
-
                     //need this to compute the edge values
                     /*for (std::size_t field_idx = 0;
                          field_idx < idx_u_type::nFields(); ++field_idx)
@@ -1081,8 +984,6 @@ class Helm_stab
                 //if (it->is_correction()) continue;
             }
         }
-
-        max_local_B_idx = counterB;
 
         if (!testing_u_lap_only)
         {
@@ -2481,7 +2382,7 @@ class Helm_stab
 
         //iterate to revise bc at different refinement level
 
-        //if (flux_correction) this->template construct_flux_BC<idx_u_type, idx_u_g_type>(mat);
+        if (flux_correction) this->template construct_flux_BC<idx_u_type, idx_u_g_type>(mat);
 
         this->template construct_upward_BC_intrp<idx_u_type, idx_u_g_type>(mat);
 
@@ -2490,287 +2391,6 @@ class Helm_stab
         }
 
         this->template construct_interpolation<idx_u_type, idx_u_g_type>(mat);
-    }
-
-    void constructing_Filter_tri() {
-        boost::mpi::communicator world;
-        world.barrier();
-
-        if (world.rank() == 0) {
-            return;
-        }
-
-        
-        
-        if (max_local_idx == 0) {
-            std::cout << "idx not initialized, please call Assigning_idx()" << std::endl;
-        }
-
-        const auto dx_base = domain_->dx_base();
-
-        FT.resizing_row(max_local_idx+1);
-
-        int base_level = domain_->tree()->base_level();
-
-        int N_ext = domain_->block_extent()[0];
-
-        
-        for (int l = base_level; l < domain_->tree()->depth(); l++)
-        {
-            if (domain_->is_client())
-            {
-                auto client = domain_->decomposition().client();
-
-                client->template buffer_exchange<idx_u_type>(l);
-                client->template buffer_exchange<idx_u_g_type>(l);
-                if (l != (domain_->tree()->depth() - 1)) client->template buffer_exchange<idx_u_type>(l+1);
-                if (l != (domain_->tree()->depth() - 1)) client->template buffer_exchange<idx_u_g_type>(l+1);
-            }
-
-            int N_ext = domain_->block_extent()[0];
-
-            
-
-            for (auto it = domain_->begin(l);
-                 it != domain_->end(l); ++it)
-            {
-                if (!it->locally_owned() || !it->has_data()) continue;
-                if (!it->is_leaf()) continue;
-                if (it->is_correction() && l != base_level) continue;
-
-                float_type dx_level = dx_base / math::pow2(it->refinement_level());
-                
-
-                for (std::size_t field_idx = 0;
-                     field_idx < idx_u_type::nFields(); ++field_idx)
-                {
-                    for (auto& n : it->data())
-                    {
-                        int cur_idx = n(idx_u_type::tag(), field_idx);
-                        if (cur_idx < 0) continue;
-                        int glo_idx = n(idx_u_g_type::tag(), field_idx);
-                        FT.add_element(cur_idx, glo_idx,
-                            2.0);
-                        glo_idx =
-                            n.at_offset(idx_u_g_type::tag(), 0, 1, field_idx);
-                        FT.add_element(cur_idx, glo_idx,
-                            alpha_f);
-                        glo_idx =
-                            n.at_offset(idx_u_g_type::tag(), 1, 0, field_idx);
-                        FT.add_element(cur_idx, glo_idx,
-                            alpha_f);
-                        glo_idx =
-                            n.at_offset(idx_u_g_type::tag(), 0, -1, field_idx);
-                        FT.add_element(cur_idx, glo_idx,
-                            alpha_f);
-                        glo_idx =
-                            n.at_offset(idx_u_g_type::tag(), -1, 0, field_idx);
-                        FT.add_element(cur_idx, glo_idx,
-                            alpha_f);
-                    }
-                }
-            }
-        }
-
-        domain_->client_communicator().barrier();
-
-        if (world.rank() == 1) {
-            std::cout << "finished constructing the main part of laplacian" << std::endl;
-        }
-
-        //iterate to revise bc at different refinement level
-
-        //if (flux_correction) this->template construct_flux_BC<idx_u_type, idx_u_g_type>(mat);
-
-        this->template construct_upward_BC_intrp<idx_u_type, idx_u_g_type>(FT);
-
-        if (world.rank() == 1) {
-            std::cout << "finished constructing ref level BC of laplacian" << std::endl;
-        }
-
-        this->template construct_interpolation<idx_u_type, idx_u_g_type>(FT);
-    }
-
-
-
-    void constructing_Filter_RHS() {
-        boost::mpi::communicator world;
-        world.barrier();
-
-        if (world.rank() == 0) {
-            return;
-        }
-
-        
-        
-        if (max_local_idx == 0) {
-            std::cout << "idx not initialized, please call Assigning_idx()" << std::endl;
-        }
-
-        const auto dx_base = domain_->dx_base();
-
-        FR.resizing_row(max_local_idx+1);
-
-        int base_level = domain_->tree()->base_level();
-
-        int N_ext = domain_->block_extent()[0];
-
-        
-        for (int l = base_level; l < domain_->tree()->depth(); l++)
-        {
-            if (domain_->is_client())
-            {
-                auto client = domain_->decomposition().client();
-
-                client->template buffer_exchange<idx_u_type>(l);
-                client->template buffer_exchange<idx_u_g_type>(l);
-                if (l != (domain_->tree()->depth() - 1)) client->template buffer_exchange<idx_u_type>(l+1);
-                if (l != (domain_->tree()->depth() - 1)) client->template buffer_exchange<idx_u_g_type>(l+1);
-            }
-
-            int N_ext = domain_->block_extent()[0];
-
-            
-
-            for (auto it = domain_->begin(l);
-                 it != domain_->end(l); ++it)
-            {
-                if (!it->locally_owned() || !it->has_data()) continue;
-                if (!it->is_leaf()) continue;
-                if (it->is_correction() && l != base_level) continue;
-
-                float_type dx_level = dx_base / math::pow2(it->refinement_level());
-                
-
-                for (std::size_t field_idx = 0;
-                     field_idx < idx_u_type::nFields(); ++field_idx)
-                {
-                    for (auto& n : it->data())
-                    {
-                        int cur_idx = n(idx_u_type::tag(), field_idx);
-                        if (cur_idx < 0) continue;
-                        int glo_idx = n(idx_u_g_type::tag(), field_idx);
-                        FR.add_element(cur_idx, glo_idx,
-                            (1+2*alpha_f));
-                        glo_idx =
-                            n.at_offset(idx_u_g_type::tag(), 0, 1, field_idx);
-                        FR.add_element(cur_idx, glo_idx,
-                            (0.5+alpha_f));
-                        glo_idx =
-                            n.at_offset(idx_u_g_type::tag(), 1, 0, field_idx);
-                        FR.add_element(cur_idx, glo_idx,
-                            (0.5+alpha_f));
-                        glo_idx =
-                            n.at_offset(idx_u_g_type::tag(), 0, -1, field_idx);
-                        FR.add_element(cur_idx, glo_idx,
-                            (0.5+alpha_f));
-                        glo_idx =
-                            n.at_offset(idx_u_g_type::tag(), -1, 0, field_idx);
-                        FR.add_element(cur_idx, glo_idx,
-                            (0.5+alpha_f));
-                    }
-                }
-            }
-        }
-
-        domain_->client_communicator().barrier();
-    }
-
-
-    void construction_Intrp_Value_matrix() {
-        //construction of B matrix from the LHS of the linearized equations 
-        //this matrix is diagonal with 1 for leaf velocities and 0 o/w
-        boost::mpi::communicator world;
-        world.barrier();
-
-        if (world.rank() == 0) {
-            return;
-        }
-
-        if (world.rank() == 1) {
-            std::cout << "Constructing IV matrix" << std::endl;
-        }
-       
-        if (max_local_idx == 0) {
-            std::cout << "idx not initialized, please call Assigning_idx()" << std::endl;
-        }
-
-        const auto dx_base = domain_->dx_base();
-
-        IV.resizing_row(max_local_idx+1);
-
-        int base_level = domain_->tree()->base_level();
-
-         int N_ext = domain_->block_extent()[0];
-
-        
-        for (int l = base_level; l < domain_->tree()->depth(); l++)
-        {
-            if (domain_->is_client())
-            {
-                auto client = domain_->decomposition().client();
-
-                client->template buffer_exchange<idx_u_type>(l);
-                client->template buffer_exchange<idx_u_g_type>(l);
-                client->template buffer_exchange<idx_p_type>(l);
-                client->template buffer_exchange<idx_p_g_type>(l);
-                client->template buffer_exchange<idx_w_type>(l);
-                client->template buffer_exchange<idx_w_g_type>(l);
-            }
-
-            
-
-            
-
-            for (auto it = domain_->begin(l);
-                 it != domain_->end(l); ++it)
-            {
-                if (!it->locally_owned() || !it->has_data()) continue;
-                //if (!it->is_leaf()) continue;
-                //if (it->is_correction()) continue;
-
-                //float_type dx_level = dx_base / math::pow2(it->refinement_level());
-                
-
-                for (std::size_t field_idx = 0;
-                     field_idx < idx_u_type::nFields(); ++field_idx)
-                {
-                    for (auto& n : it->data())
-                    {
-                        int p_idx_w = n.at_offset(idx_p_g_type::tag(), -1, 0, 0);
-                        int p_idx_e = n.at_offset(idx_p_g_type::tag(), 1, 0, 0);
-                        int p_idx_n = n.at_offset(idx_p_g_type::tag(), 0, 1, 0);
-                        int p_idx_s = n.at_offset(idx_p_g_type::tag(), 0, -1, 0);
-
-                        
-                        
-                        int cur_idx = n(idx_u_type::tag(), field_idx);
-                        int glo_idx = n(idx_u_g_type::tag(), field_idx);
-                        if (cur_idx> 0) {
-                            IV.add_element(cur_idx, glo_idx, 1.0);
-                        }
-                    }
-                }
-
-                /*for (auto& n : it->data())
-                {
-                    
-
-                    int cur_idx = n(idx_uz_type::tag(), 0);
-                    int glo_idx = n(idx_uz_g_type::tag(), 0);
-                    if (cur_idx > 0) { IV.add_element(cur_idx, glo_idx, 1.0); }
-                    //B.add_element(cur_idx, glo_idx, 1.0);
-                }*/
-            }
-        }
-
-        domain_->client_communicator().barrier();
-
-        this->template construct_upward_BC_intrp<idx_u_type, idx_u_g_type>(IV);
-
-        this->template construct_interpolation<idx_u_type, idx_u_g_type>(IV);
-
-        domain_->client_communicator().barrier();
     }
 
 
@@ -3869,12 +3489,6 @@ class Helm_stab
         if (add_upward_intrp) Jac.add_vec(upward_intrp);
     }
 
-    void construct_filter_matrices() {
-        construction_Intrp_Value_matrix();
-        constructing_Filter_RHS();
-        constructing_Filter_tri();
-    }
-
     void construct_Jac_p() {
         boost::mpi::communicator world;
         
@@ -4195,7 +3809,7 @@ class Helm_stab
 
         //this->template construct_upward_BC_intrp<idx_w_type, idx_w_g_type>(L);
 
-        //this->template construct_interpolation<idx_w_type, idx_w_g_type>(L);
+        this->template construct_interpolation<idx_w_type, idx_w_g_type>(L);
 
         if (world.rank() == 1) {
             std::cout << "finished constructing the w BC of laplacian" << std::endl;
@@ -4293,89 +3907,6 @@ class Helm_stab
                     int cur_idx = n(idx_uz_type::tag(), 0);
                     int glo_idx = n(idx_uz_g_type::tag(), 0);
                     if (cur_idx > 0) { B.add_element(cur_idx, glo_idx, 1.0); }
-                    //B.add_element(cur_idx, glo_idx, 1.0);
-                }
-            }
-        }
-
-        domain_->client_communicator().barrier();
-    }
-
-
-    void construction_B_i_matrix() {
-        //construction of B matrix from the LHS of the linearized equations 
-        //this matrix is diagonal with 1 for leaf velocities and 0 o/w
-        boost::mpi::communicator world;
-        world.barrier();
-
-        if (world.rank() == 0) {
-            return;
-        }
-
-        if (world.rank() == 1) {
-            std::cout << "Constructing B_i matrix" << std::endl;
-        }
-       
-        if (max_local_idx == 0) {
-            std::cout << "idx not initialized, please call Assigning_idx()" << std::endl;
-        }
-
-        const auto dx_base = domain_->dx_base();
-
-        B_i.resizing_row(max_local_B_idx+1);
-
-        int base_level = domain_->tree()->base_level();
-
-         int N_ext = domain_->block_extent()[0];
-
-        
-        for (int l = base_level; l < domain_->tree()->depth(); l++)
-        {
-            if (domain_->is_client())
-            {
-                auto client = domain_->decomposition().client();
-
-                client->template buffer_exchange<idx_u_type>(l);
-                client->template buffer_exchange<idx_u_g_type>(l);
-                client->template buffer_exchange<idx_p_type>(l);
-                client->template buffer_exchange<idx_p_g_type>(l);
-                client->template buffer_exchange<idx_w_type>(l);
-                client->template buffer_exchange<idx_w_g_type>(l);
-            }
-
-            
-
-            
-
-            for (auto it = domain_->begin(l);
-                 it != domain_->end(l); ++it)
-            {
-                if (!it->locally_owned() || !it->has_data()) continue;
-                //if (!it->is_leaf()) continue;
-                //if (it->is_correction()) continue;
-                
-
-                for (std::size_t field_idx = 0;
-                     field_idx < idx_u_type::nFields(); ++field_idx)
-                {
-                    for (auto& n : it->data())
-                    {
-                        
-                        int cur_idx = n(idx_u_B_type::tag(), field_idx);
-                        int glo_idx = n(idx_u_g_type::tag(), field_idx);
-                        if (cur_idx> 0) {
-                            B_i.add_element(cur_idx, glo_idx, 1.0);
-                        }
-                    }
-                }
-
-                for (auto& n : it->data())
-                {
-                    
-
-                    int cur_idx = n(idx_uz_B_type::tag(), 0);
-                    int glo_idx = n(idx_uz_g_type::tag(), 0);
-                    if (cur_idx > 0) { B_i.add_element(cur_idx, glo_idx, 1.0); }
                     //B.add_element(cur_idx, glo_idx, 1.0);
                 }
             }
@@ -5421,13 +4952,11 @@ class Helm_stab
                 if (!it->locally_owned() || !it->has_data()) continue;
                 //if (!it->is_leaf() && it->is_correction()) continue;
                 //if (!it->is_leaf()) continue;
-                //if (it->is_correction()) continue;
+                if (it->is_correction()) continue;
                 for (auto& n : it->data())
                 {
                     int cur_idx_0 = n(idx_w_type::tag(), 0);
                     int glo_idx_0 = n(idx_w_g_type::tag(), 0);
-
-                    if (cur_idx_0 < 0) continue;
 
                     int cur_idx_1 = n(idx_w_type::tag(), 1);
                     int glo_idx_1 = n(idx_w_g_type::tag(), 1);
@@ -8221,10 +7750,10 @@ class Helm_stab
     }
 
     template<class Source, class Uz, class Target>
-    void div_access(bool iscs = true) {
+    void div_access() {
         this->divergence<Source, Target>();
         add<Uz, Target>(-mode_c);
-        if (iscs) clean_leaf_according_to_idx<Target, idx_cs_g_type>(domain_->tree()->base_level());
+        clean_leaf_according_to_idx<Target, idx_cs_g_type>(domain_->tree()->base_level());
     }
 
     template<class Source1, class Source2, class Target>
@@ -8232,79 +7761,6 @@ class Helm_stab
         //boost::mpi::communicator world;
         //std::cout << "rank " << (world.rank()) << " starting nonlinear jacobian" << std::endl;
         this->nonlinear_jac_adjoint<Source1, Source2, Target>();
-    }
-
-
-    template<class Source, class Uz, class Target>
-    void curlTranspose() noexcept
-    {
-        auto client = domain_->decomposition().client();
-
-        domain::Operator::domainClean<Target>(domain_);
-        domain::Operator::domainClean<Uz>(domain_);
-
-        //up_and_down<Source>();
-        //up_and_down<Uz>();
-
-        for (int l = domain_->tree()->base_level();
-                 l < domain_->tree()->depth(); ++l)
-        {
-            auto client = domain_->decomposition().client();
-            client->template buffer_exchange<Source>(l);
-            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
-            {
-                if (!it->locally_owned()) continue;
-
-                const auto dx_level =
-                    dx_base_ / math::pow2(it->refinement_level());
-                domain::Operator::curl_transpose_helmholtz_complex_linear<Source, Target, Uz>(
-                    it->data(), dx_level, mode_c, 1.0/Re_);
-            }
-            //client->template buffer_exchange<Field>(l);
-        }
-
-        //clean<Source>(true);
-
-        //clean_leaf_correction_boundary<Target>(domain_->tree()->base_level(), true, 1);
-        //clean_leaf_according_to_idx<Target, idx_w_g_type>(domain_->tree()->base_level());
-        //clean<Target>(true);
-    }
-
-
-    template<class Source, class Target>
-    void Grad_access(float_type _scale = 1.0) {
-
-
-        domain::Operator::domainClean<Target>(domain_);
-
-        //up_and_down<Source>();
-
-        for (int l = domain_->tree()->base_level();
-             l < domain_->tree()->depth(); ++l)
-        {
-            auto client = domain_->decomposition().client();
-            client->template buffer_exchange<Source>(l);
-            const auto dx_base = domain_->dx_base();
-            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
-            {
-                if (!it->locally_owned() || !it->has_data()) continue;
-                const auto dx_level =
-                    dx_base / math::pow2(it->refinement_level());
-                domain::Operator::gradient<Source, Target>(it->data(),
-                    dx_level);
-                for (std::size_t field_idx = 0; field_idx < Target::nFields();
-                     ++field_idx)
-                {
-                    auto& lin_data =
-                        it->data_r(Target::tag(), field_idx).linalg_data();
-
-                    lin_data *= _scale;
-                }
-            }
-            client->template buffer_exchange<Target>(l);
-            //clean_leaf_correction_boundary<Target>(l, true, 2);
-        }
-
     }
 
     template<class Source, class Uz, class Target>
@@ -9758,8 +9214,6 @@ class Helm_stab
         domain_->client_communicator().barrier();
     }
 
-
-
     //TODO maybe to be put directly into operators:
     template<class Source, class Target>
     void nonlinear(float_type _scale = 1.0) noexcept
@@ -10473,13 +9927,6 @@ class Helm_stab
     sparse_mat Q; //The matrix defining inner product
     sparse_mat Q_halfi; //Q^(-1/2), needed for defining resolvent
 
-    //Matrix for filtering
-    sparse_mat FT; //tri-diagonal system
-    sparse_mat FR; //RHS matrix
-    sparse_mat IV; //Interpolation matrix to put values in 
-
-    sparse_mat B_i; //input matrix, from all state variables to velocities (including nonleaves)
-
   private:
     
 
@@ -10523,7 +9970,7 @@ class Helm_stab
     bool FMM_include_center = false;
     bool no_vort_idx = false;
     bool testing_u_lap_only = false;
-    bool flux_correction = false;
+    bool flux_correction = true;
     std::map<int, int> FMM_bin; // the map that structured like N_sep, 1;N_sep*2+N_sep, 2; N_sep*2^2+N_sep*2+N_sep, 2^2;...
     //the first int is the max value for that bin, the second value is the stride for that bin
 
@@ -10534,8 +9981,6 @@ class Helm_stab
     float_type              cg_threshold_;
     float_type              Newton_threshold_;
     float_type              Curl_factor; //the factor to better enforce vorticity criterion
-
-    float_type              alpha_f = 0.3;
     std::vector<float_type> source_max_{0.0, 0.0};
 
     float_type T_last_vel_refresh_ = 0.0;
@@ -10562,8 +10007,6 @@ class Helm_stab
     //variables for indexing for constructing matrix
     int max_idx_from_prev_prc = 0;
     int max_local_idx = 0;
-
-    int max_local_B_idx = 0;
     
 
     std::string                fname_prefix_;
@@ -10579,7 +10022,6 @@ class Helm_stab
     float_type mode_c; 
     //this is the normalized Fourier mode number, i.e. if the periodic length is L_z, mode_c = 2pi n/L_z, n is the number of Fourier mode
     Kernel_vec kernel_vec;
-    Kernel_vec kernel_vec_filter;
 
     //vector_type<float_type, 6>        a_{{1.0 / 2, sqrt(3)/3, (3-sqrt(3))/3, (3+sqrt(3))/6, -sqrt(3)/3, (3+sqrt(3))/6}};
     //vector_type<float_type, 4>        c_{{0.0, 0.5, 1.0, 1.0}};

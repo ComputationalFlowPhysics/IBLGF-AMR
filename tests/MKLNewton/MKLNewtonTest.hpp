@@ -154,16 +154,47 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
 		if (domain_->dimension()>2)
 			U_[2] = simulation_.dictionary()->template get_or<float_type>("Uz", 0.0);
 
+        Omega = simulation_.dictionary()->template get_or<float_type>("Omega", 0.0);
+
 		smooth_start_ = simulation_.dictionary()->template get_or<bool>("smooth_start", false);
 
 		vortexType = simulation_.dictionary()->template get_or<int>("Vort_type", 0);
 
 		pert_mag = simulation_.dictionary()->template get_or<float_type>("pert_mag", 0.1);
 
-		simulation_.frame_vel() =
+		simulation_.bc_vel() =
 			[this](std::size_t idx, float_type t, auto coord = {0, 0})
 			{
 				float_type T0 = 0.5;
+
+				float_type r = std::sqrt((coord[0] * coord[0] + coord[1] * coord[1]));
+                float_type f_alpha = 0.0;
+				if (r < 0.25) {
+                    f_alpha = 0.0;
+                    /*if (r < 1e-12) {
+                        f_alpha = 0.0;
+                    }
+                    else {
+                        if (idx == 0) {
+                            f_alpha =  coord[1]/r/0.1*Omega;
+                        }
+                        else if (idx == 1) {
+                            f_alpha = -coord[0]/r/0.1*Omega;
+                        }
+                        else {
+                            f_alpha = 0.0;
+                        }
+                    }*/
+                }
+                else {
+                    if (idx == 0) { f_alpha = coord[1] / r / r * Omega; }
+                    else if (idx == 1)
+                    {
+                        f_alpha = -coord[0] / r / r * Omega;
+                    }
+                    else { f_alpha = 0.0; }
+                }
+
 				if (t<=0.0 && smooth_start_)
 					return 0.0;
 				else if (t<T0-1e-10 && smooth_start_)
@@ -171,11 +202,32 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
 					float_type h1 = exp(-1/(t/T0));
 					float_type h2 = exp(-1/(1 - t/T0));
 
-					return -U_[idx] * (h1/(h1+h2));
+					return -(U_[idx] + f_alpha) * (h1/(h1+h2));
 				}
 				else
 				{
-					return -U_[idx];
+					return -(U_[idx] + f_alpha);
+				}
+			};
+
+
+		simulation_.frame_vel() =
+			[this](std::size_t idx, float_type t, auto coord = {0, 0})
+			{
+				float_type T0 = 0.5;
+
+				if (t<=0.0 && smooth_start_)
+					return 0.0;
+				else if (t<T0-1e-10 && smooth_start_)
+				{
+					float_type h1 = exp(-1/(t/T0));
+					float_type h2 = exp(-1/(1 - t/T0));
+
+					return -(U_[idx]) * (h1/(h1+h2));
+				}
+				else
+				{
+					return -(U_[idx]);
 				}
 			};
 
@@ -580,6 +632,7 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
     bool testing_smearing = false;
 
     std::vector<float_type> U_;
+    float_type Omega; //rotation rate of the cylinder (if needed)
     //bool subtract_non_leaf_  = true;
     float_type R_;
     float_type v_delta_;

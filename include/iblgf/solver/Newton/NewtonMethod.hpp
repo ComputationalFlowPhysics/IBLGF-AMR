@@ -739,7 +739,7 @@ class NewtonIteration
         for (std::size_t _field_idx = 0; _field_idx < Field::nFields();
              ++_field_idx)
             psolver.template source_coarsify<Field, Field>(_field_idx,
-                _field_idx, Field::mesh_type(), false, false, false,
+                _field_idx, Field::mesh_type(), false, true, false,
                 leaf_boundary_only);
     }
 
@@ -3282,9 +3282,9 @@ class NewtonIteration
             std::cout << "finished constructing the p BC of laplacian" << std::endl;
         }
 
-        //this->template construct_upward_BC_intrp<idx_w_type, idx_w_g_type>(L);
+        this->template construct_upward_BC_intrp<idx_w_type, idx_w_g_type>(L);
 
-        this->template construct_interpolation<idx_w_type, idx_w_g_type>(L);
+        //this->template construct_interpolation<idx_w_type, idx_w_g_type>(L);
 
         if (world.rank() == 1) {
             std::cout << "finished constructing the w BC of laplacian" << std::endl;
@@ -3987,7 +3987,7 @@ class NewtonIteration
             {
                 float_type dx_level = dx_base / math::pow2(it->refinement_level());
                 if (!it->locally_owned() || !it->has_data()) continue;
-                if (!it->is_leaf() && it->is_correction()) continue;
+                if (!it->is_leaf() && !it->is_correction()) continue;
                 for (auto& n : it->data())
                 {
                     int cur_idx = n(idx_w_type::tag(), 0);
@@ -6461,7 +6461,7 @@ class NewtonIteration
         lsolver.template projection<Source_face>(
             force_target); //need to change this vector in the bracket
 
-        auto u_f = simulation_->frame_vel();
+        auto u_f = simulation_->bc_vel();
 
         
 
@@ -6471,9 +6471,10 @@ class NewtonIteration
                 continue;
 
             for (std::size_t d=0; d<force_target[0].size(); ++d) {
-                //need to change to arbitrary points, this only works for uniform flow
                 if (world.rank() != domain_->ib().rank(i)) continue;
-                float_type u_inf = u_f(d, 5, coordinate_type({0,0}));
+                auto ib_coord = domain_->ib().coordinate(i);
+                //coordinate left to be default intentially to set rotational velocity to be 0
+                float_type u_inf = u_f(d, 5, ib_coord);
                 force_target[i][d] -= u_inf;
             }
         }
@@ -8399,9 +8400,11 @@ class NewtonIteration
 
         domain::Operator::domainClean<Target>(domain_);
 
+        clean<edge_aux_type>();
+
         up_and_down<Source>();
 
-        for (int l = domain_->tree()->base_level();
+        /*for (int l = domain_->tree()->base_level();
              l < domain_->tree()->depth(); ++l)
         {
             client->template buffer_exchange<Source>(l);
@@ -8413,6 +8416,49 @@ class NewtonIteration
                 const auto dx_level =
                     dx_base / math::pow2(it->refinement_level());
                 domain::Operator::laplace<Source, Target>(it->data(), dx_level);
+            }
+
+            //client->template buffer_exchange<Target>(l);
+            //clean_leaf_correction_boundary<Target>(l, true, 2);
+            //clean_leaf_correction_boundary<Target>(l, false,4+stage_idx_);
+        }*/
+
+
+        for (int l = domain_->tree()->base_level();
+             l < domain_->tree()->depth(); ++l)
+        {
+            client->template buffer_exchange<Source>(l);
+            const auto dx_base = domain_->dx_base();
+
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
+                if (!it->is_leaf() && !it->is_correction()) continue;
+                const auto dx_level =
+                    dx_base / math::pow2(it->refinement_level());
+                domain::Operator::curl<Source, edge_aux_type>(it->data(), dx_level);
+            }
+
+            //client->template buffer_exchange<Target>(l);
+            //clean_leaf_correction_boundary<Target>(l, true, 2);
+            //clean_leaf_correction_boundary<Target>(l, false,4+stage_idx_);
+        }
+
+        this->up<edge_aux_type>();
+
+        for (int l = domain_->tree()->base_level();
+             l < domain_->tree()->depth(); ++l)
+        {
+            client->template buffer_exchange<edge_aux_type>(l);
+            const auto dx_base = domain_->dx_base();
+
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
+                if (!it->is_leaf() && !it->is_correction()) continue;
+                const auto dx_level =
+                    dx_base / math::pow2(it->refinement_level());
+                domain::Operator::curl_transpose<edge_aux_type, Target>(it->data(), dx_level, -1.0);
             }
 
             //client->template buffer_exchange<Target>(l);

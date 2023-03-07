@@ -107,6 +107,7 @@ class Simulation
         else
         {
             io_h5.write_h5(io::output().dir()+"/flow_"+_filename+".hdf5", domain_.get(), true, true);
+            //io_h5.write_h5_withTime(io::output().dir()+"/flowTime_"+_filename+".hdf5", domain_.get(), true, true);
             if (domain_->is_server())
                 write_tree("_"+_filename, false);
 
@@ -115,6 +116,47 @@ class Simulation
                 float_type dz = c_z / static_cast<float_type>(N_modes*3);
                 io_h5.write_helm_3D(io::output().dir()+"/vort_"+_filename+".hdf5", domain_.get(), dz, false, false);
             }
+        }
+    }
+
+
+    void writeWithCorr(std::string _filename, bool restart_file=false)
+    {
+        if (restart_file)
+        {
+            io_h5.write_h5(io::output().restart_save_dir()+"/"+restart_field_file_, domain_.get(), true, false);
+            if (domain_->is_server())
+                write_tree("", true);
+        }
+        else
+        {
+            io_h5.write_h5(io::output().dir()+"/flow_"+_filename+".hdf5", domain_.get(), true, false);
+            //io_h5.write_h5_withTime(io::output().dir()+"/flowTime_"+_filename+".hdf5", domain_.get(), true, true);
+            if (domain_->is_server())
+                write_tree("_"+_filename, false);
+
+            if (helmholtz) {
+                float_type c_z = dictionary_->template get_or<float_type>("L_z", 1);
+                float_type dz = c_z / static_cast<float_type>(N_modes*3);
+                io_h5.write_helm_3D(io::output().dir()+"/vort_"+_filename+".hdf5", domain_.get(), dz, false, false);
+            }
+        }
+    }
+
+    void writeWithTime(std::string _filename, float_type _time, float_type dt_)
+    {
+        io_h5.write_h5_withTime(io::output().dir() + "/flowTime_" + _filename +
+                                    ".hdf5",
+            domain_.get(), _time, dt_, true, true);
+        if (domain_->is_server()) write_tree("_" + _filename, false);
+
+        if (helmholtz)
+        {
+            float_type c_z = dictionary_->template get_or<float_type>("L_z", 1);
+            float_type dz = c_z / static_cast<float_type>(N_modes * 3);
+            io_h5.write_helm_3D(io::output().dir() + "/vort_" + _filename +
+                                    ".hdf5",
+                domain_.get(), dz, false, false);
         }
     }
 
@@ -159,6 +201,7 @@ class Simulation
     int intrp_order()noexcept{return intrp_order_;}
 
     auto& frame_vel() {return frame_vel_;}
+    auto& bc_vel() {return bc_vel_;}
 
 public:
   std::shared_ptr<Dictionary> dictionary_=nullptr;
@@ -172,6 +215,7 @@ public:
   std::string restart_field_file_="restart_field.hdf5";
 
   std::function<float_type(std::size_t idx, float_type t, typename domain_type::real_coordinate_type coord)> frame_vel_;
+  std::function<float_type(std::size_t idx, float_type t, typename domain_type::real_coordinate_type coord)> bc_vel_;
   int intrp_order_;
 
 };

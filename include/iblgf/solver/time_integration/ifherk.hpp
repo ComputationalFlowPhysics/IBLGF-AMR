@@ -498,7 +498,8 @@ class Ifherk
         boost::mpi::communicator world;
         world.barrier();
         pcout << "- writing at T = " << T_ << ", n = " << n_step_ << std::endl;
-        simulation_->write(fname(n_step_));
+        //simulation_->write(fname(n_step_));
+        simulation_->writeWithTime(fname(n_step_), T_, dt_);
         //simulation_->domain()->tree()->write("tree_restart.bin");
         world.barrier();
         //simulation_->domain()->tree()->read("tree_restart.bin");

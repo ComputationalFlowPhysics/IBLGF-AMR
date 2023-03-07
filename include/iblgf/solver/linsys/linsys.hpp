@@ -148,9 +148,12 @@ class LinSysSolver
     void subtract_boundary_vel(ForceType& uc, float_type t)
     {
         auto& frame_vel = simulation_->frame_vel();
+        auto& bc_vel = simulation_->bc_vel();
         for (std::size_t i=0; i<uc.size(); ++i)
-            for (std::size_t idx=0; idx<uc[i].size(); ++idx)
-                uc[i][idx]-=frame_vel(idx, t, ib_->coordinate(i));
+            for (std::size_t idx=0; idx<uc[i].size(); ++idx) {
+                uc[i][idx]-=bc_vel(idx, t, ib_->coordinate(i));
+                //uc[i][idx]-=frame_vel(idx, t, ib_->coordinate(i));
+            }
     }
 
     template<class ForceType>

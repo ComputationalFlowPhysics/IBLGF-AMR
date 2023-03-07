@@ -906,7 +906,7 @@ class Chombo
     }
 
     void write_global_metaData(HDF5File* _file, value_type _dx = 1,
-        value_type _time = 0.0, int _dt = 1, int _ref_ratio = 2, bool helm3D = false, int N_modes = 1, float_type dz = 0.0)
+        value_type _time = 0.0, value_type _dt = 1, int _ref_ratio = 2, bool helm3D = false, int N_modes = 1, float_type dz = 0.0)
     {
         boost::mpi::communicator world;
         auto                     root = _file->get_root();

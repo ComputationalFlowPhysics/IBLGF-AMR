@@ -454,6 +454,43 @@ class Ifherk_HELM
         pcout << "source max = " << source_max_[idx] << std::endl;
     }
 
+
+
+    template<class Field>
+    float_type obtaining_u_max()
+    {
+        clean<face_aux_type>();
+        float_type max_local = 0.0;
+        copy<Field, face_aux_type>();
+        domain::Operator::add_field_expression_complex_helmholtz<face_aux_type>(
+            domain_, N_modes, simulation_->frame_vel(), T_stage_, -1.0);
+        for (auto it = domain_->begin(); it != domain_->end(); ++it)
+        {
+            if (!it->locally_owned() || !it->has_data()) continue;
+            
+            for (auto& n : it->data().node_field())
+            {
+                float_type u_val = 0.0;
+                for (std::size_t field_idx = 0; field_idx < face_aux_type::nFields();
+                     ++field_idx)
+                {
+                    u_val += n(face_aux_type::tag(), field_idx) * n(face_aux_type::tag(), field_idx);
+                }
+                if (u_val > max_local) {
+                    max_local = u_val;
+                }
+             }
+        }
+
+        float_type new_maximum = 0.0;
+        boost::mpi::all_reduce(domain_->client_communicator(), max_local, new_maximum,
+            boost::mpi::maximum<float_type>());
+
+        pcout << "max u value is " << std::sqrt(new_maximum) << std::endl;
+
+        return std::sqrt(new_maximum);
+    }
+
     void write_restart()
     {
         boost::mpi::communicator world;
@@ -741,6 +778,7 @@ class Ifherk_HELM
         base_mesh_update_ = false;
         pcout << "pad u      in " << t_pad.count() << std::endl;
         if (adapt_Fourier) clean_Fourier_modes_all<u_type>();
+        float_type u_max_val = obtaining_u_max<u_type>();
         copy<u_type, q_i_type>();
 
         // Stage 1

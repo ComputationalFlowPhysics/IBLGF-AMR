@@ -205,6 +205,37 @@ class IB
                 }
             }
         }
+
+        else if (geometry_ == "NACA0009")
+        {
+            if (Dim == 2)
+            {
+                float_type R = 0.5;
+                float_type dx = dx_base_ / pow(2, IBlevel_) * ibph_;
+                int        n = floor(1.0 / dx)*2;
+                if (comm_.rank() == 1)
+                    std::cout << "Geometry = NACA0009, n = " << n << std::endl;
+                for (int i = 0; i < n/2 ; i++)
+                {
+                    float_type    x = i * dx;
+                    float_type    y = 5*0.09*(0.2969*std::sqrt(x) - 0.1260*x - 0.3516*x*x + 0.2843 * x * x * x - 0.1015 * x * x * x * x);
+                    real_coordinate_type tmp;
+
+                    float_type angle = M_PI/15; //12 degree AoA
+                    tmp.x() = x*std::cos(angle) - y*std::sin(angle);
+                    tmp.y() = y*std::cos(angle) + x*std::sin(angle);
+                    coordinates_.emplace_back(real_coordinate_type(tmp));
+
+                    x = i * dx + dx;
+                    y = -5*0.09*(0.2969*std::sqrt(x) - 0.1260*x - 0.3516*x*x + 0.2843 * x * x * x - 0.1015 * x * x * x * x);
+                    
+                    tmp.x() = x*std::cos(angle) - y*std::sin(angle);
+                    tmp.y() = y*std::cos(angle) + x*std::sin(angle);
+
+                    coordinates_.emplace_back(real_coordinate_type(tmp));
+                }
+            }
+        }
         else if (geometry_ == "ForTim15000")
         {
             //create a 16000 IB points

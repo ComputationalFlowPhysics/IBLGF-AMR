@@ -168,6 +168,8 @@ class Stability
 		iparm[0] = 1; /* Solver default parameters overriden with provided by iparm */
         //iparm[1] = 0;  /* Use METIS for fill-in reordering */
         iparm[1] = 2;  /* Use METIS for fill-in reordering */
+        //iparm[1] = 10;  /* Use MPI METIS for fill-in reordering */
+        //iparm[1] = 3;  /* Use Parallel METIS for fill-in reordering */
         iparm[5] = 0;  /* Write solution into x */
         iparm[7] = 5;  /* Max number of iterative refinement steps, negative means using quad precision */
         iparm[9] = 13; /* Perturb the pivot elements with 1E-13 */
@@ -262,8 +264,21 @@ class Stability
         }
 
         Pardiso.load_matrix(ifherk.Jac, ifherk);
+        world.barrier();
+        if (world.rank() == 1) {
+            std::cout << "matrix loaded" << std::endl;
+        }
+        
         Pardiso.load_RHS(ifherk.Jac, ifherk, b);
+        world.barrier();
+        if (world.rank() == 1) {
+            std::cout << "RHSloaded" << std::endl;
+        }
         Pardiso.reordering();
+        world.barrier();
+        if (world.rank() == 1) {
+            std::cout << "Reordering complete" << std::endl;
+        }
         Pardiso.factorization();
         Pardiso.back_substitution();
         Pardiso.getSolution(ifherk.Jac, ifherk, x);

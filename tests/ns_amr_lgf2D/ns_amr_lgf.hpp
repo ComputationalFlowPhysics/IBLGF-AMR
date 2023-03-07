@@ -112,10 +112,41 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 
 		vortexType = simulation_.dictionary()->template get_or<int>("Vort_type", 0);
 
-		simulation_.frame_vel() =
+		Omega = simulation_.dictionary()->template get_or<float_type>("Omega", 0.0);
+
+		simulation_.bc_vel() =
 			[this](std::size_t idx, float_type t, auto coord = {0, 0})
 			{
 				float_type T0 = 0.5;
+
+				float_type r = std::sqrt((coord[0] * coord[0] + coord[1] * coord[1]));
+                float_type f_alpha = 0.0;
+				if (r < 0.25) {
+                    f_alpha = 0.0;
+                    /*if (r < 1e-12) {
+                        f_alpha = 0.0;
+                    }
+                    else {
+                        if (idx == 0) {
+                            f_alpha =  coord[1]/r/0.1*Omega;
+                        }
+                        else if (idx == 1) {
+                            f_alpha = -coord[0]/r/0.1*Omega;
+                        }
+                        else {
+                            f_alpha = 0.0;
+                        }
+                    }*/
+                }
+                else {
+                    if (idx == 0) { f_alpha = coord[1] / r / r * Omega; }
+                    else if (idx == 1)
+                    {
+                        f_alpha = -coord[0] / r / r * Omega;
+                    }
+                    else { f_alpha = 0.0; }
+                }
+
 				if (t<=0.0 && smooth_start_)
 					return 0.0;
 				else if (t<T0-1e-10 && smooth_start_)
@@ -123,11 +154,32 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 					float_type h1 = exp(-1/(t/T0));
 					float_type h2 = exp(-1/(1 - t/T0));
 
-					return -U_[idx] * (h1/(h1+h2));
+					return -(U_[idx] + f_alpha) * (h1/(h1+h2));
 				}
 				else
 				{
-					return -U_[idx];
+					return -(U_[idx] + f_alpha);
+				}
+			};
+
+
+		simulation_.frame_vel() =
+			[this](std::size_t idx, float_type t, auto coord = {0, 0})
+			{
+				float_type T0 = 0.5;
+
+				if (t<=0.0 && smooth_start_)
+					return 0.0;
+				else if (t<T0-1e-10 && smooth_start_)
+				{
+					float_type h1 = exp(-1/(t/T0));
+					float_type h2 = exp(-1/(1 - t/T0));
+
+					return -(U_[idx]) * (h1/(h1+h2));
+				}
+				else
+				{
+					return -(U_[idx]);
 				}
 			};
 
@@ -151,6 +203,7 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 		vort_sep = simulation_.dictionary()->template get_or<float_type>("vortex_separation", 1.0 * R_);
 		hard_max_refinement_ = simulation_.dictionary()->template get_or<bool>("hard_max_refinement", false);
 		non_base_level_update = simulation_.dictionary()->template get_or<bool>("no_base_level_update", false);
+		NoMeshUpdate = simulation_.dictionary()->template get_or<bool>("no_mesh_update", false);
 
 		auto domain_range = domain_->bounding_box().max() - domain_->bounding_box().min();
 		Lx = domain_range[0] * dx_;
@@ -499,7 +552,7 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 	template<class Field, class OctantType>
 	int adapt_levle_change_for_field(OctantType it, float_type source_max, bool use_base_level_threshold)
 	{
-		if (vortexType != 0) return 0;
+		if (vortexType != 0 || NoMeshUpdate) return 0;
 		if (it->refinement_level() == 0 && non_base_level_update) return 0; 
 		if (it->is_ib() && it->is_leaf())
 			if (it->refinement_level()<nLevelRefinement_)
@@ -934,8 +987,10 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
     bool smooth_start_;
 	bool non_base_level_update = false;
     int vortexType = 0;
+	bool NoMeshUpdate = false;
 
     std::vector<float_type> U_;
+	float_type Omega; //rotational rate
     //bool subtract_non_leaf_  = true;
     float_type R_;
     float_type v_delta_;

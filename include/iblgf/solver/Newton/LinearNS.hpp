@@ -3440,7 +3440,7 @@ class LinearNS
 
         //this->template construct_upward_BC_intrp<idx_w_type, idx_w_g_type>(L);
 
-        this->template construct_interpolation<idx_w_type, idx_w_g_type>(L);
+        //this->template construct_interpolation<idx_w_type, idx_w_g_type>(L);
 
         if (world.rank() == 1) {
             std::cout << "finished constructing the w BC of laplacian" << std::endl;
@@ -4451,7 +4451,7 @@ class LinearNS
             {
                 float_type dx_level = dx_base / math::pow2(it->refinement_level());
                 if (!it->locally_owned() || !it->has_data()) continue;
-                if (!it->is_leaf() && it->is_correction()) continue;
+                //if (!it->is_leaf() && it->is_correction()) continue;
                 for (auto& n : it->data())
                 {
                     int cur_idx = n(idx_w_type::tag(), 0);

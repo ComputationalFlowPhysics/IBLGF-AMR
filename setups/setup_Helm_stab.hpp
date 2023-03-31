@@ -95,6 +95,8 @@ class SetupHelmStab
       (idx_Nz_g,            float_type,  1,  1,   1, cell,true), //z velocity
       (idx_u_B ,            float_type,  2,  1,   1, face,true), //B matrix z velocity
       (idx_uz_B,            float_type,  1,  1,   1, cell,true), //B_matrix velocity
+      (idx_u_B_g,           float_type,  2,  1,   1, face,true), //B matrix z velocity
+      (idx_uz_B_g,          float_type,  1,  1,   1, cell,true), //B_matrix velocity
       //(d_i,                 float_type,  1,  1,  1,  cell,true),
       //(r_i_T,               float_type,  Dim,  1,  1,  face,true),
       //(cell_aux_T,          float_type,  1,  1,  1,  cell,true),

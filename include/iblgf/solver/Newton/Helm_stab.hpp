@@ -135,6 +135,8 @@ class Helm_stab
 
     using idx_u_B_type = typename Setup::idx_u_B_type; //index for C matrix where input is only the velocities
     using idx_uz_B_type = typename Setup::idx_uz_B_type;
+    using idx_u_B_g_type = typename Setup::idx_u_B_g_type; //index for C matrix where input is only the velocities
+    using idx_uz_B_g_type = typename Setup::idx_uz_B_g_type;
 
     //fields for evaluating Jacobian
     using cell_aux_type = typename Setup::cell_aux_type;
@@ -279,9 +281,7 @@ class Helm_stab
 
         mode_c = _simulation->dictionary()->template get_or<float_type>("mode_c", 0.1);
 
-        mode_c_filter = _simulation->dictionary()->template get_or<float_type>("mode_c_filter", 1);
-
-        alpha_f = _simulation->dictionary()->template get_or<float_type>("alpha_f", 0.0);
+        alpha_f = _simulation->dictionary()->template get_or<float_type>("alpha_f", 0.3);
 
         Q_2DOnly = _simulation->dictionary()->template get_or<bool>("Q_2DOnly", false);
 
@@ -293,12 +293,6 @@ class Helm_stab
             const float_type dx_base = domain_->dx_base();
             float_type mode_helm = mode_c * dx_base;
             kernel_vec.init(mode_helm);
-        }
-
-        if (mode_c_filter > 1e-12) {
-            //const float_type dx_base = domain_->dx_base();
-            //float_type mode_helm = mode_c * dx_base;
-            kernel_vec_filter.init(mode_c_filter);
         }
 
         if (force_loc_set_zero) {
@@ -727,8 +721,12 @@ class Helm_stab
         if (world.rank() == 0) {
             max_local_idx = -1;
             max_idx_from_prev_prc = 0;
+            max_local_B_idx = -1;
+            max_idx_B_from_prev_prc = 0;
             counter = 0;
+            counterB = 0;
             world.send(1, 0, counter);
+            world.send(1, 0, counterB);
             return;
         }
 
@@ -771,23 +769,34 @@ class Helm_stab
                         for (auto& n : it->data())
                         {
                             counterB++;
-                            n(idx_u_type::tag(), field_idx) =
-                                static_cast<float_type>(counter) + 0.5;
+                            n(idx_u_B_type::tag(), field_idx) =
+                                static_cast<float_type>(counterB) + 0.5;
                         }
                     }
 
                     if (!Q_2DOnly) {
 
-                    for (std::size_t field_idx = 0;
-                         field_idx < idx_uz_B_type::nFields(); ++field_idx)
-                    {
-                        for (auto& n : it->data())
+                        for (std::size_t field_idx = 0;
+                            field_idx < idx_uz_B_type::nFields(); ++field_idx)
                         {
-                            counterB++;
-                            n(idx_uz_type::tag(), field_idx) =
-                                static_cast<float_type>(counter) + 0.5;
+                            for (auto& n : it->data())
+                            {
+                                counterB++;
+                                n(idx_uz_B_type::tag(), field_idx) =
+                                    static_cast<float_type>(counterB) + 0.5;
+                            }
                         }
                     }
+                    else {
+                        for (std::size_t field_idx = 0;
+                            field_idx < idx_uz_B_type::nFields(); ++field_idx)
+                        {
+                            for (auto& n : it->data())
+                            {
+                                //counterB++;
+                                n(idx_uz_B_type::tag(), field_idx) = -1;
+                            }
+                        }
                     }
                 }
                 else if (it->is_leaf() && it->is_correction() && l == base_level)
@@ -1016,7 +1025,7 @@ class Helm_stab
                                 {
                                     counterB++;
                                     view(lin_data, i + 1, j + 1) =
-                                        static_cast<float_type>(counter) + 0.5;
+                                        static_cast<float_type>(counterB) + 0.5;
                                 }
                                 else
                                 {
@@ -1027,30 +1036,47 @@ class Helm_stab
                     }
 
                     if (!Q_2DOnly) {
-
-                    for (std::size_t field_idx = 0;
-                         field_idx < idx_uz_B_type::nFields(); ++field_idx)
-                    {
-                        auto& lin_data =
-                            it->data_r(idx_uz_B_type::tag(), field_idx)
-                                .linalg_data();
-                        for (int i = 0; i < N; i++)
+                        for (std::size_t field_idx = 0;
+                            field_idx < idx_uz_B_type::nFields(); ++field_idx)
                         {
-                            for (int j = 0; j < N; j++)
+                            auto& lin_data =
+                                it->data_r(idx_uz_B_type::tag(), field_idx)
+                                    .linalg_data();
+                            for (int i = 0; i < N; i++)
                             {
-                                if (tmp[i][j])
+                                for (int j = 0; j < N; j++)
                                 {
-                                    counterB++;
-                                    view(lin_data, i + 1, j + 1) =
-                                        static_cast<float_type>(counter) + 0.5;
-                                }
-                                else
-                                {
-                                    view(lin_data, i + 1, j + 1) = -1;
+                                    if (tmp[i][j])
+                                    {
+                                        counterB++;
+                                        view(lin_data, i + 1, j + 1) =
+                                            static_cast<float_type>(counterB) + 0.5;
+                                    }
+                                    else
+                                    {
+                                        view(lin_data, i + 1, j + 1) = -1;
+                                    }
                                 }
                             }
                         }
                     }
+                    else {
+                        for (std::size_t field_idx = 0;
+                         field_idx < idx_uz_B_type::nFields(); ++field_idx)
+                        {
+                            auto& lin_data =
+                                it->data_r(idx_uz_B_type::tag(), field_idx)
+                                    .linalg_data();
+                            for (int i = 0; i < N; i++)
+                            {
+                                for (int j = 0; j < N; j++)
+                                {
+                                    
+                                    view(lin_data, i + 1, j + 1) = -1;
+                                    
+                                }
+                            }
+                        }
                     }
 
                     //need this to compute the edge values
@@ -2052,6 +2078,14 @@ class Helm_stab
             domain_->client_communicator().barrier();
         }
 
+
+        if (world.rank() != 0)                  world.recv(world.rank()-1, world.rank() - 1, max_idx_B_from_prev_prc);
+        if (world.rank() != (world.size() - 1)) world.send(world.rank()+1, world.rank(), (counterB + max_idx_B_from_prev_prc));
+        for (int i = 1; i < world.size();i++) {
+            if (world.rank() == i) std::cout << "rank " << world.rank() << " counter + max B idx is " << (counterB + max_idx_B_from_prev_prc) << " max idx from prev prc " << max_idx_B_from_prev_prc << std::endl;
+            domain_->client_communicator().barrier();
+        }
+
         //Also get global idx
 
         for (int l = base_level; l < domain_->tree()->depth(); l++)
@@ -2112,6 +2146,70 @@ class Helm_stab
                 //if (it->is_correction()) continue;
             }
         }
+
+
+        for (int l = base_level; l < domain_->tree()->depth(); l++)
+        {
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
+                //if (it->is_leaf() || it->is_correction())
+                //{
+                for (std::size_t field_idx = 0;
+                     field_idx < idx_u_B_g_type::nFields(); ++field_idx)
+                {
+                    for (auto& n : it->data())
+                    {
+                        if (n(idx_u_B_type::tag(), field_idx) > 0)
+                        {
+                            n(idx_u_B_g_type::tag(), field_idx) =
+                                n(idx_u_B_type::tag(), field_idx) +
+                                max_idx_B_from_prev_prc;
+                        }
+                        else
+                        {
+                            n(idx_u_B_type::tag(), field_idx) = -1;
+                            n(idx_u_B_g_type::tag(), field_idx) = -1;
+                        }
+                    }
+                }
+                for (std::size_t field_idx = 0;
+                     field_idx < idx_uz_B_g_type::nFields(); ++field_idx)
+                {
+                    for (auto& n : it->data())
+                    {
+                        if (n(idx_uz_B_type::tag(), field_idx) > 0)
+                        {
+                            n(idx_uz_B_g_type::tag(), field_idx) =
+                                n(idx_uz_B_type::tag(), field_idx) +
+                                max_idx_B_from_prev_prc;
+                        }
+                        else
+                        {
+                            n(idx_uz_B_type::tag(), field_idx) = -1;
+                            n(idx_uz_B_g_type::tag(), field_idx) = -1;
+                        }
+                    }
+                }
+                //}
+                /*else
+                {
+                    for (std::size_t field_idx = 0;
+                         field_idx < idx_u_g_type::nFields(); ++field_idx)
+                    {
+                        for (auto& n : it->data())
+                        {
+                            //counter++;
+                            n(idx_u_g_type::tag(), field_idx) = -1;
+                        }
+                    }
+                }*/
+
+                //if (it->is_correction()) continue;
+            }
+        }
+
+
         if (!testing_u_lap_only)
         {
             for (int l = base_level; l < domain_->tree()->depth(); l++)
@@ -2500,15 +2598,20 @@ class Helm_stab
             return;
         }
 
+        if (world.rank() == 1) {
+            std::cout << "Constructing FT matrix" << std::endl;
+        }
+
         
         
-        if (max_local_idx == 0) {
+        if (max_local_B_idx == 0) {
             std::cout << "idx not initialized, please call Assigning_idx()" << std::endl;
         }
 
         const auto dx_base = domain_->dx_base();
 
-        FT.resizing_row(max_local_idx+1);
+        FT_x.resizing_row(max_local_B_idx+1);
+        FT_y.resizing_row(max_local_B_idx+1);
 
         int base_level = domain_->tree()->base_level();
 
@@ -2521,10 +2624,10 @@ class Helm_stab
             {
                 auto client = domain_->decomposition().client();
 
-                client->template buffer_exchange<idx_u_type>(l);
-                client->template buffer_exchange<idx_u_g_type>(l);
-                if (l != (domain_->tree()->depth() - 1)) client->template buffer_exchange<idx_u_type>(l+1);
-                if (l != (domain_->tree()->depth() - 1)) client->template buffer_exchange<idx_u_g_type>(l+1);
+                client->template buffer_exchange<idx_u_B_type>(l);
+                client->template buffer_exchange<idx_u_B_g_type>(l);
+                //if (l != (domain_->tree()->depth() - 1)) client->template buffer_exchange<idx_u_type>(l+1);
+                //if (l != (domain_->tree()->depth() - 1)) client->template buffer_exchange<idx_u_g_type>(l+1);
             }
 
             int N_ext = domain_->block_extent()[0];
@@ -2542,31 +2645,29 @@ class Helm_stab
                 
 
                 for (std::size_t field_idx = 0;
-                     field_idx < idx_u_type::nFields(); ++field_idx)
+                     field_idx < idx_u_B_type::nFields(); ++field_idx)
                 {
                     for (auto& n : it->data())
                     {
-                        int cur_idx = n(idx_u_type::tag(), field_idx);
-                        if (cur_idx < 0) continue;
-                        int glo_idx = n(idx_u_g_type::tag(), field_idx);
-                        FT.add_element(cur_idx, glo_idx,
-                            2.0);
+                        int cur_idx = n(idx_u_B_type::tag(), field_idx);
+                        if (cur_idx <= 0) continue;
+                        int glo_idx = n(idx_u_B_g_type::tag(), field_idx);
+
+                        FT_x.add_element(cur_idx, glo_idx, 1.0);
+                        FT_y.add_element(cur_idx, glo_idx, 1.0);
+                        
                         glo_idx =
-                            n.at_offset(idx_u_g_type::tag(), 0, 1, field_idx);
-                        FT.add_element(cur_idx, glo_idx,
-                            alpha_f);
+                            n.at_offset(idx_u_B_g_type::tag(), 0, 1, field_idx);
+                        FT_y.add_element(cur_idx, glo_idx, alpha_f);
                         glo_idx =
-                            n.at_offset(idx_u_g_type::tag(), 1, 0, field_idx);
-                        FT.add_element(cur_idx, glo_idx,
-                            alpha_f);
+                            n.at_offset(idx_u_B_g_type::tag(), 1, 0, field_idx);
+                        FT_x.add_element(cur_idx, glo_idx, alpha_f);
                         glo_idx =
-                            n.at_offset(idx_u_g_type::tag(), 0, -1, field_idx);
-                        FT.add_element(cur_idx, glo_idx,
-                            alpha_f);
+                            n.at_offset(idx_u_B_g_type::tag(), 0, -1, field_idx);
+                        FT_y.add_element(cur_idx, glo_idx, alpha_f);
                         glo_idx =
-                            n.at_offset(idx_u_g_type::tag(), -1, 0, field_idx);
-                        FT.add_element(cur_idx, glo_idx,
-                            alpha_f);
+                            n.at_offset(idx_u_B_g_type::tag(), -1, 0, field_idx);
+                        FT_x.add_element(cur_idx, glo_idx, alpha_f);
                     }
                 }
             }
@@ -2575,20 +2676,22 @@ class Helm_stab
         domain_->client_communicator().barrier();
 
         if (world.rank() == 1) {
-            std::cout << "finished constructing the main part of laplacian" << std::endl;
+            std::cout << "finished constructing the main part of TRIDIAGONAL SYSMTEM" << std::endl;
         }
 
         //iterate to revise bc at different refinement level
 
         //if (flux_correction) this->template construct_flux_BC<idx_u_type, idx_u_g_type>(mat);
 
-        this->template construct_upward_BC_intrp<idx_u_type, idx_u_g_type>(FT);
+        this->template construct_upward_BC_intrp<idx_u_B_type, idx_u_B_g_type>(FT_x);
+        this->template construct_upward_BC_intrp<idx_u_B_type, idx_u_B_g_type>(FT_y);
 
         if (world.rank() == 1) {
-            std::cout << "finished constructing ref level BC of laplacian" << std::endl;
+            std::cout << "finished constructing ref level BC of TRIDIAGONAL SYSMTEM" << std::endl;
         }
 
-        this->template construct_interpolation<idx_u_type, idx_u_g_type>(FT);
+        this->template construct_interpolation_Filter<idx_u_B_type, idx_u_B_g_type>(FT_x);
+        this->template construct_interpolation_Filter<idx_u_B_type, idx_u_B_g_type>(FT_y);
     }
 
 
@@ -2601,15 +2704,18 @@ class Helm_stab
             return;
         }
 
+        if (world.rank() == 1) {
+            std::cout << "Constructing FR matrix" << std::endl;
+        }
         
-        
-        if (max_local_idx == 0) {
+        if (max_local_B_idx == 0) {
             std::cout << "idx not initialized, please call Assigning_idx()" << std::endl;
         }
 
         const auto dx_base = domain_->dx_base();
 
-        FR.resizing_row(max_local_idx+1);
+        FR_x.resizing_row(max_local_B_idx+1);
+        FR_y.resizing_row(max_local_B_idx+1);
 
         int base_level = domain_->tree()->base_level();
 
@@ -2622,10 +2728,10 @@ class Helm_stab
             {
                 auto client = domain_->decomposition().client();
 
-                client->template buffer_exchange<idx_u_type>(l);
-                client->template buffer_exchange<idx_u_g_type>(l);
-                if (l != (domain_->tree()->depth() - 1)) client->template buffer_exchange<idx_u_type>(l+1);
-                if (l != (domain_->tree()->depth() - 1)) client->template buffer_exchange<idx_u_g_type>(l+1);
+                client->template buffer_exchange<idx_u_B_type>(l);
+                client->template buffer_exchange<idx_u_B_g_type>(l);
+                if (l != (domain_->tree()->depth() - 1)) client->template buffer_exchange<idx_u_B_type>(l+1);
+                if (l != (domain_->tree()->depth() - 1)) client->template buffer_exchange<idx_u_B_g_type>(l+1);
             }
 
             int N_ext = domain_->block_extent()[0];
@@ -2637,37 +2743,37 @@ class Helm_stab
             {
                 if (!it->locally_owned() || !it->has_data()) continue;
                 if (!it->is_leaf()) continue;
-                if (it->is_correction() && l != base_level) continue;
+                if (it->is_correction()) continue;
 
                 float_type dx_level = dx_base / math::pow2(it->refinement_level());
                 
 
                 for (std::size_t field_idx = 0;
-                     field_idx < idx_u_type::nFields(); ++field_idx)
+                     field_idx < idx_u_B_type::nFields(); ++field_idx)
                 {
                     for (auto& n : it->data())
                     {
-                        int cur_idx = n(idx_u_type::tag(), field_idx);
-                        if (cur_idx < 0) continue;
-                        int glo_idx = n(idx_u_g_type::tag(), field_idx);
-                        FR.add_element(cur_idx, glo_idx,
-                            (1+2*alpha_f));
+                        int cur_idx = n(idx_u_B_type::tag(), field_idx);
+                        if (cur_idx <= 0) continue;
+                        int glo_idx = n(idx_u_B_g_type::tag(), field_idx);
+                        FR_x.add_element(cur_idx, glo_idx, (0.5+alpha_f));
+                        FR_y.add_element(cur_idx, glo_idx, (0.5+alpha_f));
                         glo_idx =
-                            n.at_offset(idx_u_g_type::tag(), 0, 1, field_idx);
-                        FR.add_element(cur_idx, glo_idx,
-                            (0.5+alpha_f));
+                            n.at_offset(idx_u_B_g_type::tag(), 0, 1, field_idx);
+                        FR_y.add_element(cur_idx, glo_idx,
+                            (0.25+alpha_f/2));
                         glo_idx =
-                            n.at_offset(idx_u_g_type::tag(), 1, 0, field_idx);
-                        FR.add_element(cur_idx, glo_idx,
-                            (0.5+alpha_f));
+                            n.at_offset(idx_u_B_g_type::tag(), 1, 0, field_idx);
+                        FR_x.add_element(cur_idx, glo_idx,
+                            (0.25+alpha_f/2));
                         glo_idx =
-                            n.at_offset(idx_u_g_type::tag(), 0, -1, field_idx);
-                        FR.add_element(cur_idx, glo_idx,
-                            (0.5+alpha_f));
+                            n.at_offset(idx_u_B_g_type::tag(), 0, -1, field_idx);
+                        FR_y.add_element(cur_idx, glo_idx,
+                            (0.25+alpha_f/2));
                         glo_idx =
-                            n.at_offset(idx_u_g_type::tag(), -1, 0, field_idx);
-                        FR.add_element(cur_idx, glo_idx,
-                            (0.5+alpha_f));
+                            n.at_offset(idx_u_B_g_type::tag(), -1, 0, field_idx);
+                        FR_x.add_element(cur_idx, glo_idx,
+                            (0.25+alpha_f/2));
                     }
                 }
             }
@@ -2678,8 +2784,7 @@ class Helm_stab
 
 
     void construction_Intrp_Value_matrix() {
-        //construction of B matrix from the LHS of the linearized equations 
-        //this matrix is diagonal with 1 for leaf velocities and 0 o/w
+        
         boost::mpi::communicator world;
         world.barrier();
 
@@ -2691,13 +2796,13 @@ class Helm_stab
             std::cout << "Constructing IV matrix" << std::endl;
         }
        
-        if (max_local_idx == 0) {
+        if (max_local_B_idx == 0) {
             std::cout << "idx not initialized, please call Assigning_idx()" << std::endl;
         }
 
         const auto dx_base = domain_->dx_base();
 
-        IV.resizing_row(max_local_idx+1);
+        IV.resizing_row(max_local_B_idx+1);
 
         int base_level = domain_->tree()->base_level();
 
@@ -2710,12 +2815,8 @@ class Helm_stab
             {
                 auto client = domain_->decomposition().client();
 
-                client->template buffer_exchange<idx_u_type>(l);
-                client->template buffer_exchange<idx_u_g_type>(l);
-                client->template buffer_exchange<idx_p_type>(l);
-                client->template buffer_exchange<idx_p_g_type>(l);
-                client->template buffer_exchange<idx_w_type>(l);
-                client->template buffer_exchange<idx_w_g_type>(l);
+                client->template buffer_exchange<idx_u_B_type>(l);
+                client->template buffer_exchange<idx_u_B_g_type>(l);
             }
 
             
@@ -2733,19 +2834,12 @@ class Helm_stab
                 
 
                 for (std::size_t field_idx = 0;
-                     field_idx < idx_u_type::nFields(); ++field_idx)
+                     field_idx < idx_u_B_type::nFields(); ++field_idx)
                 {
                     for (auto& n : it->data())
-                    {
-                        int p_idx_w = n.at_offset(idx_p_g_type::tag(), -1, 0, 0);
-                        int p_idx_e = n.at_offset(idx_p_g_type::tag(), 1, 0, 0);
-                        int p_idx_n = n.at_offset(idx_p_g_type::tag(), 0, 1, 0);
-                        int p_idx_s = n.at_offset(idx_p_g_type::tag(), 0, -1, 0);
-
-                        
-                        
-                        int cur_idx = n(idx_u_type::tag(), field_idx);
-                        int glo_idx = n(idx_u_g_type::tag(), field_idx);
+                    {   
+                        int cur_idx = n(idx_u_B_type::tag(), field_idx);
+                        int glo_idx = n(idx_u_B_g_type::tag(), field_idx);
                         if (cur_idx> 0) {
                             IV.add_element(cur_idx, glo_idx, 1.0);
                         }
@@ -2766,10 +2860,518 @@ class Helm_stab
 
         domain_->client_communicator().barrier();
 
-        this->template construct_upward_BC_intrp<idx_u_type, idx_u_g_type>(IV);
+        if (world.rank() == 1) {
+            std::cout << "finished constructing the main part of IV" << std::endl;
+        }
 
-        this->template construct_interpolation<idx_u_type, idx_u_g_type>(IV);
+        this->template construct_upward_BC_intrp<idx_u_B_type, idx_u_B_g_type>(IV);
 
+        if (world.rank() == 1) {
+            std::cout << "finished constructing the upward BC of IV" << std::endl;
+        }
+
+        this->template construct_interpolation_Filter<idx_u_B_type, idx_u_B_g_type>(IV);
+
+        domain_->client_communicator().barrier();
+        if (world.rank() == 1) {
+            std::cout << "finished constructing the IV" << std::endl;
+        }
+    }
+
+
+
+    template<class idxField, class idxField_g>
+    void construct_upward_BC_intrp_Filtering(sparse_mat& mat_tar) {
+        //interpolation for filtering, directly copying values
+        boost::mpi::communicator world;
+        if (world.rank() == 0) {
+            return;
+        }        
+        
+        if (max_local_idx == 0) {
+            std::cout << "idx not initialized, please call Assigning_idx()" << std::endl;
+        }
+
+        const auto dx_base = domain_->dx_base();
+
+        int base_level = domain_->tree()->base_level();
+
+        int N_ext = domain_->block_extent()[0];
+
+        auto c_cntr_nli = psolver.c_cntr_nli();
+        int max_relative_pos = c_cntr_nli.max_relative_pos;
+
+        for (std::size_t field_idx = 0; field_idx < idxField::nFields();
+             ++field_idx)
+        {
+            for (int l = base_level; l < (domain_->tree()->depth() - 1); l++)
+            {
+                for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+                {
+                    if (it->is_leaf()) continue;
+                    if (it->is_correction()) continue;
+                    const int num_child = it->num_children();
+                    //octant_base_t oct_base_tmp(coordinate_type({0,0}), base_level);
+                    //std::vector<octant_t> octant_vec(num_child, octant_t(oct_base_tmp));
+                    std::vector<std::vector<int>> idx_vec;
+                    idx_vec.resize(num_child);
+
+                    int N = it->data().descriptor().extent()[0];
+
+                    int idx_size = (N + 2) * (N + 2);
+                    /*for (int i = 0; i < num_child;i++) {
+                    idx_vec[i].resize(idx_size);
+                }*/
+                    if (it->locally_owned() && it->has_data())
+                    {
+                        //octant located in this processor, need to receive data
+                        //octant_vec.resize(num_child);
+                        for (int i = 0; i < it->num_children(); i++)
+                        {
+                            auto child = it->child(i);
+                            if (child && child->locally_owned() &&
+                                child->has_data())
+                            {
+                                idx_vec[i].resize(idx_size);
+
+                                auto child_idx_vec =
+                                    child->data_r(idxField_g::tag(), field_idx)
+                                        .linalg_data();
+
+                                for (int idx_i = 0; idx_i < (N + 2); idx_i++)
+                                {
+                                    for (int idx_j = 0; idx_j < (N + 2);
+                                         idx_j++)
+                                    {
+                                        int loc_idx = idx_i * (N + 2) + idx_j;
+                                        idx_vec[i][loc_idx] =
+                                            child_idx_vec.at(idx_i, idx_j);
+                                    }
+                                }
+
+                                //octant_vec[i] = (*child);
+                                //continue;
+                            }
+                            else if (child)
+                            {
+                                int source_rank = child->rank();
+
+                                int tag_val = child->global_id();
+
+                                idx_vec[i].resize(idx_size);
+                                //std::cout << "Receiving at rank " << world.rank() << " gid is " << tag_val << std::endl;
+
+                                //world.recv(source_rank, tag_val, octant_vec[i]);
+                                world.recv(source_rank, tag_val, idx_vec[i]);
+                            }
+                        }
+                    }
+                    else
+                    {
+                        //search for children is on this processor
+                        for (int i = 0; i < it->num_children(); i++)
+                        {
+                            auto child = it->child(i);
+                            int  parent_rank = it->rank();
+                            if (!child || !child->locally_owned() ||
+                                !child->has_data())
+                                continue;
+
+                            std::vector<int> tmp_idx_vec;
+
+                            tmp_idx_vec.resize(idx_size);
+
+                            auto child_idx_vec =
+                                child->data_r(idxField_g::tag(), field_idx)
+                                    .linalg_data();
+
+                            for (int idx_i = 0; idx_i < (N + 2); idx_i++)
+                            {
+                                for (int idx_j = 0; idx_j < (N + 2); idx_j++)
+                                {
+                                    int loc_idx = idx_i * (N + 2) + idx_j;
+                                    tmp_idx_vec[loc_idx] =
+                                        child_idx_vec.at(idx_i, idx_j);
+                                }
+                            }
+
+                            int tag_val = child->global_id();
+                            //std::cout << "Sending at rank " << world.rank() << " gid is " << tag_val << std::endl;
+                            world.send(parent_rank, tag_val, tmp_idx_vec);
+                        }
+                    }
+
+                    //domain_->client_communicator().barrier();
+
+                    //std::cout << "rank " << world.rank() << " finished communication " << "level " << l << std::endl;
+
+                    if (it->locally_owned() && it->has_data())
+                    {
+                        int   N = it->data().descriptor().extent()[0];
+                        auto& lin_data =
+                            it->data_r(idxField::tag(), field_idx).linalg_data();
+                        auto& lin_data_g =
+                            it->data_r(idxField_g::tag(), field_idx).linalg_data();
+                        //start computing the matrix
+                        for (int i = 1; i < N + 1; i++)
+                        {
+                            for (int j = 1; j < N + 1; j++)
+                            {
+                                //if (l <= 4) std::cout << "rank " << world.rank() << " level " << l << " i " << i << " j " << j << std::endl;
+                                //get current idx
+                                int cur_idx = lin_data.at(i, j);
+                                int cur_g_idx = lin_data_g.at(i, j);
+                                if (cur_idx < 0)
+                                {
+                                    //std::cout << "cur_idx < 0 in constructing upward interpolation matrix" << std::endl;
+                                    continue;
+                                }
+                                mat_tar.add_element(cur_idx, cur_g_idx, -1.0);
+
+                                //if (l <= 4) std::cout << "rank " << world.rank() << " level " << l << " i " << i << " j " << j << " cur idx " << cur_idx << " g idx " << cur_g_idx << std::endl;
+
+                                for (int child_idx = 0;
+                                     child_idx < it->num_children();
+                                     child_idx++)
+                                {
+                                    //if (l <= 4) std::cout << "rank " << world.rank() << " level " << l << " child idx " << child_idx << std::endl;
+                                    auto child = it->child(child_idx);
+                                    //int  n = lin_data_g->shape()[0];
+                                    int idx_x = (child_idx & (1 << 0)) >> 0;
+                                    int idx_y = (child_idx & (1 << 1)) >> 1;
+                                    int idx_z = (child_idx & (1 << 2)) >> 2;
+
+                                    std::array<int, 3> relative_positions{
+                                        {1, 1, 1}};
+                                    if (idxField::mesh_type() ==
+                                        MeshObject::face)
+                                    {
+                                        relative_positions[field_idx] = 0;
+                                    }
+                                    else if (idxField::mesh_type() ==
+                                             MeshObject::cell)
+                                    {
+                                    }
+                                    else if (idxField::mesh_type() ==
+                                             MeshObject::edge)
+                                    {
+                                        relative_positions[0] = 0;
+                                        relative_positions[1] = 0;
+                                        relative_positions[2] = 0;
+
+                                        relative_positions[field_idx] = 1; //treat as if it is 3D
+                                    }
+                                    else
+                                        throw std::runtime_error(
+                                            "Wrong type of mesh to be interpolated");
+
+                                    idx_x += relative_positions[0] *
+                                             max_relative_pos;
+                                    idx_y += relative_positions[1] *
+                                             max_relative_pos;
+                                    idx_z += relative_positions[2] *
+                                             max_relative_pos;
+
+                                    //idx_x += 1;
+                                    //idx_y += 1;
+                                    //this indexing is only for 2D
+
+                                    auto x_intrp_mat =
+                                        c_cntr_nli_
+                                            .antrp_mat_sub_simple_sub_[idx_x];
+                                    auto y_intrp_mat =
+                                        c_cntr_nli_
+                                            .antrp_mat_sub_simple_sub_[idx_y];
+
+                                    //auto child_cur = octant_vec[child_idx];
+
+                                    //if (!child || !child_cur.has_data()) continue;
+
+                                    if (idx_vec[child_idx].size() == 0) {
+                                        std::cout << "missing at child" << std::endl;
+                                        continue;
+                                    } 
+
+                                    //auto& child_idx_vec = octant_vec[child_idx].data_r(idx_w_g_type::tag(), 0).linalg_data();
+                                    //auto child_idx_vec = child_cur.data_r(idx_w_g_type::tag(), 0).linalg_data();
+
+                                    for (int sub_i = 1; sub_i < (N + 1);
+                                         sub_i++)
+                                    {
+                                        for (int sub_j = 1; sub_j < (N + 1);
+                                             sub_j++)
+                                        {
+                                            /*int              child_idx_g =
+                                                child_idx_vec.at(sub_i, sub_j);*/
+                                            int loc_idx =
+                                                sub_i * (N + 2) + sub_j;
+                                            int child_idx_g =
+                                                idx_vec[child_idx][loc_idx];
+                                            float_type val_x =
+                                                x_intrp_mat.at(i, sub_i);
+                                            float_type val_y =
+                                                y_intrp_mat.at(j, sub_j);
+                                            float_type val_t = val_x * val_y;
+                                            if (std::abs(val_t) < 1e-14)
+                                                continue;
+                                            mat_tar.add_element(cur_idx,
+                                                child_idx_g, val_t);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        domain_->client_communicator().barrier();
+    }
+
+    template<class idxField, class idxField_g>
+    void construct_interpolation_Filter(sparse_mat& mat_tar) {
+        //interpolation for filtering, directly copying values
+        boost::mpi::communicator world;
+        //world.barrier();
+
+        if (world.rank() == 0) {
+            return;
+        }        
+        
+        if (max_local_idx == 0) {
+            std::cout << "idx not initialized, please call Assigning_idx()" << std::endl;
+        }
+
+        const auto dx_base = domain_->dx_base();
+
+        int base_level = domain_->tree()->base_level();
+
+        int N_ext = domain_->block_extent()[0];
+
+        auto c_cntr_nli = psolver.c_cntr_nli();
+        int max_relative_pos = c_cntr_nli.max_relative_pos;
+        for (std::size_t field_idx = 0; field_idx < idxField::nFields();
+             ++field_idx)
+        {
+            for (int l = base_level + 1; l < domain_->tree()->depth(); l++)
+            {
+                if (domain_->is_client())
+                {
+                    auto client = domain_->decomposition().client();
+
+                    client->template buffer_exchange<idxField>(l);
+                    client->template buffer_exchange<idxField_g>(l);
+                    client->template buffer_exchange<idxField>(l - 1);
+                    client->template buffer_exchange<idxField_g>(l - 1);
+                }
+                for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+                {
+                    if (!it->is_correction()) continue;
+                    if (it->is_leaf()) continue;
+                    std::vector<int> idx_vec;
+
+                    int N = it->data().descriptor().extent()[0];
+
+                    int idx_size = (N + 2) * (N + 2);
+                    if (it->locally_owned() && it->has_data())
+                    {
+                        //octant located in this processor, need to receive data
+
+                        auto parent = it->parent();
+
+                        if (parent->locally_owned() && parent->has_data())
+                        {
+                            idx_vec.resize(idx_size);
+
+                            auto parent_idx_vec =
+                                parent->data_r(idxField_g::tag(), field_idx)
+                                    .linalg_data();
+
+                            for (int idx_i = 0; idx_i < (N + 2); idx_i++)
+                            {
+                                for (int idx_j = 0; idx_j < (N + 2); idx_j++)
+                                {
+                                    int loc_idx = idx_i * (N + 2) + idx_j;
+                                    idx_vec[loc_idx] =
+                                        parent_idx_vec.at(idx_i, idx_j);
+                                }
+                            }
+
+                            //octant_vec[i] = (*child);
+                            //continue;
+                        }
+                        else {
+                            idx_vec.resize(idx_size);
+                            int source_rank = parent->rank();
+
+                            int tag_val = parent->global_id();
+                            world.recv(source_rank, tag_val, idx_vec);
+                        }
+                    }
+                    else
+                    {
+                        auto parent = it->parent();
+                        //search for parent is on this processor
+                        if (parent && parent->locally_owned() && parent->has_data()) {
+                            std::vector<int> tmp_idx_vec;
+
+                            tmp_idx_vec.resize(idx_size);
+
+                            auto parent_idx_vec =
+                                parent->data_r(idxField_g::tag(), field_idx)
+                                    .linalg_data();
+
+                            for (int idx_i = 0; idx_i < (N + 2); idx_i++)
+                            {
+                                for (int idx_j = 0; idx_j < (N + 2); idx_j++)
+                                {
+                                    int loc_idx = idx_i * (N + 2) + idx_j;
+                                    tmp_idx_vec[loc_idx] =
+                                        parent_idx_vec.at(idx_i, idx_j);
+                                }
+                            }
+
+                            int tag_val = parent->global_id();
+                            int tar_rank = it->rank();
+                            world.send(tar_rank, tag_val, tmp_idx_vec);
+                        }
+                        
+                    }
+
+                    if (it->locally_owned() && it->has_data())
+                    {
+                        int   N = it->data().descriptor().extent()[0];
+                        auto  parent = it->parent();
+                        auto& lin_data =
+                            it->data_r(idxField::tag(), field_idx).linalg_data();
+                        auto& lin_data_g =
+                            it->data_r(idxField_g::tag(), field_idx).linalg_data();
+                        //start computing the matrix
+                        for (int i = 1; i < N + 1; i++)
+                        {
+                            for (int j = 1; j < N + 1; j++)
+                            {
+                                //get current idx
+                                int cur_idx = lin_data.at(i, j);
+                                int cur_g_idx = lin_data_g.at(i, j);
+                                if (cur_idx < 0)
+                                {
+                                    continue;
+                                }
+                                mat_tar.add_element(cur_idx, cur_g_idx,
+                                    -1.0);
+
+                                int chd_idx = -1;
+                                for (int child_idx = 0;
+                                     child_idx < parent->num_children();
+                                     child_idx++)
+                                {
+                                    auto child = parent->child(child_idx);
+                                    if (child && child->global_id() == it->global_id()) {
+                                        chd_idx = child_idx;
+                                        break;
+                                    }
+                                }
+
+                                
+                                if (chd_idx < 0) {
+                                    throw std::runtime_error("Did not found the child idx in Laplacian");
+                                }
+
+                                int  idx_x = (chd_idx & (1 << 0)) >> 0; // chd_idx % 2
+                                int  idx_y = (chd_idx & (1 << 1)) >> 1; // (chd_idx / 2) % 2
+                                int  idx_z = (chd_idx & (1 << 2)) >> 2;
+
+                                int  sub_i = (idx_x * N + i - 1) / 2 + 1;
+                                int  sub_j = (idx_y * N + j - 1) / 2 + 1;
+
+                                int loc_idx = sub_i * (N + 2) + sub_j;
+                                int prt_idx_g = idx_vec[loc_idx];
+
+                                mat_tar.add_element(cur_idx, prt_idx_g, 1.0);
+
+
+                                /*std::array<int, 3> relative_positions{
+                                    {1, 1, 1}};
+                                if (idxField::mesh_type() == MeshObject::face)
+                                {
+                                    relative_positions[field_idx] = 0;
+                                }
+                                else if (idxField::mesh_type() == MeshObject::cell)
+                                {
+                                }
+                                else if (idxField::mesh_type() == MeshObject::edge)
+                                {
+                                    relative_positions[0] = 0;
+                                    relative_positions[1] = 0;
+                                    relative_positions[2] = 0;
+                                    relative_positions[field_idx] = 1; //treat this as if in 3D case
+                                }
+                                else
+                                    throw std::runtime_error(
+                                        "Wrong type of mesh to be interpolated");
+
+                                idx_x +=
+                                    relative_positions[0] * max_relative_pos;
+                                idx_y +=
+                                    relative_positions[1] * max_relative_pos;
+                                idx_z +=
+                                    relative_positions[2] * max_relative_pos;*/
+
+                                /*auto x_intrp_mat = c_cntr_nli_mat.antrp_mat_sub_[idx_x].data_;
+                                auto y_intrp_mat = c_cntr_nli_mat.antrp_mat_sub_[idx_y].data_;
+
+                                for (int sub_i = 1; sub_i < (N + 1); sub_i++)
+                                {
+                                    for (int sub_j = 1; sub_j < (N + 1);
+                                         sub_j++)
+                                    {
+                                        int loc_idx = sub_i * (N + 2) + sub_j;
+                                        int prt_idx_g =
+                                            idx_vec[loc_idx];
+                                        float_type val_x =
+                                            x_intrp_mat.at(sub_i-1, i-1);
+                                        float_type val_y =
+                                            y_intrp_mat.at(sub_j-1, j-1);
+                                        float_type val_t = val_x * val_y;
+                                        if (std::abs(val_t) < 1e-14)
+                                            continue;
+                                        mat_tar.add_element(cur_idx,
+                                            prt_idx_g, val_t);
+                                    }
+                                }*/
+
+                                /*auto x_intrp_mat = c_cntr_nli.antrp_mat_sub_[idx_x].data_;
+                                auto y_intrp_mat = c_cntr_nli.antrp_mat_sub_[idx_y].data_;
+
+                                for (int sub_i = 0; sub_i < (N + 2); sub_i++)
+                                {
+                                    for (int sub_j = 0; sub_j < (N + 2);
+                                         sub_j++)
+                                    {
+                                        int loc_idx = sub_i * (N + 2) + sub_j;
+                                        int prt_idx_g =
+                                            idx_vec[loc_idx];
+                                        float_type val_x =
+                                            x_intrp_mat.at(sub_i, i);
+                                        float_type val_y =
+                                            y_intrp_mat.at(sub_j, j);
+                                        float_type val_t = val_x * val_y;
+                                        if (std::abs(val_t) < 1e-14)
+                                            continue;
+                                        mat_tar.add_element(cur_idx,
+                                            prt_idx_g, val_t);
+                                    }
+                                }*/
+                            }
+                        }
+                    }
+                }
+
+                //domain_->client_communicator().barrier();
+            }
+        }
         domain_->client_communicator().barrier();
     }
 
@@ -3825,6 +4427,14 @@ class Helm_stab
         
     }
 
+    int total_dim_B() {
+        boost::mpi::communicator world;
+        int tot_dim_tmp = max_local_B_idx + max_idx_B_from_prev_prc;
+        boost::mpi::broadcast(world, tot_dim_tmp, (world.size()-1));
+        return tot_dim_tmp;
+        
+    }
+
 
     template<class U_old, class W_old>
     void construct_linear_mat() {
@@ -3873,6 +4483,7 @@ class Helm_stab
         construction_Intrp_Value_matrix();
         constructing_Filter_RHS();
         constructing_Filter_tri();
+        construction_B_i_matrix();
     }
 
     void construct_Jac_p() {
@@ -4195,7 +4806,7 @@ class Helm_stab
 
         //this->template construct_upward_BC_intrp<idx_w_type, idx_w_g_type>(L);
 
-        //this->template construct_interpolation<idx_w_type, idx_w_g_type>(L);
+        this->template construct_interpolation<idx_w_type, idx_w_g_type>(L);
 
         if (world.rank() == 1) {
             std::cout << "finished constructing the w BC of laplacian" << std::endl;
@@ -4351,8 +4962,8 @@ class Helm_stab
                  it != domain_->end(l); ++it)
             {
                 if (!it->locally_owned() || !it->has_data()) continue;
-                //if (!it->is_leaf()) continue;
-                //if (it->is_correction()) continue;
+                if (!it->is_leaf()) continue;
+                if (it->is_correction()) continue;
                 
 
                 for (std::size_t field_idx = 0;
@@ -4369,7 +4980,7 @@ class Helm_stab
                     }
                 }
 
-                for (auto& n : it->data())
+                /*for (auto& n : it->data())
                 {
                     
 
@@ -4377,7 +4988,7 @@ class Helm_stab
                     int glo_idx = n(idx_uz_g_type::tag(), 0);
                     if (cur_idx > 0) { B_i.add_element(cur_idx, glo_idx, 1.0); }
                     //B.add_element(cur_idx, glo_idx, 1.0);
-                }
+                }*/
             }
         }
 
@@ -4525,7 +5136,7 @@ class Helm_stab
                                     //next to a coarser level mesh
                                     for (int j = 0; j < N; j++)
                                     {
-                                        tmp[j][0] *= 1.5;
+                                        //tmp[j][0] *= 1.5;
                                     }
                                 }
                                 else {
@@ -4533,7 +5144,7 @@ class Helm_stab
                                     //multiply by 3/4
                                     for (int j = 0; j < N; j++)
                                     {
-                                        tmp[j][0] *= 0.75;
+                                        //tmp[j][0] *= 0.75;
                                     }
                                 }
                             }
@@ -4543,7 +5154,7 @@ class Helm_stab
                                     //next to a coarser level mesh
                                     for (int j = 0; j < N; j++)
                                     {
-                                        tmp[0][j] *= 1.5;
+                                        //tmp[0][j] *= 1.5;
                                     }
                                 }
                                 else {
@@ -4551,7 +5162,7 @@ class Helm_stab
                                     //multiply by 3/4
                                     for (int j = 0; j < N; j++)
                                     {
-                                        tmp[0][j] *= 0.75;
+                                        //tmp[0][j] *= 0.75;
                                     }
                                 }
                             }
@@ -5419,7 +6030,7 @@ class Helm_stab
             {
                 float_type dx_level = dx_base / math::pow2(it->refinement_level());
                 if (!it->locally_owned() || !it->has_data()) continue;
-                //if (!it->is_leaf() && it->is_correction()) continue;
+                if (!it->is_leaf() && it->is_correction()) continue;
                 //if (!it->is_leaf()) continue;
                 //if (it->is_correction()) continue;
                 for (auto& n : it->data())
@@ -10474,8 +11085,8 @@ class Helm_stab
     sparse_mat Q_halfi; //Q^(-1/2), needed for defining resolvent
 
     //Matrix for filtering
-    sparse_mat FT; //tri-diagonal system
-    sparse_mat FR; //RHS matrix
+    sparse_mat FT_x, FT_y; //tri-diagonal system
+    sparse_mat FR_x, FR_y; //RHS matrix
     sparse_mat IV; //Interpolation matrix to put values in 
 
     sparse_mat B_i; //input matrix, from all state variables to velocities (including nonleaves)
@@ -10561,8 +11172,8 @@ class Helm_stab
 
     //variables for indexing for constructing matrix
     int max_idx_from_prev_prc = 0;
+    int max_idx_B_from_prev_prc = 0;
     int max_local_idx = 0;
-
     int max_local_B_idx = 0;
     
 

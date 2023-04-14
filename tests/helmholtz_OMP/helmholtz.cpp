@@ -10,67 +10,40 @@
 //     ▐░░░░░░░░░░░▌▐░░░░░░░░░░▌ ▐░░░░░░░░░░░▌▐░░░░░░░░░░░▌▐░▌
 //      ▀▀▀▀▀▀▀▀▀▀▀  ▀▀▀▀▀▀▀▀▀▀   ▀▀▀▀▀▀▀▀▀▀▀  ▀▀▀▀▀▀▀▀▀▀▀  ▀
 
-#ifndef INCLUDED_SERVERCLIENTBASE_HPP
-#define INCLUDED_SERVERCLIENTBASE_HPP
+#include <boost/mpi.hpp>
+#include <boost/mpi/environment.hpp>
+#include <boost/mpi/communicator.hpp>
 
-#include <set>
-#include <vector>
-#include <unordered_set>
-#include <memory>
-#include <list>
-#include <boost/serialization/vector.hpp>
+#include "vortexrings.hpp"
+#include <iblgf/dictionary/dictionary.hpp>
 
-#include "task_manager.hpp"
 
-namespace iblgf
+using namespace iblgf;
+
+int main(int argc, char *argv[])
 {
-namespace sr_mpi
-{
-template<class Traits>
-class ServerClientBase
-{
-  public:
-    using task_manager_t = typename Traits::task_manager_t;
 
-  public: // ctors
-    ServerClientBase(const ServerClientBase&) = default;
-    ServerClientBase(ServerClientBase&&) = default;
-    ServerClientBase& operator=(const ServerClientBase&) & = default;
-    ServerClientBase& operator=(ServerClientBase&&) & = default;
-    ~ServerClientBase() = default;
-    ServerClientBase()
-    : task_manager_(std::make_shared<task_manager_t>())
+	boost::mpi::environment env(boost::mpi::threading::multiple);
+	boost::mpi::communicator world;
+
+	std::string input="./";
+    input += std::string("configFile");
+
+    if (argc>1 && argv[1][0] != '-')
     {
+        input = argv[1];
     }
 
-    ServerClientBase(std::shared_ptr<task_manager_t> _task_manager)
-    : task_manager_(_task_manager)
-    {
-    }
 
-  public:
-    const auto& task_manager() const noexcept { return task_manager_; }
-    auto&       task_manager() noexcept { return task_manager_; }
+   // Read in dictionary
+    dictionary::Dictionary dictionary(input, argc, argv);
 
-    const auto& task_manager_vec() const noexcept { return task_manager_vec; }
-    auto&       task_manager_vec() noexcept { return task_manager_vec; }
-#ifdef USE_OMP
-    void resizing_manager_vec(int n) {
-      for (int i = 0; i < n; i++) {
-        task_manager_vec_.emplace_back(new task_manager_t());
-      }
-    }
-#endif
+    //Instantiate setup
+    VortexRingTest setup(&dictionary);
 
-  protected:
-    boost::mpi::communicator        comm_;
-    std::shared_ptr<task_manager_t> task_manager_ = nullptr;
+    // run setup
+    double L_inf_error = setup.run();
 
-    std::vector<std::shared_ptr<task_manager_t>> task_manager_vec_;
+    return 0;
+}
 
-};
-
-} // namespace sr_mpi
-} // namespace iblgf
-
-#endif

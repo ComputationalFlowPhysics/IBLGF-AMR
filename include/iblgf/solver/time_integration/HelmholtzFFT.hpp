@@ -71,10 +71,18 @@ class helm_dfft_r2c
         int numCells = _dim_0 * _dim_1;
         int dim_half = _padded_dim / 2 + 1;
         int secDim[1] = {_padded_dim};
+
+/*#ifdef USE_OMP
+        int N_threads = omp_get_max_threads();
+        fftw_plan_with_nthreads(N_threads);
+#endif*/
         plan = fftw_plan_many_dft_r2c(1, &secDim[0], numTransform, &input_[0],
             NULL, 1, _padded_dim, reinterpret_cast<fftw_complex*>(&output_[0]),
             NULL, 1, dim_half, FFTW_PATIENT); //elements in the same x y locations are contiguous
         //std::cout << "constructed r2c" << std::endl;
+/*#ifdef USE_OMP
+        fftw_plan_with_nthreads(1);
+#endif*/
     }
 
   public: //Interface
@@ -83,6 +91,74 @@ class helm_dfft_r2c
     inline auto& output() { return output_; }
     inline auto  output_copy() { return output_; }
 
+
+/*#ifdef USE_OMP
+    template<class Vector>
+    void copy_field(const Vector& _v) noexcept
+    {
+
+        int numNonZero = padded_dim * dim_0 * dim_1 * numComp;
+        if (_v.size() != numNonZero)
+        {
+            std::cout
+                << "Number of elements in input vector for Helmholtz fft does not match in r2c"
+                << std::endl;
+            //_v.resize(numNonZero);
+        }
+        int numTransform = dim_0 * dim_1 * numComp;
+        #pragma omp parallel for
+        for (int i = 0; i < numTransform; i++)
+        {
+            for (int j = 0; j < padded_dim; j++)
+            {
+                int idx_to = i * padded_dim + j;
+                int idx_from =
+                    i * padded_dim + j;
+                input_[idx_from] = _v[idx_to];
+            }
+        }
+    }
+
+    void output_field(std::vector<std::complex<float_type>>& _v) noexcept
+    {
+        int numNonZero = (dim_nonzero / 2 + 1) * dim_0 * dim_1 * numComp;
+        if (_v.size() <= numNonZero)
+        {
+            _v.resize(numNonZero);
+        }
+        int numTransform = dim_0 * dim_1 * numComp;
+        #pragma omp parallel for
+        for (int i = 0; i < numTransform; i++)
+        {
+            for (int j = 0; j < (dim_nonzero / 2 + 1); j++)
+            {
+                int idx_to = i * (dim_nonzero / 2 + 1) + j;
+                int idx_from = i * (padded_dim / 2 + 1) + j;
+                _v[idx_to] = output_[idx_from];
+            }
+        }
+    }
+
+    void output_field_neglect_last(std::vector<std::complex<float_type>>& _v) noexcept
+    {
+        int numNonZero = (dim_nonzero / 2) * dim_0 * dim_1 * numComp;
+        if (_v.size() <= numNonZero)
+        {
+            _v.resize(numNonZero);
+        }
+        int numTransform = dim_0 * dim_1 * numComp;
+        #pragma omp parallel for
+        for (int i = 0; i < numTransform; i++)
+        {
+            for (int j = 0; j < (dim_nonzero / 2); j++)
+            {
+                int idx_to = i * (dim_nonzero / 2) + j;
+                int idx_from = i * (padded_dim / 2 + 1) + j;
+                _v[idx_to] = output_[idx_from];
+            }
+        }
+    }
+#else*/
     template<class Vector>
     void copy_field(const Vector& _v) noexcept
     {
@@ -158,6 +234,7 @@ class helm_dfft_r2c
             }
         }
     }
+//#endif
 
   private:
     real_vector_t    input_;
@@ -203,9 +280,17 @@ class helm_dfft_c2r
         int numCells = dim_0 * dim_1;
         int dim_half = _padded_dim / 2 + 1;
         int secDim[1] = {padded_dim};
+
+/*#ifdef USE_OMP
+        int N_threads = omp_get_max_threads();
+        fftw_plan_with_nthreads(N_threads);
+#endif*/
         plan = fftw_plan_many_dft_c2r(1, &secDim[0], numTransform,
             reinterpret_cast<fftw_complex*>(&input_[0]), NULL, 1, dim_half,
             &output_[0], NULL, 1, _padded_dim, FFTW_PATIENT);
+/*#ifdef USE_OMP
+        fftw_plan_with_nthreads(1);
+#endif*/
     }
 
   public: //Interface
@@ -213,6 +298,72 @@ class helm_dfft_c2r
     inline auto& input() { return input_; }
     inline auto& output() { return output_; }
     inline auto  output_copy() { return output_; }
+
+/*#ifdef USE_OMP
+    template<class Vector>
+    void copy_field(const Vector& _v) noexcept
+    {
+        std::complex<float_type> zero_val(0.0);
+        for (int i = 0; i < input_.size();i++) {
+            input_[i] = zero_val;
+        }
+
+        int numNonZero = (dim_nonzero / 2 + 1) * dim_0 * dim_1 * numComp;
+        if (_v.size() != numNonZero)
+        {
+            std::cout
+                << "Number of elements in input vector for Helmholtz fft does not match in c2r"
+                << std::endl;
+            //_v.resize(numNonZero);
+        }
+        int numTransform = dim_0 * dim_1 * numComp;
+        #pragma omp parallel for
+        for (int i = 0; i < numTransform; i++)
+        {
+            for (int j = 0; j < (dim_nonzero / 2 + 1); j++)
+            {
+                int idx_to = i * (dim_nonzero / 2 + 1) + j;
+                int idx_from = i * (padded_dim / 2 + 1) + j;
+                input_[idx_from] = _v[idx_to];
+            }
+        }
+    }
+
+    void output_field(std::vector<float_type>& _v) noexcept
+    {
+        int numNonZero = dim_nonzero * dim_0 * dim_1 * numComp;
+        if (_v.size() <= numNonZero)
+        {
+            std::cout
+                << "Number of elements in output vector for Helmholtz fft does not match in c2r"
+                << std::endl;
+            _v.resize(numNonZero);
+        }
+        int numTransform = dim_0 * dim_1 * numComp;
+        #pragma omp parallel for
+        for (int i = 0; i < numTransform; i++)
+        {
+            for (int j = 0; j < dim_nonzero; j++)
+            {
+                int idx_to = i * dim_nonzero + j;
+                int idx_from = i * padded_dim + j;
+                _v[idx_to] = output_[idx_from];
+            }
+        }
+    }
+
+    void output_field_padded(std::vector<float_type>& _v) noexcept
+    {
+        int Padded_Num = padded_dim * dim_0 * dim_1 * numComp;
+        if (_v.size() <= Padded_Num)
+        {
+
+            _v.resize(Padded_Num);
+        }
+        #pragma omp parallel for
+        for (int i = 0; i < output_.size(); i++) { _v[i] = output_[i]; }
+    }
+#else*/
 
     template<class Vector>
     void copy_field(const Vector& _v) noexcept
@@ -283,6 +434,7 @@ class helm_dfft_c2r
         }
         for (int i = 0; i < output_.size(); i++) { _v[i] = output_[i]; }
     }
+//#endif
 
   private:
     complex_vector_t input_;

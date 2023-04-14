@@ -97,6 +97,7 @@ public:
   protected:
     using super_type::comm_;
     using super_type::task_manager_;
+    using super_type::task_manager_vec_;
 
   public: //helper struct
     struct ClientUpdate
@@ -376,6 +377,26 @@ public:
         }
     }
 
+#ifdef USE_OMP
+    void finish_induced_field_communication_idx()
+    {
+        int omp_idx = omp_get_thread_num( );
+        auto& send_comm = task_manager_vec_[omp_idx]->template send_communicator<
+            induced_fields_task_t<InfluenceFieldBuffer>>();
+        auto& recv_comm = task_manager_vec_[omp_idx]->template recv_communicator<
+            induced_fields_task_t<InfluenceFieldBuffer>>();
+
+        while (true)
+        {
+            send_comm.start_communication();
+            recv_comm.start_communication();
+            send_comm.finish_communication();
+            recv_comm.finish_communication();
+            if (send_comm.done() && recv_comm.done()) break;
+        }
+    }
+#endif
+
     template<class SendField, class RecvField, class Octant_t, class Kernel>
     int communicate_induced_fields_recv_m_send_count(
         Octant_t it, Kernel* _kernel, bool _neighbors, int fmm_mask_idx)
@@ -575,6 +596,147 @@ public:
         }
     }
 
+
+#ifdef USE_OMP
+    template<class SendField, class RecvField, class FMMType, class Kernel>
+    void communicate_induced_fields_idx(int field_idx, octant_t* it, FMMType* _fmm,
+        Kernel* _kernel, int _level_diff, float_type _dx_level, bool _neighbors,
+        bool _start_communication, int fmm_mask_idx)
+    {
+        //can only be used with fmm_OMP
+        if (!it->fmm_mask(fmm_mask_idx, MASK_LIST::Mask_FMM_Target)) return;
+
+        int omp_idx = omp_get_thread_num( );
+
+        boost::mpi::communicator w;
+        auto& send_comm = task_manager_vec_[omp_idx]->template send_communicator<
+            induced_fields_task_t<InfluenceFieldBuffer>>();
+        auto& recv_comm = task_manager_vec_[omp_idx]->template recv_communicator<
+            induced_fields_task_t<InfluenceFieldBuffer>>();
+
+        const int world_size = w.size();
+
+        const int  myRank = w.rank();
+        const auto idx = get_octant_idx(it, field_idx);
+
+        if (!it->locally_owned())
+        {
+            //Check if this ghost octant influenced by octants of this rank
+            bool is_influenced = false;
+
+            //Check influence list
+            if (!_kernel->neighbor_only())
+            {
+                for (int i = 0; i < it->influence_number(); ++i)
+                {
+                    const auto inf = it->influence(i);
+                    if (inf && inf->rank() == myRank &&
+                        inf->fmm_mask(fmm_mask_idx, MASK_LIST::Mask_FMM_Source))
+                    {
+                        is_influenced = true;
+                        break;
+                    }
+                }
+            }
+
+            if (_neighbors)
+            {
+                for (int i = 0; i < it->nNeighbors(); ++i)
+                {
+                    const auto inf = it->neighbor(i);
+                    if (inf && inf->rank() == myRank &&
+                        inf->fmm_mask(fmm_mask_idx, MASK_LIST::Mask_FMM_Source))
+                    {
+                        is_influenced = true;
+                        break;
+                    }
+                }
+            }
+
+            if (is_influenced)
+            {
+                auto send_ptr =
+                    it->data_r(SendField::tag(), field_idx).data_ptr();
+
+                auto task =
+                    send_comm.post_task(send_ptr, it->rank(), true, idx);
+                task->attach_data(send_ptr);
+                task->rank_other() = it->rank();
+                task->requires_confirmation() = false;
+                task->octant() = it;
+                auto size = it->data_r(SendField::tag(), field_idx) .real_block() .size();
+
+                auto send_callback = [it, _fmm, _kernel, _neighbors,
+                                         _level_diff, _dx_level,
+                                         size, field_idx](auto& buffer_vector) {
+                    //1. Swap buffer with sendfield
+                    buffer_vector.resize(size);
+                    std::fill(buffer_vector.begin(), buffer_vector.end(), 0);
+                    buffer_vector.swap(
+                        it->data_r(SendField::tag(), field_idx).data());
+
+                    //2. Compute influence field
+                    _fmm->compute_influence_field(field_idx, 
+                        it, _kernel, _level_diff, _dx_level, _neighbors);
+
+                    //3. Swap sendfield with buffer
+                    buffer_vector.swap(
+                        it->data_r(SendField::tag(), field_idx).data());
+                };
+                task->register_sendCallback(send_callback);
+            }
+        }
+        else
+        {
+            std::set<int> unique_inflRanks;
+            if (!_kernel->neighbor_only())
+            {
+                for (int i = 0; i < it->influence_number(); ++i)
+                {
+                    const auto inf = it->influence(i);
+                    if (inf && inf->rank() != myRank &&
+                        inf->fmm_mask(fmm_mask_idx, MASK_LIST::Mask_FMM_Source))
+                    { unique_inflRanks.insert(inf->rank()); }
+                }
+            }
+
+            if (_neighbors)
+            {
+                for (int i = 0; i < it->nNeighbors(); ++i)
+                {
+                    const auto inf = it->neighbor(i);
+                    if (inf && inf->rank() != myRank &&
+                        inf->fmm_mask(fmm_mask_idx, MASK_LIST::Mask_FMM_Source))
+                    { unique_inflRanks.insert(inf->rank()); }
+                }
+            }
+
+            for (auto& r : unique_inflRanks)
+            {
+                const auto recv_ptr =
+                    it->data_r(RecvField::tag(), field_idx).data_ptr();
+                auto task = recv_comm.post_task(recv_ptr, r, true, idx);
+
+                //auto task = std::make_shared<induced_fields_task_t<InfluenceFieldBuffer>>(idx);
+                task->attach_data(recv_ptr);
+                task->rank_other() = r;
+                task->requires_confirmation() = false;
+                task->octant() = it;
+                //recv_tasks_[r].push_back(task);
+            }
+        }
+
+        //Start communications
+        if (_start_communication)
+        {
+            send_comm.start_communication();
+            recv_comm.start_communication();
+            send_comm.finish_communication();
+            recv_comm.finish_communication();
+        }
+    }
+#endif
+
     template<class SendField, class RecvField>
     void combine_induced_field_messages() noexcept
     {
@@ -711,6 +873,118 @@ public:
         }
     }
 
+
+
+#ifdef USE_OMP
+    template<class SendField, class RecvField,
+        template<class> class BufferPolicy>
+    void communicate_updownward_pass_OMP(int level, bool _upward, bool _use_masks,
+        int fmm_mask_idx, std::size_t field_idx, bool leaf_boundary)
+    {
+        int omp_idx = omp_get_thread_num( );
+        int mask_id =
+            (_upward) ? MASK_LIST::Mask_FMM_Source : MASK_LIST::Mask_FMM_Target;
+
+        boost::mpi::communicator w;
+
+        auto& send_comm = task_manager_vec_[omp_idx]->template send_communicator<
+            induced_fields_task_t<BufferPolicy>>();
+        auto& recv_comm = task_manager_vec_[omp_idx]->template recv_communicator<
+            induced_fields_task_t<BufferPolicy>>();
+
+        for (auto it = domain_->begin(level); it != domain_->end(level); ++it)
+        {
+            if (_use_masks && !it->fmm_mask(fmm_mask_idx, mask_id)) continue;
+            if (leaf_boundary && !it->leaf_boundary()) continue;
+
+            const auto idx = get_octant_idx(it, field_idx);
+
+            if (it->locally_owned() && it->has_data() &&
+                it->data().is_allocated())
+            {
+                const auto unique_ranks =
+                    (_use_masks) ? it->unique_child_ranks(fmm_mask_idx, mask_id)
+                                 : it->unique_child_ranks();
+
+                for (auto r : unique_ranks)
+                {
+                    if (_upward)
+                    {
+                        auto data_ptr = it->data_r(RecvField::tag(),field_idx) .data_ptr();
+                        auto task = recv_comm.post_task(data_ptr, r, true, idx);
+                        task->requires_confirmation() = false;
+                    }
+                    else
+                    {
+                        auto data_ptr = it->data_r(SendField::tag(),field_idx) .data_ptr();
+                        auto task = send_comm.post_task(data_ptr, r, true, idx);
+                        task->requires_confirmation() = false;
+                    }
+                }
+            }
+
+            //Check if ghost has locally_owned children
+            if (!it->locally_owned() && it->has_data() &&
+                it->data().is_allocated())
+            {
+                if ((_use_masks && it->has_locally_owned_children(
+                                       fmm_mask_idx, mask_id)) ||
+                    (!_use_masks && it->has_locally_owned_children()))
+                {
+                    if (_upward)
+                    {
+                        const auto data_ptr =
+                            it->data_r(SendField::tag(),field_idx) .data_ptr();
+                        auto task = send_comm.post_task(
+                            data_ptr, it->rank(), true, idx);
+                        task->requires_confirmation() = false;
+                    }
+                    else
+                    {
+                        const auto data_ptr =
+                            it->data_r(RecvField::tag(),field_idx) .data_ptr();
+                        auto task = recv_comm.post_task(
+                            data_ptr, it->rank(), true, idx);
+                        task->requires_confirmation() = false;
+                    }
+                }
+            }
+        }
+
+        //Start communications
+        while (true)
+        {
+            //buffer and send it
+            send_comm.start_communication();
+            recv_comm.start_communication();
+
+            //Check if something has finished
+            send_comm.finish_communication();
+            recv_comm.finish_communication();
+
+            if (send_comm.done() && recv_comm.done()) break;
+        }
+    }
+
+
+    /** @brief communicate fields for up/downward pass of fmm */
+    template<class SendField, class RecvField>
+    void communicate_updownward_add_OMP(int level, bool _upward, bool _use_masks,
+        int fmm_mask_idx, std::size_t field_idx = 0, bool leaf_boundary = false)
+    {
+        communicate_updownward_pass_OMP<SendField, RecvField, AddAssignRecv>(
+            level, _upward, _use_masks, fmm_mask_idx, field_idx, leaf_boundary);
+    }
+
+    template<class SendField, class RecvField>
+    void communicate_updownward_assign_OMP(int level, bool _upward, bool _use_masks,
+        int fmm_mask_idx, std::size_t field_idx = 0, bool leaf_boundary = false)
+    {
+        communicate_updownward_pass_OMP<SendField, RecvField, CopyAssign>(
+            level, _upward, _use_masks, fmm_mask_idx, field_idx, leaf_boundary);
+    }
+#endif
+
     /** @brief communicate fields for up/downward pass of fmm */
     template<class SendField, class RecvField>
     void communicate_updownward_add(int level, bool _upward, bool _use_masks,
@@ -751,8 +1025,161 @@ public:
      *         The  haloCommunicator will later be stored as a tuple for
      *         all fields.
      */
+/*#ifdef USE_OMP
     template<class Field>
     void buffer_exchange(const int _level=0)
+    {
+        
+        struct timespec tstart, t_init, t_pack, t_post, tcomm, tupack;
+        boost::mpi::communicator world;
+        clock_gettime(CLOCK_REALTIME,&tstart);
+        
+
+        //Initialize Halo communicator
+        //TODO: put this outside somewhere
+        if (!halo_initialized_) initialize_halo_communicators();
+
+        auto& hcomm =
+            std::get<halo_communicator_t<Field>>(halo_communicators_[_level]);
+
+        //Get the overlaps
+        clock_gettime(CLOCK_REALTIME,&t_init);
+        hcomm.pack_messages();
+        clock_gettime(CLOCK_REALTIME,&t_pack);
+        domain_->client_communicator().barrier();
+        if (world.rank() == 1) std::cout << "finished packing msg" << std::endl;
+        #pragma omp parallel
+        {
+            int omp_idx = omp_get_thread_num( );
+            auto& send_comm =
+                task_manager_vec_[omp_idx]->template send_communicator<halo_task_t>();
+            auto& recv_comm =
+                task_manager_vec_[omp_idx]->template recv_communicator<halo_task_t>();
+
+            int counter = 0;
+            auto n_th = omp_get_max_threads();
+            for (auto st : hcomm.send_tasks())
+            {
+                if (st) {
+                    int omp_idx_l = counter%n_th;
+                    if (omp_idx_l == omp_idx) send_comm.post_task(st); 
+                    counter++;
+                }
+            }
+            counter = 0;
+            for (auto& st : hcomm.recv_tasks())
+            {
+                if (st) { 
+                    int omp_idx_l = counter%n_th;
+                    if (omp_idx_l == omp_idx) recv_comm.post_task(st); 
+                    counter++;
+                }
+            }
+        
+            //clock_gettime(CLOCK_REALTIME,&t_post);
+
+            //Blocking send/recv till all is done. To be changed
+            while (true)
+            {
+                send_comm.start_communication();
+                recv_comm.start_communication();
+                send_comm.finish_communication();
+                recv_comm.finish_communication();
+                if (send_comm.done() && recv_comm.done()) break;
+            }
+        }
+        clock_gettime(CLOCK_REALTIME,&tcomm);
+        domain_->client_communicator().barrier();
+        if (world.rank() == 1) std::cout << "finished communication" << std::endl;
+
+        //Assign received message to field view
+        hcomm.unpack_messages();
+        clock_gettime(CLOCK_REALTIME,&tupack);
+        domain_->client_communicator().barrier();
+        if (world.rank() == 1) std::cout << "finished unpacking" << std::endl;
+        double dtinit = (t_init.tv_sec+t_init.tv_nsec/1e9)-(tstart.tv_sec+tstart.tv_nsec/1e9);
+        double dtpack = (t_pack.tv_sec+t_pack.tv_nsec/1e9)-(t_init.tv_sec+t_init.tv_nsec/1e9);
+        //double dtpost = (t_post.tv_sec+t_post.tv_nsec/1e9)-(t_pack.tv_sec+t_pack.tv_nsec/1e9);
+        double dtcomm = (tcomm.tv_sec + tcomm.tv_nsec/1e9)-(t_pack.tv_sec+t_pack.tv_nsec/1e9);
+        double dtupack = (tupack.tv_sec+tupack.tv_nsec/1e9)-(tcomm.tv_sec+tcomm.tv_nsec/1e9);
+        
+        for (int i = 0; i < world.size();i++) {
+            if (i == world.rank()) {
+                std::cout << "At " << world.rank() << " dtinit = " << dtinit << " dtpack = " << dtpack << " dtcomm = " << dtcomm <<
+                " dtupack = " << dtupack << std::endl;
+            }
+            domain_->client_communicator().barrier();
+        }
+    }
+#else*/
+    template<class Field>
+    void buffer_exchange(const int _level=0)
+    {
+        //struct timespec tstart, t_init, t_pack, t_post, tcomm, tupack;
+        //clock_gettime(CLOCK_REALTIME,&tstart);
+        auto& send_comm =
+            task_manager_->template send_communicator<halo_task_t>();
+        auto& recv_comm =
+            task_manager_->template recv_communicator<halo_task_t>();
+
+        //Initialize Halo communicator
+        //TODO: put this outside somewhere
+        if (!halo_initialized_) initialize_halo_communicators();
+
+        auto& hcomm =
+            std::get<halo_communicator_t<Field>>(halo_communicators_[_level]);
+
+        //Get the overlaps
+        //clock_gettime(CLOCK_REALTIME,&t_init);
+        hcomm.pack_messages();
+        //clock_gettime(CLOCK_REALTIME,&t_pack);
+        for (auto st : hcomm.send_tasks())
+        {
+            if (st) { send_comm.post_task(st); }
+        }
+        for (auto& st : hcomm.recv_tasks())
+        {
+            if (st) { recv_comm.post_task(st); }
+        }
+        //clock_gettime(CLOCK_REALTIME,&t_post);
+
+        //Blocking send/recv till all is done. To be changed
+        while (true)
+        {
+            send_comm.start_communication();
+            recv_comm.start_communication();
+            send_comm.finish_communication();
+            recv_comm.finish_communication();
+            if (send_comm.done() && recv_comm.done()) break;
+        }
+        //clock_gettime(CLOCK_REALTIME,&tcomm);
+
+        //Assign received message to field view
+        hcomm.unpack_messages();
+        /*clock_gettime(CLOCK_REALTIME,&tupack);
+        double dtinit = (t_init.tv_sec+t_init.tv_nsec/1e9)-(tstart.tv_sec+tstart.tv_nsec/1e9);
+        double dtpack = (t_pack.tv_sec+t_pack.tv_nsec/1e9)-(t_init.tv_sec+t_init.tv_nsec/1e9);
+        double dtpost = (t_post.tv_sec+t_post.tv_nsec/1e9)-(t_pack.tv_sec+t_pack.tv_nsec/1e9);
+        double dtcomm = (tcomm.tv_sec + tcomm.tv_nsec/1e9)-(t_post.tv_sec+t_post.tv_nsec/1e9);
+        double dtupack = (tupack.tv_sec+tupack.tv_nsec/1e9)-(tcomm.tv_sec+tcomm.tv_nsec/1e9);
+        boost::mpi::communicator world;
+        for (int i = 0; i < world.size();i++) {
+            if (i == world.rank()) {
+                std::cout << "At " << world.rank() << " dtinit = " << dtinit << " dtpack = " << dtpack << " dtpost = " << dtpost << " dtcomm = " << dtcomm <<
+                " dtupack = " << dtupack << std::endl;
+            }
+            domain_->client_communicator().barrier();
+        }*/
+    }
+
+
+
+    /** @brief Testing function for buffer/halo exchange for a field of a field_index.
+     *         The  haloCommunicator will later be stored as a tuple for
+     *         all fields.
+     */
+    template<class Field>
+    void buffer_exchange_idx(int _field_idx, const int _level=0)
     {
         auto& send_comm =
             task_manager_->template send_communicator<halo_task_t>();
@@ -767,7 +1194,7 @@ public:
             std::get<halo_communicator_t<Field>>(halo_communicators_[_level]);
 
         //Get the overlaps
-        hcomm.pack_messages();
+        hcomm.pack_messages(_field_idx);
         for (auto st : hcomm.send_tasks())
         {
             if (st) { send_comm.post_task(st); }
@@ -788,7 +1215,7 @@ public:
         }
 
         //Assign received message to field view
-        hcomm.unpack_messages();
+        hcomm.unpack_messages(_field_idx);
     }
 
     void halo_reset() { halo_initialized_ = false; }

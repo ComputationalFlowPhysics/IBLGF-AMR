@@ -10,8 +10,8 @@
 //     ▐░░░░░░░░░░░▌▐░░░░░░░░░░▌ ▐░░░░░░░░░░░▌▐░░░░░░░░░░░▌▐░▌
 //      ▀▀▀▀▀▀▀▀▀▀▀  ▀▀▀▀▀▀▀▀▀▀   ▀▀▀▀▀▀▀▀▀▀▀  ▀▀▀▀▀▀▀▀▀▀▀  ▀
 
-#ifndef IBLGF_INCLUDED_SOLVER_POISSON_HPP
-#define IBLGF_INCLUDED_SOLVER_POISSON_HPP
+#ifndef IBLGF_INCLUDED_SOLVER_POISSON_OMP_HPP
+#define IBLGF_INCLUDED_SOLVER_POISSON_OMP_HPP
 
 #include <iostream>
 #include <algorithm>
@@ -44,7 +44,7 @@ using namespace domain;
  *         using blockwise fft-convolutions.
  */
 template<class Setup>
-class PoissonSolver
+class PoissonSolverOMP
 {
   public: //member types
     static constexpr std::size_t Dim = Setup::Dim;
@@ -78,7 +78,7 @@ class PoissonSolver
     static constexpr int lBuffer = 1; ///< Lower left buffer for interpolation
     static constexpr int rBuffer = 1; ///< Lower left buffer for interpolation
 
-    PoissonSolver(simulation_type* _simulation, int _N = 0)
+    PoissonSolverOMP(simulation_type* _simulation, int _N = 0)
     :
     domain_(_simulation->domain_.get()),
     fmm_(domain_,domain_->block_extent()[0]+lBuffer+rBuffer),
@@ -99,13 +99,36 @@ class PoissonSolver
 
         for (int i = 0; i < N_fourier_modes; i++) {
             float_type c = (static_cast<float_type>(i)+1.0) * 2.0 * M_PI * dx_base/c_z_;
+            lgf_helm_vec_ptr.emplace_back(new helm_t(c));
+        }
+
+        for (int i = 0; i < N_fourier_modes; i++) {
+            float_type c = (static_cast<float_type>(i)+1.0) * 2.0 * M_PI * dx_base/c_z_;
             lgf_helm_vec.emplace_back(helm_t(c));
+        }
+
+        Omegas.resize(N_fourier_modes + 1);
+        for (int i = 0; i < (N_fourier_modes + 1); i++) {
+            float_type Omega = static_cast<float_type>(i) * 2.0 * M_PI / c_z_;
+            Omegas[i] = Omega;
         }
 
         /*for (int i = 0; i < N_fourier_modes; i++) {
             float_type c = (static_cast<float_type>(i)+1.0)/static_cast<float_type>(N_fourier_modes + 1) * 2.0 * M_PI * std::pow(2.0, nLevels - 1);
             lgf_helm_vec.emplace_back(helm_t(c));
         }*/
+        
+        for (int i = 0; i < source_tmp_type::nFields(); i++) {
+            //c_cntr_nli_vec.emplace_back((new interpolation_type(domain_->block_extent()[0]+lBuffer+rBuffer, _simulation->intrp_order())));
+            lgf_if_vec.emplace_back((new lgf_if_t()));
+        }
+
+        auto n_max_threads = omp_get_max_threads();
+        for (int i = 0; i < n_max_threads; i++) {
+            c_cntr_nli_vec.emplace_back((new interpolation_type(domain_->block_extent()[0]+lBuffer+rBuffer, _simulation->intrp_order())));
+        }
+
+        //c_cntr_nli_vec.resize(source_tmp_type::nFields());
 
 
         //setting if only advect a subset of modes, the total simulated modes are additional_modes + 1
@@ -118,48 +141,6 @@ class PoissonSolver
     }
 
   public:
-    template<class Source, class Target>
-    void apply_lgf(int fmm_type = MASK_TYPE::AMR2AMR)
-    {
-        for (std::size_t entry = 0; entry < Source::nFields(); ++entry)
-            this->apply_lgf<Source, Target>(&lgf_lap_, entry, fmm_type);
-    }
-
-    template<class Source, class Target>
-    void apply_helm(int n, int fmm_type = MASK_TYPE::AMR2AMR)
-    {
-        if (n >= N_fourier_modes) throw std::runtime_error("Fourier mode number too high");
-        for (std::size_t entry = 0; entry < Source::nFields(); ++entry)
-            this->apply_lgf<Source, Target>(&lgf_helm_vec[n], entry, fmm_type);
-    }
-
-    /*template<class Source, class Target>
-    void apply_lgf_and_helm(int N_modes, int NComp = 1,
-        int fmm_type = MASK_TYPE::AMR2AMR)
-    {
-        if (N_modes != (N_fourier_modes + 1))
-            throw std::runtime_error(
-                "Fourier modes do not match in helmholtz solver");
-        if (Source::nFields() != N_modes * 2 * NComp)
-            throw std::runtime_error(
-                "Fourier modes number elements do not match in helmholtz solver");
-        for (int i = 0; i < NComp; i++)
-        {
-            int add_num = i * N_modes*2;
-            for (std::size_t entry = 0; entry < 2; ++entry)
-                this->apply_lgf<Source, Target>(&lgf_lap_, (add_num + entry), fmm_type);
-            for (std::size_t idx = 0; idx < N_fourier_modes; ++idx)
-            {
-                //int entry = idx*2 + NComp*2;
-                for (std::size_t addentry = 0; addentry < 2; addentry++)
-                {
-                    int entry = addentry + idx * 2 + 2 + add_num;
-                    this->apply_lgf<Source, Target>(&lgf_helm_vec[idx], entry,
-                        fmm_type);
-                }
-            }
-        }
-    }*/
 
     template<class Source, class Target>
     void apply_lgf_and_helm(int N_modes, int NComp = 1,
@@ -176,71 +157,20 @@ class PoissonSolver
         const int l_min = (fmm_type !=  MASK_TYPE::IB2xIB && fmm_type !=  MASK_TYPE::xIB2IB) ? domain_->tree()->base_level() : domain_->tree()->depth()-1;
 
         const int tot_ref_l = l_max - l_min - 1;
-                
-        for (int i = 0; i < NComp; i++)
-        {
-            int add_num = i * N_modes*2;
-            for (std::size_t entry = 0; entry < 2; ++entry) {
-                this->apply_lgf<Source, Target>(&lgf_lap_, (add_num + entry), fmm_type);
-                //domain_->client_communicator().barrier();
-            }
-            for (std::size_t idx = 0; idx < additional_modes; ++idx)
-            {
-                //int entry = idx*2 + NComp*2;
-                
-                int addLevel_raw = std::log2((additional_modes + 1)/(idx+2));
-                int addLevel = 0;
-                if (addLevel_raw < tot_ref_l && adapt_Fourier) {
-                    addLevel = tot_ref_l - addLevel_raw;
-                }
 
-                for (std::size_t addentry = 0; addentry < 2; addentry++)
-                {
-                    int entry = addentry + idx * 2 + 2 + add_num;
-                    this->apply_lgf<Source, Target>(&lgf_helm_vec[idx], entry,
-                        fmm_type, addLevel);
-                    //domain_->client_communicator().barrier();
-                }
-            }
+        for (int NthField = 0; NthField < NComp; NthField++) {
+            apply_lgf<Source, Target>(&lgf_lap_, lgf_helm_vec_ptr, NthField, fmm_type);
         }
     }
 
-    /*template<class Source, class Target>
-    void apply_helm_if(float_type _alpha_base, int N_modes, float_type L_z, int NComp = 3, 
-        int fmm_type = MASK_TYPE::AMR2AMR)
-    {
-        lgf_if_.alpha_base_level() = _alpha_base;
-        if (N_modes != (N_fourier_modes + 1))
-            throw std::runtime_error(
-                "Fourier modes do not match in helmholtz solver");
-        if (Source::nFields() != N_modes * 2 * NComp)
-            throw std::runtime_error(
-                "Fourier modes number elements do not match in helmholtz solver");
-        for (int i = 0; i < NComp; i++)
-        {
-            int add_num = i * N_modes*2;
-            for (std::size_t entry = 0; entry < 2; ++entry) {
-                this->apply_if<Source, Target>(&lgf_if_, (add_num + entry), fmm_type);
-            }
-                //this->apply_lgf<Source, Target>(&lgf_if_, (add_num + entry), fmm_type);
-            for (std::size_t idx = 0; idx < N_fourier_modes; ++idx)
-            {
-                //int entry = idx*2 + NComp*2;
-                float_type omega = static_cast<float_type>(idx + 1) * 2.0 * M_PI / L_z;
-                for (std::size_t addentry = 0; addentry < 2; addentry++)
-                {
-                    int entry = addentry + idx * 2 + 2 + add_num;
-                    this->apply_if_helm<Source, Target>(&lgf_if_, omega, entry,
-                        fmm_type);
-                }
-            }
-        }
-    }*/
 
     template<class Source, class Target>
-    void apply_helm_if(float_type _alpha_base, int N_modes, float_type L_z, int NComp = 3, 
+    void apply_helm_if(float_type _alpha_base, int N_modes, int NComp = 3, 
         int fmm_type = MASK_TYPE::AMR2AMR)
     {
+        for (int i = 0; i < source_tmp_type::nFields(); i++) {
+            lgf_if_vec[i]->alpha_base_level() = _alpha_base;
+        }
         lgf_if_.alpha_base_level() = _alpha_base;
         if (N_modes != (N_fourier_modes + 1))
             throw std::runtime_error(
@@ -254,39 +184,16 @@ class PoissonSolver
 
         const int tot_ref_l = l_max - l_min - 1;
 
-        for (int i = 0; i < NComp; i++)
-        {
-            int add_num = i * N_modes*2;
-            for (std::size_t entry = 0; entry < 2; ++entry) {
-                this->apply_if<Source, Target>(&lgf_if_, (add_num + entry), fmm_type);
-                //domain_->client_communicator().barrier();
-            }
-                //this->apply_lgf<Source, Target>(&lgf_if_, (add_num + entry), fmm_type);
-            for (std::size_t idx = 0; idx < additional_modes; ++idx)
-            {
 
-                int addLevel_raw = std::log2((additional_modes + 1)/(idx+2));
-                int addLevel = 0;
-                if (addLevel_raw < tot_ref_l && adapt_Fourier) {
-                    addLevel = tot_ref_l - addLevel_raw;
-                }
-
-                //int entry = idx*2 + NComp*2;
-                float_type omega = static_cast<float_type>(idx + 1) * 2.0 * M_PI / L_z;
-                for (std::size_t addentry = 0; addentry < 2; addentry++)
-                {
-                    int entry = addentry + idx * 2 + 2 + add_num;
-                    this->apply_if_helm<Source, Target>(&lgf_if_, omega, entry,
-                        fmm_type, addLevel);
-                    //domain_->client_communicator().barrier();
-                }
-            }
+        for (int NthField = 0; NthField < NComp; NthField++) {
+            this->apply_if_helm<Source, Target>(lgf_if_vec, Omegas, NthField, fmm_type);
         }
     }
 
+
     template<class Source, class Target>
-    void apply_lgf_and_helm_ib(int N_modes,
-        std::vector<bool>& ModesBool, int NComp = 1, int fmm_type = MASK_TYPE::AMR2AMR)
+    void apply_lgf_and_helm_ib(int N_modes, const std::vector<bool>& ModesBool, int NComp = 1,
+        int fmm_type = MASK_TYPE::AMR2AMR)
     {
         if (N_modes != (N_fourier_modes + 1))
             throw std::runtime_error(
@@ -295,57 +202,23 @@ class PoissonSolver
             throw std::runtime_error(
                 "Fourier modes number elements do not match in helmholtz solver");
 
-        const int l_max = (fmm_type != MASK_TYPE::STREAM)
-                              ? domain_->tree()->depth()
-                              : domain_->tree()->base_level() + 1;
-        const int l_min =
-            (fmm_type != MASK_TYPE::IB2xIB && fmm_type != MASK_TYPE::xIB2IB)
-                ? domain_->tree()->base_level()
-                : domain_->tree()->depth() - 1;
+        const int l_max = (fmm_type != MASK_TYPE::STREAM) ? domain_->tree()->depth() : domain_->tree()->base_level()+1;
+        const int l_min = (fmm_type !=  MASK_TYPE::IB2xIB && fmm_type !=  MASK_TYPE::xIB2IB) ? domain_->tree()->base_level() : domain_->tree()->depth()-1;
 
         const int tot_ref_l = l_max - l_min - 1;
 
-        for (int i = 0; i < NComp; i++)
-        {
-            int add_num = i * N_modes * 2;
-            if (ModesBool[0])
-            {
-                for (std::size_t entry = 0; entry < 2; ++entry)
-                {
-                    this->apply_lgf<Source, Target>(&lgf_lap_,
-                        (add_num + entry), fmm_type);
-                    //domain_->client_communicator().barrier();
-                }
-            }
-            for (std::size_t idx = 0; idx < additional_modes; ++idx)
-            {
-                //int entry = idx*2 + NComp*2;
-                if (ModesBool[idx + 1])
-                {
-                    int addLevel_raw =
-                        std::log2((additional_modes + 1) / (idx + 2));
-                    int addLevel = 0;
-                    if (addLevel_raw < tot_ref_l && adapt_Fourier)
-                    {
-                        addLevel = tot_ref_l - addLevel_raw;
-                    }
-
-                    for (std::size_t addentry = 0; addentry < 2; addentry++)
-                    {
-                        int entry = addentry + idx * 2 + 2 + add_num;
-                        this->apply_lgf<Source, Target>(&lgf_helm_vec[idx],
-                            entry, fmm_type, addLevel);
-                        //domain_->client_communicator().barrier();
-                    }
-                }
-            }
+        for (int NthField = 0; NthField < NComp; NthField++) {
+            apply_lgf_ib<Source, Target>(&lgf_lap_, lgf_helm_vec_ptr, NthField, ModesBool, fmm_type);
         }
     }
 
     template<class Source, class Target>
-    void apply_helm_if_ib(float_type _alpha_base, int N_modes, float_type L_z, std::vector<bool>& ModesBool, int NComp = 3, 
+    void apply_helm_if_ib(float_type _alpha_base, int N_modes, const std::vector<bool>& ModesBool, int NComp = 3, 
         int fmm_type = MASK_TYPE::AMR2AMR)
     {
+        for (int i = 0; i < source_tmp_type::nFields(); i++) {
+            lgf_if_vec[i]->alpha_base_level() = _alpha_base;
+        }
         lgf_if_.alpha_base_level() = _alpha_base;
         if (N_modes != (N_fourier_modes + 1))
             throw std::runtime_error(
@@ -359,149 +232,55 @@ class PoissonSolver
 
         const int tot_ref_l = l_max - l_min - 1;
 
-        for (int i = 0; i < NComp; i++)
-        {
-            int add_num = i * N_modes*2;
-            if (ModesBool[0]){
-            for (std::size_t entry = 0; entry < 2; ++entry) {
-                this->apply_if<Source, Target>(&lgf_if_, (add_num + entry), fmm_type);
-                //domain_->client_communicator().barrier();
-            }
-            }
-                //this->apply_lgf<Source, Target>(&lgf_if_, (add_num + entry), fmm_type);
-            for (std::size_t idx = 0; idx < additional_modes; ++idx)
-            {
-                if (!ModesBool[idx + 1]) {continue;}
 
-                int addLevel_raw = std::log2((additional_modes + 1)/(idx+2));
-                int addLevel = 0;
-                if (addLevel_raw < tot_ref_l && adapt_Fourier) {
-                    addLevel = tot_ref_l - addLevel_raw;
-                }
-
-                //int entry = idx*2 + NComp*2;
-                float_type omega = static_cast<float_type>(idx + 1) * 2.0 * M_PI / L_z;
-                for (std::size_t addentry = 0; addentry < 2; addentry++)
-                {
-                    int entry = addentry + idx * 2 + 2 + add_num;
-                    this->apply_if_helm<Source, Target>(&lgf_if_, omega, entry,
-                        fmm_type, addLevel);
-                    //domain_->client_communicator().barrier();
-                }
-            }
+        for (int NthField = 0; NthField < NComp; NthField++) {
+            this->apply_if_helm_ib<Source, Target>(lgf_if_vec, Omegas, NthField, ModesBool, fmm_type);
         }
     }
 
-    template<class Source, class Target, class Kernel>
-    void apply_helm(int n, Kernel* _kernel, int fmm_type = MASK_TYPE::AMR2AMR)
-    {
-        if (n >= N_fourier_modes) throw std::runtime_error("Fourier mode number too high");
-        for (std::size_t entry = 0; entry < Source::nFields(); ++entry)
-            this->apply_lgf<Source, Target>(_kernel, entry, fmm_type);
-    }
 
-
-
-    template<class Source, class Target>
-    void apply_lgf_IF(float_type _alpha_base, int fmm_type = MASK_TYPE::AMR2AMR)
-    {
-        lgf_if_.alpha_base_level() = _alpha_base;
-        for (std::size_t entry = 0; entry < Source::nFields(); ++entry)
-            this->apply_if<Source, Target>(&lgf_if_, entry, fmm_type);
-    }
-
-    template<class Source, class Target, class Kernel>
-    void apply_if(Kernel* _kernel, std::size_t _field_idx = 0, int fmm_type = MASK_TYPE::AMR2AMR)
+    template<class Source, class Target, class Kernel_vec>
+    void apply_if_helm(Kernel_vec& _kernel_vec, std::vector<float_type> omega, int NthComp, int fmm_type = MASK_TYPE::AMR2AMR, int addLevel=0)
     {
         auto client = domain_->decomposition().client();
         if (!client) return;
 
-        // Cleaning
-        clean_field<source_tmp_type>();
-        clean_field<target_tmp_type>();
-
-        // Copy source
-        if (fmm_type == MASK_TYPE::AMR2AMR)
-            copy_leaf<Source, source_tmp_type>(_field_idx, 0, true);
-        else if (fmm_type == MASK_TYPE::STREAM)
-            copy_level<Source, source_tmp_type>(domain_->tree()->base_level(), _field_idx, 0, false);
-        else if (fmm_type == MASK_TYPE::IB2xIB || fmm_type == MASK_TYPE::xIB2IB)
-            copy_level<Source, source_tmp_type>(domain_->tree()->depth()-1, _field_idx, 0, false);
-        else if (fmm_type == MASK_TYPE::IB2AMR)
-            copy_level<Source, source_tmp_type>(domain_->tree()->depth()-1, _field_idx, 0, false);
-
-        if (fmm_type != MASK_TYPE::STREAM && fmm_type != MASK_TYPE::IB2xIB && fmm_type != MASK_TYPE::xIB2IB)
-        {
-            // Coarsify
-            source_coarsify<source_tmp_type, source_tmp_type>(_field_idx, 0, Source::mesh_type());
-
-            // Interpolate to correction buffer
-            intrp_to_correction_buffer<source_tmp_type, source_tmp_type>(
-                    _field_idx, 0, Source::mesh_type());
-        }
-
-        const int l_max = (fmm_type != MASK_TYPE::STREAM) ?
-                    domain_->tree()->depth() : domain_->tree()->base_level()+1;
-
-        const int l_min = (fmm_type !=  MASK_TYPE::IB2xIB && fmm_type !=  MASK_TYPE::xIB2IB) ?
-                    domain_->tree()->base_level() : domain_->tree()->depth()-1;
-
-        for (int l = l_min; l < l_max; ++l)
-        {
-
-            for (auto it_s = domain_->begin(l); it_s != domain_->end(l); ++it_s)
-                if (it_s->has_data() && !it_s->locally_owned())
-                {
-                    if (!it_s->data().is_allocated()) continue;
-                    auto& cp2 = it_s->data_r(source_tmp);
-                    std::fill(cp2.begin(), cp2.end(), 0.0);
-                }
-
-            _kernel->change_level(l - domain_->tree()->base_level());
-
-            if (fmm_type == MASK_TYPE::AMR2AMR)
-                fmm_.template apply<source_tmp_type, target_tmp_type>(
-                        domain_, _kernel, l, false, 1.0, fmm_type);
-
-            if (!subtract_non_leaf_)
-                fmm_.template apply<source_tmp_type, target_tmp_type>(
-                    domain_, _kernel, l, true, 1.0, fmm_type);
-
-            copy_level<target_tmp_type, Target>(l, 0, _field_idx, true);
-        }
-    }
-
-
-    template<class Source, class Target, class Kernel>
-    void apply_if_helm(Kernel* _kernel, float_type omega, std::size_t _field_idx = 0, int fmm_type = MASK_TYPE::AMR2AMR, int addLevel=0)
-    {
-        auto client = domain_->decomposition().client();
-        if (!client) return;
+        //struct timespec tstart, t_copy, t_prep, t_apply;
 
         // Cleaning
-        clean_field<source_tmp_type>();
-        clean_field<target_tmp_type>();
-
         const float_type dx_base = domain_->dx_base();
+        int starting_idx = (N_fourier_modes + 1) * NthComp * 2;
 
-        // Copy source
-        if (fmm_type == MASK_TYPE::AMR2AMR)
-            copy_leaf<Source, source_tmp_type>(_field_idx, 0, true);
-        else if (fmm_type == MASK_TYPE::STREAM)
-            copy_level<Source, source_tmp_type>(domain_->tree()->base_level(), _field_idx, 0, false);
-        else if (fmm_type == MASK_TYPE::IB2xIB || fmm_type == MASK_TYPE::xIB2IB)
-            copy_level<Source, source_tmp_type>(domain_->tree()->depth()-1, _field_idx, 0, false);
-        else if (fmm_type == MASK_TYPE::IB2AMR)
-            copy_level<Source, source_tmp_type>(domain_->tree()->depth()-1, _field_idx, 0, false);
+        //clock_gettime(CLOCK_REALTIME,&tstart);
+
+        #pragma omp parallel for
+        for (int mode = 0; mode < (N_fourier_modes + 1); mode++) {
+            for (int j = 0; j < 2; j++) {
+                int field_idx = mode * 2 + j;
+                clean_field<source_tmp_type>(field_idx);
+                clean_field<target_tmp_type>(field_idx);
+
+                // Copy source
+                if (fmm_type == MASK_TYPE::AMR2AMR)
+                    copy_leaf<Source, source_tmp_type>(field_idx + starting_idx, field_idx, true);
+                else if (fmm_type == MASK_TYPE::STREAM)
+                    copy_level<Source, source_tmp_type>(domain_->tree()->base_level(), field_idx + starting_idx, field_idx, false);
+                else if (fmm_type == MASK_TYPE::IB2xIB || fmm_type == MASK_TYPE::xIB2IB)
+                    copy_level<Source, source_tmp_type>(domain_->tree()->depth()-1, field_idx + starting_idx, field_idx, false);
+                else if (fmm_type == MASK_TYPE::IB2AMR)
+                    copy_level<Source, source_tmp_type>(domain_->tree()->depth()-1, field_idx + starting_idx, field_idx, false);
+            }
+        }
+
+        //clock_gettime(CLOCK_REALTIME,&t_copy);
 
         if (fmm_type != MASK_TYPE::STREAM && fmm_type != MASK_TYPE::IB2xIB && fmm_type != MASK_TYPE::xIB2IB)
         {
             // Coarsify
-            source_coarsify<source_tmp_type, source_tmp_type>(_field_idx, 0, Source::mesh_type());
+            source_coarsify_OMP<source_tmp_type, source_tmp_type>(Source::mesh_type(), starting_idx);
 
             // Interpolate to correction buffer
-            intrp_to_correction_buffer<source_tmp_type, source_tmp_type>(
-                    _field_idx, 0, Source::mesh_type());
+            intrp_to_correction_buffer_OMP<source_tmp_type, source_tmp_type>(Source::mesh_type(), starting_idx);
         }
 
         const int l_max = (fmm_type != MASK_TYPE::STREAM) ?
@@ -518,32 +297,240 @@ class PoissonSolver
         for (int l = l_min; l < l_max; ++l)
         {
             
-
-            for (auto it_s = domain_->begin(l); it_s != domain_->end(l); ++it_s)
-                if (it_s->has_data() && !it_s->locally_owned())
-                {
-                    if (!it_s->data().is_allocated()) continue;
-                    auto& cp2 = it_s->data_r(source_tmp);
-                    std::fill(cp2.begin(), cp2.end(), 0.0);
+            #pragma omp parallel for
+            for (std::size_t field_idx = 0; field_idx < source_tmp_type::nFields(); field_idx++) {
+                for (auto it_s = domain_->begin(l); it_s != domain_->end(l); ++it_s) {
+                    if (it_s->has_data() && !it_s->locally_owned())
+                    {
+                        if (!it_s->data().is_allocated()) continue;
+                        auto& cp2 = it_s->data_r(source_tmp, field_idx);
+                        std::fill(cp2.begin(), cp2.end(), 0.0);
+                    }
                 }
+            }
 
-            _kernel->change_level(l - domain_->tree()->base_level());
+            for (int idx = 0; idx < _kernel_vec.size(); idx++) {
+                _kernel_vec[idx]->change_level(l - domain_->tree()->base_level());
+            }
 
             double dx = dx_base / std::pow(2, l - domain_->tree()->base_level());
 
             //compute the add scale
-            float_type alpha_level = _kernel->alpha_;
-            float_type helm_weights = std::exp(-omega*omega*alpha_level * dx * dx);
+            float_type alpha_level = _kernel_vec[0]->alpha_;
+            //float_type helm_weights = std::exp(-omega*omega*alpha_level * dx * dx);
+
+            std::vector<float_type> helm_weights_vec;
+
+            for (int mode = 0; mode < (N_fourier_modes + 1); mode++) {
+                float_type helm_weights = std::exp(-omega[mode]*omega[mode]*alpha_level * dx * dx);
+                for (int j = 0; j < 2; j++) {
+                    helm_weights_vec.emplace_back(helm_weights);
+                }
+            }
+
+            //clock_gettime(CLOCK_REALTIME,&t_prep);
 
             if (fmm_type == MASK_TYPE::AMR2AMR)
-                fmm_.template apply<source_tmp_type, target_tmp_type>(
-                        domain_, _kernel, l, false, helm_weights, fmm_type);
+                fmm_.template apply_IF<source_tmp_type, target_tmp_type>(
+                        domain_, _kernel_vec, l, false, helm_weights_vec, fmm_type);
 
             if (!subtract_non_leaf_)
-                fmm_.template apply<source_tmp_type, target_tmp_type>(
-                    domain_, _kernel, l, true, helm_weights, fmm_type);
+                fmm_.template apply_IF<source_tmp_type, target_tmp_type>(
+                    domain_, _kernel_vec, l, true, helm_weights_vec, fmm_type);
 
-            copy_level<target_tmp_type, Target>(l, 0, _field_idx, true);
+
+            //clock_gettime(CLOCK_REALTIME,&t_apply);
+
+
+            #pragma omp parallel for
+            for (int mode = 0; mode < (N_fourier_modes + 1); mode++) {
+                for (int j = 0; j < 2; j++) {
+                    int field_idx = mode * 2 + j;
+                    copy_level<target_tmp_type, Target>(l, field_idx, field_idx + starting_idx, true);
+                }
+            }
+
+            //copy_level<target_tmp_type, Target>(l, 0, _field_idx, true);
+        }
+
+        /*double dt_copy = (t_copy.tv_sec+t_copy.tv_nsec/1e9)-(tstart.tv_sec+tstart.tv_nsec/1e9);
+        double dt_prep = (t_prep.tv_sec+t_prep.tv_nsec/1e9)-(t_copy.tv_sec+t_copy.tv_nsec/1e9);
+        double dt_apply = (t_apply.tv_sec+t_apply.tv_nsec/1e9)-(t_prep.tv_sec+t_prep.tv_nsec/1e9);
+        if (domain_->client_communicator().rank() == 0) {
+            std::cout << "dt_copy = " << dt_copy << " dt_prep = " << dt_prep << " dt_apply = " << dt_apply << std::endl;
+            std::cout << "l_min = " << l_min << " l_max = " << l_max << std::endl;
+        }*/
+    }
+
+
+
+
+    template<class Source, class Target, class Kernel_vec>
+    void apply_if_helm_ib(Kernel_vec& _kernel_vec, std::vector<float_type> omega, int NthComp, const std::vector<bool>& ModesBool, int fmm_type = MASK_TYPE::AMR2AMR, int addLevel=0)
+    {
+        //only to be used within IB solver that does not require interpolations, thus no buffer exchange
+        auto client = domain_->decomposition().client();
+        if (!client) return;
+
+        //struct timespec tstart, t_copy, t_prep, t_apply;
+
+        std::vector<int> modeToCompute, field_idx2compute;
+
+        modeToCompute.resize(0);
+        field_idx2compute.resize(0);
+
+        for (int i = 0; i < ModesBool.size();i++) {
+            if (ModesBool[i]) {
+                modeToCompute.emplace_back(i);
+                field_idx2compute.emplace_back(i*2);
+                field_idx2compute.emplace_back(i*2 + 1);
+            }
+        }
+
+        // Cleaning
+        const float_type dx_base = domain_->dx_base();
+        int starting_idx = (N_fourier_modes + 1) * NthComp * 2;
+
+        //clock_gettime(CLOCK_REALTIME,&tstart);
+
+        int l = domain_->tree()->depth()-1;
+
+        fmm_.template apply_single_master<source_tmp_type, target_tmp_type>(domain_, _kernel_vec[0].get(), l, false, fmm_type);
+
+        #pragma omp parallel for
+        for (int i = 0; i < field_idx2compute.size(); i++) {
+            
+            int field_idx = field_idx2compute[i];
+            int mode = field_idx/2;
+            clean_field<source_tmp_type>(field_idx);
+            clean_field<target_tmp_type>(field_idx);
+
+            // Copy source
+            if (fmm_type == MASK_TYPE::AMR2AMR)
+                copy_leaf<Source, source_tmp_type>(field_idx + starting_idx, field_idx, true);
+            else if (fmm_type == MASK_TYPE::STREAM)
+                copy_level<Source, source_tmp_type>(domain_->tree()->base_level(), field_idx + starting_idx, field_idx, false);
+            else if (fmm_type == MASK_TYPE::IB2xIB || fmm_type == MASK_TYPE::xIB2IB)
+                copy_level<Source, source_tmp_type>(domain_->tree()->depth()-1, field_idx + starting_idx, field_idx, false);
+            else if (fmm_type == MASK_TYPE::IB2AMR)
+                copy_level<Source, source_tmp_type>(domain_->tree()->depth()-1, field_idx + starting_idx, field_idx, false);
+
+
+            for (auto it_s = domain_->begin(l); it_s != domain_->end(l); ++it_s) {
+                if (it_s->has_data() && !it_s->locally_owned())
+                {
+                    if (!it_s->data().is_allocated()) continue;
+                    auto& cp2 = it_s->data_r(source_tmp, field_idx);
+                    std::fill(cp2.begin(), cp2.end(), 0.0);
+                }
+            }
+
+
+            _kernel_vec[field_idx]->change_level(l - domain_->tree()->base_level());
+
+            double dx = dx_base / std::pow(2, l - domain_->tree()->base_level());
+
+            float_type alpha_level = _kernel_vec[field_idx]->alpha_;
+
+            float_type helm_weights = std::exp(-omega[mode]*omega[mode]*alpha_level * dx * dx);
+
+            if (!subtract_non_leaf_)
+                fmm_.template apply_IF_single<source_tmp_type, target_tmp_type>(
+                        domain_, _kernel_vec[field_idx].get(), field_idx, l, false, helm_weights, fmm_type);
+
+            copy_level<target_tmp_type, Target>(l, field_idx, field_idx + starting_idx, true);
+        }
+    }
+
+    template<class Source, class Target, class Kernel, class Kernel_vec>
+    void apply_lgf_ib(Kernel* _kernel_lgf, Kernel_vec& _kernel, int NthComp, const std::vector<bool>& ModesBool,
+        const int fmm_type, int addLevel = 0)
+    {
+        auto client = domain_->decomposition().client();
+        if (!client) return;
+
+        std::vector<int> modeToCompute, field_idx2compute;
+
+        modeToCompute.resize(0);
+        field_idx2compute.resize(0);
+
+        for (int i = 0; i < ModesBool.size();i++) {
+            if (ModesBool[i]) {
+                modeToCompute.emplace_back(i);
+                field_idx2compute.emplace_back(i*2);
+                field_idx2compute.emplace_back(i*2 + 1);
+            }
+        }
+
+        const int l = domain_->tree()->depth()-1;
+
+        //struct timespec tstart, t_copy, t_prep, t_intrp, t_apply, t_corr;
+
+        const float_type dx_base = domain_->dx_base();
+        int starting_idx = (N_fourier_modes + 1) * NthComp * 2;
+
+
+        //clock_gettime(CLOCK_REALTIME,&tstart);
+
+        fmm_.template apply_single_master<source_tmp_type, target_tmp_type>(domain_, _kernel_lgf, l, false, fmm_type);
+
+
+        // Cleaning
+        #pragma omp parallel for
+        for (int i = 0; i < modeToCompute.size(); i++) {
+            int mode = modeToCompute[i];
+            for (int j = 0; j < 2; j++) {
+                int field_idx = mode * 2 + j;
+                clean_field<source_tmp_type>(field_idx);
+                clean_field<target_tmp_type>(field_idx);
+                clean_field<correction_tmp_type>(field_idx);
+
+                // Copy source
+                if (fmm_type == MASK_TYPE::AMR2AMR)
+                    copy_leaf<Source, source_tmp_type>(field_idx + starting_idx, field_idx, true);
+                else if (fmm_type == MASK_TYPE::STREAM)
+                    copy_level<Source, source_tmp_type>(domain_->tree()->base_level(), field_idx + starting_idx, field_idx, false);
+                else if (fmm_type == MASK_TYPE::IB2xIB || fmm_type == MASK_TYPE::xIB2IB)
+                    copy_level<Source, source_tmp_type>(domain_->tree()->depth()-1, field_idx + starting_idx, field_idx, false);
+                else if (fmm_type == MASK_TYPE::IB2AMR)
+                    copy_level<Source, source_tmp_type>(domain_->tree()->depth()-1, field_idx + starting_idx, field_idx, false);
+
+
+                for (auto it_s = domain_->begin(l); it_s != domain_->end(l); ++it_s) {
+                    if (it_s->has_data() && !it_s->locally_owned())
+                    {
+                        if (!it_s->data().is_allocated()) continue;
+                        auto& cp2 = it_s->data_r(source_tmp, field_idx).linalg_data();
+                        cp2 *= 0.0;
+                    }
+                }
+            }
+
+            if (mode == 0) {
+                _kernel_lgf->change_level(l - domain_->tree()->base_level());
+                fmm_.template apply_LGF_single<source_tmp_type, target_tmp_type>(
+                    domain_, _kernel_lgf, 0, l, false, 1.0, fmm_type);
+            }
+            else {
+                _kernel[mode - 1]->change_level(l - domain_->tree()->base_level());
+                fmm_.template apply_LGF_single<source_tmp_type, target_tmp_type>(
+                    domain_, _kernel[mode - 1].get(), mode, l, false, 1.0, fmm_type);
+            }
+
+            // Copy to Target
+            for (int j = 0; j < 2; j++) {
+                int field_idx = mode * 2 + j;
+                for (auto it = domain_->begin(l); it != domain_->end(l); ++it) {
+                    if (it->locally_owned() && it->is_leaf())
+                    {
+                        it->data_r(Target::tag(), field_idx + starting_idx)
+                            .linalg()
+                            .get()
+                            ->cube_noalias_view() =
+                            it->data_r(target_tmp, field_idx).linalg_data();
+                    }
+                }
+            }
         }
     }
 
@@ -556,53 +543,61 @@ class PoissonSolver
      *  Second order interpolation and coarsification operators are used
     *  to project the solutions to fine and coarse meshes, respectively.
     */
-    template<class Source, class Target, class Kernel>
-    void apply_lgf(Kernel* _kernel, const std::size_t _field_idx,
+    template<class Source, class Target, class Kernel, class Kernel_vec>
+    void apply_lgf(Kernel* _kernel_lgf, Kernel_vec& _kernel, int NthComp,
         const int fmm_type, int addLevel = 0)
     {
         auto client = domain_->decomposition().client();
         if (!client) return;
 
+        //struct timespec tstart, t_copy, t_prep, t_intrp, t_apply, t_corr;
+
         const float_type dx_base = domain_->dx_base();
+        int starting_idx = (N_fourier_modes + 1) * NthComp * 2;
+
+
+        //clock_gettime(CLOCK_REALTIME,&tstart);
+
 
         // Cleaning
-        //clean_field<corr_lap_tmp>();
-        clean_field<source_tmp_type>();
-        clean_field<target_tmp_type>();
-        clean_field<correction_tmp_type>();
+        #pragma omp parallel for
+        for (int mode = 0; mode < (N_fourier_modes + 1); mode++) {
+            for (int j = 0; j < 2; j++) {
+                int field_idx = mode * 2 + j;
+                clean_field<source_tmp_type>(field_idx);
+                clean_field<target_tmp_type>(field_idx);
+                clean_field<correction_tmp_type>(field_idx);
 
-        // Copy source
-        if (fmm_type == MASK_TYPE::AMR2AMR)
-            copy_leaf<Source, source_tmp_type>(_field_idx, 0, true);
-        else if (fmm_type == MASK_TYPE::STREAM)
-            copy_level<Source, source_tmp_type>(domain_->tree()->base_level(), _field_idx, 0, false);
-        else if (fmm_type == MASK_TYPE::IB2xIB || fmm_type == MASK_TYPE::xIB2IB)
-            copy_level<Source, source_tmp_type>(domain_->tree()->depth()-1, _field_idx, 0, false);
-        else if (fmm_type == MASK_TYPE::IB2AMR)
-            copy_level<Source, source_tmp_type>(domain_->tree()->depth()-1, _field_idx, 0, false);
+                // Copy source
+                if (fmm_type == MASK_TYPE::AMR2AMR)
+                    copy_leaf<Source, source_tmp_type>(field_idx + starting_idx, field_idx, true);
+                else if (fmm_type == MASK_TYPE::STREAM)
+                    copy_level<Source, source_tmp_type>(domain_->tree()->base_level(), field_idx + starting_idx, field_idx, false);
+                else if (fmm_type == MASK_TYPE::IB2xIB || fmm_type == MASK_TYPE::xIB2IB)
+                    copy_level<Source, source_tmp_type>(domain_->tree()->depth()-1, field_idx + starting_idx, field_idx, false);
+                else if (fmm_type == MASK_TYPE::IB2AMR)
+                    copy_level<Source, source_tmp_type>(domain_->tree()->depth()-1, field_idx + starting_idx, field_idx, false);
+            }
+        }
 
 
-#ifdef POISSON_TIMINGS
-        timings_ = Timings();
-        const int nLevels = domain_->nLevels();
-        timings_.level.resize(nLevels);
-        timings_.fmm_level.resize(nLevels);
-        timings_.fmm_level_nl.resize(nLevels);
+        //clock_gettime(CLOCK_REALTIME,&t_copy);
+        /*double dt_copy = (t_copy.tv_sec+t_copy.tv_nsec/1e9)-(tstart.tv_sec+tstart.tv_nsec/1e9);
+        if (domain_->client_communicator().rank() == 0) {
+            std::cout << "dt_copy = " << dt_copy << std::endl;
+        }*/
 
-        auto t0_all = clock_type::now();
-        auto t0_coarsify = clock_type::now();
-#endif
 
         if (fmm_type != MASK_TYPE::STREAM && fmm_type != MASK_TYPE::IB2xIB && fmm_type != MASK_TYPE::xIB2IB)
-            source_coarsify<source_tmp_type, source_tmp_type>(_field_idx, 0, Source::mesh_type());
+            source_coarsify_OMP<source_tmp_type, source_tmp_type>(Source::mesh_type(), starting_idx);
 
-#ifdef POISSON_TIMINGS
-        auto t1_coarsify = clock_type::now();
-        timings_.coarsification = t1_coarsify - t0_coarsify;
-        const auto t0_level_interaction = clock_type::now();
-#endif
 
-        //Level-Interactions
+        //clock_gettime(CLOCK_REALTIME,&t_intrp);
+        //double dt_intrp = (t_intrp.tv_sec+t_intrp.tv_nsec/1e9)-(t_copy.tv_sec+t_copy.tv_nsec/1e9);
+        /*if (domain_->client_communicator().rank() == 0) {
+            std::cout << "dt_intrp = " << dt_intrp << std::endl;
+        }*/
+
 
         const int l_max = (fmm_type != MASK_TYPE::STREAM) ?
                     domain_->tree()->depth() : domain_->tree()->base_level()+1;
@@ -616,121 +611,105 @@ class PoissonSolver
 
         for (int l = l_min; l < l_max; ++l)
         {
-#ifdef POISSON_TIMINGS
-            const auto t0_level = clock_type::now();
-#endif
-            _kernel->change_level(l - domain_->tree()->base_level());
 
-            for (auto it_s = domain_->begin(l); it_s != domain_->end(l); ++it_s)
-                if (it_s->has_data() && !it_s->locally_owned())
-                {
-                    if (!it_s->data().is_allocated()) continue;
-                    auto& cp2 = it_s->data_r(source_tmp).linalg_data();
-                    cp2 *= 0.0;
+
+            //clock_gettime(CLOCK_REALTIME,&t_intrp);
+
+
+            #pragma omp parallel for
+            for (int kernel_idx = 0; kernel_idx < (_kernel.size() + 1); kernel_idx++) {
+                if (kernel_idx == 0) {
+                    _kernel_lgf->change_level(l - domain_->tree()->base_level());
                 }
-
-            if (subtract_non_leaf_)
-            {
-                //fmm_.template apply<source_tmp_type, target_tmp_type>(
-                //    domain_, _kernel, l, false, 1.0, fmm_type);
-                //// Copy to Target
-                //for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
-                //    if (it->locally_owned() && it->is_leaf())
-                //    {
-                //        it->data_r(Target::tag(), _field_idx)
-                //            .linalg()
-                //            .get()
-                //            ->cube_noalias_view() =
-                //            it->data_r(target_tmp).linalg_data();
-                //    }
-                //fmm_.template apply<source_tmp_type, target_tmp_type>(
-                //    domain_, _kernel, l, true, -1.0);
-#ifdef POISSON_T//IMINGS
-                //timings_.fmm_level_nl[l - domain_->tree()->base_level()] =
-                //    fmm_.timings();
-#endif
-
-#ifdef POISSON_T//IMINGS
-                //const auto t2 = clock_type::now();
-#endif
-                //// Interpolate
-                //domain_->decomposition()
-                //    .client()
-                //    ->template communicate_updownward_assign<target_tmp_type,
-                //        target_tmp_type>(l, false, false, -1);
-
-                //for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
-                //{
-                //    if (!it->has_data() || !it->data().is_allocated())
-                //        continue;
-                //    c_cntr_nli_
-                //        .nli_intrp_node<target_tmp_type, target_tmp_type>(
-                //            it, Source::mesh_type(), _field_idx, 0, false, false);
-                //}
-
-#ifdef POISSON_T//IMINGS
-                //const auto t3 = clock_type::now();
-                //timings_.interpolation += (t3 - t2);
-#endif
+                else {
+                    _kernel[kernel_idx - 1]->change_level(l - domain_->tree()->base_level());
+                }
             }
-            else
-            {
-                if (fmm_type == MASK_TYPE::AMR2AMR)
-                {
-                    // outside to everywhere
-                    fmm_.template apply<source_tmp_type, target_tmp_type>(
-                        domain_, _kernel, l, true, 1.0, fmm_type);
-#ifdef POISSON_TIMINGS
-                    timings_.fmm_level_nl[l - domain_->tree()->base_level()] =
-                        fmm_.timings();
-#endif
 
-#ifdef POISSON_TIMINGS
-                    const auto t2 = clock_type::now();
-#endif
-                    // Interpolate
+            #pragma omp parallel for
+            for (std::size_t field_idx = 0; field_idx < source_tmp_type::nFields(); field_idx++) {
+                for (auto it_s = domain_->begin(l); it_s != domain_->end(l); ++it_s) {
+                    if (it_s->has_data() && !it_s->locally_owned())
+                    {
+                        if (!it_s->data().is_allocated()) continue;
+                        auto& cp2 = it_s->data_r(source_tmp, field_idx).linalg_data();
+                        cp2 *= 0.0;
+                    }
+                }
+            }
+
+            
+            if (fmm_type == MASK_TYPE::AMR2AMR)
+            {
+                // outside to everywhere
+                fmm_.template apply_LGF<source_tmp_type, target_tmp_type>(
+                    domain_, _kernel_lgf, 2, _kernel, 2, l, true, 1.0, fmm_type);
+
+                
+                //clock_gettime(CLOCK_REALTIME,&t_apply);
+                /*double dt_apply = (t_apply.tv_sec+t_apply.tv_nsec/1e9)-(t_intrp.tv_sec+t_intrp.tv_nsec/1e9);
+                if (domain_->client_communicator().rank() == 0) {
+                    std::cout << "l = " << l << " dt_apply = " << dt_apply << std::endl;
+                }*/
+
+                // Interpolate
+                #pragma omp parallel for 
+                for (int field_idx = 0; field_idx < target_tmp_type::nFields(); field_idx++)
+                {
+                    int omp_idx = omp_get_thread_num( );
                     domain_->decomposition()
                         .client()
-                        ->template communicate_updownward_assign<
+                        ->template communicate_updownward_assign_OMP<
                             target_tmp_type, target_tmp_type>(
-                            l, false, false, -1);
+                            l, false, false, -1, field_idx);
 
                     for (auto it = domain_->begin(l); it != domain_->end(l);
-                         ++it)
+                            ++it)
                     {
                         if (!it->has_data() || !it->data().is_allocated())
                             continue;
-                        c_cntr_nli_.template nli_intrp_node<target_tmp_type, target_tmp_type>(
-                                it, Source::mesh_type(), _field_idx, 0, false,
+                        c_cntr_nli_vec[omp_idx]->template nli_intrp_node<target_tmp_type, target_tmp_type>(
+                                it, Source::mesh_type(), field_idx + starting_idx, field_idx, false,
                                 false);
                     }
-
-#ifdef POISSON_TIMINGS
-                    const auto t3 = clock_type::now();
-                    timings_.interpolation += (t3 - t2);
-#endif
                 }
 
-                // Inside to outside
-                fmm_.template apply<source_tmp_type, target_tmp_type>(
-                    domain_, _kernel, l, false, 1.0, fmm_type);
 
-                // Copy to Target
-                for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+                /*clock_gettime(CLOCK_REALTIME,&t_intrp);
+                double dt_intrp = (t_intrp.tv_sec+t_intrp.tv_nsec/1e9)-(t_apply.tv_sec+t_apply.tv_nsec/1e9);
+                if (domain_->client_communicator().rank() == 0) {
+                    std::cout << "l = " << l << " dt_intrp = " << dt_intrp << std::endl;
+                }*/
+
+            }
+
+            // Inside to outside
+            fmm_.template apply_LGF<source_tmp_type, target_tmp_type>(
+                domain_, _kernel_lgf, 2, _kernel, 2, l, false, 1.0, fmm_type);
+
+            // Copy to Target
+            #pragma omp parallel for 
+            for (std::size_t _field_idx = 0; _field_idx < target_tmp_type::nFields();++_field_idx)
+            {
+                for (auto it = domain_->begin(l); it != domain_->end(l); ++it) {
                     if (it->locally_owned() && it->is_leaf())
                     {
-                        it->data_r(Target::tag(), _field_idx)
+                        it->data_r(Target::tag(), _field_idx + starting_idx)
                             .linalg()
                             .get()
                             ->cube_noalias_view() =
-                            it->data_r(target_tmp).linalg_data();
+                            it->data_r(target_tmp, _field_idx).linalg_data();
                     }
+                }
             }
 
-#ifdef POISSON_TIMINGS
-            timings_.fmm_level[l - domain_->tree()->base_level()] =
-                fmm_.timings();
-#endif
+
+            /*clock_gettime(CLOCK_REALTIME,&t_apply);
+            double dt_apply = (t_apply.tv_sec+t_apply.tv_nsec/1e9)-(t_intrp.tv_sec+t_intrp.tv_nsec/1e9);
+            if (domain_->client_communicator().rank() == 0) {
+                std::cout << "l = " << l << " dt_apply = " << dt_apply << std::endl;
+            }*/
+
 
             if (fmm_type!=MASK_TYPE::AMR2AMR) continue;
             if (use_correction_)
@@ -753,90 +732,71 @@ class PoissonSolver
                 //}
 
                 client->template buffer_exchange<source_tmp_type>(l);
-                domain_->decomposition()
-                    .client()
-                    ->template communicate_updownward_assign<source_tmp_type,
-                        source_tmp_type>(l, false, false, -1);
                 client->template buffer_exchange<target_tmp_type>(l+1);
-                domain_->decomposition()
-                    .client()
-                    ->template communicate_updownward_assign<target_tmp_type,
-                        target_tmp_type>(l+1, false, false, -1);
+                #pragma omp parallel for 
+                for (int kernel_idx = 0; kernel_idx < (_kernel.size() + 1); kernel_idx++) {
+                    int omp_idx = omp_get_thread_num( );
+                    for (int idx_sub = 0; idx_sub < 2; idx_sub++) {
+                        int _field_idx = kernel_idx * 2 + idx_sub;
+                        domain_->decomposition()
+                            .client()
+                            ->template communicate_updownward_assign_OMP<source_tmp_type,
+                                source_tmp_type>(l, false, false, -1, _field_idx);
 
-                for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
-                {
-                    if (!it->has_data() || !it->data().is_allocated())
-                        continue;
+                        domain_->decomposition()
+                            .client()
+                            ->template communicate_updownward_assign_OMP<target_tmp_type,
+                                target_tmp_type>(l+1, false, false, -1, _field_idx);
 
-                    const bool correction_buffer_only = true;
-                    c_cntr_nli_.template nli_intrp_node<source_tmp_type, correction_tmp_type>(
-                            it, Source::mesh_type(), _field_idx, 0,
-                            correction_buffer_only, false);
-                }
-
-                for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
-                {
-                    int    refinement_level = it->refinement_level();
-                    double dx = dx_base / std::pow(2, refinement_level);
-                    
-                    
-
-                    if (!_kernel->LaplaceLGF())
-                    {
-                        float_type c_val = _kernel->return_c_level() / dx;
-                        c_cntr_nli_.template add_source_correction<target_tmp_type,
-                        correction_tmp_type>(it, dx / 2.0, c_val);
-                    }
-                    else {
-                        c_cntr_nli_.template add_source_correction<target_tmp_type,
-                        correction_tmp_type>(it, dx / 2.0);
-                    }
-                }
-
-                for (auto it = domain_->begin(l + 1); it != domain_->end(l + 1);
-                     ++it) {
-                    /*if (!_kernel->LaplaceLGF())
-                    {
-                        int    refinement_level = it->refinement_level();
-                        double dx = dx_base / std::pow(2, refinement_level);
-                        float_type c_val = _kernel->return_c_level() / 2.0 / dx;
-                        if (it->locally_owned() && it->has_data() && it->data().is_allocated())
+                        for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
                         {
-                            auto& lin_data_1 =
-                                it->data_r(target_tmp).linalg_data();
-                            auto& lin_data_2 =
-                                it->data_r(correction_tmp).linalg_data();
+                            if (!it->has_data() || !it->data().is_allocated())
+                                continue;
 
-                            xt::noalias(lin_data_2) += lin_data_1 * c_val * c_val;
+                            const bool correction_buffer_only = true;
+                            c_cntr_nli_vec[omp_idx]->template nli_intrp_node<source_tmp_type, correction_tmp_type>(
+                                    it, Source::mesh_type(), _field_idx + starting_idx, _field_idx,
+                                    correction_buffer_only, false);
                         }
-                    }*/
-                    if (it->locally_owned())
-                    {
-                        auto& lin_data_1 =
-                            it->data_r(correction_tmp).linalg_data();
-                        auto& lin_data_2 =
-                            it->data_r(source_tmp).linalg_data();
 
-                        xt::noalias(lin_data_2) += lin_data_1 * 1.0;
+                        for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+                        {
+                            int    refinement_level = it->refinement_level();
+                            double dx = dx_base / std::pow(2, refinement_level);
+                            if (kernel_idx == 0) {
+                                c_cntr_nli_vec[omp_idx]->template add_source_correction<target_tmp_type,
+                                correction_tmp_type>(_field_idx, it, dx / 2.0);
+                            }
+                            else {
+                                float_type c_val = _kernel[kernel_idx - 1]->return_c_level() / dx;
+                                c_cntr_nli_vec[omp_idx]->template add_source_correction<target_tmp_type,
+                                correction_tmp_type>(_field_idx, it, dx / 2.0, c_val);
+                            }
+                        }
+
+                        for (auto it = domain_->begin(l + 1); it != domain_->end(l + 1);
+                            ++it) {
+                            if (it->locally_owned())
+                            {
+                                auto& lin_data_1 =
+                                    it->data_r(correction_tmp, _field_idx).linalg_data();
+                                auto& lin_data_2 =
+                                    it->data_r(source_tmp, _field_idx).linalg_data();
+
+                                xt::noalias(lin_data_2) += lin_data_1 * 1.0;
+                            }
+                        }
                     }
                 }
             }
-#ifdef POISSON_TIMINGS
-            const auto     t1_level = clock_type::now();
-            mDuration_type tmp = t1_level - t0_level;
-            timings_.level[l - domain_->tree()->base_level()] =
-                t1_level - t0_level;
-#endif
-        }
 
-#ifdef POISSON_TIMINGS
-        const auto t1_level_interaction = clock_type::now();
-        timings_.level_interaction = t1_level_interaction -
-                                     t0_level_interaction -
-                                     timings_.interpolation;
-        const auto t1_all = clock_type::now();
-        timings_.global = t1_all - t0_all;
-#endif
+            /*clock_gettime(CLOCK_REALTIME,&t_corr);
+            double dt_corr = (t_corr.tv_sec+t_corr.tv_nsec/1e9)-(t_apply.tv_sec+t_apply.tv_nsec/1e9);
+            if (domain_->client_communicator().rank() == 0) {
+                std::cout << "l = " << l << " dt_corr = " << dt_corr << std::endl;
+            }*/
+
+        }
     }
 
     template<class field>
@@ -1027,6 +987,73 @@ class PoissonSolver
         }
     }
 
+
+
+    template<class From, class To>
+    void intrp_to_correction_buffer_OMP(MeshObject mesh_type, int starting_idx, 
+        bool correction_only = true, bool exclude_correction = false,
+        bool leaf_boundary = false)
+    {
+        auto client = domain_->decomposition().client();
+        if (!client) return;
+
+        for (int l = domain_->tree()->depth() - 2;
+             l >= domain_->tree()->base_level(); --l)
+        {
+            client->template buffer_exchange<From>(l);
+
+            int ref_level_up = domain_->tree()->depth() - l - 1;
+
+            /*for (std::size_t _field_idx = 0; _field_idx < From::nFields();
+                 ++_field_idx)
+            {
+                domain_->decomposition()
+                    .client()
+                    ->template communicate_updownward_assign<From, From>(l,
+                        false, false, -1, _field_idx, leaf_boundary);
+            }*/
+            #pragma omp parallel for 
+            for (std::size_t _field_idx = 0; _field_idx < From::nFields();
+                     ++_field_idx)
+            {
+                int omp_idx = omp_get_thread_num( );
+                domain_->decomposition()
+                    .client()
+                    ->template communicate_updownward_assign_OMP<From, From>(l,
+                        false, false, -1, _field_idx, leaf_boundary);
+
+                for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+                {
+                    if (!it->has_data() || !it->data().is_allocated()) continue;
+                    if (leaf_boundary && !it->leaf_boundary()) continue;
+
+                
+                    if (adapt_Fourier)
+                    {
+                        int NComp = From::nFields() / (2 * N_fourier_modes + 2);
+                        int res = From::nFields() % (2 * N_fourier_modes + 2);
+                        if (res != 0)
+                        {
+                            throw std::runtime_error(
+                                "nFields in intrp to correction buffer not a multiple of N_modes*2");
+                        }
+
+                        int res_modes = _field_idx % (2 * N_fourier_modes + 2);
+
+                        int divisor = std::pow(2, ref_level_up);
+
+                        int N_comp_modes = (additional_modes + 1) * 2 / divisor;
+                        if (res_modes >= N_comp_modes) continue;
+                    }
+                    c_cntr_nli_vec[omp_idx]->template nli_intrp_node<From, To>(it, mesh_type,
+                        _field_idx + starting_idx, _field_idx, correction_only,
+                        exclude_correction);
+                
+                }
+            }
+        }
+    }
+
     template<class From, class To>
     void source_coarsify(std::size_t real_mesh_field_idx,
         std::size_t tmp_type_field_idx, MeshObject mesh_type,
@@ -1123,19 +1150,6 @@ class PoissonSolver
                 }
             }
 
-
-            /*for (auto it_s = domain_->begin(ls); it_s != domain_->end(ls);
-                 ++it_s)
-            {
-                if (!it_s->has_data() || !it_s->data().is_allocated())
-                    continue;
-                if (leaf_boundary && !it_s->leaf_boundary()) continue;
-
-                c_cntr_nli_.template nli_antrp_node<From, To>(*it_s, mesh_type,
-                    real_mesh_field_idx, tmp_type_field_idx, correction_only,
-                    exclude_correction);
-            }*/
-
             for (std::size_t _field_idx = 0; _field_idx < From::nFields();
                  ++_field_idx)
             {
@@ -1154,7 +1168,82 @@ class PoissonSolver
         }
     }
 
+
+    template<class From, class To>
+    void source_coarsify_OMP(MeshObject mesh_type, std::size_t starting_idx,
+        bool correction_only = false, bool exclude_correction = false,
+        bool _buffer_exchange = false, bool leaf_boundary = false)
+    {
+
+        leaf_boundary=false;
+        auto client = domain_->decomposition().client();
+        if (!client) return;
+
+        for (int l = domain_->tree()->depth() - 2;
+             l >= domain_->tree()->base_level(); --l)
+        {
+            int ref_level_up = domain_->tree()->depth() - l - 1;
+
+            #pragma omp parallel for 
+            for (std::size_t _field_idx = 0; _field_idx < From::nFields();
+                     ++_field_idx)
+            {
+                int omp_idx = omp_get_thread_num( );
+
+                if (adapt_Fourier)
+                {
+                    int NComp = From::nFields() / (2 * N_fourier_modes + 2);
+                    int res = From::nFields() % (2 * N_fourier_modes + 2);
+                    if (res != 0)
+                    {
+                        throw std::runtime_error(
+                            "nFields in source corasify not a multiple of N_modes*2");
+                    }
+
+                    int res_modes = _field_idx % (2 * N_fourier_modes + 2);
+
+                    int divisor = std::pow(2, ref_level_up);
+
+                    int N_comp_modes = (additional_modes + 1) * 2 / divisor;
+                    if (res_modes >= N_comp_modes) continue;
+                }
+                for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+                {
+                    if (!it->has_data() || !it->data().is_allocated()) continue;
+                    if (leaf_boundary && !it->leaf_boundary()) continue;
+
+                    
+                    c_cntr_nli_vec[omp_idx]->template nli_antrp_node<From, To>(*it, mesh_type,
+                    _field_idx + starting_idx, _field_idx, correction_only,
+                    exclude_correction);
+                }
+                domain_->decomposition()
+                    .client()
+                    ->template communicate_updownward_add_OMP<To, To>(
+                    l, true, false, -1, _field_idx, leaf_boundary);
+            }
+
+            /*#pragma omp master 
+            for (std::size_t _field_idx = 0; _field_idx < From::nFields();
+                 ++_field_idx)
+            {
+                domain_->decomposition()
+                    .client()
+                    ->template communicate_updownward_add<To, To>(
+                    l, true, false, -1, _field_idx, leaf_boundary);
+            }*/
+        }
+
+        if (_buffer_exchange)
+        {
+            for (int l = domain_->tree()->base_level();
+                 l < domain_->tree()->depth() - 1; ++l)
+                client->template buffer_exchange<To>(l);
+        }
+    }
+
     auto& c_cntr_nli() { return c_cntr_nli_; }
+    auto& c_cntr_nli_vec_(int i) { return c_cntr_nli_vec[i]; }
 
     /** @brief Compute the laplace operator of the target field and store
      *         it in diff_target.
@@ -1376,9 +1465,13 @@ private:
     Fmm_t                             fmm_;       ///< fast-multipole
     lgf_lap_t                         lgf_lap_;
     lgf_if_t                          lgf_if_;
+    std::vector<float_type>           Omegas;
     std::vector<helm_t>               lgf_helm_vec;
+    std::vector<std::unique_ptr<helm_t>>               lgf_helm_vec_ptr;
+    std::vector<std::unique_ptr<lgf_if_t>>               lgf_if_vec;
     int                               N_fourier_modes;
     interpolation_type                c_cntr_nli_;///< Lagrange Interpolation
+    std::vector<std::unique_ptr<interpolation_type>>                c_cntr_nli_vec;
     parallel_ostream::ParallelOstream pcout=parallel_ostream::ParallelOstream(1);
     bool use_correction_ =true;
     bool subtract_non_leaf_ = false;

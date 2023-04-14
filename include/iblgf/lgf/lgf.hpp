@@ -81,11 +81,13 @@ class LGF_Base : public crtp::Crtps<Derived, LGF_Base<Dim, Derived>>
         //Check if lgf is already stored
         if (it == this->derived().dft_level_maps_2D[level_diff].end()/* || this->LaplaceLGF()  !this->neighbor_only()*/)
         {
+
             this->get_subblock(
                 _lgf_block, _extended_dims, lgf_buffer_, level_diff);
             auto& dft = _conv->dft_r2c(lgf_buffer_);
             this->derived().dft_level_maps_2D[level_diff].emplace(
                 k_, std::make_unique<complex_vector_t>(dft));
+            
             return dft;
         }
         else

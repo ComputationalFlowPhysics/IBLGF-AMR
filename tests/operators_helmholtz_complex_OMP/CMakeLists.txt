@@ -10,39 +10,30 @@
 #     ▐░░░░░░░░░░░▌▐░░░░░░░░░░▌ ▐░░░░░░░░░░░▌▐░░░░░░░░░░░▌▐░▌
 #      ▀▀▀▀▀▀▀▀▀▀▀  ▀▀▀▀▀▀▀▀▀▀   ▀▀▀▀▀▀▀▀▀▀▀  ▀▀▀▀▀▀▀▀▀▀▀  ▀
 
-add_subdirectory (server_client)
-add_subdirectory (datafields)
-add_subdirectory (tree)
-add_subdirectory (poisson)
-add_subdirectory (operators)
-add_subdirectory (ns_amr_lgf)
-add_subdirectory (ns_amr_lgf2D)
-add_subdirectory (postProcessIntrp)
-add_subdirectory (ibsolve)
-add_subdirectory (helmholtz_lgf)
-add_subdirectory (helmholtz)
-add_subdirectory (Poisson2D)
-add_subdirectory (helmholtz_FFT)
-add_subdirectory (operators_helmholtz)
-add_subdirectory (helmholtzFFT_operatorTest)
-add_subdirectory (operators_helmholtz_complex)
-add_subdirectory (ns_amr_lgf_helm)
-add_subdirectory (NewtonOperatorTest)
-add_subdirectory (NewtonJacobianSolveTest)
-add_subdirectory (NewtonIteration)
-find_package(MKL CONFIG REQUIRED)
-add_subdirectory (MKLSolverTest)
-add_subdirectory (MKLPoissonTest)
-add_subdirectory (MKLJacobian)
-add_subdirectory (MKLNewton)
-add_subdirectory (PETscPoissonTest)
-add_subdirectory (PETscJacobian)
-add_subdirectory (SLEPcTest)
-add_subdirectory (SLEPcTestLNS)
-add_subdirectory (ScalapackDirectSolverTest)
-add_subdirectory (SLEPcTestLNS_helm)
-add_subdirectory (SLEPcTestRes)
-add_subdirectory (OMP_MPI_test)
-add_subdirectory (operators_helmholtz_complex_OMP)
-add_subdirectory (helmholtz_OMP)
-add_subdirectory (ns_amr_lgf_helm_OMP)
+set(operator_OMP_test operators_helmholtz_complex_OMP)
+
+find_package(OpenMP)
+
+
+find_package(PETSc)
+#find_package(SLEPc)
+
+INCLUDE_DIRECTORIES(${PETSC_INCLUDES})
+INCLUDE_DIRECTORIES(${SLEPC_INC})
+ADD_DEFINITIONS(${PETSC_DEFINITIONS})
+
+
+foreach (item ${operator_OMP_test})
+    add_executable(${item} ${item}.cpp ${SOURCES})
+    target_link_libraries(${item} PUBLIC iblgf_test_main PUBLIC ${PETSC_LIBRARIES})
+    
+    if(OpenMP_CXX_FOUND)
+        target_link_libraries(${item} PUBLIC OpenMP::OpenMP_CXX)
+    endif()
+    add_test(
+        NAME ${item}
+        COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 2 ${MPIEXEC_PREFLAGS} $<TARGET_FILE:${item}>
+    )
+endforeach()
+
+

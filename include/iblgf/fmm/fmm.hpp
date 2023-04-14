@@ -795,7 +795,7 @@ class Fmm
     template<class Kernel>
     void fmm_Bx(domain_t* domain_, Kernel* _kernel, float_type scale)
     {
-#define packMessages
+//#define packMessages
 
 #ifdef packMessages
         const bool start_communication = false;
@@ -815,6 +815,13 @@ class Fmm
             if (it->locally_owned())
                 compute_influence_field(
                         &(*it), _kernel, base_level_ - level, scale, _neighbor);
+        }
+        for (auto B_it = sorted_octants_.begin(); B_it != sorted_octants_.end();
+                ++B_it)
+        {
+            auto       it = B_it->first;
+            const int  level = it->level();
+            const bool _neighbor = (level == base_level_) ? true : false;
 
             if (B_it->second != 0)
             {

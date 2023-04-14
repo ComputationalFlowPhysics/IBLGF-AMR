@@ -79,6 +79,25 @@ class Nli
         }
     }
 
+
+    template<class field, typename octant_t>
+    void nli_intrp_node(int field_idx, octant_t parent, int mask_id, int base_level)
+    {
+        auto& parent_linalg_data = parent->data_r(field::tag(), field_idx).linalg_data();
+
+        for (int i = 0; i < parent->num_children(); ++i)
+        {
+            auto child = parent->child(i);
+            if (child == nullptr || !child->fmm_mask(base_level, mask_id) ||
+                !child->locally_owned())
+                continue;
+            if (!child->has_data()) continue;
+
+            auto& child_linalg_data = child->data_r(field::tag(), field_idx).linalg_data();
+            nli_intrp_node(child_linalg_data, parent_linalg_data, i);
+        }
+    }
+
     template<typename linalg_data_t>
     void nli_intrp_node(
         linalg_data_t& child, linalg_data_t& parent, int child_idx)
@@ -147,6 +166,25 @@ class Nli
                 continue;
 
             auto& child_linalg_data = child->data_r(field::tag()).linalg_data();
+
+            nli_antrp_node(child_linalg_data, parent_linalg_data, i);
+        }
+    }
+
+
+    template<class field, typename octant_t>
+    void nli_antrp_node(int field_idx, octant_t parent, int mask_id, int base_level)
+    {
+        auto& parent_linalg_data = parent->data_r(field::tag(), field_idx).linalg_data();
+
+        for (int i = 0; i < parent->num_children(); ++i)
+        {
+            auto child = parent->child(i);
+            if (child == nullptr || !child->locally_owned() ||
+                !child->fmm_mask(base_level, mask_id))
+                continue;
+
+            auto& child_linalg_data = child->data_r(field::tag(), field_idx).linalg_data();
 
             nli_antrp_node(child_linalg_data, parent_linalg_data, i);
         }

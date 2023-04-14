@@ -72,6 +72,21 @@ public:
             client_=std::make_shared<client_type>(domain_, comm_);
     }
 
+#ifdef USE_OMP
+    void OMP_initialize() {
+        auto n = omp_get_max_threads();
+        if (client_) {
+            client_->resizing_manager_vec(n);
+        }
+        if (server_) {
+            server_->resizing_manager_vec(n);
+        }
+        if (!client_ && !server_) {
+            throw std::runtime_error("Need to initialize client before increasing size of task manager vector size");
+        }
+    }
+#endif
+
 
 public: //memeber functions
 

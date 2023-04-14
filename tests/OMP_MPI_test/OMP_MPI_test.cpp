@@ -10,67 +10,52 @@
 //     ▐░░░░░░░░░░░▌▐░░░░░░░░░░▌ ▐░░░░░░░░░░░▌▐░░░░░░░░░░░▌▐░▌
 //      ▀▀▀▀▀▀▀▀▀▀▀  ▀▀▀▀▀▀▀▀▀▀   ▀▀▀▀▀▀▀▀▀▀▀  ▀▀▀▀▀▀▀▀▀▀▀  ▀
 
-#ifndef INCLUDED_SERVERCLIENTBASE_HPP
-#define INCLUDED_SERVERCLIENTBASE_HPP
+#include <gtest/gtest.h>
+#include <boost/filesystem.hpp>
+#include <boost/mpi/communicator.hpp>
+#include <boost/mpi/environment.hpp>
 
-#include <set>
-#include <vector>
-#include <unordered_set>
-#include <memory>
-#include <list>
-#include <boost/serialization/vector.hpp>
+#include "ns_amr_lgf.hpp"
+#include <iblgf/dictionary/dictionary.hpp>
 
-#include "task_manager.hpp"
 
-namespace iblgf
+namespace iblgf{
+double vortex_run(const std::string input, int argc, char** argv)
 {
-namespace sr_mpi
-{
-template<class Traits>
-class ServerClientBase
-{
-  public:
-    using task_manager_t = typename Traits::task_manager_t;
+    // Read in dictionary
+    dictionary::Dictionary dictionary(input, argc, argv);
 
-  public: // ctors
-    ServerClientBase(const ServerClientBase&) = default;
-    ServerClientBase(ServerClientBase&&) = default;
-    ServerClientBase& operator=(const ServerClientBase&) & = default;
-    ServerClientBase& operator=(ServerClientBase&&) & = default;
-    ~ServerClientBase() = default;
-    ServerClientBase()
-    : task_manager_(std::make_shared<task_manager_t>())
+    //Instantiate setup
+    NS_AMR_LGF setup(&dictionary);
+
+    // run setup
+    double L_inf_error = setup.run();
+
+    double EXP_LInf = dictionary.get_dictionary("simulation_parameters")
+                          ->template get_or<double>("EXP_LInf", 0);
+
+    return L_inf_error - EXP_LInf;
+}
+
+TEST(PoissonSolverTest, VortexRing_1)
+{
+    boost::mpi::communicator world;
+
+    for (auto& entry : boost::filesystem::directory_iterator( "./"))
     {
+        auto s = entry.path();
+
+        if (s.filename().string().rfind("config", 0) == 0)
+        {
+            if (world.rank() == 0)
+                std::cout << "------------- Testing on config file "
+                          << s.filename() << " -------------" << std::endl;
+
+            double L_inf_error = vortex_run(s.string());
+            world.barrier();
+
+            EXPECT_LT(L_inf_error, 0.0);
+        }
     }
-
-    ServerClientBase(std::shared_ptr<task_manager_t> _task_manager)
-    : task_manager_(_task_manager)
-    {
-    }
-
-  public:
-    const auto& task_manager() const noexcept { return task_manager_; }
-    auto&       task_manager() noexcept { return task_manager_; }
-
-    const auto& task_manager_vec() const noexcept { return task_manager_vec; }
-    auto&       task_manager_vec() noexcept { return task_manager_vec; }
-#ifdef USE_OMP
-    void resizing_manager_vec(int n) {
-      for (int i = 0; i < n; i++) {
-        task_manager_vec_.emplace_back(new task_manager_t());
-      }
-    }
-#endif
-
-  protected:
-    boost::mpi::communicator        comm_;
-    std::shared_ptr<task_manager_t> task_manager_ = nullptr;
-
-    std::vector<std::shared_ptr<task_manager_t>> task_manager_vec_;
-
-};
-
-} // namespace sr_mpi
-} // namespace iblgf
-
-#endif
+}
+} //namespace iblgf

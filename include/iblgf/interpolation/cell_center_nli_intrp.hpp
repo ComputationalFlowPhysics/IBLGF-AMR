@@ -237,6 +237,76 @@ class cell_center_nli
         }
     }
 
+
+    template<class from, class to, typename octant_t>
+    void add_source_correction(int field_idx, octant_t parent, double dx, float_type omega = 0.0)
+    {
+        for (int i = 0; i < parent->num_children(); ++i)
+        {
+            auto child = parent->child(i);
+            if (!child) continue;
+            if (!child->locally_owned()) continue;
+            if (!child->has_data()) continue;
+            if (!child->data().is_allocated()) continue;
+
+
+
+            auto& child_target_tmp = child->data_r(from::tag(), field_idx).linalg_data();
+
+            auto& child_linalg_data = child->data_r(to::tag(), field_idx).linalg_data();
+
+            int Dim = child_linalg_data.shape().size();
+            if (Dim == 3) {
+                for (int i = 1; i < Nb_ - 1; ++i)
+                {
+                    for (int j = 1; j < Nb_ - 1; ++j)
+                    {
+                        for (int k = 1; k < Nb_ - 1; ++k)
+                        {
+                            child_linalg_data(i, j, k) +=
+                                6.0 * child_target_tmp(i, j, k) * (1.0 / (dx * dx));
+                            child_linalg_data(i, j, k) -=
+                                child_target_tmp(i, j, k - 1) * (1.0 / (dx * dx));
+                            child_linalg_data(i, j, k) -=
+                                child_target_tmp(i, j, k + 1) * (1.0 / (dx * dx));
+                            child_linalg_data(i, j, k) -=
+                                child_target_tmp(i, j - 1, k) * (1.0 / (dx * dx));
+                            child_linalg_data(i, j, k) -=
+                                child_target_tmp(i, j + 1, k) * (1.0 / (dx * dx));
+                            child_linalg_data(i, j, k) -=
+                                child_target_tmp(i + 1, j, k) * (1.0 / (dx * dx));
+                            child_linalg_data(i, j, k) -=
+                                child_target_tmp(i - 1, j, k) * (1.0 / (dx * dx));
+                            child_linalg_data(i, j, k) +=
+                                omega * omega * child_target_tmp(i, j, k);
+                        }
+                    }
+                }
+            }
+
+	        if (Dim == 2) {
+            	for (int i = 1; i < Nb_ - 1; ++i)
+            	{
+                    for (int j = 1; j < Nb_ - 1; ++j)
+                    {
+                        child_linalg_data(i, j) +=
+                            4.0 * child_target_tmp(i, j) * (1.0 / (dx * dx));
+                        child_linalg_data(i, j) -=
+                            child_target_tmp(i, j - 1) * (1.0 / (dx * dx));
+                        child_linalg_data(i, j) -=
+                            child_target_tmp(i, j + 1) * (1.0 / (dx * dx));
+                        child_linalg_data(i, j) -=
+                            child_target_tmp(i + 1, j) * (1.0 / (dx * dx));
+                        child_linalg_data(i, j) -=
+                            child_target_tmp(i - 1, j) * (1.0 / (dx * dx));
+                        child_linalg_data(i, j) +=
+                            omega * omega * child_target_tmp(i, j);
+                    }
+            	}
+	        }
+        }
+    }
+
     template<class from, class to, typename octant_t>
     void nli_intrp_node(octant_t parent, MeshObject mesh_obj,
         std::size_t real_mesh_field_idx, std::size_t tmp_field_idx,

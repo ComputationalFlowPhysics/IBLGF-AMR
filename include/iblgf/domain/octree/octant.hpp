@@ -79,7 +79,9 @@ class Octant
         IB2xIB,
         xIB2IB,
         IB2AMR,
-        Laplacian_BC
+        Laplacian_BC,
+        RefFourierStream,
+        RefFourierLGF
     };
 
     enum MASK_LIST
@@ -99,10 +101,14 @@ class Octant
             return 2;
         else if (type==MASK_TYPE::Laplacian_BC)
             return 3;
-        else if (type==MASK_TYPE::IB2AMR) //
+        else if (type==MASK_TYPE::IB2AMR) // 4 - 14
             return refinement_level + 4;
-        else if (type==MASK_TYPE::AMR2AMR) // number from 16 - 30
-            return refinement_level * 2 + non_leaf_as_source + 16;
+        else if (type==MASK_TYPE::AMR2AMR) // number from 15 - 29
+            return refinement_level * 2 + non_leaf_as_source + 15;
+        else if (type==MASK_TYPE::RefFourierStream) // number from 30 - 39
+            return refinement_level + 30;
+        else if (type==MASK_TYPE::RefFourierLGF) // number from 40 - 50
+            return refinement_level + 40;
         else
             throw std::runtime_error("Wrong mask Idx");
 
@@ -124,7 +130,7 @@ class Octant
 
     }
 
-    static const int fmm_max_idx_ = 40;
+    static const int fmm_max_idx_ = 50;
 
     using fmm_mask_type = std::array<std::array<bool, Mask_Last>, fmm_max_idx_>;
 

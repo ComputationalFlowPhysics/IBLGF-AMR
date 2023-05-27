@@ -137,6 +137,7 @@ public: //memeber functions
         {
             std::cout<< "Initialization of masks start"<<std::endl;
             FmmMaskBuilder::fmm_vortex_streamfun_mask(domain_);
+            FmmMaskBuilder::fmm_vortex_streamfun_mask_build(domain_);
             FmmMaskBuilder::fmm_lgf_mask_build(domain_, subtract_non_leaf_);
 
             FmmMaskBuilder::fmm_laplacian_BC_mask(domain_);

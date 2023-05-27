@@ -185,6 +185,146 @@ struct Operator
         }
     }
 
+
+    template<typename F, class Domain>
+    static void clean_leaf_correction_boundary_helm(Domain* domain, int l, std::vector<bool>& ModesBool,
+        bool leaf_only_boundary = false, int clean_width = 1) noexcept
+    {
+        int sep = 2*ModesBool.size();
+        for (auto it = domain->begin(l); it != domain->end(l); ++it)
+        {
+            if (!it->locally_owned())
+            {
+                if (!it->has_data() || !it->data().is_allocated()) continue;
+                for (std::size_t field_idx = 0; field_idx < F::nFields();
+                     ++field_idx)
+                {
+                    auto& lin_data =
+                        it->data_r(F::tag(), field_idx).linalg_data();
+                    std::fill(lin_data.begin(), lin_data.end(), 0.0);
+                }
+            }
+        }
+
+        for (auto it = domain->begin(l); it != domain->end(l); ++it)
+        {
+            if (!it->locally_owned()) continue;
+            if (!it->has_data() || !it->data().is_allocated()) continue;
+
+            if (leaf_only_boundary &&
+                (it->is_correction() || it->is_old_correction()))
+            {
+                for (std::size_t field_idx = 0; field_idx < F::nFields();
+                     ++field_idx)
+                {
+                    auto& lin_data =
+                        it->data_r(F::tag(), field_idx).linalg_data();
+                    std::fill(lin_data.begin(), lin_data.end(), 0.0);
+                }
+            }
+        }
+
+        //---------------
+        if (l == domain->tree()->base_level()) {
+
+            for (auto it = domain->begin(l); it != domain->end(l); ++it)
+            {
+                if (!it->locally_owned()) continue;
+                if (!it->has_data() || !it->data().is_allocated()) continue;
+
+                int Dim = domain->dimension();
+
+                if (Dim == 2)
+                {
+                    int idx2D[it->num_neighbors()];
+                    for (int i = 0; i < it->num_neighbors(); i++)
+                    {
+                        idx2D[i] = 1;
+                    }
+                    auto coord_it = it->tree_coordinate();
+                    for (std::size_t i = 0; i < it->num_neighbors(); ++i)
+                    {
+                        auto it2 = it->neighbor(i);
+                        if ((!it2 || !it2->has_data()) ||
+                            (leaf_only_boundary &&
+                                (it2->is_correction() ||
+                                    it2->is_old_correction())))
+                        {
+                            continue;
+                        }
+                        auto cood = it2->tree_coordinate();
+                        int  tmp = 0;
+                        tmp += 3 * (cood.y() - coord_it.y() + 1) + cood.x() -
+                               coord_it.x() + 1;
+
+                        idx2D[tmp] = -1;
+                    }
+
+                    for (std::size_t i = 0; i < it->num_neighbors(); ++i)
+                    {
+                        if (idx2D[i] > 0)
+                        {
+#ifdef USE_OMP
+                            #pragma omp parallel for
+                            for (std::size_t field_idx = 0;
+                                 field_idx < F::nFields(); ++field_idx)
+                            {
+                                int res = field_idx % sep;
+                                int modesN = res/2;
+                                if (!ModesBool[modesN]) continue;
+                                auto& lin_data = it->data_r(F::tag(), field_idx)
+                                                     .linalg_data();
+
+                                int N = it->data().descriptor().extent()[0];
+                                if (i == 1)
+                                    view(lin_data, xt::all(),
+                                        xt::range(0, clean_width)) *= 0.0;
+                                else if (i == 3)
+                                    view(lin_data, xt::range(0, clean_width),
+                                        xt::all()) *= 0.0;
+                                else if (i == 5)
+                                    view(lin_data,
+                                        xt::range(N + 2 - clean_width, N + 3),
+                                        xt::all()) *= 0.0;
+                                else if (i == 7)
+                                    view(lin_data, xt::all(),
+                                        xt::range(N + 2 - clean_width,
+                                            N + 3)) *= 0.0;
+                            }
+#else
+                            for (std::size_t field_idx = 0;
+                                 field_idx < F::nFields(); ++field_idx)
+                            {
+                                int res = field_idx % sep;
+                                int modesN = res/2;
+                                if (!ModesBool[modesN]) continue;
+                                auto& lin_data = it->data_r(F::tag(), field_idx)
+                                                     .linalg_data();
+
+                                int N = it->data().descriptor().extent()[0];
+                                if (i == 1)
+                                    view(lin_data, xt::all(),
+                                        xt::range(0, clean_width)) *= 0.0;
+                                else if (i == 3)
+                                    view(lin_data, xt::range(0, clean_width),
+                                        xt::all()) *= 0.0;
+                                else if (i == 5)
+                                    view(lin_data,
+                                        xt::range(N + 2 - clean_width, N + 3),
+                                        xt::all()) *= 0.0;
+                                else if (i == 7)
+                                    view(lin_data, xt::all(),
+                                        xt::range(N + 2 - clean_width,
+                                            N + 3)) *= 0.0;
+                            }
+#endif
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     template<typename F, class Domain>
     static void clean_leaf_correction_boundary(Domain* domain, int l,
         bool leaf_only_boundary = false, int clean_width = 1) noexcept
@@ -413,7 +553,7 @@ struct Operator
         }
 #endif
 
-        clean_leaf_correction_boundary<Target>(domain, l, true, 2);
+        clean_leaf_correction_boundary_helm<Target>(domain, l, ModesBool, true, 2);
     }
 
     template<class Source, class Target, class Domain>

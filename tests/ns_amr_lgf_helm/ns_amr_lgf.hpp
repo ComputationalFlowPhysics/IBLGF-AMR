@@ -60,7 +60,7 @@ const int Dim = 2;
 struct parameters
 {
     static constexpr std::size_t Dim = 2;
-	static constexpr std::size_t N_modes = 128;
+	static constexpr std::size_t N_modes = 32;
 	static constexpr std::size_t PREFAC  = 2; //2 for complex values 
     // clang-format off
     REGISTER_FIELDS
@@ -256,20 +256,21 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
 
 		pcout << "Finished register refinement condition" << std::endl;
 
-		domain_->ib().init(_d->get_dictionary("simulation_parameters"), domain_->dx_base(), nLevelRefinement_, Re_);
+		nIB_add_level_ = _d->get_dictionary("simulation_parameters")->template get_or<int>("nIB_add_level", 0);
+
+		domain_->ib().init(_d->get_dictionary("simulation_parameters"), domain_->dx_base(), nLevelRefinement_+nIB_add_level_, Re_);
 
 
 		pcout << "Finished getting IB pts" << std::endl;
 
 		if (!use_restart() && !use_tree_)
 		{
-			domain_->init_refine(_d->get_dictionary("simulation_parameters")
-				->template get_or<int>("nLevels", 0),
-				global_refinement_, 0);
+			domain_->init_refine(nLevelRefinement_, global_refinement_, nIB_add_level_);
 		}
 		else
 		{
 			domain_->restart_list_construct();
+			//domain_->init_refine(nLevelRefinement_, global_refinement_, nIB_add_level_);
 		}
 
 		domain_->register_adapt_condition()=
@@ -1299,6 +1300,7 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
     float_type c2=0;
     float_type eps_grad_=1.0e6;;
     int nLevelRefinement_=0;
+	int nIB_add_level_ = 0;
     int hard_max_level_ = 0;
     int global_refinement_=0;
     fcoord_t offset_;

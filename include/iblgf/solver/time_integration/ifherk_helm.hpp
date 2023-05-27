@@ -328,6 +328,10 @@ class Ifherk_HELM
                 //    pad_velocity<u, u>();
                 //}
                 if (!just_restarted_ && !customized_ic) this->adapt(false);
+                if (adapt_Fourier && just_restarted_ && domain_->is_client()) {
+                    clean_Fourier_modes_all<u_type>();
+                    pad_velocity_refFourier<u_type, u_type>(true);
+                }
                 just_restarted_ = false;
                 customized_ic   = false;
             }
@@ -727,13 +731,45 @@ class Ifherk_HELM
                     //std::cout << world.rank() << " after communicate_updownward_assign" << std::endl;
                 }
                 //std::cout << world.rank() << " after first block" << std::endl;
-                for (auto& oct : intrp_list)
-                {
-                    if (!oct || !oct->has_data()) continue;
-                    psolver.c_cntr_nli()
-                        .template nli_intrp_node<u_type, u_type>(oct,
-                            u_type::mesh_type(), _field_idx, _field_idx, false,
-                            false);
+                if (adapt_Fourier) {
+                    for (auto& oct : intrp_list)
+                    {
+                        
+                        if (!oct || !oct->has_data()) continue;
+                        int ref_level = oct->refinement_level();
+
+                        if (ref_level > max_ref_level_) {
+                            ref_level = max_ref_level_;
+                        }
+
+                        int ref_level_up = max_ref_level_ - ref_level;
+
+                        int NComp = u_type::nFields() / (2 * N_modes);
+                        int res = u_type::nFields() % (2 * N_modes);
+
+                        int res_modes = _field_idx % (2 * N_modes);
+
+                        int divisor = std::pow(2, ref_level_up);
+
+                        int N_comp_modes = N_modes * 2 / divisor;
+                        if (res_modes >= N_comp_modes) continue;
+
+
+                        psolver.c_cntr_nli()
+                            .template nli_intrp_node<u_type, u_type>(oct,
+                                u_type::mesh_type(), _field_idx, _field_idx, false,
+                                false);
+                    }
+                }
+                else {
+                    for (auto& oct : intrp_list)
+                    {
+                        if (!oct || !oct->has_data()) continue;
+                        psolver.c_cntr_nli()
+                            .template nli_intrp_node<u_type, u_type>(oct,
+                                u_type::mesh_type(), _field_idx, _field_idx, false,
+                                false);
+                    }
                 }
                 //std::cout << world.rank() << " after interpolation" << std::endl;
             }
@@ -769,7 +805,8 @@ class Ifherk_HELM
                                        << T_last_vel_refresh_ << std::endl;
                                  T_last_vel_refresh_ = T_;
                                  if (!domain_->is_client()) return;
-                                 pad_velocity<u_type, u_type>(true);
+                                 if (!adapt_Fourier) pad_velocity<u_type, u_type>(true);
+                                 else pad_velocity_refFourier<u_type, u_type>(true);
                              } else
                              {
                                  if (!domain_->is_client()) return;
@@ -847,8 +884,8 @@ class Ifherk_HELM
         //psolver.template apply_lgf_IF<q_i_type, q_i_type>(alpha_[0]);
         //psolver.template apply_lgf_IF<w_1_type, w_1_type>(alpha_[0]);
 
-        psolver.template apply_helm_if<q_i_type, q_i_type>(alpha_[0], N_modes);
-        psolver.template apply_helm_if<w_1_type, w_1_type>(alpha_[0], N_modes);
+        psolver.template apply_helm_if<q_i_type, q_i_type>(alpha_[0], N_modes, c_z);
+        psolver.template apply_helm_if<w_1_type, w_1_type>(alpha_[0], N_modes, c_z);
 
         add<q_i_type, r_i_type>();
         add<w_1_type, r_i_type>(dt_ * coeff_a(2, 1));
@@ -894,7 +931,7 @@ class Ifherk_HELM
         add<w_1_type, r_i_type>(dt_ * coeff_a(3, 1));
         add<w_2_type, r_i_type>(dt_ * coeff_a(3, 2));
 
-        psolver.template apply_helm_if<r_i_type, r_i_type>(alpha_[1], N_modes);
+        psolver.template apply_helm_if<r_i_type, r_i_type>(alpha_[1], N_modes, c_z);
 
         up_and_down<u_i_type>();
 
@@ -928,10 +965,54 @@ class Ifherk_HELM
             for (std::size_t field_idx = 0; field_idx < F::nFields();
                  ++field_idx)
             {
+                const int tot_ref_l = max_ref_level_;
+
+                int Mode_n = (F::nFields() % (N_modes * 2)) / 2;
+
+                int addLevel_raw = std::log2(N_modes/(Mode_n+1));
+                int addLevel = 0;
+                if (addLevel_raw < tot_ref_l && adapt_Fourier) {
+                    addLevel = tot_ref_l - addLevel_raw;
+                }
+
+                int reflevel = it->refinement_level();
+
+
+
                 auto& lin_data = it->data_r(F::tag(), field_idx).linalg_data();
 
                 if (non_leaf_only && it->is_leaf() && it->locally_owned())
                 {
+                    int N = it->data().descriptor().extent()[0];
+                    if (domain_->dimension() == 3)
+                    {
+                        view(lin_data, xt::all(), xt::all(),
+                            xt::range(0, clean_width)) *= 0.0;
+                        view(lin_data, xt::all(), xt::range(0, clean_width),
+                            xt::all()) *= 0.0;
+                        view(lin_data, xt::range(0, clean_width), xt::all(),
+                            xt::all()) *= 0.0;
+                        view(lin_data, xt::range(N + 2 - clean_width, N + 3),
+                            xt::all(), xt::all()) *= 0.0;
+                        view(lin_data, xt::all(),
+                            xt::range(N + 2 - clean_width, N + 3), xt::all()) *=
+                            0.0;
+                        view(lin_data, xt::all(), xt::all(),
+                            xt::range(N + 2 - clean_width, N + 3)) *= 0.0;
+                    }
+                    else
+                    {
+                        view(lin_data, xt::all(), xt::range(0, clean_width)) *=
+                            0.0;
+                        view(lin_data, xt::range(0, clean_width), xt::all()) *=
+                            0.0;
+                        view(lin_data, xt::range(N + 2 - clean_width, N + 3),
+                            xt::all()) *= 0.0;
+                        view(lin_data, xt::all(),
+                            xt::range(N + 2 - clean_width, N + 3)) *= 0.0;
+                    }
+                }
+                else if (non_leaf_only && it->is_correction() && it->locally_owned() && reflevel != 0 && (adapt_Fourier && (reflevel == addLevel))) {
                     int N = it->data().descriptor().extent()[0];
                     if (domain_->dimension() == 3)
                     {
@@ -1008,7 +1089,7 @@ class Ifherk_HELM
         }
 
         //---------------
-        if (l == domain_->tree()->base_level())
+        if (l == domain_->tree()->base_level()) {
             for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
             {
                 if (!it->locally_owned()) continue;
@@ -1030,6 +1111,7 @@ class Ifherk_HELM
                     }
                 }
             }
+        }
     }
 
     template<typename F>
@@ -1045,7 +1127,15 @@ class Ifherk_HELM
 
         int NComp = N_max / (2 * N_modes);
 
-        int levelDiff = domain_->tree()->depth() - l - 1;
+        int ref_level = l - domain_->tree()->base_level();
+
+        if (ref_level > max_ref_level_) {
+            ref_level = max_ref_level_;
+        }
+
+        int levelDiff = max_ref_level_ - ref_level;
+
+        //int levelDiff = domain_->tree()->depth() - l - 1;
         int levelFactor = std::pow(2, levelDiff);
         int LevelModes = N_modes * 2 / levelFactor;
 
@@ -1084,7 +1174,15 @@ class Ifherk_HELM
         for (int l = domain_->tree()->base_level();
              l < domain_->tree()->depth(); ++l)
         {
-            int levelDiff = domain_->tree()->depth() - l - 1;
+
+            int ref_level = l - domain_->tree()->base_level();
+
+            if (ref_level > max_ref_level_) {
+                ref_level = max_ref_level_;
+            }
+
+            int levelDiff = max_ref_level_ - ref_level;
+            //int levelDiff = domain_->tree()->depth() - l - 1;
             int levelFactor = std::pow(2, levelDiff);
             int LevelModes = N_modes * 2 / levelFactor;
 
@@ -1102,6 +1200,83 @@ class Ifherk_HELM
                             it->data_r(F::tag(), field_idx + N_modes * 2 * i)
                                 .linalg_data();
                         lin_data *= 0;
+                    }
+                }
+            }
+        }
+    }
+
+
+    template<typename F>
+    void clean_Fourier_modes_BC(int clean_width = 1, bool leaf_only_boundary = false) noexcept
+    {
+        int N_max = F::nFields();
+
+        int residue = N_max % (2 * N_modes);
+
+        if (residue != 0)
+            throw std::runtime_error(
+                "Number of elements are not multiple of 2*N_modes");
+
+        int NComp = N_max / (2 * N_modes);
+
+        for (int l = domain_->tree()->base_level();
+             l < domain_->tree()->depth(); ++l)
+        {
+
+            int ref_level = l - domain_->tree()->base_level();
+
+            if (ref_level > max_ref_level_) {
+                //do not clean of it is IB refinement
+                break;
+            }
+
+            int levelDiff = max_ref_level_ - ref_level;
+            //int levelDiff = domain_->tree()->depth() - l - 1;
+            int levelFactor = std::pow(2, levelDiff);
+            int LevelModes = N_modes * 2 / levelFactor;
+
+            int LevelModes_up = N_modes * 2 / levelFactor / 2; //clean boundary from LevelModes_up to LevelModes
+
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned()) continue;
+                //if (!it->is_correction()) continue;
+                if (!it->has_data() || !it->data().is_allocated()) continue;
+
+                for (std::size_t i = 0; i < it->num_neighbors(); ++i)
+                {
+                    auto it2 = it->neighbor(i);
+                    if ((!it2 || !it2->has_data()) ||
+                        (leaf_only_boundary &&
+                            (it2->is_correction() || it2->is_old_correction())))
+                    {
+
+                        for (std::size_t field_idx = LevelModes_up;
+                            field_idx < LevelModes; ++field_idx)
+                        {
+                            for (int j = 0; j < NComp; j++)
+                            {
+                                auto& lin_data =
+                                    it->data_r(F::tag(), field_idx + N_modes * 2 * j)
+                                        .linalg_data();
+                                int N = it->data().descriptor().extent()[0];
+                                if (i == 1)
+                                    view(lin_data, xt::all(),
+                                        xt::range(0, clean_width)) *= 0.0;
+                                else if (i == 3)
+                                    view(lin_data, xt::range(0, clean_width),
+                                        xt::all()) *= 0.0;
+                                else if (i == 5)
+                                    view(lin_data,
+                                        xt::range(N + 2 - clean_width, N + 3),
+                                        xt::all()) *= 0.0;
+                                else if (i == 7)
+                                    view(lin_data, xt::all(),
+                                        xt::range(N + 2 - clean_width,
+                                            N + 3)) *= 0.0;
+                            }
+                        }
                     }
                 }
             }
@@ -1136,7 +1311,7 @@ class Ifherk_HELM
             domain_->client_communicator().barrier();
             TIME_CODE(t_if,
                 SINGLE_ARG(psolver.template apply_helm_if<r_i_type, u_i_type>(
-                    _alpha, N_modes);));
+                    _alpha, N_modes, c_z);));
             pcout << "IF  solved in " << t_if.count() << std::endl;
         }
         else
@@ -1175,7 +1350,7 @@ class Ifherk_HELM
         // IB
         if (std::fabs(_alpha) > 1e-14)
             psolver.template apply_helm_if<face_aux2_type, face_aux2_type>(
-                _alpha, N_modes, 3, MASK_TYPE::IB2xIB);
+                _alpha, N_modes, c_z, 3, MASK_TYPE::IB2xIB);
 
         domain_->client_communicator().barrier();
         pcout << "IB IF solved " << std::endl;
@@ -1220,7 +1395,7 @@ class Ifherk_HELM
             domain_->client_communicator().barrier();
             TIME_CODE(t_if,
                 SINGLE_ARG(psolver.template apply_helm_if<r_i_type, u_i_type>(
-                    _alpha, N_modes);));
+                    _alpha, N_modes, c_z);));
             pcout << "IF  solved in " << t_if.count() << std::endl;
         }
         else
@@ -1297,6 +1472,67 @@ class Ifherk_HELM
         this->down_to_correction<Velocity_out>();
     }
 
+    template<class Velocity_in, class Velocity_out>
+    void pad_velocity_refFourier(bool refresh_correction_only = true)
+    {
+        auto client = domain_->decomposition().client();
+
+        //up_and_down<Velocity_in>();
+        clean<Velocity_in>(true);
+        this->up<Velocity_in>(false);
+        clean<edge_aux_type>();
+        clean<stream_f_type>();
+
+        auto dx_base = domain_->dx_base();
+
+        for (int l = domain_->tree()->base_level();
+             l < domain_->tree()->depth(); ++l)
+        {
+            client->template buffer_exchange<Velocity_in>(l);
+
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
+                if (it->is_correction()) continue;
+                //if(!it->is_leaf()) continue;
+
+                const auto dx_level =
+                    dx_base / math::pow2(it->refinement_level());
+                //if (it->is_leaf())
+                domain::Operator::curl_helmholtz_complex<Velocity_in, edge_aux_type>(it->data(),
+                    dx_level, N_modes, c_z);
+            }
+        }
+
+        clean_Fourier_modes_all<edge_aux_type>();
+
+        //clean<Velocity_out>();
+        clean_leaf_correction_boundary<edge_aux_type>(
+            domain_->tree()->base_level(), true, 2);
+        clean_Fourier_modes_BC<edge_aux_type>(2, true);
+        //clean_leaf_correction_boundary<edge_aux_type>(l, false,2+stage_idx_);
+        psolver.template apply_lgf_and_helm<edge_aux_type, stream_f_type>(N_modes, 3, 
+            MASK_TYPE::RefFourierStream);
+
+        int l_max = domain_->tree()->base_level() + max_ref_level_+1;
+                                            
+        for (int l = domain_->tree()->base_level(); l < l_max; ++l)
+        {
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data() || !it->data().is_allocated()) continue;
+                if(!it->is_correction() && refresh_correction_only) continue;
+
+                const auto dx_level =
+                    dx_base / math::pow2(it->refinement_level());
+                domain::Operator::curl_transpose_helmholtz_complex<stream_f_type, Velocity_out>(
+                    it->data(), dx_level, N_modes, c_z, -1.0);
+            }
+        }
+
+        this->down_to_correction<Velocity_out>();
+    }
+
     //TODO maybe to be put directly intor operators:
     template<class Source, class Target>
     void nonlinear(float_type _scale = 1.0) noexcept
@@ -1351,10 +1587,54 @@ class Ifherk_HELM
             }
         }
 
+
+        for (int l = domain_->tree()->base_level(); l < domain_->tree()->depth(); ++l)
+        {
+            client->template buffer_exchange<Source>(l);
+
+            int ref_level = l - domain_->tree()->base_level();
+
+            if (ref_level > max_ref_level_) {
+                ref_level = max_ref_level_;
+            }
+
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data() ||
+                    !it->data().is_allocated())
+                    continue;
+
+                const auto dx_level =
+                    dx_base / math::pow2(it->refinement_level());
+
+                if (adapt_Fourier)
+                {
+                    int ref_level_up = max_ref_level_ - ref_level;
+                    domain::Operator::curl_helmholtz_complex_refined<Source,
+                        edge_aux_type>(it->data(), dx_level, N_modes,
+                        ref_level_up, c_z);
+                }
+                else
+                {
+                    domain::Operator::curl_helmholtz_complex<Source,
+                        edge_aux_type>(it->data(), dx_level, N_modes, c_z);
+                }
+            }
+        }
+
+        if (adapt_Fourier) clean_Fourier_modes_BC<edge_aux_type>(2);
+        if (adapt_Fourier) clean_Fourier_modes_BC<edge_aux_type>(2, true);
+
         for (int l = domain_->tree()->base_level();
              l < domain_->tree()->depth(); ++l)
         {
-            client->template buffer_exchange<Source>(l);
+            //client->template buffer_exchange<Source>(l);
+
+            int ref_level = l - domain_->tree()->base_level();
+
+            if (ref_level > max_ref_level_) {
+                ref_level = max_ref_level_;
+            }
 
             for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
             {
@@ -1373,56 +1653,20 @@ class Ifherk_HELM
                 domain::Operator::FourierTransformC2R<Source, u_i_real_type>(it,
                     N_modes, padded_dim, vec_size, nonzero_dim, dim_0, dim_1,
                     c2rFunc);
-            }
-        }
                 /*domain::Operator::curl_helmholtz<u_i_real_type, vort_i_real_type>(it->data(),
                     dx_level, N_modes, dx_fine);*/
-        
-        for (int l = domain_->tree()->base_level();
-             l < domain_->tree()->depth(); ++l)
-        {
-            int N_comp_modes = N_modes;
-
-            if (adapt_Fourier) {
-                int ref_level_up = domain_->tree()->depth() - l - 1;
-                int N_comp_modes = N_modes/divisor;
-            }
-            #pragma omp parallel for
-            for (int mode = 0; mode <N_comp_modes; mode++) {
-                for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+                /*if (adapt_Fourier)
                 {
-                    if (!it->locally_owned() || !it->has_data() ||
-                        !it->data().is_allocated())
-                        continue;
-
-                    domain::Operator::curl_helmholtz_complex_oneMode<Source,
-                        edge_aux_type>(it->data(), dx_level, N_modes, mode,
-                        c_z);
-                    /*if (adapt_Fourier)
-                    {
-                        
-                        domain::Operator::curl_helmholtz_complex_refined<Source,
-                            edge_aux_type>(it->data(), dx_level, N_modes,
-                            ref_level_up, c_z);
-                    }
-                    else
-                    {
-                        domain::Operator::curl_helmholtz_complex<Source,
-                            edge_aux_type>(it->data(), dx_level, N_modes, c_z);
-                    }*/
+                    int ref_level_up = max_ref_level_ - ref_level;
+                    domain::Operator::curl_helmholtz_complex_refined<Source,
+                        edge_aux_type>(it->data(), dx_level, N_modes,
+                        ref_level_up, c_z);
                 }
-            }
-        }
-       
-        
-        for (int l = domain_->tree()->base_level();
-             l < domain_->tree()->depth(); ++l)
-        {
-            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
-            {
-                if (!it->locally_owned() || !it->has_data() ||
-                    !it->data().is_allocated())
-                    continue;
+                else
+                {
+                    domain::Operator::curl_helmholtz_complex<Source,
+                        edge_aux_type>(it->data(), dx_level, N_modes, c_z);
+                }*/
 
                 /*domain::Operator::curl_helmholtz_complex<Source, edge_aux_type>(it->data(),
                     dx_level, N_modes, c_z);*/
@@ -1459,34 +1703,37 @@ class Ifherk_HELM
             client->template buffer_exchange<vort_i_real_type>(l);
             clean_leaf_correction_boundary<vort_i_real_type>(l, false, 2);
 
-            int N_comp_modes = N_modes;
+            int ref_level = l - domain_->tree()->base_level();
 
-            if (adapt_Fourier) {
-                int ref_level_up = domain_->tree()->depth() - l - 1;
-                int N_comp_modes = N_modes/divisor;
-            }
-            #pragma omp parallel for
-            for (int mode = 0; mode <N_comp_modes; mode++) {
-                for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
-                {
-                    if (!it->locally_owned() || !it->has_data() ||
-                        !it->data().is_allocated())
-                        continue;
-                    
-                    domain::Operator::nonlinear_helmholtz_oneMode<face_aux_real_type,
-                        vort_i_real_type, r_i_real_type>(it->data(), N_modes, mode);
-                    
-                }
+            if (ref_level > max_ref_level_) {
+                ref_level = max_ref_level_;
             }
 
-            #pragma omp parallel for
-            for (std::size_t field_idx = 0;
-                field_idx < r_i_real_type::nFields(); ++field_idx)
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
             {
-                for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+                if (!it->locally_owned() || !it->has_data() ||
+                    !it->data().is_allocated())
+                    continue;
+                if (adapt_Fourier)
+                {
+                    int ref_level_up = max_ref_level_ - ref_level;
+                    domain::Operator::nonlinear_helmholtz_refined<
+                        face_aux_real_type, vort_i_real_type, r_i_real_type>(
+                        it->data(), N_modes, ref_level_up);
+                }
+                else
+                {
+                    domain::Operator::nonlinear_helmholtz<face_aux_real_type,
+                        vort_i_real_type, r_i_real_type>(it->data(), N_modes);
+                }
+                /*domain::Operator::nonlinear_helmholtz<face_aux_real_type, vort_i_real_type,
+                    r_i_real_type>(it->data(), N_modes);*/
+
+                for (std::size_t field_idx = 0;
+                     field_idx < r_i_real_type::nFields(); ++field_idx)
                 {
                     auto& lin_data = it->data_r(r_i_real_type::tag(), field_idx)
-                                        .linalg_data();
+                                         .linalg_data();
                     lin_data *= _scale;
                 }
             }
@@ -1504,6 +1751,10 @@ class Ifherk_HELM
              l < domain_->tree()->depth(); ++l)
         {
             int ref_level = l - domain_->tree()->base_level();
+
+            if (ref_level > max_ref_level_) {
+                ref_level = max_ref_level_;
+            }
             //client->template buffer_exchange<Source>(l);
 
             for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
@@ -1520,7 +1771,9 @@ class Ifherk_HELM
                 int vec_size = dim_0 * dim_1 * N_modes * 3 * 3;
                 if (adapt_Fourier)
                 {
-                    int ref_level_up = domain_->tree()->depth() - l - 1;
+                    //int ref_level_up = domain_->tree()->depth() - l - 1;
+                    int ref_level_up = max_ref_level_ - ref_level;
+
                     domain::Operator::FourierTransformR2C_refine<r_i_real_type,
                         Target>(it, ref_level_up, N_modes,
                         padded_dim_vec[ref_level], vec_size,
@@ -1572,7 +1825,7 @@ class Ifherk_HELM
         auto t4 = clock_type::now();
         ms_int = t4 - t3;
         pcout << "R2C transform solved in " << ms_int.count() << std::endl;
-        //addPerturb<Target>();
+        addPerturb<Target>();
     }
 
     template<class Target>
@@ -1619,33 +1872,49 @@ class Ifherk_HELM
 
         up_and_down<Source>();
 
+        
+
         for (int l = domain_->tree()->base_level();
              l < domain_->tree()->depth(); ++l)
         {
             client->template buffer_exchange<Source>(l);
             const auto dx_base = domain_->dx_base();
-            int N_comp_modes = N_modes;
 
-            if (adapt_Fourier) {
-                int ref_level_up = domain_->tree()->depth() - l - 1;
-                int N_comp_modes = N_modes/divisor;
+            int ref_level = l - domain_->tree()->base_level();
+
+            if (ref_level > max_ref_level_) {
+                ref_level = max_ref_level_;
             }
-            #pragma omp parallel for
-            for (int mode = 0; mode <N_comp_modes; mode++) {
-                for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
+                const auto dx_level =
+                    dx_base / math::pow2(it->refinement_level());
+
+                if (!adapt_Fourier)
                 {
-                    if (!it->locally_owned() || !it->has_data()) continue;
-                    const auto dx_level =
-                        dx_base / math::pow2(it->refinement_level());
-                    domain::Operator::divergence_helmholtz_complex_oneMode<Source,
-                            Target>(it->data(), dx_level, N_modes, mode, c_z);
+                    domain::Operator::divergence_helmholtz_complex<Source,
+                        Target>(it->data(), dx_level, N_modes, c_z);
                 }
+                else
+                {
+                    int ref_level_up = max_ref_level_ - ref_level;
+                    domain::Operator::divergence_helmholtz_complex_refined<Source,
+                        Target>(it->data(), dx_level, N_modes, ref_level_up,
+                        c_z);
+                }
+                /*domain::Operator::divergence_helmholtz_complex<Source, Target>(it->data(),
+                    dx_level, N_modes, c_z);*/
             }
+
+            
 
             //client->template buffer_exchange<Target>(l);
             clean_leaf_correction_boundary<Target>(l, true, 2);
             //clean_leaf_correction_boundary<Target>(l, false,4+stage_idx_);
         }
+        if (adapt_Fourier) clean_Fourier_modes_BC<Target>(2, true);
     }
 
     template<class Source, class Target>
@@ -1657,45 +1926,45 @@ class Ifherk_HELM
         for (int l = domain_->tree()->base_level();
              l < domain_->tree()->depth(); ++l)
         {
+
+            int ref_level = l - domain_->tree()->base_level();
+
+            if (ref_level > max_ref_level_) {
+                ref_level = max_ref_level_;
+            }
             auto client = domain_->decomposition().client();
             //client->template buffer_exchange<Source>(l);
             const auto dx_base = domain_->dx_base();
-
-            int N_comp_modes = N_modes;
-
-            if (adapt_Fourier) {
-                int ref_level_up = domain_->tree()->depth() - l - 1;
-                int N_comp_modes = N_modes/divisor;
-            }
-            #pragma omp parallel for
-            for (int mode = 0; mode <N_comp_modes; mode++) {
-                for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
-                {
-                    if (!it->locally_owned() || !it->has_data()) continue;
-                    const auto dx_level =
-                        dx_base / math::pow2(it->refinement_level());
-
-                    domain::Operator::gradient_helmholtz_complex_oneMode<Source,
-                            Target>(it->data(), dx_level, N_modes, mode, c_z);
-                }
-            }
-
-            #pragma omp parallel for
-            for (std::size_t field_idx = 0; field_idx < Target::nFields();
-                ++field_idx)
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
             {
-                for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+                if (!it->locally_owned() || !it->has_data()) continue;
+                const auto dx_level =
+                    dx_base / math::pow2(it->refinement_level());
+                if (!adapt_Fourier)
                 {
-                        auto& lin_data =
-                            it->data_r(Target::tag(), field_idx).linalg_data();
+                    domain::Operator::gradient_helmholtz_complex<Source,
+                        Target>(it->data(), dx_level, N_modes, c_z);
+                }
+                else
+                {
+                    int ref_level_up = max_ref_level_ - ref_level;
+                    domain::Operator::gradient_helmholtz_complex_refined<Source,
+                        Target>(it->data(), dx_level, N_modes, ref_level_up,
+                        c_z);
+                }
+                for (std::size_t field_idx = 0; field_idx < Target::nFields();
+                     ++field_idx)
+                {
+                    auto& lin_data =
+                        it->data_r(Target::tag(), field_idx).linalg_data();
 
-                        lin_data *= _scale;
+                    lin_data *= _scale;
                 }
             }
-                
-            
             client->template buffer_exchange<Target>(l);
         }
+
+        if (adapt_Fourier) clean_Fourier_modes_BC<Target>(2);
     }
 
     template<typename From, typename To>
@@ -1703,14 +1972,12 @@ class Ifherk_HELM
     {
         static_assert(From::nFields() == To::nFields(),
             "number of fields doesn't match when add");
-        #pragma omp parallel for
-        for (std::size_t field_idx = 0; field_idx < From::nFields();
-                 ++field_idx)
+        for (auto it = domain_->begin(); it != domain_->end(); ++it)
         {
-            for (auto it = domain_->begin(); it != domain_->end(); ++it)
+            if (!it->locally_owned() || !it->has_data()) continue;
+            for (std::size_t field_idx = 0; field_idx < From::nFields();
+                 ++field_idx)
             {
-                if (!it->locally_owned() || !it->has_data()) continue;
-            
                 it->data_r(To::tag(), field_idx)
                     .linalg()
                     .get()
@@ -1725,15 +1992,13 @@ class Ifherk_HELM
     {
         static_assert(From::nFields() == To::nFields(),
             "number of fields doesn't match when copy");
-        #pragma omp parallel for
-        for (std::size_t field_idx = 0; field_idx < From::nFields();
-            ++field_idx)
-        {
 
-            for (auto it = domain_->begin(); it != domain_->end(); ++it)
+        for (auto it = domain_->begin(); it != domain_->end(); ++it)
+        {
+            if (!it->locally_owned() || !it->has_data()) continue;
+            for (std::size_t field_idx = 0; field_idx < From::nFields();
+                 ++field_idx)
             {
-                if (!it->locally_owned() || !it->has_data()) continue;
-            
                 for (auto& n : it->data().node_field())
                     n(To::tag(), field_idx) = n(From::tag(), field_idx) * scale;
             }

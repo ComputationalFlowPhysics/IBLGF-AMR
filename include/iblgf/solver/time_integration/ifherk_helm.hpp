@@ -685,6 +685,8 @@ class Ifherk_HELM
 
         if (source_max_[0] < 1e-10 || source_max_[1] < 1e-10) return;
 
+        
+
         //adaptation neglect the boundary oscillations
         clean_leaf_correction_boundary<cell_aux_type>(
             domain_->tree()->base_level(), true, 2);
@@ -774,6 +776,8 @@ class Ifherk_HELM
                 //std::cout << world.rank() << " after interpolation" << std::endl;
             }
         }
+
+        if (adapt_Fourier) base_mesh_update_ = true;
         world.barrier();
         pcout << "Adapt - done" << std::endl;
     }
@@ -1076,7 +1080,7 @@ class Ifherk_HELM
             if (!it->has_data() || !it->data().is_allocated()) continue;
 
             if (leaf_only_boundary &&
-                (it->is_correction() || it->is_old_correction()))
+                (it->is_correction() || (l == domain_->tree()->base_level() && it->is_old_correction())))
             {
                 for (std::size_t field_idx = 0; field_idx < F::nFields();
                      ++field_idx)
@@ -1244,12 +1248,26 @@ class Ifherk_HELM
                 //if (!it->is_correction()) continue;
                 if (!it->has_data() || !it->data().is_allocated()) continue;
 
+                if (leaf_only_boundary && it->is_correction()) {
+                    for (std::size_t field_idx = LevelModes_up;
+                        field_idx < LevelModes; ++field_idx)
+                    {
+                        for (int j = 0; j < NComp; j++)
+                        {
+                            auto& lin_data =
+                                it->data_r(F::tag(), field_idx + N_modes * 2 * j)
+                                    .linalg_data();
+                            lin_data *= 0;
+                        }
+                    }
+                }
+
                 for (std::size_t i = 0; i < it->num_neighbors(); ++i)
                 {
                     auto it2 = it->neighbor(i);
                     if ((!it2 || !it2->has_data()) ||
                         (leaf_only_boundary &&
-                            (it2->is_correction() || it2->is_old_correction())))
+                            (it2->is_correction())))
                     {
 
                         for (std::size_t field_idx = LevelModes_up;
@@ -1515,8 +1533,30 @@ class Ifherk_HELM
             MASK_TYPE::RefFourierStream);
 
         int l_max = domain_->tree()->base_level() + max_ref_level_+1;
+
+        int tot_ref_l = max_ref_level_;
+
+        for (std::size_t idx = 0; idx < N_modes; idx++) {
+            int addLevel_raw = std::log2(N_modes/(idx+1));
+            int addLevel = 0;
+            if (addLevel_raw < tot_ref_l && adapt_Fourier) {
+                addLevel = tot_ref_l - addLevel_raw;
+            }
+            int l = domain_->tree()->base_level() + addLevel;
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data() || !it->data().is_allocated()) continue;
+                //if(!it->is_correction() && refresh_correction_only) continue;
+                if (!it->is_leaf() && !it->is_correction()) continue;
+
+                const auto dx_level =
+                    dx_base / math::pow2(it->refinement_level());
+                domain::Operator::curl_transpose_helmholtz_complex_oneMode<stream_f_type, Velocity_out>(
+                    it->data(), dx_level, N_modes, idx, c_z, -1.0);
+            }
+        }
                                             
-        for (int l = domain_->tree()->base_level(); l < l_max; ++l)
+        /*for (int l = domain_->tree()->base_level(); l < l_max; ++l)
         {
             for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
             {
@@ -1528,7 +1568,7 @@ class Ifherk_HELM
                 domain::Operator::curl_transpose_helmholtz_complex<stream_f_type, Velocity_out>(
                     it->data(), dx_level, N_modes, c_z, -1.0);
             }
-        }
+        }*/
 
         this->down_to_correction<Velocity_out>();
     }

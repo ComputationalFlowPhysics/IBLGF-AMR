@@ -200,13 +200,13 @@ class PoissonSolver
                     int entry = addentry + idx * 2 + 2 + add_num;
                     this->apply_lgf<Source, Target>(&lgf_helm_vec[idx], entry,
                         fmm_type, addLevel);
-                    //domain_->client_communicator().barrier();
+                    domain_->client_communicator().barrier();
                 }
             }
 
             for (std::size_t entry = 0; entry < 2; ++entry) {
                 this->apply_lgf<Source, Target>(&lgf_lap_, (add_num + entry), fmm_type);
-                //domain_->client_communicator().barrier();
+                domain_->client_communicator().barrier();
             }
         }
     }
@@ -495,7 +495,7 @@ class PoissonSolver
 
         // Copy source
         if (fmm_type == MASK_TYPE::AMR2AMR) {
-            copy_level_corrrection<Source, source_tmp_type>(domain_->tree()->base_level() + addLevel, _field_idx, 0, true);
+            if (adapt_Fourier) copy_level_corrrection<Source, source_tmp_type>(domain_->tree()->base_level() + addLevel, _field_idx, 0, true);
             copy_leaf<Source, source_tmp_type>(_field_idx, 0, true);
         }
         else if (fmm_type == MASK_TYPE::STREAM)
@@ -590,7 +590,7 @@ class PoissonSolver
 
         // Copy source
         if (fmm_type == MASK_TYPE::AMR2AMR) {
-            copy_level_corrrection<Source, source_tmp_type>(domain_->tree()->base_level() + addLevel_loc, _field_idx, 0, true);
+            if (adapt_Fourier) copy_level_corrrection<Source, source_tmp_type>(domain_->tree()->base_level() + addLevel_loc, _field_idx, 0, true);
             copy_leaf<Source, source_tmp_type>(_field_idx, 0, true);
         }
         else if (fmm_type == MASK_TYPE::STREAM) {
@@ -755,7 +755,7 @@ class PoissonSolver
                             it->data_r(target_tmp).linalg_data();
                     }
 
-                    if (it->locally_owned() && it->is_correction() && 
+                    else if (it->locally_owned() && it->is_correction() && 
                         (fmm_type == MASK_TYPE::RefFourierStream || 
                          (adapt_Fourier && l == l_min && addLevel != 0 && fmm_type == MASK_TYPE::AMR2AMR)))
                     {

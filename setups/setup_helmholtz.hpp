@@ -76,21 +76,21 @@ class Setup_helmholtz
       (fmm_t,               float_type,  1,  1,  1,  cell,false),
       //flow variables
       (q_i,                 float_type,  3*2*N_modes,  1,  1,  face,false),
-      (u_i,                 float_type,  3*2*N_modes,  1,  1,  face,false),
+      (u_i,                 float_type,  3*2*N_modes,  1,  1,  face,true),
       (u_i_real,            float_type,  3*3*N_modes,  1,  1,  face,false), //these are stored 1.5 times more than the complex counter part due to the 3/2 rule for convolution
       (vort_i_real,         float_type,  3*3*N_modes,  1,  1,  edge,true),
       (r_i_real,            float_type,  3*3*N_modes,  1,  1,  face,false),
       (face_aux_real,       float_type,  3*3*N_modes,  1,  1,  face,false),
       (d_i,                 float_type,  2*N_modes,    1,  1,  cell,false),
-      (g_i,                 float_type,  3*2*N_modes,  1,  1,  face,false),
-      (r_i,                 float_type,  3*2*N_modes,  1,  1,  face,false),
+      (g_i,                 float_type,  3*2*N_modes,  1,  1,  face,true),
+      (r_i,                 float_type,  3*2*N_modes,  1,  1,  face,true),
       (w_1,                 float_type,  3*2*N_modes,  1,  1,  face,false),
       (w_2,                 float_type,  3*2*N_modes,  1,  1,  face,false),
-      (cell_aux,            float_type,  2*N_modes,    1,  1,  cell,false),
+      (cell_aux,            float_type,  2*N_modes,    1,  1,  cell,true),
       (cell_aux2,           float_type,  2*N_modes,    1,  1,  cell,false),
       (face_aux,            float_type,  3*2*N_modes,  1,  1,  face,false),
       (face_aux2,           float_type,  3*2*N_modes,  1,  1,  face,false),
-      (stream_f,            float_type,  3*2*N_modes,  1,  1,  edge,false),
+      (stream_f,            float_type,  3*2*N_modes,  1,  1,  edge,true),
       (edge_aux,            float_type,  3*2*N_modes,  1,  1,  edge,true)
     ))
     // clang-format on

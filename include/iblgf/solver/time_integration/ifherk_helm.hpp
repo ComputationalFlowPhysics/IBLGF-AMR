@@ -684,7 +684,7 @@ class Ifherk_HELM
         auto                     client = domain_->decomposition().client();
 
         if (source_max_[0] < 1e-10 || source_max_[1] < 1e-10) return;
-
+        if (adapt_Fourier) FourierRefMeshUpdate = true;
         
 
         //adaptation neglect the boundary oscillations
@@ -777,7 +777,6 @@ class Ifherk_HELM
             }
         }
 
-        if (adapt_Fourier) base_mesh_update_ = true;
         world.barrier();
         pcout << "Adapt - done" << std::endl;
     }
@@ -809,14 +808,21 @@ class Ifherk_HELM
                                        << T_last_vel_refresh_ << std::endl;
                                  T_last_vel_refresh_ = T_;
                                  if (!domain_->is_client()) return;
-                                 if (!adapt_Fourier) pad_velocity<u_type, u_type>(true);
-                                 else pad_velocity_refFourier<u_type, u_type>(true);
-                             } else
+                                 
+                                 pad_velocity<u_type, u_type>(true);
+                             } 
+                             if (adapt_Fourier && FourierRefMeshUpdate) {
+                                pcout << "pad Fourier velocity " << std::endl;
+                                if (!domain_->is_client()) return;
+                                pad_velocity_refFourier<u_type, u_type>(true);
+                             }
+                             else
                              {
                                  if (!domain_->is_client()) return;
                                  up_and_down<u_type>();
                              }));
         base_mesh_update_ = false;
+        FourierRefMeshUpdate = false;
         pcout << "pad u      in " << t_pad.count() << std::endl;
         if (adapt_Fourier) clean_Fourier_modes_all<u_type>();
         float_type u_max_val = obtaining_u_max<u_type>();
@@ -1542,6 +1548,7 @@ class Ifherk_HELM
             if (addLevel_raw < tot_ref_l && adapt_Fourier) {
                 addLevel = tot_ref_l - addLevel_raw;
             }
+            if (addLevel == 0) continue;
             int l = domain_->tree()->base_level() + addLevel;
             for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
             {
@@ -2063,6 +2070,7 @@ class Ifherk_HELM
     int additional_modes = 0;
 
     bool base_mesh_update_ = false;
+    bool FourierRefMeshUpdate = false;
 
     float_type              T_, T_stage_, T_max_;
     float_type              dt_base_, dt_, dx_base_;

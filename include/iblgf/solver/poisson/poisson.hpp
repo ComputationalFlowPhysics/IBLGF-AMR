@@ -200,13 +200,13 @@ class PoissonSolver
                     int entry = addentry + idx * 2 + 2 + add_num;
                     this->apply_lgf<Source, Target>(&lgf_helm_vec[idx], entry,
                         fmm_type, addLevel);
-                    domain_->client_communicator().barrier();
+                    //domain_->client_communicator().barrier();
                 }
             }
 
             for (std::size_t entry = 0; entry < 2; ++entry) {
                 this->apply_lgf<Source, Target>(&lgf_lap_, (add_num + entry), fmm_type);
-                domain_->client_communicator().barrier();
+                //domain_->client_communicator().barrier();
             }
         }
     }

@@ -475,6 +475,7 @@ public: //memeber functions
 
             fmm_mask_builder_t::fmm_clean_load(domain_);
             fmm_mask_builder_t::fmm_vortex_streamfun_mask(domain_);
+            fmm_mask_builder_t::fmm_vortex_streamfun_mask_build(domain_);
             fmm_mask_builder_t::fmm_lgf_mask_build(domain_,subtract_non_leaf_);
             //if (ib_change)
                 server()->update_ib_flag();

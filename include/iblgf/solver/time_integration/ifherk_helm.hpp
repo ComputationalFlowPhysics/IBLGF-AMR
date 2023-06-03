@@ -340,7 +340,7 @@ class Ifherk_HELM
             if (adapt_count_ % adapt_freq_ == 0)
             {
                 clean<u_type>(true);
-                //domain_->decomposition().template balance<u_type,p_type>();
+                domain_->decomposition().template balance<u_type,p_type>();
             }
 
             adapt_count_++;

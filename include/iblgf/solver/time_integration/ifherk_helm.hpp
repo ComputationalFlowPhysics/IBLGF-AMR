@@ -124,6 +124,8 @@ class Ifherk_HELM
         c_z = _simulation->dictionary()->template get_or<float_type>(
             "L_z", 1);
 
+        balance_n_adapt = _simulation->dictionary()->template get_or<int>("balance_n_adapt", 20);
+
         adapt_Fourier = _simulation->dictionary()->template get_or<bool>(
             "adapt_Fourier", false);
         /*const int l_max = domain_->tree()->depth();
@@ -337,7 +339,7 @@ class Ifherk_HELM
             }
 
             // balance load
-            if (adapt_count_ % adapt_freq_ == 0)
+            if (adapt_count_ % (adapt_freq_ * balance_n_adapt) == 0)
             {
                 clean<u_type>(true);
                 domain_->decomposition().template balance<u_type,p_type>();
@@ -458,8 +460,6 @@ class Ifherk_HELM
         pcout << "source max = " << source_max_[idx] << std::endl;
     }
 
-
-
     template<class Field>
     float_type obtaining_u_max()
     {
@@ -471,29 +471,53 @@ class Ifherk_HELM
         for (auto it = domain_->begin(); it != domain_->end(); ++it)
         {
             if (!it->locally_owned() || !it->has_data()) continue;
-            
+
             for (auto& n : it->data().node_field())
-            {
+            {   
                 float_type u_val = 0.0;
                 for (std::size_t field_idx = 0; field_idx < face_aux_type::nFields();
                      ++field_idx)
-                {
+                {   
                     u_val += n(face_aux_type::tag(), field_idx) * n(face_aux_type::tag(), field_idx);
                 }
                 if (u_val > max_local) {
                     max_local = u_val;
                 }
-             }
+            }
+        }
+
+        float_type max_u_0 = 0.0;
+        for (auto it = domain_->begin(); it != domain_->end(); ++it)
+        {
+            if (!it->locally_owned() || !it->has_data()) continue;
+
+            for (auto& n : it->data().node_field())
+            {
+                float_type u_val = 0.0;
+                for (std::size_t field_idx = 0; field_idx < face_aux_type::nFields();
+                     field_idx+=N_modes)
+                {   
+                    u_val += n(face_aux_type::tag(), field_idx) * n(face_aux_type::tag(), field_idx);
+                }
+                if (u_val > max_u_0) {
+                    max_u_0 = u_val;
+                }
+            }
         }
 
         float_type new_maximum = 0.0;
+        float_type new_maximum_0 = 0.0;
         boost::mpi::all_reduce(domain_->client_communicator(), max_local, new_maximum,
             boost::mpi::maximum<float_type>());
+        boost::mpi::all_reduce(domain_->client_communicator(), max_u_0, new_maximum_0,
+            boost::mpi::maximum<float_type>());
 
-        pcout << "max u value is " << std::sqrt(new_maximum) << std::endl;
-
+        pcout << "max u   value is " << std::sqrt(new_maximum) << std::endl;
+        pcout << "max u_0 value is " << std::sqrt(new_maximum_0) << std::endl;
+        
         return std::sqrt(new_maximum);
     }
+
 
     void write_restart()
     {
@@ -2089,6 +2113,8 @@ class Ifherk_HELM
     int restart_n_last_ = 0;
     int nLevelRefinement_;
     int stage_idx_ = 0;
+
+    int balance_n_adapt = 20; //balance once after adapting for balance_n_adapt times
 
     bool use_restart_ = false;
     bool just_restarted_ = false;

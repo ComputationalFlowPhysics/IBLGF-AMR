@@ -1309,8 +1309,14 @@ class Ifherk_HELM
                                     it->data_r(F::tag(), field_idx + N_modes * 2 * j)
                                         .linalg_data();
                                 int N = it->data().descriptor().extent()[0];
-                                if (i == 1)
+                                if (i == 0)
+                                    view(lin_data, xt::range(0, clean_width),
+                                        xt::range(0, clean_width)) *= 0.0;
+                                else if (i == 1)
                                     view(lin_data, xt::all(),
+                                        xt::range(0, clean_width)) *= 0.0;
+                                else if (i == 2)
+                                    view(lin_data, xt::range(N + 2 - clean_width, N + 3),
                                         xt::range(0, clean_width)) *= 0.0;
                                 else if (i == 3)
                                     view(lin_data, xt::range(0, clean_width),
@@ -1319,10 +1325,18 @@ class Ifherk_HELM
                                     view(lin_data,
                                         xt::range(N + 2 - clean_width, N + 3),
                                         xt::all()) *= 0.0;
+                                else if (i == 6)
+                                    view(lin_data,
+                                        xt::range(0, clean_width),
+                                        xt::range(N + 2 - clean_width, N + 3)) *= 0.0;
                                 else if (i == 7)
                                     view(lin_data, xt::all(),
                                         xt::range(N + 2 - clean_width,
                                             N + 3)) *= 0.0;
+                                else if (i == 8)
+                                    view(lin_data,
+                                        xt::range(N + 2 - clean_width, N + 3),
+                                        xt::range(N + 2 - clean_width, N + 3)) *= 0.0;
                             }
                         }
                     }
@@ -1557,7 +1571,7 @@ class Ifherk_HELM
         //clean<Velocity_out>();
         clean_leaf_correction_boundary<edge_aux_type>(
             domain_->tree()->base_level(), true, 2);
-        clean_Fourier_modes_BC<edge_aux_type>(2, true);
+        clean_Fourier_modes_BC<edge_aux_type>(3, true);
         //clean_leaf_correction_boundary<edge_aux_type>(l, false,2+stage_idx_);
         psolver.template apply_lgf_and_helm<edge_aux_type, stream_f_type>(N_modes, 3, 
             MASK_TYPE::RefFourierStream);
@@ -1985,7 +1999,7 @@ class Ifherk_HELM
             clean_leaf_correction_boundary<Target>(l, true, 2);
             //clean_leaf_correction_boundary<Target>(l, false,4+stage_idx_);
         }
-        if (adapt_Fourier) clean_Fourier_modes_BC<Target>(2, true);
+        if (adapt_Fourier) clean_Fourier_modes_BC<Target>(3, true);
     }
 
     template<class Source, class Target>

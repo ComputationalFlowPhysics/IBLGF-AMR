@@ -96,6 +96,20 @@ class LGF_Base : public crtp::Crtps<Derived, LGF_Base<Dim, Derived>>
         }
     }
 
+    void clear_fft_vecs() {
+        for (auto it = this->derived().dft_level_maps_2D.begin(); 
+             it != this->derived().dft_level_maps_2D.end();
+             ++it) {
+            it->clear();
+        }
+
+        for (auto it = this->derived().dft_level_maps_3D.begin(); 
+             it != this->derived().dft_level_maps_3D.end();
+             ++it) {
+            it->clear();
+        }
+    }
+
     void change_level(int _level_diff) noexcept
     {
         this->derived().change_level_impl(_level_diff);

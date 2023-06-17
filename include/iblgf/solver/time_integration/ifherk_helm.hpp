@@ -343,6 +343,8 @@ class Ifherk_HELM
             {
                 clean<u_type>(true);
                 domain_->decomposition().template balance<u_type,p_type>();
+                psolver.clear_fft_vecs();
+                pcout << "cleaned lgf" << std::endl;
             }
 
             adapt_count_++;

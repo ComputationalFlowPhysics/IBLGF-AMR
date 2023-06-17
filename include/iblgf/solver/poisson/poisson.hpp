@@ -211,6 +211,13 @@ class PoissonSolver
         }
     }
 
+    void clear_fft_vecs() {
+        for (auto it = lgf_helm_vec.begin(); it != lgf_helm_vec.end(); ++it) {
+            it->clear_fft_vecs();
+        }
+        lgf_lap_.clear_fft_vecs();
+    }
+
     /*template<class Source, class Target>
     void apply_helm_if(float_type _alpha_base, int N_modes, float_type L_z, int NComp = 3, 
         int fmm_type = MASK_TYPE::AMR2AMR)

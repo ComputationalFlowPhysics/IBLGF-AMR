@@ -104,7 +104,9 @@ class Ifherk_HELM
 
         dx_base_ = domain_->dx_base();
         max_ref_level_ =
-            _simulation->dictionary()->template get<float_type>("nLevels");
+            _simulation->dictionary()->template get<int>("nLevels");
+        max_Fourier_ref_level_ =
+            _simulation->dictionary()->template get_or<int>("max_Fourier_ref_level", max_ref_level_);
         cfl_ =
             _simulation->dictionary()->template get_or<float_type>("cfl", 0.2);
         dt_base_ =
@@ -177,7 +179,7 @@ class Ifherk_HELM
 
         //initialize the FFT vector
 
-        for (int i = max_ref_level_; i >= 0; i--)
+        for (int i = max_Fourier_ref_level_; i >= 0; i--)
         {
             //std::cout << i << std::endl;
             int padded_dim_loc = padded_dim / std::pow(2, i);
@@ -766,11 +768,14 @@ class Ifherk_HELM
                         if (!oct || !oct->has_data()) continue;
                         int ref_level = oct->refinement_level();
 
-                        if (ref_level > max_ref_level_) {
-                            ref_level = max_ref_level_;
+                        int tot_ref_l = max_Fourier_ref_level_;
+
+                        if (ref_level > tot_ref_l) {
+                            ref_level = tot_ref_l;
                         }
 
-                        int ref_level_up = max_ref_level_ - ref_level;
+
+                        int ref_level_up = tot_ref_l - ref_level;
 
                         int NComp = u_type::nFields() / (2 * N_modes);
                         int res = u_type::nFields() % (2 * N_modes);
@@ -1001,7 +1006,7 @@ class Ifherk_HELM
             for (std::size_t field_idx = 0; field_idx < F::nFields();
                  ++field_idx)
             {
-                const int tot_ref_l = max_ref_level_;
+                const int tot_ref_l = max_Fourier_ref_level_;
 
                 int Mode_n = (F::nFields() % (N_modes * 2)) / 2;
 
@@ -1165,11 +1170,13 @@ class Ifherk_HELM
 
         int ref_level = l - domain_->tree()->base_level();
 
-        if (ref_level > max_ref_level_) {
-            ref_level = max_ref_level_;
+        int tot_ref_l = max_Fourier_ref_level_;
+
+        if (ref_level > tot_ref_l) {
+            ref_level = tot_ref_l;
         }
 
-        int levelDiff = max_ref_level_ - ref_level;
+        int levelDiff = tot_ref_l - ref_level;
 
         //int levelDiff = domain_->tree()->depth() - l - 1;
         int levelFactor = std::pow(2, levelDiff);
@@ -1213,11 +1220,13 @@ class Ifherk_HELM
 
             int ref_level = l - domain_->tree()->base_level();
 
-            if (ref_level > max_ref_level_) {
-                ref_level = max_ref_level_;
+            int tot_ref_l = max_Fourier_ref_level_;
+
+            if (ref_level > tot_ref_l) {
+                ref_level = tot_ref_l;
             }
 
-            int levelDiff = max_ref_level_ - ref_level;
+            int levelDiff = tot_ref_l - ref_level;
             //int levelDiff = domain_->tree()->depth() - l - 1;
             int levelFactor = std::pow(2, levelDiff);
             int LevelModes = N_modes * 2 / levelFactor;
@@ -1262,12 +1271,14 @@ class Ifherk_HELM
 
             int ref_level = l - domain_->tree()->base_level();
 
-            if (ref_level > max_ref_level_) {
+            int tot_ref_l = max_Fourier_ref_level_;
+
+            if (ref_level > tot_ref_l) {
                 //do not clean of it is IB refinement
                 break;
             }
 
-            int levelDiff = max_ref_level_ - ref_level;
+            int levelDiff = tot_ref_l - ref_level;
             //int levelDiff = domain_->tree()->depth() - l - 1;
             int levelFactor = std::pow(2, levelDiff);
             int LevelModes = N_modes * 2 / levelFactor;
@@ -1578,9 +1589,9 @@ class Ifherk_HELM
         psolver.template apply_lgf_and_helm<edge_aux_type, stream_f_type>(N_modes, 3, 
             MASK_TYPE::RefFourierStream);
 
-        int l_max = domain_->tree()->base_level() + max_ref_level_+1;
+        //int l_max = domain_->tree()->base_level() + max_ref_level_+1;
 
-        int tot_ref_l = max_ref_level_;
+        int tot_ref_l = max_Fourier_ref_level_;
 
         for (std::size_t idx = 0; idx < N_modes; idx++) {
             int addLevel_raw = std::log2(N_modes/(idx+1));
@@ -1681,8 +1692,10 @@ class Ifherk_HELM
 
             int ref_level = l - domain_->tree()->base_level();
 
-            if (ref_level > max_ref_level_) {
-                ref_level = max_ref_level_;
+            int tot_ref_l = max_Fourier_ref_level_;
+
+            if (ref_level > tot_ref_l) {
+                ref_level = tot_ref_l;
             }
 
             for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
@@ -1696,7 +1709,7 @@ class Ifherk_HELM
 
                 if (adapt_Fourier)
                 {
-                    int ref_level_up = max_ref_level_ - ref_level;
+                    int ref_level_up = tot_ref_l - ref_level;
                     domain::Operator::curl_helmholtz_complex_refined<Source,
                         edge_aux_type>(it->data(), dx_level, N_modes,
                         ref_level_up, c_z);
@@ -1719,8 +1732,10 @@ class Ifherk_HELM
 
             int ref_level = l - domain_->tree()->base_level();
 
-            if (ref_level > max_ref_level_) {
-                ref_level = max_ref_level_;
+            int tot_ref_l = max_Fourier_ref_level_;
+
+            if (ref_level > tot_ref_l) {
+                ref_level = tot_ref_l;
             }
 
             for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
@@ -1792,8 +1807,10 @@ class Ifherk_HELM
 
             int ref_level = l - domain_->tree()->base_level();
 
-            if (ref_level > max_ref_level_) {
-                ref_level = max_ref_level_;
+            int tot_ref_l = max_Fourier_ref_level_;
+
+            if (ref_level > tot_ref_l) {
+                ref_level = tot_ref_l;
             }
 
             for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
@@ -1803,7 +1820,7 @@ class Ifherk_HELM
                     continue;
                 if (adapt_Fourier)
                 {
-                    int ref_level_up = max_ref_level_ - ref_level;
+                    int ref_level_up = tot_ref_l - ref_level;
                     domain::Operator::nonlinear_helmholtz_refined<
                         face_aux_real_type, vort_i_real_type, r_i_real_type>(
                         it->data(), N_modes, ref_level_up);
@@ -1839,8 +1856,10 @@ class Ifherk_HELM
         {
             int ref_level = l - domain_->tree()->base_level();
 
-            if (ref_level > max_ref_level_) {
-                ref_level = max_ref_level_;
+            int tot_ref_l = max_Fourier_ref_level_;
+
+            if (ref_level > tot_ref_l) {
+                ref_level = tot_ref_l;
             }
             //client->template buffer_exchange<Source>(l);
 
@@ -1859,7 +1878,7 @@ class Ifherk_HELM
                 if (adapt_Fourier)
                 {
                     //int ref_level_up = domain_->tree()->depth() - l - 1;
-                    int ref_level_up = max_ref_level_ - ref_level;
+                    int ref_level_up = tot_ref_l - ref_level;
 
                     domain::Operator::FourierTransformR2C_refine<r_i_real_type,
                         Target>(it, ref_level_up, N_modes,
@@ -1969,8 +1988,10 @@ class Ifherk_HELM
 
             int ref_level = l - domain_->tree()->base_level();
 
-            if (ref_level > max_ref_level_) {
-                ref_level = max_ref_level_;
+            int tot_ref_l = max_Fourier_ref_level_;
+
+            if (ref_level > tot_ref_l) {
+                ref_level = tot_ref_l;
             }
 
             for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
@@ -1986,7 +2007,7 @@ class Ifherk_HELM
                 }
                 else
                 {
-                    int ref_level_up = max_ref_level_ - ref_level;
+                    int ref_level_up = tot_ref_l - ref_level;
                     domain::Operator::divergence_helmholtz_complex_refined<Source,
                         Target>(it->data(), dx_level, N_modes, ref_level_up,
                         c_z);
@@ -2016,8 +2037,10 @@ class Ifherk_HELM
 
             int ref_level = l - domain_->tree()->base_level();
 
-            if (ref_level > max_ref_level_) {
-                ref_level = max_ref_level_;
+            int tot_ref_l = max_Fourier_ref_level_;
+
+            if (ref_level > tot_ref_l) {
+                ref_level = tot_ref_l;
             }
             auto client = domain_->decomposition().client();
             //client->template buffer_exchange<Source>(l);
@@ -2034,7 +2057,7 @@ class Ifherk_HELM
                 }
                 else
                 {
-                    int ref_level_up = max_ref_level_ - ref_level;
+                    int ref_level_up = tot_ref_l - ref_level;
                     domain::Operator::gradient_helmholtz_complex_refined<Source,
                         Target>(it->data(), dx_level, N_modes, ref_level_up,
                         c_z);
@@ -2104,6 +2127,8 @@ class Ifherk_HELM
     std::vector<int> nonzero_dim_vec;
     float_type c_z; //for the period in the homogeneous direction
     float_type perturb_nonlin = 0.0;
+
+    int max_Fourier_ref_level_; //max level for Fourier Refinement
 
     
 

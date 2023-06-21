@@ -100,6 +100,9 @@ class PoissonSolver
         max_ref_level_ =
             _simulation->dictionary()->template get<float_type>("nLevels");
 
+        max_Fourier_ref_level_ =
+            _simulation->dictionary()->template get_or<int>("max_Fourier_ref_level", max_ref_level_);
+
         for (int i = 0; i < N_fourier_modes; i++) {
             float_type c = (static_cast<float_type>(i)+1.0) * 2.0 * M_PI * dx_base/c_z_;
             lgf_helm_vec.emplace_back(helm_t(c));
@@ -178,7 +181,7 @@ class PoissonSolver
         //const int l_max = (fmm_type != MASK_TYPE::STREAM) ? domain_->tree()->depth() : domain_->tree()->base_level()+1;
         //const int l_min = (fmm_type !=  MASK_TYPE::IB2xIB && fmm_type !=  MASK_TYPE::xIB2IB) ? domain_->tree()->base_level() : domain_->tree()->depth()-1;
 
-        const int tot_ref_l = (fmm_type != MASK_TYPE::STREAM) ? max_ref_level_ : 0;
+        const int tot_ref_l = (fmm_type != MASK_TYPE::STREAM) ? max_Fourier_ref_level_ : 0;
         //const int tot_ref_l = max_ref_level_;
                 
         for (int i = 0; i < NComp; i++)
@@ -266,7 +269,7 @@ class PoissonSolver
         //const int l_min = (fmm_type !=  MASK_TYPE::IB2xIB && fmm_type !=  MASK_TYPE::xIB2IB) ? domain_->tree()->base_level() : domain_->tree()->depth()-1;
 
         //const int tot_ref_l = max_ref_level_;
-        const int tot_ref_l = (fmm_type != MASK_TYPE::STREAM) ? max_ref_level_ : 0;
+        const int tot_ref_l = (fmm_type != MASK_TYPE::STREAM) ? max_Fourier_ref_level_ : 0;
 
         for (int i = 0; i < NComp; i++)
         {
@@ -318,7 +321,7 @@ class PoissonSolver
                 : domain_->tree()->depth() - 1;*/
 
         //const int tot_ref_l = max_ref_level_;
-        const int tot_ref_l = (fmm_type != MASK_TYPE::STREAM) ? max_ref_level_ : 0;
+        const int tot_ref_l = (fmm_type != MASK_TYPE::STREAM) ? max_Fourier_ref_level_ : 0;
 
         for (int i = 0; i < NComp; i++)
         {
@@ -373,7 +376,7 @@ class PoissonSolver
         //const int l_min = (fmm_type !=  MASK_TYPE::IB2xIB && fmm_type !=  MASK_TYPE::xIB2IB) ? domain_->tree()->base_level() : domain_->tree()->depth()-1;
 
         //const int tot_ref_l = max_ref_level_;
-        const int tot_ref_l = (fmm_type != MASK_TYPE::STREAM) ? max_ref_level_ : 0;
+        const int tot_ref_l = (fmm_type != MASK_TYPE::STREAM) ? max_Fourier_ref_level_ : 0;
 
         for (int i = 0; i < NComp; i++)
         {
@@ -1027,11 +1030,13 @@ class PoissonSolver
 
                 int ref_level = l - domain_->tree()->base_level();
 
-                if (ref_level > max_ref_level_) {
-                    ref_level = max_ref_level_;
+                int tot_ref_l = max_Fourier_ref_level_;
+
+                if (ref_level > tot_ref_l) {
+                    ref_level = tot_ref_l;
                 }
 
-                int ref_level_up = max_ref_level_ - ref_level;
+                int ref_level_up = tot_ref_l - ref_level;
 
                 int res_modes = real_mesh_field_idx % (2 * N_fourier_modes + 2);
 
@@ -1075,11 +1080,13 @@ class PoissonSolver
 
             int ref_level = l - domain_->tree()->base_level();
 
-            if (ref_level > max_ref_level_) {
-                ref_level = max_ref_level_;
+            int tot_refl_l = max_Fourier_ref_level_;
+
+            if (ref_level > tot_refl_l) {
+                ref_level = tot_refl_l;
             }
 
-            int ref_level_up = max_ref_level_ - ref_level;
+            int ref_level_up = tot_refl_l - ref_level;
 
             for (std::size_t _field_idx = 0; _field_idx < From::nFields();
                  ++_field_idx)
@@ -1142,11 +1149,13 @@ class PoissonSolver
             {
                 int ref_level = ls - domain_->tree()->base_level();
 
-                if (ref_level > max_ref_level_) {
-                    ref_level = max_ref_level_;
+                int tot_ref_l = max_Fourier_ref_level_;
+
+                if (ref_level > tot_ref_l) {
+                    ref_level = tot_ref_l;
                 }
 
-                int ref_level_up = max_ref_level_ - ref_level;
+                int ref_level_up = tot_ref_l - ref_level;
 
                 int res_modes = real_mesh_field_idx % (2 * N_fourier_modes + 2);
 
@@ -1219,11 +1228,14 @@ class PoissonSolver
 
                         int ref_level = l - domain_->tree()->base_level();
 
-                        if (ref_level > max_ref_level_) {
-                            ref_level = max_ref_level_;
+                        int tot_ref_l = max_Fourier_ref_level_;
+
+                        if (ref_level > tot_ref_l) {
+                            ref_level = tot_ref_l;
                         }
 
-                        int ref_level_up = max_ref_level_ - ref_level;
+
+                        int ref_level_up = tot_ref_l - ref_level;
 
                         int divisor = std::pow(2, ref_level_up);
 
@@ -1493,6 +1505,7 @@ private:
     int                               N_fourier_modes;
     interpolation_type                c_cntr_nli_;///< Lagrange Interpolation
     int                               max_ref_level_=0;
+    int max_Fourier_ref_level_; //max level for Fourier Refinement
     parallel_ostream::ParallelOstream pcout=parallel_ostream::ParallelOstream(1);
     bool use_correction_ =true;
     bool subtract_non_leaf_ = false;

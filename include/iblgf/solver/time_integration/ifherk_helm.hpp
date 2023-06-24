@@ -331,7 +331,7 @@ class Ifherk_HELM
                 //    up_and_down<u>();
                 //    pad_velocity<u, u>();
                 //}
-                if (!just_restarted_ && !customized_ic) this->adapt(false);
+                if (!just_restarted_ && !customized_ic) {this->adapt(false); }
                 if (adapt_Fourier && just_restarted_ && domain_->is_client()) {
                     clean_Fourier_modes_all<u_type>();
                     pad_velocity_refFourier<u_type, u_type>(true);
@@ -346,6 +346,7 @@ class Ifherk_HELM
                 clean<u_type>(true);
                 psolver.clear_fft_vecs();
                 pcout << "cleaned lgf" << std::endl;
+                world.barrier();
                 domain_->decomposition().template balance<u_type,p_type>();
                 
             }
@@ -510,15 +511,43 @@ class Ifherk_HELM
             }
         }
 
+        float_type max_local_IB = 0.0;
+
+        const int l_max = domain_->tree()->depth();
+
+        for (auto it = domain_->begin((l_max - 1)); it != domain_->end((l_max - 1)); ++it)
+        {
+            if (!it->locally_owned() || !it->has_data()) continue;
+
+            for (auto& n : it->data().node_field())
+            {   
+                float_type u_val = 0.0;
+                for (std::size_t field_idx = 0; field_idx < face_aux_type::nFields();
+                     ++field_idx)
+                {   
+                    u_val += n(face_aux_type::tag(), field_idx) * n(face_aux_type::tag(), field_idx);
+                }
+                if (u_val > max_local_IB) {
+                    max_local_IB = u_val;
+                }
+            }
+        }
+
         float_type new_maximum = 0.0;
         float_type new_maximum_0 = 0.0;
+        float_type new_max_IB = 0.0;
         boost::mpi::all_reduce(domain_->client_communicator(), max_local, new_maximum,
             boost::mpi::maximum<float_type>());
         boost::mpi::all_reduce(domain_->client_communicator(), max_u_0, new_maximum_0,
             boost::mpi::maximum<float_type>());
+        boost::mpi::all_reduce(domain_->client_communicator(), max_local_IB, new_max_IB,
+            boost::mpi::maximum<float_type>());
+
+        
 
         pcout << "max u   value is " << std::sqrt(new_maximum) << std::endl;
         pcout << "max u_0 value is " << std::sqrt(new_maximum_0) << std::endl;
+        pcout << "max u value at IB layer is " << std::sqrt(new_max_IB) << std::endl;
         
         return std::sqrt(new_maximum);
     }
@@ -848,6 +877,15 @@ class Ifherk_HELM
                                 if (!domain_->is_client()) return;
                                 pad_velocity_refFourier<u_type, u_type>(true);
                              }
+                             /*if ((adapt_Fourier && FourierRefMeshUpdate) || 
+                                (base_mesh_update_ ||
+                                 ((T_ - T_last_vel_refresh_) /
+                                         (Re_ * dx_base_ * dx_base_) * 3.3 >
+                                     7))) 
+                             {
+                                        adapt_corr_time_step();
+
+                             }*/
                              else
                              {
                                  if (!domain_->is_client()) return;
@@ -993,6 +1031,127 @@ class Ifherk_HELM
         // ******************************************************************
         copy<u_i_type, u_type>();
         copy<d_i_type, p_type>(1.0 / coeff_a(3, 3) / dt_);
+        // ******************************************************************
+    }
+
+
+    void adapt_corr_time_step()
+    {
+        // Initialize IFHERK
+        // q_1 = u_type
+        boost::mpi::communicator world;
+        auto                     client = domain_->decomposition().client();
+
+        T_stage_ = T_;
+
+        ////claen non leafs
+
+        stage_idx_ = 0;
+
+        // Solve stream function to refresh base level velocity
+        mDuration_type t_pad(0);
+        TIME_CODE( t_pad, SINGLE_ARG(
+                    pcout<< "adapt_corr_time_step()" << std::endl;
+                    
+                    if (!domain_->is_client())
+                        return;
+                    up_and_down<u_type>();
+                    ));
+        //base_mesh_update_=false;
+        //pcout<< "pad u      in "<<t_pad.count() << std::endl;
+        if (adapt_Fourier) clean_Fourier_modes_all<u_type>();
+        copy<u_type, q_i_type>();
+
+        // Stage 1
+        // ******************************************************************
+        pcout << "Stage 1" << std::endl;
+        auto t0 = clock_type::now();
+
+        
+        if (adapt_Fourier) {
+            clean_Fourier_modes_all<u_i_type>();
+            clean_Fourier_modes_all<r_i_type>();
+            clean_Fourier_modes_all<q_i_type>();
+        }
+        auto t1 = clock_type::now();
+        mDuration_type ms_int = t1 - t0;
+        pcout << "Cleaning Fourier coeff in " << ms_int.count() << std::endl;
+        T_stage_ = T_;
+        stage_idx_ = 1;
+        clean<g_i_type>();
+        clean<d_i_type>();
+        clean<cell_aux_type>();
+        clean<face_aux_type>();
+        
+        copy<q_i_type, r_i_type>();
+
+        auto t4 = clock_type::now();
+
+        mDuration_type linsys1(0);
+        TIME_CODE(linsys1, SINGLE_ARG(lin_sys_with_ib_solve(0.0, false);));
+        pcout << "linsys solved in " << linsys1.count() << std::endl;
+        //lin_sys_with_ib_solve(alpha_[0]);
+
+        // Stage 2
+        // ******************************************************************
+        pcout << "Stage 2" << std::endl;
+        if (adapt_Fourier) {
+            clean_Fourier_modes_all<u_i_type>();
+            clean_Fourier_modes_all<q_i_type>();
+            clean_Fourier_modes_all<g_i_type>();
+        }
+        stage_idx_ = 2;
+        clean<r_i_type>();
+        clean<d_i_type>();
+        clean<cell_aux_type>();
+
+        //cal wii
+        //r_i_type = q_i_type + dt(a21 w21)
+        //w11 = (1/a11)* dt (g_i_type - face_aux_type)
+
+        //psolver.template apply_lgf_IF<q_i_type, q_i_type>(alpha_[0]);
+        //psolver.template apply_lgf_IF<w_1_type, w_1_type>(alpha_[0]);
+
+        add<q_i_type, r_i_type>();
+
+
+        up_and_down<u_i_type>();
+
+        mDuration_type linsys2(0);
+        TIME_CODE(linsys2, SINGLE_ARG(lin_sys_with_ib_solve(0.0, false);));
+        pcout << "linsys solved in " << linsys2.count() << std::endl;
+
+        //lin_sys_with_ib_solve(alpha_[1]);
+
+        // Stage 3
+        // ******************************************************************
+        pcout << "Stage 3" << std::endl;
+        if (adapt_Fourier) {
+            clean_Fourier_modes_all<u_i_type>();
+            clean_Fourier_modes_all<r_i_type>();
+            clean_Fourier_modes_all<q_i_type>();
+            clean_Fourier_modes_all<g_i_type>();
+        }
+        T_stage_ = T_ + dt_ * c_[2];
+        stage_idx_ = 3;
+        clean<d_i_type>();
+        clean<cell_aux_type>();
+        clean<w_2_type>();
+
+        copy<q_i_type, r_i_type>();
+
+        up_and_down<u_i_type>();
+
+
+        mDuration_type linsys3(0);
+        TIME_CODE(linsys3, SINGLE_ARG(lin_sys_with_ib_solve(0.0, false);));
+        pcout << "linsys solved in " << linsys3.count() << std::endl;
+
+        //lin_sys_with_ib_solve(alpha_[2]);
+
+        // ******************************************************************
+        copy<u_i_type, u_type>();
+        //copy<d_i_type, p_type>(1.0 / coeff_a(3, 3) / dt_);
         // ******************************************************************
     }
 
@@ -1394,7 +1553,7 @@ class Ifherk_HELM
             copy<r_i_type, u_i_type>();
     }
 
-    void lin_sys_with_ib_solve(float_type _alpha) noexcept
+    void lin_sys_with_ib_solve(float_type _alpha, bool write_prev_force = true) noexcept
     {
         auto client = domain_->decomposition().client();
 
@@ -1442,7 +1601,7 @@ class Ifherk_HELM
         TIME_CODE(t_ib, SINGLE_ARG(lsolver.template ib_solve<face_aux2_type>(
                             _alpha, T_stage_, stage_idx_);));
 
-        domain_->ib().force_prev(stage_idx_) = domain_->ib().force();
+        if (write_prev_force) domain_->ib().force_prev(stage_idx_) = domain_->ib().force();
         //domain_->ib().scales(1.0/coeff_a(stage_idx_, stage_idx_));
 
         pcout << "IB  solved in " << t_ib.count() << std::endl;

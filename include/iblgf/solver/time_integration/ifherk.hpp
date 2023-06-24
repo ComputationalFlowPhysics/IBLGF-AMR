@@ -107,6 +107,9 @@ class Ifherk
         all_time_max_ = _simulation->dictionary()->template get_or<bool>(
             "all_time_max", true);
 
+        use_adaptation_correction = _simulation->dictionary()->template get_or<bool>(
+            "use_adaptation_correction", true);
+
 
         if (dt_base_ < 0) dt_base_ = dx_base_ * cfl_;
 
@@ -267,8 +270,10 @@ class Ifherk
                 //    up_and_down<u>();
                 //    pad_velocity<u, u>();
                 //}
-                if (!just_restarted_)
+                if (!just_restarted_) {
                     this->adapt(false);
+                    adapt_corr_time_step();
+                }
                 just_restarted_=false;
 
             }
@@ -644,9 +649,11 @@ class Ifherk
                     {
                         pcout<< "pad_velocity, last T_vel_refresh = "<<T_last_vel_refresh_<< std::endl;
                         T_last_vel_refresh_=T_;
+                        
                         if (!domain_->is_client())
                             return;
                         pad_velocity<u_type, u_type>(true);
+                        adapt_corr_time_step();
                     }
                     else
                     {
@@ -730,6 +737,111 @@ class Ifherk
         // ******************************************************************
         copy<u_i_type, u_type>();
         copy<d_i_type, p_type>(1.0 / coeff_a(3, 3) / dt_);
+        // ******************************************************************
+    }
+
+
+
+
+
+    void adapt_corr_time_step()
+    {
+        if (!use_adaptation_correction) return;
+        // Initialize IFHERK
+        // q_1 = u_type
+        boost::mpi::communicator world;
+        auto                     client = domain_->decomposition().client();
+
+        T_stage_ = T_;
+
+        ////claen non leafs
+
+        stage_idx_=0;
+
+        // Solve stream function to refresh base level velocity
+        mDuration_type t_pad(0);
+        TIME_CODE( t_pad, SINGLE_ARG(
+                    pcout<< "adapt_corr_time_step()" << std::endl;
+                    
+                    if (!domain_->is_client())
+                        return;
+                    up_and_down<u_type>();
+                    ));
+        //base_mesh_update_=false;
+        //pcout<< "pad u      in "<<t_pad.count() << std::endl;
+
+        copy<u_type, q_i_type>();
+
+        // Stage 1
+        // ******************************************************************
+        pcout << "Stage 1" << std::endl;
+        T_stage_ = T_;
+        stage_idx_ = 1;
+        clean<g_i_type>();
+        clean<d_i_type>();
+        clean<cell_aux_type>();
+        clean<face_aux_type>();
+
+        //nonlinear<u_type, g_i_type>(0.0);
+        copy<q_i_type, r_i_type>();
+        //add<g_i_type, r_i_type>();
+        lin_sys_with_ib_solve(0.0, false);
+
+
+        // Stage 2
+        // ******************************************************************
+        pcout << "Stage 2" << std::endl;
+        T_stage_ = T_;
+        stage_idx_ = 2;
+        clean<r_i_type>();
+        clean<d_i_type>();
+        clean<cell_aux_type>();
+
+        //cal wii
+        //r_i_type = q_i_type + dt(a21 w21)
+        //w11 = (1/a11)* dt (g_i_type - face_aux_type)
+
+        //add<g_i_type, face_aux_type>(-1.0);
+        //copy<face_aux_type, w_1_type>(0.0);
+
+        //psolver.template apply_lgf_IF<q_i_type, q_i_type>(0.0);
+        //psolver.template apply_lgf_IF<w_1_type, w_1_type>(0.0);
+
+        add<q_i_type, r_i_type>();
+        //add<w_1_type, r_i_type>(0.0);
+
+        up_and_down<u_i_type>();
+        //nonlinear<u_i_type, g_i_type>(0.0);
+        //add<g_i_type, r_i_type>();
+
+        lin_sys_with_ib_solve(0.0, false);
+
+        // Stage 3
+        // ******************************************************************
+        pcout << "Stage 3" << std::endl;
+        T_stage_ = T_;
+        stage_idx_ = 3;
+        clean<d_i_type>();
+        clean<cell_aux_type>();
+        clean<w_2_type>();
+
+        //add<g_i_type, face_aux_type>(-1.0);
+        //copy<face_aux_type, w_2_type>(0.0);
+        copy<q_i_type, r_i_type>();
+        //add<w_1_type, r_i_type>(0.0);
+        //add<w_2_type, r_i_type>(0.0);
+
+        psolver.template apply_lgf_IF<r_i_type, r_i_type>(0.0);
+
+        up_and_down<u_i_type>();
+        //nonlinear<u_i_type, g_i_type>(0.0);
+        //add<g_i_type, r_i_type>();
+
+        lin_sys_with_ib_solve(0.0, false);
+
+        // ******************************************************************
+        copy<u_i_type, u_type>();
+        copy<d_i_type, p_type>(0.0);
         // ******************************************************************
     }
 
@@ -872,7 +984,7 @@ private:
     }
 
 
-    void lin_sys_with_ib_solve(float_type _alpha) noexcept
+    void lin_sys_with_ib_solve(float_type _alpha, bool write_prev_force = true) noexcept
     {
         auto client=domain_->decomposition().client();
 
@@ -903,7 +1015,7 @@ private:
                     lsolver.template ib_solve<face_aux2_type>(_alpha, T_stage_);
                     ));
 
-        domain_->ib().force_prev(stage_idx_) = domain_->ib().force();
+        if (write_prev_force) domain_->ib().force_prev(stage_idx_) = domain_->ib().force();
         //domain_->ib().scales(1.0/coeff_a(stage_idx_, stage_idx_));
 
         pcout<< "IB  solved in "<<t_ib.count() << std::endl;
@@ -1189,6 +1301,7 @@ private:
     bool write_restart_=false;
     bool updating_source_max_ = false;
     bool all_time_max_;
+    bool use_adaptation_correction;
     int restart_base_freq_;
     int adapt_count_;
 

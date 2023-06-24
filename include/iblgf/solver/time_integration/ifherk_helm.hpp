@@ -877,7 +877,7 @@ class Ifherk_HELM
                                 if (!domain_->is_client()) return;
                                 pad_velocity_refFourier<u_type, u_type>(true);
                              }
-                             /*if ((adapt_Fourier && FourierRefMeshUpdate) || 
+                             if ((adapt_Fourier && FourierRefMeshUpdate) || 
                                 (base_mesh_update_ ||
                                  ((T_ - T_last_vel_refresh_) /
                                          (Re_ * dx_base_ * dx_base_) * 3.3 >
@@ -885,7 +885,7 @@ class Ifherk_HELM
                              {
                                         adapt_corr_time_step();
 
-                             }*/
+                             }
                              else
                              {
                                  if (!domain_->is_client()) return;

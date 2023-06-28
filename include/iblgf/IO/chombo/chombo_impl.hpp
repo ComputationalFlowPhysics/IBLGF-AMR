@@ -1510,7 +1510,7 @@ class Chombo
             offset_vector.push_back(w);
             for (int j = 0; j < 19; j++)
             {
-                std::vector<int> v;
+                std::vector<offset_type> v;
                 offset_vector[i].push_back(v);
             }
         }

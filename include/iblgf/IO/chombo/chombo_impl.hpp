@@ -52,7 +52,7 @@ class Chombo
     using index_list_t = typename HDF5File::index_list_t;
 
     using key_type = typename Domain::key_t;
-    using offset_type = int;
+    using offset_type = unsigned long long;
     using offset_vector = std::vector<offset_type>;
 
     using map_type = typename boost::unordered_map<key_type, offset_type>;

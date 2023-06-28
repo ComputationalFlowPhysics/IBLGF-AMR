@@ -1181,6 +1181,11 @@ class Chombo
         {
             std::string name = std::string(T::name());
             if (!T::output()) return;
+            std::string tmp("abcd");
+            for (int i = 0; i < tmp.length(); i++) {
+                tmp[i] = name[name.length() - i - 1];
+            }
+            if (tmp == "laer") return; //laer backwards is real, no longer writing real in the restart and output
             if (T::nFields() == 1) components_.push_back(name);
             else
                 for (std::size_t fidx = 0; fidx < T::nFields(); ++fidx)

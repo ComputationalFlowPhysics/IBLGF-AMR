@@ -423,7 +423,7 @@ class Chombo
                                                     if (file_idx_1 < 0)
                                                         continue;
 
-                                                    long long offset =
+                                                    offset_type offset =
                                                         box_offset +
                                                         (component_idx +
                                                             field_idx) *
@@ -544,7 +544,7 @@ class Chombo
                                                 continue;
                                             if (file_idx_1 < 0) continue;
 
-                                            int offset =
+                                            offset_type offset =
                                                 box_offset +
                                                 (component_idx + field_idx) *
                                                     file_b_dscriptr

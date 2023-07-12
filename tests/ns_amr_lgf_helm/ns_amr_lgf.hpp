@@ -223,6 +223,9 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
 		read_diff_Nmode = simulation_.dictionary_->template get_or<bool>("read_diff_Nmode", false);
 		if (read_diff_Nmode) input_Nmode = simulation_.dictionary_->template get<int>("input_Nmode");
 
+		wake_dist = simulation_.dictionary_->template get_or<float_type>(
+			"wake_dist", 100.0); //does not refine to the finest level outside of this region
+
 		//bool subtract_non_leaf_ = simulation_.dictionaty()->template get_or<bool>("subtract_non_leaf", true);
 
 		if (dt_ < 0) dt_ = dx_ * cfl_;
@@ -533,6 +536,9 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
 			if (!it->is_leaf() && !it->is_correction()) continue;
 			if (it->is_leaf() && it->is_correction()) continue;
 
+
+
+
 			int l1=-1;
 			int l2=-1;
 			int l3=-1;
@@ -548,6 +554,40 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
 
 			int l=std::max(std::max(l1,l2),l3);
 			//int l = std::max(l1,l2);
+
+
+			auto dx_level = domain_->dx_base() / std::pow(2, it->refinement_level());
+
+			bool outOfWake = false;
+
+			if (!it->is_ib() && 
+				 ((it->refinement_level()==(nLevelRefinement_) && l != -1) || (it->refinement_level()==(nLevelRefinement_ - 1) && l == 1))) {
+
+				for (auto& n : it->data())
+				{
+					
+
+					auto n_coord = n.level_coordinate();
+					int n_x = n_coord.x();
+					int n_y = n_coord.y();
+
+					float_type x = static_cast<float_type>(n_x) * dx_level;
+					float_type y = static_cast<float_type>(n_y) * dx_level;
+
+					if (x > wake_dist) {
+						if (it->refinement_level()==(nLevelRefinement_)) {
+							l = -1;
+						}
+						else {
+							l = 0;
+						}
+						break;
+					}
+
+					
+				}
+			}
+
 
 			if( l!=0)
 			{
@@ -1294,6 +1334,8 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
 
 	bool read_diff_Nmode = false;
 	int input_Nmode;
+
+	float_type wake_dist = 100;
 	float_type w_perturb;
 	float_type c_z;
 

@@ -1139,7 +1139,7 @@ private:
             }
         }
 
-        //clean_leaf_correction_boundary<edge_aux_type>(domain_->tree()->base_level(), true, 2);
+        clean_leaf_correction_boundary<edge_aux_type>(domain_->tree()->base_level(), true, 2);
         // add background velocity
         copy<Source, face_aux_type>();
         domain::Operator::add_field_expression<face_aux_type>(domain_, simulation_->frame_vel(), T_stage_, -1.0);

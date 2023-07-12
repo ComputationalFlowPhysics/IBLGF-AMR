@@ -130,6 +130,9 @@ class Ifherk_HELM
 
         adapt_Fourier = _simulation->dictionary()->template get_or<bool>(
             "adapt_Fourier", false);
+
+        use_adaptation_correction = _simulation->dictionary()->template get_or<bool>(
+            "use_adaptation_correction", true);
         /*const int l_max = domain_->tree()->depth();
         const int l_min = domain_->tree()->base_level();
         const int nLevels = l_max - l_min;
@@ -567,7 +570,7 @@ class Ifherk_HELM
 
         pcout << "restart: write" << std::endl;
         simulation_->write("", true);
-
+        
         write_info();
         world.barrier();
     }
@@ -658,6 +661,8 @@ class Ifherk_HELM
         world.barrier();
         pcout << "- writing at T = " << T_ << ", n = " << n_step_ << std::endl;
         simulation_->write(fname(n_step_));
+        simulation_->writeWithCorr(fname(n_step_));
+
         //simulation_->domain()->tree()->write("tree_restart.bin");
         world.barrier();
         //simulation_->domain()->tree()->read("tree_restart.bin");
@@ -883,7 +888,7 @@ class Ifherk_HELM
                                          (Re_ * dx_base_ * dx_base_) * 3.3 >
                                      7))) 
                              {
-                                        adapt_corr_time_step();
+                                if (use_adaptation_correction) adapt_corr_time_step();
 
                              }
                              else
@@ -2289,6 +2294,8 @@ class Ifherk_HELM
     float_type perturb_nonlin = 0.0;
 
     int max_Fourier_ref_level_; //max level for Fourier Refinement
+
+    bool use_adaptation_correction;
 
     
 

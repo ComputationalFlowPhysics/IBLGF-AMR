@@ -121,6 +121,20 @@ class H5_io
 
     }
 
+    template<typename Field>
+    void read_h5_DiffNmode(std::string _filename, std::string read_field, Domain* _lt, int N_input_mode)
+    {
+        pcout << "Start reading file -> " << _filename << std::endl;
+        boost::mpi::communicator world;
+
+        auto octant_blocks = blocks_list_build(_lt,true,true);
+
+        hdf5_file<Dim> chombo_file(_filename, true);
+        chombo_t ch_writer(octant_blocks);  // Initialize writer with vector of octants
+        ch_writer.template read_u_Diff_Nmode<Field>(&chombo_file, read_field, octant_blocks, _lt, N_input_mode);
+
+    }
+
     void write_h5(
         std::string _filename, Domain* _lt, bool include_correction = false,  bool base_correction_only = true)
     {

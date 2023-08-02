@@ -6480,6 +6480,129 @@ class NewtonIteration
         }
     }
 
+
+    template<class Source_face, class Source_cell, class Target_face, class Target_cell>
+    void NewtonRHS_No_nonlinear(force_type& force_source, force_type& force_target) noexcept
+    {
+        if (domain_->is_server())
+            return;
+        auto client = domain_->decomposition().client();
+
+        boost::mpi::communicator world;
+
+        pad_velocity<Source_face, Source_face>(true);
+
+        clean<laplacian_face_type>();
+        clean<u_i_bc_type>();
+        clean<edge_aux_type>();
+
+        //clean<r_i_T_type>(); //use r_i as the result of applying Jcobian in the first block
+        //clean<cell_aux_T_type>(); //use cell aux_type to be the second block
+        clean<Target_face>();
+        clean<Target_cell>();
+        real_coordinate_type tmp_coord(0.0);
+        std::fill(force_target.begin(), force_target.end(),
+            tmp_coord); //use forcing tmp to store the last block,
+            //use forcing_old to store the forcing at previous Newton iteration
+
+
+        //curl<Source_face, edge_aux_type>();
+
+        domain_->client_communicator().barrier();
+        mDuration_type t_lgf(0);
+        //TIME_CODE(t_lgf, SINGLE_ARG(Vel_from_vort<edge_aux_type, u_i_bc_type>();));
+        domain_->client_communicator().barrier();
+        //pcout << "BCs solved in " << t_lgf.count() << std::endl;
+
+        //copy_base_level_BC<u_i_bc_type, Source_face>();
+
+        //pcout << "Copied BC "  << std::endl;
+
+        //domain_->client_communicator().barrier();
+
+        laplacian<Source_face, laplacian_face_type>();
+
+        //pcout << "Computed Laplacian " << std::endl;
+
+        //nonlinear<Source_face, g_i_type>();
+
+        //pcout << "Computed Nonlinear Jac " << std::endl;
+
+        add<g_i_type, Target_face>(-1);
+
+        add<laplacian_face_type, Target_face>(1.0 / Re_);
+
+        clean<face_aux_tmp_type>();
+
+        if (!p_set_zero) clean_leaf_correction_boundary<Source_cell>(domain_->tree()->base_level(), true, 1);
+        gradient<Source_cell, face_aux_tmp_type>(-1.0);
+
+        //pcout << "Computed Gradient" << std::endl;
+        //add<face_aux_tmp_type, Target_face>();
+
+        lsolver.template smearing<face_aux_tmp_type>(force_source, false);
+
+        //pcout << "Computed Smearing" << std::endl;
+
+        add<face_aux_tmp_type, Target_face>(1.0);
+
+        divergence<Source_face, Target_cell>(-1.0);
+
+        //pcout << "Computed Divergence" << std::endl;
+
+        lsolver.template projection<Source_face>(
+            force_target); //need to change this vector in the bracket
+
+        auto u_f = simulation_->bc_vel();
+
+        
+
+        for (std::size_t i=0; i<force_target.size(); ++i)
+        {
+            if (domain_->ib().rank(i)!=comm_.rank())
+                continue;
+
+            for (std::size_t d=0; d<force_target[0].size(); ++d) {
+                if (world.rank() != domain_->ib().rank(i)) continue;
+                auto ib_coord = domain_->ib().coordinate(i);
+                //coordinate left to be default intentially to set rotational velocity to be 0
+                float_type u_inf = u_f(d, 5, ib_coord);
+                force_target[i][d] -= u_inf;
+            }
+        }
+    }
+
+
+    template<class Source_face_W, class Source_face_U, class Target_face>
+    void NewtonRHS_nonlinear() noexcept
+    {
+        if (domain_->is_server())
+            return;
+        auto client = domain_->decomposition().client();
+
+        boost::mpi::communicator world;
+
+        //pad_velocity<Source_face_W, Source_face_W>(true);
+        //pad_velocity<Source_face_U, Source_face_U>(true);
+
+        clean<laplacian_face_type>();
+        clean<u_i_bc_type>();
+        clean<edge_aux_type>();
+
+        //clean<r_i_T_type>(); //use r_i as the result of applying Jcobian in the first block
+        //clean<cell_aux_T_type>(); //use cell aux_type to be the second block
+        clean<Target_face>();
+
+        clean<g_i_type>();
+        
+
+        nonlinear<Source_face_W, Source_face_U, g_i_type>();
+
+        //pcout << "Computed Nonlinear Jac " << std::endl;
+
+        add<g_i_type, Target_face>(-1);
+    }
+
     template<class Source_face, class Source_cell, class Target_face, class Target_cell>
     void ComputeForcing(force_type& force_target) noexcept
     {
@@ -8041,6 +8164,69 @@ class NewtonIteration
         {
             client->template buffer_exchange<edge_aux_type>(l);
             //if (l == domain_->tree()->base_level()) clean_leaf_correction_boundary<edge_aux_type>(l, true, 1);
+
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
+
+                domain::Operator::nonlinear<face_aux_type, edge_aux_type,
+                    Target>(it->data());
+
+                for (std::size_t field_idx = 0; field_idx < Target::nFields();
+                     ++field_idx)
+                {
+                    auto& lin_data =
+                        it->data_r(Target::tag(), field_idx).linalg_data();
+                    lin_data *= _scale;
+                }
+            }
+
+            //client->template buffer_exchange<Target>(l);
+            //clean_leaf_correction_boundary<Target>(l, true,2);
+        }
+
+        //clean_leaf_correction_boundary<Target>(domain_->tree()->base_level(), true,2);
+    }
+
+    template<class Source_W, class Source_U, class Target>
+    void nonlinear(float_type _scale = 1.0) noexcept
+    {
+        clean<edge_aux_type>();
+        clean<Target>();
+        clean<face_aux_type>();
+
+        up_and_down<Source>();
+
+        auto       client = domain_->decomposition().client();
+        const auto dx_base = domain_->dx_base();
+
+        for (int l = domain_->tree()->base_level();
+             l < domain_->tree()->depth(); ++l)
+        {
+            client->template buffer_exchange<Source_W>(l);
+
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
+
+                const auto dx_level =
+                    dx_base / math::pow2(it->refinement_level());
+                domain::Operator::curl<Source_W, edge_aux_type>(it->data(),
+                    dx_level);
+            }
+        }
+
+        //clean_leaf_correction_boundary<edge_aux_type>(domain_->tree()->base_level(), true, 2);
+        // add background velocity
+        copy<Source_U, face_aux_type>();
+        domain::Operator::add_field_expression<face_aux_type>(domain_,
+            simulation_->frame_vel(), 5, -1.0);
+
+        for (int l = domain_->tree()->base_level();
+             l < domain_->tree()->depth(); ++l)
+        {
+            client->template buffer_exchange<edge_aux_type>(l);
+            clean_leaf_correction_boundary<edge_aux_type>(l, false, 2);
 
             for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
             {

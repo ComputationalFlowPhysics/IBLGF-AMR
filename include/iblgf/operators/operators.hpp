@@ -79,7 +79,7 @@ struct Operator
             if (!it->has_data() || !it->data().is_allocated()) continue;
             int Dim = domain->dimension();
 
-            if (Dim == 2)
+            /*if (Dim == 2)
             {
                 int idx2D[it->num_neighbors()];
                 for (int i = 0; i < it->num_neighbors(); i++) { idx2D[i] = 1; }
@@ -127,7 +127,7 @@ struct Operator
                         }
                     }
                 }
-            }
+            }*/
 
             for (std::size_t i = 0; i < it->num_neighbors(); ++i)
             {
@@ -169,16 +169,16 @@ struct Operator
                                     xt::range(N + 2 - clean_width, N + 3)) *=
                                     0.0;
                         }
-                        /*if (Dim == 2) {
-			if (i==1)
-			    view(lin_data,xt::all(),xt::range(0,clean_width))  *= 0.0;
-			else if (i==3)
-			    view(lin_data,xt::range(0,clean_width),xt::all())  *= 0.0;
-			else if (i==5)
-			    view(lin_data,xt::range(N+2-clean_width,N+3),xt::all())  *= 0.0;
-			else if (i==7)
-			    view(lin_data,xt::all(),xt::range(N+2-clean_width,N+3))  *= 0.0;
-			}*/
+                        if (Dim == 2) {
+                            if (i==1)
+                                view(lin_data,xt::all(),xt::range(0,clean_width))  *= 0.0;
+                            else if (i==3)
+                                view(lin_data,xt::range(0,clean_width),xt::all())  *= 0.0;
+                            else if (i==5)
+                                view(lin_data,xt::range(N+2-clean_width,N+3),xt::all())  *= 0.0;
+                            else if (i==7)
+                                view(lin_data,xt::all(),xt::range(N+2-clean_width,N+3))  *= 0.0;
+                        }
                     }
                 }
             }
@@ -372,7 +372,7 @@ struct Operator
 
                 int Dim = domain->dimension();
 
-                if (Dim == 2)
+                /*if (Dim == 2)
                 {
                     int idx2D[it->num_neighbors()];
                     for (int i = 0; i < it->num_neighbors(); i++)
@@ -452,7 +452,7 @@ struct Operator
 #endif
                         }
                     }
-                }
+                }*/
 
                 for (std::size_t i = 0; i < it->num_neighbors(); ++i)
                 {
@@ -493,6 +493,22 @@ struct Operator
                                         xt::all()) *= 0.0;
                                 else if (i == 22)
                                     view(lin_data, xt::all(), xt::all(),
+                                        xt::range(N + 2 - clean_width,
+                                            N + 3)) *= 0.0;
+                            }
+                            else if (Dim == 2) {
+                                if (i == 1)
+                                    view(lin_data, xt::all(),
+                                        xt::range(0, clean_width)) *= 0.0;
+                                else if (i == 3)
+                                    view(lin_data, xt::range(0, clean_width),
+                                        xt::all()) *= 0.0;
+                                else if (i == 5)
+                                    view(lin_data,
+                                        xt::range(N + 2 - clean_width, N + 3),
+                                        xt::all()) *= 0.0;
+                                else if (i == 7)
+                                    view(lin_data, xt::all(),
                                         xt::range(N + 2 - clean_width,
                                             N + 3)) *= 0.0;
                             }

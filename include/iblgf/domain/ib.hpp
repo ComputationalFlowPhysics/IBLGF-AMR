@@ -71,11 +71,17 @@ class IB
         read_points();
 
         // will add more, default is yang4
-        ddf_radius_ = 1.5;
-        safety_dis_ = 5.0/(Re*dx_ib_)+1.0;
+        // ddf_radius_ = 1.5;
+        ddf_radius_ = 2.5;
+        safety_dis_ = 5.0/(std::sqrt(Re)*dx_ib_)+1.0;
+
+        //safety_dis_ = 5.0/(Re*dx_ib_)+1.0;
 
         std::function<float_type(float_type x)> delta_func_1d_ =
             [this](float_type x) { return this->roma(x); };
+
+        //std::function<float_type(float_type x)> delta_func_1d_ =
+        //    [this](float_type x) { return this->yang4(x); };
 
         this->delta_func_ = [this, delta_func_1d_](real_coordinate_type x) {
 	    if (Dim == 3) {
@@ -458,11 +464,17 @@ class IB
         // this function scale the block to the finest level and compare with
         // the influence region of the ib point
 
+        /*float_type added_radius = 0;
+        if (radius_level == 2)
+            added_radius += ddf_radius_+safety_dis_+10.0;
+        else if (radius_level == 1)
+            added_radius += ddf_radius_+2.0;*/
+
         float_type added_radius = 0;
         if (radius_level == 2)
             added_radius += ddf_radius_+safety_dis_+10.0;
         else if (radius_level == 1)
-            added_radius += ddf_radius_+2.0;
+            added_radius += ddf_radius_+5.0;
 
         b_dscrptr.level_scale(IBlevel_);
 

@@ -72,14 +72,16 @@ class IB
 
         // will add more, default is yang4
         // ddf_radius_ = 1.5;
-        ddf_radius_ = 2.5;
-        safety_dis_ = 5.0/(std::sqrt(Re)*dx_ib_)+1.0;
+        ddf_radius_ = 4.5;
+        //safety_dis_ = 5.0/(std::sqrt(Re)*dx_ib_)+1.0;
 
-        //safety_dis_ = 5.0/(Re*dx_ib_)+1.0;
+        safety_dis_ = 5.0/(Re*dx_ib_)+1.0;
+
+        //std::function<float_type(float_type x)> delta_func_1d_ =
+        //    [this](float_type x) { return this->roma(x); };
 
         std::function<float_type(float_type x)> delta_func_1d_ =
-            [this](float_type x) { return this->roma(x); };
-
+            [this](float_type x) { return this->yang3(x); };
         //std::function<float_type(float_type x)> delta_func_1d_ =
         //    [this](float_type x) { return this->yang4(x); };
 

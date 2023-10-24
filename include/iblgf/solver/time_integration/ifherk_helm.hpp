@@ -83,6 +83,7 @@ class Ifherk_HELM
     using u_i_type = typename Setup::u_i_type;
     using u_i_real_type = typename Setup::u_i_real_type;
     using vort_i_real_type = typename Setup::vort_i_real_type;
+    using vort_mag_real_type = typename Setup::vort_mag_real_type;
     using r_i_real_type = typename Setup::r_i_real_type;
     using face_aux_real_type = typename Setup::face_aux_real_type;
 
@@ -2155,10 +2156,41 @@ class Ifherk_HELM
             }
         }
 
+        //get vort_mag for visualization
+
         auto t1 = clock_type::now();
 
         mDuration_type ms_int = t1 - t0;
+
         pcout << "Fourier transform with curl_helmholtz solved in "
+              << ms_int.count() << std::endl;
+
+        int sep = 3*N_modes; 
+
+        for (auto it = domain_->begin(); it != domain_->end(); ++it)
+        {
+            if (!it->locally_owned() || !it->has_data() ||
+                !it->data().is_allocated())
+                continue;
+
+
+            for (std::size_t field_idx = 0; field_idx < sep;++field_idx)
+            {
+                int comp_idx = field_idx/sep;
+                for (auto& n : it->data().node_field())
+                {
+                    float_type vort = std::sqrt(n(vort_i_real_type::tag(), field_idx)         * n(vort_i_real_type::tag(), field_idx) +
+                                                n(vort_i_real_type::tag(), field_idx + sep)   * n(vort_i_real_type::tag(), field_idx + sep) + 
+                                                n(vort_i_real_type::tag(), field_idx + sep*2) * n(vort_i_real_type::tag(), field_idx + sep*2));
+                    auto coord = n.global_coordinate() * dx_base;
+                    n(vort_mag_real_type::tag(), field_idx) = vort;
+                }
+            }
+        }
+
+
+        
+        pcout << "Computed vort_mag"
               << ms_int.count() << std::endl;
 
         //clean_leaf_correction_boundary<edge_aux_type>(domain_->tree()->base_level(), true, 2);

@@ -116,6 +116,9 @@ class Ifherk
         b_f_eps = _simulation->dictionary()->template get_or<float_type>(
             "b_f_eps", 1e-3);
 
+        use_filter = _simulation->dictionary()->template get_or<bool>(
+            "use_filter", true);
+
         cg_threshold_ = simulation_->dictionary_->template get_or<float_type>("cg_threshold",1e-3);
         cg_max_itr_ = simulation_->dictionary_->template get_or<int>("cg_max_itr", 40);
 
@@ -576,8 +579,14 @@ class Ifherk
 
         //pad_velocity<Source_face, Source_face>(true);
 
+        
+
+
+
         clean<face_aux2_type>();
         clean<edge_aux_type>();
+        clean<w_1_type>();
+        clean<w_2_type>();
 
         //clean<r_i_T_type>(); //use r_i as the result of applying Jcobian in the first block
         //clean<cell_aux_T_type>(); //use cell aux_type to be the second block
@@ -590,7 +599,18 @@ class Ifherk
         std::fill(force_target.begin(), force_target.end(),
             tmp_coord); //use forcing tmp to store the last block,
             //use forcing_old to store the forcing at previous Newton iteration
+        //computing wii in Andre's paper
+        real_coordinate_type tmp_coord1(1.0);
+        auto forcing_1 = force_target;
+        std::fill(forcing_1.begin(), forcing_1.end(),
+            tmp_coord1);
 
+        lsolver.template smearing<w_1_type>(forcing_1, true);
+        computeWii<w_1_type>();
+        //finish computing Wii
+
+
+        
         laplacian<Source_face, face_aux2_type>();
 
         clean<r_i_type>();
@@ -647,8 +667,21 @@ class Ifherk
             }
 
             if (std::sqrt(r2_new/f2) < cg_threshold_) {
+		if (!use_filter) {
+		    return;
+		}
+		else {
+                clean<r_i_type>();
+                lsolver.template smearing<r_i_type>(force_target, false);
+                product<r_i_type, w_1_type, w_2_type>();
+                auto Ap = r;
+                cleanVec(Ap,false);
+                lsolver.template projection<w_2_type>(Ap);
+
+                force_target = Ap;
                 
                 return;
+		}
             }
             float_type beta = r2_new/r2_old;
             //p = r+beta*p;
@@ -1587,6 +1620,53 @@ private:
         }
     }
 
+    template<typename Field>
+    void computeWii() noexcept
+    {
+        auto dx_base = domain_->dx_base();
+        for (auto it = domain_->begin(); it != domain_->end(); ++it)
+		{
+
+			if (!it->locally_owned()) continue;
+
+			auto dx_level = dx_base / std::pow(2, it->refinement_level());
+			auto scaling = std::pow(2, it->refinement_level());
+
+            for (std::size_t field_idx = 0; field_idx < Field::nFields();
+                 ++field_idx)
+            {
+                for (auto& n:it->data().node_field()) {
+                    float_type val = n(Field::tag(), field_idx);
+
+                    if (std::fabs(val) > 1e-4) {
+                        n(Field::tag(), field_idx) = 1/val;
+                    }
+                }
+            }
+		}
+    }
+
+    template<typename From1, typename From2, typename To>
+    void product() noexcept
+    {
+        static_assert(From1::nFields() == To::nFields(),
+            "number of fields doesn't match when copy");
+
+        static_assert(From2::nFields() == To::nFields(),
+            "number of fields doesn't match when copy");
+
+        for (auto it = domain_->begin(); it != domain_->end(); ++it)
+        {
+            if (!it->locally_owned() || !it->has_data()) continue;
+            for (std::size_t field_idx = 0; field_idx < From1::nFields();
+                 ++field_idx)
+            {
+                for (auto& n:it->data().node_field())
+                    n(To::tag(), field_idx) = n(From1::tag(), field_idx) * n(From2::tag(), field_idx);
+            }
+        }
+    }
+
     template<typename From, typename To>
     void copy(float_type scale = 1.0) noexcept
     {
@@ -1636,6 +1716,8 @@ private:
     int restart_n_last_ = 0;
     int nLevelRefinement_;
     int stage_idx_ = 0;
+
+    bool use_filter = true; //if use filter when computing force
 
     bool use_restart_=false;
     bool just_restarted_=false;

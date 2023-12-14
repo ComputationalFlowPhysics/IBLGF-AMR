@@ -13,6 +13,10 @@
 #ifndef IBLGF_INCLUDED_NS_AMR_LGF_HPP
 #define IBLGF_INCLUDED_NS_AMR_LGF_HPP
 
+//Compiler flag for convergence tests
+//undefine this to save memory when running large cases
+//#define CONVERGENCE_TEST
+
 #ifndef DEBUG_IFHERK
 #define DEBUG_IFHERK
 #endif
@@ -44,9 +48,9 @@
 #include <iblgf/utilities/convolution.hpp>
 #include <iblgf/interpolation/interpolation.hpp>
 #include <iblgf/solver/poisson/poisson.hpp>
-#include <iblgf/solver/time_integration/ifherk.hpp>
+#include <iblgf/solver/time_integration/ifherk_helm.hpp>
 
-#include "../../setups/setup_base.hpp"
+#include "../../setups/setup_helmholtz.hpp"
 #include <iblgf/operators/operators.hpp>
 
 namespace iblgf
@@ -56,34 +60,38 @@ const int Dim = 2;
 struct parameters
 {
     static constexpr std::size_t Dim = 2;
+	static constexpr std::size_t N_modes = 32;
+	static constexpr std::size_t PREFAC  = 2; //2 for complex values 
     // clang-format off
     REGISTER_FIELDS
     (
     Dim,
      (
         //name               type        Dim   lBuffer  hBuffer, storage type
-         (error_u          , float_type, 2,    1,       1,     face,true  ),
-         (error_p          , float_type, 1,    1,       1,     cell,false ),
-         (test             , float_type, 1,    1,       1,     cell,false ),
-        //IF-HERK
-         (u                , float_type, 2,    1,       1,     face,true  ),
-         (u_ref            , float_type, 2,    1,       1,     face,true  ),
-         (p_ref            , float_type, 1,    1,       1,     cell,true  ),
-         (p                , float_type, 1,    1,       1,     cell,true  ),
-         (w_num            , float_type, 1,    1,       1,     edge,false ),
-         (w_exact          , float_type, 1,    1,       1,     edge,false ),
-         (error_w          , float_type, 1,    1,       1,     edge,false ),
+#ifdef CONVERGENCE_TEST
+         (error_u          , float_type, 3*2*N_modes,    1,       1,     face,true ),
+         (error_p          , float_type, 1*2*N_modes,    1,       1,     cell,true ),
+		 (u_ref            , float_type, 3*2*N_modes,    1,       1,     face,true  ),
+         (p_ref            , float_type, 1*2*N_modes,    1,       1,     cell,true  ),
+         (w_num            , float_type, 1*2*N_modes,    1,       1,     edge,false ),
+         (w_exact          , float_type, 1*2*N_modes,    1,       1,     edge,false ),
+         (error_w          , float_type, 1*2*N_modes,    1,       1,     edge,false ),
          //for radial velocity
-         (exact_u_theta    , float_type, 2,    1,       1,     edge,false ),
-         (num_u_theta      , float_type, 2,    1,       1,     edge,false ),
-         (error_u_theta    , float_type, 2,    1,       1,     edge,false )
+         (exact_u_theta    , float_type, 3*2*N_modes,    1,       1,     edge,false ),
+         (num_u_theta      , float_type, 3*2*N_modes,    1,       1,     edge,false ),
+         (error_u_theta    , float_type, 3*2*N_modes,    1,       1,     edge,false ),
+#endif
+		 //IF-HERK
+         (u                , float_type, 3*2*N_modes,    1,       1,     face,true  ),
+         (p                , float_type, 1*2*N_modes,    1,       1,     cell,true  ),
+		 (test             , float_type, 1*2*N_modes,    1,       1,     cell,false )
     ))
     // clang-format on
 };
 
-struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
+struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
 {
-    using super_type =SetupBase<NS_AMR_LGF,parameters>;
+    using super_type =Setup_helmholtz<NS_AMR_LGF,parameters>;
     using vr_fct_t = std::function<float_type(float_type x, float_type y, int field_idx, bool perturbation)>;
 
     //Timings
@@ -91,85 +99,35 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
     using milliseconds = std::chrono::milliseconds;
     using duration_type = typename clock_type::duration;
     using time_point_type = typename clock_type::time_point;
+	using poisson_solver_t = typename super_type::poisson_solver_t;
+	static constexpr int N_modes = parameters::N_modes;
 
 	NS_AMR_LGF(Dictionary* _d)
 		: super_type(_d, [this](auto _d, auto _domain) {
 		return this->initialize_domain(_d, _domain);
 			})
+		, psolver(&this->simulation_, N_modes - 1)
 	{
 		if (domain_->is_client()) client_comm_ = client_comm_.split(1);
 		else
 			client_comm_ = client_comm_.split(0);
 
 		//smooth_start_ = simulation_.dictionary()->template get_or<bool>("smooth_start", false);
-		U_.resize(domain_->dimension());
+		U_.resize(3);
 		U_[0] = simulation_.dictionary()->template get_or<float_type>("Ux", 1.0);
 		U_[1] = simulation_.dictionary()->template get_or<float_type>("Uy", 0.0);
-		if (domain_->dimension()>2)
-			U_[2] = simulation_.dictionary()->template get_or<float_type>("Uz", 0.0);
+		
+		U_[2] = simulation_.dictionary()->template get_or<float_type>("Uz", 0.0);
 
 		smooth_start_ = simulation_.dictionary()->template get_or<bool>("smooth_start", false);
+		w_perturb = simulation_.dictionary()->template get_or<float_type>("w_pert", 0.000);
 
 		vortexType = simulation_.dictionary()->template get_or<int>("Vort_type", 0);
-
-		Omega = simulation_.dictionary()->template get_or<float_type>("Omega", 0.0);
-
-		//IntrpIBLevel = simulation_.dictionary()->template get_or<bool>("IntrpIBLevel", false); //intrp IB level, used if restart file is from coarser mesh
-
-		simulation_.bc_vel() =
-			[this](std::size_t idx, float_type t, auto coord = {0, 0})
-			{
-				float_type T0 = 0.5;
-
-				float_type r = std::sqrt((coord[0] * coord[0] + coord[1] * coord[1]));
-                float_type f_alpha = 0.0;
-				if (r < 0.25) {
-                    f_alpha = 0.0;
-                    /*if (r < 1e-12) {
-                        f_alpha = 0.0;
-                    }
-                    else {
-                        if (idx == 0) {
-                            f_alpha =  coord[1]/r/0.1*Omega;
-                        }
-                        else if (idx == 1) {
-                            f_alpha = -coord[0]/r/0.1*Omega;
-                        }
-                        else {
-                            f_alpha = 0.0;
-                        }
-                    }*/
-                }
-                else {
-                    if (idx == 0) { f_alpha = coord[1] / r / r * Omega; }
-                    else if (idx == 1)
-                    {
-                        f_alpha = -coord[0] / r / r * Omega;
-                    }
-                    else { f_alpha = 0.0; }
-                }
-
-				if (t<=0.0 && smooth_start_)
-					return 0.0;
-				else if (t<T0-1e-10 && smooth_start_)
-				{
-					float_type h1 = exp(-1/(t/T0));
-					float_type h2 = exp(-1/(1 - t/T0));
-
-					return -(U_[idx] + f_alpha) * (h1/(h1+h2));
-				}
-				else
-				{
-					return -(U_[idx] + f_alpha);
-				}
-			};
-
 
 		simulation_.frame_vel() =
 			[this](std::size_t idx, float_type t, auto coord = {0, 0})
 			{
 				float_type T0 = 0.5;
-
 				if (t<=0.0 && smooth_start_)
 					return 0.0;
 				else if (t<T0-1e-10 && smooth_start_)
@@ -177,11 +135,11 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 					float_type h1 = exp(-1/(t/T0));
 					float_type h2 = exp(-1/(1 - t/T0));
 
-					return -(U_[idx]) * (h1/(h1+h2));
+					return -U_[idx] * (h1/(h1+h2));
 				}
 				else
 				{
-					return -(U_[idx]);
+					return -U_[idx];
 				}
 			};
 
@@ -204,11 +162,13 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 		perturbation_ = simulation_.dictionary()->template get_or<bool>("perturbation", false);
 		vort_sep = simulation_.dictionary()->template get_or<float_type>("vortex_separation", 1.0 * R_);
 		hard_max_refinement_ = simulation_.dictionary()->template get_or<bool>("hard_max_refinement", false);
-		non_base_level_update = simulation_.dictionary()->template get_or<bool>("no_base_level_update", false);
-		NoMeshUpdate = simulation_.dictionary()->template get_or<bool>("no_mesh_update", false);
+		perturb_Fourier = simulation_.dictionary()->template get_or<bool>("perturb_Fourier", false);
 
 		auto domain_range = domain_->bounding_box().max() - domain_->bounding_box().min();
 		Lx = domain_range[0] * dx_;
+
+		c_z = simulation_.dictionary()->template get_or<float_type>(
+            "L_z", 1);
 
 
 
@@ -227,6 +187,9 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 
 		ic_filename_ = simulation_.dictionary_->template get_or<std::string>(
 			"hdf5_ic_name", "null");
+
+		ic_filename_2D_ = simulation_.dictionary_->template get_or<std::string>(
+			"hdf5_ic_name_2D", "null");
 
 		ref_filename_ = simulation_.dictionary_->template get_or<std::string>(
 			"hdf5_ref_name", "null");
@@ -248,6 +211,21 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 		global_refinement_ = simulation_.dictionary_->template get_or<int>(
 			"global_refinement", 0);
 
+		use_rand_perturb = simulation_.dictionary_->template get_or<bool>(
+			"use_rand_perturb", true);
+
+		pert_pow = simulation_.dictionary_->template get_or<int>(
+			"pert_pow", 5); //power scaling of perturbation for Fourier modes
+
+		bool use_tree_ = simulation_.dictionary_->template get_or<bool>("use_init_tree", false);
+		bool restart_2D_ = simulation_.dictionary_->template get_or<bool>("use_2D_restart", false);
+
+		read_diff_Nmode = simulation_.dictionary_->template get_or<bool>("read_diff_Nmode", false);
+		if (read_diff_Nmode) input_Nmode = simulation_.dictionary_->template get<int>("input_Nmode");
+
+		wake_dist = simulation_.dictionary_->template get_or<float_type>(
+			"wake_dist", 100.0); //does not refine to the finest level outside of this region
+
 		//bool subtract_non_leaf_ = simulation_.dictionaty()->template get_or<bool>("subtract_non_leaf", true);
 
 		if (dt_ < 0) dt_ = dx_ * cfl_;
@@ -261,10 +239,7 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 
 		//domain_->decomposition().subtract_non_leaf() = true;
 
-		domain_->register_adapt_condition()=
-			[this]( std::vector<float_type> source_max, auto& octs, std::vector<int>& level_change ) 
-			{return this->template adapt_level_change(source_max, octs, level_change);};
-
+		
 		/*domain_->register_adapt_condition() =
 			[this](auto octant, std::vector<float_type> source_max) {return this->template adapt_level_change<cell_aux_type, u_type>(octant, source_max); };*/
 
@@ -278,43 +253,92 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 				return this->refinement(octant, diff_level);
 		};
 		}
+		else {
+			domain_->register_refinement_condition() = [this](auto octant,
+			int diff_level) {
+				return this->refinement(octant, diff_level);
+		};
+		}
+
+		pcout << "Finished register refinement condition" << std::endl;
 
 		nIB_add_level_ = _d->get_dictionary("simulation_parameters")->template get_or<int>("nIB_add_level", 0);
 
 		domain_->ib().init(_d->get_dictionary("simulation_parameters"), domain_->dx_base(), nLevelRefinement_+nIB_add_level_, Re_);
 
-		if (!use_restart())
+
+		pcout << "Finished getting IB pts" << std::endl;
+
+		if (!use_restart() && !use_tree_)
 		{
 			domain_->init_refine(nLevelRefinement_, global_refinement_, nIB_add_level_);
 		}
 		else
 		{
-			//if (IntrpIBLevel) domain_->restart_list_construct_refIB(nLevelRefinement_, global_refinement_, nIB_add_level_);
 			domain_->restart_list_construct();
-
 			//domain_->init_refine(nLevelRefinement_, global_refinement_, nIB_add_level_);
 		}
+		//if (vortexType == 0) {
+		domain_->register_adapt_condition()=
+			[this]( std::vector<float_type> source_max, auto& octs, std::vector<int>& level_change ) 
+			{return this->template adapt_level_change(source_max, octs, level_change);};
+		//}
+
+		pcout << "Start distribute" << std::endl;
 
 		domain_->distribute<fmm_mask_builder_t, fmm_mask_builder_t>();
-		if (!use_restart()) { this->initialize(); }
+		if (!use_restart() && !use_tree_ && vortexType != 0) { this->initialize(); }
+		else if (!use_restart() && !use_tree_ && vortexType == 0) {
+			pcout << "start fresh, perturbing Fourier modes" << std::endl;
+			perturbIC();
+		}
+		else if (use_tree_) {simulation_.template read_h5_2D<u_type>(ic_filename_2D_, "u");}
+		else if (restart_2D_) {
+			pcout << "reading restart from 2D profile" << std::endl;
+			simulation_.template read_h5_2D<u_type>(simulation_.restart_field_dir(), "u");
+			perturbIC();
+		}
+		else if (read_diff_Nmode) {
+			pcout << "reading restart with diff N mode: " << input_Nmode << " Current: " << N_modes << std::endl;
+			simulation_.template read_h5_DiffNmode<u_type>(simulation_.restart_field_dir(), "u", input_Nmode);
+			perturbIC();
+		}
 		else
 		{
 			simulation_.template read_h5<u_type>(simulation_.restart_field_dir(), "u");
+			perturbIC();
 		}
 
 		boost::mpi::communicator world;
+		world.barrier();
+		if (world.rank() == 0) {
+			std::cout << "Number of nonnegative complex modes = " << N_modes << std::endl;
+		}
 		if (world.rank() == 0)
 			std::cout << "on Simulation: \n" << simulation_ << std::endl;
 	}
 
-	float_type run()
+	float_type run(int argc, char *argv[])
 	{
+		
 		boost::mpi::communicator world;
 
+		//simulation_.write("restarted_field.hdf5");
+		//std::cout << world.rank() << " start running" << std::endl;
+		PetscCall(PetscInitialize(&argc, &argv, (char*)0, NULL));
 		time_integration_t ifherk(&this->simulation_);
+
+		//ifherk.adapt(false);
+
+		
+
+		//std::cout << world.rank() << " ifherk initialized" << std::endl;
 
 		if (ic_filename_ != "null")
 			simulation_.template read_h5<u_type>(ic_filename_, "u");
+
+		/*if (ic_filename_2D_ != "null")
+			simulation_.template read_h5_2D<u_type>(ic_filename_2D_, "u");*/
 
 		mDuration_type ifherk_duration(0);
 		TIME_CODE(ifherk_duration, SINGLE_ARG(
@@ -323,6 +347,8 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 			pcout_c << "Time to solution [ms] " << ifherk_duration.count() << std::endl;
 
 		ifherk.clean_leaf_correction_boundary<u_type>(domain_->tree()->base_level(), true, 1);
+
+#ifdef CONVERGENCE_TEST
 
 		float_type maxNumVort = -1;
 
@@ -360,9 +386,10 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 					float_type r2 = x * x + y * y;
 					if (r2 > 4 * R_ * R_)
 					{
-						node(u_ref, 0) = 0.0;
-						node(u_ref, 1) = 0.0;
-						//node(u_ref, 2)=0.0;
+						for (int field_idx = 0; field_idx < u_type::nFields(); field_idx++) {
+							node(u, field_idx) = 0.0;
+							node(u_ref, field_idx) = 0.0;
+						}
 					}
 					float_type r__ = std::sqrt(x * x + y * y);
 					float_type t_final = dt_ * tot_steps_;
@@ -407,21 +434,38 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 		pcout << "the max numerical vorticity is " << maxNumVort << std::endl;
 		ifherk.clean_leaf_correction_boundary<u_type>(domain_->tree()->base_level(), true, 1);
 
-		float_type u1_inf = this->compute_errors<u_type, u_ref_type, error_u_type>(
+		float_type L_z = simulation_.dictionary_->template get_or<float_type>(
+            "L_z", 1.0);
+
+        //PREFAC = 1;
+
+        float_type dz = L_z/static_cast<float_type>(N_modes)/static_cast<float_type>(PREFAC);
+
+		float_type u1_inf = this->compute_errors_for_all<u_type, u_ref_type, error_u_type>(dz, "u1_", 0, N_modes*PREFAC, L_z);
+		float_type u2_inf = this->compute_errors_for_all<u_type, u_ref_type, error_u_type>(dz, "u2_", 1, N_modes*PREFAC, L_z);
+		float_type u3_inf = this->compute_errors_for_all<u_type, u_ref_type, error_u_type>(dz, "u3_", 2, N_modes*PREFAC, L_z);
+
+		/*float_type u1_inf = this->compute_errors<u_type, u_ref_type, error_u_type>(
 			std::string("u1_"), 0);
 		float_type u2_inf = this->compute_errors<u_type, u_ref_type, error_u_type>(
 			std::string("u2_"), 1);
+		float_type u3_inf = this->compute_errors<u_type, u_ref_type, error_u_type>(
+			std::string("u3_"), 2);
 		float_type u_t_inf = this->compute_errors<num_u_theta_type, exact_u_theta_type, error_u_theta_type>(
 			std::string("u_t_"), 0);
 		float_type u_r_inf = this->compute_errors<num_u_theta_type, exact_u_theta_type, error_u_theta_type>(
 			std::string("u_r_"), 1);
 
-		float_type w_inf = this->compute_errors<edge_aux_type, w_exact_type, error_w_type>(std::string("w_"), 0);
+		float_type w_inf = this->compute_errors<edge_aux_type, w_exact_type, error_w_type>(std::string("w_"), 0);*/
 		//float_type u3_linf=this->compute_errors<u_type, u_ref_type, error_u_type>(
 		//        std::string("u3_"), 2);
 
 		simulation_.write("final.hdf5");
 		return u1_inf;
+
+#else
+		return 0.0;
+#endif
 
 	}
 
@@ -490,10 +534,11 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 		{
 
 			if (!it->locally_owned()) continue;
-			
 			if (!it->is_leaf() && !it->is_correction()) continue;
 			if (it->is_leaf() && it->is_correction()) continue;
-			//if (it->refinement_level() == 0 && non_base_level_update) continue; 
+
+
+
 
 			int l1=-1;
 			int l2=-1;
@@ -509,19 +554,126 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 				l3=this->template adapt_levle_change_for_field<edge_aux_type>(it, source_max[1], false);
 
 			int l=std::max(std::max(l1,l2),l3);
+			//int l = std::max(l1,l2);
 
-			//l = 0;
 
-            /*if (it->is_leaf() && it->is_correction())
+			auto dx_level = domain_->dx_base() / std::pow(2, it->refinement_level());
 
+			bool outOfWake = false;
+
+			if (!it->is_ib() && 
+				 ((it->refinement_level()==(nLevelRefinement_) && l != -1) || (it->refinement_level()==(nLevelRefinement_ - 1) && l == 1))) {
+
+				for (auto& n : it->data())
+				{
+					
+
+					auto n_coord = n.level_coordinate();
+					int n_x = n_coord.x();
+					int n_y = n_coord.y();
+
+					float_type x = static_cast<float_type>(n_x) * dx_level;
+					float_type y = static_cast<float_type>(n_y) * dx_level;
+
+					if (x > wake_dist) {
+						if (it->refinement_level()==(nLevelRefinement_)) {
+							l = -1;
+						}
+						else {
+							l = 0;
+						}
+						break;
+					}
+
+					
+				}
+			}
+
+
+			if( l!=0)
+			{
+				if (it->is_leaf()&&!it->is_correction())
+				{
+					octs.emplace_back(it->key());
+					level_change.emplace_back(l);
+				}
+				else if (it->is_correction() && !it->is_leaf() && l2>0)
+				{
+					octs.emplace_back(it->key().parent());
+					level_change.emplace_back(l2);
+				}
+			}
+		}
+	}
+
+	template< class key_t >
+	void adapt_level_change_init(std::vector<float_type> source_max,
+			        std::vector<key_t>& octs,
+				        std::vector<int>&   level_change )
+	{
+		octs.clear();
+		level_change.clear();
+
+		float_type dx_base = domain_->dx_base();
+		int N_ext = domain_->block_extent()[0];
+		for (auto it = domain_->begin(); it != domain_->end(); ++it)
+		{
+
+			if (!it->locally_owned()) continue;
+			if (!it->is_leaf() && !it->is_correction()) continue;
+			if (it->is_leaf() && it->is_correction()) continue;
+
+
+			auto dx_level = dx_base / std::pow(2, it->refinement_level());
+
+            for (auto& n : it->data())
             {
-                l = -1;
+                
 
-                octs.emplace_back(it->key());
-                level_change.emplace_back(l);
-            }*/
+                auto n_coord = n.level_coordinate();
+                int n_x = n_coord.x();
+                int n_y = n_coord.y();
 
-            if( l!=0)
+				float_type x = static_cast<float_type>(n_x) * dx_level;
+                float_type y = static_cast<float_type>(n_y) * dx_level;
+
+                float_type half_block =
+                    static_cast<float_type>(N_ext) * dx_level / 2.0;
+                //z = static_cast<float_type>(k - center[2] + 0.5) * dx_level;
+
+                //tmp_w =  vor(x,y-0.5*vort_sep,0)+ vor(x,y+0.5*vort_sep,0);
+
+                float_type maxLevel = 4.0;
+                float_type max_c = std::max(std::fabs(x), std::fabs(y));
+                //float_type max_c = std::fabs(x) + std::fabs(y);
+                float_type rd = std::sqrt(x * x + y * y);
+                float_type bd = 2.4 / pow(2, it->refinement_level()) - half_block;
+
+                //float_type bd = 4.8 - 1.2*b.level() - half_block;
+                //if (max_c < bd) return true;
+
+                /*if (std::fabs(tmp_w) > 1.0 * pow(refinement_factor_, diff_level))
+					return true;*/
+                //}
+            }
+
+            int l1=-1;
+			int l2=-1;
+			int l3=-1;
+
+			if (!it->is_correction() && it->is_leaf())
+				l1=this->template adapt_levle_change_for_field<cell_aux_type>(it, source_max[0], true);
+
+			if (it->is_correction() && !it->is_leaf())
+				l2=this->template adapt_levle_change_for_field<correction_tmp_type>(it, source_max[0], false);
+
+			if (!it->is_correction() && it->is_leaf())
+				l3=this->template adapt_levle_change_for_field<edge_aux_type>(it, source_max[1], false);
+
+			int l=std::max(std::max(l1,l2),l3);
+			//int l = std::max(l1,l2);
+
+			if( l!=0)
 			{
 				if (it->is_leaf()&&!it->is_correction())
 				{
@@ -559,10 +711,13 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 	template<class Field, class OctantType>
 	int adapt_levle_change_for_field(OctantType it, float_type source_max, bool use_base_level_threshold)
 	{
-		if (vortexType != 0 || NoMeshUpdate) return 0;
-		if (it->refinement_level() == 0 && non_base_level_update) return 0; 
+
+#ifdef CONVERGENCE_TEST
+		return 0; //for testing purpose
+#endif
+		//if (vortexType != 0) return 0;
 		if (it->is_ib() && it->is_leaf())
-			if (it->refinement_level()<nLevelRefinement_+nIB_add_level_)
+			if (it->refinement_level()<(nLevelRefinement_+nIB_add_level_))
 				return 1;
 			else
 				return 0;
@@ -657,7 +812,7 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
      */
 	void initialize()
 	{
-		poisson_solver_t psolver(&this->simulation_);
+		//poisson_solver_t psolver(&this->simulation_);
 
 		boost::mpi::communicator world;
 		if (domain_->is_server()) return;
@@ -705,26 +860,30 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 
 				/***********************************************************/
 				float_type x = static_cast<float_type>
-					(coord[0] - center[0] * scaling) * dx_level;
+					(coord[0]) * dx_level;
 				float_type y = static_cast<float_type>
-					(coord[1] - center[1] * scaling) * dx_level;
+					(coord[1]) * dx_level;
 				//z = static_cast<float_type>
 				//(coord[2]-center[2]*scaling+0.5)*dx_level;
 
 				//node(edge_aux,0) = vor(x,y-0.5*vort_sep,0)+ vor(x,y+0.5*vort_sep,0);
-				node(edge_aux, 0) = vor(x, y, 0);
+				// node(edge_aux, 0) = vor(x, y, 0);
+
+				//for (int i = 0; i < N_modes; i++) {
+					//node(edge_aux, 2 * 2 * N_modes + i * 2) = exp(-i*i)*vor(x, y, 0);
+				//}
+
+				node(edge_aux, 2 * 2 * N_modes) = vor(x, y, 0);
+
+				//node(edge_aux, 2 * 2 * N_modes + 2) = 0.1 * vor(x, y, 0);
 				
-				x = static_cast<float_type>(coord[0]-center[0]*scaling)*dx_level;
-				y = static_cast<float_type>(coord[1]-center[1]*scaling+0.5)*dx_level;
-				node(u, 0) = u_vort(x,y,0,0);
-				x = static_cast<float_type>(coord[0]-center[0]*scaling+0.5)*dx_level;
-				y = static_cast<float_type>(coord[1]-center[1]*scaling)*dx_level;
-				node(u, 1) = u_vort(x,y,0,1);
-			}
+				
+
+            }
 
 		}
 
-		//psolver.template apply_lgf<edge_aux_type, stream_f_type>();
+		psolver.template apply_lgf_and_helm<edge_aux_type, stream_f_type>(N_modes, 3);
 		auto client = domain_->decomposition().client();
 
 		for (int l = domain_->tree()->base_level();
@@ -732,21 +891,192 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 		{
 			//client->template buffer_exchange<stream_f_type>(l);
 
-			/*for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+			for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
 			{
 				if (!it->locally_owned() || !it->has_data()) continue;
 				const auto dx_level =
 					dx_base / std::pow(2, it->refinement_level());
-				domain::Operator::curl_transpose<stream_f_type, u_type>(
-					it->data(), dx_level, -1.0);
-			}*/
+				domain::Operator::curl_transpose_helmholtz_complex<stream_f_type, u_type>(
+					it->data(), dx_level, N_modes, c_z, -1.0);
+			}
 			client->template buffer_exchange<u_type>(l);
 		}
 
 	}
 
+    void perturbIC()
+    {
+        if (w_perturb < 1e-10) return;
+        //poisson_solver_t psolver(&this->simulation_);
 
-	float_type vortex_ring_vor_fat_ic(float_type x, float_type y, int field_idx, bool perturbation)
+        boost::mpi::communicator world;
+        if (domain_->is_server()) return;
+        auto center = (domain_->bounding_box().max() -
+                          domain_->bounding_box().min() + 1) /
+                          2.0 +
+                      domain_->bounding_box().min();
+
+        // Adapt center to always have peak value in a cell-center
+        //center+=0.5/std::pow(2,nRef);
+        const float_type dx_base = domain_->dx_base();
+
+        if (ic_filename_ != "null") return;
+
+        // Voriticity IC
+        for (auto it = domain_->begin(); it != domain_->end(); ++it)
+        {
+            if (!it->locally_owned()) continue;
+
+            auto dx_level = dx_base / std::pow(2, it->refinement_level());
+            auto scaling = std::pow(2, it->refinement_level());
+
+            for (auto& node : it->data())
+            {
+
+				const auto& coord = node.level_coordinate();
+                for (int i = 0; i < N_modes; i++)
+                {
+                    float_type mag_i = -static_cast<float_type>((i) * (i));
+					float_type mag = std::exp(mag_i*pert_pow);
+                    for (int j = 0; j < 3; j++)
+                    {
+#ifdef CONVERGENCE_TEST
+						if (j != 2) {
+							node(edge_aux, j * N_modes * 2 + i * 2) = 0.0;
+							node(edge_aux, j * N_modes * 2 + i * 2+1) = 0.0;
+							continue;
+						}
+#endif
+						
+                        float_type x = static_cast<float_type>(
+                                           coord[0]) *
+                                       dx_level;
+                        float_type y = static_cast<float_type>(
+                                           coord[1]) *
+                                       dx_level;
+
+						float_type r2 = x*x + y*y;
+
+						float_type Gaussian = exp(-r2);
+
+						float_type rd = 1.0;
+
+                        if (use_rand_perturb)
+                        {
+                            rd = (static_cast<float_type>(rand()) /
+                                    static_cast<float_type>(RAND_MAX)) -
+                                0.5;
+                        }
+                        node(edge_aux, j * N_modes * 2 + i * 2) =
+                            rd * w_perturb * mag * Gaussian;
+                        if (use_rand_perturb)
+                        {
+                            rd = (static_cast<float_type>(rand()) /
+                                    static_cast<float_type>(RAND_MAX)) -
+                                0.5;
+                        }
+                        if (i != 0) node(edge_aux, j * N_modes * 2 + i * 2 + 1) = rd * w_perturb * mag * Gaussian;
+						else node(edge_aux, j * N_modes * 2 + i * 2 + 1) = 0.0;
+                    }
+                }
+            }
+        }
+
+		psolver.template apply_lgf_and_helm<edge_aux_type, stream_f_type>(N_modes, 3);
+		auto client = domain_->decomposition().client();
+
+		for (int l = domain_->tree()->base_level();
+			l < domain_->tree()->depth(); ++l)
+		{
+			//client->template buffer_exchange<stream_f_type>(l);
+
+			for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+			{
+				if (!it->locally_owned() || !it->has_data()) continue;
+				const auto dx_level =
+					dx_base / std::pow(2, it->refinement_level());
+				domain::Operator::curl_transpose_helmholtz_complex<stream_f_type, u_i_type>(
+                    it->data(), dx_level, N_modes, c_z, -1.0);
+				//domain::Operator::curl_transpose_helmholtz_complex<stream_f_type, u_type>(
+				//	it->data(), dx_level, -1.0);
+			}
+			client->template buffer_exchange<u_i_type>(l);
+		}
+		add<u_i_type, u_type>();
+    }
+
+
+	void perturbIC_Discrete()
+    {
+        if (!perturb_Fourier) return;
+        //poisson_solver_t psolver(&this->simulation_);
+
+        boost::mpi::communicator world;
+        if (domain_->is_server()) return;
+        auto center = (domain_->bounding_box().max() -
+                          domain_->bounding_box().min() + 1) /
+                          2.0 +
+                      domain_->bounding_box().min();
+
+        // Adapt center to always have peak value in a cell-center
+        //center+=0.5/std::pow(2,nRef);
+        const float_type dx_base = domain_->dx_base();
+
+        if (ic_filename_ != "null") return;
+
+        // Voriticity IC
+        for (auto it = domain_->begin(); it != domain_->end(); ++it)
+        {
+            if (!it->locally_owned()) continue;
+
+            auto dx_level = dx_base / std::pow(2, it->refinement_level());
+            auto scaling = std::pow(2, it->refinement_level());
+
+            for (auto& node : it->data())
+            {
+                for (int i = 1; i < N_modes; i++)
+                {
+                    float_type mag = 1.0 / static_cast<float_type>(i * i);
+                    for (int j = 0; j < 3; j++)
+                    {
+                        float_type rd = (static_cast<float_type>(rand()) /
+                                            static_cast<float_type>(RAND_MAX)) -
+                                        0.5;
+                        node(u, j * N_modes * 2 + i * 2) +=
+                            rd * w_perturb * mag;
+                        rd = (static_cast<float_type>(rand()) /
+                                 static_cast<float_type>(RAND_MAX)) -
+                             0.5;
+                        node(u, j * N_modes * 2 + i * 2 + 1) +=
+                            rd * w_perturb * mag;
+                    }
+                }
+            }
+        }
+    }
+
+
+	template<typename From, typename To>
+    void add(float_type scale = 1.0) noexcept
+    {
+        static_assert(From::nFields() == To::nFields(),
+            "number of fields doesn't match when add");
+        for (auto it = domain_->begin(); it != domain_->end(); ++it)
+        {
+            if (!it->locally_owned() || !it->has_data()) continue;
+            for (std::size_t field_idx = 0; field_idx < From::nFields();
+                 ++field_idx)
+            {
+                it->data_r(To::tag(), field_idx)
+                    .linalg()
+                    .get()
+                    ->cube_noalias_view() +=
+                    it->data_r(From::tag(), field_idx).linalg_data() * scale;
+            }
+        }
+    }
+
+    float_type vortex_ring_vor_fat_ic(float_type x, float_type y, int field_idx, bool perturbation)
 	{
 		//return 1;
 		//const float_type alpha = 0.54857674;
@@ -772,6 +1102,9 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
     {
 		float_type x_loc = x - ctr_dis_x;
 		float_type y_loc = y - ctr_dis_y;
+		if (vortexType == 0) {
+			return 0.0;
+		}
         return vr_fct_(x_loc,y_loc,field_idx,perturbation_)/* - vr_fct_(x_loc,y_loc-vort_sep,field_idx,perturbation_))*/; 
         //else
         //return -vr_fct_(x,y,z-d2v_/2,field_idx,perturbation_)+vr_fct_(x,y,z+d2v_/2,field_idx,perturbation_);
@@ -784,7 +1117,7 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 		//float_type gam = 1.0;
 
 
-		float_type       R2 = R_ * R_;
+		/*float_type       R2 = R_ * R_;
 
 		//float_type       nu = Lx / Re_; //assuming U = 1
 		//float_type       t0 = 10.0*Re_;    //t0d = 1.0
@@ -795,7 +1128,20 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 		float_type prtub = 0.000;
 		rd *= prtub * perturbation;
 
-		float_type vort_ic = w_oseen_vort(r, 0);
+		float_type vort_ic = w_oseen_vort(r, 0);*/
+
+		float_type       R2 = R_ * R_;
+		float_type x_l = x - vort_sep/2;
+		float_type x_r = x + vort_sep/2;
+		float_type r2_l = (x_l * x_l + y * y)/R2;
+		float_type r2_r = (x_r * x_r + y * y)/R2;
+		float_type r_l = sqrt(r2_l);
+		float_type r_r = sqrt(r2_r);
+		float_type rd = (static_cast <float_type> (rand()) / static_cast <float_type> (RAND_MAX)) - 0.5;
+		float_type prtub = 0.0001;
+		rd *= prtub * perturbation;
+
+		float_type vort_ic = w_oseen_vort(r_l, 0)/R_ - w_oseen_vort(r_r, 0)/R_ + rd/R_;
 		return vort_ic;
 		//return 0;
 	}
@@ -844,15 +1190,19 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 				float_type max_c = std::max(std::fabs(x), std::fabs(y));
 				//float_type max_c = std::fabs(x) + std::fabs(y);
 				float_type rd = std::sqrt(x * x + y * y);
-				float_type bd = 4.8 / pow(2, b.level()) - half_block;
+				float_type bd = 1.92 / pow(2, b.level()) - half_block;
 
 				//float_type bd = 4.8 - 1.2*b.level() - half_block;
+
+#ifdef CONVERGENCE_TEST
 				if (max_c < bd)
 					return true;
+#else
 
-				/*if (std::fabs(tmp_w) > 1.0 * pow(refinement_factor_, diff_level))
-					return true;*/
-				//}
+				if (std::fabs(tmp_w) > 1.0 * pow(refinement_factor_, diff_level)) {
+					return true;
+				}
+#endif
 			}
 		}
 
@@ -988,17 +1338,25 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 
     boost::mpi::communicator client_comm_;
 
+	poisson_solver_t psolver;
+
     bool single_ring_=true;
     bool perturbation_=false;
     bool hard_max_refinement_=false;
     bool smooth_start_;
-	bool non_base_level_update = false;
+	bool perturb_Fourier;
+	bool use_rand_perturb = true;
+	int pert_pow = 5;
     int vortexType = 0;
-	bool NoMeshUpdate = false;
-	//bool IntrpIBLevel = false;
+
+	bool read_diff_Nmode = false;
+	int input_Nmode;
+
+	float_type wake_dist = 100;
+	float_type w_perturb;
+	float_type c_z;
 
     std::vector<float_type> U_;
-	float_type Omega; //rotational rate
     //bool subtract_non_leaf_  = true;
     float_type R_;
     float_type v_delta_;
@@ -1032,7 +1390,7 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 
     vr_fct_t vr_fct_;
 
-    std::string ic_filename_, ref_filename_;
+    std::string ic_filename_, ref_filename_, ic_filename_2D_;
 
     float_type Lx;
 };

@@ -213,11 +213,11 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
             [this]( std::vector<float_type> source_max, auto& octs, std::vector<int>& level_change )
                 {return this->template adapt_level_change(source_max, octs, level_change);};
 
-        if (ringType!=0)
-            domain_->register_refinement_condition() = [this](auto octant,
-                                                       int diff_level) {
-                return this->refinement(octant, diff_level);
-            };
+        //if (ringType!=0)
+        domain_->register_refinement_condition() = [this](auto octant,
+                                                    int diff_level) {
+            return this->refinement(octant, diff_level);
+        };
 
         nIB_add_level_ = _d->get_dictionary("simulation_parameters")
                                  ->template get_or<int>("nIB_add_level", 0);
@@ -343,7 +343,7 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
                 l3=this->template adapt_levle_change_for_field<edge_aux_type>(it, source_max[1], false);
 
             int l=std::max(std::max(l1,l2),l3);
-	    l = 0;
+	    //l = 0;
 
             if( l!=0)
             {

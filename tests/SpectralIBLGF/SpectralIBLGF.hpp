@@ -526,76 +526,8 @@ struct NS_AMR_LGF : public SetupHelmStab<NS_AMR_LGF, parameters>
 
         world.barrier();
 
-        // write the matrix in text file form
-        std::string matrix_prefix="A";
-        for (int i = 1; i < world.size(); i++) {
-            //write the matrix
-            if (world.rank() == i) {
-                std::ofstream myfile;
-                myfile.open(matrix_prefix + ".txt", std::ios_base::app);
-
-                int prev_size = ifherk.num_start() - 1;
-                for (int i = 1; i < ifherk.Jac.mat.size(); i++)
-                {
-                    for (const auto& [key, val] : ifherk.Jac.mat[i])
-                    {
-                        int idx_i = i + prev_size;
-                        int idx_j = key;
-                        myfile << idx_i << "," << idx_j << "," << val << std::endl;
-                    }
-                    
-                }
-                myfile.close();
-            }
-            world.barrier();
-        }
 
 
-        matrix_prefix="Imag";
-        for (int i = 1; i < world.size(); i++) {
-            //write the matrix
-            if (world.rank() == i) {
-                std::ofstream myfile;
-                myfile.open(matrix_prefix + ".txt", std::ios_base::app);
-
-                int prev_size = ifherk.num_start() - 1;
-                for (int i = 1; i < ifherk.Imag.mat.size(); i++)
-                {
-                    for (const auto& [key, val] : ifherk.Imag.mat[i])
-                    {
-                        int idx_i = i + prev_size;
-                        int idx_j = key;
-                        myfile << idx_i << "," << idx_j << "," << val << std::endl;
-                    }
-                    
-                }
-                myfile.close();
-            }
-            world.barrier();
-        }
-
-        matrix_prefix="M"; //this is the matrix in stability analysis
-        for (int i = 1; i < world.size(); i++) {
-            //write the matrix
-            if (world.rank() == i) {
-                std::ofstream myfile;
-                myfile.open(matrix_prefix + ".txt", std::ios_base::app);
-
-                int prev_size = ifherk.num_start() - 1;
-                for (int i = 1; i < ifherk.B.mat.size(); i++)
-                {
-                    for (const auto& [key, val] : ifherk.B.mat[i])
-                    {
-                        int idx_i = i + prev_size;
-                        int idx_j = key;
-                        myfile << idx_i << "," << idx_j << "," << val << std::endl;
-                    }
-                    
-                }
-                myfile.close();
-            }
-            world.barrier();
-        }
         //need to store eigenvectors
         float_type*  x0_real= NULL;
         float_type*  x0_imag= NULL;
@@ -1316,25 +1248,6 @@ struct NS_AMR_LGF : public SetupHelmStab<NS_AMR_LGF, parameters>
         if (world.rank() == 1) {
             std::cout << "finished Assemblying" << std::endl;
         }
-
-        //Write the matrix
-        //PetscViewerCreate(PETSC_COMM_WORLD, &viewer);
-        //PetscViewerSetType(viewer, PETSCVIEWERASCII);
-        //PetscViewerFileSetMode(viewer, FILE_MODE_WRITE);
-        //PetscViewerFileSetName(viewer, "data.txt");
-
-        //PetscViewerHDF5Open(PETSC_COMM_WORLD, "data.mat", FILE_MODE_WRITE, &viewer);
-        //PetscViewerPushFormat(viewer, PETSC_VIEWER_HDF5_MAT);
-
-        PetscViewerBinaryOpen(PETSC_COMM_WORLD, "data.dat", FILE_MODE_WRITE, &viewer);
-
-        MatView(A, viewer);
-        //MatView(B, viewer);
-        MatView(C, viewer);
-        MatView(Q_hi, viewer);
-        //PetscViewerPopFormat(viewer);
-        //-----
-
 
         PetscCall(EPSCreate(PETSC_COMM_WORLD, &eps));
 

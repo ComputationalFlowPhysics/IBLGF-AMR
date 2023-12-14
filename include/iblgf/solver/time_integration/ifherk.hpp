@@ -269,7 +269,7 @@ class Ifherk
             pcout<< "block = " << c_all << std::endl;
 
 
-            if ( adapt_count_ % adapt_freq_ ==0)
+            if ( adapt_count_ % adapt_freq_ ==0 && adapt_count_ != 0)
             {
                 if (adapt_count_==0 || updating_source_max_)
                 {

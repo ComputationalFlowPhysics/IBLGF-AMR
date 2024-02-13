@@ -122,25 +122,18 @@ class Simulation
 
     void writeWithCorr(std::string _filename, bool restart_file=false)
     {
-        if (restart_file)
-        {
-            io_h5.write_h5(io::output().restart_save_dir()+"/"+restart_field_file_, domain_.get(), true, false);
-            if (domain_->is_server())
-                write_tree("", true);
-        }
-        else
-        {
-            io_h5.write_h5(io::output().dir()+"/flow_"+_filename+".hdf5", domain_.get(), true, false);
+        
+            io_h5.write_h5(io::output().dir()+"/flowWithCorr_"+_filename+".hdf5", domain_.get(), true, false);
             //io_h5.write_h5_withTime(io::output().dir()+"/flowTime_"+_filename+".hdf5", domain_.get(), true, true);
             if (domain_->is_server())
                 write_tree("_"+_filename, false);
 
-            if (helmholtz) {
+            /*if (helmholtz) {
                 float_type c_z = dictionary_->template get_or<float_type>("L_z", 1);
                 float_type dz = c_z / static_cast<float_type>(N_modes*3);
                 io_h5.write_helm_3D(io::output().dir()+"/vort_"+_filename+".hdf5", domain_.get(), dz, false, false);
-            }
-        }
+            }*/
+        
     }
 
     void writeWithTime(std::string _filename, float_type _time, float_type dt_)
@@ -186,6 +179,13 @@ class Simulation
     {
        io_h5.template read_h5<Field>(_filename, field_name, domain_.get());
     }
+
+    template<typename Field>
+    void read_h5_DiffNmode(std::string _filename, std::string field_name, int N_input_mode)
+    {
+       io_h5.template read_h5_DiffNmode<Field>(_filename, field_name, domain_.get(), N_input_mode);
+    }
+
 
     template<typename Field>
     void read_h5_2D(std::string _filename, std::string field_name)

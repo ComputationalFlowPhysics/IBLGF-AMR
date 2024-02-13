@@ -683,6 +683,33 @@ class Domain
         }
     }
 
+    /*void restart_list_construct_refIB(int nRef, int level_up_max, int nIB_add_level)
+    {
+        if (is_server())
+        {
+
+            for (int l = 0; l < nIB_add_level; ++l)
+            {
+                for (auto it = begin_df(); it != end_df(); ++it)
+                {
+                    //if (!ref_cond_) return;
+                    if (it->refinement_level() == l+nRef)
+                    {
+                        if (ib_.ib_block_overlap( it->data().descriptor(), 1))
+                            this->refine(it.ptr());
+                    }
+                }
+            }
+
+            this->tree()->construct_level_maps();
+            this->tree()->construct_lists();
+            this->tree()->construct_leaf_maps();
+
+            mark_correction();
+            mark_leaf_boundary();
+        }
+    }*/
+
     void init_refine(int nRef, int level_up_max, int nIB_add_level)
     {
         if (is_server())

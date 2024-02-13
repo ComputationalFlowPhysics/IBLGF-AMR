@@ -52,7 +52,7 @@ class Chombo
     using index_list_t = typename HDF5File::index_list_t;
 
     using key_type = typename Domain::key_t;
-    using offset_type = int;
+    using offset_type = unsigned long long;
     using offset_vector = std::vector<offset_type>;
 
     using map_type = typename boost::unordered_map<key_type, offset_type>;
@@ -292,7 +292,7 @@ class Chombo
                 H5Dopen2(level_group, "data:datatype=0", H5P_DEFAULT);
 
             std::vector<float_type> data;
-            long long               box_offset = 0;
+            offset_type               box_offset = 0;
             for (auto& file_b_dscriptr : file_boxes)
             {
                 if (box_offset < 0)
@@ -423,7 +423,7 @@ class Chombo
                                                     if (file_idx_1 < 0)
                                                         continue;
 
-                                                    long long offset =
+                                                    offset_type offset =
                                                         box_offset +
                                                         (component_idx +
                                                             field_idx) *
@@ -544,7 +544,7 @@ class Chombo
                                                 continue;
                                             if (file_idx_1 < 0) continue;
 
-                                            int offset =
+                                            offset_type offset =
                                                 box_offset +
                                                 (component_idx + field_idx) *
                                                     file_b_dscriptr
@@ -609,7 +609,7 @@ class Chombo
                     }
                 }
 
-                int added_num = 1;
+                offset_type added_num = 1;
 
                 for (int j = 0; j < Dim; j++)
                     added_num *= copy_b_dscriptr.extent()[j];
@@ -905,6 +905,432 @@ class Chombo
         H5Gclose(root);
     }
 
+
+
+    template<typename Field, typename Block_list_t>
+    void read_u_Diff_Nmode(HDF5File* _file, std::string read_field,
+        Block_list_t& blocklist, Domain* domain, int N_input_mode)
+    {
+        // Cleaning ---------------------------------------------------------
+        std::size_t nFields = Field::nFields();
+        for (std::size_t field_idx = 0; field_idx < nFields; ++field_idx)
+        {
+            for (auto& b : blocklist)
+            {
+                if (!b->locally_owned()) continue;
+                auto& cp2 = b->data_r(Field::tag(), field_idx).linalg_data();
+                std::fill(cp2.begin(), cp2.end(), 0.0);
+            }
+        }
+
+        // Read hdf5 file ---------------------------------------------------
+
+        float_type dx_base = domain->dx_base();
+        //int base_level = domain->tree()->base_level();
+
+        boost::mpi::communicator world;
+        if (world.rank() == 0) return;
+
+        auto root = _file->get_root();
+
+        // check the number for the needed attri
+        int num_components = static_cast<int>(
+            _file->template read_attribute<int>(root, "num_components"));
+        int num_levels = static_cast<int>(
+            _file->template read_attribute<int>(root, "num_levels"));
+
+        int         component_idx = 0;
+        std::string read_in_name = read_field;
+        for (int i = 0; i < num_components; ++i)
+        {
+            auto attribute = _file->template read_attribute<std::string>(
+                root, "component_" + std::to_string(i));
+
+            if ((nFields > 1 && attribute == read_in_name + "_0") ||
+                (nFields == 1 && attribute == read_in_name))
+            {
+                component_idx = i;
+                break;
+            }
+        }
+
+        // Find the imainary tree base level for the read file ----
+        auto       level_group = _file->get_group("level_0");
+        float_type file_dx_base = static_cast<float_type>(
+            _file->template read_attribute<float_type>(level_group, "dx"));
+
+        float_type base_level_diff_f = log2(dx_base / file_dx_base);
+        if (fabs(round(base_level_diff_f) - base_level_diff_f) > 1e-10)
+            throw std::runtime_error("base dx doesn't match!");
+        int base_level_diff = (int)(round(base_level_diff_f));
+        H5Gclose(level_group);
+
+        //Start reading
+        for (int l = 0; l < num_levels; ++l)
+        {
+            auto level_group = _file->get_group("level_" + std::to_string(l));
+
+            //auto level_group_box = _file->get_group("level_" + std::to_string(l) + "/boxes");
+            // Read box descriptors
+            auto box_dataset_id = H5Dopen2(level_group, "boxes", H5P_DEFAULT);
+
+            // l+base_level+base_level_diff is the imaginary refinement level as if
+            // everything is in the runtime octree
+            int  fake_level = l + base_level_diff;
+            auto file_boxes =
+                _file->template read_box_descriptors<BlockDescriptor>(
+                    box_dataset_id, fake_level);
+            //auto file_boxes = _file->template read_box_from_group<BlockDescriptor>(level_group, fake_level);
+
+            auto dataset_id =
+                H5Dopen2(level_group, "data:datatype=0", H5P_DEFAULT);
+
+            std::vector<float_type> data;
+            offset_type               box_offset = 0;
+            for (auto& file_b_dscriptr : file_boxes)
+            {
+                if (box_offset < 0)
+                {
+                    std::cout << file_b_dscriptr.extent()[0] << " "
+                              << file_b_dscriptr.extent()[1] << " "
+                              << box_offset << std::endl;
+                    throw std::runtime_error("Negative box_offset");
+                }
+                auto copy_b_dscriptr = file_b_dscriptr;
+
+                for (auto& b : blocklist)
+                {
+                    if (!b->locally_owned()) continue;
+                    if (!b->is_leaf()) continue;
+
+                    auto b_dscrptr = b->data().descriptor();
+                    int  level = b_dscrptr.level();
+                    if (level > fake_level) continue;
+
+                    int             factor = pow(2, abs(fake_level - level));
+                    BlockDescriptor overlap_fake_level;
+                    BlockDescriptor overlap_local;
+                    auto            has_overlap =
+                        file_b_dscriptr.overlap(b_dscrptr, overlap_fake_level);
+                    has_overlap =
+                        b_dscrptr.overlap(file_b_dscriptr, overlap_local);
+
+                    auto scale_up_overlap_local = overlap_local;
+                    scale_up_overlap_local.level_scale(fake_level);
+                    //auto sub_block_shift = overlap_fake_level.base()-scale_up_overlap_local.base();
+
+                    std::array<int, 2> single{0, 0};
+                    std::array<int, 2> avg{(factor - 1) / 2, factor / 2};
+                    //std::array<std::array<int, 2>, 3> FV_avg{avg, avg, avg};
+                    std::array<std::array<int, 2>, Dim> FV_avg;
+
+                    for (int i = 0; i < Dim; i++) FV_avg[i] = avg;
+
+                    if (has_overlap)
+                    {
+                        for (std::size_t field_idx = 0; field_idx < nFields;
+                             ++field_idx)
+                        {
+                            int sep = 1;
+                            if (domain->helmholtz_bool) sep = domain->N_modes_val * 2;
+
+                            int phys_idx = field_idx/sep;
+                            int res_idx = field_idx % sep;
+                            if (res_idx >= N_input_mode*2) continue;
+
+                            int input_idx = phys_idx*N_input_mode*2 + res_idx;
+
+                            // Finte Volume requires differnet averaging for
+                            // differnt mesh objects
+                            //FV_avg = {avg, avg, avg};
+
+                            for (int j = 0; j < Dim; j++) FV_avg[j] = avg;
+                            if (Field::mesh_type() == MeshObject::face)
+                                FV_avg[field_idx/sep] = single;
+                            else if (Field::mesh_type() == MeshObject::edge)
+                            {
+                                //FV_avg = {single, single, single};
+
+                                for (int j = 0; j < Dim; j++)
+                                    FV_avg[j] = single;
+                                FV_avg[field_idx/sep] = avg;
+                            }
+                            else if (Field::mesh_type() == MeshObject::vertex)
+                            {
+                                //FV_avg = {single, single, single};
+                                for (int j = 0; j < Dim; j++)
+                                    FV_avg[j] = single;
+                            }
+                            else if (Field::mesh_type() == MeshObject::cell)
+                            {
+                            }
+                            else
+                                throw std::runtime_error("Mesh object wrong");
+
+                            //for (auto tmp: sub_block_shift)
+                            //    std::cout<<tmp;
+
+                            /*float_type total_avg =
+                                (FV_avg[2][1] - FV_avg[2][0] + 1) *
+                                (FV_avg[1][1] - FV_avg[1][0] + 1) *
+                                (FV_avg[0][1] - FV_avg[0][0] + 1);*/
+                            float_type total_avg = 1.0;
+                            for (int j = 0; j < Dim; j++)
+                                total_avg *= (FV_avg[j][1] - FV_avg[j][0] + 1);
+
+                            //std::cout << "total avg = " << total_avg << std::endl;
+
+                            if (Dim == 3)
+                            {
+                                for (int shift_k = FV_avg[2][0];
+                                     shift_k <= FV_avg[2][1]; ++shift_k)
+                                {
+                                    for (int k = 0;
+                                         k < overlap_local.extent()[2]; ++k)
+                                    {
+                                        for (int shift_j = FV_avg[1][0];
+                                             shift_j <= FV_avg[1][1]; ++shift_j)
+                                        {
+                                            for (int j = 0;
+                                                 j < overlap_local.extent()[1];
+                                                 ++j)
+                                            {
+                                                for (int shift_i = FV_avg[0][0];
+                                                     shift_i <= FV_avg[0][1];
+                                                     ++shift_i)
+                                                {
+                                                    int file_idx_2 =
+                                                        scale_up_overlap_local
+                                                            .base()[2] -
+                                                        file_b_dscriptr
+                                                            .base()[2] +
+                                                        k * factor + shift_k;
+                                                    int file_idx_1 =
+                                                        scale_up_overlap_local
+                                                            .base()[1] -
+                                                        file_b_dscriptr
+                                                            .base()[1] +
+                                                        j * factor + shift_j;
+                                                    if (file_idx_2 >=
+                                                        file_b_dscriptr
+                                                            .extent()[2])
+                                                        continue;
+                                                    if (file_idx_2 < 0)
+                                                        continue;
+                                                    if (file_idx_1 >=
+                                                        file_b_dscriptr
+                                                            .extent()[1])
+                                                        continue;
+                                                    if (file_idx_1 < 0)
+                                                        continue;
+
+                                                    offset_type offset =
+                                                        box_offset +
+                                                        (component_idx +
+                                                            input_idx) *
+                                                            file_b_dscriptr
+                                                                .extent()[0] *
+                                                            file_b_dscriptr
+                                                                .extent()[1] *
+                                                            file_b_dscriptr
+                                                                .extent()[2] +
+                                                        (file_idx_2)*file_b_dscriptr
+                                                                .extent()[0] *
+                                                            file_b_dscriptr
+                                                                .extent()[1] +
+                                                        (file_idx_1)*file_b_dscriptr
+                                                            .extent()[0] +
+                                                        (scale_up_overlap_local
+                                                                .base()[0] -
+                                                            file_b_dscriptr
+                                                                .base()[0]) +
+                                                        shift_i;
+
+                                                    std::vector<hsize_t> base(
+                                                        1, offset),
+                                                        extent(1,
+                                                            overlap_local
+                                                                .extent()[0]),
+                                                        stride(1, factor);
+                                                    _file
+                                                        ->template read_hyperslab<
+                                                            float_type>(
+                                                            dataset_id, base,
+                                                            extent, stride,
+                                                            data);
+
+                                                    for (int i = 0;
+                                                         i < overlap_local
+                                                                 .extent()[0];
+                                                         ++i)
+                                                    {
+                                                        int file_idx_0 =
+                                                            scale_up_overlap_local
+                                                                .base()[0] -
+                                                            file_b_dscriptr
+                                                                .base()[0] +
+                                                            i * factor +
+                                                            shift_i;
+                                                        if (file_idx_0 >=
+                                                            file_b_dscriptr
+                                                                .extent()[0])
+                                                            continue;
+                                                        if (file_idx_0 < 0)
+                                                            continue;
+
+                                                        const coordinate_type<
+                                                            int, 3>
+                                                            tmp({i + overlap_local
+                                                                         .base()
+                                                                             [0],
+                                                                j + overlap_local
+                                                                        .base()
+                                                                            [1],
+                                                                k + overlap_local
+                                                                        .base()
+                                                                            [2]});
+
+                                                        coordinate_type<int,
+                                                            Dim>
+                                                            coffset;
+                                                        for (int tmp_i = 0;
+                                                             tmp_i < Dim;
+                                                             tmp_i++)
+                                                        {
+                                                            coffset[tmp_i] =
+                                                                tmp[tmp_i];
+                                                        }
+                                                        b->data_r(Field::tag(),
+                                                            coffset,
+                                                            field_idx) +=
+                                                            data[i] / total_avg;
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            else if (Dim == 2)
+                            {
+                                /*for (int shift_k = FV_avg[2][0];
+                                 shift_k <= FV_avg[2][1]; ++shift_k) {
+                                for (int k = 0; k < overlap_local.extent()[2];
+                                     ++k) {*/
+                                for (int shift_j = FV_avg[1][0];
+                                     shift_j <= FV_avg[1][1]; ++shift_j)
+                                {
+                                    for (int j = 0;
+                                         j < overlap_local.extent()[1]; ++j)
+                                    {
+                                        for (int shift_i = FV_avg[0][0];
+                                             shift_i <= FV_avg[0][1]; ++shift_i)
+                                        {
+                                            /*int file_idx_2 =
+                                                    scale_up_overlap_local
+                                                        .base()[2] -
+                                                    file_b_dscriptr.base()[2] +
+                                                    k * factor + shift_k;*/
+                                            int file_idx_1 =
+                                                scale_up_overlap_local
+                                                    .base()[1] -
+                                                file_b_dscriptr.base()[1] +
+                                                j * factor + shift_j;
+                                            /*if (file_idx_2 >=
+                                                    file_b_dscriptr.extent()[2])
+                                                    continue;
+                                                if (file_idx_2 < 0) continue;*/
+                                            if (file_idx_1 >=
+                                                file_b_dscriptr.extent()[1])
+                                                continue;
+                                            if (file_idx_1 < 0) continue;
+
+                                            offset_type offset =
+                                                box_offset +
+                                                (component_idx + input_idx) *
+                                                    file_b_dscriptr
+                                                        .extent()[0] *
+                                                    file_b_dscriptr
+                                                        .extent()[1] +
+                                                (file_idx_1)*file_b_dscriptr
+                                                    .extent()[0] +
+                                                (scale_up_overlap_local
+                                                        .base()[0] -
+                                                    file_b_dscriptr.base()[0]) +
+                                                shift_i;
+
+                                            std::vector<hsize_type> base(
+                                                1, offset),
+                                                extent(1,
+                                                    overlap_local.extent()[0]),
+                                                stride(1, factor);
+                                            _file->template read_hyperslab<
+                                                float_type>(dataset_id, base,
+                                                extent, stride, data);
+
+                                            for (int i = 0;
+                                                 i < overlap_local.extent()[0];
+                                                 ++i)
+                                            {
+                                                int file_idx_0 =
+                                                    scale_up_overlap_local
+                                                        .base()[0] -
+                                                    file_b_dscriptr.base()[0] +
+                                                    i * factor + shift_i;
+                                                if (file_idx_0 >=
+                                                    file_b_dscriptr.extent()[0])
+                                                    continue;
+                                                if (file_idx_0 < 0) continue;
+
+                                                const coordinate_type<int, 2>
+                                                    tmp({i + overlap_local
+                                                                 .base()[0],
+                                                        j + overlap_local
+                                                                .base()[1]});
+
+                                                coordinate_type<int, Dim>
+                                                    coffset;
+                                                for (int tmp_i = 0; tmp_i < Dim;
+                                                     tmp_i++)
+                                                {
+                                                    coffset[tmp_i] = tmp[tmp_i];
+                                                }
+
+                                                //std::cout << "coord is " << coffset[0] << " " << coffset[1] << " " << data[i] << std::endl;
+
+                                                b->data_r(Field::tag(), coffset,
+                                                    field_idx) +=
+                                                    data[i] / (total_avg);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                offset_type added_num = 1;
+
+                for (int j = 0; j < Dim; j++)
+                    added_num *= copy_b_dscriptr.extent()[j];
+                //if (added_num == 1) continue;
+                box_offset += (added_num * num_components);
+                //std::cout << "copy descptr dim " << copy_b_dscriptr.extent()[0] << " " << copy_b_dscriptr.extent()[1] << " " << num_components << " " << " box_offset: " << box_offset << std::endl;
+
+                /*box_offset += copy_b_dscriptr.extent()[0] *
+                              copy_b_dscriptr.extent()[1] *
+                              copy_b_dscriptr.extent()[2] * num_components;*/
+            }
+
+            H5Dclose(box_dataset_id);
+            H5Dclose(dataset_id);
+            H5Gclose(level_group);
+        }
+
+        H5Gclose(root);
+    }
+
     void write_global_metaData(HDF5File* _file, value_type _dx = 1,
         value_type _time = 0.0, value_type _dt = 1, int _ref_ratio = 2, bool helm3D = false, int N_modes = 1, float_type dz = 0.0)
     {
@@ -1181,6 +1607,11 @@ class Chombo
         {
             std::string name = std::string(T::name());
             if (!T::output()) return;
+            /*std::string tmp("abcd");
+            for (int i = 0; i < tmp.length(); i++) {
+                tmp[i] = name[name.length() - i - 1];
+            }
+            if (tmp == "laer") return; //laer backwards is real, no longer writing real in the restart and output*/
             if (T::nFields() == 1) components_.push_back(name);
             else
                 for (std::size_t fidx = 0; fidx < T::nFields(); ++fidx)
@@ -1505,7 +1936,7 @@ class Chombo
             offset_vector.push_back(w);
             for (int j = 0; j < 19; j++)
             {
-                std::vector<int> v;
+                std::vector<offset_type> v;
                 offset_vector[i].push_back(v);
             }
         }

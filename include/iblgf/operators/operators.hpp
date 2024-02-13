@@ -13,6 +13,10 @@
 #ifndef IBLGF_INCLUDED_OPERATORS_HPP
 #define IBLGF_INCLUDED_OPERATORS_HPP
 
+#ifdef USING_OMP
+#include <omp.h>
+#endif
+
 #include <iblgf/dictionary/dictionary.hpp>
 #include <iblgf/domain/dataFields/datafield.hpp>
 #include <iblgf/types.hpp>
@@ -37,6 +41,20 @@ struct Operator
     template<typename F, class Domain>
     static void domainClean(Domain* domain)
     {
+#ifdef USE_OMP
+        #pragma omp parallel for
+        for (std::size_t field_idx = 0; field_idx < F::nFields();
+                 ++field_idx)
+        {
+            for (auto it = domain->begin(); it != domain->end(); ++it)
+            {
+                if (!it->has_data() || !it->data().is_allocated()) continue;
+            
+                auto& lin_data = it->data_r(F::tag(), field_idx).linalg_data();
+                std::fill(lin_data.begin(), lin_data.end(), 0.0);
+            }
+        }
+#else
         for (auto it = domain->begin(); it != domain->end(); ++it)
         {
             if (!it->has_data() || !it->data().is_allocated()) continue;
@@ -47,6 +65,7 @@ struct Operator
                 std::fill(lin_data.begin(), lin_data.end(), 0.0);
             }
         }
+#endif
     }
 
     // TODO: move up_and_down
@@ -60,7 +79,7 @@ struct Operator
             if (!it->has_data() || !it->data().is_allocated()) continue;
             int Dim = domain->dimension();
 
-            if (Dim == 2)
+            /*if (Dim == 2)
             {
                 int idx2D[it->num_neighbors()];
                 for (int i = 0; i < it->num_neighbors(); i++) { idx2D[i] = 1; }
@@ -108,7 +127,7 @@ struct Operator
                         }
                     }
                 }
-            }
+            }*/
 
             for (std::size_t i = 0; i < it->num_neighbors(); ++i)
             {
@@ -150,16 +169,156 @@ struct Operator
                                     xt::range(N + 2 - clean_width, N + 3)) *=
                                     0.0;
                         }
-                        /*if (Dim == 2) {
-			if (i==1)
-			    view(lin_data,xt::all(),xt::range(0,clean_width))  *= 0.0;
-			else if (i==3)
-			    view(lin_data,xt::range(0,clean_width),xt::all())  *= 0.0;
-			else if (i==5)
-			    view(lin_data,xt::range(N+2-clean_width,N+3),xt::all())  *= 0.0;
-			else if (i==7)
-			    view(lin_data,xt::all(),xt::range(N+2-clean_width,N+3))  *= 0.0;
-			}*/
+                        if (Dim == 2) {
+                            if (i==1)
+                                view(lin_data,xt::all(),xt::range(0,clean_width))  *= 0.0;
+                            else if (i==3)
+                                view(lin_data,xt::range(0,clean_width),xt::all())  *= 0.0;
+                            else if (i==5)
+                                view(lin_data,xt::range(N+2-clean_width,N+3),xt::all())  *= 0.0;
+                            else if (i==7)
+                                view(lin_data,xt::all(),xt::range(N+2-clean_width,N+3))  *= 0.0;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+
+    template<typename F, class Domain>
+    static void clean_leaf_correction_boundary_helm(Domain* domain, int l, std::vector<bool>& ModesBool,
+        bool leaf_only_boundary = false, int clean_width = 1) noexcept
+    {
+        int sep = 2*ModesBool.size();
+        for (auto it = domain->begin(l); it != domain->end(l); ++it)
+        {
+            if (!it->locally_owned())
+            {
+                if (!it->has_data() || !it->data().is_allocated()) continue;
+                for (std::size_t field_idx = 0; field_idx < F::nFields();
+                     ++field_idx)
+                {
+                    auto& lin_data =
+                        it->data_r(F::tag(), field_idx).linalg_data();
+                    std::fill(lin_data.begin(), lin_data.end(), 0.0);
+                }
+            }
+        }
+
+        for (auto it = domain->begin(l); it != domain->end(l); ++it)
+        {
+            if (!it->locally_owned()) continue;
+            if (!it->has_data() || !it->data().is_allocated()) continue;
+
+            if (leaf_only_boundary &&
+                (it->is_correction() || it->is_old_correction()))
+            {
+                for (std::size_t field_idx = 0; field_idx < F::nFields();
+                     ++field_idx)
+                {
+                    auto& lin_data =
+                        it->data_r(F::tag(), field_idx).linalg_data();
+                    std::fill(lin_data.begin(), lin_data.end(), 0.0);
+                }
+            }
+        }
+
+        //---------------
+        if (l == domain->tree()->base_level()) {
+
+            for (auto it = domain->begin(l); it != domain->end(l); ++it)
+            {
+                if (!it->locally_owned()) continue;
+                if (!it->has_data() || !it->data().is_allocated()) continue;
+
+                int Dim = domain->dimension();
+
+                if (Dim == 2)
+                {
+                    int idx2D[it->num_neighbors()];
+                    for (int i = 0; i < it->num_neighbors(); i++)
+                    {
+                        idx2D[i] = 1;
+                    }
+                    auto coord_it = it->tree_coordinate();
+                    for (std::size_t i = 0; i < it->num_neighbors(); ++i)
+                    {
+                        auto it2 = it->neighbor(i);
+                        if ((!it2 || !it2->has_data()) ||
+                            (leaf_only_boundary &&
+                                (it2->is_correction() ||
+                                    it2->is_old_correction())))
+                        {
+                            continue;
+                        }
+                        auto cood = it2->tree_coordinate();
+                        int  tmp = 0;
+                        tmp += 3 * (cood.y() - coord_it.y() + 1) + cood.x() -
+                               coord_it.x() + 1;
+
+                        idx2D[tmp] = -1;
+                    }
+
+                    for (std::size_t i = 0; i < it->num_neighbors(); ++i)
+                    {
+                        if (idx2D[i] > 0)
+                        {
+#ifdef USE_OMP
+                            #pragma omp parallel for
+                            for (std::size_t field_idx = 0;
+                                 field_idx < F::nFields(); ++field_idx)
+                            {
+                                int res = field_idx % sep;
+                                int modesN = res/2;
+                                if (!ModesBool[modesN]) continue;
+                                auto& lin_data = it->data_r(F::tag(), field_idx)
+                                                     .linalg_data();
+
+                                int N = it->data().descriptor().extent()[0];
+                                if (i == 1)
+                                    view(lin_data, xt::all(),
+                                        xt::range(0, clean_width)) *= 0.0;
+                                else if (i == 3)
+                                    view(lin_data, xt::range(0, clean_width),
+                                        xt::all()) *= 0.0;
+                                else if (i == 5)
+                                    view(lin_data,
+                                        xt::range(N + 2 - clean_width, N + 3),
+                                        xt::all()) *= 0.0;
+                                else if (i == 7)
+                                    view(lin_data, xt::all(),
+                                        xt::range(N + 2 - clean_width,
+                                            N + 3)) *= 0.0;
+                            }
+#else
+                            for (std::size_t field_idx = 0;
+                                 field_idx < F::nFields(); ++field_idx)
+                            {
+                                int res = field_idx % sep;
+                                int modesN = res/2;
+                                if (!ModesBool[modesN]) continue;
+                                auto& lin_data = it->data_r(F::tag(), field_idx)
+                                                     .linalg_data();
+
+                                int N = it->data().descriptor().extent()[0];
+                                if (i == 1)
+                                    view(lin_data, xt::all(),
+                                        xt::range(0, clean_width)) *= 0.0;
+                                else if (i == 3)
+                                    view(lin_data, xt::range(0, clean_width),
+                                        xt::all()) *= 0.0;
+                                else if (i == 5)
+                                    view(lin_data,
+                                        xt::range(N + 2 - clean_width, N + 3),
+                                        xt::all()) *= 0.0;
+                                else if (i == 7)
+                                    view(lin_data, xt::all(),
+                                        xt::range(N + 2 - clean_width,
+                                            N + 3)) *= 0.0;
+                            }
+#endif
+                        }
                     }
                 }
             }
@@ -213,7 +372,7 @@ struct Operator
 
                 int Dim = domain->dimension();
 
-                if (Dim == 2)
+                /*if (Dim == 2)
                 {
                     int idx2D[it->num_neighbors()];
                     for (int i = 0; i < it->num_neighbors(); i++)
@@ -243,6 +402,8 @@ struct Operator
                     {
                         if (idx2D[i] > 0)
                         {
+#ifdef USE_OMP
+                            #pragma omp parallel for
                             for (std::size_t field_idx = 0;
                                  field_idx < F::nFields(); ++field_idx)
                             {
@@ -265,9 +426,33 @@ struct Operator
                                         xt::range(N + 2 - clean_width,
                                             N + 3)) *= 0.0;
                             }
+#else
+                            for (std::size_t field_idx = 0;
+                                 field_idx < F::nFields(); ++field_idx)
+                            {
+                                auto& lin_data = it->data_r(F::tag(), field_idx)
+                                                     .linalg_data();
+
+                                int N = it->data().descriptor().extent()[0];
+                                if (i == 1)
+                                    view(lin_data, xt::all(),
+                                        xt::range(0, clean_width)) *= 0.0;
+                                else if (i == 3)
+                                    view(lin_data, xt::range(0, clean_width),
+                                        xt::all()) *= 0.0;
+                                else if (i == 5)
+                                    view(lin_data,
+                                        xt::range(N + 2 - clean_width, N + 3),
+                                        xt::all()) *= 0.0;
+                                else if (i == 7)
+                                    view(lin_data, xt::all(),
+                                        xt::range(N + 2 - clean_width,
+                                            N + 3)) *= 0.0;
+                            }
+#endif
                         }
                     }
-                }
+                }*/
 
                 for (std::size_t i = 0; i < it->num_neighbors(); ++i)
                 {
@@ -311,28 +496,22 @@ struct Operator
                                         xt::range(N + 2 - clean_width,
                                             N + 3)) *= 0.0;
                             }
-                            /*if (Dim == 2) {
-			if (i==1)
-			    view(lin_data,xt::all(),xt::range(0,clean_width))  *= 0.0;
-			else if (i==3)
-			    view(lin_data,xt::range(0,clean_width),xt::all())  *= 0.0;
-			else if (i==5)
-			    view(lin_data,xt::range(N+2-clean_width,N+3),xt::all())  *= 0.0;
-			else if (i==7)
-			    view(lin_data,xt::all(),xt::range(N+2-clean_width,N+3))  *= 0.0;
-			}*/
-                            /*if (i==4)
-                            view(lin_data,xt::all(),xt::all(),xt::range(0,clean_width))  *= 0.0;
-                        else if (i==10)
-                            view(lin_data,xt::all(),xt::range(0,clean_width),xt::all())  *= 0.0;
-                        else if (i==12)
-                            view(lin_data,xt::range(0,clean_width),xt::all(),xt::all())  *= 0.0;
-                        else if (i==14)
-                            view(lin_data,xt::range(N+2-clean_width,N+3),xt::all(),xt::all())  *= 0.0;
-                        else if (i==16)
-                            view(lin_data,xt::all(),xt::range(N+2-clean_width,N+3),xt::all())  *= 0.0;
-                        else if (i==22)
-                            view(lin_data,xt::all(),xt::all(),xt::range(N+2-clean_width,N+3))  *= 0.0;*/
+                            else if (Dim == 2) {
+                                if (i == 1)
+                                    view(lin_data, xt::all(),
+                                        xt::range(0, clean_width)) *= 0.0;
+                                else if (i == 3)
+                                    view(lin_data, xt::range(0, clean_width),
+                                        xt::all()) *= 0.0;
+                                else if (i == 5)
+                                    view(lin_data,
+                                        xt::range(N + 2 - clean_width, N + 3),
+                                        xt::all()) *= 0.0;
+                                else if (i == 7)
+                                    view(lin_data, xt::all(),
+                                        xt::range(N + 2 - clean_width,
+                                            N + 3)) *= 0.0;
+                            }
                         }
                     }
                 }
@@ -366,6 +545,20 @@ struct Operator
         client->template buffer_exchange<Source>(l);
         const auto dx_base = domain->dx_base();
 
+#ifdef USE_OMP
+        #pragma omp parallel for
+        for (int mode = 0; mode < N_modes; mode++) {
+            if (ModesBool[mode] == false) continue;
+            for (auto it = domain->begin(l); it != domain->end(l); ++it)
+            {
+                if (!it->locally_owned()) continue;
+                if (!it->has_data() || !it->data().is_allocated()) continue;
+
+                const auto dx_level = dx_base / std::pow(2, it->refinement_level());
+                divergence_helmholtz_complex_oneMode<Source, Target>(it->data(), dx_level, N_modes, mode, c);
+            }
+        }
+#else
         for (auto it = domain->begin(l); it != domain->end(l); ++it)
         {
             if (!it->locally_owned()) continue;
@@ -374,8 +567,9 @@ struct Operator
             const auto dx_level = dx_base / std::pow(2, it->refinement_level());
             divergence_helmholtz_complex<Source, Target>(it->data(), dx_level, N_modes, c, ModesBool);
         }
+#endif
 
-        clean_leaf_correction_boundary<Target>(domain, l, true, 2);
+        clean_leaf_correction_boundary_helm<Target>(domain, l, ModesBool, true, 2);
     }
 
     template<class Source, class Target, class Domain>
@@ -416,6 +610,21 @@ struct Operator
         //client->template buffer_exchange<Source>(l);
         const auto dx_base = domain->dx_base();
 
+#ifdef USE_OMP
+        #pragma omp parallel for
+        for (int mode = 0; mode < N_modes; mode++) {
+            if (ModesBool[mode] == false) continue;
+
+            for (auto it = domain->begin(l); it != domain->end(l); ++it)
+            {
+                if (!it->locally_owned()) continue;
+                if (!it->has_data() || !it->data().is_allocated()) continue;
+
+                const auto dx_level = dx_base / std::pow(2, it->refinement_level());
+                gradient_helmholtz_complex_oneMode<Source, Target>(it->data(), dx_level, N_modes, mode, c);
+            }
+        }
+#else
         for (auto it = domain->begin(l); it != domain->end(l); ++it)
         {
             if (!it->locally_owned()) continue;
@@ -424,6 +633,7 @@ struct Operator
             const auto dx_level = dx_base / std::pow(2, it->refinement_level());
             gradient_helmholtz_complex<Source, Target>(it->data(), dx_level, N_modes, c, ModesBool);
         }
+#endif
 
         client->template buffer_exchange<Target>(l);
     }
@@ -468,7 +678,8 @@ struct Operator
         std::size_t       x = ngb_idx % dim;
         std::size_t       y = (ngb_idx / dim) % dim;
         std::size_t       z = (ngb_idx / dim / dim) % dim;
-
+#ifdef USE_OMP
+        #pragma omp parallel for
         for (std::size_t field_idx = 0; field_idx < Field::nFields();
              ++field_idx)
         {
@@ -516,28 +727,59 @@ struct Operator
                 if (c > 0)
                     n(Field::tag(), field_idx) =
                         n(Field::tag(), field_idx) * square;
-
-                //if      (z == 0)
-                //{
-                //    if (x != 0 && y!=0)
-                //        n(Field::tag(), field_idx) = n(Field::tag(), field_idx) * f(pct[2]);
-                //    else if (x==0 && y!=0)
-                //        n(Field::tag(), field_idx) = n(Field::tag(), field_idx) * sqrt(f(pct[2])*f(pct[2])+ f(pct[0])* f(pct[0]));
-                //    else if (x!=0 && y==0)
-                //        n(Field::tag(), field_idx) = n(Field::tag(), field_idx) * sqrt(f(pct[2])*f(pct[2])+ f(pct[0])* f(pct[0]));
-                //}
-                //else if (y == 0)
-                //    n(Field::tag(), field_idx) = n(Field::tag(), field_idx) * f(pct[1]);
-                //else if (x == 0)
-                //    n(Field::tag(), field_idx) = n(Field::tag(), field_idx) * f(pct[0]);
-                //else if (x == (dim-1))
-                //    n(Field::tag(), field_idx) = n(Field::tag(), field_idx) * f(1-pct[0]);
-                //else if (y == (dim-1))
-                //    n(Field::tag(), field_idx) = n(Field::tag(), field_idx) * f(1-pct[1]);
-                //else if (z == (dim-1))
-                //    n(Field::tag(), field_idx) = n(Field::tag(), field_idx) * f(1-pct[2]);
             }
         }
+#else
+        for (std::size_t field_idx = 0; field_idx < Field::nFields();
+             ++field_idx)
+        {
+            for (auto& n : block.node_field())
+            {
+                auto pct = n.local_pct();
+                int  dimension = pct.size();
+
+                float_type square = 0.0;
+                float_type c = 0;
+
+                if ((z == 0) && (dimension == 3))
+                {
+                    square = std::max(square, f(pct[2]));
+                    c += 1;
+                }
+                else if ((z == (dim - 1)) && (dimension == 3))
+                {
+                    square = std::max(square, f(1 - pct[2]));
+                    c += 1;
+                }
+
+                if (y == 0)
+                {
+                    square = std::max(square, f(pct[1]));
+                    c += 1;
+                }
+                else if (y == (dim - 1))
+                {
+                    square = std::max(square, f(1 - pct[1]));
+                    c += 1;
+                }
+
+                if (x == 0)
+                {
+                    square = std::max(square, f(pct[0]));
+                    c += 1;
+                }
+                else if (x == (dim - 1))
+                {
+                    square = std::max(square, f(1 - pct[0]));
+                    c += 1;
+                }
+
+                if (c > 0)
+                    n(Field::tag(), field_idx) =
+                        n(Field::tag(), field_idx) * square;
+            }
+        }
+#endif
     }
 
   public:
@@ -636,6 +878,7 @@ struct Operator
         }
     }
 
+#ifndef USE_OMP
     template<class U, class Block, class Coord, class Force, class DeltaFunc,
         typename std::enable_if<(U::mesh_type() == MeshObject::face),
             void>::type* = nullptr>
@@ -697,6 +940,55 @@ struct Operator
             }*/
         }
     }
+#else
+    template<class U, class Block, class Coord, class Force, class DeltaFunc,
+        typename std::enable_if<(U::mesh_type() == MeshObject::face),
+            void>::type* = nullptr>
+    static void ib_projection_helmholtz(Coord ib_coord, Force& f, Block& block,
+        DeltaFunc& ddf, int N_modes, std::vector<bool>& ModesBool)
+    {
+        int sep = 2*N_modes;
+        constexpr auto u = U::tag();
+
+        #pragma omp parallel for
+        for (std::size_t field_idx = 0; field_idx < U::nFields();
+                 field_idx++)
+        {
+            int res = field_idx % sep;
+            int modesN = res/2;
+            if (!ModesBool[modesN]) continue;
+            for (auto& node : block)
+            {
+                auto n_coord = node.level_coordinate();
+                auto dist = n_coord - ib_coord;
+
+
+                decltype(ib_coord) off_tmp(0.5);
+                off_tmp[0] = 0.0;
+
+                float_type val_x = ddf(dist + off_tmp);
+
+                off_tmp[0] = 0.5;
+                off_tmp[1] = 0.0;
+                float_type val_y = ddf(dist + off_tmp);
+
+                off_tmp[1] = 0.5;
+                //off_tmp[1] = 0.0;
+                float_type val_z = ddf(dist + off_tmp);
+
+                if (std::abs(val_x) < 1e-14 && std::abs(val_y) < 1e-14 && std::abs(val_z) < 1e-14) {
+                    continue;
+                }
+
+                
+                
+                decltype(ib_coord) off(0.5);
+                off[field_idx/sep] = 0.0; // face data location
+                f[field_idx] += node(u, field_idx) * ddf(dist + off);
+            }
+        }
+    }
+#endif
 
     template<class U, class Block, class Coord, class Force, class DeltaFunc,
         typename std::enable_if<(U::mesh_type() == MeshObject::face),
@@ -741,6 +1033,7 @@ struct Operator
         }
     }
 
+#ifndef USE_OMP
     template<class U, class Block, class Coord, class Force, class DeltaFunc,
         typename std::enable_if<(U::mesh_type() == MeshObject::face),
             void>::type* = nullptr>
@@ -804,7 +1097,136 @@ struct Operator
             }*/
         }
     }
+#else
 
+    template<class U, class Block, class Coord, class Force, class DeltaFunc,
+        typename std::enable_if<(U::mesh_type() == MeshObject::face),
+            void>::type* = nullptr>
+    static void ib_smearing_helmholtz(Coord ib_coord, Force& f, Block& block,
+        DeltaFunc& ddf, int N_modes, std::vector<bool>& ModesBool, float_type factor = 1.0)
+    {
+        int sep = 2*N_modes;
+        constexpr auto u = U::tag();
+        #pragma omp parallel for
+        for (std::size_t field_idx = 0; field_idx < U::nFields();
+                 field_idx++)
+        {
+            int res = field_idx % sep;
+            int modesN = res/2;
+            if (!ModesBool[modesN]) continue;
+            for (auto& node : block)
+            {
+                auto n_coord = node.level_coordinate();
+                auto dist = n_coord - ib_coord;
+
+                decltype(ib_coord) off_tmp(0.5);
+                off_tmp[0] = 0.0;
+
+                float_type val_x = ddf(dist + off_tmp);
+
+                off_tmp[0] = 0.5;
+                off_tmp[1] = 0.0;
+                float_type val_y = ddf(dist + off_tmp);
+
+                off_tmp[1] = 0.5;
+                //off_tmp[1] = 0.0;
+                float_type val_z = ddf(dist + off_tmp);
+
+                if (std::abs(val_x) < 1e-14 && std::abs(val_y) < 1e-14 && std::abs(val_z) < 1e-14) {
+                    continue;
+                }     
+                
+                decltype(ib_coord) off(0.5);
+                off[field_idx/sep] = 0.0; // face data location
+                node(u, field_idx) += f[field_idx] * ddf(dist + off) * factor;
+            }
+        }
+    }
+#endif
+
+#ifdef USE_OMP
+    template<class Field, class Block>
+    static float_type blockRootMeanSquare(Block& block) noexcept
+    {
+        float_type m = 0.0;
+        float_type c = 0.0;
+
+        for (auto& n : block)
+        {
+            float_type tmp = 0.0;
+            #pragma omp parallel for reduction( + : tmp )
+            for (std::size_t field_idx = 0; field_idx < Field::nFields();
+                 ++field_idx)
+            {
+                tmp += n(Field::tag(), field_idx) * n(Field::tag(), field_idx);
+            }
+            m += tmp;
+            c += 1.0;
+        }
+        return sqrt(m / c);
+    }
+
+
+    template<class Field1, class Field2, class Block>
+    static float_type blockDot(Block& block) noexcept
+    {
+        static_assert(Field1::nFields() == Field2::nFields(),
+            "number of fields doesn't match when taking dot product");
+        float_type m = 0.0;
+        //float_type c = 0.0;
+
+        for (auto& n : block)
+        {
+            float_type tmp = 0.0;
+            #pragma omp parallel for reduction( + : tmp )
+            for (std::size_t field_idx = 0; field_idx < Field1::nFields();
+                 ++field_idx)
+            {
+                tmp += n(Field1::tag(), field_idx) * n(Field2::tag(), field_idx);
+            }
+            m += tmp;
+            //c += 1.0;
+        }
+        return m;
+    }
+
+    template<class Field, class Block>
+    static float_type maxnorm(Block& block) noexcept
+    {
+        float_type m = 0.0;
+
+        for (auto& n : block)
+        {
+            float_type tmp = 0.0;
+            #pragma omp parallel for reduction( + : tmp )
+            for (std::size_t field_idx = 0; field_idx < Field::nFields();
+                 ++field_idx)
+            {
+                tmp += n(Field::tag(), field_idx) * n(Field::tag(), field_idx);
+            }
+            tmp = sqrt(tmp);
+            if (tmp > m) m = tmp;
+        }
+        return m;
+    }
+
+    template<class Field, class Block>
+    static float_type maxabs(Block& block) noexcept
+    {
+        float_type m = 0.0;
+        #pragma omp parallel for reduction(max : m)
+        for (std::size_t field_idx = 0; field_idx < Field::nFields();
+             ++field_idx)
+        {
+            for (auto& n : block)
+            {
+                auto tmp = std::fabs(n(Field::tag(), field_idx));
+                if (tmp > m) m = tmp;
+            }
+        }
+        return m;
+    }
+#else
     template<class Field, class Block>
     static float_type blockRootMeanSquare(Block& block) noexcept
     {
@@ -824,6 +1246,7 @@ struct Operator
         }
         return sqrt(m / c);
     }
+
 
     template<class Field1, class Field2, class Block>
     static float_type blockDot(Block& block) noexcept
@@ -881,6 +1304,7 @@ struct Operator
         }
         return m;
     }
+#endif
 
     template<class Source, class Dest, class Block>
     static void laplace(Block& block, float_type dx_level) noexcept
@@ -1044,6 +1468,42 @@ struct Operator
         }
     }
 
+    template<class Source, class Dest, class Block>
+    static void laplace_helmholtz_complex_oneMode(Block& block, float_type dx_level,
+        int                                   N_modes,
+        int                                   mode,
+        float_type                            c,
+        int                                   PREFAC = 2) noexcept
+    {
+        const auto     fac = 1.0 / (dx_level * dx_level);
+        constexpr auto source = Source::tag();
+        constexpr auto dest = Dest::tag();
+
+
+        for (auto& n : block)
+        {
+
+            int sep_start = mode*PREFAC;
+            
+            int sep = N_modes*PREFAC;
+            for (int i = sep_start; i < (sep_start + PREFAC) ; i++) {
+                n(dest, i) = -4.0 * n(source, i) + n.at_offset(source, 0, -1, i) +
+                          n.at_offset(source, 0, +1, i) +
+                          n.at_offset(source, -1, 0, i) +
+                          n.at_offset(source, +1, 0, i);
+
+                n(dest, i) *= fac;
+            }
+
+            float_type omega = 2.0*M_PI*static_cast<float_type>(mode)/c;
+
+            n(dest, mode * 2)     -= n(source, mode * 2    ) * omega * omega;
+            n(dest, mode * 2 + 1) -= n(source, mode * 2 + 1) * omega * omega;
+
+        }
+    }
+
+
 
     template<class Source, class Dest, class Block,
         typename std::enable_if<(Source::mesh_type() == MeshObject::cell) &&
@@ -1075,6 +1535,40 @@ struct Operator
                 n(dest, 2 * sep + i * 2 + 1) =  n(source, i * 2    ) * omega;
 
             }
+
+        }
+    }
+
+
+    template<class Source, class Dest, class Block,
+        typename std::enable_if<(Source::mesh_type() == MeshObject::cell) &&
+                                    (Dest::mesh_type() == MeshObject::face),
+            void>::type* = nullptr>
+    static void gradient_helmholtz_complex_oneMode(Block& block, float_type dx_level,
+        int                                   N_modes,
+        int                                   mode,
+        float_type                            c,
+        int                                   PREFAC = 2) noexcept
+    {
+        const auto     fac = 1.0 / dx_level;
+        constexpr auto source = Source::tag();
+        constexpr auto dest = Dest::tag();
+        for (auto& n : block)
+        {
+
+            int sep_start = mode*PREFAC;
+            
+            int sep = N_modes*PREFAC;
+            for (int i = sep_start; i < (sep_start + PREFAC) ; i++) {
+                n(dest, 0 * sep + i) =  fac * (n(source, i) - n.at_offset(source, -1, 0, i));
+
+                n(dest, 1 * sep + i) =  fac * (n(source, i) - n.at_offset(source, 0, -1, i));
+            }
+
+            float_type omega = 2.0*M_PI*static_cast<float_type>(mode)/c;
+
+            n(dest, 2 * sep + mode * 2)     = -n(source, mode * 2 + 1) * omega;
+            n(dest, 2 * sep + mode * 2 + 1) =  n(source, mode * 2    ) * omega;
 
         }
     }
@@ -1222,6 +1716,44 @@ struct Operator
                 n(dest, i * 2 + 1) += n(source, 2 * sep + i * 2    ) * omega;
 
             }
+
+        }
+    }
+
+
+    template<class SourceTuple, class Dest, class Block,
+        typename std::enable_if<(Dest::mesh_type() == MeshObject::cell) &&
+                                    (SourceTuple::mesh_type() ==
+                                        MeshObject::face),
+            void>::type* = nullptr>
+    static void divergence_helmholtz_complex_oneMode(Block& block, float_type dx_level,
+        int                                   N_modes,
+        int                                   mode,
+        float_type                            c,
+        int                                   PREFAC = 2) noexcept
+    {
+        const auto     fac = 1.0 / dx_level;
+        constexpr auto source = SourceTuple::tag();
+        constexpr auto dest = Dest::tag();
+        for (auto& n : block)
+        {
+
+
+            int sep = N_modes*PREFAC;
+            int sep_start = mode*PREFAC;
+            for (int i = sep_start; i < (sep_start + PREFAC); i++) {
+                n(dest, i) =  -n(source, 0 * sep + i) - n(source, 1 * sep + i) +
+                          n.at_offset(source, 1, 0, 0 * sep + i) +
+                          n.at_offset(source, 0, 1, 1 * sep + i);
+
+                n(dest, i) *= fac;
+            }
+
+            
+            float_type omega = 2.0*M_PI*static_cast<float_type>(mode)/c;
+
+            n(dest, mode * 2)     -= n(source, 2 * sep + mode * 2 + 1) * omega;
+            n(dest, mode * 2 + 1) += n(source, 2 * sep + mode * 2    ) * omega;
 
         }
     }
@@ -1404,6 +1936,49 @@ struct Operator
         }
     }
 
+
+    template<class Source, class Dest, class Block,
+        typename std::enable_if<(Source::mesh_type() == MeshObject::face) &&
+                                    (Dest::mesh_type() == MeshObject::edge),
+            void>::type* = nullptr>
+    static void curl_helmholtz_complex_oneMode(Block& block,
+        float_type                            dx_level,
+        int                                   N_modes,
+        int                                   mode,
+        float_type                            c,
+        int                                   PREFAC = 2) noexcept
+    {
+        const auto     fac = 1.0 / dx_level;
+        constexpr auto source = Source::tag();
+        constexpr auto dest = Dest::tag();
+        for (auto& n : block)
+        {
+
+
+            int sep = N_modes*PREFAC;
+            int sep_start = mode*PREFAC;
+            for (int i = sep_start; i < (sep_start + PREFAC) ; i++) {
+                n(dest, 0 * sep + i) =   n(source, 2 * sep + i) - n.at_offset(source, 0, -1, 2 * sep + i);
+                n(dest, 0 * sep + i) *= fac;
+
+                n(dest, 1 * sep + i) =  -n(source, 2 * sep + i) + n.at_offset(source, -1, 0, 2 * sep + i);
+                n(dest, 1 * sep + i) *= fac;
+
+                n(dest, 2 * sep + i) = 
+                n(source, 1 * sep + i) - n.at_offset(source, -1, 0, 1 * sep + i) -
+                n(source, 0 * sep + i) + n.at_offset(source, 0, -1, 0 * sep + i);
+                n(dest, 2 * sep + i) *= fac;
+            }
+
+            float_type omega = 2.0*M_PI*static_cast<float_type>(mode)/c;
+            n(dest, 0 * sep + mode * 2)     += n(source, 1 * sep + mode * 2 + 1) * omega;
+            n(dest, 0 * sep + mode * 2 + 1) -= n(source, 1 * sep + mode * 2    ) * omega;
+
+            n(dest, 1 * sep + mode * 2)     -= n(source, 0 * sep + mode * 2 + 1) * omega;
+            n(dest, 1 * sep + mode * 2 + 1) += n(source, 0 * sep + mode * 2    ) * omega;
+        }
+    }
+
     template<class Source, class Dest, class Block,
         typename std::enable_if<(Source::mesh_type() == MeshObject::face) &&
                                     (Dest::mesh_type() == MeshObject::edge),
@@ -1569,6 +2144,53 @@ struct Operator
     }
 
 
+    template<class Source, class Dest, class Block,
+        typename std::enable_if<(Source::mesh_type() == MeshObject::edge) &&
+                                    (Dest::mesh_type() == MeshObject::face),
+            void>::type* = nullptr>
+    static void curl_transpose_helmholtz_complex_oneMode(Block& block,
+        float_type                            dx_level,
+        int                                   N_modes,
+        int                                   mode,
+        float_type                            c,
+        float_type                            scale = 1.0,
+        int                                   PREFAC = 2) noexcept
+    {
+        const auto     fac = 1.0 / dx_level *scale;
+        constexpr auto source = Source::tag();
+        constexpr auto dest = Dest::tag();
+        for (auto& n : block)
+        {
+
+
+            int sep = N_modes*PREFAC;
+            int sep_start = mode*PREFAC;
+            for (int i = sep_start; i < (sep_start + PREFAC) ; i++) {
+                n(dest, 0 * sep + i) =  - n(source, 2 * sep + i) + n.at_offset(source, 0, 1, 2 * sep + i);
+                n(dest, 0 * sep + i) *= fac;
+
+                n(dest, 1 * sep + i) =  n(source, 2 * sep + i) - n.at_offset(source, 1, 0, 2 * sep + i);
+                n(dest, 1 * sep + i) *= fac;
+
+                n(dest, 2 * sep + i) = 
+                - n(source, 1 * sep + i) + n.at_offset(source, 1, 0, 1 * sep + i) +
+                n(source, 0 * sep + i) - n.at_offset(source, 0, 1, 0 * sep + i);
+                n(dest, 2 * sep + i) *= fac;
+            }
+
+            
+            float_type omega = 2.0*M_PI*static_cast<float_type>(mode)/c;
+            n(dest, 0 * sep + mode * 2)     += n(source, 1 * sep + mode * 2 + 1) * omega * scale;
+            n(dest, 0 * sep + mode * 2 + 1) -= n(source, 1 * sep + mode * 2    ) * omega * scale;
+
+            n(dest, 1 * sep + mode * 2)     -= n(source, 0 * sep + mode * 2 + 1) * omega * scale;
+            n(dest, 1 * sep + mode * 2 + 1) += n(source, 0 * sep + mode * 2    ) * omega * scale;
+
+
+        }
+    }
+
+
 
     template<class Source, class Dest, class DestUz, class Block,
         typename std::enable_if<(Source::mesh_type() == MeshObject::edge) &&
@@ -1609,6 +2231,7 @@ struct Operator
             void>::type* = nullptr>
     static void curl_helmholtz(Block& block, float_type dx_level, int N_modes, float_type dx_fine, int PREFAC = 3) noexcept
     {
+        //not used in ifherk_helm
         const auto     fac = 1.0 / dx_level;
         constexpr auto source = Source::tag();
         constexpr auto dest = Dest::tag();
@@ -1720,6 +2343,7 @@ struct Operator
     static void curl_transpose(Block& block, float_type dx_level,
         float_type scale = 1.0) noexcept
     {
+        //not used in ifherk_helm
         const auto     fac = 1.0 / dx_level * scale;
         constexpr auto source = Source::tag();
         constexpr auto dest = Dest::tag();
@@ -2053,6 +2677,71 @@ struct Operator
     }
 
 
+
+    template<class Face, class Edge, class Dest, class Block,
+        typename std::enable_if<(Face::mesh_type() == MeshObject::face) &&
+                                    (Edge::mesh_type() == MeshObject::edge) &&
+                                    (Dest::mesh_type() == MeshObject::face),
+            void>::type* = nullptr>
+    static void nonlinear_helmholtz_oneMode(Block& block, int N_modes, int mode, int PREFAC = 3) noexcept
+    {
+        constexpr auto face = Face::tag();
+        constexpr auto edge = Edge::tag();
+        constexpr auto dest = Dest::tag();
+        for (auto& n : block)
+        {
+            //TODO: Can be done much better by getting the appropriate nodes
+            //      directly
+
+            int sep = N_modes * PREFAC;
+            int sep_start = mode*PREFAC;
+            int x_s = 0;
+            int y_s = sep;
+            int z_s = sep*2;
+            //nonlinear term adapt to collocation DFT
+            for (int i = sep_start; i < (sep_start + PREFAC); i++)
+            {
+                int x_p = x_s + i;
+                int y_p = y_s + i;
+                int z_p = z_s + i;
+
+                n(dest, x_p) =
+                    0.5 * n.at_offset(edge, 0, 0, y_p) *
+                        (n.at_offset(face, 0, 0, z_p) +
+                            n.at_offset(face, -1, 0, z_p)) -
+                    0.25 * (n.at_offset(edge, 0, 0, z_p) *
+                                   (n.at_offset(face, 0, 0, y_p) +
+                                    n.at_offset(face, -1, 0, y_p)) +
+                            n.at_offset(edge, 0, 1, z_p) *
+                                   (n.at_offset(face,  0, 1, y_p) +
+                                    n.at_offset(face, -1, 1, y_p)));
+
+                n(dest, y_p) =
+                    0.25 *
+                    (n.at_offset(edge, 0, 0, z_p) *
+                            (n.at_offset(face, 0, 0, x_p) +
+                                n.at_offset(face, 0, -1, x_p)) +
+                        n.at_offset(edge, 1, 0, z_p) *
+                            (n.at_offset(face, 1, 0, x_p) +
+                                n.at_offset(face, 1, -1, x_p))) -
+                    0.5 * n.at_offset(edge, 0, 0, x_p) *
+                            (+n.at_offset(face, 0, 0, z_p) +
+                                n.at_offset(face, 0, -1, z_p));
+                n(dest, z_p) =
+                    0.5 *
+                    (n.at_offset(edge, 0, 0, x_p) *
+                            n.at_offset(face, 0, 0, y_p) +
+                        n.at_offset(edge, 0, 1, x_p) *
+                            n.at_offset(face, 0, 1, y_p) -
+                        n.at_offset(edge, 0, 0, y_p) *
+                            n.at_offset(face, 0, 0, x_p) -
+                        n.at_offset(edge, 1, 0, y_p) *
+                            n.at_offset(face, 1, 0, x_p));
+            }
+        }
+    }
+
+
     template<class Face, class Edge, class Dest, class Block,
         typename std::enable_if<(Face::mesh_type() == MeshObject::face) &&
                                     (Edge::mesh_type() == MeshObject::edge) &&
@@ -2249,6 +2938,62 @@ struct Operator
     }
 
     template<typename Field, typename Domain, typename Func>
+    static void add_field_expression_nonlinear_helmholtz_OMP(Domain* domain, int N_modes,
+        Func& f, float_type t, float_type scale = 1.0) noexcept
+    {
+        const auto dx_base = domain->dx_base();
+        int sep = 3*N_modes; 
+        // because of 3/2 rule from fft and conjugate relation from real variable transform. 
+        // With 3/2 * 2 * N_modes, the total number of value in the container are 3 components * 3*N_modes
+        #pragma omp parallel for
+        for (std::size_t field_idx = 0; field_idx < Field::nFields(); ++field_idx)
+        {
+            for (auto it = domain->begin(); it != domain->end(); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
+
+            
+                int comp_idx = field_idx/sep;
+                for (auto& n : it->data().node_field())
+                {
+                    auto coord = n.global_coordinate() * dx_base;
+                    n(Field::tag(), field_idx) +=
+                        f(comp_idx, t, coord) * scale;
+                }
+            }
+        }
+    }
+
+
+    template<typename Field, typename Domain, typename Func>
+    static void add_field_expression_nonlinear_helmholtz_oneMode(Domain* domain, int N_modes, int mode,
+        Func& f, float_type t, float_type scale = 1.0) noexcept
+    {
+        const auto dx_base = domain->dx_base();
+        int sep = 3*N_modes; 
+        // because of 3/2 rule from fft and conjugate relation from real variable transform. 
+        // With 3/2 * 2 * N_modes, the total number of value in the container are 3 components * 3*N_modes
+        // so total of 9 * N_modes field
+        // at each mode, we solve 9 variables
+        // 3 components at each of three directions
+        for (auto it = domain->begin(); it != domain->end(); ++it)
+        {
+            if (!it->locally_owned() || !it->has_data()) continue;
+            int field_idx_start = mode * 3;
+            for (int i = 0; i < 3;i++) {
+                for (auto& n : it->data().node_field())
+                {
+                    auto coord = n.global_coordinate() * dx_base;
+                    for (int j = 0; j < 3;j++) {
+                        int field_idx = i*sep + field_idx_start + j;
+                        n(Field::tag(), field_idx) += f(i, t, coord) * scale;
+                    }
+                }
+            }
+        }
+    }
+
+    template<typename Field, typename Domain, typename Func>
     static void add_field_expression_complex_helmholtz(Domain* domain, int N_modes,
         Func& f, float_type t, float_type scale = 1.0) noexcept
     {
@@ -2275,7 +3020,28 @@ struct Operator
             n(Field::tag(), 2*sep) += f(2, t, coord) * scale;*/
         }
     }
+#ifdef USE_OMP
+    template<typename From, typename To, typename Domain>
+    static void add(Domain* domain, float_type scale = 1.0) noexcept
+    {
+        static_assert(From::nFields() == To::nFields(),
+            "number of fields doesn't match when add");
+        #pragma omp parallel for
+        for (std::size_t field_idx = 0; field_idx < From::nFields();
+            ++field_idx)
+        {
+            for (auto it = domain->begin(); it != domain->end(); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
 
+            
+                for (auto& n : it->data().node_field())
+                    n(To::tag(), field_idx) +=
+                        n(From::tag(), field_idx) * scale;
+            }
+        }
+    }
+#else
     template<typename From, typename To, typename Domain>
     static void add(Domain* domain, float_type scale = 1.0) noexcept
     {
@@ -2295,6 +3061,7 @@ struct Operator
             }
         }
     }
+#endif
 
     
     template<typename From, typename To, typename Block>
@@ -2309,6 +3076,8 @@ struct Operator
 
         std::vector<std::complex<float_type>> tmp_vec(vec_size,
             std::complex<float_type>(0.0));
+/*#ifdef USE_OMP
+        #pragma omp parallel for
         for (int i = 0; i < N_modes * NComp; i++)
         {
             auto& lin_data_real = it->data_r(From::tag(), i * 2);
@@ -2326,91 +3095,33 @@ struct Operator
                 tmp_vec[idx] = tmp_val;
             }
         }
+#else*/
+        for (int i = 0; i < N_modes * NComp; i++)
+        {
+            auto& lin_data_real = it->data_r(From::tag(), i * 2);
+            auto& lin_data_imag = it->data_r(From::tag(), i * 2 + 1);
+            for (int j = 0; j < dim_0 * dim_1; j++)
+            {
+                if (i % N_modes == 0) lin_data_imag[j] = 0;
+                std::complex<float_type> tmp_val(lin_data_real[j],
+                    lin_data_imag[j]);
+                //stacking data from the same x y location contiguous
+                //[x_0(0,0), x_1(0,0) ...][y_0(0,0), y_1(0,0) ...][z_0(0,0), z_1(0,0) ...]
+                //[x_0(0,1), x_1(0,1) ...][y_0(0,1), y_1(0,1) ...][z_0(0,1), z_1(0,1) ...]
+                //...
+                int idx = j * N_modes * NComp + i;
+                tmp_vec[idx] = tmp_val;
+            }
+        }
+//#endif
 
         c2rFunc.copy_field(tmp_vec);
         c2rFunc.execute();
         std::vector<float_type> output_vel;
         c2rFunc.output_field_padded(output_vel);
 
-        /*if (NComp > 1 && From::mesh_type() != MeshObject::edge)
-        {
-            for (int i = 0; i < padded_dim * (NComp - 1); i++)
-            {
-                auto& lin_data_ = it->data_r(To::tag(), i);
-                for (int j = 0; j < dim_0 * dim_1; j++)
-                {
-                    int idx = j * padded_dim * NComp + i;
-                    lin_data_[j] = output_vel[idx];
-                }
-            }
-            for (int i = padded_dim * (NComp - 1); i < padded_dim * NComp; i++)
-            {
-                auto& lin_data_ = it->data_r(To::tag(), i);
-                for (int j = 0; j < dim_0 * dim_1; j++)
-                {
-                    if (i % padded_dim != 0)
-                    {
-                        int idx = j * padded_dim * NComp + i;
-                        lin_data_[j] =
-                            output_vel[idx] / 2.0 + output_vel[idx - 1] / 2.0;
-                    }
-                    else
-                    {
-                        int idx = j * padded_dim * NComp + i;
-                        int idx0 =
-                            j * padded_dim * NComp +  i + padded_dim - 1;
-                        lin_data_[j] =
-                            output_vel[idx] / 2.0 + output_vel[idx0] / 2.0;
-                    }
-                }
-            }
-        }
-        else if (NComp > 1 && From::mesh_type() == MeshObject::edge)
-        {
-            for (int i = 0; i < padded_dim * (NComp - 1); i++)
-            {
-                auto& lin_data_ = it->data_r(To::tag(), i);
-                for (int j = 0; j < dim_0 * dim_1; j++)
-                {
-                    if (i % padded_dim != 0)
-                    {
-                        int idx = j * padded_dim * NComp + i;
-                        lin_data_[j] =
-                            output_vel[idx] / 2.0 + output_vel[idx - 1] / 2.0;
-                    }
-                    else
-                    {
-                        int idx = j * padded_dim * NComp + i;
-                        int idx0 =
-                            j * padded_dim * NComp +  i + padded_dim - 1;
-                        lin_data_[j] =
-                            output_vel[idx] / 2.0 + output_vel[idx0] / 2.0;
-                    }
-                }
-            }
-            for (int i = padded_dim * (NComp - 1); i < padded_dim * NComp; i++)
-            {
-                auto& lin_data_ = it->data_r(To::tag(), i);
-                for (int j = 0; j < dim_0 * dim_1; j++)
-                {
-                    int idx = j * padded_dim * NComp + i;
-                    lin_data_[j] = output_vel[idx];
-                }                
-            }
-        }
-        else
-        {
-            for (int i = 0; i < padded_dim * NComp; i++)
-            {
-                auto& lin_data_ = it->data_r(To::tag(), i);
-                for (int j = 0; j < dim_0 * dim_1; j++)
-                {
-                    int idx = j * padded_dim * NComp + i;
-                    lin_data_[j] = output_vel[idx];
-                }
-            }
-        }*/
-
+/*#ifdef USE_OMP
+        #pragma omp parallel for
         for (int i = 0; i < padded_dim * NComp; i++)
         {
             auto& lin_data_ = it->data_r(To::tag(), i);
@@ -2420,6 +3131,17 @@ struct Operator
                 lin_data_[j] = output_vel[idx]; 
             }
         }
+#else*/
+        for (int i = 0; i < padded_dim * NComp; i++)
+        {
+            auto& lin_data_ = it->data_r(To::tag(), i);
+            for (int j = 0; j < dim_0 * dim_1; j++)
+            {
+                int idx = j * padded_dim * NComp + i;
+                lin_data_[j] = output_vel[idx]; 
+            }
+        }
+//#endif
     }
 
     template<typename From, typename To, typename Block>
@@ -2432,55 +3154,10 @@ struct Operator
         int N_to = To::nFields();
 
         std::vector<float_type> tmp_vec(vec_size, 0.0);
-        /*if (NComp > 1)
-        {
-            for (int i = 0; i < padded_dim * (NComp - 1); i++)
-            {
-                auto& lin_data_ = it->data_r(From::tag(), i);
-                for (int j = 0; j < dim_0 * dim_1; j++)
-                {
-                    int idx = j * padded_dim * NComp + i;
-                    tmp_vec[idx] = lin_data_[j];
-                }
-            }
-            for (int i = padded_dim * (NComp - 1); i < padded_dim * NComp; i++)
-            {
-                auto& lin_data_0 = it->data_r(From::tag(), i);
-                auto& lin_data_1 = it->data_r(From::tag(), i + 1);
 
-                auto& lin_data_2 =
-                    it->data_r(From::tag(), (padded_dim * (NComp - 1)));
-
-                for (int j = 0; j < dim_0 * dim_1; j++)
-                {
-                    if (i != (padded_dim * NComp - 1))
-                    {
-                        int idx = j * padded_dim * NComp + i;
-                        tmp_vec[idx] =
-                            (lin_data_0[j] / 2.0 + lin_data_1[j] / 2.0);
-                    }
-                    else
-                    {
-                        int idx = j * padded_dim * NComp + i;
-                        tmp_vec[idx] =
-                            (lin_data_0[j] / 2.0 + lin_data_2[j] / 2.0);
-                    }
-                }
-            }
-        }
-        else
-        {
-            for (int i = 0; i < padded_dim * NComp; i++)
-            {
-                auto& lin_data_ = it->data_r(From::tag(), i);
-                for (int j = 0; j < dim_0 * dim_1; j++)
-                {
-                    int idx = j * padded_dim * NComp + i;
-                    tmp_vec[idx] = lin_data_[j];
-                }
-            }
-        }*/
         //use collocation in z direction
+/*#ifdef USE_OMP
+        #pragma omp parallel for
         for (int i = 0; i < N_modes * PREFAC_FROM * NComp; i++)
         {
             auto& lin_data_ = it->data_r(From::tag(), i);
@@ -2490,12 +3167,25 @@ struct Operator
                 tmp_vec[idx] = lin_data_[j];
             }
         }
+#else*/
+        for (int i = 0; i < N_modes * PREFAC_FROM * NComp; i++)
+        {
+            auto& lin_data_ = it->data_r(From::tag(), i);
+            for (int j = 0; j < dim_0 * dim_1; j++)
+            {
+                int idx = j * N_modes * PREFAC_FROM * NComp + i;
+                tmp_vec[idx] = lin_data_[j];
+            }
+        }
+//#endif
 
         r2cFunc.copy_field(tmp_vec);
         r2cFunc.execute();
         std::vector<std::complex<float_type>> output_vel;
         r2cFunc.output_field(output_vel);
 
+/*#ifdef USE_OMP
+        #pragma omp parallel for
         for (int i = 0; i < N_outputModes * NComp; i++)
         {
             auto& lin_data_real = it->data_r(To::tag(), i * 2);
@@ -2515,6 +3205,27 @@ struct Operator
                                    static_cast<float_type>(padded_dim);
             }
         }
+#else*/
+        for (int i = 0; i < N_outputModes * NComp; i++)
+        {
+            auto& lin_data_real = it->data_r(To::tag(), i * 2);
+            auto& lin_data_imag = it->data_r(To::tag(), i * 2 + 1);
+            for (int j = 0; j < dim_0 * dim_1; j++)
+            {
+                //stacking data from the same x y location contiguous
+                //[x_0(0,0), x_1(0,0) ...][y_0(0,0), y_1(0,0) ...][z_0(0,0), z_1(0,0) ...]
+                //[x_0(0,1), x_1(0,1) ...][y_0(0,1), y_1(0,1) ...][z_0(0,1), z_1(0,1) ...]
+                //...
+                int idx = j * PREFAC_FROM * (nonzero_dim / 2 + 1) + i;
+                //use (nonzero_dim/2 + 1) when use output_field
+                //use (nonzero_dim/2)     when use output_field_neglect_last
+                lin_data_real[j] = output_vel[idx].real() /
+                                   static_cast<float_type>(padded_dim);
+                lin_data_imag[j] = output_vel[idx].imag() /
+                                   static_cast<float_type>(padded_dim);
+            }
+        }
+//#endif
     }
 
     /*template<typename From, typename To, typename Block>
@@ -2586,6 +3297,8 @@ struct Operator
 
         std::vector<float_type> tmp_vec(vec_size/divisor, 0.0);
         //use collocation in z direction
+/*#ifdef USE_OMP
+        #pragma omp parallel for
         for (int i = 0; i < N_modes * PREFAC_FROM * NComp; i += divisor)
         {
             auto& lin_data_ = it->data_r(From::tag(), i);
@@ -2595,6 +3308,17 @@ struct Operator
                 tmp_vec[idx] = lin_data_[j];
             }
         }
+#else*/
+        for (int i = 0; i < N_modes * PREFAC_FROM * NComp; i += divisor)
+        {
+            auto& lin_data_ = it->data_r(From::tag(), i);
+            for (int j = 0; j < dim_0 * dim_1; j++)
+            {
+                int idx = j * N_comp_modes * PREFAC_FROM * NComp + i/divisor;
+                tmp_vec[idx] = lin_data_[j];
+            }
+        }
+//#endif
 
         r2cFunc->copy_field(tmp_vec);
         r2cFunc->execute();
@@ -2602,7 +3326,8 @@ struct Operator
         r2cFunc->output_field(output_vel);
 
 
-
+/*#ifdef USE_OMP
+        #pragma omp parallel for
         for (int N = 0; N < NComp; N++)
         {
             int added_idx_unref = N_modes * N * 2;
@@ -2623,26 +3348,28 @@ struct Operator
                 }
             }
         }
-
-        /*for (int i = 0; i < N_outputModes * NComp; i++)
+#else*/
+        for (int N = 0; N < NComp; N++)
         {
-            auto& lin_data_real = it->data_r(To::tag(), i * 2);
-            auto& lin_data_imag = it->data_r(To::tag(), i * 2 + 1);
-            for (int j = 0; j < dim_0 * dim_1; j++)
+            int added_idx_unref = N_modes * N * 2;
+            int added_idx_ref = N_comp_modes * N * 2;
+            for (int i = 0; i < N_comp_modes; i++)
             {
-                //stacking data from the same x y location contiguous
-                //[x_0(0,0), x_1(0,0) ...][y_0(0,0), y_1(0,0) ...][z_0(0,0), z_1(0,0) ...]
-                //[x_0(0,1), x_1(0,1) ...][y_0(0,1), y_1(0,1) ...][z_0(0,1), z_1(0,1) ...]
-                //...
-                int idx = j * PREFAC_FROM * (nonzero_dim / 2 + 1) + i;
-                //use (nonzero_dim/2 + 1) when use output_field
-                //use (nonzero_dim/2)     when use output_field_neglect_last
-                lin_data_real[j] = output_vel[idx].real() /
+                auto& lin_data_real = it->data_r(To::tag(), i * 2 + added_idx_unref);
+                auto& lin_data_imag = it->data_r(To::tag(), i * 2 + 1 + added_idx_unref);
+                for (int j = 0; j < dim_0 * dim_1; j++)
+                {
+                    int idx = j * PREFAC_FROM * (nonzero_dim / 2 + 1) + i + N_comp_modes * N;
+                    //use (nonzero_dim/2 + 1) when use output_field
+                    //use (nonzero_dim/2)     when use output_field_neglect_last
+                    lin_data_real[j] = output_vel[idx].real() /
                                    static_cast<float_type>(padded_dim);
-                lin_data_imag[j] = output_vel[idx].imag() /
+                    lin_data_imag[j] = output_vel[idx].imag() /
                                    static_cast<float_type>(padded_dim);
+                }
             }
-        }*/
+        }
+//#endif
     }
 };
 } // namespace domain

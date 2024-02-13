@@ -72,6 +72,21 @@ public:
             client_=std::make_shared<client_type>(domain_, comm_);
     }
 
+#ifdef USE_OMP
+    void OMP_initialize() {
+        auto n = omp_get_max_threads();
+        if (client_) {
+            client_->resizing_manager_vec(n);
+        }
+        if (server_) {
+            server_->resizing_manager_vec(n);
+        }
+        if (!client_ && !server_) {
+            throw std::runtime_error("Need to initialize client before increasing size of task manager vector size");
+        }
+    }
+#endif
+
 
 public: //memeber functions
 
@@ -122,6 +137,7 @@ public: //memeber functions
         {
             std::cout<< "Initialization of masks start"<<std::endl;
             FmmMaskBuilder::fmm_vortex_streamfun_mask(domain_);
+            FmmMaskBuilder::fmm_vortex_streamfun_mask_build(domain_);
             FmmMaskBuilder::fmm_lgf_mask_build(domain_, subtract_non_leaf_);
 
             FmmMaskBuilder::fmm_laplacian_BC_mask(domain_);
@@ -459,6 +475,7 @@ public: //memeber functions
 
             fmm_mask_builder_t::fmm_clean_load(domain_);
             fmm_mask_builder_t::fmm_vortex_streamfun_mask(domain_);
+            fmm_mask_builder_t::fmm_vortex_streamfun_mask_build(domain_);
             fmm_mask_builder_t::fmm_lgf_mask_build(domain_,subtract_non_leaf_);
             //if (ib_change)
                 server()->update_ib_flag();

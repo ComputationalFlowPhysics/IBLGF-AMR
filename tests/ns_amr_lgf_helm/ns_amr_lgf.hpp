@@ -60,7 +60,7 @@ const int Dim = 2;
 struct parameters
 {
     static constexpr std::size_t Dim = 2;
-	static constexpr std::size_t N_modes = 128;
+	static constexpr std::size_t N_modes = 16;
 	static constexpr std::size_t PREFAC  = 2; //2 for complex values 
     // clang-format off
     REGISTER_FIELDS
@@ -220,6 +220,12 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
 		bool use_tree_ = simulation_.dictionary_->template get_or<bool>("use_init_tree", false);
 		bool restart_2D_ = simulation_.dictionary_->template get_or<bool>("use_2D_restart", false);
 
+		read_diff_Nmode = simulation_.dictionary_->template get_or<bool>("read_diff_Nmode", false);
+		if (read_diff_Nmode) input_Nmode = simulation_.dictionary_->template get<int>("input_Nmode");
+
+		wake_dist = simulation_.dictionary_->template get_or<float_type>(
+			"wake_dist", 100.0); //does not refine to the finest level outside of this region
+
 		//bool subtract_non_leaf_ = simulation_.dictionaty()->template get_or<bool>("subtract_non_leaf", true);
 
 		if (dt_ < 0) dt_ = dx_ * cfl_;
@@ -256,20 +262,21 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
 
 		pcout << "Finished register refinement condition" << std::endl;
 
-		domain_->ib().init(_d->get_dictionary("simulation_parameters"), domain_->dx_base(), nLevelRefinement_, Re_);
+		nIB_add_level_ = _d->get_dictionary("simulation_parameters")->template get_or<int>("nIB_add_level", 0);
+
+		domain_->ib().init(_d->get_dictionary("simulation_parameters"), domain_->dx_base(), nLevelRefinement_+nIB_add_level_, Re_);
 
 
 		pcout << "Finished getting IB pts" << std::endl;
 
 		if (!use_restart() && !use_tree_)
 		{
-			domain_->init_refine(_d->get_dictionary("simulation_parameters")
-				->template get_or<int>("nLevels", 0),
-				global_refinement_, 0);
+			domain_->init_refine(nLevelRefinement_, global_refinement_, nIB_add_level_);
 		}
 		else
 		{
 			domain_->restart_list_construct();
+			//domain_->init_refine(nLevelRefinement_, global_refinement_, nIB_add_level_);
 		}
 
 		domain_->register_adapt_condition()=
@@ -288,6 +295,11 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
 		else if (restart_2D_) {
 			pcout << "reading restart from 2D profile" << std::endl;
 			simulation_.template read_h5_2D<u_type>(simulation_.restart_field_dir(), "u");
+			perturbIC();
+		}
+		else if (read_diff_Nmode) {
+			pcout << "reading restart with diff N mode: " << input_Nmode << " Current: " << N_modes << std::endl;
+			simulation_.template read_h5_DiffNmode<u_type>(simulation_.restart_field_dir(), "u", input_Nmode);
 			perturbIC();
 		}
 		else
@@ -309,9 +321,13 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
 	{
 		
 		boost::mpi::communicator world;
+
+		//simulation_.write("restarted_field.hdf5");
 		//std::cout << world.rank() << " start running" << std::endl;
 		PetscCall(PetscInitialize(&argc, &argv, (char*)0, NULL));
 		time_integration_t ifherk(&this->simulation_);
+
+		//ifherk.adapt(false);
 
 		
 
@@ -520,6 +536,9 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
 			if (!it->is_leaf() && !it->is_correction()) continue;
 			if (it->is_leaf() && it->is_correction()) continue;
 
+
+
+
 			int l1=-1;
 			int l2=-1;
 			int l3=-1;
@@ -535,6 +554,40 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
 
 			int l=std::max(std::max(l1,l2),l3);
 			//int l = std::max(l1,l2);
+
+
+			auto dx_level = domain_->dx_base() / std::pow(2, it->refinement_level());
+
+			bool outOfWake = false;
+
+			if (!it->is_ib() && 
+				 ((it->refinement_level()==(nLevelRefinement_) && l != -1) || (it->refinement_level()==(nLevelRefinement_ - 1) && l == 1))) {
+
+				for (auto& n : it->data())
+				{
+					
+
+					auto n_coord = n.level_coordinate();
+					int n_x = n_coord.x();
+					int n_y = n_coord.y();
+
+					float_type x = static_cast<float_type>(n_x) * dx_level;
+					float_type y = static_cast<float_type>(n_y) * dx_level;
+
+					if (x > wake_dist) {
+						if (it->refinement_level()==(nLevelRefinement_)) {
+							l = -1;
+						}
+						else {
+							l = 0;
+						}
+						break;
+					}
+
+					
+				}
+			}
+
 
 			if( l!=0)
 			{
@@ -663,7 +716,7 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
 #endif
 		if (vortexType != 0) return 0;
 		if (it->is_ib() && it->is_leaf())
-			if (it->refinement_level()<nLevelRefinement_)
+			if (it->refinement_level()<(nLevelRefinement_+nIB_add_level_))
 				return 1;
 			else
 				return 0;
@@ -1278,6 +1331,11 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
 	bool use_rand_perturb = true;
 	int pert_pow = 5;
     int vortexType = 0;
+
+	bool read_diff_Nmode = false;
+	int input_Nmode;
+
+	float_type wake_dist = 100;
 	float_type w_perturb;
 	float_type c_z;
 
@@ -1299,6 +1357,7 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
     float_type c2=0;
     float_type eps_grad_=1.0e6;;
     int nLevelRefinement_=0;
+	int nIB_add_level_ = 0;
     int hard_max_level_ = 0;
     int global_refinement_=0;
     fcoord_t offset_;

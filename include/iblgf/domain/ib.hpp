@@ -64,6 +64,9 @@ class IB
         ibph_ = d->template get_or<float_type>("ibph", 1.5);
         geometry_ = d->template get_or<std::string>("geometry", "none");
 
+        ct_x = d->template get_or<float_type>("ct_x", 1.0);
+        ct_y = d->template get_or<float_type>("ct_y", 1.0);
+
         IBlevel_ = level;
         dx_base_ = dx_base;
         dx_ib_ = dx_base/pow(2,IBlevel_);
@@ -71,11 +74,19 @@ class IB
         read_points();
 
         // will add more, default is yang4
-        ddf_radius_ = 1.5;
+        // ddf_radius_ = 1.5;
+        ddf_radius_ = 4.5;
+        //safety_dis_ = 5.0/(std::sqrt(Re)*dx_ib_)+1.0;
+
         safety_dis_ = 5.0/(Re*dx_ib_)+1.0;
 
+        //std::function<float_type(float_type x)> delta_func_1d_ =
+        //    [this](float_type x) { return this->roma(x); };
+
         std::function<float_type(float_type x)> delta_func_1d_ =
-            [this](float_type x) { return this->roma(x); };
+            [this](float_type x) { return this->yang3(x); };
+        //std::function<float_type(float_type x)> delta_func_1d_ =
+        //    [this](float_type x) { return this->yang4(x); };
 
         this->delta_func_ = [this, delta_func_1d_](real_coordinate_type x) {
 	    if (Dim == 3) {
@@ -206,6 +217,41 @@ class IB
             }
         }
 
+        else if (geometry_ == "2circles")
+        {
+            if (Dim == 2)
+            {
+                float_type r = 0.05; //diameter of smaller cylinder
+
+                float_type R = 0.5;
+                float_type dx = dx_base_ / pow(2, IBlevel_) * ibph_;
+                int        n = floor(2.0 * R * M_PI / dx) + 1;
+                int        n_s = floor(2.0 * r * M_PI / dx) + 1;
+                if (comm_.rank() == 1)
+                    std::cout << "Geometry = 2 circles, n = " << n << std::endl;
+                for (int i = 0; i < n; i++)
+                {
+                    float_type           x = i + 0.5;
+                    float_type           theta = 2 * M_PI * x / n;
+                    real_coordinate_type tmp;
+                    tmp.x() = R * cos(theta);
+                    tmp.y() = R * sin(theta);
+                    coordinates_.emplace_back(real_coordinate_type(tmp));
+                }
+
+                for (int i = 0; i < n_s; i++)
+                {
+                    float_type           x = i + 0.5;
+                    float_type           theta = 2 * M_PI * x / n_s;
+                    real_coordinate_type tmp;
+                    tmp.x() = r * cos(theta) + ct_x;
+                    tmp.y() = r * sin(theta) + ct_y;
+                    coordinates_.emplace_back(real_coordinate_type(tmp));
+                }
+            }
+        }
+
+
         else if (geometry_ == "NACA0009")
         {
             if (Dim == 2)
@@ -215,24 +261,91 @@ class IB
                 int        n = floor(1.0 / dx)*2;
                 if (comm_.rank() == 1)
                     std::cout << "Geometry = NACA0009, n = " << n << std::endl;
+
+                real_coordinate_type tmp;
+                tmp.x() = 0;
+                tmp.y() = 0;
+                coordinates_.emplace_back(real_coordinate_type(tmp));
+                
                 for (int i = 0; i < n/2 ; i++)
                 {
-                    float_type    x = i * dx;
+                    float_type    x_dia = 1/((1/(5*0.09) + 0.1260)/0.2969*2)*((1/(5*0.09) + 0.1260)/0.2969*2)*1.5;
+                    float_type    x = x_dia;
+                    float_type    y_dia = 5*0.09*(0.2969*std::sqrt(x) - 0.1260*x - 0.3516*x*x + 0.2843 * x * x * x - 0.1015 * x * x * x * x);
+                    x = i * dx;
                     float_type    y = 5*0.09*(0.2969*std::sqrt(x) - 0.1260*x - 0.3516*x*x + 0.2843 * x * x * x - 0.1015 * x * x * x * x);
-                    real_coordinate_type tmp;
 
-                    float_type angle = M_PI/15; //12 degree AoA
-                    tmp.x() = x*std::cos(angle) - y*std::sin(angle);
-                    tmp.y() = y*std::cos(angle) + x*std::sin(angle);
-                    coordinates_.emplace_back(real_coordinate_type(tmp));
+                    if (i == 0) {
 
-                    x = i * dx + dx;
-                    y = -5*0.09*(0.2969*std::sqrt(x) - 0.1260*x - 0.3516*x*x + 0.2843 * x * x * x - 0.1015 * x * x * x * x);
-                    
-                    tmp.x() = x*std::cos(angle) - y*std::sin(angle);
-                    tmp.y() = y*std::cos(angle) + x*std::sin(angle);
+                        real_coordinate_type tmp;
 
-                    coordinates_.emplace_back(real_coordinate_type(tmp));
+                        float_type angle = 0; //12 degree AoA
+
+                        x = i * dx + dx/2;
+
+                        y = x / x_dia * y_dia;
+                        tmp.x() = x*std::cos(angle) - y*std::sin(angle);
+                        tmp.y() = y*std::cos(angle) + x*std::sin(angle);
+                        coordinates_.emplace_back(real_coordinate_type(tmp));
+
+                        y = -x / x_dia * y_dia;
+                        tmp.x() = x*std::cos(angle) - y*std::sin(angle);
+                        tmp.y() = y*std::cos(angle) + x*std::sin(angle);
+                        coordinates_.emplace_back(real_coordinate_type(tmp));
+                    }
+                    else if (x < x_dia) {
+                        //two points in here (dy^2 + dx^2 \approx 4 dx^2)
+                        y = x / x_dia * y_dia;
+
+                        real_coordinate_type tmp;
+
+                        float_type angle = 0; //12 degree AoA
+                        tmp.x() = x*std::cos(angle) - y*std::sin(angle);
+                        tmp.y() = y*std::cos(angle) + x*std::sin(angle);
+                        coordinates_.emplace_back(real_coordinate_type(tmp));
+
+                        y = -x / x_dia * y_dia;
+                        tmp.x() = x*std::cos(angle) - y*std::sin(angle);
+                        tmp.y() = y*std::cos(angle) + x*std::sin(angle);
+                        coordinates_.emplace_back(real_coordinate_type(tmp));
+
+                        x = i * dx + dx/2;
+
+                        y = x / x_dia * y_dia;
+                        tmp.x() = x*std::cos(angle) - y*std::sin(angle);
+                        tmp.y() = y*std::cos(angle) + x*std::sin(angle);
+                        coordinates_.emplace_back(real_coordinate_type(tmp));
+
+                        y = -x / x_dia * y_dia;
+                        tmp.x() = x*std::cos(angle) - y*std::sin(angle);
+                        tmp.y() = y*std::cos(angle) + x*std::sin(angle);
+                        coordinates_.emplace_back(real_coordinate_type(tmp));
+                    }
+                    else if (y < dx/2/ibph_ * 1.05) {
+                        y = 0;
+                        real_coordinate_type tmp;
+
+                        float_type angle = 0; //12 degree AoA
+                        tmp.x() = x*std::cos(angle) - y*std::sin(angle);
+                        tmp.y() = y*std::cos(angle) + x*std::sin(angle);
+                        coordinates_.emplace_back(real_coordinate_type(tmp));
+                    }
+                    else {
+                        real_coordinate_type tmp;
+
+                        float_type angle = 0; //12 degree AoA
+                        tmp.x() = x*std::cos(angle) - y*std::sin(angle);
+                        tmp.y() = y*std::cos(angle) + x*std::sin(angle);
+                        coordinates_.emplace_back(real_coordinate_type(tmp));
+
+                        x = i * dx + dx;
+                        y = -5*0.09*(0.2969*std::sqrt(x) - 0.1260*x - 0.3516*x*x + 0.2843 * x * x * x - 0.1015 * x * x * x * x);
+                        
+                        tmp.x() = x*std::cos(angle) - y*std::sin(angle);
+                        tmp.y() = y*std::cos(angle) + x*std::sin(angle);
+
+                        coordinates_.emplace_back(real_coordinate_type(tmp));
+                    }
                 }
             }
         }
@@ -458,11 +571,17 @@ class IB
         // this function scale the block to the finest level and compare with
         // the influence region of the ib point
 
+        /*float_type added_radius = 0;
+        if (radius_level == 2)
+            added_radius += ddf_radius_+safety_dis_+10.0;
+        else if (radius_level == 1)
+            added_radius += ddf_radius_+2.0;*/
+
         float_type added_radius = 0;
         if (radius_level == 2)
             added_radius += ddf_radius_+safety_dis_+10.0;
         else if (radius_level == 1)
-            added_radius += ddf_radius_+2.0;
+            added_radius += ddf_radius_+5.0;
 
         b_dscrptr.level_scale(IBlevel_);
 
@@ -554,6 +673,8 @@ public:
     std::vector<std::vector<octant_t*>> ib_infl_;
     std::vector<std::vector<std::vector<node_t>>> ib_infl_pts_;
     std::vector<int>                    ib_rank_;
+
+    float_type ct_x, ct_y;
 
     delta_func_type delta_func_;
     float_type      ddf_radius_ = 0;

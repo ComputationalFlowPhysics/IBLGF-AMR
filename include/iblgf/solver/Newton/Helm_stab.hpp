@@ -10997,6 +10997,605 @@ class Helm_stab
         }
     }
 
+    //velocity Kernel induced by a periodic forcing with Delta function
+    float_type Forcing_kernel(float_type omega_, float_type x, float_type y, bool real, int idx) {
+        if (idx == 0) {
+            float_type re = std::cos(omega_*x) * M_PI * std::sign(y) * std::exp(-std::abs(y*omega_));
+            float_type im = std::sin(omega_*x) * M_PI * std::sign(y) * std::exp(-std::abs(y*omega_));
+            if (real) {
+                return re;
+            }
+            else {
+                return im;
+            }
+        }
+        else {
+            float_type re = -std::sin(omega_*x) * M_PI * std::sign(omega_) * std::exp(-std::abs(y*omega_));
+            float_type im = std::cos(omega_*x) * M_PI * std::sign(omega_) * std::exp(-std::abs(y*omega_));
+            if (real) {
+                return re;
+            }
+            else {
+                return im;
+            }
+        }
+    }
+
+    //initialize the receptivity matrix using a set of immersed boundary points
+    void initializing_recep_region() {
+        //define a line 
+        float_type _x_v = -20;
+        float_type _y_u = 20;
+        float_type _y_l = -20;
+
+        float_type dx = dx_base_/pow(2,IBlevel_)*ibph_;
+        int n_pts = floor((_y_u - _y_l)/dx);
+        real_coordinate_type tmp;
+        for (int i = 0; i < n_pts; i++) {
+            tmp.y() = static_cast<float_type>((i + 0.5)/n_pts) * dx + _y_l;
+            tmp.x() = _x_v;
+
+            forcing_coords.emplace_back(real_coordinate_type(tmp));
+        }
+    }
+
+    void constructing_forcing_mat() {
+        boost::mpi::communicator world;
+        world.barrier();
+
+        if (world.rank() == 0) {
+            return;
+        }
+
+        if (world.rank() == 1) {
+            std::cout << "Constructing forcing from receptivity matrix" << std::endl;
+        }
+        
+        if (max_local_B_idx == 0) {
+            std::cout << "idx not initialized, please call Assigning_idx()" << std::endl;
+        }
+
+        const auto dx_base = domain_->dx_base();
+
+        ForcingMat_real.resizing_row(max_local_B_idx+1);
+        ForcingMat_imag.resizing_row(max_local_B_idx+1);
+
+        int base_level = domain_->tree()->base_level();
+
+        int N_ext = domain_->block_extent()[0];
+
+        
+        for (int l = base_level; l < domain_->tree()->depth(); l++)
+        {
+            if (domain_->is_client())
+            {
+                auto client = domain_->decomposition().client();
+
+                client->template buffer_exchange<idx_u_B_type>(l);
+                client->template buffer_exchange<idx_u_B_g_type>(l);
+                if (l != (domain_->tree()->depth() - 1)) client->template buffer_exchange<idx_u_B_type>(l+1);
+                if (l != (domain_->tree()->depth() - 1)) client->template buffer_exchange<idx_u_B_g_type>(l+1);
+            }
+
+            int N_ext = domain_->block_extent()[0];
+
+            
+
+            for (auto it = domain_->begin(l);
+                 it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
+                if (!it->is_leaf()) continue;
+                if (it->is_correction()) continue;
+
+                float_type dx_level = dx_base / math::pow2(it->refinement_level());
+                
+
+                for (std::size_t field_idx = 0;
+                     field_idx < idx_u_B_type::nFields(); ++field_idx)
+                {
+                    for (auto& n : it->data())
+                    {
+                        const auto& coord = n.level_coordinate();
+
+                        float_type x = static_cast<float_type>(coord[0]) * dx_level;
+					    float_type y = static_cast<float_type>(coord[1]) * dx_level;
+
+                        int cur_idx = n(idx_u_B_type::tag(), field_idx);
+                        if (cur_idx <= 0) continue;
+                        int glo_idx = n(idx_u_B_g_type::tag(), field_idx);
+                        for (size_t i = 0; i < forcing_coords.size(); i++) {
+                            auto tmp_coord_x = forcing_coords[i].x();
+                            auto tmp_coord_y = forcing_coords[i].y();
+
+                            float_type diff_x = x - tmp_coord_x;
+                            float_type diff_y = y - tmp_coord_y;
+
+                            float_type u_real = Forcing_kernel(omega_time, diff_x, diff_y, true, field_idx);
+                            float_type u_imag = Forcing_kernel(omega_time, diff_x, diff_y, false, field_idx);
+                            ForcingMat_real.add_element(cur_idx, i, u_real);
+                            ForcingMat_imag.add_element(cur_idx, i, u_imag);
+                        }
+                    }
+                }
+            }
+        }
+
+        domain_->client_communicator().barrier();
+    }
+
+    /*void construct_curl_forcing() {
+        boost::mpi::communicator world;
+        world.barrier();
+        
+        if (world.rank() == 0) {
+            return;
+        }
+
+        if (world.rank() == 1) {
+            std::cout << "Constructing DN_u matrix" << std::endl;
+        }
+       
+        if (max_local_idx == 0) {
+            std::cout << "idx not initialized, please call Assigning_idx()" << std::endl;
+        }
+
+        //constructing the curl part
+        const auto dx_base = domain_->dx_base();
+
+        int base_level = domain_->tree()->base_level();
+
+        Curl_forcing.resizing_row(max_local_idx+1);
+
+        for (int l = base_level; l < domain_->tree()->depth(); l++)
+        {
+            if (domain_->is_client())
+            {
+                auto client = domain_->decomposition().client();
+
+                client->template buffer_exchange<idx_u_type>(l);
+                client->template buffer_exchange<idx_u_g_type>(l);
+                if (l != (domain_->tree()->depth() - 1)) client->template buffer_exchange<idx_u_type>(l+1);
+                if (l != (domain_->tree()->depth() - 1)) client->template buffer_exchange<idx_u_g_type>(l+1);
+            }
+
+            int N_ext = domain_->block_extent()[0];
+
+            
+
+            for (auto it = domain_->begin(l);
+                 it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
+                if (!it->is_leaf()) continue;
+                if (it->is_correction()) continue;
+
+                float_type dx_level = dx_base / math::pow2(it->refinement_level());
+                
+
+                for (auto& n : it->data())
+                {
+                    int cur_idx_0 = n(idx_w_type::tag(), 0);
+                    int glo_idx_0 = n(idx_w_g_type::tag(), 0);
+
+                    if (cur_idx_0 < 0) continue;
+
+                    int cur_idx_1 = n(idx_w_type::tag(), 1);
+                    int glo_idx_1 = n(idx_w_g_type::tag(), 1);
+
+                    int cur_idx_2 = n(idx_w_type::tag(), 2);
+                    int glo_idx_2 = n(idx_w_g_type::tag(), 2);
+                    if (cur_idx_0 < 0) continue;
+                    int glo_idx_0_0 = n(idx_u_g_type::tag(), 0);
+                    int glo_idx_1_0 = n(idx_u_g_type::tag(), 1);
+                    int glo_idx_2_0 = n(idx_uz_g_type::tag(), 0);
+
+                    int glo_idx_0_1 =
+                        n.at_offset(idx_u_g_type::tag(), 0, -1, 0);
+                    int glo_idx_1_1 =
+                        n.at_offset(idx_u_g_type::tag(), -1, 0, 1);
+                    int glo_idx_2_10 =
+                        n.at_offset(idx_uz_g_type::tag(), -1, 0, 0);
+                    int glo_idx_2_01 =
+                        n.at_offset(idx_uz_g_type::tag(), 0, -1, 0);
+
+                    Curl_forcing.add_element(cur_idx_0, glo_idx_2_01, -1.0 / dx_level);
+                    Curl_forcing.add_element(cur_idx_0, glo_idx_2_0, 1.0 / dx_level);
+                    //Curl.add_element(cur_idx_0, glo_idx_1_0, -mode_c);
+                    
+                    //Curl.add_element(cur_idx_0, glo_idx_0, -1.0);
+
+                    Curl_forcing.add_element(cur_idx_1, glo_idx_2_10, 1.0 / dx_level);
+                    Curl_forcing.add_element(cur_idx_1, glo_idx_2_0, -1.0 / dx_level);
+                    //Curl.add_element(cur_idx_1, glo_idx_0_0, mode_c);
+                    
+                    //Curl.add_element(cur_idx_1, glo_idx_1, -1.0);
+
+                    Curl_forcing.add_element(cur_idx_2, glo_idx_0_0, -1.0 / dx_level);
+                    Curl_forcing.add_element(cur_idx_2, glo_idx_1_0, 1.0 / dx_level);
+                    Curl_forcing.add_element(cur_idx_2, glo_idx_0_1, 1.0 / dx_level);
+                    Curl_forcing.add_element(cur_idx_2, glo_idx_1_1, -1.0 / dx_level);
+                    
+                    //Curl.add_element(cur_idx_2, glo_idx_2, -1.0);
+
+                }
+            }
+        }
+        domain_->client_communicator().barrier();
+    }*/
+
+
+    template<class U_old, class W_old>
+    void construction_DN_forcing(float_type t = 5) {
+        boost::mpi::communicator world;
+        world.barrier();
+
+        if (world.rank() == 0) {
+            return;
+        }
+
+        if (world.rank() == 1) {
+            std::cout << "Constructing DN_u matrix" << std::endl;
+        }
+       
+        if (max_local_idx == 0) {
+            std::cout << "idx not initialized, please call Assigning_idx()" << std::endl;
+        }
+
+        const auto dx_base = domain_->dx_base();
+
+        DN_forcing.resizing_row(max_local_idx+1);
+
+        int base_level = domain_->tree()->base_level();
+        clean<edge_aux_type>();
+        //pad_velocity<U_old, U_old>(true);
+        curl<U_old, W_old, edge_aux_type>(0.0);
+        //curl2D<U_old, edge_aux_type>();
+        //up_and_down(edge_aux_type)();
+        up_and_down<U_old>();
+        up_and_down<W_old>();
+        for (int l = base_level; l < domain_->tree()->depth(); l++)
+        {
+            if (domain_->is_client())
+            {
+                auto client = domain_->decomposition().client();
+
+                client->template buffer_exchange<idx_u_type>(l);
+                client->template buffer_exchange<idx_uz_type>(l);
+                client->template buffer_exchange<idx_p_type>(l);
+                client->template buffer_exchange<idx_u_g_type>(l);
+                client->template buffer_exchange<idx_uz_g_type>(l);
+                client->template buffer_exchange<idx_w_g_type>(l);
+                client->template buffer_exchange<U_old>(l);
+                client->template buffer_exchange<W_old>(l);
+                client->template buffer_exchange<idx_N_g_type>(l);
+                client->template buffer_exchange<idx_N_type>(l);
+                client->template buffer_exchange<idx_Nz_g_type>(l);
+                client->template buffer_exchange<idx_Nz_type>(l);
+                
+            }
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            {
+                float_type dx = dx_base / math::pow2(it->refinement_level());
+                if (!it->locally_owned() || !it->has_data()) continue;
+                if (!it->is_leaf()) continue;
+                if (it->is_correction()) continue;
+
+                for (auto& n : it->data())
+                {
+                    //omega cross u_s
+
+                    int cur_idx_0 = n(idx_N_type::tag(), 0);
+                    int cur_idx_1 = n(idx_N_type::tag(), 1);
+
+                    int cur_idx_2 = n(idx_Nz_type::tag(), 0);
+                    int gN_idx_2 = n(idx_Nz_g_type::tag(), 0);
+
+                    if (cur_idx_0 < 0 || cur_idx_1 < 0) continue;
+                    
+                    int cur_idx_u_0 = n(idx_u_type::tag(), 0);
+                    int cur_idx_u_1 = n(idx_u_type::tag(), 1);
+
+                    int cur_idx_u_2 = n(idx_uz_type::tag(), 0);
+
+                    int glob_idx_0 = n(idx_u_g_type::tag(), 0);
+                    int glob_idx_1 = n(idx_u_g_type::tag(), 1);
+
+                    int glob_idx_2 = n(idx_uz_g_type::tag(), 0);
+
+                    int glob_idx_0_1 = n.at_offset(idx_u_g_type::tag(), 0, -1, 0);
+                    int glob_idx_0_2 = n.at_offset(idx_u_g_type::tag(), 0,  1, 0);
+                    int glob_idx_0_3 = n.at_offset(idx_u_g_type::tag(), 1,  0, 0);
+                    int glob_idx_0_4 = n.at_offset(idx_u_g_type::tag(), 1, -1, 0);
+
+                    int glob_idx_1_1 = n.at_offset(idx_u_g_type::tag(), -1, 0, 1);
+                    int glob_idx_1_2 = n.at_offset(idx_u_g_type::tag(),  0, 1, 1);
+                    int glob_idx_1_3 = n.at_offset(idx_u_g_type::tag(), -1, 1, 1);
+                    int glob_idx_1_4 = n.at_offset(idx_u_g_type::tag(),  1, 0, 1);
+
+                    int glob_idx_00 = n(idx_w_g_type::tag(), 0);
+                    int glob_idx_01 = n.at_offset(idx_w_g_type::tag(),  0, 1, 0);
+                    int glob_idx_10 = n.at_offset(idx_w_g_type::tag(),  1, 0, 0);
+
+                    int glob_idx_00_1 = n(idx_w_g_type::tag(), 1);
+                    int glob_idx_00_2 = n(idx_w_g_type::tag(), 2);
+                    int glob_idx_01_1 = n.at_offset(idx_w_g_type::tag(),  0, 1, 1);
+                    int glob_idx_10_1 = n.at_offset(idx_w_g_type::tag(),  1, 0, 1);
+                    int glob_idx_01_2 = n.at_offset(idx_w_g_type::tag(),  0, 1, 2);
+                    int glob_idx_10_2 = n.at_offset(idx_w_g_type::tag(),  1, 0, 2);
+
+                    /*if (glob_idx_01   <= 0 || glob_idx_10   <= 0 || glob_idx_01_1 <= 0 ||
+                        glob_idx_10_1 <= 0 || glob_idx_01_2 <= 0 || glob_idx_10_2 <= 0) {
+                            continue;
+                        }*/
+
+                    auto coord = n.global_coordinate() * dx;
+                    auto field_func = simulation_->frame_vel();
+                    float_type u_field_vel = 0;
+                    float_type v_field_vel = 0;
+                    float_type w_field_vel = 0;
+
+                    float_type v_s_0010 = -(n(U_old::tag(), 1)                   + n.at_offset(U_old::tag(), -1, 0, 1))*0.25 - v_field_vel * 0.5;
+                    float_type v_s_0111 = -(n.at_offset(U_old::tag(),  0, 1, 1)  + n.at_offset(U_old::tag(), -1, 1, 1))*0.25 - v_field_vel * 0.5;
+                    float_type u_s_0001 =  (n(U_old::tag(), 0)                   + n.at_offset(U_old::tag(), 0, -1, 0))*0.25 + u_field_vel * 0.5;
+                    float_type u_s_1011 =  (n.at_offset(U_old::tag(),  1, 0, 0)  + n.at_offset(U_old::tag(), 1, -1, 0))*0.25 + u_field_vel * 0.5;
+                    float_type w_s_0010 =  (n(W_old::tag(), 0)                   + n.at_offset(W_old::tag(), -1, 0, 0))*0.5  + w_field_vel;
+                    float_type w_s_0001 =  (n(W_old::tag(), 0)                   + n.at_offset(W_old::tag(), 0, -1, 0))*0.5  + w_field_vel;
+
+
+                    float_type v_s_00   =  n(U_old::tag(), 1)                  + v_field_vel;
+                    float_type v_s_01   =  n.at_offset(U_old::tag(),  0, 1, 1) + v_field_vel;
+                    float_type u_s_00   =  n(U_old::tag(), 0)                  + u_field_vel;
+                    float_type u_s_10   =  n.at_offset(U_old::tag(),  1, 0, 0) + u_field_vel;
+
+
+                    int p_idx_w = n.at_offset(idx_p_type::tag(), -1, 0, 0);
+                    int p_idx_e = n.at_offset(idx_p_type::tag(), 1, 0, 0);
+                    int p_idx_n = n.at_offset(idx_p_type::tag(), 0, 1, 0);
+                    int p_idx_s = n.at_offset(idx_p_type::tag(), 0, -1, 0);
+
+                    /*
+                    //x_component
+                    //-n.at_offset(edge, 0, 0, 0) *(n.at_offset(face, 0, 0, 1) + n.at_offset(face, -1, 0, 1))
+                    DN.add_element(cur_idx_0, glob_idx_00_2, v_s_0010);
+                    //-n.at_offset(edge, 0, 1, 0) *(n.at_offset(face, 0, 1, 1) + n.at_offset(face, -1, 1, 1))
+                    DN.add_element(cur_idx_0, glob_idx_01_2, v_s_0111);
+
+                    //adding it to momentum equation
+                    //-n.at_offset(edge, 0, 0, 0) *(n.at_offset(face, 0, 0, 1) + n.at_offset(face, -1, 0, 1))
+                    DN.add_element(cur_idx_u_0, glob_idx_00_2, v_s_0010);
+                    //-n.at_offset(edge, 0, 1, 0) *(n.at_offset(face, 0, 1, 1) + n.at_offset(face, -1, 1, 1))
+                    DN.add_element(cur_idx_u_0, glob_idx_01_2, v_s_0111);
+
+                    //y_component
+                    // n.at_offset(edge, 0, 0, 0) *(n.at_offset(face, 0, 0, 0) + n.at_offset(face, 0, -1, 0))
+                    DN.add_element(cur_idx_1, glob_idx_00_2, u_s_0001);
+                    // n.at_offset(edge, 1, 0, 0) *(n.at_offset(face, 1, 0, 0) + n.at_offset(face, 1, -1, 0))
+                    DN.add_element(cur_idx_1, glob_idx_10_2, u_s_1011);
+
+                    //adding it to momentum equation
+                    // n.at_offset(edge, 0, 0, 0) *(n.at_offset(face, 0, 0, 0) + n.at_offset(face, 0, -1, 0))
+                    DN.add_element(cur_idx_u_1, glob_idx_00_2, u_s_0001);
+                    // n.at_offset(edge, 1, 0, 0) *(n.at_offset(face, 1, 0, 0) + n.at_offset(face, 1, -1, 0))
+                    DN.add_element(cur_idx_u_1, glob_idx_10_2, u_s_1011);
+
+                    //z_component
+                    DN.add_element(cur_idx_2, glob_idx_00, v_s_00*0.5);
+                    DN.add_element(cur_idx_2, glob_idx_01, v_s_01*0.5);
+                    DN.add_element(cur_idx_2, glob_idx_00_1, -u_s_00*0.5);
+                    DN.add_element(cur_idx_2, glob_idx_10_1, -u_s_10*0.5);
+
+                    DN.add_element(cur_idx_u_2, glob_idx_00, v_s_00*0.5);
+                    DN.add_element(cur_idx_u_2, glob_idx_01, v_s_01*0.5);
+                    DN.add_element(cur_idx_u_2, glob_idx_00_1, -u_s_00*0.5);
+                    DN.add_element(cur_idx_u_2, glob_idx_10_1, -u_s_10*0.5);
+
+                    //DN.add_element(cur_idx_2, glob_idx_2, -1.0);
+                    DN.add_element(cur_idx_2, gN_idx_2, -1.0);*/
+
+                    //0.5 * n.at_offset(edge, 0, 0, y_p) * (n.at_offset(face, 0, 0, z_p) + n.at_offset(face, -1, 0, z_p))
+                    DN_forcing.add_element(cur_idx_0, glob_idx_00_1, w_s_0010);
+                    //-n.at_offset(edge, 0, 0, z_p) *  (n.at_offset(face, 0, 0, y_p) + n.at_offset(face, -1, 0, y_p))
+                    DN_forcing.add_element(cur_idx_0, glob_idx_00_2, v_s_0010);
+                    //-n.at_offset(edge, 0, 1, z_p) * (n.at_offset(face,  0, 1, y_p) + n.at_offset(face, -1, 1, y_p))
+                    DN_forcing.add_element(cur_idx_0, glob_idx_01_2, v_s_0111);
+
+
+                    // n.at_offset(edge, 0, 0, z_p) * (n.at_offset(face, 0, 0, x_p) + n.at_offset(face, 0, -1, x_p))
+                    DN_forcing.add_element(cur_idx_1, glob_idx_00_2, u_s_0001);
+                    // n.at_offset(edge, 1, 0, z_p) * (n.at_offset(face, 1, 0, x_p) + n.at_offset(face, 1, -1, x_p))
+                    DN_forcing.add_element(cur_idx_1, glob_idx_10_2, u_s_1011);
+                    //-0.5 * n.at_offset(edge, 0, 0, x_p) * (+n.at_offset(face, 0, 0, z_p) + n.at_offset(face, 0, -1, z_p))
+                    DN_forcing.add_element(cur_idx_1, glob_idx_00, w_s_0001);
+                    
+                    //0.5 * (n.at_offset(edge, 0, 0, x_p) * n.at_offset(face, 0, 0, y_p)  
+                    //+n.at_offset(edge, 0, 1, x_p) * n.at_offset(face, 0, 1, y_p) 
+                    //-n.at_offset(edge, 0, 0, y_p) * n.at_offset(face, 0, 0, x_p) 
+                    //-n.at_offset(edge, 1, 0, y_p) * n.at_offset(face, 1, 0, x_p))
+                    DN_forcing.add_element(cur_idx_2, glob_idx_00, v_s_00*0.5);
+                    DN_forcing.add_element(cur_idx_2, glob_idx_01, v_s_01*0.5);
+                    DN_forcing.add_element(cur_idx_2, glob_idx_00_1, -u_s_00*0.5);
+                    DN_forcing.add_element(cur_idx_2, glob_idx_10_1, -u_s_10*0.5);
+                }
+            }
+            domain_->client_communicator().barrier();
+
+            if (domain_->is_client())
+            {
+                auto client = domain_->decomposition().client();
+                client->template buffer_exchange<edge_aux_type>(l);
+            }
+
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
+                if (!it->is_leaf()) continue;
+                if (it->is_correction()) continue;
+
+                for (auto& n : it->data())
+                {
+                    
+                    
+                    int cur_idx_0 = n(idx_N_type::tag(), 0);
+                    int cur_idx_1 = n(idx_N_type::tag(), 1);
+                    int cur_idx_2 = n(idx_Nz_type::tag(), 0);
+
+                    if (cur_idx_0 < 0 || cur_idx_1 < 0) continue;
+                    
+                    int cur_idx_u_0 = n(idx_u_type::tag(), 0);
+                    int cur_idx_u_1 = n(idx_u_type::tag(), 1);
+                    int cur_idx_u_2 = n(idx_uz_type::tag(), 0);
+
+                    int gN_idx_0 = n(idx_N_g_type::tag(), 0);
+                    int gN_idx_1 = n(idx_N_g_type::tag(), 1);
+                    int gN_idx_2 = n(idx_Nz_g_type::tag(), 0);
+
+                    int glob_idx_0_00 = n.at_offset(idx_u_g_type::tag(), 0,  0, 0);
+                    int glob_idx_0_01 = n.at_offset(idx_u_g_type::tag(), 0, -1, 0);
+                    int glob_idx_0_10 = n.at_offset(idx_u_g_type::tag(), 1,  0, 0);
+                    int glob_idx_0_11 = n.at_offset(idx_u_g_type::tag(), 1, -1, 0);
+
+                    int glob_idx_1_00 = n.at_offset(idx_u_g_type::tag(),  0, 0, 1);
+                    int glob_idx_1_01 = n.at_offset(idx_u_g_type::tag(),  0, 1, 1);
+                    int glob_idx_1_10 = n.at_offset(idx_u_g_type::tag(), -1, 0, 1);
+                    int glob_idx_1_11 = n.at_offset(idx_u_g_type::tag(), -1, 1, 1);
+
+                    int glob_idx_2_00 = n.at_offset(idx_uz_g_type::tag(), 0,  0, 0);
+                    int glob_idx_2_01 = n.at_offset(idx_uz_g_type::tag(), 0, -1, 0);
+                    int glob_idx_2_10 = n.at_offset(idx_uz_g_type::tag(), -1, 0, 0);
+                    int glob_idx_2_11 = n.at_offset(idx_uz_g_type::tag(), 1, -1, 0);
+
+                    float_type om_00_0 = n.at_offset(edge_aux_type::tag(), 0, 0, 0)*0.5;
+                    float_type om_01_0 = n.at_offset(edge_aux_type::tag(), 0, 1, 0)*0.5;
+                    float_type om_10_0 = n.at_offset(edge_aux_type::tag(), 1, 0, 0)*0.5;
+
+                    float_type om_00_1 = n.at_offset(edge_aux_type::tag(), 0, 0, 1)*0.5;
+                    float_type om_01_1 = n.at_offset(edge_aux_type::tag(), 0, 1, 1)*0.5;
+                    float_type om_10_1 = n.at_offset(edge_aux_type::tag(), 1, 0, 1)*0.5;
+
+                    float_type om_00_2 = n.at_offset(edge_aux_type::tag(), 0, 0, 2)*0.25;
+                    float_type om_01_2 = n.at_offset(edge_aux_type::tag(), 0, 1, 2)*0.25;
+                    float_type om_10_2 = n.at_offset(edge_aux_type::tag(), 1, 0, 2)*0.25;
+
+
+                    int p_idx_w = n.at_offset(idx_p_type::tag(), -1, 0, 0);
+                    int p_idx_e = n.at_offset(idx_p_type::tag(), 1, 0, 0);
+                    int p_idx_n = n.at_offset(idx_p_type::tag(), 0, 1, 0);
+                    int p_idx_s = n.at_offset(idx_p_type::tag(), 0, -1, 0);
+
+                    /*if (p_set_zero) {
+
+                    if ((p_idx_w > 0 && p_idx_e > 0) || l != base_level)
+                    {
+                        DN.add_element(cur_idx_0, glob_idx_1_00, -om_00);
+                        DN.add_element(cur_idx_0, glob_idx_1_10, -om_00);
+                        DN.add_element(cur_idx_0, glob_idx_1_01, -om_01);
+                        DN.add_element(cur_idx_0, glob_idx_1_11, -om_01);
+
+                        DN.add_element(cur_idx_u_0, glob_idx_1_00, -om_00);
+                        DN.add_element(cur_idx_u_0, glob_idx_1_10, -om_00);
+                        DN.add_element(cur_idx_u_0, glob_idx_1_01, -om_01);
+                        DN.add_element(cur_idx_u_0, glob_idx_1_11, -om_01);
+                    }
+                    if ((p_idx_n > 0 && p_idx_s > 0) || l != base_level)
+                    {
+                        DN.add_element(cur_idx_1, glob_idx_0_00, om_00);
+                        DN.add_element(cur_idx_1, glob_idx_0_01, om_00);
+                        DN.add_element(cur_idx_1, glob_idx_0_10, om_10);
+                        DN.add_element(cur_idx_1, glob_idx_0_11, om_10);
+
+                        DN.add_element(cur_idx_u_1, glob_idx_0_00, om_00);
+                        DN.add_element(cur_idx_u_1, glob_idx_0_01, om_00);
+                        DN.add_element(cur_idx_u_1, glob_idx_0_10, om_10);
+                        DN.add_element(cur_idx_u_1, glob_idx_0_11, om_10);
+                    }
+                    }
+                    else {
+
+                    DN.add_element(cur_idx_0, glob_idx_1_00, -om_00);
+                    DN.add_element(cur_idx_0, glob_idx_1_10, -om_00);
+                    DN.add_element(cur_idx_0, glob_idx_1_01, -om_01);
+                    DN.add_element(cur_idx_0, glob_idx_1_11, -om_01);
+
+                    DN.add_element(cur_idx_1, glob_idx_0_00,  om_00);
+                    DN.add_element(cur_idx_1, glob_idx_0_01,  om_00);
+                    DN.add_element(cur_idx_1, glob_idx_0_10,  om_10);
+                    DN.add_element(cur_idx_1, glob_idx_0_11,  om_10);
+
+                    DN.add_element(cur_idx_u_0, glob_idx_1_00, -om_00);
+                    DN.add_element(cur_idx_u_0, glob_idx_1_10, -om_00);
+                    DN.add_element(cur_idx_u_0, glob_idx_1_01, -om_01);
+                    DN.add_element(cur_idx_u_0, glob_idx_1_11, -om_01);
+
+                    DN.add_element(cur_idx_u_1, glob_idx_0_00,  om_00);
+                    DN.add_element(cur_idx_u_1, glob_idx_0_01,  om_00);
+                    DN.add_element(cur_idx_u_1, glob_idx_0_10,  om_10);
+                    DN.add_element(cur_idx_u_1, glob_idx_0_11,  om_10);
+                    }
+
+                    DN.add_element(cur_idx_0, gN_idx_0, -1.0); 
+                    DN.add_element(cur_idx_1, gN_idx_1, -1.0);*/
+
+                    //DN.add_element(cur_idx_u_0, gN_idx_0, -1.0);
+                    //DN.add_element(cur_idx_u_1, gN_idx_1, -1.0);
+
+                    //0.5 * n.at_offset(edge, 0, 0, y_p) * (n.at_offset(face, 0, 0, z_p) + n.at_offset(face, -1, 0, z_p))
+                    DN_forcingN.add_element(cur_idx_0, glob_idx_2_00, om_00_1);
+                    DN_forcing.add_element(cur_idx_0, glob_idx_2_10, om_00_1);
+
+                    //-n.at_offset(edge, 0, 0, z_p) *  (n.at_offset(face, 0, 0, y_p) + n.at_offset(face, -1, 0, y_p))
+                    //-n.at_offset(edge, 0, 1, z_p) * (n.at_offset(face,  0, 1, y_p) + n.at_offset(face, -1, 1, y_p))
+                    DN_forcing.add_element(cur_idx_0, glob_idx_1_00, -om_00_2);
+                    DN_forcing.add_element(cur_idx_0, glob_idx_1_10, -om_00_2);
+                    DN_forcing.add_element(cur_idx_0, glob_idx_1_01, -om_01_2);
+                    DN_forcing.add_element(cur_idx_0, glob_idx_1_11, -om_01_2);
+
+                    // n.at_offset(edge, 0, 0, z_p) * (n.at_offset(face, 0, 0, x_p) + n.at_offset(face, 0, -1, x_p))
+                    // n.at_offset(edge, 1, 0, z_p) * (n.at_offset(face, 1, 0, x_p) + n.at_offset(face, 1, -1, x_p))
+                    DN_forcing.add_element(cur_idx_1, glob_idx_0_00,  om_00_2);
+                    DN_forcing.add_element(cur_idx_1, glob_idx_0_01,  om_00_2);
+                    DN_forcing.add_element(cur_idx_1, glob_idx_0_10,  om_10_2);
+                    DN_forcing.add_element(cur_idx_1, glob_idx_0_11,  om_10_2);
+                    //-0.5 * n.at_offset(edge, 0, 0, x_p) * (+n.at_offset(face, 0, 0, z_p) + n.at_offset(face, 0, -1, z_p))
+                    DN_forcing.add_element(cur_idx_1, glob_idx_2_00, -om_00_0);
+                    DN_forcing.add_element(cur_idx_1, glob_idx_2_01, -om_00_0);
+
+                    //0.5 * (n.at_offset(edge, 0, 0, x_p) * n.at_offset(face, 0, 0, y_p)  
+                    //+n.at_offset(edge, 0, 1, x_p) * n.at_offset(face, 0, 1, y_p) 
+                    //-n.at_offset(edge, 0, 0, y_p) * n.at_offset(face, 0, 0, x_p) 
+                    //-n.at_offset(edge, 1, 0, y_p) * n.at_offset(face, 1, 0, x_p))
+                    DN_forcing.add_element(cur_idx_2, glob_idx_1_00,  om_00_0);
+                    DN_forcing.add_element(cur_idx_2, glob_idx_1_01,  om_01_0);
+                    DN_forcing.add_element(cur_idx_2, glob_idx_0_00, -om_00_1);
+                    DN_forcing.add_element(cur_idx_2, glob_idx_0_10, -om_10_1);
+
+
+                    DN_forcing.add_element(cur_idx_0, gN_idx_0, -1.0); 
+                    DN_forcing.add_element(cur_idx_1, gN_idx_1, -1.0);
+                    DN_forcing.add_element(cur_idx_2, gN_idx_2, -1.0);
+
+                    DN_forcing.add_element(cur_idx_u_0, gN_idx_0, 1.0);
+                    DN_forcing.add_element(cur_idx_u_1, gN_idx_1, 1.0);
+                    DN_forcing.add_element(cur_idx_u_2, gN_idx_2, 1.0);
+                }
+            }
+        }
+        domain_->client_communicator().barrier();
+
+        this->template construct_upward_BC_intrp<idx_N_type, idx_N_g_type>(DN_forcing);
+
+        this->template construct_interpolation<idx_N_type, idx_N_g_type>(DN_forcing);
+
+        this->template construct_upward_BC_intrp<idx_Nz_type, idx_Nz_g_type>(DN_forcing);
+
+        this->template construct_interpolation<idx_Nz_type, idx_Nz_g_type>(DN_forcing);
+
+        domain_->client_communicator().barrier();
+    }
+
+
+    
+
     class Kernel_vec {
         public:
         Kernel_vec() {
@@ -11091,6 +11690,13 @@ class Helm_stab
 
     sparse_mat B_i; //input matrix, from all state variables to velocities (including nonleaves)
 
+    sparse_mat ForcingMat_real; //Matrix defining the input of all forcings, this is defined N_grid_pts * N_forcing_pts to utilize sparse structure
+    sparse_mat ForcingMat_imag; //Matrix defining the input of all forcings, this is defined N_grid_pts * N_forcing_pts to utilize sparse structure
+
+    sparse_mat DN_forcing;
+
+    sparse_mat Curl_forcing;
+
   private:
     
 
@@ -11100,10 +11706,14 @@ class Helm_stab
     linsys_solver_t  lsolver;
     lgf_lap_t        lgf_lap_;
 
+    float_type       omega_time;
+
     interpolation_type                c_cntr_nli_; //can use this to get the FMM matrix
     interpolation_type                c_cntr_nli_small; //can use this to get the interpolation matrix
 
     interpolation_mat_type            c_cntr_nli_mat;
+
+    std::vector<real_coordinate_type> forcing_coord;
 
     bool base_mesh_update_ = false;
 

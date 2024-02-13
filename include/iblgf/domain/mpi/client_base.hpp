@@ -30,6 +30,7 @@ class ClientBase : public ServerClientBase<Traits>
   protected:
     using ServerClientBase<Traits>::comm_;
     using ServerClientBase<Traits>::task_manager_;
+    using ServerClientBase<Traits>::task_manager_vec_;
 
   public: // ctors
     ClientBase(const ClientBase&) = default;

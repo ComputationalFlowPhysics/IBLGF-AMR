@@ -52,9 +52,22 @@ class ServerClientBase
     const auto& task_manager() const noexcept { return task_manager_; }
     auto&       task_manager() noexcept { return task_manager_; }
 
+    const auto& task_manager_vec() const noexcept { return task_manager_vec; }
+    auto&       task_manager_vec() noexcept { return task_manager_vec; }
+#ifdef USE_OMP
+    void resizing_manager_vec(int n) {
+      for (int i = 0; i < n; i++) {
+        task_manager_vec_.emplace_back(new task_manager_t());
+      }
+    }
+#endif
+
   protected:
     boost::mpi::communicator        comm_;
     std::shared_ptr<task_manager_t> task_manager_ = nullptr;
+
+    std::vector<std::shared_ptr<task_manager_t>> task_manager_vec_;
+
 };
 
 } // namespace sr_mpi

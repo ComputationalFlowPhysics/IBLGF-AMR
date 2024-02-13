@@ -107,6 +107,21 @@ class Ifherk
         all_time_max_ = _simulation->dictionary()->template get_or<bool>(
             "all_time_max", true);
 
+        use_adaptation_correction = _simulation->dictionary()->template get_or<bool>(
+            "use_adaptation_correction", true);
+
+        b_f_mag = _simulation->dictionary()->template get_or<float_type>(
+            "b_f_mag", 0.0);
+
+        b_f_eps = _simulation->dictionary()->template get_or<float_type>(
+            "b_f_eps", 1e-3);
+
+        use_filter = _simulation->dictionary()->template get_or<bool>(
+            "use_filter", true);
+
+        cg_threshold_ = simulation_->dictionary_->template get_or<float_type>("cg_threshold",1e-3);
+        cg_max_itr_ = simulation_->dictionary_->template get_or<int>("cg_max_itr", 40);
+
 
         if (dt_base_ < 0) dt_base_ = dx_base_ * cfl_;
 
@@ -254,7 +269,7 @@ class Ifherk
             pcout<< "block = " << c_all << std::endl;
 
 
-            if ( adapt_count_ % adapt_freq_ ==0)
+            if ( adapt_count_ % adapt_freq_ ==0 && adapt_count_ != 0)
             {
                 if (adapt_count_==0 || updating_source_max_)
                 {
@@ -267,8 +282,10 @@ class Ifherk
                 //    up_and_down<u>();
                 //    pad_velocity<u, u>();
                 //}
-                if (!just_restarted_)
+                if (!just_restarted_) {
                     this->adapt(false);
+                    adapt_corr_time_step();
+                }
                 just_restarted_=false;
 
             }
@@ -277,7 +294,7 @@ class Ifherk
             if ( adapt_count_ % adapt_freq_ ==0)
             {
                 clean<u_type>(true);
-                //domain_->decomposition().template balance<u_type,p_type>();
+                domain_->decomposition().template balance<u_type,p_type>();
             }
 
             adapt_count_++;
@@ -490,7 +507,245 @@ class Ifherk
             outfile<<std::endl;
         }
 
+
+
+        force_type All_sum_f(ib.force().size(), tmp_coord);
+        force_type All_sum_f_glob(ib.force().size(), tmp_coord);
+        this->template ComputeForcing<u_type, p_type, u_i_type, d_i_type>(All_sum_f);
+
+        if (ib.size() > 0)
+        {
+            for (std::size_t d = 0; d < All_sum_f[0].size(); ++d)
+            {
+                for (std::size_t i = 0; i < All_sum_f.size(); ++i)
+                {
+                    if (world.rank() != domain_->ib().rank(i))
+                        All_sum_f[i][d] = 0.0;
+                }
+            }
+
+            boost::mpi::all_reduce(world,
+                &All_sum_f[0], All_sum_f.size(), &All_sum_f_glob[0],
+                std::plus<real_coordinate_type>());
+        }
+
+        if (domain_->is_server())
+        {
+            std::vector<float_type> f(ib_t::force_dim, 0.);
+            if (ib.size() > 0)
+            {
+                for (std::size_t d = 0; d < ib_t::force_dim; ++d)
+                    for (std::size_t i = 0; i < ib.size(); ++i)
+                        f[d] += All_sum_f_glob[i][d] * ib.force_scale();
+                //f[d]+=sum_f[i][d] * 1.0 / dt_ * ib.force_scale();
+
+                std::cout << "ib  size: " << ib.size() << std::endl;
+                std::cout << "New Forcing = ";
+
+                for (std::size_t d = 0; d < domain_->dimension(); ++d)
+                    std::cout << -f[d] << " ";
+                std::cout << std::endl;
+
+                std::cout << " -----------------" << std::endl;
+            }
+
+            std::ofstream outfile;
+            int           width = 20;
+
+            outfile.open("fstats_from_cg.txt",
+                std::ios_base::app); // append instead of overwrite
+            outfile << std::setw(width) << tmp_n << std::setw(width)
+                    << std::scientific << std::setprecision(9);
+            outfile << std::setw(width) << T_ << std::setw(width)
+                    << std::scientific << std::setprecision(9);
+            for (int  i = 0 ; i < domain_->dimension(); i++) { outfile << -f[i] << std::setw(width); }
+            outfile << std::endl;
+            outfile.close();
+            std::cout << "finished writing new forcing" << std::endl;
+        }
+
         world.barrier();
+    }
+
+
+    template<class Source_face, class Source_cell, class Target_face, class Target_cell>
+    void ComputeForcing(force_type& force_target) noexcept
+    {
+        if (domain_->is_server())
+            return;
+        auto client = domain_->decomposition().client();
+
+        boost::mpi::communicator world;
+
+        //pad_velocity<Source_face, Source_face>(true);
+
+        
+
+
+
+        clean<face_aux2_type>();
+        clean<edge_aux_type>();
+        clean<w_1_type>();
+        clean<w_2_type>();
+
+        //clean<r_i_T_type>(); //use r_i as the result of applying Jcobian in the first block
+        //clean<cell_aux_T_type>(); //use cell aux_type to be the second block
+        clean<Target_face>();
+        clean<Target_cell>();
+        real_coordinate_type tmp_coord(0.0);
+        auto forcing_tmp = force_target;
+        std::fill(forcing_tmp.begin(), forcing_tmp.end(),
+            tmp_coord);
+        std::fill(force_target.begin(), force_target.end(),
+            tmp_coord); //use forcing tmp to store the last block,
+            //use forcing_old to store the forcing at previous Newton iteration
+        //computing wii in Andre's paper
+        real_coordinate_type tmp_coord1(1.0);
+        auto forcing_1 = force_target;
+        std::fill(forcing_1.begin(), forcing_1.end(),
+            tmp_coord1);
+
+        lsolver.template smearing<w_1_type>(forcing_1, true);
+        computeWii<w_1_type>();
+        //finish computing Wii
+
+
+        
+        laplacian<Source_face, face_aux2_type>();
+
+        clean<r_i_type>();
+        clean<g_i_type>();
+        gradient<Source_cell, r_i_type>(1.0);
+
+        //pcout << "Computed Laplacian " << std::endl;
+
+        nonlinear<Source_face, g_i_type>();
+
+        //pcout << "Computed Nonlinear Jac " << std::endl;
+
+        add<g_i_type, Target_face>(1);
+
+        add<face_aux2_type, Target_face>(-1.0 / Re_);
+
+        add<r_i_type, Target_face>(1.0);
+
+        lsolver.template projection<Target_face>(forcing_tmp);
+
+        auto r = forcing_tmp;
+
+        //force_target = forcing_tmp;
+
+        float_type r2_old = dotVec(r, r);
+
+        if (r2_old < 1e-12) {
+            if (world.rank() == 1) {
+                std::cout << "r0 small, exiting" << std::endl;
+            }
+            return;
+        }
+
+        auto p = r;
+
+        for (int i = 0; i < cg_max_itr_; i++) {
+            clean<r_i_type>();
+            lsolver.template smearing<r_i_type>(p, false);
+            auto Ap = r;
+            cleanVec(Ap,false);
+            lsolver.template projection<r_i_type>(Ap);
+            r2_old = dotVec(r, r);
+            float_type pAp = dotVec(p, Ap);
+            float_type alpha = r2_old/pAp;
+            //force_target += alpha*p;
+            addVec(force_target, p, 1.0, alpha);
+            //r -= alpha*Ap;
+            addVec(r, Ap, 1.0, -alpha);
+            float_type r2_new = dotVec(r, r);
+            float_type f2 = dotVec(force_target, force_target);
+            if (world.rank() == 1)
+            {
+                std::cout << "r2/f2 = " << r2_new / f2 << " f2 = " << f2 << std::endl;
+            }
+
+            if (std::sqrt(r2_new/f2) < cg_threshold_) {
+		if (!use_filter) {
+		    return;
+		}
+		else {
+                clean<r_i_type>();
+                lsolver.template smearing<r_i_type>(force_target, false);
+                product<r_i_type, w_1_type, w_2_type>();
+                auto Ap = r;
+                cleanVec(Ap,false);
+                lsolver.template projection<w_2_type>(Ap);
+
+                force_target = Ap;
+                
+                return;
+		}
+            }
+            float_type beta = r2_new/r2_old;
+            //p = r+beta*p;
+            addVec(p, r, beta, 1.0);
+
+        }        
+    }
+
+
+    template<class VecType>
+    void addVec(VecType& a, VecType& b, float_type w1, float_type w2)
+    {
+        float_type s = 0;
+        for (std::size_t i=0; i<a.size(); ++i)
+        {
+            if (domain_->ib().rank(i)!=comm_.rank()) {
+                for (std::size_t d=0; d<a[0].size(); ++d) {
+                    a[i][d] = 0;
+                }
+                continue;
+            }
+
+            for (std::size_t d=0; d<a[0].size(); ++d)
+                a[i][d] =a[i][d]*w1 + b[i][d]*w2;
+        }
+    }
+
+    template<class VecType>
+    void cleanVec(VecType& a, bool nonloc = true)
+    {
+        
+        for (std::size_t i=0; i<a.size(); ++i)
+        {
+            if (domain_->ib().rank(i)!=comm_.rank()) {
+                for (std::size_t d=0; d<a[0].size(); ++d) {
+                    a[i][d] = 0;
+                }
+                continue;
+            }
+
+            if (!nonloc)
+            {
+                for (std::size_t d = 0; d < a[0].size(); ++d) { a[i][d] = 0; }
+            }
+        }
+    }
+
+    template<class VecType>
+    float_type dotVec(VecType& a, VecType& b)
+    {
+        float_type s = 0;
+        for (std::size_t i=0; i<a.size(); ++i)
+        {
+            if (domain_->ib().rank(i)!=comm_.rank())
+                continue;
+
+            for (std::size_t d=0; d<a[0].size(); ++d)
+                s+=a[i][d]*b[i][d];
+        }
+
+        float_type s_global=0.0;
+        boost::mpi::all_reduce(domain_->client_communicator(), s,
+                s_global, std::plus<float_type>());
+        return s_global;
     }
 
     void write_timestep()
@@ -644,9 +899,11 @@ class Ifherk
                     {
                         pcout<< "pad_velocity, last T_vel_refresh = "<<T_last_vel_refresh_<< std::endl;
                         T_last_vel_refresh_=T_;
+                        
                         if (!domain_->is_client())
                             return;
                         pad_velocity<u_type, u_type>(true);
+                        adapt_corr_time_step();
                     }
                     else
                     {
@@ -730,6 +987,111 @@ class Ifherk
         // ******************************************************************
         copy<u_i_type, u_type>();
         copy<d_i_type, p_type>(1.0 / coeff_a(3, 3) / dt_);
+        // ******************************************************************
+    }
+
+
+
+
+
+    void adapt_corr_time_step()
+    {
+        if (!use_adaptation_correction) return;
+        // Initialize IFHERK
+        // q_1 = u_type
+        boost::mpi::communicator world;
+        auto                     client = domain_->decomposition().client();
+
+        T_stage_ = T_;
+
+        ////claen non leafs
+
+        stage_idx_=0;
+
+        // Solve stream function to refresh base level velocity
+        mDuration_type t_pad(0);
+        TIME_CODE( t_pad, SINGLE_ARG(
+                    pcout<< "adapt_corr_time_step()" << std::endl;
+                    
+                    if (!domain_->is_client())
+                        return;
+                    up_and_down<u_type>();
+                    ));
+        //base_mesh_update_=false;
+        //pcout<< "pad u      in "<<t_pad.count() << std::endl;
+
+        copy<u_type, q_i_type>();
+
+        // Stage 1
+        // ******************************************************************
+        pcout << "Stage 1" << std::endl;
+        T_stage_ = T_;
+        stage_idx_ = 1;
+        clean<g_i_type>();
+        clean<d_i_type>();
+        clean<cell_aux_type>();
+        clean<face_aux_type>();
+
+        //nonlinear<u_type, g_i_type>(0.0);
+        copy<q_i_type, r_i_type>();
+        //add<g_i_type, r_i_type>();
+        lin_sys_with_ib_solve(0.0, false);
+
+
+        // Stage 2
+        // ******************************************************************
+        pcout << "Stage 2" << std::endl;
+        T_stage_ = T_;
+        stage_idx_ = 2;
+        clean<r_i_type>();
+        clean<d_i_type>();
+        clean<cell_aux_type>();
+
+        //cal wii
+        //r_i_type = q_i_type + dt(a21 w21)
+        //w11 = (1/a11)* dt (g_i_type - face_aux_type)
+
+        //add<g_i_type, face_aux_type>(-1.0);
+        //copy<face_aux_type, w_1_type>(0.0);
+
+        //psolver.template apply_lgf_IF<q_i_type, q_i_type>(0.0);
+        //psolver.template apply_lgf_IF<w_1_type, w_1_type>(0.0);
+
+        add<q_i_type, r_i_type>();
+        //add<w_1_type, r_i_type>(0.0);
+
+        up_and_down<u_i_type>();
+        //nonlinear<u_i_type, g_i_type>(0.0);
+        //add<g_i_type, r_i_type>();
+
+        lin_sys_with_ib_solve(0.0, false);
+
+        // Stage 3
+        // ******************************************************************
+        pcout << "Stage 3" << std::endl;
+        T_stage_ = T_;
+        stage_idx_ = 3;
+        clean<d_i_type>();
+        clean<cell_aux_type>();
+        clean<w_2_type>();
+
+        //add<g_i_type, face_aux_type>(-1.0);
+        //copy<face_aux_type, w_2_type>(0.0);
+        copy<q_i_type, r_i_type>();
+        //add<w_1_type, r_i_type>(0.0);
+        //add<w_2_type, r_i_type>(0.0);
+
+        psolver.template apply_lgf_IF<r_i_type, r_i_type>(0.0);
+
+        up_and_down<u_i_type>();
+        //nonlinear<u_i_type, g_i_type>(0.0);
+        //add<g_i_type, r_i_type>();
+
+        lin_sys_with_ib_solve(0.0, false);
+
+        // ******************************************************************
+        copy<u_i_type, u_type>();
+        copy<d_i_type, p_type>(0.0);
         // ******************************************************************
     }
 
@@ -872,7 +1234,7 @@ private:
     }
 
 
-    void lin_sys_with_ib_solve(float_type _alpha) noexcept
+    void lin_sys_with_ib_solve(float_type _alpha, bool write_prev_force = true) noexcept
     {
         auto client=domain_->decomposition().client();
 
@@ -903,7 +1265,7 @@ private:
                     lsolver.template ib_solve<face_aux2_type>(_alpha, T_stage_);
                     ));
 
-        domain_->ib().force_prev(stage_idx_) = domain_->ib().force();
+        if (write_prev_force) domain_->ib().force_prev(stage_idx_) = domain_->ib().force();
         //domain_->ib().scales(1.0/coeff_a(stage_idx_, stage_idx_));
 
         pcout<< "IB  solved in "<<t_ib.count() << std::endl;
@@ -1027,7 +1389,7 @@ private:
             }
         }
 
-        //clean_leaf_correction_boundary<edge_aux_type>(domain_->tree()->base_level(), true, 2);
+        clean_leaf_correction_boundary<edge_aux_type>(domain_->tree()->base_level(), true, 2);
         // add background velocity
         copy<Source, face_aux_type>();
         domain::Operator::add_field_expression<face_aux_type>(domain_, simulation_->frame_vel(), T_stage_, -1.0);
@@ -1057,6 +1419,45 @@ private:
             //client->template buffer_exchange<Target>(l);
             //clean_leaf_correction_boundary<Target>(l, true,3);
         }
+
+        if (std::abs(b_f_mag) > 1e-5) {
+            add_body_force<Target>(_scale);
+        }
+
+        
+    }
+
+    template<class target>
+    void add_body_force(float_type scale) noexcept {
+        //float_type eps = 1e-3;
+        auto dx_base = domain_->dx_base();
+        for (auto it = domain_->begin(); it != domain_->end(); ++it)
+		{
+
+			if (!it->locally_owned()) continue;
+
+			auto dx_level = dx_base / std::pow(2, it->refinement_level());
+			auto scaling = std::pow(2, it->refinement_level());
+
+			for (auto& node : it->data())
+			{
+
+				const auto& coord = node.level_coordinate();
+
+				
+				float_type x = static_cast<float_type>
+					(coord[0]) * dx_level;
+				float_type y = static_cast<float_type>
+					(coord[1]) * dx_level;
+				//z = static_cast<float_type>
+				//(coord[2]-center[2]*scaling+0.5)*dx_level;
+
+				//node(edge_aux,0) = vor(x,y-0.5*vort_sep,0)+ vor(x,y+0.5*vort_sep,0);
+				node(target::tag(), 1) += -scale * b_f_mag * y / (y*y + b_f_eps);
+
+            }
+
+		}
     }
 
     template<class Source, class Target>
@@ -1119,6 +1520,86 @@ private:
         }
     }
 
+
+    template<class Source, class Target>
+    void laplacian() noexcept
+    {
+        auto client = domain_->decomposition().client();
+
+        domain::Operator::domainClean<Target>(domain_);
+
+        clean<edge_aux_type>();
+
+        up_and_down<Source>();
+
+        /*for (int l = domain_->tree()->base_level();
+             l < domain_->tree()->depth(); ++l)
+        {
+            client->template buffer_exchange<Source>(l);
+            const auto dx_base = domain_->dx_base();
+
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
+                const auto dx_level =
+                    dx_base / math::pow2(it->refinement_level());
+                domain::Operator::laplace<Source, Target>(it->data(), dx_level);
+            }
+
+            //client->template buffer_exchange<Target>(l);
+            //clean_leaf_correction_boundary<Target>(l, true, 2);
+            //clean_leaf_correction_boundary<Target>(l, false,4+stage_idx_);
+        }*/
+
+
+        for (int l = domain_->tree()->base_level();
+             l < domain_->tree()->depth(); ++l)
+        {
+            client->template buffer_exchange<Source>(l);
+            const auto dx_base = domain_->dx_base();
+
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
+                if (!it->is_leaf() && !it->is_correction()) continue;
+                const auto dx_level =
+                    dx_base / math::pow2(it->refinement_level());
+                domain::Operator::curl<Source, edge_aux_type>(it->data(), dx_level);
+            }
+
+            //client->template buffer_exchange<Target>(l);
+            //clean_leaf_correction_boundary<Target>(l, true, 2);
+            //clean_leaf_correction_boundary<Target>(l, false,4+stage_idx_);
+        }
+
+        this->up<edge_aux_type>();
+
+        for (int l = domain_->tree()->base_level();
+             l < domain_->tree()->depth(); ++l)
+        {
+            client->template buffer_exchange<edge_aux_type>(l);
+            const auto dx_base = domain_->dx_base();
+
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
+                if (!it->is_leaf() && !it->is_correction()) continue;
+                const auto dx_level =
+                    dx_base / math::pow2(it->refinement_level());
+                domain::Operator::curl_transpose<edge_aux_type, Target>(it->data(), dx_level, -1.0);
+            }
+
+            //client->template buffer_exchange<Target>(l);
+            //clean_leaf_correction_boundary<Target>(l, true, 2);
+            //clean_leaf_correction_boundary<Target>(l, false,4+stage_idx_);
+        }
+
+        //clean_leaf_correction_boundary<Target>(domain_->tree()->base_level(), true, 2);
+
+        //clean<Source>(true);
+        //clean<Target>(true);
+    }
+
     template<typename From, typename To>
     void add(float_type scale = 1.0) noexcept
     {
@@ -1135,6 +1616,53 @@ private:
                     .get()
                     ->cube_noalias_view() +=
                     it->data_r(From::tag(), field_idx).linalg_data() * scale;
+            }
+        }
+    }
+
+    template<typename Field>
+    void computeWii() noexcept
+    {
+        auto dx_base = domain_->dx_base();
+        for (auto it = domain_->begin(); it != domain_->end(); ++it)
+		{
+
+			if (!it->locally_owned()) continue;
+
+			auto dx_level = dx_base / std::pow(2, it->refinement_level());
+			auto scaling = std::pow(2, it->refinement_level());
+
+            for (std::size_t field_idx = 0; field_idx < Field::nFields();
+                 ++field_idx)
+            {
+                for (auto& n:it->data().node_field()) {
+                    float_type val = n(Field::tag(), field_idx);
+
+                    if (std::fabs(val) > 1e-4) {
+                        n(Field::tag(), field_idx) = 1/val;
+                    }
+                }
+            }
+		}
+    }
+
+    template<typename From1, typename From2, typename To>
+    void product() noexcept
+    {
+        static_assert(From1::nFields() == To::nFields(),
+            "number of fields doesn't match when copy");
+
+        static_assert(From2::nFields() == To::nFields(),
+            "number of fields doesn't match when copy");
+
+        for (auto it = domain_->begin(); it != domain_->end(); ++it)
+        {
+            if (!it->locally_owned() || !it->has_data()) continue;
+            for (std::size_t field_idx = 0; field_idx < From1::nFields();
+                 ++field_idx)
+            {
+                for (auto& n:it->data().node_field())
+                    n(To::tag(), field_idx) = n(From1::tag(), field_idx) * n(From2::tag(), field_idx);
             }
         }
     }
@@ -1172,7 +1700,12 @@ private:
     float_type cfl_max_, cfl_;
     std::vector<float_type> source_max_{0.0, 0.0};
 
+    float_type cg_threshold_;
+    int  cg_max_itr_;
+
     float_type T_last_vel_refresh_=0.0;
+
+    float_type b_f_mag, b_f_eps;
 
     int max_vel_refresh_=1;
     int max_ref_level_=0;
@@ -1184,11 +1717,14 @@ private:
     int nLevelRefinement_;
     int stage_idx_ = 0;
 
+    bool use_filter = true; //if use filter when computing force
+
     bool use_restart_=false;
     bool just_restarted_=false;
     bool write_restart_=false;
     bool updating_source_max_ = false;
     bool all_time_max_;
+    bool use_adaptation_correction;
     int restart_base_freq_;
     int adapt_count_;
 

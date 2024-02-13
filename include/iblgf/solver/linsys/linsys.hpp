@@ -273,12 +273,19 @@ class LinSysSolver
         //if (std::fabs(alpha)>1e-4)
         //    psolver_.template apply_lgf_IF<Field, Field>(alpha, MASK_TYPE::xIB2IB);
 
-        if (std::fabs(alpha)>1e-4)
+        if (std::fabs(alpha)>1e-14)
             psolver_.template apply_lgf_IF<Field, Field>(alpha, MASK_TYPE::IB2xIB);
 
         this->template apply_Schur<Field, face_aux_type>(MASK_TYPE::xIB2IB);
 
         domain::Operator::add<face_aux_type, Field>(domain_, -1.0);
+
+        //this->template apply_Schur_withIF<Field, face_aux_type>(MASK_TYPE::xIB2IB, alpha);
+        //if (std::fabs(alpha)>1e-14)
+        //    psolver_.template apply_lgf_IF<Field, Field>(alpha, MASK_TYPE::IB2xIB);
+
+        //domain::Operator::add<face_aux_type, Field>(domain_, -1.0);
+
 
         this->projection<Field>(fout);
 
@@ -293,6 +300,7 @@ class LinSysSolver
 
         // div
         domain::Operator::levelDivergence<Source, cell_aux2_type>(domain_, l);
+        //domain::Operator::clean_ib_region_boundary<cell_aux2_type>(domain_, l);
 
         // apply L^-1
         psolver_.template apply_lgf<cell_aux2_type, cell_aux2_type>(fmm_type);
@@ -304,8 +312,39 @@ class LinSysSolver
         const int l_min = (fmm_type !=  MASK_TYPE::IB2xIB && fmm_type !=  MASK_TYPE::xIB2IB) ?
                     domain_->tree()->base_level() : domain_->tree()->depth()-1;
 
-        for (int l = l_min; l < l_max; ++l)
+        for (int l = l_min; l < l_max; ++l) {
             domain::Operator::levelGradient<cell_aux2_type, Target>(domain_, l);
+            //if (fmm_type ==  MASK_TYPE::xIB2IB) domain::Operator::clean_ib_region_boundary<Target>(domain_, l);
+        }
+    }
+
+    template<class Source, class Target>
+    void apply_Schur_withIF(int fmm_type, float_type alpha)
+    {
+
+        // finest level only
+        int l = domain_->tree()->depth()-1;
+
+        // div
+        domain::Operator::levelDivergence<Source, cell_aux2_type>(domain_, l);
+        //domain::Operator::clean_ib_region_boundary<cell_aux2_type>(domain_, l);
+        if (std::fabs(alpha)>1e-14)
+            psolver_.template apply_lgf_IF<cell_aux2_type, cell_aux2_type>(alpha, MASK_TYPE::IB2xIB);
+
+        // apply L^-1
+        psolver_.template apply_lgf<cell_aux2_type, cell_aux2_type>(fmm_type);
+
+        // apply Gradient
+        const int l_max = (fmm_type != MASK_TYPE::STREAM) ?
+                    domain_->tree()->depth() : domain_->tree()->base_level()+1;
+
+        const int l_min = (fmm_type !=  MASK_TYPE::IB2xIB && fmm_type !=  MASK_TYPE::xIB2IB) ?
+                    domain_->tree()->base_level() : domain_->tree()->depth()-1;
+
+        for (int l = l_min; l < l_max; ++l) {
+            domain::Operator::levelGradient<cell_aux2_type, Target>(domain_, l);
+            //if (fmm_type ==  MASK_TYPE::xIB2IB) domain::Operator::clean_ib_region_boundary<Target>(domain_, l);
+        }
     }
 
     template<class U, class ForceType,

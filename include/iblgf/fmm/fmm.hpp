@@ -225,6 +225,99 @@ public:
     }
 
 
+    static void fmm_vortex_streamfun_mask_build(Domain* domain_)
+    {
+        for (int l = domain_->tree()->base_level();
+             l < domain_->tree()->depth(); ++l)
+        {
+            fmm_vortex_streamfun_ref_fourier_mask(domain_, l);
+            fmm_vortex_LGF_ref_fourier_mask(domain_, l);
+            //fmm_vortex_streamfun_ref_fourier_mask(domain_, l);
+        }
+    }
+
+
+    static void fmm_vortex_streamfun_ref_fourier_mask(Domain* domain_, int base_level)
+    {
+        int refinement_level = base_level - domain_->tree()->base_level();
+        //int fmm_mask_idx = refinement_level * 2 + non_leaf_as_source + 1;
+        int fmm_mask_idx = octant_t::fmm_mask_idx_gen(MASK_TYPE::RefFourierStream, refinement_level);
+
+        //int base_level = domain_->tree()->base_level();
+        //int fmm_mask_idx = octant_t::fmm_mask_idx_gen(MASK_TYPE::STREAM);
+        //int fmm_mask_idx = 0;
+
+        for (auto it = domain_->begin();
+             it != domain_->end(); ++it)
+        {
+            it->fmm_mask(fmm_mask_idx, MASK_LIST::Mask_FMM_Source, false);
+            it->fmm_mask(fmm_mask_idx, MASK_LIST::Mask_FMM_Target, false);
+            it->fmm_mask(fmm_mask_idx, MASK_LIST::Mask_FMM_Source, false);
+            it->fmm_mask(fmm_mask_idx, MASK_LIST::Mask_FMM_Target, false);
+        }
+
+        for (auto it = domain_->begin(base_level);
+             it != domain_->end(base_level); ++it)
+        {
+            if (!it->has_data()) continue;
+
+            if (!it->is_correction())
+                it->fmm_mask(fmm_mask_idx, MASK_LIST::Mask_FMM_Source, true);
+            else
+                //it->fmm_mask(fmm_mask_idx,MASK_LIST::Mask_FMM_Source, true);
+                it->fmm_mask(fmm_mask_idx, MASK_LIST::Mask_FMM_Source, false);
+
+            if (it->is_correction())
+                it->fmm_mask(fmm_mask_idx, MASK_LIST::Mask_FMM_Target, true);
+            else
+                it->fmm_mask(fmm_mask_idx, MASK_LIST::Mask_FMM_Target, true);
+        }
+
+        fmm_upward_pass_masks(domain_, base_level, MASK_LIST::Mask_FMM_Source,
+            MASK_LIST::Mask_FMM_Target, fmm_mask_idx);
+    }
+
+    static void fmm_vortex_LGF_ref_fourier_mask(Domain* domain_, int base_level)
+    {
+        int refinement_level = base_level - domain_->tree()->base_level();
+        //int fmm_mask_idx = refinement_level * 2 + non_leaf_as_source + 1;
+        int fmm_mask_idx = octant_t::fmm_mask_idx_gen(MASK_TYPE::RefFourierLGF, refinement_level);
+
+        //int base_level = domain_->tree()->base_level();
+        //int fmm_mask_idx = octant_t::fmm_mask_idx_gen(MASK_TYPE::STREAM);
+        //int fmm_mask_idx = 0;
+
+        for (auto it = domain_->begin();
+             it != domain_->end(); ++it)
+        {
+            it->fmm_mask(fmm_mask_idx, MASK_LIST::Mask_FMM_Source, false);
+            it->fmm_mask(fmm_mask_idx, MASK_LIST::Mask_FMM_Target, false);
+            it->fmm_mask(fmm_mask_idx, MASK_LIST::Mask_FMM_Source, false);
+            it->fmm_mask(fmm_mask_idx, MASK_LIST::Mask_FMM_Target, false);
+        }
+
+        for (auto it = domain_->begin(base_level);
+             it != domain_->end(base_level); ++it)
+        {
+            if (!it->has_data()) continue;
+
+            if (!it->is_correction())
+                it->fmm_mask(fmm_mask_idx, MASK_LIST::Mask_FMM_Source, true);
+            else
+                //it->fmm_mask(fmm_mask_idx,MASK_LIST::Mask_FMM_Source, true);
+                it->fmm_mask(fmm_mask_idx, MASK_LIST::Mask_FMM_Source, false);
+
+            if (it->is_correction())
+                it->fmm_mask(fmm_mask_idx, MASK_LIST::Mask_FMM_Target, true);
+            else
+                it->fmm_mask(fmm_mask_idx, MASK_LIST::Mask_FMM_Target, false);
+        }
+
+        fmm_upward_pass_masks(domain_, base_level, MASK_LIST::Mask_FMM_Source,
+            MASK_LIST::Mask_FMM_Target, fmm_mask_idx);
+    }
+
+
     static void fmm_laplacian_BC_mask(Domain* domain_)
     {
         int base_level = domain_->tree()->base_level();
@@ -630,6 +723,10 @@ class Fmm
         base_level_ = level;
         if (fmm_type == MASK_TYPE::STREAM)
             fmm_mask_idx_ = octant_t::fmm_mask_idx_gen(MASK_TYPE::STREAM);
+        else if (fmm_type == MASK_TYPE::RefFourierStream) 
+            fmm_mask_idx_ = octant_t::fmm_mask_idx_gen(MASK_TYPE::RefFourierStream, refinement_level);
+        else if (fmm_type == MASK_TYPE::RefFourierLGF) 
+            fmm_mask_idx_ = octant_t::fmm_mask_idx_gen(MASK_TYPE::RefFourierLGF, refinement_level);
         else if (fmm_type == MASK_TYPE::AMR2AMR)
             fmm_mask_idx_ = octant_t::fmm_mask_idx_gen(MASK_TYPE::AMR2AMR, refinement_level, non_leaf_as_source);
         else if (fmm_type == MASK_TYPE::IB2xIB)
@@ -795,7 +892,7 @@ class Fmm
     template<class Kernel>
     void fmm_Bx(domain_t* domain_, Kernel* _kernel, float_type scale)
     {
-#define packMessages
+//#define packMessages
 
 #ifdef packMessages
         const bool start_communication = false;
@@ -815,6 +912,13 @@ class Fmm
             if (it->locally_owned())
                 compute_influence_field(
                         &(*it), _kernel, base_level_ - level, scale, _neighbor);
+        }
+        for (auto B_it = sorted_octants_.begin(); B_it != sorted_octants_.end();
+                ++B_it)
+        {
+            auto       it = B_it->first;
+            const int  level = it->level();
+            const bool _neighbor = (level == base_level_) ? true : false;
 
             if (B_it->second != 0)
             {

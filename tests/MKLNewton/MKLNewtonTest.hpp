@@ -380,12 +380,18 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
         ifherk.NewtonRHS<u_type, p_type, u_num_type, p_num_type>(forcing_num, forcing_tar);
         ifherk.ComputeForcing<u_type, p_type, u_num_type, p_num_type>(forcing_num);
 
+        if (world.rank() == 0)
+			std::cout << "WriteRHS \n" << std::endl;
+
         simulation_.write("NewtonRHS.hdf5");
 
         //stab_solve.template Init_Construct_Newton_Matrix<u_type>();
         stab_solve.template NewtonIteration<u_type, p_type, w_num_type>(forcing_num);
-
+        if (world.rank() == 0)
+			std::cout << "WriteFinal\n" << std::endl;
         simulation_.write("final.hdf5");
+        if (world.rank() == 0)
+			std::cout << "Done \n" << std::endl;
 
         return 0;
 

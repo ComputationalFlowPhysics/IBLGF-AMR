@@ -618,8 +618,10 @@ class Ifherk
         gradient<Source_cell, r_i_type>(1.0);
 
         //pcout << "Computed Laplacian " << std::endl;
+        
+        //nonlinear<Source_face, g_i_type>();
 
-        nonlinear<Source_face, g_i_type>();
+        // do sometibg like this for lns nonlinear_jac<u_old,Source_face, g_i_type>();
 
         //pcout << "Computed Nonlinear Jac " << std::endl;
 
@@ -1412,7 +1414,7 @@ private:
                 {
                     auto& lin_data =
                         it->data_r(Target::tag(), field_idx).linalg_data();
-                    lin_data *= _scale; //scale with time step size
+                    lin_data *= _scale;
                 }
             }
 
@@ -1426,7 +1428,252 @@ private:
 
         
     }
+    template<class Source_old, class Source_new, class Target>
+    void nonlinear_jac(float_type _scale = 1.0) noexcept
+    {
+        //std::cout << "part begin" << std::endl;
+        clean<edge_aux_type>();
+        clean<Target>();
+        clean<face_aux_tmp_type>();
+        clean<nonlinear_tmp_type>();
 
+        //std::cout << "part 0" << std::endl;
+
+        up_and_down<Source_old>();
+        up_and_down<Source_new>();
+
+        auto       client = domain_->decomposition().client();
+        const auto dx_base = domain_->dx_base();
+
+        for (int l = domain_->tree()->base_level();
+             l < domain_->tree()->depth(); ++l)
+        {
+            client->template buffer_exchange<Source_new>(l);
+
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
+
+                const auto dx_level =
+                    dx_base / math::pow2(it->refinement_level());
+                domain::Operator::curl<Source_new, edge_aux_type>(it->data(),
+                    dx_level);
+            }
+        }
+
+        //std::cout << "part 1" << std::endl;
+
+        //clean_leaf_correction_boundary<edge_aux_type>(domain_->tree()->base_level(), true, 2);
+        // add background velocity
+        copy<Source_old, face_aux_tmp_type>();
+        domain::Operator::add_field_expression<face_aux_tmp_type>(domain_,
+            simulation_->frame_vel(), T_stage_, -1.0);
+
+        for (int l = domain_->tree()->base_level();
+             l < domain_->tree()->depth(); ++l)
+        {
+            client->template buffer_exchange<edge_aux_type>(l);
+            client->template buffer_exchange<face_aux_tmp_type>(l);
+            //clean_leaf_correction_boundary<edge_aux_type>(l, false, 2);
+
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
+
+                domain::Operator::nonlinear<face_aux_tmp_type, edge_aux_type,
+                    nonlinear_tmp_type>(it->data());
+            }
+        }
+
+        //std::cout << "part 2" << std::endl;
+
+        clean<edge_aux_type>();
+        clean<face_aux_tmp_type>();
+
+        //auto       client = domain_->decomposition().client();
+        //const auto dx_base = domain_->dx_base();
+
+        for (int l = domain_->tree()->base_level();
+             l < domain_->tree()->depth(); ++l)
+        {
+            client->template buffer_exchange<Source_old>(l);
+
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
+
+                const auto dx_level =
+                    dx_base / math::pow2(it->refinement_level());
+                domain::Operator::curl<Source_old, edge_aux_type>(it->data(),
+                    dx_level);
+            }
+        }
+
+        //std::cout << "part 3" << std::endl;
+
+        //clean_leaf_correction_boundary<edge_aux_type>(domain_->tree()->base_level(), true, 2);
+        // add background velocity
+        copy<Source_new, face_aux_tmp_type>();
+        //domain::Operator::add_field_expression<face_aux_tmp_type>(domain_, simulation_->frame_vel(), T_stage_, -1.0);
+
+        for (int l = domain_->tree()->base_level();
+             l < domain_->tree()->depth(); ++l)
+        {
+            client->template buffer_exchange<edge_aux_type>(l);
+            client->template buffer_exchange<face_aux_tmp_type>(l);
+            //clean_leaf_correction_boundary<edge_aux_type>(l, false, 2);
+
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
+
+                domain::Operator::nonlinear<face_aux_tmp_type, edge_aux_type,
+                    Target>(it->data());
+            }
+        }
+        add<nonlinear_tmp_type, Target>();
+
+        //std::cout << "part 4" << std::endl;
+
+
+        for (int l = domain_->tree()->base_level();
+             l < domain_->tree()->depth(); ++l)
+        {
+            //client->template buffer_exchange<edge_aux_type>(l);
+            //clean_leaf_correction_boundary<edge_aux_type>(l, false, 2);
+
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
+
+                for (std::size_t field_idx = 0; field_idx < Target::nFields();
+                     ++field_idx)
+                {
+                    auto& lin_data =
+                        it->data_r(Target::tag(), field_idx).linalg_data();
+                    lin_data *= _scale;
+                }
+            }
+        }
+    }
+
+    template<class Source_old, class Source_new, class Target>
+    void nonlinear_jac_adjoint(float_type _scale = 1.0) noexcept
+    {
+        clean<edge_aux_type>();
+        clean<Target>();
+        clean<face_aux_tmp_type>();
+        clean<nonlinear_tmp_type>();
+
+        //curl transpose of (vel_old cross vel_new)
+
+        up_and_down<Source_old>();
+        up_and_down<Source_new>();
+
+        auto       client = domain_->decomposition().client();
+        const auto dx_base = domain_->dx_base();
+
+        copy<Source_old, face_aux_tmp_type>();
+        domain::Operator::add_field_expression<face_aux_tmp_type>(domain_,
+            simulation_->frame_vel(), T_stage_, -1.0);
+
+        for (int l = domain_->tree()->base_level();
+             l < domain_->tree()->depth(); ++l)
+        {
+            client->template buffer_exchange<face_aux_tmp_type>(l);
+            client->template buffer_exchange<Source_new>(l);
+
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
+
+                domain::Operator::nonlinear_adjoint_p1<face_aux_tmp_type,
+                    Source_new, edge_aux_type>(it->data());
+            }
+        }
+
+        for (int l = domain_->tree()->base_level();
+             l < domain_->tree()->depth(); ++l)
+        {
+            client->template buffer_exchange<edge_aux_type>(l);
+
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
+
+                const auto dx_level =
+                    dx_base / math::pow2(it->refinement_level());
+                domain::Operator::curl_transpose<edge_aux_type, Target>(
+                    it->data(), dx_level);
+            }
+        }
+
+        //vort cross vel
+
+        clean<edge_aux_type>();
+        clean<face_aux_tmp_type>();
+
+        //auto       client = domain_->decomposition().client();
+        //const auto dx_base = domain_->dx_base();
+
+        for (int l = domain_->tree()->base_level();
+             l < domain_->tree()->depth(); ++l)
+        {
+            client->template buffer_exchange<Source_old>(l);
+
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
+
+                const auto dx_level =
+                    dx_base / math::pow2(it->refinement_level());
+                domain::Operator::curl<Source_old, edge_aux_type>(it->data(),
+                    dx_level);
+            }
+        }
+
+        //clean_leaf_correction_boundary<edge_aux_type>(domain_->tree()->base_level(), true, 2);
+        // add background velocity
+        copy<Source_new, face_aux_tmp_type>();
+        //domain::Operator::add_field_expression<face_aux_tmp_type>(domain_, simulation_->frame_vel(), T_stage_, -1.0);
+
+        for (int l = domain_->tree()->base_level();
+             l < domain_->tree()->depth(); ++l)
+        {
+            client->template buffer_exchange<edge_aux_type>(l);
+            client->template buffer_exchange<face_aux_tmp_type>(l);
+            clean_leaf_correction_boundary<edge_aux_type>(l, false, 2);
+
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
+
+                domain::Operator::nonlinear<face_aux_tmp_type, edge_aux_type,
+                    nonlinear_tmp_type>(it->data());
+            }
+        }
+        add<nonlinear_tmp_type, Target>(-1.0);
+
+        for (int l = domain_->tree()->base_level();
+             l < domain_->tree()->depth(); ++l)
+        {
+            client->template buffer_exchange<edge_aux_type>(l);
+            clean_leaf_correction_boundary<edge_aux_type>(l, false, 2);
+
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
+
+                for (std::size_t field_idx = 0; field_idx < Target::nFields();
+                     ++field_idx)
+                {
+                    auto& lin_data =
+                        it->data_r(Target::tag(), field_idx).linalg_data();
+                    lin_data *= _scale;
+                }
+            }
+        }
+    }
     template<class target>
     void add_body_force(float_type scale) noexcept {
         //float_type eps = 1e-3;

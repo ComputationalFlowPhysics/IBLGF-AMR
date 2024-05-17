@@ -339,7 +339,7 @@ class Ifherk_HELM
                 //    up_and_down<u>();
                 //    pad_velocity<u, u>();
                 //}
-                if (!customized_ic) {this->adapt(false); }
+                if (!customized_ic && !just_restarted_) {this->adapt(false); }
                 if (adapt_Fourier && just_restarted_ && domain_->is_client()) {
                     clean_Fourier_modes_all<u_type>();
                     pad_velocity_refFourier<u_type, u_type>(true);
@@ -352,8 +352,8 @@ class Ifherk_HELM
             if (adapt_count_ % (adapt_freq_ * balance_n_adapt) == 0)
             {
                 clean<u_type>(true);
-                psolver.clear_fft_vecs();
-                pcout << "cleaned lgf" << std::endl;
+                //psolver.clear_fft_vecs();
+                //pcout << "cleaned lgf" << std::endl;
                 world.barrier();
                 domain_->decomposition().template balance<u_type,p_type>();
                 
@@ -2187,6 +2187,9 @@ class Ifherk_HELM
                 }
             }
         }
+
+        //this->up<vort_mag_real_type>(false);
+        //this->up<vort_i_real_type>(false);
 
 
         

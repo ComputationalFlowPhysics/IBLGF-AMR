@@ -84,6 +84,7 @@ class Stability
     
     using solver_t = iblgf::solver::IntelPardisoSolve<float_type>;
     using time_integration_t = typename Setup::time_integration_t;
+    using linear_ns_t = typename Setup::linear_ns_t;
 
     //Timings
     using clock_type = std::chrono::high_resolution_clock;
@@ -257,9 +258,16 @@ class Stability
                 b[k] = 0;
             }
 
+
+            ifherk.template clean<cell_aux2_type>();
+            ifherk.template clean<face_aux2_type>();
+
             
             ifherk.template Grid2CSR<Face, Cell, Edge>(x_old, forcing_vec, false);
             ifherk.template Grid2CSR<fu_i_type, fp_i_type, fw_i_type>(b, forcing_tmp);
+
+            //ifherk.template Grid2CSR<Face, Cell, Edge, face_aux2_type, cell_aux2_type>(x_old, forcing_vec, false);
+            //ifherk.template Grid2CSR<fu_i_type, fp_i_type, fw_i_type, face_aux2_type, cell_aux2_type>(b, forcing_tmp);
 
         }
 
@@ -314,6 +322,8 @@ class Stability
         state_err = res_val/state_val;
 
         ifherk.template CSR2Grid<Face, Cell, Edge>(x_old, forcing_vec);
+
+        //ifherk.template CSR2Grid<Face, Cell, Edge, face_aux2_type, cell_aux2_type>(x_old, forcing_vec);
 
         float_type res_glob = 0.0;
         float_type linf_glob = 0.0;
@@ -588,6 +598,7 @@ class Stability
     domain_type*     domain_;
 
     time_integration_t ifherk;
+    //linear_ns_t ifherk;
     int Newton_max_itr_;
     float_type Newton_threshold_;
 

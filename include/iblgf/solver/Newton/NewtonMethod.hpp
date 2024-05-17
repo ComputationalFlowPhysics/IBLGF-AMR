@@ -8163,6 +8163,7 @@ class NewtonIteration
              l < domain_->tree()->depth(); ++l)
         {
             client->template buffer_exchange<edge_aux_type>(l);
+            client->template buffer_exchange<face_aux_type>(l);
             //if (l == domain_->tree()->base_level()) clean_leaf_correction_boundary<edge_aux_type>(l, true, 1);
 
             for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
@@ -8590,7 +8591,7 @@ class NewtonIteration
 
         up_and_down<Source>();
 
-        /*for (int l = domain_->tree()->base_level();
+        for (int l = domain_->tree()->base_level();
              l < domain_->tree()->depth(); ++l)
         {
             client->template buffer_exchange<Source>(l);
@@ -8607,10 +8608,10 @@ class NewtonIteration
             //client->template buffer_exchange<Target>(l);
             //clean_leaf_correction_boundary<Target>(l, true, 2);
             //clean_leaf_correction_boundary<Target>(l, false,4+stage_idx_);
-        }*/
+        }
 
 
-        for (int l = domain_->tree()->base_level();
+        /*for (int l = domain_->tree()->base_level();
              l < domain_->tree()->depth(); ++l)
         {
             client->template buffer_exchange<Source>(l);
@@ -8650,7 +8651,7 @@ class NewtonIteration
             //client->template buffer_exchange<Target>(l);
             //clean_leaf_correction_boundary<Target>(l, true, 2);
             //clean_leaf_correction_boundary<Target>(l, false,4+stage_idx_);
-        }
+        }*/
 
         //clean_leaf_correction_boundary<Target>(domain_->tree()->base_level(), true, 2);
 

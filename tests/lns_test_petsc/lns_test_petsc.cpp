@@ -14,7 +14,7 @@
 #include <boost/mpi/environment.hpp>
 #include <boost/mpi/communicator.hpp>
 
-#include "lns_amr_lgf.hpp"
+#include "lns_test_petsc.hpp"
 #include <iblgf/dictionary/dictionary.hpp>
 
 
@@ -43,7 +43,7 @@ int main(int argc, char *argv[])
     NS_AMR_LGF setup(&dictionary);
 
     // run setup
-    setup.run();
+    setup.run(argc, argv);
 
     return 0;
 }

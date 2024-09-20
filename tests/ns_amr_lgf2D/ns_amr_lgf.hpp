@@ -76,7 +76,9 @@ struct parameters
          //for radial velocity
          (exact_u_theta    , float_type, 2,    1,       1,     edge,false ),
          (num_u_theta      , float_type, 2,    1,       1,     edge,false ),
-         (error_u_theta    , float_type, 2,    1,       1,     edge,false )
+         (error_u_theta    , float_type, 2,    1,       1,     edge,false ),
+		 //Mean Field
+		 (u_mean           , float_type, 2,    1,       1,     face,true  )
     ))
     // clang-format on
 };
@@ -300,6 +302,7 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 		else
 		{
 			simulation_.template read_h5<u_type>(simulation_.restart_field_dir(), "u");
+			simulation_.template read_h5<u_mean_type>(simulation_.restart_field_dir(), "u_mean");
 		}
 
 		boost::mpi::communicator world;

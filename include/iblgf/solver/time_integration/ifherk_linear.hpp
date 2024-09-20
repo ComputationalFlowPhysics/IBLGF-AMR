@@ -62,15 +62,19 @@ class Ifherk
     using test_type = typename Setup::test_type;
 
     using u_type = typename Setup::u_type;
+    using u_base_type = typename Setup::u_base_type;
     using stream_f_type = typename Setup::stream_f_type;
     using p_type = typename Setup::p_type;
     using q_i_type = typename Setup::q_i_type;
     using r_i_type = typename Setup::r_i_type;
     using g_i_type = typename Setup::g_i_type;
     using d_i_type = typename Setup::d_i_type;
-
+    using face_aux_tmp_type = typename Setup::face_aux_tmp_type;
+    using nonlinear_tmp_type = typename Setup::nonlinear_tmp_type;
     using cell_aux_type = typename Setup::cell_aux_type;
     using edge_aux_type = typename Setup::edge_aux_type;
+    using edge_aux2_type = typename Setup::edge_aux2_type;
+
     using face_aux_type = typename Setup::face_aux_type;
     using face_aux2_type = typename Setup::face_aux2_type;
     using correction_tmp_type = typename Setup::correction_tmp_type;
@@ -195,6 +199,7 @@ class Ifherk
             {
                 //pad_velocity<u_type, u_type>(true);
             }
+            write_timestep(); //i think i want this, CC
         }
         else
         {
@@ -203,7 +208,10 @@ class Ifherk
 
             write_timestep();
         }
+        // T_ = 0.0;
+        // adapt_count_=0;
 
+        // write_timestep();
         // ----------------------------------- start -------------------------
 
         while(T_<T_max_-1e-10)
@@ -294,7 +302,9 @@ class Ifherk
             if ( adapt_count_ % adapt_freq_ ==0)
             {
                 clean<u_type>(true);
-                domain_->decomposition().template balance<u_type,p_type>();
+                // clean<u_base_type>(true);
+                domain_->decomposition().template balance<u_type,p_type,u_base_type>();
+                // domain_->decomposition().template balance<u_base_type,p_type>();
             }
 
             adapt_count_++;
@@ -349,6 +359,7 @@ class Ifherk
         if (domain_->is_client())
         {
             up_and_down<u_type>();
+            // up_and_down<u_base_type>();
             auto client = domain_->decomposition().client();
             clean<edge_aux_type>();
             clean<stream_f_type>();
@@ -414,7 +425,26 @@ class Ifherk
 
         pcout << "source max = "<< source_max_[idx] << std::endl;
     }
+    void read_restart_info(){
+        boost::mpi::communicator          world;
+        parallel_ostream::ParallelOstream pcout =
+            parallel_ostream::ParallelOstream(world.size() - 1);
 
+        // --------------------------------------------------------------------
+
+            Dictionary info_d(simulation_->restart_load_dir()+"/restart_info");
+            T_=info_d.template get<float_type>("T");
+            adapt_count_=info_d.template get<int>("adapt_count");
+            T_last_vel_refresh_=info_d.template get_or<float_type>("T_last_vel_refresh", 0.0);
+            source_max_[0]=info_d.template get<float_type>("cell_aux_max");
+            source_max_[1]=info_d.template get<float_type>("u_max");
+            pcout<<"Restart info ------------------------------------------------ "<< std::endl;
+            pcout<<"T = "<< T_<< std::endl;
+            pcout<<"adapt_count = "<< adapt_count_<< std::endl;
+            pcout<<"cell aux max = "<< source_max_[0]<< std::endl;
+            pcout<<"u max = "<< source_max_[1]<< std::endl;
+            pcout<<"T_last_vel_refresh = "<< T_last_vel_refresh_<< std::endl;
+    }
     void write_restart()
     {
         boost::mpi::communicator world;
@@ -621,7 +651,8 @@ class Ifherk
         
         //nonlinear<Source_face, g_i_type>();
 
-        // do sometibg like this for lns nonlinear_jac<u_old,Source_face, g_i_type>();
+        // do sometibg like this for lns 
+        nonlinear_jac<u_base_type,Source_face, g_i_type>();
 
         //pcout << "Computed Nonlinear Jac " << std::endl;
 
@@ -841,6 +872,9 @@ class Ifherk
                 //claen non leafs
                 clean<u_type>(true);
                 this->up<u_type>(false);
+
+                clean<u_base_type>(true);
+                this->up<u_base_type>(false);
                 ////Coarsification:
                 //for (std::size_t _field_idx=0; _field_idx<u::nFields; ++_field_idx)
                 //    psolver.template source_coarsify<u_type,u_type>(_field_idx, _field_idx, u::mesh_type);
@@ -875,6 +909,28 @@ class Ifherk
                 }
             }
         }
+        if (client)
+        {
+            // Intrp
+            for (std::size_t _field_idx=0; _field_idx<u_base_type::nFields(); ++_field_idx)
+            {
+                for (int l = domain_->tree()->depth() - 2;
+                     l >= domain_->tree()->base_level(); --l)
+                {
+                    client->template buffer_exchange<u_base_type>(l);
+
+                    domain_->decomposition().client()->
+                    template communicate_updownward_assign
+                    <u_base_type, u_base_type>(l,false,false,-1,_field_idx);
+                }
+
+                for (auto& oct : intrp_list)
+                {
+                    if (!oct || !oct->has_data()) continue;
+                    psolver.c_cntr_nli().template nli_intrp_node<u_base_type, u_base_type>(oct, u_base_type::mesh_type(), _field_idx, _field_idx, false, false);
+                }
+            }
+        }
         world.barrier();
         pcout << "Adapt - done" << std::endl;
     }
@@ -905,6 +961,7 @@ class Ifherk
                         if (!domain_->is_client())
                             return;
                         pad_velocity<u_type, u_type>(true);
+                        pad_velocity<u_base_type, u_base_type>(true);
                         adapt_corr_time_step();
                     }
                     else
@@ -912,6 +969,7 @@ class Ifherk
                         if (!domain_->is_client())
                             return;
                         up_and_down<u_type>();
+                        up_and_down<u_base_type>();
                     }
                     ));
         base_mesh_update_=false;
@@ -929,7 +987,7 @@ class Ifherk
         clean<cell_aux_type>();
         clean<face_aux_type>();
 
-        nonlinear<u_type, g_i_type>(coeff_a(1, 1) * (-dt_));
+        nonlinear_jac<u_base_type,u_type, g_i_type>(coeff_a(1, 1) * (-dt_));
         copy<q_i_type, r_i_type>();
         add<g_i_type, r_i_type>();
         lin_sys_with_ib_solve(alpha_[0]);
@@ -958,7 +1016,7 @@ class Ifherk
         add<w_1_type, r_i_type>(dt_ * coeff_a(2, 1));
 
         up_and_down<u_i_type>();
-        nonlinear<u_i_type, g_i_type>(coeff_a(2, 2) * (-dt_));
+        nonlinear_jac<u_base_type,u_i_type, g_i_type>(coeff_a(2, 2) * (-dt_));
         add<g_i_type, r_i_type>();
 
         lin_sys_with_ib_solve(alpha_[1]);
@@ -981,7 +1039,7 @@ class Ifherk
         psolver.template apply_lgf_IF<r_i_type, r_i_type>(alpha_[1]);
 
         up_and_down<u_i_type>();
-        nonlinear<u_i_type, g_i_type>(coeff_a(3, 3) * (-dt_));
+        nonlinear_jac<u_base_type, u_i_type, g_i_type>(coeff_a(3, 3) * (-dt_));
         add<g_i_type, r_i_type>();
 
         lin_sys_with_ib_solve(alpha_[2]);
@@ -1202,7 +1260,113 @@ class Ifherk
         }
     }
 
+    template <typename F,typename F_g>
+    void Assign_idx()
+    {
+        // for (auto it = domain_->begin(); it != domain_->end(); ++it)
+        // {
+        //     if (!it->has_data()) continue;
+        //     if (!it->data().is_allocated()) continue;
 
+        //     for (std::size_t field_idx = 0; field_idx < F::nFields(); ++field_idx)
+        //     {
+        //         auto& lin_data = it->data_r(F::tag(), field_idx).linalg_data();
+        //         std::fill(lin_data.begin(), lin_data.end(), 0.0);
+        //     }
+        // }
+        boost::mpi::communicator world;
+        world.barrier();
+
+        int counter=0;
+         if (world.rank() == 0) {
+            max_local_idx = -1;
+            max_idx_from_prev_prc = 0;
+            counter = 0;
+            world.send(1, 0, counter);
+            return;
+        }
+        
+        int base_level = domain_->tree()->base_level();
+        for (int l = base_level; l < domain_->tree()->depth(); l++)
+        {
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
+                // if (!it->data().is_allocated()) continue;
+                if (it->is_leaf() && !it->is_correction())
+                {
+                    for (std::size_t field_idx = 0; field_idx < F::nFields(); ++field_idx)
+                    {
+                        for(auto& n: it->data()){
+                            counter++;
+                            n(F::tag(), field_idx)=counter;
+                        }
+
+                        // auto& lin_data = it->data_r(F::tag(), field_idx).linalg_data();
+                        // for (int i = 0; i < lin_data.shape()[0]; i++)
+                        // {
+                        //     for (int j = 0; j < lin_data.shape()[1]; j++)
+                        //     {
+                        //         counter++;
+                        //         lin_data(i, j) = counter;
+                                
+                        //     }
+                        // }
+                    }
+                }
+            }
+        }
+        max_local_idx = counter;
+        // world.barrier();
+        // if (world.rank() != 0)                  world.recv(world.rank()-1, world.rank() - 1, max_idx_from_prev_prc);
+        // if (world.rank() < (world.size() - 1)) world.send(world.rank()+1, world.rank(), (counter + max_idx_from_prev_prc));
+        // world.barrier();
+
+        std::cout << "Process " << world.rank() << " before scan" << std::endl;
+        domain_->client_communicator().barrier();
+        boost::mpi::scan(domain_->client_communicator(),counter, max_idx_from_prev_prc, std::plus<float_type>());
+        std::cout << "Process " << world.rank() << " after scan" << std::endl;
+        max_idx_from_prev_prc -= counter;
+        for (int i = 1; i < world.size();i++) {
+            if (world.rank() == i) std::cout << "rank " << world.rank() <<" counter is " << counter << " counter + max idx is " << (counter + max_idx_from_prev_prc) << " max idx from prev prc " << max_idx_from_prev_prc << std::endl;
+            domain_->client_communicator().barrier();
+        }
+        //std::cout << "rank " << world.rank() << " counter + max idx is " << (counter + max_idx_from_prev_prc) << " max idx from prev prc " << max_idx_from_prev_prc << std::endl;
+        // world.barrier();
+        for (int l = base_level; l < domain_->tree()->depth(); l++)
+        {
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
+                // if (!it->data().is_allocated()) continue;
+                if (it->is_leaf() && !it->is_correction())
+                {
+                    for (std::size_t field_idx = 0; field_idx < F::nFields(); ++field_idx)
+                    {
+                        // auto& lin_data = it->data_r(F::tag(), field_idx).linalg_data();
+                        // auto& ling_data = it->data_r(F_g::tag(), field_idx).linalg_data();
+
+                        // for (int i = 0; i < lin_data.shape()[0]; i++)
+                        // {
+                        //     for (int j = 0; j < lin_data.shape()[1]; j++)
+                        //     {
+                        //         // counter++;
+                        //         if (lin_data(i, j) != 0){
+                        //             ling_data(i, j) = lin_data(i, j)+max_idx_from_prev_prc;
+                        //         }
+                                
+                        //     }
+                        // }
+                        for(auto& n: it->data())
+                        {
+                            n(F_g::tag(), field_idx) = n(F::tag(), field_idx) + max_idx_from_prev_prc;
+                        }
+                    }
+                }
+            }
+        }
+
+    }
 
 private:
     float_type coeff_a(int i, int j)const noexcept {return a_[i*(i-1)/2+j-1];}
@@ -1433,13 +1597,14 @@ private:
     {
         //std::cout << "part begin" << std::endl;
         clean<edge_aux_type>();
+        clean<edge_aux2_type>();
         clean<Target>();
         clean<face_aux_tmp_type>();
         clean<nonlinear_tmp_type>();
 
         //std::cout << "part 0" << std::endl;
 
-        up_and_down<Source_old>();
+        // up_and_down<Source_old>();
         up_and_down<Source_new>();
 
         auto       client = domain_->decomposition().client();
@@ -1481,13 +1646,13 @@ private:
                 if (!it->locally_owned() || !it->has_data()) continue;
 
                 domain::Operator::nonlinear<face_aux_tmp_type, edge_aux_type,
-                    nonlinear_tmp_type>(it->data());
+                    nonlinear_tmp_type>(it->data()); //=edge_aux cross face_aux =(del cross new)cross(old+u_inf)
             }
         }
 
         //std::cout << "part 2" << std::endl;
 
-        clean<edge_aux_type>();
+        // clean<edge_aux_type>();
         clean<face_aux_tmp_type>();
 
         //auto       client = domain_->decomposition().client();
@@ -1504,7 +1669,7 @@ private:
 
                 const auto dx_level =
                     dx_base / math::pow2(it->refinement_level());
-                domain::Operator::curl<Source_old, edge_aux_type>(it->data(),
+                domain::Operator::curl<Source_old, edge_aux2_type>(it->data(),
                     dx_level);
             }
         }
@@ -1515,11 +1680,11 @@ private:
         // add background velocity
         copy<Source_new, face_aux_tmp_type>();
         //domain::Operator::add_field_expression<face_aux_tmp_type>(domain_, simulation_->frame_vel(), T_stage_, -1.0);
-
+        add<Source_old, face_aux_tmp_type>(-1.0);
         for (int l = domain_->tree()->base_level();
              l < domain_->tree()->depth(); ++l)
         {
-            client->template buffer_exchange<edge_aux_type>(l);
+            client->template buffer_exchange<edge_aux2_type>(l);
             client->template buffer_exchange<face_aux_tmp_type>(l);
             //clean_leaf_correction_boundary<edge_aux_type>(l, false, 2);
 
@@ -1527,11 +1692,11 @@ private:
             {
                 if (!it->locally_owned() || !it->has_data()) continue;
 
-                domain::Operator::nonlinear<face_aux_tmp_type, edge_aux_type,
-                    Target>(it->data());
+                domain::Operator::nonlinear<face_aux_tmp_type, edge_aux2_type,
+                    Target>(it->data()); //=edge_aux cross face_aux =(del cross old)cross(new-old)
             }
         }
-        add<nonlinear_tmp_type, Target>();
+        add<nonlinear_tmp_type, Target>(); //=(del cross old)cross(new-old)+(del cross new)cross(old+u_inf)
 
         //std::cout << "part 4" << std::endl;
 
@@ -1974,6 +2139,10 @@ private:
     bool use_adaptation_correction;
     int restart_base_freq_;
     int adapt_count_;
+
+    //
+    int max_idx_from_prev_prc = 0;
+    int max_local_idx = 0;
 
     std::string                       fname_prefix_;
     vector_type<float_type, 6>        a_{{1.0 / 3, -1.0, 2.0, 0.0, 0.75, 0.25}};

@@ -29,7 +29,7 @@
 #include <boost/mpi.hpp>
 #include <boost/mpi/environment.hpp>
 #include <boost/mpi/communicator.hpp>
-
+#include <random>
 // IBLGF-specific
 #include <iblgf/global.hpp>
 #include <iblgf/simulation.hpp>
@@ -308,15 +308,31 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 			simulation_.template read_h5<u_type>(simulation_.restart_field_dir(), "u");
 			simulation_.template read_h5<p_type>(simulation_.restart_field_dir(), "p");
 			// clean<u_base_type>
-			simulation_.template read_h5<u_base_type>(simulation_.restart_field_dir(), "u_base");
+			simulation_.template read_h5<u_base_type>(simulation_.restart_field_dir(), "u_mean");
 			//std::cout<<"read"<<std::endl;
+			pcout<< "Restart read" << std::endl;
 		}
 
 		boost::mpi::communicator world;
 		if (world.rank() == 0)
 			std::cout << "on Simulation: \n" << simulation_ << std::endl;
 	}
+	float_type run_IC(){
+		boost::mpi::communicator world;
+		pcout_c<<"perturb IC"<<std::endl;
+		peturbIC();
+		time_integration_t ifherk(&this->simulation_);
+		if (use_restart()){
 
+			ifherk.time_step();
+        	ifherk.write_restart();
+
+		}
+		else{
+			pcout_c<<"no IC to perturb"<<std::endl;
+		}
+
+	}
 	float_type run()
 	{
 		boost::mpi::communicator world;
@@ -324,14 +340,11 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 		time_integration_t ifherk(&this->simulation_);
 
 		if (ic_filename_ != "null")
-		{
-			if (world.rank() == 0)
-				std::cout<<"reading initial condition from file "<<ic_filename_<<std::endl;
 			//simulation_.template read_h5<u_type>(ic_filename_, "u");
 			// simulation_.template read_h5<p_type>(ic_filename_, "p");
 			simulation_.template read_h5<u_base_type>(ic_filename_, "u");
 			simulation_.template read_h5<p_base_type>(ic_filename_, "p");
-		}
+
 		mDuration_type ifherk_duration(0);
 		TIME_CODE(ifherk_duration, SINGLE_ARG(
 			ifherk.time_march(use_restart());
@@ -440,7 +453,59 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 		return u1_inf;
 
 	}
+	
+	void peturbIC()
+	{
+		float_type perturb = 0.1;
+		float_type x_min=2.0;
+		float_type x_max=4.0;
+		float_type y_min=-2.0;
+		float_type y_max=2.0;
+		srand(time(0));
+		for (auto it = domain_->begin(); it != domain_->end(); ++it)
+		{
+			if (!it->locally_owned()) continue;
+			const auto dx_base = domain_->dx_base();
+			auto dx_level = dx_base / std::pow(2, it->refinement_level());
+			auto scaling = std::pow(2, it->refinement_level());
 
+			for (auto& node : it->data())
+			{
+
+				// const auto& coord = node.level_coordinate();
+				
+				// float_type x = static_cast<float_type>(coord[0]-center[0]*scaling)*dx_level;
+				// float_type y = static_cast<float_type>(coord[1]-center[1]*scaling+0.5)*dx_level;
+				// node(u, 0) = u_vort(x,y,0,0);
+				// x = static_cast<float_type>(coord[0]-center[0]*scaling+0.5)*dx_level;
+				// y = static_cast<float_type>(coord[1]-center[1]*scaling)*dx_level;
+				// node(u, 1) = u_vort(x,y,0,1);
+
+				// node(u_base,0)=0.0;
+				// node(u_base,1)=0.0;
+
+				auto coord =node.global_coordinate()*dx_base;
+				float_type x = coord[0];
+                float_type y = coord[1];
+				if(x>x_min && x<x_max && y>y_min && y<y_max)
+				{
+					float_type rand_num =
+                                static_cast<float_type>(std::rand()) /
+                                    static_cast<float_type>(RAND_MAX) -
+                                0.5;
+					node(u,0) += perturb*rand_num;
+					rand_num =
+                                static_cast<float_type>(std::rand()) /
+                                    static_cast<float_type>(RAND_MAX) -
+                                0.5;
+					node(u,1) += perturb*rand_num;	
+				}
+				
+			}
+
+		}
+
+	}
 
 	template<class Source, class Target>
 	void getUtheta() noexcept

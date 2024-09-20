@@ -77,9 +77,9 @@ class Setup_helmholtz
       //flow variables
       (q_i,                 float_type,  3*2*N_modes,  1,  1,  face,false),
       (u_i,                 float_type,  3*2*N_modes,  1,  1,  face,false),
-      (u_i_real,            float_type,  3*3*N_modes,  1,  1,  face,false), //these are stored 1.5 times more than the complex counter part due to the 3/2 rule for convolution
-      (vort_i_real,         float_type,  3*3*N_modes,  1,  1,  edge,false),
-      (vort_mag_real,       float_type,  1*3*N_modes,  1,  1,  edge,true),
+      (u_i_real,            float_type,  3*3*N_modes,  1,  1,  face,true), //these are stored 1.5 times more than the complex counter part due to the 3/2 rule for convolution
+      (vort_i_real,         float_type,  3*3*N_modes,  1,  1,  edge,true),
+      (vort_mag_real,       float_type,  1*3*N_modes,  1,  1,  edge,false),
       (r_i_real,            float_type,  3*3*N_modes,  1,  1,  face,false),
       (face_aux_real,       float_type,  3*3*N_modes,  1,  1,  face,false),
       (d_i,                 float_type,  2*N_modes,    1,  1,  cell,false),

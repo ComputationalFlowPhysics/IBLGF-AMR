@@ -231,6 +231,11 @@ struct NS_AMR_LGF : public SetupHelmStab<NS_AMR_LGF, parameters>
 
 		bool use_fat_ring = simulation_.dictionary()->template get_or<bool>("fat_ring", false);
 
+        mode_c = simulation_.dictionary()->template get_or<float_type>("mode_c", 0.1);
+        if (mode_c < 0.0) {
+            mode_c = -mode_c;
+        }
+
 		ic_filename_ = simulation_.dictionary_->template get_or<std::string>(
 			"hdf5_ic_name", "null");
 
@@ -1276,7 +1281,7 @@ struct NS_AMR_LGF : public SetupHelmStab<NS_AMR_LGF, parameters>
        STGetOperator(st,NULL);
        PCFactorSetUpMatSolverType(pc);
        PCFactorGetMatrix(pc,&K);
-       MatMumpsSetIcntl(K,14,50);
+       MatMumpsSetIcntl(K,14,200);
        MatMumpsSetCntl(K,3,1e-12);
 #endif
 #if defined(PETSC_HAVE_MKL_PARDISO)
@@ -1366,6 +1371,48 @@ struct NS_AMR_LGF : public SetupHelmStab<NS_AMR_LGF, parameters>
             PetscCall(EPSErrorView(eps, EPS_ERROR_RELATIVE,
                 PETSC_VIEWER_STDOUT_WORLD));
             PetscCall(PetscViewerPopFormat(PETSC_VIEWER_STDOUT_WORLD));
+        }
+
+        std::vector<float_type> re_v, im_v, err_vec;
+
+        PetscInt nconv;
+        PetscCall(EPSGetConverged(eps,&nconv));
+
+        for (PetscInt ll = 0; ll < nconv;  ll++) {
+            PetscScalar EV;
+            PetscScalar EVi;
+            PetscReal err_v;
+            PetscCall(EPSGetEigenvalue(eps, ll, &EV, &EVi));
+            PetscCall(EPSComputeError(eps,ll,EPS_ERROR_RELATIVE,&err_v));
+            float_type evr = PetscRealPart(EV);
+            float_type evi = PetscImaginaryPart(EV);
+            float_type err_vv = err_v;
+
+            re_v.emplace_back(evr);
+            im_v.emplace_back(evi);
+            err_vec.emplace_back(err_vv);    
+        }
+
+        if (world.rank() == 1) {
+            
+            int ss = mode_c*100 + 0.1;
+            std::string mode_c_str = std::to_string(ss);
+            if (mode_c < 1) mode_c_str = "0"+mode_c_str;
+            std::string EVs_name = "EVs_"+mode_c_str+".txt";
+            std::ofstream outfile;
+            int width = 20;
+            outfile.open(EVs_name, std::ios_base::app);
+            for (int ll = 0; ll < nconv;  ll++) {
+                float_type evr = re_v[ll];
+                float_type evi = im_v[ll];
+                float_type err_vv = err_vec[ll];
+                std::string sign = "+";
+                if (evi < 0) sign = "-";
+                outfile << std::setprecision(9) << std::setw(width) << std::fixed << evr << sign << std::fabs(evi) << "i";
+                outfile << std::setprecision(9) << std::setw(width) << std::scientific << err_vv;
+                outfile << std::endl;     
+            }
+            outfile.close();
         }
 
         EPSGetEigenvector(eps,0, x, NULL);
@@ -1737,6 +1784,8 @@ struct NS_AMR_LGF : public SetupHelmStab<NS_AMR_LGF, parameters>
     force_type forcing_num;
 	force_type forcing_ref;
     force_type forcing_num_inv;
+
+    float_type mode_c;
 
 	float_type ctr_dis_x = 0.0;
 	float_type ctr_dis_y = 0.0;

@@ -60,7 +60,7 @@ const int Dim = 2;
 struct parameters
 {
     static constexpr std::size_t Dim = 2;
-	static constexpr std::size_t N_modes = 16;
+	static constexpr std::size_t N_modes = 128;
 	static constexpr std::size_t PREFAC  = 2; //2 for complex values 
     // clang-format off
     REGISTER_FIELDS

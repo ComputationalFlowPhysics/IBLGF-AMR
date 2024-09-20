@@ -558,6 +558,40 @@ class NewtonIteration
         }
     }
 
+    template<class Source, class Target>
+    void curl_no_cleaning() noexcept
+    {
+        auto client = domain_->decomposition().client();
+
+        domain::Operator::domainClean<Target>(domain_);
+
+        up_and_down<Source>();
+
+        for (int l = domain_->tree()->base_level();
+             l < domain_->tree()->depth(); ++l)
+        {
+            client->template buffer_exchange<Source>(l);
+            const auto dx_base = domain_->dx_base();
+
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
+                const auto dx_level =
+                    dx_base / math::pow2(it->refinement_level());
+                domain::Operator::curl<Source, Target>(it->data(),
+                    dx_level);
+            }
+
+            //client->template buffer_exchange<Target>(l);
+            //clean_leaf_correction_boundary<Target>(l, true, 2);
+            //clean_leaf_correction_boundary<Target>(l, false,4+stage_idx_);
+            
+        }
+
+        clean_leaf_according_to_idx<edge_aux_type, idx_w_g_type>(domain_->tree()->base_level());
+        
+    }
+
     template<class Field>
     void update_source_max(int idx)
     {
@@ -758,7 +792,7 @@ class NewtonIteration
         boost::mpi::communicator world;
         auto                     client = domain_->decomposition().client();
 
-        if (source_max_[0] < 1e-10 || source_max_[1] < 1e-10) return;
+        if (source_max_[1] < 1e-10) return;
 
         //adaptation neglect the boundary oscillations
         clean_leaf_correction_boundary<cell_aux_type>(
@@ -3066,6 +3100,16 @@ class NewtonIteration
         
         Jac_p.clean();
         Jac_p.resizing_row(max_local_idx+1);
+
+        boundary_u.clean();
+        L.clean();
+        Div.clean();
+        Grad.clean();
+        Curl.clean();
+        project.clean();
+        smearing.clean();
+        upward_intrp.clean();
+        
         construct_upward_intrp();
         construction_BCMat();
         construction_laplacian_u();
@@ -8579,6 +8623,10 @@ class NewtonIteration
         clean_leaf_according_to_idx<Target, idx_w_g_type>(domain_->tree()->base_level());
         //clean<Target>(true);
     }
+
+
+
+    
 
     template<class Source, class Target>
     void laplacian() noexcept

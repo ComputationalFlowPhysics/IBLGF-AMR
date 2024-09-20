@@ -123,7 +123,7 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 
 				float_type r = std::sqrt((coord[0] * coord[0] + coord[1] * coord[1]));
                 float_type f_alpha = 0.0;
-				if (r < 0.25) {
+				if (r < 0.45 || r > 0.55) {
                     f_alpha = 0.0;
                     /*if (r < 1e-12) {
                         f_alpha = 0.0;

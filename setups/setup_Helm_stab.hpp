@@ -153,6 +153,7 @@ class SetupHelmStab
     //using linear_ns_t = solver::LinearNS<SetupNewton>;
     using helm_stab_t = solver::Helm_stab<SetupHelmStab>;
     using linsys_solver_t = solver::LinSysSolver<SetupHelmStab>;
+    using sparse_mat = solver::sparse_mat;
 
   public: //Ctors
     SetupHelmStab(Dictionary* _d)

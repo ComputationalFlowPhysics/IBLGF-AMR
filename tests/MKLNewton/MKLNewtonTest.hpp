@@ -169,7 +169,7 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
 
 				float_type r = std::sqrt((coord[0] * coord[0] + coord[1] * coord[1]));
                 float_type f_alpha = 0.0;
-				if (r < 0.25) {
+				if (r < 0.25 || r > 0.75) {
                     f_alpha = 0.0;
                     /*if (r < 1e-12) {
                         f_alpha = 0.0;
@@ -330,6 +330,10 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
 			domain_->restart_list_construct();
 		}
 
+        domain_->register_adapt_condition()=
+			[this]( std::vector<float_type> source_max, auto& octs, std::vector<int>& level_change ) 
+			{return this->template adapt_level_change(source_max, octs, level_change);};
+
 		domain_->distribute<fmm_mask_builder_t, fmm_mask_builder_t>();
 		boost::mpi::communicator world;
 		if (!use_restart()) { this->initialize(); }
@@ -377,8 +381,10 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
 
         ifherk.Assigning_idx();
 
-        ifherk.NewtonRHS<u_type, p_type, u_num_type, p_num_type>(forcing_num, forcing_tar);
         ifherk.ComputeForcing<u_type, p_type, u_num_type, p_num_type>(forcing_num);
+
+        ifherk.NewtonRHS<u_type, p_type, u_num_type, p_num_type>(forcing_num, forcing_tar);
+        
 
         simulation_.write("NewtonRHS.hdf5");
 
@@ -398,6 +404,126 @@ struct NS_AMR_LGF : public SetupNewton<NS_AMR_LGF, parameters>
     {
         return false;
     }
+
+
+
+
+    template< class key_t >
+	void adapt_level_change(std::vector<float_type> source_max,
+			        std::vector<key_t>& octs,
+				        std::vector<int>&   level_change )
+	{
+		octs.clear();
+		level_change.clear();
+		for (auto it = domain_->begin(); it != domain_->end(); ++it)
+		{
+
+			if (!it->locally_owned()) continue;
+			if (!it->is_leaf() && !it->is_correction()) continue;
+			if (it->is_leaf() && it->is_correction()) continue;
+
+
+
+
+			int l1=-1;
+			int l2=-1;
+			int l3=-1;
+
+			if (!it->is_correction() && it->is_leaf())
+				l1=this->template adapt_levle_change_for_field<edge_aux_type>(it, source_max[1], true);
+
+			if (it->is_correction() && !it->is_leaf())
+				l2=this->template adapt_levle_change_for_field<edge_aux_type>(it, source_max[1], false);
+
+			if (!it->is_correction() && it->is_leaf())
+				l3=this->template adapt_levle_change_for_field<edge_aux_type>(it, source_max[1], false);
+
+			int l=std::max(std::max(l1,l2),l3);
+			//int l = std::max(l1,l2);
+
+
+			auto dx_level = domain_->dx_base() / std::pow(2, it->refinement_level());
+
+			bool outOfWake = false;
+
+
+			if( l!=0)
+			{
+				if (it->is_leaf()&&!it->is_correction())
+				{
+					octs.emplace_back(it->key());
+					level_change.emplace_back(l);
+				}
+				else if (it->is_correction() && !it->is_leaf() && l2>0)
+				{
+					octs.emplace_back(it->key().parent());
+					level_change.emplace_back(l2);
+				}
+			}
+		}
+	}
+
+    template<class cell_aux, class u, class OctantType >
+    int adapt_level_change(OctantType* it, std::vector<float_type> source_max)
+    {
+        // no source in correction part by default
+        if (it->is_correction())
+            return -1;
+
+        int l1=this->template adapt_levle_change_for_field<cell_aux>(it, source_max[1], true);
+        int l2=-1;
+
+        return std::max(l1,l2);
+    }
+
+
+	template<class Field, class OctantType>
+	int adapt_levle_change_for_field(OctantType it, float_type source_max, bool use_base_level_threshold)
+	{
+		if (vortexType != 0) return 0;
+		if (it->is_ib() && it->is_leaf())
+			if (it->refinement_level()<(nLevelRefinement_))
+				return 1;
+			else
+				return 0;
+
+		source_max *=1.05;
+
+		float_type field_max=
+			domain::Operator::maxnorm<Field>(it->data());
+
+		if (field_max<1e-10) return -1;
+
+		float_type deletion_factor=0.7;
+
+		int l_aim = static_cast<int>( ceil(nLevelRefinement_-log(field_max/source_max) / log(refinement_factor_)));
+		int l_delete_aim = static_cast<int>( ceil(nLevelRefinement_-((log(field_max/source_max) - log(deletion_factor)) / log(refinement_factor_))));
+
+		if (l_aim>hard_max_level_)
+			l_aim=hard_max_level_;
+		if (l_aim > nLevelRefinement_) l_aim = nLevelRefinement_;
+
+		if (it->refinement_level()==0 && use_base_level_threshold)
+		{
+			if (field_max>source_max*base_threshold_)
+				l_aim = std::max(l_aim,0);
+
+			if (field_max>source_max*base_threshold_*deletion_factor)
+				l_delete_aim = std::max(l_delete_aim,0);
+		}
+
+		if (it->is_ib())
+			return 0;
+
+		int l_change = l_aim - it->refinement_level();
+		if (l_change>0)
+			return 1;
+
+		l_change = l_delete_aim - it->refinement_level();
+		if (l_change<0) return -1;
+
+		return 0;
+	}
 
     /** @brief  Initialization of the domain blocks. This is registered in the
      *          domain through the base setup class, passing it to the domain ctor.

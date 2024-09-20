@@ -232,6 +232,9 @@ class Helm_stab
         _x_l = _simulation->dictionary()->template get_or<float_type>("x_l", -12.0);
         _x_u = _simulation->dictionary()->template get_or<float_type>("x_u",  -8.0);
 
+        include_u_bc = _simulation->dictionary()->template get_or<bool>("includeu_u_bc", true);
+        include_p_bc = _simulation->dictionary()->template get_or<bool>("includeu_p_bc", true);
+
 
         // Get FMM Info
 
@@ -826,6 +829,7 @@ class Helm_stab
                         }
                         else
                         {
+                            if (include_u_bc) {
                             if (i == 0) { tmp[0][0] = true; }
                             if (i == 1)
                             {
@@ -858,6 +862,7 @@ class Helm_stab
                                 }
                             }
                             if (i == 8) { tmp[N - 1][N - 1] = true; }
+                            }
                         }
                     }
                     for (std::size_t field_idx = 0;
@@ -1165,6 +1170,7 @@ class Helm_stab
                             }
                             else
                             {
+                                if (include_p_bc) {
                                 if (i == 0) { tmp[0][0] = true; }
                                 if (i == 1)
                                 {
@@ -1174,7 +1180,7 @@ class Helm_stab
                                         //tmp[j][1] = true;
                                     }
                                 }
-                                //if (i == 2) { tmp[N - 1][0] = true; }
+                                if (i == 2) { tmp[N - 1][0] = true; }
                                 if (i == 3)
                                 {
                                     for (int j = 0; j < N; j++)
@@ -1183,7 +1189,7 @@ class Helm_stab
                                         //tmp[1][j] = true;
                                     }
                                 }
-                                /*if (i == 5)
+                                if (i == 5)
                                 {
                                     for (int j = 0; j < N; j++)
                                     {
@@ -1200,7 +1206,8 @@ class Helm_stab
                                         //tmp[j][N - 2] = true;
                                     }
                                 }
-                                if (i == 8) { tmp[N - 1][N - 1] = true; }*/
+                                if (i == 8) { tmp[N - 1][N - 1] = true; }
+                                }
                             }
                         }
                         for (std::size_t field_idx = 0;
@@ -5767,6 +5774,9 @@ class Helm_stab
                         int glo_idx_0 = n(idx_u_g_type::tag(), 0);
                         int glo_idx_1 = n(idx_u_g_type::tag(), 1);
 
+                        Div.add_element(cur_idx, glo_idx_0, -1.0 / dx_level);
+                        Div.add_element(cur_idx, glo_idx_1, -1.0 / dx_level);
+
                         int glo_idx_0_10 = n.at_offset(idx_u_g_type::tag(), 1, 0, 0);
                         int glo_idx_1_01 = n.at_offset(idx_u_g_type::tag(), 0, 1, 1);
 
@@ -5774,8 +5784,7 @@ class Helm_stab
                             continue;
                         }
 
-                        Div.add_element(cur_idx, glo_idx_0, -1.0 / dx_level);
-                        Div.add_element(cur_idx, glo_idx_1, -1.0 / dx_level);
+                       
 
                         glo_idx_0 = n.at_offset(idx_u_g_type::tag(), 1, 0, 0);
                         Div.add_element(cur_idx, glo_idx_0, 1.0 / dx_level);
@@ -5972,23 +5981,33 @@ class Helm_stab
 
                         if (cur_idx < 0) continue;
 
+                        Div_cs.add_element(cur_idx, glo_cs_idx, -1.0);
+
                         
                         int glo_idx_0 = n(idx_N_g_type::tag(), 0);
                         int glo_idx_1 = n(idx_N_g_type::tag(), 1);
 
+                        int glo_idx_00 = n.at_offset(idx_N_g_type::tag(), 1, 0, 0);
+
+                        int glo_idx_11 = n.at_offset(idx_N_g_type::tag(), 0, 1, 1);
+
+                        int glo_idx_2 = n(idx_Nz_g_type::tag(), 0);
+
+                        if (glo_idx_0 <= 0 || glo_idx_00 <= 0 || glo_idx_1 <= 0 || glo_idx_11 <= 0 || glo_idx_2 <= 0) continue;
+
                         Div_cs.add_element(cur_idx, glo_idx_0, -1.0 / dx_level);
                         Div_cs.add_element(cur_idx, glo_idx_1, -1.0 / dx_level);
 
-                        glo_idx_0 = n.at_offset(idx_N_g_type::tag(), 1, 0, 0);
-                        Div_cs.add_element(cur_idx, glo_idx_0, 1.0 / dx_level);
+                        
+                        Div_cs.add_element(cur_idx, glo_idx_00, 1.0 / dx_level);
 
-                        glo_idx_1 = n.at_offset(idx_N_g_type::tag(), 0, 1, 1);
-                        Div_cs.add_element(cur_idx, glo_idx_1, 1.0 / dx_level);
+                        
+                        Div_cs.add_element(cur_idx, glo_idx_11, 1.0 / dx_level);
 
-                        int glo_idx_2 = n(idx_Nz_g_type::tag(), 0);
+                        
                         Div_cs.add_element(cur_idx, glo_idx_2, -mode_c); //ic*i = -c
 
-                        Div_cs.add_element(cur_idx, glo_cs_idx, -1.0);
+                        
                     }
                 }
             }
@@ -7335,11 +7354,11 @@ class Helm_stab
 
                             int y_c = c_loc[1] - y_c_tmp;
 
-                            float_type lgf_val_00 = lgf_lap_.derived().get(
+                            float_type lgf_val_00 = -lgf_lap_.derived().get(
                                 coordinate_type({x_c, y_c}));
                             if (kernel_vec.canUse())
                             {
-                                lgf_val_00 = kernel_vec.getValue(x_c, y_c);
+                                lgf_val_00 = -kernel_vec.getValue(x_c, y_c);
                             }
 
                             int cs_idx = lin_data_g.at(sub_i, sub_j);
@@ -7369,10 +7388,10 @@ class Helm_stab
                         int y_c = c_loc[1] - coord_loc[1];
 
                         float_type lgf_val_00 =
-                            lgf_lap_.derived().get(coordinate_type({x_c, y_c}));
+                            -lgf_lap_.derived().get(coordinate_type({x_c, y_c}));
                         if (kernel_vec.canUse())
                         {
-                            lgf_val_00 = kernel_vec.getValue(x_c, y_c);
+                            lgf_val_00 = -kernel_vec.getValue(x_c, y_c);
                         }
 
                         int cs_idx = n(idx_cs_g_type::tag(), 0);
@@ -12516,6 +12535,9 @@ private:
     bool add_upward_intrp = true;
     bool add_smearing = true;
     bool add_project = true;
+
+    bool include_u_bc = true;
+    bool include_p_bc = true;
 
     bool p_set_zero = true; //decide if a pressure point is set to be 0
     bool vort_buffer = false;

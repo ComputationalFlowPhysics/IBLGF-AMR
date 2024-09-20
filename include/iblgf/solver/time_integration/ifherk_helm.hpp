@@ -1773,6 +1773,10 @@ class Ifherk_HELM
 
     void lin_sys_with_ib_solve(float_type _alpha, bool write_prev_force = true) noexcept
     {
+        if (domain_->ib().size() == 0) {
+            lin_sys_solve(_alpha);
+            return;
+        }
         auto client = domain_->decomposition().client();
 
         auto t0 = clock_type::now();
@@ -2432,6 +2436,7 @@ class Ifherk_HELM
 
             //client->template buffer_exchange<Target>(l);
             clean_leaf_correction_boundary<Target>(l, true, 2);
+            //clean_leaf_correction_boundary<Target>(l, false, 2);
             //clean_leaf_correction_boundary<Target>(l, false,4+stage_idx_);
         }
         if (adapt_Fourier) clean_Fourier_modes_BC<Target>(3, true);

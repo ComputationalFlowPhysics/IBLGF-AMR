@@ -29,8 +29,6 @@
 #include <boost/mpi.hpp>
 #include <boost/mpi/environment.hpp>
 #include <boost/mpi/communicator.hpp>
-#include <random>
-
 
 // IBLGF-specific
 #include <iblgf/global.hpp>
@@ -64,27 +62,28 @@ struct parameters
     Dim,
      (
         //name               type        Dim   lBuffer  hBuffer, storage type
-         (error_u          , float_type, 2,    1,       1,     face,true  ),
-         (error_p          , float_type, 1,    1,       1,     cell,false ),
+         
          (test             , float_type, 1,    1,       1,     cell,false ),
         //IF-HERK
          (u                , float_type, 2,    1,       1,     face,true  ),
-         (u_ref            , float_type, 2,    1,       1,     face,true  ),
+         //(u_ref            , float_type, 2,    1,       1,     face,true  ),
 		 (u_base           , float_type, 2,    1,       1,     face,true  ),
-         (p_ref            , float_type, 1,    1,       1,     cell,true  ),
+         //(p_ref            , float_type, 1,    1,       1,     cell,true  ),
          (p                , float_type, 1,    1,       1,     cell,true  ),
-		 (p_base           , float_type, 1,    1,       1,     cell,true  ),
-         (w_num            , float_type, 1,    1,       1,     edge,false ),
-         (w_exact          , float_type, 1,    1,       1,     edge,false ),
-         (error_w          , float_type, 1,    1,       1,     edge,false ),
-         //for radial velocity
-         (exact_u_theta    , float_type, 2,    1,       1,     edge,false ),
-         (num_u_theta      , float_type, 2,    1,       1,     edge,false ),
-         (error_u_theta    , float_type, 2,    1,       1,     edge,false ),
+         //(w_num            , float_type, 1,    1,       1,     edge,false ),
+         //(w_exact          , float_type, 1,    1,       1,     edge,false ),
 		 //for jacobian
 		 (nonlinear_tmp,       float_type,  Dim,  1,  1,  face,true),
       	 (face_aux_tmp,        float_type,  Dim,  1,  1,  face,true),
-		 (edge_aux2,           float_type,  (Dim*2 - 3),  1,  1,  edge,true)
+		 (edge_aux2,           float_type,  (Dim*2 - 3),  1,  1,  edge,true),
+        (u_s              , float_type, 2, 1, 1, face, true  ),
+        (u_p              , float_type, 2, 1, 1, face, true  ),
+        (nonlinear_jac_target , float_type, 2, 1, 1, face, true  ),
+        (nonlinear_jac_exact  , float_type, 2, 1, 1, face, true  ),
+        (nonlinear_jac_error   , float_type, 2, 1, 1, face, true  ),
+		 (nonlinear_jac_T_target , float_type, 2, 1, 1, face, true  ),
+        (nonlinear_jac_T_exact  , float_type, 2, 1, 1, face, true  ),
+        (nonlinear_jac_T_error   , float_type, 2, 1, 1, face, true  )
     ))
     // clang-format on
 };
@@ -111,7 +110,7 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 
 		//smooth_start_ = simulation_.dictionary()->template get_or<bool>("smooth_start", false);
 		U_.resize(domain_->dimension());
-		U_[0] = simulation_.dictionary()->template get_or<float_type>("Ux", 1.0);
+		U_[0] = simulation_.dictionary()->template get_or<float_type>("Ux", 0.0);
 		U_[1] = simulation_.dictionary()->template get_or<float_type>("Uy", 0.0);
 		if (domain_->dimension()>2)
 			U_[2] = simulation_.dictionary()->template get_or<float_type>("Uz", 0.0);
@@ -124,76 +123,75 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 
 		//IntrpIBLevel = simulation_.dictionary()->template get_or<bool>("IntrpIBLevel", false); //intrp IB level, used if restart file is from coarser mesh
 
-		 simulation_.bc_vel() =
-		 	[this](std::size_t idx, float_type t, auto coord = {0, 0})
-			{ return 0.0;};
-		// simulation_.bc_vel() =
-		// 	[this](std::size_t idx, float_type t, auto coord = {0, 0})
-		// 	{
-		// 		float_type T0 = 0.5;
+		simulation_.bc_vel() =
+			[this](std::size_t idx, float_type t, auto coord = {0, 0})
+			{
+				// float_type T0 = 0.5;
 
-		// 		float_type r = std::sqrt((coord[0] * coord[0] + coord[1] * coord[1]));
-        //         float_type f_alpha = 0.0;
-		// 		if (r < 0.25) {
-        //             f_alpha = 0.0;
-        //             /*if (r < 1e-12) {
-        //                 f_alpha = 0.0;
-        //             }
-        //             else {
-        //                 if (idx == 0) {
-        //                     f_alpha =  coord[1]/r/0.1*Omega;
-        //                 }
-        //                 else if (idx == 1) {
-        //                     f_alpha = -coord[0]/r/0.1*Omega;
-        //                 }
-        //                 else {
-        //                     f_alpha = 0.0;
-        //                 }
-        //             }*/
-        //         }
-        //         else {
-        //             if (idx == 0) { f_alpha = coord[1] / r / r * Omega; }
-        //             else if (idx == 1)
-        //             {
-        //                 f_alpha = -coord[0] / r / r * Omega;
-        //             }
-        //             else { f_alpha = 0.0; }
-        //         }
+				// float_type r = std::sqrt((coord[0] * coord[0] + coord[1] * coord[1]));
+                // float_type f_alpha = 0.0;
+				// if (r < 0.25) {
+                //     f_alpha = 0.0;
+                //     /*if (r < 1e-12) {
+                //         f_alpha = 0.0;
+                //     }
+                //     else {
+                //         if (idx == 0) {
+                //             f_alpha =  coord[1]/r/0.1*Omega;
+                //         }
+                //         else if (idx == 1) {
+                //             f_alpha = -coord[0]/r/0.1*Omega;
+                //         }
+                //         else {
+                //             f_alpha = 0.0;
+                //         }
+                //     }*/
+                // }
+                // else {
+                //     if (idx == 0) { f_alpha = coord[1] / r / r * Omega; }
+                //     else if (idx == 1)
+                //     {
+                //         f_alpha = -coord[0] / r / r * Omega;
+                //     }
+                //     else { f_alpha = 0.0; }
+                // }
 
-		// 		if (t<=0.0 && smooth_start_)
-		// 			return 0.0;
-		// 		else if (t<T0-1e-10 && smooth_start_)
-		// 		{
-		// 			float_type h1 = exp(-1/(t/T0));
-		// 			float_type h2 = exp(-1/(1 - t/T0));
+				// if (t<=0.0 && smooth_start_)
+				// 	return 0.0;
+				// else if (t<T0-1e-10 && smooth_start_)
+				// {
+				// 	float_type h1 = exp(-1/(t/T0));
+				// 	float_type h2 = exp(-1/(1 - t/T0));
 
-		// 			return -(U_[idx] + f_alpha) * (h1/(h1+h2));
-		// 		}
-		// 		else
-		// 		{
-		// 			return -(U_[idx] + f_alpha);
-		// 		}
-		// 	};
+				// 	return -(U_[idx] + f_alpha) * (h1/(h1+h2));
+				// }
+				// else
+				// {
+				// 	return -(U_[idx] + f_alpha);
+				// }
+				return 0.0;
+			};
 
 
 		simulation_.frame_vel() =
 			[this](std::size_t idx, float_type t, auto coord = {0, 0})
 			{
-				float_type T0 = 0.5;
+				// float_type T0 = 0.5;
 
-				if (t<=0.0 && smooth_start_)
-					return 0.0;
-				else if (t<T0-1e-10 && smooth_start_)
-				{
-					float_type h1 = exp(-1/(t/T0));
-					float_type h2 = exp(-1/(1 - t/T0));
+				// if (t<=0.0 && smooth_start_)
+				// 	return 0.0;
+				// else if (t<T0-1e-10 && smooth_start_)
+				// {
+				// 	float_type h1 = exp(-1/(t/T0));
+				// 	float_type h2 = exp(-1/(1 - t/T0));
 
-					return -(U_[idx]) * (h1/(h1+h2));
-				}
-				else
-				{
-					return -(U_[idx]);
-				}
+				// 	return -(U_[idx]) * (h1/(h1+h2));
+				// }
+				// else
+				// {
+				// 	return -(U_[idx]);
+				// }
+				return 0.0;
 			};
 
 		/*simulation_.frame_vel() =
@@ -203,8 +201,8 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 
 		dx_ = domain_->dx_base();
 		cfl_ =
-			simulation_.dictionary()->template get_or<float_type>("cfl", 0.2);
-		dt_ = simulation_.dictionary()->template get_or<float_type>("dt", -1.0);
+		 	simulation_.dictionary()->template get_or<float_type>("cfl", 0.2);
+		 dt_ = simulation_.dictionary()->template get_or<float_type>("dt", -1.0);
 
 		tot_steps_ = simulation_.dictionary()->template get<int>("nBaseLevelTimeSteps");
 		Re_ = simulation_.dictionary()->template get<float_type>("Re");
@@ -212,12 +210,11 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 		d2v_ = simulation_.dictionary()->template get_or<float_type>("DistanceOfVortexRings", R_);
 		v_delta_ = simulation_.dictionary()->template get_or<float_type>("vDelta", 0.2 * R_);
 		single_ring_ = simulation_.dictionary()->template get_or<bool>("single_ring", true);
-		perturbation_ = simulation_.dictionary()->template get_or<bool>("perturbation", false);
-		vort_sep = simulation_.dictionary()->template get_or<float_type>("vortex_separation", 1.0 * R_);
+		perturbation_ = simulation_.dictionary()->template get_or<bool>("perturbation", false);//
+		vort_sep = simulation_.dictionary()->template get_or<float_type>("vortex_separation", 1.0 * R_);//
 		hard_max_refinement_ = simulation_.dictionary()->template get_or<bool>("hard_max_refinement", false);
 		non_base_level_update = simulation_.dictionary()->template get_or<bool>("no_base_level_update", false);
 		NoMeshUpdate = simulation_.dictionary()->template get_or<bool>("no_mesh_update", false);
-		pert_strength_ = simulation_.dictionary()->template get_or<float_type>("pert_strength", 0.7);
 
 		auto domain_range = domain_->bounding_box().max() - domain_->bounding_box().min();
 		Lx = domain_range[0] * dx_;
@@ -273,9 +270,9 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 
 		//domain_->decomposition().subtract_non_leaf() = true;
 
-		domain_->register_adapt_condition()=
+		/*domain_->register_adapt_condition()=
 			[this]( std::vector<float_type> source_max, auto& octs, std::vector<int>& level_change ) 
-			{return this->template adapt_level_change(source_max, octs, level_change);};
+			{return this->template adapt_level_change(source_max, octs, level_change);};*/
 
 		/*domain_->register_adapt_condition() =
 			[this](auto octant, std::vector<float_type> source_max) {return this->template adapt_level_change<cell_aux_type, u_type>(octant, source_max); };*/
@@ -284,42 +281,25 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 			[this](auto octant, std::vector<float_type> source_max){return this->template adapt_level_change<edge_aux_type, edge_aux_type>(octant, source_max);};*/
 
 
-		if (vortexType != 0) {
+		
 		domain_->register_refinement_condition() = [this](auto octant,
 			int diff_level) {
 				return this->refinement(octant, diff_level);
 		};
-		}
+		
 
 		nIB_add_level_ = _d->get_dictionary("simulation_parameters")->template get_or<int>("nIB_add_level", 0);
 
-		domain_->ib().init(_d->get_dictionary("simulation_parameters"), domain_->dx_base(), nLevelRefinement_+nIB_add_level_, Re_);
+		// domain_->ib().init(_d->get_dictionary("simulation_parameters"), domain_->dx_base(), nLevelRefinement_+nIB_add_level_, Re_);
 
-		if (!use_restart())
-		{
-			domain_->init_refine(nLevelRefinement_, global_refinement_, nIB_add_level_);
-		}
-		else
-		{
-			//if (IntrpIBLevel) domain_->restart_list_construct_refIB(nLevelRefinement_, global_refinement_, nIB_add_level_);
-			domain_->restart_list_construct();
-
-			//domain_->init_refine(nLevelRefinement_, global_refinement_, nIB_add_level_);
-		}
+		
+		domain_->init_refine(nLevelRefinement_, global_refinement_, nIB_add_level_);
+		
+	
 
 		domain_->distribute<fmm_mask_builder_t, fmm_mask_builder_t>();
-		if (!use_restart()) { this->initialize(); }
-		else
-		{
-			simulation_.template read_h5<u_type>(simulation_.restart_field_dir(), "u");
-			simulation_.template read_h5<p_type>(simulation_.restart_field_dir(), "p");
-			// clean<u_base_type>
-			if (ic_filename_ == "null") //been run so load in u_base
-			{
-				simulation_.template read_h5<u_base_type>(simulation_.restart_field_dir(), "u_base");
-			}
-			//std::cout<<"read"<<std::endl;
-		}
+		
+		this->initialize(); 
 
 		boost::mpi::communicator world;
 		if (world.rank() == 0)
@@ -331,34 +311,39 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 		boost::mpi::communicator world;
 
 		time_integration_t ifherk(&this->simulation_);
+		if (domain_->is_client())
+        {
+            ifherk.nonlinear_jac_access<u_s_type, u_p_type, nonlinear_jac_target_type>();
+			ifherk.nonlinear_jac_adjoint_access<u_s_type, u_p_type, nonlinear_jac_T_target_type>();
 
-		if (ic_filename_ != "null") //never been run before so load in mean flow and perturb IC
+        }
+
+		// world.barrier();
+
+		this->compute_errors<nonlinear_jac_target_type, nonlinear_jac_exact_type,
+              nonlinear_jac_error_type>("Nonlin_jac_",0);
+		this->compute_errors<nonlinear_jac_T_target_type, nonlinear_jac_T_exact_type,
+              nonlinear_jac_T_error_type>("Nonlin_jac_T_",0);
+		this->compute_errors<nonlinear_jac_target_type, nonlinear_jac_exact_type,
+              nonlinear_jac_error_type>("Nonlin_jac_",1);
+		this->compute_errors<nonlinear_jac_T_target_type, nonlinear_jac_T_exact_type,
+              nonlinear_jac_T_error_type>("Nonlin_jac_T_",1);
+		// // this->compute_errors<nonlinear_jac_target_type, nonlinear_jac_exact_type,
+        // //      nonlinear_error_type>("Nonlin_jac_",1);
+		// world.barrier();
+		
+		simulation_.write("final.hdf5");
+		// world.barrier();
+		return 0.0;
+		/*if (ic_filename_ != "null")
 		{
 			if (world.rank() == 0)
 				std::cout<<"reading initial condition from file "<<ic_filename_<<std::endl;
 			//simulation_.template read_h5<u_type>(ic_filename_, "u");
 			// simulation_.template read_h5<p_type>(ic_filename_, "p");
-			simulation_.template read_h5<u_base_type>(ic_filename_, "u_base");
-			// simulation_.template read_h5<p_base_type>(ic_filename_, "p");
-			ifherk.clean<u_type>();
-			this->perturbIC<u_type>();
-			ifherk.up_and_down<u_type>();
-
+			simulation_.template read_h5<u_base_type>(ic_filename_, "u");
+			simulation_.template read_h5<p_base_type>(ic_filename_, "p");
 		}
-		// int n_rep=10;
-		// // if (domain_->is_client()){
-		// // 	// for (int i=0; i<n_rep; i++)
-		// // 	// {
-		// // 	// 	// ifherk.up_and_down<u_base_type>();
-		// // 	// 	ifherk.pad_velocity_access<u_base_type,u_base_type>();
-		// // 	// }
-
-			
-		// // }
-		// ifherk.clean<u_base_type>(true);
-
-		// simulation_.write("flow_mean_post.hdf5");
-		// return 0.0;
 		mDuration_type ifherk_duration(0);
 		TIME_CODE(ifherk_duration, SINGLE_ARG(
 			ifherk.time_march(use_restart());
@@ -465,40 +450,9 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 
 		simulation_.write("final.hdf5");
 		return u1_inf;
-
+		*/
 	}
 
-	template<typename Source>
-	void perturbIC() noexcept
-	{
-		boost::mpi::communicator world;
-		if (domain_->is_server()) return;
-		int seed=100;
-		srand(seed+world.rank()); //seed the random number generator differntly for each processor
-		
-		for (auto it = domain_->begin(); it != domain_->end(); ++it)
-		{
-			if (!it->locally_owned()) continue;
-			if (!it->is_leaf()) continue;
-			const auto dx_base = domain_->dx_base();
-			auto dx_level = dx_base / std::pow(2, it->refinement_level());
-			auto scaling = std::pow(2, it->refinement_level());
-
-			for (auto& node : it->data())
-			{
-				float_type rand_num =
-                                static_cast<float_type>(std::rand()) /
-                                    static_cast<float_type>(RAND_MAX) -
-                                0.5;
-				node(Source::tag(), 0) = rand_num*pert_strength_;
-				rand_num =
-								static_cast<float_type>(std::rand()) /
-									static_cast<float_type>(RAND_MAX) -
-								0.5;
-				node(Source::tag(), 1) = rand_num*pert_strength_;
-			}
-		}
-	}
 
 	template<class Source, class Target>
 	void getUtheta() noexcept
@@ -729,7 +683,7 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
     /** @brief Initialization of poisson problem.
      *  @detail Testing poisson with manufactured solutions: exp
      */
-	void initialize()
+	void initialize_old()
 	{
 		poisson_solver_t psolver(&this->simulation_);
 
@@ -820,7 +774,176 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 		}
 
 	}
+	void initialize()
+    {
+        poisson_solver_t psolver(&this->simulation_);
 
+        boost::mpi::communicator world;
+        if (domain_->is_server()) return;
+        auto center =
+            (domain_->bounding_box().max() - domain_->bounding_box().min()) /
+                2.0 +
+            domain_->bounding_box().min();
+
+        // Adapt center to always have peak value in a cell-center
+        //center+=0.5/std::pow(2,nRef);
+        const float_type dx_base = domain_->dx_base();
+
+        for (auto it = domain_->begin(); it != domain_->end();
+             ++it)
+        {
+            if (!it->locally_owned()) continue;
+            // if (!(*it && it->has_data())) continue;
+            auto dx_level = dx_base / std::pow(2, it->refinement_level());
+            auto scaling = std::pow(2, it->refinement_level());
+
+            for (auto& node : it->data())
+            {
+                const auto& coord = node.level_coordinate();
+
+                //Cell centered coordinates
+                //This can obviously be made much less verbose
+                float_type xc = static_cast<float_type>(
+                                    coord[0] - center[0] * scaling + 0.5) *
+                                dx_level;
+                float_type yc = static_cast<float_type>(
+                                    coord[1] - center[1] * scaling + 0.5) *
+                                dx_level;
+                /* float_type zc = static_cast<float_type>(
+                                    coord[2] - center[2] * scaling + 0.5) *
+                                dx_level;*/
+
+                //Face centered coordinates
+                float_type xf0 =
+                    static_cast<float_type>(coord[0] - center[0] * scaling) *
+                    dx_level;
+                float_type yf0 = yc;
+                // float_type zf0 = zc;
+
+                float_type xf1 = xc;
+                float_type yf1 =
+                    static_cast<float_type>(coord[1] - center[1] * scaling) *
+                    dx_level;
+                // float_type zf1 = zc;
+
+                float_type xf2 = xc;
+                float_type yf2 = yc;
+                /*float_type zf2 =
+                    static_cast<float_type>(coord[2] - center[2] * scaling) *
+                    dx_level;*/
+
+                //Edge centered coordinates
+                float_type xe0 = static_cast<float_type>(
+                                     coord[0] - center[0] * scaling + 0.5) *
+                                 dx_level;
+                float_type ye0 =
+                    static_cast<float_type>(coord[1] - center[1] * scaling) *
+                    dx_level;
+                /* float_type ze0 =
+                    static_cast<float_type>(coord[2] - center[2] * scaling) *
+                    dx_level;*/
+                float_type xe1 =
+                    static_cast<float_type>(coord[0] - center[0] * scaling) *
+                    dx_level;
+                float_type ye1 = static_cast<float_type>(
+                                     coord[1] - center[1] * scaling + 0.5) *
+                                 dx_level;
+                /* float_type ze1 =
+                    static_cast<float_type>(coord[2] - center[2] * scaling) *
+                    dx_level; */
+                float_type xe2 =
+                    static_cast<float_type>(coord[0] - center[0] * scaling) *
+                    dx_level;
+                float_type ye2 =
+                    static_cast<float_type>(coord[1] - center[1] * scaling) *
+                    dx_level;
+                /* float_type ze2 = static_cast<float_type>(
+                                     coord[2] - center[2] * scaling + 0.5) *
+                                 dx_level;*/
+
+                const float_type r = std::sqrt(xc * xc + yc * yc);
+                const float_type rf0 =
+                    std::sqrt(xf0 * xf0 + yf0 * yf0);
+                const float_type rf1 =
+                    std::sqrt(xf1 * xf1 + yf1 * yf1);
+                const float_type rf2 =
+                    std::sqrt(xf2 * xf2 + yf2 * yf2);
+                const float_type re0 =
+                    std::sqrt(xe0 * xe0 + ye0 * ye0);
+                const float_type re1 =
+                    std::sqrt(xe1 * xe1 + ye1 * ye1);
+                const float_type re2 =
+                    std::sqrt(xe2 * xe2 + ye2 * ye2);
+                const float_type a2 = a_ * a_;
+                const float_type xc2 = xc * xc;
+                const float_type yc2 = yc * yc;
+				float_type r_2 = r * r;
+
+				const auto fct = std::exp(-r_2);
+                const auto tmpc = std::exp(-r_2);
+
+                const auto tmpf0 = std::exp(-rf0 * rf0);
+                const auto tmpf1 = std::exp(-rf1 * rf1);
+                const auto tmpf2 = std::exp(-rf2 * rf2);
+
+                const auto tmpe0 = std::exp(-re0 * re0);
+                const auto tmpe1 = std::exp(-re1 * re1);
+                const auto tmpe2 = std::exp(-re2 * re2);
+
+                node(u_s, 0) = tmpf0*yf0;
+				node(u_s, 1) = tmpf1*xf1;
+
+				node(u_p, 0) = tmpf0*cos(yf0);
+				node(u_p, 1) = tmpf1*cos(xf1);
+                //Gradient
+                // node(grad_source) = fct;
+                // node(grad_exact, 0) = -2 * a_ * xf0 * tmpf0;
+                // node(grad_exact, 1) = -2 * a_ * yf1 * tmpf1;
+
+                // //Laplace
+                // node(lap_source, 0) = tmpc;
+                // node(lap_exact) = -4 * a_ * tmpc + 4 * a2 * xc2 * tmpc +
+                //                   4 * a2 * yc2 * tmpc;
+
+                // //Divergence
+                // node(div_source, 0) = tmpf0;
+                // node(div_source, 1) = tmpf1;
+                // node(div_exact, 0) = -2 * a_ * xc * tmpc - 2 * a_ * yc * tmpc;
+
+                // //Curl
+                // node(curl_source, 0) = tmpf0;
+                // node(curl_source, 1) = tmpf1;
+
+                // node(curl_exact) =
+                //     2 * a_ * ye2 * tmpe2 - 2 * a_ * xe2 * tmpe2;
+
+                // //non_linear
+                // node(nonlinear_source, 0) = tmpf0;
+                // node(nonlinear_source, 1) = tmpf1;
+                
+
+                // node(nonlinear_exact, 0) =
+                //     tmpf0 * (2 * a_ * xf0 * tmpf0 - 2 * a_ * yf0 * tmpf0);
+
+                // node(nonlinear_exact, 1) =
+                //     -tmpf1 * (2 * a_ * xf1 * tmpf1 - 2 * a_ * yf1 * tmpf1);
+
+                node(nonlinear_jac_exact, 0) = 4*tmpf0*tmpf0*xf0*xf0*cos(xf0) - 2*tmpf0*tmpf0*yf0*yf0*cos(xf0)
+				 - 2*tmpf0*tmpf0*xf0*yf0*cos(yf0) + tmpf0*tmpf0*xf0*sin(xf0) - tmpf0*tmpf0*xf0*sin(yf0);
+
+				//node(nl_jac_exact, 0) = 1.0;
+
+				node(nonlinear_jac_exact, 1) = 4*tmpf1*tmpf1*yf1*yf1*cos(yf1) - 2*tmpf1*tmpf1*xf1*xf1*cos(yf1)
+				 - 2*tmpf1*tmpf1*xf1*yf1*cos(xf1) + tmpf1*tmpf1*yf1*sin(yf1) - tmpf1*tmpf1*yf1*sin(xf1);
+
+				node(nonlinear_jac_T_exact, 0) = 4*tmpf0*tmpf0*xf0*yf0*cos(yf0) - 2*tmpf0*tmpf0*xf0*xf0*cos(xf0)
+				 - 2*tmpf0*tmpf0*yf0*yf0*cos(xf0) + tmpf0*tmpf0*cos(xf0) + tmpf0*tmpf0*xf0*sin(yf0);
+
+				node(nonlinear_jac_T_exact, 1) = 4*tmpf1*tmpf1*xf1*yf1*cos(xf1) - 2*tmpf1*tmpf1*xf1*xf1*cos(yf1)
+				 - 2*tmpf1*tmpf1*yf1*yf1*cos(yf1) + tmpf1*tmpf1*yf1*sin(xf1) + tmpf1*tmpf1*cos(yf1);
+            }
+        }
+    }
 
 	float_type vortex_ring_vor_fat_ic(float_type x, float_type y, int field_idx, bool perturbation)
 	{
@@ -881,7 +1004,7 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 	bool refinement(OctantType it, int diff_level, bool use_all = false) const
 		noexcept
 	{
-		auto b = it->data().descriptor();
+		/*auto b = it->data().descriptor();
 		b.level() = it->refinement_level();
 		const float_type dx_base = domain_->dx_base();
 
@@ -926,11 +1049,11 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 				if (max_c < bd)
 					return true;
 
-				/*if (std::fabs(tmp_w) > 1.0 * pow(refinement_factor_, diff_level))
-					return true;*/
+				//if (std::fabs(tmp_w) > 1.0 * pow(refinement_factor_, diff_level))
+				//	return true;
 				//}
 			}
-		}
+		} */
 
 		return false;
 	}
@@ -1096,7 +1219,6 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
     int hard_max_level_ = 0;
     int global_refinement_=0;
     fcoord_t offset_;
-	float_type pert_strength_=0.0;
 
     float_type a_ = 10.0;
 

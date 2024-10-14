@@ -76,6 +76,7 @@ class Ifherk
     using edge_aux2_type = typename Setup::edge_aux2_type;
 
     using face_aux_type = typename Setup::face_aux_type;
+    using face_aux_base_type = typename Setup::face_aux_base_type;
     using face_aux2_type = typename Setup::face_aux2_type;
     using correction_tmp_type = typename Setup::correction_tmp_type;
     using w_1_type = typename Setup::w_1_type;
@@ -961,7 +962,7 @@ class Ifherk
                         if (!domain_->is_client())
                             return;
                         pad_velocity<u_type, u_type>(true);
-                        pad_velocity<u_base_type, u_base_type>(true);
+                        //pad_velocity<u_base_type, u_base_type>(true);
                         adapt_corr_time_step();
                     }
                     else
@@ -969,7 +970,7 @@ class Ifherk
                         if (!domain_->is_client())
                             return;
                         up_and_down<u_type>();
-                        up_and_down<u_base_type>();
+                        //up_and_down<u_base_type>();
                     }
                     ));
         base_mesh_update_=false;
@@ -986,8 +987,9 @@ class Ifherk
         clean<d_i_type>();
         clean<cell_aux_type>();
         clean<face_aux_type>();
-
-        nonlinear_jac<u_base_type,u_type, g_i_type>(coeff_a(1, 1) * (-dt_));
+        clean<face_aux_base_type>();
+        copy<u_base_type,face_aux_base_type>();
+        nonlinear_jac<face_aux_base_type,u_type, g_i_type>(coeff_a(1, 1) * (-dt_));
         copy<q_i_type, r_i_type>();
         add<g_i_type, r_i_type>();
         lin_sys_with_ib_solve(alpha_[0]);
@@ -1016,7 +1018,9 @@ class Ifherk
         add<w_1_type, r_i_type>(dt_ * coeff_a(2, 1));
 
         up_and_down<u_i_type>();
-        nonlinear_jac<u_base_type,u_i_type, g_i_type>(coeff_a(2, 2) * (-dt_));
+        clean<face_aux_base_type>();
+        copy<u_base_type,face_aux_base_type>();
+        nonlinear_jac<face_aux_base_type,u_i_type, g_i_type>(coeff_a(2, 2) * (-dt_));
         add<g_i_type, r_i_type>();
 
         lin_sys_with_ib_solve(alpha_[1]);
@@ -1039,7 +1043,9 @@ class Ifherk
         psolver.template apply_lgf_IF<r_i_type, r_i_type>(alpha_[1]);
 
         up_and_down<u_i_type>();
-        nonlinear_jac<u_base_type, u_i_type, g_i_type>(coeff_a(3, 3) * (-dt_));
+        clean<face_aux_base_type>();
+        copy<u_base_type,face_aux_base_type>();
+        nonlinear_jac<face_aux_base_type, u_i_type, g_i_type>(coeff_a(3, 3) * (-dt_));
         add<g_i_type, r_i_type>();
 
         lin_sys_with_ib_solve(alpha_[2]);
@@ -1368,6 +1374,44 @@ class Ifherk
 
     }
 
+    template<typename From, typename To>
+    void add(float_type scale = 1.0) noexcept
+    {
+        static_assert(From::nFields() == To::nFields(),
+            "number of fields doesn't match when add");
+        for (auto it = domain_->begin(); it != domain_->end(); ++it)
+        {
+            if (!it->locally_owned() || !it->has_data()) continue;
+            for (std::size_t field_idx = 0; field_idx < From::nFields();
+                 ++field_idx)
+            {
+                it->data_r(To::tag(), field_idx)
+                    .linalg()
+                    .get()
+                    ->cube_noalias_view() +=
+                    it->data_r(From::tag(), field_idx).linalg_data() * scale;
+            }
+        }
+    }
+    template<class Velocity_in, class Velocity_out>
+    void pad_velocity_access(bool refresh_correction_only=true)
+    {
+        pad_velocity<Velocity_in, Velocity_out>(refresh_correction_only);
+    }
+    
+    template <class Source1, class Source2, class Target>
+    void nonlinear_jac_access()
+    {
+        std::cout << "nonlinear jac access" << std::endl;
+        nonlinear_jac<Source1, Source2,Target>();
+    }
+
+    template <typename Source1, typename Source2, typename Target>
+    void nonlinear_jac_adjoint_access() noexcept
+    {
+        nonlinear_jac_adjoint<Source1, Source2,Target>();
+    }
+    
 private:
     float_type coeff_a(int i, int j)const noexcept {return a_[i*(i-1)/2+j-1];}
 
@@ -1593,7 +1637,7 @@ private:
         
     }
     template<class Source_old, class Source_new, class Target>
-    void nonlinear_jac(float_type _scale = 1.0) noexcept
+    void nonlinear_jac(float_type _scale = 1.0) 
     {
         //std::cout << "part begin" << std::endl;
         clean<edge_aux_type>();
@@ -1609,7 +1653,8 @@ private:
 
         auto       client = domain_->decomposition().client();
         const auto dx_base = domain_->dx_base();
-
+        // std::cout<< "baselevel: " <<domain_->tree()->base_level()<<std::endl;
+        // std::cout<< "depth: " <<domain_->tree()->depth()<<std::endl;
         for (int l = domain_->tree()->base_level();
              l < domain_->tree()->depth(); ++l)
         {
@@ -1624,7 +1669,7 @@ private:
                 domain::Operator::curl<Source_new, edge_aux_type>(it->data(),
                     dx_level);
             }
-        }
+       }
 
         //std::cout << "part 1" << std::endl;
 
@@ -1646,7 +1691,7 @@ private:
                 if (!it->locally_owned() || !it->has_data()) continue;
 
                 domain::Operator::nonlinear<face_aux_tmp_type, edge_aux_type,
-                    nonlinear_tmp_type>(it->data()); //=edge_aux cross face_aux =(del cross new)cross(old+u_inf)
+                    nonlinear_tmp_type>(it->data()); //=edge_aux cross face_aux =(del cross new)cross(old-u_r)
             }
         }
 
@@ -1668,9 +1713,9 @@ private:
                 if (!it->locally_owned() || !it->has_data()) continue;
 
                 const auto dx_level =
-                    dx_base / math::pow2(it->refinement_level());
+                     dx_base / math::pow2(it->refinement_level());
                 domain::Operator::curl<Source_old, edge_aux2_type>(it->data(),
-                    dx_level);
+                      dx_level);
             }
         }
 
@@ -1680,7 +1725,7 @@ private:
         // add background velocity
         copy<Source_new, face_aux_tmp_type>();
         //domain::Operator::add_field_expression<face_aux_tmp_type>(domain_, simulation_->frame_vel(), T_stage_, -1.0);
-        add<Source_old, face_aux_tmp_type>(-1.0);
+        //add<Source_old, face_aux_tmp_type>(-1.0);
         for (int l = domain_->tree()->base_level();
              l < domain_->tree()->depth(); ++l)
         {
@@ -1693,10 +1738,10 @@ private:
                 if (!it->locally_owned() || !it->has_data()) continue;
 
                 domain::Operator::nonlinear<face_aux_tmp_type, edge_aux2_type,
-                    Target>(it->data()); //=edge_aux cross face_aux =(del cross old)cross(new-old)
+                    Target>(it->data()); //=edge_aux cross face_aux =(del cross old)cross(new)
             }
         }
-        add<nonlinear_tmp_type, Target>(); //=(del cross old)cross(new-old)+(del cross new)cross(old+u_inf)
+        add<nonlinear_tmp_type, Target>(); //=(del cross old)cross(new)+(del cross new)cross(old-u_r)
 
         //std::cout << "part 4" << std::endl;
 
@@ -1722,6 +1767,7 @@ private:
         }
     }
 
+
     template<class Source_old, class Source_new, class Target>
     void nonlinear_jac_adjoint(float_type _scale = 1.0) noexcept
     {
@@ -1730,7 +1776,7 @@ private:
         clean<face_aux_tmp_type>();
         clean<nonlinear_tmp_type>();
 
-        //curl transpose of (vel_old cross vel_new)
+        //curl transpose of ((vel_old-u_r) cross vel_new)
 
         up_and_down<Source_old>();
         up_and_down<Source_new>();
@@ -2012,25 +2058,6 @@ private:
         //clean<Target>(true);
     }
 
-    template<typename From, typename To>
-    void add(float_type scale = 1.0) noexcept
-    {
-        static_assert(From::nFields() == To::nFields(),
-            "number of fields doesn't match when add");
-        for (auto it = domain_->begin(); it != domain_->end(); ++it)
-        {
-            if (!it->locally_owned() || !it->has_data()) continue;
-            for (std::size_t field_idx = 0; field_idx < From::nFields();
-                 ++field_idx)
-            {
-                it->data_r(To::tag(), field_idx)
-                    .linalg()
-                    .get()
-                    ->cube_noalias_view() +=
-                    it->data_r(From::tag(), field_idx).linalg_data() * scale;
-            }
-        }
-    }
 
     template<typename Field>
     void computeWii() noexcept

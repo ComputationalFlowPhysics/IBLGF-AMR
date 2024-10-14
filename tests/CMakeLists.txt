@@ -52,3 +52,7 @@ add_subdirectory (MKLNewton)
 #add_subdirectory (PETScSpectralMatrixTest)
 #add_subdirectory (TwoVortexRings)
 #add_subdirectory (OscillatingAirfoil)
+add_subdirectory (operators_linear)
+add_subdirectory (op_test2)
+
+

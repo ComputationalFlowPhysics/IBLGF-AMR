@@ -96,7 +96,7 @@ struct OperatorTest : public SetupBase<OperatorTest, parameters>
         };
         domain_->init_refine(_d->get_dictionary("simulation_parameters")
                                  ->template get_or<int>("nLevels", 0),
-            global_refinement_);
+            global_refinement_,0);
         domain_->distribute<fmm_mask_builder_t, fmm_mask_builder_t>();
         this->initialize();
 

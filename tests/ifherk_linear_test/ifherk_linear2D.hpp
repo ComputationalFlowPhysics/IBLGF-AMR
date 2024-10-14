@@ -280,12 +280,12 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 		// pert_strength_ = simulation_.dictionary_->template get<float_type>(
 		// 	"pert_strength");
 
-		if (vortexType != 0) {
+		
 		domain_->register_refinement_condition() = [this](auto octant,
 			int diff_level) {
 				return this->refinement(octant, diff_level);
 		};
-		}
+		
 
 		nIB_add_level_ = _d->get_dictionary("simulation_parameters")->template get_or<int>("nIB_add_level", 0);
 
@@ -310,7 +310,7 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 			simulation_.template read_h5<u_type>(simulation_.restart_field_dir(), "u");
 			simulation_.template read_h5<p_type>(simulation_.restart_field_dir(), "p");
 			// clean<u_base_type>
-			simulation_.template read_h5<u_base_type>(simulation_.restart_field_dir(), "u_mean");
+			simulation_.template read_h5<u_base_type>(simulation_.restart_field_dir(), "u_base");
 			//std::cout<<"read"<<std::endl;
 			pcout<< "Restart read" << std::endl;
 		}
@@ -344,118 +344,31 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 
 		time_integration_t ifherk(&this->simulation_);
 
-		if (ic_filename_ != "null")
-			//simulation_.template read_h5<u_type>(ic_filename_, "u");
-			// simulation_.template read_h5<p_type>(ic_filename_, "p");
-			simulation_.template read_h5<u_base_type>(ic_filename_, "u");
-			simulation_.template read_h5<p_base_type>(ic_filename_, "p");
+		world.barrier();
 
-		mDuration_type ifherk_duration(0);
-		TIME_CODE(ifherk_duration, SINGLE_ARG(
-			ifherk.time_march(use_restart());
-		))
-			pcout_c << "Time to solution [ms] " << ifherk_duration.count() << std::endl;
-
-		ifherk.clean_leaf_correction_boundary<u_type>(domain_->tree()->base_level(), true, 1);
-
-		float_type maxNumVort = -1;
-
-
-		if (ref_filename_ != "null")
+		if (domain_->is_client())
 		{
-			if (vortexType == 0) {
-			simulation_.template read_h5<u_ref_type>(ref_filename_, "u");
-			simulation_.template read_h5<p_ref_type>(ref_filename_, "p");
-			}
-
-			auto center = (domain_->bounding_box().max() -
-				domain_->bounding_box().min() + 1) / 2.0 +
-				domain_->bounding_box().min();
-
-
-			for (auto it = domain_->begin_leaves();
-				it != domain_->end_leaves(); ++it)
-			{
-				if (!it->locally_owned()) continue;
-
-				auto dx_level = domain_->dx_base() / std::pow(2, it->refinement_level());
-				auto scaling = std::pow(2, it->refinement_level());
-
-				for (auto& node : it->data())
-				{
-					const auto& coord = node.level_coordinate();
-					float_type x = static_cast<float_type>
-						(coord[0] - center[0] * scaling) * dx_level;
-					float_type y = static_cast<float_type>
-						(coord[1] - center[1] * scaling) * dx_level;
-					//float_type z = static_cast<float_type>
-					//    (coord[2]-center[2]*scaling)*dx_level;
-
-					float_type r2 = x * x + y * y;
-					if (r2 > 4 * R_ * R_)
-					{
-						node(u_ref, 0) = 0.0;
-						node(u_ref, 1) = 0.0;
-						//node(u_ref, 2)=0.0;
-					}
-					float_type r__ = std::sqrt(x * x + y * y);
-					float_type t_final = dt_ * tot_steps_;
-					node(w_exact) = w_taylor_vort(r__, t_final);
-					node(w_num) = (node(u, 1) - node.at_offset(u, -1, 0, 1) -
-						node(u, 0) + node.at_offset(u, 0, -1, 0)) / dx_level;
-					if (vortexType != 0) {
-					x = static_cast<float_type>
-						(coord[0] - center[0] * scaling) * dx_level;
-					y = static_cast<float_type>
-						(coord[1] - center[1] * scaling + 0.5) * dx_level;
-					node(u_ref, 0) = u_vort(x, y, t_final, 0);
-					x = static_cast<float_type>
-						(coord[0] - center[0] * scaling + 0.5) * dx_level;
-					y = static_cast<float_type>
-						(coord[1] - center[1] * scaling) * dx_level;
-					node(u_ref, 1) = u_vort(x, y, t_final, 1);
-
-
-					//compute analytical u_theta
-					x = static_cast<float_type>(
-						coord[0] - center[0] * scaling) *
-						dx_level;
-					y = static_cast<float_type>(
-						coord[1] - center[1] * scaling) *
-						dx_level;
-					float_type u = u_vort(x, y, t_final, 0);
-					float_type v = u_vort(x, y, t_final, 1);
-					float_type u_theta = std::sqrt(u * u + v * v);
-					node(exact_u_theta, 0) = u_theta;
-					node(exact_u_theta, 1) = 0.0;     //0 is u_theta, 1 is u_r
-					}
-
-					
-				}
-
-			}
+			ifherk.clean<u_type>();
+			ifherk.clean<u_base_type>();
 		}
-		getUtheta<u_type, num_u_theta_type>();
-		float_type t_final = dt_ * tot_steps_;
-		pcout << "the final time is " << t_final << std::endl;
-		pcout << "the max numerical vorticity is " << maxNumVort << std::endl;
-		ifherk.clean_leaf_correction_boundary<u_type>(domain_->tree()->base_level(), true, 1);
 
-		float_type u1_inf = this->compute_errors<u_type, u_ref_type, error_u_type>(
-			std::string("u1_"), 0);
-		float_type u2_inf = this->compute_errors<u_type, u_ref_type, error_u_type>(
-			std::string("u2_"), 1);
-		float_type u_t_inf = this->compute_errors<num_u_theta_type, exact_u_theta_type, error_u_theta_type>(
-			std::string("u_t_"), 0);
-		float_type u_r_inf = this->compute_errors<num_u_theta_type, exact_u_theta_type, error_u_theta_type>(
-			std::string("u_r_"), 1);
+		int nStart=3000; // time step of when AMR is turned off
+		int nEnd=19750; //time step of restart file
+		int nSkip=10; // output frequnecy
+		int nTimes=(nEnd-nStart)/nSkip+1;
+		for (int n = nStart; n < nEnd; n+=nSkip)
+		{
+			float_type  ratio = 1.0 / static_cast<float_type>(nTimes);
+			std::string flow_name = "./output_Re40/flowTime_" + std::to_string(n)+".hdf5";
+			simulation_.template read_h5<u_type>(flow_name, "u");
+            if (world.rank() != 0) ifherk.add<u_type, u_base_type>(ratio);
+            if (world.rank() != 0) ifherk.clean<u_type>();
+		}
+		simulation_.write("flow_mean.hdf5");
+		
 
-		float_type w_inf = this->compute_errors<edge_aux_type, w_exact_type, error_w_type>(std::string("w_"), 0);
-		//float_type u3_linf=this->compute_errors<u_type, u_ref_type, error_u_type>(
-		//        std::string("u3_"), 2);
 
-		simulation_.write("final.hdf5");
-		return u1_inf;
+		return 0.0;
 
 	}
 	

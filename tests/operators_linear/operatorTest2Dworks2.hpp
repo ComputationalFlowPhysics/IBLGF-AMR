@@ -29,8 +29,6 @@
 #include <boost/mpi.hpp>
 #include <boost/mpi/environment.hpp>
 #include <boost/mpi/communicator.hpp>
-#include <random>
-
 
 // IBLGF-specific
 #include <iblgf/global.hpp>
@@ -46,9 +44,9 @@
 #include <iblgf/utilities/convolution.hpp>
 #include <iblgf/interpolation/interpolation.hpp>
 #include <iblgf/solver/poisson/poisson.hpp>
-#include <iblgf/solver/time_integration/ifherk_linear.hpp>
+#include <iblgf/solver/time_integration/ifherk.hpp>
 
-#include "../../setups/setup_linear.hpp"
+#include "../../setups/setup_base.hpp"
 #include <iblgf/operators/operators.hpp>
 
 namespace iblgf
@@ -70,10 +68,8 @@ struct parameters
         //IF-HERK
          (u                , float_type, 2,    1,       1,     face,true  ),
          (u_ref            , float_type, 2,    1,       1,     face,true  ),
-		 (u_base           , float_type, 2,    1,       1,     face,true  ),
          (p_ref            , float_type, 1,    1,       1,     cell,true  ),
          (p                , float_type, 1,    1,       1,     cell,true  ),
-		 (p_base           , float_type, 1,    1,       1,     cell,true  ),
          (w_num            , float_type, 1,    1,       1,     edge,false ),
          (w_exact          , float_type, 1,    1,       1,     edge,false ),
          (error_w          , float_type, 1,    1,       1,     edge,false ),
@@ -81,17 +77,20 @@ struct parameters
          (exact_u_theta    , float_type, 2,    1,       1,     edge,false ),
          (num_u_theta      , float_type, 2,    1,       1,     edge,false ),
          (error_u_theta    , float_type, 2,    1,       1,     edge,false ),
-		 //for jacobian
-		 (nonlinear_tmp,       float_type,  Dim,  1,  1,  face,true),
-      	 (face_aux_tmp,        float_type,  Dim,  1,  1,  face,true),
-		 (edge_aux2,           float_type,  (Dim*2 - 3),  1,  1,  edge,true)
+		 //Mean Field
+		 (u_mean           , float_type, 2,    1,       1,     face,true  ),
+		 (grad_source      , float_type, 1, 1, 1, cell, true  ),
+        (grad_target      , float_type, 2, 1, 1, face, true  ),
+        (grad_exact       , float_type, 2, 1, 1, face, true  ),
+        (grad_error       , float_type, 2, 1, 1, face, true  )
+
     ))
     // clang-format on
 };
 
-struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
+struct OperatorTest : public SetupBase<OperatorTest, parameters>
 {
-    using super_type =SetupBase<NS_AMR_LGF,parameters>;
+    using super_type =SetupBase<OperatorTest,parameters>;
     using vr_fct_t = std::function<float_type(float_type x, float_type y, int field_idx, bool perturbation)>;
 
     //Timings
@@ -100,7 +99,7 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
     using duration_type = typename clock_type::duration;
     using time_point_type = typename clock_type::time_point;
 
-	NS_AMR_LGF(Dictionary* _d)
+	OperatorTest(Dictionary* _d)
 		: super_type(_d, [this](auto _d, auto _domain) {
 		return this->initialize_domain(_d, _domain);
 			})
@@ -124,56 +123,53 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 
 		//IntrpIBLevel = simulation_.dictionary()->template get_or<bool>("IntrpIBLevel", false); //intrp IB level, used if restart file is from coarser mesh
 
-		 simulation_.bc_vel() =
-		 	[this](std::size_t idx, float_type t, auto coord = {0, 0})
-			{ return 0.0;};
-		// simulation_.bc_vel() =
-		// 	[this](std::size_t idx, float_type t, auto coord = {0, 0})
-		// 	{
-		// 		float_type T0 = 0.5;
+		simulation_.bc_vel() =
+			[this](std::size_t idx, float_type t, auto coord = {0, 0})
+			{
+				float_type T0 = 0.5;
 
-		// 		float_type r = std::sqrt((coord[0] * coord[0] + coord[1] * coord[1]));
-        //         float_type f_alpha = 0.0;
-		// 		if (r < 0.25) {
-        //             f_alpha = 0.0;
-        //             /*if (r < 1e-12) {
-        //                 f_alpha = 0.0;
-        //             }
-        //             else {
-        //                 if (idx == 0) {
-        //                     f_alpha =  coord[1]/r/0.1*Omega;
-        //                 }
-        //                 else if (idx == 1) {
-        //                     f_alpha = -coord[0]/r/0.1*Omega;
-        //                 }
-        //                 else {
-        //                     f_alpha = 0.0;
-        //                 }
-        //             }*/
-        //         }
-        //         else {
-        //             if (idx == 0) { f_alpha = coord[1] / r / r * Omega; }
-        //             else if (idx == 1)
-        //             {
-        //                 f_alpha = -coord[0] / r / r * Omega;
-        //             }
-        //             else { f_alpha = 0.0; }
-        //         }
+				float_type r = std::sqrt((coord[0] * coord[0] + coord[1] * coord[1]));
+                float_type f_alpha = 0.0;
+				if (r < 0.25) {
+                    f_alpha = 0.0;
+                    /*if (r < 1e-12) {
+                        f_alpha = 0.0;
+                    }
+                    else {
+                        if (idx == 0) {
+                            f_alpha =  coord[1]/r/0.1*Omega;
+                        }
+                        else if (idx == 1) {
+                            f_alpha = -coord[0]/r/0.1*Omega;
+                        }
+                        else {
+                            f_alpha = 0.0;
+                        }
+                    }*/
+                }
+                else {
+                    if (idx == 0) { f_alpha = coord[1] / r / r * Omega; }
+                    else if (idx == 1)
+                    {
+                        f_alpha = -coord[0] / r / r * Omega;
+                    }
+                    else { f_alpha = 0.0; }
+                }
 
-		// 		if (t<=0.0 && smooth_start_)
-		// 			return 0.0;
-		// 		else if (t<T0-1e-10 && smooth_start_)
-		// 		{
-		// 			float_type h1 = exp(-1/(t/T0));
-		// 			float_type h2 = exp(-1/(1 - t/T0));
+				if (t<=0.0 && smooth_start_)
+					return 0.0;
+				else if (t<T0-1e-10 && smooth_start_)
+				{
+					float_type h1 = exp(-1/(t/T0));
+					float_type h2 = exp(-1/(1 - t/T0));
 
-		// 			return -(U_[idx] + f_alpha) * (h1/(h1+h2));
-		// 		}
-		// 		else
-		// 		{
-		// 			return -(U_[idx] + f_alpha);
-		// 		}
-		// 	};
+					return -(U_[idx] + f_alpha) * (h1/(h1+h2));
+				}
+				else
+				{
+					return -(U_[idx] + f_alpha);
+				}
+			};
 
 
 		simulation_.frame_vel() =
@@ -217,7 +213,6 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 		hard_max_refinement_ = simulation_.dictionary()->template get_or<bool>("hard_max_refinement", false);
 		non_base_level_update = simulation_.dictionary()->template get_or<bool>("no_base_level_update", false);
 		NoMeshUpdate = simulation_.dictionary()->template get_or<bool>("no_mesh_update", false);
-		pert_strength_ = simulation_.dictionary()->template get_or<float_type>("pert_strength", 0.7);
 
 		auto domain_range = domain_->bounding_box().max() - domain_->bounding_box().min();
 		Lx = domain_range[0] * dx_;
@@ -312,13 +307,7 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 		else
 		{
 			simulation_.template read_h5<u_type>(simulation_.restart_field_dir(), "u");
-			simulation_.template read_h5<p_type>(simulation_.restart_field_dir(), "p");
-			// clean<u_base_type>
-			if (ic_filename_ == "null") //been run so load in u_base
-			{
-				simulation_.template read_h5<u_base_type>(simulation_.restart_field_dir(), "u_base");
-			}
-			//std::cout<<"read"<<std::endl;
+			simulation_.template read_h5<u_mean_type>(simulation_.restart_field_dir(), "u_mean");
 		}
 
 		boost::mpi::communicator world;
@@ -332,33 +321,9 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 
 		time_integration_t ifherk(&this->simulation_);
 
-		if (ic_filename_ != "null") //never been run before so load in mean flow and perturb IC
-		{
-			if (world.rank() == 0)
-				std::cout<<"reading initial condition from file "<<ic_filename_<<std::endl;
-			//simulation_.template read_h5<u_type>(ic_filename_, "u");
-			// simulation_.template read_h5<p_type>(ic_filename_, "p");
-			simulation_.template read_h5<u_base_type>(ic_filename_, "u_base");
-			// simulation_.template read_h5<p_base_type>(ic_filename_, "p");
-			ifherk.clean<u_type>();
-			this->perturbIC<u_type>();
-			ifherk.up_and_down<u_type>();
+		if (ic_filename_ != "null")
+			simulation_.template read_h5<u_type>(ic_filename_, "u");
 
-		}
-		// int n_rep=10;
-		// // if (domain_->is_client()){
-		// // 	// for (int i=0; i<n_rep; i++)
-		// // 	// {
-		// // 	// 	// ifherk.up_and_down<u_base_type>();
-		// // 	// 	ifherk.pad_velocity_access<u_base_type,u_base_type>();
-		// // 	// }
-
-			
-		// // }
-		// ifherk.clean<u_base_type>(true);
-
-		// simulation_.write("flow_mean_post.hdf5");
-		// return 0.0;
 		mDuration_type ifherk_duration(0);
 		TIME_CODE(ifherk_duration, SINGLE_ARG(
 			ifherk.time_march(use_restart());
@@ -468,37 +433,6 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 
 	}
 
-	template<typename Source>
-	void perturbIC() noexcept
-	{
-		boost::mpi::communicator world;
-		if (domain_->is_server()) return;
-		int seed=100;
-		srand(seed+world.rank()); //seed the random number generator differntly for each processor
-		
-		for (auto it = domain_->begin(); it != domain_->end(); ++it)
-		{
-			if (!it->locally_owned()) continue;
-			if (!it->is_leaf()) continue;
-			const auto dx_base = domain_->dx_base();
-			auto dx_level = dx_base / std::pow(2, it->refinement_level());
-			auto scaling = std::pow(2, it->refinement_level());
-
-			for (auto& node : it->data())
-			{
-				float_type rand_num =
-                                static_cast<float_type>(std::rand()) /
-                                    static_cast<float_type>(RAND_MAX) -
-                                0.5;
-				node(Source::tag(), 0) = rand_num*pert_strength_;
-				rand_num =
-								static_cast<float_type>(std::rand()) /
-									static_cast<float_type>(RAND_MAX) -
-								0.5;
-				node(Source::tag(), 1) = rand_num*pert_strength_;
-			}
-		}
-	}
 
 	template<class Source, class Target>
 	void getUtheta() noexcept
@@ -794,8 +728,6 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 				x = static_cast<float_type>(coord[0]-center[0]*scaling+0.5)*dx_level;
 				y = static_cast<float_type>(coord[1]-center[1]*scaling)*dx_level;
 				node(u, 1) = u_vort(x,y,0,1);
-				node(u_base,0)=0.0;
-				node(u_base,1)=0.0;
 			}
 
 		}
@@ -1096,7 +1028,6 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
     int hard_max_level_ = 0;
     int global_refinement_=0;
     fcoord_t offset_;
-	float_type pert_strength_=0.0;
 
     float_type a_ = 10.0;
 

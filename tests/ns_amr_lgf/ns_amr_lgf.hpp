@@ -123,7 +123,27 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
                     return -U_[idx];
                 }
             };
+        simulation_.bc_vel() =
+            [this](std::size_t idx, float_type t, auto coord = {0, 0, 0})
+            {
+                float_type T0 = 0.5;
+                if (t<=0.0 && smooth_start_)
+                    return 0.0;
+                else if (t<T0-1e-10 && smooth_start_)
+                {
+                    //const float_type beta = 2.252283620690761;
+                    //return 4.0*beta*-U_[idx]*ux_t_smart(t);
+                    ////return -U_[idx] * t/T0;
+                    float_type h1 = exp(-1/(t/T0));
+                    float_type h2 = exp(-1/(1 - t/T0));
 
+                    return -U_[idx] * (h1/(h1+h2));
+                }
+                else
+                {
+                    return -U_[idx];
+                }
+            };
 
         // ------------------------------------------------------------------
         dx_ = domain_->dx_base();

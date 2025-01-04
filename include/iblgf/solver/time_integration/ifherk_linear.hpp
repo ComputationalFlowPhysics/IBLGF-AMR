@@ -82,9 +82,14 @@ class Ifherk
     using w_1_type = typename Setup::w_1_type;
     using w_2_type = typename Setup::w_2_type;
     using u_i_type = typename Setup::u_i_type;
+    using f_hat_re_type= typename Setup::f_hat_re_type;
+    using f_hat_im_type= typename Setup::f_hat_im_type;
+    using u_hat_re_type= typename Setup::u_hat_re_type;
+    using u_hat_im_type= typename Setup::u_hat_im_type;
 
     static constexpr int lBuffer = 1; ///< Lower left buffer for interpolation
     static constexpr int rBuffer = 1; ///< Lower left buffer for interpolation
+    static constexpr int Nf = Setup::Nf; ///< Number of frequencies
     Ifherk(simulation_type* _simulation)
     : simulation_(_simulation)
     , domain_(_simulation->domain_.get())
@@ -155,6 +160,18 @@ class Ifherk
         fname_prefix_ = "";
 
         // miscs -------------------------------------------------------------
+
+
+        // initialized output frequency vector
+        freq_vec_.resize(Nf);
+        int NT=(Nf-1)*2;
+
+        float_type df=1.0/(NT*dt_*output_base_freq_);
+
+        for (int i=0; i<Nf; i++)
+        {
+            freq_vec_[i]=i*df;
+        }
     }
 
   public:
@@ -170,18 +187,25 @@ class Ifherk
 
 
     }
-    void time_march(bool use_restart=false)
+    void time_march(bool use_restart=false, bool reset_time=false)
     {
         use_restart_ = use_restart;
+      
         boost::mpi::communicator          world;
+       
         parallel_ostream::ParallelOstream pcout =
             parallel_ostream::ParallelOstream(world.size() - 1);
 
+      
+        world.barrier();
+      
         pcout
             << "Time marching ------------------------------------------------ "
             << std::endl;
+    
+
         // --------------------------------------------------------------------
-        if (use_restart_)
+        if (use_restart_ && !reset_time)
         {
             just_restarted_= true;
             Dictionary info_d(simulation_->restart_load_dir()+"/restart_info");
@@ -304,9 +328,10 @@ class Ifherk
             {
                 clean<u_type>(true);
                 // clean<u_base_type>(true);
-                domain_->decomposition().template balance<u_type,p_type,u_base_type>();
+                domain_->decomposition().template balance<u_type,p_type,u_base_type,u_hat_re_type,u_hat_im_type,f_hat_re_type,f_hat_im_type>();
                 // domain_->decomposition().template balance<u_base_type,p_type>();
             }
+            
 
             adapt_count_++;
 
@@ -325,7 +350,20 @@ class Ifherk
             T_ += dt_;
             float_type tmp_n = T_ / dt_base_ * math::pow2(max_ref_level_);
             int        tmp_int_n = int(tmp_n + 0.5);
+            
+            int N_T =40; //number of large time steps per period (nf-1)*2
+            // streaming fourier sums
+            // write output     
+            if ((std::fabs(tmp_int_n - tmp_n) < 1e-4) &&
+                (tmp_int_n % output_base_freq_ == 0))
+            {
+                //snapshot that needs to be added to FFT
+                this->streaming_fft<u_type,u_hat_re_type,u_hat_im_type>();
+                //need to clean after certain number of steps ie (Nf-1*2)    
 
+            }
+
+            // write restart
             if (write_restart_ && (std::fabs(tmp_int_n - tmp_n) < 1e-4) &&
                 (tmp_int_n % restart_base_freq_ == 0))
             {
@@ -333,9 +371,10 @@ class Ifherk
                 write_restart();
             }
 
+            // write output     
             if ((std::fabs(tmp_int_n - tmp_n) < 1e-4) &&
                 (tmp_int_n % output_base_freq_ == 0))
-            {
+            { 
                 //test
                 //
 
@@ -350,10 +389,48 @@ class Ifherk
                 // and skip all outputs
                 update_marching_parameters();
             }
-
+            // after 1 period, write fourier mode norms and reset uhat
+            if ((std::fabs(tmp_int_n - tmp_n) < 1e-4) &&
+                (tmp_int_n % (output_base_freq_*N_T) == 0))
+            { 
+                write_norm_by_freq(tmp_int_n);
+                clean<u_hat_im_type>();
+                clean<u_hat_re_type>();
+            }
             write_stats(tmp_n);
 
         }
+    }
+    template<class Source, class Target_re, class Target_im>
+    void streaming_fft()
+    {
+
+        auto dx_base = domain_->dx_base();
+        for (auto it = domain_->begin_leaves(); it != domain_->end_leaves(); ++it)
+		{
+
+			if (!it->locally_owned()) continue;
+
+			auto dx_level = dx_base / std::pow(2, it->refinement_level());
+			auto scaling = std::pow(2, it->refinement_level());
+
+            for (auto& node : it->data())
+            {
+                for (std::size_t d = 0; d < domain_->dimension(); ++d)
+                {
+                    for (std::size_t ff=0; ff<Nf;ff++)
+                    {
+                        float_type f_ff=freq_vec_[ff];
+
+                        node(Target_re::tag(),d*Nf+ff)+=node(Source::tag(),d)*std::cos(2*M_PI*f_ff*T_);
+                        node(Target_im::tag(),d*Nf+ff)-=node(Source::tag(),d)*std::sin(2*M_PI*f_ff*T_);
+
+                    }
+                }
+
+            }
+        }
+
     }
     void clean_up_initial_velocity()
     {
@@ -397,6 +474,160 @@ class Ifherk
                 client->template buffer_exchange<u_type>(l);
             }
         }
+    }
+    template<class Field>
+    float_type compute_norm(bool leaf_only=true)
+    {
+
+        float_type norm_local = 0.0;
+        float_type dx_base = domain_->dx_base();
+        if(domain_->is_client())
+        {
+            for (auto it = domain_->begin(); it != domain_->end(); ++it)
+            {
+                if (!it->locally_owned()) continue;
+                if(! it->has_data()) continue;
+                if (leaf_only && !it->is_leaf()) continue;
+
+                // if (it->is_correction()|| !it->is_leaf()) continue;
+
+                const auto dx_level =
+                            dx_base / math::pow2(it->refinement_level());
+
+                auto tmp = domain::Operator::blockNormSquare<Field>(it->data());
+
+                norm_local += tmp*std::pow(dx_level, domain_->dimension()); // norm_nlk*volume(or area) of node in block
+                
+            }
+        }
+        float_type norm_global;
+        boost::mpi::all_reduce(
+            comm_, norm_local, norm_global, std::plus<float_type>());
+
+        return std::sqrt(norm_global);
+
+    }
+
+    template<class Field>
+    std::vector<float_type> compute_norm_by_freq(bool leaf_only=true)
+    {
+        std::vector<float_type> norm_local(Nf, 0.0);
+
+        if(domain_->is_client())
+        {
+            for (auto it = domain_->begin(); it != domain_->end(); ++it)
+            {
+                if (!it->locally_owned()) continue;
+                if(! it->has_data()) continue;
+                if (leaf_only && !it->is_leaf()) continue;
+
+                // if (it->is_correction()|| !it->is_leaf()) continue;
+
+                const auto dx_base = domain_->dx_base();
+                const auto dx_level =
+                            dx_base / math::pow2(it->refinement_level());
+
+                for(auto ff=0; ff<Nf;ff++)
+                {
+                    auto tmp = domain::Operator::blockNormSquare_oneFreq<Field>(it->data(),Nf,ff,domain_->dimension());
+                    norm_local[ff] += tmp*std::pow(dx_level, domain_->dimension()); // norm_nlk*volume(or area) of node in block
+                }
+            }
+        }
+        std::vector<float_type> norm_global(Nf, 0.0);
+        for (std::size_t ff=0; ff<Nf;ff++)
+        {
+            boost::mpi::all_reduce(
+                comm_, norm_local[ff], norm_global[ff], std::plus<float_type>());
+        }
+        std::transform(norm_global.begin(), norm_global.end(), norm_global.begin(), [] (float_type value) {return std::sqrt(value);});
+
+        return norm_global;
+    } 
+
+    template<class Field_re, class Field_im>
+    void normalize_field_complex()
+    {
+        float_type norm_real=compute_norm<Field_re>();
+        float_type norm_imag=compute_norm<Field_im>();
+        float_type norm_total=std::sqrt(norm_real*norm_real+norm_imag*norm_imag);
+
+        if(domain_->is_server()) return;
+
+        for(auto it=domain_->begin(); it!=domain_->end(); ++it)
+        {
+            if (!it->locally_owned()) continue;
+            if(! it->has_data()) continue;
+
+            for(auto node: it->data())
+            {
+                node(Field_re::tag(),0)/=norm_total;
+                node(Field_re::tag(),1)/=norm_total;
+                node(Field_im::tag(),0)/=norm_total;
+                node(Field_im::tag(),1)/=norm_total;
+            }
+        }
+    }
+
+    template<class Field>
+    void normalize_field()
+    {
+        float_type norm=compute_norm<Field>();
+
+        if(domain_->is_server()) return;
+
+        for(auto it=domain_->begin(); it!=domain_->end(); ++it)
+        {
+            if (!it->locally_owned()) continue;
+            if(! it->has_data()) continue;
+
+            for(auto node: it->data())
+            {
+                node(Field::tag(),0)/=norm;
+                node(Field::tag(),1)/=norm;
+
+            }
+        }
+    }
+
+    template<class Field_re, class Field_im>
+    void normalize_field_complex_by_freq()
+    {
+        std::vector<float_type> norm_real=compute_norm_by_freq<Field_re>();
+        std::vector<float_type> norm_imag=compute_norm_by_freq<Field_im>();
+        std::vector<float_type> norm_total(Nf,0.0);
+
+        for(auto ff=0; ff<Nf;ff++)
+        {
+            norm_total[ff]=std::sqrt(norm_real[ff]*norm_real[ff]+norm_imag[ff]*norm_imag[ff]);
+        }
+
+        if(domain_->is_server()) return;
+
+        for(auto it=domain_->begin(); it!=domain_->end(); ++it)
+        {
+            if (!it->locally_owned()) continue;
+            if(! it->has_data()) continue;
+
+            for(auto node: it->data())
+            {
+                for(auto d=0; d<domain_->dimension();d++)
+                {
+                    for(auto ff=0; ff<Nf;ff++)
+                    {
+                        if(ff==0){
+                            continue;
+                        }
+                        node(Field_re::tag(),d*Nf+ff)/=norm_total[ff];
+                        node(Field_im::tag(),d*Nf+ff)/=norm_total[ff];
+                    }
+                }
+            }
+        }
+    }
+
+    void set_adjoint_run(bool run_adoint=true){
+        adjoint_run_=run_adoint;
     }
 
     template<class Field>
@@ -596,8 +827,74 @@ class Ifherk
         }
 
         world.barrier();
+
+        // print norm and number of points
+
+        float_type global_norm=compute_norm<u_type>();
+        if (domain_->is_server())
+        {
+            std::ofstream outfile;
+            int           width = 20;
+
+            outfile.open("nstats.txt",
+                std::ios_base::app); // append instead of overwrite
+            outfile << std::setw(width) << tmp_n << std::setw(width)
+                    << std::scientific << std::setprecision(9);
+            outfile << std::setw(width) << T_ << std::setw(width)
+                    << std::scientific << std::setprecision(9);
+            outfile << std::setw(width) << global_norm << std::setw(width)
+                    << std::scientific << std::setprecision(9);
+            outfile << std::setw(width) << domain_->num_leafs()<< std::setw(width)
+                    << std::scientific << std::setprecision(9);
+            
+            outfile << std::endl;
+            outfile.close();
+
+
+        }
+        world.barrier();
+
     }
 
+    void write_norm_by_freq(int tmp_n)
+    {
+        boost::mpi::communicator world;
+        world.barrier();
+
+        std::vector<float_type> norm_real=compute_norm_by_freq<u_hat_re_type>();
+        std::vector<float_type> norm_imag=compute_norm_by_freq<u_hat_im_type>();
+        std::vector<float_type> norm_total(Nf,0.0);
+
+        for(auto ff=0; ff<Nf;ff++)
+        {
+            norm_total[ff]=std::sqrt(norm_real[ff]*norm_real[ff]+norm_imag[ff]*norm_imag[ff]);
+        }
+        if (domain_->is_server())
+        {
+            std::ofstream outfile;
+            int           width = 20;
+
+            outfile.open("uhat_stats.txt",
+                std::ios_base::app); // append instead of overwrite
+            outfile << std::setw(width) << tmp_n << std::setw(width)
+                    << std::scientific << std::setprecision(9);
+            outfile << std::setw(width) << T_ << std::setw(width)
+                    << std::scientific << std::setprecision(9);
+            for (auto& element: norm_total)
+            {
+                outfile<<element<<std::setw(width)<<std::scientific<<std::setprecision(9);
+            }
+            // outfile << std::setw(width) << norm_total << std::setw(width)
+            //         << std::scientific << std::setprecision(9);
+            // outfile << std::setw(width) << domain_->num_leafs()<< std::setw(width)
+            //         << std::scientific << std::setprecision(9);
+            
+            outfile << std::endl;
+            outfile.close();
+
+        }
+        world.barrier();
+    }
 
     template<class Source_face, class Source_cell, class Target_face, class Target_cell>
     void ComputeForcing(force_type& force_target) noexcept
@@ -653,7 +950,10 @@ class Ifherk
         //nonlinear<Source_face, g_i_type>();
 
         // do sometibg like this for lns 
-        nonlinear_jac<u_base_type,Source_face, g_i_type>();
+        if(!adjoint_run_)
+            nonlinear_jac<u_base_type,Source_face, g_i_type>(); // TO DO CC: look at forcing equation
+        else
+            nonlinear_jac_adjoint<u_base_type,Source_face, g_i_type>();
 
         //pcout << "Computed Nonlinear Jac " << std::endl;
 
@@ -962,6 +1262,7 @@ class Ifherk
                         if (!domain_->is_client())
                             return;
                         pad_velocity<u_type, u_type>(true);
+                        up_and_down<u_base_type>();
                         //pad_velocity<u_base_type, u_base_type>(true);
                         adapt_corr_time_step();
                     }
@@ -970,7 +1271,7 @@ class Ifherk
                         if (!domain_->is_client())
                             return;
                         up_and_down<u_type>();
-                        //up_and_down<u_base_type>();
+                        up_and_down<u_base_type>();
                     }
                     ));
         base_mesh_update_=false;
@@ -989,7 +1290,10 @@ class Ifherk
         clean<face_aux_type>();
         clean<face_aux_base_type>();
         copy<u_base_type,face_aux_base_type>();
-        nonlinear_jac<face_aux_base_type,u_type, g_i_type>(coeff_a(1, 1) * (-dt_));
+        if(!adjoint_run_)
+            nonlinear_jac<face_aux_base_type,u_type, g_i_type>(coeff_a(1, 1) * (-dt_));
+        else
+            nonlinear_jac_adjoint<face_aux_base_type,u_type, g_i_type>(coeff_a(1, 1) * (-dt_));
         copy<q_i_type, r_i_type>();
         add<g_i_type, r_i_type>();
         lin_sys_with_ib_solve(alpha_[0]);
@@ -1020,7 +1324,10 @@ class Ifherk
         up_and_down<u_i_type>();
         clean<face_aux_base_type>();
         copy<u_base_type,face_aux_base_type>();
-        nonlinear_jac<face_aux_base_type,u_i_type, g_i_type>(coeff_a(2, 2) * (-dt_));
+        if (!adjoint_run_)
+            nonlinear_jac<face_aux_base_type,u_i_type, g_i_type>(coeff_a(2, 2) * (-dt_));
+        else
+            nonlinear_jac_adjoint<face_aux_base_type,u_i_type, g_i_type>(coeff_a(2, 2) * (-dt_));
         add<g_i_type, r_i_type>();
 
         lin_sys_with_ib_solve(alpha_[1]);
@@ -1045,7 +1352,10 @@ class Ifherk
         up_and_down<u_i_type>();
         clean<face_aux_base_type>();
         copy<u_base_type,face_aux_base_type>();
-        nonlinear_jac<face_aux_base_type, u_i_type, g_i_type>(coeff_a(3, 3) * (-dt_));
+        if(!adjoint_run_)
+            nonlinear_jac<face_aux_base_type, u_i_type, g_i_type>(coeff_a(3, 3) * (-dt_));
+        else
+            nonlinear_jac_adjoint<face_aux_base_type, u_i_type, g_i_type>(coeff_a(3, 3) * (-dt_));
         add<g_i_type, r_i_type>();
 
         lin_sys_with_ib_solve(alpha_[2]);
@@ -1765,6 +2075,9 @@ private:
                 }
             }
         }
+        if (true) {
+            add_ext_force<Target>(_scale);
+        }
     }
 
 
@@ -1884,7 +2197,53 @@ private:
                 }
             }
         }
+        if (true) {
+            add_ext_force<Target>(_scale);
+        }
     }
+
+    template<class target>
+    void add_ext_force(float_type scale) noexcept {
+        //float_type eps = 1e-3;
+        //assuming f_hat_im and f_hat_re is only at leaves. up down single field not each f
+        clean<nonlinear_tmp_type>();
+        auto dx_base = domain_->dx_base();
+        for (auto it = domain_->begin_leaves(); it != domain_->end_leaves(); ++it)
+		{
+
+			if (!it->locally_owned()) continue;
+
+			auto dx_level = dx_base / std::pow(2, it->refinement_level());
+			auto scaling = std::pow(2, it->refinement_level());
+
+			for (auto& node : it->data())
+			{
+
+				const auto& coord = node.level_coordinate();
+
+				
+				float_type x = static_cast<float_type>
+					(coord[0]) * dx_level;
+				float_type y = static_cast<float_type>
+					(coord[1]) * dx_level;
+
+                for(auto d=0;d<domain_->dimension();d++)
+                {
+                    for(auto ff=0;ff<Nf;ff++)
+                    {
+                        if(ff==0) continue;
+                        float_type f_ff=freq_vec_[ff];
+
+                        node(nonlinear_tmp_type::tag(),d)+=scale*2*node(f_hat_re_type::tag(),d*Nf+ff)*std::cos(2*T_stage_*f_ff*M_PI)-scale*2*node(f_hat_im_type::tag(),d*Nf+ff)*std::sin(2*M_PI*T_stage_*f_ff);
+                    }
+                }
+            }
+
+		}
+        up_and_down<nonlinear_tmp_type>();
+        add<nonlinear_tmp_type, target>(1.0);
+    }
+    
     template<class target>
     void add_body_force(float_type scale) noexcept {
         //float_type eps = 1e-3;
@@ -1917,7 +2276,7 @@ private:
 
 		}
     }
-
+    
     template<class Source, class Target>
     void divergence() noexcept
     {
@@ -2130,7 +2489,6 @@ private:
     poisson_solver_t psolver;
     linsys_solver_t lsolver;
 
-
     bool base_mesh_update_=false;
 
     float_type T_, T_stage_, T_max_;
@@ -2141,7 +2499,6 @@ private:
 
     float_type cg_threshold_;
     int  cg_max_itr_;
-
     float_type T_last_vel_refresh_=0.0;
 
     float_type b_f_mag, b_f_eps;
@@ -2166,12 +2523,13 @@ private:
     bool use_adaptation_correction;
     int restart_base_freq_;
     int adapt_count_;
-
+    bool adjoint_run_ = false;
     //
     int max_idx_from_prev_prc = 0;
     int max_local_idx = 0;
 
     std::string                       fname_prefix_;
+    std::vector<float_type>                freq_vec_;
     vector_type<float_type, 6>        a_{{1.0 / 3, -1.0, 2.0, 0.0, 0.75, 0.25}};
     vector_type<float_type, 4>        c_{{0.0, 1.0 / 3, 1.0, 1.0}};
     //vector_type<float_type, 6>        a_{{1.0 / 2, sqrt(3)/3, (3-sqrt(3))/3, (3+sqrt(3))/6, -sqrt(3)/3, (3+sqrt(3))/6}};

@@ -14,7 +14,7 @@
 #include <boost/mpi/environment.hpp>
 #include <boost/mpi/communicator.hpp>
 
-#include "lns_amr_lgf_forcing.hpp"
+#include "norm_vortexrings.hpp"
 #include <iblgf/dictionary/dictionary.hpp>
 
 
@@ -33,17 +33,17 @@ int main(int argc, char *argv[])
     {
         input = argv[1];
     }
-    if (world.rank() == 0)
-        std::cout << "input: " << input << std::endl;
 
-    // Read in dictionary
-    Dictionary dictionary(input, argc, argv);
+
+   // Read in dictionary
+    dictionary::Dictionary dictionary(input, argc, argv);
 
     //Instantiate setup
-    NS_AMR_LGF setup(&dictionary);
+    VortexRingTest setup(&dictionary);
 
     // run setup
-    setup.run();
+    double L_inf_error = setup.run();
 
     return 0;
 }
+

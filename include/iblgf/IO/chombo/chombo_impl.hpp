@@ -339,6 +339,8 @@ class Chombo
                         {
                             int sep = 1;
                             if (domain->helmholtz_bool) sep = domain->N_modes_val * 2;
+                             //if field is frequnecy than x-compoenents are (1,NF) y is (NF+1,2NF)
+                            if(!domain->helmholtz_bool && nFields>Dim) sep = nFields/Dim;
                             // Finte Volume requires differnet averaging for
                             // differnt mesh objects
                             //FV_avg = {avg, avg, avg};

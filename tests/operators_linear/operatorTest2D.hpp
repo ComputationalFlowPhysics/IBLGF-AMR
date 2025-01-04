@@ -265,70 +265,13 @@ struct OperatorTest : public SetupBase<OperatorTest, parameters>
         boost::mpi::communicator world;
 
         time_integration_t ifherk(&this->simulation_);
-
-        // if (domain_->is_client())
-        // {
-        //     const float_type dx_base = domain_->dx_base();
-        //     const float_type base_level = domain_->tree()->base_level();
-
-        //     //Bufffer exchange of some fields
-        //     auto client = domain_->decomposition().client();
-        //     // client->buffer_exchange<lap_source_type>(base_level);
-        //     // client->buffer_exchange<div_source_type>(base_level);
-        //     client->buffer_exchange<curl_source_type>(base_level);
-        //     // client->buffer_exchange<grad_source_type>(base_level);
-        //     client->buffer_exchange<curl_exact_type>(base_level);
-        //     client->buffer_exchange<nonlinear_source_type>(base_level);
-        //     client->buffer_exchange<u_s_type>(base_level);
-        //     client->buffer_exchange<u_p_type>(base_level);
-
-
-        //     for (auto it = domain_->begin_leaves(); it != domain_->end_leaves();
-        //          ++it)
-        //     {
-        //         if (!it->locally_owned() || !it->has_data()) continue;
-
-        //         auto dx_level = dx_base / std::pow(2, it->refinement_level());
-
-        //         // domain::Operator::laplace<lap_source_type, lap_target_type>(
-        //         //     it->data(), dx_level);
-        //         // domain::Operator::divergence<div_source_type, div_target_type>(
-        //         //     it->data(), dx_level);
-        //         domain::Operator::curl<curl_source_type, curl_target_type>(
-        //             it->data(), dx_level);
-        //         // domain::Operator::gradient<grad_source_type, grad_target_type>(
-        //         //     it->data(), dx_level);
-        //     }
-        //     client->buffer_exchange<curl_target_type>(base_level);
-        //     for (auto it = domain_->begin_leaves(); it != domain_->end_leaves();
-        //          ++it)
-        //     {
-        //         if (!it->locally_owned() || !it->has_data()) continue;
-
-        //         domain::Operator::nonlinear<nonlinear_source_type,
-        //             curl_target_type, nonlinear_target_type>(it->data());
-        //     }
-        //     // ifherk.nonlinear_jac_access<u_s_type, u_p_type, nonlinear_jac_target_type>();
-        // }
-        // ifherk.Assign_idx<nonlinear_target_type, nonlinear_jac_source_type>();
+       
         if (domain_->is_client())
         {
             ifherk.nonlinear_jac_access<u_s_type, u_p_type, nonlinear_jac_target_type>();
             ifherk.nonlinear_jac_adjoint_access<u_s_type, u_p_type, nonlinear_jac_T_target_type>();
         }
-        //ifherk.nonlinear_jac_access<u_s_type, u_p_type, nonlinear_jac_target_type>();
-       
 
-        // this->compute_errors<lap_target_type, lap_exact_type, lap_error_type>(
-        //     "Lap_");
-        // this->compute_errors<grad_target_type, grad_exact_type,
-        //     grad_error_type>("Grad_");
-        // this->compute_errors<div_target_type, div_exact_type, div_error_type>(
-        //     "Div_");
-        // this->compute_errors<curl_target_type, curl_exact_type,
-        //     curl_error_type>("Curl_");
-        // this->compute_errors<nonlinear_target_type, nonlinear_exact_type,
-        //     nonlinear_error_type>("Nonlin_");
         world.barrier();
         float_type u1_inf = this->compute_errors<nonlinear_jac_target_type, nonlinear_jac_exact_type,
             nonlinear_jac_error_type>("Nonlin_jac_",0);
@@ -339,26 +282,19 @@ struct OperatorTest : public SetupBase<OperatorTest, parameters>
         u1_inf=this->compute_errors<nonlinear_jac_T_target_type, nonlinear_jac_T_exact_type,
             nonlinear_jac_T_error_type>("Nonlin_jac_T_",1);
         world.barrier();
-        // (&this->simulation_)->write("mesh.hdf5");
-        ifherk.up_and_down<nonlinear_jac_target_type>();
-        // simulation_.write("final.hdf5");
-        for (int i = 0; i < world.size(); i++)
-        {
-            if (world.rank() == i)
-            {
-                std::cout << "rank " << world.rank() << std::endl;
-            }
-            world.barrier();
-        }
+        simulation_.write("final");
         world.barrier();
-        simulation_.write_test("final.hdf5");
-        ifherk.up_and_down<nonlinear_jac_target_type>();
+
+        float_type normL2=ifherk.compute_norm<u_s_type>();
+
+        std::cout << "L2 norm of the solution: " << normL2 << std::endl;
+        
         return 0.0;
     }
 
 	void initialize()
     {
-        poisson_solver_t psolver(&this->simulation_);
+        // poisson_solver_t psolver(&this->simulation_);
 
         boost::mpi::communicator world;
         if (domain_->is_server()) return;
@@ -366,7 +302,6 @@ struct OperatorTest : public SetupBase<OperatorTest, parameters>
             (domain_->bounding_box().max() - domain_->bounding_box().min()) /
                 2.0 +
             domain_->bounding_box().min();
-
         // Adapt center to always have peak value in a cell-center
         //center+=0.5/std::pow(2,nRef);
         const float_type dx_base = domain_->dx_base();
@@ -378,7 +313,7 @@ struct OperatorTest : public SetupBase<OperatorTest, parameters>
             // if (!(*it && it->has_data())) continue;
             auto dx_level = dx_base / std::pow(2, it->refinement_level());
             auto scaling = std::pow(2, it->refinement_level());
-
+            // std::cout << "dx_level: " << dx_level << std::endl;
             for (auto& node : it->data())
             {
                 const auto& coord = node.level_coordinate();
@@ -460,7 +395,6 @@ struct OperatorTest : public SetupBase<OperatorTest, parameters>
                 const float_type xc2 = xc * xc;
                 const float_type yc2 = yc * yc;
 				float_type r_2 = r * r;
-
 				const auto fct = std::exp(-r_2);
                 const auto tmpc = std::exp(-r_2);
 
@@ -474,7 +408,7 @@ struct OperatorTest : public SetupBase<OperatorTest, parameters>
 
                 node(u_s, 0) = tmpf0*yf0;
 				node(u_s, 1) = tmpf1*xf1;
-
+                
 				node(u_p, 0) = tmpf0*cos(yf0);
 				node(u_p, 1) = tmpf1*cos(xf1);
                 //Gradient

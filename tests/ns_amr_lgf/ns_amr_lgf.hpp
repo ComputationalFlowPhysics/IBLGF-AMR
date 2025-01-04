@@ -44,7 +44,7 @@
 #include "../../setups/setup_base.hpp"
 #include <iblgf/operators/operators.hpp>
 
-#include <gsl/gsl_integration.h>
+// #include <gsl/gsl_integration.h>
 #include <unordered_map>
 
 namespace iblgf
@@ -270,30 +270,30 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
         return exp( -1/(1 - (4*tau-1)*(4*tau-1)) );
     }
 
-    float_type ux_t_smart(float_type t)
-    {
-        auto search = ux_lookup_.find(t);
-        if (search != ux_lookup_.end()) {
-            return search->second;
-        } else {
-            float_type ux = ux_t(t);
-            ux_lookup_.insert({t, ux});
-            return ux;
-        }
-    }
+    // float_type ux_t_smart(float_type t)
+    // {
+    //     auto search = ux_lookup_.find(t);
+    //     if (search != ux_lookup_.end()) {
+    //         return search->second;
+    //     } else {
+    //         float_type ux = ux_t(t);
+    //         ux_lookup_.insert({t, ux});
+    //         return ux;
+    //     }
+    // }
 
-    float_type ux_t(float_type t)
-    {
-        float_type result, error;
-        gsl_integration_workspace* w = gsl_integration_workspace_alloc (1000);
+    // float_type ux_t(float_type t)
+    // {
+    //     float_type result, error;
+    //     gsl_integration_workspace* w = gsl_integration_workspace_alloc (1000);
 
-        gsl_function F;
-        F.function = &ux_ig;
+    //     gsl_function F;
+    //     F.function = &ux_ig;
 
-        gsl_integration_qags (&F, 0, t, 0, 1e-8, 1000, w, &result, &error);
-        gsl_integration_workspace_free (w);
-        return result;
-    }
+    //     gsl_integration_qags (&F, 0, t, 0, 1e-8, 1000, w, &result, &error);
+    //     gsl_integration_workspace_free (w);
+    //     return result;
+    //}
 
 
     float_type run()

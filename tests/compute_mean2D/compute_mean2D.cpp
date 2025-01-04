@@ -14,7 +14,7 @@
 #include <boost/mpi/environment.hpp>
 #include <boost/mpi/communicator.hpp>
 
-#include "lns_amr_lgf_forcing.hpp"
+#include "compute_mean2D.hpp"
 #include <iblgf/dictionary/dictionary.hpp>
 
 
@@ -35,7 +35,7 @@ int main(int argc, char *argv[])
     }
     if (world.rank() == 0)
         std::cout << "input: " << input << std::endl;
-
+        
     // Read in dictionary
     Dictionary dictionary(input, argc, argv);
 

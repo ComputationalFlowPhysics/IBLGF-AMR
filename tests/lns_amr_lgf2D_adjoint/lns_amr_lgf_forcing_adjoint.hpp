@@ -58,6 +58,7 @@ const int Dim = 2;
 struct parameters
 {
 	static constexpr std::size_t Nf = 21;
+
     static constexpr std::size_t Dim = 2;
     // clang-format off
     REGISTER_FIELDS
@@ -86,11 +87,9 @@ struct parameters
 		 (nonlinear_tmp,       float_type,  Dim,  1,  1,  face,true),
       	 (face_aux_tmp,        float_type,  Dim,  1,  1,  face,true),
 		 (edge_aux2,           float_type,  (Dim*2 - 3),  1,  1,  edge,true),
-		 //forcing
-		 (f_hat_re,       float_type,  Dim,  1,  1,  face,true),
-		 (f_hat_im,       float_type,  Dim,  1,  1,  face,true),
-		 //u_hat
-		 (u_hat_re            , float_type, 2*Nf,    1,       1,     face,true  ),
+		 (f_hat_re,       float_type,  Dim*Nf,  1,  1,  face,true),
+		 (f_hat_im,       float_type,  Dim*Nf,  1,  1,  face,true),
+		(u_hat_re            , float_type, 2*Nf,    1,       1,     face,true  ),
 		 (u_hat_im            , float_type, 2*Nf,    1,       1,     face,true  )
     ))
     // clang-format on
@@ -319,7 +318,7 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 		if (!use_restart()) { this->initialize(); }
 		else
 		{
-			simulation_.template read_h5<u_type>(simulation_.restart_field_dir(), "u"); //u=u+u_base
+			simulation_.template read_h5<u_type>(simulation_.restart_field_dir(), "u"); //u=u+u_base, loading in to confirm tree
 			simulation_.template read_h5<p_type>(simulation_.restart_field_dir(), "p");//p=p+p_base
 			// clean<u_base_type>
 			if (ic_filename_ == "null") //been run so load in u_base
@@ -327,8 +326,14 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 				simulation_.template read_h5<u_type>(simulation_.restart_field_dir(), "u");
 				simulation_.template read_h5<p_type>(simulation_.restart_field_dir(), "p");
 				simulation_.template read_h5<u_base_type>(simulation_.restart_field_dir(), "u_base");
+				pcout<<"read u, p, u_base"<<std::endl;
 				simulation_.template read_h5<u_hat_re_type>(simulation_.restart_field_dir(), "u_hat_re");
 				simulation_.template read_h5<u_hat_im_type>(simulation_.restart_field_dir(), "u_hat_im");
+				pcout<<"readuhat"<<std::endl;
+				simulation_.template read_h5<f_hat_re_type>(simulation_.restart_field_dir(), "f_hat_re");
+				simulation_.template read_h5<f_hat_im_type>(simulation_.restart_field_dir(), "f_hat_im");
+				pcout<<"readfhat"<<std::endl;
+				
 
 			}
 			//std::cout<<"read"<<std::endl;
@@ -344,7 +349,8 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 		boost::mpi::communicator world;
 		bool reset_time = false;
 		time_integration_t ifherk(&this->simulation_);
-
+		ifherk.set_adjoint_run(true);
+		world.barrier();
 		if (ic_filename_ != "null") //never been run before so load in mean flow and perturb IC
 		{
 			if (world.rank() == 0)
@@ -352,16 +358,47 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 			//simulation_.template read_h5<u_type>(ic_filename_, "u");
 			// simulation_.template read_h5<p_type>(ic_filename_, "p");
 			simulation_.template read_h5<u_base_type>(ic_filename_, "u_base");
+			world.barrier();
+			pcout<<"read u_base"<<std::endl;
 			// simulation_.template read_h5<p_base_type>(ic_filename_, "p");
 			ifherk.clean<u_type>();
 			ifherk.clean<u_hat_re_type>();
 			ifherk.clean<u_hat_im_type>();
-			this->perturbIC<u_type>();
-			ifherk.normalize_field<u_type>();
-			ifherk.up_and_down<u_type>();
+			ifherk.clean<f_hat_re_type>();
+			ifherk.clean<f_hat_im_type>();
+			world.barrier();
+			pcout<<"cleaned"<<std::endl;
+			// this->perturbIC<u_type>();
+			// ifherk.up_and_down<u_type>();
+			// this->init_ext_forcing<f_hat_re_type, f_hat_im_type>();
+			//
+			simulation_.template read_h5<f_hat_re_type>(ic_filename_, "u_hat_re"); //load in uhat for foward run
+			simulation_.template read_h5<f_hat_im_type>(ic_filename_, "u_hat_im");
+			world.barrier();
+			pcout<<"init ext forcing"<<std::endl;
+
+			// pcout<<"current norm re:"<<ifherk.compute_norm_by_freq<f_hat_re_type>()<<std::endl;
+			// pcout<<"current norm im:"<<ifherk.compute_norm_by_freq<f_hat_im_type>()<<std::endl;
+
+			ifherk.normalize_field_complex_by_freq<f_hat_re_type, f_hat_im_type>();
+			world.barrier();
+			pcout<<"normalized"<<std::endl;
+			std::vector<float_type> norms=ifherk.compute_norm_by_freq<f_hat_re_type>();
+			for (int i=0; i<norms.size(); i++)
+			{
+				pcout<<"norm re "<<i<<": "<<norms[i]<<std::endl;
+			}
+			norms=ifherk.compute_norm_by_freq<f_hat_im_type>();
+			for (int i=0; i<norms.size(); i++)
+			{
+				pcout<<"norm im "<<i<<": "<<norms[i]<<std::endl;
+			}
+			// pcout<<"current norm re:"<<ifherk.compute_norm_by_freq<f_hat_re_type>()<<std::endl;
+			// pcout<<"current norm im:"<<ifherk.compute_norm_by_freq<f_hat_im_type>()<<std::endl;
 			reset_time=true;
 
 		}
+		
 		// int n_rep=10;
 		// // if (domain_->is_client()){
 		// // 	// for (int i=0; i<n_rep; i++)
@@ -491,9 +528,7 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 		boost::mpi::communicator world;
 		if (domain_->is_server()) return;
 		int seed=100;
-
-		std::mt19937 gen(seed+ world.rank()); //seed the random number generator differntly for each processor
-		std::normal_distribution<float_type> dist(0.0, 1.0/2.0);
+		srand(seed+world.rank()); //seed the random number generator differntly for each processor
 		
 		for (auto it = domain_->begin(); it != domain_->end(); ++it)
 		{
@@ -502,12 +537,73 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 			const auto dx_base = domain_->dx_base();
 			auto dx_level = dx_base / std::pow(2, it->refinement_level());
 			auto scaling = std::pow(2, it->refinement_level());
+
 			for (auto& node : it->data())
 			{
-				for (auto field_idx=0; field_idx<Source::nFields(); ++field_idx)
+				float_type rand_num =
+                                static_cast<float_type>(std::rand()) /
+                                    static_cast<float_type>(RAND_MAX) -
+                                0.5;
+				node(Source::tag(), 0) = rand_num*pert_strength_;
+				rand_num =
+								static_cast<float_type>(std::rand()) /
+									static_cast<float_type>(RAND_MAX) -
+								0.5;
+				node(Source::tag(), 1) = rand_num*pert_strength_;
+			}
+		}
+	}
+
+	template<class Source_re, class Source_im>
+	void init_ext_forcing()
+	{
+		boost::mpi::communicator world;
+		// if (domain_->is_server()) return;
+		// set values
+		if (domain_->is_client()){
+			int seed=200;
+			
+			std::mt19937 gen(seed+ world.rank()); //seed the random number generator differntly for each processor
+			std::normal_distribution<float_type> dist(0.0, std::sqrt(1.0/2.0));
+
+
+			auto center = (domain_->bounding_box().max() -
+				domain_->bounding_box().min() + 1) / 2.0 +
+				domain_->bounding_box().min();
+			
+			for (auto it=domain_->begin(); it!=domain_->end(); ++it)
+			{
+				if (!it->locally_owned()) continue;
+				if (!it->is_leaf()) continue;
+				const auto dx_base = domain_->dx_base();
+				auto dx_level = dx_base / std::pow(2, it->refinement_level());
+				auto scaling = std::pow(2, it->refinement_level());
+
+				for (auto& node : it->data())
 				{
-					node(Source::tag(), field_idx) = dist(gen);
+					const auto& coord = node.level_coordinate();
+					float_type x = static_cast<float_type>
+						(coord[0] - center[0] * scaling) * dx_level;
+					float_type y = static_cast<float_type>
+						(coord[1] - center[1] * scaling) * dx_level;
+					
+				
+					for(auto d=0; d<domain_->dimension();d++)
+					{
+						for(auto ff=0; ff<Nf;ff++)
+						{
+							if(ff==0){
+								node(Source_re::tag(), d*Nf+ff) = 0.0;
+								node(Source_im::tag(), d*Nf+ff) = 0.0;
+								continue;
+							}
+							node(Source_re::tag(), d*Nf+ff) = dist(gen);
+							node(Source_im::tag(), d*Nf+ff) = dist(gen);
+						}
+					}
+
 				}
+		
 			}
 		}
 	}

@@ -1247,6 +1247,45 @@ struct Operator
         return sqrt(m / c);
     }
 
+    //normed squared of all components of a single field
+    template<class Field, class Block>
+    static float_type blockNormSquare(Block &block) noexcept
+    {
+        float_type m = 0.0;
+        for (auto& n : block)
+        {
+            float_type tmp = 0.0;
+            for (std::size_t field_idx = 0; field_idx < Field::nFields();
+                 ++field_idx)
+            {
+                tmp += n(Field::tag(), field_idx) * n(Field::tag(), field_idx);
+            }
+            m += tmp;
+        }
+        return m;
+    }
+    
+    //normed squared of all components of a single field of a single frequency of index ff
+    template<class Field, class Block>
+    static float_type blockNormSquare_oneFreq(Block &block,std::size_t Nf, std::size_t ff,int _Dim) noexcept
+    {
+        //Nf is number of total frequnecues
+        //ff is frequnecy index
+        float_type m = 0.0;
+        for (auto& n : block)
+        {
+            float_type tmp = 0.0;
+            for (std::size_t field_idx = 0; field_idx < _Dim;
+                 ++field_idx)
+            {
+                tmp += n(Field::tag(), field_idx*Nf+ff) * n(Field::tag(), field_idx*Nf+ff);
+            }
+            m += tmp;
+        }
+        return m;
+    }
+
+
 
     template<class Field1, class Field2, class Block>
     static float_type blockDot(Block& block) noexcept

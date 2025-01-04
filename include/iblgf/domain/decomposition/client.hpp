@@ -1008,7 +1008,9 @@ public:
     auto get_octant_idx(T it, int field_idx=0) const noexcept
     {
         
-        int sep = 3;
+        int sep = 3*21; //CC: change to 3*21 for 21 frequnecies 
+                        //(not sure if this is right, runnning out of tags in 3D)
+                        
         if (helmholtz) sep = N_modes * 9;
         int max_id =  (boost::mpi::environment::max_tag()/sep)-1;
         if (it->global_id()<0)
@@ -1018,6 +1020,9 @@ public:
         }
 
         int tmp = (it->global_id()%max_id)+max_id*field_idx;
+        if (tmp > boost::mpi::environment::max_tag()) {
+            throw std::runtime_error("Computed MPI tag exceeds max allowable value");
+        }
         return tmp;
     }
 

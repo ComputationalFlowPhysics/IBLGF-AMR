@@ -10,40 +10,43 @@
 //     ▐░░░░░░░░░░░▌▐░░░░░░░░░░▌ ▐░░░░░░░░░░░▌▐░░░░░░░░░░░▌▐░▌
 //      ▀▀▀▀▀▀▀▀▀▀▀  ▀▀▀▀▀▀▀▀▀▀   ▀▀▀▀▀▀▀▀▀▀▀  ▀▀▀▀▀▀▀▀▀▀▀  ▀
 
-#include <boost/mpi.hpp>
-#include <boost/mpi/environment.hpp>
-#include <boost/mpi/communicator.hpp>
-
-#include "lns_amr_lgf_forcing.hpp"
-#include <iblgf/dictionary/dictionary.hpp>
-
-
-using namespace iblgf;
-
-int main(int argc, char *argv[])
+simulation_parameters
 {
+    nLevels=0;
+    global_refinement=0;
+    refinement_factor=0.125;
+    correction=true;
+    subtract_non_leaf=true;
 
-	boost::mpi::environment env(argc, argv);
-	boost::mpi::communicator world;
 
-	std::string input="./";
-    input += std::string("configFile");
-
-    if (argc>1 && argv[1][0] != '-')
+    output
     {
-        input = argv[1];
+        directory=vortexRings;
     }
-    if (world.rank() == 0)
-        std::cout << "input: " << input << std::endl;
 
-    // Read in dictionary
-    Dictionary dictionary(input, argc, argv);
+    vortex
+    {
+        c1=1000000.0;
+        c2=15;
+        R=0.125;
+        center=(0,0,0);
+    }
 
-    //Instantiate setup
-    NS_AMR_LGF setup(&dictionary);
 
-    // run setup
-    setup.run();
+    domain
+    {
+        Lx=2.5;
+        bd_base=(-96,-96,-96);
+        bd_extent=(192,192,192);
 
-    return 0;
+        block_extent=6;
+
+        block
+        {
+            base=(-48,-48,-48);
+            extent=(96,96,96);
+        }
+    }
+
+    EXP_LInf=0.0116450;
 }

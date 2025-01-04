@@ -10,52 +10,39 @@
 #     ▐░░░░░░░░░░░▌▐░░░░░░░░░░▌ ▐░░░░░░░░░░░▌▐░░░░░░░░░░░▌▐░▌
 #      ▀▀▀▀▀▀▀▀▀▀▀  ▀▀▀▀▀▀▀▀▀▀   ▀▀▀▀▀▀▀▀▀▀▀  ▀▀▀▀▀▀▀▀▀▀▀  ▀
 
-add_subdirectory (server_client)
-add_subdirectory (datafields)
-add_subdirectory (tree)
-add_subdirectory (poisson)
-add_subdirectory (operators)
-add_subdirectory (ns_amr_lgf)
-add_subdirectory (ns_amr_lgf2D)
-add_subdirectory (compute_mean2D)
-add_subdirectory (norm_Poisson2D)
-add_subdirectory(lns_amr_lgf2D_adjoint)
-add_subdirectory (lns_amr_lgf2D)
-add_subdirectory (lns_test_petsc)
-add_subdirectory (ifherk_linear_test)
-add_subdirectory (postProcessIntrp)
-add_subdirectory (ibsolve)
-#add_subdirectory (helmholtz_lgf)
-#add_subdirectory (helmholtz)
-add_subdirectory (Poisson2D)
-#add_subdirectory (helmholtz_FFT)
-#add_subdirectory (operators_helmholtz)
-#add_subdirectory (helmholtzFFT_operatorTest)
-#add_subdirectory (operators_helmholtz_complex)
-#add_subdirectory (ns_amr_lgf_helm)
-#add_subdirectory (NewtonOperatorTest)
-#add_subdirectory (NewtonJacobianSolveTest)
-#add_subdirectory (NewtonIteration)
-find_package(MKL CONFIG REQUIRED)
-add_subdirectory (MKLSolverTest)
-add_subdirectory (MKLPoissonTest)
-add_subdirectory (MKLJacobian)
-add_subdirectory (MKLNewton)
-#add_subdirectory (PETscPoissonTest)
-#add_subdirectory (PETscJacobian)
-#add_subdirectory (SLEPcTest)
-#add_subdirectory (SLEPcTestLNS)
-#add_subdirectory (ScalapackDirectSolverTest)
-#add_subdirectory (SLEPcTestLNS_helm)
-#add_subdirectory (SLEPcTestRes)
-#add_subdirectory (OMP_MPI_test)
-#add_subdirectory (operators_helmholtz_complex_OMP)
-#add_subdirectory (helmholtz_OMP)
-#add_subdirectory (ns_amr_lgf_helm_OMP)
-#add_subdirectory (PETScSpectralMatrixTest)
-#add_subdirectory (TwoVortexRings)
-#add_subdirectory (OscillatingAirfoil)
-add_subdirectory (operators_linear)
-add_subdirectory (op_test2)
+set(NAME vortexrings)
+# Testing --------------------------------------------------------------------
+# copy config files
+#add_custom_target(copy_files ALL
+#                      COMMAND ${CMAKE_COMMAND} -E copy_directory
+#                      ${CMAKE_CURRENT_SOURCE_DIR}/configs
+#                      ${CTEST_WORKING_DIRECTORY}/${NAME}/configs
+#                      )
+
+# add the executable
+add_executable(norm_poisson2D.x poisson2D.cpp ${SOURCES})
+target_link_libraries(norm_poisson2D.x
+                      ${MPI_LIBRARIES}
+                      ${Boost_LIBRARIES}
+                      ${FFTW_LIBRARIES}
+                      ${HDF5_LIBRARIES} hdf5
+                      ${BLAS_LIBRARIES}
+                      xtensor
+                      xsimd)
 
 
+                  #set(Ptest_list poisson)
+                  #
+                  #foreach (item ${Ptest_list})
+                  #    add_executable(${item} ${item}.cpp ${SOURCES})
+                  #    add_dependencies(${item} copy_files)
+                  #    target_link_libraries(${item} iblgf_test_main)
+                  #    add_test(
+                  #        NAME ${item}
+                  #        COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 2 ${MPIEXEC_PREFLAGS} $<TARGET_FILE:${item}> WORKING_DIRECTORY ${CTEST_WORKING_DIRECTORY}/${NAME}
+                  #    )
+                  #    add_test(
+                  #        NAME ${item}_parallel_np13
+                  #        COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 13 ${MPIEXEC_PREFLAGS} $<TARGET_FILE:${item}> WORKING_DIRECTORY ${CTEST_WORKING_DIRECTORY}/${NAME}
+                  #    )
+                  #endforeach()

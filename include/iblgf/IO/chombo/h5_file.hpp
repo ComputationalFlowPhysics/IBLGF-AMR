@@ -583,6 +583,7 @@ class hdf5_file
 	    }
             vec_box[i] = BlockDescriptor(coord0,coord1,fake_level);
         }
+        free(data);
         return vec_box;
     }
 
@@ -896,6 +897,7 @@ class hdf5_file
 
             std::string str(rdata);
             H5Aclose(attr);
+            free(rdata);
             return str;
         }
     };

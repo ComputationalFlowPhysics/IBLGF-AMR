@@ -1284,9 +1284,28 @@ struct Operator
         }
         return m;
     }
-
-
-
+    // let Field1=x
+    // let Field2=y
+    // then m =<x,y>=conj(y)^T*x
+    template <class Field1_Re, class Field1_Im, class Field2_Re, class Field2_Im, class Block>
+    static std::vector<float_type> blockInnerProductComplex_oneFreq(Block &block,std::size_t Nf, std::size_t ff,int _Dim) noexcept 
+    {
+        std::vector<float_type> m(2,0.0); //local IP has 2 components, real and imag
+        for (auto& n : block)
+        {
+            float_type tmp_re = 0.0;
+            float_type tmp_im = 0.0;
+            for (std::size_t field_idx = 0; field_idx < _Dim;
+                 ++field_idx)
+            {
+                tmp_re += n(Field1_Re::tag(), field_idx*Nf+ff) * n(Field2_Re::tag(), field_idx*Nf+ff) + n(Field1_Im::tag(), field_idx*Nf+ff) * n(Field2_Im::tag(), field_idx*Nf+ff);
+                tmp_im += n(Field1_Im::tag(), field_idx*Nf+ff) * n(Field2_Re::tag(), field_idx*Nf+ff) - n(Field1_Re::tag(), field_idx*Nf+ff) * n(Field2_Im::tag(), field_idx*Nf+ff);
+            }
+            m[0] += tmp_re;
+            m[1] += tmp_im;
+        }
+        return m;
+    }
     template<class Field1, class Field2, class Block>
     static float_type blockDot(Block& block) noexcept
     {

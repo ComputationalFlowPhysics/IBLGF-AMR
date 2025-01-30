@@ -404,7 +404,8 @@ class Ifherk
     template<class Source, class Target_re, class Target_im>
     void streaming_fft()
     {
-
+        float_type T_stream=T_;
+        if(adjoint_run_) T_stream*=-1.0;
         auto dx_base = domain_->dx_base();
         for (auto it = domain_->begin_leaves(); it != domain_->end_leaves(); ++it)
 		{
@@ -620,6 +621,83 @@ class Ifherk
                         }
                         node(Field_re::tag(),d*Nf+ff)/=norm_total[ff];
                         node(Field_im::tag(),d*Nf+ff)/=norm_total[ff];
+                    }
+                }
+            }
+        }
+    }
+
+    template<class Field1_Re, class Field1_Im, class Field2_Re, class Field2_Im>
+    std::vector<std::vector<float_type>> compute_inner_product_complex(bool leaf_only=true) //=<
+    {
+        std::vector<std::vector<float_type>> inner_local(Nf, std::vector<float_type>(2, 0.0));
+
+        if(domain_->is_client())
+        {
+            for (auto it = domain_->begin(); it != domain_->end(); ++it)
+            {
+                if (!it->locally_owned()) continue;
+                if(! it->has_data()) continue;
+                if (leaf_only && !it->is_leaf()) continue;
+
+                const auto dx_base = domain_->dx_base();
+                const auto dx_level =
+                            dx_base / math::pow2(it->refinement_level());
+
+                for(auto ff=0; ff<Nf;ff++)
+                {
+                    std::vector<float_type> tmp;
+                    tmp = domain::Operator::blockInnerProductComplex_oneFreq<Field1_Re, Field1_Im, Field2_Re, Field2_Im>(it->data(),Nf,ff,domain_->dimension());
+                    inner_local[ff][0] += tmp[0]*std::pow(dx_level, domain_->dimension());
+                    inner_local[ff][1] += tmp[1]*std::pow(dx_level, domain_->dimension()); // norm_nlk*volume(or area) of node in block
+                    // for(auto& val:tmp){
+                    //     inner_local[ff][0] += val[0]*std::pow(dx_level, domain_->dimension()); // norm_nlk*volume(or area) of node in block
+                    //     inner_local[ff][1] += val[1]*std::pow(dx_level, domain_->dimension()); // norm_nlk*volume(or area) of node in block
+                    // }
+                }
+            }
+        }
+        std::vector<std::vector<float_type>> inner_global(Nf, std::vector<float_type>(2, 0.0));
+        for (std::size_t ff=0; ff<Nf;ff++)
+        {
+            boost::mpi::all_reduce(
+                comm_, inner_local[ff][0], inner_global[ff][0], std::plus<float_type>());
+            boost::mpi::all_reduce(
+                comm_, inner_local[ff][1], inner_global[ff][1], std::plus<float_type>());
+        }
+        // float_type inner_global;
+        // boost::mpi::all_reduce(
+        //     comm_, inner_local, inner_global, std::plus<float_type>());
+
+        return inner_global;
+    }
+    template<class Field1_Re, class Field1_Im, class Field2_Re, class Field2_Im>
+    void gram_schmidt() //u2=a2-<a2,e1>e1 =a2-e1*conj(e1)^T*a2
+    {
+        normalize_field_complex_by_freq<Field1_Re, Field1_Im>(); //now =e1
+        std::vector<std::vector<float_type>> inner_product=compute_inner_product_complex<Field2_Re, Field2_Im, Field1_Re, Field1_Im>(); //=<a2,e1>
+        if(domain_->is_server()) return;
+
+        for(auto it=domain_->begin(); it!=domain_->end(); ++it)
+        {
+            if (!it->locally_owned()) continue;
+            if(! it->has_data()) continue;
+
+            for(auto node: it->data())
+            {
+                for(auto d=0; d<domain_->dimension();d++)
+                {
+                    for(auto ff=0; ff<Nf;ff++)
+                    {
+                        if(ff==0){
+                            continue;
+                        }
+                        float_type inner_re=inner_product[ff][0];
+                        float_type inner_im=inner_product[ff][1];
+                        float_type inner_re_tmp=node(Field1_Re::tag(),d*Nf+ff)*inner_re-node(Field1_Im::tag(),d*Nf+ff)*inner_im; //=RE{<a2,e1>e1}
+                        float_type inner_im_tmp=node(Field1_Im::tag(),d*Nf+ff)*inner_re+node(Field1_Re::tag(),d*Nf+ff)*inner_im;//=IM{<a2,e1>e1}
+                        node(Field2_Re::tag(),d*Nf+ff)=node(Field2_Re::tag(),d*Nf+ff)-inner_re_tmp;// u2=a2-<a2,e1>e1
+                        node(Field2_Im::tag(),d*Nf+ff)=node(Field2_Im::tag(),d*Nf+ff)-inner_im_tmp;
                     }
                 }
             }
@@ -1983,7 +2061,7 @@ private:
 
         //std::cout << "part 1" << std::endl;
 
-        //clean_leaf_correction_boundary<edge_aux_type>(domain_->tree()->base_level(), true, 2);
+        clean_leaf_correction_boundary<edge_aux_type>(domain_->tree()->base_level(), true, 2);
         // add background velocity
         copy<Source_old, face_aux_tmp_type>();
         domain::Operator::add_field_expression<face_aux_tmp_type>(domain_,
@@ -1994,7 +2072,7 @@ private:
         {
             client->template buffer_exchange<edge_aux_type>(l);
             client->template buffer_exchange<face_aux_tmp_type>(l);
-            //clean_leaf_correction_boundary<edge_aux_type>(l, false, 2);
+            clean_leaf_correction_boundary<edge_aux_type>(l, false, 2);
 
             for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
             {
@@ -2031,7 +2109,7 @@ private:
 
         //std::cout << "part 3" << std::endl;
 
-        //clean_leaf_correction_boundary<edge_aux_type>(domain_->tree()->base_level(), true, 2);
+        clean_leaf_correction_boundary<edge_aux2_type>(domain_->tree()->base_level(), true, 2);
         // add background velocity
         copy<Source_new, face_aux_tmp_type>();
         //domain::Operator::add_field_expression<face_aux_tmp_type>(domain_, simulation_->frame_vel(), T_stage_, -1.0);
@@ -2041,7 +2119,7 @@ private:
         {
             client->template buffer_exchange<edge_aux2_type>(l);
             client->template buffer_exchange<face_aux_tmp_type>(l);
-            //clean_leaf_correction_boundary<edge_aux_type>(l, false, 2);
+            clean_leaf_correction_boundary<edge_aux2_type>(l, false, 2);
 
             for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
             {
@@ -2207,6 +2285,9 @@ private:
         //float_type eps = 1e-3;
         //assuming f_hat_im and f_hat_re is only at leaves. up down single field not each f
         clean<nonlinear_tmp_type>();
+        float_type T_force=T_stage_;
+        if(adjoint_run_)
+            T_force*=-1.0;
         auto dx_base = domain_->dx_base();
         for (auto it = domain_->begin_leaves(); it != domain_->end_leaves(); ++it)
 		{
@@ -2234,7 +2315,7 @@ private:
                         if(ff==0) continue;
                         float_type f_ff=freq_vec_[ff];
 
-                        node(nonlinear_tmp_type::tag(),d)+=scale*2*node(f_hat_re_type::tag(),d*Nf+ff)*std::cos(2*T_stage_*f_ff*M_PI)-scale*2*node(f_hat_im_type::tag(),d*Nf+ff)*std::sin(2*M_PI*T_stage_*f_ff);
+                        node(nonlinear_tmp_type::tag(),d)+=scale*2*node(f_hat_re_type::tag(),d*Nf+ff)*std::cos(2*T_force*f_ff*M_PI)-scale*2*node(f_hat_im_type::tag(),d*Nf+ff)*std::sin(2*M_PI*T_force*f_ff);
                     }
                 }
             }

@@ -228,7 +228,6 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 
 		auto domain_range = domain_->bounding_box().max() - domain_->bounding_box().min();
 		Lx = domain_range[0] * dx_;
-		int_seed = simulation_.dictionary()->template get_or<int>("seed", 200);
 
 
 
@@ -247,6 +246,13 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 
 		ic_filename_ = simulation_.dictionary_->template get_or<std::string>(
 			"hdf5_ic_name", "null");
+
+		tv1_filename_ = simulation_.dictionary_->template get_or<std::string>(
+			"hdf5_tv1_name", "null");
+
+		tv2_filename_ = simulation_.dictionary_->template get_or<std::string>(
+			"hdf5_tv2_name", "null");
+
 
 		ref_filename_ = simulation_.dictionary_->template get_or<std::string>(
 			"hdf5_ref_name", "null");
@@ -352,256 +358,99 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 		time_integration_t ifherk(&this->simulation_);
 		ifherk.set_adjoint_run(true);
 		world.barrier();
-		if (ic_filename_ != "null") //never been run before so load in mean flow and perturb IC
+
+
+		if (tv1_filename_!="null")
 		{
 			if (world.rank() == 0)
-				std::cout<<"reading initial condition from file "<<ic_filename_<<std::endl;
-			//simulation_.template read_h5<u_type>(ic_filename_, "u");
-			// simulation_.template read_h5<p_type>(ic_filename_, "p");
-			simulation_.template read_h5<u_base_type>(ic_filename_, "u_base");
+				std::cout<<"reading tv1 from file "<<tv1_filename_<<std::endl;
+			simulation_.template read_h5<f_hat_re_type>(tv1_filename_, "u_hat_re"); //tv1 is nomalirexed tv1 input
+			simulation_.template read_h5<f_hat_im_type>(tv1_filename_, "u_hat_im");
 			world.barrier();
-			pcout<<"read u_base"<<std::endl;
-			// simulation_.template read_h5<p_base_type>(ic_filename_, "p");
-			ifherk.clean<u_type>();
-			ifherk.clean<u_hat_re_type>();
-			ifherk.clean<u_hat_im_type>();
-			ifherk.clean<f_hat_re_type>();
-			ifherk.clean<f_hat_im_type>();
-			world.barrier();
-			pcout<<"cleaned"<<std::endl;
-			// this->perturbIC<u_type>();
-			// ifherk.up_and_down<u_type>();
-			// this->init_ext_forcing<f_hat_re_type, f_hat_im_type>();
-			//
-			simulation_.template read_h5<f_hat_re_type>(ic_filename_, "u_hat_re"); //load in uhat for foward run
-			simulation_.template read_h5<f_hat_im_type>(ic_filename_, "u_hat_im");
-			world.barrier();
-			pcout<<"init ext forcing"<<std::endl;
-
-			// pcout<<"current norm re:"<<ifherk.compute_norm_by_freq<f_hat_re_type>()<<std::endl;
-			// pcout<<"current norm im:"<<ifherk.compute_norm_by_freq<f_hat_im_type>()<<std::endl;
-
-			ifherk.normalize_field_complex_by_freq<f_hat_re_type, f_hat_im_type>();
-			world.barrier();
-			pcout<<"normalized"<<std::endl;
-			std::vector<float_type> norms=ifherk.compute_norm_by_freq<f_hat_re_type>();
-			for (int i=0; i<norms.size(); i++)
-			{
-				pcout<<"norm re "<<i<<": "<<norms[i]<<std::endl;
-			}
-			norms=ifherk.compute_norm_by_freq<f_hat_im_type>();
-			for (int i=0; i<norms.size(); i++)
-			{
-				pcout<<"norm im "<<i<<": "<<norms[i]<<std::endl;
-			}
-			// pcout<<"current norm re:"<<ifherk.compute_norm_by_freq<f_hat_re_type>()<<std::endl;
-			// pcout<<"current norm im:"<<ifherk.compute_norm_by_freq<f_hat_im_type>()<<std::endl;
-			reset_time=true;
-
+			pcout<<"read tv1"<<std::endl;
 		}
-		
-		// int n_rep=10;
-		// // if (domain_->is_client()){
-		// // 	// for (int i=0; i<n_rep; i++)
-		// // 	// {
-		// // 	// 	// ifherk.up_and_down<u_base_type>();
-		// // 	// 	ifherk.pad_velocity_access<u_base_type,u_base_type>();
-		// // 	// }
-
-			
-		// // }
-		// ifherk.clean<u_base_type>(true);
-
-		// simulation_.write("flow_mean_post.hdf5");
-		// return 0.0;
-		mDuration_type ifherk_duration(0);
-		TIME_CODE(ifherk_duration, SINGLE_ARG(
-			ifherk.time_march(use_restart(),reset_time);
-		))
-			pcout_c << "Time to solution [ms] " << ifherk_duration.count() << std::endl;
-
-		ifherk.clean_leaf_correction_boundary<u_type>(domain_->tree()->base_level(), true, 1);
-
-		float_type maxNumVort = -1;
-
-
-		if (ref_filename_ != "null")
+		if (tv2_filename_!="null")
 		{
-			if (vortexType == 0) {
-			simulation_.template read_h5<u_ref_type>(ref_filename_, "u");
-			simulation_.template read_h5<p_ref_type>(ref_filename_, "p");
-			}
-
-			auto center = (domain_->bounding_box().max() -
-				domain_->bounding_box().min() + 1) / 2.0 +
-				domain_->bounding_box().min();
-
-
-			for (auto it = domain_->begin_leaves();
-				it != domain_->end_leaves(); ++it)
-			{
-				if (!it->locally_owned()) continue;
-
-				auto dx_level = domain_->dx_base() / std::pow(2, it->refinement_level());
-				auto scaling = std::pow(2, it->refinement_level());
-
-				for (auto& node : it->data())
-				{
-					const auto& coord = node.level_coordinate();
-					float_type x = static_cast<float_type>
-						(coord[0] - center[0] * scaling) * dx_level;
-					float_type y = static_cast<float_type>
-						(coord[1] - center[1] * scaling) * dx_level;
-					//float_type z = static_cast<float_type>
-					//    (coord[2]-center[2]*scaling)*dx_level;
-
-					float_type r2 = x * x + y * y;
-					if (r2 > 4 * R_ * R_)
-					{
-						node(u_ref, 0) = 0.0;
-						node(u_ref, 1) = 0.0;
-						//node(u_ref, 2)=0.0;
-					}
-					float_type r__ = std::sqrt(x * x + y * y);
-					float_type t_final = dt_ * tot_steps_;
-					node(w_exact) = w_taylor_vort(r__, t_final);
-					node(w_num) = (node(u, 1) - node.at_offset(u, -1, 0, 1) -
-						node(u, 0) + node.at_offset(u, 0, -1, 0)) / dx_level;
-					if (vortexType != 0) {
-					x = static_cast<float_type>
-						(coord[0] - center[0] * scaling) * dx_level;
-					y = static_cast<float_type>
-						(coord[1] - center[1] * scaling + 0.5) * dx_level;
-					node(u_ref, 0) = u_vort(x, y, t_final, 0);
-					x = static_cast<float_type>
-						(coord[0] - center[0] * scaling + 0.5) * dx_level;
-					y = static_cast<float_type>
-						(coord[1] - center[1] * scaling) * dx_level;
-					node(u_ref, 1) = u_vort(x, y, t_final, 1);
-
-
-					//compute analytical u_theta
-					x = static_cast<float_type>(
-						coord[0] - center[0] * scaling) *
-						dx_level;
-					y = static_cast<float_type>(
-						coord[1] - center[1] * scaling) *
-						dx_level;
-					float_type u = u_vort(x, y, t_final, 0);
-					float_type v = u_vort(x, y, t_final, 1);
-					float_type u_theta = std::sqrt(u * u + v * v);
-					node(exact_u_theta, 0) = u_theta;
-					node(exact_u_theta, 1) = 0.0;     //0 is u_theta, 1 is u_r
-					}
-
-					
-				}
-
-			}
+			if (world.rank() == 0)
+				std::cout<<"reading tv2 from file "<<tv2_filename_<<std::endl;
+			simulation_.template read_h5<u_hat_re_type>(tv2_filename_, "u_hat_re"); //tv2
+			simulation_.template read_h5<u_hat_im_type>(tv2_filename_, "u_hat_im"); //tv2
+			world.barrier();
+			pcout<<"read tv2"<<std::endl;
 		}
-		getUtheta<u_type, num_u_theta_type>();
-		float_type t_final = dt_ * tot_steps_;
-		pcout << "the final time is " << t_final << std::endl;
-		pcout << "the max numerical vorticity is " << maxNumVort << std::endl;
-		ifherk.clean_leaf_correction_boundary<u_type>(domain_->tree()->base_level(), true, 1);
 
-		float_type u1_inf = this->compute_errors<u_type, u_ref_type, error_u_type>(
-			std::string("u1_"), 0);
-		float_type u2_inf = this->compute_errors<u_type, u_ref_type, error_u_type>(
-			std::string("u2_"), 1);
-		float_type u_t_inf = this->compute_errors<num_u_theta_type, exact_u_theta_type, error_u_theta_type>(
-			std::string("u_t_"), 0);
-		float_type u_r_inf = this->compute_errors<num_u_theta_type, exact_u_theta_type, error_u_theta_type>(
-			std::string("u_r_"), 1);
+		// old stuff
+		world.barrier(); //both test vectors have been loaded in
 
-		float_type w_inf = this->compute_errors<edge_aux_type, w_exact_type, error_w_type>(std::string("w_"), 0);
-		//float_type u3_linf=this->compute_errors<u_type, u_ref_type, error_u_type>(
-		//        std::string("u3_"), 2);
+		ifherk.normalize_field_complex_by_freq<f_hat_re_type, f_hat_im_type>(); //normalize tv1, f_hat now contains e1
 
-		simulation_.write("final.hdf5");
-		return u1_inf;
+		world.barrier();
+		pcout<<"normalized"<<std::endl;
+		auto tmp=ifherk.compute_inner_product_complex<f_hat_re_type, f_hat_im_type, f_hat_re_type, f_hat_im_type>();
+		pcout<<"inner product with self: "<<std::endl;
+		if(domain_->is_server())
+		{
+			for (const auto& row : tmp) {  // Loop over rows
+				for (const auto& val : row) {  // Loop over elements in each row
+					std::cout << val << " ";  // Print element followed by a space
+				}
+        		std::cout << std::endl;  // Newline after each row
+   			}
+		}
+		world.barrier();
+		pcout<<"inner product with self done"<<std::endl;
+		pcout<<"IP with tv2"<<std::endl;
+		auto tmp2=ifherk.compute_inner_product_complex<f_hat_re_type, f_hat_im_type, u_hat_re_type, u_hat_im_type>();
+		if(domain_->is_server())
+		{
+			for (const auto& row : tmp2) {  // Loop over rows
+				for (const auto& val : row) {  // Loop over elements in each row
+					std::cout << val << " ";  // Print element followed by a space
+				}
+				std::cout << std::endl;  // Newline after each row
+   			}
+		}
+		world.barrier();
+		pcout<<"IP with tv2 done"<<std::endl;
+		ifherk.gram_schmidt<f_hat_re_type, f_hat_im_type, u_hat_re_type, u_hat_im_type>();
+		simulation_.write("tv2");
+		
+		return 0.0;
 
 	}
 
-	float_type run_homogeneous()
-    {
-        boost::mpi::communicator world;
-        bool                     reset_time = false;
-        time_integration_t       ifherk(&this->simulation_);
-		ifherk.set_adjoint_run(true);
-        world.barrier();
-		pcout<<"HOMOGENEOUS RUN"<<std::endl;
-        if (ic_filename_ != "null") //never been run before so load in mean flow and perturb IC
-        {
-            if (world.rank() == 0) std::cout << "reading initial condition from file " << ic_filename_ << std::endl;
-            //simulation_.template read_h5<u_type>(ic_filename_, "u");
-            // simulation_.template read_h5<p_type>(ic_filename_, "p");
-            simulation_.template read_h5<u_base_type>(ic_filename_, "u_base");
-            world.barrier();
-            pcout << "read u_base" << std::endl;
-            if(domain_->is_client())
-            {
-                ifherk.pad_velocity_access<u_base_type,u_base_type>();
-                ifherk.clean<u_type>();
-                ifherk.clean<error_u_type>();
-                ifherk.clean<u_hat_re_type>();
-                ifherk.clean<u_hat_im_type>();
-                ifherk.clean<f_hat_re_type>();
-                ifherk.clean<f_hat_im_type>();
-            }
+	template<typename Source>
+	void perturbIC() noexcept
+	{
+		boost::mpi::communicator world;
+		if (domain_->is_server()) return;
+		int seed=100;
+		srand(seed+world.rank()); //seed the random number generator differntly for each processor
+		
+		for (auto it = domain_->begin(); it != domain_->end(); ++it)
+		{
+			if (!it->locally_owned()) continue;
+			if (!it->is_leaf()) continue;
+			const auto dx_base = domain_->dx_base();
+			auto dx_level = dx_base / std::pow(2, it->refinement_level());
+			auto scaling = std::pow(2, it->refinement_level());
 
-            world.barrier();
-            // test_buffer_exchange<u_base_type, error_u_type>(&ifherk);
-            pcout << "cleaned" << std::endl;
-            if(pert_strength_!=0.0)
-            {
-                this->perturbIC<u_type>();
-                // pcout<<"current norm re:"<<ifherk.compute_norm_by_freq
-			    pcout<<"current norm u after perturb"<<ifherk.compute_norm<u_type>()<<std::endl;
-			    ifherk.normalize_field<u_type>();
-            }
-            
-			pcout<<"current norm u after normalization"<<ifherk.compute_norm<u_type>()<<std::endl;
-			reset_time = true;
-        }
+			for (auto& node : it->data())
+			{
+				float_type rand_num =
+                                static_cast<float_type>(std::rand()) /
+                                    static_cast<float_type>(RAND_MAX) -
+                                0.5;
+				node(Source::tag(), 0) = rand_num*pert_strength_;
+				rand_num =
+								static_cast<float_type>(std::rand()) /
+									static_cast<float_type>(RAND_MAX) -
+								0.5;
+				node(Source::tag(), 1) = rand_num*pert_strength_;
+			}
+		}
+	}
 
-		ifherk.up_and_down<u_type>();
-
-		mDuration_type ifherk_duration(0);
-        TIME_CODE(ifherk_duration, SINGLE_ARG(ifherk.time_march(use_restart(), reset_time);))
-        pcout_c << "Time to solution [ms] " << ifherk_duration.count() << std::endl;
-
-
-        return 0.0;
-    }
-
-    template<typename Source>
-    void perturbIC() noexcept
-    {
-        boost::mpi::communicator world;
-        if (domain_->is_server()) return;
-        int seed = int_seed;
-        // srand(seed+world.rank()); //seed the random number generator differntly for each processor
-        std::mt19937 gen(seed + world.rank()); //seed the random number generator differntly for each processor
-        std::normal_distribution<float_type> dist(0.0, 1.0);
-
-        for (auto it = domain_->begin(); it != domain_->end(); ++it)
-        {
-            if (!it->locally_owned()) continue;
-            if (!it->is_leaf() || it->is_correction()) continue;
-            const auto dx_base = domain_->dx_base();
-            auto       dx_level = dx_base / std::pow(2, it->refinement_level());
-            auto       scaling = std::pow(2, it->refinement_level());
-
-            for (auto& node : it->data())
-            {
-                for (std::size_t field_idx = 0; field_idx < Source::nFields(); ++field_idx)
-                {
-                    node(Source::tag(), field_idx) = dist(gen);
-                }
-            }
-        }
-    }
 	template<class Source_re, class Source_im>
 	void init_ext_forcing()
 	{
@@ -1253,7 +1102,7 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
     int global_refinement_=0;
     fcoord_t offset_;
 	float_type pert_strength_=0.0;
-	int        int_seed = 200;
+
     float_type a_ = 10.0;
 
     float_type dt_,dx_;
@@ -1266,6 +1115,7 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
     vr_fct_t vr_fct_;
 
     std::string ic_filename_, ref_filename_;
+	std::string tv1_filename_, tv2_filename_;
 
     float_type Lx;
 };

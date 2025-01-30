@@ -1,7 +1,7 @@
 #Bring the headers, such as Student.h into the project
 include_directories(${IBLGF_SOURCE_DIR}/src )
 
-set(NAME lns_amr_lgf2D_adjoint)
+set(NAME QR_2D)
 # add_custom_target(copy_ifherk_files2D ALL
 #                       COMMAND ${CMAKE_COMMAND} -E copy_directory
 #                       ${CMAKE_CURRENT_SOURCE_DIR}/configs
@@ -11,18 +11,8 @@ set(NAME lns_amr_lgf2D_adjoint)
 # set(Ptest_list ns_amr_lgf_Test2D)
 
 # add the executable
-add_executable(lns_amr_lgf2D_adjoint.x lns_amr_lgf_adjoint.cpp ${SOURCES})
-target_link_libraries(lns_amr_lgf2D_adjoint.x
-                      ${MPI_LIBRARIES}
-                      ${Boost_LIBRARIES}
-                      ${FFTW_LIBRARIES}
-                      ${HDF5_LIBRARIES} hdf5
-                      ${BLAS_LIBRARIES}
-                      xtensor
-                      xsimd)
-# add the executable
-add_executable(lns_amr_lgf2D_homo_adjoint.x lns_amr_lgf_homo_adjoint.cpp ${SOURCES})
-target_link_libraries(lns_amr_lgf2D_homo_adjoint.x
+add_executable(QR_2D.x QR_2D.cpp ${SOURCES})
+target_link_libraries(QR_2D.x
                       ${MPI_LIBRARIES}
                       ${Boost_LIBRARIES}
                       ${FFTW_LIBRARIES}

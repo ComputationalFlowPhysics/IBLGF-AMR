@@ -55,6 +55,7 @@ const int Dim = 2;
 
 struct parameters
 {
+	static constexpr std::size_t Nf = 2;
     static constexpr std::size_t Dim = 2;
     // clang-format off
     REGISTER_FIELDS
@@ -82,7 +83,11 @@ struct parameters
 		 //for jacobian
 		 (nonlinear_tmp,       float_type,  Dim,  1,  1,  face,true),
       	 (face_aux_tmp,        float_type,  Dim,  1,  1,  face,true),
-		 (edge_aux2,           float_type,  (Dim*2 - 3),  1,  1,  edge,true)
+		 (edge_aux2,           float_type,  (Dim*2 - 3),  1,  1,  edge,true),
+		 (f_hat_re,       float_type,  Dim*Nf,  1,  1,  face,true),
+		 (f_hat_im,       float_type,  Dim*Nf,  1,  1,  face,true),
+		 (u_hat_re            , float_type, 2*Nf,    1,       1,     face,true  ),
+		 (u_hat_im            , float_type, 2*Nf,    1,       1,     face,true  )
     ))
     // clang-format on
 };
@@ -351,6 +356,8 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 		{
 			ifherk.clean<u_type>();
 			ifherk.clean<u_base_type>();
+			ifherk.clean<edge_aux_type>();
+			ifherk.clean<edge_aux2_type>();
 		}
 
 		// int nStart=3000; // time step of when AMR is turned off
@@ -359,18 +366,28 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 		int nStart = simulation_.dictionary()->template get_or<int>("nStart", 3000);
 		int nEnd = simulation_.dictionary()->template get_or<int>("nEnd", 19750);
 		int nSkip = simulation_.dictionary()->template get_or<int>("output_frequency", 10);
-		int nTimes=(nEnd-nStart)/nSkip+1;
-		for (int n = nStart; n < nEnd; n+=nSkip)
+		int nTimes=int((nEnd-nStart)/nSkip+1);
+		pcout<<"nStart: "<<nStart<<std::endl;
+		pcout<<"nEnd: "<<nEnd<<std::endl;
+		pcout<<"nSkip: "<<nSkip<<std::endl;
+		pcout<<"nTimes: "<<nTimes<<std::endl;
+
+		for (int n = nStart; n <= nEnd; n+=nSkip)
 		{
-			if(n%100==0) pcout<<"time step: "<<n<<std::endl;
+			if((n-nStart)%100==0) pcout<<"time step: "<<n<<std::endl;
 			float_type  ratio = 1.0 / static_cast<float_type>(nTimes);
 			std::string flow_name = "./output/flowTime_" + std::to_string(n)+".hdf5";
 			simulation_.template read_h5<u_type>(flow_name, "u");
-            if (world.rank() != 0) ifherk.add<u_type, u_base_type>(ratio);
-            if (world.rank() != 0) ifherk.clean<u_type>();
+			simulation_.template read_h5<edge_aux_type>(flow_name, "edge_aux");
+            if (domain_->is_client()){
+				ifherk.add<u_type, u_base_type>(ratio);
+				ifherk.clean<u_type>();
+				ifherk.add<edge_aux_type, edge_aux2_type>(ratio);
+				ifherk.clean<edge_aux_type>();
+			} 
 			world.barrier();
 		}
-		simulation_.write("flow_mean.hdf5");
+		simulation_.write("mean");
 		
 
 

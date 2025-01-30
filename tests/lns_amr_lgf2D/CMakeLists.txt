@@ -21,6 +21,17 @@ target_link_libraries(lns_amr_lgf2D.x
                       xtensor
                       xsimd)
 
+# add the executable
+add_executable(lns_amr_lgf2D_homo.x lns_amr_lgf_homo.cpp ${SOURCES})
+target_link_libraries(lns_amr_lgf2D_homo.x
+                      ${MPI_LIBRARIES}
+                      ${Boost_LIBRARIES}
+                      ${FFTW_LIBRARIES}
+                      ${HDF5_LIBRARIES} hdf5
+                      ${BLAS_LIBRARIES}
+                      xtensor
+                      xsimd)
+
 foreach (item ${Ptest_list})
     add_executable(${item} ${item}.cpp ${SOURCES})
     add_dependencies(${item} copy_ifherk_files2D)

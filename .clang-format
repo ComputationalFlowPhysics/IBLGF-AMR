@@ -43,7 +43,7 @@ AlwaysBreakTemplateDeclarations: Yes
 BreakBeforeTernaryOperators: true
 BreakInheritanceList: BeforeComma
 BreakStringLiterals: false
-ColumnLimit: 80
+ColumnLimit: 120
 #ColumnLimit: 120
 # CommentPragmas
 CompactNamespaces: false

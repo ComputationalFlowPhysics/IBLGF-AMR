@@ -859,7 +859,7 @@ class Ifherk
             for (std::size_t _field_idx=0; _field_idx<u_type::nFields(); ++_field_idx)
             {
                 for (int l = domain_->tree()->depth() - 2;
-                     l >= domain_->tree()->base_level(); --l)
+                     l >= domain_->tree()->base_level(); --l) // finest level is l=depth-1 and we only 
                 {
                     client->template buffer_exchange<u_type>(l);
 
@@ -1404,6 +1404,7 @@ private:
              l < domain_->tree()->depth(); ++l)
         {
             client->template buffer_exchange<edge_aux_type>(l);
+            client->template buffer_exchange<face_aux_type>(l);
             clean_leaf_correction_boundary<edge_aux_type>(l, false, 2);
 
             for (auto it = domain_->begin(l); it != domain_->end(l); ++it)

@@ -234,7 +234,23 @@ class hdf5_file
     ~hdf5_file()
     {
         close_everything();
-        //close_file(file_id);
+    //         if (filespace > 0)
+    // {
+    //     H5Sclose(filespace);  // Close the file space
+    // }
+
+    // // Close the HDF5 file if it's open
+    // if (file_id > 0)
+    // {
+    //     H5Fclose(file_id);  // Close the HDF5 file
+    // }
+
+    // // Close the property list if it was created
+    if (plist_id > 0)
+    {
+        H5Pclose(plist_id);  // Close the property list
+    }
+        // close_file(file_id);
     }
 
     void update_plist() {}
@@ -524,7 +540,7 @@ class hdf5_file
 
 	//int sizes[static_cast<int>(dims[0])];
 
-        hid_t memtype = H5Dget_type(dataset_id);
+        // hid_t memtype = H5Dget_type(dataset_id); // memtype not used anywhere
 	//memtype = H5Tcreate(H5T_COMPOUND, sizeof(box_compound2D));
 
 	//int tmp11[static_cast<int>(dims[0]) * 50];
@@ -584,6 +600,11 @@ class hdf5_file
             vec_box[i] = BlockDescriptor(coord0,coord1,fake_level);
         }
         free(data);
+        // H5Tclose(s2_tid);
+
+        // H5Sclose(dataspace_id);
+
+
         return vec_box;
     }
 
@@ -638,8 +659,68 @@ class hdf5_file
         auto hdf_t = hdf_type<T>::type();
         status = H5Dread(
             dataset_id, hdf_t, memspace, dataspace_id, H5P_DEFAULT, &data[0]);
+        H5Sclose(memspace);
+        H5Sclose(dataspace_id);
     }
 
+    template<typename T, class Base, class Extent, class Stride,
+        std::size_t Dset_Dim = NumDims>
+    void read_hyperslab_test(hid_type& dataset_id, Base base, Extent extent,
+        Stride stride, std::vector<T>& data)
+    {
+        hid_t dataspace_id = H5Dget_space(dataset_id);
+        HDF5_CHECK_ERROR(dataspace_id, "hdf5: could not open dataspace")
+
+        //Get NumDims of the file:
+        int dimension = H5Sget_simple_extent_ndims(dataspace_id);
+        std::vector<hsize_t> dims(dimension);
+        dimension = H5Sget_simple_extent_dims(dataspace_id, &dims[0], NULL);
+        HDF5_CHECK_ERROR(dimension, "hdf5: could query dimension")
+
+        std::reverse(dims.begin(), dims.end());
+
+        long int nElements = 1;
+        for (unsigned int d = 0; d < Dset_Dim; ++d) nElements *= dims[d];
+
+        std::vector<hsize_t> offset(dimension, 0);
+        std::vector<hsize_t> count(dimension, 0);
+        std::vector<hsize_t> step(dimension, 0);
+
+        hsize_type n_elements_domain = 1;
+        for (int d = 0; d < dimension; ++d)
+        {
+            offset[d] = static_cast<hsize_t>(base[d]);
+            count[d] = static_cast<hsize_t>(extent[d]);
+            step[d] = static_cast<hsize_t>(stride[d]);
+            n_elements_domain *= extent[d];
+        }
+        //std::vector<float_type> data(n_elements_domain);
+        data.resize(n_elements_domain);
+
+        // std::reverse(offset.begin(), offset.end());
+        // std::reverse(count.begin(), count.end());
+        // std::reverse(step.begin(), step.end());
+
+        // auto status = H5Sselect_hyperslab(dataspace_id, H5S_SELECT_SET,
+        //     &offset[0], &step[0], &count[0], NULL);
+        // HDF5_CHECK_ERROR(status, "hdf5: Could not select hyperslab")
+
+        // const hsize_t rank_out = 1; // dimensionality of output vector
+        // hsize_t       dimsm[1];     // memory space dimensions
+        // dimsm[0] = data.size();
+        // auto memspace = H5Screate_simple(rank_out, dimsm, NULL);
+        // HDF5_CHECK_ERROR(memspace, "hdf5: Could not select create memory space")
+
+        // auto hdf_t = hdf_type<T>::type();
+        // status = H5Dread(
+        //     dataset_id, hdf_t, memspace, dataspace_id, H5P_DEFAULT, &data[0]);
+        // H5Sclose(memspace);
+        H5Sclose(dataspace_id);
+        offset.clear();
+        count.clear();
+        step.clear();
+
+    }
     template<typename T>
     void write_hyperslab_cont1D(
         hid_type& dset_id, hyperslab<1> _hyperslab, T* buf)
@@ -738,20 +819,7 @@ class hdf5_file
         //update_plist();
         //H5Eset_auto(NULL,NULL, NULL);
         //H5Eset_auto(nullptr,nullptr, nullptr);
-        auto numOpenObjs = H5Fget_obj_count(
-            file_id, H5F_OBJ_DATASET | H5F_OBJ_GROUP | H5F_OBJ_DATATYPE);
-        if (numOpenObjs > 0)
-        {
-            std::vector<hid_type> obj_id_list(numOpenObjs);
-            auto                  numReturnedOpenObjs = H5Fget_obj_ids(file_id,
-                H5F_OBJ_DATASET | H5F_OBJ_GROUP | H5F_OBJ_DATATYPE, -1,
-                &obj_id_list[0]);
-            for (hsize_type i = 0;
-                 i < static_cast<hsize_type>(numReturnedOpenObjs); ++i)
-                H5Oclose(obj_id_list[i]);
-        }
-
-        numOpenObjs = H5Fget_obj_count(file_id, H5F_OBJ_ATTR);
+        auto numOpenObjs = H5Fget_obj_count(file_id, H5F_OBJ_ATTR);
         if (numOpenObjs > 0)
         {
             std::vector<hid_type> obj_id_list(numOpenObjs);
@@ -761,7 +829,32 @@ class hdf5_file
                  i < static_cast<hsize_type>(numReturnedOpenObjs); ++i)
                 H5Aclose(obj_id_list[i]);
         }
+        numOpenObjs = H5Fget_obj_count(
+             H5F_OBJ_ALL, H5F_OBJ_DATASET | H5F_OBJ_GROUP | H5F_OBJ_DATATYPE);
+        if (numOpenObjs > 0)
+        {
+            std::vector<hid_type> obj_id_list(numOpenObjs);
+            auto                  numReturnedOpenObjs = H5Fget_obj_ids(H5F_OBJ_ALL,
+                H5F_OBJ_DATASET | H5F_OBJ_GROUP | H5F_OBJ_DATATYPE, -1,
+                &obj_id_list[0]);
+            for (hsize_type i = 0;
+                 i < static_cast<hsize_type>(numReturnedOpenObjs); ++i)
+                H5Oclose(obj_id_list[i]);
+        }
 
+        // numOpenObjs = H5Fget_obj_count(file_id, H5F_OBJ_ATTR);
+        // if (numOpenObjs > 0)
+        // {
+        //     std::vector<hid_type> obj_id_list(numOpenObjs);
+        //     auto                  numReturnedOpenObjs =
+        //         H5Fget_obj_ids(file_id, H5F_OBJ_ATTR, -1, &obj_id_list[0]);
+        //     for (hsize_type i = 0;
+        //          i < static_cast<hsize_type>(numReturnedOpenObjs); ++i)
+        //         H5Aclose(obj_id_list[i]);
+        // }
+        // Check again after closing
+        // auto numOpenObjsAfter = H5Fget_obj_count(file_id, H5F_OBJ_DATASET | H5F_OBJ_GROUP | H5F_OBJ_DATATYPE);
+        // std::cout << "After closing: Open objects count: " << numOpenObjsAfter << std::endl;
         numOpenObjs = H5Fget_obj_count(file_id, H5F_OBJ_FILE);
         if (numOpenObjs > 0)
         {
@@ -772,6 +865,8 @@ class hdf5_file
                  i < static_cast<hsize_type>(numReturnedOpenObjs); ++i)
                 H5Fclose(obj_id_list[i]);
         }
+
+
     }
 
     //Attribute: Default impl for generic objects
@@ -847,6 +942,7 @@ class hdf5_file
 
             auto status = H5Aread(attr, hdf_t, &res[0]);
             HDF5_CHECK_ERROR(status, "hdf5: could not read Attribute")
+            // H5Aclose(attr);
             return res;
         }
     };

@@ -108,6 +108,29 @@ class H5_io
     }
 
     template<typename Field>
+    void read_h5_test(std::string _filename, std::string read_field, Domain* _lt)
+    {
+        pcout << "Start reading file -> " << _filename << std::endl;
+        boost::mpi::communicator world;
+        
+        
+        for(int i=0;i<3000;i++){
+            if (world.rank() == 0) {
+                std::cout << "reading file -> " << _filename << " iteration " << i << std::endl;
+            }
+            world.barrier();
+            auto octant_blocks = blocks_list_build(_lt,true,true);
+
+            hdf5_file<Dim> chombo_file(_filename, true);
+            chombo_t ch_writer(octant_blocks);  // Initialize writer with vector of octants
+            ch_writer.template read_u<Field>(&chombo_file, read_field, octant_blocks, _lt );
+        }
+        // ch_writer.template read_u<Field>(&chombo_file, read_field, octant_blocks, _lt );
+
+    }
+
+
+    template<typename Field>
     void read_h5_2D(std::string _filename, std::string read_field, Domain* _lt)
     {
         pcout << "Start reading file -> " << _filename << std::endl;

@@ -100,9 +100,9 @@ struct parameters
     // clang-format on
 };
 
-struct OperatorTest : public SetupBase<OperatorTest, parameters>
+struct OperatorTest : public SetupLinear<OperatorTest, parameters>
 {
-    using super_type =SetupBase<OperatorTest,parameters>;
+    using super_type =SetupLinear<OperatorTest,parameters>;
 
     //Timings
     using clock_type = std::chrono::high_resolution_clock;

@@ -285,7 +285,7 @@ class Ifherk
                 //}
                 if (!just_restarted_) {
                     this->adapt(false);
-                    adapt_corr_time_step();
+                    // adapt_corr_time_step();
                 }
                 just_restarted_=false;
 

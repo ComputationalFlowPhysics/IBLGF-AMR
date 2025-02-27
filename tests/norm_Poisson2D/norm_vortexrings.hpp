@@ -82,9 +82,9 @@ struct vortex_ring
     coordinate_type<float_type, Dim> center;
 };
 
-struct VortexRingTest : public SetupBase<VortexRingTest, parameters>
+struct VortexRingTest : public SetupLinear<VortexRingTest, parameters>
 {
-    using super_type = SetupBase<VortexRingTest, parameters>;
+    using super_type = SetupLinear<VortexRingTest, parameters>;
 
     //Timings
     using clock_type = std::chrono::high_resolution_clock;

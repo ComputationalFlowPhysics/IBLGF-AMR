@@ -1,5 +1,7 @@
 #Bring the headers, such as Student.h into the project
 include_directories(${IBLGF_SOURCE_DIR}/src )
+include_directories($CRAY_LIBSCI_PREFIX/include)
+link_directories($CRAY_LIBSCI_PREFIX/lib)
 
 #find_package(PETSC)
 set(PETSC $ENV{PETSC_DIR}/$ENV{PETSC_ARCH})
@@ -39,7 +41,18 @@ target_link_libraries(lns_test_petsc.x
                       ${BLAS_LIBRARIES}
                       ${PETSC_LIBRARIES}
                       xtensor
-                      xsimd)
+                      xsimd slepc)
+
+add_executable(lns_petsc_reshuffle.x lns_petsc_reshuffle.cpp ${SOURCES})
+target_link_libraries(lns_petsc_reshuffle.x
+                      ${MPI_LIBRARIES}
+                      ${Boost_LIBRARIES}
+                      ${FFTW_LIBRARIES}
+                      ${HDF5_LIBRARIES} hdf5
+                      ${BLAS_LIBRARIES}
+                      ${PETSC_LIBRARIES}
+                      xtensor
+                      xsimd slepc)
 message("PETSC_INCLUDE_DIRS: ${PETSC_INCLUDE_DIRS}")
 message("PETSC_LIBRARIES: ${PETSC_LIBRARIES}")
 message("PETSC_DEFINITIONS: ${PETSC_DEFINITIONS}")

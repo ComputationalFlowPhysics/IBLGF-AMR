@@ -1306,6 +1306,25 @@ struct Operator
         }
         return m;
     }
+    template <class Field1_Re, class Field1_Im, class Field2_Re, class Field2_Im, class Block>
+    static std::vector<float_type> blockInnerProductComplex_idx(Block &block,std::size_t sep, std::size_t ff1,std::size_t ff2,int _Dim) noexcept 
+    {
+        std::vector<float_type> m(2,0.0); //local IP has 2 components, real and imag
+        for (auto& n : block)
+        {
+            float_type tmp_re = 0.0;
+            float_type tmp_im = 0.0;
+            for (std::size_t field_idx = 0; field_idx < _Dim;
+                 ++field_idx)
+            {
+                tmp_re += n(Field1_Re::tag(), field_idx*sep+ff1) * n(Field2_Re::tag(), field_idx*sep+ff2) + n(Field1_Im::tag(), field_idx*sep+ff1) * n(Field2_Im::tag(), field_idx*sep+ff2);
+                tmp_im += n(Field1_Im::tag(), field_idx*sep+ff1) * n(Field2_Re::tag(), field_idx*sep+ff2) - n(Field1_Re::tag(), field_idx*sep+ff1) * n(Field2_Im::tag(), field_idx*sep+ff2);
+            }
+            m[0] += tmp_re;
+            m[1] += tmp_im;
+        }
+        return m;
+    }
     template<class Field1, class Field2, class Block>
     static float_type blockDot(Block& block) noexcept
     {

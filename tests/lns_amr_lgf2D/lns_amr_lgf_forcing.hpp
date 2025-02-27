@@ -88,15 +88,15 @@ struct parameters
 		 (edge_aux2,           float_type,  (Dim*2 - 3),  1,  1,  edge,true),
 		 (f_hat_re,       float_type,  Dim*Nf,  1,  1,  face,true),
 		 (f_hat_im,       float_type,  Dim*Nf,  1,  1,  face,true),
-		(u_hat_re            , float_type, 2*Nf,    1,       1,     face,true  ),
+		 (u_hat_re            , float_type, 2*Nf,    1,       1,     face,true  ),
 		 (u_hat_im            , float_type, 2*Nf,    1,       1,     face,true  )
     ))
     // clang-format on
 };
 
-struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
+struct NS_AMR_LGF : public SetupLinear<NS_AMR_LGF, parameters>
 {
-    using super_type = SetupBase<NS_AMR_LGF, parameters>;
+    using super_type = SetupLinear<NS_AMR_LGF, parameters>;
     using vr_fct_t = std::function<float_type(float_type x, float_type y, int field_idx, bool perturbation)>;
 
     //Timings
@@ -249,6 +249,9 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
         global_refinement_ = simulation_.dictionary_->template get_or<int>("global_refinement", 0);
 
         //bool subtract_non_leaf_ = simulation_.dictionaty()->template get_or<bool>("subtract_non_leaf", true);
+        std::string base_tree_name =simulation_.dictionary_->template get_or<std::string>("base_tree_name", "null");
+        std::string base_flow_name = simulation_.dictionary_->template get_or<std::string>("base_flow_name", "null");
+        forcing_flow_name = simulation_.dictionary_->template get_or<std::string>("forcing_flow_name", "null");
 
         if (dt_ < 0) dt_ = dx_ * cfl_;
 
@@ -258,6 +261,10 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
         pcout << "\n Setup:  Test - Simple IC \n" << std::endl;
         pcout << "Number of refinement levels: " << nLevelRefinement_ << std::endl;
 
+        bool use_tree_=false;
+
+        if (base_tree_name != "null") use_tree_=true;
+        
         //domain_->decomposition().subtract_non_leaf() = true;
 
         domain_->register_adapt_condition() =
@@ -281,7 +288,7 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
         domain_->ib().init(_d->get_dictionary("simulation_parameters"), domain_->dx_base(),
             nLevelRefinement_ + nIB_add_level_, Re_);
 
-        if (!use_restart()) { domain_->init_refine(nLevelRefinement_, global_refinement_, nIB_add_level_); }
+        if (!use_restart()&& !use_tree_) { domain_->init_refine(nLevelRefinement_, global_refinement_, nIB_add_level_); }
         else
         {
             //if (IntrpIBLevel) domain_->restart_list_construct_refIB(nLevelRefinement_, global_refinement_, nIB_add_level_);
@@ -291,16 +298,10 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
         }
 
         domain_->distribute<fmm_mask_builder_t, fmm_mask_builder_t>();
-        if (!use_restart()) { this->initialize(); }
-        else
-        {
-            simulation_.template read_h5<u_type>(simulation_.restart_field_dir(),
-                "u"); //u=u+u_base, loading in to confirm tree
-            simulation_.template read_h5<p_type>(simulation_.restart_field_dir(), "p"); //p=p+p_base
-            // clean<u_base_type>
-            if (ic_filename_ == "null") //been run so load in u_base
-            {
-                simulation_.template read_h5<u_type>(simulation_.restart_field_dir(), "u");
+        boost::mpi::communicator world;
+        if (!use_restart()&& !use_tree_) { this->initialize(); } //never been run. no mean flow or forcing
+        else if(use_restart()){ //already been run 
+             simulation_.template read_h5<u_type>(simulation_.restart_field_dir(), "u");
                 simulation_.template read_h5<p_type>(simulation_.restart_field_dir(), "p");
                 simulation_.template read_h5<u_base_type>(simulation_.restart_field_dir(), "u_base");
                 pcout << "read u, p, u_base" << std::endl;
@@ -310,11 +311,15 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
                 simulation_.template read_h5<f_hat_re_type>(simulation_.restart_field_dir(), "f_hat_re");
                 simulation_.template read_h5<f_hat_im_type>(simulation_.restart_field_dir(), "f_hat_im");
                 pcout << "readfhat" << std::endl;
-            }
-            //std::cout<<"read"<<std::endl;
+        }
+        else
+        {
+            
+            simulation_.template read_h5<u_base_type>(base_flow_name, "u_base");
+
         }
 
-        boost::mpi::communicator world;
+        
         if (world.rank() == 0) std::cout << "on Simulation: \n" << simulation_ << std::endl;
     }
 
@@ -324,30 +329,27 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
         bool                     reset_time = false;
         time_integration_t       ifherk(&this->simulation_);
         world.barrier();
-        if (ic_filename_ != "null") //never been run before so load in mean flow and perturb IC
+        if (ic_filename_ != "null") 
         {
             if (world.rank() == 0) std::cout << "reading initial condition from file " << ic_filename_ << std::endl;
             //simulation_.template read_h5<u_type>(ic_filename_, "u");
             // simulation_.template read_h5<p_type>(ic_filename_, "p");
-            simulation_.template read_h5<u_base_type>(ic_filename_, "u_base");
+            simulation_.template read_h5<u_type>(ic_filename_, "u");
             world.barrier();
-            pcout << "read u_base" << std::endl;
-            // simulation_.template read_h5<p_base_type>(ic_filename_, "p");
-            ifherk.clean<u_type>();
-            ifherk.clean<u_hat_re_type>();
-            ifherk.clean<u_hat_im_type>();
-            ifherk.clean<f_hat_re_type>();
-            ifherk.clean<f_hat_im_type>();
-            world.barrier();
-            pcout << "cleaned" << std::endl;
-            // this->perturbIC<u_type>();
-            // ifherk.up_and_down<u_type>();
-            this->init_ext_forcing<f_hat_re_type, f_hat_im_type>();
+        }
+        if (!use_restart()){
+            if(forcing_flow_name!="null")
+            {
+                simulation_.template read_h5<f_hat_re_type>(forcing_flow_name, "f_hat_re");
+                simulation_.template read_h5<f_hat_im_type>(forcing_flow_name, "f_hat_im");
+            }
+            else
+            {
+                this->init_ext_forcing<f_hat_re_type, f_hat_im_type>();
+                
+            }
             world.barrier();
             pcout << "init ext forcing" << std::endl;
-
-            // pcout<<"current norm re:"<<ifherk.compute_norm_by_freq<f_hat_re_type>()<<std::endl;
-            // pcout<<"current norm im:"<<ifherk.compute_norm_by_freq<f_hat_im_type>()<<std::endl;
 
             ifherk.normalize_field_complex_by_freq<f_hat_re_type, f_hat_im_type>();
             world.barrier();
@@ -357,9 +359,6 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
             norms = ifherk.compute_norm_by_freq<f_hat_im_type>();
             for (int i = 0; i < norms.size(); i++) { pcout << "norm im " << i << ": " << norms[i] << std::endl; }
             world.barrier();
-            // pcout<<"current norm re:"<<ifherk.compute_norm_by_freq<f_hat_re_type>()<<std::endl;
-            // pcout<<"current norm im:"<<ifherk.compute_norm_by_freq<f_hat_im_type>()<<std::endl;
-            reset_time = true;
         }
 
         // int n_rep=10;
@@ -376,7 +375,9 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
         // simulation_.write("flow_mean_post.hdf5");
         // return 0.0;
         mDuration_type ifherk_duration(0);
-        TIME_CODE(ifherk_duration, SINGLE_ARG(ifherk.time_march(use_restart(), reset_time);))
+        // TIME_CODE(ifherk_duration, SINGLE_ARG(ifherk.time_march(use_restart(), reset_time);))
+        // pcout_c << "Time to solution [ms] " << ifherk_duration.count() << std::endl;
+        TIME_CODE(ifherk_duration, SINGLE_ARG(ifherk.time_march_period(use_restart(), reset_time,10);))
         pcout_c << "Time to solution [ms] " << ifherk_duration.count() << std::endl;
 
         ifherk.clean_leaf_correction_boundary<u_type>(domain_->tree()->base_level(), true, 1);
@@ -463,7 +464,65 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
         simulation_.write("final.hdf5");
         return u1_inf;
     }
+        float_type run_adjoint()
+    {
+        boost::mpi::communicator world;
+        bool                     reset_time = false;
+        time_integration_t       ifherk(&this->simulation_);
+        ifherk.set_adjoint_run(true);
+        world.barrier();
+        if (ic_filename_ != "null") 
+        {
+            if (world.rank() == 0) std::cout << "reading initial condition from file " << ic_filename_ << std::endl;
+            //simulation_.template read_h5<u_type>(ic_filename_, "u");
+            // simulation_.template read_h5<p_type>(ic_filename_, "p");
+            simulation_.template read_h5<u_type>(ic_filename_, "u");
+            world.barrier();
+        }
+        if (!use_restart()){
+            if(forcing_flow_name!="null")
+            {
+                simulation_.template read_h5<f_hat_re_type>(forcing_flow_name, "f_hat_re");
+                simulation_.template read_h5<f_hat_im_type>(forcing_flow_name, "f_hat_im");
+            }
+            else
+            {
+                this->init_ext_forcing<f_hat_re_type, f_hat_im_type>();
+                
+            }
+            world.barrier();
+            pcout << "init ext forcing" << std::endl;
 
+            ifherk.normalize_field_complex_by_freq<f_hat_re_type, f_hat_im_type>();
+            world.barrier();
+            pcout << "normalized" << std::endl;
+            std::vector<float_type> norms = ifherk.compute_norm_by_freq<f_hat_re_type>();
+            for (int i = 0; i < norms.size(); i++) { pcout << "norm re " << i << ": " << norms[i] << std::endl; }
+            norms = ifherk.compute_norm_by_freq<f_hat_im_type>();
+            for (int i = 0; i < norms.size(); i++) { pcout << "norm im " << i << ": " << norms[i] << std::endl; }
+            world.barrier();
+        }
+
+        // int n_rep=10;
+        // // if (domain_->is_client()){
+        // // 	// for (int i=0; i<n_rep; i++)
+        // // 	// {
+        // // 	// 	// ifherk.up_and_down<u_base_type>();
+        // // 	// 	ifherk.pad_velocity_access<u_base_type,u_base_type>();
+        // // 	// }
+
+        // // }
+        // ifherk.clean<u_base_type>(true);
+
+        // simulation_.write("flow_mean_post.hdf5");
+        // return 0.0;
+        mDuration_type ifherk_duration(0);
+        // TIME_CODE(ifherk_duration, SINGLE_ARG(ifherk.time_march(use_restart(), reset_time);))
+        // pcout_c << "Time to solution [ms] " << ifherk_duration.count() << std::endl;
+        TIME_CODE(ifherk_duration, SINGLE_ARG(ifherk.time_march_period(use_restart(), reset_time,10);))
+        pcout_c << "Time to solution [ms] " << ifherk_duration.count() << std::endl;
+        return 0.0;
+    }
     float_type run_homogeneous()
     {
         boost::mpi::communicator world;
@@ -471,14 +530,41 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
         time_integration_t       ifherk(&this->simulation_);
         world.barrier();
 		pcout<<"HOMOGENEOUS RUN"<<std::endl;
-        if (ic_filename_ != "null") //never been run before so load in mean flow and perturb IC
-        {
-            if (world.rank() == 0) std::cout << "reading initial condition from file " << ic_filename_ << std::endl;
-            //simulation_.template read_h5<u_type>(ic_filename_, "u");
-            // simulation_.template read_h5<p_type>(ic_filename_, "p");
-            simulation_.template read_h5<u_base_type>(ic_filename_, "u_base");
-            world.barrier();
-            pcout << "read u_base" << std::endl;
+        // if (ic_filename_ != "null") //never been run before so load in mean flow and perturb IC
+        // {
+        //     if (world.rank() == 0) std::cout << "reading initial condition from file " << ic_filename_ << std::endl;
+        //     //simulation_.template read_h5<u_type>(ic_filename_, "u");
+        //     // simulation_.template read_h5<p_type>(ic_filename_, "p");
+        //     simulation_.template read_h5<u_base_type>(ic_filename_, "u_base");
+        //     world.barrier();
+        //     pcout << "read u_base" << std::endl;
+        //     if(domain_->is_client())
+        //     {
+        //         // ifherk.pad_velocity_access<u_base_type,u_base_type>();
+        //         ifherk.clean<u_type>();
+        //         ifherk.clean<error_u_type>();
+        //         ifherk.clean<u_ref_type>();
+        //         ifherk.clean<u_hat_re_type>();
+        //         ifherk.clean<u_hat_im_type>();
+        //         ifherk.clean<f_hat_re_type>();
+        //         ifherk.clean<f_hat_im_type>();
+        //     }
+
+        //     world.barrier();
+        //     test_buffer_exchange<u_base_type, u_ref_type, error_u_type>(&ifherk);
+        //     pcout << "cleaned" << std::endl;
+        //     if(pert_strength_!=0.0)
+        //     {
+        //         this->perturbIC<u_type>();
+        //         // pcout<<"current norm re:"<<ifherk.compute_norm_by_freq
+		// 	    pcout<<"current norm u after perturb"<<ifherk.compute_norm<u_type>()<<std::endl;
+		// 	    ifherk.normalize_field<u_type>();
+        //     }
+            
+		// 	pcout<<"current norm u after normalization"<<ifherk.compute_norm<u_type>()<<std::endl;
+		// 	reset_time = true;
+        // }
+        if(!use_restart()){
             if(domain_->is_client())
             {
                 // ifherk.pad_velocity_access<u_base_type,u_base_type>();
@@ -503,13 +589,13 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
             }
             
 			pcout<<"current norm u after normalization"<<ifherk.compute_norm<u_type>()<<std::endl;
-			reset_time = true;
+            ifherk.up_and_down<u_type>();
         }
 
-		ifherk.up_and_down<u_type>();
 
 		mDuration_type ifherk_duration(0);
-        TIME_CODE(ifherk_duration, SINGLE_ARG(ifherk.time_march(use_restart(), reset_time);))
+        // TIME_CODE(ifherk_duration, SINGLE_ARG(ifherk.time_march(use_restart(), reset_time);))
+        TIME_CODE(ifherk_duration, SINGLE_ARG(ifherk.time_march_period(use_restart(), reset_time,10);))
         pcout_c << "Time to solution [ms] " << ifherk_duration.count() << std::endl;
 
 
@@ -1196,7 +1282,7 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
     vr_fct_t vr_fct_;
 
     std::string ic_filename_, ref_filename_;
-
+    std::string forcing_flow_name;
     float_type Lx;
 };
 

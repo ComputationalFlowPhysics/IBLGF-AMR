@@ -14,7 +14,7 @@
 #include <boost/mpi/environment.hpp>
 #include <boost/mpi/communicator.hpp>
 
-#include "lns_amr_lgf_forcing_adjoint.hpp"
+#include "lns_amr_lgf_forcing.hpp"
 #include <iblgf/dictionary/dictionary.hpp>
 
 
@@ -43,7 +43,7 @@ int main(int argc, char *argv[])
     NS_AMR_LGF setup(&dictionary);
 
     // run setup
-    setup.run_homogeneous();
+    setup.run_adjoint();
 
     return 0;
 }

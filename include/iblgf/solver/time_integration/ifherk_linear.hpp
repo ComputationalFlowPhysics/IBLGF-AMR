@@ -38,7 +38,7 @@ using namespace domain;
 /** @brief Integrating factor 3-stage Runge-Kutta time integration
  * */
 template<class Setup>
-class Ifherk
+class Ifherk_linear
 {
   public: //member types
     using simulation_type = typename Setup::simulation_t;
@@ -90,7 +90,7 @@ class Ifherk
     static constexpr int lBuffer = 1; ///< Lower left buffer for interpolation
     static constexpr int rBuffer = 1; ///< Lower left buffer for interpolation
     static constexpr int Nf = Setup::Nf; ///< Number of frequencies
-    Ifherk(simulation_type* _simulation)
+    Ifherk_linear(simulation_type* _simulation)
     : simulation_(_simulation)
     , domain_(_simulation->domain_.get())
     , psolver(_simulation)
@@ -186,6 +186,180 @@ class Ifherk
         alpha_[2]=(c_[3]-c_[2])/tmp;
 
 
+    }
+    void time_march_period(bool use_restart = false, bool reset_time = false, int N_periods=1)
+    {
+        use_restart_ = use_restart;
+
+        boost::mpi::communicator world;
+
+        parallel_ostream::ParallelOstream pcout = parallel_ostream::ParallelOstream(world.size() - 1);
+
+        world.barrier();
+        int        n_per_N = output_base_freq_;            // number of sim time steps per large time step
+        int        N_per_period = (Nf - 1) * 2;            //number of large time steps per period
+        int        n_per_period_ = n_per_N * N_per_period; //number of sim time steps per period
+        float_type T_period = dt_ * n_per_period_;         //period of the simulation
+
+        pcout << "Time marching ------------------------------------------------ " << std::endl;
+
+        // --------------------------------------------------------------------
+        if (use_restart_ && !reset_time)
+        {
+            just_restarted_ = true;
+            Dictionary info_d(simulation_->restart_load_dir() + "/restart_info");
+            T_ = info_d.template get<float_type>("T");
+            adapt_count_ = info_d.template get<int>("adapt_count");
+            T_last_vel_refresh_ = info_d.template get_or<float_type>("T_last_vel_refresh", 0.0);
+            source_max_[0] = info_d.template get<float_type>("cell_aux_max");
+            source_max_[1] = info_d.template get<float_type>("u_max");
+            pcout << "Restart info ------------------------------------------------ " << std::endl;
+            pcout << "T = " << T_ << std::endl;
+            pcout << "adapt_count = " << adapt_count_ << std::endl;
+            pcout << "cell aux max = " << source_max_[0] << std::endl;
+            pcout << "u max = " << source_max_[1] << std::endl;
+            pcout << "T_last_vel_refresh = " << T_last_vel_refresh_ << std::endl;
+            if (domain_->is_client())
+            {
+                //pad_velocity<u_type, u_type>(true);
+            }
+            write_timestep(); //i think i want this, CC
+        }
+        else
+        {
+            T_ = 0.0;
+            adapt_count_ = 0;
+
+            write_timestep();
+        }
+        int n_current = adapt_count_;
+        int N_current = n_current / n_per_N;
+        T_max_ = T_period * N_periods;
+        int n_max_ = N_periods * n_per_period_;
+        for (int n = n_current; n < n_max_; n++)
+        {
+            if (domain_->is_client())
+            {
+                clean<cell_aux_type>(true, 2);
+                clean<edge_aux_type>(true, 1);
+                clean<correction_tmp_type>(true, 2);
+            }
+            else
+            {
+                //const auto& lb = domain_->level_blocks();
+                /*std::vector<int> lb;
+		            domain_->level_blocks(lb);*/
+                auto lb = domain_->level_blocks();
+                std::cout << "Blocks on each level: ";
+
+                for (int c : lb) std::cout << c << " ";
+                std::cout << std::endl;
+            }
+
+            // copy flag correction to flag old correction
+            for (auto it = domain_->begin(); it != domain_->end(); ++it) { it->flag_old_correction(false); }
+
+            for (auto it = domain_->begin(domain_->tree()->base_level());
+                it != domain_->end(domain_->tree()->base_level()); ++it)
+            {
+                it->flag_old_correction(it->is_correction());
+            }
+
+            int c = 0;
+
+            for (auto it = domain_->begin(); it != domain_->end(); ++it)
+            {
+                if (!it->locally_owned()) continue;
+                if (it->is_ib() || it->is_extended_ib())
+                {
+                    auto& lin_data = it->data_r(test_type::tag(), 0).linalg_data();
+                    std::fill(lin_data.begin(), lin_data.end(), 2.0);
+                    c += 1;
+                }
+            }
+            boost::mpi::communicator world;
+            int                      c_all;
+            boost::mpi::all_reduce(world, c, c_all, std::plus<int>());
+            pcout << "block = " << c_all << std::endl;
+
+            // if (adapt_count_ % adapt_freq_ == 0 && adapt_count_ != 0)
+            // {
+            //     if (adapt_count_ == 0 || updating_source_max_)
+            //     {
+            //         this->template update_source_max<cell_aux_type>(0);
+            //         this->template update_source_max<edge_aux_type>(1);
+            //     }
+
+            //     //if(domain_->is_client())
+            //     //{
+            //     //    up_and_down<u>();
+            //     //    pad_velocity<u, u>();
+            //     //}
+            //     if (!just_restarted_)
+            //     {
+            //         this->adapt(false);
+            //         adapt_corr_time_step();
+            //     }
+            //     just_restarted_ = false;
+            // }
+
+            // balance load
+            if (adapt_count_ % adapt_freq_ == 0)
+            {
+                clean<u_type>(true);
+                // clean<u_base_type>(true);
+                domain_->decomposition()
+                    .template balance<u_type, p_type, u_base_type, u_hat_re_type, u_hat_im_type, f_hat_re_type,
+                        f_hat_im_type>();
+                // domain_->decomposition().template balance<u_base_type,p_type>();
+            }
+
+            adapt_count_++;
+
+            // -------------------------------------------------------------
+            // time marching
+
+            mDuration_type ifherk_if(0);
+            TIME_CODE(ifherk_if, SINGLE_ARG(time_step();));
+            pcout << ifherk_if.count() << std::endl;
+
+            // -------------------------------------------------------------
+            // update stats & output
+
+            T_ += dt_;
+            int tmp_n=n+1;
+
+            //determine if streaming sum is needed
+            if (tmp_n % n_per_N == 0)
+            {
+                //snapshot that needs to be added to FFT
+                this->streaming_fft<u_type, u_hat_re_type, u_hat_im_type>();
+                //need to clean after certain number of steps ie (Nf-1*2)   
+                n_step_ = tmp_n;
+                write_timestep();
+                update_marching_parameters();
+                if((tmp_n/n_per_N+1)%N_per_period==0) //after 1 period, write fourier mode norms and reset uhat
+                {
+                    write_norm_by_freq(tmp_n);
+                    clean<u_hat_im_type>();
+                    clean<u_hat_re_type>();
+                }
+
+            }
+
+            // write restart
+            if (write_restart_ && (tmp_n % restart_base_freq_ == 0))
+            {
+                restart_n_last_ = tmp_n;
+                write_restart();
+            }
+
+            
+            write_stats(tmp_n);
+
+            
+        }
+        // ----------------------------------- start -------------------------
     }
     void time_march(bool use_restart=false, bool reset_time=false)
     {
@@ -626,7 +800,36 @@ class Ifherk
             }
         }
     }
+    template<class Field1_Re, class Field1_Im, class Field2_Re, class Field2_Im>
+    std::vector<float_type> compute_inner_product_complex_idx(int idx1, int idx2, int sep,bool leaf_only = true)
+    {
+        std::vector<float_type> inner_local(2, 0.0);
 
+        if (domain_->is_client())
+        {
+            for (auto it = domain_->begin(); it != domain_->end(); ++it)
+            {
+                if (!it->locally_owned()) continue;
+                if (!it->has_data()) continue;
+                if (leaf_only && !it->is_leaf()) continue;
+
+                const auto dx_base = domain_->dx_base();
+                const auto dx_level = dx_base / math::pow2(it->refinement_level());
+
+                std::vector<float_type> tmp;
+                tmp = domain::Operator::blockInnerProductComplex_idx<Field1_Re, Field1_Im, Field2_Re, Field2_Im>(it->data(), sep, idx1,idx2, domain_->dimension());
+                inner_local[0] += tmp[0] * std::pow(dx_level, domain_->dimension());
+                inner_local[1] +=
+                    tmp[1] * std::pow(dx_level, domain_->dimension()); // norm_nlk*volume(or area) of node in block
+            }
+        }
+        std::vector<float_type> inner_global(2, 0.0);
+        boost::mpi::all_reduce(
+            comm_, inner_local[0], inner_global[0], std::plus<float_type>());
+        boost::mpi::all_reduce( comm_, inner_local[1], inner_global[1], std::plus<float_type>());
+
+        return inner_global;
+    }
     template<class Field1_Re, class Field1_Im, class Field2_Re, class Field2_Im>
     std::vector<std::vector<float_type>> compute_inner_product_complex(bool leaf_only=true) //=<
     {

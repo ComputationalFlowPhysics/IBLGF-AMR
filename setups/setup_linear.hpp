@@ -39,8 +39,8 @@ using namespace dictionary;
  *          and aliases for datablock, domain and simulation.
  */
 template<class Setup, class SetupTraits>
-class SetupBase
-: private crtp::Crtps<Setup, SetupBase<Setup, SetupTraits>>
+class SetupLinear
+: private crtp::Crtps<Setup, SetupLinear<Setup, SetupTraits>>
 , public SetupTraits
 {
     const int n_ifherk_stage = 3;
@@ -100,27 +100,34 @@ class SetupBase
     using simulation_t = Simulation<domain_t>;
     using fcoord_t = coordinate_type<float_type, Dim>;
 
-    using Fmm_t = Fmm<SetupBase>;
+    using Fmm_t = Fmm<SetupLinear>;
     using fmm_mask_builder_t = FmmMaskBuilder<domain_t>;
-    using poisson_solver_t = solver::PoissonSolver<SetupBase>;
-    using time_integration_t = solver::Ifherk<SetupBase>;
-    using linsys_solver_t = solver::LinSysSolver<SetupBase>;
+    using poisson_solver_t = solver::PoissonSolver<SetupLinear>;
+    using time_integration_t = solver::Ifherk_linear<SetupLinear>;
+    using linsys_solver_t = solver::LinSysSolver<SetupLinear>;
 
   public: //Ctors
-    SetupBase(Dictionary* _d)
+    SetupLinear(Dictionary* _d)
     : simulation_(_d->get_dictionary("simulation_parameters"))
     , domain_(simulation_.domain())
     {
         domain_->initialize(simulation_.dictionary()->get_dictionary("domain"));
     }
 
-    SetupBase(Dictionary* _d, domaint_init_f _fct,
+    SetupLinear(Dictionary* _d, domaint_init_f _fct,
         std::string restart_tree_dir = "")
     : simulation_(_d->get_dictionary("simulation_parameters"))
     , domain_(simulation_.domain())
     {
         auto d = _d->get_dictionary("simulation_parameters");
         use_restart_ = d->template get_or<bool>("use_restart", true);
+        // use_tree_=d->template get_or<bool>("use_init_tree", false);
+        std::string base_tree_name = d->template get_or<std::string>(
+			"base_tree_name", "null");
+        std::string base_flow_name = d->template get_or<std::string>(
+			"base_flow_name", "null");
+
+        if(base_tree_name != "null") use_tree_ = true;
 
         if (restart_tree_dir == "")
         {
@@ -135,10 +142,16 @@ class SetupBase
             use_restart_ = true;
         }
 
-        if (!use_restart_)
+        if (!use_restart_&&!use_tree_)
         {
             domain_->initialize(
                 simulation_.dictionary()->get_dictionary("domain").get(), _fct);
+        }
+        else if(!use_restart_&&use_tree_)
+        {
+            domain_->initialize_with_keys(
+                simulation_.dictionary()->get_dictionary("domain").get(),
+                base_tree_name);
         }
         else
         {
@@ -365,6 +378,7 @@ class SetupBase
         parallel_ostream::ParallelOstream(1);
 
     bool use_restart_ = false;
+    bool use_tree_ = false;
     int  nLevels_ = 0;
     int  global_refinement_;
 };

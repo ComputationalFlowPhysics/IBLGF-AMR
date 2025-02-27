@@ -17,10 +17,27 @@
 #define DEBUG_IFHERK
 #endif
 #define DEBUG_POISSON
+// #define XTENSOR_BLAS_NO_LAPACK
+// #define XTENSOR_BLAS_NO_BLAS
+// #define XTENSOR_USE_FLENS_BLAS 0
+// // #define XTENSOR_BLAS_NO_LAPACK
+// // #define XLAPACK_HPP
 
+// // #define LIBSCI_USE_LAPACK 1
+// // #define HAVE_CBLAS 1
+// // // #undef USE_CXXLAPACK
+
+// #define CXXLAPACK_CXXLAPACK_CXX     // Explicitly use CXXLAPACK
+
+// // #define XTENSOR_BLAS_NO_LAPACK
+// #undef USE_CXXLAPACK
+// #define 
+// #include "/opt/cray/pe/libsci/24.07.0/INTEL/2023.2/x86_64/include/lapack.h"
+// #define XTENSOR_BLAS_DISABLE_LAPACK
 #include "mpi.h"
 #include <petscksp.h>
-
+#include <slepcsvd.h>
+//  #include "/opt/cray/pe/libsci/24.07.0/INTEL/2023.2/x86_64/include/lapack.h"
 #include <iostream>
 #include <vector>
 #include <limits>
@@ -49,7 +66,7 @@
 #include <iblgf/solver/poisson/poisson.hpp>
 #include <iblgf/solver/time_integration/ifherk_linear.hpp>
 
-#include "../../setups/setup_base.hpp"
+#include "../../setups/setup_linear.hpp"
 #include <iblgf/operators/operators.hpp>
 
 namespace iblgf
@@ -58,6 +75,8 @@ const int Dim = 2;
 
 struct parameters
 {
+    static constexpr std::size_t Nf = 21;
+    static constexpr std::size_t N_tv = 5;
     static constexpr std::size_t Dim = 2;
     // clang-format off
     REGISTER_FIELDS
@@ -65,38 +84,46 @@ struct parameters
     Dim,
      (
         //name               type        Dim   lBuffer  hBuffer, storage type
-         (error_u          , float_type, 2,    1,       1,     face,true  ),
-         (error_p          , float_type, 1,    1,       1,     cell,false ),
+        //  (error_u          , float_type, 2,    1,       1,     face,true  ),
+        //  (error_p          , float_type, 1,    1,       1,     cell,false ),
          (test             , float_type, 1,    1,       1,     cell,false ),
         //IF-HERK
          (u                , float_type, 2,    1,       1,     face,true  ),
 		 (u_check          , float_type, 2,    1,       1,     face,true  ),
-         (u_ref            , float_type, 2,    1,       1,     face,true  ),
+         
 		 (u_base           , float_type, 2,    1,       1,     face,true  ),
-         (p_ref            , float_type, 1,    1,       1,     cell,true  ),
+       
          (p                , float_type, 1,    1,       1,     cell,true  ),
 		 (p_base           , float_type, 1,    1,       1,     cell,true  ),
-         (w_num            , float_type, 1,    1,       1,     edge,false ),
-         (w_exact          , float_type, 1,    1,       1,     edge,false ),
-         (error_w          , float_type, 1,    1,       1,     edge,false ),
-         //for radial velocity
-         (exact_u_theta    , float_type, 2,    1,       1,     edge,false ),
-         (num_u_theta      , float_type, 2,    1,       1,     edge,false ),
-         (error_u_theta    , float_type, 2,    1,       1,     edge,false ),
+        //  (w_num            , float_type, 1,    1,       1,     edge,false ),
+        //  (w_exact          , float_type, 1,    1,       1,     edge,false ),
+        //  (error_w          , float_type, 1,    1,       1,     edge,false ),
+        //  //for radial velocity
+        //  (exact_u_theta    , float_type, 2,    1,       1,     edge,false ),
+        //  (num_u_theta      , float_type, 2,    1,       1,     edge,false ),
+        //  (error_u_theta    , float_type, 2,    1,       1,     edge,false ),
 		 //for jacobian
 		 (nonlinear_tmp,       float_type,  Dim,  1,  1,  face,true),
       	 (face_aux_tmp,        float_type,  Dim,  1,  1,  face,true),
 		 (edge_aux2,           float_type,  (Dim*2 - 3),  1,  1,  edge,true),
 		 //indices for petsc
 		 (idx_u,			   float_type,         2,    1,       1,     face,true  ),
-		 (idx_u_g,			   float_type,         2,    1,       1,     face,true  )
+		 (idx_u_g,			   float_type,         2,    1,       1,     face,true  ),
+         (f_hat_re,       float_type,  Dim*Nf,  1,  1,  face,true),
+		 (f_hat_im,       float_type,  Dim*Nf,  1,  1,  face,true),
+		 (u_hat_re            , float_type, 2*Nf,    1,       1,     face,true  ),
+		 (u_hat_im            , float_type, 2*Nf,    1,       1,     face,true  ),
+         (vec_u_re            , float_type, 2*N_tv,    1,       1,     face,true  ),
+         (vec_u_im            , float_type, 2*N_tv,    1,       1,     face,true  ),
+         (vec_f_re            , float_type, 2*N_tv,    1,       1,     face,true  ),
+         (vec_f_im            , float_type, 2*N_tv,    1,       1,     face,true  )
     ))
     // clang-format on
 };
 
-struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
+struct NS_AMR_LGF : public SetupLinear<NS_AMR_LGF, parameters>
 {
-    using super_type = SetupBase<NS_AMR_LGF, parameters>;
+    using super_type = SetupLinear<NS_AMR_LGF, parameters>;
     using vr_fct_t = std::function<float_type(float_type x, float_type y,
         int field_idx, bool perturbation)>;
 
@@ -132,7 +159,7 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 
         Omega =
             simulation_.dictionary()->template get_or<float_type>("Omega", 0.0);
-
+        f_start_idx_= simulation_.dictionary()->template get_or<int>("f_start_idx", 0);
         //IntrpIBLevel = simulation_.dictionary()->template get_or<bool>("IntrpIBLevel", false); //intrp IB level, used if restart file is from coarser mesh
 
         simulation_.bc_vel() =
@@ -253,6 +280,12 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
         ref_filename_ = simulation_.dictionary_->template get_or<std::string>(
             "hdf5_ref_name", "null");
 
+        iter_dirname_ = simulation_.dictionary_->template get_or<std::string>(
+            "iter_dirname", "null");
+
+        iter_folder_prefix_ = simulation_.dictionary_->template get_or<std::string>(
+            "iter_folder_prefix", "ff_tv");
+
         source_max_ = simulation_.dictionary_->template get_or<float_type>(
             "source_max", 1.0);
 
@@ -327,13 +360,10 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
         if (!use_restart()) { this->initialize(); }
         else
         {
-            simulation_.template read_h5<u_type>(
-                simulation_.restart_field_dir(), "u");
-            simulation_.template read_h5<p_type>(
-                simulation_.restart_field_dir(), "p");
+            simulation_.template read_h5<u_type>(simulation_.restart_field_dir(), "u");
+            simulation_.template read_h5<p_type>(simulation_.restart_field_dir(), "p");
             // clean<u_base_type>
-            simulation_.template read_h5<u_base_type>(
-                simulation_.restart_field_dir(), "u_base");
+            simulation_.template read_h5<u_base_type>(simulation_.restart_field_dir(), "u_base");
             //std::cout<<"read"<<std::endl;
         }
 
@@ -346,7 +376,7 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
     {
         boost::mpi::communicator world;
 
-        PetscCall(PetscInitialize(&argc, &argv, (char*)0, NULL));
+        PetscCall(SlepcInitialize(&argc, &argv, (char*)0, NULL));
 
         time_integration_t ifherk(&this->simulation_);
 
@@ -373,134 +403,233 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
             }
             world.barrier();
         }
-        simulation_.write("initial.hdf5");
-        GridToMat<u_type, idx_u_type, u_check_type>();
-        ifherk.up_and_down<u_check_type>();
-        simulation_.write("final.hdf5");
+        simulation_.write("initial");
+        // load_vecs<u_type,u_hat_re_type>();
+        for (int f_idx = f_start_idx_; f_idx < Nf; f_idx++)
+        // for (int f_idx = 1; f_idx < 4; f_idx++)
+        {   
+            pcout<<"f_idx "<<f_idx<<std::endl;
+            GridToMat<idx_u_type, u_hat_re_type, u_hat_im_type, vec_u_re_type, vec_u_im_type>(f_idx);
+            
+            for (int i = 0; i < N_tv; i++)
+            {
+                for (int j = i; j < N_tv; j++)
+                {
+                    auto norms = ifherk.compute_inner_product_complex_idx<vec_u_re_type, vec_u_im_type, vec_u_re_type,
+                        vec_u_im_type>(i, j, N_tv);
+                    if (world.rank() == 0)
+                    {
+                        std::cout << "global inner product " << i << " " << j << " "
+          << std::scientific << std::setprecision(6) // Set scientific notation with 6 decimal places
+          << norms[0] << " " << norms[1]
+          << std::endl;
+                    }
+                }
+            }
+            std::string filename="final_all_tv_freq_"+std::to_string(f_idx);
+            simulation_.write(filename);
+        }
+
+        // ifherk.up_and_down<u_check_type>();
+        simulation_.write("final");
+        PetscCall(PetscFinalize());
+        return 0.0;
+
+    }
+
+    float_type run_svd(int argc, char* argv[])
+    {
+        boost::mpi::communicator world;
+        PetscCall(SlepcInitialize(&argc, &argv, (char*)0, NULL));
+
+        time_integration_t ifherk(&this->simulation_);
+
+        ifherk.Assign_idx<idx_u_type, idx_u_g_type>();
+        GetIdx();
+        for (int f_idx = f_start_idx_; f_idx < Nf; f_idx++)
+        {
+            pcout<<"f_idx "<<f_idx<<std::endl;
+            get_svd(f_idx);
+            for (int i = 0; i < N_tv; i++)
+            {
+                for (int j = i; j < N_tv; j++)
+                {
+                    auto norms = ifherk.compute_inner_product_complex_idx<vec_u_re_type, vec_u_im_type, vec_u_re_type,
+                        vec_u_im_type>(i, j, N_tv);
+                    if (world.rank() == 0)
+                    {
+                        std::cout << "global inner product " << i << " " << j << " " << std::scientific
+                                  << std::setprecision(6) // Set scientific notation with 6 decimal places
+                                  << norms[0] << " " << norms[1] << std::endl;
+                    }
+                }
+            }
+            for (int i = 0; i < N_tv; i++)
+            {
+                for (int j = i; j < N_tv; j++)
+                {
+                    auto norms = ifherk.compute_inner_product_complex_idx<vec_f_re_type, vec_f_im_type, vec_f_re_type,
+                        vec_f_im_type>(i, j, N_tv);
+                    if (world.rank() == 0)
+                    {
+                        std::cout << "global inner product forcing " << i << " " << j << " " << std::scientific
+                                  << std::setprecision(6) // Set scientific notation with 6 decimal places
+                                  << norms[0] << " " << norms[1] << std::endl;
+                    }
+                }
+            }
+            std::string filename = "final_all_tv_freq_" + std::to_string(f_idx);
+            simulation_.write(filename);
+        }
 
         return 0.0;
-        mDuration_type ifherk_duration(0);
-        TIME_CODE(ifherk_duration,
-            SINGLE_ARG(ifherk.time_march(use_restart());))
-        pcout_c << "Time to solution [ms] " << ifherk_duration.count()
-                << std::endl;
+    }
 
-        ifherk.clean_leaf_correction_boundary<u_type>(
-            domain_->tree()->base_level(), true, 1);
+    float_type run_reshuffle(int argc, char* argv[])
+    {
+        boost::mpi::communicator world;
 
-        float_type maxNumVort = -1;
+        // PetscCall(SlepcInitialize(&argc, &argv, (char*)0, NULL));
 
-        if (ref_filename_ != "null")
-        {
-            if (vortexType == 0)
-            {
-                simulation_.template read_h5<u_ref_type>(ref_filename_, "u");
-                simulation_.template read_h5<p_ref_type>(ref_filename_, "p");
+        time_integration_t ifherk(&this->simulation_);
+        // std::string abs_foldername="../";
+        for(int j=0;j<N_tv;j++){
+            for(int ff=0;ff<Nf;ff++){
+                 std::string filename="output/flow_final_all_tv_freq_"+std::to_string(ff)+".hdf5";
+                simulation_.template read_h5<vec_u_re_type>(filename, "vec_u_re");
+                world.barrier();
+                simulation_.template read_h5<vec_u_im_type>(filename, "vec_u_im");
+                world.barrier();
+                for(int dd=0;dd<domain_->dimension();dd++){
+                    copy_idx<vec_u_re_type,f_hat_re_type>(dd*N_tv+j,dd*Nf+ff);
+                    copy_idx<vec_u_im_type,f_hat_im_type>(dd*N_tv+j,dd*Nf+ff);
+                }
             }
+            simulation_.write("final_tv_"+std::to_string(j));
+        }
 
-            auto center = (domain_->bounding_box().max() -
-                              domain_->bounding_box().min() + 1) /
-                              2.0 +
-                          domain_->bounding_box().min();
+        return 0.0;
+    }
 
-            for (auto it = domain_->begin_leaves(); it != domain_->end_leaves();
-                 ++it)
+    template<class From, class To>
+    void copy_idx(int From_idx,int To_idx){
+        for(auto it=domain_->begin();it!=domain_->end();++it){
+            if(!it->locally_owned() || !it->has_data()) continue;
+            if(it->is_leaf() && !it->is_correction()){
+                for(auto& n:it->data()){
+                    n(To::tag(),To_idx)=n(From::tag(),From_idx);
+                }
+            }
+        }
+    }
+    template<class Field_idx,class Field_re,class Field_im>
+    int load_vecs(Mat A=NULL,int f_idx=0)
+    {
+        boost::mpi::communicator world;
+        std::string abs_foldername=iter_dirname_;
+        
+        // std::vector<std::string> vec_names={"ff_tv1","ff_tv2","ff_tv3"};
+        int time_step=39900;
+        // int f_idx=2;
+        for (int j=0; j<N_tv; j++)
+        {
+            std::string filename=abs_foldername+iter_folder_prefix_+std::to_string(j)+"/output/flowTime_"+std::to_string(time_step)+".hdf5";
+            simulation_.template read_h5<Field_re>(filename, "u_hat_re");
+            world.barrier();
+            simulation_.template read_h5<Field_im>(filename, "u_hat_im");
+            world.barrier();
+            if(!domain_->is_client()) continue;
+           
+            int base_level = domain_->tree()->base_level();
+            for (int l = base_level; l < domain_->tree()->depth(); l++)
             {
-                if (!it->locally_owned()) continue;
-
-                auto dx_level =
-                    domain_->dx_base() / std::pow(2, it->refinement_level());
-                auto scaling = std::pow(2, it->refinement_level());
-
-                for (auto& node : it->data())
+                const auto dx_level = domain_->dx_base() / math::pow2(l);
+                const auto w_1_2 =std::pow(dx_level, domain_->dimension()/2.0); //W^(1/2) so i can do standard SVD
+                for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
                 {
-                    const auto& coord = node.level_coordinate();
-                    float_type  x = static_cast<float_type>(
-                                       coord[0] - center[0] * scaling) *
-                                   dx_level;
-                    float_type y = static_cast<float_type>(
-                                       coord[1] - center[1] * scaling) *
-                                   dx_level;
-                    //float_type z = static_cast<float_type>
-                    //    (coord[2]-center[2]*scaling)*dx_level;
-
-                    float_type r2 = x * x + y * y;
-                    if (r2 > 4 * R_ * R_)
+                    if (!it->locally_owned() || !it->has_data()) continue;
+                    // if (!it->data().is_allocated()) continue;
+                    if (it->is_leaf() && !it->is_correction())
                     {
-                        node(u_ref, 0) = 0.0;
-                        node(u_ref, 1) = 0.0;
-                        //node(u_ref, 2)=0.0;
-                    }
-                    float_type r__ = std::sqrt(x * x + y * y);
-                    float_type t_final = dt_ * tot_steps_;
-                    node(w_exact) = w_taylor_vort(r__, t_final);
-                    node(w_num) =
-                        (node(u, 1) - node.at_offset(u, -1, 0, 1) - node(u, 0) +
-                            node.at_offset(u, 0, -1, 0)) /
-                        dx_level;
-                    if (vortexType != 0)
-                    {
-                        x = static_cast<float_type>(
-                                coord[0] - center[0] * scaling) *
-                            dx_level;
-                        y = static_cast<float_type>(
-                                coord[1] - center[1] * scaling + 0.5) *
-                            dx_level;
-                        node(u_ref, 0) = u_vort(x, y, t_final, 0);
-                        x = static_cast<float_type>(
-                                coord[0] - center[0] * scaling + 0.5) *
-                            dx_level;
-                        y = static_cast<float_type>(
-                                coord[1] - center[1] * scaling) *
-                            dx_level;
-                        node(u_ref, 1) = u_vort(x, y, t_final, 1);
-
-                        //compute analytical u_theta
-                        x = static_cast<float_type>(
-                                coord[0] - center[0] * scaling) *
-                            dx_level;
-                        y = static_cast<float_type>(
-                                coord[1] - center[1] * scaling) *
-                            dx_level;
-                        float_type u = u_vort(x, y, t_final, 0);
-                        float_type v = u_vort(x, y, t_final, 1);
-                        float_type u_theta = std::sqrt(u * u + v * v);
-                        node(exact_u_theta, 0) = u_theta;
-                        node(exact_u_theta, 1) = 0.0; //0 is u_theta, 1 is u_r
+                        for (std::size_t field_idx = 0; field_idx < Dim;
+                             ++field_idx)
+                        {
+                            for (auto& n : it->data())
+                            {
+                                int i_local = n(Field_idx::tag(), field_idx)-1;
+                                if (i_local < 0) continue;
+                                // int i_global =
+                                //     (rank - 1) * m_local + i_local - 1;
+                                PetscScalar value_r = n(Field_re::tag(), field_idx*Nf+f_idx)*w_1_2;
+                                PetscScalar value_i = n(Field_im::tag(), field_idx*Nf+f_idx)*w_1_2;
+                                PetscComplex value = value_r + PETSC_i * value_i;
+                                // PetscScalar value = 1.0;
+                                PetscCall(MatSetValuesLocal(A, 1, &i_local, 1, &j,
+                                    &value, INSERT_VALUES));
+                            }
+                        }
                     }
                 }
             }
         }
-        getUtheta<u_type, num_u_theta_type>();
-        float_type t_final = dt_ * tot_steps_;
-        pcout << "the final time is " << t_final << std::endl;
-        pcout << "the max numerical vorticity is " << maxNumVort << std::endl;
-        ifherk.clean_leaf_correction_boundary<u_type>(
-            domain_->tree()->base_level(), true, 1);
+        return 0;
 
-        float_type u1_inf =
-            this->compute_errors<u_type, u_ref_type, error_u_type>(
-                std::string("u1_"), 0);
-        float_type u2_inf =
-            this->compute_errors<u_type, u_ref_type, error_u_type>(
-                std::string("u2_"), 1);
-        float_type u_t_inf = this->compute_errors<num_u_theta_type,
-            exact_u_theta_type, error_u_theta_type>(std::string("u_t_"), 0);
-        float_type u_r_inf = this->compute_errors<num_u_theta_type,
-            exact_u_theta_type, error_u_theta_type>(std::string("u_r_"), 1);
-
-        float_type w_inf =
-            this->compute_errors<edge_aux_type, w_exact_type, error_w_type>(
-                std::string("w_"), 0);
-        //float_type u3_linf=this->compute_errors<u_type, u_ref_type, error_u_type>(
-        //        std::string("u3_"), 2);
-
-        simulation_.write("final.hdf5");
-        return u1_inf;
     }
+    template<class Field_idx,class Field_re,class Field_im>
+    int load_forcing(Mat A=NULL,int f_idx=0)
+    {
+        boost::mpi::communicator world;
+        std::string abs_foldername=iter_dirname_;
+        
+        // std::vector<std::string> vec_names={"ff_tv1","ff_tv2","ff_tv3"};
+        int time_step=39900;
+        // int f_idx=2;
+        for (int j=0; j<N_tv; j++)
+        {
+            std::string filename=abs_foldername+iter_folder_prefix_+std::to_string(j)+"/output/flowTime_"+std::to_string(time_step)+".hdf5";
+            simulation_.template read_h5<Field_re>(filename, "f_hat_re");
+            world.barrier();
+            simulation_.template read_h5<Field_im>(filename, "f_hat_im");
+            world.barrier();
+            if(!domain_->is_client()) continue;
+           
+            int base_level = domain_->tree()->base_level();
+            for (int l = base_level; l < domain_->tree()->depth(); l++)
+            {
+                const auto dx_level = domain_->dx_base() / math::pow2(l);
+                const auto w_1_2 =std::pow(dx_level, domain_->dimension()/2.0); //W^(1/2) so i can do standard SVD
+                for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+                {
+                    if (!it->locally_owned() || !it->has_data()) continue;
+                    // if (!it->data().is_allocated()) continue;
+                    if (it->is_leaf() && !it->is_correction())
+                    {
+                        for (std::size_t field_idx = 0; field_idx < Dim;
+                             ++field_idx)
+                        {
+                            for (auto& n : it->data())
+                            {
+                                int i_local = n(Field_idx::tag(), field_idx)-1;
+                                if (i_local < 0) continue;
+                                // int i_global =
+                                //     (rank - 1) * m_local + i_local - 1;
+                                PetscScalar value_r = n(Field_re::tag(), field_idx*Nf+f_idx)*w_1_2;
+                                PetscScalar value_i = n(Field_im::tag(), field_idx*Nf+f_idx)*w_1_2;
+                                PetscComplex value = value_r + PETSC_i * value_i;
+                                // PetscScalar value = 1.0;
+                                PetscCall(MatSetValuesLocal(A, 1, &i_local, 1, &j,
+                                    &value, INSERT_VALUES));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return 0;
 
-    template<class Field, class Field_idx, class Field_check>
-    int GridToMat()
+    }
+    // idx_u_type, u_hat_re_type, u_hat_im_type, vec_u_re_type, vec_u_im_type
+    int get_svd(int f_idx=0)
     {
         boost::mpi::communicator world;
         // if (domain_->is_server()) return;
@@ -519,26 +648,33 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 
         if (Color == -1)
         {
-            // MPI_Comm_free(&petsc_comm);
+            MPI_Comm_free(&petsc_comm);
+            load_vecs<idx_u_type,u_hat_re_type,u_hat_im_type>();
+            load_forcing<idx_u_type,f_hat_re_type,f_hat_im_type>();
             return 0;
         }
+        Mat                    A;
+        Mat                    B;
+        ISLocalToGlobalMapping ltog_row, ltog_col;
 
         //only client processes will reach here
         PetscCall(PetscCommDuplicate(sub_comm, &petsc_comm, NULL));
+        PetscMPIInt rank2, size2;
+        MPI_Comm_rank(petsc_comm, &rank2);
+        MPI_Comm_size(petsc_comm, &size2);
+        //output
+        // std::cout << "rank " << rank2 << " size " << size2 << std::endl;
 
-        Mat      A;
-        Vec      x, b;
         PetscInt m, n, M, N, rstartx, rendx, rstartb, rendb;
         // PetscMPIInt rank, size;
 
-        N = 2;
+        N = N_tv;
         // MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
         // MPI_Comm_size(PETSC_COMM_WORLD, &size);
 
         // set M
         int m_local;
-        boost::mpi::all_reduce(domain_->client_communicator(), max_local_idx,
-            tot_global, std::plus<int>());
+        boost::mpi::all_reduce(domain_->client_communicator(), max_local_idx, tot_global, std::plus<int>());
         tot_global += 1; //add one since max_local_idx of 0 is -1
         //M = tot_global;
 
@@ -546,8 +682,7 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 
         int m_max;
 
-        boost::mpi::all_reduce(domain_->client_communicator(), m_local, m_max,
-            boost::mpi::maximum<int>());
+        boost::mpi::all_reduce(domain_->client_communicator(), m_local, m_max, boost::mpi::maximum<int>());
 
         domain_->client_communicator().barrier();
         n = N;
@@ -555,15 +690,15 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
         if (rank == 0) { m = 0; }
         else { m = m_max; }
         M = m_max * (size - 1);
-        if (rank == 0) { std::cout << "M: " << M << std::endl; }
+        // if (rank == 0) { std::cout << "M: " << M << std::endl; }
         domain_->client_communicator().barrier();
-        std::cout << "rank " << rank << " m_local: " << m << " n_local: " << n
-                  << std::endl;
-
-        // PetscCall(MatCreateScaLAPACK(PETSC_COMM_WORLD,m_local , n_local , M, N, 0,0, &A));
-        PetscCall(MatCreateDense(petsc_comm, m, n, M, N, NULL, &A));
-        PetscCall(MatSetType(A, MATSCALAPACK));
+        // std::cout << "rank " << rank << " m_local: " << m << " n_local: " << n << std::endl;
+        Vec x, b;
+        // PetscCall(MatCreateScaLAPACK(petsc_comm, PETSC_DECIDE,PETSC_DECIDE , M,n, 0,0, &A));
+        PetscCall(MatCreateDense(petsc_comm, m, PETSC_DECIDE, M, N, NULL, &A));
+        // // PetscCall(MatSetType(A, MATSCALAPACK));
         PetscCall(MatSetUp(A));
+
         PetscCall(MatCreateVecs(A, &x, &b));
         PetscCall(VecGetOwnershipRange(x, &rstartx, &rendx));
         PetscCall(VecGetOwnershipRange(b, &rstartb, &rendb));
@@ -572,137 +707,368 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
         int* global_rows;
 
         global_rows = new int[m];
-        for (int i = 0; i < m; i++)
-        {
-            global_rows[i] = i + static_cast<int>(rstartb);
-        }
+        for (int i = 0; i < m; i++) { global_rows[i] = i + static_cast<int>(rstartb); }
 
         int* global_cols = new int[n];
         for (int j = 0; j < n; j++) { global_cols[j] = j; }
 
-        PetscInt*              rows = global_rows;
-        PetscInt*              cols = global_cols;
-        IS                     isrow, iscol;
-        ISLocalToGlobalMapping ltog_row, ltog_col;
+        PetscInt* rows = global_rows;
+        PetscInt* cols = global_cols;
+        IS        isrow, iscol;
 
-        PetscCall(
-            ISCreateGeneral(petsc_comm, m, rows, PETSC_COPY_VALUES, &isrow));
-        PetscCall(
-            ISCreateGeneral(petsc_comm, n, cols, PETSC_COPY_VALUES, &iscol));
+        PetscCall(ISCreateGeneral(petsc_comm, m, rows, PETSC_COPY_VALUES, &isrow));
+        PetscCall(ISCreateGeneral(petsc_comm, n, cols, PETSC_COPY_VALUES, &iscol));
 
         PetscCall(ISLocalToGlobalMappingCreateIS(isrow, &ltog_row));
         PetscCall(ISLocalToGlobalMappingCreateIS(iscol, &ltog_col));
 
         PetscCall(MatSetLocalToGlobalMapping(A, ltog_row, ltog_col));
 
+        PetscInt size_x, size_b;
+
+        PetscCall(VecGetSize(x, &size_x));
+        PetscCall(VecGetSize(b, &size_b));
+     
+        delete[] global_rows;
+        delete[] global_cols;
+
+
+        load_vecs<idx_u_type,u_hat_re_type,u_hat_im_type>(A,f_idx);
+
+        PetscCall(MatAssemblyBegin(A, MAT_FINAL_ASSEMBLY));
+        PetscCall(MatAssemblyEnd(A, MAT_FINAL_ASSEMBLY));
+        //matrix is set
+        PetscCall(MatConvert(A, MATDENSE, MAT_INITIAL_MATRIX, &B));
+
+        PetscCall(MatSetLocalToGlobalMapping(B, ltog_row, ltog_col));
+        load_forcing<idx_u_type,f_hat_re_type,f_hat_im_type>(B,f_idx);
+        PetscCall(MatAssemblyBegin(B, MAT_FINAL_ASSEMBLY));
+        PetscCall(MatAssemblyEnd(B, MAT_FINAL_ASSEMBLY));
+  
+        SVD svd;
+        PetscReal sigma;
+        PetscInt nConv;
+        Vec v;
+        PetscCall(SVDCreate(petsc_comm, &svd));
+        PetscCall(SVDSetOperators(svd, A, NULL));
+        // PetscCall(SVDSetType(svd, SVDTRLANCZOS));
+        PetscCall(SVDSetFromOptions(svd));
+        PetscCall(SVDSolve(svd));
+        PetscCall(SVDGetConverged(svd, &nConv));
+        PetscCall(MatCreateVecs(A, NULL, &v));
+        for(PetscInt i=0; i<nConv; i++)
+        {
+    
+            PetscCall(SVDGetSingularTriplet(svd, i, &sigma, b,x));
+            if(rank==1) std::cout << "Singular value " << i << " : " << sigma << std::endl;
+            MatMult(B, x, v);
+            vec2grid<idx_u_type,vec_u_re_type, vec_u_im_type>(b,i);
+            vec2grid<idx_u_type,vec_f_re_type, vec_f_im_type>(v,i);
+        }
+
+        PetscCall(VecDestroy(&x)); // PETSc deallocates memory
+        PetscCall(VecDestroy(&b)); // PETSc deallocates memory
+        PetscCall(MatDestroy(&A));
+        PetscCall(MatDestroy(&B));
+        return 0;
+
+
+    }
+
+    template<class Field_idx, class Field_re,class Field_im, class Field_check_re, class Field_check_im>
+    int GridToMat(int f_idx=0)
+    {
+        boost::mpi::communicator world;
+        // if (domain_->is_server()) return;
+        PetscMPIInt rank, size;
+
+        MPI_Comm sub_comm = MPI_COMM_NULL, petsc_comm = MPI_COMM_NULL;
+
+        MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
+        MPI_Comm_size(PETSC_COMM_WORLD, &size);
+
+        Color = -1;
+
+        if (!domain_->is_server()) { Color = 1; }
+
+        MPI_Comm_split(PETSC_COMM_WORLD, Color, rank, &sub_comm);
+
+        if (Color == -1)
+        {
+            MPI_Comm_free(&petsc_comm);
+            load_vecs<Field_idx,Field_re,Field_im>();
+            return 0;
+        }
+        Mat                    A;
+        Mat                    B;
+        ISLocalToGlobalMapping ltog_row, ltog_col;
+
+        //only client processes will reach here
+        PetscCall(PetscCommDuplicate(sub_comm, &petsc_comm, NULL));
+        PetscMPIInt rank2, size2;
+        MPI_Comm_rank(petsc_comm, &rank2);
+        MPI_Comm_size(petsc_comm, &size2);
+        //output
+        // std::cout << "rank " << rank2 << " size " << size2 << std::endl;
+
+        PetscInt m, n, M, N, rstartx, rendx, rstartb, rendb;
+        // PetscMPIInt rank, size;
+
+        N = N_tv;
+        // MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
+        // MPI_Comm_size(PETSC_COMM_WORLD, &size);
+
+        // set M
+        int m_local;
+        boost::mpi::all_reduce(domain_->client_communicator(), max_local_idx, tot_global, std::plus<int>());
+        tot_global += 1; //add one since max_local_idx of 0 is -1
+        //M = tot_global;
+
+        m_local = max_local_idx - min_local_idx + 1;
+
+        int m_max;
+
+        boost::mpi::all_reduce(domain_->client_communicator(), m_local, m_max, boost::mpi::maximum<int>());
+
+        domain_->client_communicator().barrier();
+        n = N;
+
+        if (rank == 0) { m = 0; }
+        else { m = m_max; }
+        M = m_max * (size - 1);
+        // if (rank == 0) { std::cout << "M: " << M << std::endl; }
+        domain_->client_communicator().barrier();
+        // std::cout << "rank " << rank << " m_local: " << m << " n_local: " << n << std::endl;
+
+        // PetscInt m_test, M_test;
+        // m_test=PETSC_DECIDE;
+        // M_test=PETSC_DECIDE;
+        // PetscCall(PetscSplitOwnershipEqual(petsc_comm,&m_test,&M));
+        // PetscCall(PetscSplitOwnershipEqual(petsc_comm,&m,&M_test));
+        // std::cout << "rank " << rank << " m: " << m << " M: " << M  << " m_test: " << m_test << " M_test: " << M_test << std::endl;
+
+        // PetscInt n_test, N_test;
+        // n_test=PETSC_DECIDE;
+        // N_test=PETSC_DECIDE;
+        // PetscCall(PetscSplitOwnershipEqual(petsc_comm,&n_test,&N));
+        // PetscCall(PetscSplitOwnershipEqual(petsc_comm,&n,&N_test));
+        // std::cout << "rank " << rank << " n: " << n << " N: " << N  << " n_test: " << n_test << " N_test: " << N_test << std::endl;
+        // PetscInt d_nz = 2; // Number of nonzeros per row (since every row has 2 columns)
+        // PetscInt o_nz = 0; // No nonzeros in off-process columns
+
+        // PetscCall(MatCreate(petsc_comm,&A));
+        // PetscCall(MatSetSizes(A,m,PETSC_DECIDE,M,N));
+        //         PetscInt local_m, local_n, global_m, global_n;
+        // PetscCall(MatSetType(A,MATMPIDENSE));
+        // // // PetscCall(MatMPIAIJSetPreallocation(A, d_nz, NULL, o_nz, NULL));
+        // PetscCall(MatSetUp(A));
+        // MatGetSize(A, &global_m, &global_n);
+        // MatGetLocalSize(A, &local_m, &local_n);
+
+        // std::cout << "rank " << rank << " local_m: " << local_m << " local_n: " << local_n << " global_m: " << global_m << " global_n: " << global_n << std::endl;
+
+        Vec x, b;
+        // PetscCall(MatCreateScaLAPACK(petsc_comm, PETSC_DECIDE,PETSC_DECIDE , M,n, 0,0, &A));
+        PetscCall(MatCreateDense(petsc_comm, m, PETSC_DECIDE, M, N, NULL, &A));
+        // // PetscCall(MatSetType(A, MATSCALAPACK));
+        PetscCall(MatSetUp(A));
+
+        PetscCall(MatCreateVecs(A, &x, &b));
+        PetscCall(VecGetOwnershipRange(x, &rstartx, &rendx));
+        PetscCall(VecGetOwnershipRange(b, &rstartb, &rendb));
+
+        //get index set
+        int* global_rows;
+
+        global_rows = new int[m];
+        for (int i = 0; i < m; i++) { global_rows[i] = i + static_cast<int>(rstartb); }
+
+        int* global_cols = new int[n];
+        for (int j = 0; j < n; j++) { global_cols[j] = j; }
+
+        PetscInt* rows = global_rows;
+        PetscInt* cols = global_cols;
+        IS        isrow, iscol;
+
+        PetscCall(ISCreateGeneral(petsc_comm, m, rows, PETSC_COPY_VALUES, &isrow));
+        PetscCall(ISCreateGeneral(petsc_comm, n, cols, PETSC_COPY_VALUES, &iscol));
+
+        PetscCall(ISLocalToGlobalMappingCreateIS(isrow, &ltog_row));
+        PetscCall(ISLocalToGlobalMappingCreateIS(iscol, &ltog_col));
+
+        PetscCall(MatSetLocalToGlobalMapping(A, ltog_row, ltog_col));
 
         PetscInt size_x, size_b;
 
         PetscCall(VecGetSize(x, &size_x));
         PetscCall(VecGetSize(b, &size_b));
-        PetscPrintf(petsc_comm, "rank %d size_x: %d size_b: %d\n", rank, size_x,
-            size_b);
+        // PetscPrintf(petsc_comm, "rank %d size_x: %d size_b: %d\n", rank, size_x, size_b);
 
         // domain_->client_communicator().barrier();
 
-        for (int i = 1; i < world.size(); i++)
-        {
-            if (world.rank() == i)
-            {
-                std::cout << "rank " << world.rank() << " rstartx: " << rstartx
-                          << " rendx: " << rendx << " rstartb: " << rstartb
-                          << " rendb: " << rendb << std::endl;
-            }
+        // for (int i = 1; i < world.size(); i++)
+        // {
+        //     if (world.rank() == i)
+        //     {
+        //         std::cout << "rank " << world.rank() << " rstartx: " << rstartx << " rendx: " << rendx
+        //                   << " rstartb: " << rstartb << " rendb: " << rendb << std::endl;
+        //     }
 
-            domain_->client_communicator().barrier();
-        }
-        // setting values
-        for (int j = 0; j < n; j++) //loop through columns
-        {
-            //loop through points
+        //     domain_->client_communicator().barrier();
+        // }
+        // // setting values
+        // for (int j = 0; j < n; j++) //loop through columns
+        // {
+        //     //loop through points
 
-            int base_level = domain_->tree()->base_level();
-            for (int l = base_level; l < domain_->tree()->depth(); l++)
-            {
-                for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
-                {
-                    if (!it->locally_owned() || !it->has_data()) continue;
-                    // if (!it->data().is_allocated()) continue;
-                    if (it->is_leaf() && !it->is_correction())
-                    {
-                        for (std::size_t field_idx = 0; field_idx < Dim;
-                             ++field_idx)
-                        {
-                            for (auto& n : it->data())
-                            {
-                                int i_local = n(idx_u, field_idx)-1;
-                                if (i_local < 0) continue;
-                                // int i_global =
-                                //     (rank - 1) * m_local + i_local - 1;
-                                PetscScalar value = n(u, field_idx);
-                                PetscCall(MatSetValuesLocal(A, 1, &i_local, 1, &j,
-                                    &value, INSERT_VALUES));
-                            }
-                        }
-                    }
-                }
-            }
-        }
+        //     int base_level = domain_->tree()->base_level();
+        //     for (int l = base_level; l < domain_->tree()->depth(); l++)
+        //     {
+        //         for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+        //         {
+        //             if (!it->locally_owned() || !it->has_data()) continue;
+        //             // if (!it->data().is_allocated()) continue;
+        //             if (it->is_leaf() && !it->is_correction())
+        //             {
+        //                 for (std::size_t field_idx = 0; field_idx < Dim;
+        //                      ++field_idx)
+        //                 {
+        //                     for (auto& n : it->data())
+        //                     {
+        //                         int i_local = n(idx_u, field_idx)-1;
+        //                         if (i_local < 0) continue;
+        //                         // int i_global =
+        //                         //     (rank - 1) * m_local + i_local - 1;
+        //                         PetscScalar value = n(Field::tag(), field_idx);
+        //                         // PetscScalar value = 1.0;
+        //                         PetscCall(MatSetValuesLocal(A, 1, &i_local, 1, &j,
+        //                             &value, INSERT_VALUES));
+        //                     }
+        //                 }
+        //             }
+        //         }
+        //     }
+        // }
+        delete[] global_rows;
+        delete[] global_cols;
+
+
+        load_vecs<Field_idx,Field_re,Field_im>(A,f_idx);
+
         PetscCall(MatAssemblyBegin(A, MAT_FINAL_ASSEMBLY));
         PetscCall(MatAssemblyEnd(A, MAT_FINAL_ASSEMBLY));
         //matrix is set
-        Mat B;
         PetscCall(MatConvert(A, MATDENSE, MAT_INITIAL_MATRIX, &B));
 
         PetscCall(MatSetLocalToGlobalMapping(B, ltog_row, ltog_col));
 
-
         PetscCall(MatAssemblyBegin(B, MAT_FINAL_ASSEMBLY));
         PetscCall(MatAssemblyEnd(B, MAT_FINAL_ASSEMBLY));
 
-        for (int j = 0; j < n; j++) //loop through columns
-        {
-            //loop through points
+        // for (int j = 0; j < N_vecs; j++) //loop through columns
+        // {
+        //     //loop through points
 
-            int base_level = domain_->tree()->base_level();
-            for (int l = base_level; l < domain_->tree()->depth(); l++)
+        //     int base_level = domain_->tree()->base_level();
+        //     for (int l = base_level; l < domain_->tree()->depth(); l++)
+        //     {
+        //         for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+        //         {
+        //             if (!it->locally_owned() || !it->has_data()) continue;
+        //             // if (!it->data().is_allocated()) continue;
+        //             if (it->is_leaf() && !it->is_correction())
+        //             {
+        //                 for (std::size_t field_idx = 0; field_idx < Dim; ++field_idx)
+        //                 {
+        //                     for (auto& n : it->data())
+        //                     {
+        //                         int i_local = n(Field_idx::tag(), field_idx) - 1;
+        //                         if (i_local < 0) continue;
+        //                         // int i_global =
+        //                         //     (rank - 1) * m_local + i_local - 1;
+        //                         PetscComplex value;
+        //                         PetscCall(MatGetValuesLocal(B, 1, &i_local, 1, &j, &value));
+
+        //                         n(Field_check_re::tag(), field_idx * Nf + j) = PetscRealPart(value);
+        //                         n(Field_check_im::tag(), field_idx * Nf + j) = PetscImaginaryPart(value);
+        //                     }
+        //                 }
+        //             }
+        //         }
+        //     }
+        // }
+        if (1)
+        {
+            SVD svd;
+            PetscReal sigma;
+            PetscInt nConv;
+            PetscCall(SVDCreate(petsc_comm, &svd));
+            PetscCall(SVDSetOperators(svd, A, NULL));
+            // PetscCall(SVDSetType(svd, SVDTRLANCZOS));
+            PetscCall(SVDSetFromOptions(svd));
+            PetscCall(SVDSolve(svd));
+            PetscCall(SVDGetConverged(svd, &nConv));
+            for(PetscInt i=0; i<nConv; i++)
             {
-                for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+     
+                PetscCall(SVDGetSingularTriplet(svd, i, &sigma, b,NULL));
+                if(rank==1) std::cout << "Singular value " << i << " : " << sigma << std::endl;
+                vec2grid<Field_idx,Field_check_re,Field_check_im>(b,i);
+            }
+            
+        }
+        PetscCall(VecDestroy(&x)); // PETSc deallocates memory
+        PetscCall(VecDestroy(&b)); // PETSc deallocates memory
+        PetscCall(MatDestroy(&A));
+        PetscCall(MatDestroy(&B));
+        
+
+        // if (petsc_comm != MPI_COMM_NULL) { MPI_Comm_free(&petsc_comm); }
+        // if (sub_comm != MPI_COMM_NULL) { MPI_Comm_free(&sub_comm); }
+
+        return 0;
+    }
+    template<class Field_idx, class Field_re, class Field_im>
+    int vec2grid(Vec x, int idx)
+    {
+        //loop through points
+        const PetscComplex* x_array;
+        PetscCall(VecGetArrayRead(x, &x_array));
+        int base_level = domain_->tree()->base_level();
+        for (int l = base_level; l < domain_->tree()->depth(); l++)
+        {
+            const auto dx_level = domain_->dx_base() / math::pow2(l);
+            const auto w_1_2 =std::pow(dx_level, domain_->dimension()/2.0);
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
+                // if (!it->data().is_allocated()) continue;
+                if (it->is_leaf() && !it->is_correction())
                 {
-                    if (!it->locally_owned() || !it->has_data()) continue;
-                    // if (!it->data().is_allocated()) continue;
-                    if (it->is_leaf() && !it->is_correction())
+                    for (std::size_t field_idx = 0; field_idx < Dim; ++field_idx)
                     {
-                        for (std::size_t field_idx = 0; field_idx < Dim;
-                             ++field_idx)
+                        for (auto& n : it->data())
                         {
-                            for (auto& n : it->data())
-                            {
-                                int i_local = n(Field_idx::tag(), field_idx)-1;
-                                if (i_local < 0) continue;
-                                // int i_global =
-                                //     (rank - 1) * m_local + i_local - 1;
-                                PetscScalar value;
-                                PetscCall(MatGetValuesLocal(B, 1, &i_local, 1,
-                                    &j, &value));
-                                n(Field_check::tag(), field_idx) =
-                                    PetscRealPart(value);
-                            }
+                            int i_local = n(Field_idx::tag(), field_idx) - 1;
+                            if (i_local < 0) continue;
+                            // int i_global =
+                            //     (rank - 1) * m_local + i_local - 1;
+                            PetscComplex value;
+                            // PetscCall(MatGetValuesLocal(B, 1, &i_local, 1, &j, &value));
+                            value = x_array[i_local];
+
+                            n(Field_re::tag(), field_idx * N_tv + idx) = PetscRealPart(value)/w_1_2;
+                            n(Field_im::tag(), field_idx * N_tv + idx) = PetscImaginaryPart(value)/w_1_2;
                         }
                     }
                 }
             }
         }
+        VecRestoreArrayRead(x, &x_array);
 
-        PetscCall(MatDestroy(&A));
-        PetscCall(PetscFinalize());
-
-        if (petsc_comm != MPI_COMM_NULL) { MPI_Comm_free(&petsc_comm); }
-        if (sub_comm != MPI_COMM_NULL) { MPI_Comm_free(&sub_comm); }
 
         return 0;
     }
-
     void GetIdx()
     {
         boost::mpi::communicator world;
@@ -1371,12 +1737,13 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
     vr_fct_t   vr_fct_;
 
     std::string ic_filename_, ref_filename_;
-
+    std::string iter_dirname_; // iteration directory name
+    std::string iter_folder_prefix_;
     float_type Lx;
 
     int max_local_idx = -1;
     int min_local_idx = -1;
-
+    int f_start_idx_=0;
     int tot_global = 0;
     int Color;
 };

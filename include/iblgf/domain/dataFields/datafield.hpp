@@ -17,7 +17,7 @@
 #include <tuple>
 #include <iostream>
 #include <algorithm>
-
+#include <optional>
 // IBLGF-specific
 #include <iblgf/types.hpp>
 #include <iblgf/linalg/linalg.hpp>

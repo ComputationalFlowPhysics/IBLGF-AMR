@@ -15,7 +15,7 @@
 #include <boost/mpi/communicator.hpp>
 #include <boost/mpi/environment.hpp>
 
-#include "lns_amr_lgf.hpp"
+#include "lns_amr_lgf_forcing.hpp"
 #include <iblgf/dictionary/dictionary.hpp>
 
 

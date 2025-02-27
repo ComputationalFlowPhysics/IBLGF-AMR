@@ -9,12 +9,12 @@
 //      ▄▄▄▄█░█▄▄▄▄ ▐░█▄▄▄▄▄▄▄█░▌▐░█▄▄▄▄▄▄▄▄▄ ▐░█▄▄▄▄▄▄▄█░▌▐░▌
 //     ▐░░░░░░░░░░░▌▐░░░░░░░░░░▌ ▐░░░░░░░░░░░▌▐░░░░░░░░░░░▌▐░▌
 //      ▀▀▀▀▀▀▀▀▀▀▀  ▀▀▀▀▀▀▀▀▀▀   ▀▀▀▀▀▀▀▀▀▀▀  ▀▀▀▀▀▀▀▀▀▀▀  ▀
-
+#include "lns_test_petsc.hpp"
 #include <boost/mpi.hpp>
 #include <boost/mpi/environment.hpp>
 #include <boost/mpi/communicator.hpp>
 
-#include "lns_test_petsc.hpp"
+
 #include <iblgf/dictionary/dictionary.hpp>
 
 
@@ -43,7 +43,7 @@ int main(int argc, char *argv[])
     NS_AMR_LGF setup(&dictionary);
 
     // run setup
-    setup.run(argc, argv);
+    setup.run_svd(argc, argv);
 
     return 0;
 }

@@ -95,9 +95,9 @@ struct parameters
     // clang-format on
 };
 
-struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
+struct NS_AMR_LGF : public SetupLinear<NS_AMR_LGF, parameters>
 {
-    using super_type =SetupBase<NS_AMR_LGF,parameters>;
+    using super_type =SetupLinear<NS_AMR_LGF,parameters>;
     using vr_fct_t = std::function<float_type(float_type x, float_type y, int field_idx, bool perturbation)>;
 
     //Timings

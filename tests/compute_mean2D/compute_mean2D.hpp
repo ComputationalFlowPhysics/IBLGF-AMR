@@ -92,9 +92,9 @@ struct parameters
     // clang-format on
 };
 
-struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
+struct NS_AMR_LGF : public SetupLinear<NS_AMR_LGF, parameters>
 {
-    using super_type =SetupBase<NS_AMR_LGF,parameters>;
+    using super_type =SetupLinear<NS_AMR_LGF,parameters>;
     using vr_fct_t = std::function<float_type(float_type x, float_type y, int field_idx, bool perturbation)>;
 
     //Timings
@@ -376,7 +376,7 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 		{
 			if((n-nStart)%100==0) pcout<<"time step: "<<n<<std::endl;
 			float_type  ratio = 1.0 / static_cast<float_type>(nTimes);
-			std::string flow_name = "./output/flowTime_" + std::to_string(n)+".hdf5";
+			std::string flow_name = "./output_mean/flowTime_" + std::to_string(n)+".hdf5";
 			simulation_.template read_h5<u_type>(flow_name, "u");
 			simulation_.template read_h5<edge_aux_type>(flow_name, "edge_aux");
             if (domain_->is_client()){

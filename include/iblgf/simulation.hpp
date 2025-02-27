@@ -201,7 +201,11 @@ class Simulation
     {
        io_h5.template read_h5<Field>(_filename, field_name, domain_.get());
     }
-
+    template<typename Field>
+    void read_h5_test(std::string _filename, std::string field_name)
+    {
+       io_h5.template read_h5_test<Field>(_filename, field_name, domain_.get());
+    }
     template<typename Field>
     void read_h5_DiffNmode(std::string _filename, std::string field_name, int N_input_mode)
     {

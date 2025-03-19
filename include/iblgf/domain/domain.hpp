@@ -581,12 +581,19 @@ class Domain
                 }
             }
 
+            if (Dim == 2) {
+                //add_extra_correction_buffer();
+                //add_extra_correction_buffer();
+                //add_extra_correction_buffer();
+            }
+
             this->tree()->construct_level_maps();
             this->tree()->construct_leaf_maps(true);
             this->tree()->construct_lists();
         }
 
-	//if (Dim == 2) add_extra_buffer(base_level);
+	    // if (Dim == 2) add_extra_buffer(base_level);
+        
 
         // flag base level boundary correction
         for (auto it = this->begin(base_level); it != this->end(base_level);
@@ -617,6 +624,55 @@ class Domain
         this->tree()->construct_level_maps();
         this->tree()->construct_lists();
         this->tree()->construct_leaf_maps(true);
+    }
+
+    void add_extra_correction_buffer() {
+        const auto base_level = this->tree()->base_level();
+        for (int l = base_level + 1; l < this->tree()->depth(); ++l)
+        {
+            for (auto it = this->begin(l); it != this->end(l); ++it)
+            {
+                if (!it->has_data()) continue;
+                if (it->physical()) continue;
+
+                it->tree()->insert_correction_neighbor(
+                    *it, [this](auto neighbor_it) {
+                        auto level = neighbor_it->level() -
+                                        this->tree()->base_level();
+                        auto bbase = t_->octant_to_level_coordinate(
+                            neighbor_it->tree_coordinate(), level);
+
+                        bool init_field = false;
+                        neighbor_it->data_ptr() =
+                            std::make_shared<datablock_t>(
+                                bbase, block_extent_, level, init_field);
+                    });
+            }
+        }
+
+        this->tree()->construct_lists();
+        this->tree()->construct_level_maps();
+        this->tree()->construct_leaf_maps(true);
+
+        for (int l = base_level + 1; l < this->tree()->depth(); ++l)
+        {
+            for (auto it = this->begin(l); it != this->end(l); ++it)
+            {
+                if (it->physical()) continue;
+                //it->flag_correction(false);
+
+                for (int i = 0; i < it->nNeighbors(); ++i)
+                {
+                    auto neighbor_it = it->neighbor(i);
+                    if (!neighbor_it || !neighbor_it->has_data() ||
+                        neighbor_it->physical())
+                        continue;
+
+                    neighbor_it->aim_deletion(false);
+                    neighbor_it->flag_correction(true);
+                }
+            }
+        }
     }
 
     void add_extra_buffer(int base_level) {

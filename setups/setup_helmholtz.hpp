@@ -83,7 +83,7 @@ class Setup_helmholtz
       (r_i_real,            float_type,  3*3*N_modes,  1,  1,  face,false),
       (face_aux_real,       float_type,  3*3*N_modes,  1,  1,  face,false),
       (d_i,                 float_type,  2*N_modes,    1,  1,  cell,false),
-      (g_i,                 float_type,  3*2*N_modes,  1,  1,  face,false),
+      (g_i,                 float_type,  3*2*N_modes,  1,  1,  face,true),
       (r_i,                 float_type,  3*2*N_modes,  1,  1,  face,false),
       (w_1,                 float_type,  3*2*N_modes,  1,  1,  face,false),
       (w_2,                 float_type,  3*2*N_modes,  1,  1,  face,false),

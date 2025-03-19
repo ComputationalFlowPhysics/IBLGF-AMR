@@ -495,6 +495,8 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 			if (it->is_leaf() && it->is_correction()) continue;
 			//if (it->refinement_level() == 0 && non_base_level_update) continue; 
 
+			
+
 			int l1=-1;
 			int l2=-1;
 			int l3=-1;
@@ -561,6 +563,15 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 	{
 		if (vortexType != 0 || NoMeshUpdate) return 0;
 		if (it->refinement_level() == 0 && non_base_level_update) return 0; 
+
+		bool is_in_radius = checking_radius(it, 0.5);
+
+		/*if (is_in_radius && it->is_leaf())
+			if (it->refinement_level()<nLevelRefinement_+nIB_add_level_)
+				return 1;
+			else
+				return 0;*/
+
 		if (it->is_ib() && it->is_leaf())
 			if (it->refinement_level()<nLevelRefinement_+nIB_add_level_)
 				return 1;
@@ -798,6 +809,37 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 		float_type vort_ic = w_oseen_vort(r, 0);
 		return vort_ic;
 		//return 0;
+	}
+
+	template<class OctantType>
+	bool checking_radius(OctantType it, float_type r) {
+		auto b = it->data().descriptor();
+		b.level() = it->refinement_level();
+		const float_type dx_base = domain_->dx_base();
+
+		auto center = (domain_->bounding_box().max() -
+			domain_->bounding_box().min() + 1) / 2.0 +
+			domain_->bounding_box().min();
+
+		auto scaling = std::pow(2, b.level());
+		center *= scaling;
+		auto dx_level = dx_base / std::pow(2, b.level());
+
+		b.grow(2, 2);
+		auto corners = b.get_corners();
+
+		for (int i = b.base()[0]; i <= b.max()[0]; ++i)
+		{
+			for (int j = b.base()[1]; j <= b.max()[1]; ++j)
+			{
+				float_type x = static_cast<float_type>(i) * dx_level;
+				float_type y = static_cast<float_type>(j) * dx_level;
+
+				if (std::sqrt(x * x + y * y) < r)
+					return true;
+			}
+		}
+		return false;
 	}
 
     /** @brief  Refienment conditon for octants.  */

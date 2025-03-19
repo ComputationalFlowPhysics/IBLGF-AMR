@@ -808,11 +808,11 @@ class PoissonSolver
                     .client()
                     ->template communicate_updownward_assign<source_tmp_type,
                         source_tmp_type>(l, false, false, -1);
-                client->template buffer_exchange<target_tmp_type>(l+1);
-                domain_->decomposition()
-                    .client()
-                    ->template communicate_updownward_assign<target_tmp_type,
-                        target_tmp_type>(l+1, false, false, -1);
+                //client->template buffer_exchange<target_tmp_type>(l+1);
+                //domain_->decomposition()
+                //    .client()
+                //    ->template communicate_updownward_assign<target_tmp_type,
+                //        target_tmp_type>(l+1, false, false, -1);
 
                 for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
                 {

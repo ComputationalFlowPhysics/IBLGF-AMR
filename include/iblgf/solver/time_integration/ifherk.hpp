@@ -150,6 +150,11 @@ class Ifherk
         fname_prefix_ = "";
 
         // miscs -------------------------------------------------------------
+
+        omega_cross_x.resize(domain_->dimension());
+        std::fill(omega_cross_x.begin(), omega_cross_x.end(), 0.0);
+
+        auto force_vec = this->template Force_Noca<u_type>();
     }
 
   public:
@@ -562,9 +567,192 @@ class Ifherk
             outfile << std::endl;
             outfile.close();
             std::cout << "finished writing new forcing" << std::endl;
+
+
+
+            outfile.open("fstats_stress_x.txt",
+                std::ios_base::app); // append instead of overwrite
+            outfile << std::setw(width) << tmp_n << std::setw(width)
+                    << std::scientific << std::setprecision(9);
+            outfile << std::setw(width) << T_ << std::setw(width)
+                    << std::scientific << std::setprecision(9);
+            for (int i = 0; i < ib.size(); i++) { outfile << All_sum_f_glob[i][0] << std::setw(width); }
+            outfile << std::endl;
+            outfile.close();
+
+            outfile.open("fstats_stress_y.txt",
+                std::ios_base::app); // append instead of overwrite
+            outfile << std::setw(width) << tmp_n << std::setw(width)
+                    << std::scientific << std::setprecision(9);
+            outfile << std::setw(width) << T_ << std::setw(width)
+                    << std::scientific << std::setprecision(9);
+            for (int i = 0; i < ib.size(); i++) { outfile << All_sum_f_glob[i][1] << std::setw(width); }
+            outfile << std::endl;
+            outfile.close();
+            std::cout << "finished writing new stress" << std::endl;
+        }
+
+        auto force_vec = this->template Force_Noca<u_type>();
+
+        if (domain_->is_server())
+        {
+            std::cout << "NoCA Forcing = ";
+            for (std::size_t d = 0; d < domain_->dimension(); ++d)
+                std::cout << force_vec[d] << " ";
+            std::cout << std::endl;
+            std::cout << " -----------------" << std::endl;
+
+            std::ofstream outfile;
+            int           width = 20;
+
+            outfile.open("fstats_noca.txt",
+                std::ios_base::app); // append instead of overwrite
+            outfile << std::setw(width) << tmp_n << std::setw(width)
+                    << std::scientific << std::setprecision(9);
+            outfile << std::setw(width) << T_ << std::setw(width)
+                    << std::scientific << std::setprecision(9);
+            for (int  i = 0 ; i < domain_->dimension(); i++) { outfile << force_vec[i] << std::setw(width); }
+            outfile << std::endl;
+            outfile.close();
         }
 
         world.barrier();
+    }
+
+
+    template<class Velocity_in>
+    void curl()
+    {
+        auto client=domain_->decomposition().client();
+
+        if (!client) return;
+
+        //up_and_down<Velocity_in>();
+        clean<Velocity_in>(true);
+        //this->up<Velocity_in>(false);
+        up_and_down<Velocity_in>();
+        clean<edge_aux_type>();
+
+        auto dx_base = domain_->dx_base();
+
+        for (int l  = domain_->tree()->base_level();
+                l < domain_->tree()->depth(); ++l)
+        {
+            client->template buffer_exchange<Velocity_in>(l);
+
+            for (auto it  = domain_->begin(l);
+                    it != domain_->end(l); ++it)
+            {
+                if(!it->locally_owned() || !it->has_data()) continue;
+                if(it->is_correction()) continue;
+                //if(!it->is_leaf()) continue;
+
+                const auto dx_level =  dx_base/math::pow2(it->refinement_level());
+                //if (it->is_leaf())
+                domain::Operator::curl<Velocity_in,edge_aux_type>( it->data(),dx_level);
+            }
+        }
+
+        //clean<Velocity_out>();
+        clean_leaf_correction_boundary<edge_aux_type>(domain_->tree()->base_level(), true, 2);
+    }
+
+    template<class Velocity_in>
+    std::vector<float_type> Force_Noca() {
+        curl<Velocity_in>();
+        std::vector<float_type> omega_cross_x_glob(domain_->dimension(), 0.);
+        std::vector<float_type> omega_cross_x_tmp(domain_->dimension(), 0.);
+        if (!domain_->is_server()) {
+            auto center = (domain_->bounding_box().max() -
+                domain_->bounding_box().min() + 1) / 2.0 +
+                domain_->bounding_box().min();
+            //std::vector<float_type> omega_cross_x_tmp(domain_->dimension(), 0.);
+            for (auto it = domain_->begin(); it != domain_->end(); ++it) {
+                if (!it->locally_owned()) continue;
+                if (!it->is_leaf()) continue;
+                if (it->is_correction()) continue;
+                auto scaling = std::pow(2, it->refinement_level());
+                const auto dx_level = dx_base_ / math::pow2(it->refinement_level());
+
+                for (auto& n : it->data()) {
+                    const auto& coord = n.level_coordinate();
+                    float_type x = static_cast<float_type>
+                        (coord[0]) * dx_level;
+                    float_type y = static_cast<float_type>
+                        (coord[1]) * dx_level;
+
+                    if ((x*x + y*y) < 0.25) continue;
+
+                    omega_cross_x_tmp[0] +=  y * n(edge_aux_type::tag(), 0) * std::pow(dx_level, domain_->dimension());
+                    omega_cross_x_tmp[1] += -x * n(edge_aux_type::tag(), 0) * std::pow(dx_level, domain_->dimension());
+
+                }
+                
+            }
+
+            
+        }
+
+        boost::mpi::communicator world;
+        boost::mpi::all_reduce(world, &omega_cross_x_tmp[0], omega_cross_x_tmp.size(), &omega_cross_x_glob[0], std::plus<float_type>());
+
+        std::vector<float_type> force_vec(domain_->dimension(), 0.);
+
+        for (int i = 0; i < domain_->dimension(); i++) {
+            pcout << omega_cross_x_glob[i] << " ";
+            force_vec[i] = (omega_cross_x_glob[i] - omega_cross_x[i]) / dt_;
+            omega_cross_x[i] = omega_cross_x_glob[i];
+        }
+
+        pcout << std::endl;
+
+        world.barrier();
+
+        return force_vec;
+    }
+
+    template<class Velocity_in>
+    void clean_center_velocity() {
+
+        auto f = simulation_->frame_vel();
+        if (!domain_->is_server()) {
+            auto center = (domain_->bounding_box().max() -
+                domain_->bounding_box().min() + 1) / 2.0 +
+                domain_->bounding_box().min();
+            //std::vector<float_type> omega_cross_x_tmp(domain_->dimension(), 0.);
+            for (auto it = domain_->begin(); it != domain_->end(); ++it) {
+                if (!it->locally_owned()) continue;
+                if (!it->is_leaf()) continue;
+                if (it->is_correction()) continue;
+                auto scaling = std::pow(2, it->refinement_level());
+                const auto dx_level = dx_base_ / math::pow2(it->refinement_level());
+
+                for (auto& n : it->data()) {
+                    const auto& coord = n.level_coordinate();
+                    float_type x = static_cast<float_type>
+                        (coord[0]) * dx_level;
+                    float_type y = static_cast<float_type>
+                        (coord[1]) * dx_level;
+
+                    auto coord_real = n.global_coordinate() * dx_base_;
+
+                    float_type x_v = x + 0.5*dx_level;
+                    float_type y_u = y + 0.5*dx_level;
+
+                    if (std::sqrt(x_v*x_v + y*y) < (0.5)) {
+                        
+                        n(Velocity_in::tag(), 1) = f(1, T_stage_, coord_real);
+                    }
+                    if (std::sqrt(x*x + y_u*y_u) < (0.5)) {
+                        n(Velocity_in::tag(), 0) = f(0, T_stage_, coord_real);
+                    }
+
+                }
+                
+            }
+
+            
+        }
     }
 
 
@@ -578,10 +766,6 @@ class Ifherk
         boost::mpi::communicator world;
 
         //pad_velocity<Source_face, Source_face>(true);
-
-        
-
-
 
         clean<face_aux2_type>();
         clean<edge_aux_type>();
@@ -613,9 +797,13 @@ class Ifherk
         
         laplacian<Source_face, face_aux2_type>();
 
+        //clean_center_velocity<face_aux2_type>();
+
         clean<r_i_type>();
         clean<g_i_type>();
         gradient<Source_cell, r_i_type>(1.0);
+
+        //clean_center_velocity<r_i_type>();
 
         //pcout << "Computed Laplacian " << std::endl;
 
@@ -932,6 +1120,8 @@ class Ifherk
         add<g_i_type, r_i_type>();
         lin_sys_with_ib_solve(alpha_[0]);
 
+        //clean_center_velocity<u_i_type>();
+
 
         // Stage 2
         // ******************************************************************
@@ -961,6 +1151,8 @@ class Ifherk
 
         lin_sys_with_ib_solve(alpha_[1]);
 
+        //clean_center_velocity<u_i_type>();
+
         // Stage 3
         // ******************************************************************
         pcout << "Stage 3" << std::endl;
@@ -983,6 +1175,8 @@ class Ifherk
         add<g_i_type, r_i_type>();
 
         lin_sys_with_ib_solve(alpha_[2]);
+
+        //clean_center_velocity<u_i_type>();
 
         // ******************************************************************
         copy<u_i_type, u_type>();
@@ -1372,6 +1566,8 @@ private:
         auto       client = domain_->decomposition().client();
         const auto dx_base = domain_->dx_base();
 
+        //up_and_down<Source>();
+
         for (int l = domain_->tree()->base_level();
              l < domain_->tree()->depth(); ++l)
         {
@@ -1389,7 +1585,7 @@ private:
             }
         }
 
-        clean_leaf_correction_boundary<edge_aux_type>(domain_->tree()->base_level(), true, 2);
+        // clean_leaf_correction_boundary<edge_aux_type>(domain_->tree()->base_level(), true, 2);
         // add background velocity
         copy<Source, face_aux_type>();
         domain::Operator::add_field_expression<face_aux_type>(domain_, simulation_->frame_vel(), T_stage_, -1.0);
@@ -1706,6 +1902,8 @@ private:
     float_type T_last_vel_refresh_=0.0;
 
     float_type b_f_mag, b_f_eps;
+
+    std::vector<float_type> omega_cross_x;
 
     int max_vel_refresh_=1;
     int max_ref_level_=0;

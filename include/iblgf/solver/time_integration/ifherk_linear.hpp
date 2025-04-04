@@ -575,6 +575,117 @@ class Ifherk_linear
 
         }
     }
+    void init_single_step()
+    {
+        T_ = 0.0;
+        adapt_count_ = 0;
+    }
+
+    void time_step_once(int n_steps=1,bool refresh_correction=true)
+    {
+        base_mesh_update_ = refresh_correction;// refresh first time step
+        for (int i = 0; i < n_steps; i++)
+        {
+            if (domain_->is_client())
+            {
+                clean<cell_aux_type>(true, 2);
+                clean<edge_aux_type>(true, 1);
+                clean<correction_tmp_type>(true, 2);
+            }
+            else
+            {
+                //const auto& lb = domain_->level_blocks();
+                /*std::vector<int> lb;
+		domain_->level_blocks(lb);*/
+                auto lb = domain_->level_blocks();
+                std::cout << "Blocks on each level: ";
+
+                for (int c : lb) std::cout << c << " ";
+                std::cout << std::endl;
+            }
+
+            // copy flag correction to flag old correction
+            for (auto it = domain_->begin(); it != domain_->end(); ++it) { it->flag_old_correction(false); }
+
+            for (auto it = domain_->begin(domain_->tree()->base_level());
+                it != domain_->end(domain_->tree()->base_level()); ++it)
+            {
+                it->flag_old_correction(it->is_correction());
+            }
+
+            int c = 0;
+
+            for (auto it = domain_->begin(); it != domain_->end(); ++it)
+            {
+                if (!it->locally_owned()) continue;
+                if (it->is_ib() || it->is_extended_ib())
+                {
+                    auto& lin_data = it->data_r(test_type::tag(), 0).linalg_data();
+                    std::fill(lin_data.begin(), lin_data.end(), 2.0);
+                    c += 1;
+                }
+            }
+            boost::mpi::communicator world;
+            int                      c_all;
+            boost::mpi::all_reduce(world, c, c_all, std::plus<int>());
+            pcout << "block = " << c_all << std::endl;
+
+            // if ( adapt_count_ % adapt_freq_ ==0 && adapt_count_ != 0)
+            // {
+            //     if (adapt_count_==0 || updating_source_max_)
+            //     {
+            //         this->template update_source_max<cell_aux_type>(0);
+            //         this->template update_source_max<edge_aux_type>(1);
+            //     }
+
+            //     //if(domain_->is_client())
+            //     //{
+            //     //    up_and_down<u>();
+            //     //    pad_velocity<u, u>();
+            //     //}
+            //     if (!just_restarted_) {
+            //         this->adapt(false);
+            //         adapt_corr_time_step();
+            //     }
+            //     just_restarted_=false;
+
+            // }
+
+            // // balance load
+            // if ( adapt_count_ % adapt_freq_ ==0)
+            // {
+            //     clean<u_type>(true);
+            //     // clean<u_base_type>(true);
+            //     domain_->decomposition().template balance<u_type,p_type,u_base_type,u_hat_re_type,u_hat_im_type,f_hat_re_type,f_hat_im_type>();
+            //     // domain_->decomposition().template balance<u_base_type,p_type>();
+            // }
+
+            adapt_count_++;
+            
+            // -------------------------------------------------------------
+            // time marching
+
+            mDuration_type ifherk_if(0);
+            TIME_CODE(ifherk_if, SINGLE_ARG(time_step();));
+            pcout << ifherk_if.count() << std::endl;
+
+            // -------------------------------------------------------------
+            T_ += dt_;
+            float_type tmp_n = T_ / dt_base_ * math::pow2(max_ref_level_);
+            int        tmp_int_n = int(tmp_n + 0.5);
+            // write output
+            if ((std::fabs(tmp_int_n - tmp_n) < 1e-4) && (tmp_int_n % output_base_freq_ == 0))
+            {
+                n_step_ = tmp_int_n;
+                // write_timestep();
+                // only update dt after 1 output so it wouldn't do 3 5 7 9 ...
+                // and skip all outputs
+                // update_marching_parameters();
+            }
+
+            write_stats(tmp_n);
+        }
+    }
     template<class Source, class Target_re, class Target_im>
     void streaming_fft()
     {
@@ -2356,7 +2467,7 @@ private:
                 }
             }
         }
-        if (true) {
+        if (false) {
             add_ext_force<Target>(_scale);
         }
     }

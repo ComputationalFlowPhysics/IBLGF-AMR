@@ -509,8 +509,13 @@ class IB
             for (int i=0; i<n; i++)
             {
                 real_coordinate_type p;
-                for (std::size_t field_idx = 0; field_idx<p.size(); field_idx++)
+                for (std::size_t field_idx = 0; field_idx<p.size(); field_idx++){
                     file>>p[field_idx];
+                    if(comm_.rank()==1)
+                        std::cout<<p[field_idx]<<" ";
+                }
+                if(comm_.rank()==1)
+                    std::cout<<std::endl;
 
                 coordinates_.emplace_back(p);
             }

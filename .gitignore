@@ -44,3 +44,7 @@ doc/
 Makefile.user
 CMakeLists.txt.user
 tags
+build4/cmake_install.cmake
+.vscode/
+bash_Wei
+bash_Wei_OG

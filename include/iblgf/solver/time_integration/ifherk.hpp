@@ -200,6 +200,7 @@ class Ifherk
             {
                 //pad_velocity<u_type, u_type>(true);
             }
+            write_timestep();
         }
         else
         {
@@ -289,7 +290,7 @@ class Ifherk
                 //}
                 if (!just_restarted_) {
                     this->adapt(false);
-                    adapt_corr_time_step();
+                    // adapt_corr_time_step();
                 }
                 just_restarted_=false;
 
@@ -300,6 +301,7 @@ class Ifherk
             {
                 clean<u_type>(true);
                 domain_->decomposition().template balance<u_type,p_type>();
+                //domain_->decomposition().template balance<u_type,p_type>();
             }
 
             adapt_count_++;
@@ -312,7 +314,7 @@ class Ifherk
                         time_step();
                         ));
             pcout<<ifherk_if.count()<<std::endl;
-
+            
             // -------------------------------------------------------------
             // update stats & output
 
@@ -1045,7 +1047,7 @@ class Ifherk
             for (std::size_t _field_idx=0; _field_idx<u_type::nFields(); ++_field_idx)
             {
                 for (int l = domain_->tree()->depth() - 2;
-                     l >= domain_->tree()->base_level(); --l)
+                     l >= domain_->tree()->base_level(); --l) // finest level is l=depth-1 and we only 
                 {
                     client->template buffer_exchange<u_type>(l);
 
@@ -1091,6 +1093,7 @@ class Ifherk
                         if (!domain_->is_client())
                             return;
                         pad_velocity<u_type, u_type>(true);
+                        // pad_velocity<u_mean_type, u_mean_type>(true);
                         adapt_corr_time_step();
                     }
                     else
@@ -1098,6 +1101,7 @@ class Ifherk
                         if (!domain_->is_client())
                             return;
                         up_and_down<u_type>();
+                        // up_and_down<u_mean_type>();
                     }
                     ));
         base_mesh_update_=false;
@@ -1182,6 +1186,7 @@ class Ifherk
         copy<u_i_type, u_type>();
         copy<d_i_type, p_type>(1.0 / coeff_a(3, 3) / dt_);
         // ******************************************************************
+        
     }
 
 
@@ -1282,7 +1287,8 @@ class Ifherk
         //add<g_i_type, r_i_type>();
 
         lin_sys_with_ib_solve(0.0, false);
-
+        // copy<u_mean_type,u_mean_type>((adapt_count_-1.0)/(adapt_count_));
+        // add<u_i_type, u_mean_type>(1.0/(adapt_count_));
         // ******************************************************************
         copy<u_i_type, u_type>();
         copy<d_i_type, p_type>(0.0);
@@ -1594,6 +1600,7 @@ private:
              l < domain_->tree()->depth(); ++l)
         {
             client->template buffer_exchange<edge_aux_type>(l);
+            client->template buffer_exchange<face_aux_type>(l);
             clean_leaf_correction_boundary<edge_aux_type>(l, false, 2);
 
             for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
@@ -1608,7 +1615,7 @@ private:
                 {
                     auto& lin_data =
                         it->data_r(Target::tag(), field_idx).linalg_data();
-                    lin_data *= _scale;
+                    lin_data *= _scale; //scale with time step size
                 }
             }
 

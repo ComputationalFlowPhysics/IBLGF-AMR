@@ -48,7 +48,8 @@ struct parameters
         //IF-HERK
          (u                , float_type, 3,    1,       1,     face,true ),
          (f_tmp            , float_type, 1,    1,       1,     cell,true ),
-         (p                , float_type, 1,    1,       1,     cell,true )
+         (p                , float_type, 1,    1,       1,     cell,true ),
+          (test                , float_type, 1,    1,       1,     cell,true )
     ))
     // clang-format on
 };

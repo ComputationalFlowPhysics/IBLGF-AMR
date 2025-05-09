@@ -77,6 +77,7 @@ struct parameters
          (exact_u_theta    , float_type, 2,    1,       1,     edge,false ),
          (num_u_theta      , float_type, 2,    1,       1,     edge,false ),
          (error_u_theta    , float_type, 2,    1,       1,     edge,false )
+		 //Mean Field
     ))
     // clang-format on
 };
@@ -206,10 +207,9 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 		hard_max_refinement_ = simulation_.dictionary()->template get_or<bool>("hard_max_refinement", false);
 		non_base_level_update = simulation_.dictionary()->template get_or<bool>("no_base_level_update", false);
 		NoMeshUpdate = simulation_.dictionary()->template get_or<bool>("no_mesh_update", false);
-
 		auto domain_range = domain_->bounding_box().max() - domain_->bounding_box().min();
 		Lx = domain_range[0] * dx_;
-
+		disable_delete_base= simulation_.dictionary()->template get_or<bool>("disable_delete_base", false);
 
 
 		ctr_dis_x = 0.0*dx_; //this is setup as the center of the vortex in the unit of grid spacing
@@ -300,6 +300,7 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 		else
 		{
 			simulation_.template read_h5<u_type>(simulation_.restart_field_dir(), "u");
+			// simulation_.template read_h5<u_mean_type>(simulation_.restart_field_dir(), "u_mean");
 		}
 
 		boost::mpi::communicator world;
@@ -583,7 +584,7 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 		float_type field_max=
 			domain::Operator::maxnorm<Field>(it->data());
 
-		if (field_max<1e-10) return -1;
+		if (field_max<1e-10 && !(disable_delete_base && it->refinement_level()==0)) return -1;
 
 		float_type deletion_factor=0.7;
 
@@ -611,6 +612,8 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 			return 1;
 
 		l_change = l_delete_aim - it->refinement_level();
+		if(it->refinement_level()==0 && disable_delete_base)
+			return 0; //never remove base level but it can be refined
 		if (l_change<0) return -1;
 
 		return 0;
@@ -1077,6 +1080,8 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
     std::string ic_filename_, ref_filename_;
 
     float_type Lx;
+
+	bool disable_delete_base=false;
 };
 
 double vortex_run(std::string input, int argc = 0, char** argv = nullptr);

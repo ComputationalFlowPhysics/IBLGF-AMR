@@ -1,7 +1,7 @@
 #Bring the headers, such as Student.h into the project
 include_directories(${IBLGF_SOURCE_DIR}/src )
 
-#set(PETSC_DIR "/home/whou/lib/PETSc/petsc")
+#set(PETSC_DIR "/home/ccardina/lib/PETSc/petsc")
 #set(PETSC_ARCH "arch-linux-c-debug")
 #include_directories(${PETSC_DIR}/include )
 #include_directories(${PETSC_DIR}/arch-linux-c-debug/include )

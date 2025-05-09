@@ -1,0 +1,41 @@
+#set(CMAKE_PREFIX_PATH "/home/ccardina/lib")
+#SET(CMAKE_FC_COMPILER "/home/root/intel-oneAPI/oneAPI/mpi/latest/bin/mpiifort")
+#set(CMAKE_C_COMPILER "/home/root/intel-oneAPI/oneAPI/mpi/latest/bin/mpiicc")
+#set(CMAKE_CXX_COMPILER "/home/root/intel-oneAPI/oneAPI/mpi/latest/bin/mpiicpc")
+#set(CMAKE_CXX_COMPILER "/opt/cray/pe/mpich/8.1.26/ofi/cray/14.0/bin/mpicc")
+#set(CMAKE_CXX_COMPILER "/p/app/intel/oneapi_2024.2.0/mpi/2021.13/bin/mpiicpc")
+#set(CMAKE_C_COMPILER "/p/app/intel/oneapi_2024.2.0/mpi/2021.13/bin/mpiicc")
+#set(BOOST_ROOT "/home/ccardina/boost_prefix")
+#set(Boost_INCLUDE_DIR "/home/ccardina/boost_prefix/include")
+#set(Boost_LIBRARY_DIR "/home/ccardina/boost_prefix/lib")
+#
+set(BOOST_ROOT "/p/home/ccardina/lib/boost_1_68_0")
+#set(Boost_INCLUDE_DIR "/home/ccardina/lib/boost_1_68_0/include")
+#set(Boost_LIBRARY_DIR "/home/ccardina/lib/boost_1_68_0/lib")
+###set(xsimd_DIR "/p/home/ccardina/.conda/envs/env2/include/xsimd")
+
+set(xsimd_DIR "/p/home/ccardina/.conda/envs/iblgf/lib/cmake/xsimd")
+set(xtensor_DIR "/p/home/ccardina/.conda/envs/iblgf/lib/cmake/xtensor")
+
+set(xtensor-blas_DIR "/p/home/ccardina/.conda/envs/iblgf/lib/cmake/xtensor-blas")
+set(xtl_DIR "/p/home/ccardina/.conda/envs/iblgf/include/xtl")
+#set(FFTW_ROOT "/opt/intel-2019/mkl/include/fftw")
+#set(FFTW_INCLUDES "/opt/intel-2019/mkl/include/fftw")
+#set(FFTW_LIBRARIES "/home/ccardina/fftw/lib")
+
+#set(HDF5_ROOT "/home/ccardina/lib/hdf5")
+#set(HDF5_INCLUDE_DIRS "/opt/cray/pe/hdf5/1.12.2.3/CRAYCLANG/14.0/include")
+#set(HDF5_LIBRARY_DIRS "/opt/cray/pe/hdf5/1.12.2.3/CRAYCLANG/14.0/lib")
+#set(HDF5_ROOT "/home/ccardina/hdf5-1.10.4-parallel")
+#set(HDF5_INCLUDE_DIRS "/home/ccardina/hdf5-1.10.4-parallel/include")
+#set(HDF5_LIBRARY_DIRS "/home/ccardina/hdf5-1.10.4-parallel/lib")
+
+#set(xtl_DIR "/home/ccardina/lib/xtl/lib64/cmake/xtl")
+#set(xtensor_DIR "/home/ccardina/lib/xtensor/lib64/cmake/xtensor")
+#set(xtensor-blas_DIR "/home/ccardina/lib/xtensor-blas/lib64/cmake/xtensor-blas")
+#set(xtensor-blas_DIR "/home/root/intel-oneAPI/oneAPI/mkl/latest/lib/cmake/mkl")
+#set(xsimd_DIR "/home/ccardina/lib/xsimd")
+
+#set(BLAS_openblas_LIBRARY "/home/ccardina/lib/OpenBLAS/lib/libopenblas.so")
+set(PETSC_DIR "/p/home/ccardina/lib/petsc-3.21.4")
+

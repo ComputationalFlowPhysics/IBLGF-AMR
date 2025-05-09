@@ -1247,7 +1247,84 @@ struct Operator
         return sqrt(m / c);
     }
 
-
+    //normed squared of all components of a single field
+    template<class Field, class Block>
+    static float_type blockNormSquare(Block &block) noexcept
+    {
+        float_type m = 0.0;
+        for (auto& n : block)
+        {
+            float_type tmp = 0.0;
+            for (std::size_t field_idx = 0; field_idx < Field::nFields();
+                 ++field_idx)
+            {
+                tmp += n(Field::tag(), field_idx) * n(Field::tag(), field_idx);
+            }
+            m += tmp;
+        }
+        return m;
+    }
+    
+    //normed squared of all components of a single field of a single frequency of index ff
+    template<class Field, class Block>
+    static float_type blockNormSquare_oneFreq(Block &block,std::size_t Nf, std::size_t ff,int _Dim) noexcept
+    {
+        //Nf is number of total frequnecues
+        //ff is frequnecy index
+        float_type m = 0.0;
+        for (auto& n : block)
+        {
+            float_type tmp = 0.0;
+            for (std::size_t field_idx = 0; field_idx < _Dim;
+                 ++field_idx)
+            {
+                tmp += n(Field::tag(), field_idx*Nf+ff) * n(Field::tag(), field_idx*Nf+ff);
+            }
+            m += tmp;
+        }
+        return m;
+    }
+    // let Field1=x
+    // let Field2=y
+    // then m =<x,y>=conj(y)^T*x
+    template <class Field1_Re, class Field1_Im, class Field2_Re, class Field2_Im, class Block>
+    static std::vector<float_type> blockInnerProductComplex_oneFreq(Block &block,std::size_t Nf, std::size_t ff,int _Dim) noexcept 
+    {
+        std::vector<float_type> m(2,0.0); //local IP has 2 components, real and imag
+        for (auto& n : block)
+        {
+            float_type tmp_re = 0.0;
+            float_type tmp_im = 0.0;
+            for (std::size_t field_idx = 0; field_idx < _Dim;
+                 ++field_idx)
+            {
+                tmp_re += n(Field1_Re::tag(), field_idx*Nf+ff) * n(Field2_Re::tag(), field_idx*Nf+ff) + n(Field1_Im::tag(), field_idx*Nf+ff) * n(Field2_Im::tag(), field_idx*Nf+ff);
+                tmp_im += n(Field1_Im::tag(), field_idx*Nf+ff) * n(Field2_Re::tag(), field_idx*Nf+ff) - n(Field1_Re::tag(), field_idx*Nf+ff) * n(Field2_Im::tag(), field_idx*Nf+ff);
+            }
+            m[0] += tmp_re;
+            m[1] += tmp_im;
+        }
+        return m;
+    }
+    template <class Field1_Re, class Field1_Im, class Field2_Re, class Field2_Im, class Block>
+    static std::vector<float_type> blockInnerProductComplex_idx(Block &block,std::size_t sep, std::size_t ff1,std::size_t ff2,int _Dim) noexcept 
+    {
+        std::vector<float_type> m(2,0.0); //local IP has 2 components, real and imag
+        for (auto& n : block)
+        {
+            float_type tmp_re = 0.0;
+            float_type tmp_im = 0.0;
+            for (std::size_t field_idx = 0; field_idx < _Dim;
+                 ++field_idx)
+            {
+                tmp_re += n(Field1_Re::tag(), field_idx*sep+ff1) * n(Field2_Re::tag(), field_idx*sep+ff2) + n(Field1_Im::tag(), field_idx*sep+ff1) * n(Field2_Im::tag(), field_idx*sep+ff2);
+                tmp_im += n(Field1_Im::tag(), field_idx*sep+ff1) * n(Field2_Re::tag(), field_idx*sep+ff2) - n(Field1_Re::tag(), field_idx*sep+ff1) * n(Field2_Im::tag(), field_idx*sep+ff2);
+            }
+            m[0] += tmp_re;
+            m[1] += tmp_im;
+        }
+        return m;
+    }
     template<class Field1, class Field2, class Block>
     static float_type blockDot(Block& block) noexcept
     {

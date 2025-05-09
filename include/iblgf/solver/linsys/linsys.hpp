@@ -300,7 +300,7 @@ class LinSysSolver
 
         // div
         domain::Operator::levelDivergence<Source, cell_aux2_type>(domain_, l);
-        //domain::Operator::clean_ib_region_boundary<cell_aux2_type>(domain_, l);
+        domain::Operator::clean_ib_region_boundary<cell_aux2_type>(domain_, l);
 
         // apply L^-1
         psolver_.template apply_lgf<cell_aux2_type, cell_aux2_type>(fmm_type);
@@ -314,7 +314,7 @@ class LinSysSolver
 
         for (int l = l_min; l < l_max; ++l) {
             domain::Operator::levelGradient<cell_aux2_type, Target>(domain_, l);
-            //if (fmm_type ==  MASK_TYPE::xIB2IB) domain::Operator::clean_ib_region_boundary<Target>(domain_, l);
+            if (fmm_type ==  MASK_TYPE::xIB2IB) domain::Operator::clean_ib_region_boundary<Target>(domain_, l);
         }
     }
 

@@ -63,6 +63,8 @@ class IB
 
         ibph_ = d->template get_or<float_type>("ibph", 1.5);
         geometry_ = d->template get_or<std::string>("geometry", "none");
+	
+	    std::string delta_func_name = d->template get_or<std::string>("delta_func", "yang3");
 
         ct_x = d->template get_or<float_type>("ct_x", 1.0);
         ct_y = d->template get_or<float_type>("ct_y", 1.0);
@@ -82,9 +84,19 @@ class IB
 
         //std::function<float_type(float_type x)> delta_func_1d_ =
         //    [this](float_type x) { return this->roma(x); };
-
-        std::function<float_type(float_type x)> delta_func_1d_ =
-            [this](float_type x) { return this->yang3(x); };
+        std::function<float_type(float_type x)> delta_func_1d_;
+	    if (delta_func_name == "yang3") {
+        	delta_func_1d_ = [this](float_type x) { return this->yang3(x); };
+		    if (comm_.rank()==1) std::cout << "Using yang3 delta function" << std::endl;
+	    }
+	    else if (delta_func_name == "roma") {
+		    delta_func_1d_ = [this](float_type x) { return this->roma(x); };
+	        if (comm_.rank()==1) std::cout << "Using roma delta function" << std::endl;
+	    }
+	    else {
+		    delta_func_1d_ = [this](float_type x) { return this->yang4(x); };
+		    if (comm_.rank()==1) std::cout << "Using yang4 delta function" << std::endl;
+	    }
         //std::function<float_type(float_type x)> delta_func_1d_ =
         //    [this](float_type x) { return this->yang4(x); };
 
@@ -246,6 +258,50 @@ class IB
                     real_coordinate_type tmp;
                     tmp.x() = r * cos(theta) + ct_x;
                     tmp.y() = r * sin(theta) + ct_y;
+                    coordinates_.emplace_back(real_coordinate_type(tmp));
+                }
+            }
+        }
+
+        else if (geometry_ == "3circles")
+        {
+            if (Dim == 2)
+            {
+                float_type r = 0.05; //diameter of smaller cylinder
+                
+                float_type R = 0.5;
+                float_type dx = dx_base_ / pow(2, IBlevel_) * ibph_;
+                int        n = floor(2.0 * R * M_PI / dx) + 1;
+                int        n_s = floor(2.0 * r * M_PI / dx) + 1;
+                if (comm_.rank() == 1)
+                    std::cout << "Geometry = 2 circles, n = " << n << std::endl;
+                for (int i = 0; i < n; i++)
+                {
+                    float_type           x = i + 0.5;
+                    float_type           theta = 2 * M_PI * x / n;
+                    real_coordinate_type tmp;
+                    tmp.x() = R * cos(theta);
+                    tmp.y() = R * sin(theta);
+                    coordinates_.emplace_back(real_coordinate_type(tmp));
+                }
+
+                for (int i = 0; i < n_s; i++)
+                {
+                    float_type           x = i + 0.5;
+                    float_type           theta = 2 * M_PI * x / n_s;
+                    real_coordinate_type tmp;
+                    tmp.x() = r * cos(theta) + ct_x;
+                    tmp.y() = r * sin(theta) + ct_y;
+                    coordinates_.emplace_back(real_coordinate_type(tmp));
+                }
+
+                for (int i = 0; i < n_s; i++)
+                {
+                    float_type           x = i + 0.5;
+                    float_type           theta = 2 * M_PI * x / n_s;
+                    real_coordinate_type tmp;
+                    tmp.x() = r * cos(theta) + ct_x;
+                    tmp.y() = r * sin(theta) - ct_y;
                     coordinates_.emplace_back(real_coordinate_type(tmp));
                 }
             }
@@ -682,6 +738,8 @@ public:
     float_type ct_x, ct_y;
 
     delta_func_type delta_func_;
+
+    //std::function<float_type(float_type x)> delta_func_1d_;
     float_type      ddf_radius_ = 0;
 
     std::string geometry_;

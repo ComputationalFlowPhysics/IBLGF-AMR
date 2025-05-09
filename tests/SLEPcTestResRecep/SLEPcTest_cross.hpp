@@ -24,6 +24,7 @@ static char help[] = "Solves a tridiagonal linear system.\n\n";
 #include "mpi.h"
 #include <iostream>
 #include <slepceps.h>
+#include <slepcsvd.h>
 #include <petscksp.h>
 #include <petscsys.h>
 //#include "/home/root/intel-oneAPI/oneAPI/mkl/latest/include/mkl.h"
@@ -67,7 +68,45 @@ static char help[] = "Solves a tridiagonal linear system.\n\n";
 #include "../../setups/setup_Helm_stab.hpp"
 #include <iblgf/operators/operators.hpp>
 
+KSP kspA, kspAT;
+PC pcA, pcAT;
+Vec y_tmp, Cy, By;
+Mat C, Q_hi; //Q_hi is Q^(-1/2)
 
+PetscErrorCode Id(Mat A_, Vec x_, Vec y_) {
+        //PetscCall(KSPSolve(kspA, x, y_tmp));
+        //PetscCall(KSPSolve(kspAT, y_tmp, y));
+        PetscFunctionReturn(0);
+    }
+
+/*PetscErrorCode MatMul_ATA_inv(Mat A_, Vec x_, Vec y_) {
+    PetscCall(MatMult(C, x_, By));
+    PetscCall(KSPSolve(kspAT, By, y_tmp));
+    PetscCall(MatMult(C, y_tmp, By));
+    PetscCall(KSPSolve(kspA, By, Cy));
+    PetscCall(MatMult(C, Cy, y_));
+    //PetscCall(KSPSolve(kspAT, By, y_));
+    PetscFunctionReturn(0);
+}*/
+
+
+PetscErrorCode MatMul_ATA_inv(Mat A_, Vec x_, Vec y_) {
+    PetscCall(MatMult(Q_hi, x_, By));
+    PetscCall(KSPSolve(kspA, By, y_tmp));
+    PetscCall(MatMult(C, y_tmp, By));
+    PetscCall(KSPSolve(kspAT, By, Cy));
+    PetscCall(MatMult(Q_hi, Cy, y_));
+    //PetscCall(KSPSolve(kspAT, By, y_));
+    PetscFunctionReturn(0);
+}
+
+PetscErrorCode MatMulA_inv(Mat A_, Vec x_, Vec y_) {
+    //PetscCall(MatMul(C, x_, Cy));
+    PetscCall(KSPSolve(kspA, x_, By));
+    PetscCall(MatMult(C, By, y_));
+    //PetscCall(KSPSolve(kspAT, y_tmp, y_));
+    PetscFunctionReturn(0);
+}
 
 
 namespace iblgf
@@ -83,45 +122,22 @@ struct parameters
     Dim,
      (
         //name               type        Dim   lBuffer  hBuffer, storage type
-         (error_u          , float_type, 2,    1,       1,     face,true  ),
-         (error_uz         , float_type, 1,    1,       1,     cell,true  ),
-		 (error_p          , float_type, 1,    1,       1,     cell,true  ),
-         (error_N          , float_type, 2,    1,       1,     face,true  ),
-         (error_Nz         , float_type, 1,    1,       1,     cell,true  ),
-		 (error_cs         , float_type, 1,    1,       1,     cell,true  ),
-         (error_w          , float_type, 3,    1,       1,     edge,true  ),
+        
          (test             , float_type, 1,    1,       1,     cell,false ),
         //IF-HERK
 		 (u                , float_type, 2,    1,       1,     face,true  ),
+         (u_n              , float_type, 2,    1,       1,     face,true  ), //temp var to store velocity for time averaging
          (uz               , float_type, 1,    1,       1,     cell,true  ),
-		 (p                , float_type, 1,    1,       1,     cell,true  ),
-         (u_num_inv        , float_type, 2,    1,       1,     face,true  ),
-         (N_num_inv        , float_type, 2,    1,       1,     face,true  ),
-         (uz_num_inv       , float_type, 1,    1,       1,     cell,true  ),
-         (Nz_num_inv       , float_type, 1,    1,       1,     cell,true  ),
-		 (p_num_inv        , float_type, 1,    1,       1,     cell,true  ),
-         (w_num_inv        , float_type, 3,    1,       1,     edge,true  ),
-		 (u_ref            , float_type, 2,    1,       1,     face,true  ),
+         (p                , float_type, 1,    1,       1,     cell,true  ),
+         (u_ref            , float_type, 2,    1,       1,     face,true  ),
          (uz_ref           , float_type, 1,    1,       1,     cell,true  ),
 		 (p_ref            , float_type, 1,    1,       1,     cell,true  ),
-         (cs_ref           , float_type, 1,    1,       1,     cell,true  ),
-         (N_ref            , float_type, 2,    1,       1,     face,true  ),
          (Nz_ref           , float_type, 1,    1,       1,     cell,true  ),
          (w_ref            , float_type, 3,    1,       1,     edge,true  ),
-         (u_tar            , float_type, 2,    1,       1,     face,true  ),
-         (uz_tar           , float_type, 1,    1,       1,     cell,true  ),
-		 (p_tar            , float_type, 1,    1,       1,     cell,true  ),
-         (cs_tar           , float_type, 1,    1,       1,     cell,true  ),
-         (N_tar            , float_type, 2,    1,       1,     face,true  ),
-         (Nz_tar           , float_type, 1,    1,       1,     cell,true  ),
-         (w_tar            , float_type, 3,    1,       1,     edge,true  ),
-		 (u_num            , float_type, 2,    1,       1,     face,true  ),
-         (uz_num           , float_type, 1,    1,       1,     cell,true  ),
-		 (p_num            , float_type, 1,    1,       1,     cell,true  ),
-         (cs_num           , float_type, 1,    1,       1,     cell,true  ),
-         (N_num            , float_type, 2,    1,       1,     face,true  ),
-         (Nz_num           , float_type, 1,    1,       1,     cell,true  ),
-         (w_num            , float_type, 3,    1,       1,     edge,true  )
+         (N_ref            , float_type, 2,    1,       1,     face,true  ),
+         (cs_ref           , float_type, 1,    1,       1,     cell,true  ),
+         (uz_n             , float_type, 1,    1,       1,     cell,true  )  //temp var to store u_z for time averaging
+		 
     ))
     // clang-format on
 };
@@ -209,12 +225,18 @@ struct NS_AMR_LGF : public SetupHelmStab<NS_AMR_LGF, parameters>
 		hard_max_refinement_ = simulation_.dictionary()->template get_or<bool>("hard_max_refinement", false);
 
         clean_p_tar = simulation_.dictionary()->template get_or<bool>("clean_p_tar", false);
-        target_real = simulation_.dictionary()->template get_or<float_type>("target_real", 1.0);
-        target_imag = simulation_.dictionary()->template get_or<float_type>("target_imag", 1.0);
+        target_real = simulation_.dictionary()->template get_or<float_type>("target_real", 0.0);
+        target_imag = simulation_.dictionary()->template get_or<float_type>("target_imag", 0.0);
         testing_smearing = simulation_.dictionary()->template get_or<bool>("testing_smearing", false);
         num_input = simulation_.dictionary()->template get_or<bool>("num_input", false);
         check_mat_res = simulation_.dictionary()->template get_or<bool>("check_mat_res", false);
         addImagBC = simulation_.dictionary()->template get_or<bool>("addImagBC", false);
+        Omega_w = simulation_.dictionary()->template get_or<float_type>("Omega_w", 0.0);
+
+
+        Omega_l = simulation_.dictionary()->template get_or<float_type>("Omega_l", 0.0);
+        Omega_r = simulation_.dictionary()->template get_or<float_type>("Omega_r", 1.0);
+        Omega_int = simulation_.dictionary()->template get_or<float_type>("Omega_int", 0.1);
 
 		auto domain_range = domain_->bounding_box().max() - domain_->bounding_box().min();
 		Lx = domain_range[0] * dx_;
@@ -230,11 +252,6 @@ struct NS_AMR_LGF : public SetupHelmStab<NS_AMR_LGF, parameters>
 
 
 		bool use_fat_ring = simulation_.dictionary()->template get_or<bool>("fat_ring", false);
-
-        mode_c = simulation_.dictionary()->template get_or<float_type>("mode_c", 0.1);
-        if (mode_c < 0.0) {
-            mode_c = -mode_c;
-        }
 
 		ic_filename_ = simulation_.dictionary_->template get_or<std::string>(
 			"hdf5_ic_name", "null");
@@ -269,6 +286,15 @@ struct NS_AMR_LGF : public SetupHelmStab<NS_AMR_LGF, parameters>
 
         set_deflation = simulation_.dictionary_->template get_or<bool>(
 			"set_deflation",  false);
+
+        n_times = simulation_.dictionary_->template get<int>(
+			"n_times");
+
+        n_start = simulation_.dictionary_->template get<int>(
+			"n_start");
+
+        flow_interval = simulation_.dictionary_->template get<int>(
+			"flow_interval");
 
 		//bool subtract_non_leaf_ = simulation_.dictionaty()->template get_or<bool>("subtract_non_leaf", true);
 
@@ -311,8 +337,8 @@ struct NS_AMR_LGF : public SetupHelmStab<NS_AMR_LGF, parameters>
 			simulation_.template read_h5<u_type>(simulation_.restart_field_dir(), "u");
 			simulation_.template read_h5<p_type>(simulation_.restart_field_dir(), "p");
 
-            simulation_.template read_h5<u_ref_type>(simulation_.restart_field_dir(), "u");
-			simulation_.template read_h5<p_ref_type>(simulation_.restart_field_dir(), "p");
+            //simulation_.template read_h5<u_ref_type>(simulation_.restart_field_dir(), "u");
+			//simulation_.template read_h5<p_ref_type>(simulation_.restart_field_dir(), "p");
 			//this->initialize(); 
 		}
 
@@ -363,485 +389,44 @@ struct NS_AMR_LGF : public SetupHelmStab<NS_AMR_LGF, parameters>
         //if (world.rank() != 0) ifherk.clean_up_initial_velocity<u_type>();
         //if (world.rank() != 0) ifherk.clean_up_initial_velocity<u_ref_type>();
 
-        if (check_mat_res)
+        if (world.rank() != 0)
         {
-            if (world.rank() != 0)
-                ifherk.pad_velocity<u_ref_type, uz_ref_type, u_ref_type,
-                    uz_ref_type>(true);
-            if (world.rank() != 0)
-                ifherk.pad_velocity<u_type, uz_type, u_type, uz_ref_type>(true);
-
-            world.barrier();
-            if (world.rank() == 1) std::cout << "Curl" << std::endl;
-
-            //if (world.rank() != 0) ifherk.Curl_access<u_ref_type, w_ref_type>();
-
-            ifherk.Jacobian<u_ref_type, uz_ref_type, p_ref_type, u_tar_type,
-                uz_tar_type, p_tar_type>(forcing_ref, fz, forcing_tar, fz_tar);
-
-            world.barrier();
-            if (world.rank() == 1)
-                std::cout << "Upward interpolation" << std::endl;
-
-            //if (world.rank() != 0) ifherk.Upward_interpolation<w_ref_type, w_ref_type>();
-            if (world.rank() != 0) ifherk.up_and_down<u_ref_type>();
-            if (world.rank() != 0) ifherk.up_and_down<uz_ref_type>();
-            world.barrier();
-            if (world.rank() == 1)
-                std::cout << "up and down finished" << std::endl;
-            if (world.rank() != 0)
-                ifherk.Curl_access<u_ref_type, uz_ref_type, w_ref_type>();
-            world.barrier();
-            if (world.rank() == 1)
-                std::cout << "Curl access finished" << std::endl;
-            if (world.rank() != 0)
-                ifherk.nonlinear_Jac_access<u_type, u_ref_type, uz_type,
-                    uz_ref_type, N_ref_type, Nz_ref_type>();
-            world.barrier();
-            if (world.rank() == 1)
-                std::cout << "nonlinear Jac access finished" << std::endl;
-            if (world.rank() != 0) ifherk.AddSmearing<N_ref_type>(forcing_ref);
-            world.barrier();
-            if (world.rank() == 1)
-                std::cout << "Smearing finished" << std::endl;
-            if (world.rank() != 0) ifherk.AddSmearingUz<Nz_ref_type>(fz);
-            world.barrier();
-            if (world.rank() == 1)
-                std::cout << "Smearing Uz finished" << std::endl;
-            if (world.rank() != 0)
-                ifherk.div_access<N_ref_type, Nz_ref_type, cs_ref_type>();
-            world.barrier();
-            if (world.rank() == 1)
-                std::cout << "Div access finished" << std::endl;
-            if (world.rank() != 0) ifherk.up_and_down<cs_ref_type>();
-            world.barrier();
-            if (world.rank() == 1)
-                std::cout << "up and down cs ref finished" << std::endl;
-            if (world.rank() != 0)
-                ifherk.pad_pressure<cs_ref_type, p_ref_type>();
-            world.barrier();
-            if (world.rank() == 1)
-                std::cout << "pressure pad finished" << std::endl;
-            if (world.rank() != 0)
-                ifherk.Upward_interpolation<cs_ref_type, cs_ref_type>();
-            world.barrier();
-            if (world.rank() == 1)
-                std::cout << "cs interpolation finished" << std::endl;
-
-            if (world.rank() != 0)
-                ifherk.Upward_interpolation<w_ref_type, w_ref_type>();
-            world.barrier();
-            if (world.rank() == 1) std::cout << "interpolation" << std::endl;
-            if (world.rank() != 0) ifherk.up_and_down<p_ref_type>();
-            world.barrier();
-            if (world.rank() == 1) std::cout << "Clean" << std::endl;
-            if (world.rank() != 0) ifherk.clean<w_tar_type>();
-            if (clean_p_tar)
-            {
-                if (world.rank() != 0) ifherk.clean<p_tar_type>();
-            }
-
-            for (int i = 0; i < forcing_ref.size(); i++)
-            {
-                if (domain_->ib().rank(i) != world.rank())
-                {
-                    /*if (forcing_ref[i][0]!=0 || forcing_ref[i][1]!=0) {
-                    std::cout << "Now local forcing got reassigned" << std::endl;
-                }*/
-                    forcing_ref[i] = 0;
-                    continue;
-                }
-
-                float_type t = static_cast<float_type>(i) /
-                               static_cast<float_type>(forcing_ref.size());
-                float_type val_u = std::sin(2 * M_PI * t);
-                float_type val_v = std::cos(2 * M_PI * t);
-
-                /*float_type val_u = 1.0; 
-			float_type val_v = 1.0;*/
-
-                forcing_ref[i][0] = val_u;
-                forcing_ref[i][1] = val_v;
-            }
+            ifherk.clean<u_type>();
         }
-        world.barrier();
-        if (world.rank() == 1) std::cout << "constructing matrix" << std::endl;
+
+
+        for (int i = 0; i < n_times; i++)
+        {
+            float_type  ratio = 1.0 / static_cast<float_type>(n_times);
+            int         step_num = n_start + i * flow_interval;
+            std::string flow_name = "./uData/flowTime_" + std::to_string(step_num)+".hdf5";
+            simulation_.template read_h5<u_n_type>(flow_name, "u");
+            if (world.rank() != 0) ifherk.add<u_n_type, u_type>(ratio);
+            if (world.rank() != 0) ifherk.clean<u_n_type>();
+        }
         
-		world.barrier();
-		simulation_.write("init.hdf5");
+
+        world.barrier();
+		
+
+
 
         ifherk.construct_linear_mat<u_type, uz_type>();
         ifherk.construction_imaginary();
         if (addImagBC) ifherk.construction_BCMat_u_imag();
         ifherk.construction_B_matrix();
-        ifherk.Jac.clean_entry(1e-10);
-        ifherk.Imag.clean_entry(1e-10);
+        ifherk.construction_Q_matrix();
+        ifherk.Jac.clean_entry(1e-13);
+        ifherk.Imag.clean_entry(1e-13);
 
-        world.barrier();
-        if (world.rank() == 1) {
-            std::cout << "finishing constructing matrix" << std::endl;
-        }
+        simulation_.write("init.hdf5");
 
-		if (world.rank() == 1) {
-            std::cout << "including zero size is " << ifherk.Jac.tot_size(true) << std::endl;
-            std::cout << "not including zero size is " << ifherk.Jac.tot_size(false) << std::endl;
-        }
-
-		int ndim = ifherk.total_dim();
+        int ndim = ifherk.total_dim();
         int loc_size = ifherk.Jac.numRow_loc();
 
-        if (check_mat_res) {
-
-        float_type* allVec = NULL;
-        float_type* loc_vec = NULL;
-
-        float_type* res_tmp = NULL;
-        float_type* res = NULL;
-
-        float_type* BC_diff = NULL;
-
-        float_type* res_num = NULL;
-        float_type* res_tar = NULL;
-
-        float_type* errvec = NULL;
-        
-
-        std::vector<int> allSize;
-
-        
-
-        if (world.rank() == 0) {
-
-            PetscMalloc(sizeof(float_type) * ndim, &allVec);
-            PetscMalloc(sizeof(float_type) * 0, &loc_vec);
-        }
-        else {
-            PetscMalloc(sizeof(float_type) * ndim, &allVec);
-            PetscMalloc(sizeof(float_type) * loc_size, &loc_vec);
-            ifherk.Grid2CSR<u_ref_type, p_ref_type, w_ref_type, N_ref_type, cs_ref_type, uz_ref_type, Nz_ref_type>(loc_vec, forcing_ref, fz, false);
-        }
-
-        boost::mpi::gather(world, loc_size, allSize, 0);
-
-        if (world.rank() == 0)
-        {
-            int begin_idx = 0;
-
-            for (int i = 1; i < world.size(); i++)
-            {
-                //std::cout << "receiving data from " << i << std::endl;
-                world.recv(i, i, &allVec[begin_idx], allSize[i]);
-                begin_idx += allSize[i];
-            }
-        }
-        else {
-            //std::cout << "rank " << world.rank() << " sending data" << std::endl;
-            world.send(0, world.rank(), &loc_vec[0], loc_size);
-        }
-
-        boost::mpi::broadcast(world, &allVec[0], ndim, 0);
-
-        float_type sum = 0.0;
-
-        for (int i = 0; i < ndim;i++) {
-            sum += allVec[i]*allVec[i];
-        }
-
-        /*for (int i = 0; i < world.size();i++) {
-            if (world.rank() == i) {
-                std::cout << "Rank " << i << " sum " << sum << std::endl;
-            }
-            world.barrier();
-        }*/
-
-        world.barrier();
-
-        if (testing_smearing) {
-            if (world.rank() == 0) {
-                std::cout << "smearing" << std::endl;          
-            }
-            world.barrier();
-
-            for (int k = 1; k < world.size(); k++)
-            {
-                if (world.rank() == k)
-                {
-                    for (int i = 1; i <= ifherk.Jac.numRow_loc(); i++)
-                    {
-                        std::cout << i << " ";
-                        ifherk.smearing.print_row(i);
-                    }
-                }
-                world.barrier();
-            }
-            world.barrier();
-
-            if (world.rank() == 0) {
-                std::cout << "Value" << std::endl;          
-            }
-            for (int k = 1; k < world.size(); k++)
-            {
-                if (world.rank() == k)
-                {
-                    std::cout << "Rank " << k << std::endl;
-                    for (int i = 0; i < ndim; i++)
-                    {
-                        std::cout << i << " " << allVec[i] << std::endl;
-                    }
-                }
-                world.barrier();
-            }
-        }
-
-        
-        PetscMalloc(sizeof(float_type) * loc_size, &res_tmp);
-        PetscMalloc(sizeof(float_type) * loc_size, &res);
-
-        
-
-        ifherk.Jac.Apply(allVec, res);
-        //ifherk.smearing.Apply(allVec, res_tmp);
-        //apply once to get the BC
-        /*ifherk.CSR2CSR_correction(res_tmp, loc_vec, 1.0); 
-
-        //clean to receive values again
-        for (int i = 0; i < ndim;i++) {
-            allVec[i] = 0.0;
-        }
-
-
-        if (world.rank() == 0)
-        {
-            int begin_idx = 0;
-
-            for (int i = 1; i < world.size(); i++)
-            {
-                std::cout << "receiving data from " << i << std::endl;
-                world.recv(i, i, &allVec[begin_idx], allSize[i]);
-                begin_idx += allSize[i];
-            }
-        }
-        else {
-            std::cout << "rank " << world.rank() << " sending data" << std::endl;
-            world.send(0, world.rank(), &loc_vec[0], loc_size);
-        }
-
-        boost::mpi::broadcast(world, &allVec[0], ndim, 0);
-
-        ifherk.Jac.Apply(allVec, res);*/
-
-        if (world.rank() != 0) ifherk.clean<edge_aux_type>();
-
-        
-
-        
-
-        PetscMalloc(sizeof(float_type) * loc_size, &BC_diff);
-
-        for (int i = 0; i < loc_size;i++) {
-            BC_diff[i] = 0.0;
-        }
-
-        ifherk.CSR2CSR_correction(res, BC_diff, 1.0); 
-
-        float_type err_BC = 0.0;
-        if (world.rank() != 0)
-        {
-            for (int i = 0; i < loc_size; i++)
-            {
-                err_BC += std::abs(BC_diff[i]);
-            }
-        }
-
-        float_type BC_diff_sum = 0.0;
-
-        boost::mpi::all_reduce(world, err_BC, BC_diff_sum, std::plus<float_type>());
-
-        if (world.rank() == 1) {
-            std::cout << "BC error is " << BC_diff_sum << std::endl;
-        }
-
-        world.barrier();
-
-        if (world.rank() == 0) {
-            std::cout << "start CSR2Grid" << std::endl;
-        }
-
-        world.barrier();
-
-        ifherk.CSR2Grid<u_num_type, p_num_type, w_num_type, N_num_type, cs_num_type, uz_num_type, Nz_num_type>(res, forcing_num, fz);
-
-        world.barrier();
-
-        if (world.rank() == 0) {
-            std::cout << "computing error nonleaves" << std::endl;
-        }
-
-        world.barrier();
-
-        ifherk.compute_error_nonleaf<edge_aux_type, w_num_type, idx_w_type>("edge_num_", false, 0);
-        ifherk.compute_error_nonleaf<edge_aux_type, w_ref_type, idx_w_type>("edge_ref_", false, 0);
-
-        ifherk.clean<face_aux_type>();
-        ifherk.compute_error_nonleaf<face_aux_type, u_ref_type, idx_u_type>("face_ref_0_", false, 0);
-        ifherk.compute_error_nonleaf<face_aux_type, u_num_type, idx_u_type>("face_num_0_", false, 0);
-
-        ifherk.compute_error_nonleaf<face_aux_type, u_ref_type, idx_u_type>("face_ref_1_", false, 1);
-        ifherk.compute_error_nonleaf<face_aux_type, u_num_type, idx_u_type>("face_num_1_", false, 1);
-
-        ifherk.compute_error_nonleaf<face_aux_type, N_ref_type, idx_N_type>("N_ref_0_", false, 0);
-        ifherk.compute_error_nonleaf<face_aux_type, N_num_type, idx_N_type>("N_num_0_", false, 0);
-
-        ifherk.compute_error_nonleaf<face_aux_type, N_ref_type, idx_N_type>("N_ref_1_", false, 1);
-        ifherk.compute_error_nonleaf<face_aux_type, N_num_type, idx_N_type>("N_num_1_", false, 1);
-
-        ifherk.clean<cell_aux_type>();
-        ifherk.compute_error_nonleaf<cell_aux_type, p_ref_type, idx_p_type>("cell_ref_", false);
-        ifherk.compute_error_nonleaf<cell_aux_type, p_num_type, idx_p_type>("cell_num_", false);
-
-        ifherk.compute_error_nonleaf<cell_aux_type, cs_ref_type, idx_cs_type>("cell_source_ref_", false);
-        ifherk.compute_error_nonleaf<cell_aux_type, cs_num_type, idx_cs_type>("cell_source_num_", false);
-
-        world.barrier();
-
-        if (world.rank() == 0) {
-            std::cout << "finished computing error nonleaves" << std::endl;
-        }
-
-        world.barrier();
-
-        
-        for (int i = 1; i < world.size(); i++)
-        {
-            if (print_mat && (i == world.rank()))
-            {
-                for (int i = 0; i < loc_size; i++)
-                {
-                    std::cout << i << " " << res[i] << std::endl;
-                }
-            }
-            world.barrier();
-        }
-
-        float_type u1_inf = this->compute_errors<u_num_type, u_tar_type, error_u_type>(
-			std::string("u_0_"), 0);
-		float_type u2_inf = this->compute_errors<u_num_type, u_tar_type, error_u_type>(
-			std::string("u_1_"), 1);
-        float_type uz_inf = this->compute_errors<uz_num_type, uz_tar_type, error_uz_type>(
-			std::string("u_z_"), 0);
-
-		float_type p_inf = this->compute_errors<p_num_type, p_tar_type, error_p_type>(
-			std::string("p_0_"), 0);
-
-        float_type w0_inf = this->compute_errors<w_num_type, w_tar_type, error_w_type>(
-			std::string("w_0_"), 0);
-        float_type w1_inf = this->compute_errors<w_num_type, w_tar_type, error_w_type>(
-			std::string("w_1_"), 1);
-        float_type w2_inf = this->compute_errors<w_num_type, w_tar_type, error_w_type>(
-			std::string("w_2_"), 2);
-
-        float_type cs_inf = this->compute_errors<cs_num_type, cs_tar_type, error_cs_type>(
-			std::string("cs_0_"), 0);
-
-        float_type N0_inf = this->compute_errors<N_num_type, N_tar_type, error_N_type>(
-			std::string("N_0_"), 0);
-
-        float_type N1_inf = this->compute_errors<N_num_type, N_tar_type, error_N_type>(
-			std::string("N_1_"), 1);
-        float_type Nz_inf = this->compute_errors<Nz_num_type, Nz_tar_type, error_Nz_type>(
-			std::string("N_z_"), 0);
-
-		force_type errVec;
-
-		real_coordinate_type tmp_coord(0.0);
-        errVec.resize(domain_->ib().size());
-        std::fill(errVec.begin(), errVec.end(), tmp_coord);
-
-		for (int i=0; i<domain_->ib().size(); ++i)
-        {
-            if (domain_->ib().rank(i)!=world.rank())
-                errVec[i]=0;
-            else
-                errVec[i]=forcing_tar[i]-forcing_num[i];
-        }
-		
-		float_type err_forcing = ifherk.dotVec(errVec, errVec);
-
-		
-		if (world.rank() == 1)
-			std::cout << "L2 Error of forcing is " << std::sqrt(err_forcing) << std::endl;
-
-		simulation_.write("final_apply.hdf5");
-
-        world.barrier();
-
-        if (world.rank() == 1) {
-            std::cout << "finished writing" << std::endl;
-        }
-
         world.barrier();
 
 
-
-        //ifherk.clean<u_num_type>();
-        if (clean_p_tar) ifherk.clean<p_num_type>();
-        ifherk.clean<w_num_type>();
-        ifherk.clean<w_tar_type>();
-        if (clean_p_tar) ifherk.clean<p_tar_type>();
-
-        ifherk.clean<error_u_type>();
-        ifherk.clean<error_p_type>();
-        ifherk.clean<error_w_type>();
-
-        //std::fill(forcing_num.begin(), forcing_num.end(), tmp_coord);
-
-        
-
-        PetscMalloc(sizeof(float_type) * loc_size, &res_num);
-        PetscMalloc(sizeof(float_type) * loc_size, &res_tar);
-
-        
-        PetscMalloc(sizeof(float_type) * loc_size, &errvec);
-
-        ifherk.Grid2CSR<u_tar_type, p_tar_type, w_tar_type, N_tar_type, cs_tar_type, uz_tar_type, Nz_tar_type>(res_tar, forcing_tar, fz_tar);
-        ifherk.Grid2CSR<u_num_type, p_num_type, w_num_type, N_num_type, cs_num_type, uz_num_type, Nz_num_type>(res_num, forcing_num, fz_num);
-
-        float_type diff_sum = 0.0;
-        if (world.rank() != 0)
-        {
-            for (int i = 0; i < loc_size; i++)
-            {
-                float_type tmp_err = res_tar[i] - res_num[i];
-                diff_sum += tmp_err*tmp_err;
-                errvec[i] = tmp_err;
-            }
-        }
-
-        for (int i=0; i<domain_->ib().size(); ++i)
-        {
-            
-            errVec[i]=0;
-            
-        }
-
-        ifherk.CSR2Grid<error_u_type, error_p_type, error_w_type, error_N_type, error_cs_type, error_uz_type, error_Nz_type>(errvec, errVec, error_fz);
-
-        //ifherk.compute_error_nonleaf<edge_aux_type, error_w_type>("error_copy_", true);
-
-        //simulation_.write("final_copy.hdf5");
-
-
-
-        float_type diff_sum_all = 0.0;
-
-        boost::mpi::all_reduce(world, diff_sum, diff_sum_all, std::plus<float_type>());
-
-        world.barrier();
-
-        if (world.rank() == 1) {
-            std::cout << "Diff error is " << diff_sum_all << std::endl;
-        }
-        }
 
         //need to store eigenvectors
         float_type*  x0_real= NULL;
@@ -866,15 +451,16 @@ struct NS_AMR_LGF : public SetupHelmStab<NS_AMR_LGF, parameters>
         MPI_Comm_split(MPI_COMM_WORLD, Color, 0, &PETSC_COMM_WORLD);
         if (Color != 0) {
 
-        Vec            x, b, b1, u;          /* approx solution, RHS, exact solution */
+        Vec            x, b, b1, u, v, y;          /* approx solution, RHS, exact solution */
         //Vec*           Cv;               /*deflation of 
-        Mat            A, B;             /* linear system matrix */
+        Mat            A, B, A_shell, AT;             /* linear system matrix */
 
         Mat            K, K1;
-        EPS            eps;              /* eigenproblem solver context */
-        EPSType        type;
+        SVD            svd;              /* eigenproblem solver context */
+        EPS            eps;
+        SVDType        type;
+        PetscReal      error,tol,sigma,mu=PETSC_SQRT_MACHINE_EPSILON;
         PetscBool      flg,terse;
-        PetscReal      tol;
         PetscInt       nev, maxit, its;
         char           filename[PETSC_MAX_PATH_LEN];
         PetscViewer    viewer;
@@ -882,7 +468,7 @@ struct NS_AMR_LGF : public SetupHelmStab<NS_AMR_LGF, parameters>
         PC             pc;               /* preconditioner context */
         ST             st;
         PetscReal      norm;  /* norm of solution error */
-        PetscInt       i,n = ndim,col[3],rstart,rend,nlocal;
+        PetscInt       i,j,n = ndim,col[3],rstart,rend,nlocal, nconv1, nconv2, ctx;
 
         
         PetscScalar    one = 1.0,value[3], zero = 0.0;
@@ -978,8 +564,13 @@ struct NS_AMR_LGF : public SetupHelmStab<NS_AMR_LGF, parameters>
         PetscCall(VecSetSizes(x, loc_size, n));
         PetscCall(VecSetFromOptions(x));
         PetscCall(VecDuplicate(x, &b));
+        PetscCall(VecDuplicate(x, &y));
+        PetscCall(VecDuplicate(x, &y_tmp));
+        PetscCall(VecDuplicate(x, &Cy));
+        PetscCall(VecDuplicate(x, &By));
         //PetscCall(VecDuplicate(x, &b1));
         PetscCall(VecDuplicate(x, &u));
+        PetscCall(VecDuplicate(x, &v));
 
         PetscInt* idx_ = NULL;
 
@@ -1077,6 +668,18 @@ struct NS_AMR_LGF : public SetupHelmStab<NS_AMR_LGF, parameters>
                 }
             }
 
+            std::map<int, float_type> row1 = ifherk.B.mat[i_loc+1];
+            for (const auto& [key, val] : row1) {
+                PetscInt key1 = key;
+                if (key1 <= rend && key1 > rstart) {
+                    //key is 1-based while the rstart rend indices are zero based
+                    n_loc += 1;
+                }
+                else {
+                    n_out += 1;
+                }
+            }
+
             d_nnz[i_loc] = n_loc;
             o_nnz[i_loc] = n_out;
         }
@@ -1099,8 +702,32 @@ struct NS_AMR_LGF : public SetupHelmStab<NS_AMR_LGF, parameters>
         PetscCall(MatSetFromOptions(B));
         PetscCall(MatSetUp(B));
 
+
+
+        PetscCall(MatCreate(PETSC_COMM_WORLD, &C));
+        MatSetType(C,MATMPIAIJ);
+        //PetscCall(MatCreateMPIAIJWithArrays(PETSC_COMM_WORLD, nlocal, nlocal, n, n, ia, ja, a, &A));
+        PetscCall(MatSetSizes(C, nlocal, nlocal, n, n));
+        PetscCall(MatSetFromOptions(C));
+        PetscCall(MatSetUp(C));
+
+
+        PetscCall(MatCreate(PETSC_COMM_WORLD, &Q_hi));
+        MatSetType(Q_hi,MATMPIAIJ);
+        //PetscCall(MatCreateMPIAIJWithArrays(PETSC_COMM_WORLD, nlocal, nlocal, n, n, ia, ja, a, &A));
+        PetscCall(MatSetSizes(Q_hi, nlocal, nlocal, n, n));
+        PetscCall(MatSetFromOptions(Q_hi));
+        PetscCall(MatSetUp(Q_hi));
+
         int counter_zero_diag = 0;
         std::vector<int> zero_diag_idx;
+
+
+        for (i = rstart; i < rend; i++)
+        {
+            PetscScalar valComplex = i + 10000;
+            PetscCall(MatSetValue(B, i, i, valComplex, INSERT_VALUES));
+        }
 
         for (i = rstart; i < rend; i++)
         {
@@ -1109,39 +736,20 @@ struct NS_AMR_LGF : public SetupHelmStab<NS_AMR_LGF, parameters>
             int i_loc = i - rstart;
 
 
-            /*if (world.rank() == 1) {
-                std::cout << "Setting value for " << i << "th row" << std::endl;
-            }*/
-            /*float_type loc_v = std::sqrt(static_cast<float_type>(i) + 0.5) - 90;
-
-            PetscScalar valComplex = loc_v + 0.0*PETSC_i;
-
-            PetscCall(MatSetValues(A, 1, &i, 1, &i, &valComplex, INSERT_VALUES));*/
-
-            //float_type v = 1;
-
-            //if (i_loc < range_nonzero) PetscCall(MatSetValues(B, 1, &i, 1, &i, &v, INSERT_VALUES));
             
-            //int i_s = i -1;
-            //if (i!= 0) PetscCall(MatSetValues(A, 1, &i, 1, &i_s, &loc_v, INSERT_VALUES));
             std::map<int, float_type> row = ifherk.Jac.mat[i_loc+1];
             std::map<int, float_type> row_c = ifherk.Imag.mat[i_loc+1];
+            std::map<int, float_type> row1 = ifherk.B.mat[i_loc+1];
+
+            std::map<int, float_type> rowQ = ifherk.Q.mat[i_loc+1];
+            std::map<int, float_type> rowQ_hi = ifherk.Q_halfi.mat[i_loc+1];
+            
             std::vector<PetscScalar> row_val;
             std::vector<PetscInt> row_idx;
-            row_val.resize(row.size() + row_c.size());
-            row_idx.resize(row.size() + row_c.size());
+            row_val.resize(row.size() + row_c.size()+row1.size());
+            row_idx.resize(row.size() + row_c.size()+row1.size());
             int counter = 0;
 
-            /*if (world.rank() == 2) {
-                std::cout << "finishde feeding matrix entries at " << i << std::endl;
-            }*/
-            
-            
-
-            
-            /*if (row_c.size() > 1) {
-                std::cout << "size of row_c bigger than 1 at " << i << std::endl;
-            }*/
             for (const auto& [key, val] : row_c)
             {
                 if (key <= 0) continue;
@@ -1160,74 +768,69 @@ struct NS_AMR_LGF : public SetupHelmStab<NS_AMR_LGF, parameters>
                 }
             }
 
+
+            //std::map<int, float_type> row1 = ifherk.B.mat[i_loc+1];
+            for (const auto& [key, val] : row1)
+            {
+                if (key <= 0) continue;
+                auto it = row.find(key);
+                if (it == row.end())
+                {
+                    row_val[counter] = -val * PETSC_i * Omega_l;
+                    row_idx[counter] = key - 1;
+                    counter++;
+                }
+                else { 
+                    row_val[counter] = it->second - val * PETSC_i * Omega_l;
+                    row_idx[counter] = key - 1;
+                    counter++;
+                    row.erase(it); 
+                }
+            }
+
             for (const auto& [key, val] : row) {
                 row_val[counter] = val;
                 row_idx[counter] = key - 1;
                 counter++;
             }
 
-            /*if (world.rank() == 2) {
-                std::cout << "finishde put into vectors at " << i << std::endl;
-            }*/
-
             PetscCall(MatSetValues(A, 1, &i, counter, row_idx.data(), row_val.data(), INSERT_VALUES));
 
-            /*if (world.rank() == 2) {
-                std::cout << "finishde setting " << i << std::endl;
-            }*/
-
-            /*std::map<int, float_type> row_c = ifherk.Imag.mat[i_loc+1];
-            for (const auto& [key, val] : row_c)
-            {
-                PetscInt loc_col = key-1;
-                PetscScalar valComplex = val*PETSC_i;
-                PetscCall(MatSetValue(A, i, loc_col, valComplex, INSERT_VALUES));
-                
-            }*/
-
-            PetscInt diagonal_mod = 1; //if there is no entry in the diagonal, set the diagonal entry to be zero
-
-            for (const auto& [key, val] : row) {
-                PetscInt key1 = key;
-                if (key1 == (i + 1)) {
-                    diagonal_mod = 0;
-                    break;
-                }
-            }
-
-            
-
-            /*if (diagonal_mod == 1) {
-                counter_zero_diag++;
-                zero_diag_idx.emplace_back(i);
-                float_type val = 0.0;
-                PetscScalar valComplex = val;
-                PetscCall(MatSetValue(A, i, i, valComplex, INSERT_VALUES));
-            }*/
 
 
-            
-            
 
-            std::map<int, float_type> row1 = ifherk.B.mat[i_loc+1];
-            if (row1.size() == 0) {
+
+            /*if (rowQ.size() == 0) {
                 float_type val = 0.0;
                 PetscScalar valComplex = val;
                 //PetscCall(MatSetValues(B, 1, &i, 1, &i, &val, INSERT_VALUES));
-                PetscCall(MatSetValue(B, i, i, valComplex, INSERT_VALUES));
+                PetscCall(MatSetValue(C, i, i, valComplex, INSERT_VALUES));
                 //PetscCall(MatSetValue(A, i, i, valA, INSERT_VALUES));
-            }
-            for (const auto& [key, val] : row1)
+            }*/
+            for (const auto& [key, val] : rowQ)
             {
                 PetscInt loc_col = key-1;
                 if (!std::isfinite(val)) {
-                    std::cout << "mat B rank " << world.rank() << " row " << i << " loc_col " << loc_col << std::endl;
+                    std::cout << "mat C rank " << world.rank() << " row " << i << " loc_col " << loc_col << std::endl;
                 }
                 PetscScalar valComplex = val;
-                PetscCall(MatSetValue(B, i, loc_col, valComplex, INSERT_VALUES));
+                PetscCall(MatSetValue(C, i, loc_col, valComplex, INSERT_VALUES));
                 //for debugging, setting a diagonal matrix with some zeros
                 //PetscCall(MatSetValue(A, i, loc_col, valComplex, INSERT_VALUES));
             }
+
+            for (const auto& [key, val] : rowQ_hi)
+            {
+                PetscInt loc_col = key-1;
+                if (!std::isfinite(val)) {
+                    std::cout << "mat C rank " << world.rank() << " row " << i << " loc_col " << loc_col << std::endl;
+                }
+                PetscScalar valComplex = val;
+                PetscCall(MatSetValue(Q_hi, i, loc_col, valComplex, INSERT_VALUES));
+                //for debugging, setting a diagonal matrix with some zeros
+                //PetscCall(MatSetValue(A, i, loc_col, valComplex, INSERT_VALUES));
+            }
+
         }
 
         if (world.rank() == 1) {
@@ -1240,9 +843,78 @@ struct NS_AMR_LGF : public SetupHelmStab<NS_AMR_LGF, parameters>
         MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY);
         MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY);
 
+        MatAssemblyBegin(C,MAT_FINAL_ASSEMBLY);
+        MatAssemblyEnd(C,MAT_FINAL_ASSEMBLY);
+
+        MatAssemblyBegin(Q_hi,MAT_FINAL_ASSEMBLY);
+        MatAssemblyEnd(Q_hi,MAT_FINAL_ASSEMBLY);
+
+
+        PetscCall(MatHermitianTranspose(A, MAT_INITIAL_MATRIX, &AT));
+
+        //SolverCtx<KSP, Vec, PC> ATA_inv;
+
+        //ATA_inv.initialize(PETSC_COMM_WORLD, A, AT, y_tmp);
+
+
+
+        PetscCall(KSPCreate(PETSC_COMM_WORLD, &kspA));
+        KSPSetType(kspA, KSPPREONLY);
+        PetscCall(KSPCreate(PETSC_COMM_WORLD, &kspAT));
+        KSPSetType(kspAT, KSPPREONLY);
+
+            
+        PetscCall(KSPSetOperators(kspA, A, A));
+
+        PetscCall(KSPSetOperators(kspAT, AT, AT));
+
+        PetscCall(KSPGetPC(kspA, &pcA));
+        PetscCall(PCSetType(pcA, PCLU));
+
+        PCFactorSetMatSolverType(pcA, MATSOLVERMUMPS);
+        PCFactorSetUpMatSolverType(pcA);
+
+        PetscCall(KSPSetTolerances(kspA, 1.e-12, PETSC_DEFAULT, PETSC_DEFAULT, PETSC_DEFAULT));
+
+
+        PCFactorGetMatrix(pcA,&K);
+        MatMumpsSetIcntl(K,14,50);
+        MatMumpsSetCntl(K,3,1e-12);
+
+        PetscCall(KSPSetFromOptions(kspA));
+
+        PetscCall(KSPGetPC(kspAT, &pcAT));
+        PetscCall(PCSetType(pcAT, PCLU));
+
+        PCFactorSetMatSolverType(pcAT, MATSOLVERMUMPS);
+        PCFactorSetUpMatSolverType(pcAT);
+
+
+        PetscCall(KSPSetTolerances(kspAT, 1.e-12, PETSC_DEFAULT,PETSC_DEFAULT, PETSC_DEFAULT));
+
+        PCFactorGetMatrix(pcAT,&K1);
+        MatMumpsSetIcntl(K1,14,50);
+        MatMumpsSetCntl(K1,3,1e-12);
+
+        PetscCall(KSPSetFromOptions(kspAT));
+
+
+
+        PetscCall(MatCreateShell(PETSC_COMM_WORLD,nlocal, nlocal, n, n,&ctx,&A_shell));
+        PetscCall(MatShellSetOperation(A_shell,MATOP_MULT,(void(*)(void))MatMul_ATA_inv));
+        //PetscCall(MatShellSetOperation(A_shell,MATOP_MULT,(void(*)(void))MatMulA_inv));
+        //PetscCall(MatShellSetOperation(A_shell,MATOP_MULT,(void(*)(void))Id));
+        //PetscCall(MatShellSetOperation(A_shell,MATOP_MULT_TRANSPOSE,(void(*)(void))MatMul));
+        //PetscCall(MatShellSetOperation(A,MATOP_MULT_TRANSPOSE,(void(*)(void))MatMult_Laplacian2D));
+        //PetscCall(MatShellSetOperation(A,MATOP_GET_DIAGONAL,(void(*)(void))MatGetDiagonal_Laplacian2D));
+
         MatAssemblyBegin(B,MAT_FINAL_ASSEMBLY);
         MatAssemblyEnd(B,MAT_FINAL_ASSEMBLY);
 
+
+        if (world.rank() == 1) {
+            std::cout << "finished Assemblying" << std::endl;
+        }
 
         if (world.rank() == 1) {
             std::cout << "finished Assemblying" << std::endl;
@@ -1253,64 +925,24 @@ struct NS_AMR_LGF : public SetupHelmStab<NS_AMR_LGF, parameters>
         /*
      Set operators. In this case, it is a Generalized eigenvalue problem
   */
-        PetscCall(EPSSetOperators(eps, A, B));
-        EPSSetProblemType(eps,EPS_PGNHEP);
-        EPSSetDimensions(eps,5,PETSC_DEFAULT,PETSC_DEFAULT);
+        PetscCall(EPSSetOperators(eps, A_shell, NULL));
+
+        //PetscCall(EPSSetOperators(eps, A_shell, C));
+        //PetscCall(EPSSetOperators(eps, A, NULL));
+        EPSSetProblemType(eps,EPS_HEP);
+        //EPSSetProblemType(eps,EPS_NHEP);
+
+        //EPSSetProblemType(eps,EPS_PGNHEP);
+        
+        EPSSetDimensions(eps,1,PETSC_DEFAULT,PETSC_DEFAULT);
 
         
         
-        EPSSetWhichEigenpairs(eps,	EPS_TARGET_MAGNITUDE);
-        PetscScalar valComplex = target_real + target_imag*PETSC_i;
-        PetscCall(EPSSetTarget(eps,valComplex));
-        //EPSSetWhichEigenpairs(eps,EPS_SMALLEST_MAGNITUDE);
-
-        PetscCall(EPSGetST(eps, &st));
-        PetscCall(STSetType(st, STSINVERT));
-
-        PetscCall(STGetKSP(st, &ksp));
-        PetscCall(KSPSetType(ksp, KSPPREONLY));
-        PetscCall(KSPGetPC(ksp, &pc));
-        PetscCall(PCSetType(pc, PCLU));
-
-#if defined(PETSC_HAVE_MUMPS)
-       if (world.rank() == 1) {
-           std::cout << "using MUMPS" << std::endl;
-       }
-       PCFactorSetMatSolverType(pc,MATSOLVERMUMPS);
-       /* the next line is required to force the creation of the ST operator and its passing to KSP */
-       STGetOperator(st,NULL);
-       PCFactorSetUpMatSolverType(pc);
-       PCFactorGetMatrix(pc,&K);
-       MatMumpsSetIcntl(K,14,200);
-       MatMumpsSetCntl(K,3,1e-12);
-#endif
-#if defined(PETSC_HAVE_MKL_PARDISO)
-       PCFactorSetMatSolverType(pc,MATSOLVERMKL_CPARDISO);
-       if (world.rank() == 1) {
-           std::cout << "using Pardiso" << std::endl;
-       }
-       /* the next line is required to force the creation of the ST operator and its passing to KSP */
-       STGetOperator(st,NULL);
-       PCFactorSetUpMatSolverType(pc);
-       PCFactorGetMatrix(pc,&K);
-       MatMkl_CPardisoSetCntl(K,iparm[0],1);
-       MatMkl_CPardisoSetCntl(K,iparm[1],2);
-       MatMkl_CPardisoSetCntl(K,iparm[5],6);
-       MatMkl_CPardisoSetCntl(K,iparm[7],8);
-       MatMkl_CPardisoSetCntl(K,iparm[9],10);
-       MatMkl_CPardisoSetCntl(K,iparm[10],11);
-       MatMkl_CPardisoSetCntl(K,iparm[12],13);
-       MatMkl_CPardisoSetCntl(K,iparm[17],18);
-       MatMkl_CPardisoSetCntl(K,iparm[18],19);
-       MatMkl_CPardisoSetCntl(K,iparm[26],27);
-       MatMkl_CPardisoSetCntl(K,1,        68); //display all info
-       //MatMkl_CPardisoSetCntl(K,iparm[39],40);
-       //MatMumpsSetIcntl(K,14,50);
-       //MatMumpsSetCntl(K,3,1e-12);
-#endif
+        EPSSetWhichEigenpairs(eps,	EPS_LARGEST_MAGNITUDE);
+        
 
         if (world.rank() == 2) {
-            std::cout << "set up of pardiso finished" << std::endl;
+            std::cout << "set up of eps finished" << std::endl;
         }
 
         /*
@@ -1322,11 +954,13 @@ struct NS_AMR_LGF : public SetupHelmStab<NS_AMR_LGF, parameters>
             std::cout << "set up of eps finished" << std::endl;
         }
 
+        MPI_Barrier(PETSC_COMM_WORLD);
+
+
+
         /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
                       Solve the eigensystem
      - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
-
-        if (set_deflation) PetscCall(EPSSetDeflationSpace(eps, 1, &b));
 
         PetscCall(EPSSolve(eps));
 
@@ -1336,9 +970,6 @@ struct NS_AMR_LGF : public SetupHelmStab<NS_AMR_LGF, parameters>
 
         PetscCall(EPSGetIterationNumber(eps, &its));
 
-        if (world.rank() == 2) {
-            std::cout << "Iteration number got" << std::endl;
-        } 
         PetscCall(PetscPrintf(PETSC_COMM_WORLD,
             " Number of iterations of the method: %" PetscInt_FMT "\n", its));
 
@@ -1373,69 +1004,134 @@ struct NS_AMR_LGF : public SetupHelmStab<NS_AMR_LGF, parameters>
             PetscCall(PetscViewerPopFormat(PETSC_VIEWER_STDOUT_WORLD));
         }
 
-        std::vector<float_type> re_v, im_v, err_vec;
+        for (float_type Cur_o = Omega_int+Omega_l; Cur_o <= Omega_r; Cur_o+= Omega_int) 
+        {
+            MPI_Barrier(PETSC_COMM_WORLD);
+            auto t0 = clock_type::now();
+            for (i = rstart; i < rend; i++)
+            {
+                int i_loc = i - rstart;
+  
+                std::map<int, float_type> row1 = ifherk.B.mat[i_loc+1];
 
-        PetscInt nconv;
-        PetscCall(EPSGetConverged(eps,&nconv));
+                if (row1.size() == 0) continue;
 
-        for (PetscInt ll = 0; ll < nconv;  ll++) {
+                PetscScalar valComplex = -PETSC_i*Omega_int;
+                PetscScalar valComplex1 = PETSC_i*Omega_int;
+
+                PetscCall(MatSetValue(A, i, i, valComplex, ADD_VALUES));
+                PetscCall(MatSetValue(AT, i, i, valComplex1, ADD_VALUES));
+
+            }
+
+
+            MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY);
+            MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY);
+
+            MatAssemblyBegin(AT,MAT_FINAL_ASSEMBLY);
+            MatAssemblyEnd(AT,MAT_FINAL_ASSEMBLY);
+
+            PetscCall(EPSDestroy(&eps));
+        
+            PetscCall(KSPSetOperators(kspA, A, A));
+            PetscCall(KSPSetOperators(kspAT, AT, AT));
+
+            PetscCall(KSPSetFromOptions(kspA));
+            PetscCall(KSPSetFromOptions(kspAT));
+            PetscCall(EPSCreate(PETSC_COMM_WORLD, &eps));
+            PetscCall(EPSSetOperators(eps, A_shell, NULL));
+            EPSSetProblemType(eps,EPS_HEP);        
+            EPSSetDimensions(eps,1,PETSC_DEFAULT,PETSC_DEFAULT);    
+            EPSSetWhichEigenpairs(eps,	EPS_LARGEST_MAGNITUDE);
+            
+            PetscCall(EPSSetFromOptions(eps));
+
+            if (world.rank() == 2) {
+                std::cout << "set up of eps finished" << std::endl;
+            }
+
+            MPI_Barrier(PETSC_COMM_WORLD);
+
+            PetscCall(EPSSolve(eps));
+
+            PetscCall(EPSGetIterationNumber(eps, &its));
+
+            
+            PetscCall(PetscPrintf(PETSC_COMM_WORLD,
+                " Number of iterations of the method: %" PetscInt_FMT "\n", its));
+
+            PetscCall(EPSGetType(eps, &type));
+            PetscCall(
+                PetscPrintf(PETSC_COMM_WORLD, " Solution method: %s\n\n", type));
+            PetscCall(EPSGetDimensions(eps, &nev, NULL, NULL));
+            PetscCall(PetscPrintf(PETSC_COMM_WORLD,
+                " Number of requested eigenvalues: %" PetscInt_FMT "\n", nev));
+            PetscCall(EPSGetTolerances(eps, &tol, &maxit));
+            PetscCall(PetscPrintf(PETSC_COMM_WORLD,
+                " Stopping condition: tol=%.4g, maxit=%" PetscInt_FMT "\n",
+                (double)tol, maxit));
+
+            PetscCall(PetscOptionsHasName(NULL, NULL, "-terse", &terse));
+            if (terse) PetscCall(EPSErrorView(eps, EPS_ERROR_RELATIVE, NULL));
+            else
+            {
+                PetscCall(PetscViewerPushFormat(PETSC_VIEWER_STDOUT_WORLD,
+                    PETSC_VIEWER_ASCII_INFO_DETAIL));
+                PetscCall(EPSConvergedReasonView(eps, PETSC_VIEWER_STDOUT_WORLD));
+                PetscCall(EPSErrorView(eps, EPS_ERROR_RELATIVE,
+                    PETSC_VIEWER_STDOUT_WORLD));
+                PetscCall(PetscViewerPopFormat(PETSC_VIEWER_STDOUT_WORLD));
+            }
+
+            MPI_Barrier(PETSC_COMM_WORLD);
+            auto t1 = clock_type::now();
+            mDuration_type ms_int = t1 - t0;
+            if (world.rank() == 1) {
+                std::cout << "Solving Resolvent Norm at Omega = " << Cur_o 
+                          << " in " << ms_int.count() << " ms " << std::endl;
+            }
+
+            if (world.rank() == 1) {
             PetscScalar EV;
             PetscScalar EVi;
-            PetscReal err_v;
-            PetscCall(EPSGetEigenvalue(eps, ll, &EV, &EVi));
-            PetscCall(EPSComputeError(eps,ll,EPS_ERROR_RELATIVE,&err_v));
+            PetscCall(EPSGetEigenvalue(eps, 0, &EV, &EVi));
             float_type evr = PetscRealPart(EV);
-            float_type evi = PetscImaginaryPart(EV);
-            float_type err_vv = err_v;
-
-            re_v.emplace_back(evr);
-            im_v.emplace_back(evi);
-            err_vec.emplace_back(err_vv);    
-        }
-
-        if (world.rank() == 1) {
             
-            int ss = mode_c*100 + 0.1;
-            std::string mode_c_str = std::to_string(ss);
-            if (mode_c < 1) mode_c_str = "0"+mode_c_str;
-            std::string EVs_name = "EVs_"+mode_c_str+".txt";
+
             std::ofstream outfile;
             int width = 20;
-            outfile.open(EVs_name, std::ios_base::app);
-            for (int ll = 0; ll < nconv;  ll++) {
-                float_type evr = re_v[ll];
-                float_type evi = im_v[ll];
-                float_type err_vv = err_vec[ll];
-                std::string sign = "+";
-                if (evi < 0) sign = "-";
-                outfile << std::setprecision(9) << std::setw(width) << std::fixed << evr << sign << std::fabs(evi) << "i";
-                outfile << std::setprecision(9) << std::setw(width) << std::scientific << err_vv;
-                outfile << std::endl;     
-            }
+
+            outfile.open("EVs.txt", std::ios_base::app);
+            outfile << std::setw(width) << Cur_o << std::setw(width)
+                    << std::scientific << std::setprecision(9);
+            outfile << std::setw(width) << evr << std::setw(width)
+                    << std::scientific << std::setprecision(9);
+            outfile << std::endl;
             outfile.close();
+            }
         }
 
         EPSGetEigenvector(eps,0, x, NULL);
+        PetscCall(MatMult(Q_hi, x, By));
 
         for (i = rstart; i < rend;i++) {
             int i_loc = i - rstart;
             PetscScalar tmp;
-            PetscCall(VecGetValues(x, 1, &i, &tmp));
+            PetscCall(VecGetValues(By, 1, &i, &tmp));
             x0_real[i_loc] = PetscRealPart(tmp);
             x0_imag[i_loc] = PetscImaginaryPart(tmp);
         }
 
-        EPSGetEigenvector(eps,1, x, NULL);
+        
+        PetscCall(KSPSolve(kspA, By, y));
 
         for (i = rstart; i < rend;i++) {
             int i_loc = i - rstart;
             PetscScalar tmp;
-            PetscCall(VecGetValues(x, 1, &i, &tmp));
+            PetscCall(VecGetValues(y, 1, &i, &tmp));
             x1_real[i_loc] = PetscRealPart(tmp);
             x1_imag[i_loc] = PetscImaginaryPart(tmp);
         }
-
-        EPSGetEigenvector(eps,2, x, NULL);
 
         for (i = rstart; i < rend;i++) {
             int i_loc = i - rstart;
@@ -1445,7 +1141,7 @@ struct NS_AMR_LGF : public SetupHelmStab<NS_AMR_LGF, parameters>
             x2_imag[i_loc] = PetscImaginaryPart(tmp);
         }
 
-        EPSGetEigenvector(eps,3, x, NULL);
+        PetscCall(MatMult(A, y, x));
 
         for (i = rstart; i < rend;i++) {
             int i_loc = i - rstart;
@@ -1455,18 +1151,8 @@ struct NS_AMR_LGF : public SetupHelmStab<NS_AMR_LGF, parameters>
             x3_imag[i_loc] = PetscImaginaryPart(tmp);
         }
 
-        EPSGetEigenvector(eps,4, x, NULL);
-
-        for (i = rstart; i < rend;i++) {
-            int i_loc = i - rstart;
-            PetscScalar tmp;
-            PetscCall(VecGetValues(x, 1, &i, &tmp));
-            x4_real[i_loc] = PetscRealPart(tmp);
-            x4_imag[i_loc] = PetscImaginaryPart(tmp);
-        }
-
         MPI_Barrier(PETSC_COMM_WORLD);
-        PetscCall(EPSDestroy(&eps));
+        //PetscCall(EPSDestroy(&eps));
         PetscCall(MatDestroy(&A));
         PetscCall(MatDestroy(&B));
         
@@ -1482,54 +1168,63 @@ struct NS_AMR_LGF : public SetupHelmStab<NS_AMR_LGF, parameters>
         PetscCall(SlepcFinalize());
         }
 
+        world.barrier();
+        if (world.rank() == 0) {
+            std::cout << "finished computing singular values" << std::endl;
+        }
+        world.barrier();
 
-        ifherk.CSR2Grid<u_num_inv_type, p_num_inv_type, w_num_inv_type, N_num_inv_type, cs_num_type, uz_num_inv_type, Nz_num_type>(x0_real, forcing_ref, fz);
+
+        ifherk.CSR2Grid<u_ref_type, p_ref_type, w_ref_type, N_ref_type, cs_ref_type, uz_ref_type, Nz_ref_type>(x0_real, forcing_ref, fz);
         //if (world.rank() != 0) ifherk.pad_velocity<u_num_inv_type, u_num_inv_type>(true);
-        if (world.rank() != 0) ifherk.Curl_access<u_num_inv_type, uz_num_inv_type, w_ref_type>();
+        //if (world.rank() != 0) ifherk.Curl_access<u_ref_type, uz_ref_type, w_ref_type>();
         simulation_.write("x0_real.hdf5");
-        ifherk.CSR2Grid<u_num_inv_type, p_num_inv_type, w_num_inv_type, N_num_inv_type, cs_num_type, uz_num_inv_type, Nz_num_type>(x0_imag, forcing_ref, fz);
+        ifherk.CSR2Grid<u_ref_type, p_ref_type, w_ref_type, N_ref_type, cs_ref_type, uz_ref_type, Nz_ref_type>(x0_imag, forcing_ref, fz);
         //if (world.rank() != 0) ifherk.pad_velocity<u_num_inv_type, u_num_inv_type>(true);
-        if (world.rank() != 0) ifherk.Curl_access<u_num_inv_type, uz_num_inv_type, w_ref_type>();
+        //if (world.rank() != 0) ifherk.Curl_access<u_ref_type, uz_ref_type, w_ref_type>();
         simulation_.write("x0_imag.hdf5");
-        ifherk.CSR2Grid<u_num_inv_type, p_num_inv_type, w_num_inv_type, N_num_inv_type, cs_num_type, uz_num_inv_type, Nz_num_type>(x1_real, forcing_ref, fz);
+        ifherk.CSR2Grid<u_ref_type, p_ref_type, w_ref_type, N_ref_type, cs_ref_type, uz_ref_type, Nz_ref_type>(x1_real, forcing_ref, fz);
         //if (world.rank() != 0) ifherk.pad_velocity<u_num_inv_type, u_num_inv_type>(true);
-        if (world.rank() != 0) ifherk.Curl_access<u_num_inv_type, uz_num_inv_type, w_ref_type>();
+        //if (world.rank() != 0) ifherk.Curl_access<u_ref_type, uz_ref_type, w_ref_type>();
         simulation_.write("x1_real.hdf5");
-        ifherk.CSR2Grid<u_num_inv_type, p_num_inv_type, w_num_inv_type, N_num_inv_type, cs_num_type, uz_num_inv_type, Nz_num_type>(x1_imag, forcing_ref, fz);
+        ifherk.CSR2Grid<u_ref_type, p_ref_type, w_ref_type, N_ref_type, cs_ref_type, uz_ref_type, Nz_ref_type>(x1_imag, forcing_ref, fz);
         //if (world.rank() != 0) ifherk.pad_velocity<u_num_inv_type, u_num_inv_type>(true);
-        if (world.rank() != 0) ifherk.Curl_access<u_num_inv_type, uz_num_inv_type, w_ref_type>();
+        //if (world.rank() != 0) ifherk.Curl_access<u_ref_type, uz_ref_type, w_ref_type>();
         simulation_.write("x1_imag.hdf5");
-        ifherk.CSR2Grid<u_num_inv_type, p_num_inv_type, w_num_inv_type, N_num_inv_type, cs_num_type, uz_num_inv_type, Nz_num_type>(x2_real, forcing_ref, fz);
+        ifherk.CSR2Grid<u_ref_type, p_ref_type, w_ref_type, N_ref_type, cs_ref_type, uz_ref_type, Nz_ref_type>(x2_real, forcing_ref, fz);
         //if (world.rank() != 0) ifherk.pad_velocity<u_num_inv_type, u_num_inv_type>(true);
-        if (world.rank() != 0) ifherk.Curl_access<u_num_inv_type, uz_num_inv_type, w_ref_type>();
+        //if (world.rank() != 0) ifherk.Curl_access<u_ref_type, uz_ref_type, w_ref_type>();
         simulation_.write("x2_real.hdf5");
-        ifherk.CSR2Grid<u_num_inv_type, p_num_inv_type, w_num_inv_type, N_num_inv_type, cs_num_type, uz_num_inv_type, Nz_num_type>(x2_imag, forcing_ref, fz);
+        ifherk.CSR2Grid<u_ref_type, p_ref_type, w_ref_type, N_ref_type, cs_ref_type, uz_ref_type, Nz_ref_type>(x2_imag, forcing_ref, fz);
         //if (world.rank() != 0) ifherk.pad_velocity<u_num_inv_type, u_num_inv_type>(true);
-        if (world.rank() != 0) ifherk.Curl_access<u_num_inv_type, uz_num_inv_type, w_ref_type>();
+        //if (world.rank() != 0) ifherk.Curl_access<u_ref_type, uz_ref_type, w_ref_type>();
         simulation_.write("x2_imag.hdf5");
-        ifherk.CSR2Grid<u_num_inv_type, p_num_inv_type, w_num_inv_type, N_num_inv_type, cs_num_type, uz_num_inv_type, Nz_num_type>(x3_real, forcing_ref, fz);
+        ifherk.CSR2Grid<u_ref_type, p_ref_type, w_ref_type, N_ref_type, cs_ref_type, uz_ref_type, Nz_ref_type>(x3_real, forcing_ref, fz);
         //if (world.rank() != 0) ifherk.pad_velocity<u_num_inv_type, u_num_inv_type>(true);
-        if (world.rank() != 0) ifherk.Curl_access<u_num_inv_type, uz_num_inv_type, w_ref_type>();
+        //if (world.rank() != 0) ifherk.Curl_access<u_ref_type, uz_ref_type, w_ref_type>();
         simulation_.write("x3_real.hdf5");
-        ifherk.CSR2Grid<u_num_inv_type, p_num_inv_type, w_num_inv_type, N_num_inv_type, cs_num_type, uz_num_inv_type, Nz_num_type>(x3_imag, forcing_ref, fz);
+        ifherk.CSR2Grid<u_ref_type, p_ref_type, w_ref_type, N_ref_type, cs_ref_type, uz_ref_type, Nz_ref_type>(x3_imag, forcing_ref, fz);
         //if (world.rank() != 0) ifherk.pad_velocity<u_num_inv_type, u_num_inv_type>(true);
-        if (world.rank() != 0) ifherk.Curl_access<u_num_inv_type, uz_num_inv_type, w_ref_type>();
+        //if (world.rank() != 0) ifherk.Curl_access<u_ref_type, uz_ref_type, w_ref_type>();
         simulation_.write("x3_imag.hdf5");
 
-        ifherk.CSR2Grid<u_num_inv_type, p_num_inv_type, w_num_inv_type, N_num_inv_type, cs_num_type, uz_num_inv_type, Nz_num_type>(x4_real, forcing_ref, fz);
-        if (world.rank() != 0) ifherk.Curl_access<u_num_inv_type, uz_num_inv_type, w_ref_type>();
+        /*ifherk.CSR2Grid<u_ref_type, p_ref_type, w_ref_type, N_ref_type, cs_ref_type, uz_ref_type, Nz_ref_type>(x4_real, forcing_ref, fz);
+        if (world.rank() != 0) ifherk.Curl_access<u_ref_type, uz_ref_type, w_ref_type>();
         simulation_.write("x4_real.hdf5");
-        ifherk.CSR2Grid<u_num_inv_type, p_num_inv_type, w_num_inv_type, N_num_inv_type, cs_num_type, uz_num_inv_type, Nz_num_type>(x4_imag, forcing_ref, fz);
+        ifherk.CSR2Grid<u_ref_type, p_ref_type, w_ref_type, N_ref_type, cs_ref_type, uz_ref_type, Nz_ref_type>(x4_imag, forcing_ref, fz);
         //if (world.rank() != 0) ifherk.pad_velocity<u_num_inv_type, u_num_inv_type>(true);
-        if (world.rank() != 0) ifherk.Curl_access<u_num_inv_type, uz_num_inv_type, w_ref_type>();
-        simulation_.write("x4_imag.hdf5");
+        if (world.rank() != 0) ifherk.Curl_access<u_ref_type, uz_ref_type, w_ref_type>();
+        simulation_.write("x4_imag.hdf5");*/
 
         world.barrier();
 
         
+        
         return 0;
 
 	}
+
+    
 
     /** @brief  Refienment conditon for octants.  */
     template<class OctantType>
@@ -1759,7 +1454,10 @@ struct NS_AMR_LGF : public SetupHelmStab<NS_AMR_LGF, parameters>
     bool check_mat_res; //true if we need to check of the matrix constructed is true by applying and checking with discrete operator
                         //false if we only want the eigenvalues
     bool addImagBC = true;
+    float_type Omega_w; // Omega in resolvent analysis
     int vortexType = 0;
+
+    float_type Omega_l, Omega_r, Omega_int;
 
     int row_to_print = 0;
     int N_pts;
@@ -1784,8 +1482,6 @@ struct NS_AMR_LGF : public SetupHelmStab<NS_AMR_LGF, parameters>
     force_type forcing_num;
 	force_type forcing_ref;
     force_type forcing_num_inv;
-
-    float_type mode_c;
 
 	float_type ctr_dis_x = 0.0;
 	float_type ctr_dis_y = 0.0;
@@ -1817,6 +1513,9 @@ struct NS_AMR_LGF : public SetupHelmStab<NS_AMR_LGF, parameters>
     std::string ic_filename_, ref_filename_;
 
     float_type Lx;
+
+    //Resolvent analysis specific
+    int n_times, n_start, flow_interval; //number of time shots to average
 };
 
 double vortex_run(std::string input, int argc = 0, char** argv = nullptr);

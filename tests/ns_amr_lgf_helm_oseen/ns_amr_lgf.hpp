@@ -15,7 +15,7 @@
 
 //Compiler flag for convergence tests
 //undefine this to save memory when running large cases
-//#define CONVERGENCE_TEST
+#define CONVERGENCE_TEST
 
 #ifndef DEBUG_IFHERK
 #define DEBUG_IFHERK
@@ -60,7 +60,7 @@ const int Dim = 2;
 struct parameters
 {
     static constexpr std::size_t Dim = 2;
-	static constexpr std::size_t N_modes = 8;
+	static constexpr std::size_t N_modes = 1;
 	static constexpr std::size_t PREFAC  = 2; //2 for complex values 
     // clang-format off
     REGISTER_FIELDS
@@ -77,9 +77,9 @@ struct parameters
          (w_exact          , float_type, 1*2*N_modes,    1,       1,     edge,false ),
          (error_w          , float_type, 1*2*N_modes,    1,       1,     edge,false ),
          //for radial velocity
-         (exact_u_theta    , float_type, 3*2*N_modes,    1,       1,     edge,false ),
-         (num_u_theta      , float_type, 3*2*N_modes,    1,       1,     edge,false ),
-         (error_u_theta    , float_type, 3*2*N_modes,    1,       1,     edge,false ),
+         (exact_u_theta    , float_type, 1*2*N_modes,    1,       1,     edge,false ),
+         (num_u_theta      , float_type, 1*2*N_modes,    1,       1,     edge,false ),
+         (error_u_theta    , float_type, 1*2*N_modes,    1,       1,     edge,false ),
 #endif
 		 //IF-HERK
          (u                , float_type, 3*2*N_modes,    1,       1,     face,true  ),
@@ -156,8 +156,6 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
 		tot_steps_ = simulation_.dictionary()->template get<int>("nBaseLevelTimeSteps");
 		Re_ = simulation_.dictionary()->template get<float_type>("Re");
 		R_ = simulation_.dictionary()->template get<float_type>("R");
-		d2v_ = simulation_.dictionary()->template get_or<float_type>("DistanceOfVortexRings", R_);
-		v_delta_ = simulation_.dictionary()->template get_or<float_type>("vDelta", 0.2 * R_);
 		single_ring_ = simulation_.dictionary()->template get_or<bool>("single_ring", true);
 		perturbation_ = simulation_.dictionary()->template get_or<bool>("perturbation", false);
 		vort_sep = simulation_.dictionary()->template get_or<float_type>("vortex_separation", 1.0 * R_);
@@ -175,15 +173,11 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
 		ctr_dis_x = 0.0*dx_; //this is setup as the center of the vortex in the unit of grid spacing
 		ctr_dis_y = 0.0*dx_;
 
+		source_max_ = simulation_.dictionary_->template get_or<float_type>(
+			"source_max", 1.0);
 
-
-		bool use_fat_ring = simulation_.dictionary()->template get_or<bool>("fat_ring", false);
-		if (use_fat_ring)
-			vr_fct_ =
-			[this](float_type x, float_type y, int field_idx, bool perturbation) {return this->vortex_ring_vor_fat_ic(x, y, field_idx, perturbation); };
-		else
-			vr_fct_ =
-			[this](float_type x, float_type y, int field_idx, bool perturbation) {return this->vortex_ring_vor_ic(x, y, field_idx, perturbation); };
+		refinement_factor_ = simulation_.dictionary_->template get<float_type>(
+			"refinement_factor");
 
 		ic_filename_ = simulation_.dictionary_->template get_or<std::string>(
 			"hdf5_ic_name", "null");
@@ -193,12 +187,6 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
 
 		ref_filename_ = simulation_.dictionary_->template get_or<std::string>(
 			"hdf5_ref_name", "null");
-
-		source_max_ = simulation_.dictionary_->template get_or<float_type>(
-			"source_max", 1.0);
-
-		refinement_factor_ = simulation_.dictionary_->template get<float_type>(
-			"refinement_factor");
 
 		base_threshold_ = simulation_.dictionary()->
 			template get_or<float_type>("base_level_threshold", 1e-4);
@@ -286,27 +274,7 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
 		pcout << "Start distribute" << std::endl;
 
 		domain_->distribute<fmm_mask_builder_t, fmm_mask_builder_t>();
-		if (!use_restart() && !use_tree_ && vortexType != 0) { this->initialize(); }
-		else if (!use_restart() && !use_tree_ && vortexType == 0) {
-			pcout << "start fresh, perturbing Fourier modes" << std::endl;
-			perturbIC();
-		}
-		else if (use_tree_) {simulation_.template read_h5_2D<u_type>(ic_filename_2D_, "u");}
-		else if (restart_2D_) {
-			pcout << "reading restart from 2D profile" << std::endl;
-			simulation_.template read_h5_2D<u_type>(simulation_.restart_field_dir(), "u");
-			perturbIC();
-		}
-		else if (read_diff_Nmode) {
-			pcout << "reading restart with diff N mode: " << input_Nmode << " Current: " << N_modes << std::endl;
-			simulation_.template read_h5_DiffNmode<u_type>(simulation_.restart_field_dir(), "u", input_Nmode);
-			perturbIC();
-		}
-		else
-		{
-			simulation_.template read_h5<u_type>(simulation_.restart_field_dir(), "u");
-			perturbIC();
-		}
+		this->initialize();
 
 		boost::mpi::communicator world;
 		world.barrier();
@@ -345,93 +313,65 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
 		))
 			pcout_c << "Time to solution [ms] " << ifherk_duration.count() << std::endl;
 
-		ifherk.clean_leaf_correction_boundary<u_type>(domain_->tree()->base_level(), true, 1);
+		//ifherk.clean_leaf_correction_boundary<u_type>(domain_->tree()->base_level(), true, 1);
 
 #ifdef CONVERGENCE_TEST
 
 		float_type maxNumVort = -1;
 
+		auto center = (domain_->bounding_box().max() -
+			domain_->bounding_box().min() + 1) / 2.0 +
+			domain_->bounding_box().min();
 
-		if (ref_filename_ != "null")
+
+		for (auto it = domain_->begin_leaves();
+			it != domain_->end_leaves(); ++it)
 		{
-			if (vortexType == 0) {
-			simulation_.template read_h5<u_ref_type>(ref_filename_, "u");
-			simulation_.template read_h5<p_ref_type>(ref_filename_, "p");
-			}
+			if (!it->locally_owned()) continue;
 
-			auto center = (domain_->bounding_box().max() -
-				domain_->bounding_box().min() + 1) / 2.0 +
-				domain_->bounding_box().min();
+			auto dx_level = domain_->dx_base() / std::pow(2, it->refinement_level());
+			auto scaling = std::pow(2, it->refinement_level());
 
-
-			for (auto it = domain_->begin_leaves();
-				it != domain_->end_leaves(); ++it)
+			for (auto& node : it->data())
 			{
-				if (!it->locally_owned()) continue;
+				const auto& coord = node.level_coordinate();
+				float_type x = static_cast<float_type>
+					(coord[0] - center[0] * scaling) * dx_level;
+				float_type y = static_cast<float_type>
+					(coord[1] - center[1] * scaling) * dx_level;
+				
+				float_type r__ = std::sqrt(x * x + y * y);
+				float_type t_final = dt_ * tot_steps_;
+				node(w_exact) = w_taylor_vort(r__, t_final);
+				if (vortexType != 0) {
+				x = static_cast<float_type>
+					(coord[0] - center[0] * scaling) * dx_level;
+				y = static_cast<float_type>
+					(coord[1] - center[1] * scaling + 0.5) * dx_level;
+				node(u_ref, 0) = u_vort(x, y, t_final, 0);
+				x = static_cast<float_type>
+					(coord[0] - center[0] * scaling + 0.5) * dx_level;
+				y = static_cast<float_type>
+					(coord[1] - center[1] * scaling) * dx_level;
+				node(u_ref, 2) = u_vort(x, y, t_final, 1);
 
-				auto dx_level = domain_->dx_base() / std::pow(2, it->refinement_level());
-				auto scaling = std::pow(2, it->refinement_level());
-
-				for (auto& node : it->data())
-				{
-					const auto& coord = node.level_coordinate();
-					float_type x = static_cast<float_type>
-						(coord[0] - center[0] * scaling) * dx_level;
-					float_type y = static_cast<float_type>
-						(coord[1] - center[1] * scaling) * dx_level;
-					//float_type z = static_cast<float_type>
-					//    (coord[2]-center[2]*scaling)*dx_level;
-
-					float_type r2 = x * x + y * y;
-					if (r2 > 4 * R_ * R_)
-					{
-						for (int field_idx = 0; field_idx < u_type::nFields(); field_idx++) {
-							node(u, field_idx) = 0.0;
-							node(u_ref, field_idx) = 0.0;
-						}
-					}
-					float_type r__ = std::sqrt(x * x + y * y);
-					float_type t_final = dt_ * tot_steps_;
-					node(w_exact) = w_taylor_vort(r__, t_final);
-					node(w_num) = (node(u, 1) - node.at_offset(u, -1, 0, 1) -
-						node(u, 0) + node.at_offset(u, 0, -1, 0)) / dx_level;
-					if (vortexType != 0) {
-					x = static_cast<float_type>
-						(coord[0] - center[0] * scaling) * dx_level;
-					y = static_cast<float_type>
-						(coord[1] - center[1] * scaling + 0.5) * dx_level;
-					node(u_ref, 0) = u_vort(x, y, t_final, 0);
-					x = static_cast<float_type>
-						(coord[0] - center[0] * scaling + 0.5) * dx_level;
-					y = static_cast<float_type>
-						(coord[1] - center[1] * scaling) * dx_level;
-					node(u_ref, 1) = u_vort(x, y, t_final, 1);
-
-
-					//compute analytical u_theta
-					x = static_cast<float_type>(
-						coord[0] - center[0] * scaling) *
-						dx_level;
-					y = static_cast<float_type>(
-						coord[1] - center[1] * scaling) *
-						dx_level;
-					float_type u = u_vort(x, y, t_final, 0);
-					float_type v = u_vort(x, y, t_final, 1);
-					float_type u_theta = std::sqrt(u * u + v * v);
-					node(exact_u_theta, 0) = u_theta;
-					node(exact_u_theta, 1) = 0.0;     //0 is u_theta, 1 is u_r
-					}
-
-					
-				}
-
+				//compute analytical u_theta
+				x = static_cast<float_type>(coord[0] - center[0] * scaling) * dx_level;
+				y = static_cast<float_type>(coord[1] - center[1] * scaling) * dx_level;
+				float_type u = u_vort(x, y, t_final, 0);
+				float_type v = u_vort(x, y, t_final, 1);
+				float_type u_theta = std::sqrt(u * u + v * v);
+				node(exact_u_theta, 0) = u_theta;
+				node(exact_u_theta, 2) = 0.0;     //0 is u_theta, 1 is u_r
+				}	
 			}
 		}
+
 		getUtheta<u_type, num_u_theta_type>();
 		float_type t_final = dt_ * tot_steps_;
 		pcout << "the final time is " << t_final << std::endl;
 		pcout << "the max numerical vorticity is " << maxNumVort << std::endl;
-		ifherk.clean_leaf_correction_boundary<u_type>(domain_->tree()->base_level(), true, 1);
+		//ifherk.clean_leaf_correction_boundary<u_type>(domain_->tree()->base_level(), true, 1);
 
 		float_type L_z = simulation_.dictionary_->template get_or<float_type>(
             "L_z", 1.0);
@@ -862,194 +802,27 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
 					(coord[0] - center[0] * scaling) * dx_level;
 				float_type y = static_cast<float_type>
 					(coord[1] - center[1] * scaling) * dx_level;
-				//z = static_cast<float_type>
-				//(coord[2]-center[2]*scaling+0.5)*dx_level;
-
-				//node(edge_aux,0) = vor(x,y-0.5*vort_sep,0)+ vor(x,y+0.5*vort_sep,0);
-				node(edge_aux, 0) = vor(x, y, 0);
 				
 				x = static_cast<float_type>(coord[0]-center[0]*scaling)*dx_level;
 				y = static_cast<float_type>(coord[1]-center[1]*scaling+0.5)*dx_level;
 				node(u, 0) = u_vort(x,y,0,0);
 				x = static_cast<float_type>(coord[0]-center[0]*scaling+0.5)*dx_level;
 				y = static_cast<float_type>(coord[1]-center[1]*scaling)*dx_level;
-				node(u, 1) = u_vort(x,y,0,1);
+				node(u, 2) = u_vort(x,y,0,1);
 
             }
 
 		}
 
-		//psolver.template apply_lgf<edge_aux_type, stream_f_type>();
 		auto client = domain_->decomposition().client();
 
 		for (int l = domain_->tree()->base_level();
 			l < domain_->tree()->depth(); ++l)
 		{
-			//client->template buffer_exchange<stream_f_type>(l);
-
-			/*for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
-			{
-				if (!it->locally_owned() || !it->has_data()) continue;
-				const auto dx_level =
-					dx_base / std::pow(2, it->refinement_level());
-				domain::Operator::curl_transpose<stream_f_type, u_type>(
-					it->data(), dx_level, -1.0);
-			}*/
 			client->template buffer_exchange<u_type>(l);
 		}
 
 	}
-
-    void perturbIC()
-    {
-        if (w_perturb < 1e-10) return;
-        //poisson_solver_t psolver(&this->simulation_);
-
-        boost::mpi::communicator world;
-        if (domain_->is_server()) return;
-        auto center = (domain_->bounding_box().max() -
-                          domain_->bounding_box().min() + 1) /
-                          2.0 +
-                      domain_->bounding_box().min();
-
-        // Adapt center to always have peak value in a cell-center
-        //center+=0.5/std::pow(2,nRef);
-        const float_type dx_base = domain_->dx_base();
-
-        if (ic_filename_ != "null") return;
-
-        // Voriticity IC
-        for (auto it = domain_->begin(); it != domain_->end(); ++it)
-        {
-            if (!it->locally_owned()) continue;
-
-            auto dx_level = dx_base / std::pow(2, it->refinement_level());
-            auto scaling = std::pow(2, it->refinement_level());
-
-            for (auto& node : it->data())
-            {
-
-				const auto& coord = node.level_coordinate();
-                for (int i = 0; i < N_modes; i++)
-                {
-                    float_type mag_i = -static_cast<float_type>((i) * (i));
-					float_type mag = std::exp(mag_i*pert_pow);
-                    for (int j = 0; j < 3; j++)
-                    {
-#ifdef CONVERGENCE_TEST
-						if (j != 2) {
-							node(edge_aux, j * N_modes * 2 + i * 2) = 0.0;
-							node(edge_aux, j * N_modes * 2 + i * 2+1) = 0.0;
-							continue;
-						}
-#endif
-						
-                        float_type x = static_cast<float_type>(
-                                           coord[0]) *
-                                       dx_level;
-                        float_type y = static_cast<float_type>(
-                                           coord[1]) *
-                                       dx_level;
-
-						float_type r2 = x*x + y*y;
-
-						float_type Gaussian = exp(-r2);
-
-						float_type rd = 1.0;
-
-                        if (use_rand_perturb)
-                        {
-                            rd = (static_cast<float_type>(rand()) /
-                                    static_cast<float_type>(RAND_MAX)) -
-                                0.5;
-                        }
-                        node(edge_aux, j * N_modes * 2 + i * 2) =
-                            rd * w_perturb * mag * Gaussian;
-                        if (use_rand_perturb)
-                        {
-                            rd = (static_cast<float_type>(rand()) /
-                                    static_cast<float_type>(RAND_MAX)) -
-                                0.5;
-                        }
-                        if (i != 0) node(edge_aux, j * N_modes * 2 + i * 2 + 1) = rd * w_perturb * mag * Gaussian;
-						else node(edge_aux, j * N_modes * 2 + i * 2 + 1) = 0.0;
-                    }
-                }
-            }
-        }
-
-		psolver.template apply_lgf_and_helm<edge_aux_type, stream_f_type>(N_modes, 3);
-		auto client = domain_->decomposition().client();
-
-		for (int l = domain_->tree()->base_level();
-			l < domain_->tree()->depth(); ++l)
-		{
-			//client->template buffer_exchange<stream_f_type>(l);
-
-			for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
-			{
-				if (!it->locally_owned() || !it->has_data()) continue;
-				const auto dx_level =
-					dx_base / std::pow(2, it->refinement_level());
-				domain::Operator::curl_transpose_helmholtz_complex<stream_f_type, u_i_type>(
-                    it->data(), dx_level, N_modes, c_z, -1.0);
-				//domain::Operator::curl_transpose_helmholtz_complex<stream_f_type, u_type>(
-				//	it->data(), dx_level, -1.0);
-			}
-			client->template buffer_exchange<u_i_type>(l);
-		}
-		add<u_i_type, u_type>();
-    }
-
-
-	void perturbIC_Discrete()
-    {
-        if (!perturb_Fourier) return;
-        //poisson_solver_t psolver(&this->simulation_);
-
-        boost::mpi::communicator world;
-        if (domain_->is_server()) return;
-        auto center = (domain_->bounding_box().max() -
-                          domain_->bounding_box().min() + 1) /
-                          2.0 +
-                      domain_->bounding_box().min();
-
-        // Adapt center to always have peak value in a cell-center
-        //center+=0.5/std::pow(2,nRef);
-        const float_type dx_base = domain_->dx_base();
-
-        if (ic_filename_ != "null") return;
-
-        // Voriticity IC
-        for (auto it = domain_->begin(); it != domain_->end(); ++it)
-        {
-            if (!it->locally_owned()) continue;
-
-            auto dx_level = dx_base / std::pow(2, it->refinement_level());
-            auto scaling = std::pow(2, it->refinement_level());
-
-            for (auto& node : it->data())
-            {
-                for (int i = 1; i < N_modes; i++)
-                {
-                    float_type mag = 1.0 / static_cast<float_type>(i * i);
-                    for (int j = 0; j < 3; j++)
-                    {
-                        float_type rd = (static_cast<float_type>(rand()) /
-                                            static_cast<float_type>(RAND_MAX)) -
-                                        0.5;
-                        node(u, j * N_modes * 2 + i * 2) +=
-                            rd * w_perturb * mag;
-                        rd = (static_cast<float_type>(rand()) /
-                                 static_cast<float_type>(RAND_MAX)) -
-                             0.5;
-                        node(u, j * N_modes * 2 + i * 2 + 1) +=
-                            rd * w_perturb * mag;
-                    }
-                }
-            }
-        }
-    }
 
 
 	template<typename From, typename To>
@@ -1071,28 +844,6 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
             }
         }
     }
-
-    float_type vortex_ring_vor_fat_ic(float_type x, float_type y, int field_idx, bool perturbation)
-	{
-		//return 1;
-		//const float_type alpha = 0.54857674;
-		//float_type       gam = 1;
-		float_type       R2 = R_ * R_;
-		//float_type       nu = Lx / Re_; //assuming U = 1
-		//float_type       t0 = 10.0*Re_;    //t0d = 1.0
-
-		float_type r2 = (x * x + y * y);
-		float_type r = sqrt(r2);
-
-
-		float_type rd = (static_cast <float_type> (rand()) / static_cast <float_type> (RAND_MAX)) - 0.5;
-		float_type prtub = 0.000;
-		rd *= prtub * perturbation;
-
-		float_type vort_ic = w_oseen_vort(r, 0);
-		return vort_ic;
-		//return 0;
-	}
 
     float_type vor(float_type x, float_type y, int field_idx) const
     {
@@ -1149,7 +900,7 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
 		b.grow(2, 2);
 		auto corners = b.get_corners();
 
-		float_type w_max = std::abs(vr_fct_(float_type(0.0), float_type(0.0), 0, perturbation_));
+		//float_type w_max = std::abs(vr_fct_(float_type(0.0), float_type(0.0), 0, perturbation_));
 
 		for (int i = b.base()[0]; i <= b.max()[0]; ++i)
 		{
@@ -1164,8 +915,6 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
 
 				float_type half_block = static_cast<float_type>(b.extent()[0]) * dx_level / 2.0;
 				//z = static_cast<float_type>(k - center[2] + 0.5) * dx_level;
-
-				float_type tmp_w = vor(x, y, 0);
 				//tmp_w =  vor(x,y-0.5*vort_sep,0)+ vor(x,y+0.5*vort_sep,0);
 
 
@@ -1173,7 +922,7 @@ struct NS_AMR_LGF : public Setup_helmholtz<NS_AMR_LGF, parameters>
 				float_type max_c = std::max(std::fabs(x), std::fabs(y));
 				//float_type max_c = std::fabs(x) + std::fabs(y);
 				float_type rd = std::sqrt(x * x + y * y);
-				float_type bd = 1.92 / pow(2, b.level()) - half_block;
+				float_type bd = 11.2 / pow(2, b.level()) - half_block;
 
 				//float_type bd = 4.8 - 1.2*b.level() - half_block;
 

@@ -84,6 +84,7 @@ class Stability
     
     using solver_t = iblgf::solver::IntelPardisoSolve<float_type>;
     using time_integration_t = typename Setup::time_integration_t;
+    using linear_ns_t = typename Setup::linear_ns_t;
 
     //Timings
     using clock_type = std::chrono::high_resolution_clock;
@@ -104,6 +105,7 @@ class Stability
 
     using cell_aux_type = typename Setup::cell_aux_type;
     using face_aux_type = typename Setup::face_aux_type;
+    using edge_aux_type = typename Setup::edge_aux_type;
     using cell_aux2_type = typename Setup::cell_aux2_type;
     using face_aux2_type = typename Setup::face_aux2_type;
     
@@ -122,6 +124,8 @@ class Stability
 
         Newton_max_itr_ = simulation_->dictionary_->template get_or<int>("Newton_max_itr", 100);
         Newton_threshold_ = simulation_->dictionary_->template get_or<float_type>("Newton_threshold",1e-3);
+
+        adapt_domain = simulation_->dictionary_->template get_or<bool>("Newton_adapt_domain",false);
 
         
 	}
@@ -187,6 +191,14 @@ class Stability
         return 0;
     }
 
+
+
+    template<class U_old>
+    int Update_Newton_Adapt() {
+
+        return Init_Construct_Newton_Matrix<U_old>();
+    }
+
     template<class U_old>
     int Update_Newton_Matrix() {
         //only update DN since it involves U_old
@@ -217,6 +229,8 @@ class Stability
 
         real_coordinate_type tmp_coord(0.0);
         forcing_tmp.resize(domain_->ib().size());
+
+
 
         ifherk.template NewtonRHS<Face, Cell, fu_i_type, fp_i_type>(forcing_vec, forcing_tmp);
 
@@ -257,9 +271,16 @@ class Stability
                 b[k] = 0;
             }
 
+
+            ifherk.template clean<cell_aux2_type>();
+            ifherk.template clean<face_aux2_type>();
+
             
             ifherk.template Grid2CSR<Face, Cell, Edge>(x_old, forcing_vec, false);
             ifherk.template Grid2CSR<fu_i_type, fp_i_type, fw_i_type>(b, forcing_tmp);
+
+            //ifherk.template Grid2CSR<Face, Cell, Edge, face_aux2_type, cell_aux2_type>(x_old, forcing_vec, false);
+            //ifherk.template Grid2CSR<fu_i_type, fp_i_type, fw_i_type, face_aux2_type, cell_aux2_type>(b, forcing_tmp);
 
         }
 
@@ -289,6 +310,17 @@ class Stability
         float_type linf_loc = -1.0;
         float_type f2_loc = 0.0;
 
+        float_type res_val = ifherk.GetStateMag(x);
+        float_type state_val = ifherk.GetStateMag(x_old);
+
+        state_err = res_val/state_val;
+
+        if (state_err > 100) {
+            ifherk.template CSR2Grid<Face, Cell, Edge>(x_old, forcing_vec);
+            if (world.rank() == 1) std::cout << "Error too large: state err = " << state_err << std::endl;
+            return 10;
+        }
+
         if (world.rank() != 0) {
             
             int begin_row = ifherk.num_start();
@@ -308,12 +340,9 @@ class Stability
             }
         }
 
-        float_type res_val = ifherk.GetStateMag(x);
-        float_type state_val = ifherk.GetStateMag(x_old);
-
-        state_err = res_val/state_val;
-
         ifherk.template CSR2Grid<Face, Cell, Edge>(x_old, forcing_vec);
+
+        //ifherk.template CSR2Grid<Face, Cell, Edge, face_aux2_type, cell_aux2_type>(x_old, forcing_vec);
 
         float_type res_glob = 0.0;
         float_type linf_glob = 0.0;
@@ -326,6 +355,38 @@ class Stability
         res_inf = linf_glob;
 
         return (res_glob/f2_glob);
+    }
+
+    template<class Face>
+    void adapt()
+    {
+        
+        if (domain_->is_client()) ifherk.template curl_no_cleaning<Face, edge_aux_type>();
+
+        if (domain_->is_client())
+        {
+            ifherk.template clean<cell_aux_type>(true, 2);
+            ifherk.template clean<edge_aux_type>(true, 1);
+        }
+        else
+        {
+            //const auto& lb = domain_->level_blocks();
+            /*std::vector<int> lb;
+            domain_->level_blocks(lb);*/
+            auto lb = domain_->level_blocks();
+            std::cout << "Blocks on each level: ";
+
+            for (int c : lb) std::cout << c << " ";
+            std::cout << std::endl;
+        }
+        boost::mpi::communicator world;
+        ifherk.template update_source_max<edge_aux_type>(1);
+        ifherk.template update_source_max<edge_aux_type>(0);
+        ifherk.adapt(false);
+
+
+        if (!domain_->is_client()) return;
+        ifherk.template pad_velocity<Face, Face>(true);
     }
 
     template<class Face, class Cell, class Edge>
@@ -376,10 +437,25 @@ class Stability
             }
         }
 
+
+        if (!domain_->is_client())
+        {
+            //const auto& lb = domain_->level_blocks();
+            /*std::vector<int> lb;
+            domain_->level_blocks(lb);*/
+            auto lb = domain_->level_blocks();
+            std::cout << "Blocks on each level: ";
+
+            for (int c : lb) std::cout << c << " ";
+            std::cout << std::endl;
+        }
+
         this->template Init_Construct_Newton_Matrix<Face>();
 
         for (int i = 0; i < Newton_max_itr_;i++) {
             float_type err = this->template NewtonUpdate<Face, Cell, Edge>(forcing_vec, linf_err, state_err);
+
+            
 
             if (forcing_vec.size() > 0)
             {
@@ -424,13 +500,30 @@ class Stability
                 break;
             }
 
+            
+
 
             std::string prefix_v = "Newton_itr";
             std::string idx_str = std::to_string(i);
             std::string post_fix = ".hdf5";
             std::string dest_name = prefix_v+idx_str;
             simulation_->write(dest_name);
-            this->template Update_Newton_Matrix<Face>();
+
+
+            
+            if (adapt_domain) {
+                //this->template adapt<Face>();
+                //this->template Update_Newton_Adapt<Face>();
+
+                this->template adapt<Face>();
+                this->template Update_Newton_Adapt<Face>();
+            }
+            else {
+
+                this->template Update_Newton_Matrix<Face>();
+            }
+
+            
         }
     }
 
@@ -588,6 +681,7 @@ class Stability
     domain_type*     domain_;
 
     time_integration_t ifherk;
+    //linear_ns_t ifherk;
     int Newton_max_itr_;
     float_type Newton_threshold_;
 
@@ -598,6 +692,8 @@ class Stability
     bool num_input;
 
     bool clean_p_tar;
+
+    bool adapt_domain;
 };
 } // namespace solver
 } // namespace iblgf

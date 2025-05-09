@@ -339,7 +339,7 @@ class Ifherk_HELM
                 //    up_and_down<u>();
                 //    pad_velocity<u, u>();
                 //}
-                if (!customized_ic) {this->adapt(false); }
+                if (!customized_ic && !just_restarted_) {this->adapt(false); }
                 if (adapt_Fourier && just_restarted_ && domain_->is_client()) {
                     clean_Fourier_modes_all<u_type>();
                     pad_velocity_refFourier<u_type, u_type>(true);
@@ -352,8 +352,8 @@ class Ifherk_HELM
             if (adapt_count_ % (adapt_freq_ * balance_n_adapt) == 0)
             {
                 clean<u_type>(true);
-                psolver.clear_fft_vecs();
-                pcout << "cleaned lgf" << std::endl;
+                //psolver.clear_fft_vecs();
+                //pcout << "cleaned lgf" << std::endl;
                 world.barrier();
                 domain_->decomposition().template balance<u_type,p_type>();
                 
@@ -1773,6 +1773,10 @@ class Ifherk_HELM
 
     void lin_sys_with_ib_solve(float_type _alpha, bool write_prev_force = true) noexcept
     {
+        if (domain_->ib().size() == 0) {
+            lin_sys_solve(_alpha);
+            return;
+        }
         auto client = domain_->decomposition().client();
 
         auto t0 = clock_type::now();
@@ -2188,6 +2192,9 @@ class Ifherk_HELM
             }
         }
 
+        //this->up<vort_mag_real_type>(false);
+        //this->up<vort_i_real_type>(false);
+
 
         
         pcout << "Computed vort_mag"
@@ -2429,6 +2436,7 @@ class Ifherk_HELM
 
             //client->template buffer_exchange<Target>(l);
             clean_leaf_correction_boundary<Target>(l, true, 2);
+            //clean_leaf_correction_boundary<Target>(l, false, 2);
             //clean_leaf_correction_boundary<Target>(l, false,4+stage_idx_);
         }
         if (adapt_Fourier) clean_Fourier_modes_BC<Target>(3, true);

@@ -78,4 +78,5 @@ make test
 ## Authors
 Benedikt Dorschner  
 Ke Yu  
-Marcus Lee
+Marcus Lee  
+Wei Hou

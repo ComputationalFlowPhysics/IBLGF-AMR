@@ -115,6 +115,7 @@ class Simulation
                 float_type c_z = dictionary_->template get_or<float_type>("L_z", 1);
                 float_type dz = c_z / static_cast<float_type>(N_modes*3);
                 io_h5.write_helm_3D(io::output().dir()+"/vort_"+_filename+".hdf5", domain_.get(), dz, false, false);
+                io_h5.write_helm_3D_shallow(io::output().dir()+"/vort_shallow_"+_filename+".hdf5", domain_.get(), dz, false, false);
             }
         }
     }

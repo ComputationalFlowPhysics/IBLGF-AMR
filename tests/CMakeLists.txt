@@ -59,6 +59,8 @@ find_package(MKL CONFIG REQUIRED)
 #add_subdirectory (OscillatingAirfoil)
 #add_subdirectory (operators_linear)
 #add_subdirectory (op_test2)
+add_subdirectory (vgt_postprocess)
 add_subdirectory (QR_2D)
+add_subdirectory(common_tree)
 
 

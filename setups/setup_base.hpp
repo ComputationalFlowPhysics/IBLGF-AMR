@@ -112,6 +112,18 @@ class SetupBase
     {
         domain_->initialize(simulation_.dictionary()->get_dictionary("domain"));
     }
+    SetupBase(Dictionary* _d, std::vector<typename domain_t::tree_t::key_type::value_type>& _keys,std::vector<int> & _leafs)
+    : simulation_(_d->get_dictionary("simulation_parameters"))
+    , domain_(simulation_.domain())
+    {
+        domain_->initialize_with_keys(
+            simulation_.dictionary()->get_dictionary("domain").get(),
+            _keys, _leafs);
+        
+        if (domain_->is_client()) client_comm_ = client_comm_.split(1);
+        else
+            client_comm_ = client_comm_.split(0);
+    }
 
     SetupBase(Dictionary* _d, domaint_init_f _fct,
         std::string restart_tree_dir = "")

@@ -111,6 +111,8 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 
 		smooth_start_ = simulation_.dictionary()->template get_or<bool>("smooth_start", false);
 
+		linear_start_= simulation_.dictionary()->template get_or<bool>("linear_start", false);
+
 		vortexType = simulation_.dictionary()->template get_or<int>("Vort_type", 0);
 
 		Omega = simulation_.dictionary()->template get_or<float_type>("Omega", 0.0);
@@ -150,7 +152,7 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
                     else { f_alpha = 0.0; }
                 }
 
-				if (t<=0.0 && smooth_start_)
+				if (t<=0.0 && (smooth_start_ || linear_start_))
 					return 0.0;
 				else if (t<T0-1e-10 && smooth_start_)
 				{
@@ -158,6 +160,12 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 					float_type h2 = exp(-1/(1 - t/T0));
 
 					return -(U_[idx] + f_alpha) * (h1/(h1+h2));
+				}
+				else if (t<0.25-1e-10 && linear_start_)
+				{
+					float_type h1 = t/0.25;
+
+					return -(U_[idx] + f_alpha) * h1;
 				}
 				else
 				{
@@ -171,7 +179,7 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 			{
 				float_type T0 = 0.5;
 
-				if (t<=0.0 && smooth_start_)
+				if (t<=0.0 && ( smooth_start_|| linear_start_))
 					return 0.0;
 				else if (t<T0-1e-10 && smooth_start_)
 				{
@@ -179,6 +187,12 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 					float_type h2 = exp(-1/(1 - t/T0));
 
 					return -(U_[idx]) * (h1/(h1+h2));
+				}
+				else if (t<0.25-1e-10 && linear_start_)
+				{
+					float_type h1 = t/0.25;
+
+					return -(U_[idx]) * h1;
 				}
 				else
 				{
@@ -1037,6 +1051,7 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
     bool perturbation_=false;
     bool hard_max_refinement_=false;
     bool smooth_start_;
+	bool linear_start_;
 	bool non_base_level_update = false;
     int vortexType = 0;
 	bool NoMeshUpdate = false;

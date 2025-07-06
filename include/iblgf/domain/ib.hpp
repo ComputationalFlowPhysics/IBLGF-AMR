@@ -227,6 +227,25 @@ class IB
                     coordinates_.emplace_back(real_coordinate_type(tmp));
                 }
             }
+            if (Dim == 3)
+            {
+                float_type R = 0.5;
+                float_type dx = dx_base_ / pow(2, IBlevel_) * ibph_;
+                int        n = floor(2.0 * R * M_PI / dx) + 1;
+                if (comm_.rank() == 1)
+                    std::cout << "Geometry = circle, n = " << n << std::endl;
+                for (int i = 0; i < n; i++)
+                {
+                    float_type           x = i + 0.5;
+                    float_type           theta = 2 * M_PI * x / n;
+                    real_coordinate_type tmp;
+                    tmp.y() = R * cos(theta);
+                    tmp.z() = R * sin(theta);
+                    tmp.x() = 0.0;
+                    coordinates_.emplace_back(real_coordinate_type(tmp));
+                }
+            }
+
         }
 
         else if (geometry_ == "2circles")

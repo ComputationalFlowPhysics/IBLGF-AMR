@@ -101,12 +101,13 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
             U_[2] = simulation_.dictionary()->template get_or<float_type>("Uz", 0.0);
 
         smooth_start_ = simulation_.dictionary()->template get_or<bool>("smooth_start", false);
+        linear_start_ = simulation_.dictionary()->template get_or<bool>("linear_start", false);
 
         simulation_.frame_vel() =
             [this](std::size_t idx, float_type t, auto coord = {0, 0, 0})
             {
                 float_type T0 = 0.5;
-                if (t<=0.0 && smooth_start_)
+                if (t<=0.0 && (smooth_start_ || linear_start_))
                     return 0.0;
                 else if (t<T0-1e-10 && smooth_start_)
                 {
@@ -117,6 +118,24 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
                     float_type h2 = exp(-1/(1 - t/T0));
 
                     return -U_[idx] * (h1/(h1+h2));
+                }
+                else if (t<1-1e-10 && linear_start_)
+                {
+                    float_type h1;
+                    if (idx==0)
+                    {
+                        h1=t;
+                    }
+                    else if (idx==2)
+                    {
+                        h1=1.0;
+                    }
+                    else
+                    {
+                        h1=1.0;
+                    }
+
+                    return -U_[idx] * h1;
                 }
                 else
                 {
@@ -127,7 +146,7 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
             [this](std::size_t idx, float_type t, auto coord = {0, 0, 0})
             {
                 float_type T0 = 0.5;
-                if (t<=0.0 && smooth_start_)
+                if (t<=0.0 && (smooth_start_|| linear_start_))
                     return 0.0;
                 else if (t<T0-1e-10 && smooth_start_)
                 {
@@ -138,6 +157,24 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
                     float_type h2 = exp(-1/(1 - t/T0));
 
                     return -U_[idx] * (h1/(h1+h2));
+                }
+                else if (t<1-1e-10 && linear_start_)
+                {
+                    float_type h1;
+                    if (idx==0)
+                    {
+                        h1=t*t;
+                    }
+                    else if (idx==2)
+                    {
+                        h1=t;
+                    }
+                    else
+                    {
+                        h1=1.0;
+                    }
+
+                    return -U_[idx] * h1;
                 }
                 else
                 {
@@ -312,7 +349,7 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
         pcout_c<<"Time to solution [ms] "<<ifherk_duration.count()<<std::endl;
 
 
-        return 0.0;
+     
         if (ref_filename_!="null")
         {
             simulation_.template read_h5<u_ref_type>(ref_filename_, "u");
@@ -774,6 +811,7 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 
     bool single_ring_=true;
     bool smooth_start_;
+    bool linear_start_;
     float_type perturbation_;
 
     std::vector<float_type> U_;

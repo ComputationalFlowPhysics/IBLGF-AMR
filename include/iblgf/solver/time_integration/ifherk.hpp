@@ -121,7 +121,8 @@ class Ifherk
 
         cg_threshold_ = simulation_->dictionary_->template get_or<float_type>("cg_threshold",1e-3);
         cg_max_itr_ = simulation_->dictionary_->template get_or<int>("cg_max_itr", 40);
-
+        write_stress_ = simulation_->dictionary_->template get_or<bool>("write_stress", false);
+        write_noca_ = simulation_->dictionary_->template get_or<bool>("write_noca", false);
 
         if (dt_base_ < 0) dt_base_ = dx_base_ * cfl_;
 
@@ -150,11 +151,13 @@ class Ifherk
         fname_prefix_ = "";
 
         // miscs -------------------------------------------------------------
+        if (write_noca_)
+        {
+            omega_cross_x.resize(domain_->dimension());
+            std::fill(omega_cross_x.begin(), omega_cross_x.end(), 0.0);
 
-        omega_cross_x.resize(domain_->dimension());
-        std::fill(omega_cross_x.begin(), omega_cross_x.end(), 0.0);
-
-        auto force_vec = this->template Force_Noca<u_type>();
+            auto force_vec = this->template Force_Noca<u_type>();
+        }
     }
 
   public:
@@ -571,51 +574,55 @@ class Ifherk
             std::cout << "finished writing new forcing" << std::endl;
 
 
+            if (write_stress_)
+            {
+                outfile.open("fstats_stress_x.txt",
+                    std::ios_base::app); // append instead of overwrite
+                outfile << std::setw(width) << tmp_n << std::setw(width)
+                        << std::scientific << std::setprecision(9);
+                outfile << std::setw(width) << T_ << std::setw(width)
+                        << std::scientific << std::setprecision(9);
+                for (int i = 0; i < ib.size(); i++) { outfile << All_sum_f_glob[i][0] << std::setw(width); }
+                outfile << std::endl;
+                outfile.close();
 
-            outfile.open("fstats_stress_x.txt",
-                std::ios_base::app); // append instead of overwrite
-            outfile << std::setw(width) << tmp_n << std::setw(width)
-                    << std::scientific << std::setprecision(9);
-            outfile << std::setw(width) << T_ << std::setw(width)
-                    << std::scientific << std::setprecision(9);
-            for (int i = 0; i < ib.size(); i++) { outfile << All_sum_f_glob[i][0] << std::setw(width); }
-            outfile << std::endl;
-            outfile.close();
-
-            outfile.open("fstats_stress_y.txt",
-                std::ios_base::app); // append instead of overwrite
-            outfile << std::setw(width) << tmp_n << std::setw(width)
-                    << std::scientific << std::setprecision(9);
-            outfile << std::setw(width) << T_ << std::setw(width)
-                    << std::scientific << std::setprecision(9);
-            for (int i = 0; i < ib.size(); i++) { outfile << All_sum_f_glob[i][1] << std::setw(width); }
-            outfile << std::endl;
-            outfile.close();
-            std::cout << "finished writing new stress" << std::endl;
+                outfile.open("fstats_stress_y.txt",
+                    std::ios_base::app); // append instead of overwrite
+                outfile << std::setw(width) << tmp_n << std::setw(width)
+                        << std::scientific << std::setprecision(9);
+                outfile << std::setw(width) << T_ << std::setw(width)
+                        << std::scientific << std::setprecision(9);
+                for (int i = 0; i < ib.size(); i++) { outfile << All_sum_f_glob[i][1] << std::setw(width); }
+                outfile << std::endl;
+                outfile.close();
+                std::cout << "finished writing new stress" << std::endl;
+            }
         }
-
-        auto force_vec = this->template Force_Noca<u_type>();
-
-        if (domain_->is_server())
+        if (write_noca_)
         {
-            std::cout << "NoCA Forcing = ";
-            for (std::size_t d = 0; d < domain_->dimension(); ++d)
-                std::cout << force_vec[d] << " ";
-            std::cout << std::endl;
-            std::cout << " -----------------" << std::endl;
+            auto force_vec = this->template Force_Noca<u_type>();
 
-            std::ofstream outfile;
-            int           width = 20;
+            if (domain_->is_server())
+            {
+                std::cout << "NoCA Forcing = ";
+                for (std::size_t d = 0; d < domain_->dimension(); ++d)
+                    std::cout << force_vec[d] << " ";
+                std::cout << std::endl;
+                std::cout << " -----------------" << std::endl;
 
-            outfile.open("fstats_noca.txt",
-                std::ios_base::app); // append instead of overwrite
-            outfile << std::setw(width) << tmp_n << std::setw(width)
-                    << std::scientific << std::setprecision(9);
-            outfile << std::setw(width) << T_ << std::setw(width)
-                    << std::scientific << std::setprecision(9);
-            for (int  i = 0 ; i < domain_->dimension(); i++) { outfile << force_vec[i] << std::setw(width); }
-            outfile << std::endl;
-            outfile.close();
+                std::ofstream outfile;
+                int           width = 20;
+
+                outfile.open("fstats_noca.txt",
+                    std::ios_base::app); // append instead of overwrite
+                outfile << std::setw(width) << tmp_n << std::setw(width)
+                        << std::scientific << std::setprecision(9);
+                outfile << std::setw(width) << T_ << std::setw(width)
+                        << std::scientific << std::setprecision(9);
+                for (int  i = 0 ; i < domain_->dimension(); i++) { outfile << force_vec[i] << std::setw(width); }
+                outfile << std::endl;
+                outfile.close();
+            }
         }
 
         world.barrier();
@@ -1008,12 +1015,13 @@ class Ifherk
                 _field_idx, _field_idx, Field::mesh_type(), true, false);
     }
 
-    void adapt(bool coarsify_field=true)
+    void adapt(bool coarsify_field=true, bool check_source_max=true)
     {
         boost::mpi::communicator world;
+        std::cout << "Adaptation started" << std::endl;
         auto                     client = domain_->decomposition().client();
 
-        if (source_max_[0]<1e-10 || source_max_[1]<1e-10) return;
+        if (check_source_max && (source_max_[0]<1e-10 || source_max_[1]<1e-10)) return;
 
         //adaptation neglect the boundary oscillations
         clean_leaf_correction_boundary<cell_aux_type>(domain_->tree()->base_level(),true,2);
@@ -1399,7 +1407,11 @@ class Ifherk
             }
         }
     }
-
+    template <class vel_in, class vel_out>
+    void pad_access(bool refresh_correction_only=true)
+    {
+        pad_velocity<vel_in, vel_out>(refresh_correction_only);
+    }
 
 
 private:
@@ -1928,6 +1940,8 @@ private:
     bool just_restarted_=false;
     bool write_restart_=false;
     bool updating_source_max_ = false;
+    bool write_stress_= false;
+    bool write_noca_= false;
     bool all_time_max_;
     bool use_adaptation_correction;
     int restart_base_freq_;

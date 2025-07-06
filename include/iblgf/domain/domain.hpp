@@ -292,7 +292,94 @@ class Domain
         key_bd_interior_box_ =
             block_descriptor_t(bd_key_interior_base_, bd_key_interior_extent_);
     }
+    template<class DictionaryPtr>
+    void initialize_with_keys(
+        DictionaryPtr _dictionary, std::vector<typename tree_t::key_type::value_type>& _keys,std::vector<int> & _leafs)
+    {
+        boost::mpi::communicator w;
+        if (w.rank() != 0) client_comm_ = client_comm_.split(1);
+        else
+            client_comm_ = client_comm_.split(0);
 
+        //Construct base mesh, vector of bases with a given block_extent_
+        block_extent_ = _dictionary->template get_or<int>("block_extent", 14);
+
+        bd_base_ = _dictionary->template get<int, Dim>("bd_base");
+        bd_extent_ = _dictionary->template get<int, Dim>("bd_extent");
+        bounding_box_ = block_descriptor_t(bd_base_, bd_extent_);
+
+        auto base_ = bounding_box_.base() / block_extent_;
+
+        //Read scaling parameters from dictionary, bsaed on bounding box etc
+        read_parameters(_dictionary);
+
+        auto base_level = key_t::minimum_level(bd_extent_ / block_extent_);
+
+        decomposition_ = decompositon_type(this);
+        t_ = std::make_shared<tree_t>(base_level);
+
+        t_->get_octant_to_level_coordinate() =
+            [blockExtent = block_extent_, base = base_](
+                real_coordinate_type _oct_coord, int _level) {
+                return (_oct_coord + base * std::pow(2, _level)) * blockExtent;
+            };
+
+        if (decomposition_.is_server())
+        {
+            // std::vector<key_t> keys= _keys;
+            // std::vector<bool>  leafs= _leafs;
+            std::vector<key_t> keys;
+            std::vector<int>  leafs;
+            for (auto& k : _keys)
+            {
+                keys.emplace_back(key_t(k));
+            }
+            leafs = _leafs;
+            
+
+            t_->insert_keys(
+                keys,
+                [&](octant_t* _o) {
+                    auto level = _o->refinement_level();
+                    level = level >= 0 ? level : 0;
+                    auto bbase = this->tree()->octant_to_level_coordinate(
+                        _o->tree_coordinate(), level);
+
+                    _o->data_ptr() = std::make_shared<datablock_t>(
+                        bbase, this->block_extent(), level, false);
+                },
+                false);
+
+            //assuming the same order
+            int c = 0;
+            for (auto it = this->begin(); it != this->end(); ++it)
+            {
+                if (it->level() + 1 > this->tree()->depth())
+                    this->tree()->depth() = it->level() + 1;
+                it->flag_leaf(static_cast<bool>(leafs[c]));
+                c++;
+            }
+
+            std::cout << "Server read restart from keys done " << std::endl;
+        }
+
+        coordinate_type e(block_extent_);
+        coordinate_type bd_key_base_(0);
+        coordinate_type bd_key_interior_base_(baseBlockBufferNumber_);
+        coordinate_type bd_key_extent_ = bd_extent_;
+        coordinate_type bd_key_interior_extent_ = bd_extent_;
+
+        for (std::size_t d = 0; d < bd_key_interior_extent_.size(); ++d)
+        {
+            bd_key_interior_extent_[d] =
+                bd_key_interior_extent_[d] / e[d] - 2 * baseBlockBufferNumber_;
+            bd_key_extent_[d] = bd_key_extent_[d] / e[d];
+        }
+
+        key_bd_box_ = block_descriptor_t(bd_key_base_, bd_key_extent_);
+        key_bd_interior_box_ =
+            block_descriptor_t(bd_key_interior_base_, bd_key_interior_extent_);
+    }
     /** @brief Create base mesh out of blocks. Read in base blocks from configFile
      *         ad split up into blocks with given extent.
      **/
@@ -309,6 +396,9 @@ class Domain
             {
                 if (b.extent()[d] % e[d])
                 {
+                    std::cout << "Extent of block: " << b.extent()
+                              << " is not evenly divisible by block extent: "
+                              << e << std::endl;
                     throw std::runtime_error(
                         "Domain: Extent of blocks are not evenly divisible");
                 }

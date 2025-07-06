@@ -3,6 +3,7 @@ simulation_parameters
     nLevels=1;
 
     // Time Marching
+    Ux=0.0;
     source_max=13.0;
     nBaseLevelTimeSteps=2;
     cfl = 0.35;
@@ -19,7 +20,7 @@ simulation_parameters
     single_ring=true;
     perturbation=false;
     vDelta=0.2;
-
+    Vort_type=1;
     fat_ring=true;
 
     //hdf5_ic_name=ic.hdf5;

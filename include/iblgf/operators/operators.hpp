@@ -2589,7 +2589,20 @@ struct Operator
             int  dimension = pct.size();
             if (dimension == 3)
             {
-                std::cout << "nonlinear adjoint for 3D not implemented yet" << std::endl;
+                // std::cout << "nonlinear adjoint for 3D not implemented yet" << std::endl;
+                // N^T(0)=
+                n(dest, 0) = 0.25 * (-(n.at_offset(face_old, 0, 0, 0, 2) + n.at_offset(face_old, 0, -1, 0, 2)) *
+                                            (n.at_offset(face_new, 0, 0, 0, 1) + n.at_offset(face_new, 0, 0, -1, 1)) +
+                                        (n.at_offset(face_old, 0, 0, 0, 1) + n.at_offset(face_old, 0, 0, -1, 1)) *
+                                            (n.at_offset(face_new, 0, 0, 0, 2) + n.at_offset(face_new, 0, -1, 0, 2)));
+                n(dest, 1) = 0.25 * ((n.at_offset(face_old, 0, 0, 0, 2) + n.at_offset(face_old, -1, 0, 0, 2)) *
+                                            (n.at_offset(face_new, 0, 0, 0, 0) + n.at_offset(face_new, 0, 0, -1, 0)) -
+                                        (n.at_offset(face_old, 0, 0, 0, 0) + n.at_offset(face_old, 0, 0, -1, 0)) *
+                                            (n.at_offset(face_new, 0, 0, 0, 2) + n.at_offset(face_new, -1, 0, 0, 2)));
+                n(dest, 2) = 0.25 * (-(n.at_offset(face_old, 0, 0, 0, 1) + n.at_offset(face_old, -1, 0, 0, 1)) *
+                                            (n.at_offset(face_new, 0, 0, 0, 0) + n.at_offset(face_new, 0, -1, 0, 0)) +
+                                        (n.at_offset(face_old, 0, 0, 0, 0) + n.at_offset(face_old, 0, -1, 0, 0)) *
+                                            (n.at_offset(face_new, 0, 0, 0, 1) + n.at_offset(face_new, -1, 0, 0, 1)));
             }
             else
             {

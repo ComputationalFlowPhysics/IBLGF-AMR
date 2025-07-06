@@ -172,6 +172,8 @@ class Ifherk_linear
         {
             freq_vec_[i]=i*df;
         }
+
+        pcout<<"finished initialization of Ifherk_linear"<<std::endl;
     }
 
   public:
@@ -761,6 +763,52 @@ class Ifherk_linear
             }
         }
     }
+
+    template<class Face>
+    void project_initial_field()
+    {
+        if (domain_->is_client())
+        {
+            up_and_down<Face>();
+            // up_and_down<u_base_type>();
+            auto client = domain_->decomposition().client();
+            clean<edge_aux_type>();
+            clean<stream_f_type>();
+            for (int l = domain_->tree()->base_level();
+                 l < domain_->tree()->depth(); ++l)
+            {
+                client->template buffer_exchange<Face>(l);
+                for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+                {
+                    if (!it->locally_owned() || it->is_correction()) continue;
+
+                    const auto dx_level =
+                        dx_base_ / math::pow2(it->refinement_level());
+                    domain::Operator::curl<Face, edge_aux_type>(
+                        it->data(), dx_level);
+                }
+            }
+            //clean_leaf_correction_boundary<edge_aux_type>(domain_->tree()->base_level(), true,2);
+
+            clean<Face>();
+            psolver.template apply_lgf<edge_aux_type, stream_f_type>();
+            for (int l = domain_->tree()->base_level();
+                 l < domain_->tree()->depth(); ++l)
+            {
+                for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+                {
+                    if (!it->locally_owned()) continue;
+
+                    const auto dx_level =
+                        dx_base_ / math::pow2(it->refinement_level());
+                    domain::Operator::curl_transpose<stream_f_type, Face>(
+                        it->data(), dx_level, -1.0);
+                }
+                client->template buffer_exchange<Face>(l);
+            }
+        }
+    }
+
     template<class Field>
     float_type compute_norm(bool leaf_only=true)
     {
@@ -2113,6 +2161,18 @@ class Ifherk_linear
     {
         nonlinear_jac_adjoint<Source1, Source2,Target>();
     }
+
+    template<class Source, class Target>
+    void div_access()
+    {
+        divergence<Source, Target>();
+    }
+
+    template<class Source, class Target>
+    void lap_access()
+    {
+        laplacian2<Source, Target>();
+    }
     
 private:
     float_type coeff_a(int i, int j)const noexcept {return a_[i*(i-1)/2+j-1];}
@@ -2812,6 +2872,84 @@ private:
         //clean<Target>(true);
     }
 
+    template<class Source, class Target>
+    void laplacian2() noexcept
+    {
+        auto client = domain_->decomposition().client();
+
+        domain::Operator::domainClean<Target>(domain_);
+
+        clean<edge_aux_type>();
+
+        up_and_down<Source>();
+
+        for (int l = domain_->tree()->base_level();
+             l < domain_->tree()->depth(); ++l)
+        {
+            client->template buffer_exchange<Source>(l);
+            const auto dx_base = domain_->dx_base();
+
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
+                const auto dx_level =
+                    dx_base / math::pow2(it->refinement_level());
+                domain::Operator::laplace<Source, Target>(it->data(), dx_level);
+            }
+
+            //client->template buffer_exchange<Target>(l);
+            //clean_leaf_correction_boundary<Target>(l, true, 2);
+            //clean_leaf_correction_boundary<Target>(l, false,4+stage_idx_);
+        }
+
+
+        // for (int l = domain_->tree()->base_level();
+        //      l < domain_->tree()->depth(); ++l)
+        // {
+        //     client->template buffer_exchange<Source>(l);
+        //     const auto dx_base = domain_->dx_base();
+
+        //     for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+        //     {
+        //         if (!it->locally_owned() || !it->has_data()) continue;
+        //         if (!it->is_leaf() && !it->is_correction()) continue;
+        //         const auto dx_level =
+        //             dx_base / math::pow2(it->refinement_level());
+        //         domain::Operator::curl<Source, edge_aux_type>(it->data(), dx_level);
+        //     }
+
+        //     //client->template buffer_exchange<Target>(l);
+        //     //clean_leaf_correction_boundary<Target>(l, true, 2);
+        //     //clean_leaf_correction_boundary<Target>(l, false,4+stage_idx_);
+        // }
+
+        // this->up<edge_aux_type>();
+
+        // for (int l = domain_->tree()->base_level();
+        //      l < domain_->tree()->depth(); ++l)
+        // {
+        //     client->template buffer_exchange<edge_aux_type>(l);
+        //     const auto dx_base = domain_->dx_base();
+
+        //     for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+        //     {
+        //         if (!it->locally_owned() || !it->has_data()) continue;
+        //         if (!it->is_leaf() && !it->is_correction()) continue;
+        //         const auto dx_level =
+        //             dx_base / math::pow2(it->refinement_level());
+        //         domain::Operator::curl_transpose<edge_aux_type, Target>(it->data(), dx_level, -1.0);
+        //     }
+
+        //     //client->template buffer_exchange<Target>(l);
+        //     //clean_leaf_correction_boundary<Target>(l, true, 2);
+        //     //clean_leaf_correction_boundary<Target>(l, false,4+stage_idx_);
+        // }
+
+        //clean_leaf_correction_boundary<Target>(domain_->tree()->base_level(), true, 2);
+
+        //clean<Source>(true);
+        //clean<Target>(true);
+    }
 
     template<typename Field>
     void computeWii() noexcept

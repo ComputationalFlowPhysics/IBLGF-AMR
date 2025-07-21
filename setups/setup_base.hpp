@@ -130,6 +130,7 @@ class SetupBase
     : simulation_(_d->get_dictionary("simulation_parameters"))
     , domain_(simulation_.domain())
     {
+        client_comm_ = boost::mpi::communicator();
         auto d = _d->get_dictionary("simulation_parameters");
         use_restart_ = d->template get_or<bool>("use_restart", true);
 

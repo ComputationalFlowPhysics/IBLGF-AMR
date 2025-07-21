@@ -192,7 +192,15 @@ struct CommonTree : public SetupBase<CommonTree, parameters>
         // simulation_.write("common_tree.hdf5");
         simulation_.write(filename);
     }
-
+    template< class key_t >
+    void run_adapt_del(std::vector<key_t>& keys_to_del,
+                      std::vector<int>& level_change)
+    {
+        //register adapt condition based on reference keys and run adaptation
+        domain_->decomposition().adapt_del_leafs(keys_to_del, level_change,true);
+        this->initialize();
+        simulation_.write("adapted_to_ref");
+    }
     //register adapt condition based on reference keys and run adaptation
     void run_adapt_to_ref(std::vector<key_id_t>& _ref_keys,
                       std::vector<int>& _ref_leafs)

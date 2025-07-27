@@ -201,79 +201,113 @@ struct CommonTree : public SetupBase<CommonTree, parameters>
         this->initialize();
         simulation_.write("adapted_to_ref");
     }
-    //register adapt condition based on reference keys and run adaptation
-    void run_adapt_to_ref(std::vector<key_id_t>& _ref_keys,
-                      std::vector<int>& _ref_leafs)
+    // //register adapt condition based on reference keys and run adaptation
+    // void run_adapt_to_ref(std::vector<key_id_t>& _ref_keys,
+    //                   std::vector<int>& _ref_leafs)
+    // {
+    //     ref_keys_ = _ref_keys;
+    //     ref_leafs_ = _ref_leafs;
+
+    //     domain_->register_adapt_condition()=
+    //         [this]( std::vector<float_type> source_max, auto& octs, std::vector<int>& level_change )
+    //             {return this->template adapt_to_ref(source_max, octs, level_change);};
+    //     time_integration_t ifherk(&this->simulation_);
+    //     ifherk.adapt(true,false);
+    //     ifherk.adapt(true,false);
+
+    //     simulation_.write("adapted_to_ref");
+
+    // }
+    template<class Field,class key_t>
+    void run_adapt_from_keys(int timeIdx,std::vector<key_t>& octs,
+                            std::vector<int>& level_change)
     {
-        ref_keys_ = _ref_keys;
-        ref_leafs_ = _ref_leafs;
+        poisson_solver_t psolver(&this->simulation_);
+        boost::mpi::communicator world;
+        auto client = domain_->decomposition().client();
+        //up to correction
+        if(domain_->is_client())
+        {
+            clean<Field>(true);
+            for (std::size_t _field_idx=0; _field_idx<Field::nFields(); ++_field_idx)
+                psolver.template source_coarsify<Field,Field>(_field_idx, _field_idx, Field::mesh_type(), false, false, false, false);
 
-        domain_->register_adapt_condition()=
-            [this]( std::vector<float_type> source_max, auto& octs, std::vector<int>& level_change )
-                {return this->template adapt_to_ref(source_max, octs, level_change);};
-        time_integration_t ifherk(&this->simulation_);
-        ifherk.adapt(true,false);
-        ifherk.adapt(true,false);
+        }
 
-        simulation_.write("adapted_to_ref");
+        world.barrier();
+        auto intrp_list=domain_->decomposition().adapt_del_leafs(octs, level_change, true);
+        world.barrier();
+        pcout << "Adapt - intrp" << std::endl;
+        if (client)
+        {
+            // Intrp
+            for (std::size_t _field_idx=0; _field_idx<Field::nFields(); ++_field_idx)
+            {
+                for (int l = domain_->tree()->depth() - 2;
+                     l >= domain_->tree()->base_level(); --l) // finest level is l=depth-1 and we only 
+                {
+                    client->template buffer_exchange<Field>(l);
 
+                    domain_->decomposition().client()->
+                    template communicate_updownward_assign
+                    <Field, Field>(l,false,false,-1,_field_idx);
+                }
+
+                for (auto& oct : intrp_list)
+                {
+                    if (!oct || !oct->has_data()) continue;
+                    psolver.c_cntr_nli().template nli_intrp_node<Field, Field>(oct, Field::mesh_type(), _field_idx, _field_idx, false, false);
+                }
+            }
+        }
+        world.barrier();
+        pcout << "Adapt - done" << std::endl;
+        //get interpolation list
+        simulation_.write("adapted_to_ref_"+std::to_string(timeIdx));
+        // interpolate
     }
-    template< class key_t >
-    void adapt_to_ref(std::vector<float_type> source_max,
-                            std::vector<key_t>& octs,
-                            std::vector<int>&   level_change )
+    template <typename F>
+    void clean(bool non_leaf_only=false, int clean_width=1) noexcept
     {
-        octs.clear();
-        level_change.clear();
         for (auto it = domain_->begin(); it != domain_->end(); ++it)
         {
-            if (!it->locally_owned()) continue;
-            // if (!it->is_leaf() && !it->is_correction()) continue;
-            // if(!it->has_data()) continue;
-            //try to find it in reference keys
-            auto it_ref = std::find(ref_keys_.begin(), ref_keys_.end(), it->key().id());
-            if (it_ref != ref_keys_.end())
+            if (!it->has_data()) continue;
+            if (!it->data().is_allocated()) continue;
+
+            for (std::size_t field_idx = 0; field_idx < F::nFields(); ++field_idx)
             {
-                if (it->is_leaf())
+                auto& lin_data = it->data_r(F::tag(), field_idx).linalg_data();
+
+                if (non_leaf_only && it->is_leaf() && it->locally_owned())
                 {
-                    if(ref_leafs_[it_ref - ref_keys_.begin()]==1)
-                    {
-                        // it is a leaf
-                        // octs.emplace_back(it->key());
-                        // level_change.emplace_back(0);
-                        continue;
-                    }
-                    else
-                    {
-                        // it is a correction
-                        octs.emplace_back(it->key());
-                        level_change.emplace_back(-1);
-                        continue;
-                    }
+                    int N = it->data().descriptor().extent()[0];
+		    if(domain_->dimension() == 3) {
+                    view(lin_data, xt::all(), xt::all(),
+                        xt::range(0, clean_width)) *= 0.0;
+                    view(lin_data, xt::all(), xt::range(0, clean_width),
+                        xt::all()) *= 0.0;
+                    view(lin_data, xt::range(0, clean_width), xt::all(),
+                        xt::all()) *= 0.0;
+                    view(lin_data, xt::range(N + 2 - clean_width, N + 3),
+                        xt::all(), xt::all()) *= 0.0;
+                    view(lin_data, xt::all(),
+                        xt::range(N + 2 - clean_width, N + 3), xt::all()) *=
+                        0.0;
+                    view(lin_data, xt::all(), xt::all(),
+                        xt::range(N + 2 - clean_width, N + 3)) *= 0.0;
+		    }
+		    else {
+                    view(lin_data, xt::all(), xt::range(0, clean_width)) *= 0.0;
+                    view(lin_data, xt::range(0, clean_width), xt::all()) *= 0.0;
+                    view(lin_data, xt::range(N + 2 - clean_width, N + 3),xt::all()) *= 0.0;
+                    view(lin_data, xt::all(),xt::range(N + 2 - clean_width, N + 3)) *=0.0;
+		    }
                 }
-                else{
-                    if(ref_leafs_[it_ref - ref_keys_.begin()]==1)
-                    {
-                        // it is a leaf
-                        // octs.emplace_back(it->key().parent());
-                        // level_change.emplace_back(0);
-                        continue;
-                    }
-                    else
-                    {
-                        // // it is a correction
-                        octs.emplace_back(it->key());
-                        level_change.emplace_back(-1);
-                        continue;
-                    }
+                else
+                {
+                    //TODO whether to clean base_level correction?
+                    std::fill(lin_data.begin(), lin_data.end(), 0.0);
                 }
-                continue;
-            }
-            else
-            {
-                // continue;
-                octs.emplace_back(it->key());
-                level_change.emplace_back(-1);
             }
         }
     }

@@ -188,7 +188,47 @@ class MergeTrees
        }
     }
 
+    template<class tree_t, class key_t>
+    static void get_level_changes(tree_t& ref_tree, tree_t& old_tree, int ref_level,
+                                  std::vector<key_t>& octs, std::vector<int>& level_change)
+    {
+        boost::mpi::communicator world;
+        // adapt old_tree to ref_tree 
+        // need to add octs not in old_tree and delete blocks not in ref_tree from certain level
+        octs.clear();
+        level_change.clear();
+        if(world.rank()!=0) return;
+        std::cout << "Getting level changes..." << std::endl;
+        int old_level=ref_level+old_tree->base_level();
+        int new_level=ref_level+ref_tree->base_level();
+        // first gets octs in old_tree which of not in ref_tree
+        for(auto it1=old_tree->begin(old_level); it1!= old_tree->end(old_level); ++it1)
+        {
+            if(!it1->has_data()) continue;
+            if(!it1->is_leaf()) continue;
+            auto it2= ref_tree->find_octant(it1->key());
+            if(!it2 || !it2->has_data()||!it2->physical()||(it2->is_correction()))
+            {
+                octs.emplace_back(it1->key().id());
+                level_change.emplace_back(-1);
+            }
+        }
 
+        // second gets octs in ref_tree which are not in old_tree
+        for(auto it1=ref_tree->begin(new_level); it1!= ref_tree->end(new_level); ++it1)
+        {
+            if(!it1->has_data()) continue;
+            if(!it1->is_leaf()) continue;
+            auto it2= old_tree->find_octant(it1->key());
+            if(!it2 || !it2->has_data()||!it2->physical()||(it2->is_correction()))
+            {
+                octs.emplace_back(it1->key().parent().id());
+                level_change.emplace_back(1);
+            }
+        }
+  
+
+    }
 };
 
 }// namespace iblgf

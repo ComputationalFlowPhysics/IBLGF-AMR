@@ -6,7 +6,7 @@
 #include <iostream>
 #include <vector>
 #include <iblgf/dictionary/dictionary.hpp>
-#include "merge_trees.hpp"
+#include <iblgf/solver/modal_analysis/merge_trees.hpp>
 using namespace iblgf;
 int main(int argc, char* argv[])
 {
@@ -36,6 +36,12 @@ int main(int argc, char* argv[])
     // std::unique_ptr<CommonTree>       new_tree;
     std::string                       flow_file_1 = "./" + dir + "/flowTime_" + std::to_string(idxStart) + ".hdf5";
     std::string                       tree_file_1 = "./" + dir + "/tree_info_" + std::to_string(idxStart) + ".bin";
+    std::cout<< "flow_file_1: " << flow_file_1 << std::endl;
+    std::cout<< "tree_file_1: " << tree_file_1 << std::endl;
+    std::cout<< "nTotal: " << nTotal << std::endl;
+    // std::cout<< "nTotal: " << nTotal << std::endl;
+    std::cout<< "nskip: " << nskip << std::endl;
+    std::cout<< "idxStart: " << idxStart << std::endl;
 
     auto ref_domain_=std::make_unique<CommonTree>(&dictionary,tree_file_1, flow_file_1);
     octs.clear();

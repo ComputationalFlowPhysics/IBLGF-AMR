@@ -25,21 +25,21 @@ using namespace domain;
 using namespace types;
 using namespace dictionary;
 
-const int Dim = 2;
+const int Dim = 3;
 
 struct parameters
 {
-    static constexpr std::size_t Dim = 2;
+    static constexpr std::size_t Dim = 3;
     // clang-format off
     REGISTER_FIELDS
     (
     Dim,
         (
             //name, type, nFields, l/h-buf,mesh_obj, output(optional)
-            (tlevel,       float_type, 1, 1, 1, cell, true),
-            (u,float_type, 2, 1, 1, face, true),
-            (p,float_type, 1, 1, 1, cell, true),
-            (test             , float_type, 1,    1,       1,     cell,true )
+            (tlevel,        float_type, 1, 1, 1, cell, true),
+            (u,             float_type, Dim, 1, 1, face, true),
+            (p,             float_type, 1, 1, 1, cell, true),
+            (test,          float_type, 1,    1,       1,     cell,true )
         )
     )
     // clang-format on
@@ -263,7 +263,7 @@ struct CommonTree : public SetupBase<CommonTree, parameters>
         world.barrier();
         pcout << "Adapt - done" << std::endl;
         //get interpolation list
-        simulation_.write("adapted_to_ref_"+std::to_string(timeIdx));
+        if(timeIdx>0) simulation_.write("adapted_to_ref_"+std::to_string(timeIdx));
         // interpolate
     }
     template <typename F>

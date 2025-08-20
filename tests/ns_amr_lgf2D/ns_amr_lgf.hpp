@@ -45,6 +45,7 @@
 #include <iblgf/interpolation/interpolation.hpp>
 #include <iblgf/solver/poisson/poisson.hpp>
 #include <iblgf/solver/time_integration/ifherk.hpp>
+#include <iblgf/domain/svt.hpp>
 
 #include "../../setups/setup_base.hpp"
 #include <iblgf/operators/operators.hpp>
@@ -316,6 +317,16 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 			simulation_.template read_h5<u_type>(simulation_.restart_field_dir(), "u");
 			// simulation_.template read_h5<u_mean_type>(simulation_.restart_field_dir(), "u_mean");
 		}
+		bool use_svt=
+            simulation_.dictionary()->template get_or<bool>("use_svt", false);
+        if (use_svt)
+        {
+            ib::SVT<Dim> svt;
+            svt.init(_d->get_dictionary("simulation_parameters"));
+            simulation_.bc_vel()=svt;
+            simulation_.frame_vel()=svt;
+
+        }
 
 		boost::mpi::communicator world;
 		if (world.rank() == 0)

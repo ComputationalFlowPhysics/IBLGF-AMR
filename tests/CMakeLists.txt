@@ -62,5 +62,6 @@ find_package(MKL CONFIG REQUIRED)
 add_subdirectory (vgt_postprocess)
 add_subdirectory (QR_2D)
 add_subdirectory(common_tree)
+add_subdirectory(common_tree2D)
 
 

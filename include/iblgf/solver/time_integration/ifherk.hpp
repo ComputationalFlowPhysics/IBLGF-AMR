@@ -1018,7 +1018,7 @@ class Ifherk
     void adapt(bool coarsify_field=true, bool check_source_max=true)
     {
         boost::mpi::communicator world;
-        std::cout << "Adaptation started" << std::endl;
+        // std::cout << "Adaptation started" << std::endl;
         auto                     client = domain_->decomposition().client();
 
         if (check_source_max && (source_max_[0]<1e-10 || source_max_[1]<1e-10)) return;

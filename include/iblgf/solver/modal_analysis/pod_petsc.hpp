@@ -69,6 +69,7 @@ class POD
     using idx_u_type = typename Setup::idx_u_type;
     using edge_aux_type = typename Setup::edge_aux_type;
     using u_type = typename Setup::u_type;
+    using u_mean_type = typename Setup::u_mean_type;
     using stream_f_type = typename Setup::stream_f_type;
     using cell_aux_type = typename Setup::cell_aux_type;
     // using cell_aux_tmp_type = typename Setup::cell_aux_tmp_type;
@@ -88,100 +89,7 @@ class POD
         this->init_idx<idx_u_type>();
         world.barrier();
     }
-    float_type run_POD()
-    {
-        boost::mpi::communicator world;
-        std::cout << "RSVD_DT::run()" << std::endl;
-        world.barrier();
-        PetscMPIInt rank;
-        rank = world.rank();
-        idxStart = simulation_->dictionary()->template get_or<int>("nStart", 100);
-        nTotal = simulation_->dictionary()->template get_or<int>("nTotal", 100);
-        nskip = simulation_->dictionary()->template get_or<int>("nskip", 100);
 
-        PetscInt m_local, M;
-        m_local = max_local_idx; // since 1 based
-        Vec x, b;
-        if (rank == 0) m_local = 0;
-
-        boost::mpi::all_reduce(world, m_local, M, std::plus<int>());
-        Mat                    A;
-        ISLocalToGlobalMapping ltog_row, ltog_col;
-        PetscCall(MatCreateDense(PETSC_COMM_WORLD, m_local, PETSC_DECIDE, M, nTotal, NULL, &A));
-        // PetscCall(MatSetSizes(A, m_local, PETSC_DECIDE, M, nTotal));
-        PetscCall(MatSetUp(A));
-        PetscCall(MatCreateVecs(A, &x, &b));
-        PetscInt rstartx, rendx, rstartb, rendb;
-        PetscCall(VecGetOwnershipRange(x, &rstartx, &rendx));
-        PetscCall(VecGetOwnershipRange(b, &rstartb, &rendb));
-
-        //get index set
-        int* global_rows;
-
-        global_rows = new int[m_local];
-        for (int i = 0; i < m_local; i++) { global_rows[i] = i + static_cast<int>(rstartb); }
-
-        int* global_cols = new int[nTotal];
-        for (int j = 0; j < nTotal; j++) { global_cols[j] = j; }
-
-        PetscInt* rows = global_rows;
-        PetscInt* cols = global_cols;
-        IS        isrow, iscol;
-
-        PetscCall(ISCreateGeneral(PETSC_COMM_WORLD, m_local, rows, PETSC_COPY_VALUES, &isrow));
-        PetscCall(ISCreateGeneral(PETSC_COMM_WORLD, nTotal, cols, PETSC_COPY_VALUES, &iscol));
-
-        PetscCall(ISLocalToGlobalMappingCreateIS(isrow, &ltog_row));
-        PetscCall(ISLocalToGlobalMappingCreateIS(iscol, &ltog_col));
-
-        PetscCall(MatSetLocalToGlobalMapping(A, ltog_row, ltog_col));
-
-        PetscInt size_x, size_b;
-
-        PetscCall(VecGetSize(x, &size_x));
-        PetscCall(VecGetSize(b, &size_b));
-
-        delete[] global_rows;
-        delete[] global_cols;
-        // Vec x, b;
-        this->load_snapshots<idx_u_type, u_type>(A);
-        world.barrier();
-        PetscCall(MatAssemblyBegin(A, MAT_FINAL_ASSEMBLY));
-        PetscCall(MatAssemblyEnd(A, MAT_FINAL_ASSEMBLY));
-
-        //do SVD
-        SVD       svd;
-        PetscReal sigma;
-        PetscInt  nConv;
-        Vec       v;
-        std::cout << rank << " here" << std::endl;
-        PetscCall(SVDCreate(PETSC_COMM_WORLD, &svd));
-        PetscCall(SVDSetType(svd, SVDLANCZOS)); // or SVDTRLANCZOS, SVDCYCLIC, etc.
-        // SVDSetDimensions(svd, 3, PETSC_DEFAULT, PETSC_DEFAULT);
-        PetscCall(SVDSetOperators(svd, A, NULL));
-        PetscCall(SVDSetFromOptions(svd));
-        std::cout << rank << " here2" << std::endl;
-        PetscCall(SVDSolve(svd));
-        std::cout << rank << " here3" << std::endl;
-        PetscCall(SVDGetConverged(svd, &nConv));
-        PetscCall(MatCreateVecs(A, NULL, &v));
-
-        simulation_->write("podmodetest");
-
-        for (PetscInt i = 0; i < nConv; i++)
-        {
-            world.barrier();
-
-            PetscCall(SVDGetSingularTriplet(svd, i, &sigma, b, NULL));
-            if (rank == 1) std::cout << "Singular value " << i << " : " << sigma << std::endl;
-            vec2grid<idx_u_type, u_type>(b, 1);
-            world.barrier();
-            simulation_->write("podmode_" + std::to_string(i));
-            world.barrier();
-        }
-
-        return 0.0;
-    }
     float_type run_MOS()
     {
         boost::mpi::communicator world;
@@ -197,6 +105,7 @@ class POD
         m_local = max_local_idx; // since 1 based
         Vec x, b;
         if (rank == 0) m_local = 0;
+
 
         boost::mpi::all_reduce(world, m_local, M, std::plus<int>());
         Mat                    A;
@@ -243,8 +152,9 @@ class POD
         world.barrier();
         Mat At;
         PetscCall(MatDuplicate(A, MAT_DO_NOT_COPY_VALUES, &At));
-        this->subtractMatmean<idx_u_type>(A,At); // subtract mean from A
+        this->subtractMatmean<idx_u_type,u_mean_type>(A, At); // subtract mean from A
         world.barrier();
+        this->up_and_down<u_mean_type>();
         PetscCall(MatAssemblyBegin(At, MAT_FINAL_ASSEMBLY));
         PetscCall(MatAssemblyEnd(At, MAT_FINAL_ASSEMBLY));
         world.barrier();
@@ -252,28 +162,62 @@ class POD
         delete[] global_rows;
         delete[] global_cols;
 
-        
-
         // this->subtractMatmean<idx_u_type>(A); // subtract mean from A
         //method of snapshots
         Mat C;
         PetscCall(MatTransposeMatMult(At, At, MAT_INITIAL_MATRIX, PETSC_DEFAULT, &C));
+        Mat CT;
+        PetscCall(MatHermitianTranspose(C, MAT_INITIAL_MATRIX, &CT));
+        Mat Diff;
+        PetscReal norm_diff;
+        PetscReal normCt;
+        PetscCall(MatNorm(CT, NORM_FROBENIUS, &normCt));
+        if(rank == 0) std::cout << "Norm of CT: " << normCt << std::endl;
+
+        PetscCall(MatDuplicate(C, MAT_COPY_VALUES, &Diff));
+        PetscCall(MatAXPY(Diff, -1.0, CT, DIFFERENT_NONZERO_PATTERN)); // Dif
+        PetscCall(MatNorm(Diff, NORM_FROBENIUS, &norm_diff));
+        if(rank == 0) std::cout << "Norm of Diff: " << norm_diff << std::endl;
+        
         EPS eps;
         PetscCall(EPSCreate(PETSC_COMM_WORLD, &eps));
         PetscCall(EPSSetOperators(eps, C, NULL));
         PetscCall(EPSSetProblemType(eps, EPS_HEP));
+        PetscCall(EPSSetDimensions(eps, 10, PETSC_DEFAULT, PETSC_DEFAULT));
+
         PetscCall(EPSSetFromOptions(eps));
         PetscCall(EPSSolve(eps));
         Vec vi, phi_i;
-        PetscCall(MatCreateVecs(A, &vi,NULL));     // size m
-
+        PetscCall(MatCreateVecs(A, &vi, NULL)); // size m
+        world.barrier();
         PetscScalar lambda_i;
-        for (int i = 0; i < 4; ++i) {
+        PetscInt nconv;
+        PetscCall(EPSGetConverged(eps, &nconv));
+        if (rank == 0) std::cout << "Number of modes: " << nconv << std::endl;
+
+        int nloop= nconv<10 ? nconv : 10; // limit to 10 modes for output
+        if (rank == 0) std::cout << "Number of modes: " << nloop << std::endl;
+        for (int i = 0; i < nloop; ++i)
+        {
             PetscCall(EPSGetEigenpair(eps, i, &lambda_i, NULL, vi, NULL));
-            PetscCall(MatCreateVecs(At, NULL, &phi_i));     // size m
-            PetscCall(MatMult(At, vi, phi_i));              // phi_i = A * v_i
+            // rotate vi so its real
+            this->RemoveGlobalPhase(vi);
+            float_type sigma_i= std::sqrt(PetscRealPart(lambda_i));
+            PetscCall(MatCreateVecs(At, NULL, &phi_i)); // size m
+            PetscCall(MatMult(At, vi, phi_i));          // phi_i = A * v_i
+            if (rank == 1) std::cout << "Singular value " << i << " : " << sigma_i << std::endl;
             if (rank == 1) std::cout << "Singular value " << i << " : " << lambda_i << std::endl;
-            // PetscCall(VecScale(phi_i));
+
+            PetscViewer viewer;
+            char fname[256];
+            sprintf(fname, "coeff_%04d.csv", i);
+            PetscViewerASCIIOpen(PETSC_COMM_WORLD, fname, &viewer);
+            PetscViewerSetFormat(viewer, PETSC_VIEWER_ASCII_MATLAB); // or other format
+            VecView(vi, viewer);
+            PetscViewerDestroy(&viewer);
+
+
+            PetscCall(VecScale(phi_i,1/sigma_i)); // normalize phi_i
             // Store or output phi_i
             vec2grid<idx_u_type, u_type>(phi_i, 1);
             world.barrier();
@@ -337,7 +281,8 @@ class POD
             for (int l = base_level; l < domain_->tree()->depth(); l++)
             {
                 const auto dx_level = domain_->dx_base() / math::pow2(l);
-                const auto w_1_2 =1;// std::pow(dx_level, domain_->dimension() / 2.0); //W^(1/2) so i can do standard SVD
+                const auto w_1_2 =
+                    1; // std::pow(dx_level, domain_->dimension() / 2.0); //W^(1/2) so i can do standard SVD
                 for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
                 {
                     if (!it->locally_owned() || !it->has_data()) continue;
@@ -354,7 +299,7 @@ class POD
                                 //     (rank - 1) * m_local + i_local - 1;
                                 PetscScalar value_r = n(Field::tag(), field_idx) * w_1_2;
 
-                                PetscComplex value = value_r;
+                                PetscComplex value = value_r+0*PETSC_i;
                                 // PetscScalar value = 1.0;
                                 PetscCall(MatSetValuesLocal(A, 1, &i_local, 1, &i, &value, INSERT_VALUES));
                             }
@@ -366,58 +311,61 @@ class POD
 
         return 0.0;
     }
-
-    template<class Field_idx>
-    float_type subtractMatmean(Mat A,Mat At)
+ 
+    template<class Field_idx,class Field_mean>
+    float_type subtractMatmean(Mat A, Mat At)
     {
         // std::cout<<"here"<<std::endl;
         if (!domain_->is_client()) return 0.0;
-            int base_level = domain_->tree()->base_level();
-            for (int l = base_level; l < domain_->tree()->depth(); l++)
-            {
-                const auto dx_level = 1.0 / math::pow2(l);
-                const auto w_1_2 =std::pow(dx_level, domain_->dimension() / 2.0); //W^(1/2) so i can do standard SVD
+        int base_level = domain_->tree()->base_level();
+        for (int l = base_level; l < domain_->tree()->depth(); l++)
+        {
+            const auto dx_level = 1.0 / math::pow2(l);
+            const auto w_1_2 = std::pow(dx_level, domain_->dimension() / 2.0); //W^(1/2) so i can do standard SVD
 
-                for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
+                // if (!it->data().is_allocated()) continue;
+                if (it->is_leaf() && !it->is_correction())
                 {
-                    if (!it->locally_owned() || !it->has_data()) continue;
-                    // if (!it->data().is_allocated()) continue;
-                    if (it->is_leaf() && !it->is_correction())
+                    for (std::size_t field_idx = 0; field_idx < Dim; ++field_idx)
                     {
-                        for (std::size_t field_idx = 0; field_idx < Dim; ++field_idx)
+                        for (auto& n : it->data())
                         {
-                            for (auto& n : it->data())
+                            int i_local = n(Field_idx::tag(), field_idx) - 1;
+                            if (i_local < 0) continue;
+                            // int i_global =
+                            //     (rank - 1) * m_local + i_local - 1;
+                            PetscReal row_mean = 0.0;
+                            
+                            for (int k = 0; k < nTotal; ++k)
                             {
-                                int i_local = n(Field_idx::tag(), field_idx) - 1;
-                                if (i_local < 0) continue;
-                                // int i_global =
-                                //     (rank - 1) * m_local + i_local - 1;
-                                PetscScalar row_mean= 0.0;
-                                PetscScalar value = 0.0;
-                                for(int k=0; k<nTotal; ++k)
-                                {
-                                    PetscCall(MatGetValuesLocal(A, 1, &i_local, 1, &k, &value));
-                                    row_mean += value;
-                                   
-                                }
-                                row_mean /= nTotal; // mean of the row
-                                // std::cout<<"Row mean for i_local " << i_local << " : " << row_mean << std::endl;
-                                for(int k=0; k<nTotal; ++k)
-                                {
-                                    PetscCall(MatGetValuesLocal(A, 1, &i_local, 1, &k, &value));
-                                    value -= row_mean; // subtract mean from each element
-                                    value *= w_1_2; // scale by w_1_2
-                                    PetscCall(MatSetValuesLocal(At, 1, &i_local, 1, &k, &value, INSERT_VALUES));
-                                }
-                                // PetscScalar value = 1.0;
-                                // PetscCall(MatSetValuesLocal(A, 1, &i_local, 1, &i, &value, INSERT_VALUES));
+                                PetscScalar value;
+                                PetscCall(MatGetValuesLocal(A, 1, &i_local, 1, &k, &value));
+                                row_mean += PetscRealPart(value);
                             }
+                            row_mean /= nTotal; // mean of the row
+                            n(Field_mean::tag(), field_idx) = PetscRealPart(row_mean); // store mean in the field
+                            // std::cout<<"Row mean for i_local " << i_local << " : " << row_mean << std::endl;
+                            for (int k = 0; k < nTotal; ++k)
+                            {
+                                PetscScalar value;
+                                PetscCall(MatGetValuesLocal(A, 1, &i_local, 1, &k, &value));
+                                value -= row_mean; // subtract mean from each element
+                                
+                                value *= w_1_2;    // scale by w_1_2
+                                PetscCall(MatSetValuesLocal(At, 1, &i_local, 1, &k, &value, INSERT_VALUES));
+                            }
+                            // PetscScalar value = 1.0;
+                            // PetscCall(MatSetValuesLocal(A, 1, &i_local, 1, &i, &value, INSERT_VALUES));
                         }
                     }
                 }
             }
+        }
         // if (!domain_->is_client())
-        // {   
+        // {
         //     PetscCall(MatAssemblyBegin(A, MAT_FINAL_ASSEMBLY));
         //     PetscCall(MatAssemblyEnd(A, MAT_FINAL_ASSEMBLY));
         //     return 0.0;
@@ -442,13 +390,68 @@ class POD
         //         A_array[i * M + j] -= mean;
         //     }
         // }
-        
+
         // PetscCall(MatAssemblyBegin(A, MAT_FINAL_ASSEMBLY));
         // PetscCall(MatAssemblyEnd(A, MAT_FINAL_ASSEMBLY));
         // PetscCall(MatDenseRestoreArray(A, &A_array));
         return 0.0;
+    }
 
 
+    int RemoveGlobalPhase(Vec &v)
+    {
+        boost::mpi::communicator world;
+        PetscInt n, max_idx = 0;
+        float_type max_mag_local = 0.0;
+        float_type max_mag_global = 0.0;
+        PetscScalar val_global;
+        const PetscScalar *array = nullptr;
+        PetscScalar vk, c;
+
+        // PetscFunctionBegin;
+
+        PetscCall(VecGetLocalSize(v, &n));
+        PetscCall(VecGetArrayRead(v, &array));
+
+        // Find index with largest magnitude
+        for (PetscInt i = 0; i < n; ++i) {
+            PetscReal mag = PetscAbsScalar(array[i]);
+            if (mag > max_mag_local) {
+                max_mag_local = mag;
+                max_idx = i;
+                vk= array[i];
+            }
+        }
+        PetscCall(VecRestoreArrayRead(v, &array));
+        boost::mpi::all_reduce(world, max_mag_local, max_mag_global, boost::mpi::maximum<float_type>());
+        // send value of corresponding idx of max_mag_global to all processes
+        int send_rank = -1;
+        if (max_mag_local == max_mag_global) {
+            send_rank = world.rank();
+        }
+        int max_rank;
+        
+        boost::mpi::all_reduce(world, send_rank, max_rank,  boost::mpi::maximum<int>());
+        float_type vr,vi;
+        vr= PetscRealPart(vk);
+        vi= PetscImaginaryPart(vk);
+
+        boost::mpi::broadcast(world, vr, max_rank);
+        boost::mpi::broadcast(world, vi, max_rank);
+        vk = PetscComplex(vr, vi); // reconstruct complex value
+
+
+        
+
+        // PetscCall(VecGetValues(v, 1, &max_idx, &vk));
+
+        if (max_mag_global > 0) {
+            c = PetscConj(vk) / max_mag_global;
+            PetscCall(VecScale(v, c));
+        }
+        // else zero vector, do nothing
+
+        return 0;
     }
 
     template<class Field_idx, class Field_re>
@@ -577,19 +580,17 @@ class POD
             }
         }
     }
-    template <typename F>
-    void clean_leaf_correction_boundary(int l, bool leaf_only_boundary=false, int clean_width=1) noexcept
+    template<typename F>
+    void clean_leaf_correction_boundary(int l, bool leaf_only_boundary = false, int clean_width = 1) noexcept
     {
         for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
         {
             if (!it->locally_owned())
             {
                 if (!it->has_data() || !it->data().is_allocated()) continue;
-                for (std::size_t field_idx = 0; field_idx < F::nFields();
-                     ++field_idx)
+                for (std::size_t field_idx = 0; field_idx < F::nFields(); ++field_idx)
                 {
-                    auto& lin_data =
-                        it->data_r(F::tag(), field_idx).linalg_data();
+                    auto& lin_data = it->data_r(F::tag(), field_idx).linalg_data();
                     std::fill(lin_data.begin(), lin_data.end(), 0.0);
                 }
             }
@@ -600,40 +601,37 @@ class POD
             if (!it->locally_owned()) continue;
             if (!it->has_data() || !it->data().is_allocated()) continue;
 
-            if (leaf_only_boundary && (it->is_correction() || it->is_old_correction() ))
+            if (leaf_only_boundary && (it->is_correction() || it->is_old_correction()))
             {
-                for (std::size_t field_idx = 0; field_idx < F::nFields();
-                     ++field_idx)
+                for (std::size_t field_idx = 0; field_idx < F::nFields(); ++field_idx)
                 {
-                    auto& lin_data =
-                        it->data_r(F::tag(), field_idx).linalg_data();
+                    auto& lin_data = it->data_r(F::tag(), field_idx).linalg_data();
                     std::fill(lin_data.begin(), lin_data.end(), 0.0);
                 }
             }
         }
 
-
         //---------------
-        if (l==domain_->tree()->base_level())
-        for (auto it  = domain_->begin(l);
-                it != domain_->end(l); ++it)
-        {
-            if(!it->locally_owned()) continue;
-            if(!it->has_data() || !it->data().is_allocated()) continue;
-            //std::cout<<it->key()<<std::endl;
-
-            for(std::size_t i=0;i< it->num_neighbors();++i)
+        if (l == domain_->tree()->base_level())
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
             {
-                auto it2=it->neighbor(i);
-                if ((!it2 || !it2->has_data()) || (leaf_only_boundary && (it2->is_correction() || it2->is_old_correction() )))
+                if (!it->locally_owned()) continue;
+                if (!it->has_data() || !it->data().is_allocated()) continue;
+                //std::cout<<it->key()<<std::endl;
+
+                for (std::size_t i = 0; i < it->num_neighbors(); ++i)
                 {
-                    for (std::size_t field_idx=0; field_idx<F::nFields(); ++field_idx)
+                    auto it2 = it->neighbor(i);
+                    if ((!it2 || !it2->has_data()) ||
+                        (leaf_only_boundary && (it2->is_correction() || it2->is_old_correction())))
                     {
-                        domain::Operator::smooth2zero<F>( it->data(), i);
+                        for (std::size_t field_idx = 0; field_idx < F::nFields(); ++field_idx)
+                        {
+                            domain::Operator::smooth2zero<F>(it->data(), i);
+                        }
                     }
                 }
             }
-        }
     }
 
     template<typename From, typename To>
@@ -674,7 +672,9 @@ class POD
         max_local_idx = -1;
         int max_idx_from_prev_prc = -1;
         if (domain_->is_server()) return; // server has no data
-
+        auto center = (domain_->bounding_box().max() -
+                       domain_->bounding_box().min()+1) / 2.0 +
+                       domain_->bounding_box().min();
         int base_level = domain_->tree()->base_level();
         for (int l = base_level; l < domain_->tree()->depth(); l++) //other levels found from up down
         {
@@ -683,17 +683,34 @@ class POD
                 if (!it->locally_owned() || !it->has_data()) continue;
                 if (!it->is_leaf()) continue;
                 if (it->is_correction() && !assign_base_correction) continue;
+                auto dx_level =  domain_->dx_base()/std::pow(2,it->refinement_level());
+                auto scaling =  std::pow(2,it->refinement_level());
+
                 for (std::size_t field_idx = 0; field_idx < F::nFields(); ++field_idx)
                 {
                     for (auto& n : it->data())
-                    {
+                    {   const auto& coord = n.level_coordinate();
+
+                        float_type x = static_cast<float_type>
+                        (coord[0]-center[0]*scaling+0.5)*dx_level;
+                        float_type y = static_cast<float_type>
+                        (coord[1]-center[1]*scaling)*dx_level;
+                        float_type z = static_cast<float_type>
+                        (coord[2]-center[2]*scaling)*dx_level;
+                        if(x>10) continue; // only in a box around the origin
+
                         local_count++;
                         n(F::tag(), field_idx) = local_count; //0  means not part of matrix so make 1 based
                     }
                 }
             }
         }
+        if(world.rank()!=0 && local_count == 0)
+        {
+            local_count = 1; //if no data on this processor, set local count to 1 so that we can still do the scan
+        }
         max_local_idx = local_count;
+
         domain_->client_communicator().barrier();
         boost::mpi::scan(domain_->client_communicator(), max_local_idx, max_idx_from_prev_prc, std::plus<float_type>());
         max_idx_from_prev_prc -=
@@ -751,26 +768,26 @@ class POD
     }
 
     template<class Field>
-    void up(bool leaf_boundary_only=false)
+    void up(bool leaf_boundary_only = false)
     {
         //Coarsification:
-        for (std::size_t _field_idx=0; _field_idx<Field::nFields(); ++_field_idx)
-            psolver.template source_coarsify<Field,Field>(_field_idx, _field_idx, Field::mesh_type(), false, false, false, leaf_boundary_only);
+        for (std::size_t _field_idx = 0; _field_idx < Field::nFields(); ++_field_idx)
+            psolver.template source_coarsify<Field, Field>(_field_idx, _field_idx, Field::mesh_type(), false, false,
+                false, leaf_boundary_only);
     }
 
     template<class Field>
     void down_to_correction()
     {
         // Interpolate to correction buffer
-        for (std::size_t _field_idx = 0; _field_idx < Field::nFields();
-             ++_field_idx)
-            psolver.template intrp_to_correction_buffer<Field, Field>(
-                _field_idx, _field_idx, Field::mesh_type(), true, false);
+        for (std::size_t _field_idx = 0; _field_idx < Field::nFields(); ++_field_idx)
+            psolver.template intrp_to_correction_buffer<Field, Field>(_field_idx, _field_idx, Field::mesh_type(), true,
+                false);
     }
     template<class Velocity_in>
     void curl()
     {
-        auto client=domain_->decomposition().client();
+        auto client = domain_->decomposition().client();
 
         if (!client) return;
 
@@ -782,36 +799,35 @@ class POD
 
         auto dx_base = domain_->dx_base();
 
-        for (int l  = domain_->tree()->base_level();
-                l < domain_->tree()->depth(); ++l)
+        for (int l = domain_->tree()->base_level(); l < domain_->tree()->depth(); ++l)
         {
             client->template buffer_exchange<Velocity_in>(l);
 
-            for (auto it  = domain_->begin(l);
-                    it != domain_->end(l); ++it)
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
             {
-                if(!it->locally_owned() || !it->has_data()) continue;
-                if(it->is_correction()) continue;
+                if (!it->locally_owned() || !it->has_data()) continue;
+                if (it->is_correction()) continue;
                 //if(!it->is_leaf()) continue;
 
-                const auto dx_level =  dx_base/math::pow2(it->refinement_level());
+                const auto dx_level = dx_base / math::pow2(it->refinement_level());
                 //if (it->is_leaf())
-                domain::Operator::curl<Velocity_in,edge_aux_type>( it->data(),dx_level);
+                domain::Operator::curl<Velocity_in, edge_aux_type>(it->data(), dx_level);
             }
         }
 
         //clean<Velocity_out>();
-        clean_leaf_correction_boundary<edge_aux_type>(domain_->tree()->base_level(), true, 2);
+        // clean_leaf_correction_boundary<edge_aux_type>(domain_->tree()->base_level(), true, 2); //correction region not proper in this case since truncated domain
     }
+
   private:
     simulation_type* simulation_;
     domain_type*     domain_; ///< domain
     poisson_solver_t psolver;
 
-    int              max_ref_level_ = 0;
-    int              max_local_idx = -1;
-    int              min_local_idx = -1;
-    int              idxStart, nTotal, nskip;
+    int max_ref_level_ = 0;
+    int max_local_idx = -1;
+    int min_local_idx = -1;
+    int idxStart, nTotal, nskip;
 
     // poisson_solver_t   psolver_;
 };

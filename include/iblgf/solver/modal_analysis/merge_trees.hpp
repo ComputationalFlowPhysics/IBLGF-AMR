@@ -12,6 +12,7 @@
 
 #ifndef IBLGF_MERGE_TREES_HPP
 #define IBLGF_MERGE_TREES_HPP
+// #include <cmath>
 namespace iblgf
 {
 using namespace domain;
@@ -222,11 +223,87 @@ class MergeTrees
             auto it2= old_tree->find_octant(it1->key());
             if(!it2 || !it2->has_data()||!it2->physical()||(it2->is_correction()))
             {
-                octs.emplace_back(it1->key().parent().id());
+                auto ptag= it1->key().parent();
+                auto tt= old_tree->find_octant(ptag);
+                while(!tt)
+                {
+                    ptag= ptag.parent();
+                    tt= old_tree->find_octant(ptag);
+                }
+                
+                octs.emplace_back(tt->key().parent().id());
                 level_change.emplace_back(1);
             }
         }
   
+
+    }
+
+    template<class tree_t, class key_t>
+    static void symgrid(tree_t& ref_tree, int ref_level, std::vector<key_t>& octs, std::vector<int>& level_change, const bool toPrint=false)
+    {
+        boost::mpi::communicator world;
+        // adapt old_tree to ref_tree 
+        // need to add octs not in old_tree and delete blocks not in ref_tree from certain level
+        octs.clear();
+        level_change.clear();
+        if(world.rank()!=0) return;
+        std::cout << "Getting symmetry changes..." << std::endl;
+        int new_level=ref_level+ref_tree->base_level();
+        for(auto it1=ref_tree->begin(new_level); it1!= ref_tree->end(new_level); ++it1)
+        {
+            if(!it1->has_data()) continue;
+            if(!it1->is_leaf()||it1->is_correction()) continue;
+            // check if opposite block is also a leaf. if its not add it to be deleted
+            auto coord= it1->tree_coordinate();
+            auto key= it1->key();
+            auto level=it1->key().level();
+            // std::cout << "Checking symmetry for block: " << key << std::endl;
+            // std::cout << "Coordinate: " << coord << std::endl;
+            // std::cout<< "Level: " << level << std::endl;
+            // std::array<int, 3> shift = {0, std::pow2(level), 0};
+            auto opposite_coord = coord;
+            // opposite_coord[0] = coord[0];
+            // opposite_coord[1] = std::pow2(level)-coord[1];
+            // 128 = 1792/14 =extent on baselevel
+            opposite_coord[1] = 128*(1<<ref_level)- (coord[1]+1);
+
+            //   std::cout << "Checking symmetry for block: " << key << std::endl;
+            //     std::cout << "Coordinate: " << coord << std::endl;
+            //     std::cout<< "Level: " << level << std::endl;
+            //     std::cout << "Shifted coordinate: " << opposite_coord << std::endl;
+            auto it2=ref_tree->find_octant(key_t(opposite_coord, level));
+            if(!it2)
+            {
+                if(toPrint)
+                {
+                    std::cout << "No opposite block found for: " << it1->key() << std::endl;
+                    std::cout<<"shifted coord: " << opposite_coord << std::endl;
+                }
+                // std::cout << "No opposite block found for: " << it1->key() << std::endl;
+                // std::cout<<"shifted coord: " << opposite_coord << std::endl;
+                octs.emplace_back(it1->key().id());
+                level_change.emplace_back(-1);
+                // std::cout << "Found opposite block: " << it2->key() << std::endl;
+                continue;
+            }
+            if(!it2->is_leaf()||(ref_level==0 && it2->is_correction()))
+            {
+             
+                // std::cout << "Opposite block is not a leaf: " << it2->key() << std::endl;
+                if(toPrint)
+                {
+                    std::cout << "No opposite leaf block found for: " << it1->key() << std::endl;
+                    std::cout<<"shifted coord: " << opposite_coord << std::endl;
+                    std::cout<<"key:"<<it2->key()<<std::endl;
+                }
+                octs.emplace_back(it1->key().id());
+                level_change.emplace_back(-1);
+                continue;
+            }
+
+        }
+
 
     }
 };

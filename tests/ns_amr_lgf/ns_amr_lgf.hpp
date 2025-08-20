@@ -43,7 +43,7 @@
 
 #include "../../setups/setup_base.hpp"
 #include <iblgf/operators/operators.hpp>
-
+#include <iblgf/domain/svt.hpp>
 // #include <gsl/gsl_integration.h>
 #include <unordered_map>
 
@@ -119,24 +119,24 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 
                     return -U_[idx] * (h1/(h1+h2));
                 }
-                else if (t<1-1e-10 && linear_start_)
-                {
-                    float_type h1;
-                    if (idx==0)
-                    {
-                        h1=t;
-                    }
-                    else if (idx==2)
-                    {
-                        h1=1.0;
-                    }
-                    else
-                    {
-                        h1=1.0;
-                    }
+                // else if (t<1-1e-10 && linear_start_)
+                // {
+                //     float_type h1;
+                //     if (idx==0)
+                //     {
+                //         h1=t;
+                //     }
+                //     else if (idx==2)
+                //     {
+                //         h1=1.0;
+                //     }
+                //     else
+                //     {
+                //         h1=1.0;
+                //     }
 
-                    return -U_[idx] * h1;
-                }
+                //     return -U_[idx] * h1;
+                // }
                 else
                 {
                     return -U_[idx];
@@ -158,24 +158,24 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 
                     return -U_[idx] * (h1/(h1+h2));
                 }
-                else if (t<1-1e-10 && linear_start_)
-                {
-                    float_type h1;
-                    if (idx==0)
-                    {
-                        h1=t*t;
-                    }
-                    else if (idx==2)
-                    {
-                        h1=t;
-                    }
-                    else
-                    {
-                        h1=1.0;
-                    }
+                // else if (t<1-1e-10 && linear_start_)
+                // {
+                //     float_type h1;
+                //     if (idx==0)
+                //     {
+                //         h1=t*t;
+                //     }
+                //     else if (idx==2)
+                //     {
+                //         h1=t;
+                //     }
+                //     else
+                //     {
+                //         h1=1.0;
+                //     }
 
-                    return -U_[idx] * h1;
-                }
+                //     return -U_[idx] * h1;
+                // }
                 else
                 {
                     return -U_[idx];
@@ -295,6 +295,17 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
         else
         {
             simulation_.template read_h5<u_type>(simulation_.restart_field_dir(),"u");
+        }
+
+        bool use_svt=
+            simulation_.dictionary()->template get_or<bool>("use_svt", false);
+        if (use_svt)
+        {
+            ib::SVT<Dim> svt;
+            svt.init(_d->get_dictionary("simulation_parameters"));
+            simulation_.bc_vel()=svt;
+            simulation_.frame_vel()=svt;
+
         }
 
         boost::mpi::communicator world;

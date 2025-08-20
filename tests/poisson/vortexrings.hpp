@@ -181,7 +181,7 @@ struct VortexRingTest : public SetupBase<VortexRingTest, parameters>
             template get<float_type>("refinement_factor");
         pcout<<"Refienment factor "<<refinement_factor_<<std::endl;
         subtract_non_leaf_ =simulation_.dictionary_->
-            template get_or<bool>("subtract_non_leaf", true);
+            template get_or<bool>("subtract_non_leaf", false);
 
         use_correction_ =simulation_.dictionary_->
             template get_or<bool>("correction", true);

@@ -42,7 +42,8 @@ struct parameters
             (u,             float_type, 3, 1, 1, face, true),
             (p,             float_type, 1, 1, 1, cell, true),
             (test,          float_type, 1, 1, 1, cell,true ),
-            (idx_u,         float_type, 3, 1, 1, face, true)
+            (idx_u,         float_type, 3, 1, 1, face, true),
+            (u_mean,      float_type, 3, 1, 1, face, true)
 
         )
     )

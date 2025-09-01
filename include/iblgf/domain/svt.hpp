@@ -18,7 +18,7 @@ namespace iblgf
 {
 namespace ib
 {
-    using namespace dictionary;
+using namespace dictionary;
 template<int Dim>
 class SVT
 {
@@ -40,46 +40,63 @@ class SVT
     template<class DictionaryPtr>
     void init(DictionaryPtr dict)
     {
-        auto d2=dict->get_dictionary("svt");
+        auto d2 = dict->get_dictionary("svt");
         p = d2->template get_or<int>("p", 2);
         m = d2->template get_or<int>("m", 1);
         beta_hat = d2->template get_or<float_type>("beta_hat", 0.5);
-
-
+        rotV = d2->template get_or<bool>("rotV", false);
+        x0 = d2->template get_or<float_type>("x0", 0.0);
     }
 
-    float_type operator()(std::size_t idx, float_type t, real_coordinate_type coord =real_coordinate_type{})
+    float_type operator()(std::size_t idx, float_type t, real_coordinate_type coord = real_coordinate_type{})
     {
-        if(Dim==3 && idx==1) return 0.0;
-        if ((Dim==2 && idx==0) ||(Dim==3 && idx==2)) //tangent direction, for just tangent set beta_hat=0
+        if (!rotV) // seperate U and V power laws
         {
-            if(m<0) return 0.0;
-            auto h1=1.0/std::sqrt(4*std::pow(beta_hat,2)+1);
-            return -h1*std::pow(t,m);
-
+            if (Dim == 3 && idx == 1) return 0.0;
+            if ((Dim == 2 && idx == 0) || (Dim == 3 && idx == 2)) //tangent direction, for just tangent set beta_hat=0
+            {
+                if (m < 0) return 0.0;
+                auto h1 = 1.0 / std::sqrt(4 * std::pow(beta_hat, 2) + 1);
+                return -h1 * std::pow(t, m);
+            }
+            else if ((Dim == 2 && idx == 1) ||
+                     (Dim == 3 && idx == 0)) //normal direction, for just tangent set beta_hat<0
+            {
+                if (p < 0) return 0.0;
+                float_type h1;
+                if (beta_hat < 0) { h1 = 1.0; }
+                else { h1 = 2.0 * beta_hat / std::sqrt(4 * std::pow(beta_hat, 2) + 1); }
+                return -h1 * std::pow(t, p);
+            }
         }
-        else if ((Dim==2 && idx==1) ||(Dim==3 && idx==0)) //normal direction, for just tangent set beta_hat<0
+        else // combined rotation
         {
-            if(p<0) return 0.0;
-            float_type h1;
-            if(beta_hat<0)
+            float_type f_alpha = 0.0;
+            float_type f_u = 0.0;
+            if (Dim != 2) static_assert(Dim == 2, "rotV only implemented for 2D");
+            if (idx == 0)
             {
-               h1=1.0;
+                f_alpha = -(coord[1] * beta_hat * 2)/std::sqrt(4 * std::pow(beta_hat, 2) + 1);
+                f_u = 1.0 / std::sqrt(4 * std::pow(beta_hat, 2) + 1);
             }
-            else
+            else if (idx == 1)
             {
-                h1=2.0*beta_hat/std::sqrt(4*std::pow(beta_hat,2)+1);
+                f_alpha = ((coord[0] - x0) * beta_hat * 2)/ std::sqrt(4 * std::pow(beta_hat, 2) + 1);
+                f_u = 0.0;
             }
-            return -h1*std::pow(t,p);
+			float_type val_u=std::pow(t,m);
+			float_type val_a=std::pow(t,p);
+			return -(f_u * val_u + f_alpha * val_a);
         }
-        
     }
 
   private:
-    int p;
-    int m;
+    int        p;
+    int        m;
     float_type beta_hat;
     float_type d;
+    bool       rotV;
+    float_type x0;
 };
 } // namespace ib
 

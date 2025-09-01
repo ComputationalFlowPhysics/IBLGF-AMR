@@ -39,6 +39,11 @@ struct parameters
             //name, type, nFields, l/h-buf,mesh_obj, output(optional)
             (tlevel,        float_type, 1, 1, 1, cell, true),
             (u,             float_type, Dim, 1, 1, face, true),
+            (u_s,             float_type, Dim, 1, 1, face, true),
+            (u_a,             float_type, Dim, 1, 1, face, true),
+            (u_sym,             float_type, Dim, 1, 1, face, true),
+            (rf_s,             float_type, Dim, 1, 1, face, true),
+            (rf_t,             float_type, Dim, 1, 1, face, true),
             (p,             float_type, 1, 1, 1, cell, true),
             (test,          float_type, 1,    1,       1,     cell,true )
         )
@@ -150,16 +155,25 @@ struct CommonTree : public SetupBase<CommonTree, parameters>
         auto center = (domain_->bounding_box().max() -
                        domain_->bounding_box().min()+1) / 2.0 +
                        domain_->bounding_box().min();
-        
+        const float_type dx_base = domain_->dx_base();
         for(auto it=domain_->begin(); it!=domain_->end(); ++it)
         {
             if(!it->locally_owned()) continue;
+            auto dx_level =  dx_base/std::pow(2,it->refinement_level());
+            auto scaling =  std::pow(2,it->refinement_level());
             int ref_level_=it->refinement_level();
+            // auto coord = it->tree_coordinate();
             for(auto& n: it->data())
             {
+                const auto& coord = n.level_coordinate();
+
+                float_type x = static_cast<float_type>
+                (coord[0]-center[0]*scaling)*dx_level; //bottom left corner of cell
+                float_type y = static_cast<float_type>
+                (coord[1]-center[1]*scaling)*dx_level;
                 n(tlevel)=ref_level_+0.5;
-                n(u,0)=ref_level_+0.5;
-                n(u,1)=ref_level_+0.5;
+                n(u,0)=x;
+                n(u,1)=y;
             }
         }
 
@@ -253,69 +267,21 @@ struct CommonTree : public SetupBase<CommonTree, parameters>
     }
 
     template<class Field, class Target>
-    void symfield()
+    void symfield(int timeIdx=-1)
     {
         //loop through all blocks
         //get ranks of left and right block
         boost::mpi::communicator world;
-        solver::ReflectField<SetupBase> rf(&this->simulation_);
-        // if(!domain_->is_server()) return;
-        if(domain_->is_server())
-        {
-            // DecompositionUpdate update;
-            for (auto it1 = domain_->begin_leaves(); it1 != domain_->end_leaves(); ++it1)
-            {
-                if (!it1->has_data()) continue;
-                if (!it1->is_leaf()||it1->is_correction()) continue;
-                auto coord = it1->tree_coordinate();
-                auto key = it1->key();
-                auto level = it1->key().level();
-                // std::cout << "Checking symmetry for block: " << key << std::endl;
-                // std::cout << "Coordinate: " << coord << std::endl;
-                // std::cout<< "Level: " << level << std::endl;
-                // std::array<int, 3> shift = {0, std::pow2(level), 0};
-                auto opposite_coord = coord;
-                // opposite_coord[0] = coord[0];
-                // opposite_coord[1] = std::pow2(level)-coord[1];
-                // 128 = 1792/14 =extent on baselevel
-                auto ref_level = it1->key().level()-domain_->tree()->base_level();
-                opposite_coord[1] = 128 * (1 << ref_level) - (coord[1]+1);
+        // this->initialize();
+        clean<u_sym_type>();
+        // up_and_down<u_type>();   
+        solver::ReflectField<SetupBase> rf(&this->simulation_); //u has field, u_sym has reflected field 
+        // make u_s and u_a fields
+        rf.combine_reflection<u_type,u_sym_type,u_s_type,u_a_type>();
 
-                //   std::cout << "Checking symmetry for block: " << key << std::endl;
-                //     std::cout << "Coordinate: " << coord << std::endl;
-                //     std::cout<< "Level: " << level << std::endl;
-                //     std::cout << "Shifted coordinate: " << opposite_coord << std::endl;
-                auto it2 = domain_->tree()->find_octant(domain_t::key_t(opposite_coord, level));
-                if (!it2)
-                {
-                    std::cout << "No opposite block found for: " << it1->key() << std::endl;
-                    // // std::cout<<"shifted coord: " << opposite_coord << std::endl;
-                    // octs.emplace_back(it1->key().id());
-                    // level_change.emplace_back(-1);
-                    // // std::cout << "Found opposite block: " << it2->key() << std::endl;
-                    continue;
-                }
-                if (!it2->is_leaf())
-                {
-                    std::cout << "No opposite leaf block found for: " << it1->key() << std::endl;
+        // simulation_.write("symfield"); 
+        if(timeIdx>0) simulation_.write("adapted_to_ref_"+std::to_string(timeIdx));
 
-                    continue;
-                }
-
-                // // it1 and 2 are valid and across from eachother
-                // auto rank1= it1->rank();
-                // auto rank2= it2->rank();
-                auto send_rank= it1->rank();
-                auto recv_rank= it2->rank();
-                auto send_gid= it1->global_id();
-                auto recv_gid= it2->global_id();
-                if (send_rank == recv_rank) continue; //no need to send if same rank
-                // update.insert(send_rank, recv_rank, it1->key(), send_gid);
-
-
-
-            }
-        }
     }
 
     template <typename F>

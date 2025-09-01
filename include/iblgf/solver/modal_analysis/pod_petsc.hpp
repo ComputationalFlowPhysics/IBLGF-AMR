@@ -89,8 +89,8 @@ class POD
         this->init_idx<idx_u_type>();
         world.barrier();
     }
-
-    float_type run_MOS()
+    template<class field>
+    float_type run_MOS(std::string var="u" ,std::string _prefix="_")
     {
         boost::mpi::communicator world;
         std::cout << "MOS::run()" << std::endl;
@@ -145,7 +145,7 @@ class POD
         PetscCall(VecGetSize(b, &size_b));
 
         // Vec x, b;
-        this->load_snapshots<idx_u_type, u_type>(A);
+        this->load_snapshots<idx_u_type, field>(A,var);
         world.barrier();
         PetscCall(MatAssemblyBegin(A, MAT_FINAL_ASSEMBLY));
         PetscCall(MatAssemblyEnd(A, MAT_FINAL_ASSEMBLY));
@@ -210,7 +210,7 @@ class POD
 
             PetscViewer viewer;
             char fname[256];
-            sprintf(fname, "coeff_%04d.csv", i);
+            sprintf(fname, "coeff%s%04d.csv", _prefix.c_str(),i);
             PetscViewerASCIIOpen(PETSC_COMM_WORLD, fname, &viewer);
             PetscViewerSetFormat(viewer, PETSC_VIEWER_ASCII_MATLAB); // or other format
             VecView(vi, viewer);
@@ -219,11 +219,11 @@ class POD
 
             PetscCall(VecScale(phi_i,1/sigma_i)); // normalize phi_i
             // Store or output phi_i
-            vec2grid<idx_u_type, u_type>(phi_i, 1);
+            vec2grid<idx_u_type, field>(phi_i, 1);
             world.barrier();
             this->curl<u_type>();
             world.barrier();
-            simulation_->write("podmode_" + std::to_string(i));
+            simulation_->write("podmode"+_prefix + std::to_string(i));
             world.barrier();
         }
 
@@ -265,7 +265,7 @@ class POD
         return 0.0;
     }
     template<class Field_idx, class Field>
-    float_type load_snapshots(Mat A)
+    float_type load_snapshots(Mat A,std::string var="u")
     {
         boost::mpi::communicator world;
         std::string dir = simulation_->dictionary()->get_dictionary("output")->template get<std::string>("directory");
@@ -274,7 +274,7 @@ class POD
             world.barrier();
             int         timeIdx = idxStart + i * nskip;
             std::string flow_file_i = "./" + dir + "/flow_adapted_to_ref_" + std::to_string(timeIdx) + ".hdf5";
-            simulation_->template read_h5<Field>(flow_file_i, "u");
+            simulation_->template read_h5<Field>(flow_file_i, var);
             world.barrier();
             if (!domain_->is_client()) continue;
             int base_level = domain_->tree()->base_level();
@@ -697,7 +697,7 @@ class POD
                         (coord[1]-center[1]*scaling)*dx_level;
                         float_type z = static_cast<float_type>
                         (coord[2]-center[2]*scaling)*dx_level;
-                        if(x>10) continue; // only in a box around the origin
+                        // if(x>10) continue; // only in a box around the origin
 
                         local_count++;
                         n(F::tag(), field_idx) = local_count; //0  means not part of matrix so make 1 based

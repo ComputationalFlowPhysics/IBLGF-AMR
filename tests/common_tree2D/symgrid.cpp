@@ -70,8 +70,10 @@ int main(int argc, char* argv[])
 // 
     // }
     std::cout<< "Symmetry adaptation completed." << std::endl;
-    ref_domain_->symfield<CommonTree::u_type, CommonTree::u_type>();
+    ref_domain_->initialize();
+    ref_domain_->symfield<CommonTree::u_type, CommonTree::u_type>(2);
     std::cout<< "Symmetry completed." << std::endl;
+    
 
     return 0;
 }

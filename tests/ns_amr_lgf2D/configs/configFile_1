@@ -20,7 +20,7 @@ simulation_parameters
     single_ring=true;
     perturbation=false;
     vDelta=0.2;
-    Vort_type=1;
+    Vort_type=2;
     fat_ring=true;
 
     //hdf5_ic_name=ic.hdf5;

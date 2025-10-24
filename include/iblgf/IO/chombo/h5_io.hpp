@@ -172,6 +172,20 @@ class H5_io
         ch_writer.write_level_info(&chombo_file);
     }
 
+    void write_h5_test(
+        std::string _filename, Domain* _lt, bool include_correction = false,  bool base_correction_only = true)
+    {
+        auto octant_blocks = blocks_list_build(_lt, include_correction, base_correction_only);
+
+        hdf5_file<Dim> chombo_file(_filename);
+
+        chombo_t ch_writer(
+            octant_blocks); // Initialize writer with vector of octants
+
+        ch_writer.write_global_metaData(&chombo_file, _lt->dx_base());
+        ch_writer.write_level_info(&chombo_file);
+    }
+
     void write_h5_withTime(
         std::string _filename, Domain* _lt, float_type _time, float_type dt, bool include_correction = false,  bool base_correction_only = true)
     {

@@ -1612,7 +1612,7 @@ private:
              l < domain_->tree()->depth(); ++l)
         {
             client->template buffer_exchange<edge_aux_type>(l);
-            client->template buffer_exchange<face_aux_type>(l);
+            // client->template buffer_exchange<face_aux_type>(l);
             clean_leaf_correction_boundary<edge_aux_type>(l, false, 2);
 
             for (auto it = domain_->begin(l); it != domain_->end(l); ++it)

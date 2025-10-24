@@ -1228,7 +1228,8 @@ class hdf5_file
         index_list_t _min;
         _min[0] = 0;
         _min[1] = 0;
-        _min[2] = 0;
+        if constexpr (ND == 3)
+            _min[2] = 0;
 
         box_compound _c(_min, _min);
         using tag = std::integral_constant<std::size_t, ND>*;

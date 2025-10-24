@@ -71,9 +71,9 @@ struct parameters
          (u_ref            , float_type, 2,    1,       1,     face,true  ),
          (p_ref            , float_type, 1,    1,       1,     cell,true  ),
          (p                , float_type, 1,    1,       1,     cell,true  ),
-         (w_num            , float_type, 1,    1,       1,     edge,false ),
-         (w_exact          , float_type, 1,    1,       1,     edge,false ),
-         (error_w          , float_type, 1,    1,       1,     edge,false ),
+         (w_num            , float_type, 1,    1,       1,     edge,true ),
+         (w_exact          , float_type, 1,    1,       1,     edge,true ),
+         (error_w          , float_type, 1,    1,       1,     edge,true ),
          //for radial velocity
          (exact_u_theta    , float_type, 2,    1,       1,     edge,false ),
          (num_u_theta      , float_type, 2,    1,       1,     edge,false ),
@@ -431,7 +431,7 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 		float_type t_final = dt_ * tot_steps_;
 		pcout << "the final time is " << t_final << std::endl;
 		pcout << "the max numerical vorticity is " << maxNumVort << std::endl;
-		ifherk.clean_leaf_correction_boundary<u_type>(domain_->tree()->base_level(), true, 1);
+		// ifherk.clean_leaf_correction_boundary<u_type>(domain_->tree()->base_level(), true, 1);
 
 		float_type u1_inf = this->compute_errors<u_type, u_ref_type, error_u_type>(
 			std::string("u1_"), 0);

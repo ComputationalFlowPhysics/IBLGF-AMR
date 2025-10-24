@@ -212,8 +212,14 @@ struct VortexRingTest : public SetupBase<VortexRingTest, parameters>
 
     double run()
     {
-        simulation_.write("mesh.hdf5");
+        boost::mpi::communicator world;
+        if (domain_->is_server()) std::cout << "Server waiting..." << std::endl;
+        simulation_.write_test("mesh.hdf5");
+        world.barrier();
+        if(domain_->is_server()) std::cout << "Server done waiting..." << std::endl;
         float_type Inf_error = this->solve();
+        world.barrier();
+        if(domain_->is_server()) std::cout << "Server done solve..." << std::endl;
         pcout_c << "Solve 1st time done" << std::endl;
         simulation_.write("mesh.hdf5");
         //pcout_c<<"write" <<std::endl;

@@ -59,3 +59,13 @@ TEST(PoissonSolverTest, VortexRing_1)
     }
 }
 } //namespace iblgf
+int main(int argc, char** argv)
+{
+    ::testing::InitGoogleTest(&argc, argv);
+
+    // Initialize MPI before any tests run
+    boost::mpi::environment env(argc, argv);
+    boost::mpi::communicator world;  // optional, can use in main if needed
+
+    return RUN_ALL_TESTS(); // now MPI is already initialized
+}

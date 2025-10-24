@@ -73,7 +73,7 @@ class SVT
         {
             float_type f_alpha = 0.0;
             float_type f_u = 0.0;
-            if (Dim != 2) static_assert(Dim == 2, "rotV only implemented for 2D");
+            if (Dim != 2) return 0.0;
             if (idx == 0)
             {
                 f_alpha = -(coord[1] * beta_hat * 2)/std::sqrt(4 * std::pow(beta_hat, 2) + 1);
@@ -88,6 +88,7 @@ class SVT
 			float_type val_a=std::pow(t,p);
 			return -(f_u * val_u + f_alpha * val_a);
         }
+        return 0.0;
     }
 
   private:

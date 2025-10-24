@@ -130,7 +130,7 @@ class Simulation
         }
         else
         {
-            io_h5.write_h5(io::output().dir()+"/flow_"+_filename+".hdf5", domain_.get(), true, true);
+            io_h5.write_h5_test(io::output().dir()+"/flow_"+_filename+".hdf5", domain_.get(), true, true);
             // io_h5.write_h5_swithTime(io::output().dir()+"/flowTime_"+_filename+".hdf5", domain_.get(), true, true);
             // if (domain_->is_server())
             //     write_tree("_"+_filename, false);

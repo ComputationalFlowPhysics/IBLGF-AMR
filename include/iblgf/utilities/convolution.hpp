@@ -248,17 +248,18 @@ class Convolution
     {
         
         auto& f0 = _kernel->dft(
-            _lgf_block, padded_dims_next_pow_2_, this, _level_diff);
+            _lgf_block, padded_dims_next_pow_2_, this, _level_diff); // gets dft of LGF, checks if already computed
 
         if (f0.size() == 0) return;
         number_fwrd_executed++;
 
         fft_forward1_.copy_field(_b, dims1_);
-        fft_forward1_.execute();
+        fft_forward1_.execute(); // forward DFT of source
         auto& f1 = fft_forward1_.output();
 
         complex_vector_t prod(f0.size());
-        simd_prod_complex_add(f0, f1, fft_backward_.input());
+        simd_prod_complex_add(f0, f1, fft_backward_.input()); // convolution by multiplication in Fourier space, placed in backward input
+        // all induced fields are accumulated in the backward input and then one backward FFT is performed later in fmm.compute_influence_field()
     }
 
     template<class Block, class Field>

@@ -15,58 +15,57 @@
 #include <boost/mpi/communicator.hpp>
 #include <boost/mpi/environment.hpp>
 
-#include "ns_amr_lgf.hpp"
+#include "vortexrings.hpp" 
 #include <iblgf/dictionary/dictionary.hpp>
 
-
-namespace iblgf{
-double vortex_run(const std::string input, int argc, char** argv)
+namespace iblgf {
+double poisson3d_run(const std::string input, int argc = 0, char** argv = nullptr)
 {
     // Read in dictionary
     dictionary::Dictionary dictionary(input, argc, argv);
 
     //Instantiate setup
-    NS_AMR_LGF setup(&dictionary);
+    VortexRingTest setup(&dictionary);
 
-    // run setup
-    double L_inf_error = setup.run();
-    L_inf_error = setup.u1_Linf_fine();
+    const double measured = setup.run();
 
-    double EXP_LInf = dictionary.get_dictionary("simulation_parameters")
-                          ->template get_or<double>("EXP_LInf", 0);
+    const double EXP_LInf = dictionary.get_dictionary("simulation_parameters")
+                                ->template get_or<double>("EXP_LInf", 0.0);
 
-    return L_inf_error - EXP_LInf;
+    return measured - EXP_LInf;
 }
 
-TEST(PoissonSolverTest, VortexRing_1)
+TEST(Poisson3DAnalyticTest, ConfigsInCurrentDir)
 {
     boost::mpi::communicator world;
 
-    for (auto& entry : boost::filesystem::directory_iterator( "./"))
+    for (auto& entry : boost::filesystem::directory_iterator("./"))
     {
         auto s = entry.path();
 
-        if (s.filename().string().rfind("config", 0) == 0)
+        if (s.filename().rfind("config", 0) == 0)
         {
             if (world.rank() == 0)
-                std::cout << "------------- Testing on config file "
+                std::cout << "------------- Poisson-3D test on "
                           << s.filename() << " -------------" << std::endl;
 
-            double L_inf_error = vortex_run(s.string());
+            const double result = poisson3d_run(s.string());
             world.barrier();
 
-            EXPECT_LT(L_inf_error, 0.0);
+            EXPECT_LT(result, 0.0);
         }
     }
 }
-} //namespace iblgf
+
+} // namespace iblgf
+
+// Standard gtest+MPI main, consistent with your other tests
 int main(int argc, char** argv)
 {
     ::testing::InitGoogleTest(&argc, argv);
 
-    // Initialize MPI before any tests run
     boost::mpi::environment env(argc, argv);
-    boost::mpi::communicator world;  // optional, can use in main if needed
+    boost::mpi::communicator world;
 
-    return RUN_ALL_TESTS(); // now MPI is already initialized
+    return RUN_ALL_TESTS();
 }

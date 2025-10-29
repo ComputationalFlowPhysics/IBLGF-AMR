@@ -1,6 +1,6 @@
 simulation_parameters
 {
-    nLevels=0;
+    nLevels=1;
     Ux=0.0;
     // Time Marching
     source_max=13.0;
@@ -57,5 +57,5 @@ simulation_parameters
             extent=(48,48,48);
         }
     }
-    EXP_LInf=1e-14;
+    EXP_LInf=1e-2;
 }

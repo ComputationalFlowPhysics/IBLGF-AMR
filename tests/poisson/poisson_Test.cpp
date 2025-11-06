@@ -43,7 +43,7 @@ TEST(Poisson3DAnalyticTest, ConfigsInCurrentDir)
     {
         auto s = entry.path();
 
-        if (s.filename().rfind("config", 0) == 0)
+        if (s.filename().string().rfind("config", 0) == 0)
         {
             if (world.rank() == 0)
                 std::cout << "------------- Poisson-3D test on "

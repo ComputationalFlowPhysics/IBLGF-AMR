@@ -11,7 +11,6 @@
 //      ▀▀▀▀▀▀▀▀▀▀▀  ▀▀▀▀▀▀▀▀▀▀   ▀▀▀▀▀▀▀▀▀▀▀  ▀▀▀▀▀▀▀▀▀▀▀  ▀
 
 #include <xsimd/xsimd.hpp>
-#include <xsimd/stl/algorithms.hpp>
 
 #include <iblgf/global.hpp>
 //#include <iblgf/utilities/misc_math_functions.hpp>

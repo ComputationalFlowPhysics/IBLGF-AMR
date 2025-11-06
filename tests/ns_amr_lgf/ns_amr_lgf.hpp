@@ -891,7 +891,7 @@ inline float_type NS_AMR_LGF::finest_level_Linf_error_u_(int comp)
 
     if (domain_->is_client()) {
         auto client = domain_->decomposition().client();
-        // Make sure the finest-level error field halos are synced
+        
         client->template buffer_exchange<error_u_type>(L);
 
         for (auto it = domain_->begin(L); it != domain_->end(L); ++it) {

@@ -36,9 +36,22 @@ TEST(server_client_tests, queries)
     //time (this test the tag_generator as well )
 
     boost::mpi::communicator world;
-    const int severRank=0;
+    
+    const int serverRank=0;
     const int rank=world.rank();
-    if(rank==severRank)
+
+    // *Added*
+    if (world.size() < 2) 
+    {
+        if (rank == 0) 
+        {
+            std::cerr << "[server_client_tests] Skipping: requires at least 2 MPI ranks, got "
+                    << world.size() << std::endl;
+        }
+        GTEST_SKIP() << "server_client_tests requires at least 2 MPI ranks.";
+    }
+
+    if(rank==serverRank)
     {
         Server server;
         server.test();
@@ -46,7 +59,7 @@ TEST(server_client_tests, queries)
     else
     {
        const int nQueries=10;
-       Client client(severRank);
+       Client client(serverRank);
        client.connect();
        auto res=client.test() ;
        for(auto& e : res) { EXPECT_EQ(e, -rank ); }
@@ -60,5 +73,7 @@ TEST(server_client_tests, queries)
        }
        client.disconnect();
     }
+
+     world.barrier();
 }
 }

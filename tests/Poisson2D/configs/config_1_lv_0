@@ -15,9 +15,6 @@ simulation_parameters
     nLevels=0;
     global_refinement=0;
     refinement_factor=0.125;
-    correction=true;
-    subtract_non_leaf=true;
-
 
     output
     {

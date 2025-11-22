@@ -17,6 +17,12 @@ else()
 endif()
 project(IBLGF VERSION 0.0.0)
 
+# *Added*
+if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    add_compile_options(-Wno-error=maybe-uninitialized)
+endif()
+# *end of added*
+
 cmake_policy(SET CMP0048 NEW)
 
 set(CMAKE_CXX_STANDARD 17)
@@ -52,6 +58,9 @@ set(IBLGF_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake")
 list(APPEND CMAKE_MODULE_PATH "${IBLGF_MODULE_PATH}")
 
 find_package(MPI REQUIRED)
+#*Added*
+set(MPIEXEC_PREFLAGS "--oversubscribe")
+#*End of Added*
 find_package(Boost COMPONENTS system filesystem serialization mpi REQUIRED )
 find_package(xsimd REQUIRED)
 find_package(xtensor REQUIRED)

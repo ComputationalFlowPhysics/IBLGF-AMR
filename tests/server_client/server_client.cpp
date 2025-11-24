@@ -20,6 +20,7 @@
 #include <stdlib.h>
 #include <chrono>
 #include <thread>
+#include <memory>
 
 #include <iblgf/global.hpp>
 #include "client.hpp"
@@ -34,6 +35,14 @@ TEST(server_client_tests, queries)
 
     //Test to assure no deadlock, even with multple queries at the same 
     //time (this test the tag_generator as well )
+
+    //*ADDED*
+    // Ensure MPI is initialized exactly once per process
+    static std::unique_ptr<boost::mpi::environment> env_holder;
+    if (!env_holder)
+    {
+        env_holder = std::make_unique<boost::mpi::environment>();
+    }
 
     boost::mpi::communicator world;
     

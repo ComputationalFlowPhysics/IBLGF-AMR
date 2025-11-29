@@ -151,7 +151,7 @@ struct VGT_PostProcess : public SetupBase<VGT_PostProcess, parameters>
             std::cout<<"Domain distributed."<<std::endl;
         }
         simulation_.template read_h5<u_type>(restart_field_dir,"u");
-
+        output_suffix_=simulation_.dictionary()->template get_or<std::string>("output_suffix","x");
         // simulation_.read(restart_tree_dir,"tree");
         // simulation_.read(restart_field_dir,"fields");
         
@@ -161,7 +161,17 @@ struct VGT_PostProcess : public SetupBase<VGT_PostProcess, parameters>
     }
     void run()
     {
-        std::string output_name="postProc_"+std::to_string(1);
+        std::string output_name="postProc_"+output_suffix_;
+        boost::mpi::communicator world;
+        computeVGT();
+        decompVGT();
+        simulation_.write(output_name);
+        return;
+
+    }
+    void run_batch(int idx_cur)
+    {
+        std::string output_name="postProc_"+std::to_string(idx_cur);
         boost::mpi::communicator world;
         computeVGT();
         decompVGT();
@@ -182,6 +192,8 @@ struct VGT_PostProcess : public SetupBase<VGT_PostProcess, parameters>
             ifherk.pad_access<u_type, u_type>(true);
             ifherk.template up_and_down<u_type>();
             const float_type dx_base = domain_->dx_base();
+            ifherk.curl<u_type>();
+            
             for (int l= domain_->tree()->base_level();
                  l < domain_->tree()->depth(); ++l)
             {
@@ -255,10 +267,10 @@ struct VGT_PostProcess : public SetupBase<VGT_PostProcess, parameters>
                         xt::xarray<float_type> A = {{n(grad, 0), n(grad, 1), n(grad, 2)},
                             {n(grad, 3), n(grad, 4), n(grad, 5)}, {n(grad, 6), n(grad, 7), n(grad, 8)}};
 
-                        float_type trA = A(0, 0) + A(1, 1) + A(2, 2);
-                        A(0, 0) -= trA / 3.0;
-                        A(1, 1) -= trA / 3.0;
-                        A(2, 2) -= trA / 3.0;
+                        // float_type trA = A(0, 0) + A(1, 1) + A(2, 2);
+                        // A(0, 0) -= trA / 3.0;
+                        // A(1, 1) -= trA / 3.0;
+                        // A(2, 2) -= trA / 3.0;
                         // std::cout<<n(grad,1)<<std::endl;
                         // std::cout<<A<<std::endl;
                         
@@ -267,8 +279,9 @@ struct VGT_PostProcess : public SetupBase<VGT_PostProcess, parameters>
                         auto norm_W2 = xt::linalg::norm(W);
                         auto norm_S2 = xt::linalg::norm(S);
                         auto Qcrit = 0.5 * (norm_W2 * norm_W2 - norm_S2 * norm_S2);
-                        auto norm_A= xt::linalg::norm(A);
+                        auto norm_A= xt::linalg::norm(A)+1e-8;
                         // auto Qcrit=1/2.0*(xt::linalg::norm(W)-xt::linalg::norm(S));
+                        A/=norm_A;
                         auto d = xt::linalg::eig(A);
                         // check if any eigenvalues are real
                         auto evals = std::get<0>(d);
@@ -278,7 +291,7 @@ struct VGT_PostProcess : public SetupBase<VGT_PostProcess, parameters>
                         int idx_real{0};
                         for (int i = 0; i < 3; ++i)
                         {
-                            if (std::abs(std::imag(evals(i))) < 1e-5)
+                            if (std::abs(std::imag(evals(i))) < 1e-3)
                             {
                                 nReal++;
                                 idx_real = i;
@@ -286,7 +299,7 @@ struct VGT_PostProcess : public SetupBase<VGT_PostProcess, parameters>
                         }
                         if (nReal == 1)
                         {
-                            xt::xarray<float_type> vort = {A(1, 2) - A(2, 1), A(2, 0) - A(0, 2), A(0, 1) - A(1, 0)};
+                            xt::xarray<float_type> vort = {A(2, 1) - A(1, 2), A(0, 2) - A(2, 0), A(1, 0) - A(0, 1)};
                             auto                   rot_axis = xt::real(xt::view(evecs, xt::all(), idx_real));
 
                             auto beta = xt::real(xt::linalg::dot(rot_axis,
@@ -297,9 +310,9 @@ struct VGT_PostProcess : public SetupBase<VGT_PostProcess, parameters>
                                 rot_axis = -rot_axis;
                             }
                             auto Lci = xt::amax(xt::abs(xt::imag(evals)))();
-                            if (Lci > 0.5 * beta) beta = 2 * Lci;
+                            // if (Lci > 0.5 * beta) beta = 2 * Lci;
                             orRR = std::pow(beta, 2) / (2 * std::pow(beta, 2) - 4 * std::pow(Lci, 2) +
-                                                           2 * 1e-8); // Calculate the rotation rate
+                                                           2 * 1e-5); // Calculate the rotation rate
                         }
                         // if (nReal>1){std::cout << "No complex eigenvalues" << std::endl;}
 
@@ -340,6 +353,7 @@ struct VGT_PostProcess : public SetupBase<VGT_PostProcess, parameters>
     int nIB_add_level_=0;
     std::string restart_tree_dir_;
     std::string restart_field_dir_;
+    std::string output_suffix_;
 };
 
 } // namespace iblgf

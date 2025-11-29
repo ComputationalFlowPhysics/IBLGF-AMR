@@ -24,7 +24,8 @@ main(int argc, char* argv[])
 
     // Find output directory
     auto        dict_out = dictionary.get_dictionary("simulation_parameters")->get_dictionary("output");
-    std::string dir = dict_out->template get<std::string>("directory");
+    std::string pp_dir = dict_out->template get<std::string>("directory");
+    std::string dir=dict_out->template get_or<std::string>("field_dir", pp_dir);
 
     int idxStart = dictionary.get_dictionary("simulation_parameters")->get_or<int>("nStart", 100);
     int nTotal = dictionary.get_dictionary("simulation_parameters")->get_or<int>("nTotal", 100);
@@ -63,9 +64,10 @@ main(int argc, char* argv[])
             // if(octs.empty()) continue;
             if (world.rank() == 0)
                 std::cout << "Adapting to ref level " << j << " with " << octs.size() << " octs." << std::endl;
-            int tt = j == 0 ? timeIdx : -1; //only save after all levels have been adapted
+            int tt = -1;; //only save after all levels have been adapted
             domain_i->run_adapt_from_keys<CommonTree::u_type>(tt, octs, level_change);
         }
+        domain_i->symfield<CommonTree::u_type,CommonTree::u_type>(timeIdx);
         // we want to adapt domain_i to ref_domain and have snapshot of new grid at that time
 
         // MergeTrees<CommonTree>::getDelOcts(ref_tree, tree_i, octs, level_change);

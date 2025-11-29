@@ -40,6 +40,9 @@ struct parameters
             //name, type, nFields, l/h-buf,mesh_obj, output(optional)
             (tlevel,        float_type, 1, 1, 1, cell, true),
             (u,             float_type, 3, 1, 1, face, true),
+            (u_s,             float_type, Dim, 1, 1, face, true),
+            (u_a,             float_type, Dim, 1, 1, face, true),
+            (u_sym,             float_type, Dim, 1, 1, face, true),
             (p,             float_type, 1, 1, 1, cell, true),
             (test,          float_type, 1, 1, 1, cell,true ),
             (idx_u,         float_type, 3, 1, 1, face, true),
@@ -94,7 +97,9 @@ struct POD2D : public SetupBase<POD2D, parameters>
         simulation_.write("init");
         solver::POD<SetupBase> pod(&this->simulation_);
         pod.run_vec_test();
-        pod.run_MOS();
+        pod.run_MOS<u_s_type>("u_s","_sym_");
+        pod.run_MOS<u_a_type>("u_a","_asym_");
+        // pod.run_MOS<u_type>("u");
         PetscCall(SlepcFinalize());
         simulation_.write("final");
 

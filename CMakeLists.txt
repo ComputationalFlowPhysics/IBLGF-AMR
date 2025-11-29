@@ -98,6 +98,8 @@ target_link_libraries(iblgf INTERFACE xsimd)
 target_link_libraries(iblgf INTERFACE xtl)
 target_link_libraries(iblgf INTERFACE xtensor)
 target_link_libraries(iblgf INTERFACE xsimd)
+target_link_libraries(iblgf INTERFACE ${HDF5_LIBRARIES})
+
 target_link_libraries(iblgf INTERFACE hdf5)
 target_link_libraries(iblgf INTERFACE ${BLAS_LIBRARIES})
 target_link_libraries(iblgf INTERFACE ${FFTW_LIBRARIES})

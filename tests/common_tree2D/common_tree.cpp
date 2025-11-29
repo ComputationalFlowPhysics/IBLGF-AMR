@@ -23,7 +23,8 @@ int main(int argc, char* argv[])
 
     // Find output directory
     auto        dict_out = dictionary.get_dictionary("simulation_parameters")->get_dictionary("output");
-    std::string dir = dict_out->template get<std::string>("directory");
+    std::string pp_dir = dict_out->template get<std::string>("directory");
+    std::string dir=dict_out->template get_or<std::string>("field_dir", pp_dir);
 
     int idxStart = dictionary.get_dictionary("simulation_parameters")->get_or<int>("nStart", 100);
     int nTotal = dictionary.get_dictionary("simulation_parameters")->get_or<int>("nTotal", 100);

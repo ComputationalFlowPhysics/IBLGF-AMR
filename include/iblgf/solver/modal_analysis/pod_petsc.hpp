@@ -100,7 +100,7 @@ class POD
         idxStart = simulation_->dictionary()->template get_or<int>("nStart", 100);
         nTotal = simulation_->dictionary()->template get_or<int>("nTotal", 100);
         nskip = simulation_->dictionary()->template get_or<int>("nskip", 100);
-
+        std::cout << "MOS::run()1" << std::endl;
         PetscInt m_local, M;
         m_local = max_local_idx; // since 1 based
         Vec x, b;
@@ -111,6 +111,7 @@ class POD
         Mat                    A;
         ISLocalToGlobalMapping ltog_row, ltog_col;
         PetscCall(MatCreateDense(PETSC_COMM_WORLD, m_local, PETSC_DECIDE, M, nTotal, NULL, &A));
+        std::cout << "MOS::run()2" << std::endl;
         // PetscCall(MatSetSizes(A, m_local, PETSC_DECIDE, M, nTotal));
         PetscCall(MatSetUp(A));
         PetscCall(MatCreateVecs(A, &x, &b));
@@ -143,7 +144,7 @@ class POD
 
         PetscCall(VecGetSize(x, &size_x));
         PetscCall(VecGetSize(b, &size_b));
-
+        std::cout << "MOS::run()3" << std::endl;
         // Vec x, b;
         this->load_snapshots<idx_u_type, field>(A,var);
         world.barrier();
@@ -152,6 +153,7 @@ class POD
         world.barrier();
         Mat At;
         PetscCall(MatDuplicate(A, MAT_DO_NOT_COPY_VALUES, &At));
+        clean<u_mean_type>();
         this->subtractMatmean<idx_u_type,u_mean_type>(A, At); // subtract mean from A
         world.barrier();
         this->up_and_down<u_mean_type>();
@@ -161,7 +163,7 @@ class POD
 
         delete[] global_rows;
         delete[] global_cols;
-
+        std::cout << "MOS::run()4" << std::endl;
         // this->subtractMatmean<idx_u_type>(A); // subtract mean from A
         //method of snapshots
         Mat C;
@@ -194,8 +196,15 @@ class POD
         PetscInt nconv;
         PetscCall(EPSGetConverged(eps, &nconv));
         if (rank == 0) std::cout << "Number of modes: " << nconv << std::endl;
-
+        // file for singular values
+        std::string dir = simulation_->dictionary()->get_dictionary("output")->template get<std::string>("directory");
+        std::ofstream sv_file;
+        if (rank==0){
+            sv_file.open("./"+dir+"/singular_values"+_prefix+"r.txt");
+            sv_file << std::scientific<< std::setprecision(9);
+        }
         int nloop= nconv<10 ? nconv : 10; // limit to 10 modes for output
+        int           width = 20;
         if (rank == 0) std::cout << "Number of modes: " << nloop << std::endl;
         for (int i = 0; i < nloop; ++i)
         {
@@ -203,6 +212,7 @@ class POD
             // rotate vi so its real
             this->RemoveGlobalPhase(vi);
             float_type sigma_i= std::sqrt(PetscRealPart(lambda_i));
+            if (rank==0) sv_file << sigma_i <<std::setw(width)<< std::endl;
             PetscCall(MatCreateVecs(At, NULL, &phi_i)); // size m
             PetscCall(MatMult(At, vi, phi_i));          // phi_i = A * v_i
             if (rank == 1) std::cout << "Singular value " << i << " : " << sigma_i << std::endl;
@@ -210,7 +220,7 @@ class POD
 
             PetscViewer viewer;
             char fname[256];
-            sprintf(fname, "coeff%s%04d.csv", _prefix.c_str(),i);
+            sprintf(fname, "./%s/coeff%s%04d.csv", dir.c_str(), _prefix.c_str(),i);
             PetscViewerASCIIOpen(PETSC_COMM_WORLD, fname, &viewer);
             PetscViewerSetFormat(viewer, PETSC_VIEWER_ASCII_MATLAB); // or other format
             VecView(vi, viewer);
@@ -221,11 +231,24 @@ class POD
             // Store or output phi_i
             vec2grid<idx_u_type, field>(phi_i, 1);
             world.barrier();
-            this->curl<u_type>();
+            this->curl<field>();
             world.barrier();
             simulation_->write("podmode"+_prefix + std::to_string(i));
             world.barrier();
         }
+        if (rank == 0 && sv_file.is_open()) {
+            sv_file.close();
+        }
+        //destory vector and matrices
+        PetscCall(VecDestroy(&vi));
+        PetscCall(VecDestroy(&phi_i));
+        PetscCall(MatDestroy(&A));
+        PetscCall(MatDestroy(&At));
+        PetscCall(MatDestroy(&C));
+        PetscCall(MatDestroy(&CT));
+        PetscCall(MatDestroy(&Diff));
+        PetscCall(EPSDestroy(&eps));
+        world.barrier();
 
         return 0.0;
     }
@@ -697,7 +720,7 @@ class POD
                         (coord[1]-center[1]*scaling)*dx_level;
                         float_type z = static_cast<float_type>
                         (coord[2]-center[2]*scaling)*dx_level;
-                        // if(x>10) continue; // only in a box around the origin
+                        if(x>10) continue; // only in a box around the origin
 
                         local_count++;
                         n(F::tag(), field_idx) = local_count; //0  means not part of matrix so make 1 based

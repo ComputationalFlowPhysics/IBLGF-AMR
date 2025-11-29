@@ -60,7 +60,7 @@ class SVT
                 return -h1 * std::pow(t, m);
             }
             else if ((Dim == 2 && idx == 1) ||
-                     (Dim == 3 && idx == 0)) //normal direction, for just tangent set beta_hat<0
+                     (Dim == 3 && idx == 0)) //normal direction, for just normal set beta_hat<0
             {
                 if (p < 0) return 0.0;
                 float_type h1;
@@ -73,15 +73,15 @@ class SVT
         {
             float_type f_alpha = 0.0;
             float_type f_u = 0.0;
-            if (Dim != 2) return 0.0;
+            if (Dim != 2) throw std::runtime_error("rotV option is only implemented for 2-D problems");
             if (idx == 0)
             {
-                f_alpha = -(coord[1] * beta_hat * 2)/std::sqrt(4 * std::pow(beta_hat, 2) + 1);
+                f_alpha = -(coord[1] * beta_hat * 4)/std::sqrt(4 * std::pow(beta_hat, 2) + 1);
                 f_u = 1.0 / std::sqrt(4 * std::pow(beta_hat, 2) + 1);
             }
             else if (idx == 1)
             {
-                f_alpha = ((coord[0] - x0) * beta_hat * 2)/ std::sqrt(4 * std::pow(beta_hat, 2) + 1);
+                f_alpha = ((coord[0] - x0) * beta_hat * 4)/ std::sqrt(4 * std::pow(beta_hat, 2) + 1);
                 f_u = 0.0;
             }
 			float_type val_u=std::pow(t,m);

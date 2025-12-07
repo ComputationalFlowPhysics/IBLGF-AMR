@@ -395,7 +395,7 @@ class ReflectField
     ServerUpdate server_get_tasks()
     {
         boost::mpi::communicator world;
-        if (!domain_->is_server()) return;
+        // if (!domain_->is_server()) return;
         ServerUpdate update(world.size());
         // --------------------------------------------------------------
 

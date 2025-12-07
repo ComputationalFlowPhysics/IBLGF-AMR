@@ -21,11 +21,14 @@
 #include <complex>
 #include <fftw3.h>
 #include <iblgf/utilities/misc_math_functions.hpp>
-
+#include <iblgf/types.hpp>
+#include <xsimd/xsimd.hpp>
+#include <xsimd/stl/algorithms.hpp>
 namespace iblgf
 {
 namespace fft
 {
+    using float_type = double;
 class dfft_r2c
 {
   public:
@@ -199,7 +202,7 @@ class Convolution
     }
 
     void simd_prod_complex_add(const complex_vector_t& a,
-        const complex_vector_t& b, complex_vector_t& res)
+        const complex_vector_t& b, complex_vector_t& res) //res=res + a*b
     {
         std::size_t           size = a.size();
         constexpr std::size_t simd_size =

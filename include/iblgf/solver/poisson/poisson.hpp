@@ -712,7 +712,7 @@ class PoissonSolver
             {
                 if (fmm_type == MASK_TYPE::AMR2AMR)
                 {
-                    // outside to everywhere
+                    // outside to everywhere, source = leafs, target= everywheere
                     fmm_.template apply<source_tmp_type, target_tmp_type>(
                         domain_, _kernel, l, true, 1.0, fmm_type);
 #ifdef POISSON_TIMINGS
@@ -728,7 +728,7 @@ class PoissonSolver
                         .client()
                         ->template communicate_updownward_assign<
                             target_tmp_type, target_tmp_type>(
-                            l, false, false, -1);
+                            l, false, false, -1); //send parent data to everyone
 
                     for (auto it = domain_->begin(l); it != domain_->end(l);
                          ++it)
@@ -1173,13 +1173,13 @@ class PoissonSolver
 
                 c_cntr_nli_.template nli_antrp_node<From, To>(*it_s, mesh_type,
                     real_mesh_field_idx, tmp_type_field_idx, correction_only,
-                    exclude_correction);
+                    exclude_correction); //sum from local children
             }
 
             domain_->decomposition()
                 .client()
                 ->template communicate_updownward_add<To, To>(ls, true, false,
-                    -1, tmp_type_field_idx, leaf_boundary);
+                    -1, tmp_type_field_idx, leaf_boundary); //sum from all children
         }
 
         if (_buffer_exchange)

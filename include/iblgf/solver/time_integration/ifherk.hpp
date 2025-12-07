@@ -1103,6 +1103,7 @@ class Ifherk
                         pad_velocity<u_type, u_type>(true);
                         // pad_velocity<u_mean_type, u_mean_type>(true);
                         adapt_corr_time_step();
+                        //up_and_down<u_type>(); tried, did not help
                     }
                     else
                     {
@@ -1568,9 +1569,66 @@ private:
             }
         }
 
+        correct_base_mean_velocity<Velocity_in, Velocity_out>();
+
         this->down_to_correction<Velocity_out>();
     }
+    
+    template<class Vel_in, class Vel_out>
+    void correct_base_mean_velocity()
+    {
+        if(domain_->dimension()!=2) return;
+        auto base_level = domain_->tree()->base_level();
+        int n_local=0;
+        std::vector<float_type> vel_in_sum_local(domain_->dimension(),0.0);
+        std::vector<float_type> vel_out_sum_local(domain_->dimension(),0.0);
+        if(domain_->is_client())
+        {
+            for(auto it=domain_->begin(base_level); it!=domain_->end(base_level); ++it)
+            {
+                if(!it->locally_owned() || !it->has_data()) continue;
+                if(it->is_correction()) continue; //correction velcoty is unknown
+                for(auto& node : it->data())
+                {
+                    n_local++;
+                    for(std::size_t d=0; d<domain_->dimension(); ++d)
+                    {
+                        vel_in_sum_local[d] += node(Vel_in::tag(), d);
+                        vel_out_sum_local[d] += node(Vel_out::tag(), d);
+                    }
+                }
+            }
+        }
+        std::vector<float_type> vel_in_sum_global(domain_->dimension(),0.0);
+        std::vector<float_type> vel_out_sum_global(domain_->dimension(),0.0);
+        int n_global=0;
+        boost::mpi::all_reduce(domain_->client_communicator(), vel_in_sum_local.data(), domain_->dimension(),
+                vel_in_sum_global.data(), std::plus<float_type>());
+        boost::mpi::all_reduce(domain_->client_communicator(), vel_out_sum_local.data(), domain_->dimension(),
+                vel_out_sum_global.data(), std::plus<float_type>());
+        boost::mpi::all_reduce(domain_->client_communicator(), n_local, n_global, std::plus<int>());
+        std::vector<float_type> vel_correction(domain_->dimension(),0.0);
+        for(std::size_t d=0; d<domain_->dimension(); ++d)
+        {
+            vel_correction[d] = (vel_in_sum_global[d]-vel_out_sum_global[d])/static_cast<float_type>(n_global);
+        }
+        //apply correction
+        if(domain_->is_server()) return;
+        for(auto it=domain_->begin(base_level); it!=domain_->end(base_level); ++it)
+        {
+            if(!it->locally_owned() || !it->has_data()) continue;
+            // if(it->is_correction()) continue; //we want to correct the mean of correction region too
+            for(auto& node : it->data())
+            {
+                for(std::size_t d=0; d<domain_->dimension(); ++d)
+                {
+                    node(Vel_out::tag(), d) += vel_correction[d];
+                }
+            }
+        }
 
+
+    }
 
 
     //TODO maybe to be put directly intor operators:

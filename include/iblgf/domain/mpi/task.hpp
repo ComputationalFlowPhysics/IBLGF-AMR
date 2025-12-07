@@ -23,7 +23,7 @@ namespace iblgf
 namespace sr_mpi
 {
 template<class TaskType>
-struct InfluenceFieldBuffer : crtp::Crtp<TaskType, InfluenceFieldBuffer>
+struct InfluenceFieldBuffer : crtp::Crtp<TaskType, InfluenceFieldBuffer> //callback function executed on send. addition on recv
 {
     template<class Buffer>
     void attach_buffer(Buffer* _b) noexcept
@@ -62,7 +62,7 @@ struct InfluenceFieldBuffer : crtp::Crtp<TaskType, InfluenceFieldBuffer>
 };
 
 template<class TaskType>
-struct CopyAssign : crtp::Crtp<TaskType, CopyAssign>
+struct CopyAssign : crtp::Crtp<TaskType, CopyAssign> //simple copy on send and recv
 {
     template<class Buffer>
     void attach_buffer(Buffer* _b) noexcept
@@ -91,7 +91,7 @@ struct CopyAssign : crtp::Crtp<TaskType, CopyAssign>
 };
 
 template<class TaskType>
-struct AddAssignRecv : CopyAssign<TaskType>
+struct AddAssignRecv : CopyAssign<TaskType> //adds received data to local data on recv
 {
     template<class Buffer>
     void attach_buffer(Buffer* _b) noexcept

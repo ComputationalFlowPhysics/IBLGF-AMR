@@ -285,7 +285,7 @@ class Task : public Task_base<TaskBuffer<Tag, T, ID>, BufferPolicy, ID>
 {
   public:
     using super_type = Task_base<TaskBuffer<Tag, T, ID>, BufferPolicy, ID>;
-    using typename super_type::Task_base;
+    using super_type::Task_base;
     using id_type = ID;
     using buffer_type = TaskBuffer<Tag, T, ID>;
     using buffer_container_type = typename buffer_type::container_t;

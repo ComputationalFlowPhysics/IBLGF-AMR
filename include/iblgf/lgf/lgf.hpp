@@ -39,6 +39,7 @@ class LGF_Base : public crtp::Crtps<Derived, LGF_Base<Dim, Derived>>
 
     using complex_vector_t = std::vector<std::complex<float_type>,
         xsimd::aligned_allocator<std::complex<float_type>, 32>>;
+    using complex_vector_gpu_t=std::vector<std::complex<float_type>>;
 
     template<class Convolutor, int Dim1 = Dim>
     auto& dft(const block_descriptor_t& _lgf_block, dims_t _extended_dims,
@@ -55,6 +56,29 @@ class LGF_Base : public crtp::Crtps<Derived, LGF_Base<Dim, Derived>>
             auto& dft = _conv->dft_r2c(lgf_buffer_);
             this->derived().dft_level_maps_3D[level_diff].emplace(
                 k_, std::make_unique<complex_vector_t>(dft));
+            return dft;
+        }
+        else
+        {
+            return *(it->second).get();
+        }
+    }
+
+    template<class Convolutor, int Dim1 = Dim>
+    auto& dft_gpu(const block_descriptor_t& _lgf_block, dims_t _extended_dims,
+        Convolutor* _conv, typename std::enable_if<Dim1 == 3, int>::type level_diff)
+    {
+        auto k_ = this->derived().get_key(_lgf_block, level_diff);
+        auto it = this->derived().dft_level_maps_3D[level_diff].find(k_);
+
+        //Check if lgf is already stored
+        if (it == this->derived().dft_level_maps_3D[level_diff].end())
+        {
+            this->get_subblock(
+                _lgf_block, _extended_dims, lgf_buffer_, level_diff);
+            auto& dft = _conv->dft_r2c(lgf_buffer_);
+            this->derived().dft_level_maps_3D[level_diff].emplace(
+                k_, std::make_unique<complex_vector_gpu_t>(dft));
             return dft;
         }
         else

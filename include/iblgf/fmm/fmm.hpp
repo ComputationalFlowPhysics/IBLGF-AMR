@@ -37,7 +37,15 @@
 #include <iblgf/linalg/linalg.hpp>
 #include <iblgf/fmm/fmm_nli.hpp>
 #include <iblgf/IO/parallel_ostream.hpp>
+#ifdef IBLGF_COMPILE_CUDA   // NVCC device code
+#pragma message("Compiling for CUDA: using GPU complex vector")
+#include <iblgf/utilities/convolution_GPU.hpp>
+#else               // CPU code
+#pragma message("Compiling for CPU: using CPU complex vector")
+
 #include <iblgf/utilities/convolution.hpp>
+#endif
+
 
 namespace iblgf
 {
@@ -694,8 +702,11 @@ class Fmm
 
     static constexpr auto fmm_s = Setup::fmm_s;
     static constexpr auto fmm_t = Setup::fmm_t;
-
-    using convolution_t = fft::Convolution<Dim>;
+    #ifdef IBLGF_COMPILE_CUDA
+        using convolution_t = fft::Convolution_GPU<Dim>;
+    #else           
+        using convolution_t = fft::Convolution<Dim>;    
+    #endif
 
   public:
     Fmm(domain_t* _domain, int Nb) // Nb include buffer

@@ -36,29 +36,10 @@ TEST(server_client_tests, queries)
     //Test to assure no deadlock, even with multple queries at the same 
     //time (this test the tag_generator as well )
 
-    //*ADDED*
-    // Ensure MPI is initialized exactly once per process
-    static std::unique_ptr<boost::mpi::environment> env_holder;
-    if (!env_holder)
-    {
-        env_holder = std::make_unique<boost::mpi::environment>();
-    }
-
     boost::mpi::communicator world;
     
     const int serverRank=0;
     const int rank=world.rank();
-
-    // *Added*
-    if (world.size() < 2) 
-    {
-        if (rank == 0) 
-        {
-            std::cerr << "[server_client_tests] Skipping: requires at least 2 MPI ranks, got "
-                    << world.size() << std::endl;
-        }
-        GTEST_SKIP() << "server_client_tests requires at least 2 MPI ranks.";
-    }
 
     if(rank==serverRank)
     {

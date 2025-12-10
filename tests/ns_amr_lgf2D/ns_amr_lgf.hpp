@@ -361,7 +361,6 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 
 		float_type maxNumVort = -1;
 
-		// *Editted: Shouldn't we use the ref_filename_ if we are given one?*
 		if (ref_filename_ != "null")
 		{
 			if(vortexType == 0)

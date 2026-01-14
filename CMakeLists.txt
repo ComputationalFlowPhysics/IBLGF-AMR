@@ -15,7 +15,7 @@ if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/CMakeLists.txt.user")
     include(${CMAKE_CURRENT_LIST_DIR}/CMakeLists.txt.user)
 else()
 endif()
-project(IBLGF VERSION 0.0.0 LANGUAGES CXX CUDA)
+project(IBLGF VERSION 0.0.0 LANGUAGES CXX C CUDA)
 
 cmake_policy(SET CMP0048 NEW)
 

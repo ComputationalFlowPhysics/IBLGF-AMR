@@ -44,7 +44,11 @@ class Helmholtz : public LGF_Base<Dim, Helmholtz<Dim>>
 
     using key_3D = std::tuple<bool, float_type, int, int, int>; //the boolean is needed to pass the information if the LGF need to be evaluated or not
     using key_2D = std::tuple<bool, float_type, int, int>;
-    using level_map_3D_t = std::map<key_3D, std::unique_ptr<complex_vector_t>>;
+    #ifdef IBLGF_COMPILE_CUDA
+    using level_map_3D_t = std::map<key_3D, std::unique_ptr<typename super_type::gpu_spectrum_entry>>;
+    #else
+    using level_map_3D_t = std::map<key_3D, std::unique_ptr<typename super_type::complex_vector_t>>;
+    #endif
     using level_map_2D_t = std::map<key_2D, std::unique_ptr<complex_vector_t>>;
 
   public: //Ctor:

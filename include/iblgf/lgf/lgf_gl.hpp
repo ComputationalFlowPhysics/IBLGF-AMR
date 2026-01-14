@@ -55,7 +55,11 @@ class LGF_GL : public LGF_Base<Dim, LGF_GL<Dim>>
     using key_3D = std::tuple<int, int, int>;
     using key_2D = std::tuple<float, int, int>;
     //using key_2D = std::tuple<int, int>;
-    using level_map_3D_t = std::map<key_3D, std::unique_ptr<complex_vector_t>>;
+    #ifdef IBLGF_COMPILE_CUDA
+    using level_map_3D_t = std::map<key_3D, std::unique_ptr<typename super_type::gpu_spectrum_entry>>;
+    #else
+    using level_map_3D_t = std::map<key_3D, std::unique_ptr<typename super_type::complex_vector_t>>;
+    #endif
     using level_map_2D_t = std::map<key_2D, std::unique_ptr<complex_vector_t>>;
 
   public: //Ctor:

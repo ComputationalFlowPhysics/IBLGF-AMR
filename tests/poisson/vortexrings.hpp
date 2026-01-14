@@ -244,11 +244,11 @@ struct VortexRingTest : public SetupBase<VortexRingTest, parameters>
         boost::mpi::communicator world;
 
         auto pts = domain_->get_nPoints();
-
+        poisson_solver_t psolver(&this->simulation_);
         if (domain_->is_client())
         {
             auto             pts = domain_->get_nPoints();
-            poisson_solver_t psolver(&this->simulation_);
+            // poisson_solver_t psolver(&this->simulation_);
 
             psolver.use_correction() = use_correction_;
             psolver.subtract_non_leaf() = subtract_non_leaf_;
@@ -276,7 +276,38 @@ struct VortexRingTest : public SetupBase<VortexRingTest, parameters>
             this->compute_errors<phi_num_type, phi_exact_type, error_type>();
         this->compute_errors<amr_lap_source_type, source_type,
             error_lap_source_type>("laplace_");
+        
+        if (domain_->is_client())
+        {
+            auto             pts = domain_->get_nPoints();
+            
 
+            psolver.use_correction() = use_correction_;
+            psolver.subtract_non_leaf() = subtract_non_leaf_;
+
+            mDuration_type solve_duration(0);
+            client_comm_.barrier();
+
+            pcout_c << "Poisson equation ---------------------------------"
+                    << std::endl;
+            TIME_CODE(solve_duration,
+                SINGLE_ARG(psolver.solve<source_type, phi_num_type>();
+                           client_comm_.barrier();))
+
+            pcout_c << "Elapsed time " << solve_duration.count() / 1.0e3
+                    << " Rate " << pts.back() / (solve_duration.count() / 1.0e3)
+                    << std::endl;
+
+#ifdef POISSON_TIMINGS
+            psolver.print_timings(pofs, pofs_level);
+#endif
+            psolver.apply_laplace<phi_num_type, amr_lap_source_type>();
+        }
+
+        inf_error =
+            this->compute_errors<phi_num_type, phi_exact_type, error_type>();
+        this->compute_errors<amr_lap_source_type, source_type,
+            error_lap_source_type>("laplace_");
         //simulation_.write("mesh.hdf5");
 
         return inf_error;
@@ -292,8 +323,8 @@ struct VortexRingTest : public SetupBase<VortexRingTest, parameters>
         //domain_->decomposition().balance<source_type,phi_exact_type>();
         //pcout_c<<"decompositiondone" <<std::endl;
 
-        //this->solve();
-        //simulation_.write("mesh_new.hdf5");
+        // this->solve();
+        // simulation_.write("mesh_new.hdf5");
         return Inf_error;
     }
 

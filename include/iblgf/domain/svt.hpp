@@ -41,8 +41,8 @@ class SVT
     void init(DictionaryPtr dict)
     {
         auto d2 = dict->get_dictionary("svt");
-        p = d2->template get_or<int>("p", 2);
-        m = d2->template get_or<int>("m", 1);
+        p = d2->template get_or<float_type>("p", 2);
+        m = d2->template get_or<float_type>("m", 1);
         beta_hat = d2->template get_or<float_type>("beta_hat", 0.5);
         rotV = d2->template get_or<bool>("rotV", false);
         x0 = d2->template get_or<float_type>("x0", 0.0);
@@ -53,18 +53,20 @@ class SVT
         if (!rotV) // seperate U and V power laws
         {
             if (Dim == 3 && idx == 1) return 0.0;
-            if ((Dim == 2 && idx == 0) || (Dim == 3 && idx == 2)) //tangent direction, for just tangent set beta_hat=0
+            if ((Dim == 2 && idx == 0) || (Dim == 3 && idx == 2)) //tangent direction, for just tangent set p<0 
             {
                 if (m < 0) return 0.0;
-                auto h1 = 1.0 / std::sqrt(4 * std::pow(beta_hat, 2) + 1);
+                float_type h1;
+                if (p < 0) h1=1.0; //beta hat not used because no normal component
+                else h1 = 1.0 / std::sqrt(4 * std::pow(beta_hat, 2) + 1);
                 return -h1 * std::pow(t, m);
             }
             else if ((Dim == 2 && idx == 1) ||
-                     (Dim == 3 && idx == 0)) //normal direction, for just normal set beta_hat<0
+                     (Dim == 3 && idx == 0)) //normal direction, for just normal set m<0
             {
                 if (p < 0) return 0.0;
                 float_type h1;
-                if (beta_hat < 0) { h1 = 1.0; }
+                if (m < 0 ) { h1 = 1.0; }
                 else { h1 = 2.0 * beta_hat / std::sqrt(4 * std::pow(beta_hat, 2) + 1); }
                 return -h1 * std::pow(t, p);
             }
@@ -73,27 +75,40 @@ class SVT
         {
             float_type f_alpha = 0.0;
             float_type f_u = 0.0;
-            if (Dim != 2) throw std::runtime_error("rotV option is only implemented for 2-D problems");
-            if (idx == 0)
+            // if (Dim != 2) throw std::runtime_error("rotV option is only implemented for 2-D problems");
+            if ((Dim==2&&idx == 0) || (Dim==3&&idx==2)) //tangent direction
             {
-                f_alpha = -(coord[1] * beta_hat * 4)/std::sqrt(4 * std::pow(beta_hat, 2) + 1);
-                f_u = 1.0 / std::sqrt(4 * std::pow(beta_hat, 2) + 1);
+                if (m < 0) return 0.0;
+                float_type h1;
+                if (p < 0) h1=1.0; //beta hat not used because no normal component
+                else h1 = 1.0 / std::sqrt(4 * std::pow(beta_hat, 2) + 1);
+                return -h1 * std::pow(t, m);
             }
-            else if (idx == 1)
+            else if ((Dim==2&&idx == 1) || (Dim==3&&idx==0)) //normal directions
             {
-                f_alpha = ((coord[0] - x0) * beta_hat * 4)/ std::sqrt(4 * std::pow(beta_hat, 2) + 1);
-                f_u = 0.0;
+                if (p < 0) return 0.0;
+                float_type h1;
+                if (m < 0 ) { h1 = 2.0; }
+                else { h1 = (4 * beta_hat) / std::sqrt(4 * std::pow(beta_hat, 2) + 1); }
+                float_type coord_n;
+                if(Dim==2)
+                    coord_n=coord[0]-x0;
+                else //3D
+                    coord_n=coord[1]-x0; //+ coord[2] component could be added for inclined vortex
+                return -h1 * coord_n * std::pow(t, p);
+                // f_alpha = ((coord[0] - x0) * beta_hat * 4)/ std::sqrt(4 * std::pow(beta_hat, 2) + 1);
+                // f_u = 0.0;
             }
-			float_type val_u=std::pow(t,m);
-			float_type val_a=std::pow(t,p);
-			return -(f_u * val_u + f_alpha * val_a);
+			// float_type val_u=std::pow(t,m);
+			// float_type val_a=std::pow(t,p);
+			// return -(f_u * val_u + f_alpha * val_a);
         }
         return 0.0;
     }
 
   private:
-    int        p;
-    int        m;
+    float_type        p;
+    float_type        m;
     float_type beta_hat;
     float_type d;
     bool       rotV;

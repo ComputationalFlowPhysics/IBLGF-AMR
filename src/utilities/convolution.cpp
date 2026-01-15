@@ -11,7 +11,6 @@
 //      ▀▀▀▀▀▀▀▀▀▀▀  ▀▀▀▀▀▀▀▀▀▀   ▀▀▀▀▀▀▀▀▀▀▀  ▀▀▀▀▀▀▀▀▀▀▀  ▀
 
 #include <xsimd/xsimd.hpp>
-#include <xsimd/stl/algorithms.hpp>
 
 #include <iblgf/global.hpp>
 //#include <iblgf/utilities/misc_math_functions.hpp>
@@ -286,9 +285,9 @@ Convolution<Dim>::simd_prod_complex_add(
 
     for (std::size_t i = 0; i < vec_size; i += simd_size)
     {
-        auto ba = xsimd::load_aligned(&a[i]);
-        auto bb = xsimd::load_aligned(&b[i]);
-        auto res_old = xsimd::load_aligned(&res[i]);
+        auto ba = xsimd::load_unaligned(&a[i]);
+        auto bb = xsimd::load_unaligned(&b[i]);
+        auto res_old = xsimd::load_unaligned(&res[i]);
         auto bres = ba * bb + res_old;
         bres.store_aligned(&res[i]);
     }

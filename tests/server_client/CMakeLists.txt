@@ -17,6 +17,6 @@ foreach (item ${server_client_test})
     target_link_libraries(${item} iblgf_test_main)
     add_test(
         NAME ${item}
-        COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 12 ${MPIEXEC_PREFLAGS} $<TARGET_FILE:${item}>
+        COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 8 ${MPIEXEC_PREFLAGS} $<TARGET_FILE:${item}>
     )
 endforeach()

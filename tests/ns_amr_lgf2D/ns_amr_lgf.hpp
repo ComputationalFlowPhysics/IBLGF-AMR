@@ -94,6 +94,15 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
     using duration_type = typename clock_type::duration;
     using time_point_type = typename clock_type::time_point;
 
+	//**ADDED**
+	float_type u1_Linf_fine() const { return u1_Linf_fine_; }
+	float_type u2_Linf_fine() const { return u2_Linf_fine_; }
+
+	// Finest level index
+	int max_level() const {
+		return static_cast<int>(domain_->tree()->depth()) - 1;
+	}
+
 	NS_AMR_LGF(Dictionary* _d)
 		: super_type(_d, [this](auto _d, auto _domain) {
 		return this->initialize_domain(_d, _domain);
@@ -352,14 +361,14 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 
 		float_type maxNumVort = -1;
 
-
 		if (ref_filename_ != "null")
 		{
-			if (vortexType == 0) {
-			simulation_.template read_h5<u_ref_type>(ref_filename_, "u");
-			simulation_.template read_h5<p_ref_type>(ref_filename_, "p");
+			if(vortexType == 0)
+			{
+				simulation_.template read_h5<u_ref_type>(ref_filename_, "u");
+				simulation_.template read_h5<p_ref_type>(ref_filename_, "p");
 			}
-
+			
 			auto center = (domain_->bounding_box().max() -
 				domain_->bounding_box().min() + 1) / 2.0 +
 				domain_->bounding_box().min();
@@ -421,12 +430,10 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 					node(exact_u_theta, 0) = u_theta;
 					node(exact_u_theta, 1) = 0.0;     //0 is u_theta, 1 is u_r
 					}
-
-					
 				}
-
 			}
 		}
+
 		getUtheta<u_type, num_u_theta_type>();
 		float_type t_final = dt_ * tot_steps_;
 		pcout << "the final time is " << t_final << std::endl;
@@ -445,6 +452,10 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 		float_type w_inf = this->compute_errors<edge_aux_type, w_exact_type, error_w_type>(std::string("w_"), 0);
 		//float_type u3_linf=this->compute_errors<u_type, u_ref_type, error_u_type>(
 		//        std::string("u3_"), 2);
+
+		//*Added*
+		u1_Linf_fine_ = finest_level_Linf_error_u_(0); // u_x
+		u2_Linf_fine_ = finest_level_Linf_error_u_(1); // u_y (optional)
 
 		simulation_.write("final.hdf5");
 		return u1_inf;
@@ -503,7 +514,6 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 			client->template buffer_exchange<Target>(l);
 		}
 	}
-
 
 	template< class key_t >
 	void adapt_level_change(std::vector<float_type> source_max,
@@ -753,6 +763,7 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 				//node(edge_aux,0) = vor(x,y-0.5*vort_sep,0)+ vor(x,y+0.5*vort_sep,0);
 				node(edge_aux, 0) = vor(x, y, 0);
 				
+				//initial conditions
 				x = static_cast<float_type>(coord[0]-center[0]*scaling)*dx_level;
 				y = static_cast<float_type>(coord[1]-center[1]*scaling+0.5)*dx_level;
 				node(u, 0) = u_vort(x,y,0,0);
@@ -1108,7 +1119,35 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
     float_type Lx;
 
 	bool disable_delete_base=false;
+
+	//*Added*
+	float_type u1_Linf_fine_ = 0.0;
+	float_type u2_Linf_fine_ = 0.0;
+	float_type finest_level_Linf_error_u_(int comp);
 };
+
+inline float_type NS_AMR_LGF::finest_level_Linf_error_u_(int comp)
+{
+    const int L = max_level();
+    float_type Linf_local = 0.0;
+
+    if (domain_->is_client()) {
+        auto client = domain_->decomposition().client();
+        client->template buffer_exchange<error_u_type>(L);
+
+        for (auto it = domain_->begin(L); it != domain_->end(L); ++it) {
+            if (!it->locally_owned() || !it->has_data()) continue;
+            for (auto& n : it->data()) {
+                const float_type e = std::abs(n(error_u_type::tag(), comp));
+                if (e > Linf_local) Linf_local = e;
+            }
+        }
+    }
+
+    boost::mpi::communicator world;
+    return boost::mpi::all_reduce(world, Linf_local,
+                                  boost::mpi::maximum<float_type>());
+}
 
 double vortex_run(std::string input, int argc = 0, char** argv = nullptr);
 

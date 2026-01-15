@@ -83,6 +83,16 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
     using duration_type = typename clock_type::duration;
     using time_point_type = typename clock_type::time_point;
 
+    // *Added*
+    // Finest level index
+    int max_level() const {
+        return static_cast<int>(domain_->tree()->depth()) - 1;
+    }
+    // Finest-level Linf getters
+    float_type u1_Linf_fine() const { return u1_Linf_fine_; }
+    float_type u2_Linf_fine() const { return u2_Linf_fine_; }
+    float_type u3_Linf_fine() const { return u3_Linf_fine_; }
+
     NS_AMR_LGF(Dictionary* _d)
     : super_type(_d, [this](auto _d, auto _domain) {
         return this->initialize_domain(_d, _domain);
@@ -378,6 +388,11 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 
         float_type p_linf=this->compute_errors<p_type, p_ref_type, error_p_type>(
                 std::string("p_"), 0);
+        
+        // *Added*
+        u1_Linf_fine_ = finest_level_Linf_error_u_(0);
+        u2_Linf_fine_ = finest_level_Linf_error_u_(1);
+        u3_Linf_fine_ = finest_level_Linf_error_u_(2);
 
         simulation_.write("final.hdf5");
         return u3_linf;
@@ -858,7 +873,40 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
     std::unordered_map<float_type, float_type> ux_lookup_;
 
     std::string ic_filename_, ref_filename_;
+
+    // *Added*
+    float_type u1_Linf_fine_ = 0.0;
+    float_type u2_Linf_fine_ = 0.0;
+    float_type u3_Linf_fine_ = 0.0;
+
+    // Helper
+    float_type finest_level_Linf_error_u_(int comp);
 };
+
+// *Added*
+inline float_type NS_AMR_LGF::finest_level_Linf_error_u_(int comp)
+{
+    const int L = max_level();
+    float_type Linf_local = 0.0;
+
+    if (domain_->is_client()) {
+        auto client = domain_->decomposition().client();
+        
+        client->template buffer_exchange<error_u_type>(L);
+
+        for (auto it = domain_->begin(L); it != domain_->end(L); ++it) {
+            if (!it->locally_owned() || !it->has_data()) continue;
+            for (auto& n : it->data()) {
+                const float_type e = std::abs(n(error_u_type::tag(), comp));
+                if (e > Linf_local) Linf_local = e;
+            }
+        }
+    }
+
+    boost::mpi::communicator world;
+    return boost::mpi::all_reduce(world, Linf_local,
+                                  boost::mpi::maximum<float_type>());
+}
 
 double vortex_run(std::string input, int argc = 0, char** argv = nullptr);
 

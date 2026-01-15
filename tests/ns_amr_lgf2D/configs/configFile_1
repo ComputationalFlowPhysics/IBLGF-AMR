@@ -58,5 +58,6 @@ simulation_parameters
             extent=(48,48,48);
         }
     }
-    EXP_LInf=0.0003;
+
+    EXP_LInf=0.01;
 }

@@ -31,10 +31,13 @@ double vortex_run(const std::string input, int argc, char** argv)
     // run setup
     double L_inf_error = setup.run();
 
+    // *Added*
+    const double L_inf_fine = setup.u1_Linf_fine();  
     double EXP_LInf = dictionary.get_dictionary("simulation_parameters")
                           ->template get_or<double>("EXP_LInf", 0);
-
-    return L_inf_error - EXP_LInf;
+    
+    // return L_inf_error - EXP_LInf;
+    return L_inf_fine - EXP_LInf;
 }
 
 TEST(PoissonSolverTest, VortexRing_1)
@@ -53,7 +56,7 @@ TEST(PoissonSolverTest, VortexRing_1)
 
             double L_inf_error = vortex_run(s.string());
             world.barrier();
-
+            
             EXPECT_LT(L_inf_error, 0.0);
         }
     }

@@ -154,6 +154,11 @@ struct VortexRingTest : public SetupBase<VortexRingTest, parameters>
     using duration_type = typename clock_type::duration;
     using time_point_type = typename clock_type::time_point;
 
+    // Finest level index
+	int max_level() const {
+		return static_cast<int>(domain_->tree()->depth()) - 1;
+	}
+
     VortexRingTest(Dictionary* _d)
     : super_type(_d, [this](auto _d, auto _domain) {
         return this->initialize_domain(_d, _domain);
@@ -233,6 +238,32 @@ struct VortexRingTest : public SetupBase<VortexRingTest, parameters>
         return vrings;
     }
 
+    inline float_type finest_level_Linf_error_phi_() 
+    {
+        int L = 0;
+        if (domain_->is_client()) {
+            L = this->max_level();  
+        }
+
+        boost::mpi::communicator world;
+        boost::mpi::all_reduce(world, L, L, boost::mpi::maximum<int>());
+
+        float_type Linf_local = 0.0;
+        if (domain_->is_client()) {
+            auto client = domain_->decomposition().client();
+            client->template buffer_exchange<error_type>(L);
+
+            for (auto it = domain_->begin(L); it != domain_->end(L); ++it) {
+                if (!it->locally_owned() || !it->has_data()) continue;
+                for (auto& n : it->data()) {
+                    Linf_local = std::max(Linf_local, std::abs(n(error)));
+                }
+            }
+        }
+
+        return boost::mpi::all_reduce(world, Linf_local, boost::mpi::maximum<float_type>());
+    }
+
     float_type solve()
     {
         std::ofstream                     ofs, ofs_level, ofs_timings;
@@ -266,10 +297,18 @@ struct VortexRingTest : public SetupBase<VortexRingTest, parameters>
                     << " Rate " << pts.back() / (solve_duration.count() / 1.0e3)
                     << std::endl;
 
-#ifdef POISSON_TIMINGS
-            psolver.print_timings(pofs, pofs_level);
-#endif
-            psolver.apply_laplace<phi_num_type, amr_lap_source_type>();
+            #ifdef POISSON_TIMINGS
+                psolver.print_timings(pofs, pofs_level);
+            #endif
+                psolver.apply_laplace<phi_num_type, amr_lap_source_type>();
+
+            // *Added*
+            auto client = domain_->decomposition().client();
+            for (int L = 0; L <= max_level(); ++L) {
+                client->template buffer_exchange<phi_num_type>(L);
+                client->template buffer_exchange<phi_exact_type>(L);
+            }
+            client_comm_.barrier();
         }
 
         float_type inf_error =
@@ -310,7 +349,8 @@ struct VortexRingTest : public SetupBase<VortexRingTest, parameters>
             error_lap_source_type>("laplace_");
         //simulation_.write("mesh.hdf5");
 
-        return inf_error;
+        //return inf_error;
+        return finest_level_Linf_error_phi_();
     }
 
     double run()

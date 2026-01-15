@@ -42,13 +42,7 @@ foreach (item ${Ptest_list})
     target_link_libraries(${item} iblgf_test_main)
     add_test(
         NAME ${item}_parallel_np13
-        #COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 8
-                #${MPIEXEC_PREFLAGS} $<TARGET_FILE:${item}>
-        COMMAND ${CMAKE_COMMAND} -E env
-          ASAN_OPTIONS=detect_leaks=0
-          LSAN_OPTIONS=detect_leaks=0
-          ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 8 ${MPIEXEC_PREFLAGS}
-          $<TARGET_FILE:poisson_Test> --gtest_filter=Poisson3DAnalyticTest.ConfigsInCurrentDir
-        WORKING_DIRECTORY ${CTEST_WORKING_DIRECTORY}/${NAME}
+        COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 8
+                ${MPIEXEC_PREFLAGS} $<TARGET_FILE:${item}>
     )
 endforeach()

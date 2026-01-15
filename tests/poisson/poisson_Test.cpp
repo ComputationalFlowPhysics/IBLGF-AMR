@@ -41,18 +41,6 @@ TEST(Poisson3DAnalyticTest, ConfigsInCurrentDir)
 {
     boost::mpi::communicator world;
 
-    if (world.size() > 1)
-    {
-        if (world.rank() == 0)
-        {
-            std::cerr
-                << "Skipping Poisson3DAnalyticTest.ConfigsInCurrentDir for "
-                   "world.size() > 1 due to known MPI rank issue."
-                << std::endl;
-        }
-        return; 
-    }
-
     for (auto& entry : boost::filesystem::directory_iterator("./"))
     {
         auto s = entry.path();

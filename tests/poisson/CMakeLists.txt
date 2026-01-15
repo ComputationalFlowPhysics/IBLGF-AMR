@@ -43,6 +43,6 @@ foreach (item ${Ptest_list})
     add_test(
         NAME ${item}_parallel_np13
         COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 8
-                ${MPIEXEC_PREFLAGS} $<TARGET_FILE:${item}>
+                ${MPIEXEC_PREFLAGS} $<TARGET_FILE:${item}> WORKING_DIRECTORY ${CTEST_WORKING_DIRECTORY}/${NAME}
     )
 endforeach()

@@ -94,7 +94,7 @@ class SVT
                 if(Dim==2)
                     coord_n=coord[0]-x0;
                 else //3D
-                    coord_n=coord[1]-x0; //+ coord[2] component could be added for inclined vortex
+                    coord_n=coord[2]-x0; //
                 return -h1 * coord_n * std::pow(t, p);
                 // f_alpha = ((coord[0] - x0) * beta_hat * 4)/ std::sqrt(4 * std::pow(beta_hat, 2) + 1);
                 // f_u = 0.0;

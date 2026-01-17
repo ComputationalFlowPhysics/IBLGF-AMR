@@ -246,7 +246,7 @@ struct VortexRingTest : public SetupBase<VortexRingTest, parameters>
         }
 
         boost::mpi::communicator world;
-        boost::mpi::all_reduce(world, L, L, boost::mpi::maximum<int>());
+        boost::mpi::all_reduce(world, L, boost::mpi::maximum<int>());
 
         float_type Linf_local = 0.0;
         if (domain_->is_client()) {

@@ -15,7 +15,19 @@ if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/CMakeLists.txt.user")
     include(${CMAKE_CURRENT_LIST_DIR}/CMakeLists.txt.user)
 else()
 endif()
-project(IBLGF VERSION 0.0.0 LANGUAGES CXX C CUDA)
+project(IBLGF VERSION 0.0.0 LANGUAGES CXX C)
+
+
+option(USE_GPU "Build with GPU support" OFF)
+if(USE_GPU)
+    enable_language(CUDA)
+    message(STATUS "Building IBLGF with GPU support")
+    set(CMAKE_CUDA_STANDARD 17)
+    set(CMAKE_CUDA_STANDARD_REQUIRED ON)
+else()
+    message(STATUS "Building IBLGF without GPU support")
+endif()
+
 
 cmake_policy(SET CMP0048 NEW)
 
@@ -25,8 +37,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # set(CMAKE_CXX_FLAGS "-march=native -Wno-error=deprecated-declarations")
 set(CMAKE_CXX_FLAGS "-O3 -Wno-error=deprecated-declarations")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17")
-set(CMAKE_CUDA_STANDARD 17)
-set(CMAKE_CUDA_STANDARD_REQUIRED ON)
+
 # set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} \
 #     --std=c++17 \
 #     --compiler-options=-std=c++17")

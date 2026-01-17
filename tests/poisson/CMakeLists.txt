@@ -35,23 +35,27 @@ target_link_libraries(poisson.x
                       ${BLAS_LIBRARIES}
                       xtensor
                       xsimd)
-set(CMAKE_CUDA_HOST_COMPILER ${MPI_CXX_COMPILER})
-set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --max-errors=1")
+if(USE_GPU)
+        
+    set(CMAKE_CUDA_HOST_COMPILER ${MPI_CXX_COMPILER})
+    set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --max-errors=1")
 
-add_executable(poisson_gpu.x poisson_gpu.cu ${SOURCES} ${GPU_SOURCES})
-target_link_libraries(poisson_gpu.x
-                      ${MPI_LIBRARIES}
-                      ${Boost_LIBRARIES}
-                      ${FFTW_LIBRARIES}
-                      ${HDF5_LIBRARIES} hdf5
-                      ${BLAS_LIBRARIES}
-                      xtensor
-                      xsimd
-                      ${CUDA_CUFFT_LIBRARIES} cufft)
-set_target_properties(poisson_gpu.x PROPERTIES
-    CUDA_SEPARABLE_COMPILATION ON
-    CUDA_STANDARD 17
-)
+    add_executable(poisson_gpu.x poisson_gpu.cu ${SOURCES} ${GPU_SOURCES})
+    target_link_libraries(poisson_gpu.x
+                        ${MPI_LIBRARIES}
+                        ${Boost_LIBRARIES}
+                        ${FFTW_LIBRARIES}
+                        ${HDF5_LIBRARIES} hdf5
+                        ${BLAS_LIBRARIES}
+                        xtensor
+                        xsimd
+                        ${CUDA_CUFFT_LIBRARIES} cufft)
+    set_target_properties(poisson_gpu.x PROPERTIES
+        CUDA_SEPARABLE_COMPILATION ON
+        CUDA_STANDARD 17
+    )
+endif()
+
 foreach (item ${Ptest_list})
     add_executable(${item} ${item}.cpp ${SOURCES})
     add_dependencies(${item} copy_files)

@@ -1,6 +1,21 @@
 #Bring the headers, such as Student.h into the project
 include_directories(${IBLGF_SOURCE_DIR}/src )
 
+# *added*
+execute_process(
+  COMMAND nproc
+  OUTPUT_VARIABLE DOCKER_CPUS
+  OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+
+if (NOT DOCKER_CPUS)
+  include(ProcessorCount)
+  ProcessorCount(DOCKER_CPUS)
+endif()
+
+set(IBLGF_MPI_NP "${DOCKER_CPUS}" CACHE STRING "MPI ranks for tests")
+# *end of added*
+
 set(NAME ns_amr_lgf2D)
 add_custom_target(copy_ifherk_files2D ALL
                       COMMAND ${CMAKE_COMMAND} -E copy_directory
@@ -27,6 +42,7 @@ foreach (item ${Ptest_list})
     target_link_libraries(${item} iblgf_test_main)
     add_test(
         NAME ${item}_parallel_np13
-        COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 10 ${MPIEXEC_PREFLAGS} $<TARGET_FILE:${item}> WORKING_DIRECTORY ${CTEST_WORKING_DIRECTORY}/${NAME}
+        COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} ${IBLGF_MPI_NP} ${MPIEXEC_PREFLAGS} $<TARGET_FILE:${item}> WORKING_DIRECTORY ${CTEST_WORKING_DIRECTORY}/${NAME}
+        #COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 10 ${MPIEXEC_PREFLAGS} $<TARGET_FILE:${item}> WORKING_DIRECTORY ${CTEST_WORKING_DIRECTORY}/${NAME}
     )
 endforeach()

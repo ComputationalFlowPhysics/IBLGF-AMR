@@ -81,6 +81,22 @@ endif()
 
 set(IBLGF_TESTING ON CACHE BOOL "True if tests shall be built")
 
+# ------------------------------
+# Default MPI ranks for tests *added*
+# ------------------------------
+if(NOT DEFINED IBLGF_MPI_NP)
+  include(ProcessorCount)
+  ProcessorCount(_host_cpus)
+  if(NOT _host_cpus OR _host_cpus EQUAL 0)
+    set(_host_cpus 2)  # safe fallback
+  endif()
+
+  set(IBLGF_MPI_NP "${_host_cpus}" CACHE STRING "MPI ranks for tests")
+endif()
+
+message(STATUS "IBLGF_MPI_NP = ${IBLGF_MPI_NP}")
+# *end of added*
+
 add_library(iblgf INTERFACE)
 add_library(iblgf::iblgf ALIAS iblgf)
 target_include_directories(iblgf INTERFACE

@@ -330,10 +330,17 @@ def coerce_to_3tuple(v: Value) -> Tuple[int, int, int]:
 
 def enforce_domain_block_constraint(sim: Block) -> list[str]:
     """
-    Enforces:
-      1) bd_extent / block_extent is an integer power of 2 (per dimension)
-      2) domain.block.extent == domain.bd_extent
-      3) domain.block.base   == domain.bd_base
+      Let B = domain.block_extent (scalar).
+      Per dimension d:
+        (1) domain.bd_extent[d] / B is an integer power-of-two
+        (2) domain.bd_base[d]   / B is an integer power-of-two (optionally allowing 0)
+        (3) domain.block.base[d]/ B is an integer power-of-two (optionally allowing 0)
+        (4) domain.block.base[d] <= domain.bd_base[d]
+
+      Sync:
+        (5) domain.block.extent == domain.bd_extent
+
+    Returns human-readable messages describing changes.
     """
     msgs: list[str] = []
 
@@ -341,56 +348,207 @@ def enforce_domain_block_constraint(sim: Block) -> list[str]:
     try:
         bd_base   = sim.get_path("domain.bd_base")
         bd_extent = sim.get_path("domain.bd_extent")
-        block_ext = sim.get_path("domain.block_extent")
+        B         = int(sim.get_path("domain.block_extent"))
     except KeyError:
         return msgs  # domain not fully specified
 
-    # normalize tuples (2D or 3D supported)
-    def as_tuple(v):
+    if B <= 0:
+        msgs.append(f"domain.block_extent={B} is invalid; skipping.")
+        return msgs
+
+    # ---- helpers ----
+    def is_pow2(n: int) -> bool:
+        return n > 0 and (n & (n - 1)) == 0
+
+    def is_pow2_or_zero(n: int) -> bool:
+        return n == 0 or is_pow2(n)
+
+    def floor_pow2(n: int) -> int:
+        """largest power of two <= n, for n>=1"""
+        p = 1
+        while (p << 1) <= n:
+            p <<= 1
+        return p
+
+    def ceil_pow2(n: int) -> int:
+        """smallest power of two >= n, for n>=1"""
+        if n <= 1:
+            return 1
+        p = 1
+        while p < n:
+            p <<= 1
+        return p
+
+    def snap_to_pow2_blocks(x: int, *, allow_zero: bool, direction: str) -> int:
+        """
+        Return x' such that x' is a multiple of B and (x'/B) is a power-of-two integer
+        in magnitude (or zero if allowed).
+
+        Handles negative values by snapping |blocks| to a power of two and preserving sign.
+        direction:
+        - "nearest": choose closest pow2 (ties -> down)
+        - "down":    choose <= |blocks|
+        - "up":      choose >= |blocks|
+        """
+        if B <= 0:
+            return x
+
+        # Snap onto block grid first
+        if x % B != 0:
+            if direction == "up":
+                x = ((x + (B - 1)) // B) * B
+            else:
+                x = (x // B) * B
+
+        blocks = x // B
+
+        # Zero handling
+        if blocks == 0:
+            return 0 if allow_zero else (1 * B)
+
+        sgn = -1 if blocks < 0 else 1
+        mag = abs(blocks)
+
+        # Already valid
+        if allow_zero:
+            if mag == 0 or is_pow2(mag):
+                return sgn * mag * B
+        else:
+            if is_pow2(mag):
+                return sgn * mag * B
+
+        # Compute surrounding powers of two for the magnitude
+        lo = floor_pow2(mag)          # <= mag
+        hi = ceil_pow2(mag)           # >= mag
+
+        if direction == "down":
+            chosen = lo
+        elif direction == "up":
+            chosen = hi
+        else:
+            # nearest (ties -> down)
+            chosen = lo if (mag - lo) <= (hi - mag) else hi
+
+        if not allow_zero and chosen == 0:
+            chosen = 1
+
+        return sgn * chosen * B
+
+    def as_int_tuple(v) -> tuple[int, ...]:
         if isinstance(v, tuple):
             return tuple(int(x) for x in v)
+        # fallback: assume scalar -> expand to 3 (matches your old behavior)
         return (int(v),) * 3
 
-    bd_base   = as_tuple(bd_base)
-    bd_extent = as_tuple(bd_extent)
-    block_ext = int(block_ext)
+    allow_zero_base = True
 
-    # ---- 1) enforce power-of-two blocks ----
-    new_extent = list(bd_extent)
+    bd_base_t   = as_int_tuple(bd_base)
+    bd_extent_t = as_int_tuple(bd_extent)
+    dim = len(bd_extent_t)
+
+    # ---- read / init block.base ----
+    try:
+        block_base_t = as_int_tuple(sim.get_path("domain.block.base"))
+    except KeyError:
+        block_base_t = bd_base_t
+        sim.set_path("domain.block.base", block_base_t)
+        msgs.append(f"domain.block.base missing; initialized to {block_base_t}.")
+
+    # ---- dimensionality normalization (match bd_extent dim) ----
+    if len(bd_base_t) != dim:
+        old = bd_base_t
+        bd_base_t = (old + (0,) * (dim - len(old)))[:dim]
+        sim.set_path("domain.bd_base", bd_base_t)
+        msgs.append(f"Adjusted domain.bd_base dimensionality {old} -> {bd_base_t} to match dim={dim}.")
+
+    if len(block_base_t) != dim:
+        old = block_base_t
+        block_base_t = (old + (0,) * (dim - len(old)))[:dim]
+        sim.set_path("domain.block.base", block_base_t)
+        msgs.append(f"Adjusted domain.block.base dimensionality {old} -> {block_base_t} to match dim={dim}.")
+
+    # ---- (1) enforce bd_extent/B is pow2 blocks ----
+    new_extent = list(bd_extent_t)
     changed_extent = False
-
-    for d in range(len(bd_extent)):
-        n_blocks = bd_extent[d] / block_ext
-        if not (n_blocks.is_integer() and is_power_of_two(int(n_blocks))):
+    for d in range(dim):
+        cur = bd_extent_t[d]
+        n_blocks = cur / B
+        ok = float(n_blocks).is_integer() and is_pow2(int(n_blocks))
+        if not ok:
+            # keep your existing logic if you trust nearest_power_of_two_int
             target_blocks = nearest_power_of_two_int(n_blocks)
-            fixed = target_blocks * block_ext
+            fixed = int(target_blocks) * B
             msgs.append(
-                f"Adjusted domain.bd_extent[{d}] "
-                f"from {bd_extent[d]} → {fixed} "
-                f"to satisfy power-of-two block constraint."
+                f"Adjusted domain.bd_extent[{d}] {cur} -> {fixed} "
+                f"(extent_blocks {n_blocks:g} -> {fixed/B:g}) to satisfy power-of-two block constraint."
             )
             new_extent[d] = fixed
             changed_extent = True
 
     if changed_extent:
-        bd_extent = tuple(new_extent)
-        sim.set_path("domain.bd_extent", bd_extent)
+        bd_extent_t = tuple(new_extent)
+        sim.set_path("domain.bd_extent", bd_extent_t)
 
-    # ---- 2) sync block.extent ----
-    try:
-        sim.get_path("domain.block.extent")
-        sim.set_path("domain.block.extent", bd_extent)
-        msgs.append("Synced domain.block.extent to domain.bd_extent.")
-    except KeyError:
-        pass
+    # ---- (2) enforce bd_base/B is pow2-or-zero ----
+    new_bd_base = list(bd_base_t)
+    changed_bd_base = False
+    for d in range(dim):
+        cur = bd_base_t[d]
+        fixed = snap_to_pow2_blocks(cur, allow_zero=allow_zero_base, direction="nearest")
+        if fixed != cur:
+            msgs.append(
+                f"Adjusted domain.bd_base[{d}] {cur} -> {fixed} "
+                f"(bd_base_blocks {cur/B:g} -> {fixed/B:g}) to align base to pow2-or-zero blocks."
+            )
+            new_bd_base[d] = fixed
+            changed_bd_base = True
 
-    # ---- 3) sync block.base ----
+    if changed_bd_base:
+        bd_base_t = tuple(new_bd_base)
+        sim.set_path("domain.bd_base", bd_base_t)
+
+    # ---- (3)+(4) enforce block.base <= bd_base AND block.base/B is pow2-or-zero ----
+    new_block_base = list(block_base_t)
+    changed_block_base = False
+    for d in range(dim):
+        cur = block_base_t[d]
+        upper = bd_base_t[d]
+
+        if cur > upper:
+            msgs.append(
+                f"Clamped domain.block.base[{d}] {cur} -> {upper} to satisfy block.base <= bd_base."
+            )
+            cur = upper
+
+        fixed = snap_to_pow2_blocks(cur, allow_zero=allow_zero_base, direction="down")
+
+        # paranoia clamp (shouldn't be needed)
+        if fixed > upper:
+            fixed = upper
+
+        if fixed != block_base_t[d]:
+            msgs.append(
+                f"Adjusted domain.block.base[{d}] {block_base_t[d]} -> {fixed} "
+                f"(block_base_blocks {block_base_t[d]/B:g} -> {fixed/B:g}) to satisfy pow2-or-zero block alignment and <= bd_base."
+            )
+            new_block_base[d] = fixed
+            changed_block_base = True
+
+    if changed_block_base:
+        block_base_t = tuple(new_block_base)
+        sim.set_path("domain.block.base", block_base_t)
+
+    # ---- (5) sync block.extent to bd_extent ----
+    # Your old code only did it if the key existed; but the previous function sets it even if missing.
+    # We'll mirror that "helpful" behavior.
     try:
-        sim.get_path("domain.block.base")
-        sim.set_path("domain.block.base", bd_base)
-        msgs.append("Synced domain.block.base to domain.bd_base.")
+        old = as_int_tuple(sim.get_path("domain.block.extent"))
+        if old != bd_extent_t:
+            sim.set_path("domain.block.extent", bd_extent_t)
+            msgs.append(f"Synced domain.block.extent {old} -> {bd_extent_t} (to match domain.bd_extent).")
     except KeyError:
-        pass
+        sim.set_path("domain.block.extent", bd_extent_t)
+        msgs.append(f"domain.block.extent missing; set to {bd_extent_t} (to match domain.bd_extent).")
 
     return msgs
 
@@ -424,8 +582,9 @@ simulation_parameters
     Vort_type=1;
     fat_ring=true;
 
-    //hdf5_ic_name=ic.hdf5;
-    hdf5_ref_name=ref.hdf5;
+    geometry=none;
+
+    hdf5_ref_name=null;
 
     output
     {
@@ -433,8 +592,8 @@ simulation_parameters
     }
 
     restart_write_frequency=20;
-    write_restart=false;
-    use_restart=false;
+    write_restart=true;
+    use_restart=true;
 
     restart
     {
@@ -444,17 +603,17 @@ simulation_parameters
 
     domain
     {
-        bd_base = (-48,-48,-48);
-        bd_extent = (96,96,96);
+        bd_base = (-224,-224, -224);
+        bd_extent = (448, 448, 448);
 
         dx_base=0.06125;
 
-        block_extent=6;
+        block_extent=14;
 
         block
         {
-            base = (-48,-48,-48);
-            extent = (96,96,96);
+            base = (-224,-224, -224);
+            extent = (448, 448, 448);
         }
     }
     EXP_LInf=1e-3;
@@ -497,6 +656,44 @@ def prompt_value(msg: str, default: Value) -> Value:
         return default
     return parse_scalar(ans)
 
+GEOMETRY_CHOICES = [
+    "plate",
+    "sphere",
+    "circle",
+    "2circles",
+    "3circles",
+    "NACA0009",
+    "ForTim15000",
+    "custom",
+]
+
+def prompt_geometry(default: str) -> str:
+    """
+    Prompt user to choose a geometry from a fixed list.
+    If 'custom' is chosen, ask for a custom geometry string.
+    """
+    print("\nGeometry options:")
+    print("  " + ", ".join(GEOMETRY_CHOICES))
+    ans = input(f"Set geometry [default: {default}]: ").strip()
+    if not ans:
+        ans = default
+
+    # normalize a bit (keep case-sensitive options if you want)
+    ans_norm = ans.strip()
+
+    # allow user to type e.g. "Custom" or "custom"
+    if ans_norm.lower() == "custom":
+        custom = input("Enter custom geometry name (e.g., MyAirfoil42): ").strip()
+        if not custom:
+            print("NOTE: Empty custom name; keeping default.")
+            return default
+        return custom
+
+    if ans_norm not in GEOMETRY_CHOICES[:-1]:  # all except "custom"
+        print(f"NOTE: '{ans_norm}' is not a recognized geometry. Keeping default: {default}")
+        return default
+
+    return ans_norm
 
 def build_from_scratch() -> Block:
     # Use the template as the starting point, then prompt over all scalar leaves.
@@ -507,6 +704,16 @@ def build_from_scratch() -> Block:
 
     # Prompt all scalar paths in stable order
     for path in sim.list_paths():
+        if path == "R":
+            continue  # R is fixed to 0.5, never prompt
+        if path == "geometry":
+            cur = sim.get_path(path)
+            if not isinstance(cur, str):
+                cur = "none"
+            new_geom = prompt_geometry(cur)
+            sim.set_path("geometry", new_geom)
+            continue
+
         cur = sim.get_path(path)
         # skip block "domain.block.extent/base"? No, include them (but they'll get synced)
         new_val = prompt_value(f"Set {path}", cur)
@@ -593,31 +800,42 @@ def edit_loop(root: Block) -> None:
 
 
 def write_output(root: Block) -> None:
+    DEFAULT_NAME = "configFile_new"
+
     out_path = prompt_string(
-        "Output file path OR directory for the NEW config (e.g., ./configFile_new or ./configs/)"
+        "Output file path OR directory for the NEW config "
+        f"(press Enter for ./{DEFAULT_NAME})"
     ).strip()
+
+    # If user just presses Enter → use default name in current directory
+    if not out_path:
+        out_path = DEFAULT_NAME
+        print(f"NOTE: No path given. Writing to ./{DEFAULT_NAME}")
 
     # Expand ~ and env vars
     out_path = os.path.expandvars(os.path.expanduser(out_path))
 
-    # If user gave a directory (or ended with /), choose a default filename inside it
+    # If user gave a directory (or ended with /), choose default filename inside it
     if out_path.endswith(os.sep) or (os.path.exists(out_path) and os.path.isdir(out_path)):
         out_dir = out_path.rstrip(os.sep) or "."
         os.makedirs(out_dir, exist_ok=True)
-        out_path = os.path.join(out_dir, "configFile_new")
+        out_path = os.path.join(out_dir, DEFAULT_NAME)
         print(f"NOTE: You entered a directory. Writing to: {out_path}")
     else:
         out_dir = os.path.dirname(out_path) or "."
         os.makedirs(out_dir, exist_ok=True)
 
     # Render only the simulation_parameters block
-    text = root.items["simulation_parameters"].to_text(indent=0, name="simulation_parameters")
+    text = root.items["simulation_parameters"].to_text(
+        indent=0, name="simulation_parameters"
+    )
 
     with open(out_path, "w", encoding="utf-8") as f:
         f.write(text)
 
     make_exec = prompt_yes_no(
-        "Make the output file executable (Finder may show it as 'Unix 실행 파일')?", default=True
+        "Make the output file executable?",
+        default=True
     )
     if make_exec:
         st = os.stat(out_path)

@@ -1,0 +1,80 @@
+simulation_parameters
+{
+    nLevels=1;
+
+    // Time Marching
+    nIB_add_level=0;
+    useDirectSolve=false;
+    use_2D_restart=false;
+    adapt_Fourier=false;
+    source_max=13.0;
+    use_rand_perturb=false;
+    T0=0.5;
+    vortex_separation =4.0;
+    nBaseLevelTimeSteps=200;
+    cfl =0.1;
+    cfl_max = 1000;
+    Re = 100.0;
+    refinement_factor=0.1;
+    w_pert = 0.0;
+    use_rand_perturb=false;
+    pert_pow=1;
+    R=0.5;
+    DistanceOfVortexRings=0.125;
+    adapt_frequency=10;
+    balance_n_adapt=5;
+    output_frequency=20;
+    base_level_threshold=1e-5;
+    hard_max_refinement=true;
+    copy_nonleaf=false;
+    Ux = 1.0;
+    Uy = 0.0;
+    geometry=circle;
+    cg_threshold=1e-6;
+    cg_max_itr=400;
+    smooth_start=true;
+
+    single_ring=false;
+    perturbation=false;
+    vDelta=0.5;
+
+    fat_ring=true;
+
+    //hdf5_ic_name=ic.hdf5;
+    hdf5_ref_name=ref.hdf5;
+
+    output
+    {
+        directory=output;
+    }
+
+    restart_write_frequency=20;
+    write_restart=true;
+    use_restart=true;
+
+    restart
+    {
+        load_directory=restart;
+        save_directory=restart;
+    }
+
+    domain
+    {
+
+        bd_base = (-224,-224);
+        bd_extent = (896,448);
+
+        dx_base=0.05;
+
+        block_extent=14;
+
+        block
+        {
+            base=(-224,-224);
+            extent=(896,448);
+        }
+    }
+    EXP_LInf=1e-14;
+    L_z = 3;
+    c_z = 3;
+}

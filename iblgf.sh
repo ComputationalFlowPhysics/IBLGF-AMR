@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ibl.sh — friendly wrapper for configure/build/test/run
+# iblgf.sh — friendly wrapper for configure/build/test/run
 # Put this file in the root of the IBLGF-AMR repo (next to CMakeLists.txt).
 
 set -euo pipefail
@@ -22,6 +22,23 @@ cpu_count() {
     echo 4
   fi
 }
+
+# *added*
+default_build_jobs() {
+  # Env override wins, otherwise use cpu_count()
+  echo "${IBLGF_BUILD_JOBS:-$(cpu_count)}"
+}
+
+default_test_jobs() {
+  # How many tests ctest runs in parallel (NOT MPI ranks)
+  echo "${IBLGF_TEST_JOBS:-1}"
+}
+
+default_mpi_ranks() {
+  # Default MPI ranks for run/run-test
+  echo "${IBLGF_MPI_RANKS:-2}"
+}
+# *end of added*
 
 script_dir() {
   cd "$(dirname "${BASH_SOURCE[0]}")" && pwd
@@ -46,17 +63,22 @@ ensure_repo_root() {
 print_usage() {
   cat <<'USAGE'
 Usage:
-  ./ibl.sh help
-  ./ibl.sh configure
-  ./ibl.sh build [-j N]
-  ./ibl.sh test  [-j N]
-  ./ibl.sh clean
+  ./iblgf.sh help
+  ./iblgf.sh configure
+  ./iblgf.sh build [-j N]
+  ./iblgf.sh test  [-j N]
+  ./iblgf.sh clean
+
+Env overrides:
+  IBLGF_BUILD_JOBS=12   default build parallelism
+  IBLGF_TEST_JOBS=6     default ctest parallelism
+  IBLGF_MPI_RANKS=8     default MPI ranks for run/run-test
 
 Run an existing built executable with a config:
-  ./ibl.sh run <exe-or-target> <config> [-n MPI_RANKS] [-- <extra args>]
+  ./iblgf.sh run <exe-or-target> <config> [-n MPI_RANKS] [-- <extra args>]
 
 Run a named test (staged run dir + logs + metadata):
-  ./ibl.sh run-test <test_name> <config_name_or_path> [-n MPI_RANKS]
+  ./iblgf.sh run-test <test_name> <config_name_or_path> [-n MPI_RANKS]
 
 USAGE
 }
@@ -127,6 +149,17 @@ find_test_config() {
   return 1
 }
 
+# *added*
+latest_run_dir() {
+  local test_name="$1"
+  local base
+  base="$(runs_root)/${test_name}"
+  [[ -d "$base" ]] || return 1
+
+  # Pick newest directory by modification time
+  ls -1dt "$base"/*/ 2>/dev/null | head -n 1
+}
+# *end of added*
 
 do_configure() {
   ensure_repo_root
@@ -147,7 +180,7 @@ do_build() {
   ensure_repo_root
   local build_dir jobs
   build_dir="$(build_dir_default)"
-  jobs="$(cpu_count)"
+  jobs="$(default_build_jobs)"
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -163,9 +196,30 @@ do_build() {
 }
 
 do_test() {
-  do_build "$@"
-  echo "==> Running tests"
-  ctest --test-dir "$(build_dir_default)" --output-on-failure
+  ensure_repo_root
+
+  local build_jobs test_jobs
+  build_jobs="$(default_build_jobs)"
+  test_jobs="$(default_test_jobs)"
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      -j)
+        shift
+        test_jobs="$1"
+        shift
+        ;;
+      *)
+        die "Unknown option for test: $1"
+        ;;
+    esac
+  done
+
+  # Build first (use build parallelism)
+  do_build -j "$build_jobs"
+
+  echo "==> Running tests (ctest -j $test_jobs)"
+  ctest --test-dir "$(build_dir_default)" -j "$test_jobs" --output-on-failure
 }
 
 find_executable_in_build() {
@@ -175,7 +229,7 @@ find_executable_in_build() {
 
 do_run() {
   local exe config mpi
-  mpi=1
+  mpi="${IBLGF_MPI_RANKS:-1}"
 
   exe="$1"
   config="$2"
@@ -211,13 +265,18 @@ do_run() {
 do_run_test() {
   ensure_repo_root
 
-  [[ $# -ge 2 ]] || die "Usage: ./ibl.sh run-test <test_name> <config_name_or_path> [-n MPI_RANKS]"
+  [[ $# -ge 2 ]] || die "Usage: ./iblgf.sh run-test <test_name> <config_name_or_path> [-n MPI_RANKS]"
 
   local test_name="$1"
   local config_arg="$2"
   shift 2
 
-  local mpi=2
+  local mpi
+  mpi="$(default_mpi_ranks)"
+
+  local resume=0
+  local resume_dir=""
+
   while [[ $# -gt 0 ]]; do
     case "$1" in
       -n)
@@ -225,6 +284,15 @@ do_run_test() {
         mpi="${1:-}"
         [[ -n "$mpi" ]] || die "Missing value after -n"
         shift
+        ;;
+      --resume)
+        resume=1
+        shift
+        # Optional argument: explicit run directory
+        if [[ $# -gt 0 && "$1" != -* && "$1" != --* ]]; then
+          resume_dir="$1"
+          shift
+        fi
         ;;
       *)
         die "Unknown option for run-test: $1"
@@ -248,13 +316,31 @@ do_run_test() {
 
   # Create a clean run directory where outputs will go.
   local run_dir
-  run_dir="$(runs_root)/${test_name}/$(timestamp)"
-  mkdir -p "$run_dir"
+  if [[ "$resume" -eq 1 ]]; then
+    if [[ -n "$resume_dir" ]]; then
+      run_dir="$resume_dir"
+    else
+      run_dir="$(latest_run_dir "$test_name" || true)"
+    fi
+    [[ -n "$run_dir" ]] || die "No previous run directory found to resume for '$test_name' under $(runs_root)/$test_name/"
+    [[ -d "$run_dir" ]] || die "Resume directory not found: $run_dir"
+  else
+    run_dir="$(runs_root)/${test_name}/$(timestamp)"
+    mkdir -p "$run_dir"
+  fi
 
-  # Copy config into run directory so run is self-contained.
+  # Config handling:
   local cfg_name
   cfg_name="$(basename "$config_path")"
-  cp "$config_path" "$run_dir/$cfg_name"
+
+  if [[ "$resume" -eq 1 ]]; then
+    # Prefer the config already in the run dir if it exists; otherwise copy it in.
+    if [[ ! -f "$run_dir/$cfg_name" ]]; then
+      cp "$config_path" "$run_dir/$cfg_name"
+    fi
+  else
+    cp "$config_path" "$run_dir/$cfg_name"
+  fi
 
   # Record metadata for reproducibility.
   {

@@ -10,21 +10,6 @@
 #     ▐░░░░░░░░░░░▌▐░░░░░░░░░░▌ ▐░░░░░░░░░░░▌▐░░░░░░░░░░░▌▐░▌
 #      ▀▀▀▀▀▀▀▀▀▀▀  ▀▀▀▀▀▀▀▀▀▀   ▀▀▀▀▀▀▀▀▀▀▀  ▀▀▀▀▀▀▀▀▀▀▀  ▀
 
-# *added*
-execute_process(
-  COMMAND nproc
-  OUTPUT_VARIABLE DOCKER_CPUS
-  OUTPUT_STRIP_TRAILING_WHITESPACE
-)
-
-if (NOT DOCKER_CPUS)
-  include(ProcessorCount)
-  ProcessorCount(DOCKER_CPUS)
-endif()
-
-set(IBLGF_MPI_NP "${DOCKER_CPUS}" CACHE STRING "MPI ranks for tests")
-# *end of added*
-
 set(tree_test tree)
 
 foreach (item ${tree_test})

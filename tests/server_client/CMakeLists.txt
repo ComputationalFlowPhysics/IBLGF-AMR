@@ -11,24 +11,12 @@
 #      ▀▀▀▀▀▀▀▀▀▀▀  ▀▀▀▀▀▀▀▀▀▀   ▀▀▀▀▀▀▀▀▀▀▀  ▀▀▀▀▀▀▀▀▀▀▀  ▀
 
 # *added*
-execute_process(
-  COMMAND nproc
-  OUTPUT_VARIABLE DOCKER_CPUS
-  OUTPUT_STRIP_TRAILING_WHITESPACE
-)
-
-if (NOT DOCKER_CPUS)
-  include(ProcessorCount)
-  ProcessorCount(DOCKER_CPUS)
+set(SERVER_CLIENT_MPI_NP "${IBLGF_MPI_NP}")
+if(SERVER_CLIENT_MPI_NP GREATER 2)
+  set(SERVER_CLIENT_MPI_NP 2)
 endif()
 
-# Ensure DOCKER_CPUS is at least 2 for server client test
-if (DOCKER_CPUS LESS 2)
-  set(DOCKER_CPUS 2)
-endif()
-
-set(IBLGF_MPI_NP "${DOCKER_CPUS}" CACHE STRING
-    "MPI ranks for tests (minimum 2)")
+message(STATUS "server_client: using MPI ranks = ${SERVER_CLIENT_MPI_NP} (global IBLGF_MPI_NP=${IBLGF_MPI_NP})")
 # *end of added*
 
 set(server_client_test server_client)

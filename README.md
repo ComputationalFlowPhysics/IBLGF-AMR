@@ -64,15 +64,15 @@ launches the project inside the prebuilt Docker image used by the lab
 (ccardina/my-app:cpu) and adds a lightweight Python environment on top.
 
 The script automatically:
-    -pulls the base Docker image if needed,
-    -builds a local Python-enabled image (cached after the first run),
-    -mounts the current repository into the container,
-    -optionally limits the number of CPUs available to Docker.
+* pulls the base Docker image if needed,
+* builds a local Python-enabled image (cached after the first run),
+* mounts the current repository into the container,
+* optionally limits the number of CPUs available to Docker.
 
 #### Basic Usage
 From the repository root:
 
-    $./docker_iblgf.sh
+    $ ./docker_iblgf.sh
 
 This launches an interactive shell inside the Docker container with the
 repository mounted at /workspace2.
@@ -85,15 +85,15 @@ Docker can use.
 
 To restrict the container to N CPU cores, use:
 
-    $./docker_iblgf.sh -c N
+    $ ./docker_iblgf.sh -c N
 
 Example (limit Docker to 4 cores):
 
-    $./docker_iblgf.sh -c 4
+    $ ./docker_iblgf.sh -c 4
 
 You can verify the limit inside Docker with:
 
-    $nproc
+    $ nproc
 
 ### Building and Running the tests using the iblgf.sh helper script
 
@@ -138,16 +138,16 @@ If -j is not specified, tests are run sequentially (safe default).
 #### Running a single test manually
 To run a specific test with a chosen configuration:
 
-    $./iblgf.sh run-test <test_name> <config_name_or_path>
+    $ ./iblgf.sh run-test <test_name> <config_name_or_path>
 
 Example:
 
-    $./iblgf.sh run-test ns_amr_lgf configFile_0
+    $ ./iblgf.sh run-test ns_amr_lgf configFile_0
 
 By default, the test is run with a small number of MPI ranks.
 This can be overridden explicitly:
 
-    $./iblgf.sh run-test ns_amr_lgf configFile_0 -n N
+    $ ./iblgf.sh run-test ns_amr_lgf configFile_0 -n N
 
 Each run is executed in a timestamped directory under runs/, and
 standard output, error logs, and metadata are recorded for reproducibility.
@@ -167,11 +167,11 @@ restart_field.hdf5, tree_info.bin) into its run directory.
 
 To resume the most recent run of a given test:
 
-    $./iblgf.sh run-test <test_name> <config_name_or_path> --resume
+    $ ./iblgf.sh run-test <test_name> <config_name_or_path> --resume
 
 Example:
 
-    $./iblgf.sh run-test ns_amr_lgf configFile_0 --resume -n 4
+    $ ./iblgf.sh run-test ns_amr_lgf configFile_0 --resume -n 4
 
 This reuses the latest run directory under runs/<test_name>/ and continues
 the simulation from the last available restart checkpoint.
@@ -180,11 +180,11 @@ the simulation from the last available restart checkpoint.
 
 To resume a specific previous run explicitly:
 
-    $./iblgf.sh run-test <test_name> <config_name_or_path> --resume runs/<test_name>/<timestamp>
+    $ ./iblgf.sh run-test <test_name> <config_name_or_path> --resume runs/<test_name>/<timestamp>
 
 Example:
 
-    $./iblgf.sh run-test ns_amr_lgf configFile_0 --resume runs/ns_amr_lgf/2026-01-25_20-12-09 -n 4
+    $ ./iblgf.sh run-test ns_amr_lgf configFile_0 --resume runs/ns_amr_lgf/2026-01-25_20-12-09 -n 4
 
 ### Configuring and building the library
 
@@ -198,7 +198,7 @@ Within the parent directory do the following steps:
 
 ### Verify installation and running the tests
 
-make test
+    $ make test
 
 ## Authors
 Benedikt Dorschner  

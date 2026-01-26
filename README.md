@@ -57,6 +57,44 @@ Then
     $ ./b2  -j  --prefix=/opt/boost --target=shared,static
     $ ./b2 install
 
+### Running the project inside Docker
+
+For convenience, this repository provides a helper script docker_iblgf.sh that
+launches the project inside the prebuilt Docker image used by the lab
+(ccardina/my-app:cpu) and adds a lightweight Python environment on top.
+
+The script automatically:
+    -pulls the base Docker image if needed,
+    -builds a local Python-enabled image (cached after the first run),
+    -mounts the current repository into the container,
+    -optionally limits the number of CPUs available to Docker.
+
+#### Basic Usage
+From the repository root:
+
+    $./docker_iblgf.sh
+
+This launches an interactive shell inside the Docker container with the
+repository mounted at /workspace2.
+
+Once inside Docker, you can run the usual workflow.
+
+### Limiting the number of CPUs used by Docker
+On laptops or shared machines, it is often desirable to limit how many CPU cores
+Docker can use.
+
+To restrict the container to N CPU cores, use:
+
+    $./docker_iblgf.sh -c N
+
+Example (limit Docker to 4 cores):
+
+    $./docker_iblgf.sh -c 4
+
+You can verify the limit inside Docker with:
+
+    $nproc
+
 ### Building and Running the tests using the iblgf.sh helper script
 
 For convenience, this repository provides a wrapper script iblgf.sh that

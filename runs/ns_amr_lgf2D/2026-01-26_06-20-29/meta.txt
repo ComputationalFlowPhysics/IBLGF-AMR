@@ -1,8 +1,0 @@
-test_name: ns_amr_lgf2D
-exe: /workspace2/IBLGF-AMR/build/tests/ns_amr_lgf2D/ns_amr_lgf2D.x
-config: configFile
-mpi_ranks: 4
-git_commit: a9b5b03
-timestamp: 2026-01-26T06:21:53+00:00
-run_dir: /workspace2/IBLGF-AMR/runs/ns_amr_lgf2D/2026-01-26_06-20-29/
-command: mpiexec -np 4 /workspace2/IBLGF-AMR/build/tests/ns_amr_lgf2D/ns_amr_lgf2D.x ./configFile

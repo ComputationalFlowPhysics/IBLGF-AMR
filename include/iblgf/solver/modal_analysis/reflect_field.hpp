@@ -147,39 +147,74 @@ class ReflectField
             int count = 0;
             for (auto& key : _update.send_octs)
             {
-                //find the octant
-                auto        it = domain_->tree()->find_octant(key);
-                auto        lin_data = it->data_r(rf_s_type::tag(), field_idx).linalg_data();
-                std::size_t N0 = lin_data.shape()[0];
-                std::size_t N1 = lin_data.shape()[1];
-                if (field_idx == 1)
+                if(Dim==2)
                 {
-                    // for (std::size_t i = N0 - 2; i >= 2; --i)
-                    // { // interior rows
-                    //     for (std::size_t j = 1; j < N1 - 1; ++j)
-                    //     {                                        // interior columns
-                    //         lin_data(i, j) = lin_data(i , j+1); // shift down
-                    // //     }
-                    // // }
-                    for (std::size_t i = 1; i < N0 - 1; ++i) // interior rows
+                    //find the octant
+                    auto        it = domain_->tree()->find_octant(key);
+                    auto        lin_data = it->data_r(rf_s_type::tag(), field_idx).linalg_data();
+                    std::size_t N0 = lin_data.shape()[0];
+                    std::size_t N1 = lin_data.shape()[1];
+                    if (field_idx == 1)
                     {
-                        for (std::size_t j = 1; j < N1 - 1; ++j) // interior columns
+                        // for (std::size_t i = N0 - 2; i >= 2; --i)
+                        // { // interior rows
+                        //     for (std::size_t j = 1; j < N1 - 1; ++j)
+                        //     {                                        // interior columns
+                        //         lin_data(i, j) = lin_data(i , j+1); // shift down
+                        // //     }
+                        // // }
+                        for (std::size_t i = 1; i < N0 - 1; ++i) // interior rows
                         {
-                            lin_data(i, j) = lin_data(i, j + 1); // shift left
+                            for (std::size_t j = 1; j < N1 - 1; ++j) // interior columns
+                            {
+                                lin_data(i, j) = lin_data(i, j + 1); // shift left
+                            }
+                        }
+                        // for (std::size_t i = 1; i < N0 - 1; ++i) // interior rows
+                        // {
+                        //     for (int j = static_cast<int>(N1) - 2; j >= 1; --j) // interior columns right-to-left
+                        //     {
+                        //         lin_data(i, j) = lin_data(i, j - 1); // shift right
+                        //     }
+                        // }
+                    }
+
+                    for (std::size_t i = 0; i < N0; ++i)
+                    {
+                        for (std::size_t j = 0, k = N1 - 1; j < k; ++j, --k) { std::swap(lin_data(i, j), lin_data(i, k)); }
+                    }
+                }
+                else if(Dim==3)
+                {
+                    auto        it = domain_->tree()->find_octant(key);
+                    auto        lin_data = it->data_r(rf_s_type::tag(), field_idx).linalg_data();
+                    std::size_t N0 = lin_data.shape()[0];
+                    std::size_t N1 = lin_data.shape()[1];
+                    std::size_t N2 = lin_data.shape()[2];
+                    if(field_idx==1)
+                    {
+                        for(std::size_t i=1;i<N0-1;++i)
+                        {
+                            for(std::size_t j=1;j<N1-1;++j)
+                            {
+                                for(std::size_t k=1;k<N2-1;++k)
+                                {
+                                    lin_data(i,j,k)=lin_data(i,j+1,k); //shift left
+                                }
+                            }
                         }
                     }
-                    // for (std::size_t i = 1; i < N0 - 1; ++i) // interior rows
-                    // {
-                    //     for (int j = static_cast<int>(N1) - 2; j >= 1; --j) // interior columns right-to-left
-                    //     {
-                    //         lin_data(i, j) = lin_data(i, j - 1); // shift right
-                    //     }
-                    // }
-                }
+                    for(std::size_t i=0;i<N0;++i)
+                    {
+                        for(std::size_t k=0;k<N2; ++k)
+                        {
+                            for(std::size_t j=0, m=N1-1; j<m; ++j,--m)
+                            {
+                                std::swap(lin_data(i,j,k),lin_data(i,m,k));
+                            }
+                        }
+                    }
 
-                for (std::size_t i = 0; i < N0; ++i)
-                {
-                    for (std::size_t j = 0, k = N1 - 1; j < k; ++j, --k) { std::swap(lin_data(i, j), lin_data(i, k)); }
                 }
             }
         }
@@ -360,7 +395,7 @@ class ReflectField
     ServerUpdate server_get_tasks()
     {
         boost::mpi::communicator world;
-        if (!domain_->is_server()) return;
+        // if (!domain_->is_server()) return;
         ServerUpdate update(world.size());
         // --------------------------------------------------------------
 
@@ -374,7 +409,7 @@ class ReflectField
             auto opposite_coord = coord;
             // 128 = 1792/14 =extent on baselevel
             auto ref_level = it1->key().level() - domain_->tree()->base_level();
-            opposite_coord[1] = 128 * (1 << ref_level) - (coord[1] + 1);
+            opposite_coord[1] = 32 * (1 << ref_level) - (coord[1] + 1);
 
             auto it2 = domain_->tree()->find_octant(key_t(opposite_coord, level));
             if (!it2)

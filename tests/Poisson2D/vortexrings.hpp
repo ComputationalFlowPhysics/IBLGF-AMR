@@ -225,10 +225,48 @@ struct VortexRingTest : public SetupBase<VortexRingTest, parameters>
         //pcout_c<<"write" <<std::endl;
         //domain_->decomposition().balance<source_type,phi_exact_type>();
         //pcout_c<<"decompositiondone" <<std::endl;
-
+        cc_test();
         //this->solve();
         //simulation_.write("mesh_new.hdf5");
         return Inf_error;
+    }
+
+    void cc_test()
+    {   
+        boost::mpi::communicator world;
+        std::cout << "Running cc_test" << std::endl;
+
+        std::cout<<"rank "<<world.rank()<<" block extents:"<<domain_->block_extent()[0]<<" "
+                 <<domain_->block_extent()[1]<<std::endl;
+
+        for(auto it=domain_->begin(); it!= domain_->end(); ++it)
+        {
+            if(!it.ptr()) continue;
+            if(!it->has_data()) continue;
+            if(!it->locally_owned()) continue;
+
+            auto b = it->data().descriptor();
+            b.level() = it->refinement_level();
+            auto corners = b.get_corners();
+
+            std::cout<<"rank "<<world.rank()
+                     <<" extent: "<<b.extent()[0]<<" "<<b.extent()[1]
+                     <<" corners: ";
+            for(auto& c: corners)
+                std::cout<<"("<<c[0]<<","<<c[1]<<") ";
+            std::cout<<std::endl;
+
+            auto lin_data= it->data_r(source_type::tag()).linalg_data();
+            std::cout<<"data: ";
+            // get size of lin_data
+            std::size_t nData = lin_data.shape()[0];
+            std::cout<<" nData "<<nData<<std::endl;
+            std::cout<<"real block extent: "<< it->data_r(source_type::tag()).real_block().extent()<<std::endl;
+            std::cout<<"node block extent:"<<it->data_r(source_type::tag()).extent()<<std::endl;
+            std::cout<<"low buffer"<<it->data(source_type::tag()).lbuffer()<<std::endl;
+            break;
+        }
+        return;
     }
 
     /** @brief Initialization of poisson problem.

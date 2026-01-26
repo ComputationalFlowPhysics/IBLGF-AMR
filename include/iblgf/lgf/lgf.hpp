@@ -23,6 +23,11 @@
 #include <iblgf/utilities/crtp.hpp>
 #include <iblgf/lgf/lgf_gl_lookup.hpp>
 
+#ifdef IBLGF_COMPILE_CUDA
+#include <cufft.h>
+#include <cuda_runtime.h>
+#endif
+
 namespace iblgf
 {
 namespace lgf
@@ -39,6 +44,35 @@ class LGF_Base : public crtp::Crtps<Derived, LGF_Base<Dim, Derived>>
 
     using complex_vector_t = std::vector<std::complex<float_type>,
         xsimd::aligned_allocator<std::complex<float_type>, 32>>;
+    using complex_vector_gpu_t=std::vector<std::complex<float_type>>;
+
+    struct gpu_spectrum_entry
+    {
+        std::unique_ptr<complex_vector_gpu_t> host; // host-side spectrum (for CPU paths)
+#ifdef IBLGF_COMPILE_CUDA
+        cufftDoubleComplex*                    device = nullptr; // device buffer holding same spectrum
+#else
+        void*                                  device = nullptr; // placeholder when CUDA is disabled
+#endif
+        size_t                                 size   = 0;
+
+        ~gpu_spectrum_entry()
+        {
+#ifdef IBLGF_COMPILE_CUDA
+            if (device)
+            {
+                cudaFree(device);
+                device = nullptr;
+            }
+#endif
+        }
+    };
+
+#ifdef IBLGF_COMPILE_CUDA
+    using level_entry_3D_t = gpu_spectrum_entry;
+#else
+    using level_entry_3D_t = complex_vector_t;
+#endif
 
     template<class Convolutor, int Dim1 = Dim>
     auto& dft(const block_descriptor_t& _lgf_block, dims_t _extended_dims,
@@ -62,6 +96,53 @@ class LGF_Base : public crtp::Crtps<Derived, LGF_Base<Dim, Derived>>
             return *(it->second).get();
         }
     }
+
+#ifdef IBLGF_COMPILE_CUDA
+    template<class Convolutor, int Dim1 = Dim>
+    gpu_spectrum_entry* dft_gpu(const block_descriptor_t& _lgf_block, dims_t _extended_dims,
+        Convolutor* _conv, typename std::enable_if<Dim1 == 3, int>::type level_diff)
+    {
+        auto k_ = this->derived().get_key(_lgf_block, level_diff);
+        auto it = this->derived().dft_level_maps_3D[level_diff].find(k_);
+
+        //Check if lgf is already stored
+        if (it == this->derived().dft_level_maps_3D[level_diff].end())
+        {
+            this->get_subblock(
+                _lgf_block, _extended_dims, lgf_buffer_, level_diff);
+            auto* dft = _conv->dft_r2c(lgf_buffer_);
+
+            // Allocate entry with host copy and device upload
+            auto entry = std::make_unique<gpu_spectrum_entry>();
+            entry->size = _conv->dft_r2c_size();
+            // entry->device = dft;
+            //move dft to new location on gpu
+            //dft is pointer to device
+            // entry->host = std::make_unique<complex_vector_gpu_t>(std::move(*dft));
+            cudaMalloc(&(entry->device), entry->size * sizeof(cufftDoubleComplex));
+            cudaMemcpy(entry->device, dft, entry->size * sizeof(cufftDoubleComplex), cudaMemcpyDeviceToDevice);
+            entry->host = nullptr; // host copy not needed
+            auto inserted = this->derived().dft_level_maps_3D[level_diff].emplace(
+                k_, std::move(entry));
+
+            // auto inserted = this->derived().dft_level_maps_3D[level_diff].emplace(
+            //     k_, std::move(entry));
+            return (inserted.first->second).get();
+        }
+        else
+        {
+            return (it->second).get();
+        }
+    }
+#else
+    // CPU build: dft_gpu falls back to the CPU DFT and returns a host vector reference
+    template<class Convolutor, int Dim1 = Dim>
+    auto& dft_gpu(const block_descriptor_t& _lgf_block, dims_t _extended_dims,
+        Convolutor* _conv, typename std::enable_if<Dim1 == 3, int>::type level_diff)
+    {
+        return dft(_lgf_block, _extended_dims, _conv, level_diff);
+    }
+#endif
 
 
     template<class Convolutor, int Dim1 = Dim>
@@ -106,6 +187,16 @@ class LGF_Base : public crtp::Crtps<Derived, LGF_Base<Dim, Derived>>
         for (auto it = this->derived().dft_level_maps_3D.begin(); 
              it != this->derived().dft_level_maps_3D.end();
              ++it) {
+#ifdef IBLGF_COMPILE_CUDA
+            for (auto& kv : *it)
+            {
+                if (kv.second && kv.second->device)
+                {
+                    cudaFree(kv.second->device);
+                    kv.second->device = nullptr;
+                }
+            }
+#endif
             it->clear();
         }
     }

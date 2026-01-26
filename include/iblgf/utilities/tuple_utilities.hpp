@@ -188,8 +188,21 @@ auto constexpr expand(std::index_sequence<I...>)
 {
     return tuple_tag<str.id()[I]...>{};
 }
+
+// Overload for pointer type
+template<const tuple_tag_h* str, std::size_t... I>
+auto constexpr expand(std::index_sequence<I...>)
+{
+    return tuple_tag<(*str).id()[I]...>{};
+}
+
+// Main tag_type for reference parameters
 template<tuple_tag_h const& str>
 using tag_type = decltype(expand<str>(std::make_index_sequence<str.size()>{}));
+
+// For CUDA builds where pointers are used: tag_type_ptr
+template<const tuple_tag_h* str>
+using tag_type_ptr = decltype(expand<str>(std::make_index_sequence<str->size()>{}));
 
 template<size_t I, typename T, typename Tuple_t>
 constexpr size_t

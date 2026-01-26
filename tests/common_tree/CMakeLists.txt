@@ -1,6 +1,14 @@
 #Bring the headers, such as Student.h into the project
 include_directories(${IBLGF_SOURCE_DIR}/src )
-
+add_executable(symgrid3D.x symgrid.cpp ${SOURCES})
+target_link_libraries(symgrid3D.x
+                      ${MPI_LIBRARIES}
+                      ${Boost_LIBRARIES}
+                      ${FFTW_LIBRARIES} fftw3
+                      ${HDF5_LIBRARIES} hdf5
+                      ${BLAS_LIBRARIES}
+                      xtensor
+                      xsimd)
 # add the executable
 add_executable(common_tree.x common_tree.cpp ${SOURCES})
 target_link_libraries(common_tree.x
@@ -22,6 +30,15 @@ target_link_libraries(adapt_to_ref.x
                       xtensor
                       xsimd)
 
+add_executable(read_write_test.x read_write_test.cpp ${SOURCES})
+target_link_libraries(read_write_test.x
+                      ${MPI_LIBRARIES}
+                      ${Boost_LIBRARIES}
+                      ${FFTW_LIBRARIES} fftw3
+                      ${HDF5_LIBRARIES} hdf5
+                      ${BLAS_LIBRARIES}
+                      xtensor
+                      xsimd)
 
 set(PETSC $ENV{PETSC_DIR}/$ENV{PETSC_ARCH})
 set(ENV{PKG_CONFIG_PATH} ${PETSC}/lib/pkgconfig)

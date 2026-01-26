@@ -116,7 +116,7 @@ class DataField : public BlockDescriptor<int, Dim>
     }
     DataField& operator=(DataField&& _other)
     {
-        data_ = std::move(_other.data);
+        data_ = std::move(_other.data_);
         lowBuffer_ = std::move(_other.lowBuffer_);
         highBuffer_ = std::move(_other.highBuffer_);
         real_block_ = std::move(_other.real_block_);
@@ -473,10 +473,18 @@ class Field : public Traits
         static constexpr tuple_tag_h Name##_tag{STRINGIFY(Name)};              \
     };                                                                         \
     using Name##_traits_type =                                                 \
-        field_traits<tag_type<Name##_tag_helper::Name##_tag>, DataType,        \
+        field_traits<                                                          \
+            IBLGF_TAG_TYPE(Name##_tag_helper::Name##_tag),                     \
+            DataType,                                                          \
             NFields, lBuff, hBuff, MeshObject::MeshObjectType, Dim, output>;   \
     using Name##_type = Field<Name##_traits_type>;                             \
     static constexpr Name##_traits_type Name{};
+
+#ifdef IBLGF_COMPILE_CUDA
+#define IBLGF_TAG_TYPE(tag) tag_type_ptr<&tag>
+#else
+#define IBLGF_TAG_TYPE(tag) tag_type<tag>
+#endif
 
 #define make_field_type_impl_default(                                          \
     Dim, key, DataType, NFields, lBuffer, hBuffer, MeshObjectType)             \

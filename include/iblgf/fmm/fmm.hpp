@@ -37,7 +37,15 @@
 #include <iblgf/linalg/linalg.hpp>
 #include <iblgf/fmm/fmm_nli.hpp>
 #include <iblgf/IO/parallel_ostream.hpp>
+#ifdef IBLGF_COMPILE_CUDA   // NVCC device code
+#pragma message("Compiling for CUDA: using GPU complex vector")
+#include <iblgf/utilities/convolution_GPU.hpp>
+#else               // CPU code
+#pragma message("Compiling for CPU: using CPU complex vector")
+
 #include <iblgf/utilities/convolution.hpp>
+#endif
+
 
 namespace iblgf
 {
@@ -694,11 +702,14 @@ class Fmm
 
     static constexpr auto fmm_s = Setup::fmm_s;
     static constexpr auto fmm_t = Setup::fmm_t;
-
-    using convolution_t = fft::Convolution<Dim>;
+    #ifdef IBLGF_COMPILE_CUDA
+        using convolution_t = fft::Convolution_GPU<Dim>;
+    #else           
+        using convolution_t = fft::Convolution<Dim>;    
+    #endif
 
   public:
-    Fmm(domain_t* _domain, int Nb)
+    Fmm(domain_t* _domain, int Nb) // Nb include buffer
     : domain(_domain)
     , lagrange_intrp(Nb)
     , conv_(dims_t(Nb), dims_t(Nb))
@@ -911,7 +922,7 @@ class Fmm
 
             if (it->locally_owned())
                 compute_influence_field(
-                        &(*it), _kernel, base_level_ - level, scale, _neighbor);
+                        &(*it), _kernel, base_level_ - level, scale, _neighbor); //if target octant is local, compute influence from all local source octants
         }
         for (auto B_it = sorted_octants_.begin(); B_it != sorted_octants_.end();
                 ++B_it)
@@ -926,7 +937,7 @@ class Fmm
                 .client()
                 ->template communicate_induced_fields<fmm_t_type,
                 fmm_t_type>(&(*it), this, _kernel, base_level_ - level,
-                        scale, _neighbor, start_communication, fmm_mask_idx_);
+                        scale, _neighbor, start_communication, fmm_mask_idx_); //computes influcence of all local blocks of target octant and then sends and adds received messages to target octant
             }
 #ifdef packMessages
             else if (!combined_messages)
@@ -974,6 +985,7 @@ class Fmm
     void compute_influence_field(octant_t* it, Kernel* _kernel, int level_diff,
         float_type dx_level, bool neighbor) noexcept
     {
+        // it is target octant. not necessarily local. compute influence from all local source octants
         if (!(it->has_data()) ||
             !it->fmm_mask(fmm_mask_idx_, MASK_LIST::Mask_FMM_Target))
             return;
@@ -998,16 +1010,16 @@ class Fmm
                 auto n_s = it->influence(i);
                 if (n_s && n_s->locally_owned() &&
                     n_s->fmm_mask(fmm_mask_idx_, MASK_LIST::Mask_FMM_Source))
-                { fmm_tt(n_s, it, _kernel, level_diff); }
+                { fmm_tt(n_s, it, _kernel, level_diff); } //compute influence of locally owned source octant and add to target octant in fourier space
             }
         }
 
-        const auto   t_extent = it->data_r(fmm_t).real_block().extent();
+        const auto   t_extent = it->data_r(fmm_t).real_block().extent(); //includes ghost cells
         block_dsrp_t extractor(dims_t(0), t_extent);
 
         float_type _scale =
             (_kernel->neighbor_only()) ? 1.0 : dx_level * dx_level;
-        conv_.apply_backward(extractor, it->data_r(fmm_t), _scale);
+        conv_.apply_backward(extractor, it->data_r(fmm_t), _scale); //brings target octant back to real space
     }
 
     template<class f1, class f2>
@@ -1091,7 +1103,7 @@ class Fmm
             domain_->decomposition()
                 .client()
                 ->template communicate_updownward_assign<fmm_t_type,
-                    fmm_t_type>(level, false, true, fmm_mask_idx_);
+                    fmm_t_type>(level, false, true, fmm_mask_idx_); // send parent data
 
             for (auto it = domain_->begin(level); it != domain_->end(level);
                  ++it)
@@ -1119,7 +1131,7 @@ class Fmm
             domain_->decomposition()
                 .client()
                 ->template communicate_updownward_add<fmm_s_type, fmm_s_type>(
-                    level, true, true, fmm_mask_idx_);
+                    level, true, true, fmm_mask_idx_); //sum contribution of all children
 
             for (auto it = domain_->begin(level); it != domain_->end(level);
                  ++it)
@@ -1143,7 +1155,7 @@ class Fmm
         const auto s_base = o_s->data_r(fmm_s).real_block().base();
 
         // Get extent of Source region
-        const auto s_extent = o_s->data_r(fmm_s).real_block().extent();
+        const auto s_extent = o_s->data_r(fmm_s).real_block().extent(); //include buffer
         const auto shift = t_base - s_base;
 
         // Calculate the dimensions of the LGF to be allocated

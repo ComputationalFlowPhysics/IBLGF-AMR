@@ -1835,7 +1835,10 @@ class Chombo
             // Write Attributes -----------------------------------------------
             // dt
             _file->template create_attribute<int>(group_id_lvl, "dt", _dt);
-
+            // ghost attribute
+            std::vector<int> nghost(Dim, 1);
+            _file->template create_attribute<std::vector<int>>(
+                group_id_lvl, "ghost", nghost);
             // dx
             value_type dx = _dx / (std::pow(2, lvl)); // dx = 1/(2^i)
             

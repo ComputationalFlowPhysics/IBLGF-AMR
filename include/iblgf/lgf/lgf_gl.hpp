@@ -40,12 +40,26 @@ class LGF_GL : public LGF_Base<Dim, LGF_GL<Dim>>
     using super_type = LGF_Base<Dim, LGF_GL<Dim>>;
     using block_descriptor_t = BlockDescriptor<int, Dim>;
     using coordinate_t = typename block_descriptor_t::coordinate_type;
+    // using complex_vector_t = typename super_type::complex_vector_gpu_t;// set this back to get cpu code to work
+    // #ifdef __CUDACC__   // NVCC device code
+    #ifdef IBLGF_COMPILE_CUDA // Compiling for CUDA
+    #pragma message("Compiling for CUDA: using GPU complex vector")
+    using complex_vector_t = typename super_type::complex_vector_gpu_t;
+    #else               // CPU code
+    #pragma message("Compiling for CPU: using CPU complex vector")
+
     using complex_vector_t = typename super_type::complex_vector_t;
+    #endif
+    // using complex_vector_t = typename super_type::complex_vector_t;
 
     using key_3D = std::tuple<int, int, int>;
     using key_2D = std::tuple<float, int, int>;
     //using key_2D = std::tuple<int, int>;
-    using level_map_3D_t = std::map<key_3D, std::unique_ptr<complex_vector_t>>;
+    #ifdef IBLGF_COMPILE_CUDA
+    using level_map_3D_t = std::map<key_3D, std::unique_ptr<typename super_type::gpu_spectrum_entry>>;
+    #else
+    using level_map_3D_t = std::map<key_3D, std::unique_ptr<typename super_type::complex_vector_t>>;
+    #endif
     using level_map_2D_t = std::map<key_2D, std::unique_ptr<complex_vector_t>>;
 
   public: //Ctor:

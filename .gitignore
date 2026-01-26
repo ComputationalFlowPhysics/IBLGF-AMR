@@ -31,7 +31,7 @@
 builds/
 build/
 doc/
-
+runs/
 # Executables
 *.exe
 *.out

@@ -58,120 +58,65 @@ struct VGT_PostProcess : public SetupBase<VGT_PostProcess, parameters>
     using duration_type = typename clock_type::duration;
     using time_point_type = typename clock_type::time_point;
 
-    // VGT_PostProcess(Dictionary* _d)
-    // : super_type(_d, [this](auto _d, auto _domain) { return this->initialize_domain(_d, _domain); })
-    // {
-    //     if (domain_->is_client()) client_comm_ = client_comm_.split(1);
-    //     else
-    //         client_comm_ = client_comm_.split(0);
-    //     // ------------------------------------------------------------------
-    //     // ref frame velocity
-
-    //     U_.resize(domain_->dimension());
-    //     U_[0] = simulation_.dictionary()->template get_or<float_type>("Ux", 0.0);
-    //     U_[1] = simulation_.dictionary()->template get_or<float_type>("Uy", 0.0);
-    //     if (domain_->dimension() > 2) U_[2] = simulation_.dictionary()->template get_or<float_type>("Uz", 0.0);
-
-      
-    //     // // ------------------------------------------------------------------
-    //     dx_ = domain_->dx_base();
-    //     cfl_ = simulation_.dictionary()->template get_or<float_type>("cfl", 0.2);
-    //     dt_ = simulation_.dictionary()->template get_or<float_type>("dt", -1.0);
-
-    //     tot_steps_ = simulation_.dictionary()->template get<int>("nBaseLevelTimeSteps");
-    //     Re_ = simulation_.dictionary()->template get<float_type>("Re");
-        
-    //     nLevelRefinement_ = simulation_.dictionary_->template get_or<int>("nLevels", 0);
-
-    //     hard_max_level_ = simulation_.dictionary()->template get_or<int>("hard_max_level", nLevelRefinement_);
-
-    //     global_refinement_ = simulation_.dictionary_->template get_or<int>("global_refinement", 0);
-
-    //     //if (global_refinement_ == 0) global_refinement_ = nLevelRefinement_;
-
-    //     if (dt_ < 0) dt_ = dx_ * cfl_;
-
-    //     dt_ /= pow(2.0, nLevelRefinement_);
-    //     tot_steps_ *= pow(2, nLevelRefinement_);
-
-    //     pcout << "\n Setup:  Test - Simple IC \n" << std::endl;
-    //     pcout << "Number of refinement levels: " << nLevelRefinement_ << std::endl;
-
-    //     nIB_add_level_ = _d->get_dictionary("simulation_parameters")->template get_or<int>("nIB_add_level", 0);
-
-    //     domain_->ib().init(_d->get_dictionary("simulation_parameters"), domain_->dx_base(),
-    //         nLevelRefinement_ + nIB_add_level_, Re_);
-
-    //     // if (!use_restart()) { domain_->init_refine(nLevelRefinement_, global_refinement_, nIB_add_level_); }
-    //     // else { domain_->restart_list_construct(); }
-    //     domain_->restart_list_construct();
-    //     domain_->distribute<fmm_mask_builder_t, fmm_mask_builder_t>();
-    //     // if (!use_restart()) { this->initialize(); }
-    //     // else { simulation_.template read_h5<u_type>(simulation_.restart_field_dir(), "u"); }
-    //     simulation_.template read_h5<u_type>(simulation_.restart_field_dir(), "u");
-
-    //     boost::mpi::communicator world;
-    //     if (world.rank() == 0) std::cout << "on Simulation: \n" << simulation_ << std::endl;
-    // }
-    VGT_PostProcess(Dictionary* _d, std::string restart_tree_dir, std::string restart_field_dir)
-    : super_type(_d,
-        [this](auto _d, auto _domain) { return this->initialize_domain(_d, _domain); },
-        restart_tree_dir)
-    , restart_tree_dir_(restart_tree_dir)
-    , restart_field_dir_(restart_field_dir)
+    VGT_PostProcess(Dictionary* _d)
+    : super_type(_d, [this](auto _d, auto _domain) { return this->initialize_domain(_d, _domain); })
     {
         if (domain_->is_client()) client_comm_ = client_comm_.split(1);
         else
             client_comm_ = client_comm_.split(0);
-        boost::mpi::communicator world;
+        // ------------------------------------------------------------------
+        // ref frame velocity
+
+        U_.resize(domain_->dimension());
+        U_[0] = simulation_.dictionary()->template get_or<float_type>("Ux", 0.0);
+        U_[1] = simulation_.dictionary()->template get_or<float_type>("Uy", 0.0);
+        if (domain_->dimension() > 2) U_[2] = simulation_.dictionary()->template get_or<float_type>("Uz", 0.0);
+
+      
+        // // ------------------------------------------------------------------
+        dx_ = domain_->dx_base();
+        cfl_ = simulation_.dictionary()->template get_or<float_type>("cfl", 0.2);
+        dt_ = simulation_.dictionary()->template get_or<float_type>("dt", -1.0);
+
+        tot_steps_ = simulation_.dictionary()->template get<int>("nBaseLevelTimeSteps");
+        Re_ = simulation_.dictionary()->template get<float_type>("Re");
+        
         nLevelRefinement_ = simulation_.dictionary_->template get_or<int>("nLevels", 0);
-        // std::cout << "Number of refinement levels: " << nLevelRefinement_ << std::endl;
-        // std::cout << "Restarting list construction..." << std::endl;
-        // domain_->register_adapt_condition()=
-        //     [this]( std::vector<float_type> source_max, auto& octs, std::vector<int>& level_change )
-        //         {return this->template adapt_level_change(source_max, octs, level_change);};
 
-        domain_->register_refinement_condition() = [this](auto octant,
-                                                    int diff_level) {
-            return false;
-        };
-        // domain_->init_refine(nLevelRefinement_, 0, 0);
-        if(world.rank() == 0)
-        {
-            std::cout<<"Restarting list construction..."<<std::endl;
-        }
+        hard_max_level_ = simulation_.dictionary()->template get_or<int>("hard_max_level", nLevelRefinement_);
+
+        global_refinement_ = simulation_.dictionary_->template get_or<int>("global_refinement", 0);
+
+        //if (global_refinement_ == 0) global_refinement_ = nLevelRefinement_;
+
+        if (dt_ < 0) dt_ = dx_ * cfl_;
+
+        dt_ /= pow(2.0, nLevelRefinement_);
+        tot_steps_ *= pow(2, nLevelRefinement_);
+
+        pcout << "\n Setup:  Test - Simple IC \n" << std::endl;
+        pcout << "Number of refinement levels: " << nLevelRefinement_ << std::endl;
+
+        nIB_add_level_ = _d->get_dictionary("simulation_parameters")->template get_or<int>("nIB_add_level", 0);
+
+        domain_->ib().init(_d->get_dictionary("simulation_parameters"), domain_->dx_base(),
+            nLevelRefinement_ + nIB_add_level_, Re_);
+
+        // if (!use_restart()) { domain_->init_refine(nLevelRefinement_, global_refinement_, nIB_add_level_); }
+        // else { domain_->restart_list_construct(); }
         domain_->restart_list_construct();
-        if(world.rank() == 0)
-        {
-            std::cout<<"Restarting list constructed."<<std::endl;
-        }
         domain_->distribute<fmm_mask_builder_t, fmm_mask_builder_t>();
-        if(world.rank() == 0)
-        {
-            std::cout<<"Domain distributed."<<std::endl;
-        }
-        simulation_.template read_h5<u_type>(restart_field_dir,"u");
-        output_suffix_=simulation_.dictionary()->template get_or<std::string>("output_suffix","x");
-        // simulation_.read(restart_tree_dir,"tree");
-        // simulation_.read(restart_field_dir,"fields");
-        
+        // if (!use_restart()) { this->initialize(); }
+        // else { simulation_.template read_h5<u_type>(simulation_.restart_field_dir(), "u"); }
+        simulation_.template read_h5<u_type>(simulation_.restart_field_dir(), "u");
 
+        boost::mpi::communicator world;
         if (world.rank() == 0) std::cout << "on Simulation: \n" << simulation_ << std::endl;
-        
     }
+
     void run()
     {
-        std::string output_name="postProc_"+output_suffix_;
-        boost::mpi::communicator world;
-        computeVGT();
-        decompVGT();
-        simulation_.write(output_name);
-        return;
-
-    }
-    void run_batch(int idx_cur)
-    {
-        std::string output_name="postProc_"+std::to_string(idx_cur);
+        std::string output_name="postProc_"+std::to_string(1);
         boost::mpi::communicator world;
         computeVGT();
         decompVGT();
@@ -192,8 +137,6 @@ struct VGT_PostProcess : public SetupBase<VGT_PostProcess, parameters>
             ifherk.pad_access<u_type, u_type>(true);
             ifherk.template up_and_down<u_type>();
             const float_type dx_base = domain_->dx_base();
-            ifherk.curl<u_type>();
-            
             for (int l= domain_->tree()->base_level();
                  l < domain_->tree()->depth(); ++l)
             {
@@ -236,7 +179,7 @@ struct VGT_PostProcess : public SetupBase<VGT_PostProcess, parameters>
 
 
                 }
-                client->template buffer_exchange<grad_type>(l);
+                // client->template buffer_exchange<grad_type>(l);
 
                 // ifherk.clean_leaf_correction_boundary<grad_type>(l, false, 2);
             }
@@ -260,17 +203,17 @@ struct VGT_PostProcess : public SetupBase<VGT_PostProcess, parameters>
                 for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
                 {
                     if (!it->locally_owned() || !it->has_data()) continue;
-                    // if (!it->is_leaf()||it->is_correction()) continue;
+                    if (!it->is_leaf()||it->is_correction()) continue;
                     for (auto& n : it->data())
                     {
                         float_type             orRR = 0.0;
                         xt::xarray<float_type> A = {{n(grad, 0), n(grad, 1), n(grad, 2)},
                             {n(grad, 3), n(grad, 4), n(grad, 5)}, {n(grad, 6), n(grad, 7), n(grad, 8)}};
 
-                        // float_type trA = A(0, 0) + A(1, 1) + A(2, 2);
-                        // A(0, 0) -= trA / 3.0;
-                        // A(1, 1) -= trA / 3.0;
-                        // A(2, 2) -= trA / 3.0;
+                        float_type trA = A(0, 0) + A(1, 1) + A(2, 2);
+                        A(0, 0) -= trA / 3.0;
+                        A(1, 1) -= trA / 3.0;
+                        A(2, 2) -= trA / 3.0;
                         // std::cout<<n(grad,1)<<std::endl;
                         // std::cout<<A<<std::endl;
                         
@@ -279,9 +222,8 @@ struct VGT_PostProcess : public SetupBase<VGT_PostProcess, parameters>
                         auto norm_W2 = xt::linalg::norm(W);
                         auto norm_S2 = xt::linalg::norm(S);
                         auto Qcrit = 0.5 * (norm_W2 * norm_W2 - norm_S2 * norm_S2);
-                        auto norm_A= xt::linalg::norm(A)+1e-8;
+                        auto norm_A= xt::linalg::norm(A);
                         // auto Qcrit=1/2.0*(xt::linalg::norm(W)-xt::linalg::norm(S));
-                        A/=norm_A;
                         auto d = xt::linalg::eig(A);
                         // check if any eigenvalues are real
                         auto evals = std::get<0>(d);
@@ -291,7 +233,7 @@ struct VGT_PostProcess : public SetupBase<VGT_PostProcess, parameters>
                         int idx_real{0};
                         for (int i = 0; i < 3; ++i)
                         {
-                            if (std::abs(std::imag(evals(i))) < 1e-3)
+                            if (std::abs(std::imag(evals(i))) < 1e-5)
                             {
                                 nReal++;
                                 idx_real = i;
@@ -299,7 +241,7 @@ struct VGT_PostProcess : public SetupBase<VGT_PostProcess, parameters>
                         }
                         if (nReal == 1)
                         {
-                            xt::xarray<float_type> vort = {A(2, 1) - A(1, 2), A(0, 2) - A(2, 0), A(1, 0) - A(0, 1)};
+                            xt::xarray<float_type> vort = {A(1, 2) - A(2, 1), A(2, 0) - A(0, 2), A(0, 1) - A(1, 0)};
                             auto                   rot_axis = xt::real(xt::view(evecs, xt::all(), idx_real));
 
                             auto beta = xt::real(xt::linalg::dot(rot_axis,
@@ -310,9 +252,9 @@ struct VGT_PostProcess : public SetupBase<VGT_PostProcess, parameters>
                                 rot_axis = -rot_axis;
                             }
                             auto Lci = xt::amax(xt::abs(xt::imag(evals)))();
-                            // if (Lci > 0.5 * beta) beta = 2 * Lci;
+                            if (Lci > 0.5 * beta) beta = 2 * Lci;
                             orRR = std::pow(beta, 2) / (2 * std::pow(beta, 2) - 4 * std::pow(Lci, 2) +
-                                                           2 * 1e-5); // Calculate the rotation rate
+                                                           2 * 1e-8); // Calculate the rotation rate
                         }
                         // if (nReal>1){std::cout << "No complex eigenvalues" << std::endl;}
 
@@ -351,9 +293,6 @@ struct VGT_PostProcess : public SetupBase<VGT_PostProcess, parameters>
     int hard_max_level_;
     int global_refinement_=0;
     int nIB_add_level_=0;
-    std::string restart_tree_dir_;
-    std::string restart_field_dir_;
-    std::string output_suffix_;
 };
 
 } // namespace iblgf

@@ -19,6 +19,7 @@
 #include "../../setups/setup_base.hpp"
 #include <iblgf/operators/operators.hpp>
 #include <iblgf/solver/time_integration/ifherk.hpp>
+#include <iblgf/solver/modal_analysis/reflect_field.hpp>
 namespace iblgf
 {
 using namespace domain;
@@ -38,6 +39,11 @@ struct parameters
             //name, type, nFields, l/h-buf,mesh_obj, output(optional)
             (tlevel,        float_type, 1, 1, 1, cell, true),
             (u,             float_type, Dim, 1, 1, face, true),
+            (u_s,             float_type, Dim, 1, 1, face, true),
+            (u_a,             float_type, Dim, 1, 1, face, true),
+            (u_sym,             float_type, Dim, 1, 1, face, true),
+            (rf_s,             float_type, Dim, 1, 1, face, true),
+            (rf_t,             float_type, Dim, 1, 1, face, true),
             (p,             float_type, 1, 1, 1, cell, true),
             (test,          float_type, 1,    1,       1,     cell,true )
         )
@@ -150,15 +156,25 @@ struct CommonTree : public SetupBase<CommonTree, parameters>
                        domain_->bounding_box().min()+1) / 2.0 +
                        domain_->bounding_box().min();
         
+        const float_type dx_base = domain_->dx_base();
         for(auto it=domain_->begin(); it!=domain_->end(); ++it)
         {
             if(!it->locally_owned()) continue;
+            auto dx_level =  dx_base/std::pow(2,it->refinement_level());
+            auto scaling =  std::pow(2,it->refinement_level());
             int ref_level_=it->refinement_level();
+            // auto coord = it->tree_coordinate();
             for(auto& n: it->data())
             {
+                const auto& coord = n.level_coordinate();
+
+                float_type x = static_cast<float_type>
+                (coord[0]-center[0]*scaling)*dx_level; //bottom left corner of cell
+                float_type y = static_cast<float_type>
+                (coord[1]-center[1]*scaling)*dx_level;
                 n(tlevel)=ref_level_+0.5;
-                n(u,0)=ref_level_+0.5;
-                n(u,1)=ref_level_+0.5;
+                n(u,0)=x;
+                n(u,1)=y;
             }
         }
 
@@ -266,6 +282,39 @@ struct CommonTree : public SetupBase<CommonTree, parameters>
         if(timeIdx>0) simulation_.write("adapted_to_ref_"+std::to_string(timeIdx));
         // interpolate
     }
+    template<class Field, class Target>
+    void symfield(int timeIdx=-1)
+    {
+        //loop through all blocks
+        //get ranks of left and right block
+        boost::mpi::communicator world;
+        // this->initialize();
+        clean<u_sym_type>();
+        // up_and_down<u_type>();   
+        solver::ReflectField<SetupBase> rf(&this->simulation_); //u has field, u_sym has reflected field 
+        // make u_s and u_a fields
+        rf.combine_reflection<u_type,u_sym_type,u_s_type,u_a_type>();
+
+        // simulation_.write("symfield"); 
+        if(timeIdx>0) simulation_.write("adapted_to_ref_"+std::to_string(timeIdx));
+
+    }
+    float_type read_write_test()
+    {
+        boost::mpi::communicator world;
+        pcout_c<<"Testing read and write functionality"<<std::endl;
+        std::string f_suffix=simulation_.dictionary()->template get<std::string>("read_write_filename");
+        std::string filename = "./flowTime_" + f_suffix + ".hdf5";
+        std::string filename2="flowTime_rw_" + f_suffix + ".hdf5";
+        simulation_.template  read_h5<u_type>(filename,"u");
+        simulation_.template read_h5<edge_aux_type>(filename,"edge_aux");
+        world.barrier();
+        // std::string filename2="restart_"+filename;
+        simulation_.write(filename2);
+        return 0.0;
+
+    }
+
     template <typename F>
     void clean(bool non_leaf_only=false, int clean_width=1) noexcept
     {

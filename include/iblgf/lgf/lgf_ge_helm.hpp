@@ -40,7 +40,11 @@ class LGF_GE_HELM : public LGF_Base<Dim, LGF_GE<Dim>>
     using complex_vector_t = typename super_type::complex_vector_t;
 
     using key_3D = std::tuple<float_type, int, int, int>;
-    using level_map_3D_t = std::map<key_3D, std::unique_ptr<complex_vector_t>>;
+#ifdef IBLGF_COMPILE_CUDA
+    using level_map_3D_t = std::map<key_3D, std::unique_ptr<typename super_type::gpu_spectrum_entry>>;
+#else
+    using level_map_3D_t = std::map<key_3D, std::unique_ptr<typename super_type::complex_vector_t>>;
+#endif
 
     using key_2D = std::tuple<float_type, int, int>;
     using level_map_2D_t = std::map<key_2D, std::unique_ptr<complex_vector_t>>;

@@ -266,7 +266,7 @@ class MergeTrees
             // opposite_coord[0] = coord[0];
             // opposite_coord[1] = std::pow2(level)-coord[1];
             // 128 = 1792/14 =extent on baselevel
-            opposite_coord[1] = 128*(1<<ref_level)- (coord[1]+1);
+            opposite_coord[1] = 32*(1<<ref_level)- (coord[1]+1);
 
             //   std::cout << "Checking symmetry for block: " << key << std::endl;
             //     std::cout << "Coordinate: " << coord << std::endl;

@@ -105,7 +105,7 @@ class Server : public ServerBase<ServerClientTraits<Domain>>
     };
 
   public: //Ctors
-    using typename super_type::ServerBase;
+    using super_type::ServerBase;
 
     Server(const Server& other) = default;
     Server(Server&& other) = default;

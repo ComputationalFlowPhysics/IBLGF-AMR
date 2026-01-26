@@ -121,17 +121,17 @@ independently.
 
 Build parallelism (compilation)
 
-    $ ./iblgf.sh build -j 8
+    $ ./iblgf.sh build -j N
 
-Build using 8 parallel compilation jobs.
+Build using N parallel compilation jobs.
 If -j is not specified, the script automatically uses the number of cores
 available on the machine.
 
 Test parallelism (ctest)
 
-    $ ./iblgf.sh test -j 2
+    $ ./iblgf.sh test -j N
 
-Run up to 2 tests concurrently.
+Run up to N tests concurrently.
 
 If -j is not specified, tests are run sequentially (safe default).
 
@@ -147,7 +147,7 @@ Example:
 By default, the test is run with a small number of MPI ranks.
 This can be overridden explicitly:
 
-./iblgf.sh run-test ns_amr_lgf configFile_0 -n 4
+    $./iblgf.sh run-test ns_amr_lgf configFile_0 -n N
 
 Each run is executed in a timestamped directory under runs/, and
 standard output, error logs, and metadata are recorded for reproducibility.

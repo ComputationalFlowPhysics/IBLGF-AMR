@@ -78,8 +78,6 @@ USER 1000:1000
 
 WORKDIR /workspace2
 EOF
-else
-  echo "==> Python-enabled image already exists"
 fi
 
 DOCKER_ARGS=(

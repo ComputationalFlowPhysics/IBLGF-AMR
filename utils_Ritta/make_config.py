@@ -15,6 +15,10 @@ Supports:
 No external dependencies.
 """
 
+# ----------------------------
+# Parameter Descriptions
+# ----------------------------
+
 from __future__ import annotations
 
 import os
@@ -22,9 +26,129 @@ import re
 import sys
 from dataclasses import dataclass
 from collections import OrderedDict
-from typing import Any, List, Tuple, Union, Optional
+from typing import Any, List, Tuple, Union, Optional, Callable, Optional, Sequence
 import readline
 import glob
+
+GEOMETRY_CHOICES = [
+    "plate",
+    "sphere",
+    "circle",
+    "2circles",
+    "3circles",
+    "NACA0009",
+    "ForTim15000",
+    "custom",
+]
+
+@dataclass(frozen=True)
+class ParamMeta:
+    desc: str
+    # Optional niceties:
+    type_hint: str = ""
+    choices: Optional[Sequence[str]] = None
+    unit: str = ""
+    # validator returns (ok, message). If ok=False, message explains why.
+    validator: Optional[Callable[[Any], tuple[bool, str]]] = None
+
+PARAMS: dict[str, ParamMeta] = {
+    "nLevels": ParamMeta(
+        desc="Number of refinement levels above the base grid.",
+        type_hint="int",
+        validator=lambda v: (isinstance(v, int) and v >= 0, "must be a non-negative integer"),
+    ),
+    "cfl": ParamMeta(
+        desc="CFL number controlling the time step size. (Δt = Δx_fin * cfl)",
+        type_hint="float",
+        validator=lambda v: (isinstance(v, (int, float)) and float(v) > 0, "must be > 0"),
+    ),
+    "cfl_max": ParamMeta(
+        desc="Upper bound on CFL.",
+        type_hint="float",
+        validator=lambda v: (isinstance(v, (int, float)) and float(v) > 0, "must be > 0"),
+    ),
+    "Re": ParamMeta(
+        desc="Reynolds number controlling viscous strength",
+        type_hint="float",
+        validator=lambda v: (isinstance(v, (int, float)) and float(v) > 0, "must be > 0"),
+    ),
+    "refinement_factor": ParamMeta(
+        desc="Threshold controlling refinement decisions.",
+        type_hint="float",
+        validator=lambda v: (isinstance(v, (int, float)) and float(v) > 0, "must be > 0"),
+    ),
+    "adapt_frequency": ParamMeta(
+        desc="How often the code checks whether to refine/coarsen the mesh.",
+        type_hint="int",
+        validator=lambda v: (isinstance(v, (int, float)) and float(v) > 0, "must be > 0"),
+    ),
+    "base_level_threshold": ParamMeta(
+        desc="Minimum fraction of source_max that the field magnitude must exceed for base-level (level 0) blocks to be retained during adaptivity.",
+        type_hint="float",
+        validator=lambda v: (isinstance(v, (int, float)) and float(v) > 0, "must be > 0"),
+    ),
+    "domain.block_extent": ParamMeta(
+        desc="Block side length (in grid cells) used for domain decomposition.",
+        type_hint="int",
+        validator=lambda v: (isinstance(v, int) and v > 0, "must be a positive integer"),
+    ),
+    "domain.bd_extent": ParamMeta(
+        desc="Full domain extent (in grid cells). Must be block_extent × (power-of-two) per dimension.",
+        type_hint="(int,int,int)",
+    ),
+    "domain.bd_base": ParamMeta(
+        desc="Domain base (origin offset) in grid cells. Snapped to block_extent × (power-of-two or zero).",
+        type_hint="(int,int,int)",
+    ),
+    "output.directory": ParamMeta(
+        desc="Directory where outputs (e.g., checkpoints, fields) are written.",
+        type_hint="string",
+    ),
+    "geometry": ParamMeta(
+        desc="Geometry preset used by the solver.",
+        type_hint="string",
+        choices=GEOMETRY_CHOICES,
+    ),
+    "restart_write_frequency": ParamMeta(
+        desc="Number of base-level time steps between writing checkpoint (restart) files",
+        type_hint="int",
+        choices=GEOMETRY_CHOICES,
+    ),
+    "write_restart": ParamMeta(
+        desc="Whether to write checkpoint (restart) files.",
+        type_hint="bool",
+        choices=GEOMETRY_CHOICES,
+    ),
+    "write_restart": ParamMeta(
+        desc="Whether to use checkpoint (restart) files.",
+        type_hint="bool",
+        choices=GEOMETRY_CHOICES,
+    ),
+}
+
+# ----------------------------
+# Parameter Descriptions helpers
+# ----------------------------
+
+def describe_param(path: str) -> str:
+    meta = PARAMS.get(path)
+    if not meta:
+        return "No description available for this parameter."
+    bits = [meta.desc]
+    if meta.type_hint:
+        bits.append(f"Type: {meta.type_hint}")
+    if meta.unit:
+        bits.append(f"Units: {meta.unit}")
+    if meta.choices:
+        bits.append("Choices: " + ", ".join(str(c) for c in meta.choices))
+    return " | ".join(bits)
+
+def validate_param(path: str, value: Any) -> Optional[str]:
+    meta = PARAMS.get(path)
+    if not meta or not meta.validator:
+        return None
+    ok, msg = meta.validator(value)
+    return None if ok else msg
 
 # ----------------------------
 # Parsing / Formatting helpers
@@ -360,9 +484,6 @@ def enforce_domain_block_constraint(sim: Block) -> list[str]:
     def is_pow2(n: int) -> bool:
         return n > 0 and (n & (n - 1)) == 0
 
-    def is_pow2_or_zero(n: int) -> bool:
-        return n == 0 or is_pow2(n)
-
     def floor_pow2(n: int) -> int:
         """largest power of two <= n, for n>=1"""
         p = 1
@@ -642,30 +763,30 @@ def prompt_string(msg: str, default: Optional[str] = None) -> str:
     return ans if ans else default
 
 
-def prompt_value(msg: str, default: Value) -> Value:
-    """
-    Prompts for a value; user can enter:
-      - numbers (int/float/sci)
-      - true/false
-      - tuples like (1,2,3)
-      - bare string
-    """
-    d = format_value(default)
-    ans = input(f"{msg} [default: {d}]: ").strip()
-    if not ans:
-        return default
-    return parse_scalar(ans)
+def prompt_value(path: str, msg: str, default: Value) -> Value:
+    meta_line = describe_param(path) if path else ""
+    desc_exists = meta_line and meta_line != "No description available for this parameter."
+    if not desc_exists:
+        meta_line = ""
 
-GEOMETRY_CHOICES = [
-    "plate",
-    "sphere",
-    "circle",
-    "2circles",
-    "3circles",
-    "NACA0009",
-    "ForTim15000",
-    "custom",
-]
+    d = format_value(default)
+
+    while True:
+        if desc_exists:
+            ans = input(f"{msg} ({meta_line}) [default: {d}]: ").strip()
+        else:
+            ans = input(f"{msg} [default: {d}]: ").strip()
+        if not ans:
+            return default
+
+        v = parse_scalar(ans)
+
+        err = validate_param(path, v)
+        if err is not None:
+            print(f"  Invalid value: {err}")
+            continue
+
+        return v
 
 def prompt_geometry(default: str) -> str:
     """
@@ -706,6 +827,9 @@ def build_from_scratch() -> Block:
     for path in sim.list_paths():
         if path == "R":
             continue  # R is fixed to 0.5, never prompt
+        if path == "restart.load_directory" or path == "restart.save_directory":
+            continue  
+        # QUESTION: Skip vortex related parameters if not vortex?
         if path == "geometry":
             cur = sim.get_path(path)
             if not isinstance(cur, str):
@@ -716,7 +840,7 @@ def build_from_scratch() -> Block:
 
         cur = sim.get_path(path)
         # skip block "domain.block.extent/base"? No, include them (but they'll get synced)
-        new_val = prompt_value(f"Set {path}", cur)
+        new_val = prompt_value(path, f"Set {path}", cur)
         sim.set_path(path, new_val)
 
         # If user sets domain.block.extent/base directly, we don't enforce anything yet.
@@ -770,9 +894,20 @@ def edit_loop(root: Block) -> None:
         key = input("Parameter to change (or 'list'): ").strip()
         if not key:
             continue
-        if key.lower() == "list":
+        if key.lower() in ("list", "ls"):
             for p in sim.list_paths():
-                print(" ", p)
+                short = PARAMS.get(p).desc if p in PARAMS else ""
+                if short:
+                    print(f"  {p} - {short}")
+                else:
+                    print(f"  {p}")
+            continue
+        if key.lower().startswith("help"):
+            parts = key.split(maxsplit=1)
+            if len(parts) == 1:
+                print("Usage: help <parameter_path>")
+            else:
+                print(describe_param(parts[1].strip()))
             continue
 
         # Accept bare keys at top-level (like "cfl") and also nested keys.
@@ -782,7 +917,7 @@ def edit_loop(root: Block) -> None:
             print(f"Not found: {e}")
             continue
 
-        new_val = prompt_value(f"New value for {key}", cur)
+        new_val = prompt_value(key, f"New value for {key}", cur)
         sim.set_path(key, new_val)
 
         # If domain/block_extent changed OR bd_extent changed, enforce constraint
@@ -848,7 +983,7 @@ def write_output(root: Block) -> None:
 
 
 def main() -> int:
-    print("=== Config Builder (enforces: bd_extent/block_extent is power-of-2) ===\n")
+    print("=== Config Builder ===\n")
 
     from_scratch = prompt_yes_no("Create a new config FROM SCRATCH?", default=False)
 

@@ -45,7 +45,7 @@ TEST(Poisson3DAnalyticTest, ConfigsInCurrentDir)
     {
         auto s = entry.path();
 
-        // Only process files named config*
+        // Only process files named config
         if (s.filename().string().rfind("config", 0) == 0)
         {
             if (world.rank() == 0)
@@ -63,7 +63,7 @@ TEST(Poisson3DAnalyticTest, ConfigsInCurrentDir)
     }
 }
 
-} // namespace iblgf
+} 
 
 int main(int argc, char** argv)
 {

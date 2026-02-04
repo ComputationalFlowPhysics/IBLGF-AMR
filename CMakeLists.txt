@@ -15,7 +15,7 @@ if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/CMakeLists.txt.user")
     include(${CMAKE_CURRENT_LIST_DIR}/CMakeLists.txt.user)
 else()
 endif()
-project(IBLGF VERSION 0.0.0)
+project(iblgf_amr VERSION 0.0.0)
 
 cmake_policy(SET CMP0048 NEW)
 
@@ -50,6 +50,9 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 set(IBLGF_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake")
 list(APPEND CMAKE_MODULE_PATH "${IBLGF_MODULE_PATH}")
 
+##DOXYGEN 
+add_subdirectory(docs)
+
 find_package(MPI REQUIRED)
 find_package(Boost COMPONENTS system filesystem serialization mpi REQUIRED )
 find_package(xsimd REQUIRED)
@@ -61,9 +64,13 @@ find_package(BLAS REQUIRED)
 
 #################################################################################################
 #FIXME:
-if(NOT DEFINED HDF5_INCLUDE_DIRS)
+set(HDF5_ROOT "/usr/local/HDF_Group/HDF5/1.12.0/")
+set(HDF5_INCLUDE_DIRS "/usr/local/HDF_Group/HDF5/1.12.0/include/")
+set(HDF5_LIBRARY_DIRS "/usr/local/HDF_Group/HDF5/1.12.0/lib/")
+
+# if(NOT DEFINED HDF5_INCLUDE_DIRS)
 find_package(HDF5)
-endif(NOT DEFINED HDF5_INCLUDE_DIRS)
+# endif(NOT DEFINED HDF5_INCLUDE_DIRS)
 include_directories(${HDF5_INCLUDE_DIRS})
 include_directories(${Boost_INCLUDE_DIRS})
 include_directories(${xtensor_blas_INCLUDE_DIRS})

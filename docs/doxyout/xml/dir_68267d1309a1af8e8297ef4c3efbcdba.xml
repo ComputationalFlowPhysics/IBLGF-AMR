@@ -1,0 +1,13 @@
+<?xml version='1.0' encoding='UTF-8' standalone='no'?>
+<doxygen xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="compound.xsd" version="1.8.13">
+  <compounddef id="dir_68267d1309a1af8e8297ef4c3efbcdba" kind="dir">
+    <compoundname>/home/qwang3/Desktop/work2/IBLGF-AMR/src</compoundname>
+    <innerfile refid="gtest__main__test_8cpp">gtest_main_test.cpp</innerfile>
+    <innerfile refid="test__doc_8hpp">test_doc.hpp</innerfile>
+    <briefdescription>
+    </briefdescription>
+    <detaileddescription>
+    </detaileddescription>
+    <location file="/home/qwang3/Desktop/work2/IBLGF-AMR/src/"/>
+  </compounddef>
+</doxygen>

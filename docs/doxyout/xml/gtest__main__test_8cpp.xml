@@ -1,0 +1,126 @@
+<?xml version='1.0' encoding='UTF-8' standalone='no'?>
+<doxygen xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="compound.xsd" version="1.8.13">
+  <compounddef id="gtest__main__test_8cpp" kind="file" language="C++">
+    <compoundname>gtest_main_test.cpp</compoundname>
+    <includes local="no">mpi.h</includes>
+    <includes local="no">gtest/gtest.h</includes>
+    <includes local="no">boost/mpi.hpp</includes>
+    <includes local="no">boost/mpi/environment.hpp</includes>
+    <includes local="no">boost/mpi/communicator.hpp</includes>
+    <includes local="no">iblgf/googletest/gtest-mpi-listener.hpp</includes>
+    <incdepgraph>
+      <node id="0">
+        <label>/home/qwang3/Desktop/work2/IBLGF-AMR/src/gtest_main_test.cpp</label>
+        <link refid="gtest__main__test_8cpp"/>
+        <childnode refid="1" relation="include">
+        </childnode>
+        <childnode refid="2" relation="include">
+        </childnode>
+        <childnode refid="3" relation="include">
+        </childnode>
+        <childnode refid="4" relation="include">
+        </childnode>
+        <childnode refid="5" relation="include">
+        </childnode>
+        <childnode refid="6" relation="include">
+        </childnode>
+      </node>
+      <node id="6">
+        <label>iblgf/googletest/gtest-mpi-listener.hpp</label>
+      </node>
+      <node id="3">
+        <label>boost/mpi.hpp</label>
+      </node>
+      <node id="2">
+        <label>gtest/gtest.h</label>
+      </node>
+      <node id="1">
+        <label>mpi.h</label>
+      </node>
+      <node id="4">
+        <label>boost/mpi/environment.hpp</label>
+      </node>
+      <node id="5">
+        <label>boost/mpi/communicator.hpp</label>
+      </node>
+    </incdepgraph>
+      <sectiondef kind="func">
+      <memberdef kind="function" id="gtest__main__test_8cpp_1a3c04138a5bfe5d72780bb7e82a18e627" prot="public" static="no" const="no" explicit="no" inline="no" virt="non-virtual">
+        <type>int</type>
+        <definition>int main</definition>
+        <argsstring>(int argc, char **argv)</argsstring>
+        <name>main</name>
+        <param>
+          <type>int</type>
+          <declname>argc</declname>
+        </param>
+        <param>
+          <type>char **</type>
+          <declname>argv</declname>
+        </param>
+        <briefdescription>
+        </briefdescription>
+        <detaileddescription>
+        </detaileddescription>
+        <inbodydescription>
+        </inbodydescription>
+        <location file="/home/qwang3/Desktop/work2/IBLGF-AMR/src/gtest_main_test.cpp" line="21" column="1" bodyfile="/home/qwang3/Desktop/work2/IBLGF-AMR/src/gtest_main_test.cpp" bodystart="21" bodyend="48"/>
+      </memberdef>
+      </sectiondef>
+    <briefdescription>
+    </briefdescription>
+    <detaileddescription>
+    </detaileddescription>
+    <programlisting>
+<codeline lineno="1"><highlight class="comment">//<sp/><sp/><sp/><sp/><sp/><sp/>▄▄▄▄▄▄▄▄▄▄▄<sp/><sp/>▄▄▄▄▄▄▄▄▄▄<sp/><sp/><sp/>▄<sp/><sp/><sp/><sp/><sp/><sp/><sp/><sp/><sp/><sp/><sp/><sp/>▄▄▄▄▄▄▄▄▄▄▄<sp/><sp/>▄▄▄▄▄▄▄▄▄▄▄</highlight><highlight class="normal"></highlight></codeline>
+<codeline lineno="2"><highlight class="normal"></highlight><highlight class="comment">//<sp/><sp/><sp/><sp/><sp/>▐░░░░░░░░░░░▌▐░░░░░░░░░░▌<sp/>▐░▌<sp/><sp/><sp/><sp/><sp/><sp/><sp/><sp/><sp/><sp/>▐░░░░░░░░░░░▌▐░░░░░░░░░░░▌</highlight><highlight class="normal"></highlight></codeline>
+<codeline lineno="3"><highlight class="normal"></highlight><highlight class="comment">//<sp/><sp/><sp/><sp/><sp/><sp/>▀▀▀▀█░█▀▀▀▀<sp/>▐░█▀▀▀▀▀▀▀█░▌▐░▌<sp/><sp/><sp/><sp/><sp/><sp/><sp/><sp/><sp/><sp/>▐░█▀▀▀▀▀▀▀▀▀<sp/>▐░█▀▀▀▀▀▀▀▀▀</highlight><highlight class="normal"></highlight></codeline>
+<codeline lineno="4"><highlight class="normal"></highlight><highlight class="comment">//<sp/><sp/><sp/><sp/><sp/><sp/><sp/><sp/><sp/><sp/>▐░▌<sp/><sp/><sp/><sp/><sp/>▐░▌<sp/><sp/><sp/><sp/><sp/><sp/><sp/>▐░▌▐░▌<sp/><sp/><sp/><sp/><sp/><sp/><sp/><sp/><sp/><sp/>▐░▌<sp/><sp/><sp/><sp/><sp/><sp/><sp/><sp/><sp/><sp/>▐░▌</highlight><highlight class="normal"></highlight></codeline>
+<codeline lineno="5"><highlight class="normal"></highlight><highlight class="comment">//<sp/><sp/><sp/><sp/><sp/><sp/><sp/><sp/><sp/><sp/>▐░▌<sp/><sp/><sp/><sp/><sp/>▐░█▄▄▄▄▄▄▄█░▌▐░▌<sp/><sp/><sp/><sp/><sp/><sp/><sp/><sp/><sp/><sp/>▐░▌<sp/>▄▄▄▄▄▄▄▄<sp/>▐░█▄▄▄▄▄▄▄▄▄</highlight><highlight class="normal"></highlight></codeline>
+<codeline lineno="6"><highlight class="normal"></highlight><highlight class="comment">//<sp/><sp/><sp/><sp/><sp/><sp/><sp/><sp/><sp/><sp/>▐░▌<sp/><sp/><sp/><sp/><sp/>▐░░░░░░░░░░▌<sp/>▐░▌<sp/><sp/><sp/><sp/><sp/><sp/><sp/><sp/><sp/><sp/>▐░▌▐░░░░░░░░▌▐░░░░░░░░░░░▌</highlight><highlight class="normal"></highlight></codeline>
+<codeline lineno="7"><highlight class="normal"></highlight><highlight class="comment">//<sp/><sp/><sp/><sp/><sp/><sp/><sp/><sp/><sp/><sp/>▐░▌<sp/><sp/><sp/><sp/><sp/>▐░█▀▀▀▀▀▀▀█░▌▐░▌<sp/><sp/><sp/><sp/><sp/><sp/><sp/><sp/><sp/><sp/>▐░▌<sp/>▀▀▀▀▀▀█░▌▐░█▀▀▀▀▀▀▀▀▀</highlight><highlight class="normal"></highlight></codeline>
+<codeline lineno="8"><highlight class="normal"></highlight><highlight class="comment">//<sp/><sp/><sp/><sp/><sp/><sp/><sp/><sp/><sp/><sp/>▐░▌<sp/><sp/><sp/><sp/><sp/>▐░▌<sp/><sp/><sp/><sp/><sp/><sp/><sp/>▐░▌▐░▌<sp/><sp/><sp/><sp/><sp/><sp/><sp/><sp/><sp/><sp/>▐░▌<sp/><sp/><sp/><sp/><sp/><sp/><sp/>▐░▌▐░▌</highlight><highlight class="normal"></highlight></codeline>
+<codeline lineno="9"><highlight class="normal"></highlight><highlight class="comment">//<sp/><sp/><sp/><sp/><sp/><sp/>▄▄▄▄█░█▄▄▄▄<sp/>▐░█▄▄▄▄▄▄▄█░▌▐░█▄▄▄▄▄▄▄▄▄<sp/>▐░█▄▄▄▄▄▄▄█░▌▐░▌</highlight><highlight class="normal"></highlight></codeline>
+<codeline lineno="10"><highlight class="normal"></highlight><highlight class="comment">//<sp/><sp/><sp/><sp/><sp/>▐░░░░░░░░░░░▌▐░░░░░░░░░░▌<sp/>▐░░░░░░░░░░░▌▐░░░░░░░░░░░▌▐░▌</highlight><highlight class="normal"></highlight></codeline>
+<codeline lineno="11"><highlight class="normal"></highlight><highlight class="comment">//<sp/><sp/><sp/><sp/><sp/><sp/>▀▀▀▀▀▀▀▀▀▀▀<sp/><sp/>▀▀▀▀▀▀▀▀▀▀<sp/><sp/><sp/>▀▀▀▀▀▀▀▀▀▀▀<sp/><sp/>▀▀▀▀▀▀▀▀▀▀▀<sp/><sp/>▀</highlight><highlight class="normal"></highlight></codeline>
+<codeline lineno="12"><highlight class="normal"></highlight></codeline>
+<codeline lineno="13"><highlight class="normal"></highlight><highlight class="preprocessor">#include<sp/>&lt;mpi.h&gt;</highlight><highlight class="normal"></highlight></codeline>
+<codeline lineno="14"><highlight class="normal"></highlight><highlight class="preprocessor">#include<sp/>&lt;gtest/gtest.h&gt;</highlight><highlight class="normal"></highlight></codeline>
+<codeline lineno="15"><highlight class="normal"></highlight><highlight class="preprocessor">#include<sp/>&lt;boost/mpi.hpp&gt;</highlight><highlight class="normal"></highlight></codeline>
+<codeline lineno="16"><highlight class="normal"></highlight><highlight class="preprocessor">#include<sp/>&lt;boost/mpi/environment.hpp&gt;</highlight><highlight class="normal"></highlight></codeline>
+<codeline lineno="17"><highlight class="normal"></highlight><highlight class="preprocessor">#include<sp/>&lt;boost/mpi/communicator.hpp&gt;</highlight><highlight class="normal"></highlight></codeline>
+<codeline lineno="18"><highlight class="normal"></highlight><highlight class="preprocessor">#include<sp/>&lt;iblgf/googletest/gtest-mpi-listener.hpp&gt;</highlight><highlight class="normal"></highlight></codeline>
+<codeline lineno="19"><highlight class="normal"></highlight></codeline>
+<codeline lineno="20"><highlight class="normal"></highlight><highlight class="keywordtype">int</highlight><highlight class="normal"></highlight></codeline>
+<codeline lineno="21"><highlight class="normal"><ref refid="gtest__main__test_8cpp_1a3c04138a5bfe5d72780bb7e82a18e627" kindref="member">main</ref>(</highlight><highlight class="keywordtype">int</highlight><highlight class="normal"><sp/>argc,<sp/></highlight><highlight class="keywordtype">char</highlight><highlight class="normal">**<sp/>argv)</highlight></codeline>
+<codeline lineno="22"><highlight class="normal">{</highlight></codeline>
+<codeline lineno="23"><highlight class="normal"><sp/><sp/><sp/><sp/></highlight><highlight class="comment">//<sp/>Filter<sp/>out<sp/>Google<sp/>Test<sp/>arguments</highlight><highlight class="normal"></highlight></codeline>
+<codeline lineno="24"><highlight class="normal"><sp/><sp/><sp/><sp/>::testing::InitGoogleTest(&amp;argc,<sp/>argv);</highlight></codeline>
+<codeline lineno="25"><highlight class="normal"></highlight></codeline>
+<codeline lineno="26"><highlight class="normal"><sp/><sp/><sp/><sp/></highlight><highlight class="comment">//<sp/>Initialize<sp/>MPI</highlight><highlight class="normal"></highlight></codeline>
+<codeline lineno="27"><highlight class="normal"><sp/><sp/><sp/><sp/></highlight><highlight class="comment">//MPI_Init(&amp;argc,<sp/>&amp;argv);</highlight><highlight class="normal"></highlight></codeline>
+<codeline lineno="28"><highlight class="normal"></highlight></codeline>
+<codeline lineno="29"><highlight class="normal"><sp/><sp/><sp/><sp/>boost::mpi::environment<sp/><sp/>env(argc,<sp/>argv);</highlight></codeline>
+<codeline lineno="30"><highlight class="normal"><sp/><sp/><sp/><sp/>boost::mpi::communicator<sp/>world;</highlight></codeline>
+<codeline lineno="31"><highlight class="normal"></highlight></codeline>
+<codeline lineno="32"><highlight class="normal"><sp/><sp/><sp/><sp/></highlight><highlight class="comment">//<sp/>Add<sp/>object<sp/>that<sp/>will<sp/>finalize<sp/>MPI<sp/>on<sp/>exit;<sp/>Google<sp/>Test<sp/>owns<sp/>this<sp/>pointer</highlight><highlight class="normal"></highlight></codeline>
+<codeline lineno="33"><highlight class="normal"><sp/><sp/><sp/><sp/>::testing::AddGlobalTestEnvironment(</highlight><highlight class="keyword">new</highlight><highlight class="normal"><sp/>GTestMPIListener::MPIEnvironment);</highlight></codeline>
+<codeline lineno="34"><highlight class="normal"></highlight></codeline>
+<codeline lineno="35"><highlight class="normal"><sp/><sp/><sp/><sp/></highlight><highlight class="comment">//<sp/>Get<sp/>the<sp/>event<sp/>listener<sp/>list.</highlight><highlight class="normal"></highlight></codeline>
+<codeline lineno="36"><highlight class="normal"><sp/><sp/><sp/><sp/>::testing::TestEventListeners&amp;<sp/>listeners<sp/>=</highlight></codeline>
+<codeline lineno="37"><highlight class="normal"><sp/><sp/><sp/><sp/><sp/><sp/><sp/><sp/>::testing::UnitTest::GetInstance()-&gt;listeners();</highlight></codeline>
+<codeline lineno="38"><highlight class="normal"></highlight></codeline>
+<codeline lineno="39"><highlight class="normal"><sp/><sp/><sp/><sp/></highlight><highlight class="comment">//<sp/>Remove<sp/>default<sp/>listener:<sp/>the<sp/>default<sp/>printer<sp/>and<sp/>the<sp/>default<sp/>XML<sp/>printer</highlight><highlight class="normal"></highlight></codeline>
+<codeline lineno="40"><highlight class="normal"><sp/><sp/><sp/><sp/>::testing::TestEventListener*<sp/>l<sp/>=</highlight></codeline>
+<codeline lineno="41"><highlight class="normal"><sp/><sp/><sp/><sp/><sp/><sp/><sp/><sp/>listeners.Release(listeners.default_result_printer());</highlight></codeline>
+<codeline lineno="42"><highlight class="normal"></highlight></codeline>
+<codeline lineno="43"><highlight class="normal"><sp/><sp/><sp/><sp/></highlight><highlight class="comment">//<sp/>Adds<sp/>MPI<sp/>listener;<sp/>Google<sp/>Test<sp/>owns<sp/>this<sp/>pointer</highlight><highlight class="normal"></highlight></codeline>
+<codeline lineno="44"><highlight class="normal"><sp/><sp/><sp/><sp/>listeners.Append(</highlight></codeline>
+<codeline lineno="45"><highlight class="normal"><sp/><sp/><sp/><sp/><sp/><sp/><sp/><sp/></highlight><highlight class="keyword">new</highlight><highlight class="normal"><sp/>GTestMPIListener::MPIWrapperPrinter(l,<sp/>MPI_COMM_WORLD));</highlight></codeline>
+<codeline lineno="46"><highlight class="normal"><sp/><sp/><sp/><sp/></highlight><highlight class="comment">//<sp/>Run<sp/>tests,<sp/>then<sp/>clean<sp/>up<sp/>and<sp/>exit.</highlight><highlight class="normal"></highlight></codeline>
+<codeline lineno="47"><highlight class="normal"><sp/><sp/><sp/><sp/></highlight><highlight class="keywordflow">return</highlight><highlight class="normal"><sp/>RUN_ALL_TESTS();</highlight></codeline>
+<codeline lineno="48"><highlight class="normal">}</highlight></codeline>
+    </programlisting>
+    <location file="/home/qwang3/Desktop/work2/IBLGF-AMR/src/gtest_main_test.cpp"/>
+  </compounddef>
+</doxygen>

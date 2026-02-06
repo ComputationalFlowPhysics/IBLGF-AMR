@@ -1,0 +1,29 @@
+name: Testing
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  building:
+    name: Build Code
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Clone
+        uses: actions/checkout@v4
+
+      - name: Docker Env
+        run: ./docker_iblgf.sh
+
+      - name: build
+        run: ./iblgf.sh build
+
+      - name: test
+        run: ./iblgf.sh test
+        
+
+      
+  

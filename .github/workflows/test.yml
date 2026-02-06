@@ -20,13 +20,13 @@ jobs:
         run: chmod +x *.sh
 
       - name: Docker Env
-        run: ./docker_iblgf.sh
+        run: bash docker_iblgf.sh
 
       - name: build
-        run: ./iblgf.sh build
+        run: bash iblgf.sh build
 
       - name: test
-        run: ./iblgf.sh test
+        run: bash iblgf.sh test
         
 
       

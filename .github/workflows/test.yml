@@ -18,7 +18,16 @@ jobs:
       - name: Prepare Scripts
       # Ensures scripts are executable even if git permissions are wonky
         run: chmod +x *.sh
-
+        
+      - name: Diagnostic Check
+        run: |
+          echo "--- Current Directory ---"
+          pwd
+          echo "--- List All Files ---"
+          ls -R
+          echo "--- Checking specifically for the file ---"
+          find . -maxdepth 2 -name "*iblgf*"
+          
       - name: Docker Env
         run: bash docker_iblgf.sh
 

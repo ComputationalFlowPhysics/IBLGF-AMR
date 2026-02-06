@@ -14,6 +14,10 @@ jobs:
     steps:
       - name: Clone
         uses: actions/checkout@v4
+        
+      - name: Prepare Scripts
+      # Ensures scripts are executable even if git permissions are wonky
+        run: chmod +x *.sh
 
       - name: Docker Env
         run: ./docker_iblgf.sh

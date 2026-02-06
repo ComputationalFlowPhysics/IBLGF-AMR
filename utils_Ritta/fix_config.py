@@ -261,82 +261,239 @@ def closest_valid_extent(cur: int, block_extent: int) -> int:
 
 def fix_domain_constraints(sim: Block) -> List[str]:
     """
-    Applies 3 constraints:
-      (1) bd_extent/block_extent is integer power-of-two per dimension (adjust bd_extent if needed)
-      (2) domain.block.extent == domain.bd_extent
-      (3) domain.block.base   == domain.bd_base
+    Enforces per-dimension alignment in *block units*:
+
+      Let B = domain.block_extent (scalar).
+      For each dimension d:
+        - domain.bd_extent[d] / B is an integer power of two
+        - domain.bd_base[d]   / B is an integer power of two (optionally allowing 0)
+        - domain.block.base[d]/ B is an integer power of two (optionally allowing 0)
+        - domain.block.base[d] <= domain.bd_base[d]
+
+      Also sync:
+        - domain.block.extent == domain.bd_extent
+
     Returns human-readable change messages.
     """
     changes: List[str] = []
 
-    # Required keys
     bd_base_path = "domain.bd_base"
     bd_extent_path = "domain.bd_extent"
     block_extent_path = "domain.block_extent"
 
-    bd_base = sim.get_path(bd_base_path)
-    bd_extent = sim.get_path(bd_extent_path)
-    block_extent = int(sim.get_path(block_extent_path))
+    bd_base_t = as_int_tuple(sim.get_path(bd_base_path))
+    bd_extent_t = as_int_tuple(sim.get_path(bd_extent_path))
+    B = int(sim.get_path(block_extent_path))
 
-    bd_base_t = as_int_tuple(bd_base)
-    bd_extent_t = as_int_tuple(bd_extent)
+    if B <= 0:
+        changes.append(f"domain.block_extent={B} is invalid; skipping.")
+        return changes
 
-    # Enforce same dimensionality between base and extent (use extent dim as authority)
     dim = len(bd_extent_t)
+
+    # --- helpers ---
+    def is_pow2(n: int) -> bool:
+        return n > 0 and (n & (n - 1)) == 0
+
+    def is_pow2_or_zero(n: int) -> bool:
+        return n == 0 or is_pow2(n)
+
+    def floor_pow2(n: int) -> int:
+        """largest power of two <= n, for n>=1"""
+        p = 1
+        while (p << 1) <= n:
+            p <<= 1
+        return p
+
+    def ceil_pow2(n: int) -> int:
+        """smallest power of two >= n, for n>=1"""
+        if n <= 1:
+            return 1
+        p = 1
+        while p < n:
+            p <<= 1
+        return p
+
+    def closest_pow2_int(n: int, allow_zero: bool) -> int:
+        """
+        Map integer n to a nearby power-of-two integer.
+        If allow_zero and n==0 -> 0.
+        If n<0, we treat it symmetrically by mapping abs(n) then restoring sign (rare for bases).
+        """
+        if allow_zero and n == 0:
+            return 0
+        if n < 0:
+            m = -n
+            if allow_zero and m == 0:
+                return 0
+            lo = floor_pow2(m) if m >= 1 else 1
+            hi = ceil_pow2(m) if m >= 1 else 1
+            best = lo if (m - lo) <= (hi - m) else hi
+            return -best
+
+        # n > 0
+        lo = floor_pow2(n) if n >= 1 else 1
+        hi = ceil_pow2(n) if n >= 1 else 1
+        return lo if (n - lo) <= (hi - n) else hi
+
+    def snap_to_pow2_blocks(x: int, allow_zero: bool, direction: str) -> int:
+        """
+        Force x to be (pow2_or_zero)*B by adjusting in block units.
+
+        direction:
+          - "nearest": nearest pow2 blocks (ties -> down)
+          - "down":    <= x
+          - "up":      >= x
+        """
+        # first ensure x is on the block grid: multiple of B
+        if x % B != 0:
+            if direction == "up":
+                x = ((x + (B - 1)) // B) * B
+            else:
+                x = (x // B) * B  # floor for "down" and "nearest"
+
+        blocks = x // B
+
+        if allow_zero and blocks == 0:
+            return 0
+
+        if (allow_zero and is_pow2_or_zero(blocks)) or (not allow_zero and is_pow2(blocks)):
+            return blocks * B
+
+        # choose candidate power-of-two blocks based on direction
+        if blocks < 0:
+            # negative bases are uncommon; do something consistent:
+            # "down" -> more negative, "up" -> less negative
+            target = closest_pow2_int(blocks, allow_zero=allow_zero)
+            return target * B
+
+        if blocks == 0:
+            # not allowed to be 0
+            return (1 * B) if direction == "up" else 0  # "down"/"nearest" -> 0 (still illegal), but caller can avoid allow_zero=False at 0
+
+        lo = floor_pow2(blocks)
+        hi = ceil_pow2(blocks)
+
+        if direction == "down":
+            chosen = lo
+        elif direction == "up":
+            chosen = hi
+        else:
+            # nearest
+            chosen = lo if (blocks - lo) <= (hi - blocks) else hi
+
+        # if allow_zero==False, chosen is >=1 always
+        return chosen * B
+
+    # --- dimensionality consistency ---
     if len(bd_base_t) != dim:
-        # pad or truncate bd_base to match bd_extent dimension
         old = bd_base_t
         if len(old) < dim:
             bd_base_t = old + (0,) * (dim - len(old))
         else:
             bd_base_t = old[:dim]
         sim.set_path(bd_base_path, bd_base_t)
-        changes.append(f"Adjusted domain.bd_base dimensionality {old} -> {bd_base_t} to match domain.bd_extent dim={dim}.")
+        changes.append(f"Adjusted domain.bd_base dimensionality {old} -> {bd_base_t} to match dim={dim}.")
 
-    # (1) power-of-two blocks: bd_extent[d]/block_extent = 2^k integer
+    # Read block.base (if missing, start with bd_base)
+    try:
+        block_base_t = as_int_tuple(sim.get_path("domain.block.base"))
+    except KeyError:
+        block_base_t = bd_base_t
+        sim.set_path("domain.block.base", block_base_t)
+        changes.append(f"domain.block.base missing; initialized to {block_base_t}.")
+
+    if len(block_base_t) != dim:
+        old = block_base_t
+        if len(old) < dim:
+            block_base_t = old + (0,) * (dim - len(old))
+        else:
+            block_base_t = old[:dim]
+        sim.set_path("domain.block.base", block_base_t)
+        changes.append(f"Adjusted domain.block.base dimensionality {old} -> {block_base_t} to match dim={dim}.")
+
+    # --- (1) extent blocks must be pow2 ---
+    # You already had closest_valid_extent() for this; keep using it.
     new_extent = list(bd_extent_t)
     for d in range(dim):
         cur = bd_extent_t[d]
-        if block_extent <= 0:
-            break
-        ratio = cur / block_extent
-        ok = float(ratio).is_integer() and is_power_of_two(int(ratio))
+        ratio = cur / B
+        ok = float(ratio).is_integer() and is_pow2(int(ratio))
         if not ok:
-            fixed = closest_valid_extent(cur, block_extent)
-            new_ratio = fixed / block_extent
+            fixed = closest_valid_extent(cur, B)  # must return extent with extent/B = 2^k
             changes.append(
                 f"domain.bd_extent[{d}] {cur} -> {fixed} "
-                f"(blocks: {ratio:g} -> {new_ratio:g}, block_extent={block_extent})"
+                f"(extent_blocks: {ratio:g} -> {fixed/B:g}, block_extent={B})"
             )
             new_extent[d] = fixed
 
     new_extent_t = tuple(new_extent)
     if new_extent_t != bd_extent_t:
         sim.set_path(bd_extent_path, new_extent_t)
-        bd_extent_t = new_extent_t  # update in-memory
+        bd_extent_t = new_extent_t
 
-    # (2) sync domain.block.extent
+    # --- (A) bd_base blocks must be pow2-or-zero ---
+    allow_zero_base = True
+
+    new_bd_base = list(bd_base_t)
+    for d in range(dim):
+        cur = bd_base_t[d]
+        fixed = snap_to_pow2_blocks(cur, allow_zero=allow_zero_base, direction="nearest")
+        if fixed != cur:
+            changes.append(
+                f"domain.bd_base[{d}] {cur} -> {fixed} "
+                f"(bd_base_blocks {cur/B:g} -> {fixed/B:g}, require pow2-or-zero)"
+            )
+            new_bd_base[d] = fixed
+
+    new_bd_base_t = tuple(new_bd_base)
+    if new_bd_base_t != bd_base_t:
+        sim.set_path(bd_base_path, new_bd_base_t)
+        bd_base_t = new_bd_base_t
+
+    # --- (B) block.base <= bd_base AND block.base blocks must be pow2-or-zero ---
+    new_block_base = list(block_base_t)
+    for d in range(dim):
+        cur = block_base_t[d]
+        upper = bd_base_t[d]
+
+        # first enforce <=
+        if cur > upper:
+            changes.append(
+                f"domain.block.base[{d}] {cur} -> {upper} (clamped to be <= domain.bd_base[{d}]={upper})"
+            )
+            cur = upper
+
+        # now snap to pow2 blocks, but must remain <= upper
+        # so choose direction="down" (never increases)
+        fixed = snap_to_pow2_blocks(cur, allow_zero=allow_zero_base, direction="down")
+
+        # if snapping down made it > upper (shouldn't), clamp again
+        if fixed > upper:
+            fixed = upper
+
+        if fixed != cur:
+            changes.append(
+                f"domain.block.base[{d}] {cur} -> {fixed} "
+                f"(block_base_blocks {cur/B:g} -> {fixed/B:g}, require pow2-or-zero and <= bd_base)"
+            )
+
+        new_block_base[d] = fixed
+
+    new_block_base_t = tuple(new_block_base)
+    if new_block_base_t != block_base_t:
+        sim.set_path("domain.block.base", new_block_base_t)
+
+    # --- (2) sync domain.block.extent to bd_extent ---
     try:
-        old_block_extent = sim.get_path("domain.block.extent")
-        old_block_extent_t = as_int_tuple(old_block_extent)
+        old_block_extent_val = sim.get_path("domain.block.extent")
+        old_block_extent_t = as_int_tuple(old_block_extent_val)
         if old_block_extent_t != bd_extent_t:
             sim.set_path("domain.block.extent", bd_extent_t)
             changes.append(f"domain.block.extent {old_block_extent_t} -> {bd_extent_t} (synced to domain.bd_extent)")
     except KeyError:
-        # If missing, create it (harmless and often helpful)
         sim.set_path("domain.block.extent", bd_extent_t)
-        changes.append(f"domain.block.extent was missing; set to {bd_extent_t} (synced to domain.bd_extent)")
-
-    # (3) sync domain.block.base
-    try:
-        old_block_base = sim.get_path("domain.block.base")
-        old_block_base_t = as_int_tuple(old_block_base)
-        if old_block_base_t != bd_base_t:
-            sim.set_path("domain.block.base", bd_base_t)
-            changes.append(f"domain.block.base {old_block_base_t} -> {bd_base_t} (synced to domain.bd_base)")
-    except KeyError:
-        sim.set_path("domain.block.base", bd_base_t)
-        changes.append(f"domain.block.base was missing; set to {bd_base_t} (synced to domain.bd_base)")
+        changes.append(f"domain.block.extent missing; set to {bd_extent_t} (synced to domain.bd_extent)")
 
     return changes
 

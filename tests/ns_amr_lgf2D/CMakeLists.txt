@@ -1,21 +1,6 @@
 #Bring the headers, such as Student.h into the project
 include_directories(${IBLGF_SOURCE_DIR}/src )
 
-# *added*
-execute_process(
-  COMMAND nproc
-  OUTPUT_VARIABLE DOCKER_CPUS
-  OUTPUT_STRIP_TRAILING_WHITESPACE
-)
-
-if (NOT DOCKER_CPUS)
-  include(ProcessorCount)
-  ProcessorCount(DOCKER_CPUS)
-endif()
-
-set(IBLGF_MPI_NP "${DOCKER_CPUS}" CACHE STRING "MPI ranks for tests")
-# *end of added*
-
 set(NAME ns_amr_lgf2D)
 add_custom_target(copy_ifherk_files2D ALL
                       COMMAND ${CMAKE_COMMAND} -E copy_directory

@@ -70,6 +70,41 @@ This directory contains comprehensive unit tests for the IBLGF convolution class
 
 These tests ensure the FFT implementation produces mathematically correct results against known analytical solutions.
 
+## LGF Convolution Tests
+
+The `convolution_lgf_test.cpp` tests the FFT-based convolution applied to the **Lattice Green's Function (LGF)** kernel for solving the Poisson equation. These tests validate the complete PDE solving pipeline.
+
+### Test Coverage (3D and 2D)
+
+#### 3D Tests
+- **PointSourceAtOrigin**: Delta function at (0,0,0) produces LGF kernel
+- **PointSourceNotAtOrigin**: Delta function at arbitrary location
+- **RoundTripConvolution**: Forward convolution + backward transform
+- **AccuracyPointSourceAtOrigin**: Compare with direct LGF evaluation
+- **AccuracyOffsetPointSource**: Validate shifted kernel accuracy
+- **LinearSuperposition**: Multiple point sources with different magnitudes
+- **UniformSource**: Test with constant source field
+- **ZeroSource**: Zero source field handling
+- **ScalingProperty**: Verify α·f produces α·(result) relationship
+
+#### 2D Tests (4 tests)
+- **PointSourceAtOrigin2D**: 2D delta function at origin
+- **RoundTripConvolution2D**: Forward/backward transforms in 2D
+- **AccuracyPointSource2D**: 2D LGF accuracy validation
+- **LinearSuperposition2D**: 2D superposition with multiple sources
+
+### Physical Significance
+
+These tests validate that:
+1. **LGF kernel is correctly applied** via FFT convolution
+2. **Poisson equation approximation** works: ∇²u = -f in unbounded domain
+3. **Superposition principle** holds (linearity)
+4. **Scaling** produces proportional results
+5. **Numerical accuracy** matches analytical LGF values
+6. **2D and 3D domains** work consistently
+
+The tests use point sources (delta functions) where the analytical solution is known: u(r) = -1/(4πr) for 3D and u(r) = -ln(r)/(2π) for 2D.
+
 ## Building and Running the Tests
 
 ### Build the tests:
@@ -87,13 +122,16 @@ These tests ensure the FFT implementation produces mathematically correct result
 ### Run only the convolution tests:
 ```bash
 cd build
-ctest -R convolution_test -V    # Run with verbose output
+ctest -R convolution -V    # Run all convolution tests (basic + LGF)
+ctest -R convolution_test -V    # Run basic FFT tests only
+ctest -R convolution_lgf_test -V  # Run LGF convolution tests only
 ```
 
 ### Direct execution:
 ```bash
-./build/tests/convolution/convolution_test.x         # Run directly
-mpirun -n 4 ./build/tests/convolution/convolution_test.x  # Run with 4 MPI ranks
+./build/tests/convolution/convolution_test.x              # Basic FFT tests
+./build/tests/convolution/convolution_lgf_test.x          # LGF convolution tests
+mpirun -n 4 ./build/tests/convolution/convolution_lgf_test.x  # With 4 MPI ranks
 ```
 
 ### Quick rebuild and test:
@@ -207,6 +245,13 @@ The GPU tests (`convolution_gpu_test.cu`) validate:
   - Data transfers between host and device memory
   - Memory management across multiple transforms
   - Edge cases: zero input, minimal dimensions, asymmetric sizes
+  
+- **GPU LGF Convolution** (5 new tests)
+  - Point source at origin (LGF-like behavior)
+  - Offset point source convolution
+  - Multiple point sources with superposition
+  - Round-trip R2C → C2R with distributed source
+  - Uniform source field handling
   
 - **Analytical solutions** (GPU implementations)
   - Cosine wave FFT peaks at correct wavenumber

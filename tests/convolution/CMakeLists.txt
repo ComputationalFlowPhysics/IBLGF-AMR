@@ -34,6 +34,27 @@ add_test(
     WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
 )
 
+# LGF Convolution Test
+add_executable(convolution_lgf_test.x convolution_lgf_test.cpp ${SOURCES})
+
+target_link_libraries(convolution_lgf_test.x
+    iblgf_test_main
+    ${MPI_LIBRARIES}
+    ${Boost_LIBRARIES}
+    ${FFTW_LIBRARIES}
+    ${HDF5_LIBRARIES}
+    hdf5
+    ${BLAS_LIBRARIES}
+    xtensor
+    xsimd
+)
+
+add_test(
+    NAME convolution_lgf_test
+    COMMAND $<TARGET_FILE:convolution_lgf_test.x>
+    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+)
+
 # GPU Test (optional, only if CUDA is enabled)
 if(USE_GPU)
     enable_language(CUDA)

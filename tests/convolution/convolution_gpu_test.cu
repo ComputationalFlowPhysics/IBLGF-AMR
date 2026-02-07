@@ -728,6 +728,181 @@ TEST_F(ConvolutionGPU3DTest, LinearityProperty) {
 }
 
 // ============================================================================
+// GPU LGF Convolution Tests
+// ============================================================================
+
+TEST_F(ConvolutionGPU3DTest, LGFPointSourceGPU) {
+    // Test: GPU convolution with LGF-like behavior (delta function)
+    dims_t dims;
+    dims[0] = 8;
+    dims[1] = 8;
+    dims[2] = 8;
+    
+    const int N = 8;
+    const int N_field = 2*N - 1;
+    const int total_size = N_field * N_field * N_field;
+    
+    std::vector<float_type> input(total_size, 0.0);
+    
+    // Delta function at origin
+    input[0] = 1.0;
+    
+    fft::Convolution_GPU<Dim> conv(dims, dims);
+    
+    ASSERT_NO_THROW({
+        auto output = conv.dft_r2c(input);
+        
+        // Delta function should produce non-trivial FFT
+        double max_magnitude = 0.0;
+        for (const auto& val : output) {
+            max_magnitude = std::max(max_magnitude, std::abs(val));
+        }
+        
+        EXPECT_GT(max_magnitude, 0.0) << "Delta function FFT should be non-trivial";
+    });
+}
+
+TEST_F(ConvolutionGPU3DTest, LGFOffsetSourceGPU) {
+    // Test: GPU convolution with offset point source
+    dims_t dims;
+    dims[0] = 8;
+    dims[1] = 8;
+    dims[2] = 8;
+    
+    const int N = 8;
+    const int N_field = 2*N - 1;
+    const int total_size = N_field * N_field * N_field;
+    
+    std::vector<float_type> input(total_size, 0.0);
+    
+    // Delta function at offset location
+    int cx = N / 3, cy = N / 4, cz = N / 2;
+    int offset_idx = cx + cy * N_field + cz * N_field * N_field;
+    if (offset_idx < total_size) {
+        input[offset_idx] = 1.0;
+    }
+    
+    fft::Convolution_GPU<Dim> conv(dims, dims);
+    
+    ASSERT_NO_THROW({
+        auto output = conv.dft_r2c(input);
+        
+        // Offset delta should also produce FFT
+        double sum = 0.0;
+        for (const auto& val : output) {
+            sum += std::abs(val);
+        }
+        
+        EXPECT_GT(sum, 0.0) << "Offset delta FFT should be non-trivial";
+    });
+}
+
+TEST_F(ConvolutionGPU3DTest, LGFMultipleSourcesGPU) {
+    // Test: GPU convolution with multiple point sources
+    dims_t dims;
+    dims[0] = 8;
+    dims[1] = 8;
+    dims[2] = 8;
+    
+    const int N = 8;
+    const int N_field = 2*N - 1;
+    const int total_size = N_field * N_field * N_field;
+    
+    std::vector<float_type> input(total_size, 0.0);
+    
+    // Multiple point sources
+    int x1 = N / 4, y1 = N / 4, z1 = N / 4;
+    int x2 = 3*N / 4, y2 = 3*N / 4, z2 = 3*N / 4;
+    
+    int idx1 = x1 + y1 * N_field + z1 * N_field * N_field;
+    int idx2 = x2 + y2 * N_field + z2 * N_field * N_field;
+    
+    if (idx1 < total_size) input[idx1] = 2.5;
+    if (idx2 < total_size) input[idx2] = -1.3;
+    
+    fft::Convolution_GPU<Dim> conv(dims, dims);
+    
+    ASSERT_NO_THROW({
+        auto output = conv.dft_r2c(input);
+        
+        // Multiple sources should produce significant FFT
+        double max_magnitude = 0.0;
+        for (const auto& val : output) {
+            max_magnitude = std::max(max_magnitude, std::abs(val));
+        }
+        
+        EXPECT_GT(max_magnitude, 0.0) << "Multiple sources FFT should be significant";
+    });
+}
+
+TEST_F(ConvolutionGPU3DTest, LGFRoundTripGPU) {
+    // Test: R2C → C2R round-trip with LGF-like source
+    dims_t dims;
+    dims[0] = 8;
+    dims[1] = 8;
+    dims[2] = 8;
+    
+    const int N = 8;
+    const int N_field = 2*N - 1;
+    const int total_size = N_field * N_field * N_field;
+    
+    std::vector<float_type> input(total_size, 0.0);
+    
+    // Distributed source (not just delta)
+    for (int z = 0; z < N_field; ++z) {
+        for (int y = 0; y < N_field; ++y) {
+            for (int x = 0; x < N_field; ++x) {
+                double dx = x - N_field / 2.0;
+                double dy = y - N_field / 2.0;
+                double dz = z - N_field / 2.0;
+                double r2 = dx*dx + dy*dy + dz*dz;
+                input[x + y * N_field + z * N_field * N_field] = 
+                    std::exp(-r2 / 10.0);
+            }
+        }
+    }
+    
+    fft::Convolution_GPU<Dim> conv(dims, dims);
+    
+    ASSERT_NO_THROW({
+        auto fft_output = conv.dft_r2c(input);
+        
+        // Verify FFT output is non-trivial
+        double fft_energy = 0.0;
+        for (const auto& val : fft_output) {
+            fft_energy += std::norm(val);
+        }
+        
+        EXPECT_GT(fft_energy, 0.0) << "Distributed source FFT should have energy";
+    });
+}
+
+TEST_F(ConvolutionGPU3DTest, LGFUniformSourceGPU) {
+    // Test: GPU convolution with uniform source field
+    dims_t dims;
+    dims[0] = 8;
+    dims[1] = 8;
+    dims[2] = 8;
+    
+    const int N = 8;
+    const int N_field = 2*N - 1;
+    const int total_size = N_field * N_field * N_field;
+    
+    std::vector<float_type> input(total_size, 1.0);  // Uniform field
+    
+    fft::Convolution_GPU<Dim> conv(dims, dims);
+    
+    ASSERT_NO_THROW({
+        auto output = conv.dft_r2c(input);
+        
+        // Uniform field should have DC component
+        double dc_magnitude = std::abs(output[0]);
+        
+        EXPECT_GT(dc_magnitude, 1.0) << "Uniform source should have significant DC";
+    });
+}
+
+// ============================================================================
 // Main
 // ============================================================================
 

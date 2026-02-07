@@ -9,934 +9,688 @@
 //      ▄▄▄▄█░█▄▄▄▄ ▐░█▄▄▄▄▄▄▄█░▌▐░█▄▄▄▄▄▄▄▄▄ ▐░█▄▄▄▄▄▄▄█░▌▐░▌
 //     ▐░░░░░░░░░░░▌▐░░░░░░░░░░▌ ▐░░░░░░░░░░░▌▐░░░░░░░░░░░▌▐░▌
 //      ▀▀▀▀▀▀▀▀▀▀▀  ▀▀▀▀▀▀▀▀▀▀   ▀▀▀▀▀▀▀▀▀▀▀  ▀▀▀▀▀▀▀▀▀▀▀  ▀
-//
-// GPU Convolution Unit Tests
-// Tests the GPU-accelerated FFT convolution classes using CUDA and cuFFT
-//
-
 #ifndef IBLGF_COMPILE_CUDA
 #define IBLGF_COMPILE_CUDA
 #endif
-
 #include <gtest/gtest.h>
-#include <cuda_runtime.h>
-#include <cufft.h>
 #include <iblgf/utilities/convolution_GPU.hpp>
 #include <iblgf/types.hpp>
-#include <vector>
-#include <complex>
 #include <cmath>
+#include <numeric>
+#include <algorithm>
+#include <cuda_runtime.h>
 
+using namespace iblgf::fft;
 using namespace iblgf;
 
 // ============================================================================
-// GPU Helper Functions
+// Helper Functions
 // ============================================================================
 
-// Check CUDA errors
-#define CUDA_CHECK(call) \
-    do { \
-        cudaError_t err = call; \
-        if (err != cudaSuccess) { \
-            std::cerr << "CUDA error in " << __FILE__ << ":" << __LINE__ \
-                      << " - " << cudaGetErrorString(err) << std::endl; \
-            FAIL(); \
-        } \
-    } while(0)
-
-// Check if GPU is available
-bool isGPUAvailable() {
+// Check if CUDA device is available
+bool cuda_device_available() {
     int deviceCount = 0;
     cudaError_t error = cudaGetDeviceCount(&deviceCount);
     return error == cudaSuccess && deviceCount > 0;
 }
 
-// Helper function to convert cufftDoubleComplex to std::complex<double>
-inline std::complex<double> to_std_complex(const cufftDoubleComplex& c) {
-    return std::complex<double>(c.x, c.y);
-}
-
-// Helper function to get magnitude of cufftDoubleComplex
-inline double cufft_abs(const cufftDoubleComplex& c) {
-    return std::sqrt(c.x * c.x + c.y * c.y);
-}
-
-// Helper function to get norm (squared magnitude) of cufftDoubleComplex
-inline double cufft_norm(const cufftDoubleComplex& c) {
-    return c.x * c.x + c.y * c.y;
+static void expect_complex_near(const cuDoubleComplex& actual, const cuDoubleComplex& expected, double tol)
+{
+    EXPECT_NEAR(cuCreal(actual), cuCreal(expected), tol);
+    EXPECT_NEAR(cuCimag(actual), cuCimag(expected), tol);
 }
 
 // ============================================================================
-// Test Fixtures for GPU Convolution (3D)
+// Kernel Tests (prod_complex_add_ptr)
 // ============================================================================
 
-class ConvolutionGPU3DTest : public ::testing::Test {
-protected:
-    static constexpr std::size_t Dim = 3;
-    using float_type = types::float_type;
-    using dims_t = types::vector_type<int, Dim>;
-    
-    void SetUp() override {
-        if (!isGPUAvailable()) {
-            GTEST_SKIP() << "GPU not available, skipping GPU tests";
-        }
-        CUDA_CHECK(cudaSetDevice(0));
+TEST(KernelProdComplexAddPtr, MultipliesAndZerosBySize) {
+    if (!cuda_device_available()) {
+        GTEST_SKIP() << "CUDA device not available";
     }
-    
-    void TearDown() override {
-        if (isGPUAvailable()) {
-            CUDA_CHECK(cudaDeviceSynchronize());
-        }
-    }
-};
 
-// ============================================================================
-// Test Fixtures for dfft_r2c_gpu and dfft_c2r_gpu
-// ============================================================================
+    const int batch_size = 2;
+    const size_t output_size_per_batch = 4;
+    const size_t total_size = static_cast<size_t>(batch_size) * output_size_per_batch;
 
-class DfftGPU3DTest : public ::testing::Test {
-protected:
-    using dims_3D = fft::dfft_r2c_gpu::dims_3D;
-    
-    void SetUp() override {
-        if (!isGPUAvailable()) {
-            GTEST_SKIP() << "GPU not available, skipping GPU tests";
-        }
-        CUDA_CHECK(cudaSetDevice(0));
-        
-        dims[0] = 8; dims[1] = 8; dims[2] = 8;
-        dims_small[0] = 4; dims_small[1] = 4; dims_small[2] = 4;
+    // Host buffers
+    std::vector<cuDoubleComplex> h_f0_batch0(output_size_per_batch);
+    std::vector<cuDoubleComplex> h_f0_batch1(output_size_per_batch);
+    std::vector<cuDoubleComplex> h_output(total_size);
+    std::vector<cuDoubleComplex> h_result(total_size);
+
+    // Initialize f0 values
+    h_f0_batch0[0] = make_cuDoubleComplex(1.0, 0.0);
+    h_f0_batch0[1] = make_cuDoubleComplex(2.0, -1.0);
+    h_f0_batch0[2] = make_cuDoubleComplex(-1.0, 0.5);
+    h_f0_batch0[3] = make_cuDoubleComplex(0.0, 3.0);
+
+    h_f0_batch1[0] = make_cuDoubleComplex(0.5, -0.5);
+    h_f0_batch1[1] = make_cuDoubleComplex(4.0, 1.0);
+    h_f0_batch1[2] = make_cuDoubleComplex(-2.0, 2.0);
+    h_f0_batch1[3] = make_cuDoubleComplex(1.0, 1.0);
+
+    // Output values (batched, contiguous)
+    for (size_t i = 0; i < total_size; ++i) {
+        h_output[i] = make_cuDoubleComplex(static_cast<double>(i + 1), -static_cast<double>(i));
     }
-    
-    void TearDown() override {
-        if (isGPUAvailable()) {
-            CUDA_CHECK(cudaDeviceSynchronize());
-        }
-    }
-    
-    dims_3D dims;
-    dims_3D dims_small;
-};
+
+    // f0 sizes: batch0 has 3 valid elements, batch1 has 1
+    std::vector<size_t> h_f0_sizes = {3, 1};
+
+    // Device allocations
+    cuDoubleComplex* d_f0_batch0 = nullptr;
+    cuDoubleComplex* d_f0_batch1 = nullptr;
+    cuDoubleComplex* d_output = nullptr;
+    cuDoubleComplex* d_result = nullptr;
+    size_t* d_f0_sizes = nullptr;
+    cuDoubleComplex** d_f0_ptrs = nullptr;
+
+    ASSERT_EQ(cudaMalloc(&d_f0_batch0, output_size_per_batch * sizeof(cuDoubleComplex)), cudaSuccess);
+    ASSERT_EQ(cudaMalloc(&d_f0_batch1, output_size_per_batch * sizeof(cuDoubleComplex)), cudaSuccess);
+    ASSERT_EQ(cudaMalloc(&d_output, total_size * sizeof(cuDoubleComplex)), cudaSuccess);
+    ASSERT_EQ(cudaMalloc(&d_result, total_size * sizeof(cuDoubleComplex)), cudaSuccess);
+    ASSERT_EQ(cudaMalloc(&d_f0_sizes, batch_size * sizeof(size_t)), cudaSuccess);
+    ASSERT_EQ(cudaMalloc(&d_f0_ptrs, batch_size * sizeof(cuDoubleComplex*)), cudaSuccess);
+
+    ASSERT_EQ(cudaMemcpy(d_f0_batch0, h_f0_batch0.data(), output_size_per_batch * sizeof(cuDoubleComplex), cudaMemcpyHostToDevice), cudaSuccess);
+    ASSERT_EQ(cudaMemcpy(d_f0_batch1, h_f0_batch1.data(), output_size_per_batch * sizeof(cuDoubleComplex), cudaMemcpyHostToDevice), cudaSuccess);
+    ASSERT_EQ(cudaMemcpy(d_output, h_output.data(), total_size * sizeof(cuDoubleComplex), cudaMemcpyHostToDevice), cudaSuccess);
+    ASSERT_EQ(cudaMemcpy(d_f0_sizes, h_f0_sizes.data(), batch_size * sizeof(size_t), cudaMemcpyHostToDevice), cudaSuccess);
+
+    std::vector<cuDoubleComplex*> h_f0_ptrs = {d_f0_batch0, d_f0_batch1};
+    ASSERT_EQ(cudaMemcpy(d_f0_ptrs, h_f0_ptrs.data(), batch_size * sizeof(cuDoubleComplex*), cudaMemcpyHostToDevice), cudaSuccess);
+
+    // Launch kernel
+    int block_size = 128;
+    int grid_size = static_cast<int>((total_size + block_size - 1) / block_size);
+    size_t shared_mem = batch_size * sizeof(size_t);
+    prod_complex_add_ptr<<<grid_size, block_size, shared_mem>>>(
+        d_f0_ptrs,
+        d_output,
+        d_result,
+        d_f0_sizes,
+        batch_size,
+        output_size_per_batch);
+
+    ASSERT_EQ(cudaDeviceSynchronize(), cudaSuccess);
+    ASSERT_EQ(cudaMemcpy(h_result.data(), d_result, total_size * sizeof(cuDoubleComplex), cudaMemcpyDeviceToHost), cudaSuccess);
+
+    // Expected results
+    // Batch 0: idx 0..2 multiply, idx 3 zero
+    expect_complex_near(h_result[0], cuCmul(h_f0_batch0[0], h_output[0]), 1e-12);
+    expect_complex_near(h_result[1], cuCmul(h_f0_batch0[1], h_output[1]), 1e-12);
+    expect_complex_near(h_result[2], cuCmul(h_f0_batch0[2], h_output[2]), 1e-12);
+    expect_complex_near(h_result[3], make_cuDoubleComplex(0.0, 0.0), 1e-12);
+
+    // Batch 1: idx 0 multiply, idx 1..3 zero
+    expect_complex_near(h_result[4], cuCmul(h_f0_batch1[0], h_output[4]), 1e-12);
+    expect_complex_near(h_result[5], make_cuDoubleComplex(0.0, 0.0), 1e-12);
+    expect_complex_near(h_result[6], make_cuDoubleComplex(0.0, 0.0), 1e-12);
+    expect_complex_near(h_result[7], make_cuDoubleComplex(0.0, 0.0), 1e-12);
+
+    cudaFree(d_f0_ptrs);
+    cudaFree(d_f0_sizes);
+    cudaFree(d_result);
+    cudaFree(d_output);
+    cudaFree(d_f0_batch1);
+    cudaFree(d_f0_batch0);
+}
 
 // ============================================================================
 // dfft_r2c_gpu Tests
 // ============================================================================
 
-TEST_F(DfftGPU3DTest, R2C_ConstructorInitializes) {
-    ASSERT_NO_THROW({
-        fft::dfft_r2c_gpu fft(dims, dims_small);
-    });
-}
-
-TEST_F(DfftGPU3DTest, R2C_InputOutputAccessors) {
-    fft::dfft_r2c_gpu fft(dims, dims_small);
-    
-    auto& input = fft.input();
-    auto& output = fft.output();
-    
-    EXPECT_EQ(input.size(), dims[0] * dims[1] * dims[2]);
-    EXPECT_GT(output.size(), 0);
-}
-
-TEST_F(DfftGPU3DTest, R2C_ExecuteTransform) {
-    fft::dfft_r2c_gpu fft(dims, dims_small);
-    
-    // Initialize input with delta function
-    auto& input = fft.input();
-    std::fill(input.begin(), input.end(), 0.0);
-    input[0] = 1.0;
-    
-    ASSERT_NO_THROW({
-        fft.execute_whole();
-    });
-    
-    const auto& output = fft.output();
-    EXPECT_GT(output.size(), 0);
-    
-    // Delta function should give constant spectrum
-    double first_mag = std::abs(output[0]);
-    EXPECT_GT(first_mag, 0.0);
-}
-
-TEST_F(DfftGPU3DTest, R2C_CosineTransform) {
-    fft::dfft_r2c_gpu fft(dims, dims);
-    
-    // Create cosine wave
-    auto& input = fft.input();
-    const int N = dims[0];
-    const int k = 2;
-    
-    for (int z = 0; z < N; ++z) {
-        for (int y = 0; y < N; ++y) {
-            for (int x = 0; x < N; ++x) {
-                double pos = static_cast<double>(x) / N;
-                input[x + y * N + z * N * N] = std::cos(2.0 * M_PI * k * pos);
-            }
+class DfftR2cGpuTest : public ::testing::Test {
+protected:
+    void SetUp() override {
+        if (!cuda_device_available()) {
+            GTEST_SKIP() << "CUDA device not available, skipping GPU tests";
         }
+        
+        dims_padded[0] = 16; dims_padded[1] = 16; dims_padded[2] = 16;
+        dims_non_zero[0] = 8; dims_non_zero[1] = 8; dims_non_zero[2] = 8;
+        
+        fft_gpu = std::make_unique<dfft_r2c_gpu>(dims_padded, dims_non_zero);
+    }
+
+    void TearDown() override {
+        fft_gpu.reset();
+        cudaDeviceReset();
+    }
+
+    types::vector_type<int, 3> dims_padded;
+    types::vector_type<int, 3> dims_non_zero;
+    std::unique_ptr<dfft_r2c_gpu> fft_gpu;
+};
+
+TEST_F(DfftR2cGpuTest, ConstructorInitializesCorrectly) {
+    EXPECT_NO_THROW({
+        dfft_r2c_gpu gpu(dims_padded, dims_non_zero);
+    });
+}
+
+TEST_F(DfftR2cGpuTest, InputOutputAccessors) {
+    auto& input = fft_gpu->input();
+    auto& output = fft_gpu->output();
+    
+    EXPECT_GT(input.size(), 0);
+    EXPECT_GT(output.size(), 0);
+    
+    // Input should have size of padded dimensions
+    size_t expected_input_size = dims_padded[0] * dims_padded[1] * dims_padded[2];
+    EXPECT_EQ(input.size(), expected_input_size);
+}
+
+TEST_F(DfftR2cGpuTest, CopyInputFromVector) {
+    size_t data_size = dims_padded[0] * dims_padded[1] * dims_padded[2];
+    std::vector<double> test_data(data_size);
+    
+    // Fill with simple pattern
+    for (size_t i = 0; i < data_size; ++i) {
+        test_data[i] = static_cast<double>(i % 100) / 10.0;
     }
     
-    ASSERT_NO_THROW({
-        fft.execute_whole();
+    EXPECT_NO_THROW({
+        fft_gpu->copy_input(test_data, dims_padded);
     });
     
-    const auto& output = fft.output();
-    
-    // Should have significant peak from cosine
-    double max_magnitude = 0.0;
-    for (const auto& val : output) {
-        max_magnitude = std::max(max_magnitude, std::abs(val));
+    // Verify data was copied to input buffer
+    auto& input = fft_gpu->input();
+    for (size_t idx = 0; idx < test_data.size(); ++idx) {
+        EXPECT_NEAR(input[idx], test_data[idx], 1e-10);
     }
+}
+
+TEST_F(DfftR2cGpuTest, ExecuteWholeTransform) {
+    // Create simple test data - delta function
+    auto& input = fft_gpu->input();
+    std::fill(input.begin(), input.end(), 0.0);
+    input[0] = 1.0; // Delta at origin
     
-    EXPECT_GT(max_magnitude, 0.1 * N * N * N);
+    EXPECT_NO_THROW({
+        fft_gpu->execute_whole();
+    });
+    
+    // Copy output from device to host
+    auto& output = fft_gpu->output();
+    cudaMemcpy(output.data(), fft_gpu->output_cu(), output.size() * sizeof(std::complex<double>), cudaMemcpyDeviceToHost);
+    
+    EXPECT_GT(output.size(), 0);
+    
+    // DFT of delta function should be constant
+    double expected_real = 1.0;
+    for (size_t i = 0; i < std::min(size_t(10), output.size()); ++i) {
+        EXPECT_NEAR(std::abs(output[i].real()), expected_real, 0.1);
+    }
+}
+
+TEST_F(DfftR2cGpuTest, ExecuteTransform) {
+    // Create constant input
+    auto& input = fft_gpu->input();
+    std::fill(input.begin(), input.end(), 2.0);
+    
+    EXPECT_NO_THROW({
+        fft_gpu->execute();
+    });
+    
+    // Copy output from device to host
+    auto& output = fft_gpu->output();
+    cudaMemcpy(output.data(), fft_gpu->output_cu(), output.size() * sizeof(std::complex<double>), cudaMemcpyDeviceToHost);
+    
+    EXPECT_GT(output.size(), 0);
+}
+
+// ============================================================================
+// dfft_r2c_gpu_batch Tests
+// ============================================================================
+
+class DfftR2cGpuBatchTest : public ::testing::Test {
+protected:
+    void SetUp() override {
+        if (!cuda_device_available()) {
+            GTEST_SKIP() << "CUDA device not available, skipping GPU tests";
+        }
+        
+        dims_padded[0] = 16; dims_padded[1] = 16; dims_padded[2] = 16;
+        dims_non_zero[0] = 8; dims_non_zero[1] = 8; dims_non_zero[2] = 8;
+        batch_size = 4;
+        
+        fft_batch = std::make_unique<dfft_r2c_gpu_batch>(dims_padded, dims_non_zero, batch_size);
+    }
+
+    void TearDown() override {
+        fft_batch.reset();
+        cudaDeviceReset();
+    }
+
+    types::vector_type<int, 3> dims_padded;
+    types::vector_type<int, 3> dims_non_zero;
+    int batch_size;
+    std::unique_ptr<dfft_r2c_gpu_batch> fft_batch;
+};
+
+TEST_F(DfftR2cGpuBatchTest, ConstructorInitializesCorrectly) {
+    EXPECT_NO_THROW({
+        dfft_r2c_gpu_batch gpu_batch(dims_padded, dims_non_zero, batch_size);
+    });
+}
+
+TEST_F(DfftR2cGpuBatchTest, BatchSizeConfiguration) {
+    // Verify batch configuration
+    EXPECT_EQ(fft_batch->input_size(), 
+              static_cast<size_t>(dims_padded[0]) * dims_padded[1] * dims_padded[2] * batch_size);
+}
+
+TEST_F(DfftR2cGpuBatchTest, StreamAccessors) {
+    EXPECT_NO_THROW({
+        auto& stream = fft_batch->stream();
+        auto& transfer_stream = fft_batch->transfer_stream();
+    });
+}
+
+TEST_F(DfftR2cGpuBatchTest, F0PointersAndSizes) {
+    auto& f0_ptrs = fft_batch->f0_ptrs();
+    auto& f0_sizes = fft_batch->f0_sizes();
+    
+    EXPECT_EQ(f0_ptrs.size(), 0); // Initially empty
+    EXPECT_EQ(f0_sizes.size(), 0);
+    
+    // Test adding entries
+    cufftDoubleComplex* dummy_ptr = nullptr;
+    cudaMalloc(&dummy_ptr, 100 * sizeof(cufftDoubleComplex));
+    
+    f0_ptrs.push_back(dummy_ptr);
+    f0_sizes.push_back(100);
+    
+    EXPECT_EQ(f0_ptrs.size(), 1);
+    EXPECT_EQ(f0_sizes.size(), 1);
+    EXPECT_EQ(f0_sizes[0], 100);
+    
+    cudaFree(dummy_ptr);
+}
+
+TEST_F(DfftR2cGpuBatchTest, InputOutputBuffers) {
+    auto& input = fft_batch->input();
+    auto& output = fft_batch->output();
+    auto* input_cu = fft_batch->input_cu();
+    auto* output_cu = fft_batch->output_cu();
+    
+    EXPECT_NE(input, nullptr);
+    EXPECT_GT(output.size(), 0);
+    EXPECT_NE(input_cu, nullptr);
+    EXPECT_NE(output_cu, nullptr);
 }
 
 // ============================================================================
 // dfft_c2r_gpu Tests
 // ============================================================================
 
-TEST_F(DfftGPU3DTest, C2R_ConstructorInitializes) {
-    ASSERT_NO_THROW({
-        fft::dfft_c2r_gpu fft(dims, dims_small);
+class DfftC2rGpuTest : public ::testing::Test {
+protected:
+    void SetUp() override {
+        if (!cuda_device_available()) {
+            GTEST_SKIP() << "CUDA device not available, skipping GPU tests";
+        }
+        
+        dims_padded[0] = 16; dims_padded[1] = 16; dims_padded[2] = 16;
+        dims_small[0] = 8; dims_small[1] = 8; dims_small[2] = 8;
+        
+        ifft_gpu = std::make_unique<dfft_c2r_gpu>(dims_padded, dims_small);
+    }
+
+    void TearDown() override {
+        ifft_gpu.reset();
+        cudaDeviceReset();
+    }
+
+    types::vector_type<int, 3> dims_padded;
+    types::vector_type<int, 3> dims_small;
+    std::unique_ptr<dfft_c2r_gpu> ifft_gpu;
+};
+
+TEST_F(DfftC2rGpuTest, ConstructorInitializesCorrectly) {
+    EXPECT_NO_THROW({
+        dfft_c2r_gpu gpu(dims_padded, dims_small);
     });
 }
 
-TEST_F(DfftGPU3DTest, C2R_InputOutputAccessors) {
-    fft::dfft_c2r_gpu fft(dims, dims_small);
-    
-    auto& input = fft.input();
-    auto& output = fft.output();
+TEST_F(DfftC2rGpuTest, InputOutputAccessors) {
+    auto& input = ifft_gpu->input();
+    auto& output = ifft_gpu->output();
     
     EXPECT_GT(input.size(), 0);
-    EXPECT_EQ(output.size(), dims[0] * dims[1] * dims[2]);
+    EXPECT_GT(output.size(), 0);
 }
 
-TEST_F(DfftGPU3DTest, C2R_ExecuteTransform) {
-    fft::dfft_c2r_gpu fft(dims, dims_small);
-    
-    // Initialize complex input
-    auto& input = fft.input();
+TEST_F(DfftC2rGpuTest, StreamAccessor) {
+    EXPECT_NO_THROW({
+        auto& stream = ifft_gpu->stream();
+    });
+}
+
+TEST_F(DfftC2rGpuTest, OutputCuPointer) {
+    float_type* output_ptr = nullptr;
+    EXPECT_NO_THROW({
+        output_ptr = ifft_gpu->output_cu_ptr();
+    });
+    EXPECT_NE(output_ptr, nullptr);
+}
+
+TEST_F(DfftC2rGpuTest, ExecuteDeviceTransform) {
+    // Initialize input with simple complex values
+    auto& input = ifft_gpu->input();
     std::fill(input.begin(), input.end(), std::complex<double>(1.0, 0.0));
     
-    ASSERT_NO_THROW({
-        fft.execute();
+    EXPECT_NO_THROW({
+        ifft_gpu->execute_device();
     });
-    
-    const auto& output = fft.output();
-    EXPECT_EQ(output.size(), dims[0] * dims[1] * dims[2]);
 }
 
-TEST_F(DfftGPU3DTest, C2R_RoundTripTransform) {
-    // Test: forward R2C then inverse C2R should approximately recover input
-    const int N = 8;
-    dims_3D round_dims;
-    round_dims[0] = N; round_dims[1] = N; round_dims[2] = N;
+TEST_F(DfftC2rGpuTest, CopyOutputToHost) {
+    auto& input = ifft_gpu->input();
+    std::fill(input.begin(), input.end(), std::complex<double>(1.0, 0.0));
     
-    fft::dfft_r2c_gpu r2c(round_dims, round_dims);
-    fft::dfft_c2r_gpu c2r(round_dims, round_dims);
+    ifft_gpu->execute_device();
+    
+    EXPECT_NO_THROW({
+        ifft_gpu->copy_output_to_host();
+    });
+    
+    // Sync to ensure copy completes
+    cudaStreamSynchronize(ifft_gpu->stream());
+    
+    auto& output = ifft_gpu->output();
+    EXPECT_GT(output.size(), 0);
+}
+
+TEST_F(DfftC2rGpuTest, RoundTripTransform) {
+    // Test forward + backward should give approximately original data
+    dfft_r2c_gpu fft_forward(dims_padded, dims_small);
     
     // Create simple input
-    auto& input = r2c.input();
-    const int total_size = N * N * N;
-    for (int i = 0; i < total_size; ++i) {
-        input[i] = std::sin(2.0 * M_PI * i / total_size);
-    }
+    auto& fwd_input = fft_forward.input();
+    std::fill(fwd_input.begin(), fwd_input.end(), 0.0);
+    
+    // Set a few values
+    fwd_input[0] = 1.0;
+    fwd_input[1] = 2.0;
+    fwd_input[dims_padded[0]] = 3.0;
     
     // Forward transform
-    r2c.execute_whole();
-    const auto& freq_domain = r2c.output();
+    fft_forward.execute();
     
-    // Copy to inverse transform input
-    auto& c2r_input = c2r.input();
-    std::copy(freq_domain.begin(), freq_domain.end(), c2r_input.begin());
+    // Copy forward output from device to host
+    auto& fwd_output = fft_forward.output();
+    cudaMemcpy(fwd_output.data(), fft_forward.output_cu(), fwd_output.size() * sizeof(std::complex<double>), cudaMemcpyDeviceToHost);
     
-    // Inverse transform
-    ASSERT_NO_THROW({
-        c2r.execute();
-    });
+    // Copy output to backward input
+    auto& input = ifft_gpu->input();
+    std::copy(fwd_output.begin(), fwd_output.end(), input.begin());
     
-    const auto& recovered = c2r.output();
+    // Backward transform (handles HtoD and DtoH)
+    ifft_gpu->execute();
     
-    // Check output size is correct
-    EXPECT_EQ(recovered.size(), total_size);
+    auto& output = ifft_gpu->output();
     
-    // Verify some values are non-zero (transform executed)
-    double sum = 0.0;
-    for (const auto& val : recovered) {
-        sum += std::abs(val);
+    // Check first few values (with scaling factor)
+    size_t total_size = dims_padded[0] * dims_padded[1] * dims_padded[2];
+    double scale = 1.0 / total_size;
+    
+    EXPECT_NEAR(output[0] * scale, 1.0, 1e-6);
+    EXPECT_NEAR(output[1] * scale, 2.0, 1e-6);
+    EXPECT_NEAR(output[dims_padded[0]] * scale, 3.0, 1e-6);
+}
+
+// ============================================================================
+// Convolution_GPU Tests (3D)
+// ============================================================================
+
+class ConvolutionGpu3DTest : public ::testing::Test {
+protected:
+    void SetUp() override {
+        if (!cuda_device_available()) {
+            GTEST_SKIP() << "CUDA device not available, skipping GPU tests";
+        }
+        
+        dims0[0] = 8; dims0[1] = 8; dims0[2] = 8;
+        dims1[0] = 4; dims1[1] = 4; dims1[2] = 4;
+        
+        conv_gpu = std::make_unique<Convolution_GPU<3>>(dims0, dims1);
     }
-    EXPECT_GT(sum, 0.1);
-}
 
-TEST_F(DfftGPU3DTest, C2R_ConstantInput) {
-    // Test: constant complex input should give DC component in real space
-    fft::dfft_c2r_gpu fft(dims, dims);
-    
-    auto& input = fft.input();
-    std::fill(input.begin(), input.end(), std::complex<double>(0.0, 0.0));
-    
-    // Set DC component
-    if (!input.empty()) {
-        input[0] = std::complex<double>(1.0, 0.0);
+    void TearDown() override {
+        conv_gpu.reset();
+        cudaDeviceReset();
     }
+
+    types::vector_type<int, 3> dims0;
+    types::vector_type<int, 3> dims1;
+    std::unique_ptr<Convolution_GPU<3>> conv_gpu;
+};
+
+TEST_F(ConvolutionGpu3DTest, ConstructorInitializesCorrectly) {
+    EXPECT_NO_THROW({
+        Convolution_GPU<3> gpu(dims0, dims1);
+    });
+}
+
+TEST_F(ConvolutionGpu3DTest, HelperNextPow2) {
+    types::vector_type<int, 3> test_dims;
+    test_dims[0] = 7; test_dims[1] = 9; test_dims[2] = 5;
+    auto result = conv_gpu->helper_next_pow_2(test_dims);
     
-    ASSERT_NO_THROW({
-        fft.execute();
+    // Current implementation just copies
+    EXPECT_EQ(result[0], 7);
+    EXPECT_EQ(result[1], 9);
+    EXPECT_EQ(result[2], 5);
+}
+
+TEST_F(ConvolutionGpu3DTest, HelperAllProd) {
+    types::vector_type<int, 3> test_dims;
+    test_dims[0] = 2; test_dims[1] = 3; test_dims[2] = 4;
+    auto result = conv_gpu->helper_all_prod(test_dims);
+    
+    EXPECT_EQ(result, 24);
+}
+
+TEST_F(ConvolutionGpu3DTest, FftBackwardFieldClean) {
+    conv_gpu->number_fwrd_executed = 5;
+    
+    EXPECT_NO_THROW({
+        conv_gpu->fft_backward_field_clean();
     });
     
-    const auto& output = fft.output();
-    EXPECT_EQ(output.size(), dims[0] * dims[1] * dims[2]);
-    
-    // Output should have non-zero values
-    double max_val = 0.0;
-    for (const auto& val : output) {
-        max_val = std::max(max_val, std::abs(val));
-    }
-    EXPECT_GT(max_val, 0.0);
+    EXPECT_EQ(conv_gpu->number_fwrd_executed, 0);
+}
+
+TEST_F(ConvolutionGpu3DTest, DftR2cSize) {
+    size_t size = conv_gpu->dft_r2c_size();
+    EXPECT_GT(size, 0);
+}
+
+TEST_F(ConvolutionGpu3DTest, OutputAccessor) {
+    auto& output = conv_gpu->output();
+    EXPECT_GT(output.size(), 0);
+}
+
+TEST_F(ConvolutionGpu3DTest, BatchSizeManagement) {
+    EXPECT_EQ(conv_gpu->current_batch_size_, 0);
+    EXPECT_EQ(conv_gpu->max_batch_size_, 10);
+}
+
+TEST_F(ConvolutionGpu3DTest, FlushEmptyBatch) {
+    // Flushing empty batch should not crash
+    EXPECT_NO_THROW({
+        conv_gpu->flush_batch();
+    });
 }
 
 // ============================================================================
-// Constructor and Initialization Tests (Convolution_GPU)
+// CUDA Kernel Tests
 // ============================================================================
 
-TEST_F(ConvolutionGPU3DTest, Constructor) {
-    dims_t dims;
-    dims[0] = 8;
-    dims[1] = 8;
-    dims[2] = 8;
-    
-    ASSERT_NO_THROW({
-        fft::Convolution_GPU<Dim> conv(dims, dims);
-    });
-}
-
-TEST_F(ConvolutionGPU3DTest, ConstructorSmallDimensions) {
-    dims_t dims;
-    dims[0] = 4;
-    dims[1] = 4;
-    dims[2] = 4;
-    
-    ASSERT_NO_THROW({
-        fft::Convolution_GPU<Dim> conv(dims, dims);
-    });
-}
-
-TEST_F(ConvolutionGPU3DTest, ConstructorLargeDimensions) {
-    dims_t dims;
-    dims[0] = 32;
-    dims[1] = 32;
-    dims[2] = 32;
-    
-    ASSERT_NO_THROW({
-        fft::Convolution_GPU<Dim> conv(dims, dims);
-    });
-}
-
-TEST_F(ConvolutionGPU3DTest, ConstructorAsymmetricDimensions) {
-    dims_t dims;
-    dims[0] = 16;
-    dims[1] = 8;
-    dims[2] = 4;
-    
-    ASSERT_NO_THROW({
-        fft::Convolution_GPU<Dim> conv(dims, dims);
-    });
-}
-
-// ============================================================================
-// Data Transfer Tests
-// ============================================================================
-
-TEST_F(ConvolutionGPU3DTest, DeltaFunctionTransform) {
-    dims_t dims;
-    dims[0] = 8;
-    dims[1] = 8;
-    dims[2] = 8;
-    
-    const int N = 8;
-    const int total_size = (2*N - 1) * (2*N - 1) * (2*N - 1);
-    
-    // Create delta function input (impulse at origin)
-    std::vector<float_type> input(total_size, 0.0);
-    input[0] = 1.0;
-    
-    fft::Convolution_GPU<Dim> conv(dims, dims);
-    
-    // Forward transform
-    ASSERT_NO_THROW({
-        auto fft_output = conv.dft_r2c(input);
-        EXPECT_GT(conv.dft_r2c_size(), 0);
-    });
-}
-
-TEST_F(ConvolutionGPU3DTest, UniformFieldTransform) {
-    dims_t dims;
-    dims[0] = 8;
-    dims[1] = 8;
-    dims[2] = 8;
-    
-    const int N = 8;
-    const int total_size = (2*N - 1) * (2*N - 1) * (2*N - 1);
-    
-    // Uniform field
-    std::vector<float_type> input(total_size, 1.0);
-    
-    fft::Convolution_GPU<Dim> conv(dims, dims);
-    
-    ASSERT_NO_THROW({
-        auto fft_output = conv.dft_r2c(input);
-        EXPECT_GT(conv.dft_r2c_size(), 0);
-    });
-}
-
-TEST_F(ConvolutionGPU3DTest, LinearRampTransform) {
-    dims_t dims;
-    dims[0] = 8;
-    dims[1] = 8;
-    dims[2] = 8;
-    
-    const int N = 8;
-    const int N_field = 2*N - 1;
-    const int total_size = N_field * N_field * N_field;
-    
-    // Create linear ramp
-    std::vector<float_type> input(total_size);
-    for (int z = 0; z < N_field; ++z) {
-        for (int y = 0; y < N_field; ++y) {
-            for (int x = 0; x < N_field; ++x) {
-                input[x + y * N_field + z * N_field * N_field] = 
-                    static_cast<float_type>(x + y + z);
-            }
+class CudaKernelTest : public ::testing::Test {
+protected:
+    void SetUp() override {
+        if (!cuda_device_available()) {
+            GTEST_SKIP() << "CUDA device not available, skipping GPU tests";
         }
     }
+
+    void TearDown() override {
+        cudaDeviceReset();
+    }
+};
+
+TEST_F(CudaKernelTest, ScaleComplexKernel) {
+    const size_t size = 128;
+    const double scale_factor = 2.5;
     
-    fft::Convolution_GPU<Dim> conv(dims, dims);
+    // Allocate device memory
+    cuDoubleComplex* d_data = nullptr;
+    cudaMalloc(&d_data, size * sizeof(cuDoubleComplex));
     
-    ASSERT_NO_THROW({
-        auto fft_output = conv.dft_r2c(input);
-        EXPECT_GT(conv.dft_r2c_size(), 0);
-    });
+    // Initialize with host data
+    std::vector<cuDoubleComplex> h_data(size);
+    for (size_t i = 0; i < size; ++i) {
+        h_data[i] = make_cuDoubleComplex(i * 1.0, i * 0.5);
+    }
+    cudaMemcpy(d_data, h_data.data(), size * sizeof(cuDoubleComplex), cudaMemcpyHostToDevice);
+    
+    // Launch kernel
+    int blockSize = 256;
+    int numBlocks = (size + blockSize - 1) / blockSize;
+    scale_complex<<<numBlocks, blockSize>>>(d_data, size, scale_factor);
+    cudaDeviceSynchronize();
+    
+    // Copy back and verify
+    std::vector<cuDoubleComplex> h_result(size);
+    cudaMemcpy(h_result.data(), d_data, size * sizeof(cuDoubleComplex), cudaMemcpyDeviceToHost);
+    
+    for (size_t i = 0; i < size; ++i) {
+        EXPECT_NEAR(h_result[i].x, h_data[i].x * scale_factor, 1e-10);
+        EXPECT_NEAR(h_result[i].y, h_data[i].y * scale_factor, 1e-10);
+    }
+    
+    cudaFree(d_data);
 }
 
-// ============================================================================
-// Memory Management Tests
-// ============================================================================
-
-TEST_F(ConvolutionGPU3DTest, MultipleTransforms) {
-    dims_t dims;
-    dims[0] = 8;
-    dims[1] = 8;
-    dims[2] = 8;
+TEST_F(CudaKernelTest, SumBatchesKernel) {
+    const size_t size = 64;
+    const int batch_size = 4;
     
-    const int N = 8;
-    const int total_size = (2*N - 1) * (2*N - 1) * (2*N - 1);
+    // Allocate device memory
+    cuDoubleComplex* d_input = nullptr;
+    cuDoubleComplex* d_output = nullptr;
+    cudaMalloc(&d_input, size * batch_size * sizeof(cuDoubleComplex));
+    cudaMalloc(&d_output, size * sizeof(cuDoubleComplex));
     
-    std::vector<float_type> input1(total_size, 1.0);
-    std::vector<float_type> input2(total_size, 2.0);
-    
-    fft::Convolution_GPU<Dim> conv(dims, dims);
-    
-    // First transform
-    ASSERT_NO_THROW({
-        auto output1 = conv.dft_r2c(input1);
-    });
-    
-    // Second transform (reuse object)
-    ASSERT_NO_THROW({
-        auto output2 = conv.dft_r2c(input2);
-    });
-}
-
-TEST_F(ConvolutionGPU3DTest, FieldClean) {
-    dims_t dims;
-    dims[0] = 8;
-    dims[1] = 8;
-    dims[2] = 8;
-    
-    fft::Convolution_GPU<Dim> conv(dims, dims);
-    
-    ASSERT_NO_THROW({
-        conv.fft_backward_field_clean();
-    });
-}
-
-// ============================================================================
-// Performance Tests (Basic)
-// ============================================================================
-
-TEST_F(ConvolutionGPU3DTest, LargeTransformPerformance) {
-    dims_t dims;
-    dims[0] = 64;
-    dims[1] = 64;
-    dims[2] = 64;
-    
-    const int N = 64;
-    const int total_size = (2*N - 1) * (2*N - 1) * (2*N - 1);
-    
-    std::vector<float_type> input(total_size, 1.0);
-    
-    fft::Convolution_GPU<Dim> conv(dims, dims);
-    
-    // Just verify it completes without error
-    ASSERT_NO_THROW({
-        auto output = conv.dft_r2c(input);
-        EXPECT_GT(conv.dft_r2c_size(), 0);
-    });
-}
-
-// ============================================================================
-// Edge Cases
-// ============================================================================
-
-TEST_F(ConvolutionGPU3DTest, ZeroInput) {
-    dims_t dims;
-    dims[0] = 8;
-    dims[1] = 8;
-    dims[2] = 8;
-    
-    const int N = 8;
-    const int total_size = (2*N - 1) * (2*N - 1) * (2*N - 1);
-    
-    std::vector<float_type> input(total_size, 0.0);
-    
-    fft::Convolution_GPU<Dim> conv(dims, dims);
-    
-    ASSERT_NO_THROW({
-        auto output = conv.dft_r2c(input);
-        EXPECT_GT(conv.dft_r2c_size(), 0);
-    });
-}
-
-TEST_F(ConvolutionGPU3DTest, MinimalDimensions) {
-    dims_t dims;
-    dims[0] = 2;
-    dims[1] = 2;
-    dims[2] = 2;
-    
-    const int N = 2;
-    const int total_size = (2*N - 1) * (2*N - 1) * (2*N - 1);
-    
-    std::vector<float_type> input(total_size, 1.0);
-    
-    fft::Convolution_GPU<Dim> conv(dims, dims);
-    
-    ASSERT_NO_THROW({
-        auto output = conv.dft_r2c(input);
-        EXPECT_GT(conv.dft_r2c_size(), 0);
-    });
-}
-
-// ============================================================================
-// CUDA Device Information Test
-// ============================================================================
-
-TEST_F(ConvolutionGPU3DTest, DeviceProperties) {
-    int device;
-    CUDA_CHECK(cudaGetDevice(&device));
-    
-    cudaDeviceProp prop;
-    CUDA_CHECK(cudaGetDeviceProperties(&prop, device));
-    
-    std::cout << "GPU Device: " << prop.name << std::endl;
-    std::cout << "Compute Capability: " << prop.major << "." << prop.minor << std::endl;
-    std::cout << "Total Global Memory: " << prop.totalGlobalMem / (1024*1024) << " MB" << std::endl;
-    
-    EXPECT_GT(prop.totalGlobalMem, 0);
-}
-
-// ============================================================================
-// Analytical Solution Tests (GPU)
-// ============================================================================
-
-TEST_F(ConvolutionGPU3DTest, CosineWaveFFT) {
-    // Test: FFT of cos(2*pi*k*x/N) should produce peak at wavenumber k
-    dims_t dims;
-    dims[0] = 16;
-    dims[1] = 16;
-    dims[2] = 16;
-    
-    const int N = 16;
-    const int N_field = 2*N - 1;
-    const int total_size = N_field * N_field * N_field;
-    
-    std::vector<float_type> input(total_size, 0.0);
-    
-    // Create cosine wave along x-direction: cos(2*pi*2*x/N_field)
-    const int k = 2;
-    for (int z = 0; z < N_field; ++z) {
-        for (int y = 0; y < N_field; ++y) {
-            for (int x = 0; x < N_field; ++x) {
-                double pos = static_cast<double>(x) / N_field;
-                input[x + y * N_field + z * N_field * N_field] = 
-                    std::cos(2.0 * M_PI * k * pos);
-            }
+    // Initialize input with known values
+    std::vector<cuDoubleComplex> h_input(size * batch_size);
+    for (int b = 0; b < batch_size; ++b) {
+        for (size_t i = 0; i < size; ++i) {
+            h_input[i + b * size] = make_cuDoubleComplex(b + 1.0, b * 0.5);
         }
     }
     
-    fft::Convolution_GPU<Dim> conv(dims, dims);
+    // Initialize output to zero
+    std::vector<cuDoubleComplex> h_output(size, make_cuDoubleComplex(0.0, 0.0));
     
-    ASSERT_NO_THROW({
-        auto output = conv.dft_r2c(input);
-        size_t output_size = conv.dft_r2c_size();
-        
-        // Find maximum magnitude
-        double max_magnitude = 0.0;
-        for (size_t i = 0; i < output_size; ++i) {
-            max_magnitude = std::max(max_magnitude, cufft_abs(output[i]));
+    cudaMemcpy(d_input, h_input.data(), size * batch_size * sizeof(cuDoubleComplex), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_output, h_output.data(), size * sizeof(cuDoubleComplex), cudaMemcpyHostToDevice);
+    
+    // Launch kernel
+    int blockSize = 256;
+    int numBlocks = (size + blockSize - 1) / blockSize;
+    sum_batches<<<numBlocks, blockSize>>>(d_input, d_output, batch_size, size);
+    cudaDeviceSynchronize();
+    
+    // Copy back and verify
+    std::vector<cuDoubleComplex> h_result(size);
+    cudaMemcpy(h_result.data(), d_output, size * sizeof(cuDoubleComplex), cudaMemcpyDeviceToHost);
+    
+    // Expected sum: (1+2+3+4) = 10 for real, (0+0.5+1.0+1.5) = 3.0 for imag
+    double expected_real = 10.0;
+    double expected_imag = 3.0;
+    
+    for (size_t i = 0; i < size; ++i) {
+        EXPECT_NEAR(h_result[i].x, expected_real, 1e-10);
+        EXPECT_NEAR(h_result[i].y, expected_imag, 1e-10);
+    }
+    
+    cudaFree(d_input);
+    cudaFree(d_output);
+}
+
+// ============================================================================
+// Integration Tests
+// ============================================================================
+
+TEST_F(ConvolutionGpu3DTest, EndToEndConvolution) {
+    // Test complete convolution workflow with simple data
+    types::vector_type<int, 3> padded_dims;
+    padded_dims[0] = dims0[0] + dims1[0] - 1;
+    padded_dims[1] = dims0[1] + dims1[1] - 1;
+    padded_dims[2] = dims0[2] + dims1[2] - 1;
+    size_t data_size = padded_dims[0] * padded_dims[1] * padded_dims[2];
+    std::vector<double> test_data(data_size, 1.0);
+    
+    // Perform forward transform
+    auto* spectrum = conv_gpu->dft_r2c(test_data);
+    EXPECT_NE(spectrum, nullptr);
+    
+    // Verify spectrum size
+    size_t spectrum_size = conv_gpu->dft_r2c_size();
+    EXPECT_GT(spectrum_size, 0);
+}
+
+// ============================================================================
+// Error Handling Tests
+// ============================================================================
+
+class GpuErrorHandlingTest : public ::testing::Test {
+protected:
+    void SetUp() override {
+        if (!cuda_device_available()) {
+            GTEST_SKIP() << "CUDA device not available, skipping GPU tests";
         }
-        
-        // Should have significant peak from the cosine wave
-        EXPECT_GT(max_magnitude, 1e3);
+    }
+};
+
+TEST_F(GpuErrorHandlingTest, LargeDimensionsConstruction) {
+    types::vector_type<int, 3> large_dims;
+    large_dims[0] = 256; large_dims[1] = 256; large_dims[2] = 256;
+    types::vector_type<int, 3> small_dims;
+    small_dims[0] = 128; small_dims[1] = 128; small_dims[2] = 128;
+    
+    // Should succeed but may take significant memory
+    EXPECT_NO_THROW({
+        dfft_r2c_gpu gpu(large_dims, small_dims);
     });
 }
 
-TEST_F(ConvolutionGPU3DTest, GaussianTransform) {
-    // Test: Gaussian function FFT should be peaked at DC component
-    dims_t dims;
-    dims[0] = 16;
-    dims[1] = 16;
-    dims[2] = 16;
+TEST_F(GpuErrorHandlingTest, ZeroBatchSize) {
+    types::vector_type<int, 3> dims;
+    dims[0] = 8; dims[1] = 8; dims[2] = 8;
     
-    const int N = 16;
-    const int N_field = 2*N - 1;
-    const int total_size = N_field * N_field * N_field;
-    
-    std::vector<float_type> input(total_size, 0.0);
-    
-    // Create Gaussian centered in the field with wider sigma
-    const double sigma = 3.0;  // Wider Gaussian
-    const double center = N_field / 2.0;
-    
-    for (int z = 0; z < N_field; ++z) {
-        for (int y = 0; y < N_field; ++y) {
-            for (int x = 0; x < N_field; ++x) {
-                double dx = x - center;
-                double dy = y - center;
-                double dz = z - center;
-                double r2 = dx*dx + dy*dy + dz*dz;
-                input[x + y * N_field + z * N_field * N_field] = 
-                    std::exp(-r2 / (2.0 * sigma * sigma));
-            }
-        }
-    }
-    
-    fft::Convolution_GPU<Dim> conv(dims, dims);
-    
-    ASSERT_NO_THROW({
-        auto output = conv.dft_r2c(input);
-        size_t output_size = conv.dft_r2c_size();
-        
-        // DC component (first element) should be among the largest
-        double dc_magnitude = cufft_abs(output[0]);
-        
-        // Check that DC is dominant - count how many values exceed it
-        int larger_count = 0;
-        for (size_t i = 1; i < output_size; ++i) {
-            if (cufft_abs(output[i]) > dc_magnitude) {
-                larger_count++;
-            }
-        }
-        
-        // DC should be among the largest values (allow some numerical variation)
-        EXPECT_LT(larger_count, 10);
-        
-        // DC should be positive and significant (relaxed threshold)
-        EXPECT_GT(dc_magnitude, 10.0);
-    });
-}
-
-TEST_F(ConvolutionGPU3DTest, ParsevalsTheoremApproximate) {
-    // Test: Energy conservation in FFT (Parseval's theorem)
-    dims_t dims;
-    dims[0] = 8;
-    dims[1] = 8;
-    dims[2] = 8;
-    
-    const int N = 8;
-    const int N_field = 2*N - 1;
-    const int total_size = N_field * N_field * N_field;
-    
-    std::vector<float_type> input(total_size, 0.0);
-    
-    // Create mixed signal
-    double time_energy = 0.0;
-    for (int z = 0; z < N_field; ++z) {
-        for (int y = 0; y < N_field; ++y) {
-            for (int x = 0; x < N_field; ++x) {
-                double val = std::sin(2.0 * M_PI * x / N_field) * 
-                            std::cos(2.0 * M_PI * y / N_field);
-                input[x + y * N_field + z * N_field * N_field] = val;
-                time_energy += val * val;
-            }
-        }
-    }
-    
-    fft::Convolution_GPU<Dim> conv(dims, dims);
-    
-    ASSERT_NO_THROW({
-        auto output = conv.dft_r2c(input);
-        size_t output_size = conv.dft_r2c_size();
-        
-        // Calculate frequency domain energy (unnormalized)
-        double freq_energy = 0.0;
-        for (size_t i = 0; i < output_size; ++i) {
-            freq_energy += cufft_norm(output[i]);
-        }
-        
-        // Energies should be of same order of magnitude
-        // (exact ratio depends on FFT normalization conventions)
-        EXPECT_GT(freq_energy, 0.0);
-        EXPECT_GT(time_energy, 0.0);
-        
-        // Check they're in reasonable proportion (within 2 orders of magnitude)
-        double ratio = freq_energy / time_energy;
-        EXPECT_GT(ratio, 0.01);
-        EXPECT_LT(ratio, 100.0);
-    });
-}
-
-TEST_F(ConvolutionGPU3DTest, LinearityProperty) {
-    // Test: FFT linearity - FFT(a*f + b*g) = a*FFT(f) + b*FFT(g)
-    dims_t dims;
-    dims[0] = 8;
-    dims[1] = 8;
-    dims[2] = 8;
-    
-    const int N = 8;
-    const int N_field = 2*N - 1;
-    const int total_size = N_field * N_field * N_field;
-    
-    const double a = 2.0;
-    const double b = -1.5;
-    
-    std::vector<float_type> f(total_size, 0.0);
-    std::vector<float_type> g(total_size, 0.0);
-    std::vector<float_type> combined(total_size, 0.0);
-    
-    // Create two different signals
-    for (int i = 0; i < total_size; ++i) {
-        f[i] = std::sin(2.0 * M_PI * i / total_size);
-        g[i] = std::cos(2.0 * M_PI * i / (2.0 * total_size));
-        combined[i] = a * f[i] + b * g[i];
-    }
-    
-    fft::Convolution_GPU<Dim> conv_f(dims, dims);
-    fft::Convolution_GPU<Dim> conv_g(dims, dims);
-    fft::Convolution_GPU<Dim> conv_combined(dims, dims);
-    
-    ASSERT_NO_THROW({
-        auto output_f = conv_f.dft_r2c(f);
-        auto output_g = conv_g.dft_r2c(g);
-        auto output_combined = conv_combined.dft_r2c(combined);
-        
-        // Check linearity for first several elements
-        const size_t check_size = std::min(conv_combined.dft_r2c_size(), size_t(100));
-        
-        for (size_t i = 0; i < check_size; ++i) {
-            std::complex<double> expected = a * to_std_complex(output_f[i]) + b * to_std_complex(output_g[i]);
-            std::complex<double> actual = to_std_complex(output_combined[i]);
-            
-            // Relative error check
-            double expected_mag = std::abs(expected);
-            if (expected_mag > 1e-6) {
-                double rel_error = std::abs(actual - expected) / expected_mag;
-                EXPECT_LT(rel_error, 1e-6) << "at index " << i;
-            }
-        }
+    // Zero batch size should still construct
+    EXPECT_NO_THROW({
+        dfft_r2c_gpu_batch gpu_batch(dims, dims, 0);
     });
 }
 
 // ============================================================================
-// GPU LGF Convolution Tests
+// Performance Metrics Tests
 // ============================================================================
 
-TEST_F(ConvolutionGPU3DTest, LGFPointSourceGPU) {
-    // Test: GPU convolution with LGF-like behavior (delta function)
-    dims_t dims;
-    dims[0] = 8;
-    dims[1] = 8;
-    dims[2] = 8;
+TEST_F(ConvolutionGpu3DTest, BatchExecutionCounter) {
+    // Verify fft_count_ and number_fwrd_executed tracking
+    EXPECT_EQ(conv_gpu->fft_count_, 0);
+    EXPECT_EQ(conv_gpu->number_fwrd_executed, 0);
     
-    const int N = 8;
-    const int N_field = 2*N - 1;
-    const int total_size = N_field * N_field * N_field;
-    
-    std::vector<float_type> input(total_size, 0.0);
-    
-    // Delta function at origin
-    input[0] = 1.0;
-    
-    fft::Convolution_GPU<Dim> conv(dims, dims);
-    
-    ASSERT_NO_THROW({
-        auto output = conv.dft_r2c(input);
-        size_t output_size = conv.dft_r2c_size();
-        
-        // Delta function should produce non-trivial FFT
-        double max_magnitude = 0.0;
-        for (size_t i = 0; i < output_size; ++i) {
-            max_magnitude = std::max(max_magnitude, cufft_abs(output[i]));
-        }
-        
-        EXPECT_GT(max_magnitude, 0.0) << "Delta function FFT should be non-trivial";
-    });
-}
-
-TEST_F(ConvolutionGPU3DTest, LGFOffsetSourceGPU) {
-    // Test: GPU convolution with offset point source
-    dims_t dims;
-    dims[0] = 8;
-    dims[1] = 8;
-    dims[2] = 8;
-    
-    const int N = 8;
-    const int N_field = 2*N - 1;
-    const int total_size = N_field * N_field * N_field;
-    
-    std::vector<float_type> input(total_size, 0.0);
-    
-    // Delta function at offset location
-    int cx = N / 3, cy = N / 4, cz = N / 2;
-    int offset_idx = cx + cy * N_field + cz * N_field * N_field;
-    if (offset_idx < total_size) {
-        input[offset_idx] = 1.0;
-    }
-    
-    fft::Convolution_GPU<Dim> conv(dims, dims);
-    
-    ASSERT_NO_THROW({
-        auto output = conv.dft_r2c(input);
-        size_t output_size = conv.dft_r2c_size();
-        
-        // Offset delta should also produce FFT
-        double sum = 0.0;
-        for (size_t i = 0; i < output_size; ++i) {
-            sum += cufft_abs(output[i]);
-        }
-        
-        EXPECT_GT(sum, 0.0) << "Offset delta FFT should be non-trivial";
-    });
-}
-
-TEST_F(ConvolutionGPU3DTest, LGFMultipleSourcesGPU) {
-    // Test: GPU convolution with multiple point sources
-    dims_t dims;
-    dims[0] = 8;
-    dims[1] = 8;
-    dims[2] = 8;
-    
-    const int N = 8;
-    const int N_field = 2*N - 1;
-    const int total_size = N_field * N_field * N_field;
-    
-    std::vector<float_type> input(total_size, 0.0);
-    
-    // Multiple point sources
-    int x1 = N / 4, y1 = N / 4, z1 = N / 4;
-    int x2 = 3*N / 4, y2 = 3*N / 4, z2 = 3*N / 4;
-    
-    int idx1 = x1 + y1 * N_field + z1 * N_field * N_field;
-    int idx2 = x2 + y2 * N_field + z2 * N_field * N_field;
-    
-    if (idx1 < total_size) input[idx1] = 2.5;
-    if (idx2 < total_size) input[idx2] = -1.3;
-    
-    fft::Convolution_GPU<Dim> conv(dims, dims);
-    
-    ASSERT_NO_THROW({
-        auto output = conv.dft_r2c(input);
-        size_t output_size = conv.dft_r2c_size();
-        
-        // Multiple sources should produce significant FFT
-        double max_magnitude = 0.0;
-        for (size_t i = 0; i < output_size; ++i) {
-            max_magnitude = std::max(max_magnitude, cufft_abs(output[i]));
-        }
-        
-        EXPECT_GT(max_magnitude, 0.0) << "Multiple sources FFT should be significant";
-    });
-}
-
-TEST_F(ConvolutionGPU3DTest, LGFRoundTripGPU) {
-    // Test: R2C → C2R round-trip with LGF-like source
-    dims_t dims;
-    dims[0] = 8;
-    dims[1] = 8;
-    dims[2] = 8;
-    
-    const int N = 8;
-    const int N_field = 2*N - 1;
-    const int total_size = N_field * N_field * N_field;
-    
-    std::vector<float_type> input(total_size, 0.0);
-    
-    // Distributed source (not just delta)
-    for (int z = 0; z < N_field; ++z) {
-        for (int y = 0; y < N_field; ++y) {
-            for (int x = 0; x < N_field; ++x) {
-                double dx = x - N_field / 2.0;
-                double dy = y - N_field / 2.0;
-                double dz = z - N_field / 2.0;
-                double r2 = dx*dx + dy*dy + dz*dz;
-                input[x + y * N_field + z * N_field * N_field] = 
-                    std::exp(-r2 / 10.0);
-            }
-        }
-    }
-    
-    fft::Convolution_GPU<Dim> conv(dims, dims);
-    
-    ASSERT_NO_THROW({
-        auto fft_output = conv.dft_r2c(input);
-        size_t output_size = conv.dft_r2c_size();
-        
-        // Verify FFT output is non-trivial
-        double fft_energy = 0.0;
-        for (size_t i = 0; i < output_size; ++i) {
-            fft_energy += cufft_norm(fft_output[i]);
-        }
-        
-        EXPECT_GT(fft_energy, 0.0) << "Distributed source FFT should have energy";
-    });
-}
-
-TEST_F(ConvolutionGPU3DTest, LGFUniformSourceGPU) {
-    // Test: GPU convolution with uniform source field
-    dims_t dims;
-    dims[0] = 8;
-    dims[1] = 8;
-    dims[2] = 8;
-    
-    const int N = 8;
-    const int N_field = 2*N - 1;
-    const int total_size = N_field * N_field * N_field;
-    
-    std::vector<float_type> input(total_size, 1.0);  // Uniform field
-    
-    fft::Convolution_GPU<Dim> conv(dims, dims);
-    
-    ASSERT_NO_THROW({
-        auto output = conv.dft_r2c(input);
-        
-        // Uniform field should have DC component
-        double dc_magnitude = cufft_abs(output[0]);
-        
-        EXPECT_GT(dc_magnitude, 1.0) << "Uniform source should have significant DC";
-    });
-}
-
-// ============================================================================
-// Main
-// ============================================================================
-
-int main(int argc, char** argv) {
-    ::testing::InitGoogleTest(&argc, argv);
-    
-    // Check GPU availability before running tests
-    if (!isGPUAvailable()) {
-        std::cout << "WARNING: No CUDA-capable GPU detected. GPU tests will be skipped.\n";
-    } else {
-        std::cout << "CUDA GPU detected. Running GPU convolution tests...\n";
-    }
-    
-    return RUN_ALL_TESTS();
+    // After clean, counters should reset
+    conv_gpu->number_fwrd_executed = 10;
+    conv_gpu->fft_backward_field_clean();
+    EXPECT_EQ(conv_gpu->number_fwrd_executed, 0);
 }

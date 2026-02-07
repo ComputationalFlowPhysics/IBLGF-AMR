@@ -51,6 +51,21 @@ bool isGPUAvailable() {
     return error == cudaSuccess && deviceCount > 0;
 }
 
+// Helper function to convert cufftDoubleComplex to std::complex<double>
+inline std::complex<double> to_std_complex(const cufftDoubleComplex& c) {
+    return std::complex<double>(c.x, c.y);
+}
+
+// Helper function to get magnitude of cufftDoubleComplex
+inline double cufft_abs(const cufftDoubleComplex& c) {
+    return std::sqrt(c.x * c.x + c.y * c.y);
+}
+
+// Helper function to get norm (squared magnitude) of cufftDoubleComplex
+inline double cufft_norm(const cufftDoubleComplex& c) {
+    return c.x * c.x + c.y * c.y;
+}
+
 // ============================================================================
 // Test Fixtures for GPU Convolution (3D)
 // ============================================================================
@@ -349,7 +364,7 @@ TEST_F(ConvolutionGPU3DTest, DeltaFunctionTransform) {
     // Forward transform
     ASSERT_NO_THROW({
         auto fft_output = conv.dft_r2c(input);
-        EXPECT_GT(fft_output.size(), 0);
+        EXPECT_GT(conv.dft_r2c_size(), 0);
     });
 }
 
@@ -369,7 +384,7 @@ TEST_F(ConvolutionGPU3DTest, UniformFieldTransform) {
     
     ASSERT_NO_THROW({
         auto fft_output = conv.dft_r2c(input);
-        EXPECT_GT(fft_output.size(), 0);
+        EXPECT_GT(conv.dft_r2c_size(), 0);
     });
 }
 
@@ -398,7 +413,7 @@ TEST_F(ConvolutionGPU3DTest, LinearRampTransform) {
     
     ASSERT_NO_THROW({
         auto fft_output = conv.dft_r2c(input);
-        EXPECT_GT(fft_output.size(), 0);
+        EXPECT_GT(conv.dft_r2c_size(), 0);
     });
 }
 
@@ -464,7 +479,7 @@ TEST_F(ConvolutionGPU3DTest, LargeTransformPerformance) {
     // Just verify it completes without error
     ASSERT_NO_THROW({
         auto output = conv.dft_r2c(input);
-        EXPECT_GT(output.size(), 0);
+        EXPECT_GT(conv.dft_r2c_size(), 0);
     });
 }
 
@@ -487,7 +502,7 @@ TEST_F(ConvolutionGPU3DTest, ZeroInput) {
     
     ASSERT_NO_THROW({
         auto output = conv.dft_r2c(input);
-        EXPECT_GT(output.size(), 0);
+        EXPECT_GT(conv.dft_r2c_size(), 0);
     });
 }
 
@@ -506,7 +521,7 @@ TEST_F(ConvolutionGPU3DTest, MinimalDimensions) {
     
     ASSERT_NO_THROW({
         auto output = conv.dft_r2c(input);
-        EXPECT_GT(output.size(), 0);
+        EXPECT_GT(conv.dft_r2c_size(), 0);
     });
 }
 
@@ -561,11 +576,12 @@ TEST_F(ConvolutionGPU3DTest, CosineWaveFFT) {
     
     ASSERT_NO_THROW({
         auto output = conv.dft_r2c(input);
+        size_t output_size = conv.dft_r2c_size();
         
         // Find maximum magnitude
         double max_magnitude = 0.0;
-        for (const auto& val : output) {
-            max_magnitude = std::max(max_magnitude, std::abs(val));
+        for (size_t i = 0; i < output_size; ++i) {
+            max_magnitude = std::max(max_magnitude, cufft_abs(output[i]));
         }
         
         // Should have significant peak from the cosine wave
@@ -607,14 +623,15 @@ TEST_F(ConvolutionGPU3DTest, GaussianTransform) {
     
     ASSERT_NO_THROW({
         auto output = conv.dft_r2c(input);
+        size_t output_size = conv.dft_r2c_size();
         
         // DC component (first element) should be among the largest
-        double dc_magnitude = std::abs(output[0]);
+        double dc_magnitude = cufft_abs(output[0]);
         
         // Check that DC is dominant - count how many values exceed it
         int larger_count = 0;
-        for (size_t i = 1; i < output.size(); ++i) {
-            if (std::abs(output[i]) > dc_magnitude) {
+        for (size_t i = 1; i < output_size; ++i) {
+            if (cufft_abs(output[i]) > dc_magnitude) {
                 larger_count++;
             }
         }
@@ -657,11 +674,12 @@ TEST_F(ConvolutionGPU3DTest, ParsevalsTheoremApproximate) {
     
     ASSERT_NO_THROW({
         auto output = conv.dft_r2c(input);
+        size_t output_size = conv.dft_r2c_size();
         
         // Calculate frequency domain energy (unnormalized)
         double freq_energy = 0.0;
-        for (const auto& val : output) {
-            freq_energy += std::norm(val);
+        for (size_t i = 0; i < output_size; ++i) {
+            freq_energy += cufft_norm(output[i]);
         }
         
         // Energies should be of same order of magnitude
@@ -711,11 +729,11 @@ TEST_F(ConvolutionGPU3DTest, LinearityProperty) {
         auto output_combined = conv_combined.dft_r2c(combined);
         
         // Check linearity for first several elements
-        const size_t check_size = std::min(output_combined.size(), size_t(100));
+        const size_t check_size = std::min(conv_combined.dft_r2c_size(), size_t(100));
         
         for (size_t i = 0; i < check_size; ++i) {
-            std::complex<double> expected = a * output_f[i] + b * output_g[i];
-            std::complex<double> actual = output_combined[i];
+            std::complex<double> expected = a * to_std_complex(output_f[i]) + b * to_std_complex(output_g[i]);
+            std::complex<double> actual = to_std_complex(output_combined[i]);
             
             // Relative error check
             double expected_mag = std::abs(expected);
@@ -751,11 +769,12 @@ TEST_F(ConvolutionGPU3DTest, LGFPointSourceGPU) {
     
     ASSERT_NO_THROW({
         auto output = conv.dft_r2c(input);
+        size_t output_size = conv.dft_r2c_size();
         
         // Delta function should produce non-trivial FFT
         double max_magnitude = 0.0;
-        for (const auto& val : output) {
-            max_magnitude = std::max(max_magnitude, std::abs(val));
+        for (size_t i = 0; i < output_size; ++i) {
+            max_magnitude = std::max(max_magnitude, cufft_abs(output[i]));
         }
         
         EXPECT_GT(max_magnitude, 0.0) << "Delta function FFT should be non-trivial";
@@ -786,11 +805,12 @@ TEST_F(ConvolutionGPU3DTest, LGFOffsetSourceGPU) {
     
     ASSERT_NO_THROW({
         auto output = conv.dft_r2c(input);
+        size_t output_size = conv.dft_r2c_size();
         
         // Offset delta should also produce FFT
         double sum = 0.0;
-        for (const auto& val : output) {
-            sum += std::abs(val);
+        for (size_t i = 0; i < output_size; ++i) {
+            sum += cufft_abs(output[i]);
         }
         
         EXPECT_GT(sum, 0.0) << "Offset delta FFT should be non-trivial";
@@ -824,11 +844,12 @@ TEST_F(ConvolutionGPU3DTest, LGFMultipleSourcesGPU) {
     
     ASSERT_NO_THROW({
         auto output = conv.dft_r2c(input);
+        size_t output_size = conv.dft_r2c_size();
         
         // Multiple sources should produce significant FFT
         double max_magnitude = 0.0;
-        for (const auto& val : output) {
-            max_magnitude = std::max(max_magnitude, std::abs(val));
+        for (size_t i = 0; i < output_size; ++i) {
+            max_magnitude = std::max(max_magnitude, cufft_abs(output[i]));
         }
         
         EXPECT_GT(max_magnitude, 0.0) << "Multiple sources FFT should be significant";
@@ -866,11 +887,12 @@ TEST_F(ConvolutionGPU3DTest, LGFRoundTripGPU) {
     
     ASSERT_NO_THROW({
         auto fft_output = conv.dft_r2c(input);
+        size_t output_size = conv.dft_r2c_size();
         
         // Verify FFT output is non-trivial
         double fft_energy = 0.0;
-        for (const auto& val : fft_output) {
-            fft_energy += std::norm(val);
+        for (size_t i = 0; i < output_size; ++i) {
+            fft_energy += cufft_norm(fft_output[i]);
         }
         
         EXPECT_GT(fft_energy, 0.0) << "Distributed source FFT should have energy";
@@ -896,7 +918,7 @@ TEST_F(ConvolutionGPU3DTest, LGFUniformSourceGPU) {
         auto output = conv.dft_r2c(input);
         
         // Uniform field should have DC component
-        double dc_magnitude = std::abs(output[0]);
+        double dc_magnitude = cufft_abs(output[0]);
         
         EXPECT_GT(dc_magnitude, 1.0) << "Uniform source should have significant DC";
     });

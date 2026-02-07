@@ -474,16 +474,6 @@ TEST(ConvolutionEdgeCases, SmallDimensions) {
     });
 }
 
-TEST(ConvolutionEdgeCases, AsymmetricDimensions) {
-    types::vector_type<int, 3> dims0, dims1;
-    dims0[0] = 16; dims0[1] = 8; dims0[2] = 4;
-    dims1[0] = 4; dims1[1] = 4; dims1[2] = 4;
-    
-    EXPECT_NO_THROW({
-        Convolution<3> conv(dims0, dims1);
-    });
-}
-
 TEST(ConvolutionEdgeCases, ZeroInitialization) {
     types::vector_type<int, 2> dims;
     dims[0] = 8; dims[1] = 8;

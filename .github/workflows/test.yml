@@ -29,7 +29,7 @@ jobs:
           find . -maxdepth 2 -name "*iblgf*"
       
       - name: Docker Env + build + test
-        run: ./docker_iblgf.sh -- bash -lc './iblgf.sh test'
+        run: ./docker_iblgf.sh -c 4 -- bash -lc './iblgf.sh test'
 
       # - name: Docker Env
       #   run: bash docker_iblgf.sh

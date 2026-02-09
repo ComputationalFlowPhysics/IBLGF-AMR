@@ -38,6 +38,10 @@ CPUS=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --)
+      shift
+      break   # <-- stop option parsing here
+      ;;
     -c|--cpus)
       shift
       CPUS="${1:-}"
@@ -101,14 +105,12 @@ WORKDIR /workspace2
 EOF
 fi
 
-# ---- Determine repo root robustly (works whether script is run inside or outside repo) ----
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Case A: script sits in repo root and repo has CMakeLists.txt
 if [[ -f "$SCRIPT_DIR/CMakeLists.txt" ]]; then
   HOST_REPO_DIR="$SCRIPT_DIR"
-# Case B: script is in a subdir of the repo (e.g., scripts/), search upward
-else
+# Case B: script is in a subdir of the repo 
   SEARCH_DIR="$SCRIPT_DIR"
   HOST_REPO_DIR=""
   while [[ "$SEARCH_DIR" != "/" ]]; do
@@ -124,13 +126,24 @@ fi
 echo "==> Host repo dir: $HOST_REPO_DIR"
 echo "==> Container repo dir: $CONTAINER_REPO_DIR"
 
-DOCKER_ARGS=(
-  docker run -it --rm
-  # Mount repo to a stable path inside container
+INTERACTIVE=1
+if [[ $# -gt 0 ]]; then
+  INTERACTIVE=0
+fi
+
+DOCKER_ARGS=(docker run --rm)
+
+if [[ "$INTERACTIVE" -eq 1 ]]; then
+  DOCKER_ARGS+=( -it )
+fi
+
+# Mount repo and set working directory
+DOCKER_ARGS+=(
   -v "$HOST_REPO_DIR:$CONTAINER_REPO_DIR"
-  # Always start inside the repo
   -w "$CONTAINER_REPO_DIR"
 )
+
+DOCKER_ARGS+=( -e LD_LIBRARY_PATH="/usr/local/lib:/usr/local/cuda/lib64:${LD_LIBRARY_PATH:-}" )
 
 if [[ "$USE_GPU" -eq 1 ]]; then
   DOCKER_ARGS+=(--gpus all)
@@ -142,5 +155,13 @@ if [[ -n "$CPUS" ]]; then
 fi
 
 DOCKER_ARGS+=("$PY_IMAGE")
+
+if [[ $# -gt 0 ]]; then
+  # Non-interactive
+  DOCKER_ARGS+=("$@")
+else
+  # Interactive shell
+  DOCKER_ARGS+=("bash")
+fi
 
 exec "${DOCKER_ARGS[@]}"

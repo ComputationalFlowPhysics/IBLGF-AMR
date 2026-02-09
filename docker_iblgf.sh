@@ -1,24 +1,36 @@
 #!/usr/bin/env bash
 # docker_iblgf.sh — enter IBLGF Docker env with optional CPU limit and Python
-
 set -euo pipefail
 
-BASE_IMAGE="ccardina/my-app:cpu"
-PY_IMAGE="ccardina/my-app:cpu-python"
-WORKDIR="/workspace2"
+CPU_BASE_IMAGE="ccardina/my-app:cpu"
+CPU_PY_IMAGE="ccardina/my-app:cpu-python"
+
+GPU_BASE_IMAGE="ccardina/my-app:gpu"
+GPU_PY_IMAGE="ccardina/my-app:gpu-python"
+
+USE_GPU=0
+
+# Where the repo lives
+CONTAINER_ROOT="/workspace2"
+CONTAINER_REPO_DIR="$CONTAINER_ROOT/IBLGF-AMR"
 
 usage() {
   cat <<EOF
 Usage:
   ./docker_iblgf.sh
   ./docker_iblgf.sh -c N
+  ./docker_iblgf.sh -g
+  ./docker_iblgf.sh -g -c N
 
 Options:
   -c N    Limit Docker container to N CPU cores
+  -g      Use GPU image 
 
 Examples:
   ./docker_iblgf.sh
   ./docker_iblgf.sh -c 4
+  ./docker_iblgf.sh -g
+  ./docker_iblgf.sh -g -c 4
 EOF
 }
 
@@ -26,15 +38,26 @@ CPUS=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --)
+      shift
+      break   # <-- stop option parsing here
+      ;;
     -c|--cpus)
       shift
       CPUS="${1:-}"
       [[ -n "$CPUS" ]] || { echo "Missing value for -c"; exit 1; }
+      # basic numeric validation
+      [[ "$CPUS" =~ ^[0-9]+$ ]] || { echo "CPU count must be an integer"; exit 1; }
+      [[ "$CPUS" -ge 1 ]] || { echo "CPU count must be >= 1"; exit 1; }
       shift
       ;;
     -h|--help)
       usage
       exit 0
+      ;;
+    -g|--gpu)
+      USE_GPU=1
+      shift
       ;;
     *)
       echo "Unknown option: $1"
@@ -43,6 +66,14 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+if [[ "$USE_GPU" -eq 1 ]]; then
+  BASE_IMAGE="$GPU_BASE_IMAGE"
+  PY_IMAGE="$GPU_PY_IMAGE"
+else
+  BASE_IMAGE="$CPU_BASE_IMAGE"
+  PY_IMAGE="$CPU_PY_IMAGE"
+fi
 
 echo "==> Base image: $BASE_IMAGE"
 
@@ -56,13 +87,10 @@ fi
 if ! docker image inspect "$PY_IMAGE" >/dev/null 2>&1; then
   echo "==> Building Python-enabled image: $PY_IMAGE"
 
-  docker build -t "$PY_IMAGE" - <<'EOF'
-FROM ccardina/my-app:cpu
+  docker build -t "$PY_IMAGE" - <<EOF
+FROM ${BASE_IMAGE}
 
-# Temporarily become root to install packages
 USER root
-
-# Some minimal images don't have apt lists dirs created
 RUN mkdir -p /var/lib/apt/lists/partial
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -72,19 +100,54 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN python3 -m pip install --no-cache-dir --upgrade pip \
  && python3 -m pip install --no-cache-dir numpy scipy matplotlib
 
-# Switch back to whatever the base image expects (often 1000:1000)
-# If the base image uses a different user, runtime can still override with --user.
 USER 1000:1000
-
 WORKDIR /workspace2
 EOF
 fi
 
-DOCKER_ARGS=(
-  docker run -it --rm
-  -v "$(pwd):$WORKDIR"
-  -w "$WORKDIR"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Case A: script sits in repo root and repo has CMakeLists.txt
+if [[ -f "$SCRIPT_DIR/CMakeLists.txt" ]]; then
+  HOST_REPO_DIR="$SCRIPT_DIR"
+# Case B: script is in a subdir of the repo 
+  SEARCH_DIR="$SCRIPT_DIR"
+  HOST_REPO_DIR=""
+  while [[ "$SEARCH_DIR" != "/" ]]; do
+    if [[ -f "$SEARCH_DIR/CMakeLists.txt" ]]; then
+      HOST_REPO_DIR="$SEARCH_DIR"
+      break
+    fi
+    SEARCH_DIR="$(dirname "$SEARCH_DIR")"
+  done
+  [[ -n "$HOST_REPO_DIR" ]] || { echo "ERROR: Could not locate repo root (CMakeLists.txt)"; exit 1; }
+fi
+
+echo "==> Host repo dir: $HOST_REPO_DIR"
+echo "==> Container repo dir: $CONTAINER_REPO_DIR"
+
+INTERACTIVE=1
+if [[ $# -gt 0 ]]; then
+  INTERACTIVE=0
+fi
+
+DOCKER_ARGS=(docker run --rm)
+
+if [[ "$INTERACTIVE" -eq 1 ]]; then
+  DOCKER_ARGS+=( -it )
+fi
+
+# Mount repo and set working directory
+DOCKER_ARGS+=(
+  -v "$HOST_REPO_DIR:$CONTAINER_REPO_DIR"
+  -w "$CONTAINER_REPO_DIR"
 )
+
+DOCKER_ARGS+=( -e LD_LIBRARY_PATH="/usr/local/lib:/usr/local/cuda/lib64:${LD_LIBRARY_PATH:-}" )
+
+if [[ "$USE_GPU" -eq 1 ]]; then
+  DOCKER_ARGS+=(--gpus all)
+fi
 
 if [[ -n "$CPUS" ]]; then
   echo "==> Limiting container to $CPUS CPU(s)"
@@ -92,5 +155,13 @@ if [[ -n "$CPUS" ]]; then
 fi
 
 DOCKER_ARGS+=("$PY_IMAGE")
+
+if [[ $# -gt 0 ]]; then
+  # Non-interactive
+  DOCKER_ARGS+=("$@")
+else
+  # Interactive shell
+  DOCKER_ARGS+=("bash")
+fi
 
 exec "${DOCKER_ARGS[@]}"

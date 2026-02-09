@@ -1,8 +1,18 @@
 #!/usr/bin/env bash
-# ibl.sh — friendly wrapper for configure/build/test/run
+# iblgf.sh — friendly wrapper for configure/build/test/run
 # Put this file in the root of the IBLGF-AMR repo (next to CMakeLists.txt).
 
 set -euo pipefail
+
+USE_GPU=0
+
+build_dir() {
+  if [[ "$USE_GPU" -eq 1 ]]; then
+    echo "$(repo_root)/build-gpu"
+  else
+    echo "$(repo_root)/build"
+  fi
+}
 
 die() {
   echo "Error: $*" >&2
@@ -23,16 +33,37 @@ cpu_count() {
   fi
 }
 
+# *added*
+default_build_jobs() {
+  # Env override wins, otherwise use cpu_count()
+  echo "${IBLGF_BUILD_JOBS:-$(cpu_count)}"
+}
+
+default_test_jobs() {
+  # How many tests ctest runs in parallel (NOT MPI ranks)
+  echo "${IBLGF_TEST_JOBS:-1}"
+}
+
+default_mpi_ranks() {
+  # Default MPI ranks for run/run-test
+  echo "${IBLGF_MPI_RANKS:-2}"
+}
+
+need_nvcc_if_gpu() {
+  if [[ "$USE_GPU" -eq 1 ]]; then
+    if ! command -v nvcc >/dev/null 2>&1; then
+      die "GPU build requested (--gpu) but 'nvcc' was not found. Use the GPU docker image / a CUDA-enabled machine, or set CUDAToolkit_ROOT."
+    fi
+  fi
+}
+# *end of added*
+
 script_dir() {
   cd "$(dirname "${BASH_SOURCE[0]}")" && pwd
 }
 
 repo_root() {
   script_dir
-}
-
-build_dir_default() {
-  echo "$(repo_root)/build"
 }
 
 ensure_repo_root() {
@@ -46,17 +77,22 @@ ensure_repo_root() {
 print_usage() {
   cat <<'USAGE'
 Usage:
-  ./ibl.sh help
-  ./ibl.sh configure
-  ./ibl.sh build [-j N]
-  ./ibl.sh test  [-j N]
-  ./ibl.sh clean
+  ./iblgf.sh help
+  ./iblgf.sh configure
+  ./iblgf.sh build [-j N]
+  ./iblgf.sh test  [-j N]
+  ./iblgf.sh clean
+
+Env overrides:
+  IBLGF_BUILD_JOBS=12   default build parallelism
+  IBLGF_TEST_JOBS=6     default ctest parallelism
+  IBLGF_MPI_RANKS=8     default MPI ranks for run/run-test
 
 Run an existing built executable with a config:
-  ./ibl.sh run <exe-or-target> <config> [-n MPI_RANKS] [-- <extra args>]
+  ./iblgf.sh run <exe-or-target> <config> [-n MPI_RANKS] [-- <extra args>]
 
 Run a named test (staged run dir + logs + metadata):
-  ./ibl.sh run-test <test_name> <config_name_or_path> [-n MPI_RANKS]
+  ./iblgf.sh run-test <test_name> <config_name_or_path> [-n MPI_RANKS]
 
 USAGE
 }
@@ -93,14 +129,14 @@ find_test_executable() {
   local test_name="$1"
   local candidate
 
-  candidate="$(build_dir_default)/tests/${test_name}/${test_name}.x"
+  candidate="$(build_dir)/tests/${test_name}/${test_name}.x"
   if [[ -x "$candidate" ]]; then
     echo "$candidate"
     return 0
   fi
 
   # Fallback: search anywhere under build/ for <test_name>.x
-  find "$(build_dir_default)" -type f -perm -111 -name "${test_name}.x" 2>/dev/null | head -n 1
+  find "$(build_dir)" -type f -perm -111 -name "${test_name}.x" 2>/dev/null | head -n 1
 }
 
 find_test_config() {
@@ -127,34 +163,57 @@ find_test_config() {
   return 1
 }
 
+# *added*
+latest_run_dir() {
+  local test_name="$1"
+  local base
+  base="$(runs_root)/${test_name}"
+  [[ -d "$base" ]] || return 1
+
+  # Pick newest directory by modification time
+  ls -1dt "$base"/*/ 2>/dev/null | head -n 1
+}
+# *end of added*
 
 do_configure() {
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --gpu|-g) USE_GPU=1; shift ;;
+      *) die "Unknown option for configure: $1" ;;
+    esac
+  done
+
+  need_nvcc_if_gpu
+
   ensure_repo_root
   local root build_dir
   root="$(repo_root)"
-  build_dir="$(build_dir_default)"
+  build_dir="$(build_dir)"
   mkdir -p "$build_dir"
 
-  echo "==> Configuring"
-  if have ninja; then
-    cmake -S "$root" -B "$build_dir" -G Ninja
-  else
-    cmake -S "$root" -B "$build_dir"
+  echo "==> Configuring (USE_GPU=$USE_GPU)"
+  local cmake_args=()
+  if [[ "$USE_GPU" -eq 1 ]]; then
+    cmake_args+=(-DUSE_GPU=True)
   fi
+
+  cmake -S "$root" -B "$build_dir" -G "Unix Makefiles" "${cmake_args[@]}"
 }
 
 do_build() {
   ensure_repo_root
   local build_dir jobs
-  build_dir="$(build_dir_default)"
-  jobs="$(cpu_count)"
+  jobs="$(default_build_jobs)"
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
+      --gpu|-g) USE_GPU=1; shift ;;
       -j) shift; jobs="$1"; shift ;;
       *) die "Unknown option: $1" ;;
     esac
   done
+
+  build_dir="$(build_dir)"
 
   [[ -d "$build_dir" ]] || do_configure
 
@@ -163,19 +222,44 @@ do_build() {
 }
 
 do_test() {
-  do_build "$@"
-  echo "==> Running tests"
-  ctest --test-dir "$(build_dir_default)" --output-on-failure
+  ensure_repo_root
+
+  local build_jobs test_jobs
+  build_jobs="$(default_build_jobs)"
+  test_jobs="$(default_test_jobs)"
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --gpu|-g) USE_GPU=1; shift ;;
+      -j)
+        shift
+        test_jobs="$1"
+        shift
+        ;;
+      *)
+        die "Unknown option for test: $1"
+        ;;
+    esac
+  done
+
+  if [[ "$USE_GPU" -eq 1 ]]; then
+    do_build --gpu -j "$build_jobs"
+  else
+    do_build -j "$build_jobs"
+  fi
+
+  echo "==> Running tests (ctest -j $test_jobs)"
+  ctest --test-dir "$(build_dir)" -j "$test_jobs" --output-on-failure
 }
 
 find_executable_in_build() {
-  find "$(build_dir_default)" -type f -perm -111 \
+  find "$(build_dir)" -type f -perm -111 \
     \( -name "$1" -o -name "$1.x" \) 2>/dev/null | head -n 1
 }
 
 do_run() {
   local exe config mpi
-  mpi=1
+  mpi="${IBLGF_MPI_RANKS:-1}"
 
   exe="$1"
   config="$2"
@@ -211,20 +295,35 @@ do_run() {
 do_run_test() {
   ensure_repo_root
 
-  [[ $# -ge 2 ]] || die "Usage: ./ibl.sh run-test <test_name> <config_name_or_path> [-n MPI_RANKS]"
+  [[ $# -ge 2 ]] || die "Usage: ./iblgf.sh run-test <test_name> <config_name_or_path> [-n MPI_RANKS]"
 
   local test_name="$1"
   local config_arg="$2"
   shift 2
 
-  local mpi=2
+  local mpi
+  mpi="$(default_mpi_ranks)"
+
+  local resume=0
+  local resume_dir=""
+
   while [[ $# -gt 0 ]]; do
     case "$1" in
+      --gpu|-g) USE_GPU=1; shift ;;
       -n)
         shift
         mpi="${1:-}"
         [[ -n "$mpi" ]] || die "Missing value after -n"
         shift
+        ;;
+      --resume)
+        resume=1
+        shift
+        # Optional argument: explicit run directory
+        if [[ $# -gt 0 && "$1" != -* && "$1" != --* ]]; then
+          resume_dir="$1"
+          shift
+        fi
         ;;
       *)
         die "Unknown option for run-test: $1"
@@ -237,7 +336,7 @@ do_run_test() {
   [[ -n "$config_path" ]] || die "Config not found. Tried: '$config_arg' and tests/$test_name/configs/$config_arg"
 
   # Ensure build directory exists; if not, configure first.
-  [[ -d "$(build_dir_default)" ]] || do_configure
+  [[ -d "$(build_dir)" ]] || do_configure
 
   # Build to ensure the test executable exists and is up to date.
   do_build
@@ -248,13 +347,31 @@ do_run_test() {
 
   # Create a clean run directory where outputs will go.
   local run_dir
-  run_dir="$(runs_root)/${test_name}/$(timestamp)"
-  mkdir -p "$run_dir"
+  if [[ "$resume" -eq 1 ]]; then
+    if [[ -n "$resume_dir" ]]; then
+      run_dir="$resume_dir"
+    else
+      run_dir="$(latest_run_dir "$test_name" || true)"
+    fi
+    [[ -n "$run_dir" ]] || die "No previous run directory found to resume for '$test_name' under $(runs_root)/$test_name/"
+    [[ -d "$run_dir" ]] || die "Resume directory not found: $run_dir"
+  else
+    run_dir="$(runs_root)/${test_name}/$(timestamp)"
+    mkdir -p "$run_dir"
+  fi
 
-  # Copy config into run directory so run is self-contained.
+  # Config handling:
   local cfg_name
   cfg_name="$(basename "$config_path")"
-  cp "$config_path" "$run_dir/$cfg_name"
+
+  if [[ "$resume" -eq 1 ]]; then
+    # Prefer the config already in the run dir if it exists; otherwise copy it in.
+    if [[ ! -f "$run_dir/$cfg_name" ]]; then
+      cp "$config_path" "$run_dir/$cfg_name"
+    fi
+  else
+    cp "$config_path" "$run_dir/$cfg_name"
+  fi
 
   # Record metadata for reproducibility.
   {
@@ -299,7 +416,7 @@ do_run_test() {
 
 do_clean() {
   echo "==> Cleaning build/"
-  rm -rf "$(build_dir_default)"
+  rm -rf "$(build_dir)"
 }
 
 cmd="${1:-help}"

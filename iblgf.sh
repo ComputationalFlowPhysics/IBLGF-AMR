@@ -319,7 +319,7 @@ do_run_test() {
       --resume)
         resume=1
         shift
-        # Optional argument: explicit run directory
+        
         if [[ $# -gt 0 && "$1" != -* && "$1" != --* ]]; then
           resume_dir="$1"
           shift

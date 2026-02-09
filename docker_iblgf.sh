@@ -133,6 +133,8 @@ fi
 
 DOCKER_ARGS=(docker run --rm)
 
+DOCKER_ARGS+=( --user "$(id -u):$(id -g)" )
+
 if [[ "$INTERACTIVE" -eq 1 ]]; then
   DOCKER_ARGS+=( -it )
 fi

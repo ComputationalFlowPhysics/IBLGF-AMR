@@ -4,6 +4,16 @@
 
 set -euo pipefail
 
+USE_GPU=0
+
+build_dir() {
+  if [[ "$USE_GPU" -eq 1 ]]; then
+    echo "$(repo_root)/build-gpu"
+  else
+    echo "$(repo_root)/build"
+  fi
+}
+
 die() {
   echo "Error: $*" >&2
   exit 1
@@ -38,6 +48,14 @@ default_mpi_ranks() {
   # Default MPI ranks for run/run-test
   echo "${IBLGF_MPI_RANKS:-2}"
 }
+
+need_nvcc_if_gpu() {
+  if [[ "$USE_GPU" -eq 1 ]]; then
+    if ! command -v nvcc >/dev/null 2>&1; then
+      die "GPU build requested (--gpu) but 'nvcc' was not found. Use the GPU docker image / a CUDA-enabled machine, or set CUDAToolkit_ROOT."
+    fi
+  fi
+}
 # *end of added*
 
 script_dir() {
@@ -46,10 +64,6 @@ script_dir() {
 
 repo_root() {
   script_dir
-}
-
-build_dir_default() {
-  echo "$(repo_root)/build"
 }
 
 ensure_repo_root() {
@@ -115,14 +129,14 @@ find_test_executable() {
   local test_name="$1"
   local candidate
 
-  candidate="$(build_dir_default)/tests/${test_name}/${test_name}.x"
+  candidate="$(build_dir)/tests/${test_name}/${test_name}.x"
   if [[ -x "$candidate" ]]; then
     echo "$candidate"
     return 0
   fi
 
   # Fallback: search anywhere under build/ for <test_name>.x
-  find "$(build_dir_default)" -type f -perm -111 -name "${test_name}.x" 2>/dev/null | head -n 1
+  find "$(build_dir)" -type f -perm -111 -name "${test_name}.x" 2>/dev/null | head -n 1
 }
 
 find_test_config() {
@@ -162,32 +176,44 @@ latest_run_dir() {
 # *end of added*
 
 do_configure() {
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --gpu|-g) USE_GPU=1; shift ;;
+      *) die "Unknown option for configure: $1" ;;
+    esac
+  done
+
+  need_nvcc_if_gpu
+
   ensure_repo_root
   local root build_dir
   root="$(repo_root)"
-  build_dir="$(build_dir_default)"
+  build_dir="$(build_dir)"
   mkdir -p "$build_dir"
 
-  echo "==> Configuring"
-  if have ninja; then
-    cmake -S "$root" -B "$build_dir" -G Ninja
-  else
-    cmake -S "$root" -B "$build_dir"
+  echo "==> Configuring (USE_GPU=$USE_GPU)"
+  local cmake_args=()
+  if [[ "$USE_GPU" -eq 1 ]]; then
+    cmake_args+=(-DUSE_GPU=True)
   fi
+
+  cmake -S "$root" -B "$build_dir" -G "Unix Makefiles" "${cmake_args[@]}"
 }
 
 do_build() {
   ensure_repo_root
   local build_dir jobs
-  build_dir="$(build_dir_default)"
   jobs="$(default_build_jobs)"
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
+      --gpu|-g) USE_GPU=1; shift ;;
       -j) shift; jobs="$1"; shift ;;
       *) die "Unknown option: $1" ;;
     esac
   done
+
+  build_dir="$(build_dir)"
 
   [[ -d "$build_dir" ]] || do_configure
 
@@ -204,6 +230,7 @@ do_test() {
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
+      --gpu|-g) USE_GPU=1; shift ;;
       -j)
         shift
         test_jobs="$1"
@@ -215,15 +242,18 @@ do_test() {
     esac
   done
 
-  # Build first (use build parallelism)
-  do_build -j "$build_jobs"
+  if [[ "$USE_GPU" -eq 1 ]]; then
+    do_build --gpu -j "$build_jobs"
+  else
+    do_build -j "$build_jobs"
+  fi
 
   echo "==> Running tests (ctest -j $test_jobs)"
-  ctest --test-dir "$(build_dir_default)" -j "$test_jobs" --output-on-failure
+  ctest --test-dir "$(build_dir)" -j "$test_jobs" --output-on-failure
 }
 
 find_executable_in_build() {
-  find "$(build_dir_default)" -type f -perm -111 \
+  find "$(build_dir)" -type f -perm -111 \
     \( -name "$1" -o -name "$1.x" \) 2>/dev/null | head -n 1
 }
 
@@ -279,6 +309,7 @@ do_run_test() {
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
+      --gpu|-g) USE_GPU=1; shift ;;
       -n)
         shift
         mpi="${1:-}"
@@ -305,7 +336,7 @@ do_run_test() {
   [[ -n "$config_path" ]] || die "Config not found. Tried: '$config_arg' and tests/$test_name/configs/$config_arg"
 
   # Ensure build directory exists; if not, configure first.
-  [[ -d "$(build_dir_default)" ]] || do_configure
+  [[ -d "$(build_dir)" ]] || do_configure
 
   # Build to ensure the test executable exists and is up to date.
   do_build
@@ -385,7 +416,7 @@ do_run_test() {
 
 do_clean() {
   echo "==> Cleaning build/"
-  rm -rf "$(build_dir_default)"
+  rm -rf "$(build_dir)"
 }
 
 cmd="${1:-help}"

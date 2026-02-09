@@ -27,15 +27,18 @@ jobs:
           ls -R
           echo "--- Checking specifically for the file ---"
           find . -maxdepth 2 -name "*iblgf*"
-          
-      - name: Docker Env
-        run: bash docker_iblgf.sh
+      
+      - name: Docker Env + build + test
+        run: ./docker_iblgf.sh -- bash -lc './iblgf.sh test'
 
-      - name: build
-        run: bash iblgf.sh build
+      # - name: Docker Env
+      #   run: bash docker_iblgf.sh
 
-      - name: test
-        run: bash iblgf.sh test
+      # - name: build
+      #   run: bash iblgf.sh build
+
+      # - name: test
+      #   run: bash iblgf.sh test
         
 
       

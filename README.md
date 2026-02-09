@@ -165,7 +165,7 @@ restart_field.hdf5, tree_info.bin) into its run directory.
 
 #### Resuming the most recent run
 
-To resume the most recent run of a given test:
+To resume the most recent run of a specific test:
 
     $ ./iblgf.sh run-test <test_name> <config_name_or_path> --resume
 

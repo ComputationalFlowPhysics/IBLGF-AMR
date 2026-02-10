@@ -29,7 +29,10 @@ jobs:
           find . -maxdepth 2 -name "*iblgf*"
       
       - name: Docker Env + build + test
-        run: ./docker_iblgf.sh -c 2 -- bash -lc './iblgf.sh test'
+        run: ./docker_iblgf.sh -c 4 -- bash -lc './iblgf.sh test'
+        env:
+          OMPI_ALLOW_RUN_AS_ROOT: 1
+          OMPI_MCA_btl_vader_single_copy_mechanism: none
 
       # - name: Docker Env
       #   run: bash docker_iblgf.sh

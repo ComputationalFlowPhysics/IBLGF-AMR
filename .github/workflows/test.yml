@@ -33,6 +33,7 @@ jobs:
         env:
           OMPI_ALLOW_RUN_AS_ROOT: 1
           OMPI_MCA_btl_vader_single_copy_mechanism: none
+          IBLGF_MPI_NP: 4
 
       # - name: Docker Env
       #   run: bash docker_iblgf.sh

@@ -196,6 +196,11 @@ do_configure() {
   if [[ "$USE_GPU" -eq 1 ]]; then
     cmake_args+=(-DUSE_GPU=True)
   fi
+  
+  # Allow overriding MPI ranks for tests via environment variable
+  if [[ -n "${IBLGF_MPI_NP:-}" ]]; then
+    cmake_args+=(-DIBLGF_MPI_NP="$IBLGF_MPI_NP")
+  fi
 
   cmake -S "$root" -B "$build_dir" -G "Unix Makefiles" "${cmake_args[@]}"
 }

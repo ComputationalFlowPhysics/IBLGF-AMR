@@ -146,3 +146,5 @@ IBLGF-AMR solves the incompressible Navier-Stokes equations on unbounded domains
 - `IBLGF_BUILD_JOBS`: Parallel build jobs (default: nproc)
 - `IBLGF_TEST_JOBS`: Parallel ctest jobs (default: 1)
 - `IBLGF_MPI_RANKS`: Default MPI ranks for run/run-test (default: 2)
+- `IBLGF_MPI_NP`: Number of MPI processes for ctest (overrides auto-detection; useful in CI/CD with resource constraints)
+

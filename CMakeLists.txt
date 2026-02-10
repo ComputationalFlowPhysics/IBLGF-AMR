@@ -103,7 +103,7 @@ set(IBLGF_TESTING ON CACHE BOOL "True if tests shall be built")
 # Allow MPI oversubscription for environments with fewer cores than requested processes
 # This is necessary for CI/CD environments (e.g., GitHub Actions) where tests may request
 # more MPI ranks than available CPU cores
-set(MPIEXEC_PREFLAGS "${MPIEXEC_PREFLAGS} --oversubscribe" CACHE STRING "MPI execution flags")
+list(APPEND MPIEXEC_PREFLAGS "--oversubscribe")
 
 # ------------------------------
 # Default MPI ranks for tests *added*

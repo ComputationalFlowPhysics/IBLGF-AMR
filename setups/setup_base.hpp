@@ -23,6 +23,7 @@
 #include <iblgf/utilities/tuple_utilities.hpp>
 #include <iblgf/domain/dataFields/datafield.hpp>
 #include <iblgf/solver/poisson/poisson.hpp>
+#include <iblgf/solver/linsys/linsys.hpp>
 #include <iblgf/solver/time_integration/ifherk.hpp>
 #include <iblgf/IO/parallel_ostream.hpp>
 
@@ -46,7 +47,6 @@ class SetupBase
     const int n_ifherk_ij = 6;
 
   public:
-
     static constexpr std::size_t Dim = SetupTraits::Dim;
 
   public: //default fields
@@ -55,22 +55,24 @@ class SetupBase
     (Dim,
     (
       (source_tmp,          float_type,  1,  1,  1,  cell,false),
-      (correction_tmp,      float_type,  1,  1,  1,  cell,true),
+      (correction_tmp,      float_type,  1,  1,  1,  cell,false),
       (target_tmp,          float_type,  1,  1,  1,  cell,false),
       (fmm_s,               float_type,  1,  1,  1,  cell,false),
       (fmm_t,               float_type,  1,  1,  1,  cell,false),
       //flow variables
-      (q_i,                 float_type,  3,  1,  1,  face,false),
-      (u_i,                 float_type,  3,  1,  1,  face,false),
+      (q_i,                 float_type,  Dim,  1,  1,  face,false),
+      (u_i,                 float_type,  Dim,  1,  1,  face,false),
       (d_i,                 float_type,  1,  1,  1,  cell,false),
-      (g_i,                 float_type,  3,  1,  1,  face,false),
-      (r_i,                 float_type,  3,  1,  1,  face,false),
-      (w_1,                 float_type,  3,  1,  1,  face,false),
-      (w_2,                 float_type,  3,  1,  1,  face,false),
-      (cell_aux,            float_type,  1,  1,  1,  cell,true),
-      (face_aux,            float_type,  3,  1,  1,  face,false),
-      (stream_f,            float_type,  3,  1,  1,  edge,false),
-      (edge_aux,            float_type,  3,  1,  1,  edge,true)
+      (g_i,                 float_type,  Dim,  1,  1,  face,false),
+      (r_i,                 float_type,  Dim,  1,  1,  face,false),
+      (w_1,                 float_type,  Dim,  1,  1,  face,false),
+      (w_2,                 float_type,  Dim,  1,  1,  face,false),
+      (cell_aux,            float_type,  1,  1,  1,  cell,false),
+      (cell_aux2,           float_type,  1,  1,  1,  cell,false),
+      (face_aux,            float_type,  Dim,  1,  1,  face,false),
+      (face_aux2,           float_type,  Dim,  1,  1,  face,false),
+      (stream_f,            float_type,  (Dim*2 - 3),  1,  1,  edge,true),
+      (edge_aux,            float_type,  (Dim*2 - 3),  1,  1,  edge,true)
     ))
     // clang-format on
 
@@ -101,6 +103,7 @@ class SetupBase
     using fmm_mask_builder_t = FmmMaskBuilder<domain_t>;
     using poisson_solver_t = solver::PoissonSolver<SetupBase>;
     using time_integration_t = solver::Ifherk<SetupBase>;
+    using linsys_solver_t = solver::LinSysSolver<SetupBase>;
 
   public: //Ctors
     SetupBase(Dictionary* _d)
@@ -109,26 +112,39 @@ class SetupBase
     {
         domain_->initialize(simulation_.dictionary()->get_dictionary("domain"));
     }
-
-    SetupBase(Dictionary* _d, domaint_init_f _fct,
-            std::string restart_tree_dir="")
+    SetupBase(Dictionary* _d, std::vector<typename domain_t::tree_t::key_type::value_type>& _keys,std::vector<int> & _leafs)
     : simulation_(_d->get_dictionary("simulation_parameters"))
     , domain_(simulation_.domain())
     {
+        domain_->initialize_with_keys(
+            simulation_.dictionary()->get_dictionary("domain").get(),
+            _keys, _leafs);
+        
+        if (domain_->is_client()) client_comm_ = client_comm_.split(1);
+        else
+            client_comm_ = client_comm_.split(0);
+    }
+
+    SetupBase(Dictionary* _d, domaint_init_f _fct,
+        std::string restart_tree_dir = "")
+    : simulation_(_d->get_dictionary("simulation_parameters"))
+    , domain_(simulation_.domain())
+    {
+        client_comm_ = boost::mpi::communicator();
         auto d = _d->get_dictionary("simulation_parameters");
         use_restart_ = d->template get_or<bool>("use_restart", true);
 
-        if ( restart_tree_dir=="")
+        if (restart_tree_dir == "")
         {
-            if (!simulation_.restart_dir_exist()){
-                use_restart_=false;
-            }
-            else{
-                restart_tree_dir=simulation_.restart_tree_info_dir();
+            if (!simulation_.restart_dir_exist()) { use_restart_ = false; }
+            else
+            {
+                restart_tree_dir = simulation_.restart_tree_info_dir();
             }
         }
-        else{
-            use_restart_=true;
+        else
+        {
+            use_restart_ = true;
         }
 
         if (!use_restart_)
@@ -157,8 +173,8 @@ class SetupBase
 
     /** @brief Compute L2 and LInf errors */
     template<class Numeric, class Exact, class Error>
-    float_type compute_errors(
-        std::string _output_prefix = "", int field_idx = 0)
+    float_type compute_errors(std::string _output_prefix = "",
+        int                               field_idx = 0)
     {
         const float_type dx_base = domain_->dx_base();
         float_type       L2 = 0.;
@@ -167,12 +183,12 @@ class SetupBase
         float_type       L2_exact = 0;
         float_type       LInf_exact = -1.0;
 
-        std::vector<float_type> L2_perLevel(
-            nLevels_ + 1 + global_refinement_, 0.0);
+        std::vector<float_type> L2_perLevel(nLevels_ + 1 + global_refinement_,
+            0.0);
         std::vector<float_type> L2_exact_perLevel(
             nLevels_ + 1 + global_refinement_, 0.0);
-        std::vector<float_type> LInf_perLevel(
-            nLevels_ + 1 + global_refinement_, 0.0);
+        std::vector<float_type> LInf_perLevel(nLevels_ + 1 + global_refinement_,
+            0.0);
         std::vector<float_type> LInf_exact_perLevel(
             nLevels_ + 1 + global_refinement_, 0.0);
 
@@ -201,19 +217,64 @@ class SetupBase
             {
                 float_type tmp_exact = node(Exact::tag(), field_idx);
                 float_type tmp_num = node(Numeric::tag(), field_idx);
-                if (std::fabs(tmp_exact)<1e-6) continue;
+                //if (std::fabs(tmp_exact)<1e-6) continue;
 
                 float_type error_tmp = tmp_num - tmp_exact;
 
                 node(Error::tag(), field_idx) = error_tmp;
 
-                L2 += error_tmp * error_tmp * (dx * dx * dx);
-                L2_exact += tmp_exact * tmp_exact * (dx * dx * dx);
+                // clean inside spehre
+                const auto& coord = node.level_coordinate();
+                float_type  x = static_cast<float_type>(coord[0]) * dx;
+                float_type  y = static_cast<float_type>(coord[1]) * dx;
+                float_type  z = 0.0;
+                if (domain_->dimension() == 3)
+                    z = static_cast<float_type>(coord[2]) * dx;
 
-                L2_perLevel[refinement_level] +=
-                    error_tmp * error_tmp * (dx * dx * dx);
+                if (domain_->dimension() == 3)
+                {
+                    if (field_idx == 0)
+                    {
+                        y += 0.5 * dx;
+                        z += 0.5 * dx;
+                    }
+                    else if (field_idx == 1)
+                    {
+                        x += 0.5 * dx;
+                        z += 0.5 * dx;
+                    }
+                    else
+                    {
+                        x += 0.5 * dx;
+                        y += 0.5 * dx;
+                    }
+
+                    float_type r2 = x * x + y * y + z * z;
+                    /*if (std::fabs(r2) <= .25)
+                {
+                    node(Error::tag(), field_idx)=0.0;
+                    error_tmp = 0;
+                }*/
+                }
+
+                if (domain_->dimension() == 2)
+                {
+                    if (field_idx == 0) { y += 0.5 * dx; }
+                    if (field_idx == 1) { x += 0.5 * dx; }
+                    float_type r2 = x * x + y * y;
+                    /*if (std::fabs(r2) <= 0.25) {
+		    	node(Error::tag(), field_idx)=0.0;
+			error_tmp = 0.0;
+		    }*/
+                }
+                // clean inside spehre
+                float_type weight = std::pow(dx, domain_->dimension());
+                L2 += error_tmp * error_tmp * weight;
+                L2_exact += tmp_exact * tmp_exact * weight;
+
+                L2_perLevel[refinement_level] += error_tmp * error_tmp * weight;
                 L2_exact_perLevel[refinement_level] +=
-                    tmp_exact * tmp_exact * (dx * dx * dx);
+                    tmp_exact * tmp_exact * weight;
                 ++counts[refinement_level];
 
                 if (std::fabs(tmp_exact) > LInf_exact)
@@ -239,13 +300,13 @@ class SetupBase
         float_type L2_exact_global(0.0);
         float_type LInf_exact_global(0.0);
 
-        boost::mpi::all_reduce(
-            client_comm_, L2, L2_global, std::plus<float_type>());
-        boost::mpi::all_reduce(
-            client_comm_, L2_exact, L2_exact_global, std::plus<float_type>());
+        boost::mpi::all_reduce(client_comm_, L2, L2_global,
+            std::plus<float_type>());
+        boost::mpi::all_reduce(client_comm_, L2_exact, L2_exact_global,
+            std::plus<float_type>());
 
-        boost::mpi::all_reduce(
-            client_comm_, LInf, LInf_global, boost::mpi::maximum<float_type>());
+        boost::mpi::all_reduce(client_comm_, LInf, LInf_global,
+            boost::mpi::maximum<float_type>());
         boost::mpi::all_reduce(client_comm_, LInf_exact, LInf_exact_global,
             boost::mpi::maximum<float_type>());
 
@@ -322,4 +383,3 @@ class SetupBase
 
 } // namespace iblgf
 #endif // IBLGF_INCLUDED_SETUP_BASE_HPP
-

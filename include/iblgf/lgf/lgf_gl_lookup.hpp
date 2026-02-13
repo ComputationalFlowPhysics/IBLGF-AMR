@@ -30,25 +30,44 @@ class LGF_GL_Lookup
 {
   public:
     template<class Coordinate>
-    static float_type get(const Coordinate& _c) noexcept
+    static typename std::enable_if<Coordinate::size() == 3, float_type>::type get(const Coordinate& _c) noexcept
     {
         int x = std::abs(static_cast<int>(_c.x()));
         int y = std::abs(static_cast<int>(_c.y()));
         int z = std::abs(static_cast<int>(_c.z()));
 
-        if (x <= N_max && y <= N_max && z <= N_max) // using table
+        if (x <= N_max_3D && y <= N_max_3D && z <= N_max_3D) // using table
         {
             if (x < y) std::swap(x, y);
             if (x < z) std::swap(x, z);
             if (y < z) std::swap(y, z);
 
-            return -table_[(x * (2 + 3 * x + x * x)) / 6 + y * (y + 1) / 2 +
+            return -table_3D[(x * (2 + 3 * x + x * x)) / 6 + y * (y + 1) / 2 +
                            z]; // indexing
         }
         else
         {
             return asym(x, y, z);
         }
+    }
+
+
+
+    template<class Coordinate>
+    static typename std::enable_if<Coordinate::size() == 2, float_type>::type get(const Coordinate& _c) noexcept
+    {
+	int x = std::abs(static_cast<int>(_c.x()));
+	int y = std::abs(static_cast<int>(_c.y()));
+
+	if (x <= N_max_2D && y <= N_max_2D) // using table
+	{
+		if (x < y) std::swap(x, y);
+		return -table_2D[x*(N_max_2D+2)+y]; 
+	}
+	else
+	{
+		return -asym(x, y);
+	}
     }
 
     //TODO: Vectorize this function. Takes a lot of time!
@@ -99,9 +118,26 @@ class LGF_GL_Lookup
         return tmp;
     }
 
+    static float_type asym(int n1, int n2) {
+	    float_type Cfund = -0.18124942796; // constant for asymptotic expansion (C_fund)
+	    float_type Integral_val = -0.076093998454228; // constant for asymptotical expansion (integral)	
+	    float_type r = std::sqrt(n1*n1 + n2*n2);
+
+	    float_type theta = atan2(n2,n1);
+	    float_type second_term = 1.0/24.0/M_PI*cos(4.0*theta)/r/r;
+	    float_type res = -0.5/M_PI*log(r) + Cfund + Integral_val + second_term;
+	    return res;
+    }
+
+
   private:
-    static const int                     N_max;
-    static const std::vector<float_type> table_;
+    static const int                     N_max_3D;
+    static const std::vector<float_type> table_3D;
+
+    
+    static const int                     N_max_2D;
+    static const std::vector<float_type> table_2D;
+
 };
 
 //decltype(Lookup::N_max) Lookup::N_max(100);

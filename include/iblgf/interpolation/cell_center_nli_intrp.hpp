@@ -31,9 +31,13 @@ namespace iblgf
 {
 namespace interpolation
 {
+template<class domain_type>
 class cell_center_nli
 {
     using MeshObject = domain::MeshObject;
+    static constexpr bool helmholtz = domain_type::helmholtz_bool;
+    static constexpr int  N_modes = domain_type::N_modes_val;
+    static constexpr int  sep = (helmholtz ?  N_modes*2 : 1);
 
     public: // constructor
 
@@ -109,6 +113,40 @@ class cell_center_nli
                     antrp_mat_sub_simple_[1](i,i*2)=0.5;
             }
 
+            //int coarsen_cap = 4;
+            //for (int i = 1; i < Nb_ - 1; ++i)
+            //{
+            //    float_type pos [coarsen_cap];
+            //    int left = i*2 - (coarsen_cap-1)/2;
+            //    int start_pos = std::max(1, left);
+            //    int right_bd = (Nb_-1)*2-1;
+            //    int right = i*2 + (coarsen_cap)/2 + 1;
+            //    int end_pos   = std::min(right_bd, right);
+            //    if (start_pos == 1) {
+            //        end_pos = start_pos + coarsen_cap;
+            //    }
+            //    else if (end_pos == right_bd) {
+            //        start_pos = end_pos - coarsen_cap;
+            //    }
+
+            //    for (int j  = 0; j < coarsen_cap; j++) {
+            //        pos[j] = static_cast<float_type>((start_pos-2*i))*1.0 + 0.5 + static_cast<float_type>(j);
+            //    }
+            //    float_type cp = 0.0; // relative pos of interpolation points
+            //    for (int j = 0; j < coarsen_cap; j++) {
+            //        int yidx = start_pos + j;
+            //        float_type numerator = 1.0;
+            //        float_type denominator = 1.0;
+            //        for (int k = 0; k < coarsen_cap;k++) {
+            //            if (j == k) continue;
+            //            numerator *= (cp - pos[k]);
+            //            denominator = denominator*(pos[j] - pos[k]);
+            //        }
+            //        antrp_mat_sub_simple_[1](i,yidx) = (numerator/denominator);
+
+            //    }
+            //}
+
             xt::noalias(view(antrp_mat_sub_simple_sub_[0], xt::all(), xt::range(1,Nb_-1) )) =
                 view(antrp_mat_sub_simple_[0],xt::all(),xt::range(1,Nb_-1));
             xt::noalias(view(antrp_mat_sub_simple_sub_[1], xt::all(), xt::range(1,Nb_-1))) =
@@ -131,7 +169,7 @@ class cell_center_nli
 
   public: // functionalities
     template<class from, class to, typename octant_t>
-    void add_source_correction(octant_t parent, double dx)
+    void add_source_correction(octant_t parent, double dx, float_type omega = 0.0)
     {
         for (int i = 0; i < parent->num_children(); ++i)
         {
@@ -141,9 +179,14 @@ class cell_center_nli
             if (!child->has_data()) continue;
             if (!child->data().is_allocated()) continue;
 
+
+
             auto& child_target_tmp = child->data_r(from::tag()).linalg_data();
 
             auto& child_linalg_data = child->data_r(to::tag()).linalg_data();
+
+	    int Dim = child_linalg_data.shape().size();
+	    if (Dim == 3) {
             for (int i = 1; i < Nb_ - 1; ++i)
             {
                 for (int j = 1; j < Nb_ - 1; ++j)
@@ -164,9 +207,103 @@ class cell_center_nli
                             child_target_tmp(i + 1, j, k) * (1.0 / (dx * dx));
                         child_linalg_data(i, j, k) -=
                             child_target_tmp(i - 1, j, k) * (1.0 / (dx * dx));
+                        child_linalg_data(i, j, k) +=
+                            omega * omega * child_target_tmp(i, j, k);
                     }
                 }
             }
+	    }
+
+	    if (Dim == 2) {
+            	for (int i = 1; i < Nb_ - 1; ++i)
+            	{
+                    for (int j = 1; j < Nb_ - 1; ++j)
+                    {
+                        child_linalg_data(i, j) +=
+                            4.0 * child_target_tmp(i, j) * (1.0 / (dx * dx));
+                        child_linalg_data(i, j) -=
+                            child_target_tmp(i, j - 1) * (1.0 / (dx * dx));
+                        child_linalg_data(i, j) -=
+                            child_target_tmp(i, j + 1) * (1.0 / (dx * dx));
+                        child_linalg_data(i, j) -=
+                            child_target_tmp(i + 1, j) * (1.0 / (dx * dx));
+                        child_linalg_data(i, j) -=
+                            child_target_tmp(i - 1, j) * (1.0 / (dx * dx));
+                        child_linalg_data(i, j) +=
+                            omega * omega * child_target_tmp(i, j);
+                    }
+            	}
+	    }
+        }
+    }
+
+
+    template<class from, class to, typename octant_t>
+    void add_source_correction(int field_idx, octant_t parent, double dx, float_type omega = 0.0)
+    {
+        for (int i = 0; i < parent->num_children(); ++i)
+        {
+            auto child = parent->child(i);
+            if (!child) continue;
+            if (!child->locally_owned()) continue;
+            if (!child->has_data()) continue;
+            if (!child->data().is_allocated()) continue;
+
+
+
+            auto& child_target_tmp = child->data_r(from::tag(), field_idx).linalg_data();
+
+            auto& child_linalg_data = child->data_r(to::tag(), field_idx).linalg_data();
+
+            int Dim = child_linalg_data.shape().size();
+            if (Dim == 3) {
+                for (int i = 1; i < Nb_ - 1; ++i)
+                {
+                    for (int j = 1; j < Nb_ - 1; ++j)
+                    {
+                        for (int k = 1; k < Nb_ - 1; ++k)
+                        {
+                            child_linalg_data(i, j, k) +=
+                                6.0 * child_target_tmp(i, j, k) * (1.0 / (dx * dx));
+                            child_linalg_data(i, j, k) -=
+                                child_target_tmp(i, j, k - 1) * (1.0 / (dx * dx));
+                            child_linalg_data(i, j, k) -=
+                                child_target_tmp(i, j, k + 1) * (1.0 / (dx * dx));
+                            child_linalg_data(i, j, k) -=
+                                child_target_tmp(i, j - 1, k) * (1.0 / (dx * dx));
+                            child_linalg_data(i, j, k) -=
+                                child_target_tmp(i, j + 1, k) * (1.0 / (dx * dx));
+                            child_linalg_data(i, j, k) -=
+                                child_target_tmp(i + 1, j, k) * (1.0 / (dx * dx));
+                            child_linalg_data(i, j, k) -=
+                                child_target_tmp(i - 1, j, k) * (1.0 / (dx * dx));
+                            child_linalg_data(i, j, k) +=
+                                omega * omega * child_target_tmp(i, j, k);
+                        }
+                    }
+                }
+            }
+
+	        if (Dim == 2) {
+            	for (int i = 1; i < Nb_ - 1; ++i)
+            	{
+                    for (int j = 1; j < Nb_ - 1; ++j)
+                    {
+                        child_linalg_data(i, j) +=
+                            4.0 * child_target_tmp(i, j) * (1.0 / (dx * dx));
+                        child_linalg_data(i, j) -=
+                            child_target_tmp(i, j - 1) * (1.0 / (dx * dx));
+                        child_linalg_data(i, j) -=
+                            child_target_tmp(i, j + 1) * (1.0 / (dx * dx));
+                        child_linalg_data(i, j) -=
+                            child_target_tmp(i + 1, j) * (1.0 / (dx * dx));
+                        child_linalg_data(i, j) -=
+                            child_target_tmp(i - 1, j) * (1.0 / (dx * dx));
+                        child_linalg_data(i, j) +=
+                            omega * omega * child_target_tmp(i, j);
+                    }
+            	}
+	        }
         }
     }
 
@@ -206,11 +343,13 @@ class cell_center_nli
         int idx_y = (child_idx & (1 << 1)) >> 1;
         int idx_z = (child_idx & (1 << 2)) >> 2;
 
+	int Dim = child.shape().size();
+
         // Relative position 0 -> coincide with child
         // Relative position 1 -> half cell off with the child
 
         std::array<int, 3> relative_positions{{1, 1, 1}};
-        if (mesh_obj == MeshObject::face) relative_positions[_field_idx] = 0;
+        if (mesh_obj == MeshObject::face) relative_positions[_field_idx/sep] = 0;
         else if (mesh_obj == MeshObject::cell)
         {
         }
@@ -219,7 +358,8 @@ class cell_center_nli
             relative_positions[0] = 0;
             relative_positions[1] = 0;
             relative_positions[2] = 0;
-            relative_positions[_field_idx] = 1;
+            if (Dim == 3) relative_positions[_field_idx] = 1;
+            if (helmholtz) relative_positions[_field_idx/sep] = 1;
         }
         else
             throw std::runtime_error("Wrong type of mesh to be interpolated");
@@ -227,6 +367,8 @@ class cell_center_nli
         idx_x += relative_positions[0] * max_relative_pos;
         idx_y += relative_positions[1] * max_relative_pos;
         idx_z += relative_positions[2] * max_relative_pos;
+
+	if (Dim == 3) {
 
         for (int q = 0; q < n; ++q)
         {
@@ -259,7 +401,158 @@ class cell_center_nli
                         antrp_mat_sub_[idx_z].data_);
             }
         }
+	}
+	if (Dim == 2) {
+	    for (int l = 0; l < n; ++l)
+	    {
+		    xt::noalias(view(nli_aux_2d_intrp, xt::all(), l)) =
+			    xt::linalg::dot(view(parent, xt::all(), l),
+					    antrp_mat_sub_[idx_x].data_);
+	    }
+
+	    for (int l = 0; l < n; ++l)
+	    {
+		    xt::noalias(view(child, l, xt::all())) =
+			    xt::linalg::dot(view(nli_aux_2d_intrp, l, xt::all()),
+					    antrp_mat_sub_[idx_y].data_);
+	    }
+	}
     }
+
+
+    template<class from, class to, typename octant_t>
+    void nli_intrp_T_node(octant_t parent, MeshObject mesh_obj,
+        std::size_t real_mesh_field_idx, std::size_t tmp_field_idx,
+        bool correction_only = false, bool exclude_correction = false)
+    {
+        auto& parent_linalg_data =
+            parent->data_r(to::tag(), tmp_field_idx).linalg_data();
+
+        for (int i = 0; i < parent->num_children(); ++i)
+        {
+            auto child = parent->child(i);
+            if (!child || !child->has_data() ||
+                !child->data().is_allocated())
+                continue;
+
+            if (!child->locally_owned()) continue;
+
+            if (correction_only && !child->is_correction()) continue;
+            if (exclude_correction && child->is_correction()) continue;
+
+            auto& child_linalg_data =
+                child->data_r(from::tag(), tmp_field_idx).linalg_data();
+
+            nli_intrp_T_node(child_linalg_data, parent_linalg_data, i, mesh_obj,
+                real_mesh_field_idx);
+        }
+    }
+
+    template<typename linalg_data_t>
+    void nli_intrp_T_node(linalg_data_t& child, linalg_data_t& parent,
+        int child_idx, MeshObject mesh_obj, std::size_t _field_idx)
+    {
+        int n = child.shape()[0];
+        int idx_x = (child_idx & (1 << 0)) >> 0;
+        int idx_y = (child_idx & (1 << 1)) >> 1;
+        int idx_z = (child_idx & (1 << 2)) >> 2;
+
+	int Dim = child.shape().size();
+
+        // Relative position 0 -> coincide with child
+        // Relative position 1 -> half cell off with the child
+
+        std::array<int, 3> relative_positions{{1, 1, 1}};
+        if (mesh_obj == MeshObject::face)
+        { relative_positions[_field_idx/sep] = 0; }
+        else if (mesh_obj == MeshObject::cell)
+        {
+        }
+        else if (mesh_obj == MeshObject::edge)
+        {
+            relative_positions[0] = 0;
+            relative_positions[1] = 0;
+            relative_positions[2] = 0;
+            if (Dim == 3) relative_positions[_field_idx] = 1;
+            if (helmholtz) relative_positions[_field_idx/sep] = 1;
+        }
+        else
+            throw std::runtime_error("Wrong type of mesh to be interpolated");
+
+        idx_x += relative_positions[0] * max_relative_pos;
+        idx_y += relative_positions[1] * max_relative_pos;
+        idx_z += relative_positions[2] * max_relative_pos;
+
+	if (Dim == 3) {
+
+        for (int q = 0; q < n; ++q)
+        {
+            for (int l = 0; l < n; ++l)
+            {
+                // Column major
+                //TODO swith back to commutative coarsifying
+                //now using simple
+                xt::noalias(nli_aux_1d_antrp_tmp) =
+                    view(child, q, l, xt::all());
+                xt::noalias(view(nli_aux_2d_antrp, xt::all(), l)) =
+                    xt::linalg::dot(
+                        antrp_mat_sub_simple_sub_[idx_z], nli_aux_1d_antrp_tmp);
+            }
+
+            for (int l = 0; l < n; ++l)
+            {
+                // For Y
+                // Column major
+                xt::noalias(view(nli_aux_3d_antrp, xt::all(), l, q)) =
+                    xt::linalg::dot(antrp_mat_sub_simple_sub_[idx_y],
+                        view(nli_aux_2d_antrp, l, xt::all()));
+            }
+        }
+
+        for (int p = 0; p < n; ++p)
+        {
+            for (int q = 0; q < n; ++q)
+            {
+                // For X
+                // Column major
+                xt::noalias(view(parent, xt::all(), q, p)) +=
+                    xt::linalg::dot(antrp_mat_sub_simple_sub_[idx_x],
+                        view(nli_aux_3d_antrp, q, p, xt::all()));
+            }
+        }
+	}
+	if (Dim == 2) {
+        for (int l = 0; l < n; ++l)
+        {
+            xt::noalias(nli_aux_1d_antrp_tmp) = view(child, l, xt::all());
+            xt::noalias(view(nli_aux_2d_antrp, xt::all(), l)) =
+                xt::linalg::dot(antrp_mat_sub_[idx_y].data_,
+                    view(nli_aux_1d_antrp_tmp, xt::all()));
+        }
+        for (int q = 0; q < n; ++q)
+        {
+            xt::noalias(view(parent, xt::all(), q)) +=
+                xt::linalg::dot(antrp_mat_sub_[idx_x].data_,
+                    view(nli_aux_2d_antrp, q, xt::all()));
+        }
+
+        /*for (int l = 0; l < n; ++l)
+        {
+            xt::noalias(nli_aux_1d_antrp_tmp) = view(child, l, xt::all());
+            xt::noalias(view(nli_aux_2d_antrp, xt::all(), l)) = xt::linalg::dot(
+                antrp_mat_sub_simple_sub_[idx_y], nli_aux_1d_antrp_tmp);
+        }
+        for (int q = 0; q < n; ++q)
+        {
+            xt::noalias(view(parent, xt::all(), q)) +=
+                xt::linalg::dot(antrp_mat_sub_simple_sub_[idx_x],
+                    view(nli_aux_2d_antrp, q, xt::all()));
+        }*/
+    }
+    }
+
+
+    
 
     template<class from, class to, typename octant_t>
     void nli_antrp_node(octant_t parent, MeshObject mesh_obj,
@@ -298,12 +591,14 @@ class cell_center_nli
         int idx_y = (child_idx & (1 << 1)) >> 1;
         int idx_z = (child_idx & (1 << 2)) >> 2;
 
+	int Dim = child.shape().size();
+
         // Relative position 0 -> coincide with child
         // Relative position 1 -> half cell off with the child
 
         std::array<int, 3> relative_positions{{1, 1, 1}};
         if (mesh_obj == MeshObject::face)
-        { relative_positions[_field_idx] = 0; }
+        { relative_positions[_field_idx/sep] = 0; }
         else if (mesh_obj == MeshObject::cell)
         {
         }
@@ -312,7 +607,8 @@ class cell_center_nli
             relative_positions[0] = 0;
             relative_positions[1] = 0;
             relative_positions[2] = 0;
-            relative_positions[_field_idx] = 1;
+            if (Dim == 3) relative_positions[_field_idx] = 1;
+            if (helmholtz) relative_positions[_field_idx/sep] = 1;
         }
         else
             throw std::runtime_error("Wrong type of mesh to be interpolated");
@@ -320,6 +616,8 @@ class cell_center_nli
         idx_x += relative_positions[0] * max_relative_pos;
         idx_y += relative_positions[1] * max_relative_pos;
         idx_z += relative_positions[2] * max_relative_pos;
+
+	if (Dim == 3) {
 
         for (int q = 0; q < n; ++q)
         {
@@ -356,6 +654,23 @@ class cell_center_nli
                         view(nli_aux_3d_antrp, q, p, xt::all()));
             }
         }
+	}
+	if (Dim == 2) {
+	    for (int l = 0; l < n; ++l)
+	    {
+		    xt::noalias(nli_aux_1d_antrp_tmp) = 
+			    view(child, l, xt::all());
+		    xt::noalias(view(nli_aux_2d_antrp,xt::all(), l)) =
+			    xt::linalg::dot(antrp_mat_sub_simple_sub_[idx_y],
+					    nli_aux_1d_antrp_tmp);
+	    }
+	    for (int q = 0; q < n; ++q)
+	    {
+		    xt::noalias(view(parent, xt::all(), q)) +=
+			    xt::linalg::dot(antrp_mat_sub_simple_sub_[idx_x],
+					    view(nli_aux_2d_antrp, q, xt::all()));
+	    }
+	}
     }
 
   private:
@@ -473,7 +788,7 @@ class cell_center_nli
 
     //private:
     public:
-        int pts_cap = 3;
+        int pts_cap;
         int Nb_;
 
     std::vector<float_type> antrp_relative_pos_0_;
@@ -488,6 +803,11 @@ class cell_center_nli
                                                                  antrp_sub_;
     std::array<linalg::Mat_t, max_1D_child_n * max_relative_pos> antrp_mat_sub_;
 
+    std::array<xt::xtensor<float_type, 2>, max_relative_pos>
+        antrp_mat_sub_simple_;
+    std::array<xt::xtensor<float_type, 2>, max_1D_child_n * max_relative_pos>
+        antrp_mat_sub_simple_sub_;
+
   private:
     xt::xtensor<float_type, 1> nli_aux_1d_intrp;
     xt::xtensor<float_type, 2> nli_aux_2d_intrp;
@@ -499,10 +819,7 @@ class cell_center_nli
 
     xt::xtensor<float_type, 3> child_combine_;
 
-    std::array<xt::xtensor<float_type, 2>, max_relative_pos>
-        antrp_mat_sub_simple_;
-    std::array<xt::xtensor<float_type, 2>, max_1D_child_n * max_relative_pos>
-        antrp_mat_sub_simple_sub_;
+    
 };
 
 } // namespace interpolation

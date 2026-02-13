@@ -56,6 +56,8 @@ class H5_io
     using chombo_t = typename chombo_writer::Chombo<Dim, blockDescriptor_t,
         blockData_t, Domain, hdf5_file<Dim, base_t>>;
 
+    static constexpr int  N_modes = Domain::N_modes_val;
+
   public:
     struct BlockInfo
     {
@@ -105,6 +107,57 @@ class H5_io
 
     }
 
+    template<typename Field>
+    void read_h5_test(std::string _filename, std::string read_field, Domain* _lt)
+    {
+        pcout << "Start reading file -> " << _filename << std::endl;
+        boost::mpi::communicator world;
+        
+        
+        for(int i=0;i<3000;i++){
+            if (world.rank() == 0) {
+                std::cout << "reading file -> " << _filename << " iteration " << i << std::endl;
+            }
+            world.barrier();
+            auto octant_blocks = blocks_list_build(_lt,true,true);
+
+            hdf5_file<Dim> chombo_file(_filename, true);
+            chombo_t ch_writer(octant_blocks);  // Initialize writer with vector of octants
+            ch_writer.template read_u<Field>(&chombo_file, read_field, octant_blocks, _lt );
+        }
+        // ch_writer.template read_u<Field>(&chombo_file, read_field, octant_blocks, _lt );
+
+    }
+
+
+    template<typename Field>
+    void read_h5_2D(std::string _filename, std::string read_field, Domain* _lt)
+    {
+        pcout << "Start reading file -> " << _filename << std::endl;
+        boost::mpi::communicator world;
+
+        auto octant_blocks = blocks_list_build(_lt,true,true);
+
+        hdf5_file<Dim> chombo_file(_filename, true);
+        chombo_t ch_writer(octant_blocks);  // Initialize writer with vector of octants
+        ch_writer.template read_u_2D<Field>(&chombo_file, read_field, octant_blocks, _lt );
+
+    }
+
+    template<typename Field>
+    void read_h5_DiffNmode(std::string _filename, std::string read_field, Domain* _lt, int N_input_mode)
+    {
+        pcout << "Start reading file -> " << _filename << std::endl;
+        boost::mpi::communicator world;
+
+        auto octant_blocks = blocks_list_build(_lt,true,true);
+
+        hdf5_file<Dim> chombo_file(_filename, true);
+        chombo_t ch_writer(octant_blocks);  // Initialize writer with vector of octants
+        ch_writer.template read_u_Diff_Nmode<Field>(&chombo_file, read_field, octant_blocks, _lt, N_input_mode);
+
+    }
+
     void write_h5(
         std::string _filename, Domain* _lt, bool include_correction = false,  bool base_correction_only = true)
     {
@@ -117,6 +170,63 @@ class H5_io
 
         ch_writer.write_global_metaData(&chombo_file, _lt->dx_base());
         ch_writer.write_level_info(&chombo_file);
+    }
+
+    void write_h5_test(
+        std::string _filename, Domain* _lt, bool include_correction = false,  bool base_correction_only = true)
+    {
+        auto octant_blocks = blocks_list_build(_lt, include_correction, base_correction_only);
+
+        hdf5_file<Dim> chombo_file(_filename);
+
+        chombo_t ch_writer(
+            octant_blocks); // Initialize writer with vector of octants
+
+        ch_writer.write_global_metaData(&chombo_file, _lt->dx_base());
+        ch_writer.write_level_info(&chombo_file);
+    }
+
+    void write_h5_withTime(
+        std::string _filename, Domain* _lt, float_type _time, float_type dt, bool include_correction = false,  bool base_correction_only = true)
+    {
+        auto octant_blocks = blocks_list_build(_lt, include_correction, base_correction_only);
+
+        hdf5_file<Dim> chombo_file(_filename);
+
+        chombo_t ch_writer(
+            octant_blocks); // Initialize writer with vector of octants
+
+        ch_writer.write_global_metaData(&chombo_file, _lt->dx_base(), _time, dt);
+        ch_writer.write_level_info(&chombo_file, _time, dt);
+    }
+
+    void write_helm_3D(
+        std::string _filename, Domain* _lt, float_type dz, bool include_correction = false,  bool base_correction_only = true)
+    {
+        auto octant_blocks = blocks_list_build(_lt, include_correction, base_correction_only);
+
+        hdf5_file<Dim> chombo_file(_filename);
+
+        chombo_t ch_writer(
+            octant_blocks); // Initialize writer with vector of octants
+
+        ch_writer.write_global_metaData(&chombo_file, _lt->dx_base(), 0.0, 1, 2, true, N_modes, dz);
+        ch_writer.write_level_info(&chombo_file, 0.0, 1, 2, true, N_modes);
+    }
+
+    void write_helm_3D_shallow(
+        std::string _filename, Domain* _lt, float_type dz, bool include_correction = false,  bool base_correction_only = true)
+    {
+        //only writing 3 levels
+        auto octant_blocks = blocks_list_build_base_level(_lt, 3, include_correction, base_correction_only);
+
+        hdf5_file<Dim> chombo_file(_filename);
+
+        chombo_t ch_writer(
+            octant_blocks); // Initialize writer with vector of octants
+
+        ch_writer.write_global_metaData(&chombo_file, _lt->dx_base(), 0.0, 1, 2, true, N_modes, dz);
+        ch_writer.write_level_info(&chombo_file, 0.0, 1, 2, true, N_modes);
     }
 
     std::vector<octant_type*> blocks_list_build(
@@ -159,6 +269,65 @@ class H5_io
 
         return octant_blocks;
     }
+
+
+    std::vector<octant_type*> blocks_list_build_base_level(
+        Domain* _lt, int l_ref, bool include_correction = false,  bool base_correction_only = true)
+    {
+        boost::mpi::communicator world;
+        int l_base = _lt->tree()->base_level();
+        int nPoints = 0;
+
+        int l_tot_ = _lt->tree()->depth();
+        if (l_tot_ > (l_base + l_ref))
+        {
+            l_tot_ = l_base + l_ref;
+        }
+        for (int l = l_base; l < l_tot_; ++l)
+        {
+            
+            for (auto it = _lt->begin(l); it != _lt->end(l); ++it)
+            {
+                if (!it->has_data() || it->refinement_level() < 0) continue;
+                if (!include_correction && it->is_correction()) continue;
+                if (base_correction_only && it->is_correction() && it->refinement_level()>0) continue;
+                auto b = it->data().descriptor();
+                b.grow(0, 1); //grow by one to fill the gap
+                nPoints += b.size();
+            }
+
+        }
+
+        std::vector<octant_type*> octant_blocks;
+        int                       _count = 0;
+        // Collect block descriptor and data from each block
+
+        for (int l = l_base; l < l_tot_; ++l)
+        {
+            for (auto it = _lt->begin(l); it != _lt->end(l); ++it)
+            {
+                if (!it->has_data() || it->refinement_level() < 0 ||
+                    (world.rank() > 0 && !it->locally_owned()))
+                    continue;
+                if (!include_correction && it->is_correction())
+                    continue;
+                if (base_correction_only && it->is_correction() && it->refinement_level()>0) continue;
+                int rank = it->rank();
+
+                if (rank == world.rank() || world.rank() == 0)
+                {
+                    blockDescriptor_t block = it->data().descriptor();
+                    octant_blocks.push_back(it.ptr());
+
+                }
+                ++_count;
+            }
+        }
+
+        return octant_blocks;
+    }
+
+
     parallel_ostream::ParallelOstream pcout =
         parallel_ostream::ParallelOstream(1);
 };

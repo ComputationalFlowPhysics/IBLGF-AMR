@@ -1,0 +1,12631 @@
+//      ▄▄▄▄▄▄▄▄▄▄▄  ▄▄▄▄▄▄▄▄▄▄   ▄            ▄▄▄▄▄▄▄▄▄▄▄  ▄▄▄▄▄▄▄▄▄▄▄
+//     ▐░░░░░░░░░░░▌▐░░░░░░░░░░▌ ▐░▌          ▐░░░░░░░░░░░▌▐░░░░░░░░░░░▌
+//      ▀▀▀▀█░█▀▀▀▀ ▐░█▀▀▀▀▀▀▀█░▌▐░▌          ▐░█▀▀▀▀▀▀▀▀▀ ▐░█▀▀▀▀▀▀▀▀▀
+//          ▐░▌     ▐░▌       ▐░▌▐░▌          ▐░▌          ▐░▌
+//          ▐░▌     ▐░█▄▄▄▄▄▄▄█░▌▐░▌          ▐░▌ ▄▄▄▄▄▄▄▄ ▐░█▄▄▄▄▄▄▄▄▄
+//          ▐░▌     ▐░░░░░░░░░░▌ ▐░▌          ▐░▌▐░░░░░░░░▌▐░░░░░░░░░░░▌
+//          ▐░▌     ▐░█▀▀▀▀▀▀▀█░▌▐░▌          ▐░▌ ▀▀▀▀▀▀█░▌▐░█▀▀▀▀▀▀▀▀▀
+//          ▐░▌     ▐░▌       ▐░▌▐░▌          ▐░▌       ▐░▌▐░▌
+//      ▄▄▄▄█░█▄▄▄▄ ▐░█▄▄▄▄▄▄▄█░▌▐░█▄▄▄▄▄▄▄▄▄ ▐░█▄▄▄▄▄▄▄█░▌▐░▌
+//     ▐░░░░░░░░░░░▌▐░░░░░░░░░░▌ ▐░░░░░░░░░░░▌▐░░░░░░░░░░░▌▐░▌
+//      ▀▀▀▀▀▀▀▀▀▀▀  ▀▀▀▀▀▀▀▀▀▀   ▀▀▀▀▀▀▀▀▀▀▀  ▀▀▀▀▀▀▀▀▀▀▀  ▀
+
+#ifndef IBLGF_INCLUDED_HELM_STAB_HPP
+#define IBLGF_INCLUDED_HELM_STAB_HPP
+
+#include <iostream>
+#include <algorithm>
+#include <vector>
+#include <cmath>
+#include <array>
+#include <set>
+
+// IBLGF-specific
+#include <iblgf/solver/Newton/SparseMat.hpp>
+#include <iblgf/global.hpp>
+#include <iblgf/simulation.hpp>
+#include <iblgf/domain/domain.hpp>
+#include <iblgf/IO/parallel_ostream.hpp>
+#include <iblgf/solver/poisson/poisson.hpp>
+#include <iblgf/solver/Newton/Interpolation_mat.hpp>
+#include <iblgf/solver/linsys/linsys.hpp>
+#include <iblgf/operators/operators.hpp>
+#include <iblgf/utilities/misc_math_functions.hpp>
+
+#include <boost/serialization/map.hpp>
+
+namespace iblgf
+{
+namespace solver
+{
+using namespace domain;
+
+/** @brief Stability analysis of Flow with one homogeneous direction
+ * */
+template<class Setup>
+class Helm_stab
+{
+  public: //member types
+
+    
+
+    using simulation_type = typename Setup::simulation_t;
+    using domain_type = typename simulation_type::domain_type;
+
+    using MeshObject = domain::MeshObject;
+    static constexpr bool helmholtz = domain_type::helmholtz_bool;
+    static constexpr int  N_modes = domain_type::N_modes_val;
+    static constexpr int  sep = (helmholtz ?  N_modes*2 : 1);
+
+    static constexpr int Dim = Setup::Dim;
+
+    //class sparse_mat; //declare here, definition at the end
+
+    using interpolation_type = typename interpolation::cell_center_nli<domain_type>;
+    using interpolation_mat_type = typename interpolation::cell_nli_mat<domain_type>;
+    using datablock_type = typename domain_type::datablock_t;
+    using tree_t = typename domain_type::tree_t;
+    using key_type = typename tree_t::key_type;
+    using octant_t = typename tree_t::octant_type;
+    using octant_base_t = typename octant_t::octant_base_t;
+    using MASK_TYPE = typename octant_t::MASK_TYPE;
+    using block_type = typename datablock_type::block_descriptor_type;
+    using real_coordinate_type = typename domain_type::real_coordinate_type;
+    using coordinate_type = typename domain_type::coordinate_type;
+    using poisson_solver_t = typename Setup::poisson_solver_t;
+    using linsys_solver_t = typename Setup::linsys_solver_t;
+    using lgf_lap_t = typename poisson_solver_t::lgf_lap_t;
+    using helm_t = typename poisson_solver_t::helm_t;
+    using key_2D = std::tuple<int, int>;
+
+    using ib_t = typename domain_type::ib_t;
+    using force_type = typename ib_t::force_type;
+
+    //FMM
+    using Fmm_t = typename Setup::Fmm_t;
+
+    using test_type = typename Setup::test_type;
+
+    using u_type = typename Setup::u_type;
+    using uz_type = typename Setup::uz_type;
+    using p_type = typename Setup::p_type;
+    //using fu_i_type = typename Setup::fu_i_type; //store first block of f(x) in Newton method
+    //using fp_i_type = typename Setup::fp_i_type; //store second block of f(x) in Newton method
+    using stream_f_type = typename Setup::stream_f_type;
+    //using p_type = typename Setup::p_type;
+    //using q_i_type = typename Setup::q_i_type;
+    //using r_i_type = typename Setup::r_i_type;
+    //using cell_aux2_type = typename Setup::cell_aux2_type;
+    using g_i_type = typename Setup::g_i_type;
+    //using d_i_type = typename Setup::d_i_type;
+
+    using u_i_bc_type = typename Setup::u_i_bc_type;
+    using nonlinear_tmp_type = typename Setup::nonlinear_tmp_type;
+    using face_aux_tmp_type = typename Setup::face_aux_tmp_type;
+    using laplacian_face_type = typename Setup::laplacian_face_type;
+    //using d_i_type = typename Setup::d_i_type;
+
+    //using R_1_type = typename Setup::R_1_type; //R_1 is the first block in the RHS in the Newton iteration
+    using nonlinear_tmp1_type = typename Setup::nonlinear_tmp1_type; //temporarily store the nonlinear term
+
+    // initialize some tmp fields for adjoint of Jacobian
+    //using r_i_T_type = typename Setup::r_i_T_type;
+    //using cell_aux_T_type = typename Setup::cell_aux_T_type;
+    //using u_i_T_type = typename Setup::u_i_T_type;
+
+    // initialize tmp fields for calculations
+    using r_i_tmp_type = typename Setup::r_i_tmp_type;
+    using cell_aux_tmp_type = typename Setup::cell_aux_tmp_type;
+
+    // index fields
+    using idx_u_type = typename Setup::idx_u_type;
+    using idx_p_type = typename Setup::idx_p_type;
+    using idx_w_type = typename Setup::idx_w_type;
+    using idx_N_type = typename Setup::idx_N_type;
+    using idx_cs_type = typename Setup::idx_cs_type;
+    using idx_uz_type = typename Setup::idx_uz_type;
+    using idx_Nz_type = typename Setup::idx_Nz_type;
+    using idx_u_g_type = typename Setup::idx_u_g_type;
+    using idx_p_g_type = typename Setup::idx_p_g_type;
+    using idx_w_g_type = typename Setup::idx_w_g_type;
+    using idx_N_g_type = typename Setup::idx_N_g_type;
+    using idx_cs_g_type = typename Setup::idx_cs_g_type;
+    using idx_uz_g_type = typename Setup::idx_uz_g_type;
+    using idx_Nz_g_type = typename Setup::idx_Nz_g_type;
+
+    using idx_u_B_type = typename Setup::idx_u_B_type; //index for C matrix where input is only the velocities
+    using idx_uz_B_type = typename Setup::idx_uz_B_type;
+    using idx_u_B_g_type = typename Setup::idx_u_B_g_type; //index for C matrix where input is only the velocities
+    using idx_uz_B_g_type = typename Setup::idx_uz_B_g_type;
+
+    //fields for evaluating Jacobian
+    using cell_aux_type = typename Setup::cell_aux_type;
+    using cell_aux2_type = typename Setup::cell_aux2_type;
+    using edge_aux_type = typename Setup::edge_aux_type;
+    using face_aux_type = typename Setup::face_aux_type;
+    //using face_aux2_type = typename Setup::face_aux2_type;
+    using correction_tmp_type = typename Setup::correction_tmp_type;
+    //using u_i_type = typename Setup::u_i_type;
+
+    static constexpr int lBuffer = 1; ///< Lower left buffer for interpolation
+    static constexpr int rBuffer = 1; ///< Lower left buffer for interpolation
+    Helm_stab(simulation_type* _simulation)
+    : simulation_(_simulation)
+    , domain_(_simulation->domain_.get())
+    , psolver(_simulation)
+    , lsolver(_simulation)
+    , c_cntr_nli_(domain_->block_extent()[0]+lBuffer+rBuffer, _simulation->intrp_order()) 
+    , c_cntr_nli_small(domain_->block_extent()[0], _simulation->intrp_order()) 
+    , c_cntr_nli_mat(domain_->block_extent()[0], _simulation->intrp_order()) 
+    //get the interpolation matrix
+    {
+        // parameters --------------------------------------------------------
+
+        dx_base_ = domain_->dx_base();
+        max_ref_level_ =
+            _simulation->dictionary()->template get<float_type>("nLevels");
+        cfl_ =
+            _simulation->dictionary()->template get_or<float_type>("cfl", 0.2);
+        dt_base_ =
+            _simulation->dictionary()->template get_or<float_type>("dt", -1.0);
+        tot_base_steps_ =
+            _simulation->dictionary()->template get<int>("nBaseLevelTimeSteps");
+        Re_ = _simulation->dictionary()->template get<float_type>("Re");
+        output_base_freq_ = _simulation->dictionary()->template get<float_type>(
+            "output_frequency");
+        cfl_max_ = _simulation->dictionary()->template get_or<float_type>(
+            "cfl_max", 1000);
+        updating_source_max_ = _simulation->dictionary()->template get_or<bool>(
+            "updating_source_max", true);
+        all_time_max_ = _simulation->dictionary()->template get_or<bool>(
+            "all_time_max", true);
+
+        cg_threshold_ = simulation_->dictionary_->template get_or<float_type>("cg_threshold",1e-3);
+        Newton_threshold_ = simulation_->dictionary_->template get_or<float_type>("Newton_threshold",1e-3);
+        cg_max_itr_ = simulation_->dictionary_->template get_or<int>("cg_max_itr", 40);
+
+        if (dt_base_ < 0) dt_base_ = dx_base_ * cfl_;
+
+        // adaptivity --------------------------------------------------------
+        adapt_freq_ = _simulation->dictionary()->template get_or<float_type>(
+            "adapt_frequency", 1);
+        T_max_ = tot_base_steps_ * dt_base_;
+
+        // support of IF in every dirrection is about 3.2 corresponding to 1e-5
+        // with coefficient alpha = 1
+        // so need update
+        max_vel_refresh_ =
+            floor(14 / (3.3 / (Re_ * dx_base_ * dx_base_ / dt_)));
+        pcout << "maximum steps allowed without vel refresh = "
+              << max_vel_refresh_ << std::endl;
+
+        // restart -----------------------------------------------------------
+        write_restart_ = _simulation->dictionary()->template get_or<bool>(
+            "write_restart", true);
+
+        if (write_restart_)
+            restart_base_freq_ =
+                _simulation->dictionary()->template get<float_type>(
+                    "restart_write_frequency");
+
+        // IF constants ------------------------------------------------------
+        fname_prefix_ = "";
+
+        real_coordinate_type tmp_coord(0.0);
+        forcing_tmp.resize(domain_->ib().size());
+        std::fill(forcing_tmp.begin(), forcing_tmp.end(), tmp_coord);
+        forcing_old.resize(domain_->ib().size());
+        std::fill(forcing_old.begin(), forcing_old.end(), tmp_coord);
+        forcing_idx.resize(domain_->ib().size());
+        std::fill(forcing_idx.begin(), forcing_idx.end(), tmp_coord);
+        forcing_idx_g.resize(domain_->ib().size());
+        std::fill(forcing_idx_g.begin(), forcing_idx_g.end(), tmp_coord);
+
+        forcing_z_idx.resize(domain_->ib().size());
+        std::fill(forcing_idx.begin(), forcing_idx.end(), 0);
+        forcing_z_idx_g.resize(domain_->ib().size());
+        std::fill(forcing_idx_g.begin(), forcing_idx_g.end(), 0);
+
+        _x_v = _simulation->dictionary()->template get_or<float_type>("x_v", -10.0);
+        _y_l = _simulation->dictionary()->template get_or<float_type>("y_l", -20.0);
+        _y_u = _simulation->dictionary()->template get_or<float_type>("y_u",  20.0);
+        _x_l = _simulation->dictionary()->template get_or<float_type>("x_l", -12.0);
+        _x_u = _simulation->dictionary()->template get_or<float_type>("x_u",  -8.0);
+
+        include_u_bc = _simulation->dictionary()->template get_or<bool>("includeu_u_bc", true);
+        include_p_bc = _simulation->dictionary()->template get_or<bool>("includeu_p_bc", true);
+
+
+        // Get FMM Info
+
+        Curl_factor = _simulation->dictionary()->template get_or<float_type>(
+            "Curl_factor", 1000);
+
+        p_set_zero = _simulation->dictionary()->template get_or<bool>(
+            "p_set_zero", false); //want to this be true so that matrix is invertible, is false when do stability analysis
+
+        vort_buffer = _simulation->dictionary()->template get_or<bool>(
+            "vort_buffer", false);
+
+        FMM_fac = _simulation->dictionary()->template get_or<int>(
+            "Fmm_factor", 1); //factor of which FMM is conducted Nb_ times this is the effective block size
+
+        use_FMM = _simulation->dictionary()->template get_or<bool>(
+            "use_FMM_in_Jac", false);
+        FMM_include_center = _simulation->dictionary()->template get_or<bool>(
+            "use_FMM_with_center", false);
+
+        no_vort_idx = _simulation->dictionary()->template get_or<bool>(
+            "no_vort_idx", false); //this is used to debug the laplacian code
+        testing_u_lap_only = _simulation->dictionary()->template get_or<bool>(
+            "testing_u_lap_only", false); //this is used to debug the laplacian code
+        flux_correction = _simulation->dictionary()->template get_or<bool>(
+            "flux_correction", false); //wether use flux correction in laplacian
+        N_sep = _simulation->dictionary()->template get_or<int>(
+            "FMM_sep", 14); //definition of well separated in FMM
+
+        add_L = _simulation->dictionary()->template get_or<bool>(
+            "add_L", true);
+
+        add_DN = _simulation->dictionary()->template get_or<bool>(
+            "add_DN", true);
+
+        add_Div = _simulation->dictionary()->template get_or<bool>(
+            "add_Div", true);
+
+        add_Grad = _simulation->dictionary()->template get_or<bool>(
+            "add_Grad", true);
+        add_Curl = _simulation->dictionary()->template get_or<bool>(
+            "add_Curl", true);
+        add_Boundary_u = _simulation->dictionary()->template get_or<bool>(
+            "add_Boundary_u", true);
+        add_upward_intrp = _simulation->dictionary()->template get_or<bool>(
+            "add_upward_intrp", true);
+        add_smearing = _simulation->dictionary()->template get_or<bool>(
+            "add_smearing", true);
+        add_project = _simulation->dictionary()->template get_or<bool>(
+            "add_project", true);
+
+        force_loc_set_zero = _simulation->dictionary()->template get_or<bool>(
+            "force_loc_set_zero", false);
+
+        mode_c = _simulation->dictionary()->template get_or<float_type>("mode_c", 0.1);
+
+        alpha_f = _simulation->dictionary()->template get_or<float_type>("alpha_f", 0.3);
+
+        Q_2DOnly = _simulation->dictionary()->template get_or<bool>("Q_2DOnly", false);
+
+        if (mode_c < 0.0) {
+            mode_c = -mode_c;
+        }
+
+        if (mode_c > 1e-12) {
+            const float_type dx_base = domain_->dx_base();
+            float_type mode_helm = mode_c * dx_base;
+            kernel_vec.init(mode_helm);
+        }
+
+        if (force_loc_set_zero) {
+            set_zero_nx = _simulation->dictionary()->template get<int>("set_zero_nx");
+            set_zero_ny = _simulation->dictionary()->template get<int>("set_zero_ny");
+        }
+
+        FMM_bin.clear();
+
+        if (use_FMM) {
+            auto extent = domain_->bounding_box().max() - domain_->bounding_box().min();
+            int max_extent = extent[0];
+            if (extent[0] < extent[1]) {
+                max_extent = extent[1];
+            }
+
+            float_type max_extent_by_N_sep = static_cast<float_type>(max_extent) / static_cast<float_type>(N_sep);
+            int max_itr_num = std::ceil(std::log2(max_extent_by_N_sep)/log2(3)) + 2; 
+
+            for (int i = 0; i < max_itr_num;i++) {
+                //int max_loc = N_sep * (std::pow(2.0, (i + 1)) - 1);
+                //int max_loc = N_sep * (std::pow(3.0, (i + 1)) - 3) / 2;//sum_1^N 3^k = (3^(N+1) - 3)/2
+                int max_loc = N_sep * (std::pow(3.0, (i + 1)) - 1) / 2; //i^th circle is 3^(i+1)
+                //int sep_loc = std::pow(2.0, i);
+                //int sep_loc = std::pow(3.0, i);
+                int sep_loc = 1;
+                for(int n = 0; n < i;n++) {
+                    sep_loc *= 3;
+                }
+                FMM_bin[max_loc] = sep_loc;
+            }
+
+        } 
+        
+
+        // miscs -------------------------------------------------------------
+    }
+
+  public:
+    template<class Field>
+    void clean_up_initial_velocity()
+    {
+        if (domain_->is_client())
+        {
+            up_and_down<Field>();
+            auto client = domain_->decomposition().client();
+            clean<edge_aux_type>();
+            clean<stream_f_type>();
+            for (int l = domain_->tree()->base_level();
+                 l < domain_->tree()->depth(); ++l)
+            {
+                client->template buffer_exchange<Field>(l);
+                for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+                {
+                    if (!it->locally_owned() || it->is_correction()) continue;
+
+                    const auto dx_level =
+                        dx_base_ / math::pow2(it->refinement_level());
+                    domain::Operator::curl<Field, edge_aux_type>(it->data(),
+                        dx_level);
+                }
+            }
+            clean_leaf_correction_boundary<edge_aux_type>(domain_->tree()->base_level(), true,2);
+
+            clean<Field>();
+            psolver.template apply_lgf<edge_aux_type, stream_f_type>();
+            
+            for (int l = domain_->tree()->base_level();
+                 l < domain_->tree()->depth(); ++l)
+            {
+                for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+                {
+                    if (!it->locally_owned()) continue;
+
+                    const auto dx_level =
+                        dx_base_ / math::pow2(it->refinement_level());
+                    domain::Operator::curl_transpose<stream_f_type, Field>(
+                        it->data(), dx_level, -1.0);
+                }
+                client->template buffer_exchange<Field>(l);
+            }
+        }
+    }
+    template<class Field>
+    void clean_up_initial_velocity_decomp()
+    {
+        if (domain_->is_client())
+        {
+            clean<face_aux_type>();
+            copy<Field, face_aux_type>();
+            up_and_down<face_aux_type>();
+            domain_->client_communicator().barrier();
+            clean<cell_aux_type>();
+            clean<cell_aux_tmp_type>();
+            clean<face_aux_tmp_type>();
+            divergence<face_aux_type, cell_aux_type>();
+            domain_->client_communicator().barrier();
+            psolver.template apply_lgf<cell_aux_type, cell_aux_tmp_type>();
+            domain_->client_communicator().barrier();
+            gradient<cell_aux_tmp_type,face_aux_tmp_type>();
+            domain_->client_communicator().barrier();
+            add<face_aux_tmp_type, Field>(-1.0);
+        }
+    }
+
+    std::string fname(int _n) { return fname_prefix_ + std::to_string(_n); }
+
+    // ----------------------------------------------------------------------
+    template<class Field>
+    void up_and_down()
+    {
+        //claen non leafs
+        clean<Field>(true);
+        this->up<Field>();
+        this->down_to_correction<Field>();
+    }
+
+    template<class Field>
+    void up(bool leaf_boundary_only = false)
+    {
+        //Coarsification:
+        for (std::size_t _field_idx = 0; _field_idx < Field::nFields();
+             ++_field_idx)
+            psolver.template source_coarsify<Field, Field>(_field_idx,
+                _field_idx, Field::mesh_type(), false, false, false,
+                leaf_boundary_only);
+    }
+
+    template<class Field>
+    void down_to_correction()
+    {
+        // Interpolate to correction buffer
+        for (std::size_t _field_idx = 0; _field_idx < Field::nFields();
+             ++_field_idx)
+            psolver.template intrp_to_correction_buffer<Field, Field>(
+                _field_idx, _field_idx, Field::mesh_type(), true, false);
+    }
+
+    void adapt(bool coarsify_field = true)
+    {
+        boost::mpi::communicator world;
+        auto                     client = domain_->decomposition().client();
+
+        if (source_max_[0] < 1e-10 || source_max_[1] < 1e-10) return;
+
+        //adaptation neglect the boundary oscillations
+        clean_leaf_correction_boundary<cell_aux_type>(
+            domain_->tree()->base_level(), true, 2);
+        clean_leaf_correction_boundary<edge_aux_type>(
+            domain_->tree()->base_level(), true, 2);
+
+        world.barrier();
+
+        if (coarsify_field)
+        {
+            pcout << "Adapt - coarsify" << std::endl;
+            if (client)
+            {
+                //claen non leafs
+                clean<u_type>(true);
+                this->up<u_type>(false);
+                ////Coarsification:
+                //for (std::size_t _field_idx=0; _field_idx<u::nFields; ++_field_idx)
+                //    psolver.template source_coarsify<u_type,u_type>(_field_idx, _field_idx, u::mesh_type);
+            }
+        }
+
+        world.barrier();
+        pcout << "Adapt - communication" << std::endl;
+        auto intrp_list = domain_->adapt(source_max_, base_mesh_update_);
+
+        world.barrier();
+        pcout << "Adapt - intrp" << std::endl;
+        if (client)
+        {
+            // Intrp
+            for (std::size_t _field_idx = 0; _field_idx < u_type::nFields();
+                 ++_field_idx)
+            {
+                for (int l = domain_->tree()->depth() - 2;
+                     l >= domain_->tree()->base_level(); --l)
+                {
+                    client->template buffer_exchange<u_type>(l);
+
+                    domain_->decomposition()
+                        .client()
+                        ->template communicate_updownward_assign<u_type,
+                            u_type>(l, false, false, -1, _field_idx);
+                }
+
+                for (auto& oct : intrp_list)
+                {
+                    if (!oct || !oct->has_data()) continue;
+                    psolver.c_cntr_nli()
+                        .template nli_intrp_node<u_type, u_type>(oct,
+                            u_type::mesh_type(), _field_idx, _field_idx, false,
+                            false);
+                }
+            }
+        }
+        world.barrier();
+        pcout << "Adapt - done" << std::endl;
+    }
+
+
+    template<typename F>
+    void clean(bool non_leaf_only = false, int clean_width = 1) noexcept
+    {
+        for (auto it = domain_->begin(); it != domain_->end(); ++it)
+        {
+            if (!it->has_data()) continue;
+            if (!it->data().is_allocated()) continue;
+
+            for (std::size_t field_idx = 0; field_idx < F::nFields();
+                 ++field_idx)
+            {
+                auto& lin_data = it->data_r(F::tag(), field_idx).linalg_data();
+
+                if (non_leaf_only && (it->is_leaf() || (it->is_correction() && it->refinement_level() == 0)) && it->locally_owned())
+                {
+                    int N = it->data().descriptor().extent()[0];
+                    if (domain_->dimension() == 3)
+                    {
+                        view(lin_data, xt::all(), xt::all(),
+                            xt::range(0, clean_width)) *= 0.0;
+                        view(lin_data, xt::all(), xt::range(0, clean_width),
+                            xt::all()) *= 0.0;
+                        view(lin_data, xt::range(0, clean_width), xt::all(),
+                            xt::all()) *= 0.0;
+                        view(lin_data, xt::range(N + 2 - clean_width, N + 3),
+                            xt::all(), xt::all()) *= 0.0;
+                        view(lin_data, xt::all(),
+                            xt::range(N + 2 - clean_width, N + 3), xt::all()) *=
+                            0.0;
+                        view(lin_data, xt::all(), xt::all(),
+                            xt::range(N + 2 - clean_width, N + 3)) *= 0.0;
+                    }
+                    else
+                    {
+                        view(lin_data, xt::all(), xt::range(0, clean_width)) *=
+                            0.0;
+                        view(lin_data, xt::range(0, clean_width), xt::all()) *=
+                            0.0;
+                        view(lin_data, xt::range(N + 2 - clean_width, N + 3),
+                            xt::all()) *= 0.0;
+                        view(lin_data, xt::all(),
+                            xt::range(N + 2 - clean_width, N + 3)) *= 0.0;
+                    }
+                }
+                else
+                {
+                    //TODO whether to clean base_level correction?
+                    std::fill(lin_data.begin(), lin_data.end(), 0.0);
+                }
+            }
+        }
+    }
+
+    template<typename F>
+    void clean_leaf_correction_boundary(int l, bool leaf_only_boundary = false,
+        int clean_width = 1) noexcept
+    {
+        for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+        {
+            if (!it->locally_owned())
+            {
+                if (!it->has_data() || !it->data().is_allocated()) continue;
+                for (std::size_t field_idx = 0; field_idx < F::nFields();
+                     ++field_idx)
+                {
+                    auto& lin_data =
+                        it->data_r(F::tag(), field_idx).linalg_data();
+                    std::fill(lin_data.begin(), lin_data.end(), 0.0);
+                }
+            }
+        }
+
+        for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+        {
+            if (!it->locally_owned()) continue;
+            if (!it->has_data() || !it->data().is_allocated()) continue;
+
+            if (leaf_only_boundary &&
+                (it->is_correction() || it->is_old_correction()))
+            {
+                for (std::size_t field_idx = 0; field_idx < F::nFields();
+                     ++field_idx)
+                {
+                    auto& lin_data =
+                        it->data_r(F::tag(), field_idx).linalg_data();
+                    std::fill(lin_data.begin(), lin_data.end(), 0.0);
+                }
+            }
+        }
+
+        //---------------
+        /*if (l == domain_->tree()->base_level())
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned()) continue;
+                if (!it->has_data() || !it->data().is_allocated()) continue;
+                //std::cout<<it->key()<<std::endl;
+
+                for (std::size_t i = 0; i < it->num_neighbors(); ++i)
+                {
+                    auto it2 = it->neighbor(i);
+                    if ((!it2 || !it2->has_data()) ||
+                        (leaf_only_boundary &&
+                            (it2->is_correction() || it2->is_old_correction())))
+                    {
+                        for (std::size_t field_idx = 0;
+                             field_idx < F::nFields(); ++field_idx)
+                        {
+                            domain::Operator::smooth2zero<F>(it->data(), i);
+                        }
+                    }
+                }
+            }*/
+
+        if (l == domain_->tree()->base_level())
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned()) continue;
+                if (!it->has_data() || !it->data().is_allocated()) continue;
+                //std::cout<<it->key()<<std::endl;
+
+                for (std::size_t i = 0; i < it->num_neighbors(); ++i)
+                {
+                    auto it2 = it->neighbor(i);
+                    if ((!it2 || !it2->has_data()) ||
+                        (leaf_only_boundary &&
+                            (it2->is_correction() || it2->is_old_correction())))
+                    {
+                        for (std::size_t field_idx = 0;
+                             field_idx < F::nFields(); ++field_idx)
+                        {
+                            auto& lin_data =
+                                it->data_r(F::tag(), field_idx).linalg_data();
+
+                            int N = it->data().descriptor().extent()[0];
+                            if (i == 1)
+                                view(lin_data, xt::all(),
+                                    xt::range(0, clean_width)) *= 0.0;
+                            else if (i == 3)
+                                view(lin_data, xt::range(0, clean_width),
+                                    xt::all()) *= 0.0;
+                            else if (i == 5)
+                                view(lin_data,
+                                    xt::range(N + 2 - clean_width, N + 3),
+                                    xt::all()) *= 0.0;
+                            else if (i == 7)
+                                view(lin_data, xt::all(),
+                                    xt::range(N + 2 - clean_width, N + 3)) *=
+                                    0.0;
+                        }
+                    }
+                }
+            }
+    }
+
+
+    template<typename F, typename idx_F>
+    void clean_leaf_according_to_idx(int l) noexcept
+    {
+        for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+        {
+            if (!it->locally_owned())
+            {
+                if (!it->has_data() || !it->data().is_allocated()) continue;
+                for (std::size_t field_idx = 0; field_idx < F::nFields();
+                     ++field_idx)
+                {
+                    auto& lin_data =
+                        it->data_r(F::tag(), field_idx).linalg_data();
+                    std::fill(lin_data.begin(), lin_data.end(), 0.0);
+                }
+            }
+        }
+
+        for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+        {
+            if (!it->locally_owned()) continue;
+            if (!it->has_data() || !it->data().is_allocated()) continue;
+
+            for (std::size_t field_idx = 0; field_idx < F::nFields();
+                 ++field_idx)
+            {
+                for (auto& n : it->data()) {
+                    int cur_idx = n(idx_F::tag(), field_idx);
+                    if (cur_idx <= 0) {
+                        n(F::tag(), field_idx) = 0.0;
+                    }
+                }
+            }
+        }
+    }
+
+    /*template<class U_tar, class P_tar>
+    void computing_IB_forcing(force_type& forcing_vec) {
+
+    }*/
+
+    void Assigning_idx() {
+        boost::mpi::communicator world;
+        world.barrier();
+
+        //need to do this again since when contructor is called, the domain is not initialized yet
+        real_coordinate_type tmp_coord(0.0);
+        forcing_tmp.resize(domain_->ib().size());
+        std::fill(forcing_tmp.begin(), forcing_tmp.end(), tmp_coord);
+        forcing_old.resize(domain_->ib().size());
+        std::fill(forcing_old.begin(), forcing_old.end(), tmp_coord);
+        forcing_idx.resize(domain_->ib().size());
+        std::fill(forcing_idx.begin(), forcing_idx.end(), tmp_coord);
+        forcing_idx_g.resize(domain_->ib().size());
+        std::fill(forcing_idx_g.begin(), forcing_idx_g.end(), tmp_coord);
+
+        forcing_z_idx.resize(domain_->ib().size());
+        std::fill(forcing_idx.begin(), forcing_idx.end(), 0);
+        forcing_z_idx_g.resize(domain_->ib().size());
+        std::fill(forcing_idx_g.begin(), forcing_idx_g.end(), 0);
+
+
+        int counter = 0;
+        int counterB = 0;
+        if (world.rank() == 0) {
+            max_local_idx = -1;
+            max_idx_from_prev_prc = 0;
+            max_local_B_idx = -1;
+            max_idx_B_from_prev_prc = 0;
+            counter = 0;
+            counterB = 0;
+            world.send(1, 0, counter);
+            world.send(1, 0, counterB);
+            return;
+        }
+
+        int base_level = domain_->tree()->base_level();
+
+        for (int l = base_level; l < domain_->tree()->depth(); l++)
+        {
+            for (auto it = domain_->begin(l);
+                 it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
+                if (/*it->is_leaf() && */!it->is_correction())
+                {
+                    for (std::size_t field_idx = 0;
+                         field_idx < idx_u_type::nFields(); ++field_idx)
+                    {
+                        for (auto& n : it->data())
+                        {
+                            counter++;
+                            n(idx_u_type::tag(), field_idx) =
+                                static_cast<float_type>(counter) + 0.5;
+                        }
+                    }
+
+                    for (std::size_t field_idx = 0;
+                         field_idx < idx_uz_type::nFields(); ++field_idx)
+                    {
+                        for (auto& n : it->data())
+                        {
+                            counter++;
+                            n(idx_uz_type::tag(), field_idx) =
+                                static_cast<float_type>(counter) + 0.5;
+                        }
+                    }
+
+
+                    for (std::size_t field_idx = 0;
+                         field_idx < idx_u_B_type::nFields(); ++field_idx)
+                    {
+                        for (auto& n : it->data())
+                        {
+                            counterB++;
+                            n(idx_u_B_type::tag(), field_idx) =
+                                static_cast<float_type>(counterB) + 0.5;
+                        }
+                    }
+
+                    if (!Q_2DOnly) {
+
+                        for (std::size_t field_idx = 0;
+                            field_idx < idx_uz_B_type::nFields(); ++field_idx)
+                        {
+                            for (auto& n : it->data())
+                            {
+                                counterB++;
+                                n(idx_uz_B_type::tag(), field_idx) =
+                                    static_cast<float_type>(counterB) + 0.5;
+                            }
+                        }
+                    }
+                    else {
+                        for (std::size_t field_idx = 0;
+                            field_idx < idx_uz_B_type::nFields(); ++field_idx)
+                        {
+                            for (auto& n : it->data())
+                            {
+                                //counterB++;
+                                n(idx_uz_B_type::tag(), field_idx) = -1;
+                            }
+                        }
+                    }
+                }
+                else if (it->is_leaf() && it->is_correction() && l == base_level)
+                {
+                    //only setting the leaf points that is next to the leaf to be active
+                    int  N = it->data().descriptor().extent()[0];
+                    bool tmp[N][N] = {false};
+                    for (int i = 0; i < N; i++) {
+                            for (int j = 0; j < N; j++) {
+                                tmp[i][j] = false;
+                            }
+                        }
+                    for (int i = 0; i < it->num_neighbors(); i++)
+                    {
+                        //try not setting bc for velocity
+                        auto it2 = it->neighbor(i);
+                        if (!it2 || !it2->is_leaf() || it2->is_correction())
+                        {
+                            continue;
+                        }
+                        else
+                        {
+                            if (include_u_bc) {
+                            if (i == 0) { tmp[0][0] = true; }
+                            if (i == 1)
+                            {
+                                for (int j = 0; j < N; j++)
+                                {
+                                    tmp[j][0] = true;
+                                }
+                            }
+                            if (i == 2) { tmp[N - 1][0] = true; }
+                            if (i == 3)
+                            {
+                                for (int j = 0; j < N; j++)
+                                {
+                                    tmp[0][j] = true;
+                                }
+                            }
+                            if (i == 5)
+                            {
+                                for (int j = 0; j < N; j++)
+                                {
+                                    tmp[N - 1][j] = true;
+                                }
+                            }
+                            if (i == 6) { tmp[0][N - 1] = true; }
+                            if (i == 7)
+                            {
+                                for (int j = 0; j < N; j++)
+                                {
+                                    tmp[j][N - 1] = true;
+                                }
+                            }
+                            if (i == 8) { tmp[N - 1][N - 1] = true; }
+                            }
+                        }
+                    }
+                    for (std::size_t field_idx = 0;
+                         field_idx < idx_u_type::nFields(); ++field_idx)
+                    {
+                        auto& lin_data =
+                            it->data_r(idx_u_type::tag(), field_idx)
+                                .linalg_data();
+                        for (int i = 0; i < N; i++)
+                        {
+                            for (int j = 0; j < N; j++)
+                            {
+                                if (tmp[i][j])
+                                {
+                                    counter++;
+                                    view(lin_data, i + 1, j + 1) =
+                                        static_cast<float_type>(counter) + 0.5;
+                                }
+                                else
+                                {
+                                    view(lin_data, i + 1, j + 1) = -1;
+                                }
+                            }
+                        }
+                    }
+
+                    for (std::size_t field_idx = 0;
+                         field_idx < idx_uz_type::nFields(); ++field_idx)
+                    {
+                        auto& lin_data =
+                            it->data_r(idx_uz_type::tag(), field_idx)
+                                .linalg_data();
+                        for (int i = 0; i < N; i++)
+                        {
+                            for (int j = 0; j < N; j++)
+                            {
+                                if (tmp[i][j])
+                                {
+                                    counter++;
+                                    view(lin_data, i + 1, j + 1) =
+                                        static_cast<float_type>(counter) + 0.5;
+                                }
+                                else
+                                {
+                                    view(lin_data, i + 1, j + 1) = -1;
+                                }
+                            }
+                        }
+                    }
+                }
+                else //if (it->is_correction())
+                {
+                    //only setting the points that is next to the leaf to be active
+                    int  N = it->data().descriptor().extent()[0];
+                    bool tmp[N][N] = {false};
+                    for (int i = 0; i < N; i++) {
+                            for (int j = 0; j < N; j++) {
+                                tmp[i][j] = false;
+                            }
+                        }
+                    for (int i = 0; i < it->num_neighbors(); i++)
+                    {
+                        auto it2 = it->neighbor(i);
+                        if (!it2 || !it2->is_leaf() || it2->is_correction())
+                        {
+                            continue;
+                        }
+                        else
+                        {
+                            if (i == 0) { tmp[0][0] = true; tmp[1][0] = true;
+                                          tmp[0][1] = true; tmp[1][1] = true;}
+                            if (i == 1)
+                            {
+                                for (int j = 0; j < N; j++)
+                                {
+                                    tmp[j][0] = true;
+                                    tmp[j][1] = true;
+                                }
+                            }
+                            if (i == 2) { tmp[N - 1][0] = true; tmp[N - 1][1] = true;
+                                          tmp[N - 2][0] = true; tmp[N - 2][1] = true;}
+                            if (i == 3)
+                            {
+                                for (int j = 0; j < N; j++)
+                                {
+                                    tmp[0][j] = true;
+                                    tmp[1][j] = true;
+                                }
+                            }
+                            if (i == 5)
+                            {
+                                for (int j = 0; j < N; j++)
+                                {
+                                    tmp[N - 1][j] = true;
+                                    tmp[N - 2][j] = true;
+                                }
+                            }
+                            if (i == 6) { tmp[0][N - 1] = true; tmp[1][N - 1] = true;
+                                          tmp[0][N - 2] = true; tmp[1][N - 2] = true;}
+                            if (i == 7)
+                            {
+                                for (int j = 0; j < N; j++)
+                                {
+                                    tmp[j][N - 1] = true;
+                                    tmp[j][N - 2] = true;
+                                }
+                            }
+                            if (i == 8) { tmp[N - 1][N - 1] = true; tmp[N - 2][N - 1] = true;
+                                          tmp[N - 1][N - 2] = true; tmp[N - 2][N - 2] = true;}
+                        }
+                    }
+                    for (std::size_t field_idx = 0;
+                         field_idx < idx_u_type::nFields(); ++field_idx)
+                    {
+                        auto& lin_data =
+                            it->data_r(idx_u_type::tag(), field_idx)
+                                .linalg_data();
+                        for (int i = 0; i < N; i++)
+                        {
+                            for (int j = 0; j < N; j++)
+                            {
+                                if (tmp[i][j])
+                                {
+                                    counter++;
+                                    view(lin_data, i + 1, j + 1) =
+                                        static_cast<float_type>(counter) + 0.5;
+                                }
+                                else
+                                {
+                                    view(lin_data, i + 1, j + 1) = -1;
+                                }
+                            }
+                        }
+                    }
+
+                    for (std::size_t field_idx = 0;
+                         field_idx < idx_uz_type::nFields(); ++field_idx)
+                    {
+                        auto& lin_data =
+                            it->data_r(idx_uz_type::tag(), field_idx)
+                                .linalg_data();
+                        for (int i = 0; i < N; i++)
+                        {
+                            for (int j = 0; j < N; j++)
+                            {
+                                if (tmp[i][j])
+                                {
+                                    counter++;
+                                    view(lin_data, i + 1, j + 1) =
+                                        static_cast<float_type>(counter) + 0.5;
+                                }
+                                else
+                                {
+                                    view(lin_data, i + 1, j + 1) = -1;
+                                }
+                            }
+                        }
+                    }
+
+
+                    for (std::size_t field_idx = 0;
+                         field_idx < idx_u_B_type::nFields(); ++field_idx)
+                    {
+                        auto& lin_data =
+                            it->data_r(idx_u_B_type::tag(), field_idx)
+                                .linalg_data();
+                        for (int i = 0; i < N; i++)
+                        {
+                            for (int j = 0; j < N; j++)
+                            {
+                                if (tmp[i][j])
+                                {
+                                    counterB++;
+                                    view(lin_data, i + 1, j + 1) =
+                                        static_cast<float_type>(counterB) + 0.5;
+                                }
+                                else
+                                {
+                                    view(lin_data, i + 1, j + 1) = -1;
+                                }
+                            }
+                        }
+                    }
+
+                    if (!Q_2DOnly) {
+                        for (std::size_t field_idx = 0;
+                            field_idx < idx_uz_B_type::nFields(); ++field_idx)
+                        {
+                            auto& lin_data =
+                                it->data_r(idx_uz_B_type::tag(), field_idx)
+                                    .linalg_data();
+                            for (int i = 0; i < N; i++)
+                            {
+                                for (int j = 0; j < N; j++)
+                                {
+                                    if (tmp[i][j])
+                                    {
+                                        counterB++;
+                                        view(lin_data, i + 1, j + 1) =
+                                            static_cast<float_type>(counterB) + 0.5;
+                                    }
+                                    else
+                                    {
+                                        view(lin_data, i + 1, j + 1) = -1;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    else {
+                        for (std::size_t field_idx = 0;
+                         field_idx < idx_uz_B_type::nFields(); ++field_idx)
+                        {
+                            auto& lin_data =
+                                it->data_r(idx_uz_B_type::tag(), field_idx)
+                                    .linalg_data();
+                            for (int i = 0; i < N; i++)
+                            {
+                                for (int j = 0; j < N; j++)
+                                {
+                                    
+                                    view(lin_data, i + 1, j + 1) = -1;
+                                    
+                                }
+                            }
+                        }
+                    }
+
+                    //need this to compute the edge values
+                    /*for (std::size_t field_idx = 0;
+                         field_idx < idx_u_type::nFields(); ++field_idx)
+                    {
+                        for (auto& n : it->data())
+                        {
+                            counter++;
+                            n(idx_u_type::tag(), field_idx) =
+                                static_cast<float_type>(counter) + 0.5;
+                        }
+                    }*/
+                }
+                /*else
+                {
+                    for (std::size_t field_idx = 0;
+                         field_idx < idx_u_type::nFields(); ++field_idx)
+                    {
+                        for (auto& n : it->data())
+                        {
+                            //counter++;
+                            n(idx_u_type::tag(), field_idx) = -1;
+                        }
+                    }
+                }*/
+
+                //if (it->is_correction()) continue;
+            }
+        }
+
+        max_local_B_idx = counterB;
+
+        if (!testing_u_lap_only)
+        {
+            for (int l = base_level; l < domain_->tree()->depth(); l++)
+            {
+                for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+                {
+                    if (!it->locally_owned() || !it->has_data()) continue;
+                    if (it->is_leaf() && !it->is_correction())
+                    {
+                        for (std::size_t field_idx = 0;
+                             field_idx < idx_p_type::nFields(); ++field_idx)
+                        {
+                            for (auto& n : it->data())
+                            {
+                                counter++;
+                                n(idx_p_type::tag(), field_idx) =
+                                    static_cast<float_type>(counter) + 0.5;
+                            }
+                        }
+                    }
+                    else if (it->is_correction() && l == base_level)
+                    {
+                        /*for (std::size_t field_idx = 0;
+                             field_idx < idx_p_type::nFields(); ++field_idx)
+                        {
+                            for (auto& n : it->data())
+                            {
+                                //counter++;
+                                n(idx_p_type::tag(), field_idx) = -1;
+                            }
+                        }*/
+
+                        int  N = it->data().descriptor().extent()[0];
+                        bool tmp[N][N] = {false};
+                        for (int i = 0; i < N; i++) {
+                            for (int j = 0; j < N; j++) {
+                                tmp[i][j] = false;
+                            }
+                        }
+                        for (int i = 0; i < it->num_neighbors(); i++)
+                        {
+                            auto it2 = it->neighbor(i);
+                            if (!it2 || !it2->is_leaf() || it2->is_correction())
+                            {
+                                continue;
+                            }
+                            else
+                            {
+                                if (include_p_bc) {
+                                if (i == 0) { tmp[0][0] = true; }
+                                if (i == 1)
+                                {
+                                    for (int j = 0; j < N; j++)
+                                    {
+                                        tmp[j][0] = true;
+                                        //tmp[j][1] = true;
+                                    }
+                                }
+                                if (i == 2) { tmp[N - 1][0] = true; }
+                                if (i == 3)
+                                {
+                                    for (int j = 0; j < N; j++)
+                                    {
+                                        tmp[0][j] = true;
+                                        //tmp[1][j] = true;
+                                    }
+                                }
+                                if (i == 5)
+                                {
+                                    for (int j = 0; j < N; j++)
+                                    {
+                                        tmp[N - 1][j] = true;
+                                        //tmp[N - 2][j] = true;
+                                    }
+                                }
+                                if (i == 6) { tmp[0][N - 1] = true; }
+                                if (i == 7)
+                                {
+                                    for (int j = 0; j < N; j++)
+                                    {
+                                        tmp[j][N - 1] = true;
+                                        //tmp[j][N - 2] = true;
+                                    }
+                                }
+                                if (i == 8) { tmp[N - 1][N - 1] = true; }
+                                }
+                            }
+                        }
+                        for (std::size_t field_idx = 0;
+                             field_idx < idx_p_type::nFields(); ++field_idx)
+                        {
+                            auto& lin_data =
+                                it->data_r(idx_p_type::tag(), field_idx)
+                                    .linalg_data();
+                            for (int i = 0; i < N; i++)
+                            {
+                                for (int j = 0; j < N; j++)
+                                {
+                                    if (tmp[i][j])
+                                    {
+                                        counter++;
+                                        view(lin_data, i + 1, j + 1) =
+                                            static_cast<float_type>(counter) +
+                                            0.5;
+                                    }
+                                    else
+                                    {
+                                        view(lin_data, i + 1, j + 1) = -1;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    else if (!it->is_leaf())
+                    {
+                        //only setting the leaf points that is next to the leaf to be active
+                        int  N = it->data().descriptor().extent()[0];
+                        bool tmp[N][N] = {false};
+                        for (int i = 0; i < N; i++) {
+                            for (int j = 0; j < N; j++) {
+                                tmp[i][j] = false;
+                            }
+                        }
+                        for (int i = 0; i < it->num_neighbors(); i++)
+                        {
+                            auto it2 = it->neighbor(i);
+                            if (!it2 || !it2->is_leaf() || it2->is_correction())
+                            {
+                                continue;
+                            }
+                            else
+                            {
+                                if (i == 0) { tmp[0][0] = true; }
+                                if (i == 1)
+                                {
+                                    for (int j = 0; j < N; j++)
+                                    {
+                                        tmp[j][0] = true;
+                                        //tmp[j][1] = true;
+                                    }
+                                }
+                                if (i == 2) { tmp[N - 1][0] = true; }
+                                if (i == 3)
+                                {
+                                    for (int j = 0; j < N; j++)
+                                    {
+                                        tmp[0][j] = true;
+                                        //tmp[1][j] = true;
+                                    }
+                                }
+                                if (i == 5)
+                                {
+                                    for (int j = 0; j < N; j++)
+                                    {
+                                        tmp[N - 1][j] = true;
+                                        //tmp[N - 2][j] = true;
+                                    }
+                                }
+                                if (i == 6) { tmp[0][N - 1] = true; }
+                                if (i == 7)
+                                {
+                                    for (int j = 0; j < N; j++)
+                                    {
+                                        tmp[j][N - 1] = true;
+                                        //tmp[j][N - 2] = true;
+                                    }
+                                }
+                                if (i == 8) { tmp[N - 1][N - 1] = true; }
+                            }
+                        }
+                        for (std::size_t field_idx = 0;
+                             field_idx < idx_p_type::nFields(); ++field_idx)
+                        {
+                            auto& lin_data =
+                                it->data_r(idx_p_type::tag(), field_idx)
+                                    .linalg_data();
+                            for (int i = 0; i < N; i++)
+                            {
+                                for (int j = 0; j < N; j++)
+                                {
+                                    if (tmp[i][j])
+                                    {
+                                        counter++;
+                                        view(lin_data, i + 1, j + 1) =
+                                            static_cast<float_type>(counter) +
+                                            0.5;
+                                    }
+                                    else
+                                    {
+                                        view(lin_data, i + 1, j + 1) = -1;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    else
+                    {
+                        for (std::size_t field_idx = 0;
+                             field_idx < idx_p_type::nFields(); ++field_idx)
+                        {
+                            for (auto& n : it->data())
+                            {
+                                //counter++;
+                                n(idx_p_type::tag(), field_idx) = -1;
+                            }
+                        }
+                    }
+                }
+            }
+
+            //idx_N assign
+            for (int l = base_level; l < domain_->tree()->depth(); l++)
+            {
+                for (auto it = domain_->begin(l);
+                     it != domain_->end(l); ++it)
+                {
+                    if (!it->locally_owned() || !it->has_data()) continue;
+                    if (!it->is_correction() && l == base_level && it->is_leaf())
+                    {
+                        for (std::size_t field_idx = 0;
+                             field_idx < idx_N_type::nFields(); ++field_idx)
+                        {
+                            for (auto& n : it->data())
+                            {
+                                counter++;
+                                n(idx_N_type::tag(), field_idx) =
+                                    static_cast<float_type>(counter) + 0.5;
+                            }
+                        }
+
+                        for (std::size_t field_idx = 0;
+                             field_idx < idx_Nz_type::nFields(); ++field_idx)
+                        {
+                            for (auto& n : it->data())
+                            {
+                                counter++;
+                                n(idx_Nz_type::tag(), field_idx) =
+                                    static_cast<float_type>(counter) + 0.5;
+                            }
+                        }
+
+                        //only setting the leaf points that is next to the leaf to be active
+                        int  N = it->data().descriptor().extent()[0];
+                        bool next2corr = false;
+                        bool tmp[N][N] = {true};
+                        for (int i = 0; i < N; i++) {
+                            for (int j = 0; j < N; j++) {
+                                tmp[i][j] = true;
+                            }
+                        }
+                        for (int i = 0; i < it->num_neighbors(); i++)
+                        {
+                            auto it2 = it->neighbor(i);
+                            if (it2 && (!it2->is_correction()))
+                            {
+                                continue;
+                            }
+                            else
+                            {
+                                next2corr = true;
+                                if (i == 0) { tmp[0][0] = false; }
+                                if (i == 1)
+                                {
+                                    for (int j = 0; j < N; j++)
+                                    {
+                                        tmp[j][0] = false;
+                                        //tmp[j][1] = true;
+                                    }
+                                }
+                                if (i == 2) { tmp[N - 1][0] = false; }
+                                if (i == 3)
+                                {
+                                    for (int j = 0; j < N; j++)
+                                    {
+                                        tmp[0][j] = false;
+                                        //tmp[1][j] = true;
+                                    }
+                                }
+                                if (i == 5)
+                                {
+                                    for (int j = 0; j < N; j++)
+                                    {
+                                        tmp[N - 1][j] = false;
+                                        //tmp[N - 2][j] = true;
+                                    }
+                                }
+                                if (i == 6) { tmp[0][N - 1] = false; }
+                                if (i == 7)
+                                {
+                                    for (int j = 0; j < N; j++)
+                                    {
+                                        tmp[j][N - 1] = false;
+                                        //tmp[j][N - 2] = true;
+                                    }
+                                }
+                                if (i == 8) { tmp[N - 1][N - 1] = false; }
+                            }
+                        }
+                        /*for (std::size_t field_idx = 0;
+                             field_idx < idx_N_type::nFields(); ++field_idx)
+                        {
+                            auto& lin_data =
+                                it->data_r(idx_N_type::tag(), field_idx)
+                                    .linalg_data();
+                            for (int i = 0; i < N; i++)
+                            {
+                                for (int j = 0; j < N; j++)
+                                {
+                                    if (tmp[i][j])
+                                    {
+                                        counter++;
+                                        view(lin_data, i + 1, j + 1) =
+                                            static_cast<float_type>(counter) +
+                                            0.5;
+                                    }
+                                    else
+                                    {
+                                        view(lin_data, i + 1, j + 1) = -1;
+                                    }
+                                }
+                            }
+                        }
+
+
+                        for (std::size_t field_idx = 0;
+                             field_idx < idx_Nz_type::nFields(); ++field_idx)
+                        {
+                            auto& lin_data =
+                                it->data_r(idx_Nz_type::tag(), field_idx)
+                                    .linalg_data();
+                            for (int i = 0; i < N; i++)
+                            {
+                                for (int j = 0; j < N; j++)
+                                {
+                                    if (tmp[i][j])
+                                    {
+                                        counter++;
+                                        view(lin_data, i + 1, j + 1) =
+                                            static_cast<float_type>(counter) +
+                                            0.5;
+                                    }
+                                    else
+                                    {
+                                        view(lin_data, i + 1, j + 1) = -1;
+                                    }
+                                }
+                            }
+                        }*/
+                    }
+                    else if (it->is_leaf() && !it->is_correction())
+                    {
+                        for (std::size_t field_idx = 0;
+                             field_idx < idx_N_type::nFields(); ++field_idx)
+                        {
+                            for (auto& n : it->data())
+                            {
+                                counter++;
+                                n(idx_N_type::tag(), field_idx) =
+                                    static_cast<float_type>(counter) + 0.5;
+                            }
+                        }
+                        for (std::size_t field_idx = 0;
+                             field_idx < idx_Nz_type::nFields(); ++field_idx)
+                        {
+                            for (auto& n : it->data())
+                            {
+                                counter++;
+                                n(idx_Nz_type::tag(), field_idx) =
+                                    static_cast<float_type>(counter) + 0.5;
+                            }
+                        }
+                    }
+                    else if (!it->is_leaf())
+                    {
+                        //only setting the leaf points that is next to the leaf to be active
+                        int  N = it->data().descriptor().extent()[0];
+                        bool tmp[N][N] = {false};
+                        for (int i = 0; i < N; i++) {
+                            for (int j = 0; j < N; j++) {
+                                tmp[i][j] = false;
+                            }
+                        }
+                        for (int i = 0; i < it->num_neighbors(); i++)
+                        {
+                            auto it2 = it->neighbor(i);
+                            if (!it2 || !it2->is_leaf() || it2->is_correction())
+                            {
+                                continue;
+                            }
+                            else
+                            {
+                                if (i == 0) { tmp[0][0] = true; }
+                                if (i == 1)
+                                {
+                                    for (int j = 0; j < N; j++)
+                                    {
+                                        tmp[j][0] = true;
+                                    }
+                                }
+                                if (i == 3)
+                                {
+                                    for (int j = 0; j < N; j++)
+                                    {
+                                        tmp[0][j] = true;
+                                    }
+                                }
+
+                                if (i == 0) { tmp[0][0] = true; }
+                                if (i == 1)
+                                {
+                                    for (int j = 0; j < N; j++)
+                                    {
+                                        tmp[j][0] = true;
+                                    }
+                                }
+                                if (i == 2) { tmp[N - 1][0] = true; }
+                                if (i == 3)
+                                {
+                                    for (int j = 0; j < N; j++)
+                                    {
+                                        tmp[0][j] = true;
+                                        //tmp[1][j] = true;
+                                    }
+                                }
+                                if (i == 5)
+                                {
+                                    for (int j = 0; j < N; j++)
+                                    {
+                                        tmp[N - 1][j] = true;
+                                        //tmp[N - 2][j] = true;
+                                    }
+                                }
+                                if (i == 6) { tmp[0][N - 1] = true; }
+                                if (i == 7)
+                                {
+                                    for (int j = 0; j < N; j++)
+                                    {
+                                        tmp[j][N - 1] = true;
+                                        //tmp[j][N - 2] = true;
+                                    }
+                                }
+                                if (i == 8) { tmp[N - 1][N - 1] = true; }
+                            }
+                        }
+                        for (std::size_t field_idx = 0;
+                             field_idx < idx_N_type::nFields(); ++field_idx)
+                        {
+                            auto& lin_data =
+                                it->data_r(idx_N_type::tag(), field_idx)
+                                    .linalg_data();
+                            for (int i = 0; i < N; i++)
+                            {
+                                for (int j = 0; j < N; j++)
+                                {
+                                    if (tmp[i][j])
+                                    {
+                                        counter++;
+                                        view(lin_data, i + 1, j + 1) =
+                                            static_cast<float_type>(counter) +
+                                            0.5;
+                                    }
+                                    else
+                                    {
+                                        view(lin_data, i + 1, j + 1) = -1;
+                                    }
+                                }
+                            }
+                        }
+                        for (std::size_t field_idx = 0;
+                             field_idx < idx_Nz_type::nFields(); ++field_idx)
+                        {
+                            auto& lin_data =
+                                it->data_r(idx_Nz_type::tag(), field_idx)
+                                    .linalg_data();
+                            for (int i = 0; i < N; i++)
+                            {
+                                for (int j = 0; j < N; j++)
+                                {
+                                    if (tmp[i][j])
+                                    {
+                                        counter++;
+                                        view(lin_data, i + 1, j + 1) =
+                                            static_cast<float_type>(counter) +
+                                            0.5;
+                                    }
+                                    else
+                                    {
+                                        view(lin_data, i + 1, j + 1) = -1;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    else {
+                        for (std::size_t field_idx = 0;
+                             field_idx < idx_N_type::nFields(); ++field_idx)
+                        {
+                            for (auto& n : it->data())
+                            {
+                                //counter++;
+                                n(idx_N_type::tag(), field_idx) = -1;
+                            }
+                        }
+                        for (std::size_t field_idx = 0;
+                             field_idx < idx_Nz_type::nFields(); ++field_idx)
+                        {
+                            for (auto& n : it->data())
+                            {
+                                //counter++;
+                                n(idx_Nz_type::tag(), field_idx) = -1;
+                            }
+                        }
+                    }
+                }
+            }
+
+
+            //idx_cs assign
+            for (int l = base_level; l < domain_->tree()->depth(); l++)
+            {
+                for (auto it = domain_->begin(l);
+                     it != domain_->end(l); ++it)
+                {
+                    if (!it->locally_owned() || !it->has_data()) continue;
+
+                    if (!it->is_correction() && l == base_level && it->is_leaf())
+                    {
+                        for (std::size_t field_idx = 0;
+                             field_idx < idx_cs_type::nFields(); ++field_idx)
+                        {
+                            for (auto& n : it->data())
+                            {
+                                counter++;
+                                n(idx_cs_type::tag(), field_idx) =
+                                    static_cast<float_type>(counter) + 0.5;
+                            }
+                        }
+
+                        //only setting the leaf points that is next to the leaf to be active
+                        /*int  N = it->data().descriptor().extent()[0];
+                        bool next2corr = false;
+                        bool tmp[N][N] = {true};
+                        for (int i = 0; i < N; i++) {
+                            for (int j = 0; j < N; j++) {
+                                tmp[i][j] = true;
+                            }
+                        }
+                        for (int i = 0; i < it->num_neighbors(); i++)
+                        {
+                            auto it2 = it->neighbor(i);
+                            if (it2 && (!it2->is_correction()))
+                            {
+                                continue;
+                            }
+                            else
+                            {
+                                next2corr = true;
+                            }
+                        }
+                        for (std::size_t field_idx = 0;
+                             field_idx < idx_cs_type::nFields(); ++field_idx)
+                        {
+                            auto& lin_data =
+                                it->data_r(idx_cs_type::tag(), field_idx)
+                                    .linalg_data();
+                            for (int i = 0; i < N; i++)
+                            {
+                                for (int j = 0; j < N; j++)
+                                {
+                                    if (next2corr) {
+                                        view(lin_data, i + 1, j + 1) = -1;
+                                    }
+                                    else {
+                                        counter++;
+                                        view(lin_data, i + 1, j + 1) =
+                                            static_cast<float_type>(counter) +
+                                            0.5;
+                                    }
+                                }
+                            }
+                        }*/
+
+                    }
+                    else if (!it->is_correction())
+                    {
+                        for (std::size_t field_idx = 0;
+                             field_idx < idx_cs_type::nFields(); ++field_idx)
+                        {
+                            for (auto& n : it->data())
+                            {
+                                counter++;
+                                n(idx_cs_type::tag(), field_idx) =
+                                    static_cast<float_type>(counter) + 0.5;
+                            }
+                        }
+                    }
+                    else {
+                        for (std::size_t field_idx = 0;
+                             field_idx < idx_cs_type::nFields(); ++field_idx)
+                        {
+                            for (auto& n : it->data())
+                            {
+                                //counter++;
+                                n(idx_cs_type::tag(), field_idx) = -1;
+                            }
+                        }
+                    }
+                }
+            }
+
+
+            for (int l = base_level - 1; l >= 0; l--)
+            {
+                for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+                {
+                    //if (!it) continue;
+                    if (!it->locally_owned() || !it->has_data()) continue;
+                    //if (it->is_leaf() && !it->is_correction())
+                    //{
+                    for (std::size_t field_idx = 0;
+                         field_idx < idx_cs_type::nFields(); ++field_idx)
+                    {
+                        int N = it->data().descriptor().extent()[0];
+
+                        auto& lin_data =
+                            it->data_r(idx_cs_type::tag(), field_idx)
+                                .linalg_data();
+                        for (int i = 0; i < (N + 2); i++)
+                        {
+                            for (int j = 0; j < (N + 2); j++)
+                            {
+                                counter++;
+                                view(lin_data, i, j) =
+                                    static_cast<float_type>(counter) + 0.5;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if (!no_vort_idx)
+        {
+            //also get idx for w (vorticity)
+            for (int l = base_level; l < domain_->tree()->depth(); l++)
+            {
+                for (auto it = domain_->begin(l);
+                     it != domain_->end(l); ++it)
+                {
+                    if (!it->locally_owned() || !it->has_data()) continue;
+                    if (!it->is_correction() && l == base_level)
+                    {
+                        /*for (std::size_t field_idx = 0;
+                             field_idx < idx_w_type::nFields(); ++field_idx)
+                        {
+                            for (auto& n : it->data())
+                            {
+                                counter++;
+                                n(idx_w_type::tag(), field_idx) =
+                                    static_cast<float_type>(counter) + 0.5;
+                            }
+                        }*/
+
+                        //only setting the leaf points that is next to the leaf to be active
+                        int  N = it->data().descriptor().extent()[0];
+                        bool next2corr = false;
+                        bool tmp[N][N] = {true};
+                        for (int i = 0; i < N; i++) {
+                            for (int j = 0; j < N; j++) {
+                                tmp[i][j] = true;
+                            }
+                        }
+                        for (int i = 0; i < it->num_neighbors(); i++)
+                        {
+                            auto it2 = it->neighbor(i);
+                            if (it2 && (!it2->is_correction()))
+                            {
+                                continue;
+                            }
+                            else
+                            {
+                                next2corr = true;
+                                /*if (i == 0) { tmp[0][0] = false; }
+                                if (i == 1)
+                                {
+                                    for (int j = 0; j < N; j++)
+                                    {
+                                        tmp[j][0] = false;
+                                        //tmp[j][1] = true;
+                                    }
+                                }
+                                if (i == 2) { tmp[N - 1][0] = false; }
+                                if (i == 3)
+                                {
+                                    for (int j = 0; j < N; j++)
+                                    {
+                                        tmp[0][j] = false;
+                                        //tmp[1][j] = true;
+                                    }
+                                }*/
+                                /*if (i == 5)
+                                {
+                                    for (int j = 0; j < N; j++)
+                                    {
+                                        tmp[N - 1][j] = false;
+                                        //tmp[N - 2][j] = true;
+                                    }
+                                }
+                                if (i == 6) { tmp[0][N - 1] = false; }
+                                if (i == 7)
+                                {
+                                    for (int j = 0; j < N; j++)
+                                    {
+                                        tmp[j][N - 1] = false;
+                                        //tmp[j][N - 2] = true;
+                                    }
+                                }
+                                if (i == 8) { tmp[N - 1][N - 1] = false; }*/
+                            }
+                        }
+                        for (std::size_t field_idx = 0;
+                             field_idx < idx_w_type::nFields(); ++field_idx)
+                        {
+                            auto& lin_data =
+                                it->data_r(idx_w_type::tag(), field_idx)
+                                    .linalg_data();
+                            for (int i = 0; i < N; i++)
+                            {
+                                for (int j = 0; j < N; j++)
+                                {
+                                    /*if (!next2corr)
+                                    {
+                                        counter++;
+                                        view(lin_data, i + 1, j + 1) =
+                                            static_cast<float_type>(counter) +
+                                            0.5;
+                                    }*/
+                                    if (tmp[i][j])
+                                    {
+                                        counter++;
+                                        view(lin_data, i + 1, j + 1) =
+                                            static_cast<float_type>(counter) +
+                                            0.5;
+                                    }
+                                    else
+                                    {
+                                        view(lin_data, i + 1, j + 1) = -1;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    else if (!it->is_correction() && l != base_level)
+                    {
+                        for (std::size_t field_idx = 0;
+                             field_idx < idx_w_type::nFields(); ++field_idx)
+                        {
+                            for (auto& n : it->data())
+                            {
+                                counter++;
+                                n(idx_w_type::tag(), field_idx) =
+                                    static_cast<float_type>(counter) + 0.5;
+                            }
+                        }
+                    }
+                    /*else if (it->is_correction() && l == base_level)
+                    {
+                        //only setting the leaf points that is next to the leaf to be active
+                        int  N = it->data().descriptor().extent()[0];
+                        bool tmp[N][N] = {false};
+                        for (int i = 0; i < N; i++) {
+                            for (int j = 0; j < N; j++) {
+                                tmp[i][j] = false;
+                            }
+                        }
+                        for (int i = 0; i < it->num_neighbors(); i++)
+                        {
+                            auto it2 = it->neighbor(i);
+                            if (!it2 || !it2->is_leaf() || it2->is_correction())
+                            {
+                                continue;
+                            }
+                            else
+                            {
+                                //if (i == 0) { tmp[0][0] = true; }
+                                if (i == 1)
+                                {
+                                    for (int j = 0; j < N; j++)
+                                    {
+                                        tmp[j][0] = true;
+                                    }
+                                }
+                                if (i == 3)
+                                {
+                                    for (int j = 0; j < N; j++)
+                                    {
+                                        tmp[0][j] = true;
+                                    }
+                                }
+                            }
+                        }
+                        for (std::size_t field_idx = 0;
+                             field_idx < idx_w_type::nFields(); ++field_idx)
+                        {
+                            auto& lin_data =
+                                it->data_r(idx_w_type::tag(), field_idx)
+                                    .linalg_data();
+                            for (int i = 0; i < N; i++)
+                            {
+                                for (int j = 0; j < N; j++)
+                                {
+                                    if (tmp[i][j])
+                                    {
+                                        counter++;
+                                        view(lin_data, i + 1, j + 1) =
+                                            static_cast<float_type>(counter) +
+                                            0.5;
+                                    }
+                                    else
+                                    {
+                                        view(lin_data, i + 1, j + 1) = -1;
+                                    }
+                                }
+                            }
+                        }
+                    }*/
+                    else if (it->is_correction() && l != base_level)
+                    {
+                        //only setting the leaf points that is next to the leaf to be active
+                        int  N = it->data().descriptor().extent()[0];
+                        bool tmp[N][N] = {false};
+                        for (int i = 0; i < N; i++) {
+                            for (int j = 0; j < N; j++) {
+                                tmp[i][j] = false;
+                            }
+                        }
+                        for (int i = 0; i < it->num_neighbors(); i++)
+                        {
+                            auto it2 = it->neighbor(i);
+                            if (!it2 || !it2->is_leaf() || it2->is_correction())
+                            {
+                                continue;
+                            }
+                            else
+                            {
+                                /*if (i == 0) { tmp[0][0] = true; }
+                                if (i == 1)
+                                {
+                                    for (int j = 0; j < N; j++)
+                                    {
+                                        tmp[j][0] = true;
+                                    }
+                                }
+                                if (i == 3)
+                                {
+                                    for (int j = 0; j < N; j++)
+                                    {
+                                        tmp[0][j] = true;
+                                    }
+                                }*/
+                                if (i == 0) { tmp[0][0] = true; }
+                                if (i == 1)
+                                {
+                                    for (int j = 0; j < N; j++)
+                                    {
+                                        tmp[j][0] = true;
+                                    }
+                                }
+                                if (i == 2) { tmp[N - 1][0] = true; }
+                                if (i == 3)
+                                {
+                                    for (int j = 0; j < N; j++)
+                                    {
+                                        tmp[0][j] = true;
+                                    }
+                                }
+                                if (i == 5)
+                                {
+                                    for (int j = 0; j < N; j++)
+                                    {
+                                        tmp[N - 1][j] = true;
+                                    }
+                                }
+                                if (i == 6) { tmp[0][N - 1] = true; }
+                                if (i == 7)
+                                {
+                                    for (int j = 0; j < N; j++)
+                                    {
+                                        tmp[j][N - 1] = true;
+                                    }
+                                }
+                                if (i == 8) { tmp[N - 1][N - 1] = true; }
+                            }
+                        }
+                        for (std::size_t field_idx = 0;
+                             field_idx < idx_w_type::nFields(); ++field_idx)
+                        {
+                            auto& lin_data =
+                                it->data_r(idx_w_type::tag(), field_idx)
+                                    .linalg_data();
+                            for (int i = 0; i < N; i++)
+                            {
+                                for (int j = 0; j < N; j++)
+                                {
+                                    if (tmp[i][j])
+                                    {
+                                        counter++;
+                                        view(lin_data, i + 1, j + 1) =
+                                            static_cast<float_type>(counter) +
+                                            0.5;
+                                    }
+                                    else
+                                    {
+                                        view(lin_data, i + 1, j + 1) = -1;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    else {
+                        for (std::size_t field_idx = 0;
+                             field_idx < idx_w_type::nFields(); ++field_idx)
+                        {
+                            for (auto& n : it->data())
+                            {
+                                //counter++;
+                                n(idx_w_type::tag(), field_idx) = -1;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        for (std::size_t i=0; i<forcing_idx.size(); ++i)
+        {
+            if (domain_->ib().rank(i)!=comm_.rank()) {
+                forcing_idx[i]=-1;
+                continue;
+            }
+
+            for (std::size_t d=0; d<forcing_idx[0].size(); ++d) {
+                counter++;
+                forcing_idx[i][d] = static_cast<float_type>(counter) + 0.5;
+            }
+        }
+
+
+        for (std::size_t i=0; i<forcing_idx.size(); ++i)
+        {
+            if (domain_->ib().rank(i)!=comm_.rank()) {
+                forcing_z_idx[i]=-1;
+                continue;
+            }
+
+            
+            counter++;
+            forcing_z_idx[i] = counter;
+            
+        }
+        max_local_idx = counter;
+        domain_->client_communicator().barrier();
+        
+        if (world.rank() != 0)                  world.recv(world.rank()-1, world.rank() - 1, max_idx_from_prev_prc);
+        if (world.rank() != (world.size() - 1)) world.send(world.rank()+1, world.rank(), (counter + max_idx_from_prev_prc));
+        for (int i = 1; i < world.size();i++) {
+            if (world.rank() == i) std::cout << "rank " << world.rank() << " counter + max idx is " << (counter + max_idx_from_prev_prc) << " max idx from prev prc " << max_idx_from_prev_prc << std::endl;
+            domain_->client_communicator().barrier();
+        }
+
+
+        if (world.rank() != 0)                  world.recv(world.rank()-1, world.rank() - 1, max_idx_B_from_prev_prc);
+        if (world.rank() != (world.size() - 1)) world.send(world.rank()+1, world.rank(), (counterB + max_idx_B_from_prev_prc));
+        for (int i = 1; i < world.size();i++) {
+            if (world.rank() == i) std::cout << "rank " << world.rank() << " counter + max B idx is " << (counterB + max_idx_B_from_prev_prc) << " max idx from prev prc " << max_idx_B_from_prev_prc << std::endl;
+            domain_->client_communicator().barrier();
+        }
+
+        //Also get global idx
+
+        for (int l = base_level; l < domain_->tree()->depth(); l++)
+        {
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
+                //if (it->is_leaf() || it->is_correction())
+                //{
+                for (std::size_t field_idx = 0;
+                     field_idx < idx_u_g_type::nFields(); ++field_idx)
+                {
+                    for (auto& n : it->data())
+                    {
+                        if (n(idx_u_type::tag(), field_idx) > 0)
+                        {
+                            n(idx_u_g_type::tag(), field_idx) =
+                                n(idx_u_type::tag(), field_idx) +
+                                max_idx_from_prev_prc;
+                        }
+                        else
+                        {
+                            n(idx_u_g_type::tag(), field_idx) = -1;
+                        }
+                    }
+                }
+                for (std::size_t field_idx = 0;
+                     field_idx < idx_uz_g_type::nFields(); ++field_idx)
+                {
+                    for (auto& n : it->data())
+                    {
+                        if (n(idx_uz_type::tag(), field_idx) > 0)
+                        {
+                            n(idx_uz_g_type::tag(), field_idx) =
+                                n(idx_uz_type::tag(), field_idx) +
+                                max_idx_from_prev_prc;
+                        }
+                        else
+                        {
+                            n(idx_uz_g_type::tag(), field_idx) = -1;
+                        }
+                    }
+                }
+                //}
+                /*else
+                {
+                    for (std::size_t field_idx = 0;
+                         field_idx < idx_u_g_type::nFields(); ++field_idx)
+                    {
+                        for (auto& n : it->data())
+                        {
+                            //counter++;
+                            n(idx_u_g_type::tag(), field_idx) = -1;
+                        }
+                    }
+                }*/
+
+                //if (it->is_correction()) continue;
+            }
+        }
+
+
+        for (int l = base_level; l < domain_->tree()->depth(); l++)
+        {
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
+                //if (it->is_leaf() || it->is_correction())
+                //{
+                for (std::size_t field_idx = 0;
+                     field_idx < idx_u_B_g_type::nFields(); ++field_idx)
+                {
+                    for (auto& n : it->data())
+                    {
+                        if (n(idx_u_B_type::tag(), field_idx) > 0)
+                        {
+                            n(idx_u_B_g_type::tag(), field_idx) =
+                                n(idx_u_B_type::tag(), field_idx) +
+                                max_idx_B_from_prev_prc;
+                        }
+                        else
+                        {
+                            n(idx_u_B_type::tag(), field_idx) = -1;
+                            n(idx_u_B_g_type::tag(), field_idx) = -1;
+                        }
+                    }
+                }
+                for (std::size_t field_idx = 0;
+                     field_idx < idx_uz_B_g_type::nFields(); ++field_idx)
+                {
+                    for (auto& n : it->data())
+                    {
+                        if (n(idx_uz_B_type::tag(), field_idx) > 0)
+                        {
+                            n(idx_uz_B_g_type::tag(), field_idx) =
+                                n(idx_uz_B_type::tag(), field_idx) +
+                                max_idx_B_from_prev_prc;
+                        }
+                        else
+                        {
+                            n(idx_uz_B_type::tag(), field_idx) = -1;
+                            n(idx_uz_B_g_type::tag(), field_idx) = -1;
+                        }
+                    }
+                }
+                //}
+                /*else
+                {
+                    for (std::size_t field_idx = 0;
+                         field_idx < idx_u_g_type::nFields(); ++field_idx)
+                    {
+                        for (auto& n : it->data())
+                        {
+                            //counter++;
+                            n(idx_u_g_type::tag(), field_idx) = -1;
+                        }
+                    }
+                }*/
+
+                //if (it->is_correction()) continue;
+            }
+        }
+
+
+        if (!testing_u_lap_only)
+        {
+            for (int l = base_level; l < domain_->tree()->depth(); l++)
+            {
+                for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+                {
+                    if (!it->locally_owned() || !it->has_data()) continue;
+                    //if (it->is_leaf() || it->is_correction())
+                    //{
+                        for (std::size_t field_idx = 0;
+                             field_idx < idx_p_g_type::nFields(); ++field_idx)
+                        {
+                            for (auto& n : it->data())
+                            {
+                                if (n(idx_p_type::tag(), field_idx) > 0)
+                                {
+                                    n(idx_p_g_type::tag(), field_idx) =
+                                        n(idx_p_type::tag(), field_idx) +
+                                        max_idx_from_prev_prc;
+                                }
+                                else
+                                {
+                                    n(idx_p_g_type::tag(), field_idx) = -1;
+                                }
+                                //n(idx_p_g_type::tag(), field_idx) = n(idx_p_type::tag(), field_idx)+max_idx_from_prev_prc;
+                            }
+                        }
+                    //}
+                    /*else
+                    {
+                        for (std::size_t field_idx = 0;
+                             field_idx < idx_p_g_type::nFields(); ++field_idx)
+                        {
+                            for (auto& n : it->data())
+                            {
+                                //counter++;
+                                n(idx_p_g_type::tag(), field_idx) = -1;
+                            }
+                        }
+                    }*/
+                }
+            }
+
+            for (int l = base_level; l < domain_->tree()->depth(); l++)
+            {
+                for (auto it = domain_->begin(l);
+                     it != domain_->end(l); ++it)
+                {
+                    if (!it->locally_owned() || !it->has_data()) continue;
+                    //if (it->is_leaf() || it->is_correction())
+                    //{
+                    for (std::size_t field_idx = 0;
+                         field_idx < idx_N_g_type::nFields(); ++field_idx)
+                    {
+                        for (auto& n : it->data())
+                        {
+                            if (n(idx_N_type::tag(), field_idx) > 0)
+                            {
+                                n(idx_N_g_type::tag(), field_idx) =
+                                    n(idx_N_type::tag(), field_idx) +
+                                    max_idx_from_prev_prc;
+                            }
+                            else
+                            {
+                                n(idx_N_g_type::tag(), field_idx) = -1;
+                            }
+                        }
+                    }
+                    for (std::size_t field_idx = 0;
+                         field_idx < idx_Nz_g_type::nFields(); ++field_idx)
+                    {
+                        for (auto& n : it->data())
+                        {
+                            if (n(idx_Nz_type::tag(), field_idx) > 0)
+                            {
+                                n(idx_Nz_g_type::tag(), field_idx) =
+                                    n(idx_Nz_type::tag(), field_idx) +
+                                    max_idx_from_prev_prc;
+                            }
+                            else
+                            {
+                                n(idx_Nz_g_type::tag(), field_idx) = -1;
+                            }
+                        }
+                    }
+
+                }
+            }
+
+            for (int l = base_level; l < domain_->tree()->depth(); l++)
+            {
+                for (auto it = domain_->begin(l);
+                     it != domain_->end(l); ++it)
+                {
+                    if (!it->locally_owned() || !it->has_data()) continue;
+                    //if (it->is_leaf() || it->is_correction())
+                    //{
+                    for (std::size_t field_idx = 0;
+                         field_idx < idx_cs_g_type::nFields(); ++field_idx)
+                    {
+                        for (auto& n : it->data())
+                        {
+                            if (n(idx_cs_type::tag(), field_idx) > 0)
+                            {
+                                n(idx_cs_g_type::tag(), field_idx) =
+                                    n(idx_cs_type::tag(), field_idx) +
+                                    max_idx_from_prev_prc;
+                            }
+                            else
+                            {
+                                n(idx_cs_g_type::tag(), field_idx) = -1;
+                            }
+                        }
+                    }
+
+                }
+            }
+
+            for (int l = base_level - 1; l >= 0; l--)
+            {
+                for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+                {
+                    //if (!it) continue;
+                    if (!it->locally_owned() || !it->has_data()) continue;
+                    //if (it->is_leaf() && !it->is_correction())
+                    //{
+                    int N = it->data().descriptor().extent()[0];
+                    for (std::size_t field_idx = 0;
+                         field_idx < idx_cs_type::nFields(); ++field_idx)
+                    {
+                        auto& lin_data1 =
+                            it->data_r(idx_cs_g_type::tag(), field_idx)
+                                .linalg_data();
+                        auto& lin_data2 =
+                            it->data_r(idx_cs_type::tag(), field_idx)
+                                .linalg_data();
+                        for (int i = 0; i < (N + 2); i++)
+                        {
+                            for (int j = 0; j < (N + 2); j++)
+                            {
+                                view(lin_data1, i, j) = view(lin_data2, i, j) +
+                                                        max_idx_from_prev_prc;
+                            }
+                        }
+
+                        /*for (auto& n : it->data())
+                    {
+                        counter++;
+                        n(idx_w_type::tag(), field_idx) =
+                            static_cast<float_type>(counter) + 0.5;
+                    }*/
+                    }
+                    //}
+                }
+            }
+        }
+
+        if (!no_vort_idx)
+        {
+            for (int l = base_level; l < domain_->tree()->depth(); l++)
+            {
+                for (auto it = domain_->begin(l);
+                     it != domain_->end(l); ++it)
+                {
+                    if (!it->locally_owned() || !it->has_data()) continue;
+                    //if (it->is_leaf() || it->is_correction())
+                    //{
+                    for (std::size_t field_idx = 0;
+                         field_idx < idx_w_g_type::nFields(); ++field_idx)
+                    {
+                        for (auto& n : it->data())
+                        {
+                            if (n(idx_w_type::tag(), field_idx) > 0)
+                            {
+                                n(idx_w_g_type::tag(), field_idx) =
+                                    n(idx_w_type::tag(), field_idx) +
+                                    max_idx_from_prev_prc;
+                            }
+                            else
+                            {
+                                n(idx_w_g_type::tag(), field_idx) = -1;
+                            }
+                        }
+                    }
+
+                }
+            }
+        }
+        for (std::size_t i=0; i<forcing_idx_g.size(); ++i)
+        {
+            if (domain_->ib().rank(i)!=comm_.rank()) {
+                forcing_idx_g[i]=-1;
+                continue;
+            }
+
+            for (std::size_t d=0; d<forcing_idx_g[0].size(); ++d) {
+                //counter++;
+                forcing_idx_g[i][d] = forcing_idx[i][d] + max_idx_from_prev_prc;
+            }
+        }
+
+        for (std::size_t i=0; i<forcing_idx_g.size(); ++i)
+        {
+            if (domain_->ib().rank(i)!=comm_.rank()) {
+                forcing_z_idx_g[i]=-1;
+                continue;
+            }
+
+            
+            forcing_z_idx_g[i] = forcing_z_idx[i] + max_idx_from_prev_prc;
+            
+        }
+        domain_->client_communicator().barrier();
+
+
+        //finding one point cross all processors that need to be set to zero
+
+        //int base_level = domain_->tree()->base_level();
+        if (!testing_u_lap_only)
+        {
+            if (domain_->is_client())
+            {
+                auto client = domain_->decomposition().client();
+
+                //client->template buffer_exchange<idx_p_type>(base_level);
+                client->template buffer_exchange<idx_p_g_type>(base_level);
+            }
+
+            int tmp_set_zero_p = -10;
+            int n_x;
+            int n_y;
+
+            for (auto it = domain_->begin(base_level);
+                 it != domain_->end(base_level); ++it)
+            {
+                bool flag = false;
+                if (!it->locally_owned() || !it->has_data()) continue;
+                if (!it->is_leaf()) continue;
+                if (!it->is_correction())
+                {
+                    for (auto& n : it->data())
+                    {
+                        int cur_idx = n(idx_p_type::tag(), 0);
+                        if (cur_idx <= 0) continue;
+                        int glo_p_idx = n(idx_p_g_type::tag(), 0);
+
+                        int glo_p_idx_10 =
+                            n.at_offset(idx_p_g_type::tag(), 1, 0, 0);
+                        int glo_p_idx_01 =
+                            n.at_offset(idx_p_g_type::tag(), 0, 1, 0);
+
+                        if (glo_p_idx_10 < 0 && glo_p_idx_01 < 0)
+                        {
+                            //does not enforce divergence free on one corner, instead force the pressure at that point to be zero
+                            
+                            auto n_coord = n.level_coordinate();
+                            n_x = n_coord.x();
+                            n_y = n_coord.y();
+                            if (!force_loc_set_zero || (n_x == set_zero_nx && n_y == set_zero_ny))
+                            {
+                                tmp_set_zero_p = glo_p_idx;
+                                flag = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+                if (flag) { break; }
+            }
+
+            domain_->client_communicator().barrier();
+
+            boost::mpi::all_reduce(domain_->client_communicator(),
+                tmp_set_zero_p, set_zero_idx, boost::mpi::maximum<int>());
+            
+            if (tmp_set_zero_p == set_zero_idx) {
+                std::cout << "rank " << world.rank() << " location to set zero: nx = " << n_x << " ny = " << n_y << std::endl;
+            }
+        }
+    }
+
+    void constructing_laplacian() {
+        boost::mpi::communicator world;
+        world.barrier();
+
+        if (world.rank() == 0) {
+            return;
+        }
+
+        
+        
+        if (max_local_idx == 0) {
+            std::cout << "idx not initialized, please call Assigning_idx()" << std::endl;
+        }
+
+        const auto dx_base = domain_->dx_base();
+
+        mat.resizing_row(max_local_idx+1);
+
+        int base_level = domain_->tree()->base_level();
+
+        int N_ext = domain_->block_extent()[0];
+
+        
+        for (int l = base_level; l < domain_->tree()->depth(); l++)
+        {
+            if (domain_->is_client())
+            {
+                auto client = domain_->decomposition().client();
+
+                client->template buffer_exchange<idx_u_type>(l);
+                client->template buffer_exchange<idx_u_g_type>(l);
+                if (l != (domain_->tree()->depth() - 1)) client->template buffer_exchange<idx_u_type>(l+1);
+                if (l != (domain_->tree()->depth() - 1)) client->template buffer_exchange<idx_u_g_type>(l+1);
+            }
+
+            int N_ext = domain_->block_extent()[0];
+
+            
+
+            for (auto it = domain_->begin(l);
+                 it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
+                if (!it->is_leaf()) continue;
+                if (it->is_correction() && l != base_level) continue;
+
+                float_type dx_level = dx_base / math::pow2(it->refinement_level());
+                
+
+                for (std::size_t field_idx = 0;
+                     field_idx < idx_u_type::nFields(); ++field_idx)
+                {
+                    for (auto& n : it->data())
+                    {
+                        int cur_idx = n(idx_u_type::tag(), field_idx);
+                        if (cur_idx < 0) continue;
+                        int glo_idx = n(idx_u_g_type::tag(), field_idx);
+                        mat.add_element(cur_idx, glo_idx,
+                            -4.0 / dx_level / dx_level);
+                        glo_idx =
+                            n.at_offset(idx_u_g_type::tag(), 0, 1, field_idx);
+                        mat.add_element(cur_idx, glo_idx,
+                            1.0 / dx_level / dx_level);
+                        glo_idx =
+                            n.at_offset(idx_u_g_type::tag(), 1, 0, field_idx);
+                        mat.add_element(cur_idx, glo_idx,
+                            1.0 / dx_level / dx_level);
+                        glo_idx =
+                            n.at_offset(idx_u_g_type::tag(), 0, -1, field_idx);
+                        mat.add_element(cur_idx, glo_idx,
+                            1.0 / dx_level / dx_level);
+                        glo_idx =
+                            n.at_offset(idx_u_g_type::tag(), -1, 0, field_idx);
+                        mat.add_element(cur_idx, glo_idx,
+                            1.0 / dx_level / dx_level);
+                    }
+                }
+            }
+        }
+
+        domain_->client_communicator().barrier();
+
+        if (world.rank() == 1) {
+            std::cout << "finished constructing the main part of laplacian" << std::endl;
+        }
+
+        //iterate to revise bc at different refinement level
+
+        //if (flux_correction) this->template construct_flux_BC<idx_u_type, idx_u_g_type>(mat);
+
+        this->template construct_upward_BC_intrp<idx_u_type, idx_u_g_type>(mat);
+
+        if (world.rank() == 1) {
+            std::cout << "finished constructing ref level BC of laplacian" << std::endl;
+        }
+
+        this->template construct_interpolation<idx_u_type, idx_u_g_type>(mat);
+    }
+
+    void constructing_Filter_tri() {
+        boost::mpi::communicator world;
+        world.barrier();
+
+        if (world.rank() == 0) {
+            return;
+        }
+
+        if (world.rank() == 1) {
+            std::cout << "Constructing FT matrix" << std::endl;
+        }
+
+        
+        
+        if (max_local_B_idx == 0) {
+            std::cout << "idx not initialized, please call Assigning_idx()" << std::endl;
+        }
+
+        const auto dx_base = domain_->dx_base();
+
+        FT_x.resizing_row(max_local_B_idx+1);
+        FT_y.resizing_row(max_local_B_idx+1);
+
+        int base_level = domain_->tree()->base_level();
+
+        int N_ext = domain_->block_extent()[0];
+
+        
+        for (int l = base_level; l < domain_->tree()->depth(); l++)
+        {
+            if (domain_->is_client())
+            {
+                auto client = domain_->decomposition().client();
+
+                client->template buffer_exchange<idx_u_B_type>(l);
+                client->template buffer_exchange<idx_u_B_g_type>(l);
+                //if (l != (domain_->tree()->depth() - 1)) client->template buffer_exchange<idx_u_type>(l+1);
+                //if (l != (domain_->tree()->depth() - 1)) client->template buffer_exchange<idx_u_g_type>(l+1);
+            }
+
+            int N_ext = domain_->block_extent()[0];
+
+            
+
+            for (auto it = domain_->begin(l);
+                 it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
+                if (!it->is_leaf()) continue;
+                if (it->is_correction() && l != base_level) continue;
+
+                float_type dx_level = dx_base / math::pow2(it->refinement_level());
+                
+
+                for (std::size_t field_idx = 0;
+                     field_idx < idx_u_B_type::nFields(); ++field_idx)
+                {
+                    for (auto& n : it->data())
+                    {
+                        int cur_idx = n(idx_u_B_type::tag(), field_idx);
+                        if (cur_idx <= 0) continue;
+                        int glo_idx = n(idx_u_B_g_type::tag(), field_idx);
+
+                        FT_x.add_element(cur_idx, glo_idx, 1.0);
+                        FT_y.add_element(cur_idx, glo_idx, 1.0);
+                        
+                        glo_idx =
+                            n.at_offset(idx_u_B_g_type::tag(), 0, 1, field_idx);
+                        FT_y.add_element(cur_idx, glo_idx, alpha_f);
+                        glo_idx =
+                            n.at_offset(idx_u_B_g_type::tag(), 1, 0, field_idx);
+                        FT_x.add_element(cur_idx, glo_idx, alpha_f);
+                        glo_idx =
+                            n.at_offset(idx_u_B_g_type::tag(), 0, -1, field_idx);
+                        FT_y.add_element(cur_idx, glo_idx, alpha_f);
+                        glo_idx =
+                            n.at_offset(idx_u_B_g_type::tag(), -1, 0, field_idx);
+                        FT_x.add_element(cur_idx, glo_idx, alpha_f);
+                    }
+                }
+            }
+        }
+
+        domain_->client_communicator().barrier();
+
+        if (world.rank() == 1) {
+            std::cout << "finished constructing the main part of TRIDIAGONAL SYSMTEM" << std::endl;
+        }
+
+        //iterate to revise bc at different refinement level
+
+        //if (flux_correction) this->template construct_flux_BC<idx_u_type, idx_u_g_type>(mat);
+
+        this->template construct_upward_BC_intrp<idx_u_B_type, idx_u_B_g_type>(FT_x);
+        this->template construct_upward_BC_intrp<idx_u_B_type, idx_u_B_g_type>(FT_y);
+
+        if (world.rank() == 1) {
+            std::cout << "finished constructing ref level BC of TRIDIAGONAL SYSMTEM" << std::endl;
+        }
+
+        this->template construct_interpolation_Filter<idx_u_B_type, idx_u_B_g_type>(FT_x);
+        this->template construct_interpolation_Filter<idx_u_B_type, idx_u_B_g_type>(FT_y);
+    }
+
+
+
+    void constructing_Filter_RHS() {
+        boost::mpi::communicator world;
+        world.barrier();
+
+        if (world.rank() == 0) {
+            return;
+        }
+
+        if (world.rank() == 1) {
+            std::cout << "Constructing FR matrix" << std::endl;
+        }
+        
+        if (max_local_B_idx == 0) {
+            std::cout << "idx not initialized, please call Assigning_idx()" << std::endl;
+        }
+
+        const auto dx_base = domain_->dx_base();
+
+        FR_x.resizing_row(max_local_B_idx+1);
+        FR_y.resizing_row(max_local_B_idx+1);
+
+        int base_level = domain_->tree()->base_level();
+
+        int N_ext = domain_->block_extent()[0];
+
+        
+        for (int l = base_level; l < domain_->tree()->depth(); l++)
+        {
+            if (domain_->is_client())
+            {
+                auto client = domain_->decomposition().client();
+
+                client->template buffer_exchange<idx_u_B_type>(l);
+                client->template buffer_exchange<idx_u_B_g_type>(l);
+                if (l != (domain_->tree()->depth() - 1)) client->template buffer_exchange<idx_u_B_type>(l+1);
+                if (l != (domain_->tree()->depth() - 1)) client->template buffer_exchange<idx_u_B_g_type>(l+1);
+            }
+
+            int N_ext = domain_->block_extent()[0];
+
+            
+
+            for (auto it = domain_->begin(l);
+                 it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
+                if (!it->is_leaf()) continue;
+                if (it->is_correction()) continue;
+
+                float_type dx_level = dx_base / math::pow2(it->refinement_level());
+                
+
+                for (std::size_t field_idx = 0;
+                     field_idx < idx_u_B_type::nFields(); ++field_idx)
+                {
+                    for (auto& n : it->data())
+                    {
+                        int cur_idx = n(idx_u_B_type::tag(), field_idx);
+                        if (cur_idx <= 0) continue;
+                        int glo_idx = n(idx_u_B_g_type::tag(), field_idx);
+                        FR_x.add_element(cur_idx, glo_idx, (0.5+alpha_f));
+                        FR_y.add_element(cur_idx, glo_idx, (0.5+alpha_f));
+                        glo_idx =
+                            n.at_offset(idx_u_B_g_type::tag(), 0, 1, field_idx);
+                        FR_y.add_element(cur_idx, glo_idx,
+                            (0.25+alpha_f/2));
+                        glo_idx =
+                            n.at_offset(idx_u_B_g_type::tag(), 1, 0, field_idx);
+                        FR_x.add_element(cur_idx, glo_idx,
+                            (0.25+alpha_f/2));
+                        glo_idx =
+                            n.at_offset(idx_u_B_g_type::tag(), 0, -1, field_idx);
+                        FR_y.add_element(cur_idx, glo_idx,
+                            (0.25+alpha_f/2));
+                        glo_idx =
+                            n.at_offset(idx_u_B_g_type::tag(), -1, 0, field_idx);
+                        FR_x.add_element(cur_idx, glo_idx,
+                            (0.25+alpha_f/2));
+                    }
+                }
+            }
+        }
+
+        domain_->client_communicator().barrier();
+    }
+
+
+    void construction_Intrp_Value_matrix() {
+        
+        boost::mpi::communicator world;
+        world.barrier();
+
+        if (world.rank() == 0) {
+            return;
+        }
+
+        if (world.rank() == 1) {
+            std::cout << "Constructing IV matrix" << std::endl;
+        }
+       
+        if (max_local_B_idx == 0) {
+            std::cout << "idx not initialized, please call Assigning_idx()" << std::endl;
+        }
+
+        const auto dx_base = domain_->dx_base();
+
+        IV.resizing_row(max_local_B_idx+1);
+
+        int base_level = domain_->tree()->base_level();
+
+         int N_ext = domain_->block_extent()[0];
+
+        
+        for (int l = base_level; l < domain_->tree()->depth(); l++)
+        {
+            if (domain_->is_client())
+            {
+                auto client = domain_->decomposition().client();
+
+                client->template buffer_exchange<idx_u_B_type>(l);
+                client->template buffer_exchange<idx_u_B_g_type>(l);
+            }
+
+            
+
+            
+
+            for (auto it = domain_->begin(l);
+                 it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
+                //if (!it->is_leaf()) continue;
+                //if (it->is_correction()) continue;
+
+                //float_type dx_level = dx_base / math::pow2(it->refinement_level());
+                
+
+                for (std::size_t field_idx = 0;
+                     field_idx < idx_u_B_type::nFields(); ++field_idx)
+                {
+                    for (auto& n : it->data())
+                    {   
+                        int cur_idx = n(idx_u_B_type::tag(), field_idx);
+                        int glo_idx = n(idx_u_B_g_type::tag(), field_idx);
+                        if (cur_idx> 0) {
+                            IV.add_element(cur_idx, glo_idx, 1.0);
+                        }
+                    }
+                }
+
+                /*for (auto& n : it->data())
+                {
+                    
+
+                    int cur_idx = n(idx_uz_type::tag(), 0);
+                    int glo_idx = n(idx_uz_g_type::tag(), 0);
+                    if (cur_idx > 0) { IV.add_element(cur_idx, glo_idx, 1.0); }
+                    //B.add_element(cur_idx, glo_idx, 1.0);
+                }*/
+            }
+        }
+
+        domain_->client_communicator().barrier();
+
+        if (world.rank() == 1) {
+            std::cout << "finished constructing the main part of IV" << std::endl;
+        }
+
+        this->template construct_upward_BC_intrp<idx_u_B_type, idx_u_B_g_type>(IV);
+
+        if (world.rank() == 1) {
+            std::cout << "finished constructing the upward BC of IV" << std::endl;
+        }
+
+        this->template construct_interpolation_Filter<idx_u_B_type, idx_u_B_g_type>(IV);
+
+        domain_->client_communicator().barrier();
+        if (world.rank() == 1) {
+            std::cout << "finished constructing the IV" << std::endl;
+        }
+    }
+
+
+
+    template<class idxField, class idxField_g>
+    void construct_upward_BC_intrp_Filtering(sparse_mat& mat_tar) {
+        //interpolation for filtering, directly copying values
+        boost::mpi::communicator world;
+        if (world.rank() == 0) {
+            return;
+        }        
+        
+        if (max_local_idx == 0) {
+            std::cout << "idx not initialized, please call Assigning_idx()" << std::endl;
+        }
+
+        const auto dx_base = domain_->dx_base();
+
+        int base_level = domain_->tree()->base_level();
+
+        int N_ext = domain_->block_extent()[0];
+
+        auto c_cntr_nli = psolver.c_cntr_nli();
+        int max_relative_pos = c_cntr_nli.max_relative_pos;
+
+        for (std::size_t field_idx = 0; field_idx < idxField::nFields();
+             ++field_idx)
+        {
+            for (int l = base_level; l < (domain_->tree()->depth() - 1); l++)
+            {
+                for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+                {
+                    if (it->is_leaf()) continue;
+                    if (it->is_correction()) continue;
+                    const int num_child = it->num_children();
+                    //octant_base_t oct_base_tmp(coordinate_type({0,0}), base_level);
+                    //std::vector<octant_t> octant_vec(num_child, octant_t(oct_base_tmp));
+                    std::vector<std::vector<int>> idx_vec;
+                    idx_vec.resize(num_child);
+
+                    int N = it->data().descriptor().extent()[0];
+
+                    int idx_size = (N + 2) * (N + 2);
+                    /*for (int i = 0; i < num_child;i++) {
+                    idx_vec[i].resize(idx_size);
+                }*/
+                    if (it->locally_owned() && it->has_data())
+                    {
+                        //octant located in this processor, need to receive data
+                        //octant_vec.resize(num_child);
+                        for (int i = 0; i < it->num_children(); i++)
+                        {
+                            auto child = it->child(i);
+                            if (child && child->locally_owned() &&
+                                child->has_data())
+                            {
+                                idx_vec[i].resize(idx_size);
+
+                                auto child_idx_vec =
+                                    child->data_r(idxField_g::tag(), field_idx)
+                                        .linalg_data();
+
+                                for (int idx_i = 0; idx_i < (N + 2); idx_i++)
+                                {
+                                    for (int idx_j = 0; idx_j < (N + 2);
+                                         idx_j++)
+                                    {
+                                        int loc_idx = idx_i * (N + 2) + idx_j;
+                                        idx_vec[i][loc_idx] =
+                                            child_idx_vec.at(idx_i, idx_j);
+                                    }
+                                }
+
+                                //octant_vec[i] = (*child);
+                                //continue;
+                            }
+                            else if (child)
+                            {
+                                int source_rank = child->rank();
+
+                                int tag_val = child->global_id();
+
+                                idx_vec[i].resize(idx_size);
+                                //std::cout << "Receiving at rank " << world.rank() << " gid is " << tag_val << std::endl;
+
+                                //world.recv(source_rank, tag_val, octant_vec[i]);
+                                world.recv(source_rank, tag_val, idx_vec[i]);
+                            }
+                        }
+                    }
+                    else
+                    {
+                        //search for children is on this processor
+                        for (int i = 0; i < it->num_children(); i++)
+                        {
+                            auto child = it->child(i);
+                            int  parent_rank = it->rank();
+                            if (!child || !child->locally_owned() ||
+                                !child->has_data())
+                                continue;
+
+                            std::vector<int> tmp_idx_vec;
+
+                            tmp_idx_vec.resize(idx_size);
+
+                            auto child_idx_vec =
+                                child->data_r(idxField_g::tag(), field_idx)
+                                    .linalg_data();
+
+                            for (int idx_i = 0; idx_i < (N + 2); idx_i++)
+                            {
+                                for (int idx_j = 0; idx_j < (N + 2); idx_j++)
+                                {
+                                    int loc_idx = idx_i * (N + 2) + idx_j;
+                                    tmp_idx_vec[loc_idx] =
+                                        child_idx_vec.at(idx_i, idx_j);
+                                }
+                            }
+
+                            int tag_val = child->global_id();
+                            //std::cout << "Sending at rank " << world.rank() << " gid is " << tag_val << std::endl;
+                            world.send(parent_rank, tag_val, tmp_idx_vec);
+                        }
+                    }
+
+                    //domain_->client_communicator().barrier();
+
+                    //std::cout << "rank " << world.rank() << " finished communication " << "level " << l << std::endl;
+
+                    if (it->locally_owned() && it->has_data())
+                    {
+                        int   N = it->data().descriptor().extent()[0];
+                        auto& lin_data =
+                            it->data_r(idxField::tag(), field_idx).linalg_data();
+                        auto& lin_data_g =
+                            it->data_r(idxField_g::tag(), field_idx).linalg_data();
+                        //start computing the matrix
+                        for (int i = 1; i < N + 1; i++)
+                        {
+                            for (int j = 1; j < N + 1; j++)
+                            {
+                                //if (l <= 4) std::cout << "rank " << world.rank() << " level " << l << " i " << i << " j " << j << std::endl;
+                                //get current idx
+                                int cur_idx = lin_data.at(i, j);
+                                int cur_g_idx = lin_data_g.at(i, j);
+                                if (cur_idx < 0)
+                                {
+                                    //std::cout << "cur_idx < 0 in constructing upward interpolation matrix" << std::endl;
+                                    continue;
+                                }
+                                mat_tar.add_element(cur_idx, cur_g_idx, -1.0);
+
+                                //if (l <= 4) std::cout << "rank " << world.rank() << " level " << l << " i " << i << " j " << j << " cur idx " << cur_idx << " g idx " << cur_g_idx << std::endl;
+
+                                for (int child_idx = 0;
+                                     child_idx < it->num_children();
+                                     child_idx++)
+                                {
+                                    //if (l <= 4) std::cout << "rank " << world.rank() << " level " << l << " child idx " << child_idx << std::endl;
+                                    auto child = it->child(child_idx);
+                                    //int  n = lin_data_g->shape()[0];
+                                    int idx_x = (child_idx & (1 << 0)) >> 0;
+                                    int idx_y = (child_idx & (1 << 1)) >> 1;
+                                    int idx_z = (child_idx & (1 << 2)) >> 2;
+
+                                    std::array<int, 3> relative_positions{
+                                        {1, 1, 1}};
+                                    if (idxField::mesh_type() ==
+                                        MeshObject::face)
+                                    {
+                                        relative_positions[field_idx] = 0;
+                                    }
+                                    else if (idxField::mesh_type() ==
+                                             MeshObject::cell)
+                                    {
+                                    }
+                                    else if (idxField::mesh_type() ==
+                                             MeshObject::edge)
+                                    {
+                                        relative_positions[0] = 0;
+                                        relative_positions[1] = 0;
+                                        relative_positions[2] = 0;
+
+                                        relative_positions[field_idx] = 1; //treat as if it is 3D
+                                    }
+                                    else
+                                        throw std::runtime_error(
+                                            "Wrong type of mesh to be interpolated");
+
+                                    idx_x += relative_positions[0] *
+                                             max_relative_pos;
+                                    idx_y += relative_positions[1] *
+                                             max_relative_pos;
+                                    idx_z += relative_positions[2] *
+                                             max_relative_pos;
+
+                                    //idx_x += 1;
+                                    //idx_y += 1;
+                                    //this indexing is only for 2D
+
+                                    auto x_intrp_mat =
+                                        c_cntr_nli_
+                                            .antrp_mat_sub_simple_sub_[idx_x];
+                                    auto y_intrp_mat =
+                                        c_cntr_nli_
+                                            .antrp_mat_sub_simple_sub_[idx_y];
+
+                                    //auto child_cur = octant_vec[child_idx];
+
+                                    //if (!child || !child_cur.has_data()) continue;
+
+                                    if (idx_vec[child_idx].size() == 0) {
+                                        std::cout << "missing at child" << std::endl;
+                                        continue;
+                                    } 
+
+                                    //auto& child_idx_vec = octant_vec[child_idx].data_r(idx_w_g_type::tag(), 0).linalg_data();
+                                    //auto child_idx_vec = child_cur.data_r(idx_w_g_type::tag(), 0).linalg_data();
+
+                                    for (int sub_i = 1; sub_i < (N + 1);
+                                         sub_i++)
+                                    {
+                                        for (int sub_j = 1; sub_j < (N + 1);
+                                             sub_j++)
+                                        {
+                                            /*int              child_idx_g =
+                                                child_idx_vec.at(sub_i, sub_j);*/
+                                            int loc_idx =
+                                                sub_i * (N + 2) + sub_j;
+                                            int child_idx_g =
+                                                idx_vec[child_idx][loc_idx];
+                                            float_type val_x =
+                                                x_intrp_mat.at(i, sub_i);
+                                            float_type val_y =
+                                                y_intrp_mat.at(j, sub_j);
+                                            float_type val_t = val_x * val_y;
+                                            if (std::abs(val_t) < 1e-14)
+                                                continue;
+                                            mat_tar.add_element(cur_idx,
+                                                child_idx_g, val_t);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        domain_->client_communicator().barrier();
+    }
+
+    template<class idxField, class idxField_g>
+    void construct_interpolation_Filter(sparse_mat& mat_tar) {
+        //interpolation for filtering, directly copying values
+        boost::mpi::communicator world;
+        //world.barrier();
+
+        if (world.rank() == 0) {
+            return;
+        }        
+        
+        if (max_local_idx == 0) {
+            std::cout << "idx not initialized, please call Assigning_idx()" << std::endl;
+        }
+
+        const auto dx_base = domain_->dx_base();
+
+        int base_level = domain_->tree()->base_level();
+
+        int N_ext = domain_->block_extent()[0];
+
+        auto c_cntr_nli = psolver.c_cntr_nli();
+        int max_relative_pos = c_cntr_nli.max_relative_pos;
+        for (std::size_t field_idx = 0; field_idx < idxField::nFields();
+             ++field_idx)
+        {
+            for (int l = base_level + 1; l < domain_->tree()->depth(); l++)
+            {
+                if (domain_->is_client())
+                {
+                    auto client = domain_->decomposition().client();
+
+                    client->template buffer_exchange<idxField>(l);
+                    client->template buffer_exchange<idxField_g>(l);
+                    client->template buffer_exchange<idxField>(l - 1);
+                    client->template buffer_exchange<idxField_g>(l - 1);
+                }
+                for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+                {
+                    if (!it->is_correction()) continue;
+                    if (it->is_leaf()) continue;
+                    std::vector<int> idx_vec;
+
+                    int N = it->data().descriptor().extent()[0];
+
+                    int idx_size = (N + 2) * (N + 2);
+                    if (it->locally_owned() && it->has_data())
+                    {
+                        //octant located in this processor, need to receive data
+
+                        auto parent = it->parent();
+
+                        if (parent->locally_owned() && parent->has_data())
+                        {
+                            idx_vec.resize(idx_size);
+
+                            auto parent_idx_vec =
+                                parent->data_r(idxField_g::tag(), field_idx)
+                                    .linalg_data();
+
+                            for (int idx_i = 0; idx_i < (N + 2); idx_i++)
+                            {
+                                for (int idx_j = 0; idx_j < (N + 2); idx_j++)
+                                {
+                                    int loc_idx = idx_i * (N + 2) + idx_j;
+                                    idx_vec[loc_idx] =
+                                        parent_idx_vec.at(idx_i, idx_j);
+                                }
+                            }
+
+                            //octant_vec[i] = (*child);
+                            //continue;
+                        }
+                        else {
+                            idx_vec.resize(idx_size);
+                            int source_rank = parent->rank();
+
+                            int tag_val = parent->global_id();
+                            world.recv(source_rank, tag_val, idx_vec);
+                        }
+                    }
+                    else
+                    {
+                        auto parent = it->parent();
+                        //search for parent is on this processor
+                        if (parent && parent->locally_owned() && parent->has_data()) {
+                            std::vector<int> tmp_idx_vec;
+
+                            tmp_idx_vec.resize(idx_size);
+
+                            auto parent_idx_vec =
+                                parent->data_r(idxField_g::tag(), field_idx)
+                                    .linalg_data();
+
+                            for (int idx_i = 0; idx_i < (N + 2); idx_i++)
+                            {
+                                for (int idx_j = 0; idx_j < (N + 2); idx_j++)
+                                {
+                                    int loc_idx = idx_i * (N + 2) + idx_j;
+                                    tmp_idx_vec[loc_idx] =
+                                        parent_idx_vec.at(idx_i, idx_j);
+                                }
+                            }
+
+                            int tag_val = parent->global_id();
+                            int tar_rank = it->rank();
+                            world.send(tar_rank, tag_val, tmp_idx_vec);
+                        }
+                        
+                    }
+
+                    if (it->locally_owned() && it->has_data())
+                    {
+                        int   N = it->data().descriptor().extent()[0];
+                        auto  parent = it->parent();
+                        auto& lin_data =
+                            it->data_r(idxField::tag(), field_idx).linalg_data();
+                        auto& lin_data_g =
+                            it->data_r(idxField_g::tag(), field_idx).linalg_data();
+                        //start computing the matrix
+                        for (int i = 1; i < N + 1; i++)
+                        {
+                            for (int j = 1; j < N + 1; j++)
+                            {
+                                //get current idx
+                                int cur_idx = lin_data.at(i, j);
+                                int cur_g_idx = lin_data_g.at(i, j);
+                                if (cur_idx < 0)
+                                {
+                                    continue;
+                                }
+                                mat_tar.add_element(cur_idx, cur_g_idx,
+                                    -1.0);
+
+                                int chd_idx = -1;
+                                for (int child_idx = 0;
+                                     child_idx < parent->num_children();
+                                     child_idx++)
+                                {
+                                    auto child = parent->child(child_idx);
+                                    if (child && child->global_id() == it->global_id()) {
+                                        chd_idx = child_idx;
+                                        break;
+                                    }
+                                }
+
+                                
+                                if (chd_idx < 0) {
+                                    throw std::runtime_error("Did not found the child idx in Laplacian");
+                                }
+
+                                int  idx_x = (chd_idx & (1 << 0)) >> 0; // chd_idx % 2
+                                int  idx_y = (chd_idx & (1 << 1)) >> 1; // (chd_idx / 2) % 2
+                                int  idx_z = (chd_idx & (1 << 2)) >> 2;
+
+                                int  sub_i = (idx_x * N + i - 1) / 2 + 1;
+                                int  sub_j = (idx_y * N + j - 1) / 2 + 1;
+
+                                int loc_idx = sub_i * (N + 2) + sub_j;
+                                int prt_idx_g = idx_vec[loc_idx];
+
+                                mat_tar.add_element(cur_idx, prt_idx_g, 1.0);
+
+
+                                /*std::array<int, 3> relative_positions{
+                                    {1, 1, 1}};
+                                if (idxField::mesh_type() == MeshObject::face)
+                                {
+                                    relative_positions[field_idx] = 0;
+                                }
+                                else if (idxField::mesh_type() == MeshObject::cell)
+                                {
+                                }
+                                else if (idxField::mesh_type() == MeshObject::edge)
+                                {
+                                    relative_positions[0] = 0;
+                                    relative_positions[1] = 0;
+                                    relative_positions[2] = 0;
+                                    relative_positions[field_idx] = 1; //treat this as if in 3D case
+                                }
+                                else
+                                    throw std::runtime_error(
+                                        "Wrong type of mesh to be interpolated");
+
+                                idx_x +=
+                                    relative_positions[0] * max_relative_pos;
+                                idx_y +=
+                                    relative_positions[1] * max_relative_pos;
+                                idx_z +=
+                                    relative_positions[2] * max_relative_pos;*/
+
+                                /*auto x_intrp_mat = c_cntr_nli_mat.antrp_mat_sub_[idx_x].data_;
+                                auto y_intrp_mat = c_cntr_nli_mat.antrp_mat_sub_[idx_y].data_;
+
+                                for (int sub_i = 1; sub_i < (N + 1); sub_i++)
+                                {
+                                    for (int sub_j = 1; sub_j < (N + 1);
+                                         sub_j++)
+                                    {
+                                        int loc_idx = sub_i * (N + 2) + sub_j;
+                                        int prt_idx_g =
+                                            idx_vec[loc_idx];
+                                        float_type val_x =
+                                            x_intrp_mat.at(sub_i-1, i-1);
+                                        float_type val_y =
+                                            y_intrp_mat.at(sub_j-1, j-1);
+                                        float_type val_t = val_x * val_y;
+                                        if (std::abs(val_t) < 1e-14)
+                                            continue;
+                                        mat_tar.add_element(cur_idx,
+                                            prt_idx_g, val_t);
+                                    }
+                                }*/
+
+                                /*auto x_intrp_mat = c_cntr_nli.antrp_mat_sub_[idx_x].data_;
+                                auto y_intrp_mat = c_cntr_nli.antrp_mat_sub_[idx_y].data_;
+
+                                for (int sub_i = 0; sub_i < (N + 2); sub_i++)
+                                {
+                                    for (int sub_j = 0; sub_j < (N + 2);
+                                         sub_j++)
+                                    {
+                                        int loc_idx = sub_i * (N + 2) + sub_j;
+                                        int prt_idx_g =
+                                            idx_vec[loc_idx];
+                                        float_type val_x =
+                                            x_intrp_mat.at(sub_i, i);
+                                        float_type val_y =
+                                            y_intrp_mat.at(sub_j, j);
+                                        float_type val_t = val_x * val_y;
+                                        if (std::abs(val_t) < 1e-14)
+                                            continue;
+                                        mat_tar.add_element(cur_idx,
+                                            prt_idx_g, val_t);
+                                    }
+                                }*/
+                            }
+                        }
+                    }
+                }
+
+                //domain_->client_communicator().barrier();
+            }
+        }
+        domain_->client_communicator().barrier();
+    }
+
+
+
+    template<class Face, class Cell, class Edge, class N_source, class P_source, class Uz, class Nz, class val_type>
+    void Grid2CSR(val_type* b, force_type& forcing_vec, std::vector<float_type> fz, bool set_corr_zero = true) {
+        boost::mpi::communicator world;
+
+        if (world.rank() == 0) {
+            return;
+        }
+
+        domain_->client_communicator().barrier();
+
+        
+        
+        if (max_local_idx == 0) {
+            std::cout << "idx not initialized, please call Assigning_idx()" << std::endl;
+        }
+
+        //mat.resizing_row(max_local_idx+1);
+
+        int base_level = domain_->tree()->base_level();
+
+        for (int l = base_level; l < domain_->tree()->depth(); l++)
+        {
+            if (domain_->is_client())
+            {
+                auto client = domain_->decomposition().client();
+
+                client->template buffer_exchange<idx_u_type>(l);
+                client->template buffer_exchange<idx_p_type>(l);
+            }
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
+                //if (!it->is_leaf()) continue;
+                if (!it->is_correction() && it->is_leaf())
+                {
+                    for (std::size_t field_idx = 0;
+                         field_idx < idx_u_type::nFields(); ++field_idx)
+                    {
+                        for (auto& n : it->data())
+                        {
+
+                            int cur_idx = n(idx_u_type::tag(), field_idx);
+                            if (cur_idx <= 0) continue;
+                            b[cur_idx - 1] = n(Face::tag(), field_idx);
+                        }
+                    }
+                    for (auto& n : it->data())
+                    {
+                        int cur_idx = n(idx_uz_type::tag(), 0);
+                        if (cur_idx <= 0) continue;
+                        b[cur_idx - 1] = n(Uz::tag(), 0);
+                    }
+                }
+                //comment out for debugging purpose
+                else if (!it->is_leaf() && set_corr_zero) {
+                    for (std::size_t field_idx = 0;
+                         field_idx < idx_u_type::nFields(); ++field_idx)
+                    {
+                        for (auto& n : it->data())
+                        {
+
+                            int cur_idx = n(idx_u_type::tag(), field_idx);
+                            if (cur_idx <= 0) continue;
+                            b[cur_idx - 1] = 0.0;
+                        }
+                    }
+
+                    for (auto& n : it->data())
+                    {
+                        int cur_idx = n(idx_uz_type::tag(), 0);
+                        if (cur_idx <= 0) continue;
+                        b[cur_idx - 1] = 0.0;
+                    }
+                }
+                else if (it->is_correction() && set_corr_zero/* && l != base_level*/)
+                {
+                    for (std::size_t field_idx = 0;
+                         field_idx < idx_u_type::nFields(); ++field_idx)
+                    {
+                        for (auto& n : it->data())
+                        {
+                            int cur_idx = n(idx_u_type::tag(), field_idx);
+                            if (n(idx_u_type::tag(), field_idx) <= 0)
+                            {
+                                continue;
+                            }
+                            b[cur_idx - 1] = 0;
+                        }
+                    }
+                    for (auto& n : it->data())
+                    {
+                        int cur_idx = n(idx_uz_type::tag(), 0);
+                        if (cur_idx) { continue; }
+                        b[cur_idx - 1] = 0;
+                    }
+                }
+                else
+                {
+                    for (std::size_t field_idx = 0;
+                         field_idx < idx_u_type::nFields(); ++field_idx)
+                    {
+                        for (auto& n : it->data())
+                        {
+                            int cur_idx = n(idx_u_type::tag(), field_idx);
+                            if (n(idx_u_type::tag(), field_idx) <= 0)
+                            {
+                                continue;
+                            }
+                            b[cur_idx - 1] = n(Face::tag(), field_idx);
+                        }
+                    }
+                    for (auto& n : it->data())
+                    {
+                        int cur_idx = n(idx_uz_type::tag(), 0);
+                        if (cur_idx <= 0) { continue; }
+                        b[cur_idx - 1] = n(Uz::tag(), 0);
+                    }
+                }
+            }
+        }
+        if (!testing_u_lap_only) {
+            for (int l = base_level; l < domain_->tree()->depth(); l++)
+            {
+                if (domain_->is_client())
+                {
+                    auto client = domain_->decomposition().client();
+
+                    client->template buffer_exchange<idx_u_type>(l);
+                    client->template buffer_exchange<idx_p_type>(l);
+                    client->template buffer_exchange<idx_w_type>(l);
+                }
+                for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+                {
+                    if (!it->locally_owned() || !it->has_data()) continue;
+                    //if (!it->is_leaf()) continue;
+
+                    
+                    if (!it->is_leaf() && set_corr_zero) {
+                        for (std::size_t field_idx = 0;
+                             field_idx < idx_p_type::nFields(); ++field_idx)
+                        {
+                            for (auto& n : it->data())
+                            {
+                                int cur_idx = n(idx_p_type::tag(), field_idx);
+                                if (cur_idx <= 0) continue;
+                                b[cur_idx - 1] = 0.0;
+                            }
+                        }
+                    }
+                    else {
+                        for (std::size_t field_idx = 0;
+                             field_idx < idx_p_type::nFields(); ++field_idx)
+                        {
+                            for (auto& n : it->data())
+                            {
+                                int cur_idx = n(idx_p_type::tag(), field_idx);
+                                int glo_p_idx = n(idx_p_g_type::tag(), 0);
+
+                                if (cur_idx <= 0) continue;
+                                if (glo_p_idx == set_zero_idx && set_corr_zero && p_set_zero) {
+                                    b[cur_idx - 1] = 0.0;
+                                    continue;
+                                }
+                                b[cur_idx - 1] = n(Cell::tag(), field_idx);
+                            }
+                        }
+                    }
+                    
+                }
+                //Nonlinear term + smearing
+                for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+                {
+                    if (!it->locally_owned() || !it->has_data()) continue;
+                    //if (!it->is_leaf()) continue;
+                    if (!set_corr_zero)
+                    {
+                        for (std::size_t field_idx = 0;
+                             field_idx < idx_N_type::nFields(); ++field_idx)
+                        {
+                            for (auto& n : it->data())
+                            {
+                                int cur_idx = n(idx_N_type::tag(), field_idx);
+                                if (cur_idx <= 0) continue;
+                                b[cur_idx - 1] = n(N_source::tag(), field_idx);
+                            }
+                        }
+
+                        for (auto& n : it->data())
+                        {
+                            int cur_idx = n(idx_Nz_type::tag(), 0);
+                            if (cur_idx <= 0) continue;
+                            b[cur_idx - 1] = n(Nz::tag(), 0);
+                        }
+                    }
+                    else
+                    {
+                        for (std::size_t field_idx = 0;
+                             field_idx < idx_N_type::nFields(); ++field_idx)
+                        {
+                            for (auto& n : it->data())
+                            {
+                                int cur_idx = n(idx_N_type::tag(), field_idx);
+                                if (cur_idx <= 0) continue;
+                                b[cur_idx - 1] = 0.0;
+                            }
+                        }
+                        for (auto& n : it->data())
+                        {
+                            int cur_idx = n(idx_Nz_type::tag(), 0);
+                            if (cur_idx <= 0) continue;
+                            b[cur_idx - 1] = 0.0;
+                        }
+                    }
+                }
+                //Div of Nonlinear term + smearing
+                for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+                {
+                    if (!it->locally_owned() || !it->has_data()) continue;
+                    //if (!it->is_leaf()) continue;
+                    if (!set_corr_zero)
+                    {
+                        for (std::size_t field_idx = 0;
+                             field_idx < idx_cs_type::nFields(); ++field_idx)
+                        {
+                            for (auto& n : it->data())
+                            {
+                                int cur_idx = n(idx_cs_type::tag(), field_idx);
+                                if (cur_idx <= 0) continue;
+                                b[cur_idx - 1] = n(P_source::tag(), field_idx);
+                            }
+                        }
+                    }
+                    else
+                    {
+                        for (std::size_t field_idx = 0;
+                             field_idx < idx_cs_type::nFields(); ++field_idx)
+                        {
+                            for (auto& n : it->data())
+                            {
+                                int cur_idx = n(idx_cs_type::tag(), field_idx);
+                                if (cur_idx <= 0) continue;
+                                b[cur_idx - 1] = 0.0;
+                            }
+                        }
+                    }
+                }
+                //VORTICITY
+                for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+                {
+                    if (!it->locally_owned() || !it->has_data()) continue;
+                    //if (!it->is_leaf()) continue;
+                    if (!it->is_correction() && !set_corr_zero)
+                    {
+                        for (std::size_t field_idx = 0;
+                             field_idx < idx_w_type::nFields(); ++field_idx)
+                        {
+                            for (auto& n : it->data())
+                            {
+                                int cur_idx = n(idx_w_type::tag(), field_idx);
+                                if (cur_idx <= 0) continue;
+                                b[cur_idx - 1] = n(Edge::tag(), field_idx);
+                            }
+                        }
+                    }
+                    /*else if (it->is_correction() && set_corr_zero && l == base_level)
+                    {
+                        for (std::size_t field_idx = 0;
+                             field_idx < idx_w_type::nFields(); ++field_idx)
+                        {
+                            for (auto& n : it->data())
+                            {
+                                int cur_idx = n(idx_w_type::tag(), field_idx);
+                                if (cur_idx <= 0) continue;
+                                b[cur_idx - 1] = n(Edge::tag(), field_idx);
+                            }
+                        }
+                    }*/
+                    else if (!it->is_correction() && set_corr_zero)
+                    {
+                        for (std::size_t field_idx = 0;
+                             field_idx < idx_w_type::nFields(); ++field_idx)
+                        {
+                            for (auto& n : it->data())
+                            {
+                                int cur_idx = n(idx_w_type::tag(), field_idx);
+                                if (cur_idx <= 0) continue;
+                                b[cur_idx - 1] = 0.0;
+                            }
+                        }
+                    }
+                    else if (it->is_correction() && set_corr_zero)
+                    {
+                        for (std::size_t field_idx = 0;
+                             field_idx < idx_w_type::nFields(); ++field_idx)
+                        {
+                            for (auto& n : it->data())
+                            {
+                                int cur_idx = n(idx_w_type::tag(), field_idx);
+                                if (n(idx_w_type::tag(), field_idx) <= 0)
+                                {
+                                    continue;
+                                }
+                                b[cur_idx - 1] = 0;
+                            }
+                        }
+                    }
+                    else
+                    {
+                        for (std::size_t field_idx = 0;
+                             field_idx < idx_w_type::nFields(); ++field_idx)
+                        {
+                            for (auto& n : it->data())
+                            {
+                                int cur_idx = n(idx_w_type::tag(), field_idx);
+                                if (n(idx_w_type::tag(), field_idx) <= 0)
+                                {
+                                    continue;
+                                }
+                                b[cur_idx - 1] = n(Edge::tag(), field_idx);
+                            }
+                        }
+                    }
+                }
+            }
+
+            for (int l = base_level - 1; l >= 0; l--)
+            {
+                for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+                {
+                    //if (!it) continue;
+                    if (!it->locally_owned() || !it->has_data()) continue;
+                    //if (it->is_leaf() && !it->is_correction())
+                    //{
+                    for (std::size_t field_idx = 0;
+                         field_idx < idx_w_type::nFields(); ++field_idx)
+                    {
+                        int N = it->data().descriptor().extent()[0];
+
+                        auto& lin_data =
+                            it->data_r(idx_w_type::tag(), field_idx)
+                                .linalg_data();
+                        auto& lin_data_tar =
+                            it->data_r(Edge::tag(), field_idx).linalg_data();
+                        for (int i = 0; i < (N + 2); i++)
+                        {
+                            for (int j = 0; j < (N + 2); j++)
+                            {
+                                int cur_idx = lin_data.at(i, j);
+                                if (cur_idx <= 0) continue;
+                                if (!set_corr_zero)
+                                    b[cur_idx - 1] = lin_data_tar.at(i, j);
+                                else
+                                {
+                                    b[cur_idx - 1] = 0;
+                                }
+                            }
+                        }
+
+                        /*for (auto& n : it->data())
+                    {
+                        counter++;
+                        n(idx_w_type::tag(), field_idx) =
+                            static_cast<float_type>(counter) + 0.5;
+                    }*/
+                    }
+                    //}
+                }
+            }
+            //tree structure of P_source
+
+            for (int l = base_level - 1; l >= 0; l--)
+            {
+                for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+                {
+                    //if (!it) continue;
+                    if (!it->locally_owned() || !it->has_data()) continue;
+                    //if (it->is_leaf() && !it->is_correction())
+                    //{
+                    for (std::size_t field_idx = 0;
+                         field_idx < idx_cs_type::nFields(); ++field_idx)
+                    {
+                        int N = it->data().descriptor().extent()[0];
+
+                        auto& lin_data =
+                            it->data_r(idx_cs_type::tag(), field_idx)
+                                .linalg_data();
+                        auto& lin_data_tar =
+                            it->data_r(P_source::tag(), field_idx).linalg_data();
+                        for (int i = 0; i < (N + 2); i++)
+                        {
+                            for (int j = 0; j < (N + 2); j++)
+                            {
+                                int cur_idx = lin_data.at(i, j);
+                                if (cur_idx <= 0) continue;
+                                if (!set_corr_zero)
+                                    b[cur_idx - 1] = lin_data_tar.at(i, j);
+                                else
+                                {
+                                    b[cur_idx - 1] = 0;
+                                }
+                            }
+                        }
+                    }
+                    //}
+                }
+            }
+
+            for (std::size_t i = 0; i < forcing_idx.size(); ++i)
+            {
+                if (domain_->ib().rank(i) != comm_.rank()) { continue; }
+
+                for (std::size_t d = 0; d < forcing_idx[0].size(); ++d)
+                {
+                    int cur_idx = forcing_idx[i][d];
+                    b[cur_idx - 1] = forcing_vec[i][d];
+                }
+
+                int cur_idx = forcing_z_idx[i];
+                b[cur_idx - 1] = fz[i];
+            }
+        }
+        domain_->client_communicator().barrier();
+    }
+
+
+    template<class val_type>
+    void CSR2CSR_correction(val_type* source, val_type* target, float_type factor = 1.0) {
+        boost::mpi::communicator world;
+
+        if (world.rank() == 0) {
+            return;
+        }
+
+        domain_->client_communicator().barrier();
+
+        
+        
+        if (max_local_idx == 0) {
+            std::cout << "idx not initialized, please call Assigning_idx()" << std::endl;
+        }
+
+        //mat.resizing_row(max_local_idx+1);
+
+        int base_level = domain_->tree()->base_level();
+        if (domain_->is_client())
+        {
+            auto client = domain_->decomposition().client();
+
+            client->template buffer_exchange<idx_u_type>(base_level);
+        }
+        for (auto it = domain_->begin(base_level); it != domain_->end(base_level); ++it)
+        {
+            if (!it->locally_owned() || !it->has_data()) continue;
+            if (!it->is_leaf()) continue;
+            if (it->is_correction())
+            {
+                for (std::size_t field_idx = 0;
+                     field_idx < idx_u_type::nFields(); ++field_idx)
+                {
+                    for (auto& n : it->data())
+                    {
+                        int cur_idx = n(idx_u_type::tag(), field_idx);
+                        if (n(idx_u_type::tag(), field_idx) < 0) { continue; }
+                        target[cur_idx - 1] = source[cur_idx - 1] * factor;
+                    }
+                }
+            }
+        }
+        domain_->client_communicator().barrier();
+    }
+
+
+    template<class val_type>
+    void Pressure_nullspace(val_type* b) {
+        //get the nullspace of gradient operator to use to space deflation
+        //assuming everything else is 0
+        boost::mpi::communicator world;
+
+        if (world.rank() == 0) {
+            return;
+        }
+
+        domain_->client_communicator().barrier();
+
+        
+        
+        if (max_local_idx == 0) {
+            std::cout << "idx not initialized, please call Assigning_idx()" << std::endl;
+        }
+
+        //mat.resizing_row(max_local_idx+1);
+
+        int base_level = domain_->tree()->base_level();
+
+        if (!testing_u_lap_only) {
+            for (int l = base_level; l < domain_->tree()->depth(); l++)
+            {
+                if (domain_->is_client())
+                {
+                    auto client = domain_->decomposition().client();
+
+                    client->template buffer_exchange<idx_u_type>(l);
+                    client->template buffer_exchange<idx_p_type>(l);
+                    client->template buffer_exchange<idx_w_type>(l);
+                }
+                for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+                {
+                    if (!it->locally_owned() || !it->has_data()) continue;
+                    //if (!it->is_leaf()) continue;
+
+                    for (std::size_t field_idx = 0;
+                         field_idx < idx_p_type::nFields(); ++field_idx)
+                    {
+                        for (auto& n : it->data())
+                        {
+                            int cur_idx = n(idx_p_type::tag(), field_idx);
+                            if (cur_idx <= 0) continue;
+                            b[cur_idx - 1] = 1.0;
+                        }
+                    }
+                }
+            }
+        }
+                
+        domain_->client_communicator().barrier();
+    }
+
+    template<class Face, class Cell, class Edge, class N_source, class P_source, class Uz, class Nz, class val_type>
+    void CSR2Grid(val_type* b, force_type& forcing_vec, std::vector<float_type> fz) {
+        boost::mpi::communicator world;
+
+        if (world.rank() == 0) {
+            return;
+        }
+
+        domain_->client_communicator().barrier();
+
+        
+        
+        if (max_local_idx == 0) {
+            std::cout << "idx not initialized, please call Assigning_idx()" << std::endl;
+        }
+
+        //mat.resizing_row(max_local_idx+1);
+
+        int base_level = domain_->tree()->base_level();
+        for (int l = domain_->tree()->base_level();
+             l < domain_->tree()->depth(); ++l)
+        {
+            if (domain_->is_client())
+            {
+                auto client = domain_->decomposition().client();
+
+                client->template buffer_exchange<idx_u_type>(l);
+            }
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
+                //if (!it->is_leaf()) continue;
+                //if (it->is_correction()) continue;
+                for (std::size_t field_idx = 0;
+                     field_idx < idx_u_type::nFields(); ++field_idx)
+                {
+                    for (auto& n : it->data())
+                    {
+                        int cur_idx = n(idx_u_type::tag(), field_idx);
+                        if (cur_idx > 0)
+                            n(Face::tag(), field_idx) = b[cur_idx - 1];
+                    }
+                }
+                for (auto& n : it->data())
+                {
+                    int cur_idx = n(idx_uz_type::tag(), 0);
+                    if (cur_idx > 0) n(Uz::tag(), 0) = b[cur_idx - 1];
+                }
+            }
+        }
+        if (!testing_u_lap_only)
+        {
+            for (int l = domain_->tree()->base_level();
+                 l < domain_->tree()->depth(); ++l)
+            {
+                if (domain_->is_client())
+                {
+                    auto client = domain_->decomposition().client();
+
+                    client->template buffer_exchange<idx_p_type>(l);
+                }
+                for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+                {
+                    if (!it->locally_owned() || !it->has_data()) continue;
+                    //if (!it->is_leaf()) continue;
+                    //if (it->is_correction()) continue;
+                    for (std::size_t field_idx = 0;
+                         field_idx < idx_p_type::nFields(); ++field_idx)
+                    {
+                        for (auto& n : it->data())
+                        {
+                            int cur_idx = n(idx_p_type::tag(), field_idx);
+                            if (cur_idx > 0)
+                                n(Cell::tag(), field_idx) = b[cur_idx - 1];
+                        }
+                    }
+                }
+            }
+
+            for (int l = domain_->tree()->base_level();
+                 l < domain_->tree()->depth(); ++l)
+            {
+                if (domain_->is_client())
+                {
+                    auto client = domain_->decomposition().client();
+
+                    client->template buffer_exchange<idx_N_type>(l);
+                }
+                for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+                {
+                    if (!it->locally_owned() || !it->has_data()) continue;
+                    //if (!it->is_leaf()) continue;
+                    //if (it->is_correction()) continue;
+                    for (std::size_t field_idx = 0;
+                         field_idx < idx_N_type::nFields(); ++field_idx)
+                    {
+                        for (auto& n : it->data())
+                        {
+                            int cur_idx = n(idx_N_type::tag(), field_idx);
+                            if (cur_idx > 0)
+                                n(N_source::tag(), field_idx) = b[cur_idx - 1];
+                        }
+                    }
+                    for (auto& n : it->data())
+                    {
+                        int cur_idx = n(idx_Nz_type::tag(), 0);
+                        if (cur_idx > 0) n(Nz::tag(), 0) = b[cur_idx - 1];
+                    }
+                }
+            }
+
+            for (int l = domain_->tree()->base_level();
+                 l < domain_->tree()->depth(); ++l)
+            {
+                if (domain_->is_client())
+                {
+                    auto client = domain_->decomposition().client();
+
+                    client->template buffer_exchange<idx_w_type>(l);
+                }
+                for (auto it = domain_->begin(l);
+                     it != domain_->end(l); ++it)
+                {
+                    if (!it->locally_owned() || !it->has_data()) continue;
+                    //if (!it->is_leaf()) continue;
+                    //if (it->is_correction()) continue;
+                    for (std::size_t field_idx = 0;
+                         field_idx < idx_w_type::nFields(); ++field_idx)
+                    {
+                        for (auto& n : it->data())
+                        {
+                            int cur_idx = n(idx_w_type::tag(), field_idx);
+                            if (cur_idx > 0)
+                                n(Edge::tag(), field_idx) = b[cur_idx - 1];
+                        }
+                    }
+                }
+            }
+
+            for (int l = base_level - 1; l >= 0; l--)
+            {
+                for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+                {
+                    //if (!it) continue;
+                    if (!it->locally_owned() || !it->has_data()) continue;
+                    //if (it->is_leaf() && !it->is_correction())
+                    //{
+                    for (std::size_t field_idx = 0;
+                         field_idx < idx_w_type::nFields(); ++field_idx)
+                    {
+                        int N = it->data().descriptor().extent()[0];
+
+                        auto& lin_data =
+                            it->data_r(idx_w_type::tag(), field_idx)
+                                .linalg_data();
+                        auto& lin_data_tar =
+                            it->data_r(Edge::tag(), field_idx).linalg_data();
+                        for (int i = 0; i < (N + 2); i++)
+                        {
+                            for (int j = 0; j < (N + 2); j++)
+                            {
+                                int cur_idx = lin_data.at(i, j);
+                                if (cur_idx > 0) lin_data_tar.at(i, j) = b[cur_idx - 1];
+                            }
+                        }
+
+                        /*for (auto& n : it->data())
+                    {
+                        counter++;
+                        n(idx_w_type::tag(), field_idx) =
+                            static_cast<float_type>(counter) + 0.5;
+                    }*/
+                    }
+                    //}
+                }
+            }
+
+            for (int l = domain_->tree()->base_level();
+                 l < domain_->tree()->depth(); ++l)
+            {
+                if (domain_->is_client())
+                {
+                    auto client = domain_->decomposition().client();
+
+                    client->template buffer_exchange<idx_cs_type>(l);
+                }
+                for (auto it = domain_->begin(l);
+                     it != domain_->end(l); ++it)
+                {
+                    if (!it->locally_owned() || !it->has_data()) continue;
+                    //if (!it->is_leaf()) continue;
+                    //if (it->is_correction()) continue;
+                    for (std::size_t field_idx = 0;
+                         field_idx < idx_cs_type::nFields(); ++field_idx)
+                    {
+                        for (auto& n : it->data())
+                        {
+                            int cur_idx = n(idx_cs_type::tag(), field_idx);
+                            if (cur_idx > 0)
+                                n(P_source::tag(), field_idx) = b[cur_idx - 1];
+                        }
+                    }
+                }
+            }
+
+            for (int l = base_level - 1; l >= 0; l--)
+            {
+                for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+                {
+                    //if (!it) continue;
+                    if (!it->locally_owned() || !it->has_data()) continue;
+                    //if (it->is_leaf() && !it->is_correction())
+                    //{
+                    for (std::size_t field_idx = 0;
+                         field_idx < idx_cs_type::nFields(); ++field_idx)
+                    {
+                        int N = it->data().descriptor().extent()[0];
+
+                        auto& lin_data =
+                            it->data_r(idx_cs_type::tag(), field_idx)
+                                .linalg_data();
+                        auto& lin_data_tar =
+                            it->data_r(P_source::tag(), field_idx).linalg_data();
+                        for (int i = 0; i < (N + 2); i++)
+                        {
+                            for (int j = 0; j < (N + 2); j++)
+                            {
+                                int cur_idx = lin_data.at(i, j);
+                                if (cur_idx > 0) lin_data_tar.at(i, j) = b[cur_idx - 1];
+                            }
+                        }
+
+                        /*for (auto& n : it->data())
+                    {
+                        counter++;
+                        n(idx_w_type::tag(), field_idx) =
+                            static_cast<float_type>(counter) + 0.5;
+                    }*/
+                    }
+                    //}
+                }
+            }
+            for (std::size_t i = 0; i < forcing_idx.size(); ++i)
+            {
+                if (domain_->ib().rank(i) != comm_.rank()) { continue; }
+
+                for (std::size_t d = 0; d < forcing_idx[0].size(); ++d)
+                {
+                    int cur_idx = forcing_idx[i][d];
+                    if (cur_idx < 0)
+                    {
+                        std::cout << "IB forcing idx not consistent"
+                                  << std::endl;
+                    }
+                    forcing_vec[i][d] = b[cur_idx - 1];
+                }
+                int cur_idx = forcing_z_idx[i];
+                fz[i] = b[cur_idx - 1];
+            }
+        }
+        domain_->client_communicator().barrier();
+    }
+
+    template<class val_type>
+    float_type GetStateMag(val_type* b) {
+        //this only return magnitude (L2 norm squared) of the part of the vector including:
+        //leaf velocity, leaf pressure, and forcing 
+        boost::mpi::communicator world;
+
+        float_type mag_loc = 0.0;
+
+        if (world.rank() != 0)
+        {
+            domain_->client_communicator().barrier();
+
+            if (max_local_idx == 0)
+            {
+                std::cout << "idx not initialized, please call Assigning_idx()"
+                          << std::endl;
+            }
+
+            //mat.resizing_row(max_local_idx+1);
+
+            int base_level = domain_->tree()->base_level();
+            for (int l = domain_->tree()->base_level();
+                 l < domain_->tree()->depth(); ++l)
+            {
+                if (domain_->is_client())
+                {
+                    auto client = domain_->decomposition().client();
+
+                    client->template buffer_exchange<idx_u_type>(l);
+                }
+                for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+                {
+                    if (!it->locally_owned() || !it->has_data()) continue;
+                    if (!it->is_leaf()) continue;
+                    if (it->is_correction()) continue;
+                    for (std::size_t field_idx = 0;
+                         field_idx < idx_u_type::nFields(); ++field_idx)
+                    {
+                        for (auto& n : it->data())
+                        {
+                            int cur_idx = n(idx_u_type::tag(), field_idx);
+                            if (cur_idx > 0)
+                            {
+                                mag_loc += b[cur_idx - 1] * b[cur_idx - 1];
+                            }
+                        }
+                    }
+                }
+            }
+            if (!testing_u_lap_only)
+            {
+                for (int l = domain_->tree()->base_level();
+                     l < domain_->tree()->depth(); ++l)
+                {
+                    if (domain_->is_client())
+                    {
+                        auto client = domain_->decomposition().client();
+
+                        client->template buffer_exchange<idx_p_type>(l);
+                    }
+                    for (auto it = domain_->begin(l); it != domain_->end(l);
+                         ++it)
+                    {
+                        if (!it->locally_owned() || !it->has_data()) continue;
+                        if (!it->is_leaf()) continue;
+                        if (it->is_correction()) continue;
+                        for (std::size_t field_idx = 0;
+                             field_idx < idx_p_type::nFields(); ++field_idx)
+                        {
+                            for (auto& n : it->data())
+                            {
+                                int cur_idx = n(idx_p_type::tag(), field_idx);
+                                if (cur_idx > 0)
+                                {
+                                    mag_loc += b[cur_idx - 1] * b[cur_idx - 1];
+                                }
+                            }
+                        }
+                    }
+                }
+
+                for (std::size_t i = 0; i < forcing_idx.size(); ++i)
+                {
+                    if (domain_->ib().rank(i) != comm_.rank()) { continue; }
+
+                    for (std::size_t d = 0; d < forcing_idx[0].size(); ++d)
+                    {
+                        int cur_idx = forcing_idx[i][d];
+                        if (cur_idx < 0)
+                        {
+                            std::cout << "IB forcing idx not consistent"
+                                      << std::endl;
+                        }
+                        mag_loc += b[cur_idx - 1] * b[cur_idx - 1];
+                    }
+                }
+            }
+
+            domain_->client_communicator().barrier();
+        }
+
+        float_type mag_glob = 0.0;
+
+        boost::mpi::all_reduce(world, mag_loc, mag_glob, std::plus<float_type>());
+
+        return mag_glob;
+    }
+
+    template<class Edge1, class Edge2, class idxField>
+    void compute_error_nonleaf(std::string _output_prefix = "", bool write_output=false,int field_idx = 0) {
+        boost::mpi::communicator world;
+        
+        const auto dx_base = domain_->dx_base();
+        int base_level = domain_->tree()->base_level();
+
+        
+        if (world.rank() != 0)
+        {
+            for (int l = domain_->tree()->depth() - 1; l >= 0; l--)
+            {
+                float_type sum_val =  0.0;
+                float_type max_val = -1.0;
+
+                std::ofstream myfile;
+                for (int i = 1; i < world.size(); i++)
+                {
+                    if (world.rank()!=i) continue;
+                    if (write_output)
+                        myfile.open(_output_prefix + "level" +
+                                    std::to_string(l) + "err.txt");
+
+                    for (auto it = domain_->begin(l); it != domain_->end(l);
+                         ++it)
+                    {
+                        float_type dx_level =
+                            dx_base * std::pow(2.0, base_level - l);
+                        //if (!it) continue;
+                        if (!it->locally_owned() || !it->has_data()) continue;
+                        if (it->is_leaf() && !it->is_correction()) continue;
+                        //{
+                        for (std::size_t field_idx = 0;
+                             field_idx < 1; ++field_idx)
+                        {
+                            //only print the first component to see error
+                            for (auto& n : it->data())
+                            {
+                                int idx = n(idxField::tag(), field_idx);
+                                if (idx <= 0) continue;
+                                auto c = n.level_coordinate();
+                                int  x_c = c.x();
+                                int  y_c = c.y();
+
+                                if (write_output)
+                                    myfile << x_c << " " << y_c << " ";
+                                float_type val1 = n(Edge1::tag(), field_idx);
+                                float_type val2 = n(Edge2::tag(), field_idx);
+
+                                float_type diff_w = val1 - val2;
+                                if (write_output) myfile << diff_w << std::endl;
+
+                                float_type diff = std::abs(val1 - val2);
+                                sum_val += diff * diff * dx_level * dx_level;
+                                if (max_val < diff) { max_val = diff_w; }
+                            }
+                        }
+                    }
+                    domain_->client_communicator().barrier();
+                }
+
+                if (write_output) myfile.close();
+                float_type max_g;
+                float_type sum_g;
+                boost::mpi::all_reduce(domain_->client_communicator(), sum_val, sum_g, std::plus<float_type>());
+
+                boost::mpi::all_reduce(domain_->client_communicator(), max_val, max_g, boost::mpi::maximum<float_type>());
+
+                if (world.rank() == 1)
+                {
+                    std::cout << _output_prefix
+                              << "L2 error of upward interpolation from level" << l << " is "
+                              << std::sqrt(sum_g) << std::endl;
+                    std::cout << _output_prefix
+                              << "L_inf error of upward interpolation from level" << l << " is "
+                              << max_g << std::endl;
+                }
+            }
+        }
+    }
+
+    template<class idxField>
+    void upward_intrp_statistics() {
+        boost::mpi::communicator world;
+        
+        const auto dx_base = domain_->dx_base();
+        int base_level = domain_->tree()->base_level();
+
+        
+        if (world.rank() != 0)
+        {
+            for (int l = domain_->tree()->base_level() - 1; l >= 0; l--)
+            {
+                int loc_entries = 0;
+                for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+                {
+                    //if (!it) continue;
+                    if (!it->locally_owned() || !it->has_data()) continue;
+                    //if (it->is_leaf() && !it->is_correction()) continue;
+                    //{
+                    for (std::size_t field_idx = 0; field_idx < 1; ++field_idx)
+                    {
+                        //only print the first component to see error
+                        for (auto& n : it->data())
+                        {
+                            int idx = n(idxField::tag(), field_idx);
+                            if (idx <= 0) continue;
+                            
+
+                            int entries_tmp = upward_intrp.mat[idx].size();
+                            loc_entries += entries_tmp;
+                        }
+                    }
+                }
+                domain_->client_communicator().barrier();
+
+                
+                //float_type max_g;
+                int sum_g = 0;
+                boost::mpi::all_reduce(domain_->client_communicator(), loc_entries, sum_g, std::plus<int>());
+
+                //boost::mpi::all_reduce(domain_->client_communicator(), max_val, max_g, boost::mpi::maximum<float_type>());
+
+                if (world.rank() == 1)
+                {
+                    std::cout << "number of entries in upward interpolation at level" << l << " is "
+                              << sum_g << std::endl;
+                }
+            }
+        }
+    }
+
+    void printing_mat(int n, int rank = 1) {
+        boost::mpi::communicator world;
+
+        if (world.rank() == rank) mat.print_row(n);
+    }
+
+    int num_start() {
+        return max_idx_from_prev_prc+1;
+    }
+    int num_end() {
+        return max_local_idx + max_idx_from_prev_prc;
+    }
+    int total_dim() {
+        boost::mpi::communicator world;
+        int tot_dim_tmp = max_local_idx + max_idx_from_prev_prc;
+        boost::mpi::broadcast(world, tot_dim_tmp, (world.size()-1));
+        return tot_dim_tmp;
+        
+    }
+
+    int total_dim_B() {
+        boost::mpi::communicator world;
+        int tot_dim_tmp = max_local_B_idx + max_idx_B_from_prev_prc;
+        boost::mpi::broadcast(world, tot_dim_tmp, (world.size()-1));
+        return tot_dim_tmp;
+        
+    }
+
+
+    template<class U_old, class W_old>
+    void construct_linear_mat() {
+        boost::mpi::communicator world;
+        
+        Jac.clean();
+        Jac.resizing_row(max_local_idx+1);
+        construction_DN_u<U_old, W_old>();
+        construct_upward_intrp();
+        construction_Div_psource();
+        construction_BCMat();
+        construction_BCMat_u();
+        construction_laplacian_u();
+        
+        construction_Div();
+        //construction_Div_pressure_Poisson();
+        construction_Grad();
+        construction_Curl();
+        construction_Projection();
+        construction_Smearing();
+        
+        if (world.rank() == 0) {
+            return;
+        }
+        /*Jac = boundary_u + L;
+        Jac.add_vec(DN, -1.0);
+        Jac.add_vec(Div, -1.0);
+        Jac.add_vec(Grad);
+        Jac.add_vec(Curl);
+        Jac.add_vec(project);
+        Jac.add_vec(smearing);
+        Jac.add_vec(upward_intrp);*/
+        if (add_Boundary_u) Jac.add_vec(boundary_u);
+        if (add_L) Jac.add_vec(L);
+        Jac.add_vec(Div_cs);
+        if (add_DN) Jac.add_vec(DN, -1.0);
+        if (add_Div) Jac.add_vec(Div, -1.0);
+        if (add_Grad) Jac.add_vec(Grad, -1.0);
+        if (add_Curl) Jac.add_vec(Curl);
+        if (add_project) Jac.add_vec(project);
+        if (add_smearing) Jac.add_vec(smearing);
+        if (add_upward_intrp) Jac.add_vec(upward_intrp);
+    }
+
+    void construct_filter_matrices() {
+        construction_Intrp_Value_matrix();
+        constructing_Filter_RHS();
+        constructing_Filter_tri();
+        construction_B_i_matrix();
+    }
+
+    void construct_Jac_p() {
+        boost::mpi::communicator world;
+        
+        Jac_p.clean();
+        Jac_p.resizing_row(max_local_idx+1);
+        construct_upward_intrp();
+        construction_BCMat();
+        construction_laplacian_u();
+        //construction_DN_u<U_old>();
+        construction_Div();
+        construction_Grad();
+        construction_Curl();
+        construction_Projection();
+        construction_Smearing();
+        
+        if (world.rank() == 0) {
+            return;
+        }
+
+        if (add_Boundary_u) Jac_p.add_vec(boundary_u);
+        if (add_L) Jac_p.add_vec(L);
+        if (add_Div) Jac_p.add_vec(Div, -1.0);
+        if (add_Grad) Jac_p.add_vec(Grad, -1.0);
+        if (add_Curl) Jac_p.add_vec(Curl);
+        if (add_project) Jac_p.add_vec(project);
+        if (add_smearing) Jac_p.add_vec(smearing);
+        if (add_upward_intrp) Jac_p.add_vec(upward_intrp);
+    }
+
+    template<class U_old, class W_old>
+    void construct_Jac_from_Jac_p() {
+        boost::mpi::communicator world;
+        
+        Jac.clean();
+        Jac.resizing_row(max_local_idx+1);
+        DN.clean();
+        construction_DN_u<U_old, W_old>();
+        
+        
+        if (world.rank() == 0) {
+            return;
+        }
+        Jac.add_vec(Jac_p);
+        if (add_DN) Jac.add_vec(DN);
+    }
+
+
+    void construction_imaginary() {
+        //construction of laplacian for u during stability, resolvent, and Newton iteration
+        boost::mpi::communicator world;
+        world.barrier();
+
+        if (world.rank() == 0) {
+            return;
+        }
+
+        if (world.rank() == 1) {
+            std::cout << "Constructing Imaginary part of matrix" << std::endl;
+        }
+       
+        if (max_local_idx == 0) {
+            std::cout << "idx not initialized, please call Assigning_idx()" << std::endl;
+        }
+
+        const auto dx_base = domain_->dx_base();
+
+        Imag.resizing_row(max_local_idx+1);
+
+        int base_level = domain_->tree()->base_level();
+
+        
+        for (int l = base_level; l < domain_->tree()->depth(); l++)
+        {
+            if (domain_->is_client())
+            {
+                auto client = domain_->decomposition().client();
+
+                client->template buffer_exchange<idx_u_type>(l);
+                client->template buffer_exchange<idx_u_g_type>(l);
+                client->template buffer_exchange<idx_p_type>(l);
+                client->template buffer_exchange<idx_p_g_type>(l);
+                client->template buffer_exchange<idx_w_type>(l);
+                client->template buffer_exchange<idx_w_g_type>(l);
+                if (l != (domain_->tree()->depth() - 1)) client->template buffer_exchange<idx_u_type>(l+1);
+                if (l != (domain_->tree()->depth() - 1)) client->template buffer_exchange<idx_u_g_type>(l+1);
+            }
+
+            int N_ext = domain_->block_extent()[0];
+
+            
+
+            for (auto it = domain_->begin(l);
+                 it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
+                if (!it->is_leaf()) continue;
+                if (it->is_correction()) continue;
+
+                float_type dx_level = dx_base / math::pow2(it->refinement_level());
+
+                for (auto& n : it->data())
+                {
+                    int u_0_loc = n(idx_u_type::tag(), 0);
+                    int u_1_loc = n(idx_u_type::tag(), 1);
+                    int u_2_loc = n(idx_uz_type::tag(), 0);
+
+                    int w_0_loc = n(idx_w_type::tag(), 0);
+                    int w_1_loc = n(idx_w_type::tag(), 1);
+                    int w_2_loc = n(idx_w_type::tag(), 2);
+
+                    int p_loc = n(idx_p_type::tag(), 0);
+                    
+
+                    //Gradient part
+                    int p_g = n(idx_p_g_type::tag(), 0);
+                    Imag.add_element(u_2_loc, p_g, -mode_c);
+                    //Divergence part
+                    int u_2_glob = n(idx_uz_g_type::tag(), 0);
+                    Imag.add_element(p_loc, u_2_glob, -mode_c); //divergence is substracted in construct_linear_mat()
+                    //Curl in laplacian
+                    int w_0_glob = n(idx_w_g_type::tag(), 0);
+                    int w_1_glob = n(idx_w_g_type::tag(), 1);
+                    Imag.add_element(u_0_loc, w_1_glob,  mode_c/Re_);
+                    Imag.add_element(u_1_loc, w_0_glob, -mode_c/Re_);
+                    //Curl in vorticity constraint
+                    int u_0_glob = n(idx_u_g_type::tag(), 0);
+                    int u_1_glob = n(idx_u_g_type::tag(), 1);
+                    if (w_0_loc > 0) Imag.add_element(w_0_loc, u_1_glob, -mode_c*Curl_factor);
+                    if (w_1_loc > 0) Imag.add_element(w_1_loc, u_0_glob,  mode_c*Curl_factor);
+                    
+                }
+            }
+
+            /*for (auto it = domain_->begin(l);
+                 it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
+
+                float_type dx_level = dx_base / math::pow2(it->refinement_level());
+
+                for (auto& n : it->data())
+                {
+                    int u_0_loc = n(idx_u_type::tag(), 0);
+                    int u_1_loc = n(idx_u_type::tag(), 1);
+                    int u_2_loc = n(idx_uz_type::tag(), 0);
+
+                    int w_0_loc = n(idx_w_type::tag(), 0);
+                    int w_1_loc = n(idx_w_type::tag(), 1);
+                    int w_2_loc = n(idx_w_type::tag(), 2);
+
+                    int p_loc = n(idx_p_type::tag(), 0);
+                    
+
+                    //Gradient part
+                    int p_g = n(idx_p_g_type::tag(), 0);
+                    //Imag.add_element(u_2_loc, p_g, -mode_c);
+                    //Divergence part
+                    int u_2_glob = n(idx_uz_g_type::tag(), 0);
+                    //Imag.add_element(p_loc, u_2_glob, -mode_c); //divergence is substracted in construct_linear_mat()
+                    //Curl in laplacian
+                    int w_0_glob = n(idx_w_g_type::tag(), 0);
+                    int w_1_glob = n(idx_w_g_type::tag(), 1);
+                    //Imag.add_element(u_0_loc, w_1_glob,  mode_c/Re_);
+                    //Imag.add_element(u_1_loc, w_0_glob, -mode_c/Re_);
+                    //Curl in vorticity constraint
+                    int u_0_glob = n(idx_u_g_type::tag(), 0);
+                    int u_1_glob = n(idx_u_g_type::tag(), 1);
+                    if (w_0_loc > 0) Imag.add_element(w_0_loc, u_1_glob, -mode_c*Curl_factor);
+                    if (w_1_loc > 0) Imag.add_element(w_1_loc, u_0_glob,  mode_c*Curl_factor);
+                    
+                }
+            }*/
+        }
+
+        domain_->client_communicator().barrier();
+    }
+
+    void construction_laplacian_u() {
+        //construction of laplacian for u during stability, resolvent, and Newton iteration
+        boost::mpi::communicator world;
+        world.barrier();
+
+        if (world.rank() == 0) {
+            return;
+        }
+
+        if (world.rank() == 1) {
+            std::cout << "Constructing Laplacian_u matrix" << std::endl;
+        }
+       
+        if (max_local_idx == 0) {
+            std::cout << "idx not initialized, please call Assigning_idx()" << std::endl;
+        }
+
+        const auto dx_base = domain_->dx_base();
+
+        L.resizing_row(max_local_idx+1);
+
+        int base_level = domain_->tree()->base_level();
+
+        int N_ext = domain_->block_extent()[0];
+
+        
+        for (int l = base_level; l < domain_->tree()->depth(); l++)
+        {
+            if (domain_->is_client())
+            {
+                auto client = domain_->decomposition().client();
+
+                client->template buffer_exchange<idx_u_type>(l);
+                client->template buffer_exchange<idx_u_g_type>(l);
+                client->template buffer_exchange<idx_p_type>(l);
+                client->template buffer_exchange<idx_p_g_type>(l);
+                client->template buffer_exchange<idx_w_type>(l);
+                client->template buffer_exchange<idx_w_g_type>(l);
+                if (l != (domain_->tree()->depth() - 1)) client->template buffer_exchange<idx_u_type>(l+1);
+                if (l != (domain_->tree()->depth() - 1)) client->template buffer_exchange<idx_u_g_type>(l+1);
+            }
+
+            int N_ext = domain_->block_extent()[0];
+
+            
+
+            for (auto it = domain_->begin(l);
+                 it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
+                if (!it->is_leaf()) continue;
+                if (it->is_correction()) continue;
+
+                float_type dx_level = dx_base / math::pow2(it->refinement_level());
+                
+
+                for (std::size_t field_idx = 0;
+                     field_idx < idx_u_type::nFields(); ++field_idx)
+                {
+                    for (auto& n : it->data())
+                    {
+                        int p_idx_w = n.at_offset(idx_p_g_type::tag(), -1, 0, 0);
+                        int p_idx_e = n.at_offset(idx_p_g_type::tag(), 1, 0, 0);
+                        int p_idx_n = n.at_offset(idx_p_g_type::tag(), 0, 1, 0);
+                        int p_idx_s = n.at_offset(idx_p_g_type::tag(), 0, -1, 0);
+
+                        //vorticity formulation L = -C^TC = -C^Tw (since divergence free)
+                        int cur_idx = n(idx_u_type::tag(), field_idx);
+                        //int glo_idx = n(idx_u_g_type::tag(), field_idx);
+                        
+
+                        if (field_idx == 0) {
+                            int glo_idx = n(idx_w_g_type::tag(), 2);
+                            L.add_element(cur_idx, glo_idx, 1.0 / dx_level);
+                            glo_idx = n.at_offset(idx_w_g_type::tag(), 0, 1, 2);
+                            L.add_element(cur_idx, glo_idx, -1.0 / dx_level);
+
+                            glo_idx = n(idx_w_g_type::tag(), 1);
+                            //L.add_element(cur_idx, glo_idx, -mode_c);
+
+                            //laplacian u_z
+                            cur_idx = n(idx_uz_type::tag(), 0);
+
+                            glo_idx = n(idx_w_g_type::tag(), 1);
+                            L.add_element(cur_idx, glo_idx, 1.0 / dx_level);
+                            glo_idx = n.at_offset(idx_w_g_type::tag(), 1, 0, 1);
+                            L.add_element(cur_idx, glo_idx, -1.0 / dx_level);
+
+                            glo_idx = n(idx_w_g_type::tag(), 0);
+                            L.add_element(cur_idx, glo_idx, -1.0 / dx_level);
+                            glo_idx = n.at_offset(idx_w_g_type::tag(), 0, 1, 0);
+                            L.add_element(cur_idx, glo_idx, 1.0 / dx_level);
+                        }
+                        if (field_idx == 1) {
+                            int glo_idx = n(idx_w_g_type::tag(), 2);
+                            L.add_element(cur_idx, glo_idx, -1.0 / dx_level);
+                            glo_idx = n.at_offset(idx_w_g_type::tag(), 1, 0, 2);
+                            L.add_element(cur_idx, glo_idx, 1.0 / dx_level);
+
+                            glo_idx = n(idx_w_g_type::tag(), 0);
+                            //L.add_element(cur_idx, glo_idx, mode_c);
+                        }
+                    }
+                }
+            }
+        }
+
+        domain_->client_communicator().barrier();
+        
+
+        if (world.rank() == 1) {
+            std::cout << "finished constructing the main part of laplacian" << std::endl;
+        }
+
+        //iterate to revise bc at different refinement level
+
+        //if (flux_correction) this->template construct_flux_BC<idx_u_type, idx_u_g_type>(L);
+        L.scale_entries(1.0/Re_);
+
+        
+
+        this->template construct_upward_BC_intrp<idx_u_type, idx_u_g_type>(L);
+
+        this->template construct_interpolation<idx_u_type, idx_u_g_type>(L);
+
+        this->template construct_upward_BC_intrp<idx_uz_type, idx_uz_g_type>(L);
+
+        this->template construct_interpolation<idx_uz_type, idx_uz_g_type>(L);
+
+        if (world.rank() == 1) {
+            std::cout << "finished constructing the u BC of laplacian" << std::endl;
+        }
+
+        this->template construct_upward_BC_intrp<idx_p_type, idx_p_g_type>(L);
+
+        this->template construct_interpolation<idx_p_type, idx_p_g_type>(L);
+
+        if (world.rank() == 1) {
+            std::cout << "finished constructing the p BC of laplacian" << std::endl;
+        }
+
+        //this->template construct_upward_BC_intrp<idx_w_type, idx_w_g_type>(L);
+
+        this->template construct_interpolation<idx_w_type, idx_w_g_type>(L);
+
+        if (world.rank() == 1) {
+            std::cout << "finished constructing the w BC of laplacian" << std::endl;
+        }
+    }
+
+
+    void construction_B_matrix() {
+        //construction of B matrix from the LHS of the linearized equations 
+        //this matrix is diagonal with 1 for leaf velocities and 0 o/w
+        boost::mpi::communicator world;
+        world.barrier();
+
+        if (world.rank() == 0) {
+            return;
+        }
+
+        if (world.rank() == 1) {
+            std::cout << "Constructing B matrix" << std::endl;
+        }
+       
+        if (max_local_idx == 0) {
+            std::cout << "idx not initialized, please call Assigning_idx()" << std::endl;
+        }
+
+        const auto dx_base = domain_->dx_base();
+
+        B.resizing_row(max_local_idx+1);
+
+        int base_level = domain_->tree()->base_level();
+
+         int N_ext = domain_->block_extent()[0];
+
+        
+        for (int l = base_level; l < domain_->tree()->depth(); l++)
+        {
+            if (domain_->is_client())
+            {
+                auto client = domain_->decomposition().client();
+
+                client->template buffer_exchange<idx_u_type>(l);
+                client->template buffer_exchange<idx_u_g_type>(l);
+                client->template buffer_exchange<idx_p_type>(l);
+                client->template buffer_exchange<idx_p_g_type>(l);
+                client->template buffer_exchange<idx_w_type>(l);
+                client->template buffer_exchange<idx_w_g_type>(l);
+            }
+
+            
+
+            
+
+            for (auto it = domain_->begin(l);
+                 it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
+                if (!it->is_leaf()) continue;
+                if (it->is_correction()) continue;
+
+                float_type dx_level = dx_base / math::pow2(it->refinement_level());
+                
+
+                for (std::size_t field_idx = 0;
+                     field_idx < idx_u_type::nFields(); ++field_idx)
+                {
+                    for (auto& n : it->data())
+                    {
+                        int p_idx_w = n.at_offset(idx_p_g_type::tag(), -1, 0, 0);
+                        int p_idx_e = n.at_offset(idx_p_g_type::tag(), 1, 0, 0);
+                        int p_idx_n = n.at_offset(idx_p_g_type::tag(), 0, 1, 0);
+                        int p_idx_s = n.at_offset(idx_p_g_type::tag(), 0, -1, 0);
+
+                        if ((p_idx_w <= 0) && field_idx == 0 && l == base_level && p_set_zero)
+                        {
+                            //enforcing div free at BC points
+                            continue;
+                        }
+                        if ((p_idx_s <= 0) && field_idx == 1 && l == base_level && p_set_zero)
+                        {
+                            continue;
+                        }
+                        
+                        int cur_idx = n(idx_u_type::tag(), field_idx);
+                        int glo_idx = n(idx_u_g_type::tag(), field_idx);
+                        if (cur_idx> 0) {
+                            B.add_element(cur_idx, glo_idx, 1.0);
+                        }
+                    }
+                }
+
+                for (auto& n : it->data())
+                {
+                    
+
+                    int cur_idx = n(idx_uz_type::tag(), 0);
+                    int glo_idx = n(idx_uz_g_type::tag(), 0);
+                    if (cur_idx > 0) { B.add_element(cur_idx, glo_idx, 1.0); }
+                    //B.add_element(cur_idx, glo_idx, 1.0);
+                }
+            }
+        }
+
+        domain_->client_communicator().barrier();
+    }
+
+
+    void construction_B_i_matrix() {
+        //construction of B matrix from the LHS of the linearized equations 
+        //this matrix is diagonal with 1 for leaf velocities and 0 o/w
+        boost::mpi::communicator world;
+        world.barrier();
+
+        if (world.rank() == 0) {
+            return;
+        }
+
+        if (world.rank() == 1) {
+            std::cout << "Constructing B_i matrix" << std::endl;
+        }
+       
+        if (max_local_idx == 0) {
+            std::cout << "idx not initialized, please call Assigning_idx()" << std::endl;
+        }
+
+        const auto dx_base = domain_->dx_base();
+
+        B_i.resizing_row(max_local_B_idx+1);
+
+        int base_level = domain_->tree()->base_level();
+
+         int N_ext = domain_->block_extent()[0];
+
+        
+        for (int l = base_level; l < domain_->tree()->depth(); l++)
+        {
+            if (domain_->is_client())
+            {
+                auto client = domain_->decomposition().client();
+
+                client->template buffer_exchange<idx_u_type>(l);
+                client->template buffer_exchange<idx_u_g_type>(l);
+                client->template buffer_exchange<idx_p_type>(l);
+                client->template buffer_exchange<idx_p_g_type>(l);
+                client->template buffer_exchange<idx_w_type>(l);
+                client->template buffer_exchange<idx_w_g_type>(l);
+            }
+
+            
+
+            
+
+            for (auto it = domain_->begin(l);
+                 it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
+                if (!it->is_leaf()) continue;
+                if (it->is_correction()) continue;
+                
+
+                for (std::size_t field_idx = 0;
+                     field_idx < idx_u_type::nFields(); ++field_idx)
+                {
+                    for (auto& n : it->data())
+                    {
+                        
+                        int cur_idx = n(idx_u_B_type::tag(), field_idx);
+                        int glo_idx = n(idx_u_g_type::tag(), field_idx);
+                        if (cur_idx> 0) {
+                            B_i.add_element(cur_idx, glo_idx, 1.0);
+                        }
+                    }
+                }
+
+                /*for (auto& n : it->data())
+                {
+                    
+
+                    int cur_idx = n(idx_uz_B_type::tag(), 0);
+                    int glo_idx = n(idx_uz_g_type::tag(), 0);
+                    if (cur_idx > 0) { B_i.add_element(cur_idx, glo_idx, 1.0); }
+                    //B.add_element(cur_idx, glo_idx, 1.0);
+                }*/
+            }
+        }
+
+        domain_->client_communicator().barrier();
+    }
+
+
+
+
+
+    void construction_Q_matrix() {
+        //construction of Q matrix for inner product, and also Q^{-1/2}
+        boost::mpi::communicator world;
+        world.barrier();
+
+        if (world.rank() == 0) {
+            return;
+        }
+
+        if (world.rank() == 1) {
+            std::cout << "Constructing Q matrix" << std::endl;
+        }
+       
+        if (max_local_idx == 0) {
+            std::cout << "idx not initialized, please call Assigning_idx()" << std::endl;
+        }
+
+        const auto dx_base = domain_->dx_base();
+
+        Q.resizing_row(max_local_idx+1);
+        Q_halfi.resizing_row(max_local_idx+1);
+
+        int base_level = domain_->tree()->base_level();
+
+         int N_ext = domain_->block_extent()[0];
+
+        
+        for (int l = base_level; l < domain_->tree()->depth(); l++)
+        {
+            if (domain_->is_client())
+            {
+                auto client = domain_->decomposition().client();
+
+                client->template buffer_exchange<idx_u_type>(l);
+                client->template buffer_exchange<idx_u_g_type>(l);
+                client->template buffer_exchange<idx_p_type>(l);
+                client->template buffer_exchange<idx_p_g_type>(l);
+                client->template buffer_exchange<idx_w_type>(l);
+                client->template buffer_exchange<idx_w_g_type>(l);
+            }
+
+            
+
+            
+
+            for (auto it = domain_->begin(l);
+                 it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
+                if (!it->is_leaf()) continue;
+                if (it->is_correction()) continue;
+
+                float_type dx_level = dx_base / math::pow2(it->refinement_level());
+
+                int  N = it->data().descriptor().extent()[0];
+                
+                /*bool tmp[N][N] = {0};
+                for (int i = 0; i < N; i++) {
+                    for (int j = 0; j < N; j++) {
+                        tmp[i][j] = dx_level*dx_level;
+                    }
+                }
+
+                for (int i = 0; i < it->num_neighbors(); i++)
+                {
+                    auto it2 = it->neighbor(i);
+                    if (!it2 || it2->is_leaf())
+                    {
+                        continue;
+                    }
+                    else {
+                        if (i == 1 && field_idx == 1) {
+                            if (it2->is_correction()) {
+                                //if it is correction, it means this point is the bottom edge 
+                                //next to a coarser level mesh
+                                for (int j = 0; j < N; j++)
+                                {
+                                    tmp[j][0] *= 1.5;
+                                    //tmp[j][1] = true;
+                                }
+                            }
+                            else {
+                                //if it is not a correction, it is next to a finer block
+                                //multiply by 3/4
+                                for (int j = 0; j < N; j++)
+                                {
+                                    tmp[j][0] *= 0.75;
+                                    //tmp[j][1] = true;
+                                }
+                            }
+                        }
+                        if (i == 3 && field_idx == 0) {
+                            if (it2->is_correction()) {
+                                //if it is correction, it means this point is the bottom edge 
+                                //next to a coarser level mesh
+                                for (int j = 0; j < N; j++)
+                                {
+                                    tmp[0][j] *= 1.5;
+                                    //tmp[j][1] = true;
+                                }
+                            }
+                            else {
+                                //if it is not a correction, it is next to a finer block
+                                //multiply by 3/4
+                                for (int j = 0; j < N; j++)
+                                {
+                                    tmp[0][j] *= 0.75;
+                                    //tmp[j][1] = true;
+                                }
+                            }
+                        }
+                    }
+                }*/
+                for (std::size_t field_idx = 0;
+                     field_idx < idx_u_type::nFields(); ++field_idx)
+                {
+                    float_type tmp[N][N] = {0};
+                    for (int i = 0; i < N; i++) {
+                        for (int j = 0; j < N; j++) {
+                            tmp[i][j] = dx_level*dx_level;
+                        }
+                    }
+
+                    for (int i = 0; i < it->num_neighbors(); i++)
+                    {
+                        auto it2 = it->neighbor(i);
+                        if (!it2 || it2->is_leaf())
+                        {
+                            continue;
+                        }
+                        else {
+                            if (i == 1 && field_idx == 1) {
+                                if (it2->is_correction()) {
+                                    //if it is correction, it means this point is the bottom edge 
+                                    //next to a coarser level mesh
+                                    for (int j = 0; j < N; j++)
+                                    {
+                                        //tmp[j][0] *= 1.5;
+                                    }
+                                }
+                                else {
+                                    //if it is not a correction, it is next to a finer block
+                                    //multiply by 3/4
+                                    for (int j = 0; j < N; j++)
+                                    {
+                                        //tmp[j][0] *= 0.75;
+                                    }
+                                }
+                            }
+                            if (i == 3 && field_idx == 0) {
+                                if (it2->is_correction()) {
+                                    //if it is correction, it means this point is the bottom edge 
+                                    //next to a coarser level mesh
+                                    for (int j = 0; j < N; j++)
+                                    {
+                                        //tmp[0][j] *= 1.5;
+                                    }
+                                }
+                                else {
+                                    //if it is not a correction, it is next to a finer block
+                                    //multiply by 3/4
+                                    for (int j = 0; j < N; j++)
+                                    {
+                                        //tmp[0][j] *= 0.75;
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+
+                    
+                    /*for (auto& n : it->data())
+                    {
+                        int p_idx_w = n.at_offset(idx_p_g_type::tag(), -1, 0, 0);
+                        int p_idx_e = n.at_offset(idx_p_g_type::tag(), 1, 0, 0);
+                        int p_idx_n = n.at_offset(idx_p_g_type::tag(), 0, 1, 0);
+                        int p_idx_s = n.at_offset(idx_p_g_type::tag(), 0, -1, 0);
+
+                        if ((p_idx_w <= 0) && field_idx == 0 && l == base_level && p_set_zero)
+                        {
+                            //enforcing div free at BC points
+                            continue;
+                        }
+                        if ((p_idx_s <= 0) && field_idx == 1 && l == base_level && p_set_zero)
+                        {
+                            continue;
+                        }
+                        
+                        int cur_idx = n(idx_u_type::tag(), field_idx);
+                        int glo_idx = n(idx_u_g_type::tag(), field_idx);
+                        if (cur_idx> 0) {
+                            Q.add_element(cur_idx, glo_idx,dx_level*dx_level);
+                            Q_halfi.add_element(cur_idx, glo_idx,1.0/dx_level);
+                        }
+                    }*/
+
+                    auto& lin_data   = it->data_r(idx_u_type::tag(), field_idx).linalg_data();
+                    auto& lin_data_g = it->data_r(idx_u_g_type::tag(), field_idx).linalg_data();
+                    auto& face_aux_vec = it->data_r(face_aux_type::tag(), field_idx).linalg_data();
+                    for (int i = 0; i < N; i++)
+                    {
+                        for (int j = 0; j < N; j++)
+                        {
+                            //int idx_u = view(lin_data, i + 1, j + 1);
+                            //int idx_u_g = view(lin_data_g, i + 1, j + 1);
+
+                            int idx_u = lin_data.at(i+1, j+1);
+                            int idx_u_g = lin_data_g.at(i+1, j+1);
+                            if (idx_u> 0) {
+                                Q.add_element(idx_u, idx_u_g, tmp[i][j]);
+                                Q_halfi.add_element(idx_u, idx_u_g, 1.0/std::sqrt(tmp[i][j]));
+                                view(face_aux_vec, i + 1, j + 1) = tmp[i][j];
+                            }
+                            
+                        }
+                    }
+                }
+                if (!Q_2DOnly) {
+                for (auto& n : it->data())
+                {
+                    
+
+                    int cur_idx = n(idx_uz_type::tag(), 0);
+                    int glo_idx = n(idx_uz_g_type::tag(), 0);
+                    if (cur_idx> 0) {
+                        Q.add_element(cur_idx, glo_idx,dx_level*dx_level);
+                        Q_halfi.add_element(cur_idx, glo_idx,1.0/dx_level);
+                    }
+                    //B.add_element(cur_idx, glo_idx, 1.0);
+                }
+                }
+            }
+        }
+
+        domain_->client_communicator().barrier();
+    }
+
+    template<class U_old, class W_old>
+    void construction_DN_u(float_type t = 5) {
+        boost::mpi::communicator world;
+        world.barrier();
+
+        if (world.rank() == 0) {
+            return;
+        }
+
+        if (world.rank() == 1) {
+            std::cout << "Constructing DN_u matrix" << std::endl;
+        }
+       
+        if (max_local_idx == 0) {
+            std::cout << "idx not initialized, please call Assigning_idx()" << std::endl;
+        }
+
+        const auto dx_base = domain_->dx_base();
+
+        DN.resizing_row(max_local_idx+1);
+
+        int base_level = domain_->tree()->base_level();
+        clean<edge_aux_type>();
+        //pad_velocity<U_old, U_old>(true);
+        curl<U_old, W_old, edge_aux_type>(0.0);
+        //curl2D<U_old, edge_aux_type>();
+        //up_and_down(edge_aux_type)();
+        up_and_down<U_old>();
+        up_and_down<W_old>();
+        for (int l = base_level; l < domain_->tree()->depth(); l++)
+        {
+        if (domain_->is_client())
+        {
+            auto client = domain_->decomposition().client();
+
+            client->template buffer_exchange<idx_u_type>(l);
+            client->template buffer_exchange<idx_uz_type>(l);
+            client->template buffer_exchange<idx_p_type>(l);
+            client->template buffer_exchange<idx_u_g_type>(l);
+            client->template buffer_exchange<idx_uz_g_type>(l);
+            client->template buffer_exchange<idx_w_g_type>(l);
+            client->template buffer_exchange<U_old>(l);
+            client->template buffer_exchange<W_old>(l);
+            client->template buffer_exchange<idx_N_g_type>(l);
+            client->template buffer_exchange<idx_N_type>(l);
+            client->template buffer_exchange<idx_Nz_g_type>(l);
+            client->template buffer_exchange<idx_Nz_type>(l);
+            
+        }
+        for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+        {
+            float_type dx = dx_base / math::pow2(it->refinement_level());
+            if (!it->locally_owned() || !it->has_data()) continue;
+            if (!it->is_leaf()) continue;
+            if (it->is_correction()) continue;
+
+            for (auto& n : it->data())
+            {
+                //omega cross u_s
+
+                int cur_idx_0 = n(idx_N_type::tag(), 0);
+                int cur_idx_1 = n(idx_N_type::tag(), 1);
+
+                int cur_idx_2 = n(idx_Nz_type::tag(), 0);
+                int gN_idx_2 = n(idx_Nz_g_type::tag(), 0);
+
+                if (cur_idx_0 < 0 || cur_idx_1 < 0) continue;
+                
+                int cur_idx_u_0 = n(idx_u_type::tag(), 0);
+                int cur_idx_u_1 = n(idx_u_type::tag(), 1);
+
+                int cur_idx_u_2 = n(idx_uz_type::tag(), 0);
+
+                int glob_idx_0 = n(idx_u_g_type::tag(), 0);
+                int glob_idx_1 = n(idx_u_g_type::tag(), 1);
+
+                int glob_idx_2 = n(idx_uz_g_type::tag(), 0);
+
+                int glob_idx_0_1 = n.at_offset(idx_u_g_type::tag(), 0, -1, 0);
+                int glob_idx_0_2 = n.at_offset(idx_u_g_type::tag(), 0,  1, 0);
+                int glob_idx_0_3 = n.at_offset(idx_u_g_type::tag(), 1,  0, 0);
+                int glob_idx_0_4 = n.at_offset(idx_u_g_type::tag(), 1, -1, 0);
+
+                int glob_idx_1_1 = n.at_offset(idx_u_g_type::tag(), -1, 0, 1);
+                int glob_idx_1_2 = n.at_offset(idx_u_g_type::tag(),  0, 1, 1);
+                int glob_idx_1_3 = n.at_offset(idx_u_g_type::tag(), -1, 1, 1);
+                int glob_idx_1_4 = n.at_offset(idx_u_g_type::tag(),  1, 0, 1);
+
+                int glob_idx_00 = n(idx_w_g_type::tag(), 0);
+                int glob_idx_01 = n.at_offset(idx_w_g_type::tag(),  0, 1, 0);
+                int glob_idx_10 = n.at_offset(idx_w_g_type::tag(),  1, 0, 0);
+
+                int glob_idx_00_1 = n(idx_w_g_type::tag(), 1);
+                int glob_idx_00_2 = n(idx_w_g_type::tag(), 2);
+                int glob_idx_01_1 = n.at_offset(idx_w_g_type::tag(),  0, 1, 1);
+                int glob_idx_10_1 = n.at_offset(idx_w_g_type::tag(),  1, 0, 1);
+                int glob_idx_01_2 = n.at_offset(idx_w_g_type::tag(),  0, 1, 2);
+                int glob_idx_10_2 = n.at_offset(idx_w_g_type::tag(),  1, 0, 2);
+
+                /*if (glob_idx_01   <= 0 || glob_idx_10   <= 0 || glob_idx_01_1 <= 0 ||
+                    glob_idx_10_1 <= 0 || glob_idx_01_2 <= 0 || glob_idx_10_2 <= 0) {
+                        continue;
+                    }*/
+
+                auto coord = n.global_coordinate() * dx;
+                auto field_func = simulation_->frame_vel();
+                float_type u_field_vel = field_func(0, t, coord)*(-1.0);
+                float_type v_field_vel = field_func(1, t, coord)*(-1.0);
+                float_type w_field_vel = field_func(2, t, coord)*(-1.0);
+
+                float_type v_s_0010 = -(n(U_old::tag(), 1)                   + n.at_offset(U_old::tag(), -1, 0, 1))*0.25 - v_field_vel * 0.5;
+                float_type v_s_0111 = -(n.at_offset(U_old::tag(),  0, 1, 1)  + n.at_offset(U_old::tag(), -1, 1, 1))*0.25 - v_field_vel * 0.5;
+                float_type u_s_0001 =  (n(U_old::tag(), 0)                   + n.at_offset(U_old::tag(), 0, -1, 0))*0.25 + u_field_vel * 0.5;
+                float_type u_s_1011 =  (n.at_offset(U_old::tag(),  1, 0, 0)  + n.at_offset(U_old::tag(), 1, -1, 0))*0.25 + u_field_vel * 0.5;
+                float_type w_s_0010 =  (n(W_old::tag(), 0)                   + n.at_offset(W_old::tag(), -1, 0, 0))*0.5  + w_field_vel;
+                float_type w_s_0001 =  (n(W_old::tag(), 0)                   + n.at_offset(W_old::tag(), 0, -1, 0))*0.5  + w_field_vel;
+
+
+                float_type v_s_00   =  n(U_old::tag(), 1)                  + v_field_vel;
+                float_type v_s_01   =  n.at_offset(U_old::tag(),  0, 1, 1) + v_field_vel;
+                float_type u_s_00   =  n(U_old::tag(), 0)                  + u_field_vel;
+                float_type u_s_10   =  n.at_offset(U_old::tag(),  1, 0, 0) + u_field_vel;
+
+
+                int p_idx_w = n.at_offset(idx_p_type::tag(), -1, 0, 0);
+                int p_idx_e = n.at_offset(idx_p_type::tag(), 1, 0, 0);
+                int p_idx_n = n.at_offset(idx_p_type::tag(), 0, 1, 0);
+                int p_idx_s = n.at_offset(idx_p_type::tag(), 0, -1, 0);
+
+                /*
+                //x_component
+                //-n.at_offset(edge, 0, 0, 0) *(n.at_offset(face, 0, 0, 1) + n.at_offset(face, -1, 0, 1))
+                DN.add_element(cur_idx_0, glob_idx_00_2, v_s_0010);
+                //-n.at_offset(edge, 0, 1, 0) *(n.at_offset(face, 0, 1, 1) + n.at_offset(face, -1, 1, 1))
+                DN.add_element(cur_idx_0, glob_idx_01_2, v_s_0111);
+
+                //adding it to momentum equation
+                //-n.at_offset(edge, 0, 0, 0) *(n.at_offset(face, 0, 0, 1) + n.at_offset(face, -1, 0, 1))
+                DN.add_element(cur_idx_u_0, glob_idx_00_2, v_s_0010);
+                //-n.at_offset(edge, 0, 1, 0) *(n.at_offset(face, 0, 1, 1) + n.at_offset(face, -1, 1, 1))
+                DN.add_element(cur_idx_u_0, glob_idx_01_2, v_s_0111);
+
+                //y_component
+                // n.at_offset(edge, 0, 0, 0) *(n.at_offset(face, 0, 0, 0) + n.at_offset(face, 0, -1, 0))
+                DN.add_element(cur_idx_1, glob_idx_00_2, u_s_0001);
+                // n.at_offset(edge, 1, 0, 0) *(n.at_offset(face, 1, 0, 0) + n.at_offset(face, 1, -1, 0))
+                DN.add_element(cur_idx_1, glob_idx_10_2, u_s_1011);
+
+                //adding it to momentum equation
+                // n.at_offset(edge, 0, 0, 0) *(n.at_offset(face, 0, 0, 0) + n.at_offset(face, 0, -1, 0))
+                DN.add_element(cur_idx_u_1, glob_idx_00_2, u_s_0001);
+                // n.at_offset(edge, 1, 0, 0) *(n.at_offset(face, 1, 0, 0) + n.at_offset(face, 1, -1, 0))
+                DN.add_element(cur_idx_u_1, glob_idx_10_2, u_s_1011);
+
+                //z_component
+                DN.add_element(cur_idx_2, glob_idx_00, v_s_00*0.5);
+                DN.add_element(cur_idx_2, glob_idx_01, v_s_01*0.5);
+                DN.add_element(cur_idx_2, glob_idx_00_1, -u_s_00*0.5);
+                DN.add_element(cur_idx_2, glob_idx_10_1, -u_s_10*0.5);
+
+                DN.add_element(cur_idx_u_2, glob_idx_00, v_s_00*0.5);
+                DN.add_element(cur_idx_u_2, glob_idx_01, v_s_01*0.5);
+                DN.add_element(cur_idx_u_2, glob_idx_00_1, -u_s_00*0.5);
+                DN.add_element(cur_idx_u_2, glob_idx_10_1, -u_s_10*0.5);
+
+                //DN.add_element(cur_idx_2, glob_idx_2, -1.0);
+                DN.add_element(cur_idx_2, gN_idx_2, -1.0);*/
+
+                //0.5 * n.at_offset(edge, 0, 0, y_p) * (n.at_offset(face, 0, 0, z_p) + n.at_offset(face, -1, 0, z_p))
+                DN.add_element(cur_idx_0, glob_idx_00_1, w_s_0010);
+                //-n.at_offset(edge, 0, 0, z_p) *  (n.at_offset(face, 0, 0, y_p) + n.at_offset(face, -1, 0, y_p))
+                DN.add_element(cur_idx_0, glob_idx_00_2, v_s_0010);
+                //-n.at_offset(edge, 0, 1, z_p) * (n.at_offset(face,  0, 1, y_p) + n.at_offset(face, -1, 1, y_p))
+                DN.add_element(cur_idx_0, glob_idx_01_2, v_s_0111);
+
+
+                // n.at_offset(edge, 0, 0, z_p) * (n.at_offset(face, 0, 0, x_p) + n.at_offset(face, 0, -1, x_p))
+                DN.add_element(cur_idx_1, glob_idx_00_2, u_s_0001);
+                // n.at_offset(edge, 1, 0, z_p) * (n.at_offset(face, 1, 0, x_p) + n.at_offset(face, 1, -1, x_p))
+                DN.add_element(cur_idx_1, glob_idx_10_2, u_s_1011);
+                //-0.5 * n.at_offset(edge, 0, 0, x_p) * (+n.at_offset(face, 0, 0, z_p) + n.at_offset(face, 0, -1, z_p))
+                DN.add_element(cur_idx_1, glob_idx_00, w_s_0001);
+                
+                //0.5 * (n.at_offset(edge, 0, 0, x_p) * n.at_offset(face, 0, 0, y_p)  
+                //+n.at_offset(edge, 0, 1, x_p) * n.at_offset(face, 0, 1, y_p) 
+                //-n.at_offset(edge, 0, 0, y_p) * n.at_offset(face, 0, 0, x_p) 
+                //-n.at_offset(edge, 1, 0, y_p) * n.at_offset(face, 1, 0, x_p))
+                DN.add_element(cur_idx_2, glob_idx_00, v_s_00*0.5);
+                DN.add_element(cur_idx_2, glob_idx_01, v_s_01*0.5);
+                DN.add_element(cur_idx_2, glob_idx_00_1, -u_s_00*0.5);
+                DN.add_element(cur_idx_2, glob_idx_10_1, -u_s_10*0.5);
+            }
+        }
+        domain_->client_communicator().barrier();
+
+        
+        if (domain_->is_client())
+        {
+            auto client = domain_->decomposition().client();
+            client->template buffer_exchange<edge_aux_type>(l);
+        }
+
+        for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+        {
+            if (!it->locally_owned() || !it->has_data()) continue;
+            if (!it->is_leaf()) continue;
+            if (it->is_correction()) continue;
+
+            for (auto& n : it->data())
+            {
+                
+                
+                int cur_idx_0 = n(idx_N_type::tag(), 0);
+                int cur_idx_1 = n(idx_N_type::tag(), 1);
+                int cur_idx_2 = n(idx_Nz_type::tag(), 0);
+
+                if (cur_idx_0 < 0 || cur_idx_1 < 0) continue;
+                
+                int cur_idx_u_0 = n(idx_u_type::tag(), 0);
+                int cur_idx_u_1 = n(idx_u_type::tag(), 1);
+                int cur_idx_u_2 = n(idx_uz_type::tag(), 0);
+
+                int gN_idx_0 = n(idx_N_g_type::tag(), 0);
+                int gN_idx_1 = n(idx_N_g_type::tag(), 1);
+                int gN_idx_2 = n(idx_Nz_g_type::tag(), 0);
+
+                int glob_idx_0_00 = n.at_offset(idx_u_g_type::tag(), 0,  0, 0);
+                int glob_idx_0_01 = n.at_offset(idx_u_g_type::tag(), 0, -1, 0);
+                int glob_idx_0_10 = n.at_offset(idx_u_g_type::tag(), 1,  0, 0);
+                int glob_idx_0_11 = n.at_offset(idx_u_g_type::tag(), 1, -1, 0);
+
+                int glob_idx_1_00 = n.at_offset(idx_u_g_type::tag(),  0, 0, 1);
+                int glob_idx_1_01 = n.at_offset(idx_u_g_type::tag(),  0, 1, 1);
+                int glob_idx_1_10 = n.at_offset(idx_u_g_type::tag(), -1, 0, 1);
+                int glob_idx_1_11 = n.at_offset(idx_u_g_type::tag(), -1, 1, 1);
+
+                int glob_idx_2_00 = n.at_offset(idx_uz_g_type::tag(), 0,  0, 0);
+                int glob_idx_2_01 = n.at_offset(idx_uz_g_type::tag(), 0, -1, 0);
+                int glob_idx_2_10 = n.at_offset(idx_uz_g_type::tag(), -1, 0, 0);
+                int glob_idx_2_11 = n.at_offset(idx_uz_g_type::tag(), 1, -1, 0);
+
+                float_type om_00_0 = n.at_offset(edge_aux_type::tag(), 0, 0, 0)*0.5;
+                float_type om_01_0 = n.at_offset(edge_aux_type::tag(), 0, 1, 0)*0.5;
+                float_type om_10_0 = n.at_offset(edge_aux_type::tag(), 1, 0, 0)*0.5;
+
+                float_type om_00_1 = n.at_offset(edge_aux_type::tag(), 0, 0, 1)*0.5;
+                float_type om_01_1 = n.at_offset(edge_aux_type::tag(), 0, 1, 1)*0.5;
+                float_type om_10_1 = n.at_offset(edge_aux_type::tag(), 1, 0, 1)*0.5;
+
+                float_type om_00_2 = n.at_offset(edge_aux_type::tag(), 0, 0, 2)*0.25;
+                float_type om_01_2 = n.at_offset(edge_aux_type::tag(), 0, 1, 2)*0.25;
+                float_type om_10_2 = n.at_offset(edge_aux_type::tag(), 1, 0, 2)*0.25;
+
+
+                int p_idx_w = n.at_offset(idx_p_type::tag(), -1, 0, 0);
+                int p_idx_e = n.at_offset(idx_p_type::tag(), 1, 0, 0);
+                int p_idx_n = n.at_offset(idx_p_type::tag(), 0, 1, 0);
+                int p_idx_s = n.at_offset(idx_p_type::tag(), 0, -1, 0);
+
+                /*if (p_set_zero) {
+
+                if ((p_idx_w > 0 && p_idx_e > 0) || l != base_level)
+                {
+                    DN.add_element(cur_idx_0, glob_idx_1_00, -om_00);
+                    DN.add_element(cur_idx_0, glob_idx_1_10, -om_00);
+                    DN.add_element(cur_idx_0, glob_idx_1_01, -om_01);
+                    DN.add_element(cur_idx_0, glob_idx_1_11, -om_01);
+
+                    DN.add_element(cur_idx_u_0, glob_idx_1_00, -om_00);
+                    DN.add_element(cur_idx_u_0, glob_idx_1_10, -om_00);
+                    DN.add_element(cur_idx_u_0, glob_idx_1_01, -om_01);
+                    DN.add_element(cur_idx_u_0, glob_idx_1_11, -om_01);
+                }
+                if ((p_idx_n > 0 && p_idx_s > 0) || l != base_level)
+                {
+                    DN.add_element(cur_idx_1, glob_idx_0_00, om_00);
+                    DN.add_element(cur_idx_1, glob_idx_0_01, om_00);
+                    DN.add_element(cur_idx_1, glob_idx_0_10, om_10);
+                    DN.add_element(cur_idx_1, glob_idx_0_11, om_10);
+
+                    DN.add_element(cur_idx_u_1, glob_idx_0_00, om_00);
+                    DN.add_element(cur_idx_u_1, glob_idx_0_01, om_00);
+                    DN.add_element(cur_idx_u_1, glob_idx_0_10, om_10);
+                    DN.add_element(cur_idx_u_1, glob_idx_0_11, om_10);
+                }
+                }
+                else {
+
+                DN.add_element(cur_idx_0, glob_idx_1_00, -om_00);
+                DN.add_element(cur_idx_0, glob_idx_1_10, -om_00);
+                DN.add_element(cur_idx_0, glob_idx_1_01, -om_01);
+                DN.add_element(cur_idx_0, glob_idx_1_11, -om_01);
+
+                DN.add_element(cur_idx_1, glob_idx_0_00,  om_00);
+                DN.add_element(cur_idx_1, glob_idx_0_01,  om_00);
+                DN.add_element(cur_idx_1, glob_idx_0_10,  om_10);
+                DN.add_element(cur_idx_1, glob_idx_0_11,  om_10);
+
+                DN.add_element(cur_idx_u_0, glob_idx_1_00, -om_00);
+                DN.add_element(cur_idx_u_0, glob_idx_1_10, -om_00);
+                DN.add_element(cur_idx_u_0, glob_idx_1_01, -om_01);
+                DN.add_element(cur_idx_u_0, glob_idx_1_11, -om_01);
+
+                DN.add_element(cur_idx_u_1, glob_idx_0_00,  om_00);
+                DN.add_element(cur_idx_u_1, glob_idx_0_01,  om_00);
+                DN.add_element(cur_idx_u_1, glob_idx_0_10,  om_10);
+                DN.add_element(cur_idx_u_1, glob_idx_0_11,  om_10);
+                }
+
+                DN.add_element(cur_idx_0, gN_idx_0, -1.0); 
+                DN.add_element(cur_idx_1, gN_idx_1, -1.0);*/
+
+                //DN.add_element(cur_idx_u_0, gN_idx_0, -1.0);
+                //DN.add_element(cur_idx_u_1, gN_idx_1, -1.0);
+
+                //0.5 * n.at_offset(edge, 0, 0, y_p) * (n.at_offset(face, 0, 0, z_p) + n.at_offset(face, -1, 0, z_p))
+                DN.add_element(cur_idx_0, glob_idx_2_00, om_00_1);
+                DN.add_element(cur_idx_0, glob_idx_2_10, om_00_1);
+
+                //-n.at_offset(edge, 0, 0, z_p) *  (n.at_offset(face, 0, 0, y_p) + n.at_offset(face, -1, 0, y_p))
+                //-n.at_offset(edge, 0, 1, z_p) * (n.at_offset(face,  0, 1, y_p) + n.at_offset(face, -1, 1, y_p))
+                DN.add_element(cur_idx_0, glob_idx_1_00, -om_00_2);
+                DN.add_element(cur_idx_0, glob_idx_1_10, -om_00_2);
+                DN.add_element(cur_idx_0, glob_idx_1_01, -om_01_2);
+                DN.add_element(cur_idx_0, glob_idx_1_11, -om_01_2);
+
+                // n.at_offset(edge, 0, 0, z_p) * (n.at_offset(face, 0, 0, x_p) + n.at_offset(face, 0, -1, x_p))
+                // n.at_offset(edge, 1, 0, z_p) * (n.at_offset(face, 1, 0, x_p) + n.at_offset(face, 1, -1, x_p))
+                DN.add_element(cur_idx_1, glob_idx_0_00,  om_00_2);
+                DN.add_element(cur_idx_1, glob_idx_0_01,  om_00_2);
+                DN.add_element(cur_idx_1, glob_idx_0_10,  om_10_2);
+                DN.add_element(cur_idx_1, glob_idx_0_11,  om_10_2);
+                //-0.5 * n.at_offset(edge, 0, 0, x_p) * (+n.at_offset(face, 0, 0, z_p) + n.at_offset(face, 0, -1, z_p))
+                DN.add_element(cur_idx_1, glob_idx_2_00, -om_00_0);
+                DN.add_element(cur_idx_1, glob_idx_2_01, -om_00_0);
+
+                //0.5 * (n.at_offset(edge, 0, 0, x_p) * n.at_offset(face, 0, 0, y_p)  
+                //+n.at_offset(edge, 0, 1, x_p) * n.at_offset(face, 0, 1, y_p) 
+                //-n.at_offset(edge, 0, 0, y_p) * n.at_offset(face, 0, 0, x_p) 
+                //-n.at_offset(edge, 1, 0, y_p) * n.at_offset(face, 1, 0, x_p))
+                DN.add_element(cur_idx_2, glob_idx_1_00,  om_00_0);
+                DN.add_element(cur_idx_2, glob_idx_1_01,  om_01_0);
+                DN.add_element(cur_idx_2, glob_idx_0_00, -om_00_1);
+                DN.add_element(cur_idx_2, glob_idx_0_10, -om_10_1);
+
+
+                DN.add_element(cur_idx_0, gN_idx_0, -1.0); 
+                DN.add_element(cur_idx_1, gN_idx_1, -1.0);
+                DN.add_element(cur_idx_2, gN_idx_2, -1.0);
+
+                DN.add_element(cur_idx_u_0, gN_idx_0, 1.0);
+                DN.add_element(cur_idx_u_1, gN_idx_1, 1.0);
+                DN.add_element(cur_idx_u_2, gN_idx_2, 1.0);
+
+
+
+            }
+        }
+        }
+        domain_->client_communicator().barrier();
+
+        this->template construct_upward_BC_intrp<idx_N_type, idx_N_g_type>(DN);
+
+        this->template construct_interpolation<idx_N_type, idx_N_g_type>(DN);
+
+        this->template construct_upward_BC_intrp<idx_Nz_type, idx_Nz_g_type>(DN);
+
+        this->template construct_interpolation<idx_Nz_type, idx_Nz_g_type>(DN);
+
+        domain_->client_communicator().barrier();
+    }
+
+    void construction_Grad() {
+        //construction of Gradient
+        boost::mpi::communicator world;
+        world.barrier();
+
+
+        
+
+        if (world.rank() == 0) {
+            return;
+        }
+
+        if (world.rank() == 1) {
+            std::cout << "Constructing Grad matrix" << std::endl;
+        }
+       
+        if (max_local_idx == 0) {
+            std::cout << "idx not initialized, please call Assigning_idx()" << std::endl;
+        }
+
+        const auto dx_base = domain_->dx_base();
+
+        Grad.resizing_row(max_local_idx+1);
+
+        int base_level = domain_->tree()->base_level();
+        for (int l = base_level; l < domain_->tree()->depth(); l++)
+        {
+            if (domain_->is_client())
+            {
+                auto client = domain_->decomposition().client();
+
+                //client->template buffer_exchange<idx_u_type>(base_level);
+                client->template buffer_exchange<idx_u_g_type>(l);
+
+                //client->template buffer_exchange<idx_p_type>(base_level);
+                client->template buffer_exchange<idx_p_g_type>(l);
+            }
+            int p_left_bot_idx = -1;
+            int p_left_bot_ldx = -1; //locall index
+            int u_left_bot_idx = -1;
+            int v_left_bot_idx = -1;
+
+            for (auto it = domain_->begin(l);
+                 it != domain_->end(l); ++it)
+            {
+                float_type dx_level = dx_base / math::pow2(it->refinement_level());
+                if (!it->locally_owned() || !it->has_data()) continue;
+                if (!it->is_leaf()) continue;
+                if (it->is_correction())
+                {
+                    continue;
+                }
+                else
+                {
+                    for (auto& n : it->data())
+                    {
+                        int cur_idx_0 = n(idx_u_type::tag(), 0);
+                        int cur_idx_1 = n(idx_u_type::tag(), 1);
+                        int cur_idx_2 = n(idx_uz_type::tag(), 0);
+
+                        int glo_idx_0 = n(idx_p_g_type::tag(), 0);
+                        int glo_idx_10 =
+                            n.at_offset(idx_p_g_type::tag(), -1, 0, 0);
+                        int glo_idx_01 =
+                            n.at_offset(idx_p_g_type::tag(), 0, -1, 0);
+
+                        Grad.add_element(cur_idx_0, glo_idx_0, 1.0 / dx_level);
+                        Grad.add_element(cur_idx_0, glo_idx_10, -1.0 / dx_level);
+
+                        Grad.add_element(cur_idx_1, glo_idx_0, 1.0 / dx_level);
+                        Grad.add_element(cur_idx_1, glo_idx_01, -1.0 / dx_level);
+
+                        //Grad.add_element(cur_idx_2, glo_idx_0, -mode_c);
+                    }
+                }
+            }
+        }
+        Grad.clean_entry(1e-15);
+
+        domain_->client_communicator().barrier();
+    }
+
+    void construction_Div() {
+        //construction of Gradient
+        boost::mpi::communicator world;
+        world.barrier();
+
+        if (world.rank() == 0) {
+            return;
+        }
+
+        if (world.rank() == 1) {
+            std::cout << "Constructing div matrix" << std::endl;
+        }
+       
+        if (max_local_idx == 0) {
+            std::cout << "idx not initialized, please call Assigning_idx()" << std::endl;
+        }
+
+        const auto dx_base = domain_->dx_base();
+
+        Div.resizing_row(max_local_idx+1);
+
+        int base_level = domain_->tree()->base_level();
+        for (int l = base_level; l < domain_->tree()->depth(); l++)
+        {
+            if (domain_->is_client())
+            {
+                auto client = domain_->decomposition().client();
+
+                //client->template buffer_exchange<idx_u_type>(base_level);
+                client->template buffer_exchange<idx_u_g_type>(l);
+
+                //client->template buffer_exchange<idx_p_type>(base_level);
+                client->template buffer_exchange<idx_p_g_type>(l);
+            }
+            for (auto it = domain_->begin(l);
+                 it != domain_->end(l); ++it)
+            {
+                float_type dx_level = dx_base / math::pow2(it->refinement_level());
+                if (!it->locally_owned() || !it->has_data()) continue;
+                if (!it->is_leaf()) continue;
+                if (it->is_correction())
+                {
+                    continue;
+                }
+                else
+                {
+                    for (auto& n : it->data())
+                    {
+                        int cur_idx = n(idx_p_type::tag(), 0);
+                        int glo_p_idx = n(idx_p_g_type::tag(), 0);
+
+                        int glo_p_idx_10 =
+                            n.at_offset(idx_p_g_type::tag(), -1, 0, 0);
+                        int glo_p_idx_01 =
+                            n.at_offset(idx_p_g_type::tag(), 0, -1, 0);
+
+                        if (cur_idx < 0) continue;
+
+                        if (glo_p_idx == set_zero_idx && p_set_zero)
+                        {
+                            //int glo_p_idx = n(idx_p_g_type::tag(), 0);
+                            Div.add_element(cur_idx, glo_p_idx, 1.0);
+                            continue;
+                        }
+
+                        
+                        int glo_idx_0 = n(idx_u_g_type::tag(), 0);
+                        int glo_idx_1 = n(idx_u_g_type::tag(), 1);
+
+                        Div.add_element(cur_idx, glo_idx_0, -1.0 / dx_level);
+                        Div.add_element(cur_idx, glo_idx_1, -1.0 / dx_level);
+
+                        int glo_idx_0_10 = n.at_offset(idx_u_g_type::tag(), 1, 0, 0);
+                        int glo_idx_1_01 = n.at_offset(idx_u_g_type::tag(), 0, 1, 1);
+
+                        if (glo_idx_0_10 <= 0 || glo_idx_1_01 <= 0) {
+                            continue;
+                        }
+
+                       
+
+                        glo_idx_0 = n.at_offset(idx_u_g_type::tag(), 1, 0, 0);
+                        Div.add_element(cur_idx, glo_idx_0, 1.0 / dx_level);
+
+                        glo_idx_1 = n.at_offset(idx_u_g_type::tag(), 0, 1, 1);
+                        Div.add_element(cur_idx, glo_idx_1, 1.0 / dx_level);
+
+                        int glo_idx_2 = n(idx_uz_g_type::tag(), 0);
+                        //Div.add_element(cur_idx, glo_idx_2, -mode_c);
+                    }
+                }
+            }
+        }
+        domain_->client_communicator().barrier();
+    }
+
+
+    void construction_Div_pressure_Poisson() {
+        //construction of Gradient
+        boost::mpi::communicator world;
+        world.barrier();
+
+        if (world.rank() == 0) {
+            return;
+        }
+
+        if (world.rank() == 1) {
+            std::cout << "Constructing div matrix using pressure Poisson equation" << std::endl;
+        }
+       
+        if (max_local_idx == 0) {
+            std::cout << "idx not initialized, please call Assigning_idx()" << std::endl;
+        }
+
+        const auto dx_base = domain_->dx_base();
+
+        Div.resizing_row(max_local_idx+1);
+
+        int base_level = domain_->tree()->base_level();
+        for (int l = base_level; l < domain_->tree()->depth(); l++)
+        {
+            if (domain_->is_client())
+            {
+                auto client = domain_->decomposition().client();
+
+                //client->template buffer_exchange<idx_u_type>(base_level);
+                client->template buffer_exchange<idx_u_g_type>(l);
+
+                //client->template buffer_exchange<idx_p_type>(base_level);
+                client->template buffer_exchange<idx_p_g_type>(l);
+            }
+            for (auto it = domain_->begin(l);
+                 it != domain_->end(l); ++it)
+            {
+                float_type dx_level = dx_base / math::pow2(it->refinement_level());
+                if (!it->locally_owned() || !it->has_data()) continue;
+                if (!it->is_leaf()) continue;
+                if (it->is_correction())
+                {
+                    /*for (auto& n : it->data())
+                    {
+                        int cur_idx = n(idx_p_type::tag(), 0);
+                        if (cur_idx < 0) continue;
+                        int glo_idx_0_0 = n(idx_u_g_type::tag(), 0);
+                        int glo_idx_1_0 = n(idx_u_g_type::tag(), 1);
+
+                        int glo_idx_0_1 =
+                            n.at_offset(idx_u_g_type::tag(), 1, 0, 0);
+                        int glo_idx_1_1 =
+                            n.at_offset(idx_u_g_type::tag(), 0, 1, 1);
+
+                        if (glo_idx_0_0 < 0 || glo_idx_0_1 < 0 ||
+                            glo_idx_1_0 < 0 || glo_idx_1_1 < 0)
+                        {
+                            continue;
+                        }
+
+                        Div.add_element(cur_idx, glo_idx_0_0, -1.0 / dx_level);
+                        Div.add_element(cur_idx, glo_idx_1_0, -1.0 / dx_level);
+                        Div.add_element(cur_idx, glo_idx_0_1, 1.0 / dx_level);
+                        Div.add_element(cur_idx, glo_idx_1_1, 1.0 / dx_level);
+                    }*/
+                    continue;
+                }
+                else
+                {
+                    for (auto& n : it->data())
+                    {
+                        int cur_idx = n(idx_p_type::tag(), 0);
+                        int glo_idx = n(idx_p_g_type::tag(), 0);
+
+                        float_type val_center = -4.0 / dx_level / dx_level - mode_c*mode_c;
+                        Div.add_element(cur_idx, glo_idx,
+                            val_center);
+                        glo_idx =
+                            n.at_offset(idx_p_g_type::tag(), 0, 1, 0);
+                        Div.add_element(cur_idx, glo_idx,
+                            1.0 / dx_level / dx_level);
+                        glo_idx =
+                            n.at_offset(idx_p_g_type::tag(), 1, 0, 0);
+                        Div.add_element(cur_idx, glo_idx,
+                            1.0 / dx_level / dx_level);
+                        glo_idx =
+                            n.at_offset(idx_p_g_type::tag(), 0, -1, 0);
+                        Div.add_element(cur_idx, glo_idx,
+                            1.0 / dx_level / dx_level);
+                        glo_idx =
+                            n.at_offset(idx_p_g_type::tag(), -1, 0, 0);
+                        Div.add_element(cur_idx, glo_idx,
+                            1.0 / dx_level / dx_level);
+
+                        glo_idx = n(idx_cs_g_type::tag(), 0);
+                        Div.add_element(cur_idx, glo_idx, 1.0);
+                    }
+                }
+            }
+        }
+        domain_->client_communicator().barrier();
+    }
+
+
+    void construction_Div_psource() {
+        //construction of Gradient
+        boost::mpi::communicator world;
+        world.barrier();
+
+        if (world.rank() == 0) {
+            return;
+        }
+
+        if (world.rank() == 1) {
+            std::cout << "Constructing div matrix" << std::endl;
+        }
+       
+        if (max_local_idx == 0) {
+            std::cout << "idx not initialized, please call Assigning_idx()" << std::endl;
+        }
+
+        const auto dx_base = domain_->dx_base();
+
+        Div_cs.resizing_row(max_local_idx+1);
+
+        int base_level = domain_->tree()->base_level();
+        for (int l = base_level; l < domain_->tree()->depth(); l++)
+        {
+            if (domain_->is_client())
+            {
+                auto client = domain_->decomposition().client();
+
+                //client->template buffer_exchange<idx_p_type>(base_level);
+                client->template buffer_exchange<idx_N_g_type>(l);
+                client->template buffer_exchange<idx_cs_g_type>(l);
+                client->template buffer_exchange<idx_cs_type>(l);
+            }
+            for (auto it = domain_->begin(l);
+                 it != domain_->end(l); ++it)
+            {
+                float_type dx_level = dx_base / math::pow2(it->refinement_level());
+                if (!it->locally_owned() || !it->has_data()) continue;
+                if (!it->is_leaf()) continue;
+                if (it->is_correction())
+                {
+                    /*for (auto& n : it->data())
+                    {
+                        int cur_idx = n(idx_p_type::tag(), 0);
+                        if (cur_idx < 0) continue;
+                        int glo_idx_0_0 = n(idx_u_g_type::tag(), 0);
+                        int glo_idx_1_0 = n(idx_u_g_type::tag(), 1);
+
+                        int glo_idx_0_1 =
+                            n.at_offset(idx_u_g_type::tag(), 1, 0, 0);
+                        int glo_idx_1_1 =
+                            n.at_offset(idx_u_g_type::tag(), 0, 1, 1);
+
+                        if (glo_idx_0_0 < 0 || glo_idx_0_1 < 0 ||
+                            glo_idx_1_0 < 0 || glo_idx_1_1 < 0)
+                        {
+                            continue;
+                        }
+
+                        Div.add_element(cur_idx, glo_idx_0_0, -1.0 / dx_level);
+                        Div.add_element(cur_idx, glo_idx_1_0, -1.0 / dx_level);
+                        Div.add_element(cur_idx, glo_idx_0_1, 1.0 / dx_level);
+                        Div.add_element(cur_idx, glo_idx_1_1, 1.0 / dx_level);
+                    }*/
+                    continue;
+                }
+                else
+                {
+                    for (auto& n : it->data())
+                    {
+                        int cur_idx = n(idx_cs_type::tag(), 0);
+                        int glo_cs_idx = n(idx_cs_g_type::tag(), 0);
+
+                        if (cur_idx < 0) continue;
+
+                        Div_cs.add_element(cur_idx, glo_cs_idx, -1.0);
+
+                        
+                        int glo_idx_0 = n(idx_N_g_type::tag(), 0);
+                        int glo_idx_1 = n(idx_N_g_type::tag(), 1);
+
+                        int glo_idx_00 = n.at_offset(idx_N_g_type::tag(), 1, 0, 0);
+
+                        int glo_idx_11 = n.at_offset(idx_N_g_type::tag(), 0, 1, 1);
+
+                        int glo_idx_2 = n(idx_Nz_g_type::tag(), 0);
+
+                        if (glo_idx_0 <= 0 || glo_idx_00 <= 0 || glo_idx_1 <= 0 || glo_idx_11 <= 0 || glo_idx_2 <= 0) continue;
+
+                        Div_cs.add_element(cur_idx, glo_idx_0, -1.0 / dx_level);
+                        Div_cs.add_element(cur_idx, glo_idx_1, -1.0 / dx_level);
+
+                        
+                        Div_cs.add_element(cur_idx, glo_idx_00, 1.0 / dx_level);
+
+                        
+                        Div_cs.add_element(cur_idx, glo_idx_11, 1.0 / dx_level);
+
+                        
+                        Div_cs.add_element(cur_idx, glo_idx_2, -mode_c); //ic*i = -c
+
+                        
+                    }
+                }
+            }
+        }
+        domain_->client_communicator().barrier();
+
+        this->template construct_upward_BC_intrp<idx_cs_type, idx_cs_g_type>(Div_cs);
+
+        domain_->client_communicator().barrier();
+    }
+
+    void construction_Curl() {
+        //construction of Gradient
+        boost::mpi::communicator world;
+        world.barrier();
+
+        if (world.rank() == 0) {
+            return;
+        }
+
+        if (world.rank() == 1) {
+            std::cout << "Constructing curl matrix" << std::endl;
+        }
+       
+        if (max_local_idx == 0) {
+            std::cout << "idx not initialized, please call Assigning_idx()" << std::endl;
+        }
+
+        const auto dx_base = domain_->dx_base();
+
+        Curl.resizing_row(max_local_idx+1);
+
+        int base_level = domain_->tree()->base_level();
+
+        for (int l = base_level; l < domain_->tree()->depth(); l++)
+        {
+            if (domain_->is_client())
+            {
+                auto client = domain_->decomposition().client();
+
+                client->template buffer_exchange<idx_u_g_type>(l);
+                client->template buffer_exchange<idx_uz_g_type>(l);
+                client->template buffer_exchange<idx_w_g_type>(l);
+            }
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            {
+                float_type dx_level = dx_base / math::pow2(it->refinement_level());
+                if (!it->locally_owned() || !it->has_data()) continue;
+                if (!it->is_leaf() && it->is_correction()) continue;
+                //if (!it->is_leaf()) continue;
+                //if (it->is_correction()) continue;
+                for (auto& n : it->data())
+                {
+                    int cur_idx_0 = n(idx_w_type::tag(), 0);
+                    int glo_idx_0 = n(idx_w_g_type::tag(), 0);
+
+                    if (cur_idx_0 < 0) continue;
+
+                    int cur_idx_1 = n(idx_w_type::tag(), 1);
+                    int glo_idx_1 = n(idx_w_g_type::tag(), 1);
+
+                    int cur_idx_2 = n(idx_w_type::tag(), 2);
+                    int glo_idx_2 = n(idx_w_g_type::tag(), 2);
+                    if (cur_idx_0 < 0) continue;
+                    int glo_idx_0_0 = n(idx_u_g_type::tag(), 0);
+                    int glo_idx_1_0 = n(idx_u_g_type::tag(), 1);
+                    int glo_idx_2_0 = n(idx_uz_g_type::tag(), 0);
+
+                    int glo_idx_0_1 =
+                        n.at_offset(idx_u_g_type::tag(), 0, -1, 0);
+                    int glo_idx_1_1 =
+                        n.at_offset(idx_u_g_type::tag(), -1, 0, 1);
+                    int glo_idx_2_10 =
+                        n.at_offset(idx_uz_g_type::tag(), -1, 0, 0);
+                    int glo_idx_2_01 =
+                        n.at_offset(idx_uz_g_type::tag(), 0, -1, 0);
+
+                    /*if (glo_idx_0_1 < 0 || glo_idx_1_1 < 0 || glo_idx_1_0 < 0 || glo_idx_1_0 < 0) {
+                        //zero out vorticity at boundary
+                        Curl.add_element(cur_idx_0, glo_idx_0, -1.0);
+                        Curl.add_element(cur_idx_1, glo_idx_1, -1.0);
+                        Curl.add_element(cur_idx_2, glo_idx_2, -1.0);
+                        continue;
+                    }*/
+
+                    Curl.add_element(cur_idx_0, glo_idx_2_01, -1.0 / dx_level);
+                    Curl.add_element(cur_idx_0, glo_idx_2_0, 1.0 / dx_level);
+                    //Curl.add_element(cur_idx_0, glo_idx_1_0, -mode_c);
+                    
+                    Curl.add_element(cur_idx_0, glo_idx_0, -1.0);
+
+                    Curl.add_element(cur_idx_1, glo_idx_2_10, 1.0 / dx_level);
+                    Curl.add_element(cur_idx_1, glo_idx_2_0, -1.0 / dx_level);
+                    //Curl.add_element(cur_idx_1, glo_idx_0_0, mode_c);
+                    
+                    Curl.add_element(cur_idx_1, glo_idx_1, -1.0);
+
+                    Curl.add_element(cur_idx_2, glo_idx_0_0, -1.0 / dx_level);
+                    Curl.add_element(cur_idx_2, glo_idx_1_0, 1.0 / dx_level);
+                    Curl.add_element(cur_idx_2, glo_idx_0_1, 1.0 / dx_level);
+                    Curl.add_element(cur_idx_2, glo_idx_1_1, -1.0 / dx_level);
+                    
+                    Curl.add_element(cur_idx_2, glo_idx_2, -1.0);
+                }
+            }
+        }
+        Curl.scale_entries(Curl_factor);
+        domain_->client_communicator().barrier();
+    }
+
+
+    void construction_Smearing(float_type factor = 1.0) {
+        //construction of smearing matrix
+        boost::mpi::communicator world;
+        world.barrier();
+
+        if (world.rank() == 0) {
+            return;
+        }
+
+        if (world.rank() == 1) {
+            std::cout << "Constructing smearing matrix" << std::endl;
+        }
+       
+        if (max_local_idx == 0) {
+            std::cout << "idx not initialized, please call Assigning_idx()" << std::endl;
+        }
+
+        const auto dx_base = domain_->dx_base();
+
+        smearing.resizing_row(max_local_idx+1);
+
+        int base_level = domain_->tree()->base_level();
+        int dpt = domain_->tree()->depth() - 1;
+
+        domain_->ib().communicator().compute_indices();
+
+        force_type tmp_f_idx_g = forcing_idx_g;
+        for (std::size_t i=0; i<tmp_f_idx_g.size(); ++i)
+        {
+
+            for (std::size_t d=0; d<tmp_f_idx_g[0].size(); ++d) {
+                if (tmp_f_idx_g[i][d] < 0) tmp_f_idx_g[i][d] = 0;
+            }
+        }
+        domain_->client_communicator().barrier();
+
+        real_coordinate_type tmp_coord(0.0);
+        force_type forcing_idx_all(domain_->ib().size(), tmp_coord);
+        if (domain_->ib().size() > 0)
+        {
+            boost::mpi::all_reduce(domain_->client_communicator(), &tmp_f_idx_g[0], domain_->ib().size(), &forcing_idx_all[0],
+                std::plus<real_coordinate_type>());
+        }
+
+        std::vector<int> tmp_fz_idx_g = forcing_z_idx_g;
+
+        for (std::size_t i=0; i<tmp_fz_idx_g.size(); ++i)
+        {
+            if (forcing_z_idx_g[i] < 0) tmp_fz_idx_g[i] = 0;
+            
+        }
+
+        std::vector<int> tmp_fz_idx_all(domain_->ib().size(), 0);
+
+        if (domain_->ib().size() > 0)
+        {
+            boost::mpi::all_reduce(domain_->client_communicator(), &tmp_fz_idx_g[0], domain_->ib().size(), &tmp_fz_idx_all[0],
+                std::plus<int>());
+        }
+
+        /*for (int i = 0; i < domain_->ib().size();i++) {
+            if (boost)
+        }*/
+        
+        //domain_->ib().communicator().communicate(true, forcing_idx_g);
+
+        if (domain_->is_client())
+        {
+            auto client = domain_->decomposition().client();
+
+            //client->template buffer_exchange<idx_u_type>(base_level);
+            client->template buffer_exchange<idx_u_g_type>(dpt);
+
+            //client->template buffer_exchange<idx_p_type>(base_level);
+            //client->template buffer_exchange<idx_p_g_type>(base_level);
+        }
+        for (std::size_t i=0; i<domain_->ib().size(); ++i)
+        {
+            std::size_t oct_i=0;
+            for (auto it: domain_->ib().influence_list(i))
+            {
+                if (!it->locally_owned()) continue;
+                auto ib_coord = domain_->ib().scaled_coordinate(i, it->refinement_level());
+
+                auto block = domain_->ib().influence_pts(i, oct_i);
+
+                for (auto& node : block)
+                {
+                    auto n_coord = node.level_coordinate();
+                    auto dist = n_coord - ib_coord;
+
+                    for (std::size_t field_idx = 0; field_idx < idx_u_type::nFields();
+                         field_idx++)
+                    {
+                        decltype(ib_coord) off(0.5);
+                        off[field_idx] = 0.0; // face data location
+
+                        auto ddf = domain_->ib().delta_func();
+
+                        float_type val = ddf(dist + off) * factor;
+                        if (std::abs(val) < 1e-12) {
+                            //std::cout << "uninfluenced node found with val " << val << std::endl;
+                            continue;
+                        }
+                        //int u_loc = node(idx_u_type::tag(),field_idx);
+                        //int f_glob = forcing_idx_g[i][field_idx];
+
+                        int N_loc = node(idx_N_type::tag(),field_idx);
+                        int u_loc = node(idx_u_type::tag(),field_idx);
+                        //int f_glob = forcing_idx_g[i][field_idx];
+                        int f_glob = forcing_idx_all[i][field_idx];
+                        smearing.add_element(N_loc, f_glob, val); //-1 is here for the sign of smearing w.r.t. nonlinear term
+                        //smearing.add_element(u_loc, f_glob, val);
+                        /*node(u, field_idx) +=
+                            f[field_idx] * ddf(dist + off) * factor;*/
+                    }
+
+                    decltype(ib_coord) off(0.5);
+                    //off[field_idx] = 0.0; // face data location
+
+                    auto ddf = domain_->ib().delta_func();
+
+                    float_type val = ddf(dist + off) * factor;
+                    if (std::abs(val) < 1e-12)
+                    {
+                        //std::cout << "uninfluenced node found with val " << val << std::endl;
+                        continue;
+                    }
+                    //int u_loc = node(idx_u_type::tag(),field_idx);
+                    //int f_glob = forcing_idx_g[i][field_idx];
+
+                    int N_loc = node(idx_Nz_type::tag(), 0);
+                    int u_loc = node(idx_uz_type::tag(), 0);
+                    //int f_glob = forcing_idx_g[i][field_idx];
+                    int f_glob = tmp_fz_idx_all[i];
+                    smearing.add_element(N_loc, f_glob, val); //-1 is here for the sign of smearing w.r.t. nonlinear term
+                    //smearing.add_element(u_loc, f_glob, val);
+                }
+
+                /*domain::Operator::ib_smearing<U>
+                    (ib_coord, f[i], domain_->ib().influence_pts(i, oct_i), domain_->ib().delta_func());*/
+                oct_i+=1;
+            }
+        }
+        domain_->client_communicator().barrier();
+    }
+
+    void construction_Projection()
+    {
+        //construction of projection
+        boost::mpi::communicator world;
+        world.barrier();
+
+        //if (world.rank() == 0) { return; }
+
+        if (world.rank() == 1)
+        {
+            std::cout << "Constructing projection matrix" << std::endl;
+            std::cout << "max idx is " << max_local_idx << std::endl;
+        }
+
+        if (max_local_idx == 0 && world.rank() != 0)
+        {
+            std::cout << "idx not initialized, please call Assigning_idx()"
+                      << std::endl;
+        }
+
+        const auto dx_base = domain_->dx_base();
+
+        if (world.rank() != 0) project.resizing_row(max_local_idx + 1);
+
+        
+        int base_level = domain_->tree()->base_level();
+
+        //int base_level = domain_->tree()->base_level();
+
+        //domain_->ib().communicator().compute_indices();
+        //domain_->ib().communicator().communicate(true, forcing_idx_g);
+
+        int dpt = domain_->tree()->depth() - 1;
+
+        if (domain_->is_client())
+        {
+            auto client = domain_->decomposition().client();
+
+            //client->template buffer_exchange<idx_u_type>(base_level);
+            client->template buffer_exchange<idx_u_g_type>(dpt);
+
+            //client->template buffer_exchange<idx_p_type>(base_level);
+            //client->template buffer_exchange<idx_p_g_type>(base_level);
+        }
+        for (std::size_t i = 0; i < domain_->ib().size(); ++i)
+        {
+            std::vector<int> ib_rank_vec;
+            int loc_ib_rank = domain_->ib().rank(i);
+            boost::mpi::gather(world, loc_ib_rank, ib_rank_vec, 0);
+            int ac_rank = -1;
+            if (world.rank() == 0)
+            {
+                for (int j = 0; j < ib_rank_vec.size(); j++)
+                {
+                    if (ac_rank > 0 && ib_rank_vec[j] > 0 &&
+                        ib_rank_vec[j] != ac_rank)
+                    {
+                        std::cout
+                            << "IB_rank wrong with two different positive ranks "
+                            << ac_rank << " and " << ib_rank_vec[j]
+                            << std::endl;
+                    }
+                    if (ib_rank_vec[j] > 0) { ac_rank = ib_rank_vec[j]; }
+                }
+                if (ac_rank < 0)
+                {
+                    std::cout << "No processors have the right IB rank"
+                              << std::endl;
+                }
+            }
+
+            int ib_rank = ac_rank;
+            boost::mpi::broadcast(world, ib_rank, 0);
+            if (world.rank() == 0) continue;
+            for (std::size_t field_idx = 0; field_idx < idx_u_g_type::nFields();
+                 field_idx++)
+            {
+                //if (world.rank() == 1) std::cout << "comm_ rank " << comm_.rank();
+                int f_loc = forcing_idx[i][field_idx];
+                if (domain_->ib().rank(i) != comm_.rank())
+                {
+                    //std::cout << "Rank " << world.rank() << " ib rank " << domain_->ib().rank(i) << std::endl;
+                    
+                    //compute and send to the target processor
+                    std::map<int, float_type> tmp_row;
+                    std::size_t oct_i = 0;
+
+                    for (auto it : domain_->ib().influence_list(i))
+                    {
+                        if (!it->locally_owned()) continue;
+                        auto ib_coord = domain_->ib().scaled_coordinate(i,
+                            it->refinement_level());
+
+                        auto block = domain_->ib().influence_pts(i, oct_i);
+
+                        for (auto& node : block)
+                        {
+                            auto n_coord = node.level_coordinate();
+                            auto dist = n_coord - ib_coord;
+
+                            decltype(ib_coord) off(0.5);
+                            off[field_idx] = 0.0; // face data location
+
+                            auto ddf = domain_->ib().delta_func();
+
+                            float_type val = ddf(dist + off);
+                            if (std::abs(val) < 1e-12) continue;
+                            int u_glob = node(idx_u_g_type::tag(), field_idx);
+                            //int f_loc = forcing_idx[i][field_idx];
+                            this->map_add_element(u_glob, val, tmp_row);
+                            /*node(u, field_idx) +=
+                            f[field_idx] * ddf(dist + off) * factor;*/
+                            
+                        }
+
+                        oct_i += 1;
+                    }
+                    //std::cout << "Rank " << world.rank() << "start sending" << std::endl;
+                    world.send(ib_rank, world.rank(), tmp_row);
+                } 
+                else
+                {
+                    //std::cout << "Rank " << world.rank() << " ib rank " << domain_->ib().rank(i) << std::endl;
+                    std::size_t oct_i = 0;
+
+                    for (auto it : domain_->ib().influence_list(i))
+                    {
+                        if (!it->locally_owned()) continue;
+                        auto ib_coord = domain_->ib().scaled_coordinate(i,
+                            it->refinement_level());
+
+                        auto block = domain_->ib().influence_pts(i, oct_i);
+
+                        for (auto& node : block)
+                        {
+                            auto n_coord = node.level_coordinate();
+                            auto dist = n_coord - ib_coord;
+
+                            decltype(ib_coord) off(0.5);
+                            off[field_idx] = 0.0; // face data location
+
+                            auto ddf = domain_->ib().delta_func();
+
+                            float_type val = ddf(dist + off);
+                            if (std::abs(val) < 1e-12) continue;
+                            int u_glob = node(idx_u_g_type::tag(), field_idx);
+                            
+                            project.add_element(f_loc, u_glob, val);
+                            /*node(u, field_idx) +=
+                            f[field_idx] * ddf(dist + off) * factor;*/
+                        }
+
+                        oct_i += 1;
+                    }
+
+                    for (int k = 1; k < world.size(); k++)
+                    {
+                        if (k == world.rank()) continue;
+                        std::map<int, float_type> res;
+                        world.recv(k, k, res);
+                        for (const auto& [key, val] : res)
+                        {
+                            project.add_element(f_loc, key, val);
+                        }
+                        //std::cout << "received " << k << std::endl;
+                    }
+                    //std::cout << "after recieving" << std::endl;
+                }
+                domain_->client_communicator().barrier();
+            }
+            //if (world.rank() == 1) std::cout << "comm_ rank " << comm_.rank();
+            int f_loc = forcing_z_idx[i];
+            if (domain_->ib().rank(i) != comm_.rank())
+            {
+                //std::cout << "Rank " << world.rank() << " ib rank " << domain_->ib().rank(i) << std::endl;
+
+                //compute and send to the target processor
+                std::map<int, float_type> tmp_row;
+                std::size_t               oct_i = 0;
+
+                for (auto it : domain_->ib().influence_list(i))
+                {
+                    if (!it->locally_owned()) continue;
+                    auto ib_coord = domain_->ib().scaled_coordinate(i,
+                        it->refinement_level());
+
+                    auto block = domain_->ib().influence_pts(i, oct_i);
+
+                    for (auto& node : block)
+                    {
+                        auto n_coord = node.level_coordinate();
+                        auto dist = n_coord - ib_coord;
+
+                        decltype(ib_coord) off(0.5);
+                        //off[field_idx] = 0.0; // face data location
+
+                        auto ddf = domain_->ib().delta_func();
+
+                        float_type val = ddf(dist + off);
+                        if (std::abs(val) < 1e-12) continue;
+                        int u_glob = node(idx_uz_g_type::tag());
+                        //int f_loc = forcing_idx[i][field_idx];
+                        this->map_add_element(u_glob, val, tmp_row);
+                        /*node(u, field_idx) +=
+                            f[field_idx] * ddf(dist + off) * factor;*/
+                    }
+
+                    oct_i += 1;
+                }
+                //std::cout << "Rank " << world.rank() << "start sending" << std::endl;
+                world.send(ib_rank, world.rank(), tmp_row);
+            }
+            else
+            {
+                //std::cout << "Rank " << world.rank() << " ib rank " << domain_->ib().rank(i) << std::endl;
+                std::size_t oct_i = 0;
+
+                for (auto it : domain_->ib().influence_list(i))
+                {
+                    if (!it->locally_owned()) continue;
+                    auto ib_coord = domain_->ib().scaled_coordinate(i,
+                        it->refinement_level());
+
+                    auto block = domain_->ib().influence_pts(i, oct_i);
+
+                    for (auto& node : block)
+                    {
+                        auto n_coord = node.level_coordinate();
+                        auto dist = n_coord - ib_coord;
+
+                        decltype(ib_coord) off(0.5);
+                        //off[field_idx] = 0.0; // face data location
+
+                        auto ddf = domain_->ib().delta_func();
+
+                        float_type val = ddf(dist + off);
+                        if (std::abs(val) < 1e-12) continue;
+                        int u_glob = node(idx_uz_g_type::tag());
+
+                        project.add_element(f_loc, u_glob, val);
+                        /*node(u, field_idx) +=
+                            f[field_idx] * ddf(dist + off) * factor;*/
+                    }
+
+                    oct_i += 1;
+                }
+
+                for (int k = 1; k < world.size(); k++)
+                {
+                    if (k == world.rank()) continue;
+                    std::map<int, float_type> res;
+                    world.recv(k, k, res);
+                    for (const auto& [key, val] : res)
+                    {
+                        project.add_element(f_loc, key, val);
+                    }
+                    //std::cout << "received " << k << std::endl;
+                }
+                //std::cout << "after recieving" << std::endl;
+            }
+            domain_->client_communicator().barrier();
+        }
+        world.barrier();
+    }
+
+    void construction_BCMat()
+    {
+        //construction of Gradient
+        boost::mpi::communicator world;
+        world.barrier();
+
+        /*if (world.rank() == 0) {
+            return;
+        }*/
+
+        if (world.rank() == 1)
+        {
+            std::cout << "Constructing BC matrix" << std::endl;
+        }
+
+        if (max_local_idx == 0 && world.rank() != 0)
+        {
+            std::cout << "idx not initialized, please call Assigning_idx()"
+                      << std::endl;
+        }
+
+        const auto dx_base = domain_->dx_base();
+        int        base_level = domain_->tree()->base_level();
+
+        boundary_u.resizing_row(max_local_idx + 1);
+
+        int counter = 0; //count the number of bc pts in this processor
+
+        if (world.rank() != 0)
+        {
+            for (auto it = domain_->begin(base_level);
+                 it != domain_->end(base_level); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
+                if (!it->is_leaf()) continue;
+                if (!it->is_correction()) continue;
+
+                for (auto& n : it->data())
+                {
+
+                    int cur_idx_p = n(idx_p_type::tag(), 0);
+
+                    if (cur_idx_p > 0) { counter++; }
+                }
+            }
+        }
+
+        world.barrier();
+
+        std::vector<int> tasks_vec;
+
+        tasks_vec.resize(world.size());
+
+        tasks_vec[0] = 0;
+
+        if (world.rank() == 0)
+        {
+            for (int i = 1; i < world.size(); i++)
+            {
+                int tmp_counter;
+                world.recv(i, i, tmp_counter);
+                tasks_vec[i] = tmp_counter;
+            }
+        }
+        else
+        {
+            world.send(0, world.rank(), counter);
+        }
+
+        world.barrier();
+
+        boost::mpi::broadcast(world, tasks_vec, 0);
+
+        if (world.rank() == 0)
+        {
+            std::cout << "Number of tasks received is " << tasks_vec.size()
+                      << std::endl;
+            int sum = 0;
+            for (int i = 0; i < tasks_vec.size(); i++) { sum += tasks_vec[i]; }
+            std::cout << "Number of node points need to compute " << sum
+                      << std::endl;
+        }
+
+        world.barrier();
+        /*if (world.rank() == 0) {
+            return;
+        }*/
+
+        //int base_level = domain_->tree()->base_level();
+
+        //domain_->ib().communicator().compute_indices();
+        //domain_->ib().communicator().communicate(true, forcing_idx_g);
+
+        if (domain_->is_client())
+        {
+            auto client = domain_->decomposition().client();
+
+            //client->template buffer_exchange<idx_u_type>(base_level);
+            //client->template buffer_exchange<idx_u_g_type>(base_level);
+
+            //client->template buffer_exchange<idx_p_type>(base_level);
+            client->template buffer_exchange<idx_p_g_type>(base_level);
+        }
+
+        for (int i = 1; i < tasks_vec.size(); i++)
+        {
+            int root_rank = domain_->client_communicator().rank();
+
+            boost::mpi::broadcast(world, root_rank, i);
+            if (world.rank() == 0) { continue; }
+            if (world.rank() == i)
+            {
+                std::cout << "Rank " << i << " root rank " << root_rank
+                          << std::endl;
+                for (auto it = domain_->begin(base_level);
+                     it != domain_->end(base_level); ++it)
+                {
+                    if (!it->locally_owned() || !it->has_data()) continue;
+                    if (!it->is_leaf()) continue;
+                    if (!it->is_correction()) continue;
+
+                    for (auto& n : it->data())
+                    {
+                        int cur_idx_p = n(idx_p_type::tag(), 0);
+
+                        if (cur_idx_p > 0)
+                        {
+                            int glob_idx_p = n(idx_p_g_type::tag(), 0);
+
+                            //function that inquires all the idx from other processors
+                            const auto& coord_cur = n.level_coordinate();
+
+                            std::map<int, float_type> row_u;
+                            std::map<int, float_type> row_v;
+                            std::map<int, float_type> row_p;
+
+                            if (use_FMM)
+                            {
+                                auto lb_c = it->data_r(idx_w_g_type::tag())
+                                                .real_block()
+                                                .base();
+                                get_BC_blk_from_client_FMM_p(lb_c, coord_cur, root_rank,
+                                    row_p);
+                            }
+                            else
+                            {
+                                get_BC_idx_from_client_p(coord_cur, root_rank,
+                                    row_p);
+                            }
+
+                            if (cur_idx_p > 0) {
+                            for (const auto& [key, val] : row_p)
+                            {
+                                boundary_u.add_element(cur_idx_p, key, val);
+                            }
+                            }
+
+                            //add the negative of identity here
+                            if (cur_idx_p > 0) boundary_u.add_element(cur_idx_p, glob_idx_p, -1.0);
+                        }
+                    }
+                }
+            }
+            else
+            {
+                for (int j = 0; j < tasks_vec[i]; j++)
+                {
+                    std::map<int, float_type> row_p;
+                    /*get_BC_idx_from_client(coordinate_type({0, 0}),
+                                root_rank, row_u,
+                                row_v);*/
+
+                    if (use_FMM)
+                    {
+                        get_BC_blk_from_client_FMM_p(coordinate_type({0, 0}),
+                            coordinate_type({0, 0}), root_rank, row_p);
+                    }
+                    else
+                    {
+                        get_BC_idx_from_client_p(coordinate_type({0, 0}),
+                            root_rank, row_p);
+                    }
+                }
+            }
+            domain_->client_communicator().barrier();
+        }
+
+        domain_->client_communicator().barrier();
+    }
+
+
+
+
+    void construction_BCMat_u()
+    {
+        //construction of Gradient
+        boost::mpi::communicator world;
+        world.barrier();
+
+        /*if (world.rank() == 0) {
+            return;
+        }*/
+
+        if (world.rank() == 1)
+        {
+            std::cout << "Constructing u BC matrix" << std::endl;
+        }
+
+        if (max_local_idx == 0 && world.rank() != 0)
+        {
+            std::cout << "idx not initialized, please call Assigning_idx()"
+                      << std::endl;
+        }
+
+        const auto dx_base = domain_->dx_base();
+        int        base_level = domain_->tree()->base_level();
+
+
+        int counter = 0; //count the number of bc pts in this processor
+
+        if (world.rank() != 0)
+        {
+            for (auto it = domain_->begin(base_level);
+                 it != domain_->end(base_level); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
+                if (!it->is_leaf()) continue;
+                if (!it->is_correction()) continue;
+
+                for (auto& n : it->data())
+                {
+
+                    int cur_idx_u = n(idx_u_type::tag(), 0);
+
+                    if (cur_idx_u > 0) { counter++; }
+                }
+            }
+        }
+
+        world.barrier();
+
+        std::vector<int> tasks_vec;
+
+        tasks_vec.resize(world.size());
+
+        tasks_vec[0] = 0;
+
+        if (world.rank() == 0)
+        {
+            for (int i = 1; i < world.size(); i++)
+            {
+                int tmp_counter;
+                world.recv(i, i, tmp_counter);
+                tasks_vec[i] = tmp_counter;
+            }
+        }
+        else
+        {
+            world.send(0, world.rank(), counter);
+        }
+
+        world.barrier();
+
+        boost::mpi::broadcast(world, tasks_vec, 0);
+
+        if (world.rank() == 0)
+        {
+            std::cout << "Number of tasks received is " << tasks_vec.size()
+                      << std::endl;
+            int sum = 0;
+            for (int i = 0; i < tasks_vec.size(); i++) { sum += tasks_vec[i]; }
+            std::cout << "Number of node points need to compute " << sum
+                      << std::endl;
+        }
+
+        world.barrier();
+        /*if (world.rank() == 0) {
+            return;
+        }*/
+
+        //int base_level = domain_->tree()->base_level();
+
+        //domain_->ib().communicator().compute_indices();
+        //domain_->ib().communicator().communicate(true, forcing_idx_g);
+
+        if (domain_->is_client())
+        {
+            auto client = domain_->decomposition().client();
+
+            client->template buffer_exchange<idx_u_type>(base_level);
+            client->template buffer_exchange<idx_u_g_type>(base_level);
+            client->template buffer_exchange<idx_uz_type>(base_level);
+            client->template buffer_exchange<idx_uz_g_type>(base_level);
+
+            //client->template buffer_exchange<idx_p_type>(base_level);
+            //client->template buffer_exchange<idx_p_g_type>(base_level);
+        }
+
+        for (int i = 1; i < tasks_vec.size(); i++)
+        {
+            int root_rank = domain_->client_communicator().rank();
+
+            boost::mpi::broadcast(world, root_rank, i);
+            if (world.rank() == 0) { continue; }
+            if (world.rank() == i)
+            {
+                std::cout << "Rank " << i << " root rank " << root_rank
+                          << std::endl;
+                for (auto it = domain_->begin(base_level);
+                     it != domain_->end(base_level); ++it)
+                {
+                    if (!it->locally_owned() || !it->has_data()) continue;
+                    if (!it->is_leaf()) continue;
+                    if (!it->is_correction()) continue;
+
+                    for (auto& n : it->data())
+                    {
+                        int cur_idx_u = n(idx_u_type::tag(), 0);
+                        int cur_idx_v = n(idx_u_type::tag(), 1);
+                        int cur_idx_w = n(idx_uz_type::tag(), 0);
+
+                        if (cur_idx_u > 0)
+                        {
+                            int glob_idx_u = n(idx_u_g_type::tag(), 0);
+                            int glob_idx_v = n(idx_u_g_type::tag(), 1);
+                            int glob_idx_w = n(idx_uz_g_type::tag(), 0);
+
+                            //function that inquires all the idx from other processors
+                            const auto& coord_cur = n.level_coordinate();
+
+                            std::map<int, float_type> row_u;
+                            std::map<int, float_type> row_v;
+                            std::map<int, float_type> row_w;
+
+                            if (use_FMM)
+                            {
+                                auto lb_c = it->data_r(idx_w_g_type::tag())
+                                                .real_block()
+                                                .base();
+                                get_BC_blk_from_client_FMM_w_real(lb_c, coord_cur, root_rank,
+                                    row_u, row_v, row_w);
+                            }
+                            else
+                            {
+                                //get_BC_idx_from_client_p(coord_cur, root_rank, row_p);
+                            }
+
+                            if (cur_idx_u > 0)
+                            {
+                                for (const auto& [key, val] : row_u)
+                                {
+                                    boundary_u.add_element(cur_idx_u, key, val);
+                                }
+                            }
+                            if (cur_idx_v > 0)
+                            {
+                                for (const auto& [key, val] : row_v)
+                                {
+                                    boundary_u.add_element(cur_idx_v, key, val);
+                                }
+                            }
+                            if (cur_idx_w > 0)
+                            {
+                                for (const auto& [key, val] : row_w)
+                                {
+                                    boundary_u.add_element(cur_idx_w, key, val);
+                                }
+                            }
+
+                            //add the negative of identity here
+                            if (cur_idx_u > 0) boundary_u.add_element(cur_idx_u, glob_idx_u, -1.0);
+                            if (cur_idx_v > 0) boundary_u.add_element(cur_idx_v, glob_idx_v, -1.0);
+                            if (cur_idx_w > 0) boundary_u.add_element(cur_idx_w, glob_idx_w, -1.0);
+                        }
+                    }
+                }
+            }
+            else
+            {
+                for (int j = 0; j < tasks_vec[i]; j++)
+                {
+                    std::map<int, float_type> row_u;
+                    std::map<int, float_type> row_v;
+                    std::map<int, float_type> row_w;
+                    /*get_BC_idx_from_client(coordinate_type({0, 0}),
+                                root_rank, row_u,
+                                row_v);*/
+
+                    if (use_FMM)
+                    {
+                        get_BC_blk_from_client_FMM_w_real(coordinate_type({0, 0}),
+                            coordinate_type({0, 0}), root_rank, row_u, row_v, row_w);
+                    }
+                    else
+                    {
+                        //get_BC_idx_from_client_p(coordinate_type({0, 0}), root_rank, row_p);
+                    }
+                }
+            }
+            domain_->client_communicator().barrier();
+        }
+
+        domain_->client_communicator().barrier();
+    }
+
+
+
+    void construction_BCMat_u_imag()
+    {
+        //construction of Gradient
+        boost::mpi::communicator world;
+        world.barrier();
+
+        /*if (world.rank() == 0) {
+            return;
+        }*/
+
+        if (world.rank() == 1)
+        {
+            std::cout << "Constructing u BC imaginary matrix" << std::endl;
+        }
+
+        if (max_local_idx == 0 && world.rank() != 0)
+        {
+            std::cout << "idx not initialized, please call Assigning_idx()"
+                      << std::endl;
+        }
+
+        const auto dx_base = domain_->dx_base();
+        int        base_level = domain_->tree()->base_level();
+
+
+        int counter = 0; //count the number of bc pts in this processor
+
+        if (world.rank() != 0)
+        {
+            for (auto it = domain_->begin(base_level);
+                 it != domain_->end(base_level); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
+                if (!it->is_leaf()) continue;
+                if (!it->is_correction()) continue;
+
+                for (auto& n : it->data())
+                {
+
+                    int cur_idx_u = n(idx_u_type::tag(), 0);
+
+                    if (cur_idx_u > 0) { counter++; }
+                }
+            }
+        }
+
+        world.barrier();
+
+        std::vector<int> tasks_vec;
+
+        tasks_vec.resize(world.size());
+
+        tasks_vec[0] = 0;
+
+        if (world.rank() == 0)
+        {
+            for (int i = 1; i < world.size(); i++)
+            {
+                int tmp_counter;
+                world.recv(i, i, tmp_counter);
+                tasks_vec[i] = tmp_counter;
+            }
+        }
+        else
+        {
+            world.send(0, world.rank(), counter);
+        }
+
+        world.barrier();
+
+        boost::mpi::broadcast(world, tasks_vec, 0);
+
+        if (world.rank() == 0)
+        {
+            std::cout << "Number of tasks received is " << tasks_vec.size()
+                      << std::endl;
+            int sum = 0;
+            for (int i = 0; i < tasks_vec.size(); i++) { sum += tasks_vec[i]; }
+            std::cout << "Number of node points need to compute " << sum
+                      << std::endl;
+        }
+
+        world.barrier();
+        /*if (world.rank() == 0) {
+            return;
+        }*/
+
+        //int base_level = domain_->tree()->base_level();
+
+        //domain_->ib().communicator().compute_indices();
+        //domain_->ib().communicator().communicate(true, forcing_idx_g);
+
+        if (domain_->is_client())
+        {
+            auto client = domain_->decomposition().client();
+
+            client->template buffer_exchange<idx_u_type>(base_level);
+            client->template buffer_exchange<idx_u_g_type>(base_level);
+            client->template buffer_exchange<idx_uz_type>(base_level);
+            client->template buffer_exchange<idx_uz_g_type>(base_level);
+
+            //client->template buffer_exchange<idx_p_type>(base_level);
+            //client->template buffer_exchange<idx_p_g_type>(base_level);
+        }
+
+        for (int i = 1; i < tasks_vec.size(); i++)
+        {
+            int root_rank = domain_->client_communicator().rank();
+
+            boost::mpi::broadcast(world, root_rank, i);
+            if (world.rank() == 0) { continue; }
+            if (world.rank() == i)
+            {
+                std::cout << "Rank " << i << " root rank " << root_rank
+                          << std::endl;
+                for (auto it = domain_->begin(base_level);
+                     it != domain_->end(base_level); ++it)
+                {
+                    if (!it->locally_owned() || !it->has_data()) continue;
+                    if (!it->is_leaf()) continue;
+                    if (!it->is_correction()) continue;
+
+                    for (auto& n : it->data())
+                    {
+                        int cur_idx_u = n(idx_u_type::tag(), 0);
+                        int cur_idx_v = n(idx_u_type::tag(), 1);
+                        int cur_idx_w = n(idx_uz_type::tag(), 0);
+
+                        if (cur_idx_u > 0)
+                        {
+                            int glob_idx_u = n(idx_u_g_type::tag(), 0);
+                            int glob_idx_v = n(idx_u_g_type::tag(), 1);
+                            int glob_idx_w = n(idx_uz_g_type::tag(), 0);
+
+                            //function that inquires all the idx from other processors
+                            const auto& coord_cur = n.level_coordinate();
+
+                            std::map<int, float_type> row_u;
+                            std::map<int, float_type> row_v;
+                            //std::map<int, float_type> row_w;
+
+                            if (use_FMM)
+                            {
+                                auto lb_c = it->data_r(idx_w_g_type::tag())
+                                                .real_block()
+                                                .base();
+                                get_BC_blk_from_client_FMM_w_imag(lb_c, coord_cur, root_rank,
+                                    row_u, row_v);
+                            }
+                            else
+                            {
+                                //get_BC_idx_from_client_p(coord_cur, root_rank, row_p);
+                            }
+
+                            if (cur_idx_u > 0)
+                            {
+                                for (const auto& [key, val] : row_u)
+                                {
+                                    Imag.add_element(cur_idx_u, key, val);
+                                }
+                            }
+                            if (cur_idx_v > 0)
+                            {
+                                for (const auto& [key, val] : row_v)
+                                {
+                                    Imag.add_element(cur_idx_v, key, val);
+                                }
+                            }
+
+                            //add the negative of identity here
+                            //if (cur_idx_u > 0) boundary_u.add_element(cur_idx_u, glob_idx_u, -1.0);
+                            //if (cur_idx_v > 0) boundary_u.add_element(cur_idx_v, glob_idx_v, -1.0);
+                            //if (cur_idx_w > 0) boundary_u.add_element(cur_idx_w, glob_idx_w, -1.0);
+                        }
+                    }
+                }
+            }
+            else
+            {
+                for (int j = 0; j < tasks_vec[i]; j++)
+                {
+                    std::map<int, float_type> row_u;
+                    std::map<int, float_type> row_v;
+                    //std::map<int, float_type> row_w;
+                    /*get_BC_idx_from_client(coordinate_type({0, 0}),
+                                root_rank, row_u,
+                                row_v);*/
+
+                    if (use_FMM)
+                    {
+                        get_BC_blk_from_client_FMM_w_imag(coordinate_type({0, 0}),
+                            coordinate_type({0, 0}), root_rank, row_u, row_v);
+                    }
+                    else
+                    {
+                        //get_BC_idx_from_client_p(coordinate_type({0, 0}), root_rank, row_p);
+                    }
+                }
+            }
+            domain_->client_communicator().barrier();
+        }
+
+        domain_->client_communicator().barrier();
+    }
+
+    void get_BC_idx_from_client_p(coordinate_type c, int root, std::map<int, float_type>& row_u) {
+        //Send and recv 
+        //send coordinates to other processes
+
+        //clear the destination matrix rows
+        row_u.clear();
+        //row_v.clear();
+
+        coordinate_type c_loc = c;
+        boost::mpi::broadcast(domain_->client_communicator(), c_loc, root);
+        //std::cout << root << " " <<domain_->client_communicator().rank() << " c is " << c_loc[0] << " " << c_loc[1] << std::endl;
+        std::map<int, float_type> loc_smat_u; //local resulting matrix to get BC
+        std::map<int, float_type> loc_smat_v; //local resulting matrix to get BC
+
+        int base_level = domain_->tree()->base_level();
+        const auto dx_base = domain_->dx_base();
+        if (domain_->is_client())
+        {
+            auto client = domain_->decomposition().client();
+
+            //client->template buffer_exchange<idx_u_type>(base_level);
+            client->template buffer_exchange<idx_u_g_type>(base_level);
+
+            //client->template buffer_exchange<idx_p_type>(base_level);
+            //client->template buffer_exchange<idx_p_g_type>(base_level);
+        }
+        for (auto it = domain_->begin(base_level);
+             it != domain_->end(base_level); ++it)
+        {
+            if (!it->locally_owned() || !it->has_data()) continue;
+            //if (!it->is_leaf()) continue;
+            //if (it->is_correction()) continue;
+
+            for (auto& n : it->data())
+            {
+                int u_idx_0 = n(idx_u_g_type::tag(), 0);
+                int u_idx_0_1 = n.at_offset(idx_u_g_type::tag(), 0, -1, 0);
+                int u_idx_1 = n(idx_u_g_type::tag(), 1);
+                int u_idx_1_1 = n.at_offset(idx_u_g_type::tag(), -1, 0, 1);
+
+                const auto& coord_loc = n.level_coordinate();
+
+                int x_c = c_loc[0] - coord_loc[0];
+                if (x_c != (c_loc[0] - coord_loc[0]))
+                {
+                    std::cout << "Coordinate type not INT" << std::endl;
+                }
+
+                int        y_c = c_loc[1] - coord_loc[1];
+
+                int factor = 1.0;
+    
+                float_type lgf_val_00 =
+                    lgf_lap_.derived().get(coordinate_type({x_c, y_c}));
+
+                if (kernel_vec.canUse()) {
+                    lgf_val_00 = kernel_vec.getValue(x_c, y_c);
+                }
+
+                //u = -1/dx * C^T L^inv (dx^2) 1/dx C
+                //so all dx cancels
+
+                int w_idx = n(idx_cs_g_type::tag(), 0);
+
+                this->map_add_element(w_idx, lgf_val_00*dx_base*dx_base, loc_smat_u);
+            }
+        }
+
+        domain_->client_communicator().barrier();
+        std::vector<std::map<int, float_type>> dest_mat_u;
+        //std::vector<std::map<int, float_type>> dest_mat_v;
+        boost::mpi::gather(domain_->client_communicator(), loc_smat_u, dest_mat_u, root);
+        //boost::mpi::gather(domain_->client_communicator(), loc_smat_v, dest_mat_v, root);
+
+        if (domain_->client_communicator().rank() != root) {
+            return;
+        }
+
+        for (int i = 0; i < dest_mat_u.size();i++) {
+            //accumulate vectors from other processors
+            map_add_map(dest_mat_u[i], row_u);
+        }
+    }
+
+
+    void get_BC_blk_from_client_FMM_p(coordinate_type lb_c_r, coordinate_type c, int root, 
+        std::map<int, float_type>& row_u)
+    {
+        //Send and recv
+        //send coordinates to other processes
+
+        //clear the destination matrix rows
+        boost::mpi::communicator world;
+        row_u.clear();
+
+        coordinate_type base = domain_->bounding_box().base();
+        coordinate_type c_loc = c - base;
+        coordinate_type lb_c= lb_c_r - base;
+
+        int N_ext = domain_->block_extent()[0];
+
+        coordinate_type center = -base; //find the center coordinate
+
+        for (int d = 0; d < center.size(); d++) {
+            int blk_idx_tmp = center[d]/N_ext;
+            center[d] = blk_idx_tmp*N_ext;
+        }
+        
+
+        boost::mpi::broadcast(domain_->client_communicator(), c_loc, root);
+        boost::mpi::broadcast(domain_->client_communicator(), lb_c, root);
+        //std::cout << root << " " <<domain_->client_communicator().rank() << " c is " << c_loc[0] << " " << c_loc[1] << std::endl;
+        std::map<int, float_type> loc_smat_u; //local resulting matrix to get BC
+        //std::map<int, float_type> loc_smat_v; //local resulting matrix to get BC
+
+        int        base_level = domain_->tree()->base_level();
+        const auto dx_base = domain_->dx_base();
+
+        for (int l = base_level; l >= 1; l--)
+        {
+            for (auto it = domain_->begin(l);
+                 it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
+                //if (!it->is_leaf() && l == base_level) continue;
+                if (it->is_correction() && l == base_level) continue;
+
+                //check if this block should be included
+                bool include_oct = false;
+                int N = domain_->block_extent()[0];
+                coordinate_type add_one;
+                add_one[0] = 1;
+                add_one[1] = 1;
+
+                int n_range_p = std::pow(2, base_level - l + 1) * N * FMM_fac;
+                int n_range_c = std::pow(2, base_level - l) * N * FMM_fac;
+                
+                auto cur_real_base = (it->data_r(idx_w_g_type::tag()).real_block().base() - base + add_one) * std::pow(2, base_level - l);
+                auto prt_real_base = (it->parent()->data_r(idx_w_g_type::tag()).real_block().base() - base + add_one) * std::pow(2, base_level - l + 1);
+                auto tar_real_base = lb_c + add_one;
+
+                //check if parents are neighbors
+                auto dist = tar_real_base - prt_real_base;
+                if (dist[0] >= -n_range_p && dist[0] < n_range_p * 2 &&
+                    dist[1] >= -n_range_p && dist[1] < n_range_p * 2) {
+                    include_oct = true;
+                }
+
+                if (FMM_include_center)
+                {
+                    //auto tar_real_center = center;
+                    auto dist = center - prt_real_base;
+                    if (dist[0] >= -n_range_p && dist[0] < n_range_p * 2 &&
+                        dist[1] >= -n_range_p && dist[1] < n_range_p * 2)
+                    {
+                        include_oct = true;
+                    }
+                }
+
+                auto dist_c = tar_real_base - cur_real_base;
+
+                if (l != base_level &&
+                    dist_c[0] >= -n_range_c && dist_c[0] < n_range_c * 2 &&
+                    dist_c[1] >= -n_range_c && dist_c[1] < n_range_c * 2) {
+                    include_oct = false;
+                }
+
+                
+                if (FMM_include_center)
+                {
+
+                    auto dist_c = center - cur_real_base;
+
+                    if (l != base_level && dist_c[0] >= -n_range_c &&
+                        dist_c[0] < n_range_c * 2 && dist_c[1] >= -n_range_c &&
+                        dist_c[1] < n_range_c * 2)
+                    {
+                        include_oct = false;
+                    }
+                }
+
+                if (!include_oct) continue;
+
+                if (l != base_level)
+                {
+                    int   N = domain_->block_extent()[0] + lBuffer + rBuffer;
+                    auto& lin_data_g =
+                        it->data_r(idx_cs_g_type::tag(), 0).linalg_data();
+                    for (int sub_i = 0; sub_i < N; sub_i++)
+                    {
+                        for (int sub_j = 0; sub_j < N; sub_j++)
+                        {
+                            auto real_base = it->data_r(idx_cs_g_type::tag())
+                                                 .real_block()
+                                                 .base() -
+                                             base;
+
+                            int x_c_tmp = (real_base[0] + sub_i) *
+                                          std::pow(2, base_level - l);
+                            int y_c_tmp = (real_base[1] + sub_j) *
+                                          std::pow(2, base_level - l);
+
+                            int x_c = c_loc[0] - x_c_tmp;
+                            if (x_c != (c_loc[0] - x_c_tmp))
+                            {
+                                std::cout << "Coordinate type not INT"
+                                          << std::endl;
+                            }
+
+                            int y_c = c_loc[1] - y_c_tmp;
+
+                            float_type lgf_val_00 = -lgf_lap_.derived().get(
+                                coordinate_type({x_c, y_c}));
+                            if (kernel_vec.canUse())
+                            {
+                                lgf_val_00 = -kernel_vec.getValue(x_c, y_c);
+                            }
+
+                            int cs_idx = lin_data_g.at(sub_i, sub_j);
+
+                            this->map_add_element(cs_idx, lgf_val_00*dx_base*dx_base, loc_smat_u);
+
+                            //this->map_add_element(w_idx, -v_weight * dx_base, loc_smat_v);
+                        }
+                    }
+                }
+
+                else
+                {
+                    for (auto& n : it->data())
+                    {
+                        const auto& coord_loc_level =
+                            n.level_coordinate() - base;
+                        const auto& coord_loc =
+                            coord_loc_level * std::pow(2, base_level - l);
+
+                        int x_c = c_loc[0] - coord_loc[0];
+                        if (x_c != (c_loc[0] - coord_loc[0]))
+                        {
+                            std::cout << "Coordinate type not INT" << std::endl;
+                        }
+
+                        int y_c = c_loc[1] - coord_loc[1];
+
+                        float_type lgf_val_00 =
+                            -lgf_lap_.derived().get(coordinate_type({x_c, y_c}));
+                        if (kernel_vec.canUse())
+                        {
+                            lgf_val_00 = -kernel_vec.getValue(x_c, y_c);
+                        }
+
+                        int cs_idx = n(idx_cs_g_type::tag(), 0);
+
+                        this->map_add_element(cs_idx, lgf_val_00*dx_base*dx_base,
+                            loc_smat_u);
+
+                        //this->map_add_element(w_idx, -v_weight * dx_base, loc_smat_v);
+                    }
+                }
+            }
+        }
+        domain_->client_communicator().barrier();
+        std::vector<std::map<int, float_type>> dest_mat_u;
+        //std::vector<std::map<int, float_type>> dest_mat_v;
+        boost::mpi::gather(domain_->client_communicator(), loc_smat_u, dest_mat_u, root);
+        //boost::mpi::gather(domain_->client_communicator(), loc_smat_v, dest_mat_v, root);
+
+        if (domain_->client_communicator().rank() != root) {
+            return;
+        }
+
+        for (int i = 0; i < dest_mat_u.size();i++) {
+            //accumulate vectors from other processors
+            map_add_map(dest_mat_u[i], row_u);
+        }
+    }
+
+    void get_BC_blk_from_client_FMM_w_real(coordinate_type lb_c_r, coordinate_type c, int root, 
+        std::map<int, float_type>& row_u, std::map<int, float_type>& row_v, std::map<int, float_type>& row_w)
+    {
+        //Send and recv
+        //send coordinates to other processes
+
+        //clear the destination matrix rows
+        boost::mpi::communicator world;
+        row_u.clear();
+        row_v.clear();
+        row_w.clear();
+
+        coordinate_type base = domain_->bounding_box().base();
+        coordinate_type c_loc = c - base;
+        coordinate_type lb_c= lb_c_r - base;
+
+        int N_ext = domain_->block_extent()[0];
+
+        coordinate_type center = -base; //find the center coordinate
+
+        for (int d = 0; d < center.size(); d++) {
+            int blk_idx_tmp = center[d]/N_ext;
+            center[d] = blk_idx_tmp*N_ext;
+        }
+        
+
+        boost::mpi::broadcast(domain_->client_communicator(), c_loc, root);
+        boost::mpi::broadcast(domain_->client_communicator(), lb_c, root);
+        //std::cout << root << " " <<domain_->client_communicator().rank() << " c is " << c_loc[0] << " " << c_loc[1] << std::endl;
+        std::map<int, float_type> loc_smat_u; //local resulting matrix to get BC
+        std::map<int, float_type> loc_smat_v; //local resulting matrix to get BC
+        std::map<int, float_type> loc_smat_w; //local resulting matrix to get BC
+
+        int        base_level = domain_->tree()->base_level();
+        const auto dx_base = domain_->dx_base();
+
+        for (int l = base_level; l >= 1; l--)
+        {
+            for (auto it = domain_->begin(l);
+                 it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
+                //if (!it->is_leaf() && l == base_level) continue;
+                if (it->is_correction() && l == base_level) continue;
+
+                //check if this block should be included
+                bool include_oct = false;
+                int N = domain_->block_extent()[0];
+                coordinate_type add_one;
+                add_one[0] = 1;
+                add_one[1] = 1;
+
+                int n_range_p = std::pow(2, base_level - l + 1) * N * FMM_fac;
+                int n_range_c = std::pow(2, base_level - l) * N * FMM_fac;
+                
+                auto cur_real_base = (it->data_r(idx_w_g_type::tag()).real_block().base() - base + add_one) * std::pow(2, base_level - l);
+                auto prt_real_base = (it->parent()->data_r(idx_w_g_type::tag()).real_block().base() - base + add_one) * std::pow(2, base_level - l + 1);
+                auto tar_real_base = lb_c + add_one;
+
+                //check if parents are neighbors
+                auto dist = tar_real_base - prt_real_base;
+                if (dist[0] >= -n_range_p && dist[0] < n_range_p * 2 &&
+                    dist[1] >= -n_range_p && dist[1] < n_range_p * 2) {
+                    include_oct = true;
+                }
+
+                if (FMM_include_center)
+                {
+                    //auto tar_real_center = center;
+                    auto dist = center - prt_real_base;
+                    if (dist[0] >= -n_range_p && dist[0] < n_range_p * 2 &&
+                        dist[1] >= -n_range_p && dist[1] < n_range_p * 2)
+                    {
+                        include_oct = true;
+                    }
+                }
+
+                auto dist_c = tar_real_base - cur_real_base;
+
+                if (l != base_level &&
+                    dist_c[0] >= -n_range_c && dist_c[0] < n_range_c * 2 &&
+                    dist_c[1] >= -n_range_c && dist_c[1] < n_range_c * 2) {
+                    include_oct = false;
+                }
+
+                
+                if (FMM_include_center)
+                {
+
+                    auto dist_c = center - cur_real_base;
+
+                    if (l != base_level && dist_c[0] >= -n_range_c &&
+                        dist_c[0] < n_range_c * 2 && dist_c[1] >= -n_range_c &&
+                        dist_c[1] < n_range_c * 2)
+                    {
+                        include_oct = false;
+                    }
+                }
+
+                if (!include_oct) continue;
+
+                if (l != base_level)
+                {
+                    int   N = domain_->block_extent()[0] + lBuffer + rBuffer;
+                    auto& lin_data_g_0 =
+                        it->data_r(idx_w_g_type::tag(), 0).linalg_data();
+                    auto& lin_data_g_1 =
+                        it->data_r(idx_w_g_type::tag(), 1).linalg_data();
+                    auto& lin_data_g_2 =
+                        it->data_r(idx_w_g_type::tag(), 2).linalg_data();
+                    for (int sub_i = 0; sub_i < N; sub_i++)
+                    {
+                        for (int sub_j = 0; sub_j < N; sub_j++)
+                        {
+                            auto real_base = it->data_r(idx_w_g_type::tag())
+                                                 .real_block()
+                                                 .base() -
+                                             base;
+
+                            int x_c_tmp = (real_base[0] + sub_i) *
+                                          std::pow(2, base_level - l);
+                            int y_c_tmp = (real_base[1] + sub_j) *
+                                          std::pow(2, base_level - l);
+
+                            int x_c = c_loc[0] - x_c_tmp;
+                            if (x_c != (c_loc[0] - x_c_tmp))
+                            {
+                                std::cout << "Coordinate type not INT"
+                                          << std::endl;
+                            }
+
+                            int y_c = c_loc[1] - y_c_tmp;
+
+                            float_type lgf_val_00 = lgf_lap_.derived().get(
+                                coordinate_type({x_c, y_c}));
+                            float_type lgf_val_01 = lgf_lap_.derived().get(
+                                coordinate_type({x_c, (y_c + 1)}));
+                            float_type lgf_val_10 = lgf_lap_.derived().get(
+                                coordinate_type({(x_c + 1), y_c}));
+                            if (kernel_vec.canUse())
+                            {
+                                lgf_val_00 = kernel_vec.getValue(x_c, y_c);
+                                lgf_val_01 = kernel_vec.getValue(x_c, y_c + 1);
+                                lgf_val_10 = kernel_vec.getValue(x_c + 1, y_c);
+                            }
+
+                            
+
+                            float_type u_weight   = (lgf_val_01 - lgf_val_00);
+                            float_type v_weight   = (lgf_val_00 - lgf_val_10);
+
+                            float_type w_weight_0 = (lgf_val_00 - lgf_val_01);
+
+                            float_type w_weight_1 = (lgf_val_10 - lgf_val_00);
+
+                            int w_idx_0 = lin_data_g_0.at(sub_i, sub_j);
+                            int w_idx_1 = lin_data_g_1.at(sub_i, sub_j);
+                            int w_idx_2 = lin_data_g_2.at(sub_i, sub_j);
+
+                            this->map_add_element(w_idx_2, -u_weight * dx_base,
+                                loc_smat_u);
+
+                            this->map_add_element(w_idx_2, -v_weight * dx_base,
+                                loc_smat_v);
+
+                            this->map_add_element(w_idx_0, -w_weight_1 * dx_base,
+                                loc_smat_w);
+                            this->map_add_element(w_idx_1, -w_weight_0 * dx_base,
+                                loc_smat_w);
+                        }
+                    }
+                }
+
+                else
+                {
+                    for (auto& n : it->data())
+                    {
+                        const auto& coord_loc_level =
+                            n.level_coordinate() - base;
+                        const auto& coord_loc =
+                            coord_loc_level * std::pow(2, base_level - l);
+
+                        int x_c = c_loc[0] - coord_loc[0];
+                        if (x_c != (c_loc[0] - coord_loc[0]))
+                        {
+                            std::cout << "Coordinate type not INT" << std::endl;
+                        }
+
+                        int y_c = c_loc[1] - coord_loc[1];
+
+                        float_type lgf_val_00 =
+                            lgf_lap_.derived().get(coordinate_type({x_c, y_c}));
+                        float_type lgf_val_01 = lgf_lap_.derived().get(
+                            coordinate_type({x_c, (y_c + 1)}));
+                        float_type lgf_val_10 = lgf_lap_.derived().get(
+                            coordinate_type({(x_c + 1), y_c}));
+                        if (kernel_vec.canUse())
+                        {
+                            lgf_val_00 = kernel_vec.getValue(x_c, y_c);
+                            lgf_val_01 = kernel_vec.getValue(x_c, y_c + 1);
+                            lgf_val_10 = kernel_vec.getValue(x_c + 1, y_c);
+                        }
+
+                        float_type u_weight = (lgf_val_01 - lgf_val_00);
+                        float_type v_weight = (lgf_val_00 - lgf_val_10);
+
+                        float_type w_weight_0 = (lgf_val_00 - lgf_val_01);
+
+                        float_type w_weight_1 = (lgf_val_10 - lgf_val_00);
+
+                        int w_idx_0 = n(idx_w_g_type::tag(), 0);
+                        int w_idx_1 = n(idx_w_g_type::tag(), 1);
+                        int w_idx_2 = n(idx_w_g_type::tag(), 2);
+
+                        this->map_add_element(w_idx_2, -u_weight * dx_base,
+                            loc_smat_u);
+
+                        this->map_add_element(w_idx_2, -v_weight * dx_base,
+                            loc_smat_v);
+
+                        this->map_add_element(w_idx_0, -w_weight_1 * dx_base,
+                            loc_smat_w);
+                        this->map_add_element(w_idx_1, -w_weight_0 * dx_base,
+                            loc_smat_w);
+                    }
+                }
+            }
+        }
+        domain_->client_communicator().barrier();
+        std::vector<std::map<int, float_type>> dest_mat_u;
+        std::vector<std::map<int, float_type>> dest_mat_v;
+        std::vector<std::map<int, float_type>> dest_mat_w;
+        boost::mpi::gather(domain_->client_communicator(), loc_smat_u, dest_mat_u, root);
+        boost::mpi::gather(domain_->client_communicator(), loc_smat_v, dest_mat_v, root);
+        boost::mpi::gather(domain_->client_communicator(), loc_smat_w, dest_mat_w, root);
+
+        if (domain_->client_communicator().rank() != root) {
+            return;
+        }
+
+        for (int i = 0; i < dest_mat_u.size();i++) {
+            //accumulate vectors from other processors
+            map_add_map(dest_mat_u[i], row_u);
+        }
+
+        for (int i = 0; i < dest_mat_v.size();i++) {
+            //accumulate vectors from other processors
+            map_add_map(dest_mat_v[i], row_v);
+        }
+
+        for (int i = 0; i < dest_mat_v.size();i++) {
+            //accumulate vectors from other processors
+            map_add_map(dest_mat_w[i], row_w);
+        }
+    }
+
+
+    void get_BC_blk_from_client_FMM_w_imag(coordinate_type lb_c_r, coordinate_type c, int root, 
+        std::map<int, float_type>& row_u, std::map<int, float_type>& row_v)
+    {
+                //Send and recv
+        //send coordinates to other processes
+
+        //clear the destination matrix rows
+        boost::mpi::communicator world;
+        row_u.clear();
+        row_v.clear();
+
+        coordinate_type base = domain_->bounding_box().base();
+        coordinate_type c_loc = c - base;
+        coordinate_type lb_c= lb_c_r - base;
+
+        int N_ext = domain_->block_extent()[0];
+
+        coordinate_type center = -base; //find the center coordinate
+
+        for (int d = 0; d < center.size(); d++) {
+            int blk_idx_tmp = center[d]/N_ext;
+            center[d] = blk_idx_tmp*N_ext;
+        }
+        
+
+        boost::mpi::broadcast(domain_->client_communicator(), c_loc, root);
+        boost::mpi::broadcast(domain_->client_communicator(), lb_c, root);
+        //std::cout << root << " " <<domain_->client_communicator().rank() << " c is " << c_loc[0] << " " << c_loc[1] << std::endl;
+        std::map<int, float_type> loc_smat_u; //local resulting matrix to get BC
+        std::map<int, float_type> loc_smat_v; //local resulting matrix to get BC
+
+        int        base_level = domain_->tree()->base_level();
+        const auto dx_base = domain_->dx_base();
+
+        for (int l = base_level; l >= 1; l--)
+        {
+            for (auto it = domain_->begin(l);
+                 it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
+                //if (!it->is_leaf() && l == base_level) continue;
+                if (it->is_correction() && l == base_level) continue;
+
+                //check if this block should be included
+                bool include_oct = false;
+                int N = domain_->block_extent()[0];
+                coordinate_type add_one;
+                add_one[0] = 1;
+                add_one[1] = 1;
+
+                int n_range_p = std::pow(2, base_level - l + 1) * N * FMM_fac;
+                int n_range_c = std::pow(2, base_level - l) * N * FMM_fac;
+                
+                auto cur_real_base = (it->data_r(idx_w_g_type::tag()).real_block().base() - base + add_one) * std::pow(2, base_level - l);
+                auto prt_real_base = (it->parent()->data_r(idx_w_g_type::tag()).real_block().base() - base + add_one) * std::pow(2, base_level - l + 1);
+                auto tar_real_base = lb_c + add_one;
+
+                //check if parents are neighbors
+                auto dist = tar_real_base - prt_real_base;
+                if (dist[0] >= -n_range_p && dist[0] < n_range_p * 2 &&
+                    dist[1] >= -n_range_p && dist[1] < n_range_p * 2) {
+                    include_oct = true;
+                }
+
+                if (FMM_include_center)
+                {
+                    //auto tar_real_center = center;
+                    auto dist = center - prt_real_base;
+                    if (dist[0] >= -n_range_p && dist[0] < n_range_p * 2 &&
+                        dist[1] >= -n_range_p && dist[1] < n_range_p * 2)
+                    {
+                        include_oct = true;
+                    }
+                }
+
+                auto dist_c = tar_real_base - cur_real_base;
+
+                if (l != base_level &&
+                    dist_c[0] >= -n_range_c && dist_c[0] < n_range_c * 2 &&
+                    dist_c[1] >= -n_range_c && dist_c[1] < n_range_c * 2) {
+                    include_oct = false;
+                }
+
+                
+                if (FMM_include_center)
+                {
+
+                    auto dist_c = center - cur_real_base;
+
+                    if (l != base_level && dist_c[0] >= -n_range_c &&
+                        dist_c[0] < n_range_c * 2 && dist_c[1] >= -n_range_c &&
+                        dist_c[1] < n_range_c * 2)
+                    {
+                        include_oct = false;
+                    }
+                }
+
+                if (!include_oct) continue;
+
+                if (l != base_level)
+                {
+                    int   N = domain_->block_extent()[0] + lBuffer + rBuffer;
+                    auto& lin_data_g_0 =
+                        it->data_r(idx_w_g_type::tag(), 0).linalg_data();
+                    auto& lin_data_g_1 =
+                        it->data_r(idx_w_g_type::tag(), 1).linalg_data();
+                    auto& lin_data_g_2 =
+                        it->data_r(idx_w_g_type::tag(), 2).linalg_data();
+                    for (int sub_i = 0; sub_i < N; sub_i++)
+                    {
+                        for (int sub_j = 0; sub_j < N; sub_j++)
+                        {
+                            auto real_base = it->data_r(idx_w_g_type::tag())
+                                                 .real_block()
+                                                 .base() -
+                                             base;
+
+                            int x_c_tmp = (real_base[0] + sub_i) *
+                                          std::pow(2, base_level - l);
+                            int y_c_tmp = (real_base[1] + sub_j) *
+                                          std::pow(2, base_level - l);
+
+                            int x_c = c_loc[0] - x_c_tmp;
+                            if (x_c != (c_loc[0] - x_c_tmp))
+                            {
+                                std::cout << "Coordinate type not INT"
+                                          << std::endl;
+                            }
+
+                            int y_c = c_loc[1] - y_c_tmp;
+
+                            float_type lgf_val_00 = lgf_lap_.derived().get(
+                                coordinate_type({x_c, y_c}));
+                            float_type lgf_val_01 = lgf_lap_.derived().get(
+                                coordinate_type({x_c, (y_c + 1)}));
+                            float_type lgf_val_10 = lgf_lap_.derived().get(
+                                coordinate_type({(x_c + 1), y_c}));
+                            if (kernel_vec.canUse())
+                            {
+                                lgf_val_00 = kernel_vec.getValue(x_c, y_c);
+                                lgf_val_01 = kernel_vec.getValue(x_c, y_c + 1);
+                                lgf_val_10 = kernel_vec.getValue(x_c + 1, y_c);
+                            }
+
+                            
+
+                            float_type u_weight   = (lgf_val_01 - lgf_val_00);
+                            float_type v_weight   = (lgf_val_00 - lgf_val_10);
+
+                            float_type w_weight_0 = (lgf_val_00 - lgf_val_01);
+
+                            float_type w_weight_1 = (lgf_val_10 - lgf_val_00);
+
+                            int w_idx_0 = lin_data_g_0.at(sub_i, sub_j);
+                            int w_idx_1 = lin_data_g_1.at(sub_i, sub_j);
+                            int w_idx_2 = lin_data_g_2.at(sub_i, sub_j);
+
+                            this->map_add_element(w_idx_1, mode_c*lgf_val_00*dx_base*dx_base,
+                                loc_smat_u);
+
+                            this->map_add_element(w_idx_0, -mode_c*lgf_val_00*dx_base*dx_base,
+                                loc_smat_v);
+                        }
+                    }
+                }
+
+                else
+                {
+                    for (auto& n : it->data())
+                    {
+                        const auto& coord_loc_level =
+                            n.level_coordinate() - base;
+                        const auto& coord_loc =
+                            coord_loc_level * std::pow(2, base_level - l);
+
+                        int x_c = c_loc[0] - coord_loc[0];
+                        if (x_c != (c_loc[0] - coord_loc[0]))
+                        {
+                            std::cout << "Coordinate type not INT" << std::endl;
+                        }
+
+                        int y_c = c_loc[1] - coord_loc[1];
+
+                        float_type lgf_val_00 =
+                            lgf_lap_.derived().get(coordinate_type({x_c, y_c}));
+                        float_type lgf_val_01 = lgf_lap_.derived().get(
+                            coordinate_type({x_c, (y_c + 1)}));
+                        float_type lgf_val_10 = lgf_lap_.derived().get(
+                            coordinate_type({(x_c + 1), y_c}));
+                        if (kernel_vec.canUse())
+                        {
+                            lgf_val_00 = kernel_vec.getValue(x_c, y_c);
+                            lgf_val_01 = kernel_vec.getValue(x_c, y_c + 1);
+                            lgf_val_10 = kernel_vec.getValue(x_c + 1, y_c);
+                        }
+
+                        float_type u_weight = (lgf_val_01 - lgf_val_00);
+                        float_type v_weight = (lgf_val_00 - lgf_val_10);
+
+                        float_type w_weight_0 = (lgf_val_00 - lgf_val_01);
+
+                        float_type w_weight_1 = (lgf_val_10 - lgf_val_00);
+
+                        int w_idx_0 = n(idx_w_g_type::tag(), 0);
+                        int w_idx_1 = n(idx_w_g_type::tag(), 1);
+                        int w_idx_2 = n(idx_w_g_type::tag(), 2);
+
+                        this->map_add_element(w_idx_1, mode_c * lgf_val_00*dx_base*dx_base,
+                            loc_smat_u);
+
+                        this->map_add_element(w_idx_0, -mode_c * lgf_val_00*dx_base*dx_base,
+                            loc_smat_v);
+                    }
+                }
+            }
+        }
+        domain_->client_communicator().barrier();
+        std::vector<std::map<int, float_type>> dest_mat_u;
+        std::vector<std::map<int, float_type>> dest_mat_v;
+        boost::mpi::gather(domain_->client_communicator(), loc_smat_u, dest_mat_u, root);
+        boost::mpi::gather(domain_->client_communicator(), loc_smat_v, dest_mat_v, root);
+
+        if (domain_->client_communicator().rank() != root) {
+            return;
+        }
+
+        for (int i = 0; i < dest_mat_u.size();i++) {
+            //accumulate vectors from other processors
+            map_add_map(dest_mat_u[i], row_u);
+        }
+
+        for (int i = 0; i < dest_mat_v.size();i++) {
+            //accumulate vectors from other processors
+            map_add_map(dest_mat_v[i], row_v);
+        }
+    }
+
+
+    void construct_upward_intrp() {
+        boost::mpi::communicator world;
+        world.barrier();
+
+        if (world.rank() == 0) {
+            return;
+        }
+
+        if (world.rank() == 1) {
+            std::cout << "Constructing upward interpolation matrix" << std::endl;
+        }
+       
+        if (max_local_idx == 0 && world.rank() != 0) {
+            std::cout << "idx not initialized, please call Assigning_idx()" << std::endl;
+        }
+
+        const auto dx_base = domain_->dx_base();
+        int base_level = domain_->tree()->base_level();
+
+        upward_intrp.resizing_row(max_local_idx+1);
+
+        /*if (domain_->is_client())
+        {
+            auto client = domain_->decomposition().client();
+
+            //client->template buffer_exchange<idx_u_type>(base_level);
+            client->template buffer_exchange<idx_w_g_type>(base_level);
+            
+        }*/
+
+        auto c_cntr_nli = psolver.c_cntr_nli();
+
+        for (int l = base_level - 1; l >= 0; l--)
+        {
+            /*if (domain_->is_client())
+            {
+                auto client = domain_->decomposition().client();
+
+                //client->template buffer_exchange<idx_u_type>(base_level);
+                client->template buffer_exchange<idx_w_g_type>(l + 1);
+            }*/
+            for (auto it = domain_->begin(l);
+                 it != domain_->end(l); ++it)
+            {
+                //if (!it->locally_owned() || !it->has_data()) continue;
+                //if (!it->is_leaf()) continue;
+                //if (!it->is_correction()) continue;
+                const int num_child = it->num_children();
+                //octant_base_t oct_base_tmp(coordinate_type({0,0}), base_level);
+                //std::vector<octant_t> octant_vec(num_child, octant_t(oct_base_tmp));
+                std::vector<std::vector<int>> idx_vec;
+                idx_vec.resize(num_child);
+
+                int N = it->data().descriptor().extent()[0];
+
+                int idx_size = (N+2) * (N+2);
+                /*for (int i = 0; i < num_child;i++) {
+                    idx_vec[i].resize(idx_size);
+                }*/
+                if (it->locally_owned() && it->has_data()) {
+                    
+                    //octant located in this processor, need to receive data
+                    //octant_vec.resize(num_child);
+                    for (int i = 0; i < it->num_children(); i++) {
+                        auto child = it->child(i);
+                        if (child && child->locally_owned() && child->has_data()) {
+                            idx_vec[i].resize(idx_size);
+
+                            auto child_idx_vec = child->data_r(idx_w_g_type::tag(), 0).linalg_data();
+
+                            for (int idx_i = 0; idx_i < (N + 2); idx_i++) {
+                                for (int idx_j = 0; idx_j < (N + 2); idx_j++) {
+                                    int loc_idx = idx_i * (N + 2) + idx_j;
+                                    idx_vec[i][loc_idx] = child_idx_vec.at(idx_i, idx_j);
+                                }
+                            }
+
+
+                            //octant_vec[i] = (*child);
+                            continue;
+                        }
+                        else if (child) {
+                            
+                            int source_rank = child->rank();
+
+                            int tag_val = child->global_id();
+
+                            idx_vec[i].resize(idx_size);
+                            //std::cout << "Receiving at rank " << world.rank() << " gid is " << tag_val << std::endl;
+
+                            //world.recv(source_rank, tag_val, octant_vec[i]);
+                            world.recv(source_rank, tag_val, idx_vec[i]);
+                        }
+                    }
+                }
+                else {
+                    //search for children is on this processor
+                    for (int i = 0; i < it->num_children(); i++)
+                    {
+                        auto child = it->child(i);
+                        int parent_rank = it->rank();
+                        if (!child || !child->locally_owned() || !child->has_data()) continue;
+
+                        std::vector<int> tmp_idx_vec;
+
+                        tmp_idx_vec.resize(idx_size);
+
+                        auto child_idx_vec =
+                            child->data_r(idx_w_g_type::tag(), 0).linalg_data();
+
+                        for (int idx_i = 0; idx_i < (N + 2); idx_i++)
+                        {
+                            for (int idx_j = 0; idx_j < (N + 2);
+                                 idx_j++)
+                            {
+                                int loc_idx = idx_i * (N + 2) + idx_j;
+                                tmp_idx_vec[loc_idx] =
+                                    child_idx_vec.at(idx_i, idx_j);
+                            }
+                        }
+
+                        int tag_val = child->global_id();
+                        //std::cout << "Sending at rank " << world.rank() << " gid is " << tag_val << std::endl;
+                        world.send(parent_rank, tag_val, tmp_idx_vec);
+                    }
+                }
+
+                //domain_->client_communicator().barrier();
+
+                //std::cout << "rank " << world.rank() << " finished communication " << "level " << l << std::endl;
+
+                if (it->locally_owned() && it->has_data()) {
+                    int N = it->data().descriptor().extent()[0];
+                    auto& lin_data = it->data_r(idx_w_type::tag(), 0).linalg_data();
+                    auto& lin_data_g = it->data_r(idx_w_g_type::tag(), 0).linalg_data();
+                    //start computing the matrix
+                    for (int i = 0; i < N+2; i++) {
+                        for (int j = 0; j < N+2; j++) {
+
+                            //if (l <= 4) std::cout << "rank " << world.rank() << " level " << l << " i " << i << " j " << j << std::endl; 
+                            //get current idx
+                            int cur_idx = lin_data.at(i, j);
+                            int cur_g_idx = lin_data_g.at(i, j);
+                            if (cur_idx < 0) {
+                                std::cout << "cur_idx < 0 in constructing upward interpolation matrix" << std::endl;
+                            }
+                            upward_intrp.add_element(cur_idx, cur_g_idx, -1.0);
+
+                            //if (l <= 4) std::cout << "rank " << world.rank() << " level " << l << " i " << i << " j " << j << " cur idx " << cur_idx << " g idx " << cur_g_idx << std::endl; 
+
+                            for (int child_idx = 0; child_idx < it->num_children(); child_idx++) {
+
+                                //if (l <= 4) std::cout << "rank " << world.rank() << " level " << l << " child idx " << child_idx << std::endl; 
+                                auto child = it->child(child_idx);
+                                //int  n = lin_data_g->shape()[0];
+                                int  idx_x = (child_idx & (1 << 0)) >> 0;
+                                int  idx_y = (child_idx & (1 << 1)) >> 1;
+
+                                //idx_x += 1;
+                                //idx_y += 1;
+                                //this indexing is only for 2D
+
+                                auto x_intrp_mat = c_cntr_nli_.antrp_mat_sub_[idx_x].data_;
+                                auto y_intrp_mat = c_cntr_nli_.antrp_mat_sub_[idx_y].data_;
+
+                                //auto child_cur = octant_vec[child_idx];
+
+                                //if (!child || !child_cur.has_data()) continue;
+
+                                if (idx_vec[child_idx].size() == 0) continue;
+
+                                //auto& child_idx_vec = octant_vec[child_idx].data_r(idx_w_g_type::tag(), 0).linalg_data();
+                                //auto child_idx_vec = child_cur.data_r(idx_w_g_type::tag(), 0).linalg_data();
+                                if (l != (base_level - 1))
+                                {
+                                    for (int sub_i = 0; sub_i < (N + 2);
+                                         sub_i++)
+                                    {
+                                        for (int sub_j = 0; sub_j < (N + 2);
+                                             sub_j++)
+                                        {
+                                            /*int              child_idx_g =
+                                                child_idx_vec.at(sub_i, sub_j);*/
+                                            int loc_idx = sub_i * (N + 2) + sub_j;
+                                            int child_idx_g = idx_vec[child_idx][loc_idx];
+                                            float_type val_x =
+                                                x_intrp_mat.at(i, sub_i);
+                                            float_type val_y =
+                                                y_intrp_mat.at(j, sub_j);
+                                            float_type val_t = val_x * val_y;
+                                            if (std::abs(val_t) < 1e-15)
+                                                continue;
+                                            upward_intrp.add_element(cur_idx,
+                                                child_idx_g, val_t);
+                                        }
+                                    }
+                                }
+
+                                else
+                                {
+                                    for (int sub_i = 1; sub_i < (N + 1);
+                                         sub_i++)
+                                    {
+                                        for (int sub_j = 1; sub_j < (N + 1);
+                                             sub_j++)
+                                        {
+                                            /*int              child_idx_g =
+                                                child_idx_vec.at(sub_i, sub_j);*/
+
+                                            int loc_idx = sub_i * (N + 2) + sub_j;
+                                            int child_idx_g = idx_vec[child_idx][loc_idx];
+                                            float_type val_x =
+                                                x_intrp_mat.at(i, sub_i);
+                                            float_type val_y =
+                                                y_intrp_mat.at(j, sub_j);
+                                            float_type val_t = val_x * val_y;
+                                            if (std::abs(val_t) < 1e-15)
+                                                continue;
+                                            upward_intrp.add_element(cur_idx,
+                                                child_idx_g, val_t);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                //std::cout << "rank " << world.rank() << " finished computing " << "level " << l << std::endl;
+            }
+
+            //domain_->client_communicator().barrier();
+        }
+
+        upward_intrp.scale_entries(Curl_factor);
+
+        domain_->client_communicator().barrier();
+
+        //source of pressure
+        for (int l = base_level - 1; l >= 0; l--)
+        {
+            /*if (domain_->is_client())
+            {
+                auto client = domain_->decomposition().client();
+
+                //client->template buffer_exchange<idx_u_type>(base_level);
+                client->template buffer_exchange<idx_w_g_type>(l + 1);
+            }*/
+            for (auto it = domain_->begin(l);
+                 it != domain_->end(l); ++it)
+            {
+                //if (!it->locally_owned() || !it->has_data()) continue;
+                //if (!it->is_leaf()) continue;
+                //if (!it->is_correction()) continue;
+                const int num_child = it->num_children();
+                //octant_base_t oct_base_tmp(coordinate_type({0,0}), base_level);
+                //std::vector<octant_t> octant_vec(num_child, octant_t(oct_base_tmp));
+                std::vector<std::vector<int>> idx_vec;
+                idx_vec.resize(num_child);
+
+                int N = it->data().descriptor().extent()[0];
+
+                int idx_size = (N+2) * (N+2);
+                /*for (int i = 0; i < num_child;i++) {
+                    idx_vec[i].resize(idx_size);
+                }*/
+                if (it->locally_owned() && it->has_data()) {
+                    
+                    //octant located in this processor, need to receive data
+                    //octant_vec.resize(num_child);
+                    for (int i = 0; i < it->num_children(); i++) {
+                        auto child = it->child(i);
+                        if (child && child->locally_owned() && child->has_data()) {
+                            idx_vec[i].resize(idx_size);
+
+                            auto child_idx_vec = child->data_r(idx_cs_g_type::tag(), 0).linalg_data();
+
+                            for (int idx_i = 0; idx_i < (N + 2); idx_i++) {
+                                for (int idx_j = 0; idx_j < (N + 2); idx_j++) {
+                                    int loc_idx = idx_i * (N + 2) + idx_j;
+                                    idx_vec[i][loc_idx] = child_idx_vec.at(idx_i, idx_j);
+                                }
+                            }
+
+
+                            //octant_vec[i] = (*child);
+                            continue;
+                        }
+                        else if (child) {
+                            
+                            int source_rank = child->rank();
+
+                            int tag_val = child->global_id();
+
+                            idx_vec[i].resize(idx_size);
+                            //std::cout << "Receiving at rank " << world.rank() << " gid is " << tag_val << std::endl;
+
+                            //world.recv(source_rank, tag_val, octant_vec[i]);
+                            world.recv(source_rank, tag_val, idx_vec[i]);
+                        }
+                    }
+                }
+                else {
+                    //search for children is on this processor
+                    for (int i = 0; i < it->num_children(); i++)
+                    {
+                        auto child = it->child(i);
+                        int parent_rank = it->rank();
+                        if (!child || !child->locally_owned() || !child->has_data()) continue;
+
+                        std::vector<int> tmp_idx_vec;
+
+                        tmp_idx_vec.resize(idx_size);
+
+                        auto child_idx_vec =
+                            child->data_r(idx_cs_g_type::tag(), 0).linalg_data();
+
+                        for (int idx_i = 0; idx_i < (N + 2); idx_i++)
+                        {
+                            for (int idx_j = 0; idx_j < (N + 2);
+                                 idx_j++)
+                            {
+                                int loc_idx = idx_i * (N + 2) + idx_j;
+                                tmp_idx_vec[loc_idx] =
+                                    child_idx_vec.at(idx_i, idx_j);
+                            }
+                        }
+
+                        int tag_val = child->global_id();
+                        //std::cout << "Sending at rank " << world.rank() << " gid is " << tag_val << std::endl;
+                        world.send(parent_rank, tag_val, tmp_idx_vec);
+                    }
+                }
+
+                //domain_->client_communicator().barrier();
+
+                //std::cout << "rank " << world.rank() << " finished communication " << "level " << l << std::endl;
+
+                if (it->locally_owned() && it->has_data()) {
+                    int N = it->data().descriptor().extent()[0];
+                    auto& lin_data = it->data_r(idx_cs_type::tag(), 0).linalg_data();
+                    auto& lin_data_g = it->data_r(idx_cs_g_type::tag(), 0).linalg_data();
+                    //start computing the matrix
+                    for (int i = 0; i < N+2; i++) {
+                        for (int j = 0; j < N+2; j++) {
+
+                            //if (l <= 4) std::cout << "rank " << world.rank() << " level " << l << " i " << i << " j " << j << std::endl; 
+                            //get current idx
+                            int cur_idx = lin_data.at(i, j);
+                            int cur_g_idx = lin_data_g.at(i, j);
+                            if (cur_idx < 0) {
+                                std::cout << "cur_idx < 0 in constructing upward interpolation matrix" << std::endl;
+                            }
+                            upward_intrp.add_element(cur_idx, cur_g_idx, -1.0);
+
+                            //if (l <= 4) std::cout << "rank " << world.rank() << " level " << l << " i " << i << " j " << j << " cur idx " << cur_idx << " g idx " << cur_g_idx << std::endl; 
+
+                            for (int child_idx = 0; child_idx < it->num_children(); child_idx++) {
+
+                                //if (l <= 4) std::cout << "rank " << world.rank() << " level " << l << " child idx " << child_idx << std::endl; 
+                                auto child = it->child(child_idx);
+                                //int  n = lin_data_g->shape()[0];
+                                int  idx_x = (child_idx & (1 << 0)) >> 0;
+                                int  idx_y = (child_idx & (1 << 1)) >> 1;
+
+                                //idx_x += 2;
+                                //idx_y += 2;
+                                //this indexing is only for 2D
+
+                                auto x_intrp_mat = c_cntr_nli_.antrp_mat_sub_[idx_x].data_;
+                                auto y_intrp_mat = c_cntr_nli_.antrp_mat_sub_[idx_y].data_;
+
+                                //auto child_cur = octant_vec[child_idx];
+
+                                //if (!child || !child_cur.has_data()) continue;
+
+                                if (idx_vec[child_idx].size() == 0) continue;
+
+                                //auto& child_idx_vec = octant_vec[child_idx].data_r(idx_w_g_type::tag(), 0).linalg_data();
+                                //auto child_idx_vec = child_cur.data_r(idx_w_g_type::tag(), 0).linalg_data();
+                                if (l != (base_level - 1))
+                                {
+                                    for (int sub_i = 0; sub_i < (N + 2);
+                                         sub_i++)
+                                    {
+                                        for (int sub_j = 0; sub_j < (N + 2);
+                                             sub_j++)
+                                        {
+                                            /*int              child_idx_g =
+                                                child_idx_vec.at(sub_i, sub_j);*/
+                                            int loc_idx = sub_i * (N + 2) + sub_j;
+                                            int child_idx_g = idx_vec[child_idx][loc_idx];
+                                            float_type val_x =
+                                                x_intrp_mat.at(i, sub_i);
+                                            float_type val_y =
+                                                y_intrp_mat.at(j, sub_j);
+                                            float_type val_t = val_x * val_y;
+                                            if (std::abs(val_t) < 1e-15)
+                                                continue;
+                                            upward_intrp.add_element(cur_idx,
+                                                child_idx_g, val_t);
+                                        }
+                                    }
+                                }
+
+                                else
+                                {
+                                    for (int sub_i = 1; sub_i < (N + 1);
+                                         sub_i++)
+                                    {
+                                        for (int sub_j = 1; sub_j < (N + 1);
+                                             sub_j++)
+                                        {
+                                            /*int              child_idx_g =
+                                                child_idx_vec.at(sub_i, sub_j);*/
+
+                                            int loc_idx = sub_i * (N + 2) + sub_j;
+                                            int child_idx_g = idx_vec[child_idx][loc_idx];
+                                            float_type val_x =
+                                                x_intrp_mat.at(i, sub_i);
+                                            float_type val_y =
+                                                y_intrp_mat.at(j, sub_j);
+                                            float_type val_t = val_x * val_y;
+                                            if (std::abs(val_t) < 1e-15)
+                                                continue;
+                                            upward_intrp.add_element(cur_idx,
+                                                child_idx_g, val_t);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                //std::cout << "rank " << world.rank() << " finished computing " << "level " << l << std::endl;
+            }
+
+            //domain_->client_communicator().barrier();
+        }
+
+        domain_->client_communicator().barrier();
+    }
+
+    void map_add_element(int m, float_type val, std::map<int, float_type>& target)
+    {
+        if (m < 0) return;
+        auto it = target.find(m);
+        if (it == target.end()) { target[m] = val; }
+        else
+        {
+            it->second += val;
+        }
+    }
+
+    void map_add_map(const std::map<int, float_type>& source, std::map<int, float_type>& target)
+    {
+        for (const auto& [key, val] : source)
+        {
+            map_add_element(key, val, target);
+        }
+    }
+
+    template<class Source_face, class Source_cell, class Target_face, class Target_cell>
+    void ATA(force_type& force_source, force_type& force_target) noexcept
+    {
+        auto client = domain_->decomposition().client();
+        auto forcing_tmp = force_source;
+        real_coordinate_type tmp_coord(0.0);
+        std::fill(forcing_tmp.begin(), forcing_tmp.end(),
+            tmp_coord);
+        std::fill(force_target.begin(), force_target.end(),
+            tmp_coord);
+        clean<r_i_tmp_type>();
+        clean<cell_aux_tmp_type>();
+        Jacobian<Source_face,Source_cell, r_i_tmp_type, cell_aux_tmp_type>(force_source, forcing_tmp);
+        domain_->client_communicator().barrier();
+        Adjoint_Jacobian<r_i_tmp_type, cell_aux_tmp_type, Target_face, Target_cell>(forcing_tmp, force_target);
+        domain_->client_communicator().barrier();
+    }
+
+    template<class Source_face, class Source_cell, class Target_face, class Target_cell>
+    void AddAll(force_type& force_source, force_type& force_target, float_type scale1=1.0, float_type scale2=1.0) noexcept
+    {
+        //Target = Source*scale1+Target*scale2
+        addScale<Source_face, Target_face>(scale1, scale2);
+        addScale<Source_cell, Target_cell>(scale1, scale2);
+        for (int i=0; i<domain_->ib().size(); ++i)
+        {
+            if (domain_->ib().rank(i)!=comm_.rank())
+                force_target[i]=0;
+            else
+                force_target[i]=force_target[i]*scale2+force_source[i]*scale1;
+        }
+    }
+
+    template<class Face1, class Cell1, class Face2, class Cell2>
+    float_type dotAll(force_type& force1, force_type& force2) noexcept 
+    {
+        float_type v_cell = dotField<Cell1, Cell2>();
+        float_type v_face = dotField<Face1, Face2>();
+        float_type v_force = dotVec(force1, force2);
+        float_type vel = v_cell + v_face + v_force;
+        return vel;
+    }
+
+    template<class From, class To>
+    void Upward_interpolation()
+    {
+        boost::mpi::communicator world;
+        if (world.rank() != 0)
+        {
+            
+            int base_level = domain_->tree()->base_level();
+            for (int field_idx = 0; field_idx < From::nFields(); field_idx++)
+            {
+                for (int l = base_level; l >= 0; l--)
+                {
+                    for (auto it_s = domain_->begin(l); it_s != domain_->end(l);
+                         ++it_s)
+                    {
+
+                        if (!it_s->has_data()) continue;
+                        if (!it_s->data().is_allocated()) continue;
+
+                        auto& lin_data = it_s->data_r(correction_tmp_type::tag(), 0).linalg_data();
+                        std::fill(lin_data.begin(), lin_data.end(), 0.0);
+                    }
+
+                }
+                for (auto it = domain_->begin(base_level); it != domain_->end(base_level);
+                     ++it)
+                {
+                    if (it->locally_owned() && /*it->is_leaf() && */!it->is_correction())
+                    {
+                        auto& lin_data_1 =
+                            it->data_r(From::tag(), field_idx).linalg_data();
+                        auto& lin_data_2 =
+                            it->data_r(correction_tmp_type::tag(), 0)
+                                .linalg_data();
+
+                        xt::noalias(view(lin_data_2, xt::range(1, -1),
+                            xt::range(1, -1))) = view(lin_data_1,
+                            xt::range(1, -1), xt::range(1, -1));
+                    }
+                }
+                for (int l = base_level - 1; l >= 0; l--)
+                {
+                    for (auto it_s = domain_->begin(l); it_s != domain_->end(l);
+                         ++it_s)
+                    {
+                        if (!it_s->has_data() || !it_s->data().is_allocated())
+                            continue;
+                        //only do edge interpolation in 2D, need to switch to vertex in 3D/homogeneous case
+                        c_cntr_nli_.template nli_intrp_T_node<correction_tmp_type, correction_tmp_type>(*it_s,
+                            /*From::mesh_type()*/MeshObject::edge, field_idx,
+                            0, false, false);
+                    }
+                    domain_->decomposition()
+                        .client()
+                        ->template communicate_updownward_add<correction_tmp_type, correction_tmp_type>(l, true,
+                            false, -1, 0, false);
+
+                    for (auto it = domain_->begin(l);
+                         it != domain_->end(l); ++it)
+                    {
+                        if (!it->locally_owned() && it->has_data() &&
+                            it->data().is_allocated())
+                        {
+                            auto& cp2 = it->data_r(correction_tmp_type::tag(), 0).linalg_data();
+                            cp2 *= 0.0;
+                        }
+                    }
+
+                    for (auto it_s = domain_->begin(l); it_s != domain_->end(l);
+                         ++it_s)
+                    {
+                        if (!it_s->locally_owned()) continue;
+
+                        //auto& lin_data_1 = it->data_r(correction_tmp_type::tag(), 0).linalg_data();
+                        //auto& lin_data_2 = it->data_r(To::tag(), field_idx).linalg_data();
+                        it_s->data_r(To::tag(), field_idx)
+                            .linalg()
+                            .get()
+                            ->cube_noalias_view() =
+                            it_s->data_r(correction_tmp_type::tag(), 0).linalg_data();
+                    }
+
+                }
+            }
+        }
+    }
+
+    template<class Source_face, class Uz, class Source_cell, class Target_face, class TargetUz, class Target_cell>
+    void Jacobian(force_type& force_source, std::vector<float_type>& force_sUz, force_type& force_target, std::vector<float_type>& force_tUz) noexcept
+    {
+        if (domain_->is_server())
+            return;
+        auto client = domain_->decomposition().client();
+
+        clean<laplacian_face_type>();
+        clean<u_i_bc_type>();
+        clean<edge_aux_type>();
+
+        //clean<r_i_T_type>(); //use r_i as the result of applying Jcobian in the first block
+        //clean<cell_aux_T_type>(); //use cell aux_type to be the second block
+        clean<Target_face>();
+        clean<Target_cell>();
+        real_coordinate_type tmp_coord(0.0);
+        std::fill(force_target.begin(), force_target.end(),
+            tmp_coord); //use forcing tmp to store the last block,
+            //use forcing_old to store the forcing at previous Newton iteration
+        
+        std::fill(force_tUz.begin(), force_tUz.end(), 0.0);
+
+        curl<Source_face, Uz, edge_aux_type>(mode_c);
+
+        domain_->client_communicator().barrier();
+        /*mDuration_type t_lgf(0);
+        TIME_CODE(t_lgf,
+            SINGLE_ARG(Vel_from_vort<edge_aux_type, u_i_bc_type>();));
+        domain_->client_communicator().barrier();
+        //pcout << "BCs solved in " << t_lgf.count() << std::endl;
+
+        copy_base_level_BC<u_i_bc_type, Source_face>();
+
+        //pcout << "Copied BC "  << std::endl;*/
+
+        domain_->client_communicator().barrier();
+
+        laplacian<Source_face, laplacian_face_type>();
+        laplacian<Uz, cell_aux_type>();
+
+        add<laplacian_face_type, Target_face>(1.0 / Re_);
+        add<cell_aux_type, TargetUz>(1.0 / Re_);
+
+        clean<cell_aux_type>();
+
+        //pcout << "Computed Laplacian " << std::endl;
+
+        nonlinear_jac<u_type, Source_face, uz_type, Uz, g_i_type, cell_aux_type>();
+
+        //pcout << "Computed Nonlinear Jac " << std::endl;
+
+        add<g_i_type, Target_face>(-1);
+        add<cell_aux_type, TargetUz>(-1);
+
+        
+
+        clean<face_aux_tmp_type>();
+        gradient<Source_cell, face_aux_tmp_type>(-1.0);
+        //add<Source_cell, TargetUz>(mode_c); //no negative sign here because it should be substracted so -(-c)p becomes cp
+
+        //pcout << "Computed Gradient" << std::endl;
+        //add<face_aux_tmp_type, Target_face>();
+
+        lsolver.template smearing<face_aux_tmp_type>(force_source, false);
+        lsolver.template smearing<TargetUz>(force_sUz, false);
+
+        //pcout << "Computed Smearing" << std::endl;
+
+        add<face_aux_tmp_type, Target_face>(1.0);
+
+        divergence<Source_face, Target_cell>(-1.0);
+        //add<Uz, Target_cell>(mode_c);
+
+        //pcout << "Computed Divergence" << std::endl;
+
+        lsolver.template projection<Source_face>(force_target);
+        lsolver.template projection<Uz>(force_tUz);
+    }
+
+
+    template<class Source_face>
+    void AddSmearing(force_type& force_source) noexcept
+    {
+        if (domain_->is_server())
+            return;
+        auto client = domain_->decomposition().client();
+
+        auto force_new = force_source;
+
+        for (std::size_t i=0; i<force_new.size(); ++i)
+        {
+            if (domain_->ib().rank(i)!=comm_.rank())
+                continue;
+
+            for (std::size_t d=0; d<force_new[0].size(); ++d)
+                force_new[i][d]*=-1;
+        }
+
+        lsolver.template smearing<Source_face>(force_new, false);
+
+    }
+
+    template<class target_Uz>
+    void AddSmearingUz(std::vector<float_type>& force_source) noexcept
+    {
+        if (domain_->is_server())
+            return;
+        auto client = domain_->decomposition().client();
+
+        auto force_new = force_source;
+
+        for (std::size_t i=0; i<force_new.size(); ++i)
+        {
+            if (domain_->ib().rank(i)!=comm_.rank())
+                continue;
+
+            //for (std::size_t d=0; d<force_new[0].size(); ++d)
+            force_new[i]*=-1;
+        }
+
+        lsolver.template smearing<target_Uz>(force_new, false);
+
+    }
+
+    template<class Source_face, class Source_cell, class Target_face, class Target_cell>
+    void NewtonRHS(force_type& force_source, force_type& force_target) noexcept
+    {
+        if (domain_->is_server())
+            return;
+        auto client = domain_->decomposition().client();
+
+        boost::mpi::communicator world;
+
+        pad_velocity<Source_face, Source_face>(true);
+
+        clean<laplacian_face_type>();
+        clean<u_i_bc_type>();
+        clean<edge_aux_type>();
+
+        //clean<r_i_T_type>(); //use r_i as the result of applying Jcobian in the first block
+        //clean<cell_aux_T_type>(); //use cell aux_type to be the second block
+        clean<Target_face>();
+        clean<Target_cell>();
+        real_coordinate_type tmp_coord(0.0);
+        std::fill(force_target.begin(), force_target.end(),
+            tmp_coord); //use forcing tmp to store the last block,
+            //use forcing_old to store the forcing at previous Newton iteration
+
+
+        //curl<Source_face, edge_aux_type>();
+
+        domain_->client_communicator().barrier();
+        mDuration_type t_lgf(0);
+        //TIME_CODE(t_lgf, SINGLE_ARG(Vel_from_vort<edge_aux_type, u_i_bc_type>();));
+        domain_->client_communicator().barrier();
+        //pcout << "BCs solved in " << t_lgf.count() << std::endl;
+
+        //copy_base_level_BC<u_i_bc_type, Source_face>();
+
+        //pcout << "Copied BC "  << std::endl;
+
+        //domain_->client_communicator().barrier();
+
+        laplacian<Source_face, laplacian_face_type>();
+
+        //pcout << "Computed Laplacian " << std::endl;
+
+        nonlinear<Source_face, g_i_type>();
+
+        //pcout << "Computed Nonlinear Jac " << std::endl;
+
+        add<g_i_type, Target_face>(-1);
+
+        add<laplacian_face_type, Target_face>(1.0 / Re_);
+
+        clean<face_aux_tmp_type>();
+
+        if (!p_set_zero) clean_leaf_correction_boundary<Source_cell>(domain_->tree()->base_level(), true, 1);
+        gradient<Source_cell, face_aux_tmp_type>(-1.0);
+
+        //pcout << "Computed Gradient" << std::endl;
+        //add<face_aux_tmp_type, Target_face>();
+
+        lsolver.template smearing<face_aux_tmp_type>(force_source, false);
+
+        //pcout << "Computed Smearing" << std::endl;
+
+        add<face_aux_tmp_type, Target_face>(1.0);
+
+        divergence<Source_face, Target_cell>(-1.0);
+
+        //pcout << "Computed Divergence" << std::endl;
+
+        lsolver.template projection<Source_face>(
+            force_target); //need to change this vector in the bracket
+
+        auto u_f = simulation_->frame_vel();
+
+        
+
+        for (std::size_t i=0; i<force_target.size(); ++i)
+        {
+            if (domain_->ib().rank(i)!=comm_.rank())
+                continue;
+
+            for (std::size_t d=0; d<force_target[0].size(); ++d) {
+                //need to change to arbitrary points, this only works for uniform flow
+                if (world.rank() != domain_->ib().rank(i)) continue;
+                float_type u_inf = u_f(d, 5, coordinate_type({0,0}));
+                force_target[i][d] -= u_inf;
+            }
+        }
+    }
+
+    template<class Source_face, class Source_cell, class Target_face, class Target_cell>
+    void ComputeForcing(force_type& force_target) noexcept
+    {
+        if (domain_->is_server())
+            return;
+        auto client = domain_->decomposition().client();
+
+        boost::mpi::communicator world;
+
+        pad_velocity<Source_face, Source_face>(true);
+
+        clean<laplacian_face_type>();
+        clean<u_i_bc_type>();
+        clean<edge_aux_type>();
+
+        //clean<r_i_T_type>(); //use r_i as the result of applying Jcobian in the first block
+        //clean<cell_aux_T_type>(); //use cell aux_type to be the second block
+        clean<Target_face>();
+        clean<Target_cell>();
+        real_coordinate_type tmp_coord(0.0);
+        auto forcing_tmp = force_target;
+        std::fill(forcing_tmp.begin(), forcing_tmp.end(),
+            tmp_coord);
+        std::fill(force_target.begin(), force_target.end(),
+            tmp_coord); //use forcing tmp to store the last block,
+            //use forcing_old to store the forcing at previous Newton iteration
+
+        laplacian<Source_face, laplacian_face_type>();
+
+        clean<face_aux_tmp_type>();
+        gradient<Source_cell, face_aux_tmp_type>(1.0);
+
+        //pcout << "Computed Laplacian " << std::endl;
+
+        nonlinear<Source_face, g_i_type>();
+
+        //pcout << "Computed Nonlinear Jac " << std::endl;
+
+        add<g_i_type, Target_face>(1);
+
+        add<laplacian_face_type, Target_face>(-1.0 / Re_);
+
+        add<face_aux_tmp_type, Target_face>(1.0);
+
+        lsolver.template projection<Target_face>(forcing_tmp);
+
+        auto r = forcing_tmp;
+
+        //force_target = forcing_tmp;
+
+        float_type r2_old = dotVec(r, r);
+
+        if (r2_old < 1e-12) {
+            if (world.rank() == 1) {
+                std::cout << "r0 small, exiting" << std::endl;
+            }
+            return;
+        }
+
+        auto p = r;
+
+        for (int i = 0; i < cg_max_itr_; i++) {
+            clean<face_aux_tmp_type>();
+            lsolver.template smearing<face_aux_tmp_type>(p, false);
+            auto Ap = r;
+            cleanVec(Ap,false);
+            lsolver.template projection<face_aux_tmp_type>(Ap);
+            r2_old = dotVec(r, r);
+            float_type pAp = dotVec(p, Ap);
+            float_type alpha = r2_old/pAp;
+            //force_target += alpha*p;
+            addVec(force_target, p, 1.0, alpha);
+            //r -= alpha*Ap;
+            addVec(r, Ap, 1.0, -alpha);
+            float_type r2_new = dotVec(r, r);
+            float_type f2 = dotVec(force_target, force_target);
+            if (world.rank() == 1)
+            {
+                std::cout << "r2/f2 = " << r2_new / f2 << " f2 = " << f2 << std::endl;
+            }
+
+            if (std::sqrt(r2_new/f2) < cg_threshold_) {
+                
+                return;
+            }
+            float_type beta = r2_new/r2_old;
+            //p = r+beta*p;
+            addVec(p, r, beta, 1.0);
+
+        }        
+    }
+
+    template<class VecType>
+    void addVec(VecType& a, VecType& b, float_type w1, float_type w2)
+    {
+        float_type s = 0;
+        for (std::size_t i=0; i<a.size(); ++i)
+        {
+            if (domain_->ib().rank(i)!=comm_.rank()) {
+                for (std::size_t d=0; d<a[0].size(); ++d) {
+                    a[i][d] = 0;
+                }
+                continue;
+            }
+
+            for (std::size_t d=0; d<a[0].size(); ++d)
+                a[i][d] =a[i][d]*w1 + b[i][d]*w2;
+        }
+    }
+
+    template<class VecType>
+    void cleanVec(VecType& a, bool nonloc = true)
+    {
+        
+        for (std::size_t i=0; i<a.size(); ++i)
+        {
+            if (domain_->ib().rank(i)!=comm_.rank()) {
+                for (std::size_t d=0; d<a[0].size(); ++d) {
+                    a[i][d] = 0;
+                }
+                continue;
+            }
+
+            if (!nonloc)
+            {
+                for (std::size_t d = 0; d < a[0].size(); ++d) { a[i][d] = 0; }
+            }
+        }
+    }
+
+    template<class Source1, class Source2, class W_old, class Uz, class Target, class Target_Uz>
+    void nonlinear_Jac_access() {
+        //boost::mpi::communicator world;
+        //std::cout << "rank " << (world.rank()) << " starting nonlinear jacobian" << std::endl;
+        this->nonlinear_jac<Source1, Source2, W_old, Uz, Target, Target_Uz>();
+    }
+
+    template<class Source, class Uz, class Target>
+    void div_access(bool iscs = true) {
+        this->divergence<Source, Target>();
+        add<Uz, Target>(-mode_c);
+        if (iscs) clean_leaf_according_to_idx<Target, idx_cs_g_type>(domain_->tree()->base_level());
+    }
+
+    template<class Source1, class Source2, class Target>
+    void nonlinear_Jac_T_access() {
+        //boost::mpi::communicator world;
+        //std::cout << "rank " << (world.rank()) << " starting nonlinear jacobian" << std::endl;
+        this->nonlinear_jac_adjoint<Source1, Source2, Target>();
+    }
+
+
+    template<class Source, class Uz, class Target>
+    void curlTranspose() noexcept
+    {
+        auto client = domain_->decomposition().client();
+
+        domain::Operator::domainClean<Target>(domain_);
+        domain::Operator::domainClean<Uz>(domain_);
+
+        //up_and_down<Source>();
+        //up_and_down<Uz>();
+
+        for (int l = domain_->tree()->base_level();
+                 l < domain_->tree()->depth(); ++l)
+        {
+            auto client = domain_->decomposition().client();
+            client->template buffer_exchange<Source>(l);
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned()) continue;
+
+                const auto dx_level =
+                    dx_base_ / math::pow2(it->refinement_level());
+                domain::Operator::curl_transpose_helmholtz_complex_linear<Source, Target, Uz>(
+                    it->data(), dx_level, mode_c, 1.0/Re_);
+            }
+            //client->template buffer_exchange<Field>(l);
+        }
+
+        //clean<Source>(true);
+
+        //clean_leaf_correction_boundary<Target>(domain_->tree()->base_level(), true, 1);
+        //clean_leaf_according_to_idx<Target, idx_w_g_type>(domain_->tree()->base_level());
+        //clean<Target>(true);
+    }
+
+
+    template<class Source, class Target>
+    void Grad_access(float_type _scale = 1.0) {
+
+
+        domain::Operator::domainClean<Target>(domain_);
+
+        //up_and_down<Source>();
+
+        for (int l = domain_->tree()->base_level();
+             l < domain_->tree()->depth(); ++l)
+        {
+            auto client = domain_->decomposition().client();
+            client->template buffer_exchange<Source>(l);
+            const auto dx_base = domain_->dx_base();
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
+                const auto dx_level =
+                    dx_base / math::pow2(it->refinement_level());
+                domain::Operator::gradient<Source, Target>(it->data(),
+                    dx_level);
+                for (std::size_t field_idx = 0; field_idx < Target::nFields();
+                     ++field_idx)
+                {
+                    auto& lin_data =
+                        it->data_r(Target::tag(), field_idx).linalg_data();
+
+                    lin_data *= _scale;
+                }
+            }
+            client->template buffer_exchange<Target>(l);
+            //clean_leaf_correction_boundary<Target>(l, true, 2);
+        }
+
+    }
+
+    template<class Source, class Uz, class Target>
+    void Curl_access() {
+
+
+        auto client = domain_->decomposition().client();
+
+        //up_and_down<Velocity_in>();
+        clean<Source>(true);
+        up_and_down<Source>();
+        clean<Uz>(true);
+        up_and_down<Uz>();
+        clean<Target>();
+        //clean<stream_f_type>();
+
+        auto dx_base = domain_->dx_base();
+
+        for (int l = domain_->tree()->base_level();
+             l < domain_->tree()->depth(); ++l)
+        {
+            client->template buffer_exchange<Source>(l);
+            client->template buffer_exchange<Uz>(l);
+
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
+                //if (it->is_correction()) continue;
+                //if(!it->is_leaf()) continue;
+
+                const auto dx_level =
+                    dx_base / math::pow2(it->refinement_level());
+                //if (it->is_leaf())
+                domain::Operator::curl_helmholtz_real<Source, Uz, Target>(it->data(),
+                    dx_level, mode_c);
+            }
+        }
+
+        //clean<Velocity_out>();
+        //clean_leaf_correction_boundary<Target>(
+        //    domain_->tree()->base_level(), true, 1);
+        //down_to_correction<Target>();
+    }
+
+    template<class VecType>
+    float_type dotVec(VecType& a, VecType& b)
+    {
+        float_type s = 0;
+        for (std::size_t i=0; i<a.size(); ++i)
+        {
+            if (domain_->ib().rank(i)!=comm_.rank())
+                continue;
+
+            for (std::size_t d=0; d<a[0].size(); ++d)
+                s+=a[i][d]*b[i][d];
+        }
+
+        float_type s_global=0.0;
+        boost::mpi::all_reduce(domain_->client_communicator(), s,
+                s_global, std::plus<float_type>());
+        return s_global;
+    }
+
+
+  
+    float_type coeff_a(int i, int j) const noexcept
+    {
+        return a_[i * (i - 1) / 2 + j - 1];
+    }
+
+    template<class Source, class Target>
+    void Vel_from_vort()
+    {
+        auto client = domain_->decomposition().client();
+
+        auto dx_base = domain_->dx_base();
+
+        //up_and_down<Velocity_in>();
+        clean<Target>();
+        up_and_down<Source>();
+
+        //clean<Velocity_out>();
+        clean_leaf_correction_boundary<Source>(domain_->tree()->base_level(),
+            true, 2);
+        //clean_leaf_correction_boundary<edge_aux_type>(l, false,2+stage_idx_);
+        psolver.template apply_lgf<Source, stream_f_type>(MASK_TYPE::STREAM);
+        //psolver.template apply_lgf<Source, stream_f_type>(MASK_TYPE::Laplacian_BC);
+
+        int l_max = domain_->tree()->depth();
+        for (int l = domain_->tree()->base_level(); l < l_max; ++l)
+        {
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
+                //if(!it->is_correction() && refresh_correction_only) continue;
+
+                const auto dx_level =
+                    dx_base / math::pow2(it->refinement_level());
+                domain::Operator::curl_transpose<stream_f_type, Target>(
+                    it->data(), dx_level, -1.0);
+            }
+        }
+
+        this->down_to_correction<Target>();
+    }
+
+
+
+    template<class Velocity_in, class Uz, class Velocity_out, class Uz_out>
+    void pad_velocity(bool refresh_correction_only = true)
+    {
+        auto client = domain_->decomposition().client();
+
+        //up_and_down<Velocity_in>();
+        clean<Velocity_in>(true);
+        up_and_down<Velocity_in>();
+        clean<Uz>(true);
+        up_and_down<Uz>();
+        //this->up<Velocity_in>(false);
+        clean<edge_aux_type>();
+        clean<stream_f_type>();
+
+        auto dx_base = domain_->dx_base();
+
+        for (int l = domain_->tree()->base_level();
+             l < domain_->tree()->depth(); ++l)
+        {
+            client->template buffer_exchange<Velocity_in>(l);
+            client->template buffer_exchange<Uz>(l);
+
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
+                //if (it->is_correction()) continue;
+                //if(!it->is_leaf()) continue;
+
+                const auto dx_level =
+                    dx_base / math::pow2(it->refinement_level());
+                //if (it->is_leaf())
+                domain::Operator::curl_helmholtz_real<Velocity_in, Uz, edge_aux_type>(it->data(),
+                    dx_level, mode_c);
+            }
+        }
+
+        //clean<Velocity_out>();
+        //clean_leaf_correction_boundary<edge_aux_type>(domain_->tree()->base_level(), false, 1);
+        //clean_leaf_correction_boundary<edge_aux_type>(domain_->tree()->base_level(), true, 1);
+        clean_leaf_according_to_idx<edge_aux_type, idx_w_g_type>(domain_->tree()->base_level());
+        //clean_leaf_correction_boundary<edge_aux_type>(l, false,2+stage_idx_);
+
+        if (mode_c > 1e-12) {
+            helm_t kernel;
+            kernel.change_c(mode_c);
+            for (int i = 0; i < stream_f_type::nFields(); i++)
+                psolver.template apply_lgf<edge_aux_type, stream_f_type>(&kernel, i, MASK_TYPE::STREAM);
+        }
+        else {
+            psolver.template apply_lgf<edge_aux_type, stream_f_type>(MASK_TYPE::STREAM);
+        }
+        //psolver.template apply_lgf<edge_aux_type, stream_f_type>(MASK_TYPE::STREAM);
+
+        int l_max = refresh_correction_only ? domain_->tree()->base_level() + 1
+                                            : domain_->tree()->depth();
+        for (int l = domain_->tree()->base_level(); l < l_max; ++l)
+        {
+            client->template buffer_exchange<stream_f_type>(l);
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
+                if(!it->is_correction() && refresh_correction_only) continue;
+
+                const auto dx_level =
+                    dx_base / math::pow2(it->refinement_level());
+                domain::Operator::curl_transpose_helmholtz_complex_linear<stream_f_type, Velocity_out, Uz_out>(
+                    it->data(), dx_level, mode_c, -1.0);
+            }
+        }
+
+        this->down_to_correction<Velocity_out>();
+        this->down_to_correction<Uz_out>();
+    }
+
+    template<class P_source, class P_out>
+    void pad_pressure(bool refresh_correction_only = true)
+    {
+        auto client = domain_->decomposition().client();
+
+        //up_and_down<Velocity_in>();
+        //clean<P_out>(true);
+        up_and_down<P_source>();
+        //this->up<Velocity_in>(false);
+        //clean<P_out>();
+        clean<cell_aux_tmp_type>();
+
+        const float_type dx_base = domain_->dx_base();
+        
+        clean_leaf_according_to_idx<P_source, idx_cs_g_type>(domain_->tree()->base_level());
+        if (mode_c > 1e-12) {
+            helm_t kernel;
+            float_type mode_helm = mode_c * dx_base;
+            kernel.change_c(mode_helm);
+            psolver.template apply_lgf<P_source, cell_aux_tmp_type>(&kernel, 0, MASK_TYPE::AMR2AMR);
+        }
+        else {
+            psolver.template apply_lgf<P_source, cell_aux_tmp_type>();
+        }
+
+        int l_max = refresh_correction_only ? domain_->tree()->base_level() + 1
+                                            : domain_->tree()->depth();
+        for (int l = domain_->tree()->base_level(); l < l_max; ++l)
+        {
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
+                if(!it->is_correction() && refresh_correction_only) continue;
+
+                for (auto& n : it->data())
+                    n(P_out::tag(), 0) = n(cell_aux_tmp_type::tag(), 0);
+            }
+        }
+
+        this->down_to_correction<P_out>();
+    }
+
+    template<typename From, typename To>
+    void add(float_type scale = 1.0) noexcept
+    {
+        static_assert(From::nFields() == To::nFields(),
+            "number of fields doesn't match when add");
+        for (auto it = domain_->begin(); it != domain_->end(); ++it)
+        {
+            if (!it->locally_owned() || !it->has_data()) continue;
+            for (std::size_t field_idx = 0; field_idx < From::nFields();
+                 ++field_idx)
+            {
+                it->data_r(To::tag(), field_idx)
+                    .linalg()
+                    .get()
+                    ->cube_noalias_view() +=
+                    it->data_r(From::tag(), field_idx).linalg_data() * scale;
+            }
+        }
+    }
+    private:
+
+    template<class idxField, class idxField_g>
+    void construct_flux_BC(sparse_mat& mat_tar) {
+        //this function constructs the flux BC for face centered variables
+        boost::mpi::communicator world;
+        if (world.rank() == 0) {
+            return;
+        }        
+        
+        if (max_local_idx == 0) {
+            std::cout << "idx not initialized, please call Assigning_idx()" << std::endl;
+        }
+
+        const auto dx_base = domain_->dx_base();
+
+        int base_level = domain_->tree()->base_level();
+
+        int N_ext = domain_->block_extent()[0];
+        
+        for (std::size_t field_idx = 0; field_idx < idxField::nFields(); ++field_idx)
+        {
+            for (int l = base_level; l < (domain_->tree()->depth() - 1); l++)
+            {
+                if (domain_->is_client())
+                {
+                    auto client = domain_->decomposition().client();
+
+                    client->template buffer_exchange<idxField>(l);
+                    client->template buffer_exchange<idxField_g>(l);
+                    if (l != (domain_->tree()->depth() - 1))
+                        client->template buffer_exchange<idxField>(l + 1);
+                    if (l != (domain_->tree()->depth() - 1))
+                        client->template buffer_exchange<idxField_g>(l + 1);
+                }
+
+                int N_ext = domain_->block_extent()[0];
+                
+
+                for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+                {
+                    
+
+                    int x_begin = 1;
+                    int x_end = N_ext + 1;
+                    int y_begin = 1;
+                    int y_end = N_ext + 1;
+
+                    for (std::size_t i = 0; i < it->num_neighbors(); ++i)
+                    {
+                        auto it2 = it->neighbor(i);
+                        if (!it2) {
+                            continue;
+                        }
+                        if (!it2->is_leaf() && !it2->is_correction())
+                        {
+                            int N = it->data().descriptor().extent()[0];
+                            if (i == 1) { y_begin = 2; }
+                            else if (i == 3)
+                            {
+                                x_begin = 2;
+                            }
+                            else if (i == 5)
+                            {
+                                x_end = N_ext;
+                            }
+                            else if (i == 7)
+                            {
+                                y_end = N_ext;
+                            }
+                        }
+                    }
+
+                    
+
+                    float_type dx_level = dx_base / math::pow2(it->refinement_level());
+
+                    const int num_child = it->num_children();
+                    const int num_neighbor = it->num_neighbors();
+                    //octant_base_t oct_base_tmp(coordinate_type({0,0}), base_level);
+                    //std::vector<octant_t> octant_vec(num_child, octant_t(oct_base_tmp));
+                    std::vector<std::vector<int>> idx_vec;
+                    idx_vec.resize(num_child);
+
+                    std::vector<std::vector<int>> leafBC;
+                    leafBC.resize(num_neighbor*4); //only need four but easier this way
+
+                    int N = it->data().descriptor().extent()[0];
+
+                    int idx_size = (N + 2) * (N + 2);
+                    if (it->locally_owned() && it->has_data() && it->is_leaf())
+                    {
+                        for (int i = 0; i < it->num_children(); i++)
+                        {
+                            auto child = it->child(i);
+                            if (child && child->locally_owned() &&
+                                child->has_data() && child->is_correction())
+                            {
+                                idx_vec[i].resize(idx_size);
+
+                                auto child_idx_vec =
+                                    child->data_r(idxField_g::tag(), field_idx)
+                                        .linalg_data();
+
+                                for (int idx_i = 0; idx_i < (N + 2); idx_i++)
+                                {
+                                    for (int idx_j = 0; idx_j < (N + 2);
+                                         idx_j++)
+                                    {
+                                        int loc_idx = idx_i * (N + 2) + idx_j;
+                                        idx_vec[i][loc_idx] =
+                                            child_idx_vec.at(idx_i, idx_j);
+                                    }
+                                }
+
+                                //octant_vec[i] = (*child);
+                                continue;
+                            }
+                            else if (child && child->is_correction())
+                            {
+                                int source_rank = child->rank();
+
+                                int tag_val = child->global_id();
+
+                                idx_vec[i].resize(idx_size);
+                                //std::cout << "Receiving at rank " << world.rank() << " from " << source_rank << " gid is " << tag_val << std::endl;
+
+                                //world.recv(source_rank, tag_val, octant_vec[i]);
+                                world.recv(source_rank, tag_val, idx_vec[i]);
+                            }
+                        }
+                    }
+                    else if (it->is_leaf())
+                    {
+                        //search for children is on this processor
+                        for (int i = 0; i < it->num_children(); i++)
+                        {
+                            auto child = it->child(i);
+                            int  parent_rank = it->rank();
+                            if (!child || !child->locally_owned() || !child->is_correction())
+                                continue;
+
+                            std::vector<int> tmp_idx_vec;
+
+                            tmp_idx_vec.resize(idx_size);
+
+                            if (child->has_data()) {
+
+                            auto child_idx_vec =
+                                child->data_r(idxField_g::tag(), field_idx)
+                                    .linalg_data();
+
+                            for (int idx_i = 0; idx_i < (N + 2); idx_i++)
+                            {
+                                for (int idx_j = 0; idx_j < (N + 2); idx_j++)
+                                {
+                                    int loc_idx = idx_i * (N + 2) + idx_j;
+                                    tmp_idx_vec[loc_idx] =
+                                        child_idx_vec.at(idx_i, idx_j);
+                                }
+                            }
+                            }
+
+                            int tag_val = child->global_id();
+                            //std::cout << "Sending at rank " << world.rank() << " to rank " << parent_rank << " gid is " << tag_val << std::endl;
+                            world.send(parent_rank, tag_val, tmp_idx_vec);
+                        }
+                    }
+
+                    //domain_->client_communicator().barrier();
+
+                    
+                    
+
+                    //get idx from the leaf points adjacent to the correction
+                    if (it->locally_owned() && it->has_data() && it->is_leaf())
+                    {
+                        for (int i = 0; i < it->num_children(); i++)
+                        {
+                            auto child = it->child(i);
+                            if (!child) continue;
+                            for (int n_idx = 0; n_idx < child->num_neighbors();
+                                 n_idx++)
+                            {
+                                bool inc = correction_adjacent(i, n_idx);
+                                if (!inc) continue;
+                                auto n = child->neighbor(n_idx);
+                                if (n && n->locally_owned() && n->has_data() &&
+                                    n->is_leaf())
+                                {
+                                    int vec_idx = i*num_neighbor + n_idx;
+                                    leafBC[vec_idx].resize(idx_size);
+
+                                    auto n_idx_vec =
+                                        n->data_r(idxField_g::tag(),
+                                                field_idx)
+                                            .linalg_data();
+
+                                    for (int idx_i = 0; idx_i < (N + 2);
+                                         idx_i++)
+                                    {
+                                        for (int idx_j = 0; idx_j < (N + 2);
+                                             idx_j++)
+                                        {
+                                            int loc_idx =
+                                                idx_i * (N + 2) + idx_j;
+                                            leafBC[vec_idx][loc_idx] =
+                                                n_idx_vec.at(idx_i, idx_j);
+                                        }
+                                    }
+
+                                    //octant_vec[i] = (*child);
+                                    continue;
+                                }
+                                else if (n && n->is_leaf())
+                                {
+                                    int source_rank = n->rank();
+
+                                    int tag_val = n->global_id();
+
+                                    int vec_idx = i*num_neighbor + n_idx;
+                                    leafBC[vec_idx].resize(idx_size);
+
+                                    //std::cout << "Receiving at leafBC rank " << world.rank() << " gid is " << tag_val << std::endl;
+
+                                    //world.recv(source_rank, tag_val, octant_vec[i]);
+                                    world.recv(source_rank, tag_val,
+                                        leafBC[vec_idx]);
+                                }
+                            }
+                        }
+                    }
+                    else if (it->is_leaf())
+                    {
+                        //search for children is on this processor
+                        for (int i = 0; i < it->num_children(); i++)
+                        {
+                            auto child = it->child(i);
+                            if (!child) continue;
+                            for (int n_idx = 0; n_idx < child->num_neighbors();
+                                 n_idx++)
+                            {
+                                bool inc = correction_adjacent(i, n_idx);
+                                if (!inc) continue;
+                                auto n = child->neighbor(n_idx);
+                                if (n && n->locally_owned() &&
+                                    n->is_leaf())
+                                {
+                                    std::vector<int> tmp_idx_vec;
+
+                                    tmp_idx_vec.resize(idx_size);
+
+
+
+                                    int  parent_rank = it->rank();
+
+                                    if (n->has_data()) {
+
+                                    auto n_idx_vec =
+                                        n->data_r(idxField_g::tag(), field_idx).linalg_data();
+
+                                    for (int idx_i = 0; idx_i < (N + 2);
+                                         idx_i++)
+                                    {
+                                        for (int idx_j = 0; idx_j < (N + 2);
+                                             idx_j++)
+                                        {
+                                            int loc_idx =
+                                                idx_i * (N + 2) + idx_j;
+                                            tmp_idx_vec[loc_idx] =
+                                                n_idx_vec.at(idx_i, idx_j);
+                                        }
+                                    }
+                                    }
+
+                                    int tag_val = n->global_id();
+                                    //std::cout << "Sending at leafBC rank " << world.rank() << " gid is " << tag_val << std::endl;
+                                    world.send(parent_rank, tag_val,
+                                        tmp_idx_vec);
+                                }
+                            }
+                        }
+                    }
+
+                    if (!it->is_leaf()) continue;
+                    if (it->is_correction()) continue;                    
+
+                    
+                    if (!it->locally_owned() || !it->has_data()) continue;
+
+                    if (x_begin == 1 && x_end == (N_ext+1) &&
+                        y_begin == 1 && y_end == (N_ext+1)) {
+                        continue;
+                    }
+                   
+
+
+                    if (y_begin == 2)
+                    {
+                        auto& lin_data =
+                            it->data_r(idxField::tag(), field_idx)
+                                .linalg_data();
+                        auto& lin_data_g =
+                            it->data_r(idxField_g::tag(), field_idx)
+                                .linalg_data();
+
+                        int N = it->data().descriptor().extent()[0];
+                        for (int i = 1; i < N + 1; i++)
+                        {
+                            int cur_idx = lin_data.at(i, 1);
+                            int cur_g_idx = lin_data_g.at(i, 1);
+                            int cur_g_idx_l = lin_data_g.at(i, 0);
+
+                            int loc_idx = i * (N + 2) + 1;
+                            mat_tar.add_element(cur_idx, cur_g_idx,
+                                1.0 / dx_level / dx_level);
+                            mat_tar.add_element(cur_idx, cur_g_idx_l,
+                                -1.0 / dx_level / dx_level);
+                            if (i < (N + 2) / 2 && field_idx == 1)
+                            {
+
+                                int n_idx = 0*num_neighbor + 1;
+                                auto BC_idx_vec = leafBC[n_idx];
+
+                                int chd_x_idx = (i - 1) * 2 + 1;
+                                loc_idx = chd_x_idx * (N + 2) + N - 1;
+                                int glo_idx = BC_idx_vec[loc_idx];
+                                mat_tar.add_element(cur_idx, glo_idx,
+                                    0.5 / dx_level / dx_level);
+                                loc_idx = (chd_x_idx + 1) * (N + 2) + N - 1;
+                                glo_idx = BC_idx_vec[loc_idx];
+                                mat_tar.add_element(cur_idx, glo_idx,
+                                    0.5 / dx_level / dx_level);
+                                //loc_idx = (chd_x_idx + 1) * (N + 2) + 1;
+                                loc_idx = (chd_x_idx + 1) * (N + 2) + 1;
+                                glo_idx = idx_vec[0][loc_idx];
+                                mat_tar.add_element(cur_idx, glo_idx,
+                                    -0.5 / dx_level / dx_level);
+                                //loc_idx = chd_x_idx * (N + 2) + 1;
+                                loc_idx = chd_x_idx * (N + 2) + 1;
+                                glo_idx = idx_vec[0][loc_idx];
+                                mat_tar.add_element(cur_idx, glo_idx,
+                                    -0.5 / dx_level / dx_level);
+                            }
+
+                            else if (i >= (N + 2) / 2 && field_idx == 1)
+                            {
+
+                                int n_idx = 1*num_neighbor + 1;
+                                auto BC_idx_vec = leafBC[n_idx];
+
+                                int chd_x_idx = (i - (N + 2) / 2) * 2 + 1;
+                                loc_idx = chd_x_idx * (N + 2) + N - 1;
+                                int glo_idx = BC_idx_vec[loc_idx];
+                                mat_tar.add_element(cur_idx, glo_idx,
+                                    0.5 / dx_level / dx_level);
+                                loc_idx = (chd_x_idx + 1) * (N + 2) + N - 1;
+                                glo_idx = BC_idx_vec[loc_idx];
+                                mat_tar.add_element(cur_idx, glo_idx,
+                                    0.5 / dx_level / dx_level);
+                                //loc_idx = (chd_x_idx + 1) * (N + 2) + 1;
+                                loc_idx = (chd_x_idx + 1) * (N + 2) + 1;
+                                glo_idx = idx_vec[1][loc_idx];
+                                mat_tar.add_element(cur_idx, glo_idx,
+                                    -0.5 / dx_level / dx_level);
+                                //loc_idx = chd_x_idx * (N + 2) + 1;
+                                loc_idx = chd_x_idx * (N + 2) + 1;
+                                glo_idx = idx_vec[1][loc_idx];
+                                mat_tar.add_element(cur_idx, glo_idx,
+                                    -0.5 / dx_level / dx_level);
+                            }
+                            else if (i >= (N + 2) / 2 && field_idx == 0)
+                            {
+                                int chd_x_idx = (i - (N + 2) / 2) * 2 + 1;
+
+                                loc_idx = (chd_x_idx) * (N + 2);
+                                int glo_idx = idx_vec[1][loc_idx];
+                                mat_tar.add_element(cur_idx, glo_idx,
+                                    2.0 / dx_level / dx_level);
+                                loc_idx = (chd_x_idx) * (N + 2) + 1;
+                                glo_idx = idx_vec[1][loc_idx];
+                                mat_tar.add_element(cur_idx, glo_idx,
+                                    -2.0 / dx_level / dx_level);
+                            }
+                            else if (i < (N + 2) / 2 && field_idx == 0)
+                            {
+                                int chd_x_idx = (i - 1) * 2 + 1;
+                                loc_idx = (chd_x_idx) * (N + 2);
+                                int glo_idx = idx_vec[0][loc_idx];
+                                mat_tar.add_element(cur_idx, glo_idx,
+                                    2.0 / dx_level / dx_level);
+                                loc_idx = (chd_x_idx) * (N + 2) + 1;
+                                glo_idx = idx_vec[0][loc_idx];
+                                mat_tar.add_element(cur_idx, glo_idx,
+                                    -2.0 / dx_level / dx_level);
+                            }
+                        }
+                    }
+
+                    if (x_begin == 2)
+                    {
+                        auto& lin_data =
+                            it->data_r(idxField::tag(), field_idx)
+                                .linalg_data();
+                        auto& lin_data_g =
+                            it->data_r(idxField_g::tag(), field_idx)
+                                .linalg_data();
+
+                        int N = it->data().descriptor().extent()[0];
+                        for (int i = 1; i < N + 1; i++)
+                        {
+                            int cur_idx = lin_data.at(1, i);
+                            int cur_g_idx = lin_data_g.at(1, i);
+
+                            int cur_g_idx_l = lin_data_g.at(0, i);
+                            mat_tar.add_element(cur_idx, cur_g_idx_l,
+                                -1.0 / dx_level / dx_level);
+
+                            int loc_idx = i * (N + 2) + 1;
+                            mat_tar.add_element(cur_idx, cur_g_idx,
+                                1.0 / dx_level / dx_level);
+                            if (i < (N + 2) / 2 && field_idx == 0)
+                            {
+                                int n_idx = 0*num_neighbor + 3;
+                                auto BC_idx_vec = leafBC[n_idx];
+
+                                int chd_x_idx = (i - 1) * 2 + 1;
+                                loc_idx = chd_x_idx + (N - 1) * (N + 2);
+                                int glo_idx = BC_idx_vec[loc_idx];
+                                mat_tar.add_element(cur_idx, glo_idx,
+                                    0.5 / dx_level / dx_level);
+                                loc_idx = chd_x_idx + 1 + (N - 1) * (N + 2);
+                                glo_idx = BC_idx_vec[loc_idx];
+                                mat_tar.add_element(cur_idx, glo_idx,
+                                    0.5 / dx_level / dx_level);
+                                //loc_idx = (chd_x_idx + 1) + 1 * (N + 2);
+                                loc_idx = (chd_x_idx + 1) + 1 * (N + 2);
+                                glo_idx = idx_vec[0][loc_idx];
+                                mat_tar.add_element(cur_idx, glo_idx,
+                                    -0.5 / dx_level / dx_level);
+                                //loc_idx = chd_x_idx + 1 * (N + 2);
+                                loc_idx = chd_x_idx + 1 * (N + 2);
+                                glo_idx = idx_vec[0][loc_idx];
+                                mat_tar.add_element(cur_idx, glo_idx,
+                                    -0.5 / dx_level / dx_level);
+                            }
+
+                            else if (i >= (N + 2) / 2 && field_idx == 0)
+                            {
+                                int n_idx = 2*num_neighbor + 3;
+                                auto BC_idx_vec = leafBC[n_idx];
+
+                                int chd_x_idx = (i - (N + 2) / 2) * 2 + 1;
+                                loc_idx = chd_x_idx + (N - 1) * (N + 2);
+                                int glo_idx = BC_idx_vec[loc_idx];
+                                mat_tar.add_element(cur_idx, glo_idx,
+                                    0.5 / dx_level / dx_level);
+                                loc_idx = chd_x_idx + 1 + (N - 1) * (N + 2);
+                                glo_idx = BC_idx_vec[loc_idx];
+                                mat_tar.add_element(cur_idx, glo_idx,
+                                    0.5 / dx_level / dx_level);
+                                //loc_idx = (chd_x_idx + 1) + 1 * (N + 2);
+                                loc_idx = (chd_x_idx + 1) + 1 * (N + 2);
+                                glo_idx = idx_vec[2][loc_idx];
+                                mat_tar.add_element(cur_idx, glo_idx,
+                                    -0.5 / dx_level / dx_level);
+                                //loc_idx = chd_x_idx + 1 * (N + 2);
+                                loc_idx = chd_x_idx + 1 * (N + 2);
+                                glo_idx = idx_vec[2][loc_idx];
+                                mat_tar.add_element(cur_idx, glo_idx,
+                                    -0.5 / dx_level / dx_level);
+                            }
+                            else if (i >= (N + 2) / 2 && field_idx == 1)
+                            {
+                                int chd_x_idx = (i - (N + 2) / 2) * 2 + 1;
+
+                                loc_idx = (chd_x_idx);
+                                int glo_idx = idx_vec[2][loc_idx];
+                                mat_tar.add_element(cur_idx, glo_idx,
+                                    2.0 / dx_level / dx_level);
+                                loc_idx = (chd_x_idx) + 1 * (N + 2);
+                                glo_idx = idx_vec[2][loc_idx];
+                                mat_tar.add_element(cur_idx, glo_idx,
+                                    -2.0 / dx_level / dx_level);
+                            }
+                            else if (i < (N + 2) / 2 && field_idx == 1)
+                            {
+                                int chd_x_idx = (i - 1) * 2 + 1;
+                                loc_idx = (chd_x_idx);
+                                int glo_idx = idx_vec[0][loc_idx];
+                                mat_tar.add_element(cur_idx, glo_idx,
+                                    2.0 / dx_level / dx_level);
+                                loc_idx = (chd_x_idx) + 1 * (N + 2);
+                                glo_idx = idx_vec[0][loc_idx];
+                                mat_tar.add_element(cur_idx, glo_idx,
+                                    -2.0 / dx_level / dx_level);
+                            }
+                        }
+                    }
+
+                    if (x_end == N_ext)
+                    {
+                        auto& lin_data =
+                            it->data_r(idxField::tag(), field_idx)
+                                .linalg_data();
+                        auto& lin_data_g =
+                            it->data_r(idxField_g::tag(), field_idx)
+                                .linalg_data();
+
+                        int N = it->data().descriptor().extent()[0];
+                        for (int i = 1; i < N + 1; i++)
+                        {
+                            int cur_idx = lin_data.at(N_ext, i);
+                            int cur_g_idx = lin_data_g.at(N_ext, i);
+
+                            int cur_g_idx_l = lin_data_g.at(N_ext+1, i);
+                            mat_tar.add_element(cur_idx, cur_g_idx_l,
+                                -1.0 / dx_level / dx_level);
+
+                            int loc_idx = i * (N + 2) + 1;
+                            mat_tar.add_element(cur_idx, cur_g_idx,
+                                1.0 / dx_level / dx_level);
+                            if (i < (N + 2) / 2 && field_idx == 0)
+                            {
+                                //first block
+                                int chd_x_idx = (i - 1) * 2 + 1;
+                                //loc_idx = chd_x_idx + N_ext * (N + 2);
+                                loc_idx = chd_x_idx + (N_ext - 1) * (N + 2);
+                                int glo_idx = idx_vec[1][loc_idx];
+                                mat_tar.add_element(cur_idx, glo_idx,
+                                    -0.5 / dx_level / dx_level);
+                                //loc_idx = (chd_x_idx + 1)  + N_ext * (N + 2);
+                                loc_idx = (chd_x_idx + 1)  + (N_ext - 1) * (N + 2);
+                                glo_idx = idx_vec[1][loc_idx];
+                                mat_tar.add_element(cur_idx, glo_idx,
+                                    -0.5 / dx_level / dx_level);
+                                loc_idx = (chd_x_idx + 1) + 1 * (N + 2)  + N_ext * (N + 2);
+                                glo_idx = idx_vec[1][loc_idx];
+                                mat_tar.add_element(cur_idx, glo_idx,
+                                    0.5 / dx_level / dx_level);
+                                loc_idx = chd_x_idx + 1 * (N + 2) + N_ext * (N + 2);
+                                glo_idx = idx_vec[1][loc_idx];
+                                mat_tar.add_element(cur_idx, glo_idx,
+                                    0.5 / dx_level / dx_level);
+                                //int loc_idx = i * (N + 2);
+                            }
+
+                            else if (i >= (N + 2) / 2 && field_idx == 0)
+                            {
+                                //second block
+                                int chd_x_idx = (i - (N + 2) / 2) * 2 + 1;
+                                //loc_idx = chd_x_idx + N_ext * (N + 2);
+                                loc_idx = chd_x_idx + (N_ext - 1) * (N + 2);
+                                int glo_idx = idx_vec[3][loc_idx];
+                                mat_tar.add_element(cur_idx, glo_idx,
+                                    -0.5 / dx_level / dx_level);
+                                //loc_idx = (chd_x_idx + 1) + N_ext * (N + 2);
+                                loc_idx = (chd_x_idx + 1)  + (N_ext - 1) * (N + 2);
+                                glo_idx = idx_vec[3][loc_idx];
+                                mat_tar.add_element(cur_idx, glo_idx,
+                                    -0.5 / dx_level / dx_level);
+                                loc_idx = (chd_x_idx + 1) + 1 * (N + 2) + N_ext * (N + 2);
+                                glo_idx = idx_vec[3][loc_idx];
+                                mat_tar.add_element(cur_idx, glo_idx,
+                                    0.5 / dx_level / dx_level);
+                                loc_idx = chd_x_idx + 1 * (N + 2) + N_ext * (N + 2);
+                                glo_idx = idx_vec[3][loc_idx];
+                                mat_tar.add_element(cur_idx, glo_idx,
+                                    0.5 / dx_level / dx_level);
+                                //int loc_idx = i * (N + 2);
+                            }
+                            else if (i >= (N + 2) / 2 && field_idx == 1)
+                            {
+                                int chd_x_idx = (i - (N + 2) / 2) * 2 + 1;
+
+                                loc_idx = (chd_x_idx) + N_ext * (N + 2);
+                                int glo_idx = idx_vec[3][loc_idx];
+                                mat_tar.add_element(cur_idx, glo_idx,
+                                    -2.0 / dx_level / dx_level);
+                                loc_idx = (chd_x_idx) + 1 * (N + 2) + N_ext * (N + 2);
+                                glo_idx = idx_vec[3][loc_idx];
+                                mat_tar.add_element(cur_idx, glo_idx,
+                                    2.0 / dx_level / dx_level);
+                            }
+                            else if (i < (N + 2) / 2 && field_idx == 1)
+                            {
+                                int chd_x_idx = (i - 1) * 2 + 1;
+                                loc_idx = (chd_x_idx) + N_ext * (N + 2);
+                                int glo_idx = idx_vec[1][loc_idx];
+                                mat_tar.add_element(cur_idx, glo_idx,
+                                    -2.0 / dx_level / dx_level);
+                                loc_idx = (chd_x_idx) + 1 * (N + 2) + N_ext * (N + 2);
+                                glo_idx = idx_vec[1][loc_idx];
+                                mat_tar.add_element(cur_idx, glo_idx,
+                                    2.0 / dx_level / dx_level);
+                            }
+                        }
+                    }
+
+                    if (y_end == N_ext)
+                    {
+                        auto& lin_data =
+                            it->data_r(idxField::tag(), field_idx)
+                                .linalg_data();
+                        auto& lin_data_g =
+                            it->data_r(idxField_g::tag(), field_idx)
+                                .linalg_data();
+
+                        int N = it->data().descriptor().extent()[0];
+                        for (int i = 1; i < N + 1; i++)
+                        {
+                            int cur_idx = lin_data.at(i, N_ext);
+                            int cur_g_idx = lin_data_g.at(i, N_ext);
+
+                            int cur_g_idx_l = lin_data_g.at(i, N_ext+1);
+                            mat_tar.add_element(cur_idx, cur_g_idx_l,
+                                -1.0 / dx_level / dx_level);
+
+                            int loc_idx = i * (N + 2) + 1;
+                            mat_tar.add_element(cur_idx, cur_g_idx,
+                                1.0 / dx_level / dx_level);
+                            if (i < (N + 2) / 2 && field_idx == 1)
+                            {
+                                //first block
+                                int chd_x_idx = (i - 1) * 2 + 1;
+                                //loc_idx = chd_x_idx * (N + 2) + N_ext;
+                                loc_idx = chd_x_idx * (N + 2) + N_ext - 1;
+                                int glo_idx = idx_vec[2][loc_idx];
+                                mat_tar.add_element(cur_idx, glo_idx,
+                                    -0.5 / dx_level / dx_level);
+                                //loc_idx = (chd_x_idx + 1) * (N + 2) + N_ext;
+                                loc_idx = (chd_x_idx + 1) * (N + 2) + N_ext - 1;
+                                glo_idx = idx_vec[2][loc_idx];
+                                mat_tar.add_element(cur_idx, glo_idx,
+                                    -0.5 / dx_level / dx_level);
+                                loc_idx = (chd_x_idx + 1) * (N + 2) + 1 + N_ext;
+                                glo_idx = idx_vec[2][loc_idx];
+                                mat_tar.add_element(cur_idx, glo_idx,
+                                    0.5 / dx_level / dx_level);
+                                loc_idx = chd_x_idx * (N + 2) + 1 + N_ext;
+                                glo_idx = idx_vec[2][loc_idx];
+                                mat_tar.add_element(cur_idx, glo_idx,
+                                    0.5 / dx_level / dx_level);
+                                //int loc_idx = i * (N + 2);
+                            }
+
+                            else if (i >= (N + 2) / 2 && field_idx == 1)
+                            {
+                                //second block
+                                int chd_x_idx = (i - (N + 2) / 2) * 2 + 1;
+                                //loc_idx = chd_x_idx * (N + 2) + N_ext;
+                                loc_idx = chd_x_idx * (N + 2) + N_ext - 1;
+                                int glo_idx = idx_vec[3][loc_idx];
+                                mat_tar.add_element(cur_idx, glo_idx,
+                                    -0.5/ dx_level / dx_level);
+                                //loc_idx = (chd_x_idx + 1) * (N + 2) + N_ext;
+                                loc_idx = (chd_x_idx + 1) * (N + 2) + N_ext - 1;
+                                glo_idx = idx_vec[3][loc_idx];
+                                mat_tar.add_element(cur_idx, glo_idx,
+                                    -0.5 / dx_level / dx_level);
+                                loc_idx = (chd_x_idx + 1) * (N + 2) + 1 + N_ext;
+                                glo_idx = idx_vec[3][loc_idx];
+                                mat_tar.add_element(cur_idx, glo_idx,
+                                    0.5 / dx_level / dx_level);
+                                loc_idx = chd_x_idx * (N + 2) + 1 + N_ext;
+                                glo_idx = idx_vec[3][loc_idx];
+                                mat_tar.add_element(cur_idx, glo_idx,
+                                    0.5 / dx_level / dx_level);
+                                //int loc_idx = i * (N + 2);
+                            }
+                            else if (i >= (N + 2) / 2 && field_idx == 0)
+                            {
+                                int chd_x_idx = (i - (N + 2) / 2) * 2 + 1;
+
+                                loc_idx = (chd_x_idx) * (N + 2) + N_ext;
+                                int glo_idx = idx_vec[3][loc_idx];
+                                mat_tar.add_element(cur_idx, glo_idx,
+                                    -2.0 / dx_level / dx_level);
+                                loc_idx = (chd_x_idx) * (N + 2) + 1 + N_ext;
+                                glo_idx = idx_vec[3][loc_idx];
+                                mat_tar.add_element(cur_idx, glo_idx,
+                                    2.0 / dx_level / dx_level);
+                            }
+                            else if (i < (N + 2) / 2 && field_idx == 0)
+                            {
+                                int chd_x_idx = (i - 1) * 2 + 1;
+                                loc_idx = (chd_x_idx) * (N + 2) + N_ext;
+                                int glo_idx = idx_vec[2][loc_idx];
+                                mat_tar.add_element(cur_idx, glo_idx,
+                                    -2.0 / dx_level / dx_level);
+                                loc_idx = (chd_x_idx) * (N + 2) + 1 + N_ext;
+                                glo_idx = idx_vec[2][loc_idx];
+                                mat_tar.add_element(cur_idx, glo_idx,
+                                    2.0 / dx_level / dx_level);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        mat_tar.clean_entry(1e-14);
+
+        domain_->client_communicator().barrier();
+    }
+
+    bool correction_adjacent(int ch_idx, int neighb_idx) {
+        if (ch_idx == 0) {
+            if (neighb_idx == 1 || neighb_idx == 3) return true;
+            else return false;
+        }
+        if (ch_idx == 1) {
+            if (neighb_idx == 1 || neighb_idx == 5) return true;
+            else return false;
+        }
+        if (ch_idx == 2) {
+            if (neighb_idx == 7 || neighb_idx == 3) return true;
+            else return false;
+        }
+        if (ch_idx == 3) {
+            if (neighb_idx == 7 || neighb_idx == 5) return true;
+            else return false;
+        }
+        return false;
+    }
+
+    template<class idxField, class idxField_g>
+    void construct_upward_BC_intrp(sparse_mat& mat_tar) {
+        //this function constructs the Dirichlet BC interpolation for face centered variables
+        boost::mpi::communicator world;
+        if (world.rank() == 0) {
+            return;
+        }        
+        
+        if (max_local_idx == 0) {
+            std::cout << "idx not initialized, please call Assigning_idx()" << std::endl;
+        }
+
+        const auto dx_base = domain_->dx_base();
+
+        int base_level = domain_->tree()->base_level();
+
+        int N_ext = domain_->block_extent()[0];
+
+        auto c_cntr_nli = psolver.c_cntr_nli();
+        int max_relative_pos = c_cntr_nli.max_relative_pos;
+
+        for (std::size_t field_idx = 0; field_idx < idxField::nFields();
+             ++field_idx)
+        {
+            for (int l = base_level; l < (domain_->tree()->depth() - 1); l++)
+            {
+                for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+                {
+                    if (it->is_leaf()) continue;
+                    if (it->is_correction()) continue;
+                    const int num_child = it->num_children();
+                    //octant_base_t oct_base_tmp(coordinate_type({0,0}), base_level);
+                    //std::vector<octant_t> octant_vec(num_child, octant_t(oct_base_tmp));
+                    std::vector<std::vector<int>> idx_vec;
+                    idx_vec.resize(num_child);
+
+                    int N = it->data().descriptor().extent()[0];
+
+                    int idx_size = (N + 2) * (N + 2);
+                    /*for (int i = 0; i < num_child;i++) {
+                    idx_vec[i].resize(idx_size);
+                }*/
+                    if (it->locally_owned() && it->has_data())
+                    {
+                        //octant located in this processor, need to receive data
+                        //octant_vec.resize(num_child);
+                        for (int i = 0; i < it->num_children(); i++)
+                        {
+                            auto child = it->child(i);
+                            if (child && child->locally_owned() &&
+                                child->has_data())
+                            {
+                                idx_vec[i].resize(idx_size);
+
+                                auto child_idx_vec =
+                                    child->data_r(idxField_g::tag(), field_idx)
+                                        .linalg_data();
+
+                                for (int idx_i = 0; idx_i < (N + 2); idx_i++)
+                                {
+                                    for (int idx_j = 0; idx_j < (N + 2);
+                                         idx_j++)
+                                    {
+                                        int loc_idx = idx_i * (N + 2) + idx_j;
+                                        idx_vec[i][loc_idx] =
+                                            child_idx_vec.at(idx_i, idx_j);
+                                    }
+                                }
+
+                                //octant_vec[i] = (*child);
+                                //continue;
+                            }
+                            else if (child)
+                            {
+                                int source_rank = child->rank();
+
+                                int tag_val = child->global_id();
+
+                                idx_vec[i].resize(idx_size);
+                                //std::cout << "Receiving at rank " << world.rank() << " gid is " << tag_val << std::endl;
+
+                                //world.recv(source_rank, tag_val, octant_vec[i]);
+                                world.recv(source_rank, tag_val, idx_vec[i]);
+                            }
+                        }
+                    }
+                    else
+                    {
+                        //search for children is on this processor
+                        for (int i = 0; i < it->num_children(); i++)
+                        {
+                            auto child = it->child(i);
+                            int  parent_rank = it->rank();
+                            if (!child || !child->locally_owned() ||
+                                !child->has_data())
+                                continue;
+
+                            std::vector<int> tmp_idx_vec;
+
+                            tmp_idx_vec.resize(idx_size);
+
+                            auto child_idx_vec =
+                                child->data_r(idxField_g::tag(), field_idx)
+                                    .linalg_data();
+
+                            for (int idx_i = 0; idx_i < (N + 2); idx_i++)
+                            {
+                                for (int idx_j = 0; idx_j < (N + 2); idx_j++)
+                                {
+                                    int loc_idx = idx_i * (N + 2) + idx_j;
+                                    tmp_idx_vec[loc_idx] =
+                                        child_idx_vec.at(idx_i, idx_j);
+                                }
+                            }
+
+                            int tag_val = child->global_id();
+                            //std::cout << "Sending at rank " << world.rank() << " gid is " << tag_val << std::endl;
+                            world.send(parent_rank, tag_val, tmp_idx_vec);
+                        }
+                    }
+
+                    //domain_->client_communicator().barrier();
+
+                    //std::cout << "rank " << world.rank() << " finished communication " << "level " << l << std::endl;
+
+                    if (it->locally_owned() && it->has_data())
+                    {
+                        int   N = it->data().descriptor().extent()[0];
+                        auto& lin_data =
+                            it->data_r(idxField::tag(), field_idx).linalg_data();
+                        auto& lin_data_g =
+                            it->data_r(idxField_g::tag(), field_idx).linalg_data();
+                        //start computing the matrix
+                        for (int i = 1; i < N + 1; i++)
+                        {
+                            for (int j = 1; j < N + 1; j++)
+                            {
+                                //if (l <= 4) std::cout << "rank " << world.rank() << " level " << l << " i " << i << " j " << j << std::endl;
+                                //get current idx
+                                int cur_idx = lin_data.at(i, j);
+                                int cur_g_idx = lin_data_g.at(i, j);
+                                if (cur_idx < 0)
+                                {
+                                    //std::cout << "cur_idx < 0 in constructing upward interpolation matrix" << std::endl;
+                                    continue;
+                                }
+                                mat_tar.add_element(cur_idx, cur_g_idx, -1.0);
+
+                                //if (l <= 4) std::cout << "rank " << world.rank() << " level " << l << " i " << i << " j " << j << " cur idx " << cur_idx << " g idx " << cur_g_idx << std::endl;
+
+                                for (int child_idx = 0;
+                                     child_idx < it->num_children();
+                                     child_idx++)
+                                {
+                                    //if (l <= 4) std::cout << "rank " << world.rank() << " level " << l << " child idx " << child_idx << std::endl;
+                                    auto child = it->child(child_idx);
+                                    //int  n = lin_data_g->shape()[0];
+                                    int idx_x = (child_idx & (1 << 0)) >> 0;
+                                    int idx_y = (child_idx & (1 << 1)) >> 1;
+                                    int idx_z = (child_idx & (1 << 2)) >> 2;
+
+                                    std::array<int, 3> relative_positions{
+                                        {1, 1, 1}};
+                                    if (idxField::mesh_type() ==
+                                        MeshObject::face)
+                                    {
+                                        relative_positions[field_idx] = 0;
+                                    }
+                                    else if (idxField::mesh_type() ==
+                                             MeshObject::cell)
+                                    {
+                                    }
+                                    else if (idxField::mesh_type() ==
+                                             MeshObject::edge)
+                                    {
+                                        relative_positions[0] = 0;
+                                        relative_positions[1] = 0;
+                                        relative_positions[2] = 0;
+
+                                        relative_positions[field_idx] = 1; //treat as if it is 3D
+                                    }
+                                    else
+                                        throw std::runtime_error(
+                                            "Wrong type of mesh to be interpolated");
+
+                                    idx_x += relative_positions[0] *
+                                             max_relative_pos;
+                                    idx_y += relative_positions[1] *
+                                             max_relative_pos;
+                                    idx_z += relative_positions[2] *
+                                             max_relative_pos;
+
+                                    //idx_x += 1;
+                                    //idx_y += 1;
+                                    //this indexing is only for 2D
+
+                                    auto x_intrp_mat =
+                                        c_cntr_nli_
+                                            .antrp_mat_sub_simple_sub_[idx_x];
+                                    auto y_intrp_mat =
+                                        c_cntr_nli_
+                                            .antrp_mat_sub_simple_sub_[idx_y];
+
+                                    //auto child_cur = octant_vec[child_idx];
+
+                                    //if (!child || !child_cur.has_data()) continue;
+
+                                    if (idx_vec[child_idx].size() == 0) {
+                                        std::cout << "missing at child" << std::endl;
+                                        continue;
+                                    }
+
+                                    //auto& child_idx_vec = octant_vec[child_idx].data_r(idx_w_g_type::tag(), 0).linalg_data();
+                                    //auto child_idx_vec = child_cur.data_r(idx_w_g_type::tag(), 0).linalg_data();
+
+                                    for (int sub_i = 0; sub_i < (N + 2);
+                                         sub_i++)
+                                    {
+                                        for (int sub_j = 0; sub_j < (N + 2);
+                                             sub_j++)
+                                        {
+                                            /*int              child_idx_g =
+                                                child_idx_vec.at(sub_i, sub_j);*/
+                                            int loc_idx =
+                                                sub_i * (N + 2) + sub_j;
+                                            int child_idx_g =
+                                                idx_vec[child_idx][loc_idx];
+                                            float_type val_x =
+                                                x_intrp_mat.at(i, sub_i);
+                                            float_type val_y =
+                                                y_intrp_mat.at(j, sub_j);
+                                            float_type val_t = val_x * val_y;
+                                            if (std::abs(val_t) < 1e-14)
+                                                continue;
+                                            mat_tar.add_element(cur_idx,
+                                                child_idx_g, val_t);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        domain_->client_communicator().barrier();
+    }
+
+    template<class idxField, class idxField_g>
+    void construct_interpolation(sparse_mat& mat_tar) {
+        boost::mpi::communicator world;
+        //world.barrier();
+
+        if (world.rank() == 0) {
+            return;
+        }        
+        
+        if (max_local_idx == 0) {
+            std::cout << "idx not initialized, please call Assigning_idx()" << std::endl;
+        }
+
+        const auto dx_base = domain_->dx_base();
+
+        int base_level = domain_->tree()->base_level();
+
+        int N_ext = domain_->block_extent()[0];
+
+        auto c_cntr_nli = psolver.c_cntr_nli();
+        int max_relative_pos = c_cntr_nli.max_relative_pos;
+        for (std::size_t field_idx = 0; field_idx < idxField::nFields();
+             ++field_idx)
+        {
+            for (int l = base_level + 1; l < domain_->tree()->depth(); l++)
+            {
+                if (domain_->is_client())
+                {
+                    auto client = domain_->decomposition().client();
+
+                    client->template buffer_exchange<idxField>(l);
+                    client->template buffer_exchange<idxField_g>(l);
+                    client->template buffer_exchange<idxField>(l - 1);
+                    client->template buffer_exchange<idxField_g>(l - 1);
+                }
+                for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+                {
+                    if (!it->is_correction()) continue;
+                    if (it->is_leaf()) continue;
+                    std::vector<int> idx_vec;
+
+                    int N = it->data().descriptor().extent()[0];
+
+                    int idx_size = (N + 2) * (N + 2);
+                    if (it->locally_owned() && it->has_data())
+                    {
+                        //octant located in this processor, need to receive data
+
+                        auto parent = it->parent();
+
+                        if (parent->locally_owned() && parent->has_data())
+                        {
+                            idx_vec.resize(idx_size);
+
+                            auto parent_idx_vec =
+                                parent->data_r(idxField_g::tag(), field_idx)
+                                    .linalg_data();
+
+                            for (int idx_i = 0; idx_i < (N + 2); idx_i++)
+                            {
+                                for (int idx_j = 0; idx_j < (N + 2); idx_j++)
+                                {
+                                    int loc_idx = idx_i * (N + 2) + idx_j;
+                                    idx_vec[loc_idx] =
+                                        parent_idx_vec.at(idx_i, idx_j);
+                                }
+                            }
+
+                            //octant_vec[i] = (*child);
+                            //continue;
+                        }
+                        else {
+                            idx_vec.resize(idx_size);
+                            int source_rank = parent->rank();
+
+                            int tag_val = parent->global_id();
+                            world.recv(source_rank, tag_val, idx_vec);
+                        }
+                    }
+                    else
+                    {
+                        auto parent = it->parent();
+                        //search for parent is on this processor
+                        if (parent && parent->locally_owned() && parent->has_data()) {
+                            std::vector<int> tmp_idx_vec;
+
+                            tmp_idx_vec.resize(idx_size);
+
+                            auto parent_idx_vec =
+                                parent->data_r(idxField_g::tag(), field_idx)
+                                    .linalg_data();
+
+                            for (int idx_i = 0; idx_i < (N + 2); idx_i++)
+                            {
+                                for (int idx_j = 0; idx_j < (N + 2); idx_j++)
+                                {
+                                    int loc_idx = idx_i * (N + 2) + idx_j;
+                                    tmp_idx_vec[loc_idx] =
+                                        parent_idx_vec.at(idx_i, idx_j);
+                                }
+                            }
+
+                            int tag_val = parent->global_id();
+                            int tar_rank = it->rank();
+                            world.send(tar_rank, tag_val, tmp_idx_vec);
+                        }
+                        
+                    }
+
+                    if (it->locally_owned() && it->has_data())
+                    {
+                        int   N = it->data().descriptor().extent()[0];
+                        auto  parent = it->parent();
+                        auto& lin_data =
+                            it->data_r(idxField::tag(), field_idx).linalg_data();
+                        auto& lin_data_g =
+                            it->data_r(idxField_g::tag(), field_idx).linalg_data();
+                        //start computing the matrix
+                        for (int i = 1; i < N + 1; i++)
+                        {
+                            for (int j = 1; j < N + 1; j++)
+                            {
+                                //get current idx
+                                int cur_idx = lin_data.at(i, j);
+                                int cur_g_idx = lin_data_g.at(i, j);
+                                if (cur_idx < 0)
+                                {
+                                    continue;
+                                }
+                                mat_tar.add_element(cur_idx, cur_g_idx,
+                                    -1.0);
+
+                                int chd_idx = -1;
+                                for (int child_idx = 0;
+                                     child_idx < parent->num_children();
+                                     child_idx++)
+                                {
+                                    auto child = parent->child(child_idx);
+                                    if (child && child->global_id() == it->global_id()) {
+                                        chd_idx = child_idx;
+                                        break;
+                                    }
+                                }
+
+                                
+                                if (chd_idx < 0) {
+                                    throw std::runtime_error("Did not found the child idx in Laplacian");
+                                }
+
+                                int  idx_x = (chd_idx & (1 << 0)) >> 0;
+                                int  idx_y = (chd_idx & (1 << 1)) >> 1;
+                                int  idx_z = (chd_idx & (1 << 2)) >> 2;
+
+                                std::array<int, 3> relative_positions{
+                                    {1, 1, 1}};
+                                if (idxField::mesh_type() == MeshObject::face)
+                                {
+                                    relative_positions[field_idx] = 0;
+                                }
+                                else if (idxField::mesh_type() == MeshObject::cell)
+                                {
+                                }
+                                else if (idxField::mesh_type() == MeshObject::edge)
+                                {
+                                    relative_positions[0] = 0;
+                                    relative_positions[1] = 0;
+                                    relative_positions[2] = 0;
+                                    relative_positions[field_idx] = 1; //treat this as if in 3D case
+                                }
+                                else
+                                    throw std::runtime_error(
+                                        "Wrong type of mesh to be interpolated");
+
+                                idx_x +=
+                                    relative_positions[0] * max_relative_pos;
+                                idx_y +=
+                                    relative_positions[1] * max_relative_pos;
+                                idx_z +=
+                                    relative_positions[2] * max_relative_pos;
+
+                                /*auto x_intrp_mat = c_cntr_nli_mat.antrp_mat_sub_[idx_x].data_;
+                                auto y_intrp_mat = c_cntr_nli_mat.antrp_mat_sub_[idx_y].data_;
+
+                                for (int sub_i = 1; sub_i < (N + 1); sub_i++)
+                                {
+                                    for (int sub_j = 1; sub_j < (N + 1);
+                                         sub_j++)
+                                    {
+                                        int loc_idx = sub_i * (N + 2) + sub_j;
+                                        int prt_idx_g =
+                                            idx_vec[loc_idx];
+                                        float_type val_x =
+                                            x_intrp_mat.at(sub_i-1, i-1);
+                                        float_type val_y =
+                                            y_intrp_mat.at(sub_j-1, j-1);
+                                        float_type val_t = val_x * val_y;
+                                        if (std::abs(val_t) < 1e-14)
+                                            continue;
+                                        mat_tar.add_element(cur_idx,
+                                            prt_idx_g, val_t);
+                                    }
+                                }*/
+
+                                auto x_intrp_mat = c_cntr_nli.antrp_mat_sub_[idx_x].data_;
+                                auto y_intrp_mat = c_cntr_nli.antrp_mat_sub_[idx_y].data_;
+
+                                for (int sub_i = 0; sub_i < (N + 2); sub_i++)
+                                {
+                                    for (int sub_j = 0; sub_j < (N + 2);
+                                         sub_j++)
+                                    {
+                                        int loc_idx = sub_i * (N + 2) + sub_j;
+                                        int prt_idx_g =
+                                            idx_vec[loc_idx];
+                                        float_type val_x =
+                                            x_intrp_mat.at(sub_i, i);
+                                        float_type val_y =
+                                            y_intrp_mat.at(sub_j, j);
+                                        float_type val_t = val_x * val_y;
+                                        if (std::abs(val_t) < 1e-14)
+                                            continue;
+                                        mat_tar.add_element(cur_idx,
+                                            prt_idx_g, val_t);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                //domain_->client_communicator().barrier();
+            }
+        }
+        domain_->client_communicator().barrier();
+    }
+
+
+
+    //TODO maybe to be put directly into operators:
+    template<class Source, class Target>
+    void nonlinear(float_type _scale = 1.0) noexcept
+    {
+        clean<edge_aux_type>();
+        clean<Target>();
+        clean<face_aux_type>();
+
+        up_and_down<Source>();
+
+        auto       client = domain_->decomposition().client();
+        const auto dx_base = domain_->dx_base();
+
+        for (int l = domain_->tree()->base_level();
+             l < domain_->tree()->depth(); ++l)
+        {
+            client->template buffer_exchange<Source>(l);
+
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
+
+                const auto dx_level =
+                    dx_base / math::pow2(it->refinement_level());
+                domain::Operator::curl<Source, edge_aux_type>(it->data(),
+                    dx_level);
+            }
+        }
+
+        //clean_leaf_correction_boundary<edge_aux_type>(domain_->tree()->base_level(), true, 2);
+        // add background velocity
+        copy<Source, face_aux_type>();
+        domain::Operator::add_field_expression<face_aux_type>(domain_,
+            simulation_->frame_vel(), 5, -1.0);
+
+        for (int l = domain_->tree()->base_level();
+             l < domain_->tree()->depth(); ++l)
+        {
+            client->template buffer_exchange<edge_aux_type>(l);
+            //if (l == domain_->tree()->base_level()) clean_leaf_correction_boundary<edge_aux_type>(l, true, 1);
+
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
+
+                domain::Operator::nonlinear<face_aux_type, edge_aux_type,
+                    Target>(it->data());
+
+                for (std::size_t field_idx = 0; field_idx < Target::nFields();
+                     ++field_idx)
+                {
+                    auto& lin_data =
+                        it->data_r(Target::tag(), field_idx).linalg_data();
+                    lin_data *= _scale;
+                }
+            }
+
+            //client->template buffer_exchange<Target>(l);
+            //clean_leaf_correction_boundary<Target>(l, true,2);
+        }
+
+        //clean_leaf_correction_boundary<Target>(domain_->tree()->base_level(), true,2);
+    }
+
+    template<class Source_old, class Source_new, class W_old, class Uz, class Target, class Target_Uz>
+    void nonlinear_jac(float_type _scale = 1.0) noexcept
+    {
+        //std::cout << "part begin" << std::endl;
+        clean<edge_aux_type>();
+        clean<Target>();
+        clean<face_aux_tmp_type>();
+        clean<cell_aux_tmp_type>();
+        clean<nonlinear_tmp_type>();
+
+        //std::cout << "part 0" << std::endl;
+
+        up_and_down<Source_old>();
+        up_and_down<Source_new>();
+        up_and_down<W_old>();
+        up_and_down<Uz>();
+
+        auto       client = domain_->decomposition().client();
+        const auto dx_base = domain_->dx_base();
+
+        for (int l = domain_->tree()->base_level();
+             l < domain_->tree()->depth(); ++l)
+        {
+            client->template buffer_exchange<Source_new>(l);
+            client->template buffer_exchange<Uz>(l);
+
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
+
+                const auto dx_level =
+                    dx_base / math::pow2(it->refinement_level());
+                domain::Operator::curl_helmholtz_real<Source_new, Uz, edge_aux_type>(it->data(),
+                    dx_level, mode_c);
+            }
+        }
+
+        //std::cout << "part 1" << std::endl;
+
+        //clean_leaf_correction_boundary<edge_aux_type>(domain_->tree()->base_level(), true, 2);
+        // add background velocity
+        copy<Source_old, face_aux_tmp_type>();
+        domain::Operator::add_field_expression<face_aux_tmp_type>(domain_,
+            simulation_->frame_vel(), T_stage_, -1.0);
+
+        for (int l = domain_->tree()->base_level();
+             l < domain_->tree()->depth(); ++l)
+        {
+            client->template buffer_exchange<edge_aux_type>(l);
+            client->template buffer_exchange<face_aux_tmp_type>(l);
+            //clean_leaf_correction_boundary<edge_aux_type>(l, false, 2);
+
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
+
+                domain::Operator::nonlinear_linear_helm<face_aux_tmp_type, edge_aux_type,
+                    nonlinear_tmp_type, cell_aux_tmp_type>(it->data());
+            }
+        }
+
+        //std::cout << "part 2" << std::endl;
+
+        clean<edge_aux_type>();
+        clean<face_aux_tmp_type>();
+
+        //auto       client = domain_->decomposition().client();
+        //const auto dx_base = domain_->dx_base();
+
+        for (int l = domain_->tree()->base_level();
+             l < domain_->tree()->depth(); ++l)
+        {
+            client->template buffer_exchange<Source_old>(l);
+            client->template buffer_exchange<W_old>(l);
+
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
+
+                const auto dx_level =
+                    dx_base / math::pow2(it->refinement_level());
+                domain::Operator::curl_helmholtz_real<Source_old, W_old, edge_aux_type>(it->data(),
+                    dx_level, 0);
+            }
+        }
+
+        //std::cout << "part 3" << std::endl;
+
+        //clean_leaf_correction_boundary<edge_aux_type>(domain_->tree()->base_level(), true, 2);
+        // add background velocity
+        copy<Source_new, face_aux_tmp_type>();
+        //domain::Operator::add_field_expression<face_aux_tmp_type>(domain_, simulation_->frame_vel(), T_stage_, -1.0);
+
+        for (int l = domain_->tree()->base_level();
+             l < domain_->tree()->depth(); ++l)
+        {
+            client->template buffer_exchange<edge_aux_type>(l);
+            client->template buffer_exchange<face_aux_tmp_type>(l);
+            //clean_leaf_correction_boundary<edge_aux_type>(l, false, 2);
+
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
+
+                domain::Operator::nonlinear_linear_helm<face_aux_tmp_type, edge_aux_type,
+                    Target, Target_Uz>(it->data());
+            }
+        }
+        add<nonlinear_tmp_type, Target>();
+        add<cell_aux_tmp_type, Target_Uz>();
+
+        //std::cout << "part 4" << std::endl;
+
+
+        for (int l = domain_->tree()->base_level();
+             l < domain_->tree()->depth(); ++l)
+        {
+            //client->template buffer_exchange<edge_aux_type>(l);
+            //clean_leaf_correction_boundary<edge_aux_type>(l, false, 2);
+
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
+
+                for (std::size_t field_idx = 0; field_idx < Target::nFields();
+                     ++field_idx)
+                {
+                    auto& lin_data =
+                        it->data_r(Target::tag(), field_idx).linalg_data();
+                    lin_data *= _scale;
+                }
+                auto& lin_data = it->data_r(Target_Uz::tag(), 0).linalg_data();
+                lin_data *= _scale;
+            }
+        }
+    }
+
+    template<class Source_old, class Source_new, class Target>
+    void nonlinear_jac_adjoint(float_type _scale = 1.0) noexcept
+    {
+        clean<edge_aux_type>();
+        clean<Target>();
+        clean<face_aux_tmp_type>();
+        clean<nonlinear_tmp_type>();
+
+        //curl transpose of (vel_old cross vel_new)
+
+        up_and_down<Source_old>();
+        up_and_down<Source_new>();
+
+        auto       client = domain_->decomposition().client();
+        const auto dx_base = domain_->dx_base();
+
+        copy<Source_old, face_aux_tmp_type>();
+        domain::Operator::add_field_expression<face_aux_tmp_type>(domain_,
+            simulation_->frame_vel(), T_stage_, -1.0);
+
+        for (int l = domain_->tree()->base_level();
+             l < domain_->tree()->depth(); ++l)
+        {
+            client->template buffer_exchange<face_aux_tmp_type>(l);
+            client->template buffer_exchange<Source_new>(l);
+
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
+
+                domain::Operator::nonlinear_adjoint_p1<face_aux_tmp_type,
+                    Source_new, edge_aux_type>(it->data());
+            }
+        }
+
+        for (int l = domain_->tree()->base_level();
+             l < domain_->tree()->depth(); ++l)
+        {
+            client->template buffer_exchange<edge_aux_type>(l);
+
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
+
+                const auto dx_level =
+                    dx_base / math::pow2(it->refinement_level());
+                domain::Operator::curl_transpose<edge_aux_type, Target>(
+                    it->data(), dx_level);
+            }
+        }
+
+        //vort cross vel
+
+        clean<edge_aux_type>();
+        clean<face_aux_tmp_type>();
+
+        //auto       client = domain_->decomposition().client();
+        //const auto dx_base = domain_->dx_base();
+
+        for (int l = domain_->tree()->base_level();
+             l < domain_->tree()->depth(); ++l)
+        {
+            client->template buffer_exchange<Source_old>(l);
+
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
+
+                const auto dx_level =
+                    dx_base / math::pow2(it->refinement_level());
+                domain::Operator::curl<Source_old, edge_aux_type>(it->data(),
+                    dx_level);
+            }
+        }
+
+        //clean_leaf_correction_boundary<edge_aux_type>(domain_->tree()->base_level(), true, 2);
+        // add background velocity
+        copy<Source_new, face_aux_tmp_type>();
+        //domain::Operator::add_field_expression<face_aux_tmp_type>(domain_, simulation_->frame_vel(), T_stage_, -1.0);
+
+        for (int l = domain_->tree()->base_level();
+             l < domain_->tree()->depth(); ++l)
+        {
+            client->template buffer_exchange<edge_aux_type>(l);
+            client->template buffer_exchange<face_aux_tmp_type>(l);
+            clean_leaf_correction_boundary<edge_aux_type>(l, false, 2);
+
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
+
+                domain::Operator::nonlinear<face_aux_tmp_type, edge_aux_type,
+                    nonlinear_tmp_type>(it->data());
+            }
+        }
+        add<nonlinear_tmp_type, Target>(-1.0);
+
+        for (int l = domain_->tree()->base_level();
+             l < domain_->tree()->depth(); ++l)
+        {
+            client->template buffer_exchange<edge_aux_type>(l);
+            clean_leaf_correction_boundary<edge_aux_type>(l, false, 2);
+
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
+
+                for (std::size_t field_idx = 0; field_idx < Target::nFields();
+                     ++field_idx)
+                {
+                    auto& lin_data =
+                        it->data_r(Target::tag(), field_idx).linalg_data();
+                    lin_data *= _scale;
+                }
+            }
+        }
+    }
+
+    template<class Source, class Target>
+    void divergence(float_type _scale = 1.0) noexcept
+    {
+        auto client = domain_->decomposition().client();
+
+        domain::Operator::domainClean<Target>(domain_);
+
+        up_and_down<Source>();
+
+        for (int l = domain_->tree()->base_level();
+             l < domain_->tree()->depth(); ++l)
+        {
+            client->template buffer_exchange<Source>(l);
+            const auto dx_base = domain_->dx_base();
+
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
+                const auto dx_level =
+                    dx_base / math::pow2(it->refinement_level());
+                domain::Operator::divergence<Source, Target>(it->data(),
+                    dx_level);
+
+                for (std::size_t field_idx = 0; field_idx < Target::nFields();
+                     ++field_idx)
+                {
+                    auto& lin_data =
+                        it->data_r(Target::tag(), field_idx).linalg_data();
+
+                    lin_data *= _scale;
+                }
+            }
+
+            //client->template buffer_exchange<Target>(l);
+            //clean_leaf_correction_boundary<Target>(l, true, 2);
+            //clean_leaf_correction_boundary<Target>(l, false,4+stage_idx_);
+        }
+
+        //clean_leaf_correction_boundary<Target>(domain_->tree()->base_level(), true, 2);
+
+        //clean<Source>(true);
+        //clean<Target>(true);
+    }
+
+    template<class Source, class Uz, class Target>
+    void curl(float_type _mode_c) noexcept
+    {
+        auto client = domain_->decomposition().client();
+
+        domain::Operator::domainClean<Target>(domain_);
+
+        up_and_down<Source>();
+        up_and_down<Uz>();
+
+        for (int l = domain_->tree()->base_level();
+             l < domain_->tree()->depth(); ++l)
+        {
+            client->template buffer_exchange<Source>(l);
+            client->template buffer_exchange<Uz>(l);
+            const auto dx_base = domain_->dx_base();
+
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
+                const auto dx_level =
+                    dx_base / math::pow2(it->refinement_level());
+                domain::Operator::curl_helmholtz_real<Source, Uz, Target>(it->data(),
+                    dx_level, _mode_c);
+            }
+
+            //client->template buffer_exchange<Target>(l);
+            //clean_leaf_correction_boundary<Target>(l, true, 2);
+            //clean_leaf_correction_boundary<Target>(l, false,4+stage_idx_);
+            
+        }
+
+        clean<Source>(true);
+
+        //clean_leaf_correction_boundary<Target>(domain_->tree()->base_level(), true, 1);
+        //clean_leaf_according_to_idx<Target, idx_w_g_type>(domain_->tree()->base_level());
+        //clean<Target>(true);
+    }
+
+
+    template<class Source, class Target>
+    void curl2D() noexcept
+    {
+        auto client = domain_->decomposition().client();
+
+        domain::Operator::domainClean<Target>(domain_);
+
+        up_and_down<Source>();
+
+        for (int l = domain_->tree()->base_level();
+             l < domain_->tree()->depth(); ++l)
+        {
+            client->template buffer_exchange<Source>(l);
+            const auto dx_base = domain_->dx_base();
+
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
+                const auto dx_level =
+                    dx_base / math::pow2(it->refinement_level());
+                domain::Operator::curl_helmholtz_real<Source, Target>(it->data(),
+                    dx_level);
+            }
+
+            //client->template buffer_exchange<Target>(l);
+            //clean_leaf_correction_boundary<Target>(l, true, 2);
+            //clean_leaf_correction_boundary<Target>(l, false,4+stage_idx_);
+            
+        }
+
+        clean<Source>(true);
+
+        //clean_leaf_correction_boundary<Target>(domain_->tree()->base_level(), true, 1);
+        //clean_leaf_according_to_idx<Target, idx_w_g_type>(domain_->tree()->base_level());
+        //clean<Target>(true);
+    }
+
+    template<class Source, class Target>
+    void laplacian() noexcept
+    {
+        auto client = domain_->decomposition().client();
+
+        domain::Operator::domainClean<Target>(domain_);
+
+        up_and_down<Source>();
+
+        for (int l = domain_->tree()->base_level();
+             l < domain_->tree()->depth(); ++l)
+        {
+            client->template buffer_exchange<Source>(l);
+            const auto dx_base = domain_->dx_base();
+
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
+                const auto dx_level =
+                    dx_base / math::pow2(it->refinement_level());
+                domain::Operator::laplace<Source, Target>(it->data(), dx_level);
+            }
+
+            //client->template buffer_exchange<Target>(l);
+            //clean_leaf_correction_boundary<Target>(l, true, 2);
+            //clean_leaf_correction_boundary<Target>(l, false,4+stage_idx_);
+        }
+
+        //clean_leaf_correction_boundary<Target>(domain_->tree()->base_level(), true, 2);
+
+        //clean<Source>(true);
+        //clean<Target>(true);
+    }
+
+    template<class Source, class Target>
+    void gradient(float_type _scale = 1.0) noexcept
+    {
+        //up_and_down<Source>();
+        domain::Operator::domainClean<Target>(domain_);
+
+        up_and_down<Source>();
+
+        for (int l = domain_->tree()->base_level();
+             l < domain_->tree()->depth(); ++l)
+        {
+            auto client = domain_->decomposition().client();
+            client->template buffer_exchange<Source>(l);
+            const auto dx_base = domain_->dx_base();
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
+                const auto dx_level =
+                    dx_base / math::pow2(it->refinement_level());
+                domain::Operator::gradient<Source, Target>(it->data(),
+                    dx_level);
+                for (std::size_t field_idx = 0; field_idx < Target::nFields();
+                     ++field_idx)
+                {
+                    auto& lin_data =
+                        it->data_r(Target::tag(), field_idx).linalg_data();
+
+                    lin_data *= _scale;
+                }
+            }
+            client->template buffer_exchange<Target>(l);
+            //clean_leaf_correction_boundary<Target>(l, true, 2);
+        }
+
+        //clean_leaf_correction_boundary<Target>(domain_->tree()->base_level(), true,2);
+    }
+
+    
+
+    template<typename From, typename To>
+    void addScale(float_type scale1 = 1.0, float_type scale2 = 1.0) noexcept
+    {
+        static_assert(From::nFields() == To::nFields(),
+            "number of fields doesn't match when add");
+        for (auto it = domain_->begin(); it != domain_->end(); ++it)
+        {
+            if (!it->locally_owned() || !it->has_data()) continue;
+            for (std::size_t field_idx = 0; field_idx < From::nFields();
+                 ++field_idx)
+            {
+                auto& lin_data =
+                    it->data_r(To::tag(), field_idx).linalg_data();
+                lin_data *= scale2;
+                it->data_r(To::tag(), field_idx)
+                    .linalg()
+                    .get()
+                    ->cube_noalias_view() +=
+                    it->data_r(From::tag(), field_idx).linalg_data() * scale1;
+            }
+        }
+    }
+
+    template<typename From, typename To>
+    void copy(float_type scale = 1.0) noexcept
+    {
+        static_assert(From::nFields() == To::nFields(),
+            "number of fields doesn't match when copy");
+
+        for (auto it = domain_->begin(); it != domain_->end(); ++it)
+        {
+            if (!it->locally_owned() || !it->has_data()) continue;
+            for (std::size_t field_idx = 0; field_idx < From::nFields();
+                 ++field_idx)
+            {
+                for (auto& n : it->data())
+                    n(To::tag(), field_idx) = n(From::tag(), field_idx) * scale;
+            }
+        }
+    }
+
+    template<typename Field1, typename Field2>
+    float_type dotField(bool exclude_correction = true) noexcept
+    {
+        static_assert(Field1::nFields() == Field2::nFields(),
+            "number of fields doesn't match when doing dot product");
+
+        float_type m = 0.0;
+
+        for (int l = domain_->tree()->base_level();
+             l < domain_->tree()->depth(); ++l)
+        {
+            auto client = domain_->decomposition().client();
+            //client->template buffer_exchange<Source>(l);
+            const auto dx_base = domain_->dx_base();
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
+                if (!it->is_leaf()) continue;
+                if (exclude_correction && it->is_correction()) continue;
+
+                float_type m_tmp =
+                    domain::Operator::blockDot<Field1, Field2>(it->data());
+                m += m_tmp;
+            }
+            //client->template buffer_exchange<Target>(l);
+        }
+
+        /*static_assert(Field1::nFields() == Field2::nFields(),
+            "number of fields doesn't match when doing dot product");
+
+        float_type m = 0.0;
+
+        for (auto it = domain_->begin(); it != domain_->end(); ++it)
+        {
+            if (!it->locally_owned() || !it->has_data()) continue;
+            if (exclude_correction && it->is_correction()) continue;
+            float_type m_tmp =
+                domain::Operator::blockDot<Field1, Field2>(it->data());
+            m += m_tmp;
+        }
+        //MPI Command to all_reduce and broadcast
+        //boost::mpi::communicator world;*/
+        float_type m_all=0.0;
+        boost::mpi::all_reduce(domain_->client_communicator(), m, m_all,
+            std::plus<float_type>());
+        return m_all;
+    }
+
+    
+
+    template<typename From, typename To>
+    void copy_base_level_BC(float_type scale = 1.0) noexcept
+    {
+        static_assert(From::nFields() == To::nFields(),
+            "number of fields doesn't match when copy");
+
+        int base_level = domain_->tree()->base_level();
+
+        for (auto it = domain_->begin(base_level);
+             it != domain_->end(base_level); ++it)
+        {
+            if (!it->locally_owned() || !it->has_data()) continue;
+            if (!it->is_correction()) continue;
+            for (std::size_t field_idx = 0; field_idx < From::nFields();
+                 ++field_idx)
+            {
+                for (auto& n : it->data().node_field())
+                    n(To::tag(), field_idx) = n(From::tag(), field_idx) * scale;
+            }
+        }
+    }
+
+    float_type signfunc(float_type v) {
+        if (v > 0) {
+            return 1.0;
+        }
+        else if (v < 0) {
+            return -1.0;
+        }
+        else {
+            return 0.0;
+        }
+    }
+
+    //velocity Kernel induced by a periodic forcing with Delta function
+    float_type Forcing_kernel_u(float_type omega_, float_type x, float_type y, bool real, int idx) {
+        if (idx == 0) {
+            float_type re = std::cos(omega_*x) * M_PI * signfunc(y) * std::exp(-std::abs(y*omega_));
+            float_type im = std::sin(omega_*x) * M_PI * signfunc(y) * std::exp(-std::abs(y*omega_));
+            if (real) {
+                return re;
+            }
+            else {
+                return im;
+            }
+        }
+        else {
+            float_type re = -std::sin(omega_*x) * M_PI * signfunc(omega_) * std::exp(-std::abs(y*omega_));
+            float_type im = std::cos(omega_*x) * M_PI * signfunc(omega_) * std::exp(-std::abs(y*omega_));
+            if (real) {
+                return re;
+            }
+            else {
+                return im;
+            }
+        }
+    }
+
+    float_type Forcing_kernel_w(float_type omega_, float_type x, float_type y, float_type dx, bool real, int idx) {
+        if (idx == 2) {
+            float_type N_y = y/dx;
+            float_type v_y = this->domain_->ib().yang3(N_y);
+            //this is the part of vorticity WITHOUT Delta(y), when applying, we need to add 1/dx
+            float_type re = std::cos(omega_*x) * v_y;
+            float_type im = std::sin(omega_*x) * v_y;
+            if (real) {
+                return re;
+            }
+            else {
+                return im;
+            }
+        }
+        else {
+            //this is only 0 for the moment, need to have 
+            return 0;
+        }
+    }
+
+    //initialize the receptivity matrix using a set of immersed boundary points
+    void initializing_recep_region() {
+        boost::mpi::communicator world;
+        forcing_coords.resize(0);
+        //define a line 
+        //float_type _x_v = -10;
+        //float_type _y_u = 20;
+        //float_type _y_l = -20;
+
+        float_type dx = dx_base_;
+        int n_pts_y = floor((_y_u - _y_l)/dx);
+        int n_pts_x = floor((_x_u - _x_l)/dx);
+        real_coordinate_type tmp;
+        for (int i = 0; i < n_pts_y; i++) {
+            tmp.y() = static_cast<float_type>((i + 0.5) * dx) + _y_l;
+            for (int j = 0; j < n_pts_x; j++) {
+                tmp.x() = static_cast<float_type>((j + 0.5) * dx) + _x_l;
+                forcing_coords.emplace_back(real_coordinate_type(tmp));
+            }
+            //tmp.x() = _x_v;
+
+            //forcing_coords.emplace_back(real_coordinate_type(tmp));
+        }
+        int n_ib_each_rank = std::ceil(forcing_coords.size() / (world.size() - 1));
+        ib_ranks.resize(forcing_coords.size());
+        for (int i = 0; i < forcing_coords.size(); i++) {
+            int rank_loc = i / n_ib_each_rank;
+            ib_ranks[i] = rank_loc;
+        }
+        if (world.rank() == 0) {
+            loc_ib_pts = 0;
+        }
+        else if (world.rank() != (world.size() - 1)) {
+            loc_ib_pts = n_ib_each_rank;
+        }
+        else {
+            loc_ib_pts = forcing_coords.size() - (world.size() - 2) * n_ib_each_rank;
+        }
+    }
+public:
+    void constructing_forcing_mat(float_type omega_time) {
+        boost::mpi::communicator world;
+
+        this->initializing_recep_region();
+        world.barrier();
+
+        if (world.rank() == 0) {
+            return;
+        }
+
+        if (world.rank() == 1) {
+            std::cout << "Constructing forcing from receptivity matrix" << std::endl;
+        }
+        
+        if (max_local_idx == 0) {
+            std::cout << "idx not initialized, please call Assigning_idx()" << std::endl;
+        }
+
+        const auto dx_base = domain_->dx_base();
+
+        ForcingMat_real.resizing_row(max_local_idx+1);
+        ForcingMat_imag.resizing_row(max_local_idx+1);
+
+        int base_level = domain_->tree()->base_level();
+
+        int N_ext = domain_->block_extent()[0];
+
+        
+        for (int l = base_level; l < domain_->tree()->depth(); l++)
+        {
+            if (domain_->is_client())
+            {
+                auto client = domain_->decomposition().client();
+
+                client->template buffer_exchange<idx_u_type>(l);
+                client->template buffer_exchange<idx_u_g_type>(l);
+                if (l != (domain_->tree()->depth() - 1)) client->template buffer_exchange<idx_u_type>(l+1);
+                if (l != (domain_->tree()->depth() - 1)) client->template buffer_exchange<idx_u_g_type>(l+1);
+            }
+
+            int N_ext = domain_->block_extent()[0];
+
+            
+
+            for (auto it = domain_->begin(l);
+                 it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
+                //if (!it->is_leaf()) continue;
+                //if (it->is_correction()) continue;
+
+                float_type dx_level = dx_base / math::pow2(it->refinement_level());
+                
+
+                for (std::size_t field_idx = 0;
+                     field_idx < idx_u_type::nFields(); ++field_idx)
+                {
+                    for (auto& n : it->data())
+                    {
+                        const auto& coord = n.level_coordinate();
+
+                        float_type x = static_cast<float_type>(coord[0]) * dx_level;
+					    float_type y = static_cast<float_type>(coord[1]) * dx_level;
+
+                        int cur_idx = n(idx_u_type::tag(), field_idx);
+                        if (cur_idx <= 0) continue;
+                        int glo_idx = n(idx_u_g_type::tag(), field_idx);
+                        for (size_t i = 0; i < forcing_coords.size(); i++) {
+                            auto tmp_coord_x = forcing_coords[i].x();
+                            auto tmp_coord_y = forcing_coords[i].y();
+
+                            float_type diff_x = x - tmp_coord_x;
+                            float_type diff_y = y - tmp_coord_y;
+
+                            float_type u_real = Forcing_kernel_u(omega_time, diff_x, diff_y, true, field_idx);
+                            float_type u_imag = Forcing_kernel_u(omega_time, diff_x, diff_y, false, field_idx);
+                            ForcingMat_real.add_element(cur_idx, i + 1, u_real);
+                            ForcingMat_imag.add_element(cur_idx, i + 1, u_imag);
+                        }
+                    }
+                }
+
+                for (std::size_t field_idx = 0;
+                     field_idx < idx_w_type::nFields(); ++field_idx)
+                {
+                    for (auto& n : it->data())
+                    {
+                        const auto& coord = n.level_coordinate();
+
+                        float_type x = static_cast<float_type>(coord[0]) * dx_level;
+					    float_type y = static_cast<float_type>(coord[1]) * dx_level;
+
+                        int cur_idx = n(idx_w_type::tag(), field_idx);
+                        if (cur_idx <= 0) continue;
+                        int glo_idx = n(idx_w_g_type::tag(), field_idx);
+                        for (size_t i = 0; i < forcing_coords.size(); i++) {
+                            auto tmp_coord_x = forcing_coords[i].x();
+                            auto tmp_coord_y = forcing_coords[i].y();
+
+                            float_type diff_x = x - tmp_coord_x;
+                            float_type diff_y = y - tmp_coord_y;
+
+                            float_type u_real = Forcing_kernel_w(omega_time, diff_x, diff_y, dx_base, true, field_idx);
+                            float_type u_imag = Forcing_kernel_w(omega_time, diff_x, diff_y, dx_base, false, field_idx);
+                            ForcingMat_real.add_element(cur_idx, i + 1, u_real/dx_base);
+                            ForcingMat_imag.add_element(cur_idx, i + 1, u_imag/dx_base);
+                        }
+                    }
+                }
+            }
+        }
+
+        domain_->client_communicator().barrier();
+    }
+
+
+    void update_forcing_mat(float_type omega_time) {
+        boost::mpi::communicator world;
+
+        if (world.rank() == 0) {
+            return;
+        }
+
+        if (world.rank() == 1) {
+            std::cout << "Updating forcing from receptivity matrix" << std::endl;
+        }
+        
+        if (max_local_idx == 0) {
+            std::cout << "idx not initialized, please call Assigning_idx()" << std::endl;
+        }
+
+        const auto dx_base = domain_->dx_base();
+
+        ForcingMat_real.clean();
+        ForcingMat_imag.clean();
+
+        ForcingMat_real.resizing_row(max_local_idx+1);
+        ForcingMat_imag.resizing_row(max_local_idx+1);
+
+        int base_level = domain_->tree()->base_level();
+
+        int N_ext = domain_->block_extent()[0];
+
+        
+        for (int l = base_level; l < domain_->tree()->depth(); l++)
+        {
+            if (domain_->is_client())
+            {
+                auto client = domain_->decomposition().client();
+
+                client->template buffer_exchange<idx_u_type>(l);
+                client->template buffer_exchange<idx_u_g_type>(l);
+                if (l != (domain_->tree()->depth() - 1)) client->template buffer_exchange<idx_u_type>(l+1);
+                if (l != (domain_->tree()->depth() - 1)) client->template buffer_exchange<idx_u_g_type>(l+1);
+            }
+
+            int N_ext = domain_->block_extent()[0];
+
+            
+
+            for (auto it = domain_->begin(l);
+                 it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
+                //if (!it->is_leaf()) continue;
+                //if (it->is_correction()) continue;
+
+                float_type dx_level = dx_base / math::pow2(it->refinement_level());
+                
+
+                for (std::size_t field_idx = 0;
+                     field_idx < idx_u_type::nFields(); ++field_idx)
+                {
+                    for (auto& n : it->data())
+                    {
+                        const auto& coord = n.level_coordinate();
+
+                        float_type x = static_cast<float_type>(coord[0]) * dx_level;
+					    float_type y = static_cast<float_type>(coord[1]) * dx_level;
+
+                        int cur_idx = n(idx_u_type::tag(), field_idx);
+                        if (cur_idx <= 0) continue;
+                        int glo_idx = n(idx_u_g_type::tag(), field_idx);
+                        for (size_t i = 0; i < forcing_coords.size(); i++) {
+                            auto tmp_coord_x = forcing_coords[i].x();
+                            auto tmp_coord_y = forcing_coords[i].y();
+
+                            float_type diff_x = x - tmp_coord_x;
+                            float_type diff_y = y - tmp_coord_y;
+
+                            float_type u_real = Forcing_kernel_u(omega_time, diff_x, diff_y, true, field_idx);
+                            float_type u_imag = Forcing_kernel_u(omega_time, diff_x, diff_y, false, field_idx);
+                            ForcingMat_real.add_element(cur_idx, i + 1, u_real);
+                            ForcingMat_imag.add_element(cur_idx, i + 1, u_imag);
+                        }
+                    }
+                }
+
+                for (std::size_t field_idx = 0;
+                     field_idx < idx_w_type::nFields(); ++field_idx)
+                {
+                    for (auto& n : it->data())
+                    {
+                        const auto& coord = n.level_coordinate();
+
+                        float_type x = static_cast<float_type>(coord[0]) * dx_level;
+					    float_type y = static_cast<float_type>(coord[1]) * dx_level;
+
+                        int cur_idx = n(idx_w_type::tag(), field_idx);
+                        if (cur_idx <= 0) continue;
+                        int glo_idx = n(idx_w_g_type::tag(), field_idx);
+                        for (size_t i = 0; i < forcing_coords.size(); i++) {
+                            auto tmp_coord_x = forcing_coords[i].x();
+                            auto tmp_coord_y = forcing_coords[i].y();
+
+                            float_type diff_x = x - tmp_coord_x;
+                            float_type diff_y = y - tmp_coord_y;
+
+                            float_type u_real = Forcing_kernel_w(omega_time, diff_x, diff_y, dx_base, true, field_idx);
+                            float_type u_imag = Forcing_kernel_w(omega_time, diff_x, diff_y, dx_base, false, field_idx);
+                            ForcingMat_real.add_element(cur_idx, i + 1, u_real/dx_base);
+                            ForcingMat_imag.add_element(cur_idx, i + 1, u_imag/dx_base);
+                        }
+                    }
+                }
+            }
+        }
+
+        domain_->client_communicator().barrier();
+    }
+
+    template<class vorticity, class indicator>
+    void constructing_forcing_mat_vor_level(float_type omega_time, float_type max_vort) {
+        boost::mpi::communicator world;
+
+        this->initializing_recep_region();
+        world.barrier();
+
+        if (world.rank() == 0) {
+            return;
+        }
+
+        if (world.rank() == 1) {
+            std::cout << "Constructing forcing from receptivity matrix" << std::endl;
+        }
+        
+        if (max_local_idx == 0) {
+            std::cout << "idx not initialized, please call Assigning_idx()" << std::endl;
+        }
+
+        const auto dx_base = domain_->dx_base();
+
+        ForcingMat_real.resizing_row(max_local_idx+1);
+        ForcingMat_imag.resizing_row(max_local_idx+1);
+
+        int base_level = domain_->tree()->base_level();
+
+        int N_ext = domain_->block_extent()[0];
+
+        
+        for (int l = base_level; l < domain_->tree()->depth(); l++)
+        {
+            if (domain_->is_client())
+            {
+                auto client = domain_->decomposition().client();
+
+                client->template buffer_exchange<idx_u_type>(l);
+                client->template buffer_exchange<idx_u_g_type>(l);
+                if (l != (domain_->tree()->depth() - 1)) client->template buffer_exchange<idx_u_type>(l+1);
+                if (l != (domain_->tree()->depth() - 1)) client->template buffer_exchange<idx_u_g_type>(l+1);
+            }
+
+            int N_ext = domain_->block_extent()[0];
+
+            
+
+            for (auto it = domain_->begin(l);
+                 it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
+                //if (!it->is_leaf()) continue;
+                if (it->is_correction() && it->is_leaf()) continue;
+
+                float_type dx_level = dx_base / math::pow2(it->refinement_level());
+
+                float_type field_max = domain::Operator::maxnorm<vorticity>(it->data());
+
+                if (field_max < max_vort) {
+                    for (std::size_t field_idx = 0;
+                        field_idx < indicator::nFields(); ++field_idx)
+                    {
+                        for (auto& n : it->data())
+                        {
+                            n(indicator::tag(), field_idx) = 0;
+                        }
+                    }
+                    continue;
+                }
+                else {
+                    for (std::size_t field_idx = 0;
+                        field_idx < indicator::nFields(); ++field_idx)
+                    {
+                        for (auto& n : it->data())
+                        {
+                            n(indicator::tag(), field_idx) = 1;
+                        }
+                    }
+                }
+                
+
+                for (std::size_t field_idx = 0;
+                     field_idx < idx_u_type::nFields(); ++field_idx)
+                {
+                    for (auto& n : it->data())
+                    {
+                        const auto& coord = n.level_coordinate();
+
+                        float_type x = static_cast<float_type>(coord[0]) * dx_level;
+					    float_type y = static_cast<float_type>(coord[1]) * dx_level;
+
+
+                        int cur_idx = n(idx_u_type::tag(), field_idx);
+                        if (cur_idx <= 0) continue;
+                        int glo_idx = n(idx_u_g_type::tag(), field_idx);
+                        for (size_t i = 0; i < forcing_coords.size(); i++) {
+                            auto tmp_coord_x = forcing_coords[i].x();
+                            auto tmp_coord_y = forcing_coords[i].y();
+
+                            float_type diff_x = x - tmp_coord_x;
+                            float_type diff_y = y - tmp_coord_y;
+
+                            float_type u_real = Forcing_kernel_u(omega_time, diff_x, diff_y, true, field_idx);
+                            float_type u_imag = Forcing_kernel_u(omega_time, diff_x, diff_y, false, field_idx);
+                            ForcingMat_real.add_element(cur_idx, i + 1, u_real);
+                            ForcingMat_imag.add_element(cur_idx, i + 1, u_imag);
+                        }
+                    }
+                }
+
+                for (std::size_t field_idx = 0;
+                     field_idx < idx_w_type::nFields(); ++field_idx)
+                {
+                    for (auto& n : it->data())
+                    {
+                        const auto& coord = n.level_coordinate();
+
+                        float_type x = static_cast<float_type>(coord[0]) * dx_level;
+					    float_type y = static_cast<float_type>(coord[1]) * dx_level;
+
+                        int cur_idx = n(idx_w_type::tag(), field_idx);
+                        if (cur_idx <= 0) continue;
+                        int glo_idx = n(idx_w_g_type::tag(), field_idx);
+                        for (size_t i = 0; i < forcing_coords.size(); i++) {
+                            auto tmp_coord_x = forcing_coords[i].x();
+                            auto tmp_coord_y = forcing_coords[i].y();
+
+                            float_type diff_x = x - tmp_coord_x;
+                            float_type diff_y = y - tmp_coord_y;
+
+                            float_type u_real = Forcing_kernel_w(omega_time, diff_x, diff_y, dx_base, true, field_idx);
+                            float_type u_imag = Forcing_kernel_w(omega_time, diff_x, diff_y, dx_base, false, field_idx);
+                            ForcingMat_real.add_element(cur_idx, i + 1, u_real/dx_base);
+                            ForcingMat_imag.add_element(cur_idx, i + 1, u_imag/dx_base);
+                        }
+                    }
+                }
+            }
+        }
+
+        domain_->client_communicator().barrier();
+    }
+
+    void constructing_forcing_mat_diff_domain(float_type omega_time, float_type Lx) {
+        boost::mpi::communicator world;
+
+        this->initializing_recep_region();
+        world.barrier();
+
+        if (world.rank() == 0) {
+            return;
+        }
+
+        if (world.rank() == 1) {
+            std::cout << "Constructing forcing from receptivity matrix" << std::endl;
+        }
+        
+        if (max_local_idx == 0) {
+            std::cout << "idx not initialized, please call Assigning_idx()" << std::endl;
+        }
+
+        const auto dx_base = domain_->dx_base();
+
+        ForcingMat_real.resizing_row(max_local_idx+1);
+        ForcingMat_imag.resizing_row(max_local_idx+1);
+
+        int base_level = domain_->tree()->base_level();
+
+        int N_ext = domain_->block_extent()[0];
+
+        
+        for (int l = base_level; l < domain_->tree()->depth(); l++)
+        {
+            if (domain_->is_client())
+            {
+                auto client = domain_->decomposition().client();
+
+                client->template buffer_exchange<idx_u_type>(l);
+                client->template buffer_exchange<idx_u_g_type>(l);
+                if (l != (domain_->tree()->depth() - 1)) client->template buffer_exchange<idx_u_type>(l+1);
+                if (l != (domain_->tree()->depth() - 1)) client->template buffer_exchange<idx_u_g_type>(l+1);
+            }
+
+            int N_ext = domain_->block_extent()[0];
+
+            
+
+            for (auto it = domain_->begin(l);
+                 it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
+                //if (!it->is_leaf()) continue;
+                //if (it->is_correction()) continue;
+
+                float_type dx_level = dx_base / math::pow2(it->refinement_level());
+                
+
+                for (std::size_t field_idx = 0;
+                     field_idx < idx_u_type::nFields(); ++field_idx)
+                {
+                    for (auto& n : it->data())
+                    {
+                        const auto& coord = n.level_coordinate();
+
+                        float_type x = static_cast<float_type>(coord[0]) * dx_level;
+					    float_type y = static_cast<float_type>(coord[1]) * dx_level;
+
+                        if (x > Lx || x < -Lx || y > Lx || y < -Lx) continue;
+
+                        int cur_idx = n(idx_u_type::tag(), field_idx);
+                        if (cur_idx <= 0) continue;
+                        int glo_idx = n(idx_u_g_type::tag(), field_idx);
+                        for (size_t i = 0; i < forcing_coords.size(); i++) {
+                            auto tmp_coord_x = forcing_coords[i].x();
+                            auto tmp_coord_y = forcing_coords[i].y();
+
+                            float_type diff_x = x - tmp_coord_x;
+                            float_type diff_y = y - tmp_coord_y;
+
+                            float_type u_real = Forcing_kernel_u(omega_time, diff_x, diff_y, true, field_idx);
+                            float_type u_imag = Forcing_kernel_u(omega_time, diff_x, diff_y, false, field_idx);
+                            ForcingMat_real.add_element(cur_idx, i + 1, u_real);
+                            ForcingMat_imag.add_element(cur_idx, i + 1, u_imag);
+                        }
+                    }
+                }
+
+                for (std::size_t field_idx = 0;
+                     field_idx < idx_w_type::nFields(); ++field_idx)
+                {
+                    for (auto& n : it->data())
+                    {
+                        const auto& coord = n.level_coordinate();
+
+                        float_type x = static_cast<float_type>(coord[0]) * dx_level;
+					    float_type y = static_cast<float_type>(coord[1]) * dx_level;
+
+                        int cur_idx = n(idx_w_type::tag(), field_idx);
+                        if (cur_idx <= 0) continue;
+                        int glo_idx = n(idx_w_g_type::tag(), field_idx);
+                        for (size_t i = 0; i < forcing_coords.size(); i++) {
+                            auto tmp_coord_x = forcing_coords[i].x();
+                            auto tmp_coord_y = forcing_coords[i].y();
+
+                            float_type diff_x = x - tmp_coord_x;
+                            float_type diff_y = y - tmp_coord_y;
+
+                            float_type u_real = Forcing_kernel_w(omega_time, diff_x, diff_y, dx_base, true, field_idx);
+                            float_type u_imag = Forcing_kernel_w(omega_time, diff_x, diff_y, dx_base, false, field_idx);
+                            ForcingMat_real.add_element(cur_idx, i + 1, u_real/dx_base);
+                            ForcingMat_imag.add_element(cur_idx, i + 1, u_imag/dx_base);
+                        }
+                    }
+                }
+            }
+        }
+
+        domain_->client_communicator().barrier();
+    }
+
+
+    void add_IB_forcing_mat() {
+        DN_forcing.add_vec(project);
+    }
+
+
+    template<class U_old, class W_old>
+    void construction_DN_forcing(float_type t = 5) {
+        boost::mpi::communicator world;
+        world.barrier();
+
+        if (world.rank() == 0) {
+            return;
+        }
+
+        if (world.rank() == 1) {
+            std::cout << "Constructing DN_u matrix" << std::endl;
+        }
+       
+        if (max_local_idx == 0) {
+            std::cout << "idx not initialized, please call Assigning_idx()" << std::endl;
+        }
+
+        const auto dx_base = domain_->dx_base();
+
+        DN_forcing.resizing_row(max_local_idx+1);
+
+        int base_level = domain_->tree()->base_level();
+        clean<edge_aux_type>();
+        //pad_velocity<U_old, U_old>(true);
+        curl<U_old, W_old, edge_aux_type>(0.0);
+        //curl2D<U_old, edge_aux_type>();
+        //up_and_down(edge_aux_type)();
+        up_and_down<U_old>();
+        up_and_down<W_old>();
+        for (int l = base_level; l < domain_->tree()->depth(); l++)
+        {
+            if (domain_->is_client())
+            {
+                auto client = domain_->decomposition().client();
+
+                client->template buffer_exchange<idx_u_type>(l);
+                client->template buffer_exchange<idx_uz_type>(l);
+                client->template buffer_exchange<idx_p_type>(l);
+                client->template buffer_exchange<idx_u_g_type>(l);
+                client->template buffer_exchange<idx_uz_g_type>(l);
+                client->template buffer_exchange<idx_w_g_type>(l);
+                client->template buffer_exchange<U_old>(l);
+                client->template buffer_exchange<W_old>(l);
+                client->template buffer_exchange<idx_N_g_type>(l);
+                client->template buffer_exchange<idx_N_type>(l);
+                client->template buffer_exchange<idx_Nz_g_type>(l);
+                client->template buffer_exchange<idx_Nz_type>(l);
+                
+            }
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            {
+                float_type dx = dx_base / math::pow2(it->refinement_level());
+                if (!it->locally_owned() || !it->has_data()) continue;
+                if (!it->is_leaf()) continue;
+                if (it->is_correction()) continue;
+
+                for (auto& n : it->data())
+                {
+                    //omega cross u_s
+
+                    int cur_idx_0 = n(idx_N_type::tag(), 0);
+                    int cur_idx_1 = n(idx_N_type::tag(), 1);
+
+                    int cur_idx_2 = n(idx_Nz_type::tag(), 0);
+                    int gN_idx_2 = n(idx_Nz_g_type::tag(), 0);
+
+                    if (cur_idx_0 < 0 || cur_idx_1 < 0) continue;
+                    
+                    int cur_idx_u_0 = n(idx_u_type::tag(), 0);
+                    int cur_idx_u_1 = n(idx_u_type::tag(), 1);
+
+                    int cur_idx_u_2 = n(idx_uz_type::tag(), 0);
+
+                    int glob_idx_0 = n(idx_u_g_type::tag(), 0);
+                    int glob_idx_1 = n(idx_u_g_type::tag(), 1);
+
+                    int glob_idx_2 = n(idx_uz_g_type::tag(), 0);
+
+                    int glob_idx_0_1 = n.at_offset(idx_u_g_type::tag(), 0, -1, 0);
+                    int glob_idx_0_2 = n.at_offset(idx_u_g_type::tag(), 0,  1, 0);
+                    int glob_idx_0_3 = n.at_offset(idx_u_g_type::tag(), 1,  0, 0);
+                    int glob_idx_0_4 = n.at_offset(idx_u_g_type::tag(), 1, -1, 0);
+
+                    int glob_idx_1_1 = n.at_offset(idx_u_g_type::tag(), -1, 0, 1);
+                    int glob_idx_1_2 = n.at_offset(idx_u_g_type::tag(),  0, 1, 1);
+                    int glob_idx_1_3 = n.at_offset(idx_u_g_type::tag(), -1, 1, 1);
+                    int glob_idx_1_4 = n.at_offset(idx_u_g_type::tag(),  1, 0, 1);
+
+                    int glob_idx_00 = n(idx_w_g_type::tag(), 0);
+                    int glob_idx_01 = n.at_offset(idx_w_g_type::tag(),  0, 1, 0);
+                    int glob_idx_10 = n.at_offset(idx_w_g_type::tag(),  1, 0, 0);
+
+                    int glob_idx_00_1 = n(idx_w_g_type::tag(), 1);
+                    int glob_idx_00_2 = n(idx_w_g_type::tag(), 2);
+                    int glob_idx_01_1 = n.at_offset(idx_w_g_type::tag(),  0, 1, 1);
+                    int glob_idx_10_1 = n.at_offset(idx_w_g_type::tag(),  1, 0, 1);
+                    int glob_idx_01_2 = n.at_offset(idx_w_g_type::tag(),  0, 1, 2);
+                    int glob_idx_10_2 = n.at_offset(idx_w_g_type::tag(),  1, 0, 2);
+
+                    /*if (glob_idx_01   <= 0 || glob_idx_10   <= 0 || glob_idx_01_1 <= 0 ||
+                        glob_idx_10_1 <= 0 || glob_idx_01_2 <= 0 || glob_idx_10_2 <= 0) {
+                            continue;
+                        }*/
+
+                    auto coord = n.global_coordinate() * dx;
+                    auto field_func = simulation_->frame_vel();
+                    float_type u_field_vel = 0;
+                    float_type v_field_vel = 0;
+                    float_type w_field_vel = 0;
+
+                    float_type v_s_0010 = -(n(U_old::tag(), 1)                   + n.at_offset(U_old::tag(), -1, 0, 1))*0.25 - v_field_vel * 0.5;
+                    float_type v_s_0111 = -(n.at_offset(U_old::tag(),  0, 1, 1)  + n.at_offset(U_old::tag(), -1, 1, 1))*0.25 - v_field_vel * 0.5;
+                    float_type u_s_0001 =  (n(U_old::tag(), 0)                   + n.at_offset(U_old::tag(), 0, -1, 0))*0.25 + u_field_vel * 0.5;
+                    float_type u_s_1011 =  (n.at_offset(U_old::tag(),  1, 0, 0)  + n.at_offset(U_old::tag(), 1, -1, 0))*0.25 + u_field_vel * 0.5;
+                    float_type w_s_0010 =  (n(W_old::tag(), 0)                   + n.at_offset(W_old::tag(), -1, 0, 0))*0.5  + w_field_vel;
+                    float_type w_s_0001 =  (n(W_old::tag(), 0)                   + n.at_offset(W_old::tag(), 0, -1, 0))*0.5  + w_field_vel;
+
+
+                    float_type v_s_00   =  n(U_old::tag(), 1)                  + v_field_vel;
+                    float_type v_s_01   =  n.at_offset(U_old::tag(),  0, 1, 1) + v_field_vel;
+                    float_type u_s_00   =  n(U_old::tag(), 0)                  + u_field_vel;
+                    float_type u_s_10   =  n.at_offset(U_old::tag(),  1, 0, 0) + u_field_vel;
+
+
+                    int p_idx_w = n.at_offset(idx_p_type::tag(), -1, 0, 0);
+                    int p_idx_e = n.at_offset(idx_p_type::tag(), 1, 0, 0);
+                    int p_idx_n = n.at_offset(idx_p_type::tag(), 0, 1, 0);
+                    int p_idx_s = n.at_offset(idx_p_type::tag(), 0, -1, 0);
+
+                    /*
+                    //x_component
+                    //-n.at_offset(edge, 0, 0, 0) *(n.at_offset(face, 0, 0, 1) + n.at_offset(face, -1, 0, 1))
+                    DN.add_element(cur_idx_0, glob_idx_00_2, v_s_0010);
+                    //-n.at_offset(edge, 0, 1, 0) *(n.at_offset(face, 0, 1, 1) + n.at_offset(face, -1, 1, 1))
+                    DN.add_element(cur_idx_0, glob_idx_01_2, v_s_0111);
+
+                    //adding it to momentum equation
+                    //-n.at_offset(edge, 0, 0, 0) *(n.at_offset(face, 0, 0, 1) + n.at_offset(face, -1, 0, 1))
+                    DN.add_element(cur_idx_u_0, glob_idx_00_2, v_s_0010);
+                    //-n.at_offset(edge, 0, 1, 0) *(n.at_offset(face, 0, 1, 1) + n.at_offset(face, -1, 1, 1))
+                    DN.add_element(cur_idx_u_0, glob_idx_01_2, v_s_0111);
+
+                    //y_component
+                    // n.at_offset(edge, 0, 0, 0) *(n.at_offset(face, 0, 0, 0) + n.at_offset(face, 0, -1, 0))
+                    DN.add_element(cur_idx_1, glob_idx_00_2, u_s_0001);
+                    // n.at_offset(edge, 1, 0, 0) *(n.at_offset(face, 1, 0, 0) + n.at_offset(face, 1, -1, 0))
+                    DN.add_element(cur_idx_1, glob_idx_10_2, u_s_1011);
+
+                    //adding it to momentum equation
+                    // n.at_offset(edge, 0, 0, 0) *(n.at_offset(face, 0, 0, 0) + n.at_offset(face, 0, -1, 0))
+                    DN.add_element(cur_idx_u_1, glob_idx_00_2, u_s_0001);
+                    // n.at_offset(edge, 1, 0, 0) *(n.at_offset(face, 1, 0, 0) + n.at_offset(face, 1, -1, 0))
+                    DN.add_element(cur_idx_u_1, glob_idx_10_2, u_s_1011);
+
+                    //z_component
+                    DN.add_element(cur_idx_2, glob_idx_00, v_s_00*0.5);
+                    DN.add_element(cur_idx_2, glob_idx_01, v_s_01*0.5);
+                    DN.add_element(cur_idx_2, glob_idx_00_1, -u_s_00*0.5);
+                    DN.add_element(cur_idx_2, glob_idx_10_1, -u_s_10*0.5);
+
+                    DN.add_element(cur_idx_u_2, glob_idx_00, v_s_00*0.5);
+                    DN.add_element(cur_idx_u_2, glob_idx_01, v_s_01*0.5);
+                    DN.add_element(cur_idx_u_2, glob_idx_00_1, -u_s_00*0.5);
+                    DN.add_element(cur_idx_u_2, glob_idx_10_1, -u_s_10*0.5);
+
+                    //DN.add_element(cur_idx_2, glob_idx_2, -1.0);
+                    DN.add_element(cur_idx_2, gN_idx_2, -1.0);*/
+
+                    //0.5 * n.at_offset(edge, 0, 0, y_p) * (n.at_offset(face, 0, 0, z_p) + n.at_offset(face, -1, 0, z_p))
+                    DN_forcing.add_element(cur_idx_u_0, glob_idx_00_1, w_s_0010);
+                    //-n.at_offset(edge, 0, 0, z_p) *  (n.at_offset(face, 0, 0, y_p) + n.at_offset(face, -1, 0, y_p))
+                    DN_forcing.add_element(cur_idx_u_0, glob_idx_00_2, v_s_0010);
+                    //-n.at_offset(edge, 0, 1, z_p) * (n.at_offset(face,  0, 1, y_p) + n.at_offset(face, -1, 1, y_p))
+                    DN_forcing.add_element(cur_idx_u_0, glob_idx_01_2, v_s_0111);
+
+
+                    // n.at_offset(edge, 0, 0, z_p) * (n.at_offset(face, 0, 0, x_p) + n.at_offset(face, 0, -1, x_p))
+                    DN_forcing.add_element(cur_idx_u_1, glob_idx_00_2, u_s_0001);
+                    // n.at_offset(edge, 1, 0, z_p) * (n.at_offset(face, 1, 0, x_p) + n.at_offset(face, 1, -1, x_p))
+                    DN_forcing.add_element(cur_idx_u_1, glob_idx_10_2, u_s_1011);
+                    //-0.5 * n.at_offset(edge, 0, 0, x_p) * (+n.at_offset(face, 0, 0, z_p) + n.at_offset(face, 0, -1, z_p))
+                    DN_forcing.add_element(cur_idx_u_1, glob_idx_00, w_s_0001);
+                    
+                    //0.5 * (n.at_offset(edge, 0, 0, x_p) * n.at_offset(face, 0, 0, y_p)  
+                    //+n.at_offset(edge, 0, 1, x_p) * n.at_offset(face, 0, 1, y_p) 
+                    //-n.at_offset(edge, 0, 0, y_p) * n.at_offset(face, 0, 0, x_p) 
+                    //-n.at_offset(edge, 1, 0, y_p) * n.at_offset(face, 1, 0, x_p))
+                    DN_forcing.add_element(cur_idx_u_2, glob_idx_00, v_s_00*0.5);
+                    DN_forcing.add_element(cur_idx_u_2, glob_idx_01, v_s_01*0.5);
+                    DN_forcing.add_element(cur_idx_u_2, glob_idx_00_1, -u_s_00*0.5);
+                    DN_forcing.add_element(cur_idx_u_2, glob_idx_10_1, -u_s_10*0.5);
+                }
+            }
+            domain_->client_communicator().barrier();
+
+            if (domain_->is_client())
+            {
+                auto client = domain_->decomposition().client();
+                client->template buffer_exchange<edge_aux_type>(l);
+            }
+
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
+                if (!it->is_leaf()) continue;
+                if (it->is_correction()) continue;
+
+                for (auto& n : it->data())
+                {
+                    
+                    
+                    int cur_idx_0 = n(idx_N_type::tag(), 0);
+                    int cur_idx_1 = n(idx_N_type::tag(), 1);
+                    int cur_idx_2 = n(idx_Nz_type::tag(), 0);
+
+                    if (cur_idx_0 < 0 || cur_idx_1 < 0) continue;
+                    
+                    int cur_idx_u_0 = n(idx_u_type::tag(), 0);
+                    int cur_idx_u_1 = n(idx_u_type::tag(), 1);
+                    int cur_idx_u_2 = n(idx_uz_type::tag(), 0);
+
+                    int gN_idx_0 = n(idx_N_g_type::tag(), 0);
+                    int gN_idx_1 = n(idx_N_g_type::tag(), 1);
+                    int gN_idx_2 = n(idx_Nz_g_type::tag(), 0);
+
+                    int glob_idx_0_00 = n.at_offset(idx_u_g_type::tag(), 0,  0, 0);
+                    int glob_idx_0_01 = n.at_offset(idx_u_g_type::tag(), 0, -1, 0);
+                    int glob_idx_0_10 = n.at_offset(idx_u_g_type::tag(), 1,  0, 0);
+                    int glob_idx_0_11 = n.at_offset(idx_u_g_type::tag(), 1, -1, 0);
+
+                    int glob_idx_1_00 = n.at_offset(idx_u_g_type::tag(),  0, 0, 1);
+                    int glob_idx_1_01 = n.at_offset(idx_u_g_type::tag(),  0, 1, 1);
+                    int glob_idx_1_10 = n.at_offset(idx_u_g_type::tag(), -1, 0, 1);
+                    int glob_idx_1_11 = n.at_offset(idx_u_g_type::tag(), -1, 1, 1);
+
+                    int glob_idx_2_00 = n.at_offset(idx_uz_g_type::tag(), 0,  0, 0);
+                    int glob_idx_2_01 = n.at_offset(idx_uz_g_type::tag(), 0, -1, 0);
+                    int glob_idx_2_10 = n.at_offset(idx_uz_g_type::tag(), -1, 0, 0);
+                    int glob_idx_2_11 = n.at_offset(idx_uz_g_type::tag(), 1, -1, 0);
+
+                    float_type om_00_0 = n.at_offset(edge_aux_type::tag(), 0, 0, 0)*0.5;
+                    float_type om_01_0 = n.at_offset(edge_aux_type::tag(), 0, 1, 0)*0.5;
+                    float_type om_10_0 = n.at_offset(edge_aux_type::tag(), 1, 0, 0)*0.5;
+
+                    float_type om_00_1 = n.at_offset(edge_aux_type::tag(), 0, 0, 1)*0.5;
+                    float_type om_01_1 = n.at_offset(edge_aux_type::tag(), 0, 1, 1)*0.5;
+                    float_type om_10_1 = n.at_offset(edge_aux_type::tag(), 1, 0, 1)*0.5;
+
+                    float_type om_00_2 = n.at_offset(edge_aux_type::tag(), 0, 0, 2)*0.25;
+                    float_type om_01_2 = n.at_offset(edge_aux_type::tag(), 0, 1, 2)*0.25;
+                    float_type om_10_2 = n.at_offset(edge_aux_type::tag(), 1, 0, 2)*0.25;
+
+
+                    int p_idx_w = n.at_offset(idx_p_type::tag(), -1, 0, 0);
+                    int p_idx_e = n.at_offset(idx_p_type::tag(), 1, 0, 0);
+                    int p_idx_n = n.at_offset(idx_p_type::tag(), 0, 1, 0);
+                    int p_idx_s = n.at_offset(idx_p_type::tag(), 0, -1, 0);
+
+                    /*if (p_set_zero) {
+
+                    if ((p_idx_w > 0 && p_idx_e > 0) || l != base_level)
+                    {
+                        DN.add_element(cur_idx_0, glob_idx_1_00, -om_00);
+                        DN.add_element(cur_idx_0, glob_idx_1_10, -om_00);
+                        DN.add_element(cur_idx_0, glob_idx_1_01, -om_01);
+                        DN.add_element(cur_idx_0, glob_idx_1_11, -om_01);
+
+                        DN.add_element(cur_idx_u_0, glob_idx_1_00, -om_00);
+                        DN.add_element(cur_idx_u_0, glob_idx_1_10, -om_00);
+                        DN.add_element(cur_idx_u_0, glob_idx_1_01, -om_01);
+                        DN.add_element(cur_idx_u_0, glob_idx_1_11, -om_01);
+                    }
+                    if ((p_idx_n > 0 && p_idx_s > 0) || l != base_level)
+                    {
+                        DN.add_element(cur_idx_1, glob_idx_0_00, om_00);
+                        DN.add_element(cur_idx_1, glob_idx_0_01, om_00);
+                        DN.add_element(cur_idx_1, glob_idx_0_10, om_10);
+                        DN.add_element(cur_idx_1, glob_idx_0_11, om_10);
+
+                        DN.add_element(cur_idx_u_1, glob_idx_0_00, om_00);
+                        DN.add_element(cur_idx_u_1, glob_idx_0_01, om_00);
+                        DN.add_element(cur_idx_u_1, glob_idx_0_10, om_10);
+                        DN.add_element(cur_idx_u_1, glob_idx_0_11, om_10);
+                    }
+                    }
+                    else {
+
+                    DN.add_element(cur_idx_0, glob_idx_1_00, -om_00);
+                    DN.add_element(cur_idx_0, glob_idx_1_10, -om_00);
+                    DN.add_element(cur_idx_0, glob_idx_1_01, -om_01);
+                    DN.add_element(cur_idx_0, glob_idx_1_11, -om_01);
+
+                    DN.add_element(cur_idx_1, glob_idx_0_00,  om_00);
+                    DN.add_element(cur_idx_1, glob_idx_0_01,  om_00);
+                    DN.add_element(cur_idx_1, glob_idx_0_10,  om_10);
+                    DN.add_element(cur_idx_1, glob_idx_0_11,  om_10);
+
+                    DN.add_element(cur_idx_u_0, glob_idx_1_00, -om_00);
+                    DN.add_element(cur_idx_u_0, glob_idx_1_10, -om_00);
+                    DN.add_element(cur_idx_u_0, glob_idx_1_01, -om_01);
+                    DN.add_element(cur_idx_u_0, glob_idx_1_11, -om_01);
+
+                    DN.add_element(cur_idx_u_1, glob_idx_0_00,  om_00);
+                    DN.add_element(cur_idx_u_1, glob_idx_0_01,  om_00);
+                    DN.add_element(cur_idx_u_1, glob_idx_0_10,  om_10);
+                    DN.add_element(cur_idx_u_1, glob_idx_0_11,  om_10);
+                    }
+
+                    DN.add_element(cur_idx_0, gN_idx_0, -1.0); 
+                    DN.add_element(cur_idx_1, gN_idx_1, -1.0);*/
+
+                    //DN.add_element(cur_idx_u_0, gN_idx_0, -1.0);
+                    //DN.add_element(cur_idx_u_1, gN_idx_1, -1.0);
+
+                    //0.5 * n.at_offset(edge, 0, 0, y_p) * (n.at_offset(face, 0, 0, z_p) + n.at_offset(face, -1, 0, z_p))
+                    DN_forcing.add_element(cur_idx_u_0, glob_idx_2_00, om_00_1);
+                    DN_forcing.add_element(cur_idx_u_0, glob_idx_2_10, om_00_1);
+
+                    //-n.at_offset(edge, 0, 0, z_p) *  (n.at_offset(face, 0, 0, y_p) + n.at_offset(face, -1, 0, y_p))
+                    //-n.at_offset(edge, 0, 1, z_p) * (n.at_offset(face,  0, 1, y_p) + n.at_offset(face, -1, 1, y_p))
+                    DN_forcing.add_element(cur_idx_u_0, glob_idx_1_00, -om_00_2);
+                    DN_forcing.add_element(cur_idx_u_0, glob_idx_1_10, -om_00_2);
+                    DN_forcing.add_element(cur_idx_u_0, glob_idx_1_01, -om_01_2);
+                    DN_forcing.add_element(cur_idx_u_0, glob_idx_1_11, -om_01_2);
+
+                    // n.at_offset(edge, 0, 0, z_p) * (n.at_offset(face, 0, 0, x_p) + n.at_offset(face, 0, -1, x_p))
+                    // n.at_offset(edge, 1, 0, z_p) * (n.at_offset(face, 1, 0, x_p) + n.at_offset(face, 1, -1, x_p))
+                    DN_forcing.add_element(cur_idx_u_1, glob_idx_0_00,  om_00_2);
+                    DN_forcing.add_element(cur_idx_u_1, glob_idx_0_01,  om_00_2);
+                    DN_forcing.add_element(cur_idx_u_1, glob_idx_0_10,  om_10_2);
+                    DN_forcing.add_element(cur_idx_u_1, glob_idx_0_11,  om_10_2);
+                    //-0.5 * n.at_offset(edge, 0, 0, x_p) * (+n.at_offset(face, 0, 0, z_p) + n.at_offset(face, 0, -1, z_p))
+                    DN_forcing.add_element(cur_idx_u_1, glob_idx_2_00, -om_00_0);
+                    DN_forcing.add_element(cur_idx_u_1, glob_idx_2_01, -om_00_0);
+
+                    //0.5 * (n.at_offset(edge, 0, 0, x_p) * n.at_offset(face, 0, 0, y_p)  
+                    //+n.at_offset(edge, 0, 1, x_p) * n.at_offset(face, 0, 1, y_p) 
+                    //-n.at_offset(edge, 0, 0, y_p) * n.at_offset(face, 0, 0, x_p) 
+                    //-n.at_offset(edge, 1, 0, y_p) * n.at_offset(face, 1, 0, x_p))
+                    DN_forcing.add_element(cur_idx_u_2, glob_idx_1_00,  om_00_0);
+                    DN_forcing.add_element(cur_idx_u_2, glob_idx_1_01,  om_01_0);
+                    DN_forcing.add_element(cur_idx_u_2, glob_idx_0_00, -om_00_1);
+                    DN_forcing.add_element(cur_idx_u_2, glob_idx_0_10, -om_10_1);
+
+
+                    //DN_forcing.add_element(cur_idx_0, gN_idx_0, -1.0); 
+                    //DN_forcing.add_element(cur_idx_1, gN_idx_1, -1.0);
+                    //DN_forcing.add_element(cur_idx_2, gN_idx_2, -1.0);
+
+                    //DN_forcing.add_element(cur_idx_u_0, gN_idx_0, 1.0);
+                    //DN_forcing.add_element(cur_idx_u_1, gN_idx_1, 1.0);
+                    //DN_forcing.add_element(cur_idx_u_2, gN_idx_2, 1.0);
+                }
+            }
+        }
+        /*domain_->client_communicator().barrier();
+
+        this->template construct_upward_BC_intrp<idx_N_type, idx_N_g_type>(DN_forcing);
+
+        this->template construct_interpolation<idx_N_type, idx_N_g_type>(DN_forcing);
+
+        this->template construct_upward_BC_intrp<idx_Nz_type, idx_Nz_g_type>(DN_forcing);
+
+        this->template construct_interpolation<idx_Nz_type, idx_Nz_g_type>(DN_forcing);*/
+
+        domain_->client_communicator().barrier();
+    }
+
+
+    template<class U_old, class W_old, class indicator>
+    void construction_DN_forcing_vor_level(float_type max_vort, float_type t = 5) {
+        boost::mpi::communicator world;
+        world.barrier();
+
+        if (world.rank() == 0) {
+            return;
+        }
+
+        if (world.rank() == 1) {
+            std::cout << "Constructing DN_u matrix" << std::endl;
+        }
+       
+        if (max_local_idx == 0) {
+            std::cout << "idx not initialized, please call Assigning_idx()" << std::endl;
+        }
+
+        const auto dx_base = domain_->dx_base();
+
+        DN_forcing.resizing_row(max_local_idx+1);
+
+        int base_level = domain_->tree()->base_level();
+        clean<edge_aux_type>();
+        //pad_velocity<U_old, U_old>(true);
+        curl<U_old, W_old, edge_aux_type>(0.0);
+        //curl2D<U_old, edge_aux_type>();
+        //up_and_down(edge_aux_type)();
+        up_and_down<U_old>();
+        up_and_down<W_old>();
+        for (int l = base_level; l < domain_->tree()->depth(); l++)
+        {
+            if (domain_->is_client())
+            {
+                auto client = domain_->decomposition().client();
+
+                client->template buffer_exchange<idx_u_type>(l);
+                client->template buffer_exchange<idx_uz_type>(l);
+                client->template buffer_exchange<idx_p_type>(l);
+                client->template buffer_exchange<idx_u_g_type>(l);
+                client->template buffer_exchange<idx_uz_g_type>(l);
+                client->template buffer_exchange<idx_w_g_type>(l);
+                client->template buffer_exchange<U_old>(l);
+                client->template buffer_exchange<W_old>(l);
+                client->template buffer_exchange<idx_N_g_type>(l);
+                client->template buffer_exchange<idx_N_type>(l);
+                client->template buffer_exchange<idx_Nz_g_type>(l);
+                client->template buffer_exchange<idx_Nz_type>(l);
+                
+            }
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            {
+                float_type dx = dx_base / math::pow2(it->refinement_level());
+                if (!it->locally_owned() || !it->has_data()) continue;
+                if (!it->is_leaf()) continue;
+                if (it->is_correction()) continue;
+
+                float_type dx_level = dx_base / math::pow2(it->refinement_level());
+
+                float_type field_max = domain::Operator::maxnorm<edge_aux_type>(it->data());
+
+                if (field_max < max_vort) {
+                    for (std::size_t field_idx = 0;
+                        field_idx < indicator::nFields(); ++field_idx)
+                    {
+                        for (auto& n : it->data())
+                        {
+                            n(indicator::tag(), field_idx) = 0;
+                        }
+                    }
+                    continue;
+                }
+                else {
+                    for (std::size_t field_idx = 0;
+                        field_idx < indicator::nFields(); ++field_idx)
+                    {
+                        for (auto& n : it->data())
+                        {
+                            n(indicator::tag(), field_idx) = 1;
+                        }
+                    }
+                }
+
+                for (auto& n : it->data())
+                {
+                    //omega cross u_s
+
+                    int cur_idx_0 = n(idx_N_type::tag(), 0);
+                    int cur_idx_1 = n(idx_N_type::tag(), 1);
+
+                    int cur_idx_2 = n(idx_Nz_type::tag(), 0);
+                    int gN_idx_2 = n(idx_Nz_g_type::tag(), 0);
+
+                    if (cur_idx_0 < 0 || cur_idx_1 < 0) continue;
+                    
+                    int cur_idx_u_0 = n(idx_u_type::tag(), 0);
+                    int cur_idx_u_1 = n(idx_u_type::tag(), 1);
+
+                    int cur_idx_u_2 = n(idx_uz_type::tag(), 0);
+
+                    int glob_idx_0 = n(idx_u_g_type::tag(), 0);
+                    int glob_idx_1 = n(idx_u_g_type::tag(), 1);
+
+                    int glob_idx_2 = n(idx_uz_g_type::tag(), 0);
+
+                    int glob_idx_0_1 = n.at_offset(idx_u_g_type::tag(), 0, -1, 0);
+                    int glob_idx_0_2 = n.at_offset(idx_u_g_type::tag(), 0,  1, 0);
+                    int glob_idx_0_3 = n.at_offset(idx_u_g_type::tag(), 1,  0, 0);
+                    int glob_idx_0_4 = n.at_offset(idx_u_g_type::tag(), 1, -1, 0);
+
+                    int glob_idx_1_1 = n.at_offset(idx_u_g_type::tag(), -1, 0, 1);
+                    int glob_idx_1_2 = n.at_offset(idx_u_g_type::tag(),  0, 1, 1);
+                    int glob_idx_1_3 = n.at_offset(idx_u_g_type::tag(), -1, 1, 1);
+                    int glob_idx_1_4 = n.at_offset(idx_u_g_type::tag(),  1, 0, 1);
+
+                    int glob_idx_00 = n(idx_w_g_type::tag(), 0);
+                    int glob_idx_01 = n.at_offset(idx_w_g_type::tag(),  0, 1, 0);
+                    int glob_idx_10 = n.at_offset(idx_w_g_type::tag(),  1, 0, 0);
+
+                    int glob_idx_00_1 = n(idx_w_g_type::tag(), 1);
+                    int glob_idx_00_2 = n(idx_w_g_type::tag(), 2);
+                    int glob_idx_01_1 = n.at_offset(idx_w_g_type::tag(),  0, 1, 1);
+                    int glob_idx_10_1 = n.at_offset(idx_w_g_type::tag(),  1, 0, 1);
+                    int glob_idx_01_2 = n.at_offset(idx_w_g_type::tag(),  0, 1, 2);
+                    int glob_idx_10_2 = n.at_offset(idx_w_g_type::tag(),  1, 0, 2);
+
+                    /*if (glob_idx_01   <= 0 || glob_idx_10   <= 0 || glob_idx_01_1 <= 0 ||
+                        glob_idx_10_1 <= 0 || glob_idx_01_2 <= 0 || glob_idx_10_2 <= 0) {
+                            continue;
+                        }*/
+
+                    auto coord = n.global_coordinate() * dx;
+                    auto field_func = simulation_->frame_vel();
+                    float_type u_field_vel = 0;
+                    float_type v_field_vel = 0;
+                    float_type w_field_vel = 0;
+
+                    float_type v_s_0010 = -(n(U_old::tag(), 1)                   + n.at_offset(U_old::tag(), -1, 0, 1))*0.25 - v_field_vel * 0.5;
+                    float_type v_s_0111 = -(n.at_offset(U_old::tag(),  0, 1, 1)  + n.at_offset(U_old::tag(), -1, 1, 1))*0.25 - v_field_vel * 0.5;
+                    float_type u_s_0001 =  (n(U_old::tag(), 0)                   + n.at_offset(U_old::tag(), 0, -1, 0))*0.25 + u_field_vel * 0.5;
+                    float_type u_s_1011 =  (n.at_offset(U_old::tag(),  1, 0, 0)  + n.at_offset(U_old::tag(), 1, -1, 0))*0.25 + u_field_vel * 0.5;
+                    float_type w_s_0010 =  (n(W_old::tag(), 0)                   + n.at_offset(W_old::tag(), -1, 0, 0))*0.5  + w_field_vel;
+                    float_type w_s_0001 =  (n(W_old::tag(), 0)                   + n.at_offset(W_old::tag(), 0, -1, 0))*0.5  + w_field_vel;
+
+
+                    float_type v_s_00   =  n(U_old::tag(), 1)                  + v_field_vel;
+                    float_type v_s_01   =  n.at_offset(U_old::tag(),  0, 1, 1) + v_field_vel;
+                    float_type u_s_00   =  n(U_old::tag(), 0)                  + u_field_vel;
+                    float_type u_s_10   =  n.at_offset(U_old::tag(),  1, 0, 0) + u_field_vel;
+
+
+                    int p_idx_w = n.at_offset(idx_p_type::tag(), -1, 0, 0);
+                    int p_idx_e = n.at_offset(idx_p_type::tag(), 1, 0, 0);
+                    int p_idx_n = n.at_offset(idx_p_type::tag(), 0, 1, 0);
+                    int p_idx_s = n.at_offset(idx_p_type::tag(), 0, -1, 0);
+
+                    /*
+                    //x_component
+                    //-n.at_offset(edge, 0, 0, 0) *(n.at_offset(face, 0, 0, 1) + n.at_offset(face, -1, 0, 1))
+                    DN.add_element(cur_idx_0, glob_idx_00_2, v_s_0010);
+                    //-n.at_offset(edge, 0, 1, 0) *(n.at_offset(face, 0, 1, 1) + n.at_offset(face, -1, 1, 1))
+                    DN.add_element(cur_idx_0, glob_idx_01_2, v_s_0111);
+
+                    //adding it to momentum equation
+                    //-n.at_offset(edge, 0, 0, 0) *(n.at_offset(face, 0, 0, 1) + n.at_offset(face, -1, 0, 1))
+                    DN.add_element(cur_idx_u_0, glob_idx_00_2, v_s_0010);
+                    //-n.at_offset(edge, 0, 1, 0) *(n.at_offset(face, 0, 1, 1) + n.at_offset(face, -1, 1, 1))
+                    DN.add_element(cur_idx_u_0, glob_idx_01_2, v_s_0111);
+
+                    //y_component
+                    // n.at_offset(edge, 0, 0, 0) *(n.at_offset(face, 0, 0, 0) + n.at_offset(face, 0, -1, 0))
+                    DN.add_element(cur_idx_1, glob_idx_00_2, u_s_0001);
+                    // n.at_offset(edge, 1, 0, 0) *(n.at_offset(face, 1, 0, 0) + n.at_offset(face, 1, -1, 0))
+                    DN.add_element(cur_idx_1, glob_idx_10_2, u_s_1011);
+
+                    //adding it to momentum equation
+                    // n.at_offset(edge, 0, 0, 0) *(n.at_offset(face, 0, 0, 0) + n.at_offset(face, 0, -1, 0))
+                    DN.add_element(cur_idx_u_1, glob_idx_00_2, u_s_0001);
+                    // n.at_offset(edge, 1, 0, 0) *(n.at_offset(face, 1, 0, 0) + n.at_offset(face, 1, -1, 0))
+                    DN.add_element(cur_idx_u_1, glob_idx_10_2, u_s_1011);
+
+                    //z_component
+                    DN.add_element(cur_idx_2, glob_idx_00, v_s_00*0.5);
+                    DN.add_element(cur_idx_2, glob_idx_01, v_s_01*0.5);
+                    DN.add_element(cur_idx_2, glob_idx_00_1, -u_s_00*0.5);
+                    DN.add_element(cur_idx_2, glob_idx_10_1, -u_s_10*0.5);
+
+                    DN.add_element(cur_idx_u_2, glob_idx_00, v_s_00*0.5);
+                    DN.add_element(cur_idx_u_2, glob_idx_01, v_s_01*0.5);
+                    DN.add_element(cur_idx_u_2, glob_idx_00_1, -u_s_00*0.5);
+                    DN.add_element(cur_idx_u_2, glob_idx_10_1, -u_s_10*0.5);
+
+                    //DN.add_element(cur_idx_2, glob_idx_2, -1.0);
+                    DN.add_element(cur_idx_2, gN_idx_2, -1.0);*/
+
+                    //0.5 * n.at_offset(edge, 0, 0, y_p) * (n.at_offset(face, 0, 0, z_p) + n.at_offset(face, -1, 0, z_p))
+                    DN_forcing.add_element(cur_idx_u_0, glob_idx_00_1, w_s_0010);
+                    //-n.at_offset(edge, 0, 0, z_p) *  (n.at_offset(face, 0, 0, y_p) + n.at_offset(face, -1, 0, y_p))
+                    DN_forcing.add_element(cur_idx_u_0, glob_idx_00_2, v_s_0010);
+                    //-n.at_offset(edge, 0, 1, z_p) * (n.at_offset(face,  0, 1, y_p) + n.at_offset(face, -1, 1, y_p))
+                    DN_forcing.add_element(cur_idx_u_0, glob_idx_01_2, v_s_0111);
+
+
+                    // n.at_offset(edge, 0, 0, z_p) * (n.at_offset(face, 0, 0, x_p) + n.at_offset(face, 0, -1, x_p))
+                    DN_forcing.add_element(cur_idx_u_1, glob_idx_00_2, u_s_0001);
+                    // n.at_offset(edge, 1, 0, z_p) * (n.at_offset(face, 1, 0, x_p) + n.at_offset(face, 1, -1, x_p))
+                    DN_forcing.add_element(cur_idx_u_1, glob_idx_10_2, u_s_1011);
+                    //-0.5 * n.at_offset(edge, 0, 0, x_p) * (+n.at_offset(face, 0, 0, z_p) + n.at_offset(face, 0, -1, z_p))
+                    DN_forcing.add_element(cur_idx_u_1, glob_idx_00, w_s_0001);
+                    
+                    //0.5 * (n.at_offset(edge, 0, 0, x_p) * n.at_offset(face, 0, 0, y_p)  
+                    //+n.at_offset(edge, 0, 1, x_p) * n.at_offset(face, 0, 1, y_p) 
+                    //-n.at_offset(edge, 0, 0, y_p) * n.at_offset(face, 0, 0, x_p) 
+                    //-n.at_offset(edge, 1, 0, y_p) * n.at_offset(face, 1, 0, x_p))
+                    DN_forcing.add_element(cur_idx_u_2, glob_idx_00, v_s_00*0.5);
+                    DN_forcing.add_element(cur_idx_u_2, glob_idx_01, v_s_01*0.5);
+                    DN_forcing.add_element(cur_idx_u_2, glob_idx_00_1, -u_s_00*0.5);
+                    DN_forcing.add_element(cur_idx_u_2, glob_idx_10_1, -u_s_10*0.5);
+                }
+            }
+            domain_->client_communicator().barrier();
+
+            if (domain_->is_client())
+            {
+                auto client = domain_->decomposition().client();
+                client->template buffer_exchange<edge_aux_type>(l);
+            }
+
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
+                if (!it->is_leaf()) continue;
+                if (it->is_correction()) continue;
+
+                float_type field_max = domain::Operator::maxnorm<edge_aux_type>(it->data());
+
+                if (field_max < max_vort) {
+                    for (std::size_t field_idx = 0;
+                        field_idx < indicator::nFields(); ++field_idx)
+                    {
+                        for (auto& n : it->data())
+                        {
+                            n(indicator::tag(), field_idx) = 0;
+                        }
+                    }
+                    continue;
+                }
+                else {
+                    for (std::size_t field_idx = 0;
+                        field_idx < indicator::nFields(); ++field_idx)
+                    {
+                        for (auto& n : it->data())
+                        {
+                            n(indicator::tag(), field_idx) = 1;
+                        }
+                    }
+                }
+
+                for (auto& n : it->data())
+                {
+                    
+                    
+                    int cur_idx_0 = n(idx_N_type::tag(), 0);
+                    int cur_idx_1 = n(idx_N_type::tag(), 1);
+                    int cur_idx_2 = n(idx_Nz_type::tag(), 0);
+
+                    if (cur_idx_0 < 0 || cur_idx_1 < 0) continue;
+                    
+                    int cur_idx_u_0 = n(idx_u_type::tag(), 0);
+                    int cur_idx_u_1 = n(idx_u_type::tag(), 1);
+                    int cur_idx_u_2 = n(idx_uz_type::tag(), 0);
+
+                    int gN_idx_0 = n(idx_N_g_type::tag(), 0);
+                    int gN_idx_1 = n(idx_N_g_type::tag(), 1);
+                    int gN_idx_2 = n(idx_Nz_g_type::tag(), 0);
+
+                    int glob_idx_0_00 = n.at_offset(idx_u_g_type::tag(), 0,  0, 0);
+                    int glob_idx_0_01 = n.at_offset(idx_u_g_type::tag(), 0, -1, 0);
+                    int glob_idx_0_10 = n.at_offset(idx_u_g_type::tag(), 1,  0, 0);
+                    int glob_idx_0_11 = n.at_offset(idx_u_g_type::tag(), 1, -1, 0);
+
+                    int glob_idx_1_00 = n.at_offset(idx_u_g_type::tag(),  0, 0, 1);
+                    int glob_idx_1_01 = n.at_offset(idx_u_g_type::tag(),  0, 1, 1);
+                    int glob_idx_1_10 = n.at_offset(idx_u_g_type::tag(), -1, 0, 1);
+                    int glob_idx_1_11 = n.at_offset(idx_u_g_type::tag(), -1, 1, 1);
+
+                    int glob_idx_2_00 = n.at_offset(idx_uz_g_type::tag(), 0,  0, 0);
+                    int glob_idx_2_01 = n.at_offset(idx_uz_g_type::tag(), 0, -1, 0);
+                    int glob_idx_2_10 = n.at_offset(idx_uz_g_type::tag(), -1, 0, 0);
+                    int glob_idx_2_11 = n.at_offset(idx_uz_g_type::tag(), 1, -1, 0);
+
+                    float_type om_00_0 = n.at_offset(edge_aux_type::tag(), 0, 0, 0)*0.5;
+                    float_type om_01_0 = n.at_offset(edge_aux_type::tag(), 0, 1, 0)*0.5;
+                    float_type om_10_0 = n.at_offset(edge_aux_type::tag(), 1, 0, 0)*0.5;
+
+                    float_type om_00_1 = n.at_offset(edge_aux_type::tag(), 0, 0, 1)*0.5;
+                    float_type om_01_1 = n.at_offset(edge_aux_type::tag(), 0, 1, 1)*0.5;
+                    float_type om_10_1 = n.at_offset(edge_aux_type::tag(), 1, 0, 1)*0.5;
+
+                    float_type om_00_2 = n.at_offset(edge_aux_type::tag(), 0, 0, 2)*0.25;
+                    float_type om_01_2 = n.at_offset(edge_aux_type::tag(), 0, 1, 2)*0.25;
+                    float_type om_10_2 = n.at_offset(edge_aux_type::tag(), 1, 0, 2)*0.25;
+
+
+                    int p_idx_w = n.at_offset(idx_p_type::tag(), -1, 0, 0);
+                    int p_idx_e = n.at_offset(idx_p_type::tag(), 1, 0, 0);
+                    int p_idx_n = n.at_offset(idx_p_type::tag(), 0, 1, 0);
+                    int p_idx_s = n.at_offset(idx_p_type::tag(), 0, -1, 0);
+
+                    /*if (p_set_zero) {
+
+                    if ((p_idx_w > 0 && p_idx_e > 0) || l != base_level)
+                    {
+                        DN.add_element(cur_idx_0, glob_idx_1_00, -om_00);
+                        DN.add_element(cur_idx_0, glob_idx_1_10, -om_00);
+                        DN.add_element(cur_idx_0, glob_idx_1_01, -om_01);
+                        DN.add_element(cur_idx_0, glob_idx_1_11, -om_01);
+
+                        DN.add_element(cur_idx_u_0, glob_idx_1_00, -om_00);
+                        DN.add_element(cur_idx_u_0, glob_idx_1_10, -om_00);
+                        DN.add_element(cur_idx_u_0, glob_idx_1_01, -om_01);
+                        DN.add_element(cur_idx_u_0, glob_idx_1_11, -om_01);
+                    }
+                    if ((p_idx_n > 0 && p_idx_s > 0) || l != base_level)
+                    {
+                        DN.add_element(cur_idx_1, glob_idx_0_00, om_00);
+                        DN.add_element(cur_idx_1, glob_idx_0_01, om_00);
+                        DN.add_element(cur_idx_1, glob_idx_0_10, om_10);
+                        DN.add_element(cur_idx_1, glob_idx_0_11, om_10);
+
+                        DN.add_element(cur_idx_u_1, glob_idx_0_00, om_00);
+                        DN.add_element(cur_idx_u_1, glob_idx_0_01, om_00);
+                        DN.add_element(cur_idx_u_1, glob_idx_0_10, om_10);
+                        DN.add_element(cur_idx_u_1, glob_idx_0_11, om_10);
+                    }
+                    }
+                    else {
+
+                    DN.add_element(cur_idx_0, glob_idx_1_00, -om_00);
+                    DN.add_element(cur_idx_0, glob_idx_1_10, -om_00);
+                    DN.add_element(cur_idx_0, glob_idx_1_01, -om_01);
+                    DN.add_element(cur_idx_0, glob_idx_1_11, -om_01);
+
+                    DN.add_element(cur_idx_1, glob_idx_0_00,  om_00);
+                    DN.add_element(cur_idx_1, glob_idx_0_01,  om_00);
+                    DN.add_element(cur_idx_1, glob_idx_0_10,  om_10);
+                    DN.add_element(cur_idx_1, glob_idx_0_11,  om_10);
+
+                    DN.add_element(cur_idx_u_0, glob_idx_1_00, -om_00);
+                    DN.add_element(cur_idx_u_0, glob_idx_1_10, -om_00);
+                    DN.add_element(cur_idx_u_0, glob_idx_1_01, -om_01);
+                    DN.add_element(cur_idx_u_0, glob_idx_1_11, -om_01);
+
+                    DN.add_element(cur_idx_u_1, glob_idx_0_00,  om_00);
+                    DN.add_element(cur_idx_u_1, glob_idx_0_01,  om_00);
+                    DN.add_element(cur_idx_u_1, glob_idx_0_10,  om_10);
+                    DN.add_element(cur_idx_u_1, glob_idx_0_11,  om_10);
+                    }
+
+                    DN.add_element(cur_idx_0, gN_idx_0, -1.0); 
+                    DN.add_element(cur_idx_1, gN_idx_1, -1.0);*/
+
+                    //DN.add_element(cur_idx_u_0, gN_idx_0, -1.0);
+                    //DN.add_element(cur_idx_u_1, gN_idx_1, -1.0);
+
+                    //0.5 * n.at_offset(edge, 0, 0, y_p) * (n.at_offset(face, 0, 0, z_p) + n.at_offset(face, -1, 0, z_p))
+                    DN_forcing.add_element(cur_idx_u_0, glob_idx_2_00, om_00_1);
+                    DN_forcing.add_element(cur_idx_u_0, glob_idx_2_10, om_00_1);
+
+                    //-n.at_offset(edge, 0, 0, z_p) *  (n.at_offset(face, 0, 0, y_p) + n.at_offset(face, -1, 0, y_p))
+                    //-n.at_offset(edge, 0, 1, z_p) * (n.at_offset(face,  0, 1, y_p) + n.at_offset(face, -1, 1, y_p))
+                    DN_forcing.add_element(cur_idx_u_0, glob_idx_1_00, -om_00_2);
+                    DN_forcing.add_element(cur_idx_u_0, glob_idx_1_10, -om_00_2);
+                    DN_forcing.add_element(cur_idx_u_0, glob_idx_1_01, -om_01_2);
+                    DN_forcing.add_element(cur_idx_u_0, glob_idx_1_11, -om_01_2);
+
+                    // n.at_offset(edge, 0, 0, z_p) * (n.at_offset(face, 0, 0, x_p) + n.at_offset(face, 0, -1, x_p))
+                    // n.at_offset(edge, 1, 0, z_p) * (n.at_offset(face, 1, 0, x_p) + n.at_offset(face, 1, -1, x_p))
+                    DN_forcing.add_element(cur_idx_u_1, glob_idx_0_00,  om_00_2);
+                    DN_forcing.add_element(cur_idx_u_1, glob_idx_0_01,  om_00_2);
+                    DN_forcing.add_element(cur_idx_u_1, glob_idx_0_10,  om_10_2);
+                    DN_forcing.add_element(cur_idx_u_1, glob_idx_0_11,  om_10_2);
+                    //-0.5 * n.at_offset(edge, 0, 0, x_p) * (+n.at_offset(face, 0, 0, z_p) + n.at_offset(face, 0, -1, z_p))
+                    DN_forcing.add_element(cur_idx_u_1, glob_idx_2_00, -om_00_0);
+                    DN_forcing.add_element(cur_idx_u_1, glob_idx_2_01, -om_00_0);
+
+                    //0.5 * (n.at_offset(edge, 0, 0, x_p) * n.at_offset(face, 0, 0, y_p)  
+                    //+n.at_offset(edge, 0, 1, x_p) * n.at_offset(face, 0, 1, y_p) 
+                    //-n.at_offset(edge, 0, 0, y_p) * n.at_offset(face, 0, 0, x_p) 
+                    //-n.at_offset(edge, 1, 0, y_p) * n.at_offset(face, 1, 0, x_p))
+                    DN_forcing.add_element(cur_idx_u_2, glob_idx_1_00,  om_00_0);
+                    DN_forcing.add_element(cur_idx_u_2, glob_idx_1_01,  om_01_0);
+                    DN_forcing.add_element(cur_idx_u_2, glob_idx_0_00, -om_00_1);
+                    DN_forcing.add_element(cur_idx_u_2, glob_idx_0_10, -om_10_1);
+
+
+                    //DN_forcing.add_element(cur_idx_0, gN_idx_0, -1.0); 
+                    //DN_forcing.add_element(cur_idx_1, gN_idx_1, -1.0);
+                    //DN_forcing.add_element(cur_idx_2, gN_idx_2, -1.0);
+
+                    //DN_forcing.add_element(cur_idx_u_0, gN_idx_0, 1.0);
+                    //DN_forcing.add_element(cur_idx_u_1, gN_idx_1, 1.0);
+                    //DN_forcing.add_element(cur_idx_u_2, gN_idx_2, 1.0);
+                }
+            }
+        }
+        /*domain_->client_communicator().barrier();
+
+        this->template construct_upward_BC_intrp<idx_N_type, idx_N_g_type>(DN_forcing);
+
+        this->template construct_interpolation<idx_N_type, idx_N_g_type>(DN_forcing);
+
+        this->template construct_upward_BC_intrp<idx_Nz_type, idx_Nz_g_type>(DN_forcing);
+
+        this->template construct_interpolation<idx_Nz_type, idx_Nz_g_type>(DN_forcing);*/
+
+        domain_->client_communicator().barrier();
+    }
+private:
+    class Kernel_vec {
+        public:
+        Kernel_vec() {
+            //in this part, we only need the one on the coarsest level
+            //need to set alpha before calling constructor if constructing IF, and dx = 1.0
+
+            canUse_ = false;
+        }
+
+        void init(float_type c) {
+            canUse_ = true;
+            //can only use it when init is called
+            kernel.change_c(c);
+            //kernel.derived().build_lt();
+        }
+
+        float_type getValue(key_2D loc) {
+            
+            auto it = vec.find(loc);
+            
+            if (it == vec.end()) {
+                int i = std::get<0>(loc);
+                int j = std::get<1>(loc);
+                kernel.change_level(0);
+                float_type val = kernel.derived().get(coordinate_type({i, j}));
+                vec.emplace(loc, val);
+                return val;
+            }
+            return it->second;
+        }
+
+
+        float_type getValue(int i, int j) {
+            key_2D loc(i,j);
+            auto it = vec.find(loc);
+            
+            if (it == vec.end()) {
+                kernel.change_level(0);
+                float_type val = kernel.derived().get(coordinate_type({i, j}));
+                vec.emplace(loc, val);
+                return val;
+            }
+            return it->second;
+        }
+
+        bool canUse() {
+            return canUse_;
+        }
+
+        private:
+
+
+        std::map<key_2D, float_type> vec;
+        helm_t kernel;
+        bool canUse_ = false;
+    };
+
+  public:
+    //for testing
+    sparse_mat mat;
+
+    //for constructing sparse matrix
+    sparse_mat L; //upper left matrix laplacian
+    sparse_mat DN; //linearized convective term, i.e. omega_s cross u + omega cross u_s, have not taken negative yet
+    sparse_mat Div; //Divergence
+    sparse_mat Div_cs; //Source of pressure (divergence of nonlinear + smearing)
+    sparse_mat Grad; //Gradient
+    sparse_mat Curl; //Curl minus identity
+    sparse_mat project; //ib projection
+    sparse_mat smearing; //ib smearing
+    sparse_mat boundary_u; //the matrix for the boundary of u from LGF
+    sparse_mat upward_intrp; //upward interpolation matris for FMM
+
+    //Jacobian Matrix
+    sparse_mat Jac;
+
+    //Part of Jac without DN
+    sparse_mat Jac_p;
+
+    //B matrix on the LHS in the generalized eigenvalue problem (Bdq/dt=Aq)
+    sparse_mat B;
+
+    sparse_mat Imag; //imaginary part of the matrix, does not add since it was fairly simple
+
+    sparse_mat Q; //The matrix defining inner product
+    sparse_mat Q_halfi; //Q^(-1/2), needed for defining resolvent
+
+    //Matrix for filtering
+    sparse_mat FT_x, FT_y; //tri-diagonal system
+    sparse_mat FR_x, FR_y; //RHS matrix
+    sparse_mat IV; //Interpolation matrix to put values in 
+
+    sparse_mat B_i; //input matrix, from all state variables to velocities (including nonleaves)
+
+    sparse_mat ForcingMat_real; //Matrix defining the input of all forcings, this is defined N_grid_pts * N_forcing_pts to utilize sparse structure
+    sparse_mat ForcingMat_imag; //Matrix defining the input of all forcings, this is defined N_grid_pts * N_forcing_pts to utilize sparse structure
+
+    sparse_mat DN_forcing;
+    sparse_mat IB_forcing_mat;
+
+    int loc_ib_pts;
+    std::vector<int> ib_ranks;
+
+    std::vector<real_coordinate_type> forcing_coords;
+
+    //sparse_mat Curl_forcing;
+
+  private:
+    
+
+    simulation_type* simulation_;
+    domain_type*     domain_; ///< domain
+    poisson_solver_t psolver;
+    linsys_solver_t  lsolver;
+    lgf_lap_t        lgf_lap_;
+
+    interpolation_type                c_cntr_nli_; //can use this to get the FMM matrix
+    interpolation_type                c_cntr_nli_small; //can use this to get the interpolation matrix
+
+    interpolation_mat_type            c_cntr_nli_mat;
+
+    std::vector<real_coordinate_type> forcing_coord;
+
+    bool base_mesh_update_ = false;
+
+    bool add_L = true;
+    bool add_DN = true;
+    bool add_Div = true;
+    bool add_Grad = true;
+    bool add_Curl = true;
+    bool add_Boundary_u = true;
+    bool add_upward_intrp = true;
+    bool add_smearing = true;
+    bool add_project = true;
+
+    bool include_u_bc = true;
+    bool include_p_bc = true;
+
+    bool p_set_zero = true; //decide if a pressure point is set to be 0
+    bool vort_buffer = false;
+
+    bool Q_2DOnly = false;
+
+    bool force_loc_set_zero = false;
+    int set_zero_nx;
+    int set_zero_ny;
+
+    int set_zero_idx = -10; //the idx where the pressure is set to zero (just one point)
+    int FMM_fac = 1;
+
+    int N_sep;
+    bool use_FMM = false;
+    bool FMM_include_center = false;
+    bool no_vort_idx = false;
+    bool testing_u_lap_only = false;
+    bool flux_correction = false;
+    std::map<int, int> FMM_bin; // the map that structured like N_sep, 1;N_sep*2+N_sep, 2; N_sep*2^2+N_sep*2+N_sep, 2^2;...
+    //the first int is the max value for that bin, the second value is the stride for that bin
+
+    float_type              T_, T_stage_, T_max_;
+    float_type              dt_base_, dt_, dx_base_;
+    float_type              Re_;
+    float_type              cfl_max_, cfl_;
+    float_type              cg_threshold_;
+    float_type              Newton_threshold_;
+    float_type              Curl_factor; //the factor to better enforce vorticity criterion
+
+    //for receptivity
+    float_type _x_v, _y_l, _y_u, _x_l, _x_u;
+
+    float_type              alpha_f = 0.3;
+    std::vector<float_type> source_max_{0.0, 0.0};
+
+    float_type T_last_vel_refresh_ = 0.0;
+
+    int max_vel_refresh_ = 1;
+    int max_ref_level_ = 0;
+    int output_base_freq_;
+    int adapt_freq_;
+    int tot_base_steps_;
+    int n_step_ = 0;
+    int restart_n_last_ = 0;
+    int nLevelRefinement_;
+    int stage_idx_ = 0;
+    int cg_max_itr_;
+
+    bool use_restart_ = false;
+    bool just_restarted_ = false;
+    bool write_restart_ = false;
+    bool updating_source_max_ = false;
+    bool all_time_max_;
+    int  restart_base_freq_;
+    int  adapt_count_;
+
+    //variables for indexing for constructing matrix
+    int max_idx_from_prev_prc = 0;
+    int max_idx_B_from_prev_prc = 0;
+    int max_local_idx = 0;
+    int max_local_B_idx = 0;
+    
+
+    std::string                fname_prefix_;
+    vector_type<float_type, 6> a_{{1.0 / 3, -1.0, 2.0, 0.0, 0.75, 0.25}};
+    vector_type<float_type, 4> c_{{0.0, 1.0 / 3, 1.0, 1.0}};
+
+    force_type forcing_tmp;
+    force_type forcing_old;
+    force_type forcing_idx;
+    force_type forcing_idx_g;
+    std::vector<int> forcing_z_idx;
+    std::vector<int> forcing_z_idx_g;
+    float_type mode_c; 
+    //this is the normalized Fourier mode number, i.e. if the periodic length is L_z, mode_c = 2pi n/L_z, n is the number of Fourier mode
+    Kernel_vec kernel_vec;
+    Kernel_vec kernel_vec_filter;
+
+    //vector_type<float_type, 6>        a_{{1.0 / 2, sqrt(3)/3, (3-sqrt(3))/3, (3+sqrt(3))/6, -sqrt(3)/3, (3+sqrt(3))/6}};
+    //vector_type<float_type, 4>        c_{{0.0, 0.5, 1.0, 1.0}};
+    vector_type<float_type, 3>        alpha_{{0.0, 0.0, 0.0}};
+    parallel_ostream::ParallelOstream pcout =
+        parallel_ostream::ParallelOstream(1);
+    boost::mpi::communicator comm_;
+};
+
+} // namespace solver
+} // namespace iblgf
+
+#endif // IBLGF_INCLUDED_POISSON_HPP

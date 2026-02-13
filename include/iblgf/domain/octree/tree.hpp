@@ -838,12 +838,16 @@ class Tree
         dfs_iterator end;
         for (auto it = begin; it != end; ++it)
         {
+            if (!it->has_data()) continue;
+
             const auto id = it->key().id();
             ofs.write(reinterpret_cast<const char*>(&id), sizeof(id));
         }
 
         for (auto it = begin; it != end; ++it)
         {
+            if (!it->has_data()) continue;
+
             const bool leaf_flag = it->is_leaf();
             ofs.write(
                 reinterpret_cast<const char*>(&leaf_flag), sizeof(leaf_flag));

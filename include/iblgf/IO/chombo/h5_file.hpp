@@ -154,6 +154,57 @@ class hdf5_file
         std::string hi_k_str = "hi_k";
     };
 
+    struct vec_dx
+    {
+        vec_dx() = default;
+        ~vec_dx() = default;
+        vec_dx(float_type x_, float_type y_, float_type z_ = 0)
+        {
+            x = x_;
+            y = y_;
+            z = z_;
+        }
+
+        float_type x;
+        float_type y;
+        float_type z;
+        std::string lo_i_str = "x";
+        std::string lo_j_str = "y";
+        std::string lo_k_str = "z";
+    };
+
+
+    struct box_compound2D
+    {
+        box_compound2D() = default;
+        ~box_compound2D() = default;
+        box_compound2D(const index_list_t& _min, const index_list_t& _max)
+        {
+            lo_i = static_cast<int>(_min[0]);
+            lo_j = static_cast<int>(_min[1]);
+            //if (dimension == 3) lo_k = static_cast<int>(_min[2]);
+            hi_i = static_cast<int>(_max[0]);
+            hi_j = static_cast<int>(_max[1]);
+            //if (dimension == 3) hi_k = static_cast<int>(_max[2]);
+        }
+
+
+        int         lo_i;
+        int         lo_j;
+        int         hi_i;
+        int         hi_j;
+        //int         lo_k;
+
+        //int         hi_k;
+        std::string lo_i_str = "lo_i";
+        std::string lo_j_str = "lo_j";
+        //std::string lo_k_str = "lo_k";
+        std::string hi_i_str = "hi_i";
+        std::string hi_j_str = "hi_j";
+        //std::string hi_k_str = "hi_k";
+    };
+
+
     void open_file2(std::string _filename, bool default_open = true)
     {
         boost::mpi::communicator world;
@@ -183,7 +234,23 @@ class hdf5_file
     ~hdf5_file()
     {
         close_everything();
-        //close_file(file_id);
+    //         if (filespace > 0)
+    // {
+    //     H5Sclose(filespace);  // Close the file space
+    // }
+
+    // // Close the HDF5 file if it's open
+    // if (file_id > 0)
+    // {
+    //     H5Fclose(file_id);  // Close the HDF5 file
+    // }
+
+    // // Close the property list if it was created
+    if (plist_id > 0)
+    {
+        H5Pclose(plist_id);  // Close the property list
+    }
+        // close_file(file_id);
     }
 
     void update_plist() {}
@@ -398,6 +465,53 @@ class hdf5_file
         read_dataset(dataset_id, memspace, dataspace_id, &data[0]);
     }
 
+
+    template<class BlockDescriptor>
+    std::vector<BlockDescriptor> read_box_from_group(
+        hid_t& _group_id, int fake_level)
+    {
+	auto lo_i = read_attribute<std::vector<int>>(_group_id, "lo_j");
+	std::cout << "finished reading lo_i" << std::endl;
+	auto lo_j = read_attribute<std::vector<int>>(_group_id, "lo_j");
+	auto hi_i = read_attribute<std::vector<int>>(_group_id, "hi_i");
+	auto hi_j = read_attribute<std::vector<int>>(_group_id, "hi_j");
+
+	int dimsV = lo_i.size();
+	
+	std::vector<int> lo_k, hi_k;
+	if (NumDims == 3) {    
+	    lo_k = read_attribute<std::vector<int>>(_group_id, "lo_k");
+	    hi_k = read_attribute<std::vector<int>>(_group_id, "hi_k");
+	}
+
+        std::vector<BlockDescriptor> vec_box(dimsV);
+        //TODO : somehow the direct conversion doesn't work
+        for (int i = 0; i < static_cast<int>(dimsV); ++i)
+        {
+	    std::array<int, NumDims> coord0;
+	    std::array<int, NumDims> coord1;
+	    if (NumDims == 3) {
+	    	std::array<int , 3> tmp0 ={lo_i[i],               lo_j[i],               lo_k[i]};
+		std::array<int , 3> tmp1 ={hi_i[i] - lo_i[i] + 1, hi_j[i] - lo_j[i] + 1, hi_k[i] - lo_k[i] + 1};
+	    	for (int tmp_i = 0; tmp_i < NumDims; tmp_i++) {
+	    	    coord0[tmp_i]=tmp0[tmp_i];
+		    coord1[tmp_i]=tmp1[tmp_i];
+	    	}
+	    }
+	    else if (NumDims == 2){
+	    	std::array<int , 2> tmp0 ={lo_i[i],               lo_j[i]};
+		std::array<int , 2> tmp1 ={hi_i[i] - lo_i[i] + 1, hi_j[i] - lo_i[i] + 1};
+	    	for (int tmp_i = 0; tmp_i < NumDims; tmp_i++) {
+	    	    coord0[tmp_i]=tmp0[tmp_i];
+		    coord1[tmp_i]=tmp1[tmp_i];
+	    	}
+		std::cout << "ext is " << coord0[0] << " " << coord0[1] << " " << coord1[0] << " " << coord1[1] << std::endl;
+	    }
+            vec_box[i] = BlockDescriptor(coord0,coord1,fake_level);
+        }
+        return vec_box;
+    }
+
     template<class BlockDescriptor>
     std::vector<BlockDescriptor> read_box_descriptors(
         hid_t& dataset_id, int fake_level)
@@ -407,22 +521,90 @@ class hdf5_file
         std::vector<hsize_t> dims(1);
         H5Sget_simple_extent_dims(dataspace_id, &dims[0], NULL);
 
-        box_compound* data =
-            (box_compound*)malloc(dims[0] * sizeof(box_compound));
 
-        hid_t memtype = H5Dget_type(dataset_id);
-        H5Dread(dataset_id, memtype, H5S_ALL, H5S_ALL, H5P_DEFAULT, &data[0]);
+        box_compound* data =
+            (box_compound*)malloc(static_cast<int>(dims[0]) * sizeof(box_compound));
+
+
+        //box_compound2D* data2D
+	//	= (box_compound2D*)malloc(static_cast<int>(dims[0]) * sizeof(box_compound2D));
+
+	/*for (int i = 0; i < static_cast<int>(dims[0]); i++) {
+	    data2D[i].lo_i = -1000;
+	    data2D[i].hi_i = -1000;
+	    data2D[i].lo_j = -1000;
+	    //data2D[i].lo_k = -1000;
+	    data2D[i].hi_j = -1000;
+	    //data2D[i].hi_k = -1000;
+	}*/
+
+	//int sizes[static_cast<int>(dims[0])];
+
+        // hid_t memtype = H5Dget_type(dataset_id); // memtype not used anywhere
+	//memtype = H5Tcreate(H5T_COMPOUND, sizeof(box_compound2D));
+
+	//int tmp11[static_cast<int>(dims[0]) * 50];
+	//memtype = H5Tcopy(H5T_NATIVE_INT);
+	//
+	//H5Pset_alignment(H5P_DEFAULT, 0,1);
+	hid_t s2_tid = H5Tcreate(H5T_COMPOUND, sizeof(box_compound));
+
+	H5Tinsert(s2_tid, "lo_i", HOFFSET(box_compound, lo_i), H5T_NATIVE_INT);
+	H5Tinsert(s2_tid, "lo_j", HOFFSET(box_compound, lo_j), H5T_NATIVE_INT);
+	H5Tinsert(s2_tid, "hi_i", HOFFSET(box_compound, hi_i), H5T_NATIVE_INT);
+	H5Tinsert(s2_tid, "hi_j", HOFFSET(box_compound, hi_j), H5T_NATIVE_INT);
+	if (NumDims == 3) {
+	H5Tinsert(s2_tid, "lo_k", HOFFSET(box_compound, lo_k), H5T_NATIVE_INT);
+	H5Tinsert(s2_tid, "hi_k", HOFFSET(box_compound, hi_k), H5T_NATIVE_INT);
+	}
+
+        if (NumDims == 3) H5Dread(dataset_id, s2_tid,        H5S_ALL, H5S_ALL, H5P_DEFAULT, &data[0]);
+        if (NumDims == 2) H5Dread(dataset_id, s2_tid,        H5S_ALL, H5S_ALL, H5P_DEFAULT, &data[0]);
+	/*for (int i = 0; i < dims[0]; i++) {
+	    data[i].lo_i = tmp11[i*2*NumDims];
+	    data[i].lo_j = tmp11[i*2*NumDims + 1];
+	    data[i].hi_i = tmp11[i*2*NumDims + 2];
+	    data[i].hi_j = tmp11[i*2*NumDims + 3];
+	}*/
+        //H5Aread(dataset_id, memtype, H5S_ALL, H5S_ALL, H5P_DEFAULT, &sizes[0]);
+	/*boost::mpi::communicator world;
+	if (world.rank() == 1) {
+	
+	for (int i = 0; i < static_cast<int>(dims[0]); i++) {
+	    std::cout << "data Range " << i << " blk " <<  data[i].lo_i << " "<< data[i].hi_i << " " << data[i].lo_j << " " << data[i].hi_j << std::endl;
+	}
+	std::cout << "finished output" <<std::endl;
+	}*/
         std::vector<BlockDescriptor> vec_box(dims[0]);
         //TODO : somehow the direct conversion doesn't work
         for (int i = 0; i < static_cast<int>(dims[0]); ++i)
         {
-            vec_box[i] = BlockDescriptor(std::array<int, NumDims>({data[i].lo_i,
-                                             data[i].lo_j, data[i].lo_k}),
-                std::array<int, NumDims>({data[i].hi_i - data[i].lo_i + 1,
-                    data[i].hi_j - data[i].lo_j + 1,
-                    data[i].hi_k - data[i].lo_k + 1}),
-                fake_level);
+	    std::array<int, NumDims> coord0;
+	    std::array<int, NumDims> coord1;
+	    if (NumDims == 3) {
+	    	std::array<int , 3> tmp0 ={data[i].lo_i,                    data[i].lo_j,                    data[i].lo_k};
+		std::array<int , 3> tmp1 ={data[i].hi_i - data[i].lo_i + 1, data[i].hi_j - data[i].lo_j + 1, data[i].hi_k - data[i].lo_k + 1};
+	    	for (int tmp_i = 0; tmp_i < NumDims; tmp_i++) {
+	    	    coord0[tmp_i]=tmp0[tmp_i];
+		    coord1[tmp_i]=tmp1[tmp_i];
+	    	}
+	    }
+	    else if (NumDims == 2){
+	    	std::array<int , 2> tmp0 ={data[i].lo_i,                    data[i].lo_j};
+		std::array<int , 2> tmp1 ={data[i].hi_i - data[i].lo_i + 1, data[i].hi_j - data[i].lo_j + 1};
+	    	for (int tmp_i = 0; tmp_i < NumDims; tmp_i++) {
+	    	    coord0[tmp_i]=tmp0[tmp_i];
+		    coord1[tmp_i]=tmp1[tmp_i];
+	    	}
+	    }
+            vec_box[i] = BlockDescriptor(coord0,coord1,fake_level);
         }
+        free(data);
+        // H5Tclose(s2_tid);
+
+        // H5Sclose(dataspace_id);
+
+
         return vec_box;
     }
 
@@ -477,8 +659,68 @@ class hdf5_file
         auto hdf_t = hdf_type<T>::type();
         status = H5Dread(
             dataset_id, hdf_t, memspace, dataspace_id, H5P_DEFAULT, &data[0]);
+        H5Sclose(memspace);
+        H5Sclose(dataspace_id);
     }
 
+    template<typename T, class Base, class Extent, class Stride,
+        std::size_t Dset_Dim = NumDims>
+    void read_hyperslab_test(hid_type& dataset_id, Base base, Extent extent,
+        Stride stride, std::vector<T>& data)
+    {
+        hid_t dataspace_id = H5Dget_space(dataset_id);
+        HDF5_CHECK_ERROR(dataspace_id, "hdf5: could not open dataspace")
+
+        //Get NumDims of the file:
+        int dimension = H5Sget_simple_extent_ndims(dataspace_id);
+        std::vector<hsize_t> dims(dimension);
+        dimension = H5Sget_simple_extent_dims(dataspace_id, &dims[0], NULL);
+        HDF5_CHECK_ERROR(dimension, "hdf5: could query dimension")
+
+        std::reverse(dims.begin(), dims.end());
+
+        long int nElements = 1;
+        for (unsigned int d = 0; d < Dset_Dim; ++d) nElements *= dims[d];
+
+        std::vector<hsize_t> offset(dimension, 0);
+        std::vector<hsize_t> count(dimension, 0);
+        std::vector<hsize_t> step(dimension, 0);
+
+        hsize_type n_elements_domain = 1;
+        for (int d = 0; d < dimension; ++d)
+        {
+            offset[d] = static_cast<hsize_t>(base[d]);
+            count[d] = static_cast<hsize_t>(extent[d]);
+            step[d] = static_cast<hsize_t>(stride[d]);
+            n_elements_domain *= extent[d];
+        }
+        //std::vector<float_type> data(n_elements_domain);
+        data.resize(n_elements_domain);
+
+        // std::reverse(offset.begin(), offset.end());
+        // std::reverse(count.begin(), count.end());
+        // std::reverse(step.begin(), step.end());
+
+        // auto status = H5Sselect_hyperslab(dataspace_id, H5S_SELECT_SET,
+        //     &offset[0], &step[0], &count[0], NULL);
+        // HDF5_CHECK_ERROR(status, "hdf5: Could not select hyperslab")
+
+        // const hsize_t rank_out = 1; // dimensionality of output vector
+        // hsize_t       dimsm[1];     // memory space dimensions
+        // dimsm[0] = data.size();
+        // auto memspace = H5Screate_simple(rank_out, dimsm, NULL);
+        // HDF5_CHECK_ERROR(memspace, "hdf5: Could not select create memory space")
+
+        // auto hdf_t = hdf_type<T>::type();
+        // status = H5Dread(
+        //     dataset_id, hdf_t, memspace, dataspace_id, H5P_DEFAULT, &data[0]);
+        // H5Sclose(memspace);
+        H5Sclose(dataspace_id);
+        offset.clear();
+        count.clear();
+        step.clear();
+
+    }
     template<typename T>
     void write_hyperslab_cont1D(
         hid_type& dset_id, hyperslab<1> _hyperslab, T* buf)
@@ -577,20 +819,7 @@ class hdf5_file
         //update_plist();
         //H5Eset_auto(NULL,NULL, NULL);
         //H5Eset_auto(nullptr,nullptr, nullptr);
-        auto numOpenObjs = H5Fget_obj_count(
-            file_id, H5F_OBJ_DATASET | H5F_OBJ_GROUP | H5F_OBJ_DATATYPE);
-        if (numOpenObjs > 0)
-        {
-            std::vector<hid_type> obj_id_list(numOpenObjs);
-            auto                  numReturnedOpenObjs = H5Fget_obj_ids(file_id,
-                H5F_OBJ_DATASET | H5F_OBJ_GROUP | H5F_OBJ_DATATYPE, -1,
-                &obj_id_list[0]);
-            for (hsize_type i = 0;
-                 i < static_cast<hsize_type>(numReturnedOpenObjs); ++i)
-                H5Oclose(obj_id_list[i]);
-        }
-
-        numOpenObjs = H5Fget_obj_count(file_id, H5F_OBJ_ATTR);
+        auto numOpenObjs = H5Fget_obj_count(file_id, H5F_OBJ_ATTR);
         if (numOpenObjs > 0)
         {
             std::vector<hid_type> obj_id_list(numOpenObjs);
@@ -600,7 +829,32 @@ class hdf5_file
                  i < static_cast<hsize_type>(numReturnedOpenObjs); ++i)
                 H5Aclose(obj_id_list[i]);
         }
+        numOpenObjs = H5Fget_obj_count(
+             H5F_OBJ_ALL, H5F_OBJ_DATASET | H5F_OBJ_GROUP | H5F_OBJ_DATATYPE);
+        if (numOpenObjs > 0)
+        {
+            std::vector<hid_type> obj_id_list(numOpenObjs);
+            auto                  numReturnedOpenObjs = H5Fget_obj_ids(H5F_OBJ_ALL,
+                H5F_OBJ_DATASET | H5F_OBJ_GROUP | H5F_OBJ_DATATYPE, -1,
+                &obj_id_list[0]);
+            for (hsize_type i = 0;
+                 i < static_cast<hsize_type>(numReturnedOpenObjs); ++i)
+                H5Oclose(obj_id_list[i]);
+        }
 
+        // numOpenObjs = H5Fget_obj_count(file_id, H5F_OBJ_ATTR);
+        // if (numOpenObjs > 0)
+        // {
+        //     std::vector<hid_type> obj_id_list(numOpenObjs);
+        //     auto                  numReturnedOpenObjs =
+        //         H5Fget_obj_ids(file_id, H5F_OBJ_ATTR, -1, &obj_id_list[0]);
+        //     for (hsize_type i = 0;
+        //          i < static_cast<hsize_type>(numReturnedOpenObjs); ++i)
+        //         H5Aclose(obj_id_list[i]);
+        // }
+        // Check again after closing
+        // auto numOpenObjsAfter = H5Fget_obj_count(file_id, H5F_OBJ_DATASET | H5F_OBJ_GROUP | H5F_OBJ_DATATYPE);
+        // std::cout << "After closing: Open objects count: " << numOpenObjsAfter << std::endl;
         numOpenObjs = H5Fget_obj_count(file_id, H5F_OBJ_FILE);
         if (numOpenObjs > 0)
         {
@@ -611,6 +865,8 @@ class hdf5_file
                  i < static_cast<hsize_type>(numReturnedOpenObjs); ++i)
                 H5Fclose(obj_id_list[i]);
         }
+
+
     }
 
     //Attribute: Default impl for generic objects
@@ -686,6 +942,7 @@ class hdf5_file
 
             auto status = H5Aread(attr, hdf_t, &res[0]);
             HDF5_CHECK_ERROR(status, "hdf5: could not read Attribute")
+            // H5Aclose(attr);
             return res;
         }
     };
@@ -736,6 +993,7 @@ class hdf5_file
 
             std::string str(rdata);
             H5Aclose(attr);
+            free(rdata);
             return str;
         }
     };
@@ -786,6 +1044,25 @@ class hdf5_file
         write_boxCompound(_group_id, _cName, &_c, tag(0), 1, asAttr);
     }
 
+    void write_boxCompound_helm_3D(hid_type& _group_id, std::string _cName,
+        index_list_t& _min, index_list_t& _max, int N_modes = 1, bool asAttr = true)
+    {
+        box_compound _c(_min, _max);
+        _c.lo_k = 0;
+        _c.hi_k = N_modes*3 - 1;
+        using tag = std::integral_constant<std::size_t, 3>*;
+        write_boxCompound(_group_id, _cName, &_c, tag(0), 1, asAttr);
+    }
+
+    template<std::size_t ND = dimension>
+    void write_vec_dx(hid_type& _group_id, std::string _cName,
+        float_type x, float_type y, float_type z, bool asAttr = true)
+    {
+        vec_dx _c(x, y, z);
+        using tag = std::integral_constant<std::size_t, ND>*;
+        write_vec_dx(_group_id, _cName, &_c, tag(0), 1, asAttr);
+    }
+
     // CREATE + WRITE *******************************************************
     // for 2D
     void write_boxCompound(hid_type& _group_id, std::string _cName,
@@ -806,6 +1083,77 @@ class hdf5_file
             H5T_NATIVE_INT);
         H5Tinsert(s1_tid, _c->hi_j_str.c_str(), HOFFSET(box_compound, hi_j),
             H5T_NATIVE_INT);
+
+        if (asAttr)
+        {
+            auto dataset = H5Acreate(_group_id, _cName.c_str(), s1_tid, space,
+                H5P_DEFAULT, H5P_DEFAULT);
+            auto status = H5Awrite(dataset, s1_tid, _c);
+            close_attribute(dataset);
+        }
+        else
+        {
+            auto dataset = H5Dcreate(_group_id, _cName.c_str(), s1_tid, space,
+                H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+            auto status =
+                H5Dwrite(dataset, s1_tid, H5S_ALL, H5S_ALL, H5P_DEFAULT, _c);
+            close_dset(dataset);
+        }
+        close_space(space);
+        close_type(s1_tid);
+    }
+
+
+    void write_vec_dx(hid_type& _group_id, std::string _cName,
+        vec_dx* _c, std::integral_constant<std::size_t, 2>*,
+        hsize_type _dim = 1, bool asAttr = true)
+    {
+        //create memory for the dataType:
+        const hsize_type rank = 1;
+        const hsize_type dim = _dim;
+        auto             space = H5Screate_simple(rank, &dim, NULL);
+
+        auto s1_tid = H5Tcreate(H5T_COMPOUND, sizeof(*_c));
+        H5Tinsert(s1_tid, _c->lo_i_str.c_str(), HOFFSET(vec_dx, x),
+            H5T_NATIVE_DOUBLE);
+        H5Tinsert(s1_tid, _c->lo_j_str.c_str(), HOFFSET(vec_dx, y),
+            H5T_NATIVE_DOUBLE);
+
+        if (asAttr)
+        {
+            auto dataset = H5Acreate(_group_id, _cName.c_str(), s1_tid, space,
+                H5P_DEFAULT, H5P_DEFAULT);
+            auto status = H5Awrite(dataset, s1_tid, _c);
+            close_attribute(dataset);
+        }
+        else
+        {
+            auto dataset = H5Dcreate(_group_id, _cName.c_str(), s1_tid, space,
+                H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+            auto status =
+                H5Dwrite(dataset, s1_tid, H5S_ALL, H5S_ALL, H5P_DEFAULT, _c);
+            close_dset(dataset);
+        }
+        close_space(space);
+        close_type(s1_tid);
+    }
+
+    void write_vec_dx(hid_type& _group_id, std::string _cName,
+        vec_dx* _c, std::integral_constant<std::size_t, 3>*,
+        hsize_type _dim = 1, bool asAttr = true)
+    {
+        //create memory for the dataType:
+        const hsize_type rank = 1;
+        const hsize_type dim = _dim;
+        auto             space = H5Screate_simple(rank, &dim, NULL);
+
+        auto s1_tid = H5Tcreate(H5T_COMPOUND, sizeof(*_c));
+        H5Tinsert(s1_tid, _c->lo_i_str.c_str(), HOFFSET(vec_dx, x),
+            H5T_NATIVE_DOUBLE);
+        H5Tinsert(s1_tid, _c->lo_j_str.c_str(), HOFFSET(vec_dx, y),
+            H5T_NATIVE_DOUBLE);
+        H5Tinsert(s1_tid, _c->lo_k_str.c_str(), HOFFSET(vec_dx, z),
+            H5T_NATIVE_DOUBLE);
 
         if (asAttr)
         {
@@ -880,7 +1228,8 @@ class hdf5_file
         index_list_t _min;
         _min[0] = 0;
         _min[1] = 0;
-        _min[2] = 0;
+        if constexpr (ND == 3)
+            _min[2] = 0;
 
         box_compound _c(_min, _min);
         using tag = std::integral_constant<std::size_t, ND>*;
@@ -928,6 +1277,7 @@ class hdf5_file
         close_type(s1_tid);
     }
 
+
     // for 3D
     void create_boxCompound(hid_type& _group_id, std::string _cName,
         box_compound* _c, std::integral_constant<std::size_t, 3>*,
@@ -973,6 +1323,101 @@ class hdf5_file
         close_type(s1_tid);
     }
 
+
+    
+    template<std::size_t ND = dimension>
+    void create_vec_dx(hid_type& _group_id, std::string _cName,
+        hsize_type _boxes_size = 1, bool asAttr = true)
+    {
+        vec_dx _c(0.0, 0.0);
+        using tag = std::integral_constant<std::size_t, ND>*;
+        create_vec_dx(_group_id, _cName, &_c, tag(0), _boxes_size, asAttr);
+    }
+
+    void create_vec_dx(hid_type& _group_id, std::string _cName, vec_dx* _c,
+        std::integral_constant<std::size_t, 2>*,
+        hsize_type _dim = 1, bool asAttr = true)
+    {
+        //create memory for the dataType:
+        const hsize_type rank = 1;
+        const hsize_type dim = _dim;
+        auto             space = H5Screate_simple(rank, &dim, NULL);
+
+        float_type a = 0.0;
+
+
+
+        int  ND = 2;
+        int  sizeof_c = ND * 32/4 + ND * sizeof(a); // string size 32/4, 
+        auto s1_tid = H5Tcreate(H5T_COMPOUND, sizeof_c);
+        //auto s1_tid = H5Tcreate (H5T_COMPOUND, sizeof(*_c));
+        H5Tinsert(s1_tid, _c->lo_i_str.c_str(), HOFFSET(vec_dx, x),
+            H5T_NATIVE_DOUBLE);
+        H5Tinsert(s1_tid, _c->lo_j_str.c_str(), HOFFSET(vec_dx, y),
+            H5T_NATIVE_DOUBLE);
+        /*H5Tinsert(s1_tid, "z", HOFFSET(vec_dx, z),
+            H5T_NATIVE_DOUBLE);*/
+
+        if (asAttr)
+        {
+            auto dataset = H5Acreate(_group_id, _cName.c_str(), s1_tid, space,
+                H5P_DEFAULT, H5P_DEFAULT);
+            //   auto status = H5Awrite(dataset, s1_tid, _c);
+            close_attribute(dataset);
+        }
+        else
+        {
+            auto dataset = H5Dcreate(_group_id, _cName.c_str(), s1_tid, space,
+                H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+            //   auto status = H5Dwrite(dataset, s1_tid, H5S_ALL, H5S_ALL, H5P_DEFAULT, _c);
+            close_dset(dataset);
+        }
+        close_space(space);
+        close_type(s1_tid);
+    }
+
+    void create_vec_dx(hid_type& _group_id, std::string _cName, vec_dx* _c,
+        std::integral_constant<std::size_t, 3>*,
+        hsize_type _dim = 1, bool asAttr = true)
+    {
+        //create memory for the dataType:
+        const hsize_type rank = 1;
+        const hsize_type dim = _dim;
+        auto             space = H5Screate_simple(rank, &dim, NULL);
+
+        float_type a = 0.0;
+
+
+
+        int  ND = 3;
+        int  sizeof_c = ND * 32/4 + ND * sizeof(a); // string size 32/4, 
+        auto s1_tid = H5Tcreate(H5T_COMPOUND, sizeof_c);
+        //auto s1_tid = H5Tcreate (H5T_COMPOUND, sizeof(*_c));
+        H5Tinsert(s1_tid, _c->lo_i_str.c_str(), HOFFSET(vec_dx, x),
+            H5T_NATIVE_DOUBLE);
+        H5Tinsert(s1_tid, _c->lo_j_str.c_str(), HOFFSET(vec_dx, y),
+            H5T_NATIVE_DOUBLE);
+        H5Tinsert(s1_tid, _c->lo_k_str.c_str(), HOFFSET(vec_dx, z),
+            H5T_NATIVE_DOUBLE);
+
+        if (asAttr)
+        {
+            auto dataset = H5Acreate(_group_id, _cName.c_str(), s1_tid, space,
+                H5P_DEFAULT, H5P_DEFAULT);
+            //   auto status = H5Awrite(dataset, s1_tid, _c);
+            close_attribute(dataset);
+        }
+        else
+        {
+            auto dataset = H5Dcreate(_group_id, _cName.c_str(), s1_tid, space,
+                H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+            //   auto status = H5Dwrite(dataset, s1_tid, H5S_ALL, H5S_ALL, H5P_DEFAULT, _c);
+            close_dset(dataset);
+        }
+        close_space(space);
+        close_type(s1_tid);
+    }
+
     // OPEN + WRITE *******************************************************
     // open_write_boxCompound( group_id, name, vector of min, vector of max, bool=true)
     // write vector of boxes (boxes, patch_offsets)
@@ -988,6 +1433,24 @@ class hdf5_file
             boxes.push_back(_c);
         }
         using tag = std::integral_constant<std::size_t, ND>*;
+        hsize_type size = static_cast<hsize_type>(_min.size());
+        open_write_boxCompound(
+            _group_id, _cName, &boxes[0], tag(0), size, asAttr);
+    }
+
+    void open_write_boxCompound_helm3D(hid_type& _group_id, std::string _cName,
+        std::vector<index_list_t>& _min, std::vector<index_list_t>& _max,
+        bool asAttr = true, int N_modes_ = 1)
+    {
+        std::vector<box_compound> boxes;
+        for (unsigned int i = 0; i < _min.size(); ++i)
+        {
+            box_compound _c(_min[i], _max[i]);
+            _c.hi_k = N_modes_*3 - 1;
+            _c.lo_k = 0;
+            boxes.push_back(_c);
+        }
+        using tag = std::integral_constant<std::size_t, 3>*;
         hsize_type size = static_cast<hsize_type>(_min.size());
         open_write_boxCompound(
             _group_id, _cName, &boxes[0], tag(0), size, asAttr);
@@ -1056,6 +1519,82 @@ class hdf5_file
             H5T_NATIVE_INT);
         H5Tinsert(s1_tid, _c->hi_k_str.c_str(), HOFFSET(box_compound, hi_k),
             H5T_NATIVE_INT);
+
+        if (asAttr)
+        {
+            //   auto dataset = H5Acreate(_group_id, _cName.c_str(), s1_tid, space, H5P_DEFAULT, H5P_DEFAULT);
+            auto dataset = H5Aopen(_group_id, _cName.c_str(), H5P_DEFAULT);
+            H5Awrite(dataset, s1_tid, _c);
+            close_attribute(dataset);
+        }
+        else
+        {
+            //    auto dataset = H5Dcreate(_group_id, _cName.c_str(), s1_tid, space, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+            auto dataset = H5Dopen(_group_id, _cName.c_str(), H5P_DEFAULT);
+            H5Dwrite(dataset, s1_tid, H5S_ALL, H5S_ALL, H5P_DEFAULT, _c);
+            close_dset(dataset);
+        }
+        close_type(s1_tid);
+    }
+
+
+    template<std::size_t ND = dimension>
+    void open_write_vec_dx(hid_type& _group_id, std::string _cName,
+        float_type x, float_type y, float_type z, std::vector<index_list_t>& _min,
+        bool asAttr = true)
+    {
+        std::vector<vec_dx> boxes;
+        for (unsigned int i = 0; i < _min.size(); ++i)
+        {
+            vec_dx _c(x, y, z);
+            boxes.push_back(_c);
+        }
+        using tag = std::integral_constant<std::size_t, ND>*;
+        hsize_type size = static_cast<hsize_type>(_min.size());
+        open_write_vec_dx(
+            _group_id, _cName, &boxes[0], tag(0), size, asAttr);
+    }
+
+    void open_write_vec_dx(hid_type& _group_id, std::string _cName,
+        vec_dx* _c, std::integral_constant<std::size_t, 2>*,
+        hsize_type _dim = 1, bool asAttr = true)
+    {
+        auto s1_tid = H5Tcreate(H5T_COMPOUND, sizeof(*_c));
+        H5Tinsert(s1_tid, _c->lo_i_str.c_str(), HOFFSET(vec_dx, x),
+            H5T_NATIVE_DOUBLE);
+        H5Tinsert(s1_tid, _c->lo_j_str.c_str(), HOFFSET(vec_dx, y),
+            H5T_NATIVE_DOUBLE);
+
+        if (asAttr)
+        {
+            //    auto dataset = H5Acreate(_group_id, _cName.c_str(), s1_tid, space, H5P_DEFAULT, H5P_DEFAULT);
+            auto dataset = H5Aopen(_group_id, _cName.c_str(), H5P_DEFAULT);
+            auto status = H5Awrite(dataset, s1_tid, _c);
+            close_attribute(dataset);
+        }
+        else
+        {
+            //    auto dataset = H5Dcreate(_group_id, _cName.c_str(), s1_tid, space, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+            auto dataset = H5Dopen(_group_id, _cName.c_str(), H5P_DEFAULT);
+            auto status =
+                H5Dwrite(dataset, s1_tid, H5S_ALL, H5S_ALL, H5P_DEFAULT, _c);
+            close_dset(dataset);
+        }
+        close_type(s1_tid);
+    }
+
+    // for 3D
+    void open_write_vec_dx(hid_type& _group_id, std::string _cName,
+        vec_dx* _c, std::integral_constant<std::size_t, 3>*,
+        hsize_type _dim = 1, bool asAttr = true)
+    {
+        auto s1_tid = H5Tcreate(H5T_COMPOUND, sizeof(*_c));
+        H5Tinsert(s1_tid, _c->lo_i_str.c_str(), HOFFSET(vec_dx, x),
+            H5T_NATIVE_DOUBLE);
+        H5Tinsert(s1_tid, _c->lo_j_str.c_str(), HOFFSET(vec_dx, y),
+            H5T_NATIVE_DOUBLE);
+        H5Tinsert(s1_tid, _c->lo_k_str.c_str(), HOFFSET(vec_dx, z),
+            H5T_NATIVE_DOUBLE);
 
         if (asAttr)
         {

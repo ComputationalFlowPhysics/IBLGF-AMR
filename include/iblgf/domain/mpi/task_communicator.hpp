@@ -228,7 +228,76 @@ class TaskCommunicator
         //4. start communication
         acc_comm()->start_communication(false);
     }
+    void pack_reflect_messages() noexcept
+    {
+        boost::mpi::communicator world;
 
+        //0. Clean and build accumulated task communicator
+        //acc_tasks.clear();
+        //acc_fields.clear();
+        acc_tasks.resize(world.size());
+        acc_fields.resize(world.size());
+
+        if (buffer_queue_.empty()) return;
+
+        this->derived().construct_acc_comm_();
+
+        // std::sort(buffer_queue_.begin(), buffer_queue_.end(),
+        //     [&](const auto& t0, const auto& t1) {
+        //         return t0->octant()->key().id() < t1->octant()->key().id();
+        //     });
+
+        //TODO: determine this properly
+        const int maxNMessages = 5;
+        //1. Accumulate tasks per CPU rank with max number of ranks and clear
+        //the task_ vector
+        std::vector<bool> isNewTask(world.size(), false);
+        for (std::size_t i = 0; i < isNewTask.size(); ++i)
+        {
+            if (acc_tasks[i].empty()) isNewTask[i] = true;
+        }
+
+        //Accumulate all task per rank
+        for (auto it = buffer_queue_.begin(); it != buffer_queue_.end();)
+        {
+            if (acc_tasks[(*it)->rank_other()].size() < maxNMessages)
+            {
+                acc_tasks[(*it)->rank_other()].push_back(*it);
+                it = buffer_queue_.erase(it);
+            }
+            else
+            {
+                ++it;
+            }
+        }
+
+        //2. Create one task and data vector per rank
+        for (std::size_t rank_other = 0; rank_other < acc_tasks.size();
+             ++rank_other)
+        {
+            if (!isNewTask[rank_other]) continue;
+            // std::sort(acc_tasks[rank_other].begin(),
+            //     acc_tasks[rank_other].end(),
+            //     [&](const auto& c0, const auto& c1) {
+            //         return c0->octant()->key().id() < c1->octant()->key().id();
+            //     });
+
+            //Send: Copy data into single contiguous vector
+            //Recv: Do nothing
+            this->derived().pack_masseges_impl(rank_other);
+
+            //Make single task for the accumulated vector
+            if (acc_tasks[rank_other].size() > 0)
+            {
+                auto tag = acc_tasks[rank_other][0]->tag();
+                auto accumulated_task = acc_comm()->post_task(
+                    &acc_fields[rank_other], rank_other, true, tag);
+                accumulated_task->requires_confirmation() = false;
+            }
+        }
+        //4. start communication
+        acc_comm()->start_communication(false);
+    }
     /** @brief * Unpack recv messages and put them into buffers of the
      * finished tasks
      * */
@@ -247,6 +316,23 @@ class TaskCommunicator
         {
             //std::cout<<"resubmission"<<std::endl;
             this->pack_messages();
+        }
+    }
+    void unpack_reflect_messages() noexcept
+    {
+        this->derived().construct_acc_comm_();
+        auto ftasks = this->derived().unpack_masseges_impl();
+
+        //ftasks should be just one task per rank, this can now be deleted.
+        for (auto& t : ftasks)
+        {
+            acc_tasks[t->rank_other()].clear();
+            acc_fields[t->rank_other()].clear();
+        }
+        if (!buffer_queue_.empty())
+        {
+            //std::cout<<"resubmission"<<std::endl;
+            this->pack_reflect_messages();
         }
     }
 
@@ -366,7 +452,7 @@ struct SendTaskCommunicator
         SendTaskCommunicator<typename TaskType::inplace_task_type>;
 
   public: //Ctors
-    using typename super_type::TaskCommunicator;
+    using super_type::TaskCommunicator;
 
   public: //Memebers:
     int tag_rank_impl(int rank_other) const noexcept
@@ -428,7 +514,7 @@ class RecvTaskCommunicator
         RecvTaskCommunicator<typename TaskType::inplace_task_type>;
 
   public: //Ctors
-    using typename super_type::TaskCommunicator;
+    using  super_type::TaskCommunicator;
 
   public: //members
     int  tag_rank_impl(int _rank_other) const noexcept { return _rank_other; }

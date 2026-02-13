@@ -15,8 +15,8 @@ simulation_parameters
     nLevels=1;
     global_refinement=0;
     refinement_factor=0.125;
-    correction=true;
-    subtract_non_leaf=true;
+    #correction=true;
+    #subtract_non_leaf=true;
 
 
     output
@@ -48,5 +48,5 @@ simulation_parameters
         }
     }
 
-    EXP_LInf=0.00284159;
+    EXP_LInf=1e-2;
 }

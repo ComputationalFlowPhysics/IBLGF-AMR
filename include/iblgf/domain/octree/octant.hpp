@@ -67,7 +67,21 @@ class Octant
         FlagCorrection,
         FlagOldCorrection, // this is for spatial adaptivity, when old boundary becomes the new interior, the vorticity still needs to be zeroed there
         FlagLeafBoundary,
+        FlagIB,
+        FlagExtendedIB,
         FlagLast
+    };
+
+    enum MASK_TYPE
+    {
+        STREAM,
+        AMR2AMR,
+        IB2xIB,
+        xIB2IB,
+        IB2AMR,
+        Laplacian_BC,
+        RefFourierStream,
+        RefFourierLGF
     };
 
     enum MASK_LIST
@@ -77,7 +91,46 @@ class Octant
         Mask_Last
     };
 
-    static const int fmm_max_idx_ = 30;
+    static int fmm_mask_idx_gen(int type, int refinement_level = 0, int non_leaf_as_source=0)
+    {
+        if (type==MASK_TYPE::STREAM) // base level stream function
+            return 0;
+        else if (type==MASK_TYPE::IB2xIB) //
+            return 1;
+        else if (type==MASK_TYPE::xIB2IB) //
+            return 2;
+        else if (type==MASK_TYPE::Laplacian_BC)
+            return 3;
+        else if (type==MASK_TYPE::IB2AMR) // 4 - 14
+            return refinement_level + 4;
+        else if (type==MASK_TYPE::AMR2AMR) // number from 15 - 29
+            return refinement_level * 2 + non_leaf_as_source + 15;
+        else if (type==MASK_TYPE::RefFourierStream) // number from 30 - 39
+            return refinement_level + 30;
+        else if (type==MASK_TYPE::RefFourierLGF) // number from 40 - 50
+            return refinement_level + 40;
+        else
+            throw std::runtime_error("Wrong mask Idx");
+
+        return -1;
+        /*if (type==MASK_TYPE::STREAM) // base level stream function
+            return 0;
+        else if (type==MASK_TYPE::IB2xIB) //
+            return 1;
+        else if (type==MASK_TYPE::xIB2IB) //
+            return 2;
+        else if (type==MASK_TYPE::IB2AMR) //
+            return refinement_level+3;
+        else if (type==MASK_TYPE::AMR2AMR) // number from 15 - 30
+            return refinement_level * 2 + non_leaf_as_source + 16;
+        else
+            throw std::runtime_error("Wrong mask Idx");
+
+        return -1;*/
+
+    }
+
+    static const int fmm_max_idx_ = 50;
 
     using fmm_mask_type = std::array<std::array<bool, Mask_Last>, fmm_max_idx_>;
 
@@ -132,6 +185,7 @@ class Octant
     {
         std::fill(neighbor_.begin(), neighbor_.end(), nullptr);
         std::fill(influence_.begin(), influence_.end(), nullptr);
+	std::fill(children_.begin(), children_.end(), nullptr);
 
         for (int i = 0; i < fmm_max_idx_; ++i)
             std::fill(fmm_masks_[i].begin(), fmm_masks_[i].end(), false);
@@ -165,8 +219,18 @@ class Octant
     bool is_old_correction()const noexcept{return flags_[FlagOldCorrection];}
     void flag_old_correction(const bool flag)noexcept {flags_[FlagOldCorrection] = flag;}
 
+    bool& is_extended_ib() noexcept{return flags_[FlagExtendedIB];}
+    const bool& is_extended_ib() const noexcept{return flags_[FlagExtendedIB];}
+
+    bool& is_ib() noexcept{return flags_[FlagIB];}
+    const bool& is_ib() const noexcept{return flags_[FlagIB];}
+
+    bool& local_ib() noexcept{return local_ib_;}
+    const bool& local_ib() const noexcept{return local_ib_;}
+
     bool is_correction()const noexcept{return flags_[FlagCorrection];}
     void flag_correction(const bool flag)noexcept {flags_[FlagCorrection] = flag;}
+
     bool physical() const noexcept { return flag_physical_; }
     void physical(bool flag) noexcept { flag_physical_ = flag; }
 
@@ -235,9 +299,15 @@ class Octant
     int idx() const noexcept
     {
         const auto cc = this->tree_coordinate();
-        return static_cast<int>(
+	auto tmp = this->level() + cc.x() * 25 + cc.y() * 25 * 300;
+        if (Dim == 3) tmp += 25 * 300 * 300 * cc.z();
+        /*return static_cast<int>(
             (this->level() + cc.x() * 25 + cc.y() * 25 * 300 +
                 25 * 300 * 300 * cc.z()) %
+            boost::mpi::environment::max_tag());*/
+
+        return static_cast<int>(
+            (tmp) %
             boost::mpi::environment::max_tag());
     }
 
@@ -387,7 +457,7 @@ private:
     std::shared_ptr<data_type> data_ = nullptr;
     Octant* parent_=nullptr;
     std::array<std::shared_ptr<Octant>,pow(2,Dim)> children_ =
-        {{nullptr,nullptr,nullptr,nullptr, nullptr,nullptr,nullptr,nullptr}};
+        {{nullptr}};
     std::array<Octant*,pow(3,Dim) > neighbor_ = {nullptr};
     int influence_num = 0;
     std::array<Octant*, 189 > influence_= {nullptr};
@@ -398,6 +468,7 @@ private:
 
     tree_type* t_ = nullptr;
     bool       aim_deletion_ = false;
+    bool       local_ib_ = false;
     int        aim_level_change_ = 0;
 };
 

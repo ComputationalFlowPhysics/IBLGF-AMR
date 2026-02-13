@@ -23,6 +23,11 @@
 #include <iblgf/utilities/crtp.hpp>
 #include <iblgf/lgf/lgf_gl_lookup.hpp>
 
+#ifdef IBLGF_COMPILE_CUDA
+#include <cufft.h>
+#include <cuda_runtime.h>
+#endif
+
 namespace iblgf
 {
 namespace lgf
@@ -35,31 +40,164 @@ class LGF_Base : public crtp::Crtps<Derived, LGF_Base<Dim, Derived>>
   public:
     using block_descriptor_t = BlockDescriptor<int, Dim>;
     using coordinate_t = typename block_descriptor_t::coordinate_type;
-    using dims_t = types::vector_type<int, 3>;
+    using dims_t = types::vector_type<int, Dim>;
 
     using complex_vector_t = std::vector<std::complex<float_type>,
         xsimd::aligned_allocator<std::complex<float_type>, 32>>;
+    using complex_vector_gpu_t=std::vector<std::complex<float_type>>;
 
-    template<class Convolutor>
+    struct gpu_spectrum_entry
+    {
+        std::unique_ptr<complex_vector_gpu_t> host; // host-side spectrum (for CPU paths)
+#ifdef IBLGF_COMPILE_CUDA
+        cufftDoubleComplex*                    device = nullptr; // device buffer holding same spectrum
+#else
+        void*                                  device = nullptr; // placeholder when CUDA is disabled
+#endif
+        size_t                                 size   = 0;
+
+        ~gpu_spectrum_entry()
+        {
+#ifdef IBLGF_COMPILE_CUDA
+            if (device)
+            {
+                cudaFree(device);
+                device = nullptr;
+            }
+#endif
+        }
+    };
+
+#ifdef IBLGF_COMPILE_CUDA
+    using level_entry_3D_t = gpu_spectrum_entry;
+#else
+    using level_entry_3D_t = complex_vector_t;
+#endif
+
+    template<class Convolutor, int Dim1 = Dim>
     auto& dft(const block_descriptor_t& _lgf_block, dims_t _extended_dims,
-        Convolutor* _conv, int level_diff)
+        Convolutor* _conv, typename std::enable_if<Dim1 == 3, int>::type level_diff)
     {
         auto k_ = this->derived().get_key(_lgf_block, level_diff);
-        auto it = this->derived().dft_level_maps_[level_diff].find(k_);
+        auto it = this->derived().dft_level_maps_3D[level_diff].find(k_);
 
         //Check if lgf is already stored
-        if (it == this->derived().dft_level_maps_[level_diff].end())
+        if (it == this->derived().dft_level_maps_3D[level_diff].end())
         {
             this->get_subblock(
                 _lgf_block, _extended_dims, lgf_buffer_, level_diff);
             auto& dft = _conv->dft_r2c(lgf_buffer_);
-            this->derived().dft_level_maps_[level_diff].emplace(
+            this->derived().dft_level_maps_3D[level_diff].emplace(
                 k_, std::make_unique<complex_vector_t>(dft));
             return dft;
         }
         else
         {
             return *(it->second).get();
+        }
+    }
+
+#ifdef IBLGF_COMPILE_CUDA
+    template<class Convolutor, int Dim1 = Dim>
+    gpu_spectrum_entry* dft_gpu(const block_descriptor_t& _lgf_block, dims_t _extended_dims,
+        Convolutor* _conv, typename std::enable_if<Dim1 == 3, int>::type level_diff)
+    {
+        auto k_ = this->derived().get_key(_lgf_block, level_diff);
+        auto it = this->derived().dft_level_maps_3D[level_diff].find(k_);
+
+        //Check if lgf is already stored
+        if (it == this->derived().dft_level_maps_3D[level_diff].end())
+        {
+            this->get_subblock(
+                _lgf_block, _extended_dims, lgf_buffer_, level_diff);
+            auto* dft = _conv->dft_r2c(lgf_buffer_);
+
+            // Allocate entry with host copy and device upload
+            auto entry = std::make_unique<gpu_spectrum_entry>();
+            entry->size = _conv->dft_r2c_size();
+            // entry->device = dft;
+            //move dft to new location on gpu
+            //dft is pointer to device
+            // entry->host = std::make_unique<complex_vector_gpu_t>(std::move(*dft));
+            cudaMalloc(&(entry->device), entry->size * sizeof(cufftDoubleComplex));
+            cudaMemcpy(entry->device, dft, entry->size * sizeof(cufftDoubleComplex), cudaMemcpyDeviceToDevice);
+            entry->host = nullptr; // host copy not needed
+            auto inserted = this->derived().dft_level_maps_3D[level_diff].emplace(
+                k_, std::move(entry));
+
+            // auto inserted = this->derived().dft_level_maps_3D[level_diff].emplace(
+            //     k_, std::move(entry));
+            return (inserted.first->second).get();
+        }
+        else
+        {
+            return (it->second).get();
+        }
+    }
+#else
+    // CPU build: dft_gpu falls back to the CPU DFT and returns a host vector reference
+    template<class Convolutor, int Dim1 = Dim>
+    auto& dft_gpu(const block_descriptor_t& _lgf_block, dims_t _extended_dims,
+        Convolutor* _conv, typename std::enable_if<Dim1 == 3, int>::type level_diff)
+    {
+        return dft(_lgf_block, _extended_dims, _conv, level_diff);
+    }
+#endif
+
+
+    template<class Convolutor, int Dim1 = Dim>
+    auto& dft(const block_descriptor_t& _lgf_block, dims_t _extended_dims,
+        Convolutor* _conv, typename std::enable_if<Dim1 == 2, int>::type level_diff)
+    {
+        auto k_ = this->derived().get_key(_lgf_block, level_diff);
+        auto it = this->derived().dft_level_maps_2D[level_diff].find(k_);
+
+        if (it == this->derived().dft_level_maps_2D[level_diff].end() && this->HelmholtzLGF()) {
+            bool needToEval = std::get<0>(k_);
+            if (!needToEval) {
+                return emptyVec;
+            }
+        }
+
+        //Check if lgf is already stored
+        if (it == this->derived().dft_level_maps_2D[level_diff].end()/* || this->LaplaceLGF()  !this->neighbor_only()*/)
+        {
+
+            this->get_subblock(
+                _lgf_block, _extended_dims, lgf_buffer_, level_diff);
+            auto& dft = _conv->dft_r2c(lgf_buffer_);
+            this->derived().dft_level_maps_2D[level_diff].emplace(
+                k_, std::make_unique<complex_vector_t>(dft));
+            
+            return dft;
+        }
+        else
+        {
+            return *(it->second).get();
+        }
+    }
+
+    void clear_fft_vecs() {
+        for (auto it = this->derived().dft_level_maps_2D.begin(); 
+             it != this->derived().dft_level_maps_2D.end();
+             ++it) {
+            it->clear();
+        }
+
+        for (auto it = this->derived().dft_level_maps_3D.begin(); 
+             it != this->derived().dft_level_maps_3D.end();
+             ++it) {
+#ifdef IBLGF_COMPILE_CUDA
+            for (auto& kv : *it)
+            {
+                if (kv.second && kv.second->device)
+                {
+                    cudaFree(kv.second->device);
+                    kv.second->device = nullptr;
+                }
+            }
+#endif
+            it->clear();
         }
     }
 
@@ -70,8 +208,18 @@ class LGF_Base : public crtp::Crtps<Derived, LGF_Base<Dim, Derived>>
 
     bool neighbor_only() { return neighbor_only_; }
 
+    bool LaplaceLGF() {return LaplaceLGF_;}
+
+    bool HelmholtzLGF() {return HelmholtzLGF_;}
+
+    float_type return_c_level() {
+        return this->derived().return_c_impl();
+    }
+
+
   protected:
-    void get_subblock(const block_descriptor_t& _b, dims_t _extended_dims,
+    template<int Dim1 = Dim>
+    typename std::enable_if<Dim1 == 3, void>::type get_subblock(const block_descriptor_t& _b, dims_t _extended_dims,
         std::vector<float_type>& _lgf, int level_diff = 0) noexcept
     {
         this->derived().build_lt();
@@ -113,9 +261,51 @@ class LGF_Base : public crtp::Crtps<Derived, LGF_Base<Dim, Derived>>
         }
     }
 
+    template<int Dim1 = Dim>
+    typename std::enable_if<Dim1 == 2, void>::type get_subblock(const block_descriptor_t& _b, dims_t _extended_dims,
+        std::vector<float_type>& _lgf, int level_diff = 0) noexcept
+    {
+        this->derived().build_lt();
+
+        const auto base = _b.base();
+        const auto max = _b.max();
+        int        step = pow(2, level_diff);
+
+        std::vector<float_type> _lgf_small;
+        _lgf_small.resize(_b.size());
+
+            for (auto j = base[1]; j <= max[1]; ++j)
+            {
+                for (auto i = base[0]; i <= max[0]; ++i)
+                {
+                    //get view
+                    _lgf_small[_b.index(i, j)] = this->derived().get(
+                        coordinate_t({i * step, j * step}));
+                }
+            }
+
+        block_descriptor_t _b_pad(base, _extended_dims);
+
+        _lgf.resize(_b_pad.size());
+        std::fill(_lgf.begin(), _lgf.end(), 0.0);
+
+            for (auto j = base[1]; j <= max[1]; ++j)
+            {
+                for (auto i = base[0]; i <= max[0]; ++i)
+                {
+                    _lgf[_b_pad.index(i, j)] = _lgf_small[_b.index(i, j)];
+                }
+            }
+        
+    }
+
     std::vector<float_type> lgf_buffer_; ///<lgf buffer
+    complex_vector_t        emptyVec; //a empty vector that will be returned if Helmholtz LGF is too small
     const int               max_lgf_map_level = 20;
     bool                    neighbor_only_ = false;
+    bool                    LaplaceLGF_ = false;
+    bool                    HelmholtzLGF_ = false;
+    
 };
 
 } // namespace lgf

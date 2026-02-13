@@ -15,13 +15,32 @@ if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/CMakeLists.txt.user")
     include(${CMAKE_CURRENT_LIST_DIR}/CMakeLists.txt.user)
 else()
 endif()
-project(iblgf_amr VERSION 0.0.0)
+project(IBLGF VERSION 0.0.0 LANGUAGES CXX C)
+
+
+option(USE_GPU "Build with GPU support" OFF)
+if(USE_GPU)
+    enable_language(CUDA)
+    message(STATUS "Building IBLGF with GPU support")
+    set(CMAKE_CUDA_STANDARD 17)
+    set(CMAKE_CUDA_STANDARD_REQUIRED ON)
+else()
+    message(STATUS "Building IBLGF without GPU support")
+endif()
+
 
 cmake_policy(SET CMP0048 NEW)
 
 set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
-set(CMAKE_CXX_FLAGS "-Wall -march=native")
+# set(CMAKE_CXX_FLAGS "-march=native -Wno-error=deprecated-declarations")
+set(CMAKE_CXX_FLAGS "-O3 -Wno-error=deprecated-declarations")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17")
+
+# set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} \
+#     --std=c++17 \
+#     --compiler-options=-std=c++17")
 
 set(default_build_type "Release")
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
@@ -44,7 +63,9 @@ set(SOURCES
     "${CMAKE_CURRENT_LIST_DIR}/src/utilities/misc_math_functions.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/src/lgf/lgf_gl_lookup.cpp"
    )
-
+set(GPU_SOURCES
+    "${CMAKE_CURRENT_LIST_DIR}/src/utilities/convolution_GPU.cu"
+   )
 
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 set(IBLGF_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake")
@@ -86,6 +107,27 @@ endif()
 
 set(IBLGF_TESTING ON CACHE BOOL "True if tests shall be built")
 
+# Allow MPI oversubscription for environments with fewer cores than requested processes
+# This is necessary for CI/CD environments (e.g., GitHub Actions) where tests may request
+# more MPI ranks than available CPU cores
+list(APPEND MPIEXEC_PREFLAGS "--oversubscribe")
+
+# ------------------------------
+# Default MPI ranks for tests *added*
+# ------------------------------
+if(NOT DEFINED IBLGF_MPI_NP)
+  include(ProcessorCount)
+  ProcessorCount(_host_cpus)
+  if(NOT _host_cpus OR _host_cpus EQUAL 0)
+    set(_host_cpus 2)  # safe fallback
+  endif()
+
+  set(IBLGF_MPI_NP "${_host_cpus}" CACHE STRING "MPI ranks for tests")
+endif()
+
+message(STATUS "IBLGF_MPI_NP = ${IBLGF_MPI_NP}")
+# *end of added*
+
 add_library(iblgf INTERFACE)
 add_library(iblgf::iblgf ALIAS iblgf)
 target_include_directories(iblgf INTERFACE
@@ -104,6 +146,8 @@ target_link_libraries(iblgf INTERFACE xsimd)
 target_link_libraries(iblgf INTERFACE xtl)
 target_link_libraries(iblgf INTERFACE xtensor)
 target_link_libraries(iblgf INTERFACE xsimd)
+target_link_libraries(iblgf INTERFACE ${HDF5_LIBRARIES})
+
 target_link_libraries(iblgf INTERFACE hdf5)
 target_link_libraries(iblgf INTERFACE ${BLAS_LIBRARIES})
 target_link_libraries(iblgf INTERFACE ${FFTW_LIBRARIES})

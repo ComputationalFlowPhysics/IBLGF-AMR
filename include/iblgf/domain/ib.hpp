@@ -1,0 +1,773 @@
+//      ▄▄▄▄▄▄▄▄▄▄▄  ▄▄▄▄▄▄▄▄▄▄   ▄            ▄▄▄▄▄▄▄▄▄▄▄  ▄▄▄▄▄▄▄▄▄▄▄
+//     ▐░░░░░░░░░░░▌▐░░░░░░░░░░▌ ▐░▌          ▐░░░░░░░░░░░▌▐░░░░░░░░░░░▌
+//      ▀▀▀▀█░█▀▀▀▀ ▐░█▀▀▀▀▀▀▀█░▌▐░▌          ▐░█▀▀▀▀▀▀▀▀▀ ▐░█▀▀▀▀▀▀▀▀▀
+//          ▐░▌     ▐░▌       ▐░▌▐░▌          ▐░▌          ▐░▌
+//          ▐░▌     ▐░█▄▄▄▄▄▄▄█░▌▐░▌          ▐░▌ ▄▄▄▄▄▄▄▄ ▐░█▄▄▄▄▄▄▄▄▄
+//          ▐░▌     ▐░░░░░░░░░░▌ ▐░▌          ▐░▌▐░░░░░░░░▌▐░░░░░░░░░░░▌
+//          ▐░▌     ▐░█▀▀▀▀▀▀▀█░▌▐░▌          ▐░▌ ▀▀▀▀▀▀█░▌▐░█▀▀▀▀▀▀▀▀▀
+//          ▐░▌     ▐░▌       ▐░▌▐░▌          ▐░▌       ▐░▌▐░▌
+//      ▄▄▄▄█░█▄▄▄▄ ▐░█▄▄▄▄▄▄▄█░▌▐░█▄▄▄▄▄▄▄▄▄ ▐░█▄▄▄▄▄▄▄█░▌▐░▌
+//     ▐░░░░░░░░░░░▌▐░░░░░░░░░░▌ ▐░░░░░░░░░░░▌▐░░░░░░░░░░░▌▐░▌
+//      ▀▀▀▀▀▀▀▀▀▀▀  ▀▀▀▀▀▀▀▀▀▀   ▀▀▀▀▀▀▀▀▀▀▀  ▀▀▀▀▀▀▀▀▀▀▀  ▀
+
+#ifndef IMMERSED_BOUNDARY_HPP
+#define IMMERSED_BOUNDARY_HPP
+
+#include <vector>
+#include <functional>
+#include <iblgf/global.hpp>
+#include <iblgf/domain/octree/octant.hpp>
+#include <iblgf/domain/ib_communicator.hpp>
+
+namespace iblgf
+{
+namespace ib
+{
+template<int Dim, class DataBlock, bool helmholtz_ = false, int N_modes_ = 1>
+class IB
+{
+  public: // member types
+    using datablock_t = DataBlock;
+    using node_t = typename datablock_t::node_t;
+    using tree_t = octree::Tree<Dim, datablock_t>;
+    using octant_t = typename tree_t::octant_type;
+
+    using real_coordinate_type = typename tree_t::real_coordinate_type;
+    using coordinate_type = typename tree_t::coordinate_type;
+    static constexpr bool helmholtz = helmholtz_;
+    static constexpr std::size_t force_dim = (helmholtz ?  N_modes_*3*2 : Dim);
+    using point_force_type = types::vector_type<float_type, force_dim>;
+    //using force_type = std::vector<real_coordinate_type>;
+    using force_type = std::vector<point_force_type>;
+
+    using delta_func_type = std::function<float_type(real_coordinate_type)>;
+
+    using communicator_t = ib_communicator<IB>;
+
+  public: // Ctors
+    IB(const IB& other) = default;
+    IB(IB&& other) = default;
+    IB& operator=(const IB& other) & = default;
+    IB& operator=(IB&& other) & = default;
+    ~IB() = default;
+
+    IB()
+    : ib_comm_(this)
+    {
+    }
+
+  public: // init functions
+    template<class DictionaryPtr>
+    void init(DictionaryPtr d, float_type dx_base, int level, float_type Re)
+    {
+
+        ibph_ = d->template get_or<float_type>("ibph", 1.5);
+        geometry_ = d->template get_or<std::string>("geometry", "none");
+	
+	    std::string delta_func_name = d->template get_or<std::string>("delta_func", "yang3");
+
+        ct_x = d->template get_or<float_type>("ct_x", 1.0);
+        ct_y = d->template get_or<float_type>("ct_y", 1.0);
+
+        IBlevel_ = level;
+        dx_base_ = dx_base;
+        dx_ib_ = dx_base/pow(2,IBlevel_);
+
+        read_points();
+
+        // will add more, default is yang4
+        // ddf_radius_ = 1.5;
+        ddf_radius_ = 4.5;
+        //safety_dis_ = 5.0/(std::sqrt(Re)*dx_ib_)+1.0;
+
+        safety_dis_ = 5.0/(Re*dx_ib_)+1.0;
+
+        //std::function<float_type(float_type x)> delta_func_1d_ =
+        //    [this](float_type x) { return this->roma(x); };
+        std::function<float_type(float_type x)> delta_func_1d_;
+	    if (delta_func_name == "yang3") {
+        	delta_func_1d_ = [this](float_type x) { return this->yang3(x); };
+		    if (comm_.rank()==1) std::cout << "Using yang3 delta function" << std::endl;
+	    }
+	    else if (delta_func_name == "roma") {
+		    delta_func_1d_ = [this](float_type x) { return this->roma(x); };
+	        if (comm_.rank()==1) std::cout << "Using roma delta function" << std::endl;
+	    }
+	    else {
+		    delta_func_1d_ = [this](float_type x) { return this->yang4(x); };
+		    if (comm_.rank()==1) std::cout << "Using yang4 delta function" << std::endl;
+	    }
+        //std::function<float_type(float_type x)> delta_func_1d_ =
+        //    [this](float_type x) { return this->yang4(x); };
+
+        this->delta_func_ = [this, delta_func_1d_](real_coordinate_type x) {
+	    if (Dim == 3) {
+            return delta_func_1d_(x[0]) * delta_func_1d_(x[1]) *
+                   delta_func_1d_(x[2]);
+	    }
+	    else {
+            return delta_func_1d_(x[0]) * delta_func_1d_(x[1]);
+	    }
+        };
+
+        //temp variables
+        ib_infl_.resize(coordinates_.size());
+        ib_infl_pts_.resize(coordinates_.size());
+        ib_rank_.resize(coordinates_.size());
+        forces_.resize(
+            coordinates_.size(), point_force_type((float_type)0));
+
+        forces_prev_.resize(4);
+        for (auto& f:forces_prev_)
+            f.resize(coordinates_.size(), point_force_type((float_type)0));
+    }
+
+    void read_points()
+    {
+        //coordinates_.emplace_back(real_coordinate_type({0.01, 0.01, 0.01}));
+
+        if (geometry_=="plate")
+        {
+            float_type L = 1.0;
+            float_type AR = 2.0;
+            float_type Ly= L*AR;
+            //int        nx = 2;
+            int        nx = int(L/dx_base_/ibph_*pow(2,IBlevel_));
+            int        ny = nx*2;
+
+	    if (Dim == 3) {
+            for (int ix = 0; ix < nx; ++ix) {
+                for (int iy = 0; iy < ny; ++iy)
+                {
+                    float_type w = (ix * L)/(nx-1)- L/2.0;
+                    float_type angle = M_PI/12;
+
+		    real_coordinate_type tmp;
+		    tmp.x() = w*std::cos(angle);
+		    tmp.y() = (iy * Ly) / (ny-1) - Ly/2.0;
+		    tmp.z() = -w*std::sin(angle);
+
+		    /*if (Dim == 3) {
+			    tmp.x() = w*std::cos(angle);
+			    tmp.y() = (iy * Ly) / (ny-1) - Ly/2.0;
+			    tmp.z() = -w*std::sin(angle);
+		    }
+		    else {
+			    tmp.x() = w*std::cos(angle);
+			    tmp.y() = -w*std::sin(angle);
+		    }*/
+
+                    coordinates_.emplace_back(
+                            real_coordinate_type(tmp));
+                }
+	    }
+	    }
+	    if (Dim == 2) {
+	    	for (int ix = 0; ix < nx; ++ix) {
+		    float_type w = (ix * L)/(nx-1)- L/2.0;
+                    float_type angle = 0.0;
+
+		    real_coordinate_type tmp;
+		    tmp.x() = w*std::cos(angle);
+		    tmp.y() = -w*std::sin(angle);
+
+                    coordinates_.emplace_back(
+                            real_coordinate_type(tmp));
+		}
+	    }
+        }
+        else if (geometry_=="sphere")
+        {
+            float_type R = 0.5;
+
+            float_type dx = dx_base_/pow(2,IBlevel_)*ibph_;
+            int n = floor(M_PI / (dx * dx * 0.86602540378) )+1;
+
+            if (comm_.rank()==1)
+                std::cout<< " Geometry = sphere, n = "<< n << std::endl;
+
+            float_type lambda = (1. + sqrt(5) ) / 2.0;
+            for (int i=0; i<n; ++i)
+            {
+                float_type x = i+0.5;
+                float_type phi = std::acos(1.0 - 2 * x/n);
+                float_type theta = 2*M_PI * x / lambda;
+		real_coordinate_type tmp;
+		if (Dim == 3) {
+			tmp.x() = R*cos(theta)*sin(phi);
+			tmp.y() = R*sin(theta)*sin(phi);
+			tmp.z() = R*cos(phi);
+		}
+		else {
+			tmp.x() = R*cos(theta);
+			tmp.y() = R*sin(theta);
+		}
+
+                    coordinates_.emplace_back(
+                            real_coordinate_type(tmp));
+                //coordinates_.emplace_back( real_coordinate_type({R*cos(theta)*sin(phi), R*sin(theta)*sin(phi), R*cos(phi)}));
+            }
+        }
+        else if (geometry_ == "circle")
+        {
+            if (Dim == 2)
+            {
+                float_type R = 0.5;
+                float_type dx = dx_base_ / pow(2, IBlevel_) * ibph_;
+                int        n = floor(2.0 * R * M_PI / dx) + 1;
+                if (comm_.rank() == 1)
+                    std::cout << "Geometry = circle, n = " << n << std::endl;
+                for (int i = 0; i < n; i++)
+                {
+                    float_type           x = i + 0.5;
+                    float_type           theta = 2 * M_PI * x / n;
+                    real_coordinate_type tmp;
+                    tmp.x() = R * cos(theta);
+                    tmp.y() = R * sin(theta);
+                    coordinates_.emplace_back(real_coordinate_type(tmp));
+                }
+            }
+            if (Dim == 3)
+            {
+                float_type R = 0.5;
+                float_type dx = dx_base_ / pow(2, IBlevel_) * ibph_;
+                int        n = floor(2.0 * R * M_PI / dx) + 1;
+                if (comm_.rank() == 1)
+                    std::cout << "Geometry = circle, n = " << n << std::endl;
+                for (int i = 0; i < n; i++)
+                {
+                    float_type           x = i + 0.5;
+                    float_type           theta = 2 * M_PI * x / n;
+                    real_coordinate_type tmp;
+                    tmp.y() = R * cos(theta);
+                    tmp.z() = R * sin(theta);
+                    tmp.x() = 0.0;
+                    coordinates_.emplace_back(real_coordinate_type(tmp));
+                }
+            }
+
+        }
+
+        else if (geometry_ == "2circles")
+        {
+            if (Dim == 2)
+            {
+                float_type r = 0.05; //diameter of smaller cylinder
+
+                float_type R = 0.5;
+                float_type dx = dx_base_ / pow(2, IBlevel_) * ibph_;
+                int        n = floor(2.0 * R * M_PI / dx) + 1;
+                int        n_s = floor(2.0 * r * M_PI / dx) + 1;
+                if (comm_.rank() == 1)
+                    std::cout << "Geometry = 2 circles, n = " << n << std::endl;
+                for (int i = 0; i < n; i++)
+                {
+                    float_type           x = i + 0.5;
+                    float_type           theta = 2 * M_PI * x / n;
+                    real_coordinate_type tmp;
+                    tmp.x() = R * cos(theta);
+                    tmp.y() = R * sin(theta);
+                    coordinates_.emplace_back(real_coordinate_type(tmp));
+                }
+
+                for (int i = 0; i < n_s; i++)
+                {
+                    float_type           x = i + 0.5;
+                    float_type           theta = 2 * M_PI * x / n_s;
+                    real_coordinate_type tmp;
+                    tmp.x() = r * cos(theta) + ct_x;
+                    tmp.y() = r * sin(theta) + ct_y;
+                    coordinates_.emplace_back(real_coordinate_type(tmp));
+                }
+            }
+        }
+
+        else if (geometry_ == "3circles")
+        {
+            if (Dim == 2)
+            {
+                float_type r = 0.05; //diameter of smaller cylinder
+                
+                float_type R = 0.5;
+                float_type dx = dx_base_ / pow(2, IBlevel_) * ibph_;
+                int        n = floor(2.0 * R * M_PI / dx) + 1;
+                int        n_s = floor(2.0 * r * M_PI / dx) + 1;
+                if (comm_.rank() == 1)
+                    std::cout << "Geometry = 2 circles, n = " << n << std::endl;
+                for (int i = 0; i < n; i++)
+                {
+                    float_type           x = i + 0.5;
+                    float_type           theta = 2 * M_PI * x / n;
+                    real_coordinate_type tmp;
+                    tmp.x() = R * cos(theta);
+                    tmp.y() = R * sin(theta);
+                    coordinates_.emplace_back(real_coordinate_type(tmp));
+                }
+
+                for (int i = 0; i < n_s; i++)
+                {
+                    float_type           x = i + 0.5;
+                    float_type           theta = 2 * M_PI * x / n_s;
+                    real_coordinate_type tmp;
+                    tmp.x() = r * cos(theta) + ct_x;
+                    tmp.y() = r * sin(theta) + ct_y;
+                    coordinates_.emplace_back(real_coordinate_type(tmp));
+                }
+
+                for (int i = 0; i < n_s; i++)
+                {
+                    float_type           x = i + 0.5;
+                    float_type           theta = 2 * M_PI * x / n_s;
+                    real_coordinate_type tmp;
+                    tmp.x() = r * cos(theta) + ct_x;
+                    tmp.y() = r * sin(theta) - ct_y;
+                    coordinates_.emplace_back(real_coordinate_type(tmp));
+                }
+            }
+        }
+
+
+        else if (geometry_ == "NACA0009")
+        {
+            if (Dim == 2)
+            {
+                float_type R = 0.5;
+                float_type dx = dx_base_ / pow(2, IBlevel_) * ibph_;
+                int        n = floor(1.0 / dx)*2;
+                if (comm_.rank() == 1)
+                    std::cout << "Geometry = NACA0009, n = " << n << std::endl;
+
+                real_coordinate_type tmp;
+                tmp.x() = 0;
+                tmp.y() = 0;
+                coordinates_.emplace_back(real_coordinate_type(tmp));
+                
+                for (int i = 0; i < n/2 ; i++)
+                {
+                    float_type    x_dia = 1/((1/(5*0.09) + 0.1260)/0.2969*2)*((1/(5*0.09) + 0.1260)/0.2969*2)*1.5;
+                    float_type    x = x_dia;
+                    float_type    y_dia = 5*0.09*(0.2969*std::sqrt(x) - 0.1260*x - 0.3516*x*x + 0.2843 * x * x * x - 0.1015 * x * x * x * x);
+                    x = i * dx;
+                    float_type    y = 5*0.09*(0.2969*std::sqrt(x) - 0.1260*x - 0.3516*x*x + 0.2843 * x * x * x - 0.1015 * x * x * x * x);
+
+                    if (i == 0) {
+
+                        real_coordinate_type tmp;
+
+                        float_type angle = 0; //12 degree AoA
+
+                        x = i * dx + dx/2;
+
+                        y = x / x_dia * y_dia;
+                        tmp.x() = x*std::cos(angle) - y*std::sin(angle);
+                        tmp.y() = y*std::cos(angle) + x*std::sin(angle);
+                        coordinates_.emplace_back(real_coordinate_type(tmp));
+
+                        y = -x / x_dia * y_dia;
+                        tmp.x() = x*std::cos(angle) - y*std::sin(angle);
+                        tmp.y() = y*std::cos(angle) + x*std::sin(angle);
+                        coordinates_.emplace_back(real_coordinate_type(tmp));
+                    }
+                    else if (x < x_dia) {
+                        //two points in here (dy^2 + dx^2 \approx 4 dx^2)
+                        y = x / x_dia * y_dia;
+
+                        real_coordinate_type tmp;
+
+                        float_type angle = 0; //12 degree AoA
+                        tmp.x() = x*std::cos(angle) - y*std::sin(angle);
+                        tmp.y() = y*std::cos(angle) + x*std::sin(angle);
+                        coordinates_.emplace_back(real_coordinate_type(tmp));
+
+                        y = -x / x_dia * y_dia;
+                        tmp.x() = x*std::cos(angle) - y*std::sin(angle);
+                        tmp.y() = y*std::cos(angle) + x*std::sin(angle);
+                        coordinates_.emplace_back(real_coordinate_type(tmp));
+
+                        x = i * dx + dx/2;
+
+                        y = x / x_dia * y_dia;
+                        tmp.x() = x*std::cos(angle) - y*std::sin(angle);
+                        tmp.y() = y*std::cos(angle) + x*std::sin(angle);
+                        coordinates_.emplace_back(real_coordinate_type(tmp));
+
+                        y = -x / x_dia * y_dia;
+                        tmp.x() = x*std::cos(angle) - y*std::sin(angle);
+                        tmp.y() = y*std::cos(angle) + x*std::sin(angle);
+                        coordinates_.emplace_back(real_coordinate_type(tmp));
+                    }
+                    else if (y < dx/2/ibph_ * 1.05) {
+                        y = 0;
+                        real_coordinate_type tmp;
+
+                        float_type angle = 0; //12 degree AoA
+                        tmp.x() = x*std::cos(angle) - y*std::sin(angle);
+                        tmp.y() = y*std::cos(angle) + x*std::sin(angle);
+                        coordinates_.emplace_back(real_coordinate_type(tmp));
+                    }
+                    else {
+                        real_coordinate_type tmp;
+
+                        float_type angle = 0; //12 degree AoA
+                        tmp.x() = x*std::cos(angle) - y*std::sin(angle);
+                        tmp.y() = y*std::cos(angle) + x*std::sin(angle);
+                        coordinates_.emplace_back(real_coordinate_type(tmp));
+
+                        x = i * dx + dx;
+                        y = -5*0.09*(0.2969*std::sqrt(x) - 0.1260*x - 0.3516*x*x + 0.2843 * x * x * x - 0.1015 * x * x * x * x);
+                        
+                        tmp.x() = x*std::cos(angle) - y*std::sin(angle);
+                        tmp.y() = y*std::cos(angle) + x*std::sin(angle);
+
+                        coordinates_.emplace_back(real_coordinate_type(tmp));
+                    }
+                }
+            }
+        }
+        else if (geometry_ == "ForTim15000")
+        {
+            //create a 16000 IB points
+            if (Dim == 2)
+            {
+                float_type R = 0.5;
+                float_type dx = dx_base_ / pow(2, IBlevel_) * ibph_;
+                int        n_0 = floor(2.0 * R * M_PI / dx) + 1;
+                int        n_1 = floor(2.0 * R / dx) + 1;
+                int        n_5_p = floor(1.0 * R / dx) + 1;
+                int        n = n_0 * 3 + n_1 + n_5_p*5;
+                if (comm_.rank() == 1)
+                    std::cout << "Geometry = ForTim15000, n = " << n
+                              << std::endl;
+                //1
+                for (int i = 0; i < n_1; i++)
+                {
+                    float_type           x = i + 0.5;
+                    float_type           theta = 1.0 * x / n_1 - 0.5;
+                    real_coordinate_type tmp;
+                    tmp.x() = 0.0;
+                    tmp.y() = theta;
+                    coordinates_.emplace_back(real_coordinate_type(tmp));
+                }
+                //5
+                for (int i = 0; i < n_5_p; i++)
+                {
+                    float_type           x = i + 0.5;
+                    float_type           theta = 0.5 * x / n_5_p - 0.25 + 2.0;
+                    real_coordinate_type tmp;
+                    tmp.x() = theta;
+                    tmp.y() = 0.5;
+                    coordinates_.emplace_back(real_coordinate_type(tmp));
+                }
+                for (int i = 0; i < n_5_p; i++)
+                {
+                    float_type           x = i + 0.5;
+                    float_type           theta = 0.5 * x / n_5_p - 0.25 + 2.0;
+                    real_coordinate_type tmp;
+                    tmp.x() = theta;
+                    tmp.y() = 0.0;
+                    coordinates_.emplace_back(real_coordinate_type(tmp));
+                }
+                for (int i = 0; i < n_5_p; i++)
+                {
+                    float_type           x = i + 0.5;
+                    float_type           theta = 0.5 * x / n_5_p - 0.25 + 2.0;
+                    real_coordinate_type tmp;
+                    tmp.x() = theta;
+                    tmp.y() = -0.5;
+                    coordinates_.emplace_back(real_coordinate_type(tmp));
+                }
+                for (int i = 0; i < n_5_p; i++)
+                {
+
+                    float_type           x = i + 0.5;
+                    float_type           theta = 0.5 * x / n_5_p + 0.0;
+                    real_coordinate_type tmp;
+                    tmp.x() = 1.75;
+                    tmp.y() = theta;
+                    coordinates_.emplace_back(real_coordinate_type(tmp));
+                }
+                for (int i = 0; i < n_5_p; i++)
+                {
+
+                    float_type           x = i + 0.5;
+                    float_type           theta = 0.5 * x / n_5_p - 0.5;
+                    real_coordinate_type tmp;
+                    tmp.x() = 2.25;
+                    tmp.y() = theta;
+                    coordinates_.emplace_back(real_coordinate_type(tmp));
+                }
+                //000
+                for (int j = 0; j < 3; j++)
+                {
+                    for (int i = 0; i < n_0; i++)
+                    {
+                        float_type           c_x = 4 + j * 2;
+                        float_type           c_y = 0;
+                        float_type           x = i + 0.5;
+                        float_type           theta = 2 * M_PI * x / n_0;
+                        real_coordinate_type tmp;
+                        tmp.x() = R * cos(theta) + c_x;
+                        tmp.y() = R * sin(theta) + c_y;
+                        coordinates_.emplace_back(real_coordinate_type(tmp));
+                    }
+                }
+            }
+        }
+        else if(geometry_=="none")
+        {
+
+        }
+        else
+        {
+            std::fstream file(geometry_, std::ios_base::in);
+            int n; file >> n;
+
+            if (comm_.rank()==1)
+                std::cout<< " Geometry = read from text "<< geometry_ << std::endl;
+
+            for (int i=0; i<n; i++)
+            {
+                real_coordinate_type p;
+                for (std::size_t field_idx = 0; field_idx<p.size(); field_idx++){
+                    file>>p[field_idx];
+                    if(comm_.rank()==1)
+                        std::cout<<p[field_idx]<<" ";
+                }
+                if(comm_.rank()==1)
+                    std::cout<<std::endl;
+
+                coordinates_.emplace_back(p);
+            }
+        }
+    }
+
+    /** @{ @brief Get the force vector of  all immersed boundary points */
+    void communicate_test(bool send_locally_owned) noexcept
+    {
+        ib_comm_.compute_indices();
+        ib_comm_.communicate(send_locally_owned);
+    }
+
+  public: //Access
+    /** @{ @brief Get the force vector of  all immersed boundary points */
+    auto&       force() noexcept { return forces_; }
+
+    auto&       force(std::size_t _i) noexcept { return forces_[_i]; }
+    const auto& force(std::size_t _i) const noexcept { return forces_[_i]; }
+
+    /** @{ @brief Get the force of ith  immersed boundary point, dimension idx = idx */
+    auto&       force(std::size_t _i, std::size_t _idx) noexcept { return forces_[_i][_idx]; }
+    const auto& force(std::size_t _i, std::size_t _idx) const noexcept { return forces_[_i][_idx]; }
+
+    /** @{ @brief Get the force of previous timestep */
+    auto&       force_prev(std::size_t _i) noexcept { return forces_prev_[_i]; }
+    const auto& force_prev(std::size_t _i) const noexcept { return forces_prev_[_i]; }
+
+    /** @{ @brief Get the coordinates of the ith ib points */
+    auto&       coordinate(std::size_t _i) noexcept { return coordinates_[_i]; }
+    const auto& coordinate(std::size_t _i) const noexcept
+    {return coordinates_[_i];}
+    /** @} */
+
+    /** @{ @brief Get the coordinates of the ith ib points scaled by level */
+    auto       scaled_coordinate(std::size_t _i, int level_up) noexcept { return coordinates_[_i] * std::pow(2, level_up) / dx_base_; }
+    /** @} */
+
+    /** @{ @brief Get the influence lists of the ib points */
+    auto&       influence_pts(std::size_t i) noexcept { return ib_infl_pts_[i]; }
+    const auto& influence_pts(std::size_t i) const noexcept { return ib_infl_pts_[i]; }
+
+    /** @{ @brief Get the influence lists of the ib points */
+    auto&       influence_pts(std::size_t i, std::size_t oct_i ) noexcept { return ib_infl_pts_[i][oct_i]; }
+    const auto& influence_pts(std::size_t i, std::size_t oct_i ) const noexcept { return ib_infl_pts_[i][oct_i]; }
+
+    /** @{ @brief Get the influence lists of the ib points */
+    auto&       influence_list() noexcept { return ib_infl_; }
+    const auto& influence_list() const noexcept { return ib_infl_; }
+    /** @} */
+    /** @{ @brief Get the influence list of the ith ib points */
+    auto&       influence_list(std::size_t _i) noexcept { return ib_infl_[_i]; }
+    const auto& influence_list(std::size_t _i) const noexcept
+    {
+        return ib_infl_[_i];
+    }
+    /** @} */
+
+    /** @{ @brief Get the rank of the ith ib points */
+    auto&       rank(std::size_t _i) noexcept { return ib_rank_[_i]; }
+    const auto& rank(std::size_t _i) const noexcept { return ib_rank_[_i]; }
+    /** @} */
+
+    auto ib_level() const noexcept {return IBlevel_;}
+    /** @brief Get number of ib points */
+    auto size() const noexcept { return coordinates_.size(); }
+    /** @brief Get delta function radius */
+    auto ddf_radius() const noexcept { return ddf_radius_; }
+
+    /** @{ @brief Get ib mpi communicator  */
+    auto&       communicator() noexcept { return ib_comm_; }
+    const auto& communicator() const noexcept { return ib_comm_; }
+    /** @} */
+
+    bool locally_owned(std::size_t _i) noexcept { return ib_rank_[_i] == comm_.rank();}
+
+    float_type force_scale()
+    {
+        float_type tmp = dx_base_ / std::pow(2, IBlevel_);
+        return std::pow(tmp, Dim);
+    }
+
+    void scales(const float_type a)
+    {
+        for (std::size_t i = 0; i < size(); i++)
+            for (std::size_t field_idx = 0; field_idx<Dim; field_idx++)
+            this->force(i, field_idx) *= a;
+    }
+
+  public: // iters
+  public: // functions
+
+    void clean_non_local()
+    {
+        for (std::size_t i = 0; i < size(); i++)
+            if (!this->locally_owned(i))
+                this->force(i)=0.0;
+    }
+
+    template<class BlockDscrptr>
+    bool ib_block_overlap(BlockDscrptr b_dscrptr, int radius_level = 0)
+    {
+
+        for (std::size_t i = 0; i < size(); i++)
+            if (ib_block_overlap(i, b_dscrptr, radius_level)) return true;
+
+        return false;
+    }
+
+    template<class BlockDscrptr>
+    bool ib_block_overlap(
+        int idx, BlockDscrptr b_dscrptr, int radius_level = 0)
+    {
+        // this function scale the block to the finest level and compare with
+        // the influence region of the ib point
+
+        /*float_type added_radius = 0;
+        if (radius_level == 2)
+            added_radius += ddf_radius_+safety_dis_+10.0;
+        else if (radius_level == 1)
+            added_radius += ddf_radius_+2.0;*/
+
+        float_type added_radius = 0;
+        if (radius_level == 2)
+            added_radius += ddf_radius_+safety_dis_+10.0;
+        else if (radius_level == 1)
+            added_radius += ddf_radius_+5.0;
+
+        b_dscrptr.level_scale(IBlevel_);
+
+        b_dscrptr.extent() += 2*added_radius;
+        b_dscrptr.base() -= added_radius;
+
+        float_type factor = std::pow(2, IBlevel_) / dx_base_;
+
+        for (std::size_t d = 0; d < Dim; ++d)
+        {
+            if ( (b_dscrptr.max()[d]+1) < coordinates_[idx][d] * factor ||
+                b_dscrptr.min()[d] >= coordinates_[idx][d] * factor)
+                return false;
+        }
+        return true;
+    }
+
+  public: // ddfs
+    const auto& delta_func() const noexcept { return delta_func_; }
+    auto&       delta_func() noexcept { return delta_func_; }
+
+    float_type yang4(float_type x)
+    {
+        float_type r = std::fabs(x);
+        if (r>2.5) return 0;
+
+        float_type r2 = r * r;
+        float_type ddf = 0;
+
+        if (r<=0.5)
+            ddf = 3.0/8+M_PI/32.0-r2/4;
+        else if (r<=1.5)
+            ddf = 1.0/4+(1.0-r)/8.0 * sqrt(-2.0+8*r-4*r2) - 1.0/8 * asin(sqrt(2)*(r-1) );
+
+        else if (r<=2.5)
+            ddf = 17.0/16-M_PI/64.0-3.0/4*r+r2/8+(r-2.0)/16.0*sqrt(-14.0+16*r-4*r2)
+                    +1/16*asin(sqrt(2)*(r-2));
+
+        return ddf;
+
+    }
+
+    float_type yang3(float_type x)
+    {
+        float_type r = std::fabs(x);
+        float_type ddf = 0;
+        if (r > 2) return 0;
+
+        float_type r2 = r * r;
+        if (r <= 1.0)
+            ddf = 17.0 / 48.0 + sqrt(3) * M_PI / 108.0 + r / 4.0 - r2 / 4.0 +
+                  (1.0 - 2.0 * r) / 16 * sqrt(-12.0 * r2 + 12.0 * r + 1.0) -
+                  sqrt(3) / 12.0 * std::asin(sqrt(3) / 2.0 * (2.0 * r - 1.0));
+        else
+            ddf = 55.0 / 48.0 - sqrt(3) * M_PI / 108.0 - 13.0 * r / 12.0 + r2 / 4.0 +
+                  (2.0 * r - 3.0) / 48.0 * sqrt(-12.0 * r2 + 36.0 * r - 23.0) +
+                  sqrt(3) / 36.0 * std::asin(sqrt(3) / 2.0 * (2 * r - 3.0));
+
+        return ddf;
+    }
+    float_type roma(float_type x)
+    {
+        float_type r = std::fabs(x);
+        float_type ddf = 0;
+        if (r > 1.5) return 0;
+
+        float_type r2 = r*r;
+
+        if (r <= 0.5)
+            ddf = (1.0+sqrt(-3.*r2 + 1.0))/3.0;
+        else if (r <=1.5)
+            ddf = (5.0 - 3.0*r - sqrt( 1.0 - 3.0*(1-r)*(1-r) ) )/6.0;
+        return ddf;
+    }
+
+public:
+
+    boost::mpi::communicator comm_;
+
+    int        IBlevel_ = 0;
+    float_type safety_dis_ = 4.0;
+    float_type dx_base_ = 1;
+    float_type dx_ib_;
+    float_type ibph_;
+
+    std::vector<real_coordinate_type>   coordinates_;
+    force_type                          forces_;
+    std::vector<force_type>             forces_prev_;
+    std::vector<std::vector<octant_t*>> ib_infl_;
+    std::vector<std::vector<std::vector<node_t>>> ib_infl_pts_;
+    std::vector<int>                    ib_rank_;
+
+    float_type ct_x, ct_y;
+
+    delta_func_type delta_func_;
+
+    //std::function<float_type(float_type x)> delta_func_1d_;
+    float_type      ddf_radius_ = 0;
+
+    std::string geometry_;
+
+    communicator_t ib_comm_;
+};
+
+} // namespace ib
+} // namespace iblgf
+
+#endif
+

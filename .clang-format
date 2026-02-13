@@ -27,7 +27,7 @@ BreakBeforeBraces: Allman
 # ConstructorInitializerAllOnOneLineOrOnePerLine: false
 BreakConstructorInitializers: BeforeComma
 ConstructorInitializerIndentWidth: 0
-BreakInheritanceList: BeforeComma
+# BreakInheritanceList: BeforeComma
 #AllowShortBlocksOnASingleLine: Always
 AllowShortBlocksOnASingleLine: true
 AllowShortCaseLabelsOnASingleLine: false
@@ -43,7 +43,7 @@ AlwaysBreakTemplateDeclarations: Yes
 BreakBeforeTernaryOperators: true
 BreakInheritanceList: BeforeComma
 BreakStringLiterals: false
-ColumnLimit: 80
+ColumnLimit: 120
 #ColumnLimit: 120
 # CommentPragmas
 CompactNamespaces: false

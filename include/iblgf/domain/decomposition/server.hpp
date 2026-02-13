@@ -105,7 +105,7 @@ class Server : public ServerBase<ServerClientTraits<Domain>>
     };
 
   public: //Ctors
-    using typename super_type::ServerBase;
+    using super_type::ServerBase;
 
     Server(const Server& other) = default;
     Server(Server&& other) = default;
@@ -540,6 +540,52 @@ class Server : public ServerBase<ServerClientTraits<Domain>>
         }
     }
 
+// IB related
+
+    void update_ib_flag()
+    {
+
+        for (auto it  = domain_->begin();
+                it != domain_->end(); ++it)
+        {
+            it->is_extended_ib()=false;
+            it->is_ib()=false;
+        }
+
+        int l_max = domain_->tree()->depth()-1;
+        std::cout<<"Depth of the tree = " << l_max << std::endl;
+
+        auto& ib = domain_->ib();
+        for (std::size_t i=0; i<ib.size(); ++i)
+        {
+
+            for (auto it  = domain_->begin(l_max);
+                    it != domain_->end(l_max); ++it)
+            {
+                if ( !it->has_data() )
+                    continue;
+
+                if (ib.ib_block_overlap(i, it->data().descriptor(), 2))
+                {
+                    it->is_extended_ib()=true;
+                    if (ib.ib_block_overlap(i, it->data().descriptor(), 1) && it->is_leaf())
+                        it->is_ib()=true;
+                }
+            }
+        }
+        int c=0;
+
+        for (auto it  = domain_->begin_leaves();
+                it != domain_->end_leaves(); ++it)
+        {
+                if ( !it->has_data() )
+                    continue;
+                if (it->is_ib() || it->is_extended_ib())
+                    c+=1;
+
+        }
+        std::cout<< "total IB blocks = " << c<< std::endl;
+    }
 
 
 private:

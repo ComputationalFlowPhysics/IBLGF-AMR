@@ -26,6 +26,10 @@ class Simulation
 {
   public:
     using domain_type = Domain;
+    static constexpr int  N_modes = Domain::N_modes_val;
+    static constexpr bool  helmholtz = Domain::helmholtz_bool;
+    static constexpr std::size_t Dim = domain_type::dims;
+    using h5io_t = typename io::H5_io<Dim, Domain>;
 
   public:
     Simulation(const Simulation& other) = delete;
@@ -39,7 +43,7 @@ class Simulation
     , domain_(std::make_shared<domain_type>())
     , io_init_(_dictionary.get())
     {
-        intrp_order_ = dictionary_->template get_or<int>("intrp_order",3);
+        intrp_order_ = dictionary_->template get_or<int>("intrp_order", 5);
     }
 
     friend std::ostream& operator<<(std::ostream& os, Simulation& s)
@@ -102,9 +106,73 @@ class Simulation
         }
         else
         {
-            io_h5.write_h5(io::output().dir()+"/flow_"+_filename+".hdf5", domain_.get(), false, false);
+            io_h5.write_h5(io::output().dir()+"/flow_"+_filename+".hdf5", domain_.get(), true, true);
+            //io_h5.write_h5_withTime(io::output().dir()+"/flowTime_"+_filename+".hdf5", domain_.get(), true, true);
             if (domain_->is_server())
                 write_tree("_"+_filename, false);
+
+            if (helmholtz) {
+                float_type c_z = dictionary_->template get_or<float_type>("L_z", 1);
+                float_type dz = c_z / static_cast<float_type>(N_modes*3);
+                io_h5.write_helm_3D(io::output().dir()+"/vort_"+_filename+".hdf5", domain_.get(), dz, false, false);
+                io_h5.write_helm_3D_shallow(io::output().dir()+"/vort_shallow_"+_filename+".hdf5", domain_.get(), dz, false, false);
+            }
+        }
+    }
+
+    void write_test(std::string _filename, bool restart_file=false)
+    {
+        if (restart_file)
+        {
+            // io_h5.write_h5(io::output().restart_save_dir()+"/"+restart_field_file_, domain_.get(), true, true);
+            // if (domain_->is_server())
+            //     write_tree("", true);
+        }
+        else
+        {
+            io_h5.write_h5_test(io::output().dir()+"/flow_"+_filename+".hdf5", domain_.get(), true, true);
+            // io_h5.write_h5_swithTime(io::output().dir()+"/flowTime_"+_filename+".hdf5", domain_.get(), true, true);
+            // if (domain_->is_server())
+            //     write_tree("_"+_filename, false);
+
+            // if (helmholtz) {
+            //     float_type c_z = dictionary_->template get_or<float_type>("L_z", 1);
+            //     float_type dz = c_z / static_cast<float_type>(N_modes*3);
+            //     io_h5.write_helm_3D(io::output().dir()+"/vort_"+_filename+".hdf5", domain_.get(), dz, false, false);
+            // }
+        }
+    }
+
+    void writeWithCorr(std::string _filename, bool restart_file=false)
+    {
+        
+            io_h5.write_h5(io::output().dir()+"/flowWithCorr_"+_filename+".hdf5", domain_.get(), true, false);
+            //io_h5.write_h5_withTime(io::output().dir()+"/flowTime_"+_filename+".hdf5", domain_.get(), true, true);
+            if (domain_->is_server())
+                write_tree("_"+_filename, false);
+
+            /*if (helmholtz) {
+                float_type c_z = dictionary_->template get_or<float_type>("L_z", 1);
+                float_type dz = c_z / static_cast<float_type>(N_modes*3);
+                io_h5.write_helm_3D(io::output().dir()+"/vort_"+_filename+".hdf5", domain_.get(), dz, false, false);
+            }*/
+        
+    }
+
+    void writeWithTime(std::string _filename, float_type _time, float_type dt_)
+    {
+        io_h5.write_h5_withTime(io::output().dir() + "/flowTime_" + _filename +
+                                    ".hdf5",
+            domain_.get(), _time, dt_, true, true);
+        if (domain_->is_server()) write_tree("_" + _filename, false);
+
+        if (helmholtz)
+        {
+            float_type c_z = dictionary_->template get_or<float_type>("L_z", 1);
+            float_type dz = c_z / static_cast<float_type>(N_modes * 3);
+            io_h5.write_helm_3D(io::output().dir() + "/vort_" + _filename +
+                                    ".hdf5",
+                domain_.get(), dz, false, false);
         }
     }
 
@@ -134,6 +202,23 @@ class Simulation
     {
        io_h5.template read_h5<Field>(_filename, field_name, domain_.get());
     }
+    template<typename Field>
+    void read_h5_test(std::string _filename, std::string field_name)
+    {
+       io_h5.template read_h5_test<Field>(_filename, field_name, domain_.get());
+    }
+    template<typename Field>
+    void read_h5_DiffNmode(std::string _filename, std::string field_name, int N_input_mode)
+    {
+       io_h5.template read_h5_DiffNmode<Field>(_filename, field_name, domain_.get(), N_input_mode);
+    }
+
+
+    template<typename Field>
+    void read_h5_2D(std::string _filename, std::string field_name)
+    {
+       io_h5.template read_h5_2D<Field>(_filename, field_name, domain_.get());
+    }
 
     auto& domain()noexcept{return domain_;}
     const auto& domain()const noexcept{return domain_;}
@@ -142,18 +227,23 @@ class Simulation
 
     int intrp_order()noexcept{return intrp_order_;}
 
+    auto& frame_vel() {return frame_vel_;}
+    auto& bc_vel() {return bc_vel_;}
+
 public:
   std::shared_ptr<Dictionary> dictionary_=nullptr;
   std::shared_ptr<Domain> domain_=nullptr;
   boost::mpi::communicator world_;
   //io::Vtk_io<Domain> writer;
-  io::H5_io<3, Domain> io_h5;
+  h5io_t io_h5;
   io::IO_init io_init_;
   std::string restart_info_file_="restart_info";
   std::string tree_info_file_="tree_info";
   std::string restart_field_file_="restart_field.hdf5";
 
-  int intrp_order_=3;
+  std::function<float_type(std::size_t idx, float_type t, typename domain_type::real_coordinate_type coord)> frame_vel_;
+  std::function<float_type(std::size_t idx, float_type t, typename domain_type::real_coordinate_type coord)> bc_vel_;
+  int intrp_order_;
 
 };
 

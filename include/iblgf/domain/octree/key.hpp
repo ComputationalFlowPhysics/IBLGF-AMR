@@ -242,7 +242,7 @@ struct Key
                 const auto p_n_c_coord = child_key.coordinate();
                 if ((std::abs(p_n_c_coord.x() - coord.x()) > 1) ||
                     (std::abs(p_n_c_coord.y() - coord.y()) > 1) ||
-                    (std::abs(p_n_c_coord.z() - coord.z()) > 1))
+                    ((Dim == 3) && std::abs(p_n_c_coord.z() - coord.z()) > 1))
                 { res.emplace_back(child_key); }
             }
         }

@@ -39,6 +39,11 @@ struct Cube : public Policy
     {
     }
 
+    Cube(types::float_type* ptr_aux_mem, size_t n_rows, size_t n_cols)
+    : data_(Policy::cube_wrap(ptr_aux_mem, n_rows, n_cols))
+    {
+    }
+
     auto cube_noalias_view() { return Policy::cube_noalias_view(data_); }
 
     template<typename cube_t, typename stride_t_1, typename stride_t_2,
@@ -47,6 +52,14 @@ struct Cube : public Policy
         cube_t& cube, stride_t_1 x1, stride_t_2 x2, stride_t_3 x3)
     {
         return Policy::cube_noalias_view(cube, x1, x2, x3);
+    }
+
+
+    template<typename cube_t, typename stride_t_1, typename stride_t_2>
+    auto cube_noalias_view(
+        cube_t& cube, stride_t_1 x1, stride_t_2 x2)
+    {
+        return Policy::cube_noalias_view(cube, x1, x2);
     }
 
     // member

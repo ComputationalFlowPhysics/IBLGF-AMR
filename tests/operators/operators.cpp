@@ -15,11 +15,27 @@
 #include <iblgf/dictionary/dictionary.hpp>
 #include "operatorTest.hpp"
 
+// *Added*
+#include <boost/mpi/environment.hpp>
+#include <boost/mpi/communicator.hpp>
+#include <memory>
+
 namespace iblgf
 {
 using namespace types;
+
 TEST(operator_test, convergence)
 {
+    // *Added*
+    // ensure MPI is initialized once per process (same pattern as server_client)
+    static std::unique_ptr<boost::mpi::environment> env_holder;
+    if (!env_holder)
+    {
+        env_holder = std::make_unique<boost::mpi::environment>();
+    }
+
+    boost::mpi::communicator world;
+
     // clang-format off
     std::string configFile = "                        \
         simulation_parameters                         \

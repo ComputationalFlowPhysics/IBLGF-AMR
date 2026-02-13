@@ -15,7 +15,7 @@ simulation_parameters
     nLevels=1;
     global_refinement=0;
     refinement_factor=0.125;
-    correction=false;
+    //correction=false;
 
 
     output

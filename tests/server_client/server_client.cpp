@@ -20,6 +20,7 @@
 #include <stdlib.h>
 #include <chrono>
 #include <thread>
+#include <memory>
 
 #include <iblgf/global.hpp>
 #include "client.hpp"
@@ -36,9 +37,11 @@ TEST(server_client_tests, queries)
     //time (this test the tag_generator as well )
 
     boost::mpi::communicator world;
-    const int severRank=0;
+    
+    const int serverRank=0;
     const int rank=world.rank();
-    if(rank==severRank)
+
+    if(rank==serverRank)
     {
         Server server;
         server.test();
@@ -46,7 +49,7 @@ TEST(server_client_tests, queries)
     else
     {
        const int nQueries=10;
-       Client client(severRank);
+       Client client(serverRank);
        client.connect();
        auto res=client.test() ;
        for(auto& e : res) { EXPECT_EQ(e, -rank ); }
@@ -60,5 +63,7 @@ TEST(server_client_tests, queries)
        }
        client.disconnect();
     }
+
+     world.barrier();
 }
 }

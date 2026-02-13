@@ -23,6 +23,7 @@ namespace domain
 template<class Container>
 class node
 {
+    static constexpr auto Dim = Container::dimension;
   public:
     using coordinate_type = typename Container::coordinate_type;
     using real_coordinate_type = typename Container::real_coordinate_type;
@@ -79,10 +80,34 @@ class node
     {
         return (*c_)(_tag, level_coordinate_ + _offset ,_idx);
     }
-    template<class Tag>
-    auto& at_offset(Tag _tag, int _i, int _j, int _k, int _idx=0) noexcept
+    /*template<class Tag>
+    auto& at_offset(Tag _tag, int _i, int _j, int _k = 0, int _idx = 0) noexcept
+    {
+        int              Dim = level_coordinate_.size();
+        std::vector<int> tmp = {_i, _j, _k};
+        coordinate_type  add_coord;
+        for (int l = 0; l < Dim; l++) { add_coord[l] = tmp[l]; }
+        if (Dim == 3) return (*c_)(_tag, level_coordinate_ + add_coord, _idx);
+        else
+            return (*c_)(_tag, level_coordinate_ + add_coord, _k);
+    }*/
+    template<class Tag, int Dim1 = Dim>
+    auto& at_offset(Tag _tag, int _i, int _j, int _k, typename std::enable_if<Dim1 == 3, int>::type _idx = 0) noexcept
     {
         return (*c_)(_tag,level_coordinate_ + coordinate_type({_i, _j, _k}), _idx);
+    }
+
+    template<class Tag, int Dim1 = Dim>
+    auto& at_offset(Tag _tag, int _i, int _j, typename std::enable_if<Dim1 == 2, int>::type _idx = 0) noexcept
+    {
+        return (*c_)(_tag,level_coordinate_ + coordinate_type({_i, _j}), _idx);
+    }
+    //just need this to compile the 2D codem need a more elegant solution
+    template<class Tag, int Dim1 = Dim>
+    auto& at_offset(Tag _tag, int _i, int _j, int k, typename std::enable_if<Dim1 == 2, int>::type _idx ) noexcept
+    {
+        throw std::runtime_error("this at_offsrt function should not be used");
+        return (*c_)(_tag,level_coordinate_ + coordinate_type({_i, _j}), _idx);
     }
     /************************************************************************/
 
@@ -91,6 +116,11 @@ class node
     coordinate_type level_coordinate() const noexcept
     {
         return level_coordinate_;
+    }
+
+    real_coordinate_type local_pct() const noexcept
+    {
+        return (level_coordinate_ - c_->bounding_box().base()) / real_coordinate_type(c_->bounding_box().extent()-1);
     }
 
     real_coordinate_type global_coordinate() const noexcept
@@ -126,7 +156,7 @@ class node
             os << field.name() << " = ( ";
 
             for (std::size_t i = 0; i < field.nFields(); ++i)
-            { 
+            {
                 const auto sep= i+1==field.nFields()? " ":",";
                 os << _n(field.tag(), i) << sep;
             }
@@ -140,9 +170,16 @@ class node
     {
         coordinate_type res;
         const auto      e = c_->bounding_box().extent();
-        res[2] = index_ / (e[0] * e[1]);
-        res[1] = (index_ - res[2] * e[0] * e[1]) / e[0];
-        res[0] = (index_ - res[2] * e[0] * e[1] - res[1] * e[0]);
+	int Dim = level_coordinate_.size();
+	if (Dim == 3) {
+            res[2] = index_ / (e[0] * e[1]);
+	    res[1] = (index_ - res[2] * e[0] * e[1]) / e[0];
+	    res[0] = (index_ - res[2] * e[0] * e[1] - res[1] * e[0]);
+	}
+	else {
+	    res[1] = index_ / e[0];
+	    res[0] = (index_ - res[1] * e[0]);
+	}
         res += c_->bounding_box().base();
         return res;
     }

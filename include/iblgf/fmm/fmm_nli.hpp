@@ -79,14 +79,36 @@ class Nli
         }
     }
 
+
+    template<class field, typename octant_t>
+    void nli_intrp_node(int field_idx, octant_t parent, int mask_id, int base_level)
+    {
+        auto& parent_linalg_data = parent->data_r(field::tag(), field_idx).linalg_data();
+
+        for (int i = 0; i < parent->num_children(); ++i)
+        {
+            auto child = parent->child(i);
+            if (child == nullptr || !child->fmm_mask(base_level, mask_id) ||
+                !child->locally_owned())
+                continue;
+            if (!child->has_data()) continue;
+
+            auto& child_linalg_data = child->data_r(field::tag(), field_idx).linalg_data();
+            nli_intrp_node(child_linalg_data, parent_linalg_data, i);
+        }
+    }
+
     template<typename linalg_data_t>
     void nli_intrp_node(
         linalg_data_t& child, linalg_data_t& parent, int child_idx)
     {
         int n = child.shape()[0];
+	int Dim = child.shape().size();
         int idx_x = (child_idx & (1 << 0)) >> 0;
         int idx_y = (child_idx & (1 << 1)) >> 1;
         int idx_z = (child_idx & (1 << 2)) >> 2;
+
+	if (Dim == 3) {
 
         for (int q = 0; q < n; ++q)
         {
@@ -117,6 +139,18 @@ class Nli
                         antrp_mat_sub_[idx_z].data_);
             }
         }
+	}
+	else {
+	for (int l = 0; l < n; ++l)
+	{
+		xt::noalias(view(nli_aux_2d_intrp, xt::all(), l)) = xt::linalg::dot(view(parent, xt::all(), l),antrp_mat_sub_[idx_x].data_);
+	}
+
+	for (int l = 0; l < n; ++l)
+	{
+		xt::noalias(view(child, l, xt::all())) += xt::linalg::dot(view(nli_aux_2d_intrp, l, xt::all()),antrp_mat_sub_[idx_y].data_);
+	}
+	}
     }
 
     template<class field, typename octant_t>
@@ -137,15 +171,36 @@ class Nli
         }
     }
 
+
+    template<class field, typename octant_t>
+    void nli_antrp_node(int field_idx, octant_t parent, int mask_id, int base_level)
+    {
+        auto& parent_linalg_data = parent->data_r(field::tag(), field_idx).linalg_data();
+
+        for (int i = 0; i < parent->num_children(); ++i)
+        {
+            auto child = parent->child(i);
+            if (child == nullptr || !child->locally_owned() ||
+                !child->fmm_mask(base_level, mask_id))
+                continue;
+
+            auto& child_linalg_data = child->data_r(field::tag(), field_idx).linalg_data();
+
+            nli_antrp_node(child_linalg_data, parent_linalg_data, i);
+        }
+    }
+
     template<typename linalg_data_t>
     void nli_antrp_node(
         linalg_data_t& child, linalg_data_t& parent, int child_idx)
     {
         int n = child.shape()[0];
+	int Dim = child.shape().size();
         int idx_x = (child_idx & (1 << 0)) >> 0;
         int idx_y = (child_idx & (1 << 1)) >> 1;
         int idx_z = (child_idx & (1 << 2)) >> 2;
 
+	if (Dim == 3) {
         for (int q = 0; q < n; ++q)
         {
             for (int l = 0; l < n; ++l)
@@ -177,6 +232,18 @@ class Nli
                         view(nli_aux_3d_antrp, q, p, xt::all()));
             }
         }
+	}
+	else {
+	for (int l = 0; l < n; ++l)
+	{
+		xt::noalias(nli_aux_1d_antrp_tmp) = view(child, l, xt::all());
+		xt::noalias(view(nli_aux_2d_antrp, xt::all(), l)) = xt::linalg::dot(antrp_mat_sub_[idx_y].data_,view(nli_aux_1d_antrp_tmp, xt::all()));
+	}
+	for (int q = 0; q < n; ++q)
+	{
+		xt::noalias(view(parent, xt::all(), q)) += xt::linalg::dot(antrp_mat_sub_[idx_x].data_,view(nli_aux_2d_antrp, q, xt::all()));
+	}
+	}
     }
 
   private:

@@ -72,7 +72,7 @@ set(IBLGF_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake")
 list(APPEND CMAKE_MODULE_PATH "${IBLGF_MODULE_PATH}")
 
 find_package(MPI REQUIRED)
-find_package(Boost COMPONENTS system filesystem serialization mpi REQUIRED )
+find_package(Boost 1.68 REQUIRED COMPONENTS system filesystem serialization mpi)
 find_package(xsimd REQUIRED)
 find_package(xtensor REQUIRED)
 find_package(xtensor-blas REQUIRED)
@@ -90,6 +90,28 @@ include_directories(${Boost_INCLUDE_DIRS})
 include_directories(${xtensor_blas_INCLUDE_DIRS})
 link_directories(${HDF5_LIBRARY_DIRS} )
 #################################################################################################
+
+# Boost CMake target compatibility:
+# - older setups expose Boost::boost
+# - newer setups expose Boost::headers
+if(TARGET Boost::headers)
+    set(IBLGF_BOOST_HEADERS_TARGET Boost::headers)
+elseif(TARGET Boost::boost)
+    set(IBLGF_BOOST_HEADERS_TARGET Boost::boost)
+else()
+    message(FATAL_ERROR "Neither Boost::headers nor Boost::boost target is available.")
+endif()
+
+set(IBLGF_BOOST_TARGETS
+    ${IBLGF_BOOST_HEADERS_TARGET}
+    Boost::system
+    Boost::filesystem
+    Boost::serialization
+    Boost::mpi
+)
+
+# Keep legacy variable for test CMake files that still consume Boost_LIBRARIES directly.
+set(Boost_LIBRARIES ${IBLGF_BOOST_TARGETS})
 
 set(IBLGF_SKIP_MPICXX ON CACHE BOOL "True if your compiler wrapper includes MPI already (as CRAY PE for instance)")
 if (IBLGF_SKIP_MPICXX)
@@ -130,10 +152,7 @@ target_include_directories(iblgf INTERFACE
 include_directories(include)
 include_directories(SYSTEM ${MPI_INCLUDE_PATH})
 target_include_directories(iblgf INTERFACE ${MPI_INCLUDE_PATH})
-target_link_libraries(iblgf INTERFACE Boost::boost)
-target_link_libraries(iblgf INTERFACE Boost::mpi)
-target_link_libraries(iblgf INTERFACE Boost::filesystem)
-target_link_libraries(iblgf INTERFACE Boost::serialization)
+target_link_libraries(iblgf INTERFACE ${IBLGF_BOOST_TARGETS})
 target_link_libraries(iblgf INTERFACE MPI::MPI_CXX)
 target_link_libraries(iblgf INTERFACE xsimd)
 target_link_libraries(iblgf INTERFACE xtl)

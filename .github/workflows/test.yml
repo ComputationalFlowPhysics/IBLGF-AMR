@@ -5,6 +5,8 @@ on:
     branches: ["main"]
   pull_request:
     branches: ["main"]
+  workflow_dispatch:
+
 
 jobs:
   building:
@@ -18,15 +20,6 @@ jobs:
       - name: Prepare Scripts
       # Ensures scripts are executable even if git permissions are wonky
         run: chmod +x *.sh
-        
-      - name: Diagnostic Check
-        run: |
-          echo "--- Current Directory ---"
-          pwd
-          echo "--- List All Files ---"
-          ls -R
-          echo "--- Checking specifically for the file ---"
-          find . -maxdepth 2 -name "*iblgf*"
       
       - name: Docker Env + build + test
         run: ./docker_iblgf.sh -c 4 -- bash -lc './iblgf.sh test'

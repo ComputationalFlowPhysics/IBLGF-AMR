@@ -343,8 +343,8 @@ class Convolution_GPU
         // Ping-pong metadata buffers allow batch N+1 metadata upload while batch N runs.
         for (int i = 0; i < metadata_slots_; ++i)
         {
-            cudaMalloc(&d_f0_ptrs_[i], batch_capacity_ * sizeof(cufftDoubleComplex*));
-            cudaMalloc(&d_f0_sizes_[i], batch_capacity_ * sizeof(size_t));
+            cudaMalloc(reinterpret_cast<void**>(&d_f0_ptrs_[i]), batch_capacity_ * sizeof(cufftDoubleComplex*));
+            cudaMalloc(reinterpret_cast<void**>(&d_f0_sizes_[i]), batch_capacity_ * sizeof(size_t));
             cudaEventCreateWithFlags(&metadata_ready_[i], cudaEventDisableTiming);
             cudaEventRecord(metadata_ready_[i], fft_forward1_batch.stream());
         }
@@ -595,7 +595,7 @@ class Convolution_GPU
     
     static constexpr int metadata_slots_ = 2;
     // Ping-pong device metadata buffers for LGF pointer/size lists.
-    cufftDoubleComplex*  d_f0_ptrs_[metadata_slots_];
+    cufftDoubleComplex** d_f0_ptrs_[metadata_slots_];
     size_t*              d_f0_sizes_[metadata_slots_];
     cudaEvent_t          metadata_ready_[metadata_slots_];
     int                  metadata_slot_;

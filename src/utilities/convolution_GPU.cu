@@ -155,7 +155,8 @@ dfft_r2c_gpu::execute_whole()
 {
     cudaMemcpyAsync(input_cu_, input_.data(), input_.size() * sizeof(float_type), cudaMemcpyHostToDevice, stream_);
     cufftExecD2Z(plan, (cufftDoubleReal*)input_cu_, (cufftDoubleComplex*)output_cu_);
-    // Do not synchronize here; caller controls when output_cu_ is consumed.
+    // Cache-fill path consumes output_cu_ immediately after this call.
+    cudaStreamSynchronize(stream_);
 }
 
 dfft_r2c_gpu::~dfft_r2c_gpu()

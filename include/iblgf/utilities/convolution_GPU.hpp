@@ -479,6 +479,10 @@ class Convolution_GPU
         
         // Flush any remaining items in the batch
         flush_batch();
+
+        // Ensure all forward-stream accumulation into fft_backward_.input_cu() is complete
+        // before launching backward work on fft_backward_.stream().
+        cudaStreamSynchronize(fft_forward1_batch.stream());
         
         // Scale on device to avoid extra DtoH/HtoD
         float_type scale = 1.0;

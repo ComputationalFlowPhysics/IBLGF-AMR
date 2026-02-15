@@ -14,6 +14,7 @@
 #define INCLUDED_CONVOLUTION_GPU_IBLGF_HPP
 #include <complex>
 #include <cstring>
+#include <cstdlib>
 #include <cufft.h>
 #include <iblgf/types.hpp>
 #include <vector>
@@ -287,6 +288,19 @@ class Convolution_GPU
     using real_vector_t = std::vector<float_type>;
 
   public:
+    static int configured_batch_size() noexcept
+    {
+        int value = 64;
+        if (const char* env = std::getenv("IBLGF_GPU_BATCH_SIZE"))
+        {
+            int parsed = std::atoi(env);
+            if (parsed > 0) value = parsed;
+        }
+        if (value < 8) value = 8;
+        if (value > 256) value = 256;
+        return value;
+    }
+
     Convolution_GPU(const Convolution_GPU& other) = delete;
     Convolution_GPU(Convolution_GPU&& other) = default;
     Convolution_GPU& operator=(const Convolution_GPU& other) & = delete;
@@ -312,17 +326,17 @@ class Convolution_GPU
     , dims1_(_dims1)
     , fft_forward0_(padded_dims_next_pow_2_, _dims0)
     , fft_forward1_(padded_dims_next_pow_2_, _dims1)
-    , fft_forward1_batch(padded_dims_next_pow_2_, _dims1, 32)
+    , fft_forward1_batch(padded_dims_next_pow_2_, _dims1, configured_batch_size())
     , fft_backward_(padded_dims_next_pow_2_, _dims1)
     , padded_size_(helper_all_prod(padded_dims_next_pow_2_))
     , tmp_prod(padded_size_, std::complex<float_type>(0.0))
     , current_batch_size_(0)
-    , max_batch_size_(32)
+    , max_batch_size_(configured_batch_size())
     , d_f0_ptrs_{nullptr, nullptr}
     , d_f0_sizes_{nullptr, nullptr}
     , metadata_ready_{nullptr, nullptr}
     , metadata_slot_(0)
-    , batch_capacity_(32)
+    , batch_capacity_(configured_batch_size())
     , h_f0_ptrs_(batch_capacity_, nullptr)
     , h_f0_sizes_(batch_capacity_, 0)
     {

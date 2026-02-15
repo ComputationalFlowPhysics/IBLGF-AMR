@@ -335,6 +335,8 @@ dfft_r2c_gpu_batch::dfft_r2c_gpu_batch(dims_3D _dims_padded, dims_3D _dims_non_z
 , input_(nullptr)
 , output_(_dims_padded[2] * _dims_padded[1] * ((_dims_padded[0] / 2) + 1) * max_batch_size_)
 , stream_(nullptr)
+, transfer_stream_(nullptr)
+, transfer_ready_event_(nullptr)
 {
     const int NX = _dims_padded[0];
     const int NY = _dims_padded[1];
@@ -358,12 +360,15 @@ dfft_r2c_gpu_batch::dfft_r2c_gpu_batch(dims_3D _dims_padded, dims_3D _dims_non_z
     // Create CUDA streams for asynchronous operations
     cudaStreamCreate(&stream_);
     cudaStreamCreate(&transfer_stream_);
-    // Bind cuFFT plan to main compute stream
-    cufftSetStream(plan, stream_);
 
     int n[3] = {NZ, NY, NX};
     cufftPlanMany(&plan, 3, n, NULL, 1, NZ * NY * NX, NULL, 1, NX_out * NY * NZ, CUFFT_D2Z,
         max_batch_size_);
+    // Bind cuFFT plan to main compute stream after plan creation
+    cufftSetStream(plan, stream_);
+
+    // Event used to order compute stream after transfer stream without host blocking
+    cudaEventCreateWithFlags(&transfer_ready_event_, cudaEventDisableTiming);
 }
 
 dfft_r2c_gpu_batch::~dfft_r2c_gpu_batch()
@@ -409,6 +414,13 @@ dfft_r2c_gpu_batch::~dfft_r2c_gpu_batch()
         result_cu_ = nullptr;
     }
 
+    if (transfer_ready_event_)
+    {
+        cudaError_t err = cudaEventDestroy(transfer_ready_event_);
+        if (err != cudaSuccess) std::cerr << "cudaEventDestroy(transfer_ready_event_) failed: " << cudaGetErrorString(err) << "\n";
+        transfer_ready_event_ = nullptr;
+    }
+
     // Destroy CUDA streams if they exist
     if (stream_)
     {
@@ -441,8 +453,9 @@ void dfft_r2c_gpu_batch::execute_ptr(int current_batch)
     // NOTE: Data is already on GPU via copy_field_gpu() which uses cudaMemcpy3D directly to input_cu_
     // We just need to wait for those async copies to complete and zero remaining slots
     
-    // Synchronize transfer_stream with compute stream (copies are on transfer_stream)
-    cudaStreamSynchronize(transfer_stream_);
+    // Order compute stream after transfer stream without blocking the host
+    cudaEventRecord(transfer_ready_event_, transfer_stream_);
+    cudaStreamWaitEvent(stream_, transfer_ready_event_, 0);
     
     // Zero remaining slots on main stream to ensure clean padding for FFT
     if (remaining_elems > 0)

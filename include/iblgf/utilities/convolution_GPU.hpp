@@ -238,6 +238,7 @@ class dfft_r2c_gpu_batch
     cufftHandle                           plan;
     cudaStream_t                          stream_;         // CUDA stream for asynchronous FFT/kernel operations
     cudaStream_t                          transfer_stream_; // Separate stream for HtoD transfers to enable overlap
+    cudaEvent_t                           transfer_ready_event_; // Signals transfer stream completion to compute stream
 };
 
 class dfft_c2r_gpu
@@ -427,10 +428,12 @@ class Convolution_GPU
         size_t total_elements = current_batch_size_ * size_per_fft;
         int blockSize = 256;
         int numBlocks = (total_elements + blockSize - 1) / blockSize;
+        int numBlocksSum = (size_per_fft + blockSize - 1) / blockSize;
         
         // Limit grid size to avoid excessive blocks (GPU occupancy optimization)
         int maxBlocks = 2048; // Typical value for good occupancy
         numBlocks = (numBlocks > maxBlocks) ? maxBlocks : numBlocks;
+        numBlocksSum = (numBlocksSum > maxBlocks) ? maxBlocks : numBlocksSum;
         
         // Allocate shared memory for caching f0_sizes (batch_size * sizeof(size_t))
         size_t shared_mem_size = current_batch_size_ * sizeof(size_t);
@@ -445,7 +448,7 @@ class Convolution_GPU
             size_per_fft);
         
         // Sum batches into backward input on same stream
-        sum_batches<<<numBlocks, blockSize, 0, fft_forward1_batch.stream()>>>(
+        sum_batches<<<numBlocksSum, blockSize, 0, fft_forward1_batch.stream()>>>(
             fft_forward1_batch.result_cu(), 
             fft_backward_.input_cu(), 
             current_batch_size_, 
@@ -487,8 +490,8 @@ class Convolution_GPU
         const size_t size_per_fft = fft_backward_.input().size();
         int blockSize = 256;
         int numBlocks = (size_per_fft + blockSize - 1) / blockSize;
-        scale_complex<<<numBlocks, blockSize>>>(fft_backward_.input_cu(), size_per_fft, scale);
-        cudaDeviceSynchronize();
+        scale_complex<<<numBlocks, blockSize, 0, fft_backward_.stream()>>>(
+            fft_backward_.input_cu(), size_per_fft, scale);
 
         // Execute backward transform directly from device input
         fft_backward_.execute_device();

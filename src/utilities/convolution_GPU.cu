@@ -208,8 +208,9 @@ dfft_r2c_gpu::execute()
 {
     cudaMemcpyAsync(input_cu_, input_.data(), input_.size() * sizeof(float_type), cudaMemcpyHostToDevice, stream_);
     cufftExecD2Z(plan, (cufftDoubleReal*)input_cu_, (cufftDoubleComplex*)output_cu_);
-    // Copy back on same stream; caller decides when to synchronize.
+    // Copy back on same stream and synchronize for legacy call sites.
     cudaMemcpyAsync(output_.data(), output_cu_, output_.size() * sizeof(std::complex<float_type>), cudaMemcpyDeviceToHost, stream_);
+    cudaStreamSynchronize(stream_);
 }
 
 void
@@ -297,8 +298,9 @@ dfft_c2r_gpu::execute()
 {
     cudaMemcpyAsync(input_cu_, input_.data(), input_.size() * sizeof(std::complex<float_type>), cudaMemcpyHostToDevice, stream_);
     cufftExecZ2D(plan, (cufftDoubleComplex*)input_cu_, (cufftDoubleReal*)output_cu_);
-    // Copy back on same stream; caller decides when to synchronize.
+    // Copy back on same stream and synchronize for legacy call sites.
     cudaMemcpyAsync(output_.data(), output_cu_, output_.size() * sizeof(float_type), cudaMemcpyDeviceToHost, stream_);
+    cudaStreamSynchronize(stream_);
 }
 
 void

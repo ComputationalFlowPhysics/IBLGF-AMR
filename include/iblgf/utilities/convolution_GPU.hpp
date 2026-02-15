@@ -137,7 +137,7 @@ class dfft_r2c_gpu_batch
     inline auto& f0_sizes() { return f0_sizes_; }
     inline auto& input_cu() { return input_cu_; }
     inline auto& result_cu() { return result_cu_; }
-    inline size_t result_size() const { return output_.size() * max_batch_size_; }
+    inline size_t result_size() const { return output_.size(); }
     inline size_t input_size() const { return static_cast<size_t>(dims_input_3D[0]) * dims_input_3D[1] * dims_input_3D[2] * max_batch_size_; }
     inline auto& stream() { return stream_; }
     inline auto& transfer_stream() { return transfer_stream_; }
@@ -427,8 +427,8 @@ class Convolution_GPU
         h_f0_ptrs_[current_batch_size_] = f0_entry->device;
         h_f0_sizes_[current_batch_size_] = f0_entry->size;
         
-        // Use GPU-direct copy for maximum performance
-        fft_forward1_batch.copy_field_gpu(_b, dims1_, current_batch_size_);
+        // Pack on host batch buffer; execute_ptr() performs one HtoD transfer per batch.
+        fft_forward1_batch.copy_field(_b, dims1_, current_batch_size_);
         
         current_batch_size_++;
         number_fwrd_executed++;

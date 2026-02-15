@@ -208,9 +208,8 @@ dfft_r2c_gpu::execute()
 {
     cudaMemcpyAsync(input_cu_, input_.data(), input_.size() * sizeof(float_type), cudaMemcpyHostToDevice, stream_);
     cufftExecD2Z(plan, (cufftDoubleReal*)input_cu_, (cufftDoubleComplex*)output_cu_);
-    // Copy back on same stream and synchronize
+    // Copy back on same stream; caller decides when to synchronize.
     cudaMemcpyAsync(output_.data(), output_cu_, output_.size() * sizeof(std::complex<float_type>), cudaMemcpyDeviceToHost, stream_);
-    cudaStreamSynchronize(stream_);
 }
 
 void
@@ -298,8 +297,8 @@ dfft_c2r_gpu::execute()
 {
     cudaMemcpyAsync(input_cu_, input_.data(), input_.size() * sizeof(std::complex<float_type>), cudaMemcpyHostToDevice, stream_);
     cufftExecZ2D(plan, (cufftDoubleComplex*)input_cu_, (cufftDoubleReal*)output_cu_);
+    // Copy back on same stream; caller decides when to synchronize.
     cudaMemcpyAsync(output_.data(), output_cu_, output_.size() * sizeof(float_type), cudaMemcpyDeviceToHost, stream_);
-    cudaStreamSynchronize(stream_);
 }
 
 void
@@ -448,8 +447,11 @@ void dfft_r2c_gpu_batch::execute_ptr(int current_batch)
     const size_t copy_elems = static_cast<size_t>(current_batch) * slot_elems;
     const size_t remaining_elems = static_cast<size_t>(max_batch_size_) * slot_elems - copy_elems;
     
-    // NOTE: Data is already on GPU via copy_field_gpu() which uses cudaMemcpy3D directly to input_cu_
-    // We just need to wait for those async copies to complete and zero remaining slots
+    // Copy active padded slots in one contiguous transfer.
+    if (copy_elems > 0)
+    {
+        cudaMemcpyAsync(input_cu_, input_, copy_elems * sizeof(float_type), cudaMemcpyHostToDevice, transfer_stream_);
+    }
     
     // Order compute stream after transfer stream without blocking the host
     cudaEventRecord(transfer_ready_event_, transfer_stream_);

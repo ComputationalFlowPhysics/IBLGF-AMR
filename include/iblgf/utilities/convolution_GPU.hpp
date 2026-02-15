@@ -453,6 +453,9 @@ class Convolution_GPU
             fft_backward_.input_cu(), 
             current_batch_size_, 
             size_per_fft);
+
+        // Ensure this batch has consumed metadata buffers before they are reused.
+        cudaStreamSynchronize(fft_forward1_batch.stream());
         
         // Reset batch counter and clear pointers
         current_batch_size_ = 0;
@@ -480,10 +483,6 @@ class Convolution_GPU
         // Flush any remaining items in the batch
         flush_batch();
 
-        // Ensure all forward-stream accumulation into fft_backward_.input_cu() is complete
-        // before launching backward work on fft_backward_.stream().
-        cudaStreamSynchronize(fft_forward1_batch.stream());
-        
         // Scale on device to avoid extra DtoH/HtoD
         float_type scale = 1.0;
         for (int i = 0; i < dimension; i++) { scale /= padded_dims_next_pow_2_[i]; }

@@ -155,9 +155,7 @@ dfft_r2c_gpu::execute_whole()
 {
     cudaMemcpyAsync(input_cu_, input_.data(), input_.size() * sizeof(float_type), cudaMemcpyHostToDevice, stream_);
     cufftExecD2Z(plan, (cufftDoubleReal*)input_cu_, (cufftDoubleComplex*)output_cu_);
-    cudaStreamSynchronize(stream_);
-    // i think we want to add
-    // cudaMemcpy(output_.data(), output_cu_, output_.size() * sizeof(std::complex<float_type>), cudaMemcpyDeviceToHost);
+    // Do not synchronize here; caller controls when output_cu_ is consumed.
 }
 
 dfft_r2c_gpu::~dfft_r2c_gpu()
@@ -222,7 +220,7 @@ dfft_r2c_gpu::execute_ptr()
     cudaMemcpyAsync(input_cu_, input_.data(), input_.size() * sizeof(float_type),
         cudaMemcpyHostToDevice, stream_);
     cufftExecD2Z(plan, (cufftDoubleReal*)input_cu_, (cufftDoubleComplex*)output_cu_);
-    cudaStreamSynchronize(stream_);
+    // Leave stream unsynchronized; this path is designed for async usage.
 }
 
 dfft_c2r_gpu::dfft_c2r_gpu(dims_3D _dims, dims_3D _dims_small)

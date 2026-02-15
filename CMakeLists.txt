@@ -65,6 +65,8 @@ set(SOURCES
    )
 set(GPU_SOURCES
     "${CMAKE_CURRENT_LIST_DIR}/src/utilities/convolution_GPU.cu"
+    "${CMAKE_CURRENT_LIST_DIR}/src/operators/operators_gpu.cu"
+    "${CMAKE_CURRENT_LIST_DIR}/src/fmm/fmm_gpu.cu"
    )
 
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
@@ -123,6 +125,39 @@ message(STATUS "IBLGF_MPI_NP = ${IBLGF_MPI_NP}")
 
 add_library(iblgf INTERFACE)
 add_library(iblgf::iblgf ALIAS iblgf)
+
+# Build GPU sources if enabled
+if(USE_GPU)
+    # Create a static library for CUDA code
+    add_library(iblgf_gpu STATIC ${GPU_SOURCES})
+    target_include_directories(iblgf_gpu PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+        $<INSTALL_INTERFACE:include>
+    )
+    target_compile_definitions(iblgf_gpu PUBLIC IBLGF_COMPILE_CUDA)
+    
+    # Set CUDA properties
+    set_target_properties(iblgf_gpu PROPERTIES
+        CUDA_SEPARABLE_COMPILATION ON
+        CUDA_RESOLVE_DEVICE_SYMBOLS ON
+        POSITION_INDEPENDENT_CODE ON
+    )
+    
+    # Link CUDA libraries
+    target_link_libraries(iblgf_gpu PUBLIC cudart cufft)
+    
+    # CUDA architecture - adjust for your GPU
+    # Common values: 60 (P100), 70 (V100), 75 (T4), 80 (A100), 86 (RTX 3090)
+    if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
+        set(CMAKE_CUDA_ARCHITECTURES "70;75;80;86" CACHE STRING "CUDA architectures to build for")
+    endif()
+    set_target_properties(iblgf_gpu PROPERTIES CUDA_ARCHITECTURES "${CMAKE_CUDA_ARCHITECTURES}")
+    
+    # Add GPU library to main interface
+    target_link_libraries(iblgf INTERFACE iblgf_gpu)
+    target_compile_definitions(iblgf INTERFACE IBLGF_COMPILE_CUDA)
+endif()
+
 target_include_directories(iblgf INTERFACE
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>

@@ -293,8 +293,16 @@ class Convolution_GPU
     Convolution_GPU& operator=(Convolution_GPU&& other) & = default;
     ~Convolution_GPU() 
     {
-        if (d_f0_ptrs_) cudaFree(d_f0_ptrs_);
-        if (d_f0_sizes_) cudaFree(d_f0_sizes_);
+        for (int i = 0; i < metadata_slots_; ++i)
+        {
+            if (metadata_ready_[i])
+            {
+                cudaEventSynchronize(metadata_ready_[i]);
+                cudaEventDestroy(metadata_ready_[i]);
+            }
+            if (d_f0_ptrs_[i]) cudaFree(d_f0_ptrs_[i]);
+            if (d_f0_sizes_[i]) cudaFree(d_f0_sizes_[i]);
+        }
     }
 
     Convolution_GPU(dims_t _dims0, dims_t _dims1)
@@ -310,13 +318,20 @@ class Convolution_GPU
     , tmp_prod(padded_size_, std::complex<float_type>(0.0))
     , current_batch_size_(0)
     , max_batch_size_(10)
-    , d_f0_ptrs_(nullptr)
-    , d_f0_sizes_(nullptr)
+    , d_f0_ptrs_{nullptr, nullptr}
+    , d_f0_sizes_{nullptr, nullptr}
+    , metadata_ready_{nullptr, nullptr}
+    , metadata_slot_(0)
     , batch_capacity_(10)
     {
-        // Allocate device metadata buffers so host can recycle batch vectors without stream-wide sync.
-        cudaMalloc(&d_f0_ptrs_, batch_capacity_ * sizeof(cufftDoubleComplex*));
-        cudaMalloc(&d_f0_sizes_, batch_capacity_ * sizeof(size_t));
+        // Ping-pong metadata buffers allow batch N+1 metadata upload while batch N runs.
+        for (int i = 0; i < metadata_slots_; ++i)
+        {
+            cudaMalloc(&d_f0_ptrs_[i], batch_capacity_ * sizeof(cufftDoubleComplex*));
+            cudaMalloc(&d_f0_sizes_[i], batch_capacity_ * sizeof(size_t));
+            cudaEventCreateWithFlags(&metadata_ready_[i], cudaEventDisableTiming);
+            cudaEventRecord(metadata_ready_[i], fft_forward1_batch.stream());
+        }
     }
 
     dims_t helper_next_pow_2(dims_t v)
@@ -412,12 +427,17 @@ class Convolution_GPU
     void flush_batch()
     {
         if (current_batch_size_ == 0) return;
+
+        const int metadata_slot = metadata_slot_;
+        cudaEventSynchronize(metadata_ready_[metadata_slot]);
         
         // Copy pointer metadata to device once per batch (small host-to-device transfer).
-        cudaMemcpy(d_f0_ptrs_, fft_forward1_batch.f0_ptrs().data(),
-                   current_batch_size_ * sizeof(cufftDoubleComplex*), cudaMemcpyHostToDevice);
-        cudaMemcpy(d_f0_sizes_, fft_forward1_batch.f0_sizes().data(),
-                   current_batch_size_ * sizeof(size_t), cudaMemcpyHostToDevice);
+        cudaMemcpyAsync(d_f0_ptrs_[metadata_slot], fft_forward1_batch.f0_ptrs().data(),
+                        current_batch_size_ * sizeof(cufftDoubleComplex*), cudaMemcpyHostToDevice,
+                        fft_forward1_batch.stream());
+        cudaMemcpyAsync(d_f0_sizes_[metadata_slot], fft_forward1_batch.f0_sizes().data(),
+                        current_batch_size_ * sizeof(size_t), cudaMemcpyHostToDevice,
+                        fft_forward1_batch.stream());
         
         // Execute FFTs for the current batch (copy only active slots inside execute)
         fft_forward1_batch.execute_ptr(current_batch_size_);
@@ -440,10 +460,10 @@ class Convolution_GPU
         
         // Launch kernels on the same stream as FFT to ensure proper ordering
         prod_complex_add_ptr<<<numBlocks, blockSize, shared_mem_size, fft_forward1_batch.stream()>>>(
-            d_f0_ptrs_,
+            d_f0_ptrs_[metadata_slot],
             fft_forward1_batch.output_cu(), 
             fft_forward1_batch.result_cu(), 
-            d_f0_sizes_,
+            d_f0_sizes_[metadata_slot],
             current_batch_size_,
             size_per_fft);
         
@@ -454,8 +474,9 @@ class Convolution_GPU
             current_batch_size_, 
             size_per_fft);
 
-        // Ensure this batch has consumed metadata buffers before they are reused.
-        cudaStreamSynchronize(fft_forward1_batch.stream());
+        // Mark this metadata slot reusable once all work queued on this stream completes.
+        cudaEventRecord(metadata_ready_[metadata_slot], fft_forward1_batch.stream());
+        metadata_slot_ = (metadata_slot_ + 1) % metadata_slots_;
         
         // Reset batch counter and clear pointers
         current_batch_size_ = 0;
@@ -558,9 +579,12 @@ class Convolution_GPU
     unsigned int     padded_size_;
     complex_vector_t tmp_prod;
     
-    // Device metadata buffers for LGF pointer/size lists.
-    cufftDoubleComplex** d_f0_ptrs_;
-    size_t*              d_f0_sizes_;
+    static constexpr int metadata_slots_ = 2;
+    // Ping-pong device metadata buffers for LGF pointer/size lists.
+    cufftDoubleComplex*  d_f0_ptrs_[metadata_slots_];
+    size_t*              d_f0_sizes_[metadata_slots_];
+    cudaEvent_t          metadata_ready_[metadata_slots_];
+    int                  metadata_slot_;
     int                  batch_capacity_;
 };
 } // namespace fft

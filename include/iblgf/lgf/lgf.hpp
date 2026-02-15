@@ -103,10 +103,23 @@ class LGF_Base : public crtp::Crtps<Derived, LGF_Base<Dim, Derived>>
         Convolutor* _conv, typename std::enable_if<Dim1 == 3, int>::type level_diff)
     {
         auto k_ = this->derived().get_key(_lgf_block, level_diff);
-        auto it = this->derived().dft_level_maps_3D[level_diff].find(k_);
+        auto& level_map = this->derived().dft_level_maps_3D[level_diff];
+
+        // Fast path for the common repeated-key access pattern in execute_fwrd_field_ptr().
+        static thread_local const void*        last_owner = nullptr;
+        static thread_local int                last_level = -1;
+        static thread_local decltype(k_)       last_key{};
+        static thread_local gpu_spectrum_entry* last_entry = nullptr;
+        static thread_local bool               has_last = false;
+        if (has_last && last_owner == this && last_level == level_diff && last_key == k_ && last_entry)
+        {
+            return last_entry;
+        }
+
+        auto it = level_map.find(k_);
 
         //Check if lgf is already stored
-        if (it == this->derived().dft_level_maps_3D[level_diff].end())
+        if (it == level_map.end())
         {
             this->get_subblock(
                 _lgf_block, _extended_dims, lgf_buffer_, level_diff);
@@ -122,16 +135,27 @@ class LGF_Base : public crtp::Crtps<Derived, LGF_Base<Dim, Derived>>
             cudaMalloc(&(entry->device), entry->size * sizeof(cufftDoubleComplex));
             cudaMemcpy(entry->device, dft, entry->size * sizeof(cufftDoubleComplex), cudaMemcpyDeviceToDevice);
             entry->host = nullptr; // host copy not needed
-            auto inserted = this->derived().dft_level_maps_3D[level_diff].emplace(
-                k_, std::move(entry));
+            auto inserted = level_map.emplace(k_, std::move(entry));
 
             // auto inserted = this->derived().dft_level_maps_3D[level_diff].emplace(
             //     k_, std::move(entry));
-            return (inserted.first->second).get();
+            gpu_spectrum_entry* result = (inserted.first->second).get();
+            last_owner = this;
+            last_level = level_diff;
+            last_key = k_;
+            last_entry = result;
+            has_last = true;
+            return result;
         }
         else
         {
-            return (it->second).get();
+            gpu_spectrum_entry* result = (it->second).get();
+            last_owner = this;
+            last_level = level_diff;
+            last_key = k_;
+            last_entry = result;
+            has_last = true;
+            return result;
         }
     }
 #else

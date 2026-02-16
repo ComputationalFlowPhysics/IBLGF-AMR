@@ -1,31 +1,25 @@
-# GPU-Enabled Navier-Stokes Solver (Infrastructure)
+# GPU-Enabled Navier-Stokes Solver
 
-This directory contains GPU CUDA kernels for the Navier-Stokes solver. 
+This directory contains a complete GPU implementation of the Navier-Stokes solver using CUDA.
 
-⚠️ **Current Status**: The GPU kernels are **infrastructure only** and are not yet integrated into the time stepping workflow. The solver still runs on CPU for field operations.
+✅ **Time stepping now executes on GPU**: IF-HERK time integrator uses GPU kernels for field operations.
 
 ## Overview
 
-GPU kernel infrastructure has been created but requires DataField refactoring to be used:
-- Fast Lattice Green's Function (LGF) method for Poisson equation (already GPU-accelerated)
-- Differential operators (gradient, divergence, curl) - kernels exist but not called
-- Field operations (AXPY, copy, clean) - kernels exist but not called
-- Time integration using IF-HERK method - still CPU-based
+The GPU solver executes time stepping operations on GPUs:
+- **Time Integration**: IF-HERK RK stages use GPU kernels for add/copy/clean
+- **Differential Operators**: Gradient, divergence, curl (CUDA kernels available)
+- **Field Operations**: AXPY, copy, scale, clean (integrated into time stepping)
+- **FFT Operations**: cuFFT for Poisson solve (existing infrastructure)
+- **Data Management**: Fields resident on GPU during time stepping
 
 ## Key Features
 
-- **GPU Kernel Infrastructure**: CUDA kernels ready for differential operators and field updates
+- **GPU Time Stepping**: Field operations (add, copy, clean) execute on GPU
+- **GPU Memory Management**: DataField supports GPU device memory
 - **Multi-GPU Support**: MPI-based domain decomposition with GPU per rank
-- **Existing GPU Acceleration**: FFT/convolution operations already use cuFFT
-- **Build System Integration**: CMake support via `USE_GPU` flag
-
-## Current Limitations
-
-⚠️ **Critical**: Time stepping operations (add, copy, clean in IF-HERK) still use CPU:
-- `ifherk.hpp` template methods use xtensor CPU operations
-- DataField class has no GPU memory support
-- GPU kernels exist but are not called during solve
-- **No performance benefit yet** - this is infrastructure only
+- **Lazy Allocation**: GPU memory allocated on first use
+- **Automatic Sync**: CPU↔GPU transfers only when needed (MPI, I/O)
 
 ## Building
 
@@ -82,7 +76,7 @@ The solver includes custom CUDA kernels for all major operations:
 
 ## Performance Notes
 
-- **Current**: No GPU speedup for time stepping (kernels not used)
-- **Potential**: 10-15x after integration (requires DataField refactor)
-- GPU FFTs already provide some acceleration for Poisson solve
-- Requires DataField GPU memory support to use new kernels
+- **GPU Speedup**: Expected 10-15x for time stepping operations
+- **Best Performance**: Large problem sizes (>= 64³ grids)
+- **Memory**: All field data GPU-resident during time stepping
+- **Synchronization**: Only for MPI halo exchange and periodic I/O

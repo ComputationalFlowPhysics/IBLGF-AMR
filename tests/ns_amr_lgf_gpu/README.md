@@ -1,24 +1,31 @@
-# GPU-Enabled Navier-Stokes Solver
+# GPU-Enabled Navier-Stokes Solver (Infrastructure)
 
-This directory contains a comprehensive GPU-accelerated implementation of the Navier-Stokes solver using CUDA.
+This directory contains GPU CUDA kernels for the Navier-Stokes solver. 
+
+⚠️ **Current Status**: The GPU kernels are **infrastructure only** and are not yet integrated into the time stepping workflow. The solver still runs on CPU for field operations.
 
 ## Overview
 
-The GPU solver executes **all** computational operations on GPUs, not just FFTs:
-- **Differential Operators**: Gradient, divergence, curl, Laplacian (CUDA kernels)
-- **Field Operations**: AXPY, copy, scale, clean (CUDA kernels)
-- **Nonlinear Terms**: Advection operators ∇×(u × ω) (CUDA kernels)
-- **FFT Operations**: Forward/inverse transforms (cuFFT library)
-- **LGF Convolutions**: Batched spectral convolution (cuFFT + custom kernels)
-- **Time Integration**: IF-HERK 3-stage Runge-Kutta (orchestrated on GPU)
+GPU kernel infrastructure has been created but requires DataField refactoring to be used:
+- Fast Lattice Green's Function (LGF) method for Poisson equation (already GPU-accelerated)
+- Differential operators (gradient, divergence, curl) - kernels exist but not called
+- Field operations (AXPY, copy, clean) - kernels exist but not called
+- Time integration using IF-HERK method - still CPU-based
 
 ## Key Features
 
-- **End-to-End GPU Execution**: Data stays on GPU throughout time stepping
+- **GPU Kernel Infrastructure**: CUDA kernels ready for differential operators and field updates
 - **Multi-GPU Support**: MPI-based domain decomposition with GPU per rank
-- **Custom CUDA Kernels**: Optimized differential operators for staggered grids
-- **Batched Operations**: FFTs and convolutions processed in batches
-- **Minimal Host-Device Transfers**: Only for I/O and MPI halo exchange
+- **Existing GPU Acceleration**: FFT/convolution operations already use cuFFT
+- **Build System Integration**: CMake support via `USE_GPU` flag
+
+## Current Limitations
+
+⚠️ **Critical**: Time stepping operations (add, copy, clean in IF-HERK) still use CPU:
+- `ifherk.hpp` template methods use xtensor CPU operations
+- DataField class has no GPU memory support
+- GPU kernels exist but are not called during solve
+- **No performance benefit yet** - this is infrastructure only
 
 ## Building
 
@@ -75,6 +82,7 @@ The solver includes custom CUDA kernels for all major operations:
 
 ## Performance Notes
 
-- GPU implementation is most effective for large problem sizes (>= 64^3 grids)
-- Multiple GPUs provide best scaling for multi-level AMR problems
-- Ensure sufficient GPU memory for domain decomposition and AMR hierarchy
+- **Current**: No GPU speedup for time stepping (kernels not used)
+- **Potential**: 10-15x after integration (requires DataField refactor)
+- GPU FFTs already provide some acceleration for Poisson solve
+- Requires DataField GPU memory support to use new kernels

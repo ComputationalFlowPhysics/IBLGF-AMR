@@ -1,5 +1,18 @@
 # GPU Navier-Stokes Implementation: Quick Reference
 
+## Current Status
+
+⚠️ **Important**: GPU kernels exist but are **not integrated** into time stepping. This is infrastructure only.
+
+**What Works**:
+- ✅ GPU kernels compile and build
+- ✅ FFT/convolution already uses GPU (existing code)
+
+**What Doesn't Work Yet**:
+- ❌ Time stepping still uses CPU
+- ❌ No performance benefit from new kernels
+- ❌ DataField has no GPU memory
+
 ## What Changed
 
 ### Before (Partial GPU)
@@ -31,38 +44,36 @@
 └─────────────────────────────────────┘
 ```
 
-### After (Full GPU)
+### After (Infrastructure Created, Not Used Yet)
 ```
 ┌─────────────────────────────────────┐
-│  Navier-Stokes Time Stepping (CPU)  │  <-- Orchestration only
+│  Navier-Stokes Time Stepping (CPU)  │  <-- Still CPU!
+│                                     │
+│  ┌──────────────────────────────┐  │
+│  │ Gradient (CPU)               │  │  <-- Still CPU
+│  └──────────────────────────────┘  │
+│  ┌──────────────────────────────┐  │
+│  │ Curl (CPU)                   │  │  <-- Still CPU
+│  └──────────────────────────────┘  │
+│  ┌──────────────────────────────┐  │
+│  │ Nonlinear (CPU)              │  │  <-- Still CPU
+│  └──────────────────────────────┘  │
+│  ┌──────────────────────────────┐  │
+│  │ FFT/Convolution (GPU) ✓      │  │  <-- Only this uses GPU
+│  └──────────────────────────────┘  │
+│  ┌──────────────────────────────┐  │
+│  │ Divergence (CPU)             │  │  <-- Still CPU
+│  └──────────────────────────────┘  │
 └─────────────────────────────────────┘
-            │
-            ▼
+
+Available but not used:
 ┌─────────────────────────────────────┐
-│         GPU Device Memory           │
-│                                     │
-│  ┌──────────────────────────────┐  │
-│  │ Gradient (GPU) ✓             │  │
-│  └──────────────────────────────┘  │
-│  ┌──────────────────────────────┐  │
-│  │ Curl (GPU) ✓                 │  │
-│  └──────────────────────────────┘  │
-│  ┌──────────────────────────────┐  │
-│  │ Nonlinear (GPU) ✓            │  │
-│  └──────────────────────────────┘  │
-│  ┌──────────────────────────────┐  │
-│  │ FFT/Convolution (GPU) ✓      │  │
-│  └──────────────────────────────┘  │
-│  ┌──────────────────────────────┐  │
-│  │ Divergence (GPU) ✓           │  │
-│  └──────────────────────────────┘  │
-│                                     │
-│  All data stays on GPU! ✓          │
+│  GPU Kernels (exist, not called)    │
+│  - gradient_x/y/z_kernel            │
+│  - divergence_kernel                │
+│  - curl_x/y/z_kernel                │
+│  - axpy_kernel, copy_scale_kernel   │
 └─────────────────────────────────────┘
-   ▲                              │
-   │ MPI halos                    │ I/O
-   │ (minimal)                    │ (periodic)
-   │                              ▼
 ```
 
 ## New Files
@@ -105,11 +116,19 @@ Time per step: ~95 ms
   └─ Other:     15 ms (16%)
 ```
 
-### GPU (Single A100)
+### Current "GPU" Build (kernels not used)
 ```
-Time per step: ~6.5 ms  (14.6x faster!)
-  ├─ Operators:  2.5 ms (38%)
-  ├─ FFT:        3.5 ms (54%)
+Time per step: ~95 ms  (no speedup)
+  ├─ Operators:  45 ms (47%) [still CPU]
+  ├─ FFT:        30 ms (32%) [GPU via existing code]
+  └─ Other:      20 ms (21%)
+```
+
+### Potential After Integration
+```
+Time per step: ~6.5 ms  (14.6x faster - FUTURE)
+  ├─ Operators:  2.5 ms (38%) [GPU kernels]
+  ├─ FFT:        3.5 ms (54%) [GPU]
   └─ Other:      0.5 ms (8%)
 ```
 

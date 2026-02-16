@@ -1,20 +1,53 @@
-# GPU Implementation: Complete Technical Documentation
+# GPU Implementation: Technical Documentation (Infrastructure Only)
 
 ## Executive Summary
 
-This document describes the comprehensive GPU implementation of the incompressible Navier-Stokes solver in IBLGF-AMR. Unlike partial GPU accelerations that only offload FFTs, this implementation executes **all major computational operations** on GPUs, achieving 10-15x speedup over CPU-only execution.
+This document describes the GPU CUDA kernel infrastructure created for the incompressible Navier-Stokes solver in IBLGF-AMR. 
+
+⚠️ **Important**: These kernels are **not yet integrated** into the time stepping workflow. The IF-HERK time integrator still uses CPU-based xtensor operations. This is infrastructure work that requires DataField refactoring before the kernels can be used.
+
+## Current Status
+
+**Implemented**:
+- ✅ GPU kernels for differential operators (gradient, divergence, curl, Laplacian)
+- ✅ GPU kernels for field operations (AXPY, copy, clean, multiply)
+- ✅ GPU kernels for nonlinear advection terms
+- ✅ Build system integration (`USE_GPU` CMake flag)
+- ✅ Test infrastructure (`ns_amr_lgf_gpu.cu`)
+
+**Not Implemented**:
+- ❌ DataField class GPU memory support
+- ❌ Time stepping integration (kernels not called)
+- ❌ GPU-resident field data during time integration
+- ❌ Dispatch from `add<>`, `copy<>`, `clean<>` to GPU kernels
 
 ## Architecture Overview
 
 ### Design Philosophy
 
-**Goal**: Minimize CPU-GPU data movement while maintaining algorithmic fidelity with CPU version.
+**Goal**: Create reusable GPU kernel infrastructure for future integration.
 
-**Strategy**:
-1. Keep all field data on GPU throughout time integration
-2. Use compile-time polymorphism to switch CPU/GPU paths
-3. Custom CUDA kernels for differential operators
-4. Batch operations to amortize kernel launch overhead
+**Current Reality**:
+1. GPU kernels exist but are standalone functions
+2. Time stepping still uses CPU xtensor operations
+3. DataField class has no GPU memory support
+4. Integration requires architectural refactoring
+
+**What's Needed for Integration**:
+```cpp
+// Current CPU path in ifherk.hpp (lines 1887-1891)
+it->data_r(To::tag(), field_idx).linalg().get()->cube_noalias_view() += 
+    it->data_r(From::tag(), field_idx).linalg_data() * scale;
+
+// What's needed:
+#ifdef IBLGF_COMPILE_CUDA
+    if (data_on_gpu) {
+        operators::gpu::axpy(src_device_ptr, dest_device_ptr, 
+                            scale, 1.0, n_elements, stream);
+    } else
+#endif
+    { /* CPU path */ }
+```
 
 ### Compilation Model
 

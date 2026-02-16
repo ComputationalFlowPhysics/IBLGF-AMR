@@ -2,7 +2,9 @@
 
 ## What Was Implemented
 
-This PR adds a **comprehensive GPU implementation** of the incompressible Navier-Stokes solver that executes entirely on GPUs, going far beyond just FFT acceleration.
+This PR adds **GPU CUDA kernels** for differential operators and field operations as infrastructure for future GPU acceleration. 
+
+⚠️ **Important Limitation**: These kernels are **not yet integrated** into the time stepping workflow. The IF-HERK time integrator still uses CPU-based operations.
 
 ## New Components
 
@@ -37,10 +39,10 @@ Implemented as custom CUDA kernel with proper averaging.
 
 ### 4. Integration with Existing GPU FFT
 
-The new operators integrate seamlessly with existing `Convolution_GPU`:
+The kernels can potentially integrate with existing `Convolution_GPU`:
 - FFTs already on GPU (cuFFT)
-- Now **all** solver operations stay on GPU
-- Minimal CPU-GPU transfers (only for MPI/I/O)
+- GPU kernels ready but not yet called
+- Requires DataField refactor to connect them
 
 ### 5. Test Infrastructure
 
@@ -81,7 +83,7 @@ Same high-level code, different execution paths.
 
 ### Performance Characteristics
 
-**Expected Speedup**: 10-15x over CPU for large grids (256³+)
+**Expected Speedup**: Currently minimal, as kernels are not used during time stepping. Once integrated, expect 10-15x for large grids (256³+).
 
 **Bottlenecks**:
 - Memory bandwidth (differential operators): ~60%
@@ -146,7 +148,26 @@ GPU solver validated against CPU reference by comparing:
 
 ## Limitations and Future Work
 
-### Current Limitations
+### Critical Limitation
+
+⚠️ **GPU kernels are not called by the time integrator**. The IF-HERK time stepping code (`include/iblgf/solver/time_integration/ifherk.hpp`) still uses CPU-based xtensor operations:
+
+```cpp
+// Line 1887-1891: CPU operation
+it->data_r(To::tag(), field_idx).linalg().get()->cube_noalias_view() += 
+    it->data_r(From::tag(), field_idx).linalg_data() * scale;
+```
+
+To use GPU kernels, this needs to become:
+```cpp
+#ifdef IBLGF_COMPILE_CUDA
+    operators::gpu::axpy(src_gpu_ptr, dest_gpu_ptr, scale, 1.0, n_elements, stream);
+#else
+    // CPU path
+#endif
+```
+
+### Other Limitations
 
 1. **AMR**: Batching efficiency varies across refinement levels
 2. **MPI**: Halo exchange still via CPU (no CUDA-aware MPI yet)

@@ -43,6 +43,10 @@ Be sure to install all libraries with mpi support.
 * [xtl](https://github.com/xtensor-stack/xtl)
 * [xsimd](https://github.com/xtensor-stack/xsimd)
 
+##### Optional GPU support:
+* [CUDA Toolkit](https://developer.nvidia.com/cuda-toolkit) (11.0 or higher)
+* NVIDIA GPU with compute capability 3.5 or higher
+
 ##### Notes to install Boost:
 
     $ ./bootstrap.sh --prefix=/opt/boost
@@ -61,7 +65,7 @@ Then
 
 For convenience, this repository provides a helper script docker_iblgf.sh that
 launches the project inside the prebuilt Docker image used by the lab
-(ccardina/my-app:cpu) and adds a lightweight Python environment on top.
+(ccardina/my-app:cpu or ccardina/my-app:gpu) and adds a lightweight Python environment on top.
 
 The script automatically:
 * pulls the base Docker image if needed,
@@ -76,6 +80,12 @@ From the repository root:
 
 This launches an interactive shell inside the Docker container with the
 repository mounted at /workspace2.
+
+For GPU support:
+
+    $ ./docker_iblgf.sh -g
+
+This uses the GPU Docker image and provides access to NVIDIA GPUs.
 
 Once inside Docker, you can run the usual workflow.
 
@@ -195,6 +205,20 @@ Within the parent directory do the following steps:
     $ cd build
     $ ccmake ..  (adjust system depended paths to external dependencies if not detected automatically)
     $ make   (alternatively $ make -j<N> )
+
+#### Building with GPU support
+
+To enable GPU acceleration via CUDA:
+
+    $ mkdir build
+    $ cd build
+    $ cmake -DUSE_GPU=ON ..
+    $ make -j<N>
+
+This enables GPU-accelerated convolution operations and FFTs using cuFFT.
+
+The GPU-enabled Navier-Stokes solver is available in `tests/ns_amr_lgf_gpu/`.
+See that directory's README for specific usage instructions.
 
 ### Verify installation and running the tests
 

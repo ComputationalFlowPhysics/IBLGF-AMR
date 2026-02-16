@@ -25,6 +25,10 @@
 #include <iblgf/domain/dataFields/blockDescriptor.hpp>
 #include <iblgf/domain/dataFields/view.hpp>
 
+#ifdef IBLGF_COMPILE_CUDA
+#include <cuda_runtime.h>
+#endif
+
 #include <boost/preprocessor/tuple/size.hpp>
 #include <boost/preprocessor/tuple/elem.hpp>
 #include <boost/preprocessor/repetition/enum.hpp>
@@ -402,6 +406,66 @@ class DataField : public BlockDescriptor<int, Dim>
     auto domain_view() noexcept { return view(*this); }
     auto real_domain_view() noexcept { return view(real_block_); }
 
+  public: // GPU memory management
+#ifdef IBLGF_COMPILE_CUDA
+    /** @brief Allocate GPU memory if not already allocated */
+    void allocate_gpu()
+    {
+        if (!data_gpu_) {
+            size_t bytes = data_.size() * sizeof(data_type);
+            cudaMalloc(&data_gpu_, bytes);
+            gpu_allocated_ = true;
+        }
+    }
+
+    /** @brief Copy data from CPU to GPU */
+    void to_gpu()
+    {
+        if (!gpu_allocated_) allocate_gpu();
+        size_t bytes = data_.size() * sizeof(data_type);
+        cudaMemcpy(data_gpu_, data_.data(), bytes, cudaMemcpyHostToDevice);
+        gpu_dirty_ = false;
+        cpu_dirty_ = true;
+    }
+
+    /** @brief Copy data from GPU to CPU */
+    void to_cpu()
+    {
+        if (gpu_allocated_ && gpu_dirty_) {
+            size_t bytes = data_.size() * sizeof(data_type);
+            cudaMemcpy(data_.data(), data_gpu_, bytes, cudaMemcpyDeviceToHost);
+            cpu_dirty_ = false;
+        }
+    }
+
+    /** @brief Get GPU device pointer */
+    data_type* gpu_data() { return data_gpu_; }
+    const data_type* gpu_data() const { return data_gpu_; }
+
+    /** @brief Check if GPU memory is allocated */
+    bool has_gpu_memory() const { return gpu_allocated_; }
+
+    /** @brief Mark GPU data as dirty (modified) */
+    void mark_gpu_dirty() { gpu_dirty_ = true; cpu_dirty_ = false; }
+
+    /** @brief Free GPU memory */
+    void free_gpu()
+    {
+        if (gpu_allocated_ && data_gpu_) {
+            cudaFree(data_gpu_);
+            data_gpu_ = nullptr;
+            gpu_allocated_ = false;
+            gpu_dirty_ = false;
+        }
+    }
+
+    /** @brief Destructor to clean up GPU memory */
+    ~DataField()
+    {
+        free_gpu();
+    }
+#endif
+
   protected:                                //protected memebers:
     std::vector<data_type> data_;           ///< actual data
     buffer_d_t lowBuffer_ = buffer_d_t(0);  ///< Buffer in negative direction
@@ -410,6 +474,13 @@ class DataField : public BlockDescriptor<int, Dim>
 
     /** @brief Linear algebra wrapper for the actual data */
     std::unique_ptr<linalg::Cube_t> cube_;
+
+#ifdef IBLGF_COMPILE_CUDA
+    data_type* data_gpu_ = nullptr;         ///< GPU device memory
+    bool gpu_allocated_ = false;            ///< Track if GPU memory is allocated
+    bool gpu_dirty_ = false;                ///< Track if GPU data is modified
+    bool cpu_dirty_ = true;                 ///< Track if CPU data is modified
+#endif
 };
 
 /****************************************************************************/

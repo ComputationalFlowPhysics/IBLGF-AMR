@@ -29,6 +29,11 @@
 #include <iblgf/operators/operators.hpp>
 #include <iblgf/utilities/misc_math_functions.hpp>
 
+#ifdef IBLGF_COMPILE_CUDA
+#include <iblgf/operators/operators_gpu.hpp>
+#include <cuda_runtime.h>
+#endif
+
 namespace iblgf
 {
 namespace solver
@@ -1307,6 +1312,66 @@ class Ifherk
     template <typename F>
     void clean(bool non_leaf_only=false, int clean_width=1) noexcept
     {
+#ifdef IBLGF_COMPILE_CUDA
+        // GPU path
+        for (auto it = domain_->begin(); it != domain_->end(); ++it)
+        {
+            if (!it->has_data()) continue;
+            if (!it->data().is_allocated()) continue;
+
+            for (std::size_t field_idx = 0; field_idx < F::nFields(); ++field_idx)
+            {
+                auto& field = it->data_r(F::tag(), field_idx);
+
+                if (non_leaf_only && it->is_leaf() && it->locally_owned())
+                {
+                    // Selective cleaning of buffer zones - use CPU for now
+                    field.to_cpu();
+                    auto& lin_data = field.linalg_data();
+                    
+                    int N = it->data().descriptor().extent()[0];
+                    if(domain_->dimension() == 3) {
+                        view(lin_data, xt::all(), xt::all(),
+                            xt::range(0, clean_width)) *= 0.0;
+                        view(lin_data, xt::all(), xt::range(0, clean_width),
+                            xt::all()) *= 0.0;
+                        view(lin_data, xt::range(0, clean_width), xt::all(),
+                            xt::all()) *= 0.0;
+                        view(lin_data, xt::range(N + 2 - clean_width, N + 3),
+                            xt::all(), xt::all()) *= 0.0;
+                        view(lin_data, xt::all(),
+                            xt::range(N + 2 - clean_width, N + 3), xt::all()) *=
+                            0.0;
+                        view(lin_data, xt::all(), xt::all(),
+                            xt::range(N + 2 - clean_width, N + 3)) *= 0.0;
+                    }
+                    else {
+                        view(lin_data, xt::all(), xt::range(0, clean_width)) *= 0.0;
+                        view(lin_data, xt::range(0, clean_width), xt::all()) *= 0.0;
+                        view(lin_data, xt::range(N + 2 - clean_width, N + 3),xt::all()) *= 0.0;
+                        view(lin_data, xt::all(),xt::range(N + 2 - clean_width, N + 3)) *=0.0;
+                    }
+                    field.to_gpu();  // Sync back to GPU
+                }
+                else
+                {
+                    // Clean entire field on GPU
+                    if (!field.has_gpu_memory()) {
+                        field.allocate_gpu();
+                    }
+                    
+                    size_t n_elements = field.data().size();
+                    operators::gpu::clean(
+                        field.gpu_data(),
+                        n_elements,
+                        0);  // stream
+                    
+                    field.mark_gpu_dirty();
+                }
+            }
+        }
+#else
+        // CPU path
         for (auto it = domain_->begin(); it != domain_->end(); ++it)
         {
             if (!it->has_data()) continue;
@@ -1345,6 +1410,11 @@ class Ifherk
                 {
                     //TODO whether to clean base_level correction?
                     std::fill(lin_data.begin(), lin_data.end(), 0.0);
+                }
+            }
+        }
+#endif
+    }
                 }
             }
         }
@@ -1878,6 +1948,43 @@ private:
     {
         static_assert(From::nFields() == To::nFields(),
             "number of fields doesn't match when add");
+        
+#ifdef IBLGF_COMPILE_CUDA
+        // GPU path
+        for (auto it = domain_->begin(); it != domain_->end(); ++it)
+        {
+            if (!it->locally_owned() || !it->has_data()) continue;
+            for (std::size_t field_idx = 0; field_idx < From::nFields();
+                 ++field_idx)
+            {
+                auto& from_field = it->data_r(From::tag(), field_idx);
+                auto& to_field = it->data_r(To::tag(), field_idx);
+                
+                // Ensure GPU memory is allocated
+                if (!to_field.has_gpu_memory()) {
+                    to_field.allocate_gpu();
+                    to_field.to_gpu();
+                }
+                if (!from_field.has_gpu_memory()) {
+                    from_field.allocate_gpu();
+                    from_field.to_gpu();
+                }
+                
+                // Call GPU AXPY: to = scale * from + 1.0 * to
+                size_t n_elements = to_field.data().size();
+                operators::gpu::axpy(
+                    from_field.gpu_data(),  // src
+                    to_field.gpu_data(),    // dest
+                    scale,                  // alpha
+                    1.0,                    // beta
+                    n_elements,
+                    0);                     // stream (default stream)
+                
+                to_field.mark_gpu_dirty();
+            }
+        }
+#else
+        // CPU path
         for (auto it = domain_->begin(); it != domain_->end(); ++it)
         {
             if (!it->locally_owned() || !it->has_data()) continue;
@@ -1891,6 +1998,7 @@ private:
                     it->data_r(From::tag(), field_idx).linalg_data() * scale;
             }
         }
+#endif
     }
 
     template<typename Field>
@@ -1946,6 +2054,40 @@ private:
         static_assert(From::nFields() == To::nFields(),
             "number of fields doesn't match when copy");
 
+#ifdef IBLGF_COMPILE_CUDA
+        // GPU path
+        for (auto it = domain_->begin(); it != domain_->end(); ++it)
+        {
+            if (!it->locally_owned() || !it->has_data()) continue;
+            for (std::size_t field_idx = 0; field_idx < From::nFields();
+                 ++field_idx)
+            {
+                auto& from_field = it->data_r(From::tag(), field_idx);
+                auto& to_field = it->data_r(To::tag(), field_idx);
+                
+                // Ensure GPU memory is allocated
+                if (!to_field.has_gpu_memory()) {
+                    to_field.allocate_gpu();
+                }
+                if (!from_field.has_gpu_memory()) {
+                    from_field.allocate_gpu();
+                    from_field.to_gpu();
+                }
+                
+                // Call GPU copy_scale: to = scale * from
+                size_t n_elements = to_field.data().size();
+                operators::gpu::copy_scale(
+                    from_field.gpu_data(),  // src
+                    to_field.gpu_data(),    // dest
+                    scale,                  // alpha
+                    n_elements,
+                    0);                     // stream
+                
+                to_field.mark_gpu_dirty();
+            }
+        }
+#else
+        // CPU path
         for (auto it = domain_->begin(); it != domain_->end(); ++it)
         {
             if (!it->locally_owned() || !it->has_data()) continue;
@@ -1956,6 +2098,7 @@ private:
                     n(To::tag(), field_idx) = n(From::tag(), field_idx) * scale;
             }
         }
+#endif
     }
 
   private:

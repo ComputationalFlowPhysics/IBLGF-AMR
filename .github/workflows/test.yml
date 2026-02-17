@@ -1,0 +1,49 @@
+name: Testing
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  building:
+    name: Build Code
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Clone
+        uses: actions/checkout@v4
+        
+      - name: Prepare Scripts
+      # Ensures scripts are executable even if git permissions are wonky
+        run: chmod +x *.sh
+        
+      - name: Diagnostic Check
+        run: |
+          echo "--- Current Directory ---"
+          pwd
+          echo "--- List All Files ---"
+          ls -R
+          echo "--- Checking specifically for the file ---"
+          find . -maxdepth 2 -name "*iblgf*"
+      
+      - name: Docker Env + build + test
+        run: ./docker_iblgf.sh -c 4 -- bash -lc './iblgf.sh test'
+        env:
+          OMPI_ALLOW_RUN_AS_ROOT: 1
+          OMPI_MCA_btl_vader_single_copy_mechanism: none
+          IBLGF_MPI_NP: 4
+
+      # - name: Docker Env
+      #   run: bash docker_iblgf.sh
+
+      # - name: build
+      #   run: bash iblgf.sh build
+
+      # - name: test
+      #   run: bash iblgf.sh test
+        
+
+      
+  

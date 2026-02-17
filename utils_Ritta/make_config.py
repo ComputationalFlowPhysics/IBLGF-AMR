@@ -41,6 +41,12 @@ GEOMETRY_CHOICES = [
     "custom",
 ]
 
+PROMPT_PRIORITY = [
+    "Vort_type",
+    "single_ring",
+    "perturbation",
+]
+
 @dataclass(frozen=True)
 class ParamMeta:
     desc: str
@@ -112,17 +118,28 @@ PARAMS: dict[str, ParamMeta] = {
     "restart_write_frequency": ParamMeta(
         desc="Number of base-level time steps between writing checkpoint (restart) files",
         type_hint="int",
-        choices=GEOMETRY_CHOICES,
     ),
     "write_restart": ParamMeta(
         desc="Whether to write checkpoint (restart) files.",
         type_hint="bool",
-        choices=GEOMETRY_CHOICES,
     ),
-    "write_restart": ParamMeta(
+    "use_restart": ParamMeta(
         desc="Whether to use checkpoint (restart) files.",
         type_hint="bool",
-        choices=GEOMETRY_CHOICES,
+    ),
+    "Vort_type": ParamMeta(
+        desc=(
+            "Selects the initial vortex velocity field. "
+            "0 = no vortex (u = 0 everywhere), "
+            "1 = Taylor vortex, "
+            "2 = Oseen vortex."
+        ),
+        type_hint="int (0, 1, or 2)",
+        choices=("0", "1", "2"),
+        validator=lambda v: (
+            isinstance(v, int) and v in (0, 1, 2),
+            "must be 0 (none), 1 (Taylor), or 2 (Oseen)",
+        ),
     ),
 }
 
@@ -262,6 +279,37 @@ def format_value(v: Value) -> str:
         return str(v)
     # string
     return str(v)
+
+def prompt_dim(default: int = 3) -> int:
+    """
+    Ask whether config is for 2D or 3D.
+    Returns 2 or 3.
+    """
+    while True:
+        ans = input(f"Build config for 2D or 3D? [default: {default}]: ").strip().lower()
+        if not ans:
+            return default
+        if ans in ("2", "2d", "2-d", "2dim", "2dims"):
+            return 2
+        if ans in ("3", "3d", "3-d", "3dim", "3dims"):
+            return 3
+        print("Please enter '2D' or '3D' (or just 2 / 3).")
+
+
+def normalize_tuple_dim(v: Any, dim: int, pad: int = 0) -> tuple[int, ...]:
+    """
+    Convert values into an int tuple of length `dim`.
+    - If v is a tuple/list: truncate or pad with `pad`.
+    - If v is scalar: expand to (v, v) or (v, v, v).
+    """
+    if isinstance(v, (tuple, list)):
+        t = tuple(int(x) for x in v)
+        if len(t) >= dim:
+            return t[:dim]
+        return t + (pad,) * (dim - len(t))
+    # scalar
+    x = int(v)
+    return (x,) * dim
 
 
 @dataclass
@@ -443,16 +491,7 @@ def parse_config(text: str) -> Block:
 # Constraint enforcement
 # ----------------------------
 
-def coerce_to_3tuple(v: Value) -> Tuple[int, int, int]:
-    if isinstance(v, tuple) and len(v) == 3:
-        return (int(v[0]), int(v[1]), int(v[2]))
-    if isinstance(v, (int, float)):
-        x = int(v)
-        return (x, x, x)
-    raise ValueError(f"Expected a 3-tuple or scalar, got: {v!r}")
-
-
-def enforce_domain_block_constraint(sim: Block) -> list[str]:
+def enforce_domain_block_constraint(sim: Block, dim: int) -> list[str]:
     """
       Let B = domain.block_extent (scalar).
       Per dimension d:
@@ -555,38 +594,27 @@ def enforce_domain_block_constraint(sim: Block) -> list[str]:
 
         return sgn * chosen * B
 
-    def as_int_tuple(v) -> tuple[int, ...]:
-        if isinstance(v, tuple):
-            return tuple(int(x) for x in v)
-        # fallback: assume scalar -> expand to 3 (matches your old behavior)
-        return (int(v),) * 3
-
     allow_zero_base = True
 
-    bd_base_t   = as_int_tuple(bd_base)
-    bd_extent_t = as_int_tuple(bd_extent)
-    dim = len(bd_extent_t)
+    bd_base_t   = normalize_tuple_dim(bd_base, dim, pad=0)
+    bd_extent_t = normalize_tuple_dim(bd_extent, dim, pad=0)
 
     # ---- read / init block.base ----
     try:
-        block_base_t = as_int_tuple(sim.get_path("domain.block.base"))
+        block_base_t = normalize_tuple_dim(sim.get_path("domain.block.base"), dim, pad=0)
     except KeyError:
         block_base_t = bd_base_t
         sim.set_path("domain.block.base", block_base_t)
         msgs.append(f"domain.block.base missing; initialized to {block_base_t}.")
-
-    # ---- dimensionality normalization (match bd_extent dim) ----
-    if len(bd_base_t) != dim:
-        old = bd_base_t
-        bd_base_t = (old + (0,) * (dim - len(old)))[:dim]
-        sim.set_path("domain.bd_base", bd_base_t)
-        msgs.append(f"Adjusted domain.bd_base dimensionality {old} -> {bd_base_t} to match dim={dim}.")
-
-    if len(block_base_t) != dim:
-        old = block_base_t
-        block_base_t = (old + (0,) * (dim - len(old)))[:dim]
-        sim.set_path("domain.block.base", block_base_t)
-        msgs.append(f"Adjusted domain.block.base dimensionality {old} -> {block_base_t} to match dim={dim}.")
+    
+    try:
+        old = normalize_tuple_dim(sim.get_path("domain.block.extent"), dim, pad=0)
+        if old != bd_extent_t:
+            sim.set_path("domain.block.extent", bd_extent_t)
+            msgs.append(f"Synced domain.block.extent {old} -> {bd_extent_t} (to match domain.bd_extent).")
+    except KeyError:
+        sim.set_path("domain.block.extent", bd_extent_t)
+        msgs.append(f"domain.block.extent missing; set to {bd_extent_t} (to match domain.bd_extent).")
 
     # ---- (1) enforce bd_extent/B is pow2 blocks ----
     new_extent = list(bd_extent_t)
@@ -659,18 +687,6 @@ def enforce_domain_block_constraint(sim: Block) -> list[str]:
         block_base_t = tuple(new_block_base)
         sim.set_path("domain.block.base", block_base_t)
 
-    # ---- (5) sync block.extent to bd_extent ----
-    # Your old code only did it if the key existed; but the previous function sets it even if missing.
-    # We'll mirror that "helpful" behavior.
-    try:
-        old = as_int_tuple(sim.get_path("domain.block.extent"))
-        if old != bd_extent_t:
-            sim.set_path("domain.block.extent", bd_extent_t)
-            msgs.append(f"Synced domain.block.extent {old} -> {bd_extent_t} (to match domain.bd_extent).")
-    except KeyError:
-        sim.set_path("domain.block.extent", bd_extent_t)
-        msgs.append(f"domain.block.extent missing; set to {bd_extent_t} (to match domain.bd_extent).")
-
     return msgs
 
 
@@ -678,7 +694,7 @@ def enforce_domain_block_constraint(sim: Block) -> list[str]:
 # Interactive prompting
 # ----------------------------
 
-DEFAULT_TEMPLATE = """
+DEFAULT_TEMPLATE_3D = """
 simulation_parameters
 {
     nLevels=0;
@@ -741,6 +757,60 @@ simulation_parameters
 }
 """.strip() + "\n"
 
+DEFAULT_TEMPLATE_2D = """
+simulation_parameters
+{
+    nLevels=0;
+    Ux=0.0;
+    // Time Marching
+    source_max=13.0;
+    nBaseLevelTimeSteps=4;
+    cfl = 0.35;
+    cfl_max = 1000;
+    Re = 1000.0;
+    refinement_factor=0.125;
+    R=0.5;
+    DistanceOfVortexRings=0.25;
+    adapt_frequency=10;
+    output_frequency=4;
+    base_level_threshold=1e-4;
+    hard_max_refinement=true;
+
+    single_ring=true;
+    perturbation=false;
+    vDelta=0.2;
+    Vort_type=1;
+    fat_ring=true;
+
+    geometry=none;
+    hdf5_ref_name=null;
+
+    output { directory=output; }
+
+    restart_write_frequency=20;
+    write_restart=true;
+    use_restart=true;
+
+    restart { load_directory=restart; save_directory=restart; }
+
+    domain
+    {
+        bd_base = (-224,-224);
+        bd_extent = (448, 448);
+
+        dx_base=0.06125;
+        block_extent=14;
+
+        block
+        {
+            base = (-224,-224);
+            extent = (448, 448);
+        }
+    }
+
+    EXP_LInf=1e-3;
+}
+""".strip() + "\n"
 
 def prompt_yes_no(msg: str, default: bool = True) -> bool:
     d = "Y/n" if default else "y/N"
@@ -816,15 +886,85 @@ def prompt_geometry(default: str) -> str:
 
     return ans_norm
 
-def build_from_scratch() -> Block:
+
+def should_prompt(path: str, sim: Block) -> bool:
+    """
+    Return False if we should skip prompting for `path` based on current sim values.
+    Only used in build-from-scratch prompting.
+    """
+
+    # Hard skips you already have elsewhere
+    if path == "R":
+        return False
+    if path in ("restart.load_directory", "restart.save_directory"):
+        return False
+
+    # ---- read control flags safely ----
+    def get_bool(p: str, default: bool) -> bool:
+        try:
+            v = sim.get_path(p)
+            return bool(v) if isinstance(v, bool) else default
+        except KeyError:
+            return default
+
+    def get_int(p: str, default: int) -> int:
+        try:
+            v = sim.get_path(p)
+            return int(v)
+        except Exception:
+            return default
+
+    single_ring = get_bool("single_ring", True)
+    perturb = get_bool("perturbation", False)
+    vort_type = get_int("Vort_type", 1)
+
+    # ---- gating rules ----
+
+    # No vortex -> skip vortex-only knobs
+    if vort_type == 0:
+        if path in {
+            "single_ring",
+            "DistanceOfVortexRings",
+            "fat_ring",
+            "perturbation",
+            "vDelta",
+            "R",
+        }:
+            return False
+
+    # Single ring -> no distance between rings
+    if single_ring and path == "DistanceOfVortexRings":
+        return False
+
+    # No perturbation -> no perturbation amplitude
+    if (not perturb) and path == "vDelta":
+        return False
+
+    return True
+
+def build_from_scratch(dim: int) -> Block:
     # Use the template as the starting point, then prompt over all scalar leaves.
-    root = parse_config(DEFAULT_TEMPLATE)
+    template = DEFAULT_TEMPLATE_2D if dim == 2 else DEFAULT_TEMPLATE_3D
+    root = parse_config(template)
     sim: Block = root.items["simulation_parameters"]
 
     print("\nCreating from scratch. Press Enter to keep defaults.\n")
 
+    paths = sim.list_paths()
+
+    for p in PROMPT_PRIORITY:
+        if p not in paths:
+            continue
+        if not should_prompt(p, sim):
+            continue
+        cur = sim.get_path(p)
+        sim.set_path(p, prompt_value(p, f"Set {p}", cur))
+
     # Prompt all scalar paths in stable order
-    for path in sim.list_paths():
+    for path in paths:
+        if path in PROMPT_PRIORITY:
+            continue
+
         if path == "R":
             continue  # R is fixed to 0.5, never prompt
         if path == "restart.load_directory" or path == "restart.save_directory":
@@ -837,6 +977,9 @@ def build_from_scratch() -> Block:
             new_geom = prompt_geometry(cur)
             sim.set_path("geometry", new_geom)
             continue
+        # skip params based on values of other params
+        if not should_prompt(path, sim):
+            continue
 
         cur = sim.get_path(path)
         # skip block "domain.block.extent/base"? No, include them (but they'll get synced)
@@ -847,14 +990,14 @@ def build_from_scratch() -> Block:
         # We'll enforce after.
 
     # Enforce constraint
-    msgs = enforce_domain_block_constraint(sim)
+    msgs = enforce_domain_block_constraint(sim, dim)
     for m in msgs:
         print("NOTE:", m)
 
     return root
 
 
-def load_based_on_existing() -> Block:
+def load_based_on_existing(dim: int) -> Block:
     print("\nTip: Use TAB to auto-complete file paths.\n")
 
     while True:
@@ -870,9 +1013,21 @@ def load_based_on_existing() -> Block:
                 text = f.read()
             try:
                 root = parse_config(text)
+
                 if "simulation_parameters" not in root.items:
                     print("That file parsed, but didn't contain a 'simulation_parameters { ... }' block.")
                     continue
+                
+                sim: Block = root.items["simulation_parameters"]
+
+                # Normalize tuple dimensions to requested dim (best-effort)
+                for p in ("domain.bd_base", "domain.bd_extent", "domain.block.base", "domain.block.extent"):
+                    try:
+                        cur = sim.get_path(p)
+                        sim.set_path(p, normalize_tuple_dim(cur, dim, pad=0))
+                    except KeyError:
+                        pass
+
                 return root
             except Exception as e:
                 print(f"Failed to parse config: {e}")
@@ -880,7 +1035,7 @@ def load_based_on_existing() -> Block:
             print("File not found. Try again.")
 
 
-def edit_loop(root: Block) -> None:
+def edit_loop(root: Block, dim: int) -> None:
     sim: Block = root.items["simulation_parameters"]
     print("\nEditing mode. Type parameter names like:")
     print("  cfl")
@@ -922,7 +1077,7 @@ def edit_loop(root: Block) -> None:
 
         # If domain/block_extent changed OR bd_extent changed, enforce constraint
         if key in ("domain.block_extent", "domain.bd_extent"):
-            msgs = enforce_domain_block_constraint(sim)
+            msgs = enforce_domain_block_constraint(sim, dim)
             if msgs:
                 for m in msgs:
                     print("NOTE:", m)
@@ -985,19 +1140,22 @@ def write_output(root: Block) -> None:
 def main() -> int:
     print("=== Config Builder ===\n")
 
+    dim = prompt_dim(default=3)
+    print(f"NOTE: Using {dim}D mode.\n")
+
     from_scratch = prompt_yes_no("Create a new config FROM SCRATCH?", default=False)
 
     if from_scratch:
-        root = build_from_scratch()
+        root = build_from_scratch(dim)
     else:
-        root = load_based_on_existing()
+        root = load_based_on_existing(dim)
         sim: Block = root.items["simulation_parameters"]
         # Enforce once on load too (in case base file violates)
-        msgs = enforce_domain_block_constraint(sim)
+        msgs = enforce_domain_block_constraint(sim, dim)
         for m in msgs:
             print("NOTE:", m)
 
-        edit_loop(root)
+        edit_loop(root, dim)
 
     write_output(root)
     return 0

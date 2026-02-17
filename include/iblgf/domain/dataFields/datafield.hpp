@@ -225,6 +225,21 @@ class DataField : public BlockDescriptor<int, Dim>
             cudaMemcpyHostToDevice, stream);
         device_valid_ = true;
     }
+
+    void update_host(cudaStream_t stream = nullptr) noexcept
+    {
+        if (!device_data_ || data_.empty()) return;
+        cudaMemcpyAsync(data_.data(), device_data_, data_.size() * sizeof(data_type),
+            cudaMemcpyDeviceToHost, stream);
+    }
+        else
+        {
+            // Fallback to direct transfer if pinned allocation fails
+            cudaMemcpyAsync(data_.data(), device_data_, bytes, cudaMemcpyDeviceToHost, stream);
+            if (stream) cudaStreamSynchronize(stream);
+            else cudaDeviceSynchronize();
+        }
+    }
 #endif
 
     inline data_type* get_ptr(const coordinate_t& _c) noexcept

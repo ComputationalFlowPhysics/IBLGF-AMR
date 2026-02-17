@@ -40,6 +40,7 @@
 #ifdef IBLGF_COMPILE_CUDA   // NVCC device code
 #pragma message("Compiling for CUDA: using GPU complex vector")
 #include <iblgf/utilities/convolution_GPU.hpp>
+#include <cuda_runtime.h>
 #else               // CPU code
 #pragma message("Compiling for CPU: using CPU complex vector")
 
@@ -751,6 +752,10 @@ class Fmm
         else if (fmm_type == MASK_TYPE::IB2AMR)
             fmm_mask_idx_ = octant_t::fmm_mask_idx_gen(MASK_TYPE::IB2AMR, refinement_level);
 
+    #ifdef IBLGF_COMPILE_CUDA
+        conv_.set_defer_host_copy(true);
+    #endif
+
         if (_kernel->neighbor_only())
         {
             //pcout<<"Integrating factor for level: "<< level << std::endl;
@@ -764,6 +769,9 @@ class Fmm
             sort_bx_octants(domain, _kernel);
             fmm_Bx(domain_, _kernel, 1.0);
 
+#ifdef IBLGF_COMPILE_CUDA
+            sync_fmm_target_host(domain_);
+#endif
             fmm_add_equal<Target, fmm_t_type>(domain_, add_with_scale);
 
             return;
@@ -860,6 +868,9 @@ class Fmm
 
         //// Copy back
         //if (!non_leaf_as_source)
+    #ifdef IBLGF_COMPILE_CUDA
+        sync_fmm_target_host(domain_);
+    #endif
         fmm_add_equal<Target, fmm_t_type>(domain_, add_with_scale);
         //else
         //fmm_minus_equal<Target, fmm_t_type>(domain_);
@@ -1055,6 +1066,22 @@ class Fmm
             }
         }
     }
+
+#ifdef IBLGF_COMPILE_CUDA
+    void sync_fmm_target_host(domain_t* domain_)
+    {
+        for (auto it = domain_->begin(base_level_);
+             it != domain_->end(base_level_); ++it)
+        {
+            if (it->has_data() && it->locally_owned() &&
+                it->fmm_mask(fmm_mask_idx_, MASK_LIST::Mask_FMM_Target))
+            {
+                it->data_r(fmm_t).update_host();
+            }
+        }
+        cudaDeviceSynchronize();
+    }
+#endif
 
     template<class field>
     void fmm_init_zero(domain_t* domain_, int mask_id)

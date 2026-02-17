@@ -45,6 +45,14 @@ __global__ void scale_complex(
     size_t size,
     double alpha);
 
+__global__ void add_solution_device_kernel(
+    const float_type* src,
+    int src_nx, int src_ny, int src_nz,
+    float_type* dst,
+    int dst_nx, int dst_ny, int dst_nz,
+    int copy_nx, int copy_ny, int copy_nz,
+    int src_i0, int src_j0, int src_k0);
+
 
 class dfft_r2c_gpu
 {
@@ -520,7 +528,35 @@ class Convolution_GPU
 
         // Execute backward transform directly from device input
         fft_backward_.execute_device();
-        
+
+    #ifdef IBLGF_COMPILE_CUDA
+        // Accumulate directly on GPU into target field
+        _target.update_device(fft_backward_.stream());
+
+        const auto dst_ext = _target.real_block().extent();
+        const auto src_ext = padded_dims_next_pow_2_;
+        const int src_i0 = dims0_[0] - 1;
+        const int src_j0 = dims0_[1] - 1;
+        const int src_k0 = dims0_[2] - 1;
+
+        const size_t total = static_cast<size_t>(_extractor.extent()[0]) * _extractor.extent()[1] * _extractor.extent()[2];
+        int blockSize = 256;
+        int numBlocks = static_cast<int>((total + blockSize - 1) / blockSize);
+
+        add_solution_device_kernel<<<numBlocks, blockSize, 0, fft_backward_.stream()>>>(
+            fft_backward_.output_cu_ptr(),
+            src_ext[0], src_ext[1], src_ext[2],
+            _target.device_ptr(),
+            dst_ext[0], dst_ext[1], dst_ext[2],
+            _extractor.extent()[0], _extractor.extent()[1], _extractor.extent()[2],
+            src_i0, src_j0, src_k0);
+
+        if (!defer_host_copy_)
+        {
+            _target.update_host(fft_backward_.stream());
+            cudaStreamSynchronize(fft_backward_.stream());
+        }
+    #else
         // Copy result to host asynchronously
         fft_backward_.copy_output_to_host();
         
@@ -529,6 +565,7 @@ class Convolution_GPU
         
         // Now process results (data copy is complete)
         add_solution(_extractor, _target);
+    #endif
     }
 
     template<class Block, class Field>
@@ -569,6 +606,8 @@ class Convolution_GPU
     int current_batch_size_ = 0;
     int max_batch_size_ = 0;
 
+        void set_defer_host_copy(bool defer) noexcept { defer_host_copy_ = defer; }
+
   private:
     dims_t padded_dims_;
     dims_t padded_dims_next_pow_2_;
@@ -583,10 +622,11 @@ class Convolution_GPU
     unsigned int     padded_size_;
     complex_vector_t tmp_prod;
     
-    // Unified memory for LGF pointers and sizes (no HtoD transfer needed)
+    // Device memory for LGF pointers and sizes
     cufftDoubleComplex** d_f0_ptrs_;
     size_t*              d_f0_sizes_;
     int                  um_capacity_;
+    bool                 defer_host_copy_ = false;
 };
 } // namespace fft
 } // namespace iblgf

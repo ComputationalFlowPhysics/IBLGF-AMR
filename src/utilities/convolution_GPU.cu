@@ -18,52 +18,93 @@ namespace fft
 {
 // CUDA kernel for element-wise complex multiplication and addition (all on GPU)
 // Highly optimized for batched operation with coalesced memory access
-__global__ void
-prod_complex_add_ptr(const cuDoubleComplex* const* f0_ptrs, const cuDoubleComplex* output, 
-                     cuDoubleComplex* result, const size_t* f0_sizes, int batch_size, size_t output_size_per_batch)
-{
-    // Cache f0_sizes in shared memory to avoid repeated global memory reads
-    extern __shared__ size_t shared_f0_sizes[];
+// __global__ void
+// prod_complex_add_ptr(const cuDoubleComplex* const* f0_ptrs, const cuDoubleComplex* output, 
+//                      cuDoubleComplex* result, const size_t* f0_sizes, int batch_size, size_t output_size_per_batch)
+// {
+//     // Cache f0_sizes in shared memory to avoid repeated global memory reads
+//     extern __shared__ size_t shared_f0_sizes[];
     
-    // Cooperatively load f0_sizes into shared memory
-    for (int i = threadIdx.x; i < batch_size; i += blockDim.x)
-    {
-        shared_f0_sizes[i] = f0_sizes[i];
+//     // Cooperatively load f0_sizes into shared memory
+//     for (int i = threadIdx.x; i < batch_size; i += blockDim.x)
+//     {
+//         shared_f0_sizes[i] = f0_sizes[i];
+//     }
+//     __syncthreads();
+    
+//     // Grid-stride loop for better memory coalescing and load balancing
+//     size_t global_idx = blockIdx.x * blockDim.x + threadIdx.x;
+//     size_t stride = blockDim.x * gridDim.x;
+//     size_t total_elements = static_cast<size_t>(batch_size) * output_size_per_batch;
+    
+//     for (size_t linear_idx = global_idx; linear_idx < total_elements; linear_idx += stride)
+//     {
+//         // Decompose linear index into batch and element index
+//         // Using integer division and modulo
+//         int batch = linear_idx / output_size_per_batch;
+//         size_t idx = linear_idx % output_size_per_batch;
+        
+//         // Read f0_size from shared memory (much faster than global)
+//         size_t f0_size = shared_f0_sizes[batch];
+        
+//         if (idx < f0_size)
+//         {
+//             // Use __ldg for read-only data to leverage texture cache
+//             cuDoubleComplex f0_val = __ldg(&f0_ptrs[batch][idx]);
+//             cuDoubleComplex out_val = __ldg(&output[linear_idx]);
+            
+//             // Multiply and store result
+//             result[linear_idx] = cuCmul(f0_val, out_val);
+//         }
+//         else
+//         {
+//             // Zero out elements beyond f0_size for proper padding
+//             result[linear_idx] = make_cuDoubleComplex(0.0, 0.0);
+//         }
+//     }
+// }
+__global__ void prod_complex_optimized(
+    const cuDoubleComplex* const* __restrict__ f0_ptrs, 
+    const cuDoubleComplex* __restrict__ output, 
+    cuDoubleComplex* __restrict__ result, 
+    const size_t* __restrict__ f0_sizes, 
+    int batch_size, 
+    size_t output_size_per_batch) 
+{
+    // 1. Shared memory for both sizes AND base pointers
+    extern __shared__ char s_mem[];
+    size_t* s_f0_sizes = (size_t*)s_mem;
+    cuDoubleComplex** s_f0_ptrs = (cuDoubleComplex**)&s_f0_sizes[batch_size];
+
+    for (int i = threadIdx.x; i < batch_size; i += blockDim.x) {
+        s_f0_sizes[i] = f0_sizes[i];
+        s_f0_ptrs[i] = (cuDoubleComplex*)f0_ptrs[i];
     }
     __syncthreads();
-    
-    // Grid-stride loop for better memory coalescing and load balancing
-    size_t global_idx = blockIdx.x * blockDim.x + threadIdx.x;
+
+    size_t total_elements = (size_t)batch_size * output_size_per_batch;
     size_t stride = blockDim.x * gridDim.x;
-    size_t total_elements = static_cast<size_t>(batch_size) * output_size_per_batch;
-    
-    for (size_t linear_idx = global_idx; linear_idx < total_elements; linear_idx += stride)
+
+    for (size_t linear_idx = blockIdx.x * blockDim.x + threadIdx.x; 
+         linear_idx < total_elements; 
+         linear_idx += stride) 
     {
-        // Decompose linear index into batch and element index
-        // Using integer division and modulo
-        int batch = linear_idx / output_size_per_batch;
-        size_t idx = linear_idx % output_size_per_batch;
+        // 2. Faster index decomposition
+        int batch = linear_idx / output_size_per_batch; 
+        size_t idx = linear_idx - ((size_t)batch * output_size_per_batch);
         
-        // Read f0_size from shared memory (much faster than global)
-        size_t f0_size = shared_f0_sizes[batch];
+        cuDoubleComplex res = make_cuDoubleComplex(0.0, 0.0);
         
-        if (idx < f0_size)
-        {
-            // Use __ldg for read-only data to leverage texture cache
-            cuDoubleComplex f0_val = __ldg(&f0_ptrs[batch][idx]);
-            cuDoubleComplex out_val = __ldg(&output[linear_idx]);
-            
-            // Multiply and store result
-            result[linear_idx] = cuCmul(f0_val, out_val);
+        // 3. Direct shared memory access for the pointer and size
+        if (idx < s_f0_sizes[batch]) {
+            cuDoubleComplex f0_val = s_f0_ptrs[batch][idx];
+            cuDoubleComplex out_val = output[linear_idx];
+            res = cuCmul(f0_val, out_val);
         }
-        else
-        {
-            // Zero out elements beyond f0_size for proper padding
-            result[linear_idx] = make_cuDoubleComplex(0.0, 0.0);
-        }
+        
+        result[linear_idx] = res;
     }
 }
-
 __global__ void
 sum_batches(const cuDoubleComplex* input, cuDoubleComplex* output, int batch_size, size_t size)
 {
@@ -119,6 +160,25 @@ pack_field_device_kernel(const float_type* src, int src_nx, int src_ny, int src_
     size_t dst_idx = batch_offset + (static_cast<size_t>(k) * dst_ny + j) * dst_nx + i;
 
     dst[dst_idx] = src[src_idx];
+}
+
+__global__ void
+add_solution_device_kernel(const float_type* src, int src_nx, int src_ny, int src_nz,
+    float_type* dst, int dst_nx, int dst_ny, int dst_nz,
+    int copy_nx, int copy_ny, int copy_nz, int src_i0, int src_j0, int src_k0)
+{
+    size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+    size_t total = static_cast<size_t>(copy_nx) * copy_ny * copy_nz;
+    if (idx >= total) return;
+
+    int i = static_cast<int>(idx % copy_nx);
+    int j = static_cast<int>((idx / copy_nx) % copy_ny);
+    int k = static_cast<int>(idx / (static_cast<size_t>(copy_nx) * copy_ny));
+
+    size_t src_idx = (static_cast<size_t>(k + src_k0) * src_ny + (j + src_j0)) * src_nx + (i + src_i0);
+    size_t dst_idx = (static_cast<size_t>(k) * dst_ny + j) * dst_nx + i;
+
+    dst[dst_idx] += src[src_idx];
 }
 } // namespace fft
 } // namespace iblgf

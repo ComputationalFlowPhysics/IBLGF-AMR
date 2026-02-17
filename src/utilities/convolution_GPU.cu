@@ -101,6 +101,25 @@ scale_complex(cuDoubleComplex* data, size_t size, double alpha)
         data[idx] = make_cuDoubleComplex(alpha * cuCreal(v), alpha * cuCimag(v));
     }
 }
+
+__global__ void
+pack_field_device_kernel(const float_type* src, int src_nx, int src_ny, int src_nz,
+    float_type* dst, int dst_nx, int dst_ny, int dst_nz,
+    int copy_nx, int copy_ny, int copy_nz, size_t batch_offset)
+{
+    size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+    size_t total = static_cast<size_t>(copy_nx) * copy_ny * copy_nz;
+    if (idx >= total) return;
+
+    int i = static_cast<int>(idx % copy_nx);
+    int j = static_cast<int>((idx / copy_nx) % copy_ny);
+    int k = static_cast<int>(idx / (static_cast<size_t>(copy_nx) * copy_ny));
+
+    size_t src_idx = (static_cast<size_t>(k) * src_ny + j) * src_nx + i;
+    size_t dst_idx = batch_offset + (static_cast<size_t>(k) * dst_ny + j) * dst_nx + i;
+
+    dst[dst_idx] = src[src_idx];
+}
 } // namespace fft
 } // namespace iblgf
 
@@ -369,6 +388,10 @@ dfft_r2c_gpu_batch::dfft_r2c_gpu_batch(dims_3D _dims_padded, dims_3D _dims_non_z
 
     // Event used to order compute stream after transfer stream without host blocking
     cudaEventCreateWithFlags(&transfer_ready_event_, cudaEventDisableTiming);
+    // Event used to signal compute completion for safe buffer reuse
+    cudaEventCreateWithFlags(&batch_done_event_, cudaEventDisableTiming);
+    // Mark event complete initially so first batch doesn't wait
+    cudaEventRecord(batch_done_event_, stream_);
 }
 
 dfft_r2c_gpu_batch::~dfft_r2c_gpu_batch()
@@ -420,6 +443,12 @@ dfft_r2c_gpu_batch::~dfft_r2c_gpu_batch()
         if (err != cudaSuccess) std::cerr << "cudaEventDestroy(transfer_ready_event_) failed: " << cudaGetErrorString(err) << "\n";
         transfer_ready_event_ = nullptr;
     }
+    if (batch_done_event_)
+    {
+        cudaError_t err = cudaEventDestroy(batch_done_event_);
+        if (err != cudaSuccess) std::cerr << "cudaEventDestroy(batch_done_event_) failed: " << cudaGetErrorString(err) << "\n";
+        batch_done_event_ = nullptr;
+    }
 
     // Destroy CUDA streams if they exist
     if (stream_)
@@ -466,6 +495,32 @@ void dfft_r2c_gpu_batch::execute_ptr(int current_batch)
     // Execute batched FFT on compute stream
     cufftExecD2Z(plan, (cufftDoubleReal*)input_cu_, (cufftDoubleComplex*)output_cu_);
     // No sync needed - subsequent kernels launch on same stream with implicit ordering
+}
+
+void dfft_r2c_gpu_batch::copy_field_gpu_device(const float_type* src_device, dims_3D src_ext, dims_3D dims_v, int _batch_idx) noexcept
+{
+    const int dst_nx = dims_input_3D[0];
+    const int dst_ny = dims_input_3D[1];
+    const int dst_nz = dims_input_3D[2];
+
+    const size_t slot_size = static_cast<size_t>(dst_nx) * dst_ny * dst_nz;
+    const size_t batch_offset_elems = static_cast<size_t>(_batch_idx) * slot_size;
+
+    cudaStreamWaitEvent(transfer_stream_, batch_done_event_, 0);
+
+    const size_t total = static_cast<size_t>(dims_v[0]) * dims_v[1] * dims_v[2];
+    if (total == 0) return;
+
+    int blockSize = 256;
+    int numBlocks = static_cast<int>((total + blockSize - 1) / blockSize);
+
+    pack_field_device_kernel<<<numBlocks, blockSize, 0, transfer_stream_>>>(
+        src_device,
+        src_ext[0], src_ext[1], src_ext[2],
+        input_cu_,
+        dst_nx, dst_ny, dst_nz,
+        dims_v[0], dims_v[1], dims_v[2],
+        batch_offset_elems);
 }
 
 } //namespace fft

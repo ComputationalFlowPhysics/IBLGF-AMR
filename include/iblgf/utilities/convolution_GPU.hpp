@@ -140,6 +140,8 @@ class dfft_r2c_gpu_batch
     inline size_t input_size() const { return static_cast<size_t>(dims_input_3D[0]) * dims_input_3D[1] * dims_input_3D[2] * max_batch_size_; }
     inline auto& stream() { return stream_; }
     inline auto& transfer_stream() { return transfer_stream_; }
+    inline void wait_for_batch_done(cudaStream_t stream) { cudaStreamWaitEvent(stream, batch_done_event_, 0); }
+    inline void record_batch_done(cudaStream_t stream) { cudaEventRecord(batch_done_event_, stream); }
     
     // GPU-direct copy using cudaMemcpy3D - bypasses CPU loops entirely
     template<class Vector>
@@ -188,9 +190,15 @@ class dfft_r2c_gpu_batch
         
         p.kind = cudaMemcpyHostToDevice;
         
+        // Ensure previous batch has completed before overwriting input buffer
+        cudaStreamWaitEvent(transfer_stream_, batch_done_event_, 0);
+
         // Execute asynchronously on transfer stream
         cudaMemcpy3DAsync(&p, transfer_stream_);
     }
+    
+    // GPU-only pack from device DataField storage
+    void copy_field_gpu_device(const float_type* src_device, dims_3D src_ext, dims_3D dims_v, int _batch_idx) noexcept;
     
     // Original CPU-based copy (fallback or for debugging)
     template<class Vector>
@@ -239,6 +247,7 @@ class dfft_r2c_gpu_batch
     cudaStream_t                          stream_;         // CUDA stream for asynchronous FFT/kernel operations
     cudaStream_t                          transfer_stream_; // Separate stream for HtoD transfers to enable overlap
     cudaEvent_t                           transfer_ready_event_; // Signals transfer stream completion to compute stream
+    cudaEvent_t                           batch_done_event_; // Signals compute completion for safe buffer reuse
 };
 
 class dfft_c2r_gpu
@@ -293,8 +302,8 @@ class Convolution_GPU
     Convolution_GPU& operator=(Convolution_GPU&& other) & = default;
     ~Convolution_GPU() 
     {
-        if (um_f0_ptrs_) cudaFree(um_f0_ptrs_);
-        if (um_f0_sizes_) cudaFree(um_f0_sizes_);
+        if (d_f0_ptrs_) cudaFree(d_f0_ptrs_);
+        if (d_f0_sizes_) cudaFree(d_f0_sizes_);
     }
 
     Convolution_GPU(dims_t _dims0, dims_t _dims1, int batch_size = 10)
@@ -310,13 +319,13 @@ class Convolution_GPU
     , tmp_prod(padded_size_, std::complex<float_type>(0.0))
     , current_batch_size_(0)
     , max_batch_size_((batch_size > 0 ? batch_size : 1))
-    , um_f0_ptrs_(nullptr)
-    , um_f0_sizes_(nullptr)
+    , d_f0_ptrs_(nullptr)
+    , d_f0_sizes_(nullptr)
     , um_capacity_((batch_size > 0 ? batch_size : 1))
     {
-        // Allocate unified memory for LGF pointers and sizes
-        cudaMallocManaged(&um_f0_ptrs_, um_capacity_ * sizeof(cufftDoubleComplex*));
-        cudaMallocManaged(&um_f0_sizes_, um_capacity_ * sizeof(size_t));
+        // Allocate device memory for LGF pointers and sizes
+        cudaMalloc(&d_f0_ptrs_, um_capacity_ * sizeof(cufftDoubleComplex*));
+        cudaMalloc(&d_f0_sizes_, um_capacity_ * sizeof(size_t));
     }
 
     dims_t helper_next_pow_2(dims_t v)
@@ -396,8 +405,19 @@ class Convolution_GPU
         fft_forward1_batch.f0_ptrs().push_back(f0_entry->device);
         fft_forward1_batch.f0_sizes().push_back(f0_entry->size);
         
-        // Use GPU-direct copy for maximum performance
+        // Use GPU-only pack if device data is valid, otherwise fall back to host copy
+    #ifdef IBLGF_COMPILE_CUDA
+        if (_b.device_valid())
+        {
+            fft_forward1_batch.copy_field_gpu_device(_b.device_ptr(), _b.real_block().extent(), dims1_, current_batch_size_);
+        }
+        else
+        {
+            fft_forward1_batch.copy_field_gpu(_b, dims1_, current_batch_size_);
+        }
+    #else
         fft_forward1_batch.copy_field_gpu(_b, dims1_, current_batch_size_);
+    #endif
         
         current_batch_size_++;
         number_fwrd_executed++;
@@ -413,11 +433,13 @@ class Convolution_GPU
     {
         if (current_batch_size_ == 0) return;
         
-        // Copy pointers and sizes to unified memory (accessible from both host and device)
-        std::memcpy(um_f0_ptrs_, fft_forward1_batch.f0_ptrs().data(), 
-                    current_batch_size_ * sizeof(cufftDoubleComplex*));
-        std::memcpy(um_f0_sizes_, fft_forward1_batch.f0_sizes().data(), 
-                    current_batch_size_ * sizeof(size_t));
+        // Copy pointers and sizes to device buffers on the compute stream
+        cudaMemcpyAsync(d_f0_ptrs_, fft_forward1_batch.f0_ptrs().data(),
+                current_batch_size_ * sizeof(cufftDoubleComplex*),
+                cudaMemcpyHostToDevice, fft_forward1_batch.stream());
+        cudaMemcpyAsync(d_f0_sizes_, fft_forward1_batch.f0_sizes().data(),
+                current_batch_size_ * sizeof(size_t),
+                cudaMemcpyHostToDevice, fft_forward1_batch.stream());
         
         // Execute FFTs for the current batch (copy only active slots inside execute)
         fft_forward1_batch.execute_ptr(current_batch_size_);
@@ -440,10 +462,10 @@ class Convolution_GPU
         
         // Launch kernels on the same stream as FFT to ensure proper ordering
         prod_complex_add_ptr<<<numBlocks, blockSize, shared_mem_size, fft_forward1_batch.stream()>>>(
-            um_f0_ptrs_, 
+            d_f0_ptrs_, 
             fft_forward1_batch.output_cu(), 
             fft_forward1_batch.result_cu(), 
-            um_f0_sizes_,
+            d_f0_sizes_,
             current_batch_size_,
             size_per_fft);
         
@@ -454,8 +476,8 @@ class Convolution_GPU
             current_batch_size_, 
             size_per_fft);
         
-        // Ensure all GPU operations complete before clearing host-side state
-        cudaStreamSynchronize(fft_forward1_batch.stream());
+        // Record completion event for safe reuse and downstream synchronization
+        fft_forward1_batch.record_batch_done(fft_forward1_batch.stream());
         
         // Reset batch counter and clear pointers
         current_batch_size_ = 0;
@@ -482,6 +504,9 @@ class Convolution_GPU
         
         // Flush any remaining items in the batch
         flush_batch();
+
+        // Ensure forward batch work is complete before using backward stream
+        fft_forward1_batch.wait_for_batch_done(fft_backward_.stream());
         
         // Scale on device to avoid extra DtoH/HtoD
         float_type scale = 1.0;
@@ -559,8 +584,8 @@ class Convolution_GPU
     complex_vector_t tmp_prod;
     
     // Unified memory for LGF pointers and sizes (no HtoD transfer needed)
-    cufftDoubleComplex** um_f0_ptrs_;
-    size_t*              um_f0_sizes_;
+    cufftDoubleComplex** d_f0_ptrs_;
+    size_t*              d_f0_sizes_;
     int                  um_capacity_;
 };
 } // namespace fft

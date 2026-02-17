@@ -709,10 +709,14 @@ class Fmm
     #endif
 
   public:
-    Fmm(domain_t* _domain, int Nb) // Nb include buffer
+    Fmm(domain_t* _domain, int Nb, int convolution_batch_size = 10) // Nb include buffer
     : domain(_domain)
     , lagrange_intrp(Nb)
+#ifdef IBLGF_COMPILE_CUDA
+    , conv_(dims_t(Nb), dims_t(Nb), convolution_batch_size)
+#else
     , conv_(dims_t(Nb), dims_t(Nb))
+#endif
     {
 	/*dims_t tmp1, tmp2;
 	for(int i = 0; i < Dim; i++) {

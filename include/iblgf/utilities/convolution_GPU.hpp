@@ -297,22 +297,22 @@ class Convolution_GPU
         if (um_f0_sizes_) cudaFree(um_f0_sizes_);
     }
 
-    Convolution_GPU(dims_t _dims0, dims_t _dims1)
+    Convolution_GPU(dims_t _dims0, dims_t _dims1, int batch_size = 10)
     : padded_dims_(_dims0 + _dims1 - 1)
     , padded_dims_next_pow_2_(helper_next_pow_2(padded_dims_))
     , dims0_(_dims0)
     , dims1_(_dims1)
     , fft_forward0_(padded_dims_next_pow_2_, _dims0)
     , fft_forward1_(padded_dims_next_pow_2_, _dims1)
-    , fft_forward1_batch(padded_dims_next_pow_2_, _dims1, 10)
+    , fft_forward1_batch(padded_dims_next_pow_2_, _dims1, (batch_size > 0 ? batch_size : 1))
     , fft_backward_(padded_dims_next_pow_2_, _dims1)
     , padded_size_(helper_all_prod(padded_dims_next_pow_2_))
     , tmp_prod(padded_size_, std::complex<float_type>(0.0))
     , current_batch_size_(0)
-    , max_batch_size_(10)
+    , max_batch_size_((batch_size > 0 ? batch_size : 1))
     , um_f0_ptrs_(nullptr)
     , um_f0_sizes_(nullptr)
-    , um_capacity_(10)
+    , um_capacity_((batch_size > 0 ? batch_size : 1))
     {
         // Allocate unified memory for LGF pointers and sizes
         cudaMallocManaged(&um_f0_ptrs_, um_capacity_ * sizeof(cufftDoubleComplex*));
@@ -542,7 +542,7 @@ class Convolution_GPU
     int number_fwrd_executed =
         0; //register the number of forward procedure applied, if no forward applied, then don't need to apply backward one as well.
     int current_batch_size_ = 0;
-    int max_batch_size_ = 32;
+    int max_batch_size_ = 0;
 
   private:
     dims_t padded_dims_;

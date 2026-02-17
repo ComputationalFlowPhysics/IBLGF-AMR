@@ -1067,6 +1067,9 @@ class Fmm
                 if (it->has_data() && it->fmm_mask(fmm_mask_idx_, mask_id))
                 {
                     for (auto& e : it->data_r(field::tag())) e = 0.0;
+#ifdef IBLGF_COMPILE_CUDA
+                    it->data_r(field::tag()).invalidate_device();
+#endif
                 }
             }
         }
@@ -1095,6 +1098,9 @@ class Fmm
 		xt::noalias(view(lin_data_2, xt::range(1, -1), xt::range(1, -1))) 
 			= view(lin_data_1, xt::range(1, -1),xt::range(1, -1));
 		}
+#ifdef IBLGF_COMPILE_CUDA
+                it->data_r(to::tag()).invalidate_device();
+#endif
             }
         }
     }
@@ -1128,8 +1134,13 @@ class Fmm
                  ++it)
             {
                 if (it->has_data() && it->fmm_mask(fmm_mask_idx_, mask_id))
+                {
                     lagrange_intrp.nli_antrp_node<fmm_s_type>(
                         it, mask_id, fmm_mask_idx_);
+#ifdef IBLGF_COMPILE_CUDA
+                    it->data_r(fmm_s).invalidate_device();
+#endif
+                }
             }
 
             domain_->decomposition()
@@ -1145,6 +1156,9 @@ class Fmm
                 {
                     auto& cp2 = it->data_r(fmm_s).linalg_data();
                     cp2 *= 0.0;
+#ifdef IBLGF_COMPILE_CUDA
+                    it->data_r(fmm_s).invalidate_device();
+#endif
                 }
             }
         }
@@ -1167,6 +1181,10 @@ class Fmm
         const auto extent_lgf = 2 * (s_extent)-1;
 
         block_dsrp_t lgf_block(base_lgf, extent_lgf);
+
+    #ifdef IBLGF_COMPILE_CUDA
+        o_s->data_r(fmm_s).update_device();
+    #endif
 
         conv_.apply_forward_add(
             lgf_block, _kernel, level_diff, o_s->data_r(fmm_s));

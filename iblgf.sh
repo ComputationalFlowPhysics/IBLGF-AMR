@@ -97,6 +97,14 @@ Run a named test (staged run dir + logs + metadata):
 USAGE
 }
 
+time_cmd() {
+  # prints "real_seconds" to stdout
+  # uses /usr/bin/time -p and parses "real <sec>"
+  local out
+  out="$(/usr/bin/time -p "$@" 2>&1 >/dev/null)"
+  echo "$out" | awk '/^real /{print $2}'
+}
+
 # -----------------------------
 # Run / test helpers
 # -----------------------------
@@ -312,6 +320,8 @@ do_run_test() {
   local resume=0
   local resume_dir=""
 
+  local bench=0
+
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --gpu|-g) USE_GPU=1; shift ;;
@@ -329,6 +339,10 @@ do_run_test() {
           resume_dir="$1"
           shift
         fi
+        ;;
+      --bench)
+        bench=1
+        shift
         ;;
       *)
         die "Unknown option for run-test: $1"
@@ -350,19 +364,26 @@ do_run_test() {
   exe="$(find_test_executable "$test_name" || true)"
   [[ -n "$exe" ]] || die "Could not find executable for test '$test_name'. Expected: build/tests/$test_name/$test_name.x"
 
-  # Create a clean run directory where outputs will go.
+  # Create run directory:
   local run_dir
-  if [[ "$resume" -eq 1 ]]; then
-    if [[ -n "$resume_dir" ]]; then
-      run_dir="$resume_dir"
-    else
-      run_dir="$(latest_run_dir "$test_name" || true)"
-    fi
-    [[ -n "$run_dir" ]] || die "No previous run directory found to resume for '$test_name' under $(runs_root)/$test_name/"
-    [[ -d "$run_dir" ]] || die "Resume directory not found: $run_dir"
+  local tmp_dir=""
+
+  if [[ "$bench" -eq 1 ]]; then
+    tmp_dir="$(mktemp -d)"
+    run_dir="$tmp_dir"
   else
-    run_dir="$(runs_root)/${test_name}/$(timestamp)"
-    mkdir -p "$run_dir"
+    if [[ "$resume" -eq 1 ]]; then
+      if [[ -n "$resume_dir" ]]; then
+        run_dir="$resume_dir"
+      else
+        run_dir="$(latest_run_dir "$test_name" || true)"
+      fi
+      [[ -n "$run_dir" ]] || die "No previous run directory found to resume for '$test_name' under $(runs_root)/$test_name/"
+      [[ -d "$run_dir" ]] || die "Resume directory not found: $run_dir"
+    else
+      run_dir="$(runs_root)/${test_name}/$(timestamp)"
+      mkdir -p "$run_dir"
+    fi
   fi
 
   # Config handling:
@@ -379,16 +400,18 @@ do_run_test() {
   fi
 
   # Record metadata for reproducibility.
-  {
-    echo "test_name: $test_name"
-    echo "exe: $exe"
-    echo "config: $cfg_name"
-    echo "mpi_ranks: $mpi"
-    echo "git_commit: $(git_commit)"
-    echo "timestamp: $(date -Iseconds 2>/dev/null || date)"
-    echo "run_dir: $run_dir"
-    echo "command: mpiexec -np $mpi $exe ./$cfg_name"
-  } > "$run_dir/meta.txt"
+  if [[ "$bench" -eq 0 ]]; then
+    {
+      echo "test_name: $test_name"
+      echo "exe: $exe"
+      echo "config: $cfg_name"
+      echo "mpi_ranks: $mpi"
+      echo "git_commit: $(git_commit)"
+      echo "timestamp: $(date -Iseconds 2>/dev/null || date)"
+      echo "run_dir: $run_dir"
+      echo "command: mpiexec -np $mpi $exe ./$cfg_name"
+    } > "$run_dir/meta.txt"
+  fi
 
   echo "==> Running test '$test_name'"
   echo "    Run dir:  $run_dir"
@@ -399,6 +422,33 @@ do_run_test() {
   echo "    Expect:   output files created inside the run dir."
 
   # Run inside run_dir so output files land there.
+  if [[ "$bench" -eq 1 ]]; then
+    # Benchmark mode: no stdout/stderr logs, just timing
+    (
+      cd "$run_dir"
+
+      local real_s=""
+      if [[ "$mpi" -gt 1 ]]; then
+        if have mpiexec; then
+          real_s="$(time_cmd mpiexec -np "$mpi" "$exe" "./$cfg_name")"
+        elif have mpirun; then
+          real_s="$(time_cmd mpirun -n "$mpi" "$exe" "./$cfg_name")"
+        else
+          die "Neither mpiexec nor mpirun found in PATH."
+        fi
+      else
+        real_s="$(time_cmd "$exe" "./$cfg_name")"
+      fi
+
+      echo "BENCH $test_name real_s=$real_s"
+    )
+
+    # cleanup temp directory
+    rm -rf "$run_dir"
+    return 0
+  fi
+
+  # Normal mode (current behavior)
   (
     cd "$run_dir"
 

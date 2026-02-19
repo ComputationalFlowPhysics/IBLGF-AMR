@@ -238,7 +238,7 @@ class Task_base : public BufferPolicy<Task_base<BufferType, BufferPolicy, ID>>
 
     void attach_data(data_type* _s) noexcept { data_ = _s; }
 
-    void isend(boost::mpi::communicator _comm)
+    void isend(const boost::mpi::communicator& _comm)
     {
         this->request_ =
             _comm.isend(this->rank_other_, this->id_, (this->send_buffer()));
@@ -248,7 +248,7 @@ class Task_base : public BufferPolicy<Task_base<BufferType, BufferPolicy, ID>>
                 _comm.irecv(this->rank_other_, tags::confirmation);
         }
     }
-    void irecv(boost::mpi::communicator _comm)
+    void irecv(const boost::mpi::communicator& _comm)
     {
         this->request_ =
             _comm.irecv(this->rank_other_, this->id_, (this->recv_buffer()));

@@ -26,6 +26,7 @@ jobs:
         env:
           OMPI_ALLOW_RUN_AS_ROOT: 1
           OMPI_MCA_btl_vader_single_copy_mechanism: none
+          OMPI_MCA_rmaps_base_oversubscribe: 1
           IBLGF_MPI_NP: 4
 
       # - name: Docker Env

@@ -28,7 +28,6 @@ else()
     message(STATUS "Building IBLGF without GPU support")
 endif()
 
-
 cmake_policy(SET CMP0048 NEW)
 
 set(CMAKE_CXX_STANDARD 17)
@@ -125,23 +124,22 @@ set(IBLGF_TESTING ON CACHE BOOL "True if tests shall be built")
 # Allow MPI oversubscription for environments with fewer cores than requested processes
 # This is necessary for CI/CD environments (e.g., GitHub Actions) where tests may request
 # more MPI ranks than available CPU cores
-list(APPEND MPIEXEC_PREFLAGS "--oversubscribe")
 
-# ------------------------------
-# Default MPI ranks for tests *added*
-# ------------------------------
+# Default MPI ranks for tests
 if(NOT DEFINED IBLGF_MPI_NP)
   include(ProcessorCount)
   ProcessorCount(_host_cpus)
   if(NOT _host_cpus OR _host_cpus EQUAL 0)
     set(_host_cpus 2)  # safe fallback
   endif()
+  if(_host_cpus GREATER 12)
+    set(_host_cpus 12)  # ensure at least 4 ranks for testing
+  endif()
 
   set(IBLGF_MPI_NP "${_host_cpus}" CACHE STRING "MPI ranks for tests")
 endif()
 
 message(STATUS "IBLGF_MPI_NP = ${IBLGF_MPI_NP}")
-# *end of added*
 
 add_library(iblgf INTERFACE)
 add_library(iblgf::iblgf ALIAS iblgf)

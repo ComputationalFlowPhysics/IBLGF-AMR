@@ -99,10 +99,17 @@ USAGE
 
 time_cmd() {
   # prints "real_seconds" to stdout
-  # uses /usr/bin/time -p and parses "real <sec>"
-  local out
-  out="$(/usr/bin/time -p "$@" 2>&1 >/dev/null)"
-  echo "$out" | awk '/^real /{print $2}'
+  local out real
+  out="$(/usr/bin/time -p "$@" 2>&1 1>/dev/null)"
+  real="$(echo "$out" | awk '/^real /{print $2; exit}')"
+
+  [[ -n "$real" ]] || {
+    echo "Error: failed to parse timing output. Raw output:" >&2
+    echo "$out" >&2
+    exit 2
+  }
+
+  echo "$real"
 }
 
 # -----------------------------
@@ -427,7 +434,7 @@ do_run_test() {
     (
       cd "$run_dir"
 
-      local real_s=""
+      real_s=""
       if [[ "$mpi" -gt 1 ]]; then
         if have mpiexec; then
           real_s="$(time_cmd mpiexec -np "$mpi" "$exe" "./$cfg_name")"
@@ -448,7 +455,7 @@ do_run_test() {
     return 0
   fi
 
-  # Normal mode (current behavior)
+  # Normal mode 
   (
     cd "$run_dir"
 

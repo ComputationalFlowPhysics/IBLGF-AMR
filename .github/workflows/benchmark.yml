@@ -10,7 +10,6 @@ on:
 jobs:
   benchmark_pr:
     name: Compare Test Computation Time (PR vs Main)
-    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 60
 

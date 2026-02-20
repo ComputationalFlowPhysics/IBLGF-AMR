@@ -38,31 +38,51 @@ jobs:
 
       - name: Benchmark base commit
         run: |
+          set -euo pipefail
           cd base
-          # ns_amr_lgf
-          ./docker_iblgf.sh -c 4 -- bash -lc './iblgf.sh run-test ns_amr_lgf configFile_0 --bench -n 4' | tee ../bench_base_ns.txt
-          # poisson
-          ./docker_iblgf.sh -c 4 -- bash -lc './iblgf.sh run-test poisson ./config_1_lv_0 --bench -n 4' | tee ../bench_base_poisson.txt
+
+          ./docker_iblgf.sh -c 4 -- bash -lc './iblgf.sh run-test ns_amr_lgf configFile_0 --bench -n 4' \
+            | tee ../bench_base_ns.full.txt
+          tail -n 1 ../bench_base_ns.full.txt > ../bench_base_ns.txt
+
+          ./docker_iblgf.sh -c 4 -- bash -lc './iblgf.sh run-test poisson config_1_lv_0 --bench -n 4' \
+            | tee ../bench_base_poisson.full.txt
+          tail -n 1 ../bench_base_poisson.full.txt > ../bench_base_poisson.txt
+
+          echo "Base times:"
+          cat ../bench_base_ns.txt
+          cat ../bench_base_poisson.txt
 
       - name: Benchmark PR head commit
         run: |
+          set -euo pipefail
           cd head
-          ./docker_iblgf.sh -c 4 -- bash -lc './iblgf.sh run-test ns_amr_lgf configFile_0 --bench -n 4' | tee ../bench_head_ns.txt
-          ./docker_iblgf.sh -c 4 -- bash -lc './iblgf.sh run-test poisson ./config_1_lv_0 --bench -n 4' | tee ../bench_head_poisson.txt
+
+          ./docker_iblgf.sh -c 4 -- bash -lc './iblgf.sh run-test ns_amr_lgf configFile_0 --bench -n 4' \
+            | tee ../bench_head_ns.full.txt
+          tail -n 1 ../bench_head_ns.full.txt > ../bench_head_ns.txt
+
+          ./docker_iblgf.sh -c 4 -- bash -lc './iblgf.sh run-test poisson config_1_lv_0 --bench -n 4' \
+            | tee ../bench_head_poisson.full.txt
+          tail -n 1 ../bench_head_poisson.full.txt > ../bench_head_poisson.txt
+
+          echo "Head times:"
+          cat ../bench_head_ns.txt
+          cat ../bench_head_poisson.txt
 
       - name: Compare and enforce slowdown threshold
         run: |
           python3 - << 'PY'
-          import re, os, sys
+          import os, sys
 
           allowed = float(os.environ["ALLOWED_SLOWDOWN"])
 
-          def parse(path):
-            s = open(path, "r", encoding="utf-8").read()
-            m = re.search(r"BENCH\s+(\S+)\s+real_s=([0-9.]+)", s)
-            if not m:
-              raise SystemExit(f"Could not parse BENCH line from {path}.\nContent:\n{s}")
-            return m.group(1), float(m.group(2))
+          def read_float(path):
+            s = open(path, "r", encoding="utf-8").read().strip()
+            try:
+              return float(s)
+            except ValueError:
+              raise SystemExit(f"Expected a single float in {path}, got:\n{s}")
 
           cases = [
             ("ns_amr_lgf", "bench_base_ns.txt", "bench_head_ns.txt"),
@@ -72,8 +92,8 @@ jobs:
           failed = False
           print("\n=== PR Benchmark Comparison ===")
           for name, basef, headf in cases:
-            _, base_t = parse(basef)
-            _, head_t = parse(headf)
+            base_t = read_float(basef)
+            head_t = read_float(headf)
             ratio = head_t / base_t if base_t > 0 else float("inf")
             pct = (ratio - 1.0) * 100.0
             print(f"{name:10s} base={base_t:.3f}s  head={head_t:.3f}s  ratio={ratio:.3f}  ({pct:+.1f}%)")
@@ -88,6 +108,13 @@ jobs:
             print("Benchmarks within threshold.")
           PY
 
-        
+      - name: Upload benchmark logs
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-logs
+          path: |
+            bench_*.txt
+            bench_*.full.txt
+              
 
-      
+            

@@ -420,13 +420,25 @@ do_run_test() {
     } > "$run_dir/meta.txt"
   fi
 
-  echo "==> Running test '$test_name'"
-  echo "    Run dir:  $run_dir"
-  echo "    Exe:      $exe"
-  echo "    Config:   $cfg_name"
-  echo "    MPI:      $mpi"
-  echo "    Logs:     stdout.log / stderr.log"
-  echo "    Expect:   output files created inside the run dir."
+  log() { echo "$@" >&2; }
+
+  if [[ "$bench" -eq 1 ]]; then
+    # Bench mode: keep stdout clean (only print the time)
+    log "==> Running benchmark '$test_name'"
+    log "    Run dir:  $run_dir"
+    log "    Exe:      $exe"
+    log "    Config:   $cfg_name"
+    log "    MPI:      $mpi"
+  else
+    # Normal mode: stdout is fine
+    echo "==> Running test '$test_name'"
+    echo "    Run dir:  $run_dir"
+    echo "    Exe:      $exe"
+    echo "    Config:   $cfg_name"
+    echo "    MPI:      $mpi"
+    echo "    Logs:     stdout.log / stderr.log"
+    echo "    Expect:   output files created inside the run dir."
+  fi
 
   # Run inside run_dir so output files land there.
   if [[ "$bench" -eq 1 ]]; then
@@ -447,7 +459,7 @@ do_run_test() {
         real_s="$(time_cmd "$exe" "./$cfg_name")"
       fi
 
-      echo "BENCH $test_name real_s=$real_s"
+      echo "$real_s"
     )
 
     # cleanup temp directory

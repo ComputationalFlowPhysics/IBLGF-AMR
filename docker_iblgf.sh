@@ -120,6 +120,12 @@ DOCKER_ARGS+=(
 )
 
 DOCKER_ARGS+=( -e LD_LIBRARY_PATH="/usr/local/lib:/usr/local/cuda/lib64:${LD_LIBRARY_PATH:-}" )
+#check if env var CI is set to true or if GITHUB_ACTIONS is set to non-empty string, and if so, set OMPI_MCA_rmaps_base_oversubscribe=1
+if [[ "${CI:-false}" == "true" ]]; then
+  echo "==> Detected CI environment, setting OMPI_MCA_rmaps_base_oversubscribe=1"
+  DOCKER_ARGS+=( -e OMPI_MCA_rmaps_base_oversubscribe=1 )
+fi
+
 
 if [[ "$USE_GPU" -eq 1 ]]; then
   DOCKER_ARGS+=(--gpus all)

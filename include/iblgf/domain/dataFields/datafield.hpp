@@ -32,6 +32,10 @@
 #include <boost/preprocessor/repetition/repeat.hpp>
 #include <boost/preprocessor/tuple/pop_front.hpp>
 
+#ifdef IBLGF_COMPILE_CUDA
+#include <cuda_runtime.h>
+#endif
+
 namespace iblgf
 {
 namespace domain
@@ -67,7 +71,11 @@ class DataField : public BlockDescriptor<int, Dim>
 
   public: //Ctors:
     DataField() = default;
+#ifdef IBLGF_COMPILE_CUDA
+    ~DataField() { clear_device(); }
+#else
     ~DataField() = default;
+#endif
 
     //TODO: Remove that cube_ alias to avoid all that
     DataField(const DataField& rhs)
@@ -78,11 +86,16 @@ class DataField : public BlockDescriptor<int, Dim>
     /*, cube_(std::make_unique<linalg::Cube_t>(&data_[0], real_block_.extent()[0],
           real_block_.extent()[1], real_block_.extent()[2]))*/
     {
-	if (Dim == 2) { 
+    if (Dim == 2) { 
 	    cube_ = std::make_unique<linalg::Cube_t>(&data_[0], real_block_.extent()[0],real_block_.extent()[1]);
 	} else {
 	    cube_ = std::make_unique<linalg::Cube_t>(&data_[0], real_block_.extent()[0],real_block_.extent()[1], real_block_.extent()[2]);
 	}
+#ifdef IBLGF_COMPILE_CUDA
+        device_data_ = nullptr;
+        device_size_ = 0;
+        device_valid_ = false;
+#endif
     }
 
     DataField& operator=(const DataField& _other)
@@ -92,11 +105,14 @@ class DataField : public BlockDescriptor<int, Dim>
         lowBuffer_ = _other.lowBuffer_;
         highBuffer_ = _other.highBuffer_;
         real_block_ = _other.real_block_;
-	if (Dim == 2) { 
+    if (Dim == 2) { 
 	    cube_ = std::make_unique<linalg::Cube_t>(&data_[0], real_block_.extent()[0],real_block_.extent()[1]);
 	} else {
 	    cube_ = std::make_unique<linalg::Cube_t>(&data_[0], real_block_.extent()[0],real_block_.extent()[1], real_block_.extent()[2]);
 	}
+#ifdef IBLGF_COMPILE_CUDA
+        clear_device();
+#endif
         return *this;
     }
 
@@ -113,6 +129,14 @@ class DataField : public BlockDescriptor<int, Dim>
 	} else {
 	    cube_ = std::make_unique<linalg::Cube_t>(&data_[0], real_block_.extent()[0],real_block_.extent()[1], real_block_.extent()[2]);
 	}
+#ifdef IBLGF_COMPILE_CUDA
+        device_data_ = rhs.device_data_;
+        device_size_ = rhs.device_size_;
+        device_valid_ = rhs.device_valid_;
+        rhs.device_data_ = nullptr;
+        rhs.device_size_ = 0;
+        rhs.device_valid_ = false;
+#endif
     }
     DataField& operator=(DataField&& _other)
     {
@@ -125,6 +149,15 @@ class DataField : public BlockDescriptor<int, Dim>
 	} else {
 	    cube_ = std::make_unique<linalg::Cube_t>(&data_[0], real_block_.extent()[0],real_block_.extent()[1], real_block_.extent()[2]);
 	}
+#ifdef IBLGF_COMPILE_CUDA
+        clear_device();
+        device_data_ = _other.device_data_;
+        device_size_ = _other.device_size_;
+        device_valid_ = _other.device_valid_;
+        _other.device_data_ = nullptr;
+        _other.device_size_ = 0;
+        _other.device_valid_ = false;
+#endif
         return *this;
     }
 
@@ -147,6 +180,10 @@ class DataField : public BlockDescriptor<int, Dim>
         if (_allocate) data_.resize(real_block_.size());
         if (_default) { std::fill(data_.begin(), data_.end(), _dval); }
 
+    #ifdef IBLGF_COMPILE_CUDA
+        clear_device();
+    #endif
+
         const auto ext = real_block_.extent();
         /*cube_ = std::make_unique<linalg::Cube_t>(
             (types::float_type*)&data_[0], ext[0], ext[1], ext[2]);*/
@@ -158,7 +195,6 @@ class DataField : public BlockDescriptor<int, Dim>
             (types::float_type*)&data_[0], ext[0], ext[1], ext[2]);
 	}
     }
-
     auto begin() noexcept { return data_.begin(); }
     auto end() noexcept { return data_.end(); }
 
@@ -171,6 +207,25 @@ class DataField : public BlockDescriptor<int, Dim>
 
     auto& linalg_data() { return cube_->data_; }
     auto& linalg() { return cube_; }
+
+#ifdef IBLGF_COMPILE_CUDA
+    data_type* device_ptr() noexcept
+    {
+        ensure_device();
+        return device_data_;
+    }
+    const data_type* device_ptr() const noexcept { return device_data_; }
+    bool device_valid() const noexcept { return device_valid_; }
+    void invalidate_device() noexcept { device_valid_ = false; }
+    void update_device(cudaStream_t stream = nullptr, bool force = false)
+    {
+        if (!force && device_valid_) return;
+        ensure_device();
+        cudaMemcpyAsync(device_data_, data_.data(), data_.size() * sizeof(data_type),
+            cudaMemcpyHostToDevice, stream);
+        device_valid_ = true;
+    }
+#endif
 
     inline data_type* get_ptr(const coordinate_t& _c) noexcept
     {
@@ -410,6 +465,35 @@ class DataField : public BlockDescriptor<int, Dim>
 
     /** @brief Linear algebra wrapper for the actual data */
     std::unique_ptr<linalg::Cube_t> cube_;
+#ifdef IBLGF_COMPILE_CUDA
+    data_type* device_data_ = nullptr;
+    std::size_t device_size_ = 0;
+    bool device_valid_ = false;
+
+    void ensure_device()
+    {
+        const std::size_t needed = data_.size();
+        if (device_data_ && device_size_ == needed) return;
+        clear_device();
+        if (needed > 0)
+        {
+            cudaMalloc(&device_data_, needed * sizeof(data_type));
+            device_size_ = needed;
+        }
+        device_valid_ = false;
+    }
+
+    void clear_device()
+    {
+        if (device_data_)
+        {
+            cudaFree(device_data_);
+            device_data_ = nullptr;
+        }
+        device_size_ = 0;
+        device_valid_ = false;
+    }
+#endif
 };
 
 /****************************************************************************/

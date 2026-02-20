@@ -1,0 +1,93 @@
+name: PR Benchmarks
+
+on:
+  pull_request:
+    branches: ["main"]
+  workflow_dispatch:
+
+jobs:
+  benchmark_pr:
+    name: Compare Test Computation Time (PR vs Main)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    env:
+      OMPI_ALLOW_RUN_AS_ROOT: 1
+      OMPI_MCA_btl_vader_single_copy_mechanism: none
+      IBLGF_MPI_NP: 4
+      ALLOWED_SLOWDOWN: "1.05"  # 5% slowdown allowed
+
+    steps:
+      - name: Checkout base commit (main side)
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: base
+
+      - name: Checkout PR head commit (incoming)
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: head
+
+      - name: Prepare Scripts
+        run: |
+          chmod +x base/*.sh
+          chmod +x head/*.sh
+
+      - name: Benchmark base commit
+        run: |
+          cd base
+          # ns_amr_lgf
+          ./docker_iblgf.sh -c 4 -- bash -lc './iblgf.sh run-test ns_amr_lgf configFile_0 --bench -n 4' | tee ../bench_base_ns.txt
+          # poisson
+          ./docker_iblgf.sh -c 4 -- bash -lc './iblgf.sh run-test poisson ./config_1_lv_0 --bench -n 4' | tee ../bench_base_poisson.txt
+
+      - name: Benchmark PR head commit
+        run: |
+          cd head
+          ./docker_iblgf.sh -c 4 -- bash -lc './iblgf.sh run-test ns_amr_lgf configFile_0 --bench -n 4' | tee ../bench_head_ns.txt
+          ./docker_iblgf.sh -c 4 -- bash -lc './iblgf.sh run-test poisson ./config_1_lv_0 --bench -n 4' | tee ../bench_head_poisson.txt
+
+      - name: Compare and enforce slowdown threshold
+        run: |
+          python3 - << 'PY'
+          import re, os, sys
+
+          allowed = float(os.environ["ALLOWED_SLOWDOWN"])
+
+          def parse(path):
+            s = open(path, "r", encoding="utf-8").read()
+            m = re.search(r"BENCH\s+(\S+)\s+real_s=([0-9.]+)", s)
+            if not m:
+              raise SystemExit(f"Could not parse BENCH line from {path}.\nContent:\n{s}")
+            return m.group(1), float(m.group(2))
+
+          cases = [
+            ("ns_amr_lgf", "bench_base_ns.txt", "bench_head_ns.txt"),
+            ("poisson",    "bench_base_poisson.txt", "bench_head_poisson.txt"),
+          ]
+
+          failed = False
+          print("\n=== PR Benchmark Comparison ===")
+          for name, basef, headf in cases:
+            _, base_t = parse(basef)
+            _, head_t = parse(headf)
+            ratio = head_t / base_t if base_t > 0 else float("inf")
+            pct = (ratio - 1.0) * 100.0
+            print(f"{name:10s} base={base_t:.3f}s  head={head_t:.3f}s  ratio={ratio:.3f}  ({pct:+.1f}%)")
+            if ratio > allowed:
+              failed = True
+
+          print(f"\nAllowed slowdown ratio: {allowed:.3f}")
+          if failed:
+            print("Benchmark regression detected.")
+            sys.exit(1)
+          else:
+            print("Benchmarks within threshold.")
+          PY
+
+        
+
+      

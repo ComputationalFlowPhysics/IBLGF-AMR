@@ -1,6 +1,8 @@
 name: PR Benchmarks
 
 on:
+  push:
+      branches: ["main"]
   pull_request:
     branches: ["main"]
   workflow_dispatch:
@@ -86,7 +88,7 @@ jobs:
 
           cases = [
             ("ns_amr_lgf", "bench_base_ns.txt", "bench_head_ns.txt"),
-            ("poisson",    "bench_base_poisson.txt", "bench_head_poisson.txt"),
+            ("poisson", "bench_base_poisson.txt", "bench_head_poisson.txt"),
           ]
 
           failed = False

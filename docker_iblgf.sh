@@ -3,10 +3,8 @@
 set -euo pipefail
 
 CPU_BASE_IMAGE="ccardina/my-app:cpu"
-CPU_PY_IMAGE="ccardina/my-app:cpu-python"
 
 GPU_BASE_IMAGE="ccardina/my-app:gpu"
-GPU_PY_IMAGE="ccardina/my-app:gpu-python"
 
 USE_GPU=0
 
@@ -69,10 +67,8 @@ done
 
 if [[ "$USE_GPU" -eq 1 ]]; then
   BASE_IMAGE="$GPU_BASE_IMAGE"
-  PY_IMAGE="$GPU_PY_IMAGE"
 else
   BASE_IMAGE="$CPU_BASE_IMAGE"
-  PY_IMAGE="$CPU_PY_IMAGE"
 fi
 
 echo "==> Base image: $BASE_IMAGE"
@@ -81,28 +77,6 @@ echo "==> Base image: $BASE_IMAGE"
 if ! docker image inspect "$BASE_IMAGE" >/dev/null 2>&1; then
   echo "==> Pulling base image..."
   docker pull "$BASE_IMAGE"
-fi
-
-# Build Python-extended image if missing
-if ! docker image inspect "$PY_IMAGE" >/dev/null 2>&1; then
-  echo "==> Building Python-enabled image: $PY_IMAGE"
-
-  docker build -t "$PY_IMAGE" - <<EOF
-FROM ${BASE_IMAGE}
-
-USER root
-RUN mkdir -p /var/lib/apt/lists/partial
-
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3 python3-pip python3-venv \
- && rm -rf /var/lib/apt/lists/*
-
-RUN python3 -m pip install --no-cache-dir --upgrade pip \
- && python3 -m pip install --no-cache-dir numpy scipy matplotlib
-
-USER 1000:1000
-WORKDIR /workspace2
-EOF
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -156,7 +130,7 @@ if [[ -n "$CPUS" ]]; then
   DOCKER_ARGS+=(--cpuset-cpus="0-$((CPUS-1))")
 fi
 
-DOCKER_ARGS+=("$PY_IMAGE")
+DOCKER_ARGS+=("$BASE_IMAGE")
 
 if [[ $# -gt 0 ]]; then
   # Non-interactive

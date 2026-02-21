@@ -1,0 +1,165 @@
+name: Containerization
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+  workflow_dispatch:
+
+jobs:
+    check-changes: 
+        runs-on: ubuntu-latest
+        outputs:
+            run_docker: ${{ steps.filter.outputs.docker }}
+        steps:
+          - uses: actions/checkout@v4
+          - uses: dorny/paths-filter@v3
+            id: filter
+            with:
+                filters: |
+                    docker:
+                            - '.github/Dockerfile'
+    
+    build-images-push-unique:
+        needs: check-changes
+        if: needs.check-changes.outputs.run_docker == 'true'
+        runs-on: ${{ matrix.runner }}
+        strategy:
+            fail-fast: false
+            matrix:
+                include:
+                  - target: cpu
+                    arch: amd64
+                    base_image: "ubuntu:22.04"
+                    runner: ubuntu-latest
+                  - target: cpu
+                    arch: arm64
+                    base_image: "ubuntu:22.04"
+                    runner: ubuntu-24.04-arm 
+                  - target: gpu
+                    arch: amd64
+                    base_image: "nvidia/cuda:12.1.1-devel-ubuntu22.04"
+                    runner: ubuntu-latest
+        steps:
+          - name: Checkout repository
+            uses: actions/checkout@v4
+
+          - name: Login to Docker Hub
+            uses: docker/login-action@v3
+            with:
+              username: ${{ secrets.DOCKERHUB_USERNAME }}
+              password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+          - name: Build and push by SHA
+            uses: docker/build-push-action@v5
+            with:
+              context: .
+              push: true
+              # We tag with SHA + architecture so it's unique per PR
+              tags: ${{ secrets.DOCKERHUB_USERNAME }}/iblgf:tmp-${{ github.sha }}-${{ matrix.target }}-${{ matrix.arch }}
+              build-args: |
+                BASE_IMAGE=${{ matrix.base_image }}
+                TARGET=${{ matrix.target }}
+              cache-from: type=gha
+              cache-to: type=gha,mode=max
+    
+    test-images:
+        needs: build-images-push-unique
+        runs-on: ${{ matrix.runner }}
+        strategy:
+            fail-fast: false
+            matrix:
+                include:
+                  - target: cpu
+                    arch: amd64
+                    runner: ubuntu-latest
+                  - target: cpu
+                    arch: arm64
+                    runner: ubuntu-24.04-arm 
+                  - target: gpu
+                    arch: amd64
+                    runner: ubuntu-latest
+        steps:
+          - name: Login to Docker Hub
+            uses: docker/login-action@v3
+            with:
+              username: ${{ secrets.DOCKERHUB_USERNAME }}
+              password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+          - name: Pull image by SHA
+            run: |
+              docker pull ${{ secrets.DOCKERHUB_USERNAME }}/iblgf:tmp-${{ github.sha }}-${{ matrix.target }}-${{ matrix.arch }}
+              docker run --rm --cpuset-cpus="0-3" ${{ secrets.DOCKERHUB_USERNAME }}/iblgf:tmp-${{ github.sha }}-${{ matrix.target }}-${{ matrix.arch }} -- bash -lc './iblgf.sh test'
+            env:
+              OMPI_ALLOW_RUN_AS_ROOT: 1
+              OMPI_MCA_btl_vader_single_copy_mechanism: none
+              OMPI_MCA_rmaps_base_oversubscribe: 1
+              IBLGF_MPI_NP: 4
+    
+    promote-and-manifest:
+        needs: test-images
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        runs-on: ubuntu-latest
+        steps:
+            - name: Login to Docker Hub
+              uses: docker/login-action@v3
+              with:
+                username: ${{ secrets.DOCKERHUB_USERNAME }}
+                password: ${{ secrets.DOCKERHUB_TOKEN }}
+            
+            - name: Create Multi-Arch Manifests and Promote
+              run: |
+                REPO=${{ secrets.DOCKERHUB_USERNAME }}/iblgf
+                SHA_TAG=tmp-${{ github.sha }}
+
+                # 1. Promote CPU images
+                # Creates 'cpu' and arch-specific stable tags from the tested SHA images
+                docker buildx imagetools create -t $REPO:cpu \
+                    -t $REPO:cpu-amd64 \
+                    -t $REPO:cpu-arm64 \
+                    -t $REPO:cpu-${{ github.sha }} \
+                    $REPO:$SHA_TAG-cpu-amd64 \
+                    $REPO:$SHA_TAG-cpu-arm64
+
+                # 2. Promote GPU images
+                # Creates 'gpu' and 'gpu-amd64' stable tags
+                docker buildx imagetools create -t $REPO:gpu \
+                    -t $REPO:gpu-amd64 \
+                    -t $REPO:gpu-${{ github.sha }} \
+                    $REPO:$SHA_TAG-gpu-amd64
+
+    cleanup:
+        needs: [promote-and-manifest]
+        if: always() 
+        runs-on: ubuntu-latest
+        steps:
+          - name: Delete Temporary Tags via API
+            run: |
+              # 1. Get the JWT Token
+              TOKEN=$(curl -s -H "Content-Type: application/json" -X POST \
+                -d '{"username": "${{ secrets.DOCKERHUB_USERNAME }}", "password": "${{ secrets.DOCKERHUB_TOKEN }}"}' \
+                https://hub.docker.com/v2/users/login/ | jq -r .token)
+              
+              REPO="iblgf"
+              USERNAME="${{ secrets.DOCKERHUB_USERNAME }}"
+              
+              # List of tags to scrub
+              TAGS=(
+                "tmp-${{ github.sha }}-cpu-amd64"
+                "tmp-${{ github.sha }}-cpu-arm64"
+                "tmp-${{ github.sha }}-gpu-amd64"
+              )
+              
+              # 2. Loop and Delete
+              for TAG in "${TAGS[@]}"; do
+                echo "Attempting to delete tag: $TAG"
+                RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" -X DELETE \
+                  -H "Authorization: JWT $TOKEN" \
+                  "https://hub.docker.com/v2/repositories/$USERNAME/$REPO/tags/$TAG/")
+                
+                if [ "$RESPONSE" == "204" ]; then
+                  echo "Successfully deleted $TAG"
+                else
+                  echo "Failed to delete $TAG (Status: $RESPONSE) - It might have already been deleted or doesn't exist."
+                fi
+              done

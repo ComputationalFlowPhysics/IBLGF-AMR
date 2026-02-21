@@ -38,6 +38,16 @@ jobs:
           chmod +x base/*.sh
           chmod +x head/*.sh
 
+      - name: (temporary) which iblgf.sh is being used
+        run: |
+          cd base
+          echo "PWD=$(pwd)"
+          ls -l ./iblgf.sh
+          echo "Git commit:"
+          git rev-parse --short HEAD
+          echo "Does iblgf.sh contain --bench?"
+          grep -n -- '--bench' -n ./iblgf.sh || true
+
       - name: Benchmark base commit
         run: |
           set -euo pipefail

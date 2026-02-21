@@ -93,7 +93,7 @@ jobs:
           - name: Pull image by SHA
             run: |
               docker pull ${{ secrets.DOCKERHUB_USERNAME }}/iblgf:tmp-${{ github.sha }}-${{ matrix.target }}-${{ matrix.arch }}
-              docker run --rm --cpuset-cpus="0-3" -v ./:/workspace2 -w /workspace2 ${{ secrets.DOCKERHUB_USERNAME }}/iblgf:tmp-${{ github.sha }}-${{ matrix.target }}-${{ matrix.arch }} bash -lc 'pwd; ls -l ; cd /workspace2 ; ls -l; ./iblgf.sh test'
+              docker run --rm --cpuset-cpus="0-3" -v ${{ github.workspace }}:/workspace2 -w /workspace2 ${{ secrets.DOCKERHUB_USERNAME }}/iblgf:tmp-${{ github.sha }}-${{ matrix.target }}-${{ matrix.arch }} bash -lc 'pwd; ls -l ; cd /workspace2 ; ls -l; ./iblgf.sh test'
             env:
               OMPI_ALLOW_RUN_AS_ROOT: 1
               OMPI_MCA_btl_vader_single_copy_mechanism: none

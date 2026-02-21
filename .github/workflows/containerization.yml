@@ -57,6 +57,7 @@ jobs:
             uses: docker/build-push-action@v5
             with:
               context: .
+              file: ./.github/Dockerfile
               push: true
               # We tag with SHA + architecture so it's unique per PR
               tags: ${{ secrets.DOCKERHUB_USERNAME }}/iblgf:tmp-${{ github.sha }}-${{ matrix.target }}-${{ matrix.arch }}

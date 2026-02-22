@@ -101,6 +101,14 @@ jobs:
             if ratio > allowed:
               failed = True
 
+          # Print summary statistics
+          print(f"[{name}]")
+          print(f"  Original time : {base_t:.3f} s")
+          print(f"  New time      : {head_t:.3f} s")
+          print(f"  Change        : {delta:+.3f} s ({pct:+.2f}%)")
+          print(f"  Status        : {status}")
+          print()
+
           print(f"\nAllowed slowdown ratio: {allowed:.3f}")
           if failed:
             print("Benchmark regression detected.")
@@ -108,4 +116,3 @@ jobs:
           else:
             print("Benchmarks within threshold.")
           PY
-            

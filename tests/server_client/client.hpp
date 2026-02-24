@@ -47,6 +47,10 @@ class Client : public ClientBase<ClientTraits>
     ~Client() = default;
 
     Client() = default;
+    Client(int _server_rank = 0)
+    : super_type(_server_rank)
+    {
+    }
 
   public:
     auto test()

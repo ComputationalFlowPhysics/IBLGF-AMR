@@ -46,7 +46,7 @@ class Client : public ClientBase<ClientTraits>
     Client& operator=(Client&&) & = default;
     ~Client() = default;
 
-    using super_type::ClientBase;
+    Client() = default;
 
   public:
     auto test()

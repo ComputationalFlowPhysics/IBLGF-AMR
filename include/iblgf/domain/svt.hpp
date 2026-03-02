@@ -13,12 +13,17 @@
 #ifndef IBLGF_DOMAIN_STARTING_VORTEX_THEORY_HPP
 #define IBLGF_DOMAIN_STARTING_VORTEX_THEORY_HPP
 #include <iblgf/dictionary/dictionary.hpp>
+#include <iblgf/types.hpp>
+#include <cmath>
+#include <stdexcept>
 
 namespace iblgf
 {
 namespace ib
 {
 using namespace dictionary;
+using namespace types;
+
 template<int Dim>
 class SVT
 {

@@ -23,8 +23,17 @@ add_custom_target(copy_files ALL
             ${CTEST_WORKING_DIRECTORY}/${NAME}
 )
 
-set(Ptest_list poisson_Test)
+if(USE_GPU)
+    add_custom_command(TARGET copy_files POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory ${CTEST_WORKING_DIRECTORY}/${NAME}_gpu
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+                ${CMAKE_CURRENT_SOURCE_DIR}/configs
+                ${CTEST_WORKING_DIRECTORY}/${NAME}_gpu
+    )
+endif()
 
+set(Ptest_list poisson_Test)
+set(Ptest_list_gpu poisson_gpu_Test)
 # add the executable
 add_executable(poisson.x poisson.cpp ${SOURCES})
 target_link_libraries(poisson.x
@@ -66,3 +75,21 @@ foreach (item ${Ptest_list})
         #COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_PREFLAGS} ${MPIEXEC_NUMPROC_FLAG} 8 $<TARGET_FILE:${item}> WORKING_DIRECTORY ${CTEST_WORKING_DIRECTORY}/${NAME}
     )
 endforeach()
+
+if(USE_GPU)
+    foreach (item ${Ptest_list_gpu})
+        add_executable(${item} ${item}.cu ${SOURCES} ${GPU_SOURCES})
+        add_dependencies(${item} copy_files)
+        target_link_libraries(${item} iblgf_test_main
+                            ${CUDA_CUFFT_LIBRARIES} cufft)
+        set_target_properties(${item} PROPERTIES
+            CUDA_SEPARABLE_COMPILATION ON
+            CUDA_STANDARD 17
+        )
+        add_test(
+            NAME ${item}_parallel_np13
+            COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_PREFLAGS} ${MPIEXEC_NUMPROC_FLAG} ${IBLGF_MPI_NP} $<TARGET_FILE:${item}> WORKING_DIRECTORY ${CTEST_WORKING_DIRECTORY}/${NAME}_gpu
+            #COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_PREFLAGS} ${MPIEXEC_NUMPROC_FLAG} 8 $<TARGET_FILE:${item}> WORKING_DIRECTORY ${CTEST_WORKING_DIRECTORY}/${NAME}
+        )
+    endforeach()
+endif()

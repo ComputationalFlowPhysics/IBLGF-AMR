@@ -67,7 +67,7 @@ TEST_F(datafield_test, ctors)
 {
     //Using convience macro to generate fields:
     using datablock_t =
-        DataBlock<Dim, node, f0_type, f1_type, p_type,p2_type, vel_type>;
+        DataBlock<Dim, node, f0_type, f1_type, p_type, p2_type, vel_type>;
 
     BlockDescriptor<int, Dim> blockD(coordinate_type(0), coordinate_type(8));
     datablock_t               db(blockD);

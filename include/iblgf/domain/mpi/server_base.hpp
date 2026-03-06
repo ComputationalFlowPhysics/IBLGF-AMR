@@ -40,14 +40,13 @@ class ServerBase : public ServerClientBase<Traits>
     using super_type::task_manager_;
 
   public: // ctors
-    using super_type::ServerClientBase;
+    ServerBase() = default;
 
     ServerBase(const ServerBase&) = default;
     ServerBase(ServerBase&&) = default;
     ServerBase& operator=(const ServerBase&) & = default;
     ServerBase& operator=(ServerBase&&) & = default;
     ~ServerBase() = default;
-    ServerBase() = default;
 
   protected: //helper struct
     class ClientInfo

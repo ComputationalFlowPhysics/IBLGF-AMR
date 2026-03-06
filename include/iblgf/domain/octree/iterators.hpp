@@ -196,8 +196,6 @@ struct IteratorBfs : public IteratorBase<Node, IteratorBfs<Node, Dim>>
     using iterator_category = typename iterator_base_type::iterator_category;
 
   public: //ctors
-    using iterator_base_type::IteratorBase;
-
     IteratorBfs(const IteratorBfs&) = default;
     IteratorBfs(IteratorBfs&&) = default;
     IteratorBfs& operator=(const IteratorBfs&) & = default;
@@ -258,8 +256,6 @@ struct IteratorDfs : public IteratorBase<Node, IteratorDfs<Node, Dim>>
     using iterator_category = typename iterator_base_type::iterator_category;
 
   public: //ctors
-    using iterator_base_type::IteratorBase;
-
     IteratorDfs(const IteratorDfs&) = default;
     IteratorDfs& operator=(const IteratorDfs&) & = default;
     ~IteratorDfs() = default;

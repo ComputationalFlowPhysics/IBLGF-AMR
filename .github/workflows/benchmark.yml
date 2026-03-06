@@ -106,8 +106,6 @@ jobs:
           print(f"  Original time : {base_t:.3f} s")
           print(f"  New time      : {head_t:.3f} s")
           print(f"  Change        : {(head_t - base_t):+.3f} s ({pct:+.2f}%)")
-          print(f"  Status        : {status}")
-          print()
 
           print(f"\nAllowed slowdown ratio: {allowed:.3f}")
           if failed:

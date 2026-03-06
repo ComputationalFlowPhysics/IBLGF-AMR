@@ -452,7 +452,7 @@ struct SendTaskCommunicator
         SendTaskCommunicator<typename TaskType::inplace_task_type>;
 
   public: //Ctors
-    using super_type::TaskCommunicator;
+    SendTaskCommunicator() = default;
 
   public: //Memebers:
     int tag_rank_impl(int rank_other) const noexcept
@@ -514,7 +514,7 @@ class RecvTaskCommunicator
         RecvTaskCommunicator<typename TaskType::inplace_task_type>;
 
   public: //Ctors
-    using  super_type::TaskCommunicator;
+    RecvTaskCommunicator() = default;
 
   public: //members
     int  tag_rank_impl(int _rank_other) const noexcept { return _rank_other; }

@@ -10,6 +10,15 @@ target_link_libraries(convTest.x
                       ${BLAS_LIBRARIES}
                       xtensor
                       xsimd)
+
+# *added*
+add_executable(convFFTTest convFFTTest.cpp ${SOURCES})
+target_link_libraries(convFFTTest iblgf_test_main)
+add_test(
+    NAME convFFTTest
+    COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 1 ${MPIEXEC_PREFLAGS} $<TARGET_FILE:convFFTTest>
+)
+
 if(USE_GPU)
         
     add_executable(convTest_gpu.x convTest_gpu.cu ${SOURCES} ${GPU_SOURCES})

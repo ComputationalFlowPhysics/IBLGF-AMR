@@ -2,9 +2,9 @@
 # docker_iblgf.sh — enter IBLGF Docker env with optional CPU limit and Python
 set -euo pipefail
 
-CPU_BASE_IMAGE="ccardina/my-app:cpu"
+CPU_BASE_IMAGE="ccardina/iblgf:cpu"
 
-GPU_BASE_IMAGE="ccardina/my-app:gpu"
+GPU_BASE_IMAGE="ccardina/iblgf:gpu"
 
 USE_GPU=0
 

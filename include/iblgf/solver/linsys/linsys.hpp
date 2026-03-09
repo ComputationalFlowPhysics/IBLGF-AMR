@@ -18,6 +18,12 @@
 #include <vector>
 #include <cmath>
 
+#ifdef _OPENMP
+#define IBLGF_LINSYS_OMP_PARALLEL_FOR _Pragma("omp parallel for schedule(static)")
+#else
+#define IBLGF_LINSYS_OMP_PARALLEL_FOR
+#endif
+
 // IBLGF-specific
 #include <iblgf/global.hpp>
 #include <iblgf/simulation.hpp>
@@ -70,6 +76,7 @@ class LinSysSolver
         if (domain_->is_server())
             return 0;
 
+        IBLGF_LINSYS_OMP_PARALLEL_FOR
         for (std::size_t i=0; i<ib_->size(); ++i)
             ib_->force(i,0)=1;
 
@@ -149,6 +156,7 @@ class LinSysSolver
     {
         auto& frame_vel = simulation_->frame_vel();
         auto& bc_vel = simulation_->bc_vel();
+        IBLGF_LINSYS_OMP_PARALLEL_FOR
         for (std::size_t i=0; i<uc.size(); ++i)
             for (std::size_t idx=0; idx<uc[i].size(); ++idx) {
                 uc[i][idx]-=bc_vel(idx, t, ib_->coordinate(i));
@@ -185,7 +193,8 @@ class LinSysSolver
         //printvec(Ax, "Ax");
 
         //  res = uc - Ax
-        for (int i=0; i<ib_->size(); ++i)
+        IBLGF_LINSYS_OMP_PARALLEL_FOR
+        for (std::size_t i=0; i<ib_->size(); ++i)
         {
             if (ib_->rank(i)!=comm_.rank())
                 r[i]=0;
@@ -383,6 +392,7 @@ class LinSysSolver
 
         real_coordinate_type tmp_coord(0.0);
         force_type tmp_f(ib_->size(), tmp_coord);
+        IBLGF_LINSYS_OMP_PARALLEL_FOR
         for (std::size_t i=0; i<tmp_f.size(); ++i)
         {
             tmp_f[i][0]=f[i];
@@ -391,6 +401,7 @@ class LinSysSolver
         ib_->communicator().compute_indices();
         ib_->communicator().communicate(true, tmp_f);
 
+        IBLGF_LINSYS_OMP_PARALLEL_FOR
         for (std::size_t i=0; i<tmp_f.size(); ++i)
         {
             f[i] = tmp_f[i][0];
@@ -425,9 +436,11 @@ class LinSysSolver
             return;
 
         // clean f
+        IBLGF_LINSYS_OMP_PARALLEL_FOR
         for (std::size_t i=0; i<ib_->size(); ++i)
             f[i]=0.0;
 
+        IBLGF_LINSYS_OMP_PARALLEL_FOR
         for (std::size_t i=0; i<ib_->size(); ++i)
         {
             std::size_t oct_i=0;
@@ -459,9 +472,11 @@ class LinSysSolver
             return;
 
         // clean f
+        IBLGF_LINSYS_OMP_PARALLEL_FOR
         for (std::size_t i=0; i<ib_->size(); ++i)
             f[i]=0.0;
 
+        IBLGF_LINSYS_OMP_PARALLEL_FOR
         for (std::size_t i=0; i<ib_->size(); ++i)
         {
             std::size_t oct_i=0;
@@ -482,6 +497,7 @@ class LinSysSolver
 
 
         force_type tmp_f(ib_->size(), tmp_coord);
+        IBLGF_LINSYS_OMP_PARALLEL_FOR
         for (std::size_t i=0; i<tmp_f.size(); ++i)
         {
             tmp_f[i][0]=f[i];
@@ -490,6 +506,7 @@ class LinSysSolver
         ib_->communicator().compute_indices();
         ib_->communicator().communicate(false, tmp_f);
 
+        IBLGF_LINSYS_OMP_PARALLEL_FOR
         for (std::size_t i=0; i<tmp_f.size(); ++i)
         {
             f[i] = tmp_f[i][0];
@@ -501,13 +518,17 @@ class LinSysSolver
     float_type dot(VecType& a, VecType& b)
     {
         float_type s = 0;
-        for (std::size_t i=0; i<a.size(); ++i)
+#ifdef _OPENMP
+        #pragma omp parallel for schedule(static) reduction( + : s )
+#endif
+        for (std::size_t d=0; d<a[0].size(); ++d)
         {
-            if (ib_->rank(i)!=comm_.rank())
-                continue;
-
-            for (std::size_t d=0; d<a[0].size(); ++d)
-                s+=a[i][d]*b[i][d];
+            for (std::size_t i=0; i<a.size(); ++i)
+            {
+                if (ib_->rank(i)!=comm_.rank())
+                    continue;
+                s += a[i][d] * b[i][d];
+            }
         }
 
         float_type s_global=0.0;
@@ -520,13 +541,15 @@ class LinSysSolver
     void add(VecType& a, VecType& b,
             float_type scale1=1.0, float_type scale2=1.0)
     {
-        for (int i=0; i<a.size(); ++i)
+        IBLGF_LINSYS_OMP_PARALLEL_FOR
+        for (std::size_t d=0; d<a[0].size(); ++d)
         {
-            if (ib_->rank(i)!=comm_.rank())
-                continue;
-
-            for (int d=0; d<a[0].size(); ++d)
-                a[i][d] = a[i][d]*scale1 + b[i][d]*scale2;
+            for (std::size_t i=0; i<a.size(); ++i)
+            {
+                if (ib_->rank(i)!=comm_.rank())
+                    continue;
+                a[i][d] = a[i][d] * scale1 + b[i][d] * scale2;
+            }
         }
     }
 

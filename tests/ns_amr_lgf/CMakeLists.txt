@@ -10,6 +10,7 @@ add_custom_target(copy_ifherk_files ALL
 
 set(Ptest_list ns_amr_lgf_Test)
 set(Ptest_list_gpu ns_amr_lgf_gpu_Test)
+find_package(OpenMP)
 if(USE_GPU)
     add_custom_command(TARGET copy_ifherk_files POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E make_directory ${CTEST_WORKING_DIRECTORY}/${NAME}_gpu
@@ -28,6 +29,9 @@ target_link_libraries(ns_amr_lgf.x
                       ${BLAS_LIBRARIES}
                       xtensor
                       xsimd)
+if(OpenMP_CXX_FOUND)
+    target_link_libraries(ns_amr_lgf.x PUBLIC OpenMP::OpenMP_CXX)
+endif()
 if(USE_GPU)
         
     set(CMAKE_CUDA_HOST_COMPILER ${MPI_CXX_COMPILER})
@@ -43,6 +47,9 @@ if(USE_GPU)
                         xtensor
                         xsimd
                         ${CUDA_CUFFT_LIBRARIES} cufft)
+    if(OpenMP_CXX_FOUND)
+        target_link_libraries(ns_amr_lgf_gpu.x PUBLIC OpenMP::OpenMP_CXX)
+    endif()
     set_target_properties(ns_amr_lgf_gpu.x PROPERTIES
         CUDA_SEPARABLE_COMPILATION ON
         CUDA_STANDARD 17

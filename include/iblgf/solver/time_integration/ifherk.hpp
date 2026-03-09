@@ -19,6 +19,12 @@
 #include <cmath>
 #include <array>
 
+#ifdef _OPENMP
+#define IBLGF_IFHERK_OMP_PARALLEL_FOR _Pragma("omp parallel for schedule(static)")
+#else
+#define IBLGF_IFHERK_OMP_PARALLEL_FOR
+#endif
+
 // IBLGF-specific
 #include <iblgf/global.hpp>
 #include <iblgf/simulation.hpp>
@@ -1015,6 +1021,41 @@ class Ifherk
                 _field_idx, _field_idx, Field::mesh_type(), true, false);
     }
 
+    std::vector<octant_t*> collect_octants(
+        bool local_only = true,
+        bool require_data = true) const
+    {
+        std::vector<octant_t*> octants;
+        octants.reserve(domain_->num_leafs() + domain_->num_corrections());
+        for (auto it = domain_->begin(); it != domain_->end(); ++it)
+        {
+            auto* oct = it.ptr();
+            if (!oct) continue;
+            if (local_only && !oct->locally_owned()) continue;
+            if (require_data && !oct->has_data()) continue;
+            octants.push_back(oct);
+        }
+        return octants;
+    }
+
+    std::vector<octant_t*> collect_level_octants(
+        int l,
+        bool local_only = true,
+        bool require_data = true) const
+    {
+        std::vector<octant_t*> octants;
+        octants.reserve(domain_->num_leafs() + domain_->num_corrections());
+        for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+        {
+            auto* oct = it.ptr();
+            if (!oct) continue;
+            if (local_only && !oct->locally_owned()) continue;
+            if (require_data && !oct->has_data()) continue;
+            octants.push_back(oct);
+        }
+        return octants;
+    }
+
     void adapt(bool coarsify_field=true, bool check_source_max=true)
     {
         boost::mpi::communicator world;
@@ -1307,18 +1348,21 @@ class Ifherk
     template <typename F>
     void clean(bool non_leaf_only=false, int clean_width=1) noexcept
     {
-        for (auto it = domain_->begin(); it != domain_->end(); ++it)
+        auto octants = collect_octants(false, false);
+        IBLGF_IFHERK_OMP_PARALLEL_FOR
+        for (std::size_t oct_idx = 0; oct_idx < octants.size(); ++oct_idx)
         {
-            if (!it->has_data()) continue;
-            if (!it->data().is_allocated()) continue;
+            auto* oct = octants[oct_idx];
+            if (!oct || !oct->has_data()) continue;
+            if (!oct->data().is_allocated()) continue;
 
             for (std::size_t field_idx = 0; field_idx < F::nFields(); ++field_idx)
             {
-                auto& lin_data = it->data_r(F::tag(), field_idx).linalg_data();
+                auto& lin_data = oct->data_r(F::tag(), field_idx).linalg_data();
 
-                if (non_leaf_only && it->is_leaf() && it->locally_owned())
+                if (non_leaf_only && oct->is_leaf() && oct->locally_owned())
                 {
-                    int N = it->data().descriptor().extent()[0];
+                    int N = oct->data().descriptor().extent()[0];
 		    if(domain_->dimension() == 3) {
                     view(lin_data, xt::all(), xt::all(),
                         xt::range(0, clean_width)) *= 0.0;
@@ -1353,33 +1397,39 @@ class Ifherk
     template <typename F>
     void clean_leaf_correction_boundary(int l, bool leaf_only_boundary=false, int clean_width=1) noexcept
     {
-        for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+        auto octants = collect_level_octants(l, false, false);
+
+        IBLGF_IFHERK_OMP_PARALLEL_FOR
+        for (std::size_t oct_idx = 0; oct_idx < octants.size(); ++oct_idx)
         {
-            if (!it->locally_owned())
+            auto* oct = octants[oct_idx];
+            if (!oct || oct->locally_owned())
+                continue;
+
+            if (!oct->has_data() || !oct->data().is_allocated()) continue;
+            for (std::size_t field_idx = 0; field_idx < F::nFields();
+                 ++field_idx)
             {
-                if (!it->has_data() || !it->data().is_allocated()) continue;
-                for (std::size_t field_idx = 0; field_idx < F::nFields();
-                     ++field_idx)
-                {
-                    auto& lin_data =
-                        it->data_r(F::tag(), field_idx).linalg_data();
-                    std::fill(lin_data.begin(), lin_data.end(), 0.0);
-                }
+                auto& lin_data =
+                    oct->data_r(F::tag(), field_idx).linalg_data();
+                std::fill(lin_data.begin(), lin_data.end(), 0.0);
             }
         }
 
-        for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+        IBLGF_IFHERK_OMP_PARALLEL_FOR
+        for (std::size_t oct_idx = 0; oct_idx < octants.size(); ++oct_idx)
         {
-            if (!it->locally_owned()) continue;
-            if (!it->has_data() || !it->data().is_allocated()) continue;
+            auto* oct = octants[oct_idx];
+            if (!oct || !oct->locally_owned()) continue;
+            if (!oct->has_data() || !oct->data().is_allocated()) continue;
 
-            if (leaf_only_boundary && (it->is_correction() || it->is_old_correction() ))
+            if (leaf_only_boundary && (oct->is_correction() || oct->is_old_correction() ))
             {
                 for (std::size_t field_idx = 0; field_idx < F::nFields();
                      ++field_idx)
                 {
                     auto& lin_data =
-                        it->data_r(F::tag(), field_idx).linalg_data();
+                        oct->data_r(F::tag(), field_idx).linalg_data();
                     std::fill(lin_data.begin(), lin_data.end(), 0.0);
                 }
             }
@@ -1388,21 +1438,23 @@ class Ifherk
 
         //---------------
         if (l==domain_->tree()->base_level())
-        for (auto it  = domain_->begin(l);
-                it != domain_->end(l); ++it)
         {
-            if(!it->locally_owned()) continue;
-            if(!it->has_data() || !it->data().is_allocated()) continue;
-            //std::cout<<it->key()<<std::endl;
-
-            for(std::size_t i=0;i< it->num_neighbors();++i)
+            auto local_octants = collect_level_octants(l, true, true);
+            IBLGF_IFHERK_OMP_PARALLEL_FOR
+            for (std::size_t oct_idx = 0; oct_idx < local_octants.size(); ++oct_idx)
             {
-                auto it2=it->neighbor(i);
-                if ((!it2 || !it2->has_data()) || (leaf_only_boundary && (it2->is_correction() || it2->is_old_correction() )))
+                auto* oct = local_octants[oct_idx];
+                if (!oct || !oct->data().is_allocated()) continue;
+
+                for (std::size_t i = 0; i < oct->num_neighbors(); ++i)
                 {
-                    for (std::size_t field_idx=0; field_idx<F::nFields(); ++field_idx)
+                    auto it2 = oct->neighbor(i);
+                    if ((!it2 || !it2->has_data()) ||
+                        (leaf_only_boundary &&
+                            (it2->is_correction() || it2->is_old_correction())))
                     {
-                        domain::Operator::smooth2zero<F>( it->data(), i);
+                        // smooth2zero already loops over all fields in F.
+                        domain::Operator::smooth2zero<F>(oct->data(), i);
                     }
                 }
             }
@@ -1534,17 +1586,15 @@ private:
                 l < domain_->tree()->depth(); ++l)
         {
             client->template buffer_exchange<Velocity_in>(l);
-
-            for (auto it  = domain_->begin(l);
-                    it != domain_->end(l); ++it)
+            auto octants = collect_level_octants(l, true, true);
+            IBLGF_IFHERK_OMP_PARALLEL_FOR
+            for (std::size_t oct_idx = 0; oct_idx < octants.size(); ++oct_idx)
             {
-                if(!it->locally_owned() || !it->has_data()) continue;
-                if(it->is_correction()) continue;
-                //if(!it->is_leaf()) continue;
+                auto* oct = octants[oct_idx];
+                if (!oct || oct->is_correction()) continue;
 
-                const auto dx_level =  dx_base/math::pow2(it->refinement_level());
-                //if (it->is_leaf())
-                domain::Operator::curl<Velocity_in,edge_aux_type>( it->data(),dx_level);
+                const auto dx_level = dx_base / math::pow2(oct->refinement_level());
+                domain::Operator::curl<Velocity_in, edge_aux_type>(oct->data(), dx_level);
             }
         }
 
@@ -1558,14 +1608,16 @@ private:
         for (int l  = domain_->tree()->base_level();
                 l < l_max; ++l)
         {
-            for (auto it  = domain_->begin(l);
-                    it != domain_->end(l); ++it)
+            auto octants = collect_level_octants(l, true, true);
+            IBLGF_IFHERK_OMP_PARALLEL_FOR
+            for (std::size_t oct_idx = 0; oct_idx < octants.size(); ++oct_idx)
             {
-                if(!it->locally_owned() || !it->has_data()) continue;
-                //if(!it->is_correction() && refresh_correction_only) continue;
+                auto* oct = octants[oct_idx];
+                if (!oct) continue;
 
-                const auto dx_level =  dx_base/math::pow2(it->refinement_level());
-                    domain::Operator::curl_transpose<stream_f_type,Velocity_out>( it->data(),dx_level, -1.0);
+                const auto dx_level = dx_base / math::pow2(oct->refinement_level());
+                domain::Operator::curl_transpose<stream_f_type, Velocity_out>(
+                    oct->data(), dx_level, -1.0);
             }
         }
 
@@ -1649,15 +1701,17 @@ private:
         {
 
             client->template buffer_exchange<Source>(l);
-
-            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            auto octants = collect_level_octants(l, true, true);
+            IBLGF_IFHERK_OMP_PARALLEL_FOR
+            for (std::size_t oct_idx = 0; oct_idx < octants.size(); ++oct_idx)
             {
-                if (!it->locally_owned() || !it->has_data()) continue;
+                auto* oct = octants[oct_idx];
+                if (!oct) continue;
 
                 const auto dx_level =
-                    dx_base / math::pow2(it->refinement_level());
+                    dx_base / math::pow2(oct->refinement_level());
                 domain::Operator::curl<Source, edge_aux_type>(
-                    it->data(), dx_level);
+                    oct->data(), dx_level);
             }
         }
 
@@ -1672,19 +1726,21 @@ private:
             client->template buffer_exchange<edge_aux_type>(l);
             // client->template buffer_exchange<face_aux_type>(l);
             clean_leaf_correction_boundary<edge_aux_type>(l, false, 2);
-
-            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            auto octants = collect_level_octants(l, true, true);
+            IBLGF_IFHERK_OMP_PARALLEL_FOR
+            for (std::size_t oct_idx = 0; oct_idx < octants.size(); ++oct_idx)
             {
-                if (!it->locally_owned() || !it->has_data()) continue;
+                auto* oct = octants[oct_idx];
+                if (!oct) continue;
 
                 domain::Operator::nonlinear<face_aux_type, edge_aux_type, Target>(
-                    it->data());
+                    oct->data());
 
                 for (std::size_t field_idx = 0; field_idx < Target::nFields();
                      ++field_idx)
                 {
                     auto& lin_data =
-                        it->data_r(Target::tag(), field_idx).linalg_data();
+                        oct->data_r(Target::tag(), field_idx).linalg_data();
                     lin_data *= _scale; //scale with time step size
                 }
             }
@@ -1702,35 +1758,22 @@ private:
 
     template<class target>
     void add_body_force(float_type scale) noexcept {
-        //float_type eps = 1e-3;
         auto dx_base = domain_->dx_base();
-        for (auto it = domain_->begin(); it != domain_->end(); ++it)
-		{
+        auto octants = collect_octants(true, true);
+        IBLGF_IFHERK_OMP_PARALLEL_FOR
+        for (std::size_t oct_idx = 0; oct_idx < octants.size(); ++oct_idx)
+        {
+            auto* oct = octants[oct_idx];
+            if (!oct) continue;
 
-			if (!it->locally_owned()) continue;
-
-			auto dx_level = dx_base / std::pow(2, it->refinement_level());
-			auto scaling = std::pow(2, it->refinement_level());
-
-			for (auto& node : it->data())
-			{
-
-				const auto& coord = node.level_coordinate();
-
-				
-				float_type x = static_cast<float_type>
-					(coord[0]) * dx_level;
-				float_type y = static_cast<float_type>
-					(coord[1]) * dx_level;
-				//z = static_cast<float_type>
-				//(coord[2]-center[2]*scaling+0.5)*dx_level;
-
-				//node(edge_aux,0) = vor(x,y-0.5*vort_sep,0)+ vor(x,y+0.5*vort_sep,0);
-				node(target::tag(), 1) += -scale * b_f_mag * y / (y*y + b_f_eps);
-
+            auto dx_level = dx_base / math::pow2(oct->refinement_level());
+            for (auto& node : oct->data())
+            {
+                const auto& coord = node.level_coordinate();
+                float_type y = static_cast<float_type>(coord[1]) * dx_level;
+                node(target::tag(), 1) += -scale * b_f_mag * y / (y * y + b_f_eps);
             }
-
-		}
+        }
     }
 
     template<class Source, class Target>
@@ -1745,14 +1788,16 @@ private:
         {
             client->template buffer_exchange<Source>(l);
             const auto dx_base = domain_->dx_base();
-
-            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            auto octants = collect_level_octants(l, true, true);
+            IBLGF_IFHERK_OMP_PARALLEL_FOR
+            for (std::size_t oct_idx = 0; oct_idx < octants.size(); ++oct_idx)
             {
-                if (!it->locally_owned() || !it->has_data()) continue;
+                auto* oct = octants[oct_idx];
+                if (!oct) continue;
                 const auto dx_level =
-                    dx_base / math::pow2(it->refinement_level());
+                    dx_base / math::pow2(oct->refinement_level());
                 domain::Operator::divergence<Source, Target>(
-                    it->data(), dx_level);
+                    oct->data(), dx_level);
             }
 
             //client->template buffer_exchange<Target>(l);
@@ -1766,25 +1811,28 @@ private:
     {
         //up_and_down<Source>();
         domain::Operator::domainClean<Target>(domain_);
+        auto client = domain_->decomposition().client();
+        const auto dx_base = domain_->dx_base();
 
         for (int l = domain_->tree()->base_level();
              l < domain_->tree()->depth(); ++l)
         {
-            auto client = domain_->decomposition().client();
             //client->template buffer_exchange<Source>(l);
-            const auto dx_base = domain_->dx_base();
-            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            auto octants = collect_level_octants(l, true, true);
+            IBLGF_IFHERK_OMP_PARALLEL_FOR
+            for (std::size_t oct_idx = 0; oct_idx < octants.size(); ++oct_idx)
             {
-                if (!it->locally_owned() || !it->has_data()) continue;
+                auto* oct = octants[oct_idx];
+                if (!oct) continue;
                 const auto dx_level =
-                    dx_base / math::pow2(it->refinement_level());
+                    dx_base / math::pow2(oct->refinement_level());
                 domain::Operator::gradient<Source, Target>(
-                    it->data(), dx_level);
+                    oct->data(), dx_level);
                 for (std::size_t field_idx = 0; field_idx < Target::nFields();
                      ++field_idx)
                 {
                     auto& lin_data =
-                        it->data_r(Target::tag(), field_idx).linalg_data();
+                        oct->data_r(Target::tag(), field_idx).linalg_data();
 
                     lin_data *= _scale;
                 }
@@ -1878,17 +1926,20 @@ private:
     {
         static_assert(From::nFields() == To::nFields(),
             "number of fields doesn't match when add");
-        for (auto it = domain_->begin(); it != domain_->end(); ++it)
+        auto octants = collect_octants(true, true);
+        IBLGF_IFHERK_OMP_PARALLEL_FOR
+        for (std::size_t oct_idx = 0; oct_idx < octants.size(); ++oct_idx)
         {
-            if (!it->locally_owned() || !it->has_data()) continue;
+            auto* oct = octants[oct_idx];
+            if (!oct) continue;
             for (std::size_t field_idx = 0; field_idx < From::nFields();
                  ++field_idx)
             {
-                it->data_r(To::tag(), field_idx)
+                oct->data_r(To::tag(), field_idx)
                     .linalg()
                     .get()
                     ->cube_noalias_view() +=
-                    it->data_r(From::tag(), field_idx).linalg_data() * scale;
+                    oct->data_r(From::tag(), field_idx).linalg_data() * scale;
             }
         }
     }
@@ -1896,27 +1947,25 @@ private:
     template<typename Field>
     void computeWii() noexcept
     {
-        auto dx_base = domain_->dx_base();
-        for (auto it = domain_->begin(); it != domain_->end(); ++it)
-		{
-
-			if (!it->locally_owned()) continue;
-
-			auto dx_level = dx_base / std::pow(2, it->refinement_level());
-			auto scaling = std::pow(2, it->refinement_level());
+        auto octants = collect_octants(true, true);
+        IBLGF_IFHERK_OMP_PARALLEL_FOR
+        for (std::size_t oct_idx = 0; oct_idx < octants.size(); ++oct_idx)
+        {
+            auto* oct = octants[oct_idx];
+            if (!oct) continue;
 
             for (std::size_t field_idx = 0; field_idx < Field::nFields();
                  ++field_idx)
             {
-                for (auto& n:it->data().node_field()) {
+                for (auto& n : oct->data().node_field())
+                {
                     float_type val = n(Field::tag(), field_idx);
-
                     if (std::fabs(val) > 1e-4) {
-                        n(Field::tag(), field_idx) = 1/val;
+                        n(Field::tag(), field_idx) = 1 / val;
                     }
                 }
             }
-		}
+        }
     }
 
     template<typename From1, typename From2, typename To>
@@ -1930,12 +1979,17 @@ private:
 
         for (auto it = domain_->begin(); it != domain_->end(); ++it)
         {
-            if (!it->locally_owned() || !it->has_data()) continue;
+            auto* oct = octants[oct_idx];
+            if (!oct) continue;
             for (std::size_t field_idx = 0; field_idx < From1::nFields();
                  ++field_idx)
             {
-                for (auto& n:it->data().node_field())
-                    n(To::tag(), field_idx) = n(From1::tag(), field_idx) * n(From2::tag(), field_idx);
+                oct->data_r(To::tag(), field_idx)
+                    .linalg()
+                    .get()
+                    ->cube_noalias_view() =
+                    oct->data_r(From1::tag(), field_idx).linalg_data() *
+                    oct->data_r(From2::tag(), field_idx).linalg_data();
             }
         }
     }
@@ -1946,14 +2000,20 @@ private:
         static_assert(From::nFields() == To::nFields(),
             "number of fields doesn't match when copy");
 
-        for (auto it = domain_->begin(); it != domain_->end(); ++it)
+        auto octants = collect_octants(true, true);
+        IBLGF_IFHERK_OMP_PARALLEL_FOR
+        for (std::size_t oct_idx = 0; oct_idx < octants.size(); ++oct_idx)
         {
-            if (!it->locally_owned() || !it->has_data()) continue;
+            auto* oct = octants[oct_idx];
+            if (!oct) continue;
             for (std::size_t field_idx = 0; field_idx < From::nFields();
                  ++field_idx)
             {
-                for (auto& n:it->data().node_field())
-                    n(To::tag(), field_idx) = n(From::tag(), field_idx) * scale;
+                oct->data_r(To::tag(), field_idx)
+                    .linalg()
+                    .get()
+                    ->cube_noalias_view() =
+                    oct->data_r(From::tag(), field_idx).linalg_data() * scale;
             }
         }
     }

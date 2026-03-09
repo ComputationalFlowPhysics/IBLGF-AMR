@@ -1977,7 +1977,9 @@ private:
         static_assert(From2::nFields() == To::nFields(),
             "number of fields doesn't match when copy");
 
-        for (auto it = domain_->begin(); it != domain_->end(); ++it)
+        auto octants = collect_octants(true, true);
+        IBLGF_IFHERK_OMP_PARALLEL_FOR
+        for (std::size_t oct_idx = 0; oct_idx < octants.size(); ++oct_idx)
         {
             auto* oct = octants[oct_idx];
             if (!oct) continue;

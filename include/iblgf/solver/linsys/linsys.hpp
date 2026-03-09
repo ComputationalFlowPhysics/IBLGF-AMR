@@ -308,7 +308,7 @@ class LinSysSolver
         int l = domain_->tree()->depth()-1;
 
         // div
-        domain::Operator::levelDivergence<Source, cell_aux2_type>(domain_, l);
+        this->template levelDivergence_omp<Source, cell_aux2_type>(l);
         domain::Operator::clean_ib_region_boundary<cell_aux2_type>(domain_, l);
 
         // apply L^-1
@@ -322,7 +322,7 @@ class LinSysSolver
                     domain_->tree()->base_level() : domain_->tree()->depth()-1;
 
         for (int l = l_min; l < l_max; ++l) {
-            domain::Operator::levelGradient<cell_aux2_type, Target>(domain_, l);
+            this->template levelGradient_omp<cell_aux2_type, Target>(l);
             if (fmm_type ==  MASK_TYPE::xIB2IB) domain::Operator::clean_ib_region_boundary<Target>(domain_, l);
         }
     }
@@ -335,7 +335,7 @@ class LinSysSolver
         int l = domain_->tree()->depth()-1;
 
         // div
-        domain::Operator::levelDivergence<Source, cell_aux2_type>(domain_, l);
+        this->template levelDivergence_omp<Source, cell_aux2_type>(l);
         //domain::Operator::clean_ib_region_boundary<cell_aux2_type>(domain_, l);
         if (std::fabs(alpha)>1e-14)
             psolver_.template apply_lgf_IF<cell_aux2_type, cell_aux2_type>(alpha, MASK_TYPE::IB2xIB);
@@ -351,7 +351,7 @@ class LinSysSolver
                     domain_->tree()->base_level() : domain_->tree()->depth()-1;
 
         for (int l = l_min; l < l_max; ++l) {
-            domain::Operator::levelGradient<cell_aux2_type, Target>(domain_, l);
+            this->template levelGradient_omp<cell_aux2_type, Target>(l);
             //if (fmm_type ==  MASK_TYPE::xIB2IB) domain::Operator::clean_ib_region_boundary<Target>(domain_, l);
         }
     }
@@ -382,6 +382,64 @@ class LinSysSolver
             }
         }
 
+    }
+
+    std::vector<octant_t*> collect_level_octants(
+        int l,
+        bool local_only = true,
+        bool require_data = true) const
+    {
+        std::vector<octant_t*> octants;
+        octants.reserve(domain_->num_leafs() + domain_->num_corrections());
+        for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+        {
+            auto* oct = it.ptr();
+            if (!oct) continue;
+            if (local_only && !oct->locally_owned()) continue;
+            if (require_data && !oct->has_data()) continue;
+            if (require_data && !oct->data().is_allocated()) continue;
+            octants.push_back(oct);
+        }
+        return octants;
+    }
+
+    template<class Source, class Target>
+    void levelDivergence_omp(int l) noexcept
+    {
+        auto client = domain_->decomposition().client();
+        client->template buffer_exchange<Source>(l);
+        const auto dx_base = domain_->dx_base();
+        auto octants = collect_level_octants(l, true, true);
+
+        IBLGF_LINSYS_OMP_PARALLEL_FOR
+        for (std::size_t oct_idx = 0; oct_idx < octants.size(); ++oct_idx)
+        {
+            auto* oct = octants[oct_idx];
+            if (!oct) continue;
+            const auto dx_level = dx_base / math::pow2(oct->refinement_level());
+            domain::Operator::divergence<Source, Target>(oct->data(), dx_level);
+        }
+
+        domain::Operator::clean_leaf_correction_boundary<Target>(domain_, l, true, 2);
+    }
+
+    template<class Source, class Target>
+    void levelGradient_omp(int l) noexcept
+    {
+        auto client = domain_->decomposition().client();
+        const auto dx_base = domain_->dx_base();
+        auto octants = collect_level_octants(l, true, true);
+
+        IBLGF_LINSYS_OMP_PARALLEL_FOR
+        for (std::size_t oct_idx = 0; oct_idx < octants.size(); ++oct_idx)
+        {
+            auto* oct = octants[oct_idx];
+            if (!oct) continue;
+            const auto dx_level = dx_base / math::pow2(oct->refinement_level());
+            domain::Operator::gradient<Source, Target>(oct->data(), dx_level);
+        }
+
+        client->template buffer_exchange<Target>(l);
     }
 
 

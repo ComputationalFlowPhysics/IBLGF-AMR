@@ -13,7 +13,9 @@
 #define IBLGF_COMPILE_CUDA
 #endif
 #include <gtest/gtest.h>
+#ifndef __CUDACC__
 #include <boost/filesystem.hpp>
+#endif
 #include <boost/mpi/communicator.hpp>
 #include <boost/mpi/environment.hpp>
 

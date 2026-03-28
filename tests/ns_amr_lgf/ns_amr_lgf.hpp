@@ -114,7 +114,7 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
         linear_start_ = simulation_.dictionary()->template get_or<bool>("linear_start", false);
 
         simulation_.frame_vel() =
-            [this](std::size_t idx, float_type t, auto coord = {0, 0, 0})
+            [this](std::size_t idx, float_type t, auto coord)
             {
                 float_type T0 = 0.5;
                 if (t<=0.0 && (smooth_start_ || linear_start_))
@@ -153,7 +153,7 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
                 }
             };
         simulation_.bc_vel() =
-            [this](std::size_t idx, float_type t, auto coord = {0, 0, 0})
+            [this](std::size_t idx, float_type t, auto coord)
             {
                 float_type T0 = 0.5;
                 if (t<=0.0 && (smooth_start_|| linear_start_))

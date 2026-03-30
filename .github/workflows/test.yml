@@ -10,8 +10,15 @@ on:
 
 jobs:
   building:
-    name: Build Code
-    runs-on: ubuntu-latest
+    name: Build Code ${{ matrix.runner }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+          - runner: ubuntu-24.04-arm
+
 
     steps:
       - name: Clone

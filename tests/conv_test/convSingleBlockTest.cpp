@@ -26,7 +26,6 @@
 #include <iblgf/types.hpp>
 #include <iblgf/utilities/convolution.hpp>
 #include <iblgf/domain/dataFields/blockDescriptor.hpp>
-#include <iblgf/domain/dataFields/dataField.hpp>
 #include <iblgf/lgf/lgf_gl.hpp>
 
 using namespace iblgf;

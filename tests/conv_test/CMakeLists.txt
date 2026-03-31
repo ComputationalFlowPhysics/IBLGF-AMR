@@ -19,6 +19,20 @@ add_test(
     COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 1 ${MPIEXEC_PREFLAGS} $<TARGET_FILE:convFFTTest>
 )
 
+add_executable(convSingleBlockTest convSingleBlockTest.cpp ${SOURCES})
+target_link_libraries(convSingleBlockTest iblgf_test_main)
+add_test(
+    NAME convSingleBlockTest
+    COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 1 ${MPIEXEC_PREFLAGS} $<TARGET_FILE:convSingleBlockTest>
+)
+
+add_executable(ffmTest ffmTest.cpp ${SOURCES})
+target_link_libraries(ffmTest iblgf_test_main)
+add_test(
+    NAME FMMTest
+    COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 1 ${MPIEXEC_PREFLAGS} $<TARGET_FILE:ffmTest>
+)
+
 if(USE_GPU)
         
     add_executable(convTest_gpu.x convTest_gpu.cu ${SOURCES} ${GPU_SOURCES})

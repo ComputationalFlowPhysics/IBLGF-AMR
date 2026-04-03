@@ -1194,6 +1194,7 @@ class Ifherk
         // ******************************************************************
         copy<u_i_type, u_type>();
         copy<d_i_type, p_type>(1.0 / coeff_a(3, 3) / dt_);
+        curl<u_i_type>();
         // ******************************************************************
         
     }
@@ -1569,7 +1570,7 @@ private:
             }
         }
 
-        correct_base_mean_velocity<Velocity_in, Velocity_out>();
+        // correct_base_mean_velocity<Velocity_in, Velocity_out>();
 
         this->down_to_correction<Velocity_out>();
     }

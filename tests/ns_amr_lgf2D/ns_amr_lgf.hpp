@@ -241,13 +241,8 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 
 
 
-		bool use_fat_ring = simulation_.dictionary()->template get_or<bool>("fat_ring", false);
-		if (use_fat_ring)
-			vr_fct_ =
-			[this](float_type x, float_type y, int field_idx, bool perturbation) {return this->vortex_ring_vor_fat_ic(x, y, field_idx, perturbation); };
-		else
-			vr_fct_ =
-			[this](float_type x, float_type y, int field_idx, bool perturbation) {return this->vortex_ring_vor_ic(x, y, field_idx, perturbation); };
+		vr_fct_ =
+			[this](float_type x, float_type y, int field_idx, bool perturbation) {return this->vortex_vorticity_ic(x, y, field_idx, perturbation); };
 
 		ic_filename_ = simulation_.dictionary_->template get_or<std::string>(
 			"hdf5_ic_name", "null");
@@ -357,7 +352,7 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 		))
 			pcout_c << "Time to solution [ms] " << ifherk_duration.count() << std::endl;
 
-		ifherk.clean_leaf_correction_boundary<u_type>(domain_->tree()->base_level(), true, 1);
+		// ifherk.clean_leaf_correction_boundary<u_type>(domain_->tree()->base_level(), true, 1);
 
 		float_type maxNumVort = -1;
 
@@ -401,7 +396,7 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 					}
 					float_type r__ = std::sqrt(x * x + y * y);
 					float_type t_final = dt_ * tot_steps_;
-					node(w_exact) = w_taylor_vort(r__, t_final);
+					node(w_exact) = w_vort(r__, t_final);
 					node(w_num) = (node(u, 1) - node.at_offset(u, -1, 0, 1) -
 						node(u, 0) + node.at_offset(u, 0, -1, 0)) / dx_level;
 					if (vortexType != 0) {
@@ -796,26 +791,19 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 	}
 
 
-	float_type vortex_ring_vor_fat_ic(float_type x, float_type y, int field_idx, bool perturbation)
+	float_type vortex_vorticity_ic(float_type x, float_type y, int field_idx, bool perturbation)
 	{
-		//return 1;
-		//const float_type alpha = 0.54857674;
-		//float_type       gam = 1;
-		float_type       R2 = R_ * R_;
-		//float_type       nu = Lx / Re_; //assuming U = 1
-		//float_type       t0 = 10.0*Re_;    //t0d = 1.0
-
 		float_type r2 = (x * x + y * y);
 		float_type r = sqrt(r2);
-
-
 		float_type rd = (static_cast <float_type> (rand()) / static_cast <float_type> (RAND_MAX)) - 0.5;
 		float_type prtub = 0.000;
 		rd *= prtub * perturbation;
 
-		float_type vort_ic = w_oseen_vort(r, 0);
-		return vort_ic;
-		//return 0;
+		if (vortexType == 1)
+			return w_taylor_vort(r, 0);
+		if (vortexType == 2)
+			return w_oseen_vort(r, 0);
+		return 0.0;
 	}
 
     float_type vor(float_type x, float_type y, int field_idx) const
@@ -826,29 +814,6 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
         //else
         //return -vr_fct_(x,y,z-d2v_/2,field_idx,perturbation_)+vr_fct_(x,y,z+d2v_/2,field_idx,perturbation_);
     }
-
-
-	float_type vortex_ring_vor_ic(float_type x, float_type y, int field_idx, bool perturbation)
-	{
-		//return 1;
-		//float_type gam = 1.0;
-
-
-		float_type       R2 = R_ * R_;
-
-		//float_type       nu = Lx / Re_; //assuming U = 1
-		//float_type       t0 = 10.0*Re_;    //t0d = 1.0
-
-		float_type r2 = (x * x + y * y);
-		float_type r = sqrt(r2);
-		float_type rd = (static_cast <float_type> (rand()) / static_cast <float_type> (RAND_MAX)) - 0.5;
-		float_type prtub = 0.000;
-		rd *= prtub * perturbation;
-
-		float_type vort_ic = w_oseen_vort(r, 0);
-		return vort_ic;
-		//return 0;
-	}
 
 	template<class OctantType>
 	bool checking_radius(OctantType it, float_type r) {
@@ -901,8 +866,6 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 		b.grow(2, 2);
 		auto corners = b.get_corners();
 
-		float_type w_max = std::abs(vr_fct_(float_type(0.0), float_type(0.0), 0, perturbation_));
-
 		for (int i = b.base()[0]; i <= b.max()[0]; ++i)
 		{
 			for (int j = b.base()[1]; j <= b.max()[1]; ++j)
@@ -920,19 +883,9 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 				float_type tmp_w = vor(x, y, 0);
 				//tmp_w =  vor(x,y-0.5*vort_sep,0)+ vor(x,y+0.5*vort_sep,0);
 
-
-				float_type maxLevel = 4.0;
-				float_type max_c = std::max(std::fabs(x), std::fabs(y));
-				//float_type max_c = std::fabs(x) + std::fabs(y);
-				float_type rd = std::sqrt(x * x + y * y);
-				float_type bd = 4.8 / pow(2, b.level()) - half_block;
-
-				//float_type bd = 4.8 - 1.2*b.level() - half_block;
-				if (max_c < bd)
+				float_type threshold = base_threshold_ * std::pow(refinement_factor_, diff_level);
+				if (std::fabs(tmp_w) > threshold)
 					return true;
-
-				/*if (std::fabs(tmp_w) > 1.0 * pow(refinement_factor_, diff_level))
-					return true;*/
 				//}
 			}
 		}
@@ -968,7 +921,15 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 		else {return 0.0;}
 	}
 
-	float_type w_taylor_vort(float_type rd, float_type td) {
+	float_type w_vort(float_type rd, float_type td) const {
+		if (vortexType == 1)
+			return w_taylor_vort(rd, td);
+		if (vortexType == 2)
+			return w_oseen_vort(rd, td);
+		return 0.0;
+	}
+
+	float_type w_taylor_vort(float_type rd, float_type td) const {
 		float_type t_0 = Re_ / 2.0 / R_ / R_;
 		//float_type gam = 1.0;
 		float_type t1 = td / R_ / R_ / R_ / R_;
@@ -1005,7 +966,7 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 		return u_val;
 	}
 
-	float_type w_oseen_vort(float_type rd, float_type td) {
+	float_type w_oseen_vort(float_type rd, float_type td) const {
 		float_type mean_c = 2.24181; //if using non-dim in Panton, max vel happens at eta = 2.24181
 		float_type fac = 2.0 * mean_c * mean_c / (mean_c * mean_c + 2); //factor to make maxvelocity to be 1
 		float_type t0 = Re_ / mean_c / mean_c;
@@ -1028,6 +989,9 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 		float_type expVal = std::exp(-eta * eta / 4.0);
 
 		float_type denom = std::sqrt(tc * nu);
+		if (eta < 1.0e-12) {
+			return 0.0;
+		}
 
 		float_type u_theta = 2.0 / denom / eta * (1.0 - expVal) / fac;
 		float_type theta = std::atan2(y, x);

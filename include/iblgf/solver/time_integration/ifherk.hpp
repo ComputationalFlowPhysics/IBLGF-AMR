@@ -342,7 +342,7 @@ class Ifherk
                 //auto f = [](std::size_t idx, float_type t, auto coord = {0, 0, 0}){return 1.0;};
                 //domain::Operator::add_field_expression<test_type>(domain_, f, T_, 1.0);
                 //clean_leaf_correction_boundary<test_type>(domain_->tree()->base_level(),true,2);
-
+                curl<u_i_type>();
                 n_step_ = tmp_int_n;
                 write_timestep();
                 // only update dt after 1 output so it wouldn't do 3 5 7 9 ...

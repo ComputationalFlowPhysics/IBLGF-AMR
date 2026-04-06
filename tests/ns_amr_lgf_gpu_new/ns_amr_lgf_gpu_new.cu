@@ -38,11 +38,13 @@ int main(int argc, char *argv[])
     bool debug_init = false;
     bool debug_kernels = false;
     bool debug_lgf = false;
+    bool debug_lgf_stream = false;
     for (int i = 1; i < argc; ++i)
     {
         if (std::strcmp(argv[i], "--debug-init") == 0) debug_init = true;
         if (std::strcmp(argv[i], "--debug-kernels") == 0) debug_kernels = true;
         if (std::strcmp(argv[i], "--debug-lgf") == 0) debug_lgf = true;
+        if (std::strcmp(argv[i], "--debug-lgf-stream") == 0) debug_lgf_stream = true;
     }
 
     const int rank = world.rank();
@@ -58,8 +60,12 @@ int main(int argc, char *argv[])
     iblgf::debug::NS_AMR_LGF_Debug setup(&dictionary);
     if (debug_init) iblgf::debug::debug_init_stats(setup);
     if (debug_kernels) iblgf::debug::debug_kernel_microtests(setup);
-    if (debug_lgf) iblgf::debug::debug_run_lgf(setup);
-    if (debug_init || debug_kernels || debug_lgf) return 0;
+    if (debug_lgf)
+        iblgf::debug::debug_run_lgf(setup);
+    if (debug_lgf_stream)
+        iblgf::debug::debug_run_lgf(setup, true,
+            iblgf::debug::NS_AMR_LGF_Debug::poisson_solver_t::MASK_TYPE::STREAM);
+    if (debug_init || debug_kernels || debug_lgf || debug_lgf_stream) return 0;
 
     setup.run();
 

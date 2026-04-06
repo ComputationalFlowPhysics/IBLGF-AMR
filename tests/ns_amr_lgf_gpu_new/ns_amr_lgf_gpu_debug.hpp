@@ -223,25 +223,49 @@ static void debug_kernel_microtests(NS_AMR_LGF_Debug& setup,
 }
 
 static void debug_run_lgf(NS_AMR_LGF_Debug& setup,
-    bool prefer_device = true)
+    bool prefer_device = true,
+    typename NS_AMR_LGF_Debug::poisson_solver_t::MASK_TYPE mask =
+        NS_AMR_LGF_Debug::poisson_solver_t::MASK_TYPE::AMR2AMR)
 {
     debug_block_census(setup);
     if (setup.domain_->is_server()) return;
 
     using edge_aux_t = typename NS_AMR_LGF_Debug::edge_aux_type;
     using stream_f_t = typename NS_AMR_LGF_Debug::stream_f_type;
+    using source_tmp_t = typename NS_AMR_LGF_Debug::source_tmp_type;
+    using target_tmp_t = typename NS_AMR_LGF_Debug::target_tmp_type;
 
     typename NS_AMR_LGF_Debug::poisson_solver_t psolver(&setup.simulation_);
-    psolver.template apply_lgf<edge_aux_t, stream_f_t>();
+    psolver.template clean_field<source_tmp_t>();
+    psolver.template clean_field<target_tmp_t>();
+
+    const auto source_max_before =
+        debug_maxabs_field_<source_tmp_t>(setup, prefer_device);
+    const auto target_max_before =
+        debug_maxabs_field_<target_tmp_t>(setup, prefer_device);
+
+    psolver.template copy_leaf<edge_aux_t, source_tmp_t>(0, 0, true);
+
+    const auto source_max_after_copy =
+        debug_maxabs_field_<source_tmp_t>(setup, prefer_device);
+
+    psolver.template apply_lgf<edge_aux_t, stream_f_t>(mask);
 
     const auto edge_max = debug_maxabs_field_<edge_aux_t>(setup, prefer_device);
+    const auto target_max_after =
+        debug_maxabs_field_<target_tmp_t>(setup, prefer_device);
     const auto stream_max =
         debug_maxabs_field_<stream_f_t>(setup, prefer_device);
 
     boost::mpi::communicator world;
     std::cout << "Rank " << world.rank()
               << " lgf stats | maxabs(edge_aux)=" << edge_max
-              << " maxabs(stream_f)=" << stream_max << std::endl;
+              << " maxabs(stream_f)=" << stream_max
+              << " source_tmp(before)=" << source_max_before
+              << " source_tmp(after_copy)=" << source_max_after_copy
+              << " target_tmp(before)=" << target_max_before
+              << " target_tmp(after)=" << target_max_after
+              << std::endl;
 }
 
 } // namespace debug

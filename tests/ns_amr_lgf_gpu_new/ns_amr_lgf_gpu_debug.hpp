@@ -236,6 +236,7 @@ static void debug_run_lgf(NS_AMR_LGF_Debug& setup,
     using target_tmp_t = typename NS_AMR_LGF_Debug::target_tmp_type;
 
     typename NS_AMR_LGF_Debug::poisson_solver_t psolver(&setup.simulation_);
+    NS_AMR_LGF_Debug::poisson_solver_t::set_debug_lgf_levels(true);
     psolver.template clean_field<source_tmp_t>();
     psolver.template clean_field<target_tmp_t>();
 
@@ -268,6 +269,7 @@ static void debug_run_lgf(NS_AMR_LGF_Debug& setup,
     }
 
     psolver.template apply_lgf<edge_aux_t, stream_f_t>(mask);
+    NS_AMR_LGF_Debug::poisson_solver_t::set_debug_lgf_levels(false);
 
     const auto edge_max = debug_maxabs_field_<edge_aux_t>(setup, prefer_device);
     const auto target_max_after =

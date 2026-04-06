@@ -127,6 +127,8 @@ class PoissonSolver
     }
 
   public:
+    static void set_debug_lgf_levels(bool enabled) { debug_lgf_levels_ = enabled; }
+
     template<class Source, class Target>
     void apply_lgf(int fmm_type = MASK_TYPE::AMR2AMR)
     {
@@ -488,6 +490,49 @@ class PoissonSolver
             if (!subtract_non_leaf_)
                 fmm_.template apply<source_tmp_type, target_tmp_type>(
                     domain_, _kernel, l, true, 1.0, fmm_type);
+
+            if (debug_lgf_levels_)
+            {
+                float_type level_max = 0.0;
+                for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+                {
+                    if (!it->locally_owned()) continue;
+                    if (!it->has_data() || !it->data().is_allocated()) continue;
+                    auto& df = it->data_r(target_tmp, _field_idx);
+#ifdef IBLGF_COMPILE_CUDA
+#ifdef IBLGF_GPU_RESIDENT
+                    if (df.device_valid())
+                    {
+                        std::vector<float_type> host(df.real_block().size());
+                        cudaMemcpy(host.data(), df.device_ptr(),
+                            host.size() * sizeof(float_type),
+                            cudaMemcpyDeviceToHost);
+                        for (const auto& v : host)
+                        {
+                            const float_type av = std::abs(v);
+                            if (av > level_max) level_max = av;
+                        }
+                    }
+#else
+                    for (const auto& v : df.data())
+                    {
+                        const float_type av = std::abs(v);
+                        if (av > level_max) level_max = av;
+                    }
+#endif
+#else
+                    for (const auto& v : df.data())
+                    {
+                        const float_type av = std::abs(v);
+                        if (av > level_max) level_max = av;
+                    }
+#endif
+                }
+                boost::mpi::communicator world;
+                std::cout << "Rank " << world.rank()
+                          << " fmm level " << l
+                          << " maxabs(target_tmp)=" << level_max << std::endl;
+            }
 
 #ifdef IBLGF_COMPILE_CUDA
 #ifdef IBLGF_GPU_RESIDENT
@@ -1731,6 +1776,7 @@ class PoissonSolver
 
 
 private:
+    static inline bool debug_lgf_levels_ = false;
     domain_type*                      domain_;    ///< domain
     Fmm_t                             fmm_;       ///< fast-multipole
     lgf_lap_t                         lgf_lap_;

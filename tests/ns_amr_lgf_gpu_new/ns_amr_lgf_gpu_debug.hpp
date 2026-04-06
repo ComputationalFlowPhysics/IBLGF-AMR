@@ -18,6 +18,7 @@ struct NS_AMR_LGF_Debug : public NS_AMR_LGF
 {
     using NS_AMR_LGF::NS_AMR_LGF;
     using super_type::domain_;
+    using super_type::simulation_;
 };
 
 #ifdef IBLGF_COMPILE_CUDA
@@ -159,7 +160,7 @@ static void debug_init_stats(NS_AMR_LGF_Debug& setup,
     const auto t_max =
         debug_maxabs_field_<parameters::test_type>(setup, prefer_device);
     const auto edge_max =
-        debug_maxabs_field_<parameters::edge_aux_type>(setup, prefer_device);
+        debug_maxabs_field_<NS_AMR_LGF_Debug::edge_aux_type>(setup, prefer_device);
     boost::mpi::communicator world;
     std::cout << "Rank " << world.rank()
               << " init stats | maxabs(u)=" << u_max
@@ -219,6 +220,28 @@ static void debug_kernel_microtests(NS_AMR_LGF_Debug& setup,
     (void)setup;
     (void)prefer_device;
 #endif
+}
+
+static void debug_run_lgf(NS_AMR_LGF_Debug& setup,
+    bool prefer_device = true)
+{
+    debug_block_census(setup);
+    if (setup.domain_->is_server()) return;
+
+    using edge_aux_t = typename NS_AMR_LGF_Debug::edge_aux_type;
+    using stream_f_t = typename NS_AMR_LGF_Debug::stream_f_type;
+
+    typename NS_AMR_LGF_Debug::poisson_solver_t psolver(&setup.simulation_);
+    psolver.template apply_lgf<edge_aux_t, stream_f_t>();
+
+    const auto edge_max = debug_maxabs_field_<edge_aux_t>(setup, prefer_device);
+    const auto stream_max =
+        debug_maxabs_field_<stream_f_t>(setup, prefer_device);
+
+    boost::mpi::communicator world;
+    std::cout << "Rank " << world.rank()
+              << " lgf stats | maxabs(edge_aux)=" << edge_max
+              << " maxabs(stream_f)=" << stream_max << std::endl;
 }
 
 } // namespace debug

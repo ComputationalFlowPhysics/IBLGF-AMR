@@ -36,6 +36,17 @@ if(USE_GPU)
         CUDA_STANDARD 17
     )
 
+else()
+    add_executable(ns_amr_lgf_cpu_debug.x ns_amr_lgf_cpu_debug.cpp ${SOURCES})
+    add_dependencies(ns_amr_lgf_cpu_debug.x copy_ifherk_files_gpu_new)
+    target_link_libraries(ns_amr_lgf_cpu_debug.x
+                        ${MPI_LIBRARIES}
+                        ${Boost_LIBRARIES}
+                        ${FFTW_LIBRARIES}
+                        ${HDF5_LIBRARIES} hdf5
+                        ${BLAS_LIBRARIES}
+                        xtensor
+                        xsimd)
 endif()
 if(USE_GPU)
     foreach (item ${Ptest_list_gpu})

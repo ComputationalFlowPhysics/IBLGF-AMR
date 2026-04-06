@@ -121,6 +121,33 @@ static float_type debug_maxabs_field_(NS_AMR_LGF_Debug& setup,
     return max_abs;
 }
 
+#ifdef IBLGF_COMPILE_CUDA
+#ifdef IBLGF_GPU_RESIDENT
+template<class Field>
+static void debug_device_valid_field_(NS_AMR_LGF_Debug& setup,
+    int& blocks_with_data,
+    int& blocks_device_valid)
+{
+    blocks_with_data = 0;
+    blocks_device_valid = 0;
+    for (auto it = setup.domain_->begin(); it != setup.domain_->end(); ++it)
+    {
+        if (!it->locally_owned()) continue;
+        if (!it->has_data() || !it->data().is_allocated()) continue;
+        if (!it->is_leaf() && !it->is_correction()) continue;
+        if (it->is_leaf() && it->is_correction()) continue;
+        for (std::size_t field_idx = 0; field_idx < Field::nFields();
+             ++field_idx)
+        {
+            auto& df = it->data_r(Field::tag(), field_idx);
+            blocks_with_data++;
+            if (df.device_valid()) blocks_device_valid++;
+        }
+    }
+}
+#endif
+#endif
+
 static void debug_block_census(NS_AMR_LGF_Debug& setup)
 {
     int local_blocks = 0;
@@ -268,6 +295,19 @@ static void debug_run_lgf(NS_AMR_LGF_Debug& setup,
             debug_maxabs_field_<source_tmp_t>(setup, prefer_device);
     }
 
+#ifdef IBLGF_COMPILE_CUDA
+#ifdef IBLGF_GPU_RESIDENT
+    int target_blocks_before = 0;
+    int target_device_before = 0;
+    int stream_blocks_before = 0;
+    int stream_device_before = 0;
+    debug_device_valid_field_<target_tmp_t>(
+        setup, target_blocks_before, target_device_before);
+    debug_device_valid_field_<stream_f_t>(
+        setup, stream_blocks_before, stream_device_before);
+#endif
+#endif
+
     psolver.template apply_lgf<edge_aux_t, stream_f_t>(mask);
     NS_AMR_LGF_Debug::poisson_solver_t::set_debug_lgf_levels(false);
 
@@ -276,6 +316,19 @@ static void debug_run_lgf(NS_AMR_LGF_Debug& setup,
         debug_maxabs_field_<target_tmp_t>(setup, prefer_device);
     const auto stream_max =
         debug_maxabs_field_<stream_f_t>(setup, prefer_device);
+
+#ifdef IBLGF_COMPILE_CUDA
+#ifdef IBLGF_GPU_RESIDENT
+    int target_blocks_after = 0;
+    int target_device_after = 0;
+    int stream_blocks_after = 0;
+    int stream_device_after = 0;
+    debug_device_valid_field_<target_tmp_t>(
+        setup, target_blocks_after, target_device_after);
+    debug_device_valid_field_<stream_f_t>(
+        setup, stream_blocks_after, stream_device_after);
+#endif
+#endif
 
     boost::mpi::communicator world;
     std::cout << "Rank " << world.rank()
@@ -287,6 +340,16 @@ static void debug_run_lgf(NS_AMR_LGF_Debug& setup,
               << " source_tmp(after_intrp)=" << source_max_after_intrp
               << " target_tmp(before)=" << target_max_before
               << " target_tmp(after)=" << target_max_after
+#ifdef IBLGF_COMPILE_CUDA
+#ifdef IBLGF_GPU_RESIDENT
+              << " target_tmp(dev_valid before/after)="
+              << target_device_before << "/" << target_blocks_before
+              << "->" << target_device_after << "/" << target_blocks_after
+              << " stream_f(dev_valid before/after)="
+              << stream_device_before << "/" << stream_blocks_before
+              << "->" << stream_device_after << "/" << stream_blocks_after
+#endif
+#endif
               << std::endl;
 }
 

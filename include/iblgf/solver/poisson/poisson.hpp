@@ -541,6 +541,10 @@ class PoissonSolver
                 if (!it->locally_owned() || !it->has_data()) continue;
                 auto& src = it->data_r(target_tmp);
                 auto& dst = it->data_r(Target::tag(), _field_idx);
+                if (!src.device_valid())
+                {
+                    src.update_device();
+                }
                 if (src.device_valid())
                 {
                     cudaMemcpy(dst.device_ptr(), src.device_ptr(),
@@ -643,6 +647,10 @@ class PoissonSolver
                 if (!it->locally_owned() || !it->has_data()) continue;
                 auto& src = it->data_r(target_tmp);
                 auto& dst = it->data_r(Target::tag(), _field_idx);
+                if (!src.device_valid())
+                {
+                    src.update_device();
+                }
                 if (src.device_valid())
                 {
                     cudaMemcpy(dst.device_ptr(), src.device_ptr(),
@@ -850,6 +858,10 @@ class PoissonSolver
 #ifdef IBLGF_GPU_RESIDENT
                         auto& src = it->data_r(target_tmp);
                         auto& dst = it->data_r(Target::tag(), _field_idx);
+                        if (!src.device_valid())
+                        {
+                            src.update_device();
+                        }
                         if (src.device_valid())
                         {
                             cudaMemcpy(dst.device_ptr(), src.device_ptr(),
@@ -875,6 +887,10 @@ class PoissonSolver
 #ifdef IBLGF_GPU_RESIDENT
                         auto& src = it->data_r(target_tmp);
                         auto& dst = it->data_r(Target::tag(), _field_idx);
+                        if (!src.device_valid())
+                        {
+                            src.update_device();
+                        }
                         if (src.device_valid())
                         {
                             cudaMemcpy(dst.device_ptr(), src.device_ptr(),

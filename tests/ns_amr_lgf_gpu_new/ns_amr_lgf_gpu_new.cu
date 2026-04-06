@@ -17,8 +17,9 @@
 #include <boost/mpi/environment.hpp>
 #include <boost/mpi/communicator.hpp>
 
-#include "../ns_amr_lgf/ns_amr_lgf.hpp"
+#include "ns_amr_lgf_gpu_debug.hpp"
 #include <iblgf/dictionary/dictionary.hpp>
+#include <cstring>
 
 using namespace iblgf;
 
@@ -34,6 +35,14 @@ int main(int argc, char *argv[])
         input = argv[1];
     }
 
+    bool debug_init = false;
+    bool debug_kernels = false;
+    for (int i = 1; i < argc; ++i)
+    {
+        if (std::strcmp(argv[i], "--debug-init") == 0) debug_init = true;
+        if (std::strcmp(argv[i], "--debug-kernels") == 0) debug_kernels = true;
+    }
+
     const int rank = world.rank();
     int deviceCount = 0;
     cudaError_t err = cudaGetDeviceCount(&deviceCount);
@@ -44,7 +53,11 @@ int main(int argc, char *argv[])
     }
 
     Dictionary dictionary(input, argc, argv);
-    NS_AMR_LGF setup(&dictionary);
+    iblgf::debug::NS_AMR_LGF_Debug setup(&dictionary);
+    if (debug_init) iblgf::debug::debug_init_stats(setup);
+    if (debug_kernels) iblgf::debug::debug_kernel_microtests(setup);
+    if (debug_init || debug_kernels) return 0;
+
     setup.run();
 
     return 0;

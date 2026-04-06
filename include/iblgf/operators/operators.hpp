@@ -23,6 +23,10 @@
 #include <iblgf/solver/time_integration/HelmholtzFFT.hpp>
 #include <cmath>
 
+#ifdef IBLGF_COMPILE_CUDA
+#include <iblgf/operators/operators_gpu.hpp>
+#endif
+
 namespace iblgf
 {
 namespace domain
@@ -36,6 +40,71 @@ struct Operator
     Operator& operator=(Operator&& other) & = default;
     ~Operator() = default;
     Operator() = default;
+
+#ifdef IBLGF_COMPILE_CUDA
+  private:
+    template<class Field, class Block>
+    static gpu::FieldView3D gpu_view(Block& block, std::size_t field_idx = 0)
+    {
+        auto& field = block(Field::tag(), static_cast<int>(field_idx));
+        const auto& ext = field.real_block().extent();
+        const auto& off = field.lbuffer();
+        gpu::FieldView3D view;
+        view.data = field.device_ptr();
+        view.nx = ext[0];
+        view.ny = ext[1];
+        view.nz = ext.size() > 2 ? ext[2] : 1;
+        view.ox = off[0];
+        view.oy = off[1];
+        view.oz = off.size() > 2 ? off[2] : 0;
+        return view;
+    }
+
+  public:
+    template<class Field, class Block>
+    static void sync_device(Block& block, bool force = false)
+    {
+        for (std::size_t field_idx = 0; field_idx < Field::nFields();
+             ++field_idx)
+        {
+            block(Field::tag(), static_cast<int>(field_idx))
+                .update_device(nullptr, force);
+        }
+    }
+
+    template<class Field, class Block>
+    static void sync_host(Block& block, bool force = false)
+    {
+        for (std::size_t field_idx = 0; field_idx < Field::nFields();
+             ++field_idx)
+        {
+            block(Field::tag(), static_cast<int>(field_idx))
+                .update_host(nullptr, force);
+        }
+    }
+
+    template<class Field, class Block>
+    static void mark_host_written(Block& block)
+    {
+        for (std::size_t field_idx = 0; field_idx < Field::nFields();
+             ++field_idx)
+        {
+            block(Field::tag(), static_cast<int>(field_idx))
+                .mark_host_written();
+        }
+    }
+
+    template<class Field, class Block>
+    static void mark_device_written(Block& block)
+    {
+        for (std::size_t field_idx = 0; field_idx < Field::nFields();
+             ++field_idx)
+        {
+            block(Field::tag(), static_cast<int>(field_idx))
+                .mark_device_written();
+        }
+    }
+#endif
 
   public: // DomainOprs
     template<typename F, class Domain>
@@ -1445,6 +1514,29 @@ struct Operator
         }
     }
 
+#ifdef IBLGF_COMPILE_CUDA
+    template<class Source, class Dest, class Block,
+        typename std::enable_if<(Source::mesh_type() == MeshObject::cell) &&
+                                    (Dest::mesh_type() == MeshObject::face),
+            void>::type* = nullptr>
+    static bool gradient_gpu(
+        Block& block, float_type dx_level, float_type scale = 1.0) noexcept
+    {
+        if (block.descriptor().extent().size() != 3 || Source::nFields() != 1 ||
+            Dest::nFields() != 3)
+            return false;
+
+        sync_device<Source>(block);
+        const auto& ext = block.descriptor().extent();
+        const bool ok = gpu::gradient_cell_to_face_3d(gpu_view<Source>(block),
+            gpu_view<Dest>(block, 0), gpu_view<Dest>(block, 1),
+            gpu_view<Dest>(block, 2), ext[0], ext[1], ext[2], dx_level,
+            scale);
+        if (ok) mark_device_written<Dest>(block);
+        return ok;
+    }
+#endif
+
     template<class SourceTuple, class Dest, class Block,
         typename std::enable_if<(Dest::mesh_type() == MeshObject::cell) &&
                                     (SourceTuple::mesh_type() ==
@@ -1475,6 +1567,29 @@ struct Operator
             n(dest) *= fac;
         }
     }
+
+#ifdef IBLGF_COMPILE_CUDA
+    template<class SourceTuple, class Dest, class Block,
+        typename std::enable_if<(Dest::mesh_type() == MeshObject::cell) &&
+                                    (SourceTuple::mesh_type() ==
+                                        MeshObject::face),
+            void>::type* = nullptr>
+    static bool divergence_gpu(Block& block, float_type dx_level) noexcept
+    {
+        if (block.descriptor().extent().size() != 3 ||
+            SourceTuple::nFields() != 3 || Dest::nFields() != 1)
+            return false;
+
+        sync_device<SourceTuple>(block);
+        const auto& ext = block.descriptor().extent();
+        const bool ok = gpu::divergence_face_to_cell_3d(
+            gpu_view<SourceTuple>(block, 0), gpu_view<SourceTuple>(block, 1),
+            gpu_view<SourceTuple>(block, 2), gpu_view<Dest>(block), ext[0],
+            ext[1], ext[2], dx_level);
+        if (ok) mark_device_written<Dest>(block);
+        return ok;
+    }
+#endif
 
     template<class Source, class Dest, class Block,
         typename std::enable_if<(Source::mesh_type() == MeshObject::face) &&
@@ -1511,6 +1626,28 @@ struct Operator
             }
         }
     }
+
+#ifdef IBLGF_COMPILE_CUDA
+    template<class Source, class Dest, class Block,
+        typename std::enable_if<(Source::mesh_type() == MeshObject::face) &&
+                                    (Dest::mesh_type() == MeshObject::edge),
+            void>::type* = nullptr>
+    static bool curl_gpu(Block& block, float_type dx_level) noexcept
+    {
+        if (block.descriptor().extent().size() != 3 || Source::nFields() != 3 ||
+            Dest::nFields() != 3)
+            return false;
+
+        sync_device<Source>(block);
+        const auto& ext = block.descriptor().extent();
+        const bool ok = gpu::curl_face_to_edge_3d(gpu_view<Source>(block, 0),
+            gpu_view<Source>(block, 1), gpu_view<Source>(block, 2),
+            gpu_view<Dest>(block, 0), gpu_view<Dest>(block, 1),
+            gpu_view<Dest>(block, 2), ext[0], ext[1], ext[2], dx_level);
+        if (ok) mark_device_written<Dest>(block);
+        return ok;
+    }
+#endif
 
 
     template<class Source, class Dest, class Block>
@@ -2529,6 +2666,32 @@ struct Operator
             }
         }
     }
+
+#ifdef IBLGF_COMPILE_CUDA
+    template<class Face, class Edge, class Dest, class Block,
+        typename std::enable_if<(Face::mesh_type() == MeshObject::face) &&
+                                    (Edge::mesh_type() == MeshObject::edge) &&
+                                    (Dest::mesh_type() == MeshObject::face),
+            void>::type* = nullptr>
+    static bool nonlinear_gpu(Block& block, float_type scale = 1.0) noexcept
+    {
+        if (block.descriptor().extent().size() != 3 || Face::nFields() != 3 ||
+            Edge::nFields() != 3 || Dest::nFields() != 3)
+            return false;
+
+        sync_device<Face>(block);
+        sync_device<Edge>(block);
+        const auto& ext = block.descriptor().extent();
+        const bool ok = gpu::nonlinear_face_edge_to_face_3d(
+            gpu_view<Face>(block, 0), gpu_view<Face>(block, 1),
+            gpu_view<Face>(block, 2), gpu_view<Edge>(block, 0),
+            gpu_view<Edge>(block, 1), gpu_view<Edge>(block, 2),
+            gpu_view<Dest>(block, 0), gpu_view<Dest>(block, 1),
+            gpu_view<Dest>(block, 2), ext[0], ext[1], ext[2], scale);
+        if (ok) mark_device_written<Dest>(block);
+        return ok;
+    }
+#endif
 
 
     template<class Face, class Edge, class Dest_face, class Dest_uz, class Block,

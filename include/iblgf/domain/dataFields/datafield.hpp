@@ -95,6 +95,7 @@ class DataField : public BlockDescriptor<int, Dim>
         device_data_ = nullptr;
         device_size_ = 0;
         device_valid_ = false;
+        host_valid_ = true;
 #endif
     }
 
@@ -112,6 +113,7 @@ class DataField : public BlockDescriptor<int, Dim>
 	}
 #ifdef IBLGF_COMPILE_CUDA
         clear_device();
+        host_valid_ = true;
 #endif
         return *this;
     }
@@ -133,9 +135,11 @@ class DataField : public BlockDescriptor<int, Dim>
         device_data_ = rhs.device_data_;
         device_size_ = rhs.device_size_;
         device_valid_ = rhs.device_valid_;
+        host_valid_ = rhs.host_valid_;
         rhs.device_data_ = nullptr;
         rhs.device_size_ = 0;
         rhs.device_valid_ = false;
+        rhs.host_valid_ = true;
 #endif
     }
     DataField& operator=(DataField&& _other)
@@ -154,9 +158,11 @@ class DataField : public BlockDescriptor<int, Dim>
         device_data_ = _other.device_data_;
         device_size_ = _other.device_size_;
         device_valid_ = _other.device_valid_;
+        host_valid_ = _other.host_valid_;
         _other.device_data_ = nullptr;
         _other.device_size_ = 0;
         _other.device_valid_ = false;
+        _other.host_valid_ = true;
 #endif
         return *this;
     }
@@ -180,9 +186,9 @@ class DataField : public BlockDescriptor<int, Dim>
         if (_allocate) data_.resize(real_block_.size());
         if (_default) { std::fill(data_.begin(), data_.end(), _dval); }
 
-    #ifdef IBLGF_COMPILE_CUDA
+#ifdef IBLGF_COMPILE_CUDA
         clear_device();
-    #endif
+#endif
 
         const auto ext = real_block_.extent();
         /*cube_ = std::make_unique<linalg::Cube_t>(
@@ -216,7 +222,19 @@ class DataField : public BlockDescriptor<int, Dim>
     }
     const data_type* device_ptr() const noexcept { return device_data_; }
     bool device_valid() const noexcept { return device_valid_; }
+    bool host_valid() const noexcept { return host_valid_; }
     void invalidate_device() noexcept { device_valid_ = false; }
+    void invalidate_host() noexcept { host_valid_ = false; }
+    void mark_host_written() noexcept
+    {
+        host_valid_ = true;
+        device_valid_ = false;
+    }
+    void mark_device_written() noexcept
+    {
+        device_valid_ = true;
+        host_valid_ = false;
+    }
     void update_device(cudaStream_t stream = nullptr, bool force = false)
     {
         if (!force && device_valid_) return;
@@ -224,6 +242,25 @@ class DataField : public BlockDescriptor<int, Dim>
         cudaMemcpyAsync(device_data_, data_.data(), data_.size() * sizeof(data_type),
             cudaMemcpyHostToDevice, stream);
         device_valid_ = true;
+        host_valid_ = true;
+    }
+    void update_host(cudaStream_t stream = nullptr, bool force = false)
+    {
+        if (!force && host_valid_) return;
+        ensure_device();
+        if (stream)
+        {
+            cudaMemcpyAsync(data_.data(), device_data_,
+                data_.size() * sizeof(data_type), cudaMemcpyDeviceToHost,
+                stream);
+            cudaStreamSynchronize(stream);
+        }
+        else
+        {
+            cudaMemcpy(data_.data(), device_data_,
+                data_.size() * sizeof(data_type), cudaMemcpyDeviceToHost);
+        }
+        host_valid_ = true;
     }
 #endif
 
@@ -469,6 +506,7 @@ class DataField : public BlockDescriptor<int, Dim>
     data_type* device_data_ = nullptr;
     std::size_t device_size_ = 0;
     bool device_valid_ = false;
+    bool host_valid_ = true;
 
     void ensure_device()
     {
@@ -492,6 +530,7 @@ class DataField : public BlockDescriptor<int, Dim>
         }
         device_size_ = 0;
         device_valid_ = false;
+        host_valid_ = true;
     }
 #endif
 };

@@ -29,10 +29,7 @@ TEST(operator_test, convergence)
     // *Added*
     // ensure MPI is initialized once per process (same pattern as server_client)
     static std::unique_ptr<boost::mpi::environment> env_holder;
-    if (!env_holder)
-    {
-        env_holder = std::make_unique<boost::mpi::environment>();
-    }
+    if (!env_holder) { env_holder = std::make_unique<boost::mpi::environment>(); }
 
     boost::mpi::communicator world;
 

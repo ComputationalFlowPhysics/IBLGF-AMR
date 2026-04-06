@@ -25,6 +25,7 @@
 #include <iblgf/solver/poisson/poisson.hpp>
 #include <iblgf/solver/linsys/linsys.hpp>
 #include <iblgf/solver/time_integration/ifherk.hpp>
+#include <iblgf/solver/time_integration/ifherk_gpu.hpp>
 #include <iblgf/IO/parallel_ostream.hpp>
 
 namespace iblgf
@@ -102,7 +103,11 @@ class SetupBase
     using Fmm_t = Fmm<SetupBase>;
     using fmm_mask_builder_t = FmmMaskBuilder<domain_t>;
     using poisson_solver_t = solver::PoissonSolver<SetupBase>;
+#ifdef IBLGF_COMPILE_CUDA
+    using time_integration_t = solver::Ifherk_gpu<SetupBase>;
+#else
     using time_integration_t = solver::Ifherk<SetupBase>;
+#endif
     using linsys_solver_t = solver::LinSysSolver<SetupBase>;
 
   public: //Ctors
@@ -110,12 +115,14 @@ class SetupBase
     : simulation_(_d->get_dictionary("simulation_parameters"))
     , domain_(simulation_.domain())
     {
+        ensure_cuda_ifherk_defaults_();
         domain_->initialize(simulation_.dictionary()->get_dictionary("domain"));
     }
     SetupBase(Dictionary* _d, std::vector<typename domain_t::tree_t::key_type::value_type>& _keys,std::vector<int> & _leafs)
     : simulation_(_d->get_dictionary("simulation_parameters"))
     , domain_(simulation_.domain())
     {
+        ensure_cuda_ifherk_defaults_();
         domain_->initialize_with_keys(
             simulation_.dictionary()->get_dictionary("domain").get(),
             _keys, _leafs);
@@ -130,6 +137,7 @@ class SetupBase
     : simulation_(_d->get_dictionary("simulation_parameters"))
     , domain_(simulation_.domain())
     {
+        ensure_cuda_ifherk_defaults_();
         client_comm_ = boost::mpi::communicator();
         auto d = _d->get_dictionary("simulation_parameters");
         use_restart_ = d->template get_or<bool>("use_restart", true);
@@ -364,6 +372,21 @@ class SetupBase
         }
 
         return LInf_global;
+    }
+
+  private:
+    void ensure_cuda_ifherk_defaults_()
+    {
+#ifdef IBLGF_COMPILE_CUDA
+        auto dict = simulation_.dictionary();
+        if (!dict) return;
+        dict->template set_or_insert<bool>(
+            "gpu_operators", dict->template get_or<bool>("gpu_operators", true));
+        dict->template set_or_insert<bool>("ifherk_extra_client_barriers",
+            dict->template get_or<bool>("ifherk_extra_client_barriers", false));
+        dict->template set_or_insert<bool>("ifherk_gpu_resident_mode",
+            dict->template get_or<bool>("ifherk_gpu_resident_mode", false));
+#endif
     }
 
   protected:

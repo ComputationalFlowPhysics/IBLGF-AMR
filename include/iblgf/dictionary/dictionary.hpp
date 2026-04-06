@@ -298,6 +298,12 @@ class Dictionary
         it->second = std::to_string(_value);
     }
 
+    template<typename T>
+    void set_or_insert(const std::string& _key, T _value)
+    {
+        scalar_variables_[_key] = std::to_string(_value);
+    }
+
     auto parent_dictionary() const noexcept { return parent_; }
 
     std::ostream& print(std::ostream& os, std::string _tab = "") const

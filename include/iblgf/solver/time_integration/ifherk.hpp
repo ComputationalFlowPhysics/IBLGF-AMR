@@ -18,6 +18,9 @@
 #include <vector>
 #include <cmath>
 #include <array>
+#include <map>
+#include <limits>
+#include <string>
 
 // IBLGF-specific
 #include <iblgf/global.hpp>
@@ -125,6 +128,51 @@ class Ifherk
         write_noca_ = simulation_->dictionary_->template get_or<bool>("write_noca", false);
 
         if (dt_base_ < 0) dt_base_ = dx_base_ * cfl_;
+
+#ifdef IBLGF_COMPILE_CUDA
+        gpu_operators_enabled_ =
+            _simulation->dictionary()->template get_or<bool>(
+                "gpu_operators", true);
+#else
+        gpu_operators_enabled_ = false;
+#endif
+        timing_report_frequency_ =
+            _simulation->dictionary()->template get_or<int>(
+                "gpu_operator_profile_interval", 0);
+        enable_extra_client_barriers_ =
+            _simulation->dictionary()->template get_or<bool>(
+                "ifherk_extra_client_barriers", true);
+        gpu_resident_mode_ =
+            _simulation->dictionary()->template get_or<bool>(
+                "ifherk_gpu_resident_mode", false);
+        const bool force_gpu_resident_mode =
+            _simulation->dictionary()->template get_or<bool>(
+                "ifherk_gpu_resident_force", false);
+        if (gpu_resident_mode_ && !force_gpu_resident_mode)
+        {
+            gpu_resident_mode_ = false;
+            pcout << "ifherk_gpu_resident_mode requested but disabled for "
+                  << "correctness. Set ifherk_gpu_resident_force=true to "
+                  << "override." << std::endl;
+        }
+        gpu_resident_updown_enabled_ =
+            _simulation->dictionary()->template get_or<bool>(
+                "ifherk_gpu_resident_updown", true);
+        gpu_resident_divergence_cleanup_enabled_ =
+            _simulation->dictionary()->template get_or<bool>(
+                "ifherk_gpu_resident_divergence_cleanup", true);
+        gpu_resident_nonlinear_cleanup_enabled_ =
+            _simulation->dictionary()->template get_or<bool>(
+                "ifherk_gpu_resident_nonlinear_cleanup", true);
+        if (gpu_resident_mode_)
+        {
+            pcout << "ifherk_gpu_resident_mode active with switches: "
+                  << "updown=" << gpu_resident_updown_enabled_
+                  << ", divergence_cleanup="
+                  << gpu_resident_divergence_cleanup_enabled_
+                  << ", nonlinear_cleanup="
+                  << gpu_resident_nonlinear_cleanup_enabled_ << std::endl;
+        }
 
         // adaptivity --------------------------------------------------------
         adapt_freq_ = _simulation->dictionary()->template get_or<float_type>(
@@ -317,6 +365,7 @@ class Ifherk
                         time_step();
                         ));
             pcout<<ifherk_if.count()<<std::endl;
+            record_timing("time_step_total", ifherk_if);
             
             // -------------------------------------------------------------
             // update stats & output
@@ -352,7 +401,14 @@ class Ifherk
 
             write_stats(tmp_n);
 
+            if (timing_report_frequency_ > 0 && n_step_ > 0 &&
+                (n_step_ % timing_report_frequency_ == 0))
+            {
+                report_timing_summary();
+            }
+
         }
+        report_timing_summary();
     }
     void clean_up_initial_velocity()
     {
@@ -998,6 +1054,34 @@ class Ifherk
     }
 
     template<class Field>
+    void up_and_down_gpu_resident()
+    {
+#ifdef IBLGF_COMPILE_CUDA
+        if (gpu_operators_enabled_ && gpu_resident_mode_)
+        {
+            // Up/down operators currently execute on host data structures.
+            // In GPU-resident mode, make sync points explicit.
+            mDuration_type t_sync_host(0);
+            TIME_CODE(t_sync_host, SINGLE_ARG(
+                sync_host_field<Field>();
+            ));
+            record_timing("gpu_resident_sync_updown_input", t_sync_host);
+        }
+#endif
+        up_and_down<Field>();
+#ifdef IBLGF_COMPILE_CUDA
+        if (gpu_operators_enabled_ && gpu_resident_mode_)
+        {
+            mDuration_type t_sync_device(0);
+            TIME_CODE(t_sync_device, SINGLE_ARG(
+                sync_device_field<Field>();
+            ));
+            record_timing("gpu_resident_sync_updown_output", t_sync_device);
+        }
+#endif
+    }
+
+    template<class Field>
     void up(bool leaf_boundary_only=false)
     {
         //Coarsification:
@@ -1121,6 +1205,8 @@ class Ifherk
         // Stage 1
         // ******************************************************************
         pcout << "Stage 1" << std::endl;
+        mDuration_type t_stage1(0);
+        TIME_CODE(t_stage1, SINGLE_ARG(
         T_stage_ = T_ + dt_*c_[0];
         stage_idx_ = 1;
         clean<g_i_type>();
@@ -1132,6 +1218,8 @@ class Ifherk
         copy<q_i_type, r_i_type>();
         add<g_i_type, r_i_type>();
         lin_sys_with_ib_solve(alpha_[0]);
+        ));
+        record_timing("stage_1", t_stage1);
 
         //clean_center_velocity<u_i_type>();
 
@@ -1139,6 +1227,8 @@ class Ifherk
         // Stage 2
         // ******************************************************************
         pcout << "Stage 2" << std::endl;
+        mDuration_type t_stage2(0);
+        TIME_CODE(t_stage2, SINGLE_ARG(
         T_stage_ = T_ + dt_*c_[1];
         stage_idx_ = 2;
         clean<r_i_type>();
@@ -1152,8 +1242,13 @@ class Ifherk
         add<g_i_type, face_aux_type>(-1.0);
         copy<face_aux_type, w_1_type>(-1.0 / dt_ / coeff_a(1, 1));
 
-        psolver.template apply_lgf_IF<q_i_type, q_i_type>(alpha_[0]);
-        psolver.template apply_lgf_IF<w_1_type, w_1_type>(alpha_[0]);
+        mDuration_type t_if_stage2(0);
+        TIME_CODE(t_if_stage2, SINGLE_ARG(
+            psolver.template apply_lgf_IF<q_i_type, q_i_type>(alpha_[0]);
+            psolver.template apply_lgf_IF<w_1_type, w_1_type>(alpha_[0]);
+        ));
+        record_timing("apply_lgf_if_stage_pre", t_if_stage2);
+        record_timing("apply_lgf_if", t_if_stage2);
 
         add<q_i_type, r_i_type>();
         add<w_1_type, r_i_type>(dt_ * coeff_a(2, 1));
@@ -1163,12 +1258,16 @@ class Ifherk
         add<g_i_type, r_i_type>();
 
         lin_sys_with_ib_solve(alpha_[1]);
+        ));
+        record_timing("stage_2", t_stage2);
 
         //clean_center_velocity<u_i_type>();
 
         // Stage 3
         // ******************************************************************
         pcout << "Stage 3" << std::endl;
+        mDuration_type t_stage3(0);
+        TIME_CODE(t_stage3, SINGLE_ARG(
         T_stage_ = T_ + dt_*c_[2];
         stage_idx_ = 3;
         clean<d_i_type>();
@@ -1181,7 +1280,12 @@ class Ifherk
         add<w_1_type, r_i_type>(dt_ * coeff_a(3, 1));
         add<w_2_type, r_i_type>(dt_ * coeff_a(3, 2));
 
-        psolver.template apply_lgf_IF<r_i_type, r_i_type>(alpha_[1]);
+        mDuration_type t_if_stage3(0);
+        TIME_CODE(t_if_stage3, SINGLE_ARG(
+            psolver.template apply_lgf_IF<r_i_type, r_i_type>(alpha_[1]);
+        ));
+        record_timing("apply_lgf_if_stage_pre", t_if_stage3);
+        record_timing("apply_lgf_if", t_if_stage3);
 
         up_and_down<u_i_type>();
         nonlinear<u_i_type, g_i_type>(coeff_a(3, 3) * (-dt_));
@@ -1196,6 +1300,8 @@ class Ifherk
         copy<d_i_type, p_type>(1.0 / coeff_a(3, 3) / dt_);
         // curl<u_i_type>();
         // ******************************************************************
+        ));
+        record_timing("stage_3", t_stage3);
         
     }
 
@@ -1349,6 +1455,7 @@ class Ifherk
                 }
             }
         }
+        mark_field_host_written<F>();
     }
 
     template <typename F>
@@ -1408,6 +1515,26 @@ class Ifherk
                 }
             }
         }
+#ifdef IBLGF_COMPILE_CUDA
+        if (gpu_operators_enabled_) mark_field_host_written<F>();
+#endif
+    }
+
+    template <typename F>
+    void clean_leaf_correction_boundary_gpu_resident(
+        int l, bool leaf_only_boundary=false, int clean_width=1) noexcept
+    {
+        clean_leaf_correction_boundary<F>(l, leaf_only_boundary, clean_width);
+#ifdef IBLGF_COMPILE_CUDA
+        if (gpu_operators_enabled_ && gpu_resident_mode_)
+        {
+            mDuration_type t_sync_device(0);
+            TIME_CODE(t_sync_device, SINGLE_ARG(
+                sync_device_field<F>();
+            ));
+            record_timing("gpu_resident_sync_cleanup_output", t_sync_device);
+        }
+#endif
     }
     template <class vel_in, class vel_out>
     void pad_access(bool refresh_correction_only=true)
@@ -1417,31 +1544,183 @@ class Ifherk
 
 
 private:
+    void record_timing(const std::string& name, double ms)
+    {
+        if (domain_->is_server()) return;
+        timing_totals_ms_[name] += ms;
+    }
+
+    template<class Duration>
+    void record_timing(const std::string& name, Duration duration)
+    {
+        record_timing(name, std::chrono::duration<double, std::milli>(duration)
+                                .count());
+    }
+
+    void client_barrier() noexcept
+    {
+        if (!enable_extra_client_barriers_) return;
+        mDuration_type t_barrier(0);
+        TIME_CODE(t_barrier, SINGLE_ARG(domain_->client_communicator().barrier();));
+        record_timing("barrier_wait", t_barrier);
+    }
+
+    template<class Field>
+    void sync_host_field() noexcept
+    {
+#ifdef IBLGF_COMPILE_CUDA
+        if (!gpu_operators_enabled_) return;
+        for (auto it = domain_->begin(); it != domain_->end(); ++it)
+        {
+            if (!it->locally_owned() || !it->has_data()) continue;
+            domain::Operator::sync_host<Field>(it->data());
+        }
+#endif
+    }
+
+    template<class Field>
+    void sync_device_field() noexcept
+    {
+#ifdef IBLGF_COMPILE_CUDA
+        if (!gpu_operators_enabled_) return;
+        for (auto it = domain_->begin(); it != domain_->end(); ++it)
+        {
+            if (!it->locally_owned() || !it->has_data()) continue;
+            domain::Operator::sync_device<Field>(it->data());
+        }
+#endif
+    }
+
+    template<class Field>
+    void mark_field_host_written() noexcept
+    {
+#ifdef IBLGF_COMPILE_CUDA
+        if (!gpu_operators_enabled_) return;
+        for (auto it = domain_->begin(); it != domain_->end(); ++it)
+        {
+            if (!it->has_data()) continue;
+            domain::Operator::mark_host_written<Field>(it->data());
+        }
+#endif
+    }
+
+    void report_timing_summary()
+    {
+        boost::mpi::communicator world;
+        if (world.size() == 0) return;
+
+        static const std::array<const char*, 30> timing_keys = {{
+            "time_step_total",
+            "stage_1",
+            "stage_2",
+            "stage_3",
+            "buffer_exchange",
+            "barrier_wait",
+            "device_to_host_sync",
+            "host_to_device_sync",
+            "gpu_resident_sync_updown_input",
+            "gpu_resident_sync_updown_output",
+            "gpu_resident_sync_cleanup_output",
+            "nonlinear_curl",
+            "nonlinear_cross",
+            "divergence",
+            "divergence_up_down",
+            "divergence_kernel",
+            "divergence_cleanup",
+            "gradient",
+            "gradient_kernel",
+            "apply_lgf",
+            "apply_lgf_if",
+            "apply_lgf_if_stage_pre",
+            "apply_lgf_if_linsys",
+            "linsys_rhs_assembly",
+            "linsys_force_prep",
+            "linsys_pressure_correction",
+            "linsys_post_pressure_assembly",
+            "apply_lgf_if_ib",
+            "ib_solve",
+            "pad_u"
+        }};
+
+        if (world.rank() == 0)
+        {
+            std::cout << "IFHERK timing summary (ms, per-rank totals)"
+                      << std::endl;
+        }
+
+        for (const char* key : timing_keys)
+        {
+            const auto it = timing_totals_ms_.find(key);
+            const bool has_local = it != timing_totals_ms_.end();
+            const double local_value = has_local ? it->second : 0.0;
+            const double local_min =
+                has_local ? local_value : std::numeric_limits<double>::max();
+            const int local_count = has_local ? 1 : 0;
+
+            double sum = 0.0;
+            double min_v = 0.0;
+            double max_v = 0.0;
+            int active_count = 0;
+
+            boost::mpi::all_reduce(world, local_value, sum, std::plus<double>());
+            boost::mpi::all_reduce(world, local_min, min_v,
+                boost::mpi::minimum<double>());
+            boost::mpi::all_reduce(world, local_value, max_v,
+                boost::mpi::maximum<double>());
+            boost::mpi::all_reduce(world, local_count, active_count,
+                std::plus<int>());
+
+            if (active_count == 0) continue;
+
+            if (world.rank() == 0)
+            {
+                const double avg_v =
+                    sum / static_cast<double>(std::max(1, active_count));
+                std::cout << "  " << key << ": min=" << min_v
+                          << ", avg=" << avg_v
+                          << ", max=" << max_v
+                          << " (active_ranks=" << active_count << ")"
+                          << std::endl;
+            }
+        }
+    }
+
     float_type coeff_a(int i, int j)const noexcept {return a_[i*(i-1)/2+j-1];}
 
     void lin_sys_solve(float_type _alpha) noexcept
     {
         auto client=domain_->decomposition().client();
 
-        divergence<r_i_type, cell_aux_type>();
+        mDuration_type t_div(0);
+        TIME_CODE(t_div, SINGLE_ARG(
+        divergence<r_i_type, cell_aux_type>(true);
+        ));
+        record_timing("divergence", t_div);
 
-        domain_->client_communicator().barrier();
+        client_barrier();
         mDuration_type t_lgf(0);
         TIME_CODE( t_lgf, SINGLE_ARG(
                     psolver.template apply_lgf<cell_aux_type, d_i_type>();
                     ));
         pcout<< "LGF solved in "<<t_lgf.count() << std::endl;
+        record_timing("apply_lgf", t_lgf);
 
+        mDuration_type t_grad(0);
+        TIME_CODE(t_grad, SINGLE_ARG(
         gradient<d_i_type,face_aux_type>();
+        ));
+        record_timing("gradient", t_grad);
         add<face_aux_type, r_i_type>(-1.0);
         if (std::fabs(_alpha)>1e-4)
         {
             mDuration_type t_if(0);
-            domain_->client_communicator().barrier();
+            client_barrier();
             TIME_CODE( t_if, SINGLE_ARG(
                         psolver.template apply_lgf_IF<r_i_type, u_i_type>(_alpha);
                         ));
             pcout<< "IF  solved in "<<t_if.count() << std::endl;
+            record_timing("apply_lgf_if_linsys", t_if);
+            record_timing("apply_lgf_if", t_if);
         }
         else
             copy<r_i_type,u_i_type>();
@@ -1452,28 +1731,53 @@ private:
     {
         auto client=domain_->decomposition().client();
 
-        divergence<r_i_type, cell_aux_type>();
+        mDuration_type t_div(0);
+        TIME_CODE(t_div, SINGLE_ARG(
+        const bool exchange_divergence =
+            !(gpu_operators_enabled_ && gpu_resident_mode_);
+        divergence<r_i_type, cell_aux_type>(exchange_divergence);
+        ));
+        record_timing("divergence", t_div);
 
-        domain_->client_communicator().barrier();
+        client_barrier();
         mDuration_type t_lgf(0);
         TIME_CODE( t_lgf, SINGLE_ARG(
                     psolver.template apply_lgf<cell_aux_type, d_i_type>();
                     ));
-        domain_->client_communicator().barrier();
+        client_barrier();
         pcout<< "LGF solved in "<<t_lgf.count() << std::endl;
+        record_timing("apply_lgf", t_lgf);
 
-        copy<r_i_type, face_aux2_type>();
-        gradient<d_i_type,face_aux_type>();
-        add<face_aux_type, face_aux2_type>(-1.0);
+        mDuration_type t_rhs_assembly(0);
+        TIME_CODE(t_rhs_assembly, SINGLE_ARG(
+            copy<r_i_type, face_aux2_type>();
+            mDuration_type t_grad0_local(0);
+            TIME_CODE(t_grad0_local, SINGLE_ARG(
+                gradient<d_i_type,face_aux_type>();
+            ));
+            record_timing("gradient", t_grad0_local);
+            add<face_aux_type, face_aux2_type>(-1.0);
+        ));
+        record_timing("linsys_rhs_assembly", t_rhs_assembly);
 
         // IB
         if (std::fabs(_alpha)>1e-14)
+        {
+            mDuration_type t_if_ib(0);
+            TIME_CODE(t_if_ib, SINGLE_ARG(
             psolver.template apply_lgf_IF<face_aux2_type, face_aux2_type>(_alpha, MASK_TYPE::IB2xIB);
+            ));
+            record_timing("apply_lgf_if_ib", t_if_ib);
+        }
 
-        domain_->client_communicator().barrier();
+        client_barrier();
         pcout<< "IB IF solved "<<std::endl;
+        mDuration_type t_force_prep(0);
+        TIME_CODE(t_force_prep, SINGLE_ARG(
+            domain_->ib().force() = domain_->ib().force_prev(stage_idx_);
+        ));
+        record_timing("linsys_force_prep", t_force_prep);
         mDuration_type t_ib(0);
-        domain_->ib().force() = domain_->ib().force_prev(stage_idx_);
         //domain_->ib().scales(coeff_a(stage_idx_, stage_idx_));
         TIME_CODE( t_ib, SINGLE_ARG(
                     lsolver.template ib_solve<face_aux2_type>(_alpha, T_stage_);
@@ -1483,22 +1787,39 @@ private:
         //domain_->ib().scales(1.0/coeff_a(stage_idx_, stage_idx_));
 
         pcout<< "IB  solved in "<<t_ib.count() << std::endl;
+        record_timing("ib_solve", t_ib);
 
-        // new presure field
-        lsolver.template pressure_correction<d_i_type>();
-        gradient<d_i_type, face_aux_type>();
+        // new pressure field and forcing correction assembly around IF
+        mDuration_type t_pressure_corr(0);
+        TIME_CODE(t_pressure_corr, SINGLE_ARG(
+            lsolver.template pressure_correction<d_i_type>();
+        ));
+        record_timing("linsys_pressure_correction", t_pressure_corr);
 
-        lsolver.template smearing<face_aux_type>(domain_->ib().force(), false);
-        add<face_aux_type, r_i_type>(-1.0);
+        mDuration_type t_post_pressure(0);
+        TIME_CODE(t_post_pressure, SINGLE_ARG(
+            mDuration_type t_grad1_local(0);
+            const bool exchange_post_pressure =
+                !(gpu_operators_enabled_ && gpu_resident_mode_);
+            TIME_CODE(t_grad1_local, SINGLE_ARG(
+                gradient<d_i_type, face_aux_type>(1.0, exchange_post_pressure);
+            ));
+            record_timing("gradient", t_grad1_local);
+            lsolver.template smearing<face_aux_type>(domain_->ib().force(), false);
+            add<face_aux_type, r_i_type>(-1.0);
+        ));
+        record_timing("linsys_post_pressure_assembly", t_post_pressure);
 
         if (std::fabs(_alpha)>1e-14)
         {
             mDuration_type t_if(0);
-            domain_->client_communicator().barrier();
+            client_barrier();
             TIME_CODE( t_if, SINGLE_ARG(
                         psolver.template apply_lgf_IF<r_i_type, u_i_type>(_alpha);
                         ));
             pcout<< "IF  solved in "<<t_if.count() << std::endl;
+            record_timing("apply_lgf_if_linsys", t_if);
+            record_timing("apply_lgf_if", t_if);
         }
         else
             copy<r_i_type,u_i_type>();
@@ -1642,14 +1963,18 @@ private:
 
         auto       client = domain_->decomposition().client();
         const auto dx_base = domain_->dx_base();
+        bool used_gpu = false;
 
         //up_and_down<Source>();
 
         for (int l = domain_->tree()->base_level();
              l < domain_->tree()->depth(); ++l)
         {
-
+            mDuration_type t_buf(0);
+            TIME_CODE(t_buf, SINGLE_ARG(
             client->template buffer_exchange<Source>(l);
+            ));
+            record_timing("buffer_exchange", t_buf);
 
             for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
             {
@@ -1657,8 +1982,24 @@ private:
 
                 const auto dx_level =
                     dx_base / math::pow2(it->refinement_level());
-                domain::Operator::curl<Source, edge_aux_type>(
-                    it->data(), dx_level);
+                mDuration_type t_curl(0);
+                TIME_CODE(t_curl, SINGLE_ARG(
+#ifdef IBLGF_COMPILE_CUDA
+                    bool ok = false;
+                    if (gpu_operators_enabled_)
+                    {
+                        ok = domain::Operator::curl_gpu<Source, edge_aux_type>(
+                            it->data(), dx_level);
+                        used_gpu = used_gpu || ok;
+                    }
+                    if (!ok)
+#endif
+                    {
+                        domain::Operator::curl<Source, edge_aux_type>(
+                            it->data(), dx_level);
+                    }
+                ));
+                record_timing("nonlinear_curl", t_curl);
             }
         }
 
@@ -1667,27 +2008,61 @@ private:
         copy<Source, face_aux_type>();
         domain::Operator::add_field_expression<face_aux_type>(domain_, simulation_->frame_vel(), T_stage_, -1.0);
 
+        if (used_gpu)
+        {
+            mDuration_type t_sync_host(0);
+            TIME_CODE(t_sync_host, SINGLE_ARG(
+                sync_host_field<edge_aux_type>();
+            ));
+            record_timing("device_to_host_sync", t_sync_host);
+        }
+
         for (int l = domain_->tree()->base_level();
              l < domain_->tree()->depth(); ++l)
         {
+            mDuration_type t_buf(0);
+            TIME_CODE(t_buf, SINGLE_ARG(
             client->template buffer_exchange<edge_aux_type>(l);
+            ));
+            record_timing("buffer_exchange", t_buf);
             // client->template buffer_exchange<face_aux_type>(l);
-            clean_leaf_correction_boundary<edge_aux_type>(l, false, 2);
+            if (gpu_operators_enabled_ && gpu_resident_mode_ &&
+                gpu_resident_nonlinear_cleanup_enabled_)
+                clean_leaf_correction_boundary_gpu_resident<edge_aux_type>(l, false, 2);
+            else
+                clean_leaf_correction_boundary<edge_aux_type>(l, false, 2);
 
             for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
             {
                 if (!it->locally_owned() || !it->has_data()) continue;
 
-                domain::Operator::nonlinear<face_aux_type, edge_aux_type, Target>(
-                    it->data());
+                mDuration_type t_nonlin(0);
+                TIME_CODE(t_nonlin, SINGLE_ARG(
+#ifdef IBLGF_COMPILE_CUDA
+                    bool ok = false;
+                    if (gpu_operators_enabled_)
+                    {
+                        ok = domain::Operator::nonlinear_gpu<face_aux_type,
+                            edge_aux_type, Target>(it->data(), _scale);
+                        used_gpu = used_gpu || ok;
+                    }
+                    if (!ok)
+#endif
+                    {
+                        domain::Operator::nonlinear<face_aux_type,
+                            edge_aux_type, Target>(it->data());
 
-                for (std::size_t field_idx = 0; field_idx < Target::nFields();
-                     ++field_idx)
-                {
-                    auto& lin_data =
-                        it->data_r(Target::tag(), field_idx).linalg_data();
-                    lin_data *= _scale; //scale with time step size
-                }
+                        for (std::size_t field_idx = 0;
+                             field_idx < Target::nFields(); ++field_idx)
+                        {
+                            auto& lin_data =
+                                it->data_r(Target::tag(), field_idx)
+                                    .linalg_data();
+                            lin_data *= _scale; //scale with time step size
+                        }
+                    }
+                ));
+                record_timing("nonlinear_cross", t_nonlin);
             }
 
             //client->template buffer_exchange<Target>(l);
@@ -1695,7 +2070,23 @@ private:
         }
 
         if (std::abs(b_f_mag) > 1e-5) {
+            if (used_gpu)
+            {
+                mDuration_type t_sync_host(0);
+                TIME_CODE(t_sync_host, SINGLE_ARG(
+                    sync_host_field<Target>();
+                ));
+                record_timing("device_to_host_sync", t_sync_host);
+            }
             add_body_force<Target>(_scale);
+        }
+        else if (used_gpu)
+        {
+            mDuration_type t_sync_host(0);
+            TIME_CODE(t_sync_host, SINGLE_ARG(
+                sync_host_field<Target>();
+            ));
+            record_timing("device_to_host_sync", t_sync_host);
         }
 
         
@@ -1732,19 +2123,35 @@ private:
             }
 
 		}
+#ifdef IBLGF_COMPILE_CUDA
+        if (gpu_operators_enabled_) mark_field_host_written<target>();
+#endif
     }
 
     template<class Source, class Target>
-    void divergence() noexcept
+    void divergence(bool exchange_target = true) noexcept
     {
         auto client = domain_->decomposition().client();
+        bool used_gpu = false;
 
-        up_and_down<Source>();
+        mDuration_type t_updown(0);
+        TIME_CODE(t_updown, SINGLE_ARG(
+            if (gpu_operators_enabled_ && gpu_resident_mode_ &&
+                gpu_resident_updown_enabled_)
+                up_and_down_gpu_resident<Source>();
+            else
+                up_and_down<Source>();
+        ));
+        record_timing("divergence_up_down", t_updown);
 
         for (int l = domain_->tree()->base_level();
              l < domain_->tree()->depth(); ++l)
         {
+            mDuration_type t_buf(0);
+            TIME_CODE(t_buf, SINGLE_ARG(
             client->template buffer_exchange<Source>(l);
+            ));
+            record_timing("buffer_exchange", t_buf);
             const auto dx_base = domain_->dx_base();
 
             for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
@@ -1752,45 +2159,135 @@ private:
                 if (!it->locally_owned() || !it->has_data()) continue;
                 const auto dx_level =
                     dx_base / math::pow2(it->refinement_level());
-                domain::Operator::divergence<Source, Target>(
-                    it->data(), dx_level);
+                mDuration_type t_div(0);
+                TIME_CODE(t_div, SINGLE_ARG(
+#ifdef IBLGF_COMPILE_CUDA
+                    bool ok = false;
+                    if (gpu_operators_enabled_)
+                    {
+                        ok = domain::Operator::divergence_gpu<Source, Target>(
+                            it->data(), dx_level);
+                        used_gpu = used_gpu || ok;
+                    }
+                    if (!ok)
+#endif
+                    {
+                        domain::Operator::divergence<Source, Target>(
+                            it->data(), dx_level);
+                    }
+                ));
+                record_timing("divergence_kernel", t_div);
             }
-
-            //client->template buffer_exchange<Target>(l);
-            clean_leaf_correction_boundary<Target>(l, true, 2);
-            //clean_leaf_correction_boundary<Target>(l, false,4+stage_idx_);
         }
+
+        if (used_gpu)
+        {
+            mDuration_type t_sync_host(0);
+            TIME_CODE(t_sync_host, SINGLE_ARG(
+                sync_host_field<Target>();
+            ));
+            record_timing("device_to_host_sync", t_sync_host);
+        }
+
+        if (exchange_target)
+        {
+            mDuration_type t_exchange(0);
+            TIME_CODE(t_exchange, SINGLE_ARG(
+                for (int l = domain_->tree()->base_level();
+                     l < domain_->tree()->depth(); ++l)
+                {
+                    //client->template buffer_exchange<Target>(l);
+                    if (gpu_operators_enabled_ && gpu_resident_mode_ &&
+                        gpu_resident_divergence_cleanup_enabled_)
+                        clean_leaf_correction_boundary_gpu_resident<Target>(l, true, 2);
+                    else
+                        clean_leaf_correction_boundary<Target>(l, true, 2);
+                    //clean_leaf_correction_boundary<Target>(l, false,4+stage_idx_);
+                }
+            ));
+            record_timing("divergence_cleanup", t_exchange);
+        }
+#ifdef IBLGF_COMPILE_CUDA
+        if (used_gpu)
+        {
+            if (!gpu_resident_mode_)
+            {
+                mDuration_type t_sync_device(0);
+                TIME_CODE(t_sync_device, SINGLE_ARG(
+                    sync_device_field<Target>();
+                ));
+                record_timing("host_to_device_sync", t_sync_device);
+            }
+        }
+#endif
     }
 
     template<class Source, class Target>
-    void gradient(float_type _scale = 1.0) noexcept
+    void gradient(float_type _scale = 1.0, bool exchange_target = true) noexcept
     {
         //up_and_down<Source>();
         domain::Operator::domainClean<Target>(domain_);
+        mark_field_host_written<Target>();
+        bool used_gpu = false;
 
         for (int l = domain_->tree()->base_level();
              l < domain_->tree()->depth(); ++l)
         {
-            auto client = domain_->decomposition().client();
-            //client->template buffer_exchange<Source>(l);
             const auto dx_base = domain_->dx_base();
             for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
             {
                 if (!it->locally_owned() || !it->has_data()) continue;
                 const auto dx_level =
                     dx_base / math::pow2(it->refinement_level());
-                domain::Operator::gradient<Source, Target>(
-                    it->data(), dx_level);
-                for (std::size_t field_idx = 0; field_idx < Target::nFields();
-                     ++field_idx)
-                {
-                    auto& lin_data =
-                        it->data_r(Target::tag(), field_idx).linalg_data();
+                mDuration_type t_grad(0);
+                TIME_CODE(t_grad, SINGLE_ARG(
+#ifdef IBLGF_COMPILE_CUDA
+                    bool ok = false;
+                    if (gpu_operators_enabled_)
+                    {
+                        ok = domain::Operator::gradient_gpu<Source, Target>(
+                            it->data(), dx_level, _scale);
+                        used_gpu = used_gpu || ok;
+                    }
+                    if (!ok)
+#endif
+                    {
+                        domain::Operator::gradient<Source, Target>(
+                            it->data(), dx_level);
+                        for (std::size_t field_idx = 0;
+                             field_idx < Target::nFields(); ++field_idx)
+                        {
+                            auto& lin_data =
+                                it->data_r(Target::tag(), field_idx)
+                                    .linalg_data();
 
-                    lin_data *= _scale;
-                }
+                            lin_data *= _scale;
+                        }
+                    }
+                ));
+                record_timing("gradient_kernel", t_grad);
             }
-            client->template buffer_exchange<Target>(l);
+        }
+        if (used_gpu)
+        {
+            mDuration_type t_sync_host(0);
+            TIME_CODE(t_sync_host, SINGLE_ARG(
+                sync_host_field<Target>();
+            ));
+            record_timing("device_to_host_sync", t_sync_host);
+        }
+        if (exchange_target)
+        {
+            auto client = domain_->decomposition().client();
+            for (int l = domain_->tree()->base_level();
+                 l < domain_->tree()->depth(); ++l)
+            {
+                mDuration_type t_buf(0);
+                TIME_CODE(t_buf, SINGLE_ARG(
+                client->template buffer_exchange<Target>(l);
+                ));
+                record_timing("buffer_exchange", t_buf);
+            }
         }
     }
 
@@ -1892,6 +2389,9 @@ private:
                     it->data_r(From::tag(), field_idx).linalg_data() * scale;
             }
         }
+#ifdef IBLGF_COMPILE_CUDA
+        if (gpu_operators_enabled_) mark_field_host_written<To>();
+#endif
     }
 
     template<typename Field>
@@ -1918,6 +2418,9 @@ private:
                 }
             }
 		}
+#ifdef IBLGF_COMPILE_CUDA
+        if (gpu_operators_enabled_) mark_field_host_written<Field>();
+#endif
     }
 
     template<typename From1, typename From2, typename To>
@@ -1939,6 +2442,9 @@ private:
                     n(To::tag(), field_idx) = n(From1::tag(), field_idx) * n(From2::tag(), field_idx);
             }
         }
+#ifdef IBLGF_COMPILE_CUDA
+        if (gpu_operators_enabled_) mark_field_host_written<To>();
+#endif
     }
 
     template<typename From, typename To>
@@ -1957,6 +2463,9 @@ private:
                     n(To::tag(), field_idx) = n(From::tag(), field_idx) * scale;
             }
         }
+#ifdef IBLGF_COMPILE_CUDA
+        if (gpu_operators_enabled_) mark_field_host_written<To>();
+#endif
     }
 
   private:
@@ -2003,10 +2512,18 @@ private:
     bool write_noca_= false;
     bool all_time_max_;
     bool use_adaptation_correction;
+    bool gpu_operators_enabled_ = false;
+    bool gpu_resident_mode_ = false;
+    bool gpu_resident_updown_enabled_ = true;
+    bool gpu_resident_divergence_cleanup_enabled_ = true;
+    bool gpu_resident_nonlinear_cleanup_enabled_ = true;
+    bool enable_extra_client_barriers_ = true;
     int restart_base_freq_;
     int adapt_count_;
+    int timing_report_frequency_ = 0;
 
     std::string                       fname_prefix_;
+    std::map<std::string, double>     timing_totals_ms_;
     vector_type<float_type, 6>        a_{{1.0 / 3, -1.0, 2.0, 0.0, 0.75, 0.25}};
     vector_type<float_type, 4>        c_{{0.0, 1.0 / 3, 1.0, 1.0}};
     //vector_type<float_type, 6>        a_{{1.0 / 2, sqrt(3)/3, (3-sqrt(3))/3, (3+sqrt(3))/6, -sqrt(3)/3, (3+sqrt(3))/6}};

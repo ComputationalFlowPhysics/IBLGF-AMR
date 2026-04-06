@@ -7,6 +7,9 @@ simulation_parameters
     nBaseLevelTimeSteps=10000;
     cfl = 0.75;
     cfl_max = 1000;
+    gpu_operators=true;
+    ifherk_extra_client_barriers=false;
+    ifherk_gpu_resident_mode=false;
     Re = 100.0;
     R = 0.5;
     refinement_factor=0.125;

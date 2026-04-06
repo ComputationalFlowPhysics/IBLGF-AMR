@@ -76,38 +76,37 @@ struct OperatorTest : public SetupBase<OperatorTest, parameters>
     using time_point_type = typename clock_type::time_point;
 
     OperatorTest(Dictionary* _d)
-    : super_type(_d, [this](auto _d, auto _domain) {
-        return this->initialize_domain(_d, _domain);
-    })
+    : super_type(_d, [this](auto _d, auto _domain) { return this->initialize_domain(_d, _domain); })
     {
         if (domain_->is_client()) client_comm_ = client_comm_.split(1);
         else
             client_comm_ = client_comm_.split(0);
 
-        global_refinement_ = simulation_.dictionary_->template get_or<int>(
-            "global_refinement", 0);
+        global_refinement_ = simulation_.dictionary_->template get_or<int>("global_refinement", 0);
 
         pcout << "\n Setup:  Test - Vortex ring \n" << std::endl;
         pcout << "Number of refinement levels: " << nLevels_ << std::endl;
 
-        domain_->register_refinement_condition() = [this](auto octant,
-                                                       int     diff_level) {
-            return this->refinement(octant, diff_level);
-        };
-        domain_->init_refine(_d->get_dictionary("simulation_parameters")
-                                 ->template get_or<int>("nLevels", 0),
-            global_refinement_,0);
+        domain_->register_refinement_condition() = [this](auto octant, int diff_level)
+        { return this->refinement(octant, diff_level); };
+
+        domain_->init_refine(_d->get_dictionary("simulation_parameters")->template get_or<int>("nLevels", 0),
+            global_refinement_, 0);
+
         domain_->distribute<fmm_mask_builder_t, fmm_mask_builder_t>();
+
         this->initialize();
 
         boost::mpi::communicator world;
-        if (world.rank() == 0)
-            std::cout << "on Simulation: \n" << simulation_ << std::endl;
+        if (world.rank() == 0) std::cout << "on Simulation: \n" << simulation_ << std::endl;
     }
 
     void run()
     {
         boost::mpi::communicator world;
+        // start timer
+        world.barrier();
+        auto start_time = clock_type::now();
         if (domain_->is_client())
         {
             const float_type dx_base = domain_->dx_base();
@@ -121,44 +120,45 @@ struct OperatorTest : public SetupBase<OperatorTest, parameters>
             client->buffer_exchange<grad_source_type>(base_level);
             client->buffer_exchange<curl_exact_type>(base_level);
             client->buffer_exchange<nonlinear_source_type>(base_level);
-
-            for (auto it = domain_->begin_leaves(); it != domain_->end_leaves();
-                 ++it)
+            #ifdef IBLGF_OMP
+            #pragma omp parallel
+            #pragma omp single
+            #endif
+            for (auto it = domain_->begin_leaves(); it != domain_->end_leaves(); ++it)
             {
                 if (!it->locally_owned() || !it->has_data()) continue;
-
+                #ifdef IBLGF_OMP
+                #pragma omp task firstprivate(it)
+                #endif
+                {
                 auto dx_level = dx_base / std::pow(2, it->refinement_level());
 
-                domain::Operator::laplace<lap_source_type, lap_target_type>(
-                    it->data(), dx_level);
-                domain::Operator::divergence<div_source_type, div_target_type>(
-                    it->data(), dx_level);
-                domain::Operator::curl<curl_source_type, curl_target_type>(
-                    it->data(), dx_level);
-                domain::Operator::gradient<grad_source_type, grad_target_type>(
-                    it->data(), dx_level);
+                domain::Operator::laplace<lap_source_type, lap_target_type>(it->data(), dx_level);
+                domain::Operator::divergence<div_source_type, div_target_type>(it->data(), dx_level);
+                domain::Operator::curl<curl_source_type, curl_target_type>(it->data(), dx_level);
+                domain::Operator::gradient<grad_source_type, grad_target_type>(it->data(), dx_level);
+                }
             }
             client->buffer_exchange<curl_target_type>(base_level);
-            for (auto it = domain_->begin_leaves(); it != domain_->end_leaves();
-                 ++it)
+            #ifdef IBLGF_OMP
+            #pragma omp parallel
+            #endif
+            for (auto it = domain_->begin_leaves(); it != domain_->end_leaves(); ++it)
             {
                 if (!it->locally_owned() || !it->has_data()) continue;
 
-                domain::Operator::nonlinear<nonlinear_source_type,
-                    curl_target_type, nonlinear_target_type>(it->data());
+                domain::Operator::nonlinear<nonlinear_source_type, curl_target_type, nonlinear_target_type>(it->data());
             }
         }
-
-        this->compute_errors<lap_target_type, lap_exact_type, lap_error_type>(
-            "Lap_");
-        this->compute_errors<grad_target_type, grad_exact_type,
-            grad_error_type>("Grad_");
-        this->compute_errors<div_target_type, div_exact_type, div_error_type>(
-            "Div_");
-        this->compute_errors<curl_target_type, curl_exact_type,
-            curl_error_type>("Curl_");
-        this->compute_errors<nonlinear_target_type, nonlinear_exact_type,
-            nonlinear_error_type>("Nonlin_");
+        world.barrier();
+        auto end_time = clock_type::now();
+        auto duration = std::chrono::duration_cast<milliseconds>(end_time - start_time);
+        if (world.rank() == 0) std::cout << "Time taken for operators: " << duration.count() << " ms" << std::endl;
+        this->compute_errors<lap_target_type, lap_exact_type, lap_error_type>("Lap_");
+        this->compute_errors<grad_target_type, grad_exact_type, grad_error_type>("Grad_");
+        this->compute_errors<div_target_type, div_exact_type, div_error_type>("Div_");
+        this->compute_errors<curl_target_type, curl_exact_type, curl_error_type>("Curl_");
+        this->compute_errors<nonlinear_target_type, nonlinear_exact_type, nonlinear_error_type>("Nonlin_");
         simulation_.write("mesh.hdf5");
     }
 
@@ -170,16 +170,13 @@ struct OperatorTest : public SetupBase<OperatorTest, parameters>
         boost::mpi::communicator world;
         if (domain_->is_server()) return;
         auto center =
-            (domain_->bounding_box().max() - domain_->bounding_box().min()) /
-                2.0 +
-            domain_->bounding_box().min();
+            (domain_->bounding_box().max() - domain_->bounding_box().min()) / 2.0 + domain_->bounding_box().min();
 
         // Adapt center to always have peak value in a cell-center
         //center+=0.5/std::pow(2,nRef);
         const float_type dx_base = domain_->dx_base();
 
-        for (auto it = domain_->begin_leaves(); it != domain_->end_leaves();
-             ++it)
+        for (auto it = domain_->begin_leaves(); it != domain_->end_leaves(); ++it)
         {
             if (!it->locally_owned()) continue;
             if (!(*it && it->has_data())) continue;
@@ -192,77 +189,41 @@ struct OperatorTest : public SetupBase<OperatorTest, parameters>
 
                 //Cell centered coordinates
                 //This can obviously be made much less verbose
-                float_type xc = static_cast<float_type>(
-                                    coord[0] - center[0] * scaling + 0.5) *
-                                dx_level;
-                float_type yc = static_cast<float_type>(
-                                    coord[1] - center[1] * scaling + 0.5) *
-                                dx_level;
-                float_type zc = static_cast<float_type>(
-                                    coord[2] - center[2] * scaling + 0.5) *
-                                dx_level;
+                float_type xc = static_cast<float_type>(coord[0] - center[0] * scaling + 0.5) * dx_level;
+                float_type yc = static_cast<float_type>(coord[1] - center[1] * scaling + 0.5) * dx_level;
+                float_type zc = static_cast<float_type>(coord[2] - center[2] * scaling + 0.5) * dx_level;
 
                 //Face centered coordinates
-                float_type xf0 =
-                    static_cast<float_type>(coord[0] - center[0] * scaling) *
-                    dx_level;
+                float_type xf0 = static_cast<float_type>(coord[0] - center[0] * scaling) * dx_level;
                 float_type yf0 = yc;
                 float_type zf0 = zc;
 
                 float_type xf1 = xc;
-                float_type yf1 =
-                    static_cast<float_type>(coord[1] - center[1] * scaling) *
-                    dx_level;
+                float_type yf1 = static_cast<float_type>(coord[1] - center[1] * scaling) * dx_level;
                 float_type zf1 = zc;
 
                 float_type xf2 = xc;
                 float_type yf2 = yc;
-                float_type zf2 =
-                    static_cast<float_type>(coord[2] - center[2] * scaling) *
-                    dx_level;
+                float_type zf2 = static_cast<float_type>(coord[2] - center[2] * scaling) * dx_level;
 
                 //Edge centered coordinates
-                float_type xe0 = static_cast<float_type>(
-                                     coord[0] - center[0] * scaling + 0.5) *
-                                 dx_level;
-                float_type ye0 =
-                    static_cast<float_type>(coord[1] - center[1] * scaling) *
-                    dx_level;
-                float_type ze0 =
-                    static_cast<float_type>(coord[2] - center[2] * scaling) *
-                    dx_level;
-                float_type xe1 =
-                    static_cast<float_type>(coord[0] - center[0] * scaling) *
-                    dx_level;
-                float_type ye1 = static_cast<float_type>(
-                                     coord[1] - center[1] * scaling + 0.5) *
-                                 dx_level;
-                float_type ze1 =
-                    static_cast<float_type>(coord[2] - center[2] * scaling) *
-                    dx_level;
-                float_type xe2 =
-                    static_cast<float_type>(coord[0] - center[0] * scaling) *
-                    dx_level;
-                float_type ye2 =
-                    static_cast<float_type>(coord[1] - center[1] * scaling) *
-                    dx_level;
-                float_type ze2 = static_cast<float_type>(
-                                     coord[2] - center[2] * scaling + 0.5) *
-                                 dx_level;
+                float_type xe0 = static_cast<float_type>(coord[0] - center[0] * scaling + 0.5) * dx_level;
+                float_type ye0 = static_cast<float_type>(coord[1] - center[1] * scaling) * dx_level;
+                float_type ze0 = static_cast<float_type>(coord[2] - center[2] * scaling) * dx_level;
+                float_type xe1 = static_cast<float_type>(coord[0] - center[0] * scaling) * dx_level;
+                float_type ye1 = static_cast<float_type>(coord[1] - center[1] * scaling + 0.5) * dx_level;
+                float_type ze1 = static_cast<float_type>(coord[2] - center[2] * scaling) * dx_level;
+                float_type xe2 = static_cast<float_type>(coord[0] - center[0] * scaling) * dx_level;
+                float_type ye2 = static_cast<float_type>(coord[1] - center[1] * scaling) * dx_level;
+                float_type ze2 = static_cast<float_type>(coord[2] - center[2] * scaling + 0.5) * dx_level;
 
                 const float_type r = std::sqrt(xc * xc + yc * yc + zc * zc);
-                const float_type rf0 =
-                    std::sqrt(xf0 * xf0 + yf0 * yf0 + zf0 * zf0);
-                const float_type rf1 =
-                    std::sqrt(xf1 * xf1 + yf1 * yf1 + zf1 * zf1);
-                const float_type rf2 =
-                    std::sqrt(xf2 * xf2 + yf2 * yf2 + zf2 * zf2);
-                const float_type re0 =
-                    std::sqrt(xe0 * xe0 + ye0 * ye0 + ze0 * ze0);
-                const float_type re1 =
-                    std::sqrt(xe1 * xe1 + ye1 * ye1 + ze1 * ze1);
-                const float_type re2 =
-                    std::sqrt(xe2 * xe2 + ye2 * ye2 + ze2 * ze2);
+                const float_type rf0 = std::sqrt(xf0 * xf0 + yf0 * yf0 + zf0 * zf0);
+                const float_type rf1 = std::sqrt(xf1 * xf1 + yf1 * yf1 + zf1 * zf1);
+                const float_type rf2 = std::sqrt(xf2 * xf2 + yf2 * yf2 + zf2 * zf2);
+                const float_type re0 = std::sqrt(xe0 * xe0 + ye0 * ye0 + ze0 * ze0);
+                const float_type re1 = std::sqrt(xe1 * xe1 + ye1 * ye1 + ze1 * ze1);
+                const float_type re2 = std::sqrt(xe2 * xe2 + ye2 * ye2 + ze2 * ze2);
                 const float_type a2 = a_ * a_;
                 const float_type xc2 = xc * xc;
                 const float_type yc2 = yc * yc;
@@ -289,64 +250,50 @@ struct OperatorTest : public SetupBase<OperatorTest, parameters>
 
                 //Laplace
                 node(lap_source, 0) = tmpc;
-                node(lap_exact) = -6 * a_ * tmpc + 4 * a2 * xc2 * tmpc +
-                                  4 * a2 * yc2 * tmpc + 4 * a2 * zc2 * tmpc;
+                node(lap_exact) = -6 * a_ * tmpc + 4 * a2 * xc2 * tmpc + 4 * a2 * yc2 * tmpc + 4 * a2 * zc2 * tmpc;
 
                 //Divergence
                 node(div_source, 0) = tmpf0;
                 node(div_source, 1) = tmpf1;
                 node(div_source, 2) = tmpf2;
-                node(div_exact, 0) = -2 * a_ * xc * tmpc - 2 * a_ * yc * tmpc -
-                                     2 * a_ * zc * tmpc;
+                node(div_exact, 0) = -2 * a_ * xc * tmpc - 2 * a_ * yc * tmpc - 2 * a_ * zc * tmpc;
 
                 //Curl
                 node(curl_source, 0) = tmpf0;
                 node(curl_source, 1) = tmpf1;
                 node(curl_source, 2) = tmpf2;
 
-                node(curl_exact, 0) =
-                    2 * a_ * ze0 * tmpe0 - 2 * a_ * ye0 * tmpe0;
-                node(curl_exact, 1) =
-                    2 * a_ * xe1 * tmpe1 - 2 * a_ * ze1 * tmpe1;
-                node(curl_exact, 2) =
-                    2 * a_ * ye2 * tmpe2 - 2 * a_ * xe2 * tmpe2;
+                node(curl_exact, 0) = 2 * a_ * ze0 * tmpe0 - 2 * a_ * ye0 * tmpe0;
+                node(curl_exact, 1) = 2 * a_ * xe1 * tmpe1 - 2 * a_ * ze1 * tmpe1;
+                node(curl_exact, 2) = 2 * a_ * ye2 * tmpe2 - 2 * a_ * xe2 * tmpe2;
 
                 //non_linear
                 node(nonlinear_source, 0) = tmpf0;
                 node(nonlinear_source, 1) = tmpf1;
                 node(nonlinear_source, 2) = tmpf2;
 
-                node(nonlinear_exact, 0) =
-                    tmpf0 * (2 * a_ * xf0 * tmpf0 - 2 * a_ * yf0 * tmpf0) +
-                    tmpf0 * (2 * a_ * xf0 * tmpf0 - 2 * a_ * zf0 * tmpf0);
+                node(nonlinear_exact, 0) = tmpf0 * (2 * a_ * xf0 * tmpf0 - 2 * a_ * yf0 * tmpf0) +
+                                           tmpf0 * (2 * a_ * xf0 * tmpf0 - 2 * a_ * zf0 * tmpf0);
 
-                node(nonlinear_exact, 1) =
-                    tmpf1 * (2 * a_ * yf1 * tmpf1 - 2 * a_ * zf1 * tmpf1) -
-                    tmpf1 * (2 * a_ * xf1 * tmpf1 - 2 * a_ * yf1 * tmpf1);
+                node(nonlinear_exact, 1) = tmpf1 * (2 * a_ * yf1 * tmpf1 - 2 * a_ * zf1 * tmpf1) -
+                                           tmpf1 * (2 * a_ * xf1 * tmpf1 - 2 * a_ * yf1 * tmpf1);
 
-                node(nonlinear_exact, 2) =
-                    -tmpf2 * (2 * a_ * xf2 * tmpf2 - 2 * a_ * zf2 * tmpf2) -
-                    tmpf2 * (2 * a_ * yf2 * tmpf2 - 2 * a_ * zf2 * tmpf2);
+                node(nonlinear_exact, 2) = -tmpf2 * (2 * a_ * xf2 * tmpf2 - 2 * a_ * zf2 * tmpf2) -
+                                           tmpf2 * (2 * a_ * yf2 * tmpf2 - 2 * a_ * zf2 * tmpf2);
             }
         }
     }
 
     /** @brief  Refienment conditon for octants.  */
     template<class OctantType>
-    bool refinement(
-        OctantType* it, int diff_level, bool use_all = false) const noexcept
-    {
-        return false;
-    }
+    bool refinement(OctantType* it, int diff_level, bool use_all = false) const noexcept
+    { return false; }
 
     /** @brief  Initialization of the domain blocks. This is registered in the
      *          domain through the base setup class, passing it to the domain ctor.
      */
-    std::vector<coordinate_t> initialize_domain(
-        Dictionary* _d, domain_t* _domain)
-    {
-        return _domain->construct_basemesh_blocks(_d, _domain->block_extent());
-    }
+    std::vector<coordinate_t> initialize_domain(Dictionary* _d, domain_t* _domain)
+    { return _domain->construct_basemesh_blocks(_d, _domain->block_extent()); }
 
   private:
     boost::mpi::communicator client_comm_;

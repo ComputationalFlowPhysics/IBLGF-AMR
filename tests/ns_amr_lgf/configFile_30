@@ -53,8 +53,8 @@ simulation_parameters
 
         block
         {
-            base=(-30,-30,-30);
-            extent=(60,60,60);
+            base=(-60,-60,-60);
+            extent=(120,120,120);
         }
     }
     EXP_LInf=1e-2;

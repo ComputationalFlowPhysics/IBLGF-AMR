@@ -288,5 +288,56 @@ static void debug_run_lgf(NS_AMR_LGF_Debug& setup,
               << std::endl;
 }
 
+static void debug_run_lgf_levels(NS_AMR_LGF_Debug& setup,
+    bool prefer_device = true,
+    typename NS_AMR_LGF_Debug::poisson_solver_t::MASK_TYPE mask =
+        NS_AMR_LGF_Debug::poisson_solver_t::MASK_TYPE::AMR2AMR)
+{
+    debug_block_census(setup);
+    if (setup.domain_->is_server()) return;
+
+    using edge_aux_t = typename NS_AMR_LGF_Debug::edge_aux_type;
+    using stream_f_t = typename NS_AMR_LGF_Debug::stream_f_type;
+    using source_tmp_t = typename NS_AMR_LGF_Debug::source_tmp_type;
+    using target_tmp_t = typename NS_AMR_LGF_Debug::target_tmp_type;
+
+    typename NS_AMR_LGF_Debug::poisson_solver_t psolver(&setup.simulation_);
+    psolver.template clean_field<source_tmp_t>();
+    psolver.template clean_field<target_tmp_t>();
+    psolver.template copy_leaf<edge_aux_t, source_tmp_t>(0, 0, true);
+
+    if (mask != NS_AMR_LGF_Debug::poisson_solver_t::MASK_TYPE::STREAM &&
+        mask != NS_AMR_LGF_Debug::poisson_solver_t::MASK_TYPE::IB2xIB &&
+        mask != NS_AMR_LGF_Debug::poisson_solver_t::MASK_TYPE::xIB2IB &&
+        mask != NS_AMR_LGF_Debug::poisson_solver_t::MASK_TYPE::IB2AMR)
+    {
+        psolver.template source_coarsify<source_tmp_t, source_tmp_t>(
+            0, 0, edge_aux_t::mesh_type());
+        psolver.template intrp_to_correction_buffer<source_tmp_t, source_tmp_t>(
+            0, 0, edge_aux_t::mesh_type());
+    }
+
+    psolver.template apply_lgf<edge_aux_t, stream_f_t>(mask);
+
+    boost::mpi::communicator world;
+    for (int l = setup.domain_->tree()->base_level();
+         l < setup.domain_->tree()->depth(); ++l)
+    {
+        float_type level_max = 0.0;
+        for (auto it = setup.domain_->begin(l); it != setup.domain_->end(l);
+             ++it)
+        {
+            if (!it->locally_owned()) continue;
+            if (!it->has_data() || !it->data().is_allocated()) continue;
+            auto& df = it->data_r(target_tmp_t::tag(), 0);
+            const float_type local = debug_maxabs_datafield_(df, prefer_device);
+            if (local > level_max) level_max = local;
+        }
+        std::cout << "Rank " << world.rank()
+                  << " lgf level " << l
+                  << " maxabs(target_tmp)=" << level_max << std::endl;
+    }
+}
+
 } // namespace debug
 } // namespace iblgf

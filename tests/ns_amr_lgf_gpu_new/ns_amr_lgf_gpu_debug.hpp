@@ -249,6 +249,24 @@ static void debug_run_lgf(NS_AMR_LGF_Debug& setup,
     const auto source_max_after_copy =
         debug_maxabs_field_<source_tmp_t>(setup, prefer_device);
 
+    float_type source_max_after_coarsify = source_max_after_copy;
+    float_type source_max_after_intrp = source_max_after_copy;
+    if (mask != NS_AMR_LGF_Debug::poisson_solver_t::MASK_TYPE::STREAM &&
+        mask != NS_AMR_LGF_Debug::poisson_solver_t::MASK_TYPE::IB2xIB &&
+        mask != NS_AMR_LGF_Debug::poisson_solver_t::MASK_TYPE::xIB2IB &&
+        mask != NS_AMR_LGF_Debug::poisson_solver_t::MASK_TYPE::IB2AMR)
+    {
+        psolver.template source_coarsify<source_tmp_t, source_tmp_t>(
+            0, 0, edge_aux_t::mesh_type());
+        source_max_after_coarsify =
+            debug_maxabs_field_<source_tmp_t>(setup, prefer_device);
+
+        psolver.template intrp_to_correction_buffer<source_tmp_t, source_tmp_t>(
+            0, 0, edge_aux_t::mesh_type());
+        source_max_after_intrp =
+            debug_maxabs_field_<source_tmp_t>(setup, prefer_device);
+    }
+
     psolver.template apply_lgf<edge_aux_t, stream_f_t>(mask);
 
     const auto edge_max = debug_maxabs_field_<edge_aux_t>(setup, prefer_device);
@@ -263,6 +281,8 @@ static void debug_run_lgf(NS_AMR_LGF_Debug& setup,
               << " maxabs(stream_f)=" << stream_max
               << " source_tmp(before)=" << source_max_before
               << " source_tmp(after_copy)=" << source_max_after_copy
+              << " source_tmp(after_coarsify)=" << source_max_after_coarsify
+              << " source_tmp(after_intrp)=" << source_max_after_intrp
               << " target_tmp(before)=" << target_max_before
               << " target_tmp(after)=" << target_max_after
               << std::endl;

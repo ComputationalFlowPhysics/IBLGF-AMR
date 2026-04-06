@@ -120,9 +120,37 @@ static float_type debug_maxabs_field_(NS_AMR_LGF_Debug& setup,
     return max_abs;
 }
 
+static void debug_block_census(NS_AMR_LGF_Debug& setup)
+{
+    int local_blocks = 0;
+    int local_leaves = 0;
+    int local_has_data = 0;
+    int local_allocated = 0;
+
+    for (auto it = setup.domain_->begin(); it != setup.domain_->end(); ++it)
+    {
+        if (!it->locally_owned()) continue;
+        ++local_blocks;
+        if (it->is_leaf()) ++local_leaves;
+        if (it->has_data()) ++local_has_data;
+        if (it->has_data() && it->data().is_allocated()) ++local_allocated;
+    }
+
+    boost::mpi::communicator world;
+    std::cout << "Rank " << world.rank()
+              << " census | server=" << setup.domain_->is_server()
+              << " client=" << setup.domain_->is_client()
+              << " blocks=" << local_blocks
+              << " leaves=" << local_leaves
+              << " has_data=" << local_has_data
+              << " allocated=" << local_allocated
+              << std::endl;
+}
+
 static void debug_init_stats(NS_AMR_LGF_Debug& setup,
     bool prefer_device = true)
 {
+    debug_block_census(setup);
     if (setup.domain_->is_server()) return;
     const auto u_max =
         debug_maxabs_field_<parameters::u_type>(setup, prefer_device);
@@ -130,17 +158,21 @@ static void debug_init_stats(NS_AMR_LGF_Debug& setup,
         debug_maxabs_field_<parameters::p_type>(setup, prefer_device);
     const auto t_max =
         debug_maxabs_field_<parameters::test_type>(setup, prefer_device);
+    const auto edge_max =
+        debug_maxabs_field_<parameters::edge_aux_type>(setup, prefer_device);
     boost::mpi::communicator world;
     std::cout << "Rank " << world.rank()
               << " init stats | maxabs(u)=" << u_max
               << " maxabs(p)=" << p_max
-              << " maxabs(test)=" << t_max << std::endl;
+              << " maxabs(test)=" << t_max
+              << " maxabs(edge_aux)=" << edge_max << std::endl;
 }
 
 static void debug_kernel_microtests(NS_AMR_LGF_Debug& setup,
     bool prefer_device = true)
 {
 #ifdef IBLGF_COMPILE_CUDA
+    debug_block_census(setup);
     if (setup.domain_->is_server()) return;
     auto it = setup.domain_->begin();
     for (; it != setup.domain_->end(); ++it)

@@ -17,6 +17,10 @@
 #include "task_buffer.hpp"
 
 #include <iblgf/utilities/crtp.hpp>
+#ifdef IBLGF_COMPILE_CUDA
+#include <cuda_runtime.h>
+#include <iblgf/utilities/cuda_pack.hpp>
+#endif
 
 namespace iblgf
 {
@@ -42,6 +46,12 @@ class HaloCommunicator
         recv_fields_.resize(world.size());
         send_tasks_.resize(world.size());
         recv_tasks_.resize(world.size());
+#ifdef IBLGF_COMPILE_CUDA
+        send_fields_device_.resize(world.size(), nullptr);
+        recv_fields_device_.resize(world.size(), nullptr);
+        send_fields_device_size_.resize(world.size(), 0);
+        recv_fields_device_size_.resize(world.size(), 0);
+#endif
     }
 
     using field_t = Field;
@@ -244,6 +254,44 @@ class HaloCommunicator
             }
             if (size != send_fields_[rank_other].size())
                 send_fields_[rank_other].resize(size);
+#ifdef IBLGF_COMPILE_CUDA
+            if (!inter_send_interface[rank_other].empty())
+            {
+                auto& first_field =
+                    inter_send_interface[rank_other][0].view.field();
+                const bool use_device = first_field &&
+                    first_field->device_valid();
+                if (use_device)
+                {
+                    ensure_device_buffer_(send_fields_device_[rank_other],
+                        send_fields_device_size_[rank_other], size);
+                    std::size_t offset = 0;
+                    for (auto& interfc : inter_send_interface[rank_other])
+                    {
+                        auto& field = *interfc.view.field();
+                        auto desc = make_desc_(field, interfc.view);
+                        const std::size_t n = interfc.view.size();
+                        iblgf::gpu::pack_view_device_to_device(
+                            field.device_ptr(), desc,
+                            send_fields_device_[rank_other] + offset, n);
+                        offset += n;
+                    }
+                    cudaMemcpy(send_fields_[rank_other].data(),
+                        send_fields_device_[rank_other],
+                        size * sizeof(float_type), cudaMemcpyDeviceToHost);
+                }
+                else
+                {
+                    int count = 0;
+                    for (auto& interfc : inter_send_interface[rank_other])
+                    {
+                        interfc.view.iterate([&](const auto& val) {
+                            send_fields_[rank_other][count++] = val;
+                        });
+                    }
+                }
+            }
+#else
             int count = 0;
             for (auto& interfc : inter_send_interface[rank_other])
             {
@@ -251,6 +299,7 @@ class HaloCommunicator
                     send_fields_[rank_other][count++] = val;
                 });
             }
+#endif
             send_tasks_[rank_other]->attach_data(&send_fields_[rank_other]);
             recv_tasks_[rank_other]->attach_data(&recv_fields_[rank_other]);
         }
@@ -264,6 +313,47 @@ class HaloCommunicator
              rank_other < static_cast<int>(inter_recv_interface.size());
              ++rank_other)
         {
+#ifdef IBLGF_COMPILE_CUDA
+            if (!inter_recv_interface[rank_other].empty())
+            {
+                auto& first_field =
+                    inter_recv_interface[rank_other][0].view.field();
+                const bool use_device = first_field &&
+                    first_field->device_valid();
+                if (use_device)
+                {
+                    const std::size_t size = recv_fields_[rank_other].size();
+                    ensure_device_buffer_(recv_fields_device_[rank_other],
+                        recv_fields_device_size_[rank_other], size);
+                    cudaMemcpy(recv_fields_device_[rank_other],
+                        recv_fields_[rank_other].data(),
+                        size * sizeof(float_type), cudaMemcpyHostToDevice);
+                    std::size_t offset = 0;
+                    for (auto& interfc : inter_recv_interface[rank_other])
+                    {
+                        auto& field = *interfc.view.field();
+                        auto desc = make_desc_(field, interfc.view);
+                        const std::size_t n = interfc.view.size();
+                        iblgf::gpu::unpack_view_device_to_device(
+                            recv_fields_device_[rank_other] + offset, desc,
+                            field.device_ptr(), n);
+                        field.mark_device_valid();
+                        offset += n;
+                    }
+                }
+                else
+                {
+                    int count = 0;
+                    for (auto& interfc : inter_recv_interface[rank_other])
+                    {
+                        auto& recv_view = interfc.view;
+                        recv_view.iterate([&](auto& val) {
+                            val = recv_fields_[rank_other][count++];
+                        });
+                    }
+                }
+            }
+#else
             int count = 0;
             for (auto& interfc : inter_recv_interface[rank_other])
             {
@@ -272,6 +362,7 @@ class HaloCommunicator
                     val = recv_fields_[rank_other][count++];
                 });
             }
+#endif
         }
     }
 
@@ -321,6 +412,46 @@ class HaloCommunicator
             }
             if (size != send_fields_[rank_other].size())
                 send_fields_[rank_other].resize(size);
+#ifdef IBLGF_COMPILE_CUDA
+            if (!inter_send_interface[rank_other].empty())
+            {
+                auto& first_field =
+                    inter_send_interface[rank_other][0].view.field();
+                const bool use_device = first_field &&
+                    first_field->device_valid();
+                if (use_device)
+                {
+                    ensure_device_buffer_(send_fields_device_[rank_other],
+                        send_fields_device_size_[rank_other], size);
+                    std::size_t offset = 0;
+                    for (auto& interfc : inter_send_interface[rank_other])
+                    {
+                        if ((interfc.field_idx != _field_idx)) continue;
+                        auto& field = *interfc.view.field();
+                        auto desc = make_desc_(field, interfc.view);
+                        const std::size_t n = interfc.view.size();
+                        iblgf::gpu::pack_view_device_to_device(
+                            field.device_ptr(), desc,
+                            send_fields_device_[rank_other] + offset, n);
+                        offset += n;
+                    }
+                    cudaMemcpy(send_fields_[rank_other].data(),
+                        send_fields_device_[rank_other],
+                        size * sizeof(float_type), cudaMemcpyDeviceToHost);
+                }
+                else
+                {
+                    int count = 0;
+                    for (auto& interfc : inter_send_interface[rank_other])
+                    {
+                        if ((interfc.field_idx != _field_idx)) continue;
+                        interfc.view.iterate([&](const auto& val) {
+                            send_fields_[rank_other][count++] = val;
+                        });
+                    }
+                }
+            }
+#else
             int count = 0;
             for (auto& interfc : inter_send_interface[rank_other])
             {
@@ -329,6 +460,7 @@ class HaloCommunicator
                     send_fields_[rank_other][count++] = val;
                 });
             }
+#endif
             send_tasks_[rank_other]->attach_data(&send_fields_[rank_other]);
             recv_tasks_[rank_other]->attach_data(&recv_fields_[rank_other]);
         }
@@ -342,6 +474,49 @@ class HaloCommunicator
              rank_other < static_cast<int>(inter_recv_interface.size());
              ++rank_other)
         {
+#ifdef IBLGF_COMPILE_CUDA
+            if (!inter_recv_interface[rank_other].empty())
+            {
+                auto& first_field =
+                    inter_recv_interface[rank_other][0].view.field();
+                const bool use_device = first_field &&
+                    first_field->device_valid();
+                if (use_device)
+                {
+                    const std::size_t size = recv_fields_[rank_other].size();
+                    ensure_device_buffer_(recv_fields_device_[rank_other],
+                        recv_fields_device_size_[rank_other], size);
+                    cudaMemcpy(recv_fields_device_[rank_other],
+                        recv_fields_[rank_other].data(),
+                        size * sizeof(float_type), cudaMemcpyHostToDevice);
+                    std::size_t offset = 0;
+                    for (auto& interfc : inter_recv_interface[rank_other])
+                    {
+                        if ((interfc.field_idx != _field_idx)) continue;
+                        auto& field = *interfc.view.field();
+                        auto desc = make_desc_(field, interfc.view);
+                        const std::size_t n = interfc.view.size();
+                        iblgf::gpu::unpack_view_device_to_device(
+                            recv_fields_device_[rank_other] + offset, desc,
+                            field.device_ptr(), n);
+                        field.mark_device_valid();
+                        offset += n;
+                    }
+                }
+                else
+                {
+                    int count = 0;
+                    for (auto& interfc : inter_recv_interface[rank_other])
+                    {
+                        if ((interfc.field_idx != _field_idx)) continue;
+                        auto& recv_view = interfc.view;
+                        recv_view.iterate([&](auto& val) {
+                            val = recv_fields_[rank_other][count++];
+                        });
+                    }
+                }
+            }
+#else
             int count = 0;
             for (auto& interfc : inter_recv_interface[rank_other])
             {
@@ -351,6 +526,7 @@ class HaloCommunicator
                     val = recv_fields_[rank_other][count++];
                 });
             }
+#endif
         }
     }
 
@@ -367,6 +543,22 @@ class HaloCommunicator
         recv_fields_.clear();
         send_tasks_.clear();
         recv_tasks_.clear();
+#ifdef IBLGF_COMPILE_CUDA
+        for (auto& ptr : send_fields_device_)
+        {
+            if (ptr) cudaFree(ptr);
+            ptr = nullptr;
+        }
+        for (auto& ptr : recv_fields_device_)
+        {
+            if (ptr) cudaFree(ptr);
+            ptr = nullptr;
+        }
+        send_fields_device_.clear();
+        recv_fields_device_.clear();
+        send_fields_device_size_.clear();
+        recv_fields_device_size_.clear();
+#endif
 
         boost::mpi::communicator world;
         inter_send_interface.resize(world.size());
@@ -375,6 +567,12 @@ class HaloCommunicator
         recv_fields_.resize(world.size());
         send_tasks_.resize(world.size());
         recv_tasks_.resize(world.size());
+#ifdef IBLGF_COMPILE_CUDA
+        send_fields_device_.resize(world.size(), nullptr);
+        recv_fields_device_.resize(world.size(), nullptr);
+        send_fields_device_size_.resize(world.size(), 0);
+        recv_fields_device_size_.resize(world.size(), 0);
+#endif
     }
 
   private:
@@ -387,6 +585,72 @@ class HaloCommunicator
 
     std::vector<std::vector<float_type>> send_fields_;
     std::vector<std::vector<float_type>> recv_fields_;
+
+#ifdef IBLGF_COMPILE_CUDA
+    std::vector<float_type*> send_fields_device_;
+    std::vector<float_type*> recv_fields_device_;
+    std::vector<std::size_t> send_fields_device_size_;
+    std::vector<std::size_t> recv_fields_device_size_;
+
+    void ensure_device_buffer_(float_type*& ptr, std::size_t& current_size,
+        std::size_t needed)
+    {
+        if (current_size == needed && ptr) return;
+        if (ptr)
+        {
+            cudaFree(ptr);
+            ptr = nullptr;
+        }
+        current_size = needed;
+        if (needed > 0)
+        {
+            cudaMalloc(&ptr, needed * sizeof(float_type));
+        }
+    }
+
+    template<class DataFieldType, class ViewType>
+    iblgf::gpu::block_view_desc make_desc_(const DataFieldType& field,
+        const ViewType& view) const
+    {
+        iblgf::gpu::block_view_desc desc{};
+        const auto& f_base = field.real_block().base();
+        const auto& f_ext = field.real_block().extent();
+        const auto& v_base = view.base();
+        const auto& v_ext = view.extent();
+        const auto& v_stride = view.stride();
+
+        constexpr std::size_t Dim = DataFieldType::dimension();
+        desc.field_base[0] = f_base[0];
+        desc.field_extent[0] = f_ext[0];
+        desc.view_base[0] = v_base[0];
+        desc.view_extent[0] = v_ext[0];
+        desc.view_stride[0] = v_stride[0];
+
+        desc.field_base[1] = f_base[1];
+        desc.field_extent[1] = f_ext[1];
+        desc.view_base[1] = v_base[1];
+        desc.view_extent[1] = v_ext[1];
+        desc.view_stride[1] = v_stride[1];
+
+        if constexpr (Dim == 3)
+        {
+            desc.field_base[2] = f_base[2];
+            desc.field_extent[2] = f_ext[2];
+            desc.view_base[2] = v_base[2];
+            desc.view_extent[2] = v_ext[2];
+            desc.view_stride[2] = v_stride[2];
+        }
+        else
+        {
+            desc.field_base[2] = 0;
+            desc.field_extent[2] = 1;
+            desc.view_base[2] = 0;
+            desc.view_extent[2] = 1;
+            desc.view_stride[2] = 1;
+        }
+        return desc;
+    }
+#endif
 
     //intra processor send/recv interfaces
     std::vector<interface> intra_send_interface;
@@ -416,6 +680,12 @@ class HaloCommunicator_idx
         recv_fields_.resize(world.size());
         send_tasks_.resize(world.size());
         recv_tasks_.resize(world.size());
+#ifdef IBLGF_COMPILE_CUDA
+        send_fields_device_.resize(world.size(), nullptr);
+        recv_fields_device_.resize(world.size(), nullptr);
+        send_fields_device_size_.resize(world.size(), 0);
+        recv_fields_device_size_.resize(world.size(), 0);
+#endif
         field_idx = _field_idx;
     }
 
@@ -606,6 +876,44 @@ class HaloCommunicator_idx
             }
             if (size != send_fields_[rank_other].size())
                 send_fields_[rank_other].resize(size);
+#ifdef IBLGF_COMPILE_CUDA
+            if (!inter_send_interface[rank_other].empty())
+            {
+                auto& first_field =
+                    inter_send_interface[rank_other][0].view.field();
+                const bool use_device = first_field &&
+                    first_field->device_valid();
+                if (use_device)
+                {
+                    ensure_device_buffer_(send_fields_device_[rank_other],
+                        send_fields_device_size_[rank_other], size);
+                    std::size_t offset = 0;
+                    for (auto& interfc : inter_send_interface[rank_other])
+                    {
+                        auto& field = *interfc.view.field();
+                        auto desc = make_desc_(field, interfc.view);
+                        const std::size_t n = interfc.view.size();
+                        iblgf::gpu::pack_view_device_to_device(
+                            field.device_ptr(), desc,
+                            send_fields_device_[rank_other] + offset, n);
+                        offset += n;
+                    }
+                    cudaMemcpy(send_fields_[rank_other].data(),
+                        send_fields_device_[rank_other],
+                        size * sizeof(float_type), cudaMemcpyDeviceToHost);
+                }
+                else
+                {
+                    int count = 0;
+                    for (auto& interfc : inter_send_interface[rank_other])
+                    {
+                        interfc.view.iterate([&](const auto& val) {
+                            send_fields_[rank_other][count++] = val;
+                        });
+                    }
+                }
+            }
+#else
             int count = 0;
             for (auto& interfc : inter_send_interface[rank_other])
             {
@@ -613,6 +921,7 @@ class HaloCommunicator_idx
                     send_fields_[rank_other][count++] = val;
                 });
             }
+#endif
             send_tasks_[rank_other]->attach_data(&send_fields_[rank_other]);
             recv_tasks_[rank_other]->attach_data(&recv_fields_[rank_other]);
         }
@@ -626,6 +935,47 @@ class HaloCommunicator_idx
              rank_other < static_cast<int>(inter_recv_interface.size());
              ++rank_other)
         {
+#ifdef IBLGF_COMPILE_CUDA
+            if (!inter_recv_interface[rank_other].empty())
+            {
+                auto& first_field =
+                    inter_recv_interface[rank_other][0].view.field();
+                const bool use_device = first_field &&
+                    first_field->device_valid();
+                if (use_device)
+                {
+                    const std::size_t size = recv_fields_[rank_other].size();
+                    ensure_device_buffer_(recv_fields_device_[rank_other],
+                        recv_fields_device_size_[rank_other], size);
+                    cudaMemcpy(recv_fields_device_[rank_other],
+                        recv_fields_[rank_other].data(),
+                        size * sizeof(float_type), cudaMemcpyHostToDevice);
+                    std::size_t offset = 0;
+                    for (auto& interfc : inter_recv_interface[rank_other])
+                    {
+                        auto& field = *interfc.view.field();
+                        auto desc = make_desc_(field, interfc.view);
+                        const std::size_t n = interfc.view.size();
+                        iblgf::gpu::unpack_view_device_to_device(
+                            recv_fields_device_[rank_other] + offset, desc,
+                            field.device_ptr(), n);
+                        field.mark_device_valid();
+                        offset += n;
+                    }
+                }
+                else
+                {
+                    int count = 0;
+                    for (auto& interfc : inter_recv_interface[rank_other])
+                    {
+                        auto& recv_view = interfc.view;
+                        recv_view.iterate([&](auto& val) {
+                            val = recv_fields_[rank_other][count++];
+                        });
+                    }
+                }
+            }
+#else
             int count = 0;
             for (auto& interfc : inter_recv_interface[rank_other])
             {
@@ -634,6 +984,7 @@ class HaloCommunicator_idx
                     val = recv_fields_[rank_other][count++];
                 });
             }
+#endif
         }
     }
 
@@ -683,6 +1034,46 @@ class HaloCommunicator_idx
             }
             if (size != send_fields_[rank_other].size())
                 send_fields_[rank_other].resize(size);
+#ifdef IBLGF_COMPILE_CUDA
+            if (!inter_send_interface[rank_other].empty())
+            {
+                auto& first_field =
+                    inter_send_interface[rank_other][0].view.field();
+                const bool use_device = first_field &&
+                    first_field->device_valid();
+                if (use_device)
+                {
+                    ensure_device_buffer_(send_fields_device_[rank_other],
+                        send_fields_device_size_[rank_other], size);
+                    std::size_t offset = 0;
+                    for (auto& interfc : inter_send_interface[rank_other])
+                    {
+                        if ((interfc.field_idx != _field_idx)) continue;
+                        auto& field = *interfc.view.field();
+                        auto desc = make_desc_(field, interfc.view);
+                        const std::size_t n = interfc.view.size();
+                        iblgf::gpu::pack_view_device_to_device(
+                            field.device_ptr(), desc,
+                            send_fields_device_[rank_other] + offset, n);
+                        offset += n;
+                    }
+                    cudaMemcpy(send_fields_[rank_other].data(),
+                        send_fields_device_[rank_other],
+                        size * sizeof(float_type), cudaMemcpyDeviceToHost);
+                }
+                else
+                {
+                    int count = 0;
+                    for (auto& interfc : inter_send_interface[rank_other])
+                    {
+                        if ((interfc.field_idx != _field_idx)) continue;
+                        interfc.view.iterate([&](const auto& val) {
+                            send_fields_[rank_other][count++] = val;
+                        });
+                    }
+                }
+            }
+#else
             int count = 0;
             for (auto& interfc : inter_send_interface[rank_other])
             {
@@ -691,6 +1082,7 @@ class HaloCommunicator_idx
                     send_fields_[rank_other][count++] = val;
                 });
             }
+#endif
             send_tasks_[rank_other]->attach_data(&send_fields_[rank_other]);
             recv_tasks_[rank_other]->attach_data(&recv_fields_[rank_other]);
         }
@@ -704,6 +1096,49 @@ class HaloCommunicator_idx
              rank_other < static_cast<int>(inter_recv_interface.size());
              ++rank_other)
         {
+#ifdef IBLGF_COMPILE_CUDA
+            if (!inter_recv_interface[rank_other].empty())
+            {
+                auto& first_field =
+                    inter_recv_interface[rank_other][0].view.field();
+                const bool use_device = first_field &&
+                    first_field->device_valid();
+                if (use_device)
+                {
+                    const std::size_t size = recv_fields_[rank_other].size();
+                    ensure_device_buffer_(recv_fields_device_[rank_other],
+                        recv_fields_device_size_[rank_other], size);
+                    cudaMemcpy(recv_fields_device_[rank_other],
+                        recv_fields_[rank_other].data(),
+                        size * sizeof(float_type), cudaMemcpyHostToDevice);
+                    std::size_t offset = 0;
+                    for (auto& interfc : inter_recv_interface[rank_other])
+                    {
+                        if ((interfc.field_idx != _field_idx)) continue;
+                        auto& field = *interfc.view.field();
+                        auto desc = make_desc_(field, interfc.view);
+                        const std::size_t n = interfc.view.size();
+                        iblgf::gpu::unpack_view_device_to_device(
+                            recv_fields_device_[rank_other] + offset, desc,
+                            field.device_ptr(), n);
+                        field.mark_device_valid();
+                        offset += n;
+                    }
+                }
+                else
+                {
+                    int count = 0;
+                    for (auto& interfc : inter_recv_interface[rank_other])
+                    {
+                        if ((interfc.field_idx != _field_idx)) continue;
+                        auto& recv_view = interfc.view;
+                        recv_view.iterate([&](auto& val) {
+                            val = recv_fields_[rank_other][count++];
+                        });
+                    }
+                }
+            }
+#else
             int count = 0;
             for (auto& interfc : inter_recv_interface[rank_other])
             {
@@ -713,6 +1148,7 @@ class HaloCommunicator_idx
                     val = recv_fields_[rank_other][count++];
                 });
             }
+#endif
         }
     }
 
@@ -729,6 +1165,22 @@ class HaloCommunicator_idx
         recv_fields_.clear();
         send_tasks_.clear();
         recv_tasks_.clear();
+#ifdef IBLGF_COMPILE_CUDA
+        for (auto& ptr : send_fields_device_)
+        {
+            if (ptr) cudaFree(ptr);
+            ptr = nullptr;
+        }
+        for (auto& ptr : recv_fields_device_)
+        {
+            if (ptr) cudaFree(ptr);
+            ptr = nullptr;
+        }
+        send_fields_device_.clear();
+        recv_fields_device_.clear();
+        send_fields_device_size_.clear();
+        recv_fields_device_size_.clear();
+#endif
 
         boost::mpi::communicator world;
         inter_send_interface.resize(world.size());
@@ -737,6 +1189,12 @@ class HaloCommunicator_idx
         recv_fields_.resize(world.size());
         send_tasks_.resize(world.size());
         recv_tasks_.resize(world.size());
+#ifdef IBLGF_COMPILE_CUDA
+        send_fields_device_.resize(world.size(), nullptr);
+        recv_fields_device_.resize(world.size(), nullptr);
+        send_fields_device_size_.resize(world.size(), 0);
+        recv_fields_device_size_.resize(world.size(), 0);
+#endif
     }
 
   private:
@@ -749,6 +1207,72 @@ class HaloCommunicator_idx
 
     std::vector<std::vector<float_type>> send_fields_;
     std::vector<std::vector<float_type>> recv_fields_;
+
+#ifdef IBLGF_COMPILE_CUDA
+    std::vector<float_type*> send_fields_device_;
+    std::vector<float_type*> recv_fields_device_;
+    std::vector<std::size_t> send_fields_device_size_;
+    std::vector<std::size_t> recv_fields_device_size_;
+
+    void ensure_device_buffer_(float_type*& ptr, std::size_t& current_size,
+        std::size_t needed)
+    {
+        if (current_size == needed && ptr) return;
+        if (ptr)
+        {
+            cudaFree(ptr);
+            ptr = nullptr;
+        }
+        current_size = needed;
+        if (needed > 0)
+        {
+            cudaMalloc(&ptr, needed * sizeof(float_type));
+        }
+    }
+
+    template<class DataFieldType, class ViewType>
+    iblgf::gpu::block_view_desc make_desc_(const DataFieldType& field,
+        const ViewType& view) const
+    {
+        iblgf::gpu::block_view_desc desc{};
+        const auto& f_base = field.real_block().base();
+        const auto& f_ext = field.real_block().extent();
+        const auto& v_base = view.base();
+        const auto& v_ext = view.extent();
+        const auto& v_stride = view.stride();
+
+        constexpr std::size_t Dim = DataFieldType::dimension();
+        desc.field_base[0] = f_base[0];
+        desc.field_extent[0] = f_ext[0];
+        desc.view_base[0] = v_base[0];
+        desc.view_extent[0] = v_ext[0];
+        desc.view_stride[0] = v_stride[0];
+
+        desc.field_base[1] = f_base[1];
+        desc.field_extent[1] = f_ext[1];
+        desc.view_base[1] = v_base[1];
+        desc.view_extent[1] = v_ext[1];
+        desc.view_stride[1] = v_stride[1];
+
+        if constexpr (Dim == 3)
+        {
+            desc.field_base[2] = f_base[2];
+            desc.field_extent[2] = f_ext[2];
+            desc.view_base[2] = v_base[2];
+            desc.view_extent[2] = v_ext[2];
+            desc.view_stride[2] = v_stride[2];
+        }
+        else
+        {
+            desc.field_base[2] = 0;
+            desc.field_extent[2] = 1;
+            desc.view_base[2] = 0;
+            desc.view_extent[2] = 1;
+            desc.view_stride[2] = 1;
+        }
+        return desc;
+    }
+#endif
 
     //intra processor send/recv interfaces
     std::vector<interface> intra_send_interface;

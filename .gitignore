@@ -30,6 +30,7 @@
 .deps/
 builds/
 build/
+build*
 doc/
 runs/
 # Executables

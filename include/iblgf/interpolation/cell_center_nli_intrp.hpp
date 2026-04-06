@@ -26,6 +26,10 @@
 #include <iblgf/domain/dataFields/dataBlock.hpp>
 #include <iblgf/domain/dataFields/datafield.hpp>
 #include <iblgf/domain/octree/tree.hpp>
+#ifdef IBLGF_COMPILE_CUDA
+#include <iblgf/interpolation/interpolation_GPU.hpp>
+#include <cuda_runtime.h>
+#endif
 
 namespace iblgf
 {
@@ -167,6 +171,24 @@ class cell_center_nli
 
         }
 
+#ifdef IBLGF_COMPILE_CUDA
+        ~cell_center_nli()
+        {
+            if (!device_mats_ready_) return;
+            for (auto& ptr : d_antrp_mat_sub_)
+            {
+                if (ptr) cudaFree(ptr);
+                ptr = nullptr;
+            }
+            for (auto& ptr : d_antrp_mat_sub_simple_sub_)
+            {
+                if (ptr) cudaFree(ptr);
+                ptr = nullptr;
+            }
+            device_mats_ready_ = false;
+        }
+#endif
+
   public: // functionalities
     template<class from, class to, typename octant_t>
     void add_source_correction(octant_t parent, double dx, float_type omega = 0.0)
@@ -185,8 +207,29 @@ class cell_center_nli
 
             auto& child_linalg_data = child->data_r(to::tag()).linalg_data();
 
-	    int Dim = child_linalg_data.shape().size();
-	    if (Dim == 3) {
+#ifdef IBLGF_COMPILE_CUDA
+#ifdef IBLGF_GPU_RESIDENT
+            auto& src_field = child->data_r(from::tag());
+            auto& dst_field = child->data_r(to::tag());
+            src_field.update_device();
+            dst_field.update_device();
+            iblgf::gpu::interp::field_desc d{};
+            const int Dim = domain_type::dimension();
+            for (int d_i = 0; d_i < 3; ++d_i)
+            {
+                d.base[d_i] = (d_i < Dim) ? src_field.real_block().base()[d_i] : 0;
+                d.ext[d_i] = (d_i < Dim) ? src_field.real_block().extent()[d_i] : 1;
+            }
+            iblgf::gpu::interp::add_source_correction_device(
+                src_field.device_ptr(), dst_field.device_ptr(), d, Nb_,
+                static_cast<float_type>(dx), omega, Dim);
+            dst_field.mark_device_valid();
+            continue;
+#endif
+#endif
+
+	    const int dim_cpu = child_linalg_data.shape().size();
+	    if (dim_cpu == 3) {
             for (int i = 1; i < Nb_ - 1; ++i)
             {
                 for (int j = 1; j < Nb_ - 1; ++j)
@@ -214,7 +257,7 @@ class cell_center_nli
             }
 	    }
 
-	    if (Dim == 2) {
+	    if (dim_cpu == 2) {
             	for (int i = 1; i < Nb_ - 1; ++i)
             	{
                     for (int j = 1; j < Nb_ - 1; ++j)
@@ -312,6 +355,11 @@ class cell_center_nli
         std::size_t real_mesh_field_idx, std::size_t tmp_field_idx,
         bool correction_only = false, bool exclude_correction = false)
     {
+#ifdef IBLGF_COMPILE_CUDA
+#ifdef IBLGF_GPU_RESIDENT
+        ensure_device_mats_();
+#endif
+#endif
         auto& parent_linalg_data =
             parent->data_r(from::tag(), tmp_field_idx).linalg_data();
 
@@ -329,6 +377,51 @@ class cell_center_nli
 
             auto& child_linalg_data =
                 child->data_r(to::tag(), tmp_field_idx).linalg_data();
+#ifdef IBLGF_COMPILE_CUDA
+#ifdef IBLGF_GPU_RESIDENT
+            auto& parent_field = parent->data_r(from::tag(), tmp_field_idx);
+            auto& child_field = child->data_r(to::tag(), tmp_field_idx);
+            parent_field.update_device();
+            child_field.device_ptr();
+            const int child_idx = i;
+            int idx_x = (child_idx & (1 << 0)) >> 0;
+            int idx_y = (child_idx & (1 << 1)) >> 1;
+            int idx_z = (child_idx & (1 << 2)) >> 2;
+            int Dim = domain_type::dimension();
+            std::array<int, 3> relative_positions{{1, 1, 1}};
+            if (mesh_obj == MeshObject::face)
+            { relative_positions[real_mesh_field_idx/sep] = 0; }
+            else if (mesh_obj == MeshObject::edge)
+            {
+                relative_positions[0] = 0;
+                relative_positions[1] = 0;
+                relative_positions[2] = 0;
+                if (Dim == 3) relative_positions[real_mesh_field_idx] = 1;
+                if (helmholtz) relative_positions[real_mesh_field_idx/sep] = 1;
+            }
+            idx_x += relative_positions[0] * max_relative_pos;
+            idx_y += relative_positions[1] * max_relative_pos;
+            idx_z += relative_positions[2] * max_relative_pos;
+            iblgf::gpu::interp::field_desc pd{};
+            iblgf::gpu::interp::field_desc cd{};
+            for (int d = 0; d < 3; ++d)
+            {
+                pd.base[d] = (d < Dim) ? parent_field.real_block().base()[d] : 0;
+                pd.ext[d] = (d < Dim) ? parent_field.real_block().extent()[d] : 1;
+                cd.base[d] = (d < Dim) ? child_field.real_block().base()[d] : 0;
+                cd.ext[d] = (d < Dim) ? child_field.real_block().extent()[d] : 1;
+            }
+            iblgf::gpu::interp::intrp_child_device(
+                parent_field.device_ptr(),
+                child_field.device_ptr(),
+                d_antrp_mat_sub_[idx_x],
+                d_antrp_mat_sub_[idx_y],
+                d_antrp_mat_sub_[idx_z],
+                Nb_, pd, cd, Dim);
+            child_field.mark_device_valid();
+            continue;
+#endif
+#endif
             nli_intrp_node(child_linalg_data, parent_linalg_data, i, mesh_obj,
                 real_mesh_field_idx);
         }
@@ -559,6 +652,11 @@ class cell_center_nli
         std::size_t real_mesh_field_idx, std::size_t tmp_field_idx,
         bool correction_only = false, bool exclude_correction = false)
     {
+#ifdef IBLGF_COMPILE_CUDA
+#ifdef IBLGF_GPU_RESIDENT
+        ensure_device_mats_();
+#endif
+#endif
         auto& parent_linalg_data =
             parent->data_r(to::tag(), tmp_field_idx).linalg_data();
 
@@ -576,6 +674,52 @@ class cell_center_nli
 
             auto& child_linalg_data =
                 child->data_r(from::tag(), tmp_field_idx).linalg_data();
+
+#ifdef IBLGF_COMPILE_CUDA
+#ifdef IBLGF_GPU_RESIDENT
+            auto& parent_field = parent->data_r(to::tag(), tmp_field_idx);
+            auto& child_field = child->data_r(from::tag(), tmp_field_idx);
+            parent_field.update_device();
+            child_field.update_device();
+            const int child_idx = i;
+            int idx_x = (child_idx & (1 << 0)) >> 0;
+            int idx_y = (child_idx & (1 << 1)) >> 1;
+            int idx_z = (child_idx & (1 << 2)) >> 2;
+            int Dim = domain_type::dimension();
+            std::array<int, 3> relative_positions{{1, 1, 1}};
+            if (mesh_obj == MeshObject::face)
+            { relative_positions[real_mesh_field_idx/sep] = 0; }
+            else if (mesh_obj == MeshObject::edge)
+            {
+                relative_positions[0] = 0;
+                relative_positions[1] = 0;
+                relative_positions[2] = 0;
+                if (Dim == 3) relative_positions[real_mesh_field_idx] = 1;
+                if (helmholtz) relative_positions[real_mesh_field_idx/sep] = 1;
+            }
+            idx_x += relative_positions[0] * max_relative_pos;
+            idx_y += relative_positions[1] * max_relative_pos;
+            idx_z += relative_positions[2] * max_relative_pos;
+            iblgf::gpu::interp::field_desc cd{};
+            iblgf::gpu::interp::field_desc pd{};
+            for (int d = 0; d < 3; ++d)
+            {
+                cd.base[d] = (d < Dim) ? child_field.real_block().base()[d] : 0;
+                cd.ext[d] = (d < Dim) ? child_field.real_block().extent()[d] : 1;
+                pd.base[d] = (d < Dim) ? parent_field.real_block().base()[d] : 0;
+                pd.ext[d] = (d < Dim) ? parent_field.real_block().extent()[d] : 1;
+            }
+            iblgf::gpu::interp::antrp_child_device(
+                child_field.device_ptr(),
+                parent_field.device_ptr(),
+                d_antrp_mat_sub_simple_sub_[idx_x],
+                d_antrp_mat_sub_simple_sub_[idx_y],
+                d_antrp_mat_sub_simple_sub_[idx_z],
+                Nb_, cd, pd, Dim);
+            parent_field.mark_device_valid();
+            continue;
+#endif
+#endif
 
             nli_antrp_node(child_linalg_data, parent_linalg_data, i, mesh_obj,
                 real_mesh_field_idx);
@@ -674,6 +818,32 @@ class cell_center_nli
     }
 
   private:
+    static const int max_1D_child_n = 2;
+    static const int max_relative_pos = 2;
+#ifdef IBLGF_COMPILE_CUDA
+    void ensure_device_mats_()
+    {
+        if (device_mats_ready_) return;
+        for (std::size_t i = 0; i < d_antrp_mat_sub_.size(); ++i)
+        {
+            cudaMalloc(&d_antrp_mat_sub_[i], Nb_ * Nb_ * sizeof(float_type));
+            cudaMemcpy(d_antrp_mat_sub_[i], antrp_mat_sub_[i].data_.data(),
+                Nb_ * Nb_ * sizeof(float_type), cudaMemcpyHostToDevice);
+        }
+        for (std::size_t i = 0; i < d_antrp_mat_sub_simple_sub_.size(); ++i)
+        {
+            cudaMalloc(&d_antrp_mat_sub_simple_sub_[i], Nb_ * Nb_ * sizeof(float_type));
+            cudaMemcpy(d_antrp_mat_sub_simple_sub_[i],
+                antrp_mat_sub_simple_sub_[i].data(), Nb_ * Nb_ * sizeof(float_type),
+                cudaMemcpyHostToDevice);
+        }
+        device_mats_ready_ = true;
+    }
+
+    bool device_mats_ready_ = false;
+    std::array<float_type*, max_1D_child_n * max_relative_pos> d_antrp_mat_sub_{};
+    std::array<float_type*, max_1D_child_n * max_relative_pos> d_antrp_mat_sub_simple_sub_{};
+#endif
     template<typename linalg_data_t>
     void antrp_mat_relative_pos_0_calc(linalg_data_t& antrp_mat_, int Nb_)
     {
@@ -795,9 +965,6 @@ class cell_center_nli
     linalg::Mat_t           antrp_mat_relative_pos_0_;
     std::vector<float_type> antrp_relative_pos_1_;
     linalg::Mat_t           antrp_mat_relative_pos_1_;
-
-    static const int max_1D_child_n = 2;
-    static const int max_relative_pos = 2;
 
     std::array<std::vector<float_type>, max_1D_child_n * max_relative_pos>
                                                                  antrp_sub_;

@@ -264,9 +264,24 @@ class Ifherk
                 if (!it->locally_owned()) continue;
                 if (it->is_ib() || it->is_extended_ib())
                 {
+#ifdef IBLGF_COMPILE_CUDA
+#ifdef IBLGF_GPU_RESIDENT
+                    auto& field = it->data_r(test_type::tag(), 0);
+                    auto desc = make_desc_(field);
+                    iblgf::gpu::ops::set_constant_field_device(
+                        field.device_ptr(), desc, 2.0);
+                    field.mark_device_valid();
+#else
                     auto& lin_data =
                         it->data_r(test_type::tag(), 0).linalg_data();
                     std::fill(lin_data.begin(), lin_data.end(), 2.0);
+                    it->data_r(test_type::tag(), 0).update_device();
+#endif
+#else
+                    auto& lin_data =
+                        it->data_r(test_type::tag(), 0).linalg_data();
+                    std::fill(lin_data.begin(), lin_data.end(), 2.0);
+#endif
                     c+=1;
                 }
 
@@ -1315,6 +1330,23 @@ class Ifherk
 
             for (std::size_t field_idx = 0; field_idx < F::nFields(); ++field_idx)
             {
+#ifdef IBLGF_COMPILE_CUDA
+#ifdef IBLGF_GPU_RESIDENT
+                auto& field = it->data_r(F::tag(), field_idx);
+                if (non_leaf_only && it->is_leaf() && it->locally_owned())
+                {
+                    auto desc = make_desc_(field);
+                    iblgf::gpu::ops::zero_boundary_device(
+                        field.device_ptr(), desc, clean_width);
+                    field.mark_device_valid();
+                    continue;
+                }
+                iblgf::gpu::ops::zero_device(field.device_ptr(),
+                    field.real_block().size());
+                field.mark_device_valid();
+                continue;
+#endif
+#endif
                 auto& lin_data = it->data_r(F::tag(), field_idx).linalg_data();
 
                 if (non_leaf_only && it->is_leaf() && it->locally_owned())
@@ -1347,6 +1379,11 @@ class Ifherk
                     //TODO whether to clean base_level correction?
                     std::fill(lin_data.begin(), lin_data.end(), 0.0);
                 }
+#ifdef IBLGF_COMPILE_CUDA
+#ifdef IBLGF_GPU_RESIDENT
+                it->data_r(F::tag(), field_idx).update_device();
+#endif
+#endif
             }
         }
     }
@@ -1362,9 +1399,22 @@ class Ifherk
                 for (std::size_t field_idx = 0; field_idx < F::nFields();
                      ++field_idx)
                 {
+#ifdef IBLGF_COMPILE_CUDA
+#ifdef IBLGF_GPU_RESIDENT
+                    auto& field = it->data_r(F::tag(), field_idx);
+                    iblgf::gpu::ops::zero_device(field.device_ptr(),
+                        field.real_block().size());
+                    field.mark_device_valid();
+#else
                     auto& lin_data =
                         it->data_r(F::tag(), field_idx).linalg_data();
                     std::fill(lin_data.begin(), lin_data.end(), 0.0);
+#endif
+#else
+                    auto& lin_data =
+                        it->data_r(F::tag(), field_idx).linalg_data();
+                    std::fill(lin_data.begin(), lin_data.end(), 0.0);
+#endif
                 }
             }
         }
@@ -1379,9 +1429,22 @@ class Ifherk
                 for (std::size_t field_idx = 0; field_idx < F::nFields();
                      ++field_idx)
                 {
+#ifdef IBLGF_COMPILE_CUDA
+#ifdef IBLGF_GPU_RESIDENT
+                    auto& field = it->data_r(F::tag(), field_idx);
+                    iblgf::gpu::ops::zero_device(field.device_ptr(),
+                        field.real_block().size());
+                    field.mark_device_valid();
+#else
                     auto& lin_data =
                         it->data_r(F::tag(), field_idx).linalg_data();
                     std::fill(lin_data.begin(), lin_data.end(), 0.0);
+#endif
+#else
+                    auto& lin_data =
+                        it->data_r(F::tag(), field_idx).linalg_data();
+                    std::fill(lin_data.begin(), lin_data.end(), 0.0);
+#endif
                 }
             }
         }
@@ -1684,9 +1747,22 @@ private:
                 for (std::size_t field_idx = 0; field_idx < Target::nFields();
                      ++field_idx)
                 {
+#ifdef IBLGF_COMPILE_CUDA
+#ifdef IBLGF_GPU_RESIDENT
+                    auto& field = it->data_r(Target::tag(), field_idx);
+                    auto desc = make_desc_(field);
+                    iblgf::gpu::ops::scale_field_device(field.device_ptr(), desc, _scale);
+                    field.mark_device_valid();
+#else
                     auto& lin_data =
                         it->data_r(Target::tag(), field_idx).linalg_data();
                     lin_data *= _scale; //scale with time step size
+#endif
+#else
+                    auto& lin_data =
+                        it->data_r(Target::tag(), field_idx).linalg_data();
+                    lin_data *= _scale; //scale with time step size
+#endif
                 }
             }
 
@@ -1705,6 +1781,28 @@ private:
     void add_body_force(float_type scale) noexcept {
         //float_type eps = 1e-3;
         auto dx_base = domain_->dx_base();
+#ifdef IBLGF_COMPILE_CUDA
+#ifdef IBLGF_GPU_RESIDENT
+        for (auto it = domain_->begin(); it != domain_->end(); ++it)
+        {
+            if (!it->has_data() || !it->data().is_allocated()) continue;
+            if (!it->locally_owned()) continue;
+            for (std::size_t field_idx = 0; field_idx < target::nFields();
+                 ++field_idx)
+            {
+                if (field_idx != 1) continue;
+                auto& field = it->data_r(target::tag(), field_idx);
+                auto desc = make_desc_(field);
+                const auto dx_level =
+                    dx_base / std::pow(2, it->refinement_level());
+                iblgf::gpu::ops::add_body_force_device(field.device_ptr(),
+                    desc, dx_level, scale, b_f_mag, b_f_eps);
+                field.mark_device_valid();
+            }
+        }
+        return;
+#endif
+#endif
         for (auto it = domain_->begin(); it != domain_->end(); ++it)
 		{
 
@@ -1784,10 +1882,24 @@ private:
                 for (std::size_t field_idx = 0; field_idx < Target::nFields();
                      ++field_idx)
                 {
+#ifdef IBLGF_COMPILE_CUDA
+#ifdef IBLGF_GPU_RESIDENT
+                    auto& field = it->data_r(Target::tag(), field_idx);
+                    auto desc = make_desc_(field);
+                    iblgf::gpu::ops::scale_field_device(field.device_ptr(), desc, _scale);
+                    field.mark_device_valid();
+#else
                     auto& lin_data =
                         it->data_r(Target::tag(), field_idx).linalg_data();
 
                     lin_data *= _scale;
+#endif
+#else
+                    auto& lin_data =
+                        it->data_r(Target::tag(), field_idx).linalg_data();
+
+                    lin_data *= _scale;
+#endif
                 }
             }
             client->template buffer_exchange<Target>(l);
@@ -1885,11 +1997,29 @@ private:
             for (std::size_t field_idx = 0; field_idx < From::nFields();
                  ++field_idx)
             {
+#ifdef IBLGF_COMPILE_CUDA
+#ifdef IBLGF_GPU_RESIDENT
+                auto& src = it->data_r(From::tag(), field_idx);
+                auto& dst = it->data_r(To::tag(), field_idx);
+                src.update_device();
+                auto desc = make_desc_(src);
+                iblgf::gpu::ops::axpy_field_device(src.device_ptr(),
+                    dst.device_ptr(), desc, scale);
+                dst.mark_device_valid();
+#else
                 it->data_r(To::tag(), field_idx)
                     .linalg()
                     .get()
                     ->cube_noalias_view() +=
                     it->data_r(From::tag(), field_idx).linalg_data() * scale;
+#endif
+#else
+                it->data_r(To::tag(), field_idx)
+                    .linalg()
+                    .get()
+                    ->cube_noalias_view() +=
+                    it->data_r(From::tag(), field_idx).linalg_data() * scale;
+#endif
             }
         }
     }
@@ -1909,6 +2039,13 @@ private:
             for (std::size_t field_idx = 0; field_idx < Field::nFields();
                  ++field_idx)
             {
+#ifdef IBLGF_COMPILE_CUDA
+#ifdef IBLGF_GPU_RESIDENT
+                auto& field = it->data_r(Field::tag(), field_idx);
+                auto desc = make_desc_(field);
+                iblgf::gpu::ops::invert_field_device(field.device_ptr(), desc, 1e-4);
+                field.mark_device_valid();
+#else
                 for (auto& n:it->data().node_field()) {
                     float_type val = n(Field::tag(), field_idx);
 
@@ -1916,6 +2053,16 @@ private:
                         n(Field::tag(), field_idx) = 1/val;
                     }
                 }
+#endif
+#else
+                for (auto& n:it->data().node_field()) {
+                    float_type val = n(Field::tag(), field_idx);
+
+                    if (std::fabs(val) > 1e-4) {
+                        n(Field::tag(), field_idx) = 1/val;
+                    }
+                }
+#endif
             }
 		}
     }
@@ -1935,8 +2082,25 @@ private:
             for (std::size_t field_idx = 0; field_idx < From1::nFields();
                  ++field_idx)
             {
+#ifdef IBLGF_COMPILE_CUDA
+#ifdef IBLGF_GPU_RESIDENT
+                auto& a = it->data_r(From1::tag(), field_idx);
+                auto& b = it->data_r(From2::tag(), field_idx);
+                auto& dst = it->data_r(To::tag(), field_idx);
+                a.update_device();
+                b.update_device();
+                auto desc = make_desc_(a);
+                iblgf::gpu::ops::product_field_device(a.device_ptr(),
+                    b.device_ptr(), dst.device_ptr(), desc);
+                dst.mark_device_valid();
+#else
                 for (auto& n:it->data().node_field())
                     n(To::tag(), field_idx) = n(From1::tag(), field_idx) * n(From2::tag(), field_idx);
+#endif
+#else
+                for (auto& n:it->data().node_field())
+                    n(To::tag(), field_idx) = n(From1::tag(), field_idx) * n(From2::tag(), field_idx);
+#endif
             }
         }
     }
@@ -1953,13 +2117,76 @@ private:
             for (std::size_t field_idx = 0; field_idx < From::nFields();
                  ++field_idx)
             {
+#ifdef IBLGF_COMPILE_CUDA
+#ifdef IBLGF_GPU_RESIDENT
+                auto& src = it->data_r(From::tag(), field_idx);
+                auto& dst = it->data_r(To::tag(), field_idx);
+                src.update_device();
+                auto desc = make_desc_(src);
+                iblgf::gpu::ops::copy_field_device(src.device_ptr(),
+                    dst.device_ptr(), desc, true);
+                if (scale != 1.0)
+                {
+                    iblgf::gpu::ops::scale_field_device(dst.device_ptr(), desc, scale);
+                }
+                dst.mark_device_valid();
+#else
                 for (auto& n:it->data().node_field())
                     n(To::tag(), field_idx) = n(From::tag(), field_idx) * scale;
+#endif
+#else
+                for (auto& n:it->data().node_field())
+                    n(To::tag(), field_idx) = n(From::tag(), field_idx) * scale;
+#endif
             }
         }
     }
 
   private:
+#ifdef IBLGF_COMPILE_CUDA
+    template<class DataField>
+    iblgf::gpu::ops::block_desc make_desc_(const DataField& field) const noexcept
+    {
+        iblgf::gpu::ops::block_desc desc{};
+        const auto& b = field.real_block();
+        const auto& b_base = b.base();
+        const auto& b_ext = b.extent();
+        desc.block_base[0] = b_base[0];
+        desc.block_extent[0] = b_ext[0];
+        desc.block_base[1] = b_base[1];
+        desc.block_extent[1] = b_ext[1];
+        if constexpr (DataField::dimension() == 3)
+        {
+            desc.block_base[2] = b_base[2];
+            desc.block_extent[2] = b_ext[2];
+            desc.dim = 3;
+        }
+        else
+        {
+            desc.block_base[2] = 0;
+            desc.block_extent[2] = 1;
+            desc.dim = 2;
+        }
+
+        const auto& f_base = field.real_block().base();
+        const auto& f_ext = field.real_block().extent();
+        desc.field_base[0] = f_base[0];
+        desc.field_extent[0] = f_ext[0];
+        desc.field_base[1] = f_base[1];
+        desc.field_extent[1] = f_ext[1];
+        if constexpr (DataField::dimension() == 3)
+        {
+            desc.field_base[2] = f_base[2];
+            desc.field_extent[2] = f_ext[2];
+        }
+        else
+        {
+            desc.field_base[2] = 0;
+            desc.field_extent[2] = 1;
+        }
+        return desc;
+    }
+#endif
     simulation_type* simulation_;
     domain_type*     domain_; ///< domain
     poisson_solver_t psolver;

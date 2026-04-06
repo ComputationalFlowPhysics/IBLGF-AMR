@@ -1,0 +1,43 @@
+//      ▄▄▄▄▄▄▄▄▄▄▄  ▄▄▄▄▄▄▄▄▄▄   ▄            ▄▄▄▄▄▄▄▄▄▄▄  ▄▄▄▄▄▄▄▄▄▄▄
+//     ▐░░░░░░░░░░░▌▐░░░░░░░░░░▌ ▐░▌          ▐░░░░░░░░░░░▌▐░░░░░░░░░░░▌
+//      ▀▀▀▀█░█▀▀▀▀ ▐░█▀▀▀▀▀▀▀█░▌▐░▌          ▐░█▀▀▀▀▀▀▀▀▀ ▐░█▀▀▀▀▀▀▀▀▀
+//          ▐░▌     ▐░▌       ▐░▌▐░▌          ▐░▌          ▐░▌
+//          ▐░▌     ▐░█▄▄▄▄▄▄▄█░▌▐░▌          ▐░▌ ▄▄▄▄▄▄▄▄ ▐░█▄▄▄▄▄▄▄▄▄
+//          ▐░▌     ▐░░░░░░░░░░▌ ▐░▌          ▐░▌▐░░░░░░░░▌▐░░░░░░░░░░░▌
+//          ▐░▌     ▐░█▀▀▀▀▀▀▀█░▌▐░▌          ▐░▌ ▀▀▀▀▀▀█░▌▐░█▀▀▀▀▀▀▀▀▀
+//          ▐░▌     ▐░▌       ▐░▌▐░▌          ▐░▌       ▐░▌▐░▌
+//      ▄▄▄▄█░█▄▄▄▄ ▐░█▄▄▄▄▄▄▄█░▌▐░█▄▄▄▄▄▄▄▄▄ ▐░█▄▄▄▄▄▄▄█░▌▐░▌
+//     ▐░░░░░░░░░░░▌▐░░░░░░░░░░▌ ▐░░░░░░░░░░░▌▐░░░░░░░░░░░▌▐░▌
+//      ▀▀▀▀▀▀▀▀▀▀▀  ▀▀▀▀▀▀▀▀▀▀   ▀▀▀▀▀▀▀▀▀▀▀  ▀▀▀▀▀▀▀▀▀▀▀  ▀
+
+#ifndef IBLGF_INCLUDED_UTILITIES_CUDA_PACK_HPP
+#define IBLGF_INCLUDED_UTILITIES_CUDA_PACK_HPP
+
+#include <cstddef>
+#include <iblgf/types.hpp>
+
+namespace iblgf
+{
+namespace gpu
+{
+struct block_view_desc
+{
+    int field_base[3];
+    int field_extent[3];
+    int view_base[3];
+    int view_extent[3];
+    int view_stride[3];
+};
+
+// Pack a view from device field data into a contiguous device buffer.
+void pack_view_device_to_device(const types::float_type* field_device,
+    const block_view_desc& desc, types::float_type* out_device, std::size_t count);
+
+// Unpack a contiguous device buffer into a view of the device field data.
+void unpack_view_device_to_device(const types::float_type* in_device,
+    const block_view_desc& desc, types::float_type* field_device, std::size_t count);
+
+} // namespace gpu
+} // namespace iblgf
+
+#endif

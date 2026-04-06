@@ -217,6 +217,7 @@ class DataField : public BlockDescriptor<int, Dim>
     const data_type* device_ptr() const noexcept { return device_data_; }
     bool device_valid() const noexcept { return device_valid_; }
     void invalidate_device() noexcept { device_valid_ = false; }
+    void mark_device_valid() noexcept { device_valid_ = true; }
     void update_device(cudaStream_t stream = nullptr, bool force = false)
     {
         if (!force && device_valid_) return;

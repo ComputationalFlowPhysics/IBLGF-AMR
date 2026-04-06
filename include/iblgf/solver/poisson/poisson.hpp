@@ -489,7 +489,27 @@ class PoissonSolver
                 fmm_.template apply<source_tmp_type, target_tmp_type>(
                     domain_, _kernel, l, true, 1.0, fmm_type);
 
+#ifdef IBLGF_COMPILE_CUDA
+#ifdef IBLGF_GPU_RESIDENT
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
+                auto& src = it->data_r(target_tmp);
+                auto& dst = it->data_r(Target::tag(), _field_idx);
+                if (src.device_valid())
+                {
+                    cudaMemcpy(dst.device_ptr(), src.device_ptr(),
+                        src.real_block().size() * sizeof(float_type),
+                        cudaMemcpyDeviceToDevice);
+                    dst.mark_device_valid();
+                }
+            }
+#else
             copy_level<target_tmp_type, Target>(l, 0, _field_idx, true);
+#endif
+#else
+            copy_level<target_tmp_type, Target>(l, 0, _field_idx, true);
+#endif
         }
     }
 
@@ -571,7 +591,27 @@ class PoissonSolver
                 fmm_.template apply<source_tmp_type, target_tmp_type>(
                     domain_, _kernel, l, true, helm_weights, fmm_type);
 
+#ifdef IBLGF_COMPILE_CUDA
+#ifdef IBLGF_GPU_RESIDENT
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
+                auto& src = it->data_r(target_tmp);
+                auto& dst = it->data_r(Target::tag(), _field_idx);
+                if (src.device_valid())
+                {
+                    cudaMemcpy(dst.device_ptr(), src.device_ptr(),
+                        src.real_block().size() * sizeof(float_type),
+                        cudaMemcpyDeviceToDevice);
+                    dst.mark_device_valid();
+                }
+            }
+#else
             copy_level<target_tmp_type, Target>(l, 0, _field_idx, true);
+#endif
+#else
+            copy_level<target_tmp_type, Target>(l, 0, _field_idx, true);
+#endif
         }
     }
 
@@ -761,6 +801,20 @@ class PoissonSolver
                 for (auto it = domain_->begin(l); it != domain_->end(l); ++it) {
                     if (it->locally_owned() && it->is_leaf())
                     {
+#ifdef IBLGF_COMPILE_CUDA
+#ifdef IBLGF_GPU_RESIDENT
+                        auto& src = it->data_r(target_tmp);
+                        auto& dst = it->data_r(Target::tag(), _field_idx);
+                        if (src.device_valid())
+                        {
+                            cudaMemcpy(dst.device_ptr(), src.device_ptr(),
+                                src.real_block().size() * sizeof(float_type),
+                                cudaMemcpyDeviceToDevice);
+                            dst.mark_device_valid();
+                        }
+                        else
+#endif
+#endif
                         it->data_r(Target::tag(), _field_idx)
                             .linalg()
                             .get()
@@ -772,6 +826,20 @@ class PoissonSolver
                         (fmm_type == MASK_TYPE::RefFourierStream || 
                          (adapt_Fourier && l == l_min && addLevel != 0 && fmm_type == MASK_TYPE::AMR2AMR)))
                     {
+#ifdef IBLGF_COMPILE_CUDA
+#ifdef IBLGF_GPU_RESIDENT
+                        auto& src = it->data_r(target_tmp);
+                        auto& dst = it->data_r(Target::tag(), _field_idx);
+                        if (src.device_valid())
+                        {
+                            cudaMemcpy(dst.device_ptr(), src.device_ptr(),
+                                src.real_block().size() * sizeof(float_type),
+                                cudaMemcpyDeviceToDevice);
+                            dst.mark_device_valid();
+                        }
+                        else
+#endif
+#endif
                         it->data_r(Target::tag(), _field_idx)
                             .linalg()
                             .get()
@@ -900,8 +968,19 @@ class PoissonSolver
         {
             if (!it->has_data() || !it->data().is_allocated()) continue;
 
+#ifdef IBLGF_COMPILE_CUDA
+#ifdef IBLGF_GPU_RESIDENT
+            auto& f = it->data_r(field::tag());
+            iblgf::gpu::ops::zero_device(f.device_ptr(), f.real_block().size());
+            f.mark_device_valid();
+#else
             auto& lin_data = it->data_r(field::tag()).linalg_data();
             std::fill(lin_data.begin(), lin_data.end(), 0.0);
+#endif
+#else
+            auto& lin_data = it->data_r(field::tag()).linalg_data();
+            std::fill(lin_data.begin(), lin_data.end(), 0.0);
+#endif
         }
     }
 
@@ -913,8 +992,19 @@ class PoissonSolver
         {
             if (!it->has_data() || !it->data().is_allocated()) continue;
 
+#ifdef IBLGF_COMPILE_CUDA
+#ifdef IBLGF_GPU_RESIDENT
+            auto& f = it->data_r(field::tag(), field_idx);
+            iblgf::gpu::ops::zero_device(f.device_ptr(), f.real_block().size());
+            f.mark_device_valid();
+#else
             auto& lin_data = it->data_r(field::tag(), field_idx).linalg_data();
             std::fill(lin_data.begin(), lin_data.end(), 0.0);
+#endif
+#else
+            auto& lin_data = it->data_r(field::tag(), field_idx).linalg_data();
+            std::fill(lin_data.begin(), lin_data.end(), 0.0);
+#endif
         }
     }
 
@@ -925,6 +1015,53 @@ class PoissonSolver
         for (auto it = domain_->begin(level); it != domain_->end(level); ++it)
             if (it->locally_owned())
             {
+#ifdef IBLGF_COMPILE_CUDA
+#ifdef IBLGF_GPU_RESIDENT
+                auto& src = it->data_r(from::tag(), _field_idx_from);
+                auto& dst = it->data_r(to::tag(), _field_idx_to);
+                src.update_device();
+                iblgf::gpu::ops::block_desc desc{};
+                const auto& b = src.real_block();
+                const auto& b_base = b.base();
+                const auto& b_ext = b.extent();
+                desc.block_base[0] = b_base[0];
+                desc.block_extent[0] = b_ext[0];
+                desc.block_base[1] = b_base[1];
+                desc.block_extent[1] = b_ext[1];
+                if constexpr (Dim == 3)
+                {
+                    desc.block_base[2] = b_base[2];
+                    desc.block_extent[2] = b_ext[2];
+                    desc.dim = 3;
+                }
+                else
+                {
+                    desc.block_base[2] = 0;
+                    desc.block_extent[2] = 1;
+                    desc.dim = 2;
+                }
+                const auto& f_base = src.real_block().base();
+                const auto& f_ext = src.real_block().extent();
+                desc.field_base[0] = f_base[0];
+                desc.field_extent[0] = f_ext[0];
+                desc.field_base[1] = f_base[1];
+                desc.field_extent[1] = f_ext[1];
+                if constexpr (Dim == 3)
+                {
+                    desc.field_base[2] = f_base[2];
+                    desc.field_extent[2] = f_ext[2];
+                }
+                else
+                {
+                    desc.field_base[2] = 0;
+                    desc.field_extent[2] = 1;
+                }
+                iblgf::gpu::ops::copy_field_device(src.device_ptr(),
+                    dst.device_ptr(), desc, with_buffer);
+                dst.mark_device_valid();
+                continue;
+#endif
+#endif
                 auto& lin_data_1 =
                     it->data_r(from::tag(), _field_idx_from).linalg_data();
                 auto& lin_data_2 =
@@ -955,6 +1092,53 @@ class PoissonSolver
         for (auto it = domain_->begin(level); it != domain_->end(level); ++it)
             if (it->locally_owned() && it->is_correction() && !it->is_leaf())
             {
+#ifdef IBLGF_COMPILE_CUDA
+#ifdef IBLGF_GPU_RESIDENT
+                auto& src = it->data_r(from::tag(), _field_idx_from);
+                auto& dst = it->data_r(to::tag(), _field_idx_to);
+                src.update_device();
+                iblgf::gpu::ops::block_desc desc{};
+                const auto& b = src.real_block();
+                const auto& b_base = b.base();
+                const auto& b_ext = b.extent();
+                desc.block_base[0] = b_base[0];
+                desc.block_extent[0] = b_ext[0];
+                desc.block_base[1] = b_base[1];
+                desc.block_extent[1] = b_ext[1];
+                if constexpr (Dim == 3)
+                {
+                    desc.block_base[2] = b_base[2];
+                    desc.block_extent[2] = b_ext[2];
+                    desc.dim = 3;
+                }
+                else
+                {
+                    desc.block_base[2] = 0;
+                    desc.block_extent[2] = 1;
+                    desc.dim = 2;
+                }
+                const auto& f_base = src.real_block().base();
+                const auto& f_ext = src.real_block().extent();
+                desc.field_base[0] = f_base[0];
+                desc.field_extent[0] = f_ext[0];
+                desc.field_base[1] = f_base[1];
+                desc.field_extent[1] = f_ext[1];
+                if constexpr (Dim == 3)
+                {
+                    desc.field_base[2] = f_base[2];
+                    desc.field_extent[2] = f_ext[2];
+                }
+                else
+                {
+                    desc.field_base[2] = 0;
+                    desc.field_extent[2] = 1;
+                }
+                iblgf::gpu::ops::copy_field_device(src.device_ptr(),
+                    dst.device_ptr(), desc, with_buffer);
+                dst.mark_device_valid();
+                continue;
+#endif
+#endif
                 auto& lin_data_1 =
                     it->data_r(from::tag(), _field_idx_from).linalg_data();
                 auto& lin_data_2 =
@@ -985,6 +1169,53 @@ class PoissonSolver
         {
             if (it->locally_owned())
             {
+#ifdef IBLGF_COMPILE_CUDA
+#ifdef IBLGF_GPU_RESIDENT
+                auto& src = it->data_r(from::tag(), _field_idx_from);
+                auto& dst = it->data_r(to::tag(), _field_idx_to);
+                src.update_device();
+                iblgf::gpu::ops::block_desc desc{};
+                const auto& b = src.real_block();
+                const auto& b_base = b.base();
+                const auto& b_ext = b.extent();
+                desc.block_base[0] = b_base[0];
+                desc.block_extent[0] = b_ext[0];
+                desc.block_base[1] = b_base[1];
+                desc.block_extent[1] = b_ext[1];
+                if constexpr (Dim == 3)
+                {
+                    desc.block_base[2] = b_base[2];
+                    desc.block_extent[2] = b_ext[2];
+                    desc.dim = 3;
+                }
+                else
+                {
+                    desc.block_base[2] = 0;
+                    desc.block_extent[2] = 1;
+                    desc.dim = 2;
+                }
+                const auto& f_base = src.real_block().base();
+                const auto& f_ext = src.real_block().extent();
+                desc.field_base[0] = f_base[0];
+                desc.field_extent[0] = f_ext[0];
+                desc.field_base[1] = f_base[1];
+                desc.field_extent[1] = f_ext[1];
+                if constexpr (Dim == 3)
+                {
+                    desc.field_base[2] = f_base[2];
+                    desc.field_extent[2] = f_ext[2];
+                }
+                else
+                {
+                    desc.field_base[2] = 0;
+                    desc.field_extent[2] = 1;
+                }
+                iblgf::gpu::ops::copy_field_device(src.device_ptr(),
+                    dst.device_ptr(), desc, with_buffer);
+                dst.mark_device_valid();
+                continue;
+#endif
+#endif
                 auto& lin_data_1 =
                     it->data_r(from::tag(), _field_idx_from).linalg_data();
                 auto& lin_data_2 =

@@ -22,6 +22,9 @@
 #include <iblgf/types.hpp>
 #include <iblgf/solver/time_integration/HelmholtzFFT.hpp>
 #include <cmath>
+#ifdef IBLGF_COMPILE_CUDA
+#include <iblgf/operators/operators_GPU.hpp>
+#endif
 
 namespace iblgf
 {
@@ -41,6 +44,23 @@ struct Operator
     template<typename F, class Domain>
     static void domainClean(Domain* domain)
     {
+#ifdef IBLGF_COMPILE_CUDA
+#ifdef IBLGF_GPU_RESIDENT
+        for (auto it = domain->begin(); it != domain->end(); ++it)
+        {
+            if (!it->has_data() || !it->data().is_allocated()) continue;
+            for (std::size_t field_idx = 0; field_idx < F::nFields();
+                 ++field_idx)
+            {
+                auto& field = it->data_r(F::tag(), field_idx);
+                auto* ptr = field.device_ptr();
+                iblgf::gpu::ops::zero_device(ptr, field.real_block().size());
+                field.mark_device_valid();
+            }
+        }
+        return;
+#endif
+#endif
 #ifdef USE_OMP
         #pragma omp parallel for
         for (std::size_t field_idx = 0; field_idx < F::nFields();
@@ -52,6 +72,21 @@ struct Operator
             
                 auto& lin_data = it->data_r(F::tag(), field_idx).linalg_data();
                 std::fill(lin_data.begin(), lin_data.end(), 0.0);
+            }
+        }
+#elif defined(USE_OPENACC)
+        for (auto it = domain->begin(); it != domain->end(); ++it)
+        {
+            if (!it->has_data() || !it->data().is_allocated()) continue;
+            for (std::size_t field_idx = 0; field_idx < F::nFields();
+                 ++field_idx)
+            {
+                auto& data_vec = it->data_r(F::tag(), field_idx).data();
+                auto* data_ptr = data_vec.data();
+                const std::size_t n = data_vec.size();
+                if (n == 0) continue;
+                #pragma acc parallel loop copyout(data_ptr[0:n])
+                for (std::size_t i = 0; i < n; ++i) { data_ptr[i] = 0.0; }
             }
         }
 #else
@@ -652,6 +687,20 @@ struct Operator
     template<class Field, class Block>
     static void smooth2zero(Block& block, std::size_t ngb_idx) noexcept
     {
+#ifdef IBLGF_COMPILE_CUDA
+#ifdef IBLGF_GPU_RESIDENT
+        for (std::size_t field_idx = 0; field_idx < Field::nFields();
+             ++field_idx)
+        {
+            auto& field = block(Field::tag(), field_idx);
+            field.update_device();
+            auto desc = make_desc_(block, field, true);
+            iblgf::gpu::ops::smooth2zero_device(field.device_ptr(), desc, ngb_idx);
+            field.mark_device_valid();
+        }
+        return;
+#endif
+#endif
         //auto f =
         //    [](float_type x)
         //    {
@@ -1386,6 +1435,22 @@ struct Operator
     template<class Source, class Dest, class Block>
     static void laplace(Block& block, float_type dx_level) noexcept
     {
+#ifdef IBLGF_COMPILE_CUDA
+#ifdef IBLGF_GPU_RESIDENT
+        for (std::size_t field_idx = 0; field_idx < Source::nFields();
+             ++field_idx)
+        {
+            auto& src = block(Source::tag(), field_idx);
+            auto& dst = block(Dest::tag(), field_idx);
+            src.update_device();
+            auto desc = make_desc_(block, src, false);
+            iblgf::gpu::ops::laplace_device(src.device_ptr(),
+                dst.device_ptr(), desc, dx_level);
+            dst.mark_device_valid();
+        }
+        return;
+#endif
+#endif
         const auto     fac = 1.0 / (dx_level * dx_level);
         constexpr auto source = Source::tag();
         constexpr auto dest = Dest::tag();
@@ -1424,6 +1489,35 @@ struct Operator
             void>::type* = nullptr>
     static void gradient(Block& block, float_type dx_level) noexcept
     {
+#ifdef IBLGF_COMPILE_CUDA
+#ifdef IBLGF_GPU_RESIDENT
+        auto& src = block(Source::tag(), 0);
+        auto& d0 = block(Dest::tag(), 0);
+        auto& d1 = block(Dest::tag(), 1);
+        src.update_device();
+        d0.device_ptr();
+        d1.device_ptr();
+        auto desc = make_desc_(block, src, false);
+        if (desc.dim == 3)
+        {
+            auto& d2 = block(Dest::tag(), 2);
+            d2.device_ptr();
+            iblgf::gpu::ops::gradient_device(src.device_ptr(),
+                d0.device_ptr(), d1.device_ptr(), d2.device_ptr(),
+                desc, dx_level, 3);
+            d2.mark_device_valid();
+        }
+        else
+        {
+            iblgf::gpu::ops::gradient_device(src.device_ptr(),
+                d0.device_ptr(), d1.device_ptr(), nullptr,
+                desc, dx_level, 2);
+        }
+        d0.mark_device_valid();
+        d1.mark_device_valid();
+        return;
+#endif
+#endif
         const auto     fac = 1.0 / dx_level;
         constexpr auto source = Source::tag();
         constexpr auto dest = Dest::tag();
@@ -1452,6 +1546,33 @@ struct Operator
             void>::type* = nullptr>
     static void divergence(Block& block, float_type dx_level) noexcept
     {
+#ifdef IBLGF_COMPILE_CUDA
+#ifdef IBLGF_GPU_RESIDENT
+        auto& s0 = block(SourceTuple::tag(), 0);
+        auto& s1 = block(SourceTuple::tag(), 1);
+        s0.update_device();
+        s1.update_device();
+        auto& dst = block(Dest::tag(), 0);
+        dst.device_ptr();
+        auto desc = make_desc_(block, s0, false);
+        if (desc.dim == 3)
+        {
+            auto& s2 = block(SourceTuple::tag(), 2);
+            s2.update_device();
+            iblgf::gpu::ops::divergence_device(s0.device_ptr(),
+                s1.device_ptr(), s2.device_ptr(), dst.device_ptr(),
+                desc, dx_level, 3);
+        }
+        else
+        {
+            iblgf::gpu::ops::divergence_device(s0.device_ptr(),
+                s1.device_ptr(), nullptr, dst.device_ptr(),
+                desc, dx_level, 2);
+        }
+        dst.mark_device_valid();
+        return;
+#endif
+#endif
         const auto     fac = 1.0 / dx_level;
         constexpr auto source = SourceTuple::tag();
         constexpr auto dest = Dest::tag();
@@ -1482,6 +1603,38 @@ struct Operator
             void>::type* = nullptr>
     static void curl(Block& block, float_type dx_level) noexcept
     {
+#ifdef IBLGF_COMPILE_CUDA
+#ifdef IBLGF_GPU_RESIDENT
+        auto& s0 = block(Source::tag(), 0);
+        auto& s1 = block(Source::tag(), 1);
+        s0.update_device();
+        s1.update_device();
+        auto& d0 = block(Dest::tag(), 0);
+        d0.device_ptr();
+        auto desc = make_desc_(block, s0, false);
+        if (desc.dim == 3)
+        {
+            auto& s2 = block(Source::tag(), 2);
+            auto& d1 = block(Dest::tag(), 1);
+            auto& d2 = block(Dest::tag(), 2);
+            s2.update_device();
+            d1.device_ptr();
+            d2.device_ptr();
+            iblgf::gpu::ops::curl_device(s0.device_ptr(), s1.device_ptr(),
+                s2.device_ptr(), d0.device_ptr(), d1.device_ptr(),
+                d2.device_ptr(), desc, dx_level, 3);
+            d1.mark_device_valid();
+            d2.mark_device_valid();
+        }
+        else
+        {
+            iblgf::gpu::ops::curl_device(s0.device_ptr(), s1.device_ptr(),
+                nullptr, d0.device_ptr(), nullptr, nullptr, desc, dx_level, 2);
+        }
+        d0.mark_device_valid();
+        return;
+#endif
+#endif
         const auto     fac = 1.0 / dx_level;
         constexpr auto source = Source::tag();
         constexpr auto dest = Dest::tag();
@@ -2420,6 +2573,39 @@ struct Operator
     static void curl_transpose(Block& block, float_type dx_level,
         float_type scale = 1.0) noexcept
     {
+#ifdef IBLGF_COMPILE_CUDA
+#ifdef IBLGF_GPU_RESIDENT
+        auto& s0 = block(Source::tag(), 0);
+        s0.update_device();
+        auto& d0 = block(Dest::tag(), 0);
+        auto& d1 = block(Dest::tag(), 1);
+        d0.device_ptr();
+        d1.device_ptr();
+        auto desc = make_desc_(block, s0, false);
+        if (desc.dim == 3)
+        {
+            auto& s1 = block(Source::tag(), 1);
+            auto& s2 = block(Source::tag(), 2);
+            auto& d2 = block(Dest::tag(), 2);
+            s1.update_device();
+            s2.update_device();
+            d2.device_ptr();
+            iblgf::gpu::ops::curl_transpose_device(s0.device_ptr(),
+                s1.device_ptr(), s2.device_ptr(), d0.device_ptr(),
+                d1.device_ptr(), d2.device_ptr(), desc, dx_level, scale, 3);
+            d2.mark_device_valid();
+        }
+        else
+        {
+            iblgf::gpu::ops::curl_transpose_device(s0.device_ptr(),
+                nullptr, nullptr, d0.device_ptr(), d1.device_ptr(), nullptr,
+                desc, dx_level, scale, 2);
+        }
+        d0.mark_device_valid();
+        d1.mark_device_valid();
+        return;
+#endif
+#endif
         //not used in ifherk_helm
         const auto     fac = 1.0 / dx_level * scale;
         constexpr auto source = Source::tag();
@@ -2459,6 +2645,46 @@ struct Operator
             void>::type* = nullptr>
     static void nonlinear(Block& block) noexcept
     {
+#ifdef IBLGF_COMPILE_CUDA
+#ifdef IBLGF_GPU_RESIDENT
+        auto& f0 = block(Face::tag(), 0);
+        auto& f1 = block(Face::tag(), 1);
+        f0.update_device();
+        f1.update_device();
+        auto& e0 = block(Edge::tag(), 0);
+        e0.update_device();
+        auto& d0 = block(Dest::tag(), 0);
+        auto& d1 = block(Dest::tag(), 1);
+        d0.device_ptr();
+        d1.device_ptr();
+        auto desc = make_desc_(block, f0, false);
+        if (desc.dim == 3)
+        {
+            auto& f2 = block(Face::tag(), 2);
+            auto& e1 = block(Edge::tag(), 1);
+            auto& e2 = block(Edge::tag(), 2);
+            auto& d2 = block(Dest::tag(), 2);
+            f2.update_device();
+            e1.update_device();
+            e2.update_device();
+            d2.device_ptr();
+            iblgf::gpu::ops::nonlinear_device(f0.device_ptr(), f1.device_ptr(),
+                f2.device_ptr(), e0.device_ptr(), e1.device_ptr(),
+                e2.device_ptr(), d0.device_ptr(), d1.device_ptr(),
+                d2.device_ptr(), desc, 3);
+            d2.mark_device_valid();
+        }
+        else
+        {
+            iblgf::gpu::ops::nonlinear_device(f0.device_ptr(), f1.device_ptr(),
+                nullptr, e0.device_ptr(), nullptr, nullptr, d0.device_ptr(),
+                d1.device_ptr(), nullptr, desc, 2);
+        }
+        d0.mark_device_valid();
+        d1.mark_device_valid();
+        return;
+#endif
+#endif
         constexpr auto face = Face::tag();
         constexpr auto edge = Edge::tag();
         constexpr auto dest = Dest::tag();
@@ -2999,6 +3225,19 @@ struct Operator
                         f(field_idx, t, coord) * scale;
                 }
         }
+#ifdef IBLGF_COMPILE_CUDA
+#ifdef IBLGF_GPU_RESIDENT
+        for (auto it = domain->begin(); it != domain->end(); ++it)
+        {
+            if (!it->locally_owned() || !it->has_data()) continue;
+            for (std::size_t field_idx = 0; field_idx < Field::nFields();
+                 ++field_idx)
+            {
+                it->data_r(Field::tag(), field_idx).update_device();
+            }
+        }
+#endif
+#endif
     }
 
     template<typename Field, typename Domain, typename Func>
@@ -3128,6 +3367,34 @@ struct Operator
                 for (auto& n : it->data().node_field())
                     n(To::tag(), field_idx) +=
                         n(From::tag(), field_idx) * scale;
+            }
+        }
+    }
+#elif defined(USE_OPENACC)
+    template<typename From, typename To, typename Domain>
+    static void add(Domain* domain, float_type scale = 1.0) noexcept
+    {
+        static_assert(From::nFields() == To::nFields(),
+            "number of fields doesn't match when add");
+
+        for (auto it = domain->begin(); it != domain->end(); ++it)
+        {
+            if (!it->locally_owned() || !it->has_data()) continue;
+
+            for (std::size_t field_idx = 0; field_idx < From::nFields();
+                 ++field_idx)
+            {
+                auto& from_vec = it->data_r(From::tag(), field_idx).data();
+                auto& to_vec = it->data_r(To::tag(), field_idx).data();
+                auto* from_ptr = from_vec.data();
+                auto* to_ptr = to_vec.data();
+                const std::size_t n = from_vec.size();
+                if (n == 0) continue;
+                #pragma acc parallel loop copyin(from_ptr[0:n]) copy(to_ptr[0:n])
+                for (std::size_t i = 0; i < n; ++i)
+                {
+                    to_ptr[i] += from_ptr[i] * scale;
+                }
             }
         }
     }
@@ -3461,6 +3728,54 @@ struct Operator
         }
 //#endif
     }
+#ifdef IBLGF_COMPILE_CUDA
+  private:
+    template<class Block, class DataField>
+    static iblgf::gpu::ops::block_desc make_desc_(const Block& block,
+        const DataField& field, bool use_bounding_box) noexcept
+    {
+        iblgf::gpu::ops::block_desc desc{};
+        const auto& b = use_bounding_box ? block.bounding_box() : block.descriptor();
+        const auto& b_base = b.base();
+        const auto& b_ext = b.extent();
+        desc.block_base[0] = b_base[0];
+        desc.block_extent[0] = b_ext[0];
+        desc.block_base[1] = b_base[1];
+        desc.block_extent[1] = b_ext[1];
+
+        if constexpr (DataField::dimension() == 3)
+        {
+            desc.block_base[2] = b_base[2];
+            desc.block_extent[2] = b_ext[2];
+            desc.dim = 3;
+        }
+        else
+        {
+            desc.block_base[2] = 0;
+            desc.block_extent[2] = 1;
+            desc.dim = 2;
+        }
+
+        const auto& f_base = field.real_block().base();
+        const auto& f_ext = field.real_block().extent();
+        desc.field_base[0] = f_base[0];
+        desc.field_extent[0] = f_ext[0];
+        desc.field_base[1] = f_base[1];
+        desc.field_extent[1] = f_ext[1];
+
+        if constexpr (DataField::dimension() == 3)
+        {
+            desc.field_base[2] = f_base[2];
+            desc.field_extent[2] = f_ext[2];
+        }
+        else
+        {
+            desc.field_base[2] = 0;
+            desc.field_extent[2] = 1;
+        }
+        return desc;
+    }
+#endif
 };
 } // namespace domain
 } // namespace iblgf

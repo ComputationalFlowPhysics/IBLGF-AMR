@@ -64,6 +64,9 @@ set(SOURCES
    )
 set(GPU_SOURCES
     "${CMAKE_CURRENT_LIST_DIR}/src/utilities/convolution_GPU.cu"
+    "${CMAKE_CURRENT_LIST_DIR}/src/utilities/cuda_pack.cu"
+    "${CMAKE_CURRENT_LIST_DIR}/src/operators/operators_GPU.cu"
+    "${CMAKE_CURRENT_LIST_DIR}/src/interpolation/interpolation_GPU.cu"
    )
 
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_SOURCE_DIR}/cmake")

@@ -109,11 +109,10 @@ static float_type debug_maxabs_field_(NS_AMR_LGF_Debug& setup,
         if (!it->has_data() || !it->data().is_allocated()) continue;
         if (!it->is_leaf() && !it->is_correction()) continue;
         if (it->is_leaf() && it->is_correction()) continue;
-        auto& field = it->data_r(Field::tag());
         for (std::size_t field_idx = 0; field_idx < Field::nFields();
              ++field_idx)
         {
-            auto& df = field[field_idx];
+            auto& df = it->data_r(Field::tag(), field_idx);
             const float_type local = debug_maxabs_datafield_(df, prefer_device);
             if (local > max_abs) max_abs = local;
         }
@@ -125,9 +124,12 @@ static void debug_init_stats(NS_AMR_LGF_Debug& setup,
     bool prefer_device = true)
 {
     if (setup.domain_->is_server()) return;
-    const auto u_max = debug_maxabs_field_<u_type>(setup, prefer_device);
-    const auto p_max = debug_maxabs_field_<p_type>(setup, prefer_device);
-    const auto t_max = debug_maxabs_field_<test_type>(setup, prefer_device);
+    const auto u_max =
+        debug_maxabs_field_<parameters::u_type>(setup, prefer_device);
+    const auto p_max =
+        debug_maxabs_field_<parameters::p_type>(setup, prefer_device);
+    const auto t_max =
+        debug_maxabs_field_<parameters::test_type>(setup, prefer_device);
     boost::mpi::communicator world;
     std::cout << "Rank " << world.rank()
               << " init stats | maxabs(u)=" << u_max
@@ -158,8 +160,7 @@ static void debug_kernel_microtests(NS_AMR_LGF_Debug& setup,
     }
 
     auto& block = it->data();
-    auto& field = it->data_r(test_type::tag());
-    auto& df = field[0];
+    auto& df = it->data_r(parameters::test_type::tag());
 
     std::fill(df.data().begin(), df.data().end(),
         static_cast<float_type>(1.0));
@@ -190,4 +191,3 @@ static void debug_kernel_microtests(NS_AMR_LGF_Debug& setup,
 
 } // namespace debug
 } // namespace iblgf
-

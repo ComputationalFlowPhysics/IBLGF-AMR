@@ -1,7 +1,7 @@
 import os
 
 # n_vec={14:[4,5],30:[3,4]}
-n_vec={14:[4,5,6],30:[3,4,5]}
+n_vec={8:[4,5],14:[4,5,6],30:[3,4,5],62:[2]}
 for n in n_vec:
     for block_power in n_vec[n]:
         print(n,block_power,n*(2**block_power),(n*(2**block_power))**3)

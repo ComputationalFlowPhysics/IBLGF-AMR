@@ -304,7 +304,7 @@ class Ifherk
             {
                 clean<u_type>(true);
                 domain_->decomposition().template balance<u_type,p_type>();
-                //domain_->decomposition().template balance<u_type,p_type>();
+                // domain_->decomposition().template balance<u_type,p_type>();
             }
 
             adapt_count_++;
@@ -318,6 +318,17 @@ class Ifherk
                         ));
             pcout<<ifherk_if.count()<<std::endl;
             
+            if(!domain_->is_client())
+            {
+                world.barrier();
+                simulation_->writeWithTime("pad_"+fname(n_step_), T_, dt_);
+                world.barrier();
+                simulation_->writeWithTime("stage1_preib_"+fname(n_step_), T_stage_, dt_);
+                world.barrier();
+                simulation_->writeWithTime("stage1_postib_"+fname(n_step_), T_stage_, dt_);
+
+            }
+
             // -------------------------------------------------------------
             // update stats & output
 
@@ -1046,7 +1057,9 @@ class Ifherk
         world.barrier();
         pcout<< "Adapt - communication"  << std::endl;
         auto intrp_list = domain_->adapt(source_max_, base_mesh_update_);
-
+        base_mesh_update_ = true;
+        bool intrp_done = false;
+        std::cout << world.rank() << " intrp list size = " << intrp_list.size() << "base_mesh_update_ = " << base_mesh_update_ << std::endl;
         world.barrier();
         pcout << "Adapt - intrp" << std::endl;
         if (client)
@@ -1100,10 +1113,11 @@ class Ifherk
                         
                         if (!domain_->is_client())
                             return;
+                        pcout<< "pad_velocity() in time_step() " << std::endl;
                         pad_velocity<u_type, u_type>(true);
                         // pad_velocity<u_mean_type, u_mean_type>(true);
                         adapt_corr_time_step();
-                        //up_and_down<u_type>(); tried, did not help
+                        up_and_down<u_type>(); //tried, did not help
                     }
                     else
                     {
@@ -1113,6 +1127,8 @@ class Ifherk
                         // up_and_down<u_mean_type>();
                     }
                     ));
+        world.barrier();
+        simulation_->writeWithTime("pad_"+fname(n_step_), T_, dt_);
         base_mesh_update_=false;
         pcout<< "pad u      in "<<t_pad.count() << std::endl;
 
@@ -1131,8 +1147,11 @@ class Ifherk
         nonlinear<u_type, g_i_type>(coeff_a(1, 1) * (-dt_));
         copy<q_i_type, r_i_type>();
         add<g_i_type, r_i_type>();
+        world.barrier();
+        simulation_->writeWithTime("stage1_preib_"+fname(n_step_), T_stage_, dt_);
         lin_sys_with_ib_solve(alpha_[0]);
-
+        world.barrier();
+        simulation_->writeWithTime("stage1_postib_"+fname(n_step_), T_stage_, dt_);
         //clean_center_velocity<u_i_type>();
 
 
@@ -1523,9 +1542,10 @@ private:
     {
         auto client=domain_->decomposition().client();
 
-        //up_and_down<Velocity_in>();
+        // up_and_down<Velocity_in>();
         clean<Velocity_in>(true);
-        this->up<Velocity_in>(false);
+        // this->up<Velocity_in>(false);
+        up_and_down<Velocity_in>();
         clean<edge_aux_type>();
         clean<stream_f_type>();
 
@@ -1540,17 +1560,24 @@ private:
                     it != domain_->end(l); ++it)
             {
                 if(!it->locally_owned() || !it->has_data()) continue;
-                if(it->is_correction()) continue;
+                // if(it->is_correction()) continue;
                 //if(!it->is_leaf()) continue;
 
                 const auto dx_level =  dx_base/math::pow2(it->refinement_level());
                 //if (it->is_leaf())
                 domain::Operator::curl<Velocity_in,edge_aux_type>( it->data(),dx_level);
             }
+            // client->template buffer_exchange<edge_aux_type>(l);
         }
 
         //clean<Velocity_out>();
         clean_leaf_correction_boundary<edge_aux_type>(domain_->tree()->base_level(), true, 2);
+        for (int l  = domain_->tree()->base_level();
+                l < domain_->tree()->depth(); ++l)
+        {            
+            client->template buffer_exchange<edge_aux_type>(l);
+            clean_leaf_correction_boundary<edge_aux_type>(l, false, 2);
+        }
         //clean_leaf_correction_boundary<edge_aux_type>(l, false,2+stage_idx_);
         psolver.template apply_lgf<edge_aux_type, stream_f_type>(MASK_TYPE::STREAM);
 
@@ -1568,6 +1595,7 @@ private:
                 const auto dx_level =  dx_base/math::pow2(it->refinement_level());
                     domain::Operator::curl_transpose<stream_f_type,Velocity_out>( it->data(),dx_level, -1.0);
             }
+            // client->template buffer_exchange<Velocity_out>(l);
         }
 
         // correct_base_mean_velocity<Velocity_in, Velocity_out>();
@@ -1662,7 +1690,7 @@ private:
             }
         }
 
-        // clean_leaf_correction_boundary<edge_aux_type>(domain_->tree()->base_level(), true, 2);
+        clean_leaf_correction_boundary<edge_aux_type>(domain_->tree()->base_level(), true, 2);
         // add background velocity
         copy<Source, face_aux_type>();
         domain::Operator::add_field_expression<face_aux_type>(domain_, simulation_->frame_vel(), T_stage_, -1.0);
@@ -1760,6 +1788,7 @@ private:
             clean_leaf_correction_boundary<Target>(l, true, 2);
             //clean_leaf_correction_boundary<Target>(l, false,4+stage_idx_);
         }
+        // clean<Target>(true,2);
     }
 
     template<class Source, class Target>

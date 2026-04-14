@@ -28,6 +28,9 @@
 #include <iblgf/solver/linsys/linsys.hpp>
 #include <iblgf/operators/operators.hpp>
 #include <iblgf/utilities/misc_math_functions.hpp>
+#ifdef IBLGF_COMPILE_CUDA
+#include <iblgf/solver/time_integration/ifherk_gpu.hpp>
+#endif
 
 namespace iblgf
 {
@@ -657,8 +660,20 @@ class Ifherk
                 //if(!it->is_leaf()) continue;
 
                 const auto dx_level =  dx_base/math::pow2(it->refinement_level());
-                //if (it->is_leaf())
+#ifdef IBLGF_COMPILE_CUDA
+                if constexpr (Setup::Dim == 3)
+                {
+                    ifherk_gpu::curl_block<datablock_type, Velocity_in,
+                        edge_aux_type>(it->data(), dx_level);
+                }
+                else
+                {
+                    domain::Operator::curl<Velocity_in, edge_aux_type>(
+                        it->data(), dx_level);
+                }
+#else
                 domain::Operator::curl<Velocity_in,edge_aux_type>( it->data(),dx_level);
+#endif
             }
         }
 
@@ -1657,8 +1672,21 @@ private:
 
                 const auto dx_level =
                     dx_base / math::pow2(it->refinement_level());
+#ifdef IBLGF_COMPILE_CUDA
+                if constexpr (Setup::Dim == 3)
+                {
+                    ifherk_gpu::curl_block<datablock_type, Source,
+                        edge_aux_type>(it->data(), dx_level);
+                }
+                else
+                {
+                    domain::Operator::curl<Source, edge_aux_type>(
+                        it->data(), dx_level);
+                }
+#else
                 domain::Operator::curl<Source, edge_aux_type>(
                     it->data(), dx_level);
+#endif
             }
         }
 
@@ -1677,9 +1705,21 @@ private:
             for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
             {
                 if (!it->locally_owned() || !it->has_data()) continue;
-
+#ifdef IBLGF_COMPILE_CUDA
+                if constexpr (Setup::Dim == 3)
+                {
+                    ifherk_gpu::nonlinear_block<datablock_type,
+                        face_aux_type, edge_aux_type, Target>(it->data());
+                }
+                else
+                {
+                    domain::Operator::nonlinear<face_aux_type, edge_aux_type,
+                        Target>(it->data());
+                }
+#else
                 domain::Operator::nonlinear<face_aux_type, edge_aux_type, Target>(
                     it->data());
+#endif
 
                 for (std::size_t field_idx = 0; field_idx < Target::nFields();
                      ++field_idx)

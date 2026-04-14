@@ -52,3 +52,4 @@ bash_Wei_OG
 # runs
 printf "\n# Build + outputs\nbuild/\nruns/\n" >> .gitignore
 
+.codex

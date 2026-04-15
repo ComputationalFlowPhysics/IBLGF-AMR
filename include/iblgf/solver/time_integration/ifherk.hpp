@@ -1650,33 +1650,108 @@ private:
     void lin_sys_with_ib_solve(float_type _alpha, bool write_prev_force = true) noexcept
     {
         auto client=domain_->decomposition().client();
+        (void)client;
 
+        double t_div_ms = 0.0;
+        double t_lgf_ms = 0.0;
+        double t_copy_ms = 0.0;
+        double t_grad1_ms = 0.0;
+        double t_add1_ms = 0.0;
+        double t_ib_if_ms = 0.0;
+        double t_ib_solve_ms = 0.0;
+        double t_pressure_corr_ms = 0.0;
+        double t_grad2_ms = 0.0;
+        double t_smear_ms = 0.0;
+        double t_add2_ms = 0.0;
+        double t_if_ms = 0.0;
+        double t_copy_u_ms = 0.0;
+
+        if (profile_stage_) profile_client_barrier();
+        auto td0 = std::chrono::steady_clock::now();
         divergence<r_i_type, cell_aux_type>();
+        if (profile_stage_) profile_client_barrier();
+        auto td1 = std::chrono::steady_clock::now();
+        t_div_ms +=
+            std::chrono::duration_cast<std::chrono::microseconds>(td1 - td0)
+                .count() /
+            1000.0;
 
         domain_->client_communicator().barrier();
         mDuration_type t_lgf(0);
+        if (profile_stage_) profile_client_barrier();
+        auto tl0 = std::chrono::steady_clock::now();
         TIME_CODE( t_lgf, SINGLE_ARG(
                     psolver.template apply_lgf<cell_aux_type, d_i_type>();
                     ));
+        if (profile_stage_) profile_client_barrier();
+        auto tl1 = std::chrono::steady_clock::now();
+        t_lgf_ms +=
+            std::chrono::duration_cast<std::chrono::microseconds>(tl1 - tl0)
+                .count() /
+            1000.0;
         domain_->client_communicator().barrier();
         pcout<< "LGF solved in "<<t_lgf.count() << std::endl;
 
+        if (profile_stage_) profile_client_barrier();
+        auto tc0 = std::chrono::steady_clock::now();
         copy<r_i_type, face_aux2_type>();
+        if (profile_stage_) profile_client_barrier();
+        auto tc1 = std::chrono::steady_clock::now();
+        t_copy_ms +=
+            std::chrono::duration_cast<std::chrono::microseconds>(tc1 - tc0)
+                .count() /
+            1000.0;
+
+        if (profile_stage_) profile_client_barrier();
+        auto tg10 = std::chrono::steady_clock::now();
         gradient<d_i_type,face_aux_type>();
+        if (profile_stage_) profile_client_barrier();
+        auto tg11 = std::chrono::steady_clock::now();
+        t_grad1_ms +=
+            std::chrono::duration_cast<std::chrono::microseconds>(tg11 - tg10)
+                .count() /
+            1000.0;
+
+        if (profile_stage_) profile_client_barrier();
+        auto ta10 = std::chrono::steady_clock::now();
         add<face_aux_type, face_aux2_type>(-1.0);
+        if (profile_stage_) profile_client_barrier();
+        auto ta11 = std::chrono::steady_clock::now();
+        t_add1_ms +=
+            std::chrono::duration_cast<std::chrono::microseconds>(ta11 - ta10)
+                .count() /
+            1000.0;
 
         // IB
         if (std::fabs(_alpha)>1e-14)
+        {
+            if (profile_stage_) profile_client_barrier();
+            auto tibif0 = std::chrono::steady_clock::now();
             psolver.template apply_lgf_IF<face_aux2_type, face_aux2_type>(_alpha, MASK_TYPE::IB2xIB);
+            if (profile_stage_) profile_client_barrier();
+            auto tibif1 = std::chrono::steady_clock::now();
+            t_ib_if_ms += std::chrono::duration_cast<std::chrono::microseconds>(
+                              tibif1 - tibif0)
+                              .count() /
+                          1000.0;
+        }
 
         domain_->client_communicator().barrier();
         pcout<< "IB IF solved "<<std::endl;
         mDuration_type t_ib(0);
         domain_->ib().force() = domain_->ib().force_prev(stage_idx_);
         //domain_->ib().scales(coeff_a(stage_idx_, stage_idx_));
+        if (profile_stage_) profile_client_barrier();
+        auto tib0 = std::chrono::steady_clock::now();
         TIME_CODE( t_ib, SINGLE_ARG(
                     lsolver.template ib_solve<face_aux2_type>(_alpha, T_stage_);
                     ));
+        if (profile_stage_) profile_client_barrier();
+        auto tib1 = std::chrono::steady_clock::now();
+        t_ib_solve_ms +=
+            std::chrono::duration_cast<std::chrono::microseconds>(tib1 - tib0)
+                .count() /
+            1000.0;
 
         if (write_prev_force) domain_->ib().force_prev(stage_idx_) = domain_->ib().force();
         //domain_->ib().scales(1.0/coeff_a(stage_idx_, stage_idx_));
@@ -1684,23 +1759,95 @@ private:
         pcout<< "IB  solved in "<<t_ib.count() << std::endl;
 
         // new presure field
+        if (profile_stage_) profile_client_barrier();
+        auto tpc0 = std::chrono::steady_clock::now();
         lsolver.template pressure_correction<d_i_type>();
-        gradient<d_i_type, face_aux_type>();
+        if (profile_stage_) profile_client_barrier();
+        auto tpc1 = std::chrono::steady_clock::now();
+        t_pressure_corr_ms +=
+            std::chrono::duration_cast<std::chrono::microseconds>(tpc1 - tpc0)
+                .count() /
+            1000.0;
 
+        if (profile_stage_) profile_client_barrier();
+        auto tg20 = std::chrono::steady_clock::now();
+        gradient<d_i_type, face_aux_type>();
+        if (profile_stage_) profile_client_barrier();
+        auto tg21 = std::chrono::steady_clock::now();
+        t_grad2_ms +=
+            std::chrono::duration_cast<std::chrono::microseconds>(tg21 - tg20)
+                .count() /
+            1000.0;
+
+        if (profile_stage_) profile_client_barrier();
+        auto tsm0 = std::chrono::steady_clock::now();
         lsolver.template smearing<face_aux_type>(domain_->ib().force(), false);
+        if (profile_stage_) profile_client_barrier();
+        auto tsm1 = std::chrono::steady_clock::now();
+        t_smear_ms +=
+            std::chrono::duration_cast<std::chrono::microseconds>(tsm1 - tsm0)
+                .count() /
+            1000.0;
+
+        if (profile_stage_) profile_client_barrier();
+        auto ta20 = std::chrono::steady_clock::now();
         add<face_aux_type, r_i_type>(-1.0);
+        if (profile_stage_) profile_client_barrier();
+        auto ta21 = std::chrono::steady_clock::now();
+        t_add2_ms +=
+            std::chrono::duration_cast<std::chrono::microseconds>(ta21 - ta20)
+                .count() /
+            1000.0;
 
         if (std::fabs(_alpha)>1e-14)
         {
             mDuration_type t_if(0);
             domain_->client_communicator().barrier();
+            if (profile_stage_) profile_client_barrier();
+            auto tif0 = std::chrono::steady_clock::now();
             TIME_CODE( t_if, SINGLE_ARG(
                         psolver.template apply_lgf_IF<r_i_type, u_i_type>(_alpha);
                         ));
+            if (profile_stage_) profile_client_barrier();
+            auto tif1 = std::chrono::steady_clock::now();
+            t_if_ms +=
+                std::chrono::duration_cast<std::chrono::microseconds>(
+                    tif1 - tif0)
+                    .count() /
+                1000.0;
             pcout<< "IF  solved in "<<t_if.count() << std::endl;
         }
         else
+        {
+            if (profile_stage_) profile_client_barrier();
+            auto tcu0 = std::chrono::steady_clock::now();
             copy<r_i_type,u_i_type>();
+            if (profile_stage_) profile_client_barrier();
+            auto tcu1 = std::chrono::steady_clock::now();
+            t_copy_u_ms +=
+                std::chrono::duration_cast<std::chrono::microseconds>(
+                    tcu1 - tcu0)
+                    .count() /
+                1000.0;
+        }
+
+        if (profile_stage_)
+        {
+            pcout << "lin_sys_with_ib breakdown: div=" << t_div_ms
+                  << " ms lgf=" << t_lgf_ms
+                  << " ms copy_r_to_face2=" << t_copy_ms
+                  << " ms grad1=" << t_grad1_ms
+                  << " ms add1=" << t_add1_ms
+                  << " ms ib_if=" << t_ib_if_ms
+                  << " ms ib_solve=" << t_ib_solve_ms
+                  << " ms pressure_corr=" << t_pressure_corr_ms
+                  << " ms grad2=" << t_grad2_ms
+                  << " ms smear=" << t_smear_ms
+                  << " ms add2=" << t_add2_ms
+                  << " ms if=" << t_if_ms
+                  << " ms copy_u=" << t_copy_u_ms << " ms"
+                  << std::endl;
+        }
 
         // test -------------------------------------
         //force_type tmp(domain_->ib().force().size(), (0.,0.,0.));
@@ -2120,7 +2267,7 @@ private:
             }
 
             //client->template buffer_exchange<Target>(l);
-            clean_leaf_correction_boundary<Target>(l, true, 2);
+            clean_leaf_correction_boundary_fast<Target>(l, true, 2);
             //clean_leaf_correction_boundary<Target>(l, false,4+stage_idx_);
         }
     }

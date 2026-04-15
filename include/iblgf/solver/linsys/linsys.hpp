@@ -17,6 +17,7 @@
 #include <algorithm>
 #include <vector>
 #include <cmath>
+#include <chrono>
 
 // IBLGF-specific
 #include <iblgf/global.hpp>
@@ -62,6 +63,8 @@ class LinSysSolver
     {
         cg_threshold_ = simulation_->dictionary_->template get_or<float_type>("cg_threshold",1e-3);
         cg_max_itr_ = simulation_->dictionary_->template get_or<int>("cg_max_itr", 40);
+        profile_linsys_ = simulation_->dictionary_->template get_or<bool>(
+            "profile_linsys", false);
     }
 
     float_type test()
@@ -112,20 +115,58 @@ class LinSysSolver
     template<class Field>
     void ib_solve(float_type alpha, float_type t)
     {
+        using clock_t = std::chrono::steady_clock;
+        double t_projection_ms = 0.0;
+        double t_subtract_bc_ms = 0.0;
+        double t_clean_ms = 0.0;
+        double t_cg_ms = 0.0;
+
         // right hand side
 	real_coordinate_type tmp_coord(0.0);
         force_type uc(ib_->size(), tmp_coord);
 
         domain_->client_communicator().barrier();
-        //std::cout<<"projection" << std::endl;
+        auto tp0 = clock_t::now();
         this->projection<Field>(uc);
         domain_->client_communicator().barrier();
-        //std::cout<<"subtract_boundary_vel" << std::endl;
+        auto tp1 = clock_t::now();
+        t_projection_ms +=
+            std::chrono::duration_cast<std::chrono::microseconds>(tp1 - tp0)
+                .count() /
+            1000.0;
+
+        auto tb0 = clock_t::now();
         this->subtract_boundary_vel(uc, t);
+        auto tb1 = clock_t::now();
+        t_subtract_bc_ms +=
+            std::chrono::duration_cast<std::chrono::microseconds>(tb1 - tb0)
+                .count() /
+            1000.0;
 
         domain_->client_communicator().barrier();
+        auto tc0 = clock_t::now();
         domain::Operator::domainClean<face_aux2_type>(domain_);
+        auto tc1 = clock_t::now();
+        t_clean_ms +=
+            std::chrono::duration_cast<std::chrono::microseconds>(tc1 - tc0)
+                .count() /
+            1000.0;
+
+        auto tg0 = clock_t::now();
         this->template CG_solve<face_aux2_type>(uc, alpha);
+        auto tg1 = clock_t::now();
+        t_cg_ms +=
+            std::chrono::duration_cast<std::chrono::microseconds>(tg1 - tg0)
+                .count() /
+            1000.0;
+
+        if (profile_linsys_ && comm_.rank() == 1)
+        {
+            std::cout << "ib_solve breakdown: projection=" << t_projection_ms
+                      << " ms subtract_bc=" << t_subtract_bc_ms
+                      << " ms clean=" << t_clean_ms
+                      << " ms cg=" << t_cg_ms << " ms" << std::endl;
+        }
     }
 
     template<class Field>
@@ -170,18 +211,31 @@ class LinSysSolver
     template<class Ftmp, class UcType>
     void CG_solve(UcType& uc, float_type alpha)
     {
+        using clock_t = std::chrono::steady_clock;
         auto& f = ib_->force();
 
 	real_coordinate_type tmp_coord(0.0);
         force_type Ax(ib_->size(), tmp_coord);
         force_type r (ib_->size(), tmp_coord);
         force_type Ap(ib_->size(), tmp_coord);
+        double t_apply_Ax_ms = 0.0;
+        double t_apply_Ap_ms = 0.0;
+        double t_dot_ms = 0.0;
+        double t_add_ms = 0.0;
+        int iters = 0;
+        float_type final_rel_res = 0.0;
 
         if (domain_->is_server())
             return;
 
         // Ax
+        auto ta0 = clock_t::now();
         this->template ET_H_S_E<Ftmp>(f, Ax, alpha);
+        auto ta1 = clock_t::now();
+        t_apply_Ax_ms +=
+            std::chrono::duration_cast<std::chrono::microseconds>(ta1 - ta0)
+                .count() /
+            1000.0;
         //printvec(Ax, "Ax");
 
         //  res = uc - Ax
@@ -197,35 +251,88 @@ class LinSysSolver
         auto p = r;
 
         // rold = r'* r;
+        auto td0 = clock_t::now();
         float_type rsold = dot(r, r);
+        auto td1 = clock_t::now();
+        t_dot_ms +=
+            std::chrono::duration_cast<std::chrono::microseconds>(td1 - td0)
+                .count() /
+            1000.0;
 
         for (int k=0; k<cg_max_itr_; k++)
         {
+            iters = k + 1;
             // Ap = A(p)
+            auto tap0 = clock_t::now();
             this->template ET_H_S_E<Ftmp>(p, Ap, alpha );
+            auto tap1 = clock_t::now();
+            t_apply_Ap_ms +=
+                std::chrono::duration_cast<std::chrono::microseconds>(
+                    tap1 - tap0)
+                    .count() /
+                1000.0;
             // alpha = rsold / p'*Ap
+            auto td20 = clock_t::now();
             float_type pAp = dot(p,Ap);
+            auto td21 = clock_t::now();
+            t_dot_ms +=
+                std::chrono::duration_cast<std::chrono::microseconds>(
+                    td21 - td20)
+                    .count() /
+                1000.0;
             if (pAp == 0.0)
             {
                 return;
             }
 
-            float_type alpha = rsold / dot(p, Ap);
+            float_type alpha = rsold / pAp;
             // f = f + alpha * p;
+            auto tadd0 = clock_t::now();
             add(f, p, 1.0, alpha);
             // r = r - alpha*Ap
             add(r, Ap, 1.0, -alpha);
+            auto tadd1 = clock_t::now();
+            t_add_ms +=
+                std::chrono::duration_cast<std::chrono::microseconds>(
+                    tadd1 - tadd0)
+                    .count() /
+                1000.0;
             // rsnew = r' * r
+            auto td30 = clock_t::now();
             float_type rsnew = dot(r, r);
             float_type f2 = dot(f,f);
+            auto td31 = clock_t::now();
+            t_dot_ms +=
+                std::chrono::duration_cast<std::chrono::microseconds>(
+                    td31 - td30)
+                    .count() /
+                1000.0;
+            final_rel_res = (f2 > 0) ? std::sqrt(rsnew / f2) : 0.0;
             if (comm_.rank()==1)
                 if (domain_type::dims == 3 || (domain_type::dims == 2 && (k % 20 == 0)))std::cout<< "residue square = "<< rsnew/f2<<std::endl;;
-            if (sqrt(rsnew/f2)<cg_threshold_)
+            if (final_rel_res<cg_threshold_)
                 break;
 
             // p = r + (rsnew / rsold) * p;
+            auto tadd20 = clock_t::now();
             add(p, r, rsnew/rsold, 1.0);
+            auto tadd21 = clock_t::now();
+            t_add_ms +=
+                std::chrono::duration_cast<std::chrono::microseconds>(
+                    tadd21 - tadd20)
+                    .count() /
+                1000.0;
             rsold = rsnew;
+        }
+
+        if (profile_linsys_ && comm_.rank() == 1)
+        {
+            std::cout << "CG breakdown: iters=" << iters
+                      << " apply_Ax=" << t_apply_Ax_ms
+                      << " ms apply_Ap_total=" << t_apply_Ap_ms
+                      << " ms dot_total=" << t_dot_ms
+                      << " ms axpy_total=" << t_add_ms
+                      << " ms rel_res=" << final_rel_res << std::endl;
         }
     }
 
@@ -539,6 +646,7 @@ class LinSysSolver
 
     float_type cg_threshold_;
     int  cg_max_itr_;
+    bool profile_linsys_;
 };
 
 } // namespace solver

@@ -4,7 +4,7 @@ simulation_parameters
 
     // Time Marching
     source_max=13.0;
-    nBaseLevelTimeSteps=4;
+    nBaseLevelTimeSteps=10;
     cfl = 0.35;
     cfl_max = 1000;
     Re = 1000.0;

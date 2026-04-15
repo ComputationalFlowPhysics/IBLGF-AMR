@@ -16,8 +16,10 @@
 #include <iostream>
 #include <algorithm>
 #include <vector>
+#include <chrono>
 #include <cmath>
 #include <array>
+#include <exception>
 
 // IBLGF-specific
 #include <iblgf/global.hpp>
@@ -126,6 +128,10 @@ class Ifherk
         cg_max_itr_ = simulation_->dictionary_->template get_or<int>("cg_max_itr", 40);
         write_stress_ = simulation_->dictionary_->template get_or<bool>("write_stress", false);
         write_noca_ = simulation_->dictionary_->template get_or<bool>("write_noca", false);
+        profile_updown_ = simulation_->dictionary_->template get_or<bool>(
+            "profile_updown", true);
+        profile_stage_ = simulation_->dictionary_->template get_or<bool>(
+            "profile_stage", true);
 
         if (dt_base_ < 0) dt_base_ = dx_base_ * cfl_;
 
@@ -651,7 +657,6 @@ class Ifherk
                 l < domain_->tree()->depth(); ++l)
         {
             client->template buffer_exchange<Velocity_in>(l);
-
             for (auto it  = domain_->begin(l);
                     it != domain_->end(l); ++it)
             {
@@ -662,15 +667,11 @@ class Ifherk
                 const auto dx_level =  dx_base/math::pow2(it->refinement_level());
 #ifdef IBLGF_COMPILE_CUDA
                 if constexpr (Setup::Dim == 3)
-                {
                     ifherk_gpu::curl_block<datablock_type, Velocity_in,
                         edge_aux_type>(it->data(), dx_level);
-                }
                 else
-                {
                     domain::Operator::curl<Velocity_in, edge_aux_type>(
                         it->data(), dx_level);
-                }
 #else
                 domain::Operator::curl<Velocity_in,edge_aux_type>( it->data(),dx_level);
 #endif
@@ -1006,10 +1007,35 @@ class Ifherk
     template<class Field>
     void up_and_down()
     {
-        //claen non leafs
+        if (!profile_updown_)
+        {
+            //claen non leafs
+            clean<Field>(true);
+            this->up<Field>();
+            this->down_to_correction<Field>();
+            return;
+        }
+
+        const auto t0 = std::chrono::steady_clock::now();
         clean<Field>(true);
+        const auto t1 = std::chrono::steady_clock::now();
         this->up<Field>();
+        const auto t2 = std::chrono::steady_clock::now();
         this->down_to_correction<Field>();
+        const auto t3 = std::chrono::steady_clock::now();
+
+        const auto clean_ms =
+            std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0)
+                .count();
+        const auto up_ms =
+            std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1)
+                .count();
+        const auto down_ms =
+            std::chrono::duration_cast<std::chrono::milliseconds>(t3 - t2)
+                .count();
+        pcout << "up_and_down fields=" << Field::nFields() << " clean=" << clean_ms
+              << " ms up=" << up_ms << " ms down=" << down_ms << " ms"
+              << std::endl;
     }
 
     template<class Field>
@@ -1143,9 +1169,21 @@ class Ifherk
         clean<cell_aux_type>();
         clean<face_aux_type>();
 
-        nonlinear<u_type, g_i_type>(coeff_a(1, 1) * (-dt_));
-        copy<q_i_type, r_i_type>();
-        add<g_i_type, r_i_type>();
+        mDuration_type t_s1_nl(0), t_s1_copyadd(0);
+        if (profile_stage_) profile_client_barrier();
+        TIME_CODE(t_s1_nl, SINGLE_ARG(
+            nonlinear<u_type, g_i_type>(coeff_a(1, 1) * (-dt_));
+        ));
+        if (profile_stage_) profile_client_barrier();
+        if (profile_stage_) profile_client_barrier();
+        TIME_CODE(t_s1_copyadd, SINGLE_ARG(
+            copy<q_i_type, r_i_type>();
+            add<g_i_type, r_i_type>();
+        ));
+        if (profile_stage_) profile_client_barrier();
+        if (profile_stage_)
+            pcout << "Stage 1 pre-LGF: nonlinear=" << t_s1_nl.count()
+                  << " copy+add=" << t_s1_copyadd.count() << std::endl;
         lin_sys_with_ib_solve(alpha_[0]);
 
         //clean_center_velocity<u_i_type>();
@@ -1174,8 +1212,20 @@ class Ifherk
         add<w_1_type, r_i_type>(dt_ * coeff_a(2, 1));
 
         up_and_down<u_i_type>();
-        nonlinear<u_i_type, g_i_type>(coeff_a(2, 2) * (-dt_));
-        add<g_i_type, r_i_type>();
+        mDuration_type t_s2_nl(0), t_s2_add(0);
+        if (profile_stage_) profile_client_barrier();
+        TIME_CODE(t_s2_nl, SINGLE_ARG(
+            nonlinear<u_i_type, g_i_type>(coeff_a(2, 2) * (-dt_));
+        ));
+        if (profile_stage_) profile_client_barrier();
+        if (profile_stage_) profile_client_barrier();
+        TIME_CODE(t_s2_add, SINGLE_ARG(
+            add<g_i_type, r_i_type>();
+        ));
+        if (profile_stage_) profile_client_barrier();
+        if (profile_stage_)
+            pcout << "Stage 2 pre-LGF: nonlinear=" << t_s2_nl.count()
+                  << " add=" << t_s2_add.count() << std::endl;
 
         lin_sys_with_ib_solve(alpha_[1]);
 
@@ -1199,8 +1249,20 @@ class Ifherk
         psolver.template apply_lgf_IF<r_i_type, r_i_type>(alpha_[1]);
 
         up_and_down<u_i_type>();
-        nonlinear<u_i_type, g_i_type>(coeff_a(3, 3) * (-dt_));
-        add<g_i_type, r_i_type>();
+        mDuration_type t_s3_nl(0), t_s3_add(0);
+        if (profile_stage_) profile_client_barrier();
+        TIME_CODE(t_s3_nl, SINGLE_ARG(
+            nonlinear<u_i_type, g_i_type>(coeff_a(3, 3) * (-dt_));
+        ));
+        if (profile_stage_) profile_client_barrier();
+        if (profile_stage_) profile_client_barrier();
+        TIME_CODE(t_s3_add, SINGLE_ARG(
+            add<g_i_type, r_i_type>();
+        ));
+        if (profile_stage_) profile_client_barrier();
+        if (profile_stage_)
+            pcout << "Stage 3 pre-LGF: nonlinear=" << t_s3_nl.count()
+                  << " add=" << t_s3_add.count() << std::endl;
 
         lin_sys_with_ib_solve(alpha_[2]);
 
@@ -1424,6 +1486,121 @@ class Ifherk
             }
         }
     }
+
+    template <typename F, class BlockType>
+    void zero_neighbor_boundary_slabs(
+        BlockType& block, std::size_t ngb_idx, int clean_width) noexcept
+    {
+        const std::size_t dim = 3;
+        const std::size_t x = ngb_idx % dim;
+        const std::size_t y = (ngb_idx / dim) % dim;
+        const std::size_t z = (ngb_idx / dim / dim) % dim;
+        const int N = block.descriptor().extent()[0];
+        const int lo0 = 0;
+        const int hi0 = N + 2 - clean_width;
+        const int hi1 = N + 3;
+
+        for (std::size_t field_idx = 0; field_idx < F::nFields(); ++field_idx)
+        {
+            auto& lin_data = block(F::tag(), field_idx).linalg_data();
+            if (domain_->dimension() == 3)
+            {
+                if (x == 0)
+                    view(lin_data, xt::all(), xt::all(),
+                        xt::range(lo0, clean_width)) *= 0.0;
+                else if (x == (dim - 1))
+                    view(lin_data, xt::all(), xt::all(),
+                        xt::range(hi0, hi1)) *= 0.0;
+
+                if (y == 0)
+                    view(lin_data, xt::all(), xt::range(lo0, clean_width),
+                        xt::all()) *= 0.0;
+                else if (y == (dim - 1))
+                    view(lin_data, xt::all(), xt::range(hi0, hi1),
+                        xt::all()) *= 0.0;
+
+                if (z == 0)
+                    view(lin_data, xt::range(lo0, clean_width), xt::all(),
+                        xt::all()) *= 0.0;
+                else if (z == (dim - 1))
+                    view(lin_data, xt::range(hi0, hi1), xt::all(),
+                        xt::all()) *= 0.0;
+            }
+            else
+            {
+                if (x == 0)
+                    view(lin_data, xt::all(), xt::range(lo0, clean_width)) *=
+                        0.0;
+                else if (x == (dim - 1))
+                    view(lin_data, xt::all(), xt::range(hi0, hi1)) *= 0.0;
+
+                if (y == 0)
+                    view(lin_data, xt::range(lo0, clean_width), xt::all()) *=
+                        0.0;
+                else if (y == (dim - 1))
+                    view(lin_data, xt::range(hi0, hi1), xt::all()) *= 0.0;
+            }
+        }
+    }
+
+    template <typename F>
+    void clean_leaf_correction_boundary_fast(
+        int l, bool leaf_only_boundary=false, int clean_width=1) noexcept
+    {
+        for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+        {
+            if (!it->locally_owned())
+            {
+                if (!it->has_data() || !it->data().is_allocated()) continue;
+                for (std::size_t field_idx = 0; field_idx < F::nFields();
+                     ++field_idx)
+                {
+                    auto& lin_data =
+                        it->data_r(F::tag(), field_idx).linalg_data();
+                    std::fill(lin_data.begin(), lin_data.end(), 0.0);
+                }
+            }
+        }
+
+        for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+        {
+            if (!it->locally_owned()) continue;
+            if (!it->has_data() || !it->data().is_allocated()) continue;
+
+            if (leaf_only_boundary &&
+                (it->is_correction() || it->is_old_correction()))
+            {
+                for (std::size_t field_idx = 0; field_idx < F::nFields();
+                     ++field_idx)
+                {
+                    auto& lin_data =
+                        it->data_r(F::tag(), field_idx).linalg_data();
+                    std::fill(lin_data.begin(), lin_data.end(), 0.0);
+                }
+            }
+        }
+
+        if (l == domain_->tree()->base_level())
+        {
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned()) continue;
+                if (!it->has_data() || !it->data().is_allocated()) continue;
+
+                for (std::size_t i = 0; i < it->num_neighbors(); ++i)
+                {
+                    auto it2 = it->neighbor(i);
+                    if ((!it2 || !it2->has_data()) ||
+                        (leaf_only_boundary &&
+                            (it2->is_correction() || it2->is_old_correction())))
+                    {
+                        zero_neighbor_boundary_slabs<F>(it->data(), i,
+                            clean_width);
+                    }
+                }
+            }
+        }
+    }
     template <class vel_in, class vel_out>
     void pad_access(bool refresh_correction_only=true)
     {
@@ -1438,7 +1615,14 @@ private:
     {
         auto client=domain_->decomposition().client();
 
-        divergence<r_i_type, cell_aux_type>();
+        mDuration_type t_div(0);
+        if (profile_stage_) profile_client_barrier();
+        TIME_CODE(t_div, SINGLE_ARG(
+            divergence<r_i_type, cell_aux_type>();
+        ));
+        if (profile_stage_) profile_client_barrier();
+        if (profile_stage_)
+            pcout << "pre-LGF divergence in " << t_div.count() << std::endl;
 
         domain_->client_communicator().barrier();
         mDuration_type t_lgf(0);
@@ -1651,71 +1835,172 @@ private:
     template<class Source, class Target>
     void nonlinear(float_type _scale = 1.0) noexcept
     {
-        clean<edge_aux_type>();
-        clean<Target>();
-        clean<face_aux_type>();
+        mDuration_type t_clean_edge(0), t_clean_target(0), t_clean_face(0);
+        if (profile_stage_) profile_client_barrier();
+        TIME_CODE(t_clean_edge, SINGLE_ARG(
+            clean<edge_aux_type>();
+        ));
+        if (profile_stage_) profile_client_barrier();
+        if (profile_stage_) profile_client_barrier();
+        TIME_CODE(t_clean_target, SINGLE_ARG(
+            clean<Target>();
+        ));
+        if (profile_stage_) profile_client_barrier();
+        if (profile_stage_) profile_client_barrier();
+        TIME_CODE(t_clean_face, SINGLE_ARG(
+            clean<face_aux_type>();
+        ));
+        if (profile_stage_) profile_client_barrier();
 
         auto       client = domain_->decomposition().client();
         const auto dx_base = domain_->dx_base();
+        double t_src_exchange_ms = 0.0;
+        double t_curl_ms = 0.0;
+        double t_copy_face_ms = 0.0;
+        double t_edge_exchange_ms = 0.0;
+        double t_edge_clean_boundary_ms = 0.0;
+        double t_nonlinear_ms = 0.0;
+        double t_body_force_ms = 0.0;
 
         //up_and_down<Source>();
 
         for (int l = domain_->tree()->base_level();
              l < domain_->tree()->depth(); ++l)
         {
-
+            if (profile_stage_) profile_client_barrier();
+            auto t0 = std::chrono::steady_clock::now();
             client->template buffer_exchange<Source>(l);
-
+            if (profile_stage_) profile_client_barrier();
+            auto t1 = std::chrono::steady_clock::now();
+            t_src_exchange_ms +=
+                std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0)
+                    .count() /
+                1000.0;
+            if (profile_stage_) profile_client_barrier();
+            auto tc0 = std::chrono::steady_clock::now();
             for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
             {
                 if (!it->locally_owned() || !it->has_data()) continue;
-
                 const auto dx_level =
                     dx_base / math::pow2(it->refinement_level());
 #ifdef IBLGF_COMPILE_CUDA
                 if constexpr (Setup::Dim == 3)
-                {
                     ifherk_gpu::curl_block<datablock_type, Source,
                         edge_aux_type>(it->data(), dx_level);
-                }
                 else
-                {
                     domain::Operator::curl<Source, edge_aux_type>(
                         it->data(), dx_level);
-                }
 #else
                 domain::Operator::curl<Source, edge_aux_type>(
                     it->data(), dx_level);
 #endif
             }
+            if (profile_stage_) profile_client_barrier();
+            auto tc1 = std::chrono::steady_clock::now();
+            t_curl_ms +=
+                std::chrono::duration_cast<std::chrono::microseconds>(tc1 - tc0)
+                    .count() /
+                1000.0;
         }
 
         // clean_leaf_correction_boundary<edge_aux_type>(domain_->tree()->base_level(), true, 2);
         // add background velocity
+        if (profile_stage_) profile_client_barrier();
+        auto ta0 = std::chrono::steady_clock::now();
         copy<Source, face_aux_type>();
         domain::Operator::add_field_expression<face_aux_type>(domain_, simulation_->frame_vel(), T_stage_, -1.0);
+        if (profile_stage_) profile_client_barrier();
+        auto ta1 = std::chrono::steady_clock::now();
+        t_copy_face_ms +=
+            std::chrono::duration_cast<std::chrono::microseconds>(ta1 - ta0)
+                .count() /
+            1000.0;
 
         for (int l = domain_->tree()->base_level();
              l < domain_->tree()->depth(); ++l)
         {
+            if (profile_stage_) profile_client_barrier();
+            auto tb0 = std::chrono::steady_clock::now();
             client->template buffer_exchange<edge_aux_type>(l);
+            if (profile_stage_) profile_client_barrier();
+            auto tb1 = std::chrono::steady_clock::now();
+            t_edge_exchange_ms +=
+                std::chrono::duration_cast<std::chrono::microseconds>(tb1 - tb0)
+                    .count() /
+                1000.0;
             // client->template buffer_exchange<face_aux_type>(l);
-            clean_leaf_correction_boundary<edge_aux_type>(l, false, 2);
+            if (profile_stage_) profile_client_barrier();
+            auto tbc0 = std::chrono::steady_clock::now();
+            clean_leaf_correction_boundary_fast<edge_aux_type>(l, false, 2);
+            if (profile_stage_) profile_client_barrier();
+            auto tbc1 = std::chrono::steady_clock::now();
+            t_edge_clean_boundary_ms +=
+                std::chrono::duration_cast<std::chrono::microseconds>(tbc1 - tbc0)
+                    .count() /
+                1000.0;
+#ifdef IBLGF_COMPILE_CUDA
+            if constexpr (Setup::Dim == 3)
+            {
+                std::vector<datablock_type*> level_blocks;
+                level_blocks.reserve(256);
+                for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+                {
+                    if (!it->locally_owned() || !it->has_data()) continue;
+                    level_blocks.push_back(&it->data());
+                }
 
+                // Batch a subset of blocks at a time to reduce transfer overhead
+                // while keeping robustness with per-chunk fallback.
+                constexpr std::size_t kBatchChunk = 32;
+                bool batched_ok = true;
+                if (profile_stage_) profile_client_barrier();
+                auto tn0 = std::chrono::steady_clock::now();
+                for (std::size_t off = 0; off < level_blocks.size();
+                     off += kBatchChunk)
+                {
+                    const std::size_t end =
+                        ((off + kBatchChunk) < level_blocks.size())
+                            ? (off + kBatchChunk)
+                            : level_blocks.size();
+                    std::vector<datablock_type*> chunk(
+                        level_blocks.begin() + off, level_blocks.begin() + end);
+                    try
+                    {
+                        ifherk_gpu::nonlinear_level_batched<datablock_type*,
+                            face_aux_type, edge_aux_type, Target>(
+                            chunk, _scale);
+                    }
+                    catch (const std::exception&)
+                    {
+                        batched_ok = false;
+                        break;
+                    }
+                }
+                if (batched_ok)
+                {
+                    if (profile_stage_) profile_client_barrier();
+                    auto tn1 = std::chrono::steady_clock::now();
+                    t_nonlinear_ms +=
+                        std::chrono::duration_cast<std::chrono::microseconds>(
+                            tn1 - tn0)
+                            .count() /
+                        1000.0;
+                    continue;
+                }
+            }
+#endif
+            if (profile_stage_) profile_client_barrier();
+            auto tn0 = std::chrono::steady_clock::now();
             for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
             {
                 if (!it->locally_owned() || !it->has_data()) continue;
 #ifdef IBLGF_COMPILE_CUDA
                 if constexpr (Setup::Dim == 3)
-                {
-                    ifherk_gpu::nonlinear_block<datablock_type,
-                        face_aux_type, edge_aux_type, Target>(it->data());
-                }
+                    ifherk_gpu::nonlinear_block<datablock_type, face_aux_type,
+                        edge_aux_type, Target>(it->data());
                 else
-                {
                     domain::Operator::nonlinear<face_aux_type, edge_aux_type,
                         Target>(it->data());
-                }
 #else
                 domain::Operator::nonlinear<face_aux_type, edge_aux_type, Target>(
                     it->data());
@@ -1729,13 +2014,42 @@ private:
                     lin_data *= _scale; //scale with time step size
                 }
             }
+            if (profile_stage_) profile_client_barrier();
+            auto tn1 = std::chrono::steady_clock::now();
+            t_nonlinear_ms +=
+                std::chrono::duration_cast<std::chrono::microseconds>(tn1 - tn0)
+                    .count() /
+                1000.0;
 
             //client->template buffer_exchange<Target>(l);
             //clean_leaf_correction_boundary<Target>(l, true,3);
         }
 
         if (std::abs(b_f_mag) > 1e-5) {
+            auto tf0 = std::chrono::steady_clock::now();
+            if (profile_stage_) profile_client_barrier();
             add_body_force<Target>(_scale);
+            if (profile_stage_) profile_client_barrier();
+            auto tf1 = std::chrono::steady_clock::now();
+            t_body_force_ms +=
+                std::chrono::duration_cast<std::chrono::microseconds>(tf1 - tf0)
+                    .count() /
+                1000.0;
+        }
+
+        if (profile_stage_)
+        {
+            pcout << "nonlinear clean: edge=" << t_clean_edge.count()
+                  << " target=" << t_clean_target.count()
+                  << " face=" << t_clean_face.count() << std::endl;
+            pcout << "nonlinear breakdown: src_exchange=" << t_src_exchange_ms
+                  << " ms curl=" << t_curl_ms
+                  << " ms copy+frame=" << t_copy_face_ms
+                  << " ms edge_exchange=" << t_edge_exchange_ms
+                  << " ms edge_clean_boundary=" << t_edge_clean_boundary_ms
+                  << " ms nonlinear_op=" << t_nonlinear_ms
+                  << " ms body_force=" << t_body_force_ms << " ms"
+                  << std::endl;
         }
 
         
@@ -1778,6 +2092,7 @@ private:
     void divergence() noexcept
     {
         auto client = domain_->decomposition().client();
+        const auto dx_base = domain_->dx_base();
 
         up_and_down<Source>();
 
@@ -1785,15 +2100,23 @@ private:
              l < domain_->tree()->depth(); ++l)
         {
             client->template buffer_exchange<Source>(l);
-            const auto dx_base = domain_->dx_base();
 
             for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
             {
                 if (!it->locally_owned() || !it->has_data()) continue;
                 const auto dx_level =
                     dx_base / math::pow2(it->refinement_level());
+#ifdef IBLGF_COMPILE_CUDA
+                if constexpr (Setup::Dim == 3)
+                    ifherk_gpu::divergence_block<datablock_type, Source, Target>(
+                        it->data(), dx_level);
+                else
+                    domain::Operator::divergence<Source, Target>(
+                        it->data(), dx_level);
+#else
                 domain::Operator::divergence<Source, Target>(
                     it->data(), dx_level);
+#endif
             }
 
             //client->template buffer_exchange<Target>(l);
@@ -1807,20 +2130,29 @@ private:
     {
         //up_and_down<Source>();
         domain::Operator::domainClean<Target>(domain_);
+        const auto dx_base = domain_->dx_base();
 
         for (int l = domain_->tree()->base_level();
              l < domain_->tree()->depth(); ++l)
         {
             auto client = domain_->decomposition().client();
             //client->template buffer_exchange<Source>(l);
-            const auto dx_base = domain_->dx_base();
             for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
             {
                 if (!it->locally_owned() || !it->has_data()) continue;
                 const auto dx_level =
                     dx_base / math::pow2(it->refinement_level());
+#ifdef IBLGF_COMPILE_CUDA
+                if constexpr (Setup::Dim == 3)
+                    ifherk_gpu::gradient_block<datablock_type, Source, Target>(
+                        it->data(), dx_level);
+                else
+                    domain::Operator::gradient<Source, Target>(
+                        it->data(), dx_level);
+#else
                 domain::Operator::gradient<Source, Target>(
                     it->data(), dx_level);
+#endif
                 for (std::size_t field_idx = 0; field_idx < Target::nFields();
                      ++field_idx)
                 {
@@ -1919,17 +2251,55 @@ private:
     {
         static_assert(From::nFields() == To::nFields(),
             "number of fields doesn't match when add");
-        for (auto it = domain_->begin(); it != domain_->end(); ++it)
+        for (int l = domain_->tree()->base_level(); l < domain_->tree()->depth();
+             ++l)
         {
-            if (!it->locally_owned() || !it->has_data()) continue;
-            for (std::size_t field_idx = 0; field_idx < From::nFields();
-                 ++field_idx)
+            std::vector<datablock_type*> level_blocks;
+            level_blocks.reserve(256);
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
             {
-                it->data_r(To::tag(), field_idx)
-                    .linalg()
-                    .get()
-                    ->cube_noalias_view() +=
-                    it->data_r(From::tag(), field_idx).linalg_data() * scale;
+                if (!it->locally_owned() || !it->has_data()) continue;
+                level_blocks.push_back(&it->data());
+            }
+#ifdef IBLGF_COMPILE_CUDA
+            if constexpr (Setup::Dim == 3)
+            {
+                constexpr std::size_t kBatchChunk = 32;
+                bool batched_ok = true;
+                for (std::size_t off = 0; off < level_blocks.size();
+                     off += kBatchChunk)
+                {
+                    const std::size_t end =
+                        ((off + kBatchChunk) < level_blocks.size())
+                            ? (off + kBatchChunk)
+                            : level_blocks.size();
+                    std::vector<datablock_type*> chunk(level_blocks.begin() + off,
+                        level_blocks.begin() + end);
+                    try
+                    {
+                        ifherk_gpu::add_level_batched<datablock_type*, From, To>(
+                            chunk, scale);
+                    }
+                    catch (const std::exception&)
+                    {
+                        batched_ok = false;
+                        break;
+                    }
+                }
+                if (batched_ok) continue;
+            }
+#endif
+            for (auto* b : level_blocks)
+            {
+                for (std::size_t field_idx = 0; field_idx < From::nFields();
+                     ++field_idx)
+                {
+                    (*b)(To::tag(), field_idx)
+                        .linalg()
+                        .get()
+                        ->cube_noalias_view() +=
+                        (*b)(From::tag(), field_idx).linalg_data() * scale;
+                }
             }
         }
     }
@@ -1987,16 +2357,60 @@ private:
         static_assert(From::nFields() == To::nFields(),
             "number of fields doesn't match when copy");
 
-        for (auto it = domain_->begin(); it != domain_->end(); ++it)
+        for (int l = domain_->tree()->base_level(); l < domain_->tree()->depth();
+             ++l)
         {
-            if (!it->locally_owned() || !it->has_data()) continue;
-            for (std::size_t field_idx = 0; field_idx < From::nFields();
-                 ++field_idx)
+            std::vector<datablock_type*> level_blocks;
+            level_blocks.reserve(256);
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
             {
-                for (auto& n:it->data().node_field())
-                    n(To::tag(), field_idx) = n(From::tag(), field_idx) * scale;
+                if (!it->locally_owned() || !it->has_data()) continue;
+                level_blocks.push_back(&it->data());
+            }
+#ifdef IBLGF_COMPILE_CUDA
+            if constexpr (Setup::Dim == 3)
+            {
+                constexpr std::size_t kBatchChunk = 32;
+                bool batched_ok = true;
+                for (std::size_t off = 0; off < level_blocks.size();
+                     off += kBatchChunk)
+                {
+                    const std::size_t end =
+                        ((off + kBatchChunk) < level_blocks.size())
+                            ? (off + kBatchChunk)
+                            : level_blocks.size();
+                    std::vector<datablock_type*> chunk(level_blocks.begin() + off,
+                        level_blocks.begin() + end);
+                    try
+                    {
+                        ifherk_gpu::copy_level_batched<datablock_type*, From, To>(
+                            chunk, scale);
+                    }
+                    catch (const std::exception&)
+                    {
+                        batched_ok = false;
+                        break;
+                    }
+                }
+                if (batched_ok) continue;
+            }
+#endif
+            for (auto* b : level_blocks)
+            {
+                for (std::size_t field_idx = 0; field_idx < From::nFields();
+                     ++field_idx)
+                {
+                    for (auto& n:b->node_field())
+                        n(To::tag(), field_idx) = n(From::tag(), field_idx) * scale;
+                }
             }
         }
+    }
+
+    inline void profile_client_barrier() noexcept
+    {
+        if (!domain_->is_client()) return;
+        domain_->client_communicator().barrier();
     }
 
   private:
@@ -2041,6 +2455,8 @@ private:
     bool updating_source_max_ = false;
     bool write_stress_= false;
     bool write_noca_= false;
+    bool profile_updown_ = false;
+    bool profile_stage_ = false;
     bool all_time_max_;
     bool use_adaptation_correction;
     int restart_base_freq_;

@@ -291,7 +291,11 @@ struct CommonTree : public SetupBase<CommonTree, parameters>
         // this->initialize();
         clean<u_sym_type>();
         // up_and_down<u_type>();   
-        solver::ReflectField<SetupBase> rf(&this->simulation_); //u has field, u_sym has reflected field 
+        auto domain_dict = simulation_.dictionary_->get_dictionary("domain");
+        const auto bd_base = domain_dict->template get<int, Dim>("bd_base");
+        const int block_extent = domain_dict->template get<int>("block_extent");
+        const int mirror_span = (-2 * bd_base[1]) / block_extent;
+        solver::ReflectField<SetupBase> rf(&this->simulation_, mirror_span); //u has field, u_sym has reflected field 
         // make u_s and u_a fields
         rf.combine_reflection<u_type,u_sym_type,u_s_type,u_a_type>();
 

@@ -262,15 +262,23 @@ class Domain
                 },
                 false);
 
-            //assuming the same order
-            int c = 0;
+            // Map restart leaf flags to octants in the same traversal order used
+            // by Tree::write(), which serializes only octants with data.
+            std::size_t c = 0;
             for (auto it = this->begin(); it != this->end(); ++it)
             {
                 if (it->level() + 1 > this->tree()->depth())
                     this->tree()->depth() = it->level() + 1;
+                if (!it->has_data()) continue;
+                if (c >= leafs.size())
+                    throw std::runtime_error(
+                        "Domain restart: leaf flag count mismatch while reading keys.");
                 it->flag_leaf(leafs[c]);
                 c++;
             }
+            if (c != leafs.size())
+                throw std::runtime_error(
+                    "Domain restart: unused leaf flags after reading keys.");
 
             std::cout << "Server read restart from keys done " << std::endl;
         }
@@ -350,15 +358,23 @@ class Domain
                 },
                 false);
 
-            //assuming the same order
-            int c = 0;
+            // Map restart leaf flags to octants in the same traversal order used
+            // by Tree::write(), which serializes only octants with data.
+            std::size_t c = 0;
             for (auto it = this->begin(); it != this->end(); ++it)
             {
                 if (it->level() + 1 > this->tree()->depth())
                     this->tree()->depth() = it->level() + 1;
+                if (!it->has_data()) continue;
+                if (c >= leafs.size())
+                    throw std::runtime_error(
+                        "Domain restart: leaf flag count mismatch while reading keys.");
                 it->flag_leaf(static_cast<bool>(leafs[c]));
                 c++;
             }
+            if (c != leafs.size())
+                throw std::runtime_error(
+                    "Domain restart: unused leaf flags after reading keys.");
 
             std::cout << "Server read restart from keys done " << std::endl;
         }

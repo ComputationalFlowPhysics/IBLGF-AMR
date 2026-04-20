@@ -1,77 +1,90 @@
-#include <boost/mpi.hpp>
-#include <boost/mpi/environment.hpp>
 #include <boost/mpi/communicator.hpp>
+#include <boost/mpi/environment.hpp>
+
+#include <iostream>
+#include <string>
+#include <vector>
 
 #include "common_tree.hpp"
-#include <iostream>
-#include <vector>
 #include <iblgf/dictionary/dictionary.hpp>
 #include <iblgf/solver/modal_analysis/merge_trees.hpp>
-using namespace iblgf;
-int
-main(int argc, char* argv[])
+
+namespace
+{
+
+std::string get_input_path(int argc, char* argv[])
+{
+    if (argc > 1 && argv[1][0] != '-') { return argv[1]; }
+    return "./configFile";
+}
+
+std::string flow_file_path(const std::string& dir, const int idx)
+{
+    return "./" + dir + "/flowTime_" + std::to_string(idx) + ".hdf5";
+}
+
+std::string tree_file_path(const std::string& dir, const int idx)
+{
+    return "./" + dir + "/tree_info_" + std::to_string(idx) + ".bin";
+}
+
+} // namespace
+
+int main(int argc, char* argv[])
 {
     boost::mpi::environment  env(argc, argv);
     boost::mpi::communicator world;
 
-    std::string input = "./";
-    input += std::string("configFile");
+    iblgf::Dictionary dictionary(get_input_path(argc, argv), argc, argv);
+    auto              sim_dict = dictionary.get_dictionary("simulation_parameters");
+    auto              dict_out = sim_dict->get_dictionary("output");
 
-    if (argc > 1 && argv[1][0] != '-') { input = argv[1]; }
+    const std::string pp_dir = dict_out->template get<std::string>("directory");
+    const std::string dir = dict_out->template get_or<std::string>("field_dir", pp_dir);
 
-    // Read in dictionary
-    Dictionary dictionary(input, argc, argv);
+    const int idx_start = sim_dict->template get_or<int>("nStart", 100);
+    const int n_total = sim_dict->template get_or<int>("nTotal", 100);
+    const int nskip = sim_dict->template get_or<int>("nskip", 100);
 
-    // Find output directory
-    auto        dict_out = dictionary.get_dictionary("simulation_parameters")->get_dictionary("output");
-    std::string pp_dir = dict_out->template get<std::string>("directory");
-    std::string dir=dict_out->template get_or<std::string>("field_dir", pp_dir);
+    const std::string tree_ref_file = sim_dict->template get<std::string>("tree_ref_file");
+    const std::string flow_ref_file = sim_dict->template get<std::string>("flow_ref_file");
+    const int         ref_levels = sim_dict->template get_or<int>("nLevels", 0);
 
-    int idxStart = dictionary.get_dictionary("simulation_parameters")->get_or<int>("nStart", 100);
-    int nTotal = dictionary.get_dictionary("simulation_parameters")->get_or<int>("nTotal", 100);
-    int nskip = dictionary.get_dictionary("simulation_parameters")->get_or<int>("nskip", 100);
+    auto ref_domain = std::make_unique<iblgf::CommonTree>(&dictionary, tree_ref_file, flow_ref_file);
 
-    std::string tree_ref_file_ = dictionary.get_dictionary("simulation_parameters")->get<std::string>("tree_ref_file");
-    std::string flow_ref_file_ = dictionary.get_dictionary("simulation_parameters")->get<std::string>("flow_ref_file");
+    std::vector<iblgf::CommonTree::domain_t::key_t> octs;
+    std::vector<int>                                level_change;
 
-    int ref_levels_ = dictionary.get_dictionary("simulation_parameters")->get_or<int>("nLevels", 0);
-    std::vector<CommonTree::domain_t::key_t> octs;
-    std::vector<int>                         level_change;
-    // // std::unique_ptr<CommonTree>       last_tree;
-    // // std::unique_ptr<CommonTree>       tree_1;
-    // // std::unique_ptr<CommonTree>       new_tree;
-    // std::string                       flow_file_1 = "./" + dir + "/flowTime_" + std::to_string(idxStart) + ".hdf5";
-    // std::string                       tree_file_1 = "./" + dir + "/tree_info_" + std::to_string(idxStart) + ".bin";
-
-    auto ref_domain_ = std::make_unique<CommonTree>(&dictionary, tree_ref_file_, flow_ref_file_);
-    octs.clear();
-    level_change.clear();
-
-    for (int i = 0; i < nTotal; i++)
+    for (int i = 0; i < n_total; ++i)
     {
-        int         timeIdx = idxStart + i * nskip;
-        std::string flow_file_i = "./" + dir + "/flowTime_" + std::to_string(timeIdx) + ".hdf5";
-        std::string tree_file_i = "./" + dir + "/tree_info_" + std::to_string(timeIdx) + ".bin";
-        auto        ref_tree = ref_domain_->tree();
-        auto        domain_i = std::make_unique<CommonTree>(&dictionary, tree_file_i, flow_file_i);
-        auto        tree_i = domain_i->tree();
+        const int idx = idx_start + i * nskip;
+        const std::string flow_file_i = flow_file_path(dir, idx);
+        const std::string tree_file_i = tree_file_path(dir, idx);
 
-        for (int j = ref_levels_; j >= 0; --j)
+        auto ref_tree = ref_domain->tree();
+        auto domain_i = std::make_unique<iblgf::CommonTree>(&dictionary, tree_file_i, flow_file_i);
+        auto tree_i = domain_i->tree();
+
+        for (int level = ref_levels; level >= 0; --level)
         {
             octs.clear();
             level_change.clear();
-            MergeTrees<CommonTree>::get_level_changes(ref_tree, tree_i, j, octs, level_change);
-            // if(octs.empty()) continue;
+
+            iblgf::MergeTrees<iblgf::CommonTree>::get_level_changes_distributed(
+                ref_tree, tree_i, level, octs, level_change, world);
+
             if (world.rank() == 0)
-                std::cout << "Adapting to ref level " << j << " with " << octs.size() << " octs." << std::endl;
-            int tt = -1;; //only save after all levels have been adapted
-            domain_i->run_adapt_from_keys<CommonTree::u_type>(tt, octs, level_change);
+            {
+                std::cout << "Adapting to ref level " << level << " with " << octs.size()
+                          << " octs." << std::endl;
+            }
+
+            iblgf::MergeTrees<iblgf::CommonTree>::run_adapt_from_keys_distributed(
+                *domain_i, -1, octs, level_change, world);
         }
-        domain_i->symfield<CommonTree::u_type,CommonTree::u_type>(timeIdx);
-        // we want to adapt domain_i to ref_domain and have snapshot of new grid at that time
 
-        // MergeTrees<CommonTree>::getDelOcts(ref_tree, tree_i, octs, level_change);
-
-        // ref_domain_->run_adapt_del(octs, level_change);
+        domain_i->symfield<iblgf::CommonTree::u_type, iblgf::CommonTree::u_type>(idx);
     }
+
+    return 0;
 }

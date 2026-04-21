@@ -15,6 +15,7 @@ simulation_parameters
     nLevels=0;
     global_refinement=0;
     refinement_factor=0.125;
+    use_amrex_poisson=true;
     #correction=true;
     #subtract_non_leaf=true;
 

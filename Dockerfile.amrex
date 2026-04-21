@@ -1,0 +1,32 @@
+FROM ccardina/iblgf:cpu
+
+ARG AMREX_REPO=https://github.com/AMReX-Codes/amrex.git
+ARG AMREX_BRANCH=development
+
+USER root
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        git \
+        cmake \
+        g++ \
+        make \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN git clone --depth 1 --branch ${AMREX_BRANCH} ${AMREX_REPO} /opt/amrex
+
+RUN cmake -S /opt/amrex -B /opt/amrex/build \
+      -DAMREX_SPACEDIM=3 \
+      -DAMREX_MPI=ON \
+      -DAMREX_EB=OFF \
+      -DAMREX_FORTRAN=OFF \
+      -DAMREX_GPU_BACKEND=NONE \
+      -DAMREX_CUDA=OFF \
+      -DAMREX_OPENMP=OFF \
+      -DAMREX_INSTALL=ON \
+      -DCMAKE_INSTALL_PREFIX=/opt/amrex/install \
+    && cmake --build /opt/amrex/build -j \
+    && cmake --install /opt/amrex/build
+
+ENV CMAKE_PREFIX_PATH=/opt/amrex/install
+
+USER root

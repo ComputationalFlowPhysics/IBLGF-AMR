@@ -19,9 +19,22 @@
 
 #include <iostream>
 #include <chrono>
+#include <limits>
+#include <stdexcept>
+#include <cstdio>
 
 // IBLGF-specific
 #include "../../setups/setup_base.hpp"
+#ifdef IBLGF_USE_AMREX
+#include <iblgf/amrex/amrex_domain_builder.hpp>
+#include <iblgf/solver/poisson/poisson_amrex.hpp>
+#include <AMReX_ParallelDescriptor.H>
+#include <iblgf/lgf/lgf_gl.hpp>
+#include <AMReX_MFIter.H>
+#include <AMReX_MultiFab.H>
+#include <AMReX_MultiFabUtil.H>
+#include <AMReX_iMultiFab.H>
+#endif
 
 namespace iblgf
 {
@@ -194,6 +207,9 @@ struct VortexRingTest : public SetupBase<VortexRingTest, parameters>
         domain_->correction_buffer()= simulation_.dictionary_->
             template get_or<bool>("correction_buffer", true);
 
+        use_amrex_poisson_ = simulation_.dictionary_->
+            template get_or<bool>("use_amrex_poisson", false);
+
         pcout << "\n Setup:  Test - Vortex rings \n" << std::endl;
         pcout << "Number of refinement levels: " << nLevels_ << std::endl;
 
@@ -266,6 +282,16 @@ struct VortexRingTest : public SetupBase<VortexRingTest, parameters>
 
     float_type solve()
     {
+        if (use_amrex_poisson_)
+        {
+#ifdef IBLGF_USE_AMREX
+            return solve_amrex();
+#else
+            throw std::runtime_error(
+                "AMReX Poisson path requested but IBLGF_USE_AMREX is OFF");
+#endif
+        }
+
         std::ofstream                     ofs, ofs_level, ofs_timings;
         parallel_ostream::ParallelOstream pofs(
             io::output().dir() + "/" + "global_timings.txt", 1, ofs),
@@ -352,6 +378,175 @@ struct VortexRingTest : public SetupBase<VortexRingTest, parameters>
         //return inf_error;
         return finest_level_Linf_error_phi_();
     }
+
+#ifdef IBLGF_USE_AMREX
+    float_type solve_amrex()
+    {
+        using amrex_ext::FieldId;
+        using amrex_ext::build_amrex_domain_from_iblgf;
+        boost::mpi::communicator world;
+        float_type max_err = 0.0;
+        std::size_t local_count = 0;
+
+        std::fprintf(stderr, "[AMReX] solve_amrex rank=%d entering builder domain=%p\n",
+            world.rank(), static_cast<void*>(domain_.get()));
+        std::fflush(stderr);
+        auto amr = build_amrex_domain_from_iblgf(domain_.get(), 1, 1);
+        if (world.rank() == 0) std::cout << "[AMReX] domain built" << std::endl;
+
+        const auto bb = domain_->bounding_box();
+        const auto center =
+            (bb.max() - bb.min()) / 2.0 + bb.min();
+        const float_type dx_base = domain_->dx_base();
+
+        if (world.rank() == 0) std::cout << "[AMReX] fill source/exact" << std::endl;
+        for (int lev = 0; lev < amr.nLevels(); ++lev)
+        {
+            auto& src = amr.field(FieldId::Source, lev);
+            auto& exact = amr.field(FieldId::CorrectionTmp, lev);
+            const float_type dx_level = dx_base / std::pow(2.0, lev);
+            const float_type scaling = std::pow(2.0, lev);
+
+            for (amrex::MFIter mfi(src); mfi.isValid(); ++mfi)
+            {
+                const auto box = mfi.validbox();
+                auto       arr_s = src.array(mfi);
+                auto       arr_e = exact.array(mfi);
+
+                for (int k = box.smallEnd(2); k <= box.bigEnd(2); ++k)
+                {
+                    for (int j = box.smallEnd(1); j <= box.bigEnd(1); ++j)
+                    {
+                        for (int i = box.smallEnd(0); i <= box.bigEnd(0); ++i)
+                        {
+                            const float_type x =
+                                (static_cast<float_type>(i) -
+                                    center[0] * scaling + 0.5) * dx_level;
+                            const float_type y =
+                                (static_cast<float_type>(j) -
+                                    center[1] * scaling + 0.5) * dx_level;
+                            const float_type z =
+                                (static_cast<float_type>(k) -
+                                    center[2] * scaling + 0.5) * dx_level;
+
+                            arr_s(i, j, k, 0) = vorticity(x, y, z);
+                            arr_e(i, j, k, 0) = psi(x, y, z);
+                        }
+                    }
+                }
+            }
+        }
+
+        if (world.rank() == 0) std::cout << "[AMReX] setup solver" << std::endl;
+        iblgf::lgf::LGF_GL<Dim> kernel;
+        iblgf::fmm::AmrexFmmFrontEnd<Dim> fmm_front(
+            &amr, domain_->block_extent()[0]);
+        iblgf::solver::PoissonSolverAMReX<
+            iblgf::fmm::AmrexFmmFrontEnd<Dim>,
+            iblgf::lgf::LGF_GL<Dim>>
+            psolver(&amr, &fmm_front);
+
+        if (world.rank() == 0) std::cout << "[AMReX] apply_lgf" << std::endl;
+        psolver.apply_lgf(&kernel, 0, 0);
+        if (world.rank() == 0) std::cout << "[AMReX] apply_lgf done" << std::endl;
+
+        // Rebuild exact solution for error comparison (CorrectionTmp)
+        if (world.rank() == 0) std::cout << "[AMReX] rebuild exact" << std::endl;
+        for (int lev = 0; lev < amr.nLevels(); ++lev)
+        {
+            auto& exact = amr.field(FieldId::CorrectionTmp, lev);
+            const float_type dx_level = dx_base / std::pow(2.0, lev);
+            const float_type scaling = std::pow(2.0, lev);
+
+            for (amrex::MFIter mfi(exact); mfi.isValid(); ++mfi)
+            {
+                const auto box = mfi.validbox();
+                auto       arr_e = exact.array(mfi);
+
+                for (int k = box.smallEnd(2); k <= box.bigEnd(2); ++k)
+                {
+                    for (int j = box.smallEnd(1); j <= box.bigEnd(1); ++j)
+                    {
+                        for (int i = box.smallEnd(0); i <= box.bigEnd(0); ++i)
+                        {
+                            const float_type x =
+                                (static_cast<float_type>(i) -
+                                    center[0] * scaling + 0.5) * dx_level;
+                            const float_type y =
+                                (static_cast<float_type>(j) -
+                                    center[1] * scaling + 0.5) * dx_level;
+                            const float_type z =
+                                (static_cast<float_type>(k) -
+                                    center[2] * scaling + 0.5) * dx_level;
+
+                            arr_e(i, j, k, 0) = psi(x, y, z);
+                        }
+                    }
+                }
+            }
+        }
+
+        if (world.rank() == 0) std::cout << "[AMReX] compute Linf" << std::endl;
+        for (int lev = 0; lev < amr.nLevels(); ++lev)
+        {
+            auto& approx = amr.field(FieldId::Target, lev);
+            auto& exact = amr.field(FieldId::CorrectionTmp, lev);
+            std::unique_ptr<amrex::iMultiFab> mask;
+            if (lev + 1 < amr.nLevels())
+            {
+                mask = std::make_unique<amrex::iMultiFab>(
+                    amrex::makeFineMask(approx, amr.boxArray(lev + 1),
+                        amr.refRatio().at(lev), 1, 0, amrex::MFInfo()));
+            }
+            amrex::iMultiFab* mask_ptr = mask.get();
+
+            for (amrex::MFIter mfi(approx); mfi.isValid(); ++mfi)
+            {
+                const auto box = mfi.validbox();
+                auto       arr_a = approx.array(mfi);
+                auto       arr_e = exact.array(mfi);
+                amrex::Array4<int> arr_m;
+                if (mask_ptr) arr_m = (*mask_ptr)[mfi].array();
+
+                for (int k = box.smallEnd(2); k <= box.bigEnd(2); ++k)
+                {
+                    for (int j = box.smallEnd(1); j <= box.bigEnd(1); ++j)
+                    {
+                        for (int i = box.smallEnd(0); i <= box.bigEnd(0); ++i)
+                        {
+                            if (mask_ptr && arr_m(i, j, k) == 0) continue;
+                            const float_type err =
+                                std::abs(arr_a(i, j, k, 0) -
+                                    arr_e(i, j, k, 0));
+                            if (err > max_err) max_err = err;
+                            ++local_count;
+                        }
+                    }
+                }
+            }
+        }
+
+        std::size_t global_count = 0;
+        boost::mpi::all_reduce(
+            world, local_count, global_count, std::plus<std::size_t>());
+
+        if (global_count == 0)
+        {
+            max_err = std::numeric_limits<float_type>::infinity();
+        }
+
+        max_err = boost::mpi::all_reduce(
+            world, max_err, boost::mpi::maximum<float_type>());
+
+        if (world.rank() == 0)
+        {
+            std::cout << "AMReX Linf error: " << max_err
+                      << " (cells: " << global_count << ")"
+                      << std::endl;
+        }
+        return max_err;
+    }
+#endif
 
     double run()
     {
@@ -533,6 +728,7 @@ struct VortexRingTest : public SetupBase<VortexRingTest, parameters>
     float_type               refinement_factor_ = 1. / 8;
     bool                     use_correction_ = true;
     bool                     subtract_non_leaf_ = false;
+    bool                     use_amrex_poisson_ = false;
 };
 
 //#endif

@@ -34,6 +34,10 @@ endif()
 
 set(Ptest_list poisson_Test)
 set(Ptest_list_gpu poisson_gpu_Test)
+set(POISSON_MPI_NP ${IBLGF_MPI_NP})
+if(IBLGF_USE_AMREX)
+    set(POISSON_MPI_NP 8)
+endif()
 # add the executable
 add_executable(poisson.x poisson.cpp ${SOURCES})
 target_link_libraries(poisson.x
@@ -71,7 +75,7 @@ foreach (item ${Ptest_list})
     target_link_libraries(${item} iblgf_test_main)
     add_test(
         NAME ${item}_parallel_np13
-        COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_PREFLAGS} ${MPIEXEC_NUMPROC_FLAG} ${IBLGF_MPI_NP} $<TARGET_FILE:${item}> WORKING_DIRECTORY ${CTEST_WORKING_DIRECTORY}/${NAME}
+        COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_PREFLAGS} ${MPIEXEC_NUMPROC_FLAG} ${POISSON_MPI_NP} $<TARGET_FILE:${item}> WORKING_DIRECTORY ${CTEST_WORKING_DIRECTORY}/${NAME}
         #COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_PREFLAGS} ${MPIEXEC_NUMPROC_FLAG} 8 $<TARGET_FILE:${item}> WORKING_DIRECTORY ${CTEST_WORKING_DIRECTORY}/${NAME}
     )
 endforeach()

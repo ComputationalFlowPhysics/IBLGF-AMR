@@ -37,7 +37,7 @@ runs/
 *.out
 *.app
 *.x
-
+build*
 
 #Misc:
 *.swp
@@ -48,6 +48,8 @@ build4/cmake_install.cmake
 .vscode/
 bash_Wei
 bash_Wei_OG
+
+
 
 # runs
 printf "\n# Build + outputs\nbuild/\nruns/\n" >> .gitignore

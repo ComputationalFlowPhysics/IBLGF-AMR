@@ -11,16 +11,22 @@
 //      ▀▀▀▀▀▀▀▀▀▀▀  ▀▀▀▀▀▀▀▀▀▀   ▀▀▀▀▀▀▀▀▀▀▀  ▀▀▀▀▀▀▀▀▀▀▀  ▀
 
 #include <gtest/gtest.h>
+#include <cmath>
 #include <boost/filesystem.hpp>
 #include <boost/mpi/communicator.hpp>
 #include <boost/mpi/environment.hpp>
+
+#ifdef IBLGF_USE_AMREX
+#include <AMReX.H>
+#endif
 
 #include "vortexrings.hpp"
 #include <iblgf/dictionary/dictionary.hpp>
 
 namespace iblgf {
 
-double poisson3d_run(const std::string input, int argc = 0, char** argv = nullptr)
+double poisson3d_run(const std::string input, double* exp_out = nullptr,
+    int argc = 0, char** argv = nullptr)
 {
     // Read in dictionary
     dictionary::Dictionary dictionary(input, argc, argv);
@@ -34,7 +40,8 @@ double poisson3d_run(const std::string input, int argc = 0, char** argv = nullpt
         dictionary.get_dictionary("simulation_parameters")
                   ->template get_or<double>("EXP_LInf", 0.0);
 
-    return measured - EXP_LInf;
+    if (exp_out) *exp_out = EXP_LInf;
+    return measured;
 }
 
 TEST(Poisson3DAnalyticTest, ConfigsInCurrentDir)
@@ -54,10 +61,20 @@ TEST(Poisson3DAnalyticTest, ConfigsInCurrentDir)
                           << s.filename() << " -------------" << std::endl;
             }
 
-            const double result = poisson3d_run(s.string());
+            double exp_linf = 0.0;
+            const double measured = poisson3d_run(s.string(), &exp_linf);
+            const double result = measured - exp_linf;
+
+            if (world.rank() == 0)
+            {
+                std::cout << "Measured Linf: " << measured
+                          << "  EXP_LInf: " << exp_linf
+                          << "  diff: " << result << std::endl;
+            }
 
             world.barrier();
 
+            EXPECT_TRUE(std::isfinite(result));
             EXPECT_LT(result, 0.0);
         }
     }
@@ -72,5 +89,15 @@ int main(int argc, char** argv)
     boost::mpi::environment env(argc, argv);
     boost::mpi::communicator world;
 
-    return RUN_ALL_TESTS();
+#ifdef IBLGF_USE_AMREX
+    amrex::Initialize(argc, argv);
+#endif
+
+    const int result = RUN_ALL_TESTS();
+
+#ifdef IBLGF_USE_AMREX
+    amrex::Finalize();
+#endif
+
+    return result;
 }

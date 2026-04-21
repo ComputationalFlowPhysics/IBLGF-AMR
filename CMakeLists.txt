@@ -17,6 +17,7 @@ else()
 endif()
 project(IBLGF VERSION 0.0.0 LANGUAGES CXX C)
 
+option(IBLGF_USE_AMREX "Enable AMReX-based data layout and solvers" OFF)
 
 option(USE_GPU "Build with GPU support" OFF)
 if(USE_GPU)
@@ -78,6 +79,9 @@ find_package(xtensor-blas REQUIRED)
 find_package(xtl REQUIRED)
 find_package(FFTW REQUIRED)
 find_package(BLAS REQUIRED)
+if(IBLGF_USE_AMREX)
+    find_package(AMReX REQUIRED)
+endif()
 
 #################################################################################################
 #FIXME:
@@ -162,6 +166,10 @@ target_link_libraries(iblgf INTERFACE hdf5)
 target_link_libraries(iblgf INTERFACE ${BLAS_LIBRARIES})
 target_link_libraries(iblgf INTERFACE ${FFTW_LIBRARIES})
 target_compile_features(iblgf INTERFACE cxx_std_17)
+if(IBLGF_USE_AMREX)
+    target_link_libraries(iblgf INTERFACE AMReX::amrex)
+    target_compile_definitions(iblgf INTERFACE IBLGF_USE_AMREX=1)
+endif()
 
 enable_testing()
 set(CTEST_WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/unit_testing)

@@ -1,41 +1,31 @@
 #include <boost/mpi/communicator.hpp>
 #include <boost/mpi/environment.hpp>
 
-#include <iostream>
 #include <string>
-#include <vector>
 
-#include "common_tree.hpp"
 #include <iblgf/dictionary/dictionary.hpp>
 #include <iblgf/solver/modal_analysis/merge_trees.hpp>
 
-using namespace iblgf;
+#include "common_tree.hpp"
+
+namespace
+{
+
+std::string get_input_path(int argc, char* argv[])
+{
+    if (argc > 1 && argv[1][0] != '-') { return argv[1]; }
+    return "./configFile";
+}
+
+} // namespace
+
 int main(int argc, char* argv[])
 {
-        boost::mpi::environment env(argc, argv);
-	boost::mpi::communicator world;
+    boost::mpi::environment env(argc, argv);
 
-	std::string input="./";
-    input += std::string("configFile");
-
-    if (argc>1 && argv[1][0] != '-')
-    {
-        input = argv[1];
-    }
-
-
-   // Read in dictionary
-    dictionary::Dictionary dictionary(input, argc, argv);
-    auto merger=MergeTrees<CommonTree>(&dictionary);
-    auto ref_domain=merger.ref_to_symmetric_ref();
-
-
-    if (world.rank() == 0) { std::cout << "Symmetry adaptation completed." << std::endl; }
-
-    ref_domain->initialize();
-    ref_domain->symfield<iblgf::CommonTree::u_type, iblgf::CommonTree::u_type>(2);
-
-    if (world.rank() == 0) { std::cout << "Symmetry completed." << std::endl; }
+    iblgf::Dictionary dictionary(get_input_path(argc, argv), argc, argv);
+    auto merger = iblgf::MergeTrees<iblgf::CommonTree>(&dictionary);
+    merger.ref_to_symmetric_ref_with_symfield();
 
     return 0;
 }

@@ -103,3 +103,12 @@ add_test(
     COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_PREFLAGS} ${MPIEXEC_NUMPROC_FLAG} 2 $<TARGET_FILE:symgrid3D_Test>
     WORKING_DIRECTORY ${CTEST_WORKING_DIRECTORY}/${NAME}
 )
+
+add_executable(symfield3D_Test symfield_Test.cpp ${SOURCES})
+add_dependencies(symfield3D_Test copy_files_common_tree)
+target_link_libraries(symfield3D_Test iblgf_test_main)
+add_test(
+    NAME symfield_Test_3D
+    COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_PREFLAGS} ${MPIEXEC_NUMPROC_FLAG} 2 $<TARGET_FILE:symfield3D_Test>
+    WORKING_DIRECTORY ${CTEST_WORKING_DIRECTORY}/${NAME}
+)

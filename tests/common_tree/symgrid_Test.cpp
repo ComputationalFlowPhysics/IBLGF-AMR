@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <functional>
+
 #include <boost/mpi/collectives.hpp>
 #include <boost/mpi/communicator.hpp>
 
@@ -20,61 +21,41 @@ TEST(Symgrid3DUnitTest, ProducesYMirrorSymmetricLeafGrid)
                      << world.size() << " ranks.";
     }
 
-    Dictionary dictionary("./configs/common_tree_symgrid.cfg", 0, nullptr);
-    auto       sim_dict = dictionary.get_dictionary("simulation_parameters");
-    const int  ref_levels = sim_dict->template get_or<int>("nLevels", 0);
-
-    auto ref_domain = std::make_unique<CommonTree>(&dictionary);
-
-    std::vector<CommonTree::domain_t::key_t> octs;
-    std::vector<int>                         level_change;
-    auto domain_dict = dictionary.get_dictionary("simulation_parameters")->get_dictionary("domain");
-    const auto bd_base = domain_dict->template get<int, Dim>("bd_base");
-    const auto block_extent = domain_dict->template get<int>("block_extent");
-    const int  mirror_span = (-2 * bd_base[1]) / block_extent;
-    for (int i = ref_levels; i >= 0; --i)
     {
-        octs.clear();
-        level_change.clear();
-        auto ref_tree = ref_domain->tree();
-        MergeTrees<CommonTree>::symgrid(ref_tree, i, octs, level_change, mirror_span, false);
-        const int tt = i == 0 ? 1 : -1;
-        MergeTrees<CommonTree>::run_adapt_from_keys_distributed(
-            *ref_domain, tt, octs, level_change, world);
+        Dictionary dictionary("./configs/common_tree_3.cfg", 0, nullptr);
+        auto domain = std::make_unique<CommonTree>(&dictionary);
+        domain->run(301, false);
     }
 
-    for (int i = ref_levels; i >= 0; --i)
-    {
-        octs.clear();
-        level_change.clear();
-        auto ref_tree = ref_domain->tree();
-        MergeTrees<CommonTree>::symgrid(ref_tree, i, octs, level_change, mirror_span, false);
-        const int tt = i == 0 ? 1 : -1;
-        MergeTrees<CommonTree>::run_adapt_from_keys_distributed(
-            *ref_domain, tt, octs, level_change, world);
-    }
+    Dictionary dictionary("./configs/config_symgrid3D", 0, nullptr);
+    auto merger = MergeTrees<CommonTree>(&dictionary);
+    auto ref_domain = merger.ref_to_symmetric_ref();
 
     auto tree = ref_domain->tree();
-    int  local_missing_pairs = 0;
-    int  local_checked_leafs = 0;
+    int local_missing_pairs = 0;
+    int local_checked_leafs = 0;
+
+    auto domain_dict =
+        dictionary.get_dictionary("simulation_parameters")->get_dictionary("domain");
+    const auto bd_base = domain_dict->template get<int, Dim>("bd_base");
+    const auto block_extent = domain_dict->template get<int>("block_extent");
+    const int mirror_span = (-2 * bd_base[1]) / block_extent;
 
     for (auto it = tree->begin(); it != tree->end(); ++it)
     {
         if (!it->has_data()) continue;
         if (!it->is_leaf()) continue;
-        if (it->is_correction()) continue;
 
         const auto coord = it->tree_coordinate();
         const auto level = it->key().level();
-        const int  ref_level = static_cast<int>(level) - tree->base_level();
+        const int ref_level = static_cast<int>(level) - tree->base_level();
         if (ref_level < 0) continue;
 
         auto opposite_coord = coord;
         opposite_coord[1] = mirror_span * (1 << ref_level) - (coord[1] + 1);
 
         auto opposite = tree->find_octant(CommonTree::domain_t::key_t(opposite_coord, level));
-        if (!opposite || !opposite->has_data() || !opposite->is_leaf() ||
-            opposite->is_correction())
+        if (!opposite || !opposite->has_data() || !opposite->is_leaf())
         {
             ++local_missing_pairs;
         }

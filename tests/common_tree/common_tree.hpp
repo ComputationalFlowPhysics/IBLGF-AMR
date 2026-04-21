@@ -78,6 +78,7 @@ struct CommonTree : public SetupBase<CommonTree, parameters>
                                                     int diff_level) {
             return false;
         };
+        domain_->ib().init(_d->get_dictionary("simulation_parameters"), domain_->dx_base(), nLevelRefinement_, 100);
         domain_->init_refine(nLevelRefinement_, 0, 0);
 
         
@@ -183,13 +184,14 @@ struct CommonTree : public SetupBase<CommonTree, parameters>
     void run(int i,bool adapt_=true)
     {
         boost::mpi::communicator world;
-        time_integration_t ifherk(&this->simulation_);
+        
         if(world.rank()== 0)
         {
             std::cout << "Running common tree test with i = " << i << std::endl;
         }
         if (adapt_)
         {
+            time_integration_t ifherk(&this->simulation_);
             ifherk.adapt(true,false);
         }
         
@@ -204,7 +206,7 @@ struct CommonTree : public SetupBase<CommonTree, parameters>
         }
 
 
-        std::string filename = "common_tree_" + std::to_string(i) + ".hdf5";
+        std::string filename = "common_tree_" + std::to_string(i);
         // simulation_.write("common_tree.hdf5");
         simulation_.write(filename);
     }
@@ -234,6 +236,15 @@ struct CommonTree : public SetupBase<CommonTree, parameters>
     //     simulation_.write("adapted_to_ref");
 
     // }
+    void save_adapted(int idx)
+    {
+        std::string filename = "adapted_to_ref_" + std::to_string(idx);
+        simulation_.write(filename);
+    }
+    void save_symmetric_ref()
+    {
+        simulation_.write("symmetric_ref");
+    }
     template<class Field,class key_t>
     void run_adapt_from_keys(int timeIdx,std::vector<key_t>& octs,
                             std::vector<int>& level_change)

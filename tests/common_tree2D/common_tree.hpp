@@ -219,6 +219,10 @@ struct CommonTree : public SetupBase<CommonTree, parameters>
         this->initialize();
         simulation_.write("adapted_to_ref");
     }
+    void save_symmetric_ref()
+    {
+        simulation_.write("symmetric_ref");
+    }
 
     template<class Field,class key_t>
     void run_adapt_from_keys(int timeIdx,std::vector<key_t>& octs,
@@ -267,7 +271,11 @@ struct CommonTree : public SetupBase<CommonTree, parameters>
         if(timeIdx>0) simulation_.write("adapted_to_ref_"+std::to_string(timeIdx));
         // interpolate
     }
-
+    void save_adapted(int idx)
+    {
+        std::string filename = "adapted_to_ref_" + std::to_string(idx);
+        simulation_.write(filename);
+    }
     template<class Field, class Target>
     void symfield(int timeIdx=-1)
     {

@@ -102,6 +102,15 @@ add_test(
     WORKING_DIRECTORY ${CTEST_WORKING_DIRECTORY}/${NAME}
 )
 
+add_executable(restart2D_Test restart_Test.cpp ${SOURCES})
+add_dependencies(restart2D_Test copy_files_petsc)
+target_link_libraries(restart2D_Test iblgf_test_main)
+add_test(
+    NAME restart_Test_2D
+    COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_PREFLAGS} ${MPIEXEC_NUMPROC_FLAG} 2 $<TARGET_FILE:restart2D_Test>
+    WORKING_DIRECTORY ${CTEST_WORKING_DIRECTORY}/${NAME}
+)
+
 add_executable(test_POD_Test test_POD_Test.cpp ${SOURCES})
 target_link_libraries(test_POD_Test
                       iblgf_test_main

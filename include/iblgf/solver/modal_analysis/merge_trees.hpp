@@ -15,20 +15,37 @@
 
 #include <algorithm>
 #include <cmath>
+#include <fstream>
 #include <memory>
 #include <set>
 #include <vector>
 #include <boost/mpi/collectives.hpp>
 #include <iblgf/dictionary/dictionary.hpp>
 #include <iblgf/IO/parallel_ostream.hpp>
+#include <iblgf/domain/domain.hpp>
+#include <iblgf/types.hpp>
 
 namespace iblgf
 {
 using namespace domain;
+using namespace types;
+using namespace dictionary;
 template<class Setup>
 class MergeTrees
 {
   public:
+    struct CommonTreeRestartState
+    {
+        int         next_idx = 0;
+        std::string ref_tree_file;
+        std::string ref_flow_file;
+    };
+
+    struct AdaptRestartState
+    {
+        int next_idx = 0;
+    };
+
     // using tree_t = typename Setup::tree_t;
     using key_id_t = typename Setup::key_id_t;
     using key_t = typename Setup::domain_t::key_t;
@@ -40,22 +57,77 @@ class MergeTrees
     MergeTrees& operator=(const MergeTrees&) & = delete;
     MergeTrees& operator=(MergeTrees&&) & = default;
     ~MergeTrees() = default;
-    MergeTrees(Dictionary* _d)
+    MergeTrees(dictionary::Dictionary* _d)
     : dict_ref_(_d)
     {
         auto dict_ref = _d->get_dictionary("simulation_parameters");
         auto dict_out = dict_ref->get_dictionary("output");
-        dir_out_ = dict_out->template get_or<std::string>("directory",
+        dir_out_ = dict_out->get_or<std::string>("directory",
             "output"); // where common tree or adapted snapshots are stored
-        dir_in_ = dict_out->template get_or<std::string>("field_dir", dir_out_); // where original snapshots are stored
-        nStart_ = dict_ref->template get_or<int>("nStart", 0);                   // starting index of snapshots to merge
-        nTotal_ = dict_ref->template get_or<int>("nTotal", 1);                   // total number of snapshots to merge
-        nSkip_ = dict_ref->template get_or<int>("nskip", 1); // skip factor between snapshots to merge
-        tree_file_prefix_ = dict_ref->template get_or<std::string>("tree_file_prefix", "tree_info_");
-        flow_file_prefix_ = dict_ref->template get_or<std::string>("flow_file_prefix", "flowTime_");
+        dir_in_ = dict_out->get_or<std::string>("field_dir", dir_out_); // where original snapshots are stored
+        nStart_ = dict_ref->get_or<int>("nStart", 0);                   // starting index of snapshots to merge
+        nTotal_ = dict_ref->get_or<int>("nTotal", 1);                   // total number of snapshots to merge
+        nSkip_ = dict_ref->get_or<int>("nskip", 1); // skip factor between snapshots to merge
+        tree_file_prefix_ = dict_ref->get_or<std::string>("tree_file_prefix", "tree_info_");
+        flow_file_prefix_ = dict_ref->get_or<std::string>("flow_file_prefix", "flowTime_");
     }
 
   public:
+    static bool load_common_tree_restart_state(
+        const std::string& path, CommonTreeRestartState& state)
+    {
+        std::ifstream in(path);
+        if (!in.good()) { return false; }
+
+        std::string line;
+        while (std::getline(in, line))
+        {
+            const auto pos = line.find('=');
+            if (pos == std::string::npos) continue;
+            const auto key = line.substr(0, pos);
+            const auto val = line.substr(pos + 1);
+            if (key == "next_idx") state.next_idx = std::stoi(val);
+            else if (key == "ref_tree_file")
+                state.ref_tree_file = val;
+            else if (key == "ref_flow_file")
+                state.ref_flow_file = val;
+        }
+        return state.next_idx > 0 && !state.ref_tree_file.empty() && !state.ref_flow_file.empty();
+    }
+
+    static void write_common_tree_restart_state(
+        const std::string& path, const CommonTreeRestartState& state)
+    {
+        std::ofstream out(path, std::ios::trunc);
+        out << "next_idx=" << state.next_idx << "\n";
+        out << "ref_tree_file=" << state.ref_tree_file << "\n";
+        out << "ref_flow_file=" << state.ref_flow_file << "\n";
+    }
+
+    static bool load_adapt_restart_state(const std::string& path, AdaptRestartState& state)
+    {
+        std::ifstream in(path);
+        if (!in.good()) { return false; }
+
+        std::string line;
+        while (std::getline(in, line))
+        {
+            const auto pos = line.find('=');
+            if (pos == std::string::npos) continue;
+            const auto key = line.substr(0, pos);
+            const auto val = line.substr(pos + 1);
+            if (key == "next_idx") state.next_idx = std::stoi(val);
+        }
+        return state.next_idx > 0;
+    }
+
+    static void write_adapt_restart_state(
+        const std::string& path, const AdaptRestartState& state)
+    {
+        std::ofstream out(path, std::ios::trunc);
+        out << "next_idx=" << state.next_idx << "\n";
+    }
+
     std::unique_ptr<Setup> get_common_tree()
     {
         boost::mpi::communicator world;
@@ -82,23 +154,62 @@ class MergeTrees
         return ref_domain_;
     }
 
+    void adapt_to_ref_with_restart()
+    { adapt_to_ref(); }
+
+    std::unique_ptr<Setup> ref_to_symmetric_ref_with_symfield()
+    {
+        auto sim_dict = dict_ref_->get_dictionary("simulation_parameters");
+        const bool do_symfield = sim_dict->get_or<bool>("do_symfield", true);
+        const int  symfield_time_idx = sim_dict->get_or<int>("symfield_time_idx", 2);
+
+        auto ref_domain = ref_to_symmetric_ref();
+        if (do_symfield)
+        {
+            ref_domain->initialize();
+            ref_domain->template symfield<typename Setup::u_type, typename Setup::u_type>(
+                symfield_time_idx);
+        }
+        return ref_domain;
+    }
+
     void adapt_to_ref()
     {
         boost::mpi::communicator world;
         pcout << "\nAdapting trees to common tree...\n" << std::endl;
+        auto sim_dict = dict_ref_->get_dictionary("simulation_parameters");
         std::string tree_ref_file =
-            dict_ref_->get_dictionary("simulation_parameters")->template get<std::string>("tree_ref_file");
+            sim_dict->get<std::string>("tree_ref_file");
         std::string flow_ref_file =
-            dict_ref_->get_dictionary("simulation_parameters")->template get<std::string>("flow_ref_file");
-        int  ref_levels = dict_ref_->get_dictionary("simulation_parameters")->template get_or<int>("nLevels", 0);
+            sim_dict->get<std::string>("flow_ref_file");
+        int  ref_levels = sim_dict->get_or<int>("nLevels", 0);
+        const bool resume = sim_dict->get_or<bool>("resume", false);
+        const bool do_symfield = sim_dict->get_or<bool>("do_symfield", false);
+        const std::string restart_file =
+            sim_dict->get_or<std::string>("restart_file", "./adapt_to_ref_restart.txt");
+
+        const int idx_end = nStart_ + (nTotal_ - 1) * nSkip_;
+        int       idx_begin = nStart_;
+        AdaptRestartState restart_state;
+        const bool has_restart = resume && load_adapt_restart_state(restart_file, restart_state);
+        if (has_restart && restart_state.next_idx <= idx_end)
+        {
+            idx_begin = restart_state.next_idx;
+            if (world.rank() == 0)
+            {
+                std::cout << "Resuming adapt_to_ref from restart file: " << restart_file
+                          << " (next_idx=" << idx_begin << ")" << std::endl;
+            }
+        }
+
         auto ref_domain = std::make_unique<Setup>(dict_ref_, tree_ref_file, flow_ref_file);
         auto ref_tree = ref_domain->tree();
         std::vector<key_t> octs;
         std::vector<int>   level_change;
-        for (int i = 0; i < nTotal_; ++i)
+        for (int idx = idx_begin; idx <= idx_end; idx += nSkip_)
         {
-            std::string tree_file_i = tree_file_path(dir_in_, nStart_ + i * nSkip_);
-            std::string flow_file_i = flow_file_path(dir_in_, nStart_ + i * nSkip_);
+            std::string tree_file_i = tree_file_path(dir_in_, idx);
+            std::string flow_file_i = flow_file_path(dir_in_, idx);
             auto        domain_i = std::make_unique<Setup>(dict_ref_, tree_file_i, flow_file_i);
             auto        tree_i = domain_i->tree();
             for (int level = ref_levels; level >= 0; --level)
@@ -113,8 +224,19 @@ class MergeTrees
                     run_adapt_from_keys_distributed(*domain_i, -1, octs, level_change, world);
                 }
             }
-            pcout << "interpolated snapshot " << i << "/" << nTotal_ - 1 << " to common tree reference levels."
-                  << std::endl;
+            if (do_symfield)
+            {
+                domain_i->template symfield<typename Setup::u_type, typename Setup::u_type>(idx);
+            }
+            domain_i->save_adapted(idx);
+            if (world.rank() == 0)
+            {
+                AdaptRestartState out_state;
+                out_state.next_idx = idx + nSkip_;
+                write_adapt_restart_state(restart_file, out_state);
+            }
+            pcout << "interpolated snapshot " << idx << "/" << idx_end
+                  << " to common tree reference levels." << std::endl;
         }
     }
     std::unique_ptr<Setup> adapt_to_ref(int idx)
@@ -122,10 +244,10 @@ class MergeTrees
         boost::mpi::communicator world;
         pcout << "\nAdapting trees to common tree...\n" << std::endl;
         std::string tree_ref_file =
-            dict_ref_->get_dictionary("simulation_parameters")->template get<std::string>("tree_ref_file");
+            dict_ref_->get_dictionary("simulation_parameters")->get<std::string>("tree_ref_file");
         std::string flow_ref_file =
-            dict_ref_->get_dictionary("simulation_parameters")->template get<std::string>("flow_ref_file");
-        int  ref_levels = dict_ref_->get_dictionary("simulation_parameters")->template get_or<int>("nLevels", 0);
+            dict_ref_->get_dictionary("simulation_parameters")->get<std::string>("flow_ref_file");
+        int  ref_levels = dict_ref_->get_dictionary("simulation_parameters")->get_or<int>("nLevels", 0);
         auto ref_domain = std::make_unique<Setup>(dict_ref_, tree_ref_file, flow_ref_file);
         auto ref_tree = ref_domain->tree();
         std::vector<key_t> octs;
@@ -147,6 +269,7 @@ class MergeTrees
                 run_adapt_from_keys_distributed(*domain_i, -1, octs, level_change, world);
             }
         }
+        domain_i->save_adapted(idx);
         pcout << "interpolated snapshot " << idx << "/" << nTotal_ - 1 << " to common tree reference levels."
               << std::endl;
         return domain_i;
@@ -156,11 +279,11 @@ class MergeTrees
     {
         boost::mpi::communicator world;
         auto                     sim_dict = dict_ref_->get_dictionary("simulation_parameters");
-        std::string              tree_ref_file = sim_dict->template get<std::string>("tree_ref_file");
-        std::string              flow_ref_file = sim_dict->template get<std::string>("flow_ref_file");
+        std::string              tree_ref_file = sim_dict->get<std::string>("tree_ref_file");
+        std::string              flow_ref_file = sim_dict->get<std::string>("flow_ref_file");
         auto       domain_dict = dict_ref_->get_dictionary("simulation_parameters")->get_dictionary("domain");
-        const auto bd_base = domain_dict->template get<int, Dim>("bd_base");
-        const auto block_extent = domain_dict->template get<int>("block_extent");
+        const auto bd_base = domain_dict->get<int, Setup::u_type::nFields()>("bd_base");
+        const auto block_extent = domain_dict->get<int>("block_extent");
         const int  mirror_span = (-2 * bd_base[1]) / block_extent;
 
         auto               ref_domain = std::make_unique<Setup>(dict_ref_, tree_ref_file, flow_ref_file);
@@ -179,9 +302,10 @@ class MergeTrees
                 bool no_changes = octs.empty();
                 boost::mpi::broadcast(world, no_changes, 0);
                 if (no_changes) break; // all ranks take the same branch
-                run_adapt_from_keys_distributed(*ref_domain, i == 0 ? 1 : -1, octs, level_change, world);
+                run_adapt_from_keys_distributed(*ref_domain, -1, octs, level_change, world);
             }
         }
+        ref_domain->save_symmetric_ref();
         return ref_domain;
     }
 
@@ -317,9 +441,9 @@ class MergeTrees
     }
 
     template<class SetupType>
-    static types::float_type max_linear_u_error(SetupType& domain_setup)
+    static float_type max_linear_u_error(SetupType& domain_setup)
     {
-        types::float_type local_max = 0.0;
+        float_type local_max = 0.0;
         auto              tree = domain_setup.tree();
         for (auto it = tree->begin(); it != tree->end(); ++it)
         {
@@ -606,7 +730,7 @@ class MergeTrees
     int                               nTotal_;
     int                               nSkip_;
     parallel_ostream::ParallelOstream pcout = parallel_ostream::ParallelOstream(1);
-    Dictionary*                       dict_ref_;
+    dictionary::Dictionary*           dict_ref_;
     std::string                       tree_file_prefix_;
     std::string                       flow_file_prefix_;
 };

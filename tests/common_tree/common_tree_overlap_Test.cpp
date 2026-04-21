@@ -1,8 +1,9 @@
 #include <gtest/gtest.h>
 
-#include <algorithm>
 #include <memory>
 #include <set>
+
+#include <boost/mpi/environment.hpp>
 
 #include "common_tree.hpp"
 #include <iblgf/dictionary/dictionary.hpp>
@@ -15,8 +16,7 @@ namespace
 
 using key_id_t = CommonTree::key_id_t;
 
-std::set<key_id_t> set_intersection(const std::set<key_id_t>& a,
-                                    const std::set<key_id_t>& b)
+std::set<key_id_t> set_intersection(const std::set<key_id_t>& a, const std::set<key_id_t>& b)
 {
     std::set<key_id_t> out;
     for (const auto& k : a)
@@ -33,61 +33,51 @@ TEST(CommonTree3DUnitTest, OverlapFromThreeDifferentDomainsIsCorrect)
     boost::mpi::communicator world;
     if (world.size() < 2)
     {
-        GTEST_SKIP() << "common_tree overlap test requires at least 2 MPI ranks; got "
+        GTEST_SKIP() << "common_tree overlap 3D test requires at least 2 MPI ranks; got "
                      << world.size() << " ranks.";
     }
 
-    Dictionary dict1("./configs/common_tree_overlap_1.cfg", 0, nullptr);
-    Dictionary dict2("./configs/common_tree_overlap_2.cfg", 0, nullptr);
-    Dictionary dict3("./configs/common_tree_overlap_3.cfg", 0, nullptr);
+    Dictionary dict1("./configs/common_tree_1.cfg", 0, nullptr);
+    Dictionary dict2("./configs/common_tree_2.cfg", 0, nullptr);
+    Dictionary dict3("./configs/common_tree_3.cfg", 0, nullptr);
 
     auto domain1 = std::make_unique<CommonTree>(&dict1);
     auto domain2 = std::make_unique<CommonTree>(&dict2);
     auto domain3 = std::make_unique<CommonTree>(&dict3);
 
-    const auto keys1 = MergeTrees<CommonTree>::globalize_key_set(
-        world, MergeTrees<CommonTree>::collect_physical_leaf_key_ids(*domain1));
-    const auto keys2 = MergeTrees<CommonTree>::globalize_key_set(
-        world, MergeTrees<CommonTree>::collect_physical_leaf_key_ids(*domain2));
-    const auto keys3 = MergeTrees<CommonTree>::globalize_key_set(
-        world, MergeTrees<CommonTree>::collect_physical_leaf_key_ids(*domain3));
+    domain1->run(101, false);
+    domain2->run(102, false);
+    domain3->run(103, false);
+    world.barrier();
 
-    const auto overlap12 = set_intersection(keys1, keys2);
-    const auto overlap123 = set_intersection(overlap12, keys3);
+    Dictionary dict_ref("./configs/common_tree_driver.cfg", 0, nullptr);
+    auto       merger = MergeTrees<CommonTree>(&dict_ref);
+    auto       ref_domain = merger.get_common_tree();
 
-    ASSERT_FALSE(overlap123.empty())
+    auto keys1 = MergeTrees<CommonTree>::get_tree_keys(*domain1);
+    auto keys2 = MergeTrees<CommonTree>::get_tree_keys(*domain2);
+    auto keys3 = MergeTrees<CommonTree>::get_tree_keys(*domain3);
+
+    auto overlap12 = set_intersection(keys1, keys2);
+    auto overlap123 = set_intersection(overlap12, keys3);
+
+    EXPECT_FALSE(overlap123.empty())
         << "Expected non-empty overlap region for the 3 AMR configs.";
 
-    std::vector<CommonTree::domain_t::key_t> octs_to_delete;
-    std::vector<int>                         level_change;
+    auto final_keys = MergeTrees<CommonTree>::get_tree_keys(*ref_domain);
+    EXPECT_EQ(overlap123.size(), final_keys.size())
+        << "Final tree should have same number of leaves as the 3-way overlap.";
+    EXPECT_EQ(overlap123, final_keys)
+        << "Final tree leaves must exactly match the 3-way overlap.";
 
-    auto tree1 = domain1->tree();
-    auto tree2 = domain2->tree();
-    MergeTrees<CommonTree>::getDelOcts_distributed(
-        tree1, tree2, octs_to_delete, level_change, world);
-    MergeTrees<CommonTree>::run_adapt_del_distributed(
-        *domain1, octs_to_delete, level_change, world);
-
-    tree1 = domain1->tree();
-    auto tree3 = domain3->tree();
-    octs_to_delete.clear();
-    level_change.clear();
-    MergeTrees<CommonTree>::getDelOcts_distributed(
-        tree1, tree3, octs_to_delete, level_change, world);
-    MergeTrees<CommonTree>::run_adapt_del_distributed(
-        *domain1, octs_to_delete, level_change, world);
-
-    const auto keys_final = MergeTrees<CommonTree>::globalize_key_set(
-        world, MergeTrees<CommonTree>::collect_physical_leaf_key_ids(*domain1));
-    EXPECT_EQ(keys_final, overlap123)
-        << "Common tree leaves must exactly match the 3-way overlap.";
-
-    EXPECT_TRUE(std::includes(keys1.begin(), keys1.end(), keys_final.begin(), keys_final.end()))
-        << "Final grid must be a subset of config-1 grid.";
-    EXPECT_TRUE(std::includes(keys2.begin(), keys2.end(), keys_final.begin(), keys_final.end()))
-        << "Final grid must be a subset of config-2 grid.";
-    EXPECT_TRUE(std::includes(keys3.begin(), keys3.end(), keys_final.begin(), keys_final.end()))
-        << "Final grid must be a subset of config-3 grid.";
+    ref_domain->run(199, false);
 }
 
 } // namespace iblgf
+
+int main(int argc, char** argv)
+{
+    ::testing::InitGoogleTest(&argc, argv);
+    boost::mpi::environment env(argc, argv);
+    return RUN_ALL_TESTS();
+}

@@ -406,7 +406,7 @@ class POD
                                 row_mean += PetscRealPart(value);
                             }
                             row_mean /= nTotal; // mean of the row
-                            n(Field_mean::tag(), field_idx) = PetscRealPart(row_mean); // store mean in the field
+                            n(Field_mean::tag(), field_idx) = row_mean; // store mean in the field
                             // std::cout<<"Row mean for i_local " << i_local << " : " << row_mean << std::endl;
                             for (int k = 0; k < nTotal; ++k)
                             {

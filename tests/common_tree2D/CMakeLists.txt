@@ -38,11 +38,12 @@ target_link_libraries(common_tree2D.x
                       xsimd)
                       
 set(PETSC $ENV{PETSC_DIR}/$ENV{PETSC_ARCH})
-set(ENV{PKG_CONFIG_PATH} ${PETSC}/lib/pkgconfig)
+set(ENV{PKG_CONFIG_PATH}
+    "${PETSC}/lib/pkgconfig:${PETSC}/lib64/pkgconfig:/usr/local/lib/pkgconfig:/usr/local/lib64/pkgconfig:$ENV{PKG_CONFIG_PATH}")
 message("${PETSC}")
-message("${PKG_CONFIG_PATH}")
-pkg_search_module(PETSC REQUIRED IMPORTED_TARGET PETSc)
-pkg_search_module(SLEPC REQUIRED IMPORTED_TARGET SLEPc)
+message("$ENV{PKG_CONFIG_PATH}")
+pkg_search_module(PETSC REQUIRED IMPORTED_TARGET PETSc petsc)
+pkg_search_module(SLEPC REQUIRED IMPORTED_TARGET SLEPc slepc)
 
 
 #INCLUDE_DIRECTORIES(${PETSC_INCLUDES})

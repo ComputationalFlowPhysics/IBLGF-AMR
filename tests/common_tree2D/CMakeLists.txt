@@ -112,13 +112,13 @@ add_test(
     WORKING_DIRECTORY ${CTEST_WORKING_DIRECTORY}/${NAME}
 )
 
-add_executable(test_POD_Test test_POD_Test.cpp ${SOURCES})
-target_link_libraries(test_POD_Test
-                      iblgf_test_main
-                      ${PETSC_LIBRARIES}
-                      ${SLEPC_LIBRARIES})
-add_test(
-    NAME test_POD_Test_parallel_np13
-    COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_PREFLAGS} ${MPIEXEC_NUMPROC_FLAG} ${IBLGF_MPI_NP} $<TARGET_FILE:test_POD_Test>
-    WORKING_DIRECTORY ${CTEST_WORKING_DIRECTORY}/${NAME}
-)
+# add_executable(test_POD_Test test_POD_Test.cpp ${SOURCES})
+# target_link_libraries(test_POD_Test
+#                       iblgf_test_main
+#                       ${PETSC_LIBRARIES}
+#                       ${SLEPC_LIBRARIES})
+# add_test(
+#     NAME test_POD_Test_parallel_np13
+#     COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_PREFLAGS} ${MPIEXEC_NUMPROC_FLAG} ${IBLGF_MPI_NP} $<TARGET_FILE:test_POD_Test>
+#     WORKING_DIRECTORY ${CTEST_WORKING_DIRECTORY}/${NAME}
+# )

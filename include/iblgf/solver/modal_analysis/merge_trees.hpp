@@ -132,25 +132,85 @@ class MergeTrees
     {
         boost::mpi::communicator world;
         pcout << "\nCollecting tree keys from all domains...\n" << std::endl;
-        std::vector<key_t> octs;
-        std::vector<int>   level_change;
-        // start with the first snapshot as the initial common tree
+
+        auto read_tree_file_keys = [&](const std::string& tree_file) {
+            std::set<key_id_t> keys;
+            if (world.rank() == 0)
+            {
+                std::ifstream ifs(tree_file, std::ios::binary);
+                if (!ifs.is_open())
+                {
+                    throw std::runtime_error("Could not open file: " + tree_file);
+                }
+                ifs.seekg(0, std::ios::end);
+                const auto file_size = ifs.tellg();
+                ifs.seekg(0, std::ios::beg);
+                const std::size_t n_entries = static_cast<std::size_t>(file_size) /
+                    (sizeof(key_id_t) + sizeof(bool));
+                for (std::size_t i = 0; i < n_entries; ++i)
+                {
+                    key_id_t id{};
+                    ifs.read(reinterpret_cast<char*>(&id), sizeof(id));
+                    keys.insert(id);
+                }
+            }
+            std::vector<key_id_t> keys_vec;
+            if (world.rank() == 0) keys_vec.assign(keys.begin(), keys.end());
+            boost::mpi::broadcast(world, keys_vec, 0);
+            return std::set<key_id_t>(keys_vec.begin(), keys_vec.end());
+        };
+
+        // Start with snapshot 0 as the reference domain, but compute overlap
+        // keys from raw tree files to avoid adaptation side effects.
         std::string tree_file_0 = tree_file_path(dir_in_, nStart_);
         std::string flow_file_0 = flow_file_path(dir_in_, nStart_);
         auto        ref_domain_ = std::make_unique<Setup>(dict_ref_, tree_file_0, flow_file_0);
-        auto        ref_tree = ref_domain_->tree();
-        octs.clear();
-        level_change.clear();
+        auto        overlap_keys = read_tree_file_keys(tree_file_0);
+
         for (int i = 1; i < nTotal_; i++)
         {
             std::string tree_file_i = tree_file_path(dir_in_, nStart_ + i * nSkip_);
-            std::string flow_file_i = flow_file_path(dir_in_, nStart_ + i * nSkip_);
-            auto        domain_i = std::make_unique<Setup>(dict_ref_, tree_file_i, flow_file_i);
-            auto        tree_i = domain_i->tree();
-            getDelOcts(ref_tree, tree_i, octs, level_change);
-            ref_domain_->run_adapt_del(octs, level_change);
+            auto        keys_i = read_tree_file_keys(tree_file_i);
+
+            std::set<key_id_t> intersection;
+            std::set_intersection(overlap_keys.begin(), overlap_keys.end(),
+                keys_i.begin(), keys_i.end(),
+                std::inserter(intersection, intersection.begin()));
+            overlap_keys.swap(intersection);
+
             pcout << "Merged tree from snapshot " << i << "/" << nTotal_ - 1 << std::endl;
+            if (overlap_keys.empty())
+            {
+                pcout << "Warning: common-tree key intersection is empty after snapshot " << i
+                      << std::endl;
+                break;
+            }
         }
+
+        auto ref_tree = ref_domain_->tree();
+        std::vector<key_t> to_delete;
+        to_delete.reserve(1024);
+        for (auto it = ref_tree->begin(); it != ref_tree->end(); ++it)
+        {
+            if (!it->has_data()) continue;
+            if (overlap_keys.find(it->key().id()) != overlap_keys.end()) continue;
+            to_delete.emplace_back(it->key());
+        }
+
+        std::sort(to_delete.begin(), to_delete.end(), [](const key_t& a, const key_t& b) {
+            return a.level() > b.level();
+        });
+        for (const auto& k : to_delete)
+        {
+            auto oct = ref_tree->find_octant(k);
+            if (!oct || !oct->has_data()) continue;
+            ref_tree->delete_oct(oct);
+        }
+
+        ref_tree->construct_level_maps();
+        ref_tree->construct_leaf_maps(true);
+        ref_tree->construct_lists();
+
         return ref_domain_;
     }
 
@@ -214,6 +274,7 @@ class MergeTrees
             auto        tree_i = domain_i->tree();
             for (int level = ref_levels; level >= 0; --level)
             {
+                std::set<std::pair<typename key_t::value_type, int>> prev_request_sig;
                 for (int pass = 0; pass < 16;
                     ++pass) // iterate until no more octs to adapt at this level, to handle chained +1 refinements
                 {
@@ -221,7 +282,30 @@ class MergeTrees
                     level_change.clear();
                     get_level_changes_distributed(ref_tree, tree_i, level, octs, level_change, world);
                     if (octs.empty()) break;
+
+                    std::set<std::pair<typename key_t::value_type, int>> cur_request_sig;
+                    for (std::size_t i = 0; i < octs.size(); ++i)
+                    {
+                        cur_request_sig.emplace(octs[i].id(), level_change[i]);
+                    }
+
+                    const auto before_keys = globalize_key_set(
+                        world, collect_physical_leaf_key_ids(*domain_i));
                     run_adapt_from_keys_distributed(*domain_i, -1, octs, level_change, world);
+                    const auto after_keys = globalize_key_set(
+                        world, collect_physical_leaf_key_ids(*domain_i));
+
+                    const bool repeated_request = (cur_request_sig == prev_request_sig);
+                    const bool no_tree_change = (before_keys == after_keys);
+                    if (repeated_request && no_tree_change)
+                    {
+                        pcout << "Warning: non-progress adapt loop detected at level "
+                              << level << ", pass " << pass
+                              << " (request repeated and key set unchanged). Breaking."
+                              << std::endl;
+                        break;
+                    }
+                    prev_request_sig.swap(cur_request_sig);
                 }
             }
             if (do_symfield)
@@ -259,6 +343,7 @@ class MergeTrees
         auto        tree_i = domain_i->tree();
         for (int level = ref_levels; level >= 0; --level)
         {
+            std::set<std::pair<typename key_t::value_type, int>> prev_request_sig;
             for (int pass = 0; pass < 16;
                 ++pass) // iterate until no more octs to adapt at this level, to handle chained +1 refinements
             {
@@ -266,7 +351,30 @@ class MergeTrees
                 level_change.clear();
                 get_level_changes_distributed(ref_tree, tree_i, level, octs, level_change, world);
                 if (octs.empty()) break;
+
+                std::set<std::pair<typename key_t::value_type, int>> cur_request_sig;
+                for (std::size_t i = 0; i < octs.size(); ++i)
+                {
+                    cur_request_sig.emplace(octs[i].id(), level_change[i]);
+                }
+
+                const auto before_keys = globalize_key_set(
+                    world, collect_physical_leaf_key_ids(*domain_i));
                 run_adapt_from_keys_distributed(*domain_i, -1, octs, level_change, world);
+                const auto after_keys = globalize_key_set(
+                    world, collect_physical_leaf_key_ids(*domain_i));
+
+                const bool repeated_request = (cur_request_sig == prev_request_sig);
+                const bool no_tree_change = (before_keys == after_keys);
+                if (repeated_request && no_tree_change)
+                {
+                    pcout << "Warning: non-progress adapt loop detected at level "
+                          << level << ", pass " << pass
+                          << " (request repeated and key set unchanged). Breaking."
+                          << std::endl;
+                    break;
+                }
+                prev_request_sig.swap(cur_request_sig);
             }
         }
         domain_i->save_adapted(idx);
@@ -617,6 +725,15 @@ class MergeTrees
         level_change.clear();
         if (world.rank() != 0) return;
         std::cout << "Getting level changes..." << std::endl;
+        std::set<std::pair<typename key_t::value_type, int>> seen_changes;
+        auto add_change = [&](const key_t& k, int lc) {
+            auto sig = std::make_pair(k.id(), lc);
+            if (seen_changes.insert(sig).second)
+            {
+                octs.emplace_back(k);
+                level_change.emplace_back(lc);
+            }
+        };
         int old_level = ref_level + old_tree->base_level();
         int new_level = ref_level + ref_tree->base_level();
         // first gets octs in old_tree which of not in ref_tree
@@ -627,8 +744,7 @@ class MergeTrees
             auto it2 = ref_tree->find_octant(it1->key());
             if (!it2 || !it2->has_data() || !it2->physical() || (it2->is_correction()))
             {
-                octs.emplace_back(it1->key());
-                level_change.emplace_back(-1);
+                add_change(it1->key(), -1);
             }
         }
 
@@ -642,17 +758,20 @@ class MergeTrees
             {
                 auto ptag = it1->key().parent();
                 auto tt = old_tree->find_octant(ptag);
-                while (!tt)
+                int  climb_guard = static_cast<int>(ptag.level()) + 2;
+                while ((!tt || !tt->has_data() || !tt->is_leaf()) && climb_guard-- > 0)
                 {
-                    ptag = ptag.parent();
+                    const auto parent = ptag.parent();
+                    if (parent == ptag || parent.is_end()) break;
+                    ptag = parent;
                     tt = old_tree->find_octant(ptag);
                 }
+                if (!tt || !tt->has_data() || !tt->is_leaf()) continue;
 
                 // Refine the nearest existing ancestor that contains the
                 // missing reference leaf. Using its parent under-refines by
                 // one level and can miss required reference keys.
-                octs.emplace_back(tt->key());
-                level_change.emplace_back(1);
+                add_change(tt->key(), 1);
             }
         }
     }

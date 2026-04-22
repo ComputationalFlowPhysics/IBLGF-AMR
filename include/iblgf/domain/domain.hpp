@@ -334,10 +334,8 @@ class Domain
 
         if (decomposition_.is_server())
         {
-            // std::vector<key_t> keys= _keys;
-            // std::vector<bool>  leafs= _leafs;
             std::vector<key_t> keys;
-            std::vector<int>  leafs;
+            std::vector<int>   leafs;
             for (auto& k : _keys)
             {
                 keys.emplace_back(key_t(k));
@@ -358,23 +356,28 @@ class Domain
                 },
                 false);
 
-            // Map restart leaf flags to octants in the same traversal order used
-            // by Tree::write(), which serializes only octants with data.
-            std::size_t c = 0;
+            // Map leaf flags by key-id, not traversal order.
+            // This makes initialize_with_keys robust to arbitrary key ordering.
+            std::unordered_map<typename key_t::value_type, bool> leaf_by_id;
+            leaf_by_id.reserve(keys.size());
+            for (std::size_t i = 0; i < keys.size(); ++i)
+            {
+                leaf_by_id.emplace(keys[i].id(), static_cast<bool>(leafs[i]));
+            }
+
             for (auto it = this->begin(); it != this->end(); ++it)
             {
                 if (it->level() + 1 > this->tree()->depth())
                     this->tree()->depth() = it->level() + 1;
                 if (!it->has_data()) continue;
-                if (c >= leafs.size())
+                const auto fid = leaf_by_id.find(it->key().id());
+                if (fid == leaf_by_id.end())
+                {
                     throw std::runtime_error(
-                        "Domain restart: leaf flag count mismatch while reading keys.");
-                it->flag_leaf(static_cast<bool>(leafs[c]));
-                c++;
+                        "Domain restart: missing leaf flag for key while reading keys.");
+                }
+                it->flag_leaf(fid->second);
             }
-            if (c != leafs.size())
-                throw std::runtime_error(
-                    "Domain restart: unused leaf flags after reading keys.");
 
             std::cout << "Server read restart from keys done " << std::endl;
         }

@@ -105,9 +105,40 @@ jobs:
               OMPI_MCA_btl_vader_single_copy_mechanism: none
               OMPI_MCA_rmaps_base_oversubscribe: 1
               IBLGF_MPI_NP: 4
+
+    benchmark-images:
+        needs: test-images
+        runs-on: ubuntu-latest
+        steps:
+          - name: Checkout repository
+            uses: actions/checkout@v4
+
+          - name: Login to Docker Hub
+            uses: docker/login-action@v3
+            with:
+              username: ${{ secrets.DOCKERHUB_USERNAME }}
+              password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+          - name: Pull tmp cpu image and run benchmarks
+            run: |
+              TMP_IMAGE=${{ secrets.DOCKERHUB_USERNAME }}/iblgf:tmp-${{ env.IMAGE_SHA }}-cpu-amd64
+              docker pull "$TMP_IMAGE"
+              docker run --rm \
+                -e OMPI_MCA_rmaps_base_oversubscribe=1 \
+                --cpuset-cpus="0-3" \
+                -v ${{ github.workspace }}:/workspace2 \
+                -w /workspace2 \
+                --user 1001:1001 \
+                "$TMP_IMAGE" \
+                bash -lc './iblgf.sh run-test ns_amr_lgf configFile_0 --bench -n 4 && ./iblgf.sh run-test poisson config_1_lv_0 --bench -n 4'
+            env:
+              OMPI_ALLOW_RUN_AS_ROOT: 1
+              OMPI_MCA_btl_vader_single_copy_mechanism: none
+              OMPI_MCA_rmaps_base_oversubscribe: 1
+              IBLGF_MPI_NP: 4
     
     promote-and-manifest:
-        needs: test-images
+        needs: [test-images, benchmark-images]
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         runs-on: ubuntu-latest
         steps:

@@ -20,24 +20,71 @@ jobs:
       ALLOWED_SLOWDOWN: "1.05"  # 5% slowdown allowed
 
     steps:
+      - name: Checkout repository for diff detection
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect whether benchmark should run
+        id: scope
+        run: |
+          set -euo pipefail
+
+          if [ "${{ github.event_name }}" = "push" ]; then
+            echo "run_bench=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "run_bench=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          BASE="${{ github.event.pull_request.base.sha }}"
+          HEAD="${{ github.event.pull_request.head.sha }}"
+
+          CHANGED_FILES="$(git diff --name-only "$BASE" "$HEAD" || true)"
+
+          run_docker=false
+          while IFS= read -r file; do
+            [ -z "$file" ] && continue
+            case "$file" in
+              .github/Dockerfile|.github/workflows/containerization.yml)
+                run_docker=true
+                break
+                ;;
+            esac
+          done <<< "$CHANGED_FILES"
+
+          run_bench=true
+          if [ "$run_docker" = "true" ]; then
+            run_bench=false
+          fi
+
+          echo "run_bench=$run_bench" >> "$GITHUB_OUTPUT"
+
       - name: Checkout base commit (main side)
+        if: steps.scope.outputs.run_bench == 'true' && github.event_name == 'pull_request'
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.base.sha }}
           path: base
 
       - name: Checkout PR head commit (incoming)
+        if: steps.scope.outputs.run_bench == 'true' && github.event_name == 'pull_request'
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           path: head
 
       - name: Prepare Scripts
+        if: steps.scope.outputs.run_bench == 'true' && github.event_name == 'pull_request'
         run: |
           chmod +x base/*.sh
           chmod +x head/*.sh
 
       - name: Benchmark base commit
+        if: steps.scope.outputs.run_bench == 'true' && github.event_name == 'pull_request'
         run: |
           set -euo pipefail
           cd base
@@ -55,6 +102,7 @@ jobs:
           cat ../bench_base_poisson.txt
 
       - name: Benchmark PR head commit
+        if: steps.scope.outputs.run_bench == 'true' && github.event_name == 'pull_request'
         run: |
           set -euo pipefail
           cd head
@@ -72,6 +120,7 @@ jobs:
           cat ../bench_head_poisson.txt
 
       - name: Compare and enforce slowdown threshold
+        if: steps.scope.outputs.run_bench == 'true' && github.event_name == 'pull_request'
         run: |
           python3 - << 'PY'
           import os, sys
@@ -114,3 +163,22 @@ jobs:
           else:
             print("Benchmarks within threshold.")
           PY
+
+      - name: Checkout repository (push benchmark)
+        if: steps.scope.outputs.run_bench == 'true' && github.event_name == 'push'
+        uses: actions/checkout@v4
+
+      - name: Prepare Scripts (push benchmark)
+        if: steps.scope.outputs.run_bench == 'true' && github.event_name == 'push'
+        run: chmod +x *.sh
+
+      - name: Run benchmarks on push
+        if: steps.scope.outputs.run_bench == 'true' && github.event_name == 'push'
+        run: |
+          set -euo pipefail
+          ./docker_iblgf.sh -c 4 -- bash -lc './iblgf.sh run-test ns_amr_lgf configFile_0 --bench -n 4'
+          ./docker_iblgf.sh -c 4 -- bash -lc './iblgf.sh run-test poisson config_1_lv_0 --bench -n 4'
+
+      - name: Skip benchmark for docker/containerization-only change
+        if: steps.scope.outputs.run_bench != 'true'
+        run: echo "Skipping PR benchmark for docker/containerization-only change."

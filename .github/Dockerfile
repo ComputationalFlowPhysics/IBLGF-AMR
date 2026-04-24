@@ -1,7 +1,7 @@
-ARG BASE_IMAGE
+ARG BASE_IMAGE=ubuntu:22.04
 
 FROM ${BASE_IMAGE}
-ARG TARGET
+ARG TARGET=cpu
 
 ARG DEBIAN_FRONTEND=noninteractive
 ARG CORES=4
@@ -159,6 +159,18 @@ RUN cd /workspace \
     && make -j${CORES} && make install \
     && cd /workspace && rm -rf hdf5-${HDF5_VERSION}*
 
+# PETSc, Slepc, scalapack, mumps
+
+ENV PETSC_VERSION=3.19.0
+RUN cd /workspace \
+    && wget https://ftp.mcs.anl.gov/pub/petsc/release-snapshots/petsc-${PETSC_VERSION}.tar.gz \
+    && tar -xzf petsc-${PETSC_VERSION}.tar.gz \
+    && cd petsc-${PETSC_VERSION} \
+    && ./configure --download-fblaslapack --download-scalapack --download-slepc --download-mumps --with-scalar-type=complex --prefix=/usr/local \
+    && make all -j${CORES} && make install \
+    && cd /workspace && rm -rf petsc-${PETSC_VERSION}*
+
+
 # ------------------------------
 # Final Configuration
 # ------------------------------
@@ -167,7 +179,10 @@ RUN useradd -m cppuser && \
 
 USER cppuser
 WORKDIR /home/cppuser
-
+ENV SLEPC_DIR=/usr/local/lib
+ENV PETSC_DIR=/usr/local/lib
+ENV PETSC_ARCH=
+ENV PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:/usr/local/lib64/pkgconfig${PKG_CONFIG_PATH:+:${PKG_CONFIG_PATH}}
 # # Setup environment for user
 # RUN echo 'export PATH=/usr/local/cuda/bin:$PATH' >> ~/.bashrc && \
 #     echo 'export LD_LIBRARY_PATH=/usr/local/cuda/lib64:/usr/local/lib:$LD_LIBRARY_PATH' >> ~/.bashrc

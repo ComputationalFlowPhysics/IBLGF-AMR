@@ -110,10 +110,11 @@ class ReflectField
         std::vector<int>   src_gids;
     };
 
-    ReflectField(simulation_type* _simulation)
+    ReflectField(simulation_type* _simulation,int _mirror_span)
     : simulation_(_simulation)
     , domain_(_simulation->domain_.get())
     , psolver(_simulation)
+    , mirror_span_(_mirror_span)
     {
         boost::mpi::communicator world;
         // this->init_idx<idx_u_type>();
@@ -409,7 +410,7 @@ class ReflectField
             auto opposite_coord = coord;
             // 128 = 1792/14 =extent on baselevel
             auto ref_level = it1->key().level() - domain_->tree()->base_level();
-            opposite_coord[1] = 32 * (1 << ref_level) - (coord[1] + 1);
+            opposite_coord[1] = mirror_span_ * (1 << ref_level) - (coord[1] + 1);
 
             auto it2 = domain_->tree()->find_octant(key_t(opposite_coord, level));
             if (!it2)
@@ -529,6 +530,7 @@ class ReflectField
     simulation_type* simulation_;
     domain_type*     domain_; ///< domain
     poisson_solver_t psolver;
+    int mirror_span_;
 };
 } // namespace domain
 } // namespace iblgf

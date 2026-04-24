@@ -37,8 +37,8 @@ runs/
 *.out
 *.app
 *.x
-
-
+.codex
+build*
 #Misc:
 *.swp
 Makefile.user

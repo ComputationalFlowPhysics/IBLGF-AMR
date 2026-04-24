@@ -9,64 +9,8 @@ on:
 
 
 jobs:
-  detect-changes:
-    name: Detect Test Scope
-    runs-on: ubuntu-latest
-    outputs:
-      run_tests: ${{ steps.scope.outputs.run_tests }}
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Detect whether tests should run
-        id: scope
-        run: |
-          set -euo pipefail
-
-          if [ "${{ github.event_name }}" = "push" ]; then
-            echo "run_tests=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            BASE="${{ github.event.pull_request.base.sha }}"
-            HEAD="${{ github.event.pull_request.head.sha }}"
-          else
-            BASE="${{ github.event.before }}"
-            HEAD="${{ github.sha }}"
-          fi
-
-          if [ -z "$BASE" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ]; then
-            echo "run_tests=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          CHANGED_FILES="$(git diff --name-only "$BASE" "$HEAD" || true)"
-
-          run_docker=false
-          while IFS= read -r file; do
-            [ -z "$file" ] && continue
-            case "$file" in
-              .github/Dockerfile|.github/workflows/containerization.yml)
-                run_docker=true
-                break
-                ;;
-            esac
-          done <<< "$CHANGED_FILES"
-
-          run_tests=true
-          if [ "$run_docker" = "true" ]; then
-            run_tests=false
-          fi
-
-          echo "run_tests=$run_tests" >> "$GITHUB_OUTPUT"
-
   building:
     name: Build Code ${{ matrix.runner }}
-    needs: detect-changes
-    if: needs.detect-changes.outputs.run_tests == 'true'
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
@@ -79,11 +23,11 @@ jobs:
     steps:
       - name: Clone
         uses: actions/checkout@v4
-
+        
       - name: Prepare Scripts
       # Ensures scripts are executable even if git permissions are wonky
         run: chmod +x *.sh
-
+      
       - name: Docker Env + build + test
         run: ./docker_iblgf.sh -c 4 -- bash -lc './iblgf.sh test'
         env:
@@ -104,16 +48,11 @@ jobs:
   build-code-status:
     name: Build Code
     runs-on: ubuntu-latest
-    needs: [detect-changes, building]
+    needs: building
     if: ${{ always() }}
     steps:
-      - name: Enforce successful matrix build when required
+      - name: Enforce successful matrix build
         run: |
-          if [ "${{ needs.detect-changes.outputs.run_tests }}" != "true" ]; then
-            echo "Skipping build matrix for docker/containerization-only change."
-            exit 0
-          fi
-
           if [ "${{ needs.building.result }}" != "success" ]; then
             echo "One or more matrix build jobs did not succeed."
             exit 1

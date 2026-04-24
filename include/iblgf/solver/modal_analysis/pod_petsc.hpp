@@ -14,8 +14,6 @@
 #define IBLGF_SOLVER_MODAL_ANALYSIS_POD_PETSC_HPP
 
 #include <iostream>
-#include <fstream>
-#include <iomanip>
 #include <algorithm>
 #include <vector>
 #include <cmath>
@@ -44,7 +42,6 @@ namespace iblgf
 namespace solver
 {
 using namespace domain;
-
 template<class Setup>
 class POD
 {
@@ -214,9 +211,7 @@ class POD
             PetscCall(EPSGetEigenpair(eps, i, &lambda_i, NULL, vi, NULL));
             // rotate vi so its real
             this->RemoveGlobalPhase(vi);
-            PetscReal lam_real = PetscRealPart(lambda_i);
-            if (lam_real < 0.0 && std::abs(lam_real) < 1e-14) { lam_real = 0.0; }
-            float_type sigma_i = (lam_real > 0.0) ? std::sqrt(lam_real) : 0.0;
+            float_type sigma_i= std::sqrt(PetscRealPart(lambda_i));
             if (rank==0) sv_file << sigma_i <<std::setw(width)<< std::endl;
             PetscCall(MatCreateVecs(At, NULL, &phi_i)); // size m
             PetscCall(MatMult(At, vi, phi_i));          // phi_i = A * v_i
@@ -230,40 +225,8 @@ class POD
             PetscViewerSetFormat(viewer, PETSC_VIEWER_ASCII_MATLAB); // or other format
             VecView(vi, viewer);
             PetscViewerDestroy(&viewer);
-            if(rank==0) std::cout<<"MOS 5: Coefficient vector "<<i<<" written to file."<<std::endl;
-            // Also write a simple real/imag coefficient dump for deterministic testing.
-            // vi is a distributed MPI vector, so gather to rank 0 before indexed reads.
-            VecScatter to_zero = NULL;
-            Vec        vi_root = NULL;
-            PetscCall(VecScatterCreateToZero(vi, &to_zero, &vi_root));
-            PetscCall(VecScatterBegin(to_zero, vi, vi_root, INSERT_VALUES, SCATTER_FORWARD));
-            PetscCall(VecScatterEnd(to_zero, vi, vi_root, INSERT_VALUES, SCATTER_FORWARD));
-            if (rank == 0)
-            {
-                char coeff_name[256];
-                sprintf(coeff_name, "./%s/coeff_real%s%04d.txt", dir.c_str(), _prefix.c_str(), i);
-                std::cout << "Writing coefficient file: " << coeff_name << std::endl;
-                std::ofstream coeff_file(coeff_name);
-                coeff_file << std::scientific << std::setprecision(16);
 
-                const PetscScalar* root_arr = NULL;
-                PetscInt           vec_size = 0;
-                PetscCall(VecGetSize(vi_root, &vec_size));
-                PetscCall(VecGetArrayRead(vi_root, &root_arr));
-                const PetscInt write_count = std::min<PetscInt>(static_cast<PetscInt>(nTotal), vec_size);
-                for (PetscInt j = 0; j < write_count; ++j)
-                {
-                    const PetscScalar vj = root_arr[j];
-                    coeff_file << PetscRealPart(vj) << " " << PetscImaginaryPart(vj) << "\n";
-                }
-                PetscCall(VecRestoreArrayRead(vi_root, &root_arr));
-                coeff_file.close();
-            }
-            PetscCall(VecScatterDestroy(&to_zero));
-            PetscCall(VecDestroy(&vi_root));
 
-            if(rank==0) std::cout<<"MOS 5: Singular value "<<i<<" : "<<sigma_i<<std::endl;
-            if (sigma_i <= 1e-14) continue; // avoid NaNs from tiny/roundoff-negative lambdas
             PetscCall(VecScale(phi_i,1/sigma_i)); // normalize phi_i
             // Store or output phi_i
             vec2grid<idx_u_type, field>(phi_i, 1);
@@ -406,7 +369,7 @@ class POD
                                 row_mean += PetscRealPart(value);
                             }
                             row_mean /= nTotal; // mean of the row
-                            n(Field_mean::tag(), field_idx) = row_mean; // store mean in the field
+                            n(Field_mean::tag(), field_idx) = PetscRealPart(row_mean); // store mean in the field
                             // std::cout<<"Row mean for i_local " << i_local << " : " << row_mean << std::endl;
                             for (int k = 0; k < nTotal; ++k)
                             {

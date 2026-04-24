@@ -78,9 +78,7 @@ struct CommonTree : public SetupBase<CommonTree, parameters>
                                                     int diff_level) {
             return false;
         };
-        domain_->ib().init(_d->get_dictionary("simulation_parameters"), domain_->dx_base(), nLevelRefinement_, 100);
         domain_->init_refine(nLevelRefinement_, 0, 0);
-        
 
         
         domain_->distribute<fmm_mask_builder_t, fmm_mask_builder_t>();
@@ -184,14 +182,13 @@ struct CommonTree : public SetupBase<CommonTree, parameters>
     void run(int i,bool adapt_=true)
     {
         boost::mpi::communicator world;
-    
+        time_integration_t ifherk(&this->simulation_);
         if(world.rank()== 0)
         {
             std::cout << "Running common tree test with i = " << i << std::endl;
         }
         if (adapt_)
         {
-            time_integration_t ifherk(&this->simulation_);
             ifherk.adapt(true,false);
         }
         
@@ -206,7 +203,7 @@ struct CommonTree : public SetupBase<CommonTree, parameters>
         }
 
 
-        std::string filename = "common_tree_" + std::to_string(i);
+        std::string filename = "common_tree_" + std::to_string(i) + ".hdf5";
         // simulation_.write("common_tree.hdf5");
         simulation_.write(filename);
     }
@@ -219,10 +216,6 @@ struct CommonTree : public SetupBase<CommonTree, parameters>
         this->initialize();
         simulation_.write("adapted_to_ref");
     }
-    void save_symmetric_ref()
-    {
-        simulation_.write("symmetric_ref");
-    }
 
     template<class Field,class key_t>
     void run_adapt_from_keys(int timeIdx,std::vector<key_t>& octs,
@@ -231,12 +224,13 @@ struct CommonTree : public SetupBase<CommonTree, parameters>
         poisson_solver_t psolver(&this->simulation_);
         boost::mpi::communicator world;
         auto client = domain_->decomposition().client();
-        // Keep field values intact before topology updates.
-        // For linear-field transfer tests, pre-cleaning/coarsifying the same field
-        // perturbs values and can mask interpolation correctness.
+        //up to correction
         if(domain_->is_client())
         {
-            // Intentionally no pre-clean/source_coarsify here.
+            clean<Field>(true);
+            for (std::size_t _field_idx=0; _field_idx<Field::nFields(); ++_field_idx)
+                psolver.template source_coarsify<Field,Field>(_field_idx, _field_idx, Field::mesh_type(), false, false, false, false);
+
         }
 
         world.barrier();
@@ -271,11 +265,7 @@ struct CommonTree : public SetupBase<CommonTree, parameters>
         if(timeIdx>0) simulation_.write("adapted_to_ref_"+std::to_string(timeIdx));
         // interpolate
     }
-    void save_adapted(int idx)
-    {
-        std::string filename = "adapted_to_ref_" + std::to_string(idx);
-        simulation_.write(filename);
-    }
+
     template<class Field, class Target>
     void symfield(int timeIdx=-1)
     {
@@ -284,12 +274,8 @@ struct CommonTree : public SetupBase<CommonTree, parameters>
         boost::mpi::communicator world;
         // this->initialize();
         clean<u_sym_type>();
-        // up_and_down<u_type>();
-        auto domain_dict = simulation_.dictionary_->get_dictionary("domain");
-        const auto bd_base = domain_dict->template get<int, Dim>("bd_base");
-        const int block_extent = domain_dict->template get<int>("block_extent");
-        const int mirror_span = (-2 * bd_base[1]) / block_extent;
-        solver::ReflectField<SetupBase> rf(&this->simulation_, mirror_span); // u has field, u_sym has reflected field
+        // up_and_down<u_type>();   
+        solver::ReflectField<SetupBase> rf(&this->simulation_); //u has field, u_sym has reflected field 
         // make u_s and u_a fields
         rf.combine_reflection<u_type,u_sym_type,u_s_type,u_a_type>();
 

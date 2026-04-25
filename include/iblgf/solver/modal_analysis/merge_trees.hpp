@@ -208,9 +208,9 @@ class MergeTrees
         }
 
         ref_tree->construct_level_maps();
-        ref_tree->construct_leaf_maps(true);
+        ref_tree->construct_leaf_maps(false);
         ref_tree->construct_lists();
-
+        ref_domain_->save_common_tree_ref();
         return ref_domain_;
     }
 

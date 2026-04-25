@@ -271,6 +271,10 @@ struct CommonTree : public SetupBase<CommonTree, parameters>
         if(timeIdx>0) simulation_.write("adapted_to_ref_"+std::to_string(timeIdx));
         // interpolate
     }
+    void save_common_tree_ref()
+    {
+        simulation_.write("common_tree_ref");
+    }
     void save_adapted(int idx)
     {
         std::string filename = "adapted_to_ref_" + std::to_string(idx);

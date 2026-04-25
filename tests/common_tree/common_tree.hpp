@@ -37,15 +37,15 @@ struct parameters
     Dim,
         (
             //name, type, nFields, l/h-buf,mesh_obj, output(optional)
-            (tlevel,        float_type, 1, 1, 1, cell, true),
+            (tlevel,        float_type, 1, 1, 1, cell, false),
             (u,             float_type, Dim, 1, 1, face, true),
             (u_s,             float_type, Dim, 1, 1, face, true),
             (u_a,             float_type, Dim, 1, 1, face, true),
-            (u_sym,             float_type, Dim, 1, 1, face, true),
-            (rf_s,             float_type, Dim, 1, 1, face, true),
-            (rf_t,             float_type, Dim, 1, 1, face, true),
-            (p,             float_type, 1, 1, 1, cell, true),
-            (test,          float_type, 1,    1,       1,     cell,true )
+            (u_sym,             float_type, Dim, 1, 1, face, false),
+            (rf_s,             float_type, Dim, 1, 1, face, false),
+            (rf_t,             float_type, Dim, 1, 1, face, false),
+            (p,             float_type, 1, 1, 1, cell, false),
+            (test,          float_type, 1,    1,       1,     cell,false )
         )
     )
     // clang-format on

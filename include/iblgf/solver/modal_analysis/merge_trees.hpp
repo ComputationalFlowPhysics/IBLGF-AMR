@@ -243,7 +243,7 @@ class MergeTrees
         std::string flow_ref_file =
             sim_dict->get<std::string>("flow_ref_file");
         int  ref_levels = sim_dict->get_or<int>("nLevels", 0);
-        const bool resume = sim_dict->get_or<bool>("resume", false);
+        const bool resume = sim_dict->get_or<bool>("resume", true);
         const bool do_symfield = sim_dict->get_or<bool>("do_symfield", false);
         const std::string restart_file =
             sim_dict->get_or<std::string>("restart_file", "./adapt_to_ref_restart.txt");

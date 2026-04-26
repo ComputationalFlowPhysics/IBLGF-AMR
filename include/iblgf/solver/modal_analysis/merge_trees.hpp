@@ -266,47 +266,61 @@ class MergeTrees
         auto ref_tree = ref_domain->tree();
         std::vector<key_t> octs;
         std::vector<int>   level_change;
+        std::vector<key_t> batched_octs;
+        std::vector<int>   batched_level_change;
         for (int idx = idx_begin; idx <= idx_end; idx += nSkip_)
         {
             std::string tree_file_i = tree_file_path(dir_in_, idx);
             std::string flow_file_i = flow_file_path(dir_in_, idx);
             auto        domain_i = std::make_unique<Setup>(dict_ref_, tree_file_i, flow_file_i);
             auto        tree_i = domain_i->tree();
-            for (int level = ref_levels; level >= 0; --level)
+            std::set<std::pair<typename key_t::value_type, int>> prev_request_sig;
+            bool prev_request_changed_tree = true;
+            for (int pass = 0; pass < 16;
+                ++pass) // iterate until no more octs to adapt, batching all levels in one expensive adapt call
             {
-                std::set<std::pair<typename key_t::value_type, int>> prev_request_sig;
-                for (int pass = 0; pass < 16;
-                    ++pass) // iterate until no more octs to adapt at this level, to handle chained +1 refinements
+                batched_octs.clear();
+                batched_level_change.clear();
+                std::set<std::pair<typename key_t::value_type, int>> cur_request_sig;
+                std::set<typename key_t::value_type>                 seen_keys;
+                for (int level = ref_levels; level >= 0; --level)
                 {
                     octs.clear();
                     level_change.clear();
                     get_level_changes_distributed(ref_tree, tree_i, level, octs, level_change, world);
-                    if (octs.empty()) break;
-
-                    std::set<std::pair<typename key_t::value_type, int>> cur_request_sig;
-                    for (std::size_t i = 0; i < octs.size(); ++i)
-                    {
-                        cur_request_sig.emplace(octs[i].id(), level_change[i]);
-                    }
-
-                    const auto before_keys = globalize_key_set(
-                        world, collect_physical_leaf_key_ids(*domain_i));
-                    run_adapt_from_keys_distributed(*domain_i, -1, octs, level_change, world);
-                    const auto after_keys = globalize_key_set(
-                        world, collect_physical_leaf_key_ids(*domain_i));
-
-                    const bool repeated_request = (cur_request_sig == prev_request_sig);
-                    const bool no_tree_change = (before_keys == after_keys);
-                    if (repeated_request && no_tree_change)
-                    {
-                        pcout << "Warning: non-progress adapt loop detected at level "
-                              << level << ", pass " << pass
-                              << " (request repeated and key set unchanged). Breaking."
-                              << std::endl;
-                        break;
-                    }
-                    prev_request_sig.swap(cur_request_sig);
+                    append_unique_changes(octs, level_change, batched_octs,
+                        batched_level_change, cur_request_sig, seen_keys);
                 }
+                if (batched_octs.empty()) break;
+
+                const bool repeated_request = (cur_request_sig == prev_request_sig);
+                if (repeated_request && !prev_request_changed_tree)
+                {
+                    pcout << "Warning: non-progress adapt loop detected at pass "
+                          << pass
+                          << " (batched request repeated after an unchanged tree). Breaking before adapt."
+                          << std::endl;
+                    break;
+                }
+
+                const auto before_keys = globalize_key_set(
+                    world, collect_physical_leaf_key_ids(*domain_i));
+                run_adapt_from_keys_distributed(
+                    *domain_i, -1, batched_octs, batched_level_change, world);
+                const auto after_keys = globalize_key_set(
+                    world, collect_physical_leaf_key_ids(*domain_i));
+
+                const bool no_tree_change = (before_keys == after_keys);
+                if (repeated_request && no_tree_change)
+                {
+                    pcout << "Warning: non-progress adapt loop detected at pass "
+                          << pass
+                          << " (batched request repeated and key set unchanged). Breaking."
+                          << std::endl;
+                    break;
+                }
+                prev_request_changed_tree = !no_tree_change;
+                prev_request_sig.swap(cur_request_sig);
             }
             if (do_symfield)
             {
@@ -336,46 +350,60 @@ class MergeTrees
         auto ref_tree = ref_domain->tree();
         std::vector<key_t> octs;
         std::vector<int>   level_change;
+        std::vector<key_t> batched_octs;
+        std::vector<int>   batched_level_change;
 
         std::string tree_file_i = tree_file_path(dir_in_, idx);
         std::string flow_file_i = flow_file_path(dir_in_, idx);
         auto        domain_i = std::make_unique<Setup>(dict_ref_, tree_file_i, flow_file_i);
         auto        tree_i = domain_i->tree();
-        for (int level = ref_levels; level >= 0; --level)
+        std::set<std::pair<typename key_t::value_type, int>> prev_request_sig;
+        bool prev_request_changed_tree = true;
+        for (int pass = 0; pass < 16;
+            ++pass) // iterate until no more octs to adapt, batching all levels in one expensive adapt call
         {
-            std::set<std::pair<typename key_t::value_type, int>> prev_request_sig;
-            for (int pass = 0; pass < 16;
-                ++pass) // iterate until no more octs to adapt at this level, to handle chained +1 refinements
+            batched_octs.clear();
+            batched_level_change.clear();
+            std::set<std::pair<typename key_t::value_type, int>> cur_request_sig;
+            std::set<typename key_t::value_type>                 seen_keys;
+            for (int level = ref_levels; level >= 0; --level)
             {
                 octs.clear();
                 level_change.clear();
                 get_level_changes_distributed(ref_tree, tree_i, level, octs, level_change, world);
-                if (octs.empty()) break;
-
-                std::set<std::pair<typename key_t::value_type, int>> cur_request_sig;
-                for (std::size_t i = 0; i < octs.size(); ++i)
-                {
-                    cur_request_sig.emplace(octs[i].id(), level_change[i]);
-                }
-
-                const auto before_keys = globalize_key_set(
-                    world, collect_physical_leaf_key_ids(*domain_i));
-                run_adapt_from_keys_distributed(*domain_i, -1, octs, level_change, world);
-                const auto after_keys = globalize_key_set(
-                    world, collect_physical_leaf_key_ids(*domain_i));
-
-                const bool repeated_request = (cur_request_sig == prev_request_sig);
-                const bool no_tree_change = (before_keys == after_keys);
-                if (repeated_request && no_tree_change)
-                {
-                    pcout << "Warning: non-progress adapt loop detected at level "
-                          << level << ", pass " << pass
-                          << " (request repeated and key set unchanged). Breaking."
-                          << std::endl;
-                    break;
-                }
-                prev_request_sig.swap(cur_request_sig);
+                append_unique_changes(octs, level_change, batched_octs,
+                    batched_level_change, cur_request_sig, seen_keys);
             }
+            if (batched_octs.empty()) break;
+
+            const bool repeated_request = (cur_request_sig == prev_request_sig);
+            if (repeated_request && !prev_request_changed_tree)
+            {
+                pcout << "Warning: non-progress adapt loop detected at pass "
+                      << pass
+                      << " (batched request repeated after an unchanged tree). Breaking before adapt."
+                      << std::endl;
+                break;
+            }
+
+            const auto before_keys = globalize_key_set(
+                world, collect_physical_leaf_key_ids(*domain_i));
+            run_adapt_from_keys_distributed(
+                *domain_i, -1, batched_octs, batched_level_change, world);
+            const auto after_keys = globalize_key_set(
+                world, collect_physical_leaf_key_ids(*domain_i));
+
+            const bool no_tree_change = (before_keys == after_keys);
+            if (repeated_request && no_tree_change)
+            {
+                pcout << "Warning: non-progress adapt loop detected at pass "
+                      << pass
+                      << " (batched request repeated and key set unchanged). Breaking."
+                      << std::endl;
+                break;
+            }
+            prev_request_changed_tree = !no_tree_change;
+            prev_request_sig.swap(cur_request_sig);
         }
         domain_i->save_adapted(idx);
         pcout << "interpolated snapshot " << idx << "/" << nTotal_ - 1 << " to common tree reference levels."
@@ -527,6 +555,23 @@ class MergeTrees
         boost::mpi::broadcast(world, level_change, 0);
         if (octs.empty()) return;
         setup.template run_adapt_from_keys<typename SetupType::u_type>(timeIdx, octs, level_change);
+    }
+
+    static void append_unique_changes(const std::vector<key_t>& octs,
+        const std::vector<int>& level_change, std::vector<key_t>& batched_octs,
+        std::vector<int>& batched_level_change,
+        std::set<std::pair<typename key_t::value_type, int>>& seen_changes,
+        std::set<typename key_t::value_type>& seen_keys)
+    {
+        for (std::size_t i = 0; i < octs.size(); ++i)
+        {
+            const auto sig = std::make_pair(octs[i].id(), level_change[i]);
+            if (seen_keys.insert(octs[i].id()).second && seen_changes.insert(sig).second)
+            {
+                batched_octs.emplace_back(octs[i]);
+                batched_level_change.emplace_back(level_change[i]);
+            }
+        }
     }
 
     template<class SetupType>

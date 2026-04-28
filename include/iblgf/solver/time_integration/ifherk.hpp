@@ -2914,7 +2914,7 @@ private:
 
     float_type cg_threshold_;
     int  cg_max_itr_;
-
+    int dim=3;
     float_type T_last_vel_refresh_=0.0;
 
     std::vector<float_type> omega_cross_x;

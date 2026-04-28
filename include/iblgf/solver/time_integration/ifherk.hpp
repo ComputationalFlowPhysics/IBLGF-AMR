@@ -113,6 +113,861 @@ class Ifherk
         b_f_mag = _simulation->dictionary()->template get_or<float_type>(
             "b_f_mag", 0.0);
 
+        t_dipole = _simulation->dictionary()->template get_or<float_type>(
+            "t_dipole", 1.0);
+
+        R_dipole = _simulation->dictionary()->template get_or<float_type>(
+            "R_dipole", 1.0);
+
+        h_dipole = _simulation->dictionary()->template get_or<float_type>(
+            "h_dipole", 1.0);
+
+        l_dipole = _simulation->dictionary()->template get_or<float_type>(
+            "l_dipole", 1.0);
+
+        a_dipole = _simulation->dictionary()->template get_or<float_type>(
+            "a_dipole", 1.0);
+
+        tansteepx = _simulation->dictionary()->template get_or<float_type>(
+            "tansteepx", 1.0);
+
+        tansteepy = _simulation->dictionary()->template get_or<float_type>(
+            "tansteepy", 1.0);
+
+        tansteepz = _simulation->dictionary()->template get_or<float_type>(
+            "tansteepz", 1.0);
+
+        widthx = _simulation->dictionary()->template get_or<float_type>(
+            "widthx", 1.0);
+
+        widthy = _simulation->dictionary()->template get_or<float_type>(
+            "widthy", 1.0);
+
+        widthz = _simulation->dictionary()->template get_or<float_type>(
+            "widthz", 1.0);
+
+        speedx = _simulation->dictionary()->template get_or<float_type>(
+            "speedx", 1.0);
+
+        periody = _simulation->dictionary()->template get_or<float_type>(
+            "periody", 1.0);
+
+        periodz = _simulation->dictionary()->template get_or<float_type>(
+            "periodz", 1.0);
+
+        amplitudey = _simulation->dictionary()->template get_or<float_type>(
+            "amplitudey", 1.0);
+
+        amplitudez = _simulation->dictionary()->template get_or<float_type>(
+            "amplitudez", 1.0);
+
+        at1 = _simulation->dictionary()->template get_or<float_type>(
+                                                                     "at1", 1.0);
+        at2 = _simulation->dictionary()->template get_or<float_type>(
+                                                                     "at2", 1.0);
+        at3 = _simulation->dictionary()->template get_or<float_type>(
+                                                                     "at3", 1.0);
+        at4 = _simulation->dictionary()->template get_or<float_type>(
+                                                                     "at4", 1.0);
+        at5 = _simulation->dictionary()->template get_or<float_type>(
+                                                                     "at5", 1.0);
+        at6 = _simulation->dictionary()->template get_or<float_type>(
+                                                                     "at6", 1.0);
+        at7 = _simulation->dictionary()->template get_or<float_type>(
+                                                                     "at7", 1.0);
+        at8 = _simulation->dictionary()->template get_or<float_type>(
+                                                                     "at8", 1.0);
+        at9 = _simulation->dictionary()->template get_or<float_type>(
+                                                                     "at9", 1.0);
+        at10 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "at10", 1.0);
+        at11 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "at11", 1.0);
+        at12 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "at12", 1.0);
+        at13 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "at13", 1.0);
+        at14 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "at14", 1.0);
+        at15 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "at15", 1.0);
+        at16 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "at16", 1.0);
+        at17 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "at17", 1.0);
+        at18 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "at18", 1.0);
+        at19 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "at19", 1.0);
+        at20 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "at20", 1.0);
+        at21 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "at21", 1.0);
+        at22 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "at22", 1.0);
+        at23 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "at23", 1.0);
+        at24 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "at24", 1.0);
+        at25 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "at25", 1.0);
+        at26 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "at26", 1.0);
+        at27 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "at27", 1.0);
+        at28 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "at28", 1.0);
+        at29 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "at29", 1.0);
+        at30 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "at30", 1.0);
+        at31 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "at31", 1.0);
+        at32 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "at32", 1.0);
+        at33 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "at33", 1.0);
+        at34 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "at34", 1.0);
+        at35 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "at35", 1.0);
+        at36 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "at36", 1.0);
+        at37 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "at37", 1.0);
+        at38 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "at38", 1.0);
+        at39 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "at39", 1.0);
+        at40 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "at40", 1.0);
+        at41 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "at41", 1.0);
+        at42 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "at42", 1.0);
+        at43 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "at43", 1.0);
+        at44 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "at44", 1.0);
+        at45 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "at45", 1.0);
+        at46 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "at46", 1.0);
+        at47 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "at47", 1.0);
+        at48 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "at48", 1.0);
+        at49 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "at49", 1.0);
+        at50 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "at50", 1.0);
+        at51 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "at51", 1.0);
+        at52 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "at52", 1.0);
+        at53 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "at53", 1.0);
+        at54 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "at54", 1.0);
+        at55 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "at55", 1.0);
+        at56 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "at56", 1.0);
+        at57 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "at57", 1.0);
+        at58 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "at58", 1.0);
+        at59 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "at59", 1.0);
+        at60 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "at60", 1.0);
+        at61 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "at61", 1.0);
+        at62 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "at62", 1.0);
+        at63 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "at63", 1.0);
+        at64 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "at64", 1.0);
+        at65 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "at65", 1.0);
+        at66 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "at66", 1.0);
+        at67 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "at67", 1.0);
+        at68 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "at68", 1.0);
+        at69 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "at69", 1.0);
+        at70 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "at70", 1.0);
+        at71 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "at71", 1.0);
+        at72 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "at72", 1.0);
+        at73 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "at73", 1.0);
+        at74 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "at74", 1.0);
+        at75 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "at75", 1.0);
+        at76 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "at76", 1.0);
+        at77 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "at77", 1.0);
+        at78 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "at78", 1.0);
+        at79 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "at79", 1.0);
+        at80 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "at80", 1.0);
+        at81 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "at81", 1.0);
+        at82 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "at82", 1.0);
+        at83 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "at83", 1.0);
+        at84 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "at84", 1.0);
+        at85 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "at85", 1.0);
+        at86 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "at86", 1.0);
+        at87 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "at87", 1.0);
+        at88 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "at88", 1.0);
+        at89 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "at89", 1.0);
+        at90 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "at90", 1.0);
+        at91 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "at91", 1.0);
+        at92 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "at92", 1.0);
+        at93 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "at93", 1.0);
+        at94 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "at94", 1.0);
+        at95 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "at95", 1.0);
+        at96 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "at96", 1.0);
+        at97 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "at97", 1.0);
+        at98 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "at98", 1.0);
+        at99 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "at99", 1.0);
+        at100 = _simulation->dictionary()->template get_or<float_type>(
+                                                                       "at100", 1.0);
+
+        pt1 = _simulation->dictionary()->template get_or<float_type>(
+                                                                     "pt1", 1.0);
+        pt2 = _simulation->dictionary()->template get_or<float_type>(
+                                                                     "pt2", 1.0);
+        pt3 = _simulation->dictionary()->template get_or<float_type>(
+                                                                     "pt3", 1.0);
+        pt4 = _simulation->dictionary()->template get_or<float_type>(
+                                                                     "pt4", 1.0);
+        pt5 = _simulation->dictionary()->template get_or<float_type>(
+                                                                     "pt5", 1.0);
+        pt6 = _simulation->dictionary()->template get_or<float_type>(
+                                                                     "pt6", 1.0);
+        pt7 = _simulation->dictionary()->template get_or<float_type>(
+                                                                     "pt7", 1.0);
+        pt8 = _simulation->dictionary()->template get_or<float_type>(
+                                                                     "pt8", 1.0);
+        pt9 = _simulation->dictionary()->template get_or<float_type>(
+                                                                     "pt9", 1.0);
+        pt10 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pt10", 1.0);
+        pt11 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pt11", 1.0);
+        pt12 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pt12", 1.0);
+        pt13 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pt13", 1.0);
+        pt14 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pt14", 1.0);
+        pt15 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pt15", 1.0);
+        pt16 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pt16", 1.0);
+        pt17 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pt17", 1.0);
+        pt18 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pt18", 1.0);
+        pt19 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pt19", 1.0);
+        pt20 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pt20", 1.0);
+        pt21 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pt21", 1.0);
+        pt22 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pt22", 1.0);
+        pt23 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pt23", 1.0);
+        pt24 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pt24", 1.0);
+        pt25 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pt25", 1.0);
+        pt26 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pt26", 1.0);
+        pt27 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pt27", 1.0);
+        pt28 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pt28", 1.0);
+        pt29 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pt29", 1.0);
+        pt30 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pt30", 1.0);
+        pt31 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pt31", 1.0);
+        pt32 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pt32", 1.0);
+        pt33 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pt33", 1.0);
+        pt34 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pt34", 1.0);
+        pt35 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pt35", 1.0);
+        pt36 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pt36", 1.0);
+        pt37 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pt37", 1.0);
+        pt38 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pt38", 1.0);
+        pt39 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pt39", 1.0);
+        pt40 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pt40", 1.0);
+        pt41 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pt41", 1.0);
+        pt42 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pt42", 1.0);
+        pt43 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pt43", 1.0);
+        pt44 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pt44", 1.0);
+        pt45 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pt45", 1.0);
+        pt46 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pt46", 1.0);
+        pt47 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pt47", 1.0);
+        pt48 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pt48", 1.0);
+        pt49 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pt49", 1.0);
+        pt50 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pt50", 1.0);
+        pt51 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pt51", 1.0);
+        pt52 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pt52", 1.0);
+        pt53 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pt53", 1.0);
+        pt54 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pt54", 1.0);
+        pt55 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pt55", 1.0);
+        pt56 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pt56", 1.0);
+        pt57 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pt57", 1.0);
+        pt58 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pt58", 1.0);
+        pt59 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pt59", 1.0);
+        pt60 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pt60", 1.0);
+        pt61 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pt61", 1.0);
+        pt62 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pt62", 1.0);
+        pt63 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pt63", 1.0);
+        pt64 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pt64", 1.0);
+        pt65 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pt65", 1.0);
+        pt66 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pt66", 1.0);
+        pt67 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pt67", 1.0);
+        pt68 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pt68", 1.0);
+        pt69 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pt69", 1.0);
+        pt70 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pt70", 1.0);
+        pt71 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pt71", 1.0);
+        pt72 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pt72", 1.0);
+        pt73 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pt73", 1.0);
+        pt74 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pt74", 1.0);
+        pt75 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pt75", 1.0);
+        pt76 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pt76", 1.0);
+        pt77 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pt77", 1.0);
+        pt78 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pt78", 1.0);
+        pt79 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pt79", 1.0);
+        pt80 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pt80", 1.0);
+        pt81 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pt81", 1.0);
+        pt82 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pt82", 1.0);
+        pt83 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pt83", 1.0);
+        pt84 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pt84", 1.0);
+        pt85 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pt85", 1.0);
+        pt86 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pt86", 1.0);
+        pt87 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pt87", 1.0);
+        pt88 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pt88", 1.0);
+        pt89 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pt89", 1.0);
+        pt90 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pt90", 1.0);
+        pt91 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pt91", 1.0);
+        pt92 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pt92", 1.0);
+        pt93 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pt93", 1.0);
+        pt94 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pt94", 1.0);
+        pt95 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pt95", 1.0);
+        pt96 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pt96", 1.0);
+        pt97 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pt97", 1.0);
+        pt98 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pt98", 1.0);
+        pt99 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pt99", 1.0);
+        pt100 = _simulation->dictionary()->template get_or<float_type>(
+                                                                       "pt100", 1.0);
+
+        ab1 = _simulation->dictionary()->template get_or<float_type>(
+                                                                     "ab1", 1.0);
+        ab2 = _simulation->dictionary()->template get_or<float_type>(
+                                                                     "ab2", 1.0);
+        ab3 = _simulation->dictionary()->template get_or<float_type>(
+                                                                     "ab3", 1.0);
+        ab4 = _simulation->dictionary()->template get_or<float_type>(
+                                                                     "ab4", 1.0);
+        ab5 = _simulation->dictionary()->template get_or<float_type>(
+                                                                     "ab5", 1.0);
+        ab6 = _simulation->dictionary()->template get_or<float_type>(
+                                                                     "ab6", 1.0);
+        ab7 = _simulation->dictionary()->template get_or<float_type>(
+                                                                     "ab7", 1.0);
+        ab8 = _simulation->dictionary()->template get_or<float_type>(
+                                                                     "ab8", 1.0);
+        ab9 = _simulation->dictionary()->template get_or<float_type>(
+                                                                     "ab9", 1.0);
+        ab10 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "ab10", 1.0);
+        ab11 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "ab11", 1.0);
+        ab12 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "ab12", 1.0);
+        ab13 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "ab13", 1.0);
+        ab14 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "ab14", 1.0);
+        ab15 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "ab15", 1.0);
+        ab16 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "ab16", 1.0);
+        ab17 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "ab17", 1.0);
+        ab18 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "ab18", 1.0);
+        ab19 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "ab19", 1.0);
+        ab20 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "ab20", 1.0);
+        ab21 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "ab21", 1.0);
+        ab22 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "ab22", 1.0);
+        ab23 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "ab23", 1.0);
+        ab24 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "ab24", 1.0);
+        ab25 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "ab25", 1.0);
+        ab26 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "ab26", 1.0);
+        ab27 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "ab27", 1.0);
+        ab28 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "ab28", 1.0);
+        ab29 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "ab29", 1.0);
+        ab30 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "ab30", 1.0);
+        ab31 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "ab31", 1.0);
+        ab32 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "ab32", 1.0);
+        ab33 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "ab33", 1.0);
+        ab34 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "ab34", 1.0);
+        ab35 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "ab35", 1.0);
+        ab36 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "ab36", 1.0);
+        ab37 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "ab37", 1.0);
+        ab38 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "ab38", 1.0);
+        ab39 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "ab39", 1.0);
+        ab40 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "ab40", 1.0);
+        ab41 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "ab41", 1.0);
+        ab42 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "ab42", 1.0);
+        ab43 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "ab43", 1.0);
+        ab44 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "ab44", 1.0);
+        ab45 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "ab45", 1.0);
+        ab46 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "ab46", 1.0);
+        ab47 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "ab47", 1.0);
+        ab48 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "ab48", 1.0);
+        ab49 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "ab49", 1.0);
+        ab50 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "ab50", 1.0);
+        ab51 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "ab51", 1.0);
+        ab52 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "ab52", 1.0);
+        ab53 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "ab53", 1.0);
+        ab54 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "ab54", 1.0);
+        ab55 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "ab55", 1.0);
+        ab56 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "ab56", 1.0);
+        ab57 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "ab57", 1.0);
+        ab58 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "ab58", 1.0);
+        ab59 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "ab59", 1.0);
+        ab60 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "ab60", 1.0);
+        ab61 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "ab61", 1.0);
+        ab62 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "ab62", 1.0);
+        ab63 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "ab63", 1.0);
+        ab64 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "ab64", 1.0);
+        ab65 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "ab65", 1.0);
+        ab66 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "ab66", 1.0);
+        ab67 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "ab67", 1.0);
+        ab68 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "ab68", 1.0);
+        ab69 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "ab69", 1.0);
+        ab70 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "ab70", 1.0);
+        ab71 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "ab71", 1.0);
+        ab72 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "ab72", 1.0);
+        ab73 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "ab73", 1.0);
+        ab74 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "ab74", 1.0);
+        ab75 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "ab75", 1.0);
+        ab76 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "ab76", 1.0);
+        ab77 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "ab77", 1.0);
+        ab78 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "ab78", 1.0);
+        ab79 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "ab79", 1.0);
+        ab80 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "ab80", 1.0);
+        ab81 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "ab81", 1.0);
+        ab82 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "ab82", 1.0);
+        ab83 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "ab83", 1.0);
+        ab84 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "ab84", 1.0);
+        ab85 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "ab85", 1.0);
+        ab86 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "ab86", 1.0);
+        ab87 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "ab87", 1.0);
+        ab88 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "ab88", 1.0);
+        ab89 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "ab89", 1.0);
+        ab90 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "ab90", 1.0);
+        ab91 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "ab91", 1.0);
+        ab92 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "ab92", 1.0);
+        ab93 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "ab93", 1.0);
+        ab94 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "ab94", 1.0);
+        ab95 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "ab95", 1.0);
+        ab96 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "ab96", 1.0);
+        ab97 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "ab97", 1.0);
+        ab98 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "ab98", 1.0);
+        ab99 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "ab99", 1.0);
+        ab100 = _simulation->dictionary()->template get_or<float_type>(
+                                                                       "ab100", 1.0);
+
+        pb1 = _simulation->dictionary()->template get_or<float_type>(
+                                                                     "pb1", 1.0);
+        pb2 = _simulation->dictionary()->template get_or<float_type>(
+                                                                     "pb2", 1.0);
+        pb3 = _simulation->dictionary()->template get_or<float_type>(
+                                                                     "pb3", 1.0);
+        pb4 = _simulation->dictionary()->template get_or<float_type>(
+                                                                     "pb4", 1.0);
+        pb5 = _simulation->dictionary()->template get_or<float_type>(
+                                                                     "pb5", 1.0);
+        pb6 = _simulation->dictionary()->template get_or<float_type>(
+                                                                     "pb6", 1.0);
+        pb7 = _simulation->dictionary()->template get_or<float_type>(
+                                                                     "pb7", 1.0);
+        pb8 = _simulation->dictionary()->template get_or<float_type>(
+                                                                     "pb8", 1.0);
+        pb9 = _simulation->dictionary()->template get_or<float_type>(
+                                                                     "pb9", 1.0);
+        pb10 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pb10", 1.0);
+        pb11 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pb11", 1.0);
+        pb12 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pb12", 1.0);
+        pb13 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pb13", 1.0);
+        pb14 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pb14", 1.0);
+        pb15 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pb15", 1.0);
+        pb16 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pb16", 1.0);
+        pb17 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pb17", 1.0);
+        pb18 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pb18", 1.0);
+        pb19 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pb19", 1.0);
+        pb20 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pb20", 1.0);
+        pb21 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pb21", 1.0);
+        pb22 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pb22", 1.0);
+        pb23 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pb23", 1.0);
+        pb24 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pb24", 1.0);
+        pb25 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pb25", 1.0);
+        pb26 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pb26", 1.0);
+        pb27 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pb27", 1.0);
+        pb28 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pb28", 1.0);
+        pb29 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pb29", 1.0);
+        pb30 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pb30", 1.0);
+        pb31 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pb31", 1.0);
+        pb32 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pb32", 1.0);
+        pb33 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pb33", 1.0);
+        pb34 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pb34", 1.0);
+        pb35 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pb35", 1.0);
+        pb36 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pb36", 1.0);
+        pb37 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pb37", 1.0);
+        pb38 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pb38", 1.0);
+        pb39 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pb39", 1.0);
+        pb40 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pb40", 1.0);
+        pb41 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pb41", 1.0);
+        pb42 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pb42", 1.0);
+        pb43 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pb43", 1.0);
+        pb44 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pb44", 1.0);
+        pb45 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pb45", 1.0);
+        pb46 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pb46", 1.0);
+        pb47 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pb47", 1.0);
+        pb48 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pb48", 1.0);
+        pb49 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pb49", 1.0);
+        pb50 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pb50", 1.0);
+        pb51 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pb51", 1.0);
+        pb52 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pb52", 1.0);
+        pb53 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pb53", 1.0);
+        pb54 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pb54", 1.0);
+        pb55 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pb55", 1.0);
+        pb56 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pb56", 1.0);
+        pb57 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pb57", 1.0);
+        pb58 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pb58", 1.0);
+        pb59 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pb59", 1.0);
+        pb60 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pb60", 1.0);
+        pb61 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pb61", 1.0);
+        pb62 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pb62", 1.0);
+        pb63 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pb63", 1.0);
+        pb64 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pb64", 1.0);
+        pb65 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pb65", 1.0);
+        pb66 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pb66", 1.0);
+        pb67 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pb67", 1.0);
+        pb68 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pb68", 1.0);
+        pb69 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pb69", 1.0);
+        pb70 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pb70", 1.0);
+        pb71 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pb71", 1.0);
+        pb72 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pb72", 1.0);
+        pb73 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pb73", 1.0);
+        pb74 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pb74", 1.0);
+        pb75 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pb75", 1.0);
+        pb76 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pb76", 1.0);
+        pb77 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pb77", 1.0);
+        pb78 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pb78", 1.0);
+        pb79 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pb79", 1.0);
+        pb80 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pb80", 1.0);
+        pb81 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pb81", 1.0);
+        pb82 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pb82", 1.0);
+        pb83 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pb83", 1.0);
+        pb84 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pb84", 1.0);
+        pb85 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pb85", 1.0);
+        pb86 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pb86", 1.0);
+        pb87 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pb87", 1.0);
+        pb88 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pb88", 1.0);
+        pb89 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pb89", 1.0);
+        pb90 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pb90", 1.0);
+        pb91 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pb91", 1.0);
+        pb92 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pb92", 1.0);
+        pb93 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pb93", 1.0);
+        pb94 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pb94", 1.0);
+        pb95 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pb95", 1.0);
+        pb96 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pb96", 1.0);
+        pb97 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pb97", 1.0);
+        pb98 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pb98", 1.0);
+        pb99 = _simulation->dictionary()->template get_or<float_type>(
+                                                                      "pb99", 1.0);
+        pb100 = _simulation->dictionary()->template get_or<float_type>(
+                                                                       "pb100", 1.0);
+
+        k_dipole = _simulation->dictionary()->template get_or<float_type>(
+            "k_dipole", 1.0);
+
         b_f_eps = _simulation->dictionary()->template get_or<float_type>(
             "b_f_eps", 1e-3);
 
@@ -123,6 +978,8 @@ class Ifherk
         cg_max_itr_ = simulation_->dictionary_->template get_or<int>("cg_max_itr", 40);
         write_stress_ = simulation_->dictionary_->template get_or<bool>("write_stress", false);
         write_noca_ = simulation_->dictionary_->template get_or<bool>("write_noca", false);
+        dim = domain_->dimension();
+
 
         if (dt_base_ < 0) dt_base_ = dx_base_ * cfl_;
 
@@ -1695,43 +2552,124 @@ private:
         }
 
         if (std::abs(b_f_mag) > 1e-5) {
-            add_body_force<Target>(_scale);
+          add_body_force<Target>(_scale, T_stage_);
         }
 
-        
+
     }
 
     template<class target>
-    void add_body_force(float_type scale) noexcept {
+    void add_body_force(float_type scale, float_type t) noexcept {
         //float_type eps = 1e-3;
         auto dx_base = domain_->dx_base();
         for (auto it = domain_->begin(); it != domain_->end(); ++it)
-		{
+                {
 
-			if (!it->locally_owned()) continue;
+                        if (!it->locally_owned()) continue;
 
-			auto dx_level = dx_base / std::pow(2, it->refinement_level());
-			auto scaling = std::pow(2, it->refinement_level());
+                        auto dx_level = dx_base / std::pow(2, it->refinement_level());
+                        auto scaling = std::pow(2, it->refinement_level());
 
-			for (auto& node : it->data())
-			{
+                        for (auto& node : it->data())
+                        {
 
-				const auto& coord = node.level_coordinate();
+                                const auto& coord = node.level_coordinate();
 
-				
-				float_type x = static_cast<float_type>
-					(coord[0]) * dx_level;
-				float_type y = static_cast<float_type>
-					(coord[1]) * dx_level;
-				//z = static_cast<float_type>
-				//(coord[2]-center[2]*scaling+0.5)*dx_level;
 
-				//node(edge_aux,0) = vor(x,y-0.5*vort_sep,0)+ vor(x,y+0.5*vort_sep,0);
-				node(target::tag(), 1) += -scale * b_f_mag * y / (y*y + b_f_eps);
+                                float_type x = static_cast<float_type>
+                                        (coord[0]) * dx_level;
+                                float_type y = static_cast<float_type>
+                                        (coord[1]) * dx_level;
+                                float_type z = y;
+                                if (dim == 3) z = static_cast<float_type>(coord[2])*dx_level;
+
+                                //node(edge_aux,0) = vor(x,y-0.5*vort_sep,0)+ vor(x,y+0.5*vort_sep,0);
+                                //node(target::tag(), 0) += -scale * b_f_mag * y / (y*y + b_f_eps);
+                                //node(target::tag(), 1) += -scale * b_f_mag * y / (y*y + b_f_eps);
+                                //node(target::tag(), 2) += -scale * b_f_mag * y / (y*y + b_f_eps);
+
+                                float_type R = std::pow(x*x+y*y,0.5);
+                                float_type Theta = std::atan2(y,x);
+                                float_type pert_top = at1*std::cos(Theta*1.0+pt1)+at2*std::cos(Theta*2.0+pt2)+at3*std::cos(Theta*3.0+pt3)+at4*std::cos(Theta*4.0+pt4)+at5*std::cos(Theta*5.0+pt5)+at6*std::cos(Theta*6.0+pt6)+at7*std::cos(Theta*7.0+pt7)+at8*std::cos(Theta*8.0+pt8)+at9*std::cos(Theta*9.0+pt9)+at10*std::cos(Theta*10.0+pt10)+at11*std::cos(Theta*11.0+pt11)+at12*std::cos(Theta*12.0+pt12)+at13*std::cos(Theta*13.0+pt13)+at14*std::cos(Theta*14.0+pt14)+at15*std::cos(Theta*15.0+pt15)+at16*std::cos(Theta*16.0+pt16)+at17*std::cos(Theta*17.0+pt17)+at18*std::cos(Theta*18.0+pt18)+at19*std::cos(Theta*19.0+pt19)+at20*std::cos(Theta*20.0+pt20)+at21*std::cos(Theta*21.0+pt21)+at22*std::cos(Theta*22.0+pt22)+at23*std::cos(Theta*23.0+pt23)+at24*std::cos(Theta*24.0+pt24)+at25*std::cos(Theta*25.0+pt25)+at26*std::cos(Theta*26.0+pt26)+at27*std::cos(Theta*27.0+pt27)+at28*std::cos(Theta*28.0+pt28)+at29*std::cos(Theta*29.0+pt29)+at30*std::cos(Theta*30.0+pt30)+at31*std::cos(Theta*31.0+pt31)+at32*std::cos(Theta*32.0+pt32)+at33*std::cos(Theta*33.0+pt33)+at34*std::cos(Theta*34.0+pt34)+at35*std::cos(Theta*35.0+pt35)+at36*std::cos(Theta*36.0+pt36)+at37*std::cos(Theta*37.0+pt37)+at38*std::cos(Theta*38.0+pt38)+at39*std::cos(Theta*39.0+pt39)+at40*std::cos(Theta*40.0+pt40)+at41*std::cos(Theta*41.0+pt41)+at42*std::cos(Theta*42.0+pt42)+at43*std::cos(Theta*43.0+pt43)+at44*std::cos(Theta*44.0+pt44)+at45*std::cos(Theta*45.0+pt45)+at46*std::cos(Theta*46.0+pt46)+at47*std::cos(Theta*47.0+pt47)+at48*std::cos(Theta*48.0+pt48)+at49*std::cos(Theta*49.0+pt49)+at50*std::cos(Theta*50.0+pt50)+at51*std::cos(Theta*51.0+pt51)+at52*std::cos(Theta*52.0+pt52)+at53*std::cos(Theta*53.0+pt53)+at54*std::cos(Theta*54.0+pt54)+at55*std::cos(Theta*55.0+pt55)+at56*std::cos(Theta*56.0+pt56)+at57*std::cos(Theta*57.0+pt57)+at58*std::cos(Theta*58.0+pt58)+at59*std::cos(Theta*59.0+pt59)+at60*std::cos(Theta*60.0+pt60)+at61*std::cos(Theta*61.0+pt61)+at62*std::cos(Theta*62.0+pt62)+at63*std::cos(Theta*63.0+pt63)+at64*std::cos(Theta*64.0+pt64)+at65*std::cos(Theta*65.0+pt65)+at66*std::cos(Theta*66.0+pt66)+at67*std::cos(Theta*67.0+pt67)+at68*std::cos(Theta*68.0+pt68)+at69*std::cos(Theta*69.0+pt69)+at70*std::cos(Theta*70.0+pt70)+at71*std::cos(Theta*71.0+pt71)+at72*std::cos(Theta*72.0+pt72)+at73*std::cos(Theta*73.0+pt73)+at74*std::cos(Theta*74.0+pt74)+at75*std::cos(Theta*75.0+pt75)+at76*std::cos(Theta*76.0+pt76)+at77*std::cos(Theta*77.0+pt77)+at78*std::cos(Theta*78.0+pt78)+at79*std::cos(Theta*79.0+pt79)+at80*std::cos(Theta*80.0+pt80)+at81*std::cos(Theta*81.0+pt81)+at82*std::cos(Theta*82.0+pt82)+at83*std::cos(Theta*83.0+pt83)+at84*std::cos(Theta*84.0+pt84)+at85*std::cos(Theta*85.0+pt85)+at86*std::cos(Theta*86.0+pt86)+at87*std::cos(Theta*87.0+pt87)+at88*std::cos(Theta*88.0+pt88)+at89*std::cos(Theta*89.0+pt89)+at90*std::cos(Theta*90.0+pt90)+at91*std::cos(Theta*91.0+pt91)+at92*std::cos(Theta*92.0+pt92)+at93*std::cos(Theta*93.0+pt93)+at94*std::cos(Theta*94.0+pt94)+at95*std::cos(Theta*95.0+pt95)+at96*std::cos(Theta*96.0+pt96)+at97*std::cos(Theta*97.0+pt97)+at98*std::cos(Theta*98.0+pt98)+at99*std::cos(Theta*99.0+pt99)+at100*std::cos(Theta*100.0+pt100);
+                                //float_type pert_top = a_dipole/100.0*std::cos(Theta*16.0);
+                                float_type pert_bot = ab1*std::cos(Theta*1.0+pb1)+ab2*std::cos(Theta*2.0+pb2)+ab3*std::cos(Theta*3.0+pb3)+ab4*std::cos(Theta*4.0+pb4)+ab5*std::cos(Theta*5.0+pb5)+ab6*std::cos(Theta*6.0+pb6)+ab7*std::cos(Theta*7.0+pb7)+ab8*std::cos(Theta*8.0+pb8)+ab9*std::cos(Theta*9.0+pb9)+ab10*std::cos(Theta*10.0+pb10)+ab11*std::cos(Theta*11.0+pb11)+ab12*std::cos(Theta*12.0+pb12)+ab13*std::cos(Theta*13.0+pb13)+ab14*std::cos(Theta*14.0+pb14)+ab15*std::cos(Theta*15.0+pb15)+ab16*std::cos(Theta*16.0+pb16)+ab17*std::cos(Theta*17.0+pb17)+ab18*std::cos(Theta*18.0+pb18)+ab19*std::cos(Theta*19.0+pb19)+ab20*std::cos(Theta*20.0+pb20)+ab21*std::cos(Theta*21.0+pb21)+ab22*std::cos(Theta*22.0+pb22)+ab23*std::cos(Theta*23.0+pb23)+ab24*std::cos(Theta*24.0+pb24)+ab25*std::cos(Theta*25.0+pb25)+ab26*std::cos(Theta*26.0+pb26)+ab27*std::cos(Theta*27.0+pb27)+ab28*std::cos(Theta*28.0+pb28)+ab29*std::cos(Theta*29.0+pb29)+ab30*std::cos(Theta*30.0+pb30)+ab31*std::cos(Theta*31.0+pb31)+ab32*std::cos(Theta*32.0+pb32)+ab33*std::cos(Theta*33.0+pb33)+ab34*std::cos(Theta*34.0+pb34)+ab35*std::cos(Theta*35.0+pb35)+ab36*std::cos(Theta*36.0+pb36)+ab37*std::cos(Theta*37.0+pb37)+ab38*std::cos(Theta*38.0+pb38)+ab39*std::cos(Theta*39.0+pb39)+ab40*std::cos(Theta*40.0+pb40)+ab41*std::cos(Theta*41.0+pb41)+ab42*std::cos(Theta*42.0+pb42)+ab43*std::cos(Theta*43.0+pb43)+ab44*std::cos(Theta*44.0+pb44)+ab45*std::cos(Theta*45.0+pb45)+ab46*std::cos(Theta*46.0+pb46)+ab47*std::cos(Theta*47.0+pb47)+ab48*std::cos(Theta*48.0+pb48)+ab49*std::cos(Theta*49.0+pb49)+ab50*std::cos(Theta*50.0+pb50)+ab51*std::cos(Theta*51.0+pb51)+ab52*std::cos(Theta*52.0+pb52)+ab53*std::cos(Theta*53.0+pb53)+ab54*std::cos(Theta*54.0+pb54)+ab55*std::cos(Theta*55.0+pb55)+ab56*std::cos(Theta*56.0+pb56)+ab57*std::cos(Theta*57.0+pb57)+ab58*std::cos(Theta*58.0+pb58)+ab59*std::cos(Theta*59.0+pb59)+ab60*std::cos(Theta*60.0+pb60)+ab61*std::cos(Theta*61.0+pb61)+ab62*std::cos(Theta*62.0+pb62)+ab63*std::cos(Theta*63.0+pb63)+ab64*std::cos(Theta*64.0+pb64)+ab65*std::cos(Theta*65.0+pb65)+ab66*std::cos(Theta*66.0+pb66)+ab67*std::cos(Theta*67.0+pb67)+ab68*std::cos(Theta*68.0+pb68)+ab69*std::cos(Theta*69.0+pb69)+ab70*std::cos(Theta*70.0+pb70)+ab71*std::cos(Theta*71.0+pb71)+ab72*std::cos(Theta*72.0+pb72)+ab73*std::cos(Theta*73.0+pb73)+ab74*std::cos(Theta*74.0+pb74)+ab75*std::cos(Theta*75.0+pb75)+ab76*std::cos(Theta*76.0+pb76)+ab77*std::cos(Theta*77.0+pb77)+ab78*std::cos(Theta*78.0+pb78)+ab79*std::cos(Theta*79.0+pb79)+ab80*std::cos(Theta*80.0+pb80)+ab81*std::cos(Theta*81.0+pb81)+ab82*std::cos(Theta*82.0+pb82)+ab83*std::cos(Theta*83.0+pb83)+ab84*std::cos(Theta*84.0+pb84)+ab85*std::cos(Theta*85.0+pb85)+ab86*std::cos(Theta*86.0+pb86)+ab87*std::cos(Theta*87.0+pb87)+ab88*std::cos(Theta*88.0+pb88)+ab89*std::cos(Theta*89.0+pb89)+ab90*std::cos(Theta*90.0+pb90)+ab91*std::cos(Theta*91.0+pb91)+ab92*std::cos(Theta*92.0+pb92)+ab93*std::cos(Theta*93.0+pb93)+ab94*std::cos(Theta*94.0+pb94)+ab95*std::cos(Theta*95.0+pb95)+ab96*std::cos(Theta*96.0+pb96)+ab97*std::cos(Theta*97.0+pb97)+ab98*std::cos(Theta*98.0+pb98)+ab99*std::cos(Theta*99.0+pb99)+ab100*std::cos(Theta*100.0+pb100);
+                                //float_type pert_bot = a_dipole/100.0*std::cos(Theta*16.0);
+
+                                if (dim == 2)
+                                  {
+                                    pert_top = 0.0;
+                                    pert_bot = 0.0;
+                                    Theta = 0.0;
+                                    if (x < 0.0) Theta = 3.14159265358979323846;
+                                  }
+
+                                /*
+                                if ( ((R>1.0) && (R<1.2)) && (t<1.0)) //&& (z>(-0.1+pert)) && (z<(0.1-pert)) )
+                                  {
+                                    //node(target::tag(), 0) += -scale * b_f_mag * std::cos(Theta);
+                                    //node(target::tag(), 1) += -scale * b_f_mag * std::sin(Theta);
+                                  node(target::tag(), 0) += -scale * b_f_mag * std::cos(Theta) * (1.0+std::tanh(100.0*(z+pert+0.05)))/2.0 * (1.0-std::tanh(100.0*(z-pert-0.05)))/2.0;
+                                  node(target::tag(), 1) += -scale * b_f_mag * std::sin(Theta) * (1.0+std::tanh(100.0*(z+pert+0.05)))/2.0 * (1.0-std::tanh(100.0*(z-pert-0.05)))/2.0;
+                                  node(target::tag(), 2) += -scale * b_f_mag * 0.0;
+                                  }
+                                else
+                                  {
+                                  node(target::tag(), 0) += -scale * b_f_mag * 0.0;
+                                  node(target::tag(), 1) += -scale * b_f_mag * 0.0;
+                                  node(target::tag(), 2) += -scale * b_f_mag * 0.0;
+                                  }
+                                */
+
+                                //This is the case for making circular vortex pairs circa March 2025
+                                /*
+                                if (t<t_dipole)
+                                  {
+                                  node(target::tag(), 0) += -scale * b_f_mag * std::cos(Theta) * (1.0+std::tanh(100.0*(z+pert_bot+h_dipole/2)))/2.0 * (1.0-std::tanh(100.0*(z-pert_top-h_dipole/2)))/2.0 * (1.0+std::tanh(100.0*(R-R_dipole+l_dipole/2)))/2.0 * (1.0-std::tanh(100.0*(R-R_dipole-l_dipole/2)))/2.0;
+                                  node(target::tag(), 1) += -scale * b_f_mag * std::sin(Theta) * (1.0+std::tanh(100.0*(z+pert_bot+h_dipole/2)))/2.0 * (1.0-std::tanh(100.0*(z-pert_top-h_dipole/2)))/2.0 * (1.0+std::tanh(100.0*(R-R_dipole+l_dipole/2)))/2.0 * (1.0-std::tanh(100.0*(R-R_dipole-l_dipole/2)))/2.0;
+                                  if (dim == 3) node(target::tag(), 2) += -scale * b_f_mag * 0.0;
+                                  }
+                                else
+                                  {
+                                  node(target::tag(), 0) += -scale * b_f_mag * 0.0;
+                                  node(target::tag(), 1) += -scale * b_f_mag * 0.0;
+                                  if (dim == 3) node(target::tag(), 2) += -scale * b_f_mag * 0.0;
+                                  }
+                                */
+
+                                //This is messing around with the downward vortex pair, circa March 19 2025
+                                /*
+                                if ( ((t<x)&&(x<(t+0.4))) && ((-1.0<y)&&(y<1.0)) && ((-0.05<z)&&(z<0.05)) )
+                                  {
+                                    node(target::tag(), 2) += -scale * b_f_mag * 1.0;
+                                  }
+                                else
+                                  {
+                                     node(target::tag(), 2) += -scale * b_f_mag * 0.0;
+                                  }*/
+
+                                //node(target::tag(), 2) += -scale *b_f_mag * (1.0+std::tanh(50.0*(x-t+0.4/2.0)))/2.0 * (1.0-std::tanh(50.0*(x-t-0.4/2.0)))/2.0 * (1.0+std::tanh(3.0*(y+2.0*(1.0+0.1*std::sin(1.0*t))/2.0)))/2.0 * (1.0-std::tanh(3.0*(y-2.0*(1.0+0.1*std::sin(1.0*t))/2.0)))/2.0 * (1.0+std::tanh(50.0*(z+0.1*std::sin(1.0*t)+0.1/2.0)))/2.0 * (1.0-std::tanh(50.0*(z+0.1*std::sin(1.0*t)-0.1/2.0)))/2.0;
+                                node(target::tag(), 2) += -scale *b_f_mag * (1.0+std::tanh(tansteepx*(x-speedx*t+widthx/2.0)))/2.0 * (1.0-std::tanh(tansteepx*(x-speedx*t-widthx/2.0)))/2.0 * (1.0+std::tanh(tansteepy*(y+widthy*(1.0+amplitudey*std::sin(periody*t))/2.0)))/2.0 * (1.0-std::tanh(tansteepy*(y-widthy*(1.0+amplitudey*std::sin(periody*t))/2.0)))/2.0 * (1.0+std::tanh(tansteepz*(z+amplitudez*std::sin(periodz*t)+widthz/2.0)))/2.0 * (1.0-std::tanh(tansteepz*(z+amplitudez*std::sin(periodz*t)-widthz/2.0)))/2.0;
+
+
+                                /*
+                                if (t<t_dipole && std::abs(y)<0.5 && std::abs(x)<0.5)
+                                  {
+                                  node(target::tag(), 0) += -scale * b_f_mag;
+                                  node(target::tag(), 1) += 0.0 * -scale * b_f_mag * std::sin(Theta) * (1.0+std::tanh(100.0*(z+pert+h_dipole/2)))/2.0 * (1.0-std::tanh(100.0*(z-pert-h_dipole/2)))/2.0 * (1.0+std::tanh(100.0*(R-R_dipole+l_dipole/2)))/2.0 * (1.0-std::tanh(100.0*(R-R_dipole-l_dipole/2)))/2.0;
+                                  if (dim == 3) node(target::tag(), 2) += -scale * b_f_mag * 0.0;
+                                  }
+                                else
+                                  {
+                                  node(target::tag(), 0) += -scale * b_f_mag * 0.0;
+                                  node(target::tag(), 1) += -scale * b_f_mag * 0.0;
+                                  if (dim == 3) node(target::tag(), 2) += -scale * b_f_mag * 0.0;
+                                  }
+                                */
+
 
             }
 
-		}
+                }
     }
 
     template<class Source, class Target>
@@ -1979,9 +2917,19 @@ private:
 
     float_type T_last_vel_refresh_=0.0;
 
-    float_type b_f_mag, b_f_eps;
-
     std::vector<float_type> omega_cross_x;
+
+    float_type b_f_mag, b_f_eps, t_dipole, R_dipole, h_dipole, l_dipole, a_dipole, k_dipole;
+
+    float_type tansteepx, tansteepy, tansteepz, widthx, widthy, widthz, speedx, periody, periodz, amplitudey, amplitudez;
+
+    float_type at1, at2, at3, at4, at5, at6, at7, at8, at9, at10, at11, at12, at13, at14, at15, at16, at17, at18, at19, at20, at21, at22, at23, at24, at25, at26, at27, at28, at29, at30, at31, at32, at33, at34, at35, at36, at37, at38, at39, at40, at41, at42, at43, at44, at45, at46, at47, at48, at49, at50, at51, at52, at53, at54, at55, at56, at57, at58, at59, at60, at61, at62, at63, at64, at65, at66, at67, at68, at69, at70, at71, at72, at73, at74, at75, at76, at77, at78, at79, at80, at81, at82, at83, at84, at85, at86, at87, at88, at89, at90, at91, at92, at93, at94, at95, at96, at97, at98, at99, at100;
+
+    float_type pt1, pt2, pt3, pt4, pt5, pt6, pt7, pt8, pt9, pt10, pt11, pt12, pt13, pt14, pt15, pt16, pt17, pt18, pt19, pt20, pt21, pt22, pt23, pt24, pt25, pt26, pt27, pt28, pt29, pt30, pt31, pt32, pt33, pt34, pt35, pt36, pt37, pt38, pt39, pt40, pt41, pt42, pt43, pt44, pt45, pt46, pt47, pt48, pt49, pt50, pt51, pt52, pt53, pt54, pt55, pt56, pt57, pt58, pt59, pt60, pt61, pt62, pt63, pt64, pt65, pt66, pt67, pt68, pt69, pt70, pt71, pt72, pt73, pt74, pt75, pt76, pt77, pt78, pt79, pt80, pt81, pt82, pt83, pt84, pt85, pt86, pt87, pt88, pt89, pt90, pt91, pt92, pt93, pt94, pt95, pt96, pt97, pt98, pt99, pt100;
+
+    float_type ab1, ab2, ab3, ab4, ab5, ab6, ab7, ab8, ab9, ab10, ab11, ab12, ab13, ab14, ab15, ab16, ab17, ab18, ab19, ab20, ab21, ab22, ab23, ab24, ab25, ab26, ab27, ab28, ab29, ab30, ab31, ab32, ab33, ab34, ab35, ab36, ab37, ab38, ab39, ab40, ab41, ab42, ab43, ab44, ab45, ab46, ab47, ab48, ab49, ab50, ab51, ab52, ab53, ab54, ab55, ab56, ab57, ab58, ab59, ab60, ab61, ab62, ab63, ab64, ab65, ab66, ab67, ab68, ab69, ab70, ab71, ab72, ab73, ab74, ab75, ab76, ab77, ab78, ab79, ab80, ab81, ab82, ab83, ab84, ab85, ab86, ab87, ab88, ab89, ab90, ab91, ab92, ab93, ab94, ab95, ab96, ab97, ab98, ab99, ab100;
+
+    float_type pb1, pb2, pb3, pb4, pb5, pb6, pb7, pb8, pb9, pb10, pb11, pb12, pb13, pb14, pb15, pb16, pb17, pb18, pb19, pb20, pb21, pb22, pb23, pb24, pb25, pb26, pb27, pb28, pb29, pb30, pb31, pb32, pb33, pb34, pb35, pb36, pb37, pb38, pb39, pb40, pb41, pb42, pb43, pb44, pb45, pb46, pb47, pb48, pb49, pb50, pb51, pb52, pb53, pb54, pb55, pb56, pb57, pb58, pb59, pb60, pb61, pb62, pb63, pb64, pb65, pb66, pb67, pb68, pb69, pb70, pb71, pb72, pb73, pb74, pb75, pb76, pb77, pb78, pb79, pb80, pb81, pb82, pb83, pb84, pb85, pb86, pb87, pb88, pb89, pb90, pb91, pb92, pb93, pb94, pb95, pb96, pb97, pb98, pb99, pb100;
 
     int max_vel_refresh_=1;
     int max_ref_level_=0;

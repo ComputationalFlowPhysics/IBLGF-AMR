@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# iblgf.sh — friendly wrapper for configure/build/test/run
+# iblgf_copy.sh — friendly wrapper for configure/build/test/run
 # Put this file in the root of the IBLGF-AMR repo (next to CMakeLists.txt).
 
 set -euo pipefail
@@ -77,11 +77,11 @@ ensure_repo_root() {
 print_usage() {
   cat <<'USAGE'
 Usage:
-  ./iblgf.sh help
-  ./iblgf.sh configure
-  ./iblgf.sh build [-j N]
-  ./iblgf.sh test  [-j N]
-  ./iblgf.sh clean
+  ./iblgf_copy.sh help
+  ./iblgf_copy.sh configure
+  ./iblgf_copy.sh build [-j N]
+  ./iblgf_copy.sh test  [-j N]
+  ./iblgf_copy.sh clean
 
 Env overrides:
   IBLGF_BUILD_JOBS=12   default build parallelism
@@ -89,10 +89,10 @@ Env overrides:
   IBLGF_MPI_RANKS=8     default MPI ranks for run/run-test
 
 Run an existing built executable with a config:
-  ./iblgf.sh run <exe-or-target> <config> [-n MPI_RANKS] [-- <extra args>]
+  ./iblgf_copy.sh run <exe-or-target> <config> [-n MPI_RANKS] [-- <extra args>]
 
 Run a named test (staged run dir + logs + metadata):
-  ./iblgf.sh run-test <test_name> <config_name_or_path> [-n MPI_RANKS]
+  ./iblgf_copy.sh run-test <test_name> <config_name_or_path> [-n MPI_RANKS]
 
 USAGE
 }
@@ -347,7 +347,7 @@ do_run() {
 do_run_test() {
   ensure_repo_root
 
-  [[ $# -ge 2 ]] || die "Usage: ./iblgf.sh run-test <test_name> <config_name_or_path> [-n MPI_RANKS]"
+  [[ $# -ge 2 ]] || die "Usage: ./iblgf_copy.sh run-test <test_name> <config_name_or_path> [-n MPI_RANKS]"
 
   local test_name="$1"
   local config_arg="$2"

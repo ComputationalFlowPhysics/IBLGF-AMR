@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# docker_iblgf.sh — enter IBLGF Docker env with optional CPU limit and Python
+# docker_iblgf_copy.sh — enter IBLGF Docker env with optional CPU limit and Python
 set -euo pipefail
 
 CPU_BASE_IMAGE="ccardina/iblgf:cpu"
@@ -46,11 +46,11 @@ host_utc_offset() {
 usage() {
   cat <<EOF
 Usage:
-  ./docker_iblgf.sh
-  ./docker_iblgf.sh -c N
-  ./docker_iblgf.sh -g
-  ./docker_iblgf.sh -g -c N
-  ./docker_iblgf.sh --pull
+  ./docker_iblgf_copy.sh
+  ./docker_iblgf_copy.sh -c N
+  ./docker_iblgf_copy.sh -g
+  ./docker_iblgf_copy.sh -g -c N
+  ./docker_iblgf_copy.sh --pull
 
 Options:
   -c N    Limit Docker container to N CPU cores
@@ -58,11 +58,11 @@ Options:
   --pull  Pull the latest version of the selected image before starting
 
 Examples:
-  ./docker_iblgf.sh
-  ./docker_iblgf.sh -c 4
-  ./docker_iblgf.sh -g
-  ./docker_iblgf.sh -g -c 4
-  ./docker_iblgf.sh --pull
+  ./docker_iblgf_copy.sh
+  ./docker_iblgf_copy.sh -c 4
+  ./docker_iblgf_copy.sh -g
+  ./docker_iblgf_copy.sh -g -c 4
+  ./docker_iblgf_copy.sh --pull
 EOF
 }
 

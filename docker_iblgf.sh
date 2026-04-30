@@ -7,6 +7,7 @@ CPU_BASE_IMAGE="ccardina/iblgf:cpu"
 GPU_BASE_IMAGE="ccardina/iblgf:gpu"
 
 USE_GPU=0
+FORCE_PULL=0
 
 # Where the repo lives
 CONTAINER_ROOT="/workspace2"
@@ -19,16 +20,19 @@ Usage:
   ./docker_iblgf.sh -c N
   ./docker_iblgf.sh -g
   ./docker_iblgf.sh -g -c N
+  ./docker_iblgf.sh --pull
 
 Options:
   -c N    Limit Docker container to N CPU cores
   -g      Use GPU image 
+  --pull  Pull the latest version of the selected image before starting
 
 Examples:
   ./docker_iblgf.sh
   ./docker_iblgf.sh -c 4
   ./docker_iblgf.sh -g
   ./docker_iblgf.sh -g -c 4
+  ./docker_iblgf.sh --pull
 EOF
 }
 
@@ -57,6 +61,10 @@ while [[ $# -gt 0 ]]; do
       USE_GPU=1
       shift
       ;;
+    -p|--pull)
+      FORCE_PULL=1
+      shift
+      ;;
     *)
       echo "Unknown option: $1"
       usage
@@ -73,8 +81,11 @@ fi
 
 echo "==> Base image: $BASE_IMAGE"
 
-# Pull base image if missing
-if ! docker image inspect "$BASE_IMAGE" >/dev/null 2>&1; then
+# Pull base image if requested or missing
+if [[ "$FORCE_PULL" -eq 1 ]]; then
+  echo "==> Pulling latest base image..."
+  docker pull "$BASE_IMAGE"
+elif ! docker image inspect "$BASE_IMAGE" >/dev/null 2>&1; then
   echo "==> Pulling base image..."
   docker pull "$BASE_IMAGE"
 fi

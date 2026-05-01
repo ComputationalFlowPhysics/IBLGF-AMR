@@ -7,10 +7,41 @@ CPU_BASE_IMAGE="ccardina/iblgf:cpu"
 GPU_BASE_IMAGE="ccardina/iblgf:gpu"
 
 USE_GPU=0
+FORCE_PULL=0
 
 # Where the repo lives
 CONTAINER_ROOT="/workspace2"
 CONTAINER_REPO_DIR="$CONTAINER_ROOT/IBLGF-AMR"
+
+detect_host_timezone() {
+  if [[ -n "${TZ:-}" ]]; then
+    echo "$TZ"
+    return 0
+  fi
+
+  if command -v timedatectl >/dev/null 2>&1; then
+    timedatectl show --value --property=Timezone 2>/dev/null && return 0
+  fi
+
+  if command -v systemsetup >/dev/null 2>&1; then
+    systemsetup -gettimezone 2>/dev/null | awk -F': ' 'NF > 1 { print $2; exit }' && return 0
+  fi
+
+  if [[ -L /etc/localtime ]]; then
+    local tz_path
+    tz_path="$(readlink /etc/localtime)"
+    if [[ "$tz_path" == *"/zoneinfo/"* ]]; then
+      echo "${tz_path##*/zoneinfo/}"
+      return 0
+    fi
+  fi
+
+  return 1
+}
+
+host_utc_offset() {
+  date +"%z"
+}
 
 usage() {
   cat <<EOF
@@ -19,16 +50,19 @@ Usage:
   ./docker_iblgf.sh -c N
   ./docker_iblgf.sh -g
   ./docker_iblgf.sh -g -c N
+  ./docker_iblgf.sh --pull
 
 Options:
   -c N    Limit Docker container to N CPU cores
   -g      Use GPU image 
+  --pull  Pull the latest version of the selected image before starting
 
 Examples:
   ./docker_iblgf.sh
   ./docker_iblgf.sh -c 4
   ./docker_iblgf.sh -g
   ./docker_iblgf.sh -g -c 4
+  ./docker_iblgf.sh --pull
 EOF
 }
 
@@ -57,6 +91,10 @@ while [[ $# -gt 0 ]]; do
       USE_GPU=1
       shift
       ;;
+    -p|--pull)
+      FORCE_PULL=1
+      shift
+      ;;
     *)
       echo "Unknown option: $1"
       usage
@@ -73,8 +111,11 @@ fi
 
 echo "==> Base image: $BASE_IMAGE"
 
-# Pull base image if missing
-if ! docker image inspect "$BASE_IMAGE" >/dev/null 2>&1; then
+# Pull base image if requested or missing
+if [[ "$FORCE_PULL" -eq 1 ]]; then
+  echo "==> Pulling latest base image..."
+  docker pull "$BASE_IMAGE"
+elif ! docker image inspect "$BASE_IMAGE" >/dev/null 2>&1; then
   echo "==> Pulling base image..."
   docker pull "$BASE_IMAGE"
 fi
@@ -120,6 +161,16 @@ DOCKER_ARGS+=(
 )
 
 DOCKER_ARGS+=( -e LD_LIBRARY_PATH="/usr/local/lib:/usr/local/cuda/lib64:${LD_LIBRARY_PATH:-}" )
+
+if HOST_TZ="$(detect_host_timezone)"; then
+  echo "==> Using timezone: $HOST_TZ"
+  DOCKER_ARGS+=( -e TZ="$HOST_TZ" )
+fi
+
+HOST_UTC_OFFSET="$(host_utc_offset)"
+echo "==> Using UTC offset: $HOST_UTC_OFFSET"
+DOCKER_ARGS+=( -e IBLGF_HOST_UTC_OFFSET="$HOST_UTC_OFFSET" )
+
 #check if env var CI is set to true or if GITHUB_ACTIONS is set to non-empty string, and if so, set OMPI_MCA_rmaps_base_oversubscribe=1
 if [[ "${CI:-false}" == "true" ]]; then
   echo "==> Detected CI environment, setting OMPI_MCA_rmaps_base_oversubscribe=1"

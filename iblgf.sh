@@ -5,8 +5,14 @@
 set -euo pipefail
 
 USE_GPU=0
+ENABLE_COVERAGE=0
 
 build_dir() {
+  if [[ "$ENABLE_COVERAGE" -eq 1 ]]; then
+    echo "$(repo_root)/build-coverage"
+    return
+  fi
+
   if [[ "$USE_GPU" -eq 1 ]]; then
     echo "$(repo_root)/build-gpu"
   else
@@ -56,6 +62,12 @@ need_nvcc_if_gpu() {
     fi
   fi
 }
+
+need_coverage_tools_if_enabled() {
+  if [[ "$ENABLE_COVERAGE" -eq 1 && "$USE_GPU" -eq 1 ]]; then
+    die "Coverage mode currently supports CPU builds only."
+  fi
+}
 # *end of added*
 
 script_dir() {
@@ -78,9 +90,10 @@ print_usage() {
   cat <<'USAGE'
 Usage:
   ./iblgf.sh help
-  ./iblgf.sh configure
-  ./iblgf.sh build [-j N]
-  ./iblgf.sh test  [-j N]
+  ./iblgf.sh configure [--coverage]
+  ./iblgf.sh build [-j N] [--coverage]
+  ./iblgf.sh test  [-j N] [--coverage]
+  ./iblgf.sh coverage [-j N] [--html]
   ./iblgf.sh clean
 
 Env overrides:
@@ -194,11 +207,13 @@ do_configure() {
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --gpu|-g) USE_GPU=1; shift ;;
+      --coverage|-c) ENABLE_COVERAGE=1; shift ;;
       *) die "Unknown option for configure: $1" ;;
     esac
   done
 
   need_nvcc_if_gpu
+  need_coverage_tools_if_enabled
 
   ensure_repo_root
   local root build_dir
@@ -210,6 +225,9 @@ do_configure() {
   local cmake_args=()
   if [[ "$USE_GPU" -eq 1 ]]; then
     cmake_args+=(-DUSE_GPU=True)
+  fi
+  if [[ "$ENABLE_COVERAGE" -eq 1 ]]; then
+    cmake_args+=(-DENABLE_COVERAGE=ON)
   fi
   
   # Allow overriding MPI ranks for tests via environment variable
@@ -228,14 +246,22 @@ do_build() {
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --gpu|-g) USE_GPU=1; shift ;;
+      --coverage|-c) ENABLE_COVERAGE=1; shift ;;
       -j) shift; jobs="$1"; shift ;;
       *) die "Unknown option: $1" ;;
     esac
   done
 
+  need_coverage_tools_if_enabled
   build_dir="$(build_dir)"
 
-  [[ -d "$build_dir" ]] || do_configure
+  if [[ ! -d "$build_dir" ]]; then
+    if [[ "$ENABLE_COVERAGE" -eq 1 ]]; then
+      do_configure --coverage
+    else
+      do_configure
+    fi
+  fi
 
   echo "==> Building (-j $jobs)"
   cmake --build "$build_dir" -j "$jobs"
@@ -251,6 +277,7 @@ do_test() {
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --gpu|-g) USE_GPU=1; shift ;;
+      --coverage|-c) ENABLE_COVERAGE=1; shift ;;
       -j)
         shift
         test_jobs="$1"
@@ -262,8 +289,11 @@ do_test() {
     esac
   done
 
+  need_coverage_tools_if_enabled
   if [[ "$USE_GPU" -eq 1 ]]; then
     do_build --gpu -j "$build_jobs"
+  elif [[ "$ENABLE_COVERAGE" -eq 1 ]]; then
+    do_build --coverage -j "$build_jobs"
   else
     do_build -j "$build_jobs"
   fi
@@ -332,6 +362,7 @@ do_run_test() {
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --gpu|-g) USE_GPU=1; shift ;;
+      --coverage|-c) ENABLE_COVERAGE=1; shift ;;
       -n)
         shift
         mpi="${1:-}"
@@ -357,15 +388,27 @@ do_run_test() {
     esac
   done
 
+  need_coverage_tools_if_enabled
+
   local config_path
   config_path="$(find_test_config "$test_name" "$config_arg" || true)"
   [[ -n "$config_path" ]] || die "Config not found. Tried: '$config_arg' and tests/$test_name/configs/$config_arg"
 
   # Ensure build directory exists; if not, configure first.
-  [[ -d "$(build_dir)" ]] || do_configure
+  if [[ ! -d "$(build_dir)" ]]; then
+    if [[ "$ENABLE_COVERAGE" -eq 1 ]]; then
+      do_configure --coverage
+    else
+      do_configure
+    fi
+  fi
 
   # Build to ensure the test executable exists and is up to date.
-  do_build
+  if [[ "$ENABLE_COVERAGE" -eq 1 ]]; then
+    do_build --coverage
+  else
+    do_build
+  fi
 
   local exe
   exe="$(find_test_executable "$test_name" || true)"
@@ -493,6 +536,38 @@ do_clean() {
   rm -rf "$(build_dir)"
 }
 
+do_coverage() {
+  ensure_repo_root
+
+  local build_jobs html=0
+  build_jobs="$(default_build_jobs)"
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --html) html=1; shift ;;
+      -j) shift; build_jobs="$1"; shift ;;
+      *) die "Unknown option for coverage: $1" ;;
+    esac
+  done
+
+  ENABLE_COVERAGE=1
+  need_coverage_tools_if_enabled
+
+  if [[ "$html" -eq 1 ]] && ! have gcovr; then
+    die "HTML coverage output requires 'gcovr' to be installed."
+  fi
+
+  do_build --coverage -j "$build_jobs"
+
+  if [[ "$html" -eq 1 ]]; then
+    echo "==> Running coverage-html target"
+    cmake --build "$(build_dir)" --target coverage-html
+  else
+    echo "==> Running coverage target"
+    cmake --build "$(build_dir)" --target coverage
+  fi
+}
+
 cmd="${1:-help}"
 shift || true
 
@@ -501,6 +576,7 @@ case "$cmd" in
   configure) do_configure ;;
   build) do_build "$@" ;;
   test) do_test "$@" ;;
+  coverage) do_coverage "$@" ;;
   run) do_run "$@" ;;
   run-test) do_run_test "$@" ;;
   clean) do_clean ;;

@@ -200,6 +200,51 @@ Within the parent directory do the following steps:
 
     $ make test
 
+### Collecting code coverage
+
+The repository now supports an instrumented CPU-only coverage build through CMake
+and the `iblgf.sh` wrapper.
+
+Coverage builds are isolated in `build-coverage/` so they do not affect the
+normal optimized build in `build/`.
+
+#### Prerequisites
+
+You need a GCC- or Clang-based CPU build. For report generation, install
+[`gcovr`](https://gcovr.com/).
+
+#### Quick start
+
+Configure, build, run the tests, and generate a coverage summary:
+
+    $ ./iblgf.sh coverage
+
+If `gcovr` is installed, this writes:
+
+* `build-coverage/coverage/coverage.xml`
+
+To also generate an HTML report:
+
+    $ ./iblgf.sh coverage --html
+
+This writes:
+
+* `build-coverage/coverage/index.html`
+
+#### Manual workflow
+
+If you want to drive CMake directly:
+
+    $ cmake -S . -B build-coverage -DENABLE_COVERAGE=ON
+    $ cmake --build build-coverage -j
+    $ ctest --test-dir build-coverage --output-on-failure
+    $ cmake --build build-coverage --target coverage
+
+#### Notes
+
+* Coverage is currently intended for CPU builds only.
+* The coverage report filters to project code under `src/` and `include/` and excludes `tests/`.
+
 ## Authors
 Benedikt Dorschner  
 Ke Yu  

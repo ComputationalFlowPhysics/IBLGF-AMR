@@ -19,6 +19,7 @@ project(IBLGF VERSION 0.0.0 LANGUAGES CXX C)
 
 
 option(USE_GPU "Build with GPU support" OFF)
+option(ENABLE_COVERAGE "Build with source-based code coverage instrumentation" OFF)
 if(USE_GPU)
     enable_language(CUDA)
     message(STATUS "Building IBLGF with GPU support")
@@ -34,7 +35,7 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 # set(CMAKE_CXX_FLAGS "-march=native -Wno-error=deprecated-declarations")
-set(CMAKE_CXX_FLAGS "-O3 -Wno-error=deprecated-declarations")
+set(CMAKE_CXX_FLAGS "-Wno-error=deprecated-declarations")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17")
 
 # set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} \
@@ -47,6 +48,24 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
     set(CMAKE_BUILD_TYPE "${default_build_type}" CACHE STRING "Choose the type of build." FORCE)
     # Set the possible values of build type for cmake-gui
     set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS "Debug" "Release" "MinSizeRel" "RelWithDebInfo")
+endif()
+
+if(ENABLE_COVERAGE)
+    if(USE_GPU)
+        message(FATAL_ERROR "ENABLE_COVERAGE is currently supported only for CPU builds.")
+    endif()
+
+    if(NOT CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        message(FATAL_ERROR "Coverage is only supported with GCC or Clang.")
+    endif()
+
+    message(STATUS "Building IBLGF with code coverage instrumentation")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O0 -g --coverage")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O0 -g --coverage")
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} --coverage")
+    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} --coverage")
+else()
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3")
 endif()
 
 if(${CMAKE_CXX_COMPILER_ID} STREQUAL "Intel")
@@ -184,6 +203,55 @@ if (IBLGF_TESTING )
         add_library(iblgf_test_main ./src/gtest_main_test.cpp)
         target_link_libraries(iblgf_test_main GTest::gtest iblgf)
         add_subdirectory(tests)
+    endif()
+endif()
+
+if(ENABLE_COVERAGE)
+    find_program(GCOVR_EXECUTABLE gcovr)
+
+    if(GCOVR_EXECUTABLE)
+        add_custom_target(coverage
+            COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure -j 1
+            COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/coverage
+            COMMAND ${GCOVR_EXECUTABLE}
+                    --root ${CMAKE_SOURCE_DIR}
+                    --filter ${CMAKE_SOURCE_DIR}/src
+                    --filter ${CMAKE_SOURCE_DIR}/include
+                    --exclude ${CMAKE_SOURCE_DIR}/tests
+                    --exclude ${CMAKE_BINARY_DIR}/_deps
+                    --gcov-ignore-parse-errors suspicious_hits.warn_once_per_file
+                    --print-summary
+                    --xml-pretty
+                    --output ${CMAKE_CURRENT_BINARY_DIR}/coverage/coverage.xml
+            WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+            USES_TERMINAL
+            COMMENT "Running tests and collecting code coverage"
+        )
+
+        add_custom_target(coverage-html
+            COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/coverage
+            COMMAND ${GCOVR_EXECUTABLE}
+                    --root ${CMAKE_SOURCE_DIR}
+                    --filter ${CMAKE_SOURCE_DIR}/src
+                    --filter ${CMAKE_SOURCE_DIR}/include
+                    --exclude ${CMAKE_SOURCE_DIR}/tests
+                    --exclude ${CMAKE_BINARY_DIR}/_deps
+                    --gcov-ignore-parse-errors suspicious_hits.warn_once_per_file
+                    --html-details
+                    --output ${CMAKE_CURRENT_BINARY_DIR}/coverage/index.html
+            WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+            USES_TERMINAL
+            COMMENT "Generating HTML code coverage report"
+        )
+        add_dependencies(coverage-html coverage)
+    else()
+        add_custom_target(coverage
+            COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure -j 1
+            COMMAND ${CMAKE_COMMAND} -E echo "gcovr not found; tests ran with coverage instrumentation, but no summary report was generated."
+            WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+            USES_TERMINAL
+            COMMENT "Running tests with coverage instrumentation"
+        )
     endif()
 endif()
 

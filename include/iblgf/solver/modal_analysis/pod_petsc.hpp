@@ -20,6 +20,7 @@
 #include <vector>
 #include <cmath>
 #include <array>
+#include <stdexcept>
 
 // IBLGF-specific
 #include <iblgf/global.hpp>
@@ -551,6 +552,69 @@ class POD
         PetscCall(VecAssemblyEnd(x));
         PetscCall(VecRestoreArray(x, &x_array));
         return 0.0;
+    }
+    template<class Field_idx, class Field_re>
+    float_type grid2vec_l2_norm()
+    {
+        boost::mpi::communicator world;
+        PetscBool                petsc_initialized = PETSC_FALSE;
+        PetscCall(PetscInitialized(&petsc_initialized));
+        if (petsc_initialized == PETSC_FALSE)
+        {
+            throw std::runtime_error(
+                "grid2vec_l2_norm requires PETSc/SLEPc to be initialized.");
+        }
+
+        int m_local = max_local_idx;
+        if (world.rank() == 0) m_local = 0;
+        int M = 0;
+        boost::mpi::all_reduce(world, m_local, M, std::plus<int>());
+
+        Vec x;
+        PetscCall(VecCreate(PETSC_COMM_WORLD, &x));
+        PetscCall(VecSetSizes(x, static_cast<PetscInt>(m_local), static_cast<PetscInt>(M)));
+        PetscCall(VecSetFromOptions(x));
+        PetscCall(VecSet(x, 0.0));
+        PetscCall(VecAssemblyBegin(x));
+        PetscCall(VecAssemblyEnd(x));
+        this->template grid2vec<Field_idx, Field_re>(x);
+        PetscReal norm = 0.0;
+        PetscCall(VecNorm(x, NORM_2, &norm));
+        PetscCall(VecDestroy(&x));
+        return static_cast<float_type>(std::max<PetscReal>(norm, 1e-30));
+    }
+    template<class Field_idx, class Field_re>
+    float_type grid2vec_weighted_l2_norm()
+    {
+        boost::mpi::communicator world;
+        float_type               sumsq_local = 0.0;
+        if (domain_->is_client())
+        {
+            const int base_level = domain_->tree()->base_level();
+            for (int l = base_level; l < domain_->tree()->depth(); ++l)
+            {
+                const auto dx_level = 1.0 / math::pow2(l);
+                const auto w = std::pow(dx_level, domain_->dimension() / 2.0);
+                for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+                {
+                    if (!it->locally_owned() || !it->has_data()) continue;
+                    if (!it->is_leaf() ) continue;
+                    for (auto& n : it->data())
+                    {
+                        for (std::size_t field_idx = 0; field_idx < Field_re::nFields(); ++field_idx)
+                        {
+                            if (n(Field_idx::tag(), static_cast<int>(field_idx)) <= 0) continue;
+                            const float_type v = n(Field_re::tag(), static_cast<int>(field_idx));
+                            const float_type vw = v * w;
+                            sumsq_local += vw * vw;
+                        }
+                    }
+                }
+            }
+        }
+        float_type sumsq = 0.0;
+        boost::mpi::all_reduce(world, sumsq_local, sumsq, std::plus<float_type>());
+        return std::sqrt(std::max<float_type>(sumsq, 1e-30));
     }
     template<class Field_idx, class Field_re>
     float_type vec2grid(Vec x, int w_type = 0)

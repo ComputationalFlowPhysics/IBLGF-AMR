@@ -1,19 +1,19 @@
 simulation_parameters
 {
     // Used by test_POD.cpp/test_POD_Test.cpp
-    nLevels=0;
+    nLevels=2;
     nStart=100;
-    nTotal=6;
+    nTotal=5;
     nskip=1;
-
-    // Reference data consumed by POD2D constructor.
-    tree_ref_file=./output/tree_info_100.bin;
-    flow_ref_file=./output/flowTime_100.hdf5;
+    geometry=circle;
+    // // Reference data consumed by POD2D constructor.
+    // tree_ref_file=./output/tree_info_100.bin;
+    // flow_ref_file=./output/flowTime_100.hdf5;
 
     output
     {
-        directory=output;
-        field_dir=output;
+        directory=output_pod2d;
+        field_dir=output_pod2d;
     }
 
     domain

@@ -1,0 +1,29 @@
+simulation_parameters
+{
+    // Used by tests/common_tree/test_POD_Test.cpp
+    nLevels=0;
+    nStart=100;
+    nTotal=5;
+    nskip=1;
+
+    output
+    {
+        directory=output_pod3D;
+        field_dir=output_pod3D;
+    }
+
+    domain
+    {
+        bd_base = (-64,-64,-64);
+        bd_extent = (128,128,128);
+
+        dx_base=0.25;
+        block_extent=8;
+
+        block
+        {
+            base=(-56,-56,-56);
+            extent=(120,120,120);
+        }
+    }
+}

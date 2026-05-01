@@ -18,6 +18,7 @@
 #include <algorithm>
 #include <type_traits>
 #include <utility>
+#include <stdexcept>
 #include <boost/filesystem.hpp>
 #include <iblgf/dictionary/dictionary.hpp>
 
@@ -46,13 +47,13 @@ struct parameters
             (tlevel,        float_type, 1, 1, 1, cell, true),
             (u,             float_type, 2, 1, 1, face, true),
             (u_ref,         float_type, 2, 1, 1, face, true),
+            (u_mean,        float_type, 2, 1, 1, face, true),
             (u_s,             float_type, Dim, 1, 1, face, true),
             (u_a,             float_type, Dim, 1, 1, face, true),
             (u_sym,             float_type, Dim, 1, 1, face, true),
             (p,             float_type, 1, 1, 1, cell, true),
             (test,          float_type, 1, 1, 1, cell,true ),
-            (idx_u,         float_type, 2, 1, 1, face, true),
-            (u_mean,      float_type, 2, 1, 1, face, true)
+            (idx_u,         float_type, 2, 1, 1, face, true)
 
         )
     )
@@ -104,6 +105,7 @@ struct POD2D : public SetupBase<POD2D, parameters>
         nLevelRefinement_ = simulation_.dictionary_->template get_or<int>("nLevels", 0);
 
         domain_->register_refinement_condition() = [this](auto octant, int diff_level) { return false; };
+        domain_->ib().init(_d->get_dictionary("simulation_parameters"), domain_->dx_base(), nLevelRefinement_, 100);
         domain_->init_refine(nLevelRefinement_, 0, 0);
         domain_->distribute<fmm_mask_builder_t, fmm_mask_builder_t>();
         this->initialize();
@@ -112,17 +114,20 @@ struct POD2D : public SetupBase<POD2D, parameters>
     float_type run(int argc, char* argv[])
     {
         boost::mpi::communicator world;
-        PetscCall(SlepcInitialize(&argc, &argv, (char*)0, NULL));
+        PetscBool petsc_initialized = PETSC_FALSE;
+        PetscCall(PetscInitialized(&petsc_initialized));
+        const bool owns_slepc = (petsc_initialized == PETSC_FALSE);
+        if (owns_slepc) { PetscCall(SlepcInitialize(&argc, &argv, (char*)0, NULL)); }
         simulation_.write("init");
         this->cleanup_pod_mode_outputs("_sym_");
         this->cleanup_pod_mode_outputs("_asym_");
-        solver::POD<SetupBase> pod(&this->simulation_);
+        solver::POD<super_type> pod(&this->simulation_);
         pod.run_vec_test();
         pod.run_MOS<u_s_type>("u_s","_sym_");
         this->template write_actual_modes_to_u_ref<u_s_type>("_sym_", "u_s");
         pod.run_MOS<u_a_type>("u_a","_asym_");
         this->template write_actual_modes_to_u_ref<u_a_type>("_asym_", "u_a");
-        PetscCall(SlepcFinalize());
+        if (owns_slepc) { PetscCall(SlepcFinalize()); }
         simulation_.write("final");
 
         return 0.0;
@@ -132,7 +137,10 @@ struct POD2D : public SetupBase<POD2D, parameters>
     float_type mode0_error_sym() const { return mode0_error_sym_; }
     float_type mode0_error_asym() const { return mode0_error_asym_; }
 
-    void write_fake_snapshots_known_modes(int idxStart, int nTotal, int nskip)
+    std::vector<float_type> write_fake_snapshots_known_modes(
+        int idxStart,
+        int nTotal,
+        int nskip)
     {
         boost::mpi::communicator world;
         constexpr float_type     pi = static_cast<float_type>(3.14159265358979323846);
@@ -146,10 +154,46 @@ struct POD2D : public SetupBase<POD2D, parameters>
         const float_type n1 = std::sqrt(static_cast<float_type>(10.0));
         const float_type n2 = std::sqrt(static_cast<float_type>(10.0));
         const float_type n3 = std::sqrt(static_cast<float_type>(6.0));
+        // const float_type n1 = 1.0;
+        // const float_type n2 = 1.0;
+        // const float_type n3 = 1.0;
         const float_type s1 = static_cast<float_type>(3.0);
         const float_type s2 = static_cast<float_type>(2.0);
         const float_type s3 = static_cast<float_type>(1.0);
 
+        auto mode_value = [&](int mode_id, float_type X, float_type Y) -> float_type {
+            if (mode_id == 0) return std::sin(1.0 * pi * X) * std::sin(1.0 * pi * Y);
+            if (mode_id == 1) return std::sin(2.0 * pi * X) * std::sin(2.0 * pi * Y);
+            return std::sin(3.0 * pi * X) * std::sin(3.0 * pi * Y);
+        };
+
+        // Normalize modes with the same effective norm as grid2vec+VecNorm,
+        // but without calling PETSc before Slepc/PETSc initialization.
+        auto pod_mode_norm = [&](int mode_id) -> float_type {
+            for (auto it = domain_->begin(); it != domain_->end(); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
+                if (!it->is_leaf() || it->is_correction()) continue;
+
+                for (auto& n : it->data())
+                {
+                    const auto gc = n.global_coordinate();
+                    const float_type X = 2.0 * (static_cast<float_type>(gc[0] - bb_min[0]) / denom_x) - 1.0;
+                    const float_type Y = 2.0 * (static_cast<float_type>(gc[1] - bb_min[1]) / denom_y) - 1.0;
+                    const float_type mv = mode_value(mode_id, X, Y);
+                    for (std::size_t f = 0; f < Dim; ++f) { n(u_s, static_cast<int>(f)) = mv; }
+                }
+            }
+            world.barrier();
+
+            solver::POD<super_type> pod_helper(&this->simulation_);
+            return pod_helper.template grid2vec_weighted_l2_norm<idx_u_type, u_s_type>();
+        };
+
+        const float_type nphi1 = pod_mode_norm(0);
+        const float_type nphi2 = pod_mode_norm(1);
+        const float_type nphi3 = pod_mode_norm(2);
+        std::vector<float_type> norms = {nphi1, nphi2, nphi3};
         auto write_visual_grid = [&](float_type c1, float_type c2, float_type c3, const std::string& name) {
             for (auto it = domain_->begin(); it != domain_->end(); ++it)
             {
@@ -162,10 +206,10 @@ struct POD2D : public SetupBase<POD2D, parameters>
                     const float_type X = 2.0 * (static_cast<float_type>(gc[0] - bb_min[0]) / denom_x) - 1.0;
                     const float_type Y = 2.0 * (static_cast<float_type>(gc[1] - bb_min[1]) / denom_y) - 1.0;
 
-                    const float_type mode1 = std::sin(1.0 * pi * X) * std::sin(1.0 * pi * Y);
-                    const float_type mode2 = std::sin(2.0 * pi * X) * std::sin(2.0 * pi * Y);
-                    const float_type mode3 = std::sin(3.0 * pi * X) * std::sin(3.0 * pi * Y);
-                    const float_type val = c1 * mode1 + c2 * mode2 + c3 * mode3;
+                    const float_type phi1 = mode_value(0, X, Y) / nphi1;
+                    const float_type phi2 = mode_value(1, X, Y) / nphi2;
+                    const float_type phi3 = mode_value(2, X, Y) / nphi3;
+                    const float_type val = c1 * phi1 + c2 * phi2 + c3 * phi3;
 
                     for (std::size_t f = 0; f < Dim; ++f)
                     {
@@ -205,10 +249,10 @@ struct POD2D : public SetupBase<POD2D, parameters>
                     const float_type X = 2.0 * (static_cast<float_type>(gc[0] - bb_min[0]) / denom_x) - 1.0;
                     const float_type Y = 2.0 * (static_cast<float_type>(gc[1] - bb_min[1]) / denom_y) - 1.0;
 
-                    const float_type mode1 = std::sin(1.0 * pi * X) * std::sin(1.0 * pi * Y);
-                    const float_type mode2 = std::sin(2.0 * pi * X) * std::sin(2.0 * pi * Y);
-                    const float_type mode3 = std::sin(3.0 * pi * X) * std::sin(3.0 * pi * Y);
-                    const float_type val = c1 * mode1 + c2 * mode2 + c3 * mode3;
+                    const float_type phi1 = mode_value(0, X, Y) / nphi1;
+                    const float_type phi2 = mode_value(1, X, Y) / nphi2;
+                    const float_type phi3 = mode_value(2, X, Y) / nphi3;
+                    const float_type val = c1 * phi1 + c2 * phi2 + c3 * phi3;
 
                     for (std::size_t f = 0; f < Dim; ++f)
                     {
@@ -222,6 +266,7 @@ struct POD2D : public SetupBase<POD2D, parameters>
             simulation_.write("adapted_to_ref_" + std::to_string(timeIdx));
             world.barrier();
         }
+        return norms;
     }
 
     void write_fake_snapshots_single_mode(int idxStart, int nTotal, int nskip)

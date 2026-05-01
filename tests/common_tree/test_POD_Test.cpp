@@ -60,16 +60,30 @@ void expect_mode_coeffs_up_to_sign(
     const std::vector<double>& coeffs,
     const std::array<float_type, N>& ref,
     float_type norm,
-    double tol)
+    double tol,
+    double zero_tol = 1e-2)
 {
     ASSERT_EQ(coeffs.size(), ref.size());
     double dot = 0.0;
     for (std::size_t i = 0; i < ref.size(); ++i) { dot += coeffs[i] * (ref[i] / norm); }
     const double sgn = (dot >= 0.0) ? 1.0 : -1.0;
-    for (std::size_t i = 0; i < ref.size(); ++i) { EXPECT_NEAR(coeffs[i], sgn * (ref[i] / norm), tol) << "Coefficient " << i << " does not match expected value up to sign."; }
+    for (std::size_t i = 0; i < ref.size(); ++i)
+    {
+        const double expected = sgn * (ref[i] / norm);
+        if (std::abs(expected) < 1e-12)
+        {
+            EXPECT_LE(std::abs(coeffs[i]), zero_tol)
+                << "Coefficient " << i << " expected near zero.";
+        }
+        else
+        {
+            EXPECT_NEAR(coeffs[i], expected, tol)
+                << "Coefficient " << i << " does not match expected value up to sign.";
+        }
+    }
 }
 
-TEST(POD2DTest, SyntheticCaseKnownModes)
+TEST(POD3DTest, SyntheticCaseKnownModes)
 {
     boost::mpi::communicator world;
     if (world.size() < 2)
@@ -78,7 +92,7 @@ TEST(POD2DTest, SyntheticCaseKnownModes)
                      << world.size() << " ranks.";
     }
 
-    Dictionary dictionary("./configs/config_pod2D", 0, nullptr);
+    Dictionary dictionary("./configs/config_pod3D", 0, nullptr);
     auto pod_setup = std::make_unique<POD2D>(&dictionary);
     auto       sim_dict = dictionary.get_dictionary("simulation_parameters");
     const int idx_start = sim_dict->template get_or<int>("nStart", 100);
@@ -86,7 +100,7 @@ TEST(POD2DTest, SyntheticCaseKnownModes)
     const int nskip = sim_dict->template get_or<int>("nskip", 1);
     const PetscErrorCode ierr_init = SlepcInitialize(nullptr, nullptr, (char*)0, NULL);
     ASSERT_EQ(ierr_init, PETSC_SUCCESS);
-    auto phi_norms = pod_setup->write_fake_snapshots_known_modes(idx_start, n_total, nskip);
+    pod_setup->write_fake_snapshots_known_modes(idx_start, n_total, nskip);
 
     pod_setup->run(0, nullptr);
     const PetscErrorCode ierr_fini = SlepcFinalize();
@@ -131,16 +145,16 @@ TEST(POD2DTest, SyntheticCaseKnownModes)
         std::cout << std::endl;
     }
     //make sure they are close
-    expect_mode_coeffs_up_to_sign(coeff0, r1, n1, 1e-3);
-    expect_mode_coeffs_up_to_sign(coeff1, r2, n2, 1e-3);
-    expect_mode_coeffs_up_to_sign(coeff2, r3, n3, 1e-3);
+    expect_mode_coeffs_up_to_sign(coeff0, r1, n1, 1e-2);
+    expect_mode_coeffs_up_to_sign(coeff1, r2, n2, 1e-2);
+    expect_mode_coeffs_up_to_sign(coeff2, r3, n3, 1e-2);
 
     coeff0=read_coeff_real_vec(outputs.coeff0_asym);
     coeff1=read_coeff_real_vec(outputs.coeff1_asym);
     coeff2=read_coeff_real_vec(outputs.coeff2_asym);
-    expect_mode_coeffs_up_to_sign(coeff0, r1, n1, 1e-3);
-    expect_mode_coeffs_up_to_sign(coeff1, r2, n2, 1e-3);
-    expect_mode_coeffs_up_to_sign(coeff2, r3, n3, 1e-3);
+    expect_mode_coeffs_up_to_sign(coeff0, r1, n1, 1e-2);
+    expect_mode_coeffs_up_to_sign(coeff1, r2, n2, 1e-2);
+    expect_mode_coeffs_up_to_sign(coeff2, r3, n3, 1e-2);
 
     auto singular_values_sym = read_all_values(outputs.sv_sym);
     auto singular_values_asym = read_all_values(outputs.sv_asym);

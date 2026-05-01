@@ -112,3 +112,15 @@ add_test(
     COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_PREFLAGS} ${MPIEXEC_NUMPROC_FLAG} 2 $<TARGET_FILE:symfield3D_Test>
     WORKING_DIRECTORY ${CTEST_WORKING_DIRECTORY}/${NAME}
 )
+
+add_executable(test_POD3D_Test test_POD_Test.cpp ${SOURCES})
+add_dependencies(test_POD3D_Test copy_files_common_tree)
+target_link_libraries(test_POD3D_Test
+                      iblgf_test_main
+                      ${PETSC_LIBRARIES}
+                      ${SLEPC_LIBRARIES})
+add_test(
+    NAME test_POD_Test_parallel_np13_3D
+    COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_PREFLAGS} ${MPIEXEC_NUMPROC_FLAG} ${IBLGF_MPI_NP} $<TARGET_FILE:test_POD3D_Test>
+    WORKING_DIRECTORY ${CTEST_WORKING_DIRECTORY}/${NAME}
+)

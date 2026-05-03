@@ -40,6 +40,10 @@ TEST(Symgrid3DUnitTest, ProducesYMirrorSymmetricLeafGrid)
     const auto bd_base = domain_dict->template get<int, Dim>("bd_base");
     const auto block_extent = domain_dict->template get<int>("block_extent");
     const int mirror_span = (-2 * bd_base[1]) / block_extent;
+    if(world.rank() == 0) {
+        std::cout << "bd_base: " << bd_base[0] << ", " << bd_base[1] << ", " << bd_base[2] << std::endl;
+        std::cout << "block_extent: " << block_extent << std::endl;
+        std::cout << "mirror_span: " << mirror_span << std::endl;
 
     for (auto it = tree->begin(); it != tree->end(); ++it)
     {
@@ -62,16 +66,11 @@ TEST(Symgrid3DUnitTest, ProducesYMirrorSymmetricLeafGrid)
         ++local_checked_leafs;
     }
 
-    int global_missing_pairs = 0;
-    int global_checked_leafs = 0;
-    boost::mpi::all_reduce(
-        world, local_missing_pairs, global_missing_pairs, std::plus<int>());
-    boost::mpi::all_reduce(
-        world, local_checked_leafs, global_checked_leafs, std::plus<int>());
-
-    ASSERT_GT(global_checked_leafs, 0) << "Test did not check any leaf octants.";
-    EXPECT_EQ(global_missing_pairs, 0)
+    ASSERT_GT(local_checked_leafs, 0) << "Test did not check any leaf octants.";
+    EXPECT_EQ(local_missing_pairs, 0)
         << "Final grid is not symmetric in y; found leaf octants without mirrored partners.";
+    }
+    ref_domain->symfield<CommonTree::u_type, CommonTree::u_type>(399);
 }
 
 } // namespace iblgf

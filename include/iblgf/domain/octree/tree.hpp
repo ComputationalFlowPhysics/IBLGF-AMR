@@ -326,6 +326,12 @@ class Tree
         }
     }
 
+    /**
+     * Validates the "2:1 Balancing Rule" for a spatial grid (e.g., Octree/Quadtree).
+     * * This function ensures that the refinement level of a node (_k) is compatible 
+     * with its surroundings. Specifically, it prevents "jumps" in resolution by 
+     * recursively verifying that the parents of a node's neighbors are also valid 
+    * within the provided boundary box.**/
     bool try_2to1(key_type _k, block_descriptor_type key_bd_box)
     {
         // Dynmaic Programming to rduce repeated checks
@@ -333,8 +339,7 @@ class Tree
         return try_2to1(_k, key_bd_box, checklist);
     }
 
-    bool try_2to1(key_type _k, block_descriptor_type key_bd_box,
-        std::unordered_map<key_type, bool>& checklist)
+    bool try_2to1(key_type _k, block_descriptor_type key_bd_box, std::unordered_map<key_type, bool>& checklist)
     {
         auto check = checklist.find(_k);
 
@@ -692,32 +697,32 @@ class Tree
             nn->flag_mask((masks[i]));
         }
     }
+    // not used
+    // template<class Client>
+    // void query_corrections(Client* _c)
+    // {
+    //     boost::mpi::communicator w;
 
-    template<class Client>
-    void query_corrections(Client* _c)
-    {
-        boost::mpi::communicator w;
+    //     dfs_iterator it_begin(root());
+    //     dfs_iterator it_end;
 
-        dfs_iterator it_begin(root());
-        dfs_iterator it_end;
+    //     std::vector<key_type> keys;
+    //     for (auto it = it_begin; it != it_end; ++it)
+    //     {
+    //         if (it->has_data()) keys.emplace_back(it->key());
+    //     }
 
-        std::vector<key_type> keys;
-        for (auto it = it_begin; it != it_end; ++it)
-        {
-            if (it->has_data()) keys.emplace_back(it->key());
-        }
+    //     auto corrections = _c->correction_query(keys);
 
-        auto corrections = _c->correction_query(keys);
-
-        for (std::size_t i = 0; i < corrections.size(); ++i)
-        {
-            auto nn = this->find_octant(keys[i]);
-            if (!nn)
-                throw std::runtime_error(
-                    "didn't find key for correction query");
-            nn->flag_correction((corrections[i]));
-        }
-    }
+    //     for (std::size_t i = 0; i < corrections.size(); ++i)
+    //     {
+    //         auto nn = this->find_octant(keys[i]);
+    //         if (!nn)
+    //             throw std::runtime_error(
+    //                 "didn't find key for correction query");
+    //         nn->flag_correction((corrections[i]));
+    //     }
+    // }
 
     template<class Client>
     void query_flags(Client* _c)

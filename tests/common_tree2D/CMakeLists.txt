@@ -72,7 +72,7 @@ add_dependencies(common_tree_Test copy_files_petsc)
 target_link_libraries(common_tree_Test iblgf_test_main)
 add_test(
     NAME common_tree_Test
-    COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_PREFLAGS} ${MPIEXEC_NUMPROC_FLAG} 2 $<TARGET_FILE:common_tree_Test>
+    COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_PREFLAGS} ${MPIEXEC_NUMPROC_FLAG} ${IBLGF_MPI_NP} $<TARGET_FILE:common_tree_Test>
     WORKING_DIRECTORY ${CTEST_WORKING_DIRECTORY}/${NAME}
 )
 
@@ -81,7 +81,7 @@ add_dependencies(adapt_to_ref_overlap2D_Test copy_files_petsc)
 target_link_libraries(adapt_to_ref_overlap2D_Test iblgf_test_main)
 add_test(
     NAME adapt_to_ref_overlap_Test_2D
-    COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_PREFLAGS} ${MPIEXEC_NUMPROC_FLAG} 2 $<TARGET_FILE:adapt_to_ref_overlap2D_Test>
+    COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_PREFLAGS} ${MPIEXEC_NUMPROC_FLAG} ${IBLGF_MPI_NP} $<TARGET_FILE:adapt_to_ref_overlap2D_Test>
     WORKING_DIRECTORY ${CTEST_WORKING_DIRECTORY}/${NAME}
 )
 
@@ -90,7 +90,7 @@ add_dependencies(symgrid2D_Test copy_files_petsc)
 target_link_libraries(symgrid2D_Test iblgf_test_main)
 add_test(
     NAME symgrid_Test_2D
-    COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_PREFLAGS} ${MPIEXEC_NUMPROC_FLAG} 2 $<TARGET_FILE:symgrid2D_Test>
+    COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_PREFLAGS} ${MPIEXEC_NUMPROC_FLAG} ${IBLGF_MPI_NP} $<TARGET_FILE:symgrid2D_Test>
     WORKING_DIRECTORY ${CTEST_WORKING_DIRECTORY}/${NAME}
 )
 
@@ -99,7 +99,7 @@ add_dependencies(symfield2D_Test copy_files_petsc)
 target_link_libraries(symfield2D_Test iblgf_test_main)
 add_test(
     NAME symfield_Test_2D
-    COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_PREFLAGS} ${MPIEXEC_NUMPROC_FLAG} 2 $<TARGET_FILE:symfield2D_Test>
+    COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_PREFLAGS} ${MPIEXEC_NUMPROC_FLAG} ${IBLGF_MPI_NP} $<TARGET_FILE:symfield2D_Test>
     WORKING_DIRECTORY ${CTEST_WORKING_DIRECTORY}/${NAME}
 )
 
@@ -108,7 +108,7 @@ add_dependencies(restart2D_Test copy_files_petsc)
 target_link_libraries(restart2D_Test iblgf_test_main)
 add_test(
     NAME restart_Test_2D
-    COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_PREFLAGS} ${MPIEXEC_NUMPROC_FLAG} 2 $<TARGET_FILE:restart2D_Test>
+    COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_PREFLAGS} ${MPIEXEC_NUMPROC_FLAG} ${IBLGF_MPI_NP} $<TARGET_FILE:restart2D_Test>
     WORKING_DIRECTORY ${CTEST_WORKING_DIRECTORY}/${NAME}
 )
 

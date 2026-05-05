@@ -2621,7 +2621,7 @@ private:
                                 */
 
                                 //This is the case for making circular vortex pairs circa March 2025
-                                /*
+                                
                                 if (t<t_dipole)
                                   {
                                   node(target::tag(), 0) += -scale * b_f_mag * std::cos(Theta) * (1.0+std::tanh(100.0*(z+pert_bot+h_dipole/2)))/2.0 * (1.0-std::tanh(100.0*(z-pert_top-h_dipole/2)))/2.0 * (1.0+std::tanh(100.0*(R-R_dipole+l_dipole/2)))/2.0 * (1.0-std::tanh(100.0*(R-R_dipole-l_dipole/2)))/2.0;
@@ -2634,7 +2634,7 @@ private:
                                   node(target::tag(), 1) += -scale * b_f_mag * 0.0;
                                   if (dim == 3) node(target::tag(), 2) += -scale * b_f_mag * 0.0;
                                   }
-                                */
+                                
 
                                 //This is messing around with the downward vortex pair, circa March 19 2025
                                 /*
@@ -2648,7 +2648,7 @@ private:
                                   }*/
 
                                 //node(target::tag(), 2) += -scale *b_f_mag * (1.0+std::tanh(50.0*(x-t+0.4/2.0)))/2.0 * (1.0-std::tanh(50.0*(x-t-0.4/2.0)))/2.0 * (1.0+std::tanh(3.0*(y+2.0*(1.0+0.1*std::sin(1.0*t))/2.0)))/2.0 * (1.0-std::tanh(3.0*(y-2.0*(1.0+0.1*std::sin(1.0*t))/2.0)))/2.0 * (1.0+std::tanh(50.0*(z+0.1*std::sin(1.0*t)+0.1/2.0)))/2.0 * (1.0-std::tanh(50.0*(z+0.1*std::sin(1.0*t)-0.1/2.0)))/2.0;
-                                node(target::tag(), 2) += -scale *b_f_mag * (1.0+std::tanh(tansteepx*(x-speedx*t+widthx/2.0)))/2.0 * (1.0-std::tanh(tansteepx*(x-speedx*t-widthx/2.0)))/2.0 * (1.0+std::tanh(tansteepy*(y+widthy*(1.0+amplitudey*std::sin(periody*t))/2.0)))/2.0 * (1.0-std::tanh(tansteepy*(y-widthy*(1.0+amplitudey*std::sin(periody*t))/2.0)))/2.0 * (1.0+std::tanh(tansteepz*(z+amplitudez*std::sin(periodz*t)+widthz/2.0)))/2.0 * (1.0-std::tanh(tansteepz*(z+amplitudez*std::sin(periodz*t)-widthz/2.0)))/2.0;
+                                // node(target::tag(), 2) += -scale *b_f_mag * (1.0+std::tanh(tansteepx*(x-speedx*t+widthx/2.0)))/2.0 * (1.0-std::tanh(tansteepx*(x-speedx*t-widthx/2.0)))/2.0 * (1.0+std::tanh(tansteepy*(y+widthy*(1.0+amplitudey*std::sin(periody*t))/2.0)))/2.0 * (1.0-std::tanh(tansteepy*(y-widthy*(1.0+amplitudey*std::sin(periody*t))/2.0)))/2.0 * (1.0+std::tanh(tansteepz*(z+amplitudez*std::sin(periodz*t)+widthz/2.0)))/2.0 * (1.0-std::tanh(tansteepz*(z+amplitudez*std::sin(periodz*t)-widthz/2.0)))/2.0;
 
 
                                 /*

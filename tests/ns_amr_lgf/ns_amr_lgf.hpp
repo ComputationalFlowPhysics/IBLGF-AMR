@@ -595,7 +595,8 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
         float_type s2 = z * z + (r - R_) * (r - R_);
 
         float_type theta = std::atan2(y, x);
-        float_type w_theta = alpha * 1.0 / R2 * std::exp(-4.0 * s2 / (R2 - s2));
+        // float_type w_theta = alpha * 1.0 / R2 * std::exp(-4.0 * s2 / (R2 - s2));
+        float_type w_theta = alpha * 0.0 / R2 * std::exp(-4.0 * s2 / (R2 - s2));
 
         float_type rd = (static_cast <float_type> (rand()) / static_cast <float_type> (RAND_MAX))-0.5;
         rd *= perturbation;
@@ -791,7 +792,8 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 
                     float_type tmp_w = vor(x,y,z,0);
 
-                    if(std::fabs(tmp_w) > w_max*pow(refinement_factor_, diff_level))
+                    if(std::fabs(tmp_w) > w_max*pow(refinement_factor_, diff_level) || (std::fabs(1.0*1.0-(x*x+y*y))<0.1 && std::fabs(z)<0.1))
+                      //if(std::fabs(tmp_w) > w_max*pow(refinement_factor_, diff_level))
                         return true;
 
                     x = static_cast<float_type>(i - center[0]) * dx_level;
@@ -800,7 +802,9 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 
                     tmp_w = vor(x,y,z,1);
 
-                    if(std::fabs(tmp_w) > w_max*pow(refinement_factor_, diff_level))
+                    if(std::fabs(tmp_w) > w_max*pow(refinement_factor_, diff_level) || (std::fabs(1.0*1.0-(x*x+y*y))<0.1 && std::fabs(z)<0.1))
+                      //if(std::fabs(tmp_w) > w_max*pow(refinement_factor_, diff_level))
+
                         return true;
 
                     x = static_cast<float_type>(i - center[0]) * dx_level;
@@ -809,7 +813,9 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 
                     tmp_w = vor(x,y,z,2);
 
-                    if(std::fabs(tmp_w) > w_max*pow(refinement_factor_, diff_level))
+                    if(std::fabs(tmp_w) > w_max*pow(refinement_factor_, diff_level) || (std::fabs(1.0*1.0-(x*x+y*y))<0.1 && std::fabs(z)<0.1))
+                      //if(std::fabs(tmp_w) > w_max*pow(refinement_factor_, diff_level))
+
                         return true;
                 }
             }

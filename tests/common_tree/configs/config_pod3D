@@ -5,7 +5,7 @@ simulation_parameters
     nStart=100;
     nTotal=5;
     nskip=1;
-
+    do_symfield=true;
     output
     {
         directory=output_pod3D;
@@ -14,16 +14,16 @@ simulation_parameters
 
     domain
     {
-        bd_base = (-64,-64,-64);
-        bd_extent = (128,128,128);
-
-        dx_base=0.25;
+        bd_base = (-32,-32,-32);
+        bd_extent = (64,64,64);
+        Lx=10.0;
+        dx_base=0.5;
         block_extent=8;
 
         block
         {
-            base=(-56,-56,-56);
-            extent=(120,120,120);
+            base=(-32,-32,-32);
+            extent=(64,64,64);
         }
     }
 }

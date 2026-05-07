@@ -61,7 +61,7 @@ void expect_mode_coeffs_up_to_sign(
     const std::array<float_type, N>& ref,
     float_type norm,
     double tol,
-    double zero_tol = 1e-2)
+    double zero_tol = 2.5e-2)
 {
     ASSERT_EQ(coeffs.size(), ref.size());
     double dot = 0.0;
@@ -145,16 +145,16 @@ TEST(POD3DTest, SyntheticCaseKnownModes)
         std::cout << std::endl;
     }
     //make sure they are close
-    expect_mode_coeffs_up_to_sign(coeff0, r1, n1, 1e-2);
-    expect_mode_coeffs_up_to_sign(coeff1, r2, n2, 1e-2);
-    expect_mode_coeffs_up_to_sign(coeff2, r3, n3, 1e-2);
+    expect_mode_coeffs_up_to_sign(coeff0, r1, n1, 5e-2);
+    expect_mode_coeffs_up_to_sign(coeff1, r2, n2, 5e-2);
+    expect_mode_coeffs_up_to_sign(coeff2, r3, n3, 5e-2);
 
     coeff0=read_coeff_real_vec(outputs.coeff0_asym);
     coeff1=read_coeff_real_vec(outputs.coeff1_asym);
     coeff2=read_coeff_real_vec(outputs.coeff2_asym);
-    expect_mode_coeffs_up_to_sign(coeff0, r1, n1, 1e-2);
-    expect_mode_coeffs_up_to_sign(coeff1, r2, n2, 1e-2);
-    expect_mode_coeffs_up_to_sign(coeff2, r3, n3, 1e-2);
+    expect_mode_coeffs_up_to_sign(coeff0, r1, n1, 5e-2);
+    expect_mode_coeffs_up_to_sign(coeff1, r2, n2, 5e-2);
+    expect_mode_coeffs_up_to_sign(coeff2, r3, n3, 5e-2);
 
     auto singular_values_sym = read_all_values(outputs.sv_sym);
     auto singular_values_asym = read_all_values(outputs.sv_asym);

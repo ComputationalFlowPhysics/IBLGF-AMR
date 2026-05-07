@@ -84,7 +84,7 @@ struct POD2D : public SetupBase<POD2D, parameters>
 
         domain_->register_refinement_condition() = [this](auto octant, int diff_level) { return false; };
         // domain_->init_refine(nLevelRefinement_, 0, 0);
-
+        sym_grid_ = simulation_.dictionary_->template get_or<bool>("do_symfield", false);
         domain_->restart_list_construct();
         domain_->distribute<fmm_mask_builder_t, fmm_mask_builder_t>();
         simulation_.template read_h5<u_type>(restart_field_dir, "u");
@@ -99,6 +99,7 @@ struct POD2D : public SetupBase<POD2D, parameters>
         else
             client_comm_ = client_comm_.split(0);
         nLevelRefinement_ = simulation_.dictionary_->template get_or<int>("nLevels", 0);
+        sym_grid_ = simulation_.dictionary_->template get_or<bool>("do_symfield", false);
 
         domain_->register_refinement_condition() = [this](auto octant, int diff_level) { return false; };
         domain_->ib().init(_d->get_dictionary("simulation_parameters"), domain_->dx_base(), nLevelRefinement_, 100);
@@ -117,9 +118,15 @@ struct POD2D : public SetupBase<POD2D, parameters>
         simulation_.write("init");
         solver::POD<super_type> pod(&this->simulation_);
         pod.run_vec_test();
-        pod.run_MOS<u_s_type>("u_s","_sym_");
-        pod.run_MOS<u_a_type>("u_a","_asym_");
-        // pod.run_MOS<u_type>("u");
+        if(sym_grid_)
+        {
+            pod.run_MOS<u_s_type>("u_s","_sym_");
+            pod.run_MOS<u_a_type>("u_a","_asym_");
+        }
+        else
+        {
+            pod.run_MOS<u_type>("u");
+        }
         if (owns_slepc) { PetscCall(SlepcFinalize()); }
         simulation_.write("final");
 
@@ -253,6 +260,7 @@ struct POD2D : public SetupBase<POD2D, parameters>
     std::vector<int>         ref_leafs_; //reference leafs local to rank
     std::string              restart_tree_dir_;
     std::string              restart_field_dir_;
+    bool sym_grid_ = false;
 };
 } // namespace iblgf
 #endif

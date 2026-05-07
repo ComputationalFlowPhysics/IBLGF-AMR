@@ -80,6 +80,7 @@ struct POD2D : public SetupBase<POD2D, parameters>
         else
             client_comm_ = client_comm_.split(0);
         nLevelRefinement_ = simulation_.dictionary_->template get_or<int>("nLevels", 0);
+        sym_grid_ = simulation_.dictionary_->template get_or<bool>("do_symfield", false);
         // std::cout << "Number of refinement levels: " << nLevelRefinement_ << std::endl;
         // std::cout << "Restarting list construction..." << std::endl;
         // domain_->register_adapt_condition() =
@@ -103,7 +104,7 @@ struct POD2D : public SetupBase<POD2D, parameters>
         else
             client_comm_ = client_comm_.split(0);
         nLevelRefinement_ = simulation_.dictionary_->template get_or<int>("nLevels", 0);
-
+        sym_grid_ = simulation_.dictionary_->template get_or<bool>("do_symfield", false);
         domain_->register_refinement_condition() = [this](auto octant, int diff_level) { return false; };
         domain_->ib().init(_d->get_dictionary("simulation_parameters"), domain_->dx_base(), nLevelRefinement_, 100);
         domain_->init_refine(nLevelRefinement_, 0, 0);
@@ -123,10 +124,17 @@ struct POD2D : public SetupBase<POD2D, parameters>
         this->cleanup_pod_mode_outputs("_asym_");
         solver::POD<super_type> pod(&this->simulation_);
         pod.run_vec_test();
-        pod.run_MOS<u_s_type>("u_s","_sym_");
-        this->template write_actual_modes_to_u_ref<u_s_type>("_sym_", "u_s");
-        pod.run_MOS<u_a_type>("u_a","_asym_");
-        this->template write_actual_modes_to_u_ref<u_a_type>("_asym_", "u_a");
+        if(sym_grid_)
+        {
+            pod.run_MOS<u_s_type>("u_s","_sym_");
+            this->template write_actual_modes_to_u_ref<u_s_type>("_sym_", "u_s");
+            pod.run_MOS<u_a_type>("u_a","_asym_");
+            this->template write_actual_modes_to_u_ref<u_a_type>("_asym_", "u_a");
+        }
+        else
+        {
+            pod.run_MOS<u_type>("u");
+        }
         if (owns_slepc) { PetscCall(SlepcFinalize()); }
         simulation_.write("final");
 
@@ -554,6 +562,7 @@ struct POD2D : public SetupBase<POD2D, parameters>
     std::string              restart_field_dir_;
     float_type               mode0_error_sym_ = -1.0;
     float_type               mode0_error_asym_ = -1.0;
+     bool sym_grid_ = false;
 };
 } // namespace iblgf
 #endif

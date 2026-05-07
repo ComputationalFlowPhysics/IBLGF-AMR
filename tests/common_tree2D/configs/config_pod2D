@@ -9,7 +9,7 @@ simulation_parameters
     // // Reference data consumed by POD2D constructor.
     // tree_ref_file=./output/tree_info_100.bin;
     // flow_ref_file=./output/flowTime_100.hdf5;
-
+    do_symfield=true;
     output
     {
         directory=output_pod2d;

@@ -52,3 +52,11 @@ bash_Wei_OG
 # runs
 printf "\n# Build + outputs\nbuild/\nruns/\n" >> .gitignore
 
+# Python cache / bytecode
+__pycache__/
+*.pyc
+*.pyo
+
+# Pybind / Poisson generated outputs
+tests/poisson/vortexRings/
+.iblgf_viewer/test-configs/

@@ -186,6 +186,60 @@ Example:
 
     $ ./iblgf.sh run-test ns_amr_lgf configFile_0 --resume runs/ns_amr_lgf/2026-01-25_20-12-09 -n 4
 
+### Python bindings (Poisson prototype)
+
+The repository now includes an experimental `pybind11`-based Python binding
+for the Poisson setup. The intended user-facing API is:
+
+```python
+from iblgf import poisson
+
+result = poisson.run("/path/to/configFile")
+print(result.measured_linf_error)
+print(result.difference)
+```
+
+#### Building the Python binding
+
+The binding is not built by default. Configure the project with
+`IBLGF_BUILD_PYTHON=ON` and build the `iblgf_bindings` target:
+
+    $ mkdir -p build
+    $ cd build
+    $ cmake ../IBLGF-AMR -DIBLGF_BUILD_PYTHON=ON
+    $ make -j8 iblgf_bindings
+
+The compiled Python extension is produced in the build tree. The Python package
+under `python/iblgf/` will automatically search common build directories such as
+`build/`, `build-debug/`, and `build-gpu/` for the compiled module.
+
+#### Running a minimal Python example
+
+From Docker, set `PYTHONPATH` so Python can see the source package, then launch
+your Python script with MPI:
+
+    $ export PYTHONPATH="/workspace2/IBLGF-AMR/python:$PYTHONPATH"
+    $ mpiexec -n 2 python3 /workspace2/IBLGF-AMR/python/poisson_minimal_example.py /path/to/configFile
+
+You can also write your own script with the same minimal interface:
+
+```python
+from iblgf import poisson
+
+result = poisson.run("/path/to/configFile")
+print(result.measured_linf_error)
+print(result.difference)
+```
+
+#### Notes
+
+* The current Python binding is a Poisson-only prototype.
+* The Poisson run still uses the existing MPI-based C++ solver, so it should be
+  launched with `mpiexec` or `mpirun`.
+* Output directories still follow the config's `output { directory=... }`
+  settings. If you want staged `runs/<name>/<timestamp>/...` behavior, use a
+  wrapper script or copy the config into a run directory before launching.
+
 ### Configuring and building the library
 
 IBLGF uses the [CMake](https://cmake.org/) integrated configuration and build system.

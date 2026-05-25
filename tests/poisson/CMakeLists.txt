@@ -34,8 +34,9 @@ endif()
 
 set(Ptest_list poisson_Test)
 set(Ptest_list_gpu poisson_gpu_Test)
+set(POISSON_EXEC_SOURCES poisson_runner.cpp)
 # add the executable
-add_executable(poisson.x poisson.cpp ${SOURCES})
+add_executable(poisson.x poisson.cpp ${POISSON_EXEC_SOURCES} ${SOURCES})
 target_link_libraries(poisson.x
                       ${MPI_LIBRARIES}
                       ${Boost_LIBRARIES}

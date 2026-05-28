@@ -13,6 +13,7 @@
 #ifndef IBLGF_SOLVER_MODAL_ANALYSIS_REFLECT_FIELD_HPP
 #define IBLGF_SOLVER_MODAL_ANALYSIS_REFLECT_FIELD_HPP
 #include <iblgf/domain/mpi/task_manager.hpp>
+#include <iblgf/solver/modal_analysis/symmetry_utils.hpp>
 namespace iblgf
 {
 namespace domain
@@ -403,23 +404,20 @@ class ReflectField
         for (auto it1 = domain_->begin_leaves(); it1 != domain_->end_leaves(); ++it1)
         {
             if (!it1->has_data()) continue;
+            if (!it1->physical()) continue;
             if (!it1->is_leaf() || it1->is_correction()) continue;
             auto coord = it1->tree_coordinate();
             auto key = it1->key();
-            auto level = it1->key().level();
-            auto opposite_coord = coord;
-            // 128 = 1792/14 =extent on baselevel
-            auto ref_level = it1->key().level() - domain_->tree()->base_level();
-            opposite_coord[1] = mirror_span_ * (1 << ref_level) - (coord[1] + 1);
-
-            auto it2 = domain_->tree()->find_octant(key_t(opposite_coord, level));
+            auto it2 = domain_->tree()->find_octant(
+                solver::modal_analysis::mirrored_y_key(
+                    coord, key, mirror_span_, domain_->tree()->base_level()));
             if (!it2)
             {
                 std::cout << "No opposite block found for: " << it1->key() << std::endl;
 
                 continue;
             }
-            if (!it2->is_leaf())
+            if (!it2 || !it2->has_data() || !it2->physical() || !it2->is_leaf() || it2->is_correction())
             {
                 std::cout << "No opposite leaf block found for: " << it1->key() << std::endl;
 

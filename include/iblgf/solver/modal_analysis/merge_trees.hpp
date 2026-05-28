@@ -15,6 +15,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <filesystem>
 #include <fstream>
 #include <memory>
 #include <set>
@@ -23,6 +24,7 @@
 #include <iblgf/dictionary/dictionary.hpp>
 #include <iblgf/IO/parallel_ostream.hpp>
 #include <iblgf/domain/domain.hpp>
+#include <iblgf/solver/modal_analysis/symmetry_utils.hpp>
 #include <iblgf/types.hpp>
 
 namespace iblgf
@@ -211,6 +213,28 @@ class MergeTrees
         ref_tree->construct_leaf_maps(false);
         ref_tree->construct_lists();
         ref_domain_->save_common_tree_ref();
+        {
+            auto sim_dict = dict_ref_->get_dictionary("simulation_parameters");
+            const auto tree_ref_file = sim_dict->get_or<std::string>("tree_ref_file", "");
+            const auto flow_ref_file = sim_dict->get_or<std::string>("flow_ref_file", "");
+            const bool can_run_adapt_normalization =
+                !tree_ref_file.empty() && !flow_ref_file.empty();
+            if (can_run_adapt_normalization && world.rank() == 0)
+            {
+                std::cout << "Normalizing common_tree_ref via adapt_to_ref on nStart="
+                          << nStart_ << std::endl;
+            }
+            if (can_run_adapt_normalization)
+            {
+                adapt_to_ref(nStart_);
+                world.barrier();
+                const auto adapted_tree_file = stage_tree_file("adapted_to_ref_" + std::to_string(nStart_));
+                const auto adapted_flow_file = stage_flow_file("adapted_to_ref_" + std::to_string(nStart_));
+                auto normalized_ref =
+                    std::make_unique<Setup>(dict_ref_, adapted_tree_file, adapted_flow_file);
+                normalized_ref->save_common_tree_ref();
+            }
+        }
         return ref_domain_;
     }
 
@@ -219,6 +243,7 @@ class MergeTrees
 
     std::unique_ptr<Setup> ref_to_symmetric_ref_with_symfield()
     {
+        boost::mpi::communicator world;
         auto sim_dict = dict_ref_->get_dictionary("simulation_parameters");
         const bool do_symfield = sim_dict->get_or<bool>("do_symfield", true);
         const int  symfield_time_idx = sim_dict->get_or<int>("symfield_time_idx", 2);
@@ -226,6 +251,16 @@ class MergeTrees
         auto ref_domain = ref_to_symmetric_ref();
         if (do_symfield)
         {
+            const auto sym_tree_file = stage_tree_file("symmetric_ref");
+            const auto sym_flow_file = stage_flow_file("symmetric_ref");
+            if (world.rank() == 0)
+            {
+                std::cout << "Reloading symmetric reference before symfield:\n  tree: "
+                          << sym_tree_file << "\n  flow: " << sym_flow_file << std::endl;
+            }
+            // Force a fresh domain rebuild from serialized symmetric-ref files.
+            // This mirrors the manual read/save cycle that produces correct pairing.
+            ref_domain = std::make_unique<Setup>(dict_ref_, sym_tree_file, sym_flow_file);
             ref_domain->initialize();
             ref_domain->template symfield<typename Setup::u_type, typename Setup::u_type>(
                 symfield_time_idx);
@@ -238,10 +273,8 @@ class MergeTrees
         boost::mpi::communicator world;
         pcout << "\nAdapting trees to common tree...\n" << std::endl;
         auto sim_dict = dict_ref_->get_dictionary("simulation_parameters");
-        std::string tree_ref_file =
-            sim_dict->get<std::string>("tree_ref_file");
-        std::string flow_ref_file =
-            sim_dict->get<std::string>("flow_ref_file");
+        std::string tree_ref_file = sim_dict->get<std::string>("tree_ref_file");
+        std::string flow_ref_file = sim_dict->get<std::string>("flow_ref_file");
         int  ref_levels = sim_dict->get_or<int>("nLevels", 0);
         const bool resume = sim_dict->get_or<bool>("resume", true);
         const bool do_symfield = sim_dict->get_or<bool>("do_symfield", false);
@@ -264,64 +297,9 @@ class MergeTrees
 
         auto ref_domain = std::make_unique<Setup>(dict_ref_, tree_ref_file, flow_ref_file);
         auto ref_tree = ref_domain->tree();
-        std::vector<key_t> octs;
-        std::vector<int>   level_change;
-        std::vector<key_t> batched_octs;
-        std::vector<int>   batched_level_change;
         for (int idx = idx_begin; idx <= idx_end; idx += nSkip_)
         {
-            std::string tree_file_i = tree_file_path(dir_in_, idx);
-            std::string flow_file_i = flow_file_path(dir_in_, idx);
-            auto        domain_i = std::make_unique<Setup>(dict_ref_, tree_file_i, flow_file_i);
-            auto        tree_i = domain_i->tree();
-            std::set<std::pair<typename key_t::value_type, int>> prev_request_sig;
-            bool prev_request_changed_tree = true;
-            for (int pass = 0; pass < 16;
-                ++pass) // iterate until no more octs to adapt, batching all levels in one expensive adapt call
-            {
-                batched_octs.clear();
-                batched_level_change.clear();
-                std::set<std::pair<typename key_t::value_type, int>> cur_request_sig;
-                std::set<typename key_t::value_type>                 seen_keys;
-                for (int level = ref_levels; level >= 0; --level)
-                {
-                    octs.clear();
-                    level_change.clear();
-                    get_level_changes_distributed(ref_tree, tree_i, level, octs, level_change, world);
-                    append_unique_changes(octs, level_change, batched_octs,
-                        batched_level_change, cur_request_sig, seen_keys);
-                }
-                if (batched_octs.empty()) break;
-
-                const bool repeated_request = (cur_request_sig == prev_request_sig);
-                if (repeated_request && !prev_request_changed_tree)
-                {
-                    pcout << "Warning: non-progress adapt loop detected at pass "
-                          << pass
-                          << " (batched request repeated after an unchanged tree). Breaking before adapt."
-                          << std::endl;
-                    break;
-                }
-
-                const auto before_keys = globalize_key_set(
-                    world, collect_physical_leaf_key_ids(*domain_i));
-                run_adapt_from_keys_distributed(
-                    *domain_i, -1, batched_octs, batched_level_change, world);
-                const auto after_keys = globalize_key_set(
-                    world, collect_physical_leaf_key_ids(*domain_i));
-
-                const bool no_tree_change = (before_keys == after_keys);
-                if (repeated_request && no_tree_change)
-                {
-                    pcout << "Warning: non-progress adapt loop detected at pass "
-                          << pass
-                          << " (batched request repeated and key set unchanged). Breaking."
-                          << std::endl;
-                    break;
-                }
-                prev_request_changed_tree = !no_tree_change;
-                prev_request_sig.swap(cur_request_sig);
-            }
+            auto domain_i = adapt_snapshot_to_ref(idx, ref_tree, ref_levels, world);
             if (do_symfield)
             {
                 domain_i->template symfield<typename Setup::u_type, typename Setup::u_type>(idx);
@@ -348,63 +326,7 @@ class MergeTrees
         int  ref_levels = dict_ref_->get_dictionary("simulation_parameters")->get_or<int>("nLevels", 0);
         auto ref_domain = std::make_unique<Setup>(dict_ref_, tree_ref_file, flow_ref_file);
         auto ref_tree = ref_domain->tree();
-        std::vector<key_t> octs;
-        std::vector<int>   level_change;
-        std::vector<key_t> batched_octs;
-        std::vector<int>   batched_level_change;
-
-        std::string tree_file_i = tree_file_path(dir_in_, idx);
-        std::string flow_file_i = flow_file_path(dir_in_, idx);
-        auto        domain_i = std::make_unique<Setup>(dict_ref_, tree_file_i, flow_file_i);
-        auto        tree_i = domain_i->tree();
-        std::set<std::pair<typename key_t::value_type, int>> prev_request_sig;
-        bool prev_request_changed_tree = true;
-        for (int pass = 0; pass < 16;
-            ++pass) // iterate until no more octs to adapt, batching all levels in one expensive adapt call
-        {
-            batched_octs.clear();
-            batched_level_change.clear();
-            std::set<std::pair<typename key_t::value_type, int>> cur_request_sig;
-            std::set<typename key_t::value_type>                 seen_keys;
-            for (int level = ref_levels; level >= 0; --level)
-            {
-                octs.clear();
-                level_change.clear();
-                get_level_changes_distributed(ref_tree, tree_i, level, octs, level_change, world);
-                append_unique_changes(octs, level_change, batched_octs,
-                    batched_level_change, cur_request_sig, seen_keys);
-            }
-            if (batched_octs.empty()) break;
-
-            const bool repeated_request = (cur_request_sig == prev_request_sig);
-            if (repeated_request && !prev_request_changed_tree)
-            {
-                pcout << "Warning: non-progress adapt loop detected at pass "
-                      << pass
-                      << " (batched request repeated after an unchanged tree). Breaking before adapt."
-                      << std::endl;
-                break;
-            }
-
-            const auto before_keys = globalize_key_set(
-                world, collect_physical_leaf_key_ids(*domain_i));
-            run_adapt_from_keys_distributed(
-                *domain_i, -1, batched_octs, batched_level_change, world);
-            const auto after_keys = globalize_key_set(
-                world, collect_physical_leaf_key_ids(*domain_i));
-
-            const bool no_tree_change = (before_keys == after_keys);
-            if (repeated_request && no_tree_change)
-            {
-                pcout << "Warning: non-progress adapt loop detected at pass "
-                      << pass
-                      << " (batched request repeated and key set unchanged). Breaking."
-                      << std::endl;
-                break;
-            }
-            prev_request_changed_tree = !no_tree_change;
-            prev_request_sig.swap(cur_request_sig);
-        }
+        auto domain_i = adapt_snapshot_to_ref(idx, ref_tree, ref_levels, world);
         domain_i->save_adapted(idx);
         pcout << "interpolated snapshot " << idx << "/" << nTotal_ - 1 << " to common tree reference levels."
               << std::endl;
@@ -836,33 +758,31 @@ class MergeTrees
         for (auto it1 = ref_tree->begin(new_level); it1 != ref_tree->end(new_level); ++it1)
         {
             if (!it1->has_data()) continue;
+            if (!it1->physical()) continue;
             if (!it1->is_leaf() || it1->is_correction()) continue;
             // check if opposite block is also a leaf. if its not add it to be deleted
             auto coord = it1->tree_coordinate();
             auto key = it1->key();
-            auto level = it1->key().level();
+            auto level = key.level();
             // std::cout << "Checking symmetry for block: " << key << std::endl;
             // std::cout << "Coordinate: " << coord << std::endl;
             // std::cout<< "Level: " << level << std::endl;
             // std::array<int, 3> shift = {0, std::pow2(level), 0};
-            auto opposite_coord = coord;
-            // opposite_coord[0] = coord[0];
-            // opposite_coord[1] = std::pow2(level)-coord[1];
-            // Mirror around y=0 in tree-index space.
-            // mirror_span = (-2 * bd_base_y) / block_extent, provided by caller.
-            opposite_coord[1] = mirror_span * (1 << ref_level) - (coord[1] + 1);
+            auto opposite_key =
+                solver::modal_analysis::mirrored_y_key(
+                    coord, key, mirror_span, ref_tree->base_level());
 
             //   std::cout << "Checking symmetry for block: " << key << std::endl;
             //     std::cout << "Coordinate: " << coord << std::endl;
             //     std::cout<< "Level: " << level << std::endl;
             //     std::cout << "Shifted coordinate: " << opposite_coord << std::endl;
-            auto it2 = ref_tree->find_octant(key_t(opposite_coord, level));
+            auto it2 = ref_tree->find_octant(opposite_key);
             if (!it2)
             {
                 if (toPrint)
                 {
                     std::cout << "No opposite block found for: " << it1->key() << std::endl;
-                    std::cout << "shifted coord: " << opposite_coord << std::endl;
+                    std::cout << "shifted coord: " << opposite_key.coordinate() << std::endl;
                 }
                 // std::cout << "No opposite block found for: " << it1->key() << std::endl;
                 // std::cout<<"shifted coord: " << opposite_coord << std::endl;
@@ -871,13 +791,13 @@ class MergeTrees
                 // std::cout << "Found opposite block: " << it2->key() << std::endl;
                 continue;
             }
-            if (!it2->has_data() || !it2->is_leaf() || it2->is_correction())
+            if (!it2 || !it2->has_data() || !it2->physical() || !it2->is_leaf() || it2->is_correction())
             {
                 // std::cout << "Opposite block is not a leaf: " << it2->key() << std::endl;
                 if (toPrint)
                 {
                     std::cout << "No opposite leaf block found for: " << it1->key() << std::endl;
-                    std::cout << "shifted coord: " << opposite_coord << std::endl;
+                    std::cout << "shifted coord: " << opposite_key.coordinate() << std::endl;
                     std::cout << "key:" << it2->key() << std::endl;
                 }
                 octs.emplace_back(it1->key());
@@ -888,6 +808,60 @@ class MergeTrees
     }
 
   private:
+    template<class TreePtr>
+    std::unique_ptr<Setup> adapt_snapshot_to_ref(
+        int idx, TreePtr& ref_tree, int ref_levels, boost::mpi::communicator& world)
+    {
+        std::vector<key_t> octs;
+        std::vector<int>   level_change;
+        std::vector<key_t> batched_octs;
+        std::vector<int>   batched_level_change;
+
+        std::string tree_file_i = tree_file_path(dir_in_, idx);
+        std::string flow_file_i = flow_file_path(dir_in_, idx);
+        auto        domain_i = std::make_unique<Setup>(dict_ref_, tree_file_i, flow_file_i);
+        auto        tree_i = domain_i->tree();
+        std::set<std::pair<typename key_t::value_type, int>> prev_request_sig;
+        for (int pass = 0; pass < 16; ++pass)
+        {
+            batched_octs.clear();
+            batched_level_change.clear();
+            std::set<std::pair<typename key_t::value_type, int>> cur_request_sig;
+            std::set<typename key_t::value_type>                 seen_keys;
+            for (int level = ref_levels; level >= 0; --level)
+            {
+                octs.clear();
+                level_change.clear();
+                get_level_changes_distributed(ref_tree, tree_i, level, octs, level_change, world);
+                append_unique_changes(octs, level_change, batched_octs,
+                    batched_level_change, cur_request_sig, seen_keys);
+            }
+            if (batched_octs.empty()) break;
+
+            const auto before_keys = globalize_key_set(
+                world, collect_physical_leaf_key_ids(*domain_i));
+            run_adapt_from_keys_distributed(
+                *domain_i, -1, batched_octs, batched_level_change, world);
+            const auto after_keys = globalize_key_set(
+                world, collect_physical_leaf_key_ids(*domain_i));
+
+            const bool no_tree_change = (before_keys == after_keys);
+            (void)no_tree_change;
+            prev_request_sig.swap(cur_request_sig);
+        }
+        return domain_i;
+    }
+
+    std::string stage_tree_file(const std::string& stage_name) const
+    {
+        return "./" + dir_out_ + "/tree_info_" + stage_name + ".bin";
+    }
+
+    std::string stage_flow_file(const std::string& stage_name) const
+    {
+        return "./" + dir_out_ + "/flow_" + stage_name + ".hdf5";
+    }
+
     std::string                       dir_out_;
     std::string                       dir_in_;
     int                               nStart_;

@@ -268,6 +268,13 @@ struct CommonTree : public SetupBase<CommonTree, parameters>
         world.barrier();
         auto intrp_list=domain_->decomposition().adapt_del_leafs(octs, level_change, true);
         world.barrier();
+        if (domain_->is_server())
+        {
+            // Rebuild server-side leaf/correction maps after topology changes.
+            domain_->restart_list_construct();
+        }
+        domain_->decomposition().sync_decomposition();
+        world.barrier();
         pcout << "Adapt - intrp" << std::endl;
         if (client)
         {
@@ -304,6 +311,13 @@ struct CommonTree : public SetupBase<CommonTree, parameters>
         //get ranks of left and right block
         boost::mpi::communicator world;
         // this->initialize();
+        if (domain_->is_server())
+        {
+            // Ensure leaf/correction state is normalized before mirror pairing.
+            domain_->restart_list_construct();
+        }
+        domain_->decomposition().sync_decomposition();
+        world.barrier();
         clean<u_sym_type>();
         // up_and_down<u_type>();   
         auto domain_dict = simulation_.dictionary_->get_dictionary("domain");

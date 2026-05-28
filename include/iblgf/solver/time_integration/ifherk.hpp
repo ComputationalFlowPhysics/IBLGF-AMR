@@ -664,6 +664,13 @@ class Ifherk
 
         //clean<Velocity_out>();
         clean_leaf_correction_boundary<edge_aux_type>(domain_->tree()->base_level(), true, 2);
+        for (int l = domain_->tree()->base_level();
+             l < domain_->tree()->depth(); ++l)
+        {
+            client->template buffer_exchange<edge_aux_type>(l);
+            // client->template buffer_exchange<face_aux_type>(l);
+            clean_leaf_correction_boundary<edge_aux_type>(l, false, 2);
+        }
     }
 
     template<class Velocity_in>
@@ -1662,7 +1669,7 @@ private:
             }
         }
 
-        // clean_leaf_correction_boundary<edge_aux_type>(domain_->tree()->base_level(), true, 2);
+        clean_leaf_correction_boundary<edge_aux_type>(domain_->tree()->base_level(), true, 2);
         // add background velocity
         copy<Source, face_aux_type>();
         domain::Operator::add_field_expression<face_aux_type>(domain_, simulation_->frame_vel(), T_stage_, -1.0);

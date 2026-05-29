@@ -93,8 +93,205 @@ class POD
         this->init_idx<idx_u_type>();
         world.barrier();
     }
+    // template<class field>
+    // float_type run_MOS(std::string var="u" ,std::string _prefix="_")
+    // {
+    //     boost::mpi::communicator world;
+    //     std::cout << "MOS::run()" << std::endl;
+    //     world.barrier();
+    //     PetscMPIInt rank;
+    //     rank = world.rank();
+    //     idxStart = simulation_->dictionary()->template get_or<int>("nStart", 100);
+    //     nTotal = simulation_->dictionary()->template get_or<int>("nTotal", 100);
+    //     nskip = simulation_->dictionary()->template get_or<int>("nskip", 100);
+    //     std::cout << "MOS::run()1" << std::endl;
+    //     PetscInt m_local, M;
+    //     m_local = max_local_idx; // since 1 based
+    //     Vec x, b;
+    //     if (rank == 0) m_local = 0;
+
+
+    //     boost::mpi::all_reduce(world, m_local, M, std::plus<int>());
+    //     Mat                    A;
+    //     ISLocalToGlobalMapping ltog_row, ltog_col;
+    //     PetscCall(MatCreateDense(PETSC_COMM_WORLD, m_local, PETSC_DECIDE, M, nTotal, NULL, &A));
+    //     std::cout << "MOS::run()2" << std::endl;
+    //     // PetscCall(MatSetSizes(A, m_local, PETSC_DECIDE, M, nTotal));
+    //     PetscCall(MatSetUp(A));
+    //     PetscCall(MatCreateVecs(A, &x, &b));
+    //     PetscInt rstartx, rendx, rstartb, rendb;
+    //     PetscCall(VecGetOwnershipRange(x, &rstartx, &rendx));
+    //     PetscCall(VecGetOwnershipRange(b, &rstartb, &rendb));
+
+    //     //get index set
+    //     int* global_rows;
+
+    //     global_rows = new int[m_local];
+    //     for (int i = 0; i < m_local; i++) { global_rows[i] = i + static_cast<int>(rstartb); }
+
+    //     int* global_cols = new int[nTotal];
+    //     for (int j = 0; j < nTotal; j++) { global_cols[j] = j; }
+
+    //     PetscInt* rows = global_rows;
+    //     PetscInt* cols = global_cols;
+    //     IS        isrow, iscol;
+
+    //     PetscCall(ISCreateGeneral(PETSC_COMM_WORLD, m_local, rows, PETSC_COPY_VALUES, &isrow));
+    //     PetscCall(ISCreateGeneral(PETSC_COMM_WORLD, nTotal, cols, PETSC_COPY_VALUES, &iscol));
+
+    //     PetscCall(ISLocalToGlobalMappingCreateIS(isrow, &ltog_row));
+    //     PetscCall(ISLocalToGlobalMappingCreateIS(iscol, &ltog_col));
+
+    //     PetscCall(MatSetLocalToGlobalMapping(A, ltog_row, ltog_col));
+
+    //     PetscInt size_x, size_b;
+
+    //     PetscCall(VecGetSize(x, &size_x));
+    //     PetscCall(VecGetSize(b, &size_b));
+    //     std::cout << "MOS::run()3" << std::endl;
+    //     // Vec x, b;
+    //     this->load_snapshots<idx_u_type, field>(A,var);
+    //     world.barrier();
+    //     PetscCall(MatAssemblyBegin(A, MAT_FINAL_ASSEMBLY));
+    //     PetscCall(MatAssemblyEnd(A, MAT_FINAL_ASSEMBLY));
+    //     world.barrier();
+    //    clean<u_mean_type>();
+    //     this->subtractMatmean_inplace<idx_u_type, u_mean_type>(A);
+    //     world.barrier();
+    //     this->up_and_down<u_mean_type>();
+    //     world.barrier();
+    //     PetscCall(MatTransposeMatMult(A, A, MAT_INITIAL_MATRIX, PETSC_DEFAULT, &C));
+    //     world.barrier();
+
+    //     delete[] global_rows;
+    //     delete[] global_cols;
+    //     std::cout << "MOS::run()4" << std::endl;
+    //     // this->subtractMatmean<idx_u_type>(A); // subtract mean from A
+    //     PetscCall(MatTransposeMatMult(A, A, MAT_INITIAL_MATRIX, PETSC_DEFAULT, &C));
+    //     world.barrier();
+    //     //method of snapshots
+    //     // Mat C;
+    //     // PetscCall(MatTransposeMatMult(At, At, MAT_INITIAL_MATRIX, PETSC_DEFAULT, &C));
+    //     Mat CT;
+    //     PetscCall(MatHermitianTranspose(C, MAT_INITIAL_MATRIX, &CT));
+    //     Mat Diff;
+    //     PetscReal norm_diff;
+    //     PetscReal normCt;
+    //     PetscCall(MatNorm(CT, NORM_FROBENIUS, &normCt));
+    //     if(rank == 0) std::cout << "Norm of CT: " << normCt << std::endl;
+
+    //     PetscCall(MatDuplicate(C, MAT_COPY_VALUES, &Diff));
+    //     PetscCall(MatAXPY(Diff, -1.0, CT, DIFFERENT_NONZERO_PATTERN)); // Dif
+    //     PetscCall(MatNorm(Diff, NORM_FROBENIUS, &norm_diff));
+    //     if(rank == 0) std::cout << "Norm of Diff: " << norm_diff << std::endl;
+        
+    //     EPS eps;
+    //     PetscCall(EPSCreate(PETSC_COMM_WORLD, &eps));
+    //     PetscCall(EPSSetOperators(eps, C, NULL));
+    //     PetscCall(EPSSetProblemType(eps, EPS_HEP));
+    //     PetscCall(EPSSetDimensions(eps, 10, PETSC_DEFAULT, PETSC_DEFAULT));
+
+    //     PetscCall(EPSSetFromOptions(eps));
+    //     PetscCall(EPSSolve(eps));
+    //     Vec vi, phi_i;
+    //     PetscCall(MatCreateVecs(A, &vi, NULL)); // size m
+    //     world.barrier();
+    //     PetscScalar lambda_i;
+    //     PetscInt nconv;
+    //     PetscCall(EPSGetConverged(eps, &nconv));
+    //     if (rank == 0) std::cout << "Number of modes: " << nconv << std::endl;
+    //     // file for singular values
+    //     std::string dir = simulation_->dictionary()->get_dictionary("output")->template get<std::string>("directory");
+    //     std::ofstream sv_file;
+    //     if (rank==0){
+    //         sv_file.open("./"+dir+"/singular_values"+_prefix+"r.txt");
+    //         sv_file << std::scientific<< std::setprecision(9);
+    //     }
+    //     int nloop= nconv<10 ? nconv : 10; // limit to 10 modes for output
+    //     int           width = 20;
+    //     if (rank == 0) std::cout << "Number of modes: " << nloop << std::endl;
+    //     for (int i = 0; i < nloop; ++i)
+    //     {
+    //         PetscCall(EPSGetEigenpair(eps, i, &lambda_i, NULL, vi, NULL));
+    //         // rotate vi so its real
+    //         this->RemoveGlobalPhase(vi);
+    //         PetscReal lam_real = PetscRealPart(lambda_i);
+    //         if (lam_real < 0.0 && std::abs(lam_real) < 1e-14) { lam_real = 0.0; }
+    //         float_type sigma_i = (lam_real > 0.0) ? std::sqrt(lam_real) : 0.0;
+    //         if (rank==0) sv_file << sigma_i <<std::setw(width)<< std::endl;
+    //         PetscCall(MatCreateVecs(At, NULL, &phi_i)); // size m
+    //         PetscCall(MatMult(At, vi, phi_i));          // phi_i = A * v_i
+    //         if (rank == 1) std::cout << "Singular value " << i << " : " << sigma_i << std::endl;
+    //         if (rank == 1) std::cout << "Singular value " << i << " : " << lambda_i << std::endl;
+
+    //         PetscViewer viewer;
+    //         char fname[256];
+    //         sprintf(fname, "./%s/coeff%s%04d.csv", dir.c_str(), _prefix.c_str(),i);
+    //         PetscViewerASCIIOpen(PETSC_COMM_WORLD, fname, &viewer);
+    //         PetscViewerSetFormat(viewer, PETSC_VIEWER_ASCII_MATLAB); // or other format
+    //         VecView(vi, viewer);
+    //         PetscViewerDestroy(&viewer);
+    //         if(rank==0) std::cout<<"MOS 5: Coefficient vector "<<i<<" written to file."<<std::endl;
+    //         // Also write a simple real/imag coefficient dump for deterministic testing.
+    //         // vi is a distributed MPI vector, so gather to rank 0 before indexed reads.
+    //         VecScatter to_zero = NULL;
+    //         Vec        vi_root = NULL;
+    //         PetscCall(VecScatterCreateToZero(vi, &to_zero, &vi_root));
+    //         PetscCall(VecScatterBegin(to_zero, vi, vi_root, INSERT_VALUES, SCATTER_FORWARD));
+    //         PetscCall(VecScatterEnd(to_zero, vi, vi_root, INSERT_VALUES, SCATTER_FORWARD));
+    //         if (rank == 0)
+    //         {
+    //             char coeff_name[256];
+    //             sprintf(coeff_name, "./%s/coeff_real%s%04d.txt", dir.c_str(), _prefix.c_str(), i);
+    //             std::cout << "Writing coefficient file: " << coeff_name << std::endl;
+    //             std::ofstream coeff_file(coeff_name);
+    //             coeff_file << std::scientific << std::setprecision(16);
+
+    //             const PetscScalar* root_arr = NULL;
+    //             PetscInt           vec_size = 0;
+    //             PetscCall(VecGetSize(vi_root, &vec_size));
+    //             PetscCall(VecGetArrayRead(vi_root, &root_arr));
+    //             const PetscInt write_count = std::min<PetscInt>(static_cast<PetscInt>(nTotal), vec_size);
+    //             for (PetscInt j = 0; j < write_count; ++j)
+    //             {
+    //                 const PetscScalar vj = root_arr[j];
+    //                 coeff_file << PetscRealPart(vj) << " " << PetscImaginaryPart(vj) << "\n";
+    //             }
+    //             PetscCall(VecRestoreArrayRead(vi_root, &root_arr));
+    //             coeff_file.close();
+    //         }
+    //         PetscCall(VecScatterDestroy(&to_zero));
+    //         PetscCall(VecDestroy(&vi_root));
+
+    //         if(rank==0) std::cout<<"MOS 5: Singular value "<<i<<" : "<<sigma_i<<std::endl;
+    //         if (sigma_i <= 1e-14) continue; // avoid NaNs from tiny/roundoff-negative lambdas
+    //         PetscCall(VecScale(phi_i,1/sigma_i)); // normalize phi_i
+    //         // Store or output phi_i
+    //         vec2grid<idx_u_type, field>(phi_i, 1);
+    //         world.barrier();
+    //         this->curl<field>();
+    //         world.barrier();
+    //         simulation_->write("podmode"+_prefix + std::to_string(i));
+    //         world.barrier();
+    //     }
+    //     if (rank == 0 && sv_file.is_open()) {
+    //         sv_file.close();
+    //     }
+    //     //destory vector and matrices
+    //     PetscCall(VecDestroy(&vi));
+    //     PetscCall(VecDestroy(&phi_i));
+    //     PetscCall(MatDestroy(&A));
+    //     PetscCall(MatDestroy(&At));
+    //     PetscCall(MatDestroy(&C));
+    //     PetscCall(MatDestroy(&CT));
+    //     PetscCall(MatDestroy(&Diff));
+    //     PetscCall(EPSDestroy(&eps));
+    //     world.barrier();
+
+    //     return 0.0;
+    // }
     template<class field>
-    float_type run_MOS(std::string var="u" ,std::string _prefix="_")
+    float_type run_MOS(std::string var="u", std::string _prefix="_")
     {
         boost::mpi::communicator world;
         std::cout << "MOS::run()" << std::endl;
@@ -102,192 +299,240 @@ class POD
         PetscMPIInt rank;
         rank = world.rank();
         idxStart = simulation_->dictionary()->template get_or<int>("nStart", 100);
-        nTotal = simulation_->dictionary()->template get_or<int>("nTotal", 100);
-        nskip = simulation_->dictionary()->template get_or<int>("nskip", 100);
+        nTotal   = simulation_->dictionary()->template get_or<int>("nTotal", 100);
+        nskip    = simulation_->dictionary()->template get_or<int>("nskip",  100);
         std::cout << "MOS::run()1" << std::endl;
+
         PetscInt m_local, M;
-        m_local = max_local_idx; // since 1 based
-        Vec x, b;
+        m_local = max_local_idx;
         if (rank == 0) m_local = 0;
-
-
         boost::mpi::all_reduce(world, m_local, M, std::plus<int>());
-        Mat                    A;
-        ISLocalToGlobalMapping ltog_row, ltog_col;
+
+        // ----------------------------------------------------------------
+        // Build snapshot matrix A  (M x nTotal, row-distributed)
+        // ----------------------------------------------------------------
+        Mat A;
         PetscCall(MatCreateDense(PETSC_COMM_WORLD, m_local, PETSC_DECIDE, M, nTotal, NULL, &A));
-        std::cout << "MOS::run()2" << std::endl;
-        // PetscCall(MatSetSizes(A, m_local, PETSC_DECIDE, M, nTotal));
         PetscCall(MatSetUp(A));
-        PetscCall(MatCreateVecs(A, &x, &b));
-        PetscInt rstartx, rendx, rstartb, rendb;
-        PetscCall(VecGetOwnershipRange(x, &rstartx, &rendx));
+        std::cout << "MOS::run()2" << std::endl;
+
+        Vec b;
+        PetscCall(MatCreateVecs(A, NULL, &b));
+        PetscInt rstartb, rendb;
         PetscCall(VecGetOwnershipRange(b, &rstartb, &rendb));
+        PetscCall(VecDestroy(&b));
 
-        //get index set
-        int* global_rows;
-
-        global_rows = new int[m_local];
-        for (int i = 0; i < m_local; i++) { global_rows[i] = i + static_cast<int>(rstartb); }
+        int* global_rows = new int[m_local];
+        for (int i = 0; i < m_local; i++) global_rows[i] = i + static_cast<int>(rstartb);
 
         int* global_cols = new int[nTotal];
-        for (int j = 0; j < nTotal; j++) { global_cols[j] = j; }
+        for (int j = 0; j < nTotal; j++) global_cols[j] = j;
 
-        PetscInt* rows = global_rows;
-        PetscInt* cols = global_cols;
-        IS        isrow, iscol;
+        IS isrow, iscol;
+        PetscCall(ISCreateGeneral(PETSC_COMM_WORLD, m_local, global_rows, PETSC_COPY_VALUES, &isrow));
+        PetscCall(ISCreateGeneral(PETSC_COMM_WORLD, nTotal,  global_cols, PETSC_COPY_VALUES, &iscol));
 
-        PetscCall(ISCreateGeneral(PETSC_COMM_WORLD, m_local, rows, PETSC_COPY_VALUES, &isrow));
-        PetscCall(ISCreateGeneral(PETSC_COMM_WORLD, nTotal, cols, PETSC_COPY_VALUES, &iscol));
-
+        ISLocalToGlobalMapping ltog_row, ltog_col;
         PetscCall(ISLocalToGlobalMappingCreateIS(isrow, &ltog_row));
         PetscCall(ISLocalToGlobalMappingCreateIS(iscol, &ltog_col));
-
         PetscCall(MatSetLocalToGlobalMapping(A, ltog_row, ltog_col));
 
-        PetscInt size_x, size_b;
+        PetscCall(ISDestroy(&isrow));
+        PetscCall(ISDestroy(&iscol));
+        PetscCall(ISLocalToGlobalMappingDestroy(&ltog_row));
+        PetscCall(ISLocalToGlobalMappingDestroy(&ltog_col));
+        delete[] global_rows;
+        delete[] global_cols;
 
-        PetscCall(VecGetSize(x, &size_x));
-        PetscCall(VecGetSize(b, &size_b));
         std::cout << "MOS::run()3" << std::endl;
-        // Vec x, b;
-        this->load_snapshots<idx_u_type, field>(A,var);
+
+        // ----------------------------------------------------------------
+        // Load snapshots into A
+        // ----------------------------------------------------------------
+        this->load_snapshots<idx_u_type, field>(A, var);
         world.barrier();
         PetscCall(MatAssemblyBegin(A, MAT_FINAL_ASSEMBLY));
         PetscCall(MatAssemblyEnd(A, MAT_FINAL_ASSEMBLY));
         world.barrier();
-        Mat At;
-        PetscCall(MatDuplicate(A, MAT_DO_NOT_COPY_VALUES, &At));
+
+        // ----------------------------------------------------------------
+        // Subtract mean in-place, store mean in grid field
+        // ----------------------------------------------------------------
         clean<u_mean_type>();
-        this->subtractMatmean<idx_u_type,u_mean_type>(A, At); // subtract mean from A
+        this->subtractMatmean_inplace<idx_u_type, u_mean_type>(A);
         world.barrier();
         this->up_and_down<u_mean_type>();
-        PetscCall(MatAssemblyBegin(At, MAT_FINAL_ASSEMBLY));
-        PetscCall(MatAssemblyEnd(At, MAT_FINAL_ASSEMBLY));
         world.barrier();
-
-        delete[] global_rows;
-        delete[] global_cols;
         std::cout << "MOS::run()4" << std::endl;
-        // this->subtractMatmean<idx_u_type>(A); // subtract mean from A
-        //method of snapshots
-        Mat C;
-        PetscCall(MatTransposeMatMult(At, At, MAT_INITIAL_MATRIX, PETSC_DEFAULT, &C));
-        Mat CT;
-        PetscCall(MatHermitianTranspose(C, MAT_INITIAL_MATRIX, &CT));
-        Mat Diff;
-        PetscReal norm_diff;
-        PetscReal normCt;
-        PetscCall(MatNorm(CT, NORM_FROBENIUS, &normCt));
-        if(rank == 0) std::cout << "Norm of CT: " << normCt << std::endl;
 
-        PetscCall(MatDuplicate(C, MAT_COPY_VALUES, &Diff));
-        PetscCall(MatAXPY(Diff, -1.0, CT, DIFFERENT_NONZERO_PATTERN)); // Dif
-        PetscCall(MatNorm(Diff, NORM_FROBENIUS, &norm_diff));
-        if(rank == 0) std::cout << "Norm of Diff: " << norm_diff << std::endl;
-        
+        // ----------------------------------------------------------------
+        // Method of snapshots: C = A^T * A  (nTotal x nTotal, tiny)
+        // ----------------------------------------------------------------
+        Mat C;
+        PetscCall(MatTransposeMatMult(A, A, MAT_INITIAL_MATRIX, PETSC_DEFAULT, &C));
+
+        // ----------------------------------------------------------------
+        // Solve eigenvalue problem on C
+        // ----------------------------------------------------------------
         EPS eps;
         PetscCall(EPSCreate(PETSC_COMM_WORLD, &eps));
         PetscCall(EPSSetOperators(eps, C, NULL));
         PetscCall(EPSSetProblemType(eps, EPS_HEP));
         PetscCall(EPSSetDimensions(eps, 10, PETSC_DEFAULT, PETSC_DEFAULT));
-
         PetscCall(EPSSetFromOptions(eps));
         PetscCall(EPSSolve(eps));
-        Vec vi, phi_i;
-        PetscCall(MatCreateVecs(A, &vi, NULL)); // size m
-        world.barrier();
-        PetscScalar lambda_i;
+
         PetscInt nconv;
         PetscCall(EPSGetConverged(eps, &nconv));
-        if (rank == 0) std::cout << "Number of modes: " << nconv << std::endl;
-        // file for singular values
+        if (rank == 0) std::cout << "Number of converged modes: " << nconv << std::endl;
+
+        // ----------------------------------------------------------------
+        // Output singular values and spatial modes
+        // ----------------------------------------------------------------
         std::string dir = simulation_->dictionary()->get_dictionary("output")->template get<std::string>("directory");
         std::ofstream sv_file;
-        if (rank==0){
-            sv_file.open("./"+dir+"/singular_values"+_prefix+"r.txt");
-            sv_file << std::scientific<< std::setprecision(9);
+        if (rank == 0)
+        {
+            sv_file.open("./" + dir + "/singular_values" + _prefix + "r.txt");
+            sv_file << std::scientific << std::setprecision(9);
         }
-        int nloop= nconv<10 ? nconv : 10; // limit to 10 modes for output
-        int           width = 20;
-        if (rank == 0) std::cout << "Number of modes: " << nloop << std::endl;
+
+        int nloop = (nconv < 10) ? nconv : 10;
+        if (rank == 0) std::cout << "Writing " << nloop << " modes." << std::endl;
+
+        Vec vi, phi_i;
+        PetscCall(MatCreateVecs(C,  &vi,   NULL)); // length nTotal
+        PetscCall(MatCreateVecs(A, NULL, &phi_i)); // length M
+
         for (int i = 0; i < nloop; ++i)
         {
+            PetscScalar lambda_i;
             PetscCall(EPSGetEigenpair(eps, i, &lambda_i, NULL, vi, NULL));
-            // rotate vi so its real
             this->RemoveGlobalPhase(vi);
-            PetscReal lam_real = PetscRealPart(lambda_i);
-            if (lam_real < 0.0 && std::abs(lam_real) < 1e-14) { lam_real = 0.0; }
-            float_type sigma_i = (lam_real > 0.0) ? std::sqrt(lam_real) : 0.0;
-            if (rank==0) sv_file << sigma_i <<std::setw(width)<< std::endl;
-            PetscCall(MatCreateVecs(At, NULL, &phi_i)); // size m
-            PetscCall(MatMult(At, vi, phi_i));          // phi_i = A * v_i
-            if (rank == 1) std::cout << "Singular value " << i << " : " << sigma_i << std::endl;
-            if (rank == 1) std::cout << "Singular value " << i << " : " << lambda_i << std::endl;
 
-            PetscViewer viewer;
-            char fname[256];
-            sprintf(fname, "./%s/coeff%s%04d.csv", dir.c_str(), _prefix.c_str(),i);
-            PetscViewerASCIIOpen(PETSC_COMM_WORLD, fname, &viewer);
-            PetscViewerSetFormat(viewer, PETSC_VIEWER_ASCII_MATLAB); // or other format
-            VecView(vi, viewer);
-            PetscViewerDestroy(&viewer);
-            if(rank==0) std::cout<<"MOS 5: Coefficient vector "<<i<<" written to file."<<std::endl;
-            // Also write a simple real/imag coefficient dump for deterministic testing.
-            // vi is a distributed MPI vector, so gather to rank 0 before indexed reads.
-            VecScatter to_zero = NULL;
-            Vec        vi_root = NULL;
-            PetscCall(VecScatterCreateToZero(vi, &to_zero, &vi_root));
-            PetscCall(VecScatterBegin(to_zero, vi, vi_root, INSERT_VALUES, SCATTER_FORWARD));
-            PetscCall(VecScatterEnd(to_zero, vi, vi_root, INSERT_VALUES, SCATTER_FORWARD));
+            PetscReal  lam_real = PetscRealPart(lambda_i);
+            if (lam_real < 0.0 && std::abs(lam_real) < 1e-14) lam_real = 0.0;
+            float_type sigma_i = (lam_real > 0.0) ? std::sqrt(lam_real) : 0.0;
+
             if (rank == 0)
             {
-                char coeff_name[256];
-                sprintf(coeff_name, "./%s/coeff_real%s%04d.txt", dir.c_str(), _prefix.c_str(), i);
-                std::cout << "Writing coefficient file: " << coeff_name << std::endl;
-                std::ofstream coeff_file(coeff_name);
-                coeff_file << std::scientific << std::setprecision(16);
-
-                const PetscScalar* root_arr = NULL;
-                PetscInt           vec_size = 0;
-                PetscCall(VecGetSize(vi_root, &vec_size));
-                PetscCall(VecGetArrayRead(vi_root, &root_arr));
-                const PetscInt write_count = std::min<PetscInt>(static_cast<PetscInt>(nTotal), vec_size);
-                for (PetscInt j = 0; j < write_count; ++j)
-                {
-                    const PetscScalar vj = root_arr[j];
-                    coeff_file << PetscRealPart(vj) << " " << PetscImaginaryPart(vj) << "\n";
-                }
-                PetscCall(VecRestoreArrayRead(vi_root, &root_arr));
-                coeff_file.close();
+                sv_file << sigma_i << std::endl;
+                std::cout << "Mode " << i << " sigma = " << sigma_i << std::endl;
             }
-            PetscCall(VecScatterDestroy(&to_zero));
-            PetscCall(VecDestroy(&vi_root));
 
-            if(rank==0) std::cout<<"MOS 5: Singular value "<<i<<" : "<<sigma_i<<std::endl;
-            if (sigma_i <= 1e-14) continue; // avoid NaNs from tiny/roundoff-negative lambdas
-            PetscCall(VecScale(phi_i,1/sigma_i)); // normalize phi_i
-            // Store or output phi_i
+            // Write coefficient vector (MATLAB format)
+            {
+                PetscViewer viewer;
+                char fname[256];
+                sprintf(fname, "./%s/coeff%s%04d.csv", dir.c_str(), _prefix.c_str(), i);
+                PetscCall(PetscViewerASCIIOpen(PETSC_COMM_WORLD, fname, &viewer));
+                PetscCall(PetscViewerSetFormat(viewer, PETSC_VIEWER_ASCII_MATLAB));
+                PetscCall(VecView(vi, viewer));
+                PetscCall(PetscViewerDestroy(&viewer));
+            }
+
+            // Gather vi to rank 0 and write real/imag txt
+            {
+                VecScatter to_zero = NULL;
+                Vec        vi_root = NULL;
+                PetscCall(VecScatterCreateToZero(vi, &to_zero, &vi_root));
+                PetscCall(VecScatterBegin(to_zero, vi, vi_root, INSERT_VALUES, SCATTER_FORWARD));
+                PetscCall(VecScatterEnd(  to_zero, vi, vi_root, INSERT_VALUES, SCATTER_FORWARD));
+                if (rank == 0)
+                {
+                    char coeff_name[256];
+                    sprintf(coeff_name, "./%s/coeff_real%s%04d.txt", dir.c_str(), _prefix.c_str(), i);
+                    std::ofstream coeff_file(coeff_name);
+                    coeff_file << std::scientific << std::setprecision(16);
+                    const PetscScalar* root_arr = NULL;
+                    PetscInt           vec_size = 0;
+                    PetscCall(VecGetSize(vi_root, &vec_size));
+                    PetscCall(VecGetArrayRead(vi_root, &root_arr));
+                    const PetscInt write_count = std::min<PetscInt>(static_cast<PetscInt>(nTotal), vec_size);
+                    for (PetscInt j = 0; j < write_count; ++j)
+                        coeff_file << PetscRealPart(root_arr[j]) << " "
+                                << PetscImaginaryPart(root_arr[j]) << "\n";
+                    PetscCall(VecRestoreArrayRead(vi_root, &root_arr));
+                }
+                PetscCall(VecScatterDestroy(&to_zero));
+                PetscCall(VecDestroy(&vi_root));
+            }
+
+            if (sigma_i <= 1e-14) continue;
+
+            // phi_i = A * vi, then normalize to get spatial mode
+            PetscCall(MatMult(A, vi, phi_i));
+            PetscCall(VecScale(phi_i, 1.0 / sigma_i));
+
             vec2grid<idx_u_type, field>(phi_i, 1);
             world.barrier();
             this->curl<field>();
             world.barrier();
-            simulation_->write("podmode"+_prefix + std::to_string(i));
+            simulation_->write("podmode" + _prefix + std::to_string(i));
             world.barrier();
         }
-        if (rank == 0 && sv_file.is_open()) {
-            sv_file.close();
-        }
-        //destory vector and matrices
+
+        if (rank == 0 && sv_file.is_open()) sv_file.close();
+
+        // ----------------------------------------------------------------
+        // Cleanup
+        // ----------------------------------------------------------------
         PetscCall(VecDestroy(&vi));
         PetscCall(VecDestroy(&phi_i));
         PetscCall(MatDestroy(&A));
-        PetscCall(MatDestroy(&At));
         PetscCall(MatDestroy(&C));
-        PetscCall(MatDestroy(&CT));
-        PetscCall(MatDestroy(&Diff));
         PetscCall(EPSDestroy(&eps));
         world.barrier();
 
+        return 0.0;
+    }
+    template<class Field_idx, class Field_mean>
+    float_type subtractMatmean_inplace(Mat A)
+    {
+        if (!domain_->is_client()) return 0.0;
+
+        PetscScalar *a_array;
+        PetscInt     lda;
+        PetscCall(MatDenseGetArray(A, &a_array));
+        PetscCall(MatDenseGetLDA(A, &lda));
+
+        const int base_level = domain_->tree()->base_level();
+        for (int l = base_level; l < domain_->tree()->depth(); l++)
+        {
+            const auto dx_level = 1.0 / math::pow2(l);
+            const auto w_1_2 = std::pow(dx_level, domain_->dimension() / 2.0);
+
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
+                if (!it->is_leaf() || it->is_correction()) continue;
+
+                for (std::size_t field_idx = 0; field_idx < Dim; ++field_idx)
+                {
+                    for (auto& n : it->data())
+                    {
+                        const int i_local = n(Field_idx::tag(), field_idx) - 1;
+                        if (i_local < 0 || i_local >= max_local_idx) continue;
+
+                        // compute row mean
+                        PetscReal row_mean = 0.0;
+                        for (int k = 0; k < nTotal; ++k)
+                            row_mean += PetscRealPart(a_array[k * lda + i_local]);
+                        row_mean /= nTotal;
+
+                        // store in grid field
+                        n(Field_mean::tag(), field_idx) = row_mean;
+
+                        // subtract mean and apply weight in-place
+                        for (int k = 0; k < nTotal; ++k)
+                            a_array[k * lda + i_local] = 
+                                (a_array[k * lda + i_local] - row_mean) * w_1_2;
+                    }
+                }
+            }
+        }
+
+        PetscCall(MatDenseRestoreArray(A, &a_array));
         return 0.0;
     }
     float_type run_vec_test()
@@ -373,58 +618,114 @@ class POD
         return 0.0;
     }
  
-    template<class Field_idx,class Field_mean>
+    // template<class Field_idx,class Field_mean>
+    // float_type subtractMatmean(Mat A, Mat At)
+    // {
+    //     // std::cout<<"here"<<std::endl;
+    //     if (!domain_->is_client()) return 0.0;
+    //     int base_level = domain_->tree()->base_level();
+    //     for (int l = base_level; l < domain_->tree()->depth(); l++)
+    //     {
+    //         const auto dx_level = 1.0 / math::pow2(l);
+    //         const auto w_1_2 = std::pow(dx_level, domain_->dimension() / 2.0); //W^(1/2) so i can do standard SVD
+
+    //         for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+    //         {
+    //             if (!it->locally_owned() || !it->has_data()) continue;
+    //             // if (!it->data().is_allocated()) continue;
+    //             if (it->is_leaf() && !it->is_correction())
+    //             {
+    //                 for (std::size_t field_idx = 0; field_idx < Dim; ++field_idx)
+    //                 {
+    //                     for (auto& n : it->data())
+    //                     {
+    //                         int i_local = n(Field_idx::tag(), field_idx) - 1;
+    //                         if (i_local < 0) continue;
+    //                         // int i_global =
+    //                         //     (rank - 1) * m_local + i_local - 1;
+    //                         PetscReal row_mean = 0.0;
+                            
+    //                         for (int k = 0; k < nTotal; ++k)
+    //                         {
+    //                             PetscScalar value;
+    //                             PetscCall(MatGetValuesLocal(A, 1, &i_local, 1, &k, &value));
+    //                             row_mean += PetscRealPart(value);
+    //                         }
+    //                         row_mean /= nTotal; // mean of the row
+    //                         n(Field_mean::tag(), field_idx) = row_mean; // store mean in the field
+    //                         // std::cout<<"Row mean for i_local " << i_local << " : " << row_mean << std::endl;
+    //                         for (int k = 0; k < nTotal; ++k)
+    //                         {
+    //                             PetscScalar value;
+    //                             PetscCall(MatGetValuesLocal(A, 1, &i_local, 1, &k, &value));
+    //                             value -= row_mean; // subtract mean from each element
+                                
+    //                             value *= w_1_2;    // scale by w_1_2
+    //                             PetscCall(MatSetValuesLocal(At, 1, &i_local, 1, &k, &value, INSERT_VALUES));
+    //                         }
+    //                         // PetscScalar value = 1.0;
+    //                         // PetscCall(MatSetValuesLocal(A, 1, &i_local, 1, &i, &value, INSERT_VALUES));
+    //                     }
+    //                 }
+    //             }
+    //         }
+    //     }
+    template<class Field_idx, class Field_mean>
     float_type subtractMatmean(Mat A, Mat At)
     {
-        // std::cout<<"here"<<std::endl;
         if (!domain_->is_client()) return 0.0;
-        int base_level = domain_->tree()->base_level();
+
+        PetscScalar *a_array, *at_array;
+        PetscInt     lda, lda_t;
+        PetscCall(MatDenseGetArray(A,  &a_array));
+        PetscCall(MatDenseGetArray(At, &at_array));
+        PetscCall(MatDenseGetLDA(A,  &lda));
+        PetscCall(MatDenseGetLDA(At, &lda_t));
+
+        const int base_level = domain_->tree()->base_level();
         for (int l = base_level; l < domain_->tree()->depth(); l++)
         {
             const auto dx_level = 1.0 / math::pow2(l);
-            const auto w_1_2 = std::pow(dx_level, domain_->dimension() / 2.0); //W^(1/2) so i can do standard SVD
+            const auto w_1_2 = std::pow(dx_level, domain_->dimension() / 2.0);
 
             for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
             {
                 if (!it->locally_owned() || !it->has_data()) continue;
-                // if (!it->data().is_allocated()) continue;
-                if (it->is_leaf() && !it->is_correction())
+                if (!it->is_leaf() || it->is_correction()) continue;
+
+                for (std::size_t field_idx = 0; field_idx < Dim; ++field_idx)
                 {
-                    for (std::size_t field_idx = 0; field_idx < Dim; ++field_idx)
+                    for (auto& n : it->data())
                     {
-                        for (auto& n : it->data())
+                        const int i_local = n(Field_idx::tag(), field_idx) - 1; // 0-based
+                        if (i_local < 0 || i_local >= max_local_idx) continue;
+
+                        // compute row mean over all snapshots
+                        PetscReal row_mean = 0.0;
+                        for (int k = 0; k < nTotal; ++k)
+                            row_mean += PetscRealPart(a_array[k * lda + i_local]);
+                        row_mean /= nTotal;
+
+                        // store mean in grid field for later use
+                        n(Field_mean::tag(), field_idx) = row_mean;
+
+                        // write mean-subtracted and weighted values into At
+                        for (int k = 0; k < nTotal; ++k)
                         {
-                            int i_local = n(Field_idx::tag(), field_idx) - 1;
-                            if (i_local < 0) continue;
-                            // int i_global =
-                            //     (rank - 1) * m_local + i_local - 1;
-                            PetscReal row_mean = 0.0;
-                            
-                            for (int k = 0; k < nTotal; ++k)
-                            {
-                                PetscScalar value;
-                                PetscCall(MatGetValuesLocal(A, 1, &i_local, 1, &k, &value));
-                                row_mean += PetscRealPart(value);
-                            }
-                            row_mean /= nTotal; // mean of the row
-                            n(Field_mean::tag(), field_idx) = row_mean; // store mean in the field
-                            // std::cout<<"Row mean for i_local " << i_local << " : " << row_mean << std::endl;
-                            for (int k = 0; k < nTotal; ++k)
-                            {
-                                PetscScalar value;
-                                PetscCall(MatGetValuesLocal(A, 1, &i_local, 1, &k, &value));
-                                value -= row_mean; // subtract mean from each element
-                                
-                                value *= w_1_2;    // scale by w_1_2
-                                PetscCall(MatSetValuesLocal(At, 1, &i_local, 1, &k, &value, INSERT_VALUES));
-                            }
-                            // PetscScalar value = 1.0;
-                            // PetscCall(MatSetValuesLocal(A, 1, &i_local, 1, &i, &value, INSERT_VALUES));
+                            const PetscScalar val =
+                                (a_array[k * lda + i_local] - row_mean) * w_1_2;
+                            at_array[k * lda_t + i_local] = val;
                         }
                     }
                 }
             }
         }
+
+        PetscCall(MatDenseRestoreArray(A,  &a_array));
+        PetscCall(MatDenseRestoreArray(At, &at_array));
+
+        return 0.0;
+    }
         // if (!domain_->is_client())
         // {
         //     PetscCall(MatAssemblyBegin(A, MAT_FINAL_ASSEMBLY));
@@ -455,8 +756,8 @@ class POD
         // PetscCall(MatAssemblyBegin(A, MAT_FINAL_ASSEMBLY));
         // PetscCall(MatAssemblyEnd(A, MAT_FINAL_ASSEMBLY));
         // PetscCall(MatDenseRestoreArray(A, &A_array));
-        return 0.0;
-    }
+    //     return 0.0;
+    // }
 
 
     int RemoveGlobalPhase(Vec &v)

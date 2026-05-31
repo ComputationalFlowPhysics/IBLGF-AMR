@@ -59,4 +59,5 @@ __pycache__/
 
 # Pybind / Poisson generated outputs
 tests/poisson/vortexRings/
+runs_pybind/
 .iblgf_viewer/test-configs/

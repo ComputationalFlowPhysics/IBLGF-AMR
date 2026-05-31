@@ -1,17 +1,78 @@
 from __future__ import annotations
 
 from functools import lru_cache
+import hashlib
 from importlib import import_module
 import os
 from pathlib import Path
 import re
 import sys
 import tempfile
+import time
 from typing import Mapping, Sequence
 
 
 def _repo_root() -> Path:
     return Path(__file__).resolve().parents[2]
+
+
+def _runs_pybind_root() -> Path:
+    root = _repo_root() / "runs_pybind"
+    root.mkdir(parents=True, exist_ok=True)
+    return root
+
+
+def _mpi_rank() -> int | None:
+    for name in ("OMPI_COMM_WORLD_RANK", "PMI_RANK", "MV2_COMM_WORLD_RANK"):
+        value = os.environ.get(name)
+        if value is not None:
+            return int(value)
+    return None
+
+
+def _mpi_job_id() -> str | None:
+    for name in (
+        "PMIX_NAMESPACE",
+        "OMPI_MCA_ess_base_jobid",
+        "PMI_JOBID",
+        "SLURM_JOB_ID",
+    ):
+        value = os.environ.get(name)
+        if value:
+            return value
+    return None
+
+
+def _shared_generated_config_path(template: Path, text: str) -> Path:
+    job_id = _mpi_job_id() or "mpi"
+    digest = hashlib.sha256(
+        f"{template.resolve()}::{text}".encode("utf-8")
+    ).hexdigest()[:12]
+    run_dir = _runs_pybind_root() / f"{template.stem}_pybind_{job_id}_{digest}"
+    return run_dir / template.name
+
+
+def _wait_for_file(path: Path, timeout_s: float = 30.0) -> None:
+    deadline = time.time() + timeout_s
+    while time.time() < deadline:
+        if path.exists():
+            return
+        time.sleep(0.05)
+    raise TimeoutError(f"Timed out waiting for generated config: {path}")
+
+
+def _cleanup_generated_config(path: Path) -> None:
+    try:
+        path.unlink(missing_ok=True)
+    except OSError:
+        return
+
+    try:
+        parent = path.parent
+        if parent.parent == _runs_pybind_root():
+            parent.rmdir()
+    except OSError:
+        pass
 
 
 def _binding_search_roots() -> list[Path]:
@@ -112,14 +173,25 @@ def prepare_config(
             )
 
     if output_path is None:
-        fd, temp_name = tempfile.mkstemp(
-            prefix=f"{template.stem}_pybind_",
-            suffix=template.suffix or ".cfg",
-            dir=str(template.parent),
+        rank = _mpi_rank()
+        if rank is not None:
+            generated_path = _shared_generated_config_path(template, text)
+            if rank == 0:
+                generated_path.parent.mkdir(parents=True, exist_ok=True)
+                generated_path.write_text(text)
+            else:
+                _wait_for_file(generated_path)
+            return generated_path
+
+        run_dir = Path(
+            tempfile.mkdtemp(
+                prefix=f"{template.stem}_pybind_",
+                dir=str(_runs_pybind_root()),
+            )
         )
-        os.close(fd)
-        Path(temp_name).write_text(text)
-        return Path(temp_name)
+        generated_path = run_dir / template.name
+        generated_path.write_text(text)
+        return generated_path
 
     output = Path(output_path)
     output.write_text(text)
@@ -134,13 +206,19 @@ def run_from_template(
     vortex_overrides: Sequence[Mapping[str, object]] | None = None,
     cli_overrides: Sequence[str] | None = None,
 ):
+    generated_temp = output_path is None
+    rank = _mpi_rank()
     config_path = prepare_config(
         template_path,
         output_path,
         simulation_overrides=simulation_overrides,
         vortex_overrides=vortex_overrides,
     )
-    return run(config_path, cli_overrides=cli_overrides)
+    try:
+        return run(config_path, cli_overrides=cli_overrides)
+    finally:
+        if generated_temp and (rank is None or rank == 0):
+            _cleanup_generated_config(Path(config_path))
 
 
 def _blank_comments(text: str) -> str:

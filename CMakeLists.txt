@@ -155,6 +155,7 @@ else()
 endif()
 
 set(IBLGF_TESTING ON CACHE BOOL "True if tests shall be built")
+set(IBLGF_BUILD_PYTHON OFF CACHE BOOL "True if Python bindings shall be built")
 
 # Allow MPI oversubscription for environments with fewer cores than requested processes
 # This is necessary for CI/CD environments (e.g., GitHub Actions) where tests may request
@@ -239,6 +240,10 @@ if (IBLGF_TESTING )
             add_dependencies(build-tests copy_ifherk_files2D)
         endif()
     endif()
+endif()
+
+if(IBLGF_BUILD_PYTHON)
+    add_subdirectory(python/bindings)
 endif()
 
 include(GNUInstallDirs)

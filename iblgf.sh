@@ -119,7 +119,39 @@ time_cmd() {
 timestamp() {
   # Produces a filesystem-safe timestamp like:
   # 2026-01-19_21-15-03
-  date +"%Y-%m-%d_%H-%M-%S"
+  if [[ -n "${IBLGF_HOST_UTC_OFFSET:-}" ]]; then
+    local sign hh mm offset_seconds now_epoch adjusted_epoch
+    sign="${IBLGF_HOST_UTC_OFFSET:0:1}"
+    hh="${IBLGF_HOST_UTC_OFFSET:1:2}"
+    mm="${IBLGF_HOST_UTC_OFFSET:3:2}"
+    offset_seconds=$((10#$hh * 3600 + 10#$mm * 60))
+    if [[ "$sign" == "-" ]]; then
+      offset_seconds=$((-offset_seconds))
+    fi
+    now_epoch="$(date +%s)"
+    adjusted_epoch=$((now_epoch + offset_seconds))
+    date -u -d "@$adjusted_epoch" +"%Y-%m-%d_%H-%M-%S"
+  else
+    date +"%Y-%m-%d_%H-%M-%S"
+  fi
+}
+
+iso_timestamp() {
+  if [[ -n "${IBLGF_HOST_UTC_OFFSET:-}" ]]; then
+    local sign hh mm offset_seconds now_epoch adjusted_epoch
+    sign="${IBLGF_HOST_UTC_OFFSET:0:1}"
+    hh="${IBLGF_HOST_UTC_OFFSET:1:2}"
+    mm="${IBLGF_HOST_UTC_OFFSET:3:2}"
+    offset_seconds=$((10#$hh * 3600 + 10#$mm * 60))
+    if [[ "$sign" == "-" ]]; then
+      offset_seconds=$((-offset_seconds))
+    fi
+    now_epoch="$(date +%s)"
+    adjusted_epoch=$((now_epoch + offset_seconds))
+    date -u -d "@$adjusted_epoch" +"%Y-%m-%dT%H:%M:%S${IBLGF_HOST_UTC_OFFSET}"
+  else
+    date -Iseconds 2>/dev/null || date
+  fi
 }
 
 git_commit() {
@@ -414,7 +446,7 @@ do_run_test() {
       echo "config: $cfg_name"
       echo "mpi_ranks: $mpi"
       echo "git_commit: $(git_commit)"
-      echo "timestamp: $(date -Iseconds 2>/dev/null || date)"
+      echo "timestamp: $(iso_timestamp)"
       echo "run_dir: $run_dir"
       echo "command: mpiexec -np $mpi $exe ./$cfg_name"
     } > "$run_dir/meta.txt"

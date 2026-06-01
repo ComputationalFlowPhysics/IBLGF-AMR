@@ -98,7 +98,7 @@ ENV LD_LIBRARY_PATH=${CUDA_HOME}/lib64:/usr/local/lib${LD_LIBRARY_PATH:+:${LD_LI
 # ------------------------------
 ENV BOOST_VERSION=1.68.0
 ENV BOOST_DIR=/workspace/boost_1_68_0
-ENV BOOST_URL=https://github.com/boostorg/boost/releases/download/boost-1.68.0/boost_1_68_0.tar.gz
+ENV BOOST_URL=https://archives.boost.io/release/1.68.0/source/boost_1_68_0.tar.gz
 
 # RUN cd /workspace \
 #     && wget -O boost.tar.gz $BOOST_URL \

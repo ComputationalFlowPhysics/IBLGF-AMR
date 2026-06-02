@@ -25,6 +25,7 @@ RUN if [ "$TARGET" = "cpu" ] ; then \
         python3-pip \
         python3-venv \
         python3-dev \
+        pybind11-dev \
         autoconf \
         automake \
         libtool \
@@ -55,6 +56,8 @@ RUN if [ "$TARGET" = "cpu" ] ; then \
         pkg-config \
         python3 \
         python3-pip \
+        python3-dev \
+        pybind11-dev \
         autoconf \
         automake \
         libtool \

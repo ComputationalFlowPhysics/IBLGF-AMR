@@ -213,27 +213,19 @@ class MergeTrees
         ref_tree->construct_leaf_maps(false);
         ref_tree->construct_lists();
         ref_domain_->save_common_tree_ref();
+        world.barrier();
         {
             auto sim_dict = dict_ref_->get_dictionary("simulation_parameters");
-            const auto tree_ref_file = sim_dict->get_or<std::string>("tree_ref_file", "");
-            const auto flow_ref_file = sim_dict->get_or<std::string>("flow_ref_file", "");
-            const bool can_run_adapt_normalization =
-                !tree_ref_file.empty() && !flow_ref_file.empty();
-            if (can_run_adapt_normalization && world.rank() == 0)
+            const int ref_levels = sim_dict->get_or<int>("nLevels", 0);
+            if (world.rank() == 0)
             {
-                std::cout << "Normalizing common_tree_ref via adapt_to_ref on nStart="
+                std::cout << "Normalizing common_tree_ref from snapshot nStart="
                           << nStart_ << std::endl;
             }
-            if (can_run_adapt_normalization)
-            {
-                adapt_to_ref(nStart_);
-                world.barrier();
-                const auto adapted_tree_file = stage_tree_file("adapted_to_ref_" + std::to_string(nStart_));
-                const auto adapted_flow_file = stage_flow_file("adapted_to_ref_" + std::to_string(nStart_));
-                auto normalized_ref =
-                    std::make_unique<Setup>(dict_ref_, adapted_tree_file, adapted_flow_file);
-                normalized_ref->save_common_tree_ref();
-            }
+            auto normalized_ref = adapt_snapshot_to_ref(nStart_, ref_tree, ref_levels, world);
+            world.barrier();
+            normalized_ref->save_common_tree_ref();
+            world.barrier();
         }
         return ref_domain_;
     }
@@ -324,10 +316,22 @@ class MergeTrees
         std::string flow_ref_file =
             dict_ref_->get_dictionary("simulation_parameters")->get<std::string>("flow_ref_file");
         int  ref_levels = dict_ref_->get_dictionary("simulation_parameters")->get_or<int>("nLevels", 0);
+        pcout << "Adapting snapshot " << idx << " to common tree reference with tree file: " << tree_ref_file
+                  << " and flow file: " << flow_ref_file << std::endl;
+        world.barrier();
         auto ref_domain = std::make_unique<Setup>(dict_ref_, tree_ref_file, flow_ref_file);
+        world.barrier();
+        // std::cout << "Reference domain initialized for adapt_to_ref." << std::endl;
+        world.barrier();
         auto ref_tree = ref_domain->tree();
+        // std::cout << "Reference tree loaded for adapt_to_ref." << std::endl;
+        world.barrier();
         auto domain_i = adapt_snapshot_to_ref(idx, ref_tree, ref_levels, world);
+        world.barrier();
+        // std::cout << "Adapted snapshot " << idx << " to common tree reference." << std::endl;
         domain_i->save_adapted(idx);
+        world.barrier();
+
         pcout << "interpolated snapshot " << idx << "/" << nTotal_ - 1 << " to common tree reference levels."
               << std::endl;
         return domain_i;
@@ -363,7 +367,9 @@ class MergeTrees
                 run_adapt_from_keys_distributed(*ref_domain, -1, octs, level_change, world);
             }
         }
+        world.barrier();
         ref_domain->save_symmetric_ref();
+        world.barrier();
         return ref_domain;
     }
 
@@ -822,7 +828,7 @@ class MergeTrees
         auto        domain_i = std::make_unique<Setup>(dict_ref_, tree_file_i, flow_file_i);
         auto        tree_i = domain_i->tree();
         std::set<std::pair<typename key_t::value_type, int>> prev_request_sig;
-        for (int pass = 0; pass < 16; ++pass)
+        for (int pass = 0; pass < 4; ++pass)
         {
             batched_octs.clear();
             batched_level_change.clear();
@@ -845,8 +851,8 @@ class MergeTrees
             const auto after_keys = globalize_key_set(
                 world, collect_physical_leaf_key_ids(*domain_i));
 
-            const bool no_tree_change = (before_keys == after_keys);
-            (void)no_tree_change;
+            // const bool no_tree_change = (before_keys == after_keys);
+            // (void)no_tree_change;
             prev_request_sig.swap(cur_request_sig);
         }
         return domain_i;

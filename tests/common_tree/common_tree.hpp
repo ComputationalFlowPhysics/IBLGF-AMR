@@ -237,17 +237,26 @@ struct CommonTree : public SetupBase<CommonTree, parameters>
 
     // }
     void save_common_tree_ref()
-    {
+    {   
+        boost::mpi::communicator world;
+        world.barrier();
         simulation_.write("common_tree_ref");
+        world.barrier();
     }
     void save_adapted(int idx)
     {
+        boost::mpi::communicator world;
+        world.barrier();
         std::string filename = "adapted_to_ref_" + std::to_string(idx);
         simulation_.write(filename);
+        world.barrier();
     }
     void save_symmetric_ref()
     {
+        boost::mpi::communicator world;
+        world.barrier();
         simulation_.write("symmetric_ref");
+        world.barrier();
     }
     template<class Field,class key_t>
     void run_adapt_from_keys(int timeIdx,std::vector<key_t>& octs,

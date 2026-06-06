@@ -1,0 +1,24 @@
+name: Lint
+
+on:
+  pull_request:
+    branches: ["main"]
+  workflow_dispatch:
+
+jobs:
+  clang-format:
+    name: clang-format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cpp-linter/cpp-linter-action@v2
+        id: linter
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          style: 'file'    # use .clang-format
+          tidy-checks: '-*' # disable clang-tidy
+          thread-comments: ${{ github.event_name == 'pull_request' && 'update' }}
+      - name: Fail if formatting errors found
+        if: steps.linter.outputs.checks-failed > 0
+        run: exit 1

@@ -1,8 +1,6 @@
 name: PR Benchmarks
 
 on:
-  push:
-    branches: ["main"]
   pull_request:
     branches: ["main"]
   workflow_dispatch:
@@ -11,7 +9,7 @@ jobs:
   benchmark_pr:
     name: Compare Test Computation Time (PR vs Main)
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 120
 
     env:
       OMPI_ALLOW_RUN_AS_ROOT: 1
@@ -32,44 +30,100 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
           path: head
 
-      - name: Prepare Scripts
-        run: |
-          chmod +x base/*.sh
-          chmod +x head/*.sh
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build base image locally
+        uses: docker/build-push-action@v5
+        with:
+          context: base
+          file: base/.github/Dockerfile
+          push: false
+          load: true
+          tags: iblgf-bench:base
+          build-args: |
+            BASE_IMAGE=ubuntu:22.04
+            TARGET=cpu
+          cache-from: type=gha,scope=bench-base
+          cache-to: type=gha,scope=bench-base,mode=max
+
+      - name: Build PR head image locally
+        uses: docker/build-push-action@v5
+        with:
+          context: head
+          file: head/.github/Dockerfile
+          push: false
+          load: true
+          tags: iblgf-bench:head
+          build-args: |
+            BASE_IMAGE=ubuntu:22.04
+            TARGET=cpu
+          cache-from: type=gha,scope=bench-head
+          cache-to: type=gha,scope=bench-head,mode=max
 
       - name: Benchmark base commit
         run: |
           set -euo pipefail
-          cd base
 
-          ./docker_iblgf.sh -c 4 -- bash -lc './iblgf.sh run-test ns_amr_lgf configFile_0 --bench -n 4' \
-            | tee ../bench_base_ns.full.txt
-          tail -n 1 ../bench_base_ns.full.txt > ../bench_base_ns.txt
+          docker run --rm \
+            -e OMPI_MCA_rmaps_base_oversubscribe=1 \
+            --cpuset-cpus="0-3" \
+            -v ${{ github.workspace }}/base:/workspace2 \
+            -w /workspace2 \
+            --user 1001:1001 \
+            iblgf-bench:base \
+            bash -lc './iblgf.sh run-test ns_amr_lgf configFile_0 --bench -n 4' \
+            | tee bench_base_ns.full.txt
+          tail -n 1 bench_base_ns.full.txt > bench_base_ns.txt
 
-          ./docker_iblgf.sh -c 4 -- bash -lc './iblgf.sh run-test poisson config_1_lv_0 --bench -n 4' \
-            | tee ../bench_base_poisson.full.txt
-          tail -n 1 ../bench_base_poisson.full.txt > ../bench_base_poisson.txt
+          docker run --rm \
+            -e OMPI_MCA_rmaps_base_oversubscribe=1 \
+            --cpuset-cpus="0-3" \
+            -v ${{ github.workspace }}/base:/workspace2 \
+            -w /workspace2 \
+            --user 1001:1001 \
+            iblgf-bench:base \
+            bash -lc './iblgf.sh run-test poisson config_1_lv_0 --bench -n 4' \
+            | tee bench_base_poisson.full.txt
+          tail -n 1 bench_base_poisson.full.txt > bench_base_poisson.txt
 
           echo "Base times:"
-          cat ../bench_base_ns.txt
-          cat ../bench_base_poisson.txt
+          cat bench_base_ns.txt
+          cat bench_base_poisson.txt
+        env:
+          OMPI_MCA_rmaps_base_oversubscribe: 1
 
       - name: Benchmark PR head commit
         run: |
           set -euo pipefail
-          cd head
 
-          ./docker_iblgf.sh -c 4 -- bash -lc './iblgf.sh run-test ns_amr_lgf configFile_0 --bench -n 4' \
-            | tee ../bench_head_ns.full.txt
-          tail -n 1 ../bench_head_ns.full.txt > ../bench_head_ns.txt
+          docker run --rm \
+            -e OMPI_MCA_rmaps_base_oversubscribe=1 \
+            --cpuset-cpus="0-3" \
+            -v ${{ github.workspace }}/head:/workspace2 \
+            -w /workspace2 \
+            --user 1001:1001 \
+            iblgf-bench:head \
+            bash -lc './iblgf.sh run-test ns_amr_lgf configFile_0 --bench -n 4' \
+            | tee bench_head_ns.full.txt
+          tail -n 1 bench_head_ns.full.txt > bench_head_ns.txt
 
-          ./docker_iblgf.sh -c 4 -- bash -lc './iblgf.sh run-test poisson config_1_lv_0 --bench -n 4' \
-            | tee ../bench_head_poisson.full.txt
-          tail -n 1 ../bench_head_poisson.full.txt > ../bench_head_poisson.txt
+          docker run --rm \
+            -e OMPI_MCA_rmaps_base_oversubscribe=1 \
+            --cpuset-cpus="0-3" \
+            -v ${{ github.workspace }}/head:/workspace2 \
+            -w /workspace2 \
+            --user 1001:1001 \
+            iblgf-bench:head \
+            bash -lc './iblgf.sh run-test poisson config_1_lv_0 --bench -n 4' \
+            | tee bench_head_poisson.full.txt
+          tail -n 1 bench_head_poisson.full.txt > bench_head_poisson.txt
 
           echo "Head times:"
-          cat ../bench_head_ns.txt
-          cat ../bench_head_poisson.txt
+          cat bench_head_ns.txt
+          cat bench_head_poisson.txt
+        env:
+          OMPI_MCA_rmaps_base_oversubscribe: 1
 
       - name: Compare and enforce slowdown threshold
         run: |

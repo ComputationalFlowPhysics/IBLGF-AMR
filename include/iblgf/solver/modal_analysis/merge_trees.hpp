@@ -827,7 +827,7 @@ class MergeTrees
         std::string flow_file_i = flow_file_path(dir_in_, idx);
         auto        domain_i = std::make_unique<Setup>(dict_ref_, tree_file_i, flow_file_i);
         auto        tree_i = domain_i->tree();
-        std::set<std::pair<typename key_t::value_type, int>> prev_request_sig;
+        // std::set<std::pair<typename key_t::value_type, int>> prev_request_sig;
         for (int pass = 0; pass < 4; ++pass)
         {
             batched_octs.clear();
@@ -844,16 +844,16 @@ class MergeTrees
             }
             if (batched_octs.empty()) break;
 
-            const auto before_keys = globalize_key_set(
-                world, collect_physical_leaf_key_ids(*domain_i));
+            // const auto before_keys = globalize_key_set(
+            //     world, collect_physical_leaf_key_ids(*domain_i));
             run_adapt_from_keys_distributed(
                 *domain_i, -1, batched_octs, batched_level_change, world);
-            const auto after_keys = globalize_key_set(
-                world, collect_physical_leaf_key_ids(*domain_i));
+            // const auto after_keys = globalize_key_set(
+            //     world, collect_physical_leaf_key_ids(*domain_i));
 
             // const bool no_tree_change = (before_keys == after_keys);
             // (void)no_tree_change;
-            prev_request_sig.swap(cur_request_sig);
+            // prev_request_sig.swap(cur_request_sig);
         }
         return domain_i;
     }

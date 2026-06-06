@@ -417,7 +417,7 @@ class ReflectField
 
                 continue;
             }
-            if (!it2 || !it2->has_data() || !it2->physical() || !it2->is_leaf() || it2->is_correction())
+            if (!it2 || !it2->has_data() || !it2->physical() || !it2->is_leaf() || (it2->is_correction() && it2->refinement_level() != 0))
             {
                 std::cout << "No opposite leaf block found for: " << it1->key() << std::endl;
 

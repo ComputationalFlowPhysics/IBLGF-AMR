@@ -158,6 +158,7 @@ struct CommonTree : public SetupBase<CommonTree, parameters>
                        domain_->bounding_box().min()+1) / 2.0 +
                        domain_->bounding_box().min();
         const float_type dx_base = domain_->dx_base();
+        std::cout<< "center: "<<center<<std::endl;
         for(auto it=domain_->begin(); it!=domain_->end(); ++it)
         {
             if(!it->locally_owned()) continue;
@@ -170,9 +171,9 @@ struct CommonTree : public SetupBase<CommonTree, parameters>
                 const auto& coord = n.level_coordinate();
 
                 float_type x = static_cast<float_type>
-                (coord[0]-center[0]*scaling)*dx_level; //bottom left corner of cell
+                (coord[0])*dx_level; //bottom left corner of cell
                 float_type y = static_cast<float_type>
-                (coord[1]-center[1]*scaling)*dx_level;
+                (coord[1])*dx_level;
                 n(tlevel)=ref_level_+0.5;
                 n(u,0)=x;
                 n(u,1)=y;
@@ -221,7 +222,11 @@ struct CommonTree : public SetupBase<CommonTree, parameters>
     }
     void save_symmetric_ref()
     {
+        boost::mpi::communicator world;
+        world.barrier();
+
         simulation_.write("symmetric_ref");
+        world.barrier();
     }
 
     template<class Field,class key_t>
@@ -231,16 +236,23 @@ struct CommonTree : public SetupBase<CommonTree, parameters>
         poisson_solver_t psolver(&this->simulation_);
         boost::mpi::communicator world;
         auto client = domain_->decomposition().client();
-        // Keep field values intact before topology updates.
-        // For linear-field transfer tests, pre-cleaning/coarsifying the same field
-        // perturbs values and can mask interpolation correctness.
+        // up to correction
         if(domain_->is_client())
         {
-            // Intentionally no pre-clean/source_coarsify here.
+            clean<Field>(true);
+            for (std::size_t _field_idx=0; _field_idx<Field::nFields(); ++_field_idx)
+                psolver.template source_coarsify<Field,Field>(_field_idx, _field_idx, Field::mesh_type(), false, false, false, false);
         }
 
         world.barrier();
         auto intrp_list=domain_->decomposition().adapt_del_leafs(octs, level_change, true);
+        world.barrier();
+        if (domain_->is_server())
+        {
+            // Rebuild server-side leaf/correction maps after topology changes.
+            domain_->restart_list_construct();
+        }
+        domain_->decomposition().sync_decomposition();
         world.barrier();
         pcout << "Adapt - intrp" << std::endl;
         if (client)
@@ -271,10 +283,20 @@ struct CommonTree : public SetupBase<CommonTree, parameters>
         if(timeIdx>0) simulation_.write("adapted_to_ref_"+std::to_string(timeIdx));
         // interpolate
     }
+    void save_common_tree_ref()
+    {
+        boost::mpi::communicator world;
+        world.barrier();
+        simulation_.write("common_tree_ref");
+        world.barrier();
+    }
     void save_adapted(int idx)
     {
+        boost::mpi::communicator world;
+        world.barrier();
         std::string filename = "adapted_to_ref_" + std::to_string(idx);
         simulation_.write(filename);
+        world.barrier();
     }
     template<class Field, class Target>
     void symfield(int timeIdx=-1)
@@ -283,6 +305,13 @@ struct CommonTree : public SetupBase<CommonTree, parameters>
         //get ranks of left and right block
         boost::mpi::communicator world;
         // this->initialize();
+        if (domain_->is_server())
+        {
+            // Ensure leaf/correction state is normalized before mirror pairing.
+            domain_->restart_list_construct();
+        }
+        domain_->decomposition().sync_decomposition();
+        world.barrier();
         clean<u_sym_type>();
         // up_and_down<u_type>();
         auto domain_dict = simulation_.dictionary_->get_dictionary("domain");

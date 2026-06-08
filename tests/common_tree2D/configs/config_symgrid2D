@@ -6,7 +6,7 @@ simulation_parameters
     // Reference snapshot to mirror and adapt from.
     tree_ref_file=./output_test1/tree_info_common_tree_301.bin;
     flow_ref_file=./output_test1/flow_common_tree_301.hdf5;
-
+    do_symfield=true;
     output
     {
         directory=output_test1;

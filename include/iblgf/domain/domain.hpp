@@ -904,6 +904,7 @@ class Domain
                 }
             }
 
+            // refine IB blocks extra
             for (int l = 0; l < nIB_add_level; ++l)
             {
                 for (auto it = begin_df(); it != end_df(); ++it)

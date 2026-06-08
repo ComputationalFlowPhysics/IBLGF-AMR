@@ -243,6 +243,13 @@ struct CommonTree : public SetupBase<CommonTree, parameters>
         simulation_.write("common_tree_ref");
         world.barrier();
     }
+    void save_symmetric_ref_tmp()
+    {
+        boost::mpi::communicator world;
+        world.barrier();
+        simulation_.write("symmetric_ref_tmp");
+        world.barrier();
+    }
     void save_adapted(int idx)
     {
         boost::mpi::communicator world;

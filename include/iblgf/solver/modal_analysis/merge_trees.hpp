@@ -241,23 +241,22 @@ class MergeTrees
         const int  symfield_time_idx = sim_dict->get_or<int>("symfield_time_idx", 2);
 
         auto ref_domain = ref_to_symmetric_ref();
-        if (do_symfield)
+        
+        const auto sym_tree_file = stage_tree_file("symmetric_ref_tmp");
+        const auto sym_flow_file = stage_flow_file("symmetric_ref_tmp");
+        if (world.rank() == 0)
         {
-            const auto sym_tree_file = stage_tree_file("symmetric_ref");
-            const auto sym_flow_file = stage_flow_file("symmetric_ref");
-            if (world.rank() == 0)
-            {
-                std::cout << "Reloading symmetric reference before symfield:\n  tree: "
-                          << sym_tree_file << "\n  flow: " << sym_flow_file << std::endl;
-            }
-            // Force a fresh domain rebuild from serialized symmetric-ref files.
-            // This mirrors the manual read/save cycle that produces correct pairing.
-            ref_domain = std::make_unique<Setup>(dict_ref_, sym_tree_file, sym_flow_file);
-            ref_domain->initialize();
-            ref_domain->template symfield<typename Setup::u_type, typename Setup::u_type>(
-                symfield_time_idx);
+            std::cout << "Reloading symmetric reference before symfield:\n  tree: "
+                        << sym_tree_file << "\n  flow: " << sym_flow_file << std::endl;
         }
-        return ref_domain;
+        // Force a fresh domain rebuild from serialized symmetric-ref files.
+        // This mirrors the manual read/save cycle that produces correct pairing.
+        auto ref_domain2 = std::make_unique<Setup>(dict_ref_, sym_tree_file, sym_flow_file);
+        ref_domain2->initialize();
+        ref_domain2->template symfield<typename Setup::u_type, typename Setup::u_type>(
+            symfield_time_idx);
+
+        return ref_domain2;
     }
 
     void adapt_to_ref()
@@ -368,7 +367,7 @@ class MergeTrees
             }
         }
         world.barrier();
-        ref_domain->save_symmetric_ref();
+        ref_domain->save_symmetric_ref_tmp();
         world.barrier();
         return ref_domain;
     }

@@ -48,15 +48,15 @@ def binding_candidate_dirs() -> list[Path]:
     return candidates
 
 
-@lru_cache(maxsize=1)
-def load_bindings():
+@lru_cache(maxsize=None)
+def load_bindings(module_name: str = "iblgf_bindings"):
     try:
-        return import_module(".iblgf_bindings", package=__package__)
+        return import_module(f".{module_name}", package=__package__)
     except ModuleNotFoundError:
         pass
 
     try:
-        return import_module("iblgf_bindings")
+        return import_module(module_name)
     except ModuleNotFoundError:
         pass
 
@@ -69,7 +69,7 @@ def load_bindings():
             sys.path.insert(0, candidate_str)
 
         try:
-            return import_module("iblgf_bindings")
+            return import_module(module_name)
         except ModuleNotFoundError:
             continue
 
@@ -77,7 +77,7 @@ def load_bindings():
         f"- {candidate}" for candidate in binding_candidate_dirs()
     )
     raise ModuleNotFoundError(
-        "The `iblgf_bindings` extension is not available. "
+        f"The `{module_name}` extension is not available. "
         "Build the project with `-DIBLGF_BUILD_PYTHON=ON`. "
         "Searched these locations:\n"
         f"{search_locations}"

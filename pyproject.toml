@@ -27,6 +27,7 @@ test = [
 
 [project.scripts]
 iblgf-poisson = "iblgf.poisson:main"
+iblgf-ns-amr = "iblgf.ns_amr:main"
 iblgf-ns-amr-2d = "iblgf.ns_amr_2d:main"
 
 [tool.scikit-build]

@@ -31,7 +31,25 @@ target_include_directories(iblgf_bindings PRIVATE
 target_link_libraries(iblgf_bindings PRIVATE iblgf)
 target_compile_features(iblgf_bindings PRIVATE cxx_std_17)
 
+pybind11_add_module(iblgf_bindings_ns_amr
+    ns_amr_module.cpp
+    "${IBLGF_SOURCE_DIR}/tests/ns_amr_lgf/ns_amr_lgf_runner.cpp"
+    ${SOURCES}
+)
+
+target_include_directories(iblgf_bindings_ns_amr PRIVATE
+    "${IBLGF_SOURCE_DIR}/tests/ns_amr_lgf"
+)
+
+target_link_libraries(iblgf_bindings_ns_amr PRIVATE iblgf)
+target_compile_features(iblgf_bindings_ns_amr PRIVATE cxx_std_17)
+
 install(TARGETS iblgf_bindings
+    LIBRARY DESTINATION iblgf
+    RUNTIME DESTINATION iblgf
+)
+
+install(TARGETS iblgf_bindings_ns_amr
     LIBRARY DESTINATION iblgf
     RUNTIME DESTINATION iblgf
 )

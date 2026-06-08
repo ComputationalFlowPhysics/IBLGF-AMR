@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from iblgf import ns_amr
 from iblgf import ns_amr_2d
 from iblgf import poisson
 
@@ -70,6 +71,29 @@ simulation_parameters
     )
 
     generated = ns_amr_2d.prepare_config(
+        template,
+        output_path=tmp_path / "generated.cfg",
+        simulation_overrides={"Re": 250.0, "R": 0.2},
+    )
+
+    text = generated.read_text()
+    assert "Re=250.0;" in text
+    assert "R=0.2;" in text
+
+
+def test_ns_amr_prepare_config_rewrites_simulation_parameters(tmp_path: Path):
+    template = tmp_path / "config.in"
+    template.write_text(
+        """
+simulation_parameters
+{
+    Re=1000.0;
+    R=0.5;
+}
+""".strip()
+    )
+
+    generated = ns_amr.prepare_config(
         template,
         output_path=tmp_path / "generated.cfg",
         simulation_overrides={"Re": 250.0, "R": 0.2},

@@ -24,11 +24,13 @@ usage() {
   cat <<'EOF'
 Usage:
   ./iblgf-pybind.sh poisson <config_path> [-n MPI_RANKS] [-- <extra script args>]
+  ./iblgf-pybind.sh ns-amr <config_path> [-n MPI_RANKS] [-- <extra script args>]
   ./iblgf-pybind.sh ns-amr-2d <config_path> [-n MPI_RANKS] [-- <extra script args>]
 
 Examples:
   ./iblgf-pybind.sh poisson ./tests/poisson/configFile_1ring -n 8
   ./iblgf-pybind.sh poisson ./tests/poisson/configFile_1ring -n 8 -- --vortex-override R=0.2
+  ./iblgf-pybind.sh ns-amr ./tests/ns_amr_lgf/configs/configFile_0 -- --simulation-override Re=250.0
   ./iblgf-pybind.sh ns-amr-2d ./tests/ns_amr_lgf2D/configs/configFile_0 -- --simulation-override Re=250.0
 
 Environment overrides:
@@ -76,12 +78,18 @@ done
 case "$solver" in
   poisson)
     script_path="$(repo_root)/python/scripts/simple_run_poisson_pybind.py"
+    binding_target="iblgf_bindings"
+    ;;
+  ns-amr)
+    script_path="$(repo_root)/python/scripts/simple_run_ns_amr_pybind.py"
+    binding_target="iblgf_bindings_ns_amr"
     ;;
   ns-amr-2d)
     script_path="$(repo_root)/python/scripts/simple_run_ns_amr_2d_pybind.py"
+    binding_target="iblgf_bindings"
     ;;
   *)
-    die "Unknown solver '$solver'. Expected 'poisson' or 'ns-amr-2d'."
+    die "Unknown solver '$solver'. Expected 'poisson', 'ns-amr', or 'ns-amr-2d'."
     ;;
 esac
 
@@ -96,22 +104,13 @@ fi
 build_dir="${IBLGF_PYBUILD_DIR:-$(repo_root)/build-pybind}"
 build_jobs="${IBLGF_BUILD_JOBS:-$(cpu_count)}"
 
-needs_configure=0
-if [[ ! -f "$build_dir/Makefile" || ! -f "$build_dir/CMakeCache.txt" ]]; then
-  needs_configure=1
-elif ! grep -q '^IBLGF_BUILD_PYTHON:BOOL=ON$' "$build_dir/CMakeCache.txt"; then
-  needs_configure=1
-fi
+echo "==> Configuring pybind build in $build_dir"
+cmake -S "$(repo_root)" -B "$build_dir" \
+  -DIBLGF_BUILD_PYTHON=ON \
+  -Dpybind11_DIR="$pybind11_cmake_dir"
 
-if [[ "$needs_configure" -eq 1 ]]; then
-  echo "==> Configuring pybind build in $build_dir"
-  cmake -S "$(repo_root)" -B "$build_dir" \
-    -DIBLGF_BUILD_PYTHON=ON \
-    -Dpybind11_DIR="$pybind11_cmake_dir"
-fi
-
-echo "==> Building iblgf_bindings (-j $build_jobs)"
-cmake --build "$build_dir" -j "$build_jobs" --target iblgf_bindings
+echo "==> Building $binding_target (-j $build_jobs)"
+cmake --build "$build_dir" -j "$build_jobs" --target "$binding_target"
 
 cd "$(repo_root)"
 export PYTHONPATH="$(repo_root)/python${PYTHONPATH:+:$PYTHONPATH}"

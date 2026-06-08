@@ -1,0 +1,44 @@
+[build-system]
+requires = [
+  "scikit-build-core>=0.10",
+  "pybind11>=2.11",
+]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "iblgf"
+version = "0.1.0"
+description = "Python bindings for the IBLGF solvers"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [
+  { name = "Computational Flow Physics Lab" },
+]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: C++",
+  "Topic :: Scientific/Engineering",
+]
+
+[project.optional-dependencies]
+test = [
+  "pytest>=8",
+]
+
+[project.scripts]
+iblgf-poisson = "iblgf.poisson:main"
+iblgf-ns-amr-2d = "iblgf.ns_amr_2d:main"
+
+[tool.scikit-build]
+cmake.source-dir = "."
+wheel.packages = ["python/iblgf"]
+sdist.include = [
+  "python/**",
+  "tests/**",
+  "include/**",
+  "src/**",
+  "setups/**",
+  "cmake/**",
+  "CMakeLists.txt",
+  "README.md",
+]

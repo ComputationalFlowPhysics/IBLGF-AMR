@@ -25,7 +25,7 @@ namespace string_utilities
 {
 namespace detail
 {
-bool
+inline bool
 content_between_impl(const std::string& _str, size_t& _opening_delimiter_pos,
     size_t& _closing_delimiter_pos, std::string _opening_delimiter,
     std::string _closing_delimiter)
@@ -68,7 +68,7 @@ content_between_impl(const std::string& _str, size_t& _opening_delimiter_pos,
     return found;
 }
 
-std::vector<std::string>
+inline std::vector<std::string>
 split(std::string _str, std::string _delimiters)
 {
     std::vector<std::string> split;
@@ -102,7 +102,7 @@ lexical_cast(const std::string& _str)
     return res;
 }
 
-bool
+inline bool
 is_numeric(std::string _str)
 {
     //maybe count the number of apperaces for +-.
@@ -131,7 +131,7 @@ is_numeric(std::string _str)
     return true;
 }
 
-std::vector<std::string>
+inline std::vector<std::string>
 split_string(std::string _str, char _delimiter = ',')
 {
     std::vector<std::string> res;
@@ -141,7 +141,7 @@ split_string(std::string _str, char _delimiter = ',')
     return res;
 }
 
-bool
+inline bool
 find_dictionary_positions(const std::string& _str, size_t& _identifier_pos,
     size_t& _opening_delimiter_pos, size_t& _closing_delimiter_pos,
     std::string _opening_delimiter, std::string _closing_delimiter)
@@ -160,7 +160,7 @@ find_dictionary_positions(const std::string& _str, size_t& _identifier_pos,
     return res;
 }
 
-auto
+inline auto
 get_dictionaries(const std::string& _str, std::string _opening_delimiter,
     std::string _closing_delimiter)
 {
@@ -194,7 +194,7 @@ get_dictionaries(const std::string& _str, std::string _opening_delimiter,
     return results;
 }
 
-auto
+inline auto
 erase_dictionaries(std::string& _str, std::string _opening_delimiter,
     std::string _closing_delimiter)
 {
@@ -213,7 +213,7 @@ erase_dictionaries(std::string& _str, std::string _opening_delimiter,
     }
 }
 
-void
+inline void
 remove_single_line_comments(std::string& _str, std::string _comment_identifier)
 {
     std::string       res;
@@ -228,7 +228,7 @@ remove_single_line_comments(std::string& _str, std::string _comment_identifier)
     _str = res;
 }
 
-void
+inline void
 erase_all_contents(std::string& _str, std::string _opening_delimiter,
     std::string _closing_delimiter)
 {
@@ -248,4 +248,3 @@ erase_all_contents(std::string& _str, std::string _opening_delimiter,
 } // namespace iblgf
 
 #endif //string utils
-

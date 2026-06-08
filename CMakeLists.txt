@@ -121,6 +121,7 @@ endif()
 
 set(IBLGF_TESTING ON CACHE BOOL "True if tests shall be built")
 set(IBLGF_BUILD_PYTHON OFF CACHE BOOL "True if Python bindings shall be built")
+set(IBLGF_BUILD_PETSC_TESTS OFF CACHE BOOL "True if PETSc/SLEPc-dependent tests shall be built")
 
 # Allow MPI oversubscription for environments with fewer cores than requested processes
 # This is necessary for CI/CD environments (e.g., GitHub Actions) where tests may request
@@ -189,7 +190,11 @@ if (IBLGF_TESTING )
 endif()
 
 if(IBLGF_BUILD_PYTHON)
+    find_package(Python3 COMPONENTS Interpreter Development.Module REQUIRED)
     add_subdirectory(python/bindings)
+    if(IBLGF_TESTING AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/python/tests/CMakeLists.txt")
+        add_subdirectory(python/tests)
+    endif()
 endif()
 
 include(GNUInstallDirs)

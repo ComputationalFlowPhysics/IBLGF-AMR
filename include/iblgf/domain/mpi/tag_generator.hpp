@@ -124,7 +124,7 @@ class TagGenerator
         message_count_; ///< number of messages per tag
 };
 
-TagGenerator<tags::type>&
+inline TagGenerator<tags::type>&
 tag_gen()
 {
     static TagGenerator<tags::type> _tags;

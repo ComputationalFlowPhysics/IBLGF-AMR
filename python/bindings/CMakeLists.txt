@@ -19,12 +19,19 @@ endif()
 pybind11_add_module(iblgf_bindings
     module.cpp
     "${IBLGF_SOURCE_DIR}/tests/poisson/poisson_runner.cpp"
+    "${IBLGF_SOURCE_DIR}/tests/ns_amr_lgf2D/ns_amr_lgf2d_runner.cpp"
     ${SOURCES}
 )
 
 target_include_directories(iblgf_bindings PRIVATE
     "${IBLGF_SOURCE_DIR}/tests/poisson"
+    "${IBLGF_SOURCE_DIR}/tests/ns_amr_lgf2D"
 )
 
 target_link_libraries(iblgf_bindings PRIVATE iblgf)
 target_compile_features(iblgf_bindings PRIVATE cxx_std_17)
+
+install(TARGETS iblgf_bindings
+    LIBRARY DESTINATION iblgf
+    RUNTIME DESTINATION iblgf
+)

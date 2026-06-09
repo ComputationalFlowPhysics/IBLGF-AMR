@@ -84,7 +84,7 @@ class PoissonSolver
     fmm_(domain_,
          domain_->block_extent()[0] + lBuffer + rBuffer,
          std::max(1, _simulation->dictionary()->template get_or<int>(
-                         "convolution_batch_size", 10))),
+                         "convolution_batch_size", 32))),
     c_cntr_nli_(domain_->block_extent()[0]+lBuffer+rBuffer, _simulation->intrp_order()),
     N_fourier_modes(_N)
     {

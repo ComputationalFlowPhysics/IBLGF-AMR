@@ -228,6 +228,13 @@ struct CommonTree : public SetupBase<CommonTree, parameters>
         simulation_.write("symmetric_ref");
         world.barrier();
     }
+    void save_symmetric_ref_tmp()
+    {
+        boost::mpi::communicator world;
+        world.barrier();
+        simulation_.write("symmetric_ref_tmp");
+        world.barrier();
+    }
 
     template<class Field,class key_t>
     void run_adapt_from_keys(int timeIdx,std::vector<key_t>& octs,

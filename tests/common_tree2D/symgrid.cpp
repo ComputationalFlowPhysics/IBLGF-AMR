@@ -25,7 +25,8 @@ int main(int argc, char* argv[])
 
     iblgf::Dictionary dictionary(get_input_path(argc, argv), argc, argv);
     auto merger = iblgf::MergeTrees<iblgf::CommonTree>(&dictionary);
-    merger.ref_to_symmetric_ref_with_symfield();
+    auto newmerger = merger.ref_to_symmetric_ref_with_symfield();
+    newmerger->save_symmetric_ref();
 
     return 0;
 }

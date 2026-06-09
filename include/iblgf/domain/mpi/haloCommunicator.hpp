@@ -18,6 +18,10 @@
 
 #include <iblgf/utilities/crtp.hpp>
 
+#ifdef IBLGF_COMPILE_CUDA
+#include <cuda_runtime.h>
+#endif
+
 namespace iblgf
 {
 namespace sr_mpi
@@ -32,7 +36,15 @@ class HaloCommunicator
     HaloCommunicator(HaloCommunicator&&) = default;
     HaloCommunicator& operator=(const HaloCommunicator&) & = default;
     HaloCommunicator& operator=(HaloCommunicator&&) & = default;
-    ~HaloCommunicator() = default;
+    ~HaloCommunicator()
+    {
+#ifdef IBLGF_COMPILE_CUDA
+        for (int r = 0; r < static_cast<int>(send_fields_.size()); ++r) {
+            if (send_pinned_[r]) cudaHostUnregister(send_fields_[r].data());
+            if (recv_pinned_[r]) cudaHostUnregister(recv_fields_[r].data());
+        }
+#endif
+    }
     HaloCommunicator()
     {
         boost::mpi::communicator world;
@@ -42,6 +54,10 @@ class HaloCommunicator
         recv_fields_.resize(world.size());
         send_tasks_.resize(world.size());
         recv_tasks_.resize(world.size());
+#ifdef IBLGF_COMPILE_CUDA
+        send_pinned_.resize(world.size(), false);
+        recv_pinned_.resize(world.size(), false);
+#endif
     }
 
     using field_t = Field;
@@ -189,6 +205,51 @@ class HaloCommunicator
                 task_ptr->requires_confirmation() = false;
                 recv_tasks_[rank_other] = task_ptr;
             }
+
+            // Pre-size and pin send/recv buffers so pack_messages() never reallocates
+            {
+                std::size_t send_sz = 0;
+                for (auto& i : inter_send_interface[rank_other])
+                    send_sz += i.view.size();
+                if (send_sz != send_fields_[rank_other].size())
+                {
+#ifdef IBLGF_COMPILE_CUDA
+                    if (send_pinned_[rank_other]) {
+                        cudaHostUnregister(send_fields_[rank_other].data());
+                        send_pinned_[rank_other] = false;
+                    }
+#endif
+                    send_fields_[rank_other].resize(send_sz);
+#ifdef IBLGF_COMPILE_CUDA
+                    if (send_sz > 0) {
+                        cudaHostRegister(send_fields_[rank_other].data(),
+                            send_sz * sizeof(float_type), cudaHostRegisterDefault);
+                        send_pinned_[rank_other] = true;
+                    }
+#endif
+                }
+
+                std::size_t recv_sz = 0;
+                for (auto& i : inter_recv_interface[rank_other])
+                    recv_sz += i.view.size();
+                if (recv_sz != recv_fields_[rank_other].size())
+                {
+#ifdef IBLGF_COMPILE_CUDA
+                    if (recv_pinned_[rank_other]) {
+                        cudaHostUnregister(recv_fields_[rank_other].data());
+                        recv_pinned_[rank_other] = false;
+                    }
+#endif
+                    recv_fields_[rank_other].resize(recv_sz);
+#ifdef IBLGF_COMPILE_CUDA
+                    if (recv_sz > 0) {
+                        cudaHostRegister(recv_fields_[rank_other].data(),
+                            recv_sz * sizeof(float_type), cudaHostRegisterDefault);
+                        recv_pinned_[rank_other] = true;
+                    }
+#endif
+                }
+            }
         }
     }
 
@@ -237,11 +298,7 @@ class HaloCommunicator
 
             std::size_t size = 0;
             for (auto& interfc : inter_send_interface[rank_other])
-            {
-                for (auto it = interfc.view.begin(); it != interfc.view.end();
-                     ++it)
-                { ++size; }
-            }
+                size += interfc.view.size();
             if (size != send_fields_[rank_other].size())
                 send_fields_[rank_other].resize(size);
             int count = 0;
@@ -315,9 +372,7 @@ class HaloCommunicator
             for (auto& interfc : inter_send_interface[rank_other])
             {
                 if ((interfc.field_idx != _field_idx)) continue;
-                for (auto it = interfc.view.begin(); it != interfc.view.end();
-                     ++it)
-                { ++size; }
+                size += interfc.view.size();
             }
             if (size != send_fields_[rank_other].size())
                 send_fields_[rank_other].resize(size);
@@ -361,6 +416,12 @@ class HaloCommunicator
     const auto& recv_tasks() const noexcept { return recv_tasks_; }
     void        clear()
     {
+#ifdef IBLGF_COMPILE_CUDA
+        for (int r = 0; r < static_cast<int>(send_fields_.size()); ++r) {
+            if (send_pinned_[r]) { cudaHostUnregister(send_fields_[r].data()); send_pinned_[r] = false; }
+            if (recv_pinned_[r]) { cudaHostUnregister(recv_fields_[r].data()); recv_pinned_[r] = false; }
+        }
+#endif
         inter_send_interface.clear();
         inter_recv_interface.clear();
         send_fields_.clear();
@@ -375,6 +436,10 @@ class HaloCommunicator
         recv_fields_.resize(world.size());
         send_tasks_.resize(world.size());
         recv_tasks_.resize(world.size());
+#ifdef IBLGF_COMPILE_CUDA
+        send_pinned_.assign(world.size(), false);
+        recv_pinned_.assign(world.size(), false);
+#endif
     }
 
   private:
@@ -391,6 +456,11 @@ class HaloCommunicator
     //intra processor send/recv interfaces
     std::vector<interface> intra_send_interface;
     std::vector<interface> intra_recv_interface;
+
+#ifdef IBLGF_COMPILE_CUDA
+    std::vector<bool> send_pinned_;
+    std::vector<bool> recv_pinned_;
+#endif
 };
 
 
@@ -406,7 +476,15 @@ class HaloCommunicator_idx
     HaloCommunicator_idx(HaloCommunicator_idx&&) = default;
     HaloCommunicator_idx& operator=(const HaloCommunicator_idx&) & = default;
     HaloCommunicator_idx& operator=(HaloCommunicator_idx&&) & = default;
-    ~HaloCommunicator_idx() = default;
+    ~HaloCommunicator_idx()
+    {
+#ifdef IBLGF_COMPILE_CUDA
+        for (int r = 0; r < static_cast<int>(send_fields_.size()); ++r) {
+            if (send_pinned_[r]) cudaHostUnregister(send_fields_[r].data());
+            if (recv_pinned_[r]) cudaHostUnregister(recv_fields_[r].data());
+        }
+#endif
+    }
     HaloCommunicator_idx(int _field_idx)
     {
         boost::mpi::communicator world;
@@ -417,6 +495,10 @@ class HaloCommunicator_idx
         send_tasks_.resize(world.size());
         recv_tasks_.resize(world.size());
         field_idx = _field_idx;
+#ifdef IBLGF_COMPILE_CUDA
+        send_pinned_.resize(world.size(), false);
+        recv_pinned_.resize(world.size(), false);
+#endif
     }
 
     using field_t = Field;
@@ -563,6 +645,51 @@ class HaloCommunicator_idx
                 task_ptr->requires_confirmation() = false;
                 recv_tasks_[rank_other] = task_ptr;
             }
+
+            // Pre-size and pin send/recv buffers so pack_messages() never reallocates
+            {
+                std::size_t send_sz = 0;
+                for (auto& i : inter_send_interface[rank_other])
+                    send_sz += i.view.size();
+                if (send_sz != send_fields_[rank_other].size())
+                {
+#ifdef IBLGF_COMPILE_CUDA
+                    if (send_pinned_[rank_other]) {
+                        cudaHostUnregister(send_fields_[rank_other].data());
+                        send_pinned_[rank_other] = false;
+                    }
+#endif
+                    send_fields_[rank_other].resize(send_sz);
+#ifdef IBLGF_COMPILE_CUDA
+                    if (send_sz > 0) {
+                        cudaHostRegister(send_fields_[rank_other].data(),
+                            send_sz * sizeof(float_type), cudaHostRegisterDefault);
+                        send_pinned_[rank_other] = true;
+                    }
+#endif
+                }
+
+                std::size_t recv_sz = 0;
+                for (auto& i : inter_recv_interface[rank_other])
+                    recv_sz += i.view.size();
+                if (recv_sz != recv_fields_[rank_other].size())
+                {
+#ifdef IBLGF_COMPILE_CUDA
+                    if (recv_pinned_[rank_other]) {
+                        cudaHostUnregister(recv_fields_[rank_other].data());
+                        recv_pinned_[rank_other] = false;
+                    }
+#endif
+                    recv_fields_[rank_other].resize(recv_sz);
+#ifdef IBLGF_COMPILE_CUDA
+                    if (recv_sz > 0) {
+                        cudaHostRegister(recv_fields_[rank_other].data(),
+                            recv_sz * sizeof(float_type), cudaHostRegisterDefault);
+                        recv_pinned_[rank_other] = true;
+                    }
+#endif
+                }
+            }
         }
     }
 
@@ -599,11 +726,7 @@ class HaloCommunicator_idx
 
             std::size_t size = 0;
             for (auto& interfc : inter_send_interface[rank_other])
-            {
-                for (auto it = interfc.view.begin(); it != interfc.view.end();
-                     ++it)
-                { ++size; }
-            }
+                size += interfc.view.size();
             if (size != send_fields_[rank_other].size())
                 send_fields_[rank_other].resize(size);
             int count = 0;
@@ -677,9 +800,7 @@ class HaloCommunicator_idx
             for (auto& interfc : inter_send_interface[rank_other])
             {
                 if ((interfc.field_idx != _field_idx)) continue;
-                for (auto it = interfc.view.begin(); it != interfc.view.end();
-                     ++it)
-                { ++size; }
+                size += interfc.view.size();
             }
             if (size != send_fields_[rank_other].size())
                 send_fields_[rank_other].resize(size);
@@ -723,6 +844,12 @@ class HaloCommunicator_idx
     const auto& recv_tasks() const noexcept { return recv_tasks_; }
     void        clear()
     {
+#ifdef IBLGF_COMPILE_CUDA
+        for (int r = 0; r < static_cast<int>(send_fields_.size()); ++r) {
+            if (send_pinned_[r]) { cudaHostUnregister(send_fields_[r].data()); send_pinned_[r] = false; }
+            if (recv_pinned_[r]) { cudaHostUnregister(recv_fields_[r].data()); recv_pinned_[r] = false; }
+        }
+#endif
         inter_send_interface.clear();
         inter_recv_interface.clear();
         send_fields_.clear();
@@ -737,6 +864,10 @@ class HaloCommunicator_idx
         recv_fields_.resize(world.size());
         send_tasks_.resize(world.size());
         recv_tasks_.resize(world.size());
+#ifdef IBLGF_COMPILE_CUDA
+        send_pinned_.assign(world.size(), false);
+        recv_pinned_.assign(world.size(), false);
+#endif
     }
 
   private:
@@ -755,6 +886,11 @@ class HaloCommunicator_idx
     std::vector<interface> intra_recv_interface;
 
     int field_idx;
+
+#ifdef IBLGF_COMPILE_CUDA
+    std::vector<bool> send_pinned_;
+    std::vector<bool> recv_pinned_;
+#endif
 };
 
 } // namespace sr_mpi

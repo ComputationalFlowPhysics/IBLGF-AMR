@@ -45,6 +45,15 @@ __global__ void scale_complex(
     size_t size,
     double alpha);
 
+// Scatter padded backward-FFT output into compact target field (+=)
+__global__ void add_solution_device_kernel(
+    const double* __restrict__ src,
+    double*       __restrict__ dst,
+    int offset_i, int offset_j, int offset_k,
+    int src_nx, int src_ny,
+    int dst_nx, int dst_ny,
+    int count_i, int count_j, int count_k);
+
 
 class dfft_r2c_gpu
 {
@@ -331,7 +340,14 @@ class Convolution_GPU
     dims_t helper_next_pow_2(dims_t v)
     {
         dims_t tmp;
-        for (int i = 0; i < dimension; i++) { tmp[i] = v[i]; }
+        for (int i = 0; i < dimension; i++)
+        {
+            int x = v[i];
+            if (x <= 1) { tmp[i] = 1; continue; }
+            x--;
+            x |= x >> 1; x |= x >> 2; x |= x >> 4; x |= x >> 8; x |= x >> 16;
+            tmp[i] = x + 1;
+        }
         return tmp;
     }
     int helper_all_prod(dims_t v)
@@ -520,14 +536,32 @@ class Convolution_GPU
 
         // Execute backward transform directly from device input
         fft_backward_.execute_device();
-        
-        // Copy result to host asynchronously
+
+#ifdef IBLGF_COMPILE_CUDA
+        {
+            const auto& ext = _extractor.extent();
+            // Ensure device buffer holds current target values before +=
+            if (!_target.device_valid())
+                _target.update_device(fft_backward_.stream());
+
+            int blkSz = 256;
+            int grdSz = (ext[0] * ext[1] * ext[2] + blkSz - 1) / blkSz;
+            add_solution_device_kernel<<<grdSz, blkSz, 0, fft_backward_.stream()>>>(
+                fft_backward_.output_cu_ptr(), _target.device_ptr(),
+                dims0_[0] - 1, dims0_[1] - 1, dims0_[2] - 1,
+                padded_dims_next_pow_2_[0], padded_dims_next_pow_2_[1],
+                ext[0], ext[1],
+                ext[0], ext[1], ext[2]);
+
+            cudaStreamSynchronize(fft_backward_.stream());
+            cudaMemcpy(_target.data().data(), _target.device_ptr(),
+                _target.data().size() * sizeof(float_type), cudaMemcpyDeviceToHost);
+            return;
+        }
+#endif
+        // CPU fallback
         fft_backward_.copy_output_to_host();
-        
-        // MUST sync before accessing host data in add_solution()
         cudaStreamSynchronize(fft_backward_.stream());
-        
-        // Now process results (data copy is complete)
         add_solution(_extractor, _target);
     }
 

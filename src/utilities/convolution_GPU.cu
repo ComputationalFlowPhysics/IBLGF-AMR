@@ -103,6 +103,26 @@ scale_complex(cuDoubleComplex* data, size_t size, double alpha)
 }
 
 __global__ void
+add_solution_device_kernel(
+    const double* __restrict__ src,
+    double*       __restrict__ dst,
+    int offset_i, int offset_j, int offset_k,
+    int src_nx, int src_ny,
+    int dst_nx, int dst_ny,
+    int count_i, int count_j, int count_k)
+{
+    int total = count_i * count_j * count_k;
+    for (int idx = blockIdx.x * blockDim.x + threadIdx.x; idx < total; idx += blockDim.x * gridDim.x)
+    {
+        int li = idx % count_i;
+        int lj = (idx / count_i) % count_j;
+        int lk = idx / (count_i * count_j);
+        dst[li + lj * dst_nx + lk * dst_nx * dst_ny] +=
+            src[(offset_i + li) + (offset_j + lj) * src_nx + (offset_k + lk) * src_nx * src_ny];
+    }
+}
+
+__global__ void
 pack_field_device_kernel(const float_type* src, int src_nx, int src_ny, int src_nz,
     float_type* dst, int dst_nx, int dst_ny, int dst_nz,
     int copy_nx, int copy_ny, int copy_nz, size_t batch_offset)

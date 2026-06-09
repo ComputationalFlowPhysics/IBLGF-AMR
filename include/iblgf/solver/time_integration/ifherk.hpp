@@ -1667,7 +1667,7 @@ private:
                 const double inv_dx =
                     math::pow2(it->refinement_level()) / dx_base;
                 domain::gpu::launch_curl_gpu<Source, edge_aux_type>(
-                    it->data(), inv_dx, nl_stream);
+                    **it, inv_dx, nl_stream);
 
                 // D2H edge_aux so next MPI exchange can read it from host
                 for (std::size_t c = 0; c < edge_aux_type::nFields(); ++c)
@@ -1692,7 +1692,7 @@ private:
                 if (!it->locally_owned() || !it->has_data()) continue;
 
                 domain::gpu::launch_nonlinear_gpu<face_aux_type, edge_aux_type, Target>(
-                    it->data(), static_cast<double>(_scale), nl_stream);
+                    **it, static_cast<double>(_scale), nl_stream);
 
                 // D2H Target so downstream code can read from host
                 for (std::size_t c = 0; c < Target::nFields(); ++c)

@@ -225,6 +225,13 @@ class DataField : public BlockDescriptor<int, Dim>
             cudaMemcpyHostToDevice, stream);
         device_valid_ = true;
     }
+    void sync_to_host(cudaStream_t stream = nullptr)
+    {
+        if (device_data_ == nullptr) return;
+        cudaMemcpyAsync(data_.data(), device_data_,
+            data_.size() * sizeof(data_type), cudaMemcpyDeviceToHost, stream);
+        device_valid_ = false;
+    }
 #endif
 
     inline data_type* get_ptr(const coordinate_t& _c) noexcept

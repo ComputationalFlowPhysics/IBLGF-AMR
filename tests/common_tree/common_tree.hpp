@@ -37,15 +37,15 @@ struct parameters
     Dim,
         (
             //name, type, nFields, l/h-buf,mesh_obj, output(optional)
-            (tlevel,        float_type, 1, 1, 1, cell, true),
+            (tlevel,        float_type, 1, 1, 1, cell, false),
             (u,             float_type, Dim, 1, 1, face, true),
             (u_s,             float_type, Dim, 1, 1, face, true),
             (u_a,             float_type, Dim, 1, 1, face, true),
-            (u_sym,             float_type, Dim, 1, 1, face, true),
-            (rf_s,             float_type, Dim, 1, 1, face, true),
-            (rf_t,             float_type, Dim, 1, 1, face, true),
-            (p,             float_type, 1, 1, 1, cell, true),
-            (test,          float_type, 1,    1,       1,     cell,true )
+            (u_sym,             float_type, Dim, 1, 1, face, false),
+            (rf_s,             float_type, Dim, 1, 1, face, false),
+            (rf_t,             float_type, Dim, 1, 1, face, false),
+            (p,             float_type, 1, 1, 1, cell, false),
+            (test,          float_type, 1,    1,       1,     cell,false )
         )
     )
     // clang-format on
@@ -236,14 +236,34 @@ struct CommonTree : public SetupBase<CommonTree, parameters>
     //     simulation_.write("adapted_to_ref");
 
     // }
+    void save_common_tree_ref()
+    {   
+        boost::mpi::communicator world;
+        world.barrier();
+        simulation_.write("common_tree_ref");
+        world.barrier();
+    }
+    void save_symmetric_ref_tmp()
+    {
+        boost::mpi::communicator world;
+        world.barrier();
+        simulation_.write("symmetric_ref_tmp");
+        world.barrier();
+    }
     void save_adapted(int idx)
     {
+        boost::mpi::communicator world;
+        world.barrier();
         std::string filename = "adapted_to_ref_" + std::to_string(idx);
         simulation_.write(filename);
+        world.barrier();
     }
     void save_symmetric_ref()
     {
+        boost::mpi::communicator world;
+        world.barrier();
         simulation_.write("symmetric_ref");
+        world.barrier();
     }
     template<class Field,class key_t>
     void run_adapt_from_keys(int timeIdx,std::vector<key_t>& octs,
@@ -263,6 +283,13 @@ struct CommonTree : public SetupBase<CommonTree, parameters>
 
         world.barrier();
         auto intrp_list=domain_->decomposition().adapt_del_leafs(octs, level_change, true);
+        world.barrier();
+        if (domain_->is_server())
+        {
+            // Rebuild server-side leaf/correction maps after topology changes.
+            domain_->restart_list_construct();
+        }
+        domain_->decomposition().sync_decomposition();
         world.barrier();
         pcout << "Adapt - intrp" << std::endl;
         if (client)
@@ -300,6 +327,13 @@ struct CommonTree : public SetupBase<CommonTree, parameters>
         //get ranks of left and right block
         boost::mpi::communicator world;
         // this->initialize();
+        if (domain_->is_server())
+        {
+            // Ensure leaf/correction state is normalized before mirror pairing.
+            domain_->restart_list_construct();
+        }
+        domain_->decomposition().sync_decomposition();
+        world.barrier();
         clean<u_sym_type>();
         // up_and_down<u_type>();   
         auto domain_dict = simulation_.dictionary_->get_dictionary("domain");

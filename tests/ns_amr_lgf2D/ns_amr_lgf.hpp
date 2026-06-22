@@ -355,6 +355,23 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 		// ifherk.clean_leaf_correction_boundary<u_type>(domain_->tree()->base_level(), true, 1);
 
 		float_type maxNumVort = -1;
+		auto center = (domain_->bounding_box().max() -
+			domain_->bounding_box().min() + 1) / 2.0 +
+			domain_->bounding_box().min();
+
+		for (auto it = domain_->begin_leaves();
+			it != domain_->end_leaves(); ++it)
+		{
+			if (!it->locally_owned()) continue;
+
+			auto dx_level = domain_->dx_base() / std::pow(2, it->refinement_level());
+
+			for (auto& node : it->data())
+			{
+				node(w_num) = (node(u, 1) - node.at_offset(u, -1, 0, 1) -
+					node(u, 0) + node.at_offset(u, 0, -1, 0)) / dx_level;
+			}
+		}
 
 		if (ref_filename_ != "null")
 		{
@@ -363,10 +380,6 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 				simulation_.template read_h5<u_ref_type>(ref_filename_, "u");
 				simulation_.template read_h5<p_ref_type>(ref_filename_, "p");
 			}
-			
-			auto center = (domain_->bounding_box().max() -
-				domain_->bounding_box().min() + 1) / 2.0 +
-				domain_->bounding_box().min();
 
 
 			for (auto it = domain_->begin_leaves();
@@ -397,8 +410,6 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 					float_type r__ = std::sqrt(x * x + y * y);
 					float_type t_final = dt_ * tot_steps_;
 					node(w_exact) = w_vort(r__, t_final);
-					node(w_num) = (node(u, 1) - node.at_offset(u, -1, 0, 1) -
-						node(u, 0) + node.at_offset(u, 0, -1, 0)) / dx_level;
 					if (vortexType != 0) {
 					x = static_cast<float_type>
 						(coord[0] - center[0] * scaling) * dx_level;

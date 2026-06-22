@@ -18,6 +18,8 @@
 #include <vector>
 #include <cmath>
 #include <array>
+#include <limits>
+#include <utility>
 
 // IBLGF-specific
 #include <iblgf/global.hpp>
@@ -115,6 +117,20 @@ class Ifherk
 
         b_f_eps = _simulation->dictionary()->template get_or<float_type>(
             "b_f_eps", 1e-3);
+        //*added*
+        b_f_tau = _simulation->dictionary()->template get_or<float_type>(
+            "b_f_tau", 2.0);
+        b_f_beta = _simulation->dictionary()->template get_or<float_type>(
+            "b_f_beta", 50.0);
+        b_f_lx = _simulation->dictionary()->template get_or<float_type>(
+            "b_f_lx", 1.0);
+        b_f_ly = _simulation->dictionary()->template get_or<float_type>(
+            "b_f_ly", 1.0);
+        b_f_x0 = _simulation->dictionary()->template get_or<float_type>(
+            "b_f_x0", 0.0);
+        b_f_y0 = _simulation->dictionary()->template get_or<float_type>(
+            "b_f_y0", 0.0);
+        //*end of added*
 
         use_filter = _simulation->dictionary()->template get_or<bool>(
             "use_filter", true);
@@ -203,6 +219,8 @@ class Ifherk
             {
                 //pad_velocity<u_type, u_type>(true);
             }
+            if constexpr (domain_type::dims == 2)
+                curl<u_type>();
             write_timestep();
         }
         else
@@ -210,6 +228,8 @@ class Ifherk
             T_ = 0.0;
             adapt_count_=0;
 
+            if constexpr (domain_type::dims == 2)
+                curl<u_type>();
             write_timestep();
         }
 
@@ -727,6 +747,333 @@ class Ifherk
         return force_vec;
     }
 
+    struct vortex_diagnostics_t
+    {
+        float_type gamma_total = 0.0;
+        float_type gamma_positive = 0.0;
+        float_type gamma_negative = 0.0;
+        float_type x_center_positive = std::numeric_limits<float_type>::quiet_NaN();
+        float_type y_center_positive = std::numeric_limits<float_type>::quiet_NaN();
+        float_type x_center_negative = std::numeric_limits<float_type>::quiet_NaN();
+        float_type y_center_negative = std::numeric_limits<float_type>::quiet_NaN();
+        float_type omega_max = -std::numeric_limits<float_type>::infinity();
+        float_type omega_min = std::numeric_limits<float_type>::infinity();
+        float_type x_omega_max = std::numeric_limits<float_type>::quiet_NaN();
+        float_type y_omega_max = std::numeric_limits<float_type>::quiet_NaN();
+        float_type x_omega_min = std::numeric_limits<float_type>::quiet_NaN();
+        float_type y_omega_min = std::numeric_limits<float_type>::quiet_NaN();
+        float_type source_omega_max = std::numeric_limits<float_type>::quiet_NaN();
+        float_type source_omega_min = std::numeric_limits<float_type>::quiet_NaN();
+        float_type x_source_omega_max = std::numeric_limits<float_type>::quiet_NaN();
+        float_type y_source_omega_max = std::numeric_limits<float_type>::quiet_NaN();
+        float_type x_source_omega_min = std::numeric_limits<float_type>::quiet_NaN();
+        float_type y_source_omega_min = std::numeric_limits<float_type>::quiet_NaN();
+    };
+
+    float_type body_force_amplitude() const noexcept
+    {
+        return (T_ <= b_f_tau) ? b_f_mag : 0.0;
+    }
+
+    void body_force_profile_2d(
+        float_type x,
+        float_type y,
+        float_type& force_x,
+        float_type& source_omega) const noexcept
+    {
+        force_x = 0.0;
+        source_omega = 0.0;
+
+        if constexpr (domain_type::dims != 2)
+            return;
+
+        const auto A = body_force_amplitude();
+        if (std::abs(A) <= 1.0e-14)
+            return;
+
+        const auto x_shift = x - b_f_x0;
+        const auto y_shift = y - b_f_y0;
+        const auto arg_x =
+            b_f_beta * (b_f_lx / float_type(2) - std::abs(x_shift));
+        const auto arg_y =
+            b_f_beta * (b_f_ly / float_type(2) - std::abs(y_shift));
+        const auto tanh_x = std::tanh(arg_x);
+        const auto tanh_y = std::tanh(arg_y);
+        const auto g_x =
+            float_type(0.5) * (float_type(1) + tanh_x);
+        const auto g_y =
+            float_type(0.5) * (float_type(1) + tanh_y);
+
+        force_x = A * g_x * g_y;
+
+        const int sign_y = (y_shift > 0.0) - (y_shift < 0.0);
+        source_omega = float_type(0.5) * A * b_f_beta *
+            static_cast<float_type>(sign_y) * g_x *
+            (float_type(1) - tanh_y * tanh_y);
+    }
+
+    vortex_diagnostics_t vortex_diagnostics()
+    {
+        float_type gamma_positive_local = 0.0;
+        float_type gamma_negative_local = 0.0;
+        float_type x_moment_positive_local = 0.0;
+        float_type y_moment_positive_local = 0.0;
+        float_type x_moment_negative_local = 0.0;
+        float_type y_moment_negative_local = 0.0;
+        float_type omega_max_local = -std::numeric_limits<float_type>::infinity();
+        float_type omega_min_local = std::numeric_limits<float_type>::infinity();
+        float_type x_omega_max_local = std::numeric_limits<float_type>::quiet_NaN();
+        float_type y_omega_max_local = std::numeric_limits<float_type>::quiet_NaN();
+        float_type x_omega_min_local = std::numeric_limits<float_type>::quiet_NaN();
+        float_type y_omega_min_local = std::numeric_limits<float_type>::quiet_NaN();
+        float_type source_omega_max_local = -std::numeric_limits<float_type>::infinity();
+        float_type source_omega_min_local = std::numeric_limits<float_type>::infinity();
+        float_type x_source_omega_max_local = std::numeric_limits<float_type>::quiet_NaN();
+        float_type y_source_omega_max_local = std::numeric_limits<float_type>::quiet_NaN();
+        float_type x_source_omega_min_local = std::numeric_limits<float_type>::quiet_NaN();
+        float_type y_source_omega_min_local = std::numeric_limits<float_type>::quiet_NaN();
+        const bool source_active = std::abs(body_force_amplitude()) > 1.0e-14;
+
+        if constexpr (domain_type::dims == 2)
+        {
+            if (!domain_->is_server())
+            {
+                const auto center = (domain_->bounding_box().max() -
+                    domain_->bounding_box().min() + 1) / 2.0 +
+                    domain_->bounding_box().min();
+                for (auto it = domain_->begin(); it != domain_->end(); ++it)
+                {
+                    if (!it->locally_owned()) continue;
+                    if (!it->is_leaf()) continue;
+                    if (it->is_correction()) continue;
+
+                    const auto scaling = math::pow2(it->refinement_level());
+                    const auto dx_level = dx_base_ / scaling;
+                    const auto dA = dx_level * dx_level;
+
+                    for (auto& n : it->data())
+                    {
+                        const auto& coord = n.level_coordinate();
+                        const auto x = static_cast<float_type>(
+                            coord[0] - center[0] * scaling) * dx_level;
+                        const auto y = static_cast<float_type>(
+                            coord[1] - center[1] * scaling) * dx_level;
+                        const auto omega = n(edge_aux_type::tag(), 0);
+                        const auto weighted_omega = omega * dA;
+                        const auto x_force =
+                            static_cast<float_type>(coord[0]) * dx_level;
+                        const auto y_force =
+                            static_cast<float_type>(coord[1]) * dx_level;
+
+                        if (source_active)
+                        {
+                            float_type force_x = 0.0;
+                            float_type source_omega = 0.0;
+                            body_force_profile_2d(
+                                x_force, y_force, force_x, source_omega);
+
+                            if (source_omega > source_omega_max_local)
+                            {
+                                source_omega_max_local = source_omega;
+                                x_source_omega_max_local = x_force;
+                                y_source_omega_max_local = y_force;
+                            }
+                            if (source_omega < source_omega_min_local)
+                            {
+                                source_omega_min_local = source_omega;
+                                x_source_omega_min_local = x_force;
+                                y_source_omega_min_local = y_force;
+                            }
+                        }
+
+                        if (omega > omega_max_local)
+                        {
+                            omega_max_local = omega;
+                            x_omega_max_local = x;
+                            y_omega_max_local = y;
+                        }
+                        if (omega < omega_min_local)
+                        {
+                            omega_min_local = omega;
+                            x_omega_min_local = x;
+                            y_omega_min_local = y;
+                        }
+
+                        if (omega > 0.0)
+                        {
+                            gamma_positive_local += weighted_omega;
+                            x_moment_positive_local += x * weighted_omega;
+                            y_moment_positive_local += y * weighted_omega;
+                        }
+                        else if (omega < 0.0)
+                        {
+                            gamma_negative_local += weighted_omega;
+                            x_moment_negative_local += x * weighted_omega;
+                            y_moment_negative_local += y * weighted_omega;
+                        }
+                    }
+                }
+            }
+        }
+
+        vortex_diagnostics_t diagnostics;
+        float_type x_moment_positive = 0.0;
+        float_type y_moment_positive = 0.0;
+        float_type x_moment_negative = 0.0;
+        float_type y_moment_negative = 0.0;
+        boost::mpi::communicator world;
+        boost::mpi::all_reduce(
+            world, gamma_positive_local, diagnostics.gamma_positive, std::plus<float_type>());
+        boost::mpi::all_reduce(
+            world, gamma_negative_local, diagnostics.gamma_negative, std::plus<float_type>());
+        diagnostics.gamma_total =
+            diagnostics.gamma_positive + diagnostics.gamma_negative;
+
+        boost::mpi::all_reduce(
+            world, x_moment_positive_local, x_moment_positive, std::plus<float_type>());
+        boost::mpi::all_reduce(
+            world, y_moment_positive_local, y_moment_positive, std::plus<float_type>());
+        boost::mpi::all_reduce(
+            world, x_moment_negative_local, x_moment_negative, std::plus<float_type>());
+        boost::mpi::all_reduce(
+            world, y_moment_negative_local, y_moment_negative, std::plus<float_type>());
+
+        std::vector<float_type> gathered_omega_max;
+        std::vector<float_type> gathered_x_omega_max;
+        std::vector<float_type> gathered_y_omega_max;
+        std::vector<float_type> gathered_omega_min;
+        std::vector<float_type> gathered_x_omega_min;
+        std::vector<float_type> gathered_y_omega_min;
+        std::vector<float_type> gathered_source_omega_max;
+        std::vector<float_type> gathered_x_source_omega_max;
+        std::vector<float_type> gathered_y_source_omega_max;
+        std::vector<float_type> gathered_source_omega_min;
+        std::vector<float_type> gathered_x_source_omega_min;
+        std::vector<float_type> gathered_y_source_omega_min;
+        boost::mpi::all_gather(world, omega_max_local, gathered_omega_max);
+        boost::mpi::all_gather(world, x_omega_max_local, gathered_x_omega_max);
+        boost::mpi::all_gather(world, y_omega_max_local, gathered_y_omega_max);
+        boost::mpi::all_gather(world, omega_min_local, gathered_omega_min);
+        boost::mpi::all_gather(world, x_omega_min_local, gathered_x_omega_min);
+        boost::mpi::all_gather(world, y_omega_min_local, gathered_y_omega_min);
+        boost::mpi::all_gather(
+            world, source_omega_max_local, gathered_source_omega_max);
+        boost::mpi::all_gather(
+            world, x_source_omega_max_local, gathered_x_source_omega_max);
+        boost::mpi::all_gather(
+            world, y_source_omega_max_local, gathered_y_source_omega_max);
+        boost::mpi::all_gather(
+            world, source_omega_min_local, gathered_source_omega_min);
+        boost::mpi::all_gather(
+            world, x_source_omega_min_local, gathered_x_source_omega_min);
+        boost::mpi::all_gather(
+            world, y_source_omega_min_local, gathered_y_source_omega_min);
+
+        for (std::size_t i = 0; i < gathered_omega_max.size(); ++i)
+        {
+            if (gathered_omega_max[i] > diagnostics.omega_max)
+            {
+                diagnostics.omega_max = gathered_omega_max[i];
+                diagnostics.x_omega_max = gathered_x_omega_max[i];
+                diagnostics.y_omega_max = gathered_y_omega_max[i];
+            }
+            if (gathered_omega_min[i] < diagnostics.omega_min)
+            {
+                diagnostics.omega_min = gathered_omega_min[i];
+                diagnostics.x_omega_min = gathered_x_omega_min[i];
+                diagnostics.y_omega_min = gathered_y_omega_min[i];
+            }
+        }
+
+        if (source_active)
+        {
+            diagnostics.source_omega_max = -std::numeric_limits<float_type>::infinity();
+            diagnostics.source_omega_min = std::numeric_limits<float_type>::infinity();
+            for (std::size_t i = 0; i < gathered_source_omega_max.size(); ++i)
+            {
+                if (gathered_source_omega_max[i] > diagnostics.source_omega_max)
+                {
+                    diagnostics.source_omega_max = gathered_source_omega_max[i];
+                    diagnostics.x_source_omega_max = gathered_x_source_omega_max[i];
+                    diagnostics.y_source_omega_max = gathered_y_source_omega_max[i];
+                }
+                if (gathered_source_omega_min[i] < diagnostics.source_omega_min)
+                {
+                    diagnostics.source_omega_min = gathered_source_omega_min[i];
+                    diagnostics.x_source_omega_min = gathered_x_source_omega_min[i];
+                    diagnostics.y_source_omega_min = gathered_y_source_omega_min[i];
+                }
+            }
+        }
+        else if (std::abs(b_f_mag) > 1.0e-14)
+        {
+            diagnostics.source_omega_max = 0.0;
+            diagnostics.source_omega_min = 0.0;
+        }
+
+        if (std::abs(diagnostics.gamma_positive) > 1.0e-14)
+        {
+            diagnostics.x_center_positive =
+                x_moment_positive / diagnostics.gamma_positive;
+            diagnostics.y_center_positive =
+                y_moment_positive / diagnostics.gamma_positive;
+        }
+        if (std::abs(diagnostics.gamma_negative) > 1.0e-14)
+        {
+            diagnostics.x_center_negative =
+                x_moment_negative / diagnostics.gamma_negative;
+            diagnostics.y_center_negative =
+                y_moment_negative / diagnostics.gamma_negative;
+        }
+
+        return diagnostics;
+    }
+
+    void write_circulation_attributes(
+        const std::string& flow_path,
+        const vortex_diagnostics_t& diagnostics)
+    {
+        if constexpr (domain_type::dims != 2)
+            return;
+
+        hdf5_file<domain_type::dims> flow_file;
+        flow_file.open_file_rw(flow_path);
+        auto root = flow_file.get_root();
+        flow_file.create_attribute(
+            root, "circulation_total", diagnostics.gamma_total);
+        flow_file.create_attribute(
+            root, "circulation_positive", diagnostics.gamma_positive);
+        flow_file.create_attribute(
+            root, "circulation_negative", diagnostics.gamma_negative);
+        flow_file.create_attribute(
+            root, "vortex_center_positive_x", diagnostics.x_center_positive);
+        flow_file.create_attribute(
+            root, "vortex_center_positive_y", diagnostics.y_center_positive);
+        flow_file.create_attribute(
+            root, "vortex_center_negative_x", diagnostics.x_center_negative);
+        flow_file.create_attribute(
+            root, "vortex_center_negative_y", diagnostics.y_center_negative);
+        flow_file.create_attribute(root, "omega_max", diagnostics.omega_max);
+        flow_file.create_attribute(root, "omega_min", diagnostics.omega_min);
+        flow_file.create_attribute(root, "omega_max_x", diagnostics.x_omega_max);
+        flow_file.create_attribute(root, "omega_max_y", diagnostics.y_omega_max);
+        flow_file.create_attribute(root, "omega_min_x", diagnostics.x_omega_min);
+        flow_file.create_attribute(root, "omega_min_y", diagnostics.y_omega_min);
+        flow_file.create_attribute(
+            root, "source_omega_max", diagnostics.source_omega_max);
+        flow_file.create_attribute(
+            root, "source_omega_min", diagnostics.source_omega_min);
+        flow_file.create_attribute(
+            root, "source_omega_max_x", diagnostics.x_source_omega_max);
+        flow_file.create_attribute(
+            root, "source_omega_max_y", diagnostics.y_source_omega_max);
+        flow_file.create_attribute(
+            root, "source_omega_min_x", diagnostics.x_source_omega_min);
+        flow_file.create_attribute(
+            root, "source_omega_min_y", diagnostics.y_source_omega_min);
+        flow_file.close_group(root);
+    }
+
     template<class Velocity_in>
     void clean_center_velocity() {
 
@@ -955,10 +1302,27 @@ class Ifherk
     void write_timestep()
     {
         boost::mpi::communicator world;
+        vortex_diagnostics_t diagnostics;
+
+        if constexpr (domain_type::dims == 2)
+        {
+            diagnostics = vortex_diagnostics();
+        }
+
         world.barrier();
         pcout << "- writing at T = " << T_ << ", n = " << n_step_ << std::endl;
         //simulation_->write(fname(n_step_));
         simulation_->writeWithTime(fname(n_step_), T_, dt_);
+        world.barrier();
+        if constexpr (domain_type::dims == 2)
+        {
+            if (domain_->is_server())
+            {
+                const auto flow_path =
+                    io::output().dir() + "/flowTime_" + fname(n_step_) + ".hdf5";
+                write_circulation_attributes(flow_path, diagnostics);
+            }
+        }
         //simulation_->domain()->tree()->write("tree_restart.bin");
         world.barrier();
         //simulation_->domain()->tree()->read("tree_restart.bin");
@@ -1710,7 +2074,6 @@ private:
 
     template<class target>
     void add_body_force(float_type scale) noexcept {
-        //float_type eps = 1e-3;
         auto dx_base = domain_->dx_base();
         for (auto it = domain_->begin(); it != domain_->end(); ++it)
 		{
@@ -1734,7 +2097,12 @@ private:
 				//(coord[2]-center[2]*scaling+0.5)*dx_level;
 
 				//node(edge_aux,0) = vor(x,y-0.5*vort_sep,0)+ vor(x,y+0.5*vort_sep,0);
-				node(target::tag(), 1) += -scale * b_f_mag * y / (y*y + b_f_eps);
+				//node(target::tag(), 1) += -scale * b_f_mag * y / (y*y + b_f_eps);
+
+				float_type force_x = 0.0;
+				float_type source_omega = 0.0;
+                body_force_profile_2d(x, y, force_x, source_omega);
+				node(target::tag(), 0) += scale * force_x;
 
             }
 
@@ -1987,6 +2355,9 @@ private:
     float_type T_last_vel_refresh_=0.0;
 
     float_type b_f_mag, b_f_eps;
+    //*added*
+    float_type b_f_tau, b_f_beta, b_f_lx, b_f_ly, b_f_x0, b_f_y0;
+    //*end of added*
 
     std::vector<float_type> omega_cross_x;
 

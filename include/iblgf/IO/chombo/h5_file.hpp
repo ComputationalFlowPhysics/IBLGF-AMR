@@ -217,6 +217,12 @@ class hdf5_file
         HDF5_CHECK_ERROR(file_id, "hdf5: could not open file")
     }
 
+    void open_file_rw(std::string _filename)
+    {
+        file_id = H5Fopen(_filename.c_str(), H5F_ACC_RDWR, H5P_DEFAULT);
+        HDF5_CHECK_ERROR(file_id, "hdf5: could not open file for read/write")
+    }
+
     hid_type open_dataset(hid_t _loc_id, std::string _name)
     {
         // plist_id = H5Pcreate(H5P_FILE_ACCESS);

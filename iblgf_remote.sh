@@ -76,8 +76,22 @@ ensure_repo_root() {
 }
 
 cpu_count() {
-  if [[ -n "${SLURM_CPUS_PER_TASK:-}" ]]; then
-    echo "$SLURM_CPUS_PER_TASK"
+  if [[ -n "${SLURM_TASKS_PER_NODE:-}" ]]; then
+    # Common forms are "40", "40(x2)", and "40,32". Compilation happens on
+    # the current node, so use its allocated tasks rather than all node cores.
+    local tasks_per_node cpus_per_task
+    tasks_per_node="${SLURM_TASKS_PER_NODE%%,*}"
+    tasks_per_node="${tasks_per_node%%(*}"
+    cpus_per_task="${SLURM_CPUS_PER_TASK:-1}"
+    if [[ "$tasks_per_node" =~ ^[1-9][0-9]*$ ]] &&
+       [[ "$cpus_per_task" =~ ^[1-9][0-9]*$ ]]; then
+      echo $((tasks_per_node * cpus_per_task))
+      return 0
+    fi
+  fi
+
+  if [[ -n "${SLURM_NTASKS:-}" && "${SLURM_JOB_NUM_NODES:-1}" -eq 1 ]]; then
+    echo "$SLURM_NTASKS"
   elif have nproc; then
     nproc
   elif have getconf; then
@@ -278,8 +292,10 @@ Useful environment overrides:
   IBLGF_MPI_ARGS="..."         extra arguments placed before the executable
 
 Launcher selection:
-  auto uses srun inside an existing Slurm allocation; otherwise it uses
-  mpiexec, then mpirun. This script does not request a cluster allocation.
+  auto prefers the MPI installation's mpiexec, then mpirun. It only falls
+  back to srun inside a Slurm allocation. To force Slurm's direct MPI launch,
+  set IBLGF_LAUNCHER=srun and, when required, IBLGF_MPI_ARGS='--mpi=pmix'.
+  This script does not request a cluster allocation.
 
 Examples:
   ./iblgf_remote.sh doctor
@@ -510,12 +526,15 @@ select_launcher() {
   local requested="${IBLGF_LAUNCHER:-auto}"
   case "$requested" in
     auto)
-      if [[ -n "${SLURM_JOB_ID:-}" ]] && have srun; then
-        echo srun
-      elif have mpiexec; then
+      # Prefer the launcher installed with the MPI library used to link the
+      # executable. A plain `srun` can otherwise start N singleton processes
+      # when Slurm's PMI/PMIx plugin does not match that MPI installation.
+      if have mpiexec; then
         echo mpiexec
       elif have mpirun; then
         echo mpirun
+      elif [[ -n "${SLURM_JOB_ID:-}" ]] && have srun; then
+        echo srun
       else
         return 1
       fi

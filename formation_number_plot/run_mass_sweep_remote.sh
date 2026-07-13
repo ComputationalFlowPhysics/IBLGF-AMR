@@ -34,8 +34,9 @@ Environment overrides:
   LOGS_DIR=/path/to/sweep-logs
   TEST_NAME=ns_amr_lgf2D
 
-The remote launcher uses srun inside an existing Slurm allocation and
-mpiexec/mpirun otherwise. This script does not request an allocation.
+The remote launcher prefers the MPI installation's mpiexec/mpirun, including
+inside a Slurm allocation. It falls back to srun if necessary. This script
+does not request an allocation.
 EOF
 }
 

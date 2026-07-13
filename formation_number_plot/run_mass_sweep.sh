@@ -10,6 +10,7 @@ generator_arg="${3:-${GENERATOR_SCRIPT:-generate_mass_configs.py}}"
 test_name="${TEST_NAME:-ns_amr_lgf2D}"
 configs_dir="${CONFIGS_DIR:-$script_dir/mass_configs}"
 logs_dir="${LOGS_DIR:-$script_dir/mass_logs}"
+runner="${IBLGF_RUNNER:-./iblgf.sh}"
 
 if [[ -z "$sample_config" ]]; then
   echo "Usage: $0 <sample_config> [mpi_ranks] [generator|freq|tau]" >&2
@@ -59,6 +60,12 @@ mkdir -p "$logs_dir"
 
 cd "$repo_root"
 
+if [[ ! -x "$runner" ]]; then
+  echo "IBLGF runner is not executable: $runner" >&2
+  echo "Set IBLGF_RUNNER to ./iblgf.sh or ./iblgf_remote.sh." >&2
+  exit 2
+fi
+
 shopt -s nullglob
 configs=("$configs_dir"/$config_pattern)
 shopt -u nullglob
@@ -80,7 +87,7 @@ for idx in "${!configs[@]}"; do
   stderr_log="$logs_dir/${config_stem}.stderr.log"
 
   echo "Running $((idx + 1))/$total: $config_name"
-  if ! ./iblgf.sh run-test "$test_name" "$config" -n "$mpi_ranks" \
+  if ! "$runner" run-test "$test_name" "$config" -n "$mpi_ranks" \
     > "$stdout_log" \
     2> "$stderr_log"; then
     echo "Run failed for $config_name" >&2

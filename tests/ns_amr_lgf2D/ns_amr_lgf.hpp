@@ -234,6 +234,18 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 		auto domain_range = domain_->bounding_box().max() - domain_->bounding_box().min();
 		Lx = domain_range[0] * dx_;
 		disable_delete_base= simulation_.dictionary()->template get_or<bool>("disable_delete_base", false);
+		b_f_mag_ = simulation_.dictionary()->template get_or<float_type>("b_f_mag", 0.0);
+		b_f_x0_ = simulation_.dictionary()->template get_or<float_type>("b_f_x0", 0.0);
+		b_f_y0_ = simulation_.dictionary()->template get_or<float_type>("b_f_y0", 0.0);
+		b_f_lx_ = simulation_.dictionary()->template get_or<float_type>("b_f_lx", 1.0);
+		b_f_ly_ = simulation_.dictionary()->template get_or<float_type>("b_f_ly", 1.0);
+		b_f_refine_pad_ = simulation_.dictionary()->template get_or<float_type>("b_f_refine_pad", 0.0);
+		b_f_num_pulse_ = simulation_.dictionary()->template get_or<int>("b_f_num_pulse", -1);
+		b_f_mag_values_ = simulation_.dictionary()->template get_vector_or<float_type>("b_f_mag", {});
+		b_f_x0_values_ = simulation_.dictionary()->template get_vector_or<float_type>("b_f_x0", {});
+		b_f_y0_values_ = simulation_.dictionary()->template get_vector_or<float_type>("b_f_y0", {});
+		b_f_lx_values_ = simulation_.dictionary()->template get_vector_or<float_type>("b_f_lx", {});
+		b_f_ly_values_ = simulation_.dictionary()->template get_vector_or<float_type>("b_f_ly", {});
 
 
 		ctr_dis_x = 0.0*dx_; //this is setup as the center of the vortex in the unit of grid spacing
@@ -291,11 +303,12 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 			[this](auto octant, std::vector<float_type> source_max){return this->template adapt_level_change<edge_aux_type, edge_aux_type>(octant, source_max);};*/
 
 
-		if (vortexType != 0) {
-		domain_->register_refinement_condition() = [this](auto octant,
-			int diff_level) {
+		if (vortexType != 0 || body_force_refinement_enabled())
+		{
+			domain_->register_refinement_condition() = [this](
+				auto octant, int diff_level) {
 				return this->refinement(octant, diff_level);
-		};
+			};
 		}
 
 		nIB_add_level_ = _d->get_dictionary("simulation_parameters")->template get_or<int>("nIB_add_level", 0);
@@ -337,6 +350,35 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 			std::cout << "on Simulation: \n" << simulation_ << std::endl;
 	}
 
+	fcoord_t coordinate_origin_index() const
+	{
+		try
+		{
+			auto domain_dict = simulation_.dictionary()->get_dictionary("domain");
+			auto block_dict = domain_dict->get_dictionary("block");
+			const auto block_base =
+				block_dict->template get<int, Dim>("base");
+			const auto block_extent =
+				block_dict->template get<int, Dim>("extent");
+			fcoord_t origin(0.0);
+			for (std::size_t d = 0; d < Dim; ++d)
+				origin[d] = static_cast<float_type>(block_base[d]) +
+					float_type(0.5) * static_cast<float_type>(block_extent[d]);
+			return origin;
+		}
+		catch (...)
+		{
+			fcoord_t origin(0.0);
+			const auto bbox_min = domain_->bounding_box().min();
+			const auto bbox_max = domain_->bounding_box().max();
+			for (std::size_t d = 0; d < Dim; ++d)
+				origin[d] = float_type(0.5) *
+						static_cast<float_type>(bbox_max[d] - bbox_min[d] + 1) +
+					static_cast<float_type>(bbox_min[d]);
+			return origin;
+		}
+	}
+
 	float_type run()
 	{
 		boost::mpi::communicator world;
@@ -355,9 +397,7 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 		// ifherk.clean_leaf_correction_boundary<u_type>(domain_->tree()->base_level(), true, 1);
 
 		float_type maxNumVort = -1;
-		auto center = (domain_->bounding_box().max() -
-			domain_->bounding_box().min() + 1) / 2.0 +
-			domain_->bounding_box().min();
+		const auto center = coordinate_origin_index();
 
 		for (auto it = domain_->begin_leaves();
 			it != domain_->end_leaves(); ++it)
@@ -475,9 +515,7 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 		//up_and_down<Source>();
 		boost::mpi::communicator world;
 		if (domain_->is_server()) return;
-		auto center = (domain_->bounding_box().max() -
-			domain_->bounding_box().min() + 1) / 2.0 +
-			domain_->bounding_box().min();
+		const auto center = coordinate_origin_index();
 
 		for (int l = domain_->tree()->base_level();
 			l < domain_->tree()->depth(); ++l)
@@ -716,9 +754,7 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 
 		boost::mpi::communicator world;
 		if (domain_->is_server()) return;
-		auto center = (domain_->bounding_box().max() -
-			domain_->bounding_box().min() + 1) / 2.0 +
-			domain_->bounding_box().min();
+		const auto center = coordinate_origin_index();
 
 		// Adapt center to always have peak value in a cell-center
 		//center+=0.5/std::pow(2,nRef);
@@ -888,6 +924,9 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 				float_type x = static_cast<float_type>(i) * dx_level;
 				float_type y = static_cast<float_type>(j) * dx_level;
 
+				if (body_force_refinement_region(x, y, dx_level))
+					return true;
+
 				float_type half_block = static_cast<float_type>(b.extent()[0]) * dx_level / 2.0;
 				//z = static_cast<float_type>(k - center[2] + 0.5) * dx_level;
 
@@ -901,6 +940,78 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
 			}
 		}
 
+		return false;
+	}
+
+	bool body_force_refinement_region(
+		float_type x, float_type y, float_type dx_level) const noexcept
+	{
+		const float_type pad =
+			std::max(b_f_refine_pad_, float_type(2) * dx_level);
+
+		for (int pulse_index = 0;
+			 pulse_index < body_force_refinement_pulse_count();
+			 ++pulse_index)
+		{
+			const auto mag = body_force_refinement_parameter(
+				b_f_mag_values_, b_f_mag_, pulse_index);
+			if (std::abs(mag) <= 1.0e-14)
+				continue;
+
+			const auto x0 = body_force_refinement_parameter(
+				b_f_x0_values_, b_f_x0_, pulse_index);
+			const auto y0 = body_force_refinement_parameter(
+				b_f_y0_values_, b_f_y0_, pulse_index);
+			const auto lx = body_force_refinement_parameter(
+				b_f_lx_values_, b_f_lx_, pulse_index);
+			const auto ly = body_force_refinement_parameter(
+				b_f_ly_values_, b_f_ly_, pulse_index);
+			const float_type half_lx = float_type(0.5) * lx + pad;
+			const float_type half_ly = float_type(0.5) * ly + pad;
+
+			if (std::abs(x - x0) <= half_lx &&
+				std::abs(y - y0) <= half_ly)
+				return true;
+		}
+
+		return false;
+	}
+
+	float_type body_force_refinement_parameter(
+		const std::vector<float_type>& values,
+		float_type scalar_value,
+		int pulse_index) const noexcept
+	{
+		if (values.empty())
+			return scalar_value;
+		if (pulse_index >= 0 &&
+			pulse_index < static_cast<int>(values.size()))
+			return values[pulse_index];
+		return scalar_value;
+	}
+
+	int body_force_refinement_pulse_count() const noexcept
+	{
+		int count = b_f_num_pulse_ > 0 ? b_f_num_pulse_ : 1;
+		count = std::max(count, static_cast<int>(b_f_mag_values_.size()));
+		count = std::max(count, static_cast<int>(b_f_x0_values_.size()));
+		count = std::max(count, static_cast<int>(b_f_y0_values_.size()));
+		count = std::max(count, static_cast<int>(b_f_lx_values_.size()));
+		count = std::max(count, static_cast<int>(b_f_ly_values_.size()));
+		return count;
+	}
+
+	bool body_force_refinement_enabled() const noexcept
+	{
+		for (int pulse_index = 0;
+			 pulse_index < body_force_refinement_pulse_count();
+			 ++pulse_index)
+		{
+			const auto mag = body_force_refinement_parameter(
+				b_f_mag_values_, b_f_mag_, pulse_index);
+			if (std::abs(mag) > 1.0e-14)
+				return true;
+		}
 		return false;
 	}
 
@@ -1086,6 +1197,18 @@ struct NS_AMR_LGF : public SetupBase<NS_AMR_LGF, parameters>
     int tot_steps_;
     float_type refinement_factor_=1./8;
     float_type base_threshold_=1e-4;
+    float_type b_f_mag_=0.0;
+    float_type b_f_x0_=0.0;
+    float_type b_f_y0_=0.0;
+    float_type b_f_lx_=1.0;
+    float_type b_f_ly_=1.0;
+    float_type b_f_refine_pad_=0.0;
+    int b_f_num_pulse_=-1;
+    std::vector<float_type> b_f_mag_values_;
+    std::vector<float_type> b_f_x0_values_;
+    std::vector<float_type> b_f_y0_values_;
+    std::vector<float_type> b_f_lx_values_;
+    std::vector<float_type> b_f_ly_values_;
 
     vr_fct_t vr_fct_;
 

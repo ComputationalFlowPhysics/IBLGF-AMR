@@ -71,6 +71,8 @@ class SetupBase
       (cell_aux2,           float_type,  1,  1,  1,  cell,false),
       (face_aux,            float_type,  Dim,  1,  1,  face,false),
       (face_aux2,           float_type,  Dim,  1,  1,  face,false),
+      (q_criterion,         float_type,  1,  1,  1,  cell,true),
+      (lambda_2_criterion,  float_type,  1,  1,  1,  cell,true),
       (stream_f,            float_type,  (Dim*2 - 3),  1,  1,  edge,true),
       (edge_aux,            float_type,  (Dim*2 - 3),  1,  1,  edge,true)
     ))

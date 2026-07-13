@@ -20,6 +20,7 @@
 #include <array>
 #include <limits>
 #include <utility>
+#include <stdexcept>
 
 // IBLGF-specific
 #include <iblgf/global.hpp>
@@ -73,12 +74,31 @@ class Ifherk
 
     using cell_aux_type = typename Setup::cell_aux_type;
     using edge_aux_type = typename Setup::edge_aux_type;
+    using q_criterion_type = typename Setup::q_criterion_type;
+    using lambda_2_criterion_type = typename Setup::lambda_2_criterion_type;
     using face_aux_type = typename Setup::face_aux_type;
     using face_aux2_type = typename Setup::face_aux2_type;
     using correction_tmp_type = typename Setup::correction_tmp_type;
     using w_1_type = typename Setup::w_1_type;
     using w_2_type = typename Setup::w_2_type;
     using u_i_type = typename Setup::u_i_type;
+
+    enum class vortex_detection_mode_t
+    {
+        q_criterion = 0,
+        vorticity_threshold = 1
+    };
+
+    static vortex_detection_mode_t parse_vortex_detection_mode(
+        const std::string& mode) noexcept
+    {
+        if (mode == "vorticity_threshold" ||
+            mode == "vorticity" ||
+            mode == "omega_threshold")
+            return vortex_detection_mode_t::vorticity_threshold;
+
+        return vortex_detection_mode_t::q_criterion;
+    }
 
     static constexpr int lBuffer = 1; ///< Lower left buffer for interpolation
     static constexpr int rBuffer = 1; ///< Lower left buffer for interpolation
@@ -108,7 +128,15 @@ class Ifherk
             "updating_source_max", true);
         all_time_max_ = _simulation->dictionary()->template get_or<bool>(
             "all_time_max", true);
-
+        vortex_identification_threshold_factor_ =
+            _simulation->dictionary()->template get_or<float_type>(
+                "vortex_identification_threshold_factor", 0.3);
+        vortex_min_region_area_ =
+            _simulation->dictionary()->template get_or<float_type>(
+                "vortex_min_region_area", 0.25);
+        vortex_detection_mode_ = parse_vortex_detection_mode(
+            _simulation->dictionary()->template get_or<std::string>(
+                "vortex_detection_mode", "q_criterion"));
         use_adaptation_correction = _simulation->dictionary()->template get_or<bool>(
             "use_adaptation_correction", true);
 
@@ -120,6 +148,10 @@ class Ifherk
         //*added*
         b_f_tau = _simulation->dictionary()->template get_or<float_type>(
             "b_f_tau", 2.0);
+        b_f_freq = _simulation->dictionary()->template get_or<float_type>(
+            "b_f_freq", -1.0);
+        b_f_num_pulse = _simulation->dictionary()->template get_or<int>(
+            "b_f_num_pulse", -1);
         b_f_beta = _simulation->dictionary()->template get_or<float_type>(
             "b_f_beta", 50.0);
         b_f_lx = _simulation->dictionary()->template get_or<float_type>(
@@ -130,6 +162,35 @@ class Ifherk
             "b_f_x0", 0.0);
         b_f_y0 = _simulation->dictionary()->template get_or<float_type>(
             "b_f_y0", 0.0);
+        b_f_z0 = _simulation->dictionary()->template get_or<float_type>(
+            "b_f_z0", 0.0);
+        b_f_R = _simulation->dictionary()->template get_or<float_type>(
+            "b_f_R", 1.0);
+        b_f_alpha = _simulation->dictionary()->template get_or<float_type>(
+            "b_f_alpha", 1.25643);
+        b_f_alpha_r = _simulation->dictionary()->template get_or<float_type>(
+            "b_f_alpha_r", 0.2);
+        b_f_alpha_x = _simulation->dictionary()->template get_or<float_type>(
+            "b_f_alpha_x", 0.2);
+        b_f_mag_values_ = _simulation->dictionary()->template get_vector_or<float_type>(
+            "b_f_mag", {});
+        b_f_tau_values_ = _simulation->dictionary()->template get_vector_or<float_type>(
+            "b_f_tau", {});
+        b_f_beta_values_ = _simulation->dictionary()->template get_vector_or<float_type>(
+            "b_f_beta", {});
+        b_f_lx_values_ = _simulation->dictionary()->template get_vector_or<float_type>(
+            "b_f_lx", {});
+        b_f_ly_values_ = _simulation->dictionary()->template get_vector_or<float_type>(
+            "b_f_ly", {});
+        b_f_x0_values_ = _simulation->dictionary()->template get_vector_or<float_type>(
+            "b_f_x0", {});
+        b_f_y0_values_ = _simulation->dictionary()->template get_vector_or<float_type>(
+            "b_f_y0", {});
+        b_f_z0_values_ = _simulation->dictionary()->template get_vector_or<float_type>(
+            "b_f_z0", {});
+        b_f_R_values_ = _simulation->dictionary()->template get_vector_or<float_type>(
+            "b_f_R", {});
+        validate_body_force_parameters();
         //*end of added*
 
         use_filter = _simulation->dictionary()->template get_or<bool>(
@@ -177,6 +238,35 @@ class Ifherk
     }
 
   public:
+    real_coordinate_type coordinate_origin_index() const
+    {
+        try
+        {
+            auto domain_dict = simulation_->dictionary()->get_dictionary("domain");
+            auto block_dict = domain_dict->get_dictionary("block");
+            const auto block_base =
+                block_dict->template get<int, domain_type::dims>("base");
+            const auto block_extent =
+                block_dict->template get<int, domain_type::dims>("extent");
+            real_coordinate_type origin(0.0);
+            for (std::size_t d = 0; d < domain_type::dims; ++d)
+                origin[d] = static_cast<float_type>(block_base[d]) +
+                    float_type(0.5) * static_cast<float_type>(block_extent[d]);
+            return origin;
+        }
+        catch (...)
+        {
+            real_coordinate_type origin(0.0);
+            const auto bbox_min = domain_->bounding_box().min();
+            const auto bbox_max = domain_->bounding_box().max();
+            for (std::size_t d = 0; d < domain_type::dims; ++d)
+                origin[d] = float_type(0.5) *
+                        static_cast<float_type>(bbox_max[d] - bbox_min[d] + 1) +
+                    static_cast<float_type>(bbox_min[d]);
+            return origin;
+        }
+    }
+
     void update_marching_parameters()
     {
         nLevelRefinement_ = domain_->tree()->depth()-domain_->tree()->base_level()-1;
@@ -207,6 +297,10 @@ class Ifherk
             T_=info_d.template get<float_type>("T");
             adapt_count_=info_d.template get<int>("adapt_count");
             T_last_vel_refresh_=info_d.template get_or<float_type>("T_last_vel_refresh", 0.0);
+            formation_length_ =
+                info_d.template get_or<float_type>("formation_length", 0.0);
+            body_force_active_time_ =
+                info_d.template get_or<float_type>("body_force_active_time", 0.0);
             source_max_[0]=info_d.template get<float_type>("cell_aux_max");
             source_max_[1]=info_d.template get<float_type>("u_max");
             pcout<<"Restart info ------------------------------------------------ "<< std::endl;
@@ -215,6 +309,8 @@ class Ifherk
             pcout<<"cell aux max = "<< source_max_[0]<< std::endl;
             pcout<<"u max = "<< source_max_[1]<< std::endl;
             pcout<<"T_last_vel_refresh = "<< T_last_vel_refresh_<< std::endl;
+            pcout<<"body force center velocity average = "
+                 << body_force_center_velocity_average() << std::endl;
             if(domain_->is_client())
             {
                 //pad_velocity<u_type, u_type>(true);
@@ -341,6 +437,7 @@ class Ifherk
             // -------------------------------------------------------------
             // update stats & output
 
+            accumulate_body_force_center_velocity<u_type>();
             T_ += dt_;
             float_type tmp_n = T_ / dt_base_ * math::pow2(max_ref_level_);
             int        tmp_int_n = int(tmp_n + 0.5);
@@ -750,329 +847,52 @@ class Ifherk
     struct vortex_diagnostics_t
     {
         float_type gamma_total = 0.0;
-        float_type gamma_positive = 0.0;
-        float_type gamma_negative = 0.0;
-        float_type x_center_positive = std::numeric_limits<float_type>::quiet_NaN();
-        float_type y_center_positive = std::numeric_limits<float_type>::quiet_NaN();
-        float_type x_center_negative = std::numeric_limits<float_type>::quiet_NaN();
-        float_type y_center_negative = std::numeric_limits<float_type>::quiet_NaN();
+        std::vector<float_type> gamma_positive;
+        std::vector<float_type> gamma_negative;
+        float_type gamma_top = 0.0;
+        float_type gamma_bottom = 0.0;
+        std::vector<float_type> x_center_positive;
+        std::vector<float_type> y_center_positive;
+        std::vector<float_type> x_center_negative;
+        std::vector<float_type> y_center_negative;
+        std::vector<float_type> vortex_circulation;
+        std::vector<float_type> vortex_center_x;
+        std::vector<float_type> vortex_center_y;
+        std::vector<float_type> vortex_area;
+        std::vector<float_type> vortex_sign;
         float_type omega_max = -std::numeric_limits<float_type>::infinity();
         float_type omega_min = std::numeric_limits<float_type>::infinity();
         float_type x_omega_max = std::numeric_limits<float_type>::quiet_NaN();
         float_type y_omega_max = std::numeric_limits<float_type>::quiet_NaN();
         float_type x_omega_min = std::numeric_limits<float_type>::quiet_NaN();
         float_type y_omega_min = std::numeric_limits<float_type>::quiet_NaN();
-        float_type source_omega_max = std::numeric_limits<float_type>::quiet_NaN();
-        float_type source_omega_min = std::numeric_limits<float_type>::quiet_NaN();
-        float_type x_source_omega_max = std::numeric_limits<float_type>::quiet_NaN();
-        float_type y_source_omega_max = std::numeric_limits<float_type>::quiet_NaN();
-        float_type x_source_omega_min = std::numeric_limits<float_type>::quiet_NaN();
-        float_type y_source_omega_min = std::numeric_limits<float_type>::quiet_NaN();
+        float_type omega_positive_threshold = 0.0;
+        float_type omega_negative_threshold = 0.0;
     };
 
-    float_type body_force_amplitude() const noexcept
-    {
-        return (T_ <= b_f_tau) ? b_f_mag : 0.0;
-    }
+    float_type body_force_amplitude() const noexcept;
 
     void body_force_profile_2d(
         float_type x,
         float_type y,
-        float_type& force_x,
-        float_type& source_omega) const noexcept
-    {
-        force_x = 0.0;
-        source_omega = 0.0;
+        float_type& force_x) const noexcept;
 
-        if constexpr (domain_type::dims != 2)
-            return;
+    void body_force_profile_3d(
+        float_type x,
+        float_type y,
+        float_type z,
+        float_type& force_x) const noexcept;
 
-        const auto A = body_force_amplitude();
-        if (std::abs(A) <= 1.0e-14)
-            return;
-
-        const auto x_shift = x - b_f_x0;
-        const auto y_shift = y - b_f_y0;
-        const auto arg_x =
-            b_f_beta * (b_f_lx / float_type(2) - std::abs(x_shift));
-        const auto arg_y =
-            b_f_beta * (b_f_ly / float_type(2) - std::abs(y_shift));
-        const auto tanh_x = std::tanh(arg_x);
-        const auto tanh_y = std::tanh(arg_y);
-        const auto g_x =
-            float_type(0.5) * (float_type(1) + tanh_x);
-        const auto g_y =
-            float_type(0.5) * (float_type(1) + tanh_y);
-
-        force_x = A * g_x * g_y;
-
-        const int sign_y = (y_shift > 0.0) - (y_shift < 0.0);
-        source_omega = float_type(0.5) * A * b_f_beta *
-            static_cast<float_type>(sign_y) * g_x *
-            (float_type(1) - tanh_y * tanh_y);
-    }
-
-    vortex_diagnostics_t vortex_diagnostics()
-    {
-        float_type gamma_positive_local = 0.0;
-        float_type gamma_negative_local = 0.0;
-        float_type x_moment_positive_local = 0.0;
-        float_type y_moment_positive_local = 0.0;
-        float_type x_moment_negative_local = 0.0;
-        float_type y_moment_negative_local = 0.0;
-        float_type omega_max_local = -std::numeric_limits<float_type>::infinity();
-        float_type omega_min_local = std::numeric_limits<float_type>::infinity();
-        float_type x_omega_max_local = std::numeric_limits<float_type>::quiet_NaN();
-        float_type y_omega_max_local = std::numeric_limits<float_type>::quiet_NaN();
-        float_type x_omega_min_local = std::numeric_limits<float_type>::quiet_NaN();
-        float_type y_omega_min_local = std::numeric_limits<float_type>::quiet_NaN();
-        float_type source_omega_max_local = -std::numeric_limits<float_type>::infinity();
-        float_type source_omega_min_local = std::numeric_limits<float_type>::infinity();
-        float_type x_source_omega_max_local = std::numeric_limits<float_type>::quiet_NaN();
-        float_type y_source_omega_max_local = std::numeric_limits<float_type>::quiet_NaN();
-        float_type x_source_omega_min_local = std::numeric_limits<float_type>::quiet_NaN();
-        float_type y_source_omega_min_local = std::numeric_limits<float_type>::quiet_NaN();
-        const bool source_active = std::abs(body_force_amplitude()) > 1.0e-14;
-
-        if constexpr (domain_type::dims == 2)
-        {
-            if (!domain_->is_server())
-            {
-                const auto center = (domain_->bounding_box().max() -
-                    domain_->bounding_box().min() + 1) / 2.0 +
-                    domain_->bounding_box().min();
-                for (auto it = domain_->begin(); it != domain_->end(); ++it)
-                {
-                    if (!it->locally_owned()) continue;
-                    if (!it->is_leaf()) continue;
-                    if (it->is_correction()) continue;
-
-                    const auto scaling = math::pow2(it->refinement_level());
-                    const auto dx_level = dx_base_ / scaling;
-                    const auto dA = dx_level * dx_level;
-
-                    for (auto& n : it->data())
-                    {
-                        const auto& coord = n.level_coordinate();
-                        const auto x = static_cast<float_type>(
-                            coord[0] - center[0] * scaling) * dx_level;
-                        const auto y = static_cast<float_type>(
-                            coord[1] - center[1] * scaling) * dx_level;
-                        const auto omega = n(edge_aux_type::tag(), 0);
-                        const auto weighted_omega = omega * dA;
-                        const auto x_force =
-                            static_cast<float_type>(coord[0]) * dx_level;
-                        const auto y_force =
-                            static_cast<float_type>(coord[1]) * dx_level;
-
-                        if (source_active)
-                        {
-                            float_type force_x = 0.0;
-                            float_type source_omega = 0.0;
-                            body_force_profile_2d(
-                                x_force, y_force, force_x, source_omega);
-
-                            if (source_omega > source_omega_max_local)
-                            {
-                                source_omega_max_local = source_omega;
-                                x_source_omega_max_local = x_force;
-                                y_source_omega_max_local = y_force;
-                            }
-                            if (source_omega < source_omega_min_local)
-                            {
-                                source_omega_min_local = source_omega;
-                                x_source_omega_min_local = x_force;
-                                y_source_omega_min_local = y_force;
-                            }
-                        }
-
-                        if (omega > omega_max_local)
-                        {
-                            omega_max_local = omega;
-                            x_omega_max_local = x;
-                            y_omega_max_local = y;
-                        }
-                        if (omega < omega_min_local)
-                        {
-                            omega_min_local = omega;
-                            x_omega_min_local = x;
-                            y_omega_min_local = y;
-                        }
-
-                        if (omega > 0.0)
-                        {
-                            gamma_positive_local += weighted_omega;
-                            x_moment_positive_local += x * weighted_omega;
-                            y_moment_positive_local += y * weighted_omega;
-                        }
-                        else if (omega < 0.0)
-                        {
-                            gamma_negative_local += weighted_omega;
-                            x_moment_negative_local += x * weighted_omega;
-                            y_moment_negative_local += y * weighted_omega;
-                        }
-                    }
-                }
-            }
-        }
-
-        vortex_diagnostics_t diagnostics;
-        float_type x_moment_positive = 0.0;
-        float_type y_moment_positive = 0.0;
-        float_type x_moment_negative = 0.0;
-        float_type y_moment_negative = 0.0;
-        boost::mpi::communicator world;
-        boost::mpi::all_reduce(
-            world, gamma_positive_local, diagnostics.gamma_positive, std::plus<float_type>());
-        boost::mpi::all_reduce(
-            world, gamma_negative_local, diagnostics.gamma_negative, std::plus<float_type>());
-        diagnostics.gamma_total =
-            diagnostics.gamma_positive + diagnostics.gamma_negative;
-
-        boost::mpi::all_reduce(
-            world, x_moment_positive_local, x_moment_positive, std::plus<float_type>());
-        boost::mpi::all_reduce(
-            world, y_moment_positive_local, y_moment_positive, std::plus<float_type>());
-        boost::mpi::all_reduce(
-            world, x_moment_negative_local, x_moment_negative, std::plus<float_type>());
-        boost::mpi::all_reduce(
-            world, y_moment_negative_local, y_moment_negative, std::plus<float_type>());
-
-        std::vector<float_type> gathered_omega_max;
-        std::vector<float_type> gathered_x_omega_max;
-        std::vector<float_type> gathered_y_omega_max;
-        std::vector<float_type> gathered_omega_min;
-        std::vector<float_type> gathered_x_omega_min;
-        std::vector<float_type> gathered_y_omega_min;
-        std::vector<float_type> gathered_source_omega_max;
-        std::vector<float_type> gathered_x_source_omega_max;
-        std::vector<float_type> gathered_y_source_omega_max;
-        std::vector<float_type> gathered_source_omega_min;
-        std::vector<float_type> gathered_x_source_omega_min;
-        std::vector<float_type> gathered_y_source_omega_min;
-        boost::mpi::all_gather(world, omega_max_local, gathered_omega_max);
-        boost::mpi::all_gather(world, x_omega_max_local, gathered_x_omega_max);
-        boost::mpi::all_gather(world, y_omega_max_local, gathered_y_omega_max);
-        boost::mpi::all_gather(world, omega_min_local, gathered_omega_min);
-        boost::mpi::all_gather(world, x_omega_min_local, gathered_x_omega_min);
-        boost::mpi::all_gather(world, y_omega_min_local, gathered_y_omega_min);
-        boost::mpi::all_gather(
-            world, source_omega_max_local, gathered_source_omega_max);
-        boost::mpi::all_gather(
-            world, x_source_omega_max_local, gathered_x_source_omega_max);
-        boost::mpi::all_gather(
-            world, y_source_omega_max_local, gathered_y_source_omega_max);
-        boost::mpi::all_gather(
-            world, source_omega_min_local, gathered_source_omega_min);
-        boost::mpi::all_gather(
-            world, x_source_omega_min_local, gathered_x_source_omega_min);
-        boost::mpi::all_gather(
-            world, y_source_omega_min_local, gathered_y_source_omega_min);
-
-        for (std::size_t i = 0; i < gathered_omega_max.size(); ++i)
-        {
-            if (gathered_omega_max[i] > diagnostics.omega_max)
-            {
-                diagnostics.omega_max = gathered_omega_max[i];
-                diagnostics.x_omega_max = gathered_x_omega_max[i];
-                diagnostics.y_omega_max = gathered_y_omega_max[i];
-            }
-            if (gathered_omega_min[i] < diagnostics.omega_min)
-            {
-                diagnostics.omega_min = gathered_omega_min[i];
-                diagnostics.x_omega_min = gathered_x_omega_min[i];
-                diagnostics.y_omega_min = gathered_y_omega_min[i];
-            }
-        }
-
-        if (source_active)
-        {
-            diagnostics.source_omega_max = -std::numeric_limits<float_type>::infinity();
-            diagnostics.source_omega_min = std::numeric_limits<float_type>::infinity();
-            for (std::size_t i = 0; i < gathered_source_omega_max.size(); ++i)
-            {
-                if (gathered_source_omega_max[i] > diagnostics.source_omega_max)
-                {
-                    diagnostics.source_omega_max = gathered_source_omega_max[i];
-                    diagnostics.x_source_omega_max = gathered_x_source_omega_max[i];
-                    diagnostics.y_source_omega_max = gathered_y_source_omega_max[i];
-                }
-                if (gathered_source_omega_min[i] < diagnostics.source_omega_min)
-                {
-                    diagnostics.source_omega_min = gathered_source_omega_min[i];
-                    diagnostics.x_source_omega_min = gathered_x_source_omega_min[i];
-                    diagnostics.y_source_omega_min = gathered_y_source_omega_min[i];
-                }
-            }
-        }
-        else if (std::abs(b_f_mag) > 1.0e-14)
-        {
-            diagnostics.source_omega_max = 0.0;
-            diagnostics.source_omega_min = 0.0;
-        }
-
-        if (std::abs(diagnostics.gamma_positive) > 1.0e-14)
-        {
-            diagnostics.x_center_positive =
-                x_moment_positive / diagnostics.gamma_positive;
-            diagnostics.y_center_positive =
-                y_moment_positive / diagnostics.gamma_positive;
-        }
-        if (std::abs(diagnostics.gamma_negative) > 1.0e-14)
-        {
-            diagnostics.x_center_negative =
-                x_moment_negative / diagnostics.gamma_negative;
-            diagnostics.y_center_negative =
-                y_moment_negative / diagnostics.gamma_negative;
-        }
-
-        return diagnostics;
-    }
+    vortex_diagnostics_t vortex_diagnostics();
 
     void write_circulation_attributes(
         const std::string& flow_path,
-        const vortex_diagnostics_t& diagnostics)
-    {
-        if constexpr (domain_type::dims != 2)
-            return;
+        const vortex_diagnostics_t& diagnostics);
 
-        hdf5_file<domain_type::dims> flow_file;
-        flow_file.open_file_rw(flow_path);
-        auto root = flow_file.get_root();
-        flow_file.create_attribute(
-            root, "circulation_total", diagnostics.gamma_total);
-        flow_file.create_attribute(
-            root, "circulation_positive", diagnostics.gamma_positive);
-        flow_file.create_attribute(
-            root, "circulation_negative", diagnostics.gamma_negative);
-        flow_file.create_attribute(
-            root, "vortex_center_positive_x", diagnostics.x_center_positive);
-        flow_file.create_attribute(
-            root, "vortex_center_positive_y", diagnostics.y_center_positive);
-        flow_file.create_attribute(
-            root, "vortex_center_negative_x", diagnostics.x_center_negative);
-        flow_file.create_attribute(
-            root, "vortex_center_negative_y", diagnostics.y_center_negative);
-        flow_file.create_attribute(root, "omega_max", diagnostics.omega_max);
-        flow_file.create_attribute(root, "omega_min", diagnostics.omega_min);
-        flow_file.create_attribute(root, "omega_max_x", diagnostics.x_omega_max);
-        flow_file.create_attribute(root, "omega_max_y", diagnostics.y_omega_max);
-        flow_file.create_attribute(root, "omega_min_x", diagnostics.x_omega_min);
-        flow_file.create_attribute(root, "omega_min_y", diagnostics.y_omega_min);
-        flow_file.create_attribute(
-            root, "source_omega_max", diagnostics.source_omega_max);
-        flow_file.create_attribute(
-            root, "source_omega_min", diagnostics.source_omega_min);
-        flow_file.create_attribute(
-            root, "source_omega_max_x", diagnostics.x_source_omega_max);
-        flow_file.create_attribute(
-            root, "source_omega_max_y", diagnostics.y_source_omega_max);
-        flow_file.create_attribute(
-            root, "source_omega_min_x", diagnostics.x_source_omega_min);
-        flow_file.create_attribute(
-            root, "source_omega_min_y", diagnostics.y_source_omega_min);
-        flow_file.close_group(root);
-    }
+    float_type body_force_center_velocity_average() const noexcept;
+
+    template<class Velocity>
+    void accumulate_body_force_center_velocity();
 
     template<class Velocity_in>
     void clean_center_velocity() {
@@ -1304,6 +1124,9 @@ class Ifherk
         boost::mpi::communicator world;
         vortex_diagnostics_t diagnostics;
 
+        if (vortex_detection_mode_ == vortex_detection_mode_t::q_criterion)
+            compute_q_criterion<u_type>();
+
         if constexpr (domain_type::dims == 2)
         {
             diagnostics = vortex_diagnostics();
@@ -1348,6 +1171,8 @@ class Ifherk
             ofs<<"u_max = " << source_max_[1] << ";" << std::endl;
             ofs<<"restart_n_last = " << restart_n_last_ << ";" << std::endl;
             ofs<<"T_last_vel_refresh = " << T_last_vel_refresh_ << ";" << std::endl;
+            ofs<<"formation_length = " << formation_length_ << ";" << std::endl;
+            ofs<<"body_force_active_time = " << body_force_active_time_ << ";" << std::endl;
 
             ofs.close();
         }
@@ -2081,7 +1906,6 @@ private:
 			if (!it->locally_owned()) continue;
 
 			auto dx_level = dx_base / std::pow(2, it->refinement_level());
-			auto scaling = std::pow(2, it->refinement_level());
 
 			for (auto& node : it->data())
 			{
@@ -2093,17 +1917,22 @@ private:
 					(coord[0]) * dx_level;
 				float_type y = static_cast<float_type>
 					(coord[1]) * dx_level;
-				//z = static_cast<float_type>
-				//(coord[2]-center[2]*scaling+0.5)*dx_level;
 
 				//node(edge_aux,0) = vor(x,y-0.5*vort_sep,0)+ vor(x,y+0.5*vort_sep,0);
 				//node(target::tag(), 1) += -scale * b_f_mag * y / (y*y + b_f_eps);
 
-				float_type force_x = 0.0;
-				float_type source_omega = 0.0;
-                body_force_profile_2d(x, y, force_x, source_omega);
-				node(target::tag(), 0) += scale * force_x;
-
+					float_type force_x = 0.0;
+                if constexpr (domain_type::dims == 2)
+                {
+                    body_force_profile_2d(x, y, force_x);
+                }
+                else if constexpr (domain_type::dims == 3)
+                {
+                    float_type z = static_cast<float_type>
+                        (coord[2]) * dx_level;
+                    body_force_profile_3d(x, y, z, force_x);
+                }
+					node(target::tag(), 0) -= scale * force_x;
             }
 
 		}
@@ -2166,6 +1995,203 @@ private:
                 }
             }
             client->template buffer_exchange<Target>(l);
+        }
+    }
+
+    template<std::size_t DimN>
+    static float_type larger_symmetric_eigenvalue(
+        const float_type (&matrix)[DimN][DimN]) noexcept
+    {
+        if constexpr (DimN == 1)
+        {
+            return matrix[0][0];
+        }
+        else if constexpr (DimN == 2)
+        {
+            const auto a = matrix[0][0];
+            const auto b = 0.5 * (matrix[0][1] + matrix[1][0]);
+            const auto d = matrix[1][1];
+            const auto discriminant =
+                std::sqrt((a - d) * (a - d) + 4.0 * b * b);
+            return 0.5 * (a + d + discriminant);
+        }
+        else
+        {
+            float_type a[DimN][DimN] = {};
+            for (std::size_t i = 0; i < DimN; ++i)
+                for (std::size_t j = 0; j < DimN; ++j)
+                    a[i][j] = 0.5 * (matrix[i][j] + matrix[j][i]);
+
+            for (std::size_t sweep = 0; sweep < 32; ++sweep)
+            {
+                std::size_t p = 0;
+                std::size_t q = 1;
+                auto max_offdiag = std::abs(a[p][q]);
+                for (std::size_t i = 0; i < DimN; ++i)
+                {
+                    for (std::size_t j = i + 1; j < DimN; ++j)
+                    {
+                        const auto offdiag = std::abs(a[i][j]);
+                        if (offdiag > max_offdiag)
+                        {
+                            max_offdiag = offdiag;
+                            p = i;
+                            q = j;
+                        }
+                    }
+                }
+                if (max_offdiag <=
+                    100.0 * std::numeric_limits<float_type>::epsilon())
+                    break;
+
+                const auto tau = (a[q][q] - a[p][p]) / (2.0 * a[p][q]);
+                const auto sign = tau >= 0.0 ? 1.0 : -1.0;
+                const auto t =
+                    sign / (std::abs(tau) + std::sqrt(1.0 + tau * tau));
+                const auto c = 1.0 / std::sqrt(1.0 + t * t);
+                const auto s = t * c;
+                const auto app = a[p][p];
+                const auto aqq = a[q][q];
+                const auto apq = a[p][q];
+
+                a[p][p] = c * c * app - 2.0 * s * c * apq + s * s * aqq;
+                a[q][q] = s * s * app + 2.0 * s * c * apq + c * c * aqq;
+                a[p][q] = 0.0;
+                a[q][p] = 0.0;
+
+                for (std::size_t k = 0; k < DimN; ++k)
+                {
+                    if (k == p || k == q) continue;
+                    const auto akp = a[k][p];
+                    const auto akq = a[k][q];
+                    a[k][p] = c * akp - s * akq;
+                    a[p][k] = a[k][p];
+                    a[k][q] = s * akp + c * akq;
+                    a[q][k] = a[k][q];
+                }
+            }
+
+            auto larger = a[0][0];
+            for (std::size_t i = 1; i < DimN; ++i)
+                larger = std::max(larger, a[i][i]);
+            return larger;
+        }
+    }
+
+    template<class Velocity>
+    void compute_q_criterion() noexcept
+    {
+        auto client = domain_->decomposition().client();
+        if (!client) return;
+
+        clean<Velocity>(true);
+        up_and_down<Velocity>();
+        domain::Operator::domainClean<q_criterion_type>(domain_);
+        domain::Operator::domainClean<lambda_2_criterion_type>(domain_);
+
+        constexpr std::size_t DimN = domain_type::dims;
+        const auto dx_base = domain_->dx_base();
+
+        for (int l = domain_->tree()->base_level();
+             l < domain_->tree()->depth(); ++l)
+        {
+            client->template buffer_exchange<Velocity>(l);
+
+            for (auto it = domain_->begin(l); it != domain_->end(l); ++it)
+            {
+                if (!it->locally_owned() || !it->has_data()) continue;
+                if (it->is_correction()) continue;
+
+                const auto dx_level =
+                    dx_base / math::pow2(it->refinement_level());
+                const auto fac = 1.0 / dx_level;
+
+                for (auto& node : it->data())
+                {
+                    float_type grad[DimN][DimN] = {};
+                    float_type strain_tensor[DimN][DimN] = {};
+                    float_type rotation_tensor[DimN][DimN] = {};
+
+                    for (std::size_t comp = 0; comp < DimN; ++comp)
+                    {
+                        coordinate_type comp_offset(0);
+                        comp_offset[comp] = 1;
+
+                        for (std::size_t dir = 0; dir < DimN; ++dir)
+                        {
+                            coordinate_type dir_offset(0);
+                            dir_offset[dir] = 1;
+
+                            if (comp == dir)
+                            {
+                                grad[comp][dir] =
+                                    fac *
+                                    (node.at_offset(
+                                         Velocity::tag(), comp_offset, comp) -
+                                        node(Velocity::tag(), comp));
+                            }
+                            else
+                            {
+                                const auto comp_dir_offset =
+                                    comp_offset + dir_offset;
+                                grad[comp][dir] =
+                                    0.5 * fac *
+                                    (node.at_offset(
+                                         Velocity::tag(), dir_offset, comp) -
+                                        node(Velocity::tag(), comp) +
+                                        node.at_offset(Velocity::tag(),
+                                            comp_dir_offset, comp) -
+                                        node.at_offset(Velocity::tag(),
+                                            comp_offset, comp));
+                            }
+                        }
+                    }
+
+                    float_type strain_norm2 = 0.0;
+                    float_type rotation_norm2 = 0.0;
+                    for (std::size_t i = 0; i < DimN; ++i)
+                    {
+                        for (std::size_t j = 0; j < DimN; ++j)
+                        {
+                            const auto strain =
+                                0.5 * (grad[i][j] + grad[j][i]);
+                            const auto rotation =
+                                0.5 * (grad[i][j] - grad[j][i]);
+                            strain_tensor[i][j] = strain;
+                            rotation_tensor[i][j] = rotation;
+                            strain_norm2 += strain * strain;
+                            rotation_norm2 += rotation * rotation;
+                        }
+                    }
+
+                    node(q_criterion_type::tag()) =
+                        0.5 * (rotation_norm2 - strain_norm2);
+
+                    float_type lambda_2_matrix[DimN][DimN] = {};
+                    for (std::size_t i = 0; i < DimN; ++i)
+                    {
+                        for (std::size_t j = 0; j < DimN; ++j)
+                        {
+                            for (std::size_t k = 0; k < DimN; ++k)
+                            {
+                                lambda_2_matrix[i][j] +=
+                                    strain_tensor[i][k] *
+                                        strain_tensor[k][j] +
+                                    rotation_tensor[i][k] *
+                                        rotation_tensor[k][j];
+                            }
+                        }
+                    }
+                    node(lambda_2_criterion_type::tag()) =
+                        larger_symmetric_eigenvalue(lambda_2_matrix);
+                }
+            }
+
+            client->template buffer_exchange<q_criterion_type>(l);
+            client->template buffer_exchange<lambda_2_criterion_type>(l);
+            clean_leaf_correction_boundary<q_criterion_type>(l, true, 2);
+            clean_leaf_correction_boundary<lambda_2_criterion_type>(
+                l, true, 2);
         }
     }
 
@@ -2335,6 +2361,53 @@ private:
     }
 
   private:
+    int body_force_pulse_index() const noexcept
+    {
+        if (b_f_freq <= 0.0)
+            return 0;
+
+        const auto period = float_type(1) / b_f_freq;
+        return static_cast<int>(std::floor(T_ / period));
+    }
+
+    float_type body_force_parameter(
+        const std::vector<float_type>& values,
+        float_type scalar_value,
+        int pulse_index) const noexcept
+    {
+        if (values.empty())
+            return scalar_value;
+        if (pulse_index >= 0 &&
+            pulse_index < static_cast<int>(values.size()))
+            return values[pulse_index];
+        return scalar_value;
+    }
+
+    void validate_body_force_parameter(
+        const std::string& name,
+        const std::vector<float_type>& values) const
+    {
+        if (b_f_num_pulse <= 0 || values.empty())
+            return;
+
+        if (values.size() != static_cast<std::size_t>(b_f_num_pulse))
+            throw std::runtime_error(
+                name + " must have length b_f_num_pulse when given as a list");
+    }
+
+    void validate_body_force_parameters() const
+    {
+        validate_body_force_parameter("b_f_mag", b_f_mag_values_);
+        validate_body_force_parameter("b_f_tau", b_f_tau_values_);
+        validate_body_force_parameter("b_f_beta", b_f_beta_values_);
+        validate_body_force_parameter("b_f_lx", b_f_lx_values_);
+        validate_body_force_parameter("b_f_ly", b_f_ly_values_);
+        validate_body_force_parameter("b_f_x0", b_f_x0_values_);
+        validate_body_force_parameter("b_f_y0", b_f_y0_values_);
+        validate_body_force_parameter("b_f_z0", b_f_z0_values_);
+        validate_body_force_parameter("b_f_R", b_f_R_values_);
+    }
+
     simulation_type* simulation_;
     domain_type*     domain_; ///< domain
     poisson_solver_t psolver;
@@ -2356,8 +2429,22 @@ private:
 
     float_type b_f_mag, b_f_eps;
     //*added*
-    float_type b_f_tau, b_f_beta, b_f_lx, b_f_ly, b_f_x0, b_f_y0;
+    float_type b_f_tau, b_f_freq, b_f_beta, b_f_lx, b_f_ly, b_f_x0, b_f_y0;
+    float_type b_f_z0, b_f_R;
+    float_type b_f_alpha, b_f_alpha_r, b_f_alpha_x;
+    int b_f_num_pulse;
+    std::vector<float_type> b_f_mag_values_;
+    std::vector<float_type> b_f_tau_values_;
+    std::vector<float_type> b_f_beta_values_;
+    std::vector<float_type> b_f_lx_values_;
+    std::vector<float_type> b_f_ly_values_;
+    std::vector<float_type> b_f_x0_values_;
+    std::vector<float_type> b_f_y0_values_;
+    std::vector<float_type> b_f_z0_values_;
+    std::vector<float_type> b_f_R_values_;
     //*end of added*
+    float_type formation_length_ = 0.0;
+    float_type body_force_active_time_ = 0.0;
 
     std::vector<float_type> omega_cross_x;
 
@@ -2380,6 +2467,10 @@ private:
     bool write_stress_= false;
     bool write_noca_= false;
     bool all_time_max_;
+    float_type vortex_identification_threshold_factor_=0.3;
+    float_type vortex_min_region_area_=0.25;
+    vortex_detection_mode_t vortex_detection_mode_ =
+        vortex_detection_mode_t::q_criterion;
     bool use_adaptation_correction;
     int restart_base_freq_;
     int adapt_count_;
@@ -2398,5 +2489,7 @@ private:
 
 } // namespace solver
 } // namespace iblgf
+
+#include <iblgf/solver/time_integration/ifherk_vortex_rings.hpp>
 
 #endif // IBLGF_INCLUDED_POISSON_HPP

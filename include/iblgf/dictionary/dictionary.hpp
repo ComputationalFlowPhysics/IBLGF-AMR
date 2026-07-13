@@ -264,6 +264,19 @@ class Dictionary
     }
 
     template<typename T>
+    std::vector<T> get_vector(const std::string& _key) const
+    {
+        auto it = vector_variables_.find(_key);
+        if (it == vector_variables_.cend())
+        { throw DictionaryExcpetion(name_, _key); }
+        std::vector<T> values;
+        values.reserve(it->second.size());
+        for (const auto& value : it->second)
+            values.push_back(string_utilities::lexical_cast<T>(value));
+        return values;
+    }
+
+    template<typename T>
     T get_or(const std::string& _key, const T& _default) const
     {
         try
@@ -275,6 +288,21 @@ class Dictionary
             return _default;
         }
     }
+
+    template<typename T>
+    std::vector<T> get_vector_or(
+        const std::string& _key, const std::vector<T>& _default) const
+    {
+        try
+        {
+            return get_vector<T>(_key);
+        }
+        catch (...)
+        {
+            return _default;
+        }
+    }
+
     template<typename T, std::size_t N>
     auto get_or(
         const std::string& _key, const vector_type<T, N>& _default) const

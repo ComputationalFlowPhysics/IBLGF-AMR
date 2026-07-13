@@ -923,8 +923,10 @@ class hdf5_file
             auto       hdf_t = hdf_type<std::vector<T>>::type();
             hid_t att_id = H5Acreate(_group_id, _attr_identifier.c_str(), hdf_t,
                 dataspace_at, H5P_DEFAULT, H5P_DEFAULT);
-            auto  ret = H5Awrite(att_id, hdf_t, &_attr_value[0]);
-            HDF5_CHECK_ERROR(att_id,
+            herr_t ret = 0;
+            if (!_attr_value.empty())
+                ret = H5Awrite(att_id, hdf_t, _attr_value.data());
+            HDF5_CHECK_ERROR(ret,
                 "HDF5-Error: Could not write attr: " + _attr_identifier);
             h5->close_space(dataspace_at);
             h5->close_attribute(att_id);
@@ -946,7 +948,9 @@ class hdf5_file
             const int dimension = H5Sget_simple_extent_dims(space, &dims, NULL);
             res.resize(dims);
 
-            auto status = H5Aread(attr, hdf_t, &res[0]);
+            herr_t status = 0;
+            if (!res.empty())
+                status = H5Aread(attr, hdf_t, res.data());
             HDF5_CHECK_ERROR(status, "hdf5: could not read Attribute")
             // H5Aclose(attr);
             return res;

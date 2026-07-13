@@ -1,0 +1,57 @@
+simulation_parameters
+{
+    nLevels=2;
+    Ux=0.0;
+    Uy=0.0;
+    source_max=1.0;
+    nBaseLevelTimeSteps=480;
+    cfl=0.1;
+    cfl_max=1000;
+    Re=200.0;
+    refinement_factor=0.125;
+    R=0.5;
+    DistanceOfVortexRings=0.25;
+    adapt_frequency=2;
+    output_frequency=32;
+    base_level_threshold=0.0001;
+    hard_max_refinement=true;
+    single_ring=true;
+    perturbation=false;
+    vDelta=0.2;
+    Vort_type=0;
+    fat_ring=true;
+    hdf5_ref_name=null;
+    output
+    {
+        directory=output;
+    }
+    restart_write_frequency=20;
+    write_restart=false;
+    use_restart=false;
+    restart
+    {
+        load_directory=restart;
+        save_directory=restart;
+    }
+    domain
+    {
+        bd_base=(-56,-56);
+        bd_extent=(112,112);
+        dx_base=0.125;
+        block_extent=14;
+        block
+        {
+            base=(-56,-56);
+            extent=(112,112);
+        }
+    }
+    EXP_LInf=0.001;
+
+    b_f_mag=5.0;
+    b_f_tau=0.2;
+    b_f_beta=20.0;
+    b_f_lx=0.5;
+    b_f_ly=0.5;
+    b_f_x0=-0.0;
+    b_f_y0=0.0;
+}

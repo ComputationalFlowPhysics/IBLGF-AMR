@@ -4,7 +4,7 @@ simulation_parameters
     Ux=0.0;
     Uy=0.0;
     source_max=1.0;
-    nBaseLevelTimeSteps=18000;
+    nBaseLevelTimeSteps=24000;
     cfl=0.1;
     cfl_max=1000;
     Re=1200.0;

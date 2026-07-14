@@ -1,28 +1,30 @@
 #!/usr/bin/env bash
-# Run every existing config in mass_configs/ through the remote/HPC launcher.
-# This script does not regenerate or modify the config files.
+# Generate mass-sweep configs and run them through the remote/HPC launcher.
+# Existing configs can still be run without regeneration via `--existing`.
 
 set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "$script_dir/.." && pwd)"
 
-mpi_ranks="${1:-${IBLGF_MPI_RANKS:-8}}"
-config_pattern="${2:-${CONFIG_GLOB:-config_*.cfg}}"
 test_name="${TEST_NAME:-ns_amr_lgf2D}"
 configs_dir="${CONFIGS_DIR:-$script_dir/mass_configs}"
 logs_dir="${LOGS_DIR:-$script_dir/mass_logs_remote}"
 runner="${IBLGF_RUNNER:-$repo_root/iblgf_remote.sh}"
+generation_mode=1
+sample_config=""
+generator_script=""
 
 usage() {
   cat <<EOF
 Usage:
-  $0 [mpi_ranks] [config_glob]
+  $0 <sample_config> [mpi_ranks] [generator|freq|tau]
+  $0 --existing [mpi_ranks] [config_glob]
 
 Examples:
-  $0
-  $0 32
-  $0 32 'config_freq*.cfg'
+  $0 formation_number_plot/config2D_new_FM_test 40 freq
+  $0 ../tests/ns_amr_lgf2D/configs/configFile_0 32 tau
+  $0 --existing 40 'config_freq*.cfg'
 
 Environment overrides:
   IBLGF_RUNS_ROOT=/scratch/\$USER/iblgf-runs
@@ -33,6 +35,7 @@ Environment overrides:
   CONFIG_GLOB='config_freq*.cfg'
   LOGS_DIR=/path/to/sweep-logs
   TEST_NAME=ns_amr_lgf2D
+  GENERATOR_SCRIPT=generate_mass_configs.py
 
 The remote launcher prefers the MPI installation's mpiexec/mpirun, including
 inside a Slurm allocation. It falls back to srun if necessary. This script
@@ -40,9 +43,52 @@ does not request an allocation.
 EOF
 }
 
-if [[ "$mpi_ranks" == "-h" || "$mpi_ranks" == "--help" ]]; then
+if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
   usage
   exit 0
+fi
+
+if [[ "${1:-}" == "--existing" ]]; then
+  generation_mode=0
+  mpi_ranks="${2:-${IBLGF_MPI_RANKS:-8}}"
+  config_pattern="${3:-${CONFIG_GLOB:-config_*.cfg}}"
+else
+  sample_config="${1:-}"
+  mpi_ranks="${2:-${IBLGF_MPI_RANKS:-8}}"
+  generator_arg="${3:-${GENERATOR_SCRIPT:-generate_mass_configs.py}}"
+
+  if [[ -z "$sample_config" ]]; then
+    usage >&2
+    exit 2
+  fi
+
+  case "$generator_arg" in
+    tau)
+      generator_script="generate_mass_configs.py"
+      config_pattern="config_tau*.cfg"
+      ;;
+    freq|2)
+      generator_script="generate_mass_configs_2.py"
+      config_pattern="config_freq*.cfg"
+      ;;
+    *.py)
+      generator_script="$generator_arg"
+      generator_base="$(basename "$generator_arg")"
+      if [[ "$generator_base" == "generate_mass_configs_2.py" ]]; then
+        config_pattern="config_freq*.cfg"
+      else
+        config_pattern="${CONFIG_GLOB:-config_*.cfg}"
+      fi
+      ;;
+    *)
+      generator_script="$generator_arg"
+      config_pattern="${CONFIG_GLOB:-config_*.cfg}"
+      ;;
+  esac
+
+  if [[ "$generator_script" != /* ]]; then
+    generator_script="$script_dir/$generator_script"
+  fi
 fi
 
 if [[ ! "$mpi_ranks" =~ ^[1-9][0-9]*$ ]]; then
@@ -51,7 +97,28 @@ if [[ ! "$mpi_ranks" =~ ^[1-9][0-9]*$ ]]; then
   exit 2
 fi
 
-if [[ ! -d "$configs_dir" ]]; then
+if [[ "$generation_mode" -eq 1 ]]; then
+  if [[ ! -f "$sample_config" ]]; then
+    echo "Sample config not found: $sample_config" >&2
+    exit 2
+  fi
+  if [[ ! -f "$generator_script" ]]; then
+    echo "Generator script not found: $generator_script" >&2
+    exit 2
+  fi
+  if ! command -v python3 >/dev/null 2>&1; then
+    echo "python3 is required to generate sweep configs." >&2
+    exit 2
+  fi
+
+  echo "Generating remote sweep configs"
+  echo "  Sample:    $sample_config"
+  echo "  Generator: $generator_script"
+  echo "  Output:    $configs_dir"
+  python3 "$generator_script" \
+    "$sample_config" \
+    --output-dir "$configs_dir"
+elif [[ ! -d "$configs_dir" ]]; then
   echo "Config directory not found: $configs_dir" >&2
   exit 2
 fi
@@ -138,4 +205,7 @@ for idx in "${!configs[@]}"; do
 done
 
 echo "All $total configs completed."
+if [[ "$generation_mode" -eq 1 ]]; then
+  echo "Configs written to: $configs_dir"
+fi
 echo "Sweep logs: $logs_dir"

@@ -662,7 +662,12 @@ do_run() {
 time_run_command() {
   local timing_file="$1"
   shift
-  /usr/bin/time -p -o "$timing_file" "$@"
+  local status
+  status=0
+  /usr/bin/time -p -o "$timing_file" "$@" || status=$?
+  if [[ "$status" -ne 0 ]]; then
+    return "$status"
+  fi
   awk '/^real /{print $2; exit}' "$timing_file"
 }
 
@@ -765,15 +770,16 @@ do_run_test() {
 
   if [[ "$bench" -eq 1 ]]; then
     echo "==> Running benchmark '$test_name' with $mpi rank(s)" >&2
-    local timing_file real_seconds
+    local timing_file real_seconds benchmark_status
     timing_file="$run_dir/time.txt"
+    benchmark_status=0
     (
       cd "$run_dir"
-      real_seconds="$(time_run_command "$timing_file" "${MPI_COMMAND[@]}")"
+      real_seconds="$(time_run_command "$timing_file" "${MPI_COMMAND[@]}")" || exit $?
       echo "$real_seconds"
-    )
+    ) || benchmark_status=$?
     rm -rf "$tmp_dir"
-    return 0
+    return "$benchmark_status"
   fi
 
   echo "==> Running test '$test_name'"

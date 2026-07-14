@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-from __future__ import annotations
 
 import argparse
 from pathlib import Path
@@ -11,24 +10,24 @@ FREQ_VALUES = [
 ]
 
 
-def format_number(value: float | str) -> str:
+def format_number(value):
     if isinstance(value, str):
         return value
-    return f"{value:.8g}"
+    return "{:.8g}".format(value)
 
 
-def filename_number(value: float | str) -> str:
+def filename_number(value):
     return format_number(value).replace(".", "p").replace("-", "m")
 
 
-def blank_comments(text: str) -> str:
-    def replace(match: re.Match[str]) -> str:
+def blank_comments(text):
+    def replace(match):
         return "".join("\n" if char == "\n" else " " for char in match.group(0))
 
     return re.sub(r"//[^\n]*|/\*.*?\*/", replace, text, flags=re.DOTALL)
 
 
-def find_simulation_parameters_block(text: str) -> tuple[int, int]:
+def find_simulation_parameters_block(text):
     clean = blank_comments(text)
     match = re.search(r"\bsimulation_parameters\s*\{", clean)
     if match is None:
@@ -48,7 +47,7 @@ def find_simulation_parameters_block(text: str) -> tuple[int, int]:
     raise ValueError("Unbalanced simulation_parameters block.")
 
 
-def replace_or_insert_assignment(block_text: str, key: str, value: str) -> str:
+def replace_or_insert_assignment(block_text, key, value):
     pattern = re.compile(
         rf"(^[ \t]*{re.escape(key)}[ \t]*=[ \t]*)([^;]*)(;)",
         flags=re.MULTILINE,
@@ -68,13 +67,13 @@ def replace_or_insert_assignment(block_text: str, key: str, value: str) -> str:
     match = anchor.search(block_text)
     if match is not None:
         indent = re.match(r"[ \t]*", match.group(1)).group(0)
-        insertion = f"{match.group(1)}{indent}{key}={value};\n"
+        insertion = "{}{}{}={};\n".format(match.group(1), indent, key, value)
         return block_text[:match.start()] + insertion + block_text[match.end():]
 
-    raise KeyError(f"Required config key or insertion anchor not found: {key}")
+    raise KeyError("Required config key or insertion anchor not found: {}".format(key))
 
 
-def apply_parameter_updates(config_text: str, updates: dict[str, str]) -> str:
+def apply_parameter_updates(config_text, updates):
     start, end = find_simulation_parameters_block(config_text)
     block_text = config_text[start:end]
     for key, value in updates.items():
@@ -82,26 +81,26 @@ def apply_parameter_updates(config_text: str, updates: dict[str, str]) -> str:
     return config_text[:start] + block_text + config_text[end:]
 
 
-def build_parameter_sets() -> list[dict[str, str]]:
+def build_parameter_sets():
     return [{"b_f_freq": freq_value} for freq_value in FREQ_VALUES]
 
 
 def generate_configs(
-    sample_config: Path,
-    output_dir: Path,
+    sample_config,
+    output_dir,
     *,
-    prefix: str,
-) -> list[tuple[dict[str, str], Path]]:
+    prefix
+):
     template = sample_config.read_text()
     parameter_sets = build_parameter_sets()
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    generated: list[tuple[dict[str, str], Path]] = []
+    generated = []
     for updates in parameter_sets:
         freq_value = updates["b_f_freq"]
         config_path = (
             output_dir /
-            f"{prefix}_freq{filename_number(freq_value)}.cfg"
+            "{}_freq{}.cfg".format(prefix, filename_number(freq_value))
         )
         config_path.write_text(apply_parameter_updates(template, updates))
         generated.append((updates, config_path))
@@ -109,7 +108,7 @@ def generate_configs(
     return generated
 
 
-def main() -> int:
+def main():
     parser = argparse.ArgumentParser(
         description=(
             "Generate ns_amr_lgf2D configs for a b_f_freq sweep."
@@ -136,7 +135,7 @@ def main() -> int:
 
     sample_config = args.sample_config.resolve()
     if not sample_config.is_file():
-        raise SystemExit(f"Sample config not found: {sample_config}")
+        raise SystemExit("Sample config not found: {}".format(sample_config))
 
     generated = generate_configs(
         sample_config,
@@ -146,8 +145,10 @@ def main() -> int:
 
     for updates, path in generated:
         print(
-            f"{path.name} "
-            f"b_f_freq={format_number(updates['b_f_freq'])}"
+            "{} b_f_freq={}".format(
+                path.name,
+                format_number(updates["b_f_freq"]),
+            )
         )
 
     return 0

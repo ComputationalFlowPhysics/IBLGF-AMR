@@ -14,6 +14,95 @@ runner="${IBLGF_RUNNER:-$repo_root/iblgf_remote.sh}"
 generation_mode=1
 sample_config=""
 generator_script=""
+progress_interval="${PROGRESS_INTERVAL:-20}"
+
+cfg_int_value() {
+  local cfg="$1"
+  local key="$2"
+  sed -n "s/^[[:space:]]*${key}[[:space:]]*=[[:space:]]*\\([0-9][0-9]*\\)[[:space:]]*;.*/\\1/p" "$cfg" | head -n 1
+}
+
+count_output_frames() {
+  local run_dir="$1"
+  local output_dir="$run_dir/output"
+  local count=0
+
+  [[ -d "$output_dir" ]] || {
+    echo 0
+    return 0
+  }
+
+  count=$(find "$output_dir" -maxdepth 1 -type f \( -name 'flowTime_*.hdf5' -o -name 'flow_*.hdf5' \) \
+    ! -name 'flow_final.hdf5.hdf5' ! -name 'flow_final.hdf5' | wc -l | tr -d ' ')
+
+  if [[ -f "$output_dir/flow_final.hdf5.hdf5" || -f "$output_dir/flow_final.hdf5" ]]; then
+    count=$((count + 1))
+  fi
+
+  echo "$count"
+}
+
+format_elapsed() {
+  local total="$1"
+  printf '%02d:%02d:%02d' $((total / 3600)) $(((total % 3600) / 60)) $((total % 60))
+}
+
+monitor_run_progress() {
+  local runner_pid="$1"
+  local cfg="$2"
+  local sweep_stdout_log="$3"
+
+  local total_steps output_every approx_frames
+  total_steps="$(cfg_int_value "$cfg" nBaseLevelTimeSteps || true)"
+  output_every="$(cfg_int_value "$cfg" output_frequency || true)"
+  approx_frames=0
+  if [[ "${total_steps:-}" =~ ^[0-9]+$ ]] && [[ "${output_every:-}" =~ ^[1-9][0-9]*$ ]]; then
+    approx_frames=$((2 + total_steps / output_every))
+  fi
+
+  local run_dir="" sim_stdout="" last_step="" last_frames="-1" start_ts elapsed frames step
+  start_ts="$(date +%s)"
+
+  while kill -0 "$runner_pid" 2>/dev/null; do
+    if [[ -z "$run_dir" && -f "$sweep_stdout_log" ]]; then
+      run_dir="$(sed -n 's/^    Run dir:  //p' "$sweep_stdout_log" | tail -n 1)"
+      if [[ -n "$run_dir" ]]; then
+        echo "  Run dir:  $run_dir"
+        sim_stdout="$run_dir/stdout.log"
+      fi
+    fi
+
+    step=""
+    frames=0
+    if [[ -n "$sim_stdout" && -f "$sim_stdout" ]]; then
+      step="$(sed -n 's/^T = [^,]*, n = \([0-9][0-9]*\).*/\1/p' "$sim_stdout" | tail -n 1)"
+    fi
+    if [[ -n "$run_dir" ]]; then
+      frames="$(count_output_frames "$run_dir")"
+    fi
+
+    if [[ "$step" != "$last_step" || "$frames" != "$last_frames" ]]; then
+      elapsed=$(( $(date +%s) - start_ts ))
+      if [[ -n "$step" && "${total_steps:-}" =~ ^[0-9]+$ && "$total_steps" -gt 0 ]]; then
+        if [[ "$approx_frames" -gt 0 ]]; then
+          echo "  Progress: step $step/$total_steps, frame $frames/$approx_frames, elapsed $(format_elapsed "$elapsed")"
+        else
+          echo "  Progress: step $step/$total_steps, elapsed $(format_elapsed "$elapsed")"
+        fi
+      elif [[ -n "$run_dir" ]]; then
+        if [[ "$approx_frames" -gt 0 ]]; then
+          echo "  Progress: frame $frames/$approx_frames, elapsed $(format_elapsed "$elapsed")"
+        else
+          echo "  Progress: frame $frames, elapsed $(format_elapsed "$elapsed")"
+        fi
+      fi
+      last_step="$step"
+      last_frames="$frames"
+    fi
+
+    sleep "$progress_interval"
+  done
+}
 
 usage() {
   cat <<EOF
@@ -34,6 +123,7 @@ Environment overrides:
   CONFIGS_DIR=/path/to/configs
   CONFIG_GLOB='config_freq*.cfg'
   LOGS_DIR=/path/to/sweep-logs
+  PROGRESS_INTERVAL=20
   TEST_NAME=ns_amr_lgf2D
   GENERATOR_SCRIPT=generate_mass_configs.py
 
@@ -94,6 +184,10 @@ fi
 if [[ ! "$mpi_ranks" =~ ^[1-9][0-9]*$ ]]; then
   echo "MPI rank count must be a positive integer: $mpi_ranks" >&2
   usage >&2
+  exit 2
+fi
+if [[ ! "$progress_interval" =~ ^[1-9][0-9]*$ ]]; then
+  echo "PROGRESS_INTERVAL must be a positive integer: $progress_interval" >&2
   exit 2
 fi
 
@@ -174,9 +268,14 @@ for idx in "${!configs[@]}"; do
   stderr_log="$logs_dir/${config_stem}.stderr.log"
 
   echo "Running $((idx + 1))/$total: $config_name"
-  if ! "$runner" run-test "$test_name" "$config" -n "$mpi_ranks" \
+  "$runner" run-test "$test_name" "$config" -n "$mpi_ranks" \
     > "$stdout_log" \
-    2> "$stderr_log"; then
+    2> "$stderr_log" &
+  runner_pid=$!
+
+  monitor_run_progress "$runner_pid" "$config" "$stdout_log"
+
+  if ! wait "$runner_pid"; then
     echo "Run failed for $config_name" >&2
     echo "Sweep stdout log: $stdout_log" >&2
     echo "Sweep stderr log: $stderr_log" >&2
@@ -201,6 +300,14 @@ for idx in "${!configs[@]}"; do
       fi
     fi
     exit 1
+  fi
+
+  run_dir="$(sed -n 's/^    Run dir:  //p' "$stdout_log" | tail -n 1)"
+  if [[ -n "$run_dir" ]]; then
+    echo "Completed $((idx + 1))/$total: $config_name"
+    echo "  Output dir: $run_dir"
+  else
+    echo "Completed $((idx + 1))/$total: $config_name"
   fi
 done
 

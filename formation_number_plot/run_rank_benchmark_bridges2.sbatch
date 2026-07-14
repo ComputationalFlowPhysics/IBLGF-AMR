@@ -69,26 +69,42 @@ mpiexec --version 2>&1 | head -n 2 || true
 # Build once before timing. Subsequent run-test builds are no-op checks.
 "$runner" build -j "$IBLGF_BUILD_JOBS"
 
-ranks_list=(2 4 8 16 32 64 96 108)
+ranks_list=(2 4 8 16 32)
 times=()
+statuses=()
 
 # The largest run uses 108 of the RM node's 128 cores.
 for ranks in "${ranks_list[@]}"; do
   echo
   echo "===== ${ranks} MPI ranks ====="
-  elapsed="$("$runner" run-test ns_amr_lgf2D "$config" -n "$ranks" --bench)"
-  times+=("$elapsed")
-  printf 'Time (%3d ranks): %s s\n' "$ranks" "$elapsed"
+  if elapsed="$("$runner" run-test ns_amr_lgf2D "$config" -n "$ranks" --bench)"; then
+    times+=("$elapsed")
+    statuses+=("ok")
+    printf 'Time (%3d ranks): %s s\n' "$ranks" "$elapsed"
+  else
+    times+=("-")
+    statuses+=("failed")
+    echo "Benchmark failed at ${ranks} ranks." >&2
+    break
+  fi
 done
 
 echo
 echo "All rank benchmarks completed."
 echo
 printf '%-8s %-12s %-12s\n' "Ranks" "Seconds" "Speedup"
-baseline="${times[0]}"
+baseline=""
 for idx in "${!ranks_list[@]}"; do
   ranks="${ranks_list[$idx]}"
   elapsed="${times[$idx]}"
+  status="${statuses[$idx]:-skipped}"
+  if [[ "$status" != "ok" ]]; then
+    printf '%-8s %-12s %-12s\n' "$ranks" "$status" "-"
+    continue
+  fi
+  if [[ -z "$baseline" ]]; then
+    baseline="$elapsed"
+  fi
   speedup="$(awk -v base="$baseline" -v time="$elapsed" 'BEGIN { printf "%.2f", base / time }')"
   printf '%-8s %-12s %-12s\n' "$ranks" "$elapsed" "$speedup"
 done

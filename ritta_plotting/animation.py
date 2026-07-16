@@ -35,12 +35,8 @@ COLOR_SCHEME = "blue_white_red"  # Examples: "blue_white_red", "viridis", "plasm
 POINT_OVERLAY_OPTIONS = None  # None for viewer defaults, or {} to suppress, or {"vortex_center_positive": True}
 POINT_OVERLAY_SIZE = 48.0  # Marker size float example: 32.0, 48.0, 64.0
 SUPPRESS_ZERO_OMEGA_EXTREMA = True  # True or False
-<<<<<<< Updated upstream
-VIEW_LIMITS = None  # None for auto. Example: {"x": (-4, 8), "y": (-3, 3)}
-=======
 VIEW_LIMITS = {"x": (-1, 40), "y": (-3, 3)}  # None for auto. Example: {"x": (-4, 8), "y": (-3, 3)}
 PLOT_VERTICAL_STRETCH = 2.0  # Float example: 1.0, 1.2, 1.5
->>>>>>> Stashed changes
 RENDER_SCALE = 1.0  # Float example: 1.0, 1.5, 2.0
 GIF_FPS = 6  # Integer example: 4, 5, 8, 10
 GIF_LOOP = True  # True = loop forever, False = play once

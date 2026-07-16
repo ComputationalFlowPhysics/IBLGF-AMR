@@ -134,7 +134,10 @@ def snapshot_timestep(snapshot_name):
 
 
 def snapshot_rows(summary):
-    names = list(summary.get("time_series_snapshot_files") or summary.get("snapshot_files") or [])
+    raw_names = list(summary.get("time_series_snapshot_files") or summary.get("snapshot_files") or [])
+    names = [name for name in raw_names if snapshot_timestep(name) is not None]
+    if not names:
+        names = raw_names
     scale = float(summary.get("simulation_time_scale") or 1.0)
     rows = []
     for index, name in enumerate(names):

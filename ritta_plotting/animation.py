@@ -36,7 +36,6 @@ POINT_OVERLAY_OPTIONS = None  # None for viewer defaults, or {} to suppress, or 
 POINT_OVERLAY_SIZE = 48.0  # Marker size float example: 32.0, 48.0, 64.0
 SUPPRESS_ZERO_OMEGA_EXTREMA = True  # True or False
 VIEW_LIMITS = None  # None for auto. Example: {"x": (-4, 8), "y": (-3, 3)}
-PLOT_VERTICAL_STRETCH = 1.0  # Float example: 1.0, 1.2, 1.5
 RENDER_SCALE = 1.0  # Float example: 1.0, 1.5, 2.0
 GIF_FPS = 5  # Integer example: 4, 5, 8, 10
 GIF_LOOP = True  # True = loop forever, False = play once
@@ -109,7 +108,10 @@ def snapshot_timestep(snapshot_name):
 
 
 def snapshot_rows(summary):
-    names = list(summary.get("time_series_snapshot_files") or summary.get("snapshot_files") or [])
+    raw_names = list(summary.get("time_series_snapshot_files") or summary.get("snapshot_files") or [])
+    names = [name for name in raw_names if snapshot_timestep(name) is not None]
+    if not names:
+        names = raw_names
     scale = float(summary.get("simulation_time_scale") or 1.0)
     rows = []
     for index, name in enumerate(names):
@@ -316,7 +318,6 @@ def main():
                 suppress_zero_omega_extrema_overlays=SUPPRESS_ZERO_OMEGA_EXTREMA,
                 view_limits=view_plan.get("view_limits"),
                 coordinate_dx_base=summary.get("coordinate_dx_base"),
-                plot_vertical_stretch=PLOT_VERTICAL_STRETCH,
                 render_scale=RENDER_SCALE,
             )
             rendered_frames.append(rendered)

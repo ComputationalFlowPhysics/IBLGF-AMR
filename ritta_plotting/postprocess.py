@@ -32,6 +32,7 @@ MARKER_SIZE = 5.5  # Float example: 4.0, 5.5, 7.0
 SAVE_DPI = 220  # Integer example: 150, 220, 300
 AUTO_EXPORT_PNG = False  # True = save automatically, False = ask after showing plot
 PNG_PREFIX = "postprocess"  # Example output names: postprocess_aggregate_positive_circulation.png
+PROCESS_SNAPSHOT_STRIDE = 1  # 1 = every snapshot, 2 = every other snapshot, 5 = every fifth snapshot
 
 
 AGGREGATE_TERMS = [
@@ -128,8 +129,24 @@ def resolve_run_dir(path):
     return path
 
 
+def discover_primary_snapshot_paths(run_dir):
+    snapshots = list(run_dir.rglob("flowTime_*.hdf5")) + list(run_dir.rglob("flowTime_*.h5"))
+    unique = {}
+    for path in snapshots:
+        unique[path.resolve()] = path
+    ordered = sorted(unique.values(), key=lambda path: snapshot_timestep(path.name) or -1)
+    if ordered:
+        return ordered
+    fallback = sorted(list(run_dir.rglob("*.hdf5")) + list(run_dir.rglob("*.h5")))
+    return fallback
+
+
 def build_fast_summary(vp, run_dir):
-    snapshot_paths = sorted(vp.find_snapshot_files(run_dir), key=vp.snapshot_sort_key)
+    snapshot_paths = discover_primary_snapshot_paths(run_dir)
+    if snapshot_paths:
+        snapshot_paths = [path for path in snapshot_paths if vp.IBLGFSnapshot.is_plottable_file(path)]
+    if not snapshot_paths:
+        snapshot_paths = sorted(vp.find_snapshot_files(run_dir), key=vp.snapshot_sort_key)
     if not snapshot_paths:
         raise ValueError("No plottable .hdf5 or .h5 files were found in the selected folder.")
 
@@ -266,6 +283,7 @@ def process_single_run(vp, run_dir):
     if int(summary.get("space_dim") or 0) != 2:
         raise SystemExit("postprocess.py is 2D-only. This run is not a 2D run.")
     rows = snapshot_rows(summary)
+    rows = rows[::max(int(PROCESS_SNAPSHOT_STRIDE), 1)]
     results = []
     previous_parameters = None
 

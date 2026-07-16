@@ -35,17 +35,13 @@ COLOR_SCHEME = "blue_white_red"  # Examples: "blue_white_red", "viridis", "plasm
 POINT_OVERLAY_OPTIONS = None  # None for viewer defaults, or {} to suppress, or {"vortex_center_positive": True}
 POINT_OVERLAY_SIZE = 48.0  # Marker size float example: 32.0, 48.0, 64.0
 SUPPRESS_ZERO_OMEGA_EXTREMA = True  # True or False
-<<<<<<< Updated upstream
-VIEW_LIMITS = None  # None for auto. Example: {"x": (-4, 8), "y": (-3, 3)}
-=======
 VIEW_LIMITS = {"x": (-1, 40), "y": (-3, 3)}  # None for auto. Example: {"x": (-4, 8), "y": (-3, 3)}
-PLOT_VERTICAL_STRETCH = 2.0  # Float example: 1.0, 1.2, 1.5
->>>>>>> Stashed changes
 RENDER_SCALE = 1.0  # Float example: 1.0, 1.5, 2.0
 GIF_FPS = 6  # Integer example: 4, 5, 8, 10
 GIF_LOOP = True  # True = loop forever, False = play once
 AUTO_EXPORT_GIF = True  # True = save automatically, False = ask after preview
 GIF_PREFIX = "animation"  # Example output names: animation_flowTime_0_to_flowTime_300.gif
+PLAN_FRAME_LIMIT = 24  # Use at most this many frames when computing shared view/color plans. Lower = faster startup.
 
 
 def parse_args():
@@ -107,8 +103,24 @@ def resolve_run_dir(path):
     return path
 
 
+def discover_primary_snapshot_paths(run_dir):
+    snapshots = list(run_dir.rglob("flowTime_*.hdf5")) + list(run_dir.rglob("flowTime_*.h5"))
+    unique = {}
+    for path in snapshots:
+        unique[path.resolve()] = path
+    ordered = sorted(unique.values(), key=lambda path: snapshot_timestep(path.name) or -1)
+    if ordered:
+        return ordered
+    fallback = sorted(list(run_dir.rglob("*.hdf5")) + list(run_dir.rglob("*.h5")))
+    return fallback
+
+
 def build_fast_summary(vp, run_dir):
-    snapshot_paths = sorted(vp.find_snapshot_files(run_dir), key=vp.snapshot_sort_key)
+    snapshot_paths = discover_primary_snapshot_paths(run_dir)
+    if snapshot_paths:
+        snapshot_paths = [path for path in snapshot_paths if vp.IBLGFSnapshot.is_plottable_file(path)]
+    if not snapshot_paths:
+        snapshot_paths = sorted(vp.find_snapshot_files(run_dir), key=vp.snapshot_sort_key)
     if not snapshot_paths:
         raise ValueError("No plottable .hdf5 or .h5 files were found in the selected folder.")
 
@@ -176,6 +188,20 @@ def print_snapshot_table(rows):
 def selected_rows_for_range(rows, start_time, end_time, stride):
     selected = [row for row in rows if start_time <= row["time_value"] <= end_time]
     return selected[::stride]
+
+
+def sample_snapshot_names_for_planning(snapshot_names, limit):
+    if limit is None or limit <= 0 or len(snapshot_names) <= limit:
+        return list(snapshot_names)
+    if limit == 1:
+        return [snapshot_names[0]]
+    indices = []
+    last_index = len(snapshot_names) - 1
+    for slot in range(limit):
+        index = round(slot * last_index / (limit - 1))
+        if not indices or index != indices[-1]:
+            indices.append(index)
+    return [snapshot_names[index] for index in indices]
 
 
 def can_show_figures():
@@ -295,24 +321,28 @@ def main():
             else list(SELECTED_LEVELS)
         )
         snapshot_names = [row["snapshot_name"] for row in selected_rows]
+        planning_snapshot_names = sample_snapshot_names_for_planning(snapshot_names, PLAN_FRAME_LIMIT)
 
         print("Preparing animation for {} frames...".format(len(snapshot_names)))
-        view_plan = vp.compute_animation_view_plan(
-            run_dir,
-            snapshot_names,
-            selected_level=selected_levels[0] if selected_levels else 0,
-            selected_levels=selected_levels,
-            selected_fields=SELECTED_FIELDS,
-            overlay_levels=OVERLAY_LEVELS,
-            view_limits=VIEW_LIMITS,
-            coordinate_dx_base=summary.get("coordinate_dx_base"),
-        )
+        if VIEW_LIMITS is None:
+            view_plan = vp.compute_animation_view_plan(
+                run_dir,
+                planning_snapshot_names,
+                selected_level=selected_levels[0] if selected_levels else 0,
+                selected_levels=selected_levels,
+                selected_fields=SELECTED_FIELDS,
+                overlay_levels=OVERLAY_LEVELS,
+                view_limits=VIEW_LIMITS,
+                coordinate_dx_base=summary.get("coordinate_dx_base"),
+            )
+        else:
+            view_plan = {"view_limits": VIEW_LIMITS}
 
         field_norm_overrides = None
         if COLOR_SCALE_MODE != "per_level_autoscale":
             color_plan = vp.compute_animation_color_plan(
                 run_dir,
-                snapshot_names,
+                planning_snapshot_names,
                 selected_level=selected_levels[0] if selected_levels else 0,
                 selected_levels=selected_levels,
                 selected_fields=SELECTED_FIELDS,

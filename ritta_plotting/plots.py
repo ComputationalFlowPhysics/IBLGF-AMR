@@ -101,8 +101,24 @@ def resolve_run_dir(path):
     return path
 
 
+def discover_primary_snapshot_paths(run_dir):
+    snapshots = list(run_dir.rglob("flowTime_*.hdf5")) + list(run_dir.rglob("flowTime_*.h5"))
+    unique = {}
+    for path in snapshots:
+        unique[path.resolve()] = path
+    ordered = sorted(unique.values(), key=lambda path: snapshot_timestep(path.name) or -1)
+    if ordered:
+        return ordered
+    fallback = sorted(vp_path for vp_path in run_dir.rglob("*.hdf5")) + sorted(run_dir.rglob("*.h5"))
+    return fallback
+
+
 def build_fast_summary(vp, run_dir):
-    snapshot_paths = sorted(vp.find_snapshot_files(run_dir), key=vp.snapshot_sort_key)
+    snapshot_paths = discover_primary_snapshot_paths(run_dir)
+    if snapshot_paths:
+        snapshot_paths = [path for path in snapshot_paths if vp.IBLGFSnapshot.is_plottable_file(path)]
+    if not snapshot_paths:
+        snapshot_paths = sorted(vp.find_snapshot_files(run_dir), key=vp.snapshot_sort_key)
     if not snapshot_paths:
         raise ValueError("No plottable .hdf5 or .h5 files were found in the selected folder.")
 

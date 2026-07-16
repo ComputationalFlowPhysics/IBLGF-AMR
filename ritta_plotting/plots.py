@@ -101,6 +101,32 @@ def resolve_run_dir(path):
     return path
 
 
+def build_fast_summary(vp, run_dir):
+    snapshot_paths = sorted(vp.find_snapshot_files(run_dir), key=vp.snapshot_sort_key)
+    if not snapshot_paths:
+        raise ValueError("No plottable .hdf5 or .h5 files were found in the selected folder.")
+
+    time_series_paths = [path for path in snapshot_paths if vp.snapshot_timestep(path) is not None]
+    primary_paths = time_series_paths or snapshot_paths
+    first_snapshot = primary_paths[0]
+    snapshot = vp._snapshot_for_render(first_snapshot)
+    coordinate_metadata = vp._resolved_coordinate_metadata_for_run(run_dir)
+    simulation_time_metadata = vp.infer_simulation_time_metadata(run_dir)
+
+    return {
+        "run_dir_name": run_dir.name,
+        "snapshot_files": [path.name for path in primary_paths],
+        "time_series_snapshot_files": [path.name for path in primary_paths],
+        "default_checked_levels": list(range(snapshot.n_levels)),
+        "coordinate_dx_base": coordinate_metadata["coordinate_dx_base"],
+        "coordinate_dx_base_source": coordinate_metadata["coordinate_dx_base_source"],
+        "coordinate_origin_index": coordinate_metadata["coordinate_origin_index"],
+        "coordinate_origin_index_source": coordinate_metadata["coordinate_origin_index_source"],
+        "space_dim": snapshot.dims,
+        **simulation_time_metadata,
+    }
+
+
 def snapshot_timestep(snapshot_name):
     match = re.fullmatch(r"flowTime_(\d+)\.(?:hdf5|h5)", Path(snapshot_name).name)
     return int(match.group(1)) if match else None
@@ -249,7 +275,7 @@ def main():
     args = parse_args()
     run_dir = resolve_run_dir(args.output_folder)
     vp = load_viewer_plotting()
-    summary = vp.inspect_run_folder(run_dir)
+    summary = build_fast_summary(vp, run_dir)
     if int(summary.get("space_dim") or 0) != 2:
         raise SystemExit("plots.py is 2D-only. This run is not a 2D run.")
     rows = snapshot_rows(summary)

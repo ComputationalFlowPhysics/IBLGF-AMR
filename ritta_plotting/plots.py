@@ -150,6 +150,24 @@ def call_viewer(func, *args, **kwargs):
             warn_unsupported_viewer_kwarg(getattr(func, "__name__", str(func)), bad_name)
 
 
+def normalize_view_limits(view_limits):
+    if not isinstance(view_limits, dict):
+        return view_limits
+
+    normalized = {}
+    for key, value in view_limits.items():
+        normalized[key] = value
+
+    for axis in ("x", "y", "z"):
+        if axis in view_limits and f"{axis}_min" not in normalized and f"{axis}_max" not in normalized:
+            value = view_limits.get(axis)
+            if isinstance(value, (list, tuple)) and len(value) == 2:
+                normalized[f"{axis}_min"] = value[0]
+                normalized[f"{axis}_max"] = value[1]
+
+    return normalized
+
+
 def resolve_run_dir(path):
     path = path.expanduser().resolve()
     if path.is_file():
@@ -336,7 +354,7 @@ def render_one_snapshot(vp, run_dir, summary, row):
         point_overlay_options=POINT_OVERLAY_OPTIONS,
         point_overlay_size=POINT_OVERLAY_SIZE,
         suppress_zero_omega_extrema_overlays=SUPPRESS_ZERO_OMEGA_EXTREMA,
-        view_limits=VIEW_LIMITS,
+        view_limits=normalize_view_limits(VIEW_LIMITS),
         coordinate_dx_base=summary.get("coordinate_dx_base"),
         render_scale=RENDER_SCALE,
     )

@@ -152,6 +152,24 @@ def call_viewer(func, *args, **kwargs):
             warn_unsupported_viewer_kwarg(getattr(func, "__name__", str(func)), bad_name)
 
 
+def normalize_view_limits(view_limits):
+    if not isinstance(view_limits, dict):
+        return view_limits
+
+    normalized = {}
+    for key, value in view_limits.items():
+        normalized[key] = value
+
+    for axis in ("x", "y", "z"):
+        if axis in view_limits and f"{axis}_min" not in normalized and f"{axis}_max" not in normalized:
+            value = view_limits.get(axis)
+            if isinstance(value, (list, tuple)) and len(value) == 2:
+                normalized[f"{axis}_min"] = value[0]
+                normalized[f"{axis}_max"] = value[1]
+
+    return normalized
+
+
 def resolve_run_dir(path):
     path = path.expanduser().resolve()
     if path.is_file():
@@ -383,7 +401,9 @@ def main():
         planning_snapshot_names = sample_snapshot_names_for_planning(snapshot_names, PLAN_FRAME_LIMIT)
 
         print("Preparing animation for {} frames...".format(len(snapshot_names)))
-        if VIEW_LIMITS is None:
+        resolved_view_limits = normalize_view_limits(VIEW_LIMITS)
+
+        if resolved_view_limits is None:
             view_plan = call_viewer(
                 vp.compute_animation_view_plan,
                 run_dir,
@@ -392,11 +412,11 @@ def main():
                 selected_levels=selected_levels,
                 selected_fields=SELECTED_FIELDS,
                 overlay_levels=OVERLAY_LEVELS,
-                view_limits=VIEW_LIMITS,
+                view_limits=resolved_view_limits,
                 coordinate_dx_base=summary.get("coordinate_dx_base"),
             )
         else:
-            view_plan = {"view_limits": VIEW_LIMITS}
+            view_plan = {"view_limits": resolved_view_limits}
 
         field_norm_overrides = None
         if COLOR_SCALE_MODE != "per_level_autoscale":

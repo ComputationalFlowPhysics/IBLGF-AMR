@@ -7,6 +7,7 @@ Example:
 """
 
 import argparse
+import inspect
 import importlib
 import io
 import os
@@ -42,6 +43,9 @@ GIF_LOOP = True  # True = loop forever, False = play once
 AUTO_EXPORT_GIF = True  # True = save automatically, False = ask after preview
 GIF_PREFIX = "animation"  # Example output names: animation_flowTime_0_to_flowTime_300.gif
 PLAN_FRAME_LIMIT = 24  # Use at most this many frames when computing shared view/color plans. Lower = faster startup.
+
+
+_WARNED_UNSUPPORTED_VIEWER_KWARGS = set()
 
 
 def parse_args():
@@ -92,6 +96,60 @@ def load_viewer_plotting():
     if str(viewer_root) not in sys.path:
         sys.path.insert(0, str(viewer_root))
     return importlib.import_module("viewer_plotting")
+
+
+def warn_unsupported_viewer_kwarg(func_name, kwarg_name):
+    key = (func_name, kwarg_name)
+    if key in _WARNED_UNSUPPORTED_VIEWER_KWARGS:
+        return
+    _WARNED_UNSUPPORTED_VIEWER_KWARGS.add(key)
+    print(
+        "Note: viewer backend does not support '{}' for {}(); ignoring it.".format(
+            kwarg_name,
+            func_name,
+        )
+    )
+
+
+def call_viewer(func, *args, **kwargs):
+    filtered_kwargs = dict(kwargs)
+    try:
+        signature = inspect.signature(func)
+    except (TypeError, ValueError):
+        signature = None
+
+    if signature is not None:
+        parameters = signature.parameters
+        accepts_var_kwargs = any(
+            parameter.kind == inspect.Parameter.VAR_KEYWORD
+            for parameter in parameters.values()
+        )
+        if not accepts_var_kwargs:
+            supported = {
+                name
+                for name, parameter in parameters.items()
+                if parameter.kind in (
+                    inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                    inspect.Parameter.KEYWORD_ONLY,
+                )
+            }
+            dropped = sorted(name for name in filtered_kwargs if name not in supported)
+            for name in dropped:
+                filtered_kwargs.pop(name, None)
+                warn_unsupported_viewer_kwarg(getattr(func, "__name__", str(func)), name)
+
+    while True:
+        try:
+            return func(*args, **filtered_kwargs)
+        except TypeError as exc:
+            match = re.search(r"unexpected keyword argument '([^']+)'", str(exc))
+            if not match:
+                raise
+            bad_name = match.group(1)
+            if bad_name not in filtered_kwargs:
+                raise
+            filtered_kwargs.pop(bad_name, None)
+            warn_unsupported_viewer_kwarg(getattr(func, "__name__", str(func)), bad_name)
 
 
 def resolve_run_dir(path):
@@ -240,7 +298,8 @@ def build_export_groups(rendered):
 def compose_frame_sheet(vp, rendered, summary, row):
     title = "{} | {}".format(summary.get("run_dir_name", ""), row["snapshot_name"])
     subtitle = "t = {:.8g}".format(row["time_value"])
-    return vp.compose_export_sheet(
+    return call_viewer(
+        vp.compose_export_sheet,
         build_export_groups(rendered),
         title=title,
         subtitle=subtitle,
@@ -325,7 +384,8 @@ def main():
 
         print("Preparing animation for {} frames...".format(len(snapshot_names)))
         if VIEW_LIMITS is None:
-            view_plan = vp.compute_animation_view_plan(
+            view_plan = call_viewer(
+                vp.compute_animation_view_plan,
                 run_dir,
                 planning_snapshot_names,
                 selected_level=selected_levels[0] if selected_levels else 0,
@@ -340,7 +400,8 @@ def main():
 
         field_norm_overrides = None
         if COLOR_SCALE_MODE != "per_level_autoscale":
-            color_plan = vp.compute_animation_color_plan(
+            color_plan = call_viewer(
+                vp.compute_animation_color_plan,
                 run_dir,
                 planning_snapshot_names,
                 selected_level=selected_levels[0] if selected_levels else 0,
@@ -356,7 +417,8 @@ def main():
         frame_payloads = []
         for frame_index, row in enumerate(selected_rows, start=1):
             print("Rendering frame {}/{}: {}".format(frame_index, len(selected_rows), row["snapshot_name"]))
-            rendered = vp.render_snapshot(
+            rendered = call_viewer(
+                vp.render_snapshot,
                 run_dir,
                 row["snapshot_name"],
                 selected_level=selected_levels[0] if selected_levels else 0,
@@ -390,7 +452,8 @@ def main():
                 "groups": build_export_groups(rendered),
             })
 
-        gif_bytes = vp.compose_animation_gif(
+        gif_bytes = call_viewer(
+            vp.compose_animation_gif,
             frame_payloads,
             title=summary.get("run_dir_name", "IBLGF animation"),
             subtitle="{} to {}".format(

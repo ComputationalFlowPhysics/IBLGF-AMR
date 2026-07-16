@@ -7,6 +7,7 @@ Example:
 """
 
 import argparse
+import inspect
 import importlib
 import io
 import os
@@ -40,6 +41,9 @@ VIEW_LIMITS = None  # None for auto. Example: {"x": (-4, 8), "y": (-3, 3)}
 RENDER_SCALE = 1.0  # Float example: 1.0, 1.5, 2.0
 AUTO_EXPORT_PNG = False  # True = save automatically, False = ask after showing plot
 PNG_PREFIX = "plot"  # Example output names: plot_flowTime_120.png
+
+
+_WARNED_UNSUPPORTED_VIEWER_KWARGS = set()
 
 
 def parse_args():
@@ -92,6 +96,60 @@ def load_viewer_plotting():
     return importlib.import_module("viewer_plotting")
 
 
+def warn_unsupported_viewer_kwarg(func_name, kwarg_name):
+    key = (func_name, kwarg_name)
+    if key in _WARNED_UNSUPPORTED_VIEWER_KWARGS:
+        return
+    _WARNED_UNSUPPORTED_VIEWER_KWARGS.add(key)
+    print(
+        "Note: viewer backend does not support '{}' for {}(); ignoring it.".format(
+            kwarg_name,
+            func_name,
+        )
+    )
+
+
+def call_viewer(func, *args, **kwargs):
+    filtered_kwargs = dict(kwargs)
+    try:
+        signature = inspect.signature(func)
+    except (TypeError, ValueError):
+        signature = None
+
+    if signature is not None:
+        parameters = signature.parameters
+        accepts_var_kwargs = any(
+            parameter.kind == inspect.Parameter.VAR_KEYWORD
+            for parameter in parameters.values()
+        )
+        if not accepts_var_kwargs:
+            supported = {
+                name
+                for name, parameter in parameters.items()
+                if parameter.kind in (
+                    inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                    inspect.Parameter.KEYWORD_ONLY,
+                )
+            }
+            dropped = sorted(name for name in filtered_kwargs if name not in supported)
+            for name in dropped:
+                filtered_kwargs.pop(name, None)
+                warn_unsupported_viewer_kwarg(getattr(func, "__name__", str(func)), name)
+
+    while True:
+        try:
+            return func(*args, **filtered_kwargs)
+        except TypeError as exc:
+            match = re.search(r"unexpected keyword argument '([^']+)'", str(exc))
+            if not match:
+                raise
+            bad_name = match.group(1)
+            if bad_name not in filtered_kwargs:
+                raise
+            filtered_kwargs.pop(bad_name, None)
+            warn_unsupported_viewer_kwarg(getattr(func, "__name__", str(func)), bad_name)
+
+
 def resolve_run_dir(path):
     path = path.expanduser().resolve()
     if path.is_file():
@@ -109,7 +167,7 @@ def discover_primary_snapshot_paths(run_dir):
     ordered = sorted(unique.values(), key=lambda path: snapshot_timestep(path.name) or -1)
     if ordered:
         return ordered
-    fallback = sorted(vp_path for vp_path in run_dir.rglob("*.hdf5")) + sorted(run_dir.rglob("*.h5"))
+    fallback = sorted(list(run_dir.rglob("*.hdf5")) + list(run_dir.rglob("*.h5")))
     return fallback
 
 
@@ -217,7 +275,8 @@ def build_export_groups(rendered):
 
 
 def sheet_png_bytes(vp, rendered, title, subtitle):
-    return vp.compose_export_sheet(
+    return call_viewer(
+        vp.compose_export_sheet,
         build_export_groups(rendered),
         title=title,
         subtitle=subtitle,
@@ -255,7 +314,8 @@ def render_one_snapshot(vp, run_dir, summary, row):
         else list(SELECTED_LEVELS)
     )
 
-    rendered = vp.render_snapshot(
+    rendered = call_viewer(
+        vp.render_snapshot,
         run_dir,
         row["snapshot_name"],
         selected_level=selected_levels[0] if selected_levels else 0,

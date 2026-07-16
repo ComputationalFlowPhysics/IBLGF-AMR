@@ -8,6 +8,7 @@ Examples:
 """
 
 import argparse
+import inspect
 import importlib
 import os
 import re
@@ -33,6 +34,9 @@ SAVE_DPI = 220  # Integer example: 150, 220, 300
 AUTO_EXPORT_PNG = False  # True = save automatically, False = ask after showing plot
 PNG_PREFIX = "postprocess"  # Example output names: postprocess_aggregate_positive_circulation.png
 PROCESS_SNAPSHOT_STRIDE = 1  # 1 = every snapshot, 2 = every other snapshot, 5 = every fifth snapshot
+
+
+_WARNED_UNSUPPORTED_VIEWER_KWARGS = set()
 
 
 AGGREGATE_TERMS = [
@@ -118,6 +122,60 @@ def load_viewer_plotting():
     if str(viewer_root) not in sys.path:
         sys.path.insert(0, str(viewer_root))
     return importlib.import_module("viewer_plotting")
+
+
+def warn_unsupported_viewer_kwarg(func_name, kwarg_name):
+    key = (func_name, kwarg_name)
+    if key in _WARNED_UNSUPPORTED_VIEWER_KWARGS:
+        return
+    _WARNED_UNSUPPORTED_VIEWER_KWARGS.add(key)
+    print(
+        "Note: viewer backend does not support '{}' for {}(); ignoring it.".format(
+            kwarg_name,
+            func_name,
+        )
+    )
+
+
+def call_viewer(func, *args, **kwargs):
+    filtered_kwargs = dict(kwargs)
+    try:
+        signature = inspect.signature(func)
+    except (TypeError, ValueError):
+        signature = None
+
+    if signature is not None:
+        parameters = signature.parameters
+        accepts_var_kwargs = any(
+            parameter.kind == inspect.Parameter.VAR_KEYWORD
+            for parameter in parameters.values()
+        )
+        if not accepts_var_kwargs:
+            supported = {
+                name
+                for name, parameter in parameters.items()
+                if parameter.kind in (
+                    inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                    inspect.Parameter.KEYWORD_ONLY,
+                )
+            }
+            dropped = sorted(name for name in filtered_kwargs if name not in supported)
+            for name in dropped:
+                filtered_kwargs.pop(name, None)
+                warn_unsupported_viewer_kwarg(getattr(func, "__name__", str(func)), name)
+
+    while True:
+        try:
+            return func(*args, **filtered_kwargs)
+        except TypeError as exc:
+            match = re.search(r"unexpected keyword argument '([^']+)'", str(exc))
+            if not match:
+                raise
+            bad_name = match.group(1)
+            if bad_name not in filtered_kwargs:
+                raise
+            filtered_kwargs.pop(bad_name, None)
+            warn_unsupported_viewer_kwarg(getattr(func, "__name__", str(func)), bad_name)
 
 
 def resolve_run_dir(path):
@@ -290,7 +348,8 @@ def process_single_run(vp, run_dir):
     for row in rows:
         print("Processing {} ...".format(row["snapshot_name"]))
         if BOUNDARY_MODE == "elliptical_gaussian":
-            result = vp.fit_snapshot_vortex_core(
+            result = call_viewer(
+                vp.fit_snapshot_vortex_core,
                 run_dir,
                 row["snapshot_name"],
                 initial_fit_fraction=INITIAL_FIT_FRACTION,
@@ -303,7 +362,8 @@ def process_single_run(vp, run_dir):
             if isinstance(result.get("parameters"), dict):
                 previous_parameters = result.get("parameters")
         else:
-            result = vp.postprocess_vorticity_threshold(
+            result = call_viewer(
+                vp.postprocess_vorticity_threshold,
                 run_dir,
                 row["snapshot_name"],
                 threshold_factor=THRESHOLD_FACTOR,

@@ -19,19 +19,19 @@ from pathlib import Path
 # User settings: edit these to match the viewer post-processing settings.
 # ---------------------------------------------------------------------------
 
-BOUNDARY_MODE = "vorticity_threshold"  # vorticity_threshold, computed_q_positive, elliptical_gaussian
-THRESHOLD_FACTOR = 0.30
-MIN_REGION_AREA = 0.25
-LARGEST_REGION_ONLY = False
-INITIAL_FIT_FRACTION = 0.30
-BOUNDARY_FRACTION = 0.05
-VIEW_LIMITS = None
-PLOT_FIGSIZE = (9.2, 6.4)
-LINE_WIDTH = 2.2
-MARKER_SIZE = 5.5
-SAVE_DPI = 220
-AUTO_EXPORT_PNG = False
-PNG_PREFIX = "postprocess"
+BOUNDARY_MODE = "vorticity_threshold"  # Options: "vorticity_threshold", "computed_q_positive", "elliptical_gaussian"
+THRESHOLD_FACTOR = 0.30  # Float example: 0.2, 0.3, 0.5. Used for non-Gaussian modes.
+MIN_REGION_AREA = 0.25  # Float example: 0.1, 0.25, 0.5
+LARGEST_REGION_ONLY = False  # True or False. Used for non-Gaussian modes.
+INITIAL_FIT_FRACTION = 0.30  # Float example: 0.2, 0.3, 0.4. Used for Gaussian mode.
+BOUNDARY_FRACTION = 0.05  # Float example: 0.03, 0.05, 0.1. Used for Gaussian mode.
+VIEW_LIMITS = None  # None for auto. Example: {"x": (-4, 8), "y": (-3, 3)}
+PLOT_FIGSIZE = (9.2, 6.4)  # Example tuples: (8, 6), (9.2, 6.4), (11, 7)
+LINE_WIDTH = 2.2  # Float example: 1.5, 2.0, 2.5
+MARKER_SIZE = 5.5  # Float example: 4.0, 5.5, 7.0
+SAVE_DPI = 220  # Integer example: 150, 220, 300
+AUTO_EXPORT_PNG = False  # True = save automatically, False = ask after showing plot
+PNG_PREFIX = "postprocess"  # Example output names: postprocess_aggregate_positive_circulation.png
 
 
 AGGREGATE_TERMS = [

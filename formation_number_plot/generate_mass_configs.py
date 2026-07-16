@@ -6,7 +6,7 @@ import re
 
 
 TAU_VALUES = [
-    "45.0",
+    "6.5",
 ]
 
 

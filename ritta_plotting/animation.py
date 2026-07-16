@@ -29,13 +29,9 @@ SHOW_VORTEX_BOUNDARY = False
 VORTEX_BOUNDARY_MODE = "vorticity_threshold"
 VORTEX_BOUNDARY_THRESHOLD_FACTOR = 0.30
 VORTEX_MIN_REGION_AREA = None
-SLICE_AXIS = "z"
-SLICE_INDEX = None
 OVERLAY_LEVELS = True
 COLOR_SCALE_MODE = "composite_symmetric"
 COLOR_SCHEME = "blue_white_red"
-RENDER_MODE = "slice_2d"
-SAMPLE_DENSITY = "medium"
 POINT_OVERLAY_OPTIONS = None
 POINT_OVERLAY_SIZE = 48.0
 SUPPRESS_ZERO_OMEGA_EXTREMA = True
@@ -233,6 +229,8 @@ def main():
     run_dir = resolve_run_dir(args.output_folder)
     vp = load_viewer_plotting()
     summary = vp.inspect_run_folder(run_dir)
+    if int(summary.get("space_dim") or 0) != 2:
+        raise SystemExit("animation.py is 2D-only. This run is not a 2D run.")
     rows = snapshot_rows(summary)
 
     print("Loaded run:", run_dir)
@@ -272,11 +270,7 @@ def main():
             selected_level=selected_levels[0] if selected_levels else 0,
             selected_levels=selected_levels,
             selected_fields=SELECTED_FIELDS,
-            slice_axis=SLICE_AXIS,
-            slice_index=SLICE_INDEX,
             overlay_levels=OVERLAY_LEVELS,
-            render_mode=RENDER_MODE,
-            sample_density=SAMPLE_DENSITY,
             view_limits=VIEW_LIMITS,
             coordinate_dx_base=summary.get("coordinate_dx_base"),
         )
@@ -289,12 +283,8 @@ def main():
                 selected_level=selected_levels[0] if selected_levels else 0,
                 selected_levels=selected_levels,
                 selected_fields=SELECTED_FIELDS,
-                slice_axis=SLICE_AXIS,
-                slice_index=SLICE_INDEX,
                 overlay_levels=OVERLAY_LEVELS,
                 color_scale_mode=COLOR_SCALE_MODE,
-                render_mode=RENDER_MODE,
-                sample_density=SAMPLE_DENSITY,
             )
             field_norm_overrides = color_plan.get("field_norms")
 
@@ -317,14 +307,10 @@ def main():
                 vortex_boundary_mode=VORTEX_BOUNDARY_MODE,
                 vortex_boundary_threshold_factor=VORTEX_BOUNDARY_THRESHOLD_FACTOR,
                 vortex_min_region_area=VORTEX_MIN_REGION_AREA,
-                slice_axis=SLICE_AXIS,
-                slice_index=SLICE_INDEX,
                 overlay_levels=OVERLAY_LEVELS,
                 color_scale_mode=COLOR_SCALE_MODE,
                 color_scheme=COLOR_SCHEME,
                 field_norm_overrides=field_norm_overrides,
-                render_mode=RENDER_MODE,
-                sample_density=SAMPLE_DENSITY,
                 point_overlay_options=POINT_OVERLAY_OPTIONS,
                 point_overlay_size=POINT_OVERLAY_SIZE,
                 suppress_zero_omega_extrema_overlays=SUPPRESS_ZERO_OMEGA_EXTREMA,

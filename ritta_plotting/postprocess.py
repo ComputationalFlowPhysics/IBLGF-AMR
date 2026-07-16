@@ -234,6 +234,8 @@ def discover_batch_runs(upload_root):
 
 def process_single_run(vp, run_dir):
     summary = vp.inspect_run_folder(run_dir)
+    if int(summary.get("space_dim") or 0) != 2:
+        raise SystemExit("postprocess.py is 2D-only. This run is not a 2D run.")
     rows = snapshot_rows(summary)
     results = []
     previous_parameters = None

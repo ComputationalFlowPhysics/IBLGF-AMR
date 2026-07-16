@@ -122,7 +122,7 @@ def build_fast_summary(vp, run_dir):
     if not snapshot_paths:
         raise ValueError("No plottable .hdf5 or .h5 files were found in the selected folder.")
 
-    time_series_paths = [path for path in snapshot_paths if vp.snapshot_timestep(path) is not None]
+    time_series_paths = [path for path in snapshot_paths if snapshot_timestep(path) is not None]
     primary_paths = time_series_paths or snapshot_paths
     first_snapshot = primary_paths[0]
     snapshot = vp._snapshot_for_render(first_snapshot)

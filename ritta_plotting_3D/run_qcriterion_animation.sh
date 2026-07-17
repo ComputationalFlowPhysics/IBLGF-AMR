@@ -48,10 +48,10 @@ if [[ ! -x "${PVBATCH}" ]]; then
   exit 1
 fi
 
-CMD=("${PVBATCH}" "${PY_SCRIPT}" "${RUN_FOLDER}" "--stride" "${STRIDE}")
+CMD=("${PVBATCH}" "${PY_SCRIPT}" "${RUN_FOLDER}" "${STRIDE}")
 
 if [[ -n "${OUTPUT_MP4}" ]]; then
-  CMD+=("--output" "${OUTPUT_MP4}")
+  CMD+=("${OUTPUT_MP4}")
 fi
 
 echo "Using pvbatch: ${PVBATCH}"

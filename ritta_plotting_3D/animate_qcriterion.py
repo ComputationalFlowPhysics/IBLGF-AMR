@@ -1,5 +1,6 @@
 #!/usr/bin/env pvpython
 
+import csv
 import re
 import shutil
 import subprocess
@@ -30,10 +31,10 @@ else:
 
 frames_folder = output_folder / "frames"
 ffmpeg_folder = output_folder / "_ffmpeg_frames"
+manifest_path = output_folder / "frame_manifest.csv"
 
 output_folder.mkdir(parents=True, exist_ok=True)
 frames_folder.mkdir(parents=True, exist_ok=True)
-ffmpeg_folder.mkdir(parents=True, exist_ok=True)
 
 if (run_folder / "flowTime_0.hdf5").exists():
     snapshot_folder = run_folder
@@ -55,12 +56,20 @@ if not all_snapshots:
 all_snapshots.sort(key=lambda x: int(re.search(r"flowTime_(\d+)\.hdf5$", x.name).group(1)))
 snapshots = all_snapshots[::stride]
 
+# Do not allow files left by an earlier run (especially one with a different
+# stride) to leak into the current frame sequence or MP4.
+for old_frame in frames_folder.glob("flowTime_*.png"):
+    old_frame.unlink()
+shutil.rmtree(ffmpeg_folder, ignore_errors=True)
+ffmpeg_folder.mkdir(parents=True, exist_ok=True)
+
 print(f"Run folder:     {run_folder}", flush=True)
 print(f"Snapshot dir:   {snapshot_folder}", flush=True)
 print(f"Snapshots used: {len(snapshots)}", flush=True)
 print(f"Stride:         {stride}", flush=True)
 print(f"Output folder:  {output_folder}", flush=True)
 print(f"Output mp4:     {output_mp4}", flush=True)
+print(f"Frame manifest: {manifest_path}", flush=True)
 
 
 # edit these directly if you want different settings
@@ -73,14 +82,37 @@ camera_view_up = [-0.016372486611386468, 0.9923582196167854, 0.12229924628207733
 camera_parallel_scale = 9.711408782056534
 
 
-print("Opening snapshot series...", flush=True)
+print("Preparing snapshot sequence...", flush=True)
 print("Rendering frames...", flush=True)
+
+with manifest_path.open("w", newline="") as manifest_file:
+    manifest_writer = csv.writer(manifest_file)
+    manifest_writer.writerow(
+        [
+            "frame_index",
+            "snapshot_step",
+            "snapshot_file",
+            "snapshot_size_bytes",
+            "source_cells",
+            "source_points",
+            "png_file",
+        ]
+    )
+
 for i, snapshot in enumerate(snapshots):
-    print(f"Opening snapshot {i + 1}/{len(snapshots)}: {snapshot.name}", flush=True)
+    snapshot = snapshot.resolve()
+    step = int(re.search(r"flowTime_(\d+)\.hdf5$", snapshot.name).group(1))
+    print(
+        f"Opening snapshot {i + 1}/{len(snapshots)}: "
+        f"step={step}, file={snapshot}",
+        flush=True,
+    )
 
     ResetSession()
     paraview.simple._DisableFirstRenderCameraReset()
 
+    # Use a new reader for exactly one file. This deliberately avoids a
+    # ParaView file-series reader and its animation-time/cache state.
     source = OpenDataFile(str(snapshot))
     if source is None:
         print(f"Could not open {snapshot}", flush=True)
@@ -89,27 +121,50 @@ for i, snapshot in enumerate(snapshots):
     render_view = GetActiveViewOrCreate("RenderView")
 
     source.CellArrayStatus = ["u_0", "u_1", "u_2"]
-    render_view.Update()
+    source.UpdatePipeline()
+
+    cell_data = source.GetCellDataInformation()
+    missing_arrays = [
+        name
+        for name in ("u_0", "u_1", "u_2")
+        if cell_data.GetArrayInformation(name) is None
+    ]
+    if missing_arrays:
+        print(
+            f"Snapshot {snapshot} is missing required cell arrays: "
+            f"{', '.join(missing_arrays)}",
+            flush=True,
+        )
+        sys.exit(1)
+
+    source_info = source.GetDataInformation()
+    source_cells = source_info.GetNumberOfCells()
+    source_points = source_info.GetNumberOfPoints()
+    print(
+        f"Loaded step {step}: cells={source_cells}, points={source_points}",
+        flush=True,
+    )
 
     cell_to_point = CellDatatoPointData(Input=source)
-    render_view.Update()
+    cell_to_point.UpdatePipeline()
 
     merged = MergeVectorComponents(Input=cell_to_point)
     merged.OutputVectorName = "Velocity"
     merged.XArray = "u_0"
     merged.YArray = "u_1"
     merged.ZArray = "u_2"
-    render_view.Update()
+    merged.UpdatePipeline()
 
     gradient = Gradient(Input=merged)
     gradient.ScalarArray = ["POINTS", "Velocity"]
     gradient.ComputeQCriterion = 1
     gradient.QCriterionArrayName = "Q Criterion"
-    render_view.Update()
+    gradient.UpdatePipeline()
 
     contour = Contour(Input=gradient)
     contour.ContourBy = ["POINTS", "Q Criterion"]
     contour.Isosurfaces = [contour_value]
+    contour.UpdatePipeline()
     contour_display = Show(contour, render_view, "GeometryRepresentation")
     contour_display.Representation = "Surface"
     render_view.Update()
@@ -122,17 +177,34 @@ for i, snapshot in enumerate(snapshots):
 
     Render()
 
-    step = int(re.search(r"flowTime_(\d+)\.hdf5$", snapshot.name).group(1))
     png_name = f"flowTime_{step}.png"
     png_path = frames_folder / png_name
 
     print(f"[{i + 1}/{len(snapshots)}] {png_name}", flush=True)
     SaveScreenshot(str(png_path), render_view, ImageResolution=image_resolution)
 
+    if not png_path.is_file() or png_path.stat().st_size == 0:
+        print(f"ParaView did not create a valid frame: {png_path}", flush=True)
+        sys.exit(1)
+
     ffmpeg_png = ffmpeg_folder / f"frame_{i:05d}.png"
     shutil.copy2(png_path, ffmpeg_png)
 
+    with manifest_path.open("a", newline="") as manifest_file:
+        csv.writer(manifest_file).writerow(
+            [
+                i,
+                step,
+                str(snapshot),
+                snapshot.stat().st_size,
+                source_cells,
+                source_points,
+                str(png_path),
+            ]
+        )
+
 print(f"Finished PNG frames: {frames_folder}", flush=True)
+print(f"Frame-to-snapshot manifest: {manifest_path}", flush=True)
 
 ffmpeg = shutil.which("ffmpeg")
 if ffmpeg is None:

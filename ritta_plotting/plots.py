@@ -20,24 +20,24 @@ from pathlib import Path
 # User settings: edit these to match the viewer plot settings you want.
 # ---------------------------------------------------------------------------
 
-SELECTED_FIELDS = ["edge_aux"]  # Examples: ["edge_aux"], ["phi"], ["u_0"], ["u_1"]
+SELECTED_FIELDS = ["edge_aux"]  # Examples: ["edge_aux"], ["phi"], ["u_0"], ["u_1"], ["velocity_vectors"]
 SELECTED_LEVELS = None  # None = use all default levels. Example manual input: [0], [0, 1], [1, 2]
 SHOW_GRID_LINES = False  # True or False
 SMOOTH_PLOTS = False  # True or False
 DRAW_SAME_LEVEL_CONTOURS = False  # True or False
 CONTOUR_LEVEL_COUNT = 15  # Integer example: 10, 15, 20
-CONTOUR_LEVEL_SPEC = None  # Leave as None, or use {"edge_aux": [-1.0, -0.5, 0.0, 0.5, 1.0]}
+CONTOUR_LEVEL_SPEC = None  # None for automatic contours, or {"min": -1.0, "max": 1.0, "increment": 0.2}
 SHOW_VORTEX_BOUNDARY = False  # True or False
-VORTEX_BOUNDARY_MODE = "vorticity_threshold"  # Options: "vorticity_threshold", "computed_q_positive", "elliptical_gaussian"
+VORTEX_BOUNDARY_MODE = "vorticity_threshold"  # Options: "vorticity_threshold", "q_positive", "elliptical_gaussian"
 VORTEX_BOUNDARY_THRESHOLD_FACTOR = 0.30  # Float example: 0.2, 0.3, 0.5
 VORTEX_MIN_REGION_AREA = None  # None to use snapshot default, or a float like 0.25 or 0.5
 OVERLAY_LEVELS = True  # True = stacked AMR levels in one panel, False = separate panel per level
-COLOR_SCALE_MODE = "composite_symmetric"  # Options: "composite_symmetric", "composite_linear", "per_level_autoscale"
-COLOR_SCHEME = "blue_white_red"  # Examples: "blue_white_red", "viridis", "plasma", "original"
-POINT_OVERLAY_OPTIONS = None  # None for viewer defaults, or {} to suppress, or {"vortex_center_positive": True}
+COLOR_SCALE_MODE = "composite_symmetric"  # Options: "composite_linear", "composite_symmetric", "composite_symlog", "per_level_autoscale"
+COLOR_SCHEME = "blue_white_red"  # Options: "original", "blue_white_red", "viridis", "rainbow"
+POINT_OVERLAY_OPTIONS = None  # None for viewer defaults, or {} to suppress, or {"vortex_center_positive": True, "omega_max": True}
 POINT_OVERLAY_SIZE = 48.0  # Marker size float example: 32.0, 48.0, 64.0
 SUPPRESS_ZERO_OMEGA_EXTREMA = True  # True or False
-VIEW_LIMITS = None  # None for auto. Example: {"x": (-4, 8), "y": (-3, 3)}
+VIEW_LIMITS = None  # None for auto. Preferred format: {"x_min": -4, "x_max": 8, "y_min": -3, "y_max": 3}
 RENDER_SCALE = 1.0  # Float example: 1.0, 1.5, 2.0
 AUTO_EXPORT_PNG = False  # True = save automatically, False = ask after showing plot
 PNG_PREFIX = "plot"  # Example output names: plot_flowTime_120.png

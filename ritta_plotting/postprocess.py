@@ -20,13 +20,13 @@ from pathlib import Path
 # User settings: edit these to match the viewer post-processing settings.
 # ---------------------------------------------------------------------------
 
-BOUNDARY_MODE = "vorticity_threshold"  # Options: "vorticity_threshold", "computed_q_positive", "elliptical_gaussian"
+BOUNDARY_MODE = "vorticity_threshold"  # Options: "vorticity_threshold", "q_positive", "elliptical_gaussian"
 THRESHOLD_FACTOR = 0.30  # Float example: 0.2, 0.3, 0.5. Used for non-Gaussian modes.
 MIN_REGION_AREA = 0.25  # Float example: 0.1, 0.25, 0.5
 LARGEST_REGION_ONLY = False  # True or False. Used for non-Gaussian modes.
 INITIAL_FIT_FRACTION = 0.30  # Float example: 0.2, 0.3, 0.4. Used for Gaussian mode.
 BOUNDARY_FRACTION = 0.05  # Float example: 0.03, 0.05, 0.1. Used for Gaussian mode.
-VIEW_LIMITS = None  # None for auto. Example: {"x": (-4, 8), "y": (-3, 3)}
+VIEW_LIMITS = None  # None for auto. Preferred format: {"x_min": -4, "x_max": 8, "y_min": -3, "y_max": 3}
 PLOT_FIGSIZE = (9.2, 6.4)  # Example tuples: (8, 6), (9.2, 6.4), (11, 7)
 LINE_WIDTH = 2.2  # Float example: 1.5, 2.0, 2.5
 MARKER_SIZE = 5.5  # Float example: 4.0, 5.5, 7.0

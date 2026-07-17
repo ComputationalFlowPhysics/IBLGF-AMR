@@ -1,258 +1,184 @@
 #!/usr/bin/env pvpython
 
-from __future__ import annotations
-
-import argparse
 import re
 import shutil
 import subprocess
-import threading
-import time
+import sys
 from pathlib import Path
 
-from paraview.simple import *  # noqa: F401,F403
+from paraview.simple import *
 import paraview
-
-
-# ----------------------------
-# Easy-to-edit visualization settings
-# ----------------------------
-CONTOUR_ISO_VALUE = -1.4283038627771472e-4
-Q_ARRAY_NAME = "Q Criterion"
-MP4_FPS = 8
-IMAGE_RESOLUTION = [1280, 720]
-USE_TRACED_CAMERA = True
-PROGRESS_UPDATE_SECONDS = 10
-KEEP_FRAME_PNGS = False
-
-# Camera copied from your traced snapshot script.
-CAMERA_POSITION = [16.65225298909394, 0.7536788379147482, -4.296194431796246]
-CAMERA_FOCAL_POINT = [3.0625000000000027, -1.0977953873560387e-15, 1.807254991429669e-15]
-CAMERA_VIEW_UP = [-0.016372486611386468, 0.9923582196167854, 0.12229924628207733]
-CAMERA_PARALLEL_SCALE = 9.711408782056534
-
 
 paraview.simple._DisableFirstRenderCameraReset()
 
 
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Build a 3D Q-criterion contour animation from an IBLGF-AMR output folder."
-    )
-    parser.add_argument(
-        "run_folder",
-        help="Path to the 3D run folder. Snapshots may be directly inside it or inside an output/ subfolder.",
-    )
-    parser.add_argument(
-        "--stride",
-        type=int,
-        default=1,
-        help="Use every Nth snapshot. Example: --stride 5",
-    )
-    parser.add_argument(
-        "--output",
-        default=None,
-        help="MP4 output path. Default: ritta_plotting_3D/outputs/<run_folder_name>_qcriterion.mp4",
-    )
-    return parser.parse_args()
+if len(sys.argv) < 2:
+    print("Usage:")
+    print("  animate_qcriterion.py RUN_FOLDER [STRIDE] [OUTPUT_MP4]")
+    sys.exit(1)
 
 
-def snapshot_step(path: Path) -> int:
-    match = re.search(r"flowTime_(\d+)\.hdf5$", path.name)
-    if not match:
-        raise ValueError(f"Unexpected snapshot name: {path.name}")
-    return int(match.group(1))
+run_folder = Path(sys.argv[1]).expanduser().resolve()
+stride = int(sys.argv[2]) if len(sys.argv) >= 3 else 1
+
+if len(sys.argv) >= 4:
+    output_mp4 = Path(sys.argv[3]).expanduser().resolve()
+    output_folder = output_mp4.parent
+else:
+    output_folder = Path(__file__).resolve().parent / "outputs" / f"{run_folder.name}_qcriterion"
+    output_mp4 = output_folder / f"{run_folder.name}_qcriterion.mp4"
+
+frames_folder = output_folder / "frames"
+ffmpeg_folder = output_folder / "_ffmpeg_frames"
+
+output_folder.mkdir(parents=True, exist_ok=True)
+frames_folder.mkdir(parents=True, exist_ok=True)
+ffmpeg_folder.mkdir(parents=True, exist_ok=True)
+
+if (run_folder / "flowTime_0.hdf5").exists():
+    snapshot_folder = run_folder
+elif (run_folder / "output").is_dir():
+    snapshot_folder = run_folder / "output"
+else:
+    print("Could not find snapshots.")
+    print(f"Checked {run_folder}")
+    print(f"Checked {run_folder / 'output'}")
+    sys.exit(1)
+
+all_snapshots = list(snapshot_folder.glob("flowTime_*.hdf5"))
+all_snapshots = [x for x in all_snapshots if x.name != "flow_final.hdf5"]
+
+if not all_snapshots:
+    print(f"No flowTime_*.hdf5 files found in {snapshot_folder}")
+    sys.exit(1)
+
+all_snapshots.sort(key=lambda x: int(re.search(r"flowTime_(\d+)\.hdf5$", x.name).group(1)))
+snapshots = all_snapshots[::stride]
+
+print(f"Run folder:     {run_folder}", flush=True)
+print(f"Snapshot dir:   {snapshot_folder}", flush=True)
+print(f"Snapshots used: {len(snapshots)}", flush=True)
+print(f"Stride:         {stride}", flush=True)
+print(f"Output folder:  {output_folder}", flush=True)
+print(f"Output mp4:     {output_mp4}", flush=True)
 
 
-def resolve_snapshot_dir(run_folder: Path) -> Path:
-    direct_snapshots = list(run_folder.glob("flowTime_*.hdf5"))
-    output_dir = run_folder / "output"
-    output_snapshots = list(output_dir.glob("flowTime_*.hdf5")) if output_dir.is_dir() else []
-
-    if direct_snapshots:
-        return run_folder
-    if output_snapshots:
-        return output_dir
-
-    raise ValueError(
-        "No flowTime_*.hdf5 snapshots found.\n"
-        f"Checked:\n"
-        f"  - {run_folder}\n"
-        f"  - {output_dir}"
-    )
+# edit these directly if you want different settings
+contour_value = -3.0
+fps = 8
+image_resolution = [1280, 720]
+camera_position = [16.65225298909394, 0.7536788379147482, -4.296194431796246]
+camera_focal_point = [3.0625000000000027, -1.0977953873560387e-15, 1.807254991429669e-15]
+camera_view_up = [-0.016372486611386468, 0.9923582196167854, 0.12229924628207733]
+camera_parallel_scale = 9.711408782056534
 
 
-def find_snapshots(run_folder: Path, stride: int) -> list[str]:
-    if stride < 1:
-        raise ValueError("Stride must be at least 1.")
+print("Opening snapshot series...", flush=True)
+source = OpenDataFile([str(x) for x in snapshots])
+if source is None:
+    print("ParaView could not open the snapshot series.")
+    sys.exit(1)
 
-    snapshot_dir = resolve_snapshot_dir(run_folder)
-    snapshots = sorted(snapshot_dir.glob("flowTime_*.hdf5"), key=snapshot_step)
-    snapshots = [path for path in snapshots if path.name != "flow_final.hdf5"]
-    if not snapshots:
-        raise ValueError(f"No usable flowTime_*.hdf5 snapshots found in {snapshot_dir}")
+print("Building filters...", flush=True)
+render_view = GetActiveViewOrCreate("RenderView")
 
-    return [str(path) for path in snapshots[::stride]]
+source_display = Show(source, render_view, "AMRRepresentation")
+source_display.Representation = "Outline"
+render_view.Update()
 
+source.CellArrayStatus = ["u_0", "u_1", "u_2"]
+render_view.Update()
 
-def default_output_path(run_folder: Path) -> Path:
-    output_dir = Path(__file__).resolve().parent / "outputs"
-    output_dir.mkdir(parents=True, exist_ok=True)
-    return output_dir / f"{run_folder.name}_qcriterion.mp4"
+cell_to_point = CellDatatoPointData(registrationName="CellDatatoPointData1", Input=source)
+cell_to_point_display = Show(cell_to_point, render_view, "AMRRepresentation")
+cell_to_point_display.Representation = "Outline"
+Hide(source, render_view)
+render_view.Update()
 
+merged = MergeVectorComponents(registrationName="MergeVectorComponents1", Input=cell_to_point)
+merged.OutputVectorName = "Velocity"
+merged.XArray = "u_0"
+merged.YArray = "u_1"
+merged.ZArray = "u_2"
+merged_display = Show(merged, render_view, "AMRRepresentation")
+merged_display.Representation = "Outline"
+Hide(cell_to_point, render_view)
+render_view.Update()
 
-def progress_monitor(output_path: Path, total_frames: int, stop_event: threading.Event) -> None:
-    start_time = time.time()
-    while not stop_event.wait(PROGRESS_UPDATE_SECONDS):
-        elapsed = int(time.time() - start_time)
-        if output_path.exists():
-            size_mb = output_path.stat().st_size / (1024 * 1024)
-            print(
-                f"[progress] Still rendering {total_frames} frame(s)... "
-                f"elapsed={elapsed}s output_size={size_mb:.1f} MB",
-                flush=True,
-            )
-        else:
-            print(
-                f"[progress] Still rendering {total_frames} frame(s)... "
-                f"elapsed={elapsed}s output file not created yet",
-                flush=True,
-            )
+gradient = Gradient(registrationName="Gradient1", Input=merged)
+gradient.ScalarArray = ["POINTS", "Velocity"]
+gradient.ComputeQCriterion = 1
+gradient.QCriterionArrayName = "Q Criterion"
+gradient_display = Show(gradient, render_view, "AMRRepresentation")
+gradient_display.Representation = "Outline"
+Hide(merged, render_view)
+render_view.Update()
 
+contour = Contour(registrationName="Contour1", Input=gradient)
+contour.ContourBy = ["POINTS", "Q Criterion"]
+contour.Isosurfaces = [contour_value]
+contour_display = Show(contour, render_view, "GeometryRepresentation")
+contour_display.Representation = "Surface"
+Hide(gradient, render_view)
+render_view.Update()
 
-def frame_dir_for_output(output_path: Path) -> Path:
-    return output_path.with_suffix("") / "frames"
+render_view.CameraPosition = camera_position
+render_view.CameraFocalPoint = camera_focal_point
+render_view.CameraViewUp = camera_view_up
+render_view.CameraParallelScale = camera_parallel_scale
+render_view.ViewSize = image_resolution
 
+print("Rendering frames...", flush=True)
+animation_scene = GetAnimationScene()
+animation_scene.UpdateAnimationUsingDataTimeSteps()
 
-def build_mp4_from_frames(frame_dir: Path, output_path: Path) -> bool:
-    ffmpeg = shutil.which("ffmpeg")
-    if ffmpeg is None:
-        print("ffmpeg not found. Leaving PNG frames instead of MP4.", flush=True)
-        return False
+times = list(source.TimestepValues) if hasattr(source, "TimestepValues") else []
+if len(times) != len(snapshots):
+    times = [None] * len(snapshots)
 
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    cmd = [
+for i, snapshot in enumerate(snapshots):
+    if times[i] is not None:
+        animation_scene.AnimationTime = times[i]
+
+    Render()
+
+    step = int(re.search(r"flowTime_(\d+)\.hdf5$", snapshot.name).group(1))
+    png_name = f"flowTime_{step}.png"
+    png_path = frames_folder / png_name
+
+    print(f"[{i + 1}/{len(snapshots)}] {png_name}", flush=True)
+    SaveScreenshot(str(png_path), render_view, ImageResolution=image_resolution)
+
+    ffmpeg_png = ffmpeg_folder / f"frame_{i:05d}.png"
+    shutil.copy2(png_path, ffmpeg_png)
+
+print(f"Finished PNG frames: {frames_folder}", flush=True)
+
+ffmpeg = shutil.which("ffmpeg")
+if ffmpeg is None:
+    print("ffmpeg not found. Leaving PNG frames instead of MP4.", flush=True)
+    print(f"PNG frames kept at: {frames_folder}", flush=True)
+    sys.exit(0)
+
+print("Building MP4...", flush=True)
+subprocess.run(
+    [
         ffmpeg,
         "-y",
         "-framerate",
-        str(MP4_FPS),
+        str(fps),
         "-i",
-        str(frame_dir / "frame_%05d.png"),
+        str(ffmpeg_folder / "frame_%05d.png"),
         "-c:v",
         "libx264",
         "-pix_fmt",
         "yuv420p",
-        str(output_path),
-    ]
-    print("Combining frames into MP4 with ffmpeg...", flush=True)
-    subprocess.run(cmd, check=True)
-    return True
+        str(output_mp4),
+    ],
+    check=True,
+)
 
+shutil.rmtree(ffmpeg_folder, ignore_errors=True)
 
-def main() -> None:
-    args = parse_args()
-    run_folder = Path(args.run_folder).expanduser().resolve()
-    output_path = Path(args.output).expanduser().resolve() if args.output else default_output_path(run_folder)
-
-    snapshot_paths = find_snapshots(run_folder, args.stride)
-    total_frames = len(snapshot_paths)
-
-    print(f"Run folder:   {run_folder}")
-    print(f"Snapshots:    {total_frames}")
-    print(f"Stride:       {args.stride}")
-    print(f"Output movie: {output_path}")
-
-    source = OpenDataFile(snapshot_paths)
-    if source is None:
-        raise RuntimeError("ParaView failed to open the snapshot series.")
-
-    render_view = GetActiveViewOrCreate("RenderView")
-    source_display = Show(source, render_view, "AMRRepresentation")
-    source_display.Representation = "Outline"
-    render_view.Update()
-
-    # data -> select u_0,u_1,u_2 -> cell data to point data
-    source.CellArrayStatus = ["u_0", "u_1", "u_2"]
-    render_view.Update()
-
-    cell_to_point = CellDatatoPointData(registrationName="CellDatatoPointData1", Input=source)
-    cell_to_point_display.Representation = "Outline"
-    render_view.Update()
-
-    merged = MergeVectorComponents(registrationName="MergeVectorComponents1", Input=cell_to_point)
-    merged.OutputVectorName = 'Velocity'
-    merged_display.Representation = "Outline"
-    render_view.Update()
-
-    gradient = Gradient(registrationName="Gradient1", Input=merged)
-    gradient.ComputeQCriterion = 1
-    gradient.QCriterionArrayName = Q_ARRAY_NAME
-    gradient_display.Representation = "Outline"
-    render_view.Update()
-
-    contour = Contour(registrationName="Contour1", Input=gradient)
-    contour.ContourBy = ["POINTS", Q_ARRAY_NAME]
-    contour.Isosurfaces = [-3.0]
-    contour_display = Show(contour, render_view, "GeometryRepresentation")
-    contour_display.Representation = "Surface"
-    contour_display.SetScalarBarVisibility(render_view, True)
-    render_view.Update()
-
-    GetColorTransferFunction(Q_ARRAY_NAME)
-    GetOpacityTransferFunction(Q_ARRAY_NAME)
-    GetTransferFunction2D(Q_ARRAY_NAME)
-
-    animation_scene = GetAnimationScene()
-    animation_scene.UpdateAnimationUsingDataTimeSteps()
-
-    if USE_TRACED_CAMERA:
-        render_view.CameraPosition = CAMERA_POSITION
-        render_view.CameraFocalPoint = CAMERA_FOCAL_POINT
-        render_view.CameraViewUp = CAMERA_VIEW_UP
-        render_view.CameraParallelScale = CAMERA_PARALLEL_SCALE
-    else:
-        render_view.ResetCamera(False, 0.9)
-
-    render_view.ViewSize = IMAGE_RESOLUTION
-    Render()
-
-    frame_dir = frame_dir_for_output(output_path)
-    frame_dir.mkdir(parents=True, exist_ok=True)
-
-    source_times = list(source.TimestepValues) if hasattr(source, "TimestepValues") else []
-    if len(source_times) != total_frames:
-        source_times = [None] * total_frames
-
-    print(f"Saving {total_frames} PNG frame(s) first...", flush=True)
-    stop_event = threading.Event()
-    monitor = threading.Thread(
-        target=progress_monitor,
-        args=(output_path, total_frames, stop_event),
-        daemon=True,
-    )
-    monitor.start()
-    try:
-        for idx in range(total_frames):
-            if source_times[idx] is not None:
-                animation_scene.AnimationTime = source_times[idx]
-            Render()
-            frame_path = frame_dir / f"frame_{idx:05d}.png"
-            print(f"[frame {idx + 1}/{total_frames}] {frame_path.name}", flush=True)
-            SaveScreenshot(str(frame_path), render_view, ImageResolution=IMAGE_RESOLUTION)
-    finally:
-        stop_event.set()
-        monitor.join(timeout=1)
-
-    print(f"Finished writing PNG frames to {frame_dir}", flush=True)
-
-    if build_mp4_from_frames(frame_dir, output_path):
-        print(f"Done: {output_path}", flush=True)
-        if not KEEP_FRAME_PNGS:
-            shutil.rmtree(frame_dir, ignore_errors=True)
-            print("Deleted intermediate PNG frames.", flush=True)
-    else:
-        print(f"PNG frames kept at: {frame_dir}", flush=True)
-
-
-if __name__ == "__main__":
-    main()
+print(f"Done: {output_mp4}", flush=True)
+print(f"PNG frames kept at: {frames_folder}", flush=True)

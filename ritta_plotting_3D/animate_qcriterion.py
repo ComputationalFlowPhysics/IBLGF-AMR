@@ -82,17 +82,10 @@ if source is None:
 print("Building filters...", flush=True)
 render_view = GetActiveViewOrCreate("RenderView")
 
-source_display = Show(source, render_view, "AMRRepresentation")
-source_display.Representation = "Outline"
-render_view.Update()
-
 source.CellArrayStatus = ["u_0", "u_1", "u_2"]
 render_view.Update()
 
 cell_to_point = CellDatatoPointData(registrationName="CellDatatoPointData1", Input=source)
-cell_to_point_display = Show(cell_to_point, render_view, "AMRRepresentation")
-cell_to_point_display.Representation = "Outline"
-Hide(source, render_view)
 render_view.Update()
 
 merged = MergeVectorComponents(registrationName="MergeVectorComponents1", Input=cell_to_point)
@@ -100,18 +93,12 @@ merged.OutputVectorName = "Velocity"
 merged.XArray = "u_0"
 merged.YArray = "u_1"
 merged.ZArray = "u_2"
-merged_display = Show(merged, render_view, "AMRRepresentation")
-merged_display.Representation = "Outline"
-Hide(cell_to_point, render_view)
 render_view.Update()
 
 gradient = Gradient(registrationName="Gradient1", Input=merged)
 gradient.ScalarArray = ["POINTS", "Velocity"]
 gradient.ComputeQCriterion = 1
 gradient.QCriterionArrayName = "Q Criterion"
-gradient_display = Show(gradient, render_view, "AMRRepresentation")
-gradient_display.Representation = "Outline"
-Hide(merged, render_view)
 render_view.Update()
 
 contour = Contour(registrationName="Contour1", Input=gradient)
@@ -119,7 +106,6 @@ contour.ContourBy = ["POINTS", "Q Criterion"]
 contour.Isosurfaces = [contour_value]
 contour_display = Show(contour, render_view, "GeometryRepresentation")
 contour_display.Representation = "Surface"
-Hide(gradient, render_view)
 render_view.Update()
 
 render_view.CameraPosition = camera_position

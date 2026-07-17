@@ -18,7 +18,6 @@ import paraview
 # Easy-to-edit visualization settings
 # ----------------------------
 CONTOUR_ISO_VALUE = -1.4283038627771472e-4
-OUTPUT_VECTOR_NAME = "Velocity"
 Q_ARRAY_NAME = "Q Criterion"
 MP4_FPS = 8
 IMAGE_RESOLUTION = [1280, 720]
@@ -157,18 +156,15 @@ def main() -> None:
 
     snapshot_paths = find_snapshots(run_folder, args.stride)
     total_frames = len(snapshot_paths)
-    snapshot_steps = [snapshot_step(Path(path)) for path in snapshot_paths]
 
     print(f"Run folder:   {run_folder}")
     print(f"Snapshots:    {total_frames}")
     print(f"Stride:       {args.stride}")
     print(f"Output movie: {output_path}")
-    print("Opening snapshot series...", flush=True)
 
     source = OpenDataFile(snapshot_paths)
     if source is None:
         raise RuntimeError("ParaView failed to open the snapshot series.")
-    print("Opened snapshot series.", flush=True)
 
     render_view = GetActiveViewOrCreate("RenderView")
     source_display = Show(source, render_view, "AMRRepresentation")
@@ -176,42 +172,30 @@ def main() -> None:
     render_view.Update()
 
     # data -> select u_0,u_1,u_2 -> cell data to point data
-    print("Selecting u_0, u_1, u_2 arrays...", flush=True)
     source.CellArrayStatus = ["u_0", "u_1", "u_2"]
     render_view.Update()
 
-    print("Applying Cell Data to Point Data...", flush=True)
     cell_to_point = CellDatatoPointData(registrationName="CellDatatoPointData1", Input=source)
-    cell_to_point_display = Show(cell_to_point, render_view, "AMRRepresentation")
     cell_to_point_display.Representation = "Outline"
-    Hide(source, render_view)
     render_view.Update()
 
-    print("Merging vector components...", flush=True)
     merged = MergeVectorComponents(registrationName="MergeVectorComponents1", Input=cell_to_point)
-    merged.OutputVectorName = OUTPUT_VECTOR_NAME
-    merged_display = Show(merged, render_view, "AMRRepresentation")
+    merged.OutputVectorName = 'Velocity'
     merged_display.Representation = "Outline"
-    Hide(cell_to_point, render_view)
     render_view.Update()
 
-    print("Computing gradient and Q criterion...", flush=True)
     gradient = Gradient(registrationName="Gradient1", Input=merged)
     gradient.ComputeQCriterion = 1
     gradient.QCriterionArrayName = Q_ARRAY_NAME
-    gradient_display = Show(gradient, render_view, "AMRRepresentation")
     gradient_display.Representation = "Outline"
-    Hide(merged, render_view)
     render_view.Update()
 
-    print("Applying contour filter...", flush=True)
     contour = Contour(registrationName="Contour1", Input=gradient)
     contour.ContourBy = ["POINTS", Q_ARRAY_NAME]
-    contour.Isosurfaces = [CONTOUR_ISO_VALUE]
+    contour.Isosurfaces = [-3.0]
     contour_display = Show(contour, render_view, "GeometryRepresentation")
     contour_display.Representation = "Surface"
     contour_display.SetScalarBarVisibility(render_view, True)
-    Hide(gradient, render_view)
     render_view.Update()
 
     GetColorTransferFunction(Q_ARRAY_NAME)
@@ -230,9 +214,7 @@ def main() -> None:
         render_view.ResetCamera(False, 0.9)
 
     render_view.ViewSize = IMAGE_RESOLUTION
-    print("Rendering first view...", flush=True)
     Render()
-    print("First view rendered.", flush=True)
 
     frame_dir = frame_dir_for_output(output_path)
     frame_dir.mkdir(parents=True, exist_ok=True)
@@ -254,11 +236,8 @@ def main() -> None:
             if source_times[idx] is not None:
                 animation_scene.AnimationTime = source_times[idx]
             Render()
-            frame_path = frame_dir / f"flowTime_{snapshot_steps[idx]}.png"
-            print(
-                f"[frame {idx + 1}/{total_frames}] {frame_path.name}",
-                flush=True,
-            )
+            frame_path = frame_dir / f"frame_{idx:05d}.png"
+            print(f"[frame {idx + 1}/{total_frames}] {frame_path.name}", flush=True)
             SaveScreenshot(str(frame_path), render_view, ImageResolution=IMAGE_RESOLUTION)
     finally:
         stop_event.set()

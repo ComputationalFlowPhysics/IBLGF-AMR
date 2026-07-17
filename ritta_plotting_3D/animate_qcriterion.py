@@ -36,7 +36,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "run_folder",
-        help="Path to the 3D run folder that contains flowTime_*.hdf5 snapshots.",
+        help="Path to the 3D run folder. Snapshots may be directly inside it or inside an output/ subfolder.",
     )
     parser.add_argument(
         "--stride",
@@ -59,14 +59,33 @@ def snapshot_step(path: Path) -> int:
     return int(match.group(1))
 
 
+def resolve_snapshot_dir(run_folder: Path) -> Path:
+    direct_snapshots = list(run_folder.glob("flowTime_*.hdf5"))
+    output_dir = run_folder / "output"
+    output_snapshots = list(output_dir.glob("flowTime_*.hdf5")) if output_dir.is_dir() else []
+
+    if direct_snapshots:
+        return run_folder
+    if output_snapshots:
+        return output_dir
+
+    raise ValueError(
+        "No flowTime_*.hdf5 snapshots found.\n"
+        f"Checked:\n"
+        f"  - {run_folder}\n"
+        f"  - {output_dir}"
+    )
+
+
 def find_snapshots(run_folder: Path, stride: int) -> list[str]:
     if stride < 1:
         raise ValueError("Stride must be at least 1.")
 
-    snapshots = sorted(run_folder.glob("flowTime_*.hdf5"), key=snapshot_step)
+    snapshot_dir = resolve_snapshot_dir(run_folder)
+    snapshots = sorted(snapshot_dir.glob("flowTime_*.hdf5"), key=snapshot_step)
     snapshots = [path for path in snapshots if path.name != "flow_final.hdf5"]
     if not snapshots:
-        raise ValueError(f"No flowTime_*.hdf5 snapshots found in {run_folder}")
+        raise ValueError(f"No usable flowTime_*.hdf5 snapshots found in {snapshot_dir}")
 
     return [str(path) for path in snapshots[::stride]]
 

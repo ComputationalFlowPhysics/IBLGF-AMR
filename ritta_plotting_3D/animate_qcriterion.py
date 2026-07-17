@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import argparse
 import re
+import threading
+import time
 from pathlib import Path
 
 from paraview.simple import *  # noqa: F401,F403
@@ -19,6 +21,7 @@ Q_ARRAY_NAME = "Q Criterion"
 MP4_FPS = 8
 IMAGE_RESOLUTION = [1280, 720]
 USE_TRACED_CAMERA = True
+PROGRESS_UPDATE_SECONDS = 10
 
 # Camera copied from your traced snapshot script.
 CAMERA_POSITION = [16.65225298909394, 0.7536788379147482, -4.296194431796246]
@@ -96,15 +99,35 @@ def default_output_path(run_folder: Path) -> Path:
     return output_dir / f"{run_folder.name}_qcriterion.mp4"
 
 
+def progress_monitor(output_path: Path, total_frames: int, stop_event: threading.Event) -> None:
+    start_time = time.time()
+    while not stop_event.wait(PROGRESS_UPDATE_SECONDS):
+        elapsed = int(time.time() - start_time)
+        if output_path.exists():
+            size_mb = output_path.stat().st_size / (1024 * 1024)
+            print(
+                f"[progress] Still rendering {total_frames} frame(s)... "
+                f"elapsed={elapsed}s output_size={size_mb:.1f} MB",
+                flush=True,
+            )
+        else:
+            print(
+                f"[progress] Still rendering {total_frames} frame(s)... "
+                f"elapsed={elapsed}s output file not created yet",
+                flush=True,
+            )
+
+
 def main() -> None:
     args = parse_args()
     run_folder = Path(args.run_folder).expanduser().resolve()
     output_path = Path(args.output).expanduser().resolve() if args.output else default_output_path(run_folder)
 
     snapshot_paths = find_snapshots(run_folder, args.stride)
+    total_frames = len(snapshot_paths)
 
     print(f"Run folder:   {run_folder}")
-    print(f"Snapshots:    {len(snapshot_paths)}")
+    print(f"Snapshots:    {total_frames}")
     print(f"Stride:       {args.stride}")
     print(f"Output movie: {output_path}")
 
@@ -169,13 +192,24 @@ def main() -> None:
     render_view.ViewSize = IMAGE_RESOLUTION
     Render()
 
-    print("Saving MP4...")
-    SaveAnimation(
-        str(output_path),
-        render_view,
-        ImageResolution=IMAGE_RESOLUTION,
-        FrameRate=MP4_FPS,
+    print(f"Saving MP4 for {total_frames} frame(s)...", flush=True)
+    stop_event = threading.Event()
+    monitor = threading.Thread(
+        target=progress_monitor,
+        args=(output_path, total_frames, stop_event),
+        daemon=True,
     )
+    monitor.start()
+    try:
+        SaveAnimation(
+            str(output_path),
+            render_view,
+            ImageResolution=IMAGE_RESOLUTION,
+            FrameRate=MP4_FPS,
+        )
+    finally:
+        stop_event.set()
+        monitor.join(timeout=1)
     print(f"Done: {output_path}")
 
 

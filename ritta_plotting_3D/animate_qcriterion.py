@@ -74,57 +74,51 @@ camera_parallel_scale = 9.711408782056534
 
 
 print("Opening snapshot series...", flush=True)
-source = OpenDataFile([str(x) for x in snapshots])
-if source is None:
-    print("ParaView could not open the snapshot series.")
-    sys.exit(1)
-
-print("Building filters...", flush=True)
-render_view = GetActiveViewOrCreate("RenderView")
-
-source.CellArrayStatus = ["u_0", "u_1", "u_2"]
-render_view.Update()
-
-cell_to_point = CellDatatoPointData(registrationName="CellDatatoPointData1", Input=source)
-render_view.Update()
-
-merged = MergeVectorComponents(registrationName="MergeVectorComponents1", Input=cell_to_point)
-merged.OutputVectorName = "Velocity"
-merged.XArray = "u_0"
-merged.YArray = "u_1"
-merged.ZArray = "u_2"
-render_view.Update()
-
-gradient = Gradient(registrationName="Gradient1", Input=merged)
-gradient.ScalarArray = ["POINTS", "Velocity"]
-gradient.ComputeQCriterion = 1
-gradient.QCriterionArrayName = "Q Criterion"
-render_view.Update()
-
-contour = Contour(registrationName="Contour1", Input=gradient)
-contour.ContourBy = ["POINTS", "Q Criterion"]
-contour.Isosurfaces = [contour_value]
-contour_display = Show(contour, render_view, "GeometryRepresentation")
-contour_display.Representation = "Surface"
-render_view.Update()
-
-render_view.CameraPosition = camera_position
-render_view.CameraFocalPoint = camera_focal_point
-render_view.CameraViewUp = camera_view_up
-render_view.CameraParallelScale = camera_parallel_scale
-render_view.ViewSize = image_resolution
-
 print("Rendering frames...", flush=True)
-animation_scene = GetAnimationScene()
-animation_scene.UpdateAnimationUsingDataTimeSteps()
-
-times = list(source.TimestepValues) if hasattr(source, "TimestepValues") else []
-if len(times) != len(snapshots):
-    times = [None] * len(snapshots)
-
 for i, snapshot in enumerate(snapshots):
-    if times[i] is not None:
-        animation_scene.AnimationTime = times[i]
+    print(f"Opening snapshot {i + 1}/{len(snapshots)}: {snapshot.name}", flush=True)
+
+    ResetSession()
+    paraview.simple._DisableFirstRenderCameraReset()
+
+    source = OpenDataFile(str(snapshot))
+    if source is None:
+        print(f"Could not open {snapshot}", flush=True)
+        sys.exit(1)
+
+    render_view = GetActiveViewOrCreate("RenderView")
+
+    source.CellArrayStatus = ["u_0", "u_1", "u_2"]
+    render_view.Update()
+
+    cell_to_point = CellDatatoPointData(Input=source)
+    render_view.Update()
+
+    merged = MergeVectorComponents(Input=cell_to_point)
+    merged.OutputVectorName = "Velocity"
+    merged.XArray = "u_0"
+    merged.YArray = "u_1"
+    merged.ZArray = "u_2"
+    render_view.Update()
+
+    gradient = Gradient(Input=merged)
+    gradient.ScalarArray = ["POINTS", "Velocity"]
+    gradient.ComputeQCriterion = 1
+    gradient.QCriterionArrayName = "Q Criterion"
+    render_view.Update()
+
+    contour = Contour(Input=gradient)
+    contour.ContourBy = ["POINTS", "Q Criterion"]
+    contour.Isosurfaces = [contour_value]
+    contour_display = Show(contour, render_view, "GeometryRepresentation")
+    contour_display.Representation = "Surface"
+    render_view.Update()
+
+    render_view.CameraPosition = camera_position
+    render_view.CameraFocalPoint = camera_focal_point
+    render_view.CameraViewUp = camera_view_up
+    render_view.CameraParallelScale = camera_parallel_scale
+    render_view.ViewSize = image_resolution
 
     Render()
 

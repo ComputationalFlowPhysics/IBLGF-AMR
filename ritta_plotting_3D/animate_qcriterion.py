@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import argparse
 import re
+import shutil
+import subprocess
 import threading
 import time
 from pathlib import Path
@@ -22,6 +24,7 @@ MP4_FPS = 8
 IMAGE_RESOLUTION = [1280, 720]
 USE_TRACED_CAMERA = True
 PROGRESS_UPDATE_SECONDS = 10
+KEEP_FRAME_PNGS = False
 
 # Camera copied from your traced snapshot script.
 CAMERA_POSITION = [16.65225298909394, 0.7536788379147482, -4.296194431796246]
@@ -118,6 +121,35 @@ def progress_monitor(output_path: Path, total_frames: int, stop_event: threading
             )
 
 
+def frame_dir_for_output(output_path: Path) -> Path:
+    return output_path.with_suffix("") / "frames"
+
+
+def build_mp4_from_frames(frame_dir: Path, output_path: Path) -> bool:
+    ffmpeg = shutil.which("ffmpeg")
+    if ffmpeg is None:
+        print("ffmpeg not found. Leaving PNG frames instead of MP4.", flush=True)
+        return False
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    cmd = [
+        ffmpeg,
+        "-y",
+        "-framerate",
+        str(MP4_FPS),
+        "-i",
+        str(frame_dir / "frame_%05d.png"),
+        "-c:v",
+        "libx264",
+        "-pix_fmt",
+        "yuv420p",
+        str(output_path),
+    ]
+    print("Combining frames into MP4 with ffmpeg...", flush=True)
+    subprocess.run(cmd, check=True)
+    return True
+
+
 def main() -> None:
     args = parse_args()
     run_folder = Path(args.run_folder).expanduser().resolve()
@@ -192,7 +224,14 @@ def main() -> None:
     render_view.ViewSize = IMAGE_RESOLUTION
     Render()
 
-    print(f"Saving MP4 for {total_frames} frame(s)...", flush=True)
+    frame_dir = frame_dir_for_output(output_path)
+    frame_dir.mkdir(parents=True, exist_ok=True)
+
+    source_times = list(source.TimestepValues) if hasattr(source, "TimestepValues") else []
+    if len(source_times) != total_frames:
+        source_times = [None] * total_frames
+
+    print(f"Saving {total_frames} PNG frame(s) first...", flush=True)
     stop_event = threading.Event()
     monitor = threading.Thread(
         target=progress_monitor,
@@ -201,16 +240,26 @@ def main() -> None:
     )
     monitor.start()
     try:
-        SaveAnimation(
-            str(output_path),
-            render_view,
-            ImageResolution=IMAGE_RESOLUTION,
-            FrameRate=MP4_FPS,
-        )
+        for idx in range(total_frames):
+            if source_times[idx] is not None:
+                animation_scene.AnimationTime = source_times[idx]
+            Render()
+            frame_path = frame_dir / f"frame_{idx:05d}.png"
+            print(f"[frame {idx + 1}/{total_frames}] {frame_path.name}", flush=True)
+            SaveScreenshot(str(frame_path), render_view, ImageResolution=IMAGE_RESOLUTION)
     finally:
         stop_event.set()
         monitor.join(timeout=1)
-    print(f"Done: {output_path}")
+
+    print(f"Finished writing PNG frames to {frame_dir}", flush=True)
+
+    if build_mp4_from_frames(frame_dir, output_path):
+        print(f"Done: {output_path}", flush=True)
+        if not KEEP_FRAME_PNGS:
+            shutil.rmtree(frame_dir, ignore_errors=True)
+            print("Deleted intermediate PNG frames.", flush=True)
+    else:
+        print(f"PNG frames kept at: {frame_dir}", flush=True)
 
 
 if __name__ == "__main__":

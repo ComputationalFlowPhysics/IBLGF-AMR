@@ -6,9 +6,9 @@ import re
 
 
 FREQ_VALUES = [
-    "0.05", "0.075", "0.1", "0.25",
+    "0.05", "0.0333", "0.025", "0.0167",
 ]
-
+# 20, 30, 40, 60
 
 def format_number(value):
     if isinstance(value, str):

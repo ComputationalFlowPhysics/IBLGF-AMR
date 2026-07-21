@@ -8,8 +8,8 @@ from paraview.simple import *
 #### disable automatic camera reset on 'Show'
 paraview.simple._DisableFirstRenderCameraReset()
 
-# get active source.
-flowTime_2048hdf5 = GetActiveSource()
+# create a new 'VisIt Chombo Reader'
+flowTime_2048hdf5 = VisItChomboReader(registrationName='flowTime_2048.hdf5', FileName=['/Users/rittachoi/Desktop/Caltech/CFD Lab/IBLGF/IBLGF-AMR/runs/ns_amr_lgf/flowTime_2048.hdf5'])
 
 # get active view
 renderView1 = GetActiveViewOrCreate('RenderView')
@@ -54,6 +54,8 @@ renderView1.Update()
 mergeVectorComponents1 = MergeVectorComponents(registrationName='MergeVectorComponents1', Input=cellDatatoPointData1)
 
 # Properties modified on mergeVectorComponents1
+mergeVectorComponents1.YArray = 'u_1'
+mergeVectorComponents1.ZArray = 'u_2'
 mergeVectorComponents1.OutputVectorName = 'Velocity'
 
 # show data in view
@@ -89,6 +91,9 @@ renderView1.Update()
 # create a new 'Contour'
 contour1 = Contour(registrationName='Contour1', Input=gradient1)
 
+# Properties modified on contour1
+contour1.Isosurfaces = [2.5]
+
 # show data in view
 contour1Display = Show(contour1, renderView1, 'GeometryRepresentation')
 
@@ -110,12 +115,6 @@ qCriterionPWF = GetOpacityTransferFunction('QCriterion')
 # get 2D transfer function for 'QCriterion'
 qCriterionTF2D = GetTransferFunction2D('QCriterion')
 
-# set active source
-SetActiveSource(gradient1)
-
-# set active source
-SetActiveSource(contour1)
-
 # hide data in view
 Hide(gradient1, renderView1)
 
@@ -131,16 +130,16 @@ layout1 = GetLayout()
 # saving layout sizes for layouts
 
 # layout/tab size in pixels
-layout1.SetSize(802, 1033)
+layout1.SetSize(903, 899)
 
 #-----------------------------------
 # saving camera placements for views
 
 # current camera placement for renderView1
-renderView1.CameraPosition = [16.65225298909394, 0.7536788379147482, -4.296194431796246]
-renderView1.CameraFocalPoint = [3.0625000000000027, -1.0977953873560387e-15, 1.807254991429669e-15]
-renderView1.CameraViewUp = [-0.016372486611386468, 0.9923582196167854, 0.12229924628207733]
-renderView1.CameraParallelScale = 9.711408782056534
+renderView1.CameraPosition = [17.139627675282647, 11.400499110766626, -22.814391556735938]
+renderView1.CameraFocalPoint = [3.0625, 0.0, 0.0]
+renderView1.CameraViewUp = [-0.12585964286795603, 0.9162931489586358, 0.38021864166373776]
+renderView1.CameraParallelScale = 7.539738473581163
 
 
 ##--------------------------------------------

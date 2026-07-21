@@ -8,6 +8,7 @@ from pathlib import Path
 from common import load_config, result_folder, stage_command
 from time_series_plotting import (
     configured_figure_size,
+    configured_time_limits,
     finite_setting,
     read_metrics,
     save_time_series_plot,
@@ -35,6 +36,7 @@ def main() -> int:
     # Stage 5 only reads the saved Stage 4 table; it performs no vortex calculations.
     rows = read_metrics(metrics_path)
     figure_size = configured_figure_size(config)
+    time_limits = configured_time_limits(config)
 
     circulation_path = output_folder / "circulation_vs_time.png"
     displacement_path = output_folder / "x_displacement_vs_time.png"
@@ -45,6 +47,7 @@ def main() -> int:
         "positive circulation",
         "Positive-vortex circulation versus simulation time",
         figure_size,
+        time_limits=time_limits,
     )
     save_time_series_plot(
         displacement_path,
@@ -53,6 +56,7 @@ def main() -> int:
         "Positive-vortex x displacement versus simulation time",
         figure_size,
         reference=(slope, anchor_time, anchor_displacement),
+        time_limits=time_limits,
     )
     print(f"Saved {circulation_path}")
     print(f"Saved {displacement_path}")

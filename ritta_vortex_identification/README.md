@@ -48,7 +48,9 @@ The same folder gets `datasets.toml`. Edit each `name` in that file to choose th
 python plot_combined_time_series.py outputs/pipeline_results/datasets.toml CONFIG_FILE
 ```
 
-This makes only `combined_circulation_vs_time.png` and `combined_x_displacement_vs_time.png`.
+This makes only `combined_circulation_vs_time.png` and `combined_x_displacement_vs_time.png`. Each dataset line uses the rightmost valid vortex in every frame.
+
+Set `time_axis_min` and `time_axis_max` in `[time_series]` to choose the horizontal plot range. Use `nan` for automatic limits.
 
 ## config reminders
 

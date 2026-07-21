@@ -59,3 +59,5 @@ figure_height = 7.0                     # Preview and time-series figure height 
 reference_slope = 0.159                 # Slope of the dotted x-displacement reference line.
 reference_anchor_time = 0.0             # Simulation time where the reference line is anchored.
 reference_anchor_displacement = 0.0     # Reference-line x displacement at the anchor time.
+time_axis_min = 0.0                     # First simulation time shown on time-series plots; nan autoscales.
+time_axis_max = 50.0                    # Last simulation time shown on time-series plots; nan autoscales.

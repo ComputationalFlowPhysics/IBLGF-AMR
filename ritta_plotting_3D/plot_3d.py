@@ -137,6 +137,8 @@ def load_paraview():
 
 
 def render_snapshot(simple, snapshot, png_path):
+    # Start every frame from a completely empty ParaView session. In
+    # particular, do not reuse a reader or render view across snapshots.
     simple.ResetSession()
     simple._DisableFirstRenderCameraReset()
 
@@ -210,6 +212,16 @@ def render_snapshot(simple, snapshot, png_path):
 
     if not png_path.is_file() or png_path.stat().st_size == 0:
         raise RuntimeError(f"ParaView did not create a valid PNG: {png_path}")
+
+    # ParaView can retain representations and reader caches until their
+    # proxies are explicitly unregistered. Clear the view, delete the entire
+    # pipeline in reverse order, and reset once more before the next frame.
+    simple.HideAll(render_view)
+    render_view.Update()
+    for proxy in (contour, gradient, velocity, cell_to_point, source):
+        simple.Delete(proxy)
+    simple.RemoveViewsAndLayouts()
+    simple.ResetSession()
 
     return source_cells, source_points
 

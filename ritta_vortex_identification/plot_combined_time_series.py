@@ -9,10 +9,11 @@ from pathlib import Path
 from common import load_config
 from time_series_plotting import (
     configured_figure_size,
+    configured_time_limits,
     finite_setting,
     read_metrics,
+    rightmost_series,
     save_time_series_plot,
-    track_series,
 )
 
 
@@ -57,11 +58,11 @@ def main() -> int:
     circulation_series = []
     displacement_series = []
     all_times = set()
-    # Keep the same dataset/track order so both figures use matching colors.
+    # Keep the same dataset order so both figures use matching colors.
     for dataset in datasets:
         rows = read_metrics(dataset["csv"])
-        circulation_series.extend(track_series(rows, "circulation_positive", dataset["name"]))
-        displacement_series.extend(track_series(rows, "x_displacement", dataset["name"]))
+        circulation_series.extend(rightmost_series(rows, "circulation_positive", dataset["name"]))
+        displacement_series.extend(rightmost_series(rows, "x_displacement", dataset["name"]))
         all_times.update(row["time"] for row in rows)
 
     output_folder = (
@@ -70,6 +71,7 @@ def main() -> int:
         else datasets_file.parent
     )
     figure_size = configured_figure_size(config)
+    time_limits = configured_time_limits(config)
     circulation_path = output_folder / "combined_circulation_vs_time.png"
     displacement_path = output_folder / "combined_x_displacement_vs_time.png"
     # These are the only two artifacts made by the combined plotting command.
@@ -79,6 +81,7 @@ def main() -> int:
         "positive circulation",
         "Positive-vortex circulation versus simulation time",
         figure_size,
+        time_limits=time_limits,
     )
     save_time_series_plot(
         displacement_path,
@@ -92,6 +95,7 @@ def main() -> int:
             finite_setting(config, "reference_anchor_displacement"),
         ),
         reference_times=sorted(all_times),
+        time_limits=time_limits,
     )
     print(f"Saved {circulation_path}")
     print(f"Saved {displacement_path}")

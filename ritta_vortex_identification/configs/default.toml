@@ -1,0 +1,61 @@
+# Starter settings for the standalone 2D vortex-identification workflow.
+# For input metadata, nan or -1 means "read it from the simulation config".
+
+[input]
+field_name = "edge_aux"                 # HDF5 component used as the 2D vorticity field.
+hdf5_glob = "flowTime_*.hdf5"           # Filename pattern searched under RUN_FOLDER/output.
+simulation_config = ""                  # Run-relative config path; blank finds the only config* file.
+simulation_config_glob = "config*"      # Pattern used when automatically finding the simulation config.
+fallback_time_spacing = nan             # Backup spacing between listed frames; nan requires physical metadata.
+cfl = nan                               # CFL override; nan reads cfl from the simulation config.
+dx_base = nan                           # Base-grid spacing override; nan reads dx_base from the run config.
+num_amr_levels = -1                     # Time-conversion refinement count; -1 reads nLevels from the run config.
+origin_x_index = nan                    # Base-level x-origin index override; nan reads the domain center.
+origin_y_index = nan                    # Base-level y-origin index override; nan reads the domain center.
+
+[hmaxima]
+h = 0.1                                 # Minimum vorticity prominence kept as an h-maximum.
+connectivity = 8                        # Number of connected neighbors; the equations require 8.
+reconstruction_tolerance = 1.0e-10      # Infinity-norm stopping tolerance for grayscale reconstruction.
+h_mask_tolerance = 1.0e-8               # Numerical slack when checking whether the h-dome reaches h.
+
+[region]
+alpha_x = 0.1                           # Streamwise forcing scale used for the rectangle x buffer.
+alpha_r = 0.1                           # Radial forcing scale used for the y buffer and initial sigma.
+alpha = 1.25643                         # Gaussian forcing decay constant used in the buffer equations.
+
+[fit]
+boundary_fraction = 0.05                # Fraction of fitted peak vorticity defining the circle boundary.
+soft_l1_scale = 0.1                     # Dimensionless residual scale where soft-L1 becomes robust.
+gamma_min = 1.0e-6                     # Smallest allowed positive fitted circulation magnitude.
+gamma_max = 10.0                       # Largest allowed fitted circulation magnitude.
+d_min = 0.01                           # Smallest allowed positive vortex center separation.
+d_max = 5.0                            # Largest allowed vortex center separation.
+sigma_min = 0.01                       # Smallest allowed circular Gaussian width.
+sigma_max = 2.0                        # Largest allowed circular Gaussian width.
+max_nfev = 1000                        # Maximum residual evaluations for each SciPy fit.
+ftol = 1.0e-9                          # SciPy stopping tolerance for relative objective change.
+xtol = 1.0e-9                          # SciPy stopping tolerance for relative parameter change.
+gtol = 1.0e-9                          # SciPy stopping tolerance for the gradient norm.
+
+[plot]
+colormap = "RdBu_r"                    # Matplotlib colormap for signed vorticity.
+symmetric_color_limits = true           # Use equal-magnitude negative and positive color limits.
+color_limit = nan                       # Fixed absolute vorticity color limit; nan autoscales each frame.
+mask_alpha = 0.35                       # Opacity of the h-maxima mask overlay.
+mask_color = "#ffd400"                  # Color of the h-maxima mask and measured centroid.
+marker_size = 30.0                      # Area of candidate and center markers in points squared.
+marker_color = "black"                  # Color of h-maxima candidate markers.
+label_color = "black"                   # Color of candidate-number labels.
+region_color = "#00aa55"                # Color of rectangular fitting regions.
+region_line_width = 1.5                 # Line width for rectangles and fitted boundaries.
+positive_marker_color = "black"         # Color of fitted positive-vortex centers and circles.
+negative_marker_color = "#7b2cbf"       # Color of fitted negative-vortex centers and circles.
+fit_text_size = 8.0                     # Font size of fit and circulation annotations.
+figure_width = 10.0                     # Preview and time-series figure width in inches.
+figure_height = 7.0                     # Preview and time-series figure height in inches.
+
+[time_series]
+reference_slope = 0.159                 # Slope of the dotted x-displacement reference line.
+reference_anchor_time = 0.0             # Simulation time where the reference line is anchored.
+reference_anchor_displacement = 0.0     # Reference-line x displacement at the anchor time.

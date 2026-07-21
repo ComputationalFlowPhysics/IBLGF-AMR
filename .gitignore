@@ -61,3 +61,8 @@ __pycache__/
 tests/poisson/vortexRings/
 runs_pybind/
 .iblgf_viewer/test-configs/
+
+# Generated plotting output
+/ritta_plotting_2D/outputs/
+/ritta_plotting_3D/outputs/
+/ritta_vortex_identification/outputs/

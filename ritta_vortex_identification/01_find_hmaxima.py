@@ -128,17 +128,21 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Find positive h-maxima in every vorticity frame.")
     parser.add_argument("run_folder", type=Path)
     parser.add_argument("config_file", type=Path)
+    parser.add_argument("--stride", type=int, default=1, help="Process every Nth sorted HDF5 frame.")
     parser.add_argument("--no-preview", action="store_true", help="Skip the terminal preview and preview PNG.")
     args = parser.parse_args()
+    if args.stride < 1:
+        parser.error("--stride must be a positive integer.")
 
     config = load_config(args.config_file)
     require_positive(config, "hmaxima", "h")
     require_positive(config, "hmaxima", "reconstruction_tolerance")
     require_nonnegative(config, "hmaxima", "h_mask_tolerance")
-    frames = discover_frames(args.run_folder, config)
+    all_frames = discover_frames(args.run_folder, config)
+    selected_frames = list(enumerate(all_frames))[::args.stride]
     metadata = simulation_metadata(args.run_folder, config)
     output_path = result_folder(args.run_folder) / "hmaxima.h5"
-    group_names = [path.stem for path in frames]
+    group_names = [path.stem for _, path in selected_frames]
 
     # Calculate and save every frame before entering the preview prompt.
     with h5py.File(output_path, "w") as output:
@@ -147,6 +151,7 @@ def main() -> int:
         output.attrs["config_file"] = str(args.config_file.expanduser().resolve())
         output.attrs["time_source"] = metadata["source"]
         output.attrs["h"] = require_positive(config, "hmaxima", "h")
+        output.attrs["stride"] = args.stride
         output.attrs["connectivity"] = 8
         output.attrs["reconstruction_tolerance"] = require_positive(
             config, "hmaxima", "reconstruction_tolerance"
@@ -155,12 +160,12 @@ def main() -> int:
             config, "hmaxima", "h_mask_tolerance"
         )
         write_string_dataset(output, "frame_order", group_names)
-        for index, (path, group_name) in enumerate(zip(frames, group_names)):
-            frame = load_vorticity_frame(path, index, config, metadata)
+        for index, ((source_index, path), group_name) in enumerate(zip(selected_frames, group_names)):
+            frame = load_vorticity_frame(path, source_index, config, metadata)
             result = find_hmaxima(frame, config)
             save_result(output.create_group(group_name), result)
             print(
-                f"[{index + 1}/{len(frames)}] {path.name}: "
+                f"[{index + 1}/{len(selected_frames)}] {path.name}: "
                 f"{len(result['candidate_ids'])} positive candidates"
             )
 

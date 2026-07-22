@@ -20,7 +20,7 @@ reconstruction_tolerance = 1.0e-10      # Infinity-norm stopping tolerance for g
 h_mask_tolerance = 1.0e-8               # Numerical slack when checking whether the h-dome reaches h.
 
 [threshold_mask]
-vorticity_threshold = 0.3              # Positive cutoff tau_omega; the negative cutoff is -tau_omega.
+vorticity_threshold = 0.35              # Positive cutoff tau_omega; the negative cutoff is -tau_omega.
 minimum_region_area = 0.1               # Discard connected mask regions with physical area below this value.
 positive_color = "#ffb000"              # Preview color for cells where omega >= tau_omega.
 negative_color = "#00a6ff"              # Preview color for cells where omega <= -tau_omega.

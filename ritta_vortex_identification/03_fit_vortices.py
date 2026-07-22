@@ -299,6 +299,7 @@ def main() -> int:
     settings = fit_settings(config)
     frame_paths = discover_frames(args.run_folder, config)
     paths_by_name = {path.name: path for path in frame_paths}
+    source_indices_by_name = {path.name: index for index, path in enumerate(frame_paths)}
     metadata = simulation_metadata(args.run_folder, config)
     # Reuse saved candidates/rectangles, then fit every frame before previewing anything.
     with h5py.File(hmaxima_path, "r") as maxima, h5py.File(regions_path, "r") as regions:
@@ -320,7 +321,9 @@ def main() -> int:
                 source_filename = str(maxima[group_name].attrs["source_filename"])
                 if source_filename not in paths_by_name:
                     raise FileNotFoundError(f"Original frame is missing: {source_filename}")
-                frame = load_vorticity_frame(paths_by_name[source_filename], frame_index, config, metadata)
+                frame = load_vorticity_frame(
+                    paths_by_name[source_filename], source_indices_by_name[source_filename], config, metadata
+                )
                 candidates = read_candidates(maxima, regions, group_name)
                 results = [fit_candidate(frame, candidate, config, settings) for candidate in candidates]
                 save_frame_results(output.create_group(group_name), frame, candidates, results)

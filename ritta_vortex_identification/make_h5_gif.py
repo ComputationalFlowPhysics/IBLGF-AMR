@@ -24,6 +24,7 @@ SUPPORTED_SCHEMAS = {
     "ritta_regions_v1",
     "ritta_circular_gaussian_dipole_fits_v1",
     "ritta_vorticity_threshold_masks_v1",
+    "ritta_vorticity_threshold_masks_v2",
 }
 
 
@@ -50,7 +51,11 @@ def saved_config(handle: h5py.File) -> dict:
 
 def background_file(input_path: Path, schema: str) -> Path | None:
     """Locate saved Stage 1 rasters needed by region and fit outputs."""
-    if schema not in {"ritta_regions_v1", "ritta_circular_gaussian_dipole_fits_v1"}:
+    if schema not in {
+        "ritta_regions_v1",
+        "ritta_circular_gaussian_dipole_fits_v1",
+        "ritta_vorticity_threshold_masks_v2",
+    }:
         return None
     path = input_path.with_name("hmaxima.h5")
     if not path.is_file():
@@ -130,6 +135,14 @@ def draw_threshold_masks(axis, group: h5py.Group, frame: dict, config: dict, han
     colors[negative] = mcolors.to_rgb(negative_color)
     axis.images[0].set_visible(False)
     axis.imshow(colors, origin="lower", extent=image_extent(frame), interpolation="nearest", aspect="equal")
+    if "extrema_x" in group and "extrema_y" in group:
+        axis.scatter(
+            group["extrema_x"][:],
+            group["extrema_y"][:],
+            s=float(config["plot"].get("marker_size", 30.0)),
+            c=str(config["plot"].get("marker_color", "black")),
+            marker="x",
+        )
     threshold = float(handle.attrs["vorticity_threshold"])
     axis.legend(handles=(
         Patch(facecolor=positive_color, label=f"ω ≥ {threshold:g}"),
@@ -164,10 +177,10 @@ def render_frame(
         draw_regions(axis, group, config)
     elif schema == "ritta_circular_gaussian_dipole_fits_v1":
         draw_fits(axis, group, config)
-    elif schema == "ritta_vorticity_threshold_masks_v1":
+    elif schema in {"ritta_vorticity_threshold_masks_v1", "ritta_vorticity_threshold_masks_v2"}:
         draw_threshold_masks(axis, group, frame, config, handle)
 
-    if schema != "ritta_vorticity_threshold_masks_v1":
+    if schema not in {"ritta_vorticity_threshold_masks_v1", "ritta_vorticity_threshold_masks_v2"}:
         figure.colorbar(image, ax=axis, label="vorticity")
     figure.tight_layout()
     figure.savefig(output_path, dpi=120)

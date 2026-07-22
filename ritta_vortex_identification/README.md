@@ -24,15 +24,21 @@ python 05_plot_time_series.py RUN_FOLDER CONFIG_FILE
 
 Do not skip stages. Each one reads the saved result from the previous stage.
 
+To analyze every fifth sorted HDF5 frame, use `--stride 5` on Stage 1. Stages 2–4 automatically use that saved frame list:
+
+```bash
+python 01_find_hmaxima.py RUN_FOLDER CONFIG_FILE --stride 5
+```
+
 Optional check before stage 1: `python plot_vorticity.py RUN_FOLDER CONFIG_FILE`
 
 Optional vorticity-threshold masks:
 
 ```bash
-python make_threshold_masks.py RUN_FOLDER CONFIG_FILE
+python make_threshold_masks.py RUN_FOLDER CONFIG_FILE --stride 5
 ```
 
-Set `vorticity_threshold` and `minimum_region_area` under `[threshold_mask]`. Regions below the physical-area cutoff are removed. This saves `threshold_masks.h5` and a terminal-selected `threshold_masks_preview.png` without using the numbered-stage results.
+Set `vorticity_threshold` and `minimum_region_area` under `[threshold_mask]`. The command runs Stage 1 first, removes mask regions below the physical-area cutoff, and marks only saved positive h-maxima inside the retained regions. It saves `hmaxima.h5`, `threshold_masks.h5`, and a terminal-selected `threshold_masks_preview.png`.
 
 Make PNG frames and a GIF from any saved vortex HDF5 file:
 
@@ -56,6 +62,8 @@ A parent folder containing several runs:
 python run_all.py PARENT_FOLDER CONFIG_FILE --batch
 ```
 
+Add `--stride 5` to either `run_all.py` command to process every fifth frame.
+
 These run stages 1–4 without previews. Temporary HDF5 stage files are deleted; final CSV files go to `outputs/pipeline_results/`. Use `--results-dir FOLDER` to put them elsewhere.
 
 The same folder gets `datasets.toml`. Edit each `name` in that file to choose the plot legend text, then run:
@@ -71,7 +79,7 @@ Set `time_axis_min` and `time_axis_max` in `[time_series]` to choose the horizon
 ## config reminders
 
 - `input`: files, simulation config, time, and origin; keep the field as `edge_aux`
-- `hmaxima`: h value and reconstruction tolerances; keep connectivity at 8
+- `hmaxima`: raise `h` to keep only more prominent extrema; keep connectivity at 8
 - `threshold_mask`: threshold and preview colors for the optional binary masks
 - `region`: rectangle constants
 - `fit`: bounds and optimizer settings

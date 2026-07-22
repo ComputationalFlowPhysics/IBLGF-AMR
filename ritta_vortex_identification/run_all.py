@@ -78,7 +78,7 @@ def filename_key(label: str) -> str:
     return key or "dataset"
 
 
-def run_stages(run_folder: Path, config_file: Path, destination: Path) -> None:
+def run_stages(run_folder: Path, config_file: Path, destination: Path, stride: int) -> None:
     """Run Stages 1-4 in order and copy out only the final metrics CSV."""
     with tempfile.TemporaryDirectory(prefix=f"ritta-vortex-{run_folder.name}-") as temporary:
         temporary_folder = Path(temporary)
@@ -96,6 +96,8 @@ def run_stages(run_folder: Path, config_file: Path, destination: Path) -> None:
                 str(config_file),
                 "--no-preview",
             ]
+            if stage == "01_find_hmaxima.py":
+                command.extend(("--stride", str(stride)))
             print(f"\n[{run_folder.name}] {stage}", flush=True)
             subprocess.run(command, cwd=SCRIPT_FOLDER, env=environment, check=True)
 
@@ -131,6 +133,7 @@ def main() -> int:
     parser.add_argument("input_folder", type=Path, help="One run/output folder, or a parent folder with --batch.")
     parser.add_argument("config_file", type=Path)
     parser.add_argument("--batch", action="store_true", help="Recursively process every run containing output HDF5 files.")
+    parser.add_argument("--stride", type=int, default=1, help="Process every Nth sorted HDF5 frame.")
     parser.add_argument("--dataset-name", help="Legend name for single-run mode; batch names are edited in datasets.toml.")
     parser.add_argument(
         "--results-dir",
@@ -139,6 +142,8 @@ def main() -> int:
         help="Folder for final CSV files and datasets.toml.",
     )
     args = parser.parse_args()
+    if args.stride < 1:
+        parser.error("--stride must be a positive integer.")
 
     config_file = args.config_file.expanduser().resolve()
     config = load_config(config_file)
@@ -164,7 +169,7 @@ def main() -> int:
         print(f"\n=== Run {index}/{len(runs)}: {run_folder} ===", flush=True)
         try:
             discover_frames(run_folder, config)
-            run_stages(run_folder, config_file, destination)
+            run_stages(run_folder, config_file, destination, args.stride)
         except (OSError, ValueError, subprocess.CalledProcessError) as error:
             failures.append((run_folder, error))
             print(f"FAILED: {run_folder}\n{error}", file=sys.stderr, flush=True)

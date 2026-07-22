@@ -150,6 +150,7 @@ def main() -> int:
     csv_path = output_folder / "positive_vortex_metrics.csv"
     frame_paths = discover_frames(args.run_folder, config)
     paths_by_name = {path.name: path for path in frame_paths}
+    source_indices_by_name = {path.name: index for index, path in enumerate(frame_paths)}
     metadata = simulation_metadata(args.run_folder, config)
     all_records = []
     ordered_frame_names = []
@@ -179,7 +180,11 @@ def main() -> int:
                 raise ValueError(f"Candidate IDs disagree among saved stages for {frame_name}.")
 
             frame = load_vorticity_frame(
-                paths_by_name[frame_name], frame_index, config, metadata, include_cells=True
+                paths_by_name[frame_name],
+                source_indices_by_name[frame_name],
+                config,
+                metadata,
+                include_cells=True,
             )
             frame_records = []
             for fit in fitted:

@@ -19,8 +19,9 @@ def make_regions(peak_x: np.ndarray, peak_y: np.ndarray, x: np.ndarray, y: np.nd
     alpha_x = require_positive(config, "region", "alpha_x")
     alpha_r = require_positive(config, "region", "alpha_r")
     alpha = require_positive(config, "region", "alpha")
-    ell_x = 4.0 * alpha_x / math.sqrt(2.0 * alpha)
-    ell_y = 4.0 * alpha_r / math.sqrt(2.0 * alpha)
+    buffer_multiplier = require_positive(config, "region", "buffer_multiplier")
+    ell_x = buffer_multiplier * alpha_x / math.sqrt(2.0 * alpha)
+    ell_y = buffer_multiplier * alpha_r / math.sqrt(2.0 * alpha)
 
     # Enclose the positive peak, its y-mirrored partner, and both physical buffers.
     intended = np.column_stack((
@@ -73,6 +74,7 @@ def main() -> int:
     require_positive(config, "region", "alpha_x")
     require_positive(config, "region", "alpha_r")
     require_positive(config, "region", "alpha")
+    require_positive(config, "region", "buffer_multiplier")
     output_folder = result_folder(args.run_folder)
     hmaxima_path = output_folder / "hmaxima.h5"
     regions_path = output_folder / "regions.h5"
@@ -92,6 +94,9 @@ def main() -> int:
             output.attrs["alpha_x"] = require_positive(config, "region", "alpha_x")
             output.attrs["alpha_r"] = require_positive(config, "region", "alpha_r")
             output.attrs["alpha"] = require_positive(config, "region", "alpha")
+            output.attrs["buffer_multiplier"] = require_positive(
+                config, "region", "buffer_multiplier"
+            )
             write_string_dataset(output, "frame_order", group_names)
             for index, group_name in enumerate(group_names):
                 source = maxima[group_name]

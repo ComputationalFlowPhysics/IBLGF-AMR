@@ -81,7 +81,7 @@ Set `time_axis_min` and `time_axis_max` in `[time_series]` to choose the horizon
 - `input`: files, simulation config, time, and origin; keep the field as `edge_aux`
 - `hmaxima`: raise `h` to keep only more prominent extrema; keep connectivity at 8
 - `threshold_mask`: threshold and preview colors for the optional binary masks
-- `region`: rectangle constants
+- `region`: rectangle scales and the shared `buffer_multiplier`
 - `fit`: bounds and optimizer settings
 - `plot`: preview appearance
 - `time_series`: reference-line slope and anchor

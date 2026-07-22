@@ -120,6 +120,7 @@ def load_saved_frame(result_path: Path, group_name: str) -> dict:
             "candidate_ids": group["candidate_ids"][:],
             "peak_x": group["peak_x"][:],
             "peak_y": group["peak_y"][:],
+            "peak_vorticity": group["peak_vorticity"][:],
         }
 
 
@@ -195,10 +196,24 @@ def main() -> int:
             c=marker_color,
             marker="x",
         )
-        for candidate_id, x_value, y_value in zip(
-            frame["candidate_ids"], frame["peak_x"], frame["peak_y"]
-        ):
-            axis.annotate(str(int(candidate_id)), (x_value, y_value), color=label_color, xytext=(5, 5), textcoords="offset points")
+        candidates = zip(
+            frame["candidate_ids"], frame["peak_x"], frame["peak_y"], frame["peak_vorticity"]
+        )
+        for label_index, (candidate_id, x_value, y_value, peak_vorticity) in enumerate(candidates):
+            label = (
+                f"{int(candidate_id)}: ({x_value:.5g}, {y_value:.5g})\n"
+                f"ω={peak_vorticity:.5g}"
+            )
+            axis.annotate(
+                label,
+                (x_value, y_value),
+                color=label_color,
+                fontsize=float(config["plot"].get("fit_text_size", 8.0)),
+                xytext=(6, 6 + 34 * (label_index % 4)),
+                textcoords="offset points",
+                bbox={"facecolor": "white", "alpha": 0.75, "edgecolor": "none", "pad": 1.0},
+                arrowprops={"arrowstyle": "-", "color": label_color, "linewidth": 0.5},
+            )
 
     browse_frames(
         len(group_names),

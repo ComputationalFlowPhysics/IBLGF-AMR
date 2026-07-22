@@ -9,6 +9,7 @@ from pathlib import Path
 
 import h5py
 import numpy as np
+from matplotlib.lines import Line2D
 from matplotlib.patches import Circle
 
 from common import (
@@ -262,7 +263,6 @@ def main() -> int:
             record = frame["metric_records"].get(int(candidate_id))
             if bool(success) and np.all(np.isfinite(fitted_center)) and np.isfinite(radius):
                 axis.add_patch(Circle(fitted_center, radius, fill=False, edgecolor=boundary_color, linewidth=line_width))
-                axis.scatter(*fitted_center, s=marker_size, c=boundary_color, marker="x")
             if record is not None and math.isfinite(record["x_center_positive"]):
                 axis.scatter(
                     record["x_center_positive"],
@@ -286,6 +286,22 @@ def main() -> int:
                 fontsize=text_size,
                 bbox={"facecolor": "white", "alpha": 0.8, "edgecolor": "none"},
             )
+        axis.legend(
+            handles=[
+                Line2D([], [], color=boundary_color, linewidth=line_width, label="Fitted vortex boundary"),
+                Line2D(
+                    [],
+                    [],
+                    linestyle="none",
+                    marker="o",
+                    markersize=math.sqrt(marker_size),
+                    markerfacecolor=centroid_color,
+                    markeredgecolor="black",
+                    label="Circulation-weighted center",
+                ),
+            ],
+            loc="upper right",
+        )
 
     browse_frames(
         len(group_names),

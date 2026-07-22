@@ -26,6 +26,22 @@ Do not skip stages. Each one reads the saved result from the previous stage.
 
 Optional check before stage 1: `python plot_vorticity.py RUN_FOLDER CONFIG_FILE`
 
+Optional vorticity-threshold masks:
+
+```bash
+python make_threshold_masks.py RUN_FOLDER CONFIG_FILE
+```
+
+Set `vorticity_threshold` and `minimum_region_area` under `[threshold_mask]`. Regions below the physical-area cutoff are removed. This saves `threshold_masks.h5` and a terminal-selected `threshold_masks_preview.png` without using the numbered-stage results.
+
+Make PNG frames and a GIF from any saved vortex HDF5 file:
+
+```bash
+python make_h5_gif.py H5_FILE STRIDE
+```
+
+This supports `hmaxima.h5`, `regions.h5`, `fits.h5`, and `threshold_masks.h5`. Output goes beside the HDF5 file in `<name>_stride_<stride>/`.
+
 ## fast CSV-only runs
 
 One run (either the run folder or its `output` folder works):
@@ -56,6 +72,7 @@ Set `time_axis_min` and `time_axis_max` in `[time_series]` to choose the horizon
 
 - `input`: files, simulation config, time, and origin; keep the field as `edge_aux`
 - `hmaxima`: h value and reconstruction tolerances; keep connectivity at 8
+- `threshold_mask`: threshold and preview colors for the optional binary masks
 - `region`: rectangle constants
 - `fit`: bounds and optimizer settings
 - `plot`: preview appearance
@@ -82,6 +99,7 @@ Everything goes to `outputs/<run_name>/`:
 
 ```text
 hmaxima.h5                    hmaxima_preview.png
+threshold_masks.h5            threshold_masks_preview.png
 regions.h5                    regions_preview.png
 fits.h5                       fits_preview.png
 positive_vortex_metrics.csv   positive_vortex_metrics_preview.png

@@ -55,6 +55,25 @@ def plot_vorticity_frame(ax, frame: dict, plot_config: dict):
     ax.set_xlabel("x")
     ax.set_ylabel("y")
     ax.set_title(f"Vorticity field | {frame['source_filename']} | t = {frame['time']:.8g}")
+
+    x_min = float(plot_config.get("x_axis_min", np.nan))
+    x_max = float(plot_config.get("x_axis_max", np.nan))
+    y_min = float(plot_config.get("y_axis_min", np.nan))
+    y_max = float(plot_config.get("y_axis_max", np.nan))
+    if np.isfinite(x_min) or np.isfinite(x_max):
+        current_min, current_max = ax.get_xlim()
+        left = x_min if np.isfinite(x_min) else current_min
+        right = x_max if np.isfinite(x_max) else current_max
+        if left >= right:
+            raise ValueError("Configured preview x limits do not overlap the data extent.")
+        ax.set_xlim(left, right)
+    if np.isfinite(y_min) or np.isfinite(y_max):
+        current_min, current_max = ax.get_ylim()
+        bottom = y_min if np.isfinite(y_min) else current_min
+        top = y_max if np.isfinite(y_max) else current_max
+        if bottom >= top:
+            raise ValueError("Configured preview y limits do not overlap the data extent.")
+        ax.set_ylim(bottom, top)
     return image
 
 
@@ -64,6 +83,7 @@ def browse_frames(
     plot_config: dict,
     overlay_drawer=None,
     preview_path: str | Path = "frame_preview.png",
+    show_colorbar: bool = True,
 ) -> None:
     """Prompt for frames in the terminal and render the selection to one PNG."""
     if frame_count < 1:
@@ -80,7 +100,8 @@ def browse_frames(
         image = plot_vorticity_frame(axis, frame, plot_config)
         if overlay_drawer is not None:
             overlay_drawer(axis, frame)
-        figure.colorbar(image, ax=axis, label="vorticity")
+        if show_colorbar:
+            figure.colorbar(image, ax=axis, label="vorticity")
         figure.tight_layout()
         figure.savefig(preview_path, dpi=150)
         plt.close(figure)

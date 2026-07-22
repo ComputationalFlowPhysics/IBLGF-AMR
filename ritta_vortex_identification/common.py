@@ -35,6 +35,24 @@ def load_config(path: str | Path) -> dict:
     if int(config["hmaxima"].get("connectivity", 0)) != 8:
         raise ValueError("[hmaxima] connectivity must be 8.")
 
+    plot_config = config["plot"]
+    for axis in ("x", "y"):
+        minimum_name = f"{axis}_axis_min"
+        maximum_name = f"{axis}_axis_max"
+        try:
+            minimum = float(plot_config.get(minimum_name, math.nan))
+            maximum = float(plot_config.get(maximum_name, math.nan))
+        except (TypeError, ValueError) as error:
+            raise ValueError(
+                f"[plot] {minimum_name} and {maximum_name} must be numbers or nan."
+            ) from error
+        if math.isinf(minimum) or math.isinf(maximum):
+            raise ValueError(
+                f"[plot] {minimum_name} and {maximum_name} must be finite or nan."
+            )
+        if math.isfinite(minimum) and math.isfinite(maximum) and minimum >= maximum:
+            raise ValueError(f"[plot] {minimum_name} must be smaller than {maximum_name}.")
+
     config["_path"] = path
     return config
 

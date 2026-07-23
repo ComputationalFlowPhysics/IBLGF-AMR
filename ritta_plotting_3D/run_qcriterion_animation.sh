@@ -3,7 +3,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PY_SCRIPT="${SCRIPT_DIR}/animate_qcriterion.py"
+PY_SCRIPT="${SCRIPT_DIR}/plot_3d.py"
 
 # Override this with:
 #   export PARAVIEW_BIN_DIR=/path/to/ParaView-.../bin
@@ -13,12 +13,11 @@ PVBATCH="${PARAVIEW_BIN_DIR}/pvbatch"
 usage() {
   cat <<EOF
 Usage:
-  $(basename "$0") RUN_FOLDER [STRIDE] [OUTPUT_MP4]
+  $(basename "$0") RUN_FOLDER [STRIDE]
 
 Examples:
   $(basename "$0") /ocean/projects/mch250004p/mchoi10/IBLGF-AMR/runs/ns_amr_lgf/2026-07-16_20-27-21
   $(basename "$0") /ocean/projects/mch250004p/mchoi10/IBLGF-AMR/runs/ns_amr_lgf/2026-07-16_20-27-21 5
-  $(basename "$0") /ocean/projects/mch250004p/mchoi10/IBLGF-AMR/runs/ns_amr_lgf/2026-07-16_20-27-21 5 /ocean/projects/mch250004p/mchoi10/IBLGF-AMR/ritta_plotting_3D/outputs/ring_check.mp4
 
 Optional environment override:
   export PARAVIEW_BIN_DIR=/your/paraview/bin
@@ -37,7 +36,12 @@ fi
 
 RUN_FOLDER="$1"
 STRIDE="${2:-1}"
-OUTPUT_MP4="${3:-}"
+
+if [[ $# -gt 2 ]]; then
+  echo "Error: expected RUN_FOLDER and optional STRIDE only."
+  usage
+  exit 1
+fi
 
 if [[ ! -x "${PVBATCH}" ]]; then
   echo "Error: pvbatch not found or not executable at:"
@@ -50,16 +54,9 @@ fi
 
 CMD=("${PVBATCH}" "${PY_SCRIPT}" "${RUN_FOLDER}" "${STRIDE}")
 
-if [[ -n "${OUTPUT_MP4}" ]]; then
-  CMD+=("${OUTPUT_MP4}")
-fi
-
 echo "Using pvbatch: ${PVBATCH}"
 echo "Run folder:     ${RUN_FOLDER}"
 echo "Stride:         ${STRIDE}"
-if [[ -n "${OUTPUT_MP4}" ]]; then
-  echo "Output MP4:     ${OUTPUT_MP4}"
-fi
 echo
 
 "${CMD[@]}"

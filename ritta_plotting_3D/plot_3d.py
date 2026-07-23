@@ -20,6 +20,9 @@ from pathlib import Path
 
 SNAPSHOT_PATTERN = re.compile(r"flowTime_(\d+)\.hdf5$")
 VELOCITY_COMPONENTS = ("u_0", "u_1", "u_2")
+BRIDGES_FFMPEG_IMAGE = Path(
+    "/opt/packages/ffmpeg/4.3.1/singularity-ffmpeg-4.3.1.sif"
+)
 
 # Rendering settings. Edit these values to change the visualization.
 CONTOUR_VALUE = 2.5
@@ -230,13 +233,35 @@ def render_snapshot(simple, snapshot, png_path):
     return source_cells, source_points
 
 
-def build_gif(frames_folder, snapshots, gif_path):
+def find_ffmpeg_command():
+    if BRIDGES_FFMPEG_IMAGE.is_file():
+        singularity = shutil.which("singularity")
+        if singularity is None:
+            raise RuntimeError(
+                f"Found the Bridges-2 FFmpeg image at {BRIDGES_FFMPEG_IMAGE}, "
+                "but singularity was not found."
+            )
+        return [
+            singularity,
+            "exec",
+            "-B",
+            "/ocean",
+            str(BRIDGES_FFMPEG_IMAGE),
+            "ffmpeg",
+        ]
+
     ffmpeg = shutil.which("ffmpeg")
     if ffmpeg is None:
         raise RuntimeError(
             "ffmpeg was not found. PNG frames were saved, but the GIF could "
             "not be created. Install ffmpeg and rerun the script."
         )
+    return [ffmpeg]
+
+
+def build_gif(frames_folder, snapshots, gif_path):
+    ffmpeg_command = find_ffmpeg_command()
+    print(f"Using FFmpeg: {' '.join(ffmpeg_command)}", flush=True)
 
     staging_folder = gif_path.parent / "_gif_frames"
     shutil.rmtree(staging_folder, ignore_errors=True)
@@ -248,8 +273,8 @@ def build_gif(frames_folder, snapshots, gif_path):
             shutil.copy2(source_png, staging_folder / f"frame_{frame_index:05d}.png")
 
         subprocess.run(
-            [
-                ffmpeg,
+            ffmpeg_command
+            + [
                 "-y",
                 "-framerate",
                 str(FPS),

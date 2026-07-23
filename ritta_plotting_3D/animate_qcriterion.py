@@ -127,7 +127,7 @@ for i, snapshot in enumerate(snapshots):
     missing_arrays = [
         name
         for name in ("u_0", "u_1", "u_2")
-        if cell_data.GetArrayInformation(name) is None
+        if cell_data.GetArray(name) is None
     ]
     if missing_arrays:
         print(

@@ -32,6 +32,17 @@ python 01_find_hmaxima.py RUN_FOLDER CONFIG_FILE --stride 5
 
 Optional check before stage 1: `python plot_vorticity.py RUN_FOLDER CONFIG_FILE`
 
+Make a GIF of only the raw vorticity field, without running the vortex-identification stages:
+
+```bash
+python make_vorticity_gif.py RUN_FOLDER CONFIG_FILE --stride 5
+```
+
+This saves the selected PNG frames and `vorticity.gif` under
+`outputs/<run_name>/vorticity_stride_<stride>/`. Use `--duration-ms 150` to
+control the display time per frame, or `--output-dir FOLDER` to choose another
+destination.
+
 Optional vorticity-threshold masks:
 
 ```bash

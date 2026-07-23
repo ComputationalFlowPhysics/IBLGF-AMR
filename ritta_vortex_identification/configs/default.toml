@@ -14,7 +14,7 @@ origin_x_index = nan                    # Base-level x-origin index override; na
 origin_y_index = nan                    # Base-level y-origin index override; nan reads the domain center.
 
 [hmaxima]
-h = 0.8                                 # Minimum vorticity prominence kept as an h-maximum.
+h = 1.5                                 # Minimum vorticity prominence kept as an h-maximum.
 connectivity = 8                        # Number of connected neighbors; the equations require 8.
 reconstruction_tolerance = 1.0e-10      # Infinity-norm stopping tolerance for grayscale reconstruction.
 h_mask_tolerance = 1.0e-8               # Numerical slack when checking whether the h-dome reaches h.

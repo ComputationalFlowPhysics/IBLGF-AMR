@@ -91,7 +91,7 @@ launch_one() {
 
   (
     export IBLGF_LAUNCHER=srun
-    export IBLGF_MPI_ARGS="--exclusive --mpi=pmix"
+    export IBLGF_MPI_ARGS="--exclusive --mpi=pmi2"
     export PROGRESS_INTERVAL
     env -u SLURM_MPI_TYPE ./iblgf_remote.sh run-test "$test_name" "$config" -n "$ranks_per_run"
   ) >"$stdout_log" 2>"$stderr_log" &

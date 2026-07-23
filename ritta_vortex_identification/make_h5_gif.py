@@ -147,7 +147,7 @@ def draw_threshold_masks(axis, group: h5py.Group, frame: dict, config: dict, han
     axis.legend(handles=(
         Patch(facecolor=positive_color, label=f"ω ≥ {threshold:g}"),
         Patch(facecolor=negative_color, label=f"ω ≤ {-threshold:g}"),
-    ))
+    ), loc="upper right")
     axis.set_title(
         f"Vorticity threshold masks | {frame['source_filename']} | t = {frame['time']:.8g}"
     )

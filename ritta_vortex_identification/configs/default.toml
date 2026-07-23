@@ -14,7 +14,7 @@ origin_x_index = nan                    # Base-level x-origin index override; na
 origin_y_index = nan                    # Base-level y-origin index override; nan reads the domain center.
 
 [hmaxima]
-h = 1.5                                 # Minimum vorticity prominence kept as an h-maximum.
+h = 1.0                                 # Minimum vorticity prominence kept as an h-maximum.
 connectivity = 8                        # Number of connected neighbors; the equations require 8.
 reconstruction_tolerance = 1.0e-10      # Infinity-norm stopping tolerance for grayscale reconstruction.
 h_mask_tolerance = 1.0e-8               # Numerical slack when checking whether the h-dome reaches h.
@@ -26,7 +26,7 @@ positive_color = "#ffb000"              # Preview color for cells where omega >=
 negative_color = "#00a6ff"              # Preview color for cells where omega <= -tau_omega.
 
 [region]
-buffer_multiplier = 10.0                 # Multiplier controlling both rectangle buffer distances.
+buffer_multiplier = 8.0                 # Multiplier controlling both rectangle buffer distances.
 alpha_x = 0.1                           # Streamwise forcing scale used for the rectangle x buffer.
 alpha_r = 0.1                           # Radial forcing scale used for the y buffer and initial sigma.
 alpha = 1.25643                         # Gaussian forcing decay constant used in the buffer equations.

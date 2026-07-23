@@ -193,6 +193,10 @@ def render_snapshot(simple, snapshot, png_path):
     contour.UpdatePipeline()
 
     render_view = simple.GetActiveViewOrCreate("RenderView")
+
+    # ResetSession can leave a stale representation registered in headless
+    # pvbatch runs. Hide everything before showing this snapshot's contour.
+    simple.HideAll(render_view)
     contour_display = simple.Show(contour, render_view, "GeometryRepresentation")
     contour_display.Representation = "Surface"
     render_view.Update()

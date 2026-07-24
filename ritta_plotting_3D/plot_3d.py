@@ -27,14 +27,14 @@ BRIDGES_FFMPEG_IMAGE = Path(
 )
 
 # Rendering settings. Edit these values to change the visualization.
-Q_CRITERION_THRESHOLD = 0.0
+Q_CRITERION_THRESHOLD = 1.0
 VORTICITY_THRESHOLD_FRACTION = 0.02
 FPS = 8
 IMAGE_RESOLUTION = [1280, 720]
 CAMERA_POSITION = [10, 5, -10]
 CAMERA_FOCAL_POINT = [4.5, 1, -2]
 CAMERA_VIEW_UP = [0, 1, 0.2]
-CAMERA_PARALLEL_SCALE = 7.5
+CAMERA_PARALLEL_SCALE = 8.0
 
 
 def positive_integer(value):

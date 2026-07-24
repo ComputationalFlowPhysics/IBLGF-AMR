@@ -1,8 +1,9 @@
 #!/usr/bin/env pvpython
-"""Render Q-criterion PNG frames and combine them into a GIF.
+"""Render 3D vortex-diagnostic PNG frames and combine them into a GIF.
 
 Usage:
-    pvpython plot_3d.py OUTPUT_FOLDER [STRIDE] [--resume]
+    pvpython plot_3d.py OUTPUT_FOLDER [STRIDE]
+        [--field {q-criterion,vorticity}] [--resume]
 
 ``OUTPUT_FOLDER`` may be the folder containing ``flowTime_*.hdf5`` files or
 the run folder containing an ``output`` subfolder. Generated files are saved
@@ -20,12 +21,14 @@ from pathlib import Path
 
 SNAPSHOT_PATTERN = re.compile(r"flowTime_(\d+)\.hdf5$")
 VELOCITY_COMPONENTS = ("u_0", "u_1", "u_2")
+VORTICITY_COMPONENTS = ("edge_aux_0", "edge_aux_1", "edge_aux_2")
 BRIDGES_FFMPEG_IMAGE = Path(
     "/opt/packages/ffmpeg/4.3.1/singularity-ffmpeg-4.3.1.sif"
 )
 
 # Rendering settings. Edit these values to change the visualization.
-CONTOUR_VALUE = 1.5
+Q_CRITERION_CONTOUR_VALUE = 1.5
+VORTICITY_CONTOUR_FRACTION = 0.02
 FPS = 8
 IMAGE_RESOLUTION = [1280, 720]
 CAMERA_POSITION = [17.139627675282647, 11.400499110766626, -22.814391556735938]
@@ -46,7 +49,10 @@ def positive_integer(value):
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="Render 3D Q-criterion PNG frames and an animated GIF."
+        description=(
+            "Render 3D Q-criterion or normalized-vorticity PNG frames and "
+            "an animated GIF."
+        )
     )
     parser.add_argument(
         "output_folder",
@@ -62,6 +68,12 @@ def parse_args():
         type=positive_integer,
         default=1,
         help="render every STRIDE-th snapshot (default: 1)",
+    )
+    parser.add_argument(
+        "--field",
+        choices=("q-criterion", "vorticity"),
+        default="q-criterion",
+        help="vortex diagnostic to contour (default: q-criterion)",
     )
     parser.add_argument(
         "--resume",
@@ -110,15 +122,18 @@ def discover_snapshots(snapshot_folder, stride):
     return snapshots[::stride]
 
 
-def output_paths(snapshot_folder):
+def output_paths(snapshot_folder, field):
     run_name = (
         snapshot_folder.parent.name
         if snapshot_folder.name == "output"
         else snapshot_folder.name
     )
-    output_folder = Path(__file__).resolve().parent / "outputs" / f"{run_name}_qcriterion"
+    field_name = field.replace("-", "")
+    output_folder = (
+        Path(__file__).resolve().parent / "outputs" / f"{run_name}_{field_name}"
+    )
     frames_folder = output_folder / "frames"
-    gif_path = output_folder / f"{run_name}_qcriterion.gif"
+    gif_path = output_folder / f"{run_name}_{field_name}.gif"
     manifest_path = output_folder / "frame_manifest.csv"
     return output_folder, frames_folder, gif_path, manifest_path
 
@@ -162,28 +177,84 @@ def load_paraview():
     return simple
 
 
-def render_snapshot(simple, snapshot, png_path):
+def merge_vector(simple, input_data, components, vector_name):
+    vector = simple.MergeVectorComponents(
+        registrationName=vector_name,
+        Input=input_data,
+    )
+    vector.XArray, vector.YArray, vector.ZArray = components
+    vector.OutputVectorName = vector_name
+    return vector
+
+
+def build_q_criterion_contour(simple, point_data):
+    velocity = merge_vector(
+        simple,
+        point_data,
+        VELOCITY_COMPONENTS,
+        "Velocity",
+    )
+
+    gradient = simple.Gradient(registrationName="VelocityGradient", Input=velocity)
+    gradient.ScalarArray = ["POINTS", "Velocity"]
+    gradient.ComputeQCriterion = 1
+    gradient.QCriterionArrayName = "Q Criterion"
+
+    contour = simple.Contour(registrationName="QCriterionContour", Input=gradient)
+    contour.ContourBy = ["POINTS", "Q Criterion"]
+    contour.Isosurfaces = [Q_CRITERION_CONTOUR_VALUE]
+    return contour, [contour, gradient, velocity]
+
+
+def build_vorticity_contour(simple, point_data):
+    vorticity = merge_vector(
+        simple,
+        point_data,
+        VORTICITY_COMPONENTS,
+        "Vorticity",
+    )
+
+    calculator = simple.PythonCalculator(
+        registrationName="NormalizedVorticity",
+        Input=vorticity,
+    )
+    calculator.Expression = "mag(Vorticity) / max(mag(Vorticity))"
+    calculator.ArrayName = "Normalized Vorticity"
+
+    contour = simple.Contour(
+        registrationName="NormalizedVorticityContour",
+        Input=calculator,
+    )
+    contour.ContourBy = ["POINTS", "Normalized Vorticity"]
+    contour.Isosurfaces = [VORTICITY_CONTOUR_FRACTION]
+    return contour, [contour, calculator, vorticity]
+
+
+def render_snapshot(simple, snapshot, png_path, field):
     # Start every frame from a completely empty ParaView session. In
     # particular, do not reuse a reader or render view across snapshots.
     simple.ResetSession()
     simple._DisableFirstRenderCameraReset()
 
+    required_components = (
+        VELOCITY_COMPONENTS if field == "q-criterion" else VORTICITY_COMPONENTS
+    )
     source = simple.VisItChomboReader(
         registrationName=snapshot.name,
         FileName=[str(snapshot)],
     )
-    source.CellArrayStatus = list(VELOCITY_COMPONENTS)
+    source.CellArrayStatus = list(required_components)
     source.UpdatePipeline()
 
     cell_data = source.GetCellDataInformation()
     missing_components = [
         name
-        for name in VELOCITY_COMPONENTS
+        for name in required_components
         if cell_data.GetArray(name) is None
     ]
     if missing_components:
         raise RuntimeError(
-            f"{snapshot} is missing required cell arrays: "
+            f"{snapshot} is missing required cell arrays for {field}: "
             f"{', '.join(missing_components)}"
         )
 
@@ -195,24 +266,10 @@ def render_snapshot(simple, snapshot, png_path):
         registrationName="CellDataToPointData",
         Input=source,
     )
-
-    velocity = simple.MergeVectorComponents(
-        registrationName="Velocity",
-        Input=cell_to_point,
-    )
-    velocity.XArray = "u_0"
-    velocity.YArray = "u_1"
-    velocity.ZArray = "u_2"
-    velocity.OutputVectorName = "Velocity"
-
-    gradient = simple.Gradient(registrationName="VelocityGradient", Input=velocity)
-    gradient.ScalarArray = ["POINTS", "Velocity"]
-    gradient.ComputeQCriterion = 1
-    gradient.QCriterionArrayName = "Q Criterion"
-
-    contour = simple.Contour(registrationName="QCriterionContour", Input=gradient)
-    contour.ContourBy = ["POINTS", "Q Criterion"]
-    contour.Isosurfaces = [CONTOUR_VALUE]
+    if field == "q-criterion":
+        contour, field_proxies = build_q_criterion_contour(simple, cell_to_point)
+    else:
+        contour, field_proxies = build_vorticity_contour(simple, cell_to_point)
     contour.UpdatePipeline()
 
     render_view = simple.GetActiveViewOrCreate("RenderView")
@@ -242,7 +299,7 @@ def render_snapshot(simple, snapshot, png_path):
     # Explicitly unregister proxies so ParaView does not retain this frame's
     # representations and reader caches until the next session reset.
     simple.HideAll(render_view)
-    for proxy in (contour, gradient, velocity, cell_to_point, source):
+    for proxy in [*field_proxies, cell_to_point, source]:
         simple.Delete(proxy)
     simple.RemoveViewsAndLayouts()
 
@@ -323,7 +380,8 @@ def main():
         snapshot_folder = find_snapshot_folder(args.output_folder)
         snapshots = discover_snapshots(snapshot_folder, args.stride)
         output_folder, frames_folder, gif_path, manifest_path = output_paths(
-            snapshot_folder
+            snapshot_folder,
+            args.field,
         )
         old_manifest = existing_manifest_rows(manifest_path) if args.resume else {}
         prepare_output_folders(output_folder, frames_folder, args.resume)
@@ -334,6 +392,7 @@ def main():
         simple = load_paraview() if needs_render else None
 
         print(f"Snapshot folder: {snapshot_folder}", flush=True)
+        print(f"Field:           {args.field}", flush=True)
         print(f"Snapshots used:  {len(snapshots)}", flush=True)
         print(f"Stride:          {args.stride}", flush=True)
         print(f"Resume:          {args.resume}", flush=True)
@@ -369,7 +428,10 @@ def main():
                     source_points = old_row.get("source_points", "")
                 else:
                     source_cells, source_points = render_snapshot(
-                        simple, snapshot.resolve(), png_path
+                        simple,
+                        snapshot.resolve(),
+                        png_path,
+                        args.field,
                     )
                 manifest_writer.writerow(
                     [

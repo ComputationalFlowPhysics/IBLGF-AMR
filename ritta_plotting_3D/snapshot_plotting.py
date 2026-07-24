@@ -8,79 +8,30 @@ from paraview.simple import *
 #### disable automatic camera reset on 'Show'
 paraview.simple._DisableFirstRenderCameraReset()
 
-# create a new 'VisIt Chombo Reader'
-flowTime_2048hdf5 = VisItChomboReader(registrationName='flowTime_2048.hdf5', FileName=['/Users/rittachoi/Desktop/Caltech/CFD Lab/IBLGF/IBLGF-AMR/runs/ns_amr_lgf/flowTime_2048.hdf5'])
+# find source
+mergeVectorComponents1 = FindSource('MergeVectorComponents1')
+
+# create a new 'Python Calculator'
+pythonCalculator1 = PythonCalculator(registrationName='PythonCalculator1', Input=mergeVectorComponents1)
+
+# find source
+flowTime_2048hdf5 = FindSource('flowTime_2048.hdf5')
+
+# find source
+cellDatatoPointData1 = FindSource('CellDatatoPointData1')
+
+# Properties modified on pythonCalculator1
+pythonCalculator1.Expression = 'mag(Vorticity) / max(mag(Vorticity))'
+pythonCalculator1.ArrayName = 'normalized_vorticity'
 
 # get active view
 renderView1 = GetActiveViewOrCreate('RenderView')
 
 # show data in view
-flowTime_2048hdf5Display = Show(flowTime_2048hdf5, renderView1, 'AMRRepresentation')
+pythonCalculator1Display = Show(pythonCalculator1, renderView1, 'AMRRepresentation')
 
 # trace defaults for the display properties.
-flowTime_2048hdf5Display.Representation = 'Outline'
-
-# reset view to fit data
-renderView1.ResetCamera(False, 0.9)
-
-# get the material library
-materialLibrary1 = GetMaterialLibrary()
-
-# update the view to ensure updated data information
-renderView1.Update()
-
-# Properties modified on flowTime_2048hdf5
-flowTime_2048hdf5.CellArrayStatus = ['u_0', 'u_1', 'u_2']
-
-# update the view to ensure updated data information
-renderView1.Update()
-
-# create a new 'Cell Data to Point Data'
-cellDatatoPointData1 = CellDatatoPointData(registrationName='CellDatatoPointData1', Input=flowTime_2048hdf5)
-
-# show data in view
-cellDatatoPointData1Display = Show(cellDatatoPointData1, renderView1, 'AMRRepresentation')
-
-# trace defaults for the display properties.
-cellDatatoPointData1Display.Representation = 'Outline'
-
-# hide data in view
-Hide(flowTime_2048hdf5, renderView1)
-
-# update the view to ensure updated data information
-renderView1.Update()
-
-# create a new 'Merge Vector Components'
-mergeVectorComponents1 = MergeVectorComponents(registrationName='MergeVectorComponents1', Input=cellDatatoPointData1)
-
-# Properties modified on mergeVectorComponents1
-mergeVectorComponents1.YArray = 'u_1'
-mergeVectorComponents1.ZArray = 'u_2'
-mergeVectorComponents1.OutputVectorName = 'Velocity'
-
-# show data in view
-mergeVectorComponents1Display = Show(mergeVectorComponents1, renderView1, 'AMRRepresentation')
-
-# trace defaults for the display properties.
-mergeVectorComponents1Display.Representation = 'Outline'
-
-# hide data in view
-Hide(cellDatatoPointData1, renderView1)
-
-# update the view to ensure updated data information
-renderView1.Update()
-
-# create a new 'Gradient'
-gradient1 = Gradient(registrationName='Gradient1', Input=mergeVectorComponents1)
-
-# Properties modified on gradient1
-gradient1.ComputeQCriterion = 1
-
-# show data in view
-gradient1Display = Show(gradient1, renderView1, 'AMRRepresentation')
-
-# trace defaults for the display properties.
-gradient1Display.Representation = 'Outline'
+pythonCalculator1Display.Representation = 'Outline'
 
 # hide data in view
 Hide(mergeVectorComponents1, renderView1)
@@ -89,10 +40,11 @@ Hide(mergeVectorComponents1, renderView1)
 renderView1.Update()
 
 # create a new 'Contour'
-contour1 = Contour(registrationName='Contour1', Input=gradient1)
+contour1 = Contour(registrationName='Contour1', Input=pythonCalculator1)
 
 # Properties modified on contour1
-contour1.Isosurfaces = [2.5]
+contour1.ContourBy = ['POINTS', 'normalized_vorticity']
+contour1.Isosurfaces = [0.02]
 
 # show data in view
 contour1Display = Show(contour1, renderView1, 'GeometryRepresentation')
@@ -106,17 +58,17 @@ contour1Display.SetScalarBarVisibility(renderView1, True)
 # update the view to ensure updated data information
 renderView1.Update()
 
-# get color transfer function/color map for 'QCriterion'
-qCriterionLUT = GetColorTransferFunction('QCriterion')
+# get color transfer function/color map for 'normalized_vorticity'
+normalized_vorticityLUT = GetColorTransferFunction('normalized_vorticity')
 
-# get opacity transfer function/opacity map for 'QCriterion'
-qCriterionPWF = GetOpacityTransferFunction('QCriterion')
+# get opacity transfer function/opacity map for 'normalized_vorticity'
+normalized_vorticityPWF = GetOpacityTransferFunction('normalized_vorticity')
 
-# get 2D transfer function for 'QCriterion'
-qCriterionTF2D = GetTransferFunction2D('QCriterion')
+# get 2D transfer function for 'normalized_vorticity'
+normalized_vorticityTF2D = GetTransferFunction2D('normalized_vorticity')
 
 # hide data in view
-Hide(gradient1, renderView1)
+Hide(pythonCalculator1, renderView1)
 
 #================================================================
 # addendum: following script captures some of the application
@@ -130,16 +82,16 @@ layout1 = GetLayout()
 # saving layout sizes for layouts
 
 # layout/tab size in pixels
-layout1.SetSize(903, 899)
+layout1.SetSize(1018, 1652)
 
 #-----------------------------------
 # saving camera placements for views
 
 # current camera placement for renderView1
-renderView1.CameraPosition = [17.139627675282647, 11.400499110766626, -22.814391556735938]
-renderView1.CameraFocalPoint = [3.0625, 0.0, 0.0]
-renderView1.CameraViewUp = [-0.12585964286795603, 0.9162931489586358, 0.38021864166373776]
-renderView1.CameraParallelScale = 7.539738473581163
+renderView1.CameraPosition = [16.541000915603693, -10.843439593027883, -12.919194511662816]
+renderView1.CameraFocalPoint = [3.062499999999999, 6.839581379855959e-16, 1.1908199723856357e-16]
+renderView1.CameraViewUp = [-0.3652158467802428, 0.48947243848399624, -0.791854858686313]
+renderView1.CameraParallelScale = 12.235410568129746
 
 
 ##--------------------------------------------

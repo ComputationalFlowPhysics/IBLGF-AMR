@@ -374,6 +374,14 @@ def find_ffmpeg_command():
 
 
 def build_gif(frames_folder, snapshots, gif_path):
+    gif_snapshots = snapshots[1:]
+    if not gif_snapshots:
+        raise ValueError(
+            "Cannot build a GIF after excluding the first PNG: "
+            "at least two rendered frames are required."
+        )
+
+    print(f"Excluding first GIF frame: {snapshots[0].name}", flush=True)
     ffmpeg_command = find_ffmpeg_command()
     print(f"Using FFmpeg: {' '.join(ffmpeg_command)}", flush=True)
 
@@ -382,7 +390,7 @@ def build_gif(frames_folder, snapshots, gif_path):
     staging_folder.mkdir(parents=True)
 
     try:
-        for frame_index, snapshot in enumerate(snapshots):
+        for frame_index, snapshot in enumerate(gif_snapshots):
             source_png = frames_folder / f"flowTime_{snapshot_step(snapshot)}.png"
             staged_png = staging_folder / f"frame_{frame_index:05d}.png"
             staged_png.symlink_to(source_png.resolve())

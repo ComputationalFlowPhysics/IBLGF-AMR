@@ -1,5 +1,6 @@
 #!/bin/bash
 # Run an existing 3D mass-config sweep sequentially on one full RM node.
+# Usage: sbatch formation_3d/run_mass_sweep_existing_rm.sbatch [CONFIG_FOLDER] [CONFIG_GLOB]
 
 #SBATCH -A mch250004p
 #SBATCH -p RM
@@ -13,10 +14,23 @@
 set -euo pipefail
 
 repo_root="/ocean/projects/mch250004p/mchoi10/IBLGF-AMR"
-configs_dir="${CONFIGS_DIR:-$repo_root/formation_3d/mass_configs}"
-config_glob="${CONFIG_GLOB:-config_*.cfg}"
+submit_dir="${SLURM_SUBMIT_DIR:-$PWD}"
+configs_input="${1:-${CONFIGS_DIR:-$repo_root/formation_3d/mass_configs}}"
+config_glob="${2:-${CONFIG_GLOB:-config_*.cfg}}"
 mpi_ranks="${MPI_RANKS:-32}"
 progress_interval="${PROGRESS_INTERVAL:-20}"
+
+if [[ "$configs_input" = /* ]]; then
+  configs_dir="$configs_input"
+else
+  configs_dir="$submit_dir/$configs_input"
+fi
+
+if [[ ! -d "$configs_dir" ]]; then
+  echo "Config directory not found: $configs_dir" >&2
+  exit 2
+fi
+configs_dir="$(cd "$configs_dir" && pwd)"
 
 cd "$repo_root"
 
@@ -45,6 +59,8 @@ echo
 mkdir -p formation_3d/mass_logs_remote
 
 env -u IBLGF_MPI_ARGS -u SLURM_MPI_TYPE \
+  CONFIGS_DIR="$configs_dir" \
   IBLGF_LAUNCHER=mpiexec \
   PROGRESS_INTERVAL="$progress_interval" \
-  ./formation_3d/run_mass_sweep_remote.sh --existing "$mpi_ranks" "$config_glob"
+  ./formation_3d/run_mass_sweep_remote.sh \
+    --existing "$mpi_ranks" "$config_glob"

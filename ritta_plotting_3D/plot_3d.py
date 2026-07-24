@@ -31,10 +31,10 @@ Q_CRITERION_THRESHOLD = 0.0
 VORTICITY_THRESHOLD_FRACTION = 0.02
 FPS = 8
 IMAGE_RESOLUTION = [1280, 720]
-CAMERA_POSITION = [17.139627675282647, 11.400499110766626, -22.814391556735938]
-CAMERA_FOCAL_POINT = [3.0625, 0.0, 0.0]
-CAMERA_VIEW_UP = [-0.12585964286795603, 0.9162931489586358, 0.38021864166373776]
-CAMERA_PARALLEL_SCALE = 7.539738473581163
+CAMERA_POSITION = [10, 5, -10]
+CAMERA_FOCAL_POINT = [4.5, 1, -2]
+CAMERA_VIEW_UP = [0, 1, 0.2]
+CAMERA_PARALLEL_SCALE = 7.5
 
 
 def positive_integer(value):
@@ -319,6 +319,7 @@ def render_snapshot(simple, snapshot, png_path, field):
     threshold_display.Representation = "Surface"
     simple.ColorBy(threshold_display, ("POINTS", "Velocity", "Magnitude"))
     threshold_display.RescaleTransferFunctionToDataRange(True, False)
+    threshold_display.SetScalarBarVisibility(render_view, True)
 
     render_view.CameraPosition = CAMERA_POSITION
     render_view.CameraFocalPoint = CAMERA_FOCAL_POINT

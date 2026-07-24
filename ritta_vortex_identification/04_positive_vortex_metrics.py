@@ -56,43 +56,102 @@ def positive_metrics(cells: dict, x_c: float, y_c: float, radius: float) -> tupl
     return circulation, x_center, y_center
 
 
-def assign_vortex_tracks(records: list[dict], tracks: dict[int, tuple[float, float]], next_id: int) -> int:
-    """Match closest centers globally, allowing only nondecreasing x motion."""
-    eligible = [
+def eligible_center_indices(records: list[dict]) -> list[int]:
+    """Return fitted candidates that can participate in temporal tracking."""
+    return [
         index
         for index, record in enumerate(records)
         if record["fit_success"] and math.isfinite(record["_fit_x"]) and math.isfinite(record["_fit_y"])
     ]
-    # Build every allowed old-track/new-candidate pairing, then take shortest pairs first.
-    pairs = []
-    for vortex_id, (previous_x, previous_y) in tracks.items():
-        for index in eligible:
-            current_x = records[index]["_fit_x"]
-            current_y = records[index]["_fit_y"]
-            if current_x < previous_x:
-                continue
-            distance = math.hypot(current_x - previous_x, current_y - previous_y)
-            pairs.append((distance, vortex_id, index))
 
-    used_tracks = set()
-    used_records = set()
-    for _, vortex_id, index in sorted(pairs):
-        if vortex_id in used_tracks or index in used_records:
+
+def nearest_one_to_one_matches(
+    source_centers: dict[int, tuple[float, float]],
+    records: list[dict],
+    candidate_indices: list[int],
+    max_displacement: float,
+    unavailable_indices: set[int] | None = None,
+) -> dict[int, int]:
+    """Match each source to its nearest candidate, with each candidate used at most once."""
+    if not candidate_indices:
+        return {}
+
+    proposals = []
+    for source_id, (source_x, source_y) in source_centers.items():
+        nearest_index = min(
+            candidate_indices,
+            key=lambda index: (
+                math.hypot(records[index]["_fit_x"] - source_x, records[index]["_fit_y"] - source_y),
+                index,
+            ),
+        )
+        distance = math.hypot(
+            records[nearest_index]["_fit_x"] - source_x,
+            records[nearest_index]["_fit_y"] - source_y,
+        )
+        if distance <= max_displacement:
+            proposals.append((distance, source_id, nearest_index))
+
+    matches = {}
+    used_indices = set() if unavailable_indices is None else set(unavailable_indices)
+    for _, source_id, candidate_index in sorted(proposals):
+        if candidate_index in used_indices:
             continue
-        records[index]["vortex_id"] = vortex_id
-        used_tracks.add(vortex_id)
-        used_records.add(index)
+        matches[source_id] = candidate_index
+        used_indices.add(candidate_index)
+    return matches
 
-    for index in eligible:
-        if index not in used_records:
-            records[index]["vortex_id"] = next_id
-            next_id += 1
 
-    for index in eligible:
-        vortex_id = records[index]["vortex_id"]
-        tracks[vortex_id] = (records[index]["_fit_x"], records[index]["_fit_y"])
-    # Unmatched tracks stay in this dictionary so they can reconnect after missing frames.
-    return next_id
+def assign_vortex_tracks(
+    records_by_frame: list[list[dict]],
+    max_displacement: float,
+    new_track_max_displacement: float,
+) -> None:
+    """Track consecutive-frame centers and require two detections to start a track."""
+    active_tracks = {}
+    tentative_records = []
+    next_vortex_id = 1
+
+    for records in records_by_frame:
+        eligible = eligible_center_indices(records)
+
+        # Existing tracks link only from the immediately preceding analyzed frame.
+        existing_matches = nearest_one_to_one_matches(
+            active_tracks,
+            records,
+            eligible,
+            max_displacement,
+        )
+        used_indices = set(existing_matches.values())
+        for vortex_id, index in existing_matches.items():
+            records[index]["vortex_id"] = vortex_id
+
+        # A previous unassigned candidate becomes a track only when the current
+        # frame contains a unique, still-unassigned nearest neighbor.
+        tentative_centers = {
+            index: (record["_fit_x"], record["_fit_y"])
+            for index, record in enumerate(tentative_records)
+        }
+        confirmed_matches = nearest_one_to_one_matches(
+            tentative_centers,
+            records,
+            eligible,
+            new_track_max_displacement,
+            unavailable_indices=used_indices,
+        )
+        for tentative_index, current_index in confirmed_matches.items():
+            vortex_id = next_vortex_id
+            next_vortex_id += 1
+            tentative_records[tentative_index]["vortex_id"] = vortex_id
+            records[current_index]["vortex_id"] = vortex_id
+            used_indices.add(current_index)
+
+        tentative_records = [records[index] for index in eligible if index not in used_indices]
+        active_tracks = {
+            int(records[index]["vortex_id"]): (records[index]["_fit_x"], records[index]["_fit_y"])
+            for index in eligible
+            if records[index]["vortex_id"] != ""
+        }
 
 
 def fit_rows(group: h5py.Group) -> list[dict]:
@@ -152,10 +211,15 @@ def main() -> int:
     paths_by_name = {path.name: path for path in frame_paths}
     source_indices_by_name = {path.name: index for index, path in enumerate(frame_paths)}
     metadata = simulation_metadata(args.run_folder, config)
-    all_records = []
+    records_by_frame = []
     ordered_frame_names = []
-    tracks = {}
-    next_vortex_id = 1
+    tracking_config = config.get("tracking", {})
+    max_displacement = float(tracking_config.get("max_displacement", 0.5))
+    new_track_max_displacement = float(tracking_config.get("new_track_max_displacement", 0.5))
+    if not math.isfinite(max_displacement) or max_displacement <= 0.0:
+        raise ValueError("[tracking] max_displacement must be finite and greater than zero.")
+    if not math.isfinite(new_track_max_displacement) or new_track_max_displacement <= 0.0:
+        raise ValueError("[tracking] new_track_max_displacement must be finite and greater than zero.")
 
     # All three saved stages must describe exactly the same frames and candidate IDs.
     with (
@@ -214,8 +278,6 @@ def main() -> int:
                     "_fit_y": float(positive_center[1]),
                 })
 
-            # Track every fitted positive candidate using the approved forward-x nearest match.
-            next_vortex_id = assign_vortex_tracks(frame_records, tracks, next_vortex_id)
             if not frame_records:
                 # Keep an empty row so later plots retain this frame and show a gap.
                 frame_records.append({
@@ -230,10 +292,12 @@ def main() -> int:
                     "y_center_positive": math.nan,
                     "x_displacement": math.nan,
                 })
-            all_records.extend(frame_records)
+            records_by_frame.append(frame_records)
             valid_count = sum(math.isfinite(record["circulation_positive"]) for record in frame_records)
             print(f"[{frame_index + 1}/{len(group_names)}] {frame_name}: {valid_count} measured vortices")
 
+    assign_vortex_tracks(records_by_frame, max_displacement, new_track_max_displacement)
+    all_records = [record for frame_records in records_by_frame for record in frame_records]
     write_metrics(csv_path, all_records)
     print(f"Saved {csv_path}")
     if args.no_preview:

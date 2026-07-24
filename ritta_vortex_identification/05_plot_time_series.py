@@ -1,4 +1,4 @@
-"""Stage 5: plot measured circulation and x displacement for every vortex track."""
+"""Stage 5: plot circulation and x displacement of the rightmost vortex."""
 
 from __future__ import annotations
 
@@ -11,13 +11,13 @@ from time_series_plotting import (
     configured_time_limits,
     finite_setting,
     read_metrics,
+    rightmost_series,
     save_time_series_plot,
-    track_series,
 )
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Plot per-vortex circulation and x displacement over time.")
+    parser = argparse.ArgumentParser(description="Plot rightmost-vortex circulation and x displacement over time.")
     parser.add_argument("run_folder", type=Path)
     parser.add_argument("config_file", type=Path)
     args = parser.parse_args()
@@ -40,20 +40,20 @@ def main() -> int:
 
     circulation_path = output_folder / "circulation_vs_time.png"
     displacement_path = output_folder / "x_displacement_vs_time.png"
-    # NaN values in each track remain gaps instead of being interpolated.
+    # The selected track may change between frames; missing detections remain gaps.
     save_time_series_plot(
         circulation_path,
-        track_series(rows, "circulation_positive"),
+        rightmost_series(rows, "circulation_positive", "rightmost vortex"),
         "positive circulation",
-        "Positive-vortex circulation versus simulation time",
+        "Rightmost positive-vortex circulation versus simulation time",
         figure_size,
         time_limits=time_limits,
     )
     save_time_series_plot(
         displacement_path,
-        track_series(rows, "x_displacement"),
+        rightmost_series(rows, "x_displacement", "rightmost vortex"),
         "positive-vortex x displacement",
-        "Positive-vortex x displacement versus simulation time",
+        "Rightmost positive-vortex x displacement versus simulation time",
         figure_size,
         reference=(slope, anchor_time, anchor_displacement),
         time_limits=time_limits,

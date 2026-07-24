@@ -99,6 +99,7 @@ Set `time_axis_min` and `time_axis_max` in `[time_series]` to choose the horizon
 - `threshold_mask`: threshold and preview colors for the optional binary masks
 - `region`: rectangle scales and the shared `buffer_multiplier`
 - `fit`: bounds and optimizer settings
+- `tracking`: consecutive-frame displacement limits `L` and `L_new`
 - `plot`: preview appearance
 - `time_series`: reference-line slope and anchor
 
@@ -130,4 +131,4 @@ positive_vortex_metrics.csv   positive_vortex_metrics_preview.png
 circulation_vs_time.png       x_displacement_vs_time.png
 ```
 
-The measured circulation uses positive original-cell vorticity inside the fitted positive circle, not the fitted `Gamma`. All positive candidates are tracked. A missed detection leaves a gap in that vortex's time series.
+The measured circulation uses positive original-cell vorticity inside the fitted positive circle, not the fitted `Gamma`. Existing tracks use one-to-one nearest-center matches in consecutive analyzed frames, limited by `tracking.max_displacement`. An unmatched candidate starts a track only when a second detection confirms it in the next analyzed frame within `tracking.new_track_max_displacement`; otherwise it is discarded as a one-frame detection. The time-series plots show only the rightmost confirmed vortex in each frame.

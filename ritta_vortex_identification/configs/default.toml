@@ -45,6 +45,10 @@ ftol = 1.0e-9                          # SciPy stopping tolerance for relative o
 xtol = 1.0e-9                          # SciPy stopping tolerance for relative parameter change.
 gtol = 1.0e-9                          # SciPy stopping tolerance for the gradient norm.
 
+[tracking]
+max_displacement = 0.5                 # L: largest center displacement allowed between analyzed frames.
+new_track_max_displacement = 0.5       # L_new: largest displacement allowed when confirming a new track.
+
 [plot]
 colormap = "RdBu_r"                    # Matplotlib colormap for signed vorticity.
 symmetric_color_limits = true           # Use equal-magnitude negative and positive color limits.

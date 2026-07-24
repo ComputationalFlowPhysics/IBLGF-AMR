@@ -73,6 +73,8 @@ def rightmost_series(rows: list[dict], value_name: str, dataset_name: str) -> li
     for row in rows:
         frame_index = row["frame_index"]
         frame_times.setdefault(frame_index, row["time"])
+        if row["vortex_id"] is None:
+            continue
         x_center = row["x_center_positive"]
         if not math.isfinite(x_center):
             continue

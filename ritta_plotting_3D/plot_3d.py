@@ -288,22 +288,31 @@ def render_snapshot(simple, snapshot, png_path, field):
         Input=source,
     )
     vector_data, vector_proxies = build_vector_data(simple, cell_to_point)
+    vector_data.UpdatePipeline()
+    vector_point_data = vector_data.GetPointDataInformation()
+    missing_vectors = [
+        name
+        for name in ("Velocity", "Vorticity")
+        if vector_point_data.GetArray(name) is None
+    ]
+    if missing_vectors:
+        raise RuntimeError(
+            f"{field} vector assembly is missing point arrays: "
+            f"{', '.join(missing_vectors)}"
+        )
+
     if field == "q-criterion":
         threshold, field_proxies = build_q_criterion_threshold(simple, vector_data)
     else:
         threshold, field_proxies = build_vorticity_threshold(simple, vector_data)
     threshold.UpdatePipeline()
 
-    threshold_point_data = threshold.GetPointDataInformation()
-    missing_vectors = [
-        name
-        for name in ("Velocity", "Vorticity")
-        if threshold_point_data.GetArray(name) is None
-    ]
-    if missing_vectors:
-        raise RuntimeError(
-            f"{field} threshold output is missing merged point arrays: "
-            f"{', '.join(missing_vectors)}"
+    threshold_points = threshold.GetDataInformation().GetNumberOfPoints()
+    if threshold_points == 0:
+        print(
+            f"Warning: {snapshot.name} has no points above the "
+            f"{field} threshold; rendering a blank frame.",
+            flush=True,
         )
 
     render_view = simple.GetActiveViewOrCreate("RenderView")
@@ -317,9 +326,10 @@ def render_snapshot(simple, snapshot, png_path, field):
         "UnstructuredGridRepresentation",
     )
     threshold_display.Representation = "Surface"
-    simple.ColorBy(threshold_display, ("POINTS", "Velocity", "Magnitude"))
-    threshold_display.RescaleTransferFunctionToDataRange(True, False)
-    threshold_display.SetScalarBarVisibility(render_view, True)
+    if threshold_points > 0:
+        simple.ColorBy(threshold_display, ("POINTS", "Velocity", "Magnitude"))
+        threshold_display.RescaleTransferFunctionToDataRange(True, False)
+        threshold_display.SetScalarBarVisibility(render_view, True)
 
     render_view.CameraPosition = CAMERA_POSITION
     render_view.CameraFocalPoint = CAMERA_FOCAL_POINT

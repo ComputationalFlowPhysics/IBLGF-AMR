@@ -31,3 +31,4 @@
     Config:   config_tau5p0.cfg
     MPI:      32 (mpiexec)
     Logs:     stdout.log / stderr.log
+==> Done. Outputs are in: /ocean/projects/mch250004p/mchoi10/IBLGF-AMR/runs/ns_amr_lgf/2026-07-23_02-16-50

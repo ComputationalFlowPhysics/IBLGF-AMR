@@ -27,8 +27,8 @@ BRIDGES_FFMPEG_IMAGE = Path(
 )
 
 # Rendering settings. Edit these values to change the visualization.
-Q_CRITERION_CONTOUR_VALUE = 1.5
-VORTICITY_CONTOUR_FRACTION = 0.02
+Q_CRITERION_THRESHOLD = 0.0
+VORTICITY_THRESHOLD_FRACTION = 0.02
 FPS = 8
 IMAGE_RESOLUTION = [1280, 720]
 CAMERA_POSITION = [17.139627675282647, 11.400499110766626, -22.814391556735938]
@@ -73,7 +73,7 @@ def parse_args():
         "--field",
         choices=("q-criterion", "vorticity"),
         default="q-criterion",
-        help="vortex diagnostic to contour (default: q-criterion)",
+        help="vortex diagnostic used for thresholding (default: q-criterion)",
     )
     parser.add_argument(
         "--resume",
@@ -187,47 +187,70 @@ def merge_vector(simple, input_data, components, vector_name):
     return vector
 
 
-def build_q_criterion_contour(simple, point_data):
+def build_vector_data(simple, point_data):
     velocity = merge_vector(
         simple,
         point_data,
         VELOCITY_COMPONENTS,
         "Velocity",
     )
+    vorticity = merge_vector(
+        simple,
+        velocity,
+        VORTICITY_COMPONENTS,
+        "Vorticity",
+    )
+    return vorticity, [vorticity, velocity]
 
-    gradient = simple.Gradient(registrationName="VelocityGradient", Input=velocity)
+
+def build_q_criterion_threshold(simple, vector_data):
+    gradient = simple.Gradient(
+        registrationName="VelocityGradient",
+        Input=vector_data,
+    )
     gradient.ScalarArray = ["POINTS", "Velocity"]
     gradient.ComputeQCriterion = 1
     gradient.QCriterionArrayName = "Q Criterion"
 
-    contour = simple.Contour(registrationName="QCriterionContour", Input=gradient)
-    contour.ContourBy = ["POINTS", "Q Criterion"]
-    contour.Isosurfaces = [Q_CRITERION_CONTOUR_VALUE]
-    return contour, [contour, gradient, velocity]
+    # Previous contour visualization:
+    # contour = simple.Contour(registrationName="QCriterionContour", Input=gradient)
+    # contour.ContourBy = ["POINTS", "Q Criterion"]
+    # contour.Isosurfaces = [1.5]
 
-
-def build_vorticity_contour(simple, point_data):
-    vorticity = merge_vector(
-        simple,
-        point_data,
-        VORTICITY_COMPONENTS,
-        "Vorticity",
+    threshold = simple.Threshold(
+        registrationName="QCriterionThreshold",
+        Input=gradient,
     )
+    threshold.Scalars = ["POINTS", "Q Criterion"]
+    threshold.UpperThreshold = Q_CRITERION_THRESHOLD
+    threshold.ThresholdMethod = "Above Upper Threshold"
+    return threshold, [threshold, gradient]
 
+
+def build_vorticity_threshold(simple, vector_data):
     calculator = simple.PythonCalculator(
         registrationName="NormalizedVorticity",
-        Input=vorticity,
+        Input=vector_data,
     )
     calculator.Expression = "mag(Vorticity) / max(mag(Vorticity))"
     calculator.ArrayName = "Normalized Vorticity"
 
-    contour = simple.Contour(
-        registrationName="NormalizedVorticityContour",
+    # Previous contour visualization:
+    # contour = simple.Contour(
+    #     registrationName="NormalizedVorticityContour",
+    #     Input=calculator,
+    # )
+    # contour.ContourBy = ["POINTS", "Normalized Vorticity"]
+    # contour.Isosurfaces = [VORTICITY_THRESHOLD_FRACTION]
+
+    threshold = simple.Threshold(
+        registrationName="NormalizedVorticityThreshold",
         Input=calculator,
     )
-    contour.ContourBy = ["POINTS", "Normalized Vorticity"]
-    contour.Isosurfaces = [VORTICITY_CONTOUR_FRACTION]
-    return contour, [contour, calculator, vorticity]
+    threshold.Scalars = ["POINTS", "Normalized Vorticity"]
+    threshold.UpperThreshold = VORTICITY_THRESHOLD_FRACTION
+    threshold.ThresholdMethod = "Above Upper Threshold"
+    return threshold, [threshold, calculator]
 
 
 def render_snapshot(simple, snapshot, png_path, field):
@@ -236,9 +259,7 @@ def render_snapshot(simple, snapshot, png_path, field):
     simple.ResetSession()
     simple._DisableFirstRenderCameraReset()
 
-    required_components = (
-        VELOCITY_COMPONENTS if field == "q-criterion" else VORTICITY_COMPONENTS
-    )
+    required_components = VELOCITY_COMPONENTS + VORTICITY_COMPONENTS
     source = simple.VisItChomboReader(
         registrationName=snapshot.name,
         FileName=[str(snapshot)],
@@ -266,19 +287,38 @@ def render_snapshot(simple, snapshot, png_path, field):
         registrationName="CellDataToPointData",
         Input=source,
     )
+    vector_data, vector_proxies = build_vector_data(simple, cell_to_point)
     if field == "q-criterion":
-        contour, field_proxies = build_q_criterion_contour(simple, cell_to_point)
+        threshold, field_proxies = build_q_criterion_threshold(simple, vector_data)
     else:
-        contour, field_proxies = build_vorticity_contour(simple, cell_to_point)
-    contour.UpdatePipeline()
+        threshold, field_proxies = build_vorticity_threshold(simple, vector_data)
+    threshold.UpdatePipeline()
+
+    threshold_point_data = threshold.GetPointDataInformation()
+    missing_vectors = [
+        name
+        for name in ("Velocity", "Vorticity")
+        if threshold_point_data.GetArray(name) is None
+    ]
+    if missing_vectors:
+        raise RuntimeError(
+            f"{field} threshold output is missing merged point arrays: "
+            f"{', '.join(missing_vectors)}"
+        )
 
     render_view = simple.GetActiveViewOrCreate("RenderView")
 
     # ResetSession can leave a stale representation registered in headless
-    # pvbatch runs. Hide everything before showing this snapshot's contour.
+    # pvbatch runs. Hide everything before showing this snapshot's threshold.
     simple.HideAll(render_view)
-    contour_display = simple.Show(contour, render_view, "GeometryRepresentation")
-    contour_display.Representation = "Surface"
+    threshold_display = simple.Show(
+        threshold,
+        render_view,
+        "UnstructuredGridRepresentation",
+    )
+    threshold_display.Representation = "Surface"
+    simple.ColorBy(threshold_display, ("POINTS", "Velocity", "Magnitude"))
+    threshold_display.RescaleTransferFunctionToDataRange(True, False)
 
     render_view.CameraPosition = CAMERA_POSITION
     render_view.CameraFocalPoint = CAMERA_FOCAL_POINT
@@ -299,7 +339,7 @@ def render_snapshot(simple, snapshot, png_path, field):
     # Explicitly unregister proxies so ParaView does not retain this frame's
     # representations and reader caches until the next session reset.
     simple.HideAll(render_view)
-    for proxy in [*field_proxies, cell_to_point, source]:
+    for proxy in [*field_proxies, *vector_proxies, cell_to_point, source]:
         simple.Delete(proxy)
     simple.RemoveViewsAndLayouts()
 

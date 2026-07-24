@@ -13,11 +13,12 @@ PVBATCH="${PARAVIEW_BIN_DIR}/pvbatch"
 usage() {
   cat <<EOF
 Usage:
-  $(basename "$0") RUN_FOLDER [STRIDE]
+  $(basename "$0") RUN_FOLDER [STRIDE] [--resume]
 
 Examples:
   $(basename "$0") /ocean/projects/mch250004p/mchoi10/IBLGF-AMR/runs/ns_amr_lgf/2026-07-16_20-27-21
   $(basename "$0") /ocean/projects/mch250004p/mchoi10/IBLGF-AMR/runs/ns_amr_lgf/2026-07-16_20-27-21 5
+  $(basename "$0") /ocean/projects/mch250004p/mchoi10/IBLGF-AMR/runs/ns_amr_lgf/2026-07-16_20-27-21 5 --resume
 
 Optional environment override:
   export PARAVIEW_BIN_DIR=/your/paraview/bin
@@ -36,9 +37,10 @@ fi
 
 RUN_FOLDER="$1"
 STRIDE="${2:-1}"
+RESUME="${3:-}"
 
-if [[ $# -gt 2 ]]; then
-  echo "Error: expected RUN_FOLDER and optional STRIDE only."
+if [[ $# -gt 3 || ( -n "${RESUME}" && "${RESUME}" != "--resume" ) ]]; then
+  echo "Error: expected RUN_FOLDER, optional STRIDE, and optional --resume."
   usage
   exit 1
 fi
@@ -53,10 +55,14 @@ if [[ ! -x "${PVBATCH}" ]]; then
 fi
 
 CMD=("${PVBATCH}" "${PY_SCRIPT}" "${RUN_FOLDER}" "${STRIDE}")
+if [[ "${RESUME}" == "--resume" ]]; then
+  CMD+=("--resume")
+fi
 
 echo "Using pvbatch: ${PVBATCH}"
 echo "Run folder:     ${RUN_FOLDER}"
 echo "Stride:         ${STRIDE}"
+echo "Resume:         ${RESUME:-false}"
 echo
 
 "${CMD[@]}"

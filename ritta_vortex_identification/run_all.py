@@ -22,6 +22,12 @@ STAGES = (
     "03_fit_vortices.py",
     "04_positive_vortex_metrics.py",
 )
+SAVED_RESULTS = (
+    "hmaxima.h5",
+    "regions.h5",
+    "fits.h5",
+    "positive_vortex_metrics.csv",
+)
 
 
 def output_has_frames(output_folder: Path, pattern: str) -> bool:
@@ -73,17 +79,17 @@ def dataset_label(run_folder: Path, search_root: Path, batch: bool) -> str:
 
 
 def filename_key(label: str) -> str:
-    """Turn a dataset label into a safe CSV filename stem."""
+    """Turn a dataset label into a safe result-folder name."""
     key = re.sub(r"[^A-Za-z0-9._-]+", "__", label).strip("._-")
     return key or "dataset"
 
 
 def run_stages(run_folder: Path, config_file: Path, destination: Path, stride: int) -> None:
-    """Run Stages 1-4 in order and copy out only the final metrics CSV."""
+    """Run Stages 1-4 in order and keep their HDF5 files and final CSV."""
     with tempfile.TemporaryDirectory(prefix=f"ritta-vortex-{run_folder.name}-") as temporary:
         temporary_folder = Path(temporary)
         environment = os.environ.copy()
-        # All HDF5 intermediates and Matplotlib cache files disappear with this folder.
+        # Stage files are created together before the completed set is copied out.
         environment["RITTA_VORTEX_RESULT_FOLDER"] = str(temporary_folder)
         environment["MPLCONFIGDIR"] = str(temporary_folder / ".matplotlib")
         environment["PYTHONDONTWRITEBYTECODE"] = "1"
@@ -101,11 +107,12 @@ def run_stages(run_folder: Path, config_file: Path, destination: Path, stride: i
             print(f"\n[{run_folder.name}] {stage}", flush=True)
             subprocess.run(command, cwd=SCRIPT_FOLDER, env=environment, check=True)
 
-        metrics = temporary_folder / "positive_vortex_metrics.csv"
-        if not metrics.is_file():
-            raise FileNotFoundError(f"Stage 4 did not create {metrics}")
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(metrics, destination)
+        missing = [name for name in SAVED_RESULTS if not (temporary_folder / name).is_file()]
+        if missing:
+            raise FileNotFoundError("Pipeline did not create: " + ", ".join(missing))
+        destination.mkdir(parents=True, exist_ok=True)
+        for name in SAVED_RESULTS:
+            shutil.copy2(temporary_folder / name, destination / name)
 
 
 def write_manifest(path: Path, datasets: list[dict]) -> None:
@@ -128,7 +135,7 @@ def write_manifest(path: Path, datasets: list[dict]) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Run vortex-identification Stages 1-4 without previews and keep only final CSV files."
+        description="Run vortex-identification Stages 1-4 without previews and keep HDF5 and CSV results."
     )
     parser.add_argument("input_folder", type=Path, help="One run/output folder, or a parent folder with --batch.")
     parser.add_argument("config_file", type=Path)
@@ -165,7 +172,7 @@ def main() -> int:
         if key in used_keys:
             raise ValueError(f"Two run folders produce the same output name: {key}")
         used_keys.add(key)
-        destination = results_folder / f"{key}_positive_vortex_metrics.csv"
+        destination = results_folder / key
         print(f"\n=== Run {index}/{len(runs)}: {run_folder} ===", flush=True)
         try:
             discover_frames(run_folder, config)
@@ -179,16 +186,16 @@ def main() -> int:
             continue
         datasets.append({
             "name": label,
-            "csv": destination.name,
+            "csv": (Path(key) / "positive_vortex_metrics.csv").as_posix(),
             "run_folder": str(run_folder),
         })
-        print(f"Saved final CSV: {destination}", flush=True)
+        print(f"Saved HDF5 and CSV results: {destination}", flush=True)
 
     manifest = results_folder / "datasets.toml"
     write_manifest(manifest, datasets)
     print(f"\nSaved editable dataset list: {manifest}")
     if failures:
-        print(f"{len(failures)} of {len(runs)} runs failed; successful CSV files were kept.", file=sys.stderr)
+        print(f"{len(failures)} of {len(runs)} runs failed; successful results were kept.", file=sys.stderr)
         return 1
     return 0
 

@@ -59,7 +59,7 @@ python make_h5_gif.py H5_FILE STRIDE
 
 This supports `hmaxima.h5`, `regions.h5`, `fits.h5`, and `threshold_masks.h5`. Output goes beside the HDF5 file in `<name>_stride_<stride>/`.
 
-## fast CSV-only runs
+## fast headless runs
 
 One run (either the run folder or its `output` folder works):
 
@@ -75,7 +75,10 @@ python run_all.py PARENT_FOLDER CONFIG_FILE --batch
 
 Add `--stride 5` to either `run_all.py` command to process every fifth frame.
 
-These run stages 1–4 without previews. Temporary HDF5 stage files are deleted; final CSV files go to `outputs/pipeline_results/`. Use `--results-dir FOLDER` to put them elsewhere.
+These run stages 1–4 without previews. Each dataset gets a folder under
+`outputs/pipeline_results/` containing `hmaxima.h5`, `regions.h5`, `fits.h5`,
+and `positive_vortex_metrics.csv`. Use `--results-dir FOLDER` to put them
+elsewhere.
 
 The same folder gets `datasets.toml`. Edit each `name` in that file to choose the plot legend text, then run:
 

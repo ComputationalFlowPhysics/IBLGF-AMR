@@ -2,7 +2,7 @@
 """Render Q-criterion PNG frames and combine them into a GIF.
 
 Usage:
-    pvpython plot_3d.py OUTPUT_FOLDER [STRIDE]
+    pvpython plot_3d.py OUTPUT_FOLDER [STRIDE] [--resume]
 
 ``OUTPUT_FOLDER`` may be the folder containing ``flowTime_*.hdf5`` files or
 the run folder containing an ``output`` subfolder. Generated files are saved
@@ -63,6 +63,11 @@ def parse_args():
         default=1,
         help="render every STRIDE-th snapshot (default: 1)",
     )
+    parser.add_argument(
+        "--resume",
+        action="store_true",
+        help="reuse existing nonempty PNG frames instead of rendering them again",
+    )
     return parser.parse_args()
 
 
@@ -118,14 +123,32 @@ def output_paths(snapshot_folder):
     return output_folder, frames_folder, gif_path, manifest_path
 
 
-def prepare_output_folders(output_folder, frames_folder):
+def prepare_output_folders(output_folder, frames_folder, resume):
     output_folder.mkdir(parents=True, exist_ok=True)
     frames_folder.mkdir(parents=True, exist_ok=True)
+
+    if resume:
+        return
 
     # Remove only frames produced by an earlier invocation of this script.
     for old_frame in frames_folder.iterdir():
         if old_frame.is_file() and re.fullmatch(r"flowTime_\d+\.png", old_frame.name):
             old_frame.unlink()
+
+
+def existing_manifest_rows(manifest_path):
+    """Keep cell and point counts when resume mode reuses a saved PNG."""
+    if not manifest_path.is_file():
+        return {}
+    with manifest_path.open(newline="") as manifest_file:
+        return {
+            int(row["snapshot_step"]): row
+            for row in csv.DictReader(manifest_file)
+        }
+
+
+def reusable_png(path):
+    return path.is_file() and path.stat().st_size > 0
 
 
 def load_paraview():
@@ -172,7 +195,6 @@ def render_snapshot(simple, snapshot, png_path):
         registrationName="CellDataToPointData",
         Input=source,
     )
-    cell_to_point.UpdatePipeline()
 
     velocity = simple.MergeVectorComponents(
         registrationName="Velocity",
@@ -182,13 +204,11 @@ def render_snapshot(simple, snapshot, png_path):
     velocity.YArray = "u_1"
     velocity.ZArray = "u_2"
     velocity.OutputVectorName = "Velocity"
-    velocity.UpdatePipeline()
 
     gradient = simple.Gradient(registrationName="VelocityGradient", Input=velocity)
     gradient.ScalarArray = ["POINTS", "Velocity"]
     gradient.ComputeQCriterion = 1
     gradient.QCriterionArrayName = "Q Criterion"
-    gradient.UpdatePipeline()
 
     contour = simple.Contour(registrationName="QCriterionContour", Input=gradient)
     contour.ContourBy = ["POINTS", "Q Criterion"]
@@ -202,7 +222,6 @@ def render_snapshot(simple, snapshot, png_path):
     simple.HideAll(render_view)
     contour_display = simple.Show(contour, render_view, "GeometryRepresentation")
     contour_display.Representation = "Surface"
-    render_view.Update()
 
     render_view.CameraPosition = CAMERA_POSITION
     render_view.CameraFocalPoint = CAMERA_FOCAL_POINT
@@ -210,7 +229,7 @@ def render_snapshot(simple, snapshot, png_path):
     render_view.CameraParallelScale = CAMERA_PARALLEL_SCALE
     render_view.ViewSize = IMAGE_RESOLUTION
 
-    simple.Render(render_view)
+    # SaveScreenshot performs the render, so a separate Render call is unnecessary.
     simple.SaveScreenshot(
         str(png_path),
         render_view,
@@ -220,15 +239,12 @@ def render_snapshot(simple, snapshot, png_path):
     if not png_path.is_file() or png_path.stat().st_size == 0:
         raise RuntimeError(f"ParaView did not create a valid PNG: {png_path}")
 
-    # ParaView can retain representations and reader caches until their
-    # proxies are explicitly unregistered. Clear the view, delete the entire
-    # pipeline in reverse order, and reset once more before the next frame.
+    # Explicitly unregister proxies so ParaView does not retain this frame's
+    # representations and reader caches until the next session reset.
     simple.HideAll(render_view)
-    render_view.Update()
     for proxy in (contour, gradient, velocity, cell_to_point, source):
         simple.Delete(proxy)
     simple.RemoveViewsAndLayouts()
-    simple.ResetSession()
 
     return source_cells, source_points
 
@@ -270,7 +286,8 @@ def build_gif(frames_folder, snapshots, gif_path):
     try:
         for frame_index, snapshot in enumerate(snapshots):
             source_png = frames_folder / f"flowTime_{snapshot_step(snapshot)}.png"
-            shutil.copy2(source_png, staging_folder / f"frame_{frame_index:05d}.png")
+            staged_png = staging_folder / f"frame_{frame_index:05d}.png"
+            staged_png.symlink_to(source_png.resolve())
 
         subprocess.run(
             ffmpeg_command
@@ -308,12 +325,18 @@ def main():
         output_folder, frames_folder, gif_path, manifest_path = output_paths(
             snapshot_folder
         )
-        prepare_output_folders(output_folder, frames_folder)
-        simple = load_paraview()
+        old_manifest = existing_manifest_rows(manifest_path) if args.resume else {}
+        prepare_output_folders(output_folder, frames_folder, args.resume)
+        needs_render = any(
+            not reusable_png(frames_folder / f"flowTime_{snapshot_step(snapshot)}.png")
+            for snapshot in snapshots
+        )
+        simple = load_paraview() if needs_render else None
 
         print(f"Snapshot folder: {snapshot_folder}", flush=True)
         print(f"Snapshots used:  {len(snapshots)}", flush=True)
         print(f"Stride:          {args.stride}", flush=True)
+        print(f"Resume:          {args.resume}", flush=True)
         print(f"PNG folder:      {frames_folder}", flush=True)
         print(f"Output GIF:      {gif_path}", flush=True)
 
@@ -333,14 +356,21 @@ def main():
             for frame_index, snapshot in enumerate(snapshots):
                 step = snapshot_step(snapshot)
                 png_path = frames_folder / f"flowTime_{step}.png"
+                reuse = args.resume and reusable_png(png_path)
                 print(
-                    f"[{frame_index + 1}/{len(snapshots)}] Rendering "
+                    f"[{frame_index + 1}/{len(snapshots)}] "
+                    f"{'Reusing' if reuse else 'Rendering'} "
                     f"{snapshot.name}",
                     flush=True,
                 )
-                source_cells, source_points = render_snapshot(
-                    simple, snapshot.resolve(), png_path
-                )
+                if reuse:
+                    old_row = old_manifest.get(step, {})
+                    source_cells = old_row.get("source_cells", "")
+                    source_points = old_row.get("source_points", "")
+                else:
+                    source_cells, source_points = render_snapshot(
+                        simple, snapshot.resolve(), png_path
+                    )
                 manifest_writer.writerow(
                     [
                         frame_index,

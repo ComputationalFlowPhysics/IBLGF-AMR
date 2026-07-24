@@ -8,7 +8,9 @@ Quick notes for running my standalone 2D `edge_aux` analysis.
 source open_viewer_venv.sh
 ```
 
-This uses the viewer venv and checks for NumPy, SciPy, h5py, and Matplotlib.
+This uses the local viewer venv when available, or the remote
+`conda-envs/ritta-vortex` environment, and checks for NumPy, SciPy, h5py, and
+Matplotlib. Set `RITTA_VORTEX_ENV` first if the environment is somewhere else.
 
 `RUN_FOLDER` needs an `output/` folder containing `flowTime_<number>.hdf5`. Copy `configs/default.toml` and adjust it for the run; its inline comments explain the individual settings.
 

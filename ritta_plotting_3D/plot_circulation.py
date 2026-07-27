@@ -34,6 +34,8 @@ CLIP_ORIGIN = [0.0, 0.0, 0.0]
 CLIP_NORMAL = [0.0, 1.0, 0.0]
 CLIP_INVERT = 0
 VORTICITY_THRESHOLD_FRACTION = 0.02
+CONTOUR_COLOR = [0.0, 0.0, 0.0]
+CONTOUR_LINE_WIDTH = 3.0
 PLOT_RESOLUTION = [1200, 800]
 FRAME_RESOLUTION = [1280, 720]
 CAMERA_MARGIN_FRACTION = 0.08
@@ -313,7 +315,7 @@ def build_leading_region(simple, snapshot):
     omega_min, omega_max = point_array_range(clip, VORTICITY_COMPONENT)
     peak_vorticity = max(abs(omega_min), abs(omega_max))
     if peak_vorticity == 0.0:
-        return None, 0.0, 0, 0
+        return None, clip, None, 0.0, 0, 0
 
     normalized_vorticity = simple.PythonCalculator(
         registrationName="NormalizedNormalVorticity",
@@ -334,7 +336,7 @@ def build_leading_region(simple, snapshot):
     threshold.UpdatePipeline()
     threshold_cells = threshold.GetDataInformation().GetNumberOfCells()
     if threshold_cells == 0:
-        return None, peak_vorticity, 0, 0
+        return None, clip, normalized_vorticity, peak_vorticity, 0, 0
 
     merge_blocks = simple.MergeBlocks(
         registrationName="MergeThresholdBlocks",
@@ -353,8 +355,22 @@ def build_leading_region(simple, snapshot):
     connectivity.UpdatePipeline()
     leading_cells = connectivity.GetDataInformation().GetNumberOfCells()
     if leading_cells == 0:
-        return None, peak_vorticity, threshold_cells, 0
-    return connectivity, peak_vorticity, threshold_cells, leading_cells
+        return (
+            None,
+            clip,
+            normalized_vorticity,
+            peak_vorticity,
+            threshold_cells,
+            0,
+        )
+    return (
+        connectivity,
+        clip,
+        normalized_vorticity,
+        peak_vorticity,
+        threshold_cells,
+        leading_cells,
+    )
 
 
 def padded_camera_bounds(bounds):
@@ -378,16 +394,27 @@ def padded_camera_bounds(bounds):
 def determine_camera_bounds(simple, snapshots):
     for snapshot in reversed(snapshots):
         simple.ResetSession()
-        connectivity, _, _, _ = build_leading_region(simple, snapshot.resolve())
-        if connectivity is not None:
-            bounds = connectivity.GetDataInformation().GetBounds()
+        _, clip, _, _, _, _ = build_leading_region(
+            simple,
+            snapshot.resolve(),
+        )
+        if clip.GetDataInformation().GetNumberOfCells() > 0:
+            bounds = clip.GetDataInformation().GetBounds()
             camera_bounds = padded_camera_bounds(bounds)
             simple.ResetSession()
             return camera_bounds, snapshot
-    raise RuntimeError("No selected snapshot contains a leading-vortex region")
+    raise RuntimeError("No selected snapshot contains a nonempty clipped slice")
 
 
-def render_connectivity(simple, connectivity, png_path, camera_bounds):
+def render_slice(
+    simple,
+    clip,
+    normalized_vorticity,
+    connectivity,
+    peak_vorticity,
+    png_path,
+    camera_bounds,
+):
     render_view = simple.GetActiveViewOrCreate("RenderView")
     simple.HideAll(render_view)
     render_view.ViewSize = FRAME_RESOLUTION
@@ -415,20 +442,65 @@ def render_connectivity(simple, connectivity, png_path, camera_bounds):
     render_view.CameraViewUp = [0.0, 1.0, 0.0]
     render_view.CameraParallelScale = parallel_scale
 
-    if connectivity is not None:
+    if clip is not None:
         display = simple.Show(
-            connectivity,
+            clip,
             render_view,
-            "UnstructuredGridRepresentation",
         )
         display.Representation = "Surface"
         simple.ColorBy(display, ("POINTS", VORTICITY_COMPONENT))
-        display.RescaleTransferFunctionToDataRange(True, False)
         display.SetScalarBarVisibility(render_view, True)
         color_map = simple.GetColorTransferFunction(VORTICITY_COMPONENT)
+        color_map.RescaleTransferFunction(-peak_vorticity, peak_vorticity)
         scalar_bar = simple.GetScalarBar(color_map, render_view)
         scalar_bar.TitleColor = [0.0, 0.0, 0.0]
         scalar_bar.LabelColor = [0.0, 0.0, 0.0]
+
+    if connectivity is not None and normalized_vorticity is not None:
+        contour_input = simple.MergeBlocks(
+            registrationName="MergeContourInputBlocks",
+            Input=normalized_vorticity,
+        )
+        contour_input.OutputDataSetType = "Unstructured Grid"
+        contour_input.MergePartitionsOnly = 0
+        contour_input.MergePoints = 1
+        contour_input.Tolerance = 0.0
+
+        contour = simple.Contour(
+            registrationName="TwoPercentVorticityContour",
+            Input=contour_input,
+        )
+        contour.ContourBy = ["POINTS", "normalized_normal_vorticity"]
+        contour.Isosurfaces = [VORTICITY_THRESHOLD_FRACTION]
+
+        leading_bounds = connectivity.GetDataInformation().GetBounds()
+        leading_center = [
+            0.5 * (leading_bounds[0] + leading_bounds[1]),
+            0.5 * (leading_bounds[2] + leading_bounds[3]),
+            SLICE_ORIGIN[2],
+        ]
+        leading_contour = simple.Connectivity(
+            registrationName="LeadingVortexContour",
+            Input=contour,
+        )
+        leading_contour.ExtractionMode = "Extract Closest Point Region"
+        leading_contour.ClosestPoint = leading_center
+
+        contour_display = simple.Show(
+            leading_contour,
+            render_view,
+            "GeometryRepresentation",
+        )
+        contour_display.Representation = "Surface"
+        # Establish a point-data association before disabling scalar coloring.
+        simple.ColorBy(
+            contour_display,
+            ("POINTS", "normalized_normal_vorticity"),
+        )
+        simple.ColorBy(contour_display, None)
+        contour_display.AmbientColor = CONTOUR_COLOR
+        contour_display.DiffuseColor = CONTOUR_COLOR
+        contour_display.LineWidth = CONTOUR_LINE_WIDTH
 
     simple.SaveScreenshot(
         str(png_path),
@@ -451,6 +523,8 @@ def calculate_and_render(
     simple.ResetSession()
     (
         connectivity,
+        clip,
+        normalized_vorticity,
         peak_vorticity,
         threshold_cells,
         leading_cells,
@@ -466,7 +540,15 @@ def calculate_and_render(
         integrated_data = servermanager.Fetch(integrate)
         circulation = abs(fetched_scalar(integrated_data, VORTICITY_COMPONENT))
 
-    render_connectivity(simple, connectivity, png_path, camera_bounds)
+    render_slice(
+        simple,
+        clip,
+        normalized_vorticity,
+        connectivity,
+        peak_vorticity,
+        png_path,
+        camera_bounds,
+    )
     return circulation, peak_vorticity, threshold_cells, leading_cells
 
 

@@ -31,10 +31,13 @@ Q_CRITERION_THRESHOLD = 1.0
 VORTICITY_THRESHOLD_FRACTION = 0.02
 FPS = 8
 IMAGE_RESOLUTION = [1280, 720]
-CAMERA_POSITION = [10, 5, -10]
-CAMERA_FOCAL_POINT = [4.5, 1, -2]
-CAMERA_VIEW_UP = [0, 1, 0.2]
-CAMERA_PARALLEL_SCALE = 8.0
+# View from positive z so increasing x runs from screen-left to screen-right.
+# The oblique x offset keeps part of the ring's y-z face visible, while the
+# downstream focal point and larger distance keep later ring motion in frame.
+CAMERA_POSITION = [15.25, 7, 14]
+CAMERA_FOCAL_POINT = [7, 1, 2]
+CAMERA_VIEW_UP = [0, 1, -0.2]
+CAMERA_PARALLEL_SCALE = 12.0
 
 
 def positive_integer(value):

@@ -3,11 +3,12 @@
 
 Usage:
     pvbatch plot_circulation.py OUTPUT_FOLDER [STRIDE] [--config CONFIG_FILE]
+        [--view-only]
 
 ``OUTPUT_FOLDER`` may be the folder containing ``flowTime_*.hdf5`` files or
 the run folder containing an ``output`` subfolder. The vortex ring is assumed
-to travel along x with its symmetry axis at y = z = 0. Generated CSV, plot,
-PNG frames, and GIF files are saved under ``ritta_plotting_3D/outputs``.
+to travel along x with its symmetry axis at y = z = 0. Outputs are saved under
+``ritta_plotting_3D/outputs``. View-only mode creates just PNG frames and a GIF.
 """
 
 import argparse
@@ -55,8 +56,8 @@ def positive_integer(value):
 def parse_args():
     parser = argparse.ArgumentParser(
         description=(
-            "Calculate, plot, and animate leading-vortex circulation from 3D "
-            "vortex-ring snapshots."
+            "Render a 2D vortex-ring slice and optionally calculate, plot, "
+            "and animate leading-vortex circulation."
         )
     )
     parser.add_argument(
@@ -72,7 +73,7 @@ def parse_args():
         nargs="?",
         type=positive_integer,
         default=1,
-        help="analyze every STRIDE-th snapshot (default: 1)",
+        help="process every STRIDE-th snapshot (default: 1)",
     )
     parser.add_argument(
         "--config",
@@ -80,6 +81,14 @@ def parse_args():
         help=(
             "simulation config used for physical time; normally discovered "
             "from the run folder"
+        ),
+    )
+    parser.add_argument(
+        "--view-only",
+        action="store_true",
+        help=(
+            "generate only positive-half-slice PNG frames and a GIF; skip "
+            "the contour and all circulation analysis"
         ),
     )
     return parser.parse_args()
@@ -219,20 +228,28 @@ def physical_time(step, cfl, dx_base, levels):
     return cfl * step * dx_base / (2**levels)
 
 
-def output_paths(snapshot_folder):
+def output_paths(snapshot_folder, view_only):
     run_name = (
         snapshot_folder.parent.name
         if snapshot_folder.name == "output"
         else snapshot_folder.name
     )
+    output_suffix = "slice_view" if view_only else "circulation"
     output_folder = (
-        Path(__file__).resolve().parent / "outputs" / f"{run_name}_circulation"
+        Path(__file__).resolve().parent
+        / "outputs"
+        / f"{run_name}_{output_suffix}"
     )
     frames_folder = output_folder / "frames"
+    gif_name = (
+        "positive_half_slice.gif"
+        if view_only
+        else "leading_vortex_connectivity.gif"
+    )
     return (
         output_folder,
         frames_folder,
-        output_folder / "leading_vortex_connectivity.gif",
+        output_folder / gif_name,
         output_folder / "leading_vortex_circulation.csv",
         output_folder / "leading_vortex_circulation.png",
     )
@@ -278,7 +295,7 @@ def fetched_scalar(dataset, array_name):
     raise RuntimeError(f"Integrated output is missing array {array_name}")
 
 
-def build_leading_region(simple, snapshot):
+def build_leading_region(simple, snapshot, analyze=True):
     source = simple.VisItChomboReader(
         registrationName=snapshot.name,
         FileName=[str(snapshot)],
@@ -314,8 +331,8 @@ def build_leading_region(simple, snapshot):
 
     omega_min, omega_max = point_array_range(clip, VORTICITY_COMPONENT)
     peak_vorticity = max(abs(omega_min), abs(omega_max))
-    if peak_vorticity == 0.0:
-        return None, clip, None, 0.0, 0, 0
+    if not analyze or peak_vorticity == 0.0:
+        return None, clip, None, peak_vorticity, 0, 0
 
     normalized_vorticity = simple.PythonCalculator(
         registrationName="NormalizedNormalVorticity",
@@ -397,6 +414,7 @@ def determine_camera_bounds(simple, snapshots):
         _, clip, _, _, _, _ = build_leading_region(
             simple,
             snapshot.resolve(),
+            analyze=False,
         )
         if clip.GetDataInformation().GetNumberOfCells() > 0:
             bounds = clip.GetDataInformation().GetBounds()
@@ -517,6 +535,7 @@ def calculate_and_render(
     snapshot,
     png_path,
     camera_bounds,
+    analyze=True,
 ):
     # Resetting between snapshots avoids reader cache and time-state errors
     # observed when Chombo files are loaded as one ParaView file series.
@@ -528,10 +547,10 @@ def calculate_and_render(
         peak_vorticity,
         threshold_cells,
         leading_cells,
-    ) = build_leading_region(simple, snapshot)
+    ) = build_leading_region(simple, snapshot, analyze=analyze)
 
     circulation = 0.0
-    if connectivity is not None:
+    if analyze and connectivity is not None:
         integrate = simple.IntegrateVariables(
             registrationName="LeadingVortexIntegral",
             Input=connectivity,
@@ -673,7 +692,7 @@ def main():
             gif_path,
             csv_path,
             plot_path,
-        ) = output_paths(snapshot_folder)
+        ) = output_paths(snapshot_folder, args.view_only)
         output_folder.mkdir(parents=True, exist_ok=True)
         prepare_frames_folder(frames_folder)
         simple, servermanager = load_paraview()
@@ -687,12 +706,17 @@ def main():
         print(f"dx_base:         {dx_base:g}", flush=True)
         print(f"nLevels:         {levels}", flush=True)
         print(f"Camera reference: {camera_snapshot.name}", flush=True)
+        print(f"View only:        {args.view_only}", flush=True)
         print(f"PNG frames:      {frames_folder}", flush=True)
         print(f"Output GIF:      {gif_path}", flush=True)
-        print(f"Output CSV:      {csv_path}", flush=True)
-        print(f"Output plot:     {plot_path}", flush=True)
+        if not args.view_only:
+            print(f"Output CSV:      {csv_path}", flush=True)
+            print(f"Output plot:     {plot_path}", flush=True)
 
-        with csv_path.open("w", newline="") as csv_file:
+        csv_file = None
+        writer = None
+        if not args.view_only:
+            csv_file = csv_path.open("w", newline="")
             writer = csv.writer(csv_file)
             writer.writerow(
                 [
@@ -708,6 +732,7 @@ def main():
                 ]
             )
 
+        try:
             for frame_index, snapshot in enumerate(snapshots):
                 step = snapshot_step(snapshot)
                 time = physical_time(step, cfl, dx_base, levels)
@@ -728,33 +753,43 @@ def main():
                     snapshot.resolve(),
                     frame_path,
                     camera_bounds,
+                    analyze=not args.view_only,
                 )
-                writer.writerow(
-                    [
-                        frame_index,
-                        step,
-                        f"{time:.15g}",
-                        f"{circulation:.16g}",
-                        f"{peak_vorticity:.16g}",
-                        threshold_cells,
-                        leading_cells,
-                        str(snapshot.resolve()),
-                        str(frame_path.resolve()),
-                    ]
-                )
-                csv_file.flush()
-                print(
-                    f"    time={time:.8g}, circulation={circulation:.8g}",
-                    flush=True,
-                )
+                if writer is not None:
+                    writer.writerow(
+                        [
+                            frame_index,
+                            step,
+                            f"{time:.15g}",
+                            f"{circulation:.16g}",
+                            f"{peak_vorticity:.16g}",
+                            threshold_cells,
+                            leading_cells,
+                            str(snapshot.resolve()),
+                            str(frame_path.resolve()),
+                        ]
+                    )
+                    csv_file.flush()
+                    print(
+                        f"    time={time:.8g}, "
+                        f"circulation={circulation:.8g}",
+                        flush=True,
+                    )
+                else:
+                    print(f"    time={time:.8g}", flush=True)
+        finally:
+            if csv_file is not None:
+                csv_file.close()
 
-        write_plot(simple, csv_path, plot_path)
+        if not args.view_only:
+            write_plot(simple, csv_path, plot_path)
         build_gif(frames_folder, snapshots, gif_path)
         simple.ResetSession()
-        print(f"Done: {plot_path}", flush=True)
         print(f"GIF:  {gif_path}", flush=True)
         print(f"PNGs: {frames_folder}", flush=True)
-        print(f"Data: {csv_path}", flush=True)
+        if not args.view_only:
+            print(f"Plot: {plot_path}", flush=True)
+            print(f"Data: {csv_path}", flush=True)
         return 0
     except (OSError, RuntimeError, ValueError, subprocess.CalledProcessError) as error:
         print(f"Error: {error}", file=sys.stderr, flush=True)

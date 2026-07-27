@@ -148,6 +148,7 @@ def save_time_series_plot(
     output_path.parent.mkdir(parents=True, exist_ok=True)
     figure, axis = plt.subplots(figsize=figure_size)
     has_event_marker = False
+    has_breakpoint_marker = False
     # Values already contain NaNs at missed detections, so Matplotlib leaves gaps.
     for item in series:
         times = np.asarray(item["times"], dtype=float)
@@ -182,6 +183,31 @@ def save_time_series_plot(
                     )
                     has_event_marker = True
 
+        breakpoint_time = item.get("breakpoint_time")
+        breakpoint_value = item.get("breakpoint_value")
+        if breakpoint_time is not None and breakpoint_value is not None:
+            breakpoint_time = float(breakpoint_time)
+            breakpoint_value = float(breakpoint_value)
+            breakpoint_is_visible = (
+                math.isfinite(breakpoint_time)
+                and math.isfinite(breakpoint_value)
+                and (time_limits[0] is None or breakpoint_time >= time_limits[0])
+                and (time_limits[1] is None or breakpoint_time <= time_limits[1])
+            )
+            if breakpoint_is_visible:
+                axis.scatter(
+                    breakpoint_time,
+                    breakpoint_value,
+                    color=line.get_color(),
+                    edgecolors="black",
+                    marker="D",
+                    s=75,
+                    linewidths=0.8,
+                    zorder=line.get_zorder() + 3,
+                    label="_nolegend_",
+                )
+                has_breakpoint_marker = True
+
     if has_event_marker:
         axis.scatter(
             [],
@@ -190,6 +216,16 @@ def save_time_series_plot(
             marker="X",
             s=110,
             label="forcing ends",
+        )
+
+    if has_breakpoint_marker:
+        axis.scatter(
+            [],
+            [],
+            color="black",
+            marker="D",
+            s=75,
+            label=r"fitted breakpoint $t_b$",
         )
 
     if reference is not None:

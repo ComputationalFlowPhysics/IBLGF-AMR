@@ -3,12 +3,17 @@
 from __future__ import annotations
 
 import argparse
+import csv
+import math
 import subprocess
 import sys
 from pathlib import Path
 
 import h5py
+import matplotlib
+matplotlib.use("Agg")
 import matplotlib.colors as mcolors
+import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.lines import Line2D
 from matplotlib.patches import Patch
@@ -26,6 +31,16 @@ from plot_vorticity import browse_frames, image_extent
 
 
 EIGHT_CONNECTED = np.ones((3, 3), dtype=bool)
+TRACK_COLUMNS = (
+    "frame_index",
+    "frame_name",
+    "time",
+    "candidate_id",
+    "track_id",
+    "x",
+    "y",
+    "peak_vorticity",
+)
 
 
 def remove_small_regions(mask: np.ndarray, dx: float, minimum_area: float) -> tuple[np.ndarray, int, np.ndarray]:
@@ -135,6 +150,192 @@ def load_saved_frame(path: Path, hmaxima_path: Path, group_name: str) -> dict:
         }
 
 
+def extrema_records(frame_index: int, frame: dict) -> list[dict]:
+    """Convert retained extrema from one frame into tracking records."""
+    records = []
+    for candidate_id, x_value, y_value, peak_vorticity in zip(
+        frame["extrema_candidate_ids"],
+        frame["extrema_x"],
+        frame["extrema_y"],
+        frame["extrema_vorticity"],
+    ):
+        if not all(math.isfinite(float(value)) for value in (x_value, y_value, peak_vorticity)):
+            raise ValueError(
+                f"{frame['source_filename']} contains a non-finite retained-extremum value."
+            )
+        records.append({
+            "frame_index": frame_index,
+            "frame_name": frame["source_filename"],
+            "time": float(frame["time"]),
+            "candidate_id": int(candidate_id),
+            "track_id": None,
+            "x": float(x_value),
+            "y": float(y_value),
+            "peak_vorticity": float(peak_vorticity),
+        })
+    return records
+
+
+def nearest_one_to_one_matches(
+    source_centers: dict[int, tuple[float, float]],
+    records: list[dict],
+    max_displacement: float,
+    unavailable_indices: set[int] | None = None,
+) -> dict[int, int]:
+    """Match each source to its nearest detection, using each detection at most once."""
+    if not records:
+        return {}
+
+    proposals = []
+    for source_id, (source_x, source_y) in source_centers.items():
+        nearest_index = min(
+            range(len(records)),
+            key=lambda index: (
+                math.hypot(records[index]["x"] - source_x, records[index]["y"] - source_y),
+                index,
+            ),
+        )
+        distance = math.hypot(
+            records[nearest_index]["x"] - source_x,
+            records[nearest_index]["y"] - source_y,
+        )
+        if distance <= max_displacement:
+            proposals.append((distance, source_id, nearest_index))
+
+    matches = {}
+    used_indices = set() if unavailable_indices is None else set(unavailable_indices)
+    for _, source_id, candidate_index in sorted(proposals):
+        if candidate_index in used_indices:
+            continue
+        matches[source_id] = candidate_index
+        used_indices.add(candidate_index)
+    return matches
+
+
+def assign_extrema_tracks(
+    records_by_frame: list[list[dict]],
+    max_displacement: float,
+    new_track_max_displacement: float,
+) -> None:
+    """Track consecutive retained extrema and require two detections to start a track."""
+    active_tracks = {}
+    tentative_records = []
+    next_track_id = 1
+
+    for records in records_by_frame:
+        existing_matches = nearest_one_to_one_matches(
+            active_tracks,
+            records,
+            max_displacement,
+        )
+        used_indices = set(existing_matches.values())
+        for track_id, index in existing_matches.items():
+            records[index]["track_id"] = track_id
+
+        tentative_centers = {
+            index: (record["x"], record["y"])
+            for index, record in enumerate(tentative_records)
+        }
+        confirmed_matches = nearest_one_to_one_matches(
+            tentative_centers,
+            records,
+            new_track_max_displacement,
+            unavailable_indices=used_indices,
+        )
+        for tentative_index, current_index in confirmed_matches.items():
+            track_id = next_track_id
+            next_track_id += 1
+            tentative_records[tentative_index]["track_id"] = track_id
+            records[current_index]["track_id"] = track_id
+            used_indices.add(current_index)
+
+        tentative_records = [
+            records[index]
+            for index in range(len(records))
+            if index not in used_indices
+        ]
+        active_tracks = {
+            int(record["track_id"]): (record["x"], record["y"])
+            for record in records
+            if record["track_id"] is not None
+        }
+
+
+def write_extrema_tracks(path: Path, records_by_frame: list[list[dict]]) -> None:
+    """Write every retained extremum, leaving unconfirmed track IDs blank."""
+    with path.open("w", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=TRACK_COLUMNS)
+        writer.writeheader()
+        for records in records_by_frame:
+            for record in records:
+                row = dict(record)
+                row["track_id"] = "" if row["track_id"] is None else row["track_id"]
+                writer.writerow(row)
+
+
+def track_colors(track_count: int) -> list:
+    """Return stable categorical colors for the plotted track IDs."""
+    colors = []
+    for name in ("tab20", "tab20b", "tab20c"):
+        colors.extend(plt.get_cmap(name).colors)
+    if track_count <= len(colors):
+        return colors[:track_count]
+    return list(plt.get_cmap("turbo")(np.linspace(0.0, 1.0, track_count)))
+
+
+def save_extrema_track_plot(
+    path: Path,
+    records_by_frame: list[list[dict]],
+    figure_size: tuple[float, float],
+) -> int:
+    """Plot x coordinate versus simulation time with one color per confirmed track."""
+    tracks = {}
+    for records in records_by_frame:
+        for record in records:
+            if record["track_id"] is not None:
+                tracks.setdefault(int(record["track_id"]), []).append(record)
+
+    figure, axis = plt.subplots(figsize=figure_size)
+    colors = track_colors(len(tracks))
+    for color, track_id in zip(colors, sorted(tracks)):
+        records = sorted(tracks[track_id], key=lambda record: record["frame_index"])
+        axis.plot(
+            [record["time"] for record in records],
+            [record["x"] for record in records],
+            color=color,
+            marker="o",
+            markersize=4,
+            linewidth=1.5,
+            label=f"track {track_id}",
+        )
+
+    axis.set_xlabel("simulation time")
+    axis.set_ylabel("retained h-maximum x coordinate")
+    axis.set_title("Tracked retained h-maxima: x coordinate versus simulation time")
+    axis.grid(True, alpha=0.3)
+    if tracks:
+        legend_columns = max(1, math.ceil(len(tracks) / 20))
+        axis.legend(
+            loc="upper left",
+            bbox_to_anchor=(1.02, 1.0),
+            ncol=legend_columns,
+            fontsize=7,
+        )
+    else:
+        axis.text(
+            0.5,
+            0.5,
+            "No extrema survived two-frame track confirmation",
+            transform=axis.transAxes,
+            ha="center",
+            va="center",
+        )
+    figure.tight_layout()
+    figure.savefig(path, dpi=160, bbox_inches="tight")
+    plt.close(figure)
+    return len(tracks)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Create positive and negative vorticity-threshold masks.")
     parser.add_argument("run_folder", type=Path)
@@ -153,6 +354,9 @@ def main() -> int:
     output_folder = result_folder(args.run_folder)
     hmaxima_path = output_folder / "hmaxima.h5"
     output_path = output_folder / "threshold_masks.h5"
+    track_csv_path = output_folder / "threshold_hmaxima_tracks.csv"
+    track_plot_path = output_folder / "threshold_hmaxima_x_vs_time.png"
+    records_by_frame = []
 
     # Stage 1 runs first and writes the extrema and physical raster consumed below.
     subprocess.run([
@@ -184,6 +388,7 @@ def main() -> int:
             result = make_masks(frame, threshold, minimum_area)
             result.update(retained_extrema(result, source))
             save_frame(output.create_group(group_name), result)
+            records_by_frame.append(extrema_records(index, result))
             print(
                 f"[{index + 1}/{len(group_names)}] {frame['source_filename']}: "
                 f"kept {len(result['positive_region_areas'])}/{result['positive_regions_found']} positive and "
@@ -192,6 +397,37 @@ def main() -> int:
             )
 
     print(f"Saved {output_path}")
+    tracking_config = config.get("tracking", {})
+    max_displacement = float(tracking_config.get("max_displacement", 0.5))
+    new_track_max_displacement = float(
+        tracking_config.get("new_track_max_displacement", 0.5)
+    )
+    if not math.isfinite(max_displacement) or max_displacement <= 0.0:
+        raise ValueError("[tracking] max_displacement must be finite and greater than zero.")
+    if (
+        not math.isfinite(new_track_max_displacement)
+        or new_track_max_displacement <= 0.0
+    ):
+        raise ValueError(
+            "[tracking] new_track_max_displacement must be finite and greater than zero."
+        )
+
+    assign_extrema_tracks(
+        records_by_frame,
+        max_displacement,
+        new_track_max_displacement,
+    )
+    write_extrema_tracks(track_csv_path, records_by_frame)
+    track_count = save_extrema_track_plot(
+        track_plot_path,
+        records_by_frame,
+        (
+            float(config["plot"].get("figure_width", 10.0)),
+            float(config["plot"].get("figure_height", 7.0)),
+        ),
+    )
+    print(f"Saved {track_csv_path}")
+    print(f"Saved {track_plot_path} ({track_count} confirmed tracks)")
     if args.no_preview:
         return 0
     print("Batch calculation complete. Starting terminal frame prompt.")

@@ -53,6 +53,15 @@ python make_threshold_masks.py RUN_FOLDER CONFIG_FILE --stride 5
 
 Set `vorticity_threshold` and `minimum_region_area` under `[threshold_mask]`. The command runs Stage 1 first, removes mask regions below the physical-area cutoff, and marks only saved positive h-maxima inside the retained regions. It saves `hmaxima.h5`, `threshold_masks.h5`, and a terminal-selected `threshold_masks_preview.png`.
 
+The same command also tracks the retained h-maxima across consecutive analyzed
+frames. It uses `tracking.max_displacement` for existing tracks and
+`tracking.new_track_max_displacement` for the required second-frame
+confirmation of a new track. Each current detection can belong to at most one
+track. Results are saved to `threshold_hmaxima_tracks.csv`, including blank
+track IDs for unconfirmed extrema, and
+`threshold_hmaxima_x_vs_time.png`, where each confirmed track has its own
+color. These two files are also created with `--no-preview`.
+
 Make PNG frames and a GIF from any saved vortex HDF5 file:
 
 ```bash
@@ -90,6 +99,24 @@ python plot_combined_time_series.py outputs/pipeline_results/datasets.toml CONFI
 
 This makes only `combined_circulation_vs_time.png` and `combined_x_displacement_vs_time.png`. Each dataset line uses the rightmost valid vortex in every frame. A matching-color `X` marker on each curve marks when that dataset's forcing ends. New manifests save this as `forcing_end_time`, read from `b_f_tau` in the run's simulation config; older manifests derive it from `run_folder`.
 
+To fit the circulation slope-change time for every dataset and put all results
+on one figure:
+
+```bash
+python plot_circulation_breakpoints.py outputs/pipeline_results/datasets.toml CONFIG_FILE
+```
+
+This starts each fit at that dataset's forcing-end time and iterates the
+piecewise-linear model
+`Gamma(t) = Gamma_0 + m_1 t + delta_m max(0, t - t_b)`. The output
+`combined_circulation_with_breakpoints.png` retains the matching-color `X`
+forcing markers and adds matching-color diamonds at the fitted
+`t_b` times. Each diamond's circulation coordinate is linearly interpolated
+from the actual plotted samples, so the marker lies directly on its curve
+rather than on the piecewise-linear fit. The fitted times and slopes are also
+printed. Use `--tolerance` and `--max-iterations` to change the stopping
+criteria.
+
 Set `time_axis_min` and `time_axis_max` in `[time_series]` to choose the horizontal plot range. Use `nan` for automatic limits.
 
 ## config reminders
@@ -125,6 +152,7 @@ Everything goes to `outputs/<run_name>/`:
 ```text
 hmaxima.h5                    hmaxima_preview.png
 threshold_masks.h5            threshold_masks_preview.png
+threshold_hmaxima_tracks.csv   threshold_hmaxima_x_vs_time.png
 regions.h5                    regions_preview.png
 fits.h5                       fits_preview.png
 positive_vortex_metrics.csv   positive_vortex_metrics_preview.png

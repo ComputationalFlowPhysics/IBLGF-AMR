@@ -155,6 +155,18 @@ def _find_simulation_config(run_folder: Path, input_config: dict) -> Path | None
     return paths[0] if paths else None
 
 
+def simulation_parameter(run_folder: str | Path, config: dict, name: str) -> float:
+    """Read one scalar from a run's copied simulation configuration."""
+    run_folder = Path(run_folder).expanduser().resolve()
+    simulation_path = _find_simulation_config(run_folder, config["input"])
+    if simulation_path is None:
+        raise FileNotFoundError(f"No simulation config was found in {run_folder}")
+    value = _read_scalar(_strip_cpp_comments(simulation_path.read_text()), name)
+    if value is None:
+        raise ValueError(f"{name} was not found in {simulation_path}")
+    return value
+
+
 def simulation_metadata(run_folder: str | Path, config: dict) -> dict:
     """Read time constants and the physical coordinate origin independently."""
     run_folder = Path(run_folder).expanduser().resolve()

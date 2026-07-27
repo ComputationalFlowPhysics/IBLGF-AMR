@@ -111,6 +111,29 @@ def configured_time_limits(config: dict) -> tuple[float | None, float | None]:
     return minimum, maximum
 
 
+def line_value_at_time(times: np.ndarray, values: np.ndarray, target_time: float) -> float | None:
+    """Interpolate within one valid line segment without crossing a NaN gap."""
+    order = np.argsort(times)
+    times = times[order]
+    values = values[order]
+    exact = np.flatnonzero(np.isclose(times, target_time, rtol=1.0e-12, atol=1.0e-12))
+    for index in exact:
+        if math.isfinite(values[index]):
+            return float(values[index])
+
+    right = int(np.searchsorted(times, target_time, side="right"))
+    if right == 0 or right == len(times):
+        return None
+    left = right - 1
+    if not math.isfinite(values[left]) or not math.isfinite(values[right]):
+        return None
+    time_span = times[right] - times[left]
+    if time_span <= 0.0:
+        return None
+    fraction = (target_time - times[left]) / time_span
+    return float(values[left] + fraction * (values[right] - values[left]))
+
+
 def save_time_series_plot(
     output_path: str | Path,
     series: list[dict],
@@ -124,6 +147,7 @@ def save_time_series_plot(
     output_path = Path(output_path).expanduser().resolve()
     output_path.parent.mkdir(parents=True, exist_ok=True)
     figure, axis = plt.subplots(figsize=figure_size)
+    has_event_marker = False
     # Values already contain NaNs at missed detections, so Matplotlib leaves gaps.
     for item in series:
         times = np.asarray(item["times"], dtype=float)
@@ -133,7 +157,40 @@ def save_time_series_plot(
             visible &= times >= time_limits[0]
         if time_limits[1] is not None:
             visible &= times <= time_limits[1]
-        axis.plot(times[visible], values[visible], marker="o", label=item["label"])
+        line, = axis.plot(times[visible], values[visible], marker="o", label=item["label"])
+        event_time = item.get("event_time")
+        if event_time is not None:
+            event_time = float(event_time)
+            event_is_visible = (
+                math.isfinite(event_time)
+                and (time_limits[0] is None or event_time >= time_limits[0])
+                and (time_limits[1] is None or event_time <= time_limits[1])
+            )
+            if event_is_visible:
+                event_value = line_value_at_time(times, values, event_time)
+                if event_value is not None:
+                    axis.scatter(
+                        event_time,
+                        event_value,
+                        color=line.get_color(),
+                        edgecolors="black",
+                        marker="X",
+                        s=110,
+                        linewidths=0.8,
+                        zorder=line.get_zorder() + 2,
+                        label="_nolegend_",
+                    )
+                    has_event_marker = True
+
+    if has_event_marker:
+        axis.scatter(
+            [],
+            [],
+            color="black",
+            marker="X",
+            s=110,
+            label="forcing ends",
+        )
 
     if reference is not None:
         if reference_times is None:

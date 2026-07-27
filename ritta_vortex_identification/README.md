@@ -82,13 +82,13 @@ These run stages 1–4 without previews. Each dataset gets a folder under
 and `positive_vortex_metrics.csv`. Use `--results-dir FOLDER` to put them
 elsewhere.
 
-The same folder gets `datasets.toml`. Edit each `name` in that file to choose the plot legend text, then run:
+The same folder gets `datasets.toml`. Each `name` identifies its dataset, while combined-plot legends use the corresponding forcing-end time. Then run:
 
 ```bash
 python plot_combined_time_series.py outputs/pipeline_results/datasets.toml CONFIG_FILE
 ```
 
-This makes only `combined_circulation_vs_time.png` and `combined_x_displacement_vs_time.png`. Each dataset line uses the rightmost valid vortex in every frame.
+This makes only `combined_circulation_vs_time.png` and `combined_x_displacement_vs_time.png`. Each dataset line uses the rightmost valid vortex in every frame. A matching-color `X` marker on each curve marks when that dataset's forcing ends. New manifests save this as `forcing_end_time`, read from `b_f_tau` in the run's simulation config; older manifests derive it from `run_folder`.
 
 Set `time_axis_min` and `time_axis_max` in `[time_series]` to choose the horizontal plot range. Use `nan` for automatic limits.
 

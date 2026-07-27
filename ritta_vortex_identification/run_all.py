@@ -12,7 +12,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from common import discover_frames, load_config
+from common import discover_frames, load_config, simulation_parameter
 
 
 SCRIPT_FOLDER = Path(__file__).resolve().parent
@@ -118,8 +118,9 @@ def run_stages(run_folder: Path, config_file: Path, destination: Path, stride: i
 def write_manifest(path: Path, datasets: list[dict]) -> None:
     """Write the small file where the user edits combined-plot legend names."""
     lines = [
-        "# Edit each name to control the legend labels in the combined plots.",
+        "# Each name identifies a dataset; combined-plot legends use forcing_end_time.",
         "# CSV paths are relative to this file unless they are absolute.",
+        "# forcing_end_time is read from b_f_tau in the run's simulation config.",
         "",
     ]
     for dataset in datasets:
@@ -128,6 +129,7 @@ def write_manifest(path: Path, datasets: list[dict]) -> None:
             f"name = {json.dumps(dataset['name'])}",
             f"csv = {json.dumps(dataset['csv'])}",
             f"run_folder = {json.dumps(dataset['run_folder'])}",
+            f"forcing_end_time = {dataset['forcing_end_time']:g}",
             "",
         ))
     path.write_text("\n".join(lines), encoding="utf-8")
@@ -176,6 +178,7 @@ def main() -> int:
         print(f"\n=== Run {index}/{len(runs)}: {run_folder} ===", flush=True)
         try:
             discover_frames(run_folder, config)
+            forcing_end_time = simulation_parameter(run_folder, config, "b_f_tau")
             run_stages(run_folder, config_file, destination, args.stride)
         except (OSError, ValueError, subprocess.CalledProcessError) as error:
             failures.append((run_folder, error))
@@ -188,6 +191,7 @@ def main() -> int:
             "name": label,
             "csv": (Path(key) / "positive_vortex_metrics.csv").as_posix(),
             "run_folder": str(run_folder),
+            "forcing_end_time": forcing_end_time,
         })
         print(f"Saved HDF5 and CSV results: {destination}", flush=True)
 

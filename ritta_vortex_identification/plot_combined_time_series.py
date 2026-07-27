@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import argparse
+import math
 import tomllib
 from pathlib import Path
 
-from common import load_config
+from common import load_config, simulation_parameter
 from time_series_plotting import (
     configured_figure_size,
     configured_time_limits,
@@ -17,7 +18,7 @@ from time_series_plotting import (
 )
 
 
-def load_datasets(path: str | Path) -> list[dict]:
+def load_datasets(path: str | Path, config: dict) -> list[dict]:
     """Resolve editable legend names and CSV paths from datasets.toml."""
     path = Path(path).expanduser().resolve()
     with path.open("rb") as handle:
@@ -38,8 +39,25 @@ def load_datasets(path: str | Path) -> list[dict]:
         csv_path = csv_path.resolve()
         if not csv_path.is_file():
             raise FileNotFoundError(f"Metrics CSV does not exist: {csv_path}")
+        forcing_end_time = entry.get("forcing_end_time")
+        if forcing_end_time is None:
+            run_folder = str(entry.get("run_folder", "")).strip()
+            if not run_folder:
+                raise ValueError(
+                    f"Dataset {name!r} needs forcing_end_time or run_folder in {path}."
+                )
+            forcing_end_time = simulation_parameter(run_folder, config, "b_f_tau")
+        forcing_end_time = float(forcing_end_time)
+        if not math.isfinite(forcing_end_time) or forcing_end_time < 0.0:
+            raise ValueError(
+                f"Dataset {name!r} has an invalid forcing_end_time: {forcing_end_time}"
+            )
         names.append(name)
-        resolved.append({"name": name, "csv": csv_path})
+        resolved.append({
+            "name": name,
+            "csv": csv_path,
+            "forcing_end_time": forcing_end_time,
+        })
     if len(set(names)) != len(names):
         raise ValueError("Dataset names in the manifest must be unique.")
     return resolved
@@ -54,15 +72,21 @@ def main() -> int:
 
     config = load_config(args.config_file)
     datasets_file = args.datasets_file.expanduser().resolve()
-    datasets = load_datasets(datasets_file)
+    datasets = load_datasets(datasets_file, config)
     circulation_series = []
     displacement_series = []
     all_times = set()
     # Keep the same dataset order so both figures use matching colors.
     for dataset in datasets:
         rows = read_metrics(dataset["csv"])
-        circulation_series.extend(rightmost_series(rows, "circulation_positive", dataset["name"]))
-        displacement_series.extend(rightmost_series(rows, "x_displacement", dataset["name"]))
+        forcing_end_time = dataset["forcing_end_time"]
+        label = rf"$\tau={forcing_end_time:g}$"
+        circulation_item = rightmost_series(rows, "circulation_positive", label)[0]
+        circulation_item["event_time"] = forcing_end_time
+        circulation_series.append(circulation_item)
+        displacement_item = rightmost_series(rows, "x_displacement", label)[0]
+        displacement_item["event_time"] = forcing_end_time
+        displacement_series.append(displacement_item)
         all_times.update(row["time"] for row in rows)
 
     output_folder = (

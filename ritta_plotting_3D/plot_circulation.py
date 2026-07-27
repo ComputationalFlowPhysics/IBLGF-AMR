@@ -26,8 +26,9 @@ BRIDGES_FFMPEG_IMAGE = Path(
 )
 
 # Analysis settings. These reproduce the ParaView trace and the paper's
-# 2%-of-maximum closed-vorticity-contour definition.
-SLICE_ORIGIN = [0.0, 0.0, 0.0]
+# 2%-of-maximum closed-vorticity-contour definition. The tiny z offset avoids
+# double-counting coincident cut faces when z=0 is a Chombo cell boundary.
+SLICE_ORIGIN = [0.0, 0.0, 1.0e-6]
 SLICE_NORMAL = [0.0, 0.0, 1.0]
 CLIP_ORIGIN = [0.0, 0.0, 0.0]
 CLIP_NORMAL = [0.0, 1.0, 0.0]

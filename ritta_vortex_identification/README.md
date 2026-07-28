@@ -57,8 +57,14 @@ The same command also tracks the retained h-maxima across consecutive analyzed
 frames. It uses `tracking.max_displacement` for existing tracks and
 `tracking.new_track_max_displacement` for the required second-frame
 confirmation of a new track. Each current detection can belong to at most one
-track. Results are saved to `threshold_hmaxima_tracks.csv`, including blank
-track IDs for unconfirmed extrema, and
+track. A confirmed track remains active for `tracking.max_missed_frames`
+frames without a detection. After `m` missed frames, its next displacement
+limit is `(m + 1) * tracking.max_displacement`; a successful match keeps the
+same track ID and color, and the plot connects the surrounding observed
+points across the gap. After tracking, any track with fewer than
+`tracking.minimum_track_points` observed detections is discarded; the default
+is five. Results are saved to `threshold_hmaxima_tracks.csv`, including blank
+track IDs for unconfirmed or discarded extrema, and
 `threshold_hmaxima_x_vs_time.png`, where each confirmed track has its own
 color. These two files are also created with `--no-preview`.
 
@@ -122,7 +128,8 @@ Set `time_axis_min` and `time_axis_max` in `[time_series]` to choose the horizon
 ## config reminders
 
 - `input`: files, simulation config, time, and origin; keep the field as `edge_aux`
-- `hmaxima`: raise `h` to keep only more prominent extrema; keep connectivity at 8
+- `hmaxima`: raise `h` to keep only more prominent extrema; keep connectivity at 8;
+  `merge_distance` replaces connected groups of nearby maxima by their mean location
 - `threshold_mask`: threshold and preview colors for the optional binary masks
 - `region`: rectangle scales and the shared `buffer_multiplier`
 - `fit`: bounds and optimizer settings

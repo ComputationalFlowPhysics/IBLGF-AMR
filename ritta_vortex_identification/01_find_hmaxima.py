@@ -26,6 +26,68 @@ from plot_vorticity import browse_frames, image_extent
 EIGHT_CONNECTED = np.ones((3, 3), dtype=bool)
 
 
+def merge_close_maxima(
+    component_labels: np.ndarray,
+    peak_x: np.ndarray,
+    peak_y: np.ndarray,
+    peak_vorticity: np.ndarray,
+    merge_distance: float,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Merge connected groups of peaks separated by at most merge_distance."""
+    peak_x = np.asarray(peak_x, dtype=float)
+    peak_y = np.asarray(peak_y, dtype=float)
+    peak_vorticity = np.asarray(peak_vorticity, dtype=float)
+    candidate_count = len(peak_x)
+    if candidate_count <= 1 or merge_distance == 0.0:
+        candidate_ids = np.arange(1, candidate_count + 1, dtype=np.int32)
+        return component_labels, candidate_ids, peak_x, peak_y, peak_vorticity
+
+    distances = np.hypot(
+        peak_x[:, np.newaxis] - peak_x[np.newaxis, :],
+        peak_y[:, np.newaxis] - peak_y[np.newaxis, :],
+    )
+    adjacent = distances <= merge_distance
+    unseen = set(range(candidate_count))
+    groups = []
+    while unseen:
+        first = min(unseen)
+        unseen.remove(first)
+        group = [first]
+        stack = [first]
+        while stack:
+            current = stack.pop()
+            neighbors = [
+                candidate
+                for candidate in unseen
+                if adjacent[current, candidate]
+            ]
+            for candidate in neighbors:
+                unseen.remove(candidate)
+                group.append(candidate)
+                stack.append(candidate)
+        groups.append(sorted(group))
+
+    merged_labels = np.zeros(component_labels.shape, dtype=np.int32)
+    merged_x = []
+    merged_y = []
+    merged_vorticity = []
+    for merged_id, group in enumerate(groups, start=1):
+        for old_index in group:
+            merged_labels[component_labels == old_index + 1] = merged_id
+        merged_x.append(float(np.mean(peak_x[group])))
+        merged_y.append(float(np.mean(peak_y[group])))
+        merged_vorticity.append(float(np.max(peak_vorticity[group])))
+
+    candidate_ids = np.arange(1, len(groups) + 1, dtype=np.int32)
+    return (
+        merged_labels,
+        candidate_ids,
+        np.asarray(merged_x, dtype=float),
+        np.asarray(merged_y, dtype=float),
+        np.asarray(merged_vorticity, dtype=float),
+    )
+
+
 def reconstruct_by_dilation(omega: np.ndarray, h: float, tolerance: float) -> np.ndarray:
     """Apply the specified geodesic dilation until its infinity-norm change is small."""
     valid = np.isfinite(omega)
@@ -48,6 +110,7 @@ def find_hmaxima(frame: dict, config: dict) -> dict:
     h = require_positive(config, "hmaxima", "h")
     reconstruction_tolerance = require_positive(config, "hmaxima", "reconstruction_tolerance")
     mask_tolerance = require_nonnegative(config, "hmaxima", "h_mask_tolerance")
+    merge_distance = require_nonnegative(config, "hmaxima", "merge_distance")
     omega = np.asarray(frame["vorticity"], dtype=float)
     reconstruction = reconstruct_by_dilation(omega, h, reconstruction_tolerance)
     dome = omega - reconstruction
@@ -76,15 +139,22 @@ def find_hmaxima(frame: dict, config: dict) -> dict:
         peak_vorticity.append(peak)
         next_id += 1
 
+    labels, candidate_ids, peak_x, peak_y, peak_vorticity = merge_close_maxima(
+        labels,
+        np.asarray(peak_x, dtype=float),
+        np.asarray(peak_y, dtype=float),
+        np.asarray(peak_vorticity, dtype=float),
+        merge_distance,
+    )
     return {
         **frame,
         "h_dome": dome,
         "hmax_mask": labels > 0,
         "component_labels": labels,
-        "candidate_ids": np.asarray(candidate_ids, dtype=np.int32),
-        "peak_x": np.asarray(peak_x, dtype=float),
-        "peak_y": np.asarray(peak_y, dtype=float),
-        "peak_vorticity": np.asarray(peak_vorticity, dtype=float),
+        "candidate_ids": candidate_ids,
+        "peak_x": peak_x,
+        "peak_y": peak_y,
+        "peak_vorticity": peak_vorticity,
     }
 
 
@@ -138,6 +208,7 @@ def main() -> int:
     require_positive(config, "hmaxima", "h")
     require_positive(config, "hmaxima", "reconstruction_tolerance")
     require_nonnegative(config, "hmaxima", "h_mask_tolerance")
+    require_nonnegative(config, "hmaxima", "merge_distance")
     all_frames = discover_frames(args.run_folder, config)
     selected_frames = list(enumerate(all_frames))[::args.stride]
     metadata = simulation_metadata(args.run_folder, config)
@@ -158,6 +229,9 @@ def main() -> int:
         )
         output.attrs["h_mask_tolerance"] = require_nonnegative(
             config, "hmaxima", "h_mask_tolerance"
+        )
+        output.attrs["merge_distance"] = require_nonnegative(
+            config, "hmaxima", "merge_distance"
         )
         write_string_dataset(output, "frame_order", group_names)
         for index, ((source_index, path), group_name) in enumerate(zip(selected_frames, group_names)):

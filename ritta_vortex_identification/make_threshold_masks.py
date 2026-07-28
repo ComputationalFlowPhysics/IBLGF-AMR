@@ -181,6 +181,7 @@ def nearest_one_to_one_matches(
     records: list[dict],
     max_displacement: float,
     unavailable_indices: set[int] | None = None,
+    source_displacement_limits: dict[int, float] | None = None,
 ) -> dict[int, int]:
     """Match each source to its nearest detection, using each detection at most once."""
     if not records:
@@ -199,7 +200,12 @@ def nearest_one_to_one_matches(
             records[nearest_index]["x"] - source_x,
             records[nearest_index]["y"] - source_y,
         )
-        if distance <= max_displacement:
+        displacement_limit = (
+            source_displacement_limits.get(source_id, max_displacement)
+            if source_displacement_limits is not None
+            else max_displacement
+        )
+        if distance <= displacement_limit:
             proposals.append((distance, source_id, nearest_index))
 
     matches = {}
@@ -216,21 +222,49 @@ def assign_extrema_tracks(
     records_by_frame: list[list[dict]],
     max_displacement: float,
     new_track_max_displacement: float,
+    max_missed_frames: int,
 ) -> None:
-    """Track consecutive retained extrema and require two detections to start a track."""
+    """Track retained extrema, bridge short gaps, and confirm new tracks twice."""
     active_tracks = {}
     tentative_records = []
     next_track_id = 1
 
     for records in records_by_frame:
+        active_centers = {
+            track_id: (state["x"], state["y"])
+            for track_id, state in active_tracks.items()
+        }
+        # A track missing m frames is now m + 1 frame intervals from its last
+        # detection, so allow its displacement gate to grow by that factor.
+        active_limits = {
+            track_id: max_displacement * (state["missed_frames"] + 1)
+            for track_id, state in active_tracks.items()
+        }
         existing_matches = nearest_one_to_one_matches(
-            active_tracks,
+            active_centers,
             records,
             max_displacement,
+            source_displacement_limits=active_limits,
         )
         used_indices = set(existing_matches.values())
+        next_active_tracks = {}
         for track_id, index in existing_matches.items():
             records[index]["track_id"] = track_id
+            next_active_tracks[track_id] = {
+                "x": records[index]["x"],
+                "y": records[index]["y"],
+                "missed_frames": 0,
+            }
+
+        for track_id, state in active_tracks.items():
+            if track_id in existing_matches:
+                continue
+            missed_frames = state["missed_frames"] + 1
+            if missed_frames <= max_missed_frames:
+                next_active_tracks[track_id] = {
+                    **state,
+                    "missed_frames": missed_frames,
+                }
 
         tentative_centers = {
             index: (record["x"], record["y"])
@@ -248,17 +282,47 @@ def assign_extrema_tracks(
             tentative_records[tentative_index]["track_id"] = track_id
             records[current_index]["track_id"] = track_id
             used_indices.add(current_index)
+            next_active_tracks[track_id] = {
+                "x": records[current_index]["x"],
+                "y": records[current_index]["y"],
+                "missed_frames": 0,
+            }
 
         tentative_records = [
             records[index]
             for index in range(len(records))
             if index not in used_indices
         ]
-        active_tracks = {
-            int(record["track_id"]): (record["x"], record["y"])
-            for record in records
-            if record["track_id"] is not None
-        }
+        active_tracks = next_active_tracks
+
+
+def filter_short_tracks(
+    records_by_frame: list[list[dict]],
+    minimum_track_points: int,
+) -> tuple[int, int]:
+    """Discard short tracks and renumber the retained IDs consecutively."""
+    track_counts = {}
+    for records in records_by_frame:
+        for record in records:
+            if record["track_id"] is not None:
+                track_id = int(record["track_id"])
+                track_counts[track_id] = track_counts.get(track_id, 0) + 1
+
+    retained_ids = sorted(
+        track_id
+        for track_id, count in track_counts.items()
+        if count >= minimum_track_points
+    )
+    new_ids = {
+        old_track_id: new_track_id
+        for new_track_id, old_track_id in enumerate(retained_ids, start=1)
+    }
+    for records in records_by_frame:
+        for record in records:
+            if record["track_id"] is not None:
+                record["track_id"] = new_ids.get(int(record["track_id"]))
+
+    return len(retained_ids), len(track_counts) - len(retained_ids)
 
 
 def write_extrema_tracks(path: Path, records_by_frame: list[list[dict]]) -> None:
@@ -325,7 +389,7 @@ def save_extrema_track_plot(
         axis.text(
             0.5,
             0.5,
-            "No extrema survived two-frame track confirmation",
+            "No tracks meet the minimum-point requirement",
             transform=axis.transAxes,
             ha="center",
             va="center",
@@ -402,6 +466,8 @@ def main() -> int:
     new_track_max_displacement = float(
         tracking_config.get("new_track_max_displacement", 0.5)
     )
+    max_missed_frames_setting = tracking_config.get("max_missed_frames", 2)
+    minimum_track_points_setting = tracking_config.get("minimum_track_points", 5)
     if not math.isfinite(max_displacement) or max_displacement <= 0.0:
         raise ValueError("[tracking] max_displacement must be finite and greater than zero.")
     if (
@@ -411,11 +477,28 @@ def main() -> int:
         raise ValueError(
             "[tracking] new_track_max_displacement must be finite and greater than zero."
         )
+    if (
+        isinstance(max_missed_frames_setting, bool)
+        or not isinstance(max_missed_frames_setting, int)
+        or max_missed_frames_setting < 0
+    ):
+        raise ValueError("[tracking] max_missed_frames must be a non-negative integer.")
+    if (
+        isinstance(minimum_track_points_setting, bool)
+        or not isinstance(minimum_track_points_setting, int)
+        or minimum_track_points_setting < 1
+    ):
+        raise ValueError("[tracking] minimum_track_points must be a positive integer.")
 
     assign_extrema_tracks(
         records_by_frame,
         max_displacement,
         new_track_max_displacement,
+        max_missed_frames_setting,
+    )
+    retained_track_count, discarded_track_count = filter_short_tracks(
+        records_by_frame,
+        minimum_track_points_setting,
     )
     write_extrema_tracks(track_csv_path, records_by_frame)
     track_count = save_extrema_track_plot(
@@ -427,7 +510,13 @@ def main() -> int:
         ),
     )
     print(f"Saved {track_csv_path}")
-    print(f"Saved {track_plot_path} ({track_count} confirmed tracks)")
+    print(
+        f"Saved {track_plot_path} "
+        f"({track_count} tracks with at least {minimum_track_points_setting} points; "
+        f"discarded {discarded_track_count} shorter tracks)"
+    )
+    if track_count != retained_track_count:
+        raise RuntimeError("The plotted track count does not match the filtered track count.")
     if args.no_preview:
         return 0
     print("Batch calculation complete. Starting terminal frame prompt.")

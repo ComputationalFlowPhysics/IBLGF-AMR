@@ -18,6 +18,7 @@ h = 1.0                                 # Minimum vorticity prominence kept as a
 connectivity = 8                        # Number of connected neighbors; the equations require 8.
 reconstruction_tolerance = 1.0e-10      # Infinity-norm stopping tolerance for grayscale reconstruction.
 h_mask_tolerance = 1.0e-8               # Numerical slack when checking whether the h-dome reaches h.
+merge_distance = 0.5                    # Merge connected groups of maxima within this physical distance.
 
 [threshold_mask]
 vorticity_threshold = 0.35              # Positive cutoff tau_omega; the negative cutoff is -tau_omega.
@@ -48,6 +49,8 @@ gtol = 1.0e-9                          # SciPy stopping tolerance for the gradie
 [tracking]
 max_displacement = 0.5                 # L: largest center displacement allowed between analyzed frames.
 new_track_max_displacement = 0.5       # L_new: largest displacement allowed when confirming a new track.
+max_missed_frames = 10                 # Keep a confirmed extrema track alive across this many missed frames.
+minimum_track_points = 10              # Discard extrema tracks with fewer than this many observed points.
 
 [plot]
 colormap = "RdBu_r"                    # Matplotlib colormap for signed vorticity.

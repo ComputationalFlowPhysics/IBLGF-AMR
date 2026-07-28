@@ -12,6 +12,28 @@ configs_dir="${CONFIGS_DIR:-$script_dir/mass_configs}"
 logs_dir="${LOGS_DIR:-$script_dir/mass_logs}"
 runner="${IBLGF_RUNNER:-./iblgf.sh}"
 
+sweep_log() {
+  printf '[mass-sweep] %s\n' "$*"
+}
+
+case_log() {
+  local case_name="$1"
+  shift
+  printf '[%s:%s] %s\n' "$test_name" "$case_name" "$*"
+}
+
+case_error() {
+  case_log "$@" >&2
+}
+
+prefix_case_lines() {
+  local case_name="$1"
+  local line
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    case_log "$case_name" "$line"
+  done
+}
+
 if [[ -z "$sample_config" ]]; then
   echo "Usage: $0 <sample_config> [mpi_ranks] [generator|freq|tau]" >&2
   echo "Example: $0 ../tests/ns_amr_lgf2D/configs/configFile_0 8" >&2
@@ -86,24 +108,23 @@ for idx in "${!configs[@]}"; do
   stdout_log="$logs_dir/${config_stem}.stdout.log"
   stderr_log="$logs_dir/${config_stem}.stderr.log"
 
-  echo "Running $((idx + 1))/$total: $config_name"
+  case_log "$config_stem" "Running $((idx + 1))/$total: $config_name"
   if ! "$runner" run-test "$test_name" "$config" -n "$mpi_ranks" \
     > "$stdout_log" \
     2> "$stderr_log"; then
-    echo "Run failed for $config_name" >&2
-    echo "Sweep stdout log: $stdout_log" >&2
-    echo "Sweep stderr log: $stderr_log" >&2
-    echo "" >&2
-    echo "Last lines from sweep stdout:" >&2
-    tail -n 40 "$stdout_log" >&2 || true
+    case_error "$config_stem" "Run failed for $config_name"
+    case_error "$config_stem" "Sweep stdout log: $stdout_log"
+    case_error "$config_stem" "Sweep stderr log: $stderr_log"
+    case_error "$config_stem" "Last lines from sweep stdout:"
+    tail -n 40 "$stdout_log" | prefix_case_lines "$config_stem" >&2 || true
     if [[ -s "$stderr_log" ]]; then
-      echo "" >&2
-      echo "Last lines from sweep stderr:" >&2
-      tail -n 40 "$stderr_log" >&2 || true
+      case_error "$config_stem" "Last lines from sweep stderr:"
+      tail -n 40 "$stderr_log" | prefix_case_lines "$config_stem" >&2 || true
     fi
     exit 1
   fi
+  case_log "$config_stem" "Completed $((idx + 1))/$total: $config_name"
 done
 
-echo "Configs written to: $configs_dir"
-echo "Logs written to:    $logs_dir"
+sweep_log "Configs written to: $configs_dir"
+sweep_log "Logs written to:    $logs_dir"

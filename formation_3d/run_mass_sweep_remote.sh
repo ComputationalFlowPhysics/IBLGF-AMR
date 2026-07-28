@@ -16,6 +16,28 @@ sample_config=""
 generator_script=""
 progress_interval="${PROGRESS_INTERVAL:-20}"
 
+sweep_log() {
+  printf '[mass-sweep] %s\n' "$*"
+}
+
+case_log() {
+  local case_name="$1"
+  shift
+  printf '[%s:%s] %s\n' "$test_name" "$case_name" "$*"
+}
+
+case_error() {
+  case_log "$@" >&2
+}
+
+prefix_case_lines() {
+  local case_name="$1"
+  local line
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    case_log "$case_name" "$line"
+  done
+}
+
 cfg_int_value() {
   local cfg="$1"
   local key="$2"
@@ -51,6 +73,7 @@ monitor_run_progress() {
   local runner_pid="$1"
   local cfg="$2"
   local sweep_stdout_log="$3"
+  local case_name="$4"
 
   local total_steps output_every approx_frames
   total_steps="$(cfg_int_value "$cfg" nBaseLevelTimeSteps || true)"
@@ -67,7 +90,7 @@ monitor_run_progress() {
     if [[ -z "$run_dir" && -f "$sweep_stdout_log" ]]; then
       run_dir="$(sed -n 's/^    Run dir:  //p' "$sweep_stdout_log" | tail -n 1)"
       if [[ -n "$run_dir" ]]; then
-        echo "  Run dir:  $run_dir"
+        case_log "$case_name" "Run dir: $run_dir"
         sim_stdout="$run_dir/stdout.log"
       fi
     fi
@@ -85,15 +108,15 @@ monitor_run_progress() {
       elapsed=$(( $(date +%s) - start_ts ))
       if [[ -n "$step" && "${total_steps:-}" =~ ^[0-9]+$ && "$total_steps" -gt 0 ]]; then
         if [[ "$approx_frames" -gt 0 ]]; then
-          echo "  Progress: step $step/$total_steps, frame $frames/$approx_frames, elapsed $(format_elapsed "$elapsed")"
+          case_log "$case_name" "Progress: step $step/$total_steps, frame $frames/$approx_frames, elapsed $(format_elapsed "$elapsed")"
         else
-          echo "  Progress: step $step/$total_steps, elapsed $(format_elapsed "$elapsed")"
+          case_log "$case_name" "Progress: step $step/$total_steps, elapsed $(format_elapsed "$elapsed")"
         fi
       elif [[ -n "$run_dir" ]]; then
         if [[ "$approx_frames" -gt 0 ]]; then
-          echo "  Progress: frame $frames/$approx_frames, elapsed $(format_elapsed "$elapsed")"
+          case_log "$case_name" "Progress: frame $frames/$approx_frames, elapsed $(format_elapsed "$elapsed")"
         else
-          echo "  Progress: frame $frames, elapsed $(format_elapsed "$elapsed")"
+          case_log "$case_name" "Progress: frame $frames, elapsed $(format_elapsed "$elapsed")"
         fi
       fi
       last_step="$step"
@@ -265,51 +288,45 @@ for idx in "${!configs[@]}"; do
   stdout_log="$logs_dir/${config_stem}.stdout.log"
   stderr_log="$logs_dir/${config_stem}.stderr.log"
 
-  echo "Running $((idx + 1))/$total: $config_name"
+  case_log "$config_stem" "Running $((idx + 1))/$total: $config_name"
   "$runner" run-test "$test_name" "$config" -n "$mpi_ranks" \
     > "$stdout_log" \
     2> "$stderr_log" &
   runner_pid=$!
 
-  monitor_run_progress "$runner_pid" "$config" "$stdout_log"
+  monitor_run_progress "$runner_pid" "$config" "$stdout_log" "$config_stem"
 
   if ! wait "$runner_pid"; then
-    echo "Run failed for $config_name" >&2
-    echo "Sweep stdout log: $stdout_log" >&2
-    echo "Sweep stderr log: $stderr_log" >&2
-
-    echo >&2
-    echo "Last lines from sweep stdout:" >&2
-    tail -n 40 "$stdout_log" >&2 || true
+    case_error "$config_stem" "Run failed for $config_name"
+    case_error "$config_stem" "Sweep stdout log: $stdout_log"
+    case_error "$config_stem" "Sweep stderr log: $stderr_log"
+    case_error "$config_stem" "Last lines from sweep stdout:"
+    tail -n 40 "$stdout_log" | prefix_case_lines "$config_stem" >&2 || true
     if [[ -s "$stderr_log" ]]; then
-      echo >&2
-      echo "Last lines from sweep stderr:" >&2
-      tail -n 40 "$stderr_log" >&2 || true
+      case_error "$config_stem" "Last lines from sweep stderr:"
+      tail -n 40 "$stderr_log" | prefix_case_lines "$config_stem" >&2 || true
     fi
 
     run_dir="$(sed -n 's/^    Run dir:  //p' "$stdout_log" | tail -n 1)"
     if [[ -n "$run_dir" && -d "$run_dir" ]]; then
-      echo >&2
-      echo "Simulation run directory: $run_dir" >&2
+      case_error "$config_stem" "Simulation run directory: $run_dir"
       if [[ -s "$run_dir/stderr.log" ]]; then
-        echo "Last lines from simulation stderr:" >&2
-        tail -n 40 "$run_dir/stderr.log" >&2 || true
+        case_error "$config_stem" "Last lines from simulation stderr:"
+        tail -n 40 "$run_dir/stderr.log" | prefix_case_lines "$config_stem" >&2 || true
       fi
     fi
     exit 1
   fi
 
   run_dir="$(sed -n 's/^    Run dir:  //p' "$stdout_log" | tail -n 1)"
+  case_log "$config_stem" "Completed $((idx + 1))/$total: $config_name"
   if [[ -n "$run_dir" ]]; then
-    echo "Completed $((idx + 1))/$total: $config_name"
-    echo "  Output dir: $run_dir"
-  else
-    echo "Completed $((idx + 1))/$total: $config_name"
+    case_log "$config_stem" "Output dir: $run_dir"
   fi
 done
 
-echo "All $total configs completed."
+sweep_log "All $total configs completed."
 if [[ "$generation_mode" -eq 1 ]]; then
-  echo "Configs written to: $configs_dir"
+  sweep_log "Configs written to: $configs_dir"
 fi
-echo "Sweep logs: $logs_dir"
+sweep_log "Sweep logs: $logs_dir"

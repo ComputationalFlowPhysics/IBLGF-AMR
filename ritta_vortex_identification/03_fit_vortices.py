@@ -280,13 +280,42 @@ def main() -> int:
     parser.add_argument("run_folder", type=Path)
     parser.add_argument("config_file", type=Path)
     parser.add_argument("--no-preview", action="store_true", help="Skip the terminal preview and preview PNG.")
+    parser.add_argument(
+        "--boundary-fraction",
+        type=float,
+        help="Override fit.boundary_fraction without editing the TOML file.",
+    )
+    parser.add_argument(
+        "--input-results-dir",
+        type=Path,
+        help="Folder containing existing hmaxima.h5 and regions.h5.",
+    )
+    parser.add_argument(
+        "--output-file",
+        type=Path,
+        help="Write fits.h5 to this path instead of the standard result folder.",
+    )
     args = parser.parse_args()
 
     config = load_config(args.config_file)
+    if args.boundary_fraction is not None:
+        if not math.isfinite(args.boundary_fraction) or not 0.0 < args.boundary_fraction < 1.0:
+            parser.error("--boundary-fraction must satisfy 0 < value < 1")
+        config["fit"]["boundary_fraction"] = args.boundary_fraction
     output_folder = result_folder(args.run_folder)
-    hmaxima_path = output_folder / "hmaxima.h5"
-    regions_path = output_folder / "regions.h5"
-    fits_path = output_folder / "fits.h5"
+    input_folder = (
+        args.input_results_dir.expanduser().resolve()
+        if args.input_results_dir is not None
+        else output_folder
+    )
+    hmaxima_path = input_folder / "hmaxima.h5"
+    regions_path = input_folder / "regions.h5"
+    fits_path = (
+        args.output_file.expanduser().resolve()
+        if args.output_file is not None
+        else output_folder / "fits.h5"
+    )
+    fits_path.parent.mkdir(parents=True, exist_ok=True)
     if not hmaxima_path.is_file():
         print("hmaxima.h5 does not exist. Run this exact command first:")
         print(stage_command("01_find_hmaxima.py", args.run_folder, args.config_file))
@@ -310,6 +339,8 @@ def main() -> int:
         with h5py.File(fits_path, "w") as output:
             output.attrs["schema"] = "ritta_circular_gaussian_dipole_fits_v1"
             output.attrs["config_file"] = str(args.config_file.expanduser().resolve())
+            output.attrs["source_hmaxima"] = str(hmaxima_path.resolve())
+            output.attrs["source_regions"] = str(regions_path.resolve())
             output.attrs["parameter_order"] = "gamma,x_c,d,sigma"
             output.attrs["loss"] = "soft_l1"
             output.attrs["jacobian"] = "SciPy numerical differentiation"
@@ -368,7 +399,7 @@ def main() -> int:
         load,
         config["plot"],
         overlay,
-        output_folder / "fits_preview.png",
+        fits_path.parent / f"{fits_path.stem}_preview.png",
     )
     return 0
 

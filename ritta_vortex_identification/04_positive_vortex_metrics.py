@@ -188,25 +188,48 @@ def main() -> int:
     parser.add_argument("run_folder", type=Path)
     parser.add_argument("config_file", type=Path)
     parser.add_argument("--no-preview", action="store_true", help="Skip the terminal preview and preview PNG.")
+    parser.add_argument(
+        "--input-results-dir",
+        type=Path,
+        help="Directory containing hmaxima.h5 and regions.h5 (defaults to the run's results directory).",
+    )
+    parser.add_argument(
+        "--fits-file",
+        type=Path,
+        help="Fit HDF5 file to measure (defaults to fits.h5 in the input results directory).",
+    )
+    parser.add_argument(
+        "--output-file",
+        type=Path,
+        help="Output CSV path (defaults to positive_vortex_metrics.csv in the run's results directory).",
+    )
     args = parser.parse_args()
 
     config = load_config(args.config_file)
     output_folder = result_folder(args.run_folder)
-    dependencies = (
-        ("hmaxima.h5", "01_find_hmaxima.py"),
-        ("regions.h5", "02_make_regions.py"),
-        ("fits.h5", "03_fit_vortices.py"),
+    input_folder = args.input_results_dir.expanduser().resolve() if args.input_results_dir else output_folder
+    hmaxima_path = input_folder / "hmaxima.h5"
+    regions_path = input_folder / "regions.h5"
+    fits_path = args.fits_file.expanduser().resolve() if args.fits_file else input_folder / "fits.h5"
+    csv_path = (
+        args.output_file.expanduser().resolve()
+        if args.output_file
+        else output_folder / "positive_vortex_metrics.csv"
     )
-    for filename, script_name in dependencies:
-        if not (output_folder / filename).is_file():
-            print(f"{filename} does not exist. Run this exact command first:")
-            print(stage_command(script_name, args.run_folder, args.config_file))
+    dependencies = (
+        (hmaxima_path, "01_find_hmaxima.py"),
+        (regions_path, "02_make_regions.py"),
+        (fits_path, "03_fit_vortices.py"),
+    )
+    for path, script_name in dependencies:
+        if not path.is_file():
+            print(f"{path} does not exist.")
+            if args.input_results_dir is None and args.fits_file is None:
+                print("Run this exact command first:")
+                print(stage_command(script_name, args.run_folder, args.config_file))
             return 1
 
-    hmaxima_path = output_folder / "hmaxima.h5"
-    regions_path = output_folder / "regions.h5"
-    fits_path = output_folder / "fits.h5"
-    csv_path = output_folder / "positive_vortex_metrics.csv"
+    csv_path.parent.mkdir(parents=True, exist_ok=True)
     frame_paths = discover_frames(args.run_folder, config)
     paths_by_name = {path.name: path for path in frame_paths}
     source_indices_by_name = {path.name: index for index, path in enumerate(frame_paths)}
@@ -377,7 +400,7 @@ def main() -> int:
         load,
         config["plot"],
         overlay,
-        output_folder / "positive_vortex_metrics_preview.png",
+        csv_path.parent / f"{csv_path.stem}_preview.png",
     )
     return 0
 

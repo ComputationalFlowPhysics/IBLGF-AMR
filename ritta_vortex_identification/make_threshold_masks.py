@@ -181,7 +181,6 @@ def nearest_one_to_one_matches(
     records: list[dict],
     max_displacement: float,
     unavailable_indices: set[int] | None = None,
-    source_displacement_limits: dict[int, float] | None = None,
 ) -> dict[int, int]:
     """Match each source to its nearest detection, using each detection at most once."""
     if not records:
@@ -200,12 +199,7 @@ def nearest_one_to_one_matches(
             records[nearest_index]["x"] - source_x,
             records[nearest_index]["y"] - source_y,
         )
-        displacement_limit = (
-            source_displacement_limits.get(source_id, max_displacement)
-            if source_displacement_limits is not None
-            else max_displacement
-        )
-        if distance <= displacement_limit:
+        if distance <= max_displacement:
             proposals.append((distance, source_id, nearest_index))
 
     matches = {}
@@ -220,39 +214,65 @@ def nearest_one_to_one_matches(
 
 def assign_extrema_tracks(
     records_by_frame: list[list[dict]],
+    frame_times: list[float],
     max_displacement: float,
     new_track_max_displacement: float,
     max_missed_frames: int,
+    velocity_history_length: int,
 ) -> None:
-    """Track retained extrema, bridge short gaps, and confirm new tracks twice."""
+    """Track extrema using recent mean velocity to predict missed positions."""
+    if len(frame_times) != len(records_by_frame):
+        raise ValueError("frame_times must contain one time for every analyzed frame.")
+    if any(not math.isfinite(time) for time in frame_times):
+        raise ValueError("frame_times must contain only finite values.")
+    if any(current <= previous for previous, current in zip(frame_times, frame_times[1:])):
+        raise ValueError("frame_times must be strictly increasing.")
+    if (
+        isinstance(velocity_history_length, bool)
+        or not isinstance(velocity_history_length, int)
+        or velocity_history_length < 1
+    ):
+        raise ValueError("velocity_history_length must be a positive integer.")
+
     active_tracks = {}
     tentative_records = []
     next_track_id = 1
 
-    for records in records_by_frame:
-        active_centers = {
-            track_id: (state["x"], state["y"])
-            for track_id, state in active_tracks.items()
-        }
-        # A track missing m frames is now m + 1 frame intervals from its last
-        # detection, so allow its displacement gate to grow by that factor.
-        active_limits = {
-            track_id: max_displacement * (state["missed_frames"] + 1)
-            for track_id, state in active_tracks.items()
-        }
+    for current_time, records in zip(frame_times, records_by_frame):
+        active_centers = {}
+        for track_id, state in active_tracks.items():
+            mean_velocity_x = sum(velocity[0] for velocity in state["velocities"]) / len(
+                state["velocities"]
+            )
+            mean_velocity_y = sum(velocity[1] for velocity in state["velocities"]) / len(
+                state["velocities"]
+            )
+            elapsed_time = current_time - state["time"]
+            active_centers[track_id] = (
+                state["x"] + mean_velocity_x * elapsed_time,
+                state["y"] + mean_velocity_y * elapsed_time,
+            )
         existing_matches = nearest_one_to_one_matches(
             active_centers,
             records,
             max_displacement,
-            source_displacement_limits=active_limits,
         )
         used_indices = set(existing_matches.values())
         next_active_tracks = {}
         for track_id, index in existing_matches.items():
-            records[index]["track_id"] = track_id
+            record = records[index]
+            state = active_tracks[track_id]
+            elapsed_time = current_time - state["time"]
+            record["track_id"] = track_id
+            velocity = (
+                (record["x"] - state["x"]) / elapsed_time,
+                (record["y"] - state["y"]) / elapsed_time,
+            )
             next_active_tracks[track_id] = {
-                "x": records[index]["x"],
-                "y": records[index]["y"],
+                "x": record["x"],
+                "y": record["y"],
+                "time": current_time,
+                "velocities": [*state["velocities"], velocity][-velocity_history_length:],
                 "missed_frames": 0,
             }
 
@@ -277,14 +297,23 @@ def assign_extrema_tracks(
             unavailable_indices=used_indices,
         )
         for tentative_index, current_index in confirmed_matches.items():
+            previous_record = tentative_records[tentative_index]
+            current_record = records[current_index]
+            elapsed_time = current_time - previous_record["time"]
+            initial_velocity = (
+                (current_record["x"] - previous_record["x"]) / elapsed_time,
+                (current_record["y"] - previous_record["y"]) / elapsed_time,
+            )
             track_id = next_track_id
             next_track_id += 1
-            tentative_records[tentative_index]["track_id"] = track_id
-            records[current_index]["track_id"] = track_id
+            previous_record["track_id"] = track_id
+            current_record["track_id"] = track_id
             used_indices.add(current_index)
             next_active_tracks[track_id] = {
-                "x": records[current_index]["x"],
-                "y": records[current_index]["y"],
+                "x": current_record["x"],
+                "y": current_record["y"],
+                "time": current_time,
+                "velocities": [initial_velocity],
                 "missed_frames": 0,
             }
 
@@ -421,6 +450,7 @@ def main() -> int:
     track_csv_path = output_folder / "threshold_hmaxima_tracks.csv"
     track_plot_path = output_folder / "threshold_hmaxima_x_vs_time.png"
     records_by_frame = []
+    frame_times = []
 
     # Stage 1 runs first and writes the extrema and physical raster consumed below.
     subprocess.run([
@@ -453,6 +483,7 @@ def main() -> int:
             result.update(retained_extrema(result, source))
             save_frame(output.create_group(group_name), result)
             records_by_frame.append(extrema_records(index, result))
+            frame_times.append(float(result["time"]))
             print(
                 f"[{index + 1}/{len(group_names)}] {frame['source_filename']}: "
                 f"kept {len(result['positive_region_areas'])}/{result['positive_regions_found']} positive and "
@@ -468,6 +499,7 @@ def main() -> int:
     )
     max_missed_frames_setting = tracking_config.get("max_missed_frames", 2)
     minimum_track_points_setting = tracking_config.get("minimum_track_points", 5)
+    velocity_history_length_setting = tracking_config.get("velocity_history_length", 3)
     if not math.isfinite(max_displacement) or max_displacement <= 0.0:
         raise ValueError("[tracking] max_displacement must be finite and greater than zero.")
     if (
@@ -489,12 +521,20 @@ def main() -> int:
         or minimum_track_points_setting < 1
     ):
         raise ValueError("[tracking] minimum_track_points must be a positive integer.")
+    if (
+        isinstance(velocity_history_length_setting, bool)
+        or not isinstance(velocity_history_length_setting, int)
+        or velocity_history_length_setting < 1
+    ):
+        raise ValueError("[tracking] velocity_history_length must be a positive integer.")
 
     assign_extrema_tracks(
         records_by_frame,
+        frame_times,
         max_displacement,
         new_track_max_displacement,
         max_missed_frames_setting,
+        velocity_history_length_setting,
     )
     retained_track_count, discarded_track_count = filter_short_tracks(
         records_by_frame,

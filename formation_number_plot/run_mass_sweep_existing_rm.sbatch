@@ -1,6 +1,7 @@
 #!/bin/bash
 # Run existing 2D mass-sweep configs sequentially on one RM node.
 # Usage: sbatch run_mass_sweep_existing_rm.sbatch [CONFIG_FOLDER] [CONFIG_GLOB]
+# CONFIG_GLOB defaults to *.cfg, so a folder-only submission runs every config.
 
 #SBATCH -A mch250004p
 #SBATCH -p RM
@@ -16,7 +17,7 @@ set -euo pipefail
 repo_root="/ocean/projects/mch250004p/mchoi10/IBLGF-AMR"
 submit_dir="${SLURM_SUBMIT_DIR:-$PWD}"
 configs_input="${1:-${CONFIGS_DIR:-$repo_root/formation_number_plot/mass_configs}}"
-config_glob="${2:-${CONFIG_GLOB:-config_freq*.cfg}}"
+config_glob="${2:-${CONFIG_GLOB:-*.cfg}}"
 mpi_ranks="${MPI_RANKS:-32}"
 progress_interval="${PROGRESS_INTERVAL:-20}"
 logs_dir="${LOGS_DIR:-$repo_root/formation_number_plot/mass_logs_remote/${SLURM_JOB_ID:-manual}}"

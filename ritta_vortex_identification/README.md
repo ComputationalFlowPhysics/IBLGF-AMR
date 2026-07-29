@@ -26,6 +26,27 @@ python 05_plot_time_series.py RUN_FOLDER CONFIG_FILE
 
 Do not skip stages. Each one reads the saved result from the previous stage.
 
+After Stage 3, export nine beginning/middle/end diagnostic PNGs with:
+
+```bash
+python export_fit_previews.py RUN_FOLDER CONFIG_FILE
+```
+
+The command chooses the earliest successful-fit frame, the successful frame
+nearest the simulation midpoint, and the latest successful-fit frame. For each
+one it saves the local maxima, the mirrored-point fitting rectangle, and the
+fitted vortex boundaries and centers under `outputs/<run_name>/fit_previews/`.
+It also stacks each diagnostic type's beginning, middle, and end PNGs
+horizontally into three `*_combined.png` files, then removes the nine
+individual panel PNGs. The preview y-axis defaults to `[-2, 2]`; override it
+with `--y-axis-min` and `--y-axis-max`.
+
+For a boundary-fraction sweep, Stage 3 can reuse existing maxima and regions
+with `--input-results-dir`, override the radius fraction with
+`--boundary-fraction`, and save a separate HDF5 file with `--output-file`.
+The preview exporter accepts that file through `--fits-file`; use
+`--fits-only` and `--filename-prefix` for one clearly labeled comparison PNG.
+
 To analyze every fifth sorted HDF5 frame, use `--stride 5` on Stage 1. Stages 2–4 automatically use that saved frame list:
 
 ```bash
@@ -58,13 +79,17 @@ frames. It uses `tracking.max_displacement` for existing tracks and
 `tracking.new_track_max_displacement` for the required second-frame
 confirmation of a new track. Each current detection can belong to at most one
 track. A confirmed track remains active for `tracking.max_missed_frames`
-frames without a detection. After `m` missed frames, its next displacement
-limit is `(m + 1) * tracking.max_displacement`; a successful match keeps the
-same track ID and color, and the plot connects the surrounding observed
-points across the gap. After tracking, any track with fewer than
-`tracking.minimum_track_points` observed detections is discarded; the default
-is five. Results are saved to `threshold_hmaxima_tracks.csv`, including blank
-track IDs for unconfirmed or discarded extrema, and
+frames without a detection. During a gap, its position is extrapolated from
+the componentwise mean of its last `tracking.velocity_history_length`
+observed velocities and physical simulation time. Tracks with less velocity
+history use every available velocity. A reacquired detection must lie within
+`tracking.max_displacement` of that predicted position. A successful match
+keeps the same track ID and color, adds the velocity measured between the two
+surrounding observations to the history, and connects those observed points
+on the plot. After tracking, any track with fewer than
+`tracking.minimum_track_points` observed detections is discarded. Results are
+saved to `threshold_hmaxima_tracks.csv`, including blank track IDs for
+unconfirmed or discarded extrema, and
 `threshold_hmaxima_x_vs_time.png`, where each confirmed track has its own
 color. These two files are also created with `--no-preview`.
 
@@ -75,6 +100,11 @@ python make_h5_gif.py H5_FILE STRIDE
 ```
 
 This supports `hmaxima.h5`, `regions.h5`, `fits.h5`, and `threshold_masks.h5`. Output goes beside the HDF5 file in `<name>_stride_<stride>/`.
+Use `--x-axis-max VALUE` to override the saved upper x-axis limit for the
+rendered frames.
+For `threshold_masks.h5`, use `--threshold-vorticity-background` to replace
+the flat mask with the signed vorticity field while retaining the same extrema
+overlay.
 
 ## fast headless runs
 

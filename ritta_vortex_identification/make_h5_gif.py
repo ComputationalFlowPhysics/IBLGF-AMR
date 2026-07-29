@@ -153,6 +153,22 @@ def draw_threshold_masks(axis, group: h5py.Group, frame: dict, config: dict, han
     )
 
 
+def draw_threshold_extrema(axis, group: h5py.Group, frame: dict, config: dict) -> None:
+    """Overlay threshold-retained h-maxima on the vorticity field."""
+    if "extrema_x" in group and "extrema_y" in group:
+        axis.scatter(
+            group["extrema_x"][:],
+            group["extrema_y"][:],
+            s=float(config["plot"].get("marker_size", 30.0)),
+            c=str(config["plot"].get("marker_color", "black")),
+            marker="x",
+        )
+    axis.set_title(
+        f"Vorticity field with retained h-maxima | {frame['source_filename']} | "
+        f"t = {frame['time']:.8g}"
+    )
+
+
 def render_frame(
     output_path: Path,
     schema: str,
@@ -160,6 +176,7 @@ def render_frame(
     background: h5py.File | None,
     group_name: str,
     config: dict,
+    threshold_vorticity_background: bool,
 ) -> None:
     group = handle[group_name]
     source = background[group_name] if background is not None else group
@@ -177,10 +194,18 @@ def render_frame(
         draw_regions(axis, group, config)
     elif schema == "ritta_circular_gaussian_dipole_fits_v1":
         draw_fits(axis, group, config)
+    elif (
+        schema in {"ritta_vorticity_threshold_masks_v1", "ritta_vorticity_threshold_masks_v2"}
+        and threshold_vorticity_background
+    ):
+        draw_threshold_extrema(axis, group, frame, config)
     elif schema in {"ritta_vorticity_threshold_masks_v1", "ritta_vorticity_threshold_masks_v2"}:
         draw_threshold_masks(axis, group, frame, config, handle)
 
-    if schema not in {"ritta_vorticity_threshold_masks_v1", "ritta_vorticity_threshold_masks_v2"}:
+    if (
+        schema not in {"ritta_vorticity_threshold_masks_v1", "ritta_vorticity_threshold_masks_v2"}
+        or threshold_vorticity_background
+    ):
         figure.colorbar(image, ax=axis, label="vorticity")
     figure.tight_layout()
     figure.savefig(output_path, dpi=120)
@@ -211,12 +236,20 @@ def main() -> int:
     parser.add_argument("stride", type=int)
     parser.add_argument("--duration-ms", type=int, default=150, help="Display time per GIF frame.")
     parser.add_argument("--output-dir", type=Path)
+    parser.add_argument("--x-axis-max", type=float, help="Override the saved plot's upper x-axis limit.")
+    parser.add_argument(
+        "--threshold-vorticity-background",
+        action="store_true",
+        help="For threshold_masks.h5, show vorticity behind the retained extrema instead of the mask.",
+    )
     args = parser.parse_args()
 
     if args.stride <= 0:
         parser.error("stride must be a positive integer")
     if args.duration_ms <= 0:
         parser.error("--duration-ms must be a positive integer")
+    if args.x_axis_max is not None and not math.isfinite(args.x_axis_max):
+        parser.error("--x-axis-max must be finite")
     input_path = args.h5_file.expanduser().resolve()
     if not input_path.is_file():
         raise FileNotFoundError(f"HDF5 file does not exist: {input_path}")
@@ -233,7 +266,17 @@ def main() -> int:
         if schema not in SUPPORTED_SCHEMAS:
             supported = ", ".join(sorted(SUPPORTED_SCHEMAS))
             raise ValueError(f"Unsupported HDF5 schema '{schema}'. Supported schemas: {supported}")
+        if args.threshold_vorticity_background and schema not in {
+            "ritta_vorticity_threshold_masks_v1",
+            "ritta_vorticity_threshold_masks_v2",
+        }:
+            parser.error("--threshold-vorticity-background requires a threshold_masks.h5 input")
         config = saved_config(handle)
+        if args.x_axis_max is not None:
+            x_axis_min = float(config["plot"].get("x_axis_min", math.nan))
+            if math.isfinite(x_axis_min) and args.x_axis_max <= x_axis_min:
+                parser.error("--x-axis-max must be greater than the configured x-axis minimum")
+            config["plot"]["x_axis_max"] = args.x_axis_max
         group_names = read_frame_order(handle)
         selected = list(enumerate(group_names))[::args.stride]
         if not selected:
@@ -247,14 +290,27 @@ def main() -> int:
             frame_paths = []
             for output_index, (source_index, group_name) in enumerate(selected):
                 frame_path = frame_folder / f"frame_{source_index:06d}_{group_name}.png"
-                render_frame(frame_path, schema, handle, background, group_name, config)
+                render_frame(
+                    frame_path,
+                    schema,
+                    handle,
+                    background,
+                    group_name,
+                    config,
+                    args.threshold_vorticity_background,
+                )
                 frame_paths.append(frame_path)
                 print(f"[{output_index + 1}/{len(selected)}] Saved {frame_path}")
         finally:
             if background is not None:
                 background.close()
 
-    gif_path = output_folder / f"{input_path.stem}.gif"
+    gif_stem = (
+        f"{input_path.stem}_vorticity"
+        if args.threshold_vorticity_background
+        else input_path.stem
+    )
+    gif_path = output_folder / f"{gif_stem}.gif"
     save_gif(frame_paths, gif_path, args.duration_ms)
     print(f"Saved GIF: {gif_path}")
     return 0

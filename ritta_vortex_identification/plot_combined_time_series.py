@@ -39,9 +39,9 @@ def load_datasets(path: str | Path, config: dict) -> list[dict]:
         csv_path = csv_path.resolve()
         if not csv_path.is_file():
             raise FileNotFoundError(f"Metrics CSV does not exist: {csv_path}")
+        run_folder = str(entry.get("run_folder", "")).strip()
         forcing_end_time = entry.get("forcing_end_time")
         if forcing_end_time is None:
-            run_folder = str(entry.get("run_folder", "")).strip()
             if not run_folder:
                 raise ValueError(
                     f"Dataset {name!r} needs forcing_end_time or run_folder in {path}."
@@ -56,6 +56,7 @@ def load_datasets(path: str | Path, config: dict) -> list[dict]:
         resolved.append({
             "name": name,
             "csv": csv_path,
+            "run_folder": run_folder,
             "forcing_end_time": forcing_end_time,
         })
     if len(set(names)) != len(names):
@@ -64,16 +65,50 @@ def load_datasets(path: str | Path, config: dict) -> list[dict]:
     return resolved
 
 
+def configure_legend_labels(datasets: list[dict], config: dict, legend_by: str) -> list[dict]:
+    """Attach tau or dx_base labels and put datasets in the matching numeric order."""
+    if legend_by == "tau":
+        for dataset in datasets:
+            dataset["legend_label"] = rf"$\tau={dataset['forcing_end_time']:g}$"
+        datasets.sort(key=lambda dataset: (dataset["forcing_end_time"], dataset["name"]))
+        return datasets
+
+    for dataset in datasets:
+        if not dataset["run_folder"]:
+            raise ValueError(
+                f"Dataset {dataset['name']!r} needs run_folder to label by dx_base."
+            )
+        dx_base = simulation_parameter(dataset["run_folder"], config, "dx_base")
+        if not math.isfinite(dx_base) or dx_base <= 0.0:
+            raise ValueError(
+                f"Dataset {dataset['name']!r} has an invalid dx_base: {dx_base}"
+            )
+        dataset["dx_base"] = dx_base
+        dataset["legend_label"] = rf"$\Delta x_{{\mathrm{{base}}}}={dx_base:g}$"
+    datasets.sort(key=lambda dataset: (-dataset["dx_base"], dataset["name"]))
+    return datasets
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Create combined plots from pipeline metrics CSV files.")
     parser.add_argument("datasets_file", type=Path, help="Editable datasets.toml written by run_all.py.")
     parser.add_argument("config_file", type=Path)
     parser.add_argument("--output-dir", type=Path, help="Defaults to the folder containing datasets.toml.")
+    parser.add_argument(
+        "--legend-by",
+        choices=("tau", "dx-base"),
+        default="tau",
+        help="Legend parameter and ordering (default: tau).",
+    )
     args = parser.parse_args()
 
     config = load_config(args.config_file)
     datasets_file = args.datasets_file.expanduser().resolve()
-    datasets = load_datasets(datasets_file, config)
+    datasets = configure_legend_labels(
+        load_datasets(datasets_file, config),
+        config,
+        args.legend_by,
+    )
     circulation_series = []
     normalized_circulation_series = []
     displacement_series = []
@@ -82,7 +117,7 @@ def main() -> int:
     for dataset in datasets:
         rows = read_metrics(dataset["csv"])
         forcing_end_time = dataset["forcing_end_time"]
-        label = rf"$\tau={forcing_end_time:g}$"
+        label = dataset["legend_label"]
         circulation_item = largest_radius_series(rows, "circulation_positive", label)[0]
         normalized_circulation_series.append({
             **circulation_item,

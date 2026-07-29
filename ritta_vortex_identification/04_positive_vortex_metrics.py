@@ -14,6 +14,7 @@ from matplotlib.patches import Circle
 
 from common import (
     discover_frames,
+    largest_successful_fit_index,
     load_config,
     load_vorticity_frame,
     read_frame_order,
@@ -352,11 +353,13 @@ def main() -> int:
 
     def overlay(axis, frame: dict) -> None:
         lines = []
-        for candidate_id, success, radius, fitted_center in zip(
-            frame["candidate_ids"], frame["success"], frame["boundary_radius"], frame["positive_centers"]
-        ):
-            record = frame["metric_records"].get(int(candidate_id))
-            if bool(success) and np.all(np.isfinite(fitted_center)) and np.isfinite(radius):
+        index = largest_successful_fit_index(frame["success"], frame["boundary_radius"])
+        if index is not None:
+            candidate_id = int(frame["candidate_ids"][index])
+            radius = frame["boundary_radius"][index]
+            fitted_center = frame["positive_centers"][index]
+            record = frame["metric_records"].get(candidate_id)
+            if np.all(np.isfinite(fitted_center)):
                 axis.add_patch(Circle(fitted_center, radius, fill=False, edgecolor=boundary_color, linewidth=line_width))
             if record is not None and math.isfinite(record["x_center_positive"]):
                 axis.scatter(
@@ -368,7 +371,7 @@ def main() -> int:
                     edgecolors="black",
                 )
                 lines.append(
-                    f"vortex {record['vortex_id']} / candidate {int(candidate_id)}: "
+                    f"vortex {record['vortex_id']} / candidate {candidate_id}: "
                     f"Gamma+={record['circulation_positive']:.6g}"
                 )
         if lines:

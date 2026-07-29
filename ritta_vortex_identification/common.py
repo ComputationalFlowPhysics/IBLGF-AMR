@@ -72,6 +72,20 @@ def require_nonnegative(config: dict, section: str, name: str) -> float:
     return value
 
 
+def largest_successful_fit_index(success, boundary_radii) -> int | None:
+    """Return the successful fit with the largest finite positive boundary radius."""
+    success = np.asarray(success, dtype=bool)
+    boundary_radii = np.asarray(boundary_radii, dtype=float)
+    if success.shape != boundary_radii.shape:
+        raise ValueError("Fit success flags and boundary radii must have the same shape.")
+    eligible = np.flatnonzero(
+        success & np.isfinite(boundary_radii) & (boundary_radii > 0.0)
+    )
+    if not len(eligible):
+        return None
+    return int(eligible[np.argmax(boundary_radii[eligible])])
+
+
 def discover_frames(run_folder: str | Path, config: dict) -> list[Path]:
     """Find output frames and order them by the integer in flowTime_<n>.hdf5."""
     run_folder = Path(run_folder).expanduser().resolve()

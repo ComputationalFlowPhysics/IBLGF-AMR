@@ -17,7 +17,7 @@ from matplotlib.lines import Line2D
 from matplotlib.patches import Circle, Patch, Rectangle
 from PIL import Image
 
-from common import load_config, read_frame_order, result_folder
+from common import largest_successful_fit_index, load_config, read_frame_order, result_folder
 from plot_vorticity import plot_vorticity_frame
 
 
@@ -42,7 +42,10 @@ def preview_indices(fits: h5py.File, group_names: list[str]) -> list[int]:
     eligible = [
         index
         for index, group_name in enumerate(group_names)
-        if np.any(fits[group_name]["success"][:].astype(bool))
+        if largest_successful_fit_index(
+            fits[group_name]["success"][:],
+            fits[group_name]["boundary_radius"][:],
+        ) is not None
     ]
     if len(eligible) < 3:
         raise ValueError("At least three frames with successful fits are required for previews.")
@@ -268,8 +271,20 @@ def main() -> int:
             fit = fits[group_name]
             frame = base_frame(maximum)
 
-            peak_x = maximum["peak_x"][:]
-            peak_y = maximum["peak_y"][:]
+            maximum_ids = maximum["candidate_ids"][:]
+            region_ids = region["candidate_ids"][:]
+            fit_ids = fit["candidate_ids"][:]
+            if not np.array_equal(maximum_ids, region_ids) or not np.array_equal(maximum_ids, fit_ids):
+                raise ValueError(f"Candidate IDs disagree among saved stages for {group_name}.")
+
+            success = fit["success"][:].astype(bool)
+            radii = fit["boundary_radius"][:]
+            selected = largest_successful_fit_index(success, radii)
+            if selected is None:
+                raise ValueError(f"No successful finite-radius fit is available for {group_name}.")
+
+            peak_x = maximum["peak_x"][selected:selected + 1]
+            peak_y = maximum["peak_y"][selected:selected + 1]
 
             def draw_maxima(axis) -> None:
                 scatter_local_maxima(
@@ -286,9 +301,9 @@ def main() -> int:
                     [local_maximum_legend_handle(positive_color)],
                 )
 
-            positive_points = region["positive_points"][:]
-            negative_points = region["negative_points"][:]
-            clamped_bounds = region["clamped_bounds"][:]
+            positive_points = region["positive_points"][selected:selected + 1]
+            negative_points = region["negative_points"][selected:selected + 1]
+            clamped_bounds = region["clamped_bounds"][selected:selected + 1]
 
             def draw_regions(axis) -> None:
                 for bounds in clamped_bounds:
@@ -339,53 +354,47 @@ def main() -> int:
                     ],
                 )
 
-            success = fit["success"][:].astype(bool)
-            radii = fit["boundary_radius"][:]
-            positive_centers = fit["positive_centers"][:]
-            negative_centers = fit["negative_centers"][:]
+            radius = radii[selected]
+            positive_center = fit["positive_centers"][selected]
+            negative_center = fit["negative_centers"][selected]
 
             def draw_fits(axis) -> None:
-                for radius, positive, negative in zip(
-                    radii[success],
-                    positive_centers[success],
-                    negative_centers[success],
-                ):
-                    if not np.isfinite(radius) or not np.all(np.isfinite(positive)):
-                        continue
-                    axis.add_patch(
-                        Circle(
-                            positive,
-                            radius,
-                            fill=False,
-                            edgecolor=positive_color,
-                            linewidth=line_width,
-                        )
+                if not np.all(np.isfinite(positive_center)) or not np.all(np.isfinite(negative_center)):
+                    return
+                axis.add_patch(
+                    Circle(
+                        positive_center,
+                        radius,
+                        fill=False,
+                        edgecolor=positive_color,
+                        linewidth=line_width,
                     )
-                    axis.add_patch(
-                        Circle(
-                            negative,
-                            radius,
-                            fill=False,
-                            edgecolor=negative_color,
-                            linewidth=line_width,
-                        )
+                )
+                axis.add_patch(
+                    Circle(
+                        negative_center,
+                        radius,
+                        fill=False,
+                        edgecolor=negative_color,
+                        linewidth=line_width,
                     )
-                    scatter_outlined_marker(
-                        axis,
-                        positive[0],
-                        positive[1],
-                        marker_size,
-                        positive_color,
-                        "x",
-                    )
-                    scatter_outlined_marker(
-                        axis,
-                        negative[0],
-                        negative[1],
-                        marker_size,
-                        negative_color,
-                        "+",
-                    )
+                )
+                scatter_outlined_marker(
+                    axis,
+                    positive_center[0],
+                    positive_center[1],
+                    marker_size,
+                    positive_color,
+                    "x",
+                )
+                scatter_outlined_marker(
+                    axis,
+                    negative_center[0],
+                    negative_center[1],
+                    marker_size,
+                    negative_color,
+                    "+",
+                )
 
             save_preview(
                 output_folder / f"{fit_prefix}_{position}.png",

@@ -13,6 +13,7 @@ from scipy.optimize import least_squares
 
 from common import (
     discover_frames,
+    largest_successful_fit_index,
     load_config,
     load_vorticity_frame,
     read_frame_order,
@@ -266,6 +267,7 @@ def load_preview_frame(
     with h5py.File(fits_path, "r") as fits:
         group = fits[group_name]
         for name in (
+            "success",
             "parameters",
             "boundary_radius",
             "positive_centers",
@@ -384,15 +386,16 @@ def main() -> int:
         )
 
     def overlay(axis, frame: dict) -> None:
-        for parameters, radius, positive, negative in zip(
-            frame["parameters"],
-            frame["boundary_radius"],
-            frame["positive_centers"],
-            frame["negative_centers"],
-        ):
-            if np.all(np.isfinite(parameters)) and np.isfinite(radius):
-                axis.add_patch(Circle(positive, radius, fill=False, edgecolor=positive_color, linewidth=line_width))
-                axis.add_patch(Circle(negative, radius, fill=False, edgecolor=negative_color, linewidth=line_width))
+        index = largest_successful_fit_index(frame["success"], frame["boundary_radius"])
+        if index is None:
+            return
+        parameters = frame["parameters"][index]
+        radius = frame["boundary_radius"][index]
+        positive = frame["positive_centers"][index]
+        negative = frame["negative_centers"][index]
+        if np.all(np.isfinite(parameters)):
+            axis.add_patch(Circle(positive, radius, fill=False, edgecolor=positive_color, linewidth=line_width))
+            axis.add_patch(Circle(negative, radius, fill=False, edgecolor=negative_color, linewidth=line_width))
 
     browse_frames(
         len(group_names),

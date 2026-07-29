@@ -10,18 +10,59 @@ import h5py
 import numpy as np
 from matplotlib.patches import Rectangle
 
-from common import load_config, read_frame_order, require_positive, result_folder, stage_command, write_string_dataset
+from common import (
+    load_config,
+    read_frame_order,
+    require_positive,
+    result_folder,
+    simulation_parameter,
+    stage_command,
+    write_string_dataset,
+)
 from plot_vorticity import browse_frames
 
 
-def make_regions(peak_x: np.ndarray, peak_y: np.ndarray, x: np.ndarray, y: np.ndarray, dx: float, config: dict) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    """Build intended and domain-clipped rectangles for every saved peak."""
+def diffusive_buffer_lengths(
+    simulation_time: float,
+    reynolds_number: float,
+    config: dict,
+) -> tuple[float, float]:
+    """Return buffers whose underlying Gaussian variances grow by 2 t / Re."""
+    if not math.isfinite(simulation_time) or simulation_time < 0.0:
+        raise ValueError("Simulation time must be finite and non-negative.")
+    if not math.isfinite(reynolds_number) or reynolds_number <= 0.0:
+        raise ValueError("Reynolds number must be finite and greater than zero.")
+
     alpha_x = require_positive(config, "region", "alpha_x")
     alpha_r = require_positive(config, "region", "alpha_r")
     alpha = require_positive(config, "region", "alpha")
     buffer_multiplier = require_positive(config, "region", "buffer_multiplier")
-    ell_x = buffer_multiplier * alpha_x / math.sqrt(2.0 * alpha)
-    ell_y = buffer_multiplier * alpha_r / math.sqrt(2.0 * alpha)
+    diffusive_variance = 2.0 * simulation_time / reynolds_number
+    ell_x = buffer_multiplier * math.sqrt(
+        alpha_x ** 2 / (2.0 * alpha) + diffusive_variance
+    )
+    ell_y = buffer_multiplier * math.sqrt(
+        alpha_r ** 2 / (2.0 * alpha) + diffusive_variance
+    )
+    return ell_x, ell_y
+
+
+def make_regions(
+    peak_x: np.ndarray,
+    peak_y: np.ndarray,
+    x: np.ndarray,
+    y: np.ndarray,
+    dx: float,
+    simulation_time: float,
+    reynolds_number: float,
+    config: dict,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Build intended and domain-clipped rectangles for every saved peak."""
+    ell_x, ell_y = diffusive_buffer_lengths(
+        simulation_time,
+        reynolds_number,
+        config,
+    )
 
     # Enclose the positive peak, its y-mirrored partner, and both physical buffers.
     intended = np.column_stack((
@@ -75,6 +116,9 @@ def main() -> int:
     require_positive(config, "region", "alpha_r")
     require_positive(config, "region", "alpha")
     require_positive(config, "region", "buffer_multiplier")
+    reynolds_number = simulation_parameter(args.run_folder, config, "Re")
+    if not math.isfinite(reynolds_number) or reynolds_number <= 0.0:
+        raise ValueError("The simulation Reynolds number must be finite and greater than zero.")
     output_folder = result_folder(args.run_folder)
     hmaxima_path = output_folder / "hmaxima.h5"
     regions_path = output_folder / "regions.h5"
@@ -97,6 +141,9 @@ def main() -> int:
             output.attrs["buffer_multiplier"] = require_positive(
                 config, "region", "buffer_multiplier"
             )
+            output.attrs["reynolds_number"] = reynolds_number
+            output.attrs["diffusive_variance_rate"] = 2.0 / reynolds_number
+            output.attrs["time_age_origin"] = 0.0
             write_string_dataset(output, "frame_order", group_names)
             for index, group_name in enumerate(group_names):
                 source = maxima[group_name]
@@ -106,14 +153,30 @@ def main() -> int:
                 x = source["x"][:]
                 y = source["y"][:]
                 dx = float(source.attrs["dx"])
+                simulation_time = float(source.attrs["simulation_time"])
                 intended, clamped, positive, negative = make_regions(
-                    peak_x, peak_y, x, y, dx, config
+                    peak_x,
+                    peak_y,
+                    x,
+                    y,
+                    dx,
+                    simulation_time,
+                    reynolds_number,
+                    config,
+                )
+                ell_x, ell_y = diffusive_buffer_lengths(
+                    simulation_time,
+                    reynolds_number,
+                    config,
                 )
 
                 group = output.create_group(group_name)
                 group.attrs["source_filename"] = source.attrs["source_filename"]
                 group.attrs["simulation_time"] = source.attrs["simulation_time"]
                 group.attrs["time_step"] = source.attrs["time_step"]
+                group.attrs["time_age"] = simulation_time
+                group.attrs["ell_x"] = ell_x
+                group.attrs["ell_y"] = ell_y
                 group.create_dataset("candidate_ids", data=candidate_ids)
                 group.create_dataset("intended_bounds", data=intended)
                 group.create_dataset("clamped_bounds", data=clamped)

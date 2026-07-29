@@ -9,7 +9,7 @@ from pathlib import Path
 import numpy as np
 
 from common import load_config
-from plot_combined_time_series import load_datasets
+from plot_combined_time_series import configure_legend_labels, load_datasets
 from time_series_plotting import (
     configured_figure_size,
     configured_time_limits,
@@ -143,17 +143,27 @@ def main() -> int:
         default=100,
         help="Maximum breakpoint iterations per dataset (default: 100).",
     )
+    parser.add_argument(
+        "--legend-by",
+        choices=("tau", "dx-base"),
+        default="tau",
+        help="Legend parameter and ordering (default: tau).",
+    )
     args = parser.parse_args()
 
     config = load_config(args.config_file)
     datasets_file = args.datasets_file.expanduser().resolve()
-    datasets = load_datasets(datasets_file, config)
+    datasets = configure_legend_labels(
+        load_datasets(datasets_file, config),
+        config,
+        args.legend_by,
+    )
     circulation_series = []
 
     for dataset in datasets:
         rows = read_metrics(dataset["csv"])
         forcing_end_time = dataset["forcing_end_time"]
-        label = rf"$\tau={forcing_end_time:g}$"
+        label = dataset["legend_label"]
         item = largest_radius_series(rows, "circulation_positive", label)[0]
         fit = fit_circulation_breakpoint(
             item["times"],

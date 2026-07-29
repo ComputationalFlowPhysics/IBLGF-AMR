@@ -25,6 +25,10 @@ python 05_plot_time_series.py RUN_FOLDER CONFIG_FILE
 ```
 
 Do not skip stages. Each one reads the saved result from the previous stage.
+Stage 2 reads `Re` from the run's copied simulation config and uses the saved
+nondimensional simulation time as the vortex age. Its buffer widths grow diffusively as
+`buffer_multiplier * sqrt(alpha_i^2 / (2 * alpha) + 2 * time / Re)`, so the
+original forcing-based rectangle is recovered at time zero.
 
 After Stage 3, export nine beginning/middle/end diagnostic PNGs with:
 
@@ -34,8 +38,10 @@ python export_fit_previews.py RUN_FOLDER CONFIG_FILE
 
 The command chooses the earliest successful-fit frame, the successful frame
 nearest the simulation midpoint, and the latest successful-fit frame. For each
-one it saves the local maxima, the mirrored-point fitting rectangle, and the
-fitted vortex boundaries and centers under `outputs/<run_name>/fit_previews/`.
+one it selects the successful fit with the largest finite boundary radius and
+saves only that candidate's local maximum, mirrored-point fitting rectangle,
+and fitted vortex boundaries and centers under
+`outputs/<run_name>/fit_previews/`.
 It also stacks each diagnostic type's beginning, middle, and end PNGs
 horizontally into three `*_combined.png` files, then removes the nine
 individual panel PNGs. The preview y-axis defaults to `[-2, 2]`; override it
@@ -99,7 +105,10 @@ Make PNG frames and a GIF from any saved vortex HDF5 file:
 python make_h5_gif.py H5_FILE STRIDE
 ```
 
-This supports `hmaxima.h5`, `regions.h5`, `fits.h5`, and `threshold_masks.h5`. Output goes beside the HDF5 file in `<name>_stride_<stride>/`.
+This supports `hmaxima.h5`, `regions.h5`, `fits.h5`, and `threshold_masks.h5`.
+For `fits.h5`, each frame displays only the successful fit with the largest
+finite boundary radius. Output goes beside the HDF5 file in
+`<name>_stride_<stride>/`.
 Use `--x-axis-max VALUE` to override the saved upper x-axis limit for the
 rendered frames.
 For `threshold_masks.h5`, use `--threshold-vorticity-background` to replace
@@ -133,6 +142,13 @@ The same folder gets `datasets.toml`. Each `name` identifies its dataset, while 
 python plot_combined_time_series.py outputs/pipeline_results/datasets.toml CONFIG_FILE
 ```
 
+For a resolution sweep, label and order the curves by the copied simulation
+config's `domain.dx_base` value instead of forcing-end time:
+
+```bash
+python plot_combined_time_series.py outputs/res_test_tau_20/datasets.toml CONFIG_FILE --legend-by dx-base
+```
+
 This makes `combined_circulation_vs_time.png`,
 `combined_circulation_vs_time_over_tau.png`, and
 `combined_x_displacement_vs_time.png`. The normalized circulation plot uses
@@ -144,7 +160,9 @@ read from `b_f_tau` in the run's simulation config; older manifests derive it
 from `run_folder`. Combined-plot legends are ordered by increasing
 `forcing_end_time` (increasing \(\tau\)). The shared plotting palette assigns
 every dataset a different color and preserves the same tau-to-color mapping
-across all combined figures.
+across all combined figures. With `--legend-by dx-base`, legends use
+\(\Delta x_{\mathrm{base}}\) and are ordered from largest to smallest grid
+spacing. The default remains the \(\tau\) legend.
 
 To fit the circulation slope-change time for every dataset and put all results
 on one figure:

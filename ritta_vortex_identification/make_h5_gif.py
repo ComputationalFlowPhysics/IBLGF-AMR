@@ -15,7 +15,7 @@ import numpy as np
 from matplotlib.patches import Circle, Patch, Rectangle
 from PIL import Image
 
-from common import load_config, read_frame_order
+from common import largest_successful_fit_index, load_config, read_frame_order
 from plot_vorticity import image_extent, plot_vorticity_frame
 
 
@@ -114,15 +114,16 @@ def draw_fits(axis, group: h5py.Group, config: dict) -> None:
     positive_color = str(config["plot"].get("positive_marker_color", "black"))
     negative_color = str(config["plot"].get("negative_marker_color", "#7b2cbf"))
     width = float(config["plot"].get("region_line_width", 1.5))
-    for success, radius, positive, negative in zip(
-        group["success"][:],
-        group["boundary_radius"][:],
-        group["positive_centers"][:],
-        group["negative_centers"][:],
-    ):
-        if bool(success) and np.isfinite(radius) and np.all(np.isfinite(positive)):
-            axis.add_patch(Circle(positive, radius, fill=False, edgecolor=positive_color, linewidth=width))
-            axis.add_patch(Circle(negative, radius, fill=False, edgecolor=negative_color, linewidth=width))
+    radii = group["boundary_radius"][:]
+    index = largest_successful_fit_index(group["success"][:], radii)
+    if index is None:
+        return
+    radius = radii[index]
+    positive = group["positive_centers"][index]
+    negative = group["negative_centers"][index]
+    if np.all(np.isfinite(positive)) and np.all(np.isfinite(negative)):
+        axis.add_patch(Circle(positive, radius, fill=False, edgecolor=positive_color, linewidth=width))
+        axis.add_patch(Circle(negative, radius, fill=False, edgecolor=negative_color, linewidth=width))
 
 
 def draw_threshold_masks(axis, group: h5py.Group, frame: dict, config: dict, handle: h5py.File) -> None:

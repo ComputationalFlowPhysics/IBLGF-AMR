@@ -133,7 +133,18 @@ The same folder gets `datasets.toml`. Each `name` identifies its dataset, while 
 python plot_combined_time_series.py outputs/pipeline_results/datasets.toml CONFIG_FILE
 ```
 
-This makes only `combined_circulation_vs_time.png` and `combined_x_displacement_vs_time.png`. Each dataset line uses the rightmost valid vortex in every frame. A matching-color `X` marker on each curve marks when that dataset's forcing ends. New manifests save this as `forcing_end_time`, read from `b_f_tau` in the run's simulation config; older manifests derive it from `run_folder`.
+This makes `combined_circulation_vs_time.png`,
+`combined_circulation_vs_time_over_tau.png`, and
+`combined_x_displacement_vs_time.png`. The normalized circulation plot uses
+\(t/\tau\) over \(0\leq t/\tau\leq1\), without forcing-end markers. Each
+dataset line uses the confirmed fit with the largest boundary radius in every frame. On the
+simulation-time figures, a matching-color `X` marker on each curve marks when
+that dataset's forcing ends. New manifests save this as `forcing_end_time`,
+read from `b_f_tau` in the run's simulation config; older manifests derive it
+from `run_folder`. Combined-plot legends are ordered by increasing
+`forcing_end_time` (increasing \(\tau\)). The shared plotting palette assigns
+every dataset a different color and preserves the same tau-to-color mapping
+across all combined figures.
 
 To fit the circulation slope-change time for every dataset and put all results
 on one figure:
@@ -196,4 +207,4 @@ positive_vortex_metrics.csv   positive_vortex_metrics_preview.png
 circulation_vs_time.png       x_displacement_vs_time.png
 ```
 
-The measured circulation uses positive original-cell vorticity inside the fitted positive circle, not the fitted `Gamma`. Existing tracks use one-to-one nearest-center matches in consecutive analyzed frames, limited by `tracking.max_displacement`. An unmatched candidate starts a track only when a second detection confirms it in the next analyzed frame within `tracking.new_track_max_displacement`; otherwise it is discarded as a one-frame detection. The time-series plots show only the rightmost confirmed vortex in each frame.
+The measured circulation uses positive original-cell vorticity inside the fitted positive circle, not the fitted `Gamma`. Existing tracks use one-to-one nearest-center matches in consecutive analyzed frames, limited by `tracking.max_displacement`. An unmatched candidate starts a track only when a second detection confirms it in the next analyzed frame within `tracking.new_track_max_displacement`; otherwise it is discarded as a one-frame detection. The time-series plots show the confirmed fit with the largest boundary radius in each frame.

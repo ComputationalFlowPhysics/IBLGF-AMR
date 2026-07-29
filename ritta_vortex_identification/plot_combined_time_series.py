@@ -12,8 +12,8 @@ from time_series_plotting import (
     configured_figure_size,
     configured_time_limits,
     finite_setting,
+    largest_radius_series,
     read_metrics,
-    rightmost_series,
     save_time_series_plot,
 )
 
@@ -48,7 +48,7 @@ def load_datasets(path: str | Path, config: dict) -> list[dict]:
                 )
             forcing_end_time = simulation_parameter(run_folder, config, "b_f_tau")
         forcing_end_time = float(forcing_end_time)
-        if not math.isfinite(forcing_end_time) or forcing_end_time < 0.0:
+        if not math.isfinite(forcing_end_time) or forcing_end_time <= 0.0:
             raise ValueError(
                 f"Dataset {name!r} has an invalid forcing_end_time: {forcing_end_time}"
             )
@@ -60,11 +60,12 @@ def load_datasets(path: str | Path, config: dict) -> list[dict]:
         })
     if len(set(names)) != len(names):
         raise ValueError("Dataset names in the manifest must be unique.")
+    resolved.sort(key=lambda dataset: (dataset["forcing_end_time"], dataset["name"]))
     return resolved
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Create two combined plots from pipeline metrics CSV files.")
+    parser = argparse.ArgumentParser(description="Create combined plots from pipeline metrics CSV files.")
     parser.add_argument("datasets_file", type=Path, help="Editable datasets.toml written by run_all.py.")
     parser.add_argument("config_file", type=Path)
     parser.add_argument("--output-dir", type=Path, help="Defaults to the folder containing datasets.toml.")
@@ -74,6 +75,7 @@ def main() -> int:
     datasets_file = args.datasets_file.expanduser().resolve()
     datasets = load_datasets(datasets_file, config)
     circulation_series = []
+    normalized_circulation_series = []
     displacement_series = []
     all_times = set()
     # Keep the same dataset order so both figures use matching colors.
@@ -81,10 +83,14 @@ def main() -> int:
         rows = read_metrics(dataset["csv"])
         forcing_end_time = dataset["forcing_end_time"]
         label = rf"$\tau={forcing_end_time:g}$"
-        circulation_item = rightmost_series(rows, "circulation_positive", label)[0]
+        circulation_item = largest_radius_series(rows, "circulation_positive", label)[0]
+        normalized_circulation_series.append({
+            **circulation_item,
+            "times": circulation_item["times"] / forcing_end_time,
+        })
         circulation_item["event_time"] = forcing_end_time
         circulation_series.append(circulation_item)
-        displacement_item = rightmost_series(rows, "x_displacement", label)[0]
+        displacement_item = largest_radius_series(rows, "x_displacement", label)[0]
         displacement_item["event_time"] = forcing_end_time
         displacement_series.append(displacement_item)
         all_times.update(row["time"] for row in rows)
@@ -97,8 +103,8 @@ def main() -> int:
     figure_size = configured_figure_size(config)
     time_limits = configured_time_limits(config)
     circulation_path = output_folder / "combined_circulation_vs_time.png"
+    normalized_circulation_path = output_folder / "combined_circulation_vs_time_over_tau.png"
     displacement_path = output_folder / "combined_x_displacement_vs_time.png"
-    # These are the only two artifacts made by the combined plotting command.
     save_time_series_plot(
         circulation_path,
         circulation_series,
@@ -106,6 +112,15 @@ def main() -> int:
         "Positive-vortex circulation versus simulation time",
         figure_size,
         time_limits=time_limits,
+    )
+    save_time_series_plot(
+        normalized_circulation_path,
+        normalized_circulation_series,
+        "positive circulation",
+        r"Positive-vortex circulation versus normalized time $t/\tau$",
+        figure_size,
+        time_limits=(0.0, 1.0),
+        xlabel=r"normalized simulation time $t/\tau$",
     )
     save_time_series_plot(
         displacement_path,
@@ -122,6 +137,7 @@ def main() -> int:
         time_limits=time_limits,
     )
     print(f"Saved {circulation_path}")
+    print(f"Saved {normalized_circulation_path}")
     print(f"Saved {displacement_path}")
     return 0
 

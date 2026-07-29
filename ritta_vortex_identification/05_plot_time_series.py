@@ -1,4 +1,4 @@
-"""Stage 5: plot circulation and x displacement of the rightmost vortex."""
+"""Stage 5: plot circulation and x displacement of the largest fitted vortex."""
 
 from __future__ import annotations
 
@@ -10,14 +10,16 @@ from time_series_plotting import (
     configured_figure_size,
     configured_time_limits,
     finite_setting,
+    largest_radius_series,
     read_metrics,
-    rightmost_series,
     save_time_series_plot,
 )
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Plot rightmost-vortex circulation and x displacement over time.")
+    parser = argparse.ArgumentParser(
+        description="Plot circulation and x displacement of the largest-radius fitted vortex over time."
+    )
     parser.add_argument("run_folder", type=Path)
     parser.add_argument("config_file", type=Path)
     parser.add_argument(
@@ -76,9 +78,9 @@ def main() -> int:
     # The selected track may change between frames; missing detections remain gaps.
     save_time_series_plot(
         circulation_path,
-        rightmost_series(rows, "circulation_positive", "rightmost vortex"),
+        largest_radius_series(rows, "circulation_positive", "largest-radius vortex"),
         "positive circulation",
-        f"Rightmost positive-vortex circulation versus simulation time{title_suffix}",
+        f"Largest-radius positive-vortex circulation versus simulation time{title_suffix}",
         figure_size,
         time_limits=time_limits,
     )
@@ -87,9 +89,9 @@ def main() -> int:
         return 0
     save_time_series_plot(
         displacement_path,
-        rightmost_series(rows, "x_displacement", "rightmost vortex"),
+        largest_radius_series(rows, "x_displacement", "largest-radius vortex"),
         "positive-vortex x displacement",
-        f"Rightmost positive-vortex x displacement versus simulation time{title_suffix}",
+        f"Largest-radius positive-vortex x displacement versus simulation time{title_suffix}",
         figure_size,
         reference=(slope, anchor_time, anchor_displacement),
         time_limits=time_limits,

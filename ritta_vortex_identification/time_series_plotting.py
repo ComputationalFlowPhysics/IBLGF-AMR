@@ -12,6 +12,21 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 
+# Put the ten darker Tableau colors first, followed by their lighter partners.
+# This avoids Matplotlib's default ten-color repetition in larger tau sweeps.
+DISTINCT_LINE_COLORS = tuple(
+    plt.get_cmap("tab20").colors[index]
+    for index in (0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 1, 3, 5, 7, 9, 11, 13, 15, 17, 19)
+)
+
+
+def distinct_line_colors(count: int) -> list:
+    """Return a nonrepeating categorical color sequence."""
+    if count <= len(DISTINCT_LINE_COLORS):
+        return list(DISTINCT_LINE_COLORS[:count])
+    return list(plt.get_cmap("turbo")(np.linspace(0.0, 1.0, count)))
+
+
 def finite_setting(config: dict, name: str) -> float:
     value = float(config["time_series"].get(name, math.nan))
     if not math.isfinite(value):
@@ -24,11 +39,18 @@ def read_metrics(path: str | Path) -> list[dict]:
     path = Path(path).expanduser().resolve()
     rows = []
     with path.open(newline="") as handle:
-        for raw in csv.DictReader(handle):
+        reader = csv.DictReader(handle)
+        if "boundary_radius" not in (reader.fieldnames or []):
+            raise ValueError(
+                f"Metrics file is missing boundary_radius: {path}. "
+                "Rerun 04_positive_vortex_metrics.py with the existing fits.h5."
+            )
+        for raw in reader:
             rows.append({
                 "frame_index": int(raw["frame_index"]),
                 "time": float(raw["time"]),
                 "vortex_id": int(raw["vortex_id"]) if raw["vortex_id"] else None,
+                "boundary_radius": float(raw["boundary_radius"]),
                 "circulation_positive": float(raw["circulation_positive"]),
                 "x_center_positive": float(raw["x_center_positive"]),
                 "x_displacement": float(raw["x_displacement"]),
@@ -66,28 +88,28 @@ def track_series(rows: list[dict], value_name: str, dataset_name: str | None = N
     return series
 
 
-def rightmost_series(rows: list[dict], value_name: str, dataset_name: str) -> list[dict]:
-    """Build one line using the valid vortex with the largest x center in each frame."""
+def largest_radius_series(rows: list[dict], value_name: str, dataset_name: str) -> list[dict]:
+    """Build one line using the tracked fit with the largest boundary radius per frame."""
     frame_times = {}
-    rightmost = {}
+    selected = {}
     for row in rows:
         frame_index = row["frame_index"]
         frame_times.setdefault(frame_index, row["time"])
         if row["vortex_id"] is None:
             continue
-        x_center = row["x_center_positive"]
-        if not math.isfinite(x_center):
+        radius = row["boundary_radius"]
+        if not math.isfinite(radius):
             continue
-        previous = rightmost.get(frame_index)
-        if previous is None or x_center > previous["x_center_positive"]:
-            rightmost[frame_index] = row
+        previous = selected.get(frame_index)
+        if previous is None or radius > previous["boundary_radius"]:
+            selected[frame_index] = row
 
     frame_indices = sorted(frame_times)
     return [{
         "label": dataset_name,
         "times": np.asarray([frame_times[index] for index in frame_indices]),
         "values": np.asarray([
-            rightmost.get(index, {}).get(value_name, math.nan)
+            selected.get(index, {}).get(value_name, math.nan)
             for index in frame_indices
         ]),
     }]
@@ -143,10 +165,12 @@ def save_time_series_plot(
     reference: tuple[float, float, float] | None = None,
     reference_times=None,
     time_limits: tuple[float | None, float | None] = (None, None),
+    xlabel: str = "simulation time",
 ) -> None:
     output_path = Path(output_path).expanduser().resolve()
     output_path.parent.mkdir(parents=True, exist_ok=True)
     figure, axis = plt.subplots(figsize=figure_size)
+    axis.set_prop_cycle(color=distinct_line_colors(len(series)))
     has_event_marker = False
     has_breakpoint_marker = False
     # Values already contain NaNs at missed detections, so Matplotlib leaves gaps.
@@ -241,7 +265,7 @@ def save_time_series_plot(
         values = anchor_displacement + slope * (times - anchor_time)
         axis.plot(times, values, color="black", linestyle=":", label=f"reference slope {slope:g}")
 
-    axis.set_xlabel("simulation time")
+    axis.set_xlabel(xlabel)
     axis.set_ylabel(ylabel)
     axis.set_title(title)
     axis.set_xlim(left=time_limits[0], right=time_limits[1])

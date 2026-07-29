@@ -14,8 +14,8 @@ from time_series_plotting import (
     configured_figure_size,
     configured_time_limits,
     line_value_at_time,
+    largest_radius_series,
     read_metrics,
-    rightmost_series,
     save_time_series_plot,
 )
 
@@ -154,7 +154,7 @@ def main() -> int:
         rows = read_metrics(dataset["csv"])
         forcing_end_time = dataset["forcing_end_time"]
         label = rf"$\tau={forcing_end_time:g}$"
-        item = rightmost_series(rows, "circulation_positive", label)[0]
+        item = largest_radius_series(rows, "circulation_positive", label)[0]
         fit = fit_circulation_breakpoint(
             item["times"],
             item["values"],

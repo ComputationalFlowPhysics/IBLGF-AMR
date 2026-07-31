@@ -68,5 +68,5 @@ runs_pybind/
 /ritta_vortex_identification/outputs/
 
 # Generated 2D and 3D mass-sweep configs
-/formation_number_plot/mass_configs*/
-/formation_3d/mass_configs*/
+/formation_number_plot/mass*configs*/
+/formation_3d/mass*configs*/

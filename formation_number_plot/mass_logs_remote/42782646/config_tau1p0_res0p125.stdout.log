@@ -1,0 +1,11 @@
+==> Loading dependency environment: /ocean/projects/mch250004p/mchoi10/iblgf-lib/setup_iblgf.sh
+==> Building remote tree (-j 128)
+[  0%] Built target copy_ifherk_files2D
+[  0%] Built target copy_ifherk_files
+[  2%] Built target gtest
+[ 23%] Built target triple_decomposition.x
+[ 37%] Built target convTest.x
+[ 54%] Built target poisson.x
+[ 79%] Built target poisson2D.x
+[ 84%] Built target ns_amr_lgf.x
+[ 97%] Built target ns_amr_lgf2D.x

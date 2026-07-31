@@ -28,7 +28,7 @@ BRIDGES_FFMPEG_IMAGE = Path(
 
 # Rendering settings. Edit these values to change the visualization.
 Q_CRITERION_THRESHOLD = 1.0
-VORTICITY_THRESHOLD_FRACTION = 0.02
+VORTICITY_THRESHOLD_FRACTION = 0.2
 FPS = 8
 IMAGE_RESOLUTION = [1280, 720]
 # View from positive z so increasing x runs from screen-left to screen-right.

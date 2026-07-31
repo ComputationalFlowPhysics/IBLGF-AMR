@@ -1,0 +1,34 @@
+==> Loading dependency environment: /ocean/projects/mch250004p/mchoi10/iblgf-lib/setup_iblgf.sh
+==> Building remote tree (-j 128)
+[  0%] Built target copy_files
+[  0%] Built target copy_ifherk_files
+[  0%] Built target copy_ifherk_files2D
+[  2%] Built target gtest
+[  4%] Built target iblgf_test_main
+[  9%] Built target triple_decomposition.x
+[ 14%] Built target svt
+[ 23%] Built target block_descriptor
+[ 23%] Built target server_client
+[ 44%] Built target convTest.x
+[ 45%] Built target convSingleBlockTest
+[ 45%] Built target view
+[ 48%] Built target datafields
+[ 50%] Built target tree
+[ 70%] Built target convFFTTest
+[ 75%] Built target poisson.x
+[ 90%] Built target ns_amr_lgf2D.x
+[ 90%] Built target ns_amr_lgf.x
+[ 92%] Built target poisson_Test
+[ 94%] Built target ns_amr_lgf_Test
+[ 95%] Built target operators
+[ 96%] Built target ffmTest
+[ 96%] Built target ns_amr_lgf_Test2D
+[100%] Built target poisson2D.x
+==> Running test 'ns_amr_lgf2D'
+    Host:     r395.ib.bridges2.psc.edu
+    Run dir:  /ocean/projects/mch250004p/mchoi10/IBLGF-AMR/runs/ns_amr_lgf2D/2026-07-30_14-59-58
+    Exe:      /ocean/projects/mch250004p/mchoi10/IBLGF-AMR/build-remote/tests/ns_amr_lgf2D/ns_amr_lgf2D.x
+    Config:   config_re200.cfg
+    MPI:      32 (mpiexec)
+    Logs:     stdout.log / stderr.log
+==> Done. Outputs are in: /ocean/projects/mch250004p/mchoi10/IBLGF-AMR/runs/ns_amr_lgf2D/2026-07-30_14-59-58

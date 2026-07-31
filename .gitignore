@@ -73,3 +73,9 @@ runs_pybind/
 
 # Persistent state and per-attempt logs for resumable 3D sweeps
 /formation_3d/mass_sweep_state/
+
+# Generated 2D and 3D Slurm job logs
+/formation_number_plot/slurm-*.out
+/formation_number_plot/slurm-*.err
+/formation_3d/slurm-*.out
+/formation_3d/slurm-*.err

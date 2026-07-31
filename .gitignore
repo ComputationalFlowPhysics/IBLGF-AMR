@@ -79,3 +79,7 @@ runs_pybind/
 /formation_number_plot/slurm-*.err
 /formation_3d/slurm-*.out
 /formation_3d/slurm-*.err
+
+# Generated per-config 2D and 3D batch logs
+/formation_number_plot/mass_logs_remote/
+/formation_3d/mass_logs_remote/

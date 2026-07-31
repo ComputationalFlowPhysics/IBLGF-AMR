@@ -1,7 +1,5 @@
 """Fit and plot circulation slope-change times for several pipeline datasets."""
 
-from __future__ import annotations
-
 import argparse
 import math
 from pathlib import Path

@@ -1,7 +1,5 @@
 """Render raw IBLGF vorticity frames to PNG files and a looping GIF."""
 
-from __future__ import annotations
-
 import argparse
 from pathlib import Path
 

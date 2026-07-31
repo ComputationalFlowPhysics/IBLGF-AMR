@@ -1,10 +1,9 @@
 """Stage 3: fit one circular Gaussian dipole to every saved candidate."""
 
-from __future__ import annotations
-
 import argparse
 import math
 from pathlib import Path
+from typing import List, Tuple
 
 import h5py
 import numpy as np
@@ -89,7 +88,9 @@ def nearest_finite_value(frame: dict, x_target: float, y_target: float) -> float
     return float(omega[valid_rows[nearest], valid_columns[nearest]])
 
 
-def rectangle_samples(frame: dict, bounds: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+def rectangle_samples(
+    frame: dict, bounds: np.ndarray
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Return finite physical samples inside one saved fitting rectangle."""
     x0, x1, y0, y1 = bounds
     columns = np.flatnonzero((frame["x"] >= x0) & (frame["x"] <= x1))
@@ -197,7 +198,9 @@ def fit_candidate(frame: dict, candidate: dict, config: dict, settings: dict) ->
     }
 
 
-def save_frame_results(group: h5py.Group, source: dict, candidates: list[dict], results: list[dict]) -> None:
+def save_frame_results(
+    group: h5py.Group, source: dict, candidates: List[dict], results: List[dict]
+) -> None:
     """Save fitted parameters and diagnostics for one frame."""
     group.attrs["source_filename"] = source["source_filename"]
     group.attrs["source_path"] = source["source_path"]
@@ -227,7 +230,9 @@ def save_frame_results(group: h5py.Group, source: dict, candidates: list[dict], 
     group.create_dataset("clamped_bounds", data=np.asarray([item["clamped_bounds"] for item in candidates]).reshape(-1, 4))
 
 
-def read_candidates(maxima: h5py.File, regions: h5py.File, group_name: str) -> list[dict]:
+def read_candidates(
+    maxima: h5py.File, regions: h5py.File, group_name: str
+) -> List[dict]:
     """Join each saved h-maximum to its Stage 2 rectangle by candidate ID."""
     maximum_group = maxima[group_name]
     region_group = regions[group_name]

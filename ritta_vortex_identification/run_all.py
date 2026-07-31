@@ -1,7 +1,5 @@
 """Run Stages 1-4 headlessly for one run or a folder of runs."""
 
-from __future__ import annotations
-
 import argparse
 import json
 import os
@@ -11,6 +9,7 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
+from typing import List, Union
 
 from common import discover_frames, load_config, simulation_parameter
 
@@ -34,7 +33,7 @@ def output_has_frames(output_folder: Path, pattern: str) -> bool:
     return output_folder.is_dir() and any(path.is_file() for path in output_folder.glob(pattern))
 
 
-def one_run(folder: str | Path, pattern: str) -> Path:
+def one_run(folder: Union[str, Path], pattern: str) -> Path:
     """Accept either a run folder or its canonical output folder."""
     folder = Path(folder).expanduser().resolve()
     if output_has_frames(folder / "output", pattern):
@@ -46,7 +45,7 @@ def one_run(folder: str | Path, pattern: str) -> Path:
     )
 
 
-def batch_runs(folder: str | Path, pattern: str) -> list[Path]:
+def batch_runs(folder: Union[str, Path], pattern: str) -> List[Path]:
     """Find every run below a parent by locating folders named output."""
     folder = Path(folder).expanduser().resolve()
     if not folder.is_dir():
@@ -115,7 +114,7 @@ def run_stages(run_folder: Path, config_file: Path, destination: Path, stride: i
             shutil.copy2(temporary_folder / name, destination / name)
 
 
-def write_manifest(path: Path, datasets: list[dict]) -> None:
+def write_manifest(path: Path, datasets: List[dict]) -> None:
     """Write the small file where the user edits combined-plot legend names."""
     lines = [
         "# Each name identifies a dataset; combined-plot legends use forcing_end_time.",

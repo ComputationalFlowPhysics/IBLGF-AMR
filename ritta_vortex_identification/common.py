@@ -1,17 +1,17 @@
 """Shared configuration, HDF5, coordinate, and output helpers."""
 
-from __future__ import annotations
-
 import math
 import os
 import re
 import shlex
 import sys
-import tomllib
 from pathlib import Path
+from typing import Dict, List, Optional, Tuple, Union
 
 import h5py
 import numpy as np
+
+from toml_compat import tomllib
 
 
 FLOW_TIME_RE = re.compile(r"^flowTime_(\d+)\.hdf5$")
@@ -20,7 +20,7 @@ NUMBER_RE = r"[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?"
 
 # Configuration and frame ordering
 
-def load_config(path: str | Path) -> dict:
+def load_config(path: Union[str, Path]) -> dict:
     """Load the workflow TOML and validate settings shared by all stages."""
     path = Path(path).expanduser().resolve()
     with path.open("rb") as handle:
@@ -72,7 +72,7 @@ def require_nonnegative(config: dict, section: str, name: str) -> float:
     return value
 
 
-def largest_successful_fit_index(success, boundary_radii) -> int | None:
+def largest_successful_fit_index(success, boundary_radii) -> Optional[int]:
     """Return the successful fit with the largest finite positive boundary radius."""
     success = np.asarray(success, dtype=bool)
     boundary_radii = np.asarray(boundary_radii, dtype=float)
@@ -86,7 +86,7 @@ def largest_successful_fit_index(success, boundary_radii) -> int | None:
     return int(eligible[np.argmax(boundary_radii[eligible])])
 
 
-def discover_frames(run_folder: str | Path, config: dict) -> list[Path]:
+def discover_frames(run_folder: Union[str, Path], config: dict) -> List[Path]:
     """Find output frames and order them by the integer in flowTime_<n>.hdf5."""
     run_folder = Path(run_folder).expanduser().resolve()
     output_folder = run_folder / "output"
@@ -107,7 +107,7 @@ def discover_frames(run_folder: str | Path, config: dict) -> list[Path]:
     return sorted(frames, key=lambda path: int(FLOW_TIME_RE.fullmatch(path.name).group(1)))
 
 
-def frame_step(path: str | Path) -> int:
+def frame_step(path: Union[str, Path]) -> int:
     match = FLOW_TIME_RE.fullmatch(Path(path).name)
     if match is None:
         raise ValueError(f"Cannot obtain a timestep from {Path(path).name}")
@@ -116,7 +116,7 @@ def frame_step(path: str | Path) -> int:
 
 # Simulation metadata and physical time
 
-def _finite_override(value) -> float | None:
+def _finite_override(value) -> Optional[float]:
     try:
         number = float(value)
     except (TypeError, ValueError):
@@ -128,12 +128,12 @@ def _strip_cpp_comments(text: str) -> str:
     return re.sub(r"//.*", "", text)
 
 
-def _read_scalar(text: str, name: str) -> float | None:
+def _read_scalar(text: str, name: str) -> Optional[float]:
     match = re.search(rf"\b{re.escape(name)}\s*=\s*({NUMBER_RE})\s*;", text)
     return float(match.group(1)) if match else None
 
 
-def _read_vector(text: str, name: str) -> tuple[float, ...] | None:
+def _read_vector(text: str, name: str) -> Optional[Tuple[float, ...]]:
     match = re.search(rf"\b{re.escape(name)}\s*=\s*\(([^)]*)\)\s*;", text)
     if match is None:
         return None
@@ -143,7 +143,7 @@ def _read_vector(text: str, name: str) -> tuple[float, ...] | None:
         return None
 
 
-def _find_simulation_config(run_folder: Path, input_config: dict) -> Path | None:
+def _find_simulation_config(run_folder: Path, input_config: dict) -> Optional[Path]:
     configured = str(input_config.get("simulation_config", "")).strip()
     if configured:
         path = Path(configured).expanduser()
@@ -169,7 +169,7 @@ def _find_simulation_config(run_folder: Path, input_config: dict) -> Path | None
     return paths[0] if paths else None
 
 
-def simulation_parameter(run_folder: str | Path, config: dict, name: str) -> float:
+def simulation_parameter(run_folder: Union[str, Path], config: dict, name: str) -> float:
     """Read one scalar from a run's copied simulation configuration."""
     run_folder = Path(run_folder).expanduser().resolve()
     simulation_path = _find_simulation_config(run_folder, config["input"])
@@ -181,7 +181,7 @@ def simulation_parameter(run_folder: str | Path, config: dict, name: str) -> flo
     return value
 
 
-def simulation_metadata(run_folder: str | Path, config: dict) -> dict:
+def simulation_metadata(run_folder: Union[str, Path], config: dict) -> dict:
     """Read time constants and the physical coordinate origin independently."""
     run_folder = Path(run_folder).expanduser().resolve()
     input_config = config["input"]
@@ -261,7 +261,7 @@ def _decode(value):
     return value
 
 
-def _box_bounds(record, dims: int = 2) -> tuple[np.ndarray, np.ndarray]:
+def _box_bounds(record, dims: int = 2) -> Tuple[np.ndarray, np.ndarray]:
     names = getattr(record.dtype, "names", None)
     values = [int(record[name]) for name in names] if names else [int(v) for v in np.asarray(record).reshape(-1)]
     if len(values) < 2 * dims:
@@ -313,7 +313,7 @@ def _component_index(handle: h5py.File, field_name: str) -> int:
 
 # Load the original AMR tiles before choosing a plotting or integration view.
 
-def _load_vorticity_tiles(path: Path, config: dict, metadata: dict) -> list[dict]:
+def _load_vorticity_tiles(path: Path, config: dict, metadata: dict) -> List[dict]:
     """Read each original AMR chunk once and retain its physical geometry."""
     path = Path(path)
     tiles = []
@@ -367,7 +367,7 @@ def _load_vorticity_tiles(path: Path, config: dict, metadata: dict) -> list[dict
     return tiles
 
 
-def _rasterize_vorticity(tiles: list[dict]) -> tuple[np.ndarray, np.ndarray, np.ndarray, float]:
+def _rasterize_vorticity(tiles: List[dict]) -> Tuple[np.ndarray, np.ndarray, np.ndarray, float]:
     """Create the plotting/fitting raster; finer values overwrite coarse coverage."""
     finest_dx = min(tile["dx"] for tile in tiles)
     x_min = min(tile["bounds"][0] for tile in tiles)
@@ -394,7 +394,7 @@ def _rasterize_vorticity(tiles: list[dict]) -> tuple[np.ndarray, np.ndarray, np.
     return x, y, omega, finest_dx
 
 
-def _visible_amr_cells(tiles: list[dict]) -> dict[str, np.ndarray]:
+def _visible_amr_cells(tiles: List[dict]) -> Dict[str, np.ndarray]:
     """Return original cells and dx^2 areas after removing finer-level coverage."""
     cell_x = []
     cell_y = []
@@ -428,7 +428,7 @@ def _visible_amr_cells(tiles: list[dict]) -> dict[str, np.ndarray]:
 
 
 def load_vorticity_frame(
-    path: str | Path,
+    path: Union[str, Path],
     frame_index: int,
     config: dict,
     metadata: dict,
@@ -455,7 +455,7 @@ def load_vorticity_frame(
 
 # Output paths and small saved-file helpers
 
-def result_folder(run_folder: str | Path) -> Path:
+def result_folder(run_folder: Union[str, Path]) -> Path:
     # run_all.py uses the override for disposable intermediate stage files.
     override = os.environ.get("RITTA_VORTEX_RESULT_FOLDER", "").strip()
     folder = (
@@ -467,7 +467,11 @@ def result_folder(run_folder: str | Path) -> Path:
     return folder
 
 
-def stage_command(script_name: str, run_folder: str | Path, config_file: str | Path) -> str:
+def stage_command(
+    script_name: str,
+    run_folder: Union[str, Path],
+    config_file: Union[str, Path],
+) -> str:
     """Return an exact command for a missing prerequisite stage."""
     script = Path(__file__).with_name(script_name)
     return " ".join(
@@ -481,9 +485,9 @@ def stage_command(script_name: str, run_folder: str | Path, config_file: str | P
     )
 
 
-def write_string_dataset(handle: h5py.File, name: str, values: list[str]) -> None:
+def write_string_dataset(handle: h5py.File, name: str, values: List[str]) -> None:
     handle.create_dataset(name, data=np.asarray(values, dtype=h5py.string_dtype("utf-8")))
 
 
-def read_frame_order(handle: h5py.File) -> list[str]:
+def read_frame_order(handle: h5py.File) -> List[str]:
     return [item.decode() if isinstance(item, bytes) else str(item) for item in handle["frame_order"][:]]

@@ -1,9 +1,8 @@
 """Export beginning, middle, and end PNG previews for vortex-fit stages."""
 
-from __future__ import annotations
-
 import argparse
 from pathlib import Path
+from typing import List, Optional
 
 import h5py
 import matplotlib
@@ -22,7 +21,10 @@ from plot_vorticity import plot_vorticity_frame
 
 
 PREVIEW_POSITIONS = ("beginning", "middle", "end")
+PREVIEW_MARKER_SIZE_SCALE = 1.2
 LOCAL_MAXIMUM_SIZE_SCALE = 0.65
+MARKER_EDGE_WIDTH = 1.5
+MARKER_HALO_WIDTH = 4.5
 
 
 def base_frame(group: h5py.Group) -> dict:
@@ -37,7 +39,7 @@ def base_frame(group: h5py.Group) -> dict:
     }
 
 
-def preview_indices(fits: h5py.File, group_names: list[str]) -> list[int]:
+def preview_indices(fits: h5py.File, group_names: List[str]) -> List[int]:
     """Choose early, midpoint-nearest, and late frames containing a successful fit."""
     eligible = [
         index
@@ -64,7 +66,7 @@ def save_preview(
     plot_config: dict,
     title: str,
     overlay,
-    legend_handles: list | None = None,
+    legend_handles: Optional[list] = None,
 ) -> None:
     """Render one saved vorticity frame and its requested stage overlay."""
     figure, axis = plt.subplots(
@@ -101,25 +103,26 @@ def scatter_outlined_marker(
         s=marker_size,
         c=color,
         marker=marker,
-        linewidths=1.25,
+        linewidths=MARKER_EDGE_WIDTH,
         zorder=5,
     )
     markers.set_path_effects([
-        path_effects.Stroke(linewidth=3.5, foreground="white"),
+        path_effects.Stroke(linewidth=MARKER_HALO_WIDTH, foreground="white"),
         path_effects.Normal(),
     ])
     return markers
 
 
-def scatter_local_maxima(axis, x, y, marker_size: float, color: str):
-    """Draw a compact local-maximum marker with a white visibility halo."""
-    return scatter_outlined_marker(
-        axis,
+def scatter_local_maxima(axis, x, y, marker_size: float):
+    """Draw a compact solid-white local-maximum marker."""
+    return axis.scatter(
         x,
         y,
-        LOCAL_MAXIMUM_SIZE_SCALE * marker_size,
-        color,
-        "x",
+        s=LOCAL_MAXIMUM_SIZE_SCALE * marker_size,
+        c="white",
+        marker="x",
+        linewidths=MARKER_EDGE_WIDTH,
+        zorder=5,
     )
 
 
@@ -136,24 +139,35 @@ def outlined_legend_handle(
         color=color,
         marker=marker,
         linestyle=linestyle,
-        markeredgewidth=1.25,
-        markersize=6,
+        markeredgewidth=MARKER_EDGE_WIDTH,
+        markersize=7,
         label=label,
     )
     handle.set_path_effects([
-        path_effects.Stroke(linewidth=3.5, foreground="white"),
+        path_effects.Stroke(linewidth=MARKER_HALO_WIDTH, foreground="white"),
         path_effects.Normal(),
     ])
     return handle
 
 
-def local_maximum_legend_handle(color: str) -> Line2D:
-    """Create a legend marker matching the outlined local maxima."""
-    return outlined_legend_handle(
-        color,
-        "x",
-        "detected local maximum",
+def local_maximum_legend_handle() -> Line2D:
+    """Create a legend marker matching the solid-white local maxima."""
+    handle = Line2D(
+        [0],
+        [0],
+        color="white",
+        marker="x",
+        linestyle="none",
+        markeredgewidth=MARKER_EDGE_WIDTH,
+        markersize=7,
+        label="detected local maximum",
     )
+    # Add contrast only in the legend, where a white marker sits on a white box.
+    handle.set_path_effects([
+        path_effects.Stroke(linewidth=3.0, foreground="#555555"),
+        path_effects.Normal(),
+    ])
+    return handle
 
 
 def stack_previews(output_folder: Path, prefix: str) -> Path:
@@ -207,9 +221,15 @@ def main() -> int:
         "--filename-prefix",
         help="Prefix for the combined fit PNG, such as tau_1p0_boundary_fraction_0p05_fits.",
     )
-    parser.add_argument("--y-axis-min", type=float, default=-2.0)
-    parser.add_argument("--y-axis-max", type=float, default=2.0)
+    parser.add_argument("--x-axis-min", type=float, default=-1.0)
+    parser.add_argument("--x-axis-max", type=float, default=5.0)
+    parser.add_argument("--y-axis-min", type=float, default=-1.5)
+    parser.add_argument("--y-axis-max", type=float, default=1.5)
     args = parser.parse_args()
+    if not np.isfinite(args.x_axis_min) or not np.isfinite(args.x_axis_max):
+        parser.error("--x-axis-min and --x-axis-max must be finite")
+    if args.x_axis_min >= args.x_axis_max:
+        parser.error("--x-axis-min must be smaller than --x-axis-max")
     if not np.isfinite(args.y_axis_min) or not np.isfinite(args.y_axis_max):
         parser.error("--y-axis-min and --y-axis-max must be finite")
     if args.y_axis_min >= args.y_axis_max:
@@ -244,9 +264,13 @@ def main() -> int:
         raise FileNotFoundError("Run fit Stages 1-3 first; missing: " + ", ".join(missing))
 
     plot_config = dict(config["plot"])
+    plot_config["x_axis_min"] = args.x_axis_min
+    plot_config["x_axis_max"] = args.x_axis_max
     plot_config["y_axis_min"] = args.y_axis_min
     plot_config["y_axis_max"] = args.y_axis_max
-    marker_size = float(plot_config.get("marker_size", 48.0))
+    marker_size = PREVIEW_MARKER_SIZE_SCALE * float(
+        plot_config.get("marker_size", 48.0)
+    )
     positive_color = str(plot_config.get("positive_marker_color", "black"))
     negative_color = str(plot_config.get("negative_marker_color", "#7b2cbf"))
     region_color = str(plot_config.get("region_color", "#00aa55"))
@@ -287,9 +311,7 @@ def main() -> int:
             peak_y = maximum["peak_y"][selected:selected + 1]
 
             def draw_maxima(axis) -> None:
-                scatter_local_maxima(
-                    axis, peak_x, peak_y, marker_size, positive_color
-                )
+                scatter_local_maxima(axis, peak_x, peak_y, marker_size)
 
             if not args.fits_only:
                 save_preview(
@@ -298,7 +320,7 @@ def main() -> int:
                     plot_config,
                     f"Detected local maxima ({position})",
                     draw_maxima,
-                    [local_maximum_legend_handle(positive_color)],
+                    [local_maximum_legend_handle()],
                 )
 
             positive_points = region["positive_points"][selected:selected + 1]
@@ -324,14 +346,14 @@ def main() -> int:
                         positive_points[:, 0],
                         positive_points[:, 1],
                         marker_size,
-                        positive_color,
                     )
-                    axis.scatter(
+                    scatter_outlined_marker(
+                        axis,
                         negative_points[:, 0],
                         negative_points[:, 1],
-                        s=marker_size,
-                        c=negative_color,
-                        marker="+",
+                        marker_size,
+                        negative_color,
+                        "+",
                     )
 
             if not args.fits_only:
@@ -342,10 +364,11 @@ def main() -> int:
                     f"Local maxima, mirrored points, and fitting rectangles ({position})",
                     draw_regions,
                     [
-                        local_maximum_legend_handle(positive_color),
-                        Line2D(
-                            [0], [0], color=negative_color, marker="+", linestyle="none",
-                            markersize=7, label="mirrored point",
+                        local_maximum_legend_handle(),
+                        outlined_legend_handle(
+                            negative_color,
+                            "+",
+                            "mirrored point",
                         ),
                         Patch(
                             facecolor="none", edgecolor=region_color, linewidth=line_width,

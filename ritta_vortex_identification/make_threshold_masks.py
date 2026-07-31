@@ -1,13 +1,12 @@
 """Create positive and negative vorticity-threshold masks for every frame."""
 
-from __future__ import annotations
-
 import argparse
 import csv
 import math
 import subprocess
 import sys
 from pathlib import Path
+from typing import Dict, List, Optional, Set, Tuple
 
 import h5py
 import matplotlib
@@ -43,7 +42,9 @@ TRACK_COLUMNS = (
 )
 
 
-def remove_small_regions(mask: np.ndarray, dx: float, minimum_area: float) -> tuple[np.ndarray, int, np.ndarray]:
+def remove_small_regions(
+    mask: np.ndarray, dx: float, minimum_area: float
+) -> Tuple[np.ndarray, int, np.ndarray]:
     """Keep 8-connected regions whose physical area is at least minimum_area."""
     labels, region_count = label(mask, structure=EIGHT_CONNECTED)
     cell_counts = np.bincount(labels.ravel())[1:]
@@ -150,7 +151,7 @@ def load_saved_frame(path: Path, hmaxima_path: Path, group_name: str) -> dict:
         }
 
 
-def extrema_records(frame_index: int, frame: dict) -> list[dict]:
+def extrema_records(frame_index: int, frame: dict) -> List[dict]:
     """Convert retained extrema from one frame into tracking records."""
     records = []
     for candidate_id, x_value, y_value, peak_vorticity in zip(
@@ -177,11 +178,11 @@ def extrema_records(frame_index: int, frame: dict) -> list[dict]:
 
 
 def nearest_one_to_one_matches(
-    source_centers: dict[int, tuple[float, float]],
-    records: list[dict],
+    source_centers: Dict[int, Tuple[float, float]],
+    records: List[dict],
     max_displacement: float,
-    unavailable_indices: set[int] | None = None,
-) -> dict[int, int]:
+    unavailable_indices: Optional[Set[int]] = None,
+) -> Dict[int, int]:
     """Match each source to its nearest detection, using each detection at most once."""
     if not records:
         return {}
@@ -213,8 +214,8 @@ def nearest_one_to_one_matches(
 
 
 def assign_extrema_tracks(
-    records_by_frame: list[list[dict]],
-    frame_times: list[float],
+    records_by_frame: List[List[dict]],
+    frame_times: List[float],
     max_displacement: float,
     new_track_max_displacement: float,
     max_missed_frames: int,
@@ -326,9 +327,9 @@ def assign_extrema_tracks(
 
 
 def filter_short_tracks(
-    records_by_frame: list[list[dict]],
+    records_by_frame: List[List[dict]],
     minimum_track_points: int,
-) -> tuple[int, int]:
+) -> Tuple[int, int]:
     """Discard short tracks and renumber the retained IDs consecutively."""
     track_counts = {}
     for records in records_by_frame:
@@ -354,7 +355,7 @@ def filter_short_tracks(
     return len(retained_ids), len(track_counts) - len(retained_ids)
 
 
-def write_extrema_tracks(path: Path, records_by_frame: list[list[dict]]) -> None:
+def write_extrema_tracks(path: Path, records_by_frame: List[List[dict]]) -> None:
     """Write every retained extremum, leaving unconfirmed track IDs blank."""
     with path.open("w", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=TRACK_COLUMNS)
@@ -378,8 +379,8 @@ def track_colors(track_count: int) -> list:
 
 def save_extrema_track_plot(
     path: Path,
-    records_by_frame: list[list[dict]],
-    figure_size: tuple[float, float],
+    records_by_frame: List[List[dict]],
+    figure_size: Tuple[float, float],
 ) -> int:
     """Plot x coordinate versus simulation time with one color per confirmed track."""
     tracks = {}

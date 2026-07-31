@@ -1,13 +1,12 @@
 """Plot circulation and x displacement from several final metrics CSV files."""
 
-from __future__ import annotations
-
 import argparse
 import math
-import tomllib
 from pathlib import Path
+from typing import List, Union
 
 from common import load_config, simulation_parameter
+from toml_compat import tomllib
 from time_series_plotting import (
     configured_figure_size,
     configured_time_limits,
@@ -18,7 +17,7 @@ from time_series_plotting import (
 )
 
 
-def load_datasets(path: str | Path, config: dict) -> list[dict]:
+def load_datasets(path: Union[str, Path], config: dict) -> List[dict]:
     """Resolve editable legend names and CSV paths from datasets.toml."""
     path = Path(path).expanduser().resolve()
     with path.open("rb") as handle:
@@ -65,7 +64,7 @@ def load_datasets(path: str | Path, config: dict) -> list[dict]:
     return resolved
 
 
-def configure_legend_labels(datasets: list[dict], config: dict, legend_by: str) -> list[dict]:
+def configure_legend_labels(datasets: List[dict], config: dict, legend_by: str) -> List[dict]:
     """Attach tau or dx_base labels and put datasets in the matching numeric order."""
     if legend_by == "tau":
         for dataset in datasets:

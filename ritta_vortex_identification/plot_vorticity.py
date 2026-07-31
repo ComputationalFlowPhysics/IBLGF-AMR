@@ -1,9 +1,8 @@
 """Reusable physical-coordinate vorticity plotting and frame browsing."""
 
-from __future__ import annotations
-
 import argparse
 from pathlib import Path
+from typing import Tuple, Union
 
 import matplotlib
 matplotlib.use("Agg")
@@ -13,7 +12,7 @@ import numpy as np
 from common import discover_frames, load_config, load_vorticity_frame, result_folder, simulation_metadata
 
 
-def image_extent(frame: dict) -> tuple[float, float, float, float]:
+def image_extent(frame: dict) -> Tuple[float, float, float, float]:
     """Convert cell-center coordinates to the outer physical image edges."""
     dx = float(frame["dx"])
     return (
@@ -82,7 +81,7 @@ def browse_frames(
     frame_loader,
     plot_config: dict,
     overlay_drawer=None,
-    preview_path: str | Path = "frame_preview.png",
+    preview_path: Union[str, Path] = "frame_preview.png",
     show_colorbar: bool = True,
 ) -> None:
     """Prompt for frames in the terminal and render the selection to one PNG."""

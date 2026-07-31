@@ -44,8 +44,9 @@ and fitted vortex boundaries and centers under
 `outputs/<run_name>/fit_previews/`.
 It also stacks each diagnostic type's beginning, middle, and end PNGs
 horizontally into three `*_combined.png` files, then removes the nine
-individual panel PNGs. The preview y-axis defaults to `[-2, 2]`; override it
-with `--y-axis-min` and `--y-axis-max`.
+individual panel PNGs. The preview axes default to `x in [-1, 5]` and
+`y in [-1.5, 1.5]`; override them with `--x-axis-min`, `--x-axis-max`,
+`--y-axis-min`, and `--y-axis-max`.
 
 For a boundary-fraction sweep, Stage 3 can reuse existing maxima and regions
 with `--input-results-dir`, override the radius fraction with

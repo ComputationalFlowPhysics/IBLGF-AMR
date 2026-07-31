@@ -1,7 +1,5 @@
 """Stage 5: plot circulation and x displacement of the largest fitted vortex."""
 
-from __future__ import annotations
-
 import argparse
 from pathlib import Path
 

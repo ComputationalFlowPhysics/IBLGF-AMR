@@ -1,9 +1,8 @@
 """Stage 1: compute positive h-maxima for every output frame."""
 
-from __future__ import annotations
-
 import argparse
 from pathlib import Path
+from typing import Tuple
 
 import h5py
 import matplotlib.colors as mcolors
@@ -32,7 +31,7 @@ def merge_close_maxima(
     peak_y: np.ndarray,
     peak_vorticity: np.ndarray,
     merge_distance: float,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """Merge connected groups of peaks separated by at most merge_distance."""
     peak_x = np.asarray(peak_x, dtype=float)
     peak_y = np.asarray(peak_y, dtype=float)

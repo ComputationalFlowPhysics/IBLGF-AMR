@@ -1,10 +1,9 @@
 """Shared CSV loading and headless time-series plotting."""
 
-from __future__ import annotations
-
 import csv
 import math
 from pathlib import Path
+from typing import List, Optional, Tuple, Union
 
 import matplotlib
 matplotlib.use("Agg")
@@ -34,7 +33,7 @@ def finite_setting(config: dict, name: str) -> float:
     return value
 
 
-def read_metrics(path: str | Path) -> list[dict]:
+def read_metrics(path: Union[str, Path]) -> List[dict]:
     """Load only the columns needed by the time-series plots."""
     path = Path(path).expanduser().resolve()
     rows = []
@@ -60,7 +59,11 @@ def read_metrics(path: str | Path) -> list[dict]:
     return rows
 
 
-def track_series(rows: list[dict], value_name: str, dataset_name: str | None = None) -> list[dict]:
+def track_series(
+    rows: List[dict],
+    value_name: str,
+    dataset_name: Optional[str] = None,
+) -> List[dict]:
     """Build one NaN-gapped line for each saved vortex ID."""
     frame_times = {}
     tracks = {}
@@ -88,7 +91,9 @@ def track_series(rows: list[dict], value_name: str, dataset_name: str | None = N
     return series
 
 
-def largest_radius_series(rows: list[dict], value_name: str, dataset_name: str) -> list[dict]:
+def largest_radius_series(
+    rows: List[dict], value_name: str, dataset_name: str
+) -> List[dict]:
     """Build one line using the tracked fit with the largest boundary radius per frame."""
     frame_times = {}
     selected = {}
@@ -115,14 +120,14 @@ def largest_radius_series(rows: list[dict], value_name: str, dataset_name: str) 
     }]
 
 
-def configured_figure_size(config: dict) -> tuple[float, float]:
+def configured_figure_size(config: dict) -> Tuple[float, float]:
     return (
         float(config["plot"].get("figure_width", 10.0)),
         float(config["plot"].get("figure_height", 7.0)),
     )
 
 
-def configured_time_limits(config: dict) -> tuple[float | None, float | None]:
+def configured_time_limits(config: dict) -> Tuple[Optional[float], Optional[float]]:
     """Read optional simulation-time limits; NaN leaves an end automatic."""
     minimum = float(config["time_series"].get("time_axis_min", math.nan))
     maximum = float(config["time_series"].get("time_axis_max", math.nan))
@@ -133,7 +138,9 @@ def configured_time_limits(config: dict) -> tuple[float | None, float | None]:
     return minimum, maximum
 
 
-def line_value_at_time(times: np.ndarray, values: np.ndarray, target_time: float) -> float | None:
+def line_value_at_time(
+    times: np.ndarray, values: np.ndarray, target_time: float
+) -> Optional[float]:
     """Interpolate within one valid line segment without crossing a NaN gap."""
     order = np.argsort(times)
     times = times[order]
@@ -157,14 +164,14 @@ def line_value_at_time(times: np.ndarray, values: np.ndarray, target_time: float
 
 
 def save_time_series_plot(
-    output_path: str | Path,
-    series: list[dict],
+    output_path: Union[str, Path],
+    series: List[dict],
     ylabel: str,
     title: str,
-    figure_size: tuple[float, float],
-    reference: tuple[float, float, float] | None = None,
+    figure_size: Tuple[float, float],
+    reference: Optional[Tuple[float, float, float]] = None,
     reference_times=None,
-    time_limits: tuple[float | None, float | None] = (None, None),
+    time_limits: Tuple[Optional[float], Optional[float]] = (None, None),
     xlabel: str = "simulation time",
 ) -> None:
     output_path = Path(output_path).expanduser().resolve()

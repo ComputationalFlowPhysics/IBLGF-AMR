@@ -1,10 +1,9 @@
 """Render saved vortex-analysis HDF5 frames to PNG files and a GIF."""
 
-from __future__ import annotations
-
 import argparse
 import math
 from pathlib import Path
+from typing import List, Optional
 
 import h5py
 import matplotlib
@@ -49,7 +48,7 @@ def saved_config(handle: h5py.File) -> dict:
     }
 
 
-def background_file(input_path: Path, schema: str) -> Path | None:
+def background_file(input_path: Path, schema: str) -> Optional[Path]:
     """Locate saved Stage 1 rasters needed by region and fit outputs."""
     if schema not in {
         "ritta_regions_v1",
@@ -174,7 +173,7 @@ def render_frame(
     output_path: Path,
     schema: str,
     handle: h5py.File,
-    background: h5py.File | None,
+    background: Optional[h5py.File],
     group_name: str,
     config: dict,
     threshold_vorticity_background: bool,
@@ -213,7 +212,7 @@ def render_frame(
     plt.close(figure)
 
 
-def save_gif(frame_paths: list[Path], output_path: Path, duration_ms: int) -> None:
+def save_gif(frame_paths: List[Path], output_path: Path, duration_ms: int) -> None:
     """Load the generated PNG files and save a looping GIF."""
     images = []
     for path in frame_paths:

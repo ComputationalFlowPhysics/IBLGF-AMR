@@ -1,10 +1,9 @@
 """Stage 2: construct the authoritative rectangle for every saved candidate."""
 
-from __future__ import annotations
-
 import argparse
 import math
 from pathlib import Path
+from typing import Tuple
 
 import h5py
 import numpy as np
@@ -26,7 +25,7 @@ def diffusive_buffer_lengths(
     simulation_time: float,
     reynolds_number: float,
     config: dict,
-) -> tuple[float, float]:
+) -> Tuple[float, float]:
     """Return buffers whose underlying Gaussian variances grow by 2 t / Re."""
     if not math.isfinite(simulation_time) or simulation_time < 0.0:
         raise ValueError("Simulation time must be finite and non-negative.")
@@ -56,7 +55,7 @@ def make_regions(
     simulation_time: float,
     reynolds_number: float,
     config: dict,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """Build intended and domain-clipped rectangles for every saved peak."""
     ell_x, ell_y = diffusive_buffer_lengths(
         simulation_time,

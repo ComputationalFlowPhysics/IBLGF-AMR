@@ -1,11 +1,10 @@
 """Stage 4: measure positive circulation and its vorticity centroid."""
 
-from __future__ import annotations
-
 import argparse
 import csv
 import math
 from pathlib import Path
+from typing import Dict, List, Optional, Set, Tuple
 
 import h5py
 import numpy as np
@@ -40,7 +39,9 @@ CSV_COLUMNS = (
 )
 
 
-def positive_metrics(cells: dict, x_c: float, y_c: float, radius: float) -> tuple[float, float, float]:
+def positive_metrics(
+    cells: dict, x_c: float, y_c: float, radius: float
+) -> Tuple[float, float, float]:
     """Integrate positive original-cell vorticity inside the fitted circle."""
     omega = cells["vorticity"]
     inside = (cells["x"] - x_c) ** 2 + (cells["y"] - y_c) ** 2 <= radius ** 2
@@ -58,7 +59,7 @@ def positive_metrics(cells: dict, x_c: float, y_c: float, radius: float) -> tupl
     return circulation, x_center, y_center
 
 
-def eligible_center_indices(records: list[dict]) -> list[int]:
+def eligible_center_indices(records: List[dict]) -> List[int]:
     """Return fitted candidates that can participate in temporal tracking."""
     return [
         index
@@ -68,12 +69,12 @@ def eligible_center_indices(records: list[dict]) -> list[int]:
 
 
 def nearest_one_to_one_matches(
-    source_centers: dict[int, tuple[float, float]],
-    records: list[dict],
-    candidate_indices: list[int],
+    source_centers: Dict[int, Tuple[float, float]],
+    records: List[dict],
+    candidate_indices: List[int],
     max_displacement: float,
-    unavailable_indices: set[int] | None = None,
-) -> dict[int, int]:
+    unavailable_indices: Optional[Set[int]] = None,
+) -> Dict[int, int]:
     """Match each source to its nearest candidate, with each candidate used at most once."""
     if not candidate_indices:
         return {}
@@ -105,7 +106,7 @@ def nearest_one_to_one_matches(
 
 
 def assign_vortex_tracks(
-    records_by_frame: list[list[dict]],
+    records_by_frame: List[List[dict]],
     max_displacement: float,
     new_track_max_displacement: float,
 ) -> None:
@@ -156,7 +157,7 @@ def assign_vortex_tracks(
         }
 
 
-def fit_rows(group: h5py.Group) -> list[dict]:
+def fit_rows(group: h5py.Group) -> List[dict]:
     """Convert one fits.h5 frame group into ordinary dictionaries."""
     return [
         {
@@ -176,7 +177,7 @@ def fit_rows(group: h5py.Group) -> list[dict]:
     ]
 
 
-def write_metrics(path: Path, records: list[dict]) -> None:
+def write_metrics(path: Path, records: List[dict]) -> None:
     """Write the final per-frame, per-vortex CSV table."""
     with path.open("w", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=CSV_COLUMNS)

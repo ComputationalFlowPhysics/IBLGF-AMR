@@ -70,3 +70,6 @@ runs_pybind/
 # Generated 2D and 3D mass-sweep configs
 /formation_number_plot/mass*configs*/
 /formation_3d/mass*configs*/
+
+# Persistent state and per-attempt logs for resumable 3D sweeps
+/formation_3d/mass_sweep_state/

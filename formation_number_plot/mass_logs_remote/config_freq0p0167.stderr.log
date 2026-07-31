@@ -1,5 +1,0 @@
-Error copying directory from "/ocean/projects/mch250004p/mchoi10/IBLGF-AMR/tests/ns_amr_lgf2D/configs" to "/ocean/projects/mch250004p/mchoi10/IBLGF-AMR/build-remote/unit_testing/ns_amr_lgf2D".
-gmake[2]: *** [tests/ns_amr_lgf2D/CMakeFiles/copy_ifherk_files2D.dir/build.make:70: tests/ns_amr_lgf2D/CMakeFiles/copy_ifherk_files2D] Error 1
-gmake[1]: *** [CMakeFiles/Makefile2:862: tests/ns_amr_lgf2D/CMakeFiles/copy_ifherk_files2D.dir/all] Error 2
-gmake[1]: *** Waiting for unfinished jobs....
-gmake: *** [Makefile:146: all] Error 2

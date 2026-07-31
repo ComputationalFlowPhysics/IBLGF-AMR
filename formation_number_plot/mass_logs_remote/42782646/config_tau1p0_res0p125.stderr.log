@@ -1,0 +1,5 @@
+Error copying directory from "/ocean/projects/mch250004p/mchoi10/IBLGF-AMR/tests/poisson/configs" to "/ocean/projects/mch250004p/mchoi10/IBLGF-AMR/build-remote/unit_testing/poisson".
+gmake[2]: *** [tests/poisson/CMakeFiles/copy_files.dir/build.make:71: tests/poisson/CMakeFiles/copy_files] Error 1
+gmake[1]: *** [CMakeFiles/Makefile2:675: tests/poisson/CMakeFiles/copy_files.dir/all] Error 2
+gmake[1]: *** Waiting for unfinished jobs....
+gmake: *** [Makefile:146: all] Error 2

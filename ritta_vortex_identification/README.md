@@ -167,6 +167,11 @@ order the legend by increasing Reynolds number:
 python plot_combined_time_series.py outputs/reynolds_sweep/datasets.toml CONFIG_FILE --legend-by reynolds
 ```
 
+Add `--circulation-inset` to retain the full circulation history while showing
+a magnified plateau inside the same figure. Its default zoom is
+`x in [3, 25]` and `y in [0.78, 0.81]`; adjust it with `--inset-x-min`,
+`--inset-x-max`, `--inset-y-min`, and `--inset-y-max`.
+
 This makes `combined_circulation_vs_time.png`,
 `combined_circulation_vs_time_over_tau.png`, and
 `combined_x_displacement_vs_time.png`. The normalized circulation plot uses

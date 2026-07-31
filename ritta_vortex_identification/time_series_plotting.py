@@ -173,6 +173,9 @@ def save_time_series_plot(
     reference_times=None,
     time_limits: Tuple[Optional[float], Optional[float]] = (None, None),
     xlabel: str = "simulation time",
+    inset_limits: Optional[
+        Tuple[Optional[float], Optional[float], Optional[float], Optional[float]]
+    ] = None,
 ) -> None:
     output_path = Path(output_path).expanduser().resolve()
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -271,6 +274,32 @@ def save_time_series_plot(
         # x_ref(t) = x_anchor + slope * (t - t_anchor)
         values = anchor_displacement + slope * (times - anchor_time)
         axis.plot(times, values, color="black", linestyle=":", label=f"reference slope {slope:g}")
+
+    if inset_limits is not None:
+        inset_axis = axis.inset_axes([0.47, 0.12, 0.50, 0.42])
+        inset_axis.set_prop_cycle(color=distinct_line_colors(len(series)))
+        inset_x_min, inset_x_max, inset_y_min, inset_y_max = inset_limits
+        for item in series:
+            times = np.asarray(item["times"], dtype=float)
+            values = np.asarray(item["values"], dtype=float)
+            visible = np.ones(times.shape, dtype=bool)
+            if inset_x_min is not None:
+                visible &= times >= inset_x_min
+            if inset_x_max is not None:
+                visible &= times <= inset_x_max
+            inset_axis.plot(
+                times[visible],
+                values[visible],
+                marker="o",
+                markersize=3,
+                linewidth=1.0,
+            )
+        inset_axis.set_xlim(left=inset_x_min, right=inset_x_max)
+        inset_axis.set_ylim(bottom=inset_y_min, top=inset_y_max)
+        inset_axis.set_title("plateau zoom", fontsize=9)
+        inset_axis.grid(True, alpha=0.3)
+        inset_axis.tick_params(labelsize=8)
+        axis.indicate_inset_zoom(inset_axis, edgecolor="0.35")
 
     axis.set_xlabel(xlabel)
     axis.set_ylabel(ylabel)

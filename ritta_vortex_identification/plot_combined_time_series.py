@@ -116,7 +116,28 @@ def main() -> int:
         default="tau",
         help="Legend parameter and ordering (default: tau).",
     )
+    parser.add_argument(
+        "--circulation-inset",
+        action="store_true",
+        help="Add a zoomed plateau inset to the simulation-time circulation plot.",
+    )
+    parser.add_argument("--inset-x-min", type=float, default=3.0)
+    parser.add_argument("--inset-x-max", type=float, default=25.0)
+    parser.add_argument("--inset-y-min", type=float, default=0.78)
+    parser.add_argument("--inset-y-max", type=float, default=0.81)
     args = parser.parse_args()
+    inset_values = (
+        args.inset_x_min,
+        args.inset_x_max,
+        args.inset_y_min,
+        args.inset_y_max,
+    )
+    if not all(math.isfinite(value) for value in inset_values):
+        parser.error("circulation inset limits must be finite")
+    if args.inset_x_min >= args.inset_x_max:
+        parser.error("--inset-x-min must be smaller than --inset-x-max")
+    if args.inset_y_min >= args.inset_y_max:
+        parser.error("--inset-y-min must be smaller than --inset-y-max")
 
     config = load_config(args.config_file)
     datasets_file = args.datasets_file.expanduser().resolve()
@@ -163,6 +184,12 @@ def main() -> int:
         "Positive-vortex circulation versus simulation time",
         figure_size,
         time_limits=time_limits,
+        inset_limits=(
+            args.inset_x_min,
+            args.inset_x_max,
+            args.inset_y_min,
+            args.inset_y_max,
+        ) if args.circulation_inset else None,
     )
     save_time_series_plot(
         normalized_circulation_path,

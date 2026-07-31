@@ -275,8 +275,8 @@ Usage:
 Examples:
   $0 formation_3d/config3D_test 32 freq
   $0 formation_3d/config3D_test 32 tau
-  $0 --existing 32 'config_freq*.cfg'
-  SWEEP_STATE_DIR=/path/to/state $0 --resumable 32 'config_*.cfg'
+  $0 --existing 32 '*.cfg'
+  SWEEP_STATE_DIR=/path/to/state $0 --resumable 32 '*.cfg'
 
 Environment overrides:
   IBLGF_RUNS_ROOT=/scratch/\$USER/iblgf-runs
@@ -284,7 +284,7 @@ Environment overrides:
   IBLGF_LIB_ROOT=/path/to/iblgf-lib
   IBLGF_RUNNER=/path/to/IBLGF-AMR/iblgf_remote.sh
   CONFIGS_DIR=/path/to/configs
-  CONFIG_GLOB='config_freq*.cfg'
+  CONFIG_GLOB='*.cfg'
   LOGS_DIR=/path/to/sweep-logs
   SWEEP_STATE_DIR=/path/to/persistent-sweep-state
   PROGRESS_INTERVAL=20
@@ -308,11 +308,11 @@ if [[ "${1:-}" == "--resumable" ]]; then
   generation_mode=0
   resumable_mode=1
   mpi_ranks="${2:-${IBLGF_MPI_RANKS:-8}}"
-  config_pattern="${3:-${CONFIG_GLOB:-config_*.cfg}}"
+  config_pattern="${3:-${CONFIG_GLOB:-*.cfg}}"
 elif [[ "${1:-}" == "--existing" ]]; then
   generation_mode=0
   mpi_ranks="${2:-${IBLGF_MPI_RANKS:-8}}"
-  config_pattern="${3:-${CONFIG_GLOB:-config_*.cfg}}"
+  config_pattern="${3:-${CONFIG_GLOB:-*.cfg}}"
 else
   sample_config="${1:-}"
   mpi_ranks="${2:-${IBLGF_MPI_RANKS:-8}}"

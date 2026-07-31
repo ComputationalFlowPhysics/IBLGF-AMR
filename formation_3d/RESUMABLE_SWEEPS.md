@@ -9,15 +9,17 @@ From the repository root, the initial submission and every later resubmission
 use the same command:
 
 ```bash
-sbatch --export=ALL,SWEEP_NAME=mass3d_v1,MPI_RANKS=32 \
+sbatch --export=ALL,MPI_RANKS=32 \
   formation_3d/run_mass_sweep_existing_rm.sbatch \
-  formation_3d/mass_configs 'config_*.cfg'
+  formation_3d/mass_configs
 ```
 
-Choose a unique `SWEEP_NAME` for each distinct batch. Replace the config folder
-and glob as needed. The default allocation is one exclusive RM node for 48
-hours; the configs run sequentially with 32 MPI ranks unless `MPI_RANKS` is
-changed.
+Replace the config folder as needed. By default, every `.cfg` file directly
+inside that folder is included, and the folder name is used as `SWEEP_NAME`.
+The default allocation is one exclusive RM node for 48 hours; the configs run
+sequentially with 32 MPI ranks unless `MPI_RANKS` is changed. Set an explicit
+`SWEEP_NAME` only when starting a distinct batch from a folder whose earlier
+sweep state must be preserved.
 
 Each source config must start with:
 
@@ -36,8 +38,8 @@ restores the newest complete fallback it can identify.
 Progress can be inspected without opening every log:
 
 ```bash
-column -t -s $'\t' formation_3d/mass_sweep_state/mass3d_v1/summary.tsv
-tail formation_3d/mass_sweep_state/mass3d_v1/events.tsv
+column -t -s $'\t' formation_3d/mass_sweep_state/mass_configs/summary.tsv
+tail formation_3d/mass_sweep_state/mass_configs/events.tsv
 ```
 
 The summary reports `pending`, `incomplete`, `resume-ready`, or `completed`.

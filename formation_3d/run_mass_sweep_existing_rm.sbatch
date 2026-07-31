@@ -17,7 +17,7 @@ set -euo pipefail
 repo_root="/ocean/projects/mch250004p/mchoi10/IBLGF-AMR"
 submit_dir="${SLURM_SUBMIT_DIR:-$PWD}"
 configs_input="${1:-${CONFIGS_DIR:-$repo_root/formation_3d/mass_configs}}"
-config_glob="${2:-${CONFIG_GLOB:-config_*.cfg}}"
+config_glob="${2:-${CONFIG_GLOB:-*.cfg}}"
 mpi_ranks="${MPI_RANKS:-32}"
 progress_interval="${PROGRESS_INTERVAL:-20}"
 

@@ -54,6 +54,16 @@ with `--input-results-dir`, override the radius fraction with
 The preview exporter accepts that file through `--fits-file`; use
 `--fits-only` and `--filename-prefix` for one clearly labeled comparison PNG.
 
+To make one labeled figure from several combined fit previews, repeat `--row`
+with each row label and PNG:
+
+```bash
+python stack_combined_previews.py stacked.png \
+  --row "Re = 200" re_200_fits_combined.png \
+  --row "Re = 1000" re_1000_fits_combined.png \
+  --row "Re = 1800" re_1800_fits_combined.png
+```
+
 To analyze every fifth sorted HDF5 frame, use `--stride 5` on Stage 1. Stages 2–4 automatically use that saved frame list:
 
 ```bash

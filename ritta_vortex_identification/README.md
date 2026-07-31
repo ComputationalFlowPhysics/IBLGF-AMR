@@ -150,6 +150,13 @@ config's `domain.dx_base` value instead of forcing-end time:
 python plot_combined_time_series.py outputs/res_test_tau_20/datasets.toml CONFIG_FILE --legend-by dx-base
 ```
 
+For a Reynolds-number sweep, read `Re` from each copied simulation config and
+order the legend by increasing Reynolds number:
+
+```bash
+python plot_combined_time_series.py outputs/reynolds_sweep/datasets.toml CONFIG_FILE --legend-by reynolds
+```
+
 This makes `combined_circulation_vs_time.png`,
 `combined_circulation_vs_time_over_tau.png`, and
 `combined_x_displacement_vs_time.png`. The normalized circulation plot uses
@@ -163,7 +170,9 @@ from `run_folder`. Combined-plot legends are ordered by increasing
 every dataset a different color and preserves the same tau-to-color mapping
 across all combined figures. With `--legend-by dx-base`, legends use
 \(\Delta x_{\mathrm{base}}\) and are ordered from largest to smallest grid
-spacing. The default remains the \(\tau\) legend.
+spacing. With `--legend-by reynolds`, legends use \(\mathrm{Re}\) and are
+ordered from smallest to largest Reynolds number. The default remains the
+\(\tau\) legend.
 
 To fit the circulation slope-change time for every dataset and put all results
 on one figure:

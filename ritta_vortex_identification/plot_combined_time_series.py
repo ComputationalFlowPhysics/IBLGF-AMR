@@ -65,11 +65,28 @@ def load_datasets(path: Union[str, Path], config: dict) -> List[dict]:
 
 
 def configure_legend_labels(datasets: List[dict], config: dict, legend_by: str) -> List[dict]:
-    """Attach tau or dx_base labels and put datasets in the matching numeric order."""
+    """Attach parameter labels and put datasets in the matching numeric order."""
     if legend_by == "tau":
         for dataset in datasets:
             dataset["legend_label"] = rf"$\tau={dataset['forcing_end_time']:g}$"
         datasets.sort(key=lambda dataset: (dataset["forcing_end_time"], dataset["name"]))
+        return datasets
+
+    if legend_by == "reynolds":
+        for dataset in datasets:
+            if not dataset["run_folder"]:
+                raise ValueError(
+                    f"Dataset {dataset['name']!r} needs run_folder to label by Reynolds number."
+                )
+            reynolds_number = simulation_parameter(dataset["run_folder"], config, "Re")
+            if not math.isfinite(reynolds_number) or reynolds_number <= 0.0:
+                raise ValueError(
+                    f"Dataset {dataset['name']!r} has an invalid Reynolds number: "
+                    f"{reynolds_number}"
+                )
+            dataset["reynolds_number"] = reynolds_number
+            dataset["legend_label"] = rf"$\mathrm{{Re}}={reynolds_number:g}$"
+        datasets.sort(key=lambda dataset: (dataset["reynolds_number"], dataset["name"]))
         return datasets
 
     for dataset in datasets:
@@ -95,7 +112,7 @@ def main() -> int:
     parser.add_argument("--output-dir", type=Path, help="Defaults to the folder containing datasets.toml.")
     parser.add_argument(
         "--legend-by",
-        choices=("tau", "dx-base"),
+        choices=("tau", "dx-base", "reynolds"),
         default="tau",
         help="Legend parameter and ordering (default: tau).",
     )

@@ -143,7 +143,7 @@ def main() -> int:
     )
     parser.add_argument(
         "--legend-by",
-        choices=("tau", "dx-base"),
+        choices=("tau", "dx-base", "reynolds"),
         default="tau",
         help="Legend parameter and ordering (default: tau).",
     )

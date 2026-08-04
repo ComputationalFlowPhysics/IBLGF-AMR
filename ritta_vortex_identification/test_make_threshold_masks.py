@@ -1,11 +1,12 @@
 """Tests for retained h-maximum tracking."""
 
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from make_threshold_masks import assign_extrema_tracks
+from make_threshold_masks import assign_extrema_tracks, save_extrema_track_plot
 
 
 def record(frame_index: int, time: float, x: float, y: float = 0.0) -> dict:
@@ -77,6 +78,26 @@ class AssignExtremaTracksTests(unittest.TestCase):
     def test_frame_times_must_be_strictly_increasing(self) -> None:
         with self.assertRaisesRegex(ValueError, "strictly increasing"):
             assign_extrema_tracks([[], []], [1.0, 1.0], 0.5, 0.5, 1, 3)
+
+    def test_saves_x_and_y_track_plots(self) -> None:
+        first = record(0, 0.0, 1.0, -0.5)
+        second = record(1, 1.0, 2.0, 0.5)
+        first["track_id"] = 1
+        second["track_id"] = 1
+        records_by_frame = [[first], [second]]
+
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            output_folder = Path(temporary_directory)
+            for coordinate in ("x", "y"):
+                output_path = output_folder / f"{coordinate}_vs_time.png"
+                track_count = save_extrema_track_plot(
+                    output_path,
+                    records_by_frame,
+                    (4.0, 3.0),
+                    coordinate,
+                )
+                self.assertEqual(track_count, 1)
+                self.assertGreater(output_path.stat().st_size, 0)
 
 
 if __name__ == "__main__":

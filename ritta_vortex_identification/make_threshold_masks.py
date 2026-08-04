@@ -381,8 +381,12 @@ def save_extrema_track_plot(
     path: Path,
     records_by_frame: List[List[dict]],
     figure_size: Tuple[float, float],
+    coordinate: str,
 ) -> int:
-    """Plot x coordinate versus simulation time with one color per confirmed track."""
+    """Plot one coordinate versus time with one color per confirmed track."""
+    if coordinate not in {"x", "y"}:
+        raise ValueError("coordinate must be 'x' or 'y'.")
+
     tracks = {}
     for records in records_by_frame:
         for record in records:
@@ -395,7 +399,7 @@ def save_extrema_track_plot(
         records = sorted(tracks[track_id], key=lambda record: record["frame_index"])
         axis.plot(
             [record["time"] for record in records],
-            [record["x"] for record in records],
+            [record[coordinate] for record in records],
             color=color,
             marker="o",
             markersize=4,
@@ -404,8 +408,10 @@ def save_extrema_track_plot(
         )
 
     axis.set_xlabel("simulation time")
-    axis.set_ylabel("retained h-maximum x coordinate")
-    axis.set_title("Tracked retained h-maxima: x coordinate versus simulation time")
+    axis.set_ylabel(f"retained h-maximum {coordinate} coordinate")
+    axis.set_title(
+        f"Tracked retained h-maxima: {coordinate} coordinate versus simulation time"
+    )
     axis.grid(True, alpha=0.3)
     if tracks:
         legend_columns = max(1, math.ceil(len(tracks) / 20))
@@ -449,7 +455,8 @@ def main() -> int:
     hmaxima_path = output_folder / "hmaxima.h5"
     output_path = output_folder / "threshold_masks.h5"
     track_csv_path = output_folder / "threshold_hmaxima_tracks.csv"
-    track_plot_path = output_folder / "threshold_hmaxima_x_vs_time.png"
+    x_track_plot_path = output_folder / "threshold_hmaxima_x_vs_time.png"
+    y_track_plot_path = output_folder / "threshold_hmaxima_y_vs_time.png"
     records_by_frame = []
     frame_times = []
 
@@ -542,22 +549,34 @@ def main() -> int:
         minimum_track_points_setting,
     )
     write_extrema_tracks(track_csv_path, records_by_frame)
-    track_count = save_extrema_track_plot(
-        track_plot_path,
+    figure_size = (
+        float(config["plot"].get("figure_width", 10.0)),
+        float(config["plot"].get("figure_height", 7.0)),
+    )
+    x_track_count = save_extrema_track_plot(
+        x_track_plot_path,
         records_by_frame,
-        (
-            float(config["plot"].get("figure_width", 10.0)),
-            float(config["plot"].get("figure_height", 7.0)),
-        ),
+        figure_size,
+        "x",
+    )
+    y_track_count = save_extrema_track_plot(
+        y_track_plot_path,
+        records_by_frame,
+        figure_size,
+        "y",
     )
     print(f"Saved {track_csv_path}")
-    print(
-        f"Saved {track_plot_path} "
-        f"({track_count} tracks with at least {minimum_track_points_setting} points; "
-        f"discarded {discarded_track_count} shorter tracks)"
-    )
-    if track_count != retained_track_count:
-        raise RuntimeError("The plotted track count does not match the filtered track count.")
+    for track_plot_path, track_count in (
+        (x_track_plot_path, x_track_count),
+        (y_track_plot_path, y_track_count),
+    ):
+        print(
+            f"Saved {track_plot_path} "
+            f"({track_count} tracks with at least {minimum_track_points_setting} points; "
+            f"discarded {discarded_track_count} shorter tracks)"
+        )
+    if x_track_count != retained_track_count or y_track_count != retained_track_count:
+        raise RuntimeError("A plotted track count does not match the filtered track count.")
     if args.no_preview:
         return 0
     print("Batch calculation complete. Starting terminal frame prompt.")

@@ -107,8 +107,9 @@ on the plot. After tracking, any track with fewer than
 `tracking.minimum_track_points` observed detections is discarded. Results are
 saved to `threshold_hmaxima_tracks.csv`, including blank track IDs for
 unconfirmed or discarded extrema, and
-`threshold_hmaxima_x_vs_time.png`, where each confirmed track has its own
-color. These two files are also created with `--no-preview`.
+`threshold_hmaxima_x_vs_time.png` and `threshold_hmaxima_y_vs_time.png`, where
+each confirmed track has its own consistent color. These files are also
+created with `--no-preview`.
 
 Make PNG frames and a GIF from any saved vortex HDF5 file:
 
@@ -244,6 +245,7 @@ Everything goes to `outputs/<run_name>/`:
 hmaxima.h5                    hmaxima_preview.png
 threshold_masks.h5            threshold_masks_preview.png
 threshold_hmaxima_tracks.csv   threshold_hmaxima_x_vs_time.png
+threshold_hmaxima_y_vs_time.png
 regions.h5                    regions_preview.png
 fits.h5                       fits_preview.png
 positive_vortex_metrics.csv   positive_vortex_metrics_preview.png

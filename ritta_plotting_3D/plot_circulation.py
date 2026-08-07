@@ -1,18 +1,21 @@
 #!/usr/bin/env pvpython
-"""Plot and animate leading-vortex circulation from 3D vortex-ring snapshots.
+"""Plot circulation and Lamb's center for a 3D vortex ring.
 
 Usage:
     pvbatch plot_circulation.py OUTPUT_FOLDER [STRIDE] [--config CONFIG_FILE]
-        [--view-only]
+        [--center-threshold-fraction FRACTION] [--view-only]
 
 ``OUTPUT_FOLDER`` may be the folder containing ``flowTime_*.hdf5`` files or
 the run folder containing an ``output`` subfolder. The vortex ring is assumed
-to travel along x with its symmetry axis at y = z = 0. Outputs are saved under
-``ritta_plotting_3D/outputs``. View-only mode creates just PNG frames and a GIF.
+to travel along x with its symmetry axis at y = z = 0. The center calculation
+uses the positive-y half of the z=0 meridional slice, so its y coordinate is
+the radial center coordinate. Outputs are saved under ``ritta_plotting_3D/outputs``.
+View-only mode creates just PNG frames and a GIF.
 """
 
 import argparse
 import csv
+import math
 import re
 import shutil
 import subprocess
@@ -35,6 +38,11 @@ CLIP_ORIGIN = [0.0, 0.0, 0.0]
 CLIP_NORMAL = [0.0, 1.0, 0.0]
 CLIP_INVERT = 0
 VORTICITY_THRESHOLD_FRACTION = 0.02
+# Lamb-center core cutoff as a fraction of the maximum absolute vorticity.
+# This is independently configurable with --center-threshold-fraction.
+CENTER_THRESHOLD_FRACTION = 0.4
+R2_VORTICITY_ARRAY = "center_r2_vorticity"
+X_R2_VORTICITY_ARRAY = "center_x_r2_vorticity"
 CONTOUR_COLOR = [0.0, 0.0, 0.0]
 CONTOUR_LINE_WIDTH = 3.0
 PLOT_RESOLUTION = [1200, 800]
@@ -53,11 +61,25 @@ def positive_integer(value):
     return number
 
 
+def threshold_fraction(value):
+    try:
+        fraction = float(value)
+    except ValueError as error:
+        raise argparse.ArgumentTypeError(
+            "center threshold fraction must be a number"
+        ) from error
+    if not 0.0 < fraction <= 1.0:
+        raise argparse.ArgumentTypeError(
+            "center threshold fraction must be greater than 0 and at most 1"
+        )
+    return fraction
+
+
 def parse_args():
     parser = argparse.ArgumentParser(
         description=(
-            "Render a 2D vortex-ring slice and optionally calculate, plot, "
-            "and animate leading-vortex circulation."
+            "Render a 2D vortex-ring slice and calculate leading-vortex "
+            "circulation and Lamb-center coordinates."
         )
     )
     parser.add_argument(
@@ -84,11 +106,20 @@ def parse_args():
         ),
     )
     parser.add_argument(
+        "--center-threshold-fraction",
+        type=threshold_fraction,
+        default=CENTER_THRESHOLD_FRACTION,
+        help=(
+            "vorticity-core cutoff as a fraction of maximum absolute "
+            f"vorticity (default: {CENTER_THRESHOLD_FRACTION:g})"
+        ),
+    )
+    parser.add_argument(
         "--view-only",
         action="store_true",
         help=(
             "generate only positive-half-slice PNG frames and a GIF; skip "
-            "the contour and all circulation analysis"
+            "the contour, circulation, and center analysis"
         ),
     )
     return parser.parse_args()
@@ -252,6 +283,8 @@ def output_paths(snapshot_folder, view_only):
         output_folder / gif_name,
         output_folder / "leading_vortex_circulation.csv",
         output_folder / "leading_vortex_circulation.png",
+        output_folder / "leading_vortex_center_x.png",
+        output_folder / "leading_vortex_center_y.png",
     )
 
 
@@ -295,7 +328,70 @@ def fetched_scalar(dataset, array_name):
     raise RuntimeError(f"Integrated output is missing array {array_name}")
 
 
-def build_leading_region(simple, snapshot, analyze=True):
+def lamb_center_from_moments(
+    vorticity_integral,
+    r2_vorticity_integral,
+    x_r2_vorticity_integral,
+):
+    """Return (x_c, r_c) from Lamb's signed-vorticity moment equations."""
+    values = (
+        vorticity_integral,
+        r2_vorticity_integral,
+        x_r2_vorticity_integral,
+    )
+    if not all(math.isfinite(value) for value in values):
+        return math.nan, math.nan
+    if vorticity_integral == 0.0 or r2_vorticity_integral == 0.0:
+        return math.nan, math.nan
+
+    radial_center_squared = r2_vorticity_integral / vorticity_integral
+    if radial_center_squared < 0.0:
+        return math.nan, math.nan
+
+    axial_center = x_r2_vorticity_integral / r2_vorticity_integral
+    return axial_center, math.sqrt(radial_center_squared)
+
+
+def extract_largest_region(simple, input_proxy, fraction, name):
+    threshold = simple.Threshold(
+        registrationName=f"{name}Threshold",
+        Input=input_proxy,
+    )
+    threshold.Scalars = ["POINTS", "normalized_normal_vorticity"]
+    threshold.UpperThreshold = fraction
+    threshold.ThresholdMethod = "Above Upper Threshold"
+    threshold.UpdatePipeline()
+    threshold_cells = threshold.GetDataInformation().GetNumberOfCells()
+    if threshold_cells == 0:
+        return None, 0, 0
+
+    merge_blocks = simple.MergeBlocks(
+        registrationName=f"Merge{name}ThresholdBlocks",
+        Input=threshold,
+    )
+    merge_blocks.OutputDataSetType = "Unstructured Grid"
+    merge_blocks.MergePartitionsOnly = 0
+    merge_blocks.MergePoints = 1
+    merge_blocks.Tolerance = 0.0
+
+    connectivity = simple.Connectivity(
+        registrationName=f"{name}Region",
+        Input=merge_blocks,
+    )
+    connectivity.ExtractionMode = "Extract Largest Region"
+    connectivity.UpdatePipeline()
+    region_cells = connectivity.GetDataInformation().GetNumberOfCells()
+    if region_cells == 0:
+        return None, threshold_cells, 0
+    return connectivity, threshold_cells, region_cells
+
+
+def build_leading_regions(
+    simple,
+    snapshot,
+    center_threshold_fraction=CENTER_THRESHOLD_FRACTION,
+    analyze=True,
+):
     source = simple.VisItChomboReader(
         registrationName=snapshot.name,
         FileName=[str(snapshot)],
@@ -332,61 +428,41 @@ def build_leading_region(simple, snapshot, analyze=True):
     omega_min, omega_max = point_array_range(clip, VORTICITY_COMPONENT)
     peak_vorticity = max(abs(omega_min), abs(omega_max))
     if not analyze or peak_vorticity == 0.0:
-        return None, clip, None, peak_vorticity, 0, 0
+        return None, None, clip, None, peak_vorticity, 0, 0, 0, 0
 
     normalized_vorticity = simple.PythonCalculator(
         registrationName="NormalizedNormalVorticity",
         Input=clip,
     )
     normalized_vorticity.Expression = (
-        f"abs({VORTICITY_COMPONENT}) / max(abs({VORTICITY_COMPONENT}))"
+        f"abs({VORTICITY_COMPONENT}) / {peak_vorticity:.17g}"
     )
     normalized_vorticity.ArrayName = "normalized_normal_vorticity"
 
-    threshold = simple.Threshold(
-        registrationName="TwoPercentVorticityThreshold",
-        Input=normalized_vorticity,
+    circulation_region, threshold_cells, leading_cells = extract_largest_region(
+        simple,
+        normalized_vorticity,
+        VORTICITY_THRESHOLD_FRACTION,
+        "LeadingVortex",
     )
-    threshold.Scalars = ["POINTS", "normalized_normal_vorticity"]
-    threshold.UpperThreshold = VORTICITY_THRESHOLD_FRACTION
-    threshold.ThresholdMethod = "Above Upper Threshold"
-    threshold.UpdatePipeline()
-    threshold_cells = threshold.GetDataInformation().GetNumberOfCells()
-    if threshold_cells == 0:
-        return None, clip, normalized_vorticity, peak_vorticity, 0, 0
-
-    merge_blocks = simple.MergeBlocks(
-        registrationName="MergeThresholdBlocks",
-        Input=threshold,
-    )
-    merge_blocks.OutputDataSetType = "Unstructured Grid"
-    merge_blocks.MergePartitionsOnly = 0
-    merge_blocks.MergePoints = 1
-    merge_blocks.Tolerance = 0.0
-
-    connectivity = simple.Connectivity(
-        registrationName="LeadingVortexRegion",
-        Input=merge_blocks,
-    )
-    connectivity.ExtractionMode = "Extract Largest Region"
-    connectivity.UpdatePipeline()
-    leading_cells = connectivity.GetDataInformation().GetNumberOfCells()
-    if leading_cells == 0:
-        return (
-            None,
-            clip,
+    center_region, center_threshold_cells, center_region_cells = (
+        extract_largest_region(
+            simple,
             normalized_vorticity,
-            peak_vorticity,
-            threshold_cells,
-            0,
+            center_threshold_fraction,
+            "LambCenterCore",
         )
+    )
     return (
-        connectivity,
+        circulation_region,
+        center_region,
         clip,
         normalized_vorticity,
         peak_vorticity,
         threshold_cells,
         leading_cells,
+        center_threshold_cells,
+        center_region_cells,
     )
 
 
@@ -411,7 +487,7 @@ def padded_camera_bounds(bounds):
 def determine_camera_bounds(simple, snapshots):
     for snapshot in reversed(snapshots):
         simple.ResetSession()
-        _, clip, _, _, _, _ = build_leading_region(
+        _, _, clip, _, _, _, _, _, _ = build_leading_regions(
             simple,
             snapshot.resolve(),
             analyze=False,
@@ -535,63 +611,120 @@ def calculate_and_render(
     snapshot,
     png_path,
     camera_bounds,
+    center_threshold_fraction=CENTER_THRESHOLD_FRACTION,
     analyze=True,
 ):
     # Resetting between snapshots avoids reader cache and time-state errors
     # observed when Chombo files are loaded as one ParaView file series.
     simple.ResetSession()
     (
-        connectivity,
+        circulation_region,
+        center_region,
         clip,
         normalized_vorticity,
         peak_vorticity,
         threshold_cells,
         leading_cells,
-    ) = build_leading_region(simple, snapshot, analyze=analyze)
+        center_threshold_cells,
+        center_region_cells,
+    ) = build_leading_regions(
+        simple,
+        snapshot,
+        center_threshold_fraction=center_threshold_fraction,
+        analyze=analyze,
+    )
 
     circulation = 0.0
-    if analyze and connectivity is not None:
+    if analyze and circulation_region is not None:
         integrate = simple.IntegrateVariables(
             registrationName="LeadingVortexIntegral",
-            Input=connectivity,
+            Input=circulation_region,
         )
         integrate.UpdatePipeline()
         integrated_data = servermanager.Fetch(integrate)
         circulation = abs(fetched_scalar(integrated_data, VORTICITY_COMPONENT))
 
+    center_x = math.nan
+    center_y = math.nan
+    if analyze and center_region is not None:
+        r2_vorticity = simple.Calculator(
+            registrationName="LambCenterR2Vorticity",
+            Input=center_region,
+        )
+        r2_vorticity.Function = (
+            f"coordsY * coordsY * {VORTICITY_COMPONENT}"
+        )
+        r2_vorticity.ResultArrayName = R2_VORTICITY_ARRAY
+
+        x_r2_vorticity = simple.Calculator(
+            registrationName="LambCenterXR2Vorticity",
+            Input=r2_vorticity,
+        )
+        x_r2_vorticity.Function = f"coordsX * {R2_VORTICITY_ARRAY}"
+        x_r2_vorticity.ResultArrayName = X_R2_VORTICITY_ARRAY
+
+        center_integral = simple.IntegrateVariables(
+            registrationName="LambCenterMoments",
+            Input=x_r2_vorticity,
+        )
+        center_integral.UpdatePipeline()
+        center_data = servermanager.Fetch(center_integral)
+        center_x, center_y = lamb_center_from_moments(
+            fetched_scalar(center_data, VORTICITY_COMPONENT),
+            fetched_scalar(center_data, R2_VORTICITY_ARRAY),
+            fetched_scalar(center_data, X_R2_VORTICITY_ARRAY),
+        )
+
     render_slice(
         simple,
         clip,
         normalized_vorticity,
-        connectivity,
+        circulation_region,
         peak_vorticity,
         png_path,
         camera_bounds,
     )
-    return circulation, peak_vorticity, threshold_cells, leading_cells
+    return (
+        circulation,
+        peak_vorticity,
+        threshold_cells,
+        leading_cells,
+        center_x,
+        center_y,
+        center_threshold_cells,
+        center_region_cells,
+    )
 
 
-def write_plot(simple, csv_path, png_path):
+def write_time_series_plot(
+    simple,
+    csv_path,
+    png_path,
+    series_name,
+    chart_title,
+    y_axis_title,
+    series_label,
+):
     simple.ResetSession()
 
     reader = simple.CSVReader(
-        registrationName="CirculationData",
+        registrationName=f"{series_name}Data",
         FileName=[str(csv_path)],
     )
     reader.UpdatePipeline()
 
     chart = simple.CreateView("XYChartView")
     chart.ViewSize = PLOT_RESOLUTION
-    chart.ChartTitle = "Circulation of the leading vortex"
-    chart.LeftAxisTitle = "Circulation"
+    chart.ChartTitle = chart_title
+    chart.LeftAxisTitle = y_axis_title
     chart.BottomAxisTitle = "Time"
 
     display = simple.Show(reader, chart, "XYChartRepresentation")
     display.UseIndexForXAxis = 0
     display.XArrayName = "time"
-    display.SeriesVisibility = ["circulation"]
-    display.SeriesLabel = ["circulation", "Leading vortex circulation"]
-    display.SeriesLineThickness = ["circulation", "3"]
+    display.SeriesVisibility = [series_name]
+    display.SeriesLabel = [series_name, series_label]
+    display.SeriesLineThickness = [series_name, "3"]
 
     simple.Render(chart)
     simple.SaveScreenshot(
@@ -691,7 +824,9 @@ def main():
             frames_folder,
             gif_path,
             csv_path,
-            plot_path,
+            circulation_plot_path,
+            center_x_plot_path,
+            center_y_plot_path,
         ) = output_paths(snapshot_folder, args.view_only)
         output_folder.mkdir(parents=True, exist_ok=True)
         prepare_frames_folder(frames_folder)
@@ -710,8 +845,15 @@ def main():
         print(f"PNG frames:      {frames_folder}", flush=True)
         print(f"Output GIF:      {gif_path}", flush=True)
         if not args.view_only:
+            print(
+                "Center threshold: "
+                f"{args.center_threshold_fraction:g} of max |vorticity|",
+                flush=True,
+            )
             print(f"Output CSV:      {csv_path}", flush=True)
-            print(f"Output plot:     {plot_path}", flush=True)
+            print(f"Circulation plot: {circulation_plot_path}", flush=True)
+            print(f"Center x plot:    {center_x_plot_path}", flush=True)
+            print(f"Center y plot:    {center_y_plot_path}", flush=True)
 
         csv_file = None
         writer = None
@@ -727,6 +869,11 @@ def main():
                     "peak_vorticity",
                     "threshold_cells",
                     "leading_region_cells",
+                    "center_threshold_fraction",
+                    "center_threshold_cells",
+                    "center_region_cells",
+                    "center_x",
+                    "center_y",
                     "snapshot_file",
                     "png_file",
                 ]
@@ -747,12 +894,17 @@ def main():
                     peak_vorticity,
                     threshold_cells,
                     leading_cells,
+                    center_x,
+                    center_y,
+                    center_threshold_cells,
+                    center_region_cells,
                 ) = calculate_and_render(
                     simple,
                     servermanager,
                     snapshot.resolve(),
                     frame_path,
                     camera_bounds,
+                    center_threshold_fraction=args.center_threshold_fraction,
                     analyze=not args.view_only,
                 )
                 if writer is not None:
@@ -765,6 +917,11 @@ def main():
                             f"{peak_vorticity:.16g}",
                             threshold_cells,
                             leading_cells,
+                            f"{args.center_threshold_fraction:.16g}",
+                            center_threshold_cells,
+                            center_region_cells,
+                            f"{center_x:.16g}",
+                            f"{center_y:.16g}",
                             str(snapshot.resolve()),
                             str(frame_path.resolve()),
                         ]
@@ -772,7 +929,8 @@ def main():
                     csv_file.flush()
                     print(
                         f"    time={time:.8g}, "
-                        f"circulation={circulation:.8g}",
+                        f"circulation={circulation:.8g}, "
+                        f"center=({center_x:.8g}, {center_y:.8g})",
                         flush=True,
                     )
                 else:
@@ -782,14 +940,42 @@ def main():
                 csv_file.close()
 
         if not args.view_only:
-            write_plot(simple, csv_path, plot_path)
+            write_time_series_plot(
+                simple,
+                csv_path,
+                circulation_plot_path,
+                "circulation",
+                "Circulation of the leading vortex",
+                "Circulation",
+                "Leading vortex circulation",
+            )
+            write_time_series_plot(
+                simple,
+                csv_path,
+                center_x_plot_path,
+                "center_x",
+                "Axial center of the leading vortex",
+                "Center x-coordinate",
+                "Lamb center x",
+            )
+            write_time_series_plot(
+                simple,
+                csv_path,
+                center_y_plot_path,
+                "center_y",
+                "Radial center of the leading vortex",
+                "Center y-coordinate",
+                "Lamb center y",
+            )
         build_gif(frames_folder, snapshots, gif_path)
         simple.ResetSession()
         print(f"GIF:  {gif_path}", flush=True)
         print(f"PNGs: {frames_folder}", flush=True)
         if not args.view_only:
-            print(f"Plot: {plot_path}", flush=True)
-            print(f"Data: {csv_path}", flush=True)
+            print(f"Circulation plot: {circulation_plot_path}", flush=True)
+            print(f"Center x plot:    {center_x_plot_path}", flush=True)
+            print(f"Center y plot:    {center_y_plot_path}", flush=True)
+            print(f"Data:             {csv_path}", flush=True)
         return 0
     except (OSError, RuntimeError, ValueError, subprocess.CalledProcessError) as error:
         print(f"Error: {error}", file=sys.stderr, flush=True)

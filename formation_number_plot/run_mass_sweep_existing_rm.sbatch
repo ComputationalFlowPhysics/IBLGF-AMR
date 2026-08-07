@@ -5,7 +5,7 @@
 
 #SBATCH -A mch250004p
 #SBATCH -p RM
-#SBATCH -N 1
+#SBATCH -N 2
 #SBATCH --ntasks-per-node=128
 #SBATCH -t 48:00:00
 #SBATCH -J massfreq
@@ -18,7 +18,8 @@ repo_root="/ocean/projects/mch250004p/mchoi10/IBLGF-AMR"
 submit_dir="${SLURM_SUBMIT_DIR:-$PWD}"
 configs_input="${1:-${CONFIGS_DIR:-$repo_root/formation_number_plot/mass_configs}}"
 config_glob="${2:-${CONFIG_GLOB:-*.cfg}}"
-mpi_ranks="${MPI_RANKS:-32}"
+#mpi_ranks="${MPI_RANKS:-32}"
+mpi_ranks="${MPI_RANKS:-256}"
 progress_interval="${PROGRESS_INTERVAL:-20}"
 logs_dir="${LOGS_DIR:-$repo_root/formation_number_plot/mass_logs_remote/${SLURM_JOB_ID:-manual}}"
 

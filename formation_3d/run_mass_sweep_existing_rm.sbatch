@@ -4,7 +4,7 @@
 
 #SBATCH -A mch250004p
 #SBATCH -p RM
-#SBATCH -N 1
+#SBATCH -N 5
 #SBATCH --ntasks-per-node=128
 #SBATCH --exclusive
 #SBATCH -t 48:00:00
@@ -18,7 +18,8 @@ repo_root="/ocean/projects/mch250004p/mchoi10/IBLGF-AMR"
 submit_dir="${SLURM_SUBMIT_DIR:-$PWD}"
 configs_input="${1:-${CONFIGS_DIR:-$repo_root/formation_3d/mass_configs}}"
 config_glob="${2:-${CONFIG_GLOB:-*.cfg}}"
-mpi_ranks="${MPI_RANKS:-32}"
+# mpi_ranks="${MPI_RANKS:-32}"
+mpi_ranks="${MPI_RANKS:-640}"
 progress_interval="${PROGRESS_INTERVAL:-20}"
 
 if [[ "$configs_input" = /* ]]; then

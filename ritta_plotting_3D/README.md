@@ -42,4 +42,22 @@ Results are written to
 - `leading_vortex_circulation.png` plots circulation versus time.
 - `leading_vortex_center_x.png` plots axial center versus time.
 - `leading_vortex_center_y.png` plots radial center versus time.
-- `leading_vortex_connectivity.gif` and `frames/` contain the slice rendering.
+- `leading_vortex_connectivity.gif` and `frames/` contain the slice rendering;
+  the bright green point marks the calculated center in every valid frame.
+
+## Resolution-comparison plots
+
+Combine circulation and axial-center histories for every immediate child run
+in a resolution-sweep folder:
+
+```bash
+source ritta_vortex_identification/open_viewer_venv.sh
+./ritta_plotting_3D/run_resolution_comparison.sh \
+    runs/ns_amr_lgf/res_sweep 1 0.4
+```
+
+Existing per-run `leading_vortex_circulation.csv` files are reused. The wrapper
+runs the circulation analysis only for cases whose CSV is missing, then saves
+`combined_circulation_vs_time.png` and `combined_center_x_vs_time.png` under
+`ritta_plotting_3D/outputs/res_sweep_comparison/`. Legends show each case's
+`dx_base`, `nLevels`, and finest spacing `dx_base / 2^nLevels`.

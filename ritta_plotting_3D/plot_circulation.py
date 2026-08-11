@@ -45,6 +45,8 @@ R2_VORTICITY_ARRAY = "center_r2_vorticity"
 X_R2_VORTICITY_ARRAY = "center_x_r2_vorticity"
 CONTOUR_COLOR = [0.0, 0.0, 0.0]
 CONTOUR_LINE_WIDTH = 3.0
+CENTER_MARKER_COLOR = [0.1, 0.8, 0.1]
+CENTER_MARKER_SIZE = 18.0
 PLOT_RESOLUTION = [1200, 800]
 FRAME_RESOLUTION = [1280, 720]
 CAMERA_MARGIN_FRACTION = 0.08
@@ -506,6 +508,8 @@ def render_slice(
     normalized_vorticity,
     connectivity,
     peak_vorticity,
+    center_x,
+    center_y,
     png_path,
     camera_bounds,
 ):
@@ -596,6 +600,24 @@ def render_slice(
         contour_display.DiffuseColor = CONTOUR_COLOR
         contour_display.LineWidth = CONTOUR_LINE_WIDTH
 
+    if math.isfinite(center_x) and math.isfinite(center_y):
+        center_marker = simple.PointSource(
+            registrationName="LambCenterMarker",
+        )
+        center_marker.Center = [center_x, center_y, SLICE_ORIGIN[2]]
+        center_marker.NumberOfPoints = 1
+        center_marker.Radius = 0.0
+
+        marker_display = simple.Show(
+            center_marker,
+            render_view,
+            "GeometryRepresentation",
+        )
+        marker_display.Representation = "Points"
+        marker_display.AmbientColor = CENTER_MARKER_COLOR
+        marker_display.DiffuseColor = CENTER_MARKER_COLOR
+        marker_display.PointSize = CENTER_MARKER_SIZE
+
     simple.SaveScreenshot(
         str(png_path),
         render_view,
@@ -681,6 +703,8 @@ def calculate_and_render(
         normalized_vorticity,
         circulation_region,
         peak_vorticity,
+        center_x,
+        center_y,
         png_path,
         camera_bounds,
     )

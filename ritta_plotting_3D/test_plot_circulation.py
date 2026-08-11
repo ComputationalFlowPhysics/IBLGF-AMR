@@ -3,11 +3,20 @@
 import argparse
 import math
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from plot_circulation import lamb_center_from_moments, threshold_fraction
+from plot_circulation import (
+    CENTER_MARKER_RADIUS,
+    CSV_FIELDNAMES,
+    TRANSPARENT_GIF_FILTER,
+    lamb_center_from_moments,
+    load_resume_rows,
+    threshold_fraction,
+    write_csv_rows,
+)
 
 
 class LambCenterTests(unittest.TestCase):
@@ -34,6 +43,49 @@ class LambCenterTests(unittest.TestCase):
         for invalid_value in ("0", "-0.1", "1.1"):
             with self.assertRaises(argparse.ArgumentTypeError):
                 threshold_fraction(invalid_value)
+
+    def test_center_marker_is_small(self):
+        self.assertGreater(CENTER_MARKER_RADIUS, 0.0)
+        self.assertLess(CENTER_MARKER_RADIUS, 0.1)
+
+    def test_gif_filter_preserves_transparency(self):
+        self.assertIn("reserve_transparent=1", TRANSPARENT_GIF_FILTER)
+        self.assertIn("alpha_threshold=128", TRANSPARENT_GIF_FILTER)
+
+    def test_resume_reuses_row_with_matching_nonempty_frame(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            folder = Path(temporary_directory)
+            snapshot = folder / "flowTime_32.hdf5"
+            frames_folder = folder / "frames"
+            frames_folder.mkdir()
+            frame_path = frames_folder / "flowTime_32.png"
+            frame_path.write_bytes(b"png")
+
+            row = {name: "" for name in CSV_FIELDNAMES}
+            row.update(
+                {
+                    "frame_index": "0",
+                    "snapshot_step": "32",
+                    "time": "0.1",
+                    "center_threshold_fraction": "0.4",
+                    "snapshot_file": str(snapshot),
+                    "png_file": str(frame_path),
+                }
+            )
+            csv_path = folder / "circulation.csv"
+            write_csv_rows(csv_path, [row])
+
+            reusable_rows = load_resume_rows(
+                csv_path,
+                [snapshot],
+                frames_folder,
+                cfl=0.1,
+                dx_base=0.0625,
+                levels=1,
+                center_threshold_fraction=0.4,
+            )
+
+            self.assertEqual(reusable_rows[32]["snapshot_step"], "32")
 
 
 if __name__ == "__main__":

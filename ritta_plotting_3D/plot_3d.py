@@ -38,6 +38,11 @@ CAMERA_POSITION = [15.25, 7, 14]
 CAMERA_FOCAL_POINT = [7, 1, 2]
 CAMERA_VIEW_UP = [0, 1, -0.2]
 CAMERA_PARALLEL_SCALE = 12.0
+TRANSPARENT_GIF_FILTER = (
+    "[0:v]split[gif][palette_source];"
+    "[palette_source]palettegen=stats_mode=diff:reserve_transparent=1[palette];"
+    "[gif][palette]paletteuse=dither=sierra2_4a:alpha_threshold=128"
+)
 
 
 def positive_integer(value):
@@ -345,6 +350,7 @@ def render_snapshot(simple, snapshot, png_path, field):
         str(png_path),
         render_view,
         ImageResolution=IMAGE_RESOLUTION,
+        TransparentBackground=1,
     )
 
     if not png_path.is_file() or png_path.stat().st_size == 0:
@@ -417,11 +423,7 @@ def build_gif(frames_folder, snapshots, gif_path):
                 "-i",
                 str(staging_folder / "frame_%05d.png"),
                 "-filter_complex",
-                (
-                    "[0:v]split[gif][palette_source];"
-                    "[palette_source]palettegen=stats_mode=diff[palette];"
-                    "[gif][palette]paletteuse=dither=sierra2_4a"
-                ),
+                TRANSPARENT_GIF_FILTER,
                 "-loop",
                 "0",
                 str(gif_path),

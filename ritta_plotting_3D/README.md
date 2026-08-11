@@ -43,7 +43,22 @@ Results are written to
 - `leading_vortex_center_x.png` plots axial center versus time.
 - `leading_vortex_center_y.png` plots radial center versus time.
 - `leading_vortex_connectivity.gif` and `frames/` contain the slice rendering;
-  the bright green point marks the calculated center in every valid frame.
+  a small bright-green circular marker shows the calculated center in every
+  valid frame. The render-view background is transparent in this GIF and in
+  the Q-criterion and vorticity GIFs made by `plot_3d.py`.
+
+If an analysis is interrupted, resume from its flushed CSV rows and existing
+PNG frames instead of recalculating completed snapshots:
+
+```bash
+./ritta_plotting_3D/run_circulation_analysis.sh RUN_FOLDER 1 --resume
+```
+
+On Bridges-2, submit the same resume operation to a full RM node with:
+
+```bash
+sbatch ritta_plotting_3D/run_circulation_analysis_rm.sbatch RUN_FOLDER 1
+```
 
 ## Resolution-comparison plots
 

@@ -3,7 +3,7 @@
 
 Usage:
     pvbatch plot_circulation.py OUTPUT_FOLDER [STRIDE] [--config CONFIG_FILE]
-        [--center-threshold-fraction FRACTION] [--view-only]
+        [--center-threshold-fraction FRACTION] [--view-only] [--resume]
 
 ``OUTPUT_FOLDER`` may be the folder containing ``flowTime_*.hdf5`` files or
 the run folder containing an ``output`` subfolder. The vortex ring is assumed
@@ -46,11 +46,32 @@ X_R2_VORTICITY_ARRAY = "center_x_r2_vorticity"
 CONTOUR_COLOR = [0.0, 0.0, 0.0]
 CONTOUR_LINE_WIDTH = 3.0
 CENTER_MARKER_COLOR = [0.1, 0.8, 0.1]
-CENTER_MARKER_SIZE = 18.0
+CENTER_MARKER_RADIUS = 0.06
 PLOT_RESOLUTION = [1200, 800]
 FRAME_RESOLUTION = [1280, 720]
 CAMERA_MARGIN_FRACTION = 0.08
 FPS = 8
+CSV_FIELDNAMES = [
+    "frame_index",
+    "snapshot_step",
+    "time",
+    "circulation",
+    "peak_vorticity",
+    "threshold_cells",
+    "leading_region_cells",
+    "center_threshold_fraction",
+    "center_threshold_cells",
+    "center_region_cells",
+    "center_x",
+    "center_y",
+    "snapshot_file",
+    "png_file",
+]
+TRANSPARENT_GIF_FILTER = (
+    "[0:v]split[gif][palette_source];"
+    "[palette_source]palettegen=stats_mode=diff:reserve_transparent=1[palette];"
+    "[gif][palette]paletteuse=dither=sierra2_4a:alpha_threshold=128"
+)
 
 
 def positive_integer(value):
@@ -122,6 +143,14 @@ def parse_args():
         help=(
             "generate only positive-half-slice PNG frames and a GIF; skip "
             "the contour, circulation, and center analysis"
+        ),
+    )
+    parser.add_argument(
+        "--resume",
+        action="store_true",
+        help=(
+            "reuse completed CSV rows and nonempty PNG frames, then process "
+            "only missing snapshots"
         ),
     )
     return parser.parse_args()
@@ -290,13 +319,109 @@ def output_paths(snapshot_folder, view_only):
     )
 
 
-def prepare_frames_folder(frames_folder):
+def prepare_frames_folder(frames_folder, resume=False):
     frames_folder.mkdir(parents=True, exist_ok=True)
+    if resume:
+        return
     for old_frame in frames_folder.iterdir():
         if old_frame.is_file() and re.fullmatch(
             r"flowTime_\d+\.png", old_frame.name
         ):
             old_frame.unlink()
+
+
+def write_csv_rows(csv_path, rows):
+    temporary_path = csv_path.with_suffix(f"{csv_path.suffix}.tmp")
+    with temporary_path.open("w", newline="") as csv_file:
+        writer = csv.DictWriter(csv_file, fieldnames=CSV_FIELDNAMES)
+        writer.writeheader()
+        writer.writerows(rows)
+    temporary_path.replace(csv_path)
+
+
+def load_resume_rows(
+    csv_path,
+    snapshots,
+    frames_folder,
+    cfl,
+    dx_base,
+    levels,
+    center_threshold_fraction,
+):
+    if not csv_path.is_file():
+        return {}
+
+    with csv_path.open(newline="") as csv_file:
+        reader = csv.DictReader(csv_file)
+        missing_columns = [
+            name for name in CSV_FIELDNAMES if name not in (reader.fieldnames or [])
+        ]
+        if missing_columns:
+            raise ValueError(
+                "Cannot resume because the existing CSV is missing columns: "
+                + ", ".join(missing_columns)
+            )
+        rows_by_step = {}
+        for line_number, row in enumerate(reader, start=2):
+            try:
+                step = int(row["snapshot_step"])
+            except (TypeError, ValueError) as error:
+                raise ValueError(
+                    f"Cannot resume: invalid snapshot_step on CSV line {line_number}"
+                ) from error
+            if step in rows_by_step:
+                raise ValueError(
+                    f"Cannot resume: duplicate snapshot step {step} in {csv_path}"
+                )
+            rows_by_step[step] = row
+
+    reusable_rows = {}
+    for frame_index, snapshot in enumerate(snapshots):
+        step = snapshot_step(snapshot)
+        row = rows_by_step.get(step)
+        if row is None:
+            continue
+
+        try:
+            saved_index = int(row["frame_index"])
+            saved_time = float(row["time"])
+            saved_fraction = float(row["center_threshold_fraction"])
+        except (TypeError, ValueError) as error:
+            raise ValueError(
+                f"Cannot resume: invalid metadata for snapshot step {step}"
+            ) from error
+
+        expected_time = physical_time(step, cfl, dx_base, levels)
+        if saved_index != frame_index or not math.isclose(
+            saved_time,
+            expected_time,
+            rel_tol=1.0e-12,
+            abs_tol=1.0e-12,
+        ):
+            raise ValueError(
+                "Cannot resume because the stride or time metadata differs "
+                f"at snapshot step {step}."
+            )
+        if not math.isclose(
+            saved_fraction,
+            center_threshold_fraction,
+            rel_tol=1.0e-12,
+            abs_tol=1.0e-12,
+        ):
+            raise ValueError(
+                "Cannot resume because --center-threshold-fraction differs "
+                f"at snapshot step {step}."
+            )
+        if Path(row["snapshot_file"]).name != snapshot.name:
+            raise ValueError(
+                f"Cannot resume: source snapshot differs at step {step}."
+            )
+
+        frame_path = frames_folder / f"flowTime_{step}.png"
+        if frame_path.is_file() and frame_path.stat().st_size > 0:
+            reusable_rows[step] = row
+
+    return reusable_rows
 
 
 def load_paraview():
@@ -601,27 +726,28 @@ def render_slice(
         contour_display.LineWidth = CONTOUR_LINE_WIDTH
 
     if math.isfinite(center_x) and math.isfinite(center_y):
-        center_marker = simple.PointSource(
+        center_marker = simple.Sphere(
             registrationName="LambCenterMarker",
         )
         center_marker.Center = [center_x, center_y, SLICE_ORIGIN[2]]
-        center_marker.NumberOfPoints = 1
-        center_marker.Radius = 0.0
+        center_marker.Radius = CENTER_MARKER_RADIUS
+        center_marker.ThetaResolution = 24
+        center_marker.PhiResolution = 24
 
         marker_display = simple.Show(
             center_marker,
             render_view,
             "GeometryRepresentation",
         )
-        marker_display.Representation = "Points"
+        marker_display.Representation = "Surface"
         marker_display.AmbientColor = CENTER_MARKER_COLOR
         marker_display.DiffuseColor = CENTER_MARKER_COLOR
-        marker_display.PointSize = CENTER_MARKER_SIZE
 
     simple.SaveScreenshot(
         str(png_path),
         render_view,
         ImageResolution=FRAME_RESOLUTION,
+        TransparentBackground=1,
     )
     if not png_path.is_file() or png_path.stat().st_size == 0:
         raise RuntimeError(f"ParaView did not create a valid PNG: {png_path}")
@@ -817,11 +943,7 @@ def build_gif(frames_folder, snapshots, gif_path):
                 "-i",
                 str(staging_folder / "frame_%05d.png"),
                 "-filter_complex",
-                (
-                    "[0:v]split[gif][palette_source];"
-                    "[palette_source]palettegen=stats_mode=diff[palette];"
-                    "[gif][palette]paletteuse=dither=sierra2_4a"
-                ),
+                TRANSPARENT_GIF_FILTER,
                 "-loop",
                 "0",
                 str(gif_path),
@@ -853,7 +975,7 @@ def main():
             center_y_plot_path,
         ) = output_paths(snapshot_folder, args.view_only)
         output_folder.mkdir(parents=True, exist_ok=True)
-        prepare_frames_folder(frames_folder)
+        prepare_frames_folder(frames_folder, resume=args.resume)
         simple, servermanager = load_paraview()
         camera_bounds, camera_snapshot = determine_camera_bounds(simple, snapshots)
 
@@ -866,6 +988,7 @@ def main():
         print(f"nLevels:         {levels}", flush=True)
         print(f"Camera reference: {camera_snapshot.name}", flush=True)
         print(f"View only:        {args.view_only}", flush=True)
+        print(f"Resume:           {args.resume}", flush=True)
         print(f"PNG frames:      {frames_folder}", flush=True)
         print(f"Output GIF:      {gif_path}", flush=True)
         if not args.view_only:
@@ -879,28 +1002,33 @@ def main():
             print(f"Center x plot:    {center_x_plot_path}", flush=True)
             print(f"Center y plot:    {center_y_plot_path}", flush=True)
 
+        reusable_rows = {}
         csv_file = None
         writer = None
         if not args.view_only:
-            csv_file = csv_path.open("w", newline="")
-            writer = csv.writer(csv_file)
-            writer.writerow(
+            if args.resume:
+                reusable_rows = load_resume_rows(
+                    csv_path,
+                    snapshots,
+                    frames_folder,
+                    cfl,
+                    dx_base,
+                    levels,
+                    args.center_threshold_fraction,
+                )
+            write_csv_rows(
+                csv_path,
                 [
-                    "frame_index",
-                    "snapshot_step",
-                    "time",
-                    "circulation",
-                    "peak_vorticity",
-                    "threshold_cells",
-                    "leading_region_cells",
-                    "center_threshold_fraction",
-                    "center_threshold_cells",
-                    "center_region_cells",
-                    "center_x",
-                    "center_y",
-                    "snapshot_file",
-                    "png_file",
-                ]
+                    reusable_rows[snapshot_step(snapshot)]
+                    for snapshot in snapshots
+                    if snapshot_step(snapshot) in reusable_rows
+                ],
+            )
+            csv_file = csv_path.open("a", newline="")
+            writer = csv.DictWriter(csv_file, fieldnames=CSV_FIELDNAMES)
+            print(
+                f"Reusable completed frames: {len(reusable_rows)}",
+                flush=True,
             )
 
         try:
@@ -908,6 +1036,19 @@ def main():
                 step = snapshot_step(snapshot)
                 time = physical_time(step, cfl, dx_base, levels)
                 frame_path = frames_folder / f"flowTime_{step}.png"
+                reusable_view = (
+                    args.view_only
+                    and frame_path.is_file()
+                    and frame_path.stat().st_size > 0
+                )
+                reusable_analysis = not args.view_only and step in reusable_rows
+                if args.resume and (reusable_view or reusable_analysis):
+                    print(
+                        f"[{frame_index + 1}/{len(snapshots)}] "
+                        f"Reusing {snapshot.name}",
+                        flush=True,
+                    )
+                    continue
                 print(
                     f"[{frame_index + 1}/{len(snapshots)}] "
                     f"Analyzing {snapshot.name}",
@@ -932,24 +1073,26 @@ def main():
                     analyze=not args.view_only,
                 )
                 if writer is not None:
-                    writer.writerow(
-                        [
-                            frame_index,
-                            step,
-                            f"{time:.15g}",
-                            f"{circulation:.16g}",
-                            f"{peak_vorticity:.16g}",
-                            threshold_cells,
-                            leading_cells,
-                            f"{args.center_threshold_fraction:.16g}",
-                            center_threshold_cells,
-                            center_region_cells,
-                            f"{center_x:.16g}",
-                            f"{center_y:.16g}",
-                            str(snapshot.resolve()),
-                            str(frame_path.resolve()),
-                        ]
-                    )
+                    row = {
+                        "frame_index": frame_index,
+                        "snapshot_step": step,
+                        "time": f"{time:.15g}",
+                        "circulation": f"{circulation:.16g}",
+                        "peak_vorticity": f"{peak_vorticity:.16g}",
+                        "threshold_cells": threshold_cells,
+                        "leading_region_cells": leading_cells,
+                        "center_threshold_fraction": (
+                            f"{args.center_threshold_fraction:.16g}"
+                        ),
+                        "center_threshold_cells": center_threshold_cells,
+                        "center_region_cells": center_region_cells,
+                        "center_x": f"{center_x:.16g}",
+                        "center_y": f"{center_y:.16g}",
+                        "snapshot_file": str(snapshot.resolve()),
+                        "png_file": str(frame_path.resolve()),
+                    }
+                    writer.writerow(row)
+                    reusable_rows[step] = row
                     csv_file.flush()
                     print(
                         f"    time={time:.8g}, "
@@ -962,6 +1105,12 @@ def main():
         finally:
             if csv_file is not None:
                 csv_file.close()
+
+        if not args.view_only:
+            write_csv_rows(
+                csv_path,
+                [reusable_rows[snapshot_step(snapshot)] for snapshot in snapshots],
+            )
 
         if not args.view_only:
             write_time_series_plot(

@@ -12,11 +12,12 @@ pvbatch="${paraview_bin_dir}/pvbatch"
 usage() {
   cat <<EOF
 Usage:
-  $(basename "$0") RUN_FOLDER [STRIDE] [--center-threshold-fraction FRACTION] [--config CONFIG_FILE]
+  $(basename "$0") RUN_FOLDER [STRIDE] [--center-threshold-fraction FRACTION] [--config CONFIG_FILE] [--resume]
 
 Examples:
   $(basename "$0") runs/ns_amr_lgf/res_sweep/amr_1 1
   $(basename "$0") runs/ns_amr_lgf/res_sweep/amr_1 1 --center-threshold-fraction 0.4
+  $(basename "$0") runs/ns_amr_lgf/res_sweep/amr_2 1 --resume
 
 Outputs:
   circulation CSV and plot, x-center plot, y-center plot, slice frames, and GIF

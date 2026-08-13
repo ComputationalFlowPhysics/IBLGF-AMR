@@ -1,10 +1,12 @@
 """Create positive and negative vorticity-threshold masks for every frame."""
 
 import argparse
+from concurrent.futures import ProcessPoolExecutor
 import csv
 import math
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 
@@ -175,6 +177,99 @@ def extrema_records(frame_index: int, frame: dict) -> List[dict]:
             "peak_vorticity": float(peak_vorticity),
         })
     return records
+
+
+def process_mask_to_shard(task: tuple) -> tuple:
+    """Calculate one threshold-mask frame and save its large arrays locally."""
+    hmaxima_path, group_name, frame_index, threshold, minimum_area, shard_path = task
+    with h5py.File(hmaxima_path, "r") as maxima:
+        source = maxima[group_name]
+        frame = frame_from_hmaxima(source)
+        result = make_masks(frame, threshold, minimum_area)
+        result.update(retained_extrema(result, source))
+
+    with h5py.File(shard_path, "w") as shard:
+        save_frame(shard.create_group(group_name), result)
+
+    return (
+        group_name,
+        shard_path,
+        result["source_filename"],
+        len(result["positive_region_areas"]),
+        result["positive_regions_found"],
+        len(result["negative_region_areas"]),
+        result["negative_regions_found"],
+        len(result["extrema_x"]),
+        result["extrema_found"],
+        extrema_records(frame_index, result),
+        float(result["time"]),
+    )
+
+
+def calculate_masks_parallel(
+    hmaxima_path: Path,
+    output_path: Path,
+    group_names: List[str],
+    threshold: float,
+    minimum_area: float,
+    workers: int,
+) -> Tuple[List[List[dict]], List[float]]:
+    """Calculate independent mask frames concurrently and merge in order."""
+    worker_count = min(workers, len(group_names))
+    with tempfile.TemporaryDirectory(
+        prefix="threshold-mask-shards-",
+        dir=output_path.parent,
+    ) as temporary:
+        temporary_folder = Path(temporary)
+        tasks = [
+            (
+                hmaxima_path,
+                group_name,
+                index,
+                threshold,
+                minimum_area,
+                temporary_folder / f"{index:08d}.h5",
+            )
+            for index, group_name in enumerate(group_names)
+        ]
+        completed = []
+        records_by_frame = []
+        frame_times = []
+        with ProcessPoolExecutor(max_workers=worker_count) as executor:
+            for index, result in enumerate(
+                executor.map(process_mask_to_shard, tasks),
+                start=1,
+            ):
+                (
+                    group_name,
+                    shard_path,
+                    filename,
+                    positive_kept,
+                    positive_found,
+                    negative_kept,
+                    negative_found,
+                    extrema_kept,
+                    extrema_found,
+                    records,
+                    frame_time,
+                ) = result
+                completed.append((group_name, shard_path))
+                records_by_frame.append(records)
+                frame_times.append(frame_time)
+                print(
+                    f"[{index}/{len(group_names)}] {filename}: "
+                    f"kept {positive_kept}/{positive_found} positive and "
+                    f"{negative_kept}/{negative_found} negative regions; "
+                    f"marked {extrema_kept}/{extrema_found} extrema",
+                    flush=True,
+                )
+
+        with h5py.File(output_path, "a") as output:
+            for group_name, shard_path in completed:
+                with h5py.File(shard_path, "r") as shard:
+                    shard.copy(group_name, output)
+
+    return records_by_frame, frame_times
 
 
 def nearest_one_to_one_matches(
@@ -445,7 +540,7 @@ def main() -> int:
         "--workers",
         type=int,
         default=1,
-        help="Process this many h-maxima frames concurrently (default: 1).",
+        help="Process this many h-maxima and mask frames concurrently (default: 1).",
     )
     parser.add_argument("--no-preview", action="store_true", help="Skip the terminal preview and preview PNG.")
     args = parser.parse_args()
@@ -481,9 +576,10 @@ def main() -> int:
         "--no-preview",
     ], check=True)
 
-    # Calculate and save every frame before starting the terminal preview.
-    with h5py.File(hmaxima_path, "r") as maxima, h5py.File(output_path, "w") as output:
+    with h5py.File(hmaxima_path, "r") as maxima:
         group_names = read_frame_order(maxima)
+    worker_count = min(args.workers, len(group_names))
+    with h5py.File(output_path, "w") as output:
         output.attrs["schema"] = "ritta_vorticity_threshold_masks_v2"
         output.attrs["run_folder"] = str(args.run_folder.expanduser().resolve())
         output.attrs["config_file"] = str(args.config_file.expanduser().resolve())
@@ -491,23 +587,36 @@ def main() -> int:
         output.attrs["vorticity_threshold"] = threshold
         output.attrs["minimum_region_area"] = minimum_area
         output.attrs["stride"] = args.stride
+        output.attrs["workers"] = worker_count
         output.attrs["connectivity"] = 8
         write_string_dataset(output, "frame_order", group_names)
 
-        for index, group_name in enumerate(group_names):
-            source = maxima[group_name]
-            frame = frame_from_hmaxima(source)
-            result = make_masks(frame, threshold, minimum_area)
-            result.update(retained_extrema(result, source))
-            save_frame(output.create_group(group_name), result)
-            records_by_frame.append(extrema_records(index, result))
-            frame_times.append(float(result["time"]))
-            print(
-                f"[{index + 1}/{len(group_names)}] {frame['source_filename']}: "
-                f"kept {len(result['positive_region_areas'])}/{result['positive_regions_found']} positive and "
-                f"{len(result['negative_region_areas'])}/{result['negative_regions_found']} negative regions; "
-                f"marked {len(result['extrema_x'])}/{result['extrema_found']} extrema"
-            )
+    print(f"Threshold-mask workers: {worker_count}", flush=True)
+    if worker_count > 1:
+        records_by_frame, frame_times = calculate_masks_parallel(
+            hmaxima_path,
+            output_path,
+            group_names,
+            threshold,
+            minimum_area,
+            worker_count,
+        )
+    else:
+        with h5py.File(hmaxima_path, "r") as maxima, h5py.File(output_path, "a") as output:
+            for index, group_name in enumerate(group_names):
+                source = maxima[group_name]
+                frame = frame_from_hmaxima(source)
+                result = make_masks(frame, threshold, minimum_area)
+                result.update(retained_extrema(result, source))
+                save_frame(output.create_group(group_name), result)
+                records_by_frame.append(extrema_records(index, result))
+                frame_times.append(float(result["time"]))
+                print(
+                    f"[{index + 1}/{len(group_names)}] {frame['source_filename']}: "
+                    f"kept {len(result['positive_region_areas'])}/{result['positive_regions_found']} positive and "
+                    f"{len(result['negative_region_areas'])}/{result['negative_regions_found']} negative regions; "
+                    f"marked {len(result['extrema_x'])}/{result['extrema_found']} extrema"
+                )
 
     print(f"Saved {output_path}")
     tracking_config = config.get("tracking", {})

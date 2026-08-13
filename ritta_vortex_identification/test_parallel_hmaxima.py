@@ -11,7 +11,7 @@ import h5py
 import numpy as np
 
 
-SCRIPT = Path(__file__).with_name("01_find_hmaxima.py")
+SCRIPT = Path(__file__).with_name("make_threshold_masks.py")
 
 
 def write_frame(path: Path, omega: np.ndarray) -> None:
@@ -112,6 +112,17 @@ reconstruction_tolerance = 1.0e-10
 h_mask_tolerance = 1.0e-8
 merge_distance = 0.0
 
+[threshold_mask]
+vorticity_threshold = 0.5
+minimum_region_area = 0.0
+
+[tracking]
+max_displacement = 10.0
+new_track_max_displacement = 10.0
+max_missed_frames = 1
+minimum_track_points = 1
+velocity_history_length = 1
+
 [region]
 [fit]
 [plot]
@@ -120,7 +131,7 @@ merge_distance = 0.0
                 encoding="utf-8",
             )
 
-            result_paths = []
+            result_folders = []
             for workers in (1, 2):
                 result_folder = root / f"results_{workers}"
                 environment = os.environ.copy()
@@ -144,9 +155,22 @@ merge_distance = 0.0
                     0,
                     msg=f"stdout:\n{completed.stdout}\nstderr:\n{completed.stderr}",
                 )
-                result_paths.append(result_folder / "hmaxima.h5")
+                result_folders.append(result_folder)
 
-            assert_hdf5_equal(self, result_paths[0], result_paths[1])
+            assert_hdf5_equal(
+                self,
+                result_folders[0] / "hmaxima.h5",
+                result_folders[1] / "hmaxima.h5",
+            )
+            assert_hdf5_equal(
+                self,
+                result_folders[0] / "threshold_masks.h5",
+                result_folders[1] / "threshold_masks.h5",
+            )
+            self.assertEqual(
+                (result_folders[0] / "threshold_hmaxima_tracks.csv").read_text(),
+                (result_folders[1] / "threshold_hmaxima_tracks.csv").read_text(),
+            )
 
 
 if __name__ == "__main__":

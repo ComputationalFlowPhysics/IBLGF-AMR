@@ -12,10 +12,11 @@ pvbatch="${paraview_bin_dir}/pvbatch"
 usage() {
   cat <<EOF
 Usage:
-  $(basename "$0") RUN_FOLDER [STRIDE] [--center-threshold-fraction FRACTION] [--config CONFIG_FILE] [--resume]
+  $(basename "$0") RUN_FOLDER [STRIDE] [--vorticity-threshold-fraction FRACTION] [--center-threshold-fraction FRACTION] [--config CONFIG_FILE] [--resume]
 
 Examples:
   $(basename "$0") runs/ns_amr_lgf/res_sweep/amr_1 1
+  $(basename "$0") runs/ns_amr_lgf/formation/tau_5p0 1 --vorticity-threshold-fraction 0.02
   $(basename "$0") runs/ns_amr_lgf/res_sweep/amr_1 1 --center-threshold-fraction 0.4
   $(basename "$0") runs/ns_amr_lgf/res_sweep/amr_2 1 --resume
 

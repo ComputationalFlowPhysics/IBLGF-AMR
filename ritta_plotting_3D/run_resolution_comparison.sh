@@ -9,13 +9,16 @@ comparison_script="${script_dir}/plot_resolution_comparison.py"
 usage() {
   cat <<EOF
 Usage:
-  $(basename "$0") SWEEP_FOLDER [STRIDE] [CENTER_THRESHOLD_FRACTION]
+  $(basename "$0") SWEEP_FOLDER [STRIDE] [CENTER_THRESHOLD_FRACTION] [LEGEND_BY] [VORTICITY_THRESHOLD_FRACTION]
 
-Example:
+Examples:
   $(basename "$0") runs/ns_amr_lgf/res_sweep 1 0.4
+  $(basename "$0") runs/ns_amr_lgf/formation 1 0.4 tau 0.02
 
 Existing leading_vortex_circulation.csv files are reused. ParaView analysis is
-run only for cases whose CSV is missing.
+run only for cases whose CSV is missing. LEGEND_BY is resolution (default) or
+tau. VORTICITY_THRESHOLD_FRACTION defaults to the paper's 0.02 cutoff;
+CENTER_THRESHOLD_FRACTION independently controls the Lamb-center calculation.
 EOF
 }
 
@@ -23,7 +26,7 @@ if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
   usage
   exit 0
 fi
-if [[ $# -lt 1 || $# -gt 3 ]]; then
+if [[ $# -lt 1 || $# -gt 5 ]]; then
   usage >&2
   exit 1
 fi
@@ -31,9 +34,15 @@ fi
 sweep_folder="$(cd "$1" && pwd)"
 stride="${2:-1}"
 center_threshold_fraction="${3:-0.4}"
+legend_by="${4:-resolution}"
+vorticity_threshold_fraction="${5:-0.02}"
 
 if [[ ! "$stride" =~ ^[1-9][0-9]*$ ]]; then
   echo "Error: stride must be a positive integer." >&2
+  exit 1
+fi
+if [[ "$legend_by" != "resolution" && "$legend_by" != "tau" ]]; then
+  echo "Error: LEGEND_BY must be resolution or tau." >&2
   exit 1
 fi
 
@@ -47,12 +56,39 @@ for run_folder in "$sweep_folder"/*; do
 
   run_name="$(basename "$run_folder")"
   csv_path="${script_dir}/outputs/${run_name}_circulation/leading_vortex_circulation.csv"
-  if [[ -s "$csv_path" ]] && grep -Fq "$run_folder/output/" "$csv_path"; then
+  csv_matches_threshold=0
+  if [[ -s "$csv_path" ]]; then
+    if python -c '
+import csv
+import math
+import sys
+
+with open(sys.argv[1], newline="") as csv_file:
+    rows = list(csv.DictReader(csv_file))
+requested = float(sys.argv[2])
+values = [
+    float(row.get("vorticity_threshold_fraction") or 0.02)
+    for row in rows
+]
+matches = rows and all(
+    math.isclose(value, requested, rel_tol=1e-12, abs_tol=1e-12)
+    for value in values
+)
+raise SystemExit(0 if matches else 1)
+' "$csv_path" "$vorticity_threshold_fraction"; then
+      csv_matches_threshold=1
+    fi
+  fi
+  if [[ -s "$csv_path" ]] && [[ $csv_matches_threshold -eq 1 ]] && grep -Fq "$run_folder/output/" "$csv_path"; then
     echo "[$run_name] Reusing $csv_path"
     continue
   fi
   if [[ -s "$csv_path" ]]; then
-    echo "[$run_name] Existing CSV belongs to another run; recalculating it."
+    if ! grep -Fq "$run_folder/output/" "$csv_path"; then
+      echo "[$run_name] Existing CSV belongs to another run; recalculating it."
+    else
+      echo "[$run_name] Existing CSV uses a different vorticity threshold; recalculating it."
+    fi
   fi
 
   config_args=()
@@ -70,10 +106,11 @@ for run_folder in "$sweep_folder"/*; do
     fi
   fi
 
-  echo "[$run_name] Analysis CSV is missing; running ParaView analysis."
+  echo "[$run_name] Running ParaView circulation analysis."
   "$analysis_script" \
     "$run_folder" \
     "$stride" \
+    --vorticity-threshold-fraction "$vorticity_threshold_fraction" \
     --center-threshold-fraction "$center_threshold_fraction" \
     "${config_args[@]}"
 done
@@ -88,4 +125,4 @@ if ! python -c 'import matplotlib' 2>/dev/null; then
   source "${script_dir}/../ritta_vortex_identification/open_viewer_venv.sh"
 fi
 
-python "$comparison_script" "$sweep_folder"
+python "$comparison_script" "$sweep_folder" --legend-by "$legend_by"

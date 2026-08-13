@@ -82,6 +82,7 @@ class LambCenterTests(unittest.TestCase):
                 cfl=0.1,
                 dx_base=0.0625,
                 levels=1,
+                vorticity_threshold_fraction=0.02,
                 center_threshold_fraction=0.4,
             )
 

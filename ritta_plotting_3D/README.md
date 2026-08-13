@@ -14,6 +14,9 @@ Run one analysis pass for the circulation, axial center, and radial center:
 ./ritta_plotting_3D/run_circulation_analysis.sh RUN_FOLDER STRIDE
 ```
 
+The leading-vortex circulation cutoff defaults to the paper's 2% of maximum
+absolute vorticity. Set it explicitly with `--vorticity-threshold-fraction`.
+
 The center threshold defaults to 40% of the maximum absolute vorticity in each
 snapshot. Set a different fraction with:
 
@@ -76,3 +79,14 @@ runs the circulation analysis only for cases whose CSV is missing, then saves
 `combined_circulation_vs_time.png` and `combined_center_x_vs_time.png` under
 `ritta_plotting_3D/outputs/res_sweep_comparison/`. Legends show each case's
 `dx_base`, `nLevels`, and finest spacing `dx_base / 2^nLevels`.
+
+For a formation-time sweep, label and numerically order the curves by `b_f_tau`:
+
+```bash
+./ritta_plotting_3D/run_resolution_comparison.sh \
+    runs/ns_amr_lgf/formation 1 0.4 tau 0.02
+```
+
+The circulation region always uses the paper's 2%-of-maximum-vorticity cutoff.
+The final argument sets that cutoff explicitly. The third argument independently
+sets the Lamb-center cutoff.

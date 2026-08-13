@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Combine 3D circulation and axial-center CSV files for a resolution sweep."""
+"""Combine 3D circulation and axial-center CSV files for a parameter sweep."""
 
 import argparse
 import csv
@@ -30,6 +30,12 @@ def parse_args():
             "comparison output folder; defaults to "
             "ritta_plotting_3D/outputs/<sweep-name>_comparison"
         ),
+    )
+    parser.add_argument(
+        "--legend-by",
+        choices=("resolution", "tau"),
+        default="resolution",
+        help="legend parameter and curve ordering (default: resolution)",
     )
     return parser.parse_args()
 
@@ -90,7 +96,7 @@ def find_run_config(run_folder):
     raise ValueError(f"Multiple simulation configs were found in {run_folder}: {names}")
 
 
-def read_config_scalar(config_path, name):
+def read_config_scalar(config_path, name, required=True):
     import re
 
     text = re.sub(
@@ -105,6 +111,8 @@ def read_config_scalar(config_path, name):
         text,
     )
     if match is None:
+        if not required:
+            return None
         raise ValueError(f"Could not read {name} from {config_path}")
     return float(match.group(1))
 
@@ -125,6 +133,7 @@ def read_dataset(run_folder):
     config_path = find_run_config(run_folder)
     dx_base = read_config_scalar(config_path, "dx_base")
     levels_value = read_config_scalar(config_path, "nLevels")
+    forcing_end_time = read_config_scalar(config_path, "b_f_tau", required=False)
     levels = int(levels_value)
     if levels_value != levels or levels < 0:
         raise ValueError(f"nLevels must be a nonnegative integer in {config_path}")
@@ -139,6 +148,7 @@ def read_dataset(run_folder):
         )
 
     rows = []
+    vorticity_threshold_fractions = set()
     threshold_fractions = set()
     expected_snapshot_folder = (run_folder / "output").resolve()
     with csv_path.open(newline="", encoding="utf-8") as csv_file:
@@ -169,11 +179,19 @@ def read_dataset(run_folder):
             fraction = row.get("center_threshold_fraction", "").strip()
             if fraction:
                 threshold_fractions.add(float(fraction))
+            vorticity_fraction = row.get(
+                "vorticity_threshold_fraction", ""
+            ).strip()
+            vorticity_threshold_fractions.add(
+                float(vorticity_fraction) if vorticity_fraction else 0.02
+            )
 
     if not rows:
         raise ValueError(f"Analysis CSV has no data rows: {csv_path}")
     if len(threshold_fractions) > 1:
         raise ValueError(f"Center threshold changes within {csv_path}")
+    if len(vorticity_threshold_fractions) > 1:
+        raise ValueError(f"Vorticity threshold changes within {csv_path}")
 
     rows.sort(key=lambda row: row["time"])
     return {
@@ -184,6 +202,10 @@ def read_dataset(run_folder):
         "dx_base": dx_base,
         "levels": levels,
         "dx_finest": dx_base / (2**levels),
+        "forcing_end_time": forcing_end_time,
+        "vorticity_threshold_fraction": next(
+            iter(vorticity_threshold_fractions)
+        ),
         "center_threshold_fraction": (
             next(iter(threshold_fractions)) if threshold_fractions else None
         ),
@@ -209,6 +231,28 @@ def dataset_label(dataset):
     )
 
 
+def prepare_datasets(datasets, legend_by):
+    if legend_by == "resolution":
+        datasets.sort(key=dataset_sort_key)
+        for dataset in datasets:
+            dataset["legend_label"] = dataset_label(dataset)
+        return "3D resolution comparison"
+
+    for dataset in datasets:
+        forcing_end_time = dataset["forcing_end_time"]
+        if (
+            forcing_end_time is None
+            or not math.isfinite(forcing_end_time)
+            or forcing_end_time <= 0.0
+        ):
+            raise ValueError(
+                f"Could not read a positive b_f_tau from {dataset['config_path']}"
+            )
+        dataset["legend_label"] = rf"$\tau={forcing_end_time:g}$"
+    datasets.sort(key=lambda dataset: (dataset["forcing_end_time"], dataset["name"]))
+    return "3D formation-time comparison"
+
+
 def validate_center_thresholds(datasets):
     known = {
         round(dataset["center_threshold_fraction"], 15)
@@ -222,6 +266,22 @@ def validate_center_thresholds(datasets):
         )
         raise ValueError(
             "The center-x CSVs use different center threshold fractions: " + details
+        )
+
+
+def validate_vorticity_thresholds(datasets):
+    known = {
+        round(dataset["vorticity_threshold_fraction"], 15)
+        for dataset in datasets
+    }
+    if len(known) > 1:
+        details = ", ".join(
+            f"{dataset['name']}={dataset['vorticity_threshold_fraction']}"
+            for dataset in datasets
+        )
+        raise ValueError(
+            "The circulation CSVs use different vorticity threshold fractions: "
+            + details
         )
 
 
@@ -248,7 +308,7 @@ def save_plot(datasets, column, path, title, y_label):
         if not points:
             continue
         times, values = zip(*points)
-        axis.plot(times, values, linewidth=2.2, label=dataset_label(dataset))
+        axis.plot(times, values, linewidth=2.2, label=dataset["legend_label"])
         plotted += 1
 
     if plotted == 0:
@@ -271,11 +331,10 @@ def main():
     args = parse_args()
     try:
         sweep_folder, run_folders = discover_run_folders(args.sweep_folder)
-        datasets = sorted(
-            (read_dataset(run_folder) for run_folder in run_folders),
-            key=dataset_sort_key,
-        )
+        datasets = [read_dataset(run_folder) for run_folder in run_folders]
         validate_center_thresholds(datasets)
+        validate_vorticity_thresholds(datasets)
+        title_prefix = prepare_datasets(datasets, args.legend_by)
 
         output_folder = (
             args.output_dir.expanduser().resolve()
@@ -290,14 +349,14 @@ def main():
             datasets,
             "circulation",
             circulation_path,
-            "3D resolution comparison: leading-vortex circulation",
+            f"{title_prefix}: leading-vortex circulation",
             "Circulation",
         )
         save_plot(
             datasets,
             "center_x",
             center_x_path,
-            "3D resolution comparison: leading-vortex axial center",
+            f"{title_prefix}: leading-vortex axial center",
             "Lamb center x-coordinate",
         )
 

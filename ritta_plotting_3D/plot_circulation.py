@@ -3,6 +3,7 @@
 
 Usage:
     pvbatch plot_circulation.py OUTPUT_FOLDER [STRIDE] [--config CONFIG_FILE]
+        [--vorticity-threshold-fraction FRACTION]
         [--center-threshold-fraction FRACTION] [--view-only] [--resume]
 
 ``OUTPUT_FOLDER`` may be the folder containing ``flowTime_*.hdf5`` files or
@@ -57,6 +58,7 @@ CSV_FIELDNAMES = [
     "time",
     "circulation",
     "peak_vorticity",
+    "vorticity_threshold_fraction",
     "threshold_cells",
     "leading_region_cells",
     "center_threshold_fraction",
@@ -89,11 +91,11 @@ def threshold_fraction(value):
         fraction = float(value)
     except ValueError as error:
         raise argparse.ArgumentTypeError(
-            "center threshold fraction must be a number"
+            "threshold fraction must be a number"
         ) from error
     if not 0.0 < fraction <= 1.0:
         raise argparse.ArgumentTypeError(
-            "center threshold fraction must be greater than 0 and at most 1"
+            "threshold fraction must be greater than 0 and at most 1"
         )
     return fraction
 
@@ -126,6 +128,15 @@ def parse_args():
         help=(
             "simulation config used for physical time; normally discovered "
             "from the run folder"
+        ),
+    )
+    parser.add_argument(
+        "--vorticity-threshold-fraction",
+        type=threshold_fraction,
+        default=VORTICITY_THRESHOLD_FRACTION,
+        help=(
+            "leading-vortex cutoff as a fraction of maximum absolute "
+            f"vorticity (default: {VORTICITY_THRESHOLD_FRACTION:g})"
         ),
     )
     parser.add_argument(
@@ -346,6 +357,7 @@ def load_resume_rows(
     cfl,
     dx_base,
     levels,
+    vorticity_threshold_fraction,
     center_threshold_fraction,
 ):
     if not csv_path.is_file():
@@ -354,7 +366,10 @@ def load_resume_rows(
     with csv_path.open(newline="") as csv_file:
         reader = csv.DictReader(csv_file)
         missing_columns = [
-            name for name in CSV_FIELDNAMES if name not in (reader.fieldnames or [])
+            name
+            for name in CSV_FIELDNAMES
+            if name != "vorticity_threshold_fraction"
+            and name not in (reader.fieldnames or [])
         ]
         if missing_columns:
             raise ValueError(
@@ -385,6 +400,10 @@ def load_resume_rows(
         try:
             saved_index = int(row["frame_index"])
             saved_time = float(row["time"])
+            saved_vorticity_fraction = float(
+                row.get("vorticity_threshold_fraction")
+                or VORTICITY_THRESHOLD_FRACTION
+            )
             saved_fraction = float(row["center_threshold_fraction"])
         except (TypeError, ValueError) as error:
             raise ValueError(
@@ -400,6 +419,16 @@ def load_resume_rows(
         ):
             raise ValueError(
                 "Cannot resume because the stride or time metadata differs "
+                f"at snapshot step {step}."
+            )
+        if not math.isclose(
+            saved_vorticity_fraction,
+            vorticity_threshold_fraction,
+            rel_tol=1.0e-12,
+            abs_tol=1.0e-12,
+        ):
+            raise ValueError(
+                "Cannot resume because --vorticity-threshold-fraction differs "
                 f"at snapshot step {step}."
             )
         if not math.isclose(
@@ -516,6 +545,7 @@ def extract_largest_region(simple, input_proxy, fraction, name):
 def build_leading_regions(
     simple,
     snapshot,
+    vorticity_threshold_fraction=VORTICITY_THRESHOLD_FRACTION,
     center_threshold_fraction=CENTER_THRESHOLD_FRACTION,
     analyze=True,
 ):
@@ -569,7 +599,7 @@ def build_leading_regions(
     circulation_region, threshold_cells, leading_cells = extract_largest_region(
         simple,
         normalized_vorticity,
-        VORTICITY_THRESHOLD_FRACTION,
+        vorticity_threshold_fraction,
         "LeadingVortex",
     )
     center_region, center_threshold_cells, center_region_cells = (
@@ -633,6 +663,7 @@ def render_slice(
     normalized_vorticity,
     connectivity,
     peak_vorticity,
+    vorticity_threshold_fraction,
     center_x,
     center_y,
     png_path,
@@ -690,11 +721,11 @@ def render_slice(
         contour_input.Tolerance = 0.0
 
         contour = simple.Contour(
-            registrationName="TwoPercentVorticityContour",
+            registrationName="VorticityCutoffContour",
             Input=contour_input,
         )
         contour.ContourBy = ["POINTS", "normalized_normal_vorticity"]
-        contour.Isosurfaces = [VORTICITY_THRESHOLD_FRACTION]
+        contour.Isosurfaces = [vorticity_threshold_fraction]
 
         leading_bounds = connectivity.GetDataInformation().GetBounds()
         leading_center = [
@@ -759,6 +790,7 @@ def calculate_and_render(
     snapshot,
     png_path,
     camera_bounds,
+    vorticity_threshold_fraction=VORTICITY_THRESHOLD_FRACTION,
     center_threshold_fraction=CENTER_THRESHOLD_FRACTION,
     analyze=True,
 ):
@@ -778,6 +810,7 @@ def calculate_and_render(
     ) = build_leading_regions(
         simple,
         snapshot,
+        vorticity_threshold_fraction=vorticity_threshold_fraction,
         center_threshold_fraction=center_threshold_fraction,
         analyze=analyze,
     )
@@ -829,6 +862,7 @@ def calculate_and_render(
         normalized_vorticity,
         circulation_region,
         peak_vorticity,
+        vorticity_threshold_fraction,
         center_x,
         center_y,
         png_path,
@@ -993,6 +1027,11 @@ def main():
         print(f"Output GIF:      {gif_path}", flush=True)
         if not args.view_only:
             print(
+                "Circulation threshold: "
+                f"{args.vorticity_threshold_fraction:g} of max |vorticity|",
+                flush=True,
+            )
+            print(
                 "Center threshold: "
                 f"{args.center_threshold_fraction:g} of max |vorticity|",
                 flush=True,
@@ -1014,6 +1053,7 @@ def main():
                     cfl,
                     dx_base,
                     levels,
+                    args.vorticity_threshold_fraction,
                     args.center_threshold_fraction,
                 )
             write_csv_rows(
@@ -1069,6 +1109,9 @@ def main():
                     snapshot.resolve(),
                     frame_path,
                     camera_bounds,
+                    vorticity_threshold_fraction=(
+                        args.vorticity_threshold_fraction
+                    ),
                     center_threshold_fraction=args.center_threshold_fraction,
                     analyze=not args.view_only,
                 )
@@ -1079,6 +1122,9 @@ def main():
                         "time": f"{time:.15g}",
                         "circulation": f"{circulation:.16g}",
                         "peak_vorticity": f"{peak_vorticity:.16g}",
+                        "vorticity_threshold_fraction": (
+                            f"{args.vorticity_threshold_fraction:.16g}"
+                        ),
                         "threshold_cells": threshold_cells,
                         "leading_region_cells": leading_cells,
                         "center_threshold_fraction": (

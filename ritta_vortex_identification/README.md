@@ -89,6 +89,20 @@ Optional vorticity-threshold masks:
 python make_threshold_masks.py RUN_FOLDER CONFIG_FILE --stride 5
 ```
 
+To parallelize the independent h-maxima calculation across the CPU cores of
+one compute node, add `--workers`. Keep native numerical-library threads at one
+per worker to avoid oversubscribing the allocation:
+
+```bash
+OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 \
+python make_threshold_masks.py RUN_FOLDER CONFIG_FILE --stride 1 --workers 128 --no-preview
+```
+
+The frame calculations use separate processes and temporary HDF5 shards. The
+shards are merged into `hmaxima.h5` in the original numerical frame order, so
+the reconstruction and extrema calculations are unchanged. Tracking remains
+serial because it depends on preceding frames.
+
 Set `vorticity_threshold` and `minimum_region_area` under `[threshold_mask]`. The command runs Stage 1 first, removes mask regions below the physical-area cutoff, and marks only saved positive h-maxima inside the retained regions. It saves `hmaxima.h5`, `threshold_masks.h5`, and a terminal-selected `threshold_masks_preview.png`.
 
 The same command also tracks the retained h-maxima across consecutive analyzed

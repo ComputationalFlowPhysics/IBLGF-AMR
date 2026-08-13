@@ -1,7 +1,9 @@
 """Stage 1: compute positive h-maxima for every output frame."""
 
 import argparse
+from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
+import tempfile
 from typing import Tuple
 
 import h5py
@@ -175,6 +177,94 @@ def save_result(group: h5py.Group, result: dict) -> None:
     group.create_dataset("peak_vorticity", data=result["peak_vorticity"])
 
 
+def process_frame_to_shard(task: tuple) -> tuple:
+    """Calculate one frame and save it without transferring large arrays."""
+    source_index, path, group_name, config, metadata, shard_path = task
+    frame = load_vorticity_frame(path, source_index, config, metadata)
+    result = find_hmaxima(frame, config)
+    with h5py.File(shard_path, "w") as shard:
+        save_result(shard.create_group(group_name), result)
+    return group_name, path.name, len(result["candidate_ids"]), shard_path
+
+
+def write_output_metadata(
+    output: h5py.File,
+    run_folder: Path,
+    config_file: Path,
+    metadata: dict,
+    config: dict,
+    stride: int,
+    workers: int,
+    group_names: list,
+) -> None:
+    output.attrs["schema"] = "ritta_hmaxima_v1"
+    output.attrs["run_folder"] = str(run_folder.expanduser().resolve())
+    output.attrs["config_file"] = str(config_file.expanduser().resolve())
+    output.attrs["time_source"] = metadata["source"]
+    output.attrs["h"] = require_positive(config, "hmaxima", "h")
+    output.attrs["stride"] = stride
+    output.attrs["workers"] = workers
+    output.attrs["connectivity"] = 8
+    output.attrs["reconstruction_tolerance"] = require_positive(
+        config, "hmaxima", "reconstruction_tolerance"
+    )
+    output.attrs["h_mask_tolerance"] = require_nonnegative(
+        config, "hmaxima", "h_mask_tolerance"
+    )
+    output.attrs["merge_distance"] = require_nonnegative(
+        config, "hmaxima", "merge_distance"
+    )
+    write_string_dataset(output, "frame_order", group_names)
+
+
+def calculate_frames_parallel(
+    selected_frames: list,
+    group_names: list,
+    config: dict,
+    metadata: dict,
+    output_path: Path,
+    workers: int,
+) -> None:
+    """Calculate independent frames in worker processes and merge in order."""
+    worker_count = min(workers, len(selected_frames))
+    with tempfile.TemporaryDirectory(
+        prefix="hmaxima-shards-",
+        dir=output_path.parent,
+    ) as temporary:
+        temporary_folder = Path(temporary)
+        tasks = [
+            (
+                source_index,
+                path,
+                group_name,
+                config,
+                metadata,
+                temporary_folder / f"{index:08d}.h5",
+            )
+            for index, ((source_index, path), group_name) in enumerate(
+                zip(selected_frames, group_names)
+            )
+        ]
+        completed = []
+        with ProcessPoolExecutor(max_workers=worker_count) as executor:
+            for index, result in enumerate(
+                executor.map(process_frame_to_shard, tasks),
+                start=1,
+            ):
+                group_name, filename, candidate_count, shard_path = result
+                completed.append((group_name, shard_path))
+                print(
+                    f"[{index}/{len(selected_frames)}] {filename}: "
+                    f"{candidate_count} positive candidates",
+                    flush=True,
+                )
+
+        with h5py.File(output_path, "a") as output:
+            for group_name, shard_path in completed:
+                with h5py.File(shard_path, "r") as shard:
+                    shard.copy(group_name, output)
+
+
 def load_saved_frame(result_path: Path, group_name: str) -> dict:
     with h5py.File(result_path, "r") as handle:
         group = handle[group_name]
@@ -198,10 +288,18 @@ def main() -> int:
     parser.add_argument("run_folder", type=Path)
     parser.add_argument("config_file", type=Path)
     parser.add_argument("--stride", type=int, default=1, help="Process every Nth sorted HDF5 frame.")
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=1,
+        help="Process this many independent frames concurrently (default: 1).",
+    )
     parser.add_argument("--no-preview", action="store_true", help="Skip the terminal preview and preview PNG.")
     args = parser.parse_args()
     if args.stride < 1:
         parser.error("--stride must be a positive integer.")
+    if args.workers < 1:
+        parser.error("--workers must be a positive integer.")
 
     config = load_config(args.config_file)
     require_positive(config, "hmaxima", "h")
@@ -214,33 +312,42 @@ def main() -> int:
     output_path = result_folder(args.run_folder) / "hmaxima.h5"
     group_names = [path.stem for _, path in selected_frames]
 
+    worker_count = min(args.workers, len(selected_frames))
     # Calculate and save every frame before entering the preview prompt.
     with h5py.File(output_path, "w") as output:
-        output.attrs["schema"] = "ritta_hmaxima_v1"
-        output.attrs["run_folder"] = str(args.run_folder.expanduser().resolve())
-        output.attrs["config_file"] = str(args.config_file.expanduser().resolve())
-        output.attrs["time_source"] = metadata["source"]
-        output.attrs["h"] = require_positive(config, "hmaxima", "h")
-        output.attrs["stride"] = args.stride
-        output.attrs["connectivity"] = 8
-        output.attrs["reconstruction_tolerance"] = require_positive(
-            config, "hmaxima", "reconstruction_tolerance"
+        write_output_metadata(
+            output,
+            args.run_folder,
+            args.config_file,
+            metadata,
+            config,
+            args.stride,
+            worker_count,
+            group_names,
         )
-        output.attrs["h_mask_tolerance"] = require_nonnegative(
-            config, "hmaxima", "h_mask_tolerance"
+
+    print(f"H-maxima workers: {worker_count}", flush=True)
+    if worker_count > 1:
+        calculate_frames_parallel(
+            selected_frames,
+            group_names,
+            config,
+            metadata,
+            output_path,
+            worker_count,
         )
-        output.attrs["merge_distance"] = require_nonnegative(
-            config, "hmaxima", "merge_distance"
-        )
-        write_string_dataset(output, "frame_order", group_names)
-        for index, ((source_index, path), group_name) in enumerate(zip(selected_frames, group_names)):
-            frame = load_vorticity_frame(path, source_index, config, metadata)
-            result = find_hmaxima(frame, config)
-            save_result(output.create_group(group_name), result)
-            print(
-                f"[{index + 1}/{len(selected_frames)}] {path.name}: "
-                f"{len(result['candidate_ids'])} positive candidates"
-            )
+    else:
+        with h5py.File(output_path, "a") as output:
+            for index, ((source_index, path), group_name) in enumerate(
+                zip(selected_frames, group_names)
+            ):
+                frame = load_vorticity_frame(path, source_index, config, metadata)
+                result = find_hmaxima(frame, config)
+                save_result(output.create_group(group_name), result)
+                print(
+                    f"[{index + 1}/{len(selected_frames)}] {path.name}: "
+                    f"{len(result['candidate_ids'])} positive candidates"
+                )
 
     print(f"Saved {output_path}")
     if args.no_preview:

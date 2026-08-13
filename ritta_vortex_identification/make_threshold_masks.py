@@ -441,10 +441,18 @@ def main() -> int:
     parser.add_argument("run_folder", type=Path)
     parser.add_argument("config_file", type=Path)
     parser.add_argument("--stride", type=int, default=1, help="Process every Nth sorted HDF5 frame.")
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=1,
+        help="Process this many h-maxima frames concurrently (default: 1).",
+    )
     parser.add_argument("--no-preview", action="store_true", help="Skip the terminal preview and preview PNG.")
     args = parser.parse_args()
     if args.stride < 1:
         parser.error("--stride must be a positive integer.")
+    if args.workers < 1:
+        parser.error("--workers must be a positive integer.")
 
     config = load_config(args.config_file)
     if "threshold_mask" not in config:
@@ -468,6 +476,8 @@ def main() -> int:
         str(args.config_file),
         "--stride",
         str(args.stride),
+        "--workers",
+        str(args.workers),
         "--no-preview",
     ], check=True)
 

@@ -137,8 +137,8 @@ This supports `hmaxima.h5`, `regions.h5`, `fits.h5`, and `threshold_masks.h5`.
 For `fits.h5`, each frame displays only the successful fit with the largest
 finite boundary radius. Output goes beside the HDF5 file in
 `<name>_stride_<stride>/`.
-Use `--x-axis-max VALUE` to override the saved upper x-axis limit for the
-rendered frames.
+Use `--x-axis-min VALUE` and `--x-axis-max VALUE` to override the saved x-axis
+limits for the rendered frames.
 For `threshold_masks.h5`, use `--threshold-vorticity-background` to replace
 the flat mask with the signed vorticity field while retaining the same extrema
 overlay.

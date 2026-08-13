@@ -236,6 +236,7 @@ def main() -> int:
     parser.add_argument("stride", type=int)
     parser.add_argument("--duration-ms", type=int, default=150, help="Display time per GIF frame.")
     parser.add_argument("--output-dir", type=Path)
+    parser.add_argument("--x-axis-min", type=float, help="Override the saved plot's lower x-axis limit.")
     parser.add_argument("--x-axis-max", type=float, help="Override the saved plot's upper x-axis limit.")
     parser.add_argument(
         "--threshold-vorticity-background",
@@ -248,6 +249,8 @@ def main() -> int:
         parser.error("stride must be a positive integer")
     if args.duration_ms <= 0:
         parser.error("--duration-ms must be a positive integer")
+    if args.x_axis_min is not None and not math.isfinite(args.x_axis_min):
+        parser.error("--x-axis-min must be finite")
     if args.x_axis_max is not None and not math.isfinite(args.x_axis_max):
         parser.error("--x-axis-max must be finite")
     input_path = args.h5_file.expanduser().resolve()
@@ -272,11 +275,18 @@ def main() -> int:
         }:
             parser.error("--threshold-vorticity-background requires a threshold_masks.h5 input")
         config = saved_config(handle)
+        if args.x_axis_min is not None:
+            config["plot"]["x_axis_min"] = args.x_axis_min
         if args.x_axis_max is not None:
-            x_axis_min = float(config["plot"].get("x_axis_min", math.nan))
-            if math.isfinite(x_axis_min) and args.x_axis_max <= x_axis_min:
-                parser.error("--x-axis-max must be greater than the configured x-axis minimum")
             config["plot"]["x_axis_max"] = args.x_axis_max
+        x_axis_min = float(config["plot"].get("x_axis_min", math.nan))
+        x_axis_max = float(config["plot"].get("x_axis_max", math.nan))
+        if (
+            math.isfinite(x_axis_min)
+            and math.isfinite(x_axis_max)
+            and x_axis_min >= x_axis_max
+        ):
+            parser.error("the effective x-axis minimum must be smaller than the maximum")
         group_names = read_frame_order(handle)
         selected = list(enumerate(group_names))[::args.stride]
         if not selected:

@@ -137,6 +137,23 @@ class ResolutionComparisonTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "positive b_f_tau"):
             comparison.prepare_datasets(datasets, "tau")
 
+    def test_normalized_time_divides_by_forcing_end_time(self):
+        dataset = {
+            "forcing_end_time": 4.0,
+            "rows": [
+                {"time": 1.0, "circulation": 0.5},
+                {"time": 4.0, "circulation": 0.8},
+            ],
+        }
+
+        points = comparison.plot_points(
+            dataset,
+            "circulation",
+            normalized_time=True,
+        )
+
+        self.assertEqual(points, [(0.25, 0.5), (1.0, 0.8)])
+
     def test_rejects_csv_from_a_different_same_named_run(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

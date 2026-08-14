@@ -87,6 +87,10 @@ For a formation-time sweep, label and numerically order the curves by `b_f_tau`:
     runs/ns_amr_lgf/formation 1 0.4 tau 0.02
 ```
 
+Formation-time comparisons also save
+`combined_circulation_vs_time_over_tau.png`, which plots the same circulation
+against `t / tau` over `0 <= t / tau <= 1`.
+
 The circulation region always uses the paper's 2%-of-maximum-vorticity cutoff.
 The final argument sets that cutoff explicitly. The third argument independently
 sets the Lamb-center cutoff.

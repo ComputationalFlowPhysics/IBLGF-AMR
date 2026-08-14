@@ -285,7 +285,24 @@ def validate_vorticity_thresholds(datasets):
         )
 
 
-def save_plot(datasets, column, path, title, y_label):
+def plot_points(dataset, column, normalized_time=False):
+    time_scale = dataset["forcing_end_time"] if normalized_time else 1.0
+    return [
+        (row["time"] / time_scale, row[column])
+        for row in dataset["rows"]
+        if math.isfinite(row["time"]) and math.isfinite(row[column])
+    ]
+
+
+def save_plot(
+    datasets,
+    column,
+    path,
+    title,
+    y_label,
+    normalized_time=False,
+    x_limits=None,
+):
     try:
         import matplotlib
 
@@ -300,11 +317,7 @@ def save_plot(datasets, column, path, title, y_label):
     figure, axis = plt.subplots(figsize=(11, 7))
     plotted = 0
     for dataset in datasets:
-        points = [
-            (row["time"], row[column])
-            for row in dataset["rows"]
-            if math.isfinite(row["time"]) and math.isfinite(row[column])
-        ]
+        points = plot_points(dataset, column, normalized_time)
         if not points:
             continue
         times, values = zip(*points)
@@ -316,8 +329,14 @@ def save_plot(datasets, column, path, title, y_label):
         raise ValueError(f"No finite {column} values were available to plot")
 
     axis.set_title(title)
-    axis.set_xlabel("Simulation time")
+    axis.set_xlabel(
+        r"Normalized simulation time $t/\tau$"
+        if normalized_time
+        else "Simulation time"
+    )
     axis.set_ylabel(y_label)
+    if x_limits is not None:
+        axis.set_xlim(*x_limits)
     axis.grid(True, alpha=0.3)
     axis.legend(fontsize=9)
     figure.tight_layout()
@@ -343,6 +362,9 @@ def main():
         )
         output_folder.mkdir(parents=True, exist_ok=True)
         circulation_path = output_folder / "combined_circulation_vs_time.png"
+        normalized_circulation_path = (
+            output_folder / "combined_circulation_vs_time_over_tau.png"
+        )
         center_x_path = output_folder / "combined_center_x_vs_time.png"
 
         save_plot(
@@ -352,6 +374,16 @@ def main():
             f"{title_prefix}: leading-vortex circulation",
             "Circulation",
         )
+        if args.legend_by == "tau":
+            save_plot(
+                datasets,
+                "circulation",
+                normalized_circulation_path,
+                f"{title_prefix}: leading-vortex circulation versus normalized time",
+                "Circulation",
+                normalized_time=True,
+                x_limits=(0.0, 1.0),
+            )
         save_plot(
             datasets,
             "center_x",
@@ -368,6 +400,8 @@ def main():
                 f"  {dataset['csv_path']}"
             )
         print(f"Circulation comparison: {circulation_path}")
+        if args.legend_by == "tau":
+            print(f"Normalized-time comparison: {normalized_circulation_path}")
         print(f"Center-x comparison:    {center_x_path}")
         return 0
     except (OSError, RuntimeError, ValueError) as error:

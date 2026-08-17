@@ -1,4 +1,4 @@
-"""Plot midpoint vorticity fields from selected tau-sweep runs in one row."""
+"""Compare selected-time vorticity fields from several tau-sweep runs."""
 
 import argparse
 import math
@@ -41,11 +41,19 @@ def validate_positive_values(values: Sequence[float], name: str) -> Tuple[float,
     return tuple(sorted(numbers))
 
 
-def midpoint_frame_index(frame_count: int) -> int:
-    """Match the existing previews by choosing the lower central frame."""
+def selected_frame_index(frame_count: int, frame_fraction: float) -> int:
+    """Choose the nearest saved-sequence position, breaking ties earlier."""
     if frame_count < 1:
         raise ValueError("At least one frame is required.")
-    return (frame_count - 1) // 2
+    if not math.isfinite(frame_fraction) or not 0.0 <= frame_fraction <= 1.0:
+        raise ValueError("The frame fraction must be finite and between 0 and 1.")
+    target = frame_fraction * (frame_count - 1)
+    return min(frame_count - 1, int(math.floor(target + 0.5 - 1.0e-12)))
+
+
+def midpoint_frame_index(frame_count: int) -> int:
+    """Match the existing previews by choosing the lower central frame."""
+    return selected_frame_index(frame_count, 0.5)
 
 
 def panel_grid_shape(
@@ -100,12 +108,12 @@ def resolve_tau_runs(
     return selected
 
 
-def load_midpoint_panel(task) -> dict:
-    """Load one run's midpoint edge_aux field in a worker process."""
-    tau, run_dir, config_file = task
+def load_selected_panel(task) -> dict:
+    """Load one run's selected edge_aux frame in a worker process."""
+    tau, run_dir, config_file, frame_fraction = task
     config = load_config(config_file)
     frames = discover_frames(run_dir, config)
-    frame_index = midpoint_frame_index(len(frames))
+    frame_index = selected_frame_index(len(frames), frame_fraction)
     metadata = simulation_metadata(run_dir, config)
     frame = load_vorticity_frame(frames[frame_index], frame_index, config, metadata)
     return {
@@ -120,16 +128,17 @@ def load_midpoint_panel(task) -> dict:
 def load_panels(
     selected_runs: Sequence[Tuple[float, Path]],
     config_file: Path,
+    frame_fraction: float,
     workers: int,
 ) -> List[dict]:
     tasks = [
-        (tau, run_dir, config_file)
+        (tau, run_dir, config_file, frame_fraction)
         for tau, run_dir in selected_runs
     ]
     if workers == 1:
-        return [load_midpoint_panel(task) for task in tasks]
+        return [load_selected_panel(task) for task in tasks]
     with ProcessPoolExecutor(max_workers=workers) as executor:
-        return list(executor.map(load_midpoint_panel, tasks))
+        return list(executor.map(load_selected_panel, tasks))
 
 
 def save_comparison(
@@ -142,6 +151,7 @@ def save_comparison(
     y_limits: Tuple[float, float],
     colormap: str,
     columns: Optional[int],
+    frame_fraction: float,
     dpi: int,
 ) -> None:
     """Render a shared-scale vorticity comparison in the requested grid."""
@@ -219,7 +229,12 @@ def save_comparison(
         loc="upper left",
         framealpha=0.9,
     )
-    figure.suptitle("Midpoint vorticity fields and absolute-vorticity contours")
+    position_label = (
+        "Midpoint vorticity fields"
+        if math.isclose(frame_fraction, 0.5, rel_tol=0.0, abs_tol=1.0e-12)
+        else f"Vorticity fields at {100.0 * frame_fraction:g}% of each saved sequence"
+    )
+    figure.suptitle(f"{position_label} and absolute-vorticity contours")
     colorbar = figure.colorbar(image, ax=active_axes.tolist(), pad=0.02, shrink=0.92)
     colorbar.set_label(r"vorticity $\omega$")
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -229,7 +244,7 @@ def save_comparison(
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Plot selected tau-sweep midpoint vorticity fields in a shared grid."
+        description="Plot selected tau-sweep vorticity fields in a shared grid."
     )
     parser.add_argument("campaign_dir", type=Path)
     parser.add_argument("config_file", type=Path)
@@ -245,6 +260,12 @@ def main() -> int:
     parser.add_argument("--y-limits", nargs=2, type=float, default=(-1.5, 1.5))
     parser.add_argument("--colormap", default="RdBu_r")
     parser.add_argument("--workers", type=int, default=3)
+    parser.add_argument(
+        "--frame-fraction",
+        type=float,
+        default=0.5,
+        help="Saved-sequence position from 0 (first) to 1 (last); default: 0.5.",
+    )
     parser.add_argument(
         "--columns",
         type=int,
@@ -275,6 +296,8 @@ def main() -> int:
         parser.error("Every contour magnitude must be smaller than --color-limit")
     if args.workers < 1:
         parser.error("--workers must be positive")
+    if not math.isfinite(args.frame_fraction) or not 0.0 <= args.frame_fraction <= 1.0:
+        parser.error("--frame-fraction must be finite and between 0 and 1")
     if args.columns is not None and args.columns < 1:
         parser.error("--columns must be positive")
     if args.dpi < 1:
@@ -296,7 +319,12 @@ def main() -> int:
     config = load_config(config_file)
     selected_runs = resolve_tau_runs(campaign_dir, config, tau_values)
     worker_count = min(args.workers, len(selected_runs))
-    panels = load_panels(selected_runs, config_file, worker_count)
+    panels = load_panels(
+        selected_runs,
+        config_file,
+        args.frame_fraction,
+        worker_count,
+    )
     output_path = args.output.expanduser().resolve()
     save_comparison(
         panels,
@@ -307,12 +335,13 @@ def main() -> int:
         y_limits=tuple(args.y_limits),
         colormap=args.colormap,
         columns=args.columns,
+        frame_fraction=args.frame_fraction,
         dpi=args.dpi,
     )
 
     signed_levels = [-value for value in reversed(contour_magnitudes)]
     signed_levels.extend(contour_magnitudes)
-    print("Selected midpoint frames:")
+    print(f"Selected frames near {100.0 * args.frame_fraction:g}% of each sequence:")
     for panel in panels:
         frame = panel["frame"]
         print(

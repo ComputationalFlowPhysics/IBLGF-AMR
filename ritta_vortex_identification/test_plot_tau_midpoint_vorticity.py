@@ -9,6 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from plot_tau_midpoint_vorticity import (
     midpoint_frame_index,
     panel_grid_shape,
+    selected_frame_index,
     validate_positive_values,
 )
 
@@ -26,6 +27,18 @@ class MidpointFrameIndexTests(unittest.TestCase):
     def test_rejects_empty_frame_list(self):
         with self.assertRaisesRegex(ValueError, "At least one"):
             midpoint_frame_index(0)
+
+
+class SelectedFrameIndexTests(unittest.TestCase):
+    def test_selects_nearest_late_frame(self):
+        self.assertEqual(selected_frame_index(126, 0.9), 112)
+
+    def test_selects_last_frame_at_one(self):
+        self.assertEqual(selected_frame_index(126, 1.0), 125)
+
+    def test_rejects_fraction_above_one(self):
+        with self.assertRaisesRegex(ValueError, "between 0 and 1"):
+            selected_frame_index(126, 1.1)
 
 
 class ValidatePositiveValuesTests(unittest.TestCase):

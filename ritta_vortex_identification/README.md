@@ -77,6 +77,9 @@ This uses a shared symmetric color scale, positive solid contours, and negative
 dashed contours. It chooses the lower central snapshot to match the existing
 beginning/middle/end preview convention. No vortex-identification stage is
 needed. Add `--columns 2` to arrange four selected tau cases as a 2-by-2 grid.
+Use `--frame-fraction 0.9` to compare frames near 90 percent of each saved
+sequence instead of the midpoint; the exact selected filenames and physical
+times are printed.
 
 To analyze every fifth sorted HDF5 frame, use `--stride 5` on Stage 1. Stages 2–4 automatically use that saved frame list:
 

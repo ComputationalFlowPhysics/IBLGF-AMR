@@ -172,6 +172,7 @@ def save_time_series_plot(
     reference: Optional[Tuple[float, float, float]] = None,
     reference_times=None,
     time_limits: Tuple[Optional[float], Optional[float]] = (None, None),
+    value_limits: Tuple[Optional[float], Optional[float]] = (None, None),
     xlabel: str = "simulation time",
     inset_limits: Optional[
         Tuple[Optional[float], Optional[float], Optional[float], Optional[float]]
@@ -305,6 +306,7 @@ def save_time_series_plot(
     axis.set_ylabel(ylabel)
     axis.set_title(title)
     axis.set_xlim(left=time_limits[0], right=time_limits[1])
+    axis.set_ylim(bottom=value_limits[0], top=value_limits[1])
     axis.grid(True, alpha=0.3)
     handles, _ = axis.get_legend_handles_labels()
     if handles:

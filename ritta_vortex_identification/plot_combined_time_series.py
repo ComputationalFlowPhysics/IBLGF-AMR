@@ -172,6 +172,13 @@ def main() -> int:
         help="Include only datasets with these forcing-end times.",
     )
     parser.add_argument(
+        "--normalized-zoom",
+        nargs=4,
+        type=float,
+        metavar=("X_MIN", "X_MAX", "Y_MIN", "Y_MAX"),
+        help="Also save a normalized-time circulation plot with these axis limits.",
+    )
+    parser.add_argument(
         "--circulation-inset",
         action="store_true",
         help="Add a zoomed plateau inset to the simulation-time circulation plot.",
@@ -193,6 +200,13 @@ def main() -> int:
         parser.error("--inset-x-min must be smaller than --inset-x-max")
     if args.inset_y_min >= args.inset_y_max:
         parser.error("--inset-y-min must be smaller than --inset-y-max")
+    if args.normalized_zoom is not None:
+        if not all(math.isfinite(value) for value in args.normalized_zoom):
+            parser.error("--normalized-zoom limits must be finite")
+        if args.normalized_zoom[0] >= args.normalized_zoom[1]:
+            parser.error("normalized zoom X_MIN must be smaller than X_MAX")
+        if args.normalized_zoom[2] >= args.normalized_zoom[3]:
+            parser.error("normalized zoom Y_MIN must be smaller than Y_MAX")
 
     config = load_config(args.config_file)
     datasets_file = args.datasets_file.expanduser().resolve()
@@ -234,6 +248,9 @@ def main() -> int:
     time_limits = configured_time_limits(config)
     circulation_path = output_folder / "combined_circulation_vs_time.png"
     normalized_circulation_path = output_folder / "combined_circulation_vs_time_over_tau.png"
+    normalized_zoom_path = (
+        output_folder / "combined_circulation_vs_time_over_tau_zoom.png"
+    )
     displacement_path = output_folder / "combined_x_displacement_vs_time.png"
     save_time_series_plot(
         circulation_path,
@@ -258,6 +275,18 @@ def main() -> int:
         time_limits=(0.0, 1.0),
         xlabel=r"normalized simulation time $t/\tau$",
     )
+    if args.normalized_zoom is not None:
+        x_min, x_max, y_min, y_max = args.normalized_zoom
+        save_time_series_plot(
+            normalized_zoom_path,
+            normalized_circulation_series,
+            "positive circulation",
+            r"Positive-vortex circulation versus normalized time $t/\tau$ (zoom)",
+            figure_size,
+            time_limits=(x_min, x_max),
+            value_limits=(y_min, y_max),
+            xlabel=r"normalized simulation time $t/\tau$",
+        )
     save_time_series_plot(
         displacement_path,
         displacement_series,
@@ -274,6 +303,8 @@ def main() -> int:
     )
     print(f"Saved {circulation_path}")
     print(f"Saved {normalized_circulation_path}")
+    if args.normalized_zoom is not None:
+        print(f"Saved {normalized_zoom_path}")
     print(f"Saved {displacement_path}")
     return 0
 

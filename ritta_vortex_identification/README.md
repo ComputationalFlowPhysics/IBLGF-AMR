@@ -176,11 +176,14 @@ the desired values with `--tau-values` and use a separate output folder:
 ```bash
 python plot_combined_time_series.py outputs/pipeline_results/datasets.toml CONFIG_FILE \
     --tau-values 1 3 5 7 9 11 20 45 \
+    --normalized-zoom 0.6 1.0 0.5 0.9 \
     --output-dir outputs/pipeline_results/selected_tau
 ```
 
 This reuses the existing metrics CSV files and leaves the original combined
-plots unchanged. Every requested tau must exist in `datasets.toml`.
+plots unchanged. Every requested tau must exist in `datasets.toml`. The
+optional normalized zoom is saved as
+`combined_circulation_vs_time_over_tau_zoom.png`.
 
 For a resolution sweep, label and order the curves by the copied simulation
 config's `domain.dx_base` value instead of forcing-end time:

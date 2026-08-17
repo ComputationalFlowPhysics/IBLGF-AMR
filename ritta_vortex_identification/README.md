@@ -170,6 +170,18 @@ The same folder gets `datasets.toml`. Each `name` identifies its dataset, while 
 python plot_combined_time_series.py outputs/pipeline_results/datasets.toml CONFIG_FILE
 ```
 
+To make a second set of plots containing only selected forcing durations, pass
+the desired values with `--tau-values` and use a separate output folder:
+
+```bash
+python plot_combined_time_series.py outputs/pipeline_results/datasets.toml CONFIG_FILE \
+    --tau-values 1 3 5 7 9 11 20 45 \
+    --output-dir outputs/pipeline_results/selected_tau
+```
+
+This reuses the existing metrics CSV files and leaves the original combined
+plots unchanged. Every requested tau must exist in `datasets.toml`.
+
 For a resolution sweep, label and order the curves by the copied simulation
 config's `domain.dx_base` value instead of forcing-end time:
 

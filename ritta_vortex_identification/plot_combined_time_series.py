@@ -105,6 +105,54 @@ def configure_legend_labels(datasets: List[dict], config: dict, legend_by: str) 
     return datasets
 
 
+def select_tau_datasets(datasets: List[dict], tau_values) -> List[dict]:
+    """Keep datasets whose forcing-end times match the requested tau values."""
+    if tau_values is None:
+        return datasets
+
+    requested = []
+    for value in tau_values:
+        value = float(value)
+        if not math.isfinite(value) or value <= 0.0:
+            raise ValueError(f"Tau selections must be positive finite values: {value}")
+        if any(
+            math.isclose(value, saved, rel_tol=1.0e-12, abs_tol=1.0e-12)
+            for saved in requested
+        ):
+            raise ValueError(f"Tau selection {value:g} was provided more than once.")
+        requested.append(value)
+
+    selected = []
+    matched = set()
+    for dataset in datasets:
+        tau = dataset["forcing_end_time"]
+        for index, requested_tau in enumerate(requested):
+            if math.isclose(
+                tau,
+                requested_tau,
+                rel_tol=1.0e-12,
+                abs_tol=1.0e-12,
+            ):
+                selected.append(dataset)
+                matched.add(index)
+                break
+
+    missing = [
+        requested[index]
+        for index in range(len(requested))
+        if index not in matched
+    ]
+    if missing:
+        available = sorted({dataset["forcing_end_time"] for dataset in datasets})
+        raise ValueError(
+            "Requested tau values are missing from datasets.toml: "
+            + ", ".join(f"{value:g}" for value in missing)
+            + ". Available values: "
+            + ", ".join(f"{value:g}" for value in available)
+        )
+    return selected
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Create combined plots from pipeline metrics CSV files.")
     parser.add_argument("datasets_file", type=Path, help="Editable datasets.toml written by run_all.py.")
@@ -115,6 +163,13 @@ def main() -> int:
         choices=("tau", "dx-base", "reynolds"),
         default="tau",
         help="Legend parameter and ordering (default: tau).",
+    )
+    parser.add_argument(
+        "--tau-values",
+        nargs="+",
+        type=float,
+        metavar="TAU",
+        help="Include only datasets with these forcing-end times.",
     )
     parser.add_argument(
         "--circulation-inset",
@@ -141,10 +196,13 @@ def main() -> int:
 
     config = load_config(args.config_file)
     datasets_file = args.datasets_file.expanduser().resolve()
-    datasets = configure_legend_labels(
-        load_datasets(datasets_file, config),
-        config,
-        args.legend_by,
+    datasets = select_tau_datasets(
+        configure_legend_labels(
+            load_datasets(datasets_file, config),
+            config,
+            args.legend_by,
+        ),
+        args.tau_values,
     )
     circulation_series = []
     normalized_circulation_series = []
